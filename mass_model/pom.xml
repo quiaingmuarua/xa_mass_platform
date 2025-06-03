@@ -7,6 +7,28 @@
         <version>0.0.1-SNAPSHOT</version>
     </parent>
     <artifactId>mass_model</artifactId>
-    <name>Archetype - mass_model</name>
-    <url>http://maven.apache.org</url>
+    <name>mass_model</name>
+    <packaging>jar</packaging>
+
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>repackage</goal>
+                        </goals>
+                        <phase>package</phase>
+                        <configuration>
+                            <skip>true</skip> <!-- ✅ 关键点：跳过 repackage -->
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+
 </project>
