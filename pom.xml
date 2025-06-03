@@ -11,8 +11,8 @@
     <artifactId>xa_mass_platform</artifactId>
     <version>0.0.1-SNAPSHOT</version>
     <packaging>pom</packaging>
-    <name>mass_platform_backend</name>
-    <description>mass_platform_backend</description>
+    <name>xa_mass_platform</name>
+    <description>xa_mass_platform</description>
     <url/>
     <licenses>
         <license/>
@@ -25,6 +25,7 @@
         <module>mass_engine</module>
         <module>mass_model</module>
         <module>mass_common</module>
+        <module>mass_client</module>
     </modules>
     <scm>
         <connection/>

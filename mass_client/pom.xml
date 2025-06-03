@@ -6,15 +6,7 @@
         <artifactId>xa_mass_platform</artifactId>
         <version>0.0.1-SNAPSHOT</version>
     </parent>
-    <artifactId>mass_engine</artifactId>
-    <name>Archetype - mass_engine</name>
+    <artifactId>mass_client</artifactId>
+    <name>Archetype - mass_server</name>
     <url>http://maven.apache.org</url>
-    <dependencies>
-        <dependency>
-            <groupId>com.xa.mass</groupId>
-            <artifactId>mass_model</artifactId>
-            <version>0.0.1-SNAPSHOT</version>
-            <scope>compile</scope>
-        </dependency>
-    </dependencies>
 </project>
