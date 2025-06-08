@@ -8,6 +8,13 @@
     </parent>
     <artifactId>mass_model</artifactId>
     <name>mass_model</name>
+    <dependencies>
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <scope>provided</scope>
+        </dependency>
+    </dependencies>
     <packaging>jar</packaging>
 
 

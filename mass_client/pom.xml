@@ -18,11 +18,21 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter</artifactId>
         </dependency>
+        <dependency>
+            <groupId>com.xa.mass</groupId>
+            <artifactId>mass_model</artifactId>
+            <version>0.0.1-SNAPSHOT</version>
+        </dependency>
         <!-- WebSocket 客户端通信需要 -->
         <dependency>
             <groupId>org.java-websocket</groupId>
             <artifactId>Java-WebSocket</artifactId>
             <version>1.5.2</version>
+        </dependency>
+
+        <dependency>
+            <groupId>com.google.code.gson</groupId>
+            <artifactId>gson</artifactId>
         </dependency>
 
         <!-- 如果你想用 RestTemplate / Schedule 也可以加 -->

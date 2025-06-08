@@ -4,12 +4,17 @@ import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import javax.annotation.PostConstruct;
 
 @Component
 public class WebSocketServer {
+
+    private static final Logger logger = LoggerFactory.getLogger(WebSocketServer.class);
+    private static final int PORT = 8080;
 
     @PostConstruct
     public void start() {
@@ -22,10 +27,14 @@ public class WebSocketServer {
                     .channel(NioServerSocketChannel.class)
                     .childHandler(new WebSocketMessageHandler());
 
-            b.bind(8080).sync();
-            System.out.println("WebSocket server started on port 8080");
+            // 保持主线程阻塞，直到服务器关闭
+            b.bind(PORT).sync().channel().closeFuture().sync();
+            logger.info("WebSocket server started on port {}", PORT);
         } catch (InterruptedException e) {
-            e.printStackTrace();
+            logger.error("WebSocket server interrupted", e);
+        } finally {
+            boss.shutdownGracefully();
+            worker.shutdownGracefully();
         }
     }
 }
