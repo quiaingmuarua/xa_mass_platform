@@ -4,8 +4,6 @@ import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.xa.mass.server.manager.OutboundQueueManager;
 import io.netty.channel.Channel;
-import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;
-import com.xa.mass.server.handler.OutboundMessage;
 
 public class PingHandler implements MessageHandler {
 
@@ -13,6 +11,7 @@ public class PingHandler implements MessageHandler {
 
     @Override
     public void handle(JsonObject data, Channel channel) {
+        System.out.println("Received ping message " + data);
         JsonObject response = new JsonObject();
         response.addProperty("type", "pong");
         response.addProperty("timestamp", System.currentTimeMillis());
@@ -22,10 +21,9 @@ public class PingHandler implements MessageHandler {
             new OutboundMessage(
                 "111",
                 responseText,
-                channel,
-                null,
-                null,
-                null
+                    channel, () -> System.out.println("success"),
+                    (e) -> System.out.println("faile"),
+                    () -> System.out.println("err")
             )
         );
     }

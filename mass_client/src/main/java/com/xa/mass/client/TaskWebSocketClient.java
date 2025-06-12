@@ -2,9 +2,10 @@ package com.xa.mass.client;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
+import com.xa.mass.model.message.MsgType;
 import com.xa.mass.model.message.TaskMessage;
 import com.xa.mass.model.message.TaskResult;
-import com.xa.mass.model.message.MsgType;
+import com.xa.mass.model.message.WsMessage;
 import org.java_websocket.client.WebSocketClient;
 import org.java_websocket.handshake.ServerHandshake;
 
@@ -27,8 +28,12 @@ public class TaskWebSocketClient extends WebSocketClient {
         JsonObject response = new JsonObject();
         response.addProperty("type", "ping");
         response.addProperty("timestamp", System.currentTimeMillis());
-        String responseText = gson.toJson(response);
+        WsMessage wsMessage = new WsMessage();
+        wsMessage.setType("ping");
+        wsMessage.setData(response);
+        String responseText = gson.toJson(wsMessage);
         send(responseText);
+
 
     }
 

@@ -3,10 +3,6 @@ package com.xa.mass.server.manager;
 import com.xa.mass.server.handler.OutboundMessage;
 import com.xa.mass.server.schedule.OutboundQueue;
 import com.xa.mass.server.schedule.QueueService;
-import io.netty.channel.Channel;
-
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.LinkedBlockingQueue;
 
 public class OutboundQueueManager {
 
@@ -40,6 +36,7 @@ public class OutboundQueueManager {
             try {
                 OutboundMessage message = messageQueue.dequeue();
                 message.send();
+                System.out.println("OutboundQueueManager processQueue ");
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 break;

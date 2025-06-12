@@ -1,6 +1,5 @@
 package com.xa.mass.server.handler;
 
-import com.xa.mass.server.TaskResultHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;
@@ -9,6 +8,8 @@ public class WebSocketMessageHandler extends SimpleChannelInboundHandler<TextWeb
 
     @Override
     protected void channelRead0(ChannelHandlerContext ctx, TextWebSocketFrame msg) {
+        // 处理WebSocket消息
+        System.out.println("channelRead0 Received message: " + msg.text());
         String json = msg.text();
         MessageDispatcher.dispatch(json, ctx.channel());
     }
