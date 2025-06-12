@@ -1,14 +1,18 @@
 package com.xa.mass.client;
 
+import com.google.gson.Gson;
+import com.google.gson.JsonObject;
+import com.xa.mass.model.message.WsMessage;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 @SpringBootApplication
 public class MassClientApplication {
+    private static final Gson gson = new Gson();
     public static void main(String[] args) {
         SpringApplication.run(MassClientApplication.class, args);
-
-        MyWebSocketClient client = new MyWebSocketClient();
+        TaskWebSocketClient client = new TaskWebSocketClient();
         client.connect();
+
     }
 }

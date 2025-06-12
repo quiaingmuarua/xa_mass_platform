@@ -1,6 +1,7 @@
 package com.xa.mass.client;
 
 import com.google.gson.Gson;
+import com.google.gson.JsonObject;
 import com.xa.mass.model.message.TaskMessage;
 import com.xa.mass.model.message.TaskResult;
 import com.xa.mass.model.message.MsgType;
@@ -16,12 +17,19 @@ public class TaskWebSocketClient extends WebSocketClient {
     private final Gson gson = new Gson();
 
     public TaskWebSocketClient() {
-        super(URI.create("ws://localhost:8080/ws"));
+        super(URI.create("ws://localhost:8088/ws"));
     }
 
     @Override
     public void onOpen(ServerHandshake handshakedata) {
         System.out.println("Connected to server");
+        // 在连接建立后发送 ping
+        JsonObject response = new JsonObject();
+        response.addProperty("type", "ping");
+        response.addProperty("timestamp", System.currentTimeMillis());
+        String responseText = gson.toJson(response);
+        send(responseText);
+
     }
 
     @Override

@@ -1,5 +1,7 @@
 package com.xa.mass.server;
 
+import com.xa.mass.server.handler.PingHandler;
+import com.xa.mass.server.handler.WebSocketMessageHandler;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
@@ -14,7 +16,7 @@ import javax.annotation.PostConstruct;
 public class WebSocketServer {
 
     private static final Logger logger = LoggerFactory.getLogger(WebSocketServer.class);
-    private static final int PORT = 8080;
+    private static final int PORT = 8088;
 
     @PostConstruct
     public void start() {

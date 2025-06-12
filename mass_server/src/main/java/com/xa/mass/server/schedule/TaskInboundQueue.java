@@ -1,6 +1,4 @@
-package com.xa.mass.server;
-
-import com.xa.mass.server.schedule.QueueService;
+package com.xa.mass.server.schedule;
 
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
