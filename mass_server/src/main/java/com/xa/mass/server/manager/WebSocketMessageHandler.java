@@ -1,7 +1,8 @@
-package com.xa.mass.server;
+package com.xa.mass.server.manager;
 
 import com.google.gson.Gson;
 import com.xa.mass.model.message.TaskMessage;
+import com.xa.mass.server.TaskResultHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;

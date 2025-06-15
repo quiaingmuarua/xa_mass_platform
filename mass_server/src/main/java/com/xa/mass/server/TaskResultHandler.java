@@ -36,6 +36,8 @@ public class TaskResultHandler {
         } else {
             System.out.println("Task failed: " + taskId);
         }
+
+
     }
 
     public static void onTimeout(String taskId) {
@@ -45,9 +47,10 @@ public class TaskResultHandler {
 
     private static TaskResult parseResult(String json) {
         JsonObject obj = JsonParser.parseString(json).getAsJsonObject();
-        String taskId = obj.get("taskId").getAsString();
-        boolean success = obj.get("success").getAsBoolean();
-        return new TaskResult(taskId, success);
+        System.out.println("paseResult json= "+json);
+//        String taskId = obj.get("taskId").getAsString();
+//        boolean success = obj.get("success").getAsBoolean();
+        return new TaskResult("asdfsadf", true);
     }
 
     // 简单模拟 TaskResult 类

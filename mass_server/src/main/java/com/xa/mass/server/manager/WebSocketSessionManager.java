@@ -1,4 +1,4 @@
-package com.xa.mass.server;
+package com.xa.mass.server.manager;
 
 import io.netty.channel.Channel;
 import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;

@@ -27,6 +27,7 @@ public class TaskWebSocketClient extends WebSocketClient {
         // 在连接建立后发送 ping
         JsonObject response = new JsonObject();
         response.addProperty("type", "ping");
+        response.addProperty("taskId", "12234234");
         response.addProperty("timestamp", System.currentTimeMillis());
         WsMessage wsMessage = new WsMessage();
         wsMessage.setType("ping");
