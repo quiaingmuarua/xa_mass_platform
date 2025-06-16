@@ -1,6 +1,7 @@
 package com.xa.mass.mock.service;
 
 
+import com.google.gson.Gson;
 import com.xa.mass.mock.client.TaskWebSocketClient;
 import com.xa.mass.model.message.*;
 import com.xa.mass.model.message.payload.TaskPayload;
@@ -40,7 +41,7 @@ public class MockTaskService {
 
         if (client != null && client.isOpen()) {
             BaseMessage<TaskPayload> taskMessage = createMockTaskMessage(deviceId);
-            client.send(taskMessage.toString());
+            client.send(new Gson().toJson(taskMessage));
             log.info("📤 Sent mock task to client: {}", deviceId);
         }
     }

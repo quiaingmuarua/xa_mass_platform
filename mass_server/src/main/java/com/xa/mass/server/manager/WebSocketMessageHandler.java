@@ -1,8 +1,11 @@
 package com.xa.mass.server.manager;
 
+import com.google.gson.JsonParseException;
+import com.google.gson.JsonSyntaxException;
 import com.google.gson.Gson;
 import com.xa.mass.model.message.BaseMessage;
 import com.xa.mass.model.message.MessageContext;
+import com.xa.mass.model.message.MessageType;
 import com.xa.mass.model.message.payload.TaskPayload;
 import com.xa.mass.server.TaskResultHandler;
 import io.netty.channel.ChannelHandler; // 导入 @Sharable
@@ -15,7 +18,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 @Component
-@ChannelHandler.Sharable // <--- 添加此注解
+@ChannelHandler.Sharable
 public class WebSocketMessageHandler extends SimpleChannelInboundHandler<TextWebSocketFrame> {
 
     private static final Logger logger = LoggerFactory.getLogger(WebSocketMessageHandler.class);
@@ -27,21 +30,31 @@ public class WebSocketMessageHandler extends SimpleChannelInboundHandler<TextWeb
     @Override
     protected void channelRead0(ChannelHandlerContext ctx, TextWebSocketFrame msgFrame) {
         String message = msgFrame.text();
-        try {
-            // 尝试先解析出 MessageContext 来获取 deviceId 和 connRole
-            // 这一步是为了在 sessionManager.addSession 之前就能拿到关键信息
-            // 注意：如果 BaseMessage 结构固定，可以直接解析。
-            // 如果 payload 可能非常大或结构复杂，先解析外层获取 context 可能是个好主意。
-            BaseMessage<?> preParseForContext = gson.fromJson(message, BaseMessage.class);
-            MessageContext context = preParseForContext.getContext();
+        
+        // 1. 首先验证消息不为空
+        if (message == null || message.trim().isEmpty()) {
+            logger.warn("Received empty message");
+            return;
+        }
 
-            if (context == null || context.getDeviceId() == null || context.getConnRole() == null) {
-                logger.warn("Missing deviceId or connRole in context: {}", message);
-                // 可以选择关闭连接或发送错误信息给客户端
-                // ctx.close();
+        try {
+            // 2. 验证消息是否为合法的 JSON 格式
+            if (!message.trim().startsWith("{")) {
+                logger.warn("Invalid JSON format - message must be a JSON object: {}", message);
                 return;
             }
 
+            // 3. 尝试解析消息
+            BaseMessage<?> preParseForContext = gson.fromJson(message, BaseMessage.class);
+            
+            // 4. 添加更严格的空值检查
+            if (preParseForContext == null) {
+                logger.warn("Failed to parse message to BaseMessage: {}", message);
+                return;
+            }
+
+            MessageContext context = preParseForContext.getContext();
+            
             // 确保在处理消息前，会话已注册或更新
             sessionManager.addSession(context.getDeviceId(), context.getConnRole(), ctx.channel());
 
@@ -75,14 +88,29 @@ public class WebSocketMessageHandler extends SimpleChannelInboundHandler<TextWeb
                     logger.warn("Unsupported msgType: {} from {}:{}", baseMessage.getMsgType(), context.getDeviceId(), context.getConnRole());
             }
 
-        } catch (com.google.gson.JsonSyntaxException e) {
-            logger.error("JSON syntax error processing message: {}", message, e);
-            // 可以向客户端发送错误提示
+        } catch (JsonSyntaxException e) {
+            logger.error("Invalid JSON syntax in message: {}", message);
+            // 可以向客户端发送错误信息
+            sendErrorResponse(ctx, "Invalid message format");
+        } catch (JsonParseException e) {
+            logger.error("JSON parsing error: {}", e.getMessage());
+            sendErrorResponse(ctx, "Message parsing failed");
+        } catch (Exception e) {
+            logger.error("Unexpected error processing message: {}", e.getMessage());
+            sendErrorResponse(ctx, "Internal server error");
         }
-        catch (Exception e) {
-            logger.error("Error processing message: {}", message, e);
-            // 考虑是否需要关闭连接
-            // ctx.close();
+    }
+
+    // 添加发送错误响应的辅助方法
+    private void sendErrorResponse(ChannelHandlerContext ctx, String errorMessage) {
+        try {
+            BaseMessage<String> errorResponse = new BaseMessage<>();
+            errorResponse.setMsgType(MessageType.RESPONSE);
+            errorResponse.setPayload(errorMessage);
+            
+            ctx.channel().writeAndFlush(new TextWebSocketFrame(gson.toJson(errorResponse)));
+        } catch (Exception e) {
+            logger.error("Failed to send error response", e);
         }
     }
 
