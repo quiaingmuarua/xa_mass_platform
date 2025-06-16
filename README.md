@@ -127,3 +127,82 @@ PlatformManager	平台 DSL 注册与封装调度
 本项目致力于打造一个可运行、可追踪、可迭代的任务调度平台核心，支撑未来群控、多平台接码、大规模任务集成等复杂场景。
 
 ⸻
+
+
+
+#  MessageModel
+
+## 设计思路
+
+-  标准化消息格式（双向统一）
+-  引入消息路由中心（双向 Dispatcher）
+-  Server 可订阅 Client 状态（push 模式）
+- 考虑多通道通信、设备连接角色 ，可能一个client有多个role 角色连接,通过connRole进行配置
+
+## 任务消息
+
+```java
+{
+    "msgId": "T123456",        // 整个任务交互 ID
+    "msgType": "task", //"task" | "response" | "ack" | "status" | "log"
+    "subMsgType": "group_send",
+     "from": "client" | "server",
+    "context": {
+         "connRole": "messaegs_task"  // 或 "messaegs_xposed" / "tg_xposed"
+        "taskId": "BizTask_ABC",
+        "retryCount": 0,
+         "responseLevel": "step" | "all"
+    },//context需要透传的
+    "payload":{
+        "steps": [
+    {
+        "stepId": "step-1",
+        "action": "createGroup",
+        "params": { ... }
+    },
+    {
+        "stepId": "step-2",
+        "action": "sendMessage",
+        "dependsOn": ["step-1"],
+        "params": { ... }
+    }]
+    }，//参数
+    "result": {
+    "code": 200,
+    "message": "Sent success"
+  }。//结果
+}
+```
+
+
+
+## **msgType**
+
+| msgType  | **方向**        | **用途**                 | **示例** subMsgType        |
+| -------- | --------------- | ------------------------ | -------------------------- |
+| task     | server ➝ client | 任务下发                 | create_group, send_message |
+| response | client ➝ server | 任务结果回传             | step, all（阶段、整体）    |
+| ack      | 双向            | 任务或回调的确认         | task_ack, result_ack       |
+| ping     | client ➝ server | 心跳                     | 无                         |
+| pong     | server ➝ client | 心跳响应                 | 无                         |
+| status   | client ➝ server | 主动上报状态（非任务类） | device_env, login_state    |
+| control  | server ➝ client | 服务端控制命令           | reboot, clean_env          |
+| log      | client ➝ server | 上报日志、异常           | exception, stdout, metrics |
+| event    | client ➝ server | 客户端主动触发行为事件   | user_click, app_crash      |
+| config   | server ➝ client | 配置下发                 | set_proxy, update_version  |
+
+
+
+## 设备注册
+
+```java
+{
+  "msgType": "register",
+  "context": {
+    "deviceId": "A123456789",
+    "connRole": "task",
+    "lastAckMsgId": "T123456",    // 客户端上一次确认收到的任务
+    "curStepId": "step-2"         // 当前正在执行哪个步骤
+  }
+}
+```
