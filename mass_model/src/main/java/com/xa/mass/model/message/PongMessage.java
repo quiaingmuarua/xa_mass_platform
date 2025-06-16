@@ -1,30 +1,13 @@
 package com.xa.mass.model.message;
 
+import lombok.Data;
+import lombok.EqualsAndHashCode;
+import lombok.experimental.SuperBuilder;
 
-public class PongMessage {
-    private String deviceId;
-    private long timestamp;
-
-    public PongMessage() {}
-
-    public PongMessage(String deviceId, long timestamp) {
-        this.deviceId = deviceId;
-        this.timestamp = timestamp;
-    }
-
-    public String getDeviceId() {
-        return deviceId;
-    }
-
-    public void setDeviceId(String deviceId) {
-        this.deviceId = deviceId;
-    }
-
-    public long getTimestamp() {
-        return timestamp;
-    }
-
-    public void setTimestamp(long timestamp) {
-        this.timestamp = timestamp;
-    }
-}
+@Data
+@SuperBuilder
+@EqualsAndHashCode(callSuper = true)
+public class PongMessage extends BaseMessage {
+    private Long timestamp;
+    private Long serverTime;
+} 
