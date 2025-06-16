@@ -7,7 +7,6 @@ import java.util.List;
 import java.util.Map;
 
 @Data
-@Builder
 public class TaskStep {
     private String stepId;
     private String action;

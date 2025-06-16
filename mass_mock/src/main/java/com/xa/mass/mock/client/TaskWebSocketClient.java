@@ -1,4 +1,4 @@
-package com.xa.mass.client;
+package com.xa.mass.mock.client;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
@@ -6,6 +6,7 @@ import com.google.gson.reflect.TypeToken;
 import com.xa.mass.model.message.*;
 
 import com.xa.mass.model.message.payload.TaskPayload;
+
 import org.java_websocket.client.WebSocketClient;
 import org.java_websocket.handshake.ServerHandshake;
 import org.slf4j.Logger;

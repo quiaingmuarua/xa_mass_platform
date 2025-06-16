@@ -1,0 +1,79 @@
+package com.xa.mass.mock.service;
+
+
+import com.xa.mass.mock.client.TaskWebSocketClient;
+import com.xa.mass.model.message.*;
+import com.xa.mass.model.message.payload.TaskPayload;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Service;
+
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+
+@Slf4j
+@Service
+@RequiredArgsConstructor
+public class MockTaskService {
+    private final Map<String, TaskWebSocketClient> clients = new ConcurrentHashMap<>();
+    private final Random random = new Random();
+
+    public void addClient(TaskWebSocketClient client) {
+        clients.put(client.getDeviceId(), client);
+        log.info("Added mock client: {}", client.getDeviceId());
+    }
+
+    public void removeClient(String deviceId) {
+        clients.remove(deviceId);
+        log.info("Removed mock client: {}", deviceId);
+    }
+
+    public void sendMockTask() {
+        if (clients.isEmpty()) {
+            log.warn("No connected clients available to send mock task.");
+            return;
+        }
+
+        // 随机选择一个客户端
+        String deviceId = new ArrayList<>(clients.keySet()).get(random.nextInt(clients.size()));
+        TaskWebSocketClient client = clients.get(deviceId);
+
+        if (client != null && client.isOpen()) {
+            BaseMessage<TaskPayload> taskMessage = createMockTaskMessage(deviceId);
+            client.send(taskMessage.toString());
+            log.info("📤 Sent mock task to client: {}", deviceId);
+        }
+    }
+
+    private BaseMessage<TaskPayload> createMockTaskMessage(String deviceId) {
+        BaseMessage<TaskPayload> message = new BaseMessage<>();
+        message.setMsgId("task-" + UUID.randomUUID().toString());
+        message.setMsgType(MessageType.TASK);
+        message.setFrom(MessageDirection.SERVER);
+        message.setSubMsgType("mock_task");
+
+        MessageContext ctx = new MessageContext();
+        ctx.setDeviceId(deviceId);
+        ctx.setConnRole("messages_task");
+        ctx.setTaskId("mock_task_" + System.currentTimeMillis());
+        message.setContext(ctx);
+
+        TaskPayload payload = new TaskPayload();
+        List<TaskStep> steps = new ArrayList<>();
+        TaskStep step = new TaskStep();
+        step.setStepId("step_" + System.currentTimeMillis());;
+        steps.add(step);
+        payload.setSteps(steps);
+        message.setPayload(payload);
+
+        return message;
+    }
+
+    public Collection<TaskWebSocketClient> getAllClients() {
+        return clients.values();
+    }
+
+    public int getClientCount() {
+        return clients.size();
+    }
+} 

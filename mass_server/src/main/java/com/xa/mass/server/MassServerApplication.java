@@ -4,8 +4,8 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 @SpringBootApplication
-public class MassModelApplication {
+public class MassServerApplication {
     public static void main(String[] args) {
-        SpringApplication.run(MassModelApplication.class, args);
+        SpringApplication.run(MassServerApplication.class, args);
     }
 }

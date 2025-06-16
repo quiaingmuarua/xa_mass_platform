@@ -25,7 +25,7 @@
         <module>mass_engine</module>
         <module>mass_model</module>
         <module>mass_common</module>
-        <module>mass_client</module>
+        <module>mass_mock</module>
     </modules>
     <scm>
         <connection/>
