@@ -7,18 +7,27 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 
-@Configuration("customQueueConfigName") // 指定一个唯一的bean名称
-public class QueueConfig {
+import com.xa.mass.server.queue.InMemoryMessageQueue;
+import com.xa.mass.server.queue.MessageQueue;
+import com.xa.mass.server.queue.StoredMessage; // 导入 StoredMessage
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Profile; // 导入 Profile
+
+@Configuration
+@Profile("local") // 只在 "local" profile 激活时生效
+public class QueueConfig { // 可以移除 ("customQueueConfigName") 如果不需要特定bean名
 
     @Bean
-    @Qualifier("inputQueue") // 使用 Qualifier 来区分不同的队列实例
-    public MessageQueue inputQueue() {
-        return new InMemoryMessageQueue();
+    @Qualifier("inputQueue")
+    public MessageQueue<StoredMessage> inputQueue() { // 返回类型改为 MessageQueue<StoredMessage>
+        return new InMemoryMessageQueue(); // InMemoryMessageQueue 应该实现 MessageQueue<StoredMessage>
     }
 
     @Bean
     @Qualifier("outputQueue")
-    public MessageQueue outputQueue() {
+    public MessageQueue<StoredMessage> outputQueue() { // 返回类型改为 MessageQueue<StoredMessage>
         return new InMemoryMessageQueue();
     }
 }

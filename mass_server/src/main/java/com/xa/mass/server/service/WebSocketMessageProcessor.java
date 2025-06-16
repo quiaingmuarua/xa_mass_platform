@@ -3,7 +3,7 @@ package com.xa.mass.server.service;
 import com.google.gson.Gson;
 import com.google.gson.JsonParseException;
 import com.xa.mass.model.message.BaseMessage;
-import com.xa.mass.model.message.MessageContext;
+import com.xa.mass.model.message.MessageContext; // 仍然需要用于解析和构建消息体
 import com.xa.mass.model.message.MessageType;
 import com.xa.mass.model.message.payload.TaskPayload;
 import com.xa.mass.server.TaskResultHandler;
