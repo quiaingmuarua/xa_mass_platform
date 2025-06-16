@@ -1,7 +1,7 @@
 package com.xa.mass.model.message;
 
-import lombok.Data;
 import lombok.Builder;
+import lombok.Data;
 
 @Data
 @Builder

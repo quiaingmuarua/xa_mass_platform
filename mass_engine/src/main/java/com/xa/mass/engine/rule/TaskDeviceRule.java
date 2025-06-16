@@ -7,5 +7,5 @@ import com.xa.mass.model.task.Task;
 @FunctionalInterface
 public interface TaskDeviceRule {
 
-     boolean matcher(Task task, Device device);
+    boolean matcher(Task task, Device device);
 }

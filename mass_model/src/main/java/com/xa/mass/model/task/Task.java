@@ -1,7 +1,7 @@
 package com.xa.mass.model.task;
 
-import com.xa.mass.model.device.Token;
 import com.xa.mass.model.device.Device;
+import com.xa.mass.model.device.Token;
 
 public class Task {
 
@@ -9,7 +9,7 @@ public class Task {
 
     private String taskName;
 
-    private  String taskCountry;
+    private String taskCountry;
 
     private int taskInitNumber; //任务数
 
@@ -18,9 +18,9 @@ public class Task {
     private int taskExecutedNumber; //任务执行数
 
 
-    private  int taskUnExecutedNumber; //任务未执行数
+    private int taskUnExecutedNumber; //任务未执行数
 
-    private  int runTaskMinDeviceCnt; //最小设备数
+    private int runTaskMinDeviceCnt; //最小设备数
 
     private int scheduleDeviceCnt; //
 

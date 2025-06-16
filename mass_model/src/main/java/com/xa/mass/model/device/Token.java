@@ -17,7 +17,7 @@ public class Token {
 
     private Long tokenLastUseTime;
 
-    private int  deviceId;
+    private int deviceId;
 
 
 }

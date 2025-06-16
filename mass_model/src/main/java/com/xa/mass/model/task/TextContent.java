@@ -2,10 +2,10 @@ package com.xa.mass.model.task;
 
 import java.util.List;
 
-class  TextContent{
+class TextContent {
 
 
-    private  String contentTemplate;
+    private String contentTemplate;
 
 
     private List<String> serviceNumberList;

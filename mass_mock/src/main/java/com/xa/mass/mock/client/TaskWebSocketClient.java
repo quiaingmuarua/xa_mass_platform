@@ -4,9 +4,7 @@ import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.google.gson.reflect.TypeToken;
 import com.xa.mass.model.message.*;
-
 import com.xa.mass.model.message.payload.TaskPayload;
-
 import org.java_websocket.client.WebSocketClient;
 import org.java_websocket.handshake.ServerHandshake;
 import org.slf4j.Logger;
@@ -23,15 +21,14 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 public class TaskWebSocketClient extends WebSocketClient {
     private static final Logger logger = LoggerFactory.getLogger(TaskWebSocketClient.class);
-
-    private final Gson gson = new Gson();
-    private final ScheduledExecutorService reconnectScheduler;
-    private final AtomicInteger reconnectAttempts = new AtomicInteger(0);
     private static final int MAX_RECONNECT_ATTEMPTS = 10; // 最大重连次数
     private static final long INITIAL_RECONNECT_DELAY_MS = 1000; // 初始重连延迟 (1秒)
     private static final long MAX_RECONNECT_DELAY_MS = 60000; // 最大重连延迟 (60秒)
-    private boolean intentionalClose = false;
+    private final Gson gson = new Gson();
+    private final ScheduledExecutorService reconnectScheduler;
+    private final AtomicInteger reconnectAttempts = new AtomicInteger(0);
     private final String deviceId; // 每个客户端实例持有一个deviceId
+    private boolean intentionalClose = false;
 
     public TaskWebSocketClient(URI serverUri, String deviceId) {
         super(serverUri);
@@ -94,7 +91,8 @@ public class TaskWebSocketClient extends WebSocketClient {
     }
 
     private void handleTaskMessage(String message) {
-        Type taskMsgType = new TypeToken<BaseMessage<TaskPayload>>() {}.getType();
+        Type taskMsgType = new TypeToken<BaseMessage<TaskPayload>>() {
+        }.getType();
         BaseMessage<TaskPayload> taskMessage = gson.fromJson(message, taskMsgType);
 
         BaseMessage<Map<String, Object>> response = new BaseMessage<>();

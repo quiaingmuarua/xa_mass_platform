@@ -73,7 +73,7 @@ public class MassMockApplication {
 
     @Scheduled(fixedRate = 30000)  // 直接使用 fixedRate，值以毫秒为单位
     public void createAndSendMockTask() {
-       mockTaskService.sendMockTask();
+        mockTaskService.sendMockTask();
     }
 
     // 添加JVM关闭钩子

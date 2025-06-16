@@ -3,7 +3,6 @@ package com.xa.mass.server;
 import com.google.gson.Gson;
 import com.xa.mass.model.message.BaseMessage;
 import com.xa.mass.model.message.MessageContext;
-
 import com.xa.mass.model.message.MessageResult;
 import com.xa.mass.model.message.MessageType;
 import org.slf4j.Logger;

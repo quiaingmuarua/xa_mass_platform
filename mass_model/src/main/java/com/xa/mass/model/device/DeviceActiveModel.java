@@ -7,7 +7,7 @@ import java.util.List;
 
 public class DeviceActiveModel {
 
-    int type ; //注册方式 1获取号码 2 复用token
+    int type; //注册方式 1获取号码 2 复用token
     List<Region> regions; //注册地区
 
     String channelName;

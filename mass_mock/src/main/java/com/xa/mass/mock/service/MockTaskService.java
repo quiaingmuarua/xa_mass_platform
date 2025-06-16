@@ -62,7 +62,8 @@ public class MockTaskService {
         TaskPayload payload = new TaskPayload();
         List<TaskStep> steps = new ArrayList<>();
         TaskStep step = new TaskStep();
-        step.setStepId("step_" + System.currentTimeMillis());;
+        step.setStepId("step_" + System.currentTimeMillis());
+        ;
         steps.add(step);
         payload.setSteps(steps);
         message.setPayload(payload);
