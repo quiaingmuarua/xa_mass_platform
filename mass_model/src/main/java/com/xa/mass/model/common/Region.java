@@ -1,8 +1,8 @@
-package com.xa.mass.model;
+package com.xa.mass.model.common;
 
 
 
-class Region {
+public class Region {
 
     private String country;
 

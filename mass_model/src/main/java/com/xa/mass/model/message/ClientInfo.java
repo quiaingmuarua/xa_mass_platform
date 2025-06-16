@@ -5,7 +5,7 @@ import lombok.Builder;
 
 @Data
 @Builder
-public class DeviceInfo {
+public class ClientInfo {
     private String osVersion;
     private String deviceModel;
     private String deviceName;

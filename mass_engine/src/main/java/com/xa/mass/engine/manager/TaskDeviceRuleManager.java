@@ -1,8 +1,8 @@
 package com.xa.mass.engine.manager;
 
 import com.xa.mass.engine.rule.TaskDeviceRule;
-import com.xa.mass.model.Device;
-import com.xa.mass.model.Task;
+import com.xa.mass.model.device.Device;
+import com.xa.mass.model.task.Task;
 
 
 import java.util.List;

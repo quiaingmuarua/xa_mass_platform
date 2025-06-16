@@ -1,8 +1,6 @@
 package com.xa.mass.client;
 
 import com.google.gson.Gson;
-import com.google.gson.JsonObject;
-import com.xa.mass.model.message.WsMessage;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 

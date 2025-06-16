@@ -1,6 +1,7 @@
-package com.xa.mass.model;
+package com.xa.mass.model.task;
 
-import java.util.List;
+import com.xa.mass.model.device.Token;
+import com.xa.mass.model.device.Device;
 
 public class Task {
 

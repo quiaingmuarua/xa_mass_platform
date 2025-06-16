@@ -4,7 +4,6 @@ import lombok.Data;
 import lombok.Builder;
 
 @Data
-@Builder
 public class MessageContext {
     private String deviceId;
     private String connRole;

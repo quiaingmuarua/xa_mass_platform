@@ -1,7 +1,9 @@
 package com.xa.mass.server.manager;
 
 import com.google.gson.Gson;
-import com.xa.mass.model.message.TaskMessage;
+import com.xa.mass.model.message.BaseMessage;
+import com.xa.mass.model.message.MessageContext;
+import com.xa.mass.model.message.payload.TaskPayload;
 import com.xa.mass.server.TaskResultHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
@@ -13,6 +15,7 @@ import org.springframework.stereotype.Component;
 
 @Component
 public class WebSocketMessageHandler extends SimpleChannelInboundHandler<TextWebSocketFrame> {
+
     private static final Logger logger = LoggerFactory.getLogger(WebSocketMessageHandler.class);
     private final Gson gson = new Gson();
 
@@ -20,18 +23,39 @@ public class WebSocketMessageHandler extends SimpleChannelInboundHandler<TextWeb
     private WebSocketSessionManager sessionManager;
 
     @Override
-    protected void channelRead0(ChannelHandlerContext ctx, TextWebSocketFrame msg) {
-        String message = msg.text();
+    protected void channelRead0(ChannelHandlerContext ctx, TextWebSocketFrame msgFrame) {
+        String message = msgFrame.text();
         try {
-            // 尝试解析消息，获取设备ID
-            TaskMessage taskMessage = gson.fromJson(message, TaskMessage.class);
-            String deviceId = taskMessage.getMsgId(); // 使用msgId作为设备ID，实际项目中可能需要从消息中提取真实的设备ID
+            BaseMessage<?> baseMessage = gson.fromJson(message, BaseMessage.class);
+            MessageContext context = baseMessage.getContext();
+            if (context == null || context.getDeviceId() == null || context.getConnRole() == null) {
+                logger.warn("Missing deviceId or connRole in context: {}", message);
+                return;
+            }
 
-            // 处理消息
-            TaskResultHandler.onClientResponse(message);
-            
-            // 记录设备活动
-            logger.info("Received message from device {}: {}", deviceId, message);
+            // 注册连接
+            sessionManager.addSession(context.getDeviceId(), context.getConnRole(), ctx.channel());
+
+            // 处理不同类型的消息
+            switch (baseMessage.getMsgType()) {
+                case PING:
+                    logger.debug("Received ping from {}:{}", context.getDeviceId(), context.getConnRole());
+                    break;
+                case TASK:
+                    // 将 payload 强转为 TaskPayload
+                    TaskPayload taskPayload = gson.fromJson(gson.toJson(baseMessage.getPayload()), TaskPayload.class);
+                    logger.info("Received task from {}:{} steps={}", context.getDeviceId(), context.getConnRole(),
+                            taskPayload.getSteps().size());
+                    // 调用任务处理器
+                    TaskResultHandler.onClientResponse(message);  // 此处你可能也要改为支持新的结构
+                    break;
+                case REGISTER:
+                    logger.info("Device {} registered for role {}", context.getDeviceId(), context.getConnRole());
+                    break;
+                default:
+                    logger.warn("Unsupported msgType: {}", baseMessage.getMsgType());
+            }
+
         } catch (Exception e) {
             logger.error("Error processing message: {}", message, e);
         }
@@ -39,19 +63,14 @@ public class WebSocketMessageHandler extends SimpleChannelInboundHandler<TextWeb
 
     @Override
     public void handlerRemoved(ChannelHandlerContext ctx) {
-        String deviceId = sessionManager.getDeviceId(ctx.channel());
-        if (deviceId != null) {
-            sessionManager.removeSession(ctx.channel());
-            logger.info("Device disconnected: {}", deviceId);
-        }
+        sessionManager.removeSession(ctx.channel());
+
     }
 
     @Override
     public void channelActive(ChannelHandlerContext ctx) {
-        // 生成临时设备ID，实际项目中应该从认证信息中获取
-        String deviceId = "device_" + ctx.channel().id().asShortText();
-        sessionManager.addSession(deviceId, ctx.channel());
-        logger.info("New device connected: {}", deviceId);
+        logger.info("New WebSocket connection: {}", ctx.channel().remoteAddress());
+        // 不注册 session，等收到 register/ping/task 再注册
     }
 
     @Override

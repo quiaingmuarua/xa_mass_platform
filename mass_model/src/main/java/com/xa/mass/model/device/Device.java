@@ -1,6 +1,4 @@
-package com.xa.mass.model;
-
-import lombok.Getter;
+package com.xa.mass.model.device;
 
 import java.io.Serializable;
 

@@ -13,88 +13,90 @@ import java.util.concurrent.ConcurrentHashMap;
 public class WebSocketSessionManager {
     private static final Logger logger = LoggerFactory.getLogger(WebSocketSessionManager.class);
 
-    // 使用设备ID作为key，Channel作为value
-    private final Map<String, Channel> deviceChannels = new ConcurrentHashMap<>();
-    
-    // 使用Channel作为key，设备ID作为value（用于反向查找）
-    private final Map<Channel, String> channelDevices = new ConcurrentHashMap<>();
+    // deviceId -> connRole -> Channel
+    private final Map<String, Map<String, Channel>> deviceChannelMap = new ConcurrentHashMap<>();
+
+    // Channel -> [deviceId, connRole] 反向索引
+    private final Map<Channel, DeviceConnKey> channelIndex = new ConcurrentHashMap<>();
+
 
     /**
-     * 添加新的设备连接
-     * @param deviceId 设备ID
-     * @param channel WebSocket通道
+     * 添加新连接
      */
-    public void addSession(String deviceId, Channel channel) {
-        deviceChannels.put(deviceId, channel);
-        channelDevices.put(channel, deviceId);
-        logger.info("Device {} connected, total connections: {}", deviceId, deviceChannels.size());
+    public synchronized void addSession(String deviceId, String connRole, Channel channel) {
+        deviceChannelMap
+                .computeIfAbsent(deviceId, k -> new ConcurrentHashMap<>())
+                .put(connRole, channel);
+
+        channelIndex.put(channel, new DeviceConnKey(deviceId, connRole));
+
+        logger.info("🟢 Connected: deviceId={} role={} totalDevices={}", deviceId, connRole, deviceChannelMap.size());
     }
 
     /**
-     * 移除设备连接
-     * @param channel WebSocket通道
+     * 移除连接
      */
-    public void removeSession(Channel channel) {
-        String deviceId = channelDevices.remove(channel);
-        if (deviceId != null) {
-            deviceChannels.remove(deviceId);
-            logger.info("Device {} disconnected, total connections: {}", deviceId, deviceChannels.size());
+    public synchronized void removeSession(Channel channel) {
+        DeviceConnKey key = channelIndex.remove(channel);
+        if (key != null) {
+            Map<String, Channel> roleMap = deviceChannelMap.get(key.getDeviceId());
+            if (roleMap != null) {
+                roleMap.remove(key.getConnRole());
+                if (roleMap.isEmpty()) {
+                    deviceChannelMap.remove(key.getDeviceId());
+                }
+            }
+            logger.info("🔌 Disconnected: deviceId={} role={}", key.getDeviceId(), key.getConnRole());
         }
     }
 
     /**
-     * 向指定设备发送消息
-     * @param deviceId 设备ID
-     * @param message 消息内容
-     * @return 是否发送成功
+     * 向某个设备的某个连接角色发送消息
      */
-    public boolean sendMessage(String deviceId, String message) {
-        Channel channel = deviceChannels.get(deviceId);
-        if (channel != null && channel.isActive()) {
-            channel.writeAndFlush(new TextWebSocketFrame(message));
-            return true;
+    public boolean sendMessage(String deviceId, String connRole, String message) {
+        Map<String, Channel> roleMap = deviceChannelMap.get(deviceId);
+        if (roleMap != null) {
+            Channel channel = roleMap.get(connRole);
+            if (channel != null && channel.isActive()) {
+                channel.writeAndFlush(new TextWebSocketFrame(message));
+                return true;
+            }
         }
-        logger.warn("Failed to send message to device {}, channel not found or inactive", deviceId);
+        logger.warn("❌ Failed to send to device={}, role={}", deviceId, connRole);
         return false;
     }
 
     /**
-     * 广播消息给所有连接的设备
-     * @param message 消息内容
+     * 广播给所有连接
      */
     public void broadcastMessage(String message) {
         TextWebSocketFrame frame = new TextWebSocketFrame(message);
-        deviceChannels.values().forEach(channel -> {
-            if (channel.isActive()) {
-                channel.writeAndFlush(frame.copy());
-            }
-        });
+        deviceChannelMap.values().forEach(roleMap ->
+                roleMap.values().forEach(channel -> {
+                    if (channel.isActive()) {
+                        channel.writeAndFlush(frame.copy());
+                    }
+                })
+        );
     }
 
-    /**
-     * 获取设备连接数
-     * @return 当前连接的设备数量
-     */
-    public int getConnectionCount() {
-        return deviceChannels.size();
+    public boolean isDeviceOnline(String deviceId, String connRole) {
+        Map<String, Channel> roleMap = deviceChannelMap.get(deviceId);
+        if (roleMap == null) return false;
+        Channel ch = roleMap.get(connRole);
+        return ch != null && ch.isActive();
     }
 
-    /**
-     * 检查设备是否在线
-     * @param deviceId 设备ID
-     * @return 设备是否在线
-     */
-    public boolean isDeviceOnline(String deviceId) {
-        Channel channel = deviceChannels.get(deviceId);
-        return channel != null && channel.isActive();
+    public int getDeviceConnectionCount() {
+        return channelIndex.size();
     }
 
-    /**
-     * 获取设备ID
-     * @param channel WebSocket通道
-     * @return 设备ID，如果未找到则返回null
-     */
-    public String getDeviceId(Channel channel) {
-        return channelDevices.get(channel);
+    public DeviceConnKey getDeviceConnKey(Channel channel) {
+        return channelIndex.get(channel);
     }
-} 
+
+    public Channel getChannel(String deviceId, String connRole) {
+        Map<String, Channel> roleMap = deviceChannelMap.get(deviceId);
+        return roleMap != null ? roleMap.get(connRole) : null;
+    }
+}

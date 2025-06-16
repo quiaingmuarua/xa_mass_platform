@@ -1,74 +1,66 @@
 package com.xa.mass.server;
 
-import io.netty.channel.Channel;
 import com.google.gson.Gson;
-import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
+import com.xa.mass.model.message.BaseMessage;
+import com.xa.mass.model.message.MessageContext;
 
-import java.util.Map;
-import java.util.concurrent.*;
+import com.xa.mass.model.message.MessageResult;
+import com.xa.mass.model.message.MessageType;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Component;
 
+/**
+ * 统一处理客户端回传的任务结果（msgType = response）
+ */
+@Component
 public class TaskResultHandler {
 
-    private static final Map<String, ScheduledFuture<?>> timeoutFutures = new ConcurrentHashMap<>();
-    private static final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
+    private static final Logger logger = LoggerFactory.getLogger(TaskResultHandler.class);
     private static final Gson gson = new Gson();
 
-    public static void startTaskTimeoutCheck(String taskId, Channel channel) {
-        ScheduledFuture<?> future = scheduler.schedule(() -> {
-            // 超时未回应，调用超时处理逻辑
-            System.out.println("Task timeout: " + taskId);
-            onTimeout(taskId);
-        }, 5, TimeUnit.SECONDS);
-
-        timeoutFutures.put(taskId, future);
-    }
-
     public static void onClientResponse(String json) {
-        TaskResult result = parseResult(json);
-        String taskId = result.getTaskId();
+        try {
+            // 反序列化为 BaseMessage 并强转 result 部分（注意 payload 可忽略）
+            BaseMessage<?> baseMsg = gson.fromJson(json, BaseMessage.class);
 
-        ScheduledFuture<?> future = timeoutFutures.remove(taskId);
-        if (future != null) future.cancel(true);
+            if (baseMsg.getMsgType() != MessageType.RESPONSE) {
+                logger.warn("Received unexpected msgType in TaskResultHandler: {}", baseMsg.getMsgType());
+                return;
+            }
 
-        if (result.isSuccess()) {
-            System.out.println("Task success: " + taskId);
-        } else {
-            System.out.println("Task failed: " + taskId);
+            MessageContext ctx = baseMsg.getContext();
+            MessageResult result = gson.fromJson(gson.toJson(baseMsg.getResult()), MessageResult.class);
+
+            String deviceId = ctx != null ? ctx.getDeviceId() : "unknown";
+            String connRole = ctx != null ? ctx.getConnRole() : "unknown";
+
+            logger.info("Received response from device [{}:{}], msgId={}, code={}, message={}",
+                    deviceId, connRole, baseMsg.getMsgId(), result.getCode(), result.getMessage());
+
+            // 根据 subMsgType 进行细粒度处理（可选扩展）
+            switch (baseMsg.getSubMsgType()) {
+                case "step":
+                    handleStepResponse(baseMsg, result);
+                    break;
+                case "all":
+                    handleAllResponse(baseMsg, result);
+                    break;
+                default:
+                    logger.warn("Unknown subMsgType: {}", baseMsg.getSubMsgType());
+            }
+
+        } catch (Exception e) {
+            logger.error("Failed to process client response", e);
         }
-
-
     }
 
-    public static void onTimeout(String taskId) {
-        // 通知上层：任务超时处理
-        System.out.println("Handle timeout for task: " + taskId);
+    private static void handleStepResponse(BaseMessage<?> msg, MessageResult result) {
+        logger.debug("Step-step result for msgId={}: {}", msg.getMsgId(), gson.toJson(result));
     }
 
-    private static TaskResult parseResult(String json) {
-        JsonObject obj = JsonParser.parseString(json).getAsJsonObject();
-        System.out.println("paseResult json= "+json);
-//        String taskId = obj.get("taskId").getAsString();
-//        boolean success = obj.get("success").getAsBoolean();
-        return new TaskResult("asdfsadf", true);
-    }
-
-    // 简单模拟 TaskResult 类
-    private static class TaskResult {
-        private final String taskId;
-        private final boolean success;
-
-        public TaskResult(String taskId, boolean success) {
-            this.taskId = taskId;
-            this.success = success;
-        }
-
-        public String getTaskId() {
-            return taskId;
-        }
-
-        public boolean isSuccess() {
-            return success;
-        }
+    private static void handleAllResponse(BaseMessage<?> msg, MessageResult result) {
+        logger.debug("All-step result for msgId={}: {}", msg.getMsgId(), gson.toJson(result));
+        // TODO: 处理整体任务完成 —— 可触发业务逻辑、状态流、标记成功等
     }
 }

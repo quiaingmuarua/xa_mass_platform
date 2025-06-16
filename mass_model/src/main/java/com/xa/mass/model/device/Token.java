@@ -1,6 +1,4 @@
-package com.xa.mass.model;
-
-import java.util.Date;
+package com.xa.mass.model.device;
 
 public class Token {
 

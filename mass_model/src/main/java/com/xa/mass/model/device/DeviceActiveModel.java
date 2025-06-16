@@ -1,4 +1,7 @@
-package com.xa.mass.model;
+package com.xa.mass.model.device;
+
+
+import com.xa.mass.model.common.Region;
 
 import java.util.List;
 
