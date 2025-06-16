@@ -8,7 +8,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.DisposableBean;
 
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 public class RedisStreamMessageQueue implements MessageQueue<StoredMessage>, DisposableBean {
@@ -59,23 +61,23 @@ public class RedisStreamMessageQueue implements MessageQueue<StoredMessage>, Dis
 
     @Override
     public void offer(StoredMessage message) {
-//        if (!active) {
-//            logger.warn("Queue {} is not active, cannot offer message.", streamKey);
-//            return;
-//        }
-//        if (message == null) {
-//            throw new IllegalArgumentException("Message cannot be null");
-//        }
-//        try {
-//            String jsonPayload = gson.toJson(message);
-//            Map<String, String> body = Map.of(MESSAGE_PAYLOAD_FIELD, jsonPayload);
-//            // XADD mystream * field1 value1 field2 value2
-//            String messageId = streamCommands.xadd(streamKey, body);
-//            logger.debug("Offered message ID {} to stream '{}'", messageId, streamKey);
-//        } catch (Exception e) {
-//            logger.error("Failed to offer message to Redis stream '{}'", streamKey, e);
-//            throw new RuntimeException("Failed to offer message to Redis stream", e);
-//        }
+        if (!active) {
+            logger.warn("Queue {} is not active, cannot offer message.", streamKey);
+            return;
+        }
+        if (message == null) {
+            throw new IllegalArgumentException("Message cannot be null");
+        }
+        try {
+            String jsonPayload = gson.toJson(message);
+            Map<String, String> body = Collections.singletonMap(MESSAGE_PAYLOAD_FIELD, jsonPayload);
+            // XADD mystream * field1 value1 field2 value2
+            String messageId = streamCommands.xadd(streamKey, body);
+            logger.debug("Offered message ID {} to stream '{}'", messageId, streamKey);
+        } catch (Exception e) {
+            logger.error("Failed to offer message to Redis stream '{}'", streamKey, e);
+            throw new RuntimeException("Failed to offer message to Redis stream", e);
+        }
     }
 
     @Override
