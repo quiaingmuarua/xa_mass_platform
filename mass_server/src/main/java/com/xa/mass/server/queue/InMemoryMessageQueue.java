@@ -1,34 +1,31 @@
 package com.xa.mass.server.queue;
 
+// 如果 StoredMessage 不在此包，需要导入
+
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.TimeUnit; // 如果需要带超时的 poll
+import java.util.concurrent.TimeUnit;
 
-public class InMemoryMessageQueue<T> implements MessageQueue<T> {
+public class InMemoryMessageQueue implements MessageQueue<StoredMessage> { // 修改泛型
     // 使用 BlockingQueue，例如 LinkedBlockingQueue
-    private final BlockingQueue<T> queue;
+    private final BlockingQueue<StoredMessage> queue; // 修改泛型
 
     public InMemoryMessageQueue() {
-        // 你可以指定队列的容量，如果需要有界队列
-        // this.queue = new LinkedBlockingQueue<>(capacity);
         this.queue = new LinkedBlockingQueue<>(); // 无界队列
     }
 
     @Override
-    public void offer(T message) {
+    public void offer(StoredMessage message) { // 修改参数类型
         if (message == null) {
             throw new IllegalArgumentException("Message cannot be null");
         }
-        try {
-            //对于有界队列，offer 可能会阻塞，或者使用 put(message) 阻塞式添加
-            //对于 LinkedBlockingQueue 的无参构造（无界），offer 几乎总是立即成功
-            queue.offer(message);
-        } catch (Exception e) {
-            // 处理 offer 失败的情况，例如队列已满（对于有界队列）
-            // 或者在 offer 过程中线程被中断
-            // 对于 LinkedBlockingQueue 的无界情况，这里不太可能发生
-            Thread.currentThread().interrupt(); // 保持中断状态
-            throw new RuntimeException("Failed to offer message to queue", e);
+        // 对于 LinkedBlockingQueue 的无参构造（无界），offer 几乎总是立即成功
+        // 不需要 try-catch Exception e, offer 本身不抛出受检异常，只会返回false（对于有界队列且满时）
+        // 但 BlockingQueue.offer(E e) 声明不抛出异常。 put(E e) 会抛 InterruptedException
+        if (!queue.offer(message)) {
+            // 对于无界队列，这理论上不应发生，除非极端内存问题
+            // 对于有界队列，这意味着队列已满
+            throw new RuntimeException("Failed to offer message to in-memory queue (possibly full if bounded)");
         }
     }
 
@@ -37,8 +34,7 @@ public class InMemoryMessageQueue<T> implements MessageQueue<T> {
      * @return 队列的头部元素
      * @throws InterruptedException 如果在等待时线程被中断
      */
-    public T take() throws InterruptedException {
-        // take() 方法会在队列为空时阻塞，直到有元素可用
+    public StoredMessage take() throws InterruptedException { // 修改返回类型
         return queue.take();
     }
 
@@ -50,7 +46,8 @@ public class InMemoryMessageQueue<T> implements MessageQueue<T> {
      * @return 队列的头部元素，如果在超时前队列为空则返回 null
      * @throws InterruptedException 如果在等待时线程被中断
      */
-    public T poll(long timeout, TimeUnit unit) throws InterruptedException {
+    @Override
+    public StoredMessage poll(long timeout, TimeUnit unit) throws InterruptedException { // 修改返回类型
         return queue.poll(timeout, unit);
     }
 

@@ -5,7 +5,7 @@ import com.google.gson.JsonSyntaxException;
 import com.xa.mass.model.message.BaseMessage;
 import com.xa.mass.model.message.MessageContext;
 import com.xa.mass.server.queue.MessageQueue;
-import com.xa.mass.server.queue.WebSocketMessage;
+import com.xa.mass.server.queue.StoredMessage;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
@@ -28,7 +28,7 @@ public class WebSocketMessageHandler extends SimpleChannelInboundHandler<TextWeb
 
     @Autowired
     @Qualifier("inputQueue")
-    private MessageQueue<WebSocketMessage> inputQueue;
+    private MessageQueue<StoredMessage> inputQueue; // 泛型改为 StoredMessage
 
     @Override
     protected void channelRead0(ChannelHandlerContext ctx, TextWebSocketFrame msgFrame) {
@@ -40,7 +40,6 @@ public class WebSocketMessageHandler extends SimpleChannelInboundHandler<TextWeb
 
         if (!message.trim().startsWith("{")) {
             logger.warn("Invalid JSON format from {}: {}", ctx.channel().remoteAddress(), message);
-            // 可以考虑发送错误信息给客户端
             return;
         }
 
@@ -54,23 +53,25 @@ public class WebSocketMessageHandler extends SimpleChannelInboundHandler<TextWeb
             MessageContext context = preParseForContext.getContext();
             if (context == null || context.getDeviceId() == null || context.getConnRole() == null) {
                 logger.warn("Message from {} is missing deviceId or connRole in context: {}", ctx.channel().remoteAddress(), message);
-                // 可以考虑发送错误信息给客户端或关闭连接
                 return;
             }
 
-            sessionManager.addSession(context.getDeviceId(), context.getConnRole(), ctx.channel(), ctx); // 传入ctx
+            // 仍然需要将 Channel 和 Context 存入 SessionManager
+            sessionManager.addSession(context.getDeviceId(), context.getConnRole(), ctx.channel(), ctx);
 
-            inputQueue.offer(new WebSocketMessage(message, context)); // 使用 MessageContext
+            // 创建 StoredMessage 并放入队列
+            StoredMessage storedMessage = new StoredMessage(message, context.getDeviceId(), context.getConnRole());
+            inputQueue.offer(storedMessage);
+            logger.debug("Offered to inputQueue: {}", storedMessage);
 
         } catch (JsonSyntaxException e) {
             logger.error("JSON syntax error processing message from {}: {}", ctx.channel().remoteAddress(), message, e);
-            // 可以考虑发送错误信息给客户端
         } catch (Exception e) {
             logger.error("Unexpected error in channelRead0 from {}: {}", ctx.channel().remoteAddress(), message, e);
-            // 可以考虑发送错误信息给客户端
         }
     }
 
+    // handlerRemoved, channelActive, exceptionCaught 保持不变
     @Override
     public void handlerRemoved(ChannelHandlerContext ctx) {
         sessionManager.removeSession(ctx.channel());

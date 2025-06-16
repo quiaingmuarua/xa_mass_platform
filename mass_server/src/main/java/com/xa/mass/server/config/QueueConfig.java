@@ -2,6 +2,7 @@ package com.xa.mass.server.config;
 
 import com.xa.mass.server.queue.InMemoryMessageQueue;
 import com.xa.mass.server.queue.MessageQueue;
+import com.xa.mass.server.queue.StoredMessage;
 import com.xa.mass.server.queue.WebSocketMessage;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Bean;
@@ -13,13 +14,13 @@ public class QueueConfig {
 
     @Bean
     @Qualifier("inputQueue") // 使用 Qualifier 来区分不同的队列实例
-    public MessageQueue<WebSocketMessage> inputQueue() {
-        return new InMemoryMessageQueue<>();
+    public MessageQueue inputQueue() {
+        return new InMemoryMessageQueue();
     }
 
     @Bean
     @Qualifier("outputQueue")
-    public MessageQueue<WebSocketMessage> outputQueue() {
-        return new InMemoryMessageQueue<>();
+    public MessageQueue outputQueue() {
+        return new InMemoryMessageQueue();
     }
 }

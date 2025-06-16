@@ -3,15 +3,14 @@ package com.xa.mass.server.service;
 import com.google.gson.Gson;
 import com.google.gson.JsonParseException;
 import com.xa.mass.model.message.BaseMessage;
-import com.xa.mass.model.message.MessageContext;
+import com.xa.mass.model.message.MessageContext; // 仍然需要用于解析和构建消息体
 import com.xa.mass.model.message.MessageType;
 import com.xa.mass.model.message.payload.TaskPayload;
 import com.xa.mass.server.TaskResultHandler;
 import com.xa.mass.server.manager.WebSocketSessionManager;
-// import com.xa.mass.server.queue.InMemoryMessageQueue; // 不再直接依赖具体实现
 import com.xa.mass.server.queue.MessageQueue;
-import com.xa.mass.server.queue.WebSocketMessage;
-import io.netty.channel.Channel;
+// import com.xa.mass.server.queue.WebSocketMessage; // 不再使用此类
+import com.xa.mass.server.queue.StoredMessage;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;
 import org.slf4j.Logger;
@@ -21,6 +20,7 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
 import javax.annotation.PostConstruct;
+import javax.annotation.PreDestroy;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -29,173 +29,174 @@ import java.util.concurrent.TimeUnit;
 public class WebSocketMessageProcessor {
     private static final Logger logger = LoggerFactory.getLogger(WebSocketMessageProcessor.class);
     private final Gson gson = new Gson();
-    private final ExecutorService executorService = Executors.newFixedThreadPool(3);
+    private ExecutorService executorService; // 在 init 中初始化
 
     @Autowired
     private WebSocketSessionManager sessionManager;
 
     @Autowired
     @Qualifier("inputQueue")
-    private MessageQueue<WebSocketMessage> inputQueue;
+    private MessageQueue<StoredMessage> inputQueue; // 修改泛型
 
     @Autowired
     @Qualifier("outputQueue")
-    private MessageQueue<WebSocketMessage> outputQueue;
+    private MessageQueue<StoredMessage> outputQueue; // 修改泛型
 
     @PostConstruct
     public void init() {
         logger.info("WebSocketMessageProcessor init");
+        int threadPoolSize = 2; // 一个用于输入，一个用于输出
+        executorService = Executors.newFixedThreadPool(threadPoolSize);
         startProcessing();
     }
 
     private void startProcessing() {
         logger.info("WebSocketMessageProcessor startProcessing");
-        executorService.submit(this::processInputQueue);
-        executorService.submit(this::processOutputQueue);
+        executorService.submit(this::processInputQueueLoop);
+        executorService.submit(this::processOutputQueueLoop);
     }
 
-    private void processInputQueue() {
-        while (!Thread.currentThread().isInterrupted()) {
+    private void processInputQueueLoop() {
+        while (!Thread.currentThread().isInterrupted() && executorService != null && !executorService.isShutdown()) {
             try {
-                WebSocketMessage wsMessage = inputQueue.poll(15, TimeUnit.SECONDS);
-                if (wsMessage != null) {
-                    processMessage(wsMessage);
+                StoredMessage storedMessage = inputQueue.poll(15, TimeUnit.SECONDS); // 轮询 StoredMessage
+                if (storedMessage != null) {
+                    logger.debug("Polled from inputQueue: {}", storedMessage);
+                    processStoredMessage(storedMessage); // 调用处理 StoredMessage 的方法
                 }
             } catch (InterruptedException e) {
                 logger.info("Input queue processing thread interrupted.");
                 Thread.currentThread().interrupt();
                 break;
             } catch (Exception e) {
-                logger.error("Error processing input message", e);
-                try {
-                    Thread.sleep(1000);
-                } catch (InterruptedException ie) {
-                    Thread.currentThread().interrupt();
-                }
+                logger.error("Error processing input message from queue", e);
+                sleepSilently(1000);
             }
         }
+        logger.info("Input queue processing loop finished.");
     }
 
-    private void processOutputQueue() {
-        while (!Thread.currentThread().isInterrupted()) {
+    private void processOutputQueueLoop() {
+        while (!Thread.currentThread().isInterrupted() && executorService != null && !executorService.isShutdown()) {
             try {
-                WebSocketMessage wsMessage = outputQueue.poll(15, TimeUnit.SECONDS);
-                if (wsMessage != null) {
-                    sendMessage(wsMessage);
+                StoredMessage storedMessage = outputQueue.poll(15, TimeUnit.SECONDS); // 轮询 StoredMessage
+                if (storedMessage != null) {
+                    logger.debug("Polled from outputQueue: {}", storedMessage);
+                    sendStoredMessage(storedMessage); // 调用发送 StoredMessage 的方法
                 }
             } catch (InterruptedException e) {
                 logger.info("Output queue processing thread interrupted.");
                 Thread.currentThread().interrupt();
                 break;
             } catch (Exception e) {
-                logger.error("Error processing output message", e);
-                try {
-                    Thread.sleep(1000);
-                } catch (InterruptedException ie) {
-                    Thread.currentThread().interrupt();
-                }
+                logger.error("Error processing output message from queue", e);
+                sleepSilently(1000);
             }
         }
+        logger.info("Output queue processing loop finished.");
     }
 
-    private void processMessage(WebSocketMessage wsMessage) {
-        String messageContent = wsMessage.getMessage();
-        MessageContext msgContext = wsMessage.getMessageContext(); // 获取 MessageContext
+    // 方法名和参数类型修改为处理 StoredMessage
+    private void processStoredMessage(StoredMessage storedMessage) {
+        String messageContent = storedMessage.getMessageContent();
+        String deviceId = storedMessage.getDeviceId();
+        String connRole = storedMessage.getConnRole();
 
-        if (msgContext == null || msgContext.getDeviceId() == null || msgContext.getConnRole() == null) {
-            logger.warn("MessageContext, deviceId, or connRole is null in WebSocketMessage. Cannot process. Message: {}", messageContent);
+        if (deviceId == null || connRole == null) {
+            logger.warn("DeviceId or ConnRole is null in StoredMessage. Cannot process. Message: {}", messageContent);
             return;
         }
 
-        // 从 sessionManager 获取 ChannelHandlerContext
-        ChannelHandlerContext ctx = sessionManager.getChannelContext(msgContext.getDeviceId(), msgContext.getConnRole());
+        ChannelHandlerContext ctx = sessionManager.getChannelContext(deviceId, connRole);
         if (ctx == null || !ctx.channel().isActive()) {
             logger.warn("ChannelHandlerContext not found or channel inactive for deviceId={}, connRole={}. Message dropped: {}",
-                    msgContext.getDeviceId(), msgContext.getConnRole(), messageContent);
+                    deviceId, connRole, messageContent);
             return;
         }
 
         try {
             BaseMessage<?> baseMessage = gson.fromJson(messageContent, BaseMessage.class);
             if (baseMessage == null) {
-                logger.warn("Failed to parse message to BaseMessage: {}", messageContent);
+                logger.warn("Failed to parse StoredMessage content to BaseMessage: {}", messageContent);
                 return;
             }
 
-            // baseMessage.getContext() 应该与 wsMessage.getMessageContext() 包含相同的信息
-            // 这里可以根据需要选择使用哪个，或者进行校验
             MessageContext parsedContext = baseMessage.getContext();
-            if (parsedContext == null || parsedContext.getDeviceId() == null) {
-                logger.warn("Message context or deviceId is null after parsing. Message: {}", messageContent);
-                sendErrorResponse(ctx, "Invalid message: missing context or deviceId after parsing");
+            // 校验从消息体解析出的 context 是否与 StoredMessage 中的路由信息一致
+            if (parsedContext == null || !deviceId.equals(parsedContext.getDeviceId()) || !connRole.equals(parsedContext.getConnRole())) {
+                logger.warn("Mismatch or missing context in parsed BaseMessage. Expected deviceId={}, connRole={}. Got: {}. Message: {}",
+                        deviceId, connRole, parsedContext, messageContent);
+                sendErrorResponse(ctx, "Message context mismatch or missing after parsing.");
                 return;
             }
 
             switch (baseMessage.getMsgType()) {
                 case PING:
-                    logger.debug("Processing PING from {}:{}", parsedContext.getDeviceId(), parsedContext.getConnRole());
-                    // 可以考虑回复 PONG 消息到 outputQueue
-                    // Pong 消息也需要 MessageContext 来定位目标
+                    logger.debug("Processing PING for {}:{}", deviceId, connRole);
+                    // 如果需要回复 PONG，创建 StoredMessage 并放入 outputQueue
+                    // Example:
+                    // MessageContext pongContext = new MessageContext(deviceId, connRole, parsedContext.getMsgId()); // Use original msgId if needed
                     // BaseMessage<Void> pongResponse = new BaseMessage<>();
-                    // ... setup pongResponse ...
-                    // outputQueue.offer(new WebSocketMessage(gson.toJson(pongResponse), parsedContext));
+                    // pongResponse.setMsgType(MessageType.PONG); // Assuming PONG type exists
+                    // pongResponse.setContext(pongContext);
+                    // outputQueue.offer(new StoredMessage(gson.toJson(pongResponse), deviceId, connRole));
                     break;
                 case TASK:
                     TaskPayload taskPayload = gson.fromJson(gson.toJson(baseMessage.getPayload()), TaskPayload.class);
-                    logger.info("Processing TASK from {}:{} steps={}", parsedContext.getDeviceId(), parsedContext.getConnRole(),
+                    logger.info("Processing TASK for {}:{} steps={}", deviceId, connRole,
                             taskPayload.getSteps() != null ? taskPayload.getSteps().size() : 0);
-                    TaskResultHandler.onClientResponse(messageContent); // 注意：此方法需要明确其行为，可能也需要 MessageContext
+                    TaskResultHandler.onClientResponse(messageContent); // TODO: Consider passing deviceId, connRole
                     break;
                 case REGISTER:
-                    logger.info("Processing REGISTER for device {} with role {}", parsedContext.getDeviceId(), parsedContext.getConnRole());
+                    logger.info("Processing REGISTER for device {} with role {}", deviceId, connRole);
                     break;
                 case RESPONSE:
-                    logger.info("Received RESPONSE from {}:{} - usually client handles server's response.", parsedContext.getDeviceId(), parsedContext.getConnRole());
+                    logger.info("Received RESPONSE from {}:{} - usually client handles server's response.", deviceId, connRole);
                     break;
                 default:
-                    logger.warn("Unsupported msgType in processMessage: {} from {}:{}", baseMessage.getMsgType(), parsedContext.getDeviceId(), parsedContext.getConnRole());
+                    logger.warn("Unsupported msgType in processStoredMessage: {} for {}:{}", baseMessage.getMsgType(), deviceId, connRole);
                     sendErrorResponse(ctx, "Unsupported message type: " + baseMessage.getMsgType());
             }
         } catch (JsonParseException e) {
-            logger.error("JSON parsing error in processMessage: {}. Message: {}", e.getMessage(), messageContent);
+            logger.error("JSON parsing error in processStoredMessage for {}:{}. Message: {}", deviceId, connRole, messageContent, e);
             sendErrorResponse(ctx, "Invalid JSON message format");
         } catch (Exception e) {
-            logger.error("Unexpected error processing message: {}. Message: {}", e.getMessage(), messageContent, e);
+            logger.error("Unexpected error processing StoredMessage for {}:{}. Message: {}", deviceId, connRole, messageContent, e);
             sendErrorResponse(ctx, "Internal server error while processing message");
         }
     }
 
-    private void sendMessage(WebSocketMessage wsMessage) {
-        String messageContent = wsMessage.getMessage();
-        MessageContext msgContext = wsMessage.getMessageContext();
+    // 方法名和参数类型修改为处理 StoredMessage
+    private void sendStoredMessage(StoredMessage storedMessage) {
+        String messageContent = storedMessage.getMessageContent();
+        String deviceId = storedMessage.getDeviceId();
+        String connRole = storedMessage.getConnRole();
 
-        if (msgContext == null || msgContext.getDeviceId() == null || msgContext.getConnRole() == null) {
-            logger.warn("MessageContext, deviceId, or connRole is null in WebSocketMessage. Cannot send. Message: {}", messageContent);
+        if (deviceId == null || connRole == null) {
+            logger.warn("DeviceId or ConnRole is null in StoredMessage. Cannot send. Message: {}", messageContent);
             return;
         }
 
-        ChannelHandlerContext ctx = sessionManager.getChannelContext(msgContext.getDeviceId(), msgContext.getConnRole());
+        ChannelHandlerContext ctx = sessionManager.getChannelContext(deviceId, connRole);
 
         if (ctx == null || !ctx.channel().isActive()) {
             logger.warn("ChannelHandlerContext not found or channel inactive for deviceId={}, connRole={}. Cannot send message: {}",
-                    msgContext.getDeviceId(), msgContext.getConnRole(), messageContent);
+                    deviceId, connRole, messageContent);
             return;
         }
 
         try {
-            // WebSocketMessage 现在不直接持有 TextWebSocketFrame，需要在这里创建
             TextWebSocketFrame frame = new TextWebSocketFrame(messageContent);
             ctx.channel().writeAndFlush(frame);
             logger.debug("Message sent to {} via deviceId={}, connRole={}",
-                    ctx.channel().remoteAddress(), msgContext.getDeviceId(), msgContext.getConnRole());
+                    ctx.channel().remoteAddress(), deviceId, connRole);
         } catch (Exception e) {
             logger.error("Failed to send message to {} (deviceId={}, connRole={})",
-                    ctx.channel().remoteAddress(), msgContext.getDeviceId(), msgContext.getConnRole(), e);
+                    ctx.channel().remoteAddress(), deviceId, connRole, e);
         }
     }
 
     private void sendErrorResponse(ChannelHandlerContext ctx, String errorMessage) {
-        // 这个方法已经使用 ctx，所以不需要大改，只需确保调用时传入的 ctx 是有效的
         if (ctx == null || !ctx.channel().isActive()) {
             logger.warn("Cannot send error response, context is null or channel is inactive.");
             return;
@@ -215,5 +216,30 @@ public class WebSocketMessageProcessor {
         } catch (Exception e) {
             logger.error("Failed to build or send error response to {}", ctx.channel().remoteAddress(), e);
         }
+    }
+
+    private void sleepSilently(long millis) {
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    @PreDestroy
+    public void shutdown() {
+        logger.info("Shutting down WebSocketMessageProcessor executor service.");
+        if (executorService != null) {
+            executorService.shutdown();
+            try {
+                if (!executorService.awaitTermination(5, TimeUnit.SECONDS)) {
+                    executorService.shutdownNow();
+                }
+            } catch (InterruptedException e) {
+                executorService.shutdownNow();
+                Thread.currentThread().interrupt();
+            }
+        }
+        logger.info("WebSocketMessageProcessor executor service shut down.");
     }
 }
