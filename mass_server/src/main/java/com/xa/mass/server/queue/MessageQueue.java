@@ -6,8 +6,6 @@ import java.util.concurrent.TimeUnit; // 新增导入
 public interface MessageQueue<T> {
     void offer(T message);
 
-    T poll();
-
     /**
      * 从队列中获取并移除头部元素，如果在指定的等待时间内队列仍然为空，则返回 null。
      * @param timeout 等待时间

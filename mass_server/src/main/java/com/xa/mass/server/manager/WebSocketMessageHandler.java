@@ -1,6 +1,7 @@
 package com.xa.mass.server.manager;
 
 import com.google.gson.Gson;
+import com.google.gson.JsonSyntaxException;
 import com.xa.mass.model.message.BaseMessage;
 import com.xa.mass.model.message.MessageContext;
 import com.xa.mass.server.queue.MessageQueue;
@@ -26,56 +27,65 @@ public class WebSocketMessageHandler extends SimpleChannelInboundHandler<TextWeb
     private WebSocketSessionManager sessionManager;
 
     @Autowired
-    @Qualifier("inputQueue") // 确保注入的是名为 inputQueue 的bean
+    @Qualifier("inputQueue")
     private MessageQueue<WebSocketMessage> inputQueue;
 
     @Override
     protected void channelRead0(ChannelHandlerContext ctx, TextWebSocketFrame msgFrame) {
-
         String message = msgFrame.text();
-        // 1. 首先验证消息不为空
         if (message == null || message.trim().isEmpty()) {
-            logger.warn("Received empty message");
+            logger.warn("Received empty message from {}", ctx.channel().remoteAddress());
             return;
         }
 
-
-
-        // 2. 验证消息是否为合法的 JSON 格式
         if (!message.trim().startsWith("{")) {
-            logger.warn("Invalid JSON format - message must be a JSON object: {}", message);
+            logger.warn("Invalid JSON format from {}: {}", ctx.channel().remoteAddress(), message);
+            // 可以考虑发送错误信息给客户端
             return;
         }
 
-        // 3. 尝试解析消息
-        BaseMessage<?> preParseForContext = gson.fromJson(message, BaseMessage.class);
+        try {
+            BaseMessage<?> preParseForContext = gson.fromJson(message, BaseMessage.class);
+            if (preParseForContext == null) {
+                logger.warn("Failed to parse message to BaseMessage from {}: {}", ctx.channel().remoteAddress(), message);
+                return;
+            }
 
-        MessageContext context = preParseForContext.getContext();
-        // 确保在处理消息前，会话已注册或更新
-        sessionManager.addSession(context.getDeviceId(), context.getConnRole(), ctx.channel());
+            MessageContext context = preParseForContext.getContext();
+            if (context == null || context.getDeviceId() == null || context.getConnRole() == null) {
+                logger.warn("Message from {} is missing deviceId or connRole in context: {}", ctx.channel().remoteAddress(), message);
+                // 可以考虑发送错误信息给客户端或关闭连接
+                return;
+            }
 
-        // 3. 将消息放入输入队列
-        inputQueue.offer(new WebSocketMessage(message, ctx, msgFrame));
+            sessionManager.addSession(context.getDeviceId(), context.getConnRole(), ctx.channel(), ctx); // 传入ctx
+
+            inputQueue.offer(new WebSocketMessage(message, context)); // 使用 MessageContext
+
+        } catch (JsonSyntaxException e) {
+            logger.error("JSON syntax error processing message from {}: {}", ctx.channel().remoteAddress(), message, e);
+            // 可以考虑发送错误信息给客户端
+        } catch (Exception e) {
+            logger.error("Unexpected error in channelRead0 from {}: {}", ctx.channel().remoteAddress(), message, e);
+            // 可以考虑发送错误信息给客户端
+        }
     }
 
     @Override
     public void handlerRemoved(ChannelHandlerContext ctx) {
-        // 当连接断开时，从 sessionManager 中移除会话
         sessionManager.removeSession(ctx.channel());
         logger.info("WebSocket connection closed, session removed: {}", ctx.channel().remoteAddress());
     }
 
     @Override
     public void channelActive(ChannelHandlerContext ctx) {
-        // 连接建立时调用
         logger.info("New WebSocket connection active: {}", ctx.channel().remoteAddress());
     }
 
     @Override
     public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
         logger.error("WebSocket handler error for channel {}:", ctx.channel().remoteAddress(), cause);
-        // 发生异常时，也需要确保会话被清理
         sessionManager.removeSession(ctx.channel());
-        ctx.close(); // 关闭连接
+        ctx.close();
     }
 }

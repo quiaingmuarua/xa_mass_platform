@@ -42,16 +42,6 @@ public class InMemoryMessageQueue<T> implements MessageQueue<T> {
         return queue.take();
     }
 
-    /**
-     * 从队列中获取并移除头部元素，如果队列为空则立即返回 null。
-     * 这是 MessageQueue 接口定义的方法。
-     * @return 队列的头部元素，如果为空则返回 null
-     */
-    @Override
-    public T poll() {
-        // BlockingQueue 的 poll() 方法是非阻塞的，如果队列为空则返回 null
-        return queue.poll();
-    }
 
     /**
      * 从队列中获取并移除头部元素，如果在指定的等待时间内队列仍然为空，则返回 null。

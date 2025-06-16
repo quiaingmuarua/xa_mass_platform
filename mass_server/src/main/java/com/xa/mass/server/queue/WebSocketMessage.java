@@ -1,28 +1,24 @@
 package com.xa.mass.server.queue;
 
-import io.netty.channel.ChannelHandlerContext;
-import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;
+import com.xa.mass.model.message.MessageContext;
+// import io.netty.channel.ChannelHandlerContext; //不再需要
+// import io.netty.handler.codec.http.websocketx.TextWebSocketFrame; //不再需要
 
 public class WebSocketMessage {
     private final String message;
-    private final ChannelHandlerContext ctx;
-    private final TextWebSocketFrame frame;
+    private final MessageContext messageContext; // 保留 MessageContext 以便查找 ChannelHandlerContext
 
-    public WebSocketMessage(String message, ChannelHandlerContext ctx, TextWebSocketFrame frame) {
+
+    public WebSocketMessage(String message, MessageContext messageContext) {
         this.message = message;
-        this.ctx = ctx;
-        this.frame = frame;
+        this.messageContext = messageContext;
     }
 
     public String getMessage() {
         return message;
     }
 
-    public ChannelHandlerContext getCtx() {
-        return ctx;
+    public MessageContext getMessageContext() { // 方法名修改为 getMessageContext
+        return messageContext;
     }
-
-    public TextWebSocketFrame getFrame() {
-        return frame;
-    }
-} 
+}

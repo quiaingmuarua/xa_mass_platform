@@ -1,6 +1,7 @@
 package com.xa.mass.server.manager;
 
 import io.netty.channel.Channel;
+import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -16,6 +17,9 @@ public class WebSocketSessionManager {
     // deviceId -> connRole -> Channel
     private final Map<String, Map<String, Channel>> deviceChannelMap = new ConcurrentHashMap<>();
 
+    // deviceId -> connRole -> ChannelHandlerContext
+    private final Map<String, Map<String, ChannelHandlerContext>> deviceChannelCtxMap = new ConcurrentHashMap<>();
+
     // Channel -> [deviceId, connRole] 反向索引
     private final Map<Channel, DeviceConnKey> channelIndex = new ConcurrentHashMap<>();
 
@@ -23,10 +27,14 @@ public class WebSocketSessionManager {
     /**
      * 添加新连接
      */
-    public synchronized void addSession(String deviceId, String connRole, Channel channel) {
+    public synchronized void addSession(String deviceId, String connRole, Channel channel, ChannelHandlerContext ctx) {
         deviceChannelMap
                 .computeIfAbsent(deviceId, k -> new ConcurrentHashMap<>())
                 .put(connRole, channel);
+
+        deviceChannelCtxMap
+                .computeIfAbsent(deviceId, k -> new ConcurrentHashMap<>())
+                .put(connRole, ctx);
 
         channelIndex.put(channel, new DeviceConnKey(deviceId, connRole));
 
@@ -46,6 +54,13 @@ public class WebSocketSessionManager {
                     deviceChannelMap.remove(key.getDeviceId());
                 }
             }
+            Map<String, ChannelHandlerContext> roleCtxMap = deviceChannelCtxMap.get(key.getDeviceId());
+            if (roleCtxMap != null) {
+                roleCtxMap.remove(key.getConnRole());
+                if (roleCtxMap.isEmpty()) {
+                    deviceChannelCtxMap.remove(key.getDeviceId());
+                }
+            }
             logger.info("🔌 Disconnected: deviceId={} role={}", key.getDeviceId(), key.getConnRole());
         }
     }
@@ -58,6 +73,7 @@ public class WebSocketSessionManager {
         if (roleMap != null) {
             Channel channel = roleMap.get(connRole);
             if (channel != null && channel.isActive()) {
+                // 也可以从 deviceChannelCtxMap 获取 ctx 来发送，但 Channel 本身就可以发送
                 channel.writeAndFlush(new TextWebSocketFrame(message));
                 return true;
             }
@@ -98,5 +114,10 @@ public class WebSocketSessionManager {
     public Channel getChannel(String deviceId, String connRole) {
         Map<String, Channel> roleMap = deviceChannelMap.get(deviceId);
         return roleMap != null ? roleMap.get(connRole) : null;
+    }
+
+    public ChannelHandlerContext getChannelContext(String deviceId, String connRole) {
+        Map<String, ChannelHandlerContext> roleCtxMap = deviceChannelCtxMap.get(deviceId);
+        return roleCtxMap != null ? roleCtxMap.get(connRole) : null;
     }
 }
