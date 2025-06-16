@@ -8,6 +8,8 @@ import com.xa.mass.model.message.*;
 import com.xa.mass.model.message.payload.TaskPayload;
 import org.java_websocket.client.WebSocketClient;
 import org.java_websocket.handshake.ServerHandshake;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.lang.reflect.Type;
 import java.net.URI;
@@ -19,6 +21,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class TaskWebSocketClient extends WebSocketClient {
+    private static final Logger logger = LoggerFactory.getLogger(TaskWebSocketClient.class);
 
     private final Gson gson = new Gson();
     private final ScheduledExecutorService reconnectScheduler;
@@ -27,41 +30,49 @@ public class TaskWebSocketClient extends WebSocketClient {
     private static final long INITIAL_RECONNECT_DELAY_MS = 1000; // 初始重连延迟 (1秒)
     private static final long MAX_RECONNECT_DELAY_MS = 60000; // 最大重连延迟 (60秒)
     private boolean intentionalClose = false;
+    private final String deviceId; // 每个客户端实例持有一个deviceId
 
-
-    public TaskWebSocketClient() {
-        super(URI.create("ws://localhost:8088/ws"));
+    public TaskWebSocketClient(URI serverUri, String deviceId) {
+        super(serverUri);
+        this.deviceId = deviceId;
         this.reconnectScheduler = Executors.newSingleThreadScheduledExecutor(r -> {
-            Thread t = new Thread(r, "websocket-reconnect-scheduler");
+            Thread t = new Thread(r, "websocket-reconnect-scheduler-" + deviceId);
             t.setDaemon(true);
             return t;
         });
     }
 
+    // 为了方便，可以保留一个默认构造函数或提供一个工厂方法
+    public TaskWebSocketClient(String deviceId) {
+        this(URI.create("ws://localhost:8088/ws"), deviceId);
+    }
+
+
     @Override
     public void onOpen(ServerHandshake handshakedata) {
-        System.out.println("✅ Connected to server: " + handshakedata.getHttpStatusMessage());
+        logger.info("✅ [{}] Connected to server: {}", deviceId, handshakedata.getHttpStatusMessage());
         reconnectAttempts.set(0); // 连接成功，重置重连尝试次数
         intentionalClose = false; // 重置主动关闭标记
 
         // 构造 ping 消息
         BaseMessage<Void> ping = new BaseMessage<>();
-        ping.setMsgId("ping-" + System.currentTimeMillis());
+        ping.setMsgId("ping-" + deviceId + "-" + System.currentTimeMillis());
         ping.setMsgType(MessageType.PING);
         ping.setFrom(MessageDirection.CLIENT);
         ping.setSubMsgType("heartbeat");
 
         MessageContext ctx = new MessageContext();
-        ctx.setDeviceId("mock_device_001");
+        ctx.setDeviceId(this.deviceId); // 使用实例的deviceId
         ctx.setConnRole("messaegs_task");
         ping.setContext(ctx);
 
         send(gson.toJson(ping));
+        logger.info("📤 [{}] Sent PING message.", deviceId);
     }
 
     @Override
     public void onMessage(String message) {
-        System.out.println("📩 Received: " + message);
+        logger.info("📩 [{}] Received: {}", deviceId, message);
         try {
             JsonObject json = gson.fromJson(message, JsonObject.class);
             MessageType msgType = MessageType.valueOf(json.get("msgType").getAsString().toUpperCase());
@@ -71,14 +82,13 @@ public class TaskWebSocketClient extends WebSocketClient {
                     handleTaskMessage(message);
                     break;
                 case PONG:
-                    System.out.println("🫶 Pong received.");
+                    logger.info("🫶 [{}] Pong received.", deviceId);
                     break;
                 default:
-                    System.out.println("⚠️ Unhandled msgType: " + msgType);
+                    logger.warn("⚠️ [{}] Unhandled msgType: {}", deviceId, msgType);
             }
         } catch (Exception e) {
-            System.err.println("❌ Failed to parse or handle message: " + e.getMessage());
-            e.printStackTrace();
+            logger.error("❌ [{}] Failed to parse or handle message: {}", deviceId, e.getMessage(), e);
         }
     }
 
@@ -87,40 +97,53 @@ public class TaskWebSocketClient extends WebSocketClient {
         BaseMessage<TaskPayload> taskMessage = gson.fromJson(message, taskMsgType);
 
         BaseMessage<Map<String, Object>> response = new BaseMessage<>();
-        response.setMsgId(taskMessage.getMsgId());
+        response.setMsgId(taskMessage.getMsgId()); // 回复时使用收到的msgId
         response.setMsgType(MessageType.RESPONSE);
         response.setFrom(MessageDirection.CLIENT);
-        response.setSubMsgType("step");
+        response.setSubMsgType("step"); // 或者根据taskMessage.getContext().getResponseLevel()
 
         // 透传 context
-        response.setContext(taskMessage.getContext());
+        MessageContext originalContext = taskMessage.getContext();
+        if (originalContext != null) {
+            MessageContext responseContext = new MessageContext();
+            responseContext.setConnRole(originalContext.getConnRole());
+            responseContext.setTaskId(originalContext.getTaskId());
+            responseContext.setRetryCount(originalContext.getRetryCount());
+            responseContext.setResponseLevel(originalContext.getResponseLevel());
+            responseContext.setDeviceId(this.deviceId); // 确保响应中是我们自己的deviceId
+            // 如果需要，可以从原始context复制更多字段
+            response.setContext(responseContext);
+        }
+
 
         // 构造 payload
-        Map<String, Object> payload = new HashMap<>();
+        Map<String, Object> payloadMap = new HashMap<>();
         TaskPayload taskPayload = taskMessage.getPayload();
         String stepId = (taskPayload != null && taskPayload.getSteps() != null && !taskPayload.getSteps().isEmpty())
                 ? taskPayload.getSteps().get(0).getStepId()
-                : "step-0";
-        payload.put("stepId", stepId);
-        payload.put("mockData", "Executed by mock client");
+                : "step-0-default"; // 提供一个默认值以防万一
+        payloadMap.put("stepId", stepId);
+        payloadMap.put("mockData", "Executed by mock client " + this.deviceId);
+        payloadMap.put("status", "SUCCESS");
+
 
         // 构造 result
         MessageResult resMeta = new MessageResult();
         resMeta.setCode(200);
-        resMeta.setMessage("Mock execution successful");
+        resMeta.setMessage("Mock execution successful for step " + stepId + " by " + this.deviceId);
 
-        response.setPayload(payload);
+        response.setPayload(payloadMap);
         response.setResult(resMeta);
 
         send(gson.toJson(response));
-        System.out.println("📤 Sent mock task response.");
+        logger.info("📤 [{}] Sent mock task response for msgId: {}", deviceId, response.getMsgId());
     }
 
     @Override
     public void onClose(int code, String reason, boolean remote) {
-        System.out.println("🔌 Disconnected from server. Code: " + code + ", Reason: " + reason + ", Remote: " + remote);
+        logger.info("🔌 [{}] Disconnected from server. Code: {}, Reason: {}, Remote: {}", deviceId, code, reason, remote);
         if (intentionalClose) {
-            System.out.println("🔌 Connection closed intentionally. Will not attempt to reconnect.");
+            logger.info("🔌 [{}] Connection closed intentionally. Will not attempt to reconnect.", deviceId);
             shutdownScheduler();
             return;
         }
@@ -129,39 +152,39 @@ public class TaskWebSocketClient extends WebSocketClient {
             long delay = (long) (INITIAL_RECONNECT_DELAY_MS * Math.pow(2, reconnectAttempts.get()));
             delay = Math.min(delay, MAX_RECONNECT_DELAY_MS); // 确保延迟不超过最大值
 
-            System.out.println("🔌 Will attempt to reconnect in " + (delay / 1000.0) + " seconds. Attempt: " + (reconnectAttempts.get() + 1));
+            logger.info("🔌 [{}] Will attempt to reconnect in {} seconds. Attempt: {}", deviceId, (delay / 1000.0), (reconnectAttempts.get() + 1));
             reconnectScheduler.schedule(() -> {
-                System.out.println("🔌 Attempting to reconnect... (Attempt " + reconnectAttempts.incrementAndGet() + ")");
+                logger.info("🔌 [{}] Attempting to reconnect... (Attempt {})", deviceId, reconnectAttempts.incrementAndGet());
                 try {
-                    reconnectBlocking(); // 或者使用 reconnect() 如果你不想阻塞当前调度线程太久
+                    reconnectBlocking();
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
-                    System.err.println("🔌 Reconnect attempt interrupted: " + e.getMessage());
+                    logger.error("🔌 [{}] Reconnect attempt interrupted: {}", deviceId, e.getMessage());
                 } catch (Exception e) {
-                    System.err.println("🔌 Failed to reconnect: " + e.getMessage());
-                    // 如果 reconnectBlocking() 抛出异常，确保 onClose 会被再次调用以触发下一次重连
+                    logger.error("🔌 [{}] Failed to reconnect: {}", deviceId, e.getMessage());
                 }
             }, delay, TimeUnit.MILLISECONDS);
         } else {
-            System.out.println("🔌 Reached max reconnect attempts (" + MAX_RECONNECT_ATTEMPTS + "). Giving up.");
+            logger.warn("🔌 [{}] Reached max reconnect attempts ({}). Giving up.", deviceId, MAX_RECONNECT_ATTEMPTS);
             shutdownScheduler();
         }
     }
 
     @Override
     public void onError(Exception ex) {
-        System.err.println("❌ WebSocket error: " + ex.getMessage());
-        ex.printStackTrace();
-        // onError 之后通常会调用 onClose，所以重连逻辑主要放在 onClose 中处理
+        logger.error("❌ [{}] WebSocket error: {}", deviceId, ex.getMessage(), ex);
     }
 
-    /**
-     * 主动关闭连接并停止重连尝试。
-     */
     public void closeConnection() {
-        System.out.println("🔌 Intentionally closing connection...");
+        logger.info("🔌 [{}] Intentionally closing connection...", deviceId);
         intentionalClose = true;
-        super.close();
+        try {
+            super.closeBlocking(); // 使用 closeBlocking 确保连接关闭
+        } catch (InterruptedException e) {
+            logger.warn("[{}] Interrupted while closing connection.", deviceId);
+            Thread.currentThread().interrupt();
+            super.close(); // Fallback to non-blocking close
+        }
         shutdownScheduler();
     }
 
@@ -176,37 +199,13 @@ public class TaskWebSocketClient extends WebSocketClient {
                 reconnectScheduler.shutdownNow();
                 Thread.currentThread().interrupt();
             }
-            System.out.println("🔌 Reconnect scheduler shut down.");
+            logger.info("🔌 [{}] Reconnect scheduler shut down.", deviceId);
         }
     }
 
-    // 示例：如何启动客户端
-    public static void main(String[] args) {
-        TaskWebSocketClient client = new TaskWebSocketClient();
-        try {
-            System.out.println("🚀 Attempting to connect to WebSocket server...");
-            client.connectBlocking(); // 初始连接尝试
-        } catch (InterruptedException e) {
-            System.err.println("Initial connection interrupted: " + e.getMessage());
-            Thread.currentThread().interrupt();
-            client.closeConnection(); // 清理
-        } catch (Exception e) {
-            System.err.println("Initial connection failed: " + e.getMessage());
-            // 初始连接失败，onClose 应该会被调用，从而触发重连逻辑（如果配置了）
-            // 如果 connectBlocking 抛出异常且没有调用 onClose，则需要手动处理或确保 onClose 被触发
-        }
-
-        // 保持主线程运行，以便客户端可以持续运行和重连
-        // 在实际应用中，你可能会有其他逻辑来保持应用存活
-        Runtime.getRuntime().addShutdownHook(new Thread(client::closeConnection));
-
-        // 模拟长时间运行
-        try {
-            Thread.sleep(Long.MAX_VALUE);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            System.out.println("Main thread interrupted.");
-            client.closeConnection();
-        }
+    public String getDeviceId() {
+        return deviceId;
     }
+
+    // 移除原有的 main 方法，启动逻辑将移至 MassClientApplication 或专门的启动器
 }
