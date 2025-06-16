@@ -2,8 +2,6 @@ package com.xa.mass.server.config;
 
 import com.xa.mass.server.queue.InMemoryMessageQueue;
 import com.xa.mass.server.queue.MessageQueue;
-import com.xa.mass.server.queue.StoredMessage;
-import com.xa.mass.server.queue.WebSocketMessage;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;

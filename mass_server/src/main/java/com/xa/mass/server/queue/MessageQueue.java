@@ -1,7 +1,7 @@
 package com.xa.mass.server.queue;
 
 
-import java.util.concurrent.TimeUnit; // 新增导入
+import java.util.concurrent.TimeUnit;
 
 public interface MessageQueue<T> {
     void offer(T message);

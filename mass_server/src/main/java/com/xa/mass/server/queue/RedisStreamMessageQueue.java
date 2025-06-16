@@ -1,16 +1,14 @@
 package com.xa.mass.server.queue;
 
 import com.google.gson.Gson;
-import com.xa.mass.server.queue.MessageQueue;
 import io.lettuce.core.*;
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.api.sync.RedisStreamCommands;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.DisposableBean; // 用于资源清理
+import org.springframework.beans.factory.DisposableBean;
 
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 public class RedisStreamMessageQueue implements MessageQueue<StoredMessage>, DisposableBean {
