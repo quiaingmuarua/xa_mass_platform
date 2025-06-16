@@ -11,6 +11,9 @@ public class InMemoryMessageQueue<T> implements MessageQueue<T> {
 
     @Override
     public void offer(T message) {
+        if (message == null) {
+            throw new IllegalArgumentException("Message cannot be null");
+        }
         queue.offer(message);
     }
 

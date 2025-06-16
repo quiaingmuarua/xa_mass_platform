@@ -26,7 +26,7 @@ import java.util.concurrent.Executors;
 public class WebSocketMessageProcessor {
     private static final Logger logger = LoggerFactory.getLogger(WebSocketMessageProcessor.class);
     private final Gson gson = new Gson();
-    private final ExecutorService executorService = Executors.newFixedThreadPool(2);
+    private final ExecutorService executorService = Executors.newFixedThreadPool(3);
 
     @Autowired
     private WebSocketSessionManager sessionManager;
@@ -46,6 +46,7 @@ public class WebSocketMessageProcessor {
     }
 
     private void startProcessing() {
+        logger.info("WebSocketMessageProcessor startProcessing");
         // Start input queue processor
         executorService.submit(this::processInputQueue);
         // Start output queue processor
@@ -55,12 +56,11 @@ public class WebSocketMessageProcessor {
     private void processInputQueue() {
         while (!Thread.currentThread().isInterrupted()) {
             try {
-                logger.info("Processing input queue");
                 WebSocketMessage message = inputQueue.poll();
                 if (message != null) {
                     processMessage(message);
                 } else {
-                    Thread.sleep(10); // Avoid busy waiting
+                    Thread.sleep(10000); // Avoid busy waiting
                 }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
@@ -74,12 +74,12 @@ public class WebSocketMessageProcessor {
     private void processOutputQueue() {
         while (!Thread.currentThread().isInterrupted()) {
             try {
-                logger.info("Processing output queue");
+
                 WebSocketMessage message = outputQueue.poll();
                 if (message != null) {
                     sendMessage(message);
                 } else {
-                    Thread.sleep(10); // Avoid busy waiting
+                    Thread.sleep(10000); // Avoid busy waiting
                 }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();

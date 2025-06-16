@@ -1,6 +1,8 @@
 package com.xa.mass.server.manager;
 
 import com.google.gson.Gson;
+import com.xa.mass.model.message.BaseMessage;
+import com.xa.mass.model.message.MessageContext;
 import com.xa.mass.server.queue.MessageQueue;
 import com.xa.mass.server.queue.WebSocketMessage;
 import io.netty.channel.ChannelHandler;
@@ -29,19 +31,28 @@ public class WebSocketMessageHandler extends SimpleChannelInboundHandler<TextWeb
 
     @Override
     protected void channelRead0(ChannelHandlerContext ctx, TextWebSocketFrame msgFrame) {
-        String message = msgFrame.text();
 
+        String message = msgFrame.text();
         // 1. 首先验证消息不为空
         if (message == null || message.trim().isEmpty()) {
             logger.warn("Received empty message");
             return;
         }
 
+
+
         // 2. 验证消息是否为合法的 JSON 格式
         if (!message.trim().startsWith("{")) {
             logger.warn("Invalid JSON format - message must be a JSON object: {}", message);
             return;
         }
+
+        // 3. 尝试解析消息
+        BaseMessage<?> preParseForContext = gson.fromJson(message, BaseMessage.class);
+
+        MessageContext context = preParseForContext.getContext();
+        // 确保在处理消息前，会话已注册或更新
+        sessionManager.addSession(context.getDeviceId(), context.getConnRole(), ctx.channel());
 
         // 3. 将消息放入输入队列
         inputQueue.offer(new WebSocketMessage(message, ctx, msgFrame));
