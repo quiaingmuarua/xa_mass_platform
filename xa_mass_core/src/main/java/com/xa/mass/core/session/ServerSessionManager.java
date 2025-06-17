@@ -8,8 +8,10 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+// import java.util.stream.Collectors; // Collectors.toUnmodifiableMap 不再需要
 
 @Component
 public class ServerSessionManager {
@@ -80,9 +82,7 @@ public class ServerSessionManager {
             Map<String, ChannelHandlerContext> roleCtxMap = deviceChannelCtxMap.get(key.getDeviceId());
             if (roleCtxMap != null) {
                 // 同样，仅当存储的 channel 与当前要移除的 channel 是同一个实例时才移除对应的 context
-                // (通过 channelId 间接判断，因为 ctx 可能不同但 channel 相同)
-                // Channel existingChannelInMap = deviceChannelMap.getOrDefault(key.getDeviceId(), Map.of()).get(key.getConnRole()); // 旧代码
-                Channel existingChannelInMap = deviceChannelMap.getOrDefault(key.getDeviceId(), Collections.emptyMap()).get(key.getConnRole()); // 修改后
+                Channel existingChannelInMap = deviceChannelMap.getOrDefault(key.getDeviceId(), Collections.emptyMap()).get(key.getConnRole());
                 if (channel.equals(existingChannelInMap)) {
                     roleCtxMap.remove(key.getConnRole());
                 }
@@ -154,5 +154,35 @@ public class ServerSessionManager {
     public ChannelHandlerContext getChannelContext(String deviceId, String connRole) {
         Map<String, ChannelHandlerContext> roleCtxMap = deviceChannelCtxMap.get(deviceId);
         return roleCtxMap != null ? roleCtxMap.get(connRole) : null;
+    }
+
+    /**
+     * 获取当前所有设备连接 Channel 的只读副本
+     *
+     * @return 一个包含设备ID到角色映射，再到Channel的只读Map
+     */
+    public Map<String, Map<String, Channel>> getAllDeviceChannels() {
+        Map<String, Map<String, Channel>> unmodifiableOuterMap = new HashMap<>();
+        for (Map.Entry<String, Map<String, Channel>> entry : deviceChannelMap.entrySet()) {
+            // 创建内部Map的副本并使其不可修改
+            Map<String, Channel> unmodifiableInnerMap = Collections.unmodifiableMap(new HashMap<>(entry.getValue()));
+            unmodifiableOuterMap.put(entry.getKey(), unmodifiableInnerMap);
+        }
+        return Collections.unmodifiableMap(unmodifiableOuterMap);
+    }
+
+    /**
+     * 获取当前所有设备连接 ChannelHandlerContext 的只读副本
+     *
+     * @return 一个包含设备ID到角色映射，再到ChannelHandlerContext的只读Map
+     */
+    public Map<String, Map<String, ChannelHandlerContext>> getAllDeviceChannelContexts() {
+        Map<String, Map<String, ChannelHandlerContext>> unmodifiableOuterMap = new HashMap<>();
+        for (Map.Entry<String, Map<String, ChannelHandlerContext>> entry : deviceChannelCtxMap.entrySet()) {
+            // 创建内部Map的副本并使其不可修改
+            Map<String, ChannelHandlerContext> unmodifiableInnerMap = Collections.unmodifiableMap(new HashMap<>(entry.getValue()));
+            unmodifiableOuterMap.put(entry.getKey(), unmodifiableInnerMap);
+        }
+        return Collections.unmodifiableMap(unmodifiableOuterMap);
     }
 }

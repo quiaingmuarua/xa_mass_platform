@@ -81,6 +81,7 @@ public class ServerMessageProcessor {
         while (!Thread.currentThread().isInterrupted() && executorService != null && !executorService.isShutdown()) {
             try {
                 StoredMessage storedMessage = outputQueue.poll(15, TimeUnit.SECONDS); // 轮询 StoredMessage
+                logger.info("processOutputQueueLoop poll from outputQueue..." +outputQueue.getName() +" storedMessage= "+storedMessage);
                 if (storedMessage != null) {
                     logger.debug("Polled from outputQueue: {}", storedMessage);
                     sendStoredMessage(storedMessage); // 调用发StoredMessage 的方
@@ -109,10 +110,10 @@ public class ServerMessageProcessor {
         }
 
         ChannelHandlerContext ctx = sessionManager.getChannelContext(deviceId, connRole);
+        logger.info("processStoredMessage ChannelHandlerContext ctx {}", ctx);
         if (ctx == null || !ctx.channel().isActive()) {
             logger.warn("ChannelHandlerContext not found or channel inactive for deviceId={}, connRole={}. Message dropped: {}",
                     deviceId, connRole, messageContent);
-
             return;
         }
 
@@ -131,23 +132,25 @@ public class ServerMessageProcessor {
                 sendErrorResponse(ctx, "Message context mismatch or missing after parsing.");
                 return;
             }
-
+            logger.info("processStoredMessage start handle message {}", baseMessage);
             switch (baseMessage.getMsgType()) {
                 case PING:
                     logger.debug("Processing PING for {}:{}", deviceId, connRole);
                     // 如果需要回PONG，创StoredMessage 并放outputQueue
                     // Example:
-                    // MessageContext pongContext = new MessageContext(deviceId, connRole, parsedContext.getMsgId()); // Use original msgId if needed
-                    // BaseMessage<Void> pongResponse = new BaseMessage<>();
-                    // pongResponse.setMsgType(MessageType.PONG); // Assuming PONG type exists
-                    // pongResponse.setContext(pongContext);
-                    // outputQueue.offer(new StoredMessage(gson.toJson(pongResponse), deviceId, connRole));
+                     MessageContext pongContext = baseMessage.getContext(); // Use original msgId if needed
+                     BaseMessage<Void> pongResponse = new BaseMessage<>();
+                     pongResponse.setMsgType(MessageType.PONG); // Assuming PONG type exists
+                     pongResponse.setContext(pongContext);
+                    pongResponse.setSubMsgType("heartbeat");
+                    pongResponse.setMsgId("pong-" + deviceId + "-" + System.currentTimeMillis());
+                     outputQueue.offer(new StoredMessage(gson.toJson(pongResponse), deviceId, connRole));
                     break;
                 case TASK:
                     TaskPayload taskPayload = gson.fromJson(gson.toJson(baseMessage.getPayload()), TaskPayload.class);
                     logger.info("Processing TASK for {}:{} steps={}", deviceId, connRole,
                             taskPayload.getSteps() != null ? taskPayload.getSteps().size() : 0);
-
+                    ResponseMessageHandler.onClientResponse(messageContent); // TODO: Consider passing deviceId, connRole
                     break;
                 case REGISTER:
                     logger.info("Processing REGISTER for device {} with role {}", deviceId, connRole);
@@ -181,7 +184,7 @@ public class ServerMessageProcessor {
         }
 
         ChannelHandlerContext ctx = sessionManager.getChannelContext(deviceId, connRole);
-
+        logger.info("sendStoredMessage ChannelHandlerContext ctx{}", ctx);
         if (ctx == null || !ctx.channel().isActive()) {
             logger.warn("ChannelHandlerContext not found or channel inactive for deviceId={}, connRole={}. Cannot send message: {}",
                     deviceId, connRole, messageContent);
@@ -191,7 +194,7 @@ public class ServerMessageProcessor {
         try {
             TextWebSocketFrame frame = new TextWebSocketFrame(messageContent);
             ctx.channel().writeAndFlush(frame);
-            logger.debug("Message sent to {} via deviceId={}, connRole={}",
+            logger.info("sendStoredMessage Message sent to {} via deviceId={}, connRole={}",
                     ctx.channel().remoteAddress(), deviceId, connRole);
         } catch (Exception e) {
             logger.error("Failed to send message to {} (deviceId={}, connRole={})",
