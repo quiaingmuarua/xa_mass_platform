@@ -3,8 +3,8 @@ package com.xa.mass.mock.client;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.google.gson.reflect.TypeToken;
-import com.xa.mass.model.message.*;
-import com.xa.mass.model.message.payload.TaskPayload;
+import com.xa.mass.core.model.message.*;
+import com.xa.mass.core.model.message.payload.TaskPayload;
 import org.java_websocket.client.WebSocketClient;
 import org.java_websocket.handshake.ServerHandshake;
 import org.slf4j.Logger;
@@ -21,9 +21,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 public class TaskWebSocketClient extends WebSocketClient {
     private static final Logger logger = LoggerFactory.getLogger(TaskWebSocketClient.class);
-    private static final int MAX_RECONNECT_ATTEMPTS = 10; // 最大重连次数
-    private static final long INITIAL_RECONNECT_DELAY_MS = 1000; // 初始重连延迟 (1秒)
-    private static final long MAX_RECONNECT_DELAY_MS = 60000; // 最大重连延迟 (60秒)
+    private static final int MAX_RECONNECT_ATTEMPTS = 10; // 最大重连次�?
+    private static final long INITIAL_RECONNECT_DELAY_MS = 1000; // 初始重连延迟 (1�?
+    private static final long MAX_RECONNECT_DELAY_MS = 60000; // 最大重连延�?(60�?
     private final Gson gson = new Gson();
     private final ScheduledExecutorService reconnectScheduler;
     private final AtomicInteger reconnectAttempts = new AtomicInteger(0);
@@ -40,7 +40,7 @@ public class TaskWebSocketClient extends WebSocketClient {
         });
     }
 
-    // 为了方便，可以保留一个默认构造函数或提供一个工厂方法
+    // 为了方便，可以保留一个默认构造函数或提供一个工厂方�?
     public TaskWebSocketClient(String deviceId) {
         this(URI.create("ws://localhost:8088/ws"), deviceId);
     }
@@ -48,11 +48,11 @@ public class TaskWebSocketClient extends WebSocketClient {
 
     @Override
     public void onOpen(ServerHandshake handshakedata) {
-        logger.info("✅ [{}] Connected to server: {}", deviceId, handshakedata.getHttpStatusMessage());
-        reconnectAttempts.set(0); // 连接成功，重置重连尝试次数
+        logger.info("�?[{}] Connected to server: {}", deviceId, handshakedata.getHttpStatusMessage());
+        reconnectAttempts.set(0); // 连接成功，重置重连尝试次�?
         intentionalClose = false; // 重置主动关闭标记
 
-        // 构造 ping 消息
+        // 构�?ping 消息
         BaseMessage<Void> ping = new BaseMessage<>();
         ping.setMsgId("ping-" + deviceId + "-" + System.currentTimeMillis());
         ping.setMsgType(MessageType.PING);
@@ -86,7 +86,7 @@ public class TaskWebSocketClient extends WebSocketClient {
                     logger.warn("⚠️ [{}] Unhandled msgType: {}", deviceId, msgType);
             }
         } catch (Exception e) {
-            logger.error("❌ [{}] Failed to parse or handle message: {}", deviceId, e.getMessage(), e);
+            logger.error("�?[{}] Failed to parse or handle message: {}", deviceId, e.getMessage(), e);
         }
     }
 
@@ -115,7 +115,7 @@ public class TaskWebSocketClient extends WebSocketClient {
         }
 
 
-        // 构造 payload
+        // 构�?payload
         Map<String, Object> payloadMap = new HashMap<>();
         TaskPayload taskPayload = taskMessage.getPayload();
         String stepId = (taskPayload != null && taskPayload.getSteps() != null && !taskPayload.getSteps().isEmpty())
@@ -126,7 +126,7 @@ public class TaskWebSocketClient extends WebSocketClient {
         payloadMap.put("status", "SUCCESS");
 
 
-        // 构造 result
+        // 构�?result
         MessageResult resMeta = new MessageResult();
         resMeta.setCode(200);
         resMeta.setMessage("Mock execution successful for step " + stepId + " by " + this.deviceId);
@@ -149,7 +149,7 @@ public class TaskWebSocketClient extends WebSocketClient {
 
         if (reconnectAttempts.get() < MAX_RECONNECT_ATTEMPTS) {
             long delay = (long) (INITIAL_RECONNECT_DELAY_MS * Math.pow(2, reconnectAttempts.get()));
-            delay = Math.min(delay, MAX_RECONNECT_DELAY_MS); // 确保延迟不超过最大值
+            delay = Math.min(delay, MAX_RECONNECT_DELAY_MS); // 确保延迟不超过最大�?
 
             logger.info("🔌 [{}] Will attempt to reconnect in {} seconds. Attempt: {}", deviceId, (delay / 1000.0), (reconnectAttempts.get() + 1));
             reconnectScheduler.schedule(() -> {
@@ -171,7 +171,7 @@ public class TaskWebSocketClient extends WebSocketClient {
 
     @Override
     public void onError(Exception ex) {
-        logger.error("❌ [{}] WebSocket error: {}", deviceId, ex.getMessage(), ex);
+        logger.error("�?[{}] WebSocket error: {}", deviceId, ex.getMessage(), ex);
     }
 
     public void closeConnection() {
@@ -206,5 +206,5 @@ public class TaskWebSocketClient extends WebSocketClient {
         return deviceId;
     }
 
-    // 移除原有的 main 方法，启动逻辑将移至 MassClientApplication 或专门的启动器
+    // 移除原有�?main 方法，启动逻辑将移�?MassClientApplication 或专门的启动�?
 }

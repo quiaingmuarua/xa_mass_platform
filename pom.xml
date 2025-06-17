@@ -21,9 +21,7 @@
         <developer/>
     </developers>
     <modules>
-        <module>mass_server</module>
-        <module>mass_engine</module>
-        <module>mass_model</module>
+        <module>mass_core</module>
         <module>mass_common</module>
         <module>mass_mock</module>
     </modules>

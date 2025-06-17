@@ -3,8 +3,8 @@ package com.xa.mass.mock.service;
 
 import com.google.gson.Gson;
 import com.xa.mass.mock.client.TaskWebSocketClient;
-import com.xa.mass.model.message.*;
-import com.xa.mass.model.message.payload.TaskPayload;
+import com.xa.mass.core.model.message.*;
+import com.xa.mass.core.model.message.payload.TaskPayload;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;

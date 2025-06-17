@@ -21,7 +21,7 @@
         </dependency>
         <dependency>
             <groupId>com.xa.mass</groupId>
-            <artifactId>mass_model</artifactId>
+            <artifactId>mass_core</artifactId>
             <version>0.0.1-SNAPSHOT</version>
         </dependency>
         <!-- WebSocket 客户端通信需要 -->
@@ -34,6 +34,11 @@
         <dependency>
             <groupId>com.google.code.gson</groupId>
             <artifactId>gson</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.lettuce</groupId>
+            <artifactId>lettuce-core</artifactId>
+            <version>6.3.1.RELEASE</version> <!-- 使用最新的稳定版本 -->
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
