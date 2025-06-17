@@ -19,7 +19,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
-public class TaskWebSocketClient extends WebSocketClient {
+public class TaskWebSocketClient extends WebSocketClient implements MassWebSocketClient {
     private static final Logger logger = LoggerFactory.getLogger(TaskWebSocketClient.class);
     private static final int MAX_RECONNECT_ATTEMPTS = 10; // 最大重连次
     private static final long INITIAL_RECONNECT_DELAY_MS = 1000; // 初始重连延迟 (1
@@ -29,6 +29,7 @@ public class TaskWebSocketClient extends WebSocketClient {
     private final AtomicInteger reconnectAttempts = new AtomicInteger(0);
     private final String deviceId; // 每个客户端实例持有一个deviceId
     private boolean intentionalClose = false;
+    private URI uri;
 
     public TaskWebSocketClient(URI serverUri, String deviceId) {
         super(serverUri);
@@ -38,6 +39,7 @@ public class TaskWebSocketClient extends WebSocketClient {
             t.setDaemon(true);
             return t;
         });
+        this.uri = serverUri;
     }
 
     // 为了方便，可以保留一个默认构造函数或提供一个工厂方
@@ -204,6 +206,32 @@ public class TaskWebSocketClient extends WebSocketClient {
 
     public String getDeviceId() {
         return deviceId;
+    }
+
+    // MassWebSocketClient 接口实现
+    @Override
+    public void connect(URI serverUri) throws Exception {
+        // 只支持重连到新 URI，需关闭当前连接再重连
+        if (isOpen()) {
+            closeConnection();
+        }
+        this.uri = serverUri;
+        super.connectBlocking();
+    }
+
+    @Override
+    public void disconnect() throws Exception {
+        closeConnection();
+    }
+
+    @Override
+    public boolean isConnected() {
+        return isOpen();
+    }
+
+    @Override
+    public void sendMessage(String message) throws Exception {
+        send(message);
     }
 
     // 移除原有main 方法，启动逻辑将移MassClientApplication 或专门的启动

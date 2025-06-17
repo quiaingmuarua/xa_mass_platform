@@ -11,7 +11,7 @@
 
     <artifactId>mass_core</artifactId>
     <name>mass_core</name>
-    <description>Core module combining mass_server, mass_engine, and mass_model</description>
+    <description>Core module providing WebSocket server and client functionality</description>
 
     <dependencies>
         <dependency>
@@ -37,13 +37,23 @@
         <dependency>
             <groupId>io.lettuce</groupId>
             <artifactId>lettuce-core</artifactId>
-            <version>6.3.1.RELEASE</version> <!-- 使用最新的稳定版本 -->
+            <version>6.3.1.RELEASE</version>
         </dependency>
 
-        <!-- 可选：日志支持 -->
+        <!-- Spring Framework -->
         <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-logging</artifactId>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-context</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-web</artifactId>
+        </dependency>
+
+        <!-- 日志支持 -->
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
         </dependency>
 
         <!-- 测试 -->
@@ -58,8 +68,6 @@
             <artifactId>Java-WebSocket</artifactId>
             <version>1.5.2</version>
         </dependency>
-
-
     </dependencies>
 
 </project> 

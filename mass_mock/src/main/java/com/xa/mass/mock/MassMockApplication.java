@@ -2,13 +2,14 @@ package com.xa.mass.mock;
 
 import com.xa.mass.core.client.TaskWebSocketClient;
 import com.xa.mass.mock.config.MockConfig;
-import com.xa.mass.mock.service.MockTaskService;
+import com.xa.mass.core.client.service.MockTaskService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.ComponentScan;
 import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.annotation.Scheduled;
 
@@ -19,6 +20,7 @@ import java.util.concurrent.TimeUnit;
 @SpringBootApplication
 @EnableScheduling
 @RequiredArgsConstructor
+@ComponentScan(basePackages = {"com.xa.mass.mock", "com.xa.mass.core"}) // 添加需要扫描的包
 public class MassMockApplication {
     private final MockConfig mockConfig;
     private final MockTaskService mockTaskService;

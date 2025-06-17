@@ -21,11 +21,11 @@ import javax.annotation.PostConstruct;
 import javax.annotation.PreDestroy;
 
 @Component
-public class WebSocketServer {
+public class WebSocketServer implements MassWebSocketServer {
 
     private static final Logger logger = LoggerFactory.getLogger(WebSocketServer.class);
 
-    // 考虑将端口号配置application.properties 
+    // 考虑将端口号配置application.properties
     @Value("${websocket.server.port:8088}") // 默认8088
     private int port;
 
@@ -38,8 +38,20 @@ public class WebSocketServer {
     @Autowired
     private WebSocketMessageHandler webSocketMessageHandler; // Spring 会注入这Sharable Handler
 
+    @Autowired
+    private com.xa.mass.core.server.manager.WebSocketSessionManager sessionManager;
+
+    private volatile boolean running = false;
+
     @PostConstruct
     public void start() {
+        start(this.port);
+    }
+
+    @Override
+    public void start(int port) {
+        this.port = port;
+        running = true;
         bossGroup = new NioEventLoopGroup(1); // 通常 bossGroup 只需要一个线
         workerGroup = new NioEventLoopGroup(); // workerGroup 可以根据 CPU 核数配置
 
@@ -85,8 +97,9 @@ public class WebSocketServer {
         }
     }
 
-    @PreDestroy
+    @Override
     public void stop() {
+        running = false;
         logger.info("Attempting to stop WebSocket server...");
         if (bossGroup != null && !bossGroup.isShuttingDown() && !bossGroup.isShutdown()) {
             try {
@@ -105,5 +118,16 @@ public class WebSocketServer {
             }
         }
         logger.info("WebSocket server stopped.");
+    }
+
+    @Override
+    public boolean isRunning() {
+        return running;
+    }
+
+    @Override
+    public Channel getClientChannel(String clientId) {
+        // 只取默认 role
+        return sessionManager.getChannel(clientId, "messaegs_task");
     }
 }
