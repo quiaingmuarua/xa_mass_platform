@@ -11,7 +11,7 @@ xa_mass_platform/
 │   ├── server   # 服务层：任务接入、API层、通信协议入口（HTTP/WebSocket）
 │   ├── engine   # 引擎层：任务调度、状态管理、批处理、三态流程
 │   └── model    # 模型层：任务结构体、状态定义、通信协议实体
-├── mass_common  # 公共模块：Redis工具、配置中心、日志、通用工具
+    ── mass_common  # 公共模块：Redis工具、配置中心、日志、通用工具
 └── mass_mock    # 模拟客户端：任务执行模拟器、设备回调器、Mock平台测试
 
 ---
