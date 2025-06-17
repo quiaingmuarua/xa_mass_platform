@@ -10,7 +10,7 @@
         <version>0.0.1-SNAPSHOT</version>
     </parent>
 
-    <artifactId>mass_mock</artifactId>
+    <artifactId>xa_mass_mock</artifactId>
     <name>mass_mock</name>
     <packaging>jar</packaging>
 
@@ -21,7 +21,7 @@
         </dependency>
         <dependency>
             <groupId>com.xa.mass</groupId>
-            <artifactId>mass_core</artifactId>
+            <artifactId>xa_mass_core</artifactId>
             <version>${project.version}</version>
         </dependency>
 

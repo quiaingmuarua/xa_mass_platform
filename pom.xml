@@ -21,8 +21,8 @@
         <developer/>
     </developers>
     <modules>
-        <module>mass_core</module>
-        <module>mass_mock</module>
+        <module>xa_mass_core</module>
+        <module>xa_mass_mock</module>
     </modules>
     <scm>
         <connection/>

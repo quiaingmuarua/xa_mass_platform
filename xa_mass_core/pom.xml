@@ -9,7 +9,7 @@
     </parent>
     <modelVersion>4.0.0</modelVersion>
 
-    <artifactId>mass_core</artifactId>
+    <artifactId>xa_mass_core</artifactId>
     <name>mass_core</name>
     <description>Core module providing WebSocket server and client functionality</description>
 
