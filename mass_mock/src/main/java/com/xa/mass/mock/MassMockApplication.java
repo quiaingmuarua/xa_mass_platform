@@ -47,7 +47,7 @@ public class MassMockApplication {
                 try {
                     log.info("🚀 Attempting to connect client: {}", deviceId);
                     if (client.connectBlocking(5, TimeUnit.SECONDS)) {
-                        log.info("�?Client {} connected successfully.", deviceId);
+                        log.info("Client {} connected successfully.", deviceId);
                     } else {
                         log.warn("⚠️ Client {} failed to connect within timeout.", deviceId);
                         mockTaskService.removeClient(deviceId);
@@ -71,7 +71,7 @@ public class MassMockApplication {
         }
     }
 
-    @Scheduled(fixedRate = 30000)  // 直接使用 fixedRate，值以毫秒为单�?
+    @Scheduled(fixedRate = 30000)  // 直接使用 fixedRate，值以毫秒为单
     public void createAndSendMockTask() {
         mockTaskService.sendMockTask();
     }
