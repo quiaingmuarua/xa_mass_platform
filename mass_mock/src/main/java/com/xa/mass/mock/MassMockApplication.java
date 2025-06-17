@@ -1,6 +1,6 @@
 package com.xa.mass.mock;
 
-import com.xa.mass.mock.client.TaskWebSocketClient;
+import com.xa.mass.core.client.TaskWebSocketClient;
 import com.xa.mass.mock.config.MockConfig;
 import com.xa.mass.mock.service.MockTaskService;
 import lombok.RequiredArgsConstructor;

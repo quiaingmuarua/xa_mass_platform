@@ -1,4 +1,4 @@
-package com.xa.mass.mock.client;
+package com.xa.mass.core.client;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;

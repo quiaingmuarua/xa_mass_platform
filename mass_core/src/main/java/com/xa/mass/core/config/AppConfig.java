@@ -1,4 +1,4 @@
-package com.xa.mass.core.server.config;
+package com.xa.mass.core.config;
 
 
 import com.xa.mass.core.server.WebSocketServer;

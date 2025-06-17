@@ -2,7 +2,7 @@ package com.xa.mass.mock.service;
 
 
 import com.google.gson.Gson;
-import com.xa.mass.mock.client.TaskWebSocketClient;
+import com.xa.mass.core.client.TaskWebSocketClient;
 import com.xa.mass.core.model.message.*;
 import com.xa.mass.core.model.message.payload.TaskPayload;
 import lombok.RequiredArgsConstructor;

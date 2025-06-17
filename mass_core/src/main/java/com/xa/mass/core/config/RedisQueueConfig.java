@@ -1,10 +1,10 @@
-package com.xa.mass.core.server.config;
+package com.xa.mass.core.config;
 
 
 import com.google.gson.Gson;
-import com.xa.mass.core.server.queue.MessageQueue;
-import com.xa.mass.core.server.queue.RedisStreamMessageQueue;
-import com.xa.mass.core.server.queue.StoredMessage;
+import com.xa.mass.core.queue.MessageQueue;
+import com.xa.mass.core.queue.RedisStreamMessageQueue;
+import com.xa.mass.core.queue.StoredMessage;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.RedisURI;
 import io.lettuce.core.api.StatefulRedisConnection;

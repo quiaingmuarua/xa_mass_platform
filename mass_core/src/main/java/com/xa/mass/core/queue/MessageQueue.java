@@ -1,4 +1,4 @@
-package com.xa.mass.core.server.queue;
+package com.xa.mass.core.queue;
 
 
 import java.util.concurrent.TimeUnit;

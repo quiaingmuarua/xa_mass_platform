@@ -1,18 +1,13 @@
-package com.xa.mass.core.server.config;
+package com.xa.mass.core.config;
 
-import com.xa.mass.core.server.queue.InMemoryMessageQueue;
-import com.xa.mass.core.server.queue.MessageQueue;
+import com.xa.mass.core.queue.InMemoryMessageQueue;
+import com.xa.mass.core.queue.MessageQueue;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 
-import com.xa.mass.core.server.queue.InMemoryMessageQueue;
-import com.xa.mass.core.server.queue.MessageQueue;
-import com.xa.mass.core.server.queue.StoredMessage; // 导入 StoredMessage
-import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
+import com.xa.mass.core.queue.StoredMessage; // 导入 StoredMessage
 import org.springframework.context.annotation.Profile; // 导入 Profile
 
 @Configuration

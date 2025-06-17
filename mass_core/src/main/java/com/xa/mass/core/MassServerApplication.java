@@ -1,4 +1,4 @@
-package com.xa.mass.core.server;
+package com.xa.mass.core;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
