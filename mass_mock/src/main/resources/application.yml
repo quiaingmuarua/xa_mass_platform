@@ -1,0 +1,50 @@
+spring:
+  application:
+    name: mass_mock
+  redis:
+    host: localhost
+    port: 6379
+    database: 0
+  profiles:
+    active: server
+
+server:
+  port: 0
+
+---
+spring:
+  config:
+    activate:
+      on-profile: client
+
+mock:
+  client:
+    count: 5
+    task:
+      interval: 30000
+
+websocket:
+  server:
+    uri: ws://localhost:8088/ws
+
+---
+spring:
+  config:
+    activate:
+      on-profile: client
+
+websocket:
+  server:
+    port: 8088
+    path: /ws
+
+mass:
+  queue:
+    input:
+      stream-key: mass_server_input_stream
+      group-name: mass_server_input_group
+      consumer-name: mass_server_input_consumer_instance_1
+    output:
+      stream-key: mass_server_output_stream
+      group-name: mass_server_output_group
+      consumer-name: mass_server_output_consumer_instance_1

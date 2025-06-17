@@ -49,6 +49,11 @@ public class MassWebSocketClientImpl extends WebSocketClient implements MassWebS
 
 
     @Override
+    public boolean connectBlocking() throws InterruptedException {
+        return super.connectBlocking();
+    }
+
+    @Override
     public void onOpen(ServerHandshake handshakedata) {
         logger.info("[{}] Connected to server: {}", deviceId, handshakedata.getHttpStatusMessage());
         reconnectAttempts.set(0); // 连接成功，重置重连尝试次

@@ -1,6 +1,7 @@
 package com.xa.mass.core.client;
 
 import java.net.URI;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Interface for WebSocket client functionality
@@ -31,4 +32,9 @@ public interface MassWebSocketClient {
      * @throws Exception if sending fails
      */
     void sendMessage(String message) throws Exception;
+
+
+
+     boolean connectBlocking(long timeout, TimeUnit timeUnit) throws InterruptedException;
+
 } 
