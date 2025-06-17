@@ -2,7 +2,7 @@ package com.xa.mass.core.client.service;
 
 
 import com.google.gson.Gson;
-import com.xa.mass.core.client.TaskWebSocketClient;
+import com.xa.mass.core.client.MassWebSocketClientImpl;
 import com.xa.mass.core.model.message.*;
 import com.xa.mass.core.model.message.payload.TaskPayload;
 import lombok.RequiredArgsConstructor;
@@ -15,11 +15,11 @@ import java.util.concurrent.ConcurrentHashMap;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class MockTaskService {
-    private final Map<String, TaskWebSocketClient> clients = new ConcurrentHashMap<>();
+public class ClientSessionManager {
+    private final Map<String, MassWebSocketClientImpl> clients = new ConcurrentHashMap<>();
     private final Random random = new Random();
 
-    public void addClient(TaskWebSocketClient client) {
+    public void addClient(MassWebSocketClientImpl client) {
         clients.put(client.getDeviceId(), client);
         log.info("Added mock client: {}", client.getDeviceId());
     }
@@ -37,7 +37,7 @@ public class MockTaskService {
 
         // 随机选择一个客户端
         String deviceId = new ArrayList<>(clients.keySet()).get(random.nextInt(clients.size()));
-        TaskWebSocketClient client = clients.get(deviceId);
+        MassWebSocketClientImpl client = clients.get(deviceId);
 
         if (client != null && client.isOpen()) {
             BaseMessage<TaskPayload> taskMessage = createMockTaskMessage(deviceId);
@@ -71,7 +71,7 @@ public class MockTaskService {
         return message;
     }
 
-    public Collection<TaskWebSocketClient> getAllClients() {
+    public Collection<MassWebSocketClientImpl> getAllClients() {
         return clients.values();
     }
 

@@ -19,8 +19,8 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
-public class TaskWebSocketClient extends WebSocketClient implements MassWebSocketClient {
-    private static final Logger logger = LoggerFactory.getLogger(TaskWebSocketClient.class);
+public class MassWebSocketClientImpl extends WebSocketClient implements MassWebSocketClient {
+    private static final Logger logger = LoggerFactory.getLogger(MassWebSocketClientImpl.class);
     private static final int MAX_RECONNECT_ATTEMPTS = 10; // 最大重连次
     private static final long INITIAL_RECONNECT_DELAY_MS = 1000; // 初始重连延迟 (1
     private static final long MAX_RECONNECT_DELAY_MS = 60000; // 最大重连延(60
@@ -31,7 +31,7 @@ public class TaskWebSocketClient extends WebSocketClient implements MassWebSocke
     private boolean intentionalClose = false;
     private URI uri;
 
-    public TaskWebSocketClient(URI serverUri, String deviceId) {
+    public MassWebSocketClientImpl(URI serverUri, String deviceId) {
         super(serverUri);
         this.deviceId = deviceId;
         this.reconnectScheduler = Executors.newSingleThreadScheduledExecutor(r -> {
@@ -43,7 +43,7 @@ public class TaskWebSocketClient extends WebSocketClient implements MassWebSocke
     }
 
     // 为了方便，可以保留一个默认构造函数或提供一个工厂方
-    public TaskWebSocketClient(String deviceId) {
+    public MassWebSocketClientImpl(String deviceId) {
         this(URI.create("ws://localhost:8088/ws"), deviceId);
     }
 

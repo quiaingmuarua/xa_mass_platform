@@ -1,6 +1,7 @@
 package com.xa.mass.core.server;
 
-import com.xa.mass.core.server.manager.WebSocketMessageHandler;
+import com.xa.mass.core.server.manager.ServerMessageHandler;
+import com.xa.mass.core.server.manager.ServerSessionManager;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.*;
 import io.netty.channel.nio.NioEventLoopGroup;
@@ -18,12 +19,11 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import javax.annotation.PostConstruct;
-import javax.annotation.PreDestroy;
 
 @Component
-public class WebSocketServer implements MassWebSocketServer {
+public class WebSocketServerImpl implements MassWebSocketServer {
 
-    private static final Logger logger = LoggerFactory.getLogger(WebSocketServer.class);
+    private static final Logger logger = LoggerFactory.getLogger(WebSocketServerImpl.class);
 
     // 考虑将端口号配置application.properties
     @Value("${websocket.server.port:8088}") // 默认8088
@@ -36,10 +36,10 @@ public class WebSocketServer implements MassWebSocketServer {
     private EventLoopGroup workerGroup;
 
     @Autowired
-    private WebSocketMessageHandler webSocketMessageHandler; // Spring 会注入这Sharable Handler
+    private ServerMessageHandler serverMessageHandler; // Spring 会注入这Sharable Handler
 
     @Autowired
-    private com.xa.mass.core.server.manager.WebSocketSessionManager sessionManager;
+    private ServerSessionManager sessionManager;
 
     private volatile boolean running = false;
 
@@ -68,7 +68,7 @@ public class WebSocketServer implements MassWebSocketServer {
                             pipeline.addLast(new HttpObjectAggregator(65536)); // HTTP 消息的多个部分聚合为单个 FullHttpRequest FullHttpResponse
                             // WebSocketServerProtocolHandler 处理 WebSocket 握手、Ping/Pong 帧等
                             pipeline.addLast(new WebSocketServerProtocolHandler(websocketPath, null, true, 65536 * 10, false, true, 10000L));
-                            pipeline.addLast(webSocketMessageHandler); // 自定义的业务逻辑处理
+                            pipeline.addLast(serverMessageHandler); // 自定义的业务逻辑处理
                         }
                     })
                     .option(ChannelOption.SO_BACKLOG, 128) // 设置TCP连接的等待队列长

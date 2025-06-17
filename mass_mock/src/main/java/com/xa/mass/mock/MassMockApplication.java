@@ -1,8 +1,10 @@
 package com.xa.mass.mock;
 
-import com.xa.mass.core.client.TaskWebSocketClient;
+import com.xa.mass.core.client.MassWebSocketClientImpl;
+import com.xa.mass.core.server.MassWebSocketServer;
+import com.xa.mass.core.server.WebSocketServerImpl;
 import com.xa.mass.mock.config.MockConfig;
-import com.xa.mass.core.client.service.MockTaskService;
+import com.xa.mass.core.client.service.ClientSessionManager;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.CommandLineRunner;
@@ -15,7 +17,8 @@ import org.springframework.scheduling.annotation.Scheduled;
 
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
-
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 @Slf4j
 @SpringBootApplication
 @EnableScheduling
@@ -23,7 +26,10 @@ import java.util.concurrent.TimeUnit;
 @ComponentScan(basePackages = {"com.xa.mass.mock", "com.xa.mass.core"}) // 添加需要扫描的包
 public class MassMockApplication {
     private final MockConfig mockConfig;
-    private final MockTaskService mockTaskService;
+    private final ClientSessionManager clientSessionManager;
+    private MassWebSocketServer webSocketServer;
+
+    private static final Logger logger = LoggerFactory.getLogger(MassMockApplication.class);
 
     public static void main(String[] args) {
         SpringApplication.run(MassMockApplication.class, args);
@@ -34,7 +40,19 @@ public class MassMockApplication {
         return args -> {
             log.info("🚀 Starting Mass Mock Application...");
             createMockClients(mockConfig.getClient().getCount());
+            try {
+                logger.info("Starting WebSocket server via CommandLineRunner...");
+                webSocketServer.start(8088); // This will no longer block
+                logger.info("WebSocket server start initiated.");
+            } catch (Exception e) {
+                logger.error("Failed to start WebSocket server", e);
+            }
         };
+    }
+
+    @Bean
+    public MassWebSocketServer massWebSocketServer(WebSocketServerImpl webSocketServerImpl) {
+        return webSocketServerImpl;
     }
 
     public void createMockClients(int count) {
@@ -42,8 +60,8 @@ public class MassMockApplication {
 
         for (int i = 0; i < count; i++) {
             String deviceId = "mock_device_" + String.format("%03d", i + 1);
-            TaskWebSocketClient client = new TaskWebSocketClient(java.net.URI.create(mockConfig.getClient().getUri()), deviceId);
-            mockTaskService.addClient(client);
+            MassWebSocketClientImpl client = new MassWebSocketClientImpl(java.net.URI.create(mockConfig.getClient().getUri()), deviceId);
+            clientSessionManager.addClient(client);
 
             new Thread(() -> {
                 try {
@@ -52,11 +70,11 @@ public class MassMockApplication {
                         log.info("Client {} connected successfully.", deviceId);
                     } else {
                         log.warn("⚠️ Client {} failed to connect within timeout.", deviceId);
-                        mockTaskService.removeClient(deviceId);
+                        clientSessionManager.removeClient(deviceId);
                     }
                 } catch (Exception e) {
                     log.error("🔌 Client {} connection failed: {}", deviceId, e.getMessage());
-                    mockTaskService.removeClient(deviceId);
+                    clientSessionManager.removeClient(deviceId);
                 } finally {
                     connectLatch.countDown();
                 }
@@ -75,7 +93,7 @@ public class MassMockApplication {
 
     @Scheduled(fixedRate = 30000)  // 直接使用 fixedRate，值以毫秒为单
     public void createAndSendMockTask() {
-        mockTaskService.sendMockTask();
+        clientSessionManager.sendMockTask();
     }
 
     // 添加JVM关闭钩子
@@ -83,7 +101,7 @@ public class MassMockApplication {
     public void shutdownHook() {
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             log.info("🔌 Shutting down all mock clients...");
-            mockTaskService.getAllClients().forEach(TaskWebSocketClient::closeConnection);
+            clientSessionManager.getAllClients().forEach(MassWebSocketClientImpl::closeConnection);
             log.info("🔌 All mock clients have been requested to close.");
         }));
     }

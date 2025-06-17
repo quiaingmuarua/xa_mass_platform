@@ -18,13 +18,13 @@ import org.springframework.stereotype.Component;
 
 @Component
 @ChannelHandler.Sharable
-public class WebSocketMessageHandler extends SimpleChannelInboundHandler<TextWebSocketFrame> {
+public class ServerMessageHandler extends SimpleChannelInboundHandler<TextWebSocketFrame> {
 
-    private static final Logger logger = LoggerFactory.getLogger(WebSocketMessageHandler.class);
+    private static final Logger logger = LoggerFactory.getLogger(ServerMessageHandler.class);
     private final Gson gson = new Gson();
 
     @Autowired
-    private WebSocketSessionManager sessionManager;
+    private ServerSessionManager sessionManager;
 
     @Autowired
     @Qualifier("inputQueue")

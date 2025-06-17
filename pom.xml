@@ -22,7 +22,6 @@
     </developers>
     <modules>
         <module>mass_core</module>
-        <module>mass_common</module>
         <module>mass_mock</module>
     </modules>
     <scm>

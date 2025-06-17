@@ -1,7 +1,7 @@
 package com.xa.mass.mock;
 
 import com.xa.mass.core.client.MassWebSocketClient;
-import com.xa.mass.core.client.TaskWebSocketClient;
+import com.xa.mass.core.client.MassWebSocketClientImpl;
 import com.xa.mass.core.server.MassWebSocketServer;
 import io.netty.channel.Channel;
 import org.junit.jupiter.api.Assertions;
@@ -27,7 +27,7 @@ public class WebSocketClientServerIntegrationTest {
 
         // 创建客户端并连接
         String deviceId = "test-device-001";
-        MassWebSocketClient client = new TaskWebSocketClient(new URI("ws://localhost:18088/ws"), deviceId);
+        MassWebSocketClient client = new MassWebSocketClientImpl(new URI("ws://localhost:18088/ws"), deviceId);
         client.connect(new URI("ws://localhost:18088/ws"));
         Assertions.assertTrue(client.isConnected());
 

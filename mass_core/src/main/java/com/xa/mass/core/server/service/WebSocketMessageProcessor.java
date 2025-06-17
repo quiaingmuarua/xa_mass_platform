@@ -8,7 +8,7 @@ import com.xa.mass.core.model.message.MessageResult;
 import com.xa.mass.core.model.message.MessageType;
 import com.xa.mass.core.model.message.payload.TaskPayload;
 import com.xa.mass.core.server.TaskResultHandler;
-import com.xa.mass.core.server.manager.WebSocketSessionManager;
+import com.xa.mass.core.server.manager.ServerSessionManager;
 import com.xa.mass.core.queue.MessageQueue;
 import com.xa.mass.core.queue.StoredMessage;
 import io.netty.channel.ChannelHandlerContext;
@@ -32,7 +32,7 @@ public class WebSocketMessageProcessor {
     private ExecutorService executorService; // init 中初始化
 
     @Autowired
-    private WebSocketSessionManager sessionManager;
+    private ServerSessionManager sessionManager;
 
     @Autowired
     @Qualifier("inputQueue")

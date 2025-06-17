@@ -11,8 +11,8 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 @Component
-public class WebSocketSessionManager {
-    private static final Logger logger = LoggerFactory.getLogger(WebSocketSessionManager.class);
+public class ServerSessionManager {
+    private static final Logger logger = LoggerFactory.getLogger(ServerSessionManager.class);
 
     // deviceId -> connRole -> Channel
     private final Map<String, Map<String, Channel>> deviceChannelMap = new ConcurrentHashMap<>();
