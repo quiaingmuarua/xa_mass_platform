@@ -6,13 +6,24 @@
 
 ## 🧱 项目结构概览
 
+```
 xa_mass_platform/
-├── mass_core    # 核心模块：整合了服务、引擎和模型层
-│   ├── server   # 服务层：任务接入、API层、通信协议入口（HTTP/WebSocket）
-│   ├── engine   # 引擎层：任务调度、状态管理、批处理、三态流程
-│   └── model    # 模型层：任务结构体、状态定义、通信协议实体
-    ── mass_common  # 公共模块：Redis工具、配置中心、日志、通用工具
-└── mass_mock    # 模拟客户端：任务执行模拟器、设备回调器、Mock平台测试
+├── doc                # 项目文档
+├── xa_mass_core       # 核心模块：服务端、引擎、模型、协议等
+│   └── src/main/java/com/xa/mass/core
+│       ├── client     # 客户端协议与实现
+│       ├── config     # 配置相关
+│       ├── engine     # 任务调度与状态流转
+│       ├── model      # 任务、消息、设备等数据结构
+│       ├── processor  # 消息/任务处理器
+│       ├── queue      # 队列与消息中间件适配
+│       ├── server     # 服务端协议与实现
+│       └── session    # 会话与连接管理
+├── xa_mass_mock       # 模拟客户端与测试工具
+│   └── src/main/java/com/xa/mass/mock
+│       ├── config     # mock 配置
+│       └── runner     # 独立挂载/启动脚本（server/client profile 隔离）
+```
 
 ---
 
@@ -20,64 +31,45 @@ xa_mass_platform/
 
 | 模块名            | 说明                                              |
 |-----------------|-------------------------------------------------|
-| **mass_core**   | 核心功能模块，整合了原 mass_server、mass_engine 和 mass_model 的所有功能 |
-| **mass_common** | 提供 RedisKey 工具类、日志封装、重试策略、配置中心管理等               |
-| **mass_mock**   | 模拟设备客户端，可模拟执行任务、回调上报、测试消息通路完整性                  |
-
-### mass_core 子模块说明
-
-| 子模块          | 说明                                              |
-|---------------|-------------------------------------------------|
-| **server**    | SpringBoot 接入层，支持 HTTP & WebSocket 接入，分发消息到调度核心 |
-| **engine**    | 核心任务调度器：处理 List ➝ Batch ➝ Result 状态转换、任务执行控制    |
-| **model**     | 定义任务格式、设备状态、通信消息结构，作为系统传输数据契约                   |
-
----
-
-## 🎯 架构设计目标
-
-- ✅ **任务驱动**：每个任务拥有清晰状态流（待执行、执行中、成功/失败）
-- ✅ **中间态批处理**：支持复杂多步任务（如：建群 ➝ 群发 ➝ 上报）
-- ✅ **平台聚合接码**：统一多个接码平台接入格式，配置驱动，无需代码改动
-- ✅ **规则引擎驱动**：基于配置控制任务分发逻辑，抽离硬编码策略
-- ✅ **Mock 驱动开发**：内置设备模拟器，支持无真实设备联调、演练全流程
+| **xa_mass_core** | 核心功能模块，整合服务端、调度引擎、数据模型、协议等 |
+| **xa_mass_mock** | 模拟设备客户端、任务执行器、独立挂载 runner、测试工具 |
+| **doc**         | 项目设计、消息协议、开发规划等文档                  |
 
 ---
 
 ## 🚀 快速启动
 
-> 构建所有模块：
-
+### 构建所有模块
 ```bash
 ./mvnw clean install
 ```
 
-启动主服务：
-
+### 启动核心服务端（WebSocket Server）
 ```bash
-cd mass_core
-./mvnw spring-boot:run
+cd xa_mass_mock
+mvn spring-boot:run -Dspring-boot.run.profiles=server -Dstart-class=com.xa.mass.mock.runner.WebSocketServerSpringBootApp
 ```
 
-启动模拟设备客户端（Mock）：
-
+### 启动模拟客户端（WebSocket Client，可多实例）
 ```bash
-cd mass_mock
-./mvnw spring-boot:run
+cd xa_mass_mock
+mvn spring-boot:run -Dspring-boot.run.profiles=client -Dstart-class=com.xa.mass.mock.runner.WebSocketClientSpringBootApp
 ```
+
+- `runner/` 目录下的 Spring Boot 启动类用于独立挂载 server/client，支持 profile 隔离，便于本地和集成测试。
+- 可通过配置文件（如 application.yml）灵活调整端口、客户端数量、连接 URI 等参数。
 
 ---
 
 ## 🧪 Mock 测试驱动开发
 
-项目内置模拟设备模拟器，可模拟：
+平台内置模拟设备模拟器，可模拟：
 - 接收任务（msgType: send/step）
 - 控制延迟 / 成功 / 超时 / 失败模式
 - 回传回调（on_success / on_failed）
 - 流程链路回放（trace id 支持）
 
 示例：
-
 ```json
 {
     "msgId": "12345",
@@ -93,12 +85,12 @@ cd mass_mock
 
 ## ⚙️ 常用指令
 
-| 操作 | 命令 |
-|-----|------|
-| 构建项目 | `./mvnw clean install` |
-| 启动主服务 | `cd mass_core && ./mvnw spring-boot:run` |
-| 启动 Mock 客户端 | `cd mass_mock && ./mvnw spring-boot:run` |
-| 清理 Redis 状态 | 可使用脚本或集成工具清除任务队列及状态 hash |
+| 操作         | 命令                                                                 |
+|--------------|----------------------------------------------------------------------|
+| 构建项目     | `./mvnw clean install`                                               |
+| 启动服务端   | `cd xa_mass_mock && mvn spring-boot:run -Dspring-boot.run.profiles=server -Dstart-class=com.xa.mass.mock.runner.WebSocketServerSpringBootApp` |
+| 启动客户端   | `cd xa_mass_mock && mvn spring-boot:run -Dspring-boot.run.profiles=client -Dstart-class=com.xa.mass.mock.runner.WebSocketClientSpringBootApp` |
+| 清理 Redis   | 可使用脚本或集成工具清除任务队列及状态 hash                           |
 
 ---
 
@@ -114,34 +106,23 @@ cd mass_mock
 
 ---
 
-## 🧭 后续目标（Roadmap）
-
-- 完善平台插件 DSL 扩展格式
-- 可视化任务状态流图（前端集成）
-- 支持流量录制与回放（Trace + Replay）
-- 提供规则引擎管理界面
-
----
-
 ## 📝 消息模型设计
 
 ### 设计思路
-
 - 标准化消息格式（双向统一）
 - 引入消息路由中心（双向 Dispatcher）
 - Server 可订阅 Client 状态（push 模式）
-- 考虑多通道通信、设备连接角色，可能一个client有多个role角色连接，通过connRole进行配置
+- 支持多通道通信、设备连接角色，可能一个client有多个role角色连接，通过connRole进行配置
 
 ### 任务消息格式
-
 ```json
 {
-    "msgId": "T123456",        // 整个任务交互 ID
-    "msgType": "task",         // "task" | "response" | "ack" | "status" | "log"
+    "msgId": "T123456",
+    "msgType": "task",
     "subMsgType": "group_send",
     "from": "client"|"server",
     "context": {
-        "connRole": "messaegs_task",  // 或 "messaegs_xposed" / "tg_xposed"
+        "connRole": "messaegs_task",
         "taskId": "BizTask_ABC",
         "retryCount": 0,
         "responseLevel": "step"|"all"
@@ -191,8 +172,8 @@ cd mass_mock
     "context": {
         "deviceId": "A123456789",
         "connRole": "task",
-        "lastAckMsgId": "T123456",    // 客户端上一次确认收到的任务
-        "curStepId": "step-2"         // 当前正在执行哪个步骤
+        "lastAckMsgId": "T123456",
+        "curStepId": "step-2"
     }
 }
 ```
