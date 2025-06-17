@@ -1,4 +1,4 @@
-package com.xa.mass.core.server;
+package com.xa.mass.core.handler;
 
 import com.google.gson.Gson;
 import com.xa.mass.core.model.message.BaseMessage;
@@ -13,9 +13,9 @@ import org.springframework.stereotype.Component;
  * 统一处理客户端回传的任务结果（msgType = response
  */
 @Component
-public class TaskResultHandler {
+public class TaskMessageHandler {
 
-    private static final Logger logger = LoggerFactory.getLogger(TaskResultHandler.class);
+    private static final Logger logger = LoggerFactory.getLogger(TaskMessageHandler.class);
     private static final Gson gson = new Gson();
 
     public static void onClientResponse(String json) {
@@ -24,7 +24,7 @@ public class TaskResultHandler {
             BaseMessage<?> baseMsg = gson.fromJson(json, BaseMessage.class);
 
             if (baseMsg.getMsgType() != MessageType.RESPONSE) {
-                logger.warn("Received unexpected msgType in TaskResultHandler: {}", baseMsg.getMsgType());
+                logger.warn("Received unexpected msgType in TaskMessageHandler: {}", baseMsg.getMsgType());
                 return;
             }
 

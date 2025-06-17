@@ -1,4 +1,4 @@
-package com.xa.mass.core.client.service;
+package com.xa.mass.core.manager;
 
 
 import com.google.gson.Gson;

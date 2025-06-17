@@ -1,4 +1,4 @@
-package com.xa.mass.core.server.manager;
+package com.xa.mass.core.manager;
 
 import java.util.Objects;
 

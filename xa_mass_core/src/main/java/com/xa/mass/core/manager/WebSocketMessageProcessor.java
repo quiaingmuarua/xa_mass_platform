@@ -1,14 +1,13 @@
-package com.xa.mass.core.server.service;
+package com.xa.mass.core.manager;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonParseException;
+import com.xa.mass.core.handler.TaskMessageHandler;
 import com.xa.mass.core.model.message.BaseMessage;
 import com.xa.mass.core.model.message.MessageContext; // 仍然需要用于解析和构建消息
 import com.xa.mass.core.model.message.MessageResult;
 import com.xa.mass.core.model.message.MessageType;
 import com.xa.mass.core.model.message.payload.TaskPayload;
-import com.xa.mass.core.server.TaskResultHandler;
-import com.xa.mass.core.server.manager.ServerSessionManager;
 import com.xa.mass.core.queue.MessageQueue;
 import com.xa.mass.core.queue.StoredMessage;
 import io.netty.channel.ChannelHandlerContext;
@@ -145,13 +144,14 @@ public class WebSocketMessageProcessor {
                     TaskPayload taskPayload = gson.fromJson(gson.toJson(baseMessage.getPayload()), TaskPayload.class);
                     logger.info("Processing TASK for {}:{} steps={}", deviceId, connRole,
                             taskPayload.getSteps() != null ? taskPayload.getSteps().size() : 0);
-                    TaskResultHandler.onClientResponse(messageContent); // TODO: Consider passing deviceId, connRole
+
                     break;
                 case REGISTER:
                     logger.info("Processing REGISTER for device {} with role {}", deviceId, connRole);
                     break;
                 case RESPONSE:
                     logger.info("Received RESPONSE from {}:{} - usually client handles server's response.", deviceId, connRole);
+                    TaskMessageHandler.onClientResponse(messageContent); // TODO: Consider passing deviceId, connRole
                     break;
                 default:
                     logger.warn("Unsupported msgType in processStoredMessage: {} for {}:{}", baseMessage.getMsgType(), deviceId, connRole);
