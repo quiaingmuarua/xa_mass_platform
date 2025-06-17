@@ -1,4 +1,4 @@
-package com.xa.mass.core.manager;
+package com.xa.mass.core.session;
 
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;

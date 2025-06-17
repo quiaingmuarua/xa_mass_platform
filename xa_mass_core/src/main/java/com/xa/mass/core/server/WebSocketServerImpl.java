@@ -1,6 +1,6 @@
 package com.xa.mass.core.server;
 
-import com.xa.mass.core.manager.ServerSessionManager;
+import com.xa.mass.core.session.ServerSessionManager;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.*;
 import io.netty.channel.nio.NioEventLoopGroup;

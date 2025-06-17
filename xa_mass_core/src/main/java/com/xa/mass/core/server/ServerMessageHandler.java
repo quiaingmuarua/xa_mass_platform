@@ -2,7 +2,7 @@ package com.xa.mass.core.server;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonSyntaxException;
-import com.xa.mass.core.manager.ServerSessionManager;
+import com.xa.mass.core.session.ServerSessionManager;
 import com.xa.mass.core.model.message.BaseMessage;
 import com.xa.mass.core.model.message.MessageContext;
 import com.xa.mass.core.queue.MessageQueue;

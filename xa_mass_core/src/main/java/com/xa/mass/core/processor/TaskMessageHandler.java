@@ -1,4 +1,4 @@
-package com.xa.mass.core.handler;
+package com.xa.mass.core.processor;
 
 import com.google.gson.Gson;
 import com.xa.mass.core.model.message.BaseMessage;

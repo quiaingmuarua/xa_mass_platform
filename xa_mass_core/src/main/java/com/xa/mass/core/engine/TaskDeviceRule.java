@@ -1,4 +1,4 @@
-package com.xa.mass.core.engine.rule;
+package com.xa.mass.core.engine;
 
 
 import com.xa.mass.core.model.device.Device;
