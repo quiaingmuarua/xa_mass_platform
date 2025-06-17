@@ -58,7 +58,9 @@ public class ServerMessageProcessor {
     private void processInputQueueLoop() {
         while (!Thread.currentThread().isInterrupted() && executorService != null && !executorService.isShutdown()) {
             try {
+
                 StoredMessage storedMessage = inputQueue.poll(15, TimeUnit.SECONDS); // 轮询 StoredMessage
+                logger.info("Polling from inputQueue..." +inputQueue.getName() +" storedMessage= "+storedMessage);
                 if (storedMessage != null) {
                     logger.debug("Polled from inputQueue: {}", storedMessage);
                     processStoredMessage(storedMessage); // 调用处理 StoredMessage 的方
@@ -110,6 +112,7 @@ public class ServerMessageProcessor {
         if (ctx == null || !ctx.channel().isActive()) {
             logger.warn("ChannelHandlerContext not found or channel inactive for deviceId={}, connRole={}. Message dropped: {}",
                     deviceId, connRole, messageContent);
+
             return;
         }
 

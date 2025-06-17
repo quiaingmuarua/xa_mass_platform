@@ -18,4 +18,7 @@ public interface MessageQueue<T> {
     boolean isEmpty();
 
     int size();
+
+
+    String getName();
 }

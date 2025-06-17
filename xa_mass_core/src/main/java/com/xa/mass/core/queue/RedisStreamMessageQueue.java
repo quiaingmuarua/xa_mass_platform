@@ -169,6 +169,11 @@ public class RedisStreamMessageQueue implements MessageQueue<StoredMessage>, Dis
     }
 
     @Override
+    public String getName() {
+        return "RedisStreamMessageQueue-" + streamKey +" groupName="+groupName;
+    }
+
+    @Override
     public void destroy() {
         logger.info("Shutting down RedisStreamMessageQueue for stream: {}", streamKey);
         this.active = false;

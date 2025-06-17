@@ -61,4 +61,11 @@ public class InMemoryMessageQueue implements MessageQueue<StoredMessage> { // ä¿
     public int size() {
         return queue.size();
     }
+
+    @Override
+    public String getName() {
+        return "InMemoryMessageQueue";
+    }
+
+
 }
