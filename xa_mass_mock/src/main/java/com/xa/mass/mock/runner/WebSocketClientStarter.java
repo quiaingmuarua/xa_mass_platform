@@ -9,6 +9,12 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 import org.springframework.boot.CommandLineRunner;
+import com.xa.mass.core.session.ClientSessionManager;
+import org.springframework.scheduling.annotation.Scheduled;
+import com.xa.mass.core.model.message.BaseMessage;
+import com.xa.mass.core.model.message.MessageContext;
+import com.xa.mass.core.model.message.MessageDirection;
+import com.xa.mass.core.model.message.MessageType;
 
 import javax.annotation.PreDestroy;
 import java.net.URI;
@@ -24,8 +30,11 @@ public class WebSocketClientStarter implements CommandLineRunner {
     @Autowired
     private MockConfig mockConfig;
 
+    @Autowired
+    private ClientSessionManager clientSessionManager;
+
     private ExecutorService clientExecutor;
-    private final List<MassWebSocketClient> activeClients = new CopyOnWriteArrayList<>();
+    private ScheduledExecutorService pingScheduler;
 
     @Override
     public void run(String... args) throws Exception {
@@ -43,8 +52,8 @@ public class WebSocketClientStarter implements CommandLineRunner {
         for (int i = 0; i < numberOfClients; i++) {
             String deviceId = "app_client_" + String.format("%03d", i + 1);
             URI uri = new URI(baseUri);
-            MassWebSocketClient client = new MassWebSocketClientImpl(uri, deviceId);
-            activeClients.add(client);
+            MassWebSocketClientImpl client = new MassWebSocketClientImpl(uri, deviceId);
+            clientSessionManager.addClient(client);
 
             clientExecutor.submit(() -> {
                 try {
@@ -52,11 +61,11 @@ public class WebSocketClientStarter implements CommandLineRunner {
                         log.info("✅ Client {} connected", deviceId);
                     } else {
                         log.warn("⚠️ Client {} connect timeout", deviceId);
-                        activeClients.remove(client);
+                        clientSessionManager.removeClient(deviceId);
                     }
                 } catch (Exception e) {
                     log.error("❌ Client {} connection failed", deviceId, e);
-                    activeClients.remove(client);
+                    clientSessionManager.removeClient(deviceId);
                 } finally {
                     latch.countDown();
                 }
@@ -64,13 +73,44 @@ public class WebSocketClientStarter implements CommandLineRunner {
         }
 
         latch.await(numberOfClients * 15L, TimeUnit.SECONDS);
-        log.info("✅ All connection attempts completed. Active: {}", activeClients.size());
+        log.info("✅ All connection attempts completed. Active: {}", clientSessionManager.getClientCount());
+
+        startPingTask();
+    }
+
+    private void startPingTask() {
+        if (pingScheduler == null) {
+            pingScheduler = Executors.newSingleThreadScheduledExecutor();
+            pingScheduler.scheduleAtFixedRate(this::sendRandomPing, 5, 10, TimeUnit.SECONDS);
+        }
+    }
+
+    private void sendRandomPing() {
+        Collection<MassWebSocketClientImpl> clients = clientSessionManager.getAllClients();
+        if (clients.isEmpty()) return;
+        List<MassWebSocketClientImpl> clientList = new ArrayList<>(clients);
+        MassWebSocketClientImpl client = clientList.get(new Random().nextInt(clientList.size()));
+        try {
+            BaseMessage<Void> ping = new BaseMessage<>();
+            ping.setMsgId("ping-" + client.getDeviceId() + "-" + System.currentTimeMillis());
+            ping.setMsgType(MessageType.PING);
+            ping.setFrom(MessageDirection.CLIENT);
+            ping.setSubMsgType("heartbeat");
+            MessageContext ctx = new MessageContext();
+            ctx.setDeviceId(client.getDeviceId());
+            ctx.setConnRole("messages_task");
+            ping.setContext(ctx);
+            client.send(new com.google.gson.Gson().toJson(ping));
+            log.info("[{}] 定时发送 PING 消息", client.getDeviceId());
+        } catch (Exception e) {
+            log.warn("[{}] 定时发送 PING 失败: {}", client.getDeviceId(), e.getMessage());
+        }
     }
 
     @PreDestroy
     public void shutdown() {
         log.info("🛑 Shutting down clients...");
-        for (MassWebSocketClient client : activeClients) {
+        for (MassWebSocketClientImpl client : clientSessionManager.getAllClients()) {
             try {
                 client.disconnect();
             } catch (Exception e) {
@@ -79,6 +119,9 @@ public class WebSocketClientStarter implements CommandLineRunner {
         }
         if (clientExecutor != null) {
             clientExecutor.shutdown();
+        }
+        if (pingScheduler != null) {
+            pingScheduler.shutdown();
         }
     }
 }

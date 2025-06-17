@@ -28,10 +28,10 @@ websocket:
     uri: ws://localhost:8088/ws
 
 ---
-spring:
-  config:
-    activate:
-      on-profile: client
+#spring:
+#  config:
+#    activate:
+#      on-profile: client   # 这里改为 server profile
 
 websocket:
   server:

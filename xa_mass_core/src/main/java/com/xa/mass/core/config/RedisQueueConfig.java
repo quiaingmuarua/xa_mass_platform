@@ -62,9 +62,9 @@ public class RedisQueueConfig {
     public MessageQueue<StoredMessage> redisInputQueue(
             StatefulRedisConnection<String, String> connection,
             Gson gsonForQueue,
-            @Value("${mass.queue.input.stream-key:mass_input_stream}") String streamKey,
-            @Value("${mass.queue.input.group-name:mass_input_group}") String groupName,
-            @Value("${mass.queue.input.consumer-name:input_consumer_1}") String consumerName) {
+            @Value("${mass.queue.input.stream-key}") String streamKey,
+            @Value("${mass.queue.input.group-name}") String groupName,
+            @Value("${mass.queue.input.consumer-name}") String consumerName) {
         return new RedisStreamMessageQueue(streamKey, groupName, consumerName, connection, gsonForQueue);
     }
 
@@ -73,9 +73,9 @@ public class RedisQueueConfig {
     public MessageQueue<StoredMessage> redisOutputQueue(
             StatefulRedisConnection<String, String> connection,
             Gson gsonForQueue,
-            @Value("${mass.queue.output.stream-key:mass_output_stream}") String streamKey,
-            @Value("${mass.queue.output.group-name:mass_output_group}") String groupName,
-            @Value("${mass.queue.output.consumer-name:output_consumer_1}") String consumerName) {
+            @Value("${mass.queue.output.stream-key}") String streamKey,
+            @Value("${mass.queue.output.group-name}") String groupName,
+            @Value("${mass.queue.output.consumer-name}") String consumerName) {
         return new RedisStreamMessageQueue(streamKey, groupName, consumerName, connection, gsonForQueue);
     }
 }

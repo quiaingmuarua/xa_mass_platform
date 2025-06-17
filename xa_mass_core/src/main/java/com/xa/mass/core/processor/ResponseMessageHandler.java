@@ -13,9 +13,9 @@ import org.springframework.stereotype.Component;
  * 统一处理客户端回传的任务结果（msgType = response
  */
 @Component
-public class TaskMessageHandler {
+public class ResponseMessageHandler {
 
-    private static final Logger logger = LoggerFactory.getLogger(TaskMessageHandler.class);
+    private static final Logger logger = LoggerFactory.getLogger(ResponseMessageHandler.class);
     private static final Gson gson = new Gson();
 
     public static void onClientResponse(String json) {
@@ -24,7 +24,7 @@ public class TaskMessageHandler {
             BaseMessage<?> baseMsg = gson.fromJson(json, BaseMessage.class);
 
             if (baseMsg.getMsgType() != MessageType.RESPONSE) {
-                logger.warn("Received unexpected msgType in TaskMessageHandler: {}", baseMsg.getMsgType());
+                logger.warn("Received unexpected msgType in ResponseMessageHandler: {}", baseMsg.getMsgType());
                 return;
             }
 

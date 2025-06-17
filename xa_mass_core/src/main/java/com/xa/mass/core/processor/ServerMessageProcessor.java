@@ -25,8 +25,8 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 @Service
-public class WebSocketMessageProcessor {
-    private static final Logger logger = LoggerFactory.getLogger(WebSocketMessageProcessor.class);
+public class ServerMessageProcessor {
+    private static final Logger logger = LoggerFactory.getLogger(ServerMessageProcessor.class);
     private final Gson gson = new Gson();
     private ExecutorService executorService; // init 中初始化
 
@@ -43,14 +43,14 @@ public class WebSocketMessageProcessor {
 
     @PostConstruct
     public void init() {
-        logger.info("WebSocketMessageProcessor init");
+        logger.info("ServerMessageProcessor init");
         int threadPoolSize = 2; // 一个用于输入，一个用于输
         executorService = Executors.newFixedThreadPool(threadPoolSize);
         startProcessing();
     }
 
     private void startProcessing() {
-        logger.info("WebSocketMessageProcessor startProcessing");
+        logger.info("ServerMessageProcessor startProcessing");
         executorService.submit(this::processInputQueueLoop);
         executorService.submit(this::processOutputQueueLoop);
     }
@@ -151,7 +151,7 @@ public class WebSocketMessageProcessor {
                     break;
                 case RESPONSE:
                     logger.info("Received RESPONSE from {}:{} - usually client handles server's response.", deviceId, connRole);
-                    TaskMessageHandler.onClientResponse(messageContent); // TODO: Consider passing deviceId, connRole
+                    ResponseMessageHandler.onClientResponse(messageContent); // TODO: Consider passing deviceId, connRole
                     break;
                 default:
                     logger.warn("Unsupported msgType in processStoredMessage: {} for {}:{}", baseMessage.getMsgType(), deviceId, connRole);
@@ -228,7 +228,7 @@ public class WebSocketMessageProcessor {
 
     @PreDestroy
     public void shutdown() {
-        logger.info("Shutting down WebSocketMessageProcessor executor service.");
+        logger.info("Shutting down ServerMessageProcessor executor service.");
         if (executorService != null) {
             executorService.shutdown();
             try {
@@ -240,6 +240,6 @@ public class WebSocketMessageProcessor {
                 Thread.currentThread().interrupt();
             }
         }
-        logger.info("WebSocketMessageProcessor executor service shut down.");
+        logger.info("ServerMessageProcessor executor service shut down.");
     }
 }
