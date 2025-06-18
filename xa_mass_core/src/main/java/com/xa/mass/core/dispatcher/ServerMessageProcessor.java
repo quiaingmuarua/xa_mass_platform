@@ -1,9 +1,7 @@
-package com.xa.mass.core.processor;
+package com.xa.mass.core.dispatcher;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonParseException;
-import com.xa.mass.core.dispatcher.MessageHandler;
-import com.xa.mass.core.dispatcher.MessageHandlerRegistry;
 import com.xa.mass.core.model.message.MassMessage;
 import com.xa.mass.core.model.message.MessageContext;
 import com.xa.mass.core.model.message.MessageResult;
