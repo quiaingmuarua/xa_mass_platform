@@ -1,4 +1,4 @@
-package com.xa.mass.core.model.message;
+package com.xa.mass.core.model.device;
 
 import lombok.Builder;
 import lombok.Data;

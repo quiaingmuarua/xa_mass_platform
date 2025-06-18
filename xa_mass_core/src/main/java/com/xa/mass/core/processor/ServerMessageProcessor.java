@@ -2,14 +2,15 @@ package com.xa.mass.core.processor;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonParseException;
-import com.xa.mass.core.session.ServerSessionManager;
-import com.xa.mass.core.model.message.BaseMessage;
-import com.xa.mass.core.model.message.MessageContext; // 仍然需要用于解析和构建消息
+import com.xa.mass.core.dispatcher.MessageHandler;
+import com.xa.mass.core.dispatcher.MessageHandlerRegistry;
+import com.xa.mass.core.model.message.MassMessage;
+import com.xa.mass.core.model.message.MessageContext;
 import com.xa.mass.core.model.message.MessageResult;
-import com.xa.mass.core.model.message.MessageType;
-import com.xa.mass.core.model.message.payload.TaskPayload;
+import com.xa.mass.core.model.message.enums.MessageType;
 import com.xa.mass.core.queue.MessageQueue;
 import com.xa.mass.core.queue.StoredMessage;
+import com.xa.mass.core.session.ServerSessionManager;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;
 import org.slf4j.Logger;
@@ -20,6 +21,8 @@ import org.springframework.stereotype.Service;
 
 import javax.annotation.PostConstruct;
 import javax.annotation.PreDestroy;
+import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -118,51 +121,33 @@ public class ServerMessageProcessor {
         }
 
         try {
-            BaseMessage<?> baseMessage = gson.fromJson(messageContent, BaseMessage.class);
-            if (baseMessage == null) {
-                logger.warn("Failed to parse StoredMessage content to BaseMessage: {}", messageContent);
+            MassMessage<?> massMessage = gson.fromJson(messageContent, MassMessage.class);
+            if (massMessage == null) {
+                logger.warn("Failed to parse StoredMessage content to MassMessage: {}", messageContent);
                 return;
             }
 
-            MessageContext parsedContext = baseMessage.getContext();
+            MessageContext parsedContext = massMessage.getContext();
             // 校验从消息体解析出的 context 是否StoredMessage 中的路由信息一
             if (parsedContext == null || !deviceId.equals(parsedContext.getDeviceId()) || !connRole.equals(parsedContext.getConnRole())) {
-                logger.warn("Mismatch or missing context in parsed BaseMessage. Expected deviceId={}, connRole={}. Got: {}. Message: {}",
+                logger.warn("Mismatch or missing context in parsed MassMessage. Expected deviceId={}, connRole={}. Got: {}. Message: {}",
                         deviceId, connRole, parsedContext, messageContent);
                 sendErrorResponse(ctx, "Message context mismatch or missing after parsing.");
                 return;
             }
-            logger.info("processStoredMessage start handle message {}", baseMessage);
-            switch (baseMessage.getMsgType()) {
-                case PING:
-                    logger.debug("Processing PING for {}:{}", deviceId, connRole);
-                    // 如果需要回PONG，创StoredMessage 并放outputQueue
-                    // Example:
-                     MessageContext pongContext = baseMessage.getContext(); // Use original msgId if needed
-                     BaseMessage<Void> pongResponse = new BaseMessage<>();
-                     pongResponse.setMsgType(MessageType.PONG); // Assuming PONG type exists
-                     pongResponse.setContext(pongContext);
-                    pongResponse.setSubMsgType("heartbeat");
-                    pongResponse.setMsgId("pong-" + deviceId + "-" + System.currentTimeMillis());
-                     outputQueue.offer(new StoredMessage(gson.toJson(pongResponse), deviceId, connRole));
-                    break;
-                case TASK:
-                    TaskPayload taskPayload = gson.fromJson(gson.toJson(baseMessage.getPayload()), TaskPayload.class);
-                    logger.info("Processing TASK for {}:{} steps={}", deviceId, connRole,
-                            taskPayload.getSteps() != null ? taskPayload.getSteps().size() : 0);
-                    ResponseMessageHandler.onClientResponse(messageContent); // TODO: Consider passing deviceId, connRole
-                    break;
-                case REGISTER:
-                    logger.info("Processing REGISTER for device {} with role {}", deviceId, connRole);
-                    break;
-                case RESPONSE:
-                    logger.info("Received RESPONSE from {}:{} - usually client handles server's response.", deviceId, connRole);
-                    ResponseMessageHandler.onClientResponse(messageContent); // TODO: Consider passing deviceId, connRole
-                    break;
-                default:
-                    logger.warn("Unsupported msgType in processStoredMessage: {} for {}:{}", baseMessage.getMsgType(), deviceId, connRole);
-                    sendErrorResponse(ctx, "Unsupported message type: " + baseMessage.getMsgType());
+            logger.info("processStoredMessage start handle message {}", massMessage);
+            Optional<MessageHandler> functionHandle = MessageHandlerRegistry.resolve(massMessage);
+            if (functionHandle.isPresent()) {
+                List<MassMessage<?>> resultMessages = functionHandle.get().handle(massMessage);
+                if (resultMessages != null) {
+                    for (MassMessage<?> resultMessage : resultMessages) {
+                        String resultJson = gson.toJson(resultMessage);
+                        outputQueue.offer(new StoredMessage(resultJson, deviceId, connRole));
+                    }
+                }
+
             }
+
         } catch (JsonParseException e) {
             logger.error("JSON parsing error in processStoredMessage for {}:{}. Message: {}", deviceId, connRole, messageContent, e);
             sendErrorResponse(ctx, "Invalid JSON message format");
@@ -208,13 +193,12 @@ public class ServerMessageProcessor {
             return;
         }
         try {
-            BaseMessage<Object> errorResponse = new BaseMessage<>();
-            errorResponse.setMsgType(MessageType.RESPONSE);
+            MassMessage<Object> errorResponse = new MassMessage<>();
+            errorResponse.setMsgType(MessageType.TASK);
             MessageResult result = new MessageResult();
             result.setCode(500);
             result.setMessage(errorMessage);
-            errorResponse.setResult(result);
-
+            errorResponse.setPayload(result);
             String errorJson = gson.toJson(errorResponse);
             TextWebSocketFrame frame = new TextWebSocketFrame(errorJson);
             ctx.channel().writeAndFlush(frame);

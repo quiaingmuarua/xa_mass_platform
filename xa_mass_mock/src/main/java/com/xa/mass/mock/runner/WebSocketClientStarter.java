@@ -1,24 +1,25 @@
 package com.xa.mass.mock.runner;
 
-import com.xa.mass.core.client.MassWebSocketClient;
 import com.xa.mass.core.client.MassWebSocketClientImpl;
+import com.xa.mass.core.model.message.MassMessage;
+import com.xa.mass.core.model.message.MessageContext;
+import com.xa.mass.core.model.message.enums.MessageDirection;
+import com.xa.mass.core.model.message.enums.MessageType;
+import com.xa.mass.core.session.ClientSessionManager;
 import com.xa.mass.mock.config.MockConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.CommandLineRunner;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
-import org.springframework.boot.CommandLineRunner;
-import com.xa.mass.core.session.ClientSessionManager;
-import org.springframework.scheduling.annotation.Scheduled;
-import com.xa.mass.core.model.message.BaseMessage;
-import com.xa.mass.core.model.message.MessageContext;
-import com.xa.mass.core.model.message.MessageDirection;
-import com.xa.mass.core.model.message.MessageType;
 
 import javax.annotation.PreDestroy;
 import java.net.URI;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
+import java.util.Random;
 import java.util.concurrent.*;
 
 @Component
@@ -91,7 +92,7 @@ public class WebSocketClientStarter implements CommandLineRunner {
         List<MassWebSocketClientImpl> clientList = new ArrayList<>(clients);
         MassWebSocketClientImpl client = clientList.get(new Random().nextInt(clientList.size()));
         try {
-            BaseMessage<Void> ping = new BaseMessage<>();
+            MassMessage<Void> ping = new MassMessage<>();
             ping.setMsgId("ping-" + client.getDeviceId() + "-" + System.currentTimeMillis());
             ping.setMsgType(MessageType.PING);
             ping.setFrom(MessageDirection.CLIENT);

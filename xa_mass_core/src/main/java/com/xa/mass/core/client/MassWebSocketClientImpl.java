@@ -3,7 +3,11 @@ package com.xa.mass.core.client;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.google.gson.reflect.TypeToken;
-import com.xa.mass.core.model.message.*;
+import com.xa.mass.core.model.message.MassMessage;
+import com.xa.mass.core.model.message.MessageContext;
+import com.xa.mass.core.model.message.MessageResult;
+import com.xa.mass.core.model.message.enums.MessageDirection;
+import com.xa.mass.core.model.message.enums.MessageType;
 import com.xa.mass.core.model.message.payload.TaskPayload;
 import org.java_websocket.client.WebSocketClient;
 import org.java_websocket.handshake.ServerHandshake;
@@ -60,7 +64,7 @@ public class MassWebSocketClientImpl extends WebSocketClient implements MassWebS
         intentionalClose = false; // 重置主动关闭标记
 
         // 构ping 消息
-        BaseMessage<Void> ping = new BaseMessage<>();
+        MassMessage<Void> ping = new MassMessage<>();
         ping.setMsgId("ping-" + deviceId + "-" + System.currentTimeMillis());
         ping.setMsgType(MessageType.PING);
         ping.setFrom(MessageDirection.CLIENT);
@@ -98,13 +102,13 @@ public class MassWebSocketClientImpl extends WebSocketClient implements MassWebS
     }
 
     private void handleTaskMessage(String message) {
-        Type taskMsgType = new TypeToken<BaseMessage<TaskPayload>>() {
+        Type taskMsgType = new TypeToken<MassMessage<TaskPayload>>() {
         }.getType();
-        BaseMessage<TaskPayload> taskMessage = gson.fromJson(message, taskMsgType);
+        MassMessage<TaskPayload> taskMessage = gson.fromJson(message, taskMsgType);
 
-        BaseMessage<Map<String, Object>> response = new BaseMessage<>();
+        MassMessage<Map<String, Object>> response = new MassMessage<>();
         response.setMsgId(taskMessage.getMsgId()); // 回复时使用收到的msgId
-        response.setMsgType(MessageType.RESPONSE);
+        response.setMsgType(MessageType.TASK);
         response.setFrom(MessageDirection.CLIENT);
         response.setSubMsgType("step"); // 或者根据taskMessage.getContext().getResponseLevel()
 
@@ -113,9 +117,8 @@ public class MassWebSocketClientImpl extends WebSocketClient implements MassWebS
         if (originalContext != null) {
             MessageContext responseContext = new MessageContext();
             responseContext.setConnRole(originalContext.getConnRole());
-            responseContext.setTaskId(originalContext.getTaskId());
+            responseContext.setTid(originalContext.getTid());
             responseContext.setRetryCount(originalContext.getRetryCount());
-            responseContext.setResponseLevel(originalContext.getResponseLevel());
             responseContext.setDeviceId(this.deviceId); // 确保响应中是我们自己的deviceId
             // 如果需要，可以从原始context复制更多字段
             response.setContext(responseContext);
@@ -139,7 +142,6 @@ public class MassWebSocketClientImpl extends WebSocketClient implements MassWebS
         resMeta.setMessage("Mock execution successful for step " + stepId + " by " + this.deviceId);
 
         response.setPayload(payloadMap);
-        response.setResult(resMeta);
 
         send(gson.toJson(response));
         logger.info("📤 [{}] Sent mock task response for msgId: {}", deviceId, response.getMsgId());

@@ -2,11 +2,11 @@ package com.xa.mass.core.server;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonSyntaxException;
-import com.xa.mass.core.session.ServerSessionManager;
-import com.xa.mass.core.model.message.BaseMessage;
+import com.xa.mass.core.model.message.MassMessage;
 import com.xa.mass.core.model.message.MessageContext;
 import com.xa.mass.core.queue.MessageQueue;
 import com.xa.mass.core.queue.StoredMessage;
+import com.xa.mass.core.session.ServerSessionManager;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
@@ -45,9 +45,9 @@ public class ServerMessageHandler extends SimpleChannelInboundHandler<TextWebSoc
         }
 
         try {
-            BaseMessage<?> preParseForContext = gson.fromJson(message, BaseMessage.class);
+            MassMessage<?> preParseForContext = gson.fromJson(message, MassMessage.class);
             if (preParseForContext == null) {
-                logger.warn("Failed to parse message to BaseMessage from {}: {}", ctx.channel().remoteAddress(), message);
+                logger.warn("Failed to parse message to MassMessage from {}: {}", ctx.channel().remoteAddress(), message);
                 return;
             }
 

@@ -3,7 +3,11 @@ package com.xa.mass.core.session;
 
 import com.google.gson.Gson;
 import com.xa.mass.core.client.MassWebSocketClientImpl;
-import com.xa.mass.core.model.message.*;
+import com.xa.mass.core.model.message.MassMessage;
+import com.xa.mass.core.model.message.MessageContext;
+import com.xa.mass.core.model.message.TaskStep;
+import com.xa.mass.core.model.message.enums.MessageDirection;
+import com.xa.mass.core.model.message.enums.MessageType;
 import com.xa.mass.core.model.message.payload.TaskPayload;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -40,14 +44,14 @@ public class ClientSessionManager {
         MassWebSocketClientImpl client = clients.get(deviceId);
 
         if (client != null && client.isOpen()) {
-            BaseMessage<TaskPayload> taskMessage = createMockTaskMessage(deviceId);
+            MassMessage<TaskPayload> taskMessage = createMockTaskMessage(deviceId);
             client.send(new Gson().toJson(taskMessage));
             log.info("📤 Sent mock task to client: {}", deviceId);
         }
     }
 
-    private BaseMessage<TaskPayload> createMockTaskMessage(String deviceId) {
-        BaseMessage<TaskPayload> message = new BaseMessage<>();
+    private MassMessage<TaskPayload> createMockTaskMessage(String deviceId) {
+        MassMessage<TaskPayload> message = new MassMessage<>();
         message.setMsgId("task-" + UUID.randomUUID().toString());
         message.setMsgType(MessageType.TASK);
         message.setFrom(MessageDirection.SERVER);
@@ -56,7 +60,7 @@ public class ClientSessionManager {
         MessageContext ctx = new MessageContext();
         ctx.setDeviceId(deviceId);
         ctx.setConnRole("messages_task");
-        ctx.setTaskId("mock_task_" + System.currentTimeMillis());
+        ctx.setTid("mock_task_" + System.currentTimeMillis());
         message.setContext(ctx);
 
         TaskPayload payload = new TaskPayload();

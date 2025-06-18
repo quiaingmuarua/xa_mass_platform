@@ -1,4 +1,4 @@
-package com.xa.mass.core.model.message;
+package com.xa.mass.core.model.task;
 
 public enum TaskStatus {
     INIT,
