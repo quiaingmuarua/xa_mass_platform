@@ -1,4 +1,4 @@
-package com.xa.mass.core.server;
+package com.xa.mass.core.queue;
 
 
 import com.xa.mass.core.model.message.MassMessage;

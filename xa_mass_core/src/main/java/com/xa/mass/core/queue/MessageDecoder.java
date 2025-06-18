@@ -1,11 +1,10 @@
-package com.xa.mass.core.server;
+package com.xa.mass.core.queue;
 
 
 import com.google.gson.Gson;
 import com.google.gson.JsonSyntaxException;
 import com.xa.mass.core.model.message.MassMessage;
 import com.xa.mass.core.model.message.MessageContext;
-import com.xa.mass.core.queue.Envelope;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;

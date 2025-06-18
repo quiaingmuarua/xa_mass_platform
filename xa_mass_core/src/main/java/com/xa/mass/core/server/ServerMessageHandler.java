@@ -1,9 +1,9 @@
 package com.xa.mass.core.server;
 
-import com.google.gson.Gson;
-import com.google.gson.JsonSyntaxException;
 import com.xa.mass.core.model.message.MassMessage;
 import com.xa.mass.core.model.message.MessageContext;
+import com.xa.mass.core.queue.MessageContextValidator;
+import com.xa.mass.core.queue.MessageDecoder;
 import com.xa.mass.core.queue.MessageQueue;
 import com.xa.mass.core.queue.Envelope;
 import com.xa.mass.core.session.ServerSessionManager;
