@@ -92,7 +92,7 @@ public class WebSocketClientStarter implements CommandLineRunner {
         List<MassWebSocketClientImpl> clientList = new ArrayList<>(clients);
         MassWebSocketClientImpl client = clientList.get(new Random().nextInt(clientList.size()));
         try {
-            MassMessage<Void> ping = new MassMessage<>();
+            MassMessage ping = new MassMessage();
             ping.setMsgId("ping-" + client.getDeviceId() + "-" + System.currentTimeMillis());
             ping.setMsgType(MessageType.PING);
             ping.setFrom(MessageDirection.CLIENT);

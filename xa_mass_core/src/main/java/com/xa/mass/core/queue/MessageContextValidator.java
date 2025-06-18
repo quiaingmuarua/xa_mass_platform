@@ -8,7 +8,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class MessageContextValidator {
 
-    public boolean isValid(MassMessage<?> msg) {
+    public boolean isValid(MassMessage msg) {
         if (msg == null) return false;
         MessageContext ctx = msg.getContext();
         return ctx != null &&

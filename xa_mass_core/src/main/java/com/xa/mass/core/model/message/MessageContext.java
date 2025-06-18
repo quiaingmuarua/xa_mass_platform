@@ -6,7 +6,6 @@ import lombok.Data;
 public class MessageContext {
     private String deviceId;     // 物理设备 ID
     private String connRole;     // 连接角色（如 "app", "controller", "docker"）
-    private String appName;      // 所属应用名，如 WhatsApp、Telegram
     private String sessionId;    // 当前连接唯一标识（用于重连判断）
     private String tid;
     private Integer retryCount;

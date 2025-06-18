@@ -16,7 +16,7 @@ public class MessageHandlerRegistry {
         handlerMap.put(key, handler);
     }
 
-    public static Optional<MessageHandler> resolve(MassMessage<?> msg) {
+    public static Optional<MessageHandler> resolve(MassMessage msg) {
         String key = msg.getMsgType().name() + "::" + msg.getSubMsgType();
         return Optional.ofNullable(handlerMap.get(key));
     }

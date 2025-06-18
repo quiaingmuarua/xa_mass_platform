@@ -15,7 +15,7 @@ public class MessageDecoder {
     private static final Logger logger = LoggerFactory.getLogger(MessageDecoder.class);
     private final Gson gson = new Gson();
 
-    public MassMessage<?> tryDecode(String rawJson) {
+    public MassMessage tryDecode(String rawJson) {
         try {
             return gson.fromJson(rawJson, MassMessage.class);
         } catch (JsonSyntaxException e) {
@@ -24,7 +24,7 @@ public class MessageDecoder {
         }
     }
 
-    public Envelope toStoredMessage(String rawJson, MassMessage<?> msg) {
+    public Envelope toStoredMessage(String rawJson, MassMessage msg) {
         MessageContext ctx = msg.getContext();
         return Envelope.builder().rawJson(rawJson).deviceId(ctx.getDeviceId())
                 .connRole(ctx.getConnRole()).traceId(msg.getMsgId()).receivedAt(System.currentTimeMillis()).build();

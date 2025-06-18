@@ -45,7 +45,7 @@ public class ServerMessageHandler extends SimpleChannelInboundHandler<TextWebSoc
             return;
         }
 
-        MassMessage<?> parsed = messageDecoder.tryDecode(raw);
+        MassMessage parsed = messageDecoder.tryDecode(raw);
         if (!contextValidator.isValid(parsed)) {
             logger.warn("Message missing context info from {}: {}", ctx.channel().remoteAddress(), raw);
             return;

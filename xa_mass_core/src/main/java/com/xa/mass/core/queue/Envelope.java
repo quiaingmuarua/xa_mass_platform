@@ -14,6 +14,7 @@ public class Envelope {
     private String connRole;
     private String traceId;     // 可选，用于日志追踪
     private long receivedAt;
+    private String appName="RCS";      // 所属应用名，如 WhatsApp、Telegram
 
 
     @Override
@@ -23,6 +24,7 @@ public class Envelope {
                 ", connRole='" + connRole + '\'' +
                 ", traceId='" + traceId + '\'' +
                 ", receivedAt=" + receivedAt +
+                ", appName='" + appName + '\'' +
                 ", rawJson=" + (rawJson != null ? rawJson.substring(0, Math.min(100, rawJson.length())) + "..." : null) +
                 '}';
     }

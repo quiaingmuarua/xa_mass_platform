@@ -44,14 +44,14 @@ public class ClientSessionManager {
         MassWebSocketClientImpl client = clients.get(deviceId);
 
         if (client != null && client.isOpen()) {
-            MassMessage<TaskPayload> taskMessage = createMockTaskMessage(deviceId);
+            MassMessage taskMessage = createMockTaskMessage(deviceId);
             client.send(new Gson().toJson(taskMessage));
             log.info("📤 Sent mock task to client: {}", deviceId);
         }
     }
 
-    private MassMessage<TaskPayload> createMockTaskMessage(String deviceId) {
-        MassMessage<TaskPayload> message = new MassMessage<>();
+    private MassMessage createMockTaskMessage(String deviceId) {
+        MassMessage message = new MassMessage();
         message.setMsgId("task-" + UUID.randomUUID().toString());
         message.setMsgType(MessageType.TASK);
         message.setFrom(MessageDirection.SERVER);
@@ -67,10 +67,9 @@ public class ClientSessionManager {
         List<TaskStep> steps = new ArrayList<>();
         TaskStep step = new TaskStep();
         step.setStepId("step_" + System.currentTimeMillis());
-        ;
         steps.add(step);
         payload.setSteps(steps);
-        message.setPayload(payload);
+        message.setPayload(new Gson().toJsonTree(payload));
 
         return message;
     }

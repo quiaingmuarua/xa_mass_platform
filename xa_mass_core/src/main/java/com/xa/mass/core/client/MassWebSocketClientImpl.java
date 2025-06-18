@@ -64,7 +64,7 @@ public class MassWebSocketClientImpl extends WebSocketClient implements MassWebS
         intentionalClose = false; // 重置主动关闭标记
 
         // 构ping 消息
-        MassMessage<Void> ping = new MassMessage<>();
+        MassMessage ping = new MassMessage();
         ping.setMsgId("ping-" + deviceId + "-" + System.currentTimeMillis());
         ping.setMsgType(MessageType.PING);
         ping.setFrom(MessageDirection.CLIENT);
@@ -102,11 +102,10 @@ public class MassWebSocketClientImpl extends WebSocketClient implements MassWebS
     }
 
     private void handleTaskMessage(String message) {
-        Type taskMsgType = new TypeToken<MassMessage<TaskPayload>>() {
-        }.getType();
-        MassMessage<TaskPayload> taskMessage = gson.fromJson(message, taskMsgType);
+        MassMessage taskMessage = gson.fromJson(message, MassMessage.class);
+        TaskPayload taskPayload = gson.fromJson(taskMessage.getPayload(), TaskPayload.class);
 
-        MassMessage<Map<String, Object>> response = new MassMessage<>();
+        MassMessage response = new MassMessage();
         response.setMsgId(taskMessage.getMsgId()); // 回复时使用收到的msgId
         response.setMsgType(MessageType.TASK);
         response.setFrom(MessageDirection.CLIENT);
@@ -120,14 +119,11 @@ public class MassWebSocketClientImpl extends WebSocketClient implements MassWebS
             responseContext.setTid(originalContext.getTid());
             responseContext.setRetryCount(originalContext.getRetryCount());
             responseContext.setDeviceId(this.deviceId); // 确保响应中是我们自己的deviceId
-            // 如果需要，可以从原始context复制更多字段
             response.setContext(responseContext);
         }
 
-
         // 构payload
         Map<String, Object> payloadMap = new HashMap<>();
-        TaskPayload taskPayload = taskMessage.getPayload();
         String stepId = (taskPayload != null && taskPayload.getSteps() != null && !taskPayload.getSteps().isEmpty())
                 ? taskPayload.getSteps().get(0).getStepId()
                 : "step-0-default"; // 提供一个默认值以防万一
@@ -135,13 +131,7 @@ public class MassWebSocketClientImpl extends WebSocketClient implements MassWebS
         payloadMap.put("mockData", "Executed by mock client " + this.deviceId);
         payloadMap.put("status", "SUCCESS");
 
-
-        // 构result
-        MessageResult resMeta = new MessageResult();
-        resMeta.setCode(200);
-        resMeta.setMessage("Mock execution successful for step " + stepId + " by " + this.deviceId);
-
-        response.setPayload(payloadMap);
+        response.setPayload(gson.toJsonTree(payloadMap));
 
         send(gson.toJson(response));
         logger.info("📤 [{}] Sent mock task response for msgId: {}", deviceId, response.getMsgId());

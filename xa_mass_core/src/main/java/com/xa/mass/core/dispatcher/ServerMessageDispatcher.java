@@ -81,15 +81,15 @@ public class ServerMessageDispatcher {
 
     private void processEnvelope(Envelope envelope) {
         try {
-            MassMessage<?> msg = gson.fromJson(envelope.getRawJson(), MassMessage.class);
+            MassMessage msg = gson.fromJson(envelope.getRawJson(), MassMessage.class);
             if (msg == null || msg.getContext() == null) return;
 
             MessageContext context = msg.getContext();
             Optional<MessageHandler> handler = MessageHandlerRegistry.resolve(msg);
             if (handler.isPresent()) {
-                List<MassMessage<?>> responses = handler.get().handle(msg);
+                List<MassMessage> responses = handler.get().handle(msg);
                 if (responses != null) {
-                    for (MassMessage<?> resp : responses) {
+                    for (MassMessage resp : responses) {
                         String json = gson.toJson(resp);
                         outputQueue.offer(Envelope.builder()
                                 .deviceId(context.getDeviceId())
