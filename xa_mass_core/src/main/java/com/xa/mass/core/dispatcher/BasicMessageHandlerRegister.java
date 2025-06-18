@@ -14,7 +14,7 @@ import java.util.List;
  * 自动注册基础的 PING、PONG、TASK 处理器
  */
 @Component
-public class BasicMessageHandlerRegistrar {
+public class BasicMessageHandlerRegister {
 
     @PostConstruct
     public void init() {
