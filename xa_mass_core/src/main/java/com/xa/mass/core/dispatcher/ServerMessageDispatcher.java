@@ -26,10 +26,11 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 @Service
-public class ServerMessageProcessor {
-    private static final Logger logger = LoggerFactory.getLogger(ServerMessageProcessor.class);
+public class ServerMessageDispatcher {
+    private static final Logger logger = LoggerFactory.getLogger(ServerMessageDispatcher.class);
     private final Gson gson = new Gson();
-    private ExecutorService executorService; // init 中初始化
+    private ExecutorService inputExecutor;
+    private ExecutorService outputExecutor;
 
     @Autowired
     private ServerSessionManager sessionManager;
@@ -42,22 +43,22 @@ public class ServerMessageProcessor {
     @Qualifier("outputQueue")
     private MessageQueue<Envelope> outputQueue; // 修改泛型
 
+
+
     @PostConstruct
     public void init() {
         logger.info("ServerMessageProcessor init");
-        int threadPoolSize = 2; // 一个用于输入，一个用于输
-        executorService = Executors.newFixedThreadPool(threadPoolSize);
-        startProcessing();
+        inputExecutor = Executors.newFixedThreadPool(8);  // 可调节为CPU核心数 * 2
+        outputExecutor = Executors.newFixedThreadPool(8); // 可调节为IO等待优化
+        for (int i = 0; i < 8; i++) {
+            inputExecutor.submit(this::processInputQueueLoop);
+            outputExecutor.submit(this::processOutputQueueLoop);
+        }
     }
 
-    private void startProcessing() {
-        logger.info("ServerMessageProcessor startProcessing");
-        executorService.submit(this::processInputQueueLoop);
-        executorService.submit(this::processOutputQueueLoop);
-    }
 
     private void processInputQueueLoop() {
-        while (!Thread.currentThread().isInterrupted() && executorService != null && !executorService.isShutdown()) {
+        while (!Thread.currentThread().isInterrupted() && inputExecutor != null && !inputExecutor.isShutdown()) {
             try {
 
                 Envelope storedMessage = inputQueue.poll(15, TimeUnit.SECONDS); // 轮询 StoredMessage
@@ -79,7 +80,7 @@ public class ServerMessageProcessor {
     }
 
     private void processOutputQueueLoop() {
-        while (!Thread.currentThread().isInterrupted() && executorService != null && !executorService.isShutdown()) {
+        while (!Thread.currentThread().isInterrupted() && outputExecutor != null && !outputExecutor.isShutdown()) {
             try {
                 Envelope storedMessage = outputQueue.poll(15, TimeUnit.SECONDS); // 轮询 StoredMessage
                 logger.info("processOutputQueueLoop poll from outputQueue..." +outputQueue.getName() +" storedMessage= "+storedMessage);
@@ -217,6 +218,13 @@ public class ServerMessageProcessor {
     @PreDestroy
     public void shutdown() {
         logger.info("Shutting down ServerMessageProcessor executor service.");
+        shutDownExecutor(inputExecutor);
+        shutDownExecutor(outputExecutor);
+        logger.info("ServerMessageProcessor executor service shut down.");
+    }
+
+
+    public void shutDownExecutor(ExecutorService executorService) {
         if (executorService != null) {
             executorService.shutdown();
             try {
@@ -228,6 +236,7 @@ public class ServerMessageProcessor {
                 Thread.currentThread().interrupt();
             }
         }
-        logger.info("ServerMessageProcessor executor service shut down.");
     }
+
+
 }
