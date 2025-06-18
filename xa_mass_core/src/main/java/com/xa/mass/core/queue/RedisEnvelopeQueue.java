@@ -7,13 +7,11 @@ import io.lettuce.core.api.sync.RedisStreamCommands;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
 
 /**
- * 基于 Envelope 的 Redis Stream 消息队列实现，封装发布和消费逻辑
+ * 支持读写分离的 Redis Stream Envelope 队列。
  */
 public class RedisEnvelopeQueue implements MessageQueue<Envelope> {
 
@@ -22,29 +20,36 @@ public class RedisEnvelopeQueue implements MessageQueue<Envelope> {
     private final String streamKey;
     private final String groupName;
     private final String consumerName;
-    private final StatefulRedisConnection<String, String> connection;
-    private final RedisStreamCommands<String, String> commands;
-    private final Gson gson;
 
-    public RedisEnvelopeQueue(String streamKey,
-                              String groupName,
-                              String consumerName,
-                              StatefulRedisConnection<String, String> connection,
-                              Gson gson) {
+    private final RedisStreamCommands<String, String> readCommands;
+    private final RedisStreamCommands<String, String> writeCommands;
+
+    public RedisEnvelopeQueue(
+            String streamKey,
+            String groupName,
+            String consumerName,
+            StatefulRedisConnection<String, String> readConn,
+            StatefulRedisConnection<String, String> writeConn
+    ) {
         this.streamKey = streamKey;
         this.groupName = groupName;
         this.consumerName = consumerName;
-        this.connection = connection;
-        this.commands = connection.sync();
-        this.gson = gson;
+        this.readCommands = readConn.sync();
+        this.writeCommands = writeConn.sync();
         initGroup();
     }
 
     private void initGroup() {
         try {
-            commands.xgroupCreate(XReadArgs.StreamOffset.from(streamKey, "0-0"), groupName, XGroupCreateArgs.Builder.mkstream(true));
+            readCommands.xgroupCreate(
+                    XReadArgs.StreamOffset.from(streamKey, "0-0"),
+                    groupName,
+                    XGroupCreateArgs.Builder.mkstream(true)
+            );
         } catch (RedisBusyException e) {
             logger.info("Group already exists: {}", groupName);
+        } catch (Exception e) {
+            logger.error("Group creation failed", e);
         }
     }
 
@@ -56,48 +61,69 @@ public class RedisEnvelopeQueue implements MessageQueue<Envelope> {
             fields.put("deviceId", envelope.getDeviceId());
             fields.put("connRole", envelope.getConnRole());
             fields.put("receivedAt", String.valueOf(envelope.getReceivedAt()));
-            if (envelope.getTraceId() != null) fields.put("traceId", envelope.getTraceId());
-            commands.xadd(streamKey, fields);
+            if (envelope.getTraceId() != null) {
+                fields.put("traceId", envelope.getTraceId());
+            }
+
+            // 加入 maxlen 避免堆积
+            writeCommands.xadd(streamKey, XAddArgs.Builder.maxlen(10000), fields);
         } catch (Exception e) {
-            logger.error("Offer failed", e);
+            logger.error("Redis xadd failed", e);
         }
     }
 
     @Override
     public Envelope poll(long timeout, TimeUnit unit) throws InterruptedException {
         try {
-            List<StreamMessage<String, String>> messages = commands.xreadgroup(
+            List<StreamMessage<String, String>> messages = readCommands.xreadgroup(
                     Consumer.from(groupName, consumerName),
                     XReadArgs.Builder.count(1).block(unit.toMillis(timeout)),
-                    XReadArgs.StreamOffset.lastConsumed(streamKey));
+                    XReadArgs.StreamOffset.lastConsumed(streamKey)
+            );
 
             if (messages != null && !messages.isEmpty()) {
                 StreamMessage<String, String> msg = messages.get(0);
                 Envelope envelope = fromFields(msg.getBody());
-                commands.xack(streamKey, groupName, msg.getId());
+                readCommands.xack(streamKey, groupName, msg.getId());
                 return envelope;
             }
         } catch (RedisCommandTimeoutException e) {
-            // no-op
+            // ignore - treated as no message
+        } catch (Exception e) {
+            logger.error("Redis xreadgroup failed", e);
         }
+
         return null;
     }
 
     private Envelope fromFields(Map<String, String> map) {
-        return Envelope.builder().rawJson(map.get("rawJson")).deviceId(map.get("deviceId"))
-                .traceId(map.get("traceId")).
-                receivedAt(Long.parseLong(map.getOrDefault("receivedAt", String.valueOf(System.currentTimeMillis()))))
-                .connRole(map.get("connRole")).build();
+        return Envelope.builder()
+                .rawJson(map.get("rawJson"))
+                .deviceId(map.get("deviceId"))
+                .connRole(map.get("connRole"))
+                .traceId(map.get("traceId"))
+                .receivedAt(Long.parseLong(map.getOrDefault("receivedAt", String.valueOf(System.currentTimeMillis()))))
+                .build();
     }
 
     @Override
     public boolean isEmpty() {
-        return commands.xlen(streamKey) == 0;
+        try {
+            return readCommands.xlen(streamKey) == 0;
+        } catch (Exception e) {
+            logger.warn("Redis isEmpty check failed", e);
+            return false;
+        }
     }
 
     @Override
     public int size() {
-        return commands.xlen(streamKey).intValue();
+        try {
+            return readCommands.xlen(streamKey).intValue();
+        } catch (Exception e) {
+            logger.warn("Redis size check failed", e);
+            return -1;
+        }
     }
 
     @Override

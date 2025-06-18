@@ -1,24 +1,22 @@
 package com.xa.mass.core.config;
 
-
-import com.google.gson.Gson;
 import com.xa.mass.core.queue.Envelope;
 import com.xa.mass.core.queue.MessageQueue;
 import com.xa.mass.core.queue.RedisEnvelopeQueue;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.RedisURI;
 import io.lettuce.core.api.StatefulRedisConnection;
+import io.lettuce.core.resource.DefaultClientResources;
+import io.lettuce.core.resource.ClientResources;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.context.annotation.Profile; // 导入 Profile
-import org.springframework.util.StringUtils;
-
+import org.springframework.context.annotation.Profile;
 
 @Configuration
-@Profile("!local") // "local" profile 不激活时生效 (例如 "prod", "dev" 
-// 或@Profile({"prod", "dev"}) 等具体指
+@Profile("!local")
 public class RedisQueueConfig {
 
     @Value("${spring.redis.host:localhost}")
@@ -33,49 +31,57 @@ public class RedisQueueConfig {
     @Value("${spring.redis.database:0}")
     private int redisDatabase;
 
-
     @Bean(destroyMethod = "shutdown")
-    public RedisClient redisClient() {
+    public RedisClient redisClient(ClientResources clientResources) {
         RedisURI.Builder uriBuilder = RedisURI.builder()
                 .withHost(redisHost)
                 .withPort(redisPort)
                 .withDatabase(redisDatabase);
 
-        if (StringUtils.hasText(redisPassword)) {
+        if (redisPassword != null && !redisPassword.isEmpty()) {
             uriBuilder.withPassword(redisPassword.toCharArray());
         }
-        return RedisClient.create(uriBuilder.build());
+
+        return RedisClient.create(clientResources, uriBuilder.build());
+    }
+
+    @Bean(destroyMethod = "shutdown")
+    @ConditionalOnMissingBean
+    public ClientResources clientResources() {
+        return DefaultClientResources.create();
     }
 
     @Bean(destroyMethod = "close")
-    public StatefulRedisConnection<String, String> statefulRedisConnection(RedisClient redisClient) {
+    @Qualifier("readConnection")
+    public StatefulRedisConnection<String, String> readRedisConnection(RedisClient redisClient) {
         return redisClient.connect();
     }
 
-    @Bean
-    public Gson gsonForQueue() {
-        return new Gson();
+    @Bean(destroyMethod = "close")
+    @Qualifier("writeConnection")
+    public StatefulRedisConnection<String, String> writeRedisConnection(RedisClient redisClient) {
+        return redisClient.connect();
     }
 
     @Bean
     @Qualifier("inputQueue")
     public MessageQueue<Envelope> redisInputQueue(
-            StatefulRedisConnection<String, String> connection,
-            Gson gsonForQueue,
+            @Qualifier("readConnection") StatefulRedisConnection<String, String> readConn,
+            @Qualifier("writeConnection") StatefulRedisConnection<String, String> writeConn,
             @Value("${mass.queue.input.stream-key}") String streamKey,
             @Value("${mass.queue.input.group-name}") String groupName,
             @Value("${mass.queue.input.consumer-name}") String consumerName) {
-        return new RedisEnvelopeQueue(streamKey, groupName, consumerName, connection, gsonForQueue);
+        return new RedisEnvelopeQueue(streamKey, groupName, consumerName, readConn, writeConn);
     }
 
     @Bean
     @Qualifier("outputQueue")
     public MessageQueue<Envelope> redisOutputQueue(
-            StatefulRedisConnection<String, String> connection,
-            Gson gsonForQueue,
+            @Qualifier("readConnection") StatefulRedisConnection<String, String> readConn,
+            @Qualifier("writeConnection") StatefulRedisConnection<String, String> writeConn,
             @Value("${mass.queue.output.stream-key}") String streamKey,
             @Value("${mass.queue.output.group-name}") String groupName,
             @Value("${mass.queue.output.consumer-name}") String consumerName) {
-        return new RedisEnvelopeQueue(streamKey, groupName, consumerName, connection, gsonForQueue);
+        return new RedisEnvelopeQueue(streamKey, groupName, consumerName, readConn, writeConn);
     }
 }

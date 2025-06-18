@@ -55,6 +55,7 @@ public class ServerMessageHandler extends SimpleChannelInboundHandler<TextWebSoc
         sessionManager.addSession(context.getDeviceId(), context.getConnRole(), ctx.channel(), ctx);
 
         Envelope sm = messageDecoder.toStoredMessage(raw, parsed);
+        logger.info("Received message: {}", sm);
         inputQueue.offer(sm);
         logger.debug("Offered to inputQueue: {}", sm);
 
