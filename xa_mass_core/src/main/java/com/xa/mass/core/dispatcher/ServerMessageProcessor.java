@@ -6,8 +6,8 @@ import com.xa.mass.core.model.message.MassMessage;
 import com.xa.mass.core.model.message.MessageContext;
 import com.xa.mass.core.model.message.MessageResult;
 import com.xa.mass.core.model.message.enums.MessageType;
+import com.xa.mass.core.queue.Envelope;
 import com.xa.mass.core.queue.MessageQueue;
-import com.xa.mass.core.queue.StoredMessage;
 import com.xa.mass.core.session.ServerSessionManager;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;
@@ -36,11 +36,11 @@ public class ServerMessageProcessor {
 
     @Autowired
     @Qualifier("inputQueue")
-    private MessageQueue<StoredMessage> inputQueue; // 修改泛型
+    private MessageQueue<Envelope> inputQueue; // 修改泛型
 
     @Autowired
     @Qualifier("outputQueue")
-    private MessageQueue<StoredMessage> outputQueue; // 修改泛型
+    private MessageQueue<Envelope> outputQueue; // 修改泛型
 
     @PostConstruct
     public void init() {
@@ -60,7 +60,7 @@ public class ServerMessageProcessor {
         while (!Thread.currentThread().isInterrupted() && executorService != null && !executorService.isShutdown()) {
             try {
 
-                StoredMessage storedMessage = inputQueue.poll(15, TimeUnit.SECONDS); // 轮询 StoredMessage
+                Envelope storedMessage = inputQueue.poll(15, TimeUnit.SECONDS); // 轮询 StoredMessage
                 logger.info("Polling from inputQueue..." +inputQueue.getName() +" storedMessage= "+storedMessage);
                 if (storedMessage != null) {
                     logger.debug("Polled from inputQueue: {}", storedMessage);
@@ -81,7 +81,7 @@ public class ServerMessageProcessor {
     private void processOutputQueueLoop() {
         while (!Thread.currentThread().isInterrupted() && executorService != null && !executorService.isShutdown()) {
             try {
-                StoredMessage storedMessage = outputQueue.poll(15, TimeUnit.SECONDS); // 轮询 StoredMessage
+                Envelope storedMessage = outputQueue.poll(15, TimeUnit.SECONDS); // 轮询 StoredMessage
                 logger.info("processOutputQueueLoop poll from outputQueue..." +outputQueue.getName() +" storedMessage= "+storedMessage);
                 if (storedMessage != null) {
                     logger.debug("Polled from outputQueue: {}", storedMessage);
@@ -100,8 +100,8 @@ public class ServerMessageProcessor {
     }
 
     // 方法名和参数类型修改为处StoredMessage
-    private void processStoredMessage(StoredMessage storedMessage) {
-        String messageContent = storedMessage.getMessageContent();
+    private void processStoredMessage(Envelope storedMessage) {
+        String messageContent = storedMessage.getRawJson();
         String deviceId = storedMessage.getDeviceId();
         String connRole = storedMessage.getConnRole();
 
@@ -140,7 +140,7 @@ public class ServerMessageProcessor {
                 if (resultMessages != null) {
                     for (MassMessage<?> resultMessage : resultMessages) {
                         String resultJson = gson.toJson(resultMessage);
-                        outputQueue.offer(new StoredMessage(resultJson, deviceId, connRole));
+                        outputQueue.offer(Envelope.builder().rawJson(resultJson).deviceId(deviceId).connRole(connRole).build());
                     }
                 }
 
@@ -156,8 +156,8 @@ public class ServerMessageProcessor {
     }
 
     // 方法名和参数类型修改为处StoredMessage
-    private void sendStoredMessage(StoredMessage storedMessage) {
-        String messageContent = storedMessage.getMessageContent();
+    private void sendStoredMessage(Envelope storedMessage) {
+        String messageContent = storedMessage.getRawJson();
         String deviceId = storedMessage.getDeviceId();
         String connRole = storedMessage.getConnRole();
 

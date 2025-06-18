@@ -5,7 +5,7 @@ import com.google.gson.JsonSyntaxException;
 import com.xa.mass.core.model.message.MassMessage;
 import com.xa.mass.core.model.message.MessageContext;
 import com.xa.mass.core.queue.MessageQueue;
-import com.xa.mass.core.queue.StoredMessage;
+import com.xa.mass.core.queue.Envelope;
 import com.xa.mass.core.session.ServerSessionManager;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
@@ -22,72 +22,60 @@ import org.springframework.stereotype.Component;
 public class ServerMessageHandler extends SimpleChannelInboundHandler<TextWebSocketFrame> {
 
     private static final Logger logger = LoggerFactory.getLogger(ServerMessageHandler.class);
-    private final Gson gson = new Gson();
 
     @Autowired
     private ServerSessionManager sessionManager;
 
     @Autowired
+    private MessageDecoder messageDecoder;
+
+    @Autowired
+    private MessageContextValidator contextValidator;
+
+    @Autowired
     @Qualifier("inputQueue")
-    private MessageQueue<StoredMessage> inputQueue; // 泛型改为 StoredMessage
+    private MessageQueue<Envelope> inputQueue;
 
     @Override
     protected void channelRead0(ChannelHandlerContext ctx, TextWebSocketFrame msgFrame) {
-        String message = msgFrame.text();
-        if (message == null || message.trim().isEmpty()) {
-            logger.warn("Received empty message from {}", ctx.channel().remoteAddress());
+        String raw = msgFrame.text();
+
+        if (raw == null || !raw.trim().startsWith("{")) {
+            logger.warn("Dropped invalid message from {}: {}", ctx.channel().remoteAddress(), raw);
             return;
         }
 
-        if (!message.trim().startsWith("{")) {
-            logger.warn("Invalid JSON format from {}: {}", ctx.channel().remoteAddress(), message);
+        MassMessage<?> parsed = messageDecoder.tryDecode(raw);
+        if (!contextValidator.isValid(parsed)) {
+            logger.warn("Message missing context info from {}: {}", ctx.channel().remoteAddress(), raw);
             return;
         }
 
-        try {
-            MassMessage<?> preParseForContext = gson.fromJson(message, MassMessage.class);
-            if (preParseForContext == null) {
-                logger.warn("Failed to parse message to MassMessage from {}: {}", ctx.channel().remoteAddress(), message);
-                return;
-            }
+        MessageContext context = parsed.getContext();
+        sessionManager.addSession(context.getDeviceId(), context.getConnRole(), ctx.channel(), ctx);
 
-            MessageContext context = preParseForContext.getContext();
-            if (context == null || context.getDeviceId() == null || context.getConnRole() == null) {
-                logger.warn("Message from {} is missing deviceId or connRole in context: {}", ctx.channel().remoteAddress(), message);
-                return;
-            }
+        Envelope sm = messageDecoder.toStoredMessage(raw, parsed);
+        inputQueue.offer(sm);
+        logger.debug("Offered to inputQueue: {}", sm);
 
-            // 仍然需要将 Channel Context 存入 SessionManager
-            sessionManager.addSession(context.getDeviceId(), context.getConnRole(), ctx.channel(), ctx);
-
-            // 创建 StoredMessage 并放入队
-            StoredMessage storedMessage = new StoredMessage(message, context.getDeviceId(), context.getConnRole());
-            inputQueue.offer(storedMessage);
-            logger.debug("Offered to inputQueue: {}", storedMessage);
-
-        } catch (JsonSyntaxException e) {
-            logger.error("JSON syntax error processing message from {}: {}", ctx.channel().remoteAddress(), message, e);
-        } catch (Exception e) {
-            logger.error("Unexpected error in channelRead0 from {}: {}", ctx.channel().remoteAddress(), message, e);
-        }
     }
 
-    // handlerRemoved, channelActive, exceptionCaught 保持不变
     @Override
     public void handlerRemoved(ChannelHandlerContext ctx) {
         sessionManager.removeSession(ctx.channel());
-        logger.info("WebSocket connection closed, session removed: {}", ctx.channel().remoteAddress());
+        logger.info("Connection closed, session removed: {}", ctx.channel().remoteAddress());
     }
 
     @Override
     public void channelActive(ChannelHandlerContext ctx) {
-        logger.info("New WebSocket connection active: {}", ctx.channel().remoteAddress());
+        logger.info("New connection: {}", ctx.channel().remoteAddress());
     }
 
     @Override
     public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
-        logger.error("WebSocket handler error for channel {}:", ctx.channel().remoteAddress(), cause);
+        logger.error("Error on channel {}:", ctx.channel().remoteAddress(), cause);
         sessionManager.removeSession(ctx.channel());
         ctx.close();
     }
 }
+

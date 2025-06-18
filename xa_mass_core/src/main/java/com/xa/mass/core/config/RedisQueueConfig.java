@@ -2,9 +2,9 @@ package com.xa.mass.core.config;
 
 
 import com.google.gson.Gson;
+import com.xa.mass.core.queue.Envelope;
 import com.xa.mass.core.queue.MessageQueue;
-import com.xa.mass.core.queue.RedisStreamMessageQueue;
-import com.xa.mass.core.queue.StoredMessage;
+import com.xa.mass.core.queue.RedisEnvelopeQueue;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.RedisURI;
 import io.lettuce.core.api.StatefulRedisConnection;
@@ -59,23 +59,23 @@ public class RedisQueueConfig {
 
     @Bean
     @Qualifier("inputQueue")
-    public MessageQueue<StoredMessage> redisInputQueue(
+    public MessageQueue<Envelope> redisInputQueue(
             StatefulRedisConnection<String, String> connection,
             Gson gsonForQueue,
             @Value("${mass.queue.input.stream-key}") String streamKey,
             @Value("${mass.queue.input.group-name}") String groupName,
             @Value("${mass.queue.input.consumer-name}") String consumerName) {
-        return new RedisStreamMessageQueue(streamKey, groupName, consumerName, connection, gsonForQueue);
+        return new RedisEnvelopeQueue(streamKey, groupName, consumerName, connection, gsonForQueue);
     }
 
     @Bean
     @Qualifier("outputQueue")
-    public MessageQueue<StoredMessage> redisOutputQueue(
+    public MessageQueue<Envelope> redisOutputQueue(
             StatefulRedisConnection<String, String> connection,
             Gson gsonForQueue,
             @Value("${mass.queue.output.stream-key}") String streamKey,
             @Value("${mass.queue.output.group-name}") String groupName,
             @Value("${mass.queue.output.consumer-name}") String consumerName) {
-        return new RedisStreamMessageQueue(streamKey, groupName, consumerName, connection, gsonForQueue);
+        return new RedisEnvelopeQueue(streamKey, groupName, consumerName, connection, gsonForQueue);
     }
 }

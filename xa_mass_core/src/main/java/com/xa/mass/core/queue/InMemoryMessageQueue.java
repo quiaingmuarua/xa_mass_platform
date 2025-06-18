@@ -6,16 +6,16 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
-public class InMemoryMessageQueue implements MessageQueue<StoredMessage> { // 修改泛型
+public class InMemoryMessageQueue implements MessageQueue<Envelope> { // 修改泛型
     // 使用 BlockingQueue，例LinkedBlockingQueue
-    private final BlockingQueue<StoredMessage> queue; // 修改泛型
+    private final BlockingQueue<Envelope> queue; // 修改泛型
 
     public InMemoryMessageQueue() {
         this.queue = new LinkedBlockingQueue<>(); // 无界队列
     }
 
     @Override
-    public void offer(StoredMessage message) { // 修改参数类型
+    public void offer(Envelope message) { // 修改参数类型
         if (message == null) {
             throw new IllegalArgumentException("Message cannot be null");
         }
@@ -34,7 +34,7 @@ public class InMemoryMessageQueue implements MessageQueue<StoredMessage> { // �
      * @return 队列的头部元
      * @throws InterruptedException 如果在等待时线程被中
      */
-    public StoredMessage take() throws InterruptedException { // 修改返回类型
+    public Envelope take() throws InterruptedException { // 修改返回类型
         return queue.take();
     }
 
@@ -47,7 +47,7 @@ public class InMemoryMessageQueue implements MessageQueue<StoredMessage> { // �
      * @throws InterruptedException 如果在等待时线程被中
      */
     @Override
-    public StoredMessage poll(long timeout, TimeUnit unit) throws InterruptedException { // 修改返回类型
+    public Envelope poll(long timeout, TimeUnit unit) throws InterruptedException { // 修改返回类型
         return queue.poll(timeout, unit);
     }
 

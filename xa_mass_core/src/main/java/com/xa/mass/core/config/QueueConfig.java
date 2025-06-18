@@ -7,7 +7,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 
-import com.xa.mass.core.queue.StoredMessage; // 导入 StoredMessage
+import com.xa.mass.core.queue.Envelope; // 导入 StoredMessage
 import org.springframework.context.annotation.Profile; // 导入 Profile
 
 @Configuration
@@ -16,13 +16,13 @@ public class QueueConfig { // 可以移除 ("customQueueConfigName") 如果不�
 
     @Bean
     @Qualifier("inputQueue")
-    public MessageQueue<StoredMessage> inputQueue() { // 返回类型改为 MessageQueue<StoredMessage>
+    public MessageQueue<Envelope> inputQueue() { // 返回类型改为 MessageQueue<StoredMessage>
         return new InMemoryMessageQueue(); // InMemoryMessageQueue 应该实现 MessageQueue<StoredMessage>
     }
 
     @Bean
     @Qualifier("outputQueue")
-    public MessageQueue<StoredMessage> outputQueue() { // 返回类型改为 MessageQueue<StoredMessage>
+    public MessageQueue<Envelope> outputQueue() { // 返回类型改为 MessageQueue<StoredMessage>
         return new InMemoryMessageQueue();
     }
 }
