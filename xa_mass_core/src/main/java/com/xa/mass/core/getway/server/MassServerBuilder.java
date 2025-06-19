@@ -157,12 +157,18 @@ public class MassServerBuilder {
     public MassServerConfig build() {
         if (registerDefaults) {
             registerDefaultMiddlewares();
+            // 如果 handlerMap 为空，注册一个 demo handler
+            if (handlerMap.isEmpty()) {
+                this.registerHandler("demo", com.xa.mass.core.model.message.enums.MessageType.TASK, Collections::singletonList);
+            }
         }
         DispatcherContext dispatcherContext = new DispatcherContext(
             inputQueue,
             outputQueue,
             sessionManager,
-            gson
+            gson,
+            middlewareRegistry,
+            handlerMap
         );
         return new MassServerConfig(
             port,

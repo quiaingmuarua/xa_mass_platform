@@ -16,8 +16,8 @@ public class DispatcherContext {
     private final MessageQueue<Envelope> outputQueue;
     private final ServerSessionManager sessionManager;
     private final Gson gson;
-    private final MiddlewareRegistry middlewareRegistry = new MiddlewareRegistry();
-    private final Map<String, Map<MessageType, MessageHandler>> handlerMap = new HashMap<>();
+    private final MiddlewareRegistry middlewareRegistry;
+    private final Map<String, Map<MessageType, MessageHandler>> handlerMap;
     // ... 可扩展其它只读配置
 
     private MiddlewareDirection direction;
@@ -26,12 +26,16 @@ public class DispatcherContext {
             MessageQueue<Envelope> inputQueue,
             MessageQueue<Envelope> outputQueue,
             ServerSessionManager sessionManager,
-            Gson gson
+            Gson gson,
+            MiddlewareRegistry middlewareRegistry,
+            Map<String, Map<MessageType, MessageHandler>> handlerMap
     ) {
         this.inputQueue = inputQueue;
         this.outputQueue = outputQueue;
         this.sessionManager = sessionManager;
         this.gson = gson;
+        this.middlewareRegistry = middlewareRegistry;
+        this.handlerMap = handlerMap;
     }
 
     public MessageQueue<Envelope> getInputQueue() { return inputQueue; }
