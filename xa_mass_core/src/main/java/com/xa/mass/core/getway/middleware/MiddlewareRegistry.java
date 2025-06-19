@@ -1,6 +1,9 @@
 package com.xa.mass.core.getway.middleware;
 
 import com.xa.mass.core.getway.dispatcher.MessageHandlerRegistry;
+import com.xa.mass.core.getway.exception.CommandException;
+import com.xa.mass.core.getway.exception.ErrorCode;
+import com.xa.mass.core.getway.exception.ValidationException;
 import com.xa.mass.core.getway.queue.Envelope;
 import com.xa.mass.core.model.message.MassMessage;
 import com.xa.mass.core.model.message.MessageContext;
@@ -19,10 +22,25 @@ public class MiddlewareRegistry {
     private final Map<Integer, Boolean> inputEnabledMap = new HashMap<>();
     private final Map<Integer, Boolean> outputEnabledMap = new HashMap<>();
 
-    static {
+    public static void autoRegister() {
         // 自动注册主流程 middleware（优先级最大，保证在链尾）
         MiddlewareRegistry.instance.registerInput(Integer.MAX_VALUE, processEnvelopeMiddleware());
         MiddlewareRegistry.instance.registerOutput(Integer.MAX_VALUE, sendEnvelopeMiddleware());
+
+        MiddlewareRegistry.instance.registerExceptionMiddleware((envelope, context, ex) -> {
+            if (ex instanceof ValidationException) {
+                logger.warn("[ExceptionMiddleware] Validation failed: {}", ex.getMessage());
+                return false;
+            } else if (ex instanceof CommandException) {
+                CommandException ce = (CommandException) ex;
+                ErrorCode code = ce.getErrorCode();
+                logger.warn("[CommandException] code={}, msg={}", code.code, ce.getMessage());
+                return false;
+            } else {
+                logger.error("[ExceptionMiddleware] System error: ", ex);
+                return false;
+            }
+        });
     }
 
     List<ExceptionMiddleware> exceptionMiddlewareList = new ArrayList<>();

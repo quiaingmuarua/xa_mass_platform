@@ -44,31 +44,29 @@ public class MassServerConfig {
         info.put("outputQueue", ctx.getOutputQueue() != null ? ctx.getOutputQueue().getClass().getSimpleName() : null);
         info.put("outputQueueSize", ctx.getOutputQueue() != null ? ctx.getOutputQueue().size() : null);
         // Middleware
-        MiddlewareRegistry registry = ctx.getMiddlewareRegistry();
-        if (registry != null) {
-            Map<String, List<Map<String, Object>>> mwInfo = new LinkedHashMap<>();
-            // input
-            List<Map<String, Object>> inputList = new ArrayList<>();
-            for (Map.Entry<Integer, EnvelopeMiddleware> entry : registry.getInputMiddlewareMap().entrySet()) {
-                Map<String, Object> m = new LinkedHashMap<>();
-                m.put("priority", entry.getKey());
-                m.put("class", entry.getValue().getClass().getSimpleName());
-                m.put("enabled", registry.getInputEnabledMap().get(entry.getKey()));
-                inputList.add(m);
-            }
-            mwInfo.put("input", inputList);
-            // output
-            List<Map<String, Object>> outputList = new ArrayList<>();
-            for (Map.Entry<Integer, EnvelopeMiddleware> entry : registry.getOutputMiddlewareMap().entrySet()) {
-                Map<String, Object> m = new LinkedHashMap<>();
-                m.put("priority", entry.getKey());
-                m.put("class", entry.getValue().getClass().getSimpleName());
-                m.put("enabled", registry.getOutputEnabledMap().get(entry.getKey()));
-                outputList.add(m);
-            }
-            mwInfo.put("output", outputList);
-            info.put("middlewares", mwInfo);
+        MiddlewareRegistry registry = MiddlewareRegistry.instance;
+        Map<String, List<Map<String, Object>>> mwInfo = new LinkedHashMap<>();
+        // input
+        List<Map<String, Object>> inputList = new ArrayList<>();
+        for (Map.Entry<Integer, EnvelopeMiddleware> entry : registry.getInputMiddlewareMap().entrySet()) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("priority", entry.getKey());
+            m.put("class", entry.getValue().getClass().getSimpleName());
+            m.put("enabled", registry.getInputEnabledMap().get(entry.getKey()));
+            inputList.add(m);
         }
+        mwInfo.put("input", inputList);
+        // output
+        List<Map<String, Object>> outputList = new ArrayList<>();
+        for (Map.Entry<Integer, EnvelopeMiddleware> entry : registry.getOutputMiddlewareMap().entrySet()) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("priority", entry.getKey());
+            m.put("class", entry.getValue().getClass().getSimpleName());
+            m.put("enabled", registry.getOutputEnabledMap().get(entry.getKey()));
+            outputList.add(m);
+        }
+        mwInfo.put("output", outputList);
+        info.put("middlewares", mwInfo);
         // SessionManager
         Map<String, Object> sessionInfo = new LinkedHashMap<>();
         sessionInfo.put("class", ctx.getSessionManager().getClass().getSimpleName());

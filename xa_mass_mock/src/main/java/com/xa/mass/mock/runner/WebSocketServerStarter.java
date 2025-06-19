@@ -1,10 +1,9 @@
 package com.xa.mass.mock.runner;
 
+import com.google.gson.Gson;
+import com.xa.mass.core.getway.dispatcher.DispatcherContext;
 import com.xa.mass.core.getway.dispatcher.MessageHandler;
-import com.xa.mass.core.getway.exception.CommandException;
-import com.xa.mass.core.getway.exception.ErrorCode;
-import com.xa.mass.core.getway.exception.ValidationException;
-import com.xa.mass.core.getway.middleware.MiddlewareRegistry;
+import com.xa.mass.core.getway.dispatcher.ServerMessageDispatcher;
 import com.xa.mass.core.getway.queue.Envelope;
 import com.xa.mass.core.getway.queue.InMemoryMessageQueue;
 import com.xa.mass.core.getway.queue.MessageQueue;
@@ -26,31 +25,23 @@ import java.util.ArrayList;
 public class WebSocketServerStarter implements CommandLineRunner {
 
     ServerSessionManager sessionManager = ServerSessionManager.INSTANCE;
+    private Gson gson = new Gson();
     private static final Logger log = LoggerFactory.getLogger(WebSocketServerStarter.class);
 
     @Override
     public void run(String... args) throws Exception {
         // 注册基础 handler
-
-
-        MiddlewareRegistry.instance.registerExceptionMiddleware((envelope, context, ex) -> {
-            if (ex instanceof ValidationException) {
-                log.warn("[ExceptionMiddleware] Validation failed: {}", ex.getMessage());
-                return false;
-            } else if (ex instanceof CommandException) {
-                CommandException ce = (CommandException) ex;
-                ErrorCode code = ce.getErrorCode();
-                log.warn("[CommandException] code={}, msg={}", code.code, ce.getMessage());
-                return false;
-            } else {
-                log.error("[ExceptionMiddleware] System error: ", ex);
-                return false;
-            }
-        });
-
         // 2. 构建队列
         MessageQueue<Envelope> inputQueue = new InMemoryMessageQueue();
         MessageQueue<Envelope> outputQueue = new InMemoryMessageQueue();
+        DispatcherContext dispatcherContext = new DispatcherContext(
+                inputQueue,
+                outputQueue,
+                sessionManager,
+                gson
+        );
+
+        ServerMessageDispatcher serverMessageDispatcher=new ServerMessageDispatcher(dispatcherContext);
 
         // 3. handler 示例
         MessageHandler taskHandler = msg -> {
@@ -62,10 +53,7 @@ public class WebSocketServerStarter implements CommandLineRunner {
         MassServerConfig server = MassServerBuilder.create()
                 .withPort(18088)
                 .withWebSocketPath("/ws")
-                .withInputQueue(inputQueue)
-                .withOutputQueue(outputQueue)
                 .registerHandler(MessageType.TASK, "", taskHandler)
-                .withSessionManager(sessionManager)
                 .withDefaultMiddlewares(true)
                 // 如需移除默认认证中间件：.removeInputMiddleware(10)
                 // 如需添加自定义中间件：.registerInputMiddleware(30, customBizMiddleware)
@@ -74,6 +62,7 @@ public class WebSocketServerStarter implements CommandLineRunner {
         log.info(server.describe());
         log.info("Starting MassServer with builder...");
         MassServerStater stater = new MassServerStater(server);
+        serverMessageDispatcher.start();
         stater.start();
     }
 }

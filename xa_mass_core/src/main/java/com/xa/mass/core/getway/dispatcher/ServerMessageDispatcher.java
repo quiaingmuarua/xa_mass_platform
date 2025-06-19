@@ -8,16 +8,15 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.List;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 
 public class ServerMessageDispatcher {
+
     private static final Logger logger = LoggerFactory.getLogger(ServerMessageDispatcher.class);
     private final DispatcherContext context;
-    private final ExecutorService inputExecutor;
-    private final ExecutorService outputExecutor;
+
 
 
     public ServerMessageDispatcher(
@@ -25,12 +24,12 @@ public class ServerMessageDispatcher {
     ) {
 
         this.context = context;
+    }
 
-        inputExecutor = Executors.newFixedThreadPool(8);
-        outputExecutor = Executors.newFixedThreadPool(8);
+    public void start(){
         for (int i = 0; i < 8; i++) {
-            inputExecutor.submit(this::processInputQueueLoop);
-            outputExecutor.submit(this::processOutputQueueLoop);
+            Executors.newFixedThreadPool(8).submit(this::processInputQueueLoop);
+            Executors.newFixedThreadPool(8).submit(this::processOutputQueueLoop);
         }
     }
 
