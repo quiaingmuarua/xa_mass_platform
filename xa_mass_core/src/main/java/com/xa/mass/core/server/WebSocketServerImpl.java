@@ -61,15 +61,6 @@ public class WebSocketServerImpl implements MassWebSocketServer {
     private ServerSessionManager sessionManager;
 
     /**
-     * Spring Bean 初始化后自动调用此方法启动服务器。
-     * 使用配置的端口 {@link #port}。
-     */
-    @PostConstruct
-    public void start() {
-        start(this.port); // 调用重载的 start 方法，使用成员变量 port
-    }
-
-    /**
      * 启动 WebSocket 服务器。
      * @param port 要监听的端口号。
      */
