@@ -1,5 +1,6 @@
 package com.xa.mass.core.server;
 
+import com.xa.mass.core.dispatcher.ServerMessageDispatcher;
 import com.xa.mass.core.session.ServerSessionManager;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.*;
@@ -218,5 +219,42 @@ public class WebSocketServerImpl implements MassWebSocketServer {
      */
     public long getActiveConnectionCount() {
         return activeConnections.get();
+    }
+
+    public void setPort(int port) {
+        this.port = port;
+    }
+
+    public void setWebsocketPath(String websocketPath) {
+        this.websocketPath = websocketPath;
+    }
+
+    public void setSessionManager(ServerSessionManager sessionManager) {
+        this.sessionManager = sessionManager;
+    }
+
+    public void setServerMessageDispatcher(ServerMessageDispatcher dispatcher) {
+        // 这里可以根据需要将 dispatcher 注入到 serverMessageHandler 或其他组件
+        // 这里只是示例，具体实现可根据实际需求调整
+    }
+
+    public void setInputQueue(com.xa.mass.core.queue.MessageQueue<com.xa.mass.core.queue.Envelope> inputQueue) {
+        // 这里可以根据需要将 inputQueue 注入到 serverMessageHandler 或 dispatcher
+    }
+
+    public void setOutputQueue(com.xa.mass.core.queue.MessageQueue<com.xa.mass.core.queue.Envelope> outputQueue) {
+        // 这里可以根据需要将 outputQueue 注入到 dispatcher
+    }
+
+    public void setInputMiddlewareList(java.util.List<com.xa.mass.core.middleware.MessageMiddleware> inputMiddlewareList) {
+        // 这里可以根据需要注册 input middleware
+    }
+
+    public void setOutputMiddlewareList(java.util.List<com.xa.mass.core.middleware.MessageMiddleware> outputMiddlewareList) {
+        // 这里可以根据需要注册 output middleware
+    }
+
+    public void setHandlerMap(java.util.Map<String, java.util.Map<com.xa.mass.core.model.message.enums.MessageType, com.xa.mass.core.dispatcher.MessageHandler>> handlerMap) {
+        // 这里可以根据需要注册 handler
     }
 }
