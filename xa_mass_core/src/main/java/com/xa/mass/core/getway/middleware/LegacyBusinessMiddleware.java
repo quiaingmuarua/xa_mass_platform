@@ -30,12 +30,9 @@ public class LegacyBusinessMiddleware implements EnvelopeMiddleware {
         if (!contextValidator.isValid(parsed)) {
             throw new ValidationException("Message missing context info: " + raw);
         }
-        MessageContext msgCtx = parsed.getContext();
-        context.getSessionManager().addSession(msgCtx.getDeviceId(), msgCtx.getConnRole(), null, null); // 这里可补充 channel/context
-        Envelope sm = messageDecoder.toStoredMessage(raw, parsed);
-        logger.info("Received message: {}", sm);
-        context.getInputQueue().offer(sm);
-        logger.debug("Offered to inputQueue: {}", sm);
+        // 可选：校验通过后将解析结果放入 context，供后续中间件/handler 用
+        // context.setParsedMessage(parsed); // 如 context 支持此方法
+        logger.info("Decoded and validated message: {}", parsed);
         return true;
     }
 } 

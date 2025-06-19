@@ -16,29 +16,27 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.ArrayList;
+import com.xa.mass.core.getway.middleware.MiddlewareRegistry;
 
 public class ServerMessageDispatcher {
     private static final Logger logger = LoggerFactory.getLogger(ServerMessageDispatcher.class);
-    private final List<EnvelopeMiddleware> inputMiddlewareList;
-    private final List<EnvelopeMiddleware> outputMiddlewareList;
+    private final MiddlewareRegistry middlewareRegistry;
     private final List<ExceptionMiddleware> exceptionMiddlewareList;
     private final DispatcherContext context;
     private final ExecutorService inputExecutor;
     private final ExecutorService outputExecutor;
 
     public ServerMessageDispatcher(
-            List<EnvelopeMiddleware> inputMiddlewareList,
-            List<EnvelopeMiddleware> outputMiddlewareList,
+            MiddlewareRegistry middlewareRegistry,
             List<ExceptionMiddleware> exceptionMiddlewareList,
             DispatcherContext context
     ) {
-        this.inputMiddlewareList = new ArrayList<>(inputMiddlewareList);
-        this.outputMiddlewareList = new ArrayList<>(outputMiddlewareList);
+        this.middlewareRegistry = middlewareRegistry;
         this.exceptionMiddlewareList = exceptionMiddlewareList;
         this.context = context;
-        // 自动注册主流程 middleware
-        this.inputMiddlewareList.add(processEnvelopeMiddleware());
-        this.outputMiddlewareList.add(sendEnvelopeMiddleware());
+        // 自动注册主流程 middleware（优先级最大，保证在链尾）
+        this.middlewareRegistry.registerInput(Integer.MAX_VALUE, processEnvelopeMiddleware());
+        this.middlewareRegistry.registerOutput(Integer.MAX_VALUE, sendEnvelopeMiddleware());
         inputExecutor = Executors.newFixedThreadPool(8);
         outputExecutor = Executors.newFixedThreadPool(8);
         for (int i = 0; i < 8; i++) {
@@ -54,7 +52,7 @@ public class ServerMessageDispatcher {
                 envelope = context.getInputQueue().poll(15, TimeUnit.SECONDS);
                 if (envelope != null) {
                     context.setDirection(DispatcherContext.MiddlewareDirection.INPUT);
-                    runMiddlewareChain(inputMiddlewareList, envelope);
+                    runMiddlewareChain(middlewareRegistry.getActiveInputMiddlewares(), envelope);
                 }
             } catch (Exception e) {
                 runExceptionMiddlewareChain(envelope, e);
@@ -69,7 +67,7 @@ public class ServerMessageDispatcher {
                 envelope = context.getOutputQueue().poll(15, TimeUnit.SECONDS);
                 if (envelope != null) {
                     context.setDirection(DispatcherContext.MiddlewareDirection.OUTPUT);
-                    runMiddlewareChain(outputMiddlewareList, envelope);
+                    runMiddlewareChain(middlewareRegistry.getActiveOutputMiddlewares(), envelope);
                 }
             } catch (Exception e) {
                 runExceptionMiddlewareChain(envelope, e);
