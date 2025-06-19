@@ -19,6 +19,10 @@ import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 import org.springframework.boot.CommandLineRunner;
 import com.xa.mass.core.getway.server.MassServerStater;
+import com.xa.mass.core.getway.dispatcher.BasicMessageHandlerRegister;
+import com.xa.mass.core.getway.exception.ValidationException;
+import com.xa.mass.core.getway.exception.CommandException;
+import com.xa.mass.core.getway.exception.ErrorCode;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -32,6 +36,9 @@ public class WebSocketServerStarter implements CommandLineRunner {
 
     @Override
     public void run(String... args) throws Exception {
+        // 注册基础 handler
+        BasicMessageHandlerRegister.registerBasicHandlers();
+
         // 1. 组装 middleware 链
         List<EnvelopeMiddleware> inputMiddlewareList = new ArrayList<>();
         inputMiddlewareList.add((envelope, context) -> {
@@ -51,8 +58,18 @@ public class WebSocketServerStarter implements CommandLineRunner {
 
         List<ExceptionMiddleware> exceptionMiddlewareList = new ArrayList<>();
         exceptionMiddlewareList.add((envelope, context, ex) -> {
-            log.error("[ExceptionMiddleware] Exception: {} for device: {}", ex.getMessage(), envelope != null ? envelope.getDeviceId() : "null");
-            return false; // 不继续抛出
+            if (ex instanceof ValidationException) {
+                log.warn("[ExceptionMiddleware] Validation failed: {}", ex.getMessage());
+                return false;
+            } else if (ex instanceof CommandException) {
+                CommandException ce = (CommandException) ex;
+                ErrorCode code = ce.getErrorCode();
+                log.warn("[CommandException] code={}, msg={}", code.code, ce.getMessage());
+                return false;
+            } else {
+                log.error("[ExceptionMiddleware] System error: ", ex);
+                return false;
+            }
         });
 
         // 2. 构建队列

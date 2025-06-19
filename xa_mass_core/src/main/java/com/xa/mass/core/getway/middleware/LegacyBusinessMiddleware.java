@@ -8,6 +8,7 @@ import com.xa.mass.core.getway.queue.MessageDecoder;
 import com.xa.mass.core.getway.queue.MessageContextValidator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import com.xa.mass.core.getway.exception.ValidationException;
 
 public class LegacyBusinessMiddleware implements EnvelopeMiddleware {
     private static final Logger logger = LoggerFactory.getLogger(LegacyBusinessMiddleware.class);
@@ -23,13 +24,11 @@ public class LegacyBusinessMiddleware implements EnvelopeMiddleware {
     public boolean handle(Envelope envelope, DispatcherContext context) {
         String raw = envelope.getRawJson();
         if (raw == null || !raw.trim().startsWith("{")) {
-            logger.warn("Dropped invalid message: {}", raw);
-            return false;
+            throw new ValidationException("Dropped invalid message: " + raw);
         }
         MassMessage parsed = messageDecoder.tryDecode(raw);
         if (!contextValidator.isValid(parsed)) {
-            logger.warn("Message missing context info: {}", raw);
-            return false;
+            throw new ValidationException("Message missing context info: " + raw);
         }
         MessageContext msgCtx = parsed.getContext();
         context.getSessionManager().addSession(msgCtx.getDeviceId(), msgCtx.getConnRole(), null, null); // 这里可补充 channel/context

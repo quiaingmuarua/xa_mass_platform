@@ -1,183 +1,143 @@
-# 🚀 XA Mass Platform
+# 🚀 Mass Platform
 
-**XA Mass Platform** 是一个为多设备控制、任务分发与消息编排而设计的高性能任务驱动平台。架构支持任务三态建模（初始态 ➝ 中间态 ➝ 终结态）、平台接码聚合、规则引擎抽象、Mock 驱动测试，适用于群控、异步调度、高并发接入等场景。
-
----
-
-## 🧱 项目结构概览
-
-```
-xa_mass_platform/
-├── doc                # 项目文档
-├── xa_mass_core       # 核心模块：服务端、引擎、模型、协议等
-│   └── src/main/java/com/xa/mass/core
-│       ├── client     # 客户端协议与实现
-│       ├── config     # 配置相关
-│       ├── engine     # 任务调度与状态流转
-│       ├── model      # 任务、消息、设备等数据结构
-│       ├── processor  # 消息/任务处理器
-│       ├── queue      # 队列与消息中间件适配
-│       ├── server     # 服务端协议与实现
-│       └── session    # 会话与连接管理
-├── xa_mass_mock       # 模拟客户端与测试工具
-│   └── src/main/java/com/xa/mass/mock
-│       ├── config     # mock 配置
-│       └── runner     # 独立挂载/启动脚本（server/client profile 隔离）
-```
+**Mass Platform** 是一个高可扩展、模块化、支持多业务接入的服务端通信与任务调度框架。
+支持 WebSocket/HTTP 双接入、双队列通信、中间件链路处理、handler 分发机制，适配多 App、多业务、多角色场景。
 
 ---
 
-## 🧩 模块职责说明
+## 🗂️ 目录结构
 
-| 模块名            | 说明                                              |
-|-----------------|-------------------------------------------------|
-| **xa_mass_core** | 核心功能模块，整合服务端、调度引擎、数据模型、协议等 |
-| **xa_mass_mock** | 模拟设备客户端、任务执行器、独立挂载 runner、测试工具 |
-| **doc**         | 项目设计、消息协议、开发规划等文档                  |
+```plaintext
+mass-gateway/         # 网络接入与消息处理核心
+├── api/              # HTTP 控制接口
+├── client/           # WebSocket 客户端
+├── config/           # 配置与构建器（如 MassServerBuilder）
+├── dispatcher/       # 分发与 handler 注册体系
+├── middleware/       # 中间件插件机制
+├── model/            # 通用数据模型（消息、设备、任务等）
+├── queue/            # 队列抽象与实现（内存/Redis）
+├── server/           # WebSocket 服务端核心
+└── session/          # 会话管理
+
+mass-mock/            # 演示/测试模块，集成常用逻辑组件
+mass-engine/          # 任务调度与执行（规划中）
+mass-api/             # 通用 HTTP 接口模块（可选）
+mass-trace/           # 链路追踪与监控（可选）
+doc/                  # 项目文档
+```
+
+---
+
+## 🧩 核心模块说明
+
+| 模块名         | 说明                                                         |
+|----------------|--------------------------------------------------------------|
+| mass-gateway   | 网络接入、消息分发与处理核心，支持插件化 handler/middleware   |
+| mass-mock      | 演示/测试用，模拟客户端、服务端、任务流等                     |
+| mass-engine    | 任务调度、规则引擎、任务流转（规划中）                        |
+| mass-api       | HTTP 控制接口，支持主动推送、任务创建、状态查询等              |
+| mass-trace     | 链路追踪与监控，集成 SigNoz/OpenTelemetry（可选）             |
+| doc            | 设计文档、消息协议、开发规划等                                 |
+
+---
+
+## ⚙️ 设计原则
+
+- **双接入**：WebSocket/HTTP 统一接入模型
+- **双通道**：inputQueue/outputQueue 队列独立支持中间件
+- **可组合**：dispatcher/handler/middleware 灵活注册或替换
+- **灵活启动**：支持 Spring Boot 自动启动或 DSL 配置启动
+- **默认实现丰富**：内置常用 handler、队列（内存/Redis）
+- **多 App 支持**：Envelope 支持 appName 字段，handler/middleware 可按 app 注册
+- **可追踪**：traceId 贯穿消息流，便于链路追踪与监控
 
 ---
 
 ## 🚀 快速启动
 
-### 构建所有模块
+### 1. 构建所有模块
 ```bash
 ./mvnw clean install
 ```
 
-### 启动核心服务端（WebSocket Server）
+### 2. 启动服务端（WebSocket Server）
 ```bash
-cd xa_mass_mock
+cd mass-mock
 mvn spring-boot:run -Dspring-boot.run.profiles=server -Dstart-class=com.xa.mass.mock.runner.WebSocketServerSpringBootApp
 ```
 
-### 启动模拟客户端（WebSocket Client，可多实例）
+### 3. 启动模拟客户端（可多实例）
 ```bash
-cd xa_mass_mock
+cd mass-mock
 mvn spring-boot:run -Dspring-boot.run.profiles=client -Dstart-class=com.xa.mass.mock.runner.WebSocketClientSpringBootApp
 ```
 
-- `runner/` 目录下的 Spring Boot 启动类用于独立挂载 server/client，支持 profile 隔离，便于本地和集成测试。
-- 可通过配置文件（如 application.yml）灵活调整端口、客户端数量、连接 URI 等参数。
+- 支持通过配置文件（如 application.yml）灵活调整端口、客户端数量、连接 URI 等参数。
 
 ---
 
-## 🧪 Mock 测试驱动开发
+## 🧰 主要特性
 
-平台内置模拟设备模拟器，可模拟：
-- 接收任务（msgType: send/step）
-- 控制延迟 / 成功 / 超时 / 失败模式
-- 回传回调（on_success / on_failed）
-- 流程链路回放（trace id 支持）
+- **WebSocket/HTTP 双接入，统一消息模型**
+- **input/output 双队列架构，支持独立中间件链**
+- **插件化 handler/middleware 注册与分发**
+- **多 App/多业务/多角色适配**
+- **任务三态建模与调度（mass-engine 规划中）**
+- **链路追踪与监控（可选集成）**
 
-示例：
+---
+
+## 📝 消息模型示例
+
 ```json
 {
-    "msgId": "12345",
-    "msgType": "send",
+  "msgId": "T123456",
+  "msgType": "task",
+  "appName": "demoApp",
+  "from": "server",
+  "context": {
+    "connRole": "task",
+    "taskId": "BizTask_ABC",
+    "traceId": "trace-xxx"
+  },
+  "payload": {
     "steps": [
-        { "stepId": "s1", "action": "createGroup" },
-        { "stepId": "s2", "action": "sendMessage", "dependsOn": ["s1"] }
+      { "stepId": "step-1", "action": "createGroup" },
+      { "stepId": "step-2", "action": "sendMessage", "dependsOn": ["step-1"] }
     ]
+  }
 }
 ```
 
 ---
 
-## ⚙️ 常用指令
-
-| 操作         | 命令                                                                 |
-|--------------|----------------------------------------------------------------------|
-| 构建项目     | `./mvnw clean install`                                               |
-| 启动服务端   | `cd xa_mass_mock && mvn spring-boot:run -Dspring-boot.run.profiles=server -Dstart-class=com.xa.mass.mock.runner.WebSocketServerSpringBootApp` |
-| 启动客户端   | `cd xa_mass_mock && mvn spring-boot:run -Dspring-boot.run.profiles=client -Dstart-class=com.xa.mass.mock.runner.WebSocketClientSpringBootApp` |
-| 清理 Redis   | 可使用脚本或集成工具清除任务队列及状态 hash                           |
-
----
-
-## 📦 外部依赖
+## 📦 依赖环境
 
 - JDK 8+
 - Spring Boot 2.7.x
-- Redis（用于任务状态缓存、队列缓存、Mock 设备跟踪）
-- 可选依赖：
-  - Netty（通信层优化）
-  - Gson（序列化）
-  - Prometheus + Grafana（可观测性监控）
+- Redis（可选，支持分布式队列/状态）
+- 可选：Netty、Gson、Prometheus、SigNoz/OpenTelemetry
 
 ---
 
-## 📝 消息模型设计
+## 📌 开发里程碑
 
-### 设计思路
-- 标准化消息格式（双向统一）
-- 引入消息路由中心（双向 Dispatcher）
-- Server 可订阅 Client 状态（push 模式）
-- 支持多通道通信、设备连接角色，可能一个client有多个role角色连接，通过connRole进行配置
-
-### 任务消息格式
-```json
-{
-    "msgId": "T123456",
-    "msgType": "task",
-    "subMsgType": "group_send",
-    "from": "client"|"server",
-    "context": {
-        "connRole": "messaegs_task",
-        "taskId": "BizTask_ABC",
-        "retryCount": 0,
-        "responseLevel": "step"|"all"
-    },
-    "payload": {
-        "steps": [
-            {
-                "stepId": "step-1",
-                "action": "createGroup",
-                "params": {...}
-            },
-            {
-                "stepId": "step-2",
-                "action": "sendMessage",
-                "dependsOn": ["step-1"],
-                "params": {...}
-            }
-        ]
-    },
-    "result": {
-        "code": 200,
-        "message": "Sent success"
-    }
-}
-```
-
-### 消息类型说明
-
-| msgType  | 方向              | 用途           | 示例 subMsgType          |
-|----------|-----------------|--------------|------------------------|
-| task     | server ➝ client | 任务下发         | create_group, send_message |
-| response | client ➝ server | 任务结果回传       | step, all（阶段、整体）        |
-| ack      | 双向             | 任务或回调的确认     | task_ack, result_ack    |
-| ping     | client ➝ server | 心跳           | 无                      |
-| pong     | server ➝ client | 心跳响应         | 无                      |
-| status   | client ➝ server | 主动上报状态（非任务类） | device_env, login_state |
-| control  | server ➝ client | 服务端控制命令      | reboot, clean_env       |
-| log      | client ➝ server | 上报日志、异常      | exception, stdout, metrics |
-| event    | client ➝ server | 客户端主动触发行为事件  | user_click, app_crash   |
-| config   | server ➝ client | 配置下发         | set_proxy, update_version |
-
-### 设备注册消息
-
-```json
-{
-    "msgType": "register",
-    "context": {
-        "deviceId": "A123456789",
-        "connRole": "task",
-        "lastAckMsgId": "T123456",
-        "curStepId": "step-2"
-    }
-}
-```
+1. **网络层核心开发**（已完成）
+2. **接口拓展与 DSL 构建**（已完成）
+3. **任务系统模块开发 mass-engine**（进行中/下一步）
+4. **可视化与监控 mass-trace**（后续）
 
 ---
 
-本项目致力于打造一个可运行、可追踪、可迭代的任务调度平台核心，支撑未来群控、多平台接码、大规模任务集成等复杂场景。
+## 📚 文档与支持
+
+- 详细设计、消息协议、开发规划见 `doc/` 目录
+- 如需贡献、定制或集成，请参考各模块 README 或联系维护者
+
+---
+
+本项目致力于打造一个可运行、可追踪、可扩展的任务调度与通信平台，支撑未来多业务、多平台、大规模任务集成等复杂场景。
+
+---
+
+如需更详细的接口文档、二次开发指引或业务集成示例，请查阅 `doc/` 或联系作者。

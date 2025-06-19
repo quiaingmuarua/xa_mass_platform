@@ -53,6 +53,7 @@ public class ServerMessageDispatcher {
             try {
                 envelope = context.getInputQueue().poll(15, TimeUnit.SECONDS);
                 if (envelope != null) {
+                    context.setDirection(DispatcherContext.MiddlewareDirection.INPUT);
                     runMiddlewareChain(inputMiddlewareList, envelope);
                 }
             } catch (Exception e) {
@@ -67,6 +68,7 @@ public class ServerMessageDispatcher {
             try {
                 envelope = context.getOutputQueue().poll(15, TimeUnit.SECONDS);
                 if (envelope != null) {
+                    context.setDirection(DispatcherContext.MiddlewareDirection.OUTPUT);
                     runMiddlewareChain(outputMiddlewareList, envelope);
                 }
             } catch (Exception e) {
