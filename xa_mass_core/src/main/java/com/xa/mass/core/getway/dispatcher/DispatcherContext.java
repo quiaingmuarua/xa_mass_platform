@@ -1,13 +1,10 @@
 package com.xa.mass.core.getway.dispatcher;
 
+import com.google.gson.Gson;
+import com.xa.mass.core.getway.middleware.MiddlewareRegistry;
 import com.xa.mass.core.getway.queue.Envelope;
 import com.xa.mass.core.getway.queue.MessageQueue;
 import com.xa.mass.core.getway.session.ServerSessionManager;
-import com.google.gson.Gson;
-import com.xa.mass.core.getway.middleware.MiddlewareRegistry;
-import com.xa.mass.core.model.message.enums.MessageType;
-import java.util.HashMap;
-import java.util.Map;
 
 public class DispatcherContext {
     public enum MiddlewareDirection { INPUT, OUTPUT }
@@ -17,7 +14,6 @@ public class DispatcherContext {
     private final ServerSessionManager sessionManager;
     private final Gson gson;
     private final MiddlewareRegistry middlewareRegistry;
-    private final Map<String, Map<MessageType, MessageHandler>> handlerMap;
     // ... 可扩展其它只读配置
 
     private MiddlewareDirection direction;
@@ -27,15 +23,13 @@ public class DispatcherContext {
             MessageQueue<Envelope> outputQueue,
             ServerSessionManager sessionManager,
             Gson gson,
-            MiddlewareRegistry middlewareRegistry,
-            Map<String, Map<MessageType, MessageHandler>> handlerMap
+            MiddlewareRegistry middlewareRegistry
     ) {
         this.inputQueue = inputQueue;
         this.outputQueue = outputQueue;
         this.sessionManager = sessionManager;
         this.gson = gson;
         this.middlewareRegistry = middlewareRegistry;
-        this.handlerMap = handlerMap;
     }
 
     public MessageQueue<Envelope> getInputQueue() { return inputQueue; }
@@ -47,6 +41,5 @@ public class DispatcherContext {
     public void setDirection(MiddlewareDirection direction) { this.direction = direction; }
 
     public MiddlewareRegistry getMiddlewareRegistry() { return middlewareRegistry; }
-    public Map<String, Map<MessageType, MessageHandler>> getHandlerMap() { return handlerMap; }
-    // ... 其它 getter
+
 } 

@@ -1,30 +1,25 @@
 package com.xa.mass.mock.runner;
 
-import com.xa.mass.core.getway.server.MassServerConfig;
-import com.xa.mass.core.getway.server.MassServerBuilder;
-import com.xa.mass.core.getway.queue.InMemoryMessageQueue;
-import com.xa.mass.core.getway.queue.Envelope;
-import com.xa.mass.core.getway.queue.MessageQueue;
-import com.xa.mass.core.getway.middleware.EnvelopeMiddleware;
-import com.xa.mass.core.getway.middleware.ExceptionMiddleware;
-import com.xa.mass.core.model.message.enums.MessageType;
 import com.xa.mass.core.getway.dispatcher.MessageHandler;
-import com.xa.mass.core.getway.session.ServerSessionManager;
-import com.xa.mass.core.getway.dispatcher.DispatcherContext;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.context.annotation.Profile;
-import org.springframework.stereotype.Component;
-import org.springframework.boot.CommandLineRunner;
-import com.xa.mass.core.getway.server.MassServerStater;
-import com.xa.mass.core.getway.dispatcher.BasicMessageHandlerRegister;
-import com.xa.mass.core.getway.exception.ValidationException;
 import com.xa.mass.core.getway.exception.CommandException;
 import com.xa.mass.core.getway.exception.ErrorCode;
-import com.xa.mass.core.getway.middleware.LegacyBusinessMiddleware;
+import com.xa.mass.core.getway.exception.ValidationException;
+import com.xa.mass.core.getway.middleware.MiddlewareRegistry;
+import com.xa.mass.core.getway.queue.Envelope;
+import com.xa.mass.core.getway.queue.InMemoryMessageQueue;
+import com.xa.mass.core.getway.queue.MessageQueue;
+import com.xa.mass.core.getway.server.MassServerBuilder;
+import com.xa.mass.core.getway.server.MassServerConfig;
+import com.xa.mass.core.getway.server.MassServerStater;
+import com.xa.mass.core.getway.session.ServerSessionManager;
+import com.xa.mass.core.model.message.enums.MessageType;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.boot.CommandLineRunner;
+import org.springframework.context.annotation.Profile;
+import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
-import java.util.List;
 
 @Component
 @Profile("server")
@@ -36,10 +31,9 @@ public class WebSocketServerStarter implements CommandLineRunner {
     @Override
     public void run(String... args) throws Exception {
         // 注册基础 handler
-        BasicMessageHandlerRegister.registerBasicHandlers();
 
-        List<ExceptionMiddleware> exceptionMiddlewareList = new ArrayList<>();
-        exceptionMiddlewareList.add((envelope, context, ex) -> {
+
+        MiddlewareRegistry.instance.registerExceptionMiddleware((envelope, context, ex) -> {
             if (ex instanceof ValidationException) {
                 log.warn("[ExceptionMiddleware] Validation failed: {}", ex.getMessage());
                 return false;
@@ -70,7 +64,7 @@ public class WebSocketServerStarter implements CommandLineRunner {
                 .withWebSocketPath("/ws")
                 .withInputQueue(inputQueue)
                 .withOutputQueue(outputQueue)
-                .registerHandler("whatsapp", MessageType.TASK, taskHandler)
+                .registerHandler(MessageType.TASK, "", taskHandler)
                 .withSessionManager(sessionManager)
                 .withDefaultMiddlewares(true)
                 // 如需移除默认认证中间件：.removeInputMiddleware(10)

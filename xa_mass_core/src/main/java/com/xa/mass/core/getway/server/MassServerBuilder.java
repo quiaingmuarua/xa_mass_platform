@@ -1,25 +1,24 @@
 package com.xa.mass.core.getway.server;
 
+import com.google.gson.Gson;
+import com.xa.mass.core.getway.dispatcher.DispatcherContext;
+import com.xa.mass.core.getway.dispatcher.MessageHandler;
+import com.xa.mass.core.getway.dispatcher.MessageHandlerRegistry;
+import com.xa.mass.core.getway.dispatcher.ServerMessageDispatcher;
+import com.xa.mass.core.getway.middleware.EnvelopeMiddleware;
+import com.xa.mass.core.getway.middleware.MiddlewareRegistry;
 import com.xa.mass.core.getway.queue.Envelope;
 import com.xa.mass.core.getway.queue.MessageQueue;
-import com.xa.mass.core.getway.middleware.EnvelopeMiddleware;
-import com.xa.mass.core.model.message.enums.MessageType;
-import com.xa.mass.core.getway.dispatcher.MessageHandler;
 import com.xa.mass.core.getway.session.ServerSessionManager;
-import com.xa.mass.core.getway.dispatcher.ServerMessageDispatcher;
-import com.xa.mass.core.getway.dispatcher.DispatcherContext;
-import com.google.gson.Gson;
-import com.xa.mass.core.getway.middleware.MiddlewareRegistry;
-
-import java.util.*;
+import com.xa.mass.core.model.message.enums.MessageType;
 
 public class MassServerBuilder {
     private int port = 8080;
     private String websocketPath = "/ws";
     private MessageQueue<Envelope> inputQueue;
     private MessageQueue<Envelope> outputQueue;
-    private final Map<String, Map<MessageType, MessageHandler>> handlerMap = new HashMap<>();
-    private final MiddlewareRegistry middlewareRegistry = new MiddlewareRegistry();
+
+    private final MiddlewareRegistry middlewareRegistry = MiddlewareRegistry.instance;
 
     private ServerSessionManager sessionManager;
     private ServerMessageDispatcher serverMessageDispatcher;
@@ -53,22 +52,8 @@ public class MassServerBuilder {
         return this;
     }
 
-    public MassServerBuilder registerHandler(String appName, MessageType type, MessageHandler handler) {
-        handlerMap.computeIfAbsent(appName, k -> new HashMap<>()).put(type, handler);
-        return this;
-    }
-
-    public MassServerBuilder unregisterHandler(String appName, MessageType type) {
-        Map<MessageType, MessageHandler> map = handlerMap.get(appName);
-        if (map != null) {
-            map.remove(type);
-            if (map.isEmpty()) handlerMap.remove(appName);
-        }
-        return this;
-    }
-
-    public MassServerBuilder registerHandlers(String appName, Map<MessageType, MessageHandler> handlers) {
-        handlerMap.computeIfAbsent(appName, k -> new HashMap<>()).putAll(handlers);
+    public MassServerBuilder registerHandler(MessageType type, String subMsgType, MessageHandler handler) {
+        MessageHandlerRegistry.register(type, subMsgType, handler);
         return this;
     }
 
@@ -158,17 +143,13 @@ public class MassServerBuilder {
         if (registerDefaults) {
             registerDefaultMiddlewares();
             // 如果 handlerMap 为空，注册一个 demo handler
-            if (handlerMap.isEmpty()) {
-                this.registerHandler("demo", com.xa.mass.core.model.message.enums.MessageType.TASK, Collections::singletonList);
-            }
         }
         DispatcherContext dispatcherContext = new DispatcherContext(
             inputQueue,
             outputQueue,
             sessionManager,
             gson,
-            middlewareRegistry,
-            handlerMap
+                middlewareRegistry
         );
         return new MassServerConfig(
             port,

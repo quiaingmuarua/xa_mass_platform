@@ -2,41 +2,30 @@ package com.xa.mass.core.getway.dispatcher;
 
 import com.xa.mass.core.getway.middleware.EnvelopeMiddleware;
 import com.xa.mass.core.getway.middleware.ExceptionMiddleware;
-import com.xa.mass.core.model.message.MassMessage;
-import com.xa.mass.core.model.message.MessageContext;
+import com.xa.mass.core.getway.middleware.MiddlewareRegistry;
 import com.xa.mass.core.getway.queue.Envelope;
-import io.netty.channel.ChannelHandlerContext;
-import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import javax.annotation.PreDestroy;
+
 import java.util.List;
-import java.util.Optional;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-import java.util.ArrayList;
-import com.xa.mass.core.getway.middleware.MiddlewareRegistry;
+
 
 public class ServerMessageDispatcher {
     private static final Logger logger = LoggerFactory.getLogger(ServerMessageDispatcher.class);
-    private final MiddlewareRegistry middlewareRegistry;
-    private final List<ExceptionMiddleware> exceptionMiddlewareList;
     private final DispatcherContext context;
     private final ExecutorService inputExecutor;
     private final ExecutorService outputExecutor;
 
+
     public ServerMessageDispatcher(
-            MiddlewareRegistry middlewareRegistry,
-            List<ExceptionMiddleware> exceptionMiddlewareList,
             DispatcherContext context
     ) {
-        this.middlewareRegistry = middlewareRegistry;
-        this.exceptionMiddlewareList = exceptionMiddlewareList;
+
         this.context = context;
-        // 自动注册主流程 middleware（优先级最大，保证在链尾）
-        this.middlewareRegistry.registerInput(Integer.MAX_VALUE, processEnvelopeMiddleware());
-        this.middlewareRegistry.registerOutput(Integer.MAX_VALUE, sendEnvelopeMiddleware());
+
         inputExecutor = Executors.newFixedThreadPool(8);
         outputExecutor = Executors.newFixedThreadPool(8);
         for (int i = 0; i < 8; i++) {
@@ -51,8 +40,9 @@ public class ServerMessageDispatcher {
             try {
                 envelope = context.getInputQueue().poll(15, TimeUnit.SECONDS);
                 if (envelope != null) {
+                    logger.debug("processInputQueueLoop receive envelope {}", envelope);
                     context.setDirection(DispatcherContext.MiddlewareDirection.INPUT);
-                    runMiddlewareChain(middlewareRegistry.getActiveInputMiddlewares(), envelope);
+                    runMiddlewareChain(MiddlewareRegistry.instance.getActiveInputMiddlewares(), envelope);
                 }
             } catch (Exception e) {
                 runExceptionMiddlewareChain(envelope, e);
@@ -65,9 +55,10 @@ public class ServerMessageDispatcher {
             Envelope envelope = null;
             try {
                 envelope = context.getOutputQueue().poll(15, TimeUnit.SECONDS);
+                logger.debug("processOutputQueueLoop receive envelope {}", envelope);
                 if (envelope != null) {
                     context.setDirection(DispatcherContext.MiddlewareDirection.OUTPUT);
-                    runMiddlewareChain(middlewareRegistry.getActiveOutputMiddlewares(), envelope);
+                    runMiddlewareChain(MiddlewareRegistry.instance.getActiveOutputMiddlewares(), envelope);
                 }
             } catch (Exception e) {
                 runExceptionMiddlewareChain(envelope, e);
@@ -82,59 +73,9 @@ public class ServerMessageDispatcher {
     }
 
     private void runExceptionMiddlewareChain(Envelope envelope, Exception e) {
-        for (ExceptionMiddleware middleware : exceptionMiddlewareList) {
+        for (ExceptionMiddleware middleware : MiddlewareRegistry.instance.getExceptionMiddlewareList()) {
             if (!middleware.handleException(envelope, context, e)) break;
         }
-    }
-
-    // 可作为 input/output middleware 链的最后一环
-    public static EnvelopeMiddleware processEnvelopeMiddleware() {
-        return (envelope, context) -> {
-            try {
-                MassMessage msg = context.getGson().fromJson(envelope.getRawJson(), MassMessage.class);
-                if (msg == null || msg.getContext() == null) return true;
-                MessageContext ctx = msg.getContext();
-                Optional<com.xa.mass.core.getway.dispatcher.MessageHandler> handler = MessageHandlerRegistry.resolve(msg);
-                if (handler.isPresent()) {
-                    List<MassMessage> responses = handler.get().handle(msg);
-                    if (responses != null) {
-                        for (MassMessage resp : responses) {
-                            String json = context.getGson().toJson(resp);
-                            context.getOutputQueue().offer(Envelope.builder()
-                                    .deviceId(ctx.getDeviceId())
-                                    .connRole(ctx.getConnRole())
-                                    .rawJson(json)
-                                    .build());
-                        }
-                    }
-                }
-            } catch (Exception e) {
-                logger.error("Error in processEnvelopeMiddleware", e);
-                return false;
-            }
-            return true;
-        };
-    }
-
-    public static EnvelopeMiddleware sendEnvelopeMiddleware() {
-        return (envelope, context) -> {
-            try {
-                ChannelHandlerContext ctx = context.getSessionManager().getChannelContext(envelope.getDeviceId(), envelope.getConnRole());
-                if (ctx != null && ctx.channel().isActive()) {
-                    ctx.writeAndFlush(new TextWebSocketFrame(envelope.getRawJson()));
-                }
-            } catch (Exception e) {
-                logger.error("Error in sendEnvelopeMiddleware", e);
-                return false;
-            }
-            return true;
-        };
-    }
-
-    @PreDestroy
-    public void shutdown() {
-        inputExecutor.shutdownNow();
-        outputExecutor.shutdownNow();
     }
 }
 

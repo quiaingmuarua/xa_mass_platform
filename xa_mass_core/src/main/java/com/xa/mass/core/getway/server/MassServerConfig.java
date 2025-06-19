@@ -1,11 +1,9 @@
 package com.xa.mass.core.getway.server;
 
-import com.xa.mass.core.getway.dispatcher.DispatcherContext;
 import com.google.gson.GsonBuilder;
-import com.xa.mass.core.getway.middleware.MiddlewareRegistry;
+import com.xa.mass.core.getway.dispatcher.DispatcherContext;
 import com.xa.mass.core.getway.middleware.EnvelopeMiddleware;
-import com.xa.mass.core.model.message.enums.MessageType;
-import com.xa.mass.core.getway.dispatcher.MessageHandler;
+import com.xa.mass.core.getway.middleware.MiddlewareRegistry;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -70,22 +68,6 @@ public class MassServerConfig {
             }
             mwInfo.put("output", outputList);
             info.put("middlewares", mwInfo);
-        }
-        // Handler
-        Map<String, Map<MessageType, MessageHandler>> handlerMap = ctx.getHandlerMap();
-        if (handlerMap != null) {
-            List<Map<String, Object>> handlerList = new ArrayList<>();
-            for (Map.Entry<String, Map<MessageType, MessageHandler>> appEntry : handlerMap.entrySet()) {
-                String app = appEntry.getKey();
-                for (Map.Entry<MessageType, MessageHandler> typeEntry : appEntry.getValue().entrySet()) {
-                    Map<String, Object> h = new LinkedHashMap<>();
-                    h.put("app", app);
-                    h.put("type", typeEntry.getKey().toString());
-                    h.put("handlerClass", typeEntry.getValue().getClass().getSimpleName());
-                    handlerList.add(h);
-                }
-            }
-            info.put("handlers", handlerList);
         }
         // SessionManager
         Map<String, Object> sessionInfo = new LinkedHashMap<>();
