@@ -1,10 +1,6 @@
 package com.xa.mass.core.getway.server;
 
-import com.xa.mass.core.getway.dispatcher.MessageHandler;
-import com.xa.mass.core.getway.dispatcher.ServerMessageDispatcher;
-import com.xa.mass.core.getway.middleware.MessageMiddleware;
-import com.xa.mass.core.getway.queue.Envelope;
-import com.xa.mass.core.getway.queue.MessageQueue;
+import com.xa.mass.core.getway.dispatcher.DispatcherContext;
 import com.xa.mass.core.getway.session.ServerSessionManager;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.*;
@@ -49,12 +45,11 @@ public class WebSocketServerImpl implements MassWebSocketServer {
     // 原子计数器，用于统计当前活跃的连接数
     private final AtomicLong activeConnections = new AtomicLong(0);
 
-    // 注入自定义的服务器消息处理器
-    private ServerMessageHandler serverMessageHandler;
-
     // 注入服务器会话管理器
 
     private ServerSessionManager sessionManager;
+
+    private DispatcherContext dispatcherContext;
 
     /**
      * 启动 WebSocket 服务器。
@@ -116,8 +111,8 @@ public class WebSocketServerImpl implements MassWebSocketServer {
                     ));
                     // 自定义连接统计处理器
                     pipeline.addLast(new ConnectionStatsHandler());
-                    // 自定义服务器消息处理器
-                    pipeline.addLast(serverMessageHandler);
+                    // 注入 DispatcherInboundHandler
+                    pipeline.addLast(new DispatcherInboundHandler(dispatcherContext));
                 }
             });
 
@@ -214,14 +209,14 @@ public class WebSocketServerImpl implements MassWebSocketServer {
     public void setWebsocketPath(String websocketPath) {
         this.websocketPath = websocketPath;
     }
-
-    public void setSessionManager(ServerSessionManager sessionManager) {
-        this.sessionManager = sessionManager;
+    public void setDispatcherContext(DispatcherContext dispatcherContext) {
+        this.dispatcherContext = dispatcherContext;
     }
 
-    public void setServerMessageHandler(ServerMessageHandler serverMessageHandler) {
-        this.serverMessageHandler = serverMessageHandler;
+    public void setSessionManager(ServerSessionManager sessionManager){
+        this.sessionManager=sessionManager;
     }
+
 
 
 

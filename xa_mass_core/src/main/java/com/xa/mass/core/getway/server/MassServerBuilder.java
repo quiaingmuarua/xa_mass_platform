@@ -2,11 +2,13 @@ package com.xa.mass.core.getway.server;
 
 import com.xa.mass.core.getway.queue.Envelope;
 import com.xa.mass.core.getway.queue.MessageQueue;
-import com.xa.mass.core.getway.middleware.MessageMiddleware;
+import com.xa.mass.core.getway.middleware.EnvelopeMiddleware;
 import com.xa.mass.core.model.message.enums.MessageType;
 import com.xa.mass.core.getway.dispatcher.MessageHandler;
 import com.xa.mass.core.getway.session.ServerSessionManager;
 import com.xa.mass.core.getway.dispatcher.ServerMessageDispatcher;
+import com.xa.mass.core.getway.dispatcher.DispatcherContext;
+import com.google.gson.Gson;
 
 import java.util.*;
 
@@ -16,12 +18,12 @@ public class MassServerBuilder {
     private MessageQueue<Envelope> inputQueue;
     private MessageQueue<Envelope> outputQueue;
     private final Map<String, Map<MessageType, MessageHandler>> handlerMap = new HashMap<>();
-    private final List<MessageMiddleware> inputMiddlewareList = new ArrayList<>();
-    private final List<MessageMiddleware> outputMiddlewareList = new ArrayList<>();
-    private ServerSessionManager sessionManager;
-    private ServerMessageDispatcher dispatcher;
-    private ServerMessageHandler serverMessageHandler;
+    private final List<EnvelopeMiddleware> inputMiddlewareList = new ArrayList<>();
+    private final List<EnvelopeMiddleware> outputMiddlewareList = new ArrayList<>();
 
+    private ServerSessionManager sessionManager;
+    private ServerMessageDispatcher serverMessageDispatcher;
+    private Gson gson = new Gson();
 
     private MassServerBuilder() {}
 
@@ -54,22 +56,22 @@ public class MassServerBuilder {
         return this;
     }
 
-    public MassServerBuilder withInputMiddleware(MessageMiddleware middleware) {
+    public MassServerBuilder withInputMiddleware(EnvelopeMiddleware middleware) {
         this.inputMiddlewareList.add(middleware);
         return this;
     }
 
-    public MassServerBuilder withOutputMiddleware(MessageMiddleware middleware) {
+    public MassServerBuilder withOutputMiddleware(EnvelopeMiddleware middleware) {
         this.outputMiddlewareList.add(middleware);
         return this;
     }
 
-    public MassServerBuilder withInputMiddlewareList(List<MessageMiddleware> middlewareList) {
+    public MassServerBuilder withInputMiddlewareList(List<EnvelopeMiddleware> middlewareList) {
         this.inputMiddlewareList.addAll(middlewareList);
         return this;
     }
 
-    public MassServerBuilder withOutputMiddlewareList(List<MessageMiddleware> middlewareList) {
+    public MassServerBuilder withOutputMiddlewareList(List<EnvelopeMiddleware> middlewareList) {
         this.outputMiddlewareList.addAll(middlewareList);
         return this;
     }
@@ -79,22 +81,27 @@ public class MassServerBuilder {
         return this;
     }
 
-    public MassServerBuilder withDispatcher(ServerMessageDispatcher dispatcher) {
-        this.dispatcher = dispatcher;
+    public MassServerBuilder withDispatcher(ServerMessageDispatcher serverMessageDispatcher){
+        this.serverMessageDispatcher=serverMessageDispatcher;
         return this;
     }
 
-    public MassServerBuilder withServerMessageHandler(ServerMessageHandler serverMessageHandler) {
-        this.serverMessageHandler = serverMessageHandler;
+    public MassServerBuilder withGson(Gson gson) {
+        this.gson = gson;
         return this;
     }
 
     public MassServerConfig build() {
+        DispatcherContext dispatcherContext = new DispatcherContext(
+            inputQueue,
+            outputQueue,
+            sessionManager,
+            gson
+        );
         return new MassServerConfig(
             port,
             websocketPath,
-            sessionManager,
-            serverMessageHandler
+            dispatcherContext
         );
     }
 } 

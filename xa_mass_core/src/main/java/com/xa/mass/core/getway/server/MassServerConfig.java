@@ -1,49 +1,23 @@
 package com.xa.mass.core.getway.server;
 
-import com.xa.mass.core.getway.queue.Envelope;
-import com.xa.mass.core.getway.queue.MessageQueue;
-import com.xa.mass.core.getway.middleware.MessageMiddleware;
-import com.xa.mass.core.model.message.enums.MessageType;
-import com.xa.mass.core.getway.dispatcher.MessageHandler;
-import com.xa.mass.core.getway.session.ServerSessionManager;
-import com.xa.mass.core.getway.dispatcher.ServerMessageDispatcher;
-
-import java.util.List;
-import java.util.Map;
+import com.xa.mass.core.getway.dispatcher.DispatcherContext;
 
 public class MassServerConfig {
     private final int port;
     private final String websocketPath;
-    private final ServerSessionManager sessionManager;
-    private final ServerMessageHandler serverMessageHandler;
-
-    private WebSocketServerImpl webSocketServer;
+    private final DispatcherContext dispatcherContext;
 
     public MassServerConfig(
             int port,
             String websocketPath,
-            ServerSessionManager sessionManager,
-            ServerMessageHandler serverMessageHandler
+            DispatcherContext dispatcherContext
     ) {
         this.port = port;
         this.websocketPath = websocketPath;
-        this.sessionManager = sessionManager;
-        this.serverMessageHandler = serverMessageHandler;
+        this.dispatcherContext = dispatcherContext;
     }
 
-    public void start() {
-        // 初始化 WebSocketServerImpl
-        webSocketServer = new WebSocketServerImpl();
-        webSocketServer.setPort(port);
-        webSocketServer.setWebsocketPath(websocketPath);
-        webSocketServer.setSessionManager(sessionManager);
-        webSocketServer.setServerMessageHandler(serverMessageHandler);
-        webSocketServer.start(port);
-    }
-
-    public void stop() {
-        if (webSocketServer != null) {
-            webSocketServer.stop();
-        }
-    }
+    public int getPort() { return port; }
+    public String getWebsocketPath() { return websocketPath; }
+    public DispatcherContext getDispatcherContext() { return dispatcherContext; }
 } 

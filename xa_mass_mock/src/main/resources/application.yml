@@ -48,3 +48,8 @@ mass:
       stream-key: mass_server_output_stream
       group-name: mass_server_output_group
       consumer-name: mass_server_output_consumer_instance_1
+
+
+  logging:
+    level:
+      root: DEBUG # 设置根日志级别为 DEBUG

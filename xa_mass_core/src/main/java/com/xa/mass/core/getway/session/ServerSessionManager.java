@@ -5,16 +5,19 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.stereotype.Component;
+
 
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-// import java.util.stream.Collectors; // Collectors.toUnmodifiableMap 不再需要
 
-@Component
+
 public class ServerSessionManager {
+
+    // 默认全局唯一实例（线程安全，类加载即初始化）
+    public static final ServerSessionManager INSTANCE = new ServerSessionManager();
+
     private static final Logger logger = LoggerFactory.getLogger(ServerSessionManager.class);
 
     // deviceId -> connRole -> Channel

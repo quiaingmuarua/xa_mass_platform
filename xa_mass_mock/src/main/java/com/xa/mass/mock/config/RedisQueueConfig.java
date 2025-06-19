@@ -1,4 +1,4 @@
-package com.xa.mass.core.config;
+package com.xa.mass.mock.config;
 
 import com.xa.mass.core.getway.queue.Envelope;
 import com.xa.mass.core.getway.queue.MessageQueue;
