@@ -1,8 +1,8 @@
 package com.xa.mass.core.config;
 
-import com.xa.mass.core.queue.Envelope;
-import com.xa.mass.core.queue.MessageQueue;
-import com.xa.mass.core.queue.RedisEnvelopeQueue;
+import com.xa.mass.core.getway.queue.Envelope;
+import com.xa.mass.core.getway.queue.MessageQueue;
+import com.xa.mass.core.getway.queue.RedisEnvelopeQueue;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.RedisURI;
 import io.lettuce.core.api.StatefulRedisConnection;

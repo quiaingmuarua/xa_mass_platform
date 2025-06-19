@@ -1,12 +1,12 @@
-package com.xa.mass.core.server;
+package com.xa.mass.core.getway.server;
 
 import com.xa.mass.core.model.message.MassMessage;
 import com.xa.mass.core.model.message.MessageContext;
-import com.xa.mass.core.queue.MessageContextValidator;
-import com.xa.mass.core.queue.MessageDecoder;
-import com.xa.mass.core.queue.MessageQueue;
-import com.xa.mass.core.queue.Envelope;
-import com.xa.mass.core.session.ServerSessionManager;
+import com.xa.mass.core.getway.queue.MessageContextValidator;
+import com.xa.mass.core.getway.queue.MessageDecoder;
+import com.xa.mass.core.getway.queue.MessageQueue;
+import com.xa.mass.core.getway.queue.Envelope;
+import com.xa.mass.core.getway.session.ServerSessionManager;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;

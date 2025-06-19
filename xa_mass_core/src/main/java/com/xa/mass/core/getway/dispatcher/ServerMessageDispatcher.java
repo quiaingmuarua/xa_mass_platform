@@ -1,15 +1,15 @@
-package com.xa.mass.core.dispatcher;
+package com.xa.mass.core.getway.dispatcher;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonParseException;
-import com.xa.mass.core.middleware.MessageMiddleware;
-import com.xa.mass.core.middleware.MiddlewareRegistry;
-import com.xa.mass.core.middleware.OutputMessageMiddleware;
+import com.xa.mass.core.getway.middleware.MessageMiddleware;
+import com.xa.mass.core.getway.middleware.MiddlewareRegistry;
+import com.xa.mass.core.getway.middleware.OutputMessageMiddleware;
 import com.xa.mass.core.model.message.MassMessage;
 import com.xa.mass.core.model.message.MessageContext;
-import com.xa.mass.core.queue.Envelope;
-import com.xa.mass.core.queue.MessageQueue;
-import com.xa.mass.core.session.ServerSessionManager;
+import com.xa.mass.core.getway.queue.Envelope;
+import com.xa.mass.core.getway.queue.MessageQueue;
+import com.xa.mass.core.getway.session.ServerSessionManager;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;
 import org.slf4j.Logger;
@@ -48,6 +48,7 @@ public class ServerMessageDispatcher {
     }
 
     private void processInputQueueLoop() {
+        logger.info("Starting input queue loop...");
         while (!Thread.currentThread().isInterrupted()) {
             try {
                 Envelope envelope = inputQueue.poll(15, TimeUnit.SECONDS);
@@ -64,6 +65,7 @@ public class ServerMessageDispatcher {
     }
 
     private void processOutputQueueLoop() {
+        logger.info("Starting output queue loop...");
         while (!Thread.currentThread().isInterrupted()) {
             try {
                 Envelope envelope = outputQueue.poll(15, TimeUnit.SECONDS);

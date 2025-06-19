@@ -1,4 +1,4 @@
-package com.xa.mass.core.queue;
+package com.xa.mass.core.getway.queue;
 
 // 如果 StoredMessage 不在此包，需要导
 

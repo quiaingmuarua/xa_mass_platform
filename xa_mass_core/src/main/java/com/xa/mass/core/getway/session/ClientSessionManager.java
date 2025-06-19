@@ -1,8 +1,8 @@
-package com.xa.mass.core.session;
+package com.xa.mass.core.getway.session;
 
 
 import com.google.gson.Gson;
-import com.xa.mass.core.client.MassWebSocketClientImpl;
+import com.xa.mass.core.getway.client.MassWebSocketClientImpl;
 import com.xa.mass.core.model.message.MassMessage;
 import com.xa.mass.core.model.message.MessageContext;
 import com.xa.mass.core.model.message.TaskStep;

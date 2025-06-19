@@ -1,12 +1,12 @@
-package com.xa.mass.core.server;
+package com.xa.mass.core.getway.server;
 
-import com.xa.mass.core.queue.Envelope;
-import com.xa.mass.core.queue.MessageQueue;
-import com.xa.mass.core.middleware.MessageMiddleware;
+import com.xa.mass.core.getway.queue.Envelope;
+import com.xa.mass.core.getway.queue.MessageQueue;
+import com.xa.mass.core.getway.middleware.MessageMiddleware;
 import com.xa.mass.core.model.message.enums.MessageType;
-import com.xa.mass.core.dispatcher.MessageHandler;
-import com.xa.mass.core.session.ServerSessionManager;
-import com.xa.mass.core.dispatcher.ServerMessageDispatcher;
+import com.xa.mass.core.getway.dispatcher.MessageHandler;
+import com.xa.mass.core.getway.session.ServerSessionManager;
+import com.xa.mass.core.getway.dispatcher.ServerMessageDispatcher;
 
 import java.util.*;
 
@@ -20,6 +20,8 @@ public class MassServerBuilder {
     private final List<MessageMiddleware> outputMiddlewareList = new ArrayList<>();
     private ServerSessionManager sessionManager;
     private ServerMessageDispatcher dispatcher;
+    private ServerMessageHandler serverMessageHandler;
+
 
     private MassServerBuilder() {}
 
@@ -82,17 +84,17 @@ public class MassServerBuilder {
         return this;
     }
 
-    public MassServer build() {
-        return new MassServer(
+    public MassServerBuilder withServerMessageHandler(ServerMessageHandler serverMessageHandler) {
+        this.serverMessageHandler = serverMessageHandler;
+        return this;
+    }
+
+    public MassServerConfig build() {
+        return new MassServerConfig(
             port,
             websocketPath,
-            inputQueue,
-            outputQueue,
-            handlerMap,
-            inputMiddlewareList,
-            outputMiddlewareList,
             sessionManager,
-            dispatcher
+            serverMessageHandler
         );
     }
 } 

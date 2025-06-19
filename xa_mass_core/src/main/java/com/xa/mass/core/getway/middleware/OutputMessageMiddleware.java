@@ -1,6 +1,6 @@
-package com.xa.mass.core.middleware;
+package com.xa.mass.core.getway.middleware;
 
-import com.xa.mass.core.queue.Envelope;
+import com.xa.mass.core.getway.queue.Envelope;
 
 @FunctionalInterface
 public interface OutputMessageMiddleware {

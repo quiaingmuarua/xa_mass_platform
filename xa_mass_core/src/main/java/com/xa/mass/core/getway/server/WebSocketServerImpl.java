@@ -1,7 +1,11 @@
-package com.xa.mass.core.server;
+package com.xa.mass.core.getway.server;
 
-import com.xa.mass.core.dispatcher.ServerMessageDispatcher;
-import com.xa.mass.core.session.ServerSessionManager;
+import com.xa.mass.core.getway.dispatcher.MessageHandler;
+import com.xa.mass.core.getway.dispatcher.ServerMessageDispatcher;
+import com.xa.mass.core.getway.middleware.MessageMiddleware;
+import com.xa.mass.core.getway.queue.Envelope;
+import com.xa.mass.core.getway.queue.MessageQueue;
+import com.xa.mass.core.getway.session.ServerSessionManager;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.*;
 import io.netty.channel.epoll.Epoll;
@@ -17,11 +21,6 @@ import io.netty.handler.codec.http.websocketx.WebSocketServerProtocolHandler;
 import io.netty.util.concurrent.DefaultThreadFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Component;
-
-import javax.annotation.PostConstruct;
 import javax.annotation.PreDestroy;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -29,17 +28,14 @@ import java.util.concurrent.atomic.AtomicLong;
  * WebSocket 服务器的实现类。
  * 负责启动、停止 Netty WebSocket 服务器，并管理连接。
  */
-@Component
 public class WebSocketServerImpl implements MassWebSocketServer {
 
     private static final Logger logger = LoggerFactory.getLogger(WebSocketServerImpl.class);
 
-    // 从配置文件注入 WebSocket 服务器端口，默认为 8088
-    @Value("${websocket.server.port:8088}")
+
     private int port;
 
-    // 从配置文件注入 WebSocket 访问路径，默认为 /ws
-    @Value("${websocket.server.path:/ws}")
+
     private String websocketPath;
 
     // Netty 的 Boss EventLoopGroup，用于接受客户端连接
@@ -54,21 +50,11 @@ public class WebSocketServerImpl implements MassWebSocketServer {
     private final AtomicLong activeConnections = new AtomicLong(0);
 
     // 注入自定义的服务器消息处理器
-    @Autowired
     private ServerMessageHandler serverMessageHandler;
 
     // 注入服务器会话管理器
-    @Autowired
-    private ServerSessionManager sessionManager;
 
-    /**
-     * Spring Bean 初始化后自动调用此方法启动服务器。
-     * 使用配置的端口 {@link #port}。
-     */
-    @PostConstruct
-    public void start() {
-        start(this.port); // 调用重载的 start 方法，使用成员变量 port
-    }
+    private ServerSessionManager sessionManager;
 
     /**
      * 启动 WebSocket 服务器。
@@ -233,28 +219,10 @@ public class WebSocketServerImpl implements MassWebSocketServer {
         this.sessionManager = sessionManager;
     }
 
-    public void setServerMessageDispatcher(ServerMessageDispatcher dispatcher) {
-        // 这里可以根据需要将 dispatcher 注入到 serverMessageHandler 或其他组件
-        // 这里只是示例，具体实现可根据实际需求调整
+    public void setServerMessageHandler(ServerMessageHandler serverMessageHandler) {
+        this.serverMessageHandler = serverMessageHandler;
     }
 
-    public void setInputQueue(com.xa.mass.core.queue.MessageQueue<com.xa.mass.core.queue.Envelope> inputQueue) {
-        // 这里可以根据需要将 inputQueue 注入到 serverMessageHandler 或 dispatcher
-    }
 
-    public void setOutputQueue(com.xa.mass.core.queue.MessageQueue<com.xa.mass.core.queue.Envelope> outputQueue) {
-        // 这里可以根据需要将 outputQueue 注入到 dispatcher
-    }
 
-    public void setInputMiddlewareList(java.util.List<com.xa.mass.core.middleware.MessageMiddleware> inputMiddlewareList) {
-        // 这里可以根据需要注册 input middleware
-    }
-
-    public void setOutputMiddlewareList(java.util.List<com.xa.mass.core.middleware.MessageMiddleware> outputMiddlewareList) {
-        // 这里可以根据需要注册 output middleware
-    }
-
-    public void setHandlerMap(java.util.Map<String, java.util.Map<com.xa.mass.core.model.message.enums.MessageType, com.xa.mass.core.dispatcher.MessageHandler>> handlerMap) {
-        // 这里可以根据需要注册 handler
-    }
 }

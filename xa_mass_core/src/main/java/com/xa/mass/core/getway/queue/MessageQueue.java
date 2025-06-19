@@ -1,4 +1,4 @@
-package com.xa.mass.core.queue;
+package com.xa.mass.core.getway.queue;
 
 
 import java.util.concurrent.TimeUnit;

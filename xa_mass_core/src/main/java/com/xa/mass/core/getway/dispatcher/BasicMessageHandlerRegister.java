@@ -1,4 +1,4 @@
-package com.xa.mass.core.dispatcher;
+package com.xa.mass.core.getway.dispatcher;
 
 import com.xa.mass.core.model.message.MassMessage;
 import com.xa.mass.core.model.message.MessageResult;
@@ -6,7 +6,6 @@ import com.xa.mass.core.model.message.enums.MessageDirection;
 import com.xa.mass.core.model.message.enums.MessageType;
 import org.springframework.stereotype.Component;
 import com.google.gson.Gson;
-import com.google.gson.JsonElement;
 
 import javax.annotation.PostConstruct;
 import java.util.Collections;

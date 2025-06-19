@@ -1,6 +1,4 @@
-package com.xa.mass.core.middleware;
-
-import com.xa.mass.core.queue.Envelope;
+package com.xa.mass.core.getway.middleware;
 
 import java.util.ArrayList;
 import java.util.List;

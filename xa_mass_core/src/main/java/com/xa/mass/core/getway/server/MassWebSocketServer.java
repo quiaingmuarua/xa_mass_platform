@@ -1,4 +1,4 @@
-package com.xa.mass.core.server;
+package com.xa.mass.core.getway.server;
 
 import io.netty.channel.Channel;
 

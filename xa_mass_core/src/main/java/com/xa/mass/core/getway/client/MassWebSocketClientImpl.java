@@ -1,11 +1,9 @@
-package com.xa.mass.core.client;
+package com.xa.mass.core.getway.client;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
-import com.google.gson.reflect.TypeToken;
 import com.xa.mass.core.model.message.MassMessage;
 import com.xa.mass.core.model.message.MessageContext;
-import com.xa.mass.core.model.message.MessageResult;
 import com.xa.mass.core.model.message.enums.MessageDirection;
 import com.xa.mass.core.model.message.enums.MessageType;
 import com.xa.mass.core.model.message.payload.TaskPayload;
@@ -14,7 +12,6 @@ import org.java_websocket.handshake.ServerHandshake;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.lang.reflect.Type;
 import java.net.URI;
 import java.util.HashMap;
 import java.util.Map;

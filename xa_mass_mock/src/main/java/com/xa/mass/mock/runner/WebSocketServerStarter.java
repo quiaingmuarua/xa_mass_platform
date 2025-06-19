@@ -1,17 +1,18 @@
 package com.xa.mass.mock.runner;
 
-import com.xa.mass.core.server.MassServer;
-import com.xa.mass.core.server.MassServerBuilder;
-import com.xa.mass.core.queue.InMemoryMessageQueue;
-import com.xa.mass.core.queue.Envelope;
-import com.xa.mass.core.queue.MessageQueue;
-import com.xa.mass.core.middleware.MessageMiddleware;
+import com.xa.mass.core.getway.server.MassServerConfig;
+import com.xa.mass.core.getway.server.MassServerBuilder;
+import com.xa.mass.core.getway.queue.InMemoryMessageQueue;
+import com.xa.mass.core.getway.queue.Envelope;
+import com.xa.mass.core.getway.queue.MessageQueue;
+import com.xa.mass.core.getway.middleware.MessageMiddleware;
 import com.xa.mass.core.model.message.enums.MessageType;
-import com.xa.mass.core.dispatcher.MessageHandler;
-import com.xa.mass.core.session.ServerSessionManager;
-import com.xa.mass.core.dispatcher.ServerMessageDispatcher;
+import com.xa.mass.core.getway.dispatcher.MessageHandler;
+import com.xa.mass.core.getway.session.ServerSessionManager;
+import com.xa.mass.core.getway.dispatcher.ServerMessageDispatcher;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 import org.springframework.boot.CommandLineRunner;
@@ -22,6 +23,13 @@ import java.util.List;
 @Component
 @Profile("server")
 public class WebSocketServerStarter implements CommandLineRunner {
+
+    @Autowired
+    ServerMessageDispatcher serverMessageDispatcher;
+
+    @Autowired
+    ServerSessionManager sessionManager;
+
     private static final Logger log = LoggerFactory.getLogger(WebSocketServerStarter.class);
 
     @Override
@@ -53,12 +61,9 @@ public class WebSocketServerStarter implements CommandLineRunner {
             return new ArrayList<>();
         };
 
-        // 4. sessionManager/dispatcher 示例（可用真实实现替换）
-        ServerSessionManager sessionManager = new ServerSessionManager();
-        ServerMessageDispatcher dispatcher = new ServerMessageDispatcher();
 
         // 5. builder 构建 server
-        MassServer server = MassServerBuilder.create()
+        MassServerConfig server = MassServerBuilder.create()
                 .withPort(18088)
                 .withWebSocketPath("/ws")
                 .withInputQueue(inputQueue)
@@ -67,7 +72,7 @@ public class WebSocketServerStarter implements CommandLineRunner {
                 .withInputMiddlewareList(inputMiddlewareList)
                 .withOutputMiddlewareList(outputMiddlewareList)
                 .withSessionManager(sessionManager)
-                .withDispatcher(dispatcher)
+                .withDispatcher(serverMessageDispatcher)
                 .build();
 
         log.info("Starting MassServer with builder...");

@@ -1,6 +1,5 @@
-package com.xa.mass.core.queue;
+package com.xa.mass.core.getway.queue;
 
-import com.google.gson.Gson;
 import io.lettuce.core.*;
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.api.sync.RedisStreamCommands;

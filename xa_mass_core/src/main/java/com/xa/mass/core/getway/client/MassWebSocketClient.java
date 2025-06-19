@@ -1,4 +1,4 @@
-package com.xa.mass.core.client;
+package com.xa.mass.core.getway.client;
 
 import java.net.URI;
 import java.util.concurrent.TimeUnit;

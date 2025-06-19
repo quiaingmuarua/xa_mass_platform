@@ -1,4 +1,4 @@
-package com.xa.mass.core.session;
+package com.xa.mass.core.getway.session;
 
 import java.util.Objects;
 
