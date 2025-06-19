@@ -1,5 +1,6 @@
 package com.xa.mass.core.getway.middleware;
 
+import com.xa.mass.core.getway.dispatcher.MassMessageHandler;
 import com.xa.mass.core.getway.dispatcher.MessageHandlerRegistry;
 import com.xa.mass.core.getway.exception.CommandException;
 import com.xa.mass.core.getway.exception.ErrorCode;
@@ -21,6 +22,7 @@ public class MiddlewareRegistry {
     private final NavigableMap<Integer, EnvelopeMiddleware> outputMiddlewareMap = new TreeMap<>();
     private final Map<Integer, Boolean> inputEnabledMap = new HashMap<>();
     private final Map<Integer, Boolean> outputEnabledMap = new HashMap<>();
+    private final List<ExceptionMiddleware> exceptionMiddlewareList = new ArrayList<>();
 
     public static void autoRegister() {
         // 自动注册主流程 middleware（优先级最大，保证在链尾）
@@ -42,8 +44,6 @@ public class MiddlewareRegistry {
             }
         });
     }
-
-    List<ExceptionMiddleware> exceptionMiddlewareList = new ArrayList<>();
 
     private MiddlewareRegistry() {
 
@@ -102,7 +102,7 @@ public class MiddlewareRegistry {
                 MassMessage msg = context.getGson().fromJson(envelope.getRawJson(), MassMessage.class);
                 if (msg == null || msg.getContext() == null) return true;
                 MessageContext ctx = msg.getContext();
-                Optional<com.xa.mass.core.getway.dispatcher.MessageHandler> handler = MessageHandlerRegistry.resolve(msg);
+                Optional<MassMessageHandler> handler = MessageHandlerRegistry.resolve(msg);
                 if (handler.isPresent()) {
                     List<MassMessage> responses = handler.get().handle(msg);
                     if (responses != null) {

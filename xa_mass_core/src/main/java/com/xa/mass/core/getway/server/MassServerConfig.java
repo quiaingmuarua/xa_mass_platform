@@ -39,10 +39,6 @@ public class MassServerConfig {
         DispatcherContext ctx = dispatcherContext;
         info.put("port", port);
         info.put("websocketPath", websocketPath);
-        info.put("inputQueue", ctx.getInputQueue() != null ? ctx.getInputQueue().getClass().getSimpleName() : null);
-        info.put("inputQueueSize", ctx.getInputQueue() != null ? ctx.getInputQueue().size() : null);
-        info.put("outputQueue", ctx.getOutputQueue() != null ? ctx.getOutputQueue().getClass().getSimpleName() : null);
-        info.put("outputQueueSize", ctx.getOutputQueue() != null ? ctx.getOutputQueue().size() : null);
         // Middleware
         MiddlewareRegistry registry = MiddlewareRegistry.instance;
         Map<String, List<Map<String, Object>>> mwInfo = new LinkedHashMap<>();

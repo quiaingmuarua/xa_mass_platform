@@ -1,7 +1,7 @@
 package com.xa.mass.core.getway.server;
 
 import com.xa.mass.core.getway.dispatcher.DispatcherContext;
-import com.xa.mass.core.getway.dispatcher.MessageHandler;
+import com.xa.mass.core.getway.dispatcher.MassMessageHandler;
 import com.xa.mass.core.getway.dispatcher.MessageHandlerRegistry;
 import com.xa.mass.core.getway.middleware.EnvelopeMiddleware;
 import com.xa.mass.core.getway.middleware.MiddlewareRegistry;
@@ -43,7 +43,7 @@ public class MassServerBuilder {
         return this;
     }
 
-    public MassServerBuilder registerHandler(MessageType type, String subMsgType, MessageHandler handler) {
+    public MassServerBuilder registerHandler(MessageType type, String subMsgType, MassMessageHandler handler) {
         MessageHandlerRegistry.register(type, subMsgType, handler);
         return this;
     }
@@ -97,6 +97,7 @@ public class MassServerBuilder {
     public MassServerConfig build() {
         if (registerDefaults) {
             MiddlewareRegistry.autoRegister();
+            MessageHandlerRegistry.autoRegister();
             // 如果 handlerMap 为空，注册一个 demo handler
         }
         return new MassServerConfig(

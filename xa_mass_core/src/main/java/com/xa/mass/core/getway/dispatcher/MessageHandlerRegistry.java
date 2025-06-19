@@ -6,29 +6,34 @@ import com.xa.mass.core.model.message.MassMessage;
 import com.xa.mass.core.model.message.MessageResult;
 import com.xa.mass.core.model.message.enums.MessageDirection;
 import com.xa.mass.core.model.message.enums.MessageType;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-import java.util.*;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class MessageHandlerRegistry {
-
+    private static final Logger log = LoggerFactory.getLogger(MessageHandlerRegistry.class);
     private static final Gson gson = new Gson();
-    private static final Map<String, MessageHandler> handlerMap = new ConcurrentHashMap<>();
+    private static final Map<String, MassMessageHandler> handlerMap = new ConcurrentHashMap<>();
 
-    static {
+    public static void autoRegister() {
         MessageHandlerRegistry.register(MessageType.PING, "", MessageHandlerRegistry::handlePing);
         MessageHandlerRegistry.register(MessageType.PONG, "", MessageHandlerRegistry::handlePong);
         MessageHandlerRegistry.register(MessageType.TASK, "", MessageHandlerRegistry::handleTask);
     }
 
-    private final Map<String, Map<MessageType, MessageHandler>> appHandlerMap = new HashMap<>();
 
-    public static void register(MessageType type, String subMsgType, MessageHandler handler) {
+    public static void register(MessageType type, String subMsgType, MassMessageHandler handler) {
         String key = MessageRouterKeys.of(type, subMsgType);
+        log.debug("MessageHandlerRegistry register handler for key:{} type:{} subMsgType:{} handler:{}", key, type, subMsgType, handler.getClass().getName());
         handlerMap.put(key, handler);
     }
 
-    public static Optional<MessageHandler> resolve(MassMessage msg) {
+    public static Optional<MassMessageHandler> resolve(MassMessage msg) {
         String key = MessageRouterKeys.of(msg.getMsgType(), msg.getSubMsgType());
         return Optional.ofNullable(handlerMap.get(key));
     }

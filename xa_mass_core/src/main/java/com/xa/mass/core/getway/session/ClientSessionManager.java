@@ -18,7 +18,6 @@ import java.util.concurrent.ConcurrentHashMap;
 
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class ClientSessionManager {
     private final Map<String, MassWebSocketClientImpl> clients = new ConcurrentHashMap<>();
     private final Random random = new Random();

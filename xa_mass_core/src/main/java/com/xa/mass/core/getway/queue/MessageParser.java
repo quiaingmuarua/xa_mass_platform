@@ -9,10 +9,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
-@Component
-public class MessageDecoder {
+public class MessageParser {
 
-    private static final Logger logger = LoggerFactory.getLogger(MessageDecoder.class);
+    public static final MessageParser INSTANCE = new MessageParser();
+    private static final Logger logger = LoggerFactory.getLogger(MessageParser.class);
     private final Gson gson = new Gson();
 
     public MassMessage tryDecode(String rawJson) {
@@ -28,5 +28,13 @@ public class MessageDecoder {
         MessageContext ctx = msg.getContext();
         return Envelope.builder().rawJson(rawJson).deviceId(ctx.getDeviceId())
                 .connRole(ctx.getConnRole()).traceId(msg.getMsgId()).receivedAt(System.currentTimeMillis()).build();
+    }
+
+    public boolean isValid(MassMessage msg) {
+        if (msg == null) return false;
+        MessageContext ctx = msg.getContext();
+        return ctx != null &&
+                ctx.getDeviceId() != null &&
+                ctx.getConnRole() != null;
     }
 }
