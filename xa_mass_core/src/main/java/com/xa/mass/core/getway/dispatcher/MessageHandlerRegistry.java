@@ -1,6 +1,5 @@
 package com.xa.mass.core.getway.dispatcher;
 
-
 import com.google.gson.Gson;
 import com.xa.mass.core.model.message.MassMessage;
 import com.xa.mass.core.model.message.MessageResult;
@@ -9,33 +8,46 @@ import com.xa.mass.core.model.message.enums.MessageType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class MessageHandlerRegistry {
     private static final Logger log = LoggerFactory.getLogger(MessageHandlerRegistry.class);
+    private static final String GLOBAL = "GLOBAL";
     private final Gson gson = new Gson();
-    private final Map<String, MassMessageHandler> handlerMap = new ConcurrentHashMap<>();
+    // project -> (key -> handler)
+    private final Map<String, Map<String, MassMessageHandler>> handlerMap = new ConcurrentHashMap<>();
 
     public void autoRegister() {
-        this.register(MessageType.PING, "", this::handlePing);
-        this.register(MessageType.PONG, "", this::handlePong);
-        this.register(MessageType.TASK, "", this::handleTask);
+        // 注册全局 handler
+        this.register(null, MessageType.PING, "", this::handlePing);
+        this.register(null, MessageType.PONG, "", this::handlePong);
+        this.register(null, MessageType.TASK, "", this::handleTask);
     }
 
-
-    public void register(MessageType type, String subMsgType, MassMessageHandler handler) {
+    public void register(String project, MessageType type, String subMsgType, MassMessageHandler handler) {
         String key = MessageRouterKeys.of(type, subMsgType);
-        log.debug("MessageHandlerRegistry register handler for key:{} type:{} subMsgType:{} handler:{}", key, type, subMsgType, handler.getClass().getName());
-        handlerMap.put(key, handler);
+        String proj = (project == null || project.trim().isEmpty()) ? GLOBAL : project;
+        handlerMap.computeIfAbsent(proj, k -> new ConcurrentHashMap<>()).put(key, handler);
+        log.debug("Register handler for project={}, key={}, type={}, subMsgType={}, handler={}", proj, key, type, subMsgType, handler.getClass().getName());
+    }
+
+    public Optional<MassMessageHandler> resolve(String project, MessageType type, String subMsgType) {
+        String key = MessageRouterKeys.of(type, subMsgType);
+        String proj = (project == null || project.trim().isEmpty()) ? GLOBAL : project;
+        // 先查 project 级
+        MassMessageHandler handler = handlerMap.getOrDefault(proj, Collections.emptyMap()).get(key);
+        if (handler != null) return Optional.of(handler);
+        // 再查全局
+        if (!GLOBAL.equals(proj)) {
+            handler = handlerMap.getOrDefault(GLOBAL, Collections.emptyMap()).get(key);
+            if (handler != null) return Optional.of(handler);
+        }
+        return Optional.empty();
     }
 
     public Optional<MassMessageHandler> resolve(MassMessage msg) {
-        String key = MessageRouterKeys.of(msg.getMsgType(), msg.getSubMsgType());
-        return Optional.ofNullable(handlerMap.get(key));
+        return resolve(msg.getProject(), msg.getMsgType(), msg.getSubMsgType());
     }
 
     private List<MassMessage> handlePing(MassMessage msg) {

@@ -15,7 +15,7 @@ public class MassServerBuilder {
     private String websocketPath = "/ws";
     private final MiddlewareRegistry middlewareRegistry = MiddlewareRegistry.instance;
     private DispatcherContext dispatcherContext;
-    private final Map<String, MassMessageHandler> handlerMap = new HashMap<>();
+    private final Map<String, Map<String, MassMessageHandler>> handlerMap = new HashMap<>();
 
 
     private boolean registerDefaults = true;
@@ -41,10 +41,15 @@ public class MassServerBuilder {
         return this;
     }
 
-    public MassServerBuilder registerHandler(MessageType type, String subMsgType, MassMessageHandler handler) {
+    public MassServerBuilder registerHandler(String project, MessageType type, String subMsgType, MassMessageHandler handler) {
+        String proj = (project == null || project.trim().isEmpty()) ? "GLOBAL" : project;
         String key = MessageRouterKeys.of(type, subMsgType);
-        this.handlerMap.put(key, handler);
+        handlerMap.computeIfAbsent(proj, k -> new HashMap<>()).put(key, handler);
         return this;
+    }
+
+    public MassServerBuilder registerHandler(MessageType type, String subMsgType, MassMessageHandler handler) {
+        return registerHandler(null, type, subMsgType, handler);
     }
 
     public MassServerBuilder registerInputMiddleware(int priority, EnvelopeMiddleware mw) {
@@ -106,14 +111,13 @@ public class MassServerBuilder {
         if (registerDefaults) {
             messageHandlerRegistry.autoRegister();
         }
-        handlerMap.forEach((key, handler) -> {
-            // key is already in correct format
-            // however, we need to parse it back to register
-            // A bit ugly, maybe improve MessageRouterKeys later
-            String[] parts = key.split(":", 2);
-            MessageType type = MessageType.valueOf(parts[0]);
-            String subType = parts.length > 1 ? parts[1] : "";
-            messageHandlerRegistry.register(type, subType, handler);
+        handlerMap.forEach((project, map) -> {
+            map.forEach((key, handler) -> {
+                String[] parts = key.split(":", 2);
+                MessageType type = MessageType.valueOf(parts[0]);
+                String subType = parts.length > 1 ? parts[1] : "";
+                messageHandlerRegistry.register(project, type, subType, handler);
+            });
         });
 
         this.dispatcherContext.setMessageHandlerRegistry(messageHandlerRegistry);

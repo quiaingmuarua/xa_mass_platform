@@ -36,11 +36,11 @@ public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWe
 
         String deviceId = parsed.getContext().getDeviceId();
         String connRole = parsed.getContext().getConnRole();
-        String appName = parsed.getAppName();
+        String project = parsed.getProject();
         String msgId = parsed.getMsgId();
-        if (deviceId == null || connRole == null || appName == null || msgId == null) {
-            logger.error("deviceId/connRole/appName/msgId is null: deviceId={}, connRole={}, appName={}, msgId={}, raw={}",
-                    deviceId, connRole, appName, msgId, raw);
+        if (deviceId == null || connRole == null || project == null || msgId == null) {
+            logger.error("deviceId/connRole/project/msgId is null: deviceId={}, connRole={}, project={}, msgId={}, raw={}",
+                    deviceId, connRole, project, msgId, raw);
             throw new ValidationException("message 基本字段不全");
         }
 
@@ -50,7 +50,7 @@ public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWe
                     .rawJson(raw)
                     .deviceId(deviceId)
                     .connRole(connRole)
-                    .appName(appName)
+                    .project(project)
                     .receivedAt(1111L)
                     .traceId("111")
                     .build();

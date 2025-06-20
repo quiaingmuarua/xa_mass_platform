@@ -6,11 +6,11 @@ public class Envelope {
     private String connRole;
     private String traceId;     // 可选，用于日志追踪
     private long receivedAt;
-    private String appName;     // 所属应用名，如 WhatsApp、Telegram
+    private String project;     // 所属项目名，如 WhatsApp、Telegram
 
-    // 默认 appName 可直接在构造器或 builder 设置
+    // 默认 project 可直接在构造器或 builder 设置
     public Envelope() {
-        this.appName = "RCS";
+        this.project = "RCS";
     }
 
     private Envelope(Builder builder) {
@@ -19,7 +19,7 @@ public class Envelope {
         this.connRole = builder.connRole;
         this.traceId = builder.traceId;
         this.receivedAt = builder.receivedAt;
-        this.appName = builder.appName != null ? builder.appName : "RCS";
+        this.project = builder.project != null ? builder.project : "RCS";
     }
 
     public static Builder builder() {
@@ -33,7 +33,7 @@ public class Envelope {
         private String connRole;
         private String traceId;
         private long receivedAt;
-        private String appName;
+        private String project;
 
         public Builder rawJson(String rawJson) {
             this.rawJson = rawJson;
@@ -55,8 +55,8 @@ public class Envelope {
             this.receivedAt = receivedAt;
             return this;
         }
-        public Builder appName(String appName) {
-            this.appName = appName;
+        public Builder project(String project) {
+            this.project = project;
             return this;
         }
         public Envelope build() {
@@ -80,8 +80,8 @@ public class Envelope {
     public long getReceivedAt() { return receivedAt; }
     public void setReceivedAt(long receivedAt) { this.receivedAt = receivedAt; }
 
-    public String getAppName() { return appName != null ? appName : "RCS"; }
-    public void setAppName(String appName) { this.appName = appName; }
+    public String getProject() { return project != null ? project : "RCS"; }
+    public void setProject(String project) { this.project = project; }
 
     @Override
     public String toString() {
@@ -90,7 +90,7 @@ public class Envelope {
                 ", connRole='" + connRole + '\'' +
                 ", traceId='" + traceId + '\'' +
                 ", receivedAt=" + receivedAt +
-                ", appName='" + getAppName() + '\'' +
+                ", project='" + getProject() + '\'' +
                 ", rawJson=" + (rawJson != null ? rawJson.substring(0, Math.min(100, rawJson.length())) + "..." : null) +
                 '}';
     }
