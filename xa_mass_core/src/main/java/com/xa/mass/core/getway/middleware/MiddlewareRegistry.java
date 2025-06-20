@@ -2,6 +2,7 @@ package com.xa.mass.core.getway.middleware;
 
 import com.xa.mass.core.getway.dispatcher.MassMessageHandler;
 import com.xa.mass.core.getway.dispatcher.MessageHandlerRegistry;
+import com.xa.mass.core.getway.dispatcher.ResolutionResult;
 import com.xa.mass.core.getway.exception.CommandException;
 import com.xa.mass.core.getway.exception.ErrorCode;
 import com.xa.mass.core.getway.exception.ValidationException;
@@ -103,9 +104,13 @@ public class MiddlewareRegistry {
                 MassMessage msg = context.getMessageCodec().decode(envelope.getRawJson());
                 if (msg == null || msg.getContext() == null) return true;
                 MessageContext ctx = msg.getContext();
-                Optional<MassMessageHandler> handler = context.getMessageHandlerRegistry().resolve(msg);
-                if (handler.isPresent()) {
-                    List<MassMessage> responses = handler.get().handle(msg);
+                
+                ResolutionResult result = context.getMessageHandlerRegistry().resolve(msg);
+                
+                // 根据解析结果处理
+                if (result.isFound()) {
+                    logger.debug("Found handler for message: {}", result);
+                    List<MassMessage> responses = result.getHandler().handle(msg);
                     if (responses != null) {
                         for (MassMessage resp : responses) {
                             String json = context.getMessageCodec().encode(resp);
@@ -116,6 +121,12 @@ public class MiddlewareRegistry {
                                     .build());
                         }
                     }
+                } else if (result.isFallback()) {
+                    logger.warn("Using fallback handler for message: msgType={}, subType={}, payload={}", 
+                              msg.getMsgType(), msg.getSubMsgType(), msg.getPayload());
+                    // fallback handler 已经返回空列表，不需要额外处理
+                } else {
+                    logger.warn("No handler found for message: {}", result);
                 }
             } catch (Exception e) {
                 logger.error("Error in processEnvelopeMiddleware", e);
