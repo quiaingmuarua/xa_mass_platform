@@ -6,6 +6,8 @@ import com.xa.mass.core.getway.dispatcher.DispatcherContextRegistry;
 import com.xa.mass.core.getway.dispatcher.MassMessageHandler;
 import com.xa.mass.core.getway.queue.Envelope;
 import com.xa.mass.core.getway.queue.MessageQueue;
+import com.xa.mass.core.getway.queue.MessageTransporter;
+import com.xa.mass.core.getway.queue.QueueBasedMessageTransporter;
 import com.xa.mass.core.getway.server.MassServerBuilder;
 import com.xa.mass.core.getway.server.MassServerConfig;
 import com.xa.mass.core.getway.server.MassServerStater;
@@ -44,17 +46,20 @@ public class WebSocketServerStarter implements CommandLineRunner {
 
     @Override
     public void run(String... args) throws Exception {
-        // 1. 构建 dispatcher 上下文
-        dispatcherContext = new DispatcherContext(inputQueue, outputQueue, sessionManager, gson);
+        // 1. 构建 MessageTransporter
+        MessageTransporter messageTransporter = new QueueBasedMessageTransporter(inputQueue, outputQueue);
+        
+        // 2. 构建 dispatcher 上下文
+        dispatcherContext = new DispatcherContext(messageTransporter, sessionManager, gson);
         DispatcherContextRegistry.register(dispatcherContext);
 
-        // 2. handler 示例
+        // 3. handler 示例
         MassMessageHandler taskHandler = msg -> {
             log.info("[Handler] Handling TASK message: {}", msg);
             return new ArrayList<>();
         };
 
-        // 3. builder 构建 server，自动注册默认中间件和处理器
+        // 4. builder 构建 server，自动注册默认中间件和处理器
         MassServerConfig serverConfig = MassServerBuilder.create()
                 .withPort(18088)
                 .withWebSocketPath("/ws")
