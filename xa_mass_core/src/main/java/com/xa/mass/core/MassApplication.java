@@ -136,7 +136,7 @@ public class MassApplication {
      */
     private void startEngine() {
         logger.info("⚙️ Starting Engine...");
-        engine = new Engine(config.getEngineConfig());
+        engine = new Engine(config.getEngineConfig(), dispatcherContext);
         engine.start();
         logger.info("✅ Engine started");
     }
@@ -145,10 +145,8 @@ public class MassApplication {
      * 启动消息分发器
      */
     private void startMessageDispatcher() {
-        logger.info("📨 Starting Message Dispatcher...");
-        messageDispatcher = new ServerMessageDispatcher(dispatcherContext);
-        messageDispatcher.start();
-        logger.info("✅ Message Dispatcher started");
+        // 消息分发器现在由 Engine 管理，不需要单独启动
+        logger.info("📨 Message Dispatcher is managed by Engine");
     }
     
     /**
