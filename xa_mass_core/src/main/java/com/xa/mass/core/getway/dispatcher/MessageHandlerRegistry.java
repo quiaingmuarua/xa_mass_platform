@@ -23,9 +23,9 @@ public class MessageHandlerRegistry {
 
     public void autoRegister() {
         // 注册全局 handler
-        this.register(null, MessageType.PING, "heartbeat", this::handlePing);
-        this.register(null, MessageType.PONG, "heartbeat", this::handlePong);
-        this.register(null, MessageType.TASK, "", this::handleTask);
+        this.register(GLOBAL, MessageType.PING, "heartbeat", this::handlePing);
+        this.register(GLOBAL, MessageType.PONG, "heartbeat", this::handlePong);
+        this.register(GLOBAL, MessageType.TASK, "", this::handleTask);
     }
 
     public void register(String project, MessageType type, String subMsgType, MassMessageHandler handler) {
