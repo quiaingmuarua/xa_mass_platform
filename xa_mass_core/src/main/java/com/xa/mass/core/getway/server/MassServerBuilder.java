@@ -103,27 +103,18 @@ public class MassServerBuilder {
             throw new IllegalStateException("DispatcherContext must be provided.");
         }
 
-        if (registerDefaults) {
-            MiddlewareRegistry.autoRegister();
-        }
-
-        MessageHandlerRegistry messageHandlerRegistry = new MessageHandlerRegistry();
-        if (registerDefaults) {
-            messageHandlerRegistry.autoRegister();
-        }
-        handlerMap.forEach((project, map) -> {
-            map.forEach((key, handler) -> {
-                String[] parts = key.split(":", 2);
-                MessageType type = MessageType.valueOf(parts[0]);
-                String subType = parts.length > 1 ? parts[1] : "";
-                messageHandlerRegistry.register(project, type, subType, handler);
+        // 注册自定义处理器（如果有的话）
+        MessageHandlerRegistry messageHandlerRegistry = dispatcherContext.getMessageHandlerRegistry();
+        if (messageHandlerRegistry != null) {
+            handlerMap.forEach((project, map) -> {
+                map.forEach((key, handler) -> {
+                    String[] parts = key.split(":", 2);
+                    MessageType type = MessageType.valueOf(parts[0]);
+                    String subType = parts.length > 1 ? parts[1] : "";
+                    messageHandlerRegistry.register(project, type, subType, handler);
+                });
             });
-        });
-
-        this.dispatcherContext.setMessageHandlerRegistry(messageHandlerRegistry);
-
-        ServerMessageDispatcher serverMessageDispatcher = new ServerMessageDispatcher(this.dispatcherContext);
-        serverMessageDispatcher.start();
+        }
 
         return new MassServerConfig(
                 port,

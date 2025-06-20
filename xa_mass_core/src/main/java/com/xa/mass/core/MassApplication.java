@@ -1,0 +1,185 @@
+package com.xa.mass.core;
+
+import com.google.gson.Gson;
+import com.xa.mass.core.getway.dispatcher.DispatcherContext;
+import com.xa.mass.core.getway.dispatcher.DispatcherContextRegistry;
+import com.xa.mass.core.getway.dispatcher.MessageHandlerRegistry;
+import com.xa.mass.core.getway.dispatcher.ServerMessageDispatcher;
+import com.xa.mass.core.getway.middleware.MiddlewareRegistry;
+import com.xa.mass.core.getway.queue.MessageTransporter;
+import com.xa.mass.core.getway.server.MassServerBuilder;
+import com.xa.mass.core.getway.server.MassServerConfig;
+import com.xa.mass.core.getway.server.MassServerStater;
+import com.xa.mass.core.getway.session.ServerSessionManager;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+/**
+ * Mass 应用主程序
+ * 统一管理系统的启动流程，包括网关、引擎等组件的初始化
+ */
+public class MassApplication {
+    
+    private static final Logger logger = LoggerFactory.getLogger(MassApplication.class);
+    
+    private final MassApplicationConfig config;
+    private Gateway gateway;
+    private Engine engine;
+    private DispatcherContext dispatcherContext;
+    private ServerMessageDispatcher messageDispatcher;
+    private MassServerStater serverStater;
+    
+    public MassApplication(MassApplicationConfig config) {
+        this.config = config;
+    }
+    
+    /**
+     * 启动整个 Mass 应用
+     */
+    public void start() {
+        logger.info("🚀 Starting Mass Application...");
+        
+        try {
+            // 1. 初始化核心组件
+            initializeComponents();
+            
+            // 2. 启动网关
+            startGateway();
+            
+            // 3. 启动引擎
+            startEngine();
+            
+            // 4. 启动消息分发器
+            startMessageDispatcher();
+            
+            // 5. 启动 WebSocket 服务器
+            startWebSocketServer();
+            
+            logger.info("✅ Mass Application started successfully!");
+            
+        } catch (Exception e) {
+            logger.error("❌ Failed to start Mass Application", e);
+            throw new RuntimeException("Failed to start Mass Application", e);
+        }
+    }
+    
+    /**
+     * 停止整个 Mass 应用
+     */
+    public void stop() {
+        logger.info("🛑 Stopping Mass Application...");
+        
+        try {
+            if (serverStater != null) {
+                serverStater.stop();
+            }
+            
+            if (messageDispatcher != null) {
+                // TODO: 添加停止方法到 ServerMessageDispatcher
+                logger.info("Message dispatcher stopped");
+            }
+            
+            if (engine != null) {
+                engine.stop();
+            }
+            
+            if (gateway != null) {
+                gateway.stop();
+            }
+            
+            logger.info("✅ Mass Application stopped successfully!");
+            
+        } catch (Exception e) {
+            logger.error("❌ Error stopping Mass Application", e);
+        }
+    }
+    
+    /**
+     * 初始化核心组件
+     */
+    private void initializeComponents() {
+        logger.info("🔧 Initializing core components...");
+        
+        // 初始化会话管理器
+        ServerSessionManager sessionManager = ServerSessionManager.INSTANCE;
+        
+        // 创建消息传输器
+        MessageTransporter messageTransporter = config.createMessageTransporter();
+        
+        // 创建分发器上下文
+        dispatcherContext = new DispatcherContext(messageTransporter, sessionManager, new Gson());
+        DispatcherContextRegistry.register(dispatcherContext);
+        
+        // 注册消息处理器
+        MessageHandlerRegistry messageHandlerRegistry = new MessageHandlerRegistry();
+        messageHandlerRegistry.autoRegister();
+        dispatcherContext.setMessageHandlerRegistry(messageHandlerRegistry);
+        
+        // 注册中间件
+        MiddlewareRegistry.autoRegister();
+        
+        logger.info("✅ Core components initialized");
+    }
+    
+    /**
+     * 启动网关
+     */
+    private void startGateway() {
+        logger.info("🌐 Starting Gateway...");
+        gateway = new Gateway(config.getGatewayConfig());
+        gateway.start();
+        logger.info("✅ Gateway started");
+    }
+    
+    /**
+     * 启动引擎
+     */
+    private void startEngine() {
+        logger.info("⚙️ Starting Engine...");
+        engine = new Engine(config.getEngineConfig());
+        engine.start();
+        logger.info("✅ Engine started");
+    }
+    
+    /**
+     * 启动消息分发器
+     */
+    private void startMessageDispatcher() {
+        logger.info("📨 Starting Message Dispatcher...");
+        messageDispatcher = new ServerMessageDispatcher(dispatcherContext);
+        messageDispatcher.start();
+        logger.info("✅ Message Dispatcher started");
+    }
+    
+    /**
+     * 启动 WebSocket 服务器
+     */
+    private void startWebSocketServer() {
+        logger.info("🔌 Starting WebSocket Server...");
+        
+        MassServerConfig serverConfig = MassServerBuilder.create()
+                .withPort(config.getServerPort())
+                .withWebSocketPath(config.getWebSocketPath())
+                .withDispatcherContext(dispatcherContext)
+                .build();
+        
+        serverStater = new MassServerStater(serverConfig);
+        serverStater.start();
+        
+        logger.info("✅ WebSocket Server started on port {}", config.getServerPort());
+    }
+    
+    /**
+     * 获取分发器上下文
+     */
+    public DispatcherContext getDispatcherContext() {
+        return dispatcherContext;
+    }
+    
+    /**
+     * 检查应用是否正在运行
+     */
+    public boolean isRunning() {
+        return serverStater != null && serverStater.isRunning();
+    }
+} 
