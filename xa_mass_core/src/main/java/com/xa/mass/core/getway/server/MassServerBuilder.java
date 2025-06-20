@@ -1,22 +1,21 @@
 package com.xa.mass.core.getway.server;
 
-import com.xa.mass.core.getway.dispatcher.DispatcherContext;
-import com.xa.mass.core.getway.dispatcher.MassMessageHandler;
-import com.xa.mass.core.getway.dispatcher.MessageHandlerRegistry;
-import com.xa.mass.core.getway.dispatcher.ServerMessageDispatcher;
+import com.xa.mass.core.getway.dispatcher.*;
 import com.xa.mass.core.getway.middleware.EnvelopeMiddleware;
 import com.xa.mass.core.getway.middleware.MiddlewareRegistry;
 import com.xa.mass.core.getway.queue.Envelope;
 import com.xa.mass.core.getway.queue.MessageQueue;
 import com.xa.mass.core.model.message.enums.MessageType;
 
+import java.util.HashMap;
+import java.util.Map;
+
 public class MassServerBuilder {
     private int port = 8080;
     private String websocketPath = "/ws";
-    private ServerMessageDispatcher serverMessageDispatcher;
     private final MiddlewareRegistry middlewareRegistry = MiddlewareRegistry.instance;
-
     private DispatcherContext dispatcherContext;
+    private final Map<String, MassMessageHandler> handlerMap = new HashMap<>();
 
 
     private boolean registerDefaults = true;
@@ -36,18 +35,15 @@ public class MassServerBuilder {
         this.websocketPath = path;
         return this;
     }
-    public MassServerBuilder withServerMessageDispatcher(ServerMessageDispatcher serverMessageDispatcher){
-        this.serverMessageDispatcher=serverMessageDispatcher;
-        return this;
-    }
 
-    public  MassServerBuilder setDispatcherContext(DispatcherContext dispatcherContext){
+    public MassServerBuilder withDispatcherContext(DispatcherContext dispatcherContext){
         this.dispatcherContext=dispatcherContext;
         return this;
     }
 
     public MassServerBuilder registerHandler(MessageType type, String subMsgType, MassMessageHandler handler) {
-        MessageHandlerRegistry.register(type, subMsgType, handler);
+        String key = MessageRouterKeys.of(type, subMsgType);
+        this.handlerMap.put(key, handler);
         return this;
     }
 
@@ -98,18 +94,37 @@ public class MassServerBuilder {
     }
 
     public MassServerConfig build() {
+        if (this.dispatcherContext == null) {
+            throw new IllegalStateException("DispatcherContext must be provided.");
+        }
+
         if (registerDefaults) {
             MiddlewareRegistry.autoRegister();
-            MessageHandlerRegistry.autoRegister();
-            // 如果 handlerMap 为空，注册一个 demo handler
         }
-        if(serverMessageDispatcher!=null){
-            serverMessageDispatcher.start();
+
+        MessageHandlerRegistry messageHandlerRegistry = new MessageHandlerRegistry();
+        if (registerDefaults) {
+            messageHandlerRegistry.autoRegister();
         }
+        handlerMap.forEach((key, handler) -> {
+            // key is already in correct format
+            // however, we need to parse it back to register
+            // A bit ugly, maybe improve MessageRouterKeys later
+            String[] parts = key.split(":", 2);
+            MessageType type = MessageType.valueOf(parts[0]);
+            String subType = parts.length > 1 ? parts[1] : "";
+            messageHandlerRegistry.register(type, subType, handler);
+        });
+
+        this.dispatcherContext.setMessageHandlerRegistry(messageHandlerRegistry);
+
+        ServerMessageDispatcher serverMessageDispatcher = new ServerMessageDispatcher(this.dispatcherContext);
+        serverMessageDispatcher.start();
+
         return new MassServerConfig(
-            port,
-            websocketPath,
-            dispatcherContext
+                port,
+                websocketPath,
+                dispatcherContext
         );
     }
 } 

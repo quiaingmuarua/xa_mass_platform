@@ -17,28 +17,28 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class MessageHandlerRegistry {
     private static final Logger log = LoggerFactory.getLogger(MessageHandlerRegistry.class);
-    private static final Gson gson = new Gson();
-    private static final Map<String, MassMessageHandler> handlerMap = new ConcurrentHashMap<>();
+    private final Gson gson = new Gson();
+    private final Map<String, MassMessageHandler> handlerMap = new ConcurrentHashMap<>();
 
-    public static void autoRegister() {
-        MessageHandlerRegistry.register(MessageType.PING, "", MessageHandlerRegistry::handlePing);
-        MessageHandlerRegistry.register(MessageType.PONG, "", MessageHandlerRegistry::handlePong);
-        MessageHandlerRegistry.register(MessageType.TASK, "", MessageHandlerRegistry::handleTask);
+    public void autoRegister() {
+        this.register(MessageType.PING, "", this::handlePing);
+        this.register(MessageType.PONG, "", this::handlePong);
+        this.register(MessageType.TASK, "", this::handleTask);
     }
 
 
-    public static void register(MessageType type, String subMsgType, MassMessageHandler handler) {
+    public void register(MessageType type, String subMsgType, MassMessageHandler handler) {
         String key = MessageRouterKeys.of(type, subMsgType);
         log.debug("MessageHandlerRegistry register handler for key:{} type:{} subMsgType:{} handler:{}", key, type, subMsgType, handler.getClass().getName());
         handlerMap.put(key, handler);
     }
 
-    public static Optional<MassMessageHandler> resolve(MassMessage msg) {
+    public Optional<MassMessageHandler> resolve(MassMessage msg) {
         String key = MessageRouterKeys.of(msg.getMsgType(), msg.getSubMsgType());
         return Optional.ofNullable(handlerMap.get(key));
     }
 
-    private static List<MassMessage> handlePing(MassMessage msg) {
+    private List<MassMessage> handlePing(MassMessage msg) {
         MassMessage pong = new MassMessage();
         pong.setMsgId(msg.getMsgId());
         pong.setResponse(true);
@@ -50,13 +50,13 @@ public class MessageHandlerRegistry {
         return Collections.singletonList(pong);
     }
 
-    private static List<MassMessage> handlePong(MassMessage msg) {
+    private List<MassMessage> handlePong(MassMessage msg) {
         System.out.println("Received PONG from " +
                 msg.getContext().getDeviceId() + "/" + msg.getContext().getConnRole());
         return Collections.emptyList();
     }
 
-    private static List<MassMessage> handleTask(MassMessage msg) {
+    private List<MassMessage> handleTask(MassMessage msg) {
         MassMessage ack = new MassMessage();
         ack.setMsgId(msg.getMsgId());
         ack.setResponse(true);

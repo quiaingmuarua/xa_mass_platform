@@ -102,7 +102,7 @@ public class MiddlewareRegistry {
                 MassMessage msg = context.getGson().fromJson(envelope.getRawJson(), MassMessage.class);
                 if (msg == null || msg.getContext() == null) return true;
                 MessageContext ctx = msg.getContext();
-                Optional<MassMessageHandler> handler = MessageHandlerRegistry.resolve(msg);
+                Optional<MassMessageHandler> handler = context.getMessageHandlerRegistry().resolve(msg);
                 if (handler.isPresent()) {
                     List<MassMessage> responses = handler.get().handle(msg);
                     if (responses != null) {

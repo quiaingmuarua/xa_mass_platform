@@ -3,9 +3,7 @@ package com.xa.mass.mock.runner;
 import com.google.gson.Gson;
 import com.xa.mass.core.getway.dispatcher.DispatcherContext;
 import com.xa.mass.core.getway.dispatcher.MassMessageHandler;
-import com.xa.mass.core.getway.dispatcher.ServerMessageDispatcher;
 import com.xa.mass.core.getway.queue.Envelope;
-import com.xa.mass.core.getway.queue.InMemoryMessageQueue;
 import com.xa.mass.core.getway.queue.MessageQueue;
 import com.xa.mass.core.getway.server.MassServerBuilder;
 import com.xa.mass.core.getway.server.MassServerConfig;
@@ -42,31 +40,29 @@ public class WebSocketServerStarter implements CommandLineRunner {
 
     @Override
     public void run(String... args) throws Exception {
-        // 注册基础 handler
-        // 2. 构建队列
+        // 1. 构建 dispatcher 上下文
         DispatcherContext dispatcherContext = new DispatcherContext(inputQueue, outputQueue, sessionManager, gson);
 
-        ServerMessageDispatcher serverMessageDispatcher=new ServerMessageDispatcher(dispatcherContext);
-
-        // 3. handler 示例
+        // 2. handler 示例
         MassMessageHandler taskHandler = msg -> {
             log.info("[Handler] Handling TASK message: {}", msg);
             return new ArrayList<>();
         };
 
-        // 4. builder 构建 server，自动注册默认中间件
+        // 3. builder 构建 server，自动注册默认中间件和处理器
         MassServerConfig serverConfig = MassServerBuilder.create()
                 .withPort(18088)
                 .withWebSocketPath("/ws")
-                .registerHandler(MessageType.TASK, "", taskHandler)
-                .withDefaultMiddlewares(true).withServerMessageDispatcher(serverMessageDispatcher)
-                // 如需移除默认认证中间件：.removeInputMiddleware(10)
+                .withDispatcherContext(dispatcherContext) // 注入上下文
+                .registerHandler(MessageType.TASK, "", taskHandler) // 注册自定义 handler
+                .withDefaultMiddlewares(true)
+                // 如需移除默认认证中间件：.unregisterInputMiddleware(10)
                 // 如需添加自定义中间件：.registerInputMiddleware(30, customBizMiddleware)
                 .build();
 
-//        log.info(server.describe());
+        log.info(serverConfig.describe());
         log.info("Starting MassServer with builder...");
-        MassServerStater stater = new MassServerStater(serverConfig, dispatcherContext);
+        MassServerStater stater = new MassServerStater(serverConfig);
         stater.start();
     }
 }

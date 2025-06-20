@@ -9,9 +9,9 @@ public class MassServerStater {
     private DispatcherContext dispatcherContext;
 
 
-    public MassServerStater(MassServerConfig config, DispatcherContext dispatcherContext) {
+    public MassServerStater(MassServerConfig config) {
         this.config = config;
-        this.dispatcherContext = dispatcherContext;
+        this.dispatcherContext = config.getDispatcherContext();
     }
 
     public void start() {

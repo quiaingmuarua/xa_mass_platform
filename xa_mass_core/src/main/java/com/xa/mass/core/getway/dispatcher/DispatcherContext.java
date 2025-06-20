@@ -12,6 +12,7 @@ public class DispatcherContext {
     private final MessageQueue<Envelope> outputQueue;
     private final ServerSessionManager sessionManager;
     private final Gson gson;
+    private MessageHandlerRegistry messageHandlerRegistry;
     // ... 可扩展其它只读配置
 
     private MiddlewareDirection direction;
@@ -33,6 +34,14 @@ public class DispatcherContext {
     public MessageQueue<Envelope> getOutputQueue() { return outputQueue; }
     public ServerSessionManager getSessionManager() { return sessionManager; }
     public Gson getGson() { return gson; }
+
+    public MessageHandlerRegistry getMessageHandlerRegistry() {
+        return messageHandlerRegistry;
+    }
+
+    public void setMessageHandlerRegistry(MessageHandlerRegistry messageHandlerRegistry) {
+        this.messageHandlerRegistry = messageHandlerRegistry;
+    }
 
     public MiddlewareDirection getDirection() { return direction; }
     public void setDirection(MiddlewareDirection direction) { this.direction = direction; }
