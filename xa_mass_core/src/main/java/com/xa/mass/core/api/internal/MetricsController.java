@@ -8,8 +8,7 @@ import java.util.HashMap;
 import java.util.Map;
 import com.xa.mass.core.api.model.ApiResponse;
 import com.xa.mass.core.getway.dispatcher.DispatcherContextRegistry;
-import com.xa.mass.core.getway.queue.MessageQueue;
-import com.xa.mass.core.getway.queue.Envelope;
+import com.xa.mass.core.getway.queue.MessageTransporter;
 
 @RestController
 @RequestMapping("/api/metrics")
@@ -21,10 +20,14 @@ public class MetricsController {
     public ApiResponse<Map<String, Object>> getMetrics() {
         Map<String, Object> data = new HashMap<>();
         if (DispatcherContextRegistry.get() != null) {
-            MessageQueue<Envelope> inputQueue = DispatcherContextRegistry.get().getInputQueue();
-            MessageQueue<Envelope> outputQueue = DispatcherContextRegistry.get().getOutputQueue();
-            data.put("inputQueueSize", inputQueue != null ? inputQueue.size() : -1);
-            data.put("outputQueueSize", outputQueue != null ? outputQueue.size() : -1);
+            MessageTransporter messageTransporter = DispatcherContextRegistry.get().getMessageTransporter();
+            if (messageTransporter != null) {
+                data.put("inputQueueSize", messageTransporter.inputQueueSize());
+                data.put("outputQueueSize", messageTransporter.outputQueueSize());
+            } else {
+                data.put("inputQueueSize", -1);
+                data.put("outputQueueSize", -1);
+            }
         }
         // 其他统计数据可后续扩展
         return ApiResponse.success(data);

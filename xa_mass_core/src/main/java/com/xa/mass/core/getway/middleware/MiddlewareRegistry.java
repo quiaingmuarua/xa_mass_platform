@@ -109,7 +109,7 @@ public class MiddlewareRegistry {
                     if (responses != null) {
                         for (MassMessage resp : responses) {
                             String json = context.getGson().toJson(resp);
-                            context.getOutputQueue().offer(Envelope.builder()
+                            context.getMessageTransporter().sendOutput(Envelope.builder()
                                     .deviceId(ctx.getDeviceId())
                                     .connRole(ctx.getConnRole())
                                     .rawJson(json)
