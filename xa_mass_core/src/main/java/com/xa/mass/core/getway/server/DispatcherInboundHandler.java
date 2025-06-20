@@ -43,8 +43,6 @@ public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWe
                     deviceId, connRole, project, msgId, raw);
             throw new ValidationException("message 基本字段不全");
         }
-
-        logger.info("Decoded and validated message: {}", parsed);
         try {
             Envelope envelope = Envelope.builder()
                     .rawJson(raw)
@@ -54,7 +52,7 @@ public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWe
                     .receivedAt(1111L)
                     .traceId("111")
                     .build();
-            logger.info("envelope = {}", envelope);
+            logger.info(" channelRead0 envelope = {}", envelope);
 
             dispatcherContext.getInputQueue().offer(envelope);
         } catch (Exception e) {

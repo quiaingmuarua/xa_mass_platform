@@ -32,12 +32,13 @@ public class ServerMessageDispatcher {
     }
 
     private void processInputQueueLoop() {
+        logger.info("processInputQueueLoop start");
         while (!Thread.currentThread().isInterrupted()) {
             Envelope envelope = null;
             try {
                 envelope = context.getInputQueue().poll(15, TimeUnit.SECONDS);
+                logger.info("processInputQueueLoop receive envelope {}", envelope);
                 if (envelope != null) {
-                    logger.debug("processInputQueueLoop receive envelope {}", envelope);
                     context.setDirection(DispatcherContext.MiddlewareDirection.INPUT);
                     runMiddlewareChain(MiddlewareRegistry.instance.getActiveInputMiddlewares(), envelope);
                 }
@@ -48,11 +49,12 @@ public class ServerMessageDispatcher {
     }
 
     private void processOutputQueueLoop() {
+        logger.info("processOutputQueueLoop start");
         while (!Thread.currentThread().isInterrupted()) {
             Envelope envelope = null;
             try {
                 envelope = context.getOutputQueue().poll(15, TimeUnit.SECONDS);
-                logger.debug("processOutputQueueLoop receive envelope {}", envelope);
+                logger.info("processOutputQueueLoop receive envelope {}", envelope);
                 if (envelope != null) {
                     context.setDirection(DispatcherContext.MiddlewareDirection.OUTPUT);
                     runMiddlewareChain(MiddlewareRegistry.instance.getActiveOutputMiddlewares(), envelope);

@@ -37,12 +37,19 @@ public class MessageHandlerRegistry {
         String proj = (project == null || project.trim().isEmpty()) ? GLOBAL : project;
         // 先查 project 级
         MassMessageHandler handler = handlerMap.getOrDefault(proj, Collections.emptyMap()).get(key);
-        if (handler != null) return Optional.of(handler);
+        if (handler != null) {
+            log.info("Resolved handler for project '{}', key '{}': {}", proj, key, handler.getClass().getName());
+            return Optional.of(handler);
+        }
         // 再查全局
         if (!GLOBAL.equals(proj)) {
             handler = handlerMap.getOrDefault(GLOBAL, Collections.emptyMap()).get(key);
-            if (handler != null) return Optional.of(handler);
+            if (handler != null) {
+                log.info("Resolved global handler for key '{}': {}", key, handler.getClass().getName());
+                return Optional.of(handler);
+            }
         }
+        log.warn("No message handler found for project '{}', key '{}'", proj, key);
         return Optional.empty();
     }
 
@@ -51,6 +58,7 @@ public class MessageHandlerRegistry {
     }
 
     private List<MassMessage> handlePing(MassMessage msg) {
+        log.info("Received Ping from {}/{}", msg.getContext().getDeviceId(), msg.getContext().getConnRole());
         MassMessage pong = new MassMessage();
         pong.setMsgId(msg.getMsgId());
         pong.setResponse(true);
@@ -63,8 +71,7 @@ public class MessageHandlerRegistry {
     }
 
     private List<MassMessage> handlePong(MassMessage msg) {
-        System.out.println("Received PONG from " +
-                msg.getContext().getDeviceId() + "/" + msg.getContext().getConnRole());
+        log.info("Received PONG from {}/{}", msg.getContext().getDeviceId(), msg.getContext().getConnRole());
         return Collections.emptyList();
     }
 
