@@ -6,6 +6,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.*;
+import com.xa.mass.core.getway.dispatcher.DispatcherContextRegistry;
+import com.xa.mass.core.getway.session.ServerSessionManager;
+import com.xa.mass.core.api.model.ApiResponse;
 
 @RestController
 @RequestMapping("/api/session")
@@ -14,28 +17,33 @@ public class SessionController {
 
     @GetMapping("/list")
     @ApiOperation("获取所有在线Session/Device详情")
-    public Map<String, Object> listSessions() {
-        // TODO: 后续可从 SessionManager 获取真实数据
+    public ApiResponse<List<Map<String, Object>>> listSessions() {
         List<Map<String, Object>> data = new ArrayList<>();
-        return success(data);
+        if (DispatcherContextRegistry.get() != null) {
+            ServerSessionManager sessionManager = DispatcherContextRegistry.get().getSessionManager();
+            if (sessionManager != null) {
+                Map<String, Object> info = new HashMap<>();
+                info.put("sessionManager", sessionManager.toString());
+                data.add(info);
+            }
+        }
+        return ApiResponse.success(data);
     }
 
     @GetMapping("/stats")
     @ApiOperation("连接统计")
-    public Map<String, Object> sessionStats() {
-        // TODO: 后续可从 SessionManager 获取真实数据
+    public ApiResponse<Map<String, Object>> sessionStats() {
         Map<String, Object> data = new HashMap<>();
-        data.put("total", 0);
-        data.put("online", 0);
-        data.put("offline", 0);
-        return success(data);
-    }
-
-    private Map<String, Object> success(Object data) {
-        Map<String, Object> resp = new HashMap<>();
-        resp.put("code", 0);
-        resp.put("msg", "ok");
-        resp.put("data", data);
-        return resp;
+        if (DispatcherContextRegistry.get() != null) {
+            ServerSessionManager sessionManager = DispatcherContextRegistry.get().getSessionManager();
+            if (sessionManager != null) {
+                data.put("sessionManager", sessionManager.toString());
+            } else {
+                data.put("sessionManager", "null");
+            }
+        } else {
+            data.put("sessionManager", "null");
+        }
+        return ApiResponse.success(data);
     }
 } 

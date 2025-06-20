@@ -53,16 +53,11 @@
             <scope>test</scope>
         </dependency>
         <!-- Knife4j (Swagger增强) 依赖，升级为 4.3.0，适配 Spring Boot 2.6+ -->
+        <!-- https://mvnrepository.com/artifact/com.github.xiaoymin/knife4j-openapi3-spring-boot-starter -->
         <dependency>
             <groupId>com.github.xiaoymin</groupId>
-            <artifactId>knife4j-spring-boot-starter</artifactId>
-            <version>2.0.9</version>
-        </dependency>
-        <!-- 添加 Springdoc OpenAPI 依赖 -->
-        <dependency>
-            <groupId>org.springdoc</groupId>
-            <artifactId>springdoc-openapi-ui</artifactId>
-            <version>1.7.0</version>
+            <artifactId>knife4j-openapi2-spring-boot-starter</artifactId>
+            <version>4.4.0</version>
         </dependency>
 
     </dependencies>

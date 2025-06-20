@@ -6,6 +6,10 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import java.util.HashMap;
 import java.util.Map;
+import com.xa.mass.core.api.model.ApiResponse;
+import com.xa.mass.core.getway.dispatcher.DispatcherContextRegistry;
+import com.xa.mass.core.getway.queue.MessageQueue;
+import com.xa.mass.core.getway.queue.Envelope;
 
 @RestController
 @RequestMapping("/api/metrics")
@@ -14,20 +18,15 @@ public class MetricsController {
 
     @GetMapping("")
     @ApiOperation("获取消息速率/统计信息")
-    public Map<String, Object> getMetrics() {
-        // TODO: 后续可接入真实统计数据
+    public ApiResponse<Map<String, Object>> getMetrics() {
         Map<String, Object> data = new HashMap<>();
-        data.put("msgPerMin", 1200);
-        data.put("msgPer5Min", 6000);
-        data.put("avgProcessTimeMs", 8.5);
-        return success(data);
-    }
-
-    private Map<String, Object> success(Object data) {
-        Map<String, Object> resp = new HashMap<>();
-        resp.put("code", 0);
-        resp.put("msg", "ok");
-        resp.put("data", data);
-        return resp;
+        if (DispatcherContextRegistry.get() != null) {
+            MessageQueue<Envelope> inputQueue = DispatcherContextRegistry.get().getInputQueue();
+            MessageQueue<Envelope> outputQueue = DispatcherContextRegistry.get().getOutputQueue();
+            data.put("inputQueueSize", inputQueue != null ? inputQueue.size() : -1);
+            data.put("outputQueueSize", outputQueue != null ? outputQueue.size() : -1);
+        }
+        // 其他统计数据可后续扩展
+        return ApiResponse.success(data);
     }
 } 

@@ -2,6 +2,7 @@ package com.xa.mass.mock.runner;
 
 import com.google.gson.Gson;
 import com.xa.mass.core.getway.dispatcher.DispatcherContext;
+import com.xa.mass.core.getway.dispatcher.DispatcherContextRegistry;
 import com.xa.mass.core.getway.dispatcher.MassMessageHandler;
 import com.xa.mass.core.getway.queue.Envelope;
 import com.xa.mass.core.getway.queue.MessageQueue;
@@ -38,10 +39,14 @@ public class WebSocketServerStarter implements CommandLineRunner {
     private Gson gson = new Gson();
     private static final Logger log = LoggerFactory.getLogger(WebSocketServerStarter.class);
 
+    // 静态暴露 DispatcherContext
+    public static DispatcherContext dispatcherContext;
+
     @Override
     public void run(String... args) throws Exception {
         // 1. 构建 dispatcher 上下文
-        DispatcherContext dispatcherContext = new DispatcherContext(inputQueue, outputQueue, sessionManager, gson);
+        dispatcherContext = new DispatcherContext(inputQueue, outputQueue, sessionManager, gson);
+        DispatcherContextRegistry.register(dispatcherContext);
 
         // 2. handler 示例
         MassMessageHandler taskHandler = msg -> {

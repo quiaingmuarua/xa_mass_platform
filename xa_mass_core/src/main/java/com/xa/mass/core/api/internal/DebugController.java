@@ -4,6 +4,10 @@ import io.swagger.annotations.*;
 import org.springframework.web.bind.annotation.*;
 import java.util.HashMap;
 import java.util.Map;
+import com.xa.mass.core.getway.dispatcher.DispatcherContextRegistry;
+import com.xa.mass.core.getway.queue.Envelope;
+import com.xa.mass.core.getway.queue.MessageQueue;
+import com.xa.mass.core.api.model.ApiResponse;
 
 @RestController
 @RequestMapping("/api/debug")
@@ -12,17 +16,26 @@ public class DebugController {
 
     @PostMapping("/sendRaw")
     @ApiOperation("原始 Envelope 调用，便于调试")
-    public Map<String, Object> sendRaw(@RequestBody Map<String, Object> req) {
-        // TODO: 实现实际调试逻辑
-        // 参数示例: {"rawJson": "{...}"}
-        return success(null);
-    }
-
-    private Map<String, Object> success(Object data) {
-        Map<String, Object> resp = new HashMap<>();
-        resp.put("code", 0);
-        resp.put("msg", "ok");
-        resp.put("data", data);
-        return resp;
+    public ApiResponse<Map<String, Object>> sendRaw(@RequestBody Map<String, Object> req) {
+        boolean successFlag = false;
+        String msg = "";
+        if (DispatcherContextRegistry.get() != null) {
+            MessageQueue<Envelope> inputQueue = DispatcherContextRegistry.get().getInputQueue();
+            if (inputQueue != null) {
+                String rawJson = req.toString();
+                Envelope env = Envelope.builder().rawJson(rawJson).receivedAt(System.currentTimeMillis()).build();
+                inputQueue.offer(env);
+                successFlag = true;
+                msg = "Envelope 已入 inputQueue";
+            } else {
+                msg = "inputQueue 未初始化";
+            }
+        } else {
+            msg = "DispatcherContext 未初始化";
+        }
+        Map<String, Object> result = new HashMap<>();
+        result.put("success", successFlag);
+        result.put("msg", msg);
+        return ApiResponse.success(result);
     }
 } 

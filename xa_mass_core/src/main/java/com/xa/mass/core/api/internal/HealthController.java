@@ -6,6 +6,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import java.util.HashMap;
 import java.util.Map;
+import com.xa.mass.core.api.model.ApiResponse;
 
 @RestController
 @RequestMapping("/api/health")
@@ -14,18 +15,10 @@ public class HealthController {
 
     @GetMapping("")
     @ApiOperation("获取网关节点健康状态")
-    public Map<String, Object> getHealth() {
+    public ApiResponse<Map<String, Object>> getHealth() {
         Map<String, Object> data = new HashMap<>();
         data.put("status", "UP");
         data.put("timestamp", System.currentTimeMillis());
-        return success(data);
-    }
-
-    private Map<String, Object> success(Object data) {
-        Map<String, Object> resp = new HashMap<>();
-        resp.put("code", 0);
-        resp.put("msg", "ok");
-        resp.put("data", data);
-        return resp;
+        return ApiResponse.success(data);
     }
 } 

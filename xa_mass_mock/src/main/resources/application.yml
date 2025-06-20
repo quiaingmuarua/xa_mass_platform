@@ -6,16 +6,10 @@ spring:
     port: 6379
     database: 0
   profiles:
-    active: server
+    active: local
 
 server:
   port: 0
-
----
-spring:
-  config:
-    activate:
-      on-profile: client
 
 mock:
   client:
@@ -53,3 +47,6 @@ mass:
 logging:
     level:
       root: INFO # 设置根日志级别为 DEBUG
+
+knife4j:
+  enable: true

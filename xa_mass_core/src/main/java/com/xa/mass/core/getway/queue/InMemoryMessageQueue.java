@@ -59,6 +59,8 @@ public class InMemoryMessageQueue implements MessageQueue<Envelope> { // 修改�
 
     @Override
     public int size() {
+
+        System.out.print("InMemoryMessageQueue SIZE start get");
         return queue.size();
     }
 
