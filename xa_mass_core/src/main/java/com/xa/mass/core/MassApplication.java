@@ -1,12 +1,11 @@
 package com.xa.mass.core;
 
-import com.google.gson.Gson;
 import com.xa.mass.core.getway.dispatcher.DispatcherContext;
 import com.xa.mass.core.getway.dispatcher.DispatcherContextRegistry;
 import com.xa.mass.core.getway.dispatcher.MessageHandlerRegistry;
 import com.xa.mass.core.getway.dispatcher.ServerMessageDispatcher;
 import com.xa.mass.core.getway.dispatcher.context.DispatchRuntimeContext;
-import com.xa.mass.core.getway.middleware.MiddlewareRegistry;
+import com.xa.mass.core.getway.dispatcher.middleware.MiddlewareRegistry;
 import com.xa.mass.core.getway.queue.MessageTransporter;
 import com.xa.mass.core.getway.queue.MessageCodec;
 import com.xa.mass.core.getway.server.MassServerBuilder;

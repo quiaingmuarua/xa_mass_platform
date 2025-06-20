@@ -2,9 +2,8 @@ package com.xa.mass.mock.runner;
 
 import com.xa.mass.core.MassApplication;
 import com.xa.mass.core.MassApplicationConfig;
-import com.xa.mass.core.getway.dispatcher.DispatcherContext;
 import com.xa.mass.core.getway.dispatcher.DispatcherContextRegistry;
-import com.xa.mass.core.getway.dispatcher.MassMessageHandler;
+import com.xa.mass.core.getway.dispatcher.handler.MassMessageHandler;
 import com.xa.mass.core.getway.dispatcher.context.DispatchRuntimeContext;
 import com.xa.mass.core.getway.queue.*;
 import com.xa.mass.core.model.message.enums.MessageType;

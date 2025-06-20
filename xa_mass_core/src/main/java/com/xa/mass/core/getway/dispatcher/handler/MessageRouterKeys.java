@@ -1,4 +1,4 @@
-package com.xa.mass.core.getway.dispatcher;
+package com.xa.mass.core.getway.dispatcher.handler;
 
 import com.xa.mass.core.model.message.enums.MessageType;
 

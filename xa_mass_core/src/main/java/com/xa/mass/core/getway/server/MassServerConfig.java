@@ -1,10 +1,9 @@
 package com.xa.mass.core.getway.server;
 
 import com.google.gson.GsonBuilder;
-import com.xa.mass.core.getway.dispatcher.DispatcherContext;
 import com.xa.mass.core.getway.dispatcher.context.DispatchRuntimeContext;
-import com.xa.mass.core.getway.middleware.EnvelopeMiddleware;
-import com.xa.mass.core.getway.middleware.MiddlewareRegistry;
+import com.xa.mass.core.getway.dispatcher.middleware.EnvelopeMiddleware;
+import com.xa.mass.core.getway.dispatcher.middleware.MiddlewareRegistry;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;

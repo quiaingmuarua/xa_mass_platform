@@ -2,10 +2,10 @@ package com.xa.mass.core.getway.server;
 
 import com.xa.mass.core.getway.dispatcher.*;
 import com.xa.mass.core.getway.dispatcher.context.DispatchRuntimeContext;
-import com.xa.mass.core.getway.middleware.EnvelopeMiddleware;
-import com.xa.mass.core.getway.middleware.MiddlewareRegistry;
-import com.xa.mass.core.getway.queue.Envelope;
-import com.xa.mass.core.getway.queue.MessageQueue;
+import com.xa.mass.core.getway.dispatcher.handler.MassMessageHandler;
+import com.xa.mass.core.getway.dispatcher.handler.MessageRouterKeys;
+import com.xa.mass.core.getway.dispatcher.middleware.EnvelopeMiddleware;
+import com.xa.mass.core.getway.dispatcher.middleware.MiddlewareRegistry;
 import com.xa.mass.core.model.message.enums.MessageType;
 
 import java.util.HashMap;

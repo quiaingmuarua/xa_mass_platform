@@ -1,9 +1,9 @@
 package com.xa.mass.core.getway.dispatcher;
 
 import com.xa.mass.core.getway.dispatcher.context.DispatchRuntimeContext;
-import com.xa.mass.core.getway.middleware.EnvelopeMiddleware;
-import com.xa.mass.core.getway.middleware.ExceptionMiddleware;
-import com.xa.mass.core.getway.middleware.MiddlewareRegistry;
+import com.xa.mass.core.getway.dispatcher.middleware.EnvelopeMiddleware;
+import com.xa.mass.core.getway.dispatcher.middleware.ExceptionMiddleware;
+import com.xa.mass.core.getway.dispatcher.middleware.MiddlewareRegistry;
 import com.xa.mass.core.getway.queue.Envelope;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

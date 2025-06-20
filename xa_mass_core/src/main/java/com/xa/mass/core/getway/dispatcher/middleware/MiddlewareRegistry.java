@@ -1,8 +1,6 @@
-package com.xa.mass.core.getway.middleware;
+package com.xa.mass.core.getway.dispatcher.middleware;
 
-import com.xa.mass.core.getway.dispatcher.MassMessageHandler;
-import com.xa.mass.core.getway.dispatcher.MessageHandlerRegistry;
-import com.xa.mass.core.getway.dispatcher.ResolutionResult;
+import com.xa.mass.core.getway.dispatcher.handler.ResolutionResult;
 import com.xa.mass.core.getway.exception.CommandException;
 import com.xa.mass.core.getway.exception.ErrorCode;
 import com.xa.mass.core.getway.exception.ValidationException;

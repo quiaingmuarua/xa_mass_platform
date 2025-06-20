@@ -1,4 +1,4 @@
-package com.xa.mass.core.getway.middleware;
+package com.xa.mass.core.getway.dispatcher.middleware;
 
 import com.xa.mass.core.getway.queue.Envelope;
 import com.xa.mass.core.getway.dispatcher.context.DispatchRuntimeContext;
