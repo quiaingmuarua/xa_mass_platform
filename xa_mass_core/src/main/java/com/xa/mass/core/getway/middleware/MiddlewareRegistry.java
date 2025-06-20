@@ -92,6 +92,7 @@ public class MiddlewareRegistry {
                 list.add(entry.getValue());
             }
         }
+        logger.info("getActiveOutputMiddlewares {}", list);
         return list;
     }
 
@@ -127,10 +128,14 @@ public class MiddlewareRegistry {
     public static EnvelopeMiddleware sendEnvelopeMiddleware() {
         return (envelope, context) -> {
             try {
+                logger.info("sendEnvelopeMiddleware {}", envelope);
                 ChannelHandlerContext ctx = context.getSessionManager().getChannelContext(envelope.getDeviceId(), envelope.getConnRole());
                 if (ctx != null && ctx.channel().isActive()) {
+                    logger.info("sendEnvelopeMiddleware ctx {}", ctx);
                     ctx.writeAndFlush(new TextWebSocketFrame(envelope.getRawJson()));
+                    return true;
                 }
+                logger.info("sendEnvelopeMiddleware ctx is null, skip sending");
             } catch (Exception e) {
                 logger.error("Error in sendEnvelopeMiddleware", e);
                 return false;

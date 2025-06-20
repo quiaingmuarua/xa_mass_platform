@@ -85,6 +85,7 @@ public class RedisEnvelopeQueue implements MessageQueue<Envelope> {
                 StreamMessage<String, String> msg = messages.get(0);
                 Envelope envelope = fromFields(msg.getBody());
                 readCommands.xack(streamKey, groupName, msg.getId());
+
                 return envelope;
             }
         } catch (RedisCommandTimeoutException e) {
@@ -92,7 +93,7 @@ public class RedisEnvelopeQueue implements MessageQueue<Envelope> {
         } catch (Exception e) {
             logger.error("Redis xreadgroup failed", e);
         }
-
+        logger.info("Redis queue size"+readCommands.xlen(streamKey));
         return null;
     }
 

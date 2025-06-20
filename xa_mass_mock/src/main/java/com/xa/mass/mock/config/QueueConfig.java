@@ -11,7 +11,7 @@ import com.xa.mass.core.getway.queue.Envelope; // 导入 StoredMessage
 import org.springframework.context.annotation.Profile; // 导入 Profile
 
 @Configuration
-@Profile("local") // 只在 "local" profile 激活时生效
+@Profile("!local") // 只在 "local" profile 激活时生效
 public class QueueConfig { // 可以移除 ("customQueueConfigName") 如果不需要特定bean
 
     @Bean

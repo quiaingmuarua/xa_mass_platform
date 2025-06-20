@@ -20,8 +20,8 @@ public class MessageHandlerRegistry {
 
     public void autoRegister() {
         // 注册全局 handler
-        this.register(null, MessageType.PING, "", this::handlePing);
-        this.register(null, MessageType.PONG, "", this::handlePong);
+        this.register(null, MessageType.PING, "heartbeat", this::handlePing);
+        this.register(null, MessageType.PONG, "heartbeat", this::handlePong);
         this.register(null, MessageType.TASK, "", this::handleTask);
     }
 

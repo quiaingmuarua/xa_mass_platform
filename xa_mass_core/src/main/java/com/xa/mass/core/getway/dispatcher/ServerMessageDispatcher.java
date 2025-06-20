@@ -20,7 +20,7 @@ public class ServerMessageDispatcher {
 
 
     public ServerMessageDispatcher(DispatcherContext context) {
-
+        logger.info("ServerMessageDispatcher DispatcherContext={}", context);
         this.context = context;
     }
 
@@ -57,6 +57,7 @@ public class ServerMessageDispatcher {
                 logger.info("processOutputQueueLoop receive envelope {}", envelope);
                 if (envelope != null) {
                     context.setDirection(DispatcherContext.MiddlewareDirection.OUTPUT);
+
                     runMiddlewareChain(MiddlewareRegistry.instance.getActiveOutputMiddlewares(), envelope);
                 }
             } catch (Exception e) {
