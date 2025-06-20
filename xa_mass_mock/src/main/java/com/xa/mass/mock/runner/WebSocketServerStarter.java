@@ -1,17 +1,13 @@
 package com.xa.mass.mock.runner;
 
-import com.google.gson.Gson;
+import com.xa.mass.core.MassApplication;
+import com.xa.mass.core.MassApplicationConfig;
 import com.xa.mass.core.getway.dispatcher.DispatcherContext;
 import com.xa.mass.core.getway.dispatcher.DispatcherContextRegistry;
 import com.xa.mass.core.getway.dispatcher.MassMessageHandler;
 import com.xa.mass.core.getway.queue.Envelope;
 import com.xa.mass.core.getway.queue.MessageQueue;
-import com.xa.mass.core.getway.queue.MessageTransporter;
-import com.xa.mass.core.getway.queue.QueueBasedMessageTransporter;
-import com.xa.mass.core.getway.server.MassServerBuilder;
-import com.xa.mass.core.getway.server.MassServerConfig;
-import com.xa.mass.core.getway.server.MassServerStater;
-import com.xa.mass.core.getway.session.ServerSessionManager;
+import com.xa.mass.core.getway.queue.MessageTransporterFactory;
 import com.xa.mass.core.model.message.enums.MessageType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -27,7 +23,6 @@ import java.util.ArrayList;
 @Profile("server")
 public class WebSocketServerStarter implements CommandLineRunner {
 
-
     @Qualifier("outputQueue")
     @Autowired
     MessageQueue<Envelope> outputQueue;
@@ -36,43 +31,61 @@ public class WebSocketServerStarter implements CommandLineRunner {
     @Autowired
     MessageQueue<Envelope> inputQueue;
 
-
-    ServerSessionManager sessionManager = ServerSessionManager.INSTANCE;
-    private Gson gson = new Gson();
     private static final Logger log = LoggerFactory.getLogger(WebSocketServerStarter.class);
 
-    // 静态暴露 DispatcherContext
+    // 静态暴露 DispatcherContext（保持向后兼容）
     public static DispatcherContext dispatcherContext;
 
     @Override
     public void run(String... args) throws Exception {
-        // 1. 构建 MessageTransporter
-        MessageTransporter messageTransporter = new QueueBasedMessageTransporter(inputQueue, outputQueue);
+        log.info("🚀 Starting WebSocket Server with MassApplication...");
         
-        // 2. 构建 dispatcher 上下文
-        dispatcherContext = new DispatcherContext(messageTransporter, sessionManager, gson);
+        // 1. 创建应用配置
+        MassApplicationConfig config = new MassApplicationConfig();
+        
+        // 2. 配置服务器
+        config.setServerPort(18088);
+        config.setWebSocketPath("/ws");
+        
+        // 3. 配置消息传输器（使用队列）
+        config.setTransporterType(MessageTransporterFactory.TransporterType.QUEUE_BASED);
+        config.setInputQueue(inputQueue);
+        config.setOutputQueue(outputQueue);
+        
+        // 4. 配置网关
+        config.getGatewayConfig().setEnabled(true);
+        config.getGatewayConfig().setMaxConnections(1000);
+        
+        // 5. 配置引擎
+        config.getEngineConfig().setEnabled(true);
+        config.getEngineConfig().setWorkerThreads(8);
+        
+        // 6. 创建并启动应用
+        MassApplication app = new MassApplication(config);
+        
+        // 7. 注册自定义处理器（在应用启动后）
+        app.start();
+        
+        // 8. 获取 DispatcherContext 并注册自定义处理器
+        dispatcherContext = app.getDispatcherContext();
         DispatcherContextRegistry.register(dispatcherContext);
-
-        // 3. handler 示例
+        
+        // 9. 注册自定义 handler
         MassMessageHandler taskHandler = msg -> {
             log.info("[Handler] Handling TASK message: {}", msg);
             return new ArrayList<>();
         };
-
-        // 4. builder 构建 server，自动注册默认中间件和处理器
-        MassServerConfig serverConfig = MassServerBuilder.create()
-                .withPort(18088)
-                .withWebSocketPath("/ws")
-                .withDispatcherContext(dispatcherContext) // 注入上下文
-                .registerHandler(MessageType.TASK, "", taskHandler) // 注册自定义 handler
-                .withDefaultMiddlewares(true)
-                // 如需移除默认认证中间件：.unregisterInputMiddleware(10)
-                // 如需添加自定义中间件：.registerInputMiddleware(30, customBizMiddleware)
-                .build();
-
-        log.info(serverConfig.describe());
-        log.info("Starting MassServer with builder...");
-        MassServerStater stater = new MassServerStater(serverConfig);
-        stater.start();
+        
+        // 注册到现有的 MessageHandlerRegistry
+        dispatcherContext.getMessageHandlerRegistry().register(MessageType.TASK, "", taskHandler);
+        
+        log.info("✅ WebSocket Server started successfully on port {}", config.getServerPort());
+        log.info("📊 Application status: {}", app.isRunning() ? "Running" : "Stopped");
+        
+        // 10. 添加关闭钩子
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            log.info("🛑 Shutting down WebSocket Server...");
+            app.stop();
+        }));
     }
 }
