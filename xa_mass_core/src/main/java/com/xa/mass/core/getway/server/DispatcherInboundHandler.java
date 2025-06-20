@@ -54,9 +54,9 @@ public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWe
                     .build();
             logger.info(" channelRead0 envelope = {}", envelope);
 
-            dispatcherContext.getInputQueue().offer(envelope);
+            dispatcherContext.getMessageTransporter().sendInput(envelope);
             dispatcherContext.getSessionManager().addSession(deviceId, connRole, ctx.channel(), ctx);
-            logger.info("queue size {}", dispatcherContext.getInputQueue().size());
+            logger.info("queue size {}", dispatcherContext.getMessageTransporter().inputQueueSize());
         } catch (Exception e) {
           logger.error("Error in channelRead0", e);
         }

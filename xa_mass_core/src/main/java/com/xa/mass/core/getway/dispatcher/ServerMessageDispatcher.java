@@ -36,7 +36,7 @@ public class ServerMessageDispatcher {
         while (!Thread.currentThread().isInterrupted()) {
             Envelope envelope = null;
             try {
-                envelope = context.getInputQueue().poll(15, TimeUnit.SECONDS);
+                envelope = context.getMessageTransporter().receiveInput(15, TimeUnit.SECONDS);
                 logger.info("processInputQueueLoop receive envelope {}", envelope);
                 if (envelope != null) {
                     context.setDirection(DispatcherContext.MiddlewareDirection.INPUT);
@@ -53,7 +53,7 @@ public class ServerMessageDispatcher {
         while (!Thread.currentThread().isInterrupted()) {
             Envelope envelope = null;
             try {
-                envelope = context.getOutputQueue().poll(15, TimeUnit.SECONDS);
+                envelope = context.getMessageTransporter().receiveOutput(15, TimeUnit.SECONDS);
                 logger.info("processOutputQueueLoop receive envelope {}", envelope);
                 if (envelope != null) {
                     context.setDirection(DispatcherContext.MiddlewareDirection.OUTPUT);

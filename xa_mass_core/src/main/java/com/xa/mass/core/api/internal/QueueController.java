@@ -2,7 +2,7 @@ package com.xa.mass.core.api.internal;
 
 import com.xa.mass.core.api.model.ApiResponse;
 import com.xa.mass.core.getway.queue.Envelope;
-import com.xa.mass.core.getway.queue.MessageQueue;
+import com.xa.mass.core.getway.queue.MessageTransporter;
 import com.xa.mass.core.getway.dispatcher.DispatcherContextRegistry;
 import io.swagger.annotations.*;
 import org.slf4j.Logger;
@@ -25,22 +25,20 @@ public class QueueController {
     public com.xa.mass.core.api.model.ApiResponse<Map<String, Object>> getQueueStatus() {
         log.info("[QueueController] /api/queue/status 请求到达");
         Map<String, Object> map = new HashMap<>();
-        MessageQueue<Envelope> inputQueue = null;
-        MessageQueue<Envelope> outputQueue = null;
+        MessageTransporter messageTransporter = null;
         if (DispatcherContextRegistry.get() != null) {
-            inputQueue = DispatcherContextRegistry.get().getInputQueue();
-            outputQueue = DispatcherContextRegistry.get().getOutputQueue();
+            messageTransporter = DispatcherContextRegistry.get().getMessageTransporter();
         }
-        log.info("[QueueController] inputQueue: {}, outputQueue: {}", inputQueue, outputQueue);
+        log.info("[QueueController] messageTransporter: {}", messageTransporter);
         int inputSize = -1;
         int outputSize = -1;
         try {
-            inputSize = inputQueue != null ? inputQueue.size() : -1;
+            inputSize = messageTransporter != null ? messageTransporter.inputQueueSize() : -1;
         } catch (Exception e) {
             log.error("获取 inputQueue.size() 异常", e);
         }
         try {
-            outputSize = outputQueue != null ? outputQueue.size() : -1;
+            outputSize = messageTransporter != null ? messageTransporter.outputQueueSize() : -1;
         } catch (Exception e) {
             log.error("获取 outputQueue.size() 异常", e);
         }
@@ -54,14 +52,12 @@ public class QueueController {
     @ApiOperation("获取队列明细（预留，后续可扩展）")
     public com.xa.mass.core.api.model.ApiResponse<Map<String, Object>> getQueueDetail() {
         Map<String, Object> map = new HashMap<>();
-        MessageQueue<Envelope> inputQueue = null;
-        MessageQueue<Envelope> outputQueue = null;
+        MessageTransporter messageTransporter = null;
         if (DispatcherContextRegistry.get() != null) {
-            inputQueue = DispatcherContextRegistry.get().getInputQueue();
-            outputQueue = DispatcherContextRegistry.get().getOutputQueue();
+            messageTransporter = DispatcherContextRegistry.get().getMessageTransporter();
         }
-        map.put("inputQueueDetail", inputQueue != null ? inputQueue.toString() : Collections.emptyList());
-        map.put("outputQueueDetail", outputQueue != null ? outputQueue.toString() : Collections.emptyList());
+        map.put("inputQueueDetail", messageTransporter != null ? messageTransporter.toString() : Collections.emptyList());
+        map.put("outputQueueDetail", messageTransporter != null ? messageTransporter.toString() : Collections.emptyList());
         return com.xa.mass.core.api.model.ApiResponse.success(map);
     }
 

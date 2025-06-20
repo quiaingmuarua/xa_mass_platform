@@ -6,7 +6,7 @@ import java.util.HashMap;
 import java.util.Map;
 import com.xa.mass.core.getway.dispatcher.DispatcherContextRegistry;
 import com.xa.mass.core.getway.queue.Envelope;
-import com.xa.mass.core.getway.queue.MessageQueue;
+import com.xa.mass.core.getway.queue.MessageTransporter;
 
 @RestController
 @RequestMapping("/api/message")
@@ -20,16 +20,16 @@ public class MessageController {
         boolean successFlag = false;
         String msg = "";
         if (DispatcherContextRegistry.get() != null) {
-            MessageQueue<Envelope> outputQueue = DispatcherContextRegistry.get().getOutputQueue();
-            if (outputQueue != null) {
+            MessageTransporter messageTransporter = DispatcherContextRegistry.get().getMessageTransporter();
+            if (messageTransporter != null) {
                 // 这里只做简单演示，实际应构造 Envelope
                 String rawJson = req.toString();
                 Envelope env = Envelope.builder().rawJson(rawJson).receivedAt(System.currentTimeMillis()).build();
-                outputQueue.offer(env);
+                messageTransporter.sendOutput(env);
                 successFlag = true;
                 msg = "消息已入队";
             } else {
-                msg = "outputQueue 未初始化";
+                msg = "MessageTransporter 未初始化";
             }
         } else {
             msg = "DispatcherContext 未初始化";

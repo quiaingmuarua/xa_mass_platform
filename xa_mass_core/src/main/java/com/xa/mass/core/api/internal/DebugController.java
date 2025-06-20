@@ -6,7 +6,7 @@ import java.util.HashMap;
 import java.util.Map;
 import com.xa.mass.core.getway.dispatcher.DispatcherContextRegistry;
 import com.xa.mass.core.getway.queue.Envelope;
-import com.xa.mass.core.getway.queue.MessageQueue;
+import com.xa.mass.core.getway.queue.MessageTransporter;
 import com.xa.mass.core.api.model.ApiResponse;
 
 @RestController
@@ -20,15 +20,15 @@ public class DebugController {
         boolean successFlag = false;
         String msg = "";
         if (DispatcherContextRegistry.get() != null) {
-            MessageQueue<Envelope> inputQueue = DispatcherContextRegistry.get().getInputQueue();
-            if (inputQueue != null) {
+            MessageTransporter messageTransporter = DispatcherContextRegistry.get().getMessageTransporter();
+            if (messageTransporter != null) {
                 String rawJson = req.toString();
                 Envelope env = Envelope.builder().rawJson(rawJson).receivedAt(System.currentTimeMillis()).build();
-                inputQueue.offer(env);
+                messageTransporter.sendInput(env);
                 successFlag = true;
                 msg = "Envelope 已入 inputQueue";
             } else {
-                msg = "inputQueue 未初始化";
+                msg = "MessageTransporter 未初始化";
             }
         } else {
             msg = "DispatcherContext 未初始化";
