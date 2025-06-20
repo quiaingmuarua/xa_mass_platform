@@ -41,49 +41,30 @@ public class WebSocketServerStarter implements CommandLineRunner {
     public void run(String... args) throws Exception {
         log.info("🚀 Starting WebSocket Server with MassApplication...");
         
-        // 1. 创建应用配置
-        MassApplicationConfig config = new MassApplicationConfig();
+        // 使用开发环境默认配置，简化启动流程
+        MassApplicationConfig config = MassApplicationConfig.createDevelopment(18088, inputQueue, outputQueue);
         
-        // 2. 配置服务器
-        config.setServerPort(18088);
-        config.setWebSocketPath("/ws");
-        
-        // 3. 配置消息传输器（使用队列）
-        config.setTransporterType(MessageTransporterFactory.TransporterType.QUEUE_BASED);
-        config.setInputQueue(inputQueue);
-        config.setOutputQueue(outputQueue);
-        
-        // 4. 配置网关
-        config.getGatewayConfig().setEnabled(true);
-        config.getGatewayConfig().setMaxConnections(1000);
-        
-        // 5. 配置引擎
-        config.getEngineConfig().setEnabled(true);
-        config.getEngineConfig().setWorkerThreads(8);
-        
-        // 6. 创建并启动应用
+        // 创建并启动应用
         MassApplication app = new MassApplication(config);
-        
-        // 7. 注册自定义处理器（在应用启动后）
         app.start();
         
-        // 8. 获取 DispatchRuntimeContext 并注册自定义处理器
+        // 获取 DispatchRuntimeContext 并注册自定义处理器
         dispatcherContext = app.getDispatcherContext();
         DispatcherContextRegistry.register(dispatcherContext);
         
-        // 9. 注册自定义 handler
+        // 注册自定义 handler
         MassMessageHandler taskHandler = msg -> {
             log.info("[Handler] Handling TASK message: {}", msg);
             return new ArrayList<>();
         };
         
         // 注册到现有的 MessageHandlerRegistry
-        dispatcherContext.getMessageHandlerRegistry().register("test",MessageType.TASK, "", taskHandler);
+        dispatcherContext.getMessageHandlerRegistry().register("test", MessageType.TASK, "", taskHandler);
         
         log.info("✅ WebSocket Server started successfully on port {}", config.getServerPort());
         log.info("📊 Application status: {}", app.isRunning() ? "Running" : "Stopped");
         
-        // 10. 添加关闭钩子
+        // 添加关闭钩子
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             log.info("🛑 Shutting down WebSocket Server...");
             app.stop();

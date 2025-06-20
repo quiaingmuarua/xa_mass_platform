@@ -102,26 +102,46 @@ public class MassApplication {
     private void initializeComponents() {
         logger.info("🔧 Initializing core components...");
         
-        // 初始化会话管理器
-        ServerSessionManager sessionManager = ServerSessionManager.INSTANCE;
-        
-        // 创建消息传输器
-        MessageTransporter messageTransporter = config.createMessageTransporter();
-        
-        // 创建消息编解码器
-        MessageCodec messageCodec = config.createMessageCodec();
-        
-        // 创建分发器上下文
-        dispatcherContext = new DispatcherContext(messageTransporter, sessionManager, messageCodec);
-        DispatcherContextRegistry.register(dispatcherContext);
-        
-        // 注册消息处理器
-        MessageHandlerRegistry messageHandlerRegistry = new MessageHandlerRegistry();
-        messageHandlerRegistry.autoRegister();
-        dispatcherContext.setMessageHandlerRegistry(messageHandlerRegistry);
-        
-        // 注册中间件
-        MiddlewareRegistry.autoRegister();
+        try {
+            // 初始化会话管理器
+            ServerSessionManager sessionManager = ServerSessionManager.INSTANCE;
+            logger.info("✅ Session manager initialized");
+            
+            // 创建消息传输器
+            MessageTransporter messageTransporter = config.createMessageTransporter();
+            logger.info("✅ Message transporter created");
+            
+            // 创建消息编解码器
+            MessageCodec messageCodec = config.createMessageCodec();
+            logger.info("✅ Message codec created");
+            
+            // 创建分发器上下文
+            dispatcherContext = new DispatcherContext(messageTransporter, sessionManager, messageCodec);
+            logger.info("✅ Dispatcher context created");
+            
+            // 注册到注册表
+            try {
+                DispatcherContextRegistry.register(dispatcherContext);
+                logger.info("✅ Dispatcher context registered");
+            } catch (Exception e) {
+                logger.error("❌ Failed to register dispatcher context", e);
+                throw e;
+            }
+            
+            // 注册消息处理器
+            MessageHandlerRegistry messageHandlerRegistry = new MessageHandlerRegistry();
+            messageHandlerRegistry.autoRegister();
+            dispatcherContext.setMessageHandlerRegistry(messageHandlerRegistry);
+            logger.info("✅ Message handler registry initialized");
+            
+            // 注册中间件
+            MiddlewareRegistry.autoRegister();
+            logger.info("✅ Middleware registry initialized");
+            
+        } catch (Exception e) {
+            logger.error("❌ Failed to initialize core components", e);
+            throw new RuntimeException("Failed to initialize core components", e);
+        }
         
         logger.info("✅ Core components initialized");
     }

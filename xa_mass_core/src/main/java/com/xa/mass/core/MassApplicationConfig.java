@@ -38,6 +38,97 @@ public class MassApplicationConfig {
     private EngineConfig engineConfig = new EngineConfig();
     
     /**
+     * 创建默认配置
+     * 适用于大多数开发和生产环境
+     * @return 默认配置实例
+     */
+    public static MassApplicationConfig createDefault() {
+        return new MassApplicationConfig();
+    }
+    
+    /**
+     * 创建开发环境默认配置
+     * @param port 服务器端口
+     * @param inputQueue 输入队列
+     * @param outputQueue 输出队列
+     * @return 开发环境配置实例
+     */
+    public static MassApplicationConfig createDevelopment(int port, MessageQueue<Envelope> inputQueue, MessageQueue<Envelope> outputQueue) {
+        MassApplicationConfig config = new MassApplicationConfig();
+        config.setServerPort(port);
+        config.setWebSocketPath("/ws");
+        config.setTransporterType(MessageTransporterFactory.TransporterType.QUEUE_BASED);
+        config.setInputQueue(inputQueue);
+        config.setOutputQueue(outputQueue);
+        config.getGatewayConfig().setEnabled(true);
+        config.getGatewayConfig().setMaxConnections(1000);
+        config.getEngineConfig().setEnabled(true);
+        config.getEngineConfig().setWorkerThreads(8);
+        return config;
+    }
+    
+    /**
+     * 创建生产环境默认配置
+     * @param port 服务器端口
+     * @param inputQueue 输入队列
+     * @param outputQueue 输出队列
+     * @return 生产环境配置实例
+     */
+    public static MassApplicationConfig createProduction(int port, MessageQueue<Envelope> inputQueue, MessageQueue<Envelope> outputQueue) {
+        MassApplicationConfig config = new MassApplicationConfig();
+        config.setServerPort(port);
+        config.setWebSocketPath("/ws");
+        config.setTransporterType(MessageTransporterFactory.TransporterType.QUEUE_BASED);
+        config.setInputQueue(inputQueue);
+        config.setOutputQueue(outputQueue);
+        config.getGatewayConfig().setEnabled(true);
+        config.getGatewayConfig().setMaxConnections(5000);
+        config.getEngineConfig().setEnabled(true);
+        config.getEngineConfig().setWorkerThreads(16);
+        return config;
+    }
+    
+    /**
+     * 创建API模式配置
+     * @param port 服务器端口
+     * @param inputApiUrl 输入API URL
+     * @param outputApiUrl 输出API URL
+     * @param apiKey API密钥
+     * @return API模式配置实例
+     */
+    public static MassApplicationConfig createApiMode(int port, String inputApiUrl, String outputApiUrl, String apiKey) {
+        MassApplicationConfig config = new MassApplicationConfig();
+        config.setServerPort(port);
+        config.setWebSocketPath("/ws");
+        config.setTransporterType(MessageTransporterFactory.TransporterType.API_BASED);
+        config.setInputApiUrl(inputApiUrl);
+        config.setOutputApiUrl(outputApiUrl);
+        config.setApiKey(apiKey);
+        config.getGatewayConfig().setEnabled(true);
+        config.getGatewayConfig().setMaxConnections(1000);
+        config.getEngineConfig().setEnabled(true);
+        config.getEngineConfig().setWorkerThreads(8);
+        return config;
+    }
+    
+    /**
+     * 创建多级队列配置
+     * @param port 服务器端口
+     * @return 多级队列配置实例
+     */
+    public static MassApplicationConfig createMultiLevel(int port) {
+        MassApplicationConfig config = new MassApplicationConfig();
+        config.setServerPort(port);
+        config.setWebSocketPath("/ws");
+        config.setTransporterType(MessageTransporterFactory.TransporterType.MULTI_LEVEL);
+        config.getGatewayConfig().setEnabled(true);
+        config.getGatewayConfig().setMaxConnections(1000);
+        config.getEngineConfig().setEnabled(true);
+        config.getEngineConfig().setWorkerThreads(8);
+        return config;
+    }
+    
+    /**
      * 创建消息传输器
      */
     public MessageTransporter createMessageTransporter() {
