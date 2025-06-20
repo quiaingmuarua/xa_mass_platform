@@ -5,6 +5,7 @@ import com.xa.mass.core.getway.dispatcher.DispatcherContext;
 import com.xa.mass.core.getway.dispatcher.DispatcherContextRegistry;
 import com.xa.mass.core.getway.dispatcher.MessageHandlerRegistry;
 import com.xa.mass.core.getway.dispatcher.ServerMessageDispatcher;
+import com.xa.mass.core.getway.dispatcher.context.DispatchRuntimeContext;
 import com.xa.mass.core.getway.middleware.MiddlewareRegistry;
 import com.xa.mass.core.getway.queue.MessageTransporter;
 import com.xa.mass.core.getway.server.MassServerBuilder;
@@ -25,7 +26,7 @@ public class MassApplication {
     private final MassApplicationConfig config;
     private Gateway gateway;
     private Engine engine;
-    private DispatcherContext dispatcherContext;
+    private DispatchRuntimeContext dispatcherContext;
     private ServerMessageDispatcher messageDispatcher;
     private MassServerStater serverStater;
     
@@ -170,7 +171,7 @@ public class MassApplication {
     /**
      * 获取分发器上下文
      */
-    public DispatcherContext getDispatcherContext() {
+    public DispatchRuntimeContext getDispatcherContext() {
         return dispatcherContext;
     }
     

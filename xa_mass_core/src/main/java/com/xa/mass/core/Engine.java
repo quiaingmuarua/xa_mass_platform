@@ -1,6 +1,6 @@
 package com.xa.mass.core;
 
-import com.xa.mass.core.getway.dispatcher.DispatcherContext;
+import com.xa.mass.core.getway.dispatcher.context.DispatchRuntimeContext;
 import com.xa.mass.core.getway.dispatcher.ServerMessageDispatcher;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -15,11 +15,11 @@ public class Engine {
     private static final Logger logger = LoggerFactory.getLogger(Engine.class);
     
     private final MassApplicationConfig.EngineConfig config;
-    private final DispatcherContext dispatcherContext;
+    private final DispatchRuntimeContext dispatcherContext;
     private ServerMessageDispatcher messageDispatcher;
     private boolean running = false;
     
-    public Engine(MassApplicationConfig.EngineConfig config, DispatcherContext dispatcherContext) {
+    public Engine(MassApplicationConfig.EngineConfig config, DispatchRuntimeContext dispatcherContext) {
         this.config = config;
         this.dispatcherContext = dispatcherContext;
     }
@@ -100,7 +100,7 @@ public class Engine {
     /**
      * 获取分发器上下文
      */
-    public DispatcherContext getDispatcherContext() {
+    public DispatchRuntimeContext getDispatcherContext() {
         return dispatcherContext;
     }
 } 

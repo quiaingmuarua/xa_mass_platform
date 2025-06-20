@@ -1,6 +1,6 @@
 package com.xa.mass.core.getway.server;
 
-import com.xa.mass.core.getway.dispatcher.DispatcherContext;
+import com.xa.mass.core.getway.dispatcher.context.DispatchRuntimeContext;
 import com.xa.mass.core.getway.exception.ValidationException;
 import com.xa.mass.core.getway.queue.Envelope;
 import com.xa.mass.core.getway.queue.MessageParser;
@@ -12,9 +12,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWebSocketFrame> {
-    private final DispatcherContext dispatcherContext;
+    private final DispatchRuntimeContext dispatcherContext;
     private static final Logger logger = LoggerFactory.getLogger(DispatcherInboundHandler.class);
-    public DispatcherInboundHandler(DispatcherContext dispatcherContext) {
+    public DispatcherInboundHandler(DispatchRuntimeContext dispatcherContext) {
         this.dispatcherContext = dispatcherContext;
     }
 

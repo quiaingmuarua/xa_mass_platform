@@ -5,6 +5,7 @@ import com.xa.mass.core.MassApplicationConfig;
 import com.xa.mass.core.getway.dispatcher.DispatcherContext;
 import com.xa.mass.core.getway.dispatcher.DispatcherContextRegistry;
 import com.xa.mass.core.getway.dispatcher.MassMessageHandler;
+import com.xa.mass.core.getway.dispatcher.context.DispatchRuntimeContext;
 import com.xa.mass.core.getway.queue.Envelope;
 import com.xa.mass.core.getway.queue.MessageQueue;
 import com.xa.mass.core.getway.queue.MessageTransporterFactory;
@@ -33,8 +34,8 @@ public class WebSocketServerStarter implements CommandLineRunner {
 
     private static final Logger log = LoggerFactory.getLogger(WebSocketServerStarter.class);
 
-    // 静态暴露 DispatcherContext（保持向后兼容）
-    public static DispatcherContext dispatcherContext;
+    // 静态暴露 DispatchRuntimeContext（保持向后兼容）
+    public static DispatchRuntimeContext dispatcherContext;
 
     @Override
     public void run(String... args) throws Exception {
@@ -66,7 +67,7 @@ public class WebSocketServerStarter implements CommandLineRunner {
         // 7. 注册自定义处理器（在应用启动后）
         app.start();
         
-        // 8. 获取 DispatcherContext 并注册自定义处理器
+        // 8. 获取 DispatchRuntimeContext 并注册自定义处理器
         dispatcherContext = app.getDispatcherContext();
         DispatcherContextRegistry.register(dispatcherContext);
         
@@ -77,7 +78,7 @@ public class WebSocketServerStarter implements CommandLineRunner {
         };
         
         // 注册到现有的 MessageHandlerRegistry
-        dispatcherContext.getMessageHandlerRegistry().register(MessageType.TASK, "", taskHandler);
+        dispatcherContext.getMessageHandlerRegistry().register("test",MessageType.TASK, "", taskHandler);
         
         log.info("✅ WebSocket Server started successfully on port {}", config.getServerPort());
         log.info("📊 Application status: {}", app.isRunning() ? "Running" : "Stopped");

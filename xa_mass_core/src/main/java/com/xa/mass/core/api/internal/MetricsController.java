@@ -8,6 +8,7 @@ import java.util.HashMap;
 import java.util.Map;
 import com.xa.mass.core.api.model.ApiResponse;
 import com.xa.mass.core.getway.dispatcher.DispatcherContextRegistry;
+import com.xa.mass.core.getway.dispatcher.context.TransportContext;
 import com.xa.mass.core.getway.queue.MessageTransporter;
 
 @RestController
@@ -19,8 +20,9 @@ public class MetricsController {
     @ApiOperation("获取消息速率/统计信息")
     public ApiResponse<Map<String, Object>> getMetrics() {
         Map<String, Object> data = new HashMap<>();
-        if (DispatcherContextRegistry.get() != null) {
-            MessageTransporter messageTransporter = DispatcherContextRegistry.get().getMessageTransporter();
+        TransportContext transportContext = DispatcherContextRegistry.getTransportContext();
+        if (transportContext != null) {
+            MessageTransporter messageTransporter = transportContext.getMessageTransporter();
             if (messageTransporter != null) {
                 data.put("inputQueueSize", messageTransporter.inputQueueSize());
                 data.put("outputQueueSize", messageTransporter.outputQueueSize());

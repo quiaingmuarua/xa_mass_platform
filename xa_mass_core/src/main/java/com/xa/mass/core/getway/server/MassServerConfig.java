@@ -2,6 +2,7 @@ package com.xa.mass.core.getway.server;
 
 import com.google.gson.GsonBuilder;
 import com.xa.mass.core.getway.dispatcher.DispatcherContext;
+import com.xa.mass.core.getway.dispatcher.context.DispatchRuntimeContext;
 import com.xa.mass.core.getway.middleware.EnvelopeMiddleware;
 import com.xa.mass.core.getway.middleware.MiddlewareRegistry;
 
@@ -13,12 +14,12 @@ import java.util.Map;
 public class MassServerConfig {
     private final int port;
     private final String websocketPath;
-    private final DispatcherContext dispatcherContext;
+    private final DispatchRuntimeContext dispatcherContext;
 
     public MassServerConfig(
             int port,
             String websocketPath,
-            DispatcherContext dispatcherContext
+            DispatchRuntimeContext dispatcherContext
     ) {
         this.port = port;
         this.websocketPath = websocketPath;
@@ -27,7 +28,7 @@ public class MassServerConfig {
 
     public int getPort() { return port; }
     public String getWebsocketPath() { return websocketPath; }
-    public DispatcherContext getDispatcherContext() { return dispatcherContext; }
+    public DispatchRuntimeContext getDispatcherContext() { return dispatcherContext; }
 
     @Override
     public String toString() {
@@ -36,7 +37,7 @@ public class MassServerConfig {
 
     public String describe() {
         Map<String, Object> info = new LinkedHashMap<>();
-        DispatcherContext ctx = dispatcherContext;
+        DispatchRuntimeContext ctx = dispatcherContext;
         info.put("port", port);
         info.put("websocketPath", websocketPath);
         // Middleware

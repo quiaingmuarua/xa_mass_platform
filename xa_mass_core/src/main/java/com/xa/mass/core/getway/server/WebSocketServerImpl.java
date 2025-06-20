@@ -1,6 +1,8 @@
 package com.xa.mass.core.getway.server;
 
 import com.xa.mass.core.getway.dispatcher.DispatcherContext;
+import com.xa.mass.core.getway.dispatcher.context.DispatchRuntimeContext;
+import com.xa.mass.core.getway.server.DispatcherInboundHandler;
 import com.xa.mass.core.getway.session.ServerSessionManager;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.*;
@@ -49,7 +51,7 @@ public class WebSocketServerImpl implements MassWebSocketServer {
 
     private ServerSessionManager sessionManager;
 
-    private DispatcherContext dispatcherContext;
+    private DispatchRuntimeContext dispatcherContext;
 
     /**
      * 启动 WebSocket 服务器。
@@ -209,7 +211,7 @@ public class WebSocketServerImpl implements MassWebSocketServer {
     public void setWebsocketPath(String websocketPath) {
         this.websocketPath = websocketPath;
     }
-    public void setDispatcherContext(DispatcherContext dispatcherContext) {
+    public void setDispatcherContext(DispatchRuntimeContext dispatcherContext) {
         this.dispatcherContext = dispatcherContext;
     }
 

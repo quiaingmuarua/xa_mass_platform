@@ -5,6 +5,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.HashMap;
 import java.util.Map;
 import com.xa.mass.core.getway.dispatcher.DispatcherContextRegistry;
+import com.xa.mass.core.getway.dispatcher.context.TransportContext;
 import com.xa.mass.core.getway.queue.Envelope;
 import com.xa.mass.core.getway.queue.MessageTransporter;
 import com.xa.mass.core.api.model.ApiResponse;
@@ -19,8 +20,9 @@ public class DebugController {
     public ApiResponse<Map<String, Object>> sendRaw(@RequestBody Map<String, Object> req) {
         boolean successFlag = false;
         String msg = "";
-        if (DispatcherContextRegistry.get() != null) {
-            MessageTransporter messageTransporter = DispatcherContextRegistry.get().getMessageTransporter();
+        TransportContext transportContext = DispatcherContextRegistry.getTransportContext();
+        if (transportContext != null) {
+            MessageTransporter messageTransporter = transportContext.getMessageTransporter();
             if (messageTransporter != null) {
                 String rawJson = req.toString();
                 Envelope env = Envelope.builder().rawJson(rawJson).receivedAt(System.currentTimeMillis()).build();
@@ -31,7 +33,7 @@ public class DebugController {
                 msg = "MessageTransporter 未初始化";
             }
         } else {
-            msg = "DispatcherContext 未初始化";
+            msg = "TransportContext 未初始化";
         }
         Map<String, Object> result = new HashMap<>();
         result.put("success", successFlag);

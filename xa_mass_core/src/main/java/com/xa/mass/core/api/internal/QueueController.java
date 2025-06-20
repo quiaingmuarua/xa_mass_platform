@@ -4,6 +4,7 @@ import com.xa.mass.core.api.model.ApiResponse;
 import com.xa.mass.core.getway.queue.Envelope;
 import com.xa.mass.core.getway.queue.MessageTransporter;
 import com.xa.mass.core.getway.dispatcher.DispatcherContextRegistry;
+import com.xa.mass.core.getway.dispatcher.context.TransportContext;
 import io.swagger.annotations.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -25,10 +26,8 @@ public class QueueController {
     public com.xa.mass.core.api.model.ApiResponse<Map<String, Object>> getQueueStatus() {
         log.info("[QueueController] /api/queue/status 请求到达");
         Map<String, Object> map = new HashMap<>();
-        MessageTransporter messageTransporter = null;
-        if (DispatcherContextRegistry.get() != null) {
-            messageTransporter = DispatcherContextRegistry.get().getMessageTransporter();
-        }
+        TransportContext transportContext = DispatcherContextRegistry.getTransportContext();
+        MessageTransporter messageTransporter = transportContext != null ? transportContext.getMessageTransporter() : null;
         log.info("[QueueController] messageTransporter: {}", messageTransporter);
         int inputSize = -1;
         int outputSize = -1;
@@ -52,10 +51,8 @@ public class QueueController {
     @ApiOperation("获取队列明细（预留，后续可扩展）")
     public com.xa.mass.core.api.model.ApiResponse<Map<String, Object>> getQueueDetail() {
         Map<String, Object> map = new HashMap<>();
-        MessageTransporter messageTransporter = null;
-        if (DispatcherContextRegistry.get() != null) {
-            messageTransporter = DispatcherContextRegistry.get().getMessageTransporter();
-        }
+        TransportContext transportContext = DispatcherContextRegistry.getTransportContext();
+        MessageTransporter messageTransporter = transportContext != null ? transportContext.getMessageTransporter() : null;
         map.put("inputQueueDetail", messageTransporter != null ? messageTransporter.toString() : Collections.emptyList());
         map.put("outputQueueDetail", messageTransporter != null ? messageTransporter.toString() : Collections.emptyList());
         return com.xa.mass.core.api.model.ApiResponse.success(map);

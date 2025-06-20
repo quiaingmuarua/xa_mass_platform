@@ -1,6 +1,7 @@
 package com.xa.mass.core.getway.server;
 
 import com.xa.mass.core.getway.dispatcher.*;
+import com.xa.mass.core.getway.dispatcher.context.DispatchRuntimeContext;
 import com.xa.mass.core.getway.middleware.EnvelopeMiddleware;
 import com.xa.mass.core.getway.middleware.MiddlewareRegistry;
 import com.xa.mass.core.getway.queue.Envelope;
@@ -14,7 +15,7 @@ public class MassServerBuilder {
     private int port = 8080;
     private String websocketPath = "/ws";
     private final MiddlewareRegistry middlewareRegistry = MiddlewareRegistry.instance;
-    private DispatcherContext dispatcherContext;
+    private DispatchRuntimeContext dispatcherContext;
     private final Map<String, Map<String, MassMessageHandler>> handlerMap = new HashMap<>();
 
 
@@ -36,7 +37,7 @@ public class MassServerBuilder {
         return this;
     }
 
-    public MassServerBuilder withDispatcherContext(DispatcherContext dispatcherContext){
+    public MassServerBuilder withDispatcherContext(DispatchRuntimeContext dispatcherContext){
         this.dispatcherContext=dispatcherContext;
         return this;
     }

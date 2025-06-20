@@ -1,5 +1,6 @@
 package com.xa.mass.core.getway.dispatcher;
 
+import com.xa.mass.core.getway.dispatcher.context.DispatchRuntimeContext;
 import com.xa.mass.core.getway.middleware.EnvelopeMiddleware;
 import com.xa.mass.core.getway.middleware.ExceptionMiddleware;
 import com.xa.mass.core.getway.middleware.MiddlewareRegistry;
@@ -16,13 +17,13 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class ServerMessageDispatcher {
 
     private static final Logger logger = LoggerFactory.getLogger(ServerMessageDispatcher.class);
-    private final DispatcherContext context;
+    private final DispatchRuntimeContext context;
     private final AtomicBoolean running = new AtomicBoolean(false);
     private ExecutorService inputExecutor;
     private ExecutorService outputExecutor;
 
-    public ServerMessageDispatcher(DispatcherContext context) {
-        logger.info("ServerMessageDispatcher DispatcherContext={}", context);
+    public ServerMessageDispatcher(DispatchRuntimeContext context) {
+        logger.info("ServerMessageDispatcher DispatchRuntimeContext={}", context);
         this.context = context;
     }
 

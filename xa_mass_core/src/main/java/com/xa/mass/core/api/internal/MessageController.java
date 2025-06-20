@@ -5,6 +5,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.HashMap;
 import java.util.Map;
 import com.xa.mass.core.getway.dispatcher.DispatcherContextRegistry;
+import com.xa.mass.core.getway.dispatcher.context.TransportContext;
 import com.xa.mass.core.getway.queue.Envelope;
 import com.xa.mass.core.getway.queue.MessageTransporter;
 
@@ -19,8 +20,9 @@ public class MessageController {
         // 示例参数: {"deviceId": "dev123", "role": "USER", "content": "hello"}
         boolean successFlag = false;
         String msg = "";
-        if (DispatcherContextRegistry.get() != null) {
-            MessageTransporter messageTransporter = DispatcherContextRegistry.get().getMessageTransporter();
+        TransportContext transportContext = DispatcherContextRegistry.getTransportContext();
+        if (transportContext != null) {
+            MessageTransporter messageTransporter = transportContext.getMessageTransporter();
             if (messageTransporter != null) {
                 // 这里只做简单演示，实际应构造 Envelope
                 String rawJson = req.toString();
@@ -32,7 +34,7 @@ public class MessageController {
                 msg = "MessageTransporter 未初始化";
             }
         } else {
-            msg = "DispatcherContext 未初始化";
+            msg = "TransportContext 未初始化";
         }
         Map<String, Object> result = new HashMap<>();
         result.put("success", successFlag);

@@ -1,12 +1,11 @@
 package com.xa.mass.core.getway.server;
 
-
-import com.xa.mass.core.getway.dispatcher.DispatcherContext;
+import com.xa.mass.core.getway.dispatcher.context.DispatchRuntimeContext;
 
 public class MassServerStater {
     private final MassServerConfig config;
     private WebSocketServerImpl webSocketServer;
-    private DispatcherContext dispatcherContext;
+    private DispatchRuntimeContext dispatcherContext;
 
 
     public MassServerStater(MassServerConfig config) {
@@ -27,4 +26,9 @@ public class MassServerStater {
             webSocketServer.stop();
         }
     }
-} 
+
+    public boolean isRunning() {
+        return webSocketServer != null && webSocketServer.isRunning();
+
+    }
+}
