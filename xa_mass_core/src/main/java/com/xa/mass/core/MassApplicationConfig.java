@@ -4,6 +4,8 @@ import com.xa.mass.core.getway.queue.MessageTransporter;
 import com.xa.mass.core.getway.queue.MessageTransporterFactory;
 import com.xa.mass.core.getway.queue.MessageQueue;
 import com.xa.mass.core.getway.queue.Envelope;
+import com.xa.mass.core.getway.queue.MessageCodec;
+import com.xa.mass.core.getway.queue.MessageCodecFactory;
 
 /**
  * Mass 应用配置类
@@ -24,6 +26,10 @@ public class MassApplicationConfig {
     private String inputApiUrl;
     private String outputApiUrl;
     private String apiKey;
+    
+    // 编解码器配置
+    private MessageCodecFactory.CodecType codecType = MessageCodecFactory.CodecType.GSON;
+    private MessageCodec messageCodec;
     
     // 网关配置
     private GatewayConfig gatewayConfig = new GatewayConfig();
@@ -56,6 +62,16 @@ public class MassApplicationConfig {
         }
     }
     
+    /**
+     * 创建消息编解码器
+     */
+    public MessageCodec createMessageCodec() {
+        if (messageCodec != null) {
+            return messageCodec;
+        }
+        return MessageCodecFactory.create(codecType);
+    }
+    
     // Getter 和 Setter 方法
     
     public int getServerPort() { return serverPort; }
@@ -81,6 +97,12 @@ public class MassApplicationConfig {
     
     public String getApiKey() { return apiKey; }
     public void setApiKey(String apiKey) { this.apiKey = apiKey; }
+    
+    public MessageCodecFactory.CodecType getCodecType() { return codecType; }
+    public void setCodecType(MessageCodecFactory.CodecType codecType) { this.codecType = codecType; }
+    
+    public MessageCodec getMessageCodec() { return messageCodec; }
+    public void setMessageCodec(MessageCodec messageCodec) { this.messageCodec = messageCodec; }
     
     public GatewayConfig getGatewayConfig() { return gatewayConfig; }
     public void setGatewayConfig(GatewayConfig gatewayConfig) { this.gatewayConfig = gatewayConfig; }

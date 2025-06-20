@@ -1,25 +1,34 @@
 package com.xa.mass.core.getway.queue;
 
-
-import com.google.gson.Gson;
-import com.google.gson.JsonSyntaxException;
 import com.xa.mass.core.model.message.MassMessage;
 import com.xa.mass.core.model.message.MessageContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
+/**
+ * 消息解析器
+ * 使用 MessageCodec 进行消息的解析和验证
+ */
 public class MessageParser {
 
     public static final MessageParser INSTANCE = new MessageParser();
     private static final Logger logger = LoggerFactory.getLogger(MessageParser.class);
-    private final Gson gson = new Gson();
+    private final MessageCodec messageCodec;
+
+    public MessageParser() {
+        this.messageCodec = new GsonMessageCodec();
+    }
+
+    public MessageParser(MessageCodec messageCodec) {
+        this.messageCodec = messageCodec;
+    }
 
     public MassMessage tryDecode(String rawJson) {
         try {
-            return gson.fromJson(rawJson, MassMessage.class);
-        } catch (JsonSyntaxException e) {
-            logger.warn("Invalid JSON format: {}", rawJson, e);
+            return messageCodec.decode(rawJson);
+        } catch (Exception e) {
+            logger.warn("Invalid message format: {}", rawJson, e);
             return null;
         }
     }
@@ -36,5 +45,13 @@ public class MessageParser {
         return ctx != null &&
                 ctx.getDeviceId() != null &&
                 ctx.getConnRole() != null;
+    }
+
+    /**
+     * 获取底层的消息编解码器
+     * @return 消息编解码器
+     */
+    public MessageCodec getMessageCodec() {
+        return messageCodec;
     }
 }

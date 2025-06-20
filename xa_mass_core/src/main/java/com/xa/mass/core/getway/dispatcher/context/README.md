@@ -12,8 +12,8 @@
    - `getSessionManager()` - 获取会话管理器
 
 2. **CodecContext** - 编解码上下文
-   - `getGson()` - 获取 Gson 编解码器
-   - 支持未来替换为 Jackson 或 protobuf
+   - `getMessageCodec()` - 获取消息编解码器
+   - 支持不同的编解码实现（如 Gson、Jackson、protobuf 等）
 
 3. **TransportContext** - 消息传输上下文
    - `getMessageTransporter()` - 获取消息传输器
@@ -38,6 +38,21 @@
 - 实现 `DispatchRuntimeContext` 接口
 - 提供所有上下文功能的实现
 
+## 编解码器架构
+
+### MessageCodec 接口
+- `encode(MassMessage)` - 编码消息为字符串
+- `decode(String)` - 解码字符串为消息
+- `isValid(String)` - 验证消息格式
+
+### 实现类
+- **GsonMessageCodec** - 基于 Gson 的实现
+- **MessageCodecFactory** - 编解码器工厂，支持创建不同类型的编解码器
+
+### 配置支持
+- `MassApplicationConfig` 支持配置编解码器类型
+- 支持自定义编解码器实例
+
 ## 使用方式
 
 ### 外部代码使用特定接口
@@ -53,7 +68,9 @@ MessageTransporter transporter = transportContext.getMessageTransporter();
 
 // 只需要编解码功能
 CodecContext codecContext = DispatcherContextRegistry.getCodecContext();
-Gson gson = codecContext.getGson();
+MessageCodec codec = codecContext.getMessageCodec();
+String json = codec.encode(message);
+MassMessage msg = codec.decode(json);
 ```
 
 ### 内部代码使用完整接口
@@ -64,13 +81,29 @@ DispatchRuntimeContext context = DispatcherContextRegistry.get();
 // 或者直接使用 DispatcherContext 实例
 ```
 
+### 编解码器使用示例
+
+```java
+// 使用默认的 Gson 编解码器
+MessageCodec codec = MessageCodecFactory.createDefault();
+
+// 使用自定义 Gson 配置
+MessageCodec codec = MessageCodecFactory.createGsonWithConfig();
+
+// 通过配置创建
+MassApplicationConfig config = new MassApplicationConfig();
+config.setCodecType(MessageCodecFactory.CodecType.GSON);
+MessageCodec codec = config.createMessageCodec();
+```
+
 ## 优势
 
 1. **接口隔离原则** - 外部代码只依赖它们真正需要的接口
 2. **提高可测试性** - 可以轻松模拟特定的上下文接口
-3. **增强灵活性** - 支持未来替换特定组件（如编解码器）
+3. **增强灵活性** - 支持未来替换特定组件（如编解码器、传输器）
 4. **向后兼容** - 保持现有 API 的兼容性
 5. **清晰的职责分离** - 每个接口都有明确的职责
+6. **编解码器抽象** - 支持多种编解码格式（JSON、protobuf、Avro 等）
 
 ## 迁移指南
 
@@ -97,6 +130,12 @@ DispatchRuntimeContext context = DispatcherContextRegistry.get();
 - `MassServerStater` 使用 `DispatchRuntimeContext`
 - `WebSocketServerImpl` 使用 `DispatchRuntimeContext`
 - `DispatcherInboundHandler` 使用 `DispatchRuntimeContext`
+
+### 编解码器更新
+
+- `MessageParser` 使用 `MessageCodec` 接口
+- 新增 `MessageCodecFactory` 工厂类
+- 新增 `GsonMessageCodec` 实现类
 
 ## 注册表更新
 

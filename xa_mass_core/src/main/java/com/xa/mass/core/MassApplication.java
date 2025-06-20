@@ -8,6 +8,7 @@ import com.xa.mass.core.getway.dispatcher.ServerMessageDispatcher;
 import com.xa.mass.core.getway.dispatcher.context.DispatchRuntimeContext;
 import com.xa.mass.core.getway.middleware.MiddlewareRegistry;
 import com.xa.mass.core.getway.queue.MessageTransporter;
+import com.xa.mass.core.getway.queue.MessageCodec;
 import com.xa.mass.core.getway.server.MassServerBuilder;
 import com.xa.mass.core.getway.server.MassServerConfig;
 import com.xa.mass.core.getway.server.MassServerStater;
@@ -107,8 +108,11 @@ public class MassApplication {
         // 创建消息传输器
         MessageTransporter messageTransporter = config.createMessageTransporter();
         
+        // 创建消息编解码器
+        MessageCodec messageCodec = config.createMessageCodec();
+        
         // 创建分发器上下文
-        dispatcherContext = new DispatcherContext(messageTransporter, sessionManager, new Gson());
+        dispatcherContext = new DispatcherContext(messageTransporter, sessionManager, messageCodec);
         DispatcherContextRegistry.register(dispatcherContext);
         
         // 注册消息处理器

@@ -2,6 +2,7 @@ package com.xa.mass.core.getway.dispatcher;
 
 import com.google.gson.Gson;
 import com.xa.mass.core.getway.dispatcher.context.DispatchRuntimeContext;
+import com.xa.mass.core.getway.queue.MessageCodec;
 import com.xa.mass.core.getway.queue.MessageTransporter;
 import com.xa.mass.core.getway.session.ServerSessionManager;
 
@@ -14,14 +15,27 @@ public class DispatcherContext implements DispatchRuntimeContext {
 
     private final MessageTransporter messageTransporter;
     private final ServerSessionManager sessionManager;
-    private final Gson gson;
+    private final MessageCodec messageCodec;
     private MessageHandlerRegistry messageHandlerRegistry;
     // ... 可扩展其它只读配置
 
     private MiddlewareDirection direction;
 
     /**
-     * 构造函数 - 使用 MessageTransporter 接口
+     * 构造函数 - 使用 MessageTransporter 和 MessageCodec 接口
+     */
+    public DispatcherContext(
+            MessageTransporter messageTransporter,
+            ServerSessionManager sessionManager,
+            MessageCodec messageCodec
+    ) {
+        this.messageTransporter = messageTransporter;
+        this.sessionManager = sessionManager;
+        this.messageCodec = messageCodec;
+    }
+
+    /**
+     * 构造函数 - 向后兼容，自动创建 GsonMessageCodec
      */
     public DispatcherContext(
             MessageTransporter messageTransporter,
@@ -30,7 +44,7 @@ public class DispatcherContext implements DispatchRuntimeContext {
     ) {
         this.messageTransporter = messageTransporter;
         this.sessionManager = sessionManager;
-        this.gson = gson;
+        this.messageCodec = new com.xa.mass.core.getway.queue.GsonMessageCodec(gson);
     }
 
     // SessionContext 实现
@@ -41,8 +55,8 @@ public class DispatcherContext implements DispatchRuntimeContext {
 
     // CodecContext 实现
     @Override
-    public Gson getGson() { 
-        return gson; 
+    public MessageCodec getMessageCodec() { 
+        return messageCodec; 
     }
 
     // TransportContext 实现

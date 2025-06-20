@@ -1,16 +1,16 @@
 package com.xa.mass.core.getway.dispatcher.context;
 
-import com.google.gson.Gson;
+import com.xa.mass.core.getway.queue.MessageCodec;
 
 /**
  * 编解码上下文接口
  * 提供消息编解码功能
- * 如后续改成 Jackson 或 protobuf，替换更灵活
+ * 支持不同的编解码实现（如 Gson、Jackson、protobuf 等）
  */
 public interface CodecContext {
     /**
-     * 获取 Gson 编解码器
-     * @return Gson 实例
+     * 获取消息编解码器
+     * @return 消息编解码器
      */
-    Gson getGson();
+    MessageCodec getMessageCodec();
 } 

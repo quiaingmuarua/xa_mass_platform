@@ -1,6 +1,5 @@
 package com.xa.mass.core.getway.session;
 
-
 import com.google.gson.Gson;
 import com.xa.mass.core.getway.client.MassWebSocketClientImpl;
 import com.xa.mass.core.model.message.MassMessage;
@@ -9,16 +8,17 @@ import com.xa.mass.core.model.message.TaskStep;
 import com.xa.mass.core.model.message.enums.MessageDirection;
 import com.xa.mass.core.model.message.enums.MessageType;
 import com.xa.mass.core.model.message.payload.TaskPayload;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
-@Slf4j
 @Service
 public class ClientSessionManager {
+    private static final Logger log = LoggerFactory.getLogger(ClientSessionManager.class);
+    
     private final Map<String, MassWebSocketClientImpl> clients = new ConcurrentHashMap<>();
     private final Random random = new Random();
 

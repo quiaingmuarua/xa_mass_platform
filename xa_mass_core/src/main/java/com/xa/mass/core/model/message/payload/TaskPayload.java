@@ -1,12 +1,17 @@
 package com.xa.mass.core.model.message.payload;
 
 import com.xa.mass.core.model.message.TaskStep;
-import lombok.Data;
 
 import java.util.List;
 
-@Data
 public class TaskPayload {
+    private List<TaskStep> steps;
 
-    List<TaskStep> steps;
+    public List<TaskStep> getSteps() {
+        return steps;
+    }
+
+    public void setSteps(List<TaskStep> steps) {
+        this.steps = steps;
+    }
 }

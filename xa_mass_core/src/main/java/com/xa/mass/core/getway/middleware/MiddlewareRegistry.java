@@ -100,7 +100,7 @@ public class MiddlewareRegistry {
     public static EnvelopeMiddleware processEnvelopeMiddleware() {
         return (envelope, context) -> {
             try {
-                MassMessage msg = context.getGson().fromJson(envelope.getRawJson(), MassMessage.class);
+                MassMessage msg = context.getMessageCodec().decode(envelope.getRawJson());
                 if (msg == null || msg.getContext() == null) return true;
                 MessageContext ctx = msg.getContext();
                 Optional<MassMessageHandler> handler = context.getMessageHandlerRegistry().resolve(msg);
@@ -108,7 +108,7 @@ public class MiddlewareRegistry {
                     List<MassMessage> responses = handler.get().handle(msg);
                     if (responses != null) {
                         for (MassMessage resp : responses) {
-                            String json = context.getGson().toJson(resp);
+                            String json = context.getMessageCodec().encode(resp);
                             context.getMessageTransporter().sendOutput(Envelope.builder()
                                     .deviceId(ctx.getDeviceId())
                                     .connRole(ctx.getConnRole())
