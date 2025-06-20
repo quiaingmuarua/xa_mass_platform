@@ -63,6 +63,13 @@
             <artifactId>Java-WebSocket</artifactId>
             <version>1.5.2</version>
         </dependency>
-    </dependencies>
 
+        <!-- Knife4j (Swagger增强) 依赖，适配 Spring Boot 2.x -->
+        <!-- https://mvnrepository.com/artifact/com.github.xiaoymin/knife4j-openapi3-spring-boot-starter -->
+        <dependency>
+            <groupId>com.github.xiaoymin</groupId>
+            <artifactId>knife4j-openapi2-spring-boot-starter</artifactId>
+            <version>4.4.0</version>
+        </dependency>
+    </dependencies>
 </project> 

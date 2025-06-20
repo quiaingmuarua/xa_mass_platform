@@ -14,7 +14,7 @@ public class MockConfig {
     @Data
     public static class Client {
         private int count = 5;
-        private String uri = "ws://localhost:8088/ws";
+        private String uri = "ws://localhost:18088/ws";
     }
 
     @Data
