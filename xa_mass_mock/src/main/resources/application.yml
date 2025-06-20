@@ -50,6 +50,6 @@ mass:
       consumer-name: mass_server_output_consumer_instance_1
 
 
-  logging:
+logging:
     level:
-      root: DEBUG # 设置根日志级别为 DEBUG
+      root: INFO # 设置根日志级别为 DEBUG
