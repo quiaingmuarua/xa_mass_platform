@@ -24,20 +24,20 @@ public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWe
         if (raw == null || !raw.trim().startsWith("{")) {
             throw new ValidationException("Dropped invalid message: " + raw);
         }
-        MassMessage parsed = MessageParser.INSTANCE.tryDecode(raw);
-        if (parsed == null || !MessageParser.INSTANCE.isValid(parsed)) {
+        MassMessage massMessage = MessageParser.INSTANCE.tryDecode(raw);
+        if (massMessage == null || !MessageParser.INSTANCE.isValid(massMessage)) {
             logger.error("Message parse/validate failed. Raw: {}", raw);
             throw new ValidationException("Message missing context info: " + raw);
         }
-        if (parsed.getContext() == null) {
+        if (massMessage.getContext() == null) {
             logger.error("Parsed context is null. Raw: {}", raw);
             throw new ValidationException("Message context is null.");
         }
 
-        String deviceId = parsed.getContext().getDeviceId();
-        String connRole = parsed.getContext().getConnRole();
-        String project = parsed.getProject();
-        String msgId = parsed.getMsgId();
+        String deviceId = massMessage.getContext().getDeviceId();
+        String connRole = massMessage.getContext().getConnRole();
+        String project = massMessage.getProject();
+        String msgId = massMessage.getMsgId();
         if (deviceId == null || connRole == null || project == null || msgId == null) {
             logger.error("deviceId/connRole/project/msgId is null: deviceId={}, connRole={}, project={}, msgId={}, raw={}",
                     deviceId, connRole, project, msgId, raw);
@@ -49,8 +49,8 @@ public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWe
                     .deviceId(deviceId)
                     .connRole(connRole)
                     .project(project)
-                    .receivedAt(1111L)
-                    .traceId("111")
+                    .receivedAt(System.currentTimeMillis())
+                    .traceId(massMessage.getMsgId())
                     .build();
             logger.info(" channelRead0 envelope = {}", envelope);
 
