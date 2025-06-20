@@ -19,9 +19,7 @@ public class ServerMessageDispatcher {
 
 
 
-    public ServerMessageDispatcher(
-            DispatcherContext context
-    ) {
+    public ServerMessageDispatcher(DispatcherContext context) {
 
         this.context = context;
     }

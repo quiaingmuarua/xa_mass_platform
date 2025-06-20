@@ -44,14 +44,7 @@ public class WebSocketServerStarter implements CommandLineRunner {
     public void run(String... args) throws Exception {
         // 注册基础 handler
         // 2. 构建队列
-        MessageQueue<Envelope> inputQueue =this.inputQueue;
-        MessageQueue<Envelope> outputQueue = this.outputQueue;
-        DispatcherContext dispatcherContext = new DispatcherContext(
-                inputQueue,
-                outputQueue,
-                sessionManager,
-                gson
-        );
+        DispatcherContext dispatcherContext = new DispatcherContext(inputQueue, outputQueue, sessionManager, gson);
 
         ServerMessageDispatcher serverMessageDispatcher=new ServerMessageDispatcher(dispatcherContext);
 
@@ -66,7 +59,7 @@ public class WebSocketServerStarter implements CommandLineRunner {
                 .withPort(18088)
                 .withWebSocketPath("/ws")
                 .registerHandler(MessageType.TASK, "", taskHandler)
-                .withDefaultMiddlewares(true)
+                .withDefaultMiddlewares(true).withServerMessageDispatcher(serverMessageDispatcher)
                 // 如需移除默认认证中间件：.removeInputMiddleware(10)
                 // 如需添加自定义中间件：.registerInputMiddleware(30, customBizMiddleware)
                 .build();
@@ -74,7 +67,6 @@ public class WebSocketServerStarter implements CommandLineRunner {
 //        log.info(server.describe());
         log.info("Starting MassServer with builder...");
         MassServerStater stater = new MassServerStater(serverConfig, dispatcherContext);
-        serverMessageDispatcher.start();
         stater.start();
     }
 }

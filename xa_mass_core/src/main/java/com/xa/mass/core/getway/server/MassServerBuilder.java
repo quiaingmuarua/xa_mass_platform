@@ -3,6 +3,7 @@ package com.xa.mass.core.getway.server;
 import com.xa.mass.core.getway.dispatcher.DispatcherContext;
 import com.xa.mass.core.getway.dispatcher.MassMessageHandler;
 import com.xa.mass.core.getway.dispatcher.MessageHandlerRegistry;
+import com.xa.mass.core.getway.dispatcher.ServerMessageDispatcher;
 import com.xa.mass.core.getway.middleware.EnvelopeMiddleware;
 import com.xa.mass.core.getway.middleware.MiddlewareRegistry;
 import com.xa.mass.core.getway.queue.Envelope;
@@ -12,9 +13,7 @@ import com.xa.mass.core.model.message.enums.MessageType;
 public class MassServerBuilder {
     private int port = 8080;
     private String websocketPath = "/ws";
-    private MessageQueue<Envelope> inputQueue;
-    private MessageQueue<Envelope> outputQueue;
-
+    private ServerMessageDispatcher serverMessageDispatcher;
     private final MiddlewareRegistry middlewareRegistry = MiddlewareRegistry.instance;
 
     private DispatcherContext dispatcherContext;
@@ -35,6 +34,10 @@ public class MassServerBuilder {
 
     public MassServerBuilder withWebSocketPath(String path) {
         this.websocketPath = path;
+        return this;
+    }
+    public MassServerBuilder withServerMessageDispatcher(ServerMessageDispatcher serverMessageDispatcher){
+        this.serverMessageDispatcher=serverMessageDispatcher;
         return this;
     }
 
@@ -99,6 +102,9 @@ public class MassServerBuilder {
             MiddlewareRegistry.autoRegister();
             MessageHandlerRegistry.autoRegister();
             // 如果 handlerMap 为空，注册一个 demo handler
+        }
+        if(serverMessageDispatcher!=null){
+            serverMessageDispatcher.start();
         }
         return new MassServerConfig(
             port,
