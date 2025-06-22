@@ -150,7 +150,7 @@ public class MassApplication {
      */
     private void startGateway() {
         logger.info("🌐 Starting Gateway...");
-        gateway = new Gateway(config.getGatewayConfig());
+        gateway = new Gateway(config.getGatewayConfig(), dispatcherContext);
         gateway.start();
         logger.info("✅ Gateway started");
     }
@@ -160,7 +160,7 @@ public class MassApplication {
      */
     private void startEngine() {
         logger.info("⚙️ Starting Engine...");
-        engine = new Engine(config.getEngineConfig(), dispatcherContext);
+        engine = new Engine(config.getEngineConfig());
         engine.start();
         logger.info("✅ Engine started");
     }
@@ -169,8 +169,8 @@ public class MassApplication {
      * 启动消息分发器
      */
     private void startMessageDispatcher() {
-        // 消息分发器现在由 Engine 管理，不需要单独启动
-        logger.info("📨 Message Dispatcher is managed by Engine");
+        // 消息分发器现在由 Gateway 管理，不需要单独启动
+        logger.info("📨 Message Dispatcher is managed by Gateway");
     }
     
     /**

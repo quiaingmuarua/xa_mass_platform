@@ -2,12 +2,12 @@ package com.xa.mass.core.getway.session;
 
 import com.google.gson.Gson;
 import com.xa.mass.core.getway.client.MassWebSocketClientImpl;
-import com.xa.mass.core.model.message.MassMessage;
-import com.xa.mass.core.model.message.MessageContext;
-import com.xa.mass.core.model.message.TaskStep;
-import com.xa.mass.core.model.message.enums.MessageDirection;
-import com.xa.mass.core.model.message.enums.MessageType;
-import com.xa.mass.core.model.message.payload.TaskPayload;
+import com.xa.mass.core.getway.model.massMessage.MassMessage;
+import com.xa.mass.core.getway.model.massMessage.MessageContext;
+import com.xa.mass.core.getway.model.massMessage.TaskStep;
+import com.xa.mass.core.getway.model.enums.MessageDirection;
+import com.xa.mass.core.getway.model.enums.MessageType;
+import com.xa.mass.core.getway.model.payload.TaskPayload;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;

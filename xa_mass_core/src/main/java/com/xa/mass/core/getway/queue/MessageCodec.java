@@ -1,6 +1,6 @@
 package com.xa.mass.core.getway.queue;
 
-import com.xa.mass.core.model.message.MassMessage;
+import com.xa.mass.core.getway.model.massMessage.MassMessage;
 
 /**
  * 消息编解码器接口

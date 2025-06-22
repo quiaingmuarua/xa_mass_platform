@@ -1,6 +1,6 @@
 package com.xa.mass.core.getway.dispatcher.handler;
 
-import com.xa.mass.core.model.message.enums.MessageType;
+import com.xa.mass.core.getway.model.enums.MessageType;
 
 public class MessageRouterKeys {
     public static String of(MessageType msgType, String subMsgType) {

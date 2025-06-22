@@ -1,7 +1,7 @@
 package com.xa.mass.core.getway.dispatcher.handler;
 
 
-import com.xa.mass.core.model.message.MassMessage;
+import com.xa.mass.core.getway.model.massMessage.MassMessage;
 
 import java.util.List;
 

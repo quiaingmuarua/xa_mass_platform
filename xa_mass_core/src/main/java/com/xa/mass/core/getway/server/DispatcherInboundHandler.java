@@ -4,7 +4,7 @@ import com.xa.mass.core.getway.dispatcher.context.DispatchRuntimeContext;
 import com.xa.mass.core.getway.exception.ValidationException;
 import com.xa.mass.core.getway.queue.Envelope;
 import com.xa.mass.core.getway.queue.MessageParser;
-import com.xa.mass.core.model.message.MassMessage;
+import com.xa.mass.core.getway.model.massMessage.MassMessage;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;

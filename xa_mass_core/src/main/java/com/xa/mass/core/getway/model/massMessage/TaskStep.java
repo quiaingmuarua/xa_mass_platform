@@ -1,4 +1,4 @@
-package com.xa.mass.core.model.message;
+package com.xa.mass.core.getway.model.massMessage;
 
 import java.util.List;
 import java.util.Map;

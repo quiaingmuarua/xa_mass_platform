@@ -6,7 +6,7 @@ import com.xa.mass.core.getway.dispatcher.DispatcherContextRegistry;
 import com.xa.mass.core.getway.dispatcher.handler.MassMessageHandler;
 import com.xa.mass.core.getway.dispatcher.context.DispatchRuntimeContext;
 import com.xa.mass.core.getway.queue.*;
-import com.xa.mass.core.model.message.enums.MessageType;
+import com.xa.mass.core.getway.model.enums.MessageType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;

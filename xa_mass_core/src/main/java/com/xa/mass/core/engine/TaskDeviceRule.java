@@ -1,8 +1,8 @@
 package com.xa.mass.core.engine;
 
 
-import com.xa.mass.core.model.device.Device;
-import com.xa.mass.core.model.task.Task;
+import com.xa.mass.core.engine.model.device.Device;
+import com.xa.mass.core.engine.model.task.Task;
 
 @FunctionalInterface
 public interface TaskDeviceRule {

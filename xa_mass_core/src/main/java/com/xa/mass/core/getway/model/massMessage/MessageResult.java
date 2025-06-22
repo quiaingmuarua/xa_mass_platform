@@ -1,4 +1,4 @@
-package com.xa.mass.core.model.message;
+package com.xa.mass.core.getway.model.massMessage;
 
 public class MessageResult {
     private int code;        // "200", "500", 自定义业务码

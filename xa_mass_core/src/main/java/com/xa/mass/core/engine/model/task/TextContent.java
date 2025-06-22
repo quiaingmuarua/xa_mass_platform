@@ -1,4 +1,4 @@
-package com.xa.mass.core.model.task;
+package com.xa.mass.core.engine.model.task;
 
 import java.util.List;
 

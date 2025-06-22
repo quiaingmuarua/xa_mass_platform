@@ -1,4 +1,4 @@
-package com.xa.mass.core.model.message;
+package com.xa.mass.core.getway.model.massMessage;
 
 public class MessageContext {
     private String deviceId;     // 物理设备 ID

@@ -1,6 +1,6 @@
-package com.xa.mass.core.model.task;
+package com.xa.mass.core.engine.model.common;
 
-class User {
+public class User {
 
     private String name;
 

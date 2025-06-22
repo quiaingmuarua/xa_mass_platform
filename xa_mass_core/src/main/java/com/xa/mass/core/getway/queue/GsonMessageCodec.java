@@ -2,7 +2,7 @@ package com.xa.mass.core.getway.queue;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
-import com.xa.mass.core.model.message.MassMessage;
+import com.xa.mass.core.getway.model.massMessage.MassMessage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

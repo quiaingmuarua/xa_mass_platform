@@ -4,10 +4,10 @@ import com.google.gson.Gson;
 import com.xa.mass.core.getway.dispatcher.handler.MassMessageHandler;
 import com.xa.mass.core.getway.dispatcher.handler.MessageRouterKeys;
 import com.xa.mass.core.getway.dispatcher.handler.ResolutionResult;
-import com.xa.mass.core.model.message.MassMessage;
-import com.xa.mass.core.model.message.MessageResult;
-import com.xa.mass.core.model.message.enums.MessageDirection;
-import com.xa.mass.core.model.message.enums.MessageType;
+import com.xa.mass.core.getway.model.massMessage.MassMessage;
+import com.xa.mass.core.getway.model.massMessage.MessageResult;
+import com.xa.mass.core.getway.model.enums.MessageDirection;
+import com.xa.mass.core.getway.model.enums.MessageType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

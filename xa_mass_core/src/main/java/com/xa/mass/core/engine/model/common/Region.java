@@ -1,4 +1,4 @@
-package com.xa.mass.core.model.common;
+package com.xa.mass.core.engine.model.common;
 
 
 public class Region {

@@ -1,27 +1,22 @@
 package com.xa.mass.core;
 
-import com.xa.mass.core.getway.dispatcher.context.DispatchRuntimeContext;
-import com.xa.mass.core.getway.dispatcher.ServerMessageDispatcher;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * 消息处理引擎
- * 负责消息的分发、处理和路由
- * 内部使用 ServerMessageDispatcher 实现具体的消息处理逻辑
+ * 引擎组件（已简化）
+ * 消息处理引擎功能已移至 Gateway 中
+ * 此类保留用于未来扩展其他引擎功能
  */
 public class Engine {
     
     private static final Logger logger = LoggerFactory.getLogger(Engine.class);
     
     private final MassApplicationConfig.EngineConfig config;
-    private final DispatchRuntimeContext dispatcherContext;
-    private ServerMessageDispatcher messageDispatcher;
     private boolean running = false;
     
-    public Engine(MassApplicationConfig.EngineConfig config, DispatchRuntimeContext dispatcherContext) {
+    public Engine(MassApplicationConfig.EngineConfig config) {
         this.config = config;
-        this.dispatcherContext = dispatcherContext;
     }
     
     /**
@@ -33,21 +28,18 @@ public class Engine {
             return;
         }
         
-        logger.info("⚙️ Starting Message Processing Engine with {} worker threads", config.getWorkerThreads());
+        logger.info("⚙️ Starting Engine with {} worker threads", config.getWorkerThreads());
         
         try {
-            // 创建消息分发器
-            messageDispatcher = new ServerMessageDispatcher(dispatcherContext);
-            
-            // 启动消息处理
-            messageDispatcher.start();
+            // TODO: 实现其他引擎功能
+            // 例如：任务调度、规则引擎、数据分析等
             
             running = true;
-            logger.info("✅ Message Processing Engine started successfully");
+            logger.info("✅ Engine started successfully");
             
         } catch (Exception e) {
-            logger.error("❌ Failed to start Message Processing Engine", e);
-            throw new RuntimeException("Failed to start Message Processing Engine", e);
+            logger.error("❌ Failed to start Engine", e);
+            throw new RuntimeException("Failed to start Engine", e);
         }
     }
     
@@ -60,19 +52,16 @@ public class Engine {
             return;
         }
         
-        logger.info("🛑 Stopping Message Processing Engine...");
+        logger.info("🛑 Stopping Engine...");
         
         try {
-            // 停止消息分发器
-            if (messageDispatcher != null) {
-                messageDispatcher.stop();
-            }
+            // TODO: 实现引擎停止逻辑
             
             running = false;
-            logger.info("✅ Message Processing Engine stopped successfully");
+            logger.info("✅ Engine stopped successfully");
             
         } catch (Exception e) {
-            logger.error("❌ Error stopping Message Processing Engine", e);
+            logger.error("❌ Error stopping Engine", e);
         }
     }
     
@@ -80,7 +69,7 @@ public class Engine {
      * 检查引擎是否正在运行
      */
     public boolean isRunning() {
-        return running && messageDispatcher != null;
+        return running;
     }
     
     /**
@@ -88,19 +77,5 @@ public class Engine {
      */
     public MassApplicationConfig.EngineConfig getConfig() {
         return config;
-    }
-    
-    /**
-     * 获取消息分发器
-     */
-    public ServerMessageDispatcher getMessageDispatcher() {
-        return messageDispatcher;
-    }
-    
-    /**
-     * 获取分发器上下文
-     */
-    public DispatchRuntimeContext getDispatcherContext() {
-        return dispatcherContext;
     }
 } 

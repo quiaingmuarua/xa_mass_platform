@@ -2,11 +2,11 @@ package com.xa.mass.core.getway.client;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
-import com.xa.mass.core.model.message.MassMessage;
-import com.xa.mass.core.model.message.MessageContext;
-import com.xa.mass.core.model.message.enums.MessageDirection;
-import com.xa.mass.core.model.message.enums.MessageType;
-import com.xa.mass.core.model.message.payload.TaskPayload;
+import com.xa.mass.core.getway.model.massMessage.MassMessage;
+import com.xa.mass.core.getway.model.massMessage.MessageContext;
+import com.xa.mass.core.getway.model.enums.MessageDirection;
+import com.xa.mass.core.getway.model.enums.MessageType;
+import com.xa.mass.core.getway.model.payload.TaskPayload;
 import org.java_websocket.client.WebSocketClient;
 import org.java_websocket.handshake.ServerHandshake;
 import org.slf4j.Logger;

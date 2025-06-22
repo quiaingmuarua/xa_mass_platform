@@ -1,10 +1,9 @@
 package com.xa.mass.core.getway.queue;
 
-import com.xa.mass.core.model.message.MassMessage;
-import com.xa.mass.core.model.message.MessageContext;
+import com.xa.mass.core.getway.model.massMessage.MassMessage;
+import com.xa.mass.core.getway.model.massMessage.MessageContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.stereotype.Component;
 
 /**
  * 消息解析器

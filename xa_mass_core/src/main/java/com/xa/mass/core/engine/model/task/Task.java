@@ -1,7 +1,8 @@
-package com.xa.mass.core.model.task;
+package com.xa.mass.core.engine.model.task;
 
-import com.xa.mass.core.model.device.Device;
-import com.xa.mass.core.model.device.Token;
+import com.xa.mass.core.engine.model.common.User;
+import com.xa.mass.core.engine.model.device.Device;
+import com.xa.mass.core.engine.model.device.Token;
 
 public class Task {
 

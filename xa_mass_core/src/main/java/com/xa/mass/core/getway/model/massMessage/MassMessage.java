@@ -1,7 +1,7 @@
-package com.xa.mass.core.model.message;
+package com.xa.mass.core.getway.model.massMessage;
 
-import com.xa.mass.core.model.message.enums.MessageDirection;
-import com.xa.mass.core.model.message.enums.MessageType;
+import com.xa.mass.core.getway.model.enums.MessageDirection;
+import com.xa.mass.core.getway.model.enums.MessageType;
 import com.google.gson.JsonElement;
 
 public class MassMessage {

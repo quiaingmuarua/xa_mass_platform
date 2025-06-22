@@ -1,6 +1,6 @@
-package com.xa.mass.core.model.message.payload;
+package com.xa.mass.core.getway.model.payload;
 
-import com.xa.mass.core.model.message.TaskStep;
+import com.xa.mass.core.getway.model.massMessage.TaskStep;
 
 import java.util.List;
 

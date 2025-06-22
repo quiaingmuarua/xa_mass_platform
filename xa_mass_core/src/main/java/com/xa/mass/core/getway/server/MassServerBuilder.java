@@ -6,7 +6,7 @@ import com.xa.mass.core.getway.dispatcher.handler.MassMessageHandler;
 import com.xa.mass.core.getway.dispatcher.handler.MessageRouterKeys;
 import com.xa.mass.core.getway.dispatcher.middleware.EnvelopeMiddleware;
 import com.xa.mass.core.getway.dispatcher.middleware.MiddlewareRegistry;
-import com.xa.mass.core.model.message.enums.MessageType;
+import com.xa.mass.core.getway.model.enums.MessageType;
 
 import java.util.HashMap;
 import java.util.Map;
