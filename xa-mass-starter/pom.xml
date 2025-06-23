@@ -6,9 +6,9 @@
         <artifactId>xa_mass_platform</artifactId>
         <version>0.0.1-SNAPSHOT</version>
     </parent>
-    <artifactId>xa-mass-app</artifactId>
+    <artifactId>xa-mass-starter</artifactId>
     <packaging>jar</packaging>
-    <name>xa-mass-app</name>
+    <name>xa-mass-starter</name>
     <dependencies>
         <dependency>
             <groupId>com.xa.mass</groupId>

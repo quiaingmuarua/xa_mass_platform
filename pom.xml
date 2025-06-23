@@ -24,7 +24,7 @@
         <module>xa-mass-api</module>
         <module>xa-mass-engine</module>
         <module>xa-mass-gateway</module>
-        <module>xa-mass-app</module>
+        <module>xa-mass-starter</module>
         <module>xa_mass_mock</module>
     </modules>
     <scm>
