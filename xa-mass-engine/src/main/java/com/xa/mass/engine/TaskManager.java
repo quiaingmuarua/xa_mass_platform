@@ -1,4 +1,4 @@
-package com.xa.mass.core.engine;
+package com.xa.mass.engine;
 
 import com.xa.mass.core.engine.model.task.Task;
 import com.xa.mass.core.engine.model.TaskMsg;
