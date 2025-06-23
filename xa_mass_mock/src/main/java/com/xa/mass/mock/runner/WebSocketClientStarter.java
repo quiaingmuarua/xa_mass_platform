@@ -1,11 +1,11 @@
 package com.xa.mass.mock.runner;
 
-import com.xa.mass.core.getway.client.MassWebSocketClientImpl;
-import com.xa.mass.core.getway.model.massMessage.MassMessage;
-import com.xa.mass.core.getway.model.massMessage.MessageContext;
-import com.xa.mass.core.getway.model.enums.MessageDirection;
-import com.xa.mass.core.getway.model.enums.MessageType;
-import com.xa.mass.core.getway.session.ClientSessionManager;
+import com.xa.mass.gateway.client.MassWebSocketClientImpl;
+import com.xa.mass.gateway.model.massMessage.MassMessage;
+import com.xa.mass.gateway.model.massMessage.MessageContext;
+import com.xa.mass.gateway.model.enums.MessageDirection;
+import com.xa.mass.gateway.model.enums.MessageType;
+import com.xa.mass.gateway.session.ClientSessionManager;
 import com.xa.mass.mock.config.MockConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

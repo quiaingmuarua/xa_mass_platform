@@ -1,13 +1,13 @@
 package com.xa.mass.mock.config;
 
-import com.xa.mass.core.getway.queue.InMemoryMessageQueue;
-import com.xa.mass.core.getway.queue.MessageQueue;
+import com.xa.mass.gateway.queue.InMemoryMessageQueue;
+import com.xa.mass.gateway.queue.MessageQueue;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 
-import com.xa.mass.core.getway.queue.Envelope; // 导入 StoredMessage
+import com.xa.mass.gateway.queue.Envelope; // 导入 StoredMessage
 import org.springframework.context.annotation.Profile; // 导入 Profile
 
 @Configuration

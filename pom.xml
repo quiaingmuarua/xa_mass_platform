@@ -21,7 +21,10 @@
         <developer/>
     </developers>
     <modules>
-        <module>xa_mass_core</module>
+        <module>xa-mass-api</module>
+        <module>xa-mass-engine</module>
+        <module>xa-mass-gateway</module>
+        <module>xa-mass-app</module>
         <module>xa_mass_mock</module>
     </modules>
     <scm>
@@ -48,24 +51,8 @@
 
     <build>
         <plugins>
-            <plugin>
-                <groupId>org.springframework.boot</groupId>
-                <artifactId>spring-boot-maven-plugin</artifactId>
-                <executions>
-                    <execution>
-                        <goals>
-                            <goal>repackage</goal>
-                        </goals>
-                        <phase>package</phase>
-                        <configuration>
-                            <skip>true</skip>
-                        </configuration>
-                    </execution>
-                </executions>
-            </plugin>
+            <!-- Spring Boot插件已移除，仅在xa-mass-app中配置 -->
         </plugins>
-
-
     </build>
 
 

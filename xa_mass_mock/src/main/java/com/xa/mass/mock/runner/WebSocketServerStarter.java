@@ -1,12 +1,12 @@
 package com.xa.mass.mock.runner;
 
-import com.xa.mass.core.MassApplication;
-import com.xa.mass.core.MassApplicationConfig;
-import com.xa.mass.core.getway.dispatcher.DispatcherContextRegistry;
-import com.xa.mass.core.getway.dispatcher.handler.MassMessageHandler;
-import com.xa.mass.core.getway.dispatcher.context.DispatchRuntimeContext;
-import com.xa.mass.core.getway.queue.*;
-import com.xa.mass.core.getway.model.enums.MessageType;
+import com.xa.mass.app.MassApplication;
+import com.xa.mass.app.MassApplicationConfig;
+import com.xa.mass.gateway.dispatcher.DispatcherContextRegistry;
+import com.xa.mass.gateway.dispatcher.handler.MassMessageHandler;
+import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
+import com.xa.mass.gateway.queue.*;
+import com.xa.mass.gateway.model.enums.MessageType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
