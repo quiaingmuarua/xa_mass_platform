@@ -11,11 +11,6 @@
     <name>xa-mass-gateway</name>
     <dependencies>
         <dependency>
-            <groupId>com.xa.mass</groupId>
-            <artifactId>xa-mass-common</artifactId>
-            <version>0.0.1-SNAPSHOT</version>
-        </dependency>
-        <dependency>
             <groupId>io.netty</groupId>
             <artifactId>netty-all</artifactId>
             <version>4.1.100.Final</version>
