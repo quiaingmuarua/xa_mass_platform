@@ -1,4 +1,4 @@
-package com.xa.mass.core.engine.model;
+package com.xa.mass.engine.model;
 
 import com.xa.mass.engine.model.enums.DeviceStatus;
 

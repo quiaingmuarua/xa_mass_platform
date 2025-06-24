@@ -1,7 +1,8 @@
 package com.xa.mass.engine.strategy;
 
-import com.xa.mass.core.engine.model.Device;
-import com.xa.mass.core.engine.model.task.Task;
+import com.xa.mass.engine.model.Device;
+import com.xa.mass.engine.model.task.Task;
+
 
 import java.util.Comparator;
 import java.util.List;
@@ -39,11 +40,7 @@ public class DefaultDeviceSelector implements DeviceSelector {
         }
         
         // 检查设备心跳是否正常（30秒内）
-        if (device.isHeartbeatExpired(30)) {
-            return false;
-        }
-        
-        return true;
+        return !device.isHeartbeatExpired(30);
     }
     
     @Override

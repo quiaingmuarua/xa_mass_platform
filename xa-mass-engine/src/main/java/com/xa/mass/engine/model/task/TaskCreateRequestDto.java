@@ -1,4 +1,4 @@
-package com.xa.mass.core.engine.model.task;
+package com.xa.mass.engine.model.task;
 
 import java.util.List;
 import java.util.Map;

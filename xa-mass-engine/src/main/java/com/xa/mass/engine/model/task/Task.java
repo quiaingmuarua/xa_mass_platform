@@ -1,4 +1,4 @@
-package com.xa.mass.core.engine.model.task;
+package com.xa.mass.engine.model.task;
 
 import com.xa.mass.engine.model.enums.TaskStatus;
 import com.xa.mass.engine.model.common.User;
