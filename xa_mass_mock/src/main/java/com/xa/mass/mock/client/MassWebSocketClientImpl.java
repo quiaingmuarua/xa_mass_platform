@@ -1,16 +1,17 @@
-package com.xa.mass.gateway.client;
+package com.xa.mass.mock.client;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
-import com.xa.mass.gateway.model.massMessage.MassMessage;
-import com.xa.mass.gateway.model.massMessage.MessageContext;
 import com.xa.mass.gateway.model.enums.MessageDirection;
 import com.xa.mass.gateway.model.enums.MessageType;
+import com.xa.mass.gateway.model.massMessage.MassMessage;
+import com.xa.mass.gateway.model.massMessage.MessageContext;
 import com.xa.mass.gateway.model.payload.TaskPayload;
 import org.java_websocket.client.WebSocketClient;
 import org.java_websocket.handshake.ServerHandshake;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
 
 import java.net.URI;
 import java.util.HashMap;
@@ -19,6 +20,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+
 
 public class MassWebSocketClientImpl extends WebSocketClient implements MassWebSocketClient {
     private static final Logger logger = LoggerFactory.getLogger(MassWebSocketClientImpl.class);

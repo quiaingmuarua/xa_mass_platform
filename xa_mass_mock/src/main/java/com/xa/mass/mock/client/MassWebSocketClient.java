@@ -1,4 +1,4 @@
-package com.xa.mass.gateway.client;
+package com.xa.mass.mock.client;
 
 import java.net.URI;
 import java.util.concurrent.TimeUnit;

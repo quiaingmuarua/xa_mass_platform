@@ -1,7 +1,7 @@
-package com.xa.mass.gateway.session;
+package com.xa.mass.mock.client;
 
 import com.google.gson.Gson;
-import com.xa.mass.gateway.client.MassWebSocketClientImpl;
+
 import com.xa.mass.gateway.model.massMessage.MassMessage;
 import com.xa.mass.gateway.model.massMessage.MessageContext;
 import com.xa.mass.gateway.model.massMessage.TaskStep;
