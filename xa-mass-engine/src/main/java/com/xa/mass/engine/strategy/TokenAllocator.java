@@ -1,8 +1,8 @@
 package com.xa.mass.engine.strategy;
 
-import com.xa.mass.core.engine.model.Device;
-import com.xa.mass.core.engine.model.task.Task;
-import com.xa.mass.core.engine.model.Token;
+import com.xa.mass.engine.model.Device;
+import com.xa.mass.engine.model.task.Task;
+import com.xa.mass.engine.model.Token;
 
 import java.util.List;
 import java.util.Map;
