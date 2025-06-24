@@ -8,7 +8,7 @@ import com.xa.mass.engine.model.enums.TokenStatus;
 import com.xa.mass.engine.model.task.Task;
 import com.xa.mass.engine.model.TaskMsg;
 import com.xa.mass.engine.model.task.TaskCreateRequestDto;
-import com.xa.mass.engine.model.common.User;
+import com.xa.mass.engine.strategy.SimpleTaskScheduler;
 
 import java.util.*;
 import java.util.concurrent.ThreadLocalRandom;
@@ -16,28 +16,35 @@ import java.util.concurrent.ThreadLocalRandom;
 public class TaskEnginExample {
 
     public static void main(String[] args) {
-        // 1. 批量创建任务
-        TaskManager taskManager = new TaskManager(null);
-        int taskCount = 2000;
+        // 1. 初始化调度器和任务管理器
+        SimpleTaskScheduler scheduler = new SimpleTaskScheduler();
+        TaskManager taskManager = new TaskManager(scheduler);
         String[] countries = {"gb", "us"};
+        int msgPerTask = 20;
         List<Task> allTasks = new ArrayList<>();
-        for (int i = 0; i < taskCount; i++) {
+        for (String country : countries) {
             TaskCreateRequestDto dto = new TaskCreateRequestDto();
-            dto.setTaskName("Task-" + i);
+            dto.setTaskName("Task-" + country);
             dto.setProject("demoApp");
-            dto.setCountryCode(countries[i % countries.length]);
-            dto.setUserId("user" + (i % 10));
-            dto.setTextContent("content" + i);
+            dto.setCountryCode(country);
+            dto.setUserId("user-" + country);
+            dto.setTextContent("content for " + country);
+            // 这里设置targetList模拟2k条msg
+            List<String> targetList = new ArrayList<>();
+            for (int i = 0; i < msgPerTask; i++) {
+                targetList.add("number-" + country + "-" + i);
+            }
+            dto.setTargetList(targetList);
             Task task = taskManager.createTask(dto);
-            // 设置最低匹配设备数
             task.setRunTaskMinDeviceCnt(30);
+            System.out.println("new_task " + task);
             allTasks.add(task);
         }
         System.out.println("Created tasks: " + allTasks.size());
 
         // 2. 批量创建设备和token
         DeviceManager deviceManager = new DeviceManager();
-        int deviceCount = 3000000; // 3kk
+        int deviceCount = 100; // 3k
         String[] deviceCountries = {"us", "gb", "fr"};
         for (int i = 0; i < deviceCount; i++) {
             Device device = new Device();
@@ -52,14 +59,14 @@ public class TaskEnginExample {
             token.setChannel(device.getGroupId());
             token.setStatus(ThreadLocalRandom.current().nextBoolean() ? TokenStatus.LOGIN_READY : TokenStatus.INVALID);
             deviceManager.addToken(device.getDeviceId(), token);
+            System.out.println("new_device " + device);
+
         }
         System.out.println("Created devices: " + deviceCount);
 
-        // 3. 审核部分任务（设为READY）
+        // 3. 审核任务（设为READY）
         for (Task task : allTasks) {
-            if (ThreadLocalRandom.current().nextDouble() < 0.8) { // 80%通过
-                task.transitionTo(TaskStatus.READY);
-            }
+            task.transitionTo(TaskStatus.READY);
         }
         System.out.println("Approved tasks: " + allTasks.stream().filter(t -> t.getStatus() == TaskStatus.READY).count());
 
@@ -72,12 +79,14 @@ public class TaskEnginExample {
             for (Device device : candidates) {
                 if (matched.size() >= task.getRunTaskMinDeviceCnt()) break;
                 if (deviceManager.tryLockDevice(device.getDeviceId())) {
+                    System.out.println("new matched " + task + device);
                     matched.add(device);
                 }
             }
             if (matched.size() >= task.getRunTaskMinDeviceCnt()) {
                 task.setScheduleDeviceCnt(matched.size());
                 task.transitionTo(TaskStatus.RUNNING);
+
                 taskDeviceMap.put(task.getTid(), matched);
             } else {
                 // 匹配失败，释放锁
@@ -100,9 +109,9 @@ public class TaskEnginExample {
                     Token token = deviceManager.getToken(device.getDeviceId());
                     String tokenId = token != null ? token.getTokenId() : null;
                     TaskMsg msg = new TaskMsg(msgId, taskId, device.getDeviceId(), tokenId, "batch-" + batchId);
+                    System.out.println(msg);
                     pushQueue.add(msg);
                 }
-                batchId++;
             }
         }
         System.out.println("Push queue size: " + pushQueue.size());
