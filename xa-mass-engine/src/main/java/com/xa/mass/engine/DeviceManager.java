@@ -9,7 +9,7 @@ import java.util.stream.Collectors;
 
 public class DeviceManager {
     private final Map<String, Device> devices = new ConcurrentHashMap<>();
-    private final Map<String, List<Token>> deviceTokens = new ConcurrentHashMap<>();
+    private final Map<String, Token> deviceToken = new ConcurrentHashMap<>();
     private final Set<String> lockedDevices = Collections.synchronizedSet(new HashSet<>());
 
     public void addDevice(Device device) {
@@ -17,7 +17,7 @@ public class DeviceManager {
     }
 
     public void addToken(String deviceId, Token token) {
-        deviceTokens.computeIfAbsent(deviceId, k -> new ArrayList<>()).add(token);
+        deviceToken.put(deviceId, token);
     }
 
     public List<Device> getDevicesByCountry(String country) {
@@ -26,8 +26,8 @@ public class DeviceManager {
                 .collect(Collectors.toList());
     }
 
-    public List<Token> getTokens(String deviceId) {
-        return deviceTokens.getOrDefault(deviceId, Collections.emptyList());
+    public Token getToken(String deviceId) {
+        return deviceToken.get(deviceId);
     }
 
     public boolean tryLockDevice(String deviceId) {

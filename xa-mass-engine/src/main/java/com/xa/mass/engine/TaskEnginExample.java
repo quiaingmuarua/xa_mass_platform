@@ -11,9 +11,7 @@ import com.xa.mass.engine.model.task.TaskCreateRequestDto;
 import com.xa.mass.engine.model.common.User;
 
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
-import java.util.stream.Collectors;
 
 public class TaskEnginExample {
 
@@ -47,16 +45,13 @@ public class TaskEnginExample {
             device.setStatus(DeviceStatus.ONLINE);
             device.setGroupId(deviceCountries[i % deviceCountries.length]);
             deviceManager.addDevice(device);
-            // 随机生成1~3个token
-            int tokenNum = 1 + ThreadLocalRandom.current().nextInt(3);
-            for (int t = 0; t < tokenNum; t++) {
-                Token token = new Token();
-                token.setTokenId("token-" + i + "-" + t);
-                token.setDeviceId(device.getDeviceId());
-                token.setChannel(device.getGroupId());
-                token.setStatus(ThreadLocalRandom.current().nextBoolean() ? TokenStatus.LOGIN_READY : TokenStatus.INVALID);
-                deviceManager.addToken(device.getDeviceId(), token);
-            }
+            // 只绑定一个token
+            Token token = new Token();
+            token.setTokenId("token-" + i);
+            token.setDeviceId(device.getDeviceId());
+            token.setChannel(device.getGroupId());
+            token.setStatus(ThreadLocalRandom.current().nextBoolean() ? TokenStatus.LOGIN_READY : TokenStatus.INVALID);
+            deviceManager.addToken(device.getDeviceId(), token);
         }
         System.out.println("Created devices: " + deviceCount);
 
@@ -101,7 +96,10 @@ public class TaskEnginExample {
             for (Device device : devices) {
                 for (int i = 0; i < batchSize; i++) {
                     String msgId = UUID.randomUUID().toString();
-                    TaskMsg msg = new TaskMsg(msgId, taskId, device.getDeviceId(), null, "batch-" + batchId);
+                    // 绑定token到消息
+                    Token token = deviceManager.getToken(device.getDeviceId());
+                    String tokenId = token != null ? token.getTokenId() : null;
+                    TaskMsg msg = new TaskMsg(msgId, taskId, device.getDeviceId(), tokenId, "batch-" + batchId);
                     pushQueue.add(msg);
                 }
                 batchId++;
@@ -109,36 +107,5 @@ public class TaskEnginExample {
         }
         System.out.println("Push queue size: " + pushQueue.size());
         // 可在此处模拟推送到 gateway inputQueue
-    }
-
-    // 模拟 DeviceManager
-    static class DeviceManager {
-        private final Map<String, Device> devices = new ConcurrentHashMap<>();
-        private final Map<String, List<Token>> deviceTokens = new ConcurrentHashMap<>();
-        private final Set<String> lockedDevices = Collections.synchronizedSet(new HashSet<>());
-
-        public void addDevice(Device device) {
-            devices.put(device.getDeviceId(), device);
-        }
-        public void addToken(String deviceId, Token token) {
-            deviceTokens.computeIfAbsent(deviceId, k -> new ArrayList<>()).add(token);
-        }
-        public List<Device> getDevicesByCountry(String country) {
-            return devices.values().stream()
-                    .filter(d -> d.getGroupId().equals(country))
-                    .collect(Collectors.toList());
-        }
-        public List<Token> getTokens(String deviceId) {
-            return deviceTokens.getOrDefault(deviceId, Collections.emptyList());
-        }
-        public boolean tryLockDevice(String deviceId) {
-            return lockedDevices.add(deviceId);
-        }
-        public void unlockDevice(String deviceId) {
-            lockedDevices.remove(deviceId);
-        }
-        public boolean isLocked(String deviceId) {
-            return lockedDevices.contains(deviceId);
-        }
     }
 }
