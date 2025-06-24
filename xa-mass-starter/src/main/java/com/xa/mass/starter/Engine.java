@@ -1,6 +1,5 @@
-package com.xa.mass.app;
+package com.xa.mass.starter;
 
-import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -8,9 +7,6 @@ import org.slf4j.LoggerFactory;
  * 引擎组件
  * 负责任务调度、设备管理等核心业务逻辑的启动与聚合
  */
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * 引擎组件（已简化）

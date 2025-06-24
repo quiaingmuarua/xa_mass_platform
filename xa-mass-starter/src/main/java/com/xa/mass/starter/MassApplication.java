@@ -1,4 +1,4 @@
-package com.xa.mass.app;
+package com.xa.mass.starter;
 
 import com.xa.mass.gateway.dispatcher.DispatcherContext;
 import com.xa.mass.gateway.dispatcher.DispatcherContextRegistry;
@@ -12,11 +12,9 @@ import com.xa.mass.gateway.server.MassServerBuilder;
 import com.xa.mass.gateway.server.MassServerConfig;
 import com.xa.mass.gateway.server.MassServerStater;
 import com.xa.mass.gateway.session.ServerSessionManager;
-import com.xa.mass.app.Gateway;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import com.xa.mass.app.MassApplicationConfig;
 
 /**
  * Mass 应用主程序

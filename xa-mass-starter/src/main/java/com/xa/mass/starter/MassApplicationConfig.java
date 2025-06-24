@@ -1,4 +1,4 @@
-package com.xa.mass.app;
+package com.xa.mass.starter;
 
 import com.xa.mass.gateway.queue.MessageTransporter;
 import com.xa.mass.gateway.queue.MessageTransporterFactory;

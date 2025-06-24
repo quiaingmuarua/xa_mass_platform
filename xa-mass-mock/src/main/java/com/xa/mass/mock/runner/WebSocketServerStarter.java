@@ -1,7 +1,7 @@
 package com.xa.mass.mock.runner;
 
-import com.xa.mass.app.MassApplication;
-import com.xa.mass.app.MassApplicationConfig;
+import com.xa.mass.starter.MassApplication;
+import com.xa.mass.starter.MassApplicationConfig;
 import com.xa.mass.gateway.dispatcher.DispatcherContextRegistry;
 import com.xa.mass.gateway.dispatcher.handler.MassMessageHandler;
 import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;

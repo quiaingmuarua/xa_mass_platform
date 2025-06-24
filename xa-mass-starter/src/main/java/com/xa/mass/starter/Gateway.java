@@ -1,4 +1,4 @@
-package com.xa.mass.app;
+package com.xa.mass.starter;
 
 import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
 import com.xa.mass.gateway.dispatcher.ServerMessageDispatcher;
@@ -10,7 +10,9 @@ import org.slf4j.LoggerFactory;
  * 负责处理外部连接、消息路由和消息处理引擎
  */
 public class Gateway {
+
     private static final Logger logger = LoggerFactory.getLogger(Gateway.class);
+
     private final MassApplicationConfig.GatewayConfig config;
     private final DispatchRuntimeContext dispatcherContext;
     private ServerMessageDispatcher messageDispatcher;
@@ -29,14 +31,19 @@ public class Gateway {
             logger.info("Gateway is disabled, skipping start");
             return;
         }
+
         logger.info("🌐 Starting Gateway with max connections: {}", config.getMaxConnections());
+
         try {
             // 1. 启动消息处理引擎
             startMessageEngine();
+
             // 2. 初始化连接管理
             initializeConnectionManagement();
+
             running = true;
             logger.info("✅ Gateway started successfully");
+
         } catch (Exception e) {
             logger.error("❌ Failed to start Gateway", e);
             throw new RuntimeException("Failed to start Gateway", e);
@@ -51,14 +58,19 @@ public class Gateway {
             logger.info("Gateway is not running, skipping stop");
             return;
         }
+
         logger.info("🛑 Stopping Gateway...");
+
         try {
             // 1. 停止消息处理引擎
             stopMessageEngine();
+
             // 2. 关闭连接管理
             shutdownConnectionManagement();
+
             running = false;
             logger.info("✅ Gateway stopped successfully");
+
         } catch (Exception e) {
             logger.error("❌ Error stopping Gateway", e);
         }
@@ -69,12 +81,16 @@ public class Gateway {
      */
     private void startMessageEngine() {
         logger.info("⚙️ Starting Message Processing Engine...");
+
         try {
             // 创建消息分发器
             messageDispatcher = new ServerMessageDispatcher(dispatcherContext);
+
             // 启动消息处理
             messageDispatcher.start();
+
             logger.info("✅ Message Processing Engine started successfully");
+
         } catch (Exception e) {
             logger.error("❌ Failed to start Message Processing Engine", e);
             throw new RuntimeException("Failed to start Message Processing Engine", e);
@@ -86,6 +102,7 @@ public class Gateway {
      */
     private void stopMessageEngine() {
         logger.info("🛑 Stopping Message Processing Engine...");
+
         try {
             if (messageDispatcher != null) {
                 messageDispatcher.stop();
@@ -101,10 +118,13 @@ public class Gateway {
      */
     private void initializeConnectionManagement() {
         logger.info("🔌 Initializing connection management...");
+
         try {
             // TODO: 实现连接管理初始化
             // 例如：初始化连接池、设置最大连接数等
+
             logger.info("✅ Connection management initialized");
+
         } catch (Exception e) {
             logger.error("❌ Failed to initialize connection management", e);
             throw new RuntimeException("Failed to initialize connection management", e);
@@ -116,10 +136,13 @@ public class Gateway {
      */
     private void shutdownConnectionManagement() {
         logger.info("🔌 Shutting down connection management...");
+
         try {
             // TODO: 实现连接管理关闭
             // 例如：关闭所有连接、释放资源等
+
             logger.info("✅ Connection management shut down");
+
         } catch (Exception e) {
             logger.error("❌ Error shutting down connection management", e);
         }
@@ -152,4 +175,4 @@ public class Gateway {
     public DispatchRuntimeContext getDispatcherContext() {
         return dispatcherContext;
     }
-} 
+}

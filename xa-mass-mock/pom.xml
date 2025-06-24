@@ -10,8 +10,8 @@
         <version>0.0.1-SNAPSHOT</version>
     </parent>
 
-    <artifactId>xa_mass_mock</artifactId>
-    <name>mass_mock</name>
+    <artifactId>xa-mass-mock</artifactId>
+    <name>xa-mass-mock</name>
     <packaging>jar</packaging>
 
     <dependencies>
