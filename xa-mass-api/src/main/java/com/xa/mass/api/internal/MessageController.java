@@ -1,6 +1,7 @@
 package com.xa.mass.api.internal;
 
-import io.swagger.annotations.*;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import io.swagger.v3.oas.annotations.Operation;
 import org.springframework.web.bind.annotation.*;
 import java.util.HashMap;
 import java.util.Map;
@@ -11,11 +12,11 @@ import com.xa.mass.gateway.queue.MessageTransporter;
 
 @RestController
 @RequestMapping("/api/message")
-@Api(tags = "消息推送")
+@Tag(name = "消息推送")
 public class MessageController {
 
     @PostMapping("/send")
-    @ApiOperation("主动推送消息到指定 device/role")
+    @Operation(summary = "主动推送消息到指定 device/role")
     public Map<String, Object> sendMessage(@RequestBody Map<String, Object> req) {
         // 示例参数: {"deviceId": "dev123", "role": "USER", "content": "hello"}
         boolean successFlag = false;

@@ -1,6 +1,7 @@
 package com.xa.mass.api.internal;
 
-import io.swagger.annotations.*;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import io.swagger.v3.oas.annotations.Operation;
 import org.springframework.web.bind.annotation.*;
 import java.util.HashMap;
 import java.util.Map;
@@ -12,11 +13,11 @@ import com.xa.mass.api.model.ApiResponse;
 
 @RestController
 @RequestMapping("/api/debug")
-@Api(tags = "调试接口")
+@Tag(name = "调试接口")
 public class DebugController {
 
     @PostMapping("/sendRaw")
-    @ApiOperation("原始 Envelope 调用，便于调试")
+    @Operation(summary = "原始 Envelope 调用，便于调试")
     public ApiResponse<Map<String, Object>> sendRaw(@RequestBody Map<String, Object> req) {
         boolean successFlag = false;
         String msg = "";

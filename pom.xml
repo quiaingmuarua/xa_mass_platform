@@ -5,7 +5,7 @@
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>2.7.4</version>
+        <version>3.3.0</version>
     </parent>
     <groupId>com.xa.mass</groupId>
     <artifactId>xa_mass_platform</artifactId>
@@ -34,7 +34,7 @@
         <url/>
     </scm>
     <properties>
-        <java.version>8</java.version>
+<!--        <java.version>20</java.version>-->
     </properties>
     <dependencies>
         <dependency>

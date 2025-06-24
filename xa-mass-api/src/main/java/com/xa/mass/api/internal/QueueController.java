@@ -5,7 +5,8 @@ import com.xa.mass.gateway.queue.Envelope;
 import com.xa.mass.gateway.queue.MessageTransporter;
 import com.xa.mass.gateway.dispatcher.DispatcherContextRegistry;
 import com.xa.mass.gateway.dispatcher.context.TransportContext;
-import io.swagger.annotations.*;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import io.swagger.v3.oas.annotations.Operation;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -16,13 +17,13 @@ import java.util.*;
 
 @RestController
 @RequestMapping("/api/queue")
-@Api(tags = "队列监控")
+@Tag(name = "队列监控")
 public class QueueController {
 
     private static final Logger log = LoggerFactory.getLogger(QueueController.class);
 
     @GetMapping("/status")
-    @ApiOperation("获取 input/output 队列状态")
+    @Operation(summary = "获取 input/output 队列状态")
     public com.xa.mass.api.model.ApiResponse<Map<String, Object>> getQueueStatus() {
         log.info("[QueueController] /api/queue/status 请求到达");
         Map<String, Object> map = new HashMap<>();
@@ -48,7 +49,7 @@ public class QueueController {
     }
 
     @GetMapping("/detail")
-    @ApiOperation("获取队列明细（预留，后续可扩展）")
+    @Operation(summary = "获取队列明细（预留，后续可扩展）")
     public com.xa.mass.api.model.ApiResponse<Map<String, Object>> getQueueDetail() {
         Map<String, Object> map = new HashMap<>();
         TransportContext transportContext = DispatcherContextRegistry.getTransportContext();
@@ -59,7 +60,7 @@ public class QueueController {
     }
 
     @GetMapping("/metrics")
-    @ApiOperation("获取队列速率统计（预留，后续可扩展）")
+    @Operation(summary = "获取队列速率统计（预留，后续可扩展）")
     public com.xa.mass.api.model.ApiResponse<Map<String, Object>> getQueueMetrics() {
         Map<String, Object> map = new HashMap<>();
         // 这里只返回静态数据，后续可扩展为动态统计

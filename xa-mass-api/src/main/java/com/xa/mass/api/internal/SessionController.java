@@ -1,6 +1,7 @@
 package com.xa.mass.api.internal;
 
-import io.swagger.annotations.*;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import io.swagger.v3.oas.annotations.Operation;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -13,11 +14,11 @@ import com.xa.mass.api.model.ApiResponse;
 
 @RestController
 @RequestMapping("/api/session")
-@Api(tags = "Session管理")
+@Tag(name = "Session管理")
 public class SessionController {
 
     @GetMapping("/list")
-    @ApiOperation("获取所有在线Session/Device详情")
+    @Operation(summary = "获取所有在线Session/Device详情")
     public ApiResponse<List<Map<String, Object>>> listSessions() {
         List<Map<String, Object>> data = new ArrayList<>();
         SessionContext sessionContext = DispatcherContextRegistry.getSessionContext();
@@ -33,7 +34,7 @@ public class SessionController {
     }
 
     @GetMapping("/stats")
-    @ApiOperation("连接统计")
+    @Operation(summary = "连接统计")
     public ApiResponse<Map<String, Object>> sessionStats() {
         Map<String, Object> data = new HashMap<>();
         SessionContext sessionContext = DispatcherContextRegistry.getSessionContext();

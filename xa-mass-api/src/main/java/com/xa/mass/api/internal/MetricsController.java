@@ -1,6 +1,7 @@
 package com.xa.mass.api.internal;
 
-import io.swagger.annotations.*;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import io.swagger.v3.oas.annotations.Operation;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -13,11 +14,11 @@ import com.xa.mass.gateway.queue.MessageTransporter;
 
 @RestController
 @RequestMapping("/api/metrics")
-@Api(tags = "消息速率/统计")
+@Tag(name = "消息速率/统计")
 public class MetricsController {
 
     @GetMapping("")
-    @ApiOperation("获取消息速率/统计信息")
+    @Operation(summary = "获取消息速率/统计信息")
     public ApiResponse<Map<String, Object>> getMetrics() {
         Map<String, Object> data = new HashMap<>();
         TransportContext transportContext = DispatcherContextRegistry.getTransportContext();
