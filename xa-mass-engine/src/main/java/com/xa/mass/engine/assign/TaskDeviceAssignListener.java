@@ -6,6 +6,10 @@ import com.xa.mass.engine.model.task.Task;
 import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.engine.model.DeviceMatchContext;
 import com.xa.mass.engine.model.Token;
+import com.xa.mass.engine.model.RuleEvaluationDetail;
+import com.xa.mass.engine.model.enums.AssignmentResult;
+import com.xa.mass.engine.service.AssignmentRecordService;
+import com.xa.mass.engine.rules.RuleDefinition;
 
 import java.util.*;
 
@@ -16,13 +20,16 @@ public class TaskDeviceAssignListener {
     private final RuleManager<Map<String, Object>> ruleManager;
     private final DeviceManager deviceManager;
     private final TaskMsgAssignListener msgAssignListener;
+    private final AssignmentRecordService recordService;
 
     public TaskDeviceAssignListener(RuleManager<Map<String, Object>> ruleManager,
                                     DeviceManager deviceManager,
-                                    TaskMsgAssignListener msgAssignListener) {
+                                    TaskMsgAssignListener msgAssignListener,
+                                    AssignmentRecordService recordService) {
         this.ruleManager = ruleManager;
         this.deviceManager = deviceManager;
         this.msgAssignListener = msgAssignListener;
+        this.recordService = recordService;
     }
 
     /**
@@ -44,21 +51,96 @@ public class TaskDeviceAssignListener {
     private List<Device> matchDevicesWithRules(Task task, int maxDeviceCount) {
         List<Device> matchedDevices = new ArrayList<>();
         List<Device> candidates = deviceManager.getDevicesByCountry(task.getTaskCountry());
+
+        System.out.println("[DeviceAssign] Matching devices for task " + task.getTid() +
+                " (country: " + task.getTaskCountry() + ", candidates: " + candidates.size() + ")");
+        
         for (Device device : candidates) {
             if (matchedDevices.size() >= maxDeviceCount) break;
+
+            // 获取设备的Token
             Token token = deviceManager.getToken(device.getDeviceId());
+
+            // 创建设备匹配上下文
             DeviceMatchContext matchContext = new DeviceMatchContext(device, token, task);
+
             try {
+                // 使用规则引擎评估设备是否匹配
                 List<String> hitRules = ruleManager.evaluateDefaultRules(matchContext.getContext());
+                List<RuleEvaluationDetail> ruleEvaluations = evaluateRulesWithDetails(matchContext);
+
+                // 如果所有规则都通过，则匹配成功
                 if (hitRules.size() == ruleManager.getDefaultRules().size()) {
                     if (deviceManager.tryLockDevice(device.getDeviceId())) {
+                        // 记录成功分配
+                        recordService.recordDeviceAssignment(
+                                task, device, token, AssignmentResult.SUCCESS,
+                                "所有规则匹配成功，设备锁定成功", ruleEvaluations, matchContext.getContext()
+                        );
                         matchedDevices.add(device);
+                        System.out.println("✓ Device matched: " + device.getDeviceId() + " for task " + task.getTid());
+                    } else {
+                        // 记录设备锁定失败
+                        recordService.recordDeviceAssignment(
+                                task, device, token, AssignmentResult.CONFLICT,
+                                "设备已被锁定，无法分配", ruleEvaluations, matchContext.getContext()
+                        );
+                        System.out.println("✗ Device locked: " + device.getDeviceId());
                     }
+                } else {
+                    // 记录规则不匹配
+                    String failedRules = ruleEvaluations.stream()
+                            .filter(r -> !r.isPassed())
+                            .map(RuleEvaluationDetail::getRuleId)
+                            .collect(java.util.stream.Collectors.joining(", "));
+                    recordService.recordDeviceAssignment(
+                            task, device, token, AssignmentResult.RULE_NOT_MATCH,
+                            "规则不匹配: " + failedRules, ruleEvaluations, matchContext.getContext()
+                    );
+                    System.out.println("✗ Rule not matched: " + device.getDeviceId() + " (failed rules: " + failedRules + ")");
                 }
             } catch (Exception e) {
-                // 可记录日志
+                // 记录评估异常
+                recordService.recordDeviceAssignment(
+                        task, device, token, AssignmentResult.FAILED,
+                        "规则评估异常: " + e.getMessage(), new ArrayList<>(), matchContext.getContext()
+                );
+                System.err.println("Error evaluating rules for device " + device.getDeviceId() + ": " + e.getMessage());
             }
         }
+
+        System.out.println("[DeviceAssign] Total matched devices: " + matchedDevices.size() + " for task " + task.getTid());
         return matchedDevices;
+    }
+
+    /**
+     * 详细评估每个规则
+     */
+    private List<RuleEvaluationDetail> evaluateRulesWithDetails(DeviceMatchContext matchContext) {
+        List<RuleEvaluationDetail> evaluations = new ArrayList<>();
+        List<RuleDefinition> rules = ruleManager.getDefaultRules();
+
+        for (RuleDefinition rule : rules) {
+            long startTime = System.currentTimeMillis();
+            boolean passed = false;
+            String result = "false";
+
+            try {
+                passed = ruleManager.evaluate(rule, matchContext.getContext());
+                result = String.valueOf(passed);
+            } catch (Exception e) {
+                result = "Exception: " + e.getMessage();
+            }
+
+            long evaluationTime = System.currentTimeMillis() - startTime;
+
+            RuleEvaluationDetail detail = new RuleEvaluationDetail(
+                    rule.getId(), rule.getContent(), rule.getDesc(),
+                    passed, result, evaluationTime
+            );
+            evaluations.add(detail);
+        }
+
+        return evaluations;
     }
 } 
