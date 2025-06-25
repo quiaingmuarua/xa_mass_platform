@@ -96,6 +96,11 @@ public class Task {
      * 结束时间
      */
     private LocalDateTime endTime;
+
+    /**
+     * 每个设备批次消息数
+     */
+    private int batchSize;
     
     public Task() {
         this.status = TaskStatus.NEW;
@@ -256,6 +261,14 @@ public class Task {
     
     public void setEndTime(LocalDateTime endTime) {
         this.endTime = endTime;
+    }
+
+    public int getBatchSize() {
+        return batchSize;
+    }
+
+    public void setBatchSize(int batchSize) {
+        this.batchSize = batchSize;
     }
     
     /**

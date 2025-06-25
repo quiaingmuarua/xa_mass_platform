@@ -21,22 +21,16 @@ public class TaskEnginExample {
         TaskManager taskManager = new TaskManager(scheduler);
         String[] countries = {"gb", "us"};
         int msgPerTask = 20;
+        int batchSize = 8;
+        String projectName = "demoApp";
+
+
         List<Task> allTasks = new ArrayList<>();
         for (String country : countries) {
-            TaskCreateRequestDto dto = new TaskCreateRequestDto();
-            dto.setTaskName("Task-" + country);
-            dto.setProject("demoApp");
-            dto.setCountryCode(country);
-            dto.setUserId("user-" + country);
-            dto.setTextContent("content for " + country);
-            // 这里设置targetList模拟2k条msg
-            List<String> targetList = new ArrayList<>();
-            for (int i = 0; i < msgPerTask; i++) {
-                targetList.add("number-" + country + "-" + i);
-            }
-            dto.setTargetList(targetList);
+            TaskCreateRequestDto dto = getTaskCreateRequestDto(country, projectName, msgPerTask, batchSize);
             Task task = taskManager.createTask(dto);
             task.setRunTaskMinDeviceCnt(30);
+            task.setBatchSize(batchSize);
             System.out.println("new_task " + task);
             allTasks.add(task);
         }
@@ -76,17 +70,17 @@ public class TaskEnginExample {
             if (task.getStatus() != TaskStatus.READY) continue;
             List<Device> candidates = deviceManager.getDevicesByCountry(task.getTaskCountry());
             List<Device> matched = new ArrayList<>();
+            int maxDeviceCount = (int) Math.ceil((double) task.getTaskInitNumber() / task.getBatchSize());
             for (Device device : candidates) {
-                if (matched.size() >= task.getRunTaskMinDeviceCnt()) break;
+                if (matched.size() >= Math.min(task.getRunTaskMinDeviceCnt(), maxDeviceCount)) break;
                 if (deviceManager.tryLockDevice(device.getDeviceId())) {
                     System.out.println("new matched " + task + device);
                     matched.add(device);
                 }
             }
-            if (matched.size() >= task.getRunTaskMinDeviceCnt()) {
+            if (matched.size() >= task.getRunTaskMinDeviceCnt() && matched.size() <= maxDeviceCount) {
                 task.setScheduleDeviceCnt(matched.size());
                 task.transitionTo(TaskStatus.RUNNING);
-
                 taskDeviceMap.put(task.getTid(), matched);
             } else {
                 // 匹配失败，释放锁
@@ -100,10 +94,12 @@ public class TaskEnginExample {
         for (Map.Entry<String, List<Device>> entry : taskDeviceMap.entrySet()) {
             String taskId = entry.getKey();
             List<Device> devices = entry.getValue();
-            int batchSize = 8;
+            Task task = allTasks.stream().filter(t -> t.getTid().equals(taskId)).findFirst().orElse(null);
+            if (task == null) continue;
+            int batchSizeForTask = task.getBatchSize();
             int batchId = 0;
             for (Device device : devices) {
-                for (int i = 0; i < batchSize; i++) {
+                for (int i = 0; i < batchSizeForTask; i++) {
                     String msgId = UUID.randomUUID().toString();
                     // 绑定token到消息
                     Token token = deviceManager.getToken(device.getDeviceId());
@@ -112,9 +108,27 @@ public class TaskEnginExample {
                     System.out.println(msg);
                     pushQueue.add(msg);
                 }
+                batchId++;
             }
         }
         System.out.println("Push queue size: " + pushQueue.size());
         // 可在此处模拟推送到 gateway inputQueue
+    }
+
+    private static TaskCreateRequestDto getTaskCreateRequestDto(String country, String projectName, int msgPerTask, int batchSize) {
+        TaskCreateRequestDto dto = new TaskCreateRequestDto();
+        dto.setTaskName("Task-" + country);
+        dto.setProject(projectName);
+        dto.setCountryCode(country);
+        dto.setUserId("user-" + country);
+        dto.setTextContent("content for " + country);
+        // 这里设置targetList模拟2k条msg
+        List<String> targetList = new ArrayList<>();
+        for (int i = 0; i < msgPerTask; i++) {
+            targetList.add("number-" + country + "-" + i);
+        }
+        dto.setTargetList(targetList);
+        dto.setBatchSize(batchSize);
+        return dto;
     }
 }

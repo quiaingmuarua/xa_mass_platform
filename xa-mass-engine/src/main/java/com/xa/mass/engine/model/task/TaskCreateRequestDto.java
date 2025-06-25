@@ -35,6 +35,9 @@ public class TaskCreateRequestDto {
     /** 扩展：自定义 TaskMsg 的 Json 字符串（如果不是简单 string） */
     private List<String> targetJsonList;
 
+    /** 每个设备批次消息数 */
+    private int batchSize;
+
     public TaskCreateRequestDto() {}
 
     public TaskCreateRequestDto(String userId, String project, String taskName, String textContent, List<String> targetList, String targetType, String countryCode, Map<String, Object> extraParams, List<String> targetJsonList) {
@@ -67,4 +70,12 @@ public class TaskCreateRequestDto {
     public void setExtraParams(Map<String, Object> extraParams) { this.extraParams = extraParams; }
     public List<String> getTargetJsonList() { return targetJsonList; }
     public void setTargetJsonList(List<String> targetJsonList) { this.targetJsonList = targetJsonList; }
+
+    public int getBatchSize() {
+        return batchSize;
+    }
+
+    public void setBatchSize(int batchSize) {
+        this.batchSize = batchSize;
+    }
 }
