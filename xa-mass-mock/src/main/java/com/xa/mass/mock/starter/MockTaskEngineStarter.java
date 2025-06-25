@@ -8,6 +8,8 @@ import com.xa.mass.engine.model.enums.TaskStatus;
 import com.xa.mass.engine.model.task.Task;
 import com.xa.mass.engine.model.task.TaskCreateRequestDto;
 import com.xa.mass.engine.model.AssignmentRecord;
+import com.xa.mass.engine.report.ConflictReportStep;
+import com.xa.mass.engine.report.RuleEvaluationStep;
 import com.xa.mass.engine.rules.RuleManagerFactory;
 import com.xa.mass.engine.assign.TaskDeviceAssignListener;
 import com.xa.mass.engine.assign.SimpleTaskMsgAssignListener;
@@ -28,6 +30,9 @@ import java.nio.file.Path;
 import java.io.IOException;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import java.util.List;
+import com.xa.mass.engine.report.AssignmentPipelineStep;
+import com.xa.mass.engine.report.AssignmentReportStep;
 
 /**
  * Mock 全链路任务分配主流程入口，支持 JSON-DSL mock 配置。
@@ -57,33 +62,13 @@ public class MockTaskEngineStarter implements CommandLineRunner {
         JsonObject root = JsonParser.parseString(jsonDsl).getAsJsonObject();
 
         // 2. 生成任务
-        List<Task> allTasks = new ArrayList<>();
-        TaskManager taskManager = initTaskManger();
-        if (root.has("tasks")) {
-            List<TaskCreateRequestDto> taskDtos = MockTaskGenerator.generateTasks(root.getAsJsonArray("tasks"));
-            for (TaskCreateRequestDto dto : taskDtos) {
-                Task task = taskManager.createTask(dto);
-                task.setRunTaskMinDeviceCnt(dto.getBatchSize());
-                task.setBatchSize(dto.getBatchSize());
-                log.info("new_task {}", task);
-                allTasks.add(task);
-            }
-        }
+        List<Task> allTasks = generateTasks(root);
         log.info("Created tasks: {}", allTasks.size());
 
         // 3. 生成设备和 token
         DeviceManager deviceManager = new DeviceManager();
-        List<Token> tokenList = new ArrayList<>();
-        if (root.has("devices")) {
-            List<Device> devices = MockDeviceGenerator.generateDevices(root.getAsJsonArray("devices").toString(), tokenList);
-            for (Device device : devices) {
-                deviceManager.addDevice(device);
-            }
-            for (Token token : tokenList) {
-                deviceManager.addToken(token.getDeviceId(), token);
-            }
-            log.info("Created devices: {}", tokenList.size());
-        }
+        List<Token> tokenList = generateDevicesAndTokens(root, deviceManager);
+        log.info("Created devices: {}", tokenList.size());
 
         // 4. 审核任务（设为READY）
         for (Task task : allTasks) {
@@ -104,7 +89,59 @@ public class MockTaskEngineStarter implements CommandLineRunner {
             }
         }
 
-        // 7. 生成分配统计报告
+        // 7-9. pipeline 观测/归因处理
+        List<AssignmentPipelineStep> pipeline = List.of(
+            new AssignmentReportStep(true),
+            new ConflictReportStep(true),
+            new RuleEvaluationStep(true)
+        );
+        for (AssignmentPipelineStep step : pipeline) {
+            if (step.isEnabled()) step.process(recordService);
+        }
+    }
+
+    // 抽取任务生成逻辑
+    private List<Task> generateTasks(JsonObject root) {
+        List<Task> allTasks = new ArrayList<>();
+        TaskManager taskManager = initTaskManger();
+        if (root.has("tasks")) {
+            List<TaskCreateRequestDto> taskDtos = MockTaskGenerator.generateTasks(root.getAsJsonArray("tasks"));
+            for (TaskCreateRequestDto dto : taskDtos) {
+                Task task = taskManager.createTask(dto);
+                task.setRunTaskMinDeviceCnt(dto.getBatchSize());
+                task.setBatchSize(dto.getBatchSize());
+                log.info("new_task {}", task);
+                allTasks.add(task);
+            }
+        }
+        return allTasks;
+    }
+
+    // 抽取设备和token生成逻辑
+    private List<Token> generateDevicesAndTokens(JsonObject root, DeviceManager deviceManager) {
+        List<Token> tokenList = new ArrayList<>();
+        if (root.has("devices")) {
+            List<Device> devices = MockDeviceGenerator.generateDevices(root.getAsJsonArray("devices").toString(), tokenList);
+            for (Device device : devices) {
+                deviceManager.addDevice(device);
+            }
+            for (Token token : tokenList) {
+                deviceManager.addToken(token.getDeviceId(), token);
+            }
+        }
+        return tokenList;
+    }
+
+    // 默认 mock 配置
+    private static String getDefaultMockConfig() {
+        return "{\n" +
+                "  \"devices\": " + MockDeviceGenerator.exampleJsonDsl() + ",\n" +
+                "  \"tasks\": " + MockTaskGenerator.exampleTasksJsonDsl() + "\n" +
+                "}";
+    }
+
+    // 抽取分配统计报告
+    private void printAssignmentReport(AssignmentRecordService recordService) {
         log.info("\n=== 分配统计报告 ===");
         Map<String, Object> report = recordService.generateAssignmentReport();
         log.info("总分配记录数: {}", report.get("totalRecords"));
@@ -113,8 +150,10 @@ public class MockTaskEngineStarter implements CommandLineRunner {
         log.info("规则不匹配数: {}", report.get("ruleNotMatchCount"));
         log.info("冲突数: {}", report.get("conflictCount"));
         log.info("成功率: {}%", String.format("%.2f", (Double) report.get("successRate") * 100));
+    }
 
-        // 8. 冲突检测
+    // 抽取冲突检测
+    private void printConflictReport(AssignmentRecordService recordService) {
         log.info("\n=== 冲突检测 ===");
         List<Map<String, Object>> conflicts = recordService.detectConflicts();
         if (conflicts.isEmpty()) {
@@ -125,8 +164,10 @@ public class MockTaskEngineStarter implements CommandLineRunner {
                 log.info("  设备: {}, 冲突类型: {}, 时间间隔: {} 分钟", conflict.get("deviceId"), conflict.get("conflictType"), conflict.get("timeDiffMinutes"));
             }
         }
+    }
 
-        // 9. 规则评估详情
+    // 抽取规则评估详情
+    private void printRuleEvaluationDetails(AssignmentRecordService recordService) {
         log.info("\n=== 规则评估详情 ===");
         List<AssignmentRecord> ruleNotMatchRecords = recordService.getRuleNotMatchRecords();
         if (!ruleNotMatchRecords.isEmpty()) {
@@ -135,13 +176,5 @@ public class MockTaskEngineStarter implements CommandLineRunner {
                 log.info("  设备: {}, 任务: {}, 原因: {}", record.getDeviceId(), record.getTaskId(), record.getReason());
             });
         }
-    }
-
-    // 默认 mock 配置
-    private static String getDefaultMockConfig() {
-        return "{\n" +
-                "  \"devices\": " + MockDeviceGenerator.exampleJsonDsl() + ",\n" +
-                "  \"tasks\": " + MockTaskGenerator.exampleTasksJsonDsl() + "\n" +
-                "}";
     }
 } 
