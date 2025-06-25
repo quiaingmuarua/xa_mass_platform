@@ -1,4 +1,4 @@
-package com.xa.mass.engine.assign;
+package com.xa.mass.engine.listener;
 
 import com.xa.mass.engine.model.Device;
 import com.xa.mass.engine.model.Token;

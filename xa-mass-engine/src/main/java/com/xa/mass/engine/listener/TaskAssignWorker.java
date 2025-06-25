@@ -1,7 +1,6 @@
-package com.xa.mass.mock.starter;
+package com.xa.mass.engine.listener;
 
 import com.xa.mass.engine.model.task.Task;
-import com.xa.mass.engine.assign.TaskDeviceAssignListener;
 import com.xa.mass.engine.model.enums.TaskStatus;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
