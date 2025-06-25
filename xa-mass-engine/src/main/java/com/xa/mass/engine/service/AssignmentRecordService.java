@@ -15,12 +15,16 @@ import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * 分配记录服务
  * 负责记录和管理所有分配尝试，支持归因分析和验证
  */
 public class AssignmentRecordService {
+
+    private static final Logger log = LoggerFactory.getLogger(AssignmentRecordService.class);
 
     // 内存存储，实际项目中可替换为数据库
     private final Map<String, AssignmentRecord> records = new ConcurrentHashMap<>();
@@ -93,29 +97,29 @@ public class AssignmentRecordService {
      * 输出归因日志
      */
     private void logAssignmentRecord(AssignmentRecord record) {
-        StringBuilder log = new StringBuilder();
-        log.append("[Assignment] ");
-        log.append("Type=").append(record.getType().getDescription()).append(", ");
-        log.append("Task=").append(record.getTaskId()).append(", ");
-        log.append("Device=").append(record.getDeviceId()).append(", ");
+        StringBuilder logMsg = new StringBuilder();
+        logMsg.append("[Assignment] ");
+        logMsg.append("Type=").append(record.getType().getDescription()).append(", ");
+        logMsg.append("Task=").append(record.getTaskId()).append(", ");
+        logMsg.append("Device=").append(record.getDeviceId()).append(", ");
 
         if (record.getMessageId() != null) {
-            log.append("Message=").append(record.getMessageId()).append(", ");
+            logMsg.append("Message=").append(record.getMessageId()).append(", ");
         }
 
-        log.append("Batch=").append(record.getBatchId()).append(", ");
-        log.append("Result=").append(record.getResult().getDescription()).append(", ");
-        log.append("Reason=").append(record.getReason());
+        logMsg.append("Batch=").append(record.getBatchId()).append(", ");
+        logMsg.append("Result=").append(record.getResult().getDescription()).append(", ");
+        logMsg.append("Reason=").append(record.getReason());
 
         if (record.getRuleEvaluations() != null && !record.getRuleEvaluations().isEmpty()) {
-            log.append(", Rules=[");
+            logMsg.append(", Rules=[");
             String ruleDetails = record.getRuleEvaluations().stream()
                     .map(r -> r.getRuleId() + ":" + (r.isPassed() ? "PASS" : "FAIL"))
                     .collect(Collectors.joining(", "));
-            log.append(ruleDetails).append("]");
+            logMsg.append(ruleDetails).append("]");
         }
 
-        System.out.println(log);
+        log.info(logMsg.toString());
     }
 
     /**

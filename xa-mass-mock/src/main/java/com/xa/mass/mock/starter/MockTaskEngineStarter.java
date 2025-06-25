@@ -1,12 +1,10 @@
-package com.xa.mass.mock.engine;
+package com.xa.mass.mock.starter;
 
 import com.xa.mass.engine.DeviceManager;
 import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.model.Device;
 import com.xa.mass.engine.model.Token;
-import com.xa.mass.engine.model.enums.DeviceStatus;
 import com.xa.mass.engine.model.enums.TaskStatus;
-import com.xa.mass.engine.model.enums.TokenStatus;
 import com.xa.mass.engine.model.task.Task;
 import com.xa.mass.engine.model.task.TaskCreateRequestDto;
 import com.xa.mass.engine.model.AssignmentRecord;
@@ -18,8 +16,13 @@ import com.xa.mass.engine.strategy.SimpleTaskScheduler;
 import com.xa.mass.mock.engine.MockDeviceGenerator;
 import com.xa.mass.mock.engine.MockTaskGenerator;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.boot.CommandLineRunner;
+import org.springframework.context.annotation.Profile;
+import org.springframework.stereotype.Component;
+
 import java.util.*;
-import java.util.concurrent.ThreadLocalRandom;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.io.IOException;
@@ -29,21 +32,26 @@ import com.google.gson.JsonParser;
 /**
  * Mock 全链路任务分配主流程入口，支持 JSON-DSL mock 配置。
  */
-public class MockTaskEngineExample {
+@Component
+@Profile("mock-engine")
+public class MockTaskEngineStarter implements CommandLineRunner {
+    private static final Logger log = LoggerFactory.getLogger(MockTaskEngineStarter.class);
+
     public static TaskManager initTaskManger() {
         SimpleTaskScheduler scheduler = new SimpleTaskScheduler();
         return new TaskManager(scheduler);
     }
 
-    public static void main(String[] args) throws Exception {
+    @Override
+    public void run(String... args) throws Exception {
         // 1. 加载 mock 配置（优先外部文件）
         String configPath = "mock_config.json";
         String jsonDsl;
         try {
             jsonDsl = Files.readString(Path.of(configPath));
-            System.out.println("Loaded mock config from file: " + configPath);
+            log.info("Loaded mock config from file: {}", configPath);
         } catch (IOException e) {
-            System.out.println("No external mock config found, using default.");
+            log.warn("No external mock config found, using default.");
             jsonDsl = getDefaultMockConfig();
         }
         JsonObject root = JsonParser.parseString(jsonDsl).getAsJsonObject();
@@ -57,11 +65,11 @@ public class MockTaskEngineExample {
                 Task task = taskManager.createTask(dto);
                 task.setRunTaskMinDeviceCnt(dto.getBatchSize());
                 task.setBatchSize(dto.getBatchSize());
-                System.out.println("new_task " + task);
+                log.info("new_task {}", task);
                 allTasks.add(task);
             }
         }
-        System.out.println("Created tasks: " + allTasks.size());
+        log.info("Created tasks: {}", allTasks.size());
 
         // 3. 生成设备和 token
         DeviceManager deviceManager = new DeviceManager();
@@ -74,14 +82,14 @@ public class MockTaskEngineExample {
             for (Token token : tokenList) {
                 deviceManager.addToken(token.getDeviceId(), token);
             }
-            System.out.println("Created devices: " + devices.size());
+            log.info("Created devices: {}", tokenList.size());
         }
 
         // 4. 审核任务（设为READY）
         for (Task task : allTasks) {
             task.transitionTo(TaskStatus.READY);
         }
-        System.out.println("Approved tasks: " + allTasks.stream().filter(t -> t.getStatus() == TaskStatus.READY).count());
+        log.info("Approved tasks: {}", allTasks.stream().filter(t -> t.getStatus() == TaskStatus.READY).count());
 
         // 5. 初始化监听器，模拟流式分配
         AssignmentRecordService recordService = new AssignmentRecordService();
@@ -97,38 +105,34 @@ public class MockTaskEngineExample {
         }
 
         // 7. 生成分配统计报告
-        System.out.println("\n=== 分配统计报告 ===");
+        log.info("\n=== 分配统计报告 ===");
         Map<String, Object> report = recordService.generateAssignmentReport();
-        System.out.println("总分配记录数: " + report.get("totalRecords"));
-        System.out.println("成功分配数: " + report.get("successCount"));
-        System.out.println("失败分配数: " + report.get("failedCount"));
-        System.out.println("规则不匹配数: " + report.get("ruleNotMatchCount"));
-        System.out.println("冲突数: " + report.get("conflictCount"));
-        System.out.println("成功率: " + String.format("%.2f%%", (Double) report.get("successRate") * 100));
+        log.info("总分配记录数: {}", report.get("totalRecords"));
+        log.info("成功分配数: {}", report.get("successCount"));
+        log.info("失败分配数: {}", report.get("failedCount"));
+        log.info("规则不匹配数: {}", report.get("ruleNotMatchCount"));
+        log.info("冲突数: {}", report.get("conflictCount"));
+        log.info("成功率: {}%", String.format("%.2f", (Double) report.get("successRate") * 100));
 
         // 8. 冲突检测
-        System.out.println("\n=== 冲突检测 ===");
+        log.info("\n=== 冲突检测 ===");
         List<Map<String, Object>> conflicts = recordService.detectConflicts();
         if (conflicts.isEmpty()) {
-            System.out.println("未检测到冲突");
+            log.info("未检测到冲突");
         } else {
-            System.out.println("检测到 " + conflicts.size() + " 个潜在冲突:");
+            log.info("检测到 {} 个潜在冲突:", conflicts.size());
             for (Map<String, Object> conflict : conflicts) {
-                System.out.println("  设备: " + conflict.get("deviceId") +
-                                 ", 冲突类型: " + conflict.get("conflictType") +
-                                 ", 时间间隔: " + conflict.get("timeDiffMinutes") + " 分钟");
+                log.info("  设备: {}, 冲突类型: {}, 时间间隔: {} 分钟", conflict.get("deviceId"), conflict.get("conflictType"), conflict.get("timeDiffMinutes"));
             }
         }
 
         // 9. 规则评估详情
-        System.out.println("\n=== 规则评估详情 ===");
+        log.info("\n=== 规则评估详情 ===");
         List<AssignmentRecord> ruleNotMatchRecords = recordService.getRuleNotMatchRecords();
         if (!ruleNotMatchRecords.isEmpty()) {
-            System.out.println("规则不匹配详情 (前5条):");
+            log.info("规则不匹配详情 (前5条):");
             ruleNotMatchRecords.stream().limit(5).forEach(record -> {
-                System.out.println("  设备: " + record.getDeviceId() +
-                                 ", 任务: " + record.getTaskId() +
-                                 ", 原因: " + record.getReason());
+                log.info("  设备: {}, 任务: {}, 原因: {}", record.getDeviceId(), record.getTaskId(), record.getReason());
             });
         }
     }
@@ -139,21 +143,5 @@ public class MockTaskEngineExample {
                 "  \"devices\": " + MockDeviceGenerator.exampleJsonDsl() + ",\n" +
                 "  \"tasks\": " + MockTaskGenerator.exampleTasksJsonDsl() + "\n" +
                 "}";
-    }
-
-    private static TaskCreateRequestDto getTaskCreateRequestDto(String country, String projectName, int msgPerTask, int batchSize) {
-        TaskCreateRequestDto dto = new TaskCreateRequestDto();
-        dto.setTaskName("Task-" + country);
-        dto.setProject(projectName);
-        dto.setCountryCode(country);
-        dto.setUserId("user-" + country);
-        dto.setTextContent("content for " + country);
-        List<String> targetList = new ArrayList<>();
-        for (int i = 0; i < msgPerTask; i++) {
-            targetList.add("number-" + country + "-" + i);
-        }
-        dto.setTargetList(targetList);
-        dto.setBatchSize(batchSize);
-        return dto;
     }
 } 

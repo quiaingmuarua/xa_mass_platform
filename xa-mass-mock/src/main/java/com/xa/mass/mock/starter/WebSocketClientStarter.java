@@ -1,4 +1,4 @@
-package com.xa.mass.mock.runner;
+package com.xa.mass.mock.starter;
 
 import com.xa.mass.gateway.model.massMessage.MassMessage;
 import com.xa.mass.gateway.model.massMessage.MessageContext;

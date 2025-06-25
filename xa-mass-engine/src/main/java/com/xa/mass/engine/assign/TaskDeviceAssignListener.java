@@ -10,6 +10,8 @@ import com.xa.mass.engine.model.RuleEvaluationDetail;
 import com.xa.mass.engine.model.enums.AssignmentResult;
 import com.xa.mass.engine.service.AssignmentRecordService;
 import com.xa.mass.engine.rules.RuleDefinition;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.*;
 
@@ -17,6 +19,7 @@ import java.util.*;
  * 任务分配监听器：监听任务分配事件，按批次分配设备
  */
 public class TaskDeviceAssignListener {
+    private static final Logger log = LoggerFactory.getLogger(TaskDeviceAssignListener.class);
     private final RuleManager<Map<String, Object>> ruleManager;
     private final DeviceManager deviceManager;
     private final TaskMsgAssignListener msgAssignListener;
@@ -52,8 +55,7 @@ public class TaskDeviceAssignListener {
         List<Device> matchedDevices = new ArrayList<>();
         List<Device> candidates = deviceManager.getDevicesByCountry(task.getTaskCountry());
 
-        System.out.println("[DeviceAssign] Matching devices for task " + task.getTid() +
-                " (country: " + task.getTaskCountry() + ", candidates: " + candidates.size() + ")");
+        log.info("[DeviceAssign] Matching devices for task {} (country: {}, candidates: {})", task.getTid(), task.getTaskCountry(), candidates.size());
         
         for (Device device : candidates) {
             if (matchedDevices.size() >= maxDeviceCount) break;
@@ -78,14 +80,14 @@ public class TaskDeviceAssignListener {
                                 "所有规则匹配成功，设备锁定成功", ruleEvaluations, matchContext.getContext()
                         );
                         matchedDevices.add(device);
-                        System.out.println("✓ Device matched: " + device.getDeviceId() + " for task " + task.getTid());
+                        log.info("✓ Device matched: {} for task {}", device.getDeviceId(), task.getTid());
                     } else {
                         // 记录设备锁定失败
                         recordService.recordDeviceAssignment(
                                 task, device, token, AssignmentResult.CONFLICT,
                                 "设备已被锁定，无法分配", ruleEvaluations, matchContext.getContext()
                         );
-                        System.out.println("✗ Device locked: " + device.getDeviceId());
+                        log.info("✗ Device locked: {}", device.getDeviceId());
                     }
                 } else {
                     // 记录规则不匹配
@@ -97,7 +99,7 @@ public class TaskDeviceAssignListener {
                             task, device, token, AssignmentResult.RULE_NOT_MATCH,
                             "规则不匹配: " + failedRules, ruleEvaluations, matchContext.getContext()
                     );
-                    System.out.println("✗ Rule not matched: " + device.getDeviceId() + " (failed rules: " + failedRules + ")");
+                    log.info("✗ Rule not matched: {} (failed rules: {})", device.getDeviceId(), failedRules);
                 }
             } catch (Exception e) {
                 // 记录评估异常
@@ -105,11 +107,11 @@ public class TaskDeviceAssignListener {
                         task, device, token, AssignmentResult.FAILED,
                         "规则评估异常: " + e.getMessage(), new ArrayList<>(), matchContext.getContext()
                 );
-                System.err.println("Error evaluating rules for device " + device.getDeviceId() + ": " + e.getMessage());
+                log.error("Error evaluating rules for device {}: {}", device.getDeviceId(), e.getMessage());
             }
         }
 
-        System.out.println("[DeviceAssign] Total matched devices: " + matchedDevices.size() + " for task " + task.getTid());
+        log.info("[DeviceAssign] Total matched devices: {} for task {}", matchedDevices.size(), task.getTid());
         return matchedDevices;
     }
 

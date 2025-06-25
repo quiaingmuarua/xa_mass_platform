@@ -1,4 +1,4 @@
-package com.xa.mass.mock.runner;
+package com.xa.mass.mock.starter;
 
 import com.xa.mass.starter.MassApplication;
 import com.xa.mass.starter.MassApplicationConfig;

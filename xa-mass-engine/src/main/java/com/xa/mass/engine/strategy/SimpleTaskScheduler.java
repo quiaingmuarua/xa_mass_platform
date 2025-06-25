@@ -2,56 +2,59 @@ package com.xa.mass.engine.strategy;
 
 import com.xa.mass.engine.model.task.Task;
 import com.xa.mass.engine.model.TaskMsg;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.Collections;
 import java.util.List;
 
 public class SimpleTaskScheduler implements TaskScheduler {
+    private static final Logger log = LoggerFactory.getLogger(SimpleTaskScheduler.class);
     @Override
     public SchedulingResult scheduleTask(Task task) {
-        System.out.println("调度任务: " + task.getTid());
+        log.info("调度任务: {}", task.getTid());
         return SchedulingResult.success(Collections.emptyList());
     }
 
     @Override
     public List<SchedulingResult> scheduleTasks(List<Task> tasks) {
-        System.out.println("批量调度任务: " + tasks.size());
+        log.info("批量调度任务: {}", tasks.size());
         return Collections.emptyList();
     }
 
     @Override
     public boolean handleTaskMsgCompletion(TaskMsg taskMsg) {
-        System.out.println("任务消息完成: " + taskMsg.getMsgId());
+        log.info("任务消息完成: {}", taskMsg.getMsgId());
         return true;
     }
 
     @Override
     public boolean handleTaskMsgFailure(TaskMsg taskMsg, String errorMessage) {
-        System.out.println("任务消息失败: " + taskMsg.getMsgId() + " error: " + errorMessage);
+        log.info("任务消息失败: {} error: {}", taskMsg.getMsgId(), errorMessage);
         return true;
     }
 
     @Override
     public boolean retryTaskMsg(TaskMsg taskMsg) {
-        System.out.println("重试任务消息: " + taskMsg.getMsgId());
+        log.info("重试任务消息: {}", taskMsg.getMsgId());
         return true;
     }
 
     @Override
     public boolean cancelTask(String taskId) {
-        System.out.println("取消任务: " + taskId);
+        log.info("取消任务: {}", taskId);
         return true;
     }
 
     @Override
     public boolean pauseTask(String taskId) {
-        System.out.println("暂停任务: " + taskId);
+        log.info("暂停任务: {}", taskId);
         return true;
     }
 
     @Override
     public boolean resumeTask(String taskId) {
-        System.out.println("恢复任务: " + taskId);
+        log.info("恢复任务: {}", taskId);
         return true;
     }
 } 
