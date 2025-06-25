@@ -17,6 +17,7 @@ import com.xa.mass.engine.service.AssignmentRecordService;
 import com.xa.mass.engine.strategy.SimpleTaskScheduler;
 import com.xa.mass.mock.engine.MockDeviceGenerator;
 import com.xa.mass.mock.engine.MockTaskGenerator;
+import com.xa.mass.mock.starter.TaskAssignWorker;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -82,12 +83,15 @@ public class MockTaskEngineStarter implements CommandLineRunner {
         var msgAssignListener = new SimpleTaskMsgAssignListener(deviceManager, recordService);
         var deviceAssignListener = new TaskDeviceAssignListener(ruleManager, deviceManager, msgAssignListener, recordService);
 
-        // 6. 模拟任务分配事件（流式）
+        // 6. 启动异步任务分配 worker
+        TaskAssignWorker assignWorker = new TaskAssignWorker(deviceAssignListener);
+        assignWorker.start();
         for (Task task : allTasks) {
-            if (task.getStatus() == TaskStatus.READY) {
-                deviceAssignListener.onTaskAssign(task);
-            }
+            assignWorker.submit(task);
         }
+        // 等待所有任务分配完成（简单 sleep，可优化为更优雅的同步机制）
+        Thread.sleep(1000L);
+        assignWorker.stop();
 
         // 7-9. pipeline 观测/归因处理
         List<AssignmentPipelineStep> pipeline = List.of(
