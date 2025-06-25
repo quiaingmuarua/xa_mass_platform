@@ -1,0 +1,58 @@
+{
+  "devices": [
+    {
+      "deviceIdTemplate": "device-{i}",
+      "count": 5,
+      "groupId": "us",
+      "agentVersion": "1.0.0",
+      "supportedApps": ["demoApp", "otherApp"],
+      "tokens": [
+        {
+          "tokenIdTemplate": "token-{i}-A",
+          "count": 2,
+          "channel": "us",
+          "randomStatus": true
+        },
+        {
+          "tokenIdTemplate": "token-{i}-B",
+          "count": 1,
+          "channel": "us",
+          "randomStatus": false
+        }
+      ]
+    },
+    {
+      "deviceIdTemplate": "gb-device-{i}",
+      "count": 3,
+      "groupId": "gb",
+      "agentVersion": "1.0.1",
+      "supportedApps": ["demoApp"],
+      "tokens": [
+        {
+          "tokenIdTemplate": "gb-token-{i}-{j}",
+          "count": 2,
+          "channel": "gb",
+          "randomStatus": true
+        }
+      ]
+    }
+  ],
+  "tasks": [
+    {
+      "taskNameTemplate": "Task-{country}-{i}",
+      "countryList": ["us", "gb"],
+      "countPerCountry": 2,
+      "msgPerTask": 10,
+      "batchSize": 3,
+      "project": "demoApp"
+    },
+    {
+      "taskNameTemplate": "TestTask-{country}-{i}",
+      "countryList": ["us"],
+      "countPerCountry": 1,
+      "msgPerTask": 5,
+      "batchSize": 2,
+      "project": "testApp"
+    }
+  ]
+} 

@@ -17,14 +17,31 @@ import java.util.regex.Pattern;
 public class MockDeviceGenerator {
     private static final Pattern PLACEHOLDER_PATTERN = Pattern.compile("\\{i(:(\\d+))?}|");
 
+    public static class MockTokenBatchConfig {
+        public String tokenIdTemplate = "token-{i}-{j}";
+        public int count = 1;
+        public String channel = "us";
+        public boolean randomStatus = true;
+    }
+
+    public static class MockBatchConfig {
+        public String deviceIdTemplate = "device-{i}";
+        public int count = 10;
+        public String groupId = "us";
+        public String agentVersion = "1.0.0";
+        public List<String> supportedApps = List.of("demoApp");
+        public List<MockTokenBatchConfig> tokens = List.of();
+    }
+
     /**
-     * 解析 JSON-DSL，生成设备和 token 列表
+     * 解析 JSON-DSL，生成设备和 token 列表，支持 device 下多 token 批量
      */
     public static List<Device> generateDevices(String jsonDsl, List<Token> tokenListOut) {
         List<Device> devices = new ArrayList<>();
         JsonArray arr = JsonParser.parseString(jsonDsl).getAsJsonArray();
+        Gson gson = new Gson();
         for (JsonElement elem : arr) {
-            MockBatchConfig cfg = new Gson().fromJson(elem, MockBatchConfig.class);
+            MockBatchConfig cfg = gson.fromJson(elem, MockBatchConfig.class);
             for (int i = 0; i < cfg.count; i++) {
                 String deviceId = cfg.deviceIdTemplate.replace("{i}", String.valueOf(i));
                 Device device = new Device();
@@ -34,14 +51,29 @@ public class MockDeviceGenerator {
                 device.setAgentVersion(cfg.agentVersion);
                 device.setSupportedApps(new ArrayList<>(cfg.supportedApps));
                 devices.add(device);
-                // token
-                String tokenId = cfg.tokenIdTemplate.replace("{i}", String.valueOf(i));
-                Token token = new Token();
-                token.setTokenId(tokenId);
-                token.setDeviceId(deviceId);
-                token.setChannel(cfg.groupId);
-                token.setStatus(cfg.randomTokenStatus ? (ThreadLocalRandom.current().nextBoolean() ? TokenStatus.LOGIN_READY : TokenStatus.INVALID) : TokenStatus.LOGIN_READY);
-                tokenListOut.add(token);
+                // tokens
+                if (cfg.tokens != null && !cfg.tokens.isEmpty()) {
+                    for (MockTokenBatchConfig tokenCfg : cfg.tokens) {
+                        for (int j = 0; j < tokenCfg.count; j++) {
+                            String tokenId = tokenCfg.tokenIdTemplate.replace("{i}", String.valueOf(i)).replace("{j}", String.valueOf(j));
+                            Token token = new Token();
+                            token.setTokenId(tokenId);
+                            token.setDeviceId(deviceId);
+                            token.setChannel(tokenCfg.channel);
+                            token.setStatus(tokenCfg.randomStatus ? (ThreadLocalRandom.current().nextBoolean() ? TokenStatus.LOGIN_READY : TokenStatus.INVALID) : TokenStatus.LOGIN_READY);
+                            tokenListOut.add(token);
+                        }
+                    }
+                } else {
+                    // 兼容老格式，生成一个 token
+                    String tokenId = "token-" + i;
+                    Token token = new Token();
+                    token.setTokenId(tokenId);
+                    token.setDeviceId(deviceId);
+                    token.setChannel(cfg.groupId);
+                    token.setStatus(TokenStatus.LOGIN_READY);
+                    tokenListOut.add(token);
+                }
             }
         }
         return devices;
@@ -69,15 +101,5 @@ public class MockDeviceGenerator {
                 "    \"randomTokenStatus\": false\n" +
                 "  }\n" +
                 "]";
-    }
-
-    public static class MockBatchConfig {
-        public String deviceIdTemplate = "device-{i}";
-        public int count = 10;
-        public String groupId = "us";
-        public String agentVersion = "1.0.0";
-        public List<String> supportedApps = List.of("demoApp");
-        public boolean randomTokenStatus = true;
-        public String tokenIdTemplate = "token-{i}";
     }
 } 
