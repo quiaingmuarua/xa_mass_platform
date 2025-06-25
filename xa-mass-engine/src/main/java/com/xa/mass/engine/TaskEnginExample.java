@@ -131,24 +131,18 @@ public class TaskEnginExample {
 
         // 可以选择不同的规则配置
         RuleManager<Map<String, Object>> ruleManager;
-        if (args.length > 0 && "loose".equals(args[0])) {
-            ruleManager = initRuleManagerWithLooseRules();
-        } else if (args.length > 0 && "project".equals(args[0])) {
-            ruleManager = initRuleManagerWithProjectRules("demoApp");
-        } else {
-            ruleManager = initRuleManager();
-        }
+        ruleManager = initRuleManagerWithProjectRules("demoApp");
         
         String[] countries = {"gb", "us"};
-        int msgPerTask = 20;
-        int batchSize = 8;
+        int msgPerTask = 50;
+        int batchSize = 5;
         String projectName = "demoApp";
 
         List<Task> allTasks = new ArrayList<>();
         for (String country : countries) {
             TaskCreateRequestDto dto = getTaskCreateRequestDto(country, projectName, msgPerTask, batchSize);
             Task task = taskManager.createTask(dto);
-            task.setRunTaskMinDeviceCnt(30);
+            task.setRunTaskMinDeviceCnt(5);
             task.setBatchSize(batchSize);
             System.out.println("new_task " + task);
             allTasks.add(task);
@@ -157,7 +151,7 @@ public class TaskEnginExample {
 
         // 2. 批量创建设备和token
         DeviceManager deviceManager = new DeviceManager();
-        int deviceCount = 100; // 3k
+        int deviceCount = 500; // 3k
         String[] deviceCountries = {"us", "gb", "fr"};
         for (int i = 0; i < deviceCount; i++) {
             Device device = new Device();
@@ -182,7 +176,7 @@ public class TaskEnginExample {
             token.setChannel(device.getGroupId());
             token.setStatus(ThreadLocalRandom.current().nextBoolean() ? TokenStatus.LOGIN_READY : TokenStatus.INVALID);
             deviceManager.addToken(device.getDeviceId(), token);
-            System.out.println("new_device " + device);
+//            System.out.println("new_device " + device);
         }
         System.out.println("Created devices: " + deviceCount);
 
