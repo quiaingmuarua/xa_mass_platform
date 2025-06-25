@@ -1,22 +1,21 @@
 package com.xa.mass.engine.service;
 
 import com.xa.mass.engine.model.AssignmentRecord;
-import com.xa.mass.engine.model.Device;
-import com.xa.mass.engine.model.Token;
-import com.xa.mass.engine.model.task.Task;
-import com.xa.mass.engine.model.enums.AssignmentResult;
-import com.xa.mass.engine.model.enums.AssignmentType;
-import com.xa.mass.engine.model.snapshot.DeviceSnapshot;
-import com.xa.mass.engine.model.snapshot.TaskSnapshot;
-import com.xa.mass.engine.model.snapshot.TokenSnapshot;
 import com.xa.mass.engine.model.RuleEvaluationDetail;
+import com.xa.mass.engine.monkey.snapshot.DeviceSnapshot;
+import com.xa.mass.engine.monkey.snapshot.TaskSnapshot;
+import com.xa.mass.engine.monkey.snapshot.TokenSnapshot;
+import com.xa.mass.eventbus.enums.assignment.AssignmentResult;
+import com.xa.mass.eventbus.enums.assignment.AssignmentType;
+import com.xa.mass.eventbus.model.Device;
+import com.xa.mass.eventbus.model.Task;
+import com.xa.mass.eventbus.model.Token;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * 分配记录服务

@@ -1,17 +1,13 @@
 package com.xa.mass.engine.listener;
 
-import com.xa.mass.engine.model.task.Task;
-import com.xa.mass.engine.model.enums.TaskStatus;
+import com.xa.mass.eventbus.enums.task.TaskStatus;
+import com.xa.mass.eventbus.model.Task;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class TaskAssignWorker {

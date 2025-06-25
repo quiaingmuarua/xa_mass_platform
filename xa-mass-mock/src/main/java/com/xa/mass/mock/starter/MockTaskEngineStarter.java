@@ -1,46 +1,43 @@
 package com.xa.mass.mock.starter;
 
+import com.google.common.eventbus.Subscribe;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import com.xa.mass.engine.DeviceManager;
 import com.xa.mass.engine.TaskManager;
-import com.xa.mass.engine.model.Device;
-import com.xa.mass.engine.model.Token;
-import com.xa.mass.engine.model.enums.TaskStatus;
-import com.xa.mass.engine.model.task.Task;
-import com.xa.mass.engine.model.task.TaskCreateRequestDto;
-import com.xa.mass.engine.monkey.MonkeyDeviceGenerator;
-import com.xa.mass.engine.monkey.MonkeyTaskGenerator;
-import com.xa.mass.engine.report.ConflictReportStep;
-import com.xa.mass.engine.report.RuleEvaluationStep;
-import com.xa.mass.engine.rules.RuleManagerFactory;
-import com.xa.mass.engine.listener.TaskDeviceAssignListener;
 import com.xa.mass.engine.listener.SimpleTaskMsgAssignListener;
-import com.xa.mass.engine.service.AssignmentRecordService;
-import com.xa.mass.engine.strategy.SimpleTaskScheduler;
-
 import com.xa.mass.engine.listener.TaskAssignWorker;
 import com.xa.mass.engine.listener.TaskCompletionListener;
-import com.xa.mass.engine.report.AssignmentPipelineStep;
-import com.xa.mass.engine.report.AssignmentReportStep;
-
+import com.xa.mass.engine.listener.TaskDeviceAssignListener;
+import com.xa.mass.engine.model.TaskCreateRequestDto;
+import com.xa.mass.engine.monkey.MonkeyDeviceGenerator;
+import com.xa.mass.engine.monkey.MonkeyTaskGenerator;
+import com.xa.mass.engine.monkey.report.AssignmentPipelineStep;
+import com.xa.mass.engine.monkey.report.AssignmentReportStep;
+import com.xa.mass.engine.monkey.report.ConflictReportStep;
+import com.xa.mass.engine.monkey.report.RuleEvaluationStep;
+import com.xa.mass.engine.rules.RuleManagerFactory;
+import com.xa.mass.engine.service.AssignmentRecordService;
+import com.xa.mass.engine.strategy.SimpleTaskScheduler;
+import com.xa.mass.eventbus.enums.task.TaskStatus;
+import com.xa.mass.eventbus.event.EventBusManager;
+import com.xa.mass.eventbus.event.TaskReviewEvent;
+import com.xa.mass.eventbus.model.Device;
+import com.xa.mass.eventbus.model.Task;
+import com.xa.mass.eventbus.model.Token;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.io.IOException;
-import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
-import java.util.List;
 import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
-import com.google.common.eventbus.AsyncEventBus;
-import com.google.common.eventbus.Subscribe;
-import com.xa.mass.engine.monkey.event.TaskReviewEvent;
-import java.util.concurrent.Executors;
-import com.xa.mass.engine.monkey.event.EventBusManager;
+
 
 /**
  * Mock 全链路任务分配主流程入口，支持 JSON-DSL mock 配置。

@@ -23,6 +23,10 @@
             <version>32.1.2-jre</version>
         </dependency>
 
-
+        <dependency>
+            <groupId>com.xa.mass</groupId>
+            <artifactId>xa-mass-eventbus</artifactId>
+            <version>0.0.1-SNAPSHOT</version>
+        </dependency>
     </dependencies>
 </project> 

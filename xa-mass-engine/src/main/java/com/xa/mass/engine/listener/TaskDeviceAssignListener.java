@@ -1,19 +1,21 @@
 package com.xa.mass.engine.listener;
 
 import com.xa.mass.engine.DeviceManager;
-import com.xa.mass.engine.model.Device;
-import com.xa.mass.engine.model.task.Task;
-import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.engine.model.DeviceMatchContext;
-import com.xa.mass.engine.model.Token;
 import com.xa.mass.engine.model.RuleEvaluationDetail;
-import com.xa.mass.engine.model.enums.AssignmentResult;
-import com.xa.mass.engine.service.AssignmentRecordService;
 import com.xa.mass.engine.rules.RuleDefinition;
+import com.xa.mass.engine.rules.RuleManager;
+import com.xa.mass.engine.service.AssignmentRecordService;
+import com.xa.mass.eventbus.enums.assignment.AssignmentResult;
+import com.xa.mass.eventbus.model.Device;
+import com.xa.mass.eventbus.model.Task;
+import com.xa.mass.eventbus.model.Token;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 
 /**
  * 任务分配监听器：监听任务分配事件，按批次分配设备

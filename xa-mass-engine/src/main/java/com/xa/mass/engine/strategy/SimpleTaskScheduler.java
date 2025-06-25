@@ -1,7 +1,7 @@
 package com.xa.mass.engine.strategy;
 
-import com.xa.mass.engine.model.task.Task;
-import com.xa.mass.engine.model.TaskMsg;
+import com.xa.mass.eventbus.model.Task;
+import com.xa.mass.eventbus.model.TaskMsg;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

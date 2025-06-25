@@ -1,6 +1,8 @@
 package com.xa.mass.engine.model;
 
-import com.xa.mass.engine.model.task.Task;
+import com.xa.mass.eventbus.model.Device;
+import com.xa.mass.eventbus.model.Task;
+import com.xa.mass.eventbus.model.Token;
 
 import java.util.HashMap;
 import java.util.Map;

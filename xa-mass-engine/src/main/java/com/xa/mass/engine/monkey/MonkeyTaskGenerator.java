@@ -1,8 +1,12 @@
 package com.xa.mass.engine.monkey;
 
-import com.google.gson.*;
-import com.xa.mass.engine.model.task.TaskCreateRequestDto;
-import java.util.*;
+import com.google.gson.Gson;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.xa.mass.engine.model.TaskCreateRequestDto;
+
+import java.util.ArrayList;
+import java.util.List;
 
 public class MonkeyTaskGenerator {
     public static class TaskBatchConfig {

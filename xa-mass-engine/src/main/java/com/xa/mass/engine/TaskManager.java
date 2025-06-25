@@ -1,11 +1,11 @@
 package com.xa.mass.engine;
 
-import com.xa.mass.engine.model.task.Task;
-import com.xa.mass.engine.model.TaskMsg;
-import com.xa.mass.engine.model.common.User;
-import com.xa.mass.engine.model.enums.TaskStatus;
-import com.xa.mass.engine.model.task.TaskCreateRequestDto;
+import com.xa.mass.engine.model.TaskCreateRequestDto;
 import com.xa.mass.engine.strategy.TaskScheduler;
+import com.xa.mass.eventbus.enums.task.TaskStatus;
+import com.xa.mass.eventbus.model.Task;
+import com.xa.mass.eventbus.model.TaskMsg;
+import com.xa.mass.eventbus.model.User;
 
 import java.util.List;
 import java.util.Map;

@@ -1,10 +1,10 @@
 package com.xa.mass.engine.model;
 
-import com.xa.mass.engine.model.enums.AssignmentType;
-import com.xa.mass.engine.model.enums.AssignmentResult;
-import com.xa.mass.engine.model.snapshot.TaskSnapshot;
-import com.xa.mass.engine.model.snapshot.DeviceSnapshot;
-import com.xa.mass.engine.model.snapshot.TokenSnapshot;
+import com.xa.mass.engine.monkey.snapshot.DeviceSnapshot;
+import com.xa.mass.engine.monkey.snapshot.TaskSnapshot;
+import com.xa.mass.engine.monkey.snapshot.TokenSnapshot;
+import com.xa.mass.eventbus.enums.assignment.AssignmentResult;
+import com.xa.mass.eventbus.enums.assignment.AssignmentType;
 
 import java.time.LocalDateTime;
 import java.util.List;
