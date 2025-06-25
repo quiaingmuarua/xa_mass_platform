@@ -44,6 +44,26 @@
 - 每个模块均有独立 README 说明其职责与边界。
 - 详细开发文档见各模块 `README.md`。
 
+## Maven 仓库配置与离线依赖
+
+构建默认从 Maven Central 拉取依赖，若在公司内网无法直接访问外网，可在 `~/.m2/settings.xml` 中配置镜像仓库。例如：
+
+```xml
+<settings>
+  <mirrors>
+    <mirror>
+      <id>internal-nexus</id>
+      <mirrorOf>*</mirrorOf>
+      <url>http://nexus.example.com/repository/maven-public/</url>
+    </mirror>
+  </mirrors>
+  <!-- 如有需要可在 <servers> 中配置认证信息 -->
+</settings>
+```
+
+对于离线或受限环境，可先在有网络的机器上运行 `populate_dependencies.sh` 预下载依赖，
+脚本会对各模块执行 `mvn dependency:go-offline`，将依赖缓存到本地仓库，随后将 `~/.m2/repository` 目录拷贝到目标环境即可。
+
 ---
 
 > 本项目持续演进中，欢迎贡献与建议！
