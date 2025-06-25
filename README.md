@@ -28,9 +28,9 @@
 
 ## 启动方式
 
-1. 进入 `xa-mass-app` 目录。
-2. 运行 `MassApplication.java`（Spring Boot 入口）。
-3. 所有子系统（gateway/engine/api）均由 app 层自动组装启动。
+1. 进入 `xa-mass-starter` 目录。
+2. 运行 `src/main/java/com/xa/mass/starter/MassApplication.java`（Spring Boot 入口）。
+3. 所有子系统（gateway/engine/api）均由 starter 层自动组装启动。
 
 ## 适用场景
 
