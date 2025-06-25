@@ -10,5 +10,12 @@
     <packaging>jar</packaging>
     <name>xa-mass-engine</name>
     <dependencies>
+
+        <dependency>
+            <groupId>com.alibaba</groupId>
+            <artifactId>QLExpress</artifactId>
+            <version>3.3.2</version>
+        </dependency>
+
     </dependencies>
 </project> 
