@@ -40,6 +40,7 @@ import com.google.common.eventbus.AsyncEventBus;
 import com.google.common.eventbus.Subscribe;
 import com.xa.mass.engine.monkey.event.TaskReviewEvent;
 import java.util.concurrent.Executors;
+import com.xa.mass.engine.monkey.event.EventBusManager;
 
 /**
  * Mock 全链路任务分配主流程入口，支持 JSON-DSL mock 配置。
@@ -77,13 +78,12 @@ public class MockTaskEngineStarter implements CommandLineRunner {
         List<Token> tokenList = generateDevicesAndTokens(root, deviceManager);
         log.info("Created devices: {}", tokenList.size());
 
-        // 4. 初始化 AsyncEventBus 并注册审核监听器（异步事件总线）
-        AsyncEventBus eventBus = new AsyncEventBus(Executors.newFixedThreadPool(4));
-        eventBus.register(new TaskReviewListener(allTasks));
+        // 4. 注册审核监听器（使用 EventBusManager）
+        EventBusManager.register(new TaskReviewListener(allTasks));
 
         // 5. 发布审核事件（异步处理）
         for (Task task : allTasks) {
-            eventBus.post(new TaskReviewEvent.TaskReviewRandomEvent(task.getTid(), 1.0)); // 1.0 表示100%通过
+            EventBusManager.postChaosEvent(new TaskReviewEvent.TaskReviewRandomEvent(task.getTid(), 1.0)); // 1.0 表示100%通过
         }
         log.info("(Async) Approved tasks: {}", allTasks.stream().filter(t -> t.getStatus() == TaskStatus.READY).count());
 
