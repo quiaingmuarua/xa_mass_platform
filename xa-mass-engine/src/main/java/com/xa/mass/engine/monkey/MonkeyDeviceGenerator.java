@@ -1,4 +1,4 @@
-package com.xa.mass.mock.engine;
+package com.xa.mass.engine.monkey;
 
 import com.google.gson.*;
 import com.xa.mass.engine.model.Device;
@@ -8,13 +8,12 @@ import com.xa.mass.engine.model.enums.TokenStatus;
 
 import java.util.*;
 import java.util.concurrent.ThreadLocalRandom;
-import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
  * 支持 JSON-DSL 批量 mock 设备/Token 的生成器。
  */
-public class MockDeviceGenerator {
+public class MonkeyDeviceGenerator {
     private static final Pattern PLACEHOLDER_PATTERN = Pattern.compile("\\{i(:(\\d+))?}|");
 
     public static class MockTokenBatchConfig {

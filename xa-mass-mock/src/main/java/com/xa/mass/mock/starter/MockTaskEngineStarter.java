@@ -7,6 +7,8 @@ import com.xa.mass.engine.model.Token;
 import com.xa.mass.engine.model.enums.TaskStatus;
 import com.xa.mass.engine.model.task.Task;
 import com.xa.mass.engine.model.task.TaskCreateRequestDto;
+import com.xa.mass.engine.monkey.MonkeyDeviceGenerator;
+import com.xa.mass.engine.monkey.MonkeyTaskGenerator;
 import com.xa.mass.engine.report.ConflictReportStep;
 import com.xa.mass.engine.report.RuleEvaluationStep;
 import com.xa.mass.engine.rules.RuleManagerFactory;
@@ -14,8 +16,7 @@ import com.xa.mass.engine.listener.TaskDeviceAssignListener;
 import com.xa.mass.engine.listener.SimpleTaskMsgAssignListener;
 import com.xa.mass.engine.service.AssignmentRecordService;
 import com.xa.mass.engine.strategy.SimpleTaskScheduler;
-import com.xa.mass.mock.engine.MockDeviceGenerator;
-import com.xa.mass.mock.engine.MockTaskGenerator;
+
 import com.xa.mass.engine.listener.TaskAssignWorker;
 import com.xa.mass.engine.listener.TaskCompletionListener;
 import com.xa.mass.engine.report.AssignmentPipelineStep;
@@ -35,6 +36,10 @@ import com.google.gson.JsonParser;
 import java.util.List;
 import java.util.ArrayList;
 import java.util.concurrent.CompletableFuture;
+import com.google.common.eventbus.AsyncEventBus;
+import com.google.common.eventbus.Subscribe;
+import com.xa.mass.engine.monkey.event.TaskReviewEvent;
+import java.util.concurrent.Executors;
 
 /**
  * Mock 全链路任务分配主流程入口，支持 JSON-DSL mock 配置。
@@ -72,19 +77,23 @@ public class MockTaskEngineStarter implements CommandLineRunner {
         List<Token> tokenList = generateDevicesAndTokens(root, deviceManager);
         log.info("Created devices: {}", tokenList.size());
 
-        // 4. 审核任务（设为READY）
-        for (Task task : allTasks) {
-            task.transitionTo(TaskStatus.READY);
-        }
-        log.info("Approved tasks: {}", allTasks.stream().filter(t -> t.getStatus() == TaskStatus.READY).count());
+        // 4. 初始化 AsyncEventBus 并注册审核监听器（异步事件总线）
+        AsyncEventBus eventBus = new AsyncEventBus(Executors.newFixedThreadPool(4));
+        eventBus.register(new TaskReviewListener(allTasks));
 
-        // 5. 初始化监听器，模拟流式分配
+        // 5. 发布审核事件（异步处理）
+        for (Task task : allTasks) {
+            eventBus.post(new TaskReviewEvent.TaskReviewRandomEvent(task.getTid(), 1.0)); // 1.0 表示100%通过
+        }
+        log.info("(Async) Approved tasks: {}", allTasks.stream().filter(t -> t.getStatus() == TaskStatus.READY).count());
+
+        // 6. 初始化监听器，模拟流式分配
         AssignmentRecordService recordService = new AssignmentRecordService();
         var ruleManager = RuleManagerFactory.getProjectRuleManager("demoApp");
         var msgAssignListener = new SimpleTaskMsgAssignListener(deviceManager, recordService);
         var deviceAssignListener = new TaskDeviceAssignListener(ruleManager, deviceManager, msgAssignListener, recordService);
 
-        // 6. 启动异步任务分配 worker
+        // 7. 启动异步任务分配 worker
         TaskAssignWorker assignWorker = new TaskAssignWorker(deviceAssignListener);
         
         // 注册任务完成监听器
@@ -129,7 +138,7 @@ public class MockTaskEngineStarter implements CommandLineRunner {
         List<Task> allTasks = new ArrayList<>();
         TaskManager taskManager = initTaskManger();
         if (root.has("tasks")) {
-            List<TaskCreateRequestDto> taskDtos = MockTaskGenerator.generateTasks(root.getAsJsonArray("tasks"));
+            List<TaskCreateRequestDto> taskDtos = MonkeyTaskGenerator.generateTasks(root.getAsJsonArray("tasks"));
             for (TaskCreateRequestDto dto : taskDtos) {
                 Task task = taskManager.createTask(dto);
                 task.setRunTaskMinDeviceCnt(dto.getBatchSize());
@@ -145,7 +154,7 @@ public class MockTaskEngineStarter implements CommandLineRunner {
     private List<Token> generateDevicesAndTokens(JsonObject root, DeviceManager deviceManager) {
         List<Token> tokenList = new ArrayList<>();
         if (root.has("devices")) {
-            List<Device> devices = MockDeviceGenerator.generateDevices(root.getAsJsonArray("devices").toString(), tokenList);
+            List<Device> devices = MonkeyDeviceGenerator.generateDevices(root.getAsJsonArray("devices").toString(), tokenList);
             for (Device device : devices) {
                 deviceManager.addDevice(device);
             }
@@ -159,9 +168,28 @@ public class MockTaskEngineStarter implements CommandLineRunner {
     // 默认 mock 配置
     private static String getDefaultMockConfig() {
         return "{\n" +
-                "  \"devices\": " + MockDeviceGenerator.exampleJsonDsl() + ",\n" +
-                "  \"tasks\": " + MockTaskGenerator.exampleTasksJsonDsl() + "\n" +
+                "  \"devices\": " + MonkeyDeviceGenerator.exampleJsonDsl() + ",\n" +
+                "  \"tasks\": " + MonkeyTaskGenerator.exampleTasksJsonDsl() + "\n" +
                 "}";
+    }
+
+    // Task审核事件监听器
+    private static class TaskReviewListener {
+        private final List<Task> allTasks;
+        public TaskReviewListener(List<Task> allTasks) {
+            this.allTasks = allTasks;
+        }
+        @Subscribe
+        public void onTaskReview(TaskReviewEvent.TaskReviewRandomEvent event) {
+            // 根据 event.getTaskId() 查找 Task
+            for (Task task : allTasks) {
+                if (task.getTid().equals(event.getTaskId())) {
+                    // 可根据 event.getRandomRate() 实现概率通过，这里简单处理为100%通过
+                    task.transitionTo(TaskStatus.READY);
+                    break;
+                }
+            }
+        }
     }
 
 } 

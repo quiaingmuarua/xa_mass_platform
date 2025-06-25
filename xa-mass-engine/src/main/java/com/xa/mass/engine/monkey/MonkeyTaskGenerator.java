@@ -1,10 +1,10 @@
-package com.xa.mass.mock.engine;
+package com.xa.mass.engine.monkey;
 
 import com.google.gson.*;
 import com.xa.mass.engine.model.task.TaskCreateRequestDto;
 import java.util.*;
 
-public class MockTaskGenerator {
+public class MonkeyTaskGenerator {
     public static class TaskBatchConfig {
         public String taskNameTemplate = "Task-{country}-{i}";
         public List<String> countryList = List.of("us");
