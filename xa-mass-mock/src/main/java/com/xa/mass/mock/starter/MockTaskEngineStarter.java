@@ -18,6 +18,9 @@ import com.xa.mass.engine.strategy.SimpleTaskScheduler;
 import com.xa.mass.mock.engine.MockDeviceGenerator;
 import com.xa.mass.mock.engine.MockTaskGenerator;
 import com.xa.mass.mock.starter.TaskAssignWorker;
+import com.xa.mass.mock.starter.TaskCompletionListener;
+import com.xa.mass.engine.report.AssignmentPipelineStep;
+import com.xa.mass.engine.report.AssignmentReportStep;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -32,8 +35,8 @@ import java.io.IOException;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import java.util.List;
-import com.xa.mass.engine.report.AssignmentPipelineStep;
-import com.xa.mass.engine.report.AssignmentReportStep;
+import java.util.ArrayList;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * Mock 全链路任务分配主流程入口，支持 JSON-DSL mock 配置。
@@ -85,23 +88,42 @@ public class MockTaskEngineStarter implements CommandLineRunner {
 
         // 6. 启动异步任务分配 worker
         TaskAssignWorker assignWorker = new TaskAssignWorker(deviceAssignListener);
+        
+        // 注册任务完成监听器
+        assignWorker.addListener(new TaskCompletionListener() {
+            @Override
+            public void onTaskCompleted(Task task) {
+                log.debug("Task completed: {}", task.getTid());
+            }
+            
+            @Override
+            public void onAllTasksCompleted() {
+                log.info("All tasks completed, running pipeline...");
+                // 异步执行 pipeline
+                CompletableFuture.runAsync(() -> {
+                    List<AssignmentPipelineStep> pipeline = List.of(
+                        new AssignmentReportStep(true),
+                        new ConflictReportStep(true),
+                        new RuleEvaluationStep(true)
+                    );
+                    for (AssignmentPipelineStep step : pipeline) {
+                        if (step.isEnabled()) step.process(recordService);
+                    }
+                });
+            }
+        });
+        
         assignWorker.start();
-        for (Task task : allTasks) {
-            assignWorker.submit(task);
-        }
-        // 等待所有任务分配完成（简单 sleep，可优化为更优雅的同步机制）
-        Thread.sleep(1000L);
-        assignWorker.stop();
-
-        // 7-9. pipeline 观测/归因处理
-        List<AssignmentPipelineStep> pipeline = List.of(
-            new AssignmentReportStep(true),
-            new ConflictReportStep(true),
-            new RuleEvaluationStep(true)
-        );
-        for (AssignmentPipelineStep step : pipeline) {
-            if (step.isEnabled()) step.process(recordService);
-        }
+        CompletableFuture<Void> allTasksFuture = assignWorker.submitAll(allTasks);
+        
+        // 主流程等待所有任务完成（非阻塞）
+        allTasksFuture.thenRun(() -> {
+            log.info("All tasks and pipeline processing completed");
+            assignWorker.stop();
+        });
+        
+        // 主流程不阻塞，直接结束
+        log.info("Mock task engine started, tasks are being processed asynchronously");
     }
 
     // 抽取任务生成逻辑
@@ -144,41 +166,4 @@ public class MockTaskEngineStarter implements CommandLineRunner {
                 "}";
     }
 
-    // 抽取分配统计报告
-    private void printAssignmentReport(AssignmentRecordService recordService) {
-        log.info("\n=== 分配统计报告 ===");
-        Map<String, Object> report = recordService.generateAssignmentReport();
-        log.info("总分配记录数: {}", report.get("totalRecords"));
-        log.info("成功分配数: {}", report.get("successCount"));
-        log.info("失败分配数: {}", report.get("failedCount"));
-        log.info("规则不匹配数: {}", report.get("ruleNotMatchCount"));
-        log.info("冲突数: {}", report.get("conflictCount"));
-        log.info("成功率: {}%", String.format("%.2f", (Double) report.get("successRate") * 100));
-    }
-
-    // 抽取冲突检测
-    private void printConflictReport(AssignmentRecordService recordService) {
-        log.info("\n=== 冲突检测 ===");
-        List<Map<String, Object>> conflicts = recordService.detectConflicts();
-        if (conflicts.isEmpty()) {
-            log.info("未检测到冲突");
-        } else {
-            log.info("检测到 {} 个潜在冲突:", conflicts.size());
-            for (Map<String, Object> conflict : conflicts) {
-                log.info("  设备: {}, 冲突类型: {}, 时间间隔: {} 分钟", conflict.get("deviceId"), conflict.get("conflictType"), conflict.get("timeDiffMinutes"));
-            }
-        }
-    }
-
-    // 抽取规则评估详情
-    private void printRuleEvaluationDetails(AssignmentRecordService recordService) {
-        log.info("\n=== 规则评估详情 ===");
-        List<AssignmentRecord> ruleNotMatchRecords = recordService.getRuleNotMatchRecords();
-        if (!ruleNotMatchRecords.isEmpty()) {
-            log.info("规则不匹配详情 (前5条):");
-            ruleNotMatchRecords.stream().limit(5).forEach(record -> {
-                log.info("  设备: {}, 任务: {}, 原因: {}", record.getDeviceId(), record.getTaskId(), record.getReason());
-            });
-        }
-    }
 } 

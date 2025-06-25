@@ -33,9 +33,6 @@
         <tag/>
         <url/>
     </scm>
-    <properties>
-<!--        <java.version>20</java.version>-->
-    </properties>
     <dependencies>
         <dependency>
             <groupId>org.springframework.boot</groupId>
