@@ -1,4 +1,4 @@
-package com.xa.mass.mock.event;
+package com.xa.mass.eventbus.event.task;
 
 import com.xa.mass.eventbus.model.Task;
 

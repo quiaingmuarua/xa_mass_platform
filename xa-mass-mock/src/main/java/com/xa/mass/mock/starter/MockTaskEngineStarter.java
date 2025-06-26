@@ -7,15 +7,10 @@ import com.xa.mass.engine.DeviceManager;
 import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.listener.SimpleTaskMsgAssignListener;
 import com.xa.mass.engine.listener.TaskAssignWorker;
-import com.xa.mass.engine.listener.TaskCompletionListener;
 import com.xa.mass.engine.listener.TaskDeviceAssignListener;
 import com.xa.mass.engine.model.TaskCreateRequestDto;
 import com.xa.mass.engine.monkey.MonkeyDeviceGenerator;
 import com.xa.mass.engine.monkey.MonkeyTaskGenerator;
-import com.xa.mass.engine.monkey.report.AssignmentPipelineStep;
-import com.xa.mass.engine.monkey.report.AssignmentReportStep;
-import com.xa.mass.engine.monkey.report.ConflictReportStep;
-import com.xa.mass.engine.monkey.report.RuleEvaluationStep;
 import com.xa.mass.engine.rules.RuleManagerFactory;
 import com.xa.mass.engine.service.AssignmentRecordService;
 import com.xa.mass.engine.strategy.SimpleTaskScheduler;
@@ -26,12 +21,11 @@ import com.xa.mass.eventbus.model.Device;
 import com.xa.mass.eventbus.model.Task;
 import com.xa.mass.eventbus.model.Token;
 import com.xa.mass.starter.EngineResourceRegistry;
-import com.xa.mass.mock.event.TaskCreatedEvent;
-import com.xa.mass.mock.service.AuditService;
-import com.xa.mass.mock.service.AssignmentService;
-import com.xa.mass.mock.service.PipelineService;
-import com.xa.mass.mock.event.AllTasksCompletedEvent;
-import com.xa.mass.mock.service.TaskAssignWorkerService;
+import com.xa.mass.eventbus.event.task.TaskCreatedEvent;
+import com.xa.mass.engine.service.AuditService;
+import com.xa.mass.engine.service.AssignmentService;
+import com.xa.mass.engine.service.PipelineService;
+import com.xa.mass.engine.service.TaskAssignWorkerService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.CommandLineRunner;
@@ -43,7 +37,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
 
 
 /**
@@ -53,13 +46,6 @@ import java.util.concurrent.CompletableFuture;
 @Profile("mock-engine")
 public class MockTaskEngineStarter implements CommandLineRunner {
     private static final Logger log = LoggerFactory.getLogger(MockTaskEngineStarter.class);
-
-    public static TaskManager initTaskManger() {
-        SimpleTaskScheduler scheduler = new SimpleTaskScheduler();
-        return new TaskManager(scheduler);
-    }
-
-
 
     @Override
     public void run(String... args) throws Exception {
