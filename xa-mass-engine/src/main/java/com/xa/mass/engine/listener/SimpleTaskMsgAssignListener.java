@@ -29,14 +29,20 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
 
     @Override
     public void onMsgAssign(Task task, List<Device> devices) {
-        int batchSize = task.getBatchSize();
+        int totalMessages = task.getTaskInitNumber();
+        int deviceCount = devices.size();
+        int baseMsgPerDevice = totalMessages / deviceCount;
+        int remainder = totalMessages % deviceCount;
         int batchId = 0;
         List<TaskMsg> pushQueue = new ArrayList<>();
 
-        log.info("[MsgAssign] Starting message assignment for task {} with {} devices, batchSize={}", task.getTid(), devices.size(), batchSize);
-        
-        for (Device device : devices) {
-            for (int i = 0; i < batchSize; i++) {
+        log.info("[MsgAssign] Starting message assignment for task {} with {} devices, totalMessages={}, baseMsgPerDevice={}, remainder={}",
+                task.getTid(), deviceCount, totalMessages, baseMsgPerDevice, remainder);
+
+        for (int i = 0; i < deviceCount; i++) {
+            Device device = devices.get(i);
+            int assignCount = baseMsgPerDevice + (i < remainder ? 1 : 0); // 平均分配，余数补齐
+            for (int j = 0; j < assignCount; j++) {
                 String msgId = UUID.randomUUID().toString();
                 Token token = deviceManager.getToken(device.getDeviceId());
                 String tokenId = token != null ? token.getTokenId() : null;
@@ -54,7 +60,7 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
             batchId++;
         }
 
-        log.info("[MsgAssign] Task {} pushQueue size: {}", task.getTid(), pushQueue.size());
+        log.info("[MsgAssign] Task {} pushQueue size: {} (should equal totalMessages)", task.getTid(), pushQueue.size());
         // 实际可推送到 MQ 或下游队列
     }
 } 
