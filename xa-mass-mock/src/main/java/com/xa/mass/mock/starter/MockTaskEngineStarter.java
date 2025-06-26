@@ -26,6 +26,12 @@ import com.xa.mass.eventbus.model.Device;
 import com.xa.mass.eventbus.model.Task;
 import com.xa.mass.eventbus.model.Token;
 import com.xa.mass.starter.EngineResourceRegistry;
+import com.xa.mass.mock.event.TaskCreatedEvent;
+import com.xa.mass.mock.service.AuditService;
+import com.xa.mass.mock.service.AssignmentService;
+import com.xa.mass.mock.service.PipelineService;
+import com.xa.mass.mock.event.AllTasksCompletedEvent;
+import com.xa.mass.mock.service.TaskAssignWorkerService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.CommandLineRunner;
@@ -57,9 +63,33 @@ public class MockTaskEngineStarter implements CommandLineRunner {
 
     @Override
     public void run(String... args) throws Exception {
+        // 1. 启动/注册所有资源和服务
         EngineResourceRegistry registry = new EngineResourceRegistry();
+        // 注册 manager、worker、service、listener
+        SimpleTaskScheduler scheduler = new SimpleTaskScheduler();
+        TaskManager taskManager = new TaskManager(scheduler);
+        DeviceManager deviceManager = new DeviceManager();
+        AssignmentRecordService recordService = new AssignmentRecordService();
+        var ruleManager = RuleManagerFactory.getProjectRuleManager("demoApp");
+        var msgAssignListener = new SimpleTaskMsgAssignListener(deviceManager, recordService);
+        var deviceAssignListener = new TaskDeviceAssignListener(ruleManager, deviceManager, msgAssignListener, recordService);
+        TaskAssignWorker assignWorker = new TaskAssignWorker(deviceAssignListener);
+        assignWorker.start(); // 常驻后台
+        registry.register(TaskManager.class, taskManager);
+        registry.register(DeviceManager.class, deviceManager);
+        registry.register(AssignmentRecordService.class, recordService);
+        registry.register(SimpleTaskScheduler.class, scheduler);
+        registry.register(com.xa.mass.engine.rules.RuleManager.class, ruleManager);
+        registry.register(com.xa.mass.engine.listener.TaskMsgAssignListener.class, msgAssignListener);
+        registry.register(com.xa.mass.engine.listener.TaskDeviceAssignListener.class, deviceAssignListener);
+        registry.register(TaskAssignWorker.class, assignWorker);
+        // 注册事件驱动服务
+        EventBusManager.register(new TaskAssignWorkerService(assignWorker));
+        EventBusManager.register(new AuditService());
+        EventBusManager.register(new AssignmentService());
+        EventBusManager.register(new PipelineService(recordService));
 
-        // 1. 加载 mock 配置（优先外部文件）
+        // 2. 注入 mock 任务和设备
         String configPath = "mock_config.json";
         String jsonDsl;
         try {
@@ -70,101 +100,20 @@ public class MockTaskEngineStarter implements CommandLineRunner {
             jsonDsl = getDefaultMockConfig();
         }
         JsonObject root = JsonParser.parseString(jsonDsl).getAsJsonObject();
+        generateTasks(root, taskManager);
+        generateDevicesAndTokens(root, deviceManager);
 
-        // 2. 生成任务和设备
-        SimpleTaskScheduler scheduler = new SimpleTaskScheduler();
-        TaskManager taskManager = new TaskManager(scheduler);
-        List<Task> allTasks = generateTasks(root, taskManager);
-        DeviceManager deviceManager = new DeviceManager();
-        List<Token> tokenList = generateDevicesAndTokens(root, deviceManager);
-
-        // 3. 统一注册所有资源
-        registerResources(registry, root, allTasks, tokenList, taskManager, deviceManager, scheduler);
-
-        log.info("Created tasks: {}", allTasks.size());
-        log.info("Created devices: {}", tokenList.size());
-
-        // 4. 注册审核监听器（使用 EventBusManager）
-        EventBusManager.register(new TaskReviewListener(allTasks));
-
-        // 5. 发布审核事件（异步处理）
+        // 3. 发布任务事件（worker 自动处理）
+        List<Task> allTasks = taskManager.getAllTasks();
         for (Task task : allTasks) {
-            EventBusManager.postChaosEvent(new TaskReviewEvent.TaskReviewRandomEvent(task.getTid(), 1.0));
+            EventBusManager.post(new TaskCreatedEvent(task));
         }
-        log.info("(Async) Approved tasks: {}", allTasks.stream().filter(t -> t.getStatus() == TaskStatus.READY).count());
-
-        // 6. 获取 worker 并注册任务完成监听器
-        TaskAssignWorker assignWorker = registry.get(TaskAssignWorker.class);
-        assignWorker.addListener(new TaskCompletionListener() {
-            @Override
-            public void onTaskCompleted(Task task) {
-                log.debug("Task completed: {}", task.getTid());
-            }
-            @Override
-            public void onAllTasksCompleted() {
-                log.info("All tasks completed, running pipeline...");
-                AssignmentRecordService recordService = registry.get(AssignmentRecordService.class);
-                CompletableFuture.runAsync(() -> {
-                    List<AssignmentPipelineStep> pipeline = List.of(
-                        new AssignmentReportStep(true),
-                        new ConflictReportStep(true),
-                        new RuleEvaluationStep(true)
-                    );
-                    for (AssignmentPipelineStep step : pipeline) {
-                        if (step.isEnabled()) step.process(recordService);
-                    }
-                });
-            }
-        });
-
-        // 7. 启动 worker
-        assignWorker.start();
-        CompletableFuture<Void> allTasksFuture = assignWorker.submitAll(allTasks);
-
-        // 8. 主流程等待所有任务完成（非阻塞）
-        allTasksFuture.thenRun(() -> {
-            log.info("All tasks and pipeline processing completed");
-            assignWorker.stop();
-        });
 
         log.info("Mock task engine started, tasks are being processed asynchronously");
     }
 
-    /**
-     * 统一注册所有核心资源
-     */
-    private void registerResources(EngineResourceRegistry registry, JsonObject root, List<Task> allTasks, List<Token> tokenList, TaskManager taskManager, DeviceManager deviceManager, SimpleTaskScheduler scheduler) {
-        // AssignmentRecordService
-        AssignmentRecordService recordService = new AssignmentRecordService();
-        registry.register(AssignmentRecordService.class, recordService);
-
-        // RuleManager
-        var ruleManager = RuleManagerFactory.getProjectRuleManager("demoApp");
-        registry.register(com.xa.mass.engine.rules.RuleManager.class, ruleManager);
-
-        // TaskMsgAssignListener
-        var msgAssignListener = new SimpleTaskMsgAssignListener(deviceManager, recordService);
-        registry.register(com.xa.mass.engine.listener.TaskMsgAssignListener.class, msgAssignListener);
-
-        // TaskDeviceAssignListener
-        var deviceAssignListener = new TaskDeviceAssignListener(ruleManager, deviceManager, msgAssignListener, recordService);
-        registry.register(com.xa.mass.engine.listener.TaskDeviceAssignListener.class, deviceAssignListener);
-
-        // TaskAssignWorker
-        TaskAssignWorker assignWorker = new TaskAssignWorker(deviceAssignListener);
-        registry.register(TaskAssignWorker.class, assignWorker);
-
-        // TaskManager
-        registry.register(TaskManager.class, taskManager);
-        // DeviceManager
-        registry.register(DeviceManager.class, deviceManager);
-        // Scheduler
-        registry.register(SimpleTaskScheduler.class, scheduler);
-    }
-
-    // generateTasks 现在接收 taskManager 参数
-    private List<Task> generateTasks(JsonObject root, TaskManager taskManager) {
-        List<Task> allTasks = new ArrayList<>();
+    // generateTasks 只负责注入
+    private void generateTasks(JsonObject root, TaskManager taskManager) {
         if (root.has("tasks")) {
             List<TaskCreateRequestDto> taskDtos = MonkeyTaskGenerator.generateTasks(root.getAsJsonArray("tasks"));
             for (TaskCreateRequestDto dto : taskDtos) {
@@ -172,16 +121,14 @@ public class MockTaskEngineStarter implements CommandLineRunner {
                 task.setRunTaskMinDeviceCnt(dto.getBatchSize());
                 task.setBatchSize(dto.getBatchSize());
                 log.info("new_task {}", task);
-                allTasks.add(task);
             }
         }
-        return allTasks;
     }
 
-    // 抽取设备和token生成逻辑
-    private List<Token> generateDevicesAndTokens(JsonObject root, DeviceManager deviceManager) {
-        List<Token> tokenList = new ArrayList<>();
+    // generateDevicesAndTokens 只负责注入
+    private void generateDevicesAndTokens(JsonObject root, DeviceManager deviceManager) {
         if (root.has("devices")) {
+            List<Token> tokenList = new ArrayList<>();
             List<Device> devices = MonkeyDeviceGenerator.generateDevices(root.getAsJsonArray("devices").toString(), tokenList);
             for (Device device : devices) {
                 deviceManager.addDevice(device);
@@ -190,7 +137,6 @@ public class MockTaskEngineStarter implements CommandLineRunner {
                 deviceManager.addToken(token.getDeviceId(), token);
             }
         }
-        return tokenList;
     }
 
     // 默认 mock 配置

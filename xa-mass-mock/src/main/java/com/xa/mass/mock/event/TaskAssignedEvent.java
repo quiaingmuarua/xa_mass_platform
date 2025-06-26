@@ -1,0 +1,9 @@
+package com.xa.mass.mock.event;
+
+import com.xa.mass.eventbus.model.Task;
+
+public class TaskAssignedEvent {
+    private final Task task;
+    public TaskAssignedEvent(Task task) { this.task = task; }
+    public Task getTask() { return task; }
+} 

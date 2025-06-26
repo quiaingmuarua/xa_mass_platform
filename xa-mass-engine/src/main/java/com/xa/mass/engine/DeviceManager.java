@@ -41,4 +41,12 @@ public class DeviceManager {
     public boolean isLocked(String deviceId) {
         return lockedDevices.contains(deviceId);
     }
+
+    public List<Device> getAllDevices() {
+        return new ArrayList<>(devices.values());
+    }
+
+    public List<Token> getAllTokens() {
+        return new ArrayList<>(deviceToken.values());
+    }
 } 
