@@ -13,6 +13,7 @@ import com.xa.mass.gateway.server.MassServerConfig;
 import com.xa.mass.gateway.server.MassServerStater;
 import com.xa.mass.gateway.session.ServerSessionManager;
 
+import com.xa.mass.starter.config.MassApplicationConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -26,7 +27,7 @@ public class MassApplication {
     
     private final MassApplicationConfig config;
     private Gateway gateway;
-    private Engine engine;
+    private MassEngine engine;
     private DispatchRuntimeContext dispatcherContext;
     private ServerMessageDispatcher messageDispatcher;
     private MassServerStater serverStater;
@@ -160,10 +161,10 @@ public class MassApplication {
      * 启动引擎
      */
     private void startEngine() {
-        logger.info("⚙️ Starting Engine...");
-        engine = new Engine(config.getEngineConfig());
+        logger.info("⚙️ Starting MassEngine...");
+        engine = new MassEngine(config.getEngineConfig());
         engine.start();
-        logger.info("✅ Engine started");
+        logger.info("✅ MassEngine started");
     }
     
     /**

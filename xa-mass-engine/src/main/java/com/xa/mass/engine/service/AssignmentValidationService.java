@@ -124,7 +124,6 @@ public class AssignmentValidationService {
                         conflict.setSecondRecord(next);
                         conflict.setTimeDiffMinutes(timeDiff);
                         conflict.setDescription("设备在短时间内被重复分配");
-
                         result.addConflict(conflict);
                     }
                 }

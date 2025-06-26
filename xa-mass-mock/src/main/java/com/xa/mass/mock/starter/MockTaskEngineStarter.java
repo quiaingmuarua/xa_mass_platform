@@ -52,6 +52,11 @@ public class MockTaskEngineStarter implements CommandLineRunner {
         return new TaskManager(scheduler);
     }
 
+
+    public void starter(){
+
+    }
+
     @Override
     public void run(String... args) throws Exception {
         // 1. 加载 mock 配置（优先外部文件）

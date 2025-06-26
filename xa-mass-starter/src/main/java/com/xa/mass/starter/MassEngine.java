@@ -1,5 +1,6 @@
 package com.xa.mass.starter;
 
+import com.xa.mass.starter.config.EngineConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -13,14 +14,14 @@ import org.slf4j.LoggerFactory;
  * 消息处理引擎功能已移至 Gateway 中
  * 此类保留用于未来扩展其他引擎功能
  */
-public class Engine {
+public class MassEngine {
 
-    private static final Logger logger = LoggerFactory.getLogger(Engine.class);
+    private static final Logger logger = LoggerFactory.getLogger(MassEngine.class);
 
-    private final MassApplicationConfig.EngineConfig config;
+    private final EngineConfig config;
     private boolean running = false;
 
-    public Engine(MassApplicationConfig.EngineConfig config) {
+    public MassEngine(EngineConfig config) {
         this.config = config;
     }
 
@@ -29,22 +30,22 @@ public class Engine {
      */
     public void start() {
         if (!config.isEnabled()) {
-            logger.info("Engine is disabled, skipping start");
+            logger.info("MassEngine is disabled, skipping start");
             return;
         }
 
-        logger.info("⚙️ Starting Engine with {} worker threads", config.getWorkerThreads());
+        logger.info("⚙️ Starting MassEngine with {} worker threads", config.getWorkerThreads());
 
         try {
             // TODO: 实现其他引擎功能
             // 例如：任务调度、规则引擎、数据分析等
 
             running = true;
-            logger.info("✅ Engine started successfully");
+            logger.info("✅ MassEngine started successfully");
 
         } catch (Exception e) {
-            logger.error("❌ Failed to start Engine", e);
-            throw new RuntimeException("Failed to start Engine", e);
+            logger.error("❌ Failed to start MassEngine", e);
+            throw new RuntimeException("Failed to start MassEngine", e);
         }
     }
 
@@ -53,20 +54,20 @@ public class Engine {
      */
     public void stop() {
         if (!running) {
-            logger.info("Engine is not running, skipping stop");
+            logger.info("MassEngine is not running, skipping stop");
             return;
         }
 
-        logger.info("🛑 Stopping Engine...");
+        logger.info("🛑 Stopping MassEngine...");
 
         try {
             // TODO: 实现引擎停止逻辑
 
             running = false;
-            logger.info("✅ Engine stopped successfully");
+            logger.info("✅ MassEngine stopped successfully");
 
         } catch (Exception e) {
-            logger.error("❌ Error stopping Engine", e);
+            logger.error("❌ Error stopping MassEngine", e);
         }
     }
 
@@ -80,7 +81,7 @@ public class Engine {
     /**
      * 获取引擎配置
      */
-    public MassApplicationConfig.EngineConfig getConfig() {
+    public EngineConfig getConfig() {
         return config;
     }
 }

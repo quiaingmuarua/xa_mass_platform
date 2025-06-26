@@ -1,4 +1,4 @@
-package com.xa.mass.starter;
+package com.xa.mass.starter.config;
 
 import com.xa.mass.gateway.queue.MessageTransporter;
 import com.xa.mass.gateway.queue.MessageTransporterFactory;
@@ -197,31 +197,5 @@ public class MassApplicationConfig {
     public EngineConfig getEngineConfig() { return engineConfig; }
     public void setEngineConfig(EngineConfig engineConfig) { this.engineConfig = engineConfig; }
 
-    /**
-     * 网关配置类
-     */
-    public static class GatewayConfig {
-        private boolean enabled = true;
-        private int maxConnections = 1000;
 
-        public boolean isEnabled() { return enabled; }
-        public void setEnabled(boolean enabled) { this.enabled = enabled; }
-
-        public int getMaxConnections() { return maxConnections; }
-        public void setMaxConnections(int maxConnections) { this.maxConnections = maxConnections; }
-    }
-
-    /**
-     * 引擎配置类
-     */
-    public static class EngineConfig {
-        private boolean enabled = true;
-        private int workerThreads = 8;
-
-        public boolean isEnabled() { return enabled; }
-        public void setEnabled(boolean enabled) { this.enabled = enabled; }
-
-        public int getWorkerThreads() { return workerThreads; }
-        public void setWorkerThreads(int workerThreads) { this.workerThreads = workerThreads; }
-    }
 } 

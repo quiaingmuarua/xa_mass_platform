@@ -2,6 +2,7 @@ package com.xa.mass.starter;
 
 import com.xa.mass.gateway.queue.InMemoryMessageQueue;
 import com.xa.mass.gateway.queue.MessageTransporterFactory;
+import com.xa.mass.starter.config.MassApplicationConfig;
 
 /**
  * MassApplication 使用示例

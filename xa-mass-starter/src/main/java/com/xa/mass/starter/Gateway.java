@@ -2,6 +2,7 @@ package com.xa.mass.starter;
 
 import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
 import com.xa.mass.gateway.dispatcher.ServerMessageDispatcher;
+import com.xa.mass.starter.config.GatewayConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -13,12 +14,12 @@ public class Gateway {
 
     private static final Logger logger = LoggerFactory.getLogger(Gateway.class);
 
-    private final MassApplicationConfig.GatewayConfig config;
+    private final GatewayConfig config;
     private final DispatchRuntimeContext dispatcherContext;
     private ServerMessageDispatcher messageDispatcher;
     private boolean running = false;
 
-    public Gateway(MassApplicationConfig.GatewayConfig config, DispatchRuntimeContext dispatcherContext) {
+    public Gateway(GatewayConfig config, DispatchRuntimeContext dispatcherContext) {
         this.config = config;
         this.dispatcherContext = dispatcherContext;
     }
@@ -80,7 +81,7 @@ public class Gateway {
      * 启动消息处理引擎
      */
     private void startMessageEngine() {
-        logger.info("⚙️ Starting Message Processing Engine...");
+        logger.info("⚙️ Starting Message Processing MassEngine...");
 
         try {
             // 创建消息分发器
@@ -89,11 +90,11 @@ public class Gateway {
             // 启动消息处理
             messageDispatcher.start();
 
-            logger.info("✅ Message Processing Engine started successfully");
+            logger.info("✅ Message Processing MassEngine started successfully");
 
         } catch (Exception e) {
-            logger.error("❌ Failed to start Message Processing Engine", e);
-            throw new RuntimeException("Failed to start Message Processing Engine", e);
+            logger.error("❌ Failed to start Message Processing MassEngine", e);
+            throw new RuntimeException("Failed to start Message Processing MassEngine", e);
         }
     }
 
@@ -101,15 +102,15 @@ public class Gateway {
      * 停止消息处理引擎
      */
     private void stopMessageEngine() {
-        logger.info("🛑 Stopping Message Processing Engine...");
+        logger.info("🛑 Stopping Message Processing MassEngine...");
 
         try {
             if (messageDispatcher != null) {
                 messageDispatcher.stop();
-                logger.info("✅ Message Processing Engine stopped successfully");
+                logger.info("✅ Message Processing MassEngine stopped successfully");
             }
         } catch (Exception e) {
-            logger.error("❌ Error stopping Message Processing Engine", e);
+            logger.error("❌ Error stopping Message Processing MassEngine", e);
         }
     }
 
@@ -158,7 +159,7 @@ public class Gateway {
     /**
      * 获取网关配置
      */
-    public MassApplicationConfig.GatewayConfig getConfig() {
+    public GatewayConfig getConfig() {
         return config;
     }
 
