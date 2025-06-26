@@ -16,20 +16,6 @@ public class MassApplicationConfig {
     private int serverPort = 8080;
     private String webSocketPath = "/ws";
 
-    // 消息传输器配置
-    private MessageTransporterFactory.TransporterType transporterType = MessageTransporterFactory.TransporterType.QUEUE_BASED;
-    private MessageQueue<Envelope> inputQueue;
-    private MessageQueue<Envelope> outputQueue;
-
-    // 外部API配置（当使用API_BASED传输器时）
-    private String inputApiUrl;
-    private String outputApiUrl;
-    private String apiKey;
-
-    // 编解码器配置
-    private MessageCodecFactory.CodecType codecType = MessageCodecFactory.CodecType.GSON;
-    private MessageCodec messageCodec;
-
     // 网关配置
     private GatewayConfig gatewayConfig = new GatewayConfig();
 
@@ -56,11 +42,13 @@ public class MassApplicationConfig {
         MassApplicationConfig config = new MassApplicationConfig();
         config.setServerPort(port);
         config.setWebSocketPath("/ws");
-        config.setTransporterType(MessageTransporterFactory.TransporterType.QUEUE_BASED);
-        config.setInputQueue(inputQueue);
-        config.setOutputQueue(outputQueue);
+        // gateway 配置
         config.getGatewayConfig().setEnabled(true);
         config.getGatewayConfig().setMaxConnections(1000);
+        config.getGatewayConfig().setTransporterType(MessageTransporterFactory.TransporterType.QUEUE_BASED);
+        config.getGatewayConfig().setInputQueue(inputQueue);
+        config.getGatewayConfig().setOutputQueue(outputQueue);
+        // engine 配置
         config.getEngineConfig().setEnabled(true);
         config.getEngineConfig().setWorkerThreads(8);
         return config;
@@ -77,9 +65,6 @@ public class MassApplicationConfig {
         MassApplicationConfig config = new MassApplicationConfig();
         config.setServerPort(port);
         config.setWebSocketPath("/ws");
-        config.setTransporterType(MessageTransporterFactory.TransporterType.QUEUE_BASED);
-        config.setInputQueue(inputQueue);
-        config.setOutputQueue(outputQueue);
         config.getGatewayConfig().setEnabled(true);
         config.getGatewayConfig().setMaxConnections(5000);
         config.getEngineConfig().setEnabled(true);
@@ -99,10 +84,6 @@ public class MassApplicationConfig {
         MassApplicationConfig config = new MassApplicationConfig();
         config.setServerPort(port);
         config.setWebSocketPath("/ws");
-        config.setTransporterType(MessageTransporterFactory.TransporterType.API_BASED);
-        config.setInputApiUrl(inputApiUrl);
-        config.setOutputApiUrl(outputApiUrl);
-        config.setApiKey(apiKey);
         config.getGatewayConfig().setEnabled(true);
         config.getGatewayConfig().setMaxConnections(1000);
         config.getEngineConfig().setEnabled(true);
@@ -119,44 +100,11 @@ public class MassApplicationConfig {
         MassApplicationConfig config = new MassApplicationConfig();
         config.setServerPort(port);
         config.setWebSocketPath("/ws");
-        config.setTransporterType(MessageTransporterFactory.TransporterType.MULTI_LEVEL);
         config.getGatewayConfig().setEnabled(true);
         config.getGatewayConfig().setMaxConnections(1000);
         config.getEngineConfig().setEnabled(true);
         config.getEngineConfig().setWorkerThreads(8);
         return config;
-    }
-
-    /**
-     * 创建消息传输器
-     */
-    public MessageTransporter createMessageTransporter() {
-        switch (transporterType) {
-            case QUEUE_BASED:
-                if (inputQueue == null || outputQueue == null) {
-                    throw new IllegalStateException("QUEUE_BASED 类型需要提供 inputQueue 和 outputQueue");
-                }
-                return MessageTransporterFactory.createQueueBased(inputQueue, outputQueue);
-            case MULTI_LEVEL:
-                return MessageTransporterFactory.createMultiLevel();
-            case API_BASED:
-                if (inputApiUrl == null || outputApiUrl == null || apiKey == null) {
-                    throw new IllegalStateException("API_BASED 类型需要提供 inputApiUrl, outputApiUrl 和 apiKey");
-                }
-                return MessageTransporterFactory.createApiBased(inputApiUrl, outputApiUrl, apiKey);
-            default:
-                throw new IllegalArgumentException("不支持的传输器类型: " + transporterType);
-        }
-    }
-
-    /**
-     * 创建消息编解码器
-     */
-    public MessageCodec createMessageCodec() {
-        if (messageCodec != null) {
-            return messageCodec;
-        }
-        return MessageCodecFactory.create(codecType);
     }
 
     // Getter 和 Setter 方法
@@ -167,35 +115,10 @@ public class MassApplicationConfig {
     public String getWebSocketPath() { return webSocketPath; }
     public void setWebSocketPath(String webSocketPath) { this.webSocketPath = webSocketPath; }
 
-    public MessageTransporterFactory.TransporterType getTransporterType() { return transporterType; }
-    public void setTransporterType(MessageTransporterFactory.TransporterType transporterType) { this.transporterType = transporterType; }
-
-    public MessageQueue<Envelope> getInputQueue() { return inputQueue; }
-    public void setInputQueue(MessageQueue<Envelope> inputQueue) { this.inputQueue = inputQueue; }
-
-    public MessageQueue<Envelope> getOutputQueue() { return outputQueue; }
-    public void setOutputQueue(MessageQueue<Envelope> outputQueue) { this.outputQueue = outputQueue; }
-
-    public String getInputApiUrl() { return inputApiUrl; }
-    public void setInputApiUrl(String inputApiUrl) { this.inputApiUrl = inputApiUrl; }
-
-    public String getOutputApiUrl() { return outputApiUrl; }
-    public void setOutputApiUrl(String outputApiUrl) { this.outputApiUrl = outputApiUrl; }
-
-    public String getApiKey() { return apiKey; }
-    public void setApiKey(String apiKey) { this.apiKey = apiKey; }
-
-    public MessageCodecFactory.CodecType getCodecType() { return codecType; }
-    public void setCodecType(MessageCodecFactory.CodecType codecType) { this.codecType = codecType; }
-
-    public MessageCodec getMessageCodec() { return messageCodec; }
-    public void setMessageCodec(MessageCodec messageCodec) { this.messageCodec = messageCodec; }
-
     public GatewayConfig getGatewayConfig() { return gatewayConfig; }
     public void setGatewayConfig(GatewayConfig gatewayConfig) { this.gatewayConfig = gatewayConfig; }
 
     public EngineConfig getEngineConfig() { return engineConfig; }
     public void setEngineConfig(EngineConfig engineConfig) { this.engineConfig = engineConfig; }
-
 
 } 

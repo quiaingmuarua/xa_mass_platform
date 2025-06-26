@@ -109,11 +109,11 @@ public class MassApplication {
             logger.info("✅ Session manager initialized");
             
             // 创建消息传输器
-            MessageTransporter messageTransporter = config.createMessageTransporter();
+            MessageTransporter messageTransporter = config.getGatewayConfig().createMessageTransporter();
             logger.info("✅ Message transporter created");
             
             // 创建消息编解码器
-            MessageCodec messageCodec = config.createMessageCodec();
+            MessageCodec messageCodec = config.getGatewayConfig().createMessageCodec();
             logger.info("✅ Message codec created");
             
             // 创建分发器上下文

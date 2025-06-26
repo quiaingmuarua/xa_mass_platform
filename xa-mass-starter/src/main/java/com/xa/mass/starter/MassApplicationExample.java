@@ -19,9 +19,9 @@ public class MassApplicationExample {
         config.setWebSocketPath("/ws");
         
         // 配置消息传输器（使用队列）
-        config.setTransporterType(MessageTransporterFactory.TransporterType.QUEUE_BASED);
-        config.setInputQueue(new InMemoryMessageQueue());
-        config.setOutputQueue(new InMemoryMessageQueue());
+        config.getGatewayConfig().setTransporterType(MessageTransporterFactory.TransporterType.QUEUE_BASED);
+        config.getGatewayConfig().setInputQueue(new InMemoryMessageQueue());
+        config.getGatewayConfig().setOutputQueue(new InMemoryMessageQueue());
         
         // 配置网关
         config.getGatewayConfig().setEnabled(true);
@@ -62,8 +62,7 @@ public class MassApplicationExample {
      */
     public static void multiLevelQueueExample() {
         MassApplicationConfig config = new MassApplicationConfig();
-        config.setTransporterType(MessageTransporterFactory.TransporterType.MULTI_LEVEL);
-        
+        config.getGatewayConfig().setTransporterType(MessageTransporterFactory.TransporterType.MULTI_LEVEL);
         MassApplication app = new MassApplication(config);
         app.start();
     }
@@ -73,11 +72,10 @@ public class MassApplicationExample {
      */
     public static void externalApiExample() {
         MassApplicationConfig config = new MassApplicationConfig();
-        config.setTransporterType(MessageTransporterFactory.TransporterType.API_BASED);
-        config.setInputApiUrl("http://api.example.com/input");
-        config.setOutputApiUrl("http://api.example.com/output");
-        config.setApiKey("your-api-key");
-        
+        config.getGatewayConfig().setTransporterType(MessageTransporterFactory.TransporterType.API_BASED);
+        config.getGatewayConfig().setInputApiUrl("http://api.example.com/input");
+        config.getGatewayConfig().setOutputApiUrl("http://api.example.com/output");
+        config.getGatewayConfig().setApiKey("your-api-key");
         MassApplication app = new MassApplication(config);
         app.start();
     }
