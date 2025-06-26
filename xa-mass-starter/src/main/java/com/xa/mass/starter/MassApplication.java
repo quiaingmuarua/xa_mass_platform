@@ -26,7 +26,7 @@ public class MassApplication {
     private static final Logger logger = LoggerFactory.getLogger(MassApplication.class);
     
     private final MassApplicationConfig config;
-    private Gateway gateway;
+    private MassGateway massGateway;
     private MassEngine engine;
     private DispatchRuntimeContext dispatcherContext;
     private ServerMessageDispatcher messageDispatcher;
@@ -86,8 +86,8 @@ public class MassApplication {
                 engine.stop();
             }
             
-            if (gateway != null) {
-                gateway.stop();
+            if (massGateway != null) {
+                massGateway.stop();
             }
             
             logger.info("✅ Mass Application stopped successfully!");
@@ -151,10 +151,10 @@ public class MassApplication {
      * 启动网关
      */
     private void startGateway() {
-        logger.info("🌐 Starting Gateway...");
-        gateway = new Gateway(config.getGatewayConfig(), dispatcherContext);
-        gateway.start();
-        logger.info("✅ Gateway started");
+        logger.info("🌐 Starting MassGateway...");
+        massGateway = new MassGateway(config.getGatewayConfig(), dispatcherContext);
+        massGateway.start();
+        logger.info("✅ MassGateway started");
     }
     
     /**
@@ -171,8 +171,8 @@ public class MassApplication {
      * 启动消息分发器
      */
     private void startMessageDispatcher() {
-        // 消息分发器现在由 Gateway 管理，不需要单独启动
-        logger.info("📨 Message Dispatcher is managed by Gateway");
+        // 消息分发器现在由 MassGateway 管理，不需要单独启动
+        logger.info("📨 Message Dispatcher is managed by MassGateway");
     }
     
     /**

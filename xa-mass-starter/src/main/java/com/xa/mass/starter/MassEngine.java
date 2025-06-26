@@ -11,7 +11,7 @@ import org.slf4j.LoggerFactory;
 
 /**
  * 引擎组件（已简化）
- * 消息处理引擎功能已移至 Gateway 中
+ * 消息处理引擎功能已移至 MassGateway 中
  * 此类保留用于未来扩展其他引擎功能
  */
 public class MassEngine {

@@ -10,16 +10,16 @@ import org.slf4j.LoggerFactory;
  * 网关组件
  * 负责处理外部连接、消息路由和消息处理引擎
  */
-public class Gateway {
+public class MassGateway {
 
-    private static final Logger logger = LoggerFactory.getLogger(Gateway.class);
+    private static final Logger logger = LoggerFactory.getLogger(MassGateway.class);
 
     private final GatewayConfig config;
     private final DispatchRuntimeContext dispatcherContext;
     private ServerMessageDispatcher messageDispatcher;
     private boolean running = false;
 
-    public Gateway(GatewayConfig config, DispatchRuntimeContext dispatcherContext) {
+    public MassGateway(GatewayConfig config, DispatchRuntimeContext dispatcherContext) {
         this.config = config;
         this.dispatcherContext = dispatcherContext;
     }
@@ -29,11 +29,11 @@ public class Gateway {
      */
     public void start() {
         if (!config.isEnabled()) {
-            logger.info("Gateway is disabled, skipping start");
+            logger.info("MassGateway is disabled, skipping start");
             return;
         }
 
-        logger.info("🌐 Starting Gateway with max connections: {}", config.getMaxConnections());
+        logger.info("🌐 Starting MassGateway with max connections: {}", config.getMaxConnections());
 
         try {
             // 1. 启动消息处理引擎
@@ -43,11 +43,11 @@ public class Gateway {
             initializeConnectionManagement();
 
             running = true;
-            logger.info("✅ Gateway started successfully");
+            logger.info("✅ MassGateway started successfully");
 
         } catch (Exception e) {
-            logger.error("❌ Failed to start Gateway", e);
-            throw new RuntimeException("Failed to start Gateway", e);
+            logger.error("❌ Failed to start MassGateway", e);
+            throw new RuntimeException("Failed to start MassGateway", e);
         }
     }
 
@@ -56,11 +56,11 @@ public class Gateway {
      */
     public void stop() {
         if (!running) {
-            logger.info("Gateway is not running, skipping stop");
+            logger.info("MassGateway is not running, skipping stop");
             return;
         }
 
-        logger.info("🛑 Stopping Gateway...");
+        logger.info("🛑 Stopping MassGateway...");
 
         try {
             // 1. 停止消息处理引擎
@@ -70,10 +70,10 @@ public class Gateway {
             shutdownConnectionManagement();
 
             running = false;
-            logger.info("✅ Gateway stopped successfully");
+            logger.info("✅ MassGateway stopped successfully");
 
         } catch (Exception e) {
-            logger.error("❌ Error stopping Gateway", e);
+            logger.error("❌ Error stopping MassGateway", e);
         }
     }
 
