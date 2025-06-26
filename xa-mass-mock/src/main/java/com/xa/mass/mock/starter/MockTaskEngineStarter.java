@@ -31,6 +31,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
+import com.xa.mass.starter.MassEngine;
+import com.xa.mass.starter.config.EngineConfig;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -49,34 +51,10 @@ public class MockTaskEngineStarter implements CommandLineRunner {
 
     @Override
     public void run(String... args) throws Exception {
-        // 1. 启动/注册所有资源和服务
-        EngineResourceRegistry registry = new EngineResourceRegistry();
-        // 注册 manager、worker、service、listener
-        SimpleTaskScheduler scheduler = new SimpleTaskScheduler();
-        TaskManager taskManager = new TaskManager(scheduler);
-        DeviceManager deviceManager = new DeviceManager();
-        AssignmentRecordService recordService = new AssignmentRecordService();
-        var ruleManager = RuleManagerFactory.getProjectRuleManager("demoApp");
-        var msgAssignListener = new SimpleTaskMsgAssignListener(deviceManager, recordService);
-        var deviceAssignListener = new TaskDeviceAssignListener(ruleManager, deviceManager, msgAssignListener, recordService);
-        TaskAssignWorker assignWorker = new TaskAssignWorker(deviceAssignListener);
-        assignWorker.start(); // 常驻后台
-        registry.register(TaskManager.class, taskManager);
-        registry.register(DeviceManager.class, deviceManager);
-        registry.register(AssignmentRecordService.class, recordService);
-        registry.register(SimpleTaskScheduler.class, scheduler);
-        registry.register(com.xa.mass.engine.rules.RuleManager.class, ruleManager);
-        registry.register(com.xa.mass.engine.listener.TaskMsgAssignListener.class, msgAssignListener);
-        registry.register(com.xa.mass.engine.listener.TaskDeviceAssignListener.class, deviceAssignListener);
-        registry.register(TaskAssignWorker.class, assignWorker);
-        // 注册事件驱动服务
-        EventBusManager.register(new TaskAssignWorkerService(assignWorker));
-        EventBusManager.register(new AuditService());
-        EventBusManager.register(new AssignmentService());
-        EventBusManager.register(new PipelineService(recordService));
-
-        // 2. 注入 mock 任务和设备
-        String configPath = "mock_config.json";
+        EngineConfig config = new EngineConfig();
+        config.setMockMode(true);
+        // 1. 读取 mock 配置
+        String configPath = config.getMockConfigPath();
         String jsonDsl;
         try {
             jsonDsl = Files.readString(Path.of(configPath));
@@ -86,43 +64,32 @@ public class MockTaskEngineStarter implements CommandLineRunner {
             jsonDsl = getDefaultMockConfig();
         }
         JsonObject root = JsonParser.parseString(jsonDsl).getAsJsonObject();
-        generateTasks(root, taskManager);
-        generateDevicesAndTokens(root, deviceManager);
+        config.setMockConfigRoot(root);
 
-        // 3. 发布任务事件（worker 自动处理）
-        List<Task> allTasks = taskManager.getAllTasks();
-        for (Task task : allTasks) {
-            EventBusManager.post(new TaskCreatedEvent(task));
-        }
+        // 2. 启动引擎
+        MassEngine engine = new MassEngine(config);
+        engine.start();
 
-        log.info("Mock task engine started, tasks are being processed asynchronously");
-    }
-
-    // generateTasks 只负责注入
-    private void generateTasks(JsonObject root, TaskManager taskManager) {
-        if (root.has("tasks")) {
-            List<TaskCreateRequestDto> taskDtos = MonkeyTaskGenerator.generateTasks(root.getAsJsonArray("tasks"));
-            for (TaskCreateRequestDto dto : taskDtos) {
-                Task task = taskManager.createTask(dto);
-                task.setRunTaskMinDeviceCnt(dto.getBatchSize());
-                task.setBatchSize(dto.getBatchSize());
-                log.info("new_task {}", task);
-            }
-        }
-    }
-
-    // generateDevicesAndTokens 只负责注入
-    private void generateDevicesAndTokens(JsonObject root, DeviceManager deviceManager) {
+        // 3. 注入 mock 设备和 Token
         if (root.has("devices")) {
             List<Token> tokenList = new ArrayList<>();
             List<Device> devices = MonkeyDeviceGenerator.generateDevices(root.getAsJsonArray("devices").toString(), tokenList);
             for (Device device : devices) {
-                deviceManager.addDevice(device);
+                engine.addDevice(device);
             }
             for (Token token : tokenList) {
-                deviceManager.addToken(token.getDeviceId(), token);
+                engine.addToken(token);
             }
         }
+        // 4. 注入 mock 任务
+        if (root.has("tasks")) {
+            List<TaskCreateRequestDto> taskDtos = MonkeyTaskGenerator.generateTasks(root.getAsJsonArray("tasks"));
+            for (TaskCreateRequestDto dto : taskDtos) {
+                engine.createTask(dto);
+            }
+        }
+        // 5. 发布任务事件（worker 自动处理）
+        engine.publishTaskEvents();
     }
 
     // 默认 mock 配置
@@ -132,24 +99,4 @@ public class MockTaskEngineStarter implements CommandLineRunner {
                 "  \"tasks\": " + MonkeyTaskGenerator.exampleTasksJsonDsl() + "\n" +
                 "}";
     }
-
-    // Task审核事件监听器
-    private static class TaskReviewListener {
-        private final List<Task> allTasks;
-        public TaskReviewListener(List<Task> allTasks) {
-            this.allTasks = allTasks;
-        }
-        @Subscribe
-        public void onTaskReview(TaskReviewEvent.TaskReviewRandomEvent event) {
-            // 根据 event.getTaskId() 查找 Task
-            for (Task task : allTasks) {
-                if (task.getTid().equals(event.getTaskId())) {
-                    // 可根据 event.getRandomRate() 实现概率通过，这里简单处理为100%通过
-                    task.transitionTo(TaskStatus.READY);
-                    break;
-                }
-            }
-        }
-    }
-
 } 
