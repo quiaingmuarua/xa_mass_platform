@@ -2,6 +2,9 @@ package com.xa.mass.gateway.queue;
 
 // 如果 StoredMessage 不在此包，需要导
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
@@ -9,6 +12,7 @@ import java.util.concurrent.TimeUnit;
 public class InMemoryMessageQueue implements MessageQueue<Envelope> { // 修改泛型
     // 使用 BlockingQueue，例LinkedBlockingQueue
     private final BlockingQueue<Envelope> queue; // 修改泛型
+    private static final Logger log = LoggerFactory.getLogger(InMemoryMessageQueue.class);
 
     public InMemoryMessageQueue() {
         this.queue = new LinkedBlockingQueue<>(); // 无界队列
@@ -59,8 +63,7 @@ public class InMemoryMessageQueue implements MessageQueue<Envelope> { // 修改�
 
     @Override
     public int size() {
-
-        System.out.print("InMemoryMessageQueue SIZE start get");
+        log.debug("InMemoryMessageQueue SIZE start get");
         return queue.size();
     }
 

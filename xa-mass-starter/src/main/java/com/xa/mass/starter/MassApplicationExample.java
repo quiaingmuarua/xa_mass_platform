@@ -3,12 +3,16 @@ package com.xa.mass.starter;
 import com.xa.mass.gateway.queue.InMemoryMessageQueue;
 import com.xa.mass.gateway.queue.MessageTransporterFactory;
 import com.xa.mass.starter.config.MassApplicationConfig;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * MassApplication 使用示例
  * 展示如何使用新的应用主程序
  */
 public class MassApplicationExample {
+    
+    private static final Logger log = LoggerFactory.getLogger(MassApplicationExample.class);
     
     public static void main(String[] args) {
         // 创建配置
@@ -38,11 +42,11 @@ public class MassApplicationExample {
             app.start();
             
             // 应用运行中...
-            System.out.println("Mass Application is running. Press Ctrl+C to stop.");
+            log.info("Mass Application is running. Press Ctrl+C to stop.");
             
             // 等待中断信号
             Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-                System.out.println("Shutting down Mass Application...");
+                log.info("Shutting down Mass Application...");
                 app.stop();
             }));
             
@@ -50,10 +54,9 @@ public class MassApplicationExample {
             Thread.currentThread().join();
             
         } catch (InterruptedException e) {
-            System.out.println("Application interrupted");
+            log.info("Application interrupted");
         } catch (Exception e) {
-            System.err.println("Failed to start application: " + e.getMessage());
-            e.printStackTrace();
+            log.error("Failed to start application: " + e.getMessage(), e);
         }
     }
     

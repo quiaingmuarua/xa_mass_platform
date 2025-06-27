@@ -1,52 +1,130 @@
 package com.xa.mass.engine;
 
+import com.xa.mass.engine.storage.DeviceStorage;
+import com.xa.mass.engine.storage.TaskStorageFactory;
 import com.xa.mass.eventbus.model.Device;
 import com.xa.mass.eventbus.model.Token;
 
-import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.stream.Collectors;
+import java.util.List;
 
+/**
+ * 设备管理器
+ * 负责设备的CRUD操作和Token管理
+ */
 public class DeviceManager {
-    private final Map<String, Device> devices = new ConcurrentHashMap<>();
-    private final Map<String, Token> deviceToken = new ConcurrentHashMap<>();
-    private final Set<String> lockedDevices = Collections.synchronizedSet(new HashSet<>());
+    
+    private final DeviceStorage deviceStorage;
+    
+    public DeviceManager() {
+        this(TaskStorageFactory.createDefaultDeviceStorage());
+    }
+    
+    public DeviceManager(DeviceStorage deviceStorage) {
+        this.deviceStorage = deviceStorage;
+    }
 
+    /**
+     * 添加设备
+     */
     public void addDevice(Device device) {
-        devices.put(device.getDeviceId(), device);
+        deviceStorage.addDevice(device);
+    }
+    
+    /**
+     * 根据设备ID获取设备
+     */
+    public Device getDevice(String deviceId) {
+        return deviceStorage.getDevice(deviceId).orElse(null);
+    }
+    
+    /**
+     * 更新设备
+     */
+    public boolean updateDevice(Device device) {
+        return deviceStorage.updateDevice(device);
+    }
+    
+    /**
+     * 删除设备
+     */
+    public boolean deleteDevice(String deviceId) {
+        return deviceStorage.deleteDevice(deviceId);
     }
 
-    public void addToken(String deviceId, Token token) {
-        deviceToken.put(deviceId, token);
-    }
-
+    /**
+     * 根据国家获取设备列表
+     */
     public List<Device> getDevicesByCountry(String country) {
-        return devices.values().stream()
-                .filter(d -> d.getGroupId().equals(country))
-                .collect(Collectors.toList());
+        return deviceStorage.getDevicesByCountry(country);
     }
 
+    /**
+     * 添加Token
+     */
+    public void addToken(String deviceId, Token token) {
+        deviceStorage.addToken(deviceId, token);
+    }
+
+    /**
+     * 根据设备ID获取Token
+     */
     public Token getToken(String deviceId) {
-        return deviceToken.get(deviceId);
+        return deviceStorage.getToken(deviceId).orElse(null);
+    }
+    
+    /**
+     * 更新Token
+     */
+    public boolean updateToken(String deviceId, Token token) {
+        return deviceStorage.updateToken(deviceId, token);
+    }
+    
+    /**
+     * 删除Token
+     */
+    public boolean deleteToken(String deviceId) {
+        return deviceStorage.deleteToken(deviceId);
     }
 
+    /**
+     * 尝试锁定设备
+     */
     public boolean tryLockDevice(String deviceId) {
-        return lockedDevices.add(deviceId);
+        return deviceStorage.tryLockDevice(deviceId);
     }
 
+    /**
+     * 解锁设备
+     */
     public void unlockDevice(String deviceId) {
-        lockedDevices.remove(deviceId);
+        deviceStorage.unlockDevice(deviceId);
     }
 
+    /**
+     * 检查设备是否被锁定
+     */
     public boolean isLocked(String deviceId) {
-        return lockedDevices.contains(deviceId);
+        return deviceStorage.isLocked(deviceId);
     }
 
+    /**
+     * 获取所有设备
+     */
     public List<Device> getAllDevices() {
-        return new ArrayList<>(devices.values());
+        return deviceStorage.getAllDevices();
     }
 
+    /**
+     * 获取所有Token
+     */
     public List<Token> getAllTokens() {
-        return new ArrayList<>(deviceToken.values());
+        return deviceStorage.getAllTokens();
+    }
+    
+    /**
+     * 获取所有锁定的设备ID
+     */
+    public List<String> getLockedDevices() {
+        return deviceStorage.getLockedDevices();
     }
 } 
