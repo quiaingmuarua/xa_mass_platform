@@ -1,4 +1,4 @@
-package com.xa.mass.gateway.exception;
+package com.xa.mass.eventbus.exception;
 
 public enum ErrorCode {
     PARSE_ERROR(40001, "参数解析失败"),

@@ -1,4 +1,4 @@
-package com.xa.mass.gateway.exception;
+package com.xa.mass.eventbus.exception;
 
 public class CommandException extends RuntimeException {
     private final ErrorCode errorCode;

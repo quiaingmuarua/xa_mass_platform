@@ -10,6 +10,8 @@ import com.xa.mass.engine.monkey.MonkeyTaskGenerator;
 import com.xa.mass.engine.rules.RuleManagerFactory;
 import com.xa.mass.engine.service.AssignmentRecordService;
 import com.xa.mass.engine.storage.*;
+import com.xa.mass.engine.strategy.SimpleTaskScheduler;
+import com.xa.mass.engine.strategy.TaskScheduler;
 import com.xa.mass.eventbus.enums.task.TokenStatus;
 import com.xa.mass.eventbus.model.Device;
 import com.xa.mass.eventbus.model.Task;
@@ -18,7 +20,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * 存储系统使用示例
@@ -55,14 +59,19 @@ public class StorageExample {
         
         // 2. 创建管理器
         DeviceManager deviceManager = new DeviceManager(deviceStorage);
-        TaskManager taskManager = new TaskManager(taskStorage);
+        TaskScheduler taskScheduler = new SimpleTaskScheduler();
+        TaskManager taskManager = new TaskManager(taskScheduler, taskStorage);
         
         // 3. 添加测试数据
-        Device device1 = new Device("device-001", "us", "1.0.0");
-        Device device2 = new Device("device-002", "gb", "1.0.1");
+        Device device1 = new Device("device-001", "1.0.0", Arrays.asList("demoApp"));
+        device1.setGroupId("us");
+        Device device2 = new Device("device-002", "1.0.1", Arrays.asList("demoApp"));
+        device2.setGroupId("gb");
         
-        Token token1 = new Token("token-001", "device-001", "us", TokenStatus.LOGIN_READY);
-        Token token2 = new Token("token-002", "device-002", "gb", TokenStatus.LOGIN_READY);
+        Token token1 = new Token("token-001", "device-001", "us");
+        token1.setStatus(TokenStatus.LOGIN_READY);
+        Token token2 = new Token("token-002", "device-002", "gb");
+        token2.setStatus(TokenStatus.LOGIN_READY);
         
         deviceManager.addDevice(device1);
         deviceManager.addDevice(device2);
@@ -135,8 +144,9 @@ public class StorageExample {
                 "  ]\n" +
                 "}";
         
+        com.google.gson.JsonObject root = com.google.gson.JsonParser.parseString(mockConfig).getAsJsonObject();
         List<Token> tokenList = new ArrayList<>();
-        List<Device> devices = MonkeyDeviceGenerator.generateDevices(mockConfig, tokenList);
+        List<Device> devices = MonkeyDeviceGenerator.generateDevices(root.getAsJsonArray("devices").toString(), tokenList);
         
         log.info("生成了 {} 个设备和 {} 个Token", devices.size(), tokenList.size());
         
@@ -184,10 +194,10 @@ public class StorageExample {
         var deviceAssignListener = new TaskDeviceAssignListener(ruleManager, deviceManager, msgAssignListener, recordService);
         
         // 显示规则信息
-        var rules = ruleManager.getAllRules();
+        var rules = ruleManager.getDefaultRules();
         log.info("规则数量: {}", rules.size());
         for (var rule : rules) {
-            log.info("规则: {} - {}", rule.getRuleId(), rule.getRuleContent());
+            log.info("规则: {} - {}", rule.getId(), rule.getContent());
         }
         
         // 7. 测试任务分配

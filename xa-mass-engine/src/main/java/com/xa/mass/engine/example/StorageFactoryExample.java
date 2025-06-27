@@ -51,8 +51,7 @@ public class StorageFactoryExample {
         token.setStatus(TokenStatus.LOGIN_READY);
         
         User user = new User();
-        user.setUserId("user-001");
-        user.setUsername("testUser");
+        user.setName("testUser");
         
         Task task = new Task("task-001", "Test Task", "demoApp", "us", 100, "Test content", user);
         
@@ -97,8 +96,7 @@ public class StorageFactoryExample {
             token.setStatus(TokenStatus.LOGIN_READY);
             
             User user = new User();
-            user.setUserId("user-002");
-            user.setUsername("testUser2");
+            user.setName("testUser2");
             
             Task task = new Task("task-002", "Test Task 2", "demoApp", "gb", 50, "Test content 2", user);
             
@@ -146,12 +144,10 @@ public class StorageFactoryExample {
         
         // 4. 使用存储
         User user1 = new User();
-        user1.setUserId("user-factory-001");
-        user1.setUsername("factoryUser1");
+        user1.setName("factoryUser1");
         
         User user2 = new User();
-        user2.setUserId("user-factory-002");
-        user2.setUsername("factoryUser2");
+        user2.setName("factoryUser2");
         
         Task task1 = new Task("task-factory-001", "Factory Task 1", "demoApp", "us", 100, "Factory content 1", user1);
         Task task2 = new Task("task-factory-002", "Factory Task 2", "demoApp", "gb", 50, "Factory content 2", user2);

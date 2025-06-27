@@ -1,7 +1,7 @@
 package com.xa.mass.gateway.server;
 
 import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
-import com.xa.mass.gateway.exception.ValidationException;
+import com.xa.mass.eventbus.exception.ValidationException;
 import com.xa.mass.gateway.queue.Envelope;
 import com.xa.mass.gateway.queue.MessageParser;
 import com.xa.mass.gateway.model.massMessage.MassMessage;
