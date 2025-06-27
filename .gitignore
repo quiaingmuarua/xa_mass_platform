@@ -38,3 +38,4 @@ build/
 /catalina.base_IS_UNDEFINED/
 /.mvn/
 /.mvn/
+/logs/
