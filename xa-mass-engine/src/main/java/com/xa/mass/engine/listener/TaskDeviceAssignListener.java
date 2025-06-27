@@ -73,13 +73,31 @@ public class TaskDeviceAssignListener {
             Token token = deviceManager.getToken(device.getDeviceId());
 
             // 创建设备匹配上下文
-            DeviceMatchContext matchContext = new DeviceMatchContext(device, token, task);
-            
-            log.debug("[DeviceAssign] Evaluating device: {} (groupId: {}, status: {})", 
-                device.getDeviceId(), device.getGroupId(), device.getStatus());
-            if (token != null) {
-                log.debug("[DeviceAssign] Token: {} (status: {}, channel: {})", 
-                    token.getTokenId(), token.getStatus(), token.getChannel());
+            DeviceMatchContext matchContext = new DeviceMatchContext(device, token, task, deviceManager);
+
+            // 打印设备和Token详细信息
+            log.info("[Debug] DeviceId={}, groupId={}, status={}, locked={}, supportedApps={}, tokenId={}, tokenStatus={}, tokenChannel={}",
+                    device.getDeviceId(),
+                    device.getGroupId(),
+                    device.getStatus(),
+                    deviceManager.isLocked(device.getDeviceId()),
+                    device.getSupportedApps(),
+                    token != null ? token.getTokenId() : "null",
+                    token != null ? token.getStatus() : "null",
+                    token != null ? token.getChannel() : "null"
+            );
+
+            // 打印规则上下文
+            log.info("[Debug] DeviceMatchContext: {}", matchContext.getContext());
+
+            // 评估每个规则并打印结果
+            for (RuleDefinition rule : rules) {
+                try {
+                    boolean result = ruleManager.evaluate(rule, matchContext.getContext());
+                    log.info("[Debug] Rule: {} ({}), result: {}", rule.getId(), rule.getDesc(), result ? "✓ 通过" : "✗ 失败");
+                } catch (Exception e) {
+                    log.info("[Debug] Rule: {} ({}), result: ✗ 异常 - {}", rule.getId(), rule.getDesc(), e.getMessage());
+                }
             }
 
             try {

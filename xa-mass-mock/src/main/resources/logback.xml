@@ -65,10 +65,7 @@
                 <mdc>
                     <fieldName>mdc</fieldName>
                 </mdc>
-                <pattern>
-                    <fieldName>app</fieldName>
-                    <pattern>xa-mass-platform</pattern>
-                </pattern>
+                <customFields>{"app":"xa-mass-platform"}</customFields>
             </providers>
         </encoder>
     </appender>

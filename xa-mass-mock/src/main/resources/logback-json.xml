@@ -120,15 +120,7 @@
                 </context>
                 
                 <!-- 自定义字段 -->
-                <pattern>
-                    <fieldName>app</fieldName>
-                    <pattern>xa-mass-platform</pattern>
-                </pattern>
-                
-                <pattern>
-                    <fieldName>version</fieldName>
-                    <pattern>0.0.1-SNAPSHOT</pattern>
-                </pattern>
+                <customFields>{"app":"xa-mass-platform","version":"0.0.1-SNAPSHOT"}</customFields>
             </providers>
         </encoder>
     </appender>
@@ -174,14 +166,7 @@
                 <mdc>
                     <fieldName>mdc</fieldName>
                 </mdc>
-                <pattern>
-                    <fieldName>app</fieldName>
-                    <pattern>xa-mass-platform</pattern>
-                </pattern>
-                <pattern>
-                    <fieldName>logType</fieldName>
-                    <pattern>error</pattern>
-                </pattern>
+                <customFields>{"app":"xa-mass-platform","logType":"error"}</customFields>
             </providers>
         </encoder>
     </appender>
@@ -221,14 +206,7 @@
                 <mdc>
                     <fieldName>mdc</fieldName>
                 </mdc>
-                <pattern>
-                    <fieldName>app</fieldName>
-                    <pattern>xa-mass-platform</pattern>
-                </pattern>
-                <pattern>
-                    <fieldName>logType</fieldName>
-                    <pattern>business</pattern>
-                </pattern>
+                <customFields>{"app":"xa-mass-platform","logType":"business"}</customFields>
             </providers>
         </encoder>
     </appender>

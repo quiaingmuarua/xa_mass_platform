@@ -1,5 +1,6 @@
 package com.xa.mass.engine.model;
 
+import com.xa.mass.engine.DeviceManager;
 import com.xa.mass.eventbus.model.Device;
 import com.xa.mass.eventbus.model.Task;
 import com.xa.mass.eventbus.model.Token;
@@ -15,12 +16,14 @@ public class DeviceMatchContext {
     private final Device device;
     private final Token token;
     private final Task task;
+    private final DeviceManager deviceManager;
     private final Map<String, Object> context;
 
-    public DeviceMatchContext(Device device, Token token, Task task) {
+    public DeviceMatchContext(Device device, Token token, Task task, DeviceManager deviceManager) {
         this.device = device;
         this.token = token;
         this.task = task;
+        this.deviceManager = deviceManager;
         this.context = buildContext();
     }
 
@@ -34,7 +37,8 @@ public class DeviceMatchContext {
         ctx.put("agentVersion", device.getAgentVersion());
         ctx.put("supportedApps", device.getSupportedApps());
         ctx.put("isDeviceAvailable", device.isAvailable());
-        ctx.put("isDeviceLocked", device.isLocked());
+        // 使用DeviceManager检查锁定状态，确保与分配逻辑一致
+        ctx.put("isDeviceLocked", deviceManager.isLocked(device.getDeviceId()));
 
         // Token相关属性
         if (token != null) {

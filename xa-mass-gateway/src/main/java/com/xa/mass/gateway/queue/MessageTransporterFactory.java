@@ -1,6 +1,5 @@
 package com.xa.mass.gateway.queue;
 
-import com.xa.mass.gateway.queue.MessageQueue;
 
 /**
  * MessageTransporter 工厂类
