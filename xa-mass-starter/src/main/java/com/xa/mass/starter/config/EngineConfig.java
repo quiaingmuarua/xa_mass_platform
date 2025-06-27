@@ -2,6 +2,8 @@ package com.xa.mass.starter.config;
 
 import com.google.gson.JsonObject;
 import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import com.google.gson.JsonParser;
@@ -33,7 +35,7 @@ public  class EngineConfig {
             String configPath = this.getMockConfigPath();
             String jsonDsl;
             try {
-                jsonDsl = Files.readString(Path.of(configPath));
+                jsonDsl = readConfigFile(configPath);
                 // 可加日志: System.out.println("Loaded mock config from file: " + configPath);
             } catch (IOException e) {
                 // 可加日志: System.out.println("No external mock config found, using default.");
@@ -42,6 +44,39 @@ public  class EngineConfig {
             this.mockConfigRoot = JsonParser.parseString(jsonDsl).getAsJsonObject();
         }
         return this.mockConfigRoot;
+    }
+
+    /**
+     * 读取配置文件内容
+     * 支持 classpath 路径和文件系统路径
+     */
+    private String readConfigFile(String configPath) throws IOException {
+        // 首先尝试从 classpath 读取
+        if (configPath.startsWith("classpath:")) {
+            String classpathPath = configPath.substring("classpath:".length());
+            try (InputStream is = getClass().getClassLoader().getResourceAsStream(classpathPath)) {
+                if (is != null) {
+                    return new String(is.readAllBytes(), StandardCharsets.UTF_8);
+                }
+            }
+            // classpath 中没有找到，抛出异常
+            throw new IOException("Config file not found in classpath: " + classpathPath);
+        } else {
+            // 尝试从 classpath 读取（不带 classpath: 前缀）
+            try (InputStream is = getClass().getClassLoader().getResourceAsStream(configPath)) {
+                if (is != null) {
+                    return new String(is.readAllBytes(), StandardCharsets.UTF_8);
+                }
+            }
+            
+            // 如果 classpath 中没有找到，尝试从文件系统读取
+            try {
+                return Files.readString(Path.of(configPath));
+            } catch (IOException e) {
+                // 文件系统读取失败，抛出异常
+                throw new IOException("Config file not found in classpath or file system: " + configPath, e);
+            }
+        }
     }
 
     // 默认 mock 配置

@@ -14,6 +14,39 @@
 - mock 结果支持分配全链路日志、规则链评估、冲突检测、分配统计等观测能力。
 - 适用于端到端集成测试、规则链调试、批量分配演练、设备 token 轮询等复杂场景。
 
+## 配置文件路径配置
+
+### 默认配置
+默认情况下，系统会从 `src/main/resources/mock_config.json` 读取配置文件。
+
+### 自定义配置文件路径
+你可以通过以下方式指定自定义的配置文件路径：
+
+1. **Classpath 路径**（推荐）：
+   ```java
+   EngineConfig config = new EngineConfig();
+   config.setMockConfigPath("classpath:my-custom-config.json");
+   ```
+
+2. **相对路径**（相对于 classpath）：
+   ```java
+   EngineConfig config = new EngineConfig();
+   config.setMockConfigPath("configs/test-config.json");
+   ```
+
+3. **绝对文件系统路径**：
+   ```java
+   EngineConfig config = new EngineConfig();
+   config.setMockConfigPath("/path/to/your/config.json");
+   ```
+
+### 配置文件优先级
+系统按以下顺序查找配置文件：
+1. 如果路径以 `classpath:` 开头，直接从 classpath 读取
+2. 尝试从 classpath 读取（不带 `classpath:` 前缀）
+3. 尝试从文件系统读取
+4. 如果都找不到，使用默认配置
+
 ## mock_config.json 示例
 
 详见 `src/main/resources/mock_config.json`，支持如下结构：

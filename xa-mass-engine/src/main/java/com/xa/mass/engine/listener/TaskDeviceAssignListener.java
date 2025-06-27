@@ -42,7 +42,7 @@ public class TaskDeviceAssignListener {
      */
     public void onTaskAssign(Task task) {
         int maxDeviceCount = (int) Math.ceil((double) task.getTaskInitNumber() / task.getBatchSize());
-        int batchSize = Math.min(task.getRunTaskMinDeviceCnt(), maxDeviceCount);
+        int batchSize = Math.max(task.getRunTaskMinDeviceCnt(), maxDeviceCount);
         List<Device> matched = matchDevicesWithRules(task, batchSize);
         if (!matched.isEmpty()) {
             // 推送到消息分配监听器
@@ -67,7 +67,10 @@ public class TaskDeviceAssignListener {
         }
         
         for (Device device : candidates) {
-            if (matchedDevices.size() >= maxDeviceCount) break;
+            if (matchedDevices.size() >= maxDeviceCount) {
+                log.info("[DeviceAssign] cur matched {} Max device count {} reached for task {}, stopping matching",matchedDevices.size(), maxDeviceCount,task.getTid());
+                break;
+            };
 
             // 获取设备的Token
             Token token = deviceManager.getToken(device.getDeviceId());

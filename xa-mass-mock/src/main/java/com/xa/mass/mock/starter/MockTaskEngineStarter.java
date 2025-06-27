@@ -17,9 +17,6 @@ import org.springframework.boot.CommandLineRunner;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -44,18 +41,14 @@ public class MockTaskEngineStarter implements CommandLineRunner {
     public void run(String... args) throws Exception {
         EngineConfig config = new EngineConfig();
         config.setMockMode(true);
+        
         // 1. 读取 mock 配置
         String configPath = config.getMockConfigPath();
-        String jsonDsl;
-        try {
-            jsonDsl = Files.readString(Path.of(configPath));
-            log.info("Loaded mock config from file: {}", configPath);
-        } catch (IOException e) {
-            log.warn("No external mock config found, using default.");
-            jsonDsl = getDefaultMockConfig();
-        }
-        JsonObject root = JsonParser.parseString(jsonDsl).getAsJsonObject();
-        config.setMockConfigRoot(root);
+        log.info("Loading mock config from: {}", configPath);
+        
+        // 使用 EngineConfig 的 getMockConfigRoot 方法，它会自动处理 classpath 和文件系统路径
+        JsonObject root = config.getMockConfigRoot();
+        log.info("Successfully loaded mock config");
 
         // 2. 启动引擎
         MassEngine engine = new MassEngine(config);

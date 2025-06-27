@@ -2,20 +2,20 @@
   "devices": [
     {
       "deviceIdTemplate": "device-{i}",
-      "count": 100,
+      "count": 300,
       "groupId": "us",
       "agentVersion": "1.0.0",
       "supportedApps": ["demoApp", "otherApp", "testApp"],
       "tokens": [
         {
           "tokenIdTemplate": "token-{i}-A",
-          "count": 20,
+          "count": 200,
           "channel": "us",
           "randomStatus": false
         },
         {
           "tokenIdTemplate": "token-{i}-B",
-          "count": 10,
+          "count": 100,
           "channel": "us",
           "randomStatus": false
         }
@@ -23,14 +23,14 @@
     },
     {
       "deviceIdTemplate": "gb-device-{i}",
-      "count": 100,
+      "count": 300,
       "groupId": "gb",
       "agentVersion": "1.0.1",
       "supportedApps": ["demoApp", "testApp"],
       "tokens": [
         {
           "tokenIdTemplate": "gb-token-{i}-{j}",
-          "count": 20,
+          "count": 300,
           "channel": "gb",
           "randomStatus": false
         }
@@ -42,7 +42,7 @@
       "taskNameTemplate": "Task-{country}-{i}",
       "countryList": ["us", "gb"],
       "countPerCountry": 2,
-      "msgPerTask": 10,
+      "msgPerTask": 50,
       "batchSize": 3,
       "project": "demoApp"
     },
@@ -50,7 +50,7 @@
       "taskNameTemplate": "TestTask-{country}-{i}",
       "countryList": ["us"],
       "countPerCountry": 1,
-      "msgPerTask": 5,
+      "msgPerTask": 50,
       "batchSize": 2,
       "project": "testApp"
     }
