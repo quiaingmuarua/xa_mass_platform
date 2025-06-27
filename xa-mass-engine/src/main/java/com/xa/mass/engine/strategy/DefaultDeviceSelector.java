@@ -71,7 +71,7 @@ public class DefaultDeviceSelector implements DeviceSelector {
         
         // 分组匹配加分
         if (device.getGroupId() != null && task.getTaskCountry() != null) {
-            if (device.getGroupId().contains(task.getTaskCountry())) {
+            if (device.getGroupId().equals(task.getTaskCountry())) {
                 priority += 20.0;
             }
         }
