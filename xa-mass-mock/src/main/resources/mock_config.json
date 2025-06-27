@@ -11,7 +11,7 @@
           "tokenIdTemplate": "token-{i}-A",
           "count": 20,
           "channel": "us",
-          "randomStatus": true
+          "randomStatus": false
         },
         {
           "tokenIdTemplate": "token-{i}-B",
@@ -32,7 +32,7 @@
           "tokenIdTemplate": "gb-token-{i}-{j}",
           "count": 20,
           "channel": "gb",
-          "randomStatus": true
+          "randomStatus": false
         }
       ]
     }

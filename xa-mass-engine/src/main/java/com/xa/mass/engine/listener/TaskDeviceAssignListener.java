@@ -59,6 +59,13 @@ public class TaskDeviceAssignListener {
 
         log.info("[DeviceAssign] Matching devices for task {} (country: {}, candidates: {})", task.getTid(), task.getTaskCountry(), candidates.size());
         
+        // 显示规则信息
+        List<RuleDefinition> rules = ruleManager.getDefaultRules();
+        log.info("[DeviceAssign] Using {} rules for evaluation", rules.size());
+        for (RuleDefinition rule : rules) {
+            log.debug("[DeviceAssign] Rule: {} - {}", rule.getId(), rule.getContent());
+        }
+        
         for (Device device : candidates) {
             if (matchedDevices.size() >= maxDeviceCount) break;
 
@@ -67,11 +74,21 @@ public class TaskDeviceAssignListener {
 
             // 创建设备匹配上下文
             DeviceMatchContext matchContext = new DeviceMatchContext(device, token, task);
+            
+            log.debug("[DeviceAssign] Evaluating device: {} (groupId: {}, status: {})", 
+                device.getDeviceId(), device.getGroupId(), device.getStatus());
+            if (token != null) {
+                log.debug("[DeviceAssign] Token: {} (status: {}, channel: {})", 
+                    token.getTokenId(), token.getStatus(), token.getChannel());
+            }
 
             try {
                 // 使用规则引擎评估设备是否匹配
                 List<String> hitRules = ruleManager.evaluateDefaultRules(matchContext.getContext());
                 List<RuleEvaluationDetail> ruleEvaluations = evaluateRulesWithDetails(matchContext);
+
+                log.debug("[DeviceAssign] Device {} - Hit rules: {}/{}", 
+                    device.getDeviceId(), hitRules.size(), rules.size());
 
                 // 如果所有规则都通过，则匹配成功
                 if (hitRules.size() == ruleManager.getDefaultRules().size()) {
@@ -102,6 +119,14 @@ public class TaskDeviceAssignListener {
                             "规则不匹配: " + failedRules, ruleEvaluations, matchContext.getContext()
                     );
                     log.info("✗ Rule not matched: {} (failed rules: {})", device.getDeviceId(), failedRules);
+                    
+                    // 显示失败的规则详情
+                    for (RuleEvaluationDetail detail : ruleEvaluations) {
+                        if (!detail.isPassed()) {
+                            log.debug("[DeviceAssign] Failed rule: {} - {} = {}", 
+                                detail.getRuleId(), detail.getRuleContent(), detail.getEvaluationResult());
+                        }
+                    }
                 }
             } catch (Exception e) {
                 // 记录评估异常

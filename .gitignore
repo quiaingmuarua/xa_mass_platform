@@ -34,3 +34,7 @@ build/
 .vscode/
 /.mvn/
 /.mvn/
+/log/
+/catalina.base_IS_UNDEFINED/
+/.mvn/
+/.mvn/

@@ -74,22 +74,58 @@ public class MockTaskEngineStarter implements CommandLineRunner {
         if (root.has("devices")) {
             List<Token> tokenList = new ArrayList<>();
             List<Device> devices = MonkeyDeviceGenerator.generateDevices(root.getAsJsonArray("devices").toString(), tokenList);
+            
+            log.info("Generated {} devices and {} tokens", devices.size(), tokenList.size());
+            
             for (Device device : devices) {
                 engine.addDevice(device);
+                log.debug("Added device: {} (groupId: {}, status: {})", 
+                    device.getDeviceId(), device.getGroupId(), device.getStatus());
             }
+            
             for (Token token : tokenList) {
                 engine.addToken(token);
+                log.debug("Added token: {} (deviceId: {}, status: {}, channel: {})", 
+                    token.getTokenId(), token.getDeviceId(), token.getStatus(), token.getChannel());
+            }
+            
+            // 验证设备添加情况
+            DeviceManager deviceManager = engine.getDeviceManager();
+            if (deviceManager != null) {
+                List<Device> allDevices = deviceManager.getAllDevices();
+                List<Device> usDevices = deviceManager.getDevicesByCountry("us");
+                List<Device> gbDevices = deviceManager.getDevicesByCountry("gb");
+                
+                log.info("Device verification - Total: {}, US: {}, GB: {}", 
+                    allDevices.size(), usDevices.size(), gbDevices.size());
+                
+                // 显示前几个设备的详细信息
+                for (int i = 0; i < Math.min(3, allDevices.size()); i++) {
+                    Device device = allDevices.get(i);
+                    Token token = deviceManager.getToken(device.getDeviceId());
+                    log.info("Device {}: id={}, groupId={}, status={}, token={}, tokenStatus={}", 
+                        i + 1, device.getDeviceId(), device.getGroupId(), device.getStatus(),
+                        token != null ? token.getTokenId() : "null",
+                        token != null ? token.getStatus() : "null");
+                }
             }
         }
+        
         // 4. 注入 mock 任务
         if (root.has("tasks")) {
             List<TaskCreateRequestDto> taskDtos = MonkeyTaskGenerator.generateTasks(root.getAsJsonArray("tasks"));
+            log.info("Generated {} tasks", taskDtos.size());
+            
             for (TaskCreateRequestDto dto : taskDtos) {
-                engine.createTask(dto);
+                Task task = engine.createTask(dto);
+                log.info("Created task: {} (country: {}, project: {}, initNumber: {})", 
+                    task.getTid(), task.getTaskCountry(), task.getProject(), task.getTaskInitNumber());
             }
         }
+        
         // 5. 发布任务事件（worker 自动处理）
         engine.publishTaskEvents();
+        log.info("Published task events for processing");
     }
 
     // 默认 mock 配置

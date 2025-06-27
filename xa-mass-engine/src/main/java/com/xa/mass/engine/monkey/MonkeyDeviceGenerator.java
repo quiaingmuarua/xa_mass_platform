@@ -84,21 +84,33 @@ public class MonkeyDeviceGenerator {
         return "[\n" +
                 "  {\n" +
                 "    \"deviceIdTemplate\": \"device-{i}\",\n" +
-                "    \"tokenIdTemplate\": \"token-{i}\",\n" +
                 "    \"count\": 100,\n" +
                 "    \"groupId\": \"us\",\n" +
                 "    \"agentVersion\": \"1.0.0\",\n" +
                 "    \"supportedApps\": [\"demoApp\", \"otherApp\"],\n" +
-                "    \"randomTokenStatus\": true\n" +
+                "    \"tokens\": [\n" +
+                "      {\n" +
+                "        \"tokenIdTemplate\": \"token-{i}-{j}\",\n" +
+                "        \"count\": 1,\n" +
+                "        \"channel\": \"us\",\n" +
+                "        \"randomStatus\": false\n" +
+                "      }\n" +
+                "    ]\n" +
                 "  },\n" +
                 "  {\n" +
                 "    \"deviceIdTemplate\": \"gb-device-{i}\",\n" +
-                "    \"tokenIdTemplate\": \"gb-token-{i}\",\n" +
                 "    \"count\": 50,\n" +
                 "    \"groupId\": \"gb\",\n" +
                 "    \"agentVersion\": \"1.0.1\",\n" +
                 "    \"supportedApps\": [\"demoApp\"],\n" +
-                "    \"randomTokenStatus\": false\n" +
+                "    \"tokens\": [\n" +
+                "      {\n" +
+                "        \"tokenIdTemplate\": \"gb-token-{i}-{j}\",\n" +
+                "        \"count\": 1,\n" +
+                "        \"channel\": \"gb\",\n" +
+                "        \"randomStatus\": false\n" +
+                "      }\n" +
+                "    ]\n" +
                 "  }\n" +
                 "]";
     }
