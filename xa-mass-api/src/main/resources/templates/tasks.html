@@ -276,17 +276,13 @@
                             </td>
                             <td>
                                 <div class="task-actions">
-                                    <button class="btn btn-info" th:onclick="'viewTask(\'' + ${task.tid} + '\')'" title="查看详情">👁️</button>
-                                    <button class="btn btn-warning" th:onclick="'showAuditModal(\'' + ${task.tid} + '\')'" 
-                                            th:if="${task.status.name() == 'NEW'}" title="审核任务">✅</button>
-                                    <button class="btn btn-warning" th:onclick="'pauseTask(\'' + ${task.tid} + '\')'" 
-                                            th:if="${task.status.name() == 'READY' || task.status.name() == 'RUNNING'}" title="暂停任务">⏸️</button>
-                                    <button class="btn btn-success" th:onclick="'resumeTask(\'' + ${task.tid} + '\')'" 
-                                            th:if="${task.status.name() == 'PAUSED'}" title="恢复任务">▶️</button>
-                                    <button class="btn btn-danger" th:onclick="'terminateTask(\'' + ${task.tid} + '\')'" 
-                                            th:if="${task.status.name() != 'TERMINAL'}" title="中止任务">⏹️</button>
-                                    <button class="btn btn-primary" th:onclick="'showEditTaskModal(\'' + ${task.tid} + '\')'" title="编辑任务">✏️</button>
-                                    <button class="btn btn-danger" th:onclick="'deleteTask(\'' + ${task.tid} + '\')'" title="删除任务">🗑️</button>
+                                    <button class="btn btn-info view-btn" th:attr="data-task-id=${task.tid}" title="查看详情">👁️</button>
+                                    <button class="btn btn-warning audit-btn" th:attr="data-task-id=${task.tid}" th:if="${task.status.name() == 'NEW'}" title="审核任务">✅</button>
+                                    <button class="btn btn-warning pause-btn" th:attr="data-task-id=${task.tid}" th:if="${task.status.name() == 'READY' || task.status.name() == 'RUNNING'}" title="暂停任务">⏸️</button>
+                                    <button class="btn btn-success resume-btn" th:attr="data-task-id=${task.tid}" th:if="${task.status.name() == 'PAUSED'}" title="恢复任务">▶️</button>
+                                    <button class="btn btn-danger terminate-btn" th:attr="data-task-id=${task.tid}" th:if="${task.status.name() != 'TERMINAL'}" title="中止任务">⏹️</button>
+                                    <button class="btn btn-primary edit-btn" th:attr="data-task-id=${task.tid}" title="编辑任务">✏️</button>
+                                    <button class="btn btn-danger delete-btn" th:attr="data-task-id=${task.tid}" title="删除任务">🗑️</button>
                                 </div>
                             </td>
                         </tr>
@@ -300,7 +296,7 @@
             <div th:each="status : ${taskStatuses}" 
                  style="background: white; padding: 15px; border-radius: 8px; text-align: center; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
                 <div style="font-size: 24px; font-weight: bold; color: #333;" 
-                     th:text="${tasks.stream().filter(t -> t.status == status).count()}">0</div>
+                     th:text="${taskStatusCount[status] ?: 0}">0</div>
                 <div style="color: #666; margin-top: 5px;" th:text="${status.description}">状态</div>
             </div>
         </div>
@@ -478,236 +474,25 @@
     </div>
 
     <script>
-        // 显示提示信息
+        console.log('tasks.html script loaded');
+        // ========== 全局JS函数，确保全局作用域 ==========
         function showAlert(message, type = 'success') {
             const container = document.getElementById('alert-container');
             const alert = document.createElement('div');
             alert.className = `alert alert-${type}`;
             alert.textContent = message;
             container.appendChild(alert);
-            
-            setTimeout(() => {
-                alert.remove();
-            }, 5000);
+            setTimeout(() => { alert.remove(); }, 5000);
         }
-
-        // 模态框操作
         function showModal(modalId) {
             document.getElementById(modalId).style.display = 'block';
         }
-
         function closeModal(modalId) {
             document.getElementById(modalId).style.display = 'none';
         }
-
-        // 新建任务
         function showCreateTaskModal() {
             showModal('createTaskModal');
         }
-
-        // 审核任务
-        function showAuditModal(taskId) {
-            fetch(`/status/api/tasks/${taskId}`)
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        const t = data.task;
-                        document.getElementById('auditTaskId').value = t.tid;
-                        document.getElementById('auditTaskName').value = t.taskName;
-                        document.getElementById('auditProject').value = t.project;
-                        document.getElementById('auditCountryCode').value = t.taskCountry;
-                        document.getElementById('auditUserId').value = t.user ? t.user.name : '';
-                        document.getElementById('auditTargetCount').value = (t.targetList ? t.targetList.length : 0);
-                        document.getElementById('auditTextContent').value = t.textContent;
-                        document.getElementById('auditComment').value = '';
-                        // 默认选中通过
-                        document.querySelectorAll('input[name="approved"]').forEach(r => r.checked = r.value === 'true');
-                        showModal('auditTaskModal');
-                    } else {
-                        showAlert(data.message, 'danger');
-                    }
-                })
-                .catch(error => {
-                    showAlert('获取任务详情失败: ' + error.message, 'danger');
-                });
-        }
-
-        // 查看任务详情
-        function viewTask(taskId) {
-            fetch(`/status/api/tasks/${taskId}`)
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        alert(`任务详情:\nID: ${data.task.tid}\n名称: ${data.task.taskName}\n状态: ${data.task.status.description}\n进度: ${data.task.taskExecutedNumber}/${data.task.taskInitNumber}`);
-                    } else {
-                        showAlert(data.message, 'danger');
-                    }
-                })
-                .catch(error => {
-                    showAlert('获取任务详情失败: ' + error.message, 'danger');
-                });
-        }
-
-        // 暂停任务
-        function pauseTask(taskId) {
-            if (confirm('确定要暂停这个任务吗？')) {
-                fetch(`/status/api/tasks/${taskId}/pause`, { method: 'POST' })
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.success) {
-                            showAlert(data.message);
-                            setTimeout(() => location.reload(), 1000);
-                        } else {
-                            showAlert(data.message, 'danger');
-                        }
-                    })
-                    .catch(error => {
-                        showAlert('暂停任务失败: ' + error.message, 'danger');
-                    });
-            }
-        }
-
-        // 恢复任务
-        function resumeTask(taskId) {
-            if (confirm('确定要恢复这个任务吗？')) {
-                fetch(`/status/api/tasks/${taskId}/resume`, { method: 'POST' })
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.success) {
-                            showAlert(data.message);
-                            setTimeout(() => location.reload(), 1000);
-                        } else {
-                            showAlert(data.message, 'danger');
-                        }
-                    })
-                    .catch(error => {
-                        showAlert('恢复任务失败: ' + error.message, 'danger');
-                    });
-            }
-        }
-
-        // 中止任务
-        function terminateTask(taskId) {
-            if (confirm('确定要中止这个任务吗？此操作不可撤销！')) {
-                fetch(`/status/api/tasks/${taskId}/terminate`, { method: 'POST' })
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.success) {
-                            showAlert(data.message);
-                            setTimeout(() => location.reload(), 1000);
-                        } else {
-                            showAlert(data.message, 'danger');
-                        }
-                    })
-                    .catch(error => {
-                        showAlert('中止任务失败: ' + error.message, 'danger');
-                    });
-            }
-        }
-
-        // 删除任务
-        function deleteTask(taskId) {
-            if (confirm('确定要删除这个任务吗？此操作不可撤销！')) {
-                fetch(`/status/api/tasks/${taskId}`, { method: 'DELETE' })
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.success) {
-                            showAlert(data.message);
-                            setTimeout(() => location.reload(), 1000);
-                        } else {
-                            showAlert(data.message, 'danger');
-                        }
-                    })
-                    .catch(error => {
-                        showAlert('删除任务失败: ' + error.message, 'danger');
-                    });
-            }
-        }
-
-        // 表单提交处理
-        document.getElementById('createTaskForm').addEventListener('submit', function(e) {
-            e.preventDefault();
-            
-            const formData = new FormData(this);
-            const targetList = formData.get('targetList').split('\n').filter(item => item.trim());
-            
-            const requestData = {
-                taskName: formData.get('taskName'),
-                project: formData.get('project'),
-                countryCode: formData.get('countryCode'),
-                textContent: formData.get('textContent'),
-                userId: formData.get('userId'),
-                targetList: targetList,
-                batchSize: parseInt(formData.get('batchSize')) || 5
-            };
-
-            fetch('/status/api/tasks', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(requestData)
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    showAlert(data.message);
-                    closeModal('createTaskModal');
-                    this.reset();
-                    setTimeout(() => location.reload(), 1000);
-                } else {
-                    showAlert(data.message, 'danger');
-                }
-            })
-            .catch(error => {
-                showAlert('创建任务失败: ' + error.message, 'danger');
-            });
-        });
-
-        document.getElementById('auditTaskForm').addEventListener('submit', function(e) {
-            e.preventDefault();
-            
-            const formData = new FormData(this);
-            const taskId = formData.get('taskId');
-            const approved = formData.get('approved') === 'true';
-            const comment = formData.get('comment');
-
-            const params = new URLSearchParams({
-                approved: approved
-            });
-            if (comment) {
-                params.append('comment', comment);
-            }
-
-            fetch(`/status/api/tasks/${taskId}/audit?${params}`, {
-                method: 'POST'
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    showAlert(data.message);
-                    closeModal('auditTaskModal');
-                    this.reset();
-                    setTimeout(() => location.reload(), 1000);
-                } else {
-                    showAlert(data.message, 'danger');
-                }
-            })
-            .catch(error => {
-                showAlert('审核任务失败: ' + error.message, 'danger');
-            });
-        });
-
-        // 点击模态框外部关闭
-        window.onclick = function(event) {
-            const modals = document.getElementsByClassName('modal');
-            for (let modal of modals) {
-                if (event.target === modal) {
-                    modal.style.display = 'none';
-                }
-            }
-        }
-
         // 号码数量统计
         function updateTargetCount() {
             const val = document.getElementById('targetList').value;
@@ -715,7 +500,6 @@
             document.getElementById('targetCount').innerText = count;
         }
         document.getElementById('targetList').addEventListener('input', updateTargetCount);
-        // 文件上传自动填充号码
         document.getElementById('targetFile').addEventListener('change', function(e) {
             const file = e.target.files[0];
             if (!file) return;
@@ -726,13 +510,16 @@
             };
             reader.readAsText(file, 'utf-8');
         });
-        // 初始化时统计一次
         updateTargetCount();
-
         // 编辑任务弹窗逻辑
         function showEditTaskModal(taskId) {
             fetch(`/status/api/tasks/${taskId}`)
-                .then(response => response.json())
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('接口返回错误: ' + response.status);
+                    }
+                    return response.json();
+                })
                 .then(data => {
                     if (data.success) {
                         const t = data.task;
@@ -754,14 +541,12 @@
                     showAlert('获取任务详情失败: ' + error.message, 'danger');
                 });
         }
-        // 编辑号码数量统计
         function updateEditTargetCount() {
             const val = document.getElementById('editTargetList').value;
             const count = val.split('\n').filter(x => x.trim()).length;
             document.getElementById('editTargetCount').innerText = count;
         }
         document.getElementById('editTargetList').addEventListener('input', updateEditTargetCount);
-        // 编辑文件上传自动填充号码
         document.getElementById('editTargetFile').addEventListener('change', function(e) {
             const file = e.target.files[0];
             if (!file) return;
@@ -772,7 +557,6 @@
             };
             reader.readAsText(file, 'utf-8');
         });
-        // 编辑任务表单提交
         document.getElementById('editTaskForm').addEventListener('submit', function(e) {
             e.preventDefault();
             const formData = new FormData(this);
@@ -806,6 +590,229 @@
             })
             .catch(error => {
                 showAlert('修改任务失败: ' + error.message, 'danger');
+            });
+        });
+        // 审核任务弹窗增强
+        function showAuditModal(taskId) {
+            fetch(`/status/api/tasks/${taskId}`)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('接口返回错误: ' + response.status);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    if (data.success) {
+                        const t = data.task;
+                        document.getElementById('auditTaskId').value = t.tid;
+                        document.getElementById('auditTaskName').value = t.taskName;
+                        document.getElementById('auditProject').value = t.project;
+                        document.getElementById('auditCountryCode').value = t.taskCountry;
+                        document.getElementById('auditUserId').value = t.user ? t.user.name : '';
+                        document.getElementById('auditTargetCount').value = (t.targetList ? t.targetList.length : 0);
+                        document.getElementById('auditTextContent').value = t.textContent;
+                        document.getElementById('auditComment').value = '';
+                        document.querySelectorAll('input[name="approved"]').forEach(r => r.checked = r.value === 'true');
+                        showModal('auditTaskModal');
+                    } else {
+                        showAlert(data.message, 'danger');
+                    }
+                })
+                .catch(error => {
+                    showAlert('获取任务详情失败: ' + error.message, 'danger');
+                });
+        }
+        // 事件委托统一处理所有操作按钮
+        document.addEventListener('click', function(e) {
+            if (e.target.classList.contains('edit-btn')) {
+                showEditTaskModal(e.target.getAttribute('data-task-id'));
+            }
+            if (e.target.classList.contains('audit-btn')) {
+                showAuditModal(e.target.getAttribute('data-task-id'));
+            }
+            if (e.target.classList.contains('pause-btn')) {
+                pauseTask(e.target.getAttribute('data-task-id'));
+            }
+            if (e.target.classList.contains('resume-btn')) {
+                resumeTask(e.target.getAttribute('data-task-id'));
+            }
+            if (e.target.classList.contains('terminate-btn')) {
+                terminateTask(e.target.getAttribute('data-task-id'));
+            }
+            if (e.target.classList.contains('delete-btn')) {
+                deleteTask(e.target.getAttribute('data-task-id'));
+            }
+            if (e.target.classList.contains('view-btn')) {
+                viewTask(e.target.getAttribute('data-task-id'));
+            }
+        });
+        // 新建任务表单提交逻辑，防止表单直接提交到URL
+        document.getElementById('createTaskForm').addEventListener('submit', function(e) {
+            e.preventDefault(); // 阻止表单默认提交
+            const formData = new FormData(this);
+            const targetList = formData.get('targetList').split('\n').filter(item => item.trim());
+            const requestData = {
+                taskName: formData.get('taskName'),
+                project: formData.get('project'),
+                countryCode: formData.get('countryCode'),
+                textContent: formData.get('textContent'),
+                userId: formData.get('userId'),
+                targetList: targetList,
+                batchSize: parseInt(formData.get('batchSize')) || 5
+            };
+            fetch('/status/api/tasks', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(requestData)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showAlert('任务创建成功');
+                    closeModal('createTaskModal');
+                    setTimeout(() => location.reload(), 1000);
+                } else {
+                    showAlert(data.message, 'danger');
+                }
+            })
+            .catch(error => {
+                showAlert('创建任务失败: ' + error.message, 'danger');
+            });
+        });
+        function pauseTask(taskId) {
+            fetch(`/status/api/tasks/${taskId}/pause`, { method: 'POST' })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('接口返回错误: ' + response.status);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    if (data.success) {
+                        showAlert('任务已暂停');
+                        setTimeout(() => location.reload(), 1000);
+                    } else {
+                        showAlert(data.message, 'danger');
+                    }
+                })
+                .catch(error => {
+                    showAlert('暂停任务失败: ' + error.message, 'danger');
+                });
+        }
+        function resumeTask(taskId) {
+            fetch(`/status/api/tasks/${taskId}/resume`, { method: 'POST' })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('接口返回错误: ' + response.status);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    if (data.success) {
+                        showAlert('任务已恢复');
+                        setTimeout(() => location.reload(), 1000);
+                    } else {
+                        showAlert(data.message, 'danger');
+                    }
+                })
+                .catch(error => {
+                    showAlert('恢复任务失败: ' + error.message, 'danger');
+                });
+        }
+        function terminateTask(taskId) {
+            fetch(`/status/api/tasks/${taskId}/terminate`, { method: 'POST' })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('接口返回错误: ' + response.status);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    if (data.success) {
+                        showAlert('任务已中止');
+                        setTimeout(() => location.reload(), 1000);
+                    } else {
+                        showAlert(data.message, 'danger');
+                    }
+                })
+                .catch(error => {
+                    showAlert('中止任务失败: ' + error.message, 'danger');
+                });
+        }
+        function deleteTask(taskId) {
+            fetch(`/status/api/tasks/${taskId}`, { method: 'DELETE' })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('接口返回错误: ' + response.status);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    if (data.success) {
+                        showAlert('任务删除成功');
+                        setTimeout(() => location.reload(), 1000);
+                    } else {
+                        showAlert(data.message, 'danger');
+                    }
+                })
+                .catch(error => {
+                    showAlert('删除任务失败: ' + error.message, 'danger');
+                });
+        }
+        function viewTask(taskId) {
+            fetch(`/status/api/tasks/${taskId}`)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('接口返回错误: ' + response.status);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    if (data.success) {
+                        // 这里可以弹窗或跳转详情页，按你需求实现
+                        showAlert('任务详情：' + JSON.stringify(data.task));
+                    } else {
+                        showAlert(data.message, 'danger');
+                    }
+                })
+                .catch(error => {
+                    showAlert('获取任务详情失败: ' + error.message, 'danger');
+                });
+        }
+        document.getElementById('auditTaskForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const taskId = document.getElementById('auditTaskId').value;
+            const approved = document.querySelector('input[name="approved"]:checked').value;
+            const comment = document.getElementById('auditComment').value;
+            const params = new URLSearchParams();
+            params.append('approved', approved);
+            params.append('comment', comment);
+            fetch(`/status/api/tasks/${taskId}/audit`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded'
+                },
+                body: params.toString()
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('接口返回错误: ' + response.status);
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.success) {
+                    showAlert('任务审核成功');
+                    closeModal('auditTaskModal');
+                    setTimeout(() => location.reload(), 1000);
+                } else {
+                    showAlert(data.message, 'danger');
+                }
+            })
+            .catch(error => {
+                showAlert('审核任务失败: ' + error.message, 'danger');
             });
         });
     </script>

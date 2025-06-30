@@ -84,8 +84,8 @@ public class ServerMessageDispatcher {
             Envelope envelope = null;
             try {
                 envelope = context.getMessageTransporter().receiveInput(15, TimeUnit.SECONDS);
-                logger.info("processInputQueueLoop receive envelope {}", envelope);
                 if (envelope != null) {
+                    logger.info("processInputQueueLoop receive envelope {}", envelope);
                     context.setDirection(DispatcherContext.MiddlewareDirection.INPUT);
                     runMiddlewareChain(MiddlewareRegistry.instance.getActiveInputMiddlewares(), envelope);
                 }
@@ -102,8 +102,8 @@ public class ServerMessageDispatcher {
             Envelope envelope = null;
             try {
                 envelope = context.getMessageTransporter().receiveOutput(15, TimeUnit.SECONDS);
-                logger.debug("processOutputQueueLoop receive envelope {}", envelope);
                 if (envelope != null) {
+                    logger.info("processOutputQueueLoop receive envelope {}", envelope);
                     context.setDirection(DispatcherContext.MiddlewareDirection.OUTPUT);
 
                     runMiddlewareChain(MiddlewareRegistry.instance.getActiveOutputMiddlewares(), envelope);

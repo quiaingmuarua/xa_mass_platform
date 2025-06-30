@@ -98,6 +98,9 @@ public class StatusController {
         List<Task> allTasks = taskManager.getAllTasks();
         model.addAttribute("tasks", allTasks);
         model.addAttribute("taskStatuses", TaskStatus.values());
+        Map<TaskStatus, Long> taskStatusCount = allTasks.stream()
+                .collect(Collectors.groupingBy(Task::getStatus, Collectors.counting()));
+        model.addAttribute("taskStatusCount", taskStatusCount);
         return "tasks";
     }
 
@@ -217,12 +220,13 @@ public class StatusController {
     @ResponseBody
     public ResponseEntity<Map<String, Object>> auditTask(
             @PathVariable String taskId,
-            @RequestParam boolean approved,
+            @RequestParam String approved,
             @RequestParam(required = false) String comment) {
         try {
             Task task = taskManager.getTask(taskId);
             if (task != null) {
-                if (approved) {
+                boolean isApproved = "true".equalsIgnoreCase(approved);
+                if (isApproved) {
                     task.setStatus(TaskStatus.READY);
                 } else {
                     task.setStatus(TaskStatus.BLOCKED);
@@ -230,7 +234,7 @@ public class StatusController {
                 taskManager.updateTask(task);
                 return ResponseEntity.ok(Map.of(
                     "success", true,
-                    "message", approved ? "任务审核通过" : "任务审核拒绝",
+                    "message", isApproved ? "任务审核通过" : "任务审核拒绝",
                     "newStatus", task.getStatus().name()
                 ));
             } else {
