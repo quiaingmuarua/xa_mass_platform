@@ -102,7 +102,7 @@ public class ServerMessageDispatcher {
             Envelope envelope = null;
             try {
                 envelope = context.getMessageTransporter().receiveOutput(15, TimeUnit.SECONDS);
-                logger.info("processOutputQueueLoop receive envelope {}", envelope);
+                logger.debug("processOutputQueueLoop receive envelope {}", envelope);
                 if (envelope != null) {
                     context.setDirection(DispatcherContext.MiddlewareDirection.OUTPUT);
 

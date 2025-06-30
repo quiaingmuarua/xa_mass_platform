@@ -39,6 +39,25 @@
         .nav-links a:hover {
             background-color: #5a6fd8;
         }
+        .action-buttons {
+            margin: 20px 0;
+            text-align: center;
+        }
+        .btn {
+            padding: 10px 20px;
+            margin: 0 5px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background-color 0.3s;
+        }
+        .btn-primary { background-color: #007bff; color: white; }
+        .btn-success { background-color: #28a745; color: white; }
+        .btn-warning { background-color: #ffc107; color: black; }
+        .btn-danger { background-color: #dc3545; color: white; }
+        .btn-info { background-color: #17a2b8; color: white; }
+        .btn:hover { opacity: 0.8; }
         .refresh-btn {
             background-color: #4caf50;
             color: white;
@@ -116,6 +135,75 @@
             font-size: 12px;
             color: #999;
         }
+        .task-actions {
+            display: flex;
+            gap: 5px;
+            flex-wrap: wrap;
+        }
+        .task-actions .btn {
+            padding: 4px 8px;
+            font-size: 12px;
+            margin: 0;
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+        }
+        .modal-content {
+            background-color: white;
+            margin: 5% auto;
+            padding: 20px;
+            border-radius: 10px;
+            width: 80%;
+            max-width: 600px;
+        }
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .close {
+            color: #aaa;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .close:hover {
+            color: #000;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        .form-group input, .form-group select, .form-group textarea {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        .form-group textarea {
+            height: 100px;
+            resize: vertical;
+        }
+        .alert {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+        .alert-success { background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .alert-danger { background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
     </style>
 </head>
 <body>
@@ -123,7 +211,10 @@
         <div class="header">
             <h1>📋 任务详情</h1>
             <p>查看所有任务的详细信息和状态</p>
-            <button class="refresh-btn" onclick="location.reload()">🔄 刷新数据</button>
+            <div class="action-buttons">
+                <button class="btn btn-primary" onclick="showCreateTaskModal()">➕ 新建任务</button>
+                <button class="refresh-btn" onclick="location.reload()">🔄 刷新数据</button>
+            </div>
         </div>
 
         <div class="nav-links">
@@ -132,6 +223,8 @@
             <a href="/status/devices">📱 设备详情</a>
             <a href="/status/rules">📏 规则管理</a>
         </div>
+
+        <div id="alert-container"></div>
 
         <div class="task-table">
             <div th:if="${#lists.isEmpty(tasks)}" class="empty-message">
@@ -151,6 +244,7 @@
                             <th>进度</th>
                             <th>创建时间</th>
                             <th>更新时间</th>
+                            <th>操作</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -180,6 +274,21 @@
                             <td>
                                 <div class="timestamp" th:text="${task.updateTime != null ? #temporals.format(task.updateTime, 'yyyy-MM-dd HH:mm:ss') : '-'}">-</div>
                             </td>
+                            <td>
+                                <div class="task-actions">
+                                    <button class="btn btn-info" th:onclick="'viewTask(\'' + ${task.tid} + '\')'" title="查看详情">👁️</button>
+                                    <button class="btn btn-warning" th:onclick="'showAuditModal(\'' + ${task.tid} + '\')'" 
+                                            th:if="${task.status.name() == 'NEW'}" title="审核任务">✅</button>
+                                    <button class="btn btn-warning" th:onclick="'pauseTask(\'' + ${task.tid} + '\')'" 
+                                            th:if="${task.status.name() == 'READY' || task.status.name() == 'RUNNING'}" title="暂停任务">⏸️</button>
+                                    <button class="btn btn-success" th:onclick="'resumeTask(\'' + ${task.tid} + '\')'" 
+                                            th:if="${task.status.name() == 'PAUSED'}" title="恢复任务">▶️</button>
+                                    <button class="btn btn-danger" th:onclick="'terminateTask(\'' + ${task.tid} + '\')'" 
+                                            th:if="${task.status.name() != 'TERMINAL'}" title="中止任务">⏹️</button>
+                                    <button class="btn btn-primary" th:onclick="'showEditTaskModal(\'' + ${task.tid} + '\')'" title="编辑任务">✏️</button>
+                                    <button class="btn btn-danger" th:onclick="'deleteTask(\'' + ${task.tid} + '\')'" title="删除任务">🗑️</button>
+                                </div>
+                            </td>
                         </tr>
                     </tbody>
                 </table>
@@ -197,11 +306,508 @@
         </div>
     </div>
 
+    <!-- 新建任务模态框 -->
+    <div id="createTaskModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>新建任务</h2>
+                <span class="close" onclick="closeModal('createTaskModal')">&times;</span>
+            </div>
+            <form id="createTaskForm">
+                <div class="form-group">
+                    <label for="taskName">任务名称 *</label>
+                    <input type="text" id="taskName" name="taskName" required>
+                </div>
+                <div class="form-group">
+                    <label for="project">项目 *</label>
+                    <input type="text" id="project" name="project" required>
+                </div>
+                <div class="form-group">
+                    <label for="countryCode">国家代码 *</label>
+                    <select id="countryCode" name="countryCode" required>
+                        <option value="">请选择国家</option>
+                        <option value="us">美国 (US)</option>
+                        <option value="gb">英国 (GB)</option>
+                        <option value="cn">中国 (CN)</option>
+                        <option value="jp">日本 (JP)</option>
+                        <option value="kr">韩国 (KR)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="targetFile">上传号码txt文件</label>
+                    <input type="file" id="targetFile" accept=".txt" />
+                    <small>每行一个号码，自动识别并填充到下方号码列表</small>
+                </div>
+                <div class="form-group">
+                    <label for="targetList">目标列表 (每行一个)</label>
+                    <textarea id="targetList" name="targetList" placeholder="phone1&#10;phone2&#10;phone3"></textarea>
+                    <div style="margin-top:5px;color:#888;">
+                        号码数量：<span id="targetCount">0</span>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="textContent">任务内容 *</label>
+                    <textarea id="textContent" name="textContent" required></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="userId">用户ID *</label>
+                    <input type="text" id="userId" name="userId" required>
+                </div>
+                <div class="form-group">
+                    <label for="batchSize">批次大小</label>
+                    <input type="number" id="batchSize" name="batchSize" value="5" min="1">
+                </div>
+                <div style="text-align: right;">
+                    <button type="button" class="btn btn-warning" onclick="closeModal('createTaskModal')">取消</button>
+                    <button type="submit" class="btn btn-primary">创建任务</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- 审核任务模态框 -->
+    <div id="auditTaskModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>审核任务</h2>
+                <span class="close" onclick="closeModal('auditTaskModal')">&times;</span>
+            </div>
+            <form id="auditTaskForm">
+                <input type="hidden" id="auditTaskId" name="taskId">
+                <div class="form-group">
+                    <label>任务名称</label>
+                    <input type="text" id="auditTaskName" readonly style="background:#f5f5f5;">
+                </div>
+                <div class="form-group">
+                    <label>项目</label>
+                    <input type="text" id="auditProject" readonly style="background:#f5f5f5;">
+                </div>
+                <div class="form-group">
+                    <label>国家</label>
+                    <input type="text" id="auditCountryCode" readonly style="background:#f5f5f5;">
+                </div>
+                <div class="form-group">
+                    <label>用户ID</label>
+                    <input type="text" id="auditUserId" readonly style="background:#f5f5f5;">
+                </div>
+                <div class="form-group">
+                    <label>号码数量</label>
+                    <input type="text" id="auditTargetCount" readonly style="background:#f5f5f5;">
+                </div>
+                <div class="form-group">
+                    <label>任务内容</label>
+                    <textarea id="auditTextContent" readonly style="background:#f5f5f5;"></textarea>
+                </div>
+                <div class="form-group">
+                    <label>审核结果</label>
+                    <div>
+                        <label><input type="radio" name="approved" value="true" checked> 通过</label>
+                        <label><input type="radio" name="approved" value="false"> 拒绝</label>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="auditComment">审核意见</label>
+                    <textarea id="auditComment" name="comment" placeholder="请输入审核意见..."></textarea>
+                </div>
+                <div style="text-align: right;">
+                    <button type="button" class="btn btn-warning" onclick="closeModal('auditTaskModal')">取消</button>
+                    <button type="submit" class="btn btn-primary">提交审核</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- 编辑任务模态框 -->
+    <div id="editTaskModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>编辑任务</h2>
+                <span class="close" onclick="closeModal('editTaskModal')">&times;</span>
+            </div>
+            <form id="editTaskForm">
+                <input type="hidden" id="editTaskId" name="taskId">
+                <div class="form-group">
+                    <label for="editTaskName">任务名称 *</label>
+                    <input type="text" id="editTaskName" name="taskName" required>
+                </div>
+                <div class="form-group">
+                    <label for="editProject">项目 *</label>
+                    <input type="text" id="editProject" name="project" required>
+                </div>
+                <div class="form-group">
+                    <label for="editCountryCode">国家代码 *</label>
+                    <select id="editCountryCode" name="countryCode" required>
+                        <option value="">请选择国家</option>
+                        <option value="us">美国 (US)</option>
+                        <option value="gb">英国 (GB)</option>
+                        <option value="cn">中国 (CN)</option>
+                        <option value="jp">日本 (JP)</option>
+                        <option value="kr">韩国 (KR)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="editTargetFile">上传号码txt文件</label>
+                    <input type="file" id="editTargetFile" accept=".txt" />
+                    <small>每行一个号码，自动识别并填充到下方号码列表</small>
+                </div>
+                <div class="form-group">
+                    <label for="editTargetList">目标列表 (每行一个)</label>
+                    <textarea id="editTargetList" name="targetList"></textarea>
+                    <div style="margin-top:5px;color:#888;">
+                        号码数量：<span id="editTargetCount">0</span>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="editTextContent">任务内容 *</label>
+                    <textarea id="editTextContent" name="textContent" required></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="editUserId">用户ID *</label>
+                    <input type="text" id="editUserId" name="userId" required>
+                </div>
+                <div class="form-group">
+                    <label for="editBatchSize">批次大小</label>
+                    <input type="number" id="editBatchSize" name="batchSize" value="5" min="1">
+                </div>
+                <div style="text-align: right;">
+                    <button type="button" class="btn btn-warning" onclick="closeModal('editTaskModal')">取消</button>
+                    <button type="submit" class="btn btn-primary">保存修改</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <script>
-        // 自动刷新页面（每30秒）
-        setTimeout(function() {
-            location.reload();
-        }, 30000);
+        // 显示提示信息
+        function showAlert(message, type = 'success') {
+            const container = document.getElementById('alert-container');
+            const alert = document.createElement('div');
+            alert.className = `alert alert-${type}`;
+            alert.textContent = message;
+            container.appendChild(alert);
+            
+            setTimeout(() => {
+                alert.remove();
+            }, 5000);
+        }
+
+        // 模态框操作
+        function showModal(modalId) {
+            document.getElementById(modalId).style.display = 'block';
+        }
+
+        function closeModal(modalId) {
+            document.getElementById(modalId).style.display = 'none';
+        }
+
+        // 新建任务
+        function showCreateTaskModal() {
+            showModal('createTaskModal');
+        }
+
+        // 审核任务
+        function showAuditModal(taskId) {
+            fetch(`/status/api/tasks/${taskId}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        const t = data.task;
+                        document.getElementById('auditTaskId').value = t.tid;
+                        document.getElementById('auditTaskName').value = t.taskName;
+                        document.getElementById('auditProject').value = t.project;
+                        document.getElementById('auditCountryCode').value = t.taskCountry;
+                        document.getElementById('auditUserId').value = t.user ? t.user.name : '';
+                        document.getElementById('auditTargetCount').value = (t.targetList ? t.targetList.length : 0);
+                        document.getElementById('auditTextContent').value = t.textContent;
+                        document.getElementById('auditComment').value = '';
+                        // 默认选中通过
+                        document.querySelectorAll('input[name="approved"]').forEach(r => r.checked = r.value === 'true');
+                        showModal('auditTaskModal');
+                    } else {
+                        showAlert(data.message, 'danger');
+                    }
+                })
+                .catch(error => {
+                    showAlert('获取任务详情失败: ' + error.message, 'danger');
+                });
+        }
+
+        // 查看任务详情
+        function viewTask(taskId) {
+            fetch(`/status/api/tasks/${taskId}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        alert(`任务详情:\nID: ${data.task.tid}\n名称: ${data.task.taskName}\n状态: ${data.task.status.description}\n进度: ${data.task.taskExecutedNumber}/${data.task.taskInitNumber}`);
+                    } else {
+                        showAlert(data.message, 'danger');
+                    }
+                })
+                .catch(error => {
+                    showAlert('获取任务详情失败: ' + error.message, 'danger');
+                });
+        }
+
+        // 暂停任务
+        function pauseTask(taskId) {
+            if (confirm('确定要暂停这个任务吗？')) {
+                fetch(`/status/api/tasks/${taskId}/pause`, { method: 'POST' })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            showAlert(data.message);
+                            setTimeout(() => location.reload(), 1000);
+                        } else {
+                            showAlert(data.message, 'danger');
+                        }
+                    })
+                    .catch(error => {
+                        showAlert('暂停任务失败: ' + error.message, 'danger');
+                    });
+            }
+        }
+
+        // 恢复任务
+        function resumeTask(taskId) {
+            if (confirm('确定要恢复这个任务吗？')) {
+                fetch(`/status/api/tasks/${taskId}/resume`, { method: 'POST' })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            showAlert(data.message);
+                            setTimeout(() => location.reload(), 1000);
+                        } else {
+                            showAlert(data.message, 'danger');
+                        }
+                    })
+                    .catch(error => {
+                        showAlert('恢复任务失败: ' + error.message, 'danger');
+                    });
+            }
+        }
+
+        // 中止任务
+        function terminateTask(taskId) {
+            if (confirm('确定要中止这个任务吗？此操作不可撤销！')) {
+                fetch(`/status/api/tasks/${taskId}/terminate`, { method: 'POST' })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            showAlert(data.message);
+                            setTimeout(() => location.reload(), 1000);
+                        } else {
+                            showAlert(data.message, 'danger');
+                        }
+                    })
+                    .catch(error => {
+                        showAlert('中止任务失败: ' + error.message, 'danger');
+                    });
+            }
+        }
+
+        // 删除任务
+        function deleteTask(taskId) {
+            if (confirm('确定要删除这个任务吗？此操作不可撤销！')) {
+                fetch(`/status/api/tasks/${taskId}`, { method: 'DELETE' })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            showAlert(data.message);
+                            setTimeout(() => location.reload(), 1000);
+                        } else {
+                            showAlert(data.message, 'danger');
+                        }
+                    })
+                    .catch(error => {
+                        showAlert('删除任务失败: ' + error.message, 'danger');
+                    });
+            }
+        }
+
+        // 表单提交处理
+        document.getElementById('createTaskForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const formData = new FormData(this);
+            const targetList = formData.get('targetList').split('\n').filter(item => item.trim());
+            
+            const requestData = {
+                taskName: formData.get('taskName'),
+                project: formData.get('project'),
+                countryCode: formData.get('countryCode'),
+                textContent: formData.get('textContent'),
+                userId: formData.get('userId'),
+                targetList: targetList,
+                batchSize: parseInt(formData.get('batchSize')) || 5
+            };
+
+            fetch('/status/api/tasks', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(requestData)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showAlert(data.message);
+                    closeModal('createTaskModal');
+                    this.reset();
+                    setTimeout(() => location.reload(), 1000);
+                } else {
+                    showAlert(data.message, 'danger');
+                }
+            })
+            .catch(error => {
+                showAlert('创建任务失败: ' + error.message, 'danger');
+            });
+        });
+
+        document.getElementById('auditTaskForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const formData = new FormData(this);
+            const taskId = formData.get('taskId');
+            const approved = formData.get('approved') === 'true';
+            const comment = formData.get('comment');
+
+            const params = new URLSearchParams({
+                approved: approved
+            });
+            if (comment) {
+                params.append('comment', comment);
+            }
+
+            fetch(`/status/api/tasks/${taskId}/audit?${params}`, {
+                method: 'POST'
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showAlert(data.message);
+                    closeModal('auditTaskModal');
+                    this.reset();
+                    setTimeout(() => location.reload(), 1000);
+                } else {
+                    showAlert(data.message, 'danger');
+                }
+            })
+            .catch(error => {
+                showAlert('审核任务失败: ' + error.message, 'danger');
+            });
+        });
+
+        // 点击模态框外部关闭
+        window.onclick = function(event) {
+            const modals = document.getElementsByClassName('modal');
+            for (let modal of modals) {
+                if (event.target === modal) {
+                    modal.style.display = 'none';
+                }
+            }
+        }
+
+        // 号码数量统计
+        function updateTargetCount() {
+            const val = document.getElementById('targetList').value;
+            const count = val.split('\n').filter(x => x.trim()).length;
+            document.getElementById('targetCount').innerText = count;
+        }
+        document.getElementById('targetList').addEventListener('input', updateTargetCount);
+        // 文件上传自动填充号码
+        document.getElementById('targetFile').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(evt) {
+                document.getElementById('targetList').value = evt.target.result.replace(/\r/g, '');
+                updateTargetCount();
+            };
+            reader.readAsText(file, 'utf-8');
+        });
+        // 初始化时统计一次
+        updateTargetCount();
+
+        // 编辑任务弹窗逻辑
+        function showEditTaskModal(taskId) {
+            fetch(`/status/api/tasks/${taskId}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        const t = data.task;
+                        document.getElementById('editTaskId').value = t.tid;
+                        document.getElementById('editTaskName').value = t.taskName;
+                        document.getElementById('editProject').value = t.project;
+                        document.getElementById('editCountryCode').value = t.taskCountry;
+                        document.getElementById('editTargetList').value = (t.targetList || []).join('\n');
+                        document.getElementById('editTextContent').value = t.textContent;
+                        document.getElementById('editUserId').value = t.user ? t.user.name : '';
+                        document.getElementById('editBatchSize').value = t.batchSize || 5;
+                        updateEditTargetCount();
+                        showModal('editTaskModal');
+                    } else {
+                        showAlert(data.message, 'danger');
+                    }
+                })
+                .catch(error => {
+                    showAlert('获取任务详情失败: ' + error.message, 'danger');
+                });
+        }
+        // 编辑号码数量统计
+        function updateEditTargetCount() {
+            const val = document.getElementById('editTargetList').value;
+            const count = val.split('\n').filter(x => x.trim()).length;
+            document.getElementById('editTargetCount').innerText = count;
+        }
+        document.getElementById('editTargetList').addEventListener('input', updateEditTargetCount);
+        // 编辑文件上传自动填充号码
+        document.getElementById('editTargetFile').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(evt) {
+                document.getElementById('editTargetList').value = evt.target.result.replace(/\r/g, '');
+                updateEditTargetCount();
+            };
+            reader.readAsText(file, 'utf-8');
+        });
+        // 编辑任务表单提交
+        document.getElementById('editTaskForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const formData = new FormData(this);
+            const targetList = formData.get('targetList').split('\n').filter(item => item.trim());
+            const requestData = {
+                taskName: formData.get('taskName'),
+                project: formData.get('project'),
+                countryCode: formData.get('countryCode'),
+                textContent: formData.get('textContent'),
+                userId: formData.get('userId'),
+                targetList: targetList,
+                batchSize: parseInt(formData.get('batchSize')) || 5
+            };
+            const taskId = formData.get('taskId');
+            fetch(`/status/api/tasks/${taskId}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(requestData)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showAlert('任务修改成功');
+                    closeModal('editTaskModal');
+                    setTimeout(() => location.reload(), 1000);
+                } else {
+                    showAlert(data.message, 'danger');
+                }
+            })
+            .catch(error => {
+                showAlert('修改任务失败: ' + error.message, 'danger');
+            });
+        });
     </script>
 </body>
 </html> 
