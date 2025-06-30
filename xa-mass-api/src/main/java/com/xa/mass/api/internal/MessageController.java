@@ -1,5 +1,6 @@
 package com.xa.mass.api.internal;
 
+import com.xa.mass.api.model.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import io.swagger.v3.oas.annotations.Operation;
 import org.springframework.web.bind.annotation.*;
@@ -50,4 +51,5 @@ public class MessageController {
         resp.put("data", data);
         return resp;
     }
+
 } 
