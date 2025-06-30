@@ -264,7 +264,7 @@ public class TaskManager {
         try {
             Task task = getTask(taskId);
             if (task != null && (task.getStatus() == TaskStatus.READY || task.getStatus() == TaskStatus.RUNNING)) {
-                boolean result = task.transitionTo(TaskStatus.BLOCKED);
+                boolean result = task.transitionTo(TaskStatus.PAUSED);
                 if (result) {
                     taskStorage.updateTask(task);
                     taskScheduler.pauseTask(taskId);
@@ -298,7 +298,7 @@ public class TaskManager {
         
         try {
             Task task = getTask(taskId);
-            if (task != null && task.getStatus() == TaskStatus.BLOCKED) {
+            if (task != null && task.getStatus() == TaskStatus.PAUSED) {
                 boolean result = task.transitionTo(TaskStatus.READY);
                 if (result) {
                     taskStorage.updateTask(task);

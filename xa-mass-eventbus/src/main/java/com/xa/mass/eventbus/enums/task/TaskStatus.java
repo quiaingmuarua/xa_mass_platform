@@ -2,14 +2,19 @@ package com.xa.mass.eventbus.enums.task;
 
 /**
  * 任务状态枚举
- * 状态流转：NEW -> READY -> RUNNING -> TERMINAL
- * 或者：NEW -> READY -> BLOCKED -> READY -> RUNNING -> TERMINAL
+ * 状态流转：NEW -> BLOCKED -> READY -> RUNNING -> TERMINAL
+ * 或者：NEW -> BLOCKED -> READY -> BLOCKED -> READY -> RUNNING -> TERMINAL
  */
 public enum TaskStatus {
     /**
      * 新建，未审核
      */
     NEW("新建"),
+    
+    /**
+     * 审核通过但被阻塞，暂不可调度
+     */
+    BLOCKED("已阻塞"),
     
     /**
      * 审核通过，待分配设备
@@ -24,7 +29,7 @@ public enum TaskStatus {
     /**
      * 被暂停，暂不可调度
      */
-    BLOCKED("已暂停"),
+    PAUSED("已暂停"),
     
     /**
      * 终止，结束/异常/人工关闭
@@ -47,12 +52,14 @@ public enum TaskStatus {
     public boolean canTransitionTo(TaskStatus targetStatus) {
         switch (this) {
             case NEW:
-                return targetStatus == READY || targetStatus == BLOCKED;
+                return targetStatus == BLOCKED || targetStatus == TERMINAL;
+            case BLOCKED:
+                return targetStatus == READY || targetStatus == TERMINAL;
             case READY:
                 return targetStatus == RUNNING || targetStatus == BLOCKED || targetStatus == TERMINAL;
             case RUNNING:
-                return targetStatus == BLOCKED || targetStatus == TERMINAL;
-            case BLOCKED:
+                return targetStatus == BLOCKED || targetStatus == PAUSED || targetStatus == TERMINAL;
+            case PAUSED:
                 return targetStatus == READY || targetStatus == TERMINAL;
             case TERMINAL:
                 return false; // 终止状态不可再转换
@@ -80,5 +87,19 @@ public enum TaskStatus {
      */
     public boolean isRunning() {
         return this == RUNNING;
+    }
+    
+    /**
+     * 检查是否被阻塞
+     */
+    public boolean isBlocked() {
+        return this == BLOCKED;
+    }
+    
+    /**
+     * 检查是否被暂停
+     */
+    public boolean isPaused() {
+        return this == PAUSED;
     }
 } 

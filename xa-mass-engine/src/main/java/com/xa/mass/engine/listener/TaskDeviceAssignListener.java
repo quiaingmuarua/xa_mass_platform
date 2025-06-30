@@ -53,24 +53,27 @@ public class TaskDeviceAssignListener {
     /**
      * 使用规则引擎匹配设备
      */
-    private List<Device> matchDevicesWithRules(Task task, int maxDeviceCount) {
+    List<Device> matchDevicesWithRules(Task task, int maxDeviceCount) {
         List<Device> matchedDevices = new ArrayList<>();
         List<Device> candidates = deviceManager.getDevicesByCountry(task.getTaskCountry());
-
-        log.info("[DeviceAssign] Matching devices for task {} (country: {}, candidates: {})", task.getTid(), task.getTaskCountry(), candidates.size());
-        
-        // 显示规则信息
         List<RuleDefinition> rules = ruleManager.getDefaultRules();
-        log.info("[DeviceAssign] Using {} rules for evaluation", rules.size());
-        for (RuleDefinition rule : rules) {
-            log.debug("[DeviceAssign] Rule: {} - {}", rule.getId(), rule.getContent());
+
+        log.info("[DeviceAssign] Matching devices for task {} (country: {}, candidates: {}, rules: {})", 
+                task.getTid(), task.getTaskCountry(), candidates.size(), rules.size());
+        
+        // 显示规则信息（仅在debug级别）
+        if (log.isDebugEnabled()) {
+            for (RuleDefinition rule : rules) {
+                log.debug("[DeviceAssign] Rule: {} - {}", rule.getId(), rule.getContent());
+            }
         }
         
         for (Device device : candidates) {
             if (matchedDevices.size() >= maxDeviceCount) {
-                log.info("[DeviceAssign] cur matched {} Max device count {} reached for task {}, stopping matching",matchedDevices.size(), maxDeviceCount,task.getTid());
+                log.info("[DeviceAssign] Max device count {} reached for task {}, stopping matching", 
+                        maxDeviceCount, task.getTid());
                 break;
-            };
+            }
 
             // 获取设备的Token
             Token token = deviceManager.getToken(device.getDeviceId());
@@ -78,29 +81,19 @@ public class TaskDeviceAssignListener {
             // 创建设备匹配上下文
             DeviceMatchContext matchContext = new DeviceMatchContext(device, token, task, deviceManager);
 
-            // 打印设备和Token详细信息
-            log.info("[Debug] DeviceId={}, groupId={}, status={}, locked={}, supportedApps={}, tokenId={}, tokenStatus={}, tokenChannel={}",
-                    device.getDeviceId(),
-                    device.getGroupId(),
-                    device.getStatus(),
-                    deviceManager.isLocked(device.getDeviceId()),
-                    device.getSupportedApps(),
-                    token != null ? token.getTokenId() : "null",
-                    token != null ? token.getStatus() : "null",
-                    token != null ? token.getChannel() : "null"
-            );
-
-            // 打印规则上下文
-            log.info("[Debug] DeviceMatchContext: {}", matchContext.getContext());
-
-            // 评估每个规则并打印结果
-            for (RuleDefinition rule : rules) {
-                try {
-                    boolean result = ruleManager.evaluate(rule, matchContext.getContext());
-                    log.info("[Debug] Rule: {} ({}), result: {}", rule.getId(), rule.getDesc(), result ? "✓ 通过" : "✗ 失败");
-                } catch (Exception e) {
-                    log.info("[Debug] Rule: {} ({}), result: ✗ 异常 - {}", rule.getId(), rule.getDesc(), e.getMessage());
-                }
+            // 打印设备和Token详细信息（仅在debug级别）
+            if (log.isDebugEnabled()) {
+                log.debug("[Debug] DeviceId={}, groupId={}, status={}, locked={}, supportedApps={}, tokenId={}, tokenStatus={}, tokenChannel={}",
+                        device.getDeviceId(),
+                        device.getGroupId(),
+                        device.getStatus(),
+                        deviceManager.isLocked(device.getDeviceId()),
+                        device.getSupportedApps(),
+                        token != null ? token.getTokenId() : "null",
+                        token != null ? token.getStatus() : "null",
+                        token != null ? token.getChannel() : "null"
+                );
+                log.debug("[Debug] DeviceMatchContext: {}", matchContext.getContext());
             }
 
             try {
@@ -112,7 +105,7 @@ public class TaskDeviceAssignListener {
                     device.getDeviceId(), hitRules.size(), rules.size());
 
                 // 如果所有规则都通过，则匹配成功
-                if (hitRules.size() == ruleManager.getDefaultRules().size()) {
+                if (hitRules.size() == rules.size()) {
                     if (deviceManager.tryLockDevice(device.getDeviceId())) {
                         // 记录成功分配
                         recordService.recordDeviceAssignment(
@@ -141,11 +134,13 @@ public class TaskDeviceAssignListener {
                     );
                     log.info("✗ Rule not matched: {} (failed rules: {})", device.getDeviceId(), failedRules);
                     
-                    // 显示失败的规则详情
-                    for (RuleEvaluationDetail detail : ruleEvaluations) {
-                        if (!detail.isPassed()) {
-                            log.debug("[DeviceAssign] Failed rule: {} - {} = {}", 
-                                detail.getRuleId(), detail.getRuleContent(), detail.getEvaluationResult());
+                    // 显示失败的规则详情（仅在debug级别）
+                    if (log.isDebugEnabled()) {
+                        for (RuleEvaluationDetail detail : ruleEvaluations) {
+                            if (!detail.isPassed()) {
+                                log.debug("[DeviceAssign] Failed rule: {} - {} = {}", 
+                                    detail.getRuleId(), detail.getRuleContent(), detail.getEvaluationResult());
+                            }
                         }
                     }
                 }
@@ -178,8 +173,16 @@ public class TaskDeviceAssignListener {
             try {
                 passed = ruleManager.evaluate(rule, matchContext.getContext());
                 result = String.valueOf(passed);
+                
+                // 只记录失败的规则匹配（成功的用debug级别）
+                if (!passed) {
+                    log.info("[Debug] Rule: {} ({}), result: ✗ 失败", rule.getId(), rule.getDesc());
+                } else {
+                    log.debug("[Debug] Rule: {} ({}), result: ✓ 通过", rule.getId(), rule.getDesc());
+                }
             } catch (Exception e) {
                 result = "Exception: " + e.getMessage();
+                log.info("[Debug] Rule: {} ({}), result: ✗ 异常 - {}", rule.getId(), rule.getDesc(), e.getMessage());
             }
 
             long evaluationTime = System.currentTimeMillis() - startTime;

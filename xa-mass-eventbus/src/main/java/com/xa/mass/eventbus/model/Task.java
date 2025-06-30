@@ -265,7 +265,7 @@ public class Task {
     }
 
     public int getBatchSize() {
-        return batchSize;
+        return Math.max(batchSize,1);
     }
 
     public void setBatchSize(int batchSize) {
