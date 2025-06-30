@@ -232,7 +232,7 @@
                 <h3>暂无任务数据</h3>
                 <p>当前系统中没有任务，请先创建一些任务。</p>
             </div>
-            
+
             <div th:if="${!#lists.isEmpty(tasks)}">
                 <table>
                     <thead>
@@ -257,13 +257,13 @@
                             <td th:text="${task.project != null ? task.project.code : '-'}">-</td>
                             <td th:text="${task.taskCountry}">-</td>
                             <td>
-                                <span class="status-badge" th:classappend="'status-' + ${#strings.toLowerCase(task.status.name())}" 
+                                <span class="status-badge" th:classappend="'status-' + ${#strings.toLowerCase(task.status.name())}"
                                       th:text="${task.status.description}">状态</span>
                             </td>
                             <td>
                                 <div style="display: flex; align-items: center; gap: 10px;">
                                     <div class="progress-bar">
-                                        <div class="progress-fill" 
+                                        <div class="progress-fill"
                                              th:style="'width: ' + ${task.taskInitNumber > 0 ? (task.taskExecutedNumber * 100 / task.taskInitNumber) : 0} + '%'"></div>
                                     </div>
                                     <span th:text="${task.taskInitNumber > 0 ? task.taskExecutedNumber + '/' + task.taskInitNumber : '0/0'}">0/0</span>
@@ -294,9 +294,9 @@
 
         <!-- 状态统计 -->
         <div style="margin-top: 20px; display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
-            <div th:each="status : ${taskStatuses}" 
+            <div th:each="status : ${taskStatuses}"
                  style="background: white; padding: 15px; border-radius: 8px; text-align: center; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
-                <div style="font-size: 24px; font-weight: bold; color: #333;" 
+                <div style="font-size: 24px; font-weight: bold; color: #333;"
                      th:text="${taskStatusCount[status] ?: 0}">0</div>
                 <div style="color: #666; margin-top: 5px;" th:text="${status.description}">状态</div>
             </div>
