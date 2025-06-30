@@ -174,10 +174,10 @@
                             </td>
                             <td th:text="${device.agentVersion}">-</td>
                             <td>
-                                <div class="app-tags" th:if="${!#lists.isEmpty(device.supportedApps)}">
-                                    <span class="app-tag" th:each="app : ${device.supportedApps}" th:text="${app}">app</span>
+                                <div class="app-tags" th:if="${!#lists.isEmpty(device.supportedProjects)}">
+                                    <span class="app-tag" th:each="project : ${device.supportedProjects}" th:text="${project.code}"></span>
                                 </div>
-                                <span th:if="${#lists.isEmpty(device.supportedApps)}">-</span>
+                                <span th:if="${#lists.isEmpty(device.supportedProjects)}">-</span>
                             </td>
                             <td>
                                 <span th:if="${device.locked}" class="locked-indicator">🔒 已锁定</span>

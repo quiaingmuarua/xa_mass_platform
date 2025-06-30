@@ -128,7 +128,7 @@ public class AssignmentRecordService {
         TaskSnapshot snapshot = new TaskSnapshot();
         snapshot.setTaskId(task.getTid());
         snapshot.setTaskName(task.getTaskName());
-        snapshot.setProject(task.getProject());
+        snapshot.setProject(task.getProjectCode());
         snapshot.setTaskCountry(task.getTaskCountry());
         snapshot.setTaskStatus(task.getStatus().name());
         snapshot.setTaskInitNumber(task.getTaskInitNumber());
@@ -152,13 +152,13 @@ public class AssignmentRecordService {
         snapshot.setDeviceStatus(device.getStatus().name());
         snapshot.setAgentVersion(device.getAgentVersion());
         snapshot.setLastHeartbeat(device.getLastHeartbeat());
-        snapshot.setSupportedApps(device.getSupportedApps());
+        snapshot.setSupportedProjects(device.getSupportedProjects());
         snapshot.setGroupId(device.getGroupId());
         snapshot.setLockExpireTime(device.getLockExpireTime());
         snapshot.setOnlineStrategy(device.getOnlineStrategy());
         snapshot.setCreateTime(device.getCreateTime());
         snapshot.setUpdateTime(device.getUpdateTime());
-        snapshot.setAppCount(device.getSupportedApps() != null ? device.getSupportedApps().size() : 0);
+        snapshot.setAppCount(device.getSupportedProjects() != null ? device.getSupportedProjects().size() : 0);
         snapshot.setDeviceAvailable(device.isAvailable());
         snapshot.setDeviceLocked(device.isLocked());
         return snapshot;

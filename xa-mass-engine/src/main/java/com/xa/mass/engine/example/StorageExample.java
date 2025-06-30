@@ -16,6 +16,7 @@ import com.xa.mass.eventbus.enums.task.TokenStatus;
 import com.xa.mass.eventbus.model.Device;
 import com.xa.mass.eventbus.model.Task;
 import com.xa.mass.eventbus.model.Token;
+import com.xa.mass.eventbus.enums.Project;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -63,9 +64,9 @@ public class StorageExample {
         TaskManager taskManager = new TaskManager(taskScheduler, taskStorage);
         
         // 3. 添加测试数据
-        Device device1 = new Device("device-001", "1.0.0", Arrays.asList("demoApp"));
+        Device device1 = new Device("device-001", "1.0.0", Arrays.asList(Project.DEMO_APP));
         device1.setGroupId("us");
-        Device device2 = new Device("device-002", "1.0.1", Arrays.asList("demoApp"));
+        Device device2 = new Device("device-002", "1.0.1", Arrays.asList(Project.DEMO_APP));
         device2.setGroupId("gb");
         
         Token token1 = new Token("token-001", "device-001", "us");

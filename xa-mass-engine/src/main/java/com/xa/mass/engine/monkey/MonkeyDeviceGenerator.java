@@ -1,6 +1,7 @@
 package com.xa.mass.engine.monkey;
 
 import com.google.gson.*;
+import com.xa.mass.eventbus.enums.Project;
 import com.xa.mass.eventbus.enums.device.DeviceStatus;
 import com.xa.mass.eventbus.enums.task.TokenStatus;
 import com.xa.mass.eventbus.model.Device;
@@ -29,7 +30,7 @@ public class MonkeyDeviceGenerator {
         public int count = 10;
         public String groupId = "us";
         public String agentVersion = "1.0.0";
-        public List<String> supportedApps = List.of("demoApp");
+        public List<Project> supportedProjects = Arrays.asList(Project.DEMO_APP);
         public List<MockTokenBatchConfig> tokens = List.of();
     }
 
@@ -49,7 +50,7 @@ public class MonkeyDeviceGenerator {
                 device.setStatus(DeviceStatus.ONLINE);
                 device.setGroupId(cfg.groupId);
                 device.setAgentVersion(cfg.agentVersion);
-                device.setSupportedApps(new ArrayList<>(cfg.supportedApps));
+                device.setSupportedProjects(cfg.supportedProjects);
                 devices.add(device);
                 // tokens
                 if (cfg.tokens != null && !cfg.tokens.isEmpty()) {
@@ -87,7 +88,7 @@ public class MonkeyDeviceGenerator {
                 "    \"count\": 100,\n" +
                 "    \"groupId\": \"us\",\n" +
                 "    \"agentVersion\": \"1.0.0\",\n" +
-                "    \"supportedApps\": [\"demoApp\", \"otherApp\"],\n" +
+                "    \"supportedProjects\": [\"DEMO_APP\"],\n" +
                 "    \"tokens\": [\n" +
                 "      {\n" +
                 "        \"tokenIdTemplate\": \"token-{i}-{j}\",\n" +
@@ -102,7 +103,7 @@ public class MonkeyDeviceGenerator {
                 "    \"count\": 50,\n" +
                 "    \"groupId\": \"gb\",\n" +
                 "    \"agentVersion\": \"1.0.1\",\n" +
-                "    \"supportedApps\": [\"demoApp\"],\n" +
+                "    \"supportedProjects\": [\"DEMO_APP\"],\n" +
                 "    \"tokens\": [\n" +
                 "      {\n" +
                 "        \"tokenIdTemplate\": \"gb-token-{i}-{j}\",\n" +

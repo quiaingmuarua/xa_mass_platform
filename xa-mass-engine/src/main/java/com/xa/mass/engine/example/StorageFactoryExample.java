@@ -1,6 +1,7 @@
 package com.xa.mass.engine.example;
 
 import com.xa.mass.engine.storage.*;
+import com.xa.mass.eventbus.enums.Project;
 import com.xa.mass.eventbus.enums.task.TokenStatus;
 import com.xa.mass.eventbus.model.Device;
 import com.xa.mass.eventbus.model.Task;
@@ -44,7 +45,7 @@ public class StorageFactoryExample {
         RuleStorage ruleStorage = new InMemoryRuleStorage();
         
         // 2. 添加测试数据
-        Device device = new Device("device-001", "1.0.0", Arrays.asList("demoApp"));
+        Device device = new Device("device-001", "1.0.0", Arrays.asList(Project.DEMO_APP));
         device.setGroupId("us");
         
         Token token = new Token("token-001", "device-001", "us");
@@ -89,7 +90,7 @@ public class StorageFactoryExample {
             log.info("Redis存储实例创建成功");
             
             // 2. 添加测试数据
-            Device device = new Device("device-002", "1.0.1", Arrays.asList("demoApp"));
+            Device device = new Device("device-002", "1.0.1", Arrays.asList(Project.DEMO_APP));
             device.setGroupId("gb");
             
             Token token = new Token("token-002", "device-002", "gb");
@@ -98,7 +99,7 @@ public class StorageFactoryExample {
             User user = new User();
             user.setName("testUser2");
             
-            Task task = new Task("task-002", "Test Task 2", "demoApp", "gb", 50, "Test content 2", user);
+            Task task = new Task("task-002", "Test Task 2", Project.DEMO_APP.getCode(), "gb", 50, "Test content 2", user);
             
             deviceStorage.addDevice(device);
             deviceStorage.addToken("device-002", token);
@@ -149,8 +150,8 @@ public class StorageFactoryExample {
         User user2 = new User();
         user2.setName("factoryUser2");
         
-        Task task1 = new Task("task-factory-001", "Factory Task 1", "demoApp", "us", 100, "Factory content 1", user1);
-        Task task2 = new Task("task-factory-002", "Factory Task 2", "demoApp", "gb", 50, "Factory content 2", user2);
+        Task task1 = new Task("task-factory-001", "Factory Task 1", Project.DEMO_APP.getCode(), "us", 100, "Factory content 1", user1);
+        Task task2 = new Task("task-factory-002", "Factory Task 2", Project.DEMO_APP.getCode(), "gb", 50, "Factory content 2", user2);
         
         inMemoryStorage.saveTask(task1);
         inMemoryStorage.saveTask(task2);
@@ -160,7 +161,7 @@ public class StorageFactoryExample {
         
         for (Task task : allTasks) {
             log.info("任务: {} (country: {}, project: {})", 
-                task.getTid(), task.getTaskCountry(), task.getProject());
+                task.getTid(), task.getTaskCountry(), task.getProjectCode());
         }
         
         log.info("=== 存储工厂测试完成 ===");

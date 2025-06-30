@@ -3,6 +3,7 @@ package com.xa.mass.eventbus.model;
 
 
 import com.xa.mass.eventbus.enums.task.TaskStatus;
+import com.xa.mass.eventbus.enums.Project;
 
 import java.time.LocalDateTime;
 import java.util.Objects;
@@ -26,7 +27,7 @@ public class Task {
     /**
      * 所属project/app
      */
-    private String project;
+    private Project project;
     
     /**
      * 状态
@@ -114,7 +115,7 @@ public class Task {
         this();
         this.tid = tid;
         this.taskName = taskName;
-        this.project = project;
+        this.project = Project.fromCode(project);
         this.taskCountry = taskCountry;
         this.taskInitNumber = taskInitNumber;
         this.taskValidNumber = taskInitNumber;
@@ -140,12 +141,20 @@ public class Task {
         this.taskName = taskName;
     }
     
-    public String getProject() {
+    public Project getProject() {
         return project;
     }
     
-    public void setProject(String project) {
+    public String getProjectCode() {
+        return project != null ? project.getCode() : null;
+    }
+    
+    public void setProject(Project project) {
         this.project = project;
+    }
+    
+    public void setProject(String projectCode) {
+        this.project = Project.fromCode(projectCode);
     }
     
     public TaskStatus getStatus() {
@@ -330,7 +339,7 @@ public class Task {
         return "Task{" +
                 "tid='" + tid + '\'' +
                 ", taskName='" + taskName + '\'' +
-                ", project='" + project + '\'' +
+                ", project='" + (project != null ? project.getCode() : null) + '\'' +
                 ", status=" + status +
                 ", taskCountry='" + taskCountry + '\'' +
                 ", taskInitNumber=" + taskInitNumber +

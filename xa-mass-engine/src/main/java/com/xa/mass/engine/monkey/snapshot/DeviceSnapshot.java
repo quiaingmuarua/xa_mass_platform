@@ -2,6 +2,7 @@ package com.xa.mass.engine.monkey.snapshot;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import com.xa.mass.eventbus.enums.Project;
 
 /**
  * 设备属性快照
@@ -11,7 +12,7 @@ public class DeviceSnapshot {
     private String deviceStatus;
     private String agentVersion;
     private LocalDateTime lastHeartbeat;
-    private List<String> supportedApps;
+    private List<Project> supportedProjects;
     private String groupId;
     private LocalDateTime lockExpireTime;
     private String onlineStrategy;
@@ -57,12 +58,12 @@ public class DeviceSnapshot {
         this.lastHeartbeat = lastHeartbeat;
     }
 
-    public List<String> getSupportedApps() {
-        return supportedApps;
+    public List<Project> getSupportedProjects() {
+        return supportedProjects;
     }
 
-    public void setSupportedApps(List<String> supportedApps) {
-        this.supportedApps = supportedApps;
+    public void setSupportedProjects(List<Project> supportedProjects) {
+        this.supportedProjects = supportedProjects;
     }
 
     public String getGroupId() {

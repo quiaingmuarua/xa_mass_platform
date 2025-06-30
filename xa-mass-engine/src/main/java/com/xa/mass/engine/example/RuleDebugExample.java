@@ -10,11 +10,14 @@ import com.xa.mass.engine.storage.TaskStorageFactory;
 import com.xa.mass.eventbus.model.Device;
 import com.xa.mass.eventbus.model.Task;
 import com.xa.mass.eventbus.model.Token;
+import com.xa.mass.eventbus.enums.Project;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Arrays;
+import java.util.stream.Collectors;
 
 /**
  * 规则调试示例
@@ -61,7 +64,7 @@ public class RuleDebugExample {
             device.setGroupId(countries[i % countries.length]);
             device.setStatus(com.xa.mass.eventbus.enums.device.DeviceStatus.ONLINE);
             device.setAgentVersion("1.0." + (i % 5));
-            device.setSupportedApps(java.util.Arrays.asList(projects[i % projects.length]));
+            device.setSupportedProjects(Arrays.asList(Project.DEMO_APP));
 
             // 创建设备对应的Token
             Token token = new Token();
@@ -71,6 +74,11 @@ public class RuleDebugExample {
 
             deviceManager.addDevice(device);
             deviceManager.addToken(device.getDeviceId(), token);
+
+            logger.info("Device {} supports projects: {}", device.getDeviceId(), 
+                    device.getSupportedProjects().stream()
+                            .map(Project::getCode)
+                            .collect(Collectors.joining(", ")));
         }
 
         System.out.println("生成了 " + 10 + " 个测试设备和Token");
@@ -106,7 +114,7 @@ public class RuleDebugExample {
         System.out.println("  - 国家: " + device.getGroupId());
         System.out.println("  - 状态: " + device.getStatus());
         System.out.println("  - Agent版本: " + device.getAgentVersion());
-        System.out.println("  - 支持的应用: " + device.getSupportedApps());
+        System.out.println("  - 支持的项目: " + device.getSupportedProjects());
         System.out.println("  - 是否可用: " + device.isAvailable());
         System.out.println("  - 是否锁定: " + device.isLocked());
 
@@ -123,7 +131,7 @@ public class RuleDebugExample {
 
         System.out.println("任务信息:");
         System.out.println("  - 任务ID: " + task.getTid());
-        System.out.println("  - 项目: " + task.getProject());
+        System.out.println("  - 项目: " + task.getProjectCode());
         System.out.println("  - 国家: " + task.getTaskCountry());
 
         // 打印计算属性

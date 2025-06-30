@@ -33,8 +33,8 @@ public class DefaultDeviceSelector implements DeviceSelector {
             return false;
         }
         
-        // 检查设备是否支持任务的应用
-        if (!device.supportsApp(task.getProject())) {
+        // 检查设备是否支持任务的项目
+        if (!device.supportsProject(task.getProject())) {
             return false;
         }
         

@@ -4,13 +4,14 @@ import com.xa.mass.engine.DeviceManager;
 import com.xa.mass.eventbus.model.Device;
 import com.xa.mass.eventbus.model.Task;
 import com.xa.mass.eventbus.model.Token;
+import com.xa.mass.eventbus.enums.Project;
 
 import java.util.HashMap;
 import java.util.Map;
 
 /**
  * 设备匹配上下文
- * 用于规则引擎评估设备是否匹配任务
+ * 封装设备、Token、任务等信息，用于规则评估
  */
 public class DeviceMatchContext {
     private final Device device;
@@ -35,7 +36,7 @@ public class DeviceMatchContext {
         ctx.put("deviceStatus", device.getStatus().name());
         ctx.put("deviceGroupId", device.getGroupId());
         ctx.put("agentVersion", device.getAgentVersion());
-        ctx.put("supportedApps", device.getSupportedApps());
+        ctx.put("supportedProjects", device.getSupportedProjects());
         ctx.put("isDeviceAvailable", device.isAvailable());
         // 使用DeviceManager检查锁定状态，确保与分配逻辑一致
         ctx.put("isDeviceLocked", deviceManager.isLocked(device.getDeviceId()));
@@ -66,9 +67,9 @@ public class DeviceMatchContext {
         ctx.put("runTaskMinDeviceCnt", task.getRunTaskMinDeviceCnt());
 
         // 计算属性
-        ctx.put("appCount", device.getSupportedApps() != null ? device.getSupportedApps().size() : 0);
-        ctx.put("supportsProject", device.getSupportedApps() != null &&
-                device.getSupportedApps().contains(task.getProject()));
+        ctx.put("appCount", device.getSupportedProjects() != null ? device.getSupportedProjects().size() : 0);
+        ctx.put("supportsProject", device.getSupportedProjects() != null &&
+                device.getSupportedProjects().contains(task.getProject()));
         ctx.put("countryMatch", task.getTaskCountry().equals(device.getGroupId()));
         ctx.put("channelMatch", token != null && task.getTaskCountry().equals(token.getChannel()));
 
@@ -87,6 +88,10 @@ public class DeviceMatchContext {
         return task;
     }
 
+    public DeviceManager getDeviceManager() {
+        return deviceManager;
+    }
+
     public Map<String, Object> getContext() {
         return context;
     }
@@ -95,8 +100,9 @@ public class DeviceMatchContext {
     public String toString() {
         return "DeviceMatchContext{" +
                 "deviceId='" + device.getDeviceId() + '\'' +
-                ", tokenId='" + (token != null ? token.getTokenId() : "null") + '\'' +
                 ", taskId='" + task.getTid() + '\'' +
+                ", supportsProject=" + context.get("supportsProject") +
+                ", countryMatch=" + context.get("countryMatch") +
                 '}';
     }
 } 

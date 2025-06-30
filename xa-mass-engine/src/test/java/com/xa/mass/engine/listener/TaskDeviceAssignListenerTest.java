@@ -5,6 +5,7 @@ import com.xa.mass.engine.model.DeviceMatchContext;
 import com.xa.mass.engine.rules.RuleDefinition;
 import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.engine.service.AssignmentRecordService;
+import com.xa.mass.eventbus.enums.Project;
 import com.xa.mass.eventbus.model.Device;
 import com.xa.mass.eventbus.model.Task;
 import com.xa.mass.eventbus.model.Token;
@@ -179,7 +180,7 @@ public class TaskDeviceAssignListenerTest {
         Device device = new Device();
         device.setDeviceId(deviceId);
         device.setGroupId("us");
-        device.setSupportedApps(Arrays.asList("demoApp"));
+        device.setSupportedProjects(Arrays.asList(Project.DEMO_APP));
         return device;
     }
     

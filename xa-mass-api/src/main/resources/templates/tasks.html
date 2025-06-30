@@ -222,6 +222,7 @@
             <a href="/status/tasks">📋 任务详情</a>
             <a href="/status/devices">📱 设备详情</a>
             <a href="/status/rules">📏 规则管理</a>
+            <a href="/config">⚙️ 全局配置</a>
         </div>
 
         <div id="alert-container"></div>
@@ -253,7 +254,7 @@
                                 <div class="task-id" th:text="${task.tid}">-</div>
                             </td>
                             <td th:text="${task.taskName}">-</td>
-                            <td th:text="${task.project}">-</td>
+                            <td th:text="${task.project != null ? task.project.code : '-'}">-</td>
                             <td th:text="${task.taskCountry}">-</td>
                             <td>
                                 <span class="status-badge" th:classappend="'status-' + ${#strings.toLowerCase(task.status.name())}" 
@@ -316,7 +317,10 @@
                 </div>
                 <div class="form-group">
                     <label for="project">项目 *</label>
-                    <input type="text" id="project" name="project" required>
+                    <select id="project" name="project" required>
+                        <option value="">请选择项目</option>
+                        <option value="demoApp">演示应用 (demoApp)</option>
+                    </select>
                 </div>
                 <div class="form-group">
                     <label for="countryCode">国家代码 *</label>
@@ -428,7 +432,10 @@
                 </div>
                 <div class="form-group">
                     <label for="editProject">项目 *</label>
-                    <input type="text" id="editProject" name="project" required>
+                    <select id="editProject" name="project" required>
+                        <option value="">请选择项目</option>
+                        <option value="demoApp">演示应用 (demoApp)</option>
+                    </select>
                 </div>
                 <div class="form-group">
                     <label for="editCountryCode">国家代码 *</label>
@@ -475,6 +482,51 @@
 
     <script>
         console.log('tasks.html script loaded');
+        
+        // 页面加载时获取项目列表
+        document.addEventListener('DOMContentLoaded', function() {
+            loadProjects();
+        });
+        
+        // 加载项目列表
+        async function loadProjects() {
+            try {
+                const response = await fetch('/api/config/projects');
+                if (!response.ok) {
+                    throw new Error('HTTP ' + response.status);
+                }
+                const result = await response.json();
+                
+                if (result.code === 0) {
+                    populateProjectSelects(result.data);
+                } else {
+                    console.error('加载项目列表失败:', result.msg);
+                }
+            } catch (error) {
+                console.error('加载项目列表失败:', error.message);
+            }
+        }
+        
+        // 填充项目下拉框
+        function populateProjectSelects(projects) {
+            const projectSelect = document.getElementById('project');
+            const editProjectSelect = document.getElementById('editProject');
+            
+            // 清空现有选项（保留第一个"请选择项目"选项）
+            projectSelect.innerHTML = '<option value="">请选择项目</option>';
+            editProjectSelect.innerHTML = '<option value="">请选择项目</option>';
+            
+            // 添加项目选项
+            projects.forEach(project => {
+                const option = document.createElement('option');
+                option.value = project.code;
+                option.textContent = `${project.name} (${project.code})`;
+                
+                projectSelect.appendChild(option.cloneNode(true));
+                editProjectSelect.appendChild(option);
+            });
+        }
+        
         // ========== 全局JS函数，确保全局作用域 ==========
         function showAlert(message, type = 'success') {
             const container = document.getElementById('alert-container');
@@ -525,7 +577,7 @@
                         const t = data.task;
                         document.getElementById('editTaskId').value = t.tid;
                         document.getElementById('editTaskName').value = t.taskName;
-                        document.getElementById('editProject').value = t.project;
+                        document.getElementById('editProject').value = t.project.code;
                         document.getElementById('editCountryCode').value = t.taskCountry;
                         document.getElementById('editTargetList').value = (t.targetList || []).join('\n');
                         document.getElementById('editTextContent').value = t.textContent;
@@ -606,7 +658,7 @@
                         const t = data.task;
                         document.getElementById('auditTaskId').value = t.tid;
                         document.getElementById('auditTaskName').value = t.taskName;
-                        document.getElementById('auditProject').value = t.project;
+                        document.getElementById('auditProject').value = t.project.code;
                         document.getElementById('auditCountryCode').value = t.taskCountry;
                         document.getElementById('auditUserId').value = t.user ? t.user.name : '';
                         document.getElementById('auditTargetCount').value = (t.targetList ? t.targetList.length : 0);

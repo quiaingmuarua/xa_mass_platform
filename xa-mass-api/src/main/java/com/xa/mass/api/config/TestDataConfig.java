@@ -12,6 +12,7 @@ import com.xa.mass.eventbus.model.Device;
 import com.xa.mass.eventbus.model.Task;
 import com.xa.mass.eventbus.model.Token;
 import com.xa.mass.eventbus.model.User;
+import com.xa.mass.eventbus.enums.Project;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -74,12 +75,12 @@ public class TestDataConfig {
 
         // 创建不同状态的任务
         List<Task> testTasks = Arrays.asList(
-            createTask("task-001", "测试任务1", "demoApp", "us", 100, TaskStatus.NEW, user1),
-            createTask("task-002", "测试任务2", "demoApp", "gb", 50, TaskStatus.BLOCKED, user1),
-            createTask("task-003", "测试任务3", "demoApp", "us", 200, TaskStatus.READY, user2),
-            createTask("task-004", "测试任务4", "demoApp", "gb", 75, TaskStatus.RUNNING, user2),
-            createTask("task-005", "测试任务5", "demoApp", "us", 150, TaskStatus.PAUSED, user1),
-            createTask("task-006", "测试任务6", "demoApp", "gb", 80, TaskStatus.TERMINAL, user2)
+            createTask("task-001", "测试任务1", Project.DEMO_APP.getCode(), "us", 100, TaskStatus.NEW, user1),
+            createTask("task-002", "测试任务2", Project.DEMO_APP.getCode(), "gb", 50, TaskStatus.BLOCKED, user1),
+            createTask("task-003", "测试任务3", Project.DEMO_APP.getCode(), "us", 200, TaskStatus.READY, user2),
+            createTask("task-004", "测试任务4", Project.DEMO_APP.getCode(), "gb", 75, TaskStatus.RUNNING, user2),
+            createTask("task-005", "测试任务5", Project.DEMO_APP.getCode(), "us", 150, TaskStatus.PAUSED, user1),
+            createTask("task-006", "测试任务6", Project.DEMO_APP.getCode(), "gb", 80, TaskStatus.TERMINAL, user2)
         );
 
         for (Task task : testTasks) {
@@ -94,11 +95,11 @@ public class TestDataConfig {
         
         // 创建不同状态的设备
         List<Device> testDevices = Arrays.asList(
-            createDevice("device-001", "us", DeviceStatus.ONLINE, Arrays.asList("demoApp", "testApp")),
-            createDevice("device-002", "us", DeviceStatus.ONLINE, Arrays.asList("demoApp")),
-            createDevice("device-003", "gb", DeviceStatus.OFFLINE, Arrays.asList("demoApp", "testApp")),
-            createDevice("device-004", "gb", DeviceStatus.ONLINE, Arrays.asList("demoApp")),
-            createDevice("device-005", "us", DeviceStatus.ONLINE, Arrays.asList("testApp"))
+            createDevice("device-001", "us", DeviceStatus.ONLINE, Arrays.asList(Project.DEMO_APP)),
+            createDevice("device-002", "us", DeviceStatus.ONLINE, Arrays.asList(Project.DEMO_APP)),
+            createDevice("device-003", "gb", DeviceStatus.OFFLINE, Arrays.asList(Project.DEMO_APP)),
+            createDevice("device-004", "gb", DeviceStatus.ONLINE, Arrays.asList(Project.DEMO_APP)),
+            createDevice("device-005", "us", DeviceStatus.ONLINE, Arrays.asList(Project.DEMO_APP))
         );
 
         for (Device device : testDevices) {
@@ -168,8 +169,8 @@ public class TestDataConfig {
         return task;
     }
 
-    private Device createDevice(String deviceId, String groupId, DeviceStatus status, List<String> supportedApps) {
-        Device device = new Device(deviceId, "1.0.0", supportedApps);
+    private Device createDevice(String deviceId, String groupId, DeviceStatus status, List<Project> supportedProjects) {
+        Device device = new Device(deviceId, "1.0.0", supportedProjects);
         device.setGroupId(groupId);
         device.setStatus(status);
         device.updateHeartbeat(); // 更新心跳时间
@@ -185,7 +186,7 @@ public class TestDataConfig {
     private com.xa.mass.engine.model.TaskCreateRequestDto createTaskRequestDto(Task task) {
         com.xa.mass.engine.model.TaskCreateRequestDto dto = new com.xa.mass.engine.model.TaskCreateRequestDto();
         dto.setTaskName(task.getTaskName());
-        dto.setProject(task.getProject());
+        dto.setProject(task.getProjectCode());
         dto.setCountryCode(task.getTaskCountry());
         dto.setTextContent(task.getTextContent());
         dto.setUserId(task.getUser().getName());

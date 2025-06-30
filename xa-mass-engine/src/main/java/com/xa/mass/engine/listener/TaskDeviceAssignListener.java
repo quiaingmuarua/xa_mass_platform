@@ -10,12 +10,14 @@ import com.xa.mass.eventbus.enums.assignment.AssignmentResult;
 import com.xa.mass.eventbus.model.Device;
 import com.xa.mass.eventbus.model.Task;
 import com.xa.mass.eventbus.model.Token;
+import com.xa.mass.eventbus.enums.Project;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * 任务分配监听器：监听任务分配事件，按批次分配设备
@@ -83,12 +85,14 @@ public class TaskDeviceAssignListener {
 
             // 打印设备和Token详细信息（仅在debug级别）
             if (log.isDebugEnabled()) {
-                log.debug("[Debug] DeviceId={}, groupId={}, status={}, locked={}, supportedApps={}, tokenId={}, tokenStatus={}, tokenChannel={}",
+                log.debug("[Debug] DeviceId={}, groupId={}, status={}, locked={}, supportedProjects={}, tokenId={}, tokenStatus={}, tokenChannel={}",
                         device.getDeviceId(),
                         device.getGroupId(),
                         device.getStatus(),
                         deviceManager.isLocked(device.getDeviceId()),
-                        device.getSupportedApps(),
+                        device.getSupportedProjects().stream()
+                                .map(Project::getCode)
+                                .collect(Collectors.joining(", ")),
                         token != null ? token.getTokenId() : "null",
                         token != null ? token.getStatus() : "null",
                         token != null ? token.getChannel() : "null"

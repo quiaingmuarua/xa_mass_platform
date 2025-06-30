@@ -3,6 +3,7 @@ package com.xa.mass.eventbus.model;
 
 
 import com.xa.mass.eventbus.enums.device.DeviceStatus;
+import com.xa.mass.eventbus.enums.Project;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -35,9 +36,9 @@ public class Device {
     private LocalDateTime lastHeartbeat;
     
     /**
-     * 支持的project/app列表
+     * 支持的project列表
      */
-    private List<String> supportedApps;
+    private List<Project> supportedProjects;
     
     /**
      * 分组信息
@@ -70,11 +71,11 @@ public class Device {
         this.updateTime = LocalDateTime.now();
     }
     
-    public Device(String deviceId, String agentVersion, List<String> supportedApps) {
+    public Device(String deviceId, String agentVersion, List<Project> supportedProjects) {
         this();
         this.deviceId = deviceId;
         this.agentVersion = agentVersion;
-        this.supportedApps = supportedApps;
+        this.supportedProjects = supportedProjects;
     }
     
     // Getters and Setters
@@ -112,12 +113,12 @@ public class Device {
         this.updateTime = LocalDateTime.now();
     }
     
-    public List<String> getSupportedApps() {
-        return supportedApps;
+    public List<Project> getSupportedProjects() {
+        return supportedProjects;
     }
     
-    public void setSupportedApps(List<String> supportedApps) {
-        this.supportedApps = supportedApps;
+    public void setSupportedProjects(List<Project> supportedProjects) {
+        this.supportedProjects = supportedProjects;
     }
     
     public String getGroupId() {
@@ -170,8 +171,13 @@ public class Device {
     /**
      * 检查设备是否支持指定应用
      */
-    public boolean supportsApp(String app) {
-        return supportedApps != null && supportedApps.contains(app);
+    public boolean supportsProject(Project project) {
+        return supportedProjects != null && supportedProjects.contains(project);
+    }
+    
+    public boolean supportsProject(String projectCode) {
+        if (supportedProjects == null) return false;
+        return supportedProjects.stream().anyMatch(p -> p.getCode().equals(projectCode));
     }
     
     /**
@@ -235,7 +241,7 @@ public class Device {
                 ", status=" + status +
                 ", agentVersion='" + agentVersion + '\'' +
                 ", lastHeartbeat=" + lastHeartbeat +
-                ", supportedApps=" + supportedApps +
+                ", supportedProjects=" + supportedProjects +
                 ", groupId='" + groupId + '\'' +
                 ", isLocked=" + isLocked() +
                 '}';

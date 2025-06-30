@@ -102,8 +102,8 @@ public class MockTaskEngineStarter implements CommandLineRunner {
 
             for (TaskCreateRequestDto dto : taskDtos) {
                 Task task = engine.createTask(dto);
-                log.info("Created task: {} (country: {}, project: {}, initNumber: {})",
-                        task.getTid(), task.getTaskCountry(), task.getProject(), task.getTaskInitNumber());
+                log.info("任务创建成功: {} (country: {}, project: {}, messages: {})", 
+                    task.getTid(), task.getTaskCountry(), task.getProjectCode(), task.getTaskInitNumber());
             }
         }
 
