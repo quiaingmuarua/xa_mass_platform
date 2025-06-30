@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mass Platform 状态监控</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        .stat-card {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .stat-card h3 {
+            margin-top: 0;
+            color: #333;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 10px;
+        }
+        .stat-item {
+            display: flex;
+            justify-content: space-between;
+            margin: 10px 0;
+            padding: 8px 0;
+            border-bottom: 1px solid #eee;
+        }
+        .stat-item:last-child {
+            border-bottom: none;
+        }
+        .stat-label {
+            font-weight: bold;
+            color: #666;
+        }
+        .stat-value {
+            font-weight: bold;
+            color: #333;
+        }
+        .status-badge {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        .status-new { background-color: #e3f2fd; color: #1976d2; }
+        .status-blocked { background-color: #fff3e0; color: #f57c00; }
+        .status-ready { background-color: #e8f5e8; color: #388e3c; }
+        .status-running { background-color: #e1f5fe; color: #0277bd; }
+        .status-paused { background-color: #fce4ec; color: #c2185b; }
+        .status-terminal { background-color: #ffebee; color: #d32f2f; }
+        .status-online { background-color: #e8f5e8; color: #388e3c; }
+        .status-offline { background-color: #ffebee; color: #d32f2f; }
+        .status-busy { background-color: #fff3e0; color: #f57c00; }
+        .nav-links {
+            text-align: center;
+            margin: 20px 0;
+        }
+        .nav-links a {
+            display: inline-block;
+            margin: 0 10px;
+            padding: 10px 20px;
+            background-color: #667eea;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            transition: background-color 0.3s;
+        }
+        .nav-links a:hover {
+            background-color: #5a6fd8;
+        }
+        .refresh-btn {
+            background-color: #4caf50;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .refresh-btn:hover {
+            background-color: #45a049;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚀 Mass Platform 状态监控</h1>
+            <p>实时监控任务、设备、Token 和消息状态</p>
+            <button class="refresh-btn" onclick="location.reload()">🔄 刷新数据</button>
+        </div>
+
+        <div class="nav-links">
+            <a href="/status">📊 总览</a>
+            <a href="/status/tasks">📋 任务详情</a>
+            <a href="/status/devices">📱 设备详情</a>
+        </div>
+
+        <div class="stats-grid">
+            <!-- 任务状态统计 -->
+            <div class="stat-card">
+                <h3>📋 任务状态统计</h3>
+                <div class="stat-item">
+                    <span class="stat-label">总任务数:</span>
+                    <span class="stat-value" th:text="${#lists.size(tasks)}">0</span>
+                </div>
+                <div class="stat-item" th:each="status : ${taskStatuses}">
+                    <span class="stat-label" th:text="${status.description}">状态</span>
+                    <span class="stat-value">
+                        <span class="status-badge" th:classappend="'status-' + ${#strings.toLowerCase(status.name())}" 
+                              th:text="${taskStatusCount.get(status) ?: 0}">0</span>
+                    </span>
+                </div>
+            </div>
+
+            <!-- 设备状态统计 -->
+            <div class="stat-card">
+                <h3>📱 设备状态统计</h3>
+                <div class="stat-item">
+                    <span class="stat-label">总设备数:</span>
+                    <span class="stat-value" th:text="${#lists.size(devices)}">0</span>
+                </div>
+                <div class="stat-item" th:each="status : ${deviceStatuses}">
+                    <span class="stat-label" th:text="${status.name()}">状态</span>
+                    <span class="stat-value">
+                        <span class="status-badge" th:classappend="'status-' + ${#strings.toLowerCase(status.name())}" 
+                              th:text="${deviceStatusCount.get(status) ?: 0}">0</span>
+                    </span>
+                </div>
+            </div>
+
+            <!-- Token状态统计 -->
+            <div class="stat-card">
+                <h3>🔑 Token状态统计</h3>
+                <div class="stat-item">
+                    <span class="stat-label">总Token数:</span>
+                    <span class="stat-value" th:text="${#lists.size(tokens)}">0</span>
+                </div>
+                <div class="stat-item" th:each="entry : ${tokenStatusCount}">
+                    <span class="stat-label" th:text="${entry.key}">状态</span>
+                    <span class="stat-value" th:text="${entry.value}">0</span>
+                </div>
+            </div>
+
+            <!-- 消息统计 -->
+            <div class="stat-card">
+                <h3>💬 消息统计</h3>
+                <div class="stat-item" th:if="${#maps.isEmpty(messageStats)}">
+                    <span class="stat-label">暂无消息数据</span>
+                    <span class="stat-value">-</span>
+                </div>
+                <div class="stat-item" th:each="entry : ${messageStats}">
+                    <span class="stat-label" th:text="${entry.key}">状态</span>
+                    <span class="stat-value" th:text="${entry.value}">0</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- 最近任务列表 -->
+        <div class="stat-card">
+            <h3>📋 最近任务 (最多显示10个)</h3>
+            <div th:if="${#lists.isEmpty(tasks)}">
+                <p style="text-align: center; color: #666;">暂无任务数据</p>
+            </div>
+            <div th:if="${!#lists.isEmpty(tasks)}">
+                <table style="width: 100%; border-collapse: collapse; margin-top: 10px;">
+                    <thead>
+                        <tr style="background-color: #f8f9fa;">
+                            <th style="padding: 10px; text-align: left; border-bottom: 2px solid #dee2e6;">任务ID</th>
+                            <th style="padding: 10px; text-align: left; border-bottom: 2px solid #dee2e6;">任务名称</th>
+                            <th style="padding: 10px; text-align: left; border-bottom: 2px solid #dee2e6;">项目</th>
+                            <th style="padding: 10px; text-align: left; border-bottom: 2px solid #dee2e6;">国家</th>
+                            <th style="padding: 10px; text-align: left; border-bottom: 2px solid #dee2e6;">状态</th>
+                            <th style="padding: 10px; text-align: left; border-bottom: 2px solid #dee2e6;">进度</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr th:each="task, iterStat : ${tasks}" th:if="${iterStat.index < 10}" 
+                            style="border-bottom: 1px solid #eee;">
+                            <td style="padding: 10px;" th:text="${task.tid}">-</td>
+                            <td style="padding: 10px;" th:text="${task.taskName}">-</td>
+                            <td style="padding: 10px;" th:text="${task.project}">-</td>
+                            <td style="padding: 10px;" th:text="${task.taskCountry}">-</td>
+                            <td style="padding: 10px;">
+                                <span class="status-badge" th:classappend="'status-' + ${#strings.toLowerCase(task.status.name())}" 
+                                      th:text="${task.status.description}">状态</span>
+                            </td>
+                            <td style="padding: 10px;" 
+                                th:text="${task.taskInitNumber > 0 ? task.taskExecutedNumber + '/' + task.taskInitNumber : '0/0'}">0/0</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 自动刷新页面（每30秒）
+        setTimeout(function() {
+            location.reload();
+        }, 30000);
+    </script>
+</body>
+</html> 

@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>设备详情 - Mass Platform</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        .nav-links {
+            text-align: center;
+            margin: 20px 0;
+        }
+        .nav-links a {
+            display: inline-block;
+            margin: 0 10px;
+            padding: 10px 20px;
+            background-color: #667eea;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            transition: background-color 0.3s;
+        }
+        .nav-links a:hover {
+            background-color: #5a6fd8;
+        }
+        .refresh-btn {
+            background-color: #4caf50;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .refresh-btn:hover {
+            background-color: #45a049;
+        }
+        .device-table {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            overflow: hidden;
+            margin-bottom: 20px;
+        }
+        .device-table table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .device-table th {
+            background-color: #f8f9fa;
+            padding: 15px 10px;
+            text-align: left;
+            border-bottom: 2px solid #dee2e6;
+            font-weight: bold;
+            color: #333;
+        }
+        .device-table td {
+            padding: 12px 10px;
+            border-bottom: 1px solid #eee;
+            vertical-align: top;
+        }
+        .device-table tr:hover {
+            background-color: #f8f9fa;
+        }
+        .status-badge {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        .status-online { background-color: #e8f5e8; color: #388e3c; }
+        .status-offline { background-color: #ffebee; color: #d32f2f; }
+        .status-busy { background-color: #fff3e0; color: #f57c00; }
+        .status-login_ready { background-color: #e8f5e8; color: #388e3c; }
+        .status-invalid { background-color: #ffebee; color: #d32f2f; }
+        .status-sending { background-color: #e1f5fe; color: #0277bd; }
+        .status-bind_ready { background-color: #fff3e0; color: #f57c00; }
+        .status-blocked { background-color: #fce4ec; color: #c2185b; }
+        .empty-message {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+            font-style: italic;
+        }
+        .device-id {
+            font-family: monospace;
+            font-size: 12px;
+            color: #666;
+        }
+        .timestamp {
+            font-size: 12px;
+            color: #999;
+        }
+        .app-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+        }
+        .app-tag {
+            background-color: #e3f2fd;
+            color: #1976d2;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 10px;
+        }
+        .locked-indicator {
+            color: #f57c00;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📱 设备详情</h1>
+            <p>查看所有设备和Token的详细信息和状态</p>
+            <button class="refresh-btn" onclick="location.reload()">🔄 刷新数据</button>
+        </div>
+
+        <div class="nav-links">
+            <a href="/status">📊 总览</a>
+            <a href="/status/tasks">📋 任务详情</a>
+            <a href="/status/devices">📱 设备详情</a>
+        </div>
+
+        <!-- 设备列表 -->
+        <div class="device-table">
+            <h3 style="margin: 0; padding: 20px 20px 0 20px;">📱 设备列表</h3>
+            <div th:if="${#lists.isEmpty(devices)}" class="empty-message">
+                <h3>暂无设备数据</h3>
+                <p>当前系统中没有设备，请先添加一些设备。</p>
+            </div>
+            
+            <div th:if="${!#lists.isEmpty(devices)}">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>设备ID</th>
+                            <th>分组</th>
+                            <th>状态</th>
+                            <th>Agent版本</th>
+                            <th>支持的应用</th>
+                            <th>锁定状态</th>
+                            <th>最后心跳</th>
+                            <th>创建时间</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr th:each="device : ${devices}">
+                            <td>
+                                <div class="device-id" th:text="${device.deviceId}">-</div>
+                            </td>
+                            <td th:text="${device.groupId}">-</td>
+                            <td>
+                                <span class="status-badge" th:classappend="'status-' + ${#strings.toLowerCase(device.status.name())}" 
+                                      th:text="${device.status.name()}">状态</span>
+                            </td>
+                            <td th:text="${device.agentVersion}">-</td>
+                            <td>
+                                <div class="app-tags" th:if="${!#lists.isEmpty(device.supportedApps)}">
+                                    <span class="app-tag" th:each="app : ${device.supportedApps}" th:text="${app}">app</span>
+                                </div>
+                                <span th:if="${#lists.isEmpty(device.supportedApps)}">-</span>
+                            </td>
+                            <td>
+                                <span th:if="${device.locked}" class="locked-indicator">🔒 已锁定</span>
+                                <span th:unless="${device.locked}">✅ 可用</span>
+                            </td>
+                            <td>
+                                <div class="timestamp" th:text="${device.lastHeartbeat != null ? #temporals.format(device.lastHeartbeat, 'yyyy-MM-dd HH:mm:ss') : '-'}">-</div>
+                            </td>
+                            <td>
+                                <div class="timestamp" th:text="${device.createTime != null ? #temporals.format(device.createTime, 'yyyy-MM-dd HH:mm:ss') : '-'}">-</div>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Token列表 -->
+        <div class="device-table">
+            <h3 style="margin: 0; padding: 20px 20px 0 20px;">🔑 Token列表</h3>
+            <div th:if="${#lists.isEmpty(tokens)}" class="empty-message">
+                <h3>暂无Token数据</h3>
+                <p>当前系统中没有Token，请先添加一些Token。</p>
+            </div>
+            
+            <div th:if="${!#lists.isEmpty(tokens)}">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Token ID</th>
+                            <th>设备ID</th>
+                            <th>状态</th>
+                            <th>渠道</th>
+                            <th>创建时间</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr th:each="token : ${tokens}">
+                            <td>
+                                <div class="device-id" th:text="${token.tokenId}">-</div>
+                            </td>
+                            <td th:text="${token.deviceId}">-</td>
+                            <td>
+                                <span class="status-badge" th:classappend="'status-' + ${#strings.toLowerCase(token.status.name())}" 
+                                      th:text="${token.status.name()}">状态</span>
+                            </td>
+                            <td th:text="${token.channel}">-</td>
+                            <td>
+                                <div class="timestamp" th:text="${token.createTime != null ? #temporals.format(token.createTime, 'yyyy-MM-dd HH:mm:ss') : '-'}">-</div>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- 状态统计 -->
+        <div style="margin-top: 20px; display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+            <div th:each="status : ${deviceStatuses}" 
+                 style="background: white; padding: 15px; border-radius: 8px; text-align: center; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
+                <div style="font-size: 24px; font-weight: bold; color: #333;" 
+                     th:text="${devices.stream().filter(d -> d.status == status).count()}">0</div>
+                <div style="color: #666; margin-top: 5px;" th:text="${status.name()}">状态</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 自动刷新页面（每30秒）
+        setTimeout(function() {
+            location.reload();
+        }, 30000);
+    </script>
+</body>
+</html> 

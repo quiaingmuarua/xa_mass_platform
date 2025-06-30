@@ -15,6 +15,10 @@
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
         <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-thymeleaf</artifactId>
+        </dependency>
+        <dependency>
             <groupId>com.github.xiaoymin</groupId>
             <artifactId>knife4j-openapi3-jakarta-spring-boot-starter</artifactId>
             <version>4.4.0</version>
@@ -23,6 +27,11 @@
         <dependency>
             <groupId>com.xa.mass</groupId>
             <artifactId>xa-mass-gateway</artifactId>
+            <version>0.0.1-SNAPSHOT</version>
+        </dependency>
+        <dependency>
+            <groupId>com.xa.mass</groupId>
+            <artifactId>xa-mass-engine</artifactId>
             <version>0.0.1-SNAPSHOT</version>
         </dependency>
     </dependencies>
