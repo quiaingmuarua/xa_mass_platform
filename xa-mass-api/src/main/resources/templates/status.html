@@ -116,6 +116,7 @@
             <a href="/status">📊 总览</a>
             <a href="/status/tasks">📋 任务详情</a>
             <a href="/status/devices">📱 设备详情</a>
+            <a href="/status/rules">📏 规则管理</a>
         </div>
 
         <div class="stats-grid">
@@ -161,6 +162,22 @@
                 <div class="stat-item" th:each="entry : ${tokenStatusCount}">
                     <span class="stat-label" th:text="${entry.key}">状态</span>
                     <span class="stat-value" th:text="${entry.value}">0</span>
+                </div>
+            </div>
+
+            <!-- 规则状态统计 -->
+            <div class="stat-card">
+                <h3>📏 规则状态统计</h3>
+                <div class="stat-item">
+                    <span class="stat-label">总规则数:</span>
+                    <span class="stat-value" th:text="${#lists.size(rules)}">0</span>
+                </div>
+                <div class="stat-item" th:each="ruleType : ${ruleTypes}">
+                    <span class="stat-label" th:text="${ruleType.name()}">类型</span>
+                    <span class="stat-value">
+                        <span class="status-badge" th:classappend="'status-' + ${#strings.toLowerCase(ruleType.name())}" 
+                              th:text="${ruleTypeCount.get(ruleType) ?: 0}">0</span>
+                    </span>
                 </div>
             </div>
 

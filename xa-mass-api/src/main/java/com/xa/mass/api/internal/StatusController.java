@@ -2,6 +2,9 @@ package com.xa.mass.api.internal;
 
 import com.xa.mass.engine.DeviceManager;
 import com.xa.mass.engine.TaskManager;
+import com.xa.mass.engine.rules.RuleDefinition;
+import com.xa.mass.engine.rules.RuleManager;
+import com.xa.mass.engine.rules.RuleType;
 import com.xa.mass.eventbus.enums.device.DeviceStatus;
 import com.xa.mass.eventbus.enums.task.TaskStatus;
 import com.xa.mass.eventbus.enums.taskmsg.TaskMsgStatus;
@@ -21,7 +24,7 @@ import java.util.stream.Collectors;
 
 /**
  * 状态展示控制器
- * 提供任务、设备、消息等状态的页面展示
+ * 提供任务、设备、消息、规则等状态的页面展示
  */
 @Controller
 @RequestMapping("/status")
@@ -32,6 +35,9 @@ public class StatusController {
 
     @Autowired
     private DeviceManager deviceManager;
+
+    @Autowired
+    private RuleManager<Map<String, Object>> ruleManager;
 
     /**
      * 主状态页面
@@ -53,6 +59,11 @@ public class StatusController {
         Map<String, Long> tokenStatusCount = allTokens.stream()
                 .collect(Collectors.groupingBy(token -> token.getStatus().name(), Collectors.counting()));
 
+        // 获取规则统计
+        List<RuleDefinition> allRules = ruleManager.getDefaultRules();
+        Map<RuleType, Long> ruleTypeCount = allRules.stream()
+                .collect(Collectors.groupingBy(RuleDefinition::getType, Collectors.counting()));
+
         // 获取消息统计
         Map<String, Long> messageStats = getMessageStats();
 
@@ -63,11 +74,14 @@ public class StatusController {
         model.addAttribute("deviceStatusCount", deviceStatusCount);
         model.addAttribute("tokens", allTokens);
         model.addAttribute("tokenStatusCount", tokenStatusCount);
+        model.addAttribute("rules", allRules);
+        model.addAttribute("ruleTypeCount", ruleTypeCount);
         model.addAttribute("messageStats", messageStats);
 
         // 添加状态枚举
         model.addAttribute("taskStatuses", TaskStatus.values());
         model.addAttribute("deviceStatuses", DeviceStatus.values());
+        model.addAttribute("ruleTypes", RuleType.values());
 
         return "status";
     }
@@ -95,6 +109,25 @@ public class StatusController {
         model.addAttribute("tokens", allTokens);
         model.addAttribute("deviceStatuses", DeviceStatus.values());
         return "devices";
+    }
+
+    /**
+     * 规则详情页面
+     */
+    @GetMapping("/rules")
+    public String rulesPage(Model model) {
+        List<RuleDefinition> allRules = ruleManager.getDefaultRules();
+        List<RuleType> registeredEvaluatorTypes = ruleManager.getRegisteredEvaluatorTypes();
+        
+        // 按类型分组规则
+        Map<RuleType, List<RuleDefinition>> rulesByType = allRules.stream()
+                .collect(Collectors.groupingBy(RuleDefinition::getType));
+        
+        model.addAttribute("rules", allRules);
+        model.addAttribute("rulesByType", rulesByType);
+        model.addAttribute("ruleTypes", RuleType.values());
+        model.addAttribute("registeredEvaluatorTypes", registeredEvaluatorTypes);
+        return "rules";
     }
 
     /**

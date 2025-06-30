@@ -12,7 +12,7 @@ public class MockTaskEngineSpringBootApp {
     
     public static void main(String[] args) {
         // 支持通过命令行参数或环境变量切换 profile 和端口
-        String profile = "mock-engine";
+        String profile = "dev";
         System.setProperty("spring.profiles.active",profile);
         String port ="8088";
         System.setProperty("server.port", port);
@@ -22,6 +22,7 @@ public class MockTaskEngineSpringBootApp {
         log.info("\n==============================");
         log.info("Mock Server 启动成功，Profile: {}，端口: {}", profile, port);
         log.info("访问状态页: http://localhost:{}/status", port);
+        log.info("规则管理页: http://localhost:{}/status/rules", port);
         log.info("Knife4j 文档地址: http://localhost:{}/doc.html", port);
         log.info("==============================\n");
     }

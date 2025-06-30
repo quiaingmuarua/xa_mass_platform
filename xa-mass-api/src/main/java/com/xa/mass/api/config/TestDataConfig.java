@@ -2,6 +2,9 @@ package com.xa.mass.api.config;
 
 import com.xa.mass.engine.DeviceManager;
 import com.xa.mass.engine.TaskManager;
+import com.xa.mass.engine.rules.RuleDefinition;
+import com.xa.mass.engine.rules.RuleManager;
+import com.xa.mass.engine.rules.RuleType;
 import com.xa.mass.eventbus.enums.device.DeviceStatus;
 import com.xa.mass.eventbus.enums.task.TaskStatus;
 import com.xa.mass.eventbus.enums.task.TokenStatus;
@@ -20,6 +23,7 @@ import org.springframework.context.annotation.Profile;
 import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
+import java.util.Map;
 
 /**
  * 测试数据配置
@@ -34,7 +38,8 @@ public class TestDataConfig {
     @Bean
     public CommandLineRunner testDataInitializer(
             @Autowired(required = false) TaskManager taskManager,
-            @Autowired(required = false) DeviceManager deviceManager) {
+            @Autowired(required = false) DeviceManager deviceManager,
+            @Autowired(required = false) RuleManager<Map<String, Object>> ruleManager) {
         
         return args -> {
             logger.info("开始生成测试数据...");
@@ -45,6 +50,10 @@ public class TestDataConfig {
             
             if (deviceManager != null) {
                 generateTestDevices(deviceManager);
+            }
+            
+            if (ruleManager != null) {
+                generateTestRules(ruleManager);
             }
             
             logger.info("测试数据生成完成");
@@ -101,6 +110,45 @@ public class TestDataConfig {
         }
         
         logger.info("生成了 {} 个测试设备", testDevices.size());
+    }
+
+    private void generateTestRules(RuleManager<Map<String, Object>> ruleManager) {
+        logger.info("生成测试规则...");
+        
+        // 创建测试规则
+        List<RuleDefinition> testRules = Arrays.asList(
+            createRule("rule-001", "美国设备匹配规则", "匹配美国地区的在线设备", 
+                      "device.country == 'us' && device.status == 'ONLINE'", RuleType.QL_EXPRESS, 1, true),
+            createRule("rule-002", "英国设备匹配规则", "匹配英国地区的在线设备", 
+                      "device.country == 'gb' && device.status == 'ONLINE'", RuleType.QL_EXPRESS, 1, true),
+            createRule("rule-003", "高优先级任务规则", "优先匹配高优先级任务", 
+                      "task.priority > 100", RuleType.QL_EXPRESS, 2, true),
+            createRule("rule-004", "应用兼容性规则", "检查设备是否支持任务应用", 
+                      "device.supportedApps.contains(task.project)", RuleType.QL_EXPRESS, 3, true),
+            createRule("rule-005", "设备负载规则", "检查设备是否空闲", 
+                      "device.status == 'ONLINE' && !device.locked", RuleType.QL_EXPRESS, 4, true),
+            createRule("rule-006", "禁用规则示例", "这是一个被禁用的规则", 
+                      "false", RuleType.QL_EXPRESS, 5, false)
+        );
+
+        for (RuleDefinition rule : testRules) {
+            ruleManager.addDefaultRule(rule);
+        }
+        
+        logger.info("生成了 {} 个测试规则", testRules.size());
+    }
+
+    private RuleDefinition createRule(String id, String name, String description, String expression, 
+                                     RuleType type, int priority, boolean enabled) {
+        RuleDefinition rule = new RuleDefinition();
+        rule.setId(id);
+        rule.setName(name);
+        rule.setDescription(description);
+        rule.setExpression(expression);
+        rule.setType(type);
+        rule.setPriority(priority);
+        rule.setEnabled(enabled);
+        return rule;
     }
 
     private Task createTask(String tid, String taskName, String project, String country, 
