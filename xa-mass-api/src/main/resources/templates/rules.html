@@ -136,9 +136,9 @@
                                     <span class="badge bg-primary" th:text="${#lists.size(rulesByType.get(ruleType)) ?: 0}">0</span>
                                 </div>
                                 <div class="progress mb-3" style="height: 8px;">
-                                    <div class="progress-bar" role="progressbar" 
-                                         th:style="'width: ' + ${#lists.size(rulesByType.get(ruleType)) ?: 0} * 100 / ${#lists.size(rules)} + '%'"
-                                         th:aria-valuenow="${#lists.size(rulesByType.get(ruleType)) ?: 0}" 
+                                    <div class="progress-bar" role="progressbar"
+                                         th:style="${ruleTypePercentStyle[ruleType]}"
+                                         th:aria-valuenow="${#lists.size(rulesByType.get(ruleType)) ?: 0}"
                                          th:aria-valuemax="${#lists.size(rules)}"></div>
                                 </div>
                             </div>
@@ -157,7 +157,7 @@
                         <div class="btn-group" role="group">
                             <button type="button" class="btn btn-outline-primary btn-sm" onclick="filterRules('all')">全部</button>
                             <button type="button" class="btn btn-outline-primary btn-sm" th:each="ruleType : ${ruleTypes}" 
-                                    th:onclick="'filterRules(\'' + ${ruleType.name()} + '\')'"
+                                    th:attr="onclick='filterRules(\'' + ${ruleType.name()} + '\')'"
                                     th:text="${ruleType.name()}">QL_EXPRESS</button>
                         </div>
                     </div>

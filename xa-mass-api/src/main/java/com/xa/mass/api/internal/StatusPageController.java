@@ -76,6 +76,9 @@ public class StatusPageController {
         model.addAttribute("devices", allDevices);
         model.addAttribute("tokens", allTokens);
         model.addAttribute("deviceStatuses", DeviceStatus.values());
+        Map<DeviceStatus, Long> deviceStatusCount = allDevices.stream()
+            .collect(java.util.stream.Collectors.groupingBy(Device::getStatus, java.util.stream.Collectors.counting()));
+        model.addAttribute("deviceStatusCount", deviceStatusCount);
         return "devices";
     }
 
@@ -83,12 +86,28 @@ public class StatusPageController {
     public String rulesPage(Model model) {
         List<RuleDefinition> allRules = ruleManager.getDefaultRules();
         List<RuleType> registeredEvaluatorTypes = ruleManager.getRegisteredEvaluatorTypes();
-        Map<RuleType, List<RuleDefinition>> rulesByType = allRules.stream()
-                .collect(Collectors.groupingBy(RuleDefinition::getType));
+        Map<RuleType, List<RuleDefinition>> rulesByType = new java.util.LinkedHashMap<>();
+        for (RuleType type : RuleType.values()) {
+            rulesByType.put(type, new java.util.ArrayList<>());
+        }
+        for (RuleDefinition rule : allRules) {
+            rulesByType.get(rule.getType()).add(rule);
+        }
+        int total = allRules.size();
+        Map<RuleType, String> ruleTypePercent = new java.util.LinkedHashMap<>();
+        Map<RuleType, String> ruleTypePercentStyle = new java.util.LinkedHashMap<>();
+        for (RuleType type : RuleType.values()) {
+            int count = rulesByType.get(type).size();
+            String percent = (total > 0) ? (count * 100 / total) + "%" : "0%";
+            ruleTypePercent.put(type, percent);
+            ruleTypePercentStyle.put(type, "width: " + percent);
+        }
         model.addAttribute("rules", allRules);
         model.addAttribute("rulesByType", rulesByType);
         model.addAttribute("ruleTypes", RuleType.values());
         model.addAttribute("registeredEvaluatorTypes", registeredEvaluatorTypes);
+        model.addAttribute("ruleTypePercent", ruleTypePercent);
+        model.addAttribute("ruleTypePercentStyle", ruleTypePercentStyle);
         return "rules";
     }
 } 
