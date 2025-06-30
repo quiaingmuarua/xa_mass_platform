@@ -3,11 +3,13 @@ package com.xa.mass.eventbus.enums;
 import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
+import com.fasterxml.jackson.annotation.JsonFormat;
 
 /**
  * 项目枚举
  * 支持动态添加新项目
  */
+@JsonFormat(shape = JsonFormat.Shape.OBJECT)
 public enum Project {
     DEMO_APP("demoApp", "演示应用"),
     // 可以在这里添加更多默认项目
