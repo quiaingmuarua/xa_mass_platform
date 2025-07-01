@@ -3,8 +3,8 @@ package com.xa.mass.engine.model;
 import com.xa.mass.engine.monkey.snapshot.DeviceSnapshot;
 import com.xa.mass.engine.monkey.snapshot.TaskSnapshot;
 import com.xa.mass.engine.monkey.snapshot.TokenSnapshot;
-import com.xa.mass.eventbus.enums.assignment.AssignmentResult;
-import com.xa.mass.eventbus.enums.assignment.AssignmentType;
+import com.xa.mass.base.enums.assignment.AssignmentResult;
+import com.xa.mass.base.enums.assignment.AssignmentType;
 
 import java.time.LocalDateTime;
 import java.util.List;

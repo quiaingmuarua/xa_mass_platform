@@ -1,7 +1,7 @@
 package com.xa.mass.engine.strategy;
 
-import com.xa.mass.eventbus.model.Device;
-import com.xa.mass.eventbus.model.Task;
+import com.xa.mass.base.model.Device;
+import com.xa.mass.base.model.Task;
 
 import java.util.Comparator;
 import java.util.List;

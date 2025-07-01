@@ -25,7 +25,7 @@
 
         <dependency>
             <groupId>com.xa.mass</groupId>
-            <artifactId>xa-mass-eventbus</artifactId>
+            <artifactId>xa-mass-base</artifactId>
             <version>0.0.1-SNAPSHOT</version>
         </dependency>
     </dependencies>

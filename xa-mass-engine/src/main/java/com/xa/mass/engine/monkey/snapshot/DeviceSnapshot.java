@@ -2,7 +2,7 @@ package com.xa.mass.engine.monkey.snapshot;
 
 import java.time.LocalDateTime;
 import java.util.List;
-import com.xa.mass.eventbus.enums.Project;
+import com.xa.mass.base.enums.Project;
 
 /**
  * 设备属性快照

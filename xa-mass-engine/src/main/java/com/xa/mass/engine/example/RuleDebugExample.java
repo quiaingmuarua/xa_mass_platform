@@ -7,10 +7,10 @@ import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.engine.rules.RuleManagerFactory;
 import com.xa.mass.engine.storage.DeviceStorage;
 import com.xa.mass.engine.storage.TaskStorageFactory;
-import com.xa.mass.eventbus.model.Device;
-import com.xa.mass.eventbus.model.Task;
-import com.xa.mass.eventbus.model.Token;
-import com.xa.mass.eventbus.enums.Project;
+import com.xa.mass.base.model.Device;
+import com.xa.mass.base.model.Task;
+import com.xa.mass.base.model.Token;
+import com.xa.mass.base.enums.Project;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -62,14 +62,14 @@ public class RuleDebugExample {
             Device device = new Device();
             device.setDeviceId("device-" + i);
             device.setGroupId(countries[i % countries.length]);
-            device.setStatus(com.xa.mass.eventbus.enums.device.DeviceStatus.ONLINE);
+            device.setStatus(com.xa.mass.base.enums.device.DeviceStatus.ONLINE);
             device.setAgentVersion("1.0." + (i % 5));
             device.setSupportedProjects(Arrays.asList(Project.DEMO_APP));
 
             // 创建设备对应的Token
             Token token = new Token();
             token.setTokenId("token-" + i);
-            token.setStatus(com.xa.mass.eventbus.enums.task.TokenStatus.LOGIN_READY);
+            token.setStatus(com.xa.mass.base.enums.task.TokenStatus.LOGIN_READY);
             token.setChannel(countries[i % countries.length]);
 
             deviceManager.addDevice(device);
@@ -90,7 +90,7 @@ public class RuleDebugExample {
         task.setTaskName("测试任务");
         task.setProject("demoApp");
         task.setTaskCountry("us");
-        task.setStatus(com.xa.mass.eventbus.enums.task.TaskStatus.READY);
+        task.setStatus(com.xa.mass.base.enums.task.TaskStatus.READY);
         task.setTaskInitNumber(100);
         task.setBatchSize(10);
         task.setRunTaskMinDeviceCnt(5);

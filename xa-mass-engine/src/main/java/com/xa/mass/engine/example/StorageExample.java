@@ -12,18 +12,16 @@ import com.xa.mass.engine.service.AssignmentRecordService;
 import com.xa.mass.engine.storage.*;
 import com.xa.mass.engine.strategy.SimpleTaskScheduler;
 import com.xa.mass.engine.strategy.TaskScheduler;
-import com.xa.mass.eventbus.enums.task.TokenStatus;
-import com.xa.mass.eventbus.model.Device;
-import com.xa.mass.eventbus.model.Task;
-import com.xa.mass.eventbus.model.Token;
-import com.xa.mass.eventbus.enums.Project;
+import com.xa.mass.base.enums.task.TokenStatus;
+import com.xa.mass.base.model.Device;
+import com.xa.mass.base.model.Token;
+import com.xa.mass.base.enums.Project;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Optional;
 
 /**
  * 存储系统使用示例

@@ -6,9 +6,9 @@ import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.xa.mass.eventbus.event.DeviceEvent;
-import com.xa.mass.eventbus.event.EventBusManager;
-import com.xa.mass.eventbus.model.Device;
+import com.xa.mass.base.event.DeviceEvent;
+import com.xa.mass.base.event.EventBusManager;
+import com.xa.mass.base.model.Device;
 
 import java.util.Collections;
 import java.util.HashMap;

@@ -1,7 +1,7 @@
 package com.xa.mass.engine.storage;
 
-import com.xa.mass.eventbus.model.Device;
-import com.xa.mass.eventbus.model.Token;
+import com.xa.mass.base.model.Device;
+import com.xa.mass.base.model.Token;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;

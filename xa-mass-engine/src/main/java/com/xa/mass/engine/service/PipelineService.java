@@ -1,7 +1,7 @@
 package com.xa.mass.engine.service;
 
 import com.google.common.eventbus.Subscribe;
-import com.xa.mass.eventbus.event.task.TaskAssignedEvent;
+import com.xa.mass.base.event.task.TaskAssignedEvent;
 import com.xa.mass.engine.monkey.report.AssignmentPipelineStep;
 import com.xa.mass.engine.monkey.report.AssignmentReportStep;
 import com.xa.mass.engine.monkey.report.ConflictReportStep;

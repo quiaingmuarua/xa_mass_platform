@@ -22,7 +22,7 @@
     </developers>
     <modules>
         <module>xa-mass-api</module>
-        <module>xa-mass-eventbus</module>
+        <module>xa-mass-base</module>
         <module>xa-mass-engine</module>
         <module>xa-mass-gateway</module>
         <module>xa-mass-starter</module>

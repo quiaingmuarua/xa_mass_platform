@@ -1,12 +1,12 @@
 package com.xa.mass.engine.example;
 
 import com.xa.mass.engine.storage.*;
-import com.xa.mass.eventbus.enums.Project;
-import com.xa.mass.eventbus.enums.task.TokenStatus;
-import com.xa.mass.eventbus.model.Device;
-import com.xa.mass.eventbus.model.Task;
-import com.xa.mass.eventbus.model.Token;
-import com.xa.mass.eventbus.model.User;
+import com.xa.mass.base.enums.Project;
+import com.xa.mass.base.enums.task.TokenStatus;
+import com.xa.mass.base.model.Device;
+import com.xa.mass.base.model.Task;
+import com.xa.mass.base.model.Token;
+import com.xa.mass.base.model.User;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

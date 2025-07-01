@@ -1,8 +1,8 @@
 package com.xa.mass.gateway.dispatcher.middleware;
 
-import com.xa.mass.eventbus.exception.CommandException;
-import com.xa.mass.eventbus.exception.ErrorCode;
-import com.xa.mass.eventbus.exception.ValidationException;
+import com.xa.mass.base.exception.CommandException;
+import com.xa.mass.base.exception.ErrorCode;
+import com.xa.mass.base.exception.ValidationException;
 import com.xa.mass.gateway.dispatcher.handler.ResolutionResult;
 
 import com.xa.mass.gateway.queue.Envelope;

@@ -5,15 +5,14 @@ import com.xa.mass.engine.storage.TaskStorage;
 import com.xa.mass.engine.storage.TaskStorageFactory;
 import com.xa.mass.engine.strategy.TaskScheduler;
 import com.xa.mass.engine.util.LogUtils;
-import com.xa.mass.eventbus.enums.task.TaskStatus;
-import com.xa.mass.eventbus.model.Task;
-import com.xa.mass.eventbus.model.TaskMsg;
-import com.xa.mass.eventbus.model.User;
+import com.xa.mass.base.enums.task.TaskStatus;
+import com.xa.mass.base.model.Task;
+import com.xa.mass.base.model.TaskMsg;
+import com.xa.mass.base.model.User;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.List;
-import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
  * 任务管理器

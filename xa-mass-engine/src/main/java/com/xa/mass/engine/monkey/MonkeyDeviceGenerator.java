@@ -1,11 +1,11 @@
 package com.xa.mass.engine.monkey;
 
 import com.google.gson.*;
-import com.xa.mass.eventbus.enums.Project;
-import com.xa.mass.eventbus.enums.device.DeviceStatus;
-import com.xa.mass.eventbus.enums.task.TokenStatus;
-import com.xa.mass.eventbus.model.Device;
-import com.xa.mass.eventbus.model.Token;
+import com.xa.mass.base.enums.Project;
+import com.xa.mass.base.enums.device.DeviceStatus;
+import com.xa.mass.base.enums.task.TokenStatus;
+import com.xa.mass.base.model.Device;
+import com.xa.mass.base.model.Token;
 
 
 import java.util.*;

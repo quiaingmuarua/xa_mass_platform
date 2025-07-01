@@ -1,6 +1,6 @@
 package com.xa.mass.api.config;
 
-import com.xa.mass.eventbus.enums.Project;
+import com.xa.mass.base.enums.Project;
 import org.springframework.stereotype.Component;
 
 import java.util.Arrays;

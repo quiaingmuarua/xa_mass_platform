@@ -2,8 +2,8 @@ package com.xa.mass.api.internal;
 
 import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.model.TaskCreateRequestDto;
-import com.xa.mass.eventbus.enums.task.TaskStatus;
-import com.xa.mass.eventbus.model.Task;
+import com.xa.mass.base.enums.task.TaskStatus;
+import com.xa.mass.base.model.Task;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;

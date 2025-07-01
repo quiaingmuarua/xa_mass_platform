@@ -233,15 +233,15 @@ public class MassApplication {
             com.google.gson.JsonObject root = config.getMockConfigRoot();
             logger.info("✅ Mock 配置加载成功");
             if (root.has("devices")) {
-                java.util.List<com.xa.mass.eventbus.model.Token> tokenList = new java.util.ArrayList<>();
-                java.util.List<com.xa.mass.eventbus.model.Device> devices = com.xa.mass.engine.monkey.MonkeyDeviceGenerator.generateDevices(
+                java.util.List<com.xa.mass.base.model.Token> tokenList = new java.util.ArrayList<>();
+                java.util.List<com.xa.mass.base.model.Device> devices = com.xa.mass.engine.monkey.MonkeyDeviceGenerator.generateDevices(
                     root.getAsJsonArray("devices").toString(), tokenList);
                 logger.info("📱 生成 {} 个设备和 {} 个 Token", devices.size(), tokenList.size());
-                for (com.xa.mass.eventbus.model.Device device : devices) {
+                for (com.xa.mass.base.model.Device device : devices) {
                     engine.addDevice(device);
                     logger.debug("添加设备: {} (分组: {}, 状态: {})", device.getDeviceId(), device.getGroupId(), device.getStatus());
                 }
-                for (com.xa.mass.eventbus.model.Token token : tokenList) {
+                for (com.xa.mass.base.model.Token token : tokenList) {
                     engine.addToken(token);
                     logger.debug("添加 Token: {} (设备: {}, 状态: {}, 渠道: {})", token.getTokenId(), token.getDeviceId(), token.getStatus(), token.getChannel());
                 }
@@ -265,13 +265,13 @@ public class MassApplication {
     public void verifyDeviceData(MassEngine engine) {
         com.xa.mass.engine.DeviceManager deviceManager = engine.getDeviceManager();
         if (deviceManager != null) {
-            java.util.List<com.xa.mass.eventbus.model.Device> allDevices = deviceManager.getAllDevices();
-            java.util.List<com.xa.mass.eventbus.model.Device> usDevices = deviceManager.getDevicesByCountry("us");
-            java.util.List<com.xa.mass.eventbus.model.Device> gbDevices = deviceManager.getDevicesByCountry("gb");
+            java.util.List<com.xa.mass.base.model.Device> allDevices = deviceManager.getAllDevices();
+            java.util.List<com.xa.mass.base.model.Device> usDevices = deviceManager.getDevicesByCountry("us");
+            java.util.List<com.xa.mass.base.model.Device> gbDevices = deviceManager.getDevicesByCountry("gb");
             logger.info("📊 设备数据验证 - 总计: {}, 美国: {}, 英国: {}", allDevices.size(), usDevices.size(), gbDevices.size());
             for (int i = 0; i < Math.min(3, allDevices.size()); i++) {
-                com.xa.mass.eventbus.model.Device device = allDevices.get(i);
-                com.xa.mass.eventbus.model.Token token = deviceManager.getToken(device.getDeviceId());
+                com.xa.mass.base.model.Device device = allDevices.get(i);
+                com.xa.mass.base.model.Token token = deviceManager.getToken(device.getDeviceId());
                 logger.info("设备 {}: ID={}, 分组={}, 状态={}, Token={}, Token状态={}", i + 1, device.getDeviceId(), device.getGroupId(), device.getStatus(), token != null ? token.getTokenId() : "null", token != null ? token.getStatus() : "null");
             }
         }

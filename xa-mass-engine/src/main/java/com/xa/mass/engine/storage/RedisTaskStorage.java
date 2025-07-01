@@ -1,12 +1,11 @@
 package com.xa.mass.engine.storage;
 
 import com.google.gson.Gson;
-import com.xa.mass.eventbus.model.Task;
-import com.xa.mass.eventbus.model.TaskMsg;
+import com.xa.mass.base.model.Task;
+import com.xa.mass.base.model.TaskMsg;
 
 import java.util.List;
 import java.util.Optional;
-import java.util.stream.Collectors;
 
 /**
  * Redis任务存储实现

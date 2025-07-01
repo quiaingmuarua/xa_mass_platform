@@ -5,11 +5,11 @@ import com.xa.mass.engine.model.RuleEvaluationDetail;
 import com.xa.mass.engine.monkey.snapshot.DeviceSnapshot;
 import com.xa.mass.engine.monkey.snapshot.TaskSnapshot;
 import com.xa.mass.engine.monkey.snapshot.TokenSnapshot;
-import com.xa.mass.eventbus.enums.assignment.AssignmentResult;
-import com.xa.mass.eventbus.enums.assignment.AssignmentType;
-import com.xa.mass.eventbus.model.Device;
-import com.xa.mass.eventbus.model.Task;
-import com.xa.mass.eventbus.model.Token;
+import com.xa.mass.base.enums.assignment.AssignmentResult;
+import com.xa.mass.base.enums.assignment.AssignmentType;
+import com.xa.mass.base.model.Device;
+import com.xa.mass.base.model.Task;
+import com.xa.mass.base.model.Token;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

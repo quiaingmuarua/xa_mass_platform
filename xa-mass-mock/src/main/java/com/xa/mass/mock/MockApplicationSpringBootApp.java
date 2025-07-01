@@ -1,21 +1,10 @@
 package com.xa.mass.mock;
 
-import com.google.gson.JsonObject;
 import com.xa.mass.engine.DeviceManager;
 import com.xa.mass.engine.TaskManager;
-import com.xa.mass.engine.model.TaskCreateRequestDto;
-import com.xa.mass.engine.monkey.MonkeyDeviceGenerator;
-import com.xa.mass.engine.monkey.MonkeyTaskGenerator;
 import com.xa.mass.engine.rules.RuleManager;
-import com.xa.mass.eventbus.model.Device;
-import com.xa.mass.eventbus.model.Token;
-import com.xa.mass.gateway.dispatcher.DispatcherContextRegistry;
-import com.xa.mass.gateway.dispatcher.handler.MassMessageHandler;
-import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
 import com.xa.mass.gateway.queue.*;
-import com.xa.mass.gateway.model.enums.MessageType;
 import com.xa.mass.starter.MassApplication;
-import com.xa.mass.starter.MassEngine;
 import com.xa.mass.starter.config.EngineConfig;
 import com.xa.mass.starter.config.MassApplicationConfig;
 import org.slf4j.Logger;
@@ -26,9 +15,6 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Profile;
-
-import java.util.ArrayList;
-import java.util.List;
 
 /**
  * Mock 全链路应用启动类

@@ -1,14 +1,13 @@
 package com.xa.mass.engine.listener;
 
 import com.xa.mass.engine.DeviceManager;
-import com.xa.mass.engine.model.DeviceMatchContext;
 import com.xa.mass.engine.rules.RuleDefinition;
 import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.engine.service.AssignmentRecordService;
-import com.xa.mass.eventbus.enums.Project;
-import com.xa.mass.eventbus.model.Device;
-import com.xa.mass.eventbus.model.Task;
-import com.xa.mass.eventbus.model.Token;
+import com.xa.mass.base.enums.Project;
+import com.xa.mass.base.model.Device;
+import com.xa.mass.base.model.Task;
+import com.xa.mass.base.model.Token;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mock;
@@ -75,7 +74,7 @@ public class TaskDeviceAssignListenerTest {
         verify(ruleManager).evaluateDefaultRules(any());
         verify(deviceManager).tryLockDevice("device-1");
         verify(recordService).recordDeviceAssignment(eq(task), eq(device), eq(token), 
-                eq(com.xa.mass.eventbus.enums.assignment.AssignmentResult.SUCCESS), 
+                eq(com.xa.mass.base.enums.assignment.AssignmentResult.SUCCESS),
                 anyString(), anyList(), anyMap());
     }
     
@@ -103,7 +102,7 @@ public class TaskDeviceAssignListenerTest {
         
         // 验证调用
         verify(recordService).recordDeviceAssignment(eq(task), eq(device), eq(token), 
-                eq(com.xa.mass.eventbus.enums.assignment.AssignmentResult.CONFLICT), 
+                eq(com.xa.mass.base.enums.assignment.AssignmentResult.CONFLICT),
                 anyString(), anyList(), anyMap());
     }
     
@@ -130,7 +129,7 @@ public class TaskDeviceAssignListenerTest {
         
         // 验证调用
         verify(recordService).recordDeviceAssignment(eq(task), eq(device), eq(token), 
-                eq(com.xa.mass.eventbus.enums.assignment.AssignmentResult.RULE_NOT_MATCH), 
+                eq(com.xa.mass.base.enums.assignment.AssignmentResult.RULE_NOT_MATCH),
                 anyString(), anyList(), anyMap());
     }
     

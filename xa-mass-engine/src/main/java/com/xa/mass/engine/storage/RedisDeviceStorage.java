@@ -1,12 +1,11 @@
 package com.xa.mass.engine.storage;
 
 import com.google.gson.Gson;
-import com.xa.mass.eventbus.model.Device;
-import com.xa.mass.eventbus.model.Token;
+import com.xa.mass.base.model.Device;
+import com.xa.mass.base.model.Token;
 
 import java.util.List;
 import java.util.Optional;
-import java.util.stream.Collectors;
 
 /**
  * Redis设备存储实现

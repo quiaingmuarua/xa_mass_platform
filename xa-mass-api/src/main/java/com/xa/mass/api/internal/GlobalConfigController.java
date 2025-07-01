@@ -2,7 +2,7 @@ package com.xa.mass.api.internal;
 
 import com.xa.mass.api.config.GlobalConfig;
 import com.xa.mass.api.model.ApiResponse;
-import com.xa.mass.eventbus.enums.Project;
+import com.xa.mass.base.enums.Project;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
