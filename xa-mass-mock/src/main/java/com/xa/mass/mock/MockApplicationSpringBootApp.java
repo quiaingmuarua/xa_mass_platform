@@ -6,6 +6,7 @@ import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.model.TaskCreateRequestDto;
 import com.xa.mass.engine.monkey.MonkeyDeviceGenerator;
 import com.xa.mass.engine.monkey.MonkeyTaskGenerator;
+import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.eventbus.model.Device;
 import com.xa.mass.eventbus.model.Token;
 import com.xa.mass.gateway.dispatcher.DispatcherContextRegistry;
@@ -41,6 +42,10 @@ public class MockApplicationSpringBootApp {
 
     @Autowired
     DeviceManager deviceManager;
+
+
+    @Autowired
+    private RuleManager ruleManager;
     
     private static final Logger log = LoggerFactory.getLogger(MockApplicationSpringBootApp.class);
     
@@ -145,6 +150,7 @@ public class MockApplicationSpringBootApp {
             EngineConfig config = new EngineConfig();
             config.setTaskManager(taskManager);
             config.setDeviceManager(deviceManager);
+            config.setRuleManager(ruleManager);
             config.setMockMode(true);
             
             // 启动引擎
