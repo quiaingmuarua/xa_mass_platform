@@ -71,11 +71,11 @@ public class MassEngine {
         try {
             if (config.isMockMode()) {
                 // 1. 启动/注册所有资源和服务
-                scheduler = new SimpleTaskScheduler();
-                taskManager = new TaskManager(scheduler);
-                deviceManager = new DeviceManager();
-                recordService = new AssignmentRecordService();
-                var ruleManager = RuleManagerFactory.getProjectRuleManager("demoApp");
+                scheduler = config.getScheduler();
+                taskManager = config.getTaskManager();
+                deviceManager = config.getDeviceManager();
+                recordService = config.getRecordService();
+                var ruleManager = config.getRuleManager();
                 var msgAssignListener = new SimpleTaskMsgAssignListener(deviceManager, recordService);
                 var deviceAssignListener = new TaskDeviceAssignListener(ruleManager, deviceManager, msgAssignListener, recordService);
                 assignWorker = new TaskAssignWorker(deviceAssignListener);

@@ -2,6 +2,7 @@ package com.xa.mass.mock;
 
 import com.google.gson.JsonObject;
 import com.xa.mass.engine.DeviceManager;
+import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.model.TaskCreateRequestDto;
 import com.xa.mass.engine.monkey.MonkeyDeviceGenerator;
 import com.xa.mass.engine.monkey.MonkeyTaskGenerator;
@@ -18,6 +19,7 @@ import com.xa.mass.starter.config.EngineConfig;
 import com.xa.mass.starter.config.MassApplicationConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.CommandLineRunner;
@@ -33,6 +35,12 @@ import java.util.List;
  */
 @SpringBootApplication(scanBasePackages = { "com.xa.mass.mock", "com.xa.mass.api" })
 public class MockApplicationSpringBootApp {
+
+    @Autowired
+    TaskManager taskManager;
+
+    @Autowired
+    DeviceManager deviceManager;
     
     private static final Logger log = LoggerFactory.getLogger(MockApplicationSpringBootApp.class);
     
@@ -135,6 +143,8 @@ public class MockApplicationSpringBootApp {
         try {
             // 创建引擎配置
             EngineConfig config = new EngineConfig();
+            config.setTaskManager(taskManager);
+            config.setDeviceManager(deviceManager);
             config.setMockMode(true);
             
             // 启动引擎

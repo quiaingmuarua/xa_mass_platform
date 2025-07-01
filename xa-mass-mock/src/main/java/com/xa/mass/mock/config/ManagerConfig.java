@@ -1,4 +1,4 @@
-package com.xa.mass.api.config;
+package com.xa.mass.mock.config;
 
 import com.xa.mass.engine.DeviceManager;
 import com.xa.mass.engine.TaskManager;
@@ -19,7 +19,7 @@ import java.util.Map;
  * 状态展示相关配置
  */
 @Configuration
-public class StatusConfig {
+public class ManagerConfig {
 
     @Bean
     public TaskStorage taskStorage() {

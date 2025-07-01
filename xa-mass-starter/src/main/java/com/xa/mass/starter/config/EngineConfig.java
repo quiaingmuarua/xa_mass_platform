@@ -7,6 +7,13 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import com.google.gson.JsonParser;
+import com.xa.mass.engine.DeviceManager;
+import com.xa.mass.engine.TaskManager;
+import com.xa.mass.engine.strategy.SimpleTaskScheduler;
+import com.xa.mass.engine.service.AssignmentRecordService;
+import com.xa.mass.engine.rules.RuleManager;
+import com.xa.mass.engine.rules.RuleManagerFactory;
+import java.util.Map;
 
 /**
  * 引擎配置类
@@ -17,6 +24,13 @@ public  class EngineConfig {
     private String mockConfigPath = "mock_config.json";
     private boolean mockMode = false;
     private JsonObject mockConfigRoot;
+
+    // 引擎核心组件配置
+    private SimpleTaskScheduler scheduler = new SimpleTaskScheduler();
+    private TaskManager taskManager = new TaskManager(scheduler);
+    private DeviceManager deviceManager = new DeviceManager();
+    private AssignmentRecordService recordService = new AssignmentRecordService();
+    private RuleManager<Map<String, Object>> ruleManager = RuleManagerFactory.getProjectRuleManager("demoApp");
 
     public boolean isEnabled() { return enabled; }
     public void setEnabled(boolean enabled) { this.enabled = enabled; }
@@ -88,4 +102,21 @@ public  class EngineConfig {
     }
 
     public void setMockConfigRoot(JsonObject mockConfigRoot) { this.mockConfigRoot = mockConfigRoot; }
+
+    public SimpleTaskScheduler getScheduler() { return scheduler; }
+    public void setScheduler(SimpleTaskScheduler scheduler) {
+        this.scheduler = scheduler;
+        // 级联更新 taskManager
+        if (this.taskManager == null || this.taskManager.getScheduler() != scheduler) {
+            this.taskManager = new TaskManager(scheduler);
+        }
+    }
+    public TaskManager getTaskManager() { return taskManager; }
+    public void setTaskManager(TaskManager taskManager) { this.taskManager = taskManager; }
+    public DeviceManager getDeviceManager() { return deviceManager; }
+    public void setDeviceManager(DeviceManager deviceManager) { this.deviceManager = deviceManager; }
+    public AssignmentRecordService getRecordService() { return recordService; }
+    public void setRecordService(AssignmentRecordService recordService) { this.recordService = recordService; }
+    public RuleManager<Map<String, Object>> getRuleManager() { return ruleManager; }
+    public void setRuleManager(RuleManager<Map<String, Object>> ruleManager) { this.ruleManager = ruleManager; }
 }

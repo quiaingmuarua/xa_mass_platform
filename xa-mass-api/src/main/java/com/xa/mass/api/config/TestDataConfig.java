@@ -29,9 +29,9 @@ import java.util.Map;
 /**
  * 测试数据配置
  * 仅在开发环境生成示例数据
+ * 废弃
  */
-@Configuration
-@Profile("dev")
+
 public class TestDataConfig {
 
     private static final Logger logger = LoggerFactory.getLogger(TestDataConfig.class);

@@ -409,4 +409,8 @@ public class TaskManager {
             }
         }
     }
+
+    public TaskScheduler getScheduler() {
+        return this.taskScheduler;
+    }
 }
