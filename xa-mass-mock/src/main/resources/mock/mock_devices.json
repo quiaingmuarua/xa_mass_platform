@@ -1,0 +1,38 @@
+[
+  {
+    "deviceIdTemplate": "device-{i}",
+    "count": 10,
+    "groupId": "us",
+    "agentVersion": "1.0.0",
+    "supportedApps": ["demoApp", "otherApp", "testApp"],
+    "tokens": [
+      {
+        "tokenIdTemplate": "token-{i}-A",
+        "count": 200,
+        "channel": "us",
+        "randomStatus": false
+      },
+      {
+        "tokenIdTemplate": "token-{i}-B",
+        "count": 100,
+        "channel": "us",
+        "randomStatus": false
+      }
+    ]
+  },
+  {
+    "deviceIdTemplate": "gb-device-{i}",
+    "count": 12,
+    "groupId": "gb",
+    "agentVersion": "1.0.1",
+    "supportedApps": ["demoApp", "testApp"],
+    "tokens": [
+      {
+        "tokenIdTemplate": "gb-token-{i}-{j}",
+        "count": 300,
+        "channel": "gb",
+        "randomStatus": false
+      }
+    ]
+  }
+] 

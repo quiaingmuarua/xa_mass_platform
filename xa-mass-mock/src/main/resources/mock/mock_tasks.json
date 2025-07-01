@@ -1,0 +1,18 @@
+[
+  {
+    "taskNameTemplate": "Task-{country}-{i}",
+    "countryList": ["us", "gb"],
+    "countPerCountry": 2,
+    "msgPerTask": 50,
+    "batchSize": 3,
+    "project": "demoApp"
+  },
+  {
+    "taskNameTemplate": "TestTask-{country}-{i}",
+    "countryList": ["us"],
+    "countPerCountry": 1,
+    "msgPerTask": 50,
+    "batchSize": 2,
+    "project": "testApp"
+  }
+] 

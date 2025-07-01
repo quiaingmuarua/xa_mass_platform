@@ -24,6 +24,9 @@ public  class EngineConfig {
     private String mockConfigPath = "mock_config.json";
     private boolean mockMode = false;
     private JsonObject mockConfigRoot;
+    private String deviceConfigPath = "mock/mock_devices.json";
+    private String taskConfigPath = "mock/mock_tasks.json";
+    private String ruleConfigPath = "mock/mock_rules.json";
 
     // 引擎核心组件配置
     private SimpleTaskScheduler scheduler = new SimpleTaskScheduler();
@@ -44,20 +47,39 @@ public  class EngineConfig {
     public boolean isMockMode() { return mockMode; }
     public void setMockMode(boolean mockMode) { this.mockMode = mockMode; }
 
+    public String getDeviceConfigPath() { return deviceConfigPath; }
+    public void setDeviceConfigPath(String deviceConfigPath) { this.deviceConfigPath = deviceConfigPath; }
+
+    public String getTaskConfigPath() { return taskConfigPath; }
+    public void setTaskConfigPath(String taskConfigPath) { this.taskConfigPath = taskConfigPath; }
+
+    public String getRuleConfigPath() { return ruleConfigPath; }
+    public void setRuleConfigPath(String ruleConfigPath) { this.ruleConfigPath = ruleConfigPath; }
+
     public JsonObject getMockConfigRoot() {
-        if (this.mockConfigRoot == null) {
-            String configPath = this.getMockConfigPath();
-            String jsonDsl;
-            try {
-                jsonDsl = readConfigFile(configPath);
-                // 可加日志: System.out.println("Loaded mock config from file: " + configPath);
-            } catch (IOException e) {
-                // 可加日志: System.out.println("No external mock config found, using default.");
-                jsonDsl = getDefaultMockConfig();
-            }
-            this.mockConfigRoot = JsonParser.parseString(jsonDsl).getAsJsonObject();
+        JsonObject root = new JsonObject();
+        // 读取设备
+        try {
+            String deviceJson = readConfigFile(deviceConfigPath);
+            root.add("devices", JsonParser.parseString(deviceJson).getAsJsonArray());
+        } catch (Exception e) {
+            // 处理异常或用默认
         }
-        return this.mockConfigRoot;
+        // 读取任务
+        try {
+            String taskJson = readConfigFile(taskConfigPath);
+            root.add("tasks", JsonParser.parseString(taskJson).getAsJsonArray());
+        } catch (Exception e) {
+            // 处理异常或用默认
+        }
+        // 读取规则
+        try {
+            String ruleJson = readConfigFile(ruleConfigPath);
+            root.add("rules", JsonParser.parseString(ruleJson).getAsJsonArray());
+        } catch (Exception e) {
+            // 处理异常或用默认
+        }
+        return root;
     }
 
     /**
