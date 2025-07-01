@@ -84,18 +84,22 @@ public class MockApplicationSpringBootApp {
         return args -> {
             log.info("🔗 开始启动全链路服务...");
             try {
-                // 组装 Gateway 配置
-                MassApplicationConfig gatewayConfig = MassApplicationConfig.createDevelopment(18088, inputQueue, outputQueue);
-                // 组装 Engine 配置
+                // 组装 MassApplicationConfig
+                MassApplicationConfig appConfig = MassApplicationConfig.createDevelopment(18088, inputQueue, outputQueue);
+                // 组装 EngineConfig
                 EngineConfig engineConfig = new EngineConfig();
                 engineConfig.setTaskManager(taskManager);
                 engineConfig.setDeviceManager(deviceManager);
                 engineConfig.setRuleManager(ruleManager);
                 engineConfig.setMockMode(true);
-                // 统一启动
-                MassApplication app = new MassApplication(gatewayConfig, engineConfig);
+                // 注入 engineConfig
+                appConfig.setEngineConfig(engineConfig);
+                // 启动
+                MassApplication app = new MassApplication(appConfig);
                 app.start();
-                // 添加关闭钩子
+                // mock数据加载和事件发布
+                app.loadMockData(app.getEngine(), engineConfig);
+                app.getEngine().publishTaskEvents();
                 Runtime.getRuntime().addShutdownHook(new Thread(app::stop));
                 log.info("✅ API 服务已通过 Spring Boot 自动启动");
                 log.info("🎉 全链路服务启动完成！");

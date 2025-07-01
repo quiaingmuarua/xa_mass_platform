@@ -27,7 +27,6 @@ public class MassApplication {
     private static final Logger logger = LoggerFactory.getLogger(MassApplication.class);
     
     private final MassApplicationConfig config;
-    private final EngineConfig customEngineConfig;
     private MassGateway massGateway;
     private MassEngine engine;
     private DispatchRuntimeContext dispatcherContext;
@@ -36,12 +35,6 @@ public class MassApplication {
 
     public MassApplication(MassApplicationConfig config) {
         this.config = config;
-        this.customEngineConfig = new EngineConfig();
-    }
-
-    public MassApplication(MassApplicationConfig config, EngineConfig engineConfig) {
-        this.config = config;
-        this.customEngineConfig = engineConfig;
     }
     
     /**
@@ -170,12 +163,8 @@ public class MassApplication {
      */
     private void startEngine() {
         logger.info("⚙️ Starting MassEngine...");
-        EngineConfig engineConfigToUse = (customEngineConfig != null) ? customEngineConfig : config.getEngineConfig();
-        engine = new MassEngine(engineConfigToUse);
+        engine = new MassEngine(config.getEngineConfig());
         engine.start();
-        // mock数据加载和事件发布
-        loadMockData(engine, engineConfigToUse);
-        engine.publishTaskEvents();
         logger.info("✅ MassEngine started");
     }
     
@@ -238,7 +227,7 @@ public class MassApplication {
     }
 
     // mock数据加载
-    private void loadMockData(MassEngine engine, EngineConfig config) {
+    public void loadMockData(MassEngine engine, EngineConfig config) {
         logger.info("📊 加载 Mock 数据...");
         try {
             com.google.gson.JsonObject root = config.getMockConfigRoot();
@@ -273,7 +262,7 @@ public class MassApplication {
             throw new RuntimeException(e);
         }
     }
-    private void verifyDeviceData(MassEngine engine) {
+    public void verifyDeviceData(MassEngine engine) {
         com.xa.mass.engine.DeviceManager deviceManager = engine.getDeviceManager();
         if (deviceManager != null) {
             java.util.List<com.xa.mass.eventbus.model.Device> allDevices = deviceManager.getAllDevices();
@@ -286,5 +275,9 @@ public class MassApplication {
                 logger.info("设备 {}: ID={}, 分组={}, 状态={}, Token={}, Token状态={}", i + 1, device.getDeviceId(), device.getGroupId(), device.getStatus(), token != null ? token.getTokenId() : "null", token != null ? token.getStatus() : "null");
             }
         }
+    }
+
+    public MassEngine getEngine() {
+        return engine;
     }
 } 
