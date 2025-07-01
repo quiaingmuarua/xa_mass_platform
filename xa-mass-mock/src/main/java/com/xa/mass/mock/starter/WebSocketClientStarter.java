@@ -21,6 +21,10 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Random;
 import java.util.concurrent.*;
+import com.xa.mass.engine.monkey.MonkeyDeviceGenerator;
+import com.xa.mass.eventbus.model.Device;
+import com.xa.mass.eventbus.model.Token;
+import java.nio.charset.StandardCharsets;
 
 @Component
 @Profile("client")
@@ -39,23 +43,30 @@ public class WebSocketClientStarter implements CommandLineRunner {
 
     @Override
     public void run(String... args) throws Exception {
-        int numberOfClients = mockConfig.getClient().getCount();
+        String deviceConfigPath = "mock/mock_devices.json";
         String baseUri = mockConfig.getClient().getUri();
-
-        if (numberOfClients <= 0) {
-            log.info("No clients to start based on configuration.");
+        // 读取并解析mock_devices.json
+        List<Token> tokenList = new ArrayList<>();
+        List<Device> devices;
+        try (var is = getClass().getClassLoader().getResourceAsStream(deviceConfigPath)) {
+            if (is == null) {
+                log.warn("未找到mock设备配置文件: {}，不启动任何client", deviceConfigPath);
+                return;
+            }
+            String deviceJson = new String(is.readAllBytes(), StandardCharsets.UTF_8);
+            devices = MonkeyDeviceGenerator.generateDevices(deviceJson, tokenList);
+        }
+        if (devices == null || devices.isEmpty()) {
+            log.info("No devices found in mock_devices.json.");
             return;
         }
-
-        clientExecutor = Executors.newFixedThreadPool(Math.min(numberOfClients, 20));
-        CountDownLatch latch = new CountDownLatch(numberOfClients);
-
-        for (int i = 0; i < numberOfClients; i++) {
-            String deviceId = "app_client_" + String.format("%03d", i + 1);
+        clientExecutor = Executors.newFixedThreadPool(Math.min(devices.size(), 20));
+        CountDownLatch latch = new CountDownLatch(devices.size());
+        for (Device device : devices) {
+            String deviceId = device.getDeviceId();
             URI uri = new URI(baseUri);
             MassWebSocketClientImpl client = new MassWebSocketClientImpl(uri, deviceId);
             clientSessionManager.addClient(client);
-
             clientExecutor.submit(() -> {
                 try {
                     if (client.connectBlocking(10, TimeUnit.SECONDS)) {
@@ -72,10 +83,8 @@ public class WebSocketClientStarter implements CommandLineRunner {
                 }
             });
         }
-
-        latch.await(numberOfClients * 15L, TimeUnit.SECONDS);
+        latch.await(devices.size() * 15L, TimeUnit.SECONDS);
         log.info("✅ All connection attempts completed. Active: {}", clientSessionManager.getClientCount());
-
         startPingTask();
     }
 
