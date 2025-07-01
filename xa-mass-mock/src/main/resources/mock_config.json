@@ -23,7 +23,7 @@
     },
     {
       "deviceIdTemplate": "gb-device-{i}",
-      "count": 10,
+      "count": 12,
       "groupId": "gb",
       "agentVersion": "1.0.1",
       "supportedApps": ["demoApp", "testApp"],

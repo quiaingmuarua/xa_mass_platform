@@ -14,6 +14,7 @@ import com.xa.mass.gateway.server.MassServerStater;
 import com.xa.mass.gateway.session.ServerSessionManager;
 
 import com.xa.mass.starter.config.MassApplicationConfig;
+import com.xa.mass.starter.config.EngineConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -26,14 +27,21 @@ public class MassApplication {
     private static final Logger logger = LoggerFactory.getLogger(MassApplication.class);
     
     private final MassApplicationConfig config;
+    private final EngineConfig customEngineConfig;
     private MassGateway massGateway;
     private MassEngine engine;
     private DispatchRuntimeContext dispatcherContext;
     private ServerMessageDispatcher messageDispatcher;
     private MassServerStater serverStater;
-    
+
     public MassApplication(MassApplicationConfig config) {
         this.config = config;
+        this.customEngineConfig = new EngineConfig();
+    }
+
+    public MassApplication(MassApplicationConfig config, EngineConfig engineConfig) {
+        this.config = config;
+        this.customEngineConfig = engineConfig;
     }
     
     /**
@@ -162,8 +170,12 @@ public class MassApplication {
      */
     private void startEngine() {
         logger.info("⚙️ Starting MassEngine...");
-        engine = new MassEngine(config.getEngineConfig());
+        EngineConfig engineConfigToUse = (customEngineConfig != null) ? customEngineConfig : config.getEngineConfig();
+        engine = new MassEngine(engineConfigToUse);
         engine.start();
+        // mock数据加载和事件发布
+        loadMockData(engine, engineConfigToUse);
+        engine.publishTaskEvents();
         logger.info("✅ MassEngine started");
     }
     
@@ -205,5 +217,74 @@ public class MassApplication {
      */
     public boolean isRunning() {
         return serverStater != null && serverStater.isRunning();
+    }
+    
+    // 注册mock消息处理器
+    private void registerMockMessageHandlers(DispatchRuntimeContext dispatcherContext) {
+        logger.info("📝 注册Mock消息处理器...");
+        // 注册任务消息处理器
+        com.xa.mass.gateway.dispatcher.handler.MassMessageHandler taskHandler = msg -> {
+            logger.info("[Gateway Handler] 处理任务消息: {}", msg);
+            return new java.util.ArrayList<>();
+        };
+        // 注册设备消息处理器
+        com.xa.mass.gateway.dispatcher.handler.MassMessageHandler deviceHandler = msg -> {
+            logger.info("[Gateway Handler] 处理设备消息: {}", msg);
+            return new java.util.ArrayList<>();
+        };
+        dispatcherContext.getMessageHandlerRegistry().register("mock-task", com.xa.mass.gateway.model.enums.MessageType.TASK, "", taskHandler);
+        dispatcherContext.getMessageHandlerRegistry().register("mock-device", com.xa.mass.gateway.model.enums.MessageType.STATUS, "", deviceHandler);
+        logger.info("✅ Mock消息处理器注册完成");
+    }
+
+    // mock数据加载
+    private void loadMockData(MassEngine engine, EngineConfig config) {
+        logger.info("📊 加载 Mock 数据...");
+        try {
+            com.google.gson.JsonObject root = config.getMockConfigRoot();
+            logger.info("✅ Mock 配置加载成功");
+            if (root.has("devices")) {
+                java.util.List<com.xa.mass.eventbus.model.Token> tokenList = new java.util.ArrayList<>();
+                java.util.List<com.xa.mass.eventbus.model.Device> devices = com.xa.mass.engine.monkey.MonkeyDeviceGenerator.generateDevices(
+                    root.getAsJsonArray("devices").toString(), tokenList);
+                logger.info("📱 生成 {} 个设备和 {} 个 Token", devices.size(), tokenList.size());
+                for (com.xa.mass.eventbus.model.Device device : devices) {
+                    engine.addDevice(device);
+                    logger.debug("添加设备: {} (分组: {}, 状态: {})", device.getDeviceId(), device.getGroupId(), device.getStatus());
+                }
+                for (com.xa.mass.eventbus.model.Token token : tokenList) {
+                    engine.addToken(token);
+                    logger.debug("添加 Token: {} (设备: {}, 状态: {}, 渠道: {})", token.getTokenId(), token.getDeviceId(), token.getStatus(), token.getChannel());
+                }
+                verifyDeviceData(engine);
+            }
+            if (root.has("tasks")) {
+                java.util.List<com.xa.mass.engine.model.TaskCreateRequestDto> taskDtos = com.xa.mass.engine.monkey.MonkeyTaskGenerator.generateTasks(
+                    root.getAsJsonArray("tasks"));
+                logger.info("📋 生成 {} 个任务", taskDtos.size());
+                for (com.xa.mass.engine.model.TaskCreateRequestDto dto : taskDtos) {
+                    engine.createTask(dto);
+                    logger.debug("创建任务: {} (国家: {}, 项目: {}, 数量: {})", dto.getTaskName(), dto.getCountryCode(), dto.getProject(), dto.getBatchSize());
+                }
+            }
+            logger.info("✅ Mock 数据加载完成");
+        } catch (Exception e) {
+            logger.error("❌ Mock 数据加载失败", e);
+            throw new RuntimeException(e);
+        }
+    }
+    private void verifyDeviceData(MassEngine engine) {
+        com.xa.mass.engine.DeviceManager deviceManager = engine.getDeviceManager();
+        if (deviceManager != null) {
+            java.util.List<com.xa.mass.eventbus.model.Device> allDevices = deviceManager.getAllDevices();
+            java.util.List<com.xa.mass.eventbus.model.Device> usDevices = deviceManager.getDevicesByCountry("us");
+            java.util.List<com.xa.mass.eventbus.model.Device> gbDevices = deviceManager.getDevicesByCountry("gb");
+            logger.info("📊 设备数据验证 - 总计: {}, 美国: {}, 英国: {}", allDevices.size(), usDevices.size(), gbDevices.size());
+            for (int i = 0; i < Math.min(3, allDevices.size()); i++) {
+                com.xa.mass.eventbus.model.Device device = allDevices.get(i);
+                com.xa.mass.eventbus.model.Token token = deviceManager.getToken(device.getDeviceId());
+                logger.info("设备 {}: ID={}, 分组={}, 状态={}, Token={}, Token状态={}", i + 1, device.getDeviceId(), device.getGroupId(), device.getStatus(), token != null ? token.getTokenId() : "null", token != null ? token.getStatus() : "null");
+            }
+        }
     }
 } 
