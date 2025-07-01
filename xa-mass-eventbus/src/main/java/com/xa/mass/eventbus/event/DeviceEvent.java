@@ -3,6 +3,7 @@ package com.xa.mass.eventbus.event;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import com.xa.mass.eventbus.model.Device;
 
 /**
  * 设备状态相关事件
@@ -174,14 +175,16 @@ public class DeviceEvent {
      */
     public static class DeviceOnlineBatchEvent extends ChaosEvent.BaseChaosEvent {
         private final List<String> deviceIds;
+        private final List<Device> devices;
         private final String reason;
         
-        public DeviceOnlineBatchEvent(List<String> deviceIds, String reason) {
+        public DeviceOnlineBatchEvent(List<String> deviceIds, List<Device> devices, String reason) {
             super(ChaosEventType.DEVICE_ONLINE_BATCH,
                   ChaosEventSeverity.LOW,
                   createMetadata(deviceIds, reason),
                   String.format("设备批量上线，设备数: %d，原因: %s", deviceIds.size(), reason));
             this.deviceIds = deviceIds;
+            this.devices = devices;
             this.reason = reason;
         }
         
@@ -195,6 +198,10 @@ public class DeviceEvent {
         
         public List<String> getDeviceIds() {
             return deviceIds;
+        }
+        
+        public List<Device> getDevices() {
+            return devices;
         }
         
         public String getReason() {

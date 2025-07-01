@@ -8,6 +8,7 @@ import org.slf4j.LoggerFactory;
 
 import com.xa.mass.eventbus.event.DeviceEvent;
 import com.xa.mass.eventbus.event.EventBusManager;
+import com.xa.mass.eventbus.model.Device;
 
 import java.util.Collections;
 import java.util.HashMap;
@@ -67,7 +68,12 @@ public class ServerSessionManager {
         logger.info("🟢 Connected: deviceId={} role={} channelId={} totalDevices={}",
                 deviceId, connRole, channel.id().asShortText(), deviceChannelMap.size());
         // 发布上线事件
-        EventBusManager.post(new DeviceEvent.DeviceOnlineBatchEvent(java.util.List.of(deviceId), "websocket connected"));
+        java.util.List<Device> deviceList = new java.util.ArrayList<>();
+        Device deviceObj = null;
+        // 尝试从DeviceManager或其他上下文获取Device对象（如有），此处可根据实际情况完善
+        // deviceObj = ...
+        if (deviceObj != null) deviceList.add(deviceObj);
+        EventBusManager.post(new DeviceEvent.DeviceOnlineBatchEvent(java.util.List.of(deviceId), deviceList, "websocket connected"));
     }
 
     /**

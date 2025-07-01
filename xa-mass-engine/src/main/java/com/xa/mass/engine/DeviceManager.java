@@ -155,8 +155,20 @@ public class DeviceManager {
         }
         @com.google.common.eventbus.Subscribe
         public void onDeviceOnline(com.xa.mass.eventbus.event.DeviceEvent.DeviceOnlineBatchEvent event) {
-            for (String deviceId : event.getDeviceIds()) {
-                deviceManager.updateOnlineStatus(deviceId, true);
+            if (event.getDevices() != null && !event.getDevices().isEmpty()) {
+                for (com.xa.mass.eventbus.model.Device device : event.getDevices()) {
+                    deviceManager.addDevice(device);
+                    deviceManager.updateOnlineStatus(device.getDeviceId(), true);
+                }
+            } else {
+                for (String deviceId : event.getDeviceIds()) {
+                    if (deviceManager.getDevice(deviceId) == null) {
+                        com.xa.mass.eventbus.model.Device device = new com.xa.mass.eventbus.model.Device();
+                        device.setDeviceId(deviceId);
+                        deviceManager.addDevice(device);
+                    }
+                    deviceManager.updateOnlineStatus(deviceId, true);
+                }
             }
         }
         @com.google.common.eventbus.Subscribe
