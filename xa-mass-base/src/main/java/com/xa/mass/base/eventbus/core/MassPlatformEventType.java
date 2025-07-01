@@ -11,6 +11,11 @@ public enum MassPlatformEventType {
     TASK_REVIEW_PARTIAL_FAILURE("任务部分失败"),
     TASK_REVIEW_MISAPPROVAL("任务误通过"),
 
+    // 任务生命周期相关
+    TASK_CREATED("任务创建"),
+    TASK_AUDITED("任务审核通过"),
+    TASK_ASSIGNED("任务分配"),
+
     // 设备状态相关
     DEVICE_OFFLINE_BATCH("设备批量下线"),
     DEVICE_OFFLINE_SINGLE("设备单个下线"),

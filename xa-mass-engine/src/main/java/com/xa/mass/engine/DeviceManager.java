@@ -5,6 +5,8 @@ import com.xa.mass.engine.storage.TaskStorageFactory;
 import com.xa.mass.base.enums.device.DeviceStatus;
 import com.xa.mass.base.model.Device;
 import com.xa.mass.base.model.Token;
+import com.xa.mass.base.eventbus.core.EventBusFacade;
+import com.xa.mass.base.eventbus.core.EventBusFactory;
 
 import java.util.List;
 import java.util.Set;
@@ -23,12 +25,16 @@ public class DeviceManager {
     
     public DeviceManager() {
         this(TaskStorageFactory.createDefaultDeviceStorage());
-        com.xa.mass.base.event.EventBusManager.register(new DeviceStatusEventListener(this));
+        EventBusFacade eventBus = EventBusFactory.get("guava");
+        eventBus.register(com.xa.mass.base.eventbus.device.DeviceOnlineBatchEvent.class, new DeviceStatusEventListener(this)::onDeviceOnline);
+        eventBus.register(com.xa.mass.base.eventbus.device.DeviceOfflineSingleEvent.class, new DeviceStatusEventListener(this)::onDeviceOffline);
     }
     
     public DeviceManager(DeviceStorage deviceStorage) {
         this.deviceStorage = deviceStorage;
-        com.xa.mass.base.event.EventBusManager.register(new DeviceStatusEventListener(this));
+        EventBusFacade eventBus = EventBusFactory.get("guava");
+        eventBus.register(com.xa.mass.base.eventbus.device.DeviceOnlineBatchEvent.class, new DeviceStatusEventListener(this)::onDeviceOnline);
+        eventBus.register(com.xa.mass.base.eventbus.device.DeviceOfflineSingleEvent.class, new DeviceStatusEventListener(this)::onDeviceOffline);
     }
 
     /**
@@ -157,7 +163,7 @@ public class DeviceManager {
             this.deviceManager = deviceManager;
         }
         @com.google.common.eventbus.Subscribe
-        public void onDeviceOnline(com.xa.mass.base.event.DeviceEvent.DeviceOnlineBatchEvent event) {
+        public void onDeviceOnline(com.xa.mass.base.eventbus.device.DeviceOnlineBatchEvent event) {
             if (event.getDevices() != null && !event.getDevices().isEmpty()) {
                 for (com.xa.mass.base.model.Device device : event.getDevices()) {
                     deviceManager.addDevice(device);
@@ -168,7 +174,7 @@ public class DeviceManager {
                     if (deviceManager.getDevice(deviceId) == null) {
                         com.xa.mass.base.model.Device device = new com.xa.mass.base.model.Device();
                         device.setDeviceId(deviceId);
-                        device.setStatus(DeviceStatus.ONLINE);
+                        device.setStatus(com.xa.mass.base.enums.device.DeviceStatus.ONLINE);
                         deviceManager.addDevice(device);
                     }
                     deviceManager.updateOnlineStatus(deviceId, true);
@@ -176,7 +182,7 @@ public class DeviceManager {
             }
         }
         @com.google.common.eventbus.Subscribe
-        public void onDeviceOffline(com.xa.mass.base.event.DeviceEvent.DeviceOfflineSingleEvent event) {
+        public void onDeviceOffline(com.xa.mass.base.eventbus.device.DeviceOfflineSingleEvent event) {
             deviceManager.updateOnlineStatus(event.getDeviceId(), false);
         }
     }

@@ -1,7 +1,7 @@
 package com.xa.mass.engine.service;
 
 import com.google.common.eventbus.Subscribe;
-import com.xa.mass.base.event.task.TaskAssignedEvent;
+import com.xa.mass.base.eventbus.task.TaskAssignedEvent;
 import com.xa.mass.engine.monkey.report.AssignmentPipelineStep;
 import com.xa.mass.engine.monkey.report.AssignmentReportStep;
 import com.xa.mass.engine.monkey.report.ConflictReportStep;
@@ -19,7 +19,6 @@ public class PipelineService {
         this.recordService = recordService;
     }
 
-    @Subscribe
     public void onTaskAssigned(TaskAssignedEvent event) {
         log.info("[PipelineService] Pipeline处理: {}", event.getTask().getTid());
         CompletableFuture.runAsync(() -> {

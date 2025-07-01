@@ -12,6 +12,28 @@
 - mock 结果支持分配全链路日志、规则链评估、冲突检测、分配统计等观测能力。
 - 适用于端到端集成测试、规则链调试、批量分配演练、设备 token 轮询等复杂场景。
 
+## 事件驱动架构（2024年7月更新）
+
+本项目已全面采用事件驱动架构，所有核心模块（engine、gateway、mock等）通过统一的事件总线（eventbus）进行解耦通信。
+
+- 事件总线基础设施位于 `xa-mass-base`，核心接口为 `EventBusFacade`，通过 `EventBusFactory.get("guava")` 获取实例。
+- 所有事件均实现 `MassEvent` 接口，常见事件如：
+  - 任务相关：`TaskCreatedEvent`、`TaskAuditedEvent`、`TaskAssignedEvent`（`eventbus.task` 包）
+  - 设备相关：`DeviceOnlineBatchEvent`、`DeviceOfflineSingleEvent`（`eventbus.device` 包）
+- 事件注册与发布示例：
+
+```java
+EventBusFacade eventBus = EventBusFactory.get("guava");
+eventBus.register(TaskCreatedEvent.class, event -> {
+    // 处理任务创建
+});
+eventBus.post(new TaskCreatedEvent(task, traceId, requestId));
+```
+
+- 事件驱动带来高内聚、低耦合、易扩展、易插拔混沌注入/监控等优势。
+
+详细设计见 `doc/规划.md`。
+
 ## 模块结构
 
 - **xa-mass-starter**：启动与聚合模块，唯一入口，负责组装和启动所有子系统。

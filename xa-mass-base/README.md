@@ -1,11 +1,29 @@
 # xa-mass-eventbus
 
-本模块为事件总线模块，负责：
-- 事件定义与发布
-- 事件监听与处理
-- 任务状态管理
-- 设备状态管理
-- Token 状态管理
+本模块为事件总线基础设施，负责：
+- 事件定义与发布（基于 MassEvent 体系）
+- 事件监听与处理（通过 EventBusFacade 注册 Consumer）
+- 任务、设备、Token 等全局事件流
+
+## 事件驱动架构
+
+- 事件总线核心接口为 `EventBusFacade`，通过 `EventBusFactory.get("guava")` 获取实例。
+- 所有事件均实现 `MassEvent` 接口，常见事件如：
+  - 任务相关：`TaskCreatedEvent`、`TaskAuditedEvent`、`TaskAssignedEvent`（`eventbus.task` 包）
+  - 设备相关：`DeviceOnlineBatchEvent`、`DeviceOfflineSingleEvent`（`eventbus.device` 包）
+- 事件注册与发布示例：
+
+```java
+EventBusFacade eventBus = EventBusFactory.get("guava");
+eventBus.register(TaskCreatedEvent.class, event -> {
+    // 处理任务创建
+});
+eventBus.post(new TaskCreatedEvent(task, traceId, requestId));
+```
+
+- 事件驱动带来高内聚、低耦合、易扩展、易插拔混沌注入/监控等优势。
+
+详细设计见 `doc/规划.md`。
 
 ## 任务状态流转
 

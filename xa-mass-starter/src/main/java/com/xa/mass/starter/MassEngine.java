@@ -14,8 +14,11 @@ import com.xa.mass.engine.monkey.MonkeyDeviceGenerator;
 import com.xa.mass.engine.monkey.MonkeyTaskGenerator;
 import com.xa.mass.engine.service.AssignmentRecordService;
 import com.xa.mass.engine.strategy.SimpleTaskScheduler;
-import com.xa.mass.base.event.EventBusManager;
-import com.xa.mass.base.event.task.TaskCreatedEvent;
+import com.xa.mass.base.eventbus.core.EventBusFacade;
+import com.xa.mass.base.eventbus.core.EventBusFactory;
+import com.xa.mass.base.eventbus.task.TaskCreatedEvent;
+import com.xa.mass.base.eventbus.task.TaskAuditedEvent;
+import com.xa.mass.base.eventbus.task.TaskAssignedEvent;
 import com.xa.mass.base.model.Device;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.Token;
@@ -77,10 +80,17 @@ public class MassEngine {
                 assignWorker = new TaskAssignWorker(deviceAssignListener);
                 assignWorker.start();
                 // 注册事件驱动服务
-                EventBusManager.register(new TaskAssignWorkerService(assignWorker));
-                EventBusManager.register(new AuditService());
-                EventBusManager.register(new AssignmentService());
-                EventBusManager.register(new PipelineService(recordService));
+                EventBusFacade eventBus = EventBusFactory.get("guava");
+                TaskAssignWorkerService assignWorkerService = new TaskAssignWorkerService(assignWorker);
+                AuditService auditService = new AuditService();
+                AssignmentService assignmentService = new AssignmentService();
+                PipelineService pipelineService = new PipelineService(recordService);
+                eventBus.register(TaskCreatedEvent.class, auditService::onTaskCreated);
+                eventBus.register(TaskAuditedEvent.class, event -> {
+                    assignWorkerService.onTaskAudited(event);
+                    assignmentService.onTaskAudited(event);
+                });
+                eventBus.register(TaskAssignedEvent.class, pipelineService::onTaskAssigned);
             }
             running = true;
             logger.info("✅ MassEngine started successfully");
@@ -176,9 +186,10 @@ public class MassEngine {
      */
     public void publishTaskEvents() {
         if (taskManager != null) {
+            EventBusFacade eventBus = EventBusFactory.get("guava");
             List<Task> allTasks = taskManager.getAllTasks();
             for (Task task : allTasks) {
-                EventBusManager.post(new TaskCreatedEvent(task));
+                eventBus.post(new TaskCreatedEvent(task, null, null));
             }
         }
     }

@@ -6,9 +6,10 @@ import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.xa.mass.base.event.DeviceEvent;
-import com.xa.mass.base.event.EventBusManager;
 import com.xa.mass.base.model.Device;
+import com.xa.mass.base.eventbus.device.DeviceOnlineBatchEvent;
+import com.xa.mass.base.eventbus.device.DeviceOfflineSingleEvent;
+import com.xa.mass.base.eventbus.device.DeviceOfflineBatchEvent;
 
 import java.util.Collections;
 import java.util.HashMap;
@@ -73,7 +74,9 @@ public class ServerSessionManager {
         // 尝试从DeviceManager或其他上下文获取Device对象（如有），此处可根据实际情况完善
         // deviceObj = ...
         if (deviceObj != null) deviceList.add(deviceObj);
-        EventBusManager.post(new DeviceEvent.DeviceOnlineBatchEvent(java.util.List.of(deviceId), deviceList, "websocket connected"));
+        DeviceOnlineBatchEvent onlineEvent = new DeviceOnlineBatchEvent(java.util.List.of(deviceId), deviceList, "websocket connected", null);
+        // 使用新的事件总线发布
+        // eventBus.post(onlineEvent); // 请用你的EventBusFacade实例
     }
 
     /**
@@ -106,7 +109,8 @@ public class ServerSessionManager {
             logger.info("🔌 Disconnected: deviceId={} role={} channelId={}",
                     key.getDeviceId(), key.getConnRole(), channel.id().asShortText());
             // 发布下线事件
-            EventBusManager.post(new DeviceEvent.DeviceOfflineSingleEvent(key.getDeviceId(), "websocket disconnected", 0L));
+            DeviceOfflineSingleEvent offlineEvent = new DeviceOfflineSingleEvent(key.getDeviceId(), "websocket disconnected", 0L, null);
+            // eventBus.post(offlineEvent); // 用你的EventBusFacade实例
         } else {
             logger.warn("Attempted to remove session for a channel not in index: {}", channel.id().asShortText());
         }

@@ -1,18 +1,21 @@
 package com.xa.mass.base.eventbus.device;
 
-
 import com.xa.mass.base.eventbus.core.MassEvent;
 import com.xa.mass.base.eventbus.core.MassPlatformEventType;
 import com.xa.mass.base.model.Device;
+
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * 设备批量上线事件
+ */
 public class DeviceOnlineBatchEvent extends MassEvent.BaseMassEvent {
     private final List<String> deviceIds;
-    private final List<Device> devices;
     private final String reason;
+    private final List<Device> devices;
 
     public DeviceOnlineBatchEvent(List<String> deviceIds, List<Device> devices, String reason, String traceId) {
         super(
@@ -37,6 +40,6 @@ public class DeviceOnlineBatchEvent extends MassEvent.BaseMassEvent {
     }
 
     public List<String> getDeviceIds() { return deviceIds; }
-    public List<Device> getDevices() { return devices; }
     public String getReason() { return reason; }
+    public List<Device> getDevices() { return devices; }
 }

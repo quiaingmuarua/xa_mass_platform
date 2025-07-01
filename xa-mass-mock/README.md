@@ -5,6 +5,7 @@
 - WebSocket 客户端/服务端 mock
 - 全链路任务/设备/分配 mock 与观测
 - 演示与开发环境联调
+- 所有 mock 事件流均通过 eventbus（EventBusFacade）注册和发布，与 engine、gateway 等解耦
 
 ## 主要能力
 

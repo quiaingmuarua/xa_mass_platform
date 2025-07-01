@@ -2,7 +2,7 @@ package com.xa.mass.engine.service;
 
 import com.google.common.eventbus.Subscribe;
 import com.xa.mass.engine.listener.TaskAssignWorker;
-import com.xa.mass.base.event.task.TaskAuditedEvent;
+import com.xa.mass.base.eventbus.task.TaskAuditedEvent;
 
 public class TaskAssignWorkerService {
     private final TaskAssignWorker worker;
@@ -10,7 +10,6 @@ public class TaskAssignWorkerService {
         this.worker = worker;
     }
 
-    @Subscribe
     public void onTaskAudited(TaskAuditedEvent event) {
         worker.submit(event.getTask());
     }
