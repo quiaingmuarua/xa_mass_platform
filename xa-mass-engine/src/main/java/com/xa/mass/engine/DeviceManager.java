@@ -6,6 +6,8 @@ import com.xa.mass.eventbus.model.Device;
 import com.xa.mass.eventbus.model.Token;
 
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ConcurrentSkipListSet;
 
 /**
  * 设备管理器
@@ -15,12 +17,17 @@ public class DeviceManager {
     
     private final DeviceStorage deviceStorage;
     
+    // 在线状态管理
+    private final Set<String> onlineDevices = new ConcurrentSkipListSet<>();
+    
     public DeviceManager() {
         this(TaskStorageFactory.createDefaultDeviceStorage());
+        com.xa.mass.eventbus.event.EventBusManager.register(new DeviceStatusEventListener(this));
     }
     
     public DeviceManager(DeviceStorage deviceStorage) {
         this.deviceStorage = deviceStorage;
+        com.xa.mass.eventbus.event.EventBusManager.register(new DeviceStatusEventListener(this));
     }
 
     /**
@@ -126,5 +133,35 @@ public class DeviceManager {
      */
     public List<String> getLockedDevices() {
         return deviceStorage.getLockedDevices();
+    }
+
+    // 在线状态管理
+    public void updateOnlineStatus(String deviceId, boolean online) {
+        if (online) {
+            onlineDevices.add(deviceId);
+        } else {
+            onlineDevices.remove(deviceId);
+        }
+    }
+    public boolean isDeviceOnline(String deviceId) {
+        return onlineDevices.contains(deviceId);
+    }
+
+    // 事件监听器
+    public static class DeviceStatusEventListener {
+        private final DeviceManager deviceManager;
+        public DeviceStatusEventListener(DeviceManager deviceManager) {
+            this.deviceManager = deviceManager;
+        }
+        @com.google.common.eventbus.Subscribe
+        public void onDeviceOnline(com.xa.mass.eventbus.event.DeviceEvent.DeviceOnlineBatchEvent event) {
+            for (String deviceId : event.getDeviceIds()) {
+                deviceManager.updateOnlineStatus(deviceId, true);
+            }
+        }
+        @com.google.common.eventbus.Subscribe
+        public void onDeviceOffline(com.xa.mass.eventbus.event.DeviceEvent.DeviceOfflineSingleEvent event) {
+            deviceManager.updateOnlineStatus(event.getDeviceId(), false);
+        }
     }
 } 

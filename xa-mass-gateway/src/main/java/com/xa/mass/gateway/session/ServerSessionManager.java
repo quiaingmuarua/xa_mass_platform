@@ -6,6 +6,8 @@ import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.xa.mass.eventbus.event.DeviceEvent;
+import com.xa.mass.eventbus.event.EventBusManager;
 
 import java.util.Collections;
 import java.util.HashMap;
@@ -64,6 +66,8 @@ public class ServerSessionManager {
 
         logger.info("🟢 Connected: deviceId={} role={} channelId={} totalDevices={}",
                 deviceId, connRole, channel.id().asShortText(), deviceChannelMap.size());
+        // 发布上线事件
+        EventBusManager.post(new DeviceEvent.DeviceOnlineBatchEvent(java.util.List.of(deviceId), "websocket connected"));
     }
 
     /**
@@ -95,6 +99,8 @@ public class ServerSessionManager {
             }
             logger.info("🔌 Disconnected: deviceId={} role={} channelId={}",
                     key.getDeviceId(), key.getConnRole(), channel.id().asShortText());
+            // 发布下线事件
+            EventBusManager.post(new DeviceEvent.DeviceOfflineSingleEvent(key.getDeviceId(), "websocket disconnected", 0L));
         } else {
             logger.warn("Attempted to remove session for a channel not in index: {}", channel.id().asShortText());
         }

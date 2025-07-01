@@ -98,7 +98,7 @@ public class MockApplicationSpringBootApp {
                 MassApplication app = new MassApplication(appConfig);
                 app.start();
                 // mock数据加载和事件发布
-                app.loadMockData(app.getEngine(), engineConfig);
+//                app.loadMockData(app.getEngine(), engineConfig);
                 app.getEngine().publishTaskEvents();
                 Runtime.getRuntime().addShutdownHook(new Thread(app::stop));
                 log.info("✅ API 服务已通过 Spring Boot 自动启动");
