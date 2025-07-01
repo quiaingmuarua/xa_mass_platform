@@ -2,6 +2,7 @@ package com.xa.mass.engine;
 
 import com.xa.mass.engine.storage.DeviceStorage;
 import com.xa.mass.engine.storage.TaskStorageFactory;
+import com.xa.mass.eventbus.enums.device.DeviceStatus;
 import com.xa.mass.eventbus.model.Device;
 import com.xa.mass.eventbus.model.Token;
 
@@ -147,6 +148,8 @@ public class DeviceManager {
         return onlineDevices.contains(deviceId);
     }
 
+
+
     // 事件监听器
     public static class DeviceStatusEventListener {
         private final DeviceManager deviceManager;
@@ -165,6 +168,7 @@ public class DeviceManager {
                     if (deviceManager.getDevice(deviceId) == null) {
                         com.xa.mass.eventbus.model.Device device = new com.xa.mass.eventbus.model.Device();
                         device.setDeviceId(deviceId);
+                        device.setStatus(DeviceStatus.ONLINE);
                         deviceManager.addDevice(device);
                     }
                     deviceManager.updateOnlineStatus(deviceId, true);
