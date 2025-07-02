@@ -102,52 +102,170 @@
             </div>
         </div>
 
-        <!-- 设备卡片列表 -->
-        <div class="row" id="devicesContainer">
-            <div class="col-md-6 col-lg-4 mb-3" th:each="device : ${devices}">
-                <div class="card device-card h-100">
-                    <div class="card-header d-flex justify-content-between align-items-center">
-                        <h6 class="mb-0" th:text="${device.deviceId}">设备ID</h6>
-                        <span class="badge bg-secondary" th:text="${device.status.name()}">状态</span>
-                    </div>
-                    <div class="card-body">
-                        <div class="mb-2">
-                            <small class="text-muted">分组:</small>
-                            <span th:text="${device.groupId}">-</span>
-                        </div>
-                        <div class="mb-2">
-                            <small class="text-muted">Agent版本:</small>
-                            <span th:text="${device.agentVersion}">-</span>
-                        </div>
-                        <div class="mb-2">
-                            <small class="text-muted">支持的应用:</small>
-                            <span th:if="${!#lists.isEmpty(device.supportedProjects)}">
-                                <span class="app-tag" th:each="project : ${device.supportedProjects}" th:text="${project.code}"></span>
-                            </span>
-                            <span th:if="${#lists.isEmpty(device.supportedProjects)}">-</span>
-                        </div>
-                        <div class="mb-2">
-                            <small class="text-muted">锁定状态:</small>
-                            <span th:if="${device.locked}" class="locked-indicator">🔒 已锁定</span>
-                            <span th:unless="${device.locked}">✅ 可用</span>
-                        </div>
-                        <div class="mb-2">
-                            <small class="text-muted">最后心跳:</small>
-                            <span class="timestamp" th:text="${device.lastHeartbeat != null ? #temporals.format(device.lastHeartbeat, 'yyyy-MM-dd HH:mm:ss') : '-'}">-</span>
-                        </div>
-                        <div class="mb-2">
-                            <small class="text-muted">创建时间:</small>
-                            <span class="timestamp" th:text="${device.createTime != null ? #temporals.format(device.createTime, 'yyyy-MM-dd HH:mm:ss') : '-'}">-</span>
-                        </div>
-                    </div>
+        <!-- 设备表格列表 -->
+        <div class="row">
+            <div class="col-12">
+                <table class="table table-hover align-middle">
+                    <thead class="table-light">
+                        <tr>
+                            <th>设备ID</th>
+                            <th>状态</th>
+                            <th>分组</th>
+                            <th>Agent版本</th>
+                            <th>支持的应用</th>
+                            <th>锁定状态</th>
+                            <th>最后心跳</th>
+                            <th>创建时间</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr th:each="device : ${devices}">
+                            <td th:text="${device.deviceId}">设备ID</td>
+                            <td><span class="badge bg-secondary" th:text="${device.status.name()}">状态</span></td>
+                            <td th:text="${device.groupId}">-</td>
+                            <td th:text="${device.agentVersion}">-</td>
+                            <td>
+                                <span th:if="${!#lists.isEmpty(device.supportedProjects)}"
+                                      th:text="${#strings.arrayJoin(device.supportedProjects, ', ')}">-</span>
+                                <span th:if="${#lists.isEmpty(device.supportedProjects)}">-</span>
+                            </td>
+                            <td>
+                                <span th:if="${device.locked}" class="locked-indicator">🔒 已锁定</span>
+                                <span th:unless="${device.locked}">✅ 可用</span>
+                            </td>
+                            <td>
+                                <span class="timestamp" th:text="${device.lastHeartbeat != null ? #temporals.format(device.lastHeartbeat, 'yyyy-MM-dd HH:mm:ss') : '-'}">-</span>
+                            </td>
+                            <td>
+                                <span class="timestamp" th:text="${device.createTime != null ? #temporals.format(device.createTime, 'yyyy-MM-dd HH:mm:ss') : '-'}">-</span>
+                            </td>
+                            <td>
+                                <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#editDeviceModal"
+                                        th:attr="data-device-id=${device.deviceId},data-supported-projects=${#strings.arrayJoin(device.supportedProjects, ',')},data-group-id=${device.groupId},data-agent-version=${device.agentVersion}">
+                                    <i class="bi bi-pencil"></i> 编辑
+                                </button>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+                <div th:if="${#lists.isEmpty(devices)}" class="text-center text-muted mt-5">
+                    <h4>暂无设备数据</h4>
+                    <p>当前系统中没有设备，请先添加一些设备。</p>
                 </div>
             </div>
-            <div th:if="${#lists.isEmpty(devices)}" class="text-center text-muted mt-5">
-                <h4>暂无设备数据</h4>
-                <p>当前系统中没有设备，请先添加一些设备。</p>
+        </div>
+
+        <!-- 编辑设备模态框 -->
+        <div class="modal fade" id="editDeviceModal" tabindex="-1" aria-labelledby="editDeviceModalLabel" aria-hidden="true">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="editDeviceModalLabel">编辑设备支持的应用</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <form id="editDeviceForm">
+                            <input type="hidden" id="editDeviceId" name="deviceId">
+                            <div class="mb-3">
+                                <label class="form-label">设备ID</label>
+                                <input type="text" class="form-control" id="editDeviceIdDisplay" readonly>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">分组</label>
+                                <input type="text" class="form-control" id="editGroupIdDisplay" readonly>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Agent版本</label>
+                                <input type="text" class="form-control" id="editAgentVersionDisplay" readonly>
+                            </div>
+                            <div class="mb-3">
+                                <label for="editSupportedProjects" class="form-label">支持的应用（可多选）</label>
+                                <select class="form-select" id="editSupportedProjects" name="supportedProjects" multiple>
+                                    <!-- 选项由JS动态填充 -->
+                                </select>
+                            </div>
+                        </form>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                        <button type="button" class="btn btn-primary" id="saveDeviceBtn">保存</button>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+    // 缓存所有项目code
+    let allProjectCodes = [];
+
+    // 加载所有项目code
+    function loadAllProjects(callback) {
+        if (allProjectCodes.length > 0) {
+            callback && callback();
+            return;
+        }
+        fetch('/status/devices/allProjects')
+            .then(res => res.json())
+            .then(data => {
+                allProjectCodes = data;
+                callback && callback();
+            });
+    }
+
+    // 设备编辑按钮点击，填充模态框
+    var editDeviceModal = document.getElementById('editDeviceModal');
+    editDeviceModal.addEventListener('show.bs.modal', function (event) {
+        var button = event.relatedTarget;
+        var deviceId = button.getAttribute('data-device-id');
+        var supportedProjects = button.getAttribute('data-supported-projects') || '';
+        var groupId = button.getAttribute('data-group-id') || '';
+        var agentVersion = button.getAttribute('data-agent-version') || '';
+        document.getElementById('editDeviceId').value = deviceId;
+        document.getElementById('editDeviceIdDisplay').value = deviceId;
+        document.getElementById('editGroupIdDisplay').value = groupId;
+        document.getElementById('editAgentVersionDisplay').value = agentVersion;
+        // 加载所有项目并回显
+        loadAllProjects(function() {
+            var select = document.getElementById('editSupportedProjects');
+            select.innerHTML = '';
+            allProjectCodes.forEach(function(code) {
+                var option = document.createElement('option');
+                option.value = code;
+                option.text = code;
+                select.appendChild(option);
+            });
+            // 设置已选
+            var selected = supportedProjects ? supportedProjects.split(',') : [];
+            Array.from(select.options).forEach(function(opt) {
+                opt.selected = selected.includes(opt.value);
+            });
+        });
+    });
+
+    // 保存按钮点击，AJAX提交
+    var saveBtn = document.getElementById('saveDeviceBtn');
+    saveBtn.addEventListener('click', function () {
+        var deviceId = document.getElementById('editDeviceId').value;
+        var select = document.getElementById('editSupportedProjects');
+        var selected = Array.from(select.selectedOptions).map(opt => opt.value);
+        fetch('/status/devices/updateSupportedProjects', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ deviceId: deviceId, supportedProjects: selected })
+        })
+        .then(response => {
+            if (response.ok) {
+                location.reload();
+            } else {
+                alert('保存失败');
+            }
+        })
+        .catch(() => alert('请求失败'));
+    });
+    </script>
 </body>
 </html> 

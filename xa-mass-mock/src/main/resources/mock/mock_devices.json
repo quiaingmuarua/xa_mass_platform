@@ -2,7 +2,7 @@
   {
     "deviceIdTemplate": "device-{i}",
     "count": 10,
-    "groupId": "us",
+    "groupId": "1",
     "agentVersion": "1.0.0",
     "supportedApps": ["demoApp", "otherApp", "testApp"],
     "tokens": [
@@ -23,7 +23,7 @@
   {
     "deviceIdTemplate": "gb-device-{i}",
     "count": 12,
-    "groupId": "gb",
+    "groupId":"2",
     "agentVersion": "1.0.1",
     "supportedApps": ["demoApp", "testApp"],
     "tokens": [
