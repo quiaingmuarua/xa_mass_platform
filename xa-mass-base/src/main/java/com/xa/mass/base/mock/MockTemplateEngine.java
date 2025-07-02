@@ -24,7 +24,7 @@ public class MockTemplateEngine {
      */
     public static List<Object> generate(String jsonDsl) {
         JsonObject root = JsonParser.parseString(jsonDsl).getAsJsonObject();
-        int count = root.has("COUNT") ? root.get("COUNT").getAsInt() : 1;
+        int count = root.has(DslKeyword.COUNT.name()) ? root.get(DslKeyword.COUNT.name()).getAsInt() : 1;
         List<Object> result = new ArrayList<>();
         for (int i = 0; i < count; i++) {
             Map<String, Object> context = new HashMap<>();
@@ -36,7 +36,7 @@ public class MockTemplateEngine {
 
     private static Object mockFromDsl(JsonObject dsl, Map<String, Object> context) {
         // 1. 解析 MODEL
-        String modelName = dsl.has("MODEL") ? dsl.get("MODEL").getAsString() : null;
+        String modelName = dsl.has(DslKeyword.MODEL.name()) ? dsl.get(DslKeyword.MODEL.name()).getAsString() : null;
         if (modelName == null) {
             throw new MockTemplateException("DSL 缺少 MODEL 字段");
         }
@@ -49,9 +49,9 @@ public class MockTemplateEngine {
         }
         // 2. 处理 FIELDS
         Map<String, Object> fields = null;
-        if (dsl.has("FIELDS")) {
+        if (dsl.has(DslKeyword.FIELDS.name())) {
             Type mapType = new TypeToken<Map<String, Object>>(){}.getType();
-            fields = gson.fromJson(dsl.get("FIELDS"), mapType);
+            fields = gson.fromJson(dsl.get(DslKeyword.FIELDS.name()), mapType);
         }
         if (fields == null) fields = Collections.emptyMap();
         for (Field field : clazz.getDeclaredFields()) {
@@ -60,7 +60,15 @@ public class MockTemplateEngine {
             Object value = null;
             if (fields.containsKey(field.getName())) {
                 value = mockFieldValue(field, fields.get(field.getName()), context);
-            } // else value 保持 null
+            }
+            // 自动支持枚举类型赋值
+            if (field.getType().isEnum() && value instanceof String strVal) {
+                value = Enum.valueOf((Class<Enum>) field.getType(), strVal);
+            }
+            // 基本类型未指定时赋默认值
+            if (value == null && field.getType().isPrimitive()) {
+                value = getPrimitiveDefaultValue(field.getType());
+            }
             try {
                 field.set(obj, value);
             } catch (Exception e) {
@@ -71,48 +79,57 @@ public class MockTemplateEngine {
     }
 
     private static Object mockFieldValue(Field field, Object rule, Map<String, Object> context) {
-        // 1. 集合类型
-        if (rule instanceof Map) {
-            Map<?, ?> ruleMap = (Map<?, ?>) rule;
-            if (ruleMap.containsKey("TYPE")) {
-                String type = String.valueOf(ruleMap.get("TYPE")).toUpperCase();
-                int count = ruleMap.containsKey("COUNT") ? ((Number) ruleMap.get("COUNT")).intValue() : 1;
-                String modelName = (String) ruleMap.get("MODEL");
-                Map<String, Object> subFields = (Map<String, Object>) ruleMap.get("FIELDS");
-                List<Object> list = new ArrayList<>();
-                for (int j = 0; j < count; j++) {
-                    Map<String, Object> subContext = new HashMap<>(context);
-                    subContext.put("j", j);
-                    JsonObject subDsl = new JsonObject();
-                    subDsl.addProperty("MODEL", modelName);
-                    if (subFields != null) {
-                        subDsl.add("FIELDS", gson.toJsonTree(subFields));
-                    }
-                    list.add(mockFromDsl(subDsl, subContext));
-                }
-                if (type.equals("LIST")) return list;
-                if (type.equals("SET")) return new HashSet<>(list);
-                throw new MockTemplateException("不支持的集合类型: " + type);
-            }
-            // 2. 嵌套对象
-            if (ruleMap.containsKey("MODEL")) {
-                JsonObject subDsl = new JsonObject();
-                subDsl.addProperty("MODEL", (String) ruleMap.get("MODEL"));
-                if (ruleMap.containsKey("FIELDS")) {
-                    subDsl.add("FIELDS", gson.toJsonTree(ruleMap.get("FIELDS")));
-                }
-                return mockFromDsl(subDsl, context);
-            }
-            // 3. 内置函数表达式
-            return TemplateValueResolver.resolve(rule, context);
-        } else if (rule instanceof List) {
-            // 直接返回 List，递归解析每个元素
-            List<?> list = (List<?>) rule;
-            return list.stream().map(v -> TemplateValueResolver.resolve(v, context)).toList();
-        } else {
-            // 4. 普通值/内置函数表达式/变量
-            return TemplateValueResolver.resolve(rule, context);
+        if (isCollectionRule(rule)) {
+            return handleCollectionRule(rule, context);
         }
+        if (isNestedModelRule(rule)) {
+            return handleNestedModelRule(rule, context);
+        }
+        // 其余情况交给 TemplateValueResolver（包括内置函数、普通值、变量）
+        return TemplateValueResolver.resolve(rule, context);
+    }
+
+    private static boolean isCollectionRule(Object rule) {
+        if (!(rule instanceof Map<?, ?> map)) return false;
+        return map.containsKey(DslKeyword.TYPE.name());
+    }
+
+    private static boolean isNestedModelRule(Object rule) {
+        if (!(rule instanceof Map<?, ?> map)) return false;
+        return map.containsKey(DslKeyword.MODEL.name());
+    }
+
+    private static Object handleCollectionRule(Object rule, Map<String, Object> context) {
+        Map<?, ?> ruleMap = (Map<?, ?>) rule;
+        String type = String.valueOf(ruleMap.get(DslKeyword.TYPE.name())).toUpperCase();
+        int count = ruleMap.containsKey(DslKeyword.COUNT.name()) ? ((Number) ruleMap.get(DslKeyword.COUNT.name())).intValue() : 1;
+        String modelName = (String) ruleMap.get(DslKeyword.MODEL.name());
+        @SuppressWarnings("unchecked")
+        Map<String, Object> subFields = (Map<String, Object>) ruleMap.get(DslKeyword.FIELDS.name());
+        List<Object> list = new ArrayList<>();
+        for (int j = 0; j < count; j++) {
+            Map<String, Object> subContext = new HashMap<>(context);
+            subContext.put("j", j);
+            JsonObject subDsl = new JsonObject();
+            subDsl.addProperty(DslKeyword.MODEL.name(), modelName);
+            if (subFields != null) {
+                subDsl.add(DslKeyword.FIELDS.name(), gson.toJsonTree(subFields));
+            }
+            list.add(mockFromDsl(subDsl, subContext));
+        }
+        if (type.equals("LIST")) return list;
+        if (type.equals("SET")) return new HashSet<>(list);
+        throw new MockTemplateException("不支持的集合类型: " + type);
+    }
+
+    private static Object handleNestedModelRule(Object rule, Map<String, Object> context) {
+        Map<?, ?> ruleMap = (Map<?, ?>) rule;
+        JsonObject subDsl = new JsonObject();
+        subDsl.addProperty(DslKeyword.MODEL.name(), (String) ruleMap.get(DslKeyword.MODEL.name()));
+        if (ruleMap.containsKey(DslKeyword.FIELDS.name())) {
+            subDsl.add(DslKeyword.FIELDS.name(), gson.toJsonTree(ruleMap.get(DslKeyword.FIELDS.name())));
+        }
+        return mockFromDsl(subDsl, context);
     }
 
     private static Class<?> resolveModelClass(String modelName) {
@@ -131,5 +148,17 @@ public class MockTemplateEngine {
         } catch (Exception e) {
             throw new MockTemplateException("未注册类型: " + modelName + "，请先注册或填写全类名", e);
         }
+    }
+
+    private static Object getPrimitiveDefaultValue(Class<?> type) {
+        if (type == boolean.class) return false;
+        if (type == byte.class) return (byte) 0;
+        if (type == short.class) return (short) 0;
+        if (type == int.class) return 0;
+        if (type == long.class) return 0L;
+        if (type == float.class) return 0f;
+        if (type == double.class) return 0d;
+        if (type == char.class) return '\0';
+        return null;
     }
 } 

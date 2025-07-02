@@ -17,21 +17,24 @@ interface BuiltinFunction {
  */
 public class BuiltinFunctions {
     private static final Random RANDOM = new Random();
-    private static final Map<String, BuiltinFunction> FUNCTION_MAP = new HashMap<>();
+    private static final Map<BuiltinFunc, BuiltinFunction> FUNCTION_MAP = new HashMap<>();
     static {
-        FUNCTION_MAP.put("$CHOICE", param -> choice((List<?>) param));
-        FUNCTION_MAP.put("$RANGE", param -> {
+        FUNCTION_MAP.put(BuiltinFunc.CHOICE, param -> choice((List<?>) param));
+        FUNCTION_MAP.put(BuiltinFunc.RANGE, param -> {
             List<?> list = (List<?>) param;
             return range(((Number) list.get(0)).intValue(), ((Number) list.get(1)).intValue());
         });
-        FUNCTION_MAP.put("$UUID", param -> uuid());
-        FUNCTION_MAP.put("$RANDOM", param -> random());
-        FUNCTION_MAP.put("$JOIN", param -> join((List<?>) param));
+        FUNCTION_MAP.put(BuiltinFunc.UUID, param -> uuid());
+        FUNCTION_MAP.put(BuiltinFunc.RANDOM, param -> random());
+        FUNCTION_MAP.put(BuiltinFunc.JOIN, param -> join((List<?>) param));
     }
 
     public static Object eval(String func, Object param) {
-        BuiltinFunction f = FUNCTION_MAP.get(func);
-        if (f != null) return f.apply(param);
+        BuiltinFunc f = BuiltinFunc.fromKey(func);
+        if (f != null) {
+            BuiltinFunction fn = FUNCTION_MAP.get(f);
+            if (fn != null) return fn.apply(param);
+        }
         throw new MockTemplateException("不支持的内置函数: " + func + " 参数: " + param);
     }
 
