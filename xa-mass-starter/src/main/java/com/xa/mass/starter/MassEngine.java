@@ -76,11 +76,7 @@ public class MassEngine {
                 assignWorker.start();
                 // 注册事件驱动服务
                 EventBusFacade eventBus = EventBusFactory.get("guava");
-                TaskAssignWorkerService assignWorkerService = new TaskAssignWorkerService(assignWorker);
-                AuditService auditService = new AuditService();
-                AssignmentService assignmentService = new AssignmentService();
-                PipelineService pipelineService = new PipelineService(recordService);
-                EventListenerRegistry.registerAll(eventBus, deviceManager, assignWorkerService, auditService, assignmentService, pipelineService);
+                EventListenerRegistry.registerDeviceStatusListeners(eventBus, deviceManager);
             }
             running = true;
             logger.info("✅ MassEngine started successfully");
