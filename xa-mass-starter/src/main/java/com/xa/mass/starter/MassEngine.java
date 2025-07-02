@@ -82,18 +82,11 @@ public class MassEngine {
                 assignWorker.start();
                 // 注册事件驱动服务
                 EventBusFacade eventBus = EventBusFactory.get("guava");
-                // 注册 DeviceManager 相关事件监听器
-                EventListenerRegistry.registerDeviceManagerListeners(eventBus, deviceManager);
                 TaskAssignWorkerService assignWorkerService = new TaskAssignWorkerService(assignWorker);
                 AuditService auditService = new AuditService();
                 AssignmentService assignmentService = new AssignmentService();
                 PipelineService pipelineService = new PipelineService(recordService);
-                eventBus.register(TaskCreatedEvent.class, auditService::onTaskCreated);
-                eventBus.register(TaskAuditedEvent.class, event -> {
-                    assignWorkerService.onTaskAudited(event);
-                    assignmentService.onTaskAudited(event);
-                });
-                eventBus.register(TaskAssignedEvent.class, pipelineService::onTaskAssigned);
+                EventListenerRegistry.registerAll(eventBus, deviceManager, assignWorkerService, auditService, assignmentService, pipelineService);
             }
             running = true;
             logger.info("✅ MassEngine started successfully");

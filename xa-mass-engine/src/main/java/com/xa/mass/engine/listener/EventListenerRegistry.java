@@ -3,7 +3,14 @@ package com.xa.mass.engine.listener;
 import com.xa.mass.base.eventbus.core.EventBusFacade;
 import com.xa.mass.base.eventbus.device.DeviceOfflineEvent;
 import com.xa.mass.base.eventbus.device.DeviceOnlineEvent;
+import com.xa.mass.base.eventbus.task.TaskCreatedEvent;
+import com.xa.mass.base.eventbus.task.TaskAuditedEvent;
+import com.xa.mass.base.eventbus.task.TaskAssignedEvent;
 import com.xa.mass.engine.DeviceManager;
+import com.xa.mass.engine.service.AuditService;
+import com.xa.mass.engine.service.AssignmentService;
+import com.xa.mass.engine.service.PipelineService;
+import com.xa.mass.engine.service.TaskAssignWorkerService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -15,8 +22,8 @@ public class EventListenerRegistry {
 
     private EventListenerRegistry() {}
 
-    public static void registerDeviceManagerListeners(EventBusFacade eventBus, DeviceManager deviceManager) {
-        log.info("registerDeviceManagerListeners: register device status event listener ...");
+    public static void registerAll(EventBusFacade eventBus, DeviceManager deviceManager, TaskAssignWorkerService assignWorkerService, AuditService auditService, AssignmentService assignmentService, PipelineService pipelineService) {
+        log.info("registerAll: register all event listeners ...");
         DeviceManager.DeviceStatusEventListener listener = new DeviceManager.DeviceStatusEventListener(deviceManager);
         eventBus.register(DeviceOnlineEvent.class, listener::onDeviceOnline);
         eventBus.register(DeviceOfflineEvent.class, listener::onDeviceOffline);
