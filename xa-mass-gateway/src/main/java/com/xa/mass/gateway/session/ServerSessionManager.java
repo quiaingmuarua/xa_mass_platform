@@ -7,9 +7,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.xa.mass.base.model.Device;
-import com.xa.mass.base.eventbus.device.DeviceOnlineBatchEvent;
-import com.xa.mass.base.eventbus.device.DeviceOfflineSingleEvent;
 import com.xa.mass.base.eventbus.device.DeviceOfflineBatchEvent;
+import com.xa.mass.base.eventbus.core.EventBusFacade;
+import com.xa.mass.base.eventbus.core.EventBusFactory;
+import com.xa.mass.base.eventbus.device.DeviceOnlineEvent;
+import com.xa.mass.base.eventbus.device.DeviceOfflineEvent;
+import com.xa.mass.base.eventbus.core.EventPublisher;
 
 import java.util.Collections;
 import java.util.HashMap;
@@ -69,14 +72,7 @@ public class ServerSessionManager {
         logger.info("🟢 Connected: deviceId={} role={} channelId={} totalDevices={}",
                 deviceId, connRole, channel.id().asShortText(), deviceChannelMap.size());
         // 发布上线事件
-        java.util.List<Device> deviceList = new java.util.ArrayList<>();
-        Device deviceObj = null;
-        // 尝试从DeviceManager或其他上下文获取Device对象（如有），此处可根据实际情况完善
-        // deviceObj = ...
-        if (deviceObj != null) deviceList.add(deviceObj);
-        DeviceOnlineBatchEvent onlineEvent = new DeviceOnlineBatchEvent(java.util.List.of(deviceId), deviceList, "websocket connected", null);
-        // 使用新的事件总线发布
-        // eventBus.post(onlineEvent); // 请用你的EventBusFacade实例
+        EventPublisher.post(new DeviceOnlineEvent(deviceId, "websocket connected", null));
     }
 
     /**
@@ -109,8 +105,7 @@ public class ServerSessionManager {
             logger.info("🔌 Disconnected: deviceId={} role={} channelId={}",
                     key.getDeviceId(), key.getConnRole(), channel.id().asShortText());
             // 发布下线事件
-            DeviceOfflineSingleEvent offlineEvent = new DeviceOfflineSingleEvent(key.getDeviceId(), "websocket disconnected", 0L, null);
-            // eventBus.post(offlineEvent); // 用你的EventBusFacade实例
+            EventPublisher.post(new DeviceOfflineEvent(key.getDeviceId(), "websocket disconnected", null));
         } else {
             logger.warn("Attempted to remove session for a channel not in index: {}", channel.id().asShortText());
         }

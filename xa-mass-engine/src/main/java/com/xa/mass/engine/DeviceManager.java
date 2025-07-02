@@ -25,16 +25,10 @@ public class DeviceManager {
     
     public DeviceManager() {
         this(TaskStorageFactory.createDefaultDeviceStorage());
-        EventBusFacade eventBus = EventBusFactory.get("guava");
-        eventBus.register(com.xa.mass.base.eventbus.device.DeviceOnlineBatchEvent.class, new DeviceStatusEventListener(this)::onDeviceOnline);
-        eventBus.register(com.xa.mass.base.eventbus.device.DeviceOfflineSingleEvent.class, new DeviceStatusEventListener(this)::onDeviceOffline);
     }
     
     public DeviceManager(DeviceStorage deviceStorage) {
         this.deviceStorage = deviceStorage;
-        EventBusFacade eventBus = EventBusFactory.get("guava");
-        eventBus.register(com.xa.mass.base.eventbus.device.DeviceOnlineBatchEvent.class, new DeviceStatusEventListener(this)::onDeviceOnline);
-        eventBus.register(com.xa.mass.base.eventbus.device.DeviceOfflineSingleEvent.class, new DeviceStatusEventListener(this)::onDeviceOffline);
     }
 
     /**
@@ -163,27 +157,22 @@ public class DeviceManager {
             this.deviceManager = deviceManager;
         }
         @com.google.common.eventbus.Subscribe
-        public void onDeviceOnline(com.xa.mass.base.eventbus.device.DeviceOnlineBatchEvent event) {
-            if (event.getDevices() != null && !event.getDevices().isEmpty()) {
-                for (com.xa.mass.base.model.Device device : event.getDevices()) {
-                    deviceManager.addDevice(device);
-                    deviceManager.updateOnlineStatus(device.getDeviceId(), true);
-                }
-            } else {
-                for (String deviceId : event.getDeviceIds()) {
-                    if (deviceManager.getDevice(deviceId) == null) {
-                        com.xa.mass.base.model.Device device = new com.xa.mass.base.model.Device();
-                        device.setDeviceId(deviceId);
-                        device.setStatus(com.xa.mass.base.enums.device.DeviceStatus.ONLINE);
-                        deviceManager.addDevice(device);
-                    }
-                    deviceManager.updateOnlineStatus(deviceId, true);
-                }
+        public void onDeviceOnline(com.xa.mass.base.eventbus.device.DeviceOnlineEvent event) {
+            String deviceId = event.getDeviceId();
+            com.xa.mass.base.model.Device device = deviceManager.getDevice(deviceId);
+            if (device == null) {
+                device = new com.xa.mass.base.model.Device();
+                device.setDeviceId(deviceId);
+                device.setStatus(com.xa.mass.base.enums.device.DeviceStatus.ONLINE);
+                deviceManager.addDevice(device);
             }
+            device.updateHeartbeat();
+            deviceManager.updateOnlineStatus(deviceId, true);
         }
         @com.google.common.eventbus.Subscribe
-        public void onDeviceOffline(com.xa.mass.base.eventbus.device.DeviceOfflineSingleEvent event) {
-            deviceManager.updateOnlineStatus(event.getDeviceId(), false);
+        public void onDeviceOffline(com.xa.mass.base.eventbus.device.DeviceOfflineEvent event) {
+            String deviceId = event.getDeviceId();
+            deviceManager.updateOnlineStatus(deviceId, false);
         }
     }
 } 

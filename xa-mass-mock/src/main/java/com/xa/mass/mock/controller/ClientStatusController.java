@@ -19,7 +19,7 @@ import java.util.stream.Collectors;
  * 提供客户端连接状态的监控和管理
  */
 @RestController
-@RequestMapping("/status")
+@RequestMapping("/mock/status")
 @Profile("client")
 public class ClientStatusController {
 

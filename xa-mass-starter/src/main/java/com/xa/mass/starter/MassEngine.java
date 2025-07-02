@@ -26,6 +26,7 @@ import com.xa.mass.engine.service.AuditService;
 import com.xa.mass.engine.service.AssignmentService;
 import com.xa.mass.engine.service.PipelineService;
 import com.xa.mass.engine.service.TaskAssignWorkerService;
+import com.xa.mass.engine.listener.EventListenerRegistry;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -81,6 +82,8 @@ public class MassEngine {
                 assignWorker.start();
                 // 注册事件驱动服务
                 EventBusFacade eventBus = EventBusFactory.get("guava");
+                // 注册 DeviceManager 相关事件监听器
+                EventListenerRegistry.registerDeviceManagerListeners(eventBus, deviceManager);
                 TaskAssignWorkerService assignWorkerService = new TaskAssignWorkerService(assignWorker);
                 AuditService auditService = new AuditService();
                 AssignmentService assignmentService = new AssignmentService();
