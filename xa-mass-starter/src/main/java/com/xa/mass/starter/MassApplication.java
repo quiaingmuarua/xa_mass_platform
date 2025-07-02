@@ -13,8 +13,10 @@ import com.xa.mass.gateway.server.MassServerConfig;
 import com.xa.mass.gateway.server.MassServerStater;
 import com.xa.mass.gateway.session.ServerSessionManager;
 
-import com.xa.mass.starter.config.MassApplicationConfig;
+// MassApplicationConfig 已删除，使用内联配置
+import com.xa.mass.starter.config.GatewayConfig;
 import com.xa.mass.starter.config.EngineConfig;
+// 移除内部Builder引用，直接使用配置对象
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -26,15 +28,23 @@ public class MassApplication {
     
     private static final Logger logger = LoggerFactory.getLogger(MassApplication.class);
     
-    private final MassApplicationConfig config;
+    // 直接管理配置参数，不再依赖 MassApplicationConfig
+    private final int serverPort;
+    private final String webSocketPath;
+    private final GatewayConfig gatewayConfig;
+    private final EngineConfig engineConfig;
+    
     private MassGateway massGateway;
     private MassEngine engine;
     private DispatchRuntimeContext dispatcherContext;
     private ServerMessageDispatcher messageDispatcher;
     private MassServerStater serverStater;
 
-    public MassApplication(MassApplicationConfig config) {
-        this.config = config;
+    public MassApplication(int serverPort, String webSocketPath, GatewayConfig gatewayConfig, EngineConfig engineConfig) {
+        this.serverPort = serverPort;
+        this.webSocketPath = webSocketPath;
+        this.gatewayConfig = gatewayConfig;
+        this.engineConfig = engineConfig;
     }
     
     /**
@@ -110,11 +120,11 @@ public class MassApplication {
             logger.info("✅ Session manager initialized");
             
             // 创建消息传输器
-            MessageTransporter messageTransporter = config.getGatewayConfig().createMessageTransporter();
+            MessageTransporter messageTransporter = gatewayConfig.createMessageTransporter();
             logger.info("✅ Message transporter created");
             
             // 创建消息编解码器
-            MessageCodec messageCodec = config.getGatewayConfig().createMessageCodec();
+            MessageCodec messageCodec = gatewayConfig.createMessageCodec();
             logger.info("✅ Message codec created");
             
             // 创建分发器上下文
@@ -153,7 +163,7 @@ public class MassApplication {
      */
     private void startGateway() {
         logger.info("🌐 Starting MassGateway...");
-        massGateway = new MassGateway(config.getGatewayConfig(), dispatcherContext);
+        massGateway = new MassGateway(gatewayConfig, dispatcherContext);
         massGateway.start();
         logger.info("✅ MassGateway started");
     }
@@ -163,7 +173,7 @@ public class MassApplication {
      */
     private void startEngine() {
         logger.info("⚙️ Starting MassEngine...");
-        engine = new MassEngine(config.getEngineConfig());
+        engine = new MassEngine(engineConfig);
         engine.start();
         logger.info("✅ MassEngine started");
     }
@@ -183,15 +193,15 @@ public class MassApplication {
         logger.info("🔌 Starting WebSocket Server...");
         
         MassServerConfig serverConfig = MassServerBuilder.create()
-                .withPort(config.getServerPort())
-                .withWebSocketPath(config.getWebSocketPath())
+                .withPort(serverPort)
+                .withWebSocketPath(webSocketPath)
                 .withDispatcherContext(dispatcherContext)
                 .build();
         
         serverStater = new MassServerStater(serverConfig);
         serverStater.start();
         
-        logger.info("✅ WebSocket Server started on port {}", config.getServerPort());
+        logger.info("✅ WebSocket Server started on port {}", serverPort);
     }
     
     /**
@@ -230,7 +240,7 @@ public class MassApplication {
     public void loadMockData(MassEngine engine, EngineConfig config) {
         logger.info("📊 加载 Mock 数据...");
         try {
-            com.google.gson.JsonObject root = config.getMockConfigRoot();
+            com.google.gson.JsonObject root = engineConfig.getMockConfigRoot();
             logger.info("✅ Mock 配置加载成功");
             if (root.has("devices")) {
                 java.util.List<com.xa.mass.base.model.Token> tokenList = new java.util.ArrayList<>();

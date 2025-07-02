@@ -6,7 +6,7 @@ import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.gateway.queue.*;
 import com.xa.mass.starter.MassApplication;
 import com.xa.mass.starter.config.EngineConfig;
-import com.xa.mass.starter.config.MassApplicationConfig;
+// MassApplicationConfig 已删除，使用 MassApplicationBuilder
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -70,22 +70,36 @@ public class MockApplicationSpringBootApp {
         return args -> {
             log.info("🔗 开始启动全链路服务...");
             try {
-                // 组装 MassApplicationConfig
-                MassApplicationConfig appConfig = MassApplicationConfig.createDevelopment(18088, inputQueue, outputQueue);
-                // 组装 EngineConfig
-                EngineConfig engineConfig = new EngineConfig();
-                engineConfig.setTaskManager(taskManager);
-                engineConfig.setDeviceManager(deviceManager);
-                engineConfig.setRuleManager(ruleManager);
-                engineConfig.setMockMode(true);
-                // 注入 engineConfig
-                appConfig.setEngineConfig(engineConfig);
-                // 启动
-                MassApplication app = new MassApplication(appConfig);
+                        // 用 MassApplicationBuilder 构建
+        MassApplication app = com.xa.mass.starter.builder.MassApplicationBuilder.create()
+                        .server(18088)
+                        .gateway(gateway -> gateway
+                                .enabled(true)
+                                .maxConnections(1000)
+                                .inputQueue(inputQueue)
+                                .outputQueue(outputQueue)
+                                .queueMode()
+                        )
+                        .engine(engine -> engine
+                                .enabled(true)
+                                .workerThreads(8)
+                                .taskManager(taskManager)
+                                .deviceManager(deviceManager)
+                                .ruleManager(ruleManager)
+                                .mockData(
+                                        "mock/mock_devices.json",
+                                        "mock/mock_tasks.json",
+                                        "mock/mock_rules.json"
+                                )
+                        )
+                        .build();
+
                 app.start();
-                // mock数据加载和事件发布
-//                app.loadMockData(app.getEngine(), engineConfig);
+
+                // mock数据加载和事件发布（如有需要）
+                // app.loadMockData(app.getEngine(), app.getEngine().getConfig());
                 app.getEngine().publishTaskEvents();
+
                 Runtime.getRuntime().addShutdownHook(new Thread(app::stop));
                 log.info("✅ API 服务已通过 Spring Boot 自动启动");
                 log.info("🎉 全链路服务启动完成！");
