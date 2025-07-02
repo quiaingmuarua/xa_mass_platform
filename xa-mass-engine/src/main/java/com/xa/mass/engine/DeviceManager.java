@@ -7,6 +7,8 @@ import com.xa.mass.base.model.Device;
 import com.xa.mass.base.model.Token;
 import com.xa.mass.base.eventbus.core.EventBusFacade;
 import com.xa.mass.base.eventbus.core.EventBusFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.List;
 import java.util.Set;
@@ -17,7 +19,8 @@ import java.util.concurrent.ConcurrentSkipListSet;
  * 负责设备的CRUD操作和Token管理
  */
 public class DeviceManager {
-    
+
+    private static final Logger log = LoggerFactory.getLogger(DeviceManager.class);
     private final DeviceStorage deviceStorage;
     
     // 在线状态管理
@@ -158,6 +161,7 @@ public class DeviceManager {
         }
         @com.google.common.eventbus.Subscribe
         public void onDeviceOnline(com.xa.mass.base.eventbus.device.DeviceOnlineEvent event) {
+            log.info("Device_online: {}", event.getDeviceId());
             String deviceId = event.getDeviceId();
             com.xa.mass.base.model.Device device = deviceManager.getDevice(deviceId);
             if (device == null) {

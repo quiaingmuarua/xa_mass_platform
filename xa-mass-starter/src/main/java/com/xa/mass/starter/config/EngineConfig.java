@@ -22,7 +22,7 @@ public  class EngineConfig {
     private boolean enabled = true;
     private int workerThreads = 8;
     private String mockConfigPath = "mock_config.json";
-    private boolean mockMode = false;
+    private boolean mockMode = true;
     private JsonObject mockConfigRoot;
     private String deviceConfigPath = "mock/mock_devices.json";
     private String taskConfigPath = "mock/mock_tasks.json";
