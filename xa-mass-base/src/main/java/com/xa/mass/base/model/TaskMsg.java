@@ -86,6 +86,11 @@ public class TaskMsg {
      */
     private String errorMessage;
     
+    /**
+     * 目标号码
+     */
+    private String target;
+    
     public TaskMsg() {
         this.status = TaskMsgStatus.INIT;
         this.createTime = LocalDateTime.now();
@@ -94,13 +99,11 @@ public class TaskMsg {
         this.maxRetryCount = 3;
     }
     
-    public TaskMsg(String msgId, String taskId, String deviceId, String tokenId, String batchId) {
+    public TaskMsg(String msgId, String taskId, String target) {
         this();
         this.msgId = msgId;
         this.taskId = taskId;
-        this.deviceId = deviceId;
-        this.tokenId = tokenId;
-        this.batchId = batchId;
+        this.target = target;
     }
     
     // Getters and Setters
@@ -230,6 +233,14 @@ public class TaskMsg {
     
     public void setErrorMessage(String errorMessage) {
         this.errorMessage = errorMessage;
+    }
+    
+    public String getTarget() {
+        return target;
+    }
+    
+    public void setTarget(String target) {
+        this.target = target;
     }
     
     /**

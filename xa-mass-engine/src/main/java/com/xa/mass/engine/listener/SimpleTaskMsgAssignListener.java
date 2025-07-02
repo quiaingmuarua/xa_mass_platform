@@ -47,9 +47,8 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
                 Token token = deviceManager.getToken(device.getDeviceId());
                 String tokenId = token != null ? token.getTokenId() : null;
                 String currentBatchId = "batch-" + batchId;
-
-                TaskMsg msg = new TaskMsg(msgId, task.getTid(), device.getDeviceId(), tokenId, currentBatchId);
-                pushQueue.add(msg);
+                //todo 有问题
+//                pushQueue.add(msg);
 
                 // 记录消息分配
                 recordService.recordMessageAssignment(

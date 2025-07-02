@@ -2,11 +2,14 @@ package com.xa.mass.api.internal;
 
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
+import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.model.TaskCreateRequestDto;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/status/api/tasks")
@@ -36,9 +39,14 @@ public class TaskApiController {
         try {
             Task task = taskManager.getTask(taskId);
             if (task != null) {
+                java.util.List<TaskMsg> msgs = taskManager.getTaskMessages(taskId);
+                java.util.List<String> targetList = msgs.stream()
+                    .map(TaskMsg::getTarget)
+                    .collect(Collectors.toList());
                 return ResponseEntity.ok(java.util.Map.of(
                     "success", true,
-                    "task", task
+                    "task", task,
+                    "targetList", targetList
                 ));
             } else {
                 return ResponseEntity.notFound().build();
@@ -223,5 +231,29 @@ public class TaskApiController {
                 "message", "更新任务失败: " + e.getMessage()
             ));
         }
+    }
+
+    /**
+     * 分页获取任务消息
+     */
+    @GetMapping("/{taskId}/messages")
+    public java.util.Map<String, Object> getTaskMessages(
+            @PathVariable String taskId,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size
+    ) {
+        if (size > 500) size = 500;
+        java.util.List<TaskMsg> all = taskManager.getTaskMessages(taskId);
+        int total = all.size();
+        int from = Math.max(0, (page - 1) * size);
+        int to = Math.min(from + size, total);
+        java.util.List<TaskMsg> pageList = from < to ? all.subList(from, to) : java.util.Collections.emptyList();
+        return java.util.Map.of(
+            "success", true,
+            "total", total,
+            "page", page,
+            "size", size,
+            "messages", pageList
+        );
     }
 } 

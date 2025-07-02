@@ -76,8 +76,13 @@ public class TaskManager {
             // 可扩展设置 extraParams、targetType 等
 
             // 5. 存储任务
+            String msgId = java.util.UUID.randomUUID().toString();
+
             taskStorage.saveTask(task);
-            
+            for (String target : dto.getTargetList()) {
+                addTaskMessage(tid,new TaskMsg(tid,msgId,target));
+            }
+
             long duration = System.currentTimeMillis() - startTime;
             LogUtils.logOperationSuccess("任务创建成功，ID: " + tid + ", 消息数: " + initNumber, duration);
             

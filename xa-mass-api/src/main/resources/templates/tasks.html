@@ -284,6 +284,7 @@
                                     <button class="btn btn-danger terminate-btn" th:attr="data-task-id=${task.tid}" th:if="${task.status.name() != 'TERMINAL'}" title="中止任务">⏹️</button>
                                     <button class="btn btn-primary edit-btn" th:attr="data-task-id=${task.tid}" title="编辑任务">✏️</button>
                                     <button class="btn btn-danger delete-btn" th:attr="data-task-id=${task.tid}" title="删除任务">🗑️</button>
+                                    <button class="btn btn-secondary msg-btn" th:attr="data-task-id=${task.tid}" title="消息详情">📨</button>
                                 </div>
                             </td>
                         </tr>
@@ -480,6 +481,22 @@
         </div>
     </div>
 
+    <!-- 消息详情模态框 -->
+    <div id="taskMsgModal" class="modal">
+        <div class="modal-content" style="max-width:900px;">
+            <div class="modal-header">
+                <h2>消息详情</h2>
+                <span class="close" onclick="closeModal('taskMsgModal')">&times;</span>
+            </div>
+            <div id="taskMsgTableContainer"></div>
+            <div style="text-align:right;margin-top:10px;">
+                <button id="msgPrevPage" class="btn btn-info">上一页</button>
+                <span id="msgPageInfo"></span>
+                <button id="msgNextPage" class="btn btn-info">下一页</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         console.log('tasks.html script loaded');
         
@@ -579,7 +596,9 @@
                         document.getElementById('editTaskName').value = t.taskName;
                         document.getElementById('editProject').value = t.project.code;
                         document.getElementById('editCountryCode').value = t.taskCountry;
-                        document.getElementById('editTargetList').value = (t.targetList || []).join('\n');
+                        // 只展示前100个号码
+                        const targets = (data.targetList || []).slice(0, 100);
+                        document.getElementById('editTargetList').value = targets.join('\n');
                         document.getElementById('editTextContent').value = t.textContent;
                         document.getElementById('editUserId').value = t.user ? t.user.name : '';
                         document.getElementById('editBatchSize').value = t.batchSize || 5;
@@ -674,6 +693,45 @@
                     showAlert('获取任务详情失败: ' + error.message, 'danger');
                 });
         }
+        // 消息详情弹窗逻辑
+        let msgCurrentPage = 1;
+        let msgPageSize = 20;
+        let msgTotal = 0;
+        let msgTaskId = null;
+
+        function showTaskMsgModal(taskId, page = 1) {
+            msgTaskId = taskId;
+            msgCurrentPage = page;
+            fetch(`/status/api/tasks/${taskId}/messages?page=${page}&size=${msgPageSize}`)
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        msgTotal = data.total;
+                        renderTaskMsgTable(data.messages);
+                        document.getElementById('msgPageInfo').innerText = `第 ${data.page} 页 / 共 ${Math.ceil(data.total/data.size)} 页`;
+                        showModal('taskMsgModal');
+                    } else {
+                        showAlert('获取消息详情失败', 'danger');
+                    }
+                });
+        }
+        function renderTaskMsgTable(msgs) {
+            let html = '<table style="width:100%;border-collapse:collapse;">';
+            html += '<thead><tr>' +
+                '<th>msgId</th><th>deviceId</th><th>target</th><th>状态</th><th>发送时间</th><th>回执</th><th>错误</th>' +
+                '</tr></thead><tbody>';
+            msgs.forEach(m => {
+                html += `<tr><td>${m.msgId||''}</td><td>${m.deviceId||''}</td><td>${m.target||''}</td><td>${m.status||''}</td><td>${m.sendTime||''}</td><td>${m.result||''}</td><td>${m.errorMessage||''}</td></tr>`;
+            });
+            html += '</tbody></table>';
+            document.getElementById('taskMsgTableContainer').innerHTML = html;
+        }
+        document.getElementById('msgPrevPage').onclick = function() {
+            if (msgCurrentPage > 1) showTaskMsgModal(msgTaskId, msgCurrentPage-1);
+        };
+        document.getElementById('msgNextPage').onclick = function() {
+            if (msgCurrentPage < Math.ceil(msgTotal/msgPageSize)) showTaskMsgModal(msgTaskId, msgCurrentPage+1);
+        };
         // 事件委托统一处理所有操作按钮
         document.addEventListener('click', function(e) {
             if (e.target.classList.contains('edit-btn')) {
@@ -696,6 +754,9 @@
             }
             if (e.target.classList.contains('view-btn')) {
                 viewTask(e.target.getAttribute('data-task-id'));
+            }
+            if (e.target.classList.contains('msg-btn')) {
+                showTaskMsgModal(e.target.getAttribute('data-task-id'));
             }
         });
         // 新建任务表单提交逻辑，防止表单直接提交到URL
