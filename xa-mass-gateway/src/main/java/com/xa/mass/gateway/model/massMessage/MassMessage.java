@@ -1,8 +1,8 @@
 package com.xa.mass.gateway.model.massMessage;
 
+import com.google.gson.JsonElement;
 import com.xa.mass.gateway.model.enums.MessageDirection;
 import com.xa.mass.gateway.model.enums.MessageType;
-import com.google.gson.JsonElement;
 
 public class MassMessage {
     private String msgId;               // 全局唯一消息 ID

@@ -1,18 +1,13 @@
 package com.xa.mass.gateway.session;
 
+import com.xa.mass.base.eventbus.core.EventPublisher;
+import com.xa.mass.base.eventbus.device.DeviceOfflineEvent;
+import com.xa.mass.base.eventbus.device.DeviceOnlineEvent;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import com.xa.mass.base.model.Device;
-import com.xa.mass.base.eventbus.device.DeviceOfflineBatchEvent;
-import com.xa.mass.base.eventbus.core.EventBusFacade;
-import com.xa.mass.base.eventbus.core.EventBusFactory;
-import com.xa.mass.base.eventbus.device.DeviceOnlineEvent;
-import com.xa.mass.base.eventbus.device.DeviceOfflineEvent;
-import com.xa.mass.base.eventbus.core.EventPublisher;
 
 import java.util.Collections;
 import java.util.HashMap;

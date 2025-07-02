@@ -3,6 +3,7 @@ package com.xa.mass.base.eventbus.task;
 import com.xa.mass.base.eventbus.core.MassEvent;
 import com.xa.mass.base.eventbus.core.MassPlatformEventType;
 import com.xa.mass.base.model.Task;
+
 import java.util.Collections;
 import java.util.Map;
 

@@ -6,17 +6,14 @@ import com.xa.mass.gateway.dispatcher.MessageHandlerRegistry;
 import com.xa.mass.gateway.dispatcher.ServerMessageDispatcher;
 import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
 import com.xa.mass.gateway.dispatcher.middleware.MiddlewareRegistry;
-import com.xa.mass.gateway.queue.MessageTransporter;
 import com.xa.mass.gateway.queue.MessageCodec;
+import com.xa.mass.gateway.queue.MessageTransporter;
 import com.xa.mass.gateway.server.MassServerBuilder;
 import com.xa.mass.gateway.server.MassServerConfig;
 import com.xa.mass.gateway.server.MassServerStater;
 import com.xa.mass.gateway.session.ServerSessionManager;
-
-// MassApplicationConfig 已删除，使用内联配置
-import com.xa.mass.starter.config.GatewayConfig;
 import com.xa.mass.starter.config.EngineConfig;
-// 移除内部Builder引用，直接使用配置对象
+import com.xa.mass.starter.config.GatewayConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

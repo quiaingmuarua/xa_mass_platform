@@ -1,7 +1,7 @@
 package com.xa.mass.gateway.dispatcher.middleware;
 
-import com.xa.mass.gateway.queue.Envelope;
 import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
+import com.xa.mass.gateway.queue.Envelope;
 
 @FunctionalInterface
 public interface EnvelopeMiddleware {

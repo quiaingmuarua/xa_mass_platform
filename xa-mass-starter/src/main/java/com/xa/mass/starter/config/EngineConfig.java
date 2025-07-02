@@ -1,18 +1,19 @@
 package com.xa.mass.starter.config;
 
 import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+import com.xa.mass.engine.DeviceManager;
+import com.xa.mass.engine.TaskManager;
+import com.xa.mass.engine.rules.RuleManager;
+import com.xa.mass.engine.rules.RuleManagerFactory;
+import com.xa.mass.engine.service.AssignmentRecordService;
+import com.xa.mass.engine.strategy.SimpleTaskScheduler;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import com.google.gson.JsonParser;
-import com.xa.mass.engine.DeviceManager;
-import com.xa.mass.engine.TaskManager;
-import com.xa.mass.engine.strategy.SimpleTaskScheduler;
-import com.xa.mass.engine.service.AssignmentRecordService;
-import com.xa.mass.engine.rules.RuleManager;
-import com.xa.mass.engine.rules.RuleManagerFactory;
 import java.util.Map;
 
 /**

@@ -1,16 +1,19 @@
 package com.xa.mass.api.internal;
 
-import io.swagger.v3.oas.annotations.tags.Tag;
+import com.xa.mass.api.model.ApiResponse;
+import com.xa.mass.gateway.dispatcher.DispatcherContextRegistry;
+import com.xa.mass.gateway.dispatcher.context.SessionContext;
+import com.xa.mass.gateway.session.ServerSessionManager;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.*;
-import com.xa.mass.gateway.dispatcher.DispatcherContextRegistry;
-import com.xa.mass.gateway.dispatcher.context.SessionContext;
-import com.xa.mass.gateway.session.ServerSessionManager;
-import com.xa.mass.api.model.ApiResponse;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/session")

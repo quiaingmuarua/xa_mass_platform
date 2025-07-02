@@ -1,8 +1,7 @@
 package com.xa.mass.engine.service;
 
-import com.google.common.eventbus.Subscribe;
-import com.xa.mass.engine.listener.TaskAssignWorker;
 import com.xa.mass.base.eventbus.task.TaskAuditedEvent;
+import com.xa.mass.engine.listener.TaskAssignWorker;
 
 public class TaskAssignWorkerService {
     private final TaskAssignWorker worker;

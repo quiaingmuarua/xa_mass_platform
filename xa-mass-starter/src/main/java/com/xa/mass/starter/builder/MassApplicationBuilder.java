@@ -1,22 +1,21 @@
 package com.xa.mass.starter.builder;
 
-import com.xa.mass.gateway.queue.MessageQueue;
-import com.xa.mass.gateway.queue.Envelope;
-import com.xa.mass.gateway.queue.MessageTransporterFactory;
-// MassApplicationConfig 已删除，使用内联配置
-import com.xa.mass.starter.config.GatewayConfig;
-import com.xa.mass.starter.config.EngineConfig;
-import com.xa.mass.engine.strategy.SimpleTaskScheduler;
-import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.DeviceManager;
+import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.rules.RuleManager;
+import com.xa.mass.engine.strategy.SimpleTaskScheduler;
+import com.xa.mass.gateway.queue.Envelope;
+import com.xa.mass.gateway.queue.MessageQueue;
+import com.xa.mass.gateway.queue.MessageTransporterFactory;
 import com.xa.mass.starter.MassApplication;
 import com.xa.mass.starter.MassEngine;
+import com.xa.mass.starter.config.EngineConfig;
+import com.xa.mass.starter.config.GatewayConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.function.Consumer;
 import java.util.Map;
+import java.util.function.Consumer;
 
 /**
  * Mass 应用构建器

@@ -1,9 +1,8 @@
 package com.xa.mass.base.model;
 
 
-
-import com.xa.mass.base.enums.device.DeviceStatus;
 import com.xa.mass.base.enums.Project;
+import com.xa.mass.base.enums.device.DeviceStatus;
 
 import java.time.LocalDateTime;
 import java.util.List;

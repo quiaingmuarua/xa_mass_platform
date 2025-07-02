@@ -1,8 +1,8 @@
 package com.xa.mass.starter;
 
-import com.xa.mass.gateway.queue.MessageQueue;
 import com.xa.mass.gateway.queue.Envelope;
 import com.xa.mass.gateway.queue.InMemoryMessageQueue;
+import com.xa.mass.gateway.queue.MessageQueue;
 import com.xa.mass.starter.builder.MassApplicationBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

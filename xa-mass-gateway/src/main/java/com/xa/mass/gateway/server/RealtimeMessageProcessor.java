@@ -1,8 +1,8 @@
 package com.xa.mass.gateway.server;
 
-import com.xa.mass.gateway.queue.Envelope;
-import com.xa.mass.gateway.dispatcher.ServerMessageDispatcher;
 import com.google.gson.Gson;
+import com.xa.mass.gateway.dispatcher.ServerMessageDispatcher;
+import com.xa.mass.gateway.queue.Envelope;
 import io.netty.channel.ChannelHandlerContext;
 
 public class RealtimeMessageProcessor implements IncomingMessageProcessor {

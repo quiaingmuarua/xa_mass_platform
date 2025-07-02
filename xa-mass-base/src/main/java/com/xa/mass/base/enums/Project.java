@@ -1,9 +1,10 @@
 package com.xa.mass.base.enums;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
+
 import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
-import com.fasterxml.jackson.annotation.JsonFormat;
 
 /**
  * 项目枚举

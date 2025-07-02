@@ -1,8 +1,8 @@
 package com.xa.mass.starter.builder;
 
 import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
-import com.xa.mass.starter.config.GatewayConfig;
 import com.xa.mass.starter.MassGateway;
+import com.xa.mass.starter.config.GatewayConfig;
 
 /**
  * MassGateway 构建器

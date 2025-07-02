@@ -1,11 +1,6 @@
 package com.xa.mass.starter.config;
 
-import com.xa.mass.gateway.queue.MessageTransporterFactory;
-import com.xa.mass.gateway.queue.MessageQueue;
-import com.xa.mass.gateway.queue.Envelope;
-import com.xa.mass.gateway.queue.MessageCodecFactory;
-import com.xa.mass.gateway.queue.MessageCodec;
-import com.xa.mass.gateway.queue.MessageTransporter;
+import com.xa.mass.gateway.queue.*;
 
 /**
  * 网关配置类

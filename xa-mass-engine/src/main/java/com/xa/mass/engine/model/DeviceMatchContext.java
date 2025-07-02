@@ -1,9 +1,9 @@
 package com.xa.mass.engine.model;
 
-import com.xa.mass.engine.DeviceManager;
 import com.xa.mass.base.model.Device;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.Token;
+import com.xa.mass.engine.DeviceManager;
 
 import java.util.HashMap;
 import java.util.Map;

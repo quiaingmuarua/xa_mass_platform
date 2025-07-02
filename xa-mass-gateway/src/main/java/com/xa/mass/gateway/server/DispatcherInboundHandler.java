@@ -1,10 +1,10 @@
 package com.xa.mass.gateway.server;
 
-import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
 import com.xa.mass.base.exception.ValidationException;
+import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
+import com.xa.mass.gateway.model.massMessage.MassMessage;
 import com.xa.mass.gateway.queue.Envelope;
 import com.xa.mass.gateway.queue.MessageParser;
-import com.xa.mass.gateway.model.massMessage.MassMessage;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;

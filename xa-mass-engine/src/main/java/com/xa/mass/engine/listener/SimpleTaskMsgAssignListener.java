@@ -1,12 +1,12 @@
 package com.xa.mass.engine.listener;
 
-import com.xa.mass.engine.DeviceManager;
-import com.xa.mass.engine.service.AssignmentRecordService;
 import com.xa.mass.base.enums.assignment.AssignmentResult;
 import com.xa.mass.base.model.Device;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.Token;
+import com.xa.mass.engine.DeviceManager;
+import com.xa.mass.engine.service.AssignmentRecordService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

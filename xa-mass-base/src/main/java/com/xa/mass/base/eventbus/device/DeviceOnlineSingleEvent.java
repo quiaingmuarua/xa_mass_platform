@@ -1,7 +1,6 @@
 package com.xa.mass.base.eventbus.device;
 
 import com.xa.mass.base.eventbus.core.MassEvent;
-import com.xa.mass.base.eventbus.core.MassPlatformEventType;
 import com.xa.mass.base.model.Device;
 
 import java.util.Collections;

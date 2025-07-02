@@ -1,12 +1,11 @@
 package com.xa.mass.engine.service;
 
-import com.google.common.eventbus.Subscribe;
-import com.xa.mass.base.model.Task;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.eventbus.core.EventBusFacade;
 import com.xa.mass.base.eventbus.core.EventBusFactory;
-import com.xa.mass.base.eventbus.task.TaskCreatedEvent;
 import com.xa.mass.base.eventbus.task.TaskAuditedEvent;
+import com.xa.mass.base.eventbus.task.TaskCreatedEvent;
+import com.xa.mass.base.model.Task;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

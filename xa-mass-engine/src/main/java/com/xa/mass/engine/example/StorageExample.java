@@ -1,9 +1,13 @@
 package com.xa.mass.engine.example;
 
+import com.xa.mass.base.enums.Project;
+import com.xa.mass.base.enums.task.TokenStatus;
+import com.xa.mass.base.model.Device;
+import com.xa.mass.base.model.Token;
 import com.xa.mass.engine.DeviceManager;
 import com.xa.mass.engine.TaskManager;
-import com.xa.mass.engine.listener.TaskDeviceAssignListener;
 import com.xa.mass.engine.listener.SimpleTaskMsgAssignListener;
+import com.xa.mass.engine.listener.TaskDeviceAssignListener;
 import com.xa.mass.engine.model.TaskCreateRequestDto;
 import com.xa.mass.engine.monkey.MonkeyDeviceGenerator;
 import com.xa.mass.engine.monkey.MonkeyTaskGenerator;
@@ -12,10 +16,6 @@ import com.xa.mass.engine.service.AssignmentRecordService;
 import com.xa.mass.engine.storage.*;
 import com.xa.mass.engine.strategy.SimpleTaskScheduler;
 import com.xa.mass.engine.strategy.TaskScheduler;
-import com.xa.mass.base.enums.task.TokenStatus;
-import com.xa.mass.base.model.Device;
-import com.xa.mass.base.model.Token;
-import com.xa.mass.base.enums.Project;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

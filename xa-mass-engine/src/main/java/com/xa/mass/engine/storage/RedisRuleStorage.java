@@ -6,8 +6,9 @@ import com.xa.mass.engine.rules.RuleDefinition;
 import com.xa.mass.engine.rules.RuleEvaluator;
 import com.xa.mass.engine.rules.RuleType;
 
-import java.util.*;
-import java.util.stream.Collectors;
+import java.util.Collection;
+import java.util.List;
+import java.util.Optional;
 
 /**
  * Redis规则存储实现

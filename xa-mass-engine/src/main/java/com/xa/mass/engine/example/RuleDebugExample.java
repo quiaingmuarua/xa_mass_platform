@@ -1,5 +1,9 @@
 package com.xa.mass.engine.example;
 
+import com.xa.mass.base.enums.Project;
+import com.xa.mass.base.model.Device;
+import com.xa.mass.base.model.Task;
+import com.xa.mass.base.model.Token;
 import com.xa.mass.engine.DeviceManager;
 import com.xa.mass.engine.model.DeviceMatchContext;
 import com.xa.mass.engine.rules.RuleDefinition;
@@ -7,16 +11,12 @@ import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.engine.rules.RuleManagerFactory;
 import com.xa.mass.engine.storage.DeviceStorage;
 import com.xa.mass.engine.storage.TaskStorageFactory;
-import com.xa.mass.base.model.Device;
-import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.Token;
-import com.xa.mass.base.enums.Project;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
-import java.util.Arrays;
 import java.util.stream.Collectors;
 
 /**

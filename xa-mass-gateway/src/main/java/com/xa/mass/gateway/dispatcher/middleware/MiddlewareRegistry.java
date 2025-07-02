@@ -4,10 +4,9 @@ import com.xa.mass.base.exception.CommandException;
 import com.xa.mass.base.exception.ErrorCode;
 import com.xa.mass.base.exception.ValidationException;
 import com.xa.mass.gateway.dispatcher.handler.ResolutionResult;
-
-import com.xa.mass.gateway.queue.Envelope;
 import com.xa.mass.gateway.model.massMessage.MassMessage;
 import com.xa.mass.gateway.model.massMessage.MessageContext;
+import com.xa.mass.gateway.queue.Envelope;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;
 import org.slf4j.Logger;

@@ -1,21 +1,25 @@
 package com.xa.mass.engine.listener;
 
-import com.xa.mass.engine.DeviceManager;
-import com.xa.mass.engine.rules.RuleDefinition;
-import com.xa.mass.engine.rules.RuleManager;
-import com.xa.mass.engine.service.AssignmentRecordService;
 import com.xa.mass.base.enums.Project;
 import com.xa.mass.base.model.Device;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.Token;
+import com.xa.mass.engine.DeviceManager;
+import com.xa.mass.engine.rules.RuleDefinition;
+import com.xa.mass.engine.rules.RuleManager;
+import com.xa.mass.engine.service.AssignmentRecordService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 

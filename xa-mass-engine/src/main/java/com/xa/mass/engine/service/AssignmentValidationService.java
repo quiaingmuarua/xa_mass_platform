@@ -1,9 +1,9 @@
 package com.xa.mass.engine.service;
 
-import com.xa.mass.engine.model.AssignmentRecord;
-import com.xa.mass.engine.model.RuleEvaluationDetail;
 import com.xa.mass.base.enums.assignment.AssignmentResult;
 import com.xa.mass.base.enums.assignment.AssignmentType;
+import com.xa.mass.engine.model.AssignmentRecord;
+import com.xa.mass.engine.model.RuleEvaluationDetail;
 
 import java.util.*;
 import java.util.stream.Collectors;

@@ -1,7 +1,5 @@
 package com.xa.mass.base.eventbus.core;
 
-import com.xa.mass.base.eventbus.core.EventBusFacade;
-
 public class EventBusFactory {
     private static volatile EventBusFacade INSTANCE;
 

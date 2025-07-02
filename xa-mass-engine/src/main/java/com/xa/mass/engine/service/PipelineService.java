@@ -1,6 +1,5 @@
 package com.xa.mass.engine.service;
 
-import com.google.common.eventbus.Subscribe;
 import com.xa.mass.base.eventbus.task.TaskAssignedEvent;
 import com.xa.mass.engine.monkey.report.AssignmentPipelineStep;
 import com.xa.mass.engine.monkey.report.AssignmentReportStep;

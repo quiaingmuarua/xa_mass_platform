@@ -1,12 +1,13 @@
 package com.xa.mass.starter.builder;
 
-import com.xa.mass.starter.config.EngineConfig;
-import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.DeviceManager;
+import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.rules.RuleManager;
-import com.xa.mass.engine.strategy.SimpleTaskScheduler;
 import com.xa.mass.engine.service.AssignmentRecordService;
+import com.xa.mass.engine.strategy.SimpleTaskScheduler;
 import com.xa.mass.starter.MassEngine;
+import com.xa.mass.starter.config.EngineConfig;
+
 import java.util.Map;
 
 /**

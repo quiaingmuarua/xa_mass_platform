@@ -1,12 +1,16 @@
 package com.xa.mass.mock.starter;
 
-import com.xa.mass.gateway.model.massMessage.MassMessage;
-import com.xa.mass.gateway.model.massMessage.MessageContext;
+import com.xa.mass.base.model.Device;
+import com.xa.mass.base.model.Token;
+import com.xa.mass.engine.monkey.MonkeyDeviceGenerator;
 import com.xa.mass.gateway.model.enums.MessageDirection;
 import com.xa.mass.gateway.model.enums.MessageType;
+import com.xa.mass.gateway.model.massMessage.MassMessage;
+import com.xa.mass.gateway.model.massMessage.MessageContext;
 import com.xa.mass.mock.client.ClientSessionManager;
 import com.xa.mass.mock.client.MassWebSocketClientImpl;
 import com.xa.mass.mock.config.MockConfig;
+import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -15,17 +19,13 @@ import org.springframework.boot.CommandLineRunner;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
-import jakarta.annotation.PreDestroy;
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Random;
 import java.util.concurrent.*;
-import com.xa.mass.engine.monkey.MonkeyDeviceGenerator;
-import com.xa.mass.base.model.Device;
-import com.xa.mass.base.model.Token;
-import java.nio.charset.StandardCharsets;
 
 /**
  * WebSocket 客户端启动器

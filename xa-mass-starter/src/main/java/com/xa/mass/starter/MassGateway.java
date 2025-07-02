@@ -1,7 +1,7 @@
 package com.xa.mass.starter;
 
-import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
 import com.xa.mass.gateway.dispatcher.ServerMessageDispatcher;
+import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
 import com.xa.mass.starter.config.GatewayConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

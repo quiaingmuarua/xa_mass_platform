@@ -3,17 +3,16 @@ package com.xa.mass.mock;
 import com.xa.mass.engine.DeviceManager;
 import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.rules.RuleManager;
-import com.xa.mass.gateway.queue.*;
+import com.xa.mass.gateway.queue.Envelope;
+import com.xa.mass.gateway.queue.MessageQueue;
 import com.xa.mass.starter.MassApplication;
-import com.xa.mass.starter.config.EngineConfig;
-// MassApplicationConfig 已删除，使用 MassApplicationBuilder
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.boot.CommandLineRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Profile;
 

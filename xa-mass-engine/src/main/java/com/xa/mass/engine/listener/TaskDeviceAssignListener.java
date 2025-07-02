@@ -1,16 +1,16 @@
 package com.xa.mass.engine.listener;
 
+import com.xa.mass.base.enums.Project;
+import com.xa.mass.base.enums.assignment.AssignmentResult;
+import com.xa.mass.base.model.Device;
+import com.xa.mass.base.model.Task;
+import com.xa.mass.base.model.Token;
 import com.xa.mass.engine.DeviceManager;
 import com.xa.mass.engine.model.DeviceMatchContext;
 import com.xa.mass.engine.model.RuleEvaluationDetail;
 import com.xa.mass.engine.rules.RuleDefinition;
 import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.engine.service.AssignmentRecordService;
-import com.xa.mass.base.enums.assignment.AssignmentResult;
-import com.xa.mass.base.model.Device;
-import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.Token;
-import com.xa.mass.base.enums.Project;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

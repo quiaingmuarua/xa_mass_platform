@@ -1,9 +1,8 @@
 package com.xa.mass.base.model;
 
 
-
-import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.Project;
+import com.xa.mass.base.enums.task.TaskStatus;
 
 import java.time.LocalDateTime;
 import java.util.Objects;

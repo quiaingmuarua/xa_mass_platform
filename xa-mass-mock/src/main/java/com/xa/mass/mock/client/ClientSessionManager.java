@@ -1,12 +1,11 @@
 package com.xa.mass.mock.client;
 
 import com.google.gson.Gson;
-
+import com.xa.mass.gateway.model.enums.MessageDirection;
+import com.xa.mass.gateway.model.enums.MessageType;
 import com.xa.mass.gateway.model.massMessage.MassMessage;
 import com.xa.mass.gateway.model.massMessage.MessageContext;
 import com.xa.mass.gateway.model.massMessage.TaskStep;
-import com.xa.mass.gateway.model.enums.MessageDirection;
-import com.xa.mass.gateway.model.enums.MessageType;
 import com.xa.mass.gateway.model.payload.TaskPayload;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
