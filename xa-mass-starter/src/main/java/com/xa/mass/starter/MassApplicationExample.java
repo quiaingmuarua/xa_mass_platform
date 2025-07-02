@@ -35,6 +35,12 @@ public class MassApplicationExample {
         
         // 示例6: Mock模式应用
         exampleMockMode();
+        
+        // 示例7: 只启动网关
+        exampleGatewayOnly();
+        
+        // 示例8: 只启动引擎
+        exampleEngineOnly();
     }
     
     /**
@@ -194,6 +200,65 @@ public class MassApplicationExample {
         app.loadMockData(app.getEngine(), app.getEngine().getConfig());
         
         logger.info("✅ Mock模式应用启动成功");
+        
+        // 停止应用
+        app.stop();
+    }
+    
+    /**
+     * 示例7: 只启动网关
+     * 展示组件选择启动功能
+     */
+    private static void exampleGatewayOnly() {
+        logger.info("📝 示例7: 只启动网关");
+        
+        // 创建内存队列
+        MessageQueue<Envelope> inputQueue = new InMemoryMessageQueue();
+        MessageQueue<Envelope> outputQueue = new InMemoryMessageQueue();
+        
+        // 只启用网关，禁用引擎
+        MassApplication app = MassApplicationBuilder.create()
+                .server(8080)
+                .gateway(gateway -> gateway
+                        .enabled(true)
+                        .maxConnections(100)
+                        .inputQueue(inputQueue)
+                        .outputQueue(outputQueue))
+                .engine(engine -> engine
+                        .enabled(false)) // 禁用引擎
+                .build();
+        
+        // 启动应用（只会启动网关）
+        app.start();
+        
+        logger.info("✅ 网关模式应用启动成功");
+        
+        // 停止应用
+        app.stop();
+    }
+    
+    /**
+     * 示例8: 只启动引擎
+     * 展示组件选择启动功能
+     */
+    private static void exampleEngineOnly() {
+        logger.info("📝 示例8: 只启动引擎");
+        
+        // 只启用引擎，禁用网关
+        MassApplication app = MassApplicationBuilder.create()
+                .server(8080)
+                .gateway(gateway -> gateway
+                        .enabled(false)) // 禁用网关
+                .engine(engine -> engine
+                        .enabled(true)
+                        .workerThreads(4)
+                        .mockData("mock/mock_config.json"))
+                .build();
+        
+        // 启动应用（只会启动引擎）
+        app.start();
+        
+        logger.info("✅ 引擎模式应用启动成功");
         
         // 停止应用
         app.stop();

@@ -34,8 +34,8 @@ public class MassApplication {
     private final GatewayConfig gatewayConfig;
     private final EngineConfig engineConfig;
     
-    private final MassEngine engine;
-    private MassGateway massGateway; // 将在initializeComponents中构建
+    private final MassEngine engine; // 可能为null（当engine被禁用时）
+    private MassGateway massGateway; // 将在initializeComponents中构建（当gateway被启用时）
     private DispatchRuntimeContext dispatcherContext;
     private ServerMessageDispatcher messageDispatcher;
     private MassServerStater serverStater;
@@ -58,11 +58,19 @@ public class MassApplication {
             // 1. 初始化核心组件
             initializeComponents();
             
-            // 2. 启动网关
-            startGateway();
+            // 2. 根据配置启动网关
+            if (gatewayConfig.isEnabled()) {
+                startGateway();
+            } else {
+                logger.info("🌐 MassGateway is disabled, skipping start");
+            }
             
-            // 3. 启动引擎
-            startEngine();
+            // 3. 根据配置启动引擎
+            if (engineConfig.isEnabled()) {
+                startEngine();
+            } else {
+                logger.info("⚙️ MassEngine is disabled, skipping start");
+            }
             
             // 4. 启动消息分发器
             startMessageDispatcher();
@@ -94,11 +102,13 @@ public class MassApplication {
                 logger.info("Message dispatcher stopped");
             }
             
-            if (engine != null) {
+            // 根据配置停止引擎
+            if (engine != null && engineConfig.isEnabled()) {
                 engine.stop();
             }
             
-            if (massGateway != null) {
+            // 根据配置停止网关
+            if (massGateway != null && gatewayConfig.isEnabled()) {
                 massGateway.stop();
             }
             
@@ -151,9 +161,13 @@ public class MassApplication {
             MiddlewareRegistry.autoRegister();
             logger.info("✅ Middleware registry initialized");
             
-            // 构建MassGateway（需要dispatcherContext）
-            massGateway = new MassGateway(gatewayConfig, dispatcherContext);
-            logger.info("✅ MassGateway built");
+            // 根据配置构建MassGateway（需要dispatcherContext）
+            if (gatewayConfig.isEnabled()) {
+                massGateway = new MassGateway(gatewayConfig, dispatcherContext);
+                logger.info("✅ MassGateway built");
+            } else {
+                logger.info("🌐 MassGateway is disabled, skipping build");
+            }
             
         } catch (Exception e) {
             logger.error("❌ Failed to initialize core components", e);
@@ -185,7 +199,7 @@ public class MassApplication {
             engine.start();
             logger.info("✅ MassEngine started");
         } else {
-            logger.error("❌ MassEngine is null");
+            logger.error("❌ MassEngine is null - check if engine is enabled in config");
         }
     }
     

@@ -155,8 +155,14 @@ public class MassApplicationBuilder {
                 gatewayConfig.isEnabled(), 
                 engineConfig.isEnabled());
         
-        // 构建MassEngine（不需要dispatcherContext）
-        MassEngine engine = new MassEngine(engineConfig);
+        // 根据配置构建MassEngine（不需要dispatcherContext）
+        MassEngine engine = null;
+        if (engineConfig.isEnabled()) {
+            engine = new MassEngine(engineConfig);
+            logger.info("✅ MassEngine built");
+        } else {
+            logger.info("⚙️ MassEngine is disabled, skipping build");
+        }
         
         // 创建MassApplication实例，传递已构建的engine和配置
         // MassGateway将在MassApplication.initializeComponents()中构建，因为需要dispatcherContext

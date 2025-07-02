@@ -71,6 +71,25 @@ MassApplication app = MassApplicationBuilder.create()
 app.start();
 ```
 
+### 组件选择启动
+```java
+// 只启动网关
+MassApplication app = MassApplicationBuilder.create()
+    .server(8080)
+    .gateway(gw -> gw.enabled(true))
+    .engine(eng -> eng.enabled(false)) // 禁用引擎
+    .build();
+app.start();
+
+// 只启动引擎
+MassApplication app = MassApplicationBuilder.create()
+    .server(8080)
+    .gateway(gw -> gw.enabled(false)) // 禁用网关
+    .engine(eng -> eng.enabled(true))
+    .build();
+app.start();
+```
+
 ## 依赖模块
 - xa-mass-gateway
 - xa-mass-engine  
@@ -89,4 +108,5 @@ app.start();
 - 开发/生产/测试环境配置
 - API模式配置  
 - 自定义配置示例
-- Mock模式集成示例 
+- Mock模式集成示例
+- **组件选择启动示例**（只启动网关/只启动引擎） 
