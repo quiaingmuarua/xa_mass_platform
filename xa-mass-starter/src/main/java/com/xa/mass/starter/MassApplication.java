@@ -28,19 +28,20 @@ public class MassApplication {
     
     private static final Logger logger = LoggerFactory.getLogger(MassApplication.class);
     
-    // 直接管理配置参数，不再依赖 MassApplicationConfig
+        // 直接管理已构建的组件和配置参数
     private final int serverPort;
     private final String webSocketPath;
     private final GatewayConfig gatewayConfig;
     private final EngineConfig engineConfig;
     
-    private MassGateway massGateway;
-    private MassEngine engine;
+    private final MassEngine engine;
+    private MassGateway massGateway; // 将在initializeComponents中构建
     private DispatchRuntimeContext dispatcherContext;
     private ServerMessageDispatcher messageDispatcher;
     private MassServerStater serverStater;
-
-    public MassApplication(int serverPort, String webSocketPath, GatewayConfig gatewayConfig, EngineConfig engineConfig) {
+    
+    public MassApplication(MassEngine engine, int serverPort, String webSocketPath, GatewayConfig gatewayConfig, EngineConfig engineConfig) {
+        this.engine = engine;
         this.serverPort = serverPort;
         this.webSocketPath = webSocketPath;
         this.gatewayConfig = gatewayConfig;
@@ -150,6 +151,10 @@ public class MassApplication {
             MiddlewareRegistry.autoRegister();
             logger.info("✅ Middleware registry initialized");
             
+            // 构建MassGateway（需要dispatcherContext）
+            massGateway = new MassGateway(gatewayConfig, dispatcherContext);
+            logger.info("✅ MassGateway built");
+            
         } catch (Exception e) {
             logger.error("❌ Failed to initialize core components", e);
             throw new RuntimeException("Failed to initialize core components", e);
@@ -163,9 +168,12 @@ public class MassApplication {
      */
     private void startGateway() {
         logger.info("🌐 Starting MassGateway...");
-        massGateway = new MassGateway(gatewayConfig, dispatcherContext);
-        massGateway.start();
-        logger.info("✅ MassGateway started");
+        if (massGateway != null) {
+            massGateway.start();
+            logger.info("✅ MassGateway started");
+        } else {
+            logger.error("❌ MassGateway is null");
+        }
     }
     
     /**
@@ -173,9 +181,12 @@ public class MassApplication {
      */
     private void startEngine() {
         logger.info("⚙️ Starting MassEngine...");
-        engine = new MassEngine(engineConfig);
-        engine.start();
-        logger.info("✅ MassEngine started");
+        if (engine != null) {
+            engine.start();
+            logger.info("✅ MassEngine started");
+        } else {
+            logger.error("❌ MassEngine is null");
+        }
     }
     
     /**

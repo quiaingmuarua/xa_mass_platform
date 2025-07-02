@@ -11,11 +11,11 @@
 
 ### 架构层次
 ```
-MassApplicationBuilder (配置聚合)
+MassApplicationBuilder (配置聚合 + 构建MassEngine)
     ↓
-MassApplication (生命周期管理)  
+MassApplication (生命周期管理 + 构建MassGateway)  
     ↓
-MassGateway/MassEngine (直接实例化)
+MassGateway/MassEngine (组件实例化)
 ```
 
 ## 主要职责
@@ -24,11 +24,12 @@ MassGateway/MassEngine (直接实例化)
 - 提供流式API进行配置聚合
 - 支持多种预设配置（开发、生产、测试、API模式）
 - 参数验证和默认值设置
-- 构建MassApplication实例
+- 构建MassEngine和MassApplication实例
 
 ### MassApplication  
 - 统一装配各业务模块
 - 管理应用启动、关闭流程
+- 构建MassGateway（需要dispatcherContext）
 - 组件生命周期管理
 - 作为 Spring Boot 启动入口
 

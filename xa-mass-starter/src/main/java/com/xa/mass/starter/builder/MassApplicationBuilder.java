@@ -11,6 +11,7 @@ import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.DeviceManager;
 import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.starter.MassApplication;
+import com.xa.mass.starter.MassEngine;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -154,8 +155,12 @@ public class MassApplicationBuilder {
                 gatewayConfig.isEnabled(), 
                 engineConfig.isEnabled());
         
-        // 创建内联配置对象，替代已删除的 MassApplicationConfig
-        return new MassApplication(serverPort, webSocketPath, gatewayConfig, engineConfig);
+        // 构建MassEngine（不需要dispatcherContext）
+        MassEngine engine = new MassEngine(engineConfig);
+        
+        // 创建MassApplication实例，传递已构建的engine和配置
+        // MassGateway将在MassApplication.initializeComponents()中构建，因为需要dispatcherContext
+        return new MassApplication(engine, serverPort, webSocketPath, gatewayConfig, engineConfig);
     }
     
     /**
