@@ -1,0 +1,32 @@
+# WebSocket 客户端配置
+server:
+  port: 8089  # 客户端服务端口
+
+# Mock 客户端配置
+mock:
+  client:
+    # 连接配置
+    uri: "ws://localhost:18088/ws"  # 目标服务器地址
+    devices-config: "mock/mock_devices.json"  # 设备配置文件路径
+    connection-timeout: 10  # 连接超时时间(秒)
+    max-pool-size: 20  # 最大连接池大小
+    
+    # 重试配置
+    retry-attempts: 3  # 重试次数
+    retry-delay: 5  # 重试间隔(秒)
+    
+    # 心跳配置
+    ping-interval: 10  # 心跳间隔(秒)
+    ping-delay: 5  # 心跳启动延迟(秒)
+    
+    # 连接统计
+    count: 5  # 默认客户端数量(如果配置文件不存在时使用)
+
+# 日志配置
+logging:
+  level:
+    com.xa.mass.mock.client: INFO
+    com.xa.mass.mock.starter: INFO
+    com.xa.mass.gateway: WARN
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n" 

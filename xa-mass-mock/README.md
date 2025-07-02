@@ -12,22 +12,31 @@ Mock 全链路应用模块，提供完整的模拟环境，包括 Gateway、Engi
 
 ## 快速启动
 
-### 1. 开发环境启动
+### 1. 全链路服务启动（推荐）
 ```bash
-# 使用默认配置启动
+# 开发环境启动
 mvn spring-boot:run -Dspring-boot.run.profiles=dev
 
-# 或指定配置文件
-java -jar xa-mass-mock.jar --spring.profiles.active=dev
+# 生产环境启动
+mvn spring-boot:run -Dspring-boot.run.profiles=prod
 ```
 
-### 2. 生产环境启动
+### 2. 客户端模拟启动
 ```bash
-# 使用生产配置启动
-mvn spring-boot:run -Dspring-boot.run.profiles=prod
+# 启动客户端模拟器
+mvn spring-boot:run -Dspring-boot.run.profiles=client
 
 # 或指定配置文件
-java -jar xa-mass-mock.jar --spring.profiles.active=prod
+java -jar xa-mass-mock.jar --spring.profiles.active=client
+```
+
+### 3. 分离式启动
+```bash
+# 终端1: 启动服务端
+mvn spring-boot:run -Dspring-boot.run.profiles=dev
+
+# 终端2: 启动客户端
+mvn spring-boot:run -Dspring-boot.run.profiles=client
 ```
 
 ## 配置说明
@@ -45,6 +54,19 @@ java -jar xa-mass-mock.jar --spring.profiles.active=prod
 | `mass.mock.data.tasks` | mock/mock_tasks.json | 任务配置文件路径 |
 | `mass.mock.data.rules` | mock/mock_rules.json | 规则配置文件路径 |
 
+### 客户端配置 (client profile)
+
+| 配置项 | 默认值 | 说明 |
+|--------|--------|------|
+| `mock.client.uri` | ws://localhost:18088/ws | 目标服务器地址 |
+| `mock.client.devices-config` | mock/mock_devices.json | 设备配置文件路径 |
+| `mock.client.connection-timeout` | 10 | 连接超时时间(秒) |
+| `mock.client.max-pool-size` | 20 | 最大连接池大小 |
+| `mock.client.retry-attempts` | 3 | 重试次数 |
+| `mock.client.retry-delay` | 5 | 重试间隔(秒) |
+| `mock.client.ping-interval` | 10 | 心跳间隔(秒) |
+| `mock.client.ping-delay` | 5 | 心跳启动延迟(秒) |
+
 ### 环境配置
 
 #### 开发环境 (application-dev.yml)
@@ -57,19 +79,29 @@ java -jar xa-mass-mock.jar --spring.profiles.active=prod
 - INFO 级别日志
 - 适合生产部署
 
+#### 客户端环境 (application-client.yml)
+- 客户端连接配置
+- 心跳和重试机制
+- 连接池管理
+
 ## 服务地址
 
 启动成功后，可通过以下地址访问服务：
 
-### Web API 服务
-- **状态概览**: http://localhost:8088/status
-- **任务管理**: http://localhost:8088/status/tasks
-- **设备管理**: http://localhost:8088/status/devices
-- **规则管理**: http://localhost:8088/status/rules
-- **API 文档**: http://localhost:8088/doc.html
+### 全链路服务 (dev/prod profile)
+- **Web API 服务**: http://localhost:8088
+  - 状态概览: http://localhost:8088/status
+  - 任务管理: http://localhost:8088/status/tasks
+  - 设备管理: http://localhost:8088/status/devices
+  - 规则管理: http://localhost:8088/status/rules
+  - API 文档: http://localhost:8088/doc.html
+- **WebSocket 服务**: ws://localhost:18088/ws
 
-### WebSocket 服务
-- **WebSocket**: ws://localhost:18088
+### 客户端模拟服务 (client profile)
+- **客户端状态**: http://localhost:8089/status
+- **连接管理**: http://localhost:8089/status/clients
+- **连接统计**: http://localhost:8089/status/stats
+- **目标服务器**: ws://localhost:18088/ws
 
 ## 启动流程
 
