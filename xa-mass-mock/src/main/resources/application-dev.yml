@@ -1,0 +1,32 @@
+# Mass Mock 应用开发环境配置
+mass:
+  server:
+    port: 18088  # Mass WebSocket 服务器端口
+  
+  gateway:
+    max-connections: 1000  # 网关最大连接数
+    enabled: true  # 是否启用网关
+  
+  engine:
+    worker-threads: 8  # 引擎工作线程数
+    enabled: true  # 是否启用引擎
+  
+  mock:
+    data:
+      devices: mock/mock_devices.json  # 设备配置文件路径
+      tasks: mock/mock_tasks.json      # 任务配置文件路径
+      rules: mock/mock_rules.json      # 规则配置文件路径
+
+# Spring Boot 配置
+server:
+  port: 8088  # Web API 服务端口
+
+# 日志配置
+logging:
+  level:
+    com.xa.mass: DEBUG
+    com.xa.mass.starter: INFO
+    com.xa.mass.gateway: INFO
+    com.xa.mass.engine: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n" 
