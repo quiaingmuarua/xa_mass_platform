@@ -66,8 +66,8 @@ public class Device {
     
     public Device() {
         this.status = DeviceStatus.OFFLINE;
-        this.createTime = LocalDateTime.now();
-        this.updateTime = LocalDateTime.now();
+//        this.createTime = LocalDateTime.now();
+//        this.updateTime = LocalDateTime.now();
     }
     
     public Device(String deviceId, String agentVersion, List<Project> supportedProjects) {

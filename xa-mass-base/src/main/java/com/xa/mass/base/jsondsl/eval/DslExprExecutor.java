@@ -10,10 +10,10 @@ public class DslExprExecutor {
      */
     public static Object execute(Object exprObj, Map<String, Object> context) throws Exception {
         if (exprObj instanceof String) {
-            // 默认使用 QL 表达式
-            ExpressionEngine engine = ExpressionEngineRegistry.get("ql");
-            return engine.eval((String) exprObj, context);
-        } else if (exprObj instanceof Map) {
+            // 语法糖：字符串自动转为 {lang: 'ql', expr: ...}
+            exprObj = Map.of("lang", "ql", "expr", exprObj);
+        }
+        if (exprObj instanceof Map) {
             @SuppressWarnings("unchecked")
             Map<String, Object> exprMap = (Map<String, Object>) exprObj;
             String expr = (String) exprMap.get("expr");

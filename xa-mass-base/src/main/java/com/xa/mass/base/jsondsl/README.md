@@ -186,6 +186,70 @@ try {
    - 合理选择时间单位和范围
    - 注意时间格式的正确性
 
+## 表达式引擎与内置函数别名
+
+### QLExpress 表达式支持
+
+- 支持通过 `$EXPR` 字段嵌入 QLExpress 表达式，表达式可引用当前上下文变量和所有内置函数。
+- 所有内置函数（如 random、choice、range、uuid、join、now、timeRange 等）均支持多种别名（如 random/rand、timeRange/timerange），可在表达式中直接调用。
+- 内置函数注册采用集中自动注册机制，所有别名和实现统一维护于 BuiltinFunc 和 BuiltinFunctions，无需手动注册。
+
+#### 示例：动态 mock 字段依赖表达式
+
+```json
+{
+  "MODEL": "Device",
+  "FIELDS": {
+    "status": {"$CHOICE": ["OFFLINE", "ONLINE"]},
+    "onlineStrategy": {
+      "$EXPR": {
+        "lang": "ql",
+        "expr": "status == 'OFFLINE' ? 0 : range(10, 100)"
+      }
+    },
+    "randValue": {"$EXPR": {"lang": "ql", "expr": "random(1, 10)"}},
+    "timeStr": {"$EXPR": {"lang": "ql", "expr": "now('yyyy-MM-dd HH:mm')"}},
+    "timeRange1": {"$EXPR": {"lang": "ql", "expr": "timeRange('now-1d', 'now', 'HOURS', 'yyyy-MM-dd HH:mm')"}},
+    "timeRange2": {"$EXPR": {"lang": "ql", "expr": "timerange('now-1d', 'now', 'HOURS', 'yyyy-MM-dd HH:mm')"}}
+  }
+}
+```
+
+- 支持表达式内任意组合内置函数、上下文变量、三元表达式等。
+- 所有内置函数别名（如 random/rand、timeRange/timerange）均可直接在表达式中调用。
+- 表达式变量自动注入，无需手动声明。
+
+### 内置函数别名与自动注册机制
+
+- BuiltinFunc 枚举支持为每个内置函数配置多个别名。
+- BuiltinFunctions.registerToQLExpress 会自动遍历所有别名批量注册，无需手动维护注册代码。
+- 新增内置函数时，只需在 BuiltinFunc 和 FUNCTION_MAP 中补充即可，注册和别名自动生效。
+
+### $EXPR 语法糖支持
+
+- 支持直接写字符串作为表达式，等价于 `{lang: 'ql', expr: ...}`，无需冗余对象包裹。
+- 推荐写法：
+
+```json
+{
+  "MODEL": "Device",
+  "FIELDS": {
+    "randValue": {"$EXPR": "random(1, 10)"},
+    "status": {"$EXPR": "choice(['ONLINE','OFFLINE'])"}
+  }
+}
+```
+
+- 兼容原有对象写法：
+
+```json
+{
+  "randValue": {"$EXPR": {"lang": "ql", "expr": "random(1, 10)"}}
+}
+```
+
+- 绝大多数场景推荐直接用字符串写法，简洁直观。
+
 ## 依赖
 
 - Java 8+

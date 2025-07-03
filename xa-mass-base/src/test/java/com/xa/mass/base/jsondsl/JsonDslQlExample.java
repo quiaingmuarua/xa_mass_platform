@@ -17,8 +17,11 @@ public class JsonDslQlExample {
         String dsl = """
         {
           "MODEL": "Device",
+           "COUNT": 2,
           "FIELDS": {
             "status": {"$CHOICE": ["OFFLINE", "ONLINE"]},
+            "deviceId": {"$EXPR": "join('device-', '1')"},
+           "groupId": {"$JOIN": ["device-", {"$CONTEXT": "&.index"}]},
             "onlineStrategy": {
               "$EXPR": {
                 "lang": "ql",
@@ -28,7 +31,7 @@ public class JsonDslQlExample {
           }
         }
         """;
-        Object obj = com.xa.mass.base.jsondsl.JsonDslEngine.generate(dsl).get(0);
-        System.out.println(obj);
+        List<Object> relativeTimeExamples = com.xa.mass.base.jsondsl.JsonDslEngine.generate(dsl);
+        relativeTimeExamples.forEach(System.out::println);
     }
 }
