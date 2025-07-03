@@ -23,6 +23,8 @@ public class TemplateValueResolver {
         BUILTIN_RESOLVERS.put(BuiltinFunc.UUID, (param, ctx) -> BuiltinFunctions.eval(BuiltinFunc.UUID.key(), resolve(param, ctx)));
         BUILTIN_RESOLVERS.put(BuiltinFunc.RANDOM, (param, ctx) -> BuiltinFunctions.eval(BuiltinFunc.RANDOM.key(), resolve(param, ctx)));
         BUILTIN_RESOLVERS.put(BuiltinFunc.CONTEXT, TemplateValueResolver::getContextValue);
+        BUILTIN_RESOLVERS.put(BuiltinFunc.NOW, (param, ctx) -> BuiltinFunctions.eval(BuiltinFunc.NOW.key(), resolve(param, ctx)));
+        BUILTIN_RESOLVERS.put(BuiltinFunc.TIME_RANGE, (param, ctx) -> BuiltinFunctions.eval(BuiltinFunc.TIME_RANGE.key(), resolve(param, ctx)));
     }
 
     /**

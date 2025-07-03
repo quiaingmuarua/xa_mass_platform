@@ -1,15 +1,16 @@
-# JSON-DSL Mock 框架
+# JSON-DSL 框架
 
-一个基于 JSON-DSL 的通用 Java 对象 mock 数据生成框架，支持批量生成任意对象、递归嵌套、内置函数和类型注册表。
+一个基于 JSON-DSL 的通用 Java 对象生成框架，支持批量生成任意对象、递归嵌套、内置函数和类型注册表。
 
 ## 特性
 
 - 🚀 **通用性**: 支持生成任意 Java 对象
-- 📝 **DSL 驱动**: 使用简洁的 JSON-DSL 语法定义 mock 规则
+- 📝 **DSL 驱动**: 使用简洁的 JSON-DSL 语法定义生成规则
 - 🔄 **递归嵌套**: 支持复杂的嵌套对象和集合结构
-- 🛠️ **内置函数**: 提供丰富的内置函数（随机选择、范围、UUID等）
+- 🛠️ **内置函数**: 提供丰富的内置函数（随机选择、范围、UUID、时间等）
 - 📋 **类型注册**: 支持类型别名注册，避免硬编码全类名
 - 🎯 **上下文变量**: 支持通过 $CONTEXT 函数获取上下文变量
+- ⏰ **时间支持**: 支持当前时间和时间范围随机生成
 - 🔧 **可扩展**: 内置函数和类型注册表支持动态扩展
 
 ## 快速开始
@@ -18,8 +19,8 @@
 
 ```java
 // 注册类型别名
-MockTypeRegistry.register("Device", Device.class);
-MockTypeRegistry.register("Task", Task.class);
+TypeRegistry.register("Device", Device.class);
+TypeRegistry.register("Task", Task.class);
 ```
 
 ### 2. 定义 DSL
@@ -41,7 +42,7 @@ MockTypeRegistry.register("Task", Task.class);
 
 ```java
 String deviceDsl = "..."; // 上面的 JSON
-List<Object> devices = MockTemplateEngine.generate(deviceDsl);
+List<Object> devices = JsonDslEngine.generate(deviceDsl);
 devices.forEach(System.out::println);
 ```
 
@@ -66,6 +67,8 @@ devices.forEach(System.out::println);
 | `$RANDOM` | `{"$RANDOM": true}` | 生成随机整数 | `{"$RANDOM": true}` |
 | `$JOIN` | `{"$JOIN": [字符串列表]}` | 字符串拼接 | `{"$JOIN": ["prefix-", {"$CONTEXT": "i"}, "-suffix"]}` |
 | `$CONTEXT` | `{"$CONTEXT": "键名"}` | 从上下文中获取值 | `{"$CONTEXT": "i"}` |
+| `$NOW` | `{"$NOW": "格式化字符串"}` | 获取当前时间 | `{"$NOW": "yyyy-MM-dd HH:mm:ss"}` |
+| `$TIME_RANGE` | `{"$TIME_RANGE": [开始时间, 结束时间, 时间单位, 格式化字符串]}` | 在时间范围内随机生成时间 | `{"$TIME_RANGE": ["now-1d", "now+1d", "HOURS", "yyyy-MM-dd HH:mm:ss"]}` |
 
 ### 上下文变量
 
@@ -103,7 +106,7 @@ String dsl = """
   }
 }
 """;
-List<Object> devices = MockTemplateEngine.generate(dsl);
+List<Object> devices = JsonDslEngine.generate(dsl);
 ```
 
 ### 批量生成
@@ -122,7 +125,48 @@ String dsl = """
   }
 }
 """;
-List<Object> tasks = MockTemplateEngine.generate(dsl);
+List<Object> tasks = JsonDslEngine.generate(dsl);
+```
+
+### 时间函数示例
+
+```java
+// 生成带时间字段的对象
+String dsl = """
+{
+  "MODEL": "Task",
+  "COUNT": 3,
+  "FIELDS": {
+    "tid": {"$UUID": true},
+    "taskName": {"$JOIN": ["TimeTask-", {"$CONTEXT": "i"}]},
+    "createdTime": {"$NOW": "yyyy-MM-dd HH:mm:ss"},
+    "startTime": {"$TIME_RANGE": ["now-1d", "now+1d", "HOURS", "yyyy-MM-dd HH:mm:ss"]},
+    "endTime": {"$TIME_RANGE": ["now+1d", "now+7d", "DAYS", "yyyy-MM-dd HH:mm:ss"]},
+    "lastModified": {"$TIME_RANGE": ["now-2h", "now", "MINUTES"]}
+  }
+}
+""";
+List<Object> timeExamples = JsonDslEngine.generate(dsl);
+```
+
+### 相对时间示例
+
+```java
+// 使用相对时间
+String dsl = """
+{
+  "MODEL": "Device",
+  "COUNT": 2,
+  "FIELDS": {
+    "deviceId": {"$JOIN": ["device-", {"$CONTEXT": "i"}]},
+    "status": {"$CHOICE": ["ONLINE", "OFFLINE"]},
+    "lastSeen": {"$TIME_RANGE": ["now-30m", "now", "MINUTES", "HH:mm:ss"]},
+    "registeredAt": {"$TIME_RANGE": ["now-30d", "now-1d", "DAYS", "yyyy-MM-dd"]},
+    "nextMaintenance": {"$TIME_RANGE": ["now+1d", "now+30d", "DAYS", "yyyy-MM-dd HH:mm"]}
+  }
+}
+""";
+List<Object> relativeTimeExamples = JsonDslEngine.generate(dsl);
 ```
 
 ### 嵌套对象
@@ -148,7 +192,7 @@ String dsl = """
   }
 }
 """;
-List<Object> projects = MockTemplateEngine.generate(dsl);
+List<Object> projects = JsonDslEngine.generate(dsl);
 ```
 
 ### 集合类型
@@ -171,7 +215,75 @@ String dsl = """
   }
 }
 """;
-List<Object> users = MockTemplateEngine.generate(dsl);
+List<Object> users = JsonDslEngine.generate(dsl);
+```
+
+## 时间函数详解
+
+### $NOW 函数
+
+获取当前时间，支持格式化：
+
+```json
+{
+  "$NOW": "yyyy-MM-dd HH:mm:ss"  // 格式化字符串（可选）
+}
+```
+
+示例：
+- `{"$NOW": true}` - 返回 LocalDateTime 对象
+- `{"$NOW": "yyyy-MM-dd"}` - 返回 "2024-01-15"
+- `{"$NOW": "HH:mm:ss"}` - 返回 "14:30:25"
+
+### $TIME_RANGE 函数
+
+在指定时间范围内随机生成时间：
+
+```json
+{
+  "$TIME_RANGE": [
+    "开始时间",
+    "结束时间", 
+    "时间单位",
+    "格式化字符串（可选）"
+  ]
+}
+```
+
+#### 时间格式支持
+
+1. **标准格式**：
+   - `"2024-01-15 14:30:00"`
+   - `"2024-01-15 14:30"`
+   - `"2024-01-15"`
+   - `"14:30:00"`
+   - `"14:30"`
+
+2. **相对时间**：
+   - `"now"` - 当前时间
+   - `"now-1d"` - 1天前
+   - `"now+2h"` - 2小时后
+   - `"now-30m"` - 30分钟前
+   - `"now+7d"` - 7天后
+
+#### 时间单位
+
+- `DAYS` - 天
+- `HOURS` - 小时
+- `MINUTES` - 分钟
+- `SECONDS` - 秒
+
+#### 示例
+
+```json
+// 在过去1天到未来1天之间随机生成时间
+{"$TIME_RANGE": ["now-1d", "now+1d", "HOURS", "yyyy-MM-dd HH:mm:ss"]}
+
+// 在未来1-7天之间随机生成时间
+{"$TIME_RANGE": ["now+1d", "now+7d", "DAYS", "yyyy-MM-dd"]}
+
+// 在过去30分钟内随机生成时间
+{"$TIME_RANGE": ["now-30m", "now", "MINUTES", "HH:mm:ss"]}
 ```
 
 ## 类型注册
@@ -180,11 +292,11 @@ List<Object> users = MockTemplateEngine.generate(dsl);
 
 ```java
 // 使用类对象注册
-MockTypeRegistry.register("Device", Device.class);
-MockTypeRegistry.register("Task", Task.class);
+TypeRegistry.register("Device", Device.class);
+TypeRegistry.register("Task", Task.class);
 
 // 使用全类名注册
-MockTypeRegistry.register("RuleDefinition", "com.xa.mass.engine.rules.RuleDefinition");
+TypeRegistry.register("RuleDefinition", "com.xa.mass.engine.rules.RuleDefinition");
 ```
 
 ### 使用全类名
@@ -202,13 +314,13 @@ MockTypeRegistry.register("RuleDefinition", "com.xa.mass.engine.rules.RuleDefini
 
 ## 错误处理
 
-框架使用 `MockTemplateException` 统一处理错误：
+框架使用 `JsonDslException` 统一处理错误：
 
 ```java
 try {
-    List<Object> objects = MockTemplateEngine.generate(dsl);
-} catch (MockTemplateException e) {
-    System.err.println("Mock 生成失败: " + e.getMessage());
+    List<Object> objects = JsonDslEngine.generate(dsl);
+} catch (JsonDslException e) {
+    System.err.println("DSL 生成失败: " + e.getMessage());
 }
 ```
 
@@ -217,6 +329,7 @@ try {
 - 类型未注册或无法加载
 - 字段设置失败
 - 不支持的内置函数
+- 时间格式解析失败
 
 ## 扩展性
 
@@ -238,6 +351,10 @@ try {
 4. **DSL 复用**: 将常用的 DSL 片段提取为常量或配置文件
 5. **测试数据**: 使用有意义的测试数据，便于调试和验证
 6. **上下文变量**: 使用 `$CONTEXT` 函数获取上下文变量，避免硬编码索引值
+7. **时间函数**: 
+   - 使用相对时间 `now-1d` 比绝对时间更灵活
+   - 合理选择时间单位和范围
+   - 注意时间格式的正确性
 
 ## 依赖
 

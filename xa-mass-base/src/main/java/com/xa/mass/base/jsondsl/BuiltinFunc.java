@@ -6,7 +6,9 @@ public enum BuiltinFunc {
     UUID("$UUID"),
     RANDOM("$RANDOM"),
     JOIN("$JOIN"),
-    CONTEXT("$CONTEXT");
+    CONTEXT("$CONTEXT"),
+    NOW("$NOW"),
+    TIME_RANGE("$TIME_RANGE");
 
     private final String key;
     BuiltinFunc(String key) { this.key = key; }
