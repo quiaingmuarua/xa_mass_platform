@@ -14,63 +14,101 @@
 ### 1. 抽象存储接口
 
 #### TaskStorage 接口
+
 创建了 `TaskStorage` 接口，定义了任务和任务消息的存储抽象：
 
 ```java
 public interface TaskStorage {
     void saveTask(Task task);
+
     Optional<Task> getTask(String taskId);
+
     boolean updateTask(Task task);
+
     boolean deleteTask(String taskId);
+
     List<Task> getAllTasks();
+
     List<Task> getTasksByStatus(String status);
+
     List<Task> getSchedulableTasks();
+
     void addTaskMessage(String taskId, TaskMsg taskMsg);
+
     List<TaskMsg> getTaskMessages(String taskId);
+
     TaskMessageStats getTaskMessageStats(String taskId);
 }
 ```
 
 #### DeviceStorage 接口
+
 创建了 `DeviceStorage` 接口，定义了设备和Token的存储抽象：
 
 ```java
 public interface DeviceStorage {
     void addDevice(Device device);
+
     Optional<Device> getDevice(String deviceId);
+
     boolean updateDevice(Device device);
+
     boolean deleteDevice(String deviceId);
+
     List<Device> getDevicesByCountry(String country);
+
     List<Device> getAllDevices();
+
     void addToken(String deviceId, Token token);
+
     Optional<Token> getToken(String deviceId);
+
     boolean updateToken(String deviceId, Token token);
+
     boolean deleteToken(String deviceId);
+
     List<Token> getAllTokens();
+
     boolean tryLockDevice(String deviceId);
+
     void unlockDevice(String deviceId);
+
     boolean isLocked(String deviceId);
+
     List<String> getLockedDevices();
 }
 ```
 
 #### RuleStorage 接口
+
 创建了 `RuleStorage` 接口，定义了规则定义和规则评估器的存储抽象：
 
 ```java
 public interface RuleStorage {
     void addRule(RuleDefinition rule);
+
     Optional<RuleDefinition> getRule(String ruleId);
+
     boolean updateRule(RuleDefinition rule);
+
     boolean deleteRule(String ruleId);
+
     List<RuleDefinition> getAllRules();
+
     List<RuleDefinition> getRulesByType(RuleType ruleType);
+
     void addRules(Collection<RuleDefinition> rules);
+
     void deleteRules(Collection<String> ruleIds);
+
     void registerEvaluator(RuleType ruleType, RuleEvaluator evaluator);
+
     Optional<RuleEvaluator> getEvaluator(RuleType ruleType);
+
     List<RuleType> getRegisteredEvaluatorTypes();
+
     boolean removeEvaluator(RuleType ruleType);
+
     void clear();
 }
 ```
@@ -78,6 +116,7 @@ public interface RuleStorage {
 ### 2. 存储实现
 
 #### 内存存储实现
+
 - **InMemoryTaskStorage**: 将原来的Map逻辑封装到实现类中
 - **InMemoryDeviceStorage**: 将原来的Map逻辑封装到实现类中
 - **InMemoryRuleStorage**: 将原来的Map逻辑封装到实现类中
@@ -85,6 +124,7 @@ public interface RuleStorage {
 - 作为默认存储实现
 
 #### Redis 存储实现
+
 - **RedisTaskStorage**: 提供 Redis 存储的示例实现
 - **RedisDeviceStorage**: 提供 Redis 存储的示例实现
 - **RedisRuleStorage**: 提供 Redis 存储的示例实现
@@ -117,29 +157,30 @@ RuleStorage configRuleStorage = TaskStorageFactory.createRuleStorage("memory");
 ### 4. Manager 类重构
 
 #### TaskManager 重构
+
 重构后的 `TaskManager`：
 
 ```java
 public class TaskManager {
     private final TaskStorage taskStorage;
     private final TaskScheduler taskScheduler;
-    
+
     // 使用默认存储
     public TaskManager(TaskScheduler taskScheduler) {
         this(taskScheduler, TaskStorageFactory.createDefaultTaskStorage());
     }
-    
+
     // 使用自定义存储
     public TaskManager(TaskScheduler taskScheduler, TaskStorage taskStorage) {
         this.taskScheduler = taskScheduler;
         this.taskStorage = taskStorage;
     }
-    
+
     // 所有存储操作都委托给 taskStorage
     public Task getTask(String taskId) {
         return taskStorage.getTask(taskId).orElse(null);
     }
-    
+
     public boolean updateTask(Task task) {
         return taskStorage.updateTask(task);
     }
@@ -148,31 +189,32 @@ public class TaskManager {
 ```
 
 #### DeviceManager 重构
+
 重构后的 `DeviceManager`：
 
 ```java
 public class DeviceManager {
     private final DeviceStorage deviceStorage;
-    
+
     // 使用默认存储
     public DeviceManager() {
         this(TaskStorageFactory.createDefaultDeviceStorage());
     }
-    
+
     // 使用自定义存储
     public DeviceManager(DeviceStorage deviceStorage) {
         this.deviceStorage = deviceStorage;
     }
-    
+
     // 所有存储操作都委托给 deviceStorage
     public void addDevice(Device device) {
         deviceStorage.addDevice(device);
     }
-    
+
     public Device getDevice(String deviceId) {
         return deviceStorage.getDevice(deviceId).orElse(null);
     }
-    
+
     public List<Device> getDevicesByCountry(String country) {
         return deviceStorage.getDevicesByCountry(country);
     }
@@ -181,35 +223,36 @@ public class DeviceManager {
 ```
 
 #### RuleManager 重构
+
 重构后的 `RuleManager`：
 
 ```java
 public class RuleManager<T> {
     private final RuleStorage ruleStorage;
-    
+
     // 使用默认存储
     public RuleManager() {
         this(TaskStorageFactory.createDefaultRuleStorage());
     }
-    
+
     // 使用自定义存储
     public RuleManager(RuleStorage ruleStorage) {
         this.ruleStorage = ruleStorage;
     }
-    
+
     // 所有存储操作都委托给 ruleStorage
     public void addDefaultRule(RuleDefinition rule) {
         ruleStorage.addRule(rule);
     }
-    
+
     public Optional<RuleDefinition> getRule(String ruleId) {
         return ruleStorage.getRule(ruleId);
     }
-    
+
     public List<RuleDefinition> getDefaultRules() {
         return ruleStorage.getAllRules();
     }
-    
+
     public boolean evaluate(RuleDefinition rule, T context) throws Exception {
         Optional<RuleEvaluator> evaluatorOpt = ruleStorage.getEvaluator(rule.getType());
         if (evaluatorOpt.isEmpty()) {
@@ -357,27 +400,32 @@ public static RuleStorage createRuleStorage(StorageType type) {
 ## 新增文件列表
 
 ### 任务存储相关
+
 - `TaskStorage.java` - 任务存储接口
 - `InMemoryTaskStorage.java` - 内存任务存储实现
 - `RedisTaskStorage.java` - Redis任务存储示例实现
 
 ### 设备存储相关
+
 - `DeviceStorage.java` - 设备存储接口
 - `InMemoryDeviceStorage.java` - 内存设备存储实现
 - `RedisDeviceStorage.java` - Redis设备存储示例实现
 
 ### 规则存储相关
+
 - `RuleStorage.java` - 规则存储接口
 - `InMemoryRuleStorage.java` - 内存规则存储实现
 - `RedisRuleStorage.java` - Redis规则存储示例实现
 
 ### 工厂和示例
+
 - `TaskStorageFactory.java` - 存储工厂（支持任务、设备和规则存储）
 - `StorageExample.java` - 任务存储使用示例
 - `DeviceStorageExample.java` - 设备存储使用示例
 - `RuleStorageExample.java` - 规则存储使用示例
 
 ### 重构的类
+
 - `TaskManager.java` - 重构后使用TaskStorage接口
 - `DeviceManager.java` - 重构后使用DeviceStorage接口
 - `RuleManager.java` - 重构后使用RuleStorage接口 

@@ -8,14 +8,30 @@ import java.util.UUID;
 
 public interface MassEvent extends Serializable {
     String getEventId();
+
     Instant getTimestamp();
+
     String getDescription();
 
-    default String getEventType() { return null; }            // 业务事件类型标识
-    default MassPlatformEventType getPlatformEventType() { return null; } // 平台事件类型，业务事件可不实现
-    default Map<String, Object> getMetadata() { return Collections.emptyMap(); }
-    default String getTraceId() { return null; }
-    default String getRequestId() { return null; }
+    default String getEventType() {
+        return null;
+    }            // 业务事件类型标识
+
+    default MassPlatformEventType getPlatformEventType() {
+        return null;
+    } // 平台事件类型，业务事件可不实现
+
+    default Map<String, Object> getMetadata() {
+        return Collections.emptyMap();
+    }
+
+    default String getTraceId() {
+        return null;
+    }
+
+    default String getRequestId() {
+        return null;
+    }
 
     abstract class BaseMassEvent implements MassEvent {
         private final String eventId;
@@ -45,14 +61,45 @@ public interface MassEvent extends Serializable {
             this.requestId = requestId;
         }
 
-        @Override public String getEventId() { return eventId; }
-        @Override public Instant getTimestamp() { return timestamp; }
-        @Override public String getEventType() { return eventType; }
-        @Override public MassPlatformEventType getPlatformEventType() { return platformEventType; }
-        @Override public String getDescription() { return description; }
-        @Override public Map<String, Object> getMetadata() { return metadata; }
-        @Override public String getTraceId() { return traceId; }
-        @Override public String getRequestId() { return requestId; }
+        @Override
+        public String getEventId() {
+            return eventId;
+        }
+
+        @Override
+        public Instant getTimestamp() {
+            return timestamp;
+        }
+
+        @Override
+        public String getEventType() {
+            return eventType;
+        }
+
+        @Override
+        public MassPlatformEventType getPlatformEventType() {
+            return platformEventType;
+        }
+
+        @Override
+        public String getDescription() {
+            return description;
+        }
+
+        @Override
+        public Map<String, Object> getMetadata() {
+            return metadata;
+        }
+
+        @Override
+        public String getTraceId() {
+            return traceId;
+        }
+
+        @Override
+        public String getRequestId() {
+            return requestId;
+        }
 
         @Override
         public String toString() {

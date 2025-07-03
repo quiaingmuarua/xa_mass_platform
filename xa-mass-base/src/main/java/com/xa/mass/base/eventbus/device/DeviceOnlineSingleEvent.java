@@ -36,7 +36,15 @@ public class DeviceOnlineSingleEvent extends MassEvent.BaseMassEvent {
         return Collections.unmodifiableMap(metadata);
     }
 
-    public String getDeviceId() { return deviceId; }
-    public String getReason() { return reason; }
-    public Device getDevice() { return device; }
+    public String getDeviceId() {
+        return deviceId;
+    }
+
+    public String getReason() {
+        return reason;
+    }
+
+    public Device getDevice() {
+        return device;
+    }
 } 

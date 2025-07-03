@@ -19,7 +19,7 @@ import java.util.Map;
 /**
  * 引擎配置类
  */
-public  class EngineConfig {
+public class EngineConfig {
     private boolean enabled = true;
     private int workerThreads = 8;
     private String mockConfigPath = "mock_config.json";
@@ -36,26 +36,69 @@ public  class EngineConfig {
     private AssignmentRecordService recordService = new AssignmentRecordService();
     private RuleManager<Map<String, Object>> ruleManager = RuleManagerFactory.getProjectRuleManager("demoApp");
 
-    public boolean isEnabled() { return enabled; }
-    public void setEnabled(boolean enabled) { this.enabled = enabled; }
+    // 默认 mock 配置
+    private static String getDefaultMockConfig() {
+        return "{\n" +
+                "  \"devices\": " + com.xa.mass.engine.monkey.MonkeyGenerator.exampleJsonDsl() + ",\n" +
+                "  \"tasks\": " + com.xa.mass.engine.monkey.MonkeyGenerator.exampleTasksJsonDsl() + "\n" +
+                "}";
+    }
 
-    public int getWorkerThreads() { return workerThreads; }
-    public void setWorkerThreads(int workerThreads) { this.workerThreads = workerThreads; }
+    public boolean isEnabled() {
+        return enabled;
+    }
 
-    public String getMockConfigPath() { return mockConfigPath; }
-    public void setMockConfigPath(String mockConfigPath) { this.mockConfigPath = mockConfigPath; }
+    public void setEnabled(boolean enabled) {
+        this.enabled = enabled;
+    }
 
-    public boolean isMockMode() { return mockMode; }
-    public void setMockMode(boolean mockMode) { this.mockMode = mockMode; }
+    public int getWorkerThreads() {
+        return workerThreads;
+    }
 
-    public String getDeviceConfigPath() { return deviceConfigPath; }
-    public void setDeviceConfigPath(String deviceConfigPath) { this.deviceConfigPath = deviceConfigPath; }
+    public void setWorkerThreads(int workerThreads) {
+        this.workerThreads = workerThreads;
+    }
 
-    public String getTaskConfigPath() { return taskConfigPath; }
-    public void setTaskConfigPath(String taskConfigPath) { this.taskConfigPath = taskConfigPath; }
+    public String getMockConfigPath() {
+        return mockConfigPath;
+    }
 
-    public String getRuleConfigPath() { return ruleConfigPath; }
-    public void setRuleConfigPath(String ruleConfigPath) { this.ruleConfigPath = ruleConfigPath; }
+    public void setMockConfigPath(String mockConfigPath) {
+        this.mockConfigPath = mockConfigPath;
+    }
+
+    public boolean isMockMode() {
+        return mockMode;
+    }
+
+    public void setMockMode(boolean mockMode) {
+        this.mockMode = mockMode;
+    }
+
+    public String getDeviceConfigPath() {
+        return deviceConfigPath;
+    }
+
+    public void setDeviceConfigPath(String deviceConfigPath) {
+        this.deviceConfigPath = deviceConfigPath;
+    }
+
+    public String getTaskConfigPath() {
+        return taskConfigPath;
+    }
+
+    public void setTaskConfigPath(String taskConfigPath) {
+        this.taskConfigPath = taskConfigPath;
+    }
+
+    public String getRuleConfigPath() {
+        return ruleConfigPath;
+    }
+
+    public void setRuleConfigPath(String ruleConfigPath) {
+        this.ruleConfigPath = ruleConfigPath;
+    }
 
     public JsonObject getMockConfigRoot() {
         JsonObject root = new JsonObject();
@@ -83,6 +126,10 @@ public  class EngineConfig {
         return root;
     }
 
+    public void setMockConfigRoot(JsonObject mockConfigRoot) {
+        this.mockConfigRoot = mockConfigRoot;
+    }
+
     /**
      * 读取配置文件内容
      * 支持 classpath 路径和文件系统路径
@@ -105,7 +152,7 @@ public  class EngineConfig {
                     return new String(is.readAllBytes(), StandardCharsets.UTF_8);
                 }
             }
-            
+
             // 如果 classpath 中没有找到，尝试从文件系统读取
             try {
                 return Files.readString(Path.of(configPath));
@@ -116,17 +163,10 @@ public  class EngineConfig {
         }
     }
 
-    // 默认 mock 配置
-    private static String getDefaultMockConfig() {
-        return "{\n" +
-                "  \"devices\": " + com.xa.mass.engine.monkey.MonkeyGenerator.exampleJsonDsl() + ",\n" +
-                "  \"tasks\": " + com.xa.mass.engine.monkey.MonkeyGenerator.exampleTasksJsonDsl() + "\n" +
-                "}";
+    public SimpleTaskScheduler getScheduler() {
+        return scheduler;
     }
 
-    public void setMockConfigRoot(JsonObject mockConfigRoot) { this.mockConfigRoot = mockConfigRoot; }
-
-    public SimpleTaskScheduler getScheduler() { return scheduler; }
     public void setScheduler(SimpleTaskScheduler scheduler) {
         this.scheduler = scheduler;
         // 级联更新 taskManager
@@ -134,12 +174,36 @@ public  class EngineConfig {
             this.taskManager = new TaskManager(scheduler);
         }
     }
-    public TaskManager getTaskManager() { return taskManager; }
-    public void setTaskManager(TaskManager taskManager) { this.taskManager = taskManager; }
-    public DeviceManager getDeviceManager() { return deviceManager; }
-    public void setDeviceManager(DeviceManager deviceManager) { this.deviceManager = deviceManager; }
-    public AssignmentRecordService getRecordService() { return recordService; }
-    public void setRecordService(AssignmentRecordService recordService) { this.recordService = recordService; }
-    public RuleManager<Map<String, Object>> getRuleManager() { return ruleManager; }
-    public void setRuleManager(RuleManager<Map<String, Object>> ruleManager) { this.ruleManager = ruleManager; }
+
+    public TaskManager getTaskManager() {
+        return taskManager;
+    }
+
+    public void setTaskManager(TaskManager taskManager) {
+        this.taskManager = taskManager;
+    }
+
+    public DeviceManager getDeviceManager() {
+        return deviceManager;
+    }
+
+    public void setDeviceManager(DeviceManager deviceManager) {
+        this.deviceManager = deviceManager;
+    }
+
+    public AssignmentRecordService getRecordService() {
+        return recordService;
+    }
+
+    public void setRecordService(AssignmentRecordService recordService) {
+        this.recordService = recordService;
+    }
+
+    public RuleManager<Map<String, Object>> getRuleManager() {
+        return ruleManager;
+    }
+
+    public void setRuleManager(RuleManager<Map<String, Object>> ruleManager) {
+        this.ruleManager = ruleManager;
+    }
 }

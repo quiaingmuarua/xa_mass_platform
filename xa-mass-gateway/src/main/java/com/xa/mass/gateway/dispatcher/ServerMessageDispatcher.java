@@ -27,28 +27,28 @@ public class ServerMessageDispatcher {
         this.context = context;
     }
 
-    public void start(){
+    public void start() {
         if (running.compareAndSet(false, true)) {
             logger.info("🚀 Starting ServerMessageDispatcher...");
-            
+
             // 创建线程池
             inputExecutor = Executors.newFixedThreadPool(8);
             outputExecutor = Executors.newFixedThreadPool(8);
-            
+
             // 启动处理线程
             for (int i = 0; i < 8; i++) {
                 inputExecutor.submit(this::processInputQueueLoop);
                 outputExecutor.submit(this::processOutputQueueLoop);
             }
-            
+
             logger.info("✅ ServerMessageDispatcher started successfully");
         }
     }
-    
+
     public void stop() {
         if (running.compareAndSet(true, false)) {
             logger.info("🛑 Stopping ServerMessageDispatcher...");
-            
+
             try {
                 // 关闭线程池
                 if (inputExecutor != null) {
@@ -57,23 +57,23 @@ public class ServerMessageDispatcher {
                         inputExecutor.shutdownNow();
                     }
                 }
-                
+
                 if (outputExecutor != null) {
                     outputExecutor.shutdown();
                     if (!outputExecutor.awaitTermination(10, TimeUnit.SECONDS)) {
                         outputExecutor.shutdownNow();
                     }
                 }
-                
+
                 logger.info("✅ ServerMessageDispatcher stopped successfully");
-                
+
             } catch (InterruptedException e) {
                 logger.error("❌ Error stopping ServerMessageDispatcher", e);
                 Thread.currentThread().interrupt();
             }
         }
     }
-    
+
     public boolean isRunning() {
         return running.get();
     }

@@ -12,7 +12,7 @@ public interface HandlerRegistryContext {
      * @return 消息处理器注册表
      */
     MessageHandlerRegistry getMessageHandlerRegistry();
-    
+
     /**
      * 设置消息处理器注册表
      * @param messageHandlerRegistry 消息处理器注册表

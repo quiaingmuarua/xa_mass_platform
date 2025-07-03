@@ -39,7 +39,15 @@ public class DeviceOfflineBatchEvent extends MassEvent.BaseMassEvent {
         return Collections.unmodifiableMap(metadata);
     }
 
-    public List<String> getDeviceIds() { return deviceIds; }
-    public String getReason() { return reason; }
-    public long getOfflineDurationMs() { return offlineDurationMs; }
+    public List<String> getDeviceIds() {
+        return deviceIds;
+    }
+
+    public String getReason() {
+        return reason;
+    }
+
+    public long getOfflineDurationMs() {
+        return offlineDurationMs;
+    }
 }

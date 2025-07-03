@@ -10,6 +10,7 @@ import java.util.List;
 
 public class SimpleTaskScheduler implements TaskScheduler {
     private static final Logger log = LoggerFactory.getLogger(SimpleTaskScheduler.class);
+
     @Override
     public SchedulingResult scheduleTask(Task task) {
         log.info("调度任务: {}", task.getTid());

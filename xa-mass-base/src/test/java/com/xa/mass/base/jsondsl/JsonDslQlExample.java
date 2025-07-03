@@ -15,22 +15,22 @@ public class JsonDslQlExample {
 
         // 演示相对时间
         String dsl = """
-        {
-          "MODEL": "Device",
-           "COUNT": 2,
-          "FIELDS": {
-            "status": {"$CHOICE": ["OFFLINE", "ONLINE"]},
-            "deviceId": {"$EXPR": "join('device-', '1')"},
-             "groupId": {"$JOIN": ["device-", "&.index"]},
-            "onlineStrategy": {
-              "$EXPR": {
-                "lang": "ql",
-                "expr": "status == 'OFFLINE' ? 0 : range(10, 100)"
-              }
-            }
-          }
-        }
-        """;
+                {
+                  "MODEL": "Device",
+                   "COUNT": 2,
+                  "FIELDS": {
+                    "status": {"$CHOICE": ["OFFLINE", "ONLINE"]},
+                    "deviceId": {"$EXPR": "join('device-', '1')"},
+                     "groupId": {"$JOIN": ["device-", "&.index"]},
+                    "onlineStrategy": {
+                      "$EXPR": {
+                        "lang": "ql",
+                        "expr": "status == 'OFFLINE' ? 0 : range(10, 100)"
+                      }
+                    }
+                  }
+                }
+                """;
         List<Object> relativeTimeExamples = com.xa.mass.base.jsondsl.JsonDslEngine.generate(dsl);
         relativeTimeExamples.forEach(System.out::println);
     }

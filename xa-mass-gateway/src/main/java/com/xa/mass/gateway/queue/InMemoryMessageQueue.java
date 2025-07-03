@@ -10,9 +10,9 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
 public class InMemoryMessageQueue implements MessageQueue<Envelope> { // 修改泛型
+    private static final Logger log = LoggerFactory.getLogger(InMemoryMessageQueue.class);
     // 使用 BlockingQueue，例LinkedBlockingQueue
     private final BlockingQueue<Envelope> queue; // 修改泛型
-    private static final Logger log = LoggerFactory.getLogger(InMemoryMessageQueue.class);
 
     public InMemoryMessageQueue() {
         this.queue = new LinkedBlockingQueue<>(); // 无界队列

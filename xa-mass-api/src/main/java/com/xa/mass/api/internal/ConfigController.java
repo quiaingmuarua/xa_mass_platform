@@ -8,7 +8,7 @@ import org.springframework.web.bind.annotation.GetMapping;
  */
 @Controller
 public class ConfigController {
-    
+
     /**
      * 全局配置页面
      */

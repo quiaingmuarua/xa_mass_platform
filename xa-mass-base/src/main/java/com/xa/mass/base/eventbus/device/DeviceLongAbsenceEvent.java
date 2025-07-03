@@ -37,7 +37,15 @@ public class DeviceLongAbsenceEvent extends MassEvent.BaseMassEvent {
         return Collections.unmodifiableMap(metadata);
     }
 
-    public String getDeviceId() { return deviceId; }
-    public long getAbsenceDurationMs() { return absenceDurationMs; }
-    public String getLastSeenTime() { return lastSeenTime; }
+    public String getDeviceId() {
+        return deviceId;
+    }
+
+    public long getAbsenceDurationMs() {
+        return absenceDurationMs;
+    }
+
+    public String getLastSeenTime() {
+        return lastSeenTime;
+    }
 } 

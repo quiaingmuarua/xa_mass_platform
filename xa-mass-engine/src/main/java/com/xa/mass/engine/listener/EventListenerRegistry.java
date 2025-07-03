@@ -11,7 +11,8 @@ import org.slf4j.LoggerFactory;
 public class EventListenerRegistry {
     private static final Logger log = LoggerFactory.getLogger(EventListenerRegistry.class);
 
-    private EventListenerRegistry() {}
+    private EventListenerRegistry() {
+    }
 
     public static void registerDeviceStatusListeners(EventBusFacade eventBus, DeviceManager deviceManager) {
         log.info("registerDeviceStatusListeners: register device status event listeners ...");

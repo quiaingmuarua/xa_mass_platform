@@ -9,8 +9,13 @@ import java.util.Map;
 public class AssignmentReportStep implements AssignmentPipelineStep {
     private static final Logger log = LoggerFactory.getLogger(AssignmentReportStep.class);
     private final boolean enabled;
-    public AssignmentReportStep(boolean enabled) { this.enabled = enabled; }
-    @Override public void process(AssignmentRecordService recordService) {
+
+    public AssignmentReportStep(boolean enabled) {
+        this.enabled = enabled;
+    }
+
+    @Override
+    public void process(AssignmentRecordService recordService) {
         log.info("\n=== 分配统计报告 ===");
         Map<String, Object> report = recordService.generateAssignmentReport();
         log.info("总分配记录数: {}", report.get("totalRecords"));
@@ -20,6 +25,14 @@ public class AssignmentReportStep implements AssignmentPipelineStep {
         log.info("冲突数: {}", report.get("conflictCount"));
         log.info("成功率: {}%", String.format("%.2f", (Double) report.get("successRate") * 100));
     }
-    @Override public String getName() { return "分配统计报告"; }
-    @Override public boolean isEnabled() { return enabled; }
+
+    @Override
+    public String getName() {
+        return "分配统计报告";
+    }
+
+    @Override
+    public boolean isEnabled() {
+        return enabled;
+    }
 } 

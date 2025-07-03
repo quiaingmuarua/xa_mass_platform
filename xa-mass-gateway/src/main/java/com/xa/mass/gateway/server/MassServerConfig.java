@@ -25,9 +25,17 @@ public class MassServerConfig {
         this.dispatcherContext = dispatcherContext;
     }
 
-    public int getPort() { return port; }
-    public String getWebsocketPath() { return websocketPath; }
-    public DispatchRuntimeContext getDispatcherContext() { return dispatcherContext; }
+    public int getPort() {
+        return port;
+    }
+
+    public String getWebsocketPath() {
+        return websocketPath;
+    }
+
+    public DispatchRuntimeContext getDispatcherContext() {
+        return dispatcherContext;
+    }
 
     @Override
     public String toString() {

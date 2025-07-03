@@ -1,8 +1,8 @@
 package com.xa.mass.base.jsondsl;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.HashMap;
 import java.util.function.BiFunction;
 import java.util.stream.Collectors;
 
@@ -12,6 +12,7 @@ import java.util.stream.Collectors;
 public class TemplateValueResolver {
     // 内置函数处理器注册表
     private static final Map<BuiltinFunc, BiFunction<Object, DslContext, Object>> BUILTIN_RESOLVERS = new HashMap<>();
+
     static {
         BUILTIN_RESOLVERS.put(BuiltinFunc.JOIN, (param, ctx) -> {
             List<?> parts = (List<?>) param;

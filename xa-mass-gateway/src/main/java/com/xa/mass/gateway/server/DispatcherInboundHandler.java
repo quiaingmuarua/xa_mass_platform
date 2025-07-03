@@ -12,8 +12,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWebSocketFrame> {
-    private final DispatchRuntimeContext dispatcherContext;
     private static final Logger logger = LoggerFactory.getLogger(DispatcherInboundHandler.class);
+    private final DispatchRuntimeContext dispatcherContext;
+
     public DispatcherInboundHandler(DispatchRuntimeContext dispatcherContext) {
         this.dispatcherContext = dispatcherContext;
     }
@@ -58,7 +59,7 @@ public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWe
             dispatcherContext.getSessionManager().addSession(deviceId, connRole, ctx.channel(), ctx);
             logger.info("queue size {}", dispatcherContext.getMessageTransporter().inputQueueSize());
         } catch (Exception e) {
-          logger.error("Error in channelRead0", e);
+            logger.error("Error in channelRead0", e);
         }
 
     }

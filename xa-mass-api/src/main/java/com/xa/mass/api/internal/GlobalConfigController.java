@@ -17,10 +17,10 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/config")
 public class GlobalConfigController {
-    
+
     @Autowired
     private GlobalConfig globalConfig;
-    
+
     /**
      * 获取所有项目列表
      */

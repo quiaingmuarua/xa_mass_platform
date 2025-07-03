@@ -22,7 +22,7 @@ public class MessageHandlerRegistry {
     private final Gson gson = new Gson();
     // project -> (key -> handler)
     private final Map<String, Map<String, MassMessageHandler>> handlerMap = new ConcurrentHashMap<>();
-    
+
     // 是否启用 fallback 机制
     private boolean enableFallback = true;
 
@@ -43,14 +43,14 @@ public class MessageHandlerRegistry {
     public ResolutionResult resolve(String project, MessageType type, String subMsgType) {
         String key = MessageRouterKeys.of(type, subMsgType);
         String proj = (project == null || project.trim().isEmpty()) ? GLOBAL : project;
-        
+
         // 先查 project 级
         MassMessageHandler handler = handlerMap.getOrDefault(proj, Collections.emptyMap()).get(key);
         if (handler != null) {
             log.info("Resolved handler for project '{}', key '{}': {}", proj, key, handler.getClass().getName());
             return ResolutionResult.found(handler, proj, type.name(), subMsgType, "project");
         }
-        
+
         // 再查全局
         if (!GLOBAL.equals(proj)) {
             handler = handlerMap.getOrDefault(GLOBAL, Collections.emptyMap()).get(key);
@@ -59,13 +59,13 @@ public class MessageHandlerRegistry {
                 return ResolutionResult.found(handler, proj, type.name(), subMsgType, "global");
             }
         }
-        
+
         // 如果启用 fallback，返回 fallback handler
         if (enableFallback) {
             log.warn("No message handler found for project '{}', key '{}', using fallback", proj, key);
             return ResolutionResult.fallback(proj, type.name(), subMsgType);
         }
-        
+
         // 否则返回未找到
         log.warn("No message handler found for project '{}', key '{}'", proj, key);
         return ResolutionResult.notFound(proj, type.name(), subMsgType);
@@ -74,19 +74,19 @@ public class MessageHandlerRegistry {
     public ResolutionResult resolve(MassMessage msg) {
         return resolve(msg.getProject(), msg.getMsgType(), msg.getSubMsgType());
     }
-    
-    /**
-     * 设置是否启用 fallback 机制
-     */
-    public void setEnableFallback(boolean enableFallback) {
-        this.enableFallback = enableFallback;
-    }
-    
+
     /**
      * 检查是否启用 fallback 机制
      */
     public boolean isEnableFallback() {
         return enableFallback;
+    }
+
+    /**
+     * 设置是否启用 fallback 机制
+     */
+    public void setEnableFallback(boolean enableFallback) {
+        this.enableFallback = enableFallback;
     }
 
     private List<MassMessage> handlePing(MassMessage msg) {

@@ -1,6 +1,7 @@
 # xa-mass-api
 
 本模块为 API 层，负责：
+
 - RESTful API 控制器
 - DTO、AOP、全局异常处理
 - 仅暴露接口，不包含业务实现

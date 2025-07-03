@@ -2,7 +2,6 @@ package com.xa.mass.base.jsondsl.eval;
 
 import com.ql.util.express.DefaultContext;
 import com.ql.util.express.ExpressRunner;
-import com.ql.util.express.Operator;
 import com.xa.mass.base.jsondsl.BuiltinFunctions;
 
 import java.util.Map;

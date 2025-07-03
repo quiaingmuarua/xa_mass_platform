@@ -7,7 +7,8 @@
 ## 新增能力（2024年6月）
 
 - 支持全链路 mock 测试与演示，mock 逻辑已迁移至 `xa-mass-mock` 模块。
-- 支持通过统一的 `mock_config.json`（位于 `xa-mass-mock/src/main/resources/`）灵活配置 mock 设备（支持多 token）、任务等，支持模板、批量、占位符、表达式。
+- 支持通过统一的 `mock_config.json`（位于 `xa-mass-mock/src/main/resources/`）灵活配置 mock 设备（支持多
+  token）、任务等，支持模板、批量、占位符、表达式。
 - mock 流程支持外部 JSON 文件热加载，便于多场景切换和复现。
 - mock 结果支持分配全链路日志、规则链评估、冲突检测、分配统计等观测能力。
 - 适用于端到端集成测试、规则链调试、批量分配演练、设备 token 轮询等复杂场景。
@@ -18,8 +19,8 @@
 
 - 事件总线基础设施位于 `xa-mass-base`，核心接口为 `EventBusFacade`，通过 `EventBusFactory.get("guava")` 获取实例。
 - 所有事件均实现 `MassEvent` 接口，常见事件如：
-  - 任务相关：`TaskCreatedEvent`、`TaskAuditedEvent`、`TaskAssignedEvent`（`eventbus.task` 包）
-  - 设备相关：`DeviceOnlineBatchEvent`、`DeviceOfflineSingleEvent`（`eventbus.device` 包）
+    - 任务相关：`TaskCreatedEvent`、`TaskAuditedEvent`、`TaskAssignedEvent`（`eventbus.task` 包）
+    - 设备相关：`DeviceOnlineBatchEvent`、`DeviceOfflineSingleEvent`（`eventbus.device` 包）
 - 事件注册与发布示例：
 
 ```java

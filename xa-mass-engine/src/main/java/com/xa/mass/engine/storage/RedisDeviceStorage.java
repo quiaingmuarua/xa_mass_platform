@@ -10,26 +10,25 @@ import java.util.Optional;
 /**
  * Redis设备存储实现
  * 使用Redis作为设备和Token的存储后端
- * 
+ *
  * 注意：这是一个示例实现，实际使用时需要添加Redis客户端依赖
  */
 public class RedisDeviceStorage implements DeviceStorage {
-    
-    // TODO: 添加Redis客户端依赖
-    // private final RedisTemplate<String, Object> redisTemplate;
-    private final Gson gson = new Gson();
-    
+
     // 存储键前缀
     private static final String DEVICE_KEY_PREFIX = "device:";
     private static final String TOKEN_KEY_PREFIX = "token:";
     private static final String LOCKED_DEVICES_KEY = "locked_devices";
     private static final String DEVICE_COUNTRY_INDEX_PREFIX = "device_country:";
-    
+    // TODO: 添加Redis客户端依赖
+    // private final RedisTemplate<String, Object> redisTemplate;
+    private final Gson gson = new Gson();
+
     public RedisDeviceStorage() {
         // TODO: 初始化Redis客户端
         // this.redisTemplate = redisTemplate;
     }
-    
+
     @Override
     public void addDevice(Device device) {
         // TODO: 实现Redis存储逻辑
@@ -42,7 +41,7 @@ public class RedisDeviceStorage implements DeviceStorage {
         // redisTemplate.opsForSet().add(countryIndexKey, device.getDeviceId());
         throw new UnsupportedOperationException("Redis storage not fully implemented yet");
     }
-    
+
     @Override
     public Optional<Device> getDevice(String deviceId) {
         // TODO: 实现Redis获取逻辑
@@ -55,7 +54,7 @@ public class RedisDeviceStorage implements DeviceStorage {
         // return Optional.empty();
         throw new UnsupportedOperationException("Redis storage not fully implemented yet");
     }
-    
+
     @Override
     public boolean updateDevice(Device device) {
         // TODO: 实现Redis更新逻辑
@@ -81,7 +80,7 @@ public class RedisDeviceStorage implements DeviceStorage {
         // return true;
         throw new UnsupportedOperationException("Redis storage not fully implemented yet");
     }
-    
+
     @Override
     public boolean deleteDevice(String deviceId) {
         // TODO: 实现Redis删除逻辑
@@ -101,7 +100,7 @@ public class RedisDeviceStorage implements DeviceStorage {
         // return false;
         throw new UnsupportedOperationException("Redis storage not fully implemented yet");
     }
-    
+
     @Override
     public List<Device> getDevicesByCountry(String country) {
         // TODO: 实现Redis按国家获取设备逻辑
@@ -114,7 +113,7 @@ public class RedisDeviceStorage implements DeviceStorage {
         //     .collect(Collectors.toList());
         throw new UnsupportedOperationException("Redis storage not fully implemented yet");
     }
-    
+
     @Override
     public List<Device> getAllDevices() {
         // TODO: 实现Redis获取所有设备逻辑
@@ -127,7 +126,7 @@ public class RedisDeviceStorage implements DeviceStorage {
         //     .collect(Collectors.toList());
         throw new UnsupportedOperationException("Redis storage not fully implemented yet");
     }
-    
+
     @Override
     public void addToken(String deviceId, Token token) {
         // TODO: 实现Redis添加Token逻辑
@@ -136,7 +135,7 @@ public class RedisDeviceStorage implements DeviceStorage {
         // redisTemplate.opsForValue().set(key, tokenJson);
         throw new UnsupportedOperationException("Redis storage not fully implemented yet");
     }
-    
+
     @Override
     public Optional<Token> getToken(String deviceId) {
         // TODO: 实现Redis获取Token逻辑
@@ -149,7 +148,7 @@ public class RedisDeviceStorage implements DeviceStorage {
         // return Optional.empty();
         throw new UnsupportedOperationException("Redis storage not fully implemented yet");
     }
-    
+
     @Override
     public boolean updateToken(String deviceId, Token token) {
         // TODO: 实现Redis更新Token逻辑
@@ -160,7 +159,7 @@ public class RedisDeviceStorage implements DeviceStorage {
         // return true;
         throw new UnsupportedOperationException("Redis storage not fully implemented yet");
     }
-    
+
     @Override
     public boolean deleteToken(String deviceId) {
         // TODO: 实现Redis删除Token逻辑
@@ -168,7 +167,7 @@ public class RedisDeviceStorage implements DeviceStorage {
         // return redisTemplate.delete(key) > 0;
         throw new UnsupportedOperationException("Redis storage not fully implemented yet");
     }
-    
+
     @Override
     public List<Token> getAllTokens() {
         // TODO: 实现Redis获取所有Token逻辑
@@ -181,28 +180,28 @@ public class RedisDeviceStorage implements DeviceStorage {
         //     .collect(Collectors.toList());
         throw new UnsupportedOperationException("Redis storage not fully implemented yet");
     }
-    
+
     @Override
     public boolean tryLockDevice(String deviceId) {
         // TODO: 实现Redis锁定设备逻辑
         // return redisTemplate.opsForSet().add(LOCKED_DEVICES_KEY, deviceId);
         throw new UnsupportedOperationException("Redis storage not fully implemented yet");
     }
-    
+
     @Override
     public void unlockDevice(String deviceId) {
         // TODO: 实现Redis解锁设备逻辑
         // redisTemplate.opsForSet().remove(LOCKED_DEVICES_KEY, deviceId);
         throw new UnsupportedOperationException("Redis storage not fully implemented yet");
     }
-    
+
     @Override
     public boolean isLocked(String deviceId) {
         // TODO: 实现Redis检查设备锁定状态逻辑
         // return redisTemplate.opsForSet().isMember(LOCKED_DEVICES_KEY, deviceId);
         throw new UnsupportedOperationException("Redis storage not fully implemented yet");
     }
-    
+
     @Override
     public List<String> getLockedDevices() {
         // TODO: 实现Redis获取所有锁定设备逻辑

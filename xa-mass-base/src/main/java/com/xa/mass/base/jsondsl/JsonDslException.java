@@ -7,6 +7,7 @@ public class JsonDslException extends RuntimeException {
     public JsonDslException(String message) {
         super(message);
     }
+
     public JsonDslException(String message, Throwable cause) {
         super(message, cause);
     }

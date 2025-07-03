@@ -33,7 +33,7 @@ public class TaskAssignWorker {
             t.setDaemon(true);
             return t;
         });
-        
+
         executor.submit(() -> {
             while (running) {
                 try {
@@ -55,7 +55,7 @@ public class TaskAssignWorker {
     public CompletableFuture<Void> submitAll(List<Task> tasks) {
         pendingTasks.set(tasks.size());
         tasks.forEach(this::submit);
-        
+
         return CompletableFuture.runAsync(() -> {
             while (pendingTasks.get() > 0 && running) {
                 try {
@@ -75,7 +75,7 @@ public class TaskAssignWorker {
     private void notifyTaskCompleted(Task task) {
         int remaining = pendingTasks.decrementAndGet();
         listeners.forEach(l -> l.onTaskCompleted(task));
-        
+
         if (remaining == 0) {
             listeners.forEach(TaskCompletionListener::onAllTasksCompleted);
         }

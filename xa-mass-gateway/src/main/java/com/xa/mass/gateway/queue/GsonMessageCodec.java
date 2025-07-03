@@ -10,20 +10,20 @@ import org.slf4j.LoggerFactory;
  * 基于 Gson 的消息编解码器实现
  */
 public class GsonMessageCodec implements MessageCodec {
-    
+
     private static final Logger logger = LoggerFactory.getLogger(GsonMessageCodec.class);
     private final Gson gson;
-    
+
     public GsonMessageCodec() {
         this.gson = new GsonBuilder()
                 .setPrettyPrinting()
                 .create();
     }
-    
+
     public GsonMessageCodec(Gson gson) {
         this.gson = gson;
     }
-    
+
     @Override
     public String encode(MassMessage message) {
         try {
@@ -33,7 +33,7 @@ public class GsonMessageCodec implements MessageCodec {
             return null;
         }
     }
-    
+
     @Override
     public MassMessage decode(String json) {
         try {
@@ -43,7 +43,7 @@ public class GsonMessageCodec implements MessageCodec {
             return null;
         }
     }
-    
+
     @Override
     public boolean isValid(String json) {
         try {
@@ -53,7 +53,7 @@ public class GsonMessageCodec implements MessageCodec {
             return false;
         }
     }
-    
+
     /**
      * 获取底层的 Gson 实例（用于向后兼容）
      * @return Gson 实例

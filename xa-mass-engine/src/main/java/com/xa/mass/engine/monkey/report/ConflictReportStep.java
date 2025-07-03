@@ -10,8 +10,13 @@ import java.util.Map;
 public class ConflictReportStep implements AssignmentPipelineStep {
     private static final Logger log = LoggerFactory.getLogger(ConflictReportStep.class);
     private final boolean enabled;
-    public ConflictReportStep(boolean enabled) { this.enabled = enabled; }
-    @Override public void process(AssignmentRecordService recordService) {
+
+    public ConflictReportStep(boolean enabled) {
+        this.enabled = enabled;
+    }
+
+    @Override
+    public void process(AssignmentRecordService recordService) {
         log.info("\n=== 冲突检测 ===");
         List<Map<String, Object>> conflicts = recordService.detectConflicts();
         if (conflicts.isEmpty()) {
@@ -23,6 +28,14 @@ public class ConflictReportStep implements AssignmentPipelineStep {
             }
         }
     }
-    @Override public String getName() { return "冲突检测"; }
-    @Override public boolean isEnabled() { return enabled; }
+
+    @Override
+    public String getName() {
+        return "冲突检测";
+    }
+
+    @Override
+    public boolean isEnabled() {
+        return enabled;
+    }
 } 

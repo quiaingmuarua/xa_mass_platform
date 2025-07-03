@@ -95,7 +95,7 @@ public class RedisEnvelopeQueue implements MessageQueue<Envelope> {
         } catch (Exception e) {
             logger.error("Redis xreadgroup failed", e);
         }
-        logger.info("Redis queue size"+readCommands.xlen(streamKey));
+        logger.info("Redis queue size" + readCommands.xlen(streamKey));
         return null;
     }
 

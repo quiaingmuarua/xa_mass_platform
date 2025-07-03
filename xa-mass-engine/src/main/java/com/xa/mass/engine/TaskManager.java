@@ -19,16 +19,16 @@ import java.util.List;
  * 负责任务的CRUD操作和状态管理
  */
 public class TaskManager {
-    
+
     private static final Logger logger = LoggerFactory.getLogger(TaskManager.class);
-    
+
     private final TaskStorage taskStorage;
     private final TaskScheduler taskScheduler;
-    
+
     public TaskManager(TaskScheduler taskScheduler) {
         this(taskScheduler, TaskStorageFactory.createDefaultTaskStorage());
     }
-    
+
     public TaskManager(TaskScheduler taskScheduler, TaskStorage taskStorage) {
         this.taskScheduler = taskScheduler;
         this.taskStorage = taskStorage;
@@ -39,11 +39,11 @@ public class TaskManager {
      */
     public Task createTask(TaskCreateRequestDto dto) {
         long startTime = System.currentTimeMillis();
-        LogUtils.logOperationStart("CREATE_TASK", "TaskManager", 
-                                 "taskName", dto.getTaskName(),
-                                 "project", dto.getProject(),
-                                 "countryCode", dto.getCountryCode());
-        
+        LogUtils.logOperationStart("CREATE_TASK", "TaskManager",
+                "taskName", dto.getTaskName(),
+                "project", dto.getProject(),
+                "countryCode", dto.getCountryCode());
+
         try {
             // 1. 生成唯一任务ID
             String tid = java.util.UUID.randomUUID().toString();
@@ -65,13 +65,13 @@ public class TaskManager {
 
             // 4. 构建Task对象
             Task task = new Task(
-                tid,
-                dto.getTaskName(),
-                dto.getProject(),
-                dto.getCountryCode(),
-                initNumber,
-                dto.getTextContent(),
-                user
+                    tid,
+                    dto.getTaskName(),
+                    dto.getProject(),
+                    dto.getCountryCode(),
+                    initNumber,
+                    dto.getTextContent(),
+                    user
             );
             // 可扩展设置 extraParams、targetType 等
 
@@ -80,14 +80,14 @@ public class TaskManager {
 
             taskStorage.saveTask(task);
             for (String target : dto.getTargetList()) {
-                addTaskMessage(tid,new TaskMsg(tid,msgId,target));
+                addTaskMessage(tid, new TaskMsg(tid, msgId, target));
             }
 
             long duration = System.currentTimeMillis() - startTime;
             LogUtils.logOperationSuccess("任务创建成功，ID: " + tid + ", 消息数: " + initNumber, duration);
-            
+
             return task;
-            
+
         } catch (Exception e) {
             long duration = System.currentTimeMillis() - startTime;
             LogUtils.logOperationFailure("TASK_CREATE_ERROR", e.getMessage(), duration);
@@ -95,100 +95,100 @@ public class TaskManager {
             throw e;
         }
     }
-    
+
     /**
      * 获取任务
      */
     public Task getTask(String taskId) {
         LogUtils.setTaskId(taskId);
         LogUtils.logOperationStart("GET_TASK", "TaskManager", "taskId", taskId);
-        
+
         Task task = taskStorage.getTask(taskId).orElse(null);
-        
+
         if (task != null) {
             LogUtils.logOperationSuccess("任务获取成功", 0);
         } else {
             LogUtils.logOperationFailure("TASK_NOT_FOUND", "任务不存在", 0);
         }
-        
+
         return task;
     }
-    
+
     /**
      * 更新任务
      */
     public boolean updateTask(Task task) {
         LogUtils.setTaskId(task.getTid());
         LogUtils.logOperationStart("UPDATE_TASK", "TaskManager", "taskId", task.getTid());
-        
+
         boolean result = taskStorage.updateTask(task);
-        
+
         if (result) {
             LogUtils.logOperationSuccess("任务更新成功", 0);
         } else {
             LogUtils.logOperationFailure("TASK_UPDATE_ERROR", "任务更新失败", 0);
         }
-        
+
         return result;
     }
-    
+
     /**
      * 删除任务
      */
     public boolean deleteTask(String taskId) {
         LogUtils.setTaskId(taskId);
         LogUtils.logOperationStart("DELETE_TASK", "TaskManager", "taskId", taskId);
-        
+
         boolean result = taskStorage.deleteTask(taskId);
-        
+
         if (result) {
             LogUtils.logOperationSuccess("任务删除成功", 0);
         } else {
             LogUtils.logOperationFailure("TASK_DELETE_ERROR", "任务删除失败", 0);
         }
-        
+
         return result;
     }
-    
+
     /**
      * 获取所有任务
      */
     public List<Task> getAllTasks() {
         LogUtils.logOperationStart("GET_ALL_TASKS", "TaskManager");
-        
+
         List<Task> tasks = taskStorage.getAllTasks();
-        
+
         LogUtils.logOperationSuccess("获取所有任务成功，数量: " + tasks.size(), 0);
-        
+
         return tasks;
     }
-    
+
     /**
      * 根据状态获取任务
      */
     public List<Task> getTasksByStatus(TaskStatus status) {
         LogUtils.logOperationStart("GET_TASKS_BY_STATUS", "TaskManager", "status", status.name());
-        
+
         List<Task> tasks = taskStorage.getTasksByStatus(status.name());
-        
+
         LogUtils.logOperationSuccess("根据状态获取任务成功，数量: " + tasks.size(), 0);
-        
+
         return tasks;
     }
-    
+
     /**
      * 获取可调度的任务
      */
     public List<Task> getSchedulableTasks() {
         LogUtils.logOperationStart("GET_SCHEDULABLE_TASKS", "TaskManager");
-        
+
         List<Task> tasks = taskStorage.getSchedulableTasks();
-        
+
         LogUtils.logOperationSuccess("获取可调度任务成功，数量: " + tasks.size(), 0);
-        
+
         return tasks;
     }
-    
+
     /**
      * 审核任务
      */
@@ -196,7 +196,7 @@ public class TaskManager {
         long startTime = System.currentTimeMillis();
         LogUtils.setTaskId(taskId);
         LogUtils.logOperationStart("APPROVE_TASK", "TaskManager", "taskId", taskId);
-        
+
         try {
             Task task = getTask(taskId);
             if (task != null && task.getStatus() == TaskStatus.NEW) {
@@ -222,7 +222,7 @@ public class TaskManager {
             return false;
         }
     }
-    
+
     /**
      * 拒绝任务
      */
@@ -230,7 +230,7 @@ public class TaskManager {
         long startTime = System.currentTimeMillis();
         LogUtils.setTaskId(taskId);
         LogUtils.logOperationStart("REJECT_TASK", "TaskManager", "taskId", taskId);
-        
+
         try {
             Task task = getTask(taskId);
             if (task != null && task.getStatus() == TaskStatus.NEW) {
@@ -256,7 +256,7 @@ public class TaskManager {
             return false;
         }
     }
-    
+
     /**
      * 暂停任务
      */
@@ -264,7 +264,7 @@ public class TaskManager {
         long startTime = System.currentTimeMillis();
         LogUtils.setTaskId(taskId);
         LogUtils.logOperationStart("PAUSE_TASK", "TaskManager", "taskId", taskId);
-        
+
         try {
             Task task = getTask(taskId);
             if (task != null && (task.getStatus() == TaskStatus.READY || task.getStatus() == TaskStatus.RUNNING)) {
@@ -291,7 +291,7 @@ public class TaskManager {
             return false;
         }
     }
-    
+
     /**
      * 恢复任务
      */
@@ -299,7 +299,7 @@ public class TaskManager {
         long startTime = System.currentTimeMillis();
         LogUtils.setTaskId(taskId);
         LogUtils.logOperationStart("RESUME_TASK", "TaskManager", "taskId", taskId);
-        
+
         try {
             Task task = getTask(taskId);
             if (task != null && task.getStatus() == TaskStatus.PAUSED) {
@@ -326,7 +326,7 @@ public class TaskManager {
             return false;
         }
     }
-    
+
     /**
      * 取消任务
      */
@@ -334,7 +334,7 @@ public class TaskManager {
         long startTime = System.currentTimeMillis();
         LogUtils.setTaskId(taskId);
         LogUtils.logOperationStart("CANCEL_TASK", "TaskManager", "taskId", taskId);
-        
+
         try {
             Task task = getTask(taskId);
             if (task != null && !task.getStatus().isFinal()) {
@@ -361,35 +361,35 @@ public class TaskManager {
             return false;
         }
     }
-    
+
     /**
      * 添加任务消息
      */
     public void addTaskMessage(String taskId, TaskMsg taskMsg) {
         LogUtils.setTaskId(taskId);
-        LogUtils.logOperationStart("ADD_TASK_MESSAGE", "TaskManager", 
-                                 "taskId", taskId,
-                                 "messageId", taskMsg.getMsgId());
-        
+        LogUtils.logOperationStart("ADD_TASK_MESSAGE", "TaskManager",
+                "taskId", taskId,
+                "messageId", taskMsg.getMsgId());
+
         taskStorage.addTaskMessage(taskId, taskMsg);
-        
+
         LogUtils.logOperationSuccess("任务消息添加成功", 0);
     }
-    
+
     /**
      * 获取任务的所有消息
      */
     public List<TaskMsg> getTaskMessages(String taskId) {
         return taskStorage.getTaskMessages(taskId);
     }
-    
+
     /**
      * 获取任务消息统计
      */
     public TaskStorage.TaskMessageStats getTaskMessageStats(String taskId) {
         return taskStorage.getTaskMessageStats(taskId);
     }
-    
+
     /**
      * 更新任务进度
      */
@@ -398,7 +398,7 @@ public class TaskManager {
         if (task != null) {
             TaskStorage.TaskMessageStats stats = getTaskMessageStats(taskId);
             task.setTaskExecutedNumber((int) stats.getSuccess());
-            
+
             // 如果所有消息都已完成，将任务标记为终止
             if (stats.getTotal() > 0 && stats.getSuccess() + stats.getFailed() == stats.getTotal()) {
                 if (task.getStatus() == TaskStatus.RUNNING) {

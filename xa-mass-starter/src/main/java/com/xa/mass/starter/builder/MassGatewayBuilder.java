@@ -12,7 +12,8 @@ public class MassGatewayBuilder {
     private GatewayConfig config = new GatewayConfig();
     private DispatchRuntimeContext dispatcherContext;
 
-    private MassGatewayBuilder() {}
+    private MassGatewayBuilder() {
+    }
 
     public static MassGatewayBuilder create() {
         return new MassGatewayBuilder();

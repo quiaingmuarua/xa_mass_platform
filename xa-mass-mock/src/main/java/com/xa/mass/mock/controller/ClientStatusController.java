@@ -50,11 +50,11 @@ public class ClientStatusController {
     @GetMapping("/clients")
     public Map<String, Object> getClients() {
         Collection<MassWebSocketClientImpl> clients = clientSessionManager.getAllClients();
-        
+
         Map<String, Object> result = new HashMap<>();
         result.put("total", clients.size());
         result.put("timestamp", System.currentTimeMillis());
-        
+
         if (!clients.isEmpty()) {
             result.put("clients", clients.stream()
                     .map(this::getClientInfo)
@@ -62,7 +62,7 @@ public class ClientStatusController {
         } else {
             result.put("clients", new Object[0]);
         }
-        
+
         return result;
     }
 
@@ -76,7 +76,7 @@ public class ClientStatusController {
                 .filter(c -> c.getDeviceId().equals(deviceId))
                 .findFirst()
                 .orElse(null);
-        
+
         if (client != null) {
             return getClientInfo(client);
         } else {
@@ -93,14 +93,14 @@ public class ClientStatusController {
     @DeleteMapping("/clients/{deviceId}")
     public Map<String, Object> disconnectClient(@PathVariable String deviceId) {
         Map<String, Object> result = new HashMap<>();
-        
+
         try {
             Collection<MassWebSocketClientImpl> allClients = clientSessionManager.getAllClients();
             MassWebSocketClientImpl client = allClients.stream()
                     .filter(c -> c.getDeviceId().equals(deviceId))
                     .findFirst()
                     .orElse(null);
-            
+
             if (client != null) {
                 client.disconnect();
                 clientSessionManager.removeClient(deviceId);
@@ -119,7 +119,7 @@ public class ClientStatusController {
             result.put("deviceId", deviceId);
             log.error("❌ 断开客户端 {} 失败", deviceId, e);
         }
-        
+
         return result;
     }
 
@@ -129,7 +129,7 @@ public class ClientStatusController {
     @GetMapping("/stats")
     public Map<String, Object> getStats() {
         Collection<MassWebSocketClientImpl> clients = clientSessionManager.getAllClients();
-        
+
         Map<String, Object> stats = new HashMap<>();
         stats.put("totalClients", clients.size());
         stats.put("activeConnections", clients.stream()
@@ -139,7 +139,7 @@ public class ClientStatusController {
                 .filter(client -> !client.isConnected())
                 .count());
         stats.put("timestamp", System.currentTimeMillis());
-        
+
         return stats;
     }
 
@@ -152,14 +152,14 @@ public class ClientStatusController {
         info.put("connected", client.isConnected());
         info.put("uri", client.getURI().toString());
         info.put("lastActivity", System.currentTimeMillis()); // 可以扩展为实际的活动时间
-        
+
         // 连接状态详情
         Map<String, Object> connection = new HashMap<>();
         connection.put("isOpen", client.isOpen());
         connection.put("isClosing", client.isClosing());
         connection.put("isClosed", client.isClosed());
         info.put("connection", connection);
-        
+
         return info;
     }
 } 

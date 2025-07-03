@@ -2,7 +2,7 @@
 <html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta content="width=device-width, initial-scale=1.0" name="viewport">
     <title>设备管理 - XA Mass Platform</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css" rel="stylesheet">
@@ -10,19 +10,23 @@
         .device-card {
             transition: transform 0.2s;
         }
+
         .device-card:hover {
             transform: translateY(-2px);
-            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
         }
+
         .status-badge {
             font-size: 0.8em;
             font-weight: bold;
         }
+
         .app-tags {
             display: flex;
             flex-wrap: wrap;
             gap: 4px;
         }
+
         .app-tag {
             background-color: #e3f2fd;
             color: #1976d2;
@@ -30,10 +34,12 @@
             border-radius: 3px;
             font-size: 10px;
         }
+
         .locked-indicator {
             color: #f57c00;
             font-weight: bold;
         }
+
         .timestamp {
             font-size: 12px;
             color: #999;
@@ -41,162 +47,166 @@
     </style>
 </head>
 <body>
-    <div class="container-fluid">
-        <!-- 导航栏 -->
-        <nav class="navbar navbar-expand-lg navbar-dark bg-primary mb-4">
-            <div class="container-fluid">
-                <a class="navbar-brand" href="/status">
-                    <i class="bi bi-gear-fill me-2"></i>XA Mass Platform
-                </a>
-                <div class="navbar-nav">
-                    <a class="nav-link" href="/status">状态概览</a>
-                    <a class="nav-link" href="/status/tasks">任务管理</a>
-                    <a class="nav-link active" href="/status/devices">设备管理</a>
-                    <a class="nav-link" href="/status/rules">规则管理</a>
-                </div>
-            </div>
-        </nav>
-
-        <!-- 页面标题 -->
-        <div class="row mb-4">
-            <div class="col">
-                <h2><i class="bi bi-phone me-2"></i>设备管理</h2>
-                <p class="text-muted">查看和管理所有设备及其状态</p>
-                <button class="btn btn-success btn-sm" onclick="location.reload()">
-                    <i class="bi bi-arrow-clockwise"></i> 刷新数据
-                </button>
+<div class="container-fluid">
+    <!-- 导航栏 -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary mb-4">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/status">
+                <i class="bi bi-gear-fill me-2"></i>XA Mass Platform
+            </a>
+            <div class="navbar-nav">
+                <a class="nav-link" href="/status">状态概览</a>
+                <a class="nav-link" href="/status/tasks">任务管理</a>
+                <a class="nav-link active" href="/status/devices">设备管理</a>
+                <a class="nav-link" href="/status/rules">规则管理</a>
             </div>
         </div>
+    </nav>
 
-        <!-- 统计卡片区 -->
-        <div class="row mb-4">
-            <div class="col-md-3">
-                <div class="card bg-primary text-white">
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between">
-                            <div>
-                                <h4 class="card-title" th:text="${#lists.size(devices)}">0</h4>
-                                <p class="card-text">设备总数</p>
-                            </div>
-                            <div class="align-self-center">
-                                <i class="bi bi-phone fs-1"></i>
-                            </div>
+    <!-- 页面标题 -->
+    <div class="row mb-4">
+        <div class="col">
+            <h2><i class="bi bi-phone me-2"></i>设备管理</h2>
+            <p class="text-muted">查看和管理所有设备及其状态</p>
+            <button class="btn btn-success btn-sm" onclick="location.reload()">
+                <i class="bi bi-arrow-clockwise"></i> 刷新数据
+            </button>
+        </div>
+    </div>
+
+    <!-- 统计卡片区 -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card bg-primary text-white">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between">
+                        <div>
+                            <h4 class="card-title" th:text="${#lists.size(devices)}">0</h4>
+                            <p class="card-text">设备总数</p>
                         </div>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-3" th:each="status : ${deviceStatuses}">
-                <div class="card bg-info text-white mb-2">
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between">
-                            <div>
-                                <h4 class="card-title" th:text="${deviceStatusCount[status] ?: 0}">0</h4>
-                                <p class="card-text" th:text="${status.name()}">状态</p>
-                            </div>
-                            <div class="align-self-center">
-                                <i class="bi bi-circle-half fs-1"></i>
-                            </div>
+                        <div class="align-self-center">
+                            <i class="bi bi-phone fs-1"></i>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
-
-        <!-- 设备表格列表 -->
-        <div class="row">
-            <div class="col-12">
-                <table class="table table-hover align-middle">
-                    <thead class="table-light">
-                        <tr>
-                            <th>设备ID</th>
-                            <th>状态</th>
-                            <th>分组</th>
-                            <th>Agent版本</th>
-                            <th>支持的应用</th>
-                            <th>锁定状态</th>
-                            <th>最后心跳</th>
-                            <th>创建时间</th>
-                            <th>操作</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr th:each="device : ${devices}">
-                            <td th:text="${device.deviceId}">设备ID</td>
-                            <td><span class="badge bg-secondary" th:text="${device.status.name()}">状态</span></td>
-                            <td th:text="${device.groupId}">-</td>
-                            <td th:text="${device.agentVersion}">-</td>
-                            <td>
-                                <span th:if="${!#lists.isEmpty(device.supportedProjects)}"
-                                      th:text="${#strings.arrayJoin(device.supportedProjects, ', ')}">-</span>
-                                <span th:if="${#lists.isEmpty(device.supportedProjects)}">-</span>
-                            </td>
-                            <td>
-                                <span th:if="${device.locked}" class="locked-indicator">🔒 已锁定</span>
-                                <span th:unless="${device.locked}">✅ 可用</span>
-                            </td>
-                            <td>
-                                <span class="timestamp" th:text="${device.lastHeartbeat != null ? #temporals.format(device.lastHeartbeat, 'yyyy-MM-dd HH:mm:ss') : '-'}">-</span>
-                            </td>
-                            <td>
-                                <span class="timestamp" th:text="${device.createTime != null ? #temporals.format(device.createTime, 'yyyy-MM-dd HH:mm:ss') : '-'}">-</span>
-                            </td>
-                            <td>
-                                <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#editDeviceModal"
-                                        th:attr="data-device-id=${device.deviceId},data-supported-projects=${#strings.arrayJoin(device.supportedProjects, ',')},data-group-id=${device.groupId},data-agent-version=${device.agentVersion}">
-                                    <i class="bi bi-pencil"></i> 编辑
-                                </button>
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
-                <div th:if="${#lists.isEmpty(devices)}" class="text-center text-muted mt-5">
-                    <h4>暂无设备数据</h4>
-                    <p>当前系统中没有设备，请先添加一些设备。</p>
-                </div>
-            </div>
-        </div>
-
-        <!-- 编辑设备模态框 -->
-        <div class="modal fade" id="editDeviceModal" tabindex="-1" aria-labelledby="editDeviceModalLabel" aria-hidden="true">
-            <div class="modal-dialog">
-                <div class="modal-content">
-                    <div class="modal-header">
-                        <h5 class="modal-title" id="editDeviceModalLabel">编辑设备支持的应用</h5>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                    </div>
-                    <div class="modal-body">
-                        <form id="editDeviceForm">
-                            <input type="hidden" id="editDeviceId" name="deviceId">
-                            <div class="mb-3">
-                                <label class="form-label">设备ID</label>
-                                <input type="text" class="form-control" id="editDeviceIdDisplay" readonly>
-                            </div>
-                            <div class="mb-3">
-                                <label class="form-label">分组</label>
-                                <input type="text" class="form-control" id="editGroupIdDisplay" readonly>
-                            </div>
-                            <div class="mb-3">
-                                <label class="form-label">Agent版本</label>
-                                <input type="text" class="form-control" id="editAgentVersionDisplay" readonly>
-                            </div>
-                            <div class="mb-3">
-                                <label for="editSupportedProjects" class="form-label">支持的应用（可多选）</label>
-                                <select class="form-select" id="editSupportedProjects" name="supportedProjects" multiple>
-                                    <!-- 选项由JS动态填充 -->
-                                </select>
-                            </div>
-                        </form>
-                    </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
-                        <button type="button" class="btn btn-primary" id="saveDeviceBtn">保存</button>
+        <div class="col-md-3" th:each="status : ${deviceStatuses}">
+            <div class="card bg-info text-white mb-2">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between">
+                        <div>
+                            <h4 class="card-title" th:text="${deviceStatusCount[status] ?: 0}">0</h4>
+                            <p class="card-text" th:text="${status.name()}">状态</p>
+                        </div>
+                        <div class="align-self-center">
+                            <i class="bi bi-circle-half fs-1"></i>
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
     </div>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script>
+
+    <!-- 设备表格列表 -->
+    <div class="row">
+        <div class="col-12">
+            <table class="table table-hover align-middle">
+                <thead class="table-light">
+                <tr>
+                    <th>设备ID</th>
+                    <th>状态</th>
+                    <th>分组</th>
+                    <th>Agent版本</th>
+                    <th>支持的应用</th>
+                    <th>锁定状态</th>
+                    <th>最后心跳</th>
+                    <th>创建时间</th>
+                    <th>操作</th>
+                </tr>
+                </thead>
+                <tbody>
+                <tr th:each="device : ${devices}">
+                    <td th:text="${device.deviceId}">设备ID</td>
+                    <td><span class="badge bg-secondary" th:text="${device.status.name()}">状态</span></td>
+                    <td th:text="${device.groupId}">-</td>
+                    <td th:text="${device.agentVersion}">-</td>
+                    <td>
+                                <span th:if="${!#lists.isEmpty(device.supportedProjects)}"
+                                      th:text="${#strings.arrayJoin(device.supportedProjects, ', ')}">-</span>
+                        <span th:if="${#lists.isEmpty(device.supportedProjects)}">-</span>
+                    </td>
+                    <td>
+                        <span class="locked-indicator" th:if="${device.locked}">🔒 已锁定</span>
+                        <span th:unless="${device.locked}">✅ 可用</span>
+                    </td>
+                    <td>
+                        <span class="timestamp"
+                              th:text="${device.lastHeartbeat != null ? #temporals.format(device.lastHeartbeat, 'yyyy-MM-dd HH:mm:ss') : '-'}">-</span>
+                    </td>
+                    <td>
+                        <span class="timestamp"
+                              th:text="${device.createTime != null ? #temporals.format(device.createTime, 'yyyy-MM-dd HH:mm:ss') : '-'}">-</span>
+                    </td>
+                    <td>
+                        <button class="btn btn-sm btn-outline-primary" data-bs-target="#editDeviceModal"
+                                data-bs-toggle="modal"
+                                th:attr="data-device-id=${device.deviceId},data-supported-projects=${#strings.arrayJoin(device.supportedProjects, ',')},data-group-id=${device.groupId},data-agent-version=${device.agentVersion}">
+                            <i class="bi bi-pencil"></i> 编辑
+                        </button>
+                    </td>
+                </tr>
+                </tbody>
+            </table>
+            <div class="text-center text-muted mt-5" th:if="${#lists.isEmpty(devices)}">
+                <h4>暂无设备数据</h4>
+                <p>当前系统中没有设备，请先添加一些设备。</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- 编辑设备模态框 -->
+    <div aria-hidden="true" aria-labelledby="editDeviceModalLabel" class="modal fade" id="editDeviceModal"
+         tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="editDeviceModalLabel">编辑设备支持的应用</h5>
+                    <button aria-label="Close" class="btn-close" data-bs-dismiss="modal" type="button"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="editDeviceForm">
+                        <input id="editDeviceId" name="deviceId" type="hidden">
+                        <div class="mb-3">
+                            <label class="form-label">设备ID</label>
+                            <input class="form-control" id="editDeviceIdDisplay" readonly type="text">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">分组</label>
+                            <input class="form-control" id="editGroupIdDisplay" readonly type="text">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Agent版本</label>
+                            <input class="form-control" id="editAgentVersionDisplay" readonly type="text">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label" for="editSupportedProjects">支持的应用（可多选）</label>
+                            <select class="form-select" id="editSupportedProjects" multiple name="supportedProjects">
+                                <!-- 选项由JS动态填充 -->
+                            </select>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" data-bs-dismiss="modal" type="button">取消</button>
+                    <button class="btn btn-primary" id="saveDeviceBtn" type="button">保存</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
     // 缓存所有项目code
     let allProjectCodes = [];
 
@@ -227,10 +237,10 @@
         document.getElementById('editGroupIdDisplay').value = groupId;
         document.getElementById('editAgentVersionDisplay').value = agentVersion;
         // 加载所有项目并回显
-        loadAllProjects(function() {
+        loadAllProjects(function () {
             var select = document.getElementById('editSupportedProjects');
             select.innerHTML = '';
-            allProjectCodes.forEach(function(code) {
+            allProjectCodes.forEach(function (code) {
                 var option = document.createElement('option');
                 option.value = code;
                 option.text = code;
@@ -238,7 +248,7 @@
             });
             // 设置已选
             var selected = supportedProjects ? supportedProjects.split(',') : [];
-            Array.from(select.options).forEach(function(opt) {
+            Array.from(select.options).forEach(function (opt) {
                 opt.selected = selected.includes(opt.value);
             });
         });
@@ -255,17 +265,17 @@
             headers: {
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ deviceId: deviceId, supportedProjects: selected })
+            body: JSON.stringify({deviceId: deviceId, supportedProjects: selected})
         })
-        .then(response => {
-            if (response.ok) {
-                location.reload();
-            } else {
-                alert('保存失败');
-            }
-        })
-        .catch(() => alert('请求失败'));
+            .then(response => {
+                if (response.ok) {
+                    location.reload();
+                } else {
+                    alert('保存失败');
+                }
+            })
+            .catch(() => alert('请求失败'));
     });
-    </script>
+</script>
 </body>
 </html> 

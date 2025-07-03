@@ -1,7 +1,6 @@
 package com.xa.mass.mock.starter;
 
 import com.xa.mass.base.model.Device;
-import com.xa.mass.base.model.Token;
 import com.xa.mass.engine.monkey.MonkeyGenerator;
 import com.xa.mass.gateway.model.enums.MessageDirection;
 import com.xa.mass.gateway.model.enums.MessageType;
@@ -46,22 +45,22 @@ public class WebSocketClientStarter implements CommandLineRunner {
     // 配置属性注入
     @Value("${mock.client.devices-config:mock/mock_devices.json}")
     private String devicesConfigPath;
-    
+
     @Value("${mock.client.connection-timeout:10}")
     private int connectionTimeout;
-    
+
     @Value("${mock.client.max-pool-size:20}")
     private int maxPoolSize;
-    
+
     @Value("${mock.client.ping-interval:10}")
     private int pingInterval;
-    
+
     @Value("${mock.client.ping-delay:5}")
     private int pingDelay;
-    
+
     @Value("${mock.client.retry-attempts:3}")
     private int retryAttempts;
-    
+
     @Value("${mock.client.retry-delay:5}")
     private int retryDelay;
 
@@ -72,29 +71,29 @@ public class WebSocketClientStarter implements CommandLineRunner {
     @Override
     public void run(String... args) throws Exception {
         log.info("🔌 开始启动 WebSocket 客户端...");
-        
+
         String baseUri = mockConfig.getClient().getUri();
         log.info("目标服务器: {}", baseUri);
         log.info("设备配置文件: {}", devicesConfigPath);
-        
+
         // 读取并解析设备配置
         List<Device> devices = loadDevices();
         if (devices == null || devices.isEmpty()) {
             log.warn("⚠️ 未找到设备配置，客户端启动终止");
             return;
         }
-        
+
         log.info("📱 发现 {} 个设备，开始建立连接...", devices.size());
-        
+
         // 初始化连接池
         clientExecutor = Executors.newFixedThreadPool(Math.min(devices.size(), maxPoolSize));
-        
+
         // 批量建立连接
         establishConnections(devices, baseUri);
-        
+
         // 启动心跳任务
         startPingTask();
-        
+
         log.info("✅ WebSocket 客户端启动完成，活跃连接: {}", clientSessionManager.getClientCount());
     }
 
@@ -121,7 +120,7 @@ public class WebSocketClientStarter implements CommandLineRunner {
     private void establishConnections(List<Device> devices, String baseUri) throws InterruptedException {
         CountDownLatch latch = new CountDownLatch(devices.size());
         List<Future<?>> futures = new ArrayList<>();
-        
+
         for (Device device : devices) {
             String deviceId = device.getDeviceId();
             Future<?> future = clientExecutor.submit(() -> {
@@ -135,13 +134,13 @@ public class WebSocketClientStarter implements CommandLineRunner {
             });
             futures.add(future);
         }
-        
+
         // 等待所有连接尝试完成
         boolean completed = latch.await(devices.size() * (connectionTimeout + 5L), TimeUnit.SECONDS);
         if (!completed) {
             log.warn("⚠️ 部分设备连接超时");
         }
-        
+
         // 检查连接结果
         int successCount = clientSessionManager.getClientCount();
         int failCount = devices.size() - successCount;
@@ -157,7 +156,7 @@ public class WebSocketClientStarter implements CommandLineRunner {
                 URI uri = new URI(baseUri);
                 MassWebSocketClientImpl client = new MassWebSocketClientImpl(uri, deviceId);
                 clientSessionManager.addClient(client);
-                
+
                 if (client.connectBlocking(connectionTimeout, TimeUnit.SECONDS)) {
                     log.info("✅ 设备 {} 连接成功 (尝试 {}/{})", deviceId, attempt, retryAttempts);
                     return;
@@ -167,9 +166,9 @@ public class WebSocketClientStarter implements CommandLineRunner {
             } catch (Exception e) {
                 log.warn("⚠️ 设备 {} 连接异常 (尝试 {}/{}): {}", deviceId, attempt, retryAttempts, e.getMessage());
             }
-            
+
             clientSessionManager.removeClient(deviceId);
-            
+
             // 重试前等待
             if (attempt < retryAttempts) {
                 try {
@@ -180,7 +179,7 @@ public class WebSocketClientStarter implements CommandLineRunner {
                 }
             }
         }
-        
+
         log.error("❌ 设备 {} 连接失败，已重试 {} 次", deviceId, retryAttempts);
     }
 
@@ -194,7 +193,7 @@ public class WebSocketClientStarter implements CommandLineRunner {
                 t.setDaemon(true);
                 return t;
             });
-            
+
             pingScheduler.scheduleAtFixedRate(this::sendRandomPing, pingDelay, pingInterval, TimeUnit.SECONDS);
             log.info("💓 心跳任务已启动，间隔: {}秒", pingInterval);
         }
@@ -207,28 +206,28 @@ public class WebSocketClientStarter implements CommandLineRunner {
         if (isShuttingDown) {
             return;
         }
-        
+
         Collection<MassWebSocketClientImpl> clients = clientSessionManager.getAllClients();
         if (clients.isEmpty()) {
             log.debug("📭 没有活跃的客户端连接");
             return;
         }
-        
+
         List<MassWebSocketClientImpl> clientList = new ArrayList<>(clients);
         MassWebSocketClientImpl client = clientList.get(new Random().nextInt(clientList.size()));
-        
+
         try {
             MassMessage ping = new MassMessage();
             ping.setMsgId("ping-" + client.getDeviceId() + "-" + System.currentTimeMillis());
             ping.setMsgType(MessageType.PING);
             ping.setFrom(MessageDirection.CLIENT);
             ping.setSubMsgType("heartbeat");
-            
+
             MessageContext ctx = new MessageContext();
             ctx.setDeviceId(client.getDeviceId());
             ctx.setConnRole("messages_task");
             ping.setContext(ctx);
-            
+
             client.send(new com.google.gson.Gson().toJson(ping));
             log.debug("💓 [{}] 发送心跳消息", client.getDeviceId());
         } catch (Exception e) {
@@ -250,11 +249,11 @@ public class WebSocketClientStarter implements CommandLineRunner {
     public void shutdown() {
         log.info("🛑 正在关闭 WebSocket 客户端...");
         isShuttingDown = true;
-        
+
         // 关闭所有客户端连接
         Collection<MassWebSocketClientImpl> clients = clientSessionManager.getAllClients();
         log.info("📴 正在断开 {} 个客户端连接...", clients.size());
-        
+
         for (MassWebSocketClientImpl client : clients) {
             try {
                 client.disconnect();
@@ -263,7 +262,7 @@ public class WebSocketClientStarter implements CommandLineRunner {
                 log.warn("⚠️ 断开客户端 {} 时发生错误", client.getDeviceId(), e);
             }
         }
-        
+
         // 关闭线程池
         if (clientExecutor != null) {
             clientExecutor.shutdown();
@@ -276,7 +275,7 @@ public class WebSocketClientStarter implements CommandLineRunner {
                 Thread.currentThread().interrupt();
             }
         }
-        
+
         if (pingScheduler != null) {
             pingScheduler.shutdown();
             try {
@@ -288,7 +287,7 @@ public class WebSocketClientStarter implements CommandLineRunner {
                 Thread.currentThread().interrupt();
             }
         }
-        
+
         log.info("✅ WebSocket 客户端已关闭");
     }
 }

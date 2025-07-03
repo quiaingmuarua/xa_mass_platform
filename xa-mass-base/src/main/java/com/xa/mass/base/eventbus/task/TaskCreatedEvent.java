@@ -12,12 +12,12 @@ public class TaskCreatedEvent extends MassEvent.BaseMassEvent {
 
     public TaskCreatedEvent(Task task, String traceId, String requestId) {
         super(
-            "TASK_CREATED",
-            MassPlatformEventType.TASK_CREATED,
-            String.format("任务创建: %s", task != null ? task.getTid() : "null"),
-            createMetadata(task),
-            traceId,
-            requestId
+                "TASK_CREATED",
+                MassPlatformEventType.TASK_CREATED,
+                String.format("任务创建: %s", task != null ? task.getTid() : "null"),
+                createMetadata(task),
+                traceId,
+                requestId
         );
         this.task = task;
     }
@@ -26,5 +26,7 @@ public class TaskCreatedEvent extends MassEvent.BaseMassEvent {
         return task != null ? Collections.singletonMap("taskId", task.getTid()) : Collections.emptyMap();
     }
 
-    public Task getTask() { return task; }
+    public Task getTask() {
+        return task;
+    }
 }

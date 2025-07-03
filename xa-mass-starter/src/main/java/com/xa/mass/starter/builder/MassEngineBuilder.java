@@ -30,7 +30,8 @@ public class MassEngineBuilder {
     private String ruleConfigPath;
     private String mockConfigPath;
 
-    private MassEngineBuilder() {}
+    private MassEngineBuilder() {
+    }
 
     public static MassEngineBuilder create() {
         return new MassEngineBuilder();

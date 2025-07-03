@@ -34,6 +34,11 @@ public class DeviceOfflineEvent extends MassEvent.BaseMassEvent {
         return Collections.unmodifiableMap(metadata);
     }
 
-    public String getDeviceId() { return deviceId; }
-    public String getReason() { return reason; }
+    public String getDeviceId() {
+        return deviceId;
+    }
+
+    public String getReason() {
+        return reason;
+    }
 } 

@@ -2,6 +2,7 @@ package com.xa.mass.base.jsondsl;
 
 import com.xa.mass.base.model.Device;
 import com.xa.mass.base.model.Task;
+
 import java.util.List;
 
 public class JsonDslExample {

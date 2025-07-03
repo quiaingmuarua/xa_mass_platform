@@ -9,47 +9,52 @@
 ### 核心接口
 
 1. **SessionContext** - 会话管理上下文
-   - `getSessionManager()` - 获取会话管理器
+    - `getSessionManager()` - 获取会话管理器
 
 2. **CodecContext** - 编解码上下文
-   - `getMessageCodec()` - 获取消息编解码器
-   - 支持不同的编解码实现（如 Gson、Jackson、protobuf 等）
+    - `getMessageCodec()` - 获取消息编解码器
+    - 支持不同的编解码实现（如 Gson、Jackson、protobuf 等）
 
 3. **TransportContext** - 消息传输上下文
-   - `getMessageTransporter()` - 获取消息传输器
+    - `getMessageTransporter()` - 获取消息传输器
 
 4. **HandlerRegistryContext** - 消息处理器注册表上下文
-   - `getMessageHandlerRegistry()` - 获取消息处理器注册表
-   - `setMessageHandlerRegistry()` - 设置消息处理器注册表
+    - `getMessageHandlerRegistry()` - 获取消息处理器注册表
+    - `setMessageHandlerRegistry()` - 设置消息处理器注册表
 
 5. **MiddlewareContext** - 中间件上下文
-   - `getDirection()` - 获取中间件方向
-   - `setDirection()` - 设置中间件方向
+    - `getDirection()` - 获取中间件方向
+    - `setDirection()` - 设置中间件方向
 
 ### 组合接口
 
 **DispatchRuntimeContext** - 完整的分发运行时上下文
+
 - 继承所有上述接口
 - 提供完整的分发运行时环境
 
 ## 实现类
 
 **DispatcherContext** - 具体实现类
+
 - 实现 `DispatchRuntimeContext` 接口
 - 提供所有上下文功能的实现
 
 ## 编解码器架构
 
 ### MessageCodec 接口
+
 - `encode(MassMessage)` - 编码消息为字符串
 - `decode(String)` - 解码字符串为消息
 - `isValid(String)` - 验证消息格式
 
 ### 实现类
+
 - **GsonMessageCodec** - 基于 Gson 的实现
 - **MessageCodecFactory** - 编解码器工厂，支持创建不同类型的编解码器
 
 ### 配置支持
+
 - `MassApplicationConfig` 支持配置编解码器类型
 - 支持自定义编解码器实例
 

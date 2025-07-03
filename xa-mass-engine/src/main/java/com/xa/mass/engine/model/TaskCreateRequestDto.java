@@ -38,7 +38,8 @@ public class TaskCreateRequestDto {
     /** 每个设备批次消息数 */
     private int batchSize;
 
-    public TaskCreateRequestDto() {}
+    public TaskCreateRequestDto() {
+    }
 
     public TaskCreateRequestDto(String userId, String project, String taskName, String textContent, List<String> targetList, String targetType, String countryCode, Map<String, Object> extraParams, List<String> targetJsonList) {
         this.userId = userId;
@@ -52,24 +53,77 @@ public class TaskCreateRequestDto {
         this.targetJsonList = targetJsonList;
     }
 
-    public String getUserId() { return userId; }
-    public void setUserId(String userId) { this.userId = userId; }
-    public String getProject() { return project; }
-    public void setProject(String project) { this.project = project; }
-    public String getTaskName() { return taskName; }
-    public void setTaskName(String taskName) { this.taskName = taskName; }
-    public String getTextContent() { return textContent; }
-    public void setTextContent(String textContent) { this.textContent = textContent; }
-    public List<String> getTargetList() { return targetList; }
-    public void setTargetList(List<String> targetList) { this.targetList = targetList; }
-    public String getTargetType() { return targetType; }
-    public void setTargetType(String targetType) { this.targetType = targetType; }
-    public String getCountryCode() { return countryCode; }
-    public void setCountryCode(String countryCode) { this.countryCode = countryCode; }
-    public Map<String, Object> getExtraParams() { return extraParams; }
-    public void setExtraParams(Map<String, Object> extraParams) { this.extraParams = extraParams; }
-    public List<String> getTargetJsonList() { return targetJsonList; }
-    public void setTargetJsonList(List<String> targetJsonList) { this.targetJsonList = targetJsonList; }
+    public String getUserId() {
+        return userId;
+    }
+
+    public void setUserId(String userId) {
+        this.userId = userId;
+    }
+
+    public String getProject() {
+        return project;
+    }
+
+    public void setProject(String project) {
+        this.project = project;
+    }
+
+    public String getTaskName() {
+        return taskName;
+    }
+
+    public void setTaskName(String taskName) {
+        this.taskName = taskName;
+    }
+
+    public String getTextContent() {
+        return textContent;
+    }
+
+    public void setTextContent(String textContent) {
+        this.textContent = textContent;
+    }
+
+    public List<String> getTargetList() {
+        return targetList;
+    }
+
+    public void setTargetList(List<String> targetList) {
+        this.targetList = targetList;
+    }
+
+    public String getTargetType() {
+        return targetType;
+    }
+
+    public void setTargetType(String targetType) {
+        this.targetType = targetType;
+    }
+
+    public String getCountryCode() {
+        return countryCode;
+    }
+
+    public void setCountryCode(String countryCode) {
+        this.countryCode = countryCode;
+    }
+
+    public Map<String, Object> getExtraParams() {
+        return extraParams;
+    }
+
+    public void setExtraParams(Map<String, Object> extraParams) {
+        this.extraParams = extraParams;
+    }
+
+    public List<String> getTargetJsonList() {
+        return targetJsonList;
+    }
+
+    public void setTargetJsonList(List<String> targetJsonList) {
+        this.targetJsonList = targetJsonList;
+    }
 
     public int getBatchSize() {
         return batchSize;

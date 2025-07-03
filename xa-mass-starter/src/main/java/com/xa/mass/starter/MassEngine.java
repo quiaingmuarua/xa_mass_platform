@@ -1,6 +1,5 @@
 package com.xa.mass.starter;
 
-import com.google.gson.JsonObject;
 import com.xa.mass.base.eventbus.core.EventBusFacade;
 import com.xa.mass.base.eventbus.core.EventBusFactory;
 import com.xa.mass.base.eventbus.task.TaskCreatedEvent;
@@ -13,7 +12,6 @@ import com.xa.mass.engine.listener.EventListenerRegistry;
 import com.xa.mass.engine.listener.SimpleTaskMsgAssignListener;
 import com.xa.mass.engine.listener.TaskAssignWorker;
 import com.xa.mass.engine.listener.TaskDeviceAssignListener;
-import com.xa.mass.engine.model.TaskCreateRequestDto;
 import com.xa.mass.engine.monkey.MonkeyGenerator;
 import com.xa.mass.engine.service.AssignmentRecordService;
 import com.xa.mass.engine.strategy.SimpleTaskScheduler;
@@ -21,7 +19,6 @@ import com.xa.mass.starter.config.EngineConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -50,6 +47,14 @@ public class MassEngine {
 
     public MassEngine(EngineConfig config) {
         this.config = config;
+    }
+
+    // 默认 mock 配置
+    private static String getDefaultMockConfig() {
+        return "{\n" +
+                "  \"devices\": " + MonkeyGenerator.exampleJsonDsl() + ",\n" +
+                "  \"tasks\": " + MonkeyGenerator.exampleTasksJsonDsl() + "\n" +
+                "}";
     }
 
     /**
@@ -83,15 +88,6 @@ public class MassEngine {
             logger.error("❌ Failed to start MassEngine", e);
             throw new RuntimeException("Failed to start MassEngine", e);
         }
-    }
-
-
-    // 默认 mock 配置
-    private static String getDefaultMockConfig() {
-        return "{\n" +
-                "  \"devices\": " + MonkeyGenerator.exampleJsonDsl() + ",\n" +
-                "  \"tasks\": " + MonkeyGenerator.exampleTasksJsonDsl() + "\n" +
-                "}";
     }
 
     /**
@@ -153,10 +149,27 @@ public class MassEngine {
         }
     }
 
-    public TaskManager getTaskManager() { return taskManager; }
-    public DeviceManager getDeviceManager() { return deviceManager; }
-    public AssignmentRecordService getRecordService() { return recordService; }
-    public TaskAssignWorker getAssignWorker() { return assignWorker; }
-    public boolean isRunning() { return running; }
-    public EngineConfig getConfig() { return config; }
+    public TaskManager getTaskManager() {
+        return taskManager;
+    }
+
+    public DeviceManager getDeviceManager() {
+        return deviceManager;
+    }
+
+    public AssignmentRecordService getRecordService() {
+        return recordService;
+    }
+
+    public TaskAssignWorker getAssignWorker() {
+        return assignWorker;
+    }
+
+    public boolean isRunning() {
+        return running;
+    }
+
+    public EngineConfig getConfig() {
+        return config;
+    }
 }

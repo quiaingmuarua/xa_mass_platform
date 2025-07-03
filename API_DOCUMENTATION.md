@@ -14,7 +14,8 @@
 
 ## Platform Overview
 
-XA Mass Platform is a multi-module, event-driven message scheduling and distribution platform built with Spring Boot. It provides:
+XA Mass Platform is a multi-module, event-driven message scheduling and distribution platform built with Spring Boot. It
+provides:
 
 - **High-performance message scheduling**: Handles concurrent task distribution and device management
 - **Event-driven architecture**: Decoupled communication through unified event bus
@@ -55,6 +56,7 @@ xa-mass-platform/
 ## REST API Documentation
 
 ### Base URL
+
 ```
 http://localhost:{port}/api
 ```
@@ -68,6 +70,7 @@ http://localhost:{port}/api
 **Description:** Creates a new task with specified parameters.
 
 **Request Body:**
+
 ```json
 {
   "taskName": "Sample Task",
@@ -82,6 +85,7 @@ http://localhost:{port}/api
 ```
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -91,6 +95,7 @@ http://localhost:{port}/api
 ```
 
 **Usage Example:**
+
 ```bash
 curl -X POST http://localhost:8080/status/api/tasks \
   -H "Content-Type: application/json" \
@@ -112,6 +117,7 @@ curl -X POST http://localhost:8080/status/api/tasks \
 **Description:** Retrieves detailed information about a specific task.
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -134,6 +140,7 @@ curl -X POST http://localhost:8080/status/api/tasks \
 **Description:** Updates the status of a task.
 
 **Task Status Values:**
+
 - `NEW` - Newly created task
 - `READY` - Ready for execution
 - `RUNNING` - Currently executing
@@ -142,6 +149,7 @@ curl -X POST http://localhost:8080/status/api/tasks \
 - `BLOCKED` - Blocked due to audit rejection
 
 **Usage Example:**
+
 ```bash
 curl -X PUT "http://localhost:8080/status/api/tasks/550e8400-e29b-41d4-a716-446655440000/status?status=PAUSED"
 ```
@@ -151,10 +159,12 @@ curl -X PUT "http://localhost:8080/status/api/tasks/550e8400-e29b-41d4-a716-4466
 **Endpoint:** `POST /status/api/tasks/{taskId}/audit`
 
 **Parameters:**
+
 - `approved` (required): "true" or "false"
 - `comment` (optional): Audit comment
 
 **Usage Example:**
+
 ```bash
 curl -X POST "http://localhost:8080/status/api/tasks/550e8400-e29b-41d4-a716-446655440000/audit?approved=true&comment=Approved for execution"
 ```
@@ -162,21 +172,25 @@ curl -X POST "http://localhost:8080/status/api/tasks/550e8400-e29b-41d4-a716-446
 #### 5. Task Control Operations
 
 **Pause Task:**
+
 ```bash
 POST /status/api/tasks/{taskId}/pause
 ```
 
 **Resume Task:**
+
 ```bash
 POST /status/api/tasks/{taskId}/resume
 ```
 
 **Terminate Task:**
+
 ```bash
 POST /status/api/tasks/{taskId}/terminate
 ```
 
 **Delete Task:**
+
 ```bash
 DELETE /status/api/tasks/{taskId}
 ```
@@ -188,6 +202,7 @@ DELETE /status/api/tasks/{taskId}
 **Description:** Retrieves paginated task messages.
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -214,6 +229,7 @@ DELETE /status/api/tasks/{taskId}
 **Description:** Retrieves all active WebSocket sessions and connected devices.
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -273,6 +289,7 @@ eventBus.post(event);
 #### Task Events
 
 **TaskCreatedEvent**
+
 ```java
 // Usage
 TaskCreatedEvent event = new TaskCreatedEvent(task, traceId, requestId);
@@ -280,6 +297,7 @@ eventBus.post(event);
 ```
 
 **TaskAuditedEvent**
+
 ```java
 // Triggered when task is audited
 TaskAuditedEvent event = new TaskAuditedEvent(taskId, approved, comment);
@@ -287,6 +305,7 @@ eventBus.post(event);
 ```
 
 **TaskAssignedEvent**
+
 ```java
 // Triggered when task is assigned to devices
 TaskAssignedEvent event = new TaskAssignedEvent(taskId, deviceIds);
@@ -296,6 +315,7 @@ eventBus.post(event);
 #### Device Events
 
 **DeviceOnlineSingleEvent**
+
 ```java
 // When a single device comes online
 DeviceOnlineSingleEvent event = new DeviceOnlineSingleEvent(deviceId, timestamp);
@@ -303,6 +323,7 @@ eventBus.post(event);
 ```
 
 **DeviceOfflineBatchEvent**
+
 ```java
 // When multiple devices go offline
 List<String> deviceIds = Arrays.asList("device1", "device2");
@@ -369,6 +390,7 @@ public class TaskManager {
 #### Usage Examples
 
 **Creating a Task:**
+
 ```java
 TaskCreateRequestDto dto = new TaskCreateRequestDto();
 dto.setTaskName("Email Campaign");
@@ -384,6 +406,7 @@ System.out.println("Created task: " + task.getTid());
 ```
 
 **Task Lifecycle Management:**
+
 ```java
 // Approve task
 boolean approved = taskManager.approveTask(taskId);
@@ -856,6 +879,7 @@ public class BusinessRuleService {
 ### Spring Boot Integration
 
 1. **Add Dependencies:**
+
 ```xml
 <dependency>
     <groupId>com.xa.mass</groupId>
@@ -865,6 +889,7 @@ public class BusinessRuleService {
 ```
 
 2. **Configuration Class:**
+
 ```java
 @Configuration
 @EnableMassPlatform
@@ -883,6 +908,7 @@ public class MassConfiguration {
 ```
 
 3. **Application Startup:**
+
 ```java
 @SpringBootApplication
 public class Application {
@@ -966,4 +992,6 @@ public class MassMonitoringService {
 }
 ```
 
-This documentation provides a comprehensive guide to all public APIs, functions, and components in the XA Mass Platform. Each section includes detailed examples and usage instructions to help developers integrate and extend the platform effectively.
+This documentation provides a comprehensive guide to all public APIs, functions, and components in the XA Mass Platform.
+Each section includes detailed examples and usage instructions to help developers integrate and extend the platform
+effectively.

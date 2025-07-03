@@ -18,187 +18,187 @@ public class Device {
      * 唯一标识
      */
     private String deviceId;
-    
+
     /**
      * 状态
      */
     private DeviceStatus status;
-    
+
     /**
      * 插件/Agent版本
      */
     private String agentVersion;
-    
+
     /**
      * 最后心跳时间
      */
     private LocalDateTime lastHeartbeat;
-    
+
     /**
      * 支持的project列表
      */
     private List<Project> supportedProjects;
-    
+
     /**
      * 分组信息
      */
     private String groupId;
-    
+
     /**
      * 当前分配锁过期时间
      */
     private LocalDateTime lockExpireTime;
-    
+
     /**
      * 策略字段（可选）
      */
     private String onlineStrategy;
-    
+
     /**
      * 创建时间
      */
     private LocalDateTime createTime;
-    
+
     /**
      * 更新时间
      */
     private LocalDateTime updateTime;
-    
+
     public Device() {
         this.status = DeviceStatus.OFFLINE;
 //        this.createTime = LocalDateTime.now();
 //        this.updateTime = LocalDateTime.now();
     }
-    
+
     public Device(String deviceId, String agentVersion, List<Project> supportedProjects) {
         this();
         this.deviceId = deviceId;
         this.agentVersion = agentVersion;
         this.supportedProjects = supportedProjects;
     }
-    
+
     // Getters and Setters
     public String getDeviceId() {
         return deviceId;
     }
-    
+
     public void setDeviceId(String deviceId) {
         this.deviceId = deviceId;
     }
-    
+
     public DeviceStatus getStatus() {
         return status;
     }
-    
+
     public void setStatus(DeviceStatus status) {
         this.status = status;
         this.updateTime = LocalDateTime.now();
     }
-    
+
     public String getAgentVersion() {
         return agentVersion;
     }
-    
+
     public void setAgentVersion(String agentVersion) {
         this.agentVersion = agentVersion;
     }
-    
+
     public LocalDateTime getLastHeartbeat() {
         return lastHeartbeat;
     }
-    
+
     public void setLastHeartbeat(LocalDateTime lastHeartbeat) {
         this.lastHeartbeat = lastHeartbeat;
         this.updateTime = LocalDateTime.now();
     }
-    
+
     public List<Project> getSupportedProjects() {
         return supportedProjects;
     }
-    
+
     public void setSupportedProjects(List<Project> supportedProjects) {
         this.supportedProjects = supportedProjects;
     }
-    
+
     public String getGroupId() {
         return groupId;
     }
-    
+
     public void setGroupId(String groupId) {
         this.groupId = groupId;
     }
-    
+
     public LocalDateTime getLockExpireTime() {
         return lockExpireTime;
     }
-    
+
     public void setLockExpireTime(LocalDateTime lockExpireTime) {
         this.lockExpireTime = lockExpireTime;
     }
-    
+
     public String getOnlineStrategy() {
         return onlineStrategy;
     }
-    
+
     public void setOnlineStrategy(String onlineStrategy) {
         this.onlineStrategy = onlineStrategy;
     }
-    
+
     public LocalDateTime getCreateTime() {
         return createTime;
     }
-    
+
     public void setCreateTime(LocalDateTime createTime) {
         this.createTime = createTime;
     }
-    
+
     public LocalDateTime getUpdateTime() {
         return updateTime;
     }
-    
+
     public void setUpdateTime(LocalDateTime updateTime) {
         this.updateTime = updateTime;
     }
-    
+
     /**
      * 检查设备是否可用
      */
     public boolean isAvailable() {
         return status.isAvailable();
     }
-    
+
     /**
      * 检查设备是否支持指定应用
      */
     public boolean supportsProject(Project project) {
         return supportedProjects != null && supportedProjects.contains(project);
     }
-    
+
     public boolean supportsProject(String projectCode) {
         if (supportedProjects == null) return false;
         return supportedProjects.stream().anyMatch(p -> p.getCode().equals(projectCode));
     }
-    
+
     /**
      * 检查设备是否被锁定
      */
     public boolean isLocked() {
         return lockExpireTime != null && lockExpireTime.isAfter(LocalDateTime.now());
     }
-    
+
     /**
      * 更新心跳时间
      */
     public void updateHeartbeat() {
         this.lastHeartbeat = LocalDateTime.now();
         this.updateTime = LocalDateTime.now();
-        
+
         // 如果设备离线，更新为在线状态
         if (this.status == DeviceStatus.OFFLINE) {
             this.status = DeviceStatus.ONLINE;
         }
     }
-    
+
     /**
      * 检查心跳是否超时
      */
@@ -208,7 +208,7 @@ public class Device {
         }
         return lastHeartbeat.plusSeconds(timeoutSeconds).isBefore(LocalDateTime.now());
     }
-    
+
     /**
      * 状态转换
      */
@@ -219,7 +219,7 @@ public class Device {
         }
         return false;
     }
-    
+
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
@@ -227,7 +227,7 @@ public class Device {
         Device device = (Device) o;
         return Objects.equals(deviceId, device.deviceId);
     }
-    
+
     @Override
     public int hashCode() {
         return Objects.hash(deviceId);

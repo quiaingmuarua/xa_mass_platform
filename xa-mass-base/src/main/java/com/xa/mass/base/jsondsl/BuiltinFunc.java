@@ -12,16 +12,24 @@ public enum BuiltinFunc {
 
     private final String key;
     private final String[] aliases;
+
     BuiltinFunc(String key, String... aliases) {
         this.key = key;
         this.aliases = aliases;
     }
-    public String key() { return key; }
-    public String[] aliases() { return aliases; }
+
     public static BuiltinFunc fromKey(String key) {
         for (BuiltinFunc f : values()) {
             if (f.key.equals(key)) return f;
         }
         return null;
+    }
+
+    public String key() {
+        return key;
+    }
+
+    public String[] aliases() {
+        return aliases;
     }
 } 

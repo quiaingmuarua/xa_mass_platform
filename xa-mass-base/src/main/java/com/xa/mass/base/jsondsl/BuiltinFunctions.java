@@ -1,15 +1,12 @@
 package com.xa.mass.base.jsondsl;
 
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Random;
-import java.util.UUID;
-import java.util.stream.Collectors;
+import com.ql.util.express.ExpressRunner;
+
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
-import com.ql.util.express.ExpressRunner;
+import java.util.*;
+import java.util.stream.Collectors;
 
 @FunctionalInterface
 interface BuiltinFunction {
@@ -42,6 +39,7 @@ interface BuiltinFunction {
 public class BuiltinFunctions {
     private static final Random RANDOM = new Random();
     private static final Map<BuiltinFunc, BuiltinFunction> FUNCTION_MAP = new HashMap<>();
+
     static {
         FUNCTION_MAP.put(BuiltinFunc.CHOICE, param -> choice((List<?>) param));
         FUNCTION_MAP.put(BuiltinFunc.RANGE, param -> {
@@ -133,26 +131,26 @@ public class BuiltinFunctions {
         if (!(param instanceof List<?> list) || list.size() < 3) {
             throw new JsonDslException("$TIME_RANGE 需要至少3个参数: [开始时间, 结束时间, 时间单位, 格式化字符串(可选)]");
         }
-        
+
         try {
             LocalDateTime startTime = parseDateTime(list.get(0));
             LocalDateTime endTime = parseDateTime(list.get(1));
             String unitStr = list.get(2).toString().toUpperCase();
-            
+
             if (startTime.isAfter(endTime)) {
                 throw new JsonDslException("开始时间不能晚于结束时间");
             }
-            
+
             // 计算时间差
             long totalSeconds = ChronoUnit.SECONDS.between(startTime, endTime);
             if (totalSeconds <= 0) {
                 return startTime;
             }
-            
+
             // 生成随机秒数
             long randomSeconds = RANDOM.nextInt((int) totalSeconds);
             LocalDateTime randomTime = startTime.plusSeconds(randomSeconds);
-            
+
             // 格式化输出
             if (list.size() > 3 && list.get(3) instanceof String format) {
                 try {
@@ -162,9 +160,9 @@ public class BuiltinFunctions {
                     throw new JsonDslException("时间格式化失败: " + format, e);
                 }
             }
-            
+
             return randomTime;
-            
+
         } catch (Exception e) {
             throw new JsonDslException("时间范围解析失败", e);
         }
@@ -179,17 +177,17 @@ public class BuiltinFunctions {
         if (timeParam instanceof LocalDateTime) {
             return (LocalDateTime) timeParam;
         }
-        
+
         if (timeParam instanceof String timeStr) {
             // 尝试多种时间格式
             String[] formats = {
-                "yyyy-MM-dd HH:mm:ss",
-                "yyyy-MM-dd HH:mm",
-                "yyyy-MM-dd",
-                "HH:mm:ss",
-                "HH:mm"
+                    "yyyy-MM-dd HH:mm:ss",
+                    "yyyy-MM-dd HH:mm",
+                    "yyyy-MM-dd",
+                    "HH:mm:ss",
+                    "HH:mm"
             };
-            
+
             for (String format : formats) {
                 try {
                     DateTimeFormatter formatter = DateTimeFormatter.ofPattern(format);
@@ -200,13 +198,13 @@ public class BuiltinFunctions {
                     // 继续尝试下一个格式
                 }
             }
-            
+
             // 如果是相对时间，如 "now", "now-1d", "now+2h"
             if (timeStr.startsWith("now")) {
                 return parseRelativeTime(timeStr);
             }
         }
-        
+
         throw new JsonDslException("无法解析时间参数: " + timeParam);
     }
 
@@ -217,32 +215,32 @@ public class BuiltinFunctions {
      */
     private static LocalDateTime parseRelativeTime(String timeStr) {
         LocalDateTime now = LocalDateTime.now();
-        
+
         if (timeStr.equals("now")) {
             return now;
         }
-        
+
         if (timeStr.startsWith("now")) {
             String offset = timeStr.substring(3);
             if (offset.startsWith("+") || offset.startsWith("-")) {
                 char sign = offset.charAt(0);
                 String value = offset.substring(1);
-                
+
                 // 解析数值和单位
                 for (int i = 0; i < value.length(); i++) {
                     if (!Character.isDigit(value.charAt(i))) {
                         String numStr = value.substring(0, i);
                         String unit = value.substring(i).toLowerCase();
-                        
+
                         if (numStr.isEmpty()) {
                             throw new JsonDslException("无效的相对时间格式: " + timeStr);
                         }
-                        
+
                         int num = Integer.parseInt(numStr);
                         if (sign == '-') {
                             num = -num;
                         }
-                        
+
                         switch (unit) {
                             case "d":
                             case "day":
@@ -269,7 +267,7 @@ public class BuiltinFunctions {
                 }
             }
         }
-        
+
         throw new JsonDslException("无法解析相对时间: " + timeStr);
     }
 

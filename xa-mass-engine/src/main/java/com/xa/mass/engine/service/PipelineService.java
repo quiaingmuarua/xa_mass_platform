@@ -14,6 +14,7 @@ import java.util.concurrent.CompletableFuture;
 public class PipelineService {
     private static final Logger log = LoggerFactory.getLogger(PipelineService.class);
     private final AssignmentRecordService recordService;
+
     public PipelineService(AssignmentRecordService recordService) {
         this.recordService = recordService;
     }
@@ -22,9 +23,9 @@ public class PipelineService {
         log.info("[PipelineService] Pipeline处理: {}", event.getTask().getTid());
         CompletableFuture.runAsync(() -> {
             List<AssignmentPipelineStep> pipeline = List.of(
-                new AssignmentReportStep(true),
-                new ConflictReportStep(true),
-                new RuleEvaluationStep(true)
+                    new AssignmentReportStep(true),
+                    new ConflictReportStep(true),
+                    new RuleEvaluationStep(true)
             );
             for (AssignmentPipelineStep step : pipeline) {
                 if (step.isEnabled()) step.process(recordService);

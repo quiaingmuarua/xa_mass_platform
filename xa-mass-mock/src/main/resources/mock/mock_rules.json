@@ -3,16 +3,38 @@
     "MODEL": "RuleDefinition",
     "COUNT": 3,
     "FIELDS": {
-      "id": {"$JOIN": ["rule-", "&.index"]},
-      "name": {"$JOIN": ["规则-", "&.index"]},
-      "description": {"$JOIN": ["描述-", "&.index"]},
+      "id": {
+        "$JOIN": [
+          "rule-",
+          "&.index"
+        ]
+      },
+      "name": {
+        "$JOIN": [
+          "规则-",
+          "&.index"
+        ]
+      },
+      "description": {
+        "$JOIN": [
+          "描述-",
+          "&.index"
+        ]
+      },
       "type": null,
-      "content": {"$CHOICE": [
-        "device.groupId == 'us' || device.groupId == 'gb'",
-        "device.agentVersion >= '1.0.0'",
-        "'demoApp' in device.supportedProjects"
-      ]},
-      "priority": {"$RANGE": [1, 3]},
+      "content": {
+        "$CHOICE": [
+          "device.groupId == 'us' || device.groupId == 'gb'",
+          "device.agentVersion >= '1.0.0'",
+          "'demoApp' in device.supportedProjects"
+        ]
+      },
+      "priority": {
+        "$RANGE": [
+          1,
+          3
+        ]
+      },
       "enabled": true
     }
   }

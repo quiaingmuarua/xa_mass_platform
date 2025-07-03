@@ -19,14 +19,14 @@ public class DeviceManager {
 
     private static final Logger log = LoggerFactory.getLogger(DeviceManager.class);
     private final DeviceStorage deviceStorage;
-    
+
     // 在线状态管理
     private final Set<String> onlineDevices = new ConcurrentSkipListSet<>();
-    
+
     public DeviceManager() {
         this(TaskStorageFactory.createDefaultDeviceStorage());
     }
-    
+
     public DeviceManager(DeviceStorage deviceStorage) {
         this.deviceStorage = deviceStorage;
     }
@@ -37,21 +37,21 @@ public class DeviceManager {
     public void addDevice(Device device) {
         deviceStorage.addDevice(device);
     }
-    
+
     /**
      * 根据设备ID获取设备
      */
     public Device getDevice(String deviceId) {
         return deviceStorage.getDevice(deviceId).orElse(null);
     }
-    
+
     /**
      * 更新设备
      */
     public boolean updateDevice(Device device) {
         return deviceStorage.updateDevice(device);
     }
-    
+
     /**
      * 删除设备
      */
@@ -79,14 +79,14 @@ public class DeviceManager {
     public Token getToken(String deviceId) {
         return deviceStorage.getToken(deviceId).orElse(null);
     }
-    
+
     /**
      * 更新Token
      */
     public boolean updateToken(String deviceId, Token token) {
         return deviceStorage.updateToken(deviceId, token);
     }
-    
+
     /**
      * 删除Token
      */
@@ -128,7 +128,7 @@ public class DeviceManager {
     public List<Token> getAllTokens() {
         return deviceStorage.getAllTokens();
     }
-    
+
     /**
      * 获取所有锁定的设备ID
      */
@@ -144,18 +144,20 @@ public class DeviceManager {
             onlineDevices.remove(deviceId);
         }
     }
+
     public boolean isDeviceOnline(String deviceId) {
         return onlineDevices.contains(deviceId);
     }
 
 
-
     // 事件监听器
     public static class DeviceStatusEventListener {
         private final DeviceManager deviceManager;
+
         public DeviceStatusEventListener(DeviceManager deviceManager) {
             this.deviceManager = deviceManager;
         }
+
         @com.google.common.eventbus.Subscribe
         public void onDeviceOnline(com.xa.mass.base.eventbus.device.DeviceOnlineEvent event) {
             log.info("Device_online: {}", event.getDeviceId());
@@ -170,6 +172,7 @@ public class DeviceManager {
             device.updateHeartbeat();
             deviceManager.updateOnlineStatus(deviceId, true);
         }
+
         @com.google.common.eventbus.Subscribe
         public void onDeviceOffline(com.xa.mass.base.eventbus.device.DeviceOfflineEvent event) {
             String deviceId = event.getDeviceId();

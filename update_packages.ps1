@@ -1,6 +1,7 @@
 $files = Get-ChildItem -Path "mass_core/src/main/java/com/xa/mass/core" -Recurse -Filter "*.java"
 
-foreach ($file in $files) {
+foreach ($file in $files)
+{
     $content = Get-Content $file.FullName
     $content = $content -replace 'package com.xa.mass.server', 'package com.xa.mass.core.server'
     $content = $content -replace 'package com.xa.mass.engine', 'package com.xa.mass.core.engine'

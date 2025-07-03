@@ -23,6 +23,10 @@ public class MiddlewareRegistry {
     private final Map<Integer, Boolean> outputEnabledMap = new HashMap<>();
     private final List<ExceptionMiddleware> exceptionMiddlewareList = new ArrayList<>();
 
+    private MiddlewareRegistry() {
+
+    }
+
     public static void autoRegister() {
         // 自动注册主流程 middleware（优先级最大，保证在链尾）
         MiddlewareRegistry.instance.registerInput(Integer.MAX_VALUE, processEnvelopeMiddleware());
@@ -44,57 +48,6 @@ public class MiddlewareRegistry {
         });
     }
 
-    private MiddlewareRegistry() {
-
-    }
-
-
-    public void registerInput(int priority, EnvelopeMiddleware mw) {
-        inputMiddlewareMap.put(priority, mw);
-        inputEnabledMap.put(priority, true);
-    }
-    public void unregisterInput(int priority) {
-        inputMiddlewareMap.remove(priority);
-        inputEnabledMap.remove(priority);
-    }
-    public void setInputEnabled(int priority, boolean enabled) {
-        if (inputMiddlewareMap.containsKey(priority)) {
-            inputEnabledMap.put(priority, enabled);
-        }
-    }
-    public List<EnvelopeMiddleware> getActiveInputMiddlewares() {
-        List<EnvelopeMiddleware> list = new ArrayList<>();
-        for (Map.Entry<Integer, EnvelopeMiddleware> entry : inputMiddlewareMap.entrySet()) {
-            if (Boolean.TRUE.equals(inputEnabledMap.get(entry.getKey()))) {
-                list.add(entry.getValue());
-            }
-        }
-        return list;
-    }
-    public void registerOutput(int priority, EnvelopeMiddleware mw) {
-        outputMiddlewareMap.put(priority, mw);
-        outputEnabledMap.put(priority, true);
-    }
-    public void unregisterOutput(int priority) {
-        outputMiddlewareMap.remove(priority);
-        outputEnabledMap.remove(priority);
-    }
-    public void setOutputEnabled(int priority, boolean enabled) {
-        if (outputMiddlewareMap.containsKey(priority)) {
-            outputEnabledMap.put(priority, enabled);
-        }
-    }
-    public List<EnvelopeMiddleware> getActiveOutputMiddlewares() {
-        List<EnvelopeMiddleware> list = new ArrayList<>();
-        for (Map.Entry<Integer, EnvelopeMiddleware> entry : outputMiddlewareMap.entrySet()) {
-            if (Boolean.TRUE.equals(outputEnabledMap.get(entry.getKey()))) {
-                list.add(entry.getValue());
-            }
-        }
-        logger.info("getActiveOutputMiddlewares {}", list);
-        return list;
-    }
-
     // 可作为 input/output middleware 链的最后一环
     public static EnvelopeMiddleware processEnvelopeMiddleware() {
         return (envelope, context) -> {
@@ -102,9 +55,9 @@ public class MiddlewareRegistry {
                 MassMessage msg = context.getMessageCodec().decode(envelope.getRawJson());
                 if (msg == null || msg.getContext() == null) return true;
                 MessageContext ctx = msg.getContext();
-                
+
                 ResolutionResult result = context.getMessageHandlerRegistry().resolve(msg);
-                
+
                 // 根据解析结果处理
                 if (result.isFound()) {
                     logger.debug("Found handler for message: {}", result);
@@ -120,8 +73,8 @@ public class MiddlewareRegistry {
                         }
                     }
                 } else if (result.isFallback()) {
-                    logger.warn("Using fallback handler for message: msgType={}, subType={}, payload={}", 
-                              msg.getMsgType(), msg.getSubMsgType(), msg.getPayload());
+                    logger.warn("Using fallback handler for message: msgType={}, subType={}, payload={}",
+                            msg.getMsgType(), msg.getSubMsgType(), msg.getPayload());
                     // fallback handler 已经返回空列表，不需要额外处理
                 } else {
                     logger.warn("No handler found for message: {}", result);
@@ -153,11 +106,74 @@ public class MiddlewareRegistry {
         };
     }
 
+    public void registerInput(int priority, EnvelopeMiddleware mw) {
+        inputMiddlewareMap.put(priority, mw);
+        inputEnabledMap.put(priority, true);
+    }
 
-    public NavigableMap<Integer, EnvelopeMiddleware> getInputMiddlewareMap() { return inputMiddlewareMap; }
-    public NavigableMap<Integer, EnvelopeMiddleware> getOutputMiddlewareMap() { return outputMiddlewareMap; }
-    public Map<Integer, Boolean> getInputEnabledMap() { return inputEnabledMap; }
-    public Map<Integer, Boolean> getOutputEnabledMap() { return outputEnabledMap; }
+    public void unregisterInput(int priority) {
+        inputMiddlewareMap.remove(priority);
+        inputEnabledMap.remove(priority);
+    }
+
+    public void setInputEnabled(int priority, boolean enabled) {
+        if (inputMiddlewareMap.containsKey(priority)) {
+            inputEnabledMap.put(priority, enabled);
+        }
+    }
+
+    public List<EnvelopeMiddleware> getActiveInputMiddlewares() {
+        List<EnvelopeMiddleware> list = new ArrayList<>();
+        for (Map.Entry<Integer, EnvelopeMiddleware> entry : inputMiddlewareMap.entrySet()) {
+            if (Boolean.TRUE.equals(inputEnabledMap.get(entry.getKey()))) {
+                list.add(entry.getValue());
+            }
+        }
+        return list;
+    }
+
+    public void registerOutput(int priority, EnvelopeMiddleware mw) {
+        outputMiddlewareMap.put(priority, mw);
+        outputEnabledMap.put(priority, true);
+    }
+
+    public void unregisterOutput(int priority) {
+        outputMiddlewareMap.remove(priority);
+        outputEnabledMap.remove(priority);
+    }
+
+    public void setOutputEnabled(int priority, boolean enabled) {
+        if (outputMiddlewareMap.containsKey(priority)) {
+            outputEnabledMap.put(priority, enabled);
+        }
+    }
+
+    public List<EnvelopeMiddleware> getActiveOutputMiddlewares() {
+        List<EnvelopeMiddleware> list = new ArrayList<>();
+        for (Map.Entry<Integer, EnvelopeMiddleware> entry : outputMiddlewareMap.entrySet()) {
+            if (Boolean.TRUE.equals(outputEnabledMap.get(entry.getKey()))) {
+                list.add(entry.getValue());
+            }
+        }
+        logger.info("getActiveOutputMiddlewares {}", list);
+        return list;
+    }
+
+    public NavigableMap<Integer, EnvelopeMiddleware> getInputMiddlewareMap() {
+        return inputMiddlewareMap;
+    }
+
+    public NavigableMap<Integer, EnvelopeMiddleware> getOutputMiddlewareMap() {
+        return outputMiddlewareMap;
+    }
+
+    public Map<Integer, Boolean> getInputEnabledMap() {
+        return inputEnabledMap;
+    }
+
+    public Map<Integer, Boolean> getOutputEnabledMap() {
+        return outputEnabledMap;
+    }
 
     public void registerExceptionMiddleware(ExceptionMiddleware mw) {
         exceptionMiddlewareList.add(mw);

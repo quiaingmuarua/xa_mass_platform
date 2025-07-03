@@ -22,14 +22,14 @@ public class TaskApiController {
         try {
             Task task = taskManager.createTask(request);
             return ResponseEntity.ok(java.util.Map.of(
-                "success", true,
-                "message", "任务创建成功",
-                "taskId", task.getTid()
+                    "success", true,
+                    "message", "任务创建成功",
+                    "taskId", task.getTid()
             ));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(java.util.Map.of(
-                "success", false,
-                "message", "任务创建失败: " + e.getMessage()
+                    "success", false,
+                    "message", "任务创建失败: " + e.getMessage()
             ));
         }
     }
@@ -41,20 +41,20 @@ public class TaskApiController {
             if (task != null) {
                 java.util.List<TaskMsg> msgs = taskManager.getTaskMessages(taskId);
                 java.util.List<String> targetList = msgs.stream()
-                    .map(TaskMsg::getTarget)
-                    .collect(Collectors.toList());
+                        .map(TaskMsg::getTarget)
+                        .collect(Collectors.toList());
                 return ResponseEntity.ok(java.util.Map.of(
-                    "success", true,
-                    "task", task,
-                    "targetList", targetList
+                        "success", true,
+                        "task", task,
+                        "targetList", targetList
                 ));
             } else {
                 return ResponseEntity.notFound().build();
             }
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(java.util.Map.of(
-                "success", false,
-                "message", "获取任务失败: " + e.getMessage()
+                    "success", false,
+                    "message", "获取任务失败: " + e.getMessage()
             ));
         }
     }
@@ -67,17 +67,17 @@ public class TaskApiController {
                 task.setStatus(status);
                 taskManager.updateTask(task);
                 return ResponseEntity.ok(java.util.Map.of(
-                    "success", true,
-                    "message", "任务状态更新成功",
-                    "newStatus", status.name()
+                        "success", true,
+                        "message", "任务状态更新成功",
+                        "newStatus", status.name()
                 ));
             } else {
                 return ResponseEntity.notFound().build();
             }
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(java.util.Map.of(
-                "success", false,
-                "message", "更新任务状态失败: " + e.getMessage()
+                    "success", false,
+                    "message", "更新任务状态失败: " + e.getMessage()
             ));
         }
     }
@@ -95,17 +95,17 @@ public class TaskApiController {
                 }
                 taskManager.updateTask(task);
                 return ResponseEntity.ok(java.util.Map.of(
-                    "success", true,
-                    "message", isApproved ? "任务审核通过" : "任务审核拒绝",
-                    "newStatus", task.getStatus().name()
+                        "success", true,
+                        "message", isApproved ? "任务审核通过" : "任务审核拒绝",
+                        "newStatus", task.getStatus().name()
                 ));
             } else {
                 return ResponseEntity.notFound().build();
             }
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(java.util.Map.of(
-                "success", false,
-                "message", "任务审核失败: " + e.getMessage()
+                    "success", false,
+                    "message", "任务审核失败: " + e.getMessage()
             ));
         }
     }
@@ -118,16 +118,16 @@ public class TaskApiController {
                 task.setStatus(TaskStatus.PAUSED);
                 taskManager.updateTask(task);
                 return ResponseEntity.ok(java.util.Map.of(
-                    "success", true,
-                    "message", "任务已暂停"
+                        "success", true,
+                        "message", "任务已暂停"
                 ));
             } else {
                 return ResponseEntity.notFound().build();
             }
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(java.util.Map.of(
-                "success", false,
-                "message", "暂停任务失败: " + e.getMessage()
+                    "success", false,
+                    "message", "暂停任务失败: " + e.getMessage()
             ));
         }
     }
@@ -140,16 +140,16 @@ public class TaskApiController {
                 task.setStatus(TaskStatus.READY);
                 taskManager.updateTask(task);
                 return ResponseEntity.ok(java.util.Map.of(
-                    "success", true,
-                    "message", "任务已恢复"
+                        "success", true,
+                        "message", "任务已恢复"
                 ));
             } else {
                 return ResponseEntity.notFound().build();
             }
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(java.util.Map.of(
-                "success", false,
-                "message", "恢复任务失败: " + e.getMessage()
+                    "success", false,
+                    "message", "恢复任务失败: " + e.getMessage()
             ));
         }
     }
@@ -162,16 +162,16 @@ public class TaskApiController {
                 task.setStatus(TaskStatus.TERMINAL);
                 taskManager.updateTask(task);
                 return ResponseEntity.ok(java.util.Map.of(
-                    "success", true,
-                    "message", "任务已中止"
+                        "success", true,
+                        "message", "任务已中止"
                 ));
             } else {
                 return ResponseEntity.notFound().build();
             }
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(java.util.Map.of(
-                "success", false,
-                "message", "中止任务失败: " + e.getMessage()
+                    "success", false,
+                    "message", "中止任务失败: " + e.getMessage()
             ));
         }
     }
@@ -183,16 +183,16 @@ public class TaskApiController {
             if (task != null) {
                 taskManager.deleteTask(taskId);
                 return ResponseEntity.ok(java.util.Map.of(
-                    "success", true,
-                    "message", "任务删除成功"
+                        "success", true,
+                        "message", "任务删除成功"
                 ));
             } else {
                 return ResponseEntity.notFound().build();
             }
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(java.util.Map.of(
-                "success", false,
-                "message", "删除任务失败: " + e.getMessage()
+                    "success", false,
+                    "message", "删除任务失败: " + e.getMessage()
             ));
         }
     }
@@ -212,23 +212,25 @@ public class TaskApiController {
                 try {
                     java.lang.reflect.Method setTargetList = task.getClass().getMethod("setTargetList", java.util.List.class);
                     setTargetList.invoke(task, request.getTargetList());
-                } catch (Exception ignore) {}
+                } catch (Exception ignore) {
+                }
                 try {
                     java.lang.reflect.Method setBatchSize = task.getClass().getMethod("setBatchSize", int.class);
                     setBatchSize.invoke(task, request.getBatchSize());
-                } catch (Exception ignore) {}
+                } catch (Exception ignore) {
+                }
                 taskManager.updateTask(task);
                 return ResponseEntity.ok(java.util.Map.of(
-                    "success", true,
-                    "message", "任务信息已更新"
+                        "success", true,
+                        "message", "任务信息已更新"
                 ));
             } else {
                 return ResponseEntity.notFound().build();
             }
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(java.util.Map.of(
-                "success", false,
-                "message", "更新任务失败: " + e.getMessage()
+                    "success", false,
+                    "message", "更新任务失败: " + e.getMessage()
             ));
         }
     }
@@ -249,11 +251,11 @@ public class TaskApiController {
         int to = Math.min(from + size, total);
         java.util.List<TaskMsg> pageList = from < to ? all.subList(from, to) : java.util.Collections.emptyList();
         return java.util.Map.of(
-            "success", true,
-            "total", total,
-            "page", page,
-            "size", size,
-            "messages", pageList
+                "success", true,
+                "total", total,
+                "page", page,
+                "size", size,
+                "messages", pageList
         );
     }
 } 

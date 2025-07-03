@@ -5,6 +5,7 @@ import com.xa.mass.engine.listener.TaskAssignWorker;
 
 public class TaskAssignWorkerService {
     private final TaskAssignWorker worker;
+
     public TaskAssignWorkerService(TaskAssignWorker worker) {
         this.worker = worker;
     }

@@ -10,8 +10,13 @@ import java.util.List;
 public class RuleEvaluationStep implements AssignmentPipelineStep {
     private static final Logger log = LoggerFactory.getLogger(RuleEvaluationStep.class);
     private final boolean enabled;
-    public RuleEvaluationStep(boolean enabled) { this.enabled = enabled; }
-    @Override public void process(AssignmentRecordService recordService) {
+
+    public RuleEvaluationStep(boolean enabled) {
+        this.enabled = enabled;
+    }
+
+    @Override
+    public void process(AssignmentRecordService recordService) {
         log.info("\n=== 规则评估详情 ===");
         List<AssignmentRecord> ruleNotMatchRecords = recordService.getRuleNotMatchRecords();
         if (!ruleNotMatchRecords.isEmpty()) {
@@ -21,6 +26,14 @@ public class RuleEvaluationStep implements AssignmentPipelineStep {
             });
         }
     }
-    @Override public String getName() { return "规则评估详情"; }
-    @Override public boolean isEnabled() { return enabled; }
+
+    @Override
+    public String getName() {
+        return "规则评估详情";
+    }
+
+    @Override
+    public boolean isEnabled() {
+        return enabled;
+    }
 } 

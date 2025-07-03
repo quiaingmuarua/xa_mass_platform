@@ -22,21 +22,21 @@ import org.slf4j.LoggerFactory;
  * 统一管理系统的启动流程，包括网关、引擎等组件的初始化
  */
 public class MassApplication {
-    
+
     private static final Logger logger = LoggerFactory.getLogger(MassApplication.class);
-    
-        // 直接管理已构建的组件和配置参数
+
+    // 直接管理已构建的组件和配置参数
     private final int serverPort;
     private final String webSocketPath;
     private final GatewayConfig gatewayConfig;
     private final EngineConfig engineConfig;
-    
+
     private final MassEngine engine; // 可能为null（当engine被禁用时）
     private MassGateway massGateway; // 将在initializeComponents中构建（当gateway被启用时）
     private DispatchRuntimeContext dispatcherContext;
     private ServerMessageDispatcher messageDispatcher;
     private MassServerStater serverStater;
-    
+
     public MassApplication(MassEngine engine, int serverPort, String webSocketPath, GatewayConfig gatewayConfig, EngineConfig engineConfig) {
         this.engine = engine;
         this.serverPort = serverPort;
@@ -44,101 +44,101 @@ public class MassApplication {
         this.gatewayConfig = gatewayConfig;
         this.engineConfig = engineConfig;
     }
-    
+
     /**
      * 启动整个 Mass 应用
      */
     public void start() {
         logger.info("🚀 Starting Mass Application...");
-        
+
         try {
             // 1. 初始化核心组件
             initializeComponents();
-            
+
             // 2. 根据配置启动网关
             if (gatewayConfig.isEnabled()) {
                 startGateway();
             } else {
                 logger.info("🌐 MassGateway is disabled, skipping start");
             }
-            
+
             // 3. 根据配置启动引擎
             if (engineConfig.isEnabled()) {
                 startEngine();
             } else {
                 logger.info("⚙️ MassEngine is disabled, skipping start");
             }
-            
+
             // 4. 启动消息分发器
             startMessageDispatcher();
-            
+
             // 5. 启动 WebSocket 服务器
             startWebSocketServer();
-            
+
             logger.info("✅ Mass Application started successfully!");
-            
+
         } catch (Exception e) {
             logger.error("❌ Failed to start Mass Application", e);
             throw new RuntimeException("Failed to start Mass Application", e);
         }
     }
-    
+
     /**
      * 停止整个 Mass 应用
      */
     public void stop() {
         logger.info("🛑 Stopping Mass Application...");
-        
+
         try {
             if (serverStater != null) {
                 serverStater.stop();
             }
-            
+
             if (messageDispatcher != null) {
                 // TODO: 添加停止方法到 ServerMessageDispatcher
                 logger.info("Message dispatcher stopped");
             }
-            
+
             // 根据配置停止引擎
             if (engine != null && engineConfig.isEnabled()) {
                 engine.stop();
             }
-            
+
             // 根据配置停止网关
             if (massGateway != null && gatewayConfig.isEnabled()) {
                 massGateway.stop();
             }
-            
+
             logger.info("✅ Mass Application stopped successfully!");
-            
+
         } catch (Exception e) {
             logger.error("❌ Error stopping Mass Application", e);
         }
     }
-    
+
     /**
      * 初始化核心组件
      */
     private void initializeComponents() {
         logger.info("🔧 Initializing core components...");
-        
+
         try {
             // 初始化会话管理器
             ServerSessionManager sessionManager = ServerSessionManager.INSTANCE;
             logger.info("✅ Session manager initialized");
-            
+
             // 创建消息传输器
             MessageTransporter messageTransporter = gatewayConfig.createMessageTransporter();
             logger.info("✅ Message transporter created");
-            
+
             // 创建消息编解码器
             MessageCodec messageCodec = gatewayConfig.createMessageCodec();
             logger.info("✅ Message codec created");
-            
+
             // 创建分发器上下文
             dispatcherContext = new DispatcherContext(messageTransporter, sessionManager, messageCodec);
             logger.info("✅ Dispatcher context created");
-            
+
             // 注册到注册表
             try {
                 DispatcherContextRegistry.register(dispatcherContext);
@@ -147,17 +147,17 @@ public class MassApplication {
                 logger.error("❌ Failed to register dispatcher context", e);
                 throw e;
             }
-            
+
             // 注册消息处理器
             MessageHandlerRegistry messageHandlerRegistry = new MessageHandlerRegistry();
             messageHandlerRegistry.autoRegister();
             dispatcherContext.setMessageHandlerRegistry(messageHandlerRegistry);
             logger.info("✅ Message handler registry initialized");
-            
+
             // 注册中间件
             MiddlewareRegistry.autoRegister();
             logger.info("✅ Middleware registry initialized");
-            
+
             // 根据配置构建MassGateway（需要dispatcherContext）
             if (gatewayConfig.isEnabled()) {
                 massGateway = new MassGateway(gatewayConfig, dispatcherContext);
@@ -165,15 +165,15 @@ public class MassApplication {
             } else {
                 logger.info("🌐 MassGateway is disabled, skipping build");
             }
-            
+
         } catch (Exception e) {
             logger.error("❌ Failed to initialize core components", e);
             throw new RuntimeException("Failed to initialize core components", e);
         }
-        
+
         logger.info("✅ Core components initialized");
     }
-    
+
     /**
      * 启动网关
      */
@@ -186,7 +186,7 @@ public class MassApplication {
             logger.error("❌ MassGateway is null");
         }
     }
-    
+
     /**
      * 启动引擎
      */
@@ -199,7 +199,7 @@ public class MassApplication {
             logger.error("❌ MassEngine is null - check if engine is enabled in config");
         }
     }
-    
+
     /**
      * 启动消息分发器
      */
@@ -207,39 +207,39 @@ public class MassApplication {
         // 消息分发器现在由 MassGateway 管理，不需要单独启动
         logger.info("📨 Message Dispatcher is managed by MassGateway");
     }
-    
+
     /**
      * 启动 WebSocket 服务器
      */
     private void startWebSocketServer() {
         logger.info("🔌 Starting WebSocket Server...");
-        
+
         MassServerConfig serverConfig = MassServerBuilder.create()
                 .withPort(serverPort)
                 .withWebSocketPath(webSocketPath)
                 .withDispatcherContext(dispatcherContext)
                 .build();
-        
+
         serverStater = new MassServerStater(serverConfig);
         serverStater.start();
-        
+
         logger.info("✅ WebSocket Server started on port {}", serverPort);
     }
-    
+
     /**
      * 获取分发器上下文
      */
     public DispatchRuntimeContext getDispatcherContext() {
         return dispatcherContext;
     }
-    
+
     /**
      * 检查应用是否正在运行
      */
     public boolean isRunning() {
         return serverStater != null && serverStater.isRunning();
     }
-    
+
     // 注册mock消息处理器
     private void registerMockMessageHandlers(DispatchRuntimeContext dispatcherContext) {
         logger.info("📝 注册Mock消息处理器...");
@@ -303,6 +303,7 @@ public class MassApplication {
             throw new RuntimeException(e);
         }
     }
+
     public void verifyDeviceData(MassEngine engine) {
         com.xa.mass.engine.DeviceManager deviceManager = engine.getDeviceManager();
         if (deviceManager != null) {

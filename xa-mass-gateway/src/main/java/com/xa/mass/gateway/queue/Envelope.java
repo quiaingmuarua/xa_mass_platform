@@ -26,6 +26,67 @@ public class Envelope {
         return new Builder();
     }
 
+    // ----------- Getters/Setters -----------
+    public String getRawJson() {
+        return rawJson;
+    }
+
+    public void setRawJson(String rawJson) {
+        this.rawJson = rawJson;
+    }
+
+    public String getDeviceId() {
+        return deviceId;
+    }
+
+    public void setDeviceId(String deviceId) {
+        this.deviceId = deviceId;
+    }
+
+    public String getConnRole() {
+        return connRole;
+    }
+
+    public void setConnRole(String connRole) {
+        this.connRole = connRole;
+    }
+
+    public String getTraceId() {
+        return traceId;
+    }
+
+    public void setTraceId(String traceId) {
+        this.traceId = traceId;
+    }
+
+    public long getReceivedAt() {
+        return receivedAt;
+    }
+
+    public void setReceivedAt(long receivedAt) {
+        this.receivedAt = receivedAt;
+    }
+
+    public String getProject() {
+        return project != null ? project : "RCS";
+    }
+
+    public void setProject(String project) {
+        this.project = project;
+    }
+
+    @Override
+    public String toString() {
+        return "Envelope{" +
+                "deviceId='" + deviceId + '\'' +
+                ", connRole='" + connRole + '\'' +
+                ", traceId='" + traceId + '\'' +
+                ", receivedAt=" + receivedAt +
+                ", project='" + getProject() + '\'' +
+                ", rawJson=" + (rawJson != null ? rawJson.substring(0, Math.min(100, rawJson.length())) + "..." : null) +
+                '}';
+    }
+
     // ----------- Builder -----------
     public static class Builder {
         private String rawJson;
@@ -39,59 +100,34 @@ public class Envelope {
             this.rawJson = rawJson;
             return this;
         }
+
         public Builder deviceId(String deviceId) {
             this.deviceId = deviceId;
             return this;
         }
+
         public Builder connRole(String connRole) {
             this.connRole = connRole;
             return this;
         }
+
         public Builder traceId(String traceId) {
             this.traceId = traceId;
             return this;
         }
+
         public Builder receivedAt(long receivedAt) {
             this.receivedAt = receivedAt;
             return this;
         }
+
         public Builder project(String project) {
             this.project = project;
             return this;
         }
+
         public Envelope build() {
             return new Envelope(this);
         }
-    }
-
-    // ----------- Getters/Setters -----------
-    public String getRawJson() { return rawJson; }
-    public void setRawJson(String rawJson) { this.rawJson = rawJson; }
-
-    public String getDeviceId() { return deviceId; }
-    public void setDeviceId(String deviceId) { this.deviceId = deviceId; }
-
-    public String getConnRole() { return connRole; }
-    public void setConnRole(String connRole) { this.connRole = connRole; }
-
-    public String getTraceId() { return traceId; }
-    public void setTraceId(String traceId) { this.traceId = traceId; }
-
-    public long getReceivedAt() { return receivedAt; }
-    public void setReceivedAt(long receivedAt) { this.receivedAt = receivedAt; }
-
-    public String getProject() { return project != null ? project : "RCS"; }
-    public void setProject(String project) { this.project = project; }
-
-    @Override
-    public String toString() {
-        return "Envelope{" +
-                "deviceId='" + deviceId + '\'' +
-                ", connRole='" + connRole + '\'' +
-                ", traceId='" + traceId + '\'' +
-                ", receivedAt=" + receivedAt +
-                ", project='" + getProject() + '\'' +
-                ", rawJson=" + (rawJson != null ? rawJson.substring(0, Math.min(100, rawJson.length())) + "..." : null) +
-                '}';
     }
 }

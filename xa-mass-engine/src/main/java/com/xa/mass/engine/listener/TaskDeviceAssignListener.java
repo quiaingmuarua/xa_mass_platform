@@ -60,19 +60,19 @@ public class TaskDeviceAssignListener {
         List<Device> candidates = deviceManager.getDevicesByCountry(task.getTaskCountry());
         List<RuleDefinition> rules = ruleManager.getDefaultRules();
 
-        log.info("[DeviceAssign] Matching devices for task {} (country: {}, candidates: {}, rules: {})", 
+        log.info("[DeviceAssign] Matching devices for task {} (country: {}, candidates: {}, rules: {})",
                 task.getTid(), task.getTaskCountry(), candidates.size(), rules.size());
-        
+
         // 显示规则信息（仅在debug级别）
         if (log.isDebugEnabled()) {
             for (RuleDefinition rule : rules) {
                 log.debug("[DeviceAssign] Rule: {} - {}", rule.getId(), rule.getContent());
             }
         }
-        
+
         for (Device device : candidates) {
             if (matchedDevices.size() >= maxDeviceCount) {
-                log.info("[DeviceAssign] Max device count {} reached for task {}, stopping matching", 
+                log.info("[DeviceAssign] Max device count {} reached for task {}, stopping matching",
                         maxDeviceCount, task.getTid());
                 break;
             }
@@ -105,8 +105,8 @@ public class TaskDeviceAssignListener {
                 List<String> hitRules = ruleManager.evaluateDefaultRules(matchContext.getContext());
                 List<RuleEvaluationDetail> ruleEvaluations = evaluateRulesWithDetails(matchContext);
 
-                log.debug("[DeviceAssign] Device {} - Hit rules: {}/{}", 
-                    device.getDeviceId(), hitRules.size(), rules.size());
+                log.debug("[DeviceAssign] Device {} - Hit rules: {}/{}",
+                        device.getDeviceId(), hitRules.size(), rules.size());
 
                 // 如果所有规则都通过，则匹配成功
                 if (hitRules.size() == rules.size()) {
@@ -137,13 +137,13 @@ public class TaskDeviceAssignListener {
                             "规则不匹配: " + failedRules, ruleEvaluations, matchContext.getContext()
                     );
                     log.info("✗ Rule not matched: {} (failed rules: {})", device.getDeviceId(), failedRules);
-                    
+
                     // 显示失败的规则详情（仅在debug级别）
                     if (log.isDebugEnabled()) {
                         for (RuleEvaluationDetail detail : ruleEvaluations) {
                             if (!detail.isPassed()) {
-                                log.debug("[DeviceAssign] Failed rule: {} - {} = {}", 
-                                    detail.getRuleId(), detail.getRuleContent(), detail.getEvaluationResult());
+                                log.debug("[DeviceAssign] Failed rule: {} - {} = {}",
+                                        detail.getRuleId(), detail.getRuleContent(), detail.getEvaluationResult());
                             }
                         }
                     }
@@ -177,7 +177,7 @@ public class TaskDeviceAssignListener {
             try {
                 passed = ruleManager.evaluate(rule, matchContext.getContext());
                 result = String.valueOf(passed);
-                
+
                 // 只记录失败的规则匹配（成功的用debug级别）
                 if (!passed) {
                     log.info("[Debug] Rule: {} ({}), result: ✗ 失败", rule.getId(), rule.getDesc());

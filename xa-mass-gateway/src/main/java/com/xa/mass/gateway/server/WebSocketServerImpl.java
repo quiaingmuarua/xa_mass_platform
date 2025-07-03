@@ -28,26 +28,18 @@ import java.util.concurrent.atomic.AtomicLong;
 public class WebSocketServerImpl implements MassWebSocketServer {
 
     private static final Logger logger = LoggerFactory.getLogger(WebSocketServerImpl.class);
-
-
+    // 原子计数器，用于统计当前活跃的连接数
+    private final AtomicLong activeConnections = new AtomicLong(0);
     private int port;
-
-
     private String websocketPath;
-
     // Netty 的 Boss EventLoopGroup，用于接受客户端连接
     private EventLoopGroup bossGroup;
     // Netty 的 Worker EventLoopGroup，用于处理已接受连接的 I/O 操作
     private EventLoopGroup workerGroup;
-
     // 服务器运行状态标志
     private volatile boolean running = false;
 
-    // 原子计数器，用于统计当前活跃的连接数
-    private final AtomicLong activeConnections = new AtomicLong(0);
-
     // 注入服务器会话管理器
-
     private ServerSessionManager sessionManager;
 
     private DispatchRuntimeContext dispatcherContext;
@@ -136,25 +128,6 @@ public class WebSocketServerImpl implements MassWebSocketServer {
     }
 
     /**
-     * 内部类，用于统计和记录连接的建立与关闭。
-     */
-    private class ConnectionStatsHandler extends ChannelInboundHandlerAdapter {
-        @Override
-        public void channelActive(ChannelHandlerContext ctx) throws Exception {
-            long count = activeConnections.incrementAndGet(); // 原子增加活跃连接数
-            logger.debug("Connection opened: {}, total={}", ctx.channel().remoteAddress(), count);
-            super.channelActive(ctx); // 调用父类方法，确保事件继续传播
-        }
-
-        @Override
-        public void channelInactive(ChannelHandlerContext ctx) throws Exception {
-            long count = activeConnections.decrementAndGet(); // 原子减少活跃连接数
-            logger.debug("Connection closed: {}, total={}", ctx.channel().remoteAddress(), count);
-            super.channelInactive(ctx); // 调用父类方法
-        }
-    }
-
-    /**
      * Spring Bean 销毁前自动调用此方法停止服务器。
      * 优雅地关闭 Netty 的 EventLoopGroup。
      */
@@ -210,15 +183,33 @@ public class WebSocketServerImpl implements MassWebSocketServer {
     public void setWebsocketPath(String websocketPath) {
         this.websocketPath = websocketPath;
     }
+
     public void setDispatcherContext(DispatchRuntimeContext dispatcherContext) {
         this.dispatcherContext = dispatcherContext;
     }
 
-    public void setSessionManager(ServerSessionManager sessionManager){
-        this.sessionManager=sessionManager;
+    public void setSessionManager(ServerSessionManager sessionManager) {
+        this.sessionManager = sessionManager;
     }
 
+    /**
+     * 内部类，用于统计和记录连接的建立与关闭。
+     */
+    private class ConnectionStatsHandler extends ChannelInboundHandlerAdapter {
+        @Override
+        public void channelActive(ChannelHandlerContext ctx) throws Exception {
+            long count = activeConnections.incrementAndGet(); // 原子增加活跃连接数
+            logger.debug("Connection opened: {}, total={}", ctx.channel().remoteAddress(), count);
+            super.channelActive(ctx); // 调用父类方法，确保事件继续传播
+        }
 
+        @Override
+        public void channelInactive(ChannelHandlerContext ctx) throws Exception {
+            long count = activeConnections.decrementAndGet(); // 原子减少活跃连接数
+            logger.debug("Connection closed: {}, total={}", ctx.channel().remoteAddress(), count);
+            super.channelInactive(ctx); // 调用父类方法
+        }
+    }
 
 
 }

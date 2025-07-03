@@ -34,7 +34,6 @@ public interface MassWebSocketClient {
     void sendMessage(String message) throws Exception;
 
 
-
-     boolean connectBlocking(long timeout, TimeUnit timeUnit) throws InterruptedException;
+    boolean connectBlocking(long timeout, TimeUnit timeUnit) throws InterruptedException;
 
 } 

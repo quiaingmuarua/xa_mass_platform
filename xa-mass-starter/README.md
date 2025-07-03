@@ -5,11 +5,13 @@
 ## 架构设计
 
 ### 核心组件
+
 - **入口类**：`MassApplication.java` - 负责组件生命周期管理
 - **构建器**：`builder/MassApplicationBuilder.java` - 负责配置聚合和参数验证
 - **配置类**：`GatewayConfig.java`、`EngineConfig.java` - 包含业务逻辑的配置对象
 
 ### 架构层次
+
 ```
 MassApplicationBuilder (配置聚合 + 构建MassEngine)
     ↓
@@ -21,12 +23,14 @@ MassGateway/MassEngine (组件实例化)
 ## 主要职责
 
 ### MassApplicationBuilder
+
 - 提供流式API进行配置聚合
 - 支持多种预设配置（开发、生产、测试、API模式）
 - 参数验证和默认值设置
 - 构建MassEngine和MassApplication实例
 
-### MassApplication  
+### MassApplication
+
 - 统一装配各业务模块
 - 管理应用启动、关闭流程
 - 构建MassGateway（需要dispatcherContext）
@@ -36,63 +40,79 @@ MassGateway/MassEngine (组件实例化)
 ## 使用方式
 
 ### 快速启动（推荐）
+
 ```java
 import com.xa.mass.starter.builder.MassApplicationBuilder;
 
 // 开发环境
 MassApplication app = MassApplicationBuilder.createDevelopment(8080, inputQueue, outputQueue);
-app.start();
+app.
 
-// 生产环境  
-MassApplication app = MassApplicationBuilder.createProduction(8080, inputQueue, outputQueue);
-app.start();
+        start();
 
-// API模式
-MassApplication app = MassApplicationBuilder.createApiMode(8080, inputApiUrl, outputApiUrl, apiKey);
-app.start();
+        // 生产环境  
+        MassApplication app = MassApplicationBuilder.createProduction(8080, inputQueue, outputQueue);
+app.
+
+        start();
+
+        // API模式
+        MassApplication app = MassApplicationBuilder.createApiMode(8080, inputApiUrl, outputApiUrl, apiKey);
+app.
+
+        start();
 ```
 
 ### 自定义配置
+
 ```java
 import com.xa.mass.starter.builder.MassApplicationBuilder;
 
 MassApplication app = MassApplicationBuilder.create()
-    .server(8080, "/ws")
-    .gateway(gw -> gw
-        .enabled(true)
-        .maxConnections(1000)
-        .inputQueue(inputQueue)
-        .outputQueue(outputQueue))
-    .engine(eng -> eng
-        .enabled(true)
-        .workerThreads(8)
-        .mockData("mock/mock_config.json"))
-    .build();
-app.start();
+        .server(8080, "/ws")
+        .gateway(gw -> gw
+                .enabled(true)
+                .maxConnections(1000)
+                .inputQueue(inputQueue)
+                .outputQueue(outputQueue))
+        .engine(eng -> eng
+                .enabled(true)
+                .workerThreads(8)
+                .mockData("mock/mock_config.json"))
+        .build();
+app.
+
+start();
 ```
 
 ### 组件选择启动
+
 ```java
 // 只启动网关
 MassApplication app = MassApplicationBuilder.create()
-    .server(8080)
-    .gateway(gw -> gw.enabled(true))
-    .engine(eng -> eng.enabled(false)) // 禁用引擎
-    .build();
-app.start();
+                .server(8080)
+                .gateway(gw -> gw.enabled(true))
+                .engine(eng -> eng.enabled(false)) // 禁用引擎
+                .build();
+app.
+
+start();
 
 // 只启动引擎
 MassApplication app = MassApplicationBuilder.create()
-    .server(8080)
-    .gateway(gw -> gw.enabled(false)) // 禁用网关
-    .engine(eng -> eng.enabled(true))
-    .build();
-app.start();
+        .server(8080)
+        .gateway(gw -> gw.enabled(false)) // 禁用网关
+        .engine(eng -> eng.enabled(true))
+        .build();
+app.
+
+start();
 ```
 
 ## 依赖模块
+
 - xa-mass-gateway
-- xa-mass-engine  
+- xa-mass-engine
 - xa-mass-api
 
 ## 设计原则
@@ -105,8 +125,9 @@ app.start();
 ## 示例代码
 
 详细使用示例请参考 `MassApplicationExample.java`，包含：
+
 - 开发/生产/测试环境配置
-- API模式配置  
+- API模式配置
 - 自定义配置示例
 - Mock模式集成示例
 - **组件选择启动示例**（只启动网关/只启动引擎） 

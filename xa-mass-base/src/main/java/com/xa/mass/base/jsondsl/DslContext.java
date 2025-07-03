@@ -15,6 +15,7 @@ public class DslContext {
     public DslContext() {
         this.parent = null;
     }
+
     public DslContext(DslContext parent) {
         this.parent = parent;
     }
@@ -41,11 +42,12 @@ public class DslContext {
         this.depth = depth;
     }
 
-    public void setScopeName(String scopeName) {
-        this.scopeName = scopeName;
-    }
     public String getScopeName() {
         return scopeName;
+    }
+
+    public void setScopeName(String scopeName) {
+        this.scopeName = scopeName;
     }
 
     public DslContext getParent() {

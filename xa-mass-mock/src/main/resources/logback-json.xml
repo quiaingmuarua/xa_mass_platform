@@ -5,12 +5,12 @@
         <property name="LOG_LEVEL" value="DEBUG"/>
         <property name="LOG_PATTERN" value="CONSOLE"/>
     </springProfile>
-    
+
     <springProfile name="prod">
         <property name="LOG_LEVEL" value="INFO"/>
         <property name="LOG_PATTERN" value="JSON"/>
     </springProfile>
-    
+
     <!-- 默认配置 -->
     <springProfile name="!dev,!prod">
         <property name="LOG_LEVEL" value="INFO"/>
@@ -26,37 +26,37 @@
                     <fieldName>timestamp</fieldName>
                     <pattern>yyyy-MM-dd HH:mm:ss.SSS</pattern>
                 </timestamp>
-                
+
                 <!-- 日志级别 -->
                 <logLevel>
                     <fieldName>level</fieldName>
                 </logLevel>
-                
+
                 <!-- 线程名 -->
                 <threadName>
                     <fieldName>thread</fieldName>
                 </threadName>
-                
+
                 <!-- 日志器名称 -->
                 <loggerName>
                     <fieldName>logger</fieldName>
                 </loggerName>
-                
+
                 <!-- 消息内容 -->
                 <message>
                     <fieldName>message</fieldName>
                 </message>
-                
+
                 <!-- 异常堆栈 -->
                 <stackTrace>
                     <fieldName>stackTrace</fieldName>
                 </stackTrace>
-                
+
                 <!-- MDC字段 -->
                 <mdc>
                     <fieldName>mdc</fieldName>
                 </mdc>
-                
+
                 <!-- 应用信息 -->
                 <context>
                     <fieldName>context</fieldName>
@@ -75,7 +75,7 @@
             </timeBasedFileNamingAndTriggeringPolicy>
             <maxHistory>30</maxHistory>
         </rollingPolicy>
-        
+
         <encoder class="net.logstash.logback.encoder.LoggingEventCompositeJsonEncoder">
             <providers>
                 <!-- 时间戳 -->
@@ -83,42 +83,42 @@
                     <fieldName>@timestamp</fieldName>
                     <pattern>yyyy-MM-dd'T'HH:mm:ss.SSS'Z'</pattern>
                 </timestamp>
-                
+
                 <!-- 日志级别 -->
                 <logLevel>
                     <fieldName>level</fieldName>
                 </logLevel>
-                
+
                 <!-- 线程名 -->
                 <threadName>
                     <fieldName>thread</fieldName>
                 </threadName>
-                
+
                 <!-- 日志器名称 -->
                 <loggerName>
                     <fieldName>logger</fieldName>
                 </loggerName>
-                
+
                 <!-- 消息内容 -->
                 <message>
                     <fieldName>message</fieldName>
                 </message>
-                
+
                 <!-- 异常堆栈 -->
                 <stackTrace>
                     <fieldName>stackTrace</fieldName>
                 </stackTrace>
-                
+
                 <!-- MDC字段 -->
                 <mdc>
                     <fieldName>mdc</fieldName>
                 </mdc>
-                
+
                 <!-- 应用信息 -->
                 <context>
                     <fieldName>context</fieldName>
                 </context>
-                
+
                 <!-- 自定义字段 -->
                 <customFields>{"app":"xa-mass-platform","version":"0.0.1-SNAPSHOT"}</customFields>
             </providers>
@@ -133,7 +133,7 @@
             <onMatch>ACCEPT</onMatch>
             <onMismatch>DENY</onMismatch>
         </filter>
-        
+
         <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
             <fileNamePattern>logs/xa-mass-platform-error.%d{yyyy-MM-dd}.%i.log</fileNamePattern>
             <timeBasedFileNamingAndTriggeringPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedFNATP">
@@ -141,7 +141,7 @@
             </timeBasedFileNamingAndTriggeringPolicy>
             <maxHistory>30</maxHistory>
         </rollingPolicy>
-        
+
         <encoder class="net.logstash.logback.encoder.LoggingEventCompositeJsonEncoder">
             <providers>
                 <timestamp>
@@ -181,7 +181,7 @@
             </timeBasedFileNamingAndTriggeringPolicy>
             <maxHistory>30</maxHistory>
         </rollingPolicy>
-        
+
         <encoder class="net.logstash.logback.encoder.LoggingEventCompositeJsonEncoder">
             <providers>
                 <timestamp>

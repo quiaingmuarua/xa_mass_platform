@@ -77,41 +77,41 @@ public class MonkeyGenerator {
     // 示例 JSON-DSL（推荐用 README.md 里的 DSL 语法）
     public static String exampleTasksJsonDsl() {
         return """
-        {
-          "MODEL": "TaskCreateRequestDto",
-          "COUNT": 2,
-          "FIELDS": {
-            "taskName": {"$JOIN": ["Task-", "&.index"]},
-            "project": {"$CHOICE": ["demoApp", "testApp"]},
-            "countryCode": {"$CHOICE": ["us", "gb"]},
-            "userId": {"$JOIN": ["user-", "&.index"]},
-            "textContent": {"$JOIN": ["content for ", "&.index"]},
-            "batchSize": {"$RANGE": [1, 5]},
-            "targetList": {
-              "TYPE": "LIST",
-              "COUNT": 3,
-              "MODEL": "java.lang.String",
-              "FIELDS": {}
-            }
-          }
-        }
-        """;
+                {
+                  "MODEL": "TaskCreateRequestDto",
+                  "COUNT": 2,
+                  "FIELDS": {
+                    "taskName": {"$JOIN": ["Task-", "&.index"]},
+                    "project": {"$CHOICE": ["demoApp", "testApp"]},
+                    "countryCode": {"$CHOICE": ["us", "gb"]},
+                    "userId": {"$JOIN": ["user-", "&.index"]},
+                    "textContent": {"$JOIN": ["content for ", "&.index"]},
+                    "batchSize": {"$RANGE": [1, 5]},
+                    "targetList": {
+                      "TYPE": "LIST",
+                      "COUNT": 3,
+                      "MODEL": "java.lang.String",
+                      "FIELDS": {}
+                    }
+                  }
+                }
+                """;
     }
 
 
     // 示例 JSON-DSL（推荐用 README.md 里的 DSL 语法）
     public static String exampleJsonDsl() {
         return """
-        {
-          "MODEL": "Device",
-          "COUNT": 3,
-          "FIELDS": {
-            "deviceId": {"$JOIN": ["device-", "&.index"]},
-            "status": {"$CHOICE": ["ONLINE", "OFFLINE"]},
-            "groupId": {"$CHOICE": ["us", "gb", "cn"]},
-            "agentVersion": {"$JOIN": ["1.0.", "&.index"]}
-          }
-        }
-        """;
+                {
+                  "MODEL": "Device",
+                  "COUNT": 3,
+                  "FIELDS": {
+                    "deviceId": {"$JOIN": ["device-", "&.index"]},
+                    "status": {"$CHOICE": ["ONLINE", "OFFLINE"]},
+                    "groupId": {"$CHOICE": ["us", "gb", "cn"]},
+                    "agentVersion": {"$JOIN": ["1.0.", "&.index"]}
+                  }
+                }
+                """;
     }
 } 

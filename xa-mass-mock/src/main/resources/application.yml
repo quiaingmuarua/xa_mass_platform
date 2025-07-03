@@ -45,8 +45,8 @@ mass:
 
 
 logging:
-    level:
-      root: INFO # 设置根日志级别为 DEBUG
+  level:
+    root: INFO # 设置根日志级别为 DEBUG
 
 knife4j:
   enable: true

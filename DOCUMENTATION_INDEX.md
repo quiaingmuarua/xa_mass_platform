@@ -2,12 +2,15 @@
 
 ## 📚 Documentation Overview
 
-This directory contains comprehensive documentation for the XA Mass Platform - a multi-module, event-driven message scheduling and distribution platform built with Spring Boot.
+This directory contains comprehensive documentation for the XA Mass Platform - a multi-module, event-driven message
+scheduling and distribution platform built with Spring Boot.
 
 ## 📖 Available Documentation
 
 ### 1. [API_DOCUMENTATION.md](./API_DOCUMENTATION.md) 📋
+
 **Comprehensive API Documentation**
+
 - Complete REST API reference with examples
 - Event Bus System documentation
 - Core Engine APIs (TaskManager, DeviceManager, etc.)
@@ -18,7 +21,9 @@ This directory contains comprehensive documentation for the XA Mass Platform - a
 **Best for:** Developers who need complete API reference and detailed integration guidance.
 
 ### 2. [QUICK_REFERENCE.md](./QUICK_REFERENCE.md) ⚡
+
 **Quick Reference Guide**
+
 - Common API endpoints and usage
 - Configuration properties
 - Task status flows
@@ -29,7 +34,9 @@ This directory contains comprehensive documentation for the XA Mass Platform - a
 **Best for:** Developers who need quick access to common operations and configurations.
 
 ### 3. [README.md](./README.md) 🏠
+
 **Project Overview**
+
 - Project introduction and architecture
 - Module structure explanation
 - Getting started guide
@@ -52,27 +59,32 @@ xa-mass-platform/
 ## 🎯 Key Features Documented
 
 ### ✅ REST APIs
+
 - **Task Management**: Create, update, control, and monitor tasks
 - **Session Management**: WebSocket session tracking and statistics
 - **System Health**: Monitoring and observability endpoints
 
 ### ✅ Event-Driven Architecture
+
 - **EventBus System**: Guava-based event publishing and handling
 - **Event Types**: Task events, device events, system events
 - **Custom Events**: Guidelines for creating business-specific events
 
 ### ✅ Core Components
+
 - **TaskManager**: Complete task lifecycle management
 - **DeviceManager**: Device state and token allocation
 - **TaskScheduler**: Flexible task scheduling strategies
 - **Rule Engine**: QLExpress-based rule evaluation system
 
 ### ✅ WebSocket Gateway
+
 - **Real-time Communication**: Netty-based WebSocket server
 - **Message Transport**: Multi-level message queue system
 - **Protocol Adaptation**: Flexible message handling and routing
 
 ### ✅ Testing & Mock Framework
+
 - **End-to-end Testing**: Complete mock device and task simulation
 - **Configuration-driven**: JSON-based mock scenario configuration
 - **Integration Testing**: Spring Boot test integration patterns
@@ -86,18 +98,21 @@ xa-mass-platform/
 ## 📋 Common Use Cases
 
 ### 🔨 For Developers
+
 - **Building integrations**: Use REST API documentation
 - **Event handling**: Implement event listeners with EventBus guide
 - **Custom components**: Extend TaskScheduler or DeviceSelector interfaces
 - **Testing**: Set up mock scenarios for integration testing
 
 ### 🎮 For System Operators
+
 - **Monitoring**: Use health check endpoints and logging configuration
 - **Troubleshooting**: Follow diagnostic procedures in quick reference
 - **Performance tuning**: Apply configuration best practices
 - **Deployment**: Use Spring Boot integration patterns
 
 ### 🧪 For QA/Testing
+
 - **Mock testing**: Configure comprehensive test scenarios
 - **API testing**: Use provided curl examples and Postman collections
 - **Integration testing**: Set up Spring Boot test environments
@@ -106,6 +121,7 @@ xa-mass-platform/
 ## 🔗 External Dependencies
 
 The platform integrates with several key technologies:
+
 - **Spring Boot 3.3.0**: Core framework and dependency injection
 - **Netty**: High-performance WebSocket server implementation
 - **Guava EventBus**: Event-driven communication infrastructure
@@ -115,16 +131,19 @@ The platform integrates with several key technologies:
 ## 📊 API Coverage Summary
 
 ### REST Endpoints
+
 - ✅ **10+ Task Management APIs**: Complete CRUD and control operations
 - ✅ **Session Management APIs**: Connection tracking and statistics
 - ✅ **Health/Monitoring APIs**: System observability endpoints
 
 ### Java APIs
+
 - ✅ **30+ Public Classes/Interfaces**: Comprehensive business logic APIs
 - ✅ **Event System**: 15+ event types with extensible framework
 - ✅ **Configuration APIs**: Flexible system configuration options
 
 ### WebSocket Protocol
+
 - ✅ **Message Types**: Device registration, task assignment, status updates
 - ✅ **Connection Management**: Session tracking and heartbeat mechanisms
 - ✅ **Protocol Extensions**: Middleware chain for custom message handling
@@ -132,6 +151,7 @@ The platform integrates with several key technologies:
 ## 🎨 Code Examples Included
 
 Each documentation file includes practical examples:
+
 - **REST API calls** with curl commands
 - **Java code snippets** for integration
 - **Configuration files** with all options
@@ -142,6 +162,7 @@ Each documentation file includes practical examples:
 ## 🔧 Maintenance & Updates
 
 This documentation is designed to be:
+
 - **Living Documentation**: Updated alongside code changes
 - **Example-Rich**: Practical, runnable examples for every feature
 - **Comprehensive**: Covers all public APIs and integration patterns
@@ -150,6 +171,7 @@ This documentation is designed to be:
 ## 📞 Support & Contribution
 
 For questions, issues, or contributions:
+
 1. Check the troubleshooting section in [QUICK_REFERENCE.md](./QUICK_REFERENCE.md)
 2. Review integration examples in [API_DOCUMENTATION.md](./API_DOCUMENTATION.md)
 3. Refer to existing implementation patterns for guidance

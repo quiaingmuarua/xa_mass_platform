@@ -12,12 +12,12 @@ public class TaskAssignedEvent extends MassEvent.BaseMassEvent {
 
     public TaskAssignedEvent(Task task, String traceId, String requestId) {
         super(
-            "TASK_ASSIGNED",
-            MassPlatformEventType.TASK_ASSIGNED,
-            String.format("任务分配: %s", task != null ? task.getTid() : "null"),
-            createMetadata(task),
-            traceId,
-            requestId
+                "TASK_ASSIGNED",
+                MassPlatformEventType.TASK_ASSIGNED,
+                String.format("任务分配: %s", task != null ? task.getTid() : "null"),
+                createMetadata(task),
+                traceId,
+                requestId
         );
         this.task = task;
     }
@@ -26,5 +26,7 @@ public class TaskAssignedEvent extends MassEvent.BaseMassEvent {
         return task != null ? Collections.singletonMap("taskId", task.getTid()) : Collections.emptyMap();
     }
 
-    public Task getTask() { return task; }
+    public Task getTask() {
+        return task;
+    }
 }

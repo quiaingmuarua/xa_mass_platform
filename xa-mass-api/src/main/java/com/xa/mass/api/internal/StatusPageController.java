@@ -1,11 +1,11 @@
 package com.xa.mass.api.internal;
 
+import com.xa.mass.base.enums.Project;
 import com.xa.mass.base.enums.device.DeviceStatus;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Device;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.Token;
-import com.xa.mass.base.enums.Project;
 import com.xa.mass.engine.DeviceManager;
 import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.rules.RuleDefinition;
@@ -14,16 +14,12 @@ import com.xa.mass.engine.rules.RuleType;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.ResponseBody;
+import org.springframework.web.bind.annotation.*;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
-import java.util.Arrays;
 
 @Controller
 @RequestMapping("/status")
@@ -82,7 +78,7 @@ public class StatusPageController {
         model.addAttribute("tokens", allTokens);
         model.addAttribute("deviceStatuses", DeviceStatus.values());
         Map<DeviceStatus, Long> deviceStatusCount = allDevices.stream()
-            .collect(java.util.stream.Collectors.groupingBy(Device::getStatus, java.util.stream.Collectors.counting()));
+                .collect(java.util.stream.Collectors.groupingBy(Device::getStatus, java.util.stream.Collectors.counting()));
         model.addAttribute("deviceStatusCount", deviceStatusCount);
         return "devices";
     }
@@ -144,8 +140,8 @@ public class StatusPageController {
         Device device = deviceManager.getDevice(deviceId);
         if (device != null) {
             List<Project> projectList = supportedProjects.stream()
-                .map(Project::fromCode)
-                .collect(Collectors.toList());
+                    .map(Project::fromCode)
+                    .collect(Collectors.toList());
             device.setSupportedProjects(projectList);
             deviceManager.updateDevice(device);
             return Map.of("success", true, "msg", "更新成功");

@@ -12,7 +12,7 @@ public interface MiddlewareContext {
      * @return 中间件方向
      */
     DispatcherContext.MiddlewareDirection getDirection();
-    
+
     /**
      * 设置中间件方向
      * @param direction 中间件方向

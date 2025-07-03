@@ -45,6 +45,12 @@ public enum MassPlatformEventType {
     METRICS_COLLECTION_FAILURE("指标收集异常");
 
     private final String description;
-    MassPlatformEventType(String description) { this.description = description; }
-    public String getDescription() { return description; }
+
+    MassPlatformEventType(String description) {
+        this.description = description;
+    }
+
+    public String getDescription() {
+        return description;
+    }
 }

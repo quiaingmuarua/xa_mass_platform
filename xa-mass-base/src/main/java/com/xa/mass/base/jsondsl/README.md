@@ -19,8 +19,10 @@
 
 ```java
 // 注册类型别名
-TypeRegistry.register("Device", Device.class);
-TypeRegistry.register("Task", Task.class);
+TypeRegistry.register("Device",Device .class);
+TypeRegistry.
+
+register("Task",Task .class);
 ```
 
 ### 2. 定义 DSL
@@ -43,30 +45,32 @@ TypeRegistry.register("Task", Task.class);
 ```java
 String deviceDsl = "..."; // 上面的 JSON
 List<Object> devices = JsonDslEngine.generate(deviceDsl);
-devices.forEach(System.out::println);
+devices.
+
+forEach(System.out::println);
 ```
 
 ## DSL 语法
 
 ### 核心关键字
 
-| 关键字 | 类型 | 说明 |
-|--------|------|------|
-| `MODEL` | String | 指定要生成的模型类名（必需） |
-| `FIELDS` | Object | 字段配置映射 |
-| `COUNT` | Number | 生成数量（默认1） |
-| `TYPE` | String | 集合类型（LIST/SET） |
+| 关键字      | 类型     | 说明             |
+|----------|--------|----------------|
+| `MODEL`  | String | 指定要生成的模型类名（必需） |
+| `FIELDS` | Object | 字段配置映射         |
+| `COUNT`  | Number | 生成数量（默认1）      |
+| `TYPE`   | String | 集合类型（LIST/SET） |
 
 ### 内置函数
 
-| 函数 | 语法 | 说明 | 示例 |
-|------|------|------|------|
-| `$CHOICE` | `{"$CHOICE": [选项列表]}` | 从列表中随机选择 | `{"$CHOICE": ["A", "B", "C"]}` |
-| `$RANGE` | `{"$RANGE": [最小值, 最大值]}` | 生成指定范围内的随机数 | `{"$RANGE": [1, 100]}` |
-| `$UUID` | `{"$UUID": true}` | 生成 UUID | `{"$UUID": true}` |
-| `$RANDOM` | `{"$RANDOM": true}` | 生成随机整数 | `{"$RANDOM": true}` |
-| `$JOIN` | `{"$JOIN": [字符串列表]}` | 字符串拼接 | `{"$JOIN": ["prefix-", "&.index", "-suffix"]}` |
-| `$NOW` | `{"$NOW": "格式化字符串"}` | 获取当前时间 | `{"$NOW": "yyyy-MM-dd HH:mm:ss"}` |
+| 函数            | 语法                                            | 说明           | 示例                                                                      |
+|---------------|-----------------------------------------------|--------------|-------------------------------------------------------------------------|
+| `$CHOICE`     | `{"$CHOICE": [选项列表]}`                         | 从列表中随机选择     | `{"$CHOICE": ["A", "B", "C"]}`                                          |
+| `$RANGE`      | `{"$RANGE": [最小值, 最大值]}`                      | 生成指定范围内的随机数  | `{"$RANGE": [1, 100]}`                                                  |
+| `$UUID`       | `{"$UUID": true}`                             | 生成 UUID      | `{"$UUID": true}`                                                       |
+| `$RANDOM`     | `{"$RANDOM": true}`                           | 生成随机整数       | `{"$RANDOM": true}`                                                     |
+| `$JOIN`       | `{"$JOIN": [字符串列表]}`                          | 字符串拼接        | `{"$JOIN": ["prefix-", "&.index", "-suffix"]}`                          |
+| `$NOW`        | `{"$NOW": "格式化字符串"}`                          | 获取当前时间       | `{"$NOW": "yyyy-MM-dd HH:mm:ss"}`                                       |
 | `$TIME_RANGE` | `{"$TIME_RANGE": [开始时间, 结束时间, 时间单位, 格式化字符串]}` | 在时间范围内随机生成时间 | `{"$TIME_RANGE": ["now-1d", "now+1d", "HOURS", "yyyy-MM-dd HH:mm:ss"]}` |
 
 ### 多级作用域变量与简写
@@ -97,6 +101,7 @@ devices.forEach(System.out::println);
   }
 }
 ```
+
 - `&.index`：查找当前作用域的 index（如 Task 作用域时为 Task 的 index，Device 作用域时为 Device 的 index）
 - `&Device.index`：查找最近的 Device 作用域的 index
 - `&Device.deviceId`：查找最近的 Device 作用域的 deviceId
@@ -122,11 +127,15 @@ devices.forEach(System.out::println);
 
 ```java
 // 使用类对象注册
-TypeRegistry.register("Device", Device.class);
-TypeRegistry.register("Task", Task.class);
+TypeRegistry.register("Device",Device .class);
+TypeRegistry.
+
+register("Task",Task .class);
 
 // 使用全类名注册
-TypeRegistry.register("RuleDefinition", "com.xa.mass.engine.rules.RuleDefinition");
+TypeRegistry.
+
+register("RuleDefinition","com.xa.mass.engine.rules.RuleDefinition");
 ```
 
 ### 使用全类名
@@ -147,14 +156,18 @@ TypeRegistry.register("RuleDefinition", "com.xa.mass.engine.rules.RuleDefinition
 框架使用 `JsonDslException` 统一处理错误：
 
 ```java
-try {
-    List<Object> objects = JsonDslEngine.generate(dsl);
-} catch (JsonDslException e) {
-    System.err.println("DSL 生成失败: " + e.getMessage());
-}
+try{
+List<Object> objects = JsonDslEngine.generate(dsl);
+}catch(
+JsonDslException e){
+        System.err.
+
+println("DSL 生成失败: "+e.getMessage());
+        }
 ```
 
 常见错误：
+
 - DSL 缺少 `MODEL` 字段
 - 类型未注册或无法加载
 - 字段设置失败
@@ -181,17 +194,18 @@ try {
 4. **DSL 复用**: 将常用的 DSL 片段提取为常量或配置文件
 5. **测试数据**: 使用有意义的测试数据，便于调试和验证
 6. **作用域变量**: 推荐优先用 `&.index`，如需跨层访问用 `&Model.index`，避免变量冲突
-7. **时间函数**: 
-   - 使用相对时间 `now-1d` 比绝对时间更灵活
-   - 合理选择时间单位和范围
-   - 注意时间格式的正确性
+7. **时间函数**:
+    - 使用相对时间 `now-1d` 比绝对时间更灵活
+    - 合理选择时间单位和范围
+    - 注意时间格式的正确性
 
 ## 表达式引擎与内置函数别名
 
 ### QLExpress 表达式支持
 
 - 支持通过 `$EXPR` 字段嵌入 QLExpress 表达式，表达式可引用当前上下文变量和所有内置函数。
-- 所有内置函数（如 random、choice、range、uuid、join、now、timeRange 等）均支持多种别名（如 random/rand、timeRange/timerange），可在表达式中直接调用。
+- 所有内置函数（如 random、choice、range、uuid、join、now、timeRange 等）均支持多种别名（如
+  random/rand、timeRange/timerange），可在表达式中直接调用。
 - 内置函数注册采用集中自动注册机制，所有别名和实现统一维护于 BuiltinFunc 和 BuiltinFunctions，无需手动注册。
 
 #### 示例：动态 mock 字段依赖表达式

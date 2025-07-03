@@ -75,7 +75,7 @@ public class RuleDebugExample {
             deviceManager.addDevice(device);
             deviceManager.addToken(device.getDeviceId(), token);
 
-            logger.info("Device {} supports projects: {}", device.getDeviceId(), 
+            logger.info("Device {} supports projects: {}", device.getDeviceId(),
                     device.getSupportedProjects().stream()
                             .map(Project::getCode)
                             .collect(Collectors.joining(", ")));

@@ -11,21 +11,21 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
  */
 @SpringBootApplication(scanBasePackages = {"com.xa.mass.gateway", "com.xa.mass.mock"})
 public class WebSocketClientSpringBootApp {
-    
+
     private static final Logger log = LoggerFactory.getLogger(WebSocketClientSpringBootApp.class);
-    
+
     public static void main(String[] args) {
         // 设置客户端环境配置
         String profile = "client";
         System.setProperty("spring.profiles.active", profile);
         String port = "8089"; // 客户端使用不同端口避免冲突
         System.setProperty("server.port", port);
-        
+
         log.info("🔌 启动 WebSocket 客户端模拟应用...");
         log.info("Profile: {}, 端口: {}", profile, port);
-        
+
         SpringApplication.run(WebSocketClientSpringBootApp.class, args);
-        
+
         log.info("✅ WebSocket 客户端模拟应用启动完成");
         log.info("\n==============================");
         log.info("🔌 客户端服务地址:");

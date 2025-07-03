@@ -11,21 +11,21 @@ public enum DslKeyword {
      * 示例: "Device", "com.xa.mass.base.model.Task"
      */
     MODEL,
-    
+
     /**
      * 字段配置映射，定义对象各字段的生成规则。
      * 支持内置函数、嵌套对象、集合等复杂配置。
      * 示例: {"deviceId": "device-{i}", "status": {"$CHOICE": ["ONLINE", "OFFLINE"]}}
      */
     FIELDS,
-    
+
     /**
      * 生成数量，指定要生成的对象个数。
      * 默认为 1，当大于 1 时会生成对象列表。
      * 示例: 3 表示生成 3 个对象
      */
     COUNT,
-    
+
     /**
      * 集合类型，用于指定生成的集合类型。
      * 支持 "LIST" 和 "SET" 两种类型。

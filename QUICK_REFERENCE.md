@@ -3,12 +3,14 @@
 ## 🚀 Quick Start
 
 ### Start the Platform
+
 ```bash
 cd xa-mass-starter
 mvn spring-boot:run
 ```
 
 ### Access Points
+
 - **REST API**: `http://localhost:8080/api`
 - **WebSocket**: `ws://localhost:8081/ws`
 - **Status Page**: `http://localhost:8080/status`
@@ -16,6 +18,7 @@ mvn spring-boot:run
 ## 📋 Common API Endpoints
 
 ### Task Management
+
 ```bash
 # Create Task
 POST /status/api/tasks
@@ -42,6 +45,7 @@ POST /status/api/tasks/{taskId}/terminate
 ```
 
 ### Session Management
+
 ```bash
 # List Sessions
 GET /api/session/list
@@ -53,21 +57,28 @@ GET /api/session/stats
 ## 🎯 Core Components Quick Access
 
 ### EventBus
+
 ```java
 // Get instance
 EventBusFacade eventBus = EventBusFactory.get("guava");
 
 // Register handler
-eventBus.register(TaskCreatedEvent.class, event -> {
-    // Handle event
-});
+eventBus.
+
+register(TaskCreatedEvent .class, event ->{
+        // Handle event
+        });
 
 // Post event
-eventBus.post(new TaskCreatedEvent(task, traceId, requestId));
+        eventBus.
+
+post(new TaskCreatedEvent(task, traceId, requestId));
 ```
 
 ### TaskManager
+
 ```java
+
 @Autowired
 private TaskManager taskManager;
 
@@ -78,17 +89,30 @@ Task task = taskManager.createTask(dto);
 Task task = taskManager.getTask(taskId);
 
 // Control task
-taskManager.approveTask(taskId);
-taskManager.pauseTask(taskId);
-taskManager.resumeTask(taskId);
+taskManager.
+
+approveTask(taskId);
+taskManager.
+
+pauseTask(taskId);
+taskManager.
+
+resumeTask(taskId);
 ```
 
 ### WebSocket Server
+
 ```java
 WebSocketServerImpl server = new WebSocketServerImpl();
-server.setPort(8080);
-server.setWebsocketPath("/ws");
-server.start(8080);
+server.
+
+setPort(8080);
+server.
+
+setWebsocketPath("/ws");
+server.
+
+start(8080);
 
 // Get client channel
 Channel channel = server.getClientChannel("deviceId");
@@ -101,16 +125,13 @@ Channel channel = server.getClientChannel("deviceId");
 server.port=8080
 xa.mass.websocket.port=8081
 xa.mass.websocket.path=/ws
-
 # Event Bus
 xa.mass.eventbus.type=guava
 xa.mass.eventbus.async=true
-
 # Task Settings
 xa.mass.task.batch-size=50
 xa.mass.task.max-retries=3
 xa.mass.task.timeout=300000
-
 # Device Settings
 xa.mass.device.heartbeat-interval=30000
 xa.mass.device.offline-threshold=90000
@@ -127,6 +148,7 @@ BLOCKED PAUSED  ↓
 ```
 
 **Status Descriptions:**
+
 - `NEW`: Just created, awaiting audit
 - `READY`: Approved and ready for execution
 - `RUNNING`: Currently executing
@@ -137,12 +159,14 @@ BLOCKED PAUSED  ↓
 ## 🎪 Event Types Quick Reference
 
 ### Task Events
+
 - `TaskCreatedEvent`: Task is created
 - `TaskAuditedEvent`: Task is audited (approved/rejected)
 - `TaskAssignedEvent`: Task assigned to devices
 - `TaskCompletedEvent`: Task execution completed
 
 ### Device Events
+
 - `DeviceOnlineEvent`: Device comes online
 - `DeviceOfflineEvent`: Device goes offline
 - `DeviceOnlineBatchEvent`: Multiple devices online
@@ -151,6 +175,7 @@ BLOCKED PAUSED  ↓
 ## 🧪 Testing & Mock
 
 ### Mock Configuration (`mock_config.json`)
+
 ```json
 {
   "mockDevices": [
@@ -171,6 +196,7 @@ BLOCKED PAUSED  ↓
 ```
 
 ### Test Properties
+
 ```properties
 xa.mass.mock.enabled=true
 xa.mass.mock.devices=5
@@ -180,6 +206,7 @@ xa.mass.mock.auto-connect=true
 ## 🔍 Monitoring & Health Check
 
 ### Health Endpoints
+
 ```bash
 # System health
 GET /actuator/health
@@ -192,6 +219,7 @@ GET /api/queue/status
 ```
 
 ### Log Levels
+
 ```properties
 logging.level.com.xa.mass=DEBUG
 logging.level.com.xa.mass.engine=INFO
@@ -201,15 +229,17 @@ logging.level.com.xa.mass.gateway=WARN
 ## 🛠️ Common Integration Patterns
 
 ### Spring Bean Configuration
+
 ```java
+
 @Configuration
 public class MassConfig {
-    
+
     @Bean
     public MassApplication massApplication() {
         return MassApplicationBuilder.build();
     }
-    
+
     @Bean
     public TaskScheduler customScheduler() {
         return new SimpleTaskScheduler();
@@ -218,7 +248,9 @@ public class MassConfig {
 ```
 
 ### Event Handler Registration
+
 ```java
+
 @PostConstruct
 public void init() {
     EventBusFacade eventBus = EventBusFactory.get("guava");
@@ -231,21 +263,26 @@ private void handleTaskCreated(TaskCreatedEvent event) {
 ```
 
 ### WebSocket Client Connection
+
 ```java
 URI serverUri = URI.create("ws://localhost:8081/ws");
 MassWebSocketClient client = new MassWebSocketClient(serverUri);
-client.connect();
+client.
+
+connect();
 ```
 
 ## 🚨 Error Handling
 
 ### Common HTTP Status Codes
+
 - `200`: Success
 - `400`: Bad Request (invalid parameters)
 - `404`: Not Found (task/resource doesn't exist)
 - `500`: Internal Server Error
 
 ### Exception Types
+
 - `TaskNotFoundException`: Task with given ID not found
 - `InvalidTaskStateException`: Operation not allowed in current state
 - `DeviceNotAvailableException`: No suitable device available
@@ -254,24 +291,28 @@ client.connect();
 ## 💡 Best Practices
 
 ### Task Creation
+
 1. Always set appropriate `batchSize` (recommended: 10-50)
 2. Use meaningful `taskName` for tracking
 3. Validate `targetList` before submission
 4. Handle approval workflow properly
 
 ### Event Handling
+
 1. Register handlers in `@PostConstruct`
 2. Keep handlers lightweight and fast
 3. Use async processing for heavy operations
 4. Always include error handling
 
 ### WebSocket Usage
+
 1. Implement proper reconnection logic
 2. Handle connection lifecycle events
 3. Use heartbeat mechanism for health checks
 4. Validate incoming messages
 
 ### Performance Tips
+
 1. Use appropriate queue implementations
 2. Monitor queue sizes regularly
 3. Implement circuit breakers for external calls
@@ -294,6 +335,7 @@ client.connect();
 **Solution**: Verify event bus registration and handler methods
 
 ### Debug Commands
+
 ```bash
 # Check active connections
 curl http://localhost:8080/api/session/stats

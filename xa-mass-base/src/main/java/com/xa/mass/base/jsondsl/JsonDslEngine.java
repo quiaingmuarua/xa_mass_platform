@@ -8,11 +8,10 @@ import com.google.gson.reflect.TypeToken;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.Type;
-import java.util.*;
+import java.text.SimpleDateFormat;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.Date;
-import java.text.SimpleDateFormat;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 
@@ -28,6 +27,7 @@ public class JsonDslEngine {
 
     // 类型适配器注册表
     private static final Map<Class<?>, Function<Object, Object>> TYPE_ADAPTERS = new HashMap<>();
+
     static {
         TYPE_ADAPTERS.put(LocalDateTime.class, v -> {
             if (v == null) return null;
@@ -40,7 +40,8 @@ public class JsonDslEngine {
                         if (fmt.length() == str.length()) {
                             return LocalDateTime.parse(str, formatter);
                         }
-                    } catch (Exception ignored) {}
+                    } catch (Exception ignored) {
+                    }
                 }
             }
             return null;
@@ -57,7 +58,8 @@ public class JsonDslEngine {
                         if (fmt.length() == str.length()) {
                             return sdf.parse(str);
                         }
-                    } catch (Exception ignored) {}
+                    } catch (Exception ignored) {
+                    }
                 }
             }
             return null;
@@ -120,7 +122,8 @@ public class JsonDslEngine {
         // 2. 处理 FIELDS
         Map<String, Object> fields = null;
         if (dsl.has(DslKeyword.FIELDS.name())) {
-            Type mapType = new TypeToken<Map<String, Object>>(){}.getType();
+            Type mapType = new TypeToken<Map<String, Object>>() {
+            }.getType();
             fields = gson.fromJson(dsl.get(DslKeyword.FIELDS.name()), mapType);
         }
         if (fields == null) fields = Collections.emptyMap();

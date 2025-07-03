@@ -26,14 +26,6 @@ public enum Project {
         this.name = name;
     }
 
-    public String getCode() {
-        return code;
-    }
-
-    public String getName() {
-        return name;
-    }
-
     /**
      * 根据代码获取项目
      */
@@ -68,6 +60,14 @@ public enum Project {
     public static boolean isValidCode(String code) {
         return Arrays.stream(values())
                 .anyMatch(project -> project.code.equals(code));
+    }
+
+    public String getCode() {
+        return code;
+    }
+
+    public String getName() {
+        return name;
     }
 
     @Override

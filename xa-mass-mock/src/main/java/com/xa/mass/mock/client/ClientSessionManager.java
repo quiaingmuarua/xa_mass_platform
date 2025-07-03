@@ -17,7 +17,7 @@ import java.util.concurrent.ConcurrentHashMap;
 @Service
 public class ClientSessionManager {
     private static final Logger log = LoggerFactory.getLogger(ClientSessionManager.class);
-    
+
     private final Map<String, MassWebSocketClientImpl> clients = new ConcurrentHashMap<>();
     private final Random random = new Random();
 

@@ -3,22 +3,49 @@
     "MODEL": "Device",
     "COUNT": 100,
     "FIELDS": {
-      "deviceId": {"$JOIN": ["device-", "&.index"]},
+      "deviceId": {
+        "$JOIN": [
+          "device-",
+          "&.index"
+        ]
+      },
       "groupId": "us",
       "agentVersion": "1.0.0",
-      "status": {"$CHOICE": ["ONLINE", "OFFLINE"]},
-      "supportedProjects": ["demoApp", "otherApp", "testApp"]
+      "status": {
+        "$CHOICE": [
+          "ONLINE",
+          "OFFLINE"
+        ]
+      },
+      "supportedProjects": [
+        "demoApp",
+        "otherApp",
+        "testApp"
+      ]
     }
   },
   {
     "MODEL": "Device",
     "COUNT": 50,
     "FIELDS": {
-      "deviceId": {"$JOIN": ["gb-device-", "&.index"]},
+      "deviceId": {
+        "$JOIN": [
+          "gb-device-",
+          "&.index"
+        ]
+      },
       "groupId": "gb",
       "agentVersion": "1.0.1",
-      "status": {"$CHOICE": ["ONLINE", "OFFLINE"]},
-      "supportedProjects": ["demoApp", "testApp"]
+      "status": {
+        "$CHOICE": [
+          "ONLINE",
+          "OFFLINE"
+        ]
+      },
+      "supportedProjects": [
+        "demoApp",
+        "testApp"
+      ]
     }
   }
 ] 

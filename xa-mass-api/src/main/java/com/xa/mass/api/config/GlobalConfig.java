@@ -12,7 +12,7 @@ import java.util.List;
  */
 @Component
 public class GlobalConfig {
-    
+
     /**
      * 获取所有项目（枚举值）
      */

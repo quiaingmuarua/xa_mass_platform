@@ -7,6 +7,7 @@
 ## 核心接口
 
 ### MessageTransporter
+
 ```java
 public interface MessageTransporter {
     void sendInput(Envelope envelope);
@@ -23,29 +24,33 @@ public interface MessageTransporter {
 ## 实现类
 
 ### 1. QueueBasedMessageTransporter
+
 - **用途**: 包装现有的 MessageQueue 实现
 - **特点**: 向后兼容，直接使用内部队列
 - **适用场景**: 当前系统，需要保持现有功能
 
 ### 2. MultiLevelMessageTransporter
+
 - **用途**: 多级队列实现，支持消息优先级
-- **特点**: 
-  - 高优先级队列（PriorityBlockingQueue）
-  - 普通优先级队列（LinkedBlockingQueue）
-  - 低优先级队列（LinkedBlockingQueue）
+- **特点**:
+    - 高优先级队列（PriorityBlockingQueue）
+    - 普通优先级队列（LinkedBlockingQueue）
+    - 低优先级队列（LinkedBlockingQueue）
 - **适用场景**: 需要消息优先级处理的场景
 
 ### 3. ApiBasedMessageTransporter
+
 - **用途**: 基于外部API的消息传输
-- **特点**: 
-  - 通过HTTP API发送/接收消息
-  - 支持轮询机制
-  - 可配置超时时间
+- **特点**:
+    - 通过HTTP API发送/接收消息
+    - 支持轮询机制
+    - 可配置超时时间
 - **适用场景**: 分布式系统，外部消息服务
 
 ## 使用示例
 
 ### 基本使用
+
 ```java
 // 创建基于队列的传输器
 MessageQueue<Envelope> inputQueue = new InMemoryMessageQueue<>();
@@ -57,6 +62,7 @@ DispatcherContext context = new DispatcherContext(transporter, sessionManager, g
 ```
 
 ### 使用工厂类
+
 ```java
 // 基于队列
 MessageTransporter transporter1 = MessageTransporterFactory.create(
@@ -81,16 +87,19 @@ MessageTransporter transporter3 = MessageTransporterFactory.create(
 ## 升级路径
 
 ### 阶段1: 当前系统
+
 - 使用 `QueueBasedMessageTransporter`
 - 保持现有功能不变
 - 所有代码通过 `MessageTransporter` 接口访问
 
 ### 阶段2: 多级队列
+
 - 切换到 `MultiLevelMessageTransporter`
 - 根据业务需求配置优先级规则
 - 无需修改业务逻辑代码
 
 ### 阶段3: 外部API
+
 - 切换到 `ApiBasedMessageTransporter`
 - 配置外部API地址和认证信息
 - 支持分布式部署

@@ -12,12 +12,12 @@ public class TaskAuditedEvent extends MassEvent.BaseMassEvent {
 
     public TaskAuditedEvent(Task task, String traceId, String requestId) {
         super(
-            "TASK_AUDITED",
-            MassPlatformEventType.TASK_AUDITED,
-            String.format("任务审核通过: %s", task != null ? task.getTid() : "null"),
-            createMetadata(task),
-            traceId,
-            requestId
+                "TASK_AUDITED",
+                MassPlatformEventType.TASK_AUDITED,
+                String.format("任务审核通过: %s", task != null ? task.getTid() : "null"),
+                createMetadata(task),
+                traceId,
+                requestId
         );
         this.task = task;
     }
@@ -26,5 +26,7 @@ public class TaskAuditedEvent extends MassEvent.BaseMassEvent {
         return task != null ? Collections.singletonMap("taskId", task.getTid()) : Collections.emptyMap();
     }
 
-    public Task getTask() { return task; }
+    public Task getTask() {
+        return task;
+    }
 }

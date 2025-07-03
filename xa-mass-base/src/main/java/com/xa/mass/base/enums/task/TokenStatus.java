@@ -12,65 +12,65 @@ public enum TokenStatus {
      * 已登录可注册，空闲
      */
     LOGIN_READY("空闲可用"),
-    
+
     /**
      * 已绑定任务，准备发送
      */
     BIND_READY("已绑定"),
-    
+
     /**
      * 发送中（正在处理任务）
      */
     SENDING("发送中"),
-    
+
     /**
      * 禁用/锁定/待切换/异常
      */
     BLOCKED("已锁定"),
-    
+
     /**
      * 失效/注销/超时
      */
     INVALID("已失效");
-    
+
     private final String description;
-    
+
     TokenStatus(String description) {
         this.description = description;
     }
-    
+
     public String getDescription() {
         return description;
     }
-    
+
     /**
      * 检查是否可以分配
      */
     public boolean isAllocatable() {
         return this == LOGIN_READY;
     }
-    
+
     /**
      * 检查是否正在使用中
      */
     public boolean isInUse() {
         return this == BIND_READY || this == SENDING;
     }
-    
+
     /**
      * 检查是否可用
      */
     public boolean isAvailable() {
         return this == LOGIN_READY || this == BIND_READY;
     }
-    
+
     /**
      * 检查是否为最终状态
      */
     public boolean isFinal() {
         return this == INVALID;
     }
-    
+
     /**
      * 检查是否可以转换为目标状态
      */
@@ -78,7 +78,7 @@ public enum TokenStatus {
         if (targetStatus == INVALID) {
             return true; // 任何状态都可以变为失效
         }
-        
+
         switch (this) {
             case LOGIN_READY:
                 return targetStatus == BIND_READY || targetStatus == BLOCKED;

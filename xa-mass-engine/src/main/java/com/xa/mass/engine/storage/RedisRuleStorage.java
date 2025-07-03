@@ -13,27 +13,26 @@ import java.util.Optional;
 /**
  * Redis规则存储实现
  * 使用Redis作为规则定义和评估器的存储后端
- * 
+ *
  * 注意：这是一个示例实现，实际使用时需要添加Redis客户端依赖
  */
 public class RedisRuleStorage implements RuleStorage {
-    
-    // TODO: 添加Redis客户端依赖
-    // private final RedisTemplate<String, Object> redisTemplate;
-    private final Gson gson = new Gson();
-    
+
     // 存储键前缀
     private static final String RULE_KEY_PREFIX = "rule:";
     private static final String RULE_TYPE_INDEX_PREFIX = "rule_type:";
     private static final String EVALUATOR_KEY_PREFIX = "evaluator:";
-    
+    // TODO: 添加Redis客户端依赖
+    // private final RedisTemplate<String, Object> redisTemplate;
+    private final Gson gson = new Gson();
+
     public RedisRuleStorage() {
         // TODO: 初始化Redis客户端
         // this.redisTemplate = redisTemplate;
         // 注册默认评估器
         registerEvaluator(RuleType.QL_EXPRESS, new QLExpressRuleEvaluator());
     }
-    
+
     @Override
     public void addRule(RuleDefinition rule) {
         // TODO: 实现Redis存储逻辑
@@ -46,7 +45,7 @@ public class RedisRuleStorage implements RuleStorage {
         // redisTemplate.opsForSet().add(typeIndexKey, rule.getId());
         throw new UnsupportedOperationException("Redis storage not fully implemented yet");
     }
-    
+
     @Override
     public Optional<RuleDefinition> getRule(String ruleId) {
         // TODO: 实现Redis获取逻辑
@@ -59,7 +58,7 @@ public class RedisRuleStorage implements RuleStorage {
         // return Optional.empty();
         throw new UnsupportedOperationException("Redis storage not fully implemented yet");
     }
-    
+
     @Override
     public boolean updateRule(RuleDefinition rule) {
         // TODO: 实现Redis更新逻辑
@@ -85,7 +84,7 @@ public class RedisRuleStorage implements RuleStorage {
         // return true;
         throw new UnsupportedOperationException("Redis storage not fully implemented yet");
     }
-    
+
     @Override
     public boolean deleteRule(String ruleId) {
         // TODO: 实现Redis删除逻辑
@@ -102,7 +101,7 @@ public class RedisRuleStorage implements RuleStorage {
         // return false;
         throw new UnsupportedOperationException("Redis storage not fully implemented yet");
     }
-    
+
     @Override
     public List<RuleDefinition> getAllRules() {
         // TODO: 实现Redis获取所有规则逻辑
@@ -115,7 +114,7 @@ public class RedisRuleStorage implements RuleStorage {
         //     .collect(Collectors.toList());
         throw new UnsupportedOperationException("Redis storage not fully implemented yet");
     }
-    
+
     @Override
     public List<RuleDefinition> getRulesByType(RuleType ruleType) {
         // TODO: 实现Redis按类型获取规则逻辑
@@ -128,7 +127,7 @@ public class RedisRuleStorage implements RuleStorage {
         //     .collect(Collectors.toList());
         throw new UnsupportedOperationException("Redis storage not fully implemented yet");
     }
-    
+
     @Override
     public void addRules(Collection<RuleDefinition> rules) {
         // TODO: 实现Redis批量添加规则逻辑
@@ -137,7 +136,7 @@ public class RedisRuleStorage implements RuleStorage {
         // }
         throw new UnsupportedOperationException("Redis storage not fully implemented yet");
     }
-    
+
     @Override
     public void deleteRules(Collection<String> ruleIds) {
         // TODO: 实现Redis批量删除规则逻辑
@@ -146,7 +145,7 @@ public class RedisRuleStorage implements RuleStorage {
         // }
         throw new UnsupportedOperationException("Redis storage not fully implemented yet");
     }
-    
+
     @Override
     public void registerEvaluator(RuleType ruleType, RuleEvaluator evaluator) {
         // TODO: 实现Redis注册评估器逻辑
@@ -155,7 +154,7 @@ public class RedisRuleStorage implements RuleStorage {
         // redisTemplate.opsForValue().set(key, evaluatorJson);
         throw new UnsupportedOperationException("Redis storage not fully implemented yet");
     }
-    
+
     @Override
     public Optional<RuleEvaluator> getEvaluator(RuleType ruleType) {
         // TODO: 实现Redis获取评估器逻辑
@@ -169,7 +168,7 @@ public class RedisRuleStorage implements RuleStorage {
         // return Optional.empty();
         throw new UnsupportedOperationException("Redis storage not fully implemented yet");
     }
-    
+
     @Override
     public List<RuleType> getRegisteredEvaluatorTypes() {
         // TODO: 实现Redis获取已注册评估器类型逻辑
@@ -180,7 +179,7 @@ public class RedisRuleStorage implements RuleStorage {
         //     .collect(Collectors.toList());
         throw new UnsupportedOperationException("Redis storage not fully implemented yet");
     }
-    
+
     @Override
     public boolean removeEvaluator(RuleType ruleType) {
         // TODO: 实现Redis移除评估器逻辑
@@ -188,7 +187,7 @@ public class RedisRuleStorage implements RuleStorage {
         // return redisTemplate.delete(key) > 0;
         throw new UnsupportedOperationException("Redis storage not fully implemented yet");
     }
-    
+
     @Override
     public void clear() {
         // TODO: 实现Redis清空逻辑
@@ -204,7 +203,7 @@ public class RedisRuleStorage implements RuleStorage {
         // registerEvaluator(RuleType.QL_EXPRESS, new QLExpressRuleEvaluator());
         throw new UnsupportedOperationException("Redis storage not fully implemented yet");
     }
-    
+
     // 辅助方法：根据JSON和类型创建评估器实例
     // private RuleEvaluator createEvaluatorFromJson(String evaluatorJson, RuleType ruleType) {
     //     switch (ruleType) {

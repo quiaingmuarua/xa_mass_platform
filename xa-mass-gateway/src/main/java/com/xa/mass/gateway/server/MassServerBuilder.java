@@ -12,16 +12,15 @@ import java.util.HashMap;
 import java.util.Map;
 
 public class MassServerBuilder {
+    private final MiddlewareRegistry middlewareRegistry = MiddlewareRegistry.instance;
+    private final Map<String, Map<String, MassMessageHandler>> handlerMap = new HashMap<>();
     private int port = 8080;
     private String websocketPath = "/ws";
-    private final MiddlewareRegistry middlewareRegistry = MiddlewareRegistry.instance;
     private DispatchRuntimeContext dispatcherContext;
-    private final Map<String, Map<String, MassMessageHandler>> handlerMap = new HashMap<>();
-
-
     private boolean registerDefaults = true;
 
-    private MassServerBuilder() {}
+    private MassServerBuilder() {
+    }
 
     public static MassServerBuilder create() {
         return new MassServerBuilder();
@@ -37,8 +36,8 @@ public class MassServerBuilder {
         return this;
     }
 
-    public MassServerBuilder withDispatcherContext(DispatchRuntimeContext dispatcherContext){
-        this.dispatcherContext=dispatcherContext;
+    public MassServerBuilder withDispatcherContext(DispatchRuntimeContext dispatcherContext) {
+        this.dispatcherContext = dispatcherContext;
         return this;
     }
 
@@ -94,6 +93,7 @@ public class MassServerBuilder {
         middlewareRegistry.unregisterInput(priority);
         return this;
     }
+
     public MassServerBuilder removeOutputMiddleware(int priority) {
         middlewareRegistry.unregisterOutput(priority);
         return this;

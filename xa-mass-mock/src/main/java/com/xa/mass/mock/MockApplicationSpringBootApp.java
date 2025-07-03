@@ -20,51 +20,42 @@ import org.springframework.context.annotation.Profile;
  * Mock 全链路应用启动类
  * 串联 Gateway、Engine 和 API，提供完整的模拟环境
  */
-@SpringBootApplication(scanBasePackages = { "com.xa.mass.mock", "com.xa.mass.api" })
+@SpringBootApplication(scanBasePackages = {"com.xa.mass.mock", "com.xa.mass.api"})
 public class MockApplicationSpringBootApp {
 
+    private static final Logger log = LoggerFactory.getLogger(MockApplicationSpringBootApp.class);
     @Autowired
     TaskManager taskManager;
-
     @Autowired
     DeviceManager deviceManager;
-
     @Autowired
     private RuleManager ruleManager;
-    
     // 配置属性注入
     @Value("${mass.server.port:18088}")
     private int massServerPort;
-    
     @Value("${mass.gateway.max-connections:1000}")
     private int maxConnections;
-    
     @Value("${mass.engine.worker-threads:8}")
     private int workerThreads;
-    
     @Value("${mass.mock.data.devices:mock/mock_devices.json}")
     private String devicesConfigPath;
-    
     @Value("${mass.mock.data.tasks:mock/mock_tasks.json}")
     private String tasksConfigPath;
-    
     @Value("${mass.mock.data.rules:mock/mock_rules.json}")
     private String rulesConfigPath;
-    
-    private static final Logger log = LoggerFactory.getLogger(MockApplicationSpringBootApp.class);
-    
+
     public static void main(String[] args) {
         // 设置开发环境配置
         String profile = "dev";
         System.setProperty("spring.profiles.active", profile);
         String port = "8088";
         System.setProperty("server.port", port);
-        
+
         log.info("🚀 启动 Mock 全链路应用...");
         log.info("Profile: {}, 端口: {}", profile, port);
-        
+
         SpringApplication.run(MockApplicationSpringBootApp.class, args);
-        
+
         log.info("✅ Mock 全链路应用启动完成");
         log.info("\n==============================");
         log.info("🌐 Web 服务地址:");
@@ -76,7 +67,7 @@ public class MockApplicationSpringBootApp {
         log.info("🔌 WebSocket 服务: ws://localhost:18088");
         log.info("==============================\n");
     }
-    
+
     /**
      * 全链路启动器 - 串联 Gateway、Engine 和 API
      */
@@ -110,15 +101,15 @@ public class MockApplicationSpringBootApp {
 
                 // 启动应用
                 app.start();
-                
+
                 // 健康检查
                 if (!app.isRunning()) {
                     throw new RuntimeException("MassApplication failed to start properly");
                 }
-                
+
                 // 等待组件完全启动
                 Thread.sleep(1000);
-                
+
                 // 加载Mock数据
                 try {
                     app.loadMockData(app.getEngine(), app.getEngine().getConfig());
@@ -126,7 +117,7 @@ public class MockApplicationSpringBootApp {
                 } catch (Exception e) {
                     log.warn("⚠️ Mock数据加载失败，继续启动: {}", e.getMessage());
                 }
-                
+
                 // 发布任务事件
                 try {
                     app.getEngine().publishTaskEvents();
@@ -145,10 +136,10 @@ public class MockApplicationSpringBootApp {
                         log.error("❌ 关闭全链路服务时发生错误", e);
                     }
                 }));
-                
+
                 log.info("✅ API 服务已通过 Spring Boot 自动启动");
                 log.info("🎉 全链路服务启动完成！");
-                
+
             } catch (InterruptedException e) {
                 log.error("❌ 启动过程被中断", e);
                 Thread.currentThread().interrupt();
