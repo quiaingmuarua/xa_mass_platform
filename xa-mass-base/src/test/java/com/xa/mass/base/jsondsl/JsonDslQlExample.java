@@ -21,7 +21,7 @@ public class JsonDslQlExample {
           "FIELDS": {
             "status": {"$CHOICE": ["OFFLINE", "ONLINE"]},
             "deviceId": {"$EXPR": "join('device-', '1')"},
-           "groupId": {"$JOIN": ["device-", {"$CONTEXT": "&.index"}]},
+             "groupId": {"$JOIN": ["device-", "&.index"]},
             "onlineStrategy": {
               "$EXPR": {
                 "lang": "ql",
