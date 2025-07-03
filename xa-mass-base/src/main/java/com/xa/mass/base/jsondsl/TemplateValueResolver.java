@@ -11,7 +11,7 @@ import java.util.stream.Collectors;
  */
 public class TemplateValueResolver {
     // 内置函数处理器注册表
-    private static final Map<BuiltinFunc, BiFunction<Object, Map<String, Object>, Object>> BUILTIN_RESOLVERS = new HashMap<>();
+    private static final Map<BuiltinFunc, BiFunction<Object, DslContext, Object>> BUILTIN_RESOLVERS = new HashMap<>();
     static {
         BUILTIN_RESOLVERS.put(BuiltinFunc.JOIN, (param, ctx) -> {
             List<?> parts = (List<?>) param;
@@ -22,7 +22,7 @@ public class TemplateValueResolver {
         BUILTIN_RESOLVERS.put(BuiltinFunc.RANGE, (param, ctx) -> BuiltinFunctions.eval(BuiltinFunc.RANGE.key(), resolve(param, ctx)));
         BUILTIN_RESOLVERS.put(BuiltinFunc.UUID, (param, ctx) -> BuiltinFunctions.eval(BuiltinFunc.UUID.key(), resolve(param, ctx)));
         BUILTIN_RESOLVERS.put(BuiltinFunc.RANDOM, (param, ctx) -> BuiltinFunctions.eval(BuiltinFunc.RANDOM.key(), resolve(param, ctx)));
-        BUILTIN_RESOLVERS.put(BuiltinFunc.CONTEXT, TemplateValueResolver::getContextValue);
+        BUILTIN_RESOLVERS.put(BuiltinFunc.CONTEXT, (param, ctx) -> getContextValue(param, ctx));
         BUILTIN_RESOLVERS.put(BuiltinFunc.NOW, (param, ctx) -> BuiltinFunctions.eval(BuiltinFunc.NOW.key(), resolve(param, ctx)));
         BUILTIN_RESOLVERS.put(BuiltinFunc.TIME_RANGE, (param, ctx) -> BuiltinFunctions.eval(BuiltinFunc.TIME_RANGE.key(), resolve(param, ctx)));
     }
@@ -30,10 +30,10 @@ public class TemplateValueResolver {
     /**
      * 递归解析字段值，支持内置函数、Map、List、普通值。
      * @param value 字段值
-     * @param context 上下文变量（如 i, j 等）
+     * @param context DslContext 上下文变量（支持多级作用域）
      * @return mock 后的值
      */
-    public static Object resolve(Object value, Map<String, Object> context) {
+    public static Object resolve(Object value, DslContext context) {
         if (value == null) {
             return null;
         }
@@ -42,7 +42,7 @@ public class TemplateValueResolver {
                 String funcKey = (String) map.keySet().iterator().next();
                 BuiltinFunc func = BuiltinFunc.fromKey(funcKey);
                 Object param = map.get(funcKey);
-                BiFunction<Object, Map<String, Object>, Object> resolver = BUILTIN_RESOLVERS.get(func);
+                BiFunction<Object, DslContext, Object> resolver = BUILTIN_RESOLVERS.get(func);
                 if (resolver != null) {
                     return resolver.apply(param, context);
                 }
@@ -60,40 +60,41 @@ public class TemplateValueResolver {
             return list.stream().map(v -> resolve(v, context)).toList();
         }
         if (value instanceof String str) {
-            // 简单字符串，直接返回，不进行占位符替换
+            // 只对 & 开头的变量做作用域查找
+            if (str.startsWith("&")) {
+                Object v = context.getVariable(str);
+                return v != null ? v : str;
+            }
+            // 只对 $ 开头的字符串做特殊处理（如 $NOW 等），其余直接返回
             return str;
         }
         return value;
     }
 
     /**
-     * 从上下文中获取指定键的值
+     * 从上下文中获取指定键的值（兼容 $CONTEXT 语法）
      * @param param 键名（字符串）或键名列表
-     * @param context 上下文
+     * @param context DslContext
      * @return 上下文中的值
      */
-    private static Object getContextValue(Object param, Map<String, Object> context) {
+    private static Object getContextValue(Object param, DslContext context) {
         if (context == null) {
             return null;
         }
-        
         if (param instanceof String) {
-            // 单个键名
-            return context.get(param);
+            return context.getVariable((String) param);
         } else if (param instanceof List<?>) {
-            // 键名列表，返回第一个存在的值
             List<?> keys = (List<?>) param;
             for (Object key : keys) {
-                if (key instanceof String && context.containsKey((String) key)) {
-                    return context.get(key);
+                if (key instanceof String) {
+                    Object v = context.getVariable((String) key);
+                    if (v != null) return v;
                 }
             }
             return null;
         } else if (param == null) {
-            // 默认返回 "i" 键的值
-            return context.get("i");
+            return context.getVariable("&index");
         }
-        
         return null;
     }
 

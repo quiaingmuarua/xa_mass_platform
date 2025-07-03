@@ -346,6 +346,7 @@ public class Task {
                 ", taskExecutedNumber=" + taskExecutedNumber +
                 ", taskUnExecutedNumber=" + taskUnExecutedNumber +
                 ", progress=" + String.format("%.1f%%", getProgressPercentage()) +
+                ", batchSize=" + batchSize +
                 '}';
     }
 } 

@@ -4,18 +4,29 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * 递归 mock 时传递索引、变量、递归深度等上下文信息。
+ * 递归 mock/DSL 生成时的作用域上下文，支持多级作用域链。
  */
 public class DslContext {
     private final Map<String, Object> variables = new HashMap<>();
+    private final DslContext parent;
     private int depth = 0;
+    private String currentScope;
+
+    public DslContext() {
+        this.parent = null;
+    }
+    public DslContext(DslContext parent) {
+        this.parent = parent;
+    }
 
     public void setVariable(String key, Object value) {
         variables.put(key, value);
     }
 
     public Object getVariable(String key) {
-        return variables.get(key);
+        if (variables.containsKey(key)) return variables.get(key);
+        if (parent != null) return parent.getVariable(key);
+        return null;
     }
 
     public Map<String, Object> getVariables() {
@@ -28,5 +39,16 @@ public class DslContext {
 
     public void setDepth(int depth) {
         this.depth = depth;
+    }
+
+    public String getCurrentScope() {
+        return currentScope;
+    }
+    public void setCurrentScope(String currentScope) {
+        this.currentScope = currentScope;
+    }
+
+    public DslContext getParent() {
+        return parent;
     }
 } 

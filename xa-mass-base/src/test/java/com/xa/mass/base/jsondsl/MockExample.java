@@ -61,7 +61,8 @@ public class MockExample {
                     "status": {"$CHOICE": ["ONLINE", "OFFLINE"]},
                     "groupId": {"$CHOICE": ["us", "gb", "cn"]},
                     "agentVersion": {"$JOIN": ["1.0.", {"$CONTEXT": "i"}]},
-                    "onlineStrategy": {"$JOIN": ["Device ", {"$CONTEXT": "i"}, " in group ", {"$CONTEXT": "groupId"}]}
+                    "onlineStrategy": {"$JOIN": ["Device ", {"$CONTEXT": "i"}, " in group ", {"$CONTEXT": "groupId"}]},
+                    "createTime":{"$TIME_RANGE": ["now-30d", "now-1d", "DAYS", "yyyy-MM-dd"]}
                   }
                 }
                 """;

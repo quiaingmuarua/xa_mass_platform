@@ -26,15 +26,17 @@ public class JsonDslEngine {
         JsonObject root = JsonParser.parseString(jsonDsl).getAsJsonObject();
         int count = root.has(DslKeyword.COUNT.name()) ? root.get(DslKeyword.COUNT.name()).getAsInt() : 1;
         List<Object> result = new ArrayList<>();
+        String modelName = root.has(DslKeyword.MODEL.name()) ? root.get(DslKeyword.MODEL.name()).getAsString() : "Root";
         for (int i = 0; i < count; i++) {
-            Map<String, Object> context = new HashMap<>();
-            context.put("i", i);
+            DslContext context = new DslContext();
+            context.setCurrentScope(modelName);
+            context.setVariable("&" + modelName + ".index", i);
             result.add(mockFromDsl(root, context));
         }
         return result;
     }
 
-    private static Object mockFromDsl(JsonObject dsl, Map<String, Object> context) {
+    private static Object mockFromDsl(JsonObject dsl, DslContext context) {
         // 1. 解析 MODEL
         String modelName = dsl.has(DslKeyword.MODEL.name()) ? dsl.get(DslKeyword.MODEL.name()).getAsString() : null;
         if (modelName == null) {
@@ -78,7 +80,7 @@ public class JsonDslEngine {
         return obj;
     }
 
-    private static Object mockFieldValue(Field field, Object rule, Map<String, Object> context) {
+    private static Object mockFieldValue(Field field, Object rule, DslContext context) {
         if (isCollectionRule(rule)) {
             return handleCollectionRule(rule, context);
         }
@@ -99,7 +101,7 @@ public class JsonDslEngine {
         return map.containsKey(DslKeyword.MODEL.name());
     }
 
-    private static Object handleCollectionRule(Object rule, Map<String, Object> context) {
+    private static Object handleCollectionRule(Object rule, DslContext context) {
         Map<?, ?> ruleMap = (Map<?, ?>) rule;
         String type = String.valueOf(ruleMap.get(DslKeyword.TYPE.name())).toUpperCase();
         int count = ruleMap.containsKey(DslKeyword.COUNT.name()) ? ((Number) ruleMap.get(DslKeyword.COUNT.name())).intValue() : 1;
@@ -108,8 +110,13 @@ public class JsonDslEngine {
         Map<String, Object> subFields = (Map<String, Object>) ruleMap.get(DslKeyword.FIELDS.name());
         List<Object> list = new ArrayList<>();
         for (int j = 0; j < count; j++) {
-            Map<String, Object> subContext = new HashMap<>(context);
-            subContext.put("j", j);
+            DslContext subContext = new DslContext(context);
+            subContext.setCurrentScope(modelName);
+            subContext.setVariable("&" + modelName + ".index", j);
+            if (context.getCurrentScope() != null) {
+                // 继承父作用域的 index 变量（可选）
+                subContext.setVariable("&" + context.getCurrentScope() + ".index", context.getVariable("&" + context.getCurrentScope() + ".index"));
+            }
             JsonObject subDsl = new JsonObject();
             subDsl.addProperty(DslKeyword.MODEL.name(), modelName);
             if (subFields != null) {
@@ -122,14 +129,17 @@ public class JsonDslEngine {
         throw new JsonDslException("不支持的集合类型: " + type);
     }
 
-    private static Object handleNestedModelRule(Object rule, Map<String, Object> context) {
+    private static Object handleNestedModelRule(Object rule, DslContext context) {
         Map<?, ?> ruleMap = (Map<?, ?>) rule;
+        String modelName = (String) ruleMap.get(DslKeyword.MODEL.name());
+        DslContext subContext = new DslContext(context);
+        subContext.setCurrentScope(modelName);
         JsonObject subDsl = new JsonObject();
-        subDsl.addProperty(DslKeyword.MODEL.name(), (String) ruleMap.get(DslKeyword.MODEL.name()));
+        subDsl.addProperty(DslKeyword.MODEL.name(), modelName);
         if (ruleMap.containsKey(DslKeyword.FIELDS.name())) {
             subDsl.add(DslKeyword.FIELDS.name(), gson.toJsonTree(ruleMap.get(DslKeyword.FIELDS.name())));
         }
-        return mockFromDsl(subDsl, context);
+        return mockFromDsl(subDsl, subContext);
     }
 
     private static Class<?> resolveModelClass(String modelName) {

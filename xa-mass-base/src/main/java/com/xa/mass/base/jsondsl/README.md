@@ -9,7 +9,7 @@
 - 🔄 **递归嵌套**: 支持复杂的嵌套对象和集合结构
 - 🛠️ **内置函数**: 提供丰富的内置函数（随机选择、范围、UUID、时间等）
 - 📋 **类型注册**: 支持类型别名注册，避免硬编码全类名
-- 🎯 **上下文变量**: 支持通过 $CONTEXT 函数获取上下文变量
+- 🎯 **多级作用域变量**: 支持 `&Model.index` 作用域变量，自动递归查找父作用域
 - ⏰ **时间支持**: 支持当前时间和时间范围随机生成
 - 🔧 **可扩展**: 内置函数和类型注册表支持动态扩展
 
@@ -30,10 +30,10 @@ TypeRegistry.register("Task", Task.class);
   "MODEL": "Device",
   "COUNT": 3,
   "FIELDS": {
-    "deviceId": {"$JOIN": ["device-", {"$CONTEXT": "i"}]},
+    "deviceId": {"$JOIN": ["device-", "&Device.index"]},
     "status": {"$CHOICE": ["ONLINE", "OFFLINE"]},
     "groupId": {"$CHOICE": ["us", "gb", "cn"]},
-    "agentVersion": {"$JOIN": ["1.0.", {"$CONTEXT": "i"}]}
+    "agentVersion": {"$JOIN": ["1.0.", "&Device.index"]}
   }
 }
 ```
@@ -65,225 +65,53 @@ devices.forEach(System.out::println);
 | `$RANGE` | `{"$RANGE": [最小值, 最大值]}` | 生成指定范围内的随机数 | `{"$RANGE": [1, 100]}` |
 | `$UUID` | `{"$UUID": true}` | 生成 UUID | `{"$UUID": true}` |
 | `$RANDOM` | `{"$RANDOM": true}` | 生成随机整数 | `{"$RANDOM": true}` |
-| `$JOIN` | `{"$JOIN": [字符串列表]}` | 字符串拼接 | `{"$JOIN": ["prefix-", {"$CONTEXT": "i"}, "-suffix"]}` |
-| `$CONTEXT` | `{"$CONTEXT": "键名"}` | 从上下文中获取值 | `{"$CONTEXT": "i"}` |
+| `$JOIN` | `{"$JOIN": [字符串列表]}` | 字符串拼接 | `{"$JOIN": ["prefix-", "&Device.index", "-suffix"]}` |
 | `$NOW` | `{"$NOW": "格式化字符串"}` | 获取当前时间 | `{"$NOW": "yyyy-MM-dd HH:mm:ss"}` |
 | `$TIME_RANGE` | `{"$TIME_RANGE": [开始时间, 结束时间, 时间单位, 格式化字符串]}` | 在时间范围内随机生成时间 | `{"$TIME_RANGE": ["now-1d", "now+1d", "HOURS", "yyyy-MM-dd HH:mm:ss"]}` |
 
-### 上下文变量
+### 多级作用域变量
 
-使用 `$CONTEXT` 函数获取上下文中的变量值：
+- 以 `&` 开头的字符串（如 `&Device.index`）会自动在当前及父作用域递归查找
+- 支持多层嵌套、父子作用域隔离
+- 推荐所有索引、作用域变量都用 `&Model.index` 方式命名
+
+#### 变量查找示例
 
 ```json
 {
   "MODEL": "Device",
+  "COUNT": 2,
   "FIELDS": {
-    "deviceId": {"$JOIN": ["device-", {"$CONTEXT": "i"}]},
-    "description": {"$JOIN": ["Device ", {"$CONTEXT": "i"}, " in group ", {"$CONTEXT": "groupId"}]}
+    "deviceId": {"$JOIN": ["device-", "&Device.index"]},
+    "tasks": {
+      "TYPE": "LIST",
+      "COUNT": 2,
+      "MODEL": "Task",
+      "FIELDS": {
+        "taskName": {"$JOIN": ["Task-", "&Task.index", "-of-Device-", "&Device.index"]},
+        "parentDeviceId": "&Device.deviceId"
+      }
+    }
   }
 }
 ```
-
-### 上下文变量说明
-
-- `{"$CONTEXT": "i"}`: 当前对象的索引（从0开始）
-- `{"$CONTEXT": "j"}`: 嵌套对象的索引
-- 其他自定义变量: 可以在上下文中设置任意键值对
-
-## 使用示例
-
-### 基础对象生成
-
-```java
-// 生成单个 Device 对象
-String dsl = """
-{
-  "MODEL": "Device",
-  "FIELDS": {
-    "deviceId": "device-001",
-    "status": "ONLINE",
-    "groupId": "us"
-  }
-}
-""";
-List<Object> devices = JsonDslEngine.generate(dsl);
-```
-
-### 批量生成
-
-```java
-// 批量生成 5 个 Task 对象
-String dsl = """
-{
-  "MODEL": "Task",
-  "COUNT": 5,
-  "FIELDS": {
-    "tid": {"$UUID": true},
-    "taskName": {"$JOIN": ["Task-", {"$CONTEXT": "i"}]},
-    "taskCountry": {"$CHOICE": ["us", "gb", "cn"]},
-    "taskInitNumber": {"$RANGE": [10, 100]}
-  }
-}
-""";
-List<Object> tasks = JsonDslEngine.generate(dsl);
-```
+- `&Device.index`：查找最近的 Device 作用域的 index
+- `&Task.index`：查找最近的 Task 作用域的 index
+- `&Device.deviceId`：查找最近的 Device 作用域的 deviceId
 
 ### 时间函数示例
 
-```java
-// 生成带时间字段的对象
-String dsl = """
+```json
 {
   "MODEL": "Task",
   "COUNT": 3,
   "FIELDS": {
     "tid": {"$UUID": true},
-    "taskName": {"$JOIN": ["TimeTask-", {"$CONTEXT": "i"}]},
+    "taskName": {"$JOIN": ["TimeTask-", "&Task.index"]},
     "createdTime": {"$NOW": "yyyy-MM-dd HH:mm:ss"},
-    "startTime": {"$TIME_RANGE": ["now-1d", "now+1d", "HOURS", "yyyy-MM-dd HH:mm:ss"]},
-    "endTime": {"$TIME_RANGE": ["now+1d", "now+7d", "DAYS", "yyyy-MM-dd HH:mm:ss"]},
     "lastModified": {"$TIME_RANGE": ["now-2h", "now", "MINUTES"]}
   }
 }
-""";
-List<Object> timeExamples = JsonDslEngine.generate(dsl);
-```
-
-### 相对时间示例
-
-```java
-// 使用相对时间
-String dsl = """
-{
-  "MODEL": "Device",
-  "COUNT": 2,
-  "FIELDS": {
-    "deviceId": {"$JOIN": ["device-", {"$CONTEXT": "i"}]},
-    "status": {"$CHOICE": ["ONLINE", "OFFLINE"]},
-    "lastSeen": {"$TIME_RANGE": ["now-30m", "now", "MINUTES", "HH:mm:ss"]},
-    "registeredAt": {"$TIME_RANGE": ["now-30d", "now-1d", "DAYS", "yyyy-MM-dd"]},
-    "nextMaintenance": {"$TIME_RANGE": ["now+1d", "now+30d", "DAYS", "yyyy-MM-dd HH:mm"]}
-  }
-}
-""";
-List<Object> relativeTimeExamples = JsonDslEngine.generate(dsl);
-```
-
-### 嵌套对象
-
-```java
-// 生成包含嵌套对象的复杂结构
-String dsl = """
-{
-  "MODEL": "Project",
-  "COUNT": 2,
-  "FIELDS": {
-    "projectId": {"$UUID": true},
-    "projectName": {"$JOIN": ["Project-", {"$CONTEXT": "i"}]},
-    "devices": {
-      "TYPE": "LIST",
-      "COUNT": 3,
-      "MODEL": "Device",
-      "FIELDS": {
-        "deviceId": {"$JOIN": ["device-", {"$CONTEXT": "i"}, "-", {"$CONTEXT": "j"}]},
-        "status": {"$CHOICE": ["ONLINE", "OFFLINE"]}
-      }
-    }
-  }
-}
-""";
-List<Object> projects = JsonDslEngine.generate(dsl);
-```
-
-### 集合类型
-
-```java
-// 生成 Set 集合
-String dsl = """
-{
-  "MODEL": "User",
-  "FIELDS": {
-    "userId": {"$UUID": true},
-    "roles": {
-      "TYPE": "SET",
-      "COUNT": 2,
-      "MODEL": "Role",
-      "FIELDS": {
-        "roleName": {"$CHOICE": ["ADMIN", "USER", "GUEST"]}
-      }
-    }
-  }
-}
-""";
-List<Object> users = JsonDslEngine.generate(dsl);
-```
-
-## 时间函数详解
-
-### $NOW 函数
-
-获取当前时间，支持格式化：
-
-```json
-{
-  "$NOW": "yyyy-MM-dd HH:mm:ss"  // 格式化字符串（可选）
-}
-```
-
-示例：
-- `{"$NOW": true}` - 返回 LocalDateTime 对象
-- `{"$NOW": "yyyy-MM-dd"}` - 返回 "2024-01-15"
-- `{"$NOW": "HH:mm:ss"}` - 返回 "14:30:25"
-
-### $TIME_RANGE 函数
-
-在指定时间范围内随机生成时间：
-
-```json
-{
-  "$TIME_RANGE": [
-    "开始时间",
-    "结束时间", 
-    "时间单位",
-    "格式化字符串（可选）"
-  ]
-}
-```
-
-#### 时间格式支持
-
-1. **标准格式**：
-   - `"2024-01-15 14:30:00"`
-   - `"2024-01-15 14:30"`
-   - `"2024-01-15"`
-   - `"14:30:00"`
-   - `"14:30"`
-
-2. **相对时间**：
-   - `"now"` - 当前时间
-   - `"now-1d"` - 1天前
-   - `"now+2h"` - 2小时后
-   - `"now-30m"` - 30分钟前
-   - `"now+7d"` - 7天后
-
-#### 时间单位
-
-- `DAYS` - 天
-- `HOURS` - 小时
-- `MINUTES` - 分钟
-- `SECONDS` - 秒
-
-#### 示例
-
-```json
-// 在过去1天到未来1天之间随机生成时间
-{"$TIME_RANGE": ["now-1d", "now+1d", "HOURS", "yyyy-MM-dd HH:mm:ss"]}
-
-// 在未来1-7天之间随机生成时间
-{"$TIME_RANGE": ["now+1d", "now+7d", "DAYS", "yyyy-MM-dd"]}
-
-// 在过去30分钟内随机生成时间
-{"$TIME_RANGE": ["now-30m", "now", "MINUTES", "HH:mm:ss"]}
 ```
 
 ## 类型注册
@@ -350,7 +178,7 @@ try {
 3. **性能考虑**: 大量数据生成时考虑分批处理
 4. **DSL 复用**: 将常用的 DSL 片段提取为常量或配置文件
 5. **测试数据**: 使用有意义的测试数据，便于调试和验证
-6. **上下文变量**: 使用 `$CONTEXT` 函数获取上下文变量，避免硬编码索引值
+6. **作用域变量**: 所有索引、变量都用 `&Model.index` 方式命名，避免变量冲突
 7. **时间函数**: 
    - 使用相对时间 `now-1d` 比绝对时间更灵活
    - 合理选择时间单位和范围

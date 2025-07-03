@@ -16,16 +16,16 @@ public class JsonDslExample {
 //            throw new RuntimeException("RuleDefinition class not found", e);
 //        }
 
-        // 批量 mock Device - 使用 $CONTEXT 函数
+        // 批量 mock Device - 使用 &Device.index 作用域变量
         String deviceDsl = """
                 {
                   "MODEL": "Device",
                   "COUNT": 3,
                   "FIELDS": {
-                    "deviceId": {"$JOIN": ["device-", {"$CONTEXT": "i"}]},
+                    "deviceId": {"$JOIN": ["device-", "&Device.index"]},
                     "status": {"$CHOICE": ["ONLINE", "OFFLINE"]},
                     "groupId": {"$CHOICE": ["us", "gb", "cn"]},
-                    "agentVersion": {"$JOIN": ["1.0.", {"$CONTEXT": "i"}]}
+                    "agentVersion": {"$JOIN": ["1.0.", "&Device.index"]}
                   }
                 }
                 """;
@@ -33,14 +33,14 @@ public class JsonDslExample {
         System.out.println("=== Generated Devices ===");
         devices.forEach(System.out::println);
 
-        // 批量 mock Task - 使用 $CONTEXT 函数
+        // 批量 mock Task - 使用 &Task.index 作用域变量
         String taskDsl = """
                 {
                   "MODEL": "Task",
-                  "COUNT": 2,
+                  "COUNT": 10,
                   "FIELDS": {
                     "tid": {"$UUID": true},
-                    "taskName": {"$JOIN": ["Task-", {"$CONTEXT": "i"}]},
+                    "taskName": {"$JOIN": ["Task-", "&Task.index"]},
                     "taskCountry": {"$CHOICE": ["us", "gb"]},
                     "taskInitNumber": {"$RANGE": [10, 100]},
                     "batchSize": {"$RANGE": [1, 5]}
@@ -51,23 +51,33 @@ public class JsonDslExample {
         System.out.println("\n=== Generated Tasks ===");
         tasks.forEach(System.out::println);
 
-        // 演示 $CONTEXT 函数的多种用法
-        String contextExampleDsl = """
+        // 多级作用域变量查找示例
+        String nestedExampleDsl = """
                 {
                   "MODEL": "Device",
                   "COUNT": 2,
                   "FIELDS": {
-                    "deviceId": {"$JOIN": ["device-", {"$CONTEXT": "i"}]},
+                    "deviceId": {"$JOIN": ["device-", "&Device.index"]},
                     "status": {"$CHOICE": ["ONLINE", "OFFLINE"]},
                     "groupId": {"$CHOICE": ["us", "gb", "cn"]},
-                    "agentVersion": {"$JOIN": ["1.0.", {"$CONTEXT": "i"}]},
-                    "description": {"$JOIN": ["Device ", {"$CONTEXT": "i"}, " in group ", {"$CONTEXT": "groupId"}]}
+                    "agentVersion": {"$JOIN": ["1.0.", "&Device.index"]},
+                    "description": {"$JOIN": ["Device ", "&Device.index", " in group ", "&Device.groupId"]},
+                    "tasks": {
+                      "TYPE": "LIST",
+                      "COUNT": 2,
+                      "MODEL": "Task",
+                      "FIELDS": {
+                        "tid": {"$UUID": true},
+                        "taskName": {"$JOIN": ["Task-", "&Task.index", "-of-Device-", "&Device.index"]},
+                        "parentDeviceId": "&Device.deviceId"
+                      }
+                    }
                   }
                 }
                 """;
-        List<Object> contextExamples = JsonDslEngine.generate(contextExampleDsl);
-        System.out.println("\n=== Context Function Examples ===");
-        contextExamples.forEach(System.out::println);
+        List<Object> nestedExamples = JsonDslEngine.generate(nestedExampleDsl);
+        System.out.println("\n=== Nested Scope Variable Examples ===");
+        nestedExamples.forEach(System.out::println);
 
         // 演示时间函数
         String timeExampleDsl = """
@@ -76,7 +86,7 @@ public class JsonDslExample {
                   "COUNT": 3,
                   "FIELDS": {
                     "tid": {"$UUID": true},
-                    "taskName": {"$JOIN": ["TimeTask-", {"$CONTEXT": "i"}]},
+                    "taskName": {"$JOIN": ["TimeTask-", "&Task.index"]},
                     "createdTime": {"$NOW": "yyyy-MM-dd HH:mm:ss"},
                     "lastModified": {"$TIME_RANGE": ["now-2h", "now", "MINUTES"]}
                   }
@@ -92,7 +102,7 @@ public class JsonDslExample {
                   "MODEL": "Device",
                   "COUNT": 2,
                   "FIELDS": {
-                    "deviceId": {"$JOIN": ["device-", {"$CONTEXT": "i"}]},
+                    "deviceId": {"$JOIN": ["device-", "&Device.index"]},
                     "status": {"$CHOICE": ["ONLINE", "OFFLINE"]},
                     "lastSeen": {"$TIME_RANGE": ["now-30m", "now", "MINUTES", "HH:mm:ss"]},
                     "registeredAt": {"$TIME_RANGE": ["now-30d", "now-1d", "DAYS", "yyyy-MM-dd"]},
@@ -103,7 +113,5 @@ public class JsonDslExample {
         List<Object> relativeTimeExamples = JsonDslEngine.generate(relativeTimeExampleDsl);
         System.out.println("\n=== Relative Time Examples ===");
         relativeTimeExamples.forEach(System.out::println);
-
-
     }
 } 
