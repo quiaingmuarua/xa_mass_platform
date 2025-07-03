@@ -1,7 +1,7 @@
 [
   {
     "deviceIdTemplate": "device-{i}",
-    "count": 10,
+    "count": 100,
     "groupId": "1",
     "agentVersion": "1.0.0",
     "supportedApps": ["demoApp", "otherApp", "testApp"],
@@ -22,7 +22,7 @@
   },
   {
     "deviceIdTemplate": "gb-device-{i}",
-    "count": 12,
+    "count": 120,
     "groupId":"2",
     "agentVersion": "1.0.1",
     "supportedApps": ["demoApp", "testApp"],

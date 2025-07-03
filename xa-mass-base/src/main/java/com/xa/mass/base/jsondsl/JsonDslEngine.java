@@ -1,4 +1,4 @@
-package com.xa.mass.base.mock;
+package com.xa.mass.base.jsondsl;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
@@ -14,7 +14,7 @@ import java.util.*;
  * 通用 JSON-DSL mock 主入口。
  * 支持通过 DSL 批量生成任意对象，支持 MODEL、FIELDS、COUNT、TYPE，递归嵌套、内置函数、注册表。
  */
-public class MockTemplateEngine {
+public class JsonDslEngine {
     private static final Gson gson = new Gson();
 
     /**
@@ -38,14 +38,14 @@ public class MockTemplateEngine {
         // 1. 解析 MODEL
         String modelName = dsl.has(DslKeyword.MODEL.name()) ? dsl.get(DslKeyword.MODEL.name()).getAsString() : null;
         if (modelName == null) {
-            throw new MockTemplateException("DSL 缺少 MODEL 字段");
+            throw new JsonDslException("DSL 缺少 MODEL 字段");
         }
         Class<?> clazz = resolveModelClass(modelName);
         Object obj;
         try {
             obj = clazz.getDeclaredConstructor().newInstance();
         } catch (Exception e) {
-            throw new MockTemplateException("无法实例化模型: " + modelName, e);
+            throw new JsonDslException("无法实例化模型: " + modelName, e);
         }
         // 2. 处理 FIELDS
         Map<String, Object> fields = null;
@@ -72,7 +72,7 @@ public class MockTemplateEngine {
             try {
                 field.set(obj, value);
             } catch (Exception e) {
-                throw new MockTemplateException("无法设置字段: " + field.getName() + " in " + clazz.getName(), e);
+                throw new JsonDslException("无法设置字段: " + field.getName() + " in " + clazz.getName(), e);
             }
         }
         return obj;
@@ -119,7 +119,7 @@ public class MockTemplateEngine {
         }
         if (type.equals("LIST")) return list;
         if (type.equals("SET")) return new HashSet<>(list);
-        throw new MockTemplateException("不支持的集合类型: " + type);
+        throw new JsonDslException("不支持的集合类型: " + type);
     }
 
     private static Object handleNestedModelRule(Object rule, Map<String, Object> context) {
@@ -134,19 +134,19 @@ public class MockTemplateEngine {
 
     private static Class<?> resolveModelClass(String modelName) {
         // 先查注册表，再尝试全类名
-        String className = MockTypeRegistry.getClassName(modelName);
+        String className = TypeRegistry.getClassName(modelName);
         if (className != null) {
             try {
                 return Class.forName(className);
             } catch (Exception e) {
-                throw new MockTemplateException("注册表中的类无法加载: " + className, e);
+                throw new JsonDslException("注册表中的类无法加载: " + className, e);
             }
         }
         // 尝试直接当作全类名
         try {
             return Class.forName(modelName);
         } catch (Exception e) {
-            throw new MockTemplateException("未注册类型: " + modelName + "，请先注册或填写全类名", e);
+            throw new JsonDslException("未注册类型: " + modelName + "，请先注册或填写全类名", e);
         }
     }
 

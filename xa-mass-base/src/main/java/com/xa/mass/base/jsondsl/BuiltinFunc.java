@@ -1,11 +1,12 @@
-package com.xa.mass.base.mock;
+package com.xa.mass.base.jsondsl;
 
 public enum BuiltinFunc {
     CHOICE("$CHOICE"),
     RANGE("$RANGE"),
     UUID("$UUID"),
     RANDOM("$RANDOM"),
-    JOIN("$JOIN");
+    JOIN("$JOIN"),
+    CONTEXT("$CONTEXT");
 
     private final String key;
     BuiltinFunc(String key) { this.key = key; }

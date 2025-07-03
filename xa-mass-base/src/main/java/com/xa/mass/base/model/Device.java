@@ -232,7 +232,8 @@ public class Device {
     public int hashCode() {
         return Objects.hash(deviceId);
     }
-    
+
+
     @Override
     public String toString() {
         return "Device{" +
@@ -242,7 +243,10 @@ public class Device {
                 ", lastHeartbeat=" + lastHeartbeat +
                 ", supportedProjects=" + supportedProjects +
                 ", groupId='" + groupId + '\'' +
-                ", isLocked=" + isLocked() +
+                ", lockExpireTime=" + lockExpireTime +
+                ", onlineStrategy='" + onlineStrategy + '\'' +
+                ", createTime=" + createTime +
+                ", updateTime=" + updateTime +
                 '}';
     }
-} 
+}

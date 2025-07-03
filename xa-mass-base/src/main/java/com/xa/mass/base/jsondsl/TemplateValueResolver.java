@@ -1,4 +1,4 @@
-package com.xa.mass.base.mock;
+package com.xa.mass.base.jsondsl;
 
 import java.util.List;
 import java.util.Map;
@@ -22,6 +22,7 @@ public class TemplateValueResolver {
         BUILTIN_RESOLVERS.put(BuiltinFunc.RANGE, (param, ctx) -> BuiltinFunctions.eval(BuiltinFunc.RANGE.key(), resolve(param, ctx)));
         BUILTIN_RESOLVERS.put(BuiltinFunc.UUID, (param, ctx) -> BuiltinFunctions.eval(BuiltinFunc.UUID.key(), resolve(param, ctx)));
         BUILTIN_RESOLVERS.put(BuiltinFunc.RANDOM, (param, ctx) -> BuiltinFunctions.eval(BuiltinFunc.RANDOM.key(), resolve(param, ctx)));
+        BUILTIN_RESOLVERS.put(BuiltinFunc.CONTEXT, TemplateValueResolver::getContextValue);
     }
 
     /**
@@ -57,14 +58,41 @@ public class TemplateValueResolver {
             return list.stream().map(v -> resolve(v, context)).toList();
         }
         if (value instanceof String str) {
-            // context 变量替换
-            if (context != null && context.containsKey(str)) {
-                Object v = context.get(str);
-                return v == null ? null : v;
-            }
+            // 简单字符串，直接返回，不进行占位符替换
             return str;
         }
         return value;
+    }
+
+    /**
+     * 从上下文中获取指定键的值
+     * @param param 键名（字符串）或键名列表
+     * @param context 上下文
+     * @return 上下文中的值
+     */
+    private static Object getContextValue(Object param, Map<String, Object> context) {
+        if (context == null) {
+            return null;
+        }
+        
+        if (param instanceof String) {
+            // 单个键名
+            return context.get(param);
+        } else if (param instanceof List<?>) {
+            // 键名列表，返回第一个存在的值
+            List<?> keys = (List<?>) param;
+            for (Object key : keys) {
+                if (key instanceof String && context.containsKey((String) key)) {
+                    return context.get(key);
+                }
+            }
+            return null;
+        } else if (param == null) {
+            // 默认返回 "i" 键的值
+            return context.get("i");
+        }
+        
+        return null;
     }
 
     private static boolean isBuiltinFunction(Map<?, ?> map) {

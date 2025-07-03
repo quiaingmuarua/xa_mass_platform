@@ -1,4 +1,4 @@
-package com.xa.mass.base.mock;
+package com.xa.mass.base.jsondsl;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -6,7 +6,7 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * mock类型注册表，支持 name -> className 的注册和查找。
  */
-public class MockTypeRegistry {
+public class TypeRegistry {
     private static final Map<String, String> registry = new ConcurrentHashMap<>();
 
     public static void register(String name, String className) {

@@ -1,4 +1,4 @@
-package com.xa.mass.base.mock;
+package com.xa.mass.base.jsondsl;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -6,7 +6,7 @@ import java.util.Map;
 /**
  * 递归 mock 时传递索引、变量、递归深度等上下文信息。
  */
-public class MockContext {
+public class DslContext {
     private final Map<String, Object> variables = new HashMap<>();
     private int depth = 0;
 

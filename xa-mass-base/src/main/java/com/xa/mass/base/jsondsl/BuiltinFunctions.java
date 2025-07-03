@@ -1,4 +1,4 @@
-package com.xa.mass.base.mock;
+package com.xa.mass.base.jsondsl;
 
 import java.util.HashMap;
 import java.util.List;
@@ -13,7 +13,7 @@ interface BuiltinFunction {
 }
 
 /**
- * 内置 mock 生成函数注册表，支持 $CHOICE, $RANGE, $UUID, $RANDOM, $JOIN。
+ * 内置 mock 生成函数注册表，支持 $CHOICE, $RANGE, $UUID, $RANDOM, $JOIN, $CONTEXT。
  */
 public class BuiltinFunctions {
     private static final Random RANDOM = new Random();
@@ -27,6 +27,7 @@ public class BuiltinFunctions {
         FUNCTION_MAP.put(BuiltinFunc.UUID, param -> uuid());
         FUNCTION_MAP.put(BuiltinFunc.RANDOM, param -> random());
         FUNCTION_MAP.put(BuiltinFunc.JOIN, param -> join((List<?>) param));
+        FUNCTION_MAP.put(BuiltinFunc.CONTEXT, param -> context(param));
     }
 
     public static Object eval(String func, Object param) {
@@ -35,7 +36,7 @@ public class BuiltinFunctions {
             BuiltinFunction fn = FUNCTION_MAP.get(f);
             if (fn != null) return fn.apply(param);
         }
-        throw new MockTemplateException("不支持的内置函数: " + func + " 参数: " + param);
+        throw new JsonDslException("不支持的内置函数: " + func + " 参数: " + param);
     }
 
     public static Object choice(List<?> options) {
@@ -57,5 +58,16 @@ public class BuiltinFunctions {
 
     public static String join(List<?> parts) {
         return parts.stream().map(String::valueOf).collect(Collectors.joining());
+    }
+
+    /**
+     * 从上下文中获取值，支持指定键名或使用默认键
+     * @param param 上下文键名（如 "i", "j", "depth" 等）或 null（使用默认键）
+     * @return 上下文中的值
+     */
+    public static Object context(Object param) {
+        // 这里需要从上下文中获取值，但当前函数没有上下文参数
+        // 实际使用时需要通过 TemplateValueResolver 来处理
+        throw new JsonDslException("$CONTEXT 函数需要在上下文中使用，不能直接调用");
     }
 } 
