@@ -1,20 +1,19 @@
 [
   {
-    "id": "rule-1",
-    "desc": "设备必须属于美国或英国分组",
-    "content": "device.groupId == 'us' || device.groupId == 'gb'",
-    "enabled": true
-  },
-  {
-    "id": "rule-2",
-    "desc": "设备版本必须大于等于1.0.0",
-    "content": "device.agentVersion >= '1.0.0'",
-    "enabled": true
-  },
-  {
-    "id": "rule-3",
-    "desc": "设备支持的项目必须包含demoApp",
-    "content": "'demoApp' in device.supportedApps",
-    "enabled": true
+    "MODEL": "RuleDefinition",
+    "COUNT": 3,
+    "FIELDS": {
+      "id": {"$JOIN": ["rule-", "&.index"]},
+      "name": {"$JOIN": ["规则-", "&.index"]},
+      "description": {"$JOIN": ["描述-", "&.index"]},
+      "type": null,
+      "content": {"$CHOICE": [
+        "device.groupId == 'us' || device.groupId == 'gb'",
+        "device.agentVersion >= '1.0.0'",
+        "'demoApp' in device.supportedProjects"
+      ]},
+      "priority": {"$RANGE": [1, 3]},
+      "enabled": true
+    }
   }
 ] 

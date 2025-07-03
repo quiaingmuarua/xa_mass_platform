@@ -1,64 +1,48 @@
 package com.xa.mass.engine.monkey;
 
-import com.google.gson.Gson;
-import com.google.gson.JsonArray;
-import com.google.gson.JsonElement;
+import com.xa.mass.base.jsondsl.JsonDslEngine;
+import com.xa.mass.base.jsondsl.TypeRegistry;
 import com.xa.mass.engine.model.TaskCreateRequestDto;
 
-import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 
 public class MonkeyTaskGenerator {
-    public static class TaskBatchConfig {
-        public String taskNameTemplate = "Task-{country}-{i}";
-        public List<String> countryList = List.of("us");
-        public int countPerCountry = 1;
-        public int msgPerTask = 50;
-        public int batchSize = 5;
-        public String project = "demoApp";
-    }
-
     /**
-     * 解析 tasks JSON-DSL，批量生成 TaskCreateRequestDto
+     * 根据 JSON-DSL 生成 TaskCreateRequestDto 列表。
+     * @param jsonDsl JSON-DSL 字符串
+     * @return 任务请求列表
      */
-    public static List<TaskCreateRequestDto> generateTasks(JsonArray tasksArr) {
-        List<TaskCreateRequestDto> tasks = new ArrayList<>();
-        Gson gson = new Gson();
-        for (JsonElement elem : tasksArr) {
-            TaskBatchConfig cfg = gson.fromJson(elem, TaskBatchConfig.class);
-            for (String country : cfg.countryList) {
-                for (int i = 0; i < cfg.countPerCountry; i++) {
-                    TaskCreateRequestDto dto = new TaskCreateRequestDto();
-                    String taskName = cfg.taskNameTemplate.replace("{country}", country).replace("{i}", String.valueOf(i));
-                    dto.setTaskName(taskName);
-                    dto.setProject(cfg.project);
-                    dto.setCountryCode(country);
-                    dto.setUserId("user-" + country);
-                    dto.setTextContent("content for " + country);
-                    List<String> targetList = new ArrayList<>();
-                    for (int j = 0; j < cfg.msgPerTask; j++) {
-                        targetList.add("number-" + country + "-" + j);
-                    }
-                    dto.setTargetList(targetList);
-                    dto.setBatchSize(cfg.batchSize);
-                    tasks.add(dto);
-                }
-            }
-        }
-        return tasks;
+    public static List<TaskCreateRequestDto> generateTasks(String jsonDsl) {
+        TypeRegistry.register("TaskCreateRequestDto", TaskCreateRequestDto.class);
+        List<Object> result = JsonDslEngine.generate(jsonDsl);
+        return result.stream()
+                .filter(TaskCreateRequestDto.class::isInstance)
+                .map(TaskCreateRequestDto.class::cast)
+                .collect(Collectors.toList());
     }
 
-    // 示例 tasks JSON-DSL
+    // 示例 JSON-DSL（推荐用 README.md 里的 DSL 语法）
     public static String exampleTasksJsonDsl() {
-        return "[\n" +
-                "  {\n" +
-                "    \"taskNameTemplate\": \"Task-{country}-{i}\",\n" +
-                "    \"countryList\": [\"us\", \"gb\"],\n" +
-                "    \"countPerCountry\": 2,\n" +
-                "    \"msgPerTask\": 50,\n" +
-                "    \"batchSize\": 5,\n" +
-                "    \"project\": \"demoApp\"\n" +
-                "  }\n" +
-                "]";
+        return """
+        {
+          "MODEL": "TaskCreateRequestDto",
+          "COUNT": 2,
+          "FIELDS": {
+            "taskName": {"$JOIN": ["Task-", "&.index"]},
+            "project": {"$CHOICE": ["demoApp", "testApp"]},
+            "countryCode": {"$CHOICE": ["us", "gb"]},
+            "userId": {"$JOIN": ["user-", "&.index"]},
+            "textContent": {"$JOIN": ["content for ", "&.index"]},
+            "batchSize": {"$RANGE": [1, 5]},
+            "targetList": {
+              "TYPE": "LIST",
+              "COUNT": 3,
+              "MODEL": "java.lang.String",
+              "FIELDS": {}
+            }
+          }
+        }
+        """;
     }
 } 

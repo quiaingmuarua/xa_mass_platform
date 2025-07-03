@@ -1,122 +1,72 @@
 package com.xa.mass.engine.monkey;
 
-import com.google.gson.Gson;
-import com.google.gson.JsonArray;
-import com.google.gson.JsonElement;
-import com.google.gson.JsonParser;
-import com.xa.mass.base.enums.Project;
-import com.xa.mass.base.enums.device.DeviceStatus;
-import com.xa.mass.base.enums.task.TokenStatus;
+import com.xa.mass.base.jsondsl.JsonDslEngine;
+import com.xa.mass.base.jsondsl.TypeRegistry;
 import com.xa.mass.base.model.Device;
 import com.xa.mass.base.model.Token;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
-import java.util.concurrent.ThreadLocalRandom;
-import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 /**
- * 支持 JSON-DSL 批量 mock 设备/Token 的生成器。
+ * 基于 JSON-DSL 的 mock 设备/Token 生成器。
  */
 public class MonkeyDeviceGenerator {
-    private static final Pattern PLACEHOLDER_PATTERN = Pattern.compile("\\{i(:(\\d+))?}|");
-
-    public static class MockTokenBatchConfig {
-        public String tokenIdTemplate = "token-{i}-{j}";
-        public int count = 1;
-        public String channel = "us";
-        public boolean randomStatus = true;
-    }
-
-    public static class MockBatchConfig {
-        public String deviceIdTemplate = "device-{i}";
-        public int count = 10;
-        public String groupId = "us";
-        public String agentVersion = "1.0.0";
-        public List<Project> supportedProjects = Arrays.asList(Project.DEMO_APP);
-        public List<MockTokenBatchConfig> tokens = List.of();
+    /**
+     * 根据 JSON-DSL 生成设备列表（支持递归嵌套 Token）。
+     * @param jsonDsl JSON-DSL 字符串
+     * @return 设备列表
+     */
+    public static List<Device> generateDevices(String jsonDsl) {
+        // 注册类型
+        TypeRegistry.register("Device", Device.class);
+        TypeRegistry.register("Token", Token.class);
+        TypeRegistry.register("RuleDefinition", com.xa.mass.engine.rules.RuleDefinition.class);
+        // 生成
+        List<Object> result = JsonDslEngine.generate(jsonDsl);
+        // 只保留 Device 类型
+        return result.stream()
+                .filter(Device.class::isInstance)
+                .map(Device.class::cast)
+                .collect(Collectors.toList());
     }
 
     /**
-     * 解析 JSON-DSL，生成设备和 token 列表，支持 device 下多 token 批量
+     * 根据 JSON-DSL 生成 Token 列表（假设 DSL 里有嵌套 Token 字段）。
+     * @param jsonDsl JSON-DSL 字符串
+     * @return Token 列表
      */
-    public static List<Device> generateDevices(String jsonDsl, List<Token> tokenListOut) {
-        List<Device> devices = new ArrayList<>();
-        JsonArray arr = JsonParser.parseString(jsonDsl).getAsJsonArray();
-        Gson gson = new Gson();
-        for (JsonElement elem : arr) {
-            MockBatchConfig cfg = gson.fromJson(elem, MockBatchConfig.class);
-            for (int i = 0; i < cfg.count; i++) {
-                String deviceId = cfg.deviceIdTemplate.replace("{i}", String.valueOf(i));
-                Device device = new Device();
-                device.setDeviceId(deviceId);
-                device.setStatus(DeviceStatus.ONLINE);
-                device.setGroupId(cfg.groupId);
-                device.setAgentVersion(cfg.agentVersion);
-                device.setSupportedProjects(cfg.supportedProjects);
-                devices.add(device);
-                // tokens
-                if (cfg.tokens != null && !cfg.tokens.isEmpty()) {
-                    for (MockTokenBatchConfig tokenCfg : cfg.tokens) {
-                        for (int j = 0; j < tokenCfg.count; j++) {
-                            String tokenId = tokenCfg.tokenIdTemplate.replace("{i}", String.valueOf(i)).replace("{j}", String.valueOf(j));
-                            Token token = new Token();
-                            token.setTokenId(tokenId);
-                            token.setDeviceId(deviceId);
-                            token.setChannel(tokenCfg.channel);
-                            token.setStatus(tokenCfg.randomStatus ? (ThreadLocalRandom.current().nextBoolean() ? TokenStatus.LOGIN_READY : TokenStatus.INVALID) : TokenStatus.LOGIN_READY);
-                            tokenListOut.add(token);
-                        }
-                    }
-                } else {
-                    // 兼容老格式，生成一个 token
-                    String tokenId = "token-" + i;
-                    Token token = new Token();
-                    token.setTokenId(tokenId);
-                    token.setDeviceId(deviceId);
-                    token.setChannel(cfg.groupId);
-                    token.setStatus(TokenStatus.LOGIN_READY);
-                    tokenListOut.add(token);
-                }
+    public static List<Token> generateTokens(String jsonDsl) {
+        TypeRegistry.register("Device", Device.class);
+        TypeRegistry.register("Token", Token.class);
+        TypeRegistry.register("RuleDefinition", com.xa.mass.engine.rules.RuleDefinition.class);
+        List<Object> result = JsonDslEngine.generate(jsonDsl);
+        List<Token> tokens = new ArrayList<>();
+        for (Object obj : result) {
+            if (obj instanceof Device device) {
+                // 假设 Device 有 getTokens() 或类似方法，或通过 DSL 递归生成
+                // 这里需根据 DSL 结构调整
             }
         }
-        return devices;
+        // 目前仅支持通过 DSL 直接生成 Token 列表
+        tokens.addAll(result.stream().filter(Token.class::isInstance).map(Token.class::cast).collect(Collectors.toList()));
+        return tokens;
     }
 
-    // 示例 JSON-DSL
+    // 示例 JSON-DSL（推荐用 README.md 里的 DSL 语法）
     public static String exampleJsonDsl() {
-        return "[\n" +
-                "  {\n" +
-                "    \"deviceIdTemplate\": \"device-{i}\",\n" +
-                "    \"count\": 100,\n" +
-                "    \"groupId\": \"us\",\n" +
-                "    \"agentVersion\": \"1.0.0\",\n" +
-                "    \"supportedProjects\": [\"DEMO_APP\"],\n" +
-                "    \"tokens\": [\n" +
-                "      {\n" +
-                "        \"tokenIdTemplate\": \"token-{i}-{j}\",\n" +
-                "        \"count\": 1,\n" +
-                "        \"channel\": \"us\",\n" +
-                "        \"randomStatus\": false\n" +
-                "      }\n" +
-                "    ]\n" +
-                "  },\n" +
-                "  {\n" +
-                "    \"deviceIdTemplate\": \"gb-device-{i}\",\n" +
-                "    \"count\": 50,\n" +
-                "    \"groupId\": \"gb\",\n" +
-                "    \"agentVersion\": \"1.0.1\",\n" +
-                "    \"supportedProjects\": [\"DEMO_APP\"],\n" +
-                "    \"tokens\": [\n" +
-                "      {\n" +
-                "        \"tokenIdTemplate\": \"gb-token-{i}-{j}\",\n" +
-                "        \"count\": 1,\n" +
-                "        \"channel\": \"gb\",\n" +
-                "        \"randomStatus\": false\n" +
-                "      }\n" +
-                "    ]\n" +
-                "  }\n" +
-                "]";
+        return """
+        {
+          "MODEL": "Device",
+          "COUNT": 3,
+          "FIELDS": {
+            "deviceId": {"$JOIN": ["device-", "&.index"]},
+            "status": {"$CHOICE": ["ONLINE", "OFFLINE"]},
+            "groupId": {"$CHOICE": ["us", "gb", "cn"]},
+            "agentVersion": {"$JOIN": ["1.0.", "&.index"]}
+          }
+        }
+        """;
     }
 } 

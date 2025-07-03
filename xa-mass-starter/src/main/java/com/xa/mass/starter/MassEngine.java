@@ -86,32 +86,6 @@ public class MassEngine {
         }
     }
 
-    // generateTasks 只负责注入
-    private void generateTasks(JsonObject root, TaskManager taskManager) {
-        if (root.has("tasks")) {
-            List<TaskCreateRequestDto> taskDtos = MonkeyTaskGenerator.generateTasks(root.getAsJsonArray("tasks"));
-            for (TaskCreateRequestDto dto : taskDtos) {
-                Task task = taskManager.createTask(dto);
-                task.setRunTaskMinDeviceCnt(dto.getBatchSize());
-                task.setBatchSize(dto.getBatchSize());
-                logger.info("new_task {}", task);
-            }
-        }
-    }
-
-    // generateDevicesAndTokens 只负责注入
-    private void generateDevicesAndTokens(JsonObject root, DeviceManager deviceManager) {
-        if (root.has("devices")) {
-            List<Token> tokenList = new ArrayList<>();
-            List<Device> devices = MonkeyDeviceGenerator.generateDevices(root.getAsJsonArray("devices").toString(), tokenList);
-            for (Device device : devices) {
-                deviceManager.addDevice(device);
-            }
-            for (Token token : tokenList) {
-                deviceManager.addToken(token.getDeviceId(), token);
-            }
-        }
-    }
 
     // 默认 mock 配置
     private static String getDefaultMockConfig() {

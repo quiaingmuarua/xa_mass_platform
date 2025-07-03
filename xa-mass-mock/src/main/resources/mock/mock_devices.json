@@ -1,38 +1,24 @@
 [
   {
-    "deviceIdTemplate": "device-{i}",
-    "count": 100,
-    "groupId": "1",
-    "agentVersion": "1.0.0",
-    "supportedApps": ["demoApp", "otherApp", "testApp"],
-    "tokens": [
-      {
-        "tokenIdTemplate": "token-{i}-A",
-        "count": 200,
-        "channel": "us",
-        "randomStatus": false
-      },
-      {
-        "tokenIdTemplate": "token-{i}-B",
-        "count": 100,
-        "channel": "us",
-        "randomStatus": false
-      }
-    ]
+    "MODEL": "Device",
+    "COUNT": 100,
+    "FIELDS": {
+      "deviceId": {"$JOIN": ["device-", "&.index"]},
+      "groupId": "us",
+      "agentVersion": "1.0.0",
+      "status": {"$CHOICE": ["ONLINE", "OFFLINE"]},
+      "supportedProjects": ["demoApp", "otherApp", "testApp"]
+    }
   },
   {
-    "deviceIdTemplate": "gb-device-{i}",
-    "count": 120,
-    "groupId":"2",
-    "agentVersion": "1.0.1",
-    "supportedApps": ["demoApp", "testApp"],
-    "tokens": [
-      {
-        "tokenIdTemplate": "gb-token-{i}-{j}",
-        "count": 300,
-        "channel": "gb",
-        "randomStatus": false
-      }
-    ]
+    "MODEL": "Device",
+    "COUNT": 50,
+    "FIELDS": {
+      "deviceId": {"$JOIN": ["gb-device-", "&.index"]},
+      "groupId": "gb",
+      "agentVersion": "1.0.1",
+      "status": {"$CHOICE": ["ONLINE", "OFFLINE"]},
+      "supportedProjects": ["demoApp", "testApp"]
+    }
   }
 ] 

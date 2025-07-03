@@ -145,7 +145,7 @@ public class StorageExample {
         
         com.google.gson.JsonObject root = com.google.gson.JsonParser.parseString(mockConfig).getAsJsonObject();
         List<Token> tokenList = new ArrayList<>();
-        List<Device> devices = MonkeyDeviceGenerator.generateDevices(root.getAsJsonArray("devices").toString(), tokenList);
+        List<Device> devices = MonkeyDeviceGenerator.generateDevices(root.getAsJsonArray("devices").toString());
         
         log.info("生成了 {} 个设备和 {} 个Token", devices.size(), tokenList.size());
         
@@ -183,7 +183,7 @@ public class StorageExample {
         log.info("任务生成JSON: {}", taskJson);
         
         com.google.gson.JsonArray taskArray = com.google.gson.JsonParser.parseString(taskJson).getAsJsonArray();
-        List<TaskCreateRequestDto> taskDtos = MonkeyTaskGenerator.generateTasks(taskArray);
+        List<TaskCreateRequestDto> taskDtos = MonkeyTaskGenerator.generateTasks(taskArray.toString());
         log.info("生成了 {} 个任务", taskDtos.size());
         
         // 6. 测试规则匹配
@@ -256,7 +256,7 @@ public class StorageExample {
         log.info("默认配置: {}", defaultConfig);
         
         List<Token> tokenList = new ArrayList<>();
-        List<Device> devices = MonkeyDeviceGenerator.generateDevices(defaultConfig, tokenList);
+        List<Device> devices = MonkeyDeviceGenerator.generateDevices(defaultConfig);
         
         log.info("生成了 {} 个设备和 {} 个Token", devices.size(), tokenList.size());
         
@@ -292,7 +292,7 @@ public class StorageExample {
         // 5. 生成测试任务
         String taskJson = MonkeyTaskGenerator.exampleTasksJsonDsl();
         com.google.gson.JsonArray taskArray = com.google.gson.JsonParser.parseString(taskJson).getAsJsonArray();
-        List<TaskCreateRequestDto> taskDtos = MonkeyTaskGenerator.generateTasks(taskArray);
+        List<TaskCreateRequestDto> taskDtos = MonkeyTaskGenerator.generateTasks(taskArray.toString());
         
         log.info("生成了 {} 个任务", taskDtos.size());
         
@@ -358,7 +358,7 @@ public class StorageExample {
         // 2. 使用默认配置生成设备和Token
         String defaultConfig = MonkeyDeviceGenerator.exampleJsonDsl();
         List<Token> tokenList = new ArrayList<>();
-        List<Device> devices = MonkeyDeviceGenerator.generateDevices(defaultConfig, tokenList);
+        List<Device> devices = MonkeyDeviceGenerator.generateDevices(defaultConfig);
         
         log.info("生成了 {} 个设备和 {} 个Token", devices.size(), tokenList.size());
         
@@ -390,7 +390,7 @@ public class StorageExample {
         // 6. 生成测试任务
         String taskJson = MonkeyTaskGenerator.exampleTasksJsonDsl();
         com.google.gson.JsonArray taskArray = com.google.gson.JsonParser.parseString(taskJson).getAsJsonArray();
-        List<TaskCreateRequestDto> taskDtos = MonkeyTaskGenerator.generateTasks(taskArray);
+        List<TaskCreateRequestDto> taskDtos = MonkeyTaskGenerator.generateTasks(taskArray.toString());
         
         log.info("生成了 {} 个任务", taskDtos.size());
         

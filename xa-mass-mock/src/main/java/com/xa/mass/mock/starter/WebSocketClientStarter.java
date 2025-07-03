@@ -102,14 +102,13 @@ public class WebSocketClientStarter implements CommandLineRunner {
      * 加载设备配置
      */
     private List<Device> loadDevices() {
-        List<Token> tokenList = new ArrayList<>();
         try (var is = getClass().getClassLoader().getResourceAsStream(devicesConfigPath)) {
             if (is == null) {
                 log.error("❌ 未找到设备配置文件: {}", devicesConfigPath);
                 return null;
             }
             String deviceJson = new String(is.readAllBytes(), StandardCharsets.UTF_8);
-            return MonkeyDeviceGenerator.generateDevices(deviceJson, tokenList);
+            return MonkeyDeviceGenerator.generateDevices(deviceJson);
         } catch (Exception e) {
             log.error("❌ 加载设备配置失败", e);
             return null;

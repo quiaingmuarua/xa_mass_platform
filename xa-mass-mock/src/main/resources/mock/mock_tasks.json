@@ -1,18 +1,38 @@
 [
   {
-    "taskNameTemplate": "Task-{country}-{i}",
-    "countryList": ["us", "gb"],
-    "countPerCountry": 2,
-    "msgPerTask": 50,
-    "batchSize": 3,
-    "project": "demoApp"
+    "MODEL": "TaskCreateRequestDto",
+    "COUNT": 3,
+    "FIELDS": {
+      "taskName": {"$JOIN": ["Task-us-", "&.index"]},
+      "project": "demoApp",
+      "countryCode": "us",
+      "userId": {"$JOIN": ["user-us-", "&.index"]},
+      "textContent": {"$JOIN": ["content for us-", "&.index"]},
+      "batchSize": {"$RANGE": [1, 5]},
+      "targetList": {
+        "TYPE": "LIST",
+        "COUNT": 10,
+        "MODEL": "java.lang.String",
+        "FIELDS": {}
+      }
+    }
   },
   {
-    "taskNameTemplate": "TestTask-{country}-{i}",
-    "countryList": ["us"],
-    "countPerCountry": 1,
-    "msgPerTask": 50,
-    "batchSize": 2,
-    "project": "testApp"
+    "MODEL": "TaskCreateRequestDto",
+    "COUNT": 2,
+    "FIELDS": {
+      "taskName": {"$JOIN": ["Task-gb-", "&.index"]},
+      "project": "testApp",
+      "countryCode": "gb",
+      "userId": {"$JOIN": ["user-gb-", "&.index"]},
+      "textContent": {"$JOIN": ["content for gb-", "&.index"]},
+      "batchSize": {"$RANGE": [1, 5]},
+      "targetList": {
+        "TYPE": "LIST",
+        "COUNT": 5,
+        "MODEL": "java.lang.String",
+        "FIELDS": {}
+      }
+    }
   }
 ] 

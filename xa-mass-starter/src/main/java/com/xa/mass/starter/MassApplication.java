@@ -265,23 +265,32 @@ public class MassApplication {
             com.google.gson.JsonObject root = engineConfig.getMockConfigRoot();
             logger.info("✅ Mock 配置加载成功");
             if (root.has("devices")) {
-                java.util.List<com.xa.mass.base.model.Token> tokenList = new java.util.ArrayList<>();
-                java.util.List<com.xa.mass.base.model.Device> devices = com.xa.mass.engine.monkey.MonkeyDeviceGenerator.generateDevices(
-                    root.getAsJsonArray("devices").toString(), tokenList);
-                logger.info("📱 生成 {} 个设备和 {} 个 Token", devices.size(), tokenList.size());
+                java.util.List<com.xa.mass.base.model.Device> devices = new java.util.ArrayList<>();
+                com.google.gson.JsonElement deviceElem = root.get("devices");
+                if (deviceElem.isJsonArray()) {
+                    for (com.google.gson.JsonElement dsl : deviceElem.getAsJsonArray()) {
+                        devices.addAll(com.xa.mass.engine.monkey.MonkeyDeviceGenerator.generateDevices(dsl.toString()));
+                    }
+                } else {
+                    devices.addAll(com.xa.mass.engine.monkey.MonkeyDeviceGenerator.generateDevices(deviceElem.toString()));
+                }
+                logger.info("📱 生成 {} 个设备", devices.size());
                 for (com.xa.mass.base.model.Device device : devices) {
                     engine.addDevice(device);
                     logger.debug("添加设备: {} (分组: {}, 状态: {})", device.getDeviceId(), device.getGroupId(), device.getStatus());
                 }
-                for (com.xa.mass.base.model.Token token : tokenList) {
-                    engine.addToken(token);
-                    logger.debug("添加 Token: {} (设备: {}, 状态: {}, 渠道: {})", token.getTokenId(), token.getDeviceId(), token.getStatus(), token.getChannel());
-                }
                 verifyDeviceData(engine);
             }
             if (root.has("tasks")) {
-                java.util.List<com.xa.mass.engine.model.TaskCreateRequestDto> taskDtos = com.xa.mass.engine.monkey.MonkeyTaskGenerator.generateTasks(
-                    root.getAsJsonArray("tasks"));
+                java.util.List<com.xa.mass.engine.model.TaskCreateRequestDto> taskDtos = new java.util.ArrayList<>();
+                com.google.gson.JsonElement taskElem = root.get("tasks");
+                if (taskElem.isJsonArray()) {
+                    for (com.google.gson.JsonElement dsl : taskElem.getAsJsonArray()) {
+                        taskDtos.addAll(com.xa.mass.engine.monkey.MonkeyTaskGenerator.generateTasks(dsl.toString()));
+                    }
+                } else {
+                    taskDtos.addAll(com.xa.mass.engine.monkey.MonkeyTaskGenerator.generateTasks(taskElem.toString()));
+                }
                 logger.info("📋 生成 {} 个任务", taskDtos.size());
                 for (com.xa.mass.engine.model.TaskCreateRequestDto dto : taskDtos) {
                     engine.createTask(dto);
