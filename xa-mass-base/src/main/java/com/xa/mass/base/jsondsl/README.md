@@ -9,7 +9,7 @@
 - 🔄 **递归嵌套**: 支持复杂的嵌套对象和集合结构
 - 🛠️ **内置函数**: 提供丰富的内置函数（随机选择、范围、UUID、时间等）
 - 📋 **类型注册**: 支持类型别名注册，避免硬编码全类名
-- 🎯 **多级作用域变量**: 支持 `&Model.index` 作用域变量，自动递归查找父作用域
+- �� **多级作用域变量**: 支持 `&.index`（当前作用域索引简写）和 `&Model.index`，自动递归查找父作用域
 - ⏰ **时间支持**: 支持当前时间和时间范围随机生成
 - 🔧 **可扩展**: 内置函数和类型注册表支持动态扩展
 
@@ -30,10 +30,10 @@ TypeRegistry.register("Task", Task.class);
   "MODEL": "Device",
   "COUNT": 3,
   "FIELDS": {
-    "deviceId": {"$JOIN": ["device-", "&Device.index"]},
+    "deviceId": {"$JOIN": ["device-", "&.index"]},
     "status": {"$CHOICE": ["ONLINE", "OFFLINE"]},
     "groupId": {"$CHOICE": ["us", "gb", "cn"]},
-    "agentVersion": {"$JOIN": ["1.0.", "&Device.index"]}
+    "agentVersion": {"$JOIN": ["1.0.", "&.index"]}
   }
 }
 ```
@@ -65,15 +65,17 @@ devices.forEach(System.out::println);
 | `$RANGE` | `{"$RANGE": [最小值, 最大值]}` | 生成指定范围内的随机数 | `{"$RANGE": [1, 100]}` |
 | `$UUID` | `{"$UUID": true}` | 生成 UUID | `{"$UUID": true}` |
 | `$RANDOM` | `{"$RANDOM": true}` | 生成随机整数 | `{"$RANDOM": true}` |
-| `$JOIN` | `{"$JOIN": [字符串列表]}` | 字符串拼接 | `{"$JOIN": ["prefix-", "&Device.index", "-suffix"]}` |
+| `$JOIN` | `{"$JOIN": [字符串列表]}` | 字符串拼接 | `{"$JOIN": ["prefix-", "&.index", "-suffix"]}` |
 | `$NOW` | `{"$NOW": "格式化字符串"}` | 获取当前时间 | `{"$NOW": "yyyy-MM-dd HH:mm:ss"}` |
 | `$TIME_RANGE` | `{"$TIME_RANGE": [开始时间, 结束时间, 时间单位, 格式化字符串]}` | 在时间范围内随机生成时间 | `{"$TIME_RANGE": ["now-1d", "now+1d", "HOURS", "yyyy-MM-dd HH:mm:ss"]}` |
 
-### 多级作用域变量
+### 多级作用域变量与简写
 
-- 以 `&` 开头的字符串（如 `&Device.index`）会自动在当前及父作用域递归查找
+- 以 `&` 开头的字符串（如 `&.index`、`&Device.index`）会自动在当前及父作用域递归查找
+- `&.index` 表示"当前作用域的索引"，推荐优先使用
+- `&Model.index` 精确指向指定作用域的索引
 - 支持多层嵌套、父子作用域隔离
-- 推荐所有索引、作用域变量都用 `&Model.index` 方式命名
+- 推荐所有索引、作用域变量都用 `&.index` 或 `&Model.index` 方式命名
 
 #### 变量查找示例
 
@@ -82,21 +84,21 @@ devices.forEach(System.out::println);
   "MODEL": "Device",
   "COUNT": 2,
   "FIELDS": {
-    "deviceId": {"$JOIN": ["device-", "&Device.index"]},
+    "deviceId": {"$JOIN": ["device-", "&.index"]},
     "tasks": {
       "TYPE": "LIST",
       "COUNT": 2,
       "MODEL": "Task",
       "FIELDS": {
-        "taskName": {"$JOIN": ["Task-", "&Task.index", "-of-Device-", "&Device.index"]},
+        "taskName": {"$JOIN": ["Task-", "&.index", "-of-Device-", "&Device.index"]},
         "parentDeviceId": "&Device.deviceId"
       }
     }
   }
 }
 ```
+- `&.index`：查找当前作用域的 index（如 Task 作用域时为 Task 的 index，Device 作用域时为 Device 的 index）
 - `&Device.index`：查找最近的 Device 作用域的 index
-- `&Task.index`：查找最近的 Task 作用域的 index
 - `&Device.deviceId`：查找最近的 Device 作用域的 deviceId
 
 ### 时间函数示例
@@ -107,7 +109,7 @@ devices.forEach(System.out::println);
   "COUNT": 3,
   "FIELDS": {
     "tid": {"$UUID": true},
-    "taskName": {"$JOIN": ["TimeTask-", "&Task.index"]},
+    "taskName": {"$JOIN": ["TimeTask-", "&.index"]},
     "createdTime": {"$NOW": "yyyy-MM-dd HH:mm:ss"},
     "lastModified": {"$TIME_RANGE": ["now-2h", "now", "MINUTES"]}
   }
@@ -178,7 +180,7 @@ try {
 3. **性能考虑**: 大量数据生成时考虑分批处理
 4. **DSL 复用**: 将常用的 DSL 片段提取为常量或配置文件
 5. **测试数据**: 使用有意义的测试数据，便于调试和验证
-6. **作用域变量**: 所有索引、变量都用 `&Model.index` 方式命名，避免变量冲突
+6. **作用域变量**: 推荐优先用 `&.index`，如需跨层访问用 `&Model.index`，避免变量冲突
 7. **时间函数**: 
    - 使用相对时间 `now-1d` 比绝对时间更灵活
    - 合理选择时间单位和范围

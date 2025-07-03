@@ -9,6 +9,10 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.Type;
 import java.util.*;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.Date;
+import java.text.SimpleDateFormat;
 
 /**
  * 通用 JSON-DSL mock 主入口。
@@ -29,7 +33,7 @@ public class JsonDslEngine {
         String modelName = root.has(DslKeyword.MODEL.name()) ? root.get(DslKeyword.MODEL.name()).getAsString() : "Root";
         for (int i = 0; i < count; i++) {
             DslContext context = new DslContext();
-            context.setCurrentScope(modelName);
+            context.setScopeName(modelName);
             context.setVariable("&" + modelName + ".index", i);
             result.add(mockFromDsl(root, context));
         }
@@ -63,6 +67,8 @@ public class JsonDslEngine {
             if (fields.containsKey(field.getName())) {
                 value = mockFieldValue(field, fields.get(field.getName()), context);
             }
+            // 自动类型适配
+            value = adaptType(field.getType(), value);
             // 自动支持枚举类型赋值
             if (field.getType().isEnum() && value instanceof String strVal) {
                 value = Enum.valueOf((Class<Enum>) field.getType(), strVal);
@@ -111,11 +117,11 @@ public class JsonDslEngine {
         List<Object> list = new ArrayList<>();
         for (int j = 0; j < count; j++) {
             DslContext subContext = new DslContext(context);
-            subContext.setCurrentScope(modelName);
+            subContext.setScopeName(modelName);
             subContext.setVariable("&" + modelName + ".index", j);
-            if (context.getCurrentScope() != null) {
+            if (context.getScopeName() != null) {
                 // 继承父作用域的 index 变量（可选）
-                subContext.setVariable("&" + context.getCurrentScope() + ".index", context.getVariable("&" + context.getCurrentScope() + ".index"));
+                subContext.setVariable("&" + context.getScopeName() + ".index", context.getVariable("&" + context.getScopeName() + ".index"));
             }
             JsonObject subDsl = new JsonObject();
             subDsl.addProperty(DslKeyword.MODEL.name(), modelName);
@@ -133,7 +139,7 @@ public class JsonDslEngine {
         Map<?, ?> ruleMap = (Map<?, ?>) rule;
         String modelName = (String) ruleMap.get(DslKeyword.MODEL.name());
         DslContext subContext = new DslContext(context);
-        subContext.setCurrentScope(modelName);
+        subContext.setScopeName(modelName);
         JsonObject subDsl = new JsonObject();
         subDsl.addProperty(DslKeyword.MODEL.name(), modelName);
         if (ruleMap.containsKey(DslKeyword.FIELDS.name())) {
@@ -170,5 +176,55 @@ public class JsonDslEngine {
         if (type == double.class) return 0d;
         if (type == char.class) return '\0';
         return null;
+    }
+
+    // 类型适配：支持 String <-> LocalDateTime/Date
+    private static Object adaptType(Class<?> fieldType, Object value) {
+        if (value == null) return null;
+        // String -> LocalDateTime
+        if (fieldType == LocalDateTime.class && value instanceof String str) {
+            try {
+                // 支持常见格式
+                String[] formats = {"yyyy-MM-dd HH:mm:ss", "yyyy-MM-dd HH:mm", "yyyy-MM-dd", "HH:mm:ss", "HH:mm"};
+                for (String fmt : formats) {
+                    try {
+                        DateTimeFormatter formatter = DateTimeFormatter.ofPattern(fmt);
+                        if (fmt.length() == str.length()) {
+                            return LocalDateTime.parse(str, formatter);
+                        }
+                    } catch (Exception ignored) {}
+                }
+            } catch (Exception ignored) {}
+        }
+        // LocalDateTime -> String
+        if (fieldType == String.class && value instanceof LocalDateTime ldt) {
+            return ldt.toString(); // 或可指定格式
+        }
+        // String -> Date
+        if (fieldType == Date.class && value instanceof String str) {
+            try {
+                String[] formats = {"yyyy-MM-dd HH:mm:ss", "yyyy-MM-dd HH:mm", "yyyy-MM-dd", "HH:mm:ss", "HH:mm"};
+                for (String fmt : formats) {
+                    try {
+                        SimpleDateFormat sdf = new SimpleDateFormat(fmt);
+                        if (fmt.length() == str.length()) {
+                            return sdf.parse(str);
+                        }
+                    } catch (Exception ignored) {}
+                }
+            } catch (Exception ignored) {}
+        }
+        // LocalDateTime -> Date
+        if (fieldType == Date.class && value instanceof LocalDateTime ldt) {
+            try {
+                return java.sql.Timestamp.valueOf(ldt);
+            } catch (Exception ignored) {}
+        }
+        // Date -> String
+        if (fieldType == String.class && value instanceof Date date) {
+            return new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(date);
+        }
+        // 其它类型不变
+        return value;
     }
 } 

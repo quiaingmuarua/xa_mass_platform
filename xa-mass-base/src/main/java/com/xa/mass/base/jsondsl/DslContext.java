@@ -10,7 +10,7 @@ public class DslContext {
     private final Map<String, Object> variables = new HashMap<>();
     private final DslContext parent;
     private int depth = 0;
-    private String currentScope;
+    private String scopeName;
 
     public DslContext() {
         this.parent = null;
@@ -41,11 +41,11 @@ public class DslContext {
         this.depth = depth;
     }
 
-    public String getCurrentScope() {
-        return currentScope;
+    public void setScopeName(String scopeName) {
+        this.scopeName = scopeName;
     }
-    public void setCurrentScope(String currentScope) {
-        this.currentScope = currentScope;
+    public String getScopeName() {
+        return scopeName;
     }
 
     public DslContext getParent() {

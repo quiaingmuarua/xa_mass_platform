@@ -61,6 +61,15 @@ public class TemplateValueResolver {
         }
         if (value instanceof String str) {
             // 只对 & 开头的变量做作用域查找
+            if (str.startsWith("&.")) {
+                String scopeName = context.getScopeName();
+                if (scopeName != null) {
+                    String realKey = "&" + scopeName + str.substring(1); // 变成 &Device.index
+                    Object v = context.getVariable(realKey);
+                    if (v != null) return v;
+                }
+                // fallback: 继续递归查找父作用域
+            }
             if (str.startsWith("&")) {
                 Object v = context.getVariable(str);
                 return v != null ? v : str;

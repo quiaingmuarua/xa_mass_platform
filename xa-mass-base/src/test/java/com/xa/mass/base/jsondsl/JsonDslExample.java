@@ -16,16 +16,16 @@ public class JsonDslExample {
 //            throw new RuntimeException("RuleDefinition class not found", e);
 //        }
 
-        // 批量 mock Device - 使用 &Device.index 作用域变量
+        // 批量 mock Device - 使用 &.index 简写
         String deviceDsl = """
                 {
                   "MODEL": "Device",
                   "COUNT": 3,
                   "FIELDS": {
-                    "deviceId": {"$JOIN": ["device-", "&Device.index"]},
+                    "deviceId": {"$JOIN": ["device-", "&.index"]},
                     "status": {"$CHOICE": ["ONLINE", "OFFLINE"]},
                     "groupId": {"$CHOICE": ["us", "gb", "cn"]},
-                    "agentVersion": {"$JOIN": ["1.0.", "&Device.index"]}
+                    "agentVersion": {"$JOIN": ["1.0.", "&.index"]}
                   }
                 }
                 """;
@@ -33,14 +33,14 @@ public class JsonDslExample {
         System.out.println("=== Generated Devices ===");
         devices.forEach(System.out::println);
 
-        // 批量 mock Task - 使用 &Task.index 作用域变量
+        // 批量 mock Task - 使用 &.index 简写
         String taskDsl = """
                 {
                   "MODEL": "Task",
                   "COUNT": 10,
                   "FIELDS": {
                     "tid": {"$UUID": true},
-                    "taskName": {"$JOIN": ["Task-", "&Task.index"]},
+                    "taskName": {"$JOIN": ["Task-", "&.index"]},
                     "taskCountry": {"$CHOICE": ["us", "gb"]},
                     "taskInitNumber": {"$RANGE": [10, 100]},
                     "batchSize": {"$RANGE": [1, 5]}
@@ -51,24 +51,24 @@ public class JsonDslExample {
         System.out.println("\n=== Generated Tasks ===");
         tasks.forEach(System.out::println);
 
-        // 多级作用域变量查找示例
+        // 多级作用域变量查找示例，&.index 和 &Model.index 混用
         String nestedExampleDsl = """
                 {
                   "MODEL": "Device",
                   "COUNT": 2,
                   "FIELDS": {
-                    "deviceId": {"$JOIN": ["device-", "&Device.index"]},
+                    "deviceId": {"$JOIN": ["device-", "&.index"]},
                     "status": {"$CHOICE": ["ONLINE", "OFFLINE"]},
                     "groupId": {"$CHOICE": ["us", "gb", "cn"]},
-                    "agentVersion": {"$JOIN": ["1.0.", "&Device.index"]},
-                    "description": {"$JOIN": ["Device ", "&Device.index", " in group ", "&Device.groupId"]},
+                    "agentVersion": {"$JOIN": ["1.0.", "&.index"]},
+                    "description": {"$JOIN": ["Device ", "&.index", " in group ", "&Device.groupId"]},
                     "tasks": {
                       "TYPE": "LIST",
                       "COUNT": 2,
                       "MODEL": "Task",
                       "FIELDS": {
                         "tid": {"$UUID": true},
-                        "taskName": {"$JOIN": ["Task-", "&Task.index", "-of-Device-", "&Device.index"]},
+                        "taskName": {"$JOIN": ["Task-", "&.index", "-of-Device-", "&Device.index"]},
                         "parentDeviceId": "&Device.deviceId"
                       }
                     }
@@ -86,7 +86,7 @@ public class JsonDslExample {
                   "COUNT": 3,
                   "FIELDS": {
                     "tid": {"$UUID": true},
-                    "taskName": {"$JOIN": ["TimeTask-", "&Task.index"]},
+                    "taskName": {"$JOIN": ["TimeTask-", "&.index"]},
                     "createdTime": {"$NOW": "yyyy-MM-dd HH:mm:ss"},
                     "lastModified": {"$TIME_RANGE": ["now-2h", "now", "MINUTES"]}
                   }
@@ -102,11 +102,9 @@ public class JsonDslExample {
                   "MODEL": "Device",
                   "COUNT": 2,
                   "FIELDS": {
-                    "deviceId": {"$JOIN": ["device-", "&Device.index"]},
+                    "deviceId": {"$JOIN": ["device-", "&.index"]},
                     "status": {"$CHOICE": ["ONLINE", "OFFLINE"]},
-                    "lastSeen": {"$TIME_RANGE": ["now-30m", "now", "MINUTES", "HH:mm:ss"]},
-                    "registeredAt": {"$TIME_RANGE": ["now-30d", "now-1d", "DAYS", "yyyy-MM-dd"]},
-                    "nextMaintenance": {"$TIME_RANGE": ["now+1d", "now+30d", "DAYS", "yyyy-MM-dd HH:mm"]}
+                    "createdTime": {"$NOW": "yyyy-MM-dd HH:mm:ss"}
                   }
                 }
                 """;
