@@ -13,6 +13,8 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Date;
 import java.text.SimpleDateFormat;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Function;
 
 /**
  * 通用 JSON-DSL mock 主入口。
@@ -20,6 +22,68 @@ import java.text.SimpleDateFormat;
  */
 public class JsonDslEngine {
     private static final Gson gson = new Gson();
+
+    // Field 缓存：Class -> (fieldName -> Field)
+    private static final ConcurrentHashMap<Class<?>, Map<String, Field>> FIELD_CACHE = new ConcurrentHashMap<>();
+
+    // 类型适配器注册表
+    private static final Map<Class<?>, Function<Object, Object>> TYPE_ADAPTERS = new HashMap<>();
+    static {
+        TYPE_ADAPTERS.put(LocalDateTime.class, v -> {
+            if (v == null) return null;
+            if (v instanceof LocalDateTime ldt) return ldt;
+            if (v instanceof String str) {
+                String[] formats = {"yyyy-MM-dd HH:mm:ss", "yyyy-MM-dd HH:mm", "yyyy-MM-dd", "HH:mm:ss", "HH:mm"};
+                for (String fmt : formats) {
+                    try {
+                        DateTimeFormatter formatter = DateTimeFormatter.ofPattern(fmt);
+                        if (fmt.length() == str.length()) {
+                            return LocalDateTime.parse(str, formatter);
+                        }
+                    } catch (Exception ignored) {}
+                }
+            }
+            return null;
+        });
+        TYPE_ADAPTERS.put(Date.class, v -> {
+            if (v == null) return null;
+            if (v instanceof Date d) return d;
+            if (v instanceof LocalDateTime ldt) return java.sql.Timestamp.valueOf(ldt);
+            if (v instanceof String str) {
+                String[] formats = {"yyyy-MM-dd HH:mm:ss", "yyyy-MM-dd HH:mm", "yyyy-MM-dd", "HH:mm:ss", "HH:mm"};
+                for (String fmt : formats) {
+                    try {
+                        SimpleDateFormat sdf = new SimpleDateFormat(fmt);
+                        if (fmt.length() == str.length()) {
+                            return sdf.parse(str);
+                        }
+                    } catch (Exception ignored) {}
+                }
+            }
+            return null;
+        });
+        TYPE_ADAPTERS.put(String.class, v -> {
+            if (v == null) return null;
+            if (v instanceof Date date) return new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(date);
+            if (v instanceof LocalDateTime ldt) return ldt.toString();
+            return v.toString();
+        });
+        // 其他类型可按需扩展
+    }
+
+    private static Field getFieldFromCache(Class<?> clazz, String fieldName) {
+        Map<String, Field> map = FIELD_CACHE.computeIfAbsent(clazz, c -> {
+            Map<String, Field> m = new HashMap<>();
+            for (Field f : c.getDeclaredFields()) {
+                if (!Modifier.isStatic(f.getModifiers())) {
+                    f.setAccessible(true);
+                    m.put(f.getName(), f);
+                }
+            }
+            return m;
+        });
+        return map.get(fieldName);
+    }
 
     /**
      * 根据 JSON-DSL 生成 mock 对象列表。
@@ -60,23 +124,13 @@ public class JsonDslEngine {
             fields = gson.fromJson(dsl.get(DslKeyword.FIELDS.name()), mapType);
         }
         if (fields == null) fields = Collections.emptyMap();
-        for (Field field : clazz.getDeclaredFields()) {
-            if (Modifier.isStatic(field.getModifiers())) continue;
-            field.setAccessible(true);
-            Object value = null;
-            if (fields.containsKey(field.getName())) {
-                value = mockFieldValue(field, fields.get(field.getName()), context);
-            }
-            // 自动类型适配
+        // 新：遍历 JSON FIELDS 字段
+        for (Map.Entry<String, Object> entry : fields.entrySet()) {
+            String fieldName = entry.getKey();
+            Field field = getFieldFromCache(clazz, fieldName);
+            if (field == null) continue; // JSON 有但类无此字段，跳过
+            Object value = mockFieldValue(field, entry.getValue(), context);
             value = adaptType(field.getType(), value);
-            // 自动支持枚举类型赋值
-            if (field.getType().isEnum() && value instanceof String strVal) {
-                value = Enum.valueOf((Class<Enum>) field.getType(), strVal);
-            }
-            // 基本类型未指定时赋默认值
-            if (value == null && field.getType().isPrimitive()) {
-                value = getPrimitiveDefaultValue(field.getType());
-            }
             try {
                 field.set(obj, value);
             } catch (Exception e) {
@@ -178,53 +232,36 @@ public class JsonDslEngine {
         return null;
     }
 
-    // 类型适配：支持 String <-> LocalDateTime/Date
     private static Object adaptType(Class<?> fieldType, Object value) {
-        if (value == null) return null;
-        // String -> LocalDateTime
-        if (fieldType == LocalDateTime.class && value instanceof String str) {
-            try {
-                // 支持常见格式
-                String[] formats = {"yyyy-MM-dd HH:mm:ss", "yyyy-MM-dd HH:mm", "yyyy-MM-dd", "HH:mm:ss", "HH:mm"};
-                for (String fmt : formats) {
-                    try {
-                        DateTimeFormatter formatter = DateTimeFormatter.ofPattern(fmt);
-                        if (fmt.length() == str.length()) {
-                            return LocalDateTime.parse(str, formatter);
-                        }
-                    } catch (Exception ignored) {}
+        if (value == null) {
+            if (fieldType.isPrimitive()) return getPrimitiveDefaultValue(fieldType);
+            return null;
+        }
+        // 枚举类型适配
+        if (fieldType.isEnum()) {
+            if (value instanceof String strVal) {
+                return Enum.valueOf((Class<Enum>) fieldType, strVal);
+            }
+            // 兼容直接传枚举对象
+            if (fieldType.isInstance(value)) {
+                return value;
+            }
+            // 兼容数字下标
+            if (value instanceof Number num) {
+                Object[] enumConstants = fieldType.getEnumConstants();
+                int idx = num.intValue();
+                if (idx >= 0 && idx < enumConstants.length) {
+                    return enumConstants[idx];
                 }
-            } catch (Exception ignored) {}
+            }
+            throw new JsonDslException("无法将 " + value + " 转为枚举 " + fieldType.getName());
         }
-        // LocalDateTime -> String
-        if (fieldType == String.class && value instanceof LocalDateTime ldt) {
-            return ldt.toString(); // 或可指定格式
+        // 类型适配器
+        Function<Object, Object> adapter = TYPE_ADAPTERS.get(fieldType);
+        if (adapter != null) {
+            Object adapted = adapter.apply(value);
+            if (adapted != null) return adapted;
         }
-        // String -> Date
-        if (fieldType == Date.class && value instanceof String str) {
-            try {
-                String[] formats = {"yyyy-MM-dd HH:mm:ss", "yyyy-MM-dd HH:mm", "yyyy-MM-dd", "HH:mm:ss", "HH:mm"};
-                for (String fmt : formats) {
-                    try {
-                        SimpleDateFormat sdf = new SimpleDateFormat(fmt);
-                        if (fmt.length() == str.length()) {
-                            return sdf.parse(str);
-                        }
-                    } catch (Exception ignored) {}
-                }
-            } catch (Exception ignored) {}
-        }
-        // LocalDateTime -> Date
-        if (fieldType == Date.class && value instanceof LocalDateTime ldt) {
-            try {
-                return java.sql.Timestamp.valueOf(ldt);
-            } catch (Exception ignored) {}
-        }
-        // Date -> String
-        if (fieldType == String.class && value instanceof Date date) {
-            return new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(date);
-        }
-        // 其它类型不变
         return value;
     }
 } 
