@@ -40,6 +40,22 @@ public class TemplateValueResolver {
         if (value instanceof Map<?, ?> map) {
             if (isBuiltinFunction(map)) {
                 String funcKey = (String) map.keySet().iterator().next();
+                // $EXPR 表达式支持
+                if ("$EXPR".equals(funcKey)) {
+                    Object exprObj = map.get(funcKey);
+                    // 合并当前作用域和父作用域的所有变量
+                    Map<String, Object> vars = new HashMap<>();
+                    DslContext ctx = context;
+                    while (ctx != null) {
+                        vars.putAll(ctx.getVariables());
+                        ctx = ctx.getParent();
+                    }
+                    try {
+                        return com.xa.mass.base.jsondsl.eval.DslExprExecutor.execute(exprObj, vars);
+                    } catch (Exception e) {
+                        throw new JsonDslException("$EXPR 执行失败: " + exprObj, e);
+                    }
+                }
                 BuiltinFunc func = BuiltinFunc.fromKey(funcKey);
                 Object param = map.get(funcKey);
                 BiFunction<Object, DslContext, Object> resolver = BUILTIN_RESOLVERS.get(func);

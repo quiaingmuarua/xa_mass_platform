@@ -9,6 +9,7 @@ import java.util.stream.Collectors;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
+import com.ql.util.express.ExpressRunner;
 
 @FunctionalInterface
 interface BuiltinFunction {
@@ -270,5 +271,30 @@ public class BuiltinFunctions {
         }
         
         throw new JsonDslException("无法解析相对时间: " + timeStr);
+    }
+
+    /**
+     * 批量注册所有常用内置函数到 QLExpress
+     */
+    public static void registerToQLExpress(ExpressRunner runner) {
+        try {
+            // 注册 random(int, int) 函数
+            runner.addFunction("random", new com.ql.util.express.Operator() {
+                @Override
+                public Object executeInner(Object[] list) throws Exception {
+                    int min = ((Number) list[0]).intValue();
+                    int max = ((Number) list[1]).intValue();
+                    return min + (int) (Math.random() * (max - min + 1));
+                }
+            });
+            runner.addFunctionOfClassMethod("choice", BuiltinFunctions.class.getName(), "choice", new String[]{"java.util.List"}, null);
+            runner.addFunctionOfClassMethod("range", BuiltinFunctions.class.getName(), "range", new String[]{"int", "int"}, null);
+            runner.addFunctionOfClassMethod("uuid", BuiltinFunctions.class.getName(), "uuid", new String[]{}, null);
+            runner.addFunctionOfClassMethod("join", BuiltinFunctions.class.getName(), "join", new String[]{"java.util.List"}, null);
+            runner.addFunctionOfClassMethod("now", BuiltinFunctions.class.getName(), "now", new String[]{"java.lang.Object"}, null);
+            runner.addFunctionOfClassMethod("timeRange", BuiltinFunctions.class.getName(), "timeRange", new String[]{"java.lang.Object"}, null);
+        } catch (Exception e) {
+            throw new RuntimeException("注册 BuiltinFunctions 到 QLExpress 失败", e);
+        }
     }
 } 
