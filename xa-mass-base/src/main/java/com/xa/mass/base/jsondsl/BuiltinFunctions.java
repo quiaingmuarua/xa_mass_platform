@@ -17,6 +17,26 @@ interface BuiltinFunction {
 
 /**
  * 内置 mock 生成函数注册表，支持 $CHOICE, $RANGE, $UUID, $RANDOM, $JOIN, $CONTEXT, $NOW, $TIME_RANGE。
+ *
+ * <p><b>常用 DSL 配置示例：</b></p>
+ * <pre>
+ * // 生成指定时间范围内的随机 LocalDateTime
+ * "updateTime": {"$TIME_RANGE": ["now-2h", "now", "MINUTES"]}
+ *
+ * // 生成指定时间范围内的随机时间字符串（指定格式）
+ * "updateTime": {"$TIME_RANGE": ["2024-07-01 00:00:00", "2024-07-02 00:00:00", "MINUTES", "yyyy-MM-dd HH:mm:ss"]}
+ *
+ * // 结合 now±偏移，返回格式化字符串
+ * "updateTime": {"$TIME_RANGE": ["now-1d", "now", "HOURS", "yyyy-MM-dd HH:mm"]}
+ * </pre>
+ *
+ * <b>参数说明：</b>
+ * <ul>
+ *   <li>第1个参数：开始时间（支持 yyyy-MM-dd HH:mm:ss、now、now-1d、now+2h 等）</li>
+ *   <li>第2个参数：结束时间（同上）</li>
+ *   <li>第3个参数：时间单位（DAYS, HOURS, MINUTES, SECONDS，当前实现主要以秒为粒度，单位参数可忽略）</li>
+ *   <li>第4个参数（可选）：格式化字符串（如 "yyyy-MM-dd HH:mm:ss"），不填则返回 LocalDateTime 对象</li>
+ * </ul>
  */
 public class BuiltinFunctions {
     private static final Random RANDOM = new Random();
@@ -96,9 +116,17 @@ public class BuiltinFunctions {
 
     /**
      * 在时间范围内随机生成时间
+     * <p>
+     * DSL 示例：
+     * <pre>
+     *   // 生成 LocalDateTime
+     *   "updateTime": {"$TIME_RANGE": ["now-2h", "now", "MINUTES"]}
+     *   // 生成格式化字符串
+     *   "updateTime": {"$TIME_RANGE": ["2024-07-01 00:00:00", "2024-07-02 00:00:00", "MINUTES", "yyyy-MM-dd HH:mm:ss"]}
+     * </pre>
      * @param param 时间范围参数，格式为 [开始时间, 结束时间, 时间单位, 格式化字符串(可选)]
-     *              时间单位支持: DAYS, HOURS, MINUTES, SECONDS
-     * @return 随机时间
+     *              时间单位支持: DAYS, HOURS, MINUTES, SECONDS（当前实现主要以秒为粒度，单位参数可忽略）
+     * @return 随机时间（LocalDateTime 或格式化字符串）
      */
     public static Object timeRange(Object param) {
         if (!(param instanceof List<?> list) || list.size() < 3) {
