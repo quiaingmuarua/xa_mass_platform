@@ -278,21 +278,21 @@ public class BuiltinFunctions {
      */
     public static void registerToQLExpress(ExpressRunner runner) {
         try {
-            // 注册 random(int, int) 函数
-            runner.addFunction("random", new com.ql.util.express.Operator() {
-                @Override
-                public Object executeInner(Object[] list) throws Exception {
-                    int min = ((Number) list[0]).intValue();
-                    int max = ((Number) list[1]).intValue();
-                    return min + (int) (Math.random() * (max - min + 1));
+            for (Map.Entry<BuiltinFunc, BuiltinFunction> entry : FUNCTION_MAP.entrySet()) {
+                BuiltinFunc func = entry.getKey();
+                BuiltinFunction impl = entry.getValue();
+                for (String alias : func.aliases()) {
+                    runner.addFunction(alias, new com.ql.util.express.Operator() {
+                        @Override
+                        public Object executeInner(Object[] list) throws Exception {
+                            // 兼容单参数和多参数
+                            if (list == null || list.length == 0) return impl.apply(null);
+                            if (list.length == 1) return impl.apply(list[0]);
+                            return impl.apply(java.util.Arrays.asList(list));
+                        }
+                    });
                 }
-            });
-            runner.addFunctionOfClassMethod("choice", BuiltinFunctions.class.getName(), "choice", new String[]{"java.util.List"}, null);
-            runner.addFunctionOfClassMethod("range", BuiltinFunctions.class.getName(), "range", new String[]{"int", "int"}, null);
-            runner.addFunctionOfClassMethod("uuid", BuiltinFunctions.class.getName(), "uuid", new String[]{}, null);
-            runner.addFunctionOfClassMethod("join", BuiltinFunctions.class.getName(), "join", new String[]{"java.util.List"}, null);
-            runner.addFunctionOfClassMethod("now", BuiltinFunctions.class.getName(), "now", new String[]{"java.lang.Object"}, null);
-            runner.addFunctionOfClassMethod("timeRange", BuiltinFunctions.class.getName(), "timeRange", new String[]{"java.lang.Object"}, null);
+            }
         } catch (Exception e) {
             throw new RuntimeException("注册 BuiltinFunctions 到 QLExpress 失败", e);
         }

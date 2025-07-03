@@ -22,7 +22,7 @@ public class JsonDslQlExample {
             "onlineStrategy": {
               "$EXPR": {
                 "lang": "ql",
-                "expr": "status == 'OFFLINE' ? 0 : random(10, 100)"
+                "expr": "status == 'OFFLINE' ? 0 : range(10, 100)"
               }
             }
           }
