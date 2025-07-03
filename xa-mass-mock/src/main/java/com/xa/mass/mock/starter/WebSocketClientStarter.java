@@ -2,7 +2,7 @@ package com.xa.mass.mock.starter;
 
 import com.xa.mass.base.model.Device;
 import com.xa.mass.base.model.Token;
-import com.xa.mass.engine.monkey.MonkeyDeviceGenerator;
+import com.xa.mass.engine.monkey.MonkeyGenerator;
 import com.xa.mass.gateway.model.enums.MessageDirection;
 import com.xa.mass.gateway.model.enums.MessageType;
 import com.xa.mass.gateway.model.massMessage.MassMessage;
@@ -108,7 +108,7 @@ public class WebSocketClientStarter implements CommandLineRunner {
                 return null;
             }
             String deviceJson = new String(is.readAllBytes(), StandardCharsets.UTF_8);
-            return MonkeyDeviceGenerator.generateDevices(deviceJson);
+            return MonkeyGenerator.generateDevices(deviceJson);
         } catch (Exception e) {
             log.error("❌ 加载设备配置失败", e);
             return null;

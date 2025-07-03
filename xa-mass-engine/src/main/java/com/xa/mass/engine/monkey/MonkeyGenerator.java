@@ -4,6 +4,7 @@ import com.xa.mass.base.jsondsl.JsonDslEngine;
 import com.xa.mass.base.jsondsl.TypeRegistry;
 import com.xa.mass.base.model.Device;
 import com.xa.mass.base.model.Token;
+import com.xa.mass.engine.model.TaskCreateRequestDto;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -12,17 +13,26 @@ import java.util.stream.Collectors;
 /**
  * 基于 JSON-DSL 的 mock 设备/Token 生成器。
  */
-public class MonkeyDeviceGenerator {
+public class MonkeyGenerator {
+
+    static {
+
+        // 注册类型
+        TypeRegistry.register("Device", Device.class);
+        TypeRegistry.register("Token", Token.class);
+        TypeRegistry.register("RuleDefinition", com.xa.mass.engine.rules.RuleDefinition.class);
+        TypeRegistry.register("TaskCreateRequestDto", TaskCreateRequestDto.class);
+
+    }
+
+
     /**
      * 根据 JSON-DSL 生成设备列表（支持递归嵌套 Token）。
      * @param jsonDsl JSON-DSL 字符串
      * @return 设备列表
      */
     public static List<Device> generateDevices(String jsonDsl) {
-        // 注册类型
-        TypeRegistry.register("Device", Device.class);
-        TypeRegistry.register("Token", Token.class);
-        TypeRegistry.register("RuleDefinition", com.xa.mass.engine.rules.RuleDefinition.class);
+
         // 生成
         List<Object> result = JsonDslEngine.generate(jsonDsl);
         // 只保留 Device 类型
@@ -38,9 +48,6 @@ public class MonkeyDeviceGenerator {
      * @return Token 列表
      */
     public static List<Token> generateTokens(String jsonDsl) {
-        TypeRegistry.register("Device", Device.class);
-        TypeRegistry.register("Token", Token.class);
-        TypeRegistry.register("RuleDefinition", com.xa.mass.engine.rules.RuleDefinition.class);
         List<Object> result = JsonDslEngine.generate(jsonDsl);
         List<Token> tokens = new ArrayList<>();
         for (Object obj : result) {
@@ -53,6 +60,44 @@ public class MonkeyDeviceGenerator {
         tokens.addAll(result.stream().filter(Token.class::isInstance).map(Token.class::cast).collect(Collectors.toList()));
         return tokens;
     }
+
+    /**
+     * 根据 JSON-DSL 生成 TaskCreateRequestDto 列表。
+     * @param jsonDsl JSON-DSL 字符串
+     * @return 任务请求列表
+     */
+    public static List<TaskCreateRequestDto> generateTasks(String jsonDsl) {
+        List<Object> result = JsonDslEngine.generate(jsonDsl);
+        return result.stream()
+                .filter(TaskCreateRequestDto.class::isInstance)
+                .map(TaskCreateRequestDto.class::cast)
+                .collect(Collectors.toList());
+    }
+
+    // 示例 JSON-DSL（推荐用 README.md 里的 DSL 语法）
+    public static String exampleTasksJsonDsl() {
+        return """
+        {
+          "MODEL": "TaskCreateRequestDto",
+          "COUNT": 2,
+          "FIELDS": {
+            "taskName": {"$JOIN": ["Task-", "&.index"]},
+            "project": {"$CHOICE": ["demoApp", "testApp"]},
+            "countryCode": {"$CHOICE": ["us", "gb"]},
+            "userId": {"$JOIN": ["user-", "&.index"]},
+            "textContent": {"$JOIN": ["content for ", "&.index"]},
+            "batchSize": {"$RANGE": [1, 5]},
+            "targetList": {
+              "TYPE": "LIST",
+              "COUNT": 3,
+              "MODEL": "java.lang.String",
+              "FIELDS": {}
+            }
+          }
+        }
+        """;
+    }
+
 
     // 示例 JSON-DSL（推荐用 README.md 里的 DSL 语法）
     public static String exampleJsonDsl() {

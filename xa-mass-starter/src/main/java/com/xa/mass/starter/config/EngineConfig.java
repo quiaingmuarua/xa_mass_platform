@@ -119,8 +119,8 @@ public  class EngineConfig {
     // 默认 mock 配置
     private static String getDefaultMockConfig() {
         return "{\n" +
-                "  \"devices\": " + com.xa.mass.engine.monkey.MonkeyDeviceGenerator.exampleJsonDsl() + ",\n" +
-                "  \"tasks\": " + com.xa.mass.engine.monkey.MonkeyTaskGenerator.exampleTasksJsonDsl() + "\n" +
+                "  \"devices\": " + com.xa.mass.engine.monkey.MonkeyGenerator.exampleJsonDsl() + ",\n" +
+                "  \"tasks\": " + com.xa.mass.engine.monkey.MonkeyGenerator.exampleTasksJsonDsl() + "\n" +
                 "}";
     }
 

@@ -14,8 +14,7 @@ import com.xa.mass.engine.listener.SimpleTaskMsgAssignListener;
 import com.xa.mass.engine.listener.TaskAssignWorker;
 import com.xa.mass.engine.listener.TaskDeviceAssignListener;
 import com.xa.mass.engine.model.TaskCreateRequestDto;
-import com.xa.mass.engine.monkey.MonkeyDeviceGenerator;
-import com.xa.mass.engine.monkey.MonkeyTaskGenerator;
+import com.xa.mass.engine.monkey.MonkeyGenerator;
 import com.xa.mass.engine.service.AssignmentRecordService;
 import com.xa.mass.engine.strategy.SimpleTaskScheduler;
 import com.xa.mass.starter.config.EngineConfig;
@@ -90,8 +89,8 @@ public class MassEngine {
     // 默认 mock 配置
     private static String getDefaultMockConfig() {
         return "{\n" +
-                "  \"devices\": " + MonkeyDeviceGenerator.exampleJsonDsl() + ",\n" +
-                "  \"tasks\": " + MonkeyTaskGenerator.exampleTasksJsonDsl() + "\n" +
+                "  \"devices\": " + MonkeyGenerator.exampleJsonDsl() + ",\n" +
+                "  \"tasks\": " + MonkeyGenerator.exampleTasksJsonDsl() + "\n" +
                 "}";
     }
 

@@ -269,10 +269,10 @@ public class MassApplication {
                 com.google.gson.JsonElement deviceElem = root.get("devices");
                 if (deviceElem.isJsonArray()) {
                     for (com.google.gson.JsonElement dsl : deviceElem.getAsJsonArray()) {
-                        devices.addAll(com.xa.mass.engine.monkey.MonkeyDeviceGenerator.generateDevices(dsl.toString()));
+                        devices.addAll(com.xa.mass.engine.monkey.MonkeyGenerator.generateDevices(dsl.toString()));
                     }
                 } else {
-                    devices.addAll(com.xa.mass.engine.monkey.MonkeyDeviceGenerator.generateDevices(deviceElem.toString()));
+                    devices.addAll(com.xa.mass.engine.monkey.MonkeyGenerator.generateDevices(deviceElem.toString()));
                 }
                 logger.info("📱 生成 {} 个设备", devices.size());
                 for (com.xa.mass.base.model.Device device : devices) {
@@ -286,10 +286,10 @@ public class MassApplication {
                 com.google.gson.JsonElement taskElem = root.get("tasks");
                 if (taskElem.isJsonArray()) {
                     for (com.google.gson.JsonElement dsl : taskElem.getAsJsonArray()) {
-                        taskDtos.addAll(com.xa.mass.engine.monkey.MonkeyTaskGenerator.generateTasks(dsl.toString()));
+                        taskDtos.addAll(com.xa.mass.engine.monkey.MonkeyGenerator.generateTasks(dsl.toString()));
                     }
                 } else {
-                    taskDtos.addAll(com.xa.mass.engine.monkey.MonkeyTaskGenerator.generateTasks(taskElem.toString()));
+                    taskDtos.addAll(com.xa.mass.engine.monkey.MonkeyGenerator.generateTasks(taskElem.toString()));
                 }
                 logger.info("📋 生成 {} 个任务", taskDtos.size());
                 for (com.xa.mass.engine.model.TaskCreateRequestDto dto : taskDtos) {
