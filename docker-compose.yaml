@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  xa-mass-platform:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: xa-mass-platform
+    volumes:
+      - ./logs:/app/logs   # 日志目录挂载到宿主机 logs 文件夹
+    environment:
+      # Spring Boot 日志配置，可通过环境变量或 application.yml 实现
+      - LOG_PATH=/app/logs
+    # 可加健康检查/端口映射等
+
+  otel-collector:
+    image: signoz/signoz-otel-collector:v0.128.0
+    container_name: signoz-otel-collector
+    volumes:
+      - ./logs:/app/logs
+      - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml
+    command:
+      - --config=/etc/otel-collector-config.yaml
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+    depends_on:
+      - xa-mass-platform

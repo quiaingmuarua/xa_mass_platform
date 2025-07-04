@@ -107,7 +107,16 @@ public class WebSocketClientStarter implements CommandLineRunner {
                 return null;
             }
             String deviceJson = new String(is.readAllBytes(), StandardCharsets.UTF_8);
-            return MonkeyGenerator.generateDevices(deviceJson);
+            com.google.gson.JsonElement elem = com.google.gson.JsonParser.parseString(deviceJson);
+            List<Device> devices = new ArrayList<>();
+            if (elem.isJsonArray()) {
+                for (com.google.gson.JsonElement dsl : elem.getAsJsonArray()) {
+                    devices.addAll(MonkeyGenerator.generateDevices(dsl.toString()));
+                }
+            } else {
+                devices.addAll(MonkeyGenerator.generateDevices(deviceJson));
+            }
+            return devices;
         } catch (Exception e) {
             log.error("❌ 加载设备配置失败", e);
             return null;

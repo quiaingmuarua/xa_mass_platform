@@ -1,5 +1,6 @@
 package com.xa.mass.starter;
 
+import com.xa.mass.base.model.Device;
 import com.xa.mass.gateway.dispatcher.DispatcherContext;
 import com.xa.mass.gateway.dispatcher.DispatcherContextRegistry;
 import com.xa.mass.gateway.dispatcher.MessageHandlerRegistry;
@@ -307,12 +308,12 @@ public class MassApplication {
     public void verifyDeviceData(MassEngine engine) {
         com.xa.mass.engine.DeviceManager deviceManager = engine.getDeviceManager();
         if (deviceManager != null) {
-            java.util.List<com.xa.mass.base.model.Device> allDevices = deviceManager.getAllDevices();
-            java.util.List<com.xa.mass.base.model.Device> usDevices = deviceManager.getDevicesByCountry("us");
-            java.util.List<com.xa.mass.base.model.Device> gbDevices = deviceManager.getDevicesByCountry("gb");
+            java.util.List<Device> allDevices = deviceManager.getAllDevices();
+            java.util.List<Device> usDevices = deviceManager.getDevicesByCountry("us");
+            java.util.List<Device> gbDevices = deviceManager.getDevicesByCountry("gb");
             logger.info("📊 设备数据验证 - 总计: {}, 美国: {}, 英国: {}", allDevices.size(), usDevices.size(), gbDevices.size());
             for (int i = 0; i < Math.min(3, allDevices.size()); i++) {
-                com.xa.mass.base.model.Device device = allDevices.get(i);
+                Device device = allDevices.get(i);
                 com.xa.mass.base.model.Token token = deviceManager.getToken(device.getDeviceId());
                 logger.info("设备 {}: ID={}, 分组={}, 状态={}, Token={}, Token状态={}", i + 1, device.getDeviceId(), device.getGroupId(), device.getStatus(), token != null ? token.getTokenId() : "null", token != null ? token.getStatus() : "null");
             }

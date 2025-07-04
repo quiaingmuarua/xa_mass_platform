@@ -71,4 +71,4 @@
         <appender-ref ref="STDOUT"/>
         <appender-ref ref="FILE"/>
     </root>
-</configuration>
+</configuration> 

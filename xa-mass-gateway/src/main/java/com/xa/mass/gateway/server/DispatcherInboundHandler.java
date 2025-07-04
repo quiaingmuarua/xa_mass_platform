@@ -10,6 +10,9 @@ import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import com.google.gson.Gson;
+
+import java.util.Map;
 
 public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWebSocketFrame> {
     private static final Logger logger = LoggerFactory.getLogger(DispatcherInboundHandler.class);
@@ -53,7 +56,18 @@ public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWe
                     .receivedAt(System.currentTimeMillis())
                     .traceId(massMessage.getMsgId())
                     .build();
-            logger.info(" channelRead0 envelope = {}", envelope);
+            org.slf4j.MDC.put("event", "channelRead0");
+            org.slf4j.MDC.put("deviceId", envelope.getDeviceId());
+            org.slf4j.MDC.put("connRole", envelope.getConnRole());
+            org.slf4j.MDC.put("traceId", envelope.getTraceId());
+            org.slf4j.MDC.put("project", envelope.getProject());
+            org.slf4j.MDC.put("receivedAt", String.valueOf(envelope.getReceivedAt()));
+//            org.slf4j.MDC.put("rawJson", envelope.getRawJson());
+            try {
+                logger.info("channelRead0 envelope");
+            } finally {
+                org.slf4j.MDC.clear();
+            }
 
             dispatcherContext.getMessageTransporter().sendInput(envelope);
             dispatcherContext.getSessionManager().addSession(deviceId, connRole, ctx.channel(), ctx);

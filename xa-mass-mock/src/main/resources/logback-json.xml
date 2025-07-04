@@ -53,9 +53,7 @@
                 </stackTrace>
 
                 <!-- MDC字段 -->
-                <mdc>
-                    <fieldName>mdc</fieldName>
-                </mdc>
+                <mdc flatten="true"/>
 
                 <!-- 应用信息 -->
                 <context>
@@ -110,9 +108,7 @@
                 </stackTrace>
 
                 <!-- MDC字段 -->
-                <mdc>
-                    <fieldName>mdc</fieldName>
-                </mdc>
+                <mdc flatten="true"/>
 
                 <!-- 应用信息 -->
                 <context>
@@ -163,9 +159,7 @@
                 <stackTrace>
                     <fieldName>stackTrace</fieldName>
                 </stackTrace>
-                <mdc>
-                    <fieldName>mdc</fieldName>
-                </mdc>
+                <mdc flatten="true"/>
                 <customFields>{"app":"xa-mass-platform","logType":"error"}</customFields>
             </providers>
         </encoder>
@@ -203,9 +197,7 @@
                 <stackTrace>
                     <fieldName>stackTrace</fieldName>
                 </stackTrace>
-                <mdc>
-                    <fieldName>mdc</fieldName>
-                </mdc>
+                <mdc flatten="true"/>
                 <customFields>{"app":"xa-mass-platform","logType":"business"}</customFields>
             </providers>
         </encoder>
