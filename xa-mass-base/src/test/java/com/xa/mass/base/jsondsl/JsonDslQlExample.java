@@ -31,8 +31,7 @@ public class JsonDslQlExample {
                   }
                 }
                 """;
-        Object result = com.xa.mass.base.jsondsl.JsonDslEngine.generate(dsl);
-        List<Object> relativeTimeExamples = result instanceof List ? (List<Object>) result : List.of(result);
+        List<Device> relativeTimeExamples = com.xa.mass.base.jsondsl.JsonDslEngine.generateList(dsl,Device.class);
         relativeTimeExamples.forEach(System.out::println);
     }
 }

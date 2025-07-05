@@ -33,20 +33,8 @@ public class MonkeyGenerator {
      * @return 设备列表
      */
     public static List<Device> generateDevices(String jsonDsl) {
-
         // 生成
-        Object result = JsonDslEngine.generate(jsonDsl);
-        List<Object> objects;
-        if (result instanceof List) {
-            objects = (List<Object>) result;
-        } else {
-            objects = Collections.singletonList(result);
-        }
-        // 只保留 Device 类型
-        return objects.stream()
-                .filter(Device.class::isInstance)
-                .map(Device.class::cast)
-                .collect(Collectors.toList());
+        return JsonDslEngine.generateList(jsonDsl, Device.class);
     }
 
     /**
@@ -55,23 +43,8 @@ public class MonkeyGenerator {
      * @return Token 列表
      */
     public static List<Token> generateTokens(String jsonDsl) {
-        Object result = JsonDslEngine.generate(jsonDsl);
-        List<Object> objects;
-        if (result instanceof List) {
-            objects = (List<Object>) result;
-        } else {
-            objects = Collections.singletonList(result);
-        }
-        List<Token> tokens = new ArrayList<>();
-        for (Object obj : objects) {
-            if (obj instanceof Device device) {
-                // 假设 Device 有 getTokens() 或类似方法，或通过 DSL 递归生成
-                // 这里需根据 DSL 结构调整
-            }
-        }
         // 目前仅支持通过 DSL 直接生成 Token 列表
-        tokens.addAll(objects.stream().filter(Token.class::isInstance).map(Token.class::cast).collect(Collectors.toList()));
-        return tokens;
+        return JsonDslEngine.generateList(jsonDsl, Token.class);
     }
 
     /**
@@ -80,17 +53,7 @@ public class MonkeyGenerator {
      * @return 任务请求列表
      */
     public static List<TaskCreateRequestDto> generateTasks(String jsonDsl) {
-        Object result = JsonDslEngine.generate(jsonDsl);
-        List<Object> objects;
-        if (result instanceof List) {
-            objects = (List<Object>) result;
-        } else {
-            objects = Collections.singletonList(result);
-        }
-        return objects.stream()
-                .filter(TaskCreateRequestDto.class::isInstance)
-                .map(TaskCreateRequestDto.class::cast)
-                .collect(Collectors.toList());
+        return JsonDslEngine.generateList(jsonDsl, TaskCreateRequestDto.class);
     }
 
     // 示例 JSON-DSL（推荐用 README.md 里的 DSL 语法）

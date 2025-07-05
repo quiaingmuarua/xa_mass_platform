@@ -5,6 +5,7 @@ import com.xa.mass.base.model.Task;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 验证重构后的 JsonDslEngine 功能
@@ -12,13 +13,14 @@ import java.util.List;
 public class RefactoredJsonDslTest {
 
     @Test
-    public void testSingleObjectGeneration() {
+    public void testSingleModelList() {
         // 注册类型
         TypeRegistry.register("Device", Device.class.getName());
         
         String dsl = """
             {
                 "MODEL": "Device",
+                "COUNT": 3,
                 "FIELDS": {
                     "deviceId": "{{@uuid}}",
                     "status": "ONLINE"
@@ -26,46 +28,137 @@ public class RefactoredJsonDslTest {
             }
             """;
         
-        Object result = JsonDslEngine.generateSingle(dsl);
+        List<Object> result = JsonDslEngine.generateList(dsl);
         assertNotNull(result);
-        assertTrue(result instanceof Device);
+        assertEquals(3, result.size());
         
-        Device device = (Device) result;
-        assertNotNull(device.getDeviceId());
-        assertEquals("ONLINE", device.getStatus().name());
+        for (Object obj : result) {
+            assertTrue(obj instanceof Device);
+            Device device = (Device) obj;
+            assertNotNull(device.getDeviceId());
+            assertEquals("ONLINE", device.getStatus().name());
+        }
     }
 
     @Test
-    public void testListGeneration() {
+    public void testSingleModelTypedList() {
         // 注册类型
-        TypeRegistry.register("Task", Task.class.getName());
+        TypeRegistry.register("Device", Device.class.getName());
         
         String dsl = """
             {
-                "MODEL": "Task",
-                "COUNT": 3,
+                "MODEL": "Device",
+                "COUNT": 2,
                 "FIELDS": {
-                    "tid": "{{@uuid}}",
-                    "taskName": "任务",
-                    "status": "READY"
+                    "deviceId": "{{@uuid}}",
+                    "status": "ONLINE"
                 }
             }
             """;
         
-        var result = JsonDslEngine.generateList(dsl);
+        List<Device> result = JsonDslEngine.generateList(dsl, Device.class);
         assertNotNull(result);
-        assertEquals(3, result.size());
+        assertEquals(2, result.size());
         
-        for (int i = 0; i < result.size(); i++) {
-            Task task = (Task) result.get(i);
+        for (Device device : result) {
+            assertNotNull(device.getDeviceId());
+            assertEquals("ONLINE", device.getStatus().name());
+        }
+    }
+
+    @Test
+    public void testMultipleModelsMap() {
+        // 注册类型
+        TypeRegistry.register("Device", Device.class.getName());
+        TypeRegistry.register("Task", Task.class.getName());
+        
+        String dsl = """
+            {
+                "device": {
+                    "MODEL": "Device",
+                    "COUNT": 2,
+                    "FIELDS": {
+                        "deviceId": "{{@uuid}}",
+                        "status": "ONLINE"
+                    }
+                },
+                "task": {
+                    "MODEL": "Task",
+                    "COUNT": 3,
+                    "FIELDS": {
+                        "tid": "{{@uuid}}",
+                        "taskName": "测试任务",
+                        "status": "READY"
+                    }
+                }
+            }
+            """;
+        
+        Map<String, List<Object>> result = JsonDslEngine.generateMap(dsl);
+        assertNotNull(result);
+        assertEquals(2, result.size());
+        
+        assertTrue(result.containsKey("device"));
+        assertTrue(result.containsKey("task"));
+        
+        List<Object> deviceList = result.get("device");
+        List<Object> taskList = result.get("task");
+        
+        assertEquals(2, deviceList.size());
+        assertEquals(3, taskList.size());
+        
+        // 验证设备
+        for (Object obj : deviceList) {
+            assertTrue(obj instanceof Device);
+            Device device = (Device) obj;
+            assertNotNull(device.getDeviceId());
+            assertEquals("ONLINE", device.getStatus().name());
+        }
+        
+        // 验证任务
+        for (Object obj : taskList) {
+            assertTrue(obj instanceof Task);
+            Task task = (Task) obj;
             assertNotNull(task.getTid());
-            assertEquals("任务", task.getTaskName());
+            assertEquals("测试任务", task.getTaskName());
             assertEquals("READY", task.getStatus().name());
         }
     }
 
     @Test
-    public void testMultipleModelsGeneration() {
+    public void testSingleModelAsMap() {
+        // 注册类型
+        TypeRegistry.register("Device", Device.class.getName());
+        
+        String dsl = """
+            {
+                "MODEL": "Device",
+                "COUNT": 2,
+                "FIELDS": {
+                    "deviceId": "{{@uuid}}",
+                    "status": "ONLINE"
+                }
+            }
+            """;
+        
+        Map<String, List<Object>> result = JsonDslEngine.generateMap(dsl);
+        assertNotNull(result);
+        assertEquals(1, result.size());
+        
+        assertTrue(result.containsKey("Device"));
+        List<Object> deviceList = result.get("Device");
+        assertEquals(2, deviceList.size());
+        
+        for (Object obj : deviceList) {
+            assertTrue(obj instanceof Device);
+            Device device = (Device) obj;
+            assertNotNull(device.getDeviceId());
+            assertEquals("ONLINE", device.getStatus().name());
+        }
+    }
+
+    @Test
+    public void testGenerateListWithMultipleModelsShouldThrowException() {
         // 注册类型
         TypeRegistry.register("Device", Device.class.getName());
         TypeRegistry.register("Task", Task.class.getName());
@@ -90,66 +183,9 @@ public class RefactoredJsonDslTest {
             }
             """;
         
-        var result = JsonDslEngine.generateMap(dsl, "test");
-        assertNotNull(result);
-        assertEquals(2, result.size());
-        
-        assertTrue(result.containsKey("device"));
-        assertTrue(result.containsKey("task"));
-        
-        Object deviceResult = result.get("device");
-        Object taskResult = result.get("task");
-        
-        assertNotNull(deviceResult);
-        assertNotNull(taskResult);
-        
-        // 多模型生成返回的是列表，取第一个元素
-        if (deviceResult instanceof List<?> deviceList && !deviceList.isEmpty()) {
-            Device device = (Device) deviceList.get(0);
-            assertNotNull(device.getDeviceId());
-        }
-        
-        if (taskResult instanceof List<?> taskList && !taskList.isEmpty()) {
-            Task task = (Task) taskList.get(0);
-            assertEquals("测试任务", task.getTaskName());
-        }
-    }
-
-    @Test
-    public void testReturnTypeAuto() {
-        // 注册类型
-        TypeRegistry.register("Device", Device.class.getName());
-        
-        // 单个对象 - 应该返回 Object
-        String singleDsl = """
-            {
-                "MODEL": "Device",
-                "FIELDS": {
-                    "id": "{{@uuid}}",
-                    "name": "设备",
-                    "status": "ONLINE"
-                }
-            }
-            """;
-        
-        Object singleResult = JsonDslEngine.generate(singleDsl, JsonDslEngine.ReturnType.AUTO);
-        assertTrue(singleResult instanceof Device);
-        
-        // 多个对象 - 应该返回 List
-        String multipleDsl = """
-            {
-                "MODEL": "Device",
-                "COUNT": 2,
-                "FIELDS": {
-                    "id": "{{@uuid}}",
-                    "name": "设备{{&Device.index}}",
-                    "status": "ONLINE"
-                }
-            }
-            """;
-        
-        Object multipleResult = JsonDslEngine.generate(multipleDsl, JsonDslEngine.ReturnType.AUTO);
-        assertTrue(multipleResult instanceof List);
-        assertEquals(2, ((List<?>) multipleResult).size());
+        // 应该抛出异常，因为 generateList 不支持多模型
+        assertThrows(JsonDslException.class, () -> {
+            JsonDslEngine.generateList(dsl);
+        });
     }
 } 
