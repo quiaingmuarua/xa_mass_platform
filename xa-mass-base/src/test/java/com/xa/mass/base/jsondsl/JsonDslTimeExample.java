@@ -26,7 +26,8 @@ public class JsonDslTimeExample {
                   }
                 }
                 """;
-        List<Object> relativeTimeExamples = JsonDslEngine.generate(relativeTimeExampleDsl);
+        Object result = JsonDslEngine.generate(relativeTimeExampleDsl);
+        List<Object> relativeTimeExamples = result instanceof List ? (List<Object>) result : List.of(result);
         System.out.println("\n=== Relative Time Examples ===");
         relativeTimeExamples.forEach(System.out::println);
     }

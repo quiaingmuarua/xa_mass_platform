@@ -30,7 +30,8 @@ public class MockExample {
                   }
                 }
                 """;
-        List<Object> devices = JsonDslEngine.generate(deviceDsl);
+        Object result = JsonDslEngine.generate(deviceDsl);
+        List<Object> devices = result instanceof List ? (List<Object>) result : List.of(result);
         System.out.println("=== Generated Devices ===");
         devices.forEach(System.out::println);
 
@@ -48,7 +49,8 @@ public class MockExample {
                   }
                 }
                 """;
-        List<Object> tasks = JsonDslEngine.generate(taskDsl);
+        Object result2 = JsonDslEngine.generate(taskDsl);
+        List<Object> tasks = result2 instanceof List ? (List<Object>) result2 : List.of(result2);
         System.out.println("\n=== Generated Tasks ===");
         tasks.forEach(System.out::println);
 
@@ -67,7 +69,8 @@ public class MockExample {
                   }
                 }
                 """;
-        List<Object> contextExamples = JsonDslEngine.generate(contextExampleDsl);
+        Object result3 = JsonDslEngine.generate(contextExampleDsl);
+        List<Object> contextExamples = result3 instanceof List ? (List<Object>) result3 : List.of(result3);
         System.out.println("\n=== Context Function Examples ===");
         contextExamples.forEach(System.out::println);
 

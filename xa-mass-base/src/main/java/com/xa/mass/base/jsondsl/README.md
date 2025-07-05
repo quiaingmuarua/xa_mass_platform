@@ -9,7 +9,8 @@
 - 🔄 **递归嵌套**: 支持复杂的嵌套对象和集合结构
 - 🛠️ **内置函数**: 提供丰富的内置函数（随机选择、范围、UUID、时间等）
 - 📋 **类型注册**: 支持类型别名注册，避免硬编码全类名
-- �� **多级作用域变量**: 支持 `&.index`（当前作用域索引简写）和 `&Model.index`，自动递归查找父作用域
+- 🎯 **类型安全**: 通过参数控制返回类型，提供明确的类型保证
+- 🔧 **多级作用域变量**: 支持 `&.index`（当前作用域索引简写）和 `&Model.index`，自动递归查找父作用域
 - ⏰ **时间支持**: 支持当前时间和时间范围随机生成
 - 🔧 **可扩展**: 内置函数和类型注册表支持动态扩展
 
@@ -19,10 +20,8 @@
 
 ```java
 // 注册类型别名
-TypeRegistry.register("Device",Device .class);
-TypeRegistry.
-
-register("Task",Task .class);
+TypeRegistry.register("Device", Device.class);
+TypeRegistry.register("Task", Task.class);
 ```
 
 ### 2. 定义 DSL
@@ -44,11 +43,214 @@ register("Task",Task .class);
 
 ```java
 String deviceDsl = "..."; // 上面的 JSON
-List<Object> devices = JsonDslEngine.generate(deviceDsl);
-devices.
 
-forEach(System.out::println);
+// 默认返回列表（推荐）
+List<Object> devices = JsonDslEngine.generate(deviceDsl);
+devices.forEach(System.out::println);
+
+// 指定返回类型
+Object singleDevice = JsonDslEngine.generate(deviceDsl, JsonDslEngine.ReturnType.SINGLE);
+List<Object> deviceList = JsonDslEngine.generate(deviceDsl, JsonDslEngine.ReturnType.LIST);
+Map<String, Object> deviceMap = JsonDslEngine.generate(deviceDsl, JsonDslEngine.ReturnType.MAP);
 ```
+
+## API 设计
+
+### 返回类型枚举
+
+```java
+public enum ReturnType {
+    AUTO,    // 自动判断：单个对象返回 Object，多个对象返回 List，多个模型返回 Map
+    SINGLE,  // 强制返回单个对象
+    LIST,    // 强制返回对象列表（默认）
+    MAP      // 强制返回模型映射
+}
+```
+
+### 核心方法
+
+#### `generate(String jsonDsl)` - 默认返回列表
+```java
+// 默认返回 List<Object>，即使 DSL 只定义了一个对象也会包装为列表
+List<Object> devices = JsonDslEngine.generate(deviceDsl);
+```
+
+#### `generate(String jsonDsl, ReturnType returnType)` - 指定返回类型
+```java
+// 返回单个对象
+Object device = JsonDslEngine.generate(deviceDsl, JsonDslEngine.ReturnType.SINGLE);
+
+// 返回列表（与默认方法相同）
+List<Object> devices = JsonDslEngine.generate(deviceDsl, JsonDslEngine.ReturnType.LIST);
+
+// 返回映射
+Map<String, Object> models = JsonDslEngine.generate(modelsDsl, JsonDslEngine.ReturnType.MAP);
+
+// 自动判断（根据 DSL 结构）
+Object result = JsonDslEngine.generate(deviceDsl, JsonDslEngine.ReturnType.AUTO);
+```
+
+### 便利方法
+
+#### `generateSingle(String jsonDsl)`
+强制返回单个对象：
+```java
+Object device = JsonDslEngine.generateSingle(deviceDsl);
+```
+
+#### `generateList(String jsonDsl)`
+强制返回对象列表：
+```java
+List<Object> devices = JsonDslEngine.generateList(deviceDsl);
+```
+
+#### `generateMap(String jsonDsl, String modelName)`
+强制返回模型映射：
+```java
+Map<String, Object> models = JsonDslEngine.generateMap(deviceDsl, "Device");
+```
+
+#### `generateTyped(String jsonDsl, Class<T> targetType)`
+带类型转换的生成方法：
+```java
+List<Object> devices = JsonDslEngine.generateTyped(deviceDsl, List.class);
+Map<String, Object> models = JsonDslEngine.generateTyped(modelsDsl, Map.class);
+```
+
+## 使用示例
+
+### 示例1：默认返回列表（推荐）
+
+```java
+String singleDeviceDsl = """
+{
+    "MODEL": "Device",
+    "FIELDS": {
+        "deviceId": "device-001",
+        "status": "ONLINE"
+    }
+}
+""";
+
+// 默认返回 List<Object>，即使只有一个对象
+List<Object> devices = JsonDslEngine.generate(singleDeviceDsl);
+System.out.println("生成了 " + devices.size() + " 个设备");
+```
+
+### 示例2：指定返回单个对象
+
+```java
+String deviceDsl = """
+{
+    "MODEL": "Device",
+    "COUNT": 3,
+    "FIELDS": {
+        "deviceId": {"$JOIN": ["device-", "&.index"]},
+        "status": {"$CHOICE": ["ONLINE", "OFFLINE"]}
+    }
+}
+""";
+
+// 返回第一个对象
+Object device = JsonDslEngine.generate(deviceDsl, JsonDslEngine.ReturnType.SINGLE);
+System.out.println("第一个设备: " + device);
+```
+
+### 示例3：指定返回列表
+
+```java
+String singleDsl = """
+{
+    "MODEL": "Device",
+    "FIELDS": {
+        "deviceId": "device-001",
+        "status": "ONLINE"
+    }
+}
+""";
+
+// 强制返回列表，单个对象会被包装
+List<Object> devices = JsonDslEngine.generate(singleDsl, JsonDslEngine.ReturnType.LIST);
+System.out.println("列表大小: " + devices.size()); // 输出: 1
+```
+
+### 示例4：指定返回映射
+
+```java
+String deviceDsl = """
+{
+    "MODEL": "Device",
+    "FIELDS": {
+        "deviceId": "device-001",
+        "status": "ONLINE"
+    }
+}
+""";
+
+// 强制返回映射，单个对象会被包装
+Map<String, Object> models = JsonDslEngine.generate(deviceDsl, JsonDslEngine.ReturnType.MAP);
+System.out.println("映射键: " + models.keySet()); // 输出: [result]
+```
+
+### 示例5：多个模型
+
+```java
+String multipleModelsDsl = """
+{
+    "device": {
+        "MODEL": "Device",
+        "FIELDS": {
+            "deviceId": "device-001",
+            "status": "ONLINE"
+        }
+    },
+    "task": {
+        "MODEL": "Task",
+        "FIELDS": {
+            "taskId": "task-001",
+            "priority": "HIGH"
+        }
+    }
+}
+""";
+
+// 返回 Map<String, Object>
+Map<String, Object> models = JsonDslEngine.generate(multipleModelsDsl, JsonDslEngine.ReturnType.MAP);
+models.forEach((key, value) -> {
+    System.out.println("模型 " + key + ": " + value.getClass().getSimpleName());
+});
+```
+
+### 示例6：使用便利方法
+
+```java
+String deviceDsl = "..."; // 包含 COUNT: 2 的 DSL
+
+// 强制获取单个对象
+Object single = JsonDslEngine.generateSingle(deviceDsl);
+
+// 强制获取列表
+List<Object> list = JsonDslEngine.generateList(deviceDsl);
+
+// 强制获取映射
+Map<String, Object> map = JsonDslEngine.generateMap(deviceDsl, "Device");
+```
+
+## 返回类型说明
+
+| ReturnType | 说明 | 示例 |
+|-----------|------|------|
+| `LIST` (默认) | 总是返回 `List<Object>` | 单个对象包装为单元素列表 |
+| `SINGLE` | 总是返回 `Object` | 多个对象时返回第一个 |
+| `MAP` | 总是返回 `Map<String, Object>` | 单个对象包装为 `{"result": object}` |
+| `AUTO` | 根据 DSL 结构自动判断 | 单个对象返回 Object，多个对象返回 List，多个模型返回 Map |
+
+## 最佳实践
+
+1. **推荐使用默认方法**: `JsonDslEngine.generate(dsl)` 总是返回列表，类型安全且一致
+2. **明确指定返回类型**: 当需要特定类型时，使用 `ReturnType` 参数
+3. **使用便利方法**: 对于常见场景，使用 `generateSingle()`, `generateList()`, `generateMap()`
+4. **类型检查**: 使用 `instanceof` 检查返回类型，特别是在使用 `AUTO` 模式时
 
 ## DSL 语法
 
@@ -185,19 +387,6 @@ println("DSL 生成失败: "+e.getMessage());
 ### 自定义类型解析
 
 可以通过继承或组合的方式扩展类型解析逻辑。
-
-## 最佳实践
-
-1. **类型注册**: 优先使用类型注册表，避免硬编码全类名
-2. **错误处理**: 总是包装在 try-catch 中处理异常
-3. **性能考虑**: 大量数据生成时考虑分批处理
-4. **DSL 复用**: 将常用的 DSL 片段提取为常量或配置文件
-5. **测试数据**: 使用有意义的测试数据，便于调试和验证
-6. **作用域变量**: 推荐优先用 `&.index`，如需跨层访问用 `&Model.index`，避免变量冲突
-7. **时间函数**:
-    - 使用相对时间 `now-1d` 比绝对时间更灵活
-    - 合理选择时间单位和范围
-    - 注意时间格式的正确性
 
 ## 表达式引擎与内置函数别名
 

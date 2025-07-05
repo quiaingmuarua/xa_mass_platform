@@ -30,7 +30,8 @@ public class JsonDslExample {
                   }
                 }
                 """;
-        List<Object> devices = JsonDslEngine.generate(deviceDsl);
+        Object result = JsonDslEngine.generate(deviceDsl);
+        List<Object> devices = result instanceof List ? (List<Object>) result : List.of(result);
         System.out.println("=== Generated Devices ===");
         devices.forEach(System.out::println);
 
@@ -48,7 +49,8 @@ public class JsonDslExample {
                   }
                 }
                 """;
-        List<Object> tasks = JsonDslEngine.generate(taskDsl);
+        Object result2 = JsonDslEngine.generate(taskDsl);
+        List<Object> tasks = result2 instanceof List ? (List<Object>) result2 : List.of(result2);
         System.out.println("\n=== Generated Tasks ===");
         tasks.forEach(System.out::println);
 
@@ -76,7 +78,8 @@ public class JsonDslExample {
                   }
                 }
                 """;
-        List<Object> nestedExamples = JsonDslEngine.generate(nestedExampleDsl);
+        Object result3 = JsonDslEngine.generate(nestedExampleDsl);
+        List<Object> nestedExamples = result3 instanceof List ? (List<Object>) result3 : List.of(result3);
         System.out.println("\n=== Nested Scope Variable Examples ===");
         nestedExamples.forEach(System.out::println);
 
@@ -93,7 +96,8 @@ public class JsonDslExample {
                   }
                 }
                 """;
-        List<Object> timeExamples = JsonDslEngine.generate(timeExampleDsl);
+        Object result4 = JsonDslEngine.generate(timeExampleDsl);
+        List<Object> timeExamples = result4 instanceof List ? (List<Object>) result4 : List.of(result4);
         System.out.println("\n=== Time Function Examples ===");
         timeExamples.forEach(System.out::println);
 
@@ -109,7 +113,8 @@ public class JsonDslExample {
                   }
                 }
                 """;
-        List<Object> relativeTimeExamples = JsonDslEngine.generate(relativeTimeExampleDsl);
+        Object result5 = JsonDslEngine.generate(relativeTimeExampleDsl);
+        List<Object> relativeTimeExamples = result5 instanceof List ? (List<Object>) result5 : List.of(result5);
         System.out.println("\n=== Relative Time Examples ===");
         relativeTimeExamples.forEach(System.out::println);
     }
