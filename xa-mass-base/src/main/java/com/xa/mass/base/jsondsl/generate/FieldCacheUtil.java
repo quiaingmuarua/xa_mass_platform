@@ -1,4 +1,4 @@
-package com.xa.mass.base.jsondsl.builtin;
+package com.xa.mass.base.jsondsl.generate;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;

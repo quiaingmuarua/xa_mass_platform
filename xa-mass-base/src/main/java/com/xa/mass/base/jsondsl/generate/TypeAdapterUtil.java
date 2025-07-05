@@ -1,4 +1,6 @@
-package com.xa.mass.base.jsondsl.builtin;
+package com.xa.mass.base.jsondsl.generate;
+
+import com.xa.mass.base.jsondsl.builtin.JsonDslException;
 
 import java.text.SimpleDateFormat;
 import java.time.LocalDateTime;

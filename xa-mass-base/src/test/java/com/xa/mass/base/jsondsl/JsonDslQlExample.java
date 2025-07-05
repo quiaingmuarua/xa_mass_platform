@@ -1,6 +1,6 @@
 package com.xa.mass.base.jsondsl;
 
-import com.xa.mass.base.jsondsl.builtin.TypeRegistry;
+import com.xa.mass.base.jsondsl.generate.TypeRegistry;
 import com.xa.mass.base.model.Device;
 import com.xa.mass.base.model.Task;
 

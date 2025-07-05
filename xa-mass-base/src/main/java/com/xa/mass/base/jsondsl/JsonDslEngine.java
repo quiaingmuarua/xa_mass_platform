@@ -5,7 +5,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.xa.mass.base.jsondsl.builtin.DslContext;
 import com.xa.mass.base.jsondsl.builtin.DslKeyword;
-import com.xa.mass.base.jsondsl.builtin.DslObjectBuilder;
+import com.xa.mass.base.jsondsl.generate.DslObjectBuilder;
 import com.xa.mass.base.jsondsl.builtin.JsonDslException;
 
 import java.util.*;
