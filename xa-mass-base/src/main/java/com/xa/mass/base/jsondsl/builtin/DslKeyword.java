@@ -3,7 +3,12 @@ package com.xa.mass.base.jsondsl.builtin;
 /**
  * JSON-DSL 关键字枚举，定义了 mock 模板中使用的核心关键字。
  * 这些关键字用于构建 mock 数据的 DSL 语法。
+ * 
+ * @deprecated 建议使用新的标准化 DSL 结构，通过 {@link com.xa.mass.base.jsondsl.model.JsonDslDefinition} 
+ * 和 {@link com.xa.mass.base.jsondsl.model.JsonDslContext} 进行 DSL 定义。
+ * 新标准使用更清晰的字段命名和结构，提供更好的类型安全和扩展性。
  */
+@Deprecated(since = "2.0.0", forRemoval = true)
 public enum DslKeyword {
     /**
      * 指定要生成的模型类名。

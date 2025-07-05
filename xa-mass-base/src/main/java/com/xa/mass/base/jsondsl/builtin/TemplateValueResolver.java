@@ -8,7 +8,12 @@ import java.util.stream.Collectors;
 
 /**
  * 递归解析字段值，支持内置函数、Map、List、普通值。
+ * 
+ * @deprecated 建议使用新的标准化 DSL 结构，通过 {@link com.xa.mass.base.jsondsl.model.JsonDslDefinition} 
+ * 和 {@link com.xa.mass.base.jsondsl.parser.JsonDslParser} 进行 DSL 定义和解析。
+ * 新标准提供更好的类型安全、验证和扩展性，支持更丰富的表达式引擎和内置函数。
  */
+@Deprecated(since = "2.0.0", forRemoval = true)
 public class TemplateValueResolver {
     // 内置函数处理器注册表
     private static final Map<BuiltinFunc, BiFunction<Object, DslContext, Object>> BUILTIN_RESOLVERS = new HashMap<>();

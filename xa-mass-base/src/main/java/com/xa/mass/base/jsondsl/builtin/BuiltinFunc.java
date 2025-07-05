@@ -1,5 +1,13 @@
 package com.xa.mass.base.jsondsl.builtin;
 
+/**
+ * 内置函数枚举，定义了所有支持的内置函数。
+ * 
+ * @deprecated 建议使用新的标准化 DSL 结构，通过 {@link com.xa.mass.base.jsondsl.model.JsonDslDefinition} 
+ * 和 {@link com.xa.mass.base.jsondsl.parser.JsonDslParser} 进行 DSL 定义和解析。
+ * 新标准提供更丰富的表达式引擎支持和内置函数扩展机制。
+ */
+@Deprecated(since = "2.0.0", forRemoval = true)
 public enum BuiltinFunc {
     CHOICE("$CHOICE", "choice"),
     RANGE("$RANGE", "range"),
