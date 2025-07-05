@@ -1,4 +1,4 @@
-package com.xa.mass.base.jsondsl;
+package com.xa.mass.base.jsondsl.builtin;
 
 import java.util.HashMap;
 import java.util.Map;

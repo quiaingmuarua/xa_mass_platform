@@ -1,15 +1,12 @@
 package com.xa.mass.engine.monkey;
 
 import com.xa.mass.base.jsondsl.JsonDslEngine;
-import com.xa.mass.base.jsondsl.TypeRegistry;
+import com.xa.mass.base.jsondsl.builtin.TypeRegistry;
 import com.xa.mass.base.model.Device;
 import com.xa.mass.base.model.Token;
 import com.xa.mass.engine.model.TaskCreateRequestDto;
 
-import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
-import java.util.stream.Collectors;
 
 /**
  * 基于 JSON-DSL 的 mock 设备/Token 生成器。

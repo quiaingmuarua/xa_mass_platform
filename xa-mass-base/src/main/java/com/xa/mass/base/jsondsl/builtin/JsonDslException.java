@@ -1,4 +1,4 @@
-package com.xa.mass.base.jsondsl;
+package com.xa.mass.base.jsondsl.builtin;
 
 /**
  * mock 过程中的统一异常。

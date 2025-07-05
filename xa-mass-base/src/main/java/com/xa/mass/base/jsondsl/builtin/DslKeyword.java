@@ -1,4 +1,4 @@
-package com.xa.mass.base.jsondsl;
+package com.xa.mass.base.jsondsl.builtin;
 
 /**
  * JSON-DSL 关键字枚举，定义了 mock 模板中使用的核心关键字。

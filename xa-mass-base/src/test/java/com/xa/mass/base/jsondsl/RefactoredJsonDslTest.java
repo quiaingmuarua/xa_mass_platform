@@ -1,5 +1,7 @@
 package com.xa.mass.base.jsondsl;
 
+import com.xa.mass.base.jsondsl.builtin.JsonDslException;
+import com.xa.mass.base.jsondsl.builtin.TypeRegistry;
 import com.xa.mass.base.model.Device;
 import com.xa.mass.base.model.Task;
 import org.junit.jupiter.api.Test;

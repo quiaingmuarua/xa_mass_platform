@@ -1,4 +1,4 @@
-package com.xa.mass.base.jsondsl;
+package com.xa.mass.base.jsondsl.builtin;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;

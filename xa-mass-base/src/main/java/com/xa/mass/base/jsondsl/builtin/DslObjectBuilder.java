@@ -1,4 +1,4 @@
-package com.xa.mass.base.jsondsl;
+package com.xa.mass.base.jsondsl.builtin;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
@@ -8,10 +8,10 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Type;
 import java.util.*;
 
-class DslObjectBuilder {
+public class DslObjectBuilder {
     private static final Gson gson = new Gson();
 
-    static Object mockFromDsl(JsonObject dsl, DslContext context) {
+    public static Object mockFromDsl(JsonObject dsl, DslContext context) {
         // 1. 解析 MODEL
         String modelName = dsl.has(DslKeyword.MODEL.name()) ? dsl.get(DslKeyword.MODEL.name()).getAsString() : null;
         if (modelName == null) {

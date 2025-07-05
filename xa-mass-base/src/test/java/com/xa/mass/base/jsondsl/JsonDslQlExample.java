@@ -1,5 +1,6 @@
 package com.xa.mass.base.jsondsl;
 
+import com.xa.mass.base.jsondsl.builtin.TypeRegistry;
 import com.xa.mass.base.model.Device;
 import com.xa.mass.base.model.Task;
 
@@ -31,7 +32,7 @@ public class JsonDslQlExample {
                   }
                 }
                 """;
-        List<Device> relativeTimeExamples = com.xa.mass.base.jsondsl.JsonDslEngine.generateList(dsl,Device.class);
+        List<Device> relativeTimeExamples = JsonDslEngine.generateList(dsl,Device.class);
         relativeTimeExamples.forEach(System.out::println);
     }
 }
