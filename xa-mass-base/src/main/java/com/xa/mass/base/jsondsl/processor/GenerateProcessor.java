@@ -17,6 +17,14 @@ public class GenerateProcessor implements JsonDslProcessor {
     
     @Override
     public Object process(JsonDslDefinition definition, ProcessingContext context) {
+        // 参数验证
+        if (definition == null) {
+            throw new IllegalArgumentException("Definition cannot be null");
+        }
+        if (context == null) {
+            throw new IllegalArgumentException("Context cannot be null");
+        }
+        
         if (context.isDebug()) {
             System.out.println("[GenerateProcessor] 开始处理 DSL: " + definition.getUniqueId());
         }

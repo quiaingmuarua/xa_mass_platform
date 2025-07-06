@@ -127,9 +127,8 @@ public class ProcessingContext {
         if (other != null) {
             this.parameters.putAll(other.parameters);
             this.variables.putAll(other.variables);
-            if (other.scopeName != null) {
-                this.scopeName = other.scopeName;
-            }
+            this.scopeName = other.scopeName;
+            this.debug = other.debug;
         }
     }
     
@@ -138,7 +137,9 @@ public class ProcessingContext {
      */
     public ProcessingContext createChild(String childScopeName) {
         ProcessingContext child = new ProcessingContext(childScopeName);
-        child.merge(this);
+        child.parameters.putAll(this.parameters);
+        child.variables.putAll(this.variables);
+        child.debug = this.debug;
         return child;
     }
 } 
