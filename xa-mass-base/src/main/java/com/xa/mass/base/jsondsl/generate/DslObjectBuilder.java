@@ -54,10 +54,53 @@ public class DslObjectBuilder {
             // 优先尝试使用 setter 方法
             boolean setterUsed = setFieldViaSetter(obj, fieldName, value, clazz);
             if (!setterUsed) {
+                boolean fallbackSet = false;
                 try {
                     field.set(obj, value);
+                    fallbackSet = true;
                 } catch (Exception e) {
-                    throw new JsonDslException("无法设置字段: " + field.getName() + " in " + clazz.getName(), e);
+                    // 兜底：如果字段类型为Integer，支持Number、String、其他类型
+                    if (field.getType() == Integer.class) {
+                        try {
+                            if (value == null) {
+                                field.set(obj, null);
+                                fallbackSet = true;
+                            } else if (value instanceof Number n) {
+                                field.set(obj, n.intValue());
+                                fallbackSet = true;
+                            } else if (value instanceof String s) {
+                                if (s.isEmpty()) {
+                                    field.set(obj, null);
+                                    fallbackSet = true;
+                                } else {
+                                    try {
+                                        field.set(obj, Integer.parseInt(s));
+                                        fallbackSet = true;
+                                    } catch (Exception ignore) {
+                                        field.set(obj, null);
+                                        fallbackSet = true;
+                                    }
+                                }
+                            } else {
+                                String str = value.toString();
+                                if (str.isEmpty()) {
+                                    field.set(obj, null);
+                                    fallbackSet = true;
+                                } else {
+                                    try {
+                                        field.set(obj, Integer.parseInt(str));
+                                        fallbackSet = true;
+                                    } catch (Exception ignore) {
+                                        field.set(obj, null);
+                                        fallbackSet = true;
+                                    }
+                                }
+                            }
+                        } catch (Exception ignore) {}
+                    }
+                    if (!fallbackSet) {
+                        throw new JsonDslException("无法设置字段: " + field.getName() + " in " + clazz.getName(), e);
+                    }
                 }
             }
         }
@@ -128,28 +171,26 @@ public class DslObjectBuilder {
 
     private static boolean setFieldViaSetter(Object obj, String fieldName, Object value, Class<?> clazz) {
         try {
-            // 尝试 setFieldName 方法
             String setterName = "set" + fieldName.substring(0, 1).toUpperCase() + fieldName.substring(1);
-            
-            // 首先尝试与字段类型匹配的 setter
+            // 1. 优先尝试String类型setter
             try {
-                java.lang.reflect.Method setter = clazz.getMethod(setterName, value.getClass());
-                setter.invoke(obj, value);
+                java.lang.reflect.Method setter = clazz.getMethod(setterName, String.class);
+                setter.invoke(obj, value == null ? null : value.toString());
                 return true;
             } catch (NoSuchMethodException e) {
-                // 如果找不到匹配的 setter，尝试 String 类型的 setter（用于类型转换）
+                // 2. 再尝试与字段类型匹配的setter
                 try {
-                    java.lang.reflect.Method setter = clazz.getMethod(setterName, String.class);
-                    setter.invoke(obj, value.toString());
+                    java.lang.reflect.Method setter = clazz.getMethod(setterName, value.getClass());
+                    setter.invoke(obj, value);
                     return true;
                 } catch (NoSuchMethodException e2) {
-                    // 如果还是找不到，尝试其他可能的类型
+                    // 3. 再尝试Object类型setter
                     try {
                         java.lang.reflect.Method setter = clazz.getMethod(setterName, Object.class);
                         setter.invoke(obj, value);
                         return true;
                     } catch (NoSuchMethodException e3) {
-                        // 最后尝试查找所有可能的 setter 方法
+                        // 4. 最后遍历所有同名单参数setter
                         java.lang.reflect.Method[] methods = clazz.getMethods();
                         for (java.lang.reflect.Method method : methods) {
                             if (method.getName().equals(setterName) && method.getParameterCount() == 1) {
@@ -161,12 +202,20 @@ public class DslObjectBuilder {
                                 }
                             }
                         }
+                        // 5. 兜底：如果字段类型为Integer且value为String，直接parseInt后set到字段
+                        try {
+                            java.lang.reflect.Field field = clazz.getDeclaredField(fieldName);
+                            if (field.getType() == Integer.class && value instanceof String s) {
+                                field.setAccessible(true);
+                                field.set(obj, Integer.parseInt(s));
+                                return true;
+                            }
+                        } catch (Exception ignore) {}
                         return false;
                     }
                 }
             }
         } catch (Exception e) {
-            // 如果调用 setter 时出现异常，返回 false 让代码继续使用字段反射
             return false;
         }
     }

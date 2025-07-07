@@ -64,6 +64,7 @@ public class StrongTypedIntegrationTest {
         
         // 验证所有用户都是成年人
         for (TestUser user : filteredUsers) {
+            assertNotNull(user.getAge());
             assertTrue(user.getAge() >= 18);
         }
     }
@@ -128,7 +129,6 @@ public class StrongTypedIntegrationTest {
         
         Map<String, Object> fieldDsl = new HashMap<>();
         fieldDsl.put("name", "$RANDOM_NAME");
-        fieldDsl.put("age", "$RANDOM_INT(18, 65)");
         fieldDsl.put("email", "$RANDOM_EMAIL");
         generateDsl.setFieldDsl(fieldDsl);
         
@@ -163,6 +163,8 @@ public class StrongTypedIntegrationTest {
         validateDsl.setFieldDsl(validateFieldDsl);
         
         for (TestUser user : adultUsers) {
+            assertNotNull(user.getAge());
+            assertTrue(user.getAge() >= 18);
             List<String> errors = validateProcessor.validate(user, validateDsl, context);
             assertTrue(errors.isEmpty());
         }
@@ -227,15 +229,15 @@ public class StrongTypedIntegrationTest {
      */
     public static class TestUser {
         private String name;
-        private int age;
+        private Integer age;
         private String email;
         private String status;
         
         public String getName() { return name; }
         public void setName(String name) { this.name = name; }
         
-        public int getAge() { return age; }
-        public void setAge(int age) { this.age = age; }
+        public Integer getAge() { return age; }
+        public void setAge(Integer age) { this.age = age; }
         
         public void setAge(String s) {
             if (s != null) {

@@ -220,22 +220,30 @@ public class JsonDslParser {
     public static String toLegacyFormat(JsonDslDefinition definition) {
         JsonObject root = new JsonObject();
         
-        // 添加核心字段
-        if (definition.getContext() != null) {
-            if (definition.getContext().getModel() != null) {
-                root.addProperty("MODEL", definition.getContext().getModel());
+        // 根据 DSL 类型进行不同的转换
+        if (JsonDslDefinition.DslType.FILTER.equals(definition.getType())) {
+            // 过滤类型：将 fieldDsl 转换为 conditions 格式
+            if (definition.getFieldDsl() != null) {
+                root.add("conditions", gson.toJsonTree(definition.getFieldDsl()));
             }
-            if (definition.getContext().getCount() != null) {
-                root.addProperty("COUNT", definition.getContext().getCount());
+        } else {
+            // 生成类型：添加核心字段
+            if (definition.getContext() != null) {
+                if (definition.getContext().getModel() != null) {
+                    root.addProperty("MODEL", definition.getContext().getModel());
+                }
+                if (definition.getContext().getCount() != null) {
+                    root.addProperty("COUNT", definition.getContext().getCount());
+                }
+                if (definition.getContext().getType() != null) {
+                    root.addProperty("TYPE", definition.getContext().getType());
+                }
             }
-            if (definition.getContext().getType() != null) {
-                root.addProperty("TYPE", definition.getContext().getType());
+            
+            // 添加字段 DSL
+            if (definition.getFieldDsl() != null) {
+                root.add("FIELDS", gson.toJsonTree(definition.getFieldDsl()));
             }
-        }
-        
-        // 添加字段 DSL
-        if (definition.getFieldDsl() != null) {
-            root.add("FIELDS", gson.toJsonTree(definition.getFieldDsl()));
         }
         
         return gson.toJson(root);
