@@ -115,15 +115,13 @@ public class DslFilterFactory {
      * @return JSON-DSL 过滤器实例
      */
     public static <T> JsonDslFilter<T> createSimpleFilter(String name, String field, String operator, Object value) {
-        JsonObject condition = new JsonObject();
-        JsonObject fieldCondition = new JsonObject();
-        fieldCondition.add(operator, GSON.toJsonTree(value));
-        condition.add(field, fieldCondition);
-        
+        JsonObject fieldDsl = new JsonObject();
+        JsonObject fieldRule = new JsonObject();
+        fieldRule.add("$" + operator, GSON.toJsonTree(value));
+        fieldDsl.add(field, fieldRule);
         JsonObject config = new JsonObject();
-        config.add("conditions", condition);
-        
-        return new JsonDslFilter<>(name, "简单条件过滤器: " + field + " " + operator + " " + value, config);
+        config.add("fieldDsl", fieldDsl);
+        return new JsonDslFilter<>(name, "简单条件过滤器: " + field + " $" + operator + " " + value, config);
     }
     
     /**
@@ -136,19 +134,17 @@ public class DslFilterFactory {
      * @return JSON-DSL 过滤器实例
      */
     public static <T> JsonDslFilter<T> createRangeFilter(String name, String field, Number min, Number max) {
-        JsonObject condition = new JsonObject();
-        JsonObject fieldCondition = new JsonObject();
+        JsonObject fieldDsl = new JsonObject();
+        JsonObject fieldRule = new JsonObject();
         if (min != null) {
-            fieldCondition.add("gte", GSON.toJsonTree(min));
+            fieldRule.add("$gte", GSON.toJsonTree(min));
         }
         if (max != null) {
-            fieldCondition.add("lte", GSON.toJsonTree(max));
+            fieldRule.add("$lte", GSON.toJsonTree(max));
         }
-        condition.add(field, fieldCondition);
-        
+        fieldDsl.add(field, fieldRule);
         JsonObject config = new JsonObject();
-        config.add("conditions", condition);
-        
+        config.add("fieldDsl", fieldDsl);
         return new JsonDslFilter<>(name, "范围过滤器: " + field + " in [" + min + ", " + max + "]", config);
     }
     
@@ -160,9 +156,10 @@ public class DslFilterFactory {
      * @return JSON-DSL 过滤器实例
      */
     public static <T> JsonDslFilter<T> createExpressionFilter(String name, String expression) {
+        JsonObject fieldDsl = new JsonObject();
+        fieldDsl.addProperty("$EXPR", expression);
         JsonObject config = new JsonObject();
-        config.addProperty("conditions", expression);
-        
+        config.add("fieldDsl", fieldDsl);
         return new JsonDslFilter<>(name, "表达式过滤器: " + expression, config);
     }
 } 

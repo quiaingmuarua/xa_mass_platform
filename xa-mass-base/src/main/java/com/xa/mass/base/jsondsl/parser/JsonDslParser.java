@@ -159,17 +159,11 @@ public class JsonDslParser {
      * 判断传统 DSL 的类型
      */
     private static JsonDslDefinition.DslType determineLegacyDslType(JsonObject root) {
-        // 如果有 MODEL 字段，通常是生成类型
+        // 只根据 MODEL 字段判断 generate，其余一律按新结构处理
         if (root.has("MODEL")) {
             return JsonDslDefinition.DslType.GENERATE;
         }
-        
-        // 如果有 conditions 字段，通常是过滤类型
-        if (root.has("conditions")) {
-            return JsonDslDefinition.DslType.FILTER;
-        }
-        
-        // 默认认为是生成类型
+        // 默认认为是 generate，filter/validate/transform 需显式 type 字段
         return JsonDslDefinition.DslType.GENERATE;
     }
     

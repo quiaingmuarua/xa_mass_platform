@@ -43,10 +43,10 @@ public class FilterExample {
         // 创建复合过滤器：年龄>=18 且 状态为active 且 分数>=80
         String filterConfig = """
             {
-                "conditions": {
-                    "age": {"gte": 18},
-                    "status": {"eq": "active"},
-                    "score": {"gte": 80}
+                \"fieldDsl\": {
+                    \"age\": {\"$gte\": 18},
+                    \"status\": {\"$eq\": \"active\"},
+                    \"score\": {\"$gte\": 80}
                 }
             }
             """;

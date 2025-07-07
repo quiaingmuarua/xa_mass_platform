@@ -6,6 +6,8 @@ import java.util.Map;
 import java.util.function.BiFunction;
 import java.util.stream.Collectors;
 
+import com.xa.mass.base.jsondsl.util.FieldRuleEvaluator;
+
 /**
  * 递归解析字段值，支持内置函数、Map、List、普通值。
  *
@@ -41,6 +43,7 @@ public class TemplateValueResolver {
             return null;
         }
         if (value instanceof Map<?, ?> map) {
+            // 只处理内置函数
             if (isBuiltinFunction(map)) {
                 String funcKey = (String) map.keySet().iterator().next();
                 // $EXPR 表达式支持
@@ -130,5 +133,15 @@ public class TemplateValueResolver {
         if (map.size() != 1) return false;
         Object key = map.keySet().iterator().next();
         return key instanceof String && ((String) key).startsWith("$");
+    }
+
+    private static boolean isFieldRule(Map<?, ?> map) {
+        if (map.isEmpty()) return false;
+        for (Object key : map.keySet()) {
+            if (!(key instanceof String) || !((String) key).startsWith("$")) {
+                return false;
+            }
+        }
+        return true;
     }
 } 

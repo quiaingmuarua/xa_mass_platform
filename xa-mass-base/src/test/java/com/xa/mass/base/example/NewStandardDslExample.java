@@ -176,8 +176,8 @@ public class NewStandardDslExample {
 
         // 2. 设置字段过滤条件
         Map<String, Object> fieldDsl = new HashMap<>();
-        fieldDsl.put("status", Map.of("eq", "ONLINE"));
-        fieldDsl.put("groupId", Map.of("in", Arrays.asList("us", "gb")));
+        fieldDsl.put("status", Map.of("$eq", "ONLINE"));
+        fieldDsl.put("groupId", Map.of("$in", Arrays.asList("us", "gb")));
         filterDef.setFieldDsl(fieldDsl);
 
         // 3. 设置组合过滤条件

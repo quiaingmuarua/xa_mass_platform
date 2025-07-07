@@ -5,6 +5,7 @@ import com.xa.mass.base.jsondsl.parser.JsonDslParser;
 import com.xa.mass.base.jsondsl.model.JsonDslDefinition;
 import com.xa.mass.base.jsondsl.filter.DslFilterFactory;
 import com.xa.mass.base.jsondsl.filter.JsonDslFilter;
+import com.xa.mass.base.jsondsl.util.FieldRuleEvaluator;
 
 import java.util.List;
 import java.util.ArrayList;
@@ -53,8 +54,16 @@ class DefaultFilterProcessor implements FilterProcessor {
                     Object cond = entry.getValue();
                     Object val = objMap.get(field);
                     com.google.gson.JsonElement condJson = com.xa.mass.base.jsondsl.util.GsonConfig.buildGson().toJsonTree(cond);
-                    if (!filter.evaluateFieldCondition(val, condJson)) {
-                        failReasons.add(field + " 不满足条件: " + cond);
+                    if (condJson.isJsonObject()) {
+                        Map<String, Object> condMap = com.xa.mass.base.jsondsl.util.GsonConfig.buildGson().fromJson(condJson, Map.class);
+                        if (!FieldRuleEvaluator.evaluate(val, condMap)) {
+                            failReasons.add(field + " 不满足条件: " + cond);
+                        }
+                    } else {
+                        // 直接等值判断
+                        if (val == null || !val.toString().equals(condJson.getAsString())) {
+                            failReasons.add(field + " 不满足条件: " + cond);
+                        }
                     }
                 }
             }

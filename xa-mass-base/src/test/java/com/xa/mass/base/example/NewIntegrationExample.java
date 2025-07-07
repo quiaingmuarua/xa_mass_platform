@@ -37,14 +37,15 @@ public class NewIntegrationExample {
           "author": "integration_test",
           "priority": 10,
           "fieldDsl": {
-            "deviceId": {"lt":100},
-            "groupId": {"lt": 100},
-            "status": {"eq": "ONLINE"}
+            "deviceId": {"$lt":100},
+            "groupId": {"$lt": 100},
+            "status": {"$eq": "ONLINE"}
           },
           "combineDsl": {
             "device_group_check": "parseInt(deviceId) < 100 && parseInt(groupId) < 100",
             "status_check": "status == 'ONLINE'"
           }
+
         }
         """;
         JsonDslDefinition filterDefFromJson = JsonDslParser.parse(filterJson);
@@ -55,7 +56,7 @@ public class NewIntegrationExample {
         System.out.println("过滤后剩余 " + filteredDevices.size() + " 个设备");
         
         // 2.1 explain/report: 输出被过滤设备及原因
-        explainFilter(devices, filterDef);
+        explainFilter(devices, filterDefFromJson);
         
         // 2.2 用外部JSON定义的过滤器再演示一次
         List<Device> filteredDevicesJson = filterDevices(devices, filterDefFromJson);
@@ -210,9 +211,9 @@ public class NewIntegrationExample {
         filterDef.setAuthor("integration_test");
         filterDef.setPriority(10);
         Map<String, Object> fieldDsl = new HashMap<>();
-        fieldDsl.put("deviceId", Map.of("lt", 100));
-        fieldDsl.put("groupId", Map.of("lt", 25));
-        fieldDsl.put("status", Map.of("eq", "ONLINE"));
+        fieldDsl.put("deviceId", Map.of("$lt", 100));
+        fieldDsl.put("groupId", Map.of("$lt", 25));
+        fieldDsl.put("status", Map.of("$eq", "ONLINE"));
         filterDef.setFieldDsl(fieldDsl);
         Map<String, Object> combineDsl = new HashMap<>();
         combineDsl.put("device_group_check", "parseInt(deviceId) < 100 && parseInt(groupId) < 25");

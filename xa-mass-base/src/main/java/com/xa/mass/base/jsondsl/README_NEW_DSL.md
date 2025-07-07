@@ -143,9 +143,9 @@
   "type": "generate",
   "context": {"MODEL": "Device", "COUNT": 2},
   "fieldDsl": {
-    "deviceId": {"$JOIN": ["device-", "&.index"]},
-    "status": {"$CHOICE": ["ONLINE", "OFFLINE"]},
-    "createdTime": {"$EXPR": {"lang": "ql", "expr": "now('yyyy-MM-dd HH:mm:ss')"}}
+    "$deviceId": {"$JOIN": ["device-", "&.index"]},
+    "$status": {"$CHOICE": ["ONLINE", "OFFLINE"]},
+    "$createdTime": {"$EXPR": {"lang": "ql", "expr": "now('yyyy-MM-dd HH:mm:ss')"}}
   }
 }
 ```
@@ -156,8 +156,8 @@
   "unique_id": "online_filter",
   "type": "filter",
   "fieldDsl": {
-    "status": {"eq": "ONLINE"},
-    "groupId": {"in": ["us", "gb"]}
+    "$status": {"eq": "ONLINE"},
+    "$groupId": {"in": ["us", "gb"]}
   },
   "combine_dsl": {
     "battery_check": "batteryLevel >= 20"
@@ -172,17 +172,17 @@
   "type": "generate",
   "context": {"MODEL": "Device", "COUNT": 1},
   "fieldDsl": {
-    "deviceId": {"$JOIN": ["device-", "&.index"]},
-    "tasks": {
-      "TYPE": "LIST",
-      "COUNT": 2,
-      "MODEL": "Task",
-      "FIELDS": {
-        "tid": {"$UUID": true},
-        "taskName": {"$JOIN": ["Task-", "&.index", "-of-Device-", "&Device.index"]}
+    "$deviceId": {"$JOIN": ["device-", "&.index"]},
+    "$tasks": {
+      "$TYPE": "LIST",
+      "$COUNT": 2,
+      "$MODEL": "Task",
+      "$FIELDS": {
+        "$tid": {"$UUID": true},
+        "$taskName": {"$JOIN": ["Task-", "&.index", "-of-Device-", "&Device.index"]}
       }
     },
-    "onlineStrategy": {"$EXPR": "status == 'OFFLINE' ? 0 : range(10, 100)"}
+    "$onlineStrategy": {"$EXPR": "status == 'OFFLINE' ? 0 : range(10, 100)"}
   }
 }
 ```
@@ -230,15 +230,15 @@
     "count": 10
   },
   "fieldDsl": {
-    "name": "$RANDOM_NAME",
-    "age": "$RANDOM_INT(18, 65)",
-    "email": "$RANDOM_EMAIL"
+    "$name": "$RANDOM_NAME",
+    "$age": "$RANDOM_INT(18, 65)",
+    "$email": "$RANDOM_EMAIL"
   },
   "combineDsl": {
     "logic": "AND",
     "conditions": [
-      "age > 18",
-      "email.contains('@')"
+      "$age > 18",
+      "$email.contains('@')"
     ]
   },
   "extensions": {
@@ -285,9 +285,9 @@
     "count": 5
   },
   "fieldDsl": {
-    "name": "$RANDOM_NAME",
-    "age": "$RANDOM_INT(18, 65)",
-    "email": "$RANDOM_EMAIL"
+    "$name": "$RANDOM_NAME",
+    "$age": "$RANDOM_INT(18, 65)",
+    "$email": "$RANDOM_EMAIL"
   }
 }
 ```
@@ -300,8 +300,8 @@
   "uniqueId": "age-filter",
   "type": "filter",
   "fieldDsl": {
-    "age": "$EXPR(age > 30)",
-    "status": "$EXPR(status == 'active')"
+    "$age": "$EXPR(age > 30)",
+    "$status": "$EXPR(status == 'active')"
   },
   "combineDsl": {
     "logic": "AND"
@@ -317,8 +317,8 @@
   "uniqueId": "user-transform",
   "type": "transform",
   "fieldDsl": {
-    "fullName": "$EXPR(firstName + ' ' + lastName)",
-    "ageGroup": "$EXPR(age < 30 ? 'young' : age < 50 ? 'middle' : 'senior')"
+    "$fullName": "$EXPR(firstName + ' ' + lastName)",
+    "$ageGroup": "$EXPR(age < 30 ? 'young' : age < 50 ? 'middle' : 'senior')"
   }
 }
 ```
@@ -331,8 +331,8 @@
   "uniqueId": "user-validate",
   "type": "validate",
   "fieldDsl": {
-    "email": "$EXPR(email.matches('^[^@]+@[^@]+\\.[^@]+$'))",
-    "age": "$EXPR(age >= 0 && age <= 150)"
+    "$email": "$EXPR(email.matches('^[^@]+@[^@]+\\.[^@]+$'))",
+    "$age": "$EXPR(age >= 0 && age <= 150)"
   }
 }
 ```
@@ -350,9 +350,9 @@
 ```json
 {
   "fieldDsl": {
-    "simpleField": "$RANDOM_NAME",
-    "complexField": "$EXPR(age > 30 && (status == 'active' || status == 'pending'))",
-    "calculatedField": "$EXPR(firstName + ' ' + lastName)"
+    "$simpleField": "$RANDOM_NAME",
+    "$complexField": "$EXPR(age > 30 && (status == 'active' || status == 'pending'))",
+    "$calculatedField": "$EXPR(firstName + ' ' + lastName)"
   }
 }
 ```
@@ -371,12 +371,12 @@
 // 低优先级 DSL
 JsonDslDefinition lowPriority = new JsonDslDefinition("low", DslType.FILTER);
 lowPriority.setPriority(10);
-lowPriority.setFieldDsl(Map.of("age", "$EXPR(age > 20)"));
+lowPriority.setFieldDsl(Map.of("$age", "$EXPR(age > 20)"));
 
 // 高优先级 DSL
 JsonDslDefinition highPriority = new JsonDslDefinition("high", DslType.FILTER);
 highPriority.setPriority(1);
-highPriority.setFieldDsl(Map.of("age", "$EXPR(age > 30)"));
+highPriority.setFieldDsl(Map.of("$age", "$EXPR(age > 30)"));
 
 // 合并结果：age 字段使用高优先级的条件 (age > 30)
 JsonDslDefinition merged = JsonDslMerger.merge(Arrays.asList(lowPriority, highPriority));
@@ -490,15 +490,15 @@ context.setVariable("customVar", "value");
 
 ```java
 // 旧格式
-String oldFormat = "{ \"name\": \"$RANDOM_NAME\", \"age\": \"$RANDOM_INT(18, 65)\" }";
+String oldFormat = "{ "$name": "$RANDOM_NAME", "$age": "$RANDOM_INT(18, 65)" }";
 
 // 新格式
 JsonDslDefinition newFormat = JsonDslParser.parse(oldFormat);
 // 或者手动创建
 JsonDslDefinition dsl = new JsonDslDefinition("user-generator", DslType.GENERATE);
 dsl.setFieldDsl(Map.of(
-    "name", "$RANDOM_NAME",
-    "age", "$RANDOM_INT(18, 65)"
+    "$name", "$RANDOM_NAME",
+    "$age", "$RANDOM_INT(18, 65)"
 ));
 ```
 
@@ -510,8 +510,8 @@ dsl.setFieldDsl(Map.of(
 JsonDslDefinition dsl = new JsonDslDefinition("basic-generator", DslType.GENERATE);
 dsl.setContext(new JsonDslContext("com.example.User", 5));
 dsl.setFieldDsl(Map.of(
-    "name", "$RANDOM_NAME",
-    "age", "$RANDOM_INT(18, 65)"
+    "$name", "$RANDOM_NAME",
+    "$age", "$RANDOM_INT(18, 65)"
 ));
 
 List<Object> result = JsonDslEngine.generateList(JsonDslParser.toLegacyFormat(dsl));
@@ -522,8 +522,8 @@ List<Object> result = JsonDslEngine.generateList(JsonDslParser.toLegacyFormat(ds
 ```java
 JsonDslDefinition dsl = new JsonDslDefinition("complex-filter", DslType.FILTER);
 dsl.setFieldDsl(Map.of(
-    "age", "$EXPR(age > 30)",
-    "status", "$EXPR(status == 'active')"
+    "$age", "$EXPR(age > 30)",
+    "$status", "$EXPR(status == 'active')"
 ));
 dsl.setCombineDsl(Map.of("logic", "AND"));
 
@@ -678,7 +678,7 @@ public class JsonDslProcessorEngine {
 // 创建 DSL 定义
 JsonDslDefinition dsl = new JsonDslDefinition("user-generator", DslType.GENERATE);
 dsl.setContext(new JsonDslContext("com.example.User", 3));
-dsl.setFieldDsl(Map.of("name", "$RANDOM_NAME", "age", "$RANDOM_INT(18, 65)"));
+dsl.setFieldDsl(Map.of("$name", "$RANDOM_NAME", "$age", "$RANDOM_INT(18, 65)"));
 
 // 处理 DSL
 Object result = JsonDslProcessorEngine.process(dsl);
@@ -759,12 +759,12 @@ Object result = JsonDslProcessorEngine.process(dsl, context);
 
 ```java
 // 旧方式
-String legacyFormat = "{ \"name\": \"$RANDOM_NAME\" }";
+String legacyFormat = "{ "$name": "$RANDOM_NAME" }";
 List<Object> result = JsonDslEngine.generateList(legacyFormat);
 
 // 新方式
 JsonDslDefinition dsl = new JsonDslDefinition("generator", DslType.GENERATE);
-dsl.setFieldDsl(Map.of("name", "$RANDOM_NAME"));
+dsl.setFieldDsl(Map.of("$name", "$RANDOM_NAME"));
 Object result = JsonDslProcessorEngine.process(dsl);
 ```
 
