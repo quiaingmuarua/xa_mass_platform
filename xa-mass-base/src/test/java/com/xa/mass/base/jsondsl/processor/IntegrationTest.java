@@ -22,6 +22,11 @@ public class IntegrationTest {
     @BeforeEach
     void setUp() {
         context = new ProcessingContext("integration-test");
+        // 注册所有类型的处理器
+        JsonDslProcessorEngine.registerProcessor(new TestGenerateProcessor());
+        JsonDslProcessorEngine.registerProcessor(new TestFilterProcessor());
+        JsonDslProcessorEngine.registerProcessor(new TestTransformProcessor());
+        JsonDslProcessorEngine.registerProcessor(new TestValidateProcessor());
     }
     
     @AfterEach

@@ -4,6 +4,8 @@ import com.xa.mass.base.jsondsl.model.JsonDslContext;
 import com.xa.mass.base.jsondsl.model.JsonDslDefinition;
 import com.xa.mass.base.jsondsl.processor.JsonDslProcessorEngine;
 import com.xa.mass.base.jsondsl.processor.ProcessingContext;
+import com.xa.mass.base.jsondsl.processor.FilterProcessor;
+import com.xa.mass.base.jsondsl.processor.JsonDslProcessor;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -16,8 +18,22 @@ import java.util.Map;
  */
 public class JsonDslEngineIndependentTest {
 
+    static class TestFilterProcessor implements FilterProcessor<Map<String, Object>> {
+        @Override
+        public List<Map<String, Object>> filter(List<Map<String, Object>> input, JsonDslDefinition definition, ProcessingContext context) {
+            // 简单过滤：保留 age >= 25
+            return input.stream().filter(user -> {
+                Object ageObj = user.get("age");
+                int age = Integer.parseInt(ageObj.toString());
+                return age >= 25;
+            }).toList();
+        }
+    }
+
     @Test
     public void testGenerateAndFilterIndependently() {
+        // 注册测试过滤处理器
+        JsonDslProcessorEngine.registerProcessor(new TestFilterProcessor());
         // 1. 创建生成 DSL
         JsonDslDefinition generateDsl = new JsonDslDefinition("test-generate", JsonDslDefinition.DslType.GENERATE);
         JsonDslContext context = new JsonDslContext();
@@ -54,19 +70,8 @@ public class JsonDslEngineIndependentTest {
         // 6. 验证过滤结果
         for (Map user : filteredUsers) {
             Object ageObj = user.get("age");
-            // 处理不同类型的年龄值
-            if (ageObj == null) {
-                fail("用户年龄不能为 null");
-            }
-            
-            int age;
-            if (ageObj instanceof Integer) {
-                age = (Integer) ageObj;
-            } else if (ageObj instanceof String) {
-                age = Integer.parseInt((String) ageObj);
-            } else {
-                age = Integer.parseInt(ageObj.toString());
-            }
+            if (ageObj == null) fail("用户年龄不能为 null");
+            int age = Integer.parseInt(ageObj.toString());
             assertTrue(age >= 25, "过滤后的用户年龄应该 >= 25");
         }
         
@@ -76,6 +81,7 @@ public class JsonDslEngineIndependentTest {
     
     @Test
     public void testGenerateMapAndFilter() {
+        JsonDslProcessorEngine.registerProcessor(new TestFilterProcessor());
         // 1. 创建用户生成 DSL
         JsonDslDefinition userDsl = new JsonDslDefinition("test-users", JsonDslDefinition.DslType.GENERATE);
         JsonDslContext userContext = new JsonDslContext();
@@ -141,6 +147,7 @@ public class JsonDslEngineIndependentTest {
     
     @Test
     public void testChainFiltering() {
+        JsonDslProcessorEngine.registerProcessor(new TestFilterProcessor());
         // 1. 创建生成 DSL
         JsonDslDefinition generateDsl = new JsonDslDefinition("test-chain", JsonDslDefinition.DslType.GENERATE);
         JsonDslContext context = new JsonDslContext();
