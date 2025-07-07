@@ -41,6 +41,9 @@ public class JsonDslProcessorEngineTest {
         
         // 注册一个测试 TransformProcessor
         JsonDslProcessorEngine.registerProcessor(new DefaultTransformProcessor<>());
+        
+        // 注册一个测试 ValidateProcessor
+        JsonDslProcessorEngine.registerProcessor(new DefaultValidateProcessor<>());
     }
     
     @AfterEach

@@ -142,10 +142,18 @@ public class DslObjectBuilder {
                     setter.invoke(obj, value.toString());
                     return true;
                 } catch (NoSuchMethodException e2) {
-                    return false;
+                    // 如果还是找不到，尝试其他可能的类型
+                    try {
+                        java.lang.reflect.Method setter = clazz.getMethod(setterName, Object.class);
+                        setter.invoke(obj, value);
+                        return true;
+                    } catch (NoSuchMethodException e3) {
+                        return false;
+                    }
                 }
             }
         } catch (Exception e) {
+            // 如果调用 setter 时出现异常，返回 false 让代码继续使用字段反射
             return false;
         }
     }
