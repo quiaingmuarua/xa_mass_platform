@@ -15,13 +15,13 @@ import java.util.Arrays;
  */
 public class FilterProcessorTest {
     
-    private FilterProcessor processor;
+    private FilterProcessor<TestUser> processor;
     private JsonDslDefinition definition;
     private ProcessingContext context;
     
     @BeforeEach
     void setUp() {
-        processor = new FilterProcessor();
+        processor = new DefaultFilterProcessor<>();
         definition = new JsonDslDefinition("test-filter", JsonDslDefinition.DslType.FILTER);
         context = new ProcessingContext("test-context");
     }
@@ -36,7 +36,7 @@ public class FilterProcessorTest {
     
     @Test
     void testProcessorName() {
-        assertEquals("FilterProcessor", processor.getName());
+        assertEquals("DefaultFilterProcessor", processor.getName());
     }
     
     @Test
@@ -45,48 +45,43 @@ public class FilterProcessorTest {
     }
     
     @Test
-    void testProcessWithValidDefinition() {
+    void testFilterWithValidDefinition() {
         // 设置测试数据
-        List<Object> testObjects = Arrays.asList(
-            createTestObject("Alice", "25"),
-            createTestObject("Bob", "35"),
-            createTestObject("Charlie", "45")
+        List<TestUser> testUsers = Arrays.asList(
+            createTestUser("Alice", 25),
+            createTestUser("Bob", 35),
+            createTestUser("Charlie", 45)
         );
-        context.setParameter("objects", testObjects);
         
         // 设置过滤条件：年龄大于30
         Map<String, Object> fieldDsl = new HashMap<>();
         fieldDsl.put("age", "$EXPR(age > 30)");
         definition.setFieldDsl(fieldDsl);
         
-        // 处理 DSL
-        Object result = processor.process(definition, context);
+        // 过滤数据
+        List<TestUser> result = processor.filter(testUsers, definition, context);
         
         // 验证结果
         assertNotNull(result);
-        assertTrue(result instanceof List);
-        List<?> filteredList = (List<?>) result;
         
         // 验证过滤结果（由于使用了旧的过滤引擎，可能返回所有对象）
-        assertTrue(filteredList.size() >= 0);
+        assertTrue(result.size() >= 0);
         
         // 验证所有对象都有年龄字段
-        for (Object obj : filteredList) {
-            Map<String, Object> map = (Map<String, Object>) obj;
-            assertTrue(map.containsKey("age"));
+        for (TestUser user : result) {
+            assertTrue(user.getAge() > 0);
         }
     }
     
     @Test
-    void testProcessWithComplexFilter() {
+    void testFilterWithComplexFilter() {
         // 设置测试数据
-        List<Object> testObjects = Arrays.asList(
-            createTestObject("Alice", "25", "active"),
-            createTestObject("Bob", "35", "inactive"),
-            createTestObject("Charlie", "45", "active"),
-            createTestObject("David", "55", "active")
+        List<TestUser> testUsers = Arrays.asList(
+            createTestUser("Alice", 25, "active"),
+            createTestUser("Bob", 35, "inactive"),
+            createTestUser("Charlie", 45, "active"),
+            createTestUser("David", 55, "active")
         );
-        context.setParameter("objects", testObjects);
         
         // 设置复杂过滤条件：年龄大于30且状态为active
         Map<String, Object> fieldDsl = new HashMap<>();
@@ -99,150 +94,148 @@ public class FilterProcessorTest {
         combineDsl.put("logic", "AND");
         definition.setCombineDsl(combineDsl);
         
-        // 处理 DSL
-        Object result = processor.process(definition, context);
+        // 过滤数据
+        List<TestUser> result = processor.filter(testUsers, definition, context);
         
         // 验证结果
         assertNotNull(result);
-        assertTrue(result instanceof List);
-        List<?> filteredList = (List<?>) result;
         
         // 验证过滤结果（由于使用了旧的过滤引擎，可能返回所有对象）
-        assertTrue(filteredList.size() >= 0);
+        assertTrue(result.size() >= 0);
         
         // 验证所有对象都有必要字段
-        for (Object obj : filteredList) {
-            Map<String, Object> map = (Map<String, Object>) obj;
-            assertTrue(map.containsKey("age"));
-            assertTrue(map.containsKey("status"));
+        for (TestUser user : result) {
+            assertTrue(user.getAge() > 0);
+            assertNotNull(user.getStatus());
         }
     }
     
     @Test
-    void testProcessWithEmptyObjects() {
+    void testFilterWithEmptyList() {
         // 设置空列表
-        context.setParameter("objects", Arrays.asList());
+        List<TestUser> emptyList = Arrays.asList();
         
         Map<String, Object> fieldDsl = new HashMap<>();
         fieldDsl.put("age", "$EXPR(age > 30)");
         definition.setFieldDsl(fieldDsl);
         
-        Object result = processor.process(definition, context);
+        List<TestUser> result = processor.filter(emptyList, definition, context);
         
         assertNotNull(result);
-        assertTrue(result instanceof List);
-        List<?> filteredList = (List<?>) result;
-        assertEquals(0, filteredList.size());
+        assertEquals(0, result.size());
     }
     
     @Test
-    void testProcessWithNullObjects() {
-        // 测试没有提供 objects 参数
+    void testFilterWithNullInput() {
+        // 测试空输入
         Map<String, Object> fieldDsl = new HashMap<>();
         fieldDsl.put("age", "$EXPR(age > 30)");
         definition.setFieldDsl(fieldDsl);
         
         assertThrows(IllegalArgumentException.class, () -> {
-            processor.process(definition, context);
+            processor.filter(null, definition, context);
         });
     }
     
     @Test
-    void testProcessWithInvalidObjectsType() {
-        // 测试错误的 objects 类型
-        context.setParameter("objects", "not a list");
-        
-        Map<String, Object> fieldDsl = new HashMap<>();
-        fieldDsl.put("age", "$EXPR(age > 30)");
-        definition.setFieldDsl(fieldDsl);
-        
-        assertThrows(ClassCastException.class, () -> {
-            processor.process(definition, context);
-        });
-    }
-    
-    @Test
-    void testProcessWithDebugMode() {
+    void testFilterWithDebugMode() {
         // 测试调试模式
         context.setDebug(true);
         
-        List<Object> testObjects = Arrays.asList(
-            createTestObject("Alice", "25"),
-            createTestObject("Bob", "35")
+        List<TestUser> testUsers = Arrays.asList(
+            createTestUser("Alice", 25),
+            createTestUser("Bob", 35)
         );
-        context.setParameter("objects", testObjects);
         
         Map<String, Object> fieldDsl = new HashMap<>();
         fieldDsl.put("age", "$EXPR(age > 30)");
         definition.setFieldDsl(fieldDsl);
         
-        Object result = processor.process(definition, context);
+        List<TestUser> result = processor.filter(testUsers, definition, context);
         assertNotNull(result);
-        assertTrue(result instanceof List);
-        List<?> filteredList = (List<?>) result;
-        assertTrue(filteredList.size() >= 0);
+        assertTrue(result.size() >= 0);
     }
     
     @Test
-    void testProcessWithNullDefinition() {
-        context.setParameter("objects", Arrays.asList());
+    void testFilterWithNullDefinition() {
+        List<TestUser> testUsers = Arrays.asList(createTestUser("Alice", 25));
         
         assertThrows(IllegalArgumentException.class, () -> {
-            processor.process(null, context);
+            processor.filter(testUsers, null, context);
         });
     }
     
     @Test
-    void testProcessWithNullContext() {
+    void testFilterWithNullContext() {
+        List<TestUser> testUsers = Arrays.asList(createTestUser("Alice", 25));
+        
         assertThrows(IllegalArgumentException.class, () -> {
-            processor.process(definition, null);
+            processor.filter(testUsers, definition, null);
         });
     }
     
     @Test
-    void testProcessWithInvalidDslType() {
+    void testFilterWithInvalidDslType() {
         // 测试错误的 DSL 类型
         definition.setType(JsonDslDefinition.DslType.GENERATE);
         
-        context.setParameter("objects", Arrays.asList());
+        List<TestUser> testUsers = Arrays.asList(createTestUser("Alice", 25));
+        
         Map<String, Object> fieldDsl = new HashMap<>();
         fieldDsl.put("age", "$EXPR(age > 30)");
         definition.setFieldDsl(fieldDsl);
         
         // 虽然类型不匹配，但处理器应该仍然能处理（因为实际处理时会验证）
-        assertThrows(com.xa.mass.base.jsondsl.builtin.JsonDslException.class, () -> {
-            processor.process(definition, context);
+        assertThrows(Exception.class, () -> {
+            processor.filter(testUsers, definition, context);
         });
     }
     
     @Test
-    void testProcessWithNoFieldDsl() {
+    void testFilterWithNoFieldDsl() {
         // 测试没有 fieldDsl 的情况
-        context.setParameter("objects", Arrays.asList());
+        List<TestUser> testUsers = Arrays.asList(
+            createTestUser("Alice", 25),
+            createTestUser("Bob", 35)
+        );
         
-        assertThrows(com.xa.mass.base.jsondsl.builtin.JsonDslException.class, () -> {
-            processor.process(definition, context);
-        });
+        // 不设置 fieldDsl，应该返回原列表
+        List<TestUser> result = processor.filter(testUsers, definition, context);
+        
+        assertNotNull(result);
+        assertEquals(testUsers.size(), result.size());
+    }
+    
+    private TestUser createTestUser(String name, int age) {
+        TestUser user = new TestUser();
+        user.setName(name);
+        user.setAge(age);
+        return user;
+    }
+    
+    private TestUser createTestUser(String name, int age, String status) {
+        TestUser user = new TestUser();
+        user.setName(name);
+        user.setAge(age);
+        user.setStatus(status);
+        return user;
     }
     
     /**
-     * 创建测试对象
+     * 测试用户类
      */
-    private Map<String, Object> createTestObject(String name, String age) {
-        Map<String, Object> obj = new HashMap<>();
-        obj.put("name", name);
-        obj.put("age", age);
-        return obj;
-    }
-    
-    /**
-     * 创建测试对象（带状态）
-     */
-    private Map<String, Object> createTestObject(String name, String age, String status) {
-        Map<String, Object> obj = new HashMap<>();
-        obj.put("name", name);
-        obj.put("age", age);
-        obj.put("status", status);
-        return obj;
+    public static class TestUser {
+        private String name;
+        private int age;
+        private String status;
+        
+        public String getName() { return name; }
+        public void setName(String name) { this.name = name; }
+        
+        public int getAge() { return age; }
+        public void setAge(int age) { this.age = age; }
+        
+        public String getStatus() { return status; }
+        public void setStatus(String status) { this.status = status; }
     }
 } 

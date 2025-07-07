@@ -99,6 +99,8 @@ public class NewIntegrationExample {
         // 5. 应用过滤器
         String filterConfig = JsonDslParser.toLegacyFormat(filterDef);
         System.out.println("过滤器配置: " + filterConfig);
+
+//        JsonDslEngine.filter(devices,filterConfig);
         
         // 6. 使用传统方式过滤（因为新标准 DSL 的过滤器还在开发中）
         return devices.stream()

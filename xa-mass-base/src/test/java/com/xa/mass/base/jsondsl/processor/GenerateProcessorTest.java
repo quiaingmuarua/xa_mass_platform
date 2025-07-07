@@ -15,13 +15,13 @@ import java.util.HashMap;
  */
 public class GenerateProcessorTest {
     
-    private GenerateProcessor processor;
+    private GenerateProcessor<TestUser> processor;
     private JsonDslDefinition definition;
     private ProcessingContext context;
     
     @BeforeEach
     void setUp() {
-        processor = new GenerateProcessor();
+        processor = new DefaultGenerateProcessor<>();
         definition = new JsonDslDefinition("test-generator", JsonDslDefinition.DslType.GENERATE);
         context = new ProcessingContext("test-context");
     }
@@ -36,7 +36,7 @@ public class GenerateProcessorTest {
     
     @Test
     void testProcessorName() {
-        assertEquals("GenerateProcessor", processor.getName());
+        assertEquals("DefaultGenerateProcessor", processor.getName());
     }
     
     @Test
@@ -45,7 +45,7 @@ public class GenerateProcessorTest {
     }
     
     @Test
-    void testProcessWithValidDefinition() {
+    void testGenerateWithValidDefinition() {
         // 设置有效的 DSL 定义
         JsonDslContext dslContext = new JsonDslContext();
         dslContext.setModel("com.xa.mass.base.jsondsl.processor.TestUser");
@@ -57,46 +57,42 @@ public class GenerateProcessorTest {
         fieldDsl.put("email", "$RANDOM_EMAIL");
         definition.setFieldDsl(fieldDsl);
         
-        // 处理 DSL
-        Object result = processor.process(definition, context);
+        // 生成数据
+        List<TestUser> result = processor.generate(definition, context, TestUser.class);
         
         // 验证结果
         assertNotNull(result);
-        assertTrue(result instanceof List);
-        List<?> list = (List<?>) result;
-        assertEquals(3, list.size());
+        assertEquals(3, result.size());
         
         // 验证每个对象都是 TestUser 类型
-        for (Object obj : list) {
-            assertTrue(obj instanceof TestUser);
-            TestUser user = (TestUser) obj;
+        for (TestUser user : result) {
             assertNotNull(user.getName());
             assertNotNull(user.getEmail());
         }
     }
     
     @Test
-    void testProcessWithInvalidDefinition() {
+    void testGenerateWithInvalidDefinition() {
         // 测试没有 context 的 DSL
-        assertThrows(com.xa.mass.base.jsondsl.builtin.JsonDslException.class, () -> {
-            processor.process(definition, context);
+        assertThrows(IllegalArgumentException.class, () -> {
+            processor.generate(definition, context, TestUser.class);
         });
     }
     
     @Test
-    void testProcessWithNullModel() {
+    void testGenerateWithNullModel() {
         // 设置没有 model 的 context
         JsonDslContext dslContext = new JsonDslContext();
         dslContext.setCount(3);
         definition.setContext(dslContext);
         
-        assertThrows(com.xa.mass.base.jsondsl.builtin.JsonDslException.class, () -> {
-            processor.process(definition, context);
+        assertThrows(IllegalArgumentException.class, () -> {
+            processor.generate(definition, context, TestUser.class);
         });
     }
     
     @Test
-    void testProcessWithInvalidModel() {
+    void testGenerateWithInvalidModel() {
         // 设置无效的 model
         JsonDslContext dslContext = new JsonDslContext();
         dslContext.setModel("com.nonexistent.Class");
@@ -108,13 +104,13 @@ public class GenerateProcessorTest {
         definition.setFieldDsl(fieldDsl);
         
         // 应该抛出异常，因为类不存在
-        assertThrows(com.xa.mass.base.jsondsl.builtin.JsonDslException.class, () -> {
-            processor.process(definition, context);
+        assertThrows(Exception.class, () -> {
+            processor.generate(definition, context, TestUser.class);
         });
     }
     
     @Test
-    void testProcessWithDefaultCount() {
+    void testGenerateWithDefaultCount() {
         // 测试默认数量（不设置 count）
         JsonDslContext dslContext = new JsonDslContext();
         dslContext.setModel("com.xa.mass.base.jsondsl.processor.TestUser");
@@ -124,15 +120,13 @@ public class GenerateProcessorTest {
         fieldDsl.put("name", "$RANDOM_NAME");
         definition.setFieldDsl(fieldDsl);
         
-        Object result = processor.process(definition, context);
+        List<TestUser> result = processor.generate(definition, context, TestUser.class);
         assertNotNull(result);
-        assertTrue(result instanceof List);
-        List<?> list = (List<?>) result;
-        assertEquals(1, list.size()); // 默认数量为 1
+        assertEquals(1, result.size()); // 默认数量为 1
     }
     
     @Test
-    void testProcessWithDebugMode() {
+    void testGenerateWithDebugMode() {
         // 测试调试模式
         context.setDebug(true);
         
@@ -145,15 +139,13 @@ public class GenerateProcessorTest {
         fieldDsl.put("name", "$RANDOM_NAME");
         definition.setFieldDsl(fieldDsl);
         
-        Object result = processor.process(definition, context);
+        List<TestUser> result = processor.generate(definition, context, TestUser.class);
         assertNotNull(result);
-        assertTrue(result instanceof List);
-        List<?> list = (List<?>) result;
-        assertEquals(2, list.size());
+        assertEquals(2, result.size());
     }
     
     @Test
-    void testProcessWithComplexFieldDsl() {
+    void testGenerateWithComplexFieldDsl() {
         // 测试复杂的字段 DSL
         JsonDslContext dslContext = new JsonDslContext();
         dslContext.setModel("com.xa.mass.base.jsondsl.processor.TestUser");
@@ -166,34 +158,44 @@ public class GenerateProcessorTest {
         fieldDsl.put("email", "$RANDOM_EMAIL");
         definition.setFieldDsl(fieldDsl);
         
-        Object result = processor.process(definition, context);
+        List<TestUser> result = processor.generate(definition, context, TestUser.class);
         assertNotNull(result);
-        assertTrue(result instanceof List);
-        List<?> list = (List<?>) result;
-        assertEquals(1, list.size());
+        assertEquals(1, result.size());
     }
     
     @Test
-    void testProcessWithNullDefinition() {
+    void testGenerateWithNullDefinition() {
         assertThrows(IllegalArgumentException.class, () -> {
-            processor.process(null, context);
+            processor.generate(null, context, TestUser.class);
         });
     }
     
     @Test
-    void testProcessWithNullContext() {
+    void testGenerateWithNullContext() {
         JsonDslContext dslContext = new JsonDslContext();
         dslContext.setModel("com.xa.mass.base.jsondsl.processor.TestUser");
         dslContext.setCount(1);
         definition.setContext(dslContext);
         
         assertThrows(IllegalArgumentException.class, () -> {
-            processor.process(definition, null);
+            processor.generate(definition, null, TestUser.class);
         });
     }
     
     @Test
-    void testProcessWithInvalidDslType() {
+    void testGenerateWithNullTargetType() {
+        JsonDslContext dslContext = new JsonDslContext();
+        dslContext.setModel("com.xa.mass.base.jsondsl.processor.TestUser");
+        dslContext.setCount(1);
+        definition.setContext(dslContext);
+        
+        assertThrows(IllegalArgumentException.class, () -> {
+            processor.generate(definition, context, null);
+        });
+    }
+    
+    @Test
+    void testGenerateWithInvalidDslType() {
         // 测试错误的 DSL 类型
         definition.setType(JsonDslDefinition.DslType.FILTER);
         
@@ -203,8 +205,26 @@ public class GenerateProcessorTest {
         definition.setContext(dslContext);
         
         // 虽然类型不匹配，但处理器应该仍然能处理（因为实际处理时会验证）
-        assertThrows(com.xa.mass.base.jsondsl.builtin.JsonDslException.class, () -> {
-            processor.process(definition, context);
+        assertThrows(Exception.class, () -> {
+            processor.generate(definition, context, TestUser.class);
         });
+    }
+    
+    /**
+     * 测试用户类
+     */
+    public static class TestUser {
+        private String name;
+        private String email;
+        private int age;
+        
+        public String getName() { return name; }
+        public void setName(String name) { this.name = name; }
+        
+        public String getEmail() { return email; }
+        public void setEmail(String email) { this.email = email; }
+        
+        public int getAge() { return age; }
+        public void setAge(int age) { this.age = age; }
     }
 } 

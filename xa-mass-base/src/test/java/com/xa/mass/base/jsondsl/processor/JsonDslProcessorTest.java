@@ -22,18 +22,12 @@ public class JsonDslProcessorTest {
     }
     
     @Test
-    void testProcessorBasicFunctionality() {
-        // 测试基本功能
-        Object result = processor.process(definition, context);
-        assertNotNull(result);
-        assertEquals("TestProcessor processed: test-dsl", result);
-    }
-    
-    @Test
     void testProcessorSupports() {
         // 测试支持的类型
         assertTrue(processor.supports(JsonDslDefinition.DslType.GENERATE));
         assertFalse(processor.supports(JsonDslDefinition.DslType.FILTER));
+        assertFalse(processor.supports(JsonDslDefinition.DslType.TRANSFORM));
+        assertFalse(processor.supports(JsonDslDefinition.DslType.VALIDATE));
     }
     
     @Test
@@ -49,36 +43,17 @@ public class JsonDslProcessorTest {
     }
     
     @Test
-    void testProcessorWithNullDefinition() {
-        // 测试空定义
-        assertThrows(IllegalArgumentException.class, () -> {
-            processor.process(null, context);
-        });
-    }
-    
-    @Test
-    void testProcessorWithNullContext() {
-        // 测试空上下文
-        assertThrows(IllegalArgumentException.class, () -> {
-            processor.process(definition, null);
-        });
+    void testProcessorDefaultSupports() {
+        // 测试默认的 supports 实现
+        TestGenerateProcessor generateProcessor = new TestGenerateProcessor();
+        assertTrue(generateProcessor.supports(JsonDslDefinition.DslType.GENERATE));
+        assertFalse(generateProcessor.supports(JsonDslDefinition.DslType.FILTER));
     }
     
     /**
-     * 测试用的处理器实现
+     * 测试用的基础处理器实现
      */
     private static class TestProcessor implements JsonDslProcessor {
-        
-        @Override
-        public Object process(JsonDslDefinition definition, ProcessingContext context) {
-            if (definition == null) {
-                throw new IllegalArgumentException("Definition cannot be null");
-            }
-            if (context == null) {
-                throw new IllegalArgumentException("Context cannot be null");
-            }
-            return "TestProcessor processed: " + definition.getUniqueId();
-        }
         
         @Override
         public boolean supports(JsonDslDefinition.DslType type) {
@@ -88,6 +63,36 @@ public class JsonDslProcessorTest {
         @Override
         public String getName() {
             return "TestProcessor";
+        }
+        
+        @Override
+        public int getPriority() {
+            return 100;
+        }
+    }
+    
+    /**
+     * 测试用的生成处理器实现
+     */
+    private static class TestGenerateProcessor implements GenerateProcessor<String> {
+        
+        @Override
+        public java.util.List<String> generate(JsonDslDefinition definition, ProcessingContext context, Class<String> targetType) {
+            if (definition == null) {
+                throw new IllegalArgumentException("Definition cannot be null");
+            }
+            if (context == null) {
+                throw new IllegalArgumentException("Context cannot be null");
+            }
+            if (targetType == null) {
+                throw new IllegalArgumentException("Target type cannot be null");
+            }
+            return java.util.List.of("TestProcessor processed: " + definition.getUniqueId());
+        }
+        
+        @Override
+        public String getName() {
+            return "TestGenerateProcessor";
         }
         
         @Override
