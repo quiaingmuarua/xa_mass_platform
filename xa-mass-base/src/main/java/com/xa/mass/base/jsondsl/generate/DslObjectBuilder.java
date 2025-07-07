@@ -24,7 +24,10 @@ import java.util.*;
 public class DslObjectBuilder {
     private static final Gson gson = GsonConfig.buildGson();
 
-    public static Object mockFromDsl(JsonObject dsl, DslContext context) {
+    /**
+     * 泛型版本：类型安全地生成指定类型对象
+     */
+    public static <T> T mockFromDsl(JsonObject dsl, DslContext context, Class<T> targetType) {
         // 1. 解析 MODEL
         String modelName = dsl.has(DslKeyword.MODEL.name()) ? dsl.get(DslKeyword.MODEL.name()).getAsString() : null;
         if (modelName == null) {
@@ -105,7 +108,13 @@ public class DslObjectBuilder {
                 }
             }
         }
-        return obj;
+        
+        // 类型检查和转换
+        if (!targetType.isInstance(obj)) {
+            throw new JsonDslException("生成对象类型不匹配: 期望 " + targetType.getName() +
+                ", 实际 " + (obj != null ? obj.getClass().getName() : "null"));
+        }
+        return targetType.cast(obj);
     }
 
     private static Object mockFieldValue(Field field, Object rule, DslContext context) {
@@ -150,7 +159,7 @@ public class DslObjectBuilder {
             if (subFields != null) {
                 subDsl.add(DslKeyword.FIELDS.name(), gson.toJsonTree(subFields));
             }
-            list.add(mockFromDsl(subDsl, subContext));
+            list.add(mockFromDsl(subDsl, subContext, Object.class));
         }
         if (type.equals("LIST")) return list;
         if (type.equals("SET")) return new HashSet<>(list);
@@ -167,7 +176,7 @@ public class DslObjectBuilder {
         if (ruleMap.containsKey(DslKeyword.FIELDS.name())) {
             subDsl.add(DslKeyword.FIELDS.name(), gson.toJsonTree(ruleMap.get(DslKeyword.FIELDS.name())));
         }
-        return mockFromDsl(subDsl, subContext);
+        return mockFromDsl(subDsl, subContext, Object.class);
     }
 
     private static boolean setFieldViaSetter(Object obj, String fieldName, Object value, Class<?> clazz) {

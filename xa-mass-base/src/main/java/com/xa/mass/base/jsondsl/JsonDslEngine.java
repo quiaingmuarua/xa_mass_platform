@@ -60,14 +60,8 @@ public class JsonDslEngine {
             DslContext context = new DslContext();
             context.setScopeName(modelName);
             context.setVariable("&" + modelName + ".index", i);
-            Object obj = DslObjectBuilder.mockFromDsl(root, context);
-            
-            if (targetType.isInstance(obj)) {
-                result.add((T) obj);
-            } else {
-                throw new JsonDslException("对象类型不匹配: 期望 " + targetType.getName() +
-                    ", 实际 " + (obj != null ? obj.getClass().getName() : "null"));
-            }
+            T obj = DslObjectBuilder.mockFromDsl(root, context, targetType);
+            result.add(obj);
         }
         
         return result;
