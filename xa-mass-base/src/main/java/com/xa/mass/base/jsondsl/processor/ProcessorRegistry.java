@@ -45,8 +45,14 @@ public class ProcessorRegistry {
             }
         }
         
-        // 如果没有自定义处理器，使用默认处理器
-        return ProcessorManager.getProcessor(type);
+        // 如果没有自定义处理器，尝试使用默认处理器
+        JsonDslProcessor defaultProcessor = ProcessorManager.getProcessor(type);
+        if (defaultProcessor != null) {
+            return defaultProcessor;
+        }
+        
+        // 如果连默认处理器都没有，抛出异常
+        throw new IllegalArgumentException("未找到支持类型 " + type + " 的处理器");
     }
     
     /**

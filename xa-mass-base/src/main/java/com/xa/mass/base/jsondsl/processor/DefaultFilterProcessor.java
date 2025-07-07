@@ -3,6 +3,8 @@ package com.xa.mass.base.jsondsl.processor;
 import com.xa.mass.base.jsondsl.JsonDslEngine;
 import com.xa.mass.base.jsondsl.parser.JsonDslParser;
 import com.xa.mass.base.jsondsl.model.JsonDslDefinition;
+import com.xa.mass.base.jsondsl.filter.DslFilterFactory;
+import com.xa.mass.base.jsondsl.filter.JsonDslFilter;
 
 import java.util.List;
 
@@ -38,8 +40,11 @@ class DefaultFilterProcessor implements FilterProcessor {
         String filterConfig = JsonDslParser.toLegacyFormat(definition);
         
         // 应用过滤器
+        JsonDslFilter<Object> filter = DslFilterFactory.createJsonDslFilter(
+            "autoFilter", "自动生成的过滤器", filterConfig
+        );
         @SuppressWarnings("unchecked")
-        List<T> result = (List<T>) JsonDslEngine.filter((List<Object>) input, filterConfig);
+        List<T> result = (List<T>) filter.filterList((List<Object>) input);
         
         if (context.isDebug()) {
             System.out.println("[DefaultFilterProcessor] 过滤完成，原始数量: " + input.size() + ", 过滤后数量: " + result.size());

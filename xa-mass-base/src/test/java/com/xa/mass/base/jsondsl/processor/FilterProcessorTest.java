@@ -22,6 +22,8 @@ public class FilterProcessorTest {
     
     @BeforeEach
     void setUp() {
+        // 清理注册表，确保获取默认处理器
+        ProcessorRegistry.clear();
         processor = ProcessorRegistry.getFilterProcessor();
         definition = new JsonDslDefinition("test-filter", JsonDslDefinition.DslType.FILTER);
         context = new ProcessingContext("test-context");

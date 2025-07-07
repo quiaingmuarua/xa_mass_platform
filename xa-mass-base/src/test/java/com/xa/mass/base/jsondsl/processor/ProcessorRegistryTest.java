@@ -75,10 +75,10 @@ public class ProcessorRegistryTest {
         assertNotNull(processor);
         assertTrue(processor.supports(JsonDslDefinition.DslType.GENERATE));
         
-        // 获取不支持的类型的处理器
-        assertThrows(IllegalArgumentException.class, () -> {
-            ProcessorRegistry.getProcessor(JsonDslDefinition.DslType.FILTER);
-        });
+        // 获取不支持的类型的处理器（应该返回默认处理器）
+        JsonDslProcessor filterProcessor = ProcessorRegistry.getProcessor(JsonDslDefinition.DslType.FILTER);
+        assertNotNull(filterProcessor);
+        assertTrue(filterProcessor.supports(JsonDslDefinition.DslType.FILTER));
     }
     
     @Test

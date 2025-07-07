@@ -22,8 +22,18 @@ public class JsonDslEngineIndependentTest {
         
         @Override
         public <T> List<T> filter(List<T> input, JsonDslDefinition definition, ProcessingContext context) {
-            // 简单的过滤逻辑：保留所有对象
-            return input;
+            // 过滤掉不包含或为 null 的 age/status/score 字段的对象
+            List<T> result = new java.util.ArrayList<>();
+            for (T obj : input) {
+                if (obj instanceof java.util.Map) {
+                    java.util.Map<?,?> map = (java.util.Map<?,?>) obj;
+                    if (!map.containsKey("age") || map.get("age") == null) continue;
+                    if (!map.containsKey("status") || map.get("status") == null) continue;
+                    if (!map.containsKey("score") || map.get("score") == null) continue;
+                }
+                result.add(obj);
+            }
+            return result;
         }
         
         @Override
@@ -73,7 +83,7 @@ public class JsonDslEngineIndependentTest {
         
         // 4. 设置上下文参数
         ProcessingContext filterContext = new ProcessingContext();
-        filterContext.setParameter("objects", allUsers);
+        filterContext.setParameter("input", allUsers);
         
         // 5. 执行过滤
         List<Map> filteredUsers = JsonDslProcessorEngine.process(filterDsl, filterContext, Map.class);
@@ -141,7 +151,7 @@ public class JsonDslEngineIndependentTest {
         
         // 5. 过滤用户数据
         ProcessingContext filterContext = new ProcessingContext();
-        filterContext.setParameter("objects", users);
+        filterContext.setParameter("input", users);
         List<Map> filteredUsers = JsonDslProcessorEngine.process(filterDsl, filterContext, Map.class);
         
         // 6. 构建过滤后的模型映射
@@ -187,7 +197,7 @@ public class JsonDslEngineIndependentTest {
         Map<String, Object> filter1Dsl = new HashMap<>();
         filter1Dsl.put("age", "$EXPR(age >= 25)");
         filter1.setFieldDsl(filter1Dsl);
-        filterContext.setParameter("objects", allUsers);
+        filterContext.setParameter("input", allUsers);
         List<Map> step1 = JsonDslProcessorEngine.process(filter1, filterContext, Map.class);
         System.out.println("年龄>=25: " + step1.size());
         
@@ -196,7 +206,7 @@ public class JsonDslEngineIndependentTest {
         Map<String, Object> filter2Dsl = new HashMap<>();
         filter2Dsl.put("status", "$EXPR(status == 'active')");
         filter2.setFieldDsl(filter2Dsl);
-        filterContext.setParameter("objects", step1);
+        filterContext.setParameter("input", step1);
         List<Map> step2 = JsonDslProcessorEngine.process(filter2, filterContext, Map.class);
         System.out.println("状态=active: " + step2.size());
         
@@ -205,7 +215,7 @@ public class JsonDslEngineIndependentTest {
         Map<String, Object> filter3Dsl = new HashMap<>();
         filter3Dsl.put("score", "$EXPR(score >= 70)");
         filter3.setFieldDsl(filter3Dsl);
-        filterContext.setParameter("objects", step2);
+        filterContext.setParameter("input", step2);
         List<Map> step3 = JsonDslProcessorEngine.process(filter3, filterContext, Map.class);
         System.out.println("分数>=70: " + step3.size());
         
@@ -214,7 +224,7 @@ public class JsonDslEngineIndependentTest {
         Map<String, Object> filter4Dsl = new HashMap<>();
         filter4Dsl.put("score", "$EXPR(score <= 100)");
         filter4.setFieldDsl(filter4Dsl);
-        filterContext.setParameter("objects", step3);
+        filterContext.setParameter("input", step3);
         List<Map> step4 = JsonDslProcessorEngine.process(filter4, filterContext, Map.class);
         System.out.println("分数<=100: " + step4.size());
         
@@ -229,11 +239,12 @@ public class JsonDslEngineIndependentTest {
             Object ageObj = user.get("age");
             Object statusObj = user.get("status");
             Object scoreObj = user.get("score");
-            
+            if (ageObj == null) fail("用户年龄不能为 null");
+            if (statusObj == null) fail("用户状态不能为 null");
+            if (scoreObj == null) fail("用户分数不能为 null");
             int age = Integer.parseInt(ageObj.toString());
             String status = statusObj.toString();
             int score = Integer.parseInt(scoreObj.toString());
-            
             assertTrue(age >= 25, "最终用户年龄应该 >= 25");
             assertEquals("active", status, "最终用户状态应该是 active");
             assertTrue(score >= 70 && score <= 100, "最终用户分数应该在 70-100 之间");

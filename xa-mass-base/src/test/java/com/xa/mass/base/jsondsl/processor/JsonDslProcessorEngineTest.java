@@ -121,7 +121,7 @@ public class JsonDslProcessorEngineTest {
         String jsonDsl = """
             {
                 "uniqueId": "json-test-dsl",
-                "type": "generate",
+                "type": "GENERATE",
                 "priority": 1,
                 "description": "Test DSL from JSON",
                 "context": {
@@ -147,7 +147,7 @@ public class JsonDslProcessorEngineTest {
         String jsonDsl = """
             {
                 "uniqueId": "json-test-dsl",
-                "type": "generate",
+                "type": "GENERATE",
                 "priority": 1,
                 "description": "Test DSL from JSON",
                 "context": {
@@ -177,7 +177,7 @@ public class JsonDslProcessorEngineTest {
             """
             {
                 "uniqueId": "json-test-dsl-1",
-                "type": "generate",
+                "type": "GENERATE",
                 "priority": 1,
                 "description": "Test DSL 1 from JSON",
                 "context": {
@@ -189,7 +189,7 @@ public class JsonDslProcessorEngineTest {
             """
             {
                 "uniqueId": "json-test-dsl-2",
-                "type": "generate",
+                "type": "GENERATE",
                 "priority": 2,
                 "description": "Test DSL 2 from JSON",
                 "context": {
@@ -217,7 +217,7 @@ public class JsonDslProcessorEngineTest {
             """
             {
                 "uniqueId": "json-test-dsl-1",
-                "type": "generate",
+                "type": "GENERATE",
                 "priority": 1,
                 "description": "Test DSL 1 from JSON",
                 "context": {
