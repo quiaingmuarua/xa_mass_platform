@@ -4,11 +4,9 @@ import com.xa.mass.base.jsondsl.JsonDslEngine;
 import com.xa.mass.base.jsondsl.model.JsonDslContext;
 import com.xa.mass.base.jsondsl.model.JsonDslDefinition;
 import com.xa.mass.base.jsondsl.parser.JsonDslParser;
-import com.xa.mass.base.jsondsl.processor.GenerateProcessor;
-import com.xa.mass.base.jsondsl.processor.GenerateProcessorTest;
+import com.xa.mass.base.jsondsl.processor.*;
 import com.xa.mass.base.model.Device;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.base.jsondsl.processor.ProcessorRegistry;
 
 import java.util.Arrays;
 import java.util.HashMap;
@@ -27,9 +25,28 @@ public class NewIntegrationExample {
         List<Device> devices = generateDevices();
         System.out.println("生成了 " + devices.size() + " 个设备");
         
+        // 过滤器定义
+        JsonDslDefinition filterDef = new JsonDslDefinition("device_filter", JsonDslDefinition.DslType.FILTER);
+        filterDef.setDescription("过滤设备：deviceId < 100，groupId < 25，status = ONLINE");
+        filterDef.setAuthor("integration_test");
+        filterDef.setPriority(10);
+        Map<String, Object> fieldDsl = new HashMap<>();
+        fieldDsl.put("deviceId", Map.of("lt", 100));
+        fieldDsl.put("groupId", Map.of("lt", 25));
+        fieldDsl.put("status", Map.of("eq", "ONLINE"));
+        filterDef.setFieldDsl(fieldDsl);
+        Map<String, Object> combineDsl = new HashMap<>();
+        combineDsl.put("device_group_check", "parseInt(deviceId) < 100 && parseInt(groupId) < 25");
+        combineDsl.put("status_check", "status == 'ONLINE'");
+        filterDef.setCombineDsl(combineDsl);
+        filterDef.validate();
+        
         // 2. 过滤：deviceId < 100，groupId < 25，status = ONLINE
-        List<Device> filteredDevices = filterDevices(devices);
+        List<Device> filteredDevices = filterDevices(devices, filterDef);
         System.out.println("过滤后剩余 " + filteredDevices.size() + " 个设备");
+        
+        // 2.1 explain/report: 输出被过滤设备及原因
+        explainFilter(devices, filterDef);
         
         // 3. 显示过滤结果
         System.out.println("\n=== 过滤结果 ===");
@@ -69,55 +86,34 @@ public class NewIntegrationExample {
         
         // 4. 验证并生成
         definition.validate();
-        String legacyFormat = JsonDslParser.toLegacyFormat(definition);
         GenerateProcessor processor = ProcessorRegistry.getGenerateProcessor();
-        return JsonDslEngine.generateList(legacyFormat, Device.class);
+        return processor.generate(definition,new ProcessingContext("test-context"),Device.class);
     }
     
     /**
      * 使用新标准 DSL 过滤设备
      */
-    private static List<Device> filterDevices(List<Device> devices) {
-        // 1. 创建过滤器 DSL 定义
-        JsonDslDefinition filterDef = new JsonDslDefinition("device_filter", JsonDslDefinition.DslType.FILTER);
-        filterDef.setDescription("过滤设备：deviceId < 100，groupId < 25，status = ONLINE");
-        filterDef.setAuthor("integration_test");
-        filterDef.setPriority(10);
-        
-        // 2. 设置字段过滤条件
-        Map<String, Object> fieldDsl = new HashMap<>();
-        fieldDsl.put("deviceId", Map.of("lt", 100));
-        fieldDsl.put("groupId", Map.of("lt", 25));
-        fieldDsl.put("status", Map.of("eq", "ONLINE"));
-        filterDef.setFieldDsl(fieldDsl);
-        
-        // 3. 设置组合过滤条件（可选）
-        Map<String, Object> combineDsl = new HashMap<>();
-        combineDsl.put("device_group_check", "parseInt(deviceId) < 100 && parseInt(groupId) < 25");
-        combineDsl.put("status_check", "status == 'ONLINE'");
-        filterDef.setCombineDsl(combineDsl);
-        
-        // 4. 验证过滤器
-        filterDef.validate();
-        
-        // 5. 应用过滤器
+    private static List<Device> filterDevices(List<Device> devices, JsonDslDefinition filterDef) {
         String filterConfig = JsonDslParser.toLegacyFormat(filterDef);
         System.out.println("过滤器配置: " + filterConfig);
-
-//        JsonDslEngine.filter(devices,filterConfig);
-        
-        // 6. 使用传统方式过滤（因为新标准 DSL 的过滤器还在开发中）
-        return devices.stream()
-            .filter(device -> {
-                try {
-                    int deviceId = Integer.parseInt(device.getDeviceId());
-                    int groupId = Integer.parseInt(device.getGroupId());
-                    return deviceId < 100 && groupId < 25 && "ONLINE".equals(device.getStatus().name());
-                } catch (NumberFormatException e) {
-                    return false;
-                }
-            })
-            .collect(Collectors.toList());
+        FilterProcessor filterProcessor = ProcessorRegistry.getFilterProcessor();
+        return filterProcessor.filter(devices, filterDef, new ProcessingContext("test-context"));
+    }
+    
+    /**
+     * explain/report: 输出被过滤设备及原因
+     */
+    private static void explainFilter(List<Device> devices, JsonDslDefinition filterDef) {
+        System.out.println("\n=== 过滤解释（explain/report） ===");
+        FilterProcessor filterProcessor = ProcessorRegistry.getFilterProcessor();
+        FilterReport<Device> report = filterProcessor.filterWithReport(devices, filterDef, new ProcessingContext("test-context"));
+        System.out.println("通过的设备数: " + report.getPassed().size());
+        System.out.println("被过滤的设备及原因:");
+        for (FilterReport.FilterFail<Device> fail : report.getFailed()) {
+            Device d = fail.getObject();
+            System.out.println("设备: " + d.getDeviceId() + ", 组: " + d.getGroupId() + ", 状态: " + d.getStatus()
+                + ", 未通过: " + String.join("; ", fail.getFailedConditions()));
+        }
     }
     
     /**

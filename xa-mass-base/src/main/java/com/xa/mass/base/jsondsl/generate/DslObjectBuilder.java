@@ -7,6 +7,7 @@ import com.xa.mass.base.jsondsl.builtin.DslContext;
 import com.xa.mass.base.jsondsl.builtin.DslKeyword;
 import com.xa.mass.base.jsondsl.builtin.JsonDslException;
 import com.xa.mass.base.jsondsl.builtin.TemplateValueResolver;
+import com.xa.mass.base.jsondsl.util.GsonConfig;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Type;
@@ -21,7 +22,7 @@ import java.util.*;
  */
 @Deprecated(since = "2.0.0", forRemoval = true)
 public class DslObjectBuilder {
-    private static final Gson gson = new Gson();
+    private static final Gson gson = GsonConfig.buildGson();
 
     public static Object mockFromDsl(JsonObject dsl, DslContext context) {
         // 1. 解析 MODEL

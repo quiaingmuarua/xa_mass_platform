@@ -281,6 +281,8 @@ public class BuiltinFunctions {
      */
     public static void registerToQLExpress(ExpressRunner runner) {
         try {
+            // 注册 parseInt(String) 函数
+            runner.addFunctionOfClassMethod("parseInt", Integer.class.getName(), "parseInt", new String[] { "String" }, null);
             for (Map.Entry<BuiltinFunc, BuiltinFunction> entry : FUNCTION_MAP.entrySet()) {
                 BuiltinFunc func = entry.getKey();
                 BuiltinFunction impl = entry.getValue();

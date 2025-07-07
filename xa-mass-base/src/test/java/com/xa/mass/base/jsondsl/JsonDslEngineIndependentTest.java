@@ -2,10 +2,7 @@ package com.xa.mass.base.jsondsl;
 
 import com.xa.mass.base.jsondsl.model.JsonDslContext;
 import com.xa.mass.base.jsondsl.model.JsonDslDefinition;
-import com.xa.mass.base.jsondsl.processor.JsonDslProcessorEngine;
-import com.xa.mass.base.jsondsl.processor.ProcessingContext;
-import com.xa.mass.base.jsondsl.processor.FilterProcessor;
-import com.xa.mass.base.jsondsl.processor.JsonDslProcessor;
+import com.xa.mass.base.jsondsl.processor.*;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -35,7 +32,12 @@ public class JsonDslEngineIndependentTest {
             }
             return result;
         }
-        
+
+        @Override
+        public <T> FilterReport<T> filterWithReport(List<T> data, JsonDslDefinition def, ProcessingContext ctx) {
+            return null;
+        }
+
         @Override
         public boolean supports(JsonDslDefinition.DslType type) {
             return JsonDslDefinition.DslType.FILTER.equals(type);

@@ -23,6 +23,8 @@ public interface FilterProcessor extends JsonDslProcessor {
      */
     <T> List<T> filter(List<T> input, JsonDslDefinition definition, ProcessingContext context);
     
+    <T> FilterReport<T> filterWithReport(List<T> data, JsonDslDefinition def, ProcessingContext ctx);
+    
     @Override
     default boolean supports(JsonDslDefinition.DslType type) {
         return JsonDslDefinition.DslType.FILTER.equals(type);

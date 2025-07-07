@@ -3,6 +3,7 @@ package com.xa.mass.base.jsondsl.filter;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.xa.mass.base.jsondsl.builtin.JsonDslException;
+import com.xa.mass.base.jsondsl.util.GsonConfig;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -15,7 +16,7 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class DslFilterFactory {
     
-    private static final Gson GSON = new Gson();
+    private static final Gson GSON = GsonConfig.buildGson();
     private static final Map<String, DslFilter<?, ?>> FILTER_REGISTRY = new ConcurrentHashMap<>();
     
     /**

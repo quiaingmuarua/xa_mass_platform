@@ -10,6 +10,7 @@ import com.xa.mass.base.jsondsl.filter.DslFilter;
 import com.xa.mass.base.jsondsl.filter.DslFilterFactory;
 import com.xa.mass.base.jsondsl.filter.JsonDslFilter;
 import com.xa.mass.base.jsondsl.generate.DslObjectBuilder;
+import com.xa.mass.base.jsondsl.util.GsonConfig;
 
 import java.util.*;
 
@@ -24,7 +25,7 @@ import java.util.*;
  */
 @Deprecated(since = "2.0.0", forRemoval = true)
 public class JsonDslEngine {
-    private static final Gson gson = new Gson();
+    private static final Gson gson = GsonConfig.buildGson();
 
     // ==================== Generate 方法 ====================
 

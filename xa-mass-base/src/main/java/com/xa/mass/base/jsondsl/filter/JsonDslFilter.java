@@ -5,6 +5,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.xa.mass.base.jsondsl.builtin.JsonDslException;
 import com.xa.mass.base.jsondsl.eval.DslExprExecutor;
+import com.xa.mass.base.jsondsl.util.GsonConfig;
 
 import java.util.List;
 import java.util.Map;
@@ -17,12 +18,12 @@ import java.util.Map;
  */
 public class JsonDslFilter<T> implements DslFilter<T, T> {
     
-    private static final Gson GSON = new Gson();
+    private static final Gson GSON = GsonConfig.buildGson();
     
     private final String name;
     private final String description;
     private final JsonObject filterConfig;
-    private final DslExprExecutor exprExecutor;
+    public final DslExprExecutor exprExecutor;
     
     public JsonDslFilter(String name, String description, JsonObject filterConfig) {
         this.name = name;
@@ -130,7 +131,7 @@ public class JsonDslFilter<T> implements DslFilter<T, T> {
     /**
      * 评估字段条件
      */
-    private boolean evaluateFieldCondition(Object fieldValue, JsonElement condition) {
+    public boolean evaluateFieldCondition(Object fieldValue, JsonElement condition) {
         if (condition.isJsonPrimitive()) {
             return fieldValue != null && fieldValue.toString().equals(condition.getAsString());
         } else if (condition.isJsonObject()) {
@@ -187,12 +188,10 @@ public class JsonDslFilter<T> implements DslFilter<T, T> {
     /**
      * 将对象转换为 Map
      */
-    @SuppressWarnings("unchecked")
-    private Map<String, Object> objectToMap(Object obj) {
+    public Map<String, Object> objectToMap(Object obj) {
         if (obj instanceof Map) {
             return (Map<String, Object>) obj;
         }
-        // 使用 Gson 转换为 Map
         String json = GSON.toJson(obj);
         return GSON.fromJson(json, Map.class);
     }

@@ -261,7 +261,12 @@ public class IntegrationTest {
             // 过滤掉所有对象，返回空列表
             return new ArrayList<>();
         }
-        
+
+        @Override
+        public <T> FilterReport<T> filterWithReport(List<T> data, JsonDslDefinition def, ProcessingContext ctx) {
+            return null;
+        }
+
         @Override
         public boolean supports(JsonDslDefinition.DslType type) {
             return JsonDslDefinition.DslType.FILTER.equals(type);

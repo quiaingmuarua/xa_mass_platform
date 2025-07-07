@@ -2,6 +2,7 @@ package com.xa.mass.base.jsondsl.processor;
 
 import com.google.gson.Gson;
 import com.xa.mass.base.jsondsl.model.JsonDslDefinition;
+import com.xa.mass.base.jsondsl.util.GsonConfig;
 
 import java.util.List;
 
@@ -15,7 +16,7 @@ import java.util.List;
  */
 public class JsonDslProcessorEngine {
     
-    private static final Gson gson = new Gson();
+    private static final Gson gson = GsonConfig.buildGson();
     
     /**
      * 处理单个 DSL 定义（使用强类型处理器）

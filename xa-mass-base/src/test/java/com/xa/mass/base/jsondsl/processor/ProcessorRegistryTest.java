@@ -313,7 +313,12 @@ public class ProcessorRegistryTest {
             // 简单的过滤逻辑：保留所有对象
             return input;
         }
-        
+
+        @Override
+        public <T> FilterReport<T> filterWithReport(List<T> data, JsonDslDefinition def, ProcessingContext ctx) {
+            return null;
+        }
+
         @Override
         public boolean supports(JsonDslDefinition.DslType type) {
             return JsonDslDefinition.DslType.FILTER.equals(type);

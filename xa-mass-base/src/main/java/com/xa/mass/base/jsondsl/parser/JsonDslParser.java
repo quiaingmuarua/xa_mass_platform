@@ -6,6 +6,7 @@ import com.google.gson.JsonParser;
 import com.xa.mass.base.jsondsl.builtin.JsonDslException;
 import com.xa.mass.base.jsondsl.model.JsonDslContext;
 import com.xa.mass.base.jsondsl.model.JsonDslDefinition;
+import com.xa.mass.base.jsondsl.util.GsonConfig;
 
 import java.util.Map;
 
@@ -17,7 +18,7 @@ import java.util.Map;
  */
 public class JsonDslParser {
     
-    private static final Gson gson = new Gson();
+    private static final Gson gson = GsonConfig.buildGson();
     
     /**
      * 解析 JSON 字符串为标准 DSL 定义
