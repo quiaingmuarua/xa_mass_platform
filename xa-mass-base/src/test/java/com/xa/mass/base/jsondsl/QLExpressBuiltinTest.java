@@ -10,8 +10,9 @@ public class QLExpressBuiltinTest {
 
     @Test
     public void testChoiceFunction() throws Exception {
+        // 强制触发 BuiltinFunctions 的 static 块，确保所有内置函数注册
+        Class.forName("com.xa.mass.base.jsondsl.builtin.BuiltinFunctions");
         ExpressRunner runner = new ExpressRunner();
-
         BuiltinFunctions.registerToQLExpress(runner);
 
         Object result = runner.execute("range(1,100)", null, null, true, false);

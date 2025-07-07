@@ -15,12 +15,9 @@ import java.util.*;
 
 /**
  * DSL 对象构建器，负责从 DSL 配置生成对象实例。
- * 
- * @deprecated 建议使用新的标准化 DSL 结构，通过 {@link com.xa.mass.base.jsondsl.model.JsonDslDefinition} 
- * 和 {@link com.xa.mass.base.jsondsl.parser.JsonDslParser} 进行 DSL 定义和解析。
+ *
  * 新标准提供更好的类型安全、验证和扩展性。
  */
-@Deprecated(since = "2.0.0", forRemoval = true)
 public class DslObjectBuilder {
     private static final Gson gson = GsonConfig.buildGson();
 

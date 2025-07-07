@@ -6,6 +6,8 @@ import com.xa.mass.base.jsondsl.parser.JsonDslParser;
 import com.xa.mass.base.jsondsl.processor.JsonDslProcessorEngine;
 import com.xa.mass.base.jsondsl.processor.ProcessingContext;
 import com.xa.mass.base.model.Device;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.Arrays;
@@ -22,6 +24,19 @@ import static org.junit.jupiter.api.Assertions.*;
  * </p>
  */
 public class NewStandardDslTypeRegistrationTest {
+
+    @BeforeEach
+    public void setUp() throws Exception {
+        com.xa.mass.base.jsondsl.builtin.OperatorRegistry.getAllFunctionNames().clear();
+        // 强制触发 BuiltinFunctions 的 static 块，确保所有内置函数注册
+        Class.forName("com.xa.mass.base.jsondsl.builtin.BuiltinFunctions");
+    }
+
+    @AfterEach
+    public void tearDown() {
+        // 再次清理，确保环境干净
+        com.xa.mass.base.jsondsl.builtin.OperatorRegistry.getAllFunctionNames().clear();
+    }
 
     @Test
     public void testNewStandardDslWithoutTypeRegistration() {

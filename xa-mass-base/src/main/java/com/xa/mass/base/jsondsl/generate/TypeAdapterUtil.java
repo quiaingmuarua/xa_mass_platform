@@ -89,6 +89,11 @@ class TypeAdapterUtil {
                     return enumConstants[idx];
                 }
             }
+            // 兼容 boolean/true/false，自动转为第一个枚举常量
+            if (value instanceof Boolean || "true".equalsIgnoreCase(String.valueOf(value)) || "false".equalsIgnoreCase(String.valueOf(value))) {
+                Object[] enumConstants = fieldType.getEnumConstants();
+                if (enumConstants.length > 0) return enumConstants[0];
+            }
             throw new JsonDslException("无法将 " + value + " 转为枚举 " + fieldType.getName());
         }
         // 类型适配器

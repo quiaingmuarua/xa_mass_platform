@@ -83,7 +83,6 @@ public class OperatorRegistry {
     private static void registerToQLExpressInternal(String func, BiFunction<Object[], DslContext, Object> impl) {
         try {
             if (QLEXPRESS_BUILTIN_OPS.contains(func.substring(1)) || QLEXPRESS_BUILTIN_OPS.contains(func)) {
-
                 return;
             }
             qlExpressRunner.addFunction(func, new com.ql.util.express.Operator() {
