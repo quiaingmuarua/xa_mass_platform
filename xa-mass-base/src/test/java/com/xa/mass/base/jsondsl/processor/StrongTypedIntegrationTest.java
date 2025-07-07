@@ -19,18 +19,18 @@ import java.util.Arrays;
 public class StrongTypedIntegrationTest {
     
     private ProcessingContext context;
-    private GenerateProcessor<TestUser> generateProcessor;
-    private FilterProcessor<TestUser> filterProcessor;
-    private TransformProcessor<TestUser> transformProcessor;
-    private ValidateProcessor<TestUser> validateProcessor;
+    private GenerateProcessor generateProcessor;
+    private FilterProcessor filterProcessor;
+    private TransformProcessor transformProcessor;
+    private ValidateProcessor validateProcessor;
     
     @BeforeEach
     void setUp() {
-        context = new ProcessingContext("strong-typed-integration-test");
-        generateProcessor = new DefaultGenerateProcessor<>();
-        filterProcessor = new DefaultFilterProcessor<>();
-        transformProcessor = new DefaultTransformProcessor<>();
-        validateProcessor = new DefaultValidateProcessor<>();
+        context = new ProcessingContext("test-context");
+        generateProcessor = new DefaultGenerateProcessor();
+        filterProcessor = new DefaultFilterProcessor();
+        transformProcessor = new DefaultTransformProcessor();
+        validateProcessor = new DefaultValidateProcessor();
     }
     
     @Test

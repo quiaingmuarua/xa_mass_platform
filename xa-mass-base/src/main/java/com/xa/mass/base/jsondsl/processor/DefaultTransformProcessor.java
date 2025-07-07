@@ -6,14 +6,13 @@ import com.xa.mass.base.jsondsl.model.JsonDslDefinition;
 /**
  * 默认转换处理器实现
  * <p>
- * 负责根据 DSL 定义转换对象
+ * 负责根据 DSL 定义转换单个对象
  * </p>
- * @param <T> 转换对象的类型
  */
-public class DefaultTransformProcessor<T> implements TransformProcessor<T> {
+public class DefaultTransformProcessor implements TransformProcessor {
     
     @Override
-    public T transform(T input, JsonDslDefinition definition, ProcessingContext context) {
+    public <T> T transform(T input, JsonDslDefinition definition, ProcessingContext context) {
         // 参数验证
         if (input == null) {
             throw new IllegalArgumentException("Input object cannot be null");
@@ -32,30 +31,12 @@ public class DefaultTransformProcessor<T> implements TransformProcessor<T> {
         // 验证 DSL 定义
         definition.validate();
         
-        // 这里实现具体的转换逻辑
-        // 可以根据 fieldDsl 进行字段映射
-        // 可以根据 combine_dsl 进行复杂转换
-        
-        // 示例：返回原对象（实际应该根据 DSL 规则进行转换）
-        T result = transformObject(input, definition, context);
-        
+        // 当前实现：简单返回原对象（可以扩展为实际的转换逻辑）
         if (context.isDebug()) {
             System.out.println("[DefaultTransformProcessor] 转换完成");
         }
         
-        return result;
-    }
-    
-    /**
-     * 转换单个对象
-     */
-    private T transformObject(T obj, JsonDslDefinition definition, ProcessingContext context) {
-        // 这里实现具体的对象转换逻辑
-        // 可以根据 fieldDsl 进行字段映射
-        // 可以根据 combine_dsl 进行复杂转换
-        
-        // 示例：返回原对象（实际应该根据 DSL 规则进行转换）
-        return obj;
+        return input;
     }
     
     @Override

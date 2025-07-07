@@ -10,9 +10,8 @@ import java.util.List;
  * <p>
  * 负责根据 DSL 定义过滤对象列表
  * </p>
- * @param <T> 过滤对象的类型
  */
-public interface FilterProcessor<T> extends JsonDslProcessor {
+public interface FilterProcessor extends JsonDslProcessor {
     
     /**
      * 过滤对象列表
@@ -22,7 +21,7 @@ public interface FilterProcessor<T> extends JsonDslProcessor {
      * @param context 处理上下文
      * @return 过滤后的对象列表
      */
-    List<T> filter(List<T> input, JsonDslDefinition definition, ProcessingContext context);
+    <T> List<T> filter(List<T> input, JsonDslDefinition definition, ProcessingContext context);
     
     @Override
     default boolean supports(JsonDslDefinition.DslType type) {

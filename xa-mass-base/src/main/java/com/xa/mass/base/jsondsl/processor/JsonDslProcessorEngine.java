@@ -34,10 +34,10 @@ public class JsonDslProcessorEngine {
      */
     public static <T> List<T> process(JsonDslDefinition definition, ProcessingContext context, Class<T> targetType) {
         if (JsonDslDefinition.DslType.GENERATE.equals(definition.getType())) {
-            GenerateProcessor<T> processor = ProcessorRegistry.getGenerateProcessor();
+            GenerateProcessor processor = ProcessorRegistry.getGenerateProcessor();
             return processor.generate(definition, context, targetType);
         } else if (JsonDslDefinition.DslType.FILTER.equals(definition.getType())) {
-            FilterProcessor<T> processor = ProcessorRegistry.getFilterProcessor();
+            FilterProcessor processor = ProcessorRegistry.getFilterProcessor();
             // 从上下文中获取输入数据
             @SuppressWarnings("unchecked")
             List<T> input = (List<T>) context.getParameter("objects");
@@ -46,7 +46,7 @@ public class JsonDslProcessorEngine {
             }
             return processor.filter(input, definition, context);
         } else if (JsonDslDefinition.DslType.TRANSFORM.equals(definition.getType())) {
-            TransformProcessor<T> processor = ProcessorRegistry.getTransformProcessor();
+            TransformProcessor processor = ProcessorRegistry.getTransformProcessor();
             // 从上下文中获取输入数据
             @SuppressWarnings("unchecked")
             T input = (T) context.getParameter("object");
@@ -56,7 +56,7 @@ public class JsonDslProcessorEngine {
             T result = processor.transform(input, definition, context);
             return List.of(result);
         } else if (JsonDslDefinition.DslType.VALIDATE.equals(definition.getType())) {
-            ValidateProcessor<T> processor = ProcessorRegistry.getValidateProcessor();
+            ValidateProcessor processor = ProcessorRegistry.getValidateProcessor();
             // 从上下文中获取输入数据
             @SuppressWarnings("unchecked")
             T input = (T) context.getParameter("object");
@@ -178,40 +178,36 @@ public class JsonDslProcessorEngine {
     /**
      * 获取强类型生成处理器
      * 
-     * @param <T> 目标类型
      * @return 生成处理器
      */
-    public static <T> GenerateProcessor<T> getGenerateProcessor() {
+    public static GenerateProcessor getGenerateProcessor() {
         return ProcessorRegistry.getGenerateProcessor();
     }
     
     /**
      * 获取强类型过滤处理器
      * 
-     * @param <T> 目标类型
      * @return 过滤处理器
      */
-    public static <T> FilterProcessor<T> getFilterProcessor() {
+    public static FilterProcessor getFilterProcessor() {
         return ProcessorRegistry.getFilterProcessor();
     }
     
     /**
      * 获取强类型转换处理器
      * 
-     * @param <T> 目标类型
      * @return 转换处理器
      */
-    public static <T> TransformProcessor<T> getTransformProcessor() {
+    public static TransformProcessor getTransformProcessor() {
         return ProcessorRegistry.getTransformProcessor();
     }
     
     /**
      * 获取强类型校验处理器
      * 
-     * @param <T> 目标类型
      * @return 校验处理器
      */
-    public static <T> ValidateProcessor<T> getValidateProcessor() {
+    public static ValidateProcessor getValidateProcessor() {
         return ProcessorRegistry.getValidateProcessor();
     }
 } 

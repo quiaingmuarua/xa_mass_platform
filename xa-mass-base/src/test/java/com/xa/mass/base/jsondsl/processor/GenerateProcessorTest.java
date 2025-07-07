@@ -16,14 +16,20 @@ import com.xa.mass.base.jsondsl.builtin.JsonDslException;
  */
 public class GenerateProcessorTest {
     
-    private GenerateProcessor<TestUser> processor;
+    private GenerateProcessor processor;
     private JsonDslDefinition definition;
     private ProcessingContext context;
     
     @BeforeEach
     void setUp() {
-        processor = new DefaultGenerateProcessor<>();
+        processor = new DefaultGenerateProcessor();
         definition = new JsonDslDefinition("test-generator", JsonDslDefinition.DslType.GENERATE);
+        // 添加必要的 context 配置
+        JsonDslContext dslContext = new JsonDslContext();
+        dslContext.setModel("com.xa.mass.base.jsondsl.processor.GenerateProcessorTest$TestUser");
+        dslContext.setCount(2);
+        definition.setContext(dslContext);
+        
         context = new ProcessingContext("test-context");
     }
     

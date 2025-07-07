@@ -37,13 +37,13 @@ public class JsonDslProcessorEngineTest {
         JsonDslProcessorEngine.registerProcessor(testProcessor);
         
         // 注册一个测试 FilterProcessor
-        JsonDslProcessorEngine.registerProcessor(new DefaultFilterProcessor<>());
+        JsonDslProcessorEngine.registerProcessor(new DefaultFilterProcessor());
         
         // 注册一个测试 TransformProcessor
-        JsonDslProcessorEngine.registerProcessor(new DefaultTransformProcessor<>());
+        JsonDslProcessorEngine.registerProcessor(new DefaultTransformProcessor());
         
         // 注册一个测试 ValidateProcessor
-        JsonDslProcessorEngine.registerProcessor(new DefaultValidateProcessor<>());
+        JsonDslProcessorEngine.registerProcessor(new DefaultValidateProcessor());
     }
     
     @AfterEach
@@ -308,16 +308,16 @@ public class JsonDslProcessorEngineTest {
     @Test
     void testGetStrongTypedProcessors() {
         // 测试获取强类型处理器
-        GenerateProcessor<Map<String, Object>> generateProcessor = JsonDslProcessorEngine.getGenerateProcessor();
+        GenerateProcessor generateProcessor = JsonDslProcessorEngine.getGenerateProcessor();
         assertNotNull(generateProcessor);
         
-        FilterProcessor<Map<String, Object>> filterProcessor = JsonDslProcessorEngine.getFilterProcessor();
+        FilterProcessor filterProcessor = JsonDslProcessorEngine.getFilterProcessor();
         assertNotNull(filterProcessor);
         
-        TransformProcessor<Map<String, Object>> transformProcessor = JsonDslProcessorEngine.getTransformProcessor();
+        TransformProcessor transformProcessor = JsonDslProcessorEngine.getTransformProcessor();
         assertNotNull(transformProcessor);
         
-        ValidateProcessor<Map<String, Object>> validateProcessor = JsonDslProcessorEngine.getValidateProcessor();
+        ValidateProcessor validateProcessor = JsonDslProcessorEngine.getValidateProcessor();
         assertNotNull(validateProcessor);
     }
     
@@ -373,10 +373,10 @@ public class JsonDslProcessorEngineTest {
     /**
      * 测试用的强类型生成处理器实现
      */
-    private static class TestGenerateProcessor implements GenerateProcessor<Map<String, Object>> {
+    private static class TestGenerateProcessor implements GenerateProcessor {
         
         @Override
-        public List<Map<String, Object>> generate(JsonDslDefinition definition, ProcessingContext context, Class<Map<String, Object>> targetType) {
+        public <T> List<T> generate(JsonDslDefinition definition, ProcessingContext context, Class<T> targetType) {
             if (definition == null) {
                 throw new IllegalArgumentException("Definition cannot be null");
             }
@@ -388,7 +388,9 @@ public class JsonDslProcessorEngineTest {
             result.put("message", "TestGenerateProcessor processed: " + definition.getUniqueId());
             result.put("timestamp", System.currentTimeMillis());
             
-            return List.of(result);
+            @SuppressWarnings("unchecked")
+            List<T> typedResult = (List<T>) List.of(result);
+            return typedResult;
         }
         
         @Override

@@ -12,9 +12,8 @@ import java.util.List;
  * <p>
  * 负责根据 DSL 定义生成指定类型的对象列表
  * </p>
- * @param <T> 生成对象的类型
  */
-public interface GenerateProcessor<T> extends JsonDslProcessor {
+public interface GenerateProcessor extends JsonDslProcessor {
     
     /**
      * 生成对象列表
@@ -24,7 +23,7 @@ public interface GenerateProcessor<T> extends JsonDslProcessor {
      * @param targetType 目标类型
      * @return 生成的对象列表
      */
-    List<T> generate(JsonDslDefinition definition, ProcessingContext context, Class<T> targetType);
+    <T> List<T> generate(JsonDslDefinition definition, ProcessingContext context, Class<T> targetType);
     
     @Override
     default boolean supports(JsonDslDefinition.DslType type) {

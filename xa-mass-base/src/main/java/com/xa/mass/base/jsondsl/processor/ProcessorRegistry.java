@@ -18,10 +18,10 @@ public class ProcessorRegistry {
     
     static {
         // 注册默认处理器
-        register(new DefaultGenerateProcessor<>());
-        register(new DefaultFilterProcessor<>());
-        register(new DefaultTransformProcessor<>());
-        register(new DefaultValidateProcessor<>());
+        register(new DefaultGenerateProcessor());
+        register(new DefaultFilterProcessor());
+        register(new DefaultTransformProcessor());
+        register(new DefaultValidateProcessor());
     }
     
     /**
@@ -72,11 +72,10 @@ public class ProcessorRegistry {
     /**
      * 获取强类型生成处理器
      */
-    @SuppressWarnings("unchecked")
-    public static <T> GenerateProcessor<T> getGenerateProcessor() {
+    public static GenerateProcessor getGenerateProcessor() {
         JsonDslProcessor processor = getProcessor(JsonDslDefinition.DslType.GENERATE);
         if (processor instanceof GenerateProcessor) {
-            return (GenerateProcessor<T>) processor;
+            return (GenerateProcessor) processor;
         }
         throw new IllegalArgumentException("未找到生成处理器");
     }
@@ -84,11 +83,10 @@ public class ProcessorRegistry {
     /**
      * 获取强类型过滤处理器
      */
-    @SuppressWarnings("unchecked")
-    public static <T> FilterProcessor<T> getFilterProcessor() {
+    public static FilterProcessor getFilterProcessor() {
         JsonDslProcessor processor = getProcessor(JsonDslDefinition.DslType.FILTER);
         if (processor instanceof FilterProcessor) {
-            return (FilterProcessor<T>) processor;
+            return (FilterProcessor) processor;
         }
         throw new IllegalArgumentException("未找到过滤处理器");
     }
@@ -96,11 +94,10 @@ public class ProcessorRegistry {
     /**
      * 获取强类型转换处理器
      */
-    @SuppressWarnings("unchecked")
-    public static <T> TransformProcessor<T> getTransformProcessor() {
+    public static TransformProcessor getTransformProcessor() {
         JsonDslProcessor processor = getProcessor(JsonDslDefinition.DslType.TRANSFORM);
         if (processor instanceof TransformProcessor) {
-            return (TransformProcessor<T>) processor;
+            return (TransformProcessor) processor;
         }
         throw new IllegalArgumentException("未找到转换处理器");
     }
@@ -108,11 +105,10 @@ public class ProcessorRegistry {
     /**
      * 获取强类型校验处理器
      */
-    @SuppressWarnings("unchecked")
-    public static <T> ValidateProcessor<T> getValidateProcessor() {
+    public static ValidateProcessor getValidateProcessor() {
         JsonDslProcessor processor = getProcessor(JsonDslDefinition.DslType.VALIDATE);
         if (processor instanceof ValidateProcessor) {
-            return (ValidateProcessor<T>) processor;
+            return (ValidateProcessor) processor;
         }
         throw new IllegalArgumentException("未找到校验处理器");
     }
@@ -130,16 +126,16 @@ public class ProcessorRegistry {
             }
             
             if (JsonDslDefinition.DslType.GENERATE.equals(definition.getType())) {
-                GenerateProcessor<T> processor = getGenerateProcessor();
+                GenerateProcessor processor = getGenerateProcessor();
                 result = processor.generate(definition, context, targetType);
             } else if (JsonDslDefinition.DslType.FILTER.equals(definition.getType())) {
-                FilterProcessor<T> processor = getFilterProcessor();
+                FilterProcessor processor = getFilterProcessor();
                 if (result == null) {
                     throw new IllegalArgumentException("过滤处理器需要前置的生成结果");
                 }
                 result = processor.filter(result, definition, context);
             } else if (JsonDslDefinition.DslType.TRANSFORM.equals(definition.getType())) {
-                TransformProcessor<T> processor = getTransformProcessor();
+                TransformProcessor processor = getTransformProcessor();
                 if (result == null || result.isEmpty()) {
                     throw new IllegalArgumentException("转换处理器需要前置的生成结果");
                 }
@@ -148,7 +144,7 @@ public class ProcessorRegistry {
                     .toList();
                 result = transformed;
             } else if (JsonDslDefinition.DslType.VALIDATE.equals(definition.getType())) {
-                ValidateProcessor<T> processor = getValidateProcessor();
+                ValidateProcessor processor = getValidateProcessor();
                 if (result == null || result.isEmpty()) {
                     throw new IllegalArgumentException("校验处理器需要前置的生成结果");
                 }

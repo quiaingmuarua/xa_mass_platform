@@ -11,12 +11,11 @@ import java.util.List;
  * <p>
  * 负责根据 DSL 定义生成指定类型的对象列表
  * </p>
- * @param <T> 生成对象的类型
  */
-public class DefaultGenerateProcessor<T> implements GenerateProcessor<T> {
+public class DefaultGenerateProcessor implements GenerateProcessor {
     
     @Override
-    public List<T> generate(JsonDslDefinition definition, ProcessingContext context, Class<T> targetType) {
+    public <T> List<T> generate(JsonDslDefinition definition, ProcessingContext context, Class<T> targetType) {
         // 参数验证
         if (definition == null) {
             throw new IllegalArgumentException("Definition cannot be null");

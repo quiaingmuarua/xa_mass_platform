@@ -16,13 +16,13 @@ import java.util.Arrays;
  */
 public class FilterProcessorTest {
     
-    private FilterProcessor<TestUser> processor;
+    private FilterProcessor processor;
     private JsonDslDefinition definition;
     private ProcessingContext context;
     
     @BeforeEach
     void setUp() {
-        processor = new DefaultFilterProcessor<>();
+        processor = new DefaultFilterProcessor();
         definition = new JsonDslDefinition("test-filter", JsonDslDefinition.DslType.FILTER);
         context = new ProcessingContext("test-context");
     }

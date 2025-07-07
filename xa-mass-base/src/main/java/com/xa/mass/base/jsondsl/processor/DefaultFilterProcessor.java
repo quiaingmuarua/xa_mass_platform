@@ -11,12 +11,11 @@ import java.util.List;
  * <p>
  * 负责根据 DSL 定义过滤对象列表
  * </p>
- * @param <T> 过滤对象的类型
  */
-public class DefaultFilterProcessor<T> implements FilterProcessor<T> {
+public class DefaultFilterProcessor implements FilterProcessor {
     
     @Override
-    public List<T> filter(List<T> input, JsonDslDefinition definition, ProcessingContext context) {
+    public <T> List<T> filter(List<T> input, JsonDslDefinition definition, ProcessingContext context) {
         // 参数验证
         if (input == null) {
             throw new IllegalArgumentException("Input list cannot be null");

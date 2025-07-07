@@ -7,24 +7,33 @@ import java.util.List;
 /**
  * 校验处理器接口
  * <p>
- * 负责根据 DSL 定义校验对象
+ * 负责根据 DSL 定义校验单个对象
  * </p>
- * @param <T> 校验对象的类型
  */
-public interface ValidateProcessor<T> extends JsonDslProcessor {
+public interface ValidateProcessor extends JsonDslProcessor {
     
     /**
-     * 校验对象
+     * 校验单个对象
      * 
-     * @param obj 待校验对象
+     * @param input 输入对象
      * @param definition DSL 定义
      * @param context 处理上下文
-     * @return 校验错误信息列表，空列表表示校验通过
+     * @return 校验错误列表，如果为空则表示校验通过
      */
-    List<String> validate(T obj, JsonDslDefinition definition, ProcessingContext context);
+    <T> List<String> validate(T input, JsonDslDefinition definition, ProcessingContext context);
     
     @Override
     default boolean supports(JsonDslDefinition.DslType type) {
         return JsonDslDefinition.DslType.VALIDATE.equals(type);
+    }
+    
+    @Override
+    default String getName() {
+        return "ValidateProcessor";
+    }
+    
+    @Override
+    default int getPriority() {
+        return 400; // 校验处理器优先级
     }
 } 
