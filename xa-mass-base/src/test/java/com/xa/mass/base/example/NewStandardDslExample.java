@@ -15,21 +15,19 @@ import java.util.Map;
  * 新标准 DSL 使用示例
  * <p>
  * 展示如何使用新的标准化 DSL 结构替代旧的过时方法
+ * 新标准 DSL 系统支持直接使用全类名，无需提前注册类型
  * </p>
  */
 public class NewStandardDslExample {
 
     public static void main(String[] args) {
         System.out.println("=== 新标准 DSL 使用示例 ===\n");
+        System.out.println("注意：新标准 DSL 系统支持直接使用全类名，无需提前注册类型！\n");
 
-        // 注册类型（为了兼容旧的 DSL 系统）
-        com.xa.mass.base.jsondsl.generate.TypeRegistry.register("Device", com.xa.mass.base.model.Device.class);
-        com.xa.mass.base.jsondsl.generate.TypeRegistry.register("Task", com.xa.mass.base.model.Task.class);
-
-        // 示例1: 基本生成 DSL
+        // 示例1: 基本生成 DSL（使用全类名）
         example1_BasicGenerateDsl();
 
-        // 示例2: 复杂生成 DSL
+        // 示例2: 复杂生成 DSL（使用全类名）
         example2_ComplexGenerateDsl();
 
         // 示例3: 过滤器 DSL
@@ -41,15 +39,15 @@ public class NewStandardDslExample {
         // 示例5: 验证 DSL
         example5_ValidateDsl();
 
-        // 示例6: 从 JSON 解析 DSL
+        // 示例6: 从 JSON 解析 DSL（使用全类名）
         example6_ParseFromJson();
     }
 
     /**
-     * 示例1: 基本生成 DSL
+     * 示例1: 基本生成 DSL（使用全类名，无需注册）
      */
     private static void example1_BasicGenerateDsl() {
-        System.out.println("--- 示例1: 基本生成 DSL ---");
+        System.out.println("--- 示例1: 基本生成 DSL（使用全类名） ---");
 
         // 1. 创建 DSL 定义
         JsonDslDefinition definition = new JsonDslDefinition("basic_device_generator", JsonDslDefinition.DslType.GENERATE);
@@ -58,8 +56,8 @@ public class NewStandardDslExample {
         definition.setTags(new String[]{"device", "basic"});
         definition.setPriority(1);
 
-        // 2. 设置上下文
-        JsonDslContext context = new JsonDslContext("Device", 3);
+        // 2. 设置上下文（使用全类名）
+        JsonDslContext context = new JsonDslContext("com.xa.mass.base.model.Device", 3);
         context.setScopeName("Device");
         context.setDebug(true);
         definition.setContext(context);
@@ -86,10 +84,10 @@ public class NewStandardDslExample {
     }
 
     /**
-     * 示例2: 复杂生成 DSL（包含嵌套和表达式）
+     * 示例2: 复杂生成 DSL（包含嵌套和表达式，使用全类名）
      */
     private static void example2_ComplexGenerateDsl() {
-        System.out.println("--- 示例2: 复杂生成 DSL ---");
+        System.out.println("--- 示例2: 复杂生成 DSL（使用全类名） ---");
 
         // 1. 创建 DSL 定义
         JsonDslDefinition definition = new JsonDslDefinition("complex_device_generator", JsonDslDefinition.DslType.GENERATE);
@@ -98,8 +96,8 @@ public class NewStandardDslExample {
         definition.setTags(new String[]{"device", "complex", "nested"});
         definition.setPriority(2);
 
-        // 2. 设置上下文
-        JsonDslContext context = new JsonDslContext("Device", 2);
+        // 2. 设置上下文（使用全类名）
+        JsonDslContext context = new JsonDslContext("com.xa.mass.base.model.Device", 2);
         context.setScopeName("Device");
         context.setDebug(true);
         context.setStrict(true);
@@ -112,11 +110,11 @@ public class NewStandardDslExample {
         fieldDsl.put("groupId", Map.of("$CHOICE", Arrays.asList("us", "gb", "cn")));
         fieldDsl.put("agentVersion", Map.of("$JOIN", Arrays.asList("2.0.", "&.index")));
         
-        // 嵌套任务
+        // 嵌套任务（使用全类名）
         Map<String, Object> tasksField = new HashMap<>();
         tasksField.put("TYPE", "LIST");
         tasksField.put("COUNT", 2);
-        tasksField.put("MODEL", "Task");
+        tasksField.put("MODEL", "com.xa.mass.base.model.Task");
         Map<String, Object> taskFields = new HashMap<>();
         taskFields.put("tid", Map.of("$UUID", true));
         taskFields.put("taskName", Map.of("$JOIN", Arrays.asList("ComplexTask-", "&.index", "-of-Device-", "&Device.index")));
@@ -264,10 +262,10 @@ public class NewStandardDslExample {
     }
 
     /**
-     * 示例6: 从 JSON 解析 DSL
+     * 示例6: 从 JSON 解析 DSL（使用全类名）
      */
     private static void example6_ParseFromJson() {
-        System.out.println("--- 示例6: 从 JSON 解析 DSL ---");
+        System.out.println("--- 示例6: 从 JSON 解析 DSL（使用全类名） ---");
 
         // 1. 标准化 DSL JSON
         String jsonDsl = """
@@ -280,7 +278,7 @@ public class NewStandardDslExample {
               "author": "json_user",
               "tags": ["json", "device"],
               "context": {
-                "MODEL": "Device",
+                "MODEL": "com.xa.mass.base.model.Device",
                 "COUNT": 2,
                 "scope_name": "Device",
                 "debug": true

@@ -1,4 +1,4 @@
-package com.xa.mass.base.example;
+package com.xa.mass.base.example.old;
 
 import com.xa.mass.base.jsondsl.JsonDslEngine;
 import com.xa.mass.base.jsondsl.generate.TypeRegistry;
