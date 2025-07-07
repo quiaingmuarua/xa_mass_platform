@@ -73,7 +73,7 @@ public class JsonDslFilter<T> implements DslFilter<T, T> {
             if ("$EXPR".equals(field)) {
                 try {
                     String expr = cond.getAsString();
-                    Object result = exprExecutor.execute(expr, context);
+                    Object result = DslExprExecutor.execute(expr, context);
                     boolean ok = false;
                     if (result instanceof Boolean) ok = (Boolean) result;
                     else if (result instanceof Number) ok = ((Number) result).doubleValue() != 0;
@@ -90,7 +90,7 @@ public class JsonDslFilter<T> implements DslFilter<T, T> {
             
             Object fieldValue = context.get(field);
             if (cond.isJsonObject()) {
-                Map<String, Object> rule = GSON.fromJson(cond, Map.class);
+                Map rule = GSON.fromJson(cond, Map.class);
                 if (!FieldRuleEvaluator.evaluate(fieldValue, rule)) {
                     return false;
                 }

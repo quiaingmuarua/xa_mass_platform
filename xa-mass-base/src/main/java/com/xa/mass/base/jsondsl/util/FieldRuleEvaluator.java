@@ -1,28 +1,21 @@
 package com.xa.mass.base.jsondsl.util;
 
+import com.xa.mass.base.jsondsl.builtin.OperatorRegistry;
+import com.xa.mass.base.jsondsl.builtin.DslContext;
 import java.util.*;
 import java.util.function.BiFunction;
 
 public class FieldRuleEvaluator {
-    // 统一操作符注册表，key 小写
-    private static final Map<String, BiFunction<Object, Object, Boolean>> OPERATOR_MAP = new HashMap<>();
-
     static {
-        // 注册基础操作符
-        registerOperator("$eq", (fieldValue, val) -> Objects.equals(fieldValue, val));
-        registerOperator("$ne", (fieldValue, val) -> !Objects.equals(fieldValue, val));
-        registerOperator("$gt", (fieldValue, val) -> compareNumber(fieldValue, val, 1));
-        registerOperator("$gte", (fieldValue, val) -> compareNumber(fieldValue, val, 0, 1));
-        registerOperator("$lt", (fieldValue, val) -> compareNumber(fieldValue, val, -1));
-        registerOperator("$lte", (fieldValue, val) -> compareNumber(fieldValue, val, 0, -1));
-        registerOperator("$in", (fieldValue, val) -> (val instanceof Collection<?>) && fieldValue != null && ((Collection<?>) val).contains(fieldValue));
-        registerOperator("$choice", (fieldValue, val) -> true); // 生成时用，过滤时总是通过
-        // 你可以继续注册更多操作符
-    }
-
-    public static void registerOperator(String op, BiFunction<Object, Object, Boolean> func) {
-        if (op == null) return;
-        OPERATOR_MAP.put(op.toLowerCase(), func);
+        // 注册基础操作符到 OperatorRegistry
+        OperatorRegistry.registerFunction("$eq", (args, ctx) -> Objects.equals(args[0], args[1]));
+        OperatorRegistry.registerFunction("$ne", (args, ctx) -> !Objects.equals(args[0], args[1]));
+        OperatorRegistry.registerFunction("$gt", (args, ctx) -> compareNumber(args[0], args[1], 1));
+        OperatorRegistry.registerFunction("$gte", (args, ctx) -> compareNumber(args[0], args[1], 0, 1));
+        OperatorRegistry.registerFunction("$lt", (args, ctx) -> compareNumber(args[0], args[1], -1));
+        OperatorRegistry.registerFunction("$lte", (args, ctx) -> compareNumber(args[0], args[1], 0, -1));
+        OperatorRegistry.registerFunction("$in", (args, ctx) -> (args[1] instanceof Collection<?>) && args[0] != null && ((Collection<?>) args[1]).contains(args[0]));
+        OperatorRegistry.registerFunction("$choice", (args, ctx) -> true); // 生成时用，过滤时总是通过
     }
 
     public static boolean evaluate(Object fieldValue, Map<String, Object> rule) {
@@ -30,9 +23,10 @@ public class FieldRuleEvaluator {
             String op = entry.getKey();
             Object val = entry.getValue();
             if (op == null || !op.startsWith("$")) continue;
-            BiFunction<Object, Object, Boolean> func = OPERATOR_MAP.get(op.toLowerCase());
+            BiFunction<Object[], DslContext, Object> func = OperatorRegistry.getFunction(op);
             if (func == null) throw new UnsupportedOperationException("不支持的操作符: " + op);
-            if (!func.apply(fieldValue, val)) return false;
+            Object result = func.apply(new Object[]{fieldValue, val}, null);
+            if (!(result instanceof Boolean) || !((Boolean) result)) return false;
         }
         return true;
     }

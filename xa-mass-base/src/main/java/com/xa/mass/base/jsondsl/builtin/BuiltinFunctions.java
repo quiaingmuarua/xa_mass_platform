@@ -40,32 +40,7 @@ interface BuiltinFunction {
  */
 public class BuiltinFunctions {
     private static final Random RANDOM = new Random();
-    // 统一注册表，key 小写
-    private static final Map<String, BuiltinFunction> FUNCTION_MAP = new HashMap<>();
-
-    static {
-        registerFunction("$choice", param -> choice((List<?>) param));
-        registerFunction("$range", param -> {
-            List<?> list = (List<?>) param;
-            return range(((Number) list.get(0)).intValue(), ((Number) list.get(1)).intValue());
-        });
-        registerFunction("$uuid", param -> uuid());
-        registerFunction("$random", param -> random());
-        registerFunction("$join", param -> join((List<?>) param));
-        registerFunction("$context", BuiltinFunctions::context);
-        registerFunction("$now", BuiltinFunctions::now);
-        registerFunction("$time_range", BuiltinFunctions::timeRange);
-    }
-
-    public static void registerFunction(String op, BuiltinFunction func) {
-        if (op == null) return;
-        String key = op.toLowerCase();
-        FUNCTION_MAP.put(key, func);
-        // 自动注册无 $ 前缀的别名
-        if (key.startsWith("$")) {
-            FUNCTION_MAP.put(key.substring(1), func);
-        }
-    }
+    // 移除 FUNCTION_MAP、本地注册和 eval 逻辑，所有注册和查找统一走 OperatorRegistry
 
     private static int toInt(Object obj) {
         if (obj instanceof Integer) return (Integer) obj;
@@ -74,22 +49,6 @@ public class BuiltinFunctions {
         if (obj instanceof Long) return ((Long) obj).intValue();
         if (obj instanceof String) return Integer.parseInt((String) obj);
         throw new JsonDslException("$RANDOM_INT 参数类型不支持: " + obj);
-    }
-
-    public static Object eval(String func, Object param) {
-        if (func == null) throw new JsonDslException("函数名不能为空");
-        String key = func.toLowerCase();
-        if ("$random_int".equals(key) || "randomint".equals(key)) {
-            if (!(param instanceof List<?> list) || list.size() < 2) {
-                throw new JsonDslException("$RANDOM_INT 需要2个参数: [min, max]");
-            }
-            int min = toInt(list.get(0));
-            int max = toInt(list.get(1));
-            return range(min, max);
-        }
-        BuiltinFunction fn = FUNCTION_MAP.get(key);
-        if (fn != null) return fn.apply(param);
-        throw new JsonDslException("不支持的内置函数: " + func + " 参数: " + param);
     }
 
     public static Object choice(List<?> options) {
@@ -189,139 +148,100 @@ public class BuiltinFunctions {
                     throw new JsonDslException("时间格式化失败: " + format, e);
                 }
             }
-
             return randomTime;
-
         } catch (Exception e) {
-            throw new JsonDslException("时间范围解析失败", e);
+            throw new JsonDslException("$TIME_RANGE 解析失败", e);
         }
     }
 
-    /**
-     * 解析时间参数，支持多种格式
-     * @param timeParam 时间参数
-     * @return LocalDateTime 对象
-     */
     private static LocalDateTime parseDateTime(Object timeParam) {
-        if (timeParam instanceof LocalDateTime) {
-            return (LocalDateTime) timeParam;
-        }
-
-        if (timeParam instanceof String timeStr) {
-            // 尝试多种时间格式
-            String[] formats = {
-                    "yyyy-MM-dd HH:mm:ss",
-                    "yyyy-MM-dd HH:mm",
-                    "yyyy-MM-dd",
-                    "HH:mm:ss",
-                    "HH:mm"
-            };
-
-            for (String format : formats) {
-                try {
-                    DateTimeFormatter formatter = DateTimeFormatter.ofPattern(format);
-                    if (format.length() == timeStr.length()) {
-                        return LocalDateTime.parse(timeStr, formatter);
-                    }
-                } catch (Exception ignored) {
-                    // 继续尝试下一个格式
-                }
+        if (timeParam instanceof LocalDateTime ldt) return ldt;
+        if (timeParam instanceof String str) {
+            if (str.startsWith("now")) {
+                return parseRelativeTime(str);
             }
-
-            // 如果是相对时间，如 "now", "now-1d", "now+2h"
-            if (timeStr.startsWith("now")) {
-                return parseRelativeTime(timeStr);
+            try {
+                return LocalDateTime.parse(str, DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+            } catch (Exception e) {
+                throw new JsonDslException("时间格式不支持: " + str, e);
             }
         }
-
-        throw new JsonDslException("无法解析时间参数: " + timeParam);
+        throw new JsonDslException("不支持的时间参数: " + timeParam);
     }
 
-    /**
-     * 解析相对时间，如 "now-1d", "now+2h"
-     * @param timeStr 相对时间字符串
-     * @return LocalDateTime 对象
-     */
     private static LocalDateTime parseRelativeTime(String timeStr) {
         LocalDateTime now = LocalDateTime.now();
-
-        if (timeStr.equals("now")) {
-            return now;
-        }
-
-        if (timeStr.startsWith("now")) {
-            String offset = timeStr.substring(3);
-            if (offset.startsWith("+") || offset.startsWith("-")) {
-                char sign = offset.charAt(0);
-                String value = offset.substring(1);
-
-                // 解析数值和单位
-                for (int i = 0; i < value.length(); i++) {
-                    if (!Character.isDigit(value.charAt(i))) {
-                        String numStr = value.substring(0, i);
-                        String unit = value.substring(i).toLowerCase();
-
-                        if (numStr.isEmpty()) {
-                            throw new JsonDslException("无效的相对时间格式: " + timeStr);
-                        }
-
-                        int num = Integer.parseInt(numStr);
-                        if (sign == '-') {
-                            num = -num;
-                        }
-
-                        switch (unit) {
-                            case "d":
-                            case "day":
-                            case "days":
-                                return now.plusDays(num);
-                            case "h":
-                            case "hour":
-                            case "hours":
-                                return now.plusHours(num);
-                            case "m":
-                            case "min":
-                            case "minute":
-                            case "minutes":
-                                return now.plusMinutes(num);
-                            case "s":
-                            case "sec":
-                            case "second":
-                            case "seconds":
-                                return now.plusSeconds(num);
-                            default:
-                                throw new JsonDslException("不支持的时间单位: " + unit);
-                        }
-                    }
-                }
-            }
-        }
-
-        throw new JsonDslException("无法解析相对时间: " + timeStr);
-    }
-
-    /**
-     * 批量注册所有常用内置函数到 QLExpress
-     */
-    public static void registerToQLExpress(ExpressRunner runner) {
+        if ("now".equals(timeStr)) return now;
         try {
-            // 注册 parseInt(String) 函数
-            runner.addFunctionOfClassMethod("parseInt", Integer.class.getName(), "parseInt", new String[] { "String" }, null);
-            for (Map.Entry<String, BuiltinFunction> entry : FUNCTION_MAP.entrySet()) {
-                String func = entry.getKey();
-                BuiltinFunction impl = entry.getValue();
-                runner.addFunction(func, new com.ql.util.express.Operator() {
-                    @Override
-                    public Object executeInner(Object[] list) throws Exception {
-                        // 兼容单参数和多参数
-                        if (list == null || list.length == 0) return impl.apply(null);
-                        if (list.length == 1) return impl.apply(list[0]);
-                        return impl.apply(java.util.Arrays.asList(list));
-                    }
-                });
+            int sign = timeStr.contains("-") ? -1 : 1;
+            String[] parts = timeStr.split("[+-]");
+            if (parts.length != 2) throw new JsonDslException("相对时间格式错误: " + timeStr);
+            String base = parts[0];
+            String offset = parts[1];
+            int num = Integer.parseInt(offset.replaceAll("[a-zA-Z]+", ""));
+            String unit = offset.replaceAll("[0-9]+", "").toUpperCase();
+            switch (unit) {
+                case "D":
+                case "DAY":
+                case "DAYS":
+                    return now.plusDays(sign * num);
+                case "H":
+                case "HOUR":
+                case "HOURS":
+                    return now.plusHours(sign * num);
+                case "M":
+                case "MIN":
+                case "MINUTE":
+                case "MINUTES":
+                    return now.plusMinutes(sign * num);
+                default:
+                    throw new JsonDslException("不支持的时间单位: " + unit);
             }
         } catch (Exception e) {
-            throw new RuntimeException("注册 BuiltinFunctions 到 QLExpress 失败", e);
+            throw new JsonDslException("相对时间格式错误: " + timeStr, e);
         }
+    }
+
+    public static void registerToQLExpress(ExpressRunner runner) {
+        // 兼容旧接口，推荐直接用 OperatorRegistry
+        OperatorRegistry.registerAllToQLExpress(runner);
+    }
+
+    static {
+        // 所有函数注册到 OperatorRegistry
+        OperatorRegistry.registerFunction("$range", (args, ctx) -> {
+            if (args.length == 2 && args[0] instanceof Number && args[1] instanceof Number) {
+                int min = ((Number) args[0]).intValue();
+                int max = ((Number) args[1]).intValue();
+                if (min > max) return min;
+                return min + new Random().nextInt(max - min + 1);
+            }
+            return null;
+        });
+        OperatorRegistry.registerFunction("$choice", (args, ctx) -> {
+            // 支持 $CHOICE: ["ONLINE", "OFFLINE"] 或 $CHOICE: "ONLINE"
+            if (args.length == 1) {
+                Object arg = args[0];
+                if (arg instanceof Collection<?> col) {
+                    List<?> list = new ArrayList<>(col);
+                    if (list.isEmpty()) return null;
+                    Random r = new Random();
+                    return list.get(r.nextInt(list.size()));
+                } else {
+                    return arg; // 直接返回单个值
+                }
+            }
+            // 多参数时，等价于 $CHOICE: [a, b, c]
+            if (args.length > 1) {
+                Random r = new Random();
+                return args[r.nextInt(args.length)];
+            }
+            return null;
+        });
+        OperatorRegistry.registerFunction("$join", (args, ctx) -> {
+            // 拼接所有参数为字符串
+            return Arrays.stream(args).map(String::valueOf).collect(Collectors.joining());
+        });
+        // 你可以继续注册更多函数
     }
 } 

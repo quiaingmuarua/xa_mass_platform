@@ -29,11 +29,17 @@ public class DslObjectBuilder {
      */
     public static <T> T mockFromDsl(JsonObject dsl, DslContext context, Class<T> targetType) {
         // 1. 解析 MODEL
-        String modelName = dsl.has(DslKeyword.MODEL.name()) ? dsl.get(DslKeyword.MODEL.name()).getAsString() : null;
+        Object modelName = dsl.has(DslKeyword.MODEL.name()) ? dsl.get(DslKeyword.MODEL.name()).getAsString() : null;
+        if (modelName == null && dsl.has("context") && dsl.get("context").isJsonObject()) {
+            var ctxObj = dsl.getAsJsonObject("context");
+            if (ctxObj.has(DslKeyword.MODEL.name())) {
+                modelName = ctxObj.get(DslKeyword.MODEL.name()).getAsString();
+            }
+        }
         if (modelName == null) {
             throw new JsonDslException("DSL 缺少 MODEL 字段");
         }
-        Class<?> clazz = resolveModelClass(modelName);
+        Class<?> clazz = resolveModelClass(modelName.toString());
         Object obj;
         try {
             obj = clazz.getDeclaredConstructor().newInstance();
