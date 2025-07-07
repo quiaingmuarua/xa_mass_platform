@@ -229,7 +229,7 @@ public class IntegrationTest {
         
         @Override
         public int getPriority() {
-            return 100;
+            return 150; // 比默认处理器更高的优先级
         }
         
         private Map<String, Object> createTestUser(String name, String age) {

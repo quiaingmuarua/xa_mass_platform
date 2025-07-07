@@ -1,9 +1,7 @@
-package com.xa.mass.base.jsondsl;
+package com.xa.mass.base.example;
 
 import com.xa.mass.base.jsondsl.model.JsonDslDefinition;
-import com.xa.mass.base.jsondsl.model.JsonDslContext;
 import com.xa.mass.base.jsondsl.model.JsonDslMerger;
-import com.xa.mass.base.jsondsl.parser.JsonDslParser;
 
 import java.util.*;
 

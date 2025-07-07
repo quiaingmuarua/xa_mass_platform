@@ -107,10 +107,10 @@ public class GenerateProcessorTest {
         fieldDsl.put("value", "$RANDOM_STRING(5)");
         definition.setFieldDsl(fieldDsl);
         
-        // 应该回退到 Object 类型
-        Object result = processor.process(definition, context);
-        assertNotNull(result);
-        assertTrue(result instanceof List);
+        // 应该抛出异常，因为类不存在
+        assertThrows(com.xa.mass.base.jsondsl.builtin.JsonDslException.class, () -> {
+            processor.process(definition, context);
+        });
     }
     
     @Test

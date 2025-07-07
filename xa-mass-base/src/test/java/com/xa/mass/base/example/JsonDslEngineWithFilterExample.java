@@ -1,5 +1,6 @@
-package com.xa.mass.base.jsondsl;
+package com.xa.mass.base.example;
 
+import com.xa.mass.base.jsondsl.JsonDslEngine;
 import com.xa.mass.base.jsondsl.filter.DslFilterFactory;
 import com.xa.mass.base.jsondsl.filter.JsonDslFilter;
 

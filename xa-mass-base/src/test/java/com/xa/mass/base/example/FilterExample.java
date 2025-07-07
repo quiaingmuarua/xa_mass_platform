@@ -1,4 +1,8 @@
-package com.xa.mass.base.jsondsl.filter;
+package com.xa.mass.base.example;
+
+import com.xa.mass.base.jsondsl.filter.DslFilter;
+import com.xa.mass.base.jsondsl.filter.DslFilterFactory;
+import com.xa.mass.base.jsondsl.filter.JsonDslFilter;
 
 import java.util.List;
 import java.util.Map;

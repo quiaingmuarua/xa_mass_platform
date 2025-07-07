@@ -1,10 +1,10 @@
-package com.xa.mass.base.jsondsl;
+package com.xa.mass.base.example;
 
+import com.xa.mass.base.jsondsl.JsonDslEngine;
 import com.xa.mass.base.jsondsl.model.JsonDslContext;
 import com.xa.mass.base.jsondsl.model.JsonDslDefinition;
 import com.xa.mass.base.jsondsl.parser.JsonDslParser;
 import com.xa.mass.base.model.Device;
-import com.xa.mass.base.model.Task;
 
 import java.util.Arrays;
 import java.util.HashMap;

@@ -1,5 +1,6 @@
-package com.xa.mass.base.jsondsl;
+package com.xa.mass.base.example;
 
+import com.xa.mass.base.jsondsl.JsonDslEngine;
 import com.xa.mass.base.jsondsl.generate.TypeRegistry;
 import com.xa.mass.base.model.Device;
 import com.xa.mass.base.model.Task;

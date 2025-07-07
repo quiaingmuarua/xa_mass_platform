@@ -2,6 +2,7 @@ package com.xa.mass.base.jsondsl.generate;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
+import java.lang.reflect.InaccessibleObjectException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -15,8 +16,13 @@ class FieldCacheUtil {
             Map<String, Field> m = new HashMap<>();
             for (Field f : c.getDeclaredFields()) {
                 if (!Modifier.isStatic(f.getModifiers())) {
-                    f.setAccessible(true);
-                    m.put(f.getName(), f);
+                    try {
+                        f.setAccessible(true);
+                        m.put(f.getName(), f);
+                    } catch (InaccessibleObjectException e) {
+                        // 跳过无法访问的字段（如 java.util 包中的内部字段）
+                        // 这些字段通常不应该被外部访问
+                    }
                 }
             }
             return m;
