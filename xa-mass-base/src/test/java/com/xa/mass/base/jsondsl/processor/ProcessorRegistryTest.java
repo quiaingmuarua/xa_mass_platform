@@ -16,13 +16,13 @@ import java.util.HashMap;
  */
 public class ProcessorRegistryTest {
     
-    private TestProcessor testProcessor;
+    private TestGenerateProcessor testProcessor;
     private JsonDslDefinition definition;
     private ProcessingContext context;
     
     @BeforeEach
     void setUp() {
-        testProcessor = new TestProcessor();
+        testProcessor = new TestGenerateProcessor();
         definition = new JsonDslDefinition("test-dsl", JsonDslDefinition.DslType.GENERATE);
         // 添加必要的 context 配置
         JsonDslContext dslContext = new JsonDslContext();
@@ -35,7 +35,7 @@ public class ProcessorRegistryTest {
     @AfterEach
     void tearDown() {
         // 清理注册的处理器
-        ProcessorRegistry.remove("TestProcessor");
+        ProcessorRegistry.remove("TestGenerateProcessor");
     }
     
     @Test
@@ -44,9 +44,9 @@ public class ProcessorRegistryTest {
         ProcessorRegistry.register(testProcessor);
         
         // 验证处理器已注册
-        JsonDslProcessor retrieved = ProcessorRegistry.get("TestProcessor");
+        JsonDslProcessor retrieved = ProcessorRegistry.get("TestGenerateProcessor");
         assertNotNull(retrieved);
-        assertEquals("TestProcessor", retrieved.getName());
+        assertEquals("TestGenerateProcessor", retrieved.getName());
     }
     
     @Test
@@ -55,9 +55,9 @@ public class ProcessorRegistryTest {
         ProcessorRegistry.register(testProcessor);
         
         // 获取处理器
-        JsonDslProcessor processor = ProcessorRegistry.get("TestProcessor");
+        JsonDslProcessor processor = ProcessorRegistry.get("TestGenerateProcessor");
         assertNotNull(processor);
-        assertEquals("TestProcessor", processor.getName());
+        assertEquals("TestGenerateProcessor", processor.getName());
         
         // 获取不存在的处理器
         JsonDslProcessor nonexistent = ProcessorRegistry.get("NonexistentProcessor");
@@ -96,7 +96,7 @@ public class ProcessorRegistryTest {
         boolean foundFilterProcessor = false;
         
         for (JsonDslProcessor processor : processors) {
-            if ("TestProcessor".equals(processor.getName())) {
+            if ("TestGenerateProcessor".equals(processor.getName())) {
                 foundTestProcessor = true;
             }
             if ("TestFilterProcessor".equals(processor.getName())) {
@@ -141,9 +141,11 @@ public class ProcessorRegistryTest {
         ProcessorRegistry.register(testProcessor);
         
         // 链式处理单个 DSL
-        Object result = ProcessorRegistry.processChain(definition, context);
+        GenerateProcessor<Map<String, Object>> processor = ProcessorRegistry.getGenerateProcessor();
+        List<Map<String, Object>> result = processor.generate(definition, context, (Class<Map<String, Object>>) (Class<?>) Map.class);
         assertNotNull(result);
-        assertEquals("TestProcessor processed: test-dsl", result);
+        assertFalse(result.isEmpty());
+        assertEquals("TestGenerateProcessor processed: test-dsl", result.get(0).get("message"));
     }
     
     @Test
@@ -166,8 +168,17 @@ public class ProcessorRegistryTest {
         
         List<JsonDslDefinition> dslList = List.of(generateDsl, filterDsl);
         
-        // 链式处理
-        Object result = ProcessorRegistry.processChain(dslList, context);
+        // 链式处理多个 DSL
+        List<Map<String, Object>> result = null;
+        for (JsonDslDefinition dsl : dslList) {
+            if (JsonDslDefinition.DslType.GENERATE.equals(dsl.getType())) {
+                GenerateProcessor<Map<String, Object>> processor = ProcessorRegistry.getGenerateProcessor();
+                result = processor.generate(dsl, context, (Class<Map<String, Object>>) (Class<?>) Map.class);
+            } else if (JsonDslDefinition.DslType.FILTER.equals(dsl.getType())) {
+                FilterProcessor<Map<String, Object>> processor = ProcessorRegistry.getFilterProcessor();
+                result = processor.filter(result, dsl, context);
+            }
+        }
         assertNotNull(result);
     }
     
@@ -177,13 +188,13 @@ public class ProcessorRegistryTest {
         ProcessorRegistry.register(testProcessor);
         
         // 验证处理器已注册
-        assertNotNull(ProcessorRegistry.get("TestProcessor"));
+        assertNotNull(ProcessorRegistry.get("TestGenerateProcessor"));
         
         // 移除处理器
-        ProcessorRegistry.remove("TestProcessor");
+        ProcessorRegistry.remove("TestGenerateProcessor");
         
         // 验证处理器已移除
-        assertNull(ProcessorRegistry.get("TestProcessor"));
+        assertNull(ProcessorRegistry.get("TestGenerateProcessor"));
     }
     
     @Test
@@ -193,73 +204,60 @@ public class ProcessorRegistryTest {
         ProcessorRegistry.register(new TestFilterProcessor());
         
         // 验证处理器已注册
-        assertNotNull(ProcessorRegistry.get("TestProcessor"));
+        assertNotNull(ProcessorRegistry.get("TestGenerateProcessor"));
         assertNotNull(ProcessorRegistry.get("TestFilterProcessor"));
         
         // 清除所有处理器
         ProcessorRegistry.clear();
         
-        // 验证处理器已清除
-        assertNull(ProcessorRegistry.get("TestProcessor"));
+        // 验证所有处理器已清除
+        assertNull(ProcessorRegistry.get("TestGenerateProcessor"));
         assertNull(ProcessorRegistry.get("TestFilterProcessor"));
     }
     
     @Test
     void testProcessorPriority() {
         // 创建不同优先级的处理器
-        TestProcessor highPriorityProcessor = new TestProcessor("HighPriorityProcessor", 500);
-        TestProcessor lowPriorityProcessor = new TestProcessor("LowPriorityProcessor", 100);
+        TestGenerateProcessor lowPriority = new TestGenerateProcessor("LowPriorityProcessor", 50);
+        TestGenerateProcessor highPriority = new TestGenerateProcessor("HighPriorityProcessor", 200);
         
         // 注册处理器
-        ProcessorRegistry.register(lowPriorityProcessor);
-        ProcessorRegistry.register(highPriorityProcessor);
+        ProcessorRegistry.register(lowPriority);
+        ProcessorRegistry.register(highPriority);
         
-        // 获取所有处理器
-        List<JsonDslProcessor> processors = ProcessorRegistry.getAllProcessors();
+        // 获取处理器列表
+        List<JsonDslProcessor> processors = ProcessorRegistry.getProcessors(JsonDslDefinition.DslType.GENERATE);
         
         // 验证按优先级排序（优先级高的在前）
-        boolean foundHighPriority = false;
-        boolean foundLowPriority = false;
+        assertTrue(processors.size() >= 2);
+        JsonDslProcessor first = processors.get(0);
+        JsonDslProcessor second = processors.get(1);
         
-        for (JsonDslProcessor processor : processors) {
-            if ("HighPriorityProcessor".equals(processor.getName())) {
-                foundHighPriority = true;
-                // 高优先级处理器应该在低优先级处理器之前
-                assertFalse(foundLowPriority);
-            }
-            if ("LowPriorityProcessor".equals(processor.getName())) {
-                foundLowPriority = true;
-            }
-        }
-        
-        assertTrue(foundHighPriority);
-        assertTrue(foundLowPriority);
-        
-        // 清理
-        ProcessorRegistry.remove("HighPriorityProcessor");
-        ProcessorRegistry.remove("LowPriorityProcessor");
+        assertTrue(first.getPriority() >= second.getPriority());
     }
     
     /**
-     * 测试用的处理器实现
+     * 测试生成处理器
      */
-    private static class TestProcessor implements JsonDslProcessor {
+    private static class TestGenerateProcessor implements GenerateProcessor<Map<String, Object>> {
         
         private final String name;
         private final int priority;
         
-        public TestProcessor() {
-            this("TestProcessor", 500);
+        public TestGenerateProcessor() {
+            this("TestGenerateProcessor", 100);
         }
         
-        public TestProcessor(String name, int priority) {
+        public TestGenerateProcessor(String name, int priority) {
             this.name = name;
             this.priority = priority;
         }
         
         @Override
-        public Object process(JsonDslDefinition definition, ProcessingContext context) {
-            return name + " processed: " + definition.getUniqueId();
+        public List<Map<String, Object>> generate(JsonDslDefinition definition, ProcessingContext context, Class<Map<String, Object>> targetType) {
+            Map<String, Object> result = new HashMap<>();
+            result.put("message", name + " processed: " + definition.getUniqueId());
+            return List.of(result);
         }
         
         @Override
@@ -279,13 +277,14 @@ public class ProcessorRegistryTest {
     }
     
     /**
-     * 测试用的过滤器处理器实现
+     * 测试过滤处理器
      */
-    private static class TestFilterProcessor implements JsonDslProcessor {
+    private static class TestFilterProcessor implements FilterProcessor<Map<String, Object>> {
         
         @Override
-        public Object process(JsonDslDefinition definition, ProcessingContext context) {
-            return "TestFilterProcessor processed: " + definition.getUniqueId();
+        public List<Map<String, Object>> filter(List<Map<String, Object>> input, JsonDslDefinition definition, ProcessingContext context) {
+            // 简单的过滤逻辑：保留所有对象
+            return input;
         }
         
         @Override

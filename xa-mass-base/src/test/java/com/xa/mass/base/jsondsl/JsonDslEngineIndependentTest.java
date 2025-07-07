@@ -34,7 +34,7 @@ public class JsonDslEngineIndependentTest {
         
         // 2. 独立生成数据
         ProcessingContext processingContext = new ProcessingContext();
-        List<Object> allUsers = (List<Object>) JsonDslProcessorEngine.process(generateDsl, processingContext);
+        List<Map> allUsers = JsonDslProcessorEngine.process(generateDsl, processingContext, Map.class);
         assertEquals(5, allUsers.size());
         
         // 3. 创建过滤 DSL
@@ -48,13 +48,12 @@ public class JsonDslEngineIndependentTest {
         filterContext.setParameter("objects", allUsers);
         
         // 5. 执行过滤
-        List<Object> filteredUsers = (List<Object>) JsonDslProcessorEngine.process(filterDsl, filterContext);
+        List<Map> filteredUsers = JsonDslProcessorEngine.process(filterDsl, filterContext, Map.class);
         assertTrue(filteredUsers.size() <= allUsers.size());
         
         // 6. 验证过滤结果
-        for (Object user : filteredUsers) {
-            Map<String, Object> userMap = (Map<String, Object>) user;
-            Object ageObj = userMap.get("age");
+        for (Map user : filteredUsers) {
+            Object ageObj = user.get("age");
             // 处理不同类型的年龄值
             if (ageObj == null) {
                 fail("用户年龄不能为 null");
@@ -105,10 +104,10 @@ public class JsonDslEngineIndependentTest {
         
         // 3. 独立生成多模型数据
         ProcessingContext processingContext = new ProcessingContext();
-        List<Object> users = (List<Object>) JsonDslProcessorEngine.process(userDsl, processingContext);
-        List<Object> products = (List<Object>) JsonDslProcessorEngine.process(productDsl, processingContext);
+        List<Map> users = JsonDslProcessorEngine.process(userDsl, processingContext, Map.class);
+        List<Map> products = JsonDslProcessorEngine.process(productDsl, processingContext, Map.class);
         
-        Map<String, List<Object>> allModels = new HashMap<>();
+        Map<String, List<Map>> allModels = new HashMap<>();
         allModels.put("users", users);
         allModels.put("products", products);
         
@@ -125,10 +124,10 @@ public class JsonDslEngineIndependentTest {
         // 5. 过滤用户数据
         ProcessingContext filterContext = new ProcessingContext();
         filterContext.setParameter("objects", users);
-        List<Object> filteredUsers = (List<Object>) JsonDslProcessorEngine.process(filterDsl, filterContext);
+        List<Map> filteredUsers = JsonDslProcessorEngine.process(filterDsl, filterContext, Map.class);
         
         // 6. 构建过滤后的模型映射
-        Map<String, List<Object>> filteredModels = new HashMap<>();
+        Map<String, List<Map>> filteredModels = new HashMap<>();
         filteredModels.put("users", filteredUsers);
         filteredModels.put("products", products); // 产品没有 age 字段，保持不变
         
@@ -158,7 +157,7 @@ public class JsonDslEngineIndependentTest {
         generateDsl.setFieldDsl(fieldDsl);
         
         ProcessingContext processingContext = new ProcessingContext();
-        List<Object> allUsers = (List<Object>) JsonDslProcessorEngine.process(generateDsl, processingContext);
+        List<Map> allUsers = JsonDslProcessorEngine.process(generateDsl, processingContext, Map.class);
         assertEquals(10, allUsers.size());
         
         // 2. 链式过滤：年龄 -> 状态 -> 分数 -> 部门
@@ -170,7 +169,7 @@ public class JsonDslEngineIndependentTest {
         filter1Dsl.put("age", "$EXPR(age >= 25)");
         filter1.setFieldDsl(filter1Dsl);
         filterContext.setParameter("objects", allUsers);
-        List<Object> step1 = (List<Object>) JsonDslProcessorEngine.process(filter1, filterContext);
+        List<Map> step1 = JsonDslProcessorEngine.process(filter1, filterContext, Map.class);
         System.out.println("年龄>=25: " + step1.size());
         
         // 步骤2：状态过滤
@@ -179,7 +178,7 @@ public class JsonDslEngineIndependentTest {
         filter2Dsl.put("status", "$EXPR(status == 'active')");
         filter2.setFieldDsl(filter2Dsl);
         filterContext.setParameter("objects", step1);
-        List<Object> step2 = (List<Object>) JsonDslProcessorEngine.process(filter2, filterContext);
+        List<Map> step2 = JsonDslProcessorEngine.process(filter2, filterContext, Map.class);
         System.out.println("状态=active: " + step2.size());
         
         // 步骤3：分数过滤
@@ -188,7 +187,7 @@ public class JsonDslEngineIndependentTest {
         filter3Dsl.put("score", "$EXPR(score >= 70)");
         filter3.setFieldDsl(filter3Dsl);
         filterContext.setParameter("objects", step2);
-        List<Object> step3 = (List<Object>) JsonDslProcessorEngine.process(filter3, filterContext);
+        List<Map> step3 = JsonDslProcessorEngine.process(filter3, filterContext, Map.class);
         System.out.println("分数>=70: " + step3.size());
         
         // 步骤4：分数上限过滤
@@ -197,62 +196,30 @@ public class JsonDslEngineIndependentTest {
         filter4Dsl.put("score", "$EXPR(score <= 100)");
         filter4.setFieldDsl(filter4Dsl);
         filterContext.setParameter("objects", step3);
-        List<Object> step4 = (List<Object>) JsonDslProcessorEngine.process(filter4, filterContext);
+        List<Map> step4 = JsonDslProcessorEngine.process(filter4, filterContext, Map.class);
         System.out.println("分数<=100: " + step4.size());
         
         // 3. 验证链式过滤结果
-        assertTrue(step4.size() <= step3.size());
-        assertTrue(step3.size() <= step2.size());
-        assertTrue(step2.size() <= step1.size());
         assertTrue(step1.size() <= allUsers.size());
+        assertTrue(step2.size() <= step1.size());
+        assertTrue(step3.size() <= step2.size());
+        assertTrue(step4.size() <= step3.size());
         
         // 4. 验证最终结果
-        for (Object user : step4) {
-            Map<String, Object> userMap = (Map<String, Object>) user;
-            Object ageObj = userMap.get("age");
-            Object scoreObj = userMap.get("score");
-            Object statusObj = userMap.get("status");
+        for (Map user : step4) {
+            Object ageObj = user.get("age");
+            Object statusObj = user.get("status");
+            Object scoreObj = user.get("score");
             
-            // 验证年龄
-            if (ageObj == null) {
-                fail("用户年龄不能为 null");
-            }
-            int age;
-            if (ageObj instanceof Integer) {
-                age = (Integer) ageObj;
-            } else if (ageObj instanceof String) {
-                age = Integer.parseInt((String) ageObj);
-            } else {
-                age = Integer.parseInt(ageObj.toString());
-            }
-            assertTrue(age >= 25, "年龄应该 >= 25");
-            
-            // 验证分数
-            if (scoreObj == null) {
-                fail("用户分数不能为 null");
-            }
-            int score;
-            if (scoreObj instanceof Integer) {
-                score = (Integer) scoreObj;
-            } else if (scoreObj instanceof String) {
-                score = Integer.parseInt((String) scoreObj);
-            } else {
-                score = Integer.parseInt(scoreObj.toString());
-            }
-            assertTrue(score >= 70 && score <= 100, "分数应该在 70-100 之间");
-            
-            // 验证状态
-            if (statusObj == null) {
-                fail("用户状态不能为 null");
-            }
+            int age = Integer.parseInt(ageObj.toString());
             String status = statusObj.toString();
-            assertEquals("active", status, "状态应该是 active");
+            int score = Integer.parseInt(scoreObj.toString());
+            
+            assertTrue(age >= 25, "最终用户年龄应该 >= 25");
+            assertEquals("active", status, "最终用户状态应该是 active");
+            assertTrue(score >= 70 && score <= 100, "最终用户分数应该在 70-100 之间");
         }
         
-        System.out.println("原始用户数: " + allUsers.size());
-        System.out.println("年龄>=25: " + step1.size());
-        System.out.println("状态=active: " + step2.size());
-        System.out.println("分数>=70: " + step3.size());
-        System.out.println("分数<=100: " + step4.size());
+        System.out.println("链式过滤完成，最终用户数: " + step4.size());
     }
 } 

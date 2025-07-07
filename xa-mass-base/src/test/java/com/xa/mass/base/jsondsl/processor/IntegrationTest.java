@@ -56,17 +56,15 @@ public class IntegrationTest {
         
         // 链式处理
         List<JsonDslDefinition> dslChain = Arrays.asList(generateDsl, filterDsl);
-        Object result = JsonDslProcessorEngine.processChain(dslChain, context);
+        List<Map> result = JsonDslProcessorEngine.processChain(dslChain, context, Map.class);
         
         // 验证结果
         assertNotNull(result);
-        assertTrue(result instanceof List);
-        List<?> filteredList = (List<?>) result;
+        assertFalse(result.isEmpty());
         
         // 验证所有对象都是成年人
-        for (Object obj : filteredList) {
-            Map<String, Object> map = (Map<String, Object>) obj;
-            String ageStr = (String) map.get("age");
+        for (Map obj : result) {
+            String ageStr = (String) obj.get("age");
             int age = Integer.parseInt(ageStr);
             assertTrue(age >= 18);
         }
@@ -104,12 +102,12 @@ public class IntegrationTest {
         JsonDslDefinition dsl = new JsonDslDefinition("context-test", JsonDslDefinition.DslType.GENERATE);
         
         // 处理 DSL
-        Object result = JsonDslProcessorEngine.process(dsl, context);
+        List<Map> result = JsonDslProcessorEngine.process(dsl, context, Map.class);
         
         // 验证结果包含上下文信息
         assertNotNull(result);
-        assertTrue(result instanceof Map);
-        Map<String, Object> resultMap = (Map<String, Object>) result;
+        assertFalse(result.isEmpty());
+        Map<String, Object> resultMap = result.get(0);
         assertEquals("sharedValue", resultMap.get("param"));
         assertEquals("sharedVariable", resultMap.get("variable"));
     }
@@ -126,12 +124,12 @@ public class IntegrationTest {
         JsonDslDefinition dsl = new JsonDslDefinition("debug-test", JsonDslDefinition.DslType.GENERATE);
         
         // 处理 DSL
-        Object result = JsonDslProcessorEngine.process(dsl, context);
+        List<Map> result = JsonDslProcessorEngine.process(dsl, context, Map.class);
         
         // 验证调试信息
         assertNotNull(result);
-        assertTrue(result instanceof Map);
-        Map<String, Object> resultMap = (Map<String, Object>) result;
+        assertFalse(result.isEmpty());
+        Map<String, Object> resultMap = result.get(0);
         assertTrue((Boolean) resultMap.get("debugMode"));
     }
     
@@ -163,7 +161,7 @@ public class IntegrationTest {
         
         // 应该抛出异常
         assertThrows(RuntimeException.class, () -> {
-            JsonDslProcessorEngine.process(dsl, context);
+            JsonDslProcessorEngine.process(dsl, context, Map.class);
         });
     }
     
@@ -191,30 +189,29 @@ public class IntegrationTest {
             """;
         
         // 处理 JSON DSL
-        Object result = JsonDslProcessorEngine.processFromJson(jsonDsl, context);
+        List<Map> result = JsonDslProcessorEngine.processFromJson(jsonDsl, context, Map.class);
         
         // 验证结果
         assertNotNull(result);
-        assertTrue(result instanceof List);
-        List<?> list = (List<?>) result;
-        assertEquals(5, list.size());
+        assertFalse(result.isEmpty());
+        assertEquals(5, result.size());
     }
     
     /**
-     * 测试用的生成处理器
+     * 测试生成处理器
      */
-    private static class TestGenerateProcessor implements JsonDslProcessor {
+    private static class TestGenerateProcessor implements GenerateProcessor<Map<String, Object>> {
         
         @Override
-        public Object process(JsonDslDefinition definition, ProcessingContext context) {
-            List<Map<String, Object>> result = Arrays.asList(
+        public List<Map<String, Object>> generate(JsonDslDefinition definition, ProcessingContext context, Class<Map<String, Object>> targetType) {
+            List<Map<String, Object>> users = Arrays.asList(
                 createTestUser("Alice", "25"),
-                createTestUser("Bob", "35"),
-                createTestUser("Charlie", "45"),
-                createTestUser("David", "55"),
-                createTestUser("Eve", "20")
+                createTestUser("Bob", "30"),
+                createTestUser("Charlie", "35"),
+                createTestUser("David", "40"),
+                createTestUser("Eve", "45")
             );
-            return result;
+            return users;
         }
         
         @Override
@@ -229,7 +226,7 @@ public class IntegrationTest {
         
         @Override
         public int getPriority() {
-            return 150; // 比默认处理器更高的优先级
+            return 100;
         }
         
         private Map<String, Object> createTestUser(String name, String age) {
@@ -241,22 +238,16 @@ public class IntegrationTest {
     }
     
     /**
-     * 测试用的过滤处理器
+     * 测试过滤处理器
      */
-    private static class TestFilterProcessor implements JsonDslProcessor {
+    private static class TestFilterProcessor implements FilterProcessor<Map<String, Object>> {
         
         @Override
-        public Object process(JsonDslDefinition definition, ProcessingContext context) {
-            List<Object> objects = (List<Object>) context.getParameter("objects");
-            if (objects == null) {
-                return Arrays.asList();
-            }
-            
-            // 简单的过滤逻辑：保留年龄大于等于18的对象
-            return objects.stream()
-                .filter(obj -> {
-                    Map<String, Object> map = (Map<String, Object>) obj;
-                    String ageStr = (String) map.get("age");
+        public List<Map<String, Object>> filter(List<Map<String, Object>> input, JsonDslDefinition definition, ProcessingContext context) {
+            // 过滤掉年龄小于18的用户
+            return input.stream()
+                .filter(user -> {
+                    String ageStr = (String) user.get("age");
                     int age = Integer.parseInt(ageStr);
                     return age >= 18;
                 })
@@ -275,33 +266,29 @@ public class IntegrationTest {
         
         @Override
         public int getPriority() {
-            return 200;
+            return 100;
+        }
+        
+        private Map<String, Object> createTestUser(String name, String age) {
+            Map<String, Object> user = new HashMap<>();
+            user.put("name", name);
+            user.put("age", age);
+            return user;
         }
     }
     
     /**
-     * 测试用的转换处理器
+     * 测试转换处理器
      */
-    private static class TestTransformProcessor implements JsonDslProcessor {
+    private static class TestTransformProcessor implements TransformProcessor<Map<String, Object>> {
         
         @Override
-        public Object process(JsonDslDefinition definition, ProcessingContext context) {
-            List<Object> objects = (List<Object>) context.getParameter("objects");
-            if (objects == null) {
-                return Arrays.asList();
-            }
-            
-            // 简单的转换逻辑：添加年龄组字段
-            return objects.stream()
-                .map(obj -> {
-                    Map<String, Object> map = new HashMap<>((Map<String, Object>) obj);
-                    String ageStr = (String) map.get("age");
-                    int age = Integer.parseInt(ageStr);
-                    String ageGroup = age < 30 ? "young" : age < 50 ? "middle" : "senior";
-                    map.put("ageGroup", ageGroup);
-                    return map;
-                })
-                .toList();
+        public Map<String, Object> transform(Map<String, Object> input, JsonDslDefinition definition, ProcessingContext context) {
+            // 转换：添加前缀
+            Map<String, Object> transformed = new HashMap<>(input);
+            String name = (String) input.get("name");
+            transformed.put("name", "Mr. " + name);
+            return transformed;
         }
         
         @Override
@@ -316,37 +303,33 @@ public class IntegrationTest {
         
         @Override
         public int getPriority() {
-            return 300;
+            return 100;
+        }
+        
+        private Map<String, Object> createTestUser(String name, String age) {
+            Map<String, Object> user = new HashMap<>();
+            user.put("name", name);
+            user.put("age", age);
+            return user;
         }
     }
     
     /**
-     * 测试用的校验处理器
+     * 测试校验处理器
      */
-    private static class TestValidateProcessor implements JsonDslProcessor {
+    private static class TestValidateProcessor implements ValidateProcessor<Map<String, Object>> {
         
         @Override
-        public Object process(JsonDslDefinition definition, ProcessingContext context) {
-            List<Object> objects = (List<Object>) context.getParameter("objects");
-            if (objects == null) {
-                return new ValidateProcessor.ValidationResult();
+        public List<String> validate(Map<String, Object> obj, JsonDslDefinition definition, ProcessingContext context) {
+            // 校验：用户年龄都在18-100之间
+            String ageStr = (String) obj.get("age");
+            int age = Integer.parseInt(ageStr);
+            
+            if (age < 18 || age > 100) {
+                return Arrays.asList("Invalid age: " + age + ". Age must be between 18 and 100.");
             }
             
-            ValidateProcessor.ValidationResult result = new ValidateProcessor.ValidationResult();
-            
-            for (Object obj : objects) {
-                Map<String, Object> map = (Map<String, Object>) obj;
-                String ageStr = (String) map.get("age");
-                int age = Integer.parseInt(ageStr);
-                
-                if (age >= 0 && age <= 150) {
-                    result.addValidObject(obj);
-                } else {
-                    result.addInvalidObject(obj, "Invalid age: " + age);
-                }
-            }
-            
-            return result;
+            return Arrays.asList(); // 空列表表示校验通过
         }
         
         @Override
@@ -361,21 +344,28 @@ public class IntegrationTest {
         
         @Override
         public int getPriority() {
-            return 400;
+            return 100;
+        }
+        
+        private Map<String, Object> createTestUser(String name, String age) {
+            Map<String, Object> user = new HashMap<>();
+            user.put("name", name);
+            user.put("age", age);
+            return user;
         }
     }
     
     /**
      * 上下文感知处理器
      */
-    private static class ContextAwareProcessor implements JsonDslProcessor {
+    private static class ContextAwareProcessor implements GenerateProcessor<Map<String, Object>> {
         
         @Override
-        public Object process(JsonDslDefinition definition, ProcessingContext context) {
+        public List<Map<String, Object>> generate(JsonDslDefinition definition, ProcessingContext context, Class<Map<String, Object>> targetType) {
             Map<String, Object> result = new HashMap<>();
             result.put("param", context.getParameter("sharedParam"));
             result.put("variable", context.getVariable("sharedVar"));
-            return result;
+            return Arrays.asList(result);
         }
         
         @Override
@@ -397,13 +387,13 @@ public class IntegrationTest {
     /**
      * 调试感知处理器
      */
-    private static class DebugAwareProcessor implements JsonDslProcessor {
+    private static class DebugAwareProcessor implements GenerateProcessor<Map<String, Object>> {
         
         @Override
-        public Object process(JsonDslDefinition definition, ProcessingContext context) {
+        public List<Map<String, Object>> generate(JsonDslDefinition definition, ProcessingContext context, Class<Map<String, Object>> targetType) {
             Map<String, Object> result = new HashMap<>();
             result.put("debugMode", context.isDebug());
-            return result;
+            return Arrays.asList(result);
         }
         
         @Override
@@ -425,11 +415,13 @@ public class IntegrationTest {
     /**
      * 低优先级处理器
      */
-    private static class LowPriorityProcessor implements JsonDslProcessor {
+    private static class LowPriorityProcessor implements GenerateProcessor<Map<String, Object>> {
         
         @Override
-        public Object process(JsonDslDefinition definition, ProcessingContext context) {
-            return "LowPriority";
+        public List<Map<String, Object>> generate(JsonDslDefinition definition, ProcessingContext context, Class<Map<String, Object>> targetType) {
+            Map<String, Object> result = new HashMap<>();
+            result.put("priority", "low");
+            return Arrays.asList(result);
         }
         
         @Override
@@ -451,11 +443,13 @@ public class IntegrationTest {
     /**
      * 高优先级处理器
      */
-    private static class HighPriorityProcessor implements JsonDslProcessor {
+    private static class HighPriorityProcessor implements GenerateProcessor<Map<String, Object>> {
         
         @Override
-        public Object process(JsonDslDefinition definition, ProcessingContext context) {
-            return "HighPriority";
+        public List<Map<String, Object>> generate(JsonDslDefinition definition, ProcessingContext context, Class<Map<String, Object>> targetType) {
+            Map<String, Object> result = new HashMap<>();
+            result.put("priority", "high");
+            return Arrays.asList(result);
         }
         
         @Override
@@ -470,17 +464,17 @@ public class IntegrationTest {
         
         @Override
         public int getPriority() {
-            return 500;
+            return 200;
         }
     }
     
     /**
      * 错误处理器
      */
-    private static class ErrorProcessor implements JsonDslProcessor {
+    private static class ErrorProcessor implements GenerateProcessor<Map<String, Object>> {
         
         @Override
-        public Object process(JsonDslDefinition definition, ProcessingContext context) {
+        public List<Map<String, Object>> generate(JsonDslDefinition definition, ProcessingContext context, Class<Map<String, Object>> targetType) {
             throw new RuntimeException("Test error");
         }
         
