@@ -200,11 +200,10 @@ public class FilterProcessorTest {
             createTestUser("Bob", 35)
         );
         
-        // 不设置 fieldDsl，应该返回原列表
-        List<TestUser> result = processor.filter(testUsers, definition, context);
-        
-        assertNotNull(result);
-        assertEquals(testUsers.size(), result.size());
+        // 不设置 fieldDsl，应该抛出异常
+        assertThrows(JsonDslException.class, () -> {
+            processor.filter(testUsers, definition, context);
+        });
     }
     
     private TestUser createTestUser(String name, int age) {

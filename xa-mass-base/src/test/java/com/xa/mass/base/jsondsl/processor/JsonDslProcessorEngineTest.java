@@ -35,6 +35,9 @@ public class JsonDslProcessorEngineTest {
         
         // 注册测试处理器
         JsonDslProcessorEngine.registerProcessor(testProcessor);
+        
+        // 注册一个测试 FilterProcessor
+        JsonDslProcessorEngine.registerProcessor(new DefaultFilterProcessor<>());
     }
     
     @AfterEach

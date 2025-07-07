@@ -49,7 +49,7 @@ public class GenerateProcessorTest {
     void testGenerateWithValidDefinition() {
         // 设置有效的 DSL 定义
         JsonDslContext dslContext = new JsonDslContext();
-        dslContext.setModel("com.xa.mass.base.jsondsl.processor.TestUser");
+        dslContext.setModel("com.xa.mass.base.jsondsl.processor.GenerateProcessorTest$TestUser");
         dslContext.setCount(3);
         definition.setContext(dslContext);
         
@@ -114,7 +114,7 @@ public class GenerateProcessorTest {
     void testGenerateWithDefaultCount() {
         // 测试默认数量（不设置 count）
         JsonDslContext dslContext = new JsonDslContext();
-        dslContext.setModel("com.xa.mass.base.jsondsl.processor.TestUser");
+        dslContext.setModel("com.xa.mass.base.jsondsl.processor.GenerateProcessorTest$TestUser");
         definition.setContext(dslContext);
         
         Map<String, Object> fieldDsl = new HashMap<>();
@@ -132,7 +132,7 @@ public class GenerateProcessorTest {
         context.setDebug(true);
         
         JsonDslContext dslContext = new JsonDslContext();
-        dslContext.setModel("com.xa.mass.base.jsondsl.processor.TestUser");
+        dslContext.setModel("com.xa.mass.base.jsondsl.processor.GenerateProcessorTest$TestUser");
         dslContext.setCount(2);
         definition.setContext(dslContext);
         
@@ -149,7 +149,7 @@ public class GenerateProcessorTest {
     void testGenerateWithComplexFieldDsl() {
         // 测试复杂的字段 DSL
         JsonDslContext dslContext = new JsonDslContext();
-        dslContext.setModel("com.xa.mass.base.jsondsl.processor.TestUser");
+        dslContext.setModel("com.xa.mass.base.jsondsl.processor.GenerateProcessorTest$TestUser");
         dslContext.setCount(1);
         definition.setContext(dslContext);
         
@@ -166,7 +166,7 @@ public class GenerateProcessorTest {
     
     @Test
     void testGenerateWithNullDefinition() {
-        assertThrows(JsonDslException.class, () -> {
+        assertThrows(IllegalArgumentException.class, () -> {
             processor.generate(null, context, TestUser.class);
         });
     }
@@ -174,11 +174,11 @@ public class GenerateProcessorTest {
     @Test
     void testGenerateWithNullContext() {
         JsonDslContext dslContext = new JsonDslContext();
-        dslContext.setModel("com.xa.mass.base.jsondsl.processor.TestUser");
+        dslContext.setModel("com.xa.mass.base.jsondsl.processor.GenerateProcessorTest$TestUser");
         dslContext.setCount(1);
         definition.setContext(dslContext);
         
-        assertThrows(JsonDslException.class, () -> {
+        assertThrows(IllegalArgumentException.class, () -> {
             processor.generate(definition, null, TestUser.class);
         });
     }
@@ -186,11 +186,11 @@ public class GenerateProcessorTest {
     @Test
     void testGenerateWithNullTargetType() {
         JsonDslContext dslContext = new JsonDslContext();
-        dslContext.setModel("com.xa.mass.base.jsondsl.processor.TestUser");
+        dslContext.setModel("com.xa.mass.base.jsondsl.processor.GenerateProcessorTest$TestUser");
         dslContext.setCount(1);
         definition.setContext(dslContext);
         
-        assertThrows(JsonDslException.class, () -> {
+        assertThrows(IllegalArgumentException.class, () -> {
             processor.generate(definition, context, null);
         });
     }
@@ -201,7 +201,7 @@ public class GenerateProcessorTest {
         definition.setType(JsonDslDefinition.DslType.FILTER);
         
         JsonDslContext dslContext = new JsonDslContext();
-        dslContext.setModel("com.xa.mass.base.jsondsl.processor.TestUser");
+        dslContext.setModel("com.xa.mass.base.jsondsl.processor.GenerateProcessorTest$TestUser");
         dslContext.setCount(1);
         definition.setContext(dslContext);
         
