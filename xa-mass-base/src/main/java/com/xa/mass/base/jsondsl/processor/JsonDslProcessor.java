@@ -11,6 +11,15 @@ import com.xa.mass.base.jsondsl.model.JsonDslDefinition;
 public interface JsonDslProcessor {
     
     /**
+     * 处理 DSL 定义
+     * 
+     * @param definition DSL 定义
+     * @param context 处理上下文
+     * @return 处理结果
+     */
+    Object process(JsonDslDefinition definition, ProcessingContext context);
+    
+    /**
      * 检查是否支持指定的 DSL 类型
      * 
      * @param type DSL 类型

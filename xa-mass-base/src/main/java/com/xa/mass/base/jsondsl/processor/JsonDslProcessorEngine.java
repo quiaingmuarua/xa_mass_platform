@@ -1,28 +1,21 @@
 package com.xa.mass.base.jsondsl.processor;
 
+import com.google.gson.Gson;
 import com.xa.mass.base.jsondsl.model.JsonDslDefinition;
-import com.xa.mass.base.jsondsl.parser.JsonDslParser;
 
 import java.util.List;
 
 /**
  * JSON-DSL 处理器引擎
  * <p>
- * 新的 DSL 处理引擎，基于强类型处理器模式，支持链式调用和扩展
+ * 提供统一的 DSL 处理入口，支持单个 DSL 处理和链式处理
+ * 默认处理器由 ProcessorManager 统一管理，自定义处理器通过 ProcessorRegistry 注册
+ * 所有方法均为强类型，确保类型安全
  * </p>
  */
 public class JsonDslProcessorEngine {
     
-    /**
-     * 处理单个 DSL 定义（使用强类型处理器）
-     * 
-     * @param definition DSL 定义
-     * @param targetType 目标类型
-     * @return 处理结果
-     */
-    public static <T> List<T> process(JsonDslDefinition definition, Class<T> targetType) {
-        return process(definition, new ProcessingContext(), targetType);
-    }
+    private static final Gson gson = new Gson();
     
     /**
      * 处理单个 DSL 定义（使用强类型处理器）
@@ -34,115 +27,124 @@ public class JsonDslProcessorEngine {
      */
     public static <T> List<T> process(JsonDslDefinition definition, ProcessingContext context, Class<T> targetType) {
         if (JsonDslDefinition.DslType.GENERATE.equals(definition.getType())) {
-            GenerateProcessor processor = ProcessorRegistry.getGenerateProcessor();
+            GenerateProcessor processor = ProcessorManager.getGenerateProcessor();
             return processor.generate(definition, context, targetType);
         } else if (JsonDslDefinition.DslType.FILTER.equals(definition.getType())) {
-            FilterProcessor processor = ProcessorRegistry.getFilterProcessor();
+            FilterProcessor processor = ProcessorManager.getFilterProcessor();
             // 从上下文中获取输入数据
             @SuppressWarnings("unchecked")
-            List<T> input = (List<T>) context.getParameter("objects");
+            List<T> input = (List<T>) context.getParameter("input");
             if (input == null) {
-                throw new IllegalArgumentException("过滤处理器需要上下文中的 'objects' 参数");
+                throw new IllegalArgumentException("过滤处理器需要上下文中提供 input 参数");
             }
             return processor.filter(input, definition, context);
         } else if (JsonDslDefinition.DslType.TRANSFORM.equals(definition.getType())) {
-            TransformProcessor processor = ProcessorRegistry.getTransformProcessor();
+            TransformProcessor processor = ProcessorManager.getTransformProcessor();
             // 从上下文中获取输入数据
             @SuppressWarnings("unchecked")
-            T input = (T) context.getParameter("object");
+            T input = (T) context.getParameter("input");
             if (input == null) {
-                throw new IllegalArgumentException("转换处理器需要上下文中的 'object' 参数");
+                throw new IllegalArgumentException("转换处理器需要上下文中提供 input 参数");
             }
             T result = processor.transform(input, definition, context);
             return List.of(result);
         } else if (JsonDslDefinition.DslType.VALIDATE.equals(definition.getType())) {
-            ValidateProcessor processor = ProcessorRegistry.getValidateProcessor();
+            ValidateProcessor processor = ProcessorManager.getValidateProcessor();
             // 从上下文中获取输入数据
             @SuppressWarnings("unchecked")
-            T input = (T) context.getParameter("object");
+            T input = (T) context.getParameter("input");
             if (input == null) {
-                throw new IllegalArgumentException("校验处理器需要上下文中的 'object' 参数");
+                throw new IllegalArgumentException("校验处理器需要上下文中提供 input 参数");
             }
             List<String> errors = processor.validate(input, definition, context);
-            if (errors.isEmpty()) {
-                return List.of(input);
-            } else {
+            if (!errors.isEmpty()) {
                 throw new IllegalArgumentException("校验失败: " + String.join(", ", errors));
             }
+            return List.of(input);
         } else {
             throw new IllegalArgumentException("不支持的 DSL 类型: " + definition.getType());
         }
     }
     
     /**
-     * 处理多个 DSL 定义（链式调用，使用强类型处理器）
-     * 
-     * @param definitions DSL 定义列表
-     * @param targetType 目标类型
-     * @return 最终处理结果
-     */
-    public static <T> List<T> processChain(List<JsonDslDefinition> definitions, Class<T> targetType) {
-        return processChain(definitions, new ProcessingContext(), targetType);
-    }
-    
-    /**
-     * 处理多个 DSL 定义（链式调用，使用强类型处理器）
+     * 链式处理多个 DSL 定义（使用强类型处理器）
      * 
      * @param definitions DSL 定义列表
      * @param context 处理上下文
      * @param targetType 目标类型
-     * @return 最终处理结果
-     */
-    public static <T> List<T> processChain(List<JsonDslDefinition> definitions, ProcessingContext context, Class<T> targetType) {
-        return ProcessorRegistry.processGenerateChain(definitions, context, targetType);
-    }
-    
-    /**
-     * 从 JSON 字符串解析并处理 DSL（使用强类型处理器）
-     * 
-     * @param jsonDsl JSON 字符串
-     * @param targetType 目标类型
      * @return 处理结果
      */
-    public static <T> List<T> processFromJson(String jsonDsl, Class<T> targetType) {
-        return processFromJson(jsonDsl, new ProcessingContext(), targetType);
+    public static <T> List<T> processChain(List<JsonDslDefinition> definitions, ProcessingContext context, Class<T> targetType) {
+        List<T> result = null;
+        
+        for (JsonDslDefinition definition : definitions) {
+            if (context.isDebug()) {
+                System.out.println("[JsonDslProcessorEngine] 处理 DSL: " + definition.getUniqueId() + 
+                    " (类型: " + definition.getType() + ")");
+            }
+            
+            if (JsonDslDefinition.DslType.GENERATE.equals(definition.getType())) {
+                GenerateProcessor processor = ProcessorManager.getGenerateProcessor();
+                result = processor.generate(definition, context, targetType);
+            } else if (JsonDslDefinition.DslType.FILTER.equals(definition.getType())) {
+                FilterProcessor processor = ProcessorManager.getFilterProcessor();
+                if (result == null) {
+                    throw new IllegalArgumentException("过滤处理器需要前置的生成结果");
+                }
+                result = processor.filter(result, definition, context);
+            } else if (JsonDslDefinition.DslType.TRANSFORM.equals(definition.getType())) {
+                TransformProcessor processor = ProcessorManager.getTransformProcessor();
+                if (result == null || result.isEmpty()) {
+                    throw new IllegalArgumentException("转换处理器需要前置的生成结果");
+                }
+                List<T> transformed = result.stream()
+                    .map(obj -> processor.transform(obj, definition, context))
+                    .toList();
+                result = transformed;
+            } else if (JsonDslDefinition.DslType.VALIDATE.equals(definition.getType())) {
+                ValidateProcessor processor = ProcessorManager.getValidateProcessor();
+                if (result == null || result.isEmpty()) {
+                    throw new IllegalArgumentException("校验处理器需要前置的生成结果");
+                }
+                // 校验所有对象
+                for (T obj : result) {
+                    List<String> errors = processor.validate(obj, definition, context);
+                    if (!errors.isEmpty()) {
+                        throw new IllegalArgumentException("校验失败: " + String.join(", ", errors));
+                    }
+                }
+            } else {
+                throw new IllegalArgumentException("不支持的 DSL 类型: " + definition.getType());
+            }
+        }
+        
+        return result;
     }
     
     /**
-     * 从 JSON 字符串解析并处理 DSL（使用强类型处理器）
+     * 从 JSON 字符串处理 DSL（使用强类型处理器）
      * 
-     * @param jsonDsl JSON 字符串
+     * @param jsonDsl JSON DSL 字符串
      * @param context 处理上下文
      * @param targetType 目标类型
      * @return 处理结果
      */
     public static <T> List<T> processFromJson(String jsonDsl, ProcessingContext context, Class<T> targetType) {
-        JsonDslDefinition definition = JsonDslParser.parse(jsonDsl);
+        JsonDslDefinition definition = gson.fromJson(jsonDsl, JsonDslDefinition.class);
         return process(definition, context, targetType);
     }
     
     /**
-     * 从 JSON 字符串解析并链式处理多个 DSL（使用强类型处理器）
+     * 从 JSON 字符串链式处理多个 DSL（使用强类型处理器）
      * 
-     * @param jsonDslList JSON 字符串列表
-     * @param targetType 目标类型
-     * @return 最终处理结果
-     */
-    public static <T> List<T> processChainFromJson(List<String> jsonDslList, Class<T> targetType) {
-        return processChainFromJson(jsonDslList, new ProcessingContext(), targetType);
-    }
-    
-    /**
-     * 从 JSON 字符串解析并链式处理多个 DSL（使用强类型处理器）
-     * 
-     * @param jsonDslList JSON 字符串列表
+     * @param jsonDslList JSON DSL 字符串列表
      * @param context 处理上下文
      * @param targetType 目标类型
-     * @return 最终处理结果
+     * @return 处理结果
      */
     public static <T> List<T> processChainFromJson(List<String> jsonDslList, ProcessingContext context, Class<T> targetType) {
         List<JsonDslDefinition> definitions = jsonDslList.stream()
-            .map(JsonDslParser::parse)
+            .map(json -> gson.fromJson(json, JsonDslDefinition.class))
             .toList();
         return processChain(definitions, context, targetType);
     }
@@ -150,14 +152,14 @@ public class JsonDslProcessorEngine {
     /**
      * 注册自定义处理器
      * 
-     * @param processor 处理器
+     * @param processor 自定义处理器
      */
     public static void registerProcessor(JsonDslProcessor processor) {
         ProcessorRegistry.register(processor);
     }
     
     /**
-     * 获取所有已注册的处理器
+     * 获取所有处理器
      * 
      * @return 处理器列表
      */
@@ -181,7 +183,7 @@ public class JsonDslProcessorEngine {
      * @return 生成处理器
      */
     public static GenerateProcessor getGenerateProcessor() {
-        return ProcessorRegistry.getGenerateProcessor();
+        return ProcessorManager.getGenerateProcessor();
     }
     
     /**
@@ -190,7 +192,7 @@ public class JsonDslProcessorEngine {
      * @return 过滤处理器
      */
     public static FilterProcessor getFilterProcessor() {
-        return ProcessorRegistry.getFilterProcessor();
+        return ProcessorManager.getFilterProcessor();
     }
     
     /**
@@ -199,7 +201,7 @@ public class JsonDslProcessorEngine {
      * @return 转换处理器
      */
     public static TransformProcessor getTransformProcessor() {
-        return ProcessorRegistry.getTransformProcessor();
+        return ProcessorManager.getTransformProcessor();
     }
     
     /**
@@ -208,6 +210,6 @@ public class JsonDslProcessorEngine {
      * @return 校验处理器
      */
     public static ValidateProcessor getValidateProcessor() {
-        return ProcessorRegistry.getValidateProcessor();
+        return ProcessorManager.getValidateProcessor();
     }
 } 

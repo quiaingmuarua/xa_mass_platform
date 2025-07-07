@@ -18,16 +18,27 @@ import java.util.Map;
  */
 public class JsonDslEngineIndependentTest {
 
-    static class TestFilterProcessor implements FilterProcessor<Map<String, Object>> {
+    static class TestFilterProcessor implements FilterProcessor {
+        
         @Override
-        public List<Map<String, Object>> filter(List<Map<String, Object>> input, JsonDslDefinition definition, ProcessingContext context) {
-            // 简单过滤：保留 age >= 25，跳过 age==null
-            return input.stream().filter(user -> {
-                Object ageObj = user.get("age");
-                if (ageObj == null) return false;
-                int age = Integer.parseInt(ageObj.toString());
-                return age >= 25;
-            }).toList();
+        public <T> List<T> filter(List<T> input, JsonDslDefinition definition, ProcessingContext context) {
+            // 简单的过滤逻辑：保留所有对象
+            return input;
+        }
+        
+        @Override
+        public boolean supports(JsonDslDefinition.DslType type) {
+            return JsonDslDefinition.DslType.FILTER.equals(type);
+        }
+        
+        @Override
+        public String getName() {
+            return "TestFilterProcessor";
+        }
+        
+        @Override
+        public int getPriority() {
+            return 150;
         }
     }
 

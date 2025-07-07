@@ -3,6 +3,7 @@ package com.xa.mass.base.jsondsl.processor;
 import com.xa.mass.base.jsondsl.JsonDslEngine;
 import com.xa.mass.base.jsondsl.parser.JsonDslParser;
 import com.xa.mass.base.jsondsl.model.JsonDslDefinition;
+import com.xa.mass.base.jsondsl.builtin.JsonDslException;
 
 import java.util.List;
 
@@ -12,19 +13,19 @@ import java.util.List;
  * 负责根据 DSL 定义生成指定类型的对象列表
  * </p>
  */
-public class DefaultGenerateProcessor implements GenerateProcessor {
+class DefaultGenerateProcessor implements GenerateProcessor {
     
     @Override
     public <T> List<T> generate(JsonDslDefinition definition, ProcessingContext context, Class<T> targetType) {
         // 参数验证
         if (definition == null) {
-            throw new IllegalArgumentException("Definition cannot be null");
+            throw new JsonDslException("Definition cannot be null");
         }
         if (context == null) {
-            throw new IllegalArgumentException("Context cannot be null");
+            throw new JsonDslException("Context cannot be null");
         }
         if (targetType == null) {
-            throw new IllegalArgumentException("Target type cannot be null");
+            throw new JsonDslException("Target type cannot be null");
         }
         
         if (context.isDebug()) {
@@ -55,6 +56,18 @@ public class DefaultGenerateProcessor implements GenerateProcessor {
         }
         
         return result;
+    }
+    
+    @Override
+    public Object process(JsonDslDefinition definition, ProcessingContext context) {
+        // 从上下文中获取目标类型，如果没有则使用 Object.class
+        Class<?> targetType = (Class<?>) context.getParameter("targetType");
+        if (targetType == null) {
+            targetType = Object.class;
+        }
+        
+        // 调用强类型方法
+        return generate(definition, context, targetType);
     }
     
     @Override

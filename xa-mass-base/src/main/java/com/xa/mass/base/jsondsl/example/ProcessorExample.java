@@ -40,8 +40,8 @@ public class ProcessorExample {
     public static void strongTypedGenerateExample() {
         System.out.println("=== 示例1：强类型生成处理器 ===");
         
-        // 创建强类型生成处理器
-        GenerateProcessor<TestUser> generateProcessor = new DefaultGenerateProcessor<>();
+        // 创建强类型处理器
+        GenerateProcessor generateProcessor = ProcessorRegistry.getGenerateProcessor();
         
         // 创建生成类型的 DSL
         JsonDslDefinition generateDsl = new JsonDslDefinition("user-generator", JsonDslDefinition.DslType.GENERATE);
@@ -80,8 +80,8 @@ public class ProcessorExample {
     public static void strongTypedFilterExample() {
         System.out.println("\n=== 示例2：强类型过滤处理器 ===");
         
-        // 创建强类型过滤处理器
-        FilterProcessor<TestUser> filterProcessor = new DefaultFilterProcessor<>();
+        // 创建强类型处理器
+        FilterProcessor filterProcessor = ProcessorRegistry.getFilterProcessor();
         
         // 创建测试数据
         List<TestUser> testUsers = Arrays.asList(
@@ -122,8 +122,8 @@ public class ProcessorExample {
     public static void strongTypedTransformExample() {
         System.out.println("\n=== 示例3：强类型转换处理器 ===");
         
-        // 创建强类型转换处理器
-        TransformProcessor<TestUser> transformProcessor = new DefaultTransformProcessor<>();
+        // 创建强类型处理器
+        TransformProcessor transformProcessor = ProcessorRegistry.getTransformProcessor();
         
         // 创建测试用户
         TestUser originalUser = createTestUser("John", 30, "john@example.com");
@@ -158,8 +158,8 @@ public class ProcessorExample {
     public static void strongTypedValidateExample() {
         System.out.println("\n=== 示例4：强类型校验处理器 ===");
         
-        // 创建强类型校验处理器
-        ValidateProcessor<TestUser> validateProcessor = new DefaultValidateProcessor<>();
+        // 创建强类型处理器
+        ValidateProcessor validateProcessor = ProcessorRegistry.getValidateProcessor();
         
         // 创建测试用户
         TestUser validUser = createTestUser("Alice", 25, "alice@example.com");
@@ -243,8 +243,8 @@ public class ProcessorExample {
         ProcessingContext debugContext = new ProcessingContext("debug-example");
         debugContext.setDebug(true);
         
-        // 创建强类型生成处理器
-        GenerateProcessor<TestUser> generateProcessor = new DefaultGenerateProcessor<>();
+        // 创建强类型处理器
+        GenerateProcessor generateProcessor = ProcessorRegistry.getGenerateProcessor();
         
         // 创建生成 DSL
         JsonDslDefinition generateDsl = new JsonDslDefinition("debug-generator", JsonDslDefinition.DslType.GENERATE);
@@ -310,24 +310,46 @@ public class ProcessorExample {
     /**
      * 自定义强类型生成处理器示例
      */
-    public static class CustomGenerateProcessor implements GenerateProcessor<TestUser> {
+    public static class CustomGenerateProcessor implements GenerateProcessor {
         
         @Override
-        public List<TestUser> generate(JsonDslDefinition definition, ProcessingContext context, Class<TestUser> targetType) {
-            System.out.println("[CustomGenerateProcessor] 处理自定义 DSL: " + definition.getUniqueId());
-            
-            // 自定义生成逻辑
-            List<TestUser> users = new ArrayList<>();
-            for (int i = 0; i < 2; i++) {
-                TestUser user = new TestUser();
-                user.setName("CustomUser" + (i + 1));
-                user.setAge(25 + i * 5);
-                user.setEmail("custom" + (i + 1) + "@example.com");
-                user.setStatus("custom");
-                users.add(user);
+        public <T> List<T> generate(JsonDslDefinition definition, ProcessingContext context, Class<T> targetType) {
+            if (TestUser.class.equals(targetType)) {
+                System.out.println("[CustomGenerateProcessor] 处理自定义 DSL: " + definition.getUniqueId());
+                
+                // 自定义生成逻辑
+                List<TestUser> users = new ArrayList<>();
+                for (int i = 0; i < 2; i++) {
+                    TestUser user = new TestUser();
+                    user.setName("CustomUser" + (i + 1));
+                    user.setAge(25 + i * 5);
+                    user.setEmail("custom" + (i + 1) + "@example.com");
+                    user.setStatus("custom");
+                    users.add(user);
+                }
+                
+                @SuppressWarnings("unchecked")
+                List<T> typedResult = (List<T>) users;
+                return typedResult;
+            }
+            throw new IllegalArgumentException("Unsupported target type: " + targetType);
+        }
+        
+        @Override
+        public Object process(JsonDslDefinition definition, ProcessingContext context) {
+            // 从上下文中获取目标类型，如果没有则使用 Object.class
+            Class<?> targetType = (Class<?>) context.getParameter("targetType");
+            if (targetType == null) {
+                targetType = Object.class;
             }
             
-            return users;
+            // 调用强类型方法
+            return generate(definition, context, targetType);
+        }
+        
+        @Override
+        public boolean supports(JsonDslDefinition.DslType type) {
+            return JsonDslDefinition.DslType.GENERATE.equals(type);
         }
         
         @Override

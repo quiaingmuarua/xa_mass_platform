@@ -27,10 +27,10 @@ public class StrongTypedIntegrationTest {
     @BeforeEach
     void setUp() {
         context = new ProcessingContext("test-context");
-        generateProcessor = new DefaultGenerateProcessor();
-        filterProcessor = new DefaultFilterProcessor();
-        transformProcessor = new DefaultTransformProcessor();
-        validateProcessor = new DefaultValidateProcessor();
+        generateProcessor = ProcessorRegistry.getGenerateProcessor();
+        filterProcessor = ProcessorRegistry.getFilterProcessor();
+        transformProcessor = ProcessorRegistry.getTransformProcessor();
+        validateProcessor = ProcessorRegistry.getValidateProcessor();
     }
     
     @Test

@@ -22,7 +22,7 @@ public class FilterProcessorTest {
     
     @BeforeEach
     void setUp() {
-        processor = new DefaultFilterProcessor();
+        processor = ProcessorRegistry.getFilterProcessor();
         definition = new JsonDslDefinition("test-filter", JsonDslDefinition.DslType.FILTER);
         context = new ProcessingContext("test-context");
     }

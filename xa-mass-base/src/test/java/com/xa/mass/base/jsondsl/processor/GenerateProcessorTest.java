@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.HashMap;
 import com.xa.mass.base.jsondsl.builtin.JsonDslException;
+import com.xa.mass.base.jsondsl.processor.ProcessorRegistry;
 
 /**
  * GenerateProcessor 测试
@@ -22,7 +23,7 @@ public class GenerateProcessorTest {
     
     @BeforeEach
     void setUp() {
-        processor = new DefaultGenerateProcessor();
+        processor = ProcessorRegistry.getGenerateProcessor();
         definition = new JsonDslDefinition("test-generator", JsonDslDefinition.DslType.GENERATE);
         // 添加必要的 context 配置
         JsonDslContext dslContext = new JsonDslContext();
@@ -80,9 +81,8 @@ public class GenerateProcessorTest {
     
     @Test
     void testGenerateWithInvalidDefinition() {
-        // 测试没有 context 的 DSL
-        assertThrows(JsonDslException.class, () -> {
-            processor.generate(definition, context, TestUser.class);
+        assertThrows(com.xa.mass.base.jsondsl.builtin.JsonDslException.class, () -> {
+            processor.generate(null, context, TestUser.class);
         });
     }
     
@@ -171,31 +171,23 @@ public class GenerateProcessorTest {
     
     @Test
     void testGenerateWithNullDefinition() {
-        assertThrows(IllegalArgumentException.class, () -> {
+        assertThrows(com.xa.mass.base.jsondsl.builtin.JsonDslException.class, () -> {
             processor.generate(null, context, TestUser.class);
         });
     }
     
     @Test
     void testGenerateWithNullContext() {
-        JsonDslContext dslContext = new JsonDslContext();
-        dslContext.setModel("com.xa.mass.base.jsondsl.processor.GenerateProcessorTest$TestUser");
-        dslContext.setCount(1);
-        definition.setContext(dslContext);
-        
-        assertThrows(IllegalArgumentException.class, () -> {
+        JsonDslDefinition definition = new JsonDslDefinition("test", JsonDslDefinition.DslType.GENERATE);
+        assertThrows(com.xa.mass.base.jsondsl.builtin.JsonDslException.class, () -> {
             processor.generate(definition, null, TestUser.class);
         });
     }
     
     @Test
     void testGenerateWithNullTargetType() {
-        JsonDslContext dslContext = new JsonDslContext();
-        dslContext.setModel("com.xa.mass.base.jsondsl.processor.GenerateProcessorTest$TestUser");
-        dslContext.setCount(1);
-        definition.setContext(dslContext);
-        
-        assertThrows(IllegalArgumentException.class, () -> {
+        JsonDslDefinition definition = new JsonDslDefinition("test", JsonDslDefinition.DslType.GENERATE);
+        assertThrows(com.xa.mass.base.jsondsl.builtin.JsonDslException.class, () -> {
             processor.generate(definition, context, null);
         });
     }

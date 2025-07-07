@@ -12,7 +12,7 @@ import java.util.List;
  * 负责根据 DSL 定义过滤对象列表
  * </p>
  */
-public class DefaultFilterProcessor implements FilterProcessor {
+class DefaultFilterProcessor implements FilterProcessor {
     
     @Override
     public <T> List<T> filter(List<T> input, JsonDslDefinition definition, ProcessingContext context) {
@@ -46,6 +46,19 @@ public class DefaultFilterProcessor implements FilterProcessor {
         }
         
         return result;
+    }
+    
+    @Override
+    public Object process(JsonDslDefinition definition, ProcessingContext context) {
+        // 从上下文中获取输入数据
+        @SuppressWarnings("unchecked")
+        List<Object> input = (List<Object>) context.getParameter("input");
+        if (input == null) {
+            throw new IllegalArgumentException("过滤处理器需要上下文中提供 input 参数");
+        }
+        
+        // 调用强类型方法
+        return filter(input, definition, context);
     }
     
     @Override

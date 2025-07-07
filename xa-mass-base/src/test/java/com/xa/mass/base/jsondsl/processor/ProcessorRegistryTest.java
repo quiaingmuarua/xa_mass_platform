@@ -10,6 +10,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import java.util.List;
 import java.util.Map;
 import java.util.HashMap;
+import java.util.Arrays;
 
 /**
  * ProcessorRegistry 测试
@@ -141,12 +142,16 @@ public class ProcessorRegistryTest {
         ProcessorRegistry.register(testProcessor);
         
         // 链式处理单个 DSL
-        GenerateProcessor<Map<String, Object>> processor = ProcessorRegistry.getGenerateProcessor();
-        List<Map<String, Object>> result = processor.generate(definition, context, (Class<Map<String, Object>>) (Class<?>) Map.class);
+        GenerateProcessor processor = ProcessorRegistry.getGenerateProcessor();
+        List<?> result = processor.generate(definition, context, Map.class);
         assertNotNull(result);
         assertFalse(result.isEmpty());
         // 由于优先级排序，实际返回的可能是 HighPriorityProcessor
-        String message = (String) result.get(0).get("message");
+        Object firstItem = result.get(0);
+        assertTrue(firstItem instanceof Map);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> firstMap = (Map<String, Object>) firstItem;
+        String message = (String) firstMap.get("message");
         assertTrue(message.contains("processed: test-dsl"));
     }
     
@@ -171,13 +176,13 @@ public class ProcessorRegistryTest {
         List<JsonDslDefinition> dslList = List.of(generateDsl, filterDsl);
         
         // 链式处理多个 DSL
-        List<Map<String, Object>> result = null;
+        List<?> result = null;
         for (JsonDslDefinition dsl : dslList) {
             if (JsonDslDefinition.DslType.GENERATE.equals(dsl.getType())) {
-                GenerateProcessor<Map<String, Object>> processor = ProcessorRegistry.getGenerateProcessor();
-                result = processor.generate(dsl, context, (Class<Map<String, Object>>) (Class<?>) Map.class);
+                GenerateProcessor processor = ProcessorRegistry.getGenerateProcessor();
+                result = processor.generate(dsl, context, Map.class);
             } else if (JsonDslDefinition.DslType.FILTER.equals(dsl.getType())) {
-                FilterProcessor<Map<String, Object>> processor = ProcessorRegistry.getFilterProcessor();
+                FilterProcessor processor = ProcessorRegistry.getFilterProcessor();
                 result = processor.filter(result, dsl, context);
             }
         }
@@ -238,10 +243,27 @@ public class ProcessorRegistryTest {
         assertTrue(first.getPriority() >= second.getPriority());
     }
     
+    // ==================== 辅助方法 ====================
+    
+    private JsonDslDefinition createGenerateDsl() {
+        JsonDslDefinition dsl = new JsonDslDefinition("test-generate", JsonDslDefinition.DslType.GENERATE);
+        JsonDslContext context = new JsonDslContext();
+        context.setModel("java.util.HashMap");
+        context.setCount(1);
+        dsl.setContext(context);
+        return dsl;
+    }
+    
+    private JsonDslDefinition createFilterDsl() {
+        JsonDslDefinition dsl = new JsonDslDefinition("test-filter", JsonDslDefinition.DslType.FILTER);
+        dsl.setFieldDsl(Map.of("test", "value"));
+        return dsl;
+    }
+    
     /**
      * 测试生成处理器
      */
-    private static class TestGenerateProcessor implements GenerateProcessor<Map<String, Object>> {
+    private static class TestGenerateProcessor implements GenerateProcessor {
         
         private final String name;
         private final int priority;
@@ -256,10 +278,13 @@ public class ProcessorRegistryTest {
         }
         
         @Override
-        public List<Map<String, Object>> generate(JsonDslDefinition definition, ProcessingContext context, Class<Map<String, Object>> targetType) {
+        public <T> List<T> generate(JsonDslDefinition definition, ProcessingContext context, Class<T> targetType) {
             Map<String, Object> result = new HashMap<>();
             result.put("message", name + " processed: " + definition.getUniqueId());
-            return List.of(result);
+            
+            @SuppressWarnings("unchecked")
+            List<T> typedResult = (List<T>) List.of(result);
+            return typedResult;
         }
         
         @Override
@@ -281,10 +306,10 @@ public class ProcessorRegistryTest {
     /**
      * 测试过滤处理器
      */
-    private static class TestFilterProcessor implements FilterProcessor<Map<String, Object>> {
+    private static class TestFilterProcessor implements FilterProcessor {
         
         @Override
-        public List<Map<String, Object>> filter(List<Map<String, Object>> input, JsonDslDefinition definition, ProcessingContext context) {
+        public <T> List<T> filter(List<T> input, JsonDslDefinition definition, ProcessingContext context) {
             // 简单的过滤逻辑：保留所有对象
             return input;
         }

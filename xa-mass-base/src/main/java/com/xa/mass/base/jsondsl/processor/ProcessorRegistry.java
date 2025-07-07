@@ -8,65 +8,85 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * 处理器注册表
  * <p>
- * 负责注册和管理所有 DSL 处理器，支持自动发现和链式调用
+ * 负责注册和管理自定义 DSL 处理器，支持自动发现和链式调用
+ * 默认处理器由 ProcessorManager 统一管理
  * </p>
  */
 public class ProcessorRegistry {
     
-    private static final Map<String, JsonDslProcessor> processors = new ConcurrentHashMap<>();
+    private static final Map<String, JsonDslProcessor> customProcessors = new ConcurrentHashMap<>();
     private static final List<JsonDslProcessor> processorChain = new ArrayList<>();
     
-    static {
-        // 注册默认处理器
-        register(new DefaultGenerateProcessor());
-        register(new DefaultFilterProcessor());
-        register(new DefaultTransformProcessor());
-        register(new DefaultValidateProcessor());
-    }
-    
     /**
-     * 注册处理器
+     * 注册自定义处理器
      */
     public static void register(JsonDslProcessor processor) {
-        processors.put(processor.getName(), processor);
+        customProcessors.put(processor.getName(), processor);
         
         // 重新构建处理器链（按优先级排序）
         rebuildProcessorChain();
     }
     
     /**
-     * 获取处理器
+     * 获取自定义处理器
      */
     public static JsonDslProcessor get(String name) {
-        return processors.get(name);
+        return customProcessors.get(name);
     }
     
     /**
-     * 获取支持指定类型的处理器
+     * 获取支持指定类型的处理器（优先使用自定义处理器，否则使用默认处理器）
      */
     public static JsonDslProcessor getProcessor(JsonDslDefinition.DslType type) {
+        // 先查找自定义处理器
         for (JsonDslProcessor processor : processorChain) {
             if (processor.supports(type)) {
                 return processor;
             }
         }
-        throw new IllegalArgumentException("未找到支持类型 " + type + " 的处理器");
+        
+        // 如果没有自定义处理器，使用默认处理器
+        return ProcessorManager.getProcessor(type);
     }
     
     /**
-     * 获取所有处理器
+     * 获取所有处理器（包括自定义和默认处理器）
      */
     public static List<JsonDslProcessor> getAllProcessors() {
-        return new ArrayList<>(processorChain);
+        List<JsonDslProcessor> allProcessors = new ArrayList<>(processorChain);
+        
+        // 添加默认处理器（如果还没有被自定义处理器覆盖）
+        for (JsonDslDefinition.DslType type : JsonDslDefinition.DslType.values()) {
+            boolean hasCustomProcessor = allProcessors.stream()
+                .anyMatch(p -> p.supports(type));
+            
+            if (!hasCustomProcessor) {
+                allProcessors.add(ProcessorManager.getProcessor(type));
+            }
+        }
+        
+        return allProcessors;
     }
     
     /**
      * 获取支持指定类型的处理器列表
      */
     public static List<JsonDslProcessor> getProcessors(JsonDslDefinition.DslType type) {
-        return processorChain.stream()
-            .filter(processor -> processor.supports(type))
-            .toList();
+        List<JsonDslProcessor> result = new ArrayList<>();
+        
+        // 添加自定义处理器
+        for (JsonDslProcessor processor : processorChain) {
+            if (processor.supports(type)) {
+                result.add(processor);
+            }
+        }
+        
+        // 如果没有自定义处理器，添加默认处理器
+        if (result.isEmpty()) {
+            result.add(ProcessorManager.getProcessor(type));
+        }
+        
+        return result;
     }
     
     /**
@@ -117,50 +137,7 @@ public class ProcessorRegistry {
      * 链式处理多个 DSL（使用强类型处理器）
      */
     public static <T> List<T> processGenerateChain(List<JsonDslDefinition> definitions, ProcessingContext context, Class<T> targetType) {
-        List<T> result = null;
-        
-        for (JsonDslDefinition definition : definitions) {
-            if (context.isDebug()) {
-                System.out.println("[ProcessorRegistry] 处理 DSL: " + definition.getUniqueId() + 
-                    " (类型: " + definition.getType() + ")");
-            }
-            
-            if (JsonDslDefinition.DslType.GENERATE.equals(definition.getType())) {
-                GenerateProcessor processor = getGenerateProcessor();
-                result = processor.generate(definition, context, targetType);
-            } else if (JsonDslDefinition.DslType.FILTER.equals(definition.getType())) {
-                FilterProcessor processor = getFilterProcessor();
-                if (result == null) {
-                    throw new IllegalArgumentException("过滤处理器需要前置的生成结果");
-                }
-                result = processor.filter(result, definition, context);
-            } else if (JsonDslDefinition.DslType.TRANSFORM.equals(definition.getType())) {
-                TransformProcessor processor = getTransformProcessor();
-                if (result == null || result.isEmpty()) {
-                    throw new IllegalArgumentException("转换处理器需要前置的生成结果");
-                }
-                List<T> transformed = result.stream()
-                    .map(obj -> processor.transform(obj, definition, context))
-                    .toList();
-                result = transformed;
-            } else if (JsonDslDefinition.DslType.VALIDATE.equals(definition.getType())) {
-                ValidateProcessor processor = getValidateProcessor();
-                if (result == null || result.isEmpty()) {
-                    throw new IllegalArgumentException("校验处理器需要前置的生成结果");
-                }
-                // 校验所有对象
-                for (T obj : result) {
-                    List<String> errors = processor.validate(obj, definition, context);
-                    if (!errors.isEmpty()) {
-                        throw new IllegalArgumentException("校验失败: " + String.join(", ", errors));
-                    }
-                }
-            } else {
-                throw new IllegalArgumentException("不支持的 DSL 类型: " + definition.getType());
-            }
-        }
-        
-        return result;
+        return ProcessorManager.processGenerateChain(definitions, context, targetType);
     }
     
     /**
@@ -168,25 +145,28 @@ public class ProcessorRegistry {
      */
     private static void rebuildProcessorChain() {
         processorChain.clear();
-        processorChain.addAll(processors.values());
+        processorChain.addAll(customProcessors.values());
         
         // 按优先级排序（优先级高的在前）
         processorChain.sort((p1, p2) -> Integer.compare(p2.getPriority(), p1.getPriority()));
     }
     
     /**
-     * 清除所有处理器
+     * 清除所有自定义处理器
      */
     public static void clear() {
-        processors.clear();
+        customProcessors.clear();
         processorChain.clear();
     }
     
     /**
-     * 移除处理器
+     * 移除自定义处理器
      */
-    public static void remove(String name) {
-        processors.remove(name);
-        rebuildProcessorChain();
+    public static JsonDslProcessor remove(String name) {
+        JsonDslProcessor removed = customProcessors.remove(name);
+        if (removed != null) {
+            rebuildProcessorChain();
+        }
+        return removed;
     }
 } 

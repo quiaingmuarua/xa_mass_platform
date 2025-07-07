@@ -9,7 +9,7 @@ import com.xa.mass.base.jsondsl.model.JsonDslDefinition;
  * 负责根据 DSL 定义转换单个对象
  * </p>
  */
-public class DefaultTransformProcessor implements TransformProcessor {
+class DefaultTransformProcessor implements TransformProcessor {
     
     @Override
     public <T> T transform(T input, JsonDslDefinition definition, ProcessingContext context) {
@@ -37,6 +37,18 @@ public class DefaultTransformProcessor implements TransformProcessor {
         }
         
         return input;
+    }
+    
+    @Override
+    public Object process(JsonDslDefinition definition, ProcessingContext context) {
+        // 从上下文中获取输入数据
+        Object input = context.getParameter("input");
+        if (input == null) {
+            throw new IllegalArgumentException("转换处理器需要上下文中提供 input 参数");
+        }
+        
+        // 调用强类型方法
+        return transform(input, definition, context);
     }
     
     @Override

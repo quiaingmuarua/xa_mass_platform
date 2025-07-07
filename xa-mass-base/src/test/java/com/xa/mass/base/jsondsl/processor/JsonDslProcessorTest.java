@@ -4,6 +4,7 @@ import com.xa.mass.base.jsondsl.model.JsonDslDefinition;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.BeforeEach;
 import static org.junit.jupiter.api.Assertions.*;
+import java.util.List;
 
 /**
  * JsonDslProcessor 接口测试
@@ -72,22 +73,23 @@ public class JsonDslProcessorTest {
     }
     
     /**
-     * 测试用的生成处理器实现
+     * 测试生成处理器
      */
-    private static class TestGenerateProcessor implements GenerateProcessor<String> {
+    private static class TestGenerateProcessor implements GenerateProcessor {
         
         @Override
-        public java.util.List<String> generate(JsonDslDefinition definition, ProcessingContext context, Class<String> targetType) {
-            if (definition == null) {
-                throw new IllegalArgumentException("Definition cannot be null");
+        public <T> List<T> generate(JsonDslDefinition definition, ProcessingContext context, Class<T> targetType) {
+            if (String.class.equals(targetType)) {
+                @SuppressWarnings("unchecked")
+                List<T> result = (List<T>) List.of("test-string");
+                return result;
             }
-            if (context == null) {
-                throw new IllegalArgumentException("Context cannot be null");
-            }
-            if (targetType == null) {
-                throw new IllegalArgumentException("Target type cannot be null");
-            }
-            return java.util.List.of("TestProcessor processed: " + definition.getUniqueId());
+            throw new IllegalArgumentException("Unsupported target type: " + targetType);
+        }
+        
+        @Override
+        public boolean supports(JsonDslDefinition.DslType type) {
+            return JsonDslDefinition.DslType.GENERATE.equals(type);
         }
         
         @Override

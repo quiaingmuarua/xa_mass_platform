@@ -15,11 +15,11 @@ import java.util.Map;
 public class StrongTypedProcessorExample {
     
     public static void main(String[] args) {
-        // 创建处理器实例
-        GenerateProcessor<Device> generateProcessor = new DefaultGenerateProcessor<>();
-        FilterProcessor<Device> filterProcessor = new DefaultFilterProcessor<>();
-        TransformProcessor<Device> transformProcessor = new DefaultTransformProcessor<>();
-        ValidateProcessor<Device> validateProcessor = new DefaultValidateProcessor<>();
+        // 创建强类型处理器
+        GenerateProcessor generateProcessor = ProcessorRegistry.getGenerateProcessor();
+        FilterProcessor filterProcessor = ProcessorRegistry.getFilterProcessor();
+        TransformProcessor transformProcessor = ProcessorRegistry.getTransformProcessor();
+        ValidateProcessor validateProcessor = ProcessorRegistry.getValidateProcessor();
         
         // 示例1：生成设备数据
         exampleGenerate(generateProcessor);
@@ -37,7 +37,7 @@ public class StrongTypedProcessorExample {
     /**
      * 生成示例
      */
-    private static void exampleGenerate(GenerateProcessor<Device> processor) {
+    private static void exampleGenerate(GenerateProcessor generateProcessor) {
         System.out.println("=== 生成示例 ===");
         
         // 创建 DSL 定义
@@ -54,7 +54,7 @@ public class StrongTypedProcessorExample {
         context.setDebug(true);
         
         // 生成设备列表
-        List<Device> devices = processor.generate(dsl, context, Device.class);
+        List<Device> devices = generateProcessor.generate(dsl, context, Device.class);
         
         System.out.println("生成设备数量: " + devices.size());
         devices.forEach(device -> System.out.println("设备: " + device.getDeviceId() + ", 状态: " + device.getStatus()));
@@ -63,7 +63,7 @@ public class StrongTypedProcessorExample {
     /**
      * 过滤示例
      */
-    private static void exampleFilter(FilterProcessor<Device> processor) {
+    private static void exampleFilter(FilterProcessor filterProcessor) {
         System.out.println("\n=== 过滤示例 ===");
         
         // 创建测试数据
@@ -85,7 +85,7 @@ public class StrongTypedProcessorExample {
         context.setDebug(true);
         
         // 过滤设备列表
-        List<Device> filteredDevices = processor.filter(devices, dsl, context);
+        List<Device> filteredDevices = filterProcessor.filter(devices, dsl, context);
         
         System.out.println("原始设备数量: " + devices.size());
         System.out.println("过滤后设备数量: " + filteredDevices.size());
@@ -95,7 +95,7 @@ public class StrongTypedProcessorExample {
     /**
      * 转换示例
      */
-    private static void exampleTransform(TransformProcessor<Device> processor) {
+    private static void exampleTransform(TransformProcessor transformProcessor) {
         System.out.println("\n=== 转换示例 ===");
         
         // 创建测试数据
@@ -113,7 +113,7 @@ public class StrongTypedProcessorExample {
         context.setDebug(true);
         
         // 转换设备
-        Device transformedDevice = processor.transform(device, dsl, context);
+        Device transformedDevice = transformProcessor.transform(device, dsl, context);
         
         System.out.println("原始设备: " + device.getDeviceId() + ", 状态: " + device.getStatus());
         System.out.println("转换后设备: " + transformedDevice.getDeviceId() + ", 状态: " + transformedDevice.getStatus());
@@ -122,7 +122,7 @@ public class StrongTypedProcessorExample {
     /**
      * 校验示例
      */
-    private static void exampleValidate(ValidateProcessor<Device> processor) {
+    private static void exampleValidate(ValidateProcessor validateProcessor) {
         System.out.println("\n=== 校验示例 ===");
         
         // 创建测试数据
@@ -140,7 +140,7 @@ public class StrongTypedProcessorExample {
         context.setDebug(true);
         
         // 校验设备
-        List<String> errors = processor.validate(device, dsl, context);
+        List<String> errors = validateProcessor.validate(device, dsl, context);
         
         if (errors.isEmpty()) {
             System.out.println("设备校验通过");

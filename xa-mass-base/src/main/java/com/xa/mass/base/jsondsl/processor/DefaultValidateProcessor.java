@@ -11,7 +11,7 @@ import java.util.List;
  * 负责根据 DSL 定义校验单个对象
  * </p>
  */
-public class DefaultValidateProcessor implements ValidateProcessor {
+class DefaultValidateProcessor implements ValidateProcessor {
     
     @Override
     public <T> List<String> validate(T input, JsonDslDefinition definition, ProcessingContext context) {
@@ -42,6 +42,25 @@ public class DefaultValidateProcessor implements ValidateProcessor {
         }
         
         return errors;
+    }
+    
+    @Override
+    public Object process(JsonDslDefinition definition, ProcessingContext context) {
+        // 从上下文中获取输入数据
+        Object input = context.getParameter("input");
+        if (input == null) {
+            throw new IllegalArgumentException("校验处理器需要上下文中提供 input 参数");
+        }
+        
+        // 调用强类型方法进行校验
+        List<String> errors = validate(input, definition, context);
+        
+        // 如果有错误，抛出异常；否则返回原对象
+        if (!errors.isEmpty()) {
+            throw new IllegalArgumentException("校验失败: " + String.join(", ", errors));
+        }
+        
+        return input;
     }
     
     @Override

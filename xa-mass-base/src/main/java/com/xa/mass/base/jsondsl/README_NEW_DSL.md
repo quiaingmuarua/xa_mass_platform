@@ -771,4 +771,67 @@ dsl.setFieldDsl(Map.of("name", "$RANDOM_NAME"));
 Object result = JsonDslProcessorEngine.process(dsl);
 ```
 
-新的处理器架构提供了更好的设计、更强的扩展性和更清晰的代码结构，是 DSL 框架的重要改进。 
+新的处理器架构提供了更好的设计、更强的扩展性和更清晰的代码结构，是 DSL 框架的重要改进。
+
+### 6. 强类型处理器接口与异常风格（2024年7月更新）
+
+#### 方法泛型接口
+
+新版所有强类型处理器接口（GenerateProcessor、FilterProcessor、TransformProcessor、ValidateProcessor）均采用"方法泛型"，不再使用类泛型。例如：
+
+```java
+public interface GenerateProcessor extends JsonDslProcessor {
+    <T> List<T> generate(JsonDslDefinition definition, ProcessingContext context, Class<T> targetType);
+}
+
+public interface FilterProcessor extends JsonDslProcessor {
+    <T> List<T> filter(List<T> input, JsonDslDefinition definition, ProcessingContext context);
+}
+
+public interface TransformProcessor extends JsonDslProcessor {
+    <T> T transform(T input, JsonDslDefinition definition, ProcessingContext context);
+}
+
+public interface ValidateProcessor extends JsonDslProcessor {
+    <T> List<String> validate(T input, JsonDslDefinition definition, ProcessingContext context);
+}
+```
+
+这样同一个处理器实例可处理任意类型对象，提升了复用性和灵活性。
+
+#### 统一异常风格
+
+所有 DSL 相关参数校验、处理错误均应抛出 `JsonDslException`，不再抛 `IllegalArgumentException`。如：
+
+```java
+if (definition == null) {
+    throw new JsonDslException("Definition cannot be null");
+}
+```
+
+#### 升级与兼容性
+
+- 旧代码如有 `GenerateProcessor<T>`、`DefaultGenerateProcessor<T>` 等类泛型声明，需升级为无类泛型，方法签名用 `<T>`。
+- 处理器注册、获取、链式调用等 API 不变。
+
+#### 示例：强类型链式处理
+
+```java
+GenerateProcessor generateProcessor = new DefaultGenerateProcessor();
+FilterProcessor filterProcessor = new DefaultFilterProcessor();
+
+List<User> users = generateProcessor.generate(dsl, context, User.class);
+List<User> filtered = filterProcessor.filter(users, filterDsl, context);
+```
+
+#### 示例：异常捕获
+
+```java
+try {
+    generateProcessor.generate(null, context, User.class);
+} catch (JsonDslException e) {
+    // 处理参数校验异常
+}
+```
+
+--- 

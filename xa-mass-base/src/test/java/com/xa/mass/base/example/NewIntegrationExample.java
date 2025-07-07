@@ -4,11 +4,11 @@ import com.xa.mass.base.jsondsl.JsonDslEngine;
 import com.xa.mass.base.jsondsl.model.JsonDslContext;
 import com.xa.mass.base.jsondsl.model.JsonDslDefinition;
 import com.xa.mass.base.jsondsl.parser.JsonDslParser;
-import com.xa.mass.base.jsondsl.processor.DefaultGenerateProcessor;
 import com.xa.mass.base.jsondsl.processor.GenerateProcessor;
 import com.xa.mass.base.jsondsl.processor.GenerateProcessorTest;
 import com.xa.mass.base.model.Device;
 import com.xa.mass.base.model.Task;
+import com.xa.mass.base.jsondsl.processor.ProcessorRegistry;
 
 import java.util.Arrays;
 import java.util.HashMap;
@@ -70,8 +70,7 @@ public class NewIntegrationExample {
         // 4. 验证并生成
         definition.validate();
         String legacyFormat = JsonDslParser.toLegacyFormat(definition);
-         GenerateProcessor<Device> processor=new DefaultGenerateProcessor<>();
-//        processor.generate(definition)
+        GenerateProcessor processor = ProcessorRegistry.getGenerateProcessor();
         return JsonDslEngine.generateList(legacyFormat, Device.class);
     }
     
