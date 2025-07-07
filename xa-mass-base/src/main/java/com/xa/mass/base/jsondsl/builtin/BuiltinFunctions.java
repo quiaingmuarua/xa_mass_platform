@@ -40,20 +40,31 @@ interface BuiltinFunction {
  */
 public class BuiltinFunctions {
     private static final Random RANDOM = new Random();
-    private static final Map<BuiltinFunc, BuiltinFunction> FUNCTION_MAP = new HashMap<>();
+    // 统一注册表，key 小写
+    private static final Map<String, BuiltinFunction> FUNCTION_MAP = new HashMap<>();
 
     static {
-        FUNCTION_MAP.put(BuiltinFunc.CHOICE, param -> choice((List<?>) param));
-        FUNCTION_MAP.put(BuiltinFunc.RANGE, param -> {
+        registerFunction("$choice", param -> choice((List<?>) param));
+        registerFunction("$range", param -> {
             List<?> list = (List<?>) param;
             return range(((Number) list.get(0)).intValue(), ((Number) list.get(1)).intValue());
         });
-        FUNCTION_MAP.put(BuiltinFunc.UUID, param -> uuid());
-        FUNCTION_MAP.put(BuiltinFunc.RANDOM, param -> random());
-        FUNCTION_MAP.put(BuiltinFunc.JOIN, param -> join((List<?>) param));
-        FUNCTION_MAP.put(BuiltinFunc.CONTEXT, BuiltinFunctions::context);
-        FUNCTION_MAP.put(BuiltinFunc.NOW, BuiltinFunctions::now);
-        FUNCTION_MAP.put(BuiltinFunc.TIME_RANGE, BuiltinFunctions::timeRange);
+        registerFunction("$uuid", param -> uuid());
+        registerFunction("$random", param -> random());
+        registerFunction("$join", param -> join((List<?>) param));
+        registerFunction("$context", BuiltinFunctions::context);
+        registerFunction("$now", BuiltinFunctions::now);
+        registerFunction("$time_range", BuiltinFunctions::timeRange);
+    }
+
+    public static void registerFunction(String op, BuiltinFunction func) {
+        if (op == null) return;
+        String key = op.toLowerCase();
+        FUNCTION_MAP.put(key, func);
+        // 自动注册无 $ 前缀的别名
+        if (key.startsWith("$")) {
+            FUNCTION_MAP.put(key.substring(1), func);
+        }
     }
 
     private static int toInt(Object obj) {
@@ -66,7 +77,9 @@ public class BuiltinFunctions {
     }
 
     public static Object eval(String func, Object param) {
-        if ("$RANDOM_INT".equals(func) || "randomInt".equalsIgnoreCase(func)) {
+        if (func == null) throw new JsonDslException("函数名不能为空");
+        String key = func.toLowerCase();
+        if ("$random_int".equals(key) || "randomint".equals(key)) {
             if (!(param instanceof List<?> list) || list.size() < 2) {
                 throw new JsonDslException("$RANDOM_INT 需要2个参数: [min, max]");
             }
@@ -74,11 +87,8 @@ public class BuiltinFunctions {
             int max = toInt(list.get(1));
             return range(min, max);
         }
-        BuiltinFunc f = BuiltinFunc.fromKey(func);
-        if (f != null) {
-            BuiltinFunction fn = FUNCTION_MAP.get(f);
-            if (fn != null) return fn.apply(param);
-        }
+        BuiltinFunction fn = FUNCTION_MAP.get(key);
+        if (fn != null) return fn.apply(param);
         throw new JsonDslException("不支持的内置函数: " + func + " 参数: " + param);
     }
 
@@ -297,20 +307,18 @@ public class BuiltinFunctions {
         try {
             // 注册 parseInt(String) 函数
             runner.addFunctionOfClassMethod("parseInt", Integer.class.getName(), "parseInt", new String[] { "String" }, null);
-            for (Map.Entry<BuiltinFunc, BuiltinFunction> entry : FUNCTION_MAP.entrySet()) {
-                BuiltinFunc func = entry.getKey();
+            for (Map.Entry<String, BuiltinFunction> entry : FUNCTION_MAP.entrySet()) {
+                String func = entry.getKey();
                 BuiltinFunction impl = entry.getValue();
-                for (String alias : func.aliases()) {
-                    runner.addFunction(alias, new com.ql.util.express.Operator() {
-                        @Override
-                        public Object executeInner(Object[] list) throws Exception {
-                            // 兼容单参数和多参数
-                            if (list == null || list.length == 0) return impl.apply(null);
-                            if (list.length == 1) return impl.apply(list[0]);
-                            return impl.apply(java.util.Arrays.asList(list));
-                        }
-                    });
-                }
+                runner.addFunction(func, new com.ql.util.express.Operator() {
+                    @Override
+                    public Object executeInner(Object[] list) throws Exception {
+                        // 兼容单参数和多参数
+                        if (list == null || list.length == 0) return impl.apply(null);
+                        if (list.length == 1) return impl.apply(list[0]);
+                        return impl.apply(java.util.Arrays.asList(list));
+                    }
+                });
             }
         } catch (Exception e) {
             throw new RuntimeException("注册 BuiltinFunctions 到 QLExpress 失败", e);
