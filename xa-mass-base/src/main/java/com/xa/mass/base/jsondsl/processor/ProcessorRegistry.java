@@ -18,10 +18,10 @@ public class ProcessorRegistry {
     
     static {
         // 注册默认处理器
-        register(new GenerateProcessor());
-        register(new FilterProcessor());
-        register(new TransformProcessor());
-        register(new ValidateProcessor());
+        register(new DefaultGenerateProcessor<>());
+        register(new DefaultFilterProcessor<>());
+        register(new DefaultTransformProcessor<>());
+        register(new DefaultValidateProcessor<>());
     }
     
     /**
@@ -70,18 +70,58 @@ public class ProcessorRegistry {
     }
     
     /**
-     * 链式处理 DSL
+     * 获取强类型生成处理器
      */
-    public static Object processChain(JsonDslDefinition definition, ProcessingContext context) {
-        JsonDslProcessor processor = getProcessor(definition.getType());
-        return processor.process(definition, context);
+    @SuppressWarnings("unchecked")
+    public static <T> GenerateProcessor<T> getGenerateProcessor() {
+        JsonDslProcessor processor = getProcessor(JsonDslDefinition.DslType.GENERATE);
+        if (processor instanceof GenerateProcessor) {
+            return (GenerateProcessor<T>) processor;
+        }
+        throw new IllegalArgumentException("未找到生成处理器");
     }
     
     /**
-     * 链式处理多个 DSL
+     * 获取强类型过滤处理器
      */
-    public static Object processChain(List<JsonDslDefinition> definitions, ProcessingContext context) {
-        Object result = null;
+    @SuppressWarnings("unchecked")
+    public static <T> FilterProcessor<T> getFilterProcessor() {
+        JsonDslProcessor processor = getProcessor(JsonDslDefinition.DslType.FILTER);
+        if (processor instanceof FilterProcessor) {
+            return (FilterProcessor<T>) processor;
+        }
+        throw new IllegalArgumentException("未找到过滤处理器");
+    }
+    
+    /**
+     * 获取强类型转换处理器
+     */
+    @SuppressWarnings("unchecked")
+    public static <T> TransformProcessor<T> getTransformProcessor() {
+        JsonDslProcessor processor = getProcessor(JsonDslDefinition.DslType.TRANSFORM);
+        if (processor instanceof TransformProcessor) {
+            return (TransformProcessor<T>) processor;
+        }
+        throw new IllegalArgumentException("未找到转换处理器");
+    }
+    
+    /**
+     * 获取强类型校验处理器
+     */
+    @SuppressWarnings("unchecked")
+    public static <T> ValidateProcessor<T> getValidateProcessor() {
+        JsonDslProcessor processor = getProcessor(JsonDslDefinition.DslType.VALIDATE);
+        if (processor instanceof ValidateProcessor) {
+            return (ValidateProcessor<T>) processor;
+        }
+        throw new IllegalArgumentException("未找到校验处理器");
+    }
+    
+    /**
+     * 链式处理多个 DSL（使用强类型处理器）
+     */
+    public static <T> List<T> processGenerateChain(List<JsonDslDefinition> definitions, ProcessingContext context, Class<T> targetType) {
+        List<T> result = null;
         
         for (JsonDslDefinition definition : definitions) {
             if (context.isDebug()) {
@@ -89,11 +129,11 @@ public class ProcessorRegistry {
                     " (类型: " + definition.getType() + ")");
             }
             
-            result = processChain(definition, context);
-            
-            // 将结果传递给下一个处理器
-            if (result instanceof List) {
-                context.setParameter("objects", result);
+            if (JsonDslDefinition.DslType.GENERATE.equals(definition.getType())) {
+                GenerateProcessor<T> processor = getGenerateProcessor();
+                result = processor.generate(definition, context, targetType);
+            } else {
+                throw new IllegalArgumentException("不支持的 DSL 类型: " + definition.getType());
             }
         }
         
