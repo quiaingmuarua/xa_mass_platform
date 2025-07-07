@@ -1,7 +1,8 @@
-package com.xa.mass.base.jsondsl.processor;
+package com.xa.mass.base.jsondsl.example;
 
 import com.xa.mass.base.jsondsl.model.JsonDslDefinition;
 import com.xa.mass.base.jsondsl.model.JsonDslContext;
+import com.xa.mass.base.jsondsl.processor.*;
 
 import java.util.List;
 import java.util.Map;
@@ -42,11 +43,11 @@ public class StrongTypedProcessorExample {
         
         // 创建 DSL 定义
         JsonDslDefinition dsl = new JsonDslDefinition("device-generator", JsonDslDefinition.DslType.GENERATE);
-        dsl.setContext(new JsonDslContext("com.xa.mass.base.model.Device", 3));
+        dsl.setContext(new JsonDslContext(StrongTypedProcessorExample.Device.class.getName(), 3));
         dsl.setFieldDsl(Map.of(
-            "deviceId", "$JOIN(['device-', '&.index'])",
-            "status", "$CHOICE(['ONLINE', 'OFFLINE'])",
-            "batteryLevel", "$RANDOM_INT(0, 100)"
+            "deviceId", Map.of("$JOIN", List.of("device-", "&.index")),
+            "status", Map.of("$CHOICE", List.of("ONLINE", "OFFLINE")),
+            "batteryLevel", Map.of("$RANDOM_INT", List.of(0, 100))
         ));
         
         // 创建处理上下文

@@ -56,7 +56,24 @@ public class BuiltinFunctions {
         FUNCTION_MAP.put(BuiltinFunc.TIME_RANGE, BuiltinFunctions::timeRange);
     }
 
+    private static int toInt(Object obj) {
+        if (obj instanceof Integer) return (Integer) obj;
+        if (obj instanceof Double) return ((Double) obj).intValue();
+        if (obj instanceof Float) return ((Float) obj).intValue();
+        if (obj instanceof Long) return ((Long) obj).intValue();
+        if (obj instanceof String) return Integer.parseInt((String) obj);
+        throw new JsonDslException("$RANDOM_INT 参数类型不支持: " + obj);
+    }
+
     public static Object eval(String func, Object param) {
+        if ("$RANDOM_INT".equals(func) || "randomInt".equalsIgnoreCase(func)) {
+            if (!(param instanceof List<?> list) || list.size() < 2) {
+                throw new JsonDslException("$RANDOM_INT 需要2个参数: [min, max]");
+            }
+            int min = toInt(list.get(0));
+            int max = toInt(list.get(1));
+            return range(min, max);
+        }
         BuiltinFunc f = BuiltinFunc.fromKey(func);
         if (f != null) {
             BuiltinFunction fn = FUNCTION_MAP.get(f);
