@@ -50,10 +50,14 @@ public class DslObjectBuilder {
             if (field == null) continue; // JSON 有但类无此字段，跳过
             Object value = mockFieldValue(field, entry.getValue(), context);
             value = TypeAdapterUtil.adaptType(field.getType(), value);
-            try {
-                field.set(obj, value);
-            } catch (Exception e) {
-                throw new JsonDslException("无法设置字段: " + field.getName() + " in " + clazz.getName(), e);
+            
+            // 优先尝试使用 setter 方法
+            if (!setFieldViaSetter(obj, fieldName, value, clazz)) {
+                try {
+                    field.set(obj, value);
+                } catch (Exception e) {
+                    throw new JsonDslException("无法设置字段: " + field.getName() + " in " + clazz.getName(), e);
+                }
             }
         }
         return obj;
@@ -121,6 +125,31 @@ public class DslObjectBuilder {
         return mockFromDsl(subDsl, subContext);
     }
 
+    private static boolean setFieldViaSetter(Object obj, String fieldName, Object value, Class<?> clazz) {
+        try {
+            // 尝试 setFieldName 方法
+            String setterName = "set" + fieldName.substring(0, 1).toUpperCase() + fieldName.substring(1);
+            
+            // 首先尝试与字段类型匹配的 setter
+            try {
+                java.lang.reflect.Method setter = clazz.getMethod(setterName, value.getClass());
+                setter.invoke(obj, value);
+                return true;
+            } catch (NoSuchMethodException e) {
+                // 如果找不到匹配的 setter，尝试 String 类型的 setter（用于类型转换）
+                try {
+                    java.lang.reflect.Method setter = clazz.getMethod(setterName, String.class);
+                    setter.invoke(obj, value.toString());
+                    return true;
+                } catch (NoSuchMethodException e2) {
+                    return false;
+                }
+            }
+        } catch (Exception e) {
+            return false;
+        }
+    }
+    
     private static Class<?> resolveModelClass(String modelName) {
         // 先查注册表，再尝试全类名
         String className = TypeRegistry.getClassName(modelName);

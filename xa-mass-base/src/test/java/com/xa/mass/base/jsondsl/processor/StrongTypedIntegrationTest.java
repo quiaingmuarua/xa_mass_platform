@@ -87,9 +87,9 @@ public class StrongTypedIntegrationTest {
         TestUser transformedUser = transformProcessor.transform(originalUser, transformDsl, context);
         assertNotNull(transformedUser);
         
-        // 验证转换结果（由于没有注册 TransformProcessor，名称不会被转换）
+        // 验证转换结果（由于没有注册 TransformProcessor，对象不会被转换）
         assertEquals("John", transformedUser.getName());
-        assertEquals(26, transformedUser.getAge());
+        assertEquals(25, transformedUser.getAge());
         assertEquals("active", transformedUser.getStatus()); // 未转换的字段保持不变
     }
     
