@@ -103,7 +103,7 @@ public class StandardDslExample {
         System.out.println("  缓存: " + (definition.getCacheable() ? "启用" : "禁用"));
 
         // 转换为传统格式并生成数据
-        String legacyFormat = JsonDslParser.toLegacyFormat(definition);
+        String legacyFormat = JsonDslParser.toJson(definition);
         System.out.println("\n转换为传统格式:");
         System.out.println(legacyFormat);
 
@@ -214,7 +214,7 @@ public class StandardDslExample {
         System.out.println("  组合规则数: " + definition.getCombineDsl().size());
 
         // 生成数据
-        String legacyFormat = JsonDslParser.toLegacyFormat(definition);
+        String legacyFormat = JsonDslParser.toJson(definition);
         List<Device> devices = JsonDslEngine.generateList(legacyFormat, Device.class);
         
         System.out.println("\n生成的复杂设备:");
@@ -257,7 +257,7 @@ public class StandardDslExample {
         System.out.println(json);
 
         // 转换为传统格式
-        String legacyJson = JsonDslParser.toLegacyFormat(definition);
+        String legacyJson = JsonDslParser.toJson(definition);
         System.out.println("\n转换为传统格式:");
         System.out.println(legacyJson);
 

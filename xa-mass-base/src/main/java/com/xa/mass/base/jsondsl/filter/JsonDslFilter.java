@@ -68,6 +68,26 @@ public class JsonDslFilter<T> implements DslFilter<T, T> {
         for (Map.Entry<String, JsonElement> entry : fieldDsl.entrySet()) {
             String field = entry.getKey();
             JsonElement cond = entry.getValue();
+            
+            // 处理 $EXPR 特殊字段
+            if ("$EXPR".equals(field)) {
+                try {
+                    String expr = cond.getAsString();
+                    Object result = exprExecutor.execute(expr, context);
+                    boolean ok = false;
+                    if (result instanceof Boolean) ok = (Boolean) result;
+                    else if (result instanceof Number) ok = ((Number) result).doubleValue() != 0;
+                    else if (result instanceof String) ok = !((String) result).isEmpty();
+                    else ok = result != null;
+                    if (!ok) {
+                        return false;
+                    }
+                    continue; // 跳过后续处理
+                } catch (Exception e) {
+                    throw new JsonDslException("执行表达式失败: " + cond.getAsString(), e);
+                }
+            }
+            
             Object fieldValue = context.get(field);
             if (cond.isJsonObject()) {
                 Map<String, Object> rule = GSON.fromJson(cond, Map.class);

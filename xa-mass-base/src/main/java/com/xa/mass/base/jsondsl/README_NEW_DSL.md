@@ -514,7 +514,7 @@ dsl.setFieldDsl(Map.of(
     "$age", "$RANDOM_INT(18, 65)"
 ));
 
-List<Object> result = JsonDslEngine.generateList(JsonDslParser.toLegacyFormat(dsl));
+List<Object> result = JsonDslEngine.generateList(JsonDslParser.toJson(dsl));
 ```
 
 ### 2. 复杂过滤
@@ -527,7 +527,7 @@ dsl.setFieldDsl(Map.of(
 ));
 dsl.setCombineDsl(Map.of("logic", "AND"));
 
-String filterConfig = JsonDslParser.toLegacyFormat(dsl);
+String filterConfig = JsonDslParser.toJson(dsl);
 List<Object> filtered = JsonDslEngine.filter(objects, filterConfig);
 ```
 

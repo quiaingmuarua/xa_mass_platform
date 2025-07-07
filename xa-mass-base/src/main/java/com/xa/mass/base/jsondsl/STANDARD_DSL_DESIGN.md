@@ -252,7 +252,7 @@ String jsonDsl = "..."; // 标准化 DSL JSON
 JsonDslDefinition definition = JsonDslParser.parse(jsonDsl);
 
 // 转换为传统格式并生成数据
-String legacyFormat = JsonDslParser.toLegacyFormat(definition);
+String legacyFormat = JsonDslParser.toJson(definition);
 List<Device> devices = JsonDslEngine.generateList(legacyFormat, Device.class);
 ```
 

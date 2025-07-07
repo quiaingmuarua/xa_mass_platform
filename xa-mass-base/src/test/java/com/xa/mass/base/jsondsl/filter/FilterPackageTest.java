@@ -78,13 +78,13 @@ public class FilterPackageTest {
     
     @Test
     public void testJsonDslFilter() {
-        // 创建复杂的 JSON-DSL 过滤器
+        // 创建复杂的 JSON-DSL 过滤器（使用新标准 fieldDsl 格式）
         String filterConfigJson = """
             {
-                "conditions": {
-                    "age": {"gte": 18},
-                    "status": {"in": ["active", "pending"]},
-                    "score": {"gte": 60, "lte": 100}
+                "fieldDsl": {
+                    "age": {"$gte": 18},
+                    "status": {"$in": ["active", "pending"]},
+                    "score": {"$gte": 60, "$lte": 100}
                 }
             }
             """;

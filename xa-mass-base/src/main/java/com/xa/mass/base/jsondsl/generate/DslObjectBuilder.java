@@ -66,40 +66,23 @@ public class DslObjectBuilder {
                     // 兜底：如果字段类型为Integer，支持Number、String、其他类型
                     if (field.getType() == Integer.class) {
                         try {
-                            if (value == null) {
-                                field.set(obj, null);
-                                fallbackSet = true;
-                            } else if (value instanceof Number n) {
-                                field.set(obj, n.intValue());
-                                fallbackSet = true;
-                            } else if (value instanceof String s) {
-                                if (s.isEmpty()) {
-                                    field.set(obj, null);
-                                    fallbackSet = true;
+                            Integer intValue = null;
+                            if (value != null) {
+                                if (value instanceof Number n) {
+                                    intValue = n.intValue();
                                 } else {
-                                    try {
-                                        field.set(obj, Integer.parseInt(s));
-                                        fallbackSet = true;
-                                    } catch (Exception ignore) {
-                                        field.set(obj, null);
-                                        fallbackSet = true;
-                                    }
-                                }
-                            } else {
-                                String str = value.toString();
-                                if (str.isEmpty()) {
-                                    field.set(obj, null);
-                                    fallbackSet = true;
-                                } else {
-                                    try {
-                                        field.set(obj, Integer.parseInt(str));
-                                        fallbackSet = true;
-                                    } catch (Exception ignore) {
-                                        field.set(obj, null);
-                                        fallbackSet = true;
+                                    String str = value.toString().trim();
+                                    if (!str.isEmpty()) {
+                                        try {
+                                            intValue = Integer.parseInt(str);
+                                        } catch (Exception ignore) {
+                                            // 保持 intValue = null
+                                        }
                                     }
                                 }
                             }
+                            field.set(obj, intValue);
+                            fallbackSet = true;
                         } catch (Exception ignore) {}
                     }
                     if (!fallbackSet) {
@@ -119,10 +102,10 @@ public class DslObjectBuilder {
 
     private static Object mockFieldValue(Field field, Object rule, DslContext context) {
         if (isCollectionRule(rule)) {
-            return handleCollectionRule(rule, context);
+            return handleCollectionRule(rule, context, Object.class);
         }
         if (isNestedModelRule(rule)) {
-            return handleNestedModelRule(rule, context);
+            return handleNestedModelRule(rule, context, Object.class);
         }
         // 其余情况交给 TemplateValueResolver（包括内置函数、普通值、变量）
         return TemplateValueResolver.resolve(rule, context);
@@ -138,7 +121,21 @@ public class DslObjectBuilder {
         return map.containsKey(DslKeyword.MODEL.name());
     }
 
-    private static Object handleCollectionRule(Object rule, DslContext context) {
+    /**
+     * 处理集合类型规则，生成 List/Set 等集合对象。
+     * <p>
+     * 示例：
+     * <pre>
+     *     JsonObject dsl = ...;
+     *     DslContext ctx = ...;
+     *     List<User> users = handleCollectionRule(dsl, ctx, List.class);
+     * </pre>
+     * @param rule 集合类型的 DSL 规则对象（Map 或 JsonObject）
+     * @param context 变量上下文
+     * @param targetType 目标集合类型
+     * @return 生成的集合对象
+     */
+    private static <T> T handleCollectionRule(Object rule, DslContext context, Class<T> targetType) {
         Map<?, ?> ruleMap = (Map<?, ?>) rule;
         String type = String.valueOf(ruleMap.get(DslKeyword.TYPE.name())).toUpperCase();
         int count = ruleMap.containsKey(DslKeyword.COUNT.name()) ? ((Number) ruleMap.get(DslKeyword.COUNT.name())).intValue() : 1;
@@ -161,12 +158,30 @@ public class DslObjectBuilder {
             }
             list.add(mockFromDsl(subDsl, subContext, Object.class));
         }
-        if (type.equals("LIST")) return list;
-        if (type.equals("SET")) return new HashSet<>(list);
-        throw new JsonDslException("不支持的集合类型: " + type);
+        Object result = type.equals("LIST") ? list : 
+                       type.equals("SET") ? new HashSet<>(list) : 
+                       null;
+        if (result == null) {
+            throw new JsonDslException("不支持的集合类型: " + type);
+        }
+        return targetType.cast(result);
     }
 
-    private static Object handleNestedModelRule(Object rule, DslContext context) {
+    /**
+     * 处理嵌套模型规则，递归生成嵌套对象。
+     * <p>
+     * 示例：
+     * <pre>
+     *     JsonObject dsl = ...;
+     *     DslContext ctx = ...;
+     *     User user = handleNestedModelRule(dsl, ctx, User.class);
+     * </pre>
+     * @param rule 嵌套模型的 DSL 规则对象（Map 或 JsonObject）
+     * @param context 变量上下文
+     * @param targetType 目标类型
+     * @return 生成的目标类型对象
+     */
+    private static <T> T handleNestedModelRule(Object rule, DslContext context, Class<T> targetType) {
         Map<?, ?> ruleMap = (Map<?, ?>) rule;
         String modelName = (String) ruleMap.get(DslKeyword.MODEL.name());
         DslContext subContext = new DslContext(context);
@@ -176,58 +191,63 @@ public class DslObjectBuilder {
         if (ruleMap.containsKey(DslKeyword.FIELDS.name())) {
             subDsl.add(DslKeyword.FIELDS.name(), gson.toJsonTree(ruleMap.get(DslKeyword.FIELDS.name())));
         }
-        return mockFromDsl(subDsl, subContext, Object.class);
+        return mockFromDsl(subDsl, subContext, targetType);
     }
 
     private static boolean setFieldViaSetter(Object obj, String fieldName, Object value, Class<?> clazz) {
         try {
             String setterName = "set" + fieldName.substring(0, 1).toUpperCase() + fieldName.substring(1);
-            // 1. 优先尝试String类型setter
-            try {
-                java.lang.reflect.Method setter = clazz.getMethod(setterName, String.class);
-                setter.invoke(obj, value == null ? null : value.toString());
+            
+            // 尝试不同类型的 setter
+            if (tryInvokeSetter(obj, clazz, setterName, String.class, value == null ? null : value.toString()) ||
+                tryInvokeSetter(obj, clazz, setterName, value.getClass(), value) ||
+                tryInvokeSetter(obj, clazz, setterName, Object.class, value) ||
+                tryInvokeAnySetter(obj, clazz, setterName, value)) {
                 return true;
-            } catch (NoSuchMethodException e) {
-                // 2. 再尝试与字段类型匹配的setter
-                try {
-                    java.lang.reflect.Method setter = clazz.getMethod(setterName, value.getClass());
-                    setter.invoke(obj, value);
-                    return true;
-                } catch (NoSuchMethodException e2) {
-                    // 3. 再尝试Object类型setter
-                    try {
-                        java.lang.reflect.Method setter = clazz.getMethod(setterName, Object.class);
-                        setter.invoke(obj, value);
-                        return true;
-                    } catch (NoSuchMethodException e3) {
-                        // 4. 最后遍历所有同名单参数setter
-                        java.lang.reflect.Method[] methods = clazz.getMethods();
-                        for (java.lang.reflect.Method method : methods) {
-                            if (method.getName().equals(setterName) && method.getParameterCount() == 1) {
-                                try {
-                                    method.invoke(obj, value);
-                                    return true;
-                                } catch (Exception ex) {
-                                    // 继续尝试下一个方法
-                                }
-                            }
-                        }
-                        // 5. 兜底：如果字段类型为Integer且value为String，直接parseInt后set到字段
-                        try {
-                            java.lang.reflect.Field field = clazz.getDeclaredField(fieldName);
-                            if (field.getType() == Integer.class && value instanceof String s) {
-                                field.setAccessible(true);
-                                field.set(obj, Integer.parseInt(s));
-                                return true;
-                            }
-                        } catch (Exception ignore) {}
-                        return false;
-                    }
-                }
             }
+            
+            // 兜底：如果字段类型为Integer且value为String，直接parseInt后set到字段
+            return trySetIntegerField(obj, fieldName, value, clazz);
         } catch (Exception e) {
             return false;
         }
+    }
+    
+    private static boolean tryInvokeSetter(Object obj, Class<?> clazz, String setterName, Class<?> paramType, Object value) {
+        try {
+            java.lang.reflect.Method setter = clazz.getMethod(setterName, paramType);
+            setter.invoke(obj, value);
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+    
+    private static boolean tryInvokeAnySetter(Object obj, Class<?> clazz, String setterName, Object value) {
+        java.lang.reflect.Method[] methods = clazz.getMethods();
+        for (java.lang.reflect.Method method : methods) {
+            if (method.getName().equals(setterName) && method.getParameterCount() == 1) {
+                try {
+                    method.invoke(obj, value);
+                    return true;
+                } catch (Exception ex) {
+                    // 继续尝试下一个方法
+                }
+            }
+        }
+        return false;
+    }
+    
+    private static boolean trySetIntegerField(Object obj, String fieldName, Object value, Class<?> clazz) {
+        try {
+            java.lang.reflect.Field field = clazz.getDeclaredField(fieldName);
+            if (field.getType() == Integer.class && value instanceof String s) {
+                field.setAccessible(true);
+                field.set(obj, Integer.parseInt(s));
+                return true;
+            }
+        } catch (Exception ignore) {}
+        return false;
     }
     
     private static Class<?> resolveModelClass(String modelName) {

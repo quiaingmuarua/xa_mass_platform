@@ -29,27 +29,11 @@ public class JsonDslParser {
     public static JsonDslDefinition parse(String jsonDsl) {
         try {
             JsonObject root = JsonParser.parseString(jsonDsl).getAsJsonObject();
-            
-            // 检查是否为标准化 DSL 结构
-            if (isStandardDslStructure(root)) {
-                return parseStandardDsl(root);
-            } else {
-                // 向后兼容：解析传统 DSL 结构
-                return parseLegacyDsl(root);
-            }
+            // 只支持标准 DSL 结构
+            return parseStandardDsl(root);
         } catch (Exception e) {
             throw new JsonDslException("解析 DSL 失败: " + e.getMessage(), e);
         }
-    }
-    
-    /**
-     * 检查是否为标准化 DSL 结构
-     */
-    private static boolean isStandardDslStructure(JsonObject root) {
-        // 支持下划线和驼峰命名
-        boolean hasUniqueId = root.has("unique_id") || root.has("uniqueId");
-        boolean hasType = root.has("type");
-        return hasUniqueId && hasType;
     }
     
     /**
@@ -118,56 +102,6 @@ public class JsonDslParser {
     }
     
     /**
-     * 解析传统 DSL 结构（向后兼容）
-     */
-    private static JsonDslDefinition parseLegacyDsl(JsonObject root) {
-        // 生成唯一 ID
-        String uniqueId = "legacy_" + System.currentTimeMillis();
-        
-        // 判断 DSL 类型
-        JsonDslDefinition.DslType type = determineLegacyDslType(root);
-        
-        JsonDslDefinition definition = new JsonDslDefinition(uniqueId, type);
-        definition.setDescription("从传统 DSL 结构转换");
-        definition.setVersion("1.0");
-        
-        // 解析上下文
-        JsonDslContext context = new JsonDslContext();
-        if (root.has("MODEL")) {
-            context.setModel(root.get("MODEL").getAsString());
-        }
-        if (root.has("COUNT")) {
-            context.setCount(root.get("COUNT").getAsInt());
-        }
-        if (root.has("TYPE")) {
-            context.setType(root.get("TYPE").getAsString());
-        }
-        definition.setContext(context);
-        
-        // 解析字段 DSL
-        if (root.has("FIELDS")) {
-            definition.setFieldDsl(gson.fromJson(root.get("FIELDS"), Map.class));
-        }
-        
-        // 验证 DSL 定义
-        definition.validate();
-        
-        return definition;
-    }
-    
-    /**
-     * 判断传统 DSL 的类型
-     */
-    private static JsonDslDefinition.DslType determineLegacyDslType(JsonObject root) {
-        // 只根据 MODEL 字段判断 generate，其余一律按新结构处理
-        if (root.has("MODEL")) {
-            return JsonDslDefinition.DslType.GENERATE;
-        }
-        // 默认认为是 generate，filter/validate/transform 需显式 type 字段
-        return JsonDslDefinition.DslType.GENERATE;
-    }
-    
-    /**
      * 解析上下文配置
      */
     private static JsonDslContext parseContext(JsonObject contextObj) {
@@ -207,41 +141,6 @@ public class JsonDslParser {
         
         context.validate();
         return context;
-    }
-    
-    /**
-     * 将标准 DSL 定义转换为传统 JSON 格式（向后兼容）
-     */
-    public static String toLegacyFormat(JsonDslDefinition definition) {
-        JsonObject root = new JsonObject();
-        
-        // 根据 DSL 类型进行不同的转换
-        if (JsonDslDefinition.DslType.FILTER.equals(definition.getType())) {
-            // 过滤类型：将 fieldDsl 转换为 conditions 格式
-            if (definition.getFieldDsl() != null) {
-                root.add("conditions", gson.toJsonTree(definition.getFieldDsl()));
-            }
-        } else {
-            // 生成类型：添加核心字段
-            if (definition.getContext() != null) {
-                if (definition.getContext().getModel() != null) {
-                    root.addProperty("MODEL", definition.getContext().getModel());
-                }
-                if (definition.getContext().getCount() != null) {
-                    root.addProperty("COUNT", definition.getContext().getCount());
-                }
-                if (definition.getContext().getType() != null) {
-                    root.addProperty("TYPE", definition.getContext().getType());
-                }
-            }
-            
-            // 添加字段 DSL
-            if (definition.getFieldDsl() != null) {
-                root.add("FIELDS", gson.toJsonTree(definition.getFieldDsl()));
-            }
-        }
-        
-        return gson.toJson(root);
     }
     
     /**

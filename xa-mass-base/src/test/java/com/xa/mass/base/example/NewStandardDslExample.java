@@ -73,7 +73,7 @@ public class NewStandardDslExample {
         definition.validate();
 
         // 5. 转换为传统格式并生成数据
-        String legacyFormat = JsonDslParser.toLegacyFormat(definition);
+        String legacyFormat = JsonDslParser.toJson(definition);
         List<Device> devices = JsonDslEngine.generateList(legacyFormat, Device.class);
 
         System.out.println("生成的设备数量: " + devices.size());
@@ -151,7 +151,7 @@ public class NewStandardDslExample {
 
         // 6. 验证并生成
         definition.validate();
-        String legacyFormat = JsonDslParser.toLegacyFormat(definition);
+        String legacyFormat = JsonDslParser.toJson(definition);
         List<Device> devices = JsonDslEngine.generateList(legacyFormat, Device.class);
 
         System.out.println("生成的复杂设备数量: " + devices.size());
@@ -190,7 +190,7 @@ public class NewStandardDslExample {
         filterDef.validate();
 
         // 5. 转换为传统格式
-        String filterConfig = JsonDslParser.toLegacyFormat(filterDef);
+        String filterConfig = JsonDslParser.toJson(filterDef);
         System.out.println("过滤器配置: " + filterConfig);
 
         // 6. 应用过滤器（需要先有数据）
@@ -314,7 +314,7 @@ public class NewStandardDslExample {
         System.out.println("标签: " + Arrays.toString(definition.getTags()));
 
         // 4. 转换为传统格式并生成数据
-        String legacyFormat = JsonDslParser.toLegacyFormat(definition);
+        String legacyFormat = JsonDslParser.toJson(definition);
         List<Device> devices = JsonDslEngine.generateList(legacyFormat, Device.class);
 
         System.out.println("从 JSON 生成的设备数量: " + devices.size());

@@ -65,7 +65,7 @@ Map<String, Object> fieldDsl = Map.of(
 definition.setFieldDsl(fieldDsl);
 
 // 4. 解析并生成数据
-String legacyFormat = JsonDslParser.toLegacyFormat(definition);
+String legacyFormat = JsonDslParser.toJson(definition);
 List<Device> devices = JsonDslEngine.generateList(legacyFormat, Device.class);
 
 // 5. 创建过滤器 DSL
@@ -73,7 +73,7 @@ JsonDslDefinition filterDef = new JsonDslDefinition("status_filter", JsonDslDefi
 filterDef.setFieldDsl(Map.of("status", Map.of("eq", "ONLINE")));
 
 // 6. 应用过滤
-String filterConfig = JsonDslParser.toLegacyFormat(filterDef);
+String filterConfig = JsonDslParser.toJson(filterDef);
 List<Object> filtered = JsonDslEngine.filter(devices, filterConfig);
 ```
 

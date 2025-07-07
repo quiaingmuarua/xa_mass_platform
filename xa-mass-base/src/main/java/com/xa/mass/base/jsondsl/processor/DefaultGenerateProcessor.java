@@ -4,6 +4,7 @@ import com.xa.mass.base.jsondsl.JsonDslEngine;
 import com.xa.mass.base.jsondsl.parser.JsonDslParser;
 import com.xa.mass.base.jsondsl.model.JsonDslDefinition;
 import com.xa.mass.base.jsondsl.builtin.JsonDslException;
+import com.xa.mass.base.jsondsl.builtin.DslContext;
 
 import java.util.List;
 
@@ -35,9 +36,6 @@ class DefaultGenerateProcessor implements GenerateProcessor {
         // 验证 DSL 定义
         definition.validate();
         
-        // 转换为传统格式并生成数据
-        String legacyFormat = JsonDslParser.toLegacyFormat(definition);
-        
         // 获取生成数量
         int count = definition.getContext() != null && definition.getContext().getCount() != null 
             ? definition.getContext().getCount() : 1;
@@ -48,8 +46,23 @@ class DefaultGenerateProcessor implements GenerateProcessor {
             throw new IllegalArgumentException("generate 类型 DSL 必须指定 context.model");
         }
         
-        // 生成数据
-        List<T> result = JsonDslEngine.generateList(legacyFormat, targetType);
+        // 直接使用 DslObjectBuilder 生成数据
+        List<T> result = new java.util.ArrayList<>();
+        for (int i = 0; i < count; i++) {
+            DslContext dslContext = new DslContext();
+            dslContext.setScopeName(modelName);
+            dslContext.setVariable("&" + modelName + ".index", i);
+            
+            // 构造 JsonObject
+            com.google.gson.JsonObject dsl = new com.google.gson.JsonObject();
+            dsl.addProperty("MODEL", modelName);
+            if (definition.getFieldDsl() != null) {
+                dsl.add("FIELDS", com.xa.mass.base.jsondsl.util.GsonConfig.buildGson().toJsonTree(definition.getFieldDsl()));
+            }
+            
+            T obj = com.xa.mass.base.jsondsl.generate.DslObjectBuilder.mockFromDsl(dsl, dslContext, targetType);
+            result.add(obj);
+        }
         
         if (context.isDebug()) {
             System.out.println("[DefaultGenerateProcessor] 生成完成，数量: " + result.size());

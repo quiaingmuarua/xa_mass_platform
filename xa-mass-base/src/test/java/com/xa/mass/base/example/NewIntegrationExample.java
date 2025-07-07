@@ -109,7 +109,7 @@ public class NewIntegrationExample {
      * 使用新标准 DSL 过滤设备
      */
     private static List<Device> filterDevices(List<Device> devices, JsonDslDefinition filterDef) {
-        String filterConfig = JsonDslParser.toLegacyFormat(filterDef);
+        String filterConfig = JsonDslParser.toJson(filterDef);
         System.out.println("过滤器配置: " + filterConfig);
         FilterProcessor filterProcessor = ProcessorRegistry.getFilterProcessor();
         FilterResult<Device> result = filterProcessor.filter(devices, filterDef, new ProcessingContext("test-context"));

@@ -3,6 +3,8 @@ package com.xa.mass.base.jsondsl;
 import com.xa.mass.base.jsondsl.model.JsonDslContext;
 import com.xa.mass.base.jsondsl.model.JsonDslDefinition;
 import com.xa.mass.base.jsondsl.parser.JsonDslParser;
+import com.xa.mass.base.jsondsl.processor.JsonDslProcessorEngine;
+import com.xa.mass.base.jsondsl.processor.ProcessingContext;
 import com.xa.mass.base.model.Device;
 import org.junit.jupiter.api.Test;
 
@@ -45,9 +47,9 @@ public class NewStandardDslTypeRegistrationTest {
         // 4. 验证 DSL
         definition.validate();
         
-        // 5. 转换为传统格式并生成数据
-        String legacyFormat = JsonDslParser.toLegacyFormat(definition);
-        List<Device> devices = JsonDslEngine.generateList(legacyFormat, Device.class);
+        // 5. 使用新的处理器引擎生成数据
+        ProcessingContext processingContext = new ProcessingContext("test");
+        List<Device> devices = JsonDslProcessorEngine.process(definition, processingContext, Device.class);
         
         // 6. 验证结果
         assertNotNull(devices);
@@ -93,9 +95,9 @@ public class NewStandardDslTypeRegistrationTest {
         // 4. 验证 DSL
         definition.validate();
         
-        // 5. 转换为传统格式并生成数据
-        String legacyFormat = JsonDslParser.toLegacyFormat(definition);
-        List<Device> devices = JsonDslEngine.generateList(legacyFormat, Device.class);
+        // 5. 使用新的处理器引擎生成数据
+        ProcessingContext processingContext = new ProcessingContext("test");
+        List<Device> devices = JsonDslProcessorEngine.process(definition, processingContext, Device.class);
         
         // 6. 验证结果
         assertNotNull(devices);
@@ -146,9 +148,9 @@ public class NewStandardDslTypeRegistrationTest {
         assertEquals(JsonDslDefinition.DslType.GENERATE, definition.getType());
         assertEquals("com.xa.mass.base.model.Device", definition.getContext().getModel());
         
-        // 3. 生成数据
-        String legacyFormat = JsonDslParser.toLegacyFormat(definition);
-        List<Device> devices = JsonDslEngine.generateList(legacyFormat, Device.class);
+        // 3. 使用新的处理器引擎生成数据
+        ProcessingContext processingContext = new ProcessingContext("test");
+        List<Device> devices = JsonDslProcessorEngine.process(definition, processingContext, Device.class);
         
         // 4. 验证结果
         assertNotNull(devices);

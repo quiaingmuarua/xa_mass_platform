@@ -36,7 +36,17 @@ class DefaultFilterProcessor implements FilterProcessor {
         // 内联原filterWithReport逻辑
         List<T> passed = new java.util.ArrayList<>();
         java.util.List<FilterReport.FilterFail<T>> failed = new java.util.ArrayList<>();
-        com.xa.mass.base.jsondsl.filter.JsonDslFilter<T> filter = com.xa.mass.base.jsondsl.filter.DslFilterFactory.createJsonDslFilter(def.getUniqueId(), def.getDescription(), com.xa.mass.base.jsondsl.parser.JsonDslParser.toLegacyFormat(def));
+        
+        // 直接构造 JsonObject，避免不必要的 JSON 转换
+        com.google.gson.JsonObject filterConfig = new com.google.gson.JsonObject();
+        if (def.getFieldDsl() != null) {
+            filterConfig.add("fieldDsl", com.xa.mass.base.jsondsl.util.GsonConfig.buildGson().toJsonTree(def.getFieldDsl()));
+        }
+        if (def.getCombineDsl() != null) {
+            filterConfig.add("combineDsl", com.xa.mass.base.jsondsl.util.GsonConfig.buildGson().toJsonTree(def.getCombineDsl()));
+        }
+        com.xa.mass.base.jsondsl.filter.JsonDslFilter<T> filter = com.xa.mass.base.jsondsl.filter.DslFilterFactory.createJsonDslFilter(def.getUniqueId(), def.getDescription(), filterConfig);
+        
         for (T obj : data) {
             java.util.List<String> failReasons = new java.util.ArrayList<>();
             java.util.Map<String, Object> objMap;
