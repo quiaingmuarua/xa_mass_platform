@@ -52,7 +52,8 @@ public class DslObjectBuilder {
             value = TypeAdapterUtil.adaptType(field.getType(), value);
             
             // 优先尝试使用 setter 方法
-            if (!setFieldViaSetter(obj, fieldName, value, clazz)) {
+            boolean setterUsed = setFieldViaSetter(obj, fieldName, value, clazz);
+            if (!setterUsed) {
                 try {
                     field.set(obj, value);
                 } catch (Exception e) {
@@ -148,6 +149,18 @@ public class DslObjectBuilder {
                         setter.invoke(obj, value);
                         return true;
                     } catch (NoSuchMethodException e3) {
+                        // 最后尝试查找所有可能的 setter 方法
+                        java.lang.reflect.Method[] methods = clazz.getMethods();
+                        for (java.lang.reflect.Method method : methods) {
+                            if (method.getName().equals(setterName) && method.getParameterCount() == 1) {
+                                try {
+                                    method.invoke(obj, value);
+                                    return true;
+                                } catch (Exception ex) {
+                                    // 继续尝试下一个方法
+                                }
+                            }
+                        }
                         return false;
                     }
                 }
