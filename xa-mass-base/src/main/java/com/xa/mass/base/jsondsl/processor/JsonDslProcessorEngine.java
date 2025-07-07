@@ -36,6 +36,39 @@ public class JsonDslProcessorEngine {
         if (JsonDslDefinition.DslType.GENERATE.equals(definition.getType())) {
             GenerateProcessor<T> processor = ProcessorRegistry.getGenerateProcessor();
             return processor.generate(definition, context, targetType);
+        } else if (JsonDslDefinition.DslType.FILTER.equals(definition.getType())) {
+            FilterProcessor<T> processor = ProcessorRegistry.getFilterProcessor();
+            // 从上下文中获取输入数据
+            @SuppressWarnings("unchecked")
+            List<T> input = (List<T>) context.getParameter("objects");
+            if (input == null) {
+                throw new IllegalArgumentException("过滤处理器需要上下文中的 'objects' 参数");
+            }
+            return processor.filter(input, definition, context);
+        } else if (JsonDslDefinition.DslType.TRANSFORM.equals(definition.getType())) {
+            TransformProcessor<T> processor = ProcessorRegistry.getTransformProcessor();
+            // 从上下文中获取输入数据
+            @SuppressWarnings("unchecked")
+            T input = (T) context.getParameter("object");
+            if (input == null) {
+                throw new IllegalArgumentException("转换处理器需要上下文中的 'object' 参数");
+            }
+            T result = processor.transform(input, definition, context);
+            return List.of(result);
+        } else if (JsonDslDefinition.DslType.VALIDATE.equals(definition.getType())) {
+            ValidateProcessor<T> processor = ProcessorRegistry.getValidateProcessor();
+            // 从上下文中获取输入数据
+            @SuppressWarnings("unchecked")
+            T input = (T) context.getParameter("object");
+            if (input == null) {
+                throw new IllegalArgumentException("校验处理器需要上下文中的 'object' 参数");
+            }
+            List<String> errors = processor.validate(input, definition, context);
+            if (errors.isEmpty()) {
+                return List.of(input);
+            } else {
+                throw new IllegalArgumentException("校验失败: " + String.join(", ", errors));
+            }
         } else {
             throw new IllegalArgumentException("不支持的 DSL 类型: " + definition.getType());
         }

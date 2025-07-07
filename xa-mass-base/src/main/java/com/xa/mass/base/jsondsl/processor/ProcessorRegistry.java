@@ -132,6 +132,33 @@ public class ProcessorRegistry {
             if (JsonDslDefinition.DslType.GENERATE.equals(definition.getType())) {
                 GenerateProcessor<T> processor = getGenerateProcessor();
                 result = processor.generate(definition, context, targetType);
+            } else if (JsonDslDefinition.DslType.FILTER.equals(definition.getType())) {
+                FilterProcessor<T> processor = getFilterProcessor();
+                if (result == null) {
+                    throw new IllegalArgumentException("过滤处理器需要前置的生成结果");
+                }
+                result = processor.filter(result, definition, context);
+            } else if (JsonDslDefinition.DslType.TRANSFORM.equals(definition.getType())) {
+                TransformProcessor<T> processor = getTransformProcessor();
+                if (result == null || result.isEmpty()) {
+                    throw new IllegalArgumentException("转换处理器需要前置的生成结果");
+                }
+                List<T> transformed = result.stream()
+                    .map(obj -> processor.transform(obj, definition, context))
+                    .toList();
+                result = transformed;
+            } else if (JsonDslDefinition.DslType.VALIDATE.equals(definition.getType())) {
+                ValidateProcessor<T> processor = getValidateProcessor();
+                if (result == null || result.isEmpty()) {
+                    throw new IllegalArgumentException("校验处理器需要前置的生成结果");
+                }
+                // 校验所有对象
+                for (T obj : result) {
+                    List<String> errors = processor.validate(obj, definition, context);
+                    if (!errors.isEmpty()) {
+                        throw new IllegalArgumentException("校验失败: " + String.join(", ", errors));
+                    }
+                }
             } else {
                 throw new IllegalArgumentException("不支持的 DSL 类型: " + definition.getType());
             }

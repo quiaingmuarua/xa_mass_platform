@@ -9,6 +9,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import java.util.List;
 import java.util.Map;
 import java.util.HashMap;
+import com.xa.mass.base.jsondsl.builtin.JsonDslException;
 
 /**
  * GenerateProcessor 测试
@@ -74,7 +75,7 @@ public class GenerateProcessorTest {
     @Test
     void testGenerateWithInvalidDefinition() {
         // 测试没有 context 的 DSL
-        assertThrows(IllegalArgumentException.class, () -> {
+        assertThrows(JsonDslException.class, () -> {
             processor.generate(definition, context, TestUser.class);
         });
     }
@@ -86,7 +87,7 @@ public class GenerateProcessorTest {
         dslContext.setCount(3);
         definition.setContext(dslContext);
         
-        assertThrows(IllegalArgumentException.class, () -> {
+        assertThrows(JsonDslException.class, () -> {
             processor.generate(definition, context, TestUser.class);
         });
     }
@@ -104,7 +105,7 @@ public class GenerateProcessorTest {
         definition.setFieldDsl(fieldDsl);
         
         // 应该抛出异常，因为类不存在
-        assertThrows(Exception.class, () -> {
+        assertThrows(JsonDslException.class, () -> {
             processor.generate(definition, context, TestUser.class);
         });
     }
@@ -165,7 +166,7 @@ public class GenerateProcessorTest {
     
     @Test
     void testGenerateWithNullDefinition() {
-        assertThrows(IllegalArgumentException.class, () -> {
+        assertThrows(JsonDslException.class, () -> {
             processor.generate(null, context, TestUser.class);
         });
     }
@@ -177,7 +178,7 @@ public class GenerateProcessorTest {
         dslContext.setCount(1);
         definition.setContext(dslContext);
         
-        assertThrows(IllegalArgumentException.class, () -> {
+        assertThrows(JsonDslException.class, () -> {
             processor.generate(definition, null, TestUser.class);
         });
     }
@@ -189,7 +190,7 @@ public class GenerateProcessorTest {
         dslContext.setCount(1);
         definition.setContext(dslContext);
         
-        assertThrows(IllegalArgumentException.class, () -> {
+        assertThrows(JsonDslException.class, () -> {
             processor.generate(definition, context, null);
         });
     }
@@ -226,5 +227,11 @@ public class GenerateProcessorTest {
         
         public int getAge() { return age; }
         public void setAge(int age) { this.age = age; }
+        
+        public void setAge(String s) {
+            if (s != null) {
+                this.age = Integer.parseInt(s);
+            }
+        }
     }
 } 

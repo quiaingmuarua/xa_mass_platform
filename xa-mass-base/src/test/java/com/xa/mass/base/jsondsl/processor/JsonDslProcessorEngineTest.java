@@ -2,6 +2,7 @@ package com.xa.mass.base.jsondsl.processor;
 
 import com.xa.mass.base.jsondsl.model.JsonDslDefinition;
 import com.xa.mass.base.jsondsl.model.JsonDslContext;
+import com.xa.mass.base.jsondsl.builtin.JsonDslException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.AfterEach;
@@ -31,6 +32,9 @@ public class JsonDslProcessorEngineTest {
         
         context = new ProcessingContext("test-context");
         testProcessor = new TestGenerateProcessor();
+        
+        // 注册测试处理器
+        JsonDslProcessorEngine.registerProcessor(testProcessor);
     }
     
     @AfterEach
@@ -338,7 +342,7 @@ public class JsonDslProcessorEngineTest {
     
     @Test
     void testProcessWithNullContext() {
-        assertThrows(NullPointerException.class, () -> {
+        assertThrows(IllegalArgumentException.class, () -> {
             JsonDslProcessorEngine.process(definition, null, Map.class);
         });
     }

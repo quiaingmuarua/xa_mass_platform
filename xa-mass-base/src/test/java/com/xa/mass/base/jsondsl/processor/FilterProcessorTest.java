@@ -1,6 +1,7 @@
 package com.xa.mass.base.jsondsl.processor;
 
 import com.xa.mass.base.jsondsl.model.JsonDslDefinition;
+import com.xa.mass.base.jsondsl.builtin.JsonDslException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.BeforeEach;
 import static org.junit.jupiter.api.Assertions.*;
@@ -186,7 +187,7 @@ public class FilterProcessorTest {
         definition.setFieldDsl(fieldDsl);
         
         // 虽然类型不匹配，但处理器应该仍然能处理（因为实际处理时会验证）
-        assertThrows(Exception.class, () -> {
+        assertThrows(JsonDslException.class, () -> {
             processor.filter(testUsers, definition, context);
         });
     }

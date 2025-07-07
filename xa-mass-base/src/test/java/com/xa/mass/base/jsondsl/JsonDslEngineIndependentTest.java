@@ -21,9 +21,10 @@ public class JsonDslEngineIndependentTest {
     static class TestFilterProcessor implements FilterProcessor<Map<String, Object>> {
         @Override
         public List<Map<String, Object>> filter(List<Map<String, Object>> input, JsonDslDefinition definition, ProcessingContext context) {
-            // 简单过滤：保留 age >= 25
+            // 简单过滤：保留 age >= 25，跳过 age==null
             return input.stream().filter(user -> {
                 Object ageObj = user.get("age");
+                if (ageObj == null) return false;
                 int age = Integer.parseInt(ageObj.toString());
                 return age >= 25;
             }).toList();

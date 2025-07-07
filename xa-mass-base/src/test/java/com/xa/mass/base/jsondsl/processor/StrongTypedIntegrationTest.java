@@ -2,6 +2,7 @@ package com.xa.mass.base.jsondsl.processor;
 
 import com.xa.mass.base.jsondsl.model.JsonDslDefinition;
 import com.xa.mass.base.jsondsl.model.JsonDslContext;
+import com.xa.mass.base.jsondsl.builtin.JsonDslException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.AfterEach;
@@ -196,7 +197,7 @@ public class StrongTypedIntegrationTest {
         JsonDslDefinition invalidDsl = new JsonDslDefinition("invalid-dsl", JsonDslDefinition.DslType.GENERATE);
         // 不设置 context，应该抛出异常
         
-        assertThrows(IllegalArgumentException.class, () -> {
+        assertThrows(JsonDslException.class, () -> {
             generateProcessor.generate(invalidDsl, context, TestUser.class);
         });
     }
@@ -235,6 +236,11 @@ public class StrongTypedIntegrationTest {
         
         public int getAge() { return age; }
         public void setAge(int age) { this.age = age; }
+        public void setAge(String s) {
+            if (s != null) {
+                this.age = Integer.parseInt(s);
+            }
+        }
         
         public String getEmail() { return email; }
         public void setEmail(String email) { this.email = email; }
