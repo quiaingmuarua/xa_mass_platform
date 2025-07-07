@@ -27,10 +27,25 @@ public class JsonDslProcessorEngine {
      */
     public static <T> List<T> process(JsonDslDefinition definition, ProcessingContext context, Class<T> targetType) {
         if (JsonDslDefinition.DslType.GENERATE.equals(definition.getType())) {
-            GenerateProcessor processor = ProcessorManager.getGenerateProcessor();
-            return processor.generate(definition, context, targetType);
+            // 优先使用注册的处理器，如果没有则使用默认处理器
+            List<JsonDslProcessor> processors = ProcessorRegistry.getProcessors(definition.getType());
+            if (!processors.isEmpty()) {
+                // 使用第一个注册的处理器
+                GenerateProcessor processor = (GenerateProcessor) processors.get(0);
+                return processor.generate(definition, context, targetType);
+            } else {
+                GenerateProcessor processor = ProcessorManager.getGenerateProcessor();
+                return processor.generate(definition, context, targetType);
+            }
         } else if (JsonDslDefinition.DslType.FILTER.equals(definition.getType())) {
-            FilterProcessor processor = ProcessorManager.getFilterProcessor();
+            // 优先使用注册的处理器，如果没有则使用默认处理器
+            List<JsonDslProcessor> processors = ProcessorRegistry.getProcessors(definition.getType());
+            FilterProcessor processor;
+            if (!processors.isEmpty()) {
+                processor = (FilterProcessor) processors.get(0);
+            } else {
+                processor = ProcessorManager.getFilterProcessor();
+            }
             // 从上下文中获取输入数据
             @SuppressWarnings("unchecked")
             List<T> input = (List<T>) context.getParameter("input");
@@ -39,7 +54,14 @@ public class JsonDslProcessorEngine {
             }
             return processor.filter(input, definition, context);
         } else if (JsonDslDefinition.DslType.TRANSFORM.equals(definition.getType())) {
-            TransformProcessor processor = ProcessorManager.getTransformProcessor();
+            // 优先使用注册的处理器，如果没有则使用默认处理器
+            List<JsonDslProcessor> processors = ProcessorRegistry.getProcessors(definition.getType());
+            TransformProcessor processor;
+            if (!processors.isEmpty()) {
+                processor = (TransformProcessor) processors.get(0);
+            } else {
+                processor = ProcessorManager.getTransformProcessor();
+            }
             // 从上下文中获取输入数据
             @SuppressWarnings("unchecked")
             T input = (T) context.getParameter("input");
@@ -49,7 +71,14 @@ public class JsonDslProcessorEngine {
             T result = processor.transform(input, definition, context);
             return List.of(result);
         } else if (JsonDslDefinition.DslType.VALIDATE.equals(definition.getType())) {
-            ValidateProcessor processor = ProcessorManager.getValidateProcessor();
+            // 优先使用注册的处理器，如果没有则使用默认处理器
+            List<JsonDslProcessor> processors = ProcessorRegistry.getProcessors(definition.getType());
+            ValidateProcessor processor;
+            if (!processors.isEmpty()) {
+                processor = (ValidateProcessor) processors.get(0);
+            } else {
+                processor = ProcessorManager.getValidateProcessor();
+            }
             // 从上下文中获取输入数据
             @SuppressWarnings("unchecked")
             T input = (T) context.getParameter("input");
@@ -84,16 +113,37 @@ public class JsonDslProcessorEngine {
             }
             
             if (JsonDslDefinition.DslType.GENERATE.equals(definition.getType())) {
-                GenerateProcessor processor = ProcessorManager.getGenerateProcessor();
+                // 优先使用注册的处理器，如果没有则使用默认处理器
+                List<JsonDslProcessor> processors = ProcessorRegistry.getProcessors(definition.getType());
+                GenerateProcessor processor;
+                if (!processors.isEmpty()) {
+                    processor = (GenerateProcessor) processors.get(0);
+                } else {
+                    processor = ProcessorManager.getGenerateProcessor();
+                }
                 result = processor.generate(definition, context, targetType);
             } else if (JsonDslDefinition.DslType.FILTER.equals(definition.getType())) {
-                FilterProcessor processor = ProcessorManager.getFilterProcessor();
+                // 优先使用注册的处理器，如果没有则使用默认处理器
+                List<JsonDslProcessor> processors = ProcessorRegistry.getProcessors(definition.getType());
+                FilterProcessor processor;
+                if (!processors.isEmpty()) {
+                    processor = (FilterProcessor) processors.get(0);
+                } else {
+                    processor = ProcessorManager.getFilterProcessor();
+                }
                 if (result == null) {
                     throw new IllegalArgumentException("过滤处理器需要前置的生成结果");
                 }
                 result = processor.filter(result, definition, context);
             } else if (JsonDslDefinition.DslType.TRANSFORM.equals(definition.getType())) {
-                TransformProcessor processor = ProcessorManager.getTransformProcessor();
+                // 优先使用注册的处理器，如果没有则使用默认处理器
+                List<JsonDslProcessor> processors = ProcessorRegistry.getProcessors(definition.getType());
+                TransformProcessor processor;
+                if (!processors.isEmpty()) {
+                    processor = (TransformProcessor) processors.get(0);
+                } else {
+                    processor = ProcessorManager.getTransformProcessor();
+                }
                 if (result == null || result.isEmpty()) {
                     throw new IllegalArgumentException("转换处理器需要前置的生成结果");
                 }
@@ -102,7 +152,14 @@ public class JsonDslProcessorEngine {
                     .toList();
                 result = transformed;
             } else if (JsonDslDefinition.DslType.VALIDATE.equals(definition.getType())) {
-                ValidateProcessor processor = ProcessorManager.getValidateProcessor();
+                // 优先使用注册的处理器，如果没有则使用默认处理器
+                List<JsonDslProcessor> processors = ProcessorRegistry.getProcessors(definition.getType());
+                ValidateProcessor processor;
+                if (!processors.isEmpty()) {
+                    processor = (ValidateProcessor) processors.get(0);
+                } else {
+                    processor = ProcessorManager.getValidateProcessor();
+                }
                 if (result == null || result.isEmpty()) {
                     throw new IllegalArgumentException("校验处理器需要前置的生成结果");
                 }

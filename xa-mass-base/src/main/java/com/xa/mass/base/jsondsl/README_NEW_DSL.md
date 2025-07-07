@@ -656,16 +656,13 @@ public class ProcessorRegistry {
 ```java
 public class JsonDslProcessorEngine {
     // 处理单个 DSL
-    public static Object process(JsonDslDefinition definition);
-    public static Object process(JsonDslDefinition definition, ProcessingContext context);
+    public static <T> List<T> process(JsonDslDefinition definition, ProcessingContext context, Class<T> targetType);
     
     // 链式处理
-    public static Object processChain(List<JsonDslDefinition> definitions);
-    public static Object processChain(List<JsonDslDefinition> definitions, ProcessingContext context);
+    public static <T> List<T> processChain(List<JsonDslDefinition> definitions, ProcessingContext context, Class<T> targetType);
     
     // 从 JSON 处理
-    public static Object processFromJson(String jsonDsl);
-    public static Object processChainFromJson(List<String> jsonDslList);
+    public static <T> List<T> processFromJson(String jsonDsl, ProcessingContext context, Class<T> targetType);
     
     // 处理器管理
     public static void registerProcessor(JsonDslProcessor processor);

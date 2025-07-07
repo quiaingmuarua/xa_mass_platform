@@ -59,18 +59,6 @@ class DefaultGenerateProcessor implements GenerateProcessor {
     }
     
     @Override
-    public Object process(JsonDslDefinition definition, ProcessingContext context) {
-        // 从上下文中获取目标类型，如果没有则使用 Object.class
-        Class<?> targetType = (Class<?>) context.getParameter("targetType");
-        if (targetType == null) {
-            targetType = Object.class;
-        }
-        
-        // 调用强类型方法
-        return generate(definition, context, targetType);
-    }
-    
-    @Override
     public String getName() {
         return "DefaultGenerateProcessor";
     }

@@ -23,6 +23,8 @@ public class IntegrationTest {
     @BeforeEach
     void setUp() {
         context = new ProcessingContext("integration-test");
+        // 清理之前的注册
+        ProcessorRegistry.clear();
         // 注册所有类型的处理器
         JsonDslProcessorEngine.registerProcessor(new TestGenerateProcessor());
         JsonDslProcessorEngine.registerProcessor(new TestFilterProcessor());
@@ -106,8 +108,13 @@ public class IntegrationTest {
         
         // 创建 DSL
         JsonDslDefinition dsl = new JsonDslDefinition("context-test", JsonDslDefinition.DslType.GENERATE);
+        // 添加必需的 context 配置
+        JsonDslContext dslContext = new JsonDslContext();
+        dslContext.setModel("java.util.HashMap");
+        dslContext.setCount(1);
+        dsl.setContext(dslContext);
         
-        // 处理 DSL
+        // 处理 DSL - 使用注册的处理器
         List<Map> result = JsonDslProcessorEngine.process(dsl, context, Map.class);
         
         // 验证结果包含上下文信息
@@ -128,8 +135,13 @@ public class IntegrationTest {
         
         // 创建 DSL
         JsonDslDefinition dsl = new JsonDslDefinition("debug-test", JsonDslDefinition.DslType.GENERATE);
+        // 添加必需的 context 配置
+        JsonDslContext dslContext = new JsonDslContext();
+        dslContext.setModel("java.util.HashMap");
+        dslContext.setCount(1);
+        dsl.setContext(dslContext);
         
-        // 处理 DSL
+        // 处理 DSL - 使用注册的处理器
         List<Map> result = JsonDslProcessorEngine.process(dsl, context, Map.class);
         
         // 验证调试信息
@@ -164,6 +176,11 @@ public class IntegrationTest {
         
         // 创建 DSL
         JsonDslDefinition dsl = new JsonDslDefinition("error-test", JsonDslDefinition.DslType.GENERATE);
+        // 添加必需的 context 配置
+        JsonDslContext dslContext = new JsonDslContext();
+        dslContext.setModel("java.util.HashMap");
+        dslContext.setCount(1);
+        dsl.setContext(dslContext);
         
         // 应该抛出异常
         assertThrows(RuntimeException.class, () -> {
@@ -176,11 +193,11 @@ public class IntegrationTest {
         // 注册处理器
         JsonDslProcessorEngine.registerProcessor(new TestGenerateProcessor());
         
-        // 创建 JSON DSL
+        // 创建 JSON DSL - 使用正确的枚举值格式
         String jsonDsl = """
             {
                 "uniqueId": "json-integration-test",
-                "type": "generate",
+                "type": "GENERATE",
                 "priority": 1,
                 "description": "Integration test from JSON",
                 "context": {
@@ -194,10 +211,10 @@ public class IntegrationTest {
             }
             """;
         
-        // 处理 JSON DSL
+        // 处理 JSON DSL - 使用注册的处理器
         List<Map> result = JsonDslProcessorEngine.processFromJson(jsonDsl, context, Map.class);
         
-        // 验证结果
+        // 验证结果 - TestGenerateProcessor 返回 1 个对象
         assertNotNull(result);
         assertEquals(1, result.size());
     }
@@ -241,8 +258,8 @@ public class IntegrationTest {
         
         @Override
         public <T> List<T> filter(List<T> input, JsonDslDefinition definition, ProcessingContext context) {
-            // 简单的过滤逻辑：保留所有对象
-            return input;
+            // 过滤掉所有对象，返回空列表
+            return new ArrayList<>();
         }
         
         @Override

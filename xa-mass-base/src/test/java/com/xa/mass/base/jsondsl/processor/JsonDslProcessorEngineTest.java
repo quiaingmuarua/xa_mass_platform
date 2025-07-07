@@ -58,7 +58,7 @@ public class JsonDslProcessorEngineTest {
         JsonDslProcessorEngine.registerProcessor(testProcessor);
         
         // 处理单个 DSL
-        List<Map> result = JsonDslProcessorEngine.process(definition, Map.class);
+        List<Map> result = JsonDslProcessorEngine.process(definition, context, Map.class);
         assertNotNull(result);
         assertFalse(result.isEmpty());
         assertEquals("TestGenerateProcessor processed: test-dsl", result.get(0).get("message"));
@@ -88,7 +88,7 @@ public class JsonDslProcessorEngineTest {
         List<JsonDslDefinition> dslList = List.of(definition);
         
         // 链式处理
-        List<Map> result = JsonDslProcessorEngine.processChain(dslList, Map.class);
+        List<Map> result = JsonDslProcessorEngine.processChain(dslList, context, Map.class);
         assertNotNull(result);
         assertFalse(result.isEmpty());
         assertEquals("TestGenerateProcessor processed: test-dsl", result.get(0).get("message"));
@@ -132,7 +132,7 @@ public class JsonDslProcessorEngineTest {
             """;
         
         // 从 JSON 处理
-        List<Map> result = JsonDslProcessorEngine.processFromJson(jsonDsl, Map.class);
+        List<Map> result = JsonDslProcessorEngine.processFromJson(jsonDsl, context, Map.class);
         assertNotNull(result);
         assertFalse(result.isEmpty());
         assertEquals("TestGenerateProcessor processed: json-test-dsl", result.get(0).get("message"));
@@ -201,7 +201,7 @@ public class JsonDslProcessorEngineTest {
         );
         
         // 链式处理 JSON
-        List<Map> result = JsonDslProcessorEngine.processChainFromJson(jsonDslList, Map.class);
+        List<Map> result = JsonDslProcessorEngine.processChainFromJson(jsonDslList, context, Map.class);
         assertNotNull(result);
         assertFalse(result.isEmpty());
         assertEquals("TestGenerateProcessor processed: json-test-dsl-2", result.get(0).get("message"));
@@ -327,7 +327,7 @@ public class JsonDslProcessorEngineTest {
         String invalidJson = "{ invalid json }";
         
         assertThrows(Exception.class, () -> {
-            JsonDslProcessorEngine.processFromJson(invalidJson, Map.class);
+            JsonDslProcessorEngine.processFromJson(invalidJson, context, Map.class);
         });
     }
     
@@ -338,14 +338,14 @@ public class JsonDslProcessorEngineTest {
         
         // 应该抛出异常（因为 FILTER 类型需要不同的处理方式）
         assertThrows(IllegalArgumentException.class, () -> {
-            JsonDslProcessorEngine.process(unsupportedDsl, Map.class);
+            JsonDslProcessorEngine.process(unsupportedDsl, context, Map.class);
         });
     }
     
     @Test
     void testProcessWithNullDefinition() {
         assertThrows(NullPointerException.class, () -> {
-            JsonDslProcessorEngine.process(null, Map.class);
+            JsonDslProcessorEngine.process(null, context, Map.class);
         });
     }
     
@@ -359,14 +359,14 @@ public class JsonDslProcessorEngineTest {
     @Test
     void testProcessChainWithNullList() {
         assertThrows(NullPointerException.class, () -> {
-            JsonDslProcessorEngine.processChain(null, Map.class);
+            JsonDslProcessorEngine.processChain(null, context, Map.class);
         });
     }
     
     @Test
     void testProcessChainWithEmptyList() {
         List<JsonDslDefinition> emptyList = List.of();
-        List<Map> result = JsonDslProcessorEngine.processChain(emptyList, Map.class);
+        List<Map> result = JsonDslProcessorEngine.processChain(emptyList, context, Map.class);
         assertNull(result);
     }
     

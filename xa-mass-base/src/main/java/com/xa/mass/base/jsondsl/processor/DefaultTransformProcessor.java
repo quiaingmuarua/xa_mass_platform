@@ -40,18 +40,6 @@ class DefaultTransformProcessor implements TransformProcessor {
     }
     
     @Override
-    public Object process(JsonDslDefinition definition, ProcessingContext context) {
-        // 从上下文中获取输入数据
-        Object input = context.getParameter("input");
-        if (input == null) {
-            throw new IllegalArgumentException("转换处理器需要上下文中提供 input 参数");
-        }
-        
-        // 调用强类型方法
-        return transform(input, definition, context);
-    }
-    
-    @Override
     public String getName() {
         return "DefaultTransformProcessor";
     }
