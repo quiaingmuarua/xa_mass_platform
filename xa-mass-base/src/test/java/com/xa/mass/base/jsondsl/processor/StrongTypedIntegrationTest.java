@@ -61,7 +61,8 @@ public class StrongTypedIntegrationTest {
         filterDsl.setFieldDsl(filterFieldDsl);
         
         // 过滤用户数据
-        List<TestUser> filteredUsers = filterProcessor.filter(users, filterDsl, context);
+        FilterResult<TestUser> filteredResult = filterProcessor.filter(users, filterDsl, context);
+        List<TestUser> filteredUsers = filteredResult.getPassed();
         assertNotNull(filteredUsers);
         
         // 验证所有用户都是成年人（如果过滤后有结果）
@@ -146,7 +147,8 @@ public class StrongTypedIntegrationTest {
         filterFieldDsl.put("age", "$EXPR(age >= 18)");
         filterDsl.setFieldDsl(filterFieldDsl);
         
-        List<TestUser> adultUsers = filterProcessor.filter(users, filterDsl, context);
+        FilterResult<TestUser> adultResult = filterProcessor.filter(users, filterDsl, context);
+        List<TestUser> adultUsers = adultResult.getPassed();
         assertNotNull(adultUsers);
         
         // 3. 转换用户数据（如果过滤后有结果）

@@ -66,24 +66,26 @@ class DefaultFilterProcessor implements FilterProcessor {
         return 200; // 过滤处理器优先级
     }
 
-    public <T> FilterReport<T> filterWithReport(List<T> data, JsonDslDefinition def, ProcessingContext ctx) {
-        List<T> passed = new ArrayList<>();
-        List<FilterFail<T>> failed = new ArrayList<>();
-        JsonDslFilter<T> filter = DslFilterFactory.createJsonDslFilter(def.getUniqueId(), def.getDescription(), com.xa.mass.base.jsondsl.parser.JsonDslParser.toLegacyFormat(def));
+    @Override
+    public <T> FilterResult<T> filter(List<T> data, JsonDslDefinition def, ProcessingContext ctx) {
+        boolean includeFailed = ctx != null && Boolean.TRUE.equals(ctx.getParameter("includeFailedDetail", true));
+        // 内联原filterWithReport逻辑
+        List<T> passed = new java.util.ArrayList<>();
+        java.util.List<FilterReport.FilterFail<T>> failed = new java.util.ArrayList<>();
+        com.xa.mass.base.jsondsl.filter.JsonDslFilter<T> filter = com.xa.mass.base.jsondsl.filter.DslFilterFactory.createJsonDslFilter(def.getUniqueId(), def.getDescription(), com.xa.mass.base.jsondsl.parser.JsonDslParser.toLegacyFormat(def));
         for (T obj : data) {
-            List<String> failReasons = new ArrayList<>();
-            Map<String, Object> objMap;
+            java.util.List<String> failReasons = new java.util.ArrayList<>();
+            java.util.Map<String, Object> objMap;
             try {
                 objMap = filter.objectToMap(obj);
             } catch (Exception e) {
                 failReasons.add("对象转Map失败: " + e.getMessage());
-                failed.add(new FilterFail<>(obj, failReasons));
+                failed.add(new FilterReport.FilterFail<>(obj, failReasons));
                 continue;
             }
-            // 字段条件
-            Map<String, Object> fieldConds = def.getFieldDsl();
+            java.util.Map<String, Object> fieldConds = def.getFieldDsl();
             if (fieldConds != null) {
-                for (Map.Entry<String, Object> entry : fieldConds.entrySet()) {
+                for (java.util.Map.Entry<String, Object> entry : fieldConds.entrySet()) {
                     String field = entry.getKey();
                     Object cond = entry.getValue();
                     Object val = objMap.get(field);
@@ -93,10 +95,9 @@ class DefaultFilterProcessor implements FilterProcessor {
                     }
                 }
             }
-            // 组合条件
-            Map<String, Object> combineConds = def.getCombineDsl();
+            java.util.Map<String, Object> combineConds = def.getCombineDsl();
             if (combineConds != null) {
-                for (Map.Entry<String, Object> entry : combineConds.entrySet()) {
+                for (java.util.Map.Entry<String, Object> entry : combineConds.entrySet()) {
                     String exprName = entry.getKey();
                     String expr = String.valueOf(entry.getValue());
                     try {
@@ -117,9 +118,14 @@ class DefaultFilterProcessor implements FilterProcessor {
             if (failReasons.isEmpty()) {
                 passed.add(obj);
             } else {
-                failed.add(new FilterFail<>(obj, failReasons));
+                failed.add(new FilterReport.FilterFail<>(obj, failReasons));
             }
         }
-        return new FilterReport<>(passed, failed);
+        if (includeFailed) {
+            return new FilterResult<>(passed, failed, data.size());
+        } else {
+            return new FilterResult<>(passed, null, data.size());
+        }
     }
+} 
 } 

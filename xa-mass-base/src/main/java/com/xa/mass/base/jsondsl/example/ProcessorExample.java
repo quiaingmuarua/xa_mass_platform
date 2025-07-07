@@ -105,7 +105,8 @@ public class ProcessorExample {
         
         // 过滤数据
         try {
-            List<TestUser> filteredUsers = filterProcessor.filter(testUsers, filterDsl, context);
+            FilterResult<TestUser> filteredResult = filterProcessor.filter(testUsers, filterDsl, context);
+            List<TestUser> filteredUsers = filteredResult.getPassed();
             System.out.println("原始用户数量: " + testUsers.size());
             System.out.println("过滤后用户数量: " + filteredUsers.size());
             for (TestUser user : filteredUsers) {

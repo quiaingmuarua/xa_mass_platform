@@ -14,16 +14,13 @@ import java.util.List;
 public interface FilterProcessor extends JsonDslProcessor {
     
     /**
-     * 过滤对象列表
-     * 
+     * 过滤对象列表，返回结构化结果
      * @param input 输入对象列表
      * @param definition DSL 定义
-     * @param context 处理上下文
-     * @return 过滤后的对象列表
+     * @param context 处理上下文，可通过参数控制是否包含失败明细、统计等
+     * @return 过滤结果
      */
-    <T> List<T> filter(List<T> input, JsonDslDefinition definition, ProcessingContext context);
-    
-    <T> FilterReport<T> filterWithReport(List<T> data, JsonDslDefinition def, ProcessingContext ctx);
+    <T> FilterResult<T> filter(List<T> input, JsonDslDefinition definition, ProcessingContext context);
     
     @Override
     default boolean supports(JsonDslDefinition.DslType type) {

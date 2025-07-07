@@ -183,7 +183,7 @@ public class ProcessorRegistryTest {
                 result = processor.generate(dsl, context, Map.class);
             } else if (JsonDslDefinition.DslType.FILTER.equals(dsl.getType())) {
                 FilterProcessor processor = ProcessorRegistry.getFilterProcessor();
-                result = processor.filter(result, dsl, context);
+                result = processor.filter(result, dsl, context).getPassed();
             }
         }
         assertNotNull(result);
@@ -309,14 +309,9 @@ public class ProcessorRegistryTest {
     private static class TestFilterProcessor implements FilterProcessor {
         
         @Override
-        public <T> List<T> filter(List<T> input, JsonDslDefinition definition, ProcessingContext context) {
-            // 简单的过滤逻辑：保留所有对象
-            return input;
-        }
-
-        @Override
-        public <T> FilterReport<T> filterWithReport(List<T> data, JsonDslDefinition def, ProcessingContext ctx) {
-            return null;
+        public <T> FilterResult<T> filter(List<T> input, JsonDslDefinition def, ProcessingContext ctx) {
+            // 简单实现：全部通过
+            return new FilterResult<>(input, null, input.size());
         }
 
         @Override

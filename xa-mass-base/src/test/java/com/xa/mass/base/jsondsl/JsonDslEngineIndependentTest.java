@@ -18,24 +18,9 @@ public class JsonDslEngineIndependentTest {
     static class TestFilterProcessor implements FilterProcessor {
         
         @Override
-        public <T> List<T> filter(List<T> input, JsonDslDefinition definition, ProcessingContext context) {
-            // 过滤掉不包含或为 null 的 age/status/score 字段的对象
-            List<T> result = new java.util.ArrayList<>();
-            for (T obj : input) {
-                if (obj instanceof java.util.Map) {
-                    java.util.Map<?,?> map = (java.util.Map<?,?>) obj;
-                    if (!map.containsKey("age") || map.get("age") == null) continue;
-                    if (!map.containsKey("status") || map.get("status") == null) continue;
-                    if (!map.containsKey("score") || map.get("score") == null) continue;
-                }
-                result.add(obj);
-            }
-            return result;
-        }
-
-        @Override
-        public <T> FilterReport<T> filterWithReport(List<T> data, JsonDslDefinition def, ProcessingContext ctx) {
-            return null;
+        public <T> FilterResult<T> filter(List<T> input, JsonDslDefinition def, ProcessingContext ctx) {
+            // 简单实现：全部通过
+            return new FilterResult<>(input, null, input.size());
         }
 
         @Override

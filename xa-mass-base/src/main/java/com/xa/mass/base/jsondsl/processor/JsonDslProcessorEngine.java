@@ -53,7 +53,8 @@ public class JsonDslProcessorEngine {
             if (input == null) {
                 throw new IllegalArgumentException("过滤处理器需要上下文中提供 input 参数");
             }
-            return processor.filter(input, definition, context);
+            FilterResult<T> result = processor.filter(input, definition, context);
+            return result.getPassed();
         } else if (JsonDslDefinition.DslType.TRANSFORM.equals(definition.getType())) {
             // 优先使用注册的处理器，如果没有则使用默认处理器
             List<JsonDslProcessor> processors = ProcessorRegistry.getProcessors(definition.getType());
@@ -135,7 +136,8 @@ public class JsonDslProcessorEngine {
                 if (result == null) {
                     throw new IllegalArgumentException("过滤处理器需要前置的生成结果");
                 }
-                result = processor.filter(result, definition, context);
+                FilterResult<T> filterResult = processor.filter(result, definition, context);
+                result = filterResult.getPassed();
             } else if (JsonDslDefinition.DslType.TRANSFORM.equals(definition.getType())) {
                 // 优先使用注册的处理器，如果没有则使用默认处理器
                 List<JsonDslProcessor> processors = ProcessorRegistry.getProcessors(definition.getType());

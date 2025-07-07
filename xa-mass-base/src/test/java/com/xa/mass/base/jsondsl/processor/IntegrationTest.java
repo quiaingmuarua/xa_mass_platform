@@ -257,14 +257,9 @@ public class IntegrationTest {
     private static class TestFilterProcessor implements FilterProcessor {
         
         @Override
-        public <T> List<T> filter(List<T> input, JsonDslDefinition definition, ProcessingContext context) {
-            // 过滤掉所有对象，返回空列表
-            return new ArrayList<>();
-        }
-
-        @Override
-        public <T> FilterReport<T> filterWithReport(List<T> data, JsonDslDefinition def, ProcessingContext ctx) {
-            return null;
+        public <T> FilterResult<T> filter(List<T> input, JsonDslDefinition def, ProcessingContext ctx) {
+            // 简单实现：全部通过
+            return new FilterResult<>(input, null, input.size());
         }
 
         @Override

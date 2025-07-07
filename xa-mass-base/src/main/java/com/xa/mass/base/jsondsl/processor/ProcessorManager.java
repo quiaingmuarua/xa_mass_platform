@@ -127,7 +127,8 @@ public class ProcessorManager {
                 if (result == null) {
                     throw new IllegalArgumentException("过滤处理器需要前置的生成结果");
                 }
-                result = processor.filter(result, definition, context);
+                FilterResult<T> filterResult = ((FilterProcessor) processor).filter(result, definition, context);
+                result = filterResult.getPassed();
             } else if (JsonDslDefinition.DslType.TRANSFORM.equals(definition.getType())) {
                 TransformProcessor processor = getTransformProcessor();
                 if (result == null || result.isEmpty()) {
