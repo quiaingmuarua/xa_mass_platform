@@ -157,11 +157,11 @@ public class JsonDslFilter<T> implements DslFilter<T, T> {
                 return compareNumbers(fieldValue, condObj.get("lte").getAsNumber()) <= 0;
             }
             if (condObj.has("in")) {
-                List<String> values = GSON.fromJson(condObj.get("in"), List.class);
+                List values = GSON.fromJson(condObj.get("in"), List.class);
                 return fieldValue != null && values.contains(fieldValue.toString());
             }
             if (condObj.has("notIn")) {
-                List<String> values = GSON.fromJson(condObj.get("notIn"), List.class);
+                List values = GSON.fromJson(condObj.get("notIn"), List.class);
                 return fieldValue == null || !values.contains(fieldValue.toString());
             }
         }

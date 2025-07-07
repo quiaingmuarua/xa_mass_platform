@@ -10,6 +10,9 @@ import com.xa.mass.base.jsondsl.filter.DslFilter;
 import com.xa.mass.base.jsondsl.filter.DslFilterFactory;
 import com.xa.mass.base.jsondsl.filter.JsonDslFilter;
 import com.xa.mass.base.jsondsl.generate.DslObjectBuilder;
+import com.xa.mass.base.jsondsl.model.JsonDslDefinition;
+import com.xa.mass.base.jsondsl.processor.FilterResult;
+import com.xa.mass.base.jsondsl.processor.ProcessingContext;
 import com.xa.mass.base.jsondsl.util.GsonConfig;
 
 import java.util.*;
@@ -69,8 +72,29 @@ public class JsonDslEngine {
         
         return result;
     }
-
     // ==================== Filter 方法 ====================
+
+    /**
+     * 根据 JSON-DSL 字符串过滤数据列表。
+     * @param data 待过滤的数据列表
+     * @param jsonDsl 过滤器 JSON-DSL 字符串
+     * @param <T> 数据类型
+     * @return 过滤后的数据列表
+     */
+    public static <T> List<T> filter(List<T> data, String jsonDsl) {
+        if (data == null || data.isEmpty()) return Collections.emptyList();
+        // 1. 解析 jsonDsl 为 JsonDslDefinition
+        com.xa.mass.base.jsondsl.model.JsonDslDefinition filterDef =
+                com.xa.mass.base.jsondsl.parser.JsonDslParser.parse(jsonDsl);
+        filterDef.validate();
+        // 2. 获取 FilterProcessor
+        com.xa.mass.base.jsondsl.processor.FilterProcessor filterProcessor =
+                com.xa.mass.base.jsondsl.processor.ProcessorRegistry.getFilterProcessor();
+        // 3. 过滤
+        com.xa.mass.base.jsondsl.processor.FilterResult<T> result =
+                filterProcessor.filter(data, filterDef, new com.xa.mass.base.jsondsl.processor.ProcessingContext("JsonDslEngine.filter"));
+        return result.getPassed();
+    }
 
     /**
      * 检查根 DSL 是否包含多个模型定义

@@ -37,7 +37,7 @@ public class NewIntegrationExample {
           "author": "integration_test",
           "priority": 10,
           "fieldDsl": {
-            "deviceId": {"lt": 50},
+            "deviceId": {"lt":100},
             "groupId": {"lt": 100},
             "status": {"eq": "ONLINE"}
           },
@@ -51,7 +51,7 @@ public class NewIntegrationExample {
         filterDefFromJson.validate();
         
         // 2. 过滤：deviceId < 100，groupId < 25，status = ONLINE
-        List<Device> filteredDevices = filterDevices(devices, filterDef);
+        List<Device> filteredDevices = filterDevices(devices, filterDefFromJson);
         System.out.println("过滤后剩余 " + filteredDevices.size() + " 个设备");
         
         // 2.1 explain/report: 输出被过滤设备及原因
