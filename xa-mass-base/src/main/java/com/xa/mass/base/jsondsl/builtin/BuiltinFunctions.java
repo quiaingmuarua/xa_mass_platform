@@ -15,9 +15,7 @@ interface BuiltinFunction {
 
 /**
  * 内置函数集合，提供常用的 mock 数据生成功能。
- * 
- * @deprecated 建议使用新的标准化 DSL 结构，通过 {@link com.xa.mass.base.jsondsl.model.JsonDslDefinition} 
- * 和 {@link com.xa.mass.base.jsondsl.parser.JsonDslParser} 进行 DSL 定义和解析。
+ *
  * 新标准提供更丰富的表达式引擎支持和内置函数扩展机制。
  *
  * <p><b>常用 DSL 配置示例：</b></p>
@@ -40,7 +38,6 @@ interface BuiltinFunction {
  *   <li>第4个参数（可选）：格式化字符串（如 "yyyy-MM-dd HH:mm:ss"），不填则返回 LocalDateTime 对象</li>
  * </ul>
  */
-@Deprecated(since = "2.0.0", forRemoval = true)
 public class BuiltinFunctions {
     private static final Random RANDOM = new Random();
     private static final Map<BuiltinFunc, BuiltinFunction> FUNCTION_MAP = new HashMap<>();

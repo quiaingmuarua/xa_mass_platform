@@ -5,11 +5,9 @@ import java.util.Map;
 
 /**
  * 递归 mock/DSL 生成时的作用域上下文，支持多级作用域链。
- * 
- * @deprecated 建议使用新的标准化 DSL 上下文 {@link com.xa.mass.base.jsondsl.model.JsonDslContext}，
+ *
  * 它提供更好的类型安全、验证和扩展性。新标准支持更丰富的上下文配置和元数据管理。
  */
-@Deprecated(since = "2.0.0", forRemoval = true)
 public class DslContext {
     private final Map<String, Object> variables = new HashMap<>();
     private final DslContext parent;

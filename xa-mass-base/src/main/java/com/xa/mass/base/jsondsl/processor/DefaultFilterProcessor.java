@@ -21,6 +21,16 @@ class DefaultFilterProcessor implements FilterProcessor {
     
     @Override
     public <T> FilterResult<T> filter(List<T> data, JsonDslDefinition def, ProcessingContext ctx) {
+        // 参数校验
+        if (data == null) throw new IllegalArgumentException("input data cannot be null");
+        if (def == null) throw new IllegalArgumentException("definition cannot be null");
+        if (ctx == null) throw new IllegalArgumentException("context cannot be null");
+        if (def.getType() != JsonDslDefinition.DslType.FILTER) {
+            throw new com.xa.mass.base.jsondsl.builtin.JsonDslException("DSL type must be FILTER");
+        }
+        if (def.getFieldDsl() == null || def.getFieldDsl().isEmpty()) {
+            throw new com.xa.mass.base.jsondsl.builtin.JsonDslException("fieldDsl must not be empty");
+        }
         boolean includeFailed = ctx != null && Boolean.TRUE.equals(ctx.getParameter("includeFailedDetail", true));
         // 内联原filterWithReport逻辑
         List<T> passed = new java.util.ArrayList<>();

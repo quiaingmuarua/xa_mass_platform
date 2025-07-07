@@ -72,45 +72,6 @@ public class JsonDslEngine {
 
     // ==================== Filter 方法 ====================
 
-    // ==================== 便捷方法 ====================
-
-    /**
-     * 创建简单过滤器的 JSON 配置
-     * @param field 字段名
-     * @param operator 操作符
-     * @param value 比较值
-     * @return 过滤器配置 JSON 字符串
-     */
-    public static String createFilterConfig(String field, String operator, Object value) {
-        return String.format("{\"conditions\":{\"%s\":{\"%s\":%s}}}",
-            field, operator, value instanceof String ? "\"" + value + "\"" : value);
-    }
-
-    /**
-     * 创建范围过滤器的 JSON 配置
-     * @param field 字段名
-     * @param min 最小值
-     * @param max 最大值
-     * @return 过滤器配置 JSON 字符串
-     */
-    public static String createRangeFilterConfig(String field, Number min, Number max) {
-        return String.format("{\"conditions\":{\"%s\":{\"gte\":%s,\"lte\":%s}}}",
-            field, min, max);
-    }
-
-    /**
-     * 创建表达式过滤器的 JSON 配置
-     * @param expression 表达式字符串
-     * @return 过滤器配置 JSON 字符串
-     * 
-     * @deprecated 建议使用新的标准化 DSL 结构，通过 {@link com.xa.mass.base.jsondsl.model.JsonDslDefinition} 
-     * 定义 filter 类型的 DSL，然后使用 {@link com.xa.mass.base.jsondsl.parser.JsonDslParser} 解析。
-     */
-    @Deprecated(since = "2.0.0", forRemoval = true)
-    public static String createExpressionFilterConfig(String expression) {
-        return String.format("{\"expression\":\"%s\"}", expression);
-    }
-
     /**
      * 检查根 DSL 是否包含多个模型定义
      */
