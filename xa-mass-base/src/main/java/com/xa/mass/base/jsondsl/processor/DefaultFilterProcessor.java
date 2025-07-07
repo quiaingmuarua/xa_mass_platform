@@ -20,53 +20,6 @@ import com.xa.mass.base.jsondsl.processor.FilterReport.FilterFail;
 class DefaultFilterProcessor implements FilterProcessor {
     
     @Override
-    public <T> List<T> filter(List<T> input, JsonDslDefinition definition, ProcessingContext context) {
-        // 参数验证
-        if (input == null) {
-            throw new IllegalArgumentException("Input list cannot be null");
-        }
-        if (definition == null) {
-            throw new IllegalArgumentException("Definition cannot be null");
-        }
-        if (context == null) {
-            throw new IllegalArgumentException("Context cannot be null");
-        }
-        
-        if (context.isDebug()) {
-            System.out.println("[DefaultFilterProcessor] 开始处理 DSL: " + definition.getUniqueId());
-        }
-        
-        // 验证 DSL 定义
-        definition.validate();
-        
-        // 转换为传统格式
-        String filterConfig = JsonDslParser.toLegacyFormat(definition);
-        
-        // 应用过滤器
-        JsonDslFilter<Object> filter = DslFilterFactory.createJsonDslFilter(
-            "autoFilter", "自动生成的过滤器", filterConfig
-        );
-        @SuppressWarnings("unchecked")
-        List<T> result = (List<T>) filter.filterList((List<Object>) input);
-        
-        if (context.isDebug()) {
-            System.out.println("[DefaultFilterProcessor] 过滤完成，原始数量: " + input.size() + ", 过滤后数量: " + result.size());
-        }
-        
-        return result;
-    }
-    
-    @Override
-    public String getName() {
-        return "DefaultFilterProcessor";
-    }
-    
-    @Override
-    public int getPriority() {
-        return 200; // 过滤处理器优先级
-    }
-
-    @Override
     public <T> FilterResult<T> filter(List<T> data, JsonDslDefinition def, ProcessingContext ctx) {
         boolean includeFailed = ctx != null && Boolean.TRUE.equals(ctx.getParameter("includeFailedDetail", true));
         // 内联原filterWithReport逻辑
@@ -127,5 +80,14 @@ class DefaultFilterProcessor implements FilterProcessor {
             return new FilterResult<>(passed, null, data.size());
         }
     }
-} 
+    
+    @Override
+    public String getName() {
+        return "DefaultFilterProcessor";
+    }
+    
+    @Override
+    public int getPriority() {
+        return 200; // 过滤处理器优先级
+    }
 } 

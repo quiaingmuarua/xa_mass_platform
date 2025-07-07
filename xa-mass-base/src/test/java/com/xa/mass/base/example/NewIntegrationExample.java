@@ -33,16 +33,16 @@ public class NewIntegrationExample {
         {
           "uniqueId": "device_filter_json",
           "type": "filter",
-          "description": "过滤设备：deviceId < 100，groupId < 25，status = ONLINE (from JSON)",
+          "description": "过滤设备：deviceId < 100，groupId < 100，status = ONLINE (from JSON)",
           "author": "integration_test",
           "priority": 10,
           "fieldDsl": {
-            "deviceId": {"lt": 100},
-            "groupId": {"lt": 55},
+            "deviceId": {"lt": 50},
+            "groupId": {"lt": 100},
             "status": {"eq": "ONLINE"}
           },
           "combineDsl": {
-            "device_group_check": "parseInt(deviceId) < 100 && parseInt(groupId) < 55",
+            "device_group_check": "parseInt(deviceId) < 100 && parseInt(groupId) < 100",
             "status_check": "status == 'ONLINE'"
           }
         }
@@ -71,7 +71,7 @@ public class NewIntegrationExample {
         );
         
         // 4. 统计信息
-        printStatistics(devices, filteredDevices);
+//        printStatistics(devices, filteredDevices);
     }
     
     /**
@@ -131,13 +131,26 @@ public class NewIntegrationExample {
     private static void explainFilter(List<Device> devices, JsonDslDefinition filterDef) {
         System.out.println("\n=== 过滤解释（explain/report） ===");
         FilterProcessor filterProcessor = ProcessorRegistry.getFilterProcessor();
-        FilterReport<Device> report = filterProcessor.filterWithReport(devices, filterDef, new ProcessingContext("test-context"));
+        FilterResult<Device> report = filterProcessor.filter(devices, filterDef, new ProcessingContext("test-context"));
         System.out.println("通过的设备数: " + report.getPassed().size());
         System.out.println("被过滤的设备及原因:");
         for (FilterReport.FilterFail<Device> fail : report.getFailed()) {
             Device d = fail.getObject();
             System.out.println("设备: " + d.getDeviceId() + ", 组: " + d.getGroupId() + ", 状态: " + d.getStatus()
                 + ", 未通过: " + String.join("; ", fail.getFailedConditions()));
+        }
+        // 统计每个条件的被拒绝率
+        Map<String, Integer> failCount = new HashMap<>();
+        int total = devices.size();
+        for (FilterReport.FilterFail<Device> fail : report.getFailed()) {
+            for (String cond : fail.getFailedConditions()) {
+                failCount.put(cond, failCount.getOrDefault(cond, 0) + 1);
+            }
+        }
+        System.out.println("各条件被拒绝率：");
+        for (Map.Entry<String, Integer> entry : failCount.entrySet()) {
+            double rate = (double) entry.getValue() / total * 100;
+            System.out.printf("条件 [%s] 被拒绝率: %.2f%% (%d/%d)\n", entry.getKey(), rate, entry.getValue(), total);
         }
     }
     

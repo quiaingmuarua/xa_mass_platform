@@ -62,7 +62,8 @@ public class FilterProcessorTest {
         definition.setFieldDsl(fieldDsl);
         
         // 过滤数据
-        List<TestUser> result = processor.filter(testUsers, definition, context);
+        FilterResult<TestUser> filterResult = processor.filter(testUsers, definition, context);
+        List<TestUser> result = filterResult.getPassed();
         
         // 验证结果
         assertNotNull(result);
@@ -98,7 +99,8 @@ public class FilterProcessorTest {
         definition.setCombineDsl(combineDsl);
         
         // 过滤数据
-        List<TestUser> result = processor.filter(testUsers, definition, context);
+        FilterResult<TestUser> filterResult = processor.filter(testUsers, definition, context);
+        List<TestUser> result = filterResult.getPassed();
         
         // 验证结果
         assertNotNull(result);
@@ -122,7 +124,8 @@ public class FilterProcessorTest {
         fieldDsl.put("age", "$EXPR(age > 30)");
         definition.setFieldDsl(fieldDsl);
         
-        List<TestUser> result = processor.filter(emptyList, definition, context);
+        FilterResult<TestUser> filterResult = processor.filter(emptyList, definition, context);
+        List<TestUser> result = filterResult.getPassed();
         
         assertNotNull(result);
         assertEquals(0, result.size());
@@ -154,7 +157,8 @@ public class FilterProcessorTest {
         fieldDsl.put("age", "$EXPR(age > 30)");
         definition.setFieldDsl(fieldDsl);
         
-        List<TestUser> result = processor.filter(testUsers, definition, context);
+        FilterResult<TestUser> filterResult = processor.filter(testUsers, definition, context);
+        List<TestUser> result = filterResult.getPassed();
         assertNotNull(result);
         assertTrue(result.size() >= 0);
     }
