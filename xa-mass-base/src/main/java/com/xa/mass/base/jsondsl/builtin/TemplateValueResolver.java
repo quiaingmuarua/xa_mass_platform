@@ -18,15 +18,15 @@ public class TemplateValueResolver {
 
     /**
      * 递归解析字段值，支持内置函数、Map、List、普通值。
-     * @param value 字段值
+     * @param rule 字段值
      * @param context DslContext 上下文变量（支持多级作用域）
      * @return mock 后的值
      */
-    public static Object resolve(Object value, DslContext context) {
-        if (value == null) {
+    public static Object resolve(Object rule, DslContext context) {
+        if (rule == null) {
             return null;
         }
-        if (value instanceof Map<?, ?> map) {
+        if (rule instanceof Map<?, ?> map) {
             // 只处理内置函数
             if (isBuiltinFunction(map)) {
                 String funcKey = (String) map.keySet().iterator().next();
@@ -34,14 +34,14 @@ public class TemplateValueResolver {
                 if ("$EXPR".equalsIgnoreCase(funcKey)) {
                     Object exprObj = map.get(funcKey);
                     // 合并当前作用域和父作用域的所有变量
-                    Map<String, Object> vars = new HashMap<>();
+                    Map<String, Object> qlContext = new HashMap<>();
                     DslContext ctx = context;
                     while (ctx != null) {
-                        vars.putAll(ctx.getVariables());
+                        qlContext.putAll(ctx.getVariables());
                         ctx = ctx.getParent();
                     }
                     try {
-                        return DslExprExecutor.execute(exprObj, vars);
+                        return DslExprExecutor.execute(exprObj, qlContext);
                     } catch (Exception e) {
                         throw new JsonDslException("$EXPR 执行失败: " + exprObj, e);
                     }
@@ -52,7 +52,10 @@ public class TemplateValueResolver {
                     return getContextValue(param, context);
                 }
                 // 其他函数直接使用 BuiltinFunctions.eval
-                return BuiltinFunctions.eval(funcKey, resolve(param, context));
+                Map<String,Object> evalParams = new HashMap<>();
+                evalParams.put("curFiledVal",context.getVariable("curFiledVal"));
+                evalParams.put("param",resolve(param, context));
+                return BuiltinFunctions.eval(funcKey, evalParams);
             }
             // 普通 Map，递归解析每个字段
             return map.entrySet().stream()
@@ -61,10 +64,10 @@ public class TemplateValueResolver {
                             e -> resolve(e.getValue(), context)
                     ));
         }
-        if (value instanceof List<?> list) {
+        if (rule instanceof List<?> list) {
             return list.stream().map(v -> resolve(v, context)).toList();
         }
-        if (value instanceof String str) {
+        if (rule instanceof String str) {
             // 只对 & 开头的变量做作用域查找
             if (str.startsWith("&.")) {
                 String scopeName = context.getScopeName();
@@ -101,8 +104,13 @@ public class TemplateValueResolver {
             // 只对 $ 开头的字符串做特殊处理（如 $NOW 等），其余直接返回
             return str;
         }
-        return value;
+        return rule;
     }
+
+
+
+
+
 
     /**
      * 从上下文中获取指定键的值（兼容 $CONTEXT 语法）

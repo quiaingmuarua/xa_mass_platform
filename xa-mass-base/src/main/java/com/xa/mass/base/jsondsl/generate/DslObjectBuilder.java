@@ -107,6 +107,8 @@ public class DslObjectBuilder {
 
         return mockFieldValue(rule,context);
     }
+
+    //generate filed value
     public static Object mockFieldValue(Object rule, DslContext context) {
         if (isCollectionRule(rule)) {
             return handleCollectionRule(rule, context, Object.class);

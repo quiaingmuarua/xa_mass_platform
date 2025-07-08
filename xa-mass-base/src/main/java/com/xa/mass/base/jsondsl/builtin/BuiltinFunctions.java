@@ -106,7 +106,18 @@ public class BuiltinFunctions {
         throw new JsonDslException("$RANDOM_INT 参数类型不支持: " + obj);
     }
 
-    public static Object eval(String func, Object param) {
+
+    public static Object eval(String func,Object evalParams) {
+        Map<String,Object> params = new HashMap<>();
+        params.put("param",evalParams);
+        return eval(func,params);
+
+    }
+
+    public static Object eval(String func,Map<String,Object> evalParams) {
+        if(evalParams==null) evalParams=new HashMap<>();
+        Object param = evalParams.get("param");
+        Object curFiledVal = evalParams.get("curFiledVal");
         if (func == null) throw new JsonDslException("函数名不能为空");
         String key = func.toLowerCase();
         if ("$random_int".equals(key) || "randomint".equals(key)) {
@@ -119,6 +130,8 @@ public class BuiltinFunctions {
         }
         BuiltinFunction fn = FUNCTION_MAP.get(key);
         if (fn != null) return fn.apply(param);
+        BiFunction<Object, Object, Boolean> fns = OPERATOR_MAP.get(key);
+        if (fns != null) return fns.apply(curFiledVal, param);
         throw new JsonDslException("不支持的内置函数: " + func + " 参数: " + param);
     }
 
