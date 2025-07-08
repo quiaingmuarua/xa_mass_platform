@@ -58,7 +58,7 @@ public class FilterProcessorTest {
         
         // 设置过滤条件：年龄大于30
         Map<String, Object> fieldDsl = new HashMap<>();
-        fieldDsl.put("age", "$EXPR(age > 30)");
+        fieldDsl.put("age", Map.of("$EXPR", "age > 30"));
         definition.setFieldDsl(fieldDsl);
         
         // 过滤数据
@@ -89,8 +89,8 @@ public class FilterProcessorTest {
         
         // 设置复杂过滤条件：年龄大于30且状态为active
         Map<String, Object> fieldDsl = new HashMap<>();
-        fieldDsl.put("age", "$EXPR(age > 30)");
-        fieldDsl.put("status", "$EXPR(status == 'active')");
+        fieldDsl.put("age", Map.of("$EXPR", "age > 30"));
+        fieldDsl.put("status", Map.of("$EXPR", "status == 'active'"));
         definition.setFieldDsl(fieldDsl);
         
         // 设置组合逻辑
@@ -121,7 +121,7 @@ public class FilterProcessorTest {
         List<TestUser> emptyList = Arrays.asList();
         
         Map<String, Object> fieldDsl = new HashMap<>();
-        fieldDsl.put("age", "$EXPR(age > 30)");
+        fieldDsl.put("age", Map.of("$EXPR", "age > 30"));
         definition.setFieldDsl(fieldDsl);
         
         FilterResult<TestUser> filterResult = processor.filter(emptyList, definition, context);
@@ -135,7 +135,7 @@ public class FilterProcessorTest {
     void testFilterWithNullInput() {
         // 测试空输入
         Map<String, Object> fieldDsl = new HashMap<>();
-        fieldDsl.put("age", "$EXPR(age > 30)");
+        fieldDsl.put("age", Map.of("$EXPR", "age > 30"));
         definition.setFieldDsl(fieldDsl);
         
         assertThrows(IllegalArgumentException.class, () -> {
@@ -154,7 +154,7 @@ public class FilterProcessorTest {
         );
         
         Map<String, Object> fieldDsl = new HashMap<>();
-        fieldDsl.put("age", "$EXPR(age > 30)");
+        fieldDsl.put("age", Map.of("$EXPR", "age > 30"));
         definition.setFieldDsl(fieldDsl);
         
         FilterResult<TestUser> filterResult = processor.filter(testUsers, definition, context);
@@ -189,7 +189,7 @@ public class FilterProcessorTest {
         List<TestUser> testUsers = Arrays.asList(createTestUser("Alice", 25));
         
         Map<String, Object> fieldDsl = new HashMap<>();
-        fieldDsl.put("age", "$EXPR(age > 30)");
+        fieldDsl.put("age", Map.of("$EXPR", "age > 30"));
         definition.setFieldDsl(fieldDsl);
         
         // 虽然类型不匹配，但处理器应该仍然能处理（因为实际处理时会验证）

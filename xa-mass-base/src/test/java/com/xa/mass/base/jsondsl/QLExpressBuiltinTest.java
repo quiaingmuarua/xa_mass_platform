@@ -5,6 +5,7 @@ import com.xa.mass.base.jsondsl.builtin.BuiltinFunctions;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.setAllowComparingPrivateFields;
 
 public class QLExpressBuiltinTest {
 
@@ -16,7 +17,11 @@ public class QLExpressBuiltinTest {
         BuiltinFunctions.registerToQLExpress(runner);
 
         Object result = runner.execute("range(1,100)", null, null, true, false);
-        System.out.println("choice result: " + result);
+        assertThat(Integer.class.isAssignableFrom(result.getClass())).isTrue();
+        System.out.println("range result: " + result);
+        Object result1 = runner.execute("$choice('active', 'inactive', 'pending')", null, null, true, false);
+        System.out.println("choice result: "+result1);
+        assertThat(String.class.isAssignableFrom(result1.getClass())).isTrue();
 
 
     }

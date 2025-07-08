@@ -1,5 +1,7 @@
 package com.xa.mass.base.jsondsl.builtin;
 
+import com.xa.mass.base.jsondsl.eval.DslExprExecutor;
+
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -29,7 +31,7 @@ public class TemplateValueResolver {
             if (isBuiltinFunction(map)) {
                 String funcKey = (String) map.keySet().iterator().next();
                 // $EXPR 表达式支持
-                if ("$EXPR".equals(funcKey)) {
+                if ("$EXPR".equalsIgnoreCase(funcKey)) {
                     Object exprObj = map.get(funcKey);
                     // 合并当前作用域和父作用域的所有变量
                     Map<String, Object> vars = new HashMap<>();
@@ -39,7 +41,7 @@ public class TemplateValueResolver {
                         ctx = ctx.getParent();
                     }
                     try {
-                        return com.xa.mass.base.jsondsl.eval.DslExprExecutor.execute(exprObj, vars);
+                        return DslExprExecutor.execute(exprObj, vars);
                     } catch (Exception e) {
                         throw new JsonDslException("$EXPR 执行失败: " + exprObj, e);
                     }
@@ -76,6 +78,20 @@ public class TemplateValueResolver {
             if (str.startsWith("&")) {
                 Object v = context.getVariable(str);
                 return v != null ? v : str;
+            }
+            if(str.startsWith("$")){
+                try {
+                    // 合并当前作用域和父作用域的所有变量
+                    Map<String, Object> vars = new HashMap<>();
+                    DslContext ctx = context;
+                    while (ctx != null) {
+                        vars.putAll(ctx.getVariables());
+                        ctx = ctx.getParent();
+                    }
+                    return DslExprExecutor.execute(str, vars);
+                } catch (Exception e) {
+                    throw new JsonDslException("$EXPR 执行失败: " + str, e);
+                }
             }
             // 只对 $ 开头的字符串做特殊处理（如 $NOW 等），其余直接返回
             return str;

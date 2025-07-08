@@ -57,7 +57,7 @@ public class StrongTypedIntegrationTest {
         // 创建过滤 DSL
         JsonDslDefinition filterDsl = new JsonDslDefinition("filter-adults", JsonDslDefinition.DslType.FILTER);
         Map<String, Object> filterFieldDsl = new HashMap<>();
-        filterFieldDsl.put("age", "$EXPR(age >= 18)");
+        filterFieldDsl.put("age", Map.of("$EXPR", "age >= 18"));
         filterDsl.setFieldDsl(filterFieldDsl);
         
         // 过滤用户数据
@@ -86,7 +86,7 @@ public class StrongTypedIntegrationTest {
         JsonDslDefinition transformDsl = new JsonDslDefinition("transform-user", JsonDslDefinition.DslType.TRANSFORM);
         Map<String, Object> fieldDsl = new HashMap<>();
         fieldDsl.put("name", "$JOIN(['Mr. ', '&.name'])");
-        fieldDsl.put("age", "$EXPR(age + 1)");
+        fieldDsl.put("age", Map.of("$EXPR", "age + 1"));
         transformDsl.setFieldDsl(fieldDsl);
         
         // 转换用户数据
@@ -110,9 +110,9 @@ public class StrongTypedIntegrationTest {
         // 创建校验 DSL
         JsonDslDefinition validateDsl = new JsonDslDefinition("validate-user", JsonDslDefinition.DslType.VALIDATE);
         Map<String, Object> fieldDsl = new HashMap<>();
-        fieldDsl.put("name", "$EXPR(name != null && name.length() > 0)");
-        fieldDsl.put("age", "$EXPR(age >= 0 && age <= 150)");
-        fieldDsl.put("email", "$EXPR(email != null && email.contains('@'))");
+        fieldDsl.put("name", Map.of("$EXPR", "name != null && name.length() > 0"));
+        fieldDsl.put("age", Map.of("$EXPR", "age >= 0 && age <= 150"));
+        fieldDsl.put("email", Map.of("$EXPR", "email != null && email.contains('@')"));
         validateDsl.setFieldDsl(fieldDsl);
         
         // 校验用户数据
@@ -144,7 +144,7 @@ public class StrongTypedIntegrationTest {
         // 2. 过滤成年用户
         JsonDslDefinition filterDsl = new JsonDslDefinition("filter-adults", JsonDslDefinition.DslType.FILTER);
         Map<String, Object> filterFieldDsl = new HashMap<>();
-        filterFieldDsl.put("age", "$EXPR(age >= 18)");
+        filterFieldDsl.put("age", Map.of("$EXPR", "age >= 18"));
         filterDsl.setFieldDsl(filterFieldDsl);
         
         FilterResult<TestUser> adultResult = filterProcessor.filter(users, filterDsl, context);
@@ -171,8 +171,8 @@ public class StrongTypedIntegrationTest {
             // 4. 校验用户数据
             JsonDslDefinition validateDsl = new JsonDslDefinition("validate-users", JsonDslDefinition.DslType.VALIDATE);
             Map<String, Object> validateFieldDsl = new HashMap<>();
-            validateFieldDsl.put("name", "$EXPR(name != null && name.length() > 0)");
-            validateFieldDsl.put("email", "$EXPR(email != null && email.contains('@'))");
+            validateFieldDsl.put("name", Map.of("$EXPR", "name != null && name.length() > 0"));
+            validateFieldDsl.put("email", Map.of("$EXPR", "email != null && email.contains('@')"));
             validateDsl.setFieldDsl(validateFieldDsl);
             
             for (TestUser user : adultUsers) {

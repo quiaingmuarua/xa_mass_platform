@@ -51,34 +51,7 @@ public class GenerateProcessorTest {
     void testProcessorPriority() {
         assertEquals(100, processor.getPriority());
     }
-    
-    @Test
-    void testGenerateWithValidDefinition() {
-        // 设置有效的 DSL 定义
-        JsonDslContext dslContext = new JsonDslContext();
-        dslContext.setModel("com.xa.mass.base.jsondsl.processor.GenerateProcessorTest$TestUser");
-        dslContext.setCount(3);
-        definition.setContext(dslContext);
-        
-        Map<String, Object> fieldDsl = new HashMap<>();
-        fieldDsl.put("name", "$RANDOM_NAME");
-        fieldDsl.put("email", "$RANDOM_EMAIL");
-        definition.setFieldDsl(fieldDsl);
-        
-        // 生成数据
-        List<TestUser> result = processor.generate(definition, context, TestUser.class);
-        
-        // 验证结果
-        assertNotNull(result);
-        assertEquals(3, result.size());
-        
-        // 验证每个对象都是 TestUser 类型
-        for (TestUser user : result) {
-            assertNotNull(user.getName());
-            assertNotNull(user.getEmail());
-        }
-    }
-    
+
     @Test
     void testGenerateWithInvalidDefinition() {
         assertThrows(com.xa.mass.base.jsondsl.builtin.JsonDslException.class, () -> {

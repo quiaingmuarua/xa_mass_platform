@@ -39,7 +39,7 @@ public class JsonDslEngineIndependentTest {
         // 3. 创建过滤 DSL
         JsonDslDefinition filterDsl = new JsonDslDefinition("test-filter", JsonDslDefinition.DslType.FILTER);
         Map<String, Object> filterFieldDsl = new HashMap<>();
-        filterFieldDsl.put("age", "$EXPR(age >= 25)");
+        filterFieldDsl.put("age", Map.of("$EXPR", "age >= 25"));
         filterDsl.setFieldDsl(filterFieldDsl);
         
         // 4. 设置上下文参数
@@ -108,7 +108,7 @@ public class JsonDslEngineIndependentTest {
         // 4. 创建过滤 DSL
         JsonDslDefinition filterDsl = new JsonDslDefinition("test-filter", JsonDslDefinition.DslType.FILTER);
         Map<String, Object> filterFieldDsl = new HashMap<>();
-        filterFieldDsl.put("age", "$EXPR(age >= 25)");
+        filterFieldDsl.put("age", Map.of("$EXPR", "age >= 25"));
         filterDsl.setFieldDsl(filterFieldDsl);
         
         // 5. 过滤用户数据
@@ -158,7 +158,7 @@ public class JsonDslEngineIndependentTest {
         // 步骤1：年龄过滤
         JsonDslDefinition filter1 = new JsonDslDefinition("filter-age", JsonDslDefinition.DslType.FILTER);
         Map<String, Object> filter1Dsl = new HashMap<>();
-        filter1Dsl.put("age", "$EXPR(age >= 25)");
+        filter1Dsl.put("age", Map.of("$EXPR", "age >= 25"));
         filter1.setFieldDsl(filter1Dsl);
         filterContext.setParameter("input", allUsers);
         FilterProcessor realFilter = ProcessorRegistry.getFilterProcessor();
@@ -169,7 +169,7 @@ public class JsonDslEngineIndependentTest {
         // 步骤2：状态过滤
         JsonDslDefinition filter2 = new JsonDslDefinition("filter-status", JsonDslDefinition.DslType.FILTER);
         Map<String, Object> filter2Dsl = new HashMap<>();
-        filter2Dsl.put("status", "$EXPR(status == 'active')");
+        filter2Dsl.put("status", Map.of("$EXPR", "status == 'active'"));
         filter2.setFieldDsl(filter2Dsl);
         FilterResult<Map> filterResult2 = realFilter.filter(step1, filter2, filterContext);
         List<Map> step2 = filterResult2.getPassed();
@@ -178,7 +178,7 @@ public class JsonDslEngineIndependentTest {
         // 步骤3：分数过滤
         JsonDslDefinition filter3 = new JsonDslDefinition("filter-score-min", JsonDslDefinition.DslType.FILTER);
         Map<String, Object> filter3Dsl = new HashMap<>();
-        filter3Dsl.put("score", "$EXPR(score >= 70)");
+        filter3Dsl.put("score", Map.of("$EXPR", "score >= 70"));
         filter3.setFieldDsl(filter3Dsl);
         FilterResult<Map> filterResult3 = realFilter.filter(step2, filter3, filterContext);
         List<Map> step3 = filterResult3.getPassed();
@@ -187,7 +187,7 @@ public class JsonDslEngineIndependentTest {
         // 步骤4：分数上限过滤
         JsonDslDefinition filter4 = new JsonDslDefinition("filter-score-max", JsonDslDefinition.DslType.FILTER);
         Map<String, Object> filter4Dsl = new HashMap<>();
-        filter4Dsl.put("score", "$EXPR(score <= 100)");
+        filter4Dsl.put("score", Map.of("$EXPR", "score <= 100"));
         filter4.setFieldDsl(filter4Dsl);
         FilterResult<Map> filterResult4 = realFilter.filter(step3, filter4, filterContext);
         List<Map> step4 = filterResult4.getPassed();

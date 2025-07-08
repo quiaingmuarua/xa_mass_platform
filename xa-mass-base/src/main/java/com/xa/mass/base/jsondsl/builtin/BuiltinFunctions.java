@@ -69,7 +69,6 @@ public class BuiltinFunctions {
         registerOperator("$lt", (fieldValue, val) -> compareNumber(fieldValue, val, -1));
         registerOperator("$lte", (fieldValue, val) -> compareNumber(fieldValue, val, 0, -1));
         registerOperator("$in", (fieldValue, val) -> (val instanceof Collection<?>) && fieldValue != null && ((Collection<?>) val).contains(fieldValue));
-        registerOperator("$choice", (fieldValue, val) -> true); // 生成时用，过滤时总是通过
 
 
     }
@@ -84,6 +83,7 @@ public class BuiltinFunctions {
         if (op == null) return;
         String key = op.toLowerCase();
         FUNCTION_MAP.put(key, func);
+        FUNCTION_MAP.put(key.toUpperCase(), func);
         // 自动注册无 $ 前缀的别名
         if (key.startsWith("$")) {
             FUNCTION_MAP.put(key.substring(1), func);

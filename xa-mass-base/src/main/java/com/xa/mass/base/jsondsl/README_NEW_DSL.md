@@ -489,275 +489,6 @@ context.setVariable("customVar", "value");
 ### 迁移指南
 
 ```java
-// 旧格式
-String oldFormat = "{ "$name": "$RANDOM_NAME", "$age": "$RANDOM_INT(18, 65)" }";
-
-// 新格式
-JsonDslDefinition newFormat = JsonDslParser.parse(oldFormat);
-// 或者手动创建
-JsonDslDefinition dsl = new JsonDslDefinition("user-generator", DslType.GENERATE);
-dsl.setFieldDsl(Map.of(
-    "$name", "$RANDOM_NAME",
-    "$age", "$RANDOM_INT(18, 65)"
-));
-```
-
-## 常见使用示例
-
-### 1. 基本生成
-
-```java
-JsonDslDefinition dsl = new JsonDslDefinition("basic-generator", DslType.GENERATE);
-dsl.setContext(new JsonDslContext("com.example.User", 5));
-dsl.setFieldDsl(Map.of(
-    "$name", "$RANDOM_NAME",
-    "$age", "$RANDOM_INT(18, 65)"
-));
-
-List<Object> result = JsonDslEngine.generateList(JsonDslParser.toJson(dsl));
-```
-
-### 2. 复杂过滤
-
-```java
-JsonDslDefinition dsl = new JsonDslDefinition("complex-filter", DslType.FILTER);
-dsl.setFieldDsl(Map.of(
-    "$age", "$EXPR(age > 30)",
-    "$status", "$EXPR(status == 'active')"
-));
-dsl.setCombineDsl(Map.of("logic", "AND"));
-
-String filterConfig = JsonDslParser.toJson(dsl);
-List<Object> filtered = JsonDslEngine.filter(objects, filterConfig);
-```
-
-### 3. 多源合并
-
-```java
-List<JsonDslDefinition> dslList = Arrays.asList(
-    createUserDsl(),
-    createAdminDsl(),
-    createGuestDsl()
-);
-
-JsonDslDefinition merged = JsonDslMerger.merge(dslList);
-```
-
-## 调试和故障排除
-
-### 启用调试模式
-
-```java
-ProcessingContext context = new ProcessingContext();
-context.setDebug(true);
-Object result = JsonDslProcessorEngine.process(dsl, context);
-```
-
-### 日志输出
-
-```
-[JsonDslProcessor] 开始处理 DSL: user-generator
-[GenerateProcessor] 生成完成，数量: 5
-[FilterProcessor] 过滤完成，原始数量: 5, 过滤后数量: 3
-```
-
-### 常见错误
-
-1. **DSL 格式错误**：检查 JSON 格式和必填字段
-2. **类型不匹配**：确保 DSL 类型与处理器匹配
-3. **表达式错误**：检查 QLExpress 语法
-4. **优先级冲突**：检查优先级设置
-
-## 安全考虑
-
-### 表达式安全
-
-1. **沙箱环境**：QLExpress 在受限环境中执行
-2. **函数白名单**：只允许预定义的函数
-3. **资源限制**：限制执行时间和内存使用
-
-### 输入验证
-
-1. **DSL 验证**：使用 `validate()` 方法验证 DSL
-2. **类型检查**：确保输入类型正确
-3. **大小限制**：限制 DSL 大小和复杂度
-
----
-
-## 新的处理器架构
-
-### 设计原则
-
-新的处理器架构遵循以下设计原则：
-
-1. **单一职责原则**：每个处理器只负责一种 DSL 类型的处理
-2. **开闭原则**：对扩展开放，对修改封闭
-3. **依赖倒置原则**：依赖抽象接口而非具体实现
-4. **链式调用**：支持多个 DSL 的链式处理
-
-### 核心组件
-
-#### 1. JsonDslProcessor 接口
-
-```java
-public interface JsonDslProcessor {
-    Object process(JsonDslDefinition definition, ProcessingContext context);
-    boolean supports(JsonDslDefinition.DslType type);
-    String getName();
-    int getPriority();
-}
-```
-
-#### 2. ProcessingContext 上下文
-
-```java
-public class ProcessingContext {
-    // 参数传递
-    public void setParameter(String key, Object value);
-    public Object getParameter(String key);
-    
-    // 变量存储
-    public void setVariable(String key, Object value);
-    public Object getVariable(String key);
-    
-    // 调试模式
-    public void setDebug(boolean debug);
-    public boolean isDebug();
-    
-    // 作用域管理
-    public ProcessingContext createChild(String childScopeName);
-}
-```
-
-#### 3. 处理器实现
-
-- **GenerateProcessor**：处理 generate 类型 DSL
-- **FilterProcessor**：处理 filter 类型 DSL  
-- **TransformProcessor**：处理 transform 类型 DSL
-- **ValidateProcessor**：处理 validate 类型 DSL
-
-#### 4. ProcessorRegistry 注册表
-
-```java
-public class ProcessorRegistry {
-    // 注册处理器
-    public static void register(JsonDslProcessor processor);
-    
-    // 获取处理器
-    public static JsonDslProcessor getProcessor(JsonDslDefinition.DslType type);
-    
-    // 链式处理
-    public static Object processChain(List<JsonDslDefinition> definitions, ProcessingContext context);
-}
-```
-
-#### 5. JsonDslProcessorEngine 引擎
-
-```java
-public class JsonDslProcessorEngine {
-    // 处理单个 DSL
-    public static <T> List<T> process(JsonDslDefinition definition, ProcessingContext context, Class<T> targetType);
-    
-    // 链式处理
-    public static <T> List<T> processChain(List<JsonDslDefinition> definitions, ProcessingContext context, Class<T> targetType);
-    
-    // 从 JSON 处理
-    public static <T> List<T> processFromJson(String jsonDsl, ProcessingContext context, Class<T> targetType);
-    
-    // 处理器管理
-    public static void registerProcessor(JsonDslProcessor processor);
-    public static List<JsonDslProcessor> getAllProcessors();
-}
-```
-
-### 使用示例
-
-#### 1. 单个 DSL 处理
-
-```java
-// 创建 DSL 定义
-JsonDslDefinition dsl = new JsonDslDefinition("user-generator", DslType.GENERATE);
-dsl.setContext(new JsonDslContext("com.example.User", 3));
-dsl.setFieldDsl(Map.of("$name", "$RANDOM_NAME", "$age", "$RANDOM_INT(18, 65)"));
-
-// 处理 DSL
-Object result = JsonDslProcessorEngine.process(dsl);
-```
-
-#### 2. 链式处理
-
-```java
-// 创建处理上下文
-ProcessingContext context = new ProcessingContext("chain-example");
-
-// 创建 DSL 链
-List<JsonDslDefinition> dslChain = Arrays.asList(
-    createGenerateDsl(),
-    createFilterDsl(),
-    createTransformDsl()
-);
-
-// 链式处理
-Object result = JsonDslProcessorEngine.processChain(dslChain, context);
-```
-
-#### 3. 自定义处理器
-
-```java
-// 实现自定义处理器
-public class CustomProcessor implements JsonDslProcessor {
-    @Override
-    public Object process(JsonDslDefinition definition, ProcessingContext context) {
-        // 自定义处理逻辑
-        return customResult;
-    }
-    
-    @Override
-    public boolean supports(JsonDslDefinition.DslType type) {
-        return DslType.TRANSFORM.equals(type);
-    }
-    
-    @Override
-    public String getName() {
-        return "CustomProcessor";
-    }
-    
-    @Override
-    public int getPriority() {
-        return 500;
-    }
-}
-
-// 注册自定义处理器
-JsonDslProcessorEngine.registerProcessor(new CustomProcessor());
-```
-
-#### 4. 调试模式
-
-```java
-// 创建调试上下文
-ProcessingContext context = new ProcessingContext("debug-example");
-context.setDebug(true);
-context.setParameter("objects", Arrays.asList("test1", "test2", "test3"));
-
-// 处理 DSL（会输出调试信息）
-Object result = JsonDslProcessorEngine.process(dsl, context);
-```
-
-### 架构优势
-
-1. **解耦合**：DSL 定义与处理逻辑分离
-2. **可扩展**：易于添加新的处理器类型
-3. **可测试**：每个处理器可以独立测试
-4. **链式调用**：支持复杂的处理流程
-5. **上下文传递**：处理器间可以共享状态
-6. **调试友好**：详细的处理日志和错误信息
-
-### 迁移指南
-
-从旧的 DSL 处理方式迁移到新的处理器架构：
-
-```java
 // 旧方式
 String legacyFormat = "{ "$name": "$RANDOM_NAME" }";
 List<Object> result = JsonDslEngine.generateList(legacyFormat);
@@ -877,3 +608,69 @@ try {
 - 文档同步更新，记录所有机制、问题点与建议。
 
 --- 
+
+# JSON-DSL 新语法说明
+
+## 1. 内置函数参数支持单引号
+
+- 现在 DSL 支持在 $CHOICE、$JOIN、$RANGE 等函数参数中使用单引号包裹字符串或列表元素。
+- 例如：
+
+```json
+{
+  "name": "$choice('Alice', 'Bob', 'Charlie')",
+  "status": "$choice('active', 'inactive', 'pending')",
+  "email": "$join('alice', '@', 'example.com')"
+}
+```
+
+- 也支持老写法（不加引号）：
+
+```json
+{
+  "name": "$CHOICE(Alice, Bob, Charlie)",
+  "status": "$CHOICE(active, inactive, pending)",
+  "email": "$JOIN(alice, @, example.com)"
+}
+```
+
+- 两种写法都兼容。
+
+## 2. 表达式写法
+
+- 表达式建议用 `{ "$EXPR": "表达式内容" }` 形式。
+- 例如：
+
+```json
+{
+  "age": { "$EXPR": "range(18, 65)" },
+  "score": { "$EXPR": "score > 80" }
+}
+```
+
+## 3. 其他说明
+
+- 支持嵌套、链式调用。
+- 详见测试用例和示例。 
+
+## 4. 参数风格兼容说明
+
+- 支持如下写法：
+  - `$choice('A', 'B', 'C')`
+  - `$CHOICE(A, B, C)`
+  - `$join('a', 'b', 'c')`
+  - `$JOIN(a, b, c)`
+  - `$range(1, 100)`
+  - `$RANGE(1, 100)`
+- 推荐表达式用 `{ "$EXPR": "score > 80" }`。
+- 以上所有风格均可混用，详见测试用例。
+
+### 例子
+```json
+{
+  "name": "$choice('Alice', 'Bob')",
+  "status": "$CHOICE(active, inactive)",
+  "email": "$join('alice', '@', 'example.com')",
+  "score": { "$EXPR": "range(60, 100)" }
+}
+``` 
