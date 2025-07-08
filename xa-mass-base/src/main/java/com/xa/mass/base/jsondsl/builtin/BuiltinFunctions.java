@@ -56,10 +56,17 @@ public class BuiltinFunctions {
         });
         registerFunction("$uuid", param -> uuid());
         registerFunction("$random", param -> random());
+        registerFunction("$RANDOM_INT", param -> {
+            List<?> list = (List<?>) param;
+            return range(((Number) list.get(0)).intValue(), ((Number) list.get(1)).intValue());
+        });
         registerFunction("$join", param -> join((List<?>) param));
         registerFunction("$context", BuiltinFunctions::context);
         registerFunction("$now", BuiltinFunctions::now);
         registerFunction("$time_range", BuiltinFunctions::timeRange);
+        registerFunction("$RANDOM_NAME", BuiltinMockFunctions::randomName);
+        registerFunction("$RANDOM_EMAIL", BuiltinMockFunctions::randomEmail);
+        registerFunction("$RANDOM_PHONE_NUMBER", BuiltinMockFunctions::randomPhoneNumber);
 
         // 注册基础操作符
         registerOperator("$eq", Objects::equals);

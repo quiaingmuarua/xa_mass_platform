@@ -79,6 +79,7 @@ public class TemplateValueResolver {
                 Object v = context.getVariable(str);
                 return v != null ? v : str;
             }
+            //进行使用规则引擎兜底
             if(str.startsWith("$")){
                 try {
                     // 合并当前作用域和父作用域的所有变量
@@ -87,6 +88,10 @@ public class TemplateValueResolver {
                     while (ctx != null) {
                         vars.putAll(ctx.getVariables());
                         ctx = ctx.getParent();
+                    }
+                    if(!str.contains("(")&&!str.contains(")")){
+                        //无参函数
+                        str=str+"()";
                     }
                     return DslExprExecutor.execute(str, vars);
                 } catch (Exception e) {

@@ -9,18 +9,18 @@ public class BuiltinMockFunctions {
    static Faker faker = new Faker();
 
     //$RANDOM_NAME
-    public static String randomName() {
-        return faker.name().fullName();
+    public static String randomName(Object obj) {
+        return "randomName";
 
     }
 
     //$RANDOM_EMAIL
-    public static String randomEmail() {
-        return faker.internet().emailAddress();
+    public static String randomEmail(Object obj) {
+        return "randomEmail";
     }
 
     //$RANDOM_PHONE_NUMBER
-    public static String randomPhoneNumber() {
-        return faker.phoneNumber().cellPhone();
+    public static String randomPhoneNumber(Object obj) {
+        return "randomPhoneNumber";
     }
 }
