@@ -12,23 +12,7 @@ import java.util.stream.Collectors;
  * 新标准提供更好的类型安全、验证和扩展性，支持更丰富的表达式引擎和内置函数。
  */
 public class TemplateValueResolver {
-    // 内置函数处理器注册表
-    private static final Map<BuiltinFunc, BiFunction<Object, DslContext, Object>> BUILTIN_RESOLVERS = new HashMap<>();
-
-    static {
-        BUILTIN_RESOLVERS.put(BuiltinFunc.JOIN, (param, ctx) -> {
-            List<?> parts = (List<?>) param;
-            List<Object> resolved = parts.stream().map(p -> resolve(p, ctx)).collect(Collectors.toList());
-            return BuiltinFunctions.eval(BuiltinFunc.JOIN.key(), resolved);
-        });
-        BUILTIN_RESOLVERS.put(BuiltinFunc.CHOICE, (param, ctx) -> BuiltinFunctions.eval(BuiltinFunc.CHOICE.key(), resolve(param, ctx)));
-        BUILTIN_RESOLVERS.put(BuiltinFunc.RANGE, (param, ctx) -> BuiltinFunctions.eval(BuiltinFunc.RANGE.key(), resolve(param, ctx)));
-        BUILTIN_RESOLVERS.put(BuiltinFunc.UUID, (param, ctx) -> BuiltinFunctions.eval(BuiltinFunc.UUID.key(), resolve(param, ctx)));
-        BUILTIN_RESOLVERS.put(BuiltinFunc.RANDOM, (param, ctx) -> BuiltinFunctions.eval(BuiltinFunc.RANDOM.key(), resolve(param, ctx)));
-        BUILTIN_RESOLVERS.put(BuiltinFunc.CONTEXT, TemplateValueResolver::getContextValue);
-        BUILTIN_RESOLVERS.put(BuiltinFunc.NOW, (param, ctx) -> BuiltinFunctions.eval(BuiltinFunc.NOW.key(), resolve(param, ctx)));
-        BUILTIN_RESOLVERS.put(BuiltinFunc.TIME_RANGE, (param, ctx) -> BuiltinFunctions.eval(BuiltinFunc.TIME_RANGE.key(), resolve(param, ctx)));
-    }
+    // 移除 BUILTIN_RESOLVERS，全部走 OperatorRegistry
 
     /**
      * 递归解析字段值，支持内置函数、Map、List、普通值。
@@ -60,14 +44,22 @@ public class TemplateValueResolver {
                         throw new JsonDslException("$EXPR 执行失败: " + exprObj, e);
                     }
                 }
-                BuiltinFunc func = BuiltinFunc.fromKey(funcKey);
                 Object param = map.get(funcKey);
-                BiFunction<Object, DslContext, Object> resolver = BUILTIN_RESOLVERS.get(func);
-                if (resolver != null) {
-                    return resolver.apply(param, context);
+                var func = OperatorRegistry.getFunction(funcKey);
+//                System.out.println("[TemplateValueResolver] funcKey=" + funcKey + ", found=" + (func != null));
+                if (func != null) {
+                    // 递归解析参数：如果 param 是 List，则对每个元素递归 resolve
+                    Object resolvedParam;
+                    if (param instanceof List<?> list) {
+                        resolvedParam = list.stream().map(v -> resolve(v, context)).toList();
+                    } else {
+                        resolvedParam = resolve(param, context);
+                    }
+                    Object[] args = resolvedParam instanceof List<?> l ? l.toArray() : new Object[]{resolvedParam};
+                    return func.apply(args, context);
                 }
-                // fallback: 直接用 BuiltinFunctions.eval
-                return BuiltinFunctions.eval(funcKey, resolve(param, context));
+                // fallback: 直接返回未处理的 map
+                return map;
             }
             // 普通 Map，递归解析每个字段
             return map.entrySet().stream()

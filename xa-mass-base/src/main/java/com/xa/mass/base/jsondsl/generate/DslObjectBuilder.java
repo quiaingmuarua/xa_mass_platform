@@ -15,12 +15,9 @@ import java.util.*;
 
 /**
  * DSL 对象构建器，负责从 DSL 配置生成对象实例。
- * 
- * @deprecated 建议使用新的标准化 DSL 结构，通过 {@link com.xa.mass.base.jsondsl.model.JsonDslDefinition} 
- * 和 {@link com.xa.mass.base.jsondsl.parser.JsonDslParser} 进行 DSL 定义和解析。
+ *
  * 新标准提供更好的类型安全、验证和扩展性。
  */
-@Deprecated(since = "2.0.0", forRemoval = true)
 public class DslObjectBuilder {
     private static final Gson gson = GsonConfig.buildGson();
 
@@ -29,11 +26,17 @@ public class DslObjectBuilder {
      */
     public static <T> T mockFromDsl(JsonObject dsl, DslContext context, Class<T> targetType) {
         // 1. 解析 MODEL
-        String modelName = dsl.has(DslKeyword.MODEL.name()) ? dsl.get(DslKeyword.MODEL.name()).getAsString() : null;
+        Object modelName = dsl.has(DslKeyword.MODEL.name()) ? dsl.get(DslKeyword.MODEL.name()).getAsString() : null;
+        if (modelName == null && dsl.has("context") && dsl.get("context").isJsonObject()) {
+            var ctxObj = dsl.getAsJsonObject("context");
+            if (ctxObj.has(DslKeyword.MODEL.name())) {
+                modelName = ctxObj.get(DslKeyword.MODEL.name()).getAsString();
+            }
+        }
         if (modelName == null) {
             throw new JsonDslException("DSL 缺少 MODEL 字段");
         }
-        Class<?> clazz = resolveModelClass(modelName);
+        Class<?> clazz = resolveModelClass(modelName.toString());
         Object obj;
         try {
             obj = clazz.getDeclaredConstructor().newInstance();

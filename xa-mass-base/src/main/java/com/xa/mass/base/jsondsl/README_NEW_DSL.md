@@ -831,4 +831,50 @@ try {
 }
 ```
 
+---
+
+## 新的标准 DSL 框架说明与问题记录
+
+### 1. 自动注册机制
+- 所有内置函数（如 `$choice`、`$range`、`$join` 等）在 `BuiltinFunctions` 的 static 块中注册到 `OperatorRegistry`。
+- `OperatorRegistry` static 块自动触发 `BuiltinFunctions`，保证主流程下所有内置函数都能自动注册。
+- QLExpress 注册时自动排除内置操作符（如 `in`、`eq`、`gte` 等），避免冲突。
+
+### 2. mock/表达式/类型适配
+- 所有 mock 生成、filter、表达式等统一走 `TemplateValueResolver` + `OperatorRegistry`。
+- 类型适配统一走 `TypeAdapterUtil.adaptType`，支持字符串、数字、下标、boolean→枚举等常见场景。
+- boolean→枚举支持智能映射（如 true→ONLINE/ENABLED/YES，false→OFFLINE/DISABLED/NO），否则 fallback 为第一个常量。
+
+### 3. 测试隔离与全局状态
+- 单测时，`OperatorRegistry`、`BuiltinFunctions` 等 static 注册表可能被其它测试污染，导致注册缺失或 mock 失败。
+- 解决方案：每个测试用例前后清理注册表，并强制触发 `BuiltinFunctions` static 块，保证注册一致性。
+- 但全量测试时，仍可能因其它测试用例的 DSL/mock 规则污染导致部分用例表现异常。
+
+### 4. 遗留/待排查问题点
+- 全量测试时，`NewStandardDslTypeRegistrationTest` 仍偶发 `$CHOICE` 未被递归执行，mock 结果为原始 Map，导致类型适配异常。
+- `QLExpressBuiltinTest` 可能因注册表未及时注册 `range` 等函数导致表达式找不到。
+- 目前通过在 `@BeforeEach` 强制触发 static 块可缓解，但根因可能是注册表/DSL/mock 规则全局污染，需进一步彻查。
+
+### 5. 建议与后续方向
+- 后续可考虑将注册表/内置函数注册彻底与测试用例解耦，或每次 mock/表达式前自动检测并补注册。
+- 可增加详细日志，辅助定位全局状态污染来源。
+- 继续优化类型适配和 mock 递归逻辑，保证所有场景下 mock 结果与预期一致。
+
+---
+
+如需切换话题或继续排查，建议先参考本文档，后续可直接在此基础上继续推进。
+
+## 6. 本轮会话核心修改点同步
+
+- 统一所有内置函数注册到 OperatorRegistry，BuiltinFunctions static 块负责注册。
+- TemplateValueResolver 递归参数处理修复：内置函数参数为 List 时递归 resolve，mock 结果为实际值。
+- $range 注册逻辑修复：mock 时返回区间内单个随机 int，而不是 List。
+- TypeAdapterUtil.adaptType 增强：支持 boolean→枚举智能映射，兼容历史 mock 行为。
+- OperatorRegistry static 块自动触发 BuiltinFunctions，保证主流程自动注册。
+- QLExpress 注册自动排除所有内置操作符，彻底防止 in/eq/gte 等冲突。
+- OperatorRegistry.registerToQLExpressInternal 增加防御拦截和详细日志，辅助定位注册冲突。
+- 测试用例（如 NewStandardDslTypeRegistrationTest、QLExpressBuiltinTest）增加 @BeforeEach 强制触发 BuiltinFunctions static 块，保证每次测试前注册表一致。
+- mockFromDsl 兼容新 DSL 结构：顶层无 MODEL 字段时自动从 context.MODEL 取值。
+- 文档同步更新，记录所有机制、问题点与建议。
+
 --- 
