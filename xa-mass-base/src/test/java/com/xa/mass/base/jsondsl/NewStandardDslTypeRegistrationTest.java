@@ -6,8 +6,6 @@ import com.xa.mass.base.jsondsl.parser.JsonDslParser;
 import com.xa.mass.base.jsondsl.processor.JsonDslProcessorEngine;
 import com.xa.mass.base.jsondsl.processor.ProcessingContext;
 import com.xa.mass.base.model.Device;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.Arrays;
@@ -25,51 +23,38 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 public class NewStandardDslTypeRegistrationTest {
 
-    @BeforeEach
-    public void setUp() throws Exception {
-        com.xa.mass.base.jsondsl.builtin.OperatorRegistry.getAllFunctionNames().clear();
-        // 强制触发 BuiltinFunctions 的 static 块，确保所有内置函数注册
-        Class.forName("com.xa.mass.base.jsondsl.builtin.BuiltinFunctions");
-    }
-
-    @AfterEach
-    public void tearDown() {
-        // 再次清理，确保环境干净
-        com.xa.mass.base.jsondsl.builtin.OperatorRegistry.getAllFunctionNames().clear();
-    }
-
     @Test
     public void testNewStandardDslWithoutTypeRegistration() {
         // 测试：新标准 DSL 系统应该支持直接使用全类名，无需注册
-        
+
         // 1. 创建 DSL 定义（使用全类名）
         JsonDslDefinition definition = new JsonDslDefinition("test_device_generator", JsonDslDefinition.DslType.GENERATE);
         definition.setDescription("测试设备生成器");
         definition.setAuthor("test");
-        
+
         // 2. 设置上下文（使用全类名，不注册）
         JsonDslContext context = new JsonDslContext("com.xa.mass.base.model.Device", 2);
         context.setScopeName("Device");
         definition.setContext(context);
-        
+
         // 3. 设置字段 DSL
         Map<String, Object> fieldDsl = new HashMap<>();
         fieldDsl.put("deviceId", Map.of("$JOIN", Arrays.asList("test-device-", "&.index")));
         fieldDsl.put("status", Map.of("$CHOICE", Arrays.asList("ONLINE", "OFFLINE")));
         fieldDsl.put("groupId", Map.of("$CHOICE", Arrays.asList("us", "gb")));
         definition.setFieldDsl(fieldDsl);
-        
+
         // 4. 验证 DSL
         definition.validate();
-        
+
         // 5. 使用新的处理器引擎生成数据
         ProcessingContext processingContext = new ProcessingContext("test");
         List<Device> devices = JsonDslProcessorEngine.process(definition, processingContext, Device.class);
-        
+
         // 6. 验证结果
         assertNotNull(devices);
         assertEquals(2, devices.size());
-        
+
         for (Device device : devices) {
             assertNotNull(device.getDeviceId());
             assertTrue(device.getDeviceId().startsWith("test-device-"));
@@ -77,61 +62,61 @@ public class NewStandardDslTypeRegistrationTest {
             assertNotNull(device.getGroupId());
             assertTrue(Arrays.asList("us", "gb").contains(device.getGroupId()));
         }
-        
+
         System.out.println("✓ 新标准 DSL 系统成功使用全类名生成数据，无需提前注册类型");
     }
-    
+
     @Test
     public void testNewStandardDslWithComplexFields() {
         // 测试：新标准 DSL 系统支持复杂字段，也无需注册
-        
+
         // 1. 创建 DSL 定义
         JsonDslDefinition definition = new JsonDslDefinition("complex_device_generator", JsonDslDefinition.DslType.GENERATE);
         definition.setDescription("测试复杂字段生成器");
         definition.setAuthor("test");
-        
+
         // 2. 设置上下文（使用全类名）
         JsonDslContext context = new JsonDslContext("com.xa.mass.base.model.Device", 1);
         context.setScopeName("Device");
         definition.setContext(context);
-        
+
         // 3. 设置字段 DSL（包含复杂字段）
         Map<String, Object> fieldDsl = new HashMap<>();
         fieldDsl.put("deviceId", "complex-device-001");
         fieldDsl.put("status", "ONLINE");
         fieldDsl.put("groupId", "us");
         fieldDsl.put("agentVersion", "2.0.1");
-        
+
         // 简单字段
         fieldDsl.put("onlineStrategy", "100");
-        
+
         definition.setFieldDsl(fieldDsl);
-        
+
         // 4. 验证 DSL
         definition.validate();
-        
+
         // 5. 使用新的处理器引擎生成数据
         ProcessingContext processingContext = new ProcessingContext("test");
         List<Device> devices = JsonDslProcessorEngine.process(definition, processingContext, Device.class);
-        
+
         // 6. 验证结果
         assertNotNull(devices);
         assertEquals(1, devices.size());
-        
+
         Device device = devices.get(0);
         assertEquals("complex-device-001", device.getDeviceId());
         assertEquals("ONLINE", device.getStatus().name());
         assertEquals("us", device.getGroupId());
         assertEquals("2.0.1", device.getAgentVersion());
         assertEquals("100", device.getOnlineStrategy());
-        
+
         System.out.println("✓ 新标准 DSL 系统成功使用复杂字段生成数据，无需提前注册类型");
     }
-    
+
     @Test
     public void testNewStandardDslFromJsonWithoutRegistration() {
         // 测试：从 JSON 解析的 DSL 也支持全类名，无需注册
-        
+
         String jsonDsl = """
             {
               "unique_id": "json_test_generator",
@@ -154,28 +139,28 @@ public class NewStandardDslTypeRegistrationTest {
               }
             }
             """;
-        
+
         // 1. 解析 JSON
         JsonDslDefinition definition = JsonDslParser.parse(jsonDsl);
-        
+
         // 2. 验证解析结果
         assertEquals("json_test_generator", definition.getUniqueId());
         assertEquals(JsonDslDefinition.DslType.GENERATE, definition.getType());
         assertEquals("com.xa.mass.base.model.Device", definition.getContext().getModel());
-        
+
         // 3. 使用新的处理器引擎生成数据
         ProcessingContext processingContext = new ProcessingContext("test");
         List<Device> devices = JsonDslProcessorEngine.process(definition, processingContext, Device.class);
-        
+
         // 4. 验证结果
         assertNotNull(devices);
         assertEquals(1, devices.size());
-        
+
         Device device = devices.get(0);
         assertEquals("json-device-001", device.getDeviceId());
         assertEquals("ONLINE", device.getStatus().name());
         assertEquals("gb", device.getGroupId());
-        
+
         System.out.println("✓ 从 JSON 解析的新标准 DSL 也支持全类名，无需提前注册类型");
     }
 } 

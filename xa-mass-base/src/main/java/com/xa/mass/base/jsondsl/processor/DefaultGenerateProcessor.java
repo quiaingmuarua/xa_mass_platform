@@ -1,6 +1,7 @@
 package com.xa.mass.base.jsondsl.processor;
 
 import com.xa.mass.base.jsondsl.builtin.GsonConfig;
+import com.xa.mass.base.jsondsl.generate.DslObjectBuilder;
 import com.xa.mass.base.jsondsl.model.JsonDslDefinition;
 import com.xa.mass.base.jsondsl.builtin.JsonDslException;
 import com.xa.mass.base.jsondsl.builtin.DslContext;
@@ -59,7 +60,7 @@ class DefaultGenerateProcessor implements GenerateProcessor {
                 dsl.add("FIELDS", GsonConfig.buildGson().toJsonTree(definition.getFieldDsl()));
             }
             
-            T obj = com.xa.mass.base.jsondsl.generate.DslObjectBuilder.mockFromDsl(dsl, dslContext, targetType);
+            T obj = DslObjectBuilder.mockFromDsl(dsl, dslContext, targetType);
             result.add(obj);
         }
         
