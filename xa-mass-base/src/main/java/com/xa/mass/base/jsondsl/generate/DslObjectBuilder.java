@@ -7,7 +7,7 @@ import com.xa.mass.base.jsondsl.builtin.DslContext;
 import com.xa.mass.base.jsondsl.builtin.DslKeyword;
 import com.xa.mass.base.jsondsl.builtin.JsonDslException;
 import com.xa.mass.base.jsondsl.builtin.TemplateValueResolver;
-import com.xa.mass.base.jsondsl.util.GsonConfig;
+import com.xa.mass.base.jsondsl.builtin.GsonConfig;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Type;

@@ -6,8 +6,6 @@ import java.util.Map;
 import java.util.function.BiFunction;
 import java.util.stream.Collectors;
 
-import com.xa.mass.base.jsondsl.util.FieldRuleEvaluator;
-
 /**
  * 递归解析字段值，支持内置函数、Map、List、普通值。
  *

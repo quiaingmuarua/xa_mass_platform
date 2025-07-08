@@ -2,7 +2,7 @@ package com.xa.mass.base.jsondsl.processor;
 
 import com.google.gson.Gson;
 import com.xa.mass.base.jsondsl.model.JsonDslDefinition;
-import com.xa.mass.base.jsondsl.util.GsonConfig;
+import com.xa.mass.base.jsondsl.builtin.GsonConfig;
 
 import java.util.List;
 

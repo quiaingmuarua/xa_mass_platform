@@ -6,7 +6,7 @@ import com.google.gson.JsonParser;
 import com.xa.mass.base.jsondsl.builtin.JsonDslException;
 import com.xa.mass.base.jsondsl.model.JsonDslContext;
 import com.xa.mass.base.jsondsl.model.JsonDslDefinition;
-import com.xa.mass.base.jsondsl.util.GsonConfig;
+import com.xa.mass.base.jsondsl.builtin.GsonConfig;
 
 import java.util.Map;
 

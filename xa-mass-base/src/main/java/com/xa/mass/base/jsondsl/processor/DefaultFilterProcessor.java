@@ -1,16 +1,11 @@
 package com.xa.mass.base.jsondsl.processor;
 
-import com.xa.mass.base.jsondsl.JsonDslEngine;
-import com.xa.mass.base.jsondsl.parser.JsonDslParser;
+import com.xa.mass.base.jsondsl.builtin.BuiltinFunctions;
+import com.xa.mass.base.jsondsl.builtin.GsonConfig;
 import com.xa.mass.base.jsondsl.model.JsonDslDefinition;
-import com.xa.mass.base.jsondsl.filter.DslFilterFactory;
-import com.xa.mass.base.jsondsl.filter.JsonDslFilter;
-import com.xa.mass.base.jsondsl.util.FieldRuleEvaluator;
 
 import java.util.List;
-import java.util.ArrayList;
 import java.util.Map;
-import com.xa.mass.base.jsondsl.processor.FilterReport.FilterFail;
 
 /**
  * 默认过滤处理器实现
@@ -40,10 +35,10 @@ class DefaultFilterProcessor implements FilterProcessor {
         // 直接构造 JsonObject，避免不必要的 JSON 转换
         com.google.gson.JsonObject filterConfig = new com.google.gson.JsonObject();
         if (def.getFieldDsl() != null) {
-            filterConfig.add("fieldDsl", com.xa.mass.base.jsondsl.util.GsonConfig.buildGson().toJsonTree(def.getFieldDsl()));
+            filterConfig.add("fieldDsl", GsonConfig.buildGson().toJsonTree(def.getFieldDsl()));
         }
         if (def.getCombineDsl() != null) {
-            filterConfig.add("combineDsl", com.xa.mass.base.jsondsl.util.GsonConfig.buildGson().toJsonTree(def.getCombineDsl()));
+            filterConfig.add("combineDsl", GsonConfig.buildGson().toJsonTree(def.getCombineDsl()));
         }
         com.xa.mass.base.jsondsl.filter.JsonDslFilter<T> filter = com.xa.mass.base.jsondsl.filter.DslFilterFactory.createJsonDslFilter(def.getUniqueId(), def.getDescription(), filterConfig);
         
@@ -63,10 +58,10 @@ class DefaultFilterProcessor implements FilterProcessor {
                     String field = entry.getKey();
                     Object cond = entry.getValue();
                     Object val = objMap.get(field);
-                    com.google.gson.JsonElement condJson = com.xa.mass.base.jsondsl.util.GsonConfig.buildGson().toJsonTree(cond);
+                    com.google.gson.JsonElement condJson = GsonConfig.buildGson().toJsonTree(cond);
                     if (condJson.isJsonObject()) {
-                        Map<String, Object> condMap = com.xa.mass.base.jsondsl.util.GsonConfig.buildGson().fromJson(condJson, Map.class);
-                        if (!FieldRuleEvaluator.evaluate(val, condMap)) {
+                        Map<String, Object> condMap = GsonConfig.buildGson().fromJson(condJson, Map.class);
+                        if (!BuiltinFunctions.evaluate(val, condMap)) {
                             failReasons.add(field + " 不满足条件: " + cond);
                         }
                     } else {
@@ -83,7 +78,7 @@ class DefaultFilterProcessor implements FilterProcessor {
                     String exprName = entry.getKey();
                     String expr = String.valueOf(entry.getValue());
                     try {
-                        Object result = filter.exprExecutor.execute(expr, objMap);
+                        Object result = BuiltinFunctions.evaluate(expr, objMap);
                         boolean ok = false;
                         if (result instanceof Boolean) ok = (Boolean) result;
                         else if (result instanceof Number) ok = ((Number) result).doubleValue() != 0;

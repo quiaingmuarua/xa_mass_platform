@@ -6,14 +6,12 @@ import com.google.gson.JsonParser;
 import com.xa.mass.base.jsondsl.builtin.DslContext;
 import com.xa.mass.base.jsondsl.builtin.DslKeyword;
 import com.xa.mass.base.jsondsl.builtin.JsonDslException;
-import com.xa.mass.base.jsondsl.filter.DslFilter;
-import com.xa.mass.base.jsondsl.filter.DslFilterFactory;
-import com.xa.mass.base.jsondsl.filter.JsonDslFilter;
 import com.xa.mass.base.jsondsl.generate.DslObjectBuilder;
-import com.xa.mass.base.jsondsl.model.JsonDslDefinition;
+import com.xa.mass.base.jsondsl.builtin.GsonConfig;
+import com.xa.mass.base.jsondsl.processor.FilterProcessor;
 import com.xa.mass.base.jsondsl.processor.FilterResult;
 import com.xa.mass.base.jsondsl.processor.ProcessingContext;
-import com.xa.mass.base.jsondsl.util.GsonConfig;
+import com.xa.mass.base.jsondsl.processor.ProcessorRegistry;
 
 import java.util.*;
 
@@ -82,11 +80,11 @@ public class JsonDslEngine {
                 com.xa.mass.base.jsondsl.parser.JsonDslParser.parse(jsonDsl);
         filterDef.validate();
         // 2. 获取 FilterProcessor
-        com.xa.mass.base.jsondsl.processor.FilterProcessor filterProcessor =
-                com.xa.mass.base.jsondsl.processor.ProcessorRegistry.getFilterProcessor();
+        FilterProcessor filterProcessor =
+                ProcessorRegistry.getFilterProcessor();
         // 3. 过滤
-        com.xa.mass.base.jsondsl.processor.FilterResult<T> result =
-                filterProcessor.filter(data, filterDef, new com.xa.mass.base.jsondsl.processor.ProcessingContext("JsonDslEngine.filter"));
+        FilterResult<T> result =
+                filterProcessor.filter(data, filterDef, new ProcessingContext("JsonDslEngine.filter"));
         return result.getPassed();
     }
 

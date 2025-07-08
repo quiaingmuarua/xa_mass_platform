@@ -3,12 +3,11 @@ package com.xa.mass.base.jsondsl.filter;
 import com.google.gson.Gson;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import com.xa.mass.base.jsondsl.builtin.BuiltinFunctions;
 import com.xa.mass.base.jsondsl.builtin.JsonDslException;
 import com.xa.mass.base.jsondsl.eval.DslExprExecutor;
-import com.xa.mass.base.jsondsl.util.GsonConfig;
-import com.xa.mass.base.jsondsl.util.FieldRuleEvaluator;
+import com.xa.mass.base.jsondsl.builtin.GsonConfig;
 
-import java.util.List;
 import java.util.Map;
 
 /**
@@ -24,13 +23,12 @@ public class JsonDslFilter<T> implements DslFilter<T, T> {
     private final String name;
     private final String description;
     private final JsonObject filterConfig;
-    public final DslExprExecutor exprExecutor;
-    
+
     public JsonDslFilter(String name, String description, JsonObject filterConfig) {
         this.name = name;
         this.description = description;
         this.filterConfig = filterConfig;
-        this.exprExecutor = new DslExprExecutor();
+
     }
     
     public JsonDslFilter(String name, String description, String filterConfigJson) {
@@ -73,7 +71,7 @@ public class JsonDslFilter<T> implements DslFilter<T, T> {
             if ("$EXPR".equals(field)) {
                 try {
                     String expr = cond.getAsString();
-                    Object result = exprExecutor.execute(expr, context);
+                    Object result = DslExprExecutor.execute(expr, context);
                     boolean ok = false;
                     if (result instanceof Boolean) ok = (Boolean) result;
                     else if (result instanceof Number) ok = ((Number) result).doubleValue() != 0;
@@ -91,7 +89,7 @@ public class JsonDslFilter<T> implements DslFilter<T, T> {
             Object fieldValue = context.get(field);
             if (cond.isJsonObject()) {
                 Map<String, Object> rule = GSON.fromJson(cond, Map.class);
-                if (!FieldRuleEvaluator.evaluate(fieldValue, rule)) {
+                if (!BuiltinFunctions.evaluate(fieldValue, rule)) {
                     return false;
                 }
             } else if (cond.isJsonPrimitive() || cond.isJsonArray()) {
