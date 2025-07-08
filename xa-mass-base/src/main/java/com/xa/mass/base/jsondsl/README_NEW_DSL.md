@@ -836,17 +836,17 @@ try {
 ## 新的标准 DSL 框架说明与问题记录
 
 ### 1. 自动注册机制
-- 所有内置函数（如 `$choice`、`$range`、`$join` 等）在 `BuiltinFunctions` 的 static 块中注册到 `OperatorRegistry`。
-- `OperatorRegistry` static 块自动触发 `BuiltinFunctions`，保证主流程下所有内置函数都能自动注册。
+- 所有内置函数（如 `$choice`、`$range`、`$join` 等）在 `BuiltinFunctions` 的 static 块中注册到 `FUNCTION_MAP`。
+- `BuiltinFunctions` 提供统一的注册表管理，避免重复注册。
 - QLExpress 注册时自动排除内置操作符（如 `in`、`eq`、`gte` 等），避免冲突。
 
 ### 2. mock/表达式/类型适配
-- 所有 mock 生成、filter、表达式等统一走 `TemplateValueResolver` + `OperatorRegistry`。
+- 所有 mock 生成、filter、表达式等统一走 `TemplateValueResolver` + `BuiltinFunctions`。
 - 类型适配统一走 `TypeAdapterUtil.adaptType`，支持字符串、数字、下标、boolean→枚举等常见场景。
 - boolean→枚举支持智能映射（如 true→ONLINE/ENABLED/YES，false→OFFLINE/DISABLED/NO），否则 fallback 为第一个常量。
 
 ### 3. 测试隔离与全局状态
-- 单测时，`OperatorRegistry`、`BuiltinFunctions` 等 static 注册表可能被其它测试污染，导致注册缺失或 mock 失败。
+- 单测时，`BuiltinFunctions` 等 static 注册表可能被其它测试污染，导致注册缺失或 mock 失败。
 - 解决方案：每个测试用例前后清理注册表，并强制触发 `BuiltinFunctions` static 块，保证注册一致性。
 - 但全量测试时，仍可能因其它测试用例的 DSL/mock 规则污染导致部分用例表现异常。
 
@@ -866,13 +866,12 @@ try {
 
 ## 6. 本轮会话核心修改点同步
 
-- 统一所有内置函数注册到 OperatorRegistry，BuiltinFunctions static 块负责注册。
-- TemplateValueResolver 递归参数处理修复：内置函数参数为 List 时递归 resolve，mock 结果为实际值。
+- 简化注册机制：统一使用 BuiltinFunctions 中的 FUNCTION_MAP 和 OPERATOR_MAP，移除重复的注册表。
+- TemplateValueResolver 简化：移除 BUILTIN_RESOLVERS，直接使用 BuiltinFunctions.eval()。
 - $range 注册逻辑修复：mock 时返回区间内单个随机 int，而不是 List。
 - TypeAdapterUtil.adaptType 增强：支持 boolean→枚举智能映射，兼容历史 mock 行为。
-- OperatorRegistry static 块自动触发 BuiltinFunctions，保证主流程自动注册。
-- QLExpress 注册自动排除所有内置操作符，彻底防止 in/eq/gte 等冲突。
-- OperatorRegistry.registerToQLExpressInternal 增加防御拦截和详细日志，辅助定位注册冲突。
+- BuiltinFunctions.registerToQLExpress 增强：自动排除所有内置操作符，彻底防止 in/eq/gte 等冲突。
+- 增加防御拦截和详细日志，辅助定位注册冲突。
 - 测试用例（如 NewStandardDslTypeRegistrationTest、QLExpressBuiltinTest）增加 @BeforeEach 强制触发 BuiltinFunctions static 块，保证每次测试前注册表一致。
 - mockFromDsl 兼容新 DSL 结构：顶层无 MODEL 字段时自动从 context.MODEL 取值。
 - 文档同步更新，记录所有机制、问题点与建议。

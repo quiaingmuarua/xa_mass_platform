@@ -354,26 +354,90 @@ public class BuiltinFunctions {
 
     /**
      * 批量注册所有常用内置函数到 QLExpress
+     * 包含冲突检测和防御拦截机制
      */
     public static void registerToQLExpress(ExpressRunner runner) {
+        if (runner == null) {
+            throw new IllegalArgumentException("ExpressRunner 不能为空");
+        }
+        
         try {
             // 注册 parseInt(String) 函数
             runner.addFunctionOfClassMethod("parseInt", Integer.class.getName(), "parseInt", new String[] { "String" }, null);
+            
+            // 注册所有内置函数
             for (Map.Entry<String, BuiltinFunction> entry : FUNCTION_MAP.entrySet()) {
-                String func = entry.getKey();
-                BuiltinFunction impl = entry.getValue();
-                runner.addFunction(func, new com.ql.util.express.Operator() {
-                    @Override
-                    public Object executeInner(Object[] list) throws Exception {
-                        // 兼容单参数和多参数
-                        if (list == null || list.length == 0) return impl.apply(null);
-                        if (list.length == 1) return impl.apply(list[0]);
-                        return impl.apply(java.util.Arrays.asList(list));
-                    }
-                });
+                String funcName = entry.getKey();
+                BuiltinFunction function = entry.getValue();
+                
+                // 检查是否为内置操作符，避免冲突
+                if (isBuiltinOperator(funcName)) {
+                    System.out.println("[BuiltinFunctions] 跳过内置操作符 " + funcName + " 的注册，避免冲突");
+                    continue;
+                }
+                
+                try {
+                    runner.addFunction(funcName, new com.ql.util.express.Operator() {
+                        @Override
+                        public Object executeInner(Object[] list) throws Exception {
+                            // 兼容单参数和多参数
+                            if (list == null || list.length == 0) return function.apply(null);
+                            if (list.length == 1) return function.apply(list[0]);
+                            return function.apply(java.util.Arrays.asList(list));
+                        }
+                    });
+                    System.out.println("[BuiltinFunctions] 成功注册函数 " + funcName + " 到 QLExpress");
+                } catch (Exception e) {
+                    System.err.println("[BuiltinFunctions] 注册函数 " + funcName + " 到 QLExpress 失败: " + e.getMessage());
+                    // 继续注册其他函数，不中断整个流程
+                }
             }
         } catch (Exception e) {
             throw new RuntimeException("注册 BuiltinFunctions 到 QLExpress 失败", e);
         }
+    }
+    
+    /**
+     * 检查是否为内置操作符
+     * @param name 名称
+     * @return 是否为内置操作符
+     */
+    private static boolean isBuiltinOperator(String name) {
+        // QLExpress 内置操作符列表
+        String[] builtinOperators = {
+            "in", "eq", "ne", "gt", "gte", "lt", "lte", "and", "or", "not",
+            "add", "sub", "mul", "div", "mod", "pow", "neg", "pos"
+        };
+        
+        for (String op : builtinOperators) {
+            if (op.equals(name.toLowerCase())) {
+                return true;
+            }
+        }
+        return false;
+    }
+    
+    /**
+     * 清理注册表（主要用于测试）
+     */
+    public static void clear() {
+        FUNCTION_MAP.clear();
+        OPERATOR_MAP.clear();
+    }
+    
+    /**
+     * 获取已注册的函数数量
+     * @return 函数数量
+     */
+    public static int getFunctionCount() {
+        return FUNCTION_MAP.size();
+    }
+    
+    /**
+     * 获取已注册的操作符数量
+     * @return 操作符数量
+     */
+    public static int getOperatorCount() {
+        return OPERATOR_MAP.size();
     }
 } 
