@@ -1,11 +1,21 @@
 package com.xa.mass.base.jsondsl.processor;
 
+import com.google.gson.Gson;
+
 import com.xa.mass.base.jsondsl.builtin.BuiltinFunctions;
 import com.xa.mass.base.jsondsl.builtin.GsonConfig;
+import com.xa.mass.base.jsondsl.eval.DslExprExecutor;
+import com.xa.mass.base.jsondsl.parser.JsonDslParser;
 import com.xa.mass.base.jsondsl.model.JsonDslDefinition;
+import com.xa.mass.base.jsondsl.filter.DslFilterFactory;
+import com.xa.mass.base.jsondsl.filter.JsonDslFilter;
+
 
 import java.util.List;
+import java.util.ArrayList;
 import java.util.Map;
+import com.xa.mass.base.jsondsl.processor.FilterReport.FilterFail;
+
 
 /**
  * 默认过滤处理器实现
@@ -14,7 +24,8 @@ import java.util.Map;
  * </p>
  */
 class DefaultFilterProcessor implements FilterProcessor {
-    
+    private static final Gson gson = GsonConfig.buildGson();
+
     @Override
     public <T> FilterResult<T> filter(List<T> data, JsonDslDefinition def, ProcessingContext ctx) {
         // 参数校验
@@ -27,11 +38,11 @@ class DefaultFilterProcessor implements FilterProcessor {
         if (def.getFieldDsl() == null || def.getFieldDsl().isEmpty()) {
             throw new com.xa.mass.base.jsondsl.builtin.JsonDslException("fieldDsl must not be empty");
         }
-        boolean includeFailed = ctx != null && Boolean.TRUE.equals(ctx.getParameter("includeFailedDetail", true));
+        boolean includeFailed = Boolean.TRUE.equals(ctx.getParameter("includeFailedDetail", true));
         // 内联原filterWithReport逻辑
         List<T> passed = new java.util.ArrayList<>();
         java.util.List<FilterReport.FilterFail<T>> failed = new java.util.ArrayList<>();
-        
+
         // 直接构造 JsonObject，避免不必要的 JSON 转换
         com.google.gson.JsonObject filterConfig = new com.google.gson.JsonObject();
         if (def.getFieldDsl() != null) {
@@ -41,7 +52,7 @@ class DefaultFilterProcessor implements FilterProcessor {
             filterConfig.add("combineDsl", GsonConfig.buildGson().toJsonTree(def.getCombineDsl()));
         }
         com.xa.mass.base.jsondsl.filter.JsonDslFilter<T> filter = com.xa.mass.base.jsondsl.filter.DslFilterFactory.createJsonDslFilter(def.getUniqueId(), def.getDescription(), filterConfig);
-        
+
         for (T obj : data) {
             java.util.List<String> failReasons = new java.util.ArrayList<>();
             java.util.Map<String, Object> objMap;
@@ -78,7 +89,7 @@ class DefaultFilterProcessor implements FilterProcessor {
                     String exprName = entry.getKey();
                     String expr = String.valueOf(entry.getValue());
                     try {
-                        Object result = BuiltinFunctions.evaluate(expr, objMap);
+                        Object result = DslExprExecutor.execute(expr, objMap);
                         boolean ok = false;
                         if (result instanceof Boolean) ok = (Boolean) result;
                         else if (result instanceof Number) ok = ((Number) result).doubleValue() != 0;
@@ -104,14 +115,14 @@ class DefaultFilterProcessor implements FilterProcessor {
             return new FilterResult<>(passed, null, data.size());
         }
     }
-    
+
     @Override
     public String getName() {
         return "DefaultFilterProcessor";
     }
-    
+
     @Override
     public int getPriority() {
         return 200; // 过滤处理器优先级
     }
-} 
+}
