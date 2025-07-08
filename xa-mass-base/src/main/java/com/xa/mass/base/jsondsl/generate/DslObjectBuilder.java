@@ -103,7 +103,11 @@ public class DslObjectBuilder {
         return targetType.cast(obj);
     }
 
-    private static Object mockFieldValue(Field field, Object rule, DslContext context) {
+    public static Object mockFieldValue(Field field,Object rule, DslContext context) {
+
+        return mockFieldValue(rule,context);
+    }
+    public static Object mockFieldValue(Object rule, DslContext context) {
         if (isCollectionRule(rule)) {
             return handleCollectionRule(rule, context, Object.class);
         }

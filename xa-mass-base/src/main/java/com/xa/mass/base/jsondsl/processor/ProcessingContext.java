@@ -15,6 +15,15 @@ public class ProcessingContext {
     private final Map<String, Object> variables = new HashMap<>();
     private boolean debug = false;
     private String scopeName;
+    static {
+
+        // 强制触发 BuiltinFunctions 的 static 块，确保所有内置函数注册
+        try {
+            Class.forName("com.xa.mass.base.jsondsl.builtin.BuiltinFunctions");
+        } catch (ClassNotFoundException e) {
+            throw new RuntimeException(e);
+        }
+    }
     
     public ProcessingContext() {}
     

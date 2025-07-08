@@ -6,7 +6,11 @@ import com.xa.mass.base.jsondsl.model.JsonDslDefinition;
 import com.xa.mass.base.jsondsl.builtin.JsonDslException;
 import com.xa.mass.base.jsondsl.builtin.DslContext;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+
+import static com.xa.mass.base.jsondsl.generate.DslObjectBuilder.mockFieldValue;
 
 /**
  * 默认生成处理器实现
@@ -59,9 +63,23 @@ class DefaultGenerateProcessor implements GenerateProcessor {
             if (definition.getFieldDsl() != null) {
                 dsl.add("FIELDS", GsonConfig.buildGson().toJsonTree(definition.getFieldDsl()));
             }
-            
-            T obj = DslObjectBuilder.mockFromDsl(dsl, dslContext, targetType);
-            result.add(obj);
+            Map<String,Object> resultMap = new HashMap<String, Object>();
+            if(Map.class.isAssignableFrom(targetType)){
+                for (Map.Entry<String, Object> entry : definition.getFieldDsl().entrySet()) {
+                    Object value = DslObjectBuilder.mockFieldValue( entry.getValue(), dslContext);
+                    if(value!=null){
+                        resultMap.put(entry.getKey(), value);
+                    }
+
+                }
+                result.add((T)resultMap);
+
+            }else {
+                T obj = DslObjectBuilder.mockFromDsl(dsl, dslContext, targetType);
+                result.add(obj);
+            }
+
+
         }
         
         if (context.isDebug()) {

@@ -3,6 +3,7 @@ package com.xa.mass.base.jsondsl;
 import com.xa.mass.base.jsondsl.model.JsonDslContext;
 import com.xa.mass.base.jsondsl.model.JsonDslDefinition;
 import com.xa.mass.base.jsondsl.processor.*;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -15,8 +16,24 @@ import java.util.Map;
  */
 public class JsonDslEngineIndependentTest {
 
+    @BeforeEach
+    void setUp() {
+        // 强制触发 BuiltinFunctions 的 static 块，确保所有内置函数注册
+        try {
+            Class.forName("com.xa.mass.base.jsondsl.builtin.BuiltinFunctions");
+        } catch (ClassNotFoundException e) {
+            throw new RuntimeException(e);
+        }
+
+    }
+
     @Test
     public void testGenerateAndFilterIndependently() {
+        try {
+            Class.forName("com.xa.mass.base.jsondsl.builtin.BuiltinFunctions");
+        } catch (ClassNotFoundException e) {
+            throw new RuntimeException(e);
+        }
         // 1. 创建生成 DSL
         JsonDslDefinition generateDsl = new JsonDslDefinition("test-generate", JsonDslDefinition.DslType.GENERATE);
         JsonDslContext context = new JsonDslContext();
@@ -26,7 +43,7 @@ public class JsonDslEngineIndependentTest {
         
         Map<String, Object> fieldDsl = new HashMap<>();
         fieldDsl.put("id", "$RANGE(1, 100)");
-        fieldDsl.put("name", "$CHOICE(Alice, Bob, Charlie, Diana, Eve)");
+        fieldDsl.put("name", "$CHOICE('Alice', 'Bob', 'Charlie', 'Diana', 'Eve')");
         fieldDsl.put("age", "$RANGE(18, 50)");
         fieldDsl.put("score", "$RANGE(60, 100)");
         generateDsl.setFieldDsl(fieldDsl);
@@ -34,6 +51,7 @@ public class JsonDslEngineIndependentTest {
         // 2. 独立生成数据
         ProcessingContext processingContext = new ProcessingContext();
         List<Map> allUsers = JsonDslProcessorEngine.process(generateDsl, processingContext, Map.class);
+
         assertEquals(5, allUsers.size());
         
         // 3. 创建过滤 DSL
