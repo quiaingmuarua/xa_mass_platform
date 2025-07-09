@@ -6,6 +6,7 @@ import com.xa.mass.base.jsondsl.builtin.GsonConfig;
 import com.xa.mass.base.jsondsl.builtin.JsonDslException;
 
 import java.util.List;
+import java.util.ArrayList;
 
 /**
  * JSON-DSL 处理器引擎
@@ -57,7 +58,7 @@ public class JsonDslProcessorEngine {
             @SuppressWarnings("unchecked")
             List<T> input = (List<T>) context.getParameter("input");
             ParameterValidator.notNull(input, "input parameter in context");
-            FilterResult<T> result = processor.filter(input, definition, context);
+            FilterResult<T> result = processor.filter((T) input, definition, context);
             return result.getPassed();
         } else if (JsonDslDefinition.DslType.TRANSFORM.equals(definition.getType())) {
             // 优先使用注册的处理器，如果没有则使用默认处理器
@@ -135,7 +136,7 @@ public class JsonDslProcessorEngine {
                     processor = ProcessorManager.getFilterProcessor();
                 }
                 ParameterValidator.notNull(result, "previous generation result");
-                FilterResult<T> filterResult = processor.filter(result, definition, context);
+                FilterResult<T> filterResult = processor.filter((T) result, definition, context);
                 result = filterResult.getPassed();
             } else if (JsonDslDefinition.DslType.TRANSFORM.equals(definition.getType())) {
                 // 优先使用注册的处理器，如果没有则使用默认处理器
@@ -202,6 +203,78 @@ public class JsonDslProcessorEngine {
             .map(json -> gson.fromJson(json, JsonDslDefinition.class))
             .toList();
         return processChain(definitions, context, targetType);
+    }
+    
+    /**
+     * 批量过滤对象列表
+     * 
+     * @param dataList 要过滤的对象列表
+     * @param definition DSL 定义
+     * @param context 处理上下文
+     * @param targetType 目标类型
+     * @return 过滤后的对象列表
+     */
+    public static <T> List<T> filterBatch(List<T> dataList, JsonDslDefinition definition, ProcessingContext context, Class<T> targetType) {
+        // 基础参数校验
+        ParameterValidator.notNull(dataList, "dataList");
+        ParameterValidator.notNull(definition, "definition");
+        ParameterValidator.notNull(context, "context");
+        ParameterValidator.notNull(targetType, "targetType");
+        
+        // 获取过滤处理器
+        List<JsonDslProcessor> processors = ProcessorRegistry.getProcessors(definition.getType());
+        FilterProcessor processor;
+        if (!processors.isEmpty()) {
+            processor = (FilterProcessor) processors.get(0);
+        } else {
+            processor = ProcessorManager.getFilterProcessor();
+        }
+        
+        // 批量过滤
+        FilterResult<T> result = processor.filter((T) dataList, definition, context);
+        return result.getPassed();
+    }
+    
+    /**
+     * 批量过滤对象列表（带失败详情）
+     * 
+     * @param dataList 要过滤的对象列表
+     * @param definition DSL 定义
+     * @param context 处理上下文
+     * @param targetType 目标类型
+     * @return 过滤结果，包含通过和失败的对象
+     */
+    public static <T> FilterResult<T> filterBatchWithDetails(List<T> dataList, JsonDslDefinition definition, ProcessingContext context, Class<T> targetType) {
+        // 基础参数校验
+        ParameterValidator.notNull(dataList, "dataList");
+        ParameterValidator.notNull(definition, "definition");
+        ParameterValidator.notNull(context, "context");
+        ParameterValidator.notNull(targetType, "targetType");
+        
+        // 获取过滤处理器
+        List<JsonDslProcessor> processors = ProcessorRegistry.getProcessors(definition.getType());
+        FilterProcessor processor;
+        if (!processors.isEmpty()) {
+            processor = (FilterProcessor) processors.get(0);
+        } else {
+            processor = ProcessorManager.getFilterProcessor();
+        }
+        
+        // 批量过滤
+        List<T> passed = new ArrayList<>();
+        List<FilterReport.FilterFail<T>> failed = new ArrayList<>();
+        
+        for (T item : dataList) {
+            FilterResult<T> itemResult = processor.filter(item, definition, context);
+            if (!itemResult.getPassed().isEmpty()) {
+                passed.add(item);
+            } else {
+                // 这里可以扩展为获取具体的失败原因
+                failed.add(new FilterReport.FilterFail<>(item, List.of("未通过过滤条件")));
+            }
+        }
+        
+        return new FilterResult<>(passed, failed, dataList.size());
     }
     
     /**

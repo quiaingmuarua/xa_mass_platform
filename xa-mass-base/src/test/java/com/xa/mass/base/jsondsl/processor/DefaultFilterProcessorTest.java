@@ -41,12 +41,12 @@ public class DefaultFilterProcessorTest {
         definition.setFieldDsl(fieldDsl);
 
         // 测试单个对象过滤
-        boolean result = processor.filterSingle(user, definition, context);
+        boolean result = processor.filter(user, definition, context);
         assertTrue(result, "用户年龄25应该通过过滤");
 
         // 测试不满足条件的情况
         user.setAge(15);
-        result = processor.filterSingle(user, definition, context);
+        result = processor.filter(user, definition, context);
         assertFalse(result, "用户年龄15不应该通过过滤");
     }
 
@@ -75,7 +75,7 @@ public class DefaultFilterProcessorTest {
     }
 
     @Test
-    void testFilterListWithMixedTypes() {
+    void testFilterBatchWithMixedTypes() {
         // 创建混合类型的测试数据
         List<Object> testData = Arrays.asList(
             createTestUser("Alice", 25, "active"),
@@ -88,12 +88,10 @@ public class DefaultFilterProcessorTest {
         fieldDsl.put("age", Map.of("$EXPR", "age > 30"));
         definition.setFieldDsl(fieldDsl);
 
-        // 测试列表过滤
-        FilterResult<Object> result = processor.filter(testData, definition, context);
-        List<Object> passed = result.getPassed();
-
-        assertNotNull(passed);
-        assertTrue(passed.size() >= 0, "应该有过滤结果");
+        // 测试批量过滤
+        List<Object> filtered = JsonDslProcessorEngine.filterBatch(testData, definition, context, Object.class);
+        assertNotNull(filtered);
+        assertTrue(filtered.size() >= 0, "应该有过滤结果");
     }
 
     @Test
@@ -116,12 +114,12 @@ public class DefaultFilterProcessorTest {
         definition.setCombineDsl(combineDsl);
 
         // 测试组合条件过滤
-        boolean result = processor.filterSingle(user, definition, context);
+        boolean result = processor.filter(user, definition, context);
         assertTrue(result, "用户应该通过所有条件");
 
         // 测试不满足组合条件的情况
         user.setStatus("inactive");
-        result = processor.filterSingle(user, definition, context);
+        result = processor.filter(user, definition, context);
         assertFalse(result, "状态inactive不应该通过组合条件");
     }
 
@@ -129,7 +127,7 @@ public class DefaultFilterProcessorTest {
     void testFilterWithNullInput() {
         // 测试空输入
         assertThrows(JsonDslException.class, () -> {
-            processor.filterSingle(null, definition, context);
+            processor.filter(null, definition, context);
         });
     }
 
@@ -140,7 +138,7 @@ public class DefaultFilterProcessorTest {
         user.setAge(25);
 
         assertThrows(JsonDslException.class, () -> {
-            processor.filterSingle(user, null, context);
+            processor.filter(user, null, context);
         });
     }
 
@@ -151,7 +149,7 @@ public class DefaultFilterProcessorTest {
         user.setAge(25);
 
         assertThrows(JsonDslException.class, () -> {
-            processor.filterSingle(user, definition, null);
+            processor.filter(user, definition, null);
         });
     }
 
@@ -168,7 +166,7 @@ public class DefaultFilterProcessorTest {
         fieldDsl.put("age", Map.of("$EXPR", "age > 30")); // 故意设置不满足的条件
         definition.setFieldDsl(fieldDsl);
 
-        boolean result = processor.filterSingle(user, definition, context);
+        boolean result = processor.filter(user, definition, context);
         assertFalse(result, "调试模式下应该正确处理过滤");
     }
 
@@ -183,12 +181,12 @@ public class DefaultFilterProcessorTest {
         fieldDsl.put("age", Map.of("$EXPR", "invalid expression"));
         definition.setFieldDsl(fieldDsl);
 
-        boolean result = processor.filterSingle(user, definition, context);
+        boolean result = processor.filter(user, definition, context);
         assertFalse(result, "无效表达式应该导致过滤失败");
     }
 
     @Test
-    void testFilterWithIncludeFailedDetail() {
+    void testFilterBatchWithDetails() {
         // 创建测试数据
         List<TestUser> testUsers = Arrays.asList(
             createTestUser("Alice", 15, "active"),  // 年龄不满足
@@ -202,11 +200,8 @@ public class DefaultFilterProcessorTest {
         fieldDsl.put("status", Map.of("$EXPR", "status == 'active'"));
         definition.setFieldDsl(fieldDsl);
 
-        // 启用失败详情
-        context.setParameter("includeFailedDetail", true);
-
-        // 测试过滤
-        FilterResult<TestUser> result = processor.filter(testUsers, definition, context);
+        // 测试批量过滤（带详情）
+        FilterResult<TestUser> result = JsonDslProcessorEngine.filterBatchWithDetails(testUsers, definition, context, TestUser.class);
         List<TestUser> passed = result.getPassed();
         List<FilterReport.FilterFail<TestUser>> failed = result.getFailed();
 

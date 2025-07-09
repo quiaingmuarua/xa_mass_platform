@@ -5,6 +5,7 @@ import com.xa.mass.base.jsondsl.builtin.DslContext;
 import com.xa.mass.base.jsondsl.builtin.GsonConfig;
 import com.xa.mass.base.jsondsl.builtin.TemplateValueResolver;
 import com.xa.mass.base.jsondsl.model.JsonDslDefinition;
+import com.xa.mass.base.jsondsl.builtin.JsonDslException;
 
 import java.util.List;
 import java.util.Map;
@@ -14,55 +15,37 @@ class DefaultFilterProcessor implements FilterProcessor {
     private static final Gson gson = GsonConfig.buildGson();
 
     @Override
-    public <T> FilterResult<T> filter(List<T> data, JsonDslDefinition def, ProcessingContext ctx) {
-        // 使用统一的参数校验
-        ParameterValidator.validateFilterParams(data, def, ctx);
-        
-        List<T> passed = new ArrayList<>();
-        List<FilterReport.FilterFail<T>> failed = new ArrayList<>();
-        
-        for (T obj : data) {
-            if (filterSingle(obj, def, ctx)) {
-                passed.add(obj);
-            } else {
-                // 如果需要失败详情，需要重新过滤一次获取失败原因
-                if (Boolean.TRUE.equals(ctx.getParameter("includeFailedDetail", true))) {
-                    List<String> failReasons = getFailReasons(obj, def, ctx);
-                    failed.add(new FilterReport.FilterFail<>(obj, failReasons));
-                }
-            }
-        }
-        
-        boolean includeFailed = Boolean.TRUE.equals(ctx.getParameter("includeFailedDetail", true));
-        if (includeFailed) {
-            return new FilterResult<>(passed, failed, data.size());
-        } else {
-            return new FilterResult<>(passed, null, data.size());
-        }
-    }
-    
-    /**
-     * 过滤单个对象
-     * 
-     * @param data 单个对象
-     * @param def DSL定义
-     * @param ctx 处理上下文
-     * @return 是否通过过滤
-     */
-    public <T> boolean filterSingle(T data, JsonDslDefinition def, ProcessingContext ctx) {
+    public <T> FilterResult<T> filter(T data, JsonDslDefinition def, ProcessingContext ctx) {
+        // 参数校验
         ParameterValidator.notNull(data, "data");
         ParameterValidator.notNull(def, "definition");
         ParameterValidator.notNull(ctx, "context");
-        
-        // 将对象转换为Map
-        Map<String, Object> objMap = convertToMap(data);
-        if (objMap == null) {
-            return false; // 转换失败视为过滤失败
+        ParameterValidator.validateDslType(def, JsonDslDefinition.DslType.FILTER);
+        ParameterValidator.validateDslField(def, "fieldDsl");
+
+        if (ctx.isDebug()) {
+            System.out.println("[DefaultFilterProcessor] 开始处理 DSL: " + def.getUniqueId());
         }
-        
-        return filterMap(objMap, def, ctx);
+
+        // 智能分发：如果是List，批量处理
+        if (data instanceof List) {
+            //noinspection unchecked
+            return filterList((List<T>) data, def, ctx);
+        }
+
+        // 单对象处理
+        Map<String, Object> objMap = convertToMap(data);
+        if (objMap != null) {
+            boolean passed = filterMap(objMap, def, ctx);
+            if (passed) {
+                return new FilterResult<>(List.of(data), null, 1);
+            } else {
+                return new FilterResult<>(List.of(), List.of(new FilterReport.FilterFail<>(data, List.of("未通过过滤条件"))), 1);
+            }
+        }
+        throw new JsonDslException("不支持的数据类型: " + (data != null ? data.getClass().getSimpleName() : "null"));
     }
-    
+
     /**
      * 过滤Map对象
      * 
@@ -71,7 +54,7 @@ class DefaultFilterProcessor implements FilterProcessor {
      * @param ctx 处理上下文
      * @return 是否通过过滤
      */
-    public boolean filterMap(Map<String, Object> dataMap, JsonDslDefinition def, ProcessingContext ctx) {
+    private boolean filterMap(Map<String, Object> dataMap, JsonDslDefinition def, ProcessingContext ctx) {
         ParameterValidator.notNull(dataMap, "dataMap");
         ParameterValidator.notNull(def, "definition");
         ParameterValidator.notNull(ctx, "context");
@@ -137,6 +120,34 @@ class DefaultFilterProcessor implements FilterProcessor {
         
         return true;
     }
+
+    /**
+     * 过滤对象列表，返回FilterResult
+     */
+    private <T> FilterResult<T> filterList(List<T> dataList, JsonDslDefinition definition, ProcessingContext ctx) {
+        if (ctx.isDebug()) {
+            System.out.println("[DefaultFilterProcessor] 开始批量过滤，数据量: " + dataList.size());
+        }
+        List<T> passed = new ArrayList<>();
+        List<FilterReport.FilterFail<T>> failed = new ArrayList<>();
+        for (T item : dataList) {
+            Map<String, Object> objMap = convertToMap(item);
+            if (objMap != null) {
+                boolean itemPassed = filterMap(objMap, definition, ctx);
+                if (itemPassed) {
+                    passed.add(item);
+                } else {
+                    failed.add(new FilterReport.FilterFail<>(item, List.of("未通过过滤条件")));
+                }
+            } else {
+                failed.add(new FilterReport.FilterFail<>(item, List.of("对象转换失败")));
+            }
+        }
+        if (ctx.isDebug()) {
+            System.out.println("[DefaultFilterProcessor] 批量过滤完成，通过: " + passed.size() + "/" + dataList.size());
+        }
+        return new FilterResult<>(passed, failed, dataList.size());
+    }
     
     /**
      * 将对象转换为Map
@@ -156,73 +167,10 @@ class DefaultFilterProcessor implements FilterProcessor {
             return null;
         }
     }
-    
-    /**
-     * 获取过滤失败的原因
-     * 
-     * @param obj 对象
-     * @param def DSL定义
-     * @param ctx 处理上下文
-     * @return 失败原因列表
-     */
-    private <T> List<String> getFailReasons(T obj, JsonDslDefinition def, ProcessingContext ctx) {
-        List<String> failReasons = new ArrayList<>();
-        Map<String, Object> objMap = convertToMap(obj);
-        
-        if (objMap == null) {
-            failReasons.add("对象转Map失败");
-            return failReasons;
-        }
-        
-        DslContext dslContext = new DslContext();
-        
-        // 检查字段条件
-        Map<String, Object> fieldConds = def.getFieldDsl();
-        if (fieldConds != null) {
-            for (Map.Entry<String, Object> entry : fieldConds.entrySet()) {
-                String field = entry.getKey();
-                Object cond = entry.getValue();
-                Object val = objMap.get(field);
-                
-                try {
-                    dslContext.setVariable(field, val);
-                    dslContext.setVariable("curFiledVal", val);
-                    Object result = TemplateValueResolver.resolve(cond, dslContext);
-                    
-                    if (!(result instanceof Boolean) || !((Boolean) result)) {
-                        failReasons.add(field + " 不满足条件: " + cond);
-                    }
-                } catch (Exception e) {
-                    failReasons.add(field + " 条件解析异常: " + e.getMessage());
-                }
-            }
-        }
-        
-        // 检查组合条件
-        Map<String, Object> combineConds = def.getCombineDsl();
-        if (combineConds != null) {
-            for (Map.Entry<String, Object> entry : combineConds.entrySet()) {
-                String exprName = entry.getKey();
-                Object expr = entry.getValue();
-                
-                try {
-                    Object result = TemplateValueResolver.resolve(expr, dslContext);
-                    boolean ok = false;
-                    if (result instanceof Boolean) ok = (Boolean) result;
-                    else if (result instanceof Number) ok = ((Number) result).doubleValue() != 0;
-                    else if (result instanceof String) ok = !((String) result).isEmpty();
-                    else ok = result != null;
-                    
-                    if (!ok) {
-                        failReasons.add("组合条件 " + exprName + " 不满足: " + expr);
-                    }
-                } catch (Exception e) {
-                    failReasons.add("组合条件 " + exprName + " 执行异常: " + e.getMessage());
-                }
-            }
-        }
-        
-        return failReasons;
+
+    @Override
+    public boolean supports(JsonDslDefinition.DslType type) {
+        return JsonDslDefinition.DslType.FILTER.equals(type);
     }
 
     @Override
