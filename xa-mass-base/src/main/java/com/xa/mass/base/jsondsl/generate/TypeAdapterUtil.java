@@ -96,6 +96,44 @@ class TypeAdapterUtil {
             }
             throw new JsonDslException("无法将 " + value + " 转为枚举 " + fieldType.getName());
         }
+        // 基本类型和包装类型适配
+        try {
+            if (fieldType == int.class || fieldType == Integer.class) {
+                if (value instanceof Number n) return n.intValue();
+                if (value instanceof String s) return Integer.parseInt(s);
+            }
+            if (fieldType == long.class || fieldType == Long.class) {
+                if (value instanceof Number n) return n.longValue();
+                if (value instanceof String s) return Long.parseLong(s);
+            }
+            if (fieldType == double.class || fieldType == Double.class) {
+                if (value instanceof Number n) return n.doubleValue();
+                if (value instanceof String s) return Double.parseDouble(s);
+            }
+            if (fieldType == float.class || fieldType == Float.class) {
+                if (value instanceof Number n) return n.floatValue();
+                if (value instanceof String s) return Float.parseFloat(s);
+            }
+            if (fieldType == short.class || fieldType == Short.class) {
+                if (value instanceof Number n) return n.shortValue();
+                if (value instanceof String s) return Short.parseShort(s);
+            }
+            if (fieldType == byte.class || fieldType == Byte.class) {
+                if (value instanceof Number n) return n.byteValue();
+                if (value instanceof String s) return Byte.parseByte(s);
+            }
+            if (fieldType == boolean.class || fieldType == Boolean.class) {
+                if (value instanceof Boolean b) return b;
+                if (value instanceof String s) return Boolean.parseBoolean(s);
+                if (value instanceof Number n) return n.intValue() != 0;
+            }
+            if (fieldType == char.class || fieldType == Character.class) {
+                if (value instanceof Character c) return c;
+                if (value instanceof String s && s.length() > 0) return s.charAt(0);
+            }
+        } catch (Exception e) {
+            throw new JsonDslException("类型适配失败: " + value + " -> " + fieldType.getName(), e);
+        }
         // 类型适配器
         Function<Object, Object> adapter = TYPE_ADAPTERS.get(fieldType);
         if (adapter != null) {
