@@ -1,10 +1,12 @@
 package com.xa.mass.base.channel.queue;
 
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 基于内存的消息集合实现，线程安全
+ * 注意：不支持 null 元素
  * @param <T> 元素类型
  */
 public class InMemoryMessageSet<T> implements MessageSet<T> {
@@ -22,16 +24,19 @@ public class InMemoryMessageSet<T> implements MessageSet<T> {
 
     @Override
     public boolean add(T value) {
+        Objects.requireNonNull(value, "Null elements are not supported");
         return set.add(value);
     }
 
     @Override
     public boolean remove(T value) {
+        Objects.requireNonNull(value, "Null elements are not supported");
         return set.remove(value);
     }
 
     @Override
     public boolean contains(T value) {
+        Objects.requireNonNull(value, "Null elements are not supported");
         return set.contains(value);
     }
 

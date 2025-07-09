@@ -107,21 +107,16 @@ public class InMemoryMessageMapTest {
 
     @Test
     void testNullKey() {
-        // 测试 null key 的处理
-        messageMap.put(null, 100);
-        assertEquals(100, messageMap.get(null));
-        assertTrue(messageMap.containsKey(null));
-        assertEquals(100, messageMap.remove(null));
-        assertFalse(messageMap.containsKey(null));
+        // 测试 null key 的处理 - 应该抛出异常
+        assertThrows(NullPointerException.class, () -> messageMap.put(null, 100));
+        assertThrows(NullPointerException.class, () -> messageMap.get(null));
+        assertThrows(NullPointerException.class, () -> messageMap.containsKey(null));
+        assertThrows(NullPointerException.class, () -> messageMap.remove(null));
     }
 
     @Test
     void testNullValue() {
-        // 测试 null value 的处理
-        messageMap.put("key1", null);
-        assertNull(messageMap.get("key1"));
-        assertTrue(messageMap.containsKey("key1"));
-        assertNull(messageMap.remove("key1"));
-        assertFalse(messageMap.containsKey("key1"));
+        // 测试 null value 的处理 - 应该抛出异常
+        assertThrows(NullPointerException.class, () -> messageMap.put("key1", null));
     }
 } 

@@ -193,20 +193,14 @@ public class InMemoryMessageQueueWithMapTest {
 
     @Test
     void testNullHandling() throws InterruptedException {
-        // 测试 null 值处理
-        // 队列中的 null 值
-        queueWithMap.offer(null);
-        assertEquals(1, queueWithMap.size());
-        assertNull(queueWithMap.poll(1, TimeUnit.SECONDS));
+        // 队列中的 null 值 - 应该抛出异常
+        assertThrows(NullPointerException.class, () -> queueWithMap.offer(null));
 
-        // 映射中的 null key 和 value
-        queueWithMap.put(null, 100);
-        assertEquals(100, queueWithMap.get(null));
-        assertTrue(queueWithMap.containsKey(null));
-
-        queueWithMap.put("key1", null);
-        assertNull(queueWithMap.get("key1"));
-        assertTrue(queueWithMap.containsKey("key1"));
+        // 映射中的 null key 和 value - 应该抛出异常
+        assertThrows(NullPointerException.class, () -> queueWithMap.put(null, 100));
+        assertThrows(NullPointerException.class, () -> queueWithMap.get(null));
+        assertThrows(NullPointerException.class, () -> queueWithMap.containsKey(null));
+        assertThrows(NullPointerException.class, () -> queueWithMap.put("key1", null));
     }
 
     @Test

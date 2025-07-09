@@ -66,10 +66,10 @@ public class InMemoryMessageSetTest {
 
     @Test
     void testNullElement() {
-        assertTrue(messageSet.add(null));
-        assertTrue(messageSet.contains(null));
-        assertTrue(messageSet.remove(null));
-        assertFalse(messageSet.contains(null));
+        // 测试 null 元素 - 应该抛出异常
+        assertThrows(NullPointerException.class, () -> messageSet.add(null));
+        assertThrows(NullPointerException.class, () -> messageSet.contains(null));
+        assertThrows(NullPointerException.class, () -> messageSet.remove(null));
     }
 
     @Test

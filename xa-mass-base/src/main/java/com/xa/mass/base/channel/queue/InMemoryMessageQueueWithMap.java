@@ -1,5 +1,6 @@
 package com.xa.mass.base.channel.queue;
 
+import java.util.Objects;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -8,6 +9,7 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * 内存实现的双队列（队列+映射）消息存储
+ * 注意：队列和映射部分都不支持 null
  * @param <K> 键类型
  * @param <V> 值类型
  */
@@ -29,6 +31,7 @@ public class InMemoryMessageQueueWithMap<K, V> implements MessageQueueWithMap<K,
     // MessageQueue 部分
     @Override
     public void offer(V message) {
+        Objects.requireNonNull(message, "Null messages are not supported");
         queue.offer(message);
     }
 
@@ -55,21 +58,26 @@ public class InMemoryMessageQueueWithMap<K, V> implements MessageQueueWithMap<K,
     // MessageMap 部分
     @Override
     public void put(K key, V value) {
+        Objects.requireNonNull(key, "Null keys are not supported");
+        Objects.requireNonNull(value, "Null values are not supported");
         map.put(key, value);
     }
 
     @Override
     public V get(K key) {
+        Objects.requireNonNull(key, "Null keys are not supported");
         return map.get(key);
     }
 
     @Override
     public V remove(K key) {
+        Objects.requireNonNull(key, "Null keys are not supported");
         return map.remove(key);
     }
 
     @Override
     public boolean containsKey(K key) {
+        Objects.requireNonNull(key, "Null keys are not supported");
         return map.containsKey(key);
     }
 
