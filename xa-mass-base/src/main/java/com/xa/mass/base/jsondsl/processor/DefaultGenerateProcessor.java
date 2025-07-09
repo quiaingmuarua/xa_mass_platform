@@ -22,33 +22,15 @@ class DefaultGenerateProcessor implements GenerateProcessor {
     
     @Override
     public <T> List<T> generate(JsonDslDefinition definition, ProcessingContext context, Class<T> targetType) {
-        // 参数验证
-        if (definition == null) {
-            throw new JsonDslException("Definition cannot be null");
-        }
-        if (context == null) {
-            throw new JsonDslException("Context cannot be null");
-        }
-        if (targetType == null) {
-            throw new JsonDslException("Target type cannot be null");
-        }
-        
-        if (context.isDebug()) {
-            System.out.println("[DefaultGenerateProcessor] 开始处理 DSL: " + definition.getUniqueId());
-        }
-        
-        // 验证 DSL 定义
-        definition.validate();
+        // 使用统一的参数校验
+        ParameterValidator.validateGenerateParams(definition, context, targetType);
         
         // 获取生成数量
         int count = definition.getContext() != null && definition.getContext().getCount() != null 
             ? definition.getContext().getCount() : 1;
         
         // 获取模型类名
-        String modelName = definition.getContext() != null ? definition.getContext().getModel() : null;
-        if (modelName == null) {
-            throw new IllegalArgumentException("generate 类型 DSL 必须指定 context.model");
-        }
+        String modelName = definition.getContext().getModel();
         
         // 直接使用 DslObjectBuilder 生成数据
         List<T> result = new java.util.ArrayList<>();

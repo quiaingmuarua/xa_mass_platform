@@ -138,7 +138,7 @@ public class FilterProcessorTest {
         fieldDsl.put("age", Map.of("$EXPR", "age > 30"));
         definition.setFieldDsl(fieldDsl);
 
-        assertThrows(IllegalArgumentException.class, () -> {
+        assertThrows(JsonDslException.class, () -> {
             processor.filter(null, definition, context);
         });
     }
@@ -167,7 +167,7 @@ public class FilterProcessorTest {
     void testFilterWithNullDefinition() {
         List<TestUser> testUsers = Arrays.asList(createTestUser("Alice", 25));
 
-        assertThrows(IllegalArgumentException.class, () -> {
+        assertThrows(JsonDslException.class, () -> {
             processor.filter(testUsers, null, context);
         });
     }
@@ -176,7 +176,7 @@ public class FilterProcessorTest {
     void testFilterWithNullContext() {
         List<TestUser> testUsers = Arrays.asList(createTestUser("Alice", 25));
 
-        assertThrows(IllegalArgumentException.class, () -> {
+        assertThrows(JsonDslException.class, () -> {
             processor.filter(testUsers, definition, null);
         });
     }

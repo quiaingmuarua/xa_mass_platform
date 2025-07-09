@@ -337,28 +337,28 @@ public class JsonDslProcessorEngineTest {
         JsonDslDefinition unsupportedDsl = new JsonDslDefinition("unsupported", JsonDslDefinition.DslType.FILTER);
         
         // 应该抛出异常（因为 FILTER 类型需要不同的处理方式）
-        assertThrows(IllegalArgumentException.class, () -> {
+        assertThrows(JsonDslException.class, () -> {
             JsonDslProcessorEngine.process(unsupportedDsl, context, Map.class);
         });
     }
     
     @Test
     void testProcessWithNullDefinition() {
-        assertThrows(NullPointerException.class, () -> {
+        assertThrows(JsonDslException.class, () -> {
             JsonDslProcessorEngine.process(null, context, Map.class);
         });
     }
     
     @Test
     void testProcessWithNullContext() {
-        assertThrows(IllegalArgumentException.class, () -> {
+        assertThrows(JsonDslException.class, () -> {
             JsonDslProcessorEngine.process(definition, null, Map.class);
         });
     }
     
     @Test
     void testProcessChainWithNullList() {
-        assertThrows(NullPointerException.class, () -> {
+        assertThrows(JsonDslException.class, () -> {
             JsonDslProcessorEngine.processChain(null, context, Map.class);
         });
     }

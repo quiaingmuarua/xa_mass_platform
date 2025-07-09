@@ -3,6 +3,7 @@ package com.xa.mass.base.jsondsl.processor;
 import com.google.gson.Gson;
 import com.xa.mass.base.jsondsl.model.JsonDslDefinition;
 import com.xa.mass.base.jsondsl.builtin.GsonConfig;
+import com.xa.mass.base.jsondsl.builtin.JsonDslException;
 
 import java.util.List;
 
@@ -27,6 +28,11 @@ public class JsonDslProcessorEngine {
      * @return 处理结果
      */
     public static <T> List<T> process(JsonDslDefinition definition, ProcessingContext context, Class<T> targetType) {
+        // 基础参数校验
+        ParameterValidator.notNull(definition, "definition");
+        ParameterValidator.notNull(context, "context");
+        ParameterValidator.notNull(targetType, "targetType");
+        
         if (JsonDslDefinition.DslType.GENERATE.equals(definition.getType())) {
             // 优先使用注册的处理器，如果没有则使用默认处理器
             List<JsonDslProcessor> processors = ProcessorRegistry.getProcessors(definition.getType());
@@ -50,9 +56,7 @@ public class JsonDslProcessorEngine {
             // 从上下文中获取输入数据
             @SuppressWarnings("unchecked")
             List<T> input = (List<T>) context.getParameter("input");
-            if (input == null) {
-                throw new IllegalArgumentException("过滤处理器需要上下文中提供 input 参数");
-            }
+            ParameterValidator.notNull(input, "input parameter in context");
             FilterResult<T> result = processor.filter(input, definition, context);
             return result.getPassed();
         } else if (JsonDslDefinition.DslType.TRANSFORM.equals(definition.getType())) {
@@ -67,9 +71,7 @@ public class JsonDslProcessorEngine {
             // 从上下文中获取输入数据
             @SuppressWarnings("unchecked")
             T input = (T) context.getParameter("input");
-            if (input == null) {
-                throw new IllegalArgumentException("转换处理器需要上下文中提供 input 参数");
-            }
+            ParameterValidator.notNull(input, "input parameter in context");
             T result = processor.transform(input, definition, context);
             return List.of(result);
         } else if (JsonDslDefinition.DslType.VALIDATE.equals(definition.getType())) {
@@ -84,16 +86,14 @@ public class JsonDslProcessorEngine {
             // 从上下文中获取输入数据
             @SuppressWarnings("unchecked")
             T input = (T) context.getParameter("input");
-            if (input == null) {
-                throw new IllegalArgumentException("校验处理器需要上下文中提供 input 参数");
-            }
+            ParameterValidator.notNull(input, "input parameter in context");
             List<String> errors = processor.validate(input, definition, context);
             if (!errors.isEmpty()) {
-                throw new IllegalArgumentException("校验失败: " + String.join(", ", errors));
+                throw new JsonDslException("校验失败: " + String.join(", ", errors));
             }
             return List.of(input);
         } else {
-            throw new IllegalArgumentException("不支持的 DSL 类型: " + definition.getType());
+            throw new JsonDslException("不支持的 DSL 类型: " + definition.getType());
         }
     }
     
@@ -106,6 +106,7 @@ public class JsonDslProcessorEngine {
      * @return 处理结果
      */
     public static <T> List<T> processChain(List<JsonDslDefinition> definitions, ProcessingContext context, Class<T> targetType) {
+        ParameterValidator.notNull(definitions, "definitions");
         List<T> result = null;
         
         for (JsonDslDefinition definition : definitions) {
@@ -133,9 +134,7 @@ public class JsonDslProcessorEngine {
                 } else {
                     processor = ProcessorManager.getFilterProcessor();
                 }
-                if (result == null) {
-                    throw new IllegalArgumentException("过滤处理器需要前置的生成结果");
-                }
+                ParameterValidator.notNull(result, "previous generation result");
                 FilterResult<T> filterResult = processor.filter(result, definition, context);
                 result = filterResult.getPassed();
             } else if (JsonDslDefinition.DslType.TRANSFORM.equals(definition.getType())) {
@@ -147,9 +146,7 @@ public class JsonDslProcessorEngine {
                 } else {
                     processor = ProcessorManager.getTransformProcessor();
                 }
-                if (result == null || result.isEmpty()) {
-                    throw new IllegalArgumentException("转换处理器需要前置的生成结果");
-                }
+                ParameterValidator.notEmpty(result, "previous generation result");
                 List<T> transformed = result.stream()
                     .map(obj -> processor.transform(obj, definition, context))
                     .toList();
@@ -163,18 +160,16 @@ public class JsonDslProcessorEngine {
                 } else {
                     processor = ProcessorManager.getValidateProcessor();
                 }
-                if (result == null || result.isEmpty()) {
-                    throw new IllegalArgumentException("校验处理器需要前置的生成结果");
-                }
+                ParameterValidator.notEmpty(result, "previous generation result");
                 // 校验所有对象
                 for (T obj : result) {
                     List<String> errors = processor.validate(obj, definition, context);
                     if (!errors.isEmpty()) {
-                        throw new IllegalArgumentException("校验失败: " + String.join(", ", errors));
+                        throw new JsonDslException("校验失败: " + String.join(", ", errors));
                     }
                 }
             } else {
-                throw new IllegalArgumentException("不支持的 DSL 类型: " + definition.getType());
+                throw new JsonDslException("不支持的 DSL 类型: " + definition.getType());
             }
         }
         

@@ -1,6 +1,7 @@
 package com.xa.mass.base.jsondsl.processor;
 
 import com.xa.mass.base.jsondsl.model.JsonDslDefinition;
+import com.xa.mass.base.jsondsl.builtin.JsonDslException;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -52,7 +53,7 @@ public class ProcessorRegistry {
         }
         
         // 如果连默认处理器都没有，抛出异常
-        throw new IllegalArgumentException("未找到支持类型 " + type + " 的处理器");
+        throw new JsonDslException("未找到支持类型 " + type + " 的处理器");
     }
     
     /**
@@ -103,7 +104,7 @@ public class ProcessorRegistry {
         if (processor instanceof GenerateProcessor) {
             return (GenerateProcessor) processor;
         }
-        throw new IllegalArgumentException("未找到生成处理器");
+        throw new JsonDslException("未找到生成处理器");
     }
     
     /**
@@ -114,7 +115,7 @@ public class ProcessorRegistry {
         if (processor instanceof FilterProcessor) {
             return (FilterProcessor) processor;
         }
-        throw new IllegalArgumentException("未找到过滤处理器");
+        throw new JsonDslException("未找到过滤处理器");
     }
     
     /**
@@ -125,7 +126,7 @@ public class ProcessorRegistry {
         if (processor instanceof TransformProcessor) {
             return (TransformProcessor) processor;
         }
-        throw new IllegalArgumentException("未找到转换处理器");
+        throw new JsonDslException("未找到转换处理器");
     }
     
     /**
@@ -136,7 +137,7 @@ public class ProcessorRegistry {
         if (processor instanceof ValidateProcessor) {
             return (ValidateProcessor) processor;
         }
-        throw new IllegalArgumentException("未找到校验处理器");
+        throw new JsonDslException("未找到校验处理器");
     }
     
     /**

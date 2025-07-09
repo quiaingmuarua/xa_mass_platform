@@ -1,6 +1,7 @@
 package com.xa.mass.base.jsondsl.processor;
 
 import com.xa.mass.base.jsondsl.model.JsonDslDefinition;
+import com.xa.mass.base.jsondsl.builtin.JsonDslException;
 
 import java.util.List;
 import java.util.Map;
@@ -57,7 +58,7 @@ public class ProcessorManager {
         // 查找工厂并创建新实例
         ProcessorFactory factory = factories.get(type);
         if (factory == null) {
-            throw new IllegalArgumentException("未找到类型 " + type + " 的处理器工厂");
+            throw new JsonDslException("未找到类型 " + type + " 的处理器工厂");
         }
         
         return factory.createProcessor();
@@ -71,7 +72,7 @@ public class ProcessorManager {
         if (processor instanceof GenerateProcessor) {
             return (GenerateProcessor) processor;
         }
-        throw new IllegalArgumentException("未找到生成处理器");
+        throw new JsonDslException("未找到生成处理器");
     }
     
     /**
@@ -82,7 +83,7 @@ public class ProcessorManager {
         if (processor instanceof FilterProcessor) {
             return (FilterProcessor) processor;
         }
-        throw new IllegalArgumentException("未找到过滤处理器");
+        throw new JsonDslException("未找到过滤处理器");
     }
     
     /**
@@ -93,7 +94,7 @@ public class ProcessorManager {
         if (processor instanceof TransformProcessor) {
             return (TransformProcessor) processor;
         }
-        throw new IllegalArgumentException("未找到转换处理器");
+        throw new JsonDslException("未找到转换处理器");
     }
     
     /**
@@ -104,7 +105,7 @@ public class ProcessorManager {
         if (processor instanceof ValidateProcessor) {
             return (ValidateProcessor) processor;
         }
-        throw new IllegalArgumentException("未找到校验处理器");
+        throw new JsonDslException("未找到校验处理器");
     }
     
     /**
@@ -124,34 +125,28 @@ public class ProcessorManager {
                 result = processor.generate(definition, context, targetType);
             } else if (JsonDslDefinition.DslType.FILTER.equals(definition.getType())) {
                 FilterProcessor processor = getFilterProcessor();
-                if (result == null) {
-                    throw new IllegalArgumentException("过滤处理器需要前置的生成结果");
-                }
-                FilterResult<T> filterResult = ((FilterProcessor) processor).filter(result, definition, context);
+                ParameterValidator.notNull(result, "previous generation result");
+                FilterResult<T> filterResult = processor.filter(result, definition, context);
                 result = filterResult.getPassed();
             } else if (JsonDslDefinition.DslType.TRANSFORM.equals(definition.getType())) {
                 TransformProcessor processor = getTransformProcessor();
-                if (result == null || result.isEmpty()) {
-                    throw new IllegalArgumentException("转换处理器需要前置的生成结果");
-                }
+                ParameterValidator.notEmpty(result, "previous generation result");
                 List<T> transformed = result.stream()
                     .map(obj -> processor.transform(obj, definition, context))
                     .toList();
                 result = transformed;
             } else if (JsonDslDefinition.DslType.VALIDATE.equals(definition.getType())) {
                 ValidateProcessor processor = getValidateProcessor();
-                if (result == null || result.isEmpty()) {
-                    throw new IllegalArgumentException("校验处理器需要前置的生成结果");
-                }
+                ParameterValidator.notEmpty(result, "previous generation result");
                 // 校验所有对象
                 for (T obj : result) {
                     List<String> errors = processor.validate(obj, definition, context);
                     if (!errors.isEmpty()) {
-                        throw new IllegalArgumentException("校验失败: " + String.join(", ", errors));
+                        throw new JsonDslException("校验失败: " + String.join(", ", errors));
                     }
                 }
             } else {
-                throw new IllegalArgumentException("不支持的 DSL 类型: " + definition.getType());
+                throw new JsonDslException("不支持的 DSL 类型: " + definition.getType());
             }
         }
         
