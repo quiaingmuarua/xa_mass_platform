@@ -159,6 +159,13 @@ public final class ParameterValidator {
                 throw new JsonDslException("Unsupported field validation: " + fieldName);
         }
     }
+
+    public static void validateDslFieldOrCombine(JsonDslDefinition def) {
+        if ((def.getFieldDsl() == null || def.getFieldDsl().isEmpty())
+            && (def.getCombineDsl() == null || def.getCombineDsl().isEmpty())) {
+            throw new JsonDslException("fieldDsl and combineDsl must not both be empty");
+        }
+    }
     
     /**
      * 校验处理器参数（通用方法）

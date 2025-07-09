@@ -21,7 +21,7 @@ class DefaultFilterProcessor implements FilterProcessor {
         ParameterValidator.notNull(def, "definition");
         ParameterValidator.notNull(ctx, "context");
         ParameterValidator.validateDslType(def, JsonDslDefinition.DslType.FILTER);
-        ParameterValidator.validateDslField(def, "fieldDsl");
+        ParameterValidator.validateDslFieldOrCombine(def);
 
         if (ctx.isDebug()) {
             System.out.println("[DefaultFilterProcessor] 开始处理单个对象 DSL: " + def.getUniqueId());
@@ -30,11 +30,13 @@ class DefaultFilterProcessor implements FilterProcessor {
         // 单对象处理
         Map<String, Object> objMap = convertToMap(data);
         if (objMap != null) {
-            boolean passed = filterMap(objMap, def, ctx);
-            if (passed) {
-                return new FilterResult<>(List.of(data), null, 1);
+            FilterResult<Map<String, Object>> result = filterMapWithDetails(objMap, def, ctx);
+            if (result.getPassed().isEmpty()) {
+                // 转换失败原因
+                List<String> failReasons = result.getFailed().get(0).getFailedConditions();
+                return new FilterResult<>(List.of(), List.of(new FilterReport.FilterFail<>(data, failReasons)), 1);
             } else {
-                return new FilterResult<>(List.of(), List.of(new FilterReport.FilterFail<>(data, List.of("未通过过滤条件"))), 1);
+                return new FilterResult<>(List.of(data), null, 1);
             }
         }
         throw new JsonDslException("不支持的数据类型: " + (data != null ? data.getClass().getSimpleName() : "null"));
@@ -115,6 +117,81 @@ class DefaultFilterProcessor implements FilterProcessor {
         return true;
     }
 
+    /**
+     * 过滤Map对象并返回详细结果
+     * 
+     * @param dataMap Map对象
+     * @param def DSL定义
+     * @param ctx 处理上下文
+     * @return 过滤结果，包含详细的失败原因
+     */
+    private FilterResult<Map<String, Object>> filterMapWithDetails(Map<String, Object> dataMap, JsonDslDefinition def, ProcessingContext ctx) {
+        ParameterValidator.notNull(dataMap, "dataMap");
+        ParameterValidator.notNull(def, "definition");
+        ParameterValidator.notNull(ctx, "context");
+        
+        DslContext dslContext = new DslContext();
+        // 先将所有字段都set到上下文，保证组合条件表达式能访问
+        for (Map.Entry<String, Object> entry : dataMap.entrySet()) {
+            dslContext.setVariable(entry.getKey(), entry.getValue());
+        }
+        
+        List<String> failReasons = new ArrayList<>();
+        
+        // 检查字段条件
+        Map<String, Object> fieldConds = def.getFieldDsl();
+        if (fieldConds != null) {
+            for (Map.Entry<String, Object> entry : fieldConds.entrySet()) {
+                String field = entry.getKey();
+                Object cond = entry.getValue();
+                Object val = dataMap.get(field);
+                
+                try {
+                    dslContext.setVariable(field, val);
+                    dslContext.setVariable("curFiledVal", val);
+                    Object result = TemplateValueResolver.resolve(cond, dslContext);
+                    
+                    // 只要有一个字段条件不通过就记录失败原因
+                    if (!(result instanceof Boolean) || !((Boolean) result)) {
+                        failReasons.add(field + " 不满足条件: " + cond);
+                    }
+                } catch (Exception e) {
+                    failReasons.add(field + " 条件解析异常: " + e.getMessage());
+                }
+            }
+        }
+        
+        // 检查组合条件
+        Map<String, Object> combineConds = def.getCombineDsl();
+        if (combineConds != null) {
+            for (Map.Entry<String, Object> entry : combineConds.entrySet()) {
+                String exprName = entry.getKey();
+                Object expr = entry.getValue();
+                
+                try {
+                    Object result = TemplateValueResolver.resolve(expr, dslContext);
+                    boolean ok = false;
+                    if (result instanceof Boolean) ok = (Boolean) result;
+                    else if (result instanceof Number) ok = ((Number) result).doubleValue() != 0;
+                    else if (result instanceof String) ok = !((String) result).isEmpty();
+                    else ok = result != null;
+                    
+                    if (!ok) {
+                        failReasons.add("组合条件 " + exprName + " 不满足: " + expr);
+                    }
+                } catch (Exception e) {
+                    failReasons.add("组合条件 " + exprName + " 执行异常: " + e.getMessage());
+                }
+            }
+        }
+        
+        if (failReasons.isEmpty()) {
+            return new FilterResult<>(List.of(dataMap), null, 1);
+        } else {
+            return new FilterResult<>(List.of(), List.of(new FilterReport.FilterFail<>(dataMap, failReasons)), 1);
+        }
+    }
+
     @Override
     public <T> FilterResult<T> filterList(List<T> dataList, JsonDslDefinition definition, ProcessingContext ctx) {
         // 参数校验
@@ -122,7 +199,7 @@ class DefaultFilterProcessor implements FilterProcessor {
         ParameterValidator.notNull(definition, "definition");
         ParameterValidator.notNull(ctx, "context");
         ParameterValidator.validateDslType(definition, JsonDslDefinition.DslType.FILTER);
-        ParameterValidator.validateDslField(definition, "fieldDsl");
+        ParameterValidator.validateDslFieldOrCombine(definition);
         
         if (ctx.isDebug()) {
             System.out.println("[DefaultFilterProcessor] 开始批量过滤，数据量: " + dataList.size());
@@ -134,11 +211,13 @@ class DefaultFilterProcessor implements FilterProcessor {
         for (T item : dataList) {
             Map<String, Object> objMap = convertToMap(item);
             if (objMap != null) {
-                boolean itemPassed = filterMap(objMap, definition, ctx);
-                if (itemPassed) {
-                    passed.add(item);
+                FilterResult<Map<String, Object>> result = filterMapWithDetails(objMap, definition, ctx);
+                if (result.getPassed().isEmpty()) {
+                    // 获取详细的失败原因
+                    List<String> failReasons = result.getFailed().get(0).getFailedConditions();
+                    failed.add(new FilterReport.FilterFail<>(item, failReasons));
                 } else {
-                    failed.add(new FilterReport.FilterFail<>(item, List.of("未通过过滤条件")));
+                    passed.add(item);
                 }
             } else {
                 failed.add(new FilterReport.FilterFail<>(item, List.of("对象转换失败")));
