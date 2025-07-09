@@ -191,7 +191,7 @@ public class GenerateFilterIntegrationTest {
         
         Map<String, Object> fieldDsl = new HashMap<>();
         fieldDsl.put("id", "$RANGE(1, 100)");
-        fieldDsl.put("name", "$CHOICE(Alice, Bob, Charlie)");
+        fieldDsl.put("name", "$CHOICE('Alice', 'Bob', 'Charlie')");
         fieldDsl.put("age", "$RANGE(20, 60)");
         fieldDsl.put("salary", "$RANGE(3000, 15000)");
         fieldDsl.put("experience", "$RANGE(1, 20)");

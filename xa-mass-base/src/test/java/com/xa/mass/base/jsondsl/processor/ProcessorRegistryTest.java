@@ -115,7 +115,7 @@ public class ProcessorRegistryTest {
         // 获取支持 GENERATE 类型的处理器
         List<JsonDslProcessor> generateProcessors = ProcessorRegistry.getProcessors(JsonDslDefinition.DslType.GENERATE);
         assertNotNull(generateProcessors);
-        assertTrue(generateProcessors.size() >= 1);
+        assertFalse(generateProcessors.isEmpty());
         
         // 验证所有处理器都支持 GENERATE 类型
         for (JsonDslProcessor processor : generateProcessors) {
@@ -125,7 +125,7 @@ public class ProcessorRegistryTest {
         // 获取支持 FILTER 类型的处理器
         List<JsonDslProcessor> filterProcessors = ProcessorRegistry.getProcessors(JsonDslDefinition.DslType.FILTER);
         assertNotNull(filterProcessors);
-        assertTrue(filterProcessors.size() >= 1);
+        assertFalse(filterProcessors.isEmpty());
         
         // 验证所有处理器都支持 FILTER 类型
         for (JsonDslProcessor processor : filterProcessors) {

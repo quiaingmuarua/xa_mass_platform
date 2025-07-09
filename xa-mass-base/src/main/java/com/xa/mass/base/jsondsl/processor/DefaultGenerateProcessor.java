@@ -46,6 +46,7 @@ class DefaultGenerateProcessor implements GenerateProcessor {
                 dsl.add("FIELDS", GsonConfig.buildGson().toJsonTree(definition.getFieldDsl()));
             }
             Map<String,Object> resultMap = new HashMap<String, Object>();
+            //处理targetType 为map
             if(Map.class.isAssignableFrom(targetType)){
                 for (Map.Entry<String, Object> entry : definition.getFieldDsl().entrySet()) {
                     Object value = DslObjectBuilder.mockFieldValue( entry.getValue(), dslContext);

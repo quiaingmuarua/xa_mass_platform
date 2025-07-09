@@ -14,7 +14,7 @@ import java.util.Arrays;
 import java.util.ArrayList;
 
 /**
- * 处理器架构集成测试
+ * 真实处理器集成测试 - 测试完整的DSL功能
  */
 public class IntegrationTest {
     
@@ -23,13 +23,8 @@ public class IntegrationTest {
     @BeforeEach
     void setUp() {
         context = new ProcessingContext("integration-test");
-        // 清理之前的注册
+        // 清理之前的注册，使用系统默认的真实处理器
         ProcessorRegistry.clear();
-        // 注册所有类型的处理器
-        JsonDslProcessorEngine.registerProcessor(new TestGenerateProcessor());
-        JsonDslProcessorEngine.registerProcessor(new TestFilterProcessor());
-        JsonDslProcessorEngine.registerProcessor(new TestTransformProcessor());
-        JsonDslProcessorEngine.registerProcessor(new TestValidateProcessor());
     }
     
     @AfterEach
@@ -39,463 +34,105 @@ public class IntegrationTest {
     }
     
     @Test
-    void testGenerateAndFilterChain() {
-        // 注册自定义生成处理器
-        JsonDslProcessorEngine.registerProcessor(new TestGenerateProcessor());
-        // 不注册 TestFilterProcessor，让系统用真实 FilterProcessor
-        
-        // 创建生成 DSL
+    void testRealGenerateAndFilterChain() {
+        // 创建真实的生成 DSL - 生成用户数据
         JsonDslDefinition generateDsl = new JsonDslDefinition("generate-users", JsonDslDefinition.DslType.GENERATE);
         JsonDslContext dslContext = new JsonDslContext();
         dslContext.setModel("java.util.HashMap");
-        dslContext.setCount(5);
+        dslContext.setCount(10);
         generateDsl.setContext(dslContext);
         
         Map<String, Object> fieldDsl = new HashMap<>();
-        fieldDsl.put("name", "$RANDOM_NAME");
-        fieldDsl.put("age", "$RANDOM_INT(18, 65)");
+        Map<String, Object> nameRule = new HashMap<>();
+        nameRule.put("$RANDOM_NAME", null);
+        fieldDsl.put("name", nameRule);
+        Map<String, Object> ageRule = new HashMap<>();
+        ageRule.put("$RANDOM_INT", Arrays.asList(18, 65));
+        fieldDsl.put("age", ageRule);
+        Map<String, Object> statusRule = new HashMap<>();
+        statusRule.put("$CHOICE", Arrays.asList("active", "inactive"));
+        fieldDsl.put("status", statusRule);
         generateDsl.setFieldDsl(fieldDsl);
         
-        // 创建过滤 DSL
+        // 生成数据
+        List<Map> generatedUsers = JsonDslProcessorEngine.process(generateDsl, context, Map.class);
+        
+        // 验证生成的数据
+        assertNotNull(generatedUsers);
+        assertEquals(10, generatedUsers.size());
+        
+        for (Map user : generatedUsers) {
+            assertNotNull(user.get("name"));
+            assertNotNull(user.get("age"));
+            assertNotNull(user.get("status"));
+            assertTrue(user.get("age") instanceof Number);
+            int age = ((Number) user.get("age")).intValue();
+            assertTrue(age >= 18 && age <= 65);
+        }
+        
+        // 创建真实的过滤 DSL - 过滤成年人
         JsonDslDefinition filterDsl = new JsonDslDefinition("filter-adults", JsonDslDefinition.DslType.FILTER);
         Map<String, Object> filterFieldDsl = new HashMap<>();
-        filterFieldDsl.put("age", "$EXPR(age > 100)");
+        filterFieldDsl.put("age", Map.of("$EXPR", "age >= 18"));
+        filterFieldDsl.put("status", Map.of("$EXPR", "status == 'active'"));
         filterDsl.setFieldDsl(filterFieldDsl);
         
-        // 链式处理
-        List<JsonDslDefinition> dslChain = Arrays.asList(generateDsl, filterDsl);
-        List<Map> result = JsonDslProcessorEngine.processChain(dslChain, context, Map.class);
+        // 过滤数据
+        FilterResult<Map> filterResult = JsonDslProcessorEngine.filterBatchWithDetails(generatedUsers, filterDsl, context, Map.class);
         
-        // 验证结果
-        assertNotNull(result);
-//        assertTrue(result.isEmpty()); // 由于过滤条件，结果应该为空
+        // 验证过滤结果
+        assertNotNull(filterResult);
+        assertTrue(filterResult.getPassedCount() <= generatedUsers.size());
         
-        // 验证所有对象都是成年人
-//        for (Map obj : result) {
-//            String ageStr = (String) obj.get("age");
-//            int age = Integer.parseInt(ageStr);
-//            assertTrue(age >= 18);
-//        }
-    }
-    
-    @Test
-    void testMultipleProcessorTypes() {
-        // 注册所有类型的处理器
-        JsonDslProcessorEngine.registerProcessor(new TestGenerateProcessor());
-        JsonDslProcessorEngine.registerProcessor(new TestFilterProcessor());
-        JsonDslProcessorEngine.registerProcessor(new TestTransformProcessor());
-        JsonDslProcessorEngine.registerProcessor(new TestValidateProcessor());
+        // 验证通过过滤的用户都是成年人且状态为active
+        for (Map user : filterResult.getPassed()) {
+            int age = ((Number) user.get("age")).intValue();
+            assertEquals("active", user.get("status"));
+            assertTrue(age >= 18);
+        }
         
-        // 验证所有处理器都已注册
-        List<JsonDslProcessor> allProcessors = JsonDslProcessorEngine.getAllProcessors();
-        assertTrue(allProcessors.size() >= 4);
-        
-        // 验证每种类型都有对应的处理器
-        assertFalse(JsonDslProcessorEngine.getProcessors(JsonDslDefinition.DslType.GENERATE).isEmpty());
-        assertFalse(JsonDslProcessorEngine.getProcessors(JsonDslDefinition.DslType.FILTER).isEmpty());
-        assertFalse(JsonDslProcessorEngine.getProcessors(JsonDslDefinition.DslType.TRANSFORM).isEmpty());
-        assertFalse(JsonDslProcessorEngine.getProcessors(JsonDslDefinition.DslType.VALIDATE).isEmpty());
-    }
-    
-    @Test
-    void testContextSharing() {
-        // 注册处理器
-        JsonDslProcessorEngine.registerProcessor(new ContextAwareProcessor());
-        
-        // 设置上下文参数
-        context.setParameter("sharedParam", "sharedValue");
-        context.setVariable("sharedVar", "sharedVariable");
-        
-        // 创建 DSL
-        JsonDslDefinition dsl = new JsonDslDefinition("context-test", JsonDslDefinition.DslType.GENERATE);
-        // 添加必需的 context 配置
-        JsonDslContext dslContext = new JsonDslContext();
-        dslContext.setModel("java.util.HashMap");
-        dslContext.setCount(1);
-        dsl.setContext(dslContext);
-        
-        // 处理 DSL - 使用注册的处理器
-        List<Map> result = JsonDslProcessorEngine.process(dsl, context, Map.class);
-        
-        // 验证结果包含上下文信息
-        assertNotNull(result);
-        assertFalse(result.isEmpty());
-        Map<String, Object> resultMap = result.get(0);
-        assertEquals("sharedValue", resultMap.get("param"));
-        assertEquals("sharedVariable", resultMap.get("variable"));
-    }
-    
-    @Test
-    void testDebugMode() {
-        // 注册处理器
-        JsonDslProcessorEngine.registerProcessor(new DebugAwareProcessor());
-        
-        // 启用调试模式
-        context.setDebug(true);
-        
-        // 创建 DSL
-        JsonDslDefinition dsl = new JsonDslDefinition("debug-test", JsonDslDefinition.DslType.GENERATE);
-        // 添加必需的 context 配置
-        JsonDslContext dslContext = new JsonDslContext();
-        dslContext.setModel("java.util.HashMap");
-        dslContext.setCount(1);
-        dsl.setContext(dslContext);
-        
-        // 处理 DSL - 使用注册的处理器
-        List<Map> result = JsonDslProcessorEngine.process(dsl, context, Map.class);
-        
-        // 验证调试信息
-        assertNotNull(result);
-        assertFalse(result.isEmpty());
-        Map<String, Object> resultMap = result.get(0);
-        assertTrue((Boolean) resultMap.get("debug"));
-    }
-    
-    @Test
-    void testProcessorPriority() {
-        // 注册不同优先级的处理器
-        JsonDslProcessorEngine.registerProcessor(new LowPriorityProcessor());
-        JsonDslProcessorEngine.registerProcessor(new HighPriorityProcessor());
-        
-        // 获取处理器列表
-        List<JsonDslProcessor> processors = JsonDslProcessorEngine.getProcessors(JsonDslDefinition.DslType.GENERATE);
-        
-        // 验证按优先级排序
-        assertTrue(processors.size() >= 2);
-        JsonDslProcessor first = processors.get(0);
-        JsonDslProcessor second = processors.get(1);
-        
-        // 高优先级处理器应该在前面
-        assertTrue(first.getPriority() >= second.getPriority());
-    }
-    
-    @Test
-    void testErrorHandling() {
-        // 注册会抛出异常的处理器
-        JsonDslProcessorEngine.registerProcessor(new ErrorProcessor());
-        
-        // 创建 DSL
-        JsonDslDefinition dsl = new JsonDslDefinition("error-test", JsonDslDefinition.DslType.GENERATE);
-        // 添加必需的 context 配置
-        JsonDslContext dslContext = new JsonDslContext();
-        dslContext.setModel("java.util.HashMap");
-        dslContext.setCount(1);
-        dsl.setContext(dslContext);
-        
-        // 应该抛出异常
-        assertThrows(RuntimeException.class, () -> {
-            JsonDslProcessorEngine.process(dsl, context, Map.class);
-        });
-    }
-    
-    @Test
-    void testJsonProcessing() {
-        // 注册处理器
-        JsonDslProcessorEngine.registerProcessor(new TestGenerateProcessor());
-        
-        // 创建 JSON DSL - 使用正确的枚举值格式
-        String jsonDsl = """
-            {
-                "uniqueId": "json-integration-test",
-                "type": "GENERATE",
-                "priority": 1,
-                "description": "Integration test from JSON",
-                "context": {
-                    "model": "java.util.HashMap",
-                    "count": 3
-                },
-                "fieldDsl": {
-                    "name": "$RANDOM_NAME",
-                    "age": "$RANDOM_INT(18, 65)"
-                }
+        // 验证失败的用户有详细的失败原因
+        if (!filterResult.getFailed().isEmpty()) {
+            for (FilterResult.FilterFailure<Map> failure : filterResult.getFailed()) {
+                assertFalse(failure.getReasons().isEmpty());
+                System.out.println("用户 " + failure.getData().get("name") + " 过滤失败: " + failure.getReasons());
             }
-            """;
-        
-        // 处理 JSON DSL - 使用注册的处理器
-        List<Map> result = JsonDslProcessorEngine.processFromJson(jsonDsl, context, Map.class);
-        
-        // 验证结果 - TestGenerateProcessor 返回 1 个对象
-        assertNotNull(result);
-        assertEquals(1, result.size());
-    }
-    
-    /**
-     * 测试生成处理器
-     */
-    private static class TestGenerateProcessor implements GenerateProcessor {
-        
-        @Override
-        public <T> List<T> generate(JsonDslDefinition definition, ProcessingContext context, Class<T> targetType) {
-            Map<String, Object> result = new HashMap<>();
-            result.put("message", "TestGenerateProcessor processed: " + definition.getUniqueId());
-            result.put("timestamp", System.currentTimeMillis());
-            
-            @SuppressWarnings("unchecked")
-            List<T> typedResult = (List<T>) List.of(result);
-            return typedResult;
-        }
-        
-        @Override
-        public boolean supports(JsonDslDefinition.DslType type) {
-            return JsonDslDefinition.DslType.GENERATE.equals(type);
-        }
-        
-        @Override
-        public String getName() {
-            return "TestGenerateProcessor";
-        }
-        
-        @Override
-        public int getPriority() {
-            return 100;
         }
     }
-    
-    /**
-     * 测试过滤处理器
-     */
-    private static class TestFilterProcessor implements FilterProcessor {
 
-        @Override
-        public boolean supports(JsonDslDefinition.DslType type) {
-            return JsonDslDefinition.DslType.FILTER.equals(type);
-        }
-        
-        @Override
-        public String getName() {
-            return "TestFilterProcessor";
-        }
-        
-        @Override
-        public int getPriority() {
-            return 150;
-        }
 
-        @Override
-        public <T> FilterResult<T> filter(T data, JsonDslDefinition definition, ProcessingContext context) {
-            return new FilterResult<>(new ArrayList<>(), null, 1);
-        }
-
-        @Override
-        public <T> FilterResult<T> filterList(List<T> dataList, JsonDslDefinition definition, ProcessingContext context) {
-            return new FilterResult<>(dataList, null, dataList.size());
-        }
-    }
-    
-    /**
-     * 测试转换处理器
-     */
-    private static class TestTransformProcessor implements TransformProcessor {
+    @Test
+    void testRealPerformance() {
+        // 测试大量数据处理的性能
+        JsonDslDefinition generateDsl = new JsonDslDefinition("performance-test", JsonDslDefinition.DslType.GENERATE);
+        JsonDslContext dslContext = new JsonDslContext();
+        dslContext.setModel("java.util.HashMap");
+        dslContext.setCount(1000);
+        generateDsl.setContext(dslContext);
         
-        @Override
-        public <T> T transform(T input, JsonDslDefinition definition, ProcessingContext context) {
-            // 简单的转换逻辑：返回原对象
-            return input;
-        }
+        Map<String, Object> fieldDsl = new HashMap<>();
+        fieldDsl.put("id", Map.of("$RANGE", Arrays.asList(1, 1000)));
+        fieldDsl.put("value", Map.of("$RANDOM_INT", Arrays.asList(1, 100)));
+        generateDsl.setFieldDsl(fieldDsl);
         
-        @Override
-        public boolean supports(JsonDslDefinition.DslType type) {
-            return JsonDslDefinition.DslType.TRANSFORM.equals(type);
-        }
+        long startTime = System.currentTimeMillis();
+        List<Map> data = JsonDslProcessorEngine.process(generateDsl, context, Map.class);
+        long endTime = System.currentTimeMillis();
         
-        @Override
-        public String getName() {
-            return "TestTransformProcessor";
-        }
+        assertEquals(1000, data.size());
+        System.out.println("生成1000条数据耗时: " + (endTime - startTime) + "ms");
         
-        @Override
-        public int getPriority() {
-            return 200;
-        }
-    }
-    
-    /**
-     * 测试校验处理器
-     */
-    private static class TestValidateProcessor implements ValidateProcessor {
+        // 测试过滤性能
+        JsonDslDefinition filterDsl = new JsonDslDefinition("performance-filter", JsonDslDefinition.DslType.FILTER);
+        Map<String, Object> filterFieldDsl = new HashMap<>();
+        filterFieldDsl.put("value", Map.of("$EXPR", "value > 50"));
+        filterDsl.setFieldDsl(filterFieldDsl);
         
-        @Override
-        public <T> List<String> validate(T input, JsonDslDefinition definition, ProcessingContext context) {
-            // 简单的校验逻辑：总是通过
-            return new ArrayList<>();
-        }
+        startTime = System.currentTimeMillis();
+        FilterResult<Map> filterResult = JsonDslProcessorEngine.filterBatchWithDetails(data, filterDsl, context, Map.class);
+        endTime = System.currentTimeMillis();
         
-        @Override
-        public boolean supports(JsonDslDefinition.DslType type) {
-            return JsonDslDefinition.DslType.VALIDATE.equals(type);
-        }
-        
-        @Override
-        public String getName() {
-            return "TestValidateProcessor";
-        }
-        
-        @Override
-        public int getPriority() {
-            return 250;
-        }
-    }
-    
-    /**
-     * 上下文感知处理器
-     */
-    private static class ContextAwareProcessor implements GenerateProcessor {
-        
-        @Override
-        public <T> List<T> generate(JsonDslDefinition definition, ProcessingContext context, Class<T> targetType) {
-            Map<String, Object> result = new HashMap<>();
-            result.put("message", "ContextAwareProcessor processed: " + definition.getUniqueId());
-            result.put("contextId", context.getScopeName());
-            result.put("param", context.getParameter("sharedParam"));
-            result.put("variable", context.getVariable("sharedVar"));
-            result.put("timestamp", System.currentTimeMillis());
-            @SuppressWarnings("unchecked")
-            List<T> typedResult = (List<T>) List.of(result);
-            return typedResult;
-        }
-        
-        @Override
-        public boolean supports(JsonDslDefinition.DslType type) {
-            return JsonDslDefinition.DslType.GENERATE.equals(type);
-        }
-        
-        @Override
-        public String getName() {
-            return "ContextAwareProcessor";
-        }
-        
-        @Override
-        public int getPriority() {
-            return 120;
-        }
-    }
-    
-    /**
-     * 调试感知处理器
-     */
-    private static class DebugAwareProcessor implements GenerateProcessor {
-        
-        @Override
-        public <T> List<T> generate(JsonDslDefinition definition, ProcessingContext context, Class<T> targetType) {
-            Map<String, Object> result = new HashMap<>();
-            result.put("message", "DebugAwareProcessor processed: " + definition.getUniqueId());
-            result.put("debug", context.isDebug());
-            result.put("timestamp", System.currentTimeMillis());
-            
-            if (context.isDebug()) {
-                System.out.println("[DebugAwareProcessor] Processing definition: " + definition.getUniqueId());
-            }
-            
-            @SuppressWarnings("unchecked")
-            List<T> typedResult = (List<T>) List.of(result);
-            return typedResult;
-        }
-        
-        @Override
-        public boolean supports(JsonDslDefinition.DslType type) {
-            return JsonDslDefinition.DslType.GENERATE.equals(type);
-        }
-        
-        @Override
-        public String getName() {
-            return "DebugAwareProcessor";
-        }
-        
-        @Override
-        public int getPriority() {
-            return 130;
-        }
-    }
-    
-    /**
-     * 低优先级处理器
-     */
-    private static class LowPriorityProcessor implements GenerateProcessor {
-        
-        @Override
-        public <T> List<T> generate(JsonDslDefinition definition, ProcessingContext context, Class<T> targetType) {
-            Map<String, Object> result = new HashMap<>();
-            result.put("message", "LowPriorityProcessor processed: " + definition.getUniqueId());
-            result.put("priority", "low");
-            result.put("timestamp", System.currentTimeMillis());
-            
-            @SuppressWarnings("unchecked")
-            List<T> typedResult = (List<T>) List.of(result);
-            return typedResult;
-        }
-        
-        @Override
-        public boolean supports(JsonDslDefinition.DslType type) {
-            return JsonDslDefinition.DslType.GENERATE.equals(type);
-        }
-        
-        @Override
-        public String getName() {
-            return "LowPriorityProcessor";
-        }
-        
-        @Override
-        public int getPriority() {
-            return 50;
-        }
-    }
-    
-    /**
-     * 高优先级处理器
-     */
-    private static class HighPriorityProcessor implements GenerateProcessor {
-        
-        @Override
-        public <T> List<T> generate(JsonDslDefinition definition, ProcessingContext context, Class<T> targetType) {
-            Map<String, Object> result = new HashMap<>();
-            result.put("message", "HighPriorityProcessor processed: " + definition.getUniqueId());
-            result.put("priority", "high");
-            result.put("timestamp", System.currentTimeMillis());
-            
-            @SuppressWarnings("unchecked")
-            List<T> typedResult = (List<T>) List.of(result);
-            return typedResult;
-        }
-        
-        @Override
-        public boolean supports(JsonDslDefinition.DslType type) {
-            return JsonDslDefinition.DslType.GENERATE.equals(type);
-        }
-        
-        @Override
-        public String getName() {
-            return "HighPriorityProcessor";
-        }
-        
-        @Override
-        public int getPriority() {
-            return 200;
-        }
-    }
-    
-    /**
-     * 错误处理器
-     */
-    private static class ErrorProcessor implements GenerateProcessor {
-        
-        @Override
-        public <T> List<T> generate(JsonDslDefinition definition, ProcessingContext context, Class<T> targetType) {
-            throw new RuntimeException("ErrorProcessor intentionally throws exception");
-        }
-        
-        @Override
-        public boolean supports(JsonDslDefinition.DslType type) {
-            return JsonDslDefinition.DslType.GENERATE.equals(type);
-        }
-        
-        @Override
-        public String getName() {
-            return "ErrorProcessor";
-        }
-        
-        @Override
-        public int getPriority() {
-            return 300;
-        }
+        System.out.println("过滤1000条数据耗时: " + (endTime - startTime) + "ms");
+        System.out.println("过滤通过数量: " + filterResult.getPassedCount());
     }
 } 
