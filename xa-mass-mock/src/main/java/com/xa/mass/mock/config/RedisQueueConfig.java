@@ -1,7 +1,7 @@
 //package com.xa.mass.mock.config;
 //
 //import com.xa.mass.gateway.queue.Envelope;
-//import com.xa.mass.gateway.queue.MessageQueue;
+//import com.xa.mass.base.queueu.MessageQueue;
 //import com.xa.mass.gateway.queue.RedisEnvelopeQueue;
 //import io.lettuce.core.RedisClient;
 //import io.lettuce.core.RedisURI;

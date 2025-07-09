@@ -3,7 +3,7 @@ package com.xa.mass.api.internal;
 import com.xa.mass.api.model.ApiResponse;
 import com.xa.mass.gateway.dispatcher.DispatcherContextRegistry;
 import com.xa.mass.gateway.dispatcher.context.TransportContext;
-import com.xa.mass.gateway.queue.MessageTransporter;
+import com.xa.mass.base.channel.tranporter.MessageTransporter;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.slf4j.Logger;

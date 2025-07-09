@@ -1,4 +1,4 @@
-package com.xa.mass.gateway.queue;
+package com.xa.mass.base.channel.tranporter;
 
 import java.util.concurrent.TimeUnit;
 

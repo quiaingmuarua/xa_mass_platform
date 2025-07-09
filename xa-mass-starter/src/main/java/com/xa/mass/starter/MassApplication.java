@@ -8,7 +8,7 @@ import com.xa.mass.gateway.dispatcher.ServerMessageDispatcher;
 import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
 import com.xa.mass.gateway.dispatcher.middleware.MiddlewareRegistry;
 import com.xa.mass.gateway.queue.MessageCodec;
-import com.xa.mass.gateway.queue.MessageTransporter;
+import com.xa.mass.base.channel.tranporter.MessageTransporter;
 import com.xa.mass.gateway.server.MassServerBuilder;
 import com.xa.mass.gateway.server.MassServerConfig;
 import com.xa.mass.gateway.server.MassServerStater;

@@ -1,7 +1,7 @@
 package com.xa.mass.gateway.dispatcher.context;
 
 import com.xa.mass.gateway.queue.Envelope;
-import com.xa.mass.gateway.queue.MessageTransporter;
+import com.xa.mass.base.channel.tranporter.MessageTransporter;
 
 /**
  * 消息传输上下文接口

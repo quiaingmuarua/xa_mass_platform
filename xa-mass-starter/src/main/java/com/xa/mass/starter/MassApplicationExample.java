@@ -1,8 +1,8 @@
 package com.xa.mass.starter;
 
 import com.xa.mass.gateway.queue.Envelope;
-import com.xa.mass.gateway.queue.InMemoryMessageQueue;
-import com.xa.mass.gateway.queue.MessageQueue;
+import com.xa.mass.base.channel.queue.InMemoryMessageQueue;
+import com.xa.mass.base.channel.queue.MessageQueue;
 import com.xa.mass.starter.builder.MassApplicationBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -51,8 +51,8 @@ public class MassApplicationExample {
         logger.info("📝 示例1: 开发环境模式");
 
         // 创建内存队列
-        MessageQueue<Envelope> inputQueue = new InMemoryMessageQueue();
-        MessageQueue<Envelope> outputQueue = new InMemoryMessageQueue();
+        MessageQueue<Envelope> inputQueue = new InMemoryMessageQueue<>();
+        MessageQueue<Envelope> outputQueue = new InMemoryMessageQueue<>();
 
         // MassApplicationBuilder 负责配置聚合
         MassApplication app = MassApplicationBuilder.createDevelopment(8080, inputQueue, outputQueue);
@@ -73,8 +73,8 @@ public class MassApplicationExample {
         logger.info("📝 示例2: 生产环境模式");
 
         // 创建内存队列
-        MessageQueue<Envelope> inputQueue = new InMemoryMessageQueue();
-        MessageQueue<Envelope> outputQueue = new InMemoryMessageQueue();
+        MessageQueue<Envelope> inputQueue = new InMemoryMessageQueue<>();
+        MessageQueue<Envelope> outputQueue = new InMemoryMessageQueue<>();
 
         // 快速创建生产环境应用
         MassApplication app = MassApplicationBuilder.createProduction(8080, inputQueue, outputQueue);
@@ -137,8 +137,8 @@ public class MassApplicationExample {
         logger.info("📝 示例5: 自定义配置");
 
         // 创建内存队列
-        MessageQueue<Envelope> inputQueue = new InMemoryMessageQueue();
-        MessageQueue<Envelope> outputQueue = new InMemoryMessageQueue();
+        MessageQueue<Envelope> inputQueue = new InMemoryMessageQueue<>();
+        MessageQueue<Envelope> outputQueue = new InMemoryMessageQueue<>();
 
         // 使用流式API自定义配置
         MassApplication app = MassApplicationBuilder.create()
@@ -172,8 +172,8 @@ public class MassApplicationExample {
         logger.info("📝 示例6: Mock模式");
 
         // 创建内存队列
-        MessageQueue<Envelope> inputQueue = new InMemoryMessageQueue();
-        MessageQueue<Envelope> outputQueue = new InMemoryMessageQueue();
+        MessageQueue<Envelope> inputQueue = new InMemoryMessageQueue<>();
+        MessageQueue<Envelope> outputQueue = new InMemoryMessageQueue<>();
 
         // 使用流式API配置Mock模式
         MassApplication app = MassApplicationBuilder.create()
@@ -213,8 +213,8 @@ public class MassApplicationExample {
         logger.info("📝 示例7: 只启动网关");
 
         // 创建内存队列
-        MessageQueue<Envelope> inputQueue = new InMemoryMessageQueue();
-        MessageQueue<Envelope> outputQueue = new InMemoryMessageQueue();
+        MessageQueue<Envelope> inputQueue = new InMemoryMessageQueue<>();
+        MessageQueue<Envelope> outputQueue = new InMemoryMessageQueue<>();
 
         // 只启用网关，禁用引擎
         MassApplication app = MassApplicationBuilder.create()

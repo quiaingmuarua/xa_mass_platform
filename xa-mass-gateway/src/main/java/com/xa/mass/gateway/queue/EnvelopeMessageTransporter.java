@@ -1,5 +1,11 @@
 package com.xa.mass.gateway.queue;
 
+import com.xa.mass.base.channel.queue.MessageQueue;
+import com.xa.mass.base.channel.tranporter.ApiBasedMessageTransporter;
+import com.xa.mass.base.channel.tranporter.MessageTransporter;
+import com.xa.mass.base.channel.tranporter.MultiLevelMessageTransporter;
+import com.xa.mass.base.channel.tranporter.QueueBasedMessageTransporter;
+
 import java.util.concurrent.TimeUnit;
 
 /**

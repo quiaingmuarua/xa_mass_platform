@@ -1,8 +1,8 @@
 package com.xa.mass.mock.config;
 
 import com.xa.mass.gateway.queue.Envelope;
-import com.xa.mass.gateway.queue.InMemoryMessageQueue;
-import com.xa.mass.gateway.queue.MessageQueue;
+import com.xa.mass.base.channel.queue.InMemoryMessageQueue;
+import com.xa.mass.base.channel.queue.MessageQueue;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -15,12 +15,12 @@ public class QueueConfig { // 可以移除 ("customQueueConfigName") 如果不�
     @Bean
     @Qualifier("inputQueue")
     public MessageQueue<Envelope> inputQueue() { // 返回类型改为 MessageQueue<StoredMessage>
-        return new InMemoryMessageQueue(); // InMemoryMessageQueue 应该实现 MessageQueue<StoredMessage>
+        return new InMemoryMessageQueue<>(); // InMemoryMessageQueue 应该实现 MessageQueue<StoredMessage>
     }
 
     @Bean
     @Qualifier("outputQueue")
     public MessageQueue<Envelope> outputQueue() { // 返回类型改为 MessageQueue<StoredMessage>
-        return new InMemoryMessageQueue();
+        return new InMemoryMessageQueue<>();
     }
 }

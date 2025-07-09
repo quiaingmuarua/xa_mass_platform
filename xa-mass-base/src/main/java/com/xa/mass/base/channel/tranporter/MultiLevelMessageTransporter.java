@@ -1,4 +1,4 @@
-package com.xa.mass.gateway.queue;
+package com.xa.mass.base.channel.tranporter;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
