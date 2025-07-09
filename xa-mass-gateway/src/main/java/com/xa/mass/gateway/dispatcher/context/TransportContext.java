@@ -1,5 +1,6 @@
 package com.xa.mass.gateway.dispatcher.context;
 
+import com.xa.mass.gateway.queue.Envelope;
 import com.xa.mass.gateway.queue.MessageTransporter;
 
 /**
@@ -11,5 +12,5 @@ public interface TransportContext {
      * 获取消息传输器
      * @return 消息传输器
      */
-    MessageTransporter getMessageTransporter();
+    MessageTransporter<Envelope> getMessageTransporter();
 } 

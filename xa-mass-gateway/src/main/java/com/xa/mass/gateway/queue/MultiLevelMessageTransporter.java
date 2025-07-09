@@ -12,19 +12,21 @@ import java.util.concurrent.atomic.AtomicInteger;
 /**
  * 多级队列的消息传输器实现示例
  * 展示如何实现多级队列架构，支持消息优先级和不同级别的处理
+ * 
+ * @param <T> 消息类型
  */
-public class MultiLevelMessageTransporter implements MessageTransporter {
+public class MultiLevelMessageTransporter<T> implements MessageTransporter<T> {
 
     private static final Logger logger = LoggerFactory.getLogger(MultiLevelMessageTransporter.class);
 
     // 多级队列定义
-    private final BlockingQueue<Envelope> highPriorityInputQueue;    // 高优先级输入队列
-    private final BlockingQueue<Envelope> normalPriorityInputQueue;  // 普通优先级输入队列
-    private final BlockingQueue<Envelope> lowPriorityInputQueue;     // 低优先级输入队列
+    private final BlockingQueue<T> highPriorityInputQueue;    // 高优先级输入队列
+    private final BlockingQueue<T> normalPriorityInputQueue;  // 普通优先级输入队列
+    private final BlockingQueue<T> lowPriorityInputQueue;     // 低优先级输入队列
 
-    private final BlockingQueue<Envelope> highPriorityOutputQueue;   // 高优先级输出队列
-    private final BlockingQueue<Envelope> normalPriorityOutputQueue; // 普通优先级输出队列
-    private final BlockingQueue<Envelope> lowPriorityOutputQueue;    // 低优先级输出队列
+    private final BlockingQueue<T> highPriorityOutputQueue;   // 高优先级输出队列
+    private final BlockingQueue<T> normalPriorityOutputQueue; // 普通优先级输出队列
+    private final BlockingQueue<T> lowPriorityOutputQueue;    // 低优先级输出队列
 
     // 统计信息
     private final AtomicInteger inputProcessed = new AtomicInteger(0);
@@ -43,50 +45,50 @@ public class MultiLevelMessageTransporter implements MessageTransporter {
     }
 
     @Override
-    public void sendInput(Envelope envelope) {
+    public void sendInput(T message) {
         // 根据消息优先级选择队列
-        MessagePriority priority = getMessagePriority(envelope);
+        MessagePriority priority = getMessagePriority(message);
         switch (priority) {
             case HIGH:
-                highPriorityInputQueue.offer(envelope);
-                logger.debug("高优先级输入消息入队: {}", envelope);
+                highPriorityInputQueue.offer(message);
+                logger.debug("高优先级输入消息入队: {}", message);
                 break;
             case NORMAL:
-                normalPriorityInputQueue.offer(envelope);
-                logger.debug("普通优先级输入消息入队: {}", envelope);
+                normalPriorityInputQueue.offer(message);
+                logger.debug("普通优先级输入消息入队: {}", message);
                 break;
             case LOW:
-                lowPriorityInputQueue.offer(envelope);
-                logger.debug("低优先级输入消息入队: {}", envelope);
+                lowPriorityInputQueue.offer(message);
+                logger.debug("低优先级输入消息入队: {}", message);
                 break;
         }
     }
 
     @Override
-    public Envelope receiveInput(long timeout, TimeUnit unit) throws InterruptedException {
+    public T receiveInput(long timeout, TimeUnit unit) throws InterruptedException {
         long endTime = System.currentTimeMillis() + unit.toMillis(timeout);
 
         while (System.currentTimeMillis() < endTime) {
             // 按优先级顺序尝试从队列获取消息
-            Envelope envelope = highPriorityInputQueue.poll();
-            if (envelope != null) {
+            T message = highPriorityInputQueue.poll();
+            if (message != null) {
                 inputProcessed.incrementAndGet();
-                logger.debug("从高优先级输入队列获取消息: {}", envelope);
-                return envelope;
+                logger.debug("从高优先级输入队列获取消息: {}", message);
+                return message;
             }
 
-            envelope = normalPriorityInputQueue.poll();
-            if (envelope != null) {
+            message = normalPriorityInputQueue.poll();
+            if (message != null) {
                 inputProcessed.incrementAndGet();
-                logger.debug("从普通优先级输入队列获取消息: {}", envelope);
-                return envelope;
+                logger.debug("从普通优先级输入队列获取消息: {}", message);
+                return message;
             }
 
-            envelope = lowPriorityInputQueue.poll();
-            if (envelope != null) {
+            message = lowPriorityInputQueue.poll();
+            if (message != null) {
                 inputProcessed.incrementAndGet();
-                logger.debug("从低优先级输入队列获取消息: {}", envelope);
-                return envelope;
+                logger.debug("从低优先级输入队列获取消息: {}", message);
+                return message;
             }
 
             // 如果所有队列都为空，等待一段时间再重试
@@ -97,50 +99,50 @@ public class MultiLevelMessageTransporter implements MessageTransporter {
     }
 
     @Override
-    public void sendOutput(Envelope envelope) {
+    public void sendOutput(T message) {
         // 根据消息优先级选择队列
-        MessagePriority priority = getMessagePriority(envelope);
+        MessagePriority priority = getMessagePriority(message);
         switch (priority) {
             case HIGH:
-                highPriorityOutputQueue.offer(envelope);
-                logger.debug("高优先级输出消息入队: {}", envelope);
+                highPriorityOutputQueue.offer(message);
+                logger.debug("高优先级输出消息入队: {}", message);
                 break;
             case NORMAL:
-                normalPriorityOutputQueue.offer(envelope);
-                logger.debug("普通优先级输出消息入队: {}", envelope);
+                normalPriorityOutputQueue.offer(message);
+                logger.debug("普通优先级输出消息入队: {}", message);
                 break;
             case LOW:
-                lowPriorityOutputQueue.offer(envelope);
-                logger.debug("低优先级输出消息入队: {}", envelope);
+                lowPriorityOutputQueue.offer(message);
+                logger.debug("低优先级输出消息入队: {}", message);
                 break;
         }
     }
 
     @Override
-    public Envelope receiveOutput(long timeout, TimeUnit unit) throws InterruptedException {
+    public T receiveOutput(long timeout, TimeUnit unit) throws InterruptedException {
         long endTime = System.currentTimeMillis() + unit.toMillis(timeout);
 
         while (System.currentTimeMillis() < endTime) {
             // 按优先级顺序尝试从队列获取消息
-            Envelope envelope = highPriorityOutputQueue.poll();
-            if (envelope != null) {
+            T message = highPriorityOutputQueue.poll();
+            if (message != null) {
                 outputProcessed.incrementAndGet();
-                logger.debug("从高优先级输出队列获取消息: {}", envelope);
-                return envelope;
+                logger.debug("从高优先级输出队列获取消息: {}", message);
+                return message;
             }
 
-            envelope = normalPriorityOutputQueue.poll();
-            if (envelope != null) {
+            message = normalPriorityOutputQueue.poll();
+            if (message != null) {
                 outputProcessed.incrementAndGet();
-                logger.debug("从普通优先级输出队列获取消息: {}", envelope);
-                return envelope;
+                logger.debug("从普通优先级输出队列获取消息: {}", message);
+                return message;
             }
 
-            envelope = lowPriorityOutputQueue.poll();
-            if (envelope != null) {
+            message = lowPriorityOutputQueue.poll();
+            if (message != null) {
                 outputProcessed.incrementAndGet();
-                logger.debug("从低优先级输出队列获取消息: {}", envelope);
-                return envelope;
+                logger.debug("从低优先级输出队列获取消息: {}", message);
+                return message;
             }
 
             // 如果所有队列都为空，等待一段时间再重试
@@ -164,16 +166,11 @@ public class MultiLevelMessageTransporter implements MessageTransporter {
      * 获取消息优先级
      * 可以根据消息类型、设备ID、项目等确定优先级
      */
-    private MessagePriority getMessagePriority(Envelope envelope) {
+    private MessagePriority getMessagePriority(T message) {
         // 示例：根据消息类型确定优先级
-        if (envelope.getRawJson() != null) {
-            if (envelope.getRawJson().contains("\"type\":\"EMERGENCY\"")) {
-                return MessagePriority.HIGH;
-            } else if (envelope.getRawJson().contains("\"type\":\"NORMAL\"")) {
-                return MessagePriority.NORMAL;
-            }
-        }
-
+        // 注意：这里需要根据具体的消息类型来实现优先级判断逻辑
+        // 可能需要添加一个接口或使用反射来获取消息的优先级信息
+        
         // 默认普通优先级
         return MessagePriority.NORMAL;
     }

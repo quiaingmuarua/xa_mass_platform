@@ -9,8 +9,10 @@ import java.util.concurrent.TimeUnit;
  * 基于外部 API 的消息传输器实现示例
  * 展示如何从外部 API 获取消息而不是使用内部队列
  * 这为后续升级为多级队列或外部消息系统提供了示例
+ * 
+ * @param <T> 消息类型
  */
-public class ApiBasedMessageTransporter implements MessageTransporter {
+public class ApiBasedMessageTransporter<T> implements MessageTransporter<T> {
 
     private static final Logger logger = LoggerFactory.getLogger(ApiBasedMessageTransporter.class);
 
@@ -26,15 +28,15 @@ public class ApiBasedMessageTransporter implements MessageTransporter {
     }
 
     @Override
-    public void sendInput(Envelope envelope) {
+    public void sendInput(T message) {
         // 通过外部 API 发送输入消息
-        logger.info("通过外部 API 发送输入消息: {}", envelope);
+        logger.info("通过外部 API 发送输入消息: {}", message);
         // TODO: 实现 HTTP 请求到外部 API
-        // 例如：httpClient.post(inputApiUrl, envelope.toJson(), headers)
+        // 例如：httpClient.post(inputApiUrl, message.toJson(), headers)
     }
 
     @Override
-    public Envelope receiveInput(long timeout, TimeUnit unit) throws InterruptedException {
+    public T receiveInput(long timeout, TimeUnit unit) throws InterruptedException {
         // 从外部 API 轮询获取输入消息
         logger.debug("从外部 API 轮询输入消息，超时: {} {}", timeout, unit);
 
@@ -42,9 +44,9 @@ public class ApiBasedMessageTransporter implements MessageTransporter {
         while (System.currentTimeMillis() < endTime) {
             try {
                 // TODO: 实现 HTTP 请求到外部 API 获取消息
-                // Envelope envelope = httpClient.get(inputApiUrl, headers);
-                // if (envelope != null) {
-                //     return envelope;
+                // T message = httpClient.get(inputApiUrl, headers);
+                // if (message != null) {
+                //     return message;
                 // }
 
                 // 模拟轮询间隔
@@ -58,15 +60,15 @@ public class ApiBasedMessageTransporter implements MessageTransporter {
     }
 
     @Override
-    public void sendOutput(Envelope envelope) {
+    public void sendOutput(T message) {
         // 通过外部 API 发送输出消息
-        logger.info("通过外部 API 发送输出消息: {}", envelope);
+        logger.info("通过外部 API 发送输出消息: {}", message);
         // TODO: 实现 HTTP 请求到外部 API
-        // 例如：httpClient.post(outputApiUrl, envelope.toJson(), headers)
+        // 例如：httpClient.post(outputApiUrl, message.toJson(), headers)
     }
 
     @Override
-    public Envelope receiveOutput(long timeout, TimeUnit unit) throws InterruptedException {
+    public T receiveOutput(long timeout, TimeUnit unit) throws InterruptedException {
         // 从外部 API 轮询获取输出消息
         logger.debug("从外部 API 轮询输出消息，超时: {} {}", timeout, unit);
 
@@ -74,9 +76,9 @@ public class ApiBasedMessageTransporter implements MessageTransporter {
         while (System.currentTimeMillis() < endTime) {
             try {
                 // TODO: 实现 HTTP 请求到外部 API 获取消息
-                // Envelope envelope = httpClient.get(outputApiUrl, headers);
-                // if (envelope != null) {
-                //     return envelope;
+                // T message = httpClient.get(outputApiUrl, headers);
+                // if (message != null) {
+                //     return message;
                 // }
 
                 // 模拟轮询间隔

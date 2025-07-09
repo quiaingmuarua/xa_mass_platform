@@ -4,38 +4,44 @@ package com.xa.mass.gateway.queue;
 /**
  * MessageTransporter 工厂类
  * 提供不同实现的选择，便于配置和切换
+ * 
+ * @param <T> 消息类型
  */
-public class MessageTransporterFactory {
+public class MessageTransporterFactory<T> {
 
     /**
      * 创建基于队列的消息传输器
      */
-    public static MessageTransporter createQueueBased(MessageQueue<Envelope> inputQueue, MessageQueue<Envelope> outputQueue) {
-        return new QueueBasedMessageTransporter(inputQueue, outputQueue);
+    public static <T> MessageTransporter<T> createQueueBased(MessageQueue<T> inputQueue, MessageQueue<T> outputQueue) {
+        return new QueueBasedMessageTransporter<>(inputQueue, outputQueue);
     }
 
     /**
      * 创建多级队列消息传输器
      */
-    public static MessageTransporter createMultiLevel() {
-        return new MultiLevelMessageTransporter();
+    public static <T> MessageTransporter<T> createMultiLevel() {
+        return new MultiLevelMessageTransporter<>();
     }
 
     /**
      * 创建基于外部API的消息传输器
      */
-    public static MessageTransporter createApiBased(String inputApiUrl, String outputApiUrl, String apiKey) {
-        return new ApiBasedMessageTransporter(inputApiUrl, outputApiUrl, apiKey);
+    public static <T> MessageTransporter<T> createApiBased(String inputApiUrl, String outputApiUrl, String apiKey) {
+        return new ApiBasedMessageTransporter<>(inputApiUrl, outputApiUrl, apiKey);
     }
 
     /**
      * 根据类型创建消息传输器
      */
-    public static MessageTransporter create(TransporterType type, Object... params) {
+    public static <T> MessageTransporter<T> create(TransporterType type, Object... params) {
         switch (type) {
             case QUEUE_BASED:
                 if (params.length >= 2 && params[0] instanceof MessageQueue && params[1] instanceof MessageQueue) {
-                    return createQueueBased((MessageQueue<Envelope>) params[0], (MessageQueue<Envelope>) params[1]);
+                    @SuppressWarnings("unchecked")
+                    MessageQueue<T> inputQueue = (MessageQueue<T>) params[0];
+                    @SuppressWarnings("unchecked")
+                    MessageQueue<T> outputQueue = (MessageQueue<T>) params[1];
+                    return createQueueBased(inputQueue, outputQueue);
                 }
                 throw new IllegalArgumentException("QUEUE_BASED 类型需要提供 inputQueue 和 outputQueue 参数");
 

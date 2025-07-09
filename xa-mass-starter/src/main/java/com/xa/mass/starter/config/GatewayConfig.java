@@ -42,7 +42,7 @@ public class GatewayConfig {
     /**
      * 创建消息传输器
      */
-    public MessageTransporter createMessageTransporter() {
+    public MessageTransporter<Envelope> createMessageTransporter() {
         switch (transporterType) {
             case QUEUE_BASED:
                 if (inputQueue == null || outputQueue == null) {
@@ -56,6 +56,28 @@ public class GatewayConfig {
                     throw new IllegalStateException("API_BASED 类型需要提供 inputApiUrl, outputApiUrl 和 apiKey");
                 }
                 return MessageTransporterFactory.createApiBased(inputApiUrl, outputApiUrl, apiKey);
+            default:
+                throw new IllegalArgumentException("不支持的传输器类型: " + transporterType);
+        }
+    }
+
+    /**
+     * 创建 Envelope 消息传输器（推荐使用）
+     */
+    public EnvelopeMessageTransporter createEnvelopeMessageTransporter() {
+        switch (transporterType) {
+            case QUEUE_BASED:
+                if (inputQueue == null || outputQueue == null) {
+                    throw new IllegalStateException("QUEUE_BASED 类型需要提供 inputQueue 和 outputQueue");
+                }
+                return EnvelopeMessageTransporter.createQueueBased(inputQueue, outputQueue);
+            case MULTI_LEVEL:
+                return EnvelopeMessageTransporter.createMultiLevel();
+            case API_BASED:
+                if (inputApiUrl == null || outputApiUrl == null || apiKey == null) {
+                    throw new IllegalStateException("API_BASED 类型需要提供 inputApiUrl, outputApiUrl 和 apiKey");
+                }
+                return EnvelopeMessageTransporter.createApiBased(inputApiUrl, outputApiUrl, apiKey);
             default:
                 throw new IllegalArgumentException("不支持的传输器类型: " + transporterType);
         }
