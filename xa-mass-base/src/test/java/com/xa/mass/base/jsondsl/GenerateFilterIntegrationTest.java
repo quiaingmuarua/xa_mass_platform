@@ -164,7 +164,7 @@ public class GenerateFilterIntegrationTest {
         filterDsl.setFieldDsl(filterFieldDsl);
         
         // 执行过滤
-        FilterResult<TestUser> filterResult = filterProcessor.filter(allUsers, filterDsl, context);
+        FilterResult<TestUser> filterResult = filterProcessor.filterList(allUsers, filterDsl, context);
         List<TestUser> filteredUsers = filterResult.getPassed();
         
         assertNotNull(filteredUsers);
@@ -207,7 +207,7 @@ public class GenerateFilterIntegrationTest {
         filterFieldDsl.put("$EXPR", "age >= 25 && age <= 50 && experience >= 5 && salary >= 5000");
         filterDsl.setFieldDsl(filterFieldDsl);
         
-        FilterResult<TestUser> filterResult = filterProcessor.filter(employees, filterDsl, context);
+        FilterResult<TestUser> filterResult = filterProcessor.filterList(employees, filterDsl, context);
         List<TestUser> filteredEmployees = filterResult.getPassed();
         
         assertNotNull(filteredEmployees);
@@ -246,7 +246,7 @@ public class GenerateFilterIntegrationTest {
         filter1Dsl.put("age", "$EXPR(age >= 25)");
         filter1.setFieldDsl(filter1Dsl);
         
-        FilterResult<TestUser> result1 = filterProcessor.filter(allUsers, filter1, context);
+        FilterResult<TestUser> result1 = filterProcessor.filterList(allUsers, filter1, context);
         List<TestUser> step1 = result1.getPassed();
         assertNotNull(step1);
         assertTrue(step1.size() <= allUsers.size());
@@ -257,7 +257,7 @@ public class GenerateFilterIntegrationTest {
         filter2Dsl.put("score", "$EXPR(score >= 80)");
         filter2.setFieldDsl(filter2Dsl);
         
-        FilterResult<TestUser> result2 = filterProcessor.filter(step1, filter2, context);
+        FilterResult<TestUser> result2 = filterProcessor.filterList(step1, filter2, context);
         List<TestUser> step2 = result2.getPassed();
         assertNotNull(step2);
         assertTrue(step2.size() <= step1.size());
@@ -268,7 +268,7 @@ public class GenerateFilterIntegrationTest {
         filter3Dsl.put("status", "$EXPR(status == 'active')");
         filter3.setFieldDsl(filter3Dsl);
         
-        FilterResult<TestUser> result3 = filterProcessor.filter(step2, filter3, context);
+        FilterResult<TestUser> result3 = filterProcessor.filterList(step2, filter3, context);
         List<TestUser> finalResult = result3.getPassed();
         assertNotNull(finalResult);
         assertTrue(finalResult.size() <= step2.size());
@@ -313,7 +313,7 @@ public class GenerateFilterIntegrationTest {
         validFilterDsl.setFieldDsl(filterFieldDsl);
         
         List<TestUser> emptyData = List.of();
-        FilterResult<TestUser> emptyResult = filterProcessor.filter(emptyData, validFilterDsl, context);
+        FilterResult<TestUser> emptyResult = filterProcessor.filterList(emptyData, validFilterDsl, context);
         assertNotNull(emptyResult);
         assertEquals(0, emptyResult.getPassed().size());
     }
@@ -344,7 +344,7 @@ public class GenerateFilterIntegrationTest {
         filterFieldDsl.put("id", "$EXPR(id > 5)");
         filterDsl.setFieldDsl(filterFieldDsl);
         
-        FilterResult<TestUser> filterResult = filterProcessor.filter(users, filterDsl, context);
+        FilterResult<TestUser> filterResult = filterProcessor.filterList(users, filterDsl, context);
         assertNotNull(filterResult);
     }
 } 

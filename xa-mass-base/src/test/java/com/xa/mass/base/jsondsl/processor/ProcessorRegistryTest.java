@@ -7,10 +7,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.AfterEach;
 import static org.junit.jupiter.api.Assertions.*;
 
-import java.util.List;
-import java.util.Map;
-import java.util.HashMap;
-import java.util.Arrays;
+import java.util.*;
 
 /**
  * ProcessorRegistry 测试
@@ -307,12 +304,7 @@ public class ProcessorRegistryTest {
      * 测试过滤处理器
      */
     private static class TestFilterProcessor implements FilterProcessor {
-        
-        @Override
-        public <T> FilterResult<T> filter(List<T> input, JsonDslDefinition def, ProcessingContext ctx) {
-            // 简单实现：全部通过
-            return new FilterResult<>(input, null, input.size());
-        }
+
 
         @Override
         public boolean supports(JsonDslDefinition.DslType type) {
@@ -327,6 +319,16 @@ public class ProcessorRegistryTest {
         @Override
         public int getPriority() {
             return 150;
+        }
+
+        @Override
+        public <T> FilterResult<T> filter(T data, JsonDslDefinition definition, ProcessingContext context) {
+            return new FilterResult<>(new ArrayList<>(), null,1);
+        }
+
+        @Override
+        public <T> FilterResult<T> filterList(List<T> dataList, JsonDslDefinition definition, ProcessingContext context) {
+            return new FilterResult<>(dataList, null, dataList.size());
         }
     }
 } 

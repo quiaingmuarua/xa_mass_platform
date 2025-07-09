@@ -58,7 +58,7 @@ public class JsonDslProcessorEngine {
             @SuppressWarnings("unchecked")
             List<T> input = (List<T>) context.getParameter("input");
             ParameterValidator.notNull(input, "input parameter in context");
-            FilterResult<T> result = processor.filter((T) input, definition, context);
+            FilterResult<T> result = processor.filterList(input, definition, context);
             return result.getPassed();
         } else if (JsonDslDefinition.DslType.TRANSFORM.equals(definition.getType())) {
             // 优先使用注册的处理器，如果没有则使用默认处理器
@@ -136,7 +136,7 @@ public class JsonDslProcessorEngine {
                     processor = ProcessorManager.getFilterProcessor();
                 }
                 ParameterValidator.notNull(result, "previous generation result");
-                FilterResult<T> filterResult = processor.filter((T) result, definition, context);
+                FilterResult<T> filterResult = processor.filterList(result, definition, context);
                 result = filterResult.getPassed();
             } else if (JsonDslDefinition.DslType.TRANSFORM.equals(definition.getType())) {
                 // 优先使用注册的处理器，如果没有则使用默认处理器
@@ -231,7 +231,7 @@ public class JsonDslProcessorEngine {
         }
         
         // 批量过滤
-        FilterResult<T> result = processor.filter((T) dataList, definition, context);
+        FilterResult<T> result = processor.filterList(dataList, definition, context);
         return result.getPassed();
     }
     

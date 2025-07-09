@@ -84,7 +84,7 @@ public class JsonDslEngine {
                 ProcessorRegistry.getFilterProcessor();
         // 3. 过滤
         FilterResult<T> result =
-                filterProcessor.filter(data, filterDef, new ProcessingContext("JsonDslEngine.filter"));
+                filterProcessor.filterList(data, filterDef, new ProcessingContext("JsonDslEngine.filter"));
         return result.getPassed();
     }
 

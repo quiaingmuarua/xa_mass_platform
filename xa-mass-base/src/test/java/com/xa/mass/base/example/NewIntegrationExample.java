@@ -112,7 +112,7 @@ public class NewIntegrationExample {
         String filterConfig = JsonDslParser.toJson(filterDef);
         System.out.println("过滤器配置: " + filterConfig);
         FilterProcessor filterProcessor = ProcessorRegistry.getFilterProcessor();
-        FilterResult<Device> result = filterProcessor.filter(devices, filterDef, new ProcessingContext("test-context"));
+        FilterResult<Device> result = filterProcessor.filterList(devices, filterDef, new ProcessingContext("test-context"));
         List<FilterReport.FilterFail<Device>> failed = result.getFailed();
         System.out.println("通过的设备数: " + result.getPassed().size());
         System.out.println("被过滤的设备及原因:");
@@ -132,7 +132,7 @@ public class NewIntegrationExample {
     private static void explainFilter(List<Device> devices, JsonDslDefinition filterDef) {
         System.out.println("\n=== 过滤解释（explain/report） ===");
         FilterProcessor filterProcessor = ProcessorRegistry.getFilterProcessor();
-        FilterResult<Device> report = filterProcessor.filter(devices, filterDef, new ProcessingContext("test-context"));
+        FilterResult<Device> report = filterProcessor.filterList(devices, filterDef, new ProcessingContext("test-context"));
         System.out.println("通过的设备数: " + report.getPassed().size());
         System.out.println("被过滤的设备及原因:");
         for (FilterReport.FilterFail<Device> fail : report.getFailed()) {

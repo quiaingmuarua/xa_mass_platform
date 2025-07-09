@@ -24,13 +24,7 @@ class DefaultFilterProcessor implements FilterProcessor {
         ParameterValidator.validateDslField(def, "fieldDsl");
 
         if (ctx.isDebug()) {
-            System.out.println("[DefaultFilterProcessor] 开始处理 DSL: " + def.getUniqueId());
-        }
-
-        // 智能分发：如果是List，批量处理
-        if (data instanceof List) {
-            //noinspection unchecked
-            return filterList((List<T>) data, def, ctx);
+            System.out.println("[DefaultFilterProcessor] 开始处理单个对象 DSL: " + def.getUniqueId());
         }
 
         // 单对象处理
@@ -121,15 +115,22 @@ class DefaultFilterProcessor implements FilterProcessor {
         return true;
     }
 
-    /**
-     * 过滤对象列表，返回FilterResult
-     */
-    private <T> FilterResult<T> filterList(List<T> dataList, JsonDslDefinition definition, ProcessingContext ctx) {
+    @Override
+    public <T> FilterResult<T> filterList(List<T> dataList, JsonDslDefinition definition, ProcessingContext ctx) {
+        // 参数校验
+        ParameterValidator.notNull(dataList, "dataList");
+        ParameterValidator.notNull(definition, "definition");
+        ParameterValidator.notNull(ctx, "context");
+        ParameterValidator.validateDslType(definition, JsonDslDefinition.DslType.FILTER);
+        ParameterValidator.validateDslField(definition, "fieldDsl");
+        
         if (ctx.isDebug()) {
             System.out.println("[DefaultFilterProcessor] 开始批量过滤，数据量: " + dataList.size());
         }
+        
         List<T> passed = new ArrayList<>();
         List<FilterReport.FilterFail<T>> failed = new ArrayList<>();
+        
         for (T item : dataList) {
             Map<String, Object> objMap = convertToMap(item);
             if (objMap != null) {
@@ -143,9 +144,11 @@ class DefaultFilterProcessor implements FilterProcessor {
                 failed.add(new FilterReport.FilterFail<>(item, List.of("对象转换失败")));
             }
         }
+        
         if (ctx.isDebug()) {
             System.out.println("[DefaultFilterProcessor] 批量过滤完成，通过: " + passed.size() + "/" + dataList.size());
         }
+        
         return new FilterResult<>(passed, failed, dataList.size());
     }
     

@@ -126,7 +126,7 @@ public class ProcessorManager {
             } else if (JsonDslDefinition.DslType.FILTER.equals(definition.getType())) {
                 FilterProcessor processor = getFilterProcessor();
                 ParameterValidator.notNull(result, "previous generation result");
-                FilterResult<T> filterResult = processor.filter(result, definition, context);
+                FilterResult<T> filterResult = processor.filterList(result, definition, context);
                 result = filterResult.getPassed();
             } else if (JsonDslDefinition.DslType.TRANSFORM.equals(definition.getType())) {
                 TransformProcessor processor = getTransformProcessor();

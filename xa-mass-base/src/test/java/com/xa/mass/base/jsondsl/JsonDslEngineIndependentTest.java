@@ -66,7 +66,7 @@ public class JsonDslEngineIndependentTest {
         
         // 5. 执行过滤
         FilterProcessor realFilter = ProcessorRegistry.getFilterProcessor();
-        FilterResult<Map> filterResult = realFilter.filter(allUsers, filterDsl, filterContext);
+        FilterResult<Map> filterResult = realFilter.filterList(allUsers, filterDsl, filterContext);
         List<Map> filteredUsers = filterResult.getPassed();
         assertTrue(filteredUsers.size() <= allUsers.size());
         
@@ -133,7 +133,7 @@ public class JsonDslEngineIndependentTest {
         ProcessingContext filterContext = new ProcessingContext();
         filterContext.setParameter("input", users);
         FilterProcessor realFilter = ProcessorRegistry.getFilterProcessor();
-        FilterResult<Map> filterResult = realFilter.filter(users, filterDsl, filterContext);
+        FilterResult<Map> filterResult = realFilter.filterList(users, filterDsl, filterContext);
         List<Map> filteredUsers = filterResult.getPassed();
         
         // 6. 构建过滤后的模型映射
@@ -180,7 +180,7 @@ public class JsonDslEngineIndependentTest {
         filter1.setFieldDsl(filter1Dsl);
         filterContext.setParameter("input", allUsers);
         FilterProcessor realFilter = ProcessorRegistry.getFilterProcessor();
-        FilterResult<Map> filterResult1 = realFilter.filter(allUsers, filter1, filterContext);
+        FilterResult<Map> filterResult1 = realFilter.filterList(allUsers, filter1, filterContext);
         List<Map> step1 = filterResult1.getPassed();
         System.out.println("年龄>=25: " + step1.size());
         
@@ -189,7 +189,7 @@ public class JsonDslEngineIndependentTest {
         Map<String, Object> filter2Dsl = new HashMap<>();
         filter2Dsl.put("status", Map.of("$eq", "active"));
         filter2.setFieldDsl(filter2Dsl);
-        FilterResult<Map> filterResult2 = realFilter.filter(step1, filter2, filterContext);
+        FilterResult<Map> filterResult2 = realFilter.filterList(step1, filter2, filterContext);
         List<Map> step2 = filterResult2.getPassed();
         System.out.println("状态=active: " + step2.size());
         
@@ -198,7 +198,7 @@ public class JsonDslEngineIndependentTest {
         Map<String, Object> filter3Dsl = new HashMap<>();
         filter3Dsl.put("score", Map.of("$gt", "70"));
         filter3.setFieldDsl(filter3Dsl);
-        FilterResult<Map> filterResult3 = realFilter.filter(step2, filter3, filterContext);
+        FilterResult<Map> filterResult3 = realFilter.filterList(step2, filter3, filterContext);
         List<Map> step3 = filterResult3.getPassed();
         System.out.println("分数>=70: " + step3.size());
         
@@ -207,7 +207,7 @@ public class JsonDslEngineIndependentTest {
         Map<String, Object> filter4Dsl = new HashMap<>();
         filter4Dsl.put("score", Map.of("$lt", "100"));
         filter4.setFieldDsl(filter4Dsl);
-        FilterResult<Map> filterResult4 = realFilter.filter(step3, filter4, filterContext);
+        FilterResult<Map> filterResult4 = realFilter.filterList(step3, filter4, filterContext);
         List<Map> step4 = filterResult4.getPassed();
         System.out.println("分数<=100: " + step4.size());
         

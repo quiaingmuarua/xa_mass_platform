@@ -86,7 +86,7 @@ public class StrongTypedProcessorExample {
         context.setDebug(true);
         
         // 过滤设备列表
-        FilterResult<Device> filteredResult = filterProcessor.filter(devices, dsl, context);
+        FilterResult<Device> filteredResult = filterProcessor.filterList(devices, dsl, context);
         List<Device> filteredDevices = filteredResult.getPassed();
         
         System.out.println("原始设备数量: " + devices.size());
