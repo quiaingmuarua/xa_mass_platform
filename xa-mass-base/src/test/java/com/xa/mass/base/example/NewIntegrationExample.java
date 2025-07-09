@@ -113,14 +113,14 @@ public class NewIntegrationExample {
         System.out.println("过滤器配置: " + filterConfig);
         FilterProcessor filterProcessor = ProcessorRegistry.getFilterProcessor();
         FilterResult<Device> result = filterProcessor.filterList(devices, filterDef, new ProcessingContext("test-context"));
-        List<FilterReport.FilterFail<Device>> failed = result.getFailed();
+        List<FilterResult.FilterFailure<Device>> failed = result.getFailed();
         System.out.println("通过的设备数: " + result.getPassed().size());
         System.out.println("被过滤的设备及原因:");
         if (failed != null) {
-            for (FilterReport.FilterFail<Device> fail : failed) {
-                Device d = fail.getObject();
+            for (FilterResult.FilterFailure<Device> fail : failed) {
+                Device d = fail.getData();
                 System.out.println("设备: " + d.getDeviceId() + ", 组: " + d.getGroupId() + ", 状态: " + d.getStatus()
-                    + ", 未通过: " + String.join("; ", fail.getFailedConditions()));
+                    + ", 未通过: " + String.join("; ", fail.getReasons()));
             }
         }
         return result.getPassed();
@@ -135,16 +135,16 @@ public class NewIntegrationExample {
         FilterResult<Device> report = filterProcessor.filterList(devices, filterDef, new ProcessingContext("test-context"));
         System.out.println("通过的设备数: " + report.getPassed().size());
         System.out.println("被过滤的设备及原因:");
-        for (FilterReport.FilterFail<Device> fail : report.getFailed()) {
-            Device d = fail.getObject();
+        for (FilterResult.FilterFailure<Device> fail : report.getFailed()) {
+            Device d = fail.getData();
             System.out.println("设备: " + d.getDeviceId() + ", 组: " + d.getGroupId() + ", 状态: " + d.getStatus()
-                + ", 未通过: " + String.join("; ", fail.getFailedConditions()));
+                + ", 未通过: " + String.join("; ", fail.getReasons()));
         }
         // 统计每个条件的被拒绝率
         Map<String, Integer> failCount = new HashMap<>();
         int total = devices.size();
-        for (FilterReport.FilterFail<Device> fail : report.getFailed()) {
-            for (String cond : fail.getFailedConditions()) {
+        for (FilterResult.FilterFailure<Device> fail : report.getFailed()) {
+            for (String cond : fail.getReasons()) {
                 failCount.put(cond, failCount.getOrDefault(cond, 0) + 1);
             }
         }

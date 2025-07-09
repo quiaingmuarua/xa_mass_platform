@@ -183,7 +183,7 @@ public class DefaultFilterProcessorTest {
         // 测试批量过滤（带详情）
         FilterResult<TestUser> result = JsonDslProcessorEngine.filterBatchWithDetails(testUsers, definition, context, TestUser.class);
         List<TestUser> passed = result.getPassed();
-        List<FilterReport.FilterFail<TestUser>> failed = result.getFailed();
+        List<FilterResult.FilterFailure<TestUser>> failed = result.getFailed();
 
         assertNotNull(passed);
         assertNotNull(failed);
@@ -214,7 +214,7 @@ public class DefaultFilterProcessorTest {
         assertThat(result.getFailed()).hasSize(1);
         
         // 验证详细的失败原因
-        List<String> failReasons = result.getFailed().get(0).getFailedConditions();
+        List<String> failReasons = result.getFailed().get(0).getReasons();
         assertThat(failReasons).hasSize(2);
         assertThat(failReasons).anyMatch(reason -> reason.contains("age") && reason.contains("不满足条件"));
         assertThat(failReasons).anyMatch(reason -> reason.contains("status") && reason.contains("不满足条件"));
@@ -247,12 +247,12 @@ public class DefaultFilterProcessorTest {
         assertThat(result.getFailed()).hasSize(1);
         
         // 验证失败用户的详细原因
-        List<String> failReasons = result.getFailed().get(0).getFailedConditions();
+        List<String> failReasons = result.getFailed().get(0).getReasons();
         assertThat(failReasons).hasSize(1);
         assertThat(failReasons.get(0)).contains("age").contains("不满足条件");
         
         System.out.println("通过的用户: " + result.getPassed().stream().map(TestUser::getName).collect(Collectors.toList()));
-        System.out.println("失败的用户: " + result.getFailed().get(0).getObject().getName());
+        System.out.println("失败的用户: " + result.getFailed().get(0).getData().getName());
         System.out.println("失败原因: " + failReasons);
     }
 
@@ -277,7 +277,7 @@ public class DefaultFilterProcessorTest {
         assertThat(result.getFailed()).hasSize(1);
         
         // 验证组合条件的失败原因
-        List<String> failReasons = result.getFailed().get(0).getFailedConditions();
+        List<String> failReasons = result.getFailed().get(0).getReasons();
         assertThat(failReasons).hasSize(1);
         assertThat(failReasons.get(0)).contains("组合条件").contains("ageAndStatus");
         

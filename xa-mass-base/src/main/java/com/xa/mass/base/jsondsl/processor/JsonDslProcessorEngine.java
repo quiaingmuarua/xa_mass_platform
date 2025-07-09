@@ -262,7 +262,7 @@ public class JsonDslProcessorEngine {
         
         // 批量过滤
         List<T> passed = new ArrayList<>();
-        List<FilterReport.FilterFail<T>> failed = new ArrayList<>();
+        List<FilterResult.FilterFailure<T>> failed = new ArrayList<>();
         
         for (T item : dataList) {
             FilterResult<T> itemResult = processor.filter(item, definition, context);
@@ -270,7 +270,7 @@ public class JsonDslProcessorEngine {
                 passed.add(item);
             } else {
                 // 这里可以扩展为获取具体的失败原因
-                failed.add(new FilterReport.FilterFail<>(item, List.of("未通过过滤条件")));
+                failed.add(new FilterResult.FilterFailure<>(item, List.of("未通过过滤条件")));
             }
         }
         

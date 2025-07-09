@@ -33,10 +33,10 @@ class DefaultFilterProcessor implements FilterProcessor {
             FilterResult<Map<String, Object>> result = filterMapWithDetails(objMap, def, ctx);
             if (result.getPassed().isEmpty()) {
                 // 转换失败原因
-                List<String> failReasons = result.getFailed().get(0).getFailedConditions();
-                return new FilterResult<>(List.of(), List.of(new FilterReport.FilterFail<>(data, failReasons)), 1);
+                List<String> failReasons = result.getFailed().get(0).getReasons();
+                return FilterResult.of(data, false, failReasons);
             } else {
-                return new FilterResult<>(List.of(data), null, 1);
+                return FilterResult.of(data, true, null);
             }
         }
         throw new JsonDslException("不支持的数据类型: " + (data != null ? data.getClass().getSimpleName() : "null"));
@@ -188,7 +188,7 @@ class DefaultFilterProcessor implements FilterProcessor {
         if (failReasons.isEmpty()) {
             return new FilterResult<>(List.of(dataMap), null, 1);
         } else {
-            return new FilterResult<>(List.of(), List.of(new FilterReport.FilterFail<>(dataMap, failReasons)), 1);
+            return new FilterResult<>(List.of(), List.of(new FilterResult.FilterFailure<>(dataMap, failReasons)), 1);
         }
     }
 
@@ -206,7 +206,7 @@ class DefaultFilterProcessor implements FilterProcessor {
         }
         
         List<T> passed = new ArrayList<>();
-        List<FilterReport.FilterFail<T>> failed = new ArrayList<>();
+        List<FilterResult.FilterFailure<T>> failed = new ArrayList<>();
         
         for (T item : dataList) {
             Map<String, Object> objMap = convertToMap(item);
@@ -214,13 +214,13 @@ class DefaultFilterProcessor implements FilterProcessor {
                 FilterResult<Map<String, Object>> result = filterMapWithDetails(objMap, definition, ctx);
                 if (result.getPassed().isEmpty()) {
                     // 获取详细的失败原因
-                    List<String> failReasons = result.getFailed().get(0).getFailedConditions();
-                    failed.add(new FilterReport.FilterFail<>(item, failReasons));
+                    List<String> failReasons = result.getFailed().get(0).getReasons();
+                    failed.add(new FilterResult.FilterFailure<>(item, failReasons));
                 } else {
                     passed.add(item);
                 }
             } else {
-                failed.add(new FilterReport.FilterFail<>(item, List.of("对象转换失败")));
+                failed.add(new FilterResult.FilterFailure<>(item, List.of("对象转换失败")));
             }
         }
         
