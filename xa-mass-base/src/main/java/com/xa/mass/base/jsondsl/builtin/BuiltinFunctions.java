@@ -107,15 +107,15 @@ public class BuiltinFunctions {
     }
 
 
-    public static Object eval(String func,Object evalParams) {
-        Map<String,Object> params = new HashMap<>();
-        params.put("param",evalParams);
-        return eval(func,params);
+    public static Object eval(String func, Object evalParams) {
+        Map<String, Object> params = new HashMap<>();
+        params.put("param", evalParams);
+        return eval(func, params);
 
     }
 
-    public static Object eval(String func,Map<String,Object> evalParams) {
-        if(evalParams==null) evalParams=new HashMap<>();
+    public static Object eval(String func, Map<String, Object> evalParams) {
+        if (evalParams == null) evalParams = new HashMap<>();
         Object param = evalParams.get("param");
         Object curFiledVal = evalParams.get("curFiledVal");
         if (func == null) throw new JsonDslException("函数名不能为空");
@@ -344,7 +344,6 @@ public class BuiltinFunctions {
     }
 
 
-
     public static boolean evaluate(Object fieldValue, Map<String, Object> rule) {
         for (Map.Entry<String, Object> entry : rule.entrySet()) {
             String op = entry.getKey();
@@ -380,22 +379,22 @@ public class BuiltinFunctions {
         if (runner == null) {
             throw new IllegalArgumentException("ExpressRunner 不能为空");
         }
-        
+
         try {
             // 注册 parseInt(String) 函数
-            runner.addFunctionOfClassMethod("parseInt", Integer.class.getName(), "parseInt", new String[] { "String" }, null);
-            
+            runner.addFunctionOfClassMethod("parseInt", Integer.class.getName(), "parseInt", new String[]{"String"}, null);
+
             // 注册所有内置函数
             for (Map.Entry<String, BuiltinFunction> entry : FUNCTION_MAP.entrySet()) {
                 String funcName = entry.getKey();
                 BuiltinFunction function = entry.getValue();
-                
+
                 // 检查是否为内置操作符，避免冲突
                 if (isBuiltinOperator(funcName)) {
                     System.out.println("[BuiltinFunctions] 跳过内置操作符 " + funcName + " 的注册，避免冲突");
                     continue;
                 }
-                
+
                 try {
                     runner.addFunction(funcName, new com.ql.util.express.Operator() {
                         @Override
@@ -416,7 +415,7 @@ public class BuiltinFunctions {
             throw new RuntimeException("注册 BuiltinFunctions 到 QLExpress 失败", e);
         }
     }
-    
+
     /**
      * 检查是否为内置操作符
      * @param name 名称
@@ -425,10 +424,10 @@ public class BuiltinFunctions {
     private static boolean isBuiltinOperator(String name) {
         // QLExpress 内置操作符列表
         String[] builtinOperators = {
-            "in", "eq", "ne", "gt", "gte", "lt", "lte", "and", "or", "not",
-            "add", "sub", "mul", "div", "mod", "pow", "neg", "pos"
+                "in", "eq", "ne", "gt", "gte", "lt", "lte", "and", "or", "not",
+                "add", "sub", "mul", "div", "mod", "pow", "neg", "pos"
         };
-        
+
         for (String op : builtinOperators) {
             if (op.equals(name.toLowerCase())) {
                 return true;
@@ -436,7 +435,7 @@ public class BuiltinFunctions {
         }
         return false;
     }
-    
+
     /**
      * 清理注册表（主要用于测试）
      */
@@ -444,7 +443,7 @@ public class BuiltinFunctions {
         FUNCTION_MAP.clear();
         OPERATOR_MAP.clear();
     }
-    
+
     /**
      * 获取已注册的函数数量
      * @return 函数数量
@@ -452,7 +451,7 @@ public class BuiltinFunctions {
     public static int getFunctionCount() {
         return FUNCTION_MAP.size();
     }
-    
+
     /**
      * 获取已注册的操作符数量
      * @return 操作符数量

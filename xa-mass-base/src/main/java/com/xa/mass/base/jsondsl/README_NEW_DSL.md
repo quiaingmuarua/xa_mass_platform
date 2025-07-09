@@ -1,6 +1,7 @@
 # 新版 JSON-DSL 标准文档
 
 ## 目录
+
 1. [设计目标](#设计目标)
 2. [标准结构体](#标准结构体)
 3. [核心字段说明](#核心字段说明)
@@ -16,6 +17,7 @@
 ---
 
 ## 1. 设计目标
+
 - **结构化**：统一 DSL 结构，便于解析、扩展和排查。
 - **可扩展**：支持多种类型（生成、过滤、转换、校验等），可插拔表达式/规则引擎。
 - **优先级合并**：多来源规则合并时高优先级覆盖低优先级。
@@ -28,24 +30,46 @@
 
 ```json
 {
-  "unique_id": "string",         // 唯一标识
-  "type": "generate|filter|transform|validate", // DSL 类型
-  "priority": 10,                 // 优先级，数值越大优先级越高
+  "unique_id": "string",
+  // 唯一标识
+  "type": "generate|filter|transform|validate",
+  // DSL 类型
+  "priority": 10,
+  // 优先级，数值越大优先级越高
   "desc": "描述信息",
   "version": "1.0",
   "author": "作者",
-  "tags": ["tag1", "tag2"],
-  "enabled": true,                // 是否启用
-  "context": { ... },             // 上下文配置，见下
-  "fieldDsl": { ... },            // 字段规则
-  "combine_dsl": { ... },         // 组合规则（多字段/复杂表达式）
-  "extensions": { ... },          // 扩展信息
-  "cacheable": false,             // 是否可缓存
-  "cache_expire_seconds": 300     // 缓存过期时间
+  "tags": [
+    "tag1",
+    "tag2"
+  ],
+  "enabled": true,
+  // 是否启用
+  "context": {
+    ...
+  },
+  // 上下文配置，见下
+  "fieldDsl": {
+    ...
+  },
+  // 字段规则
+  "combine_dsl": {
+    ...
+  },
+  // 组合规则（多字段/复杂表达式）
+  "extensions": {
+    ...
+  },
+  // 扩展信息
+  "cacheable": false,
+  // 是否可缓存
+  "cache_expire_seconds": 300
+  // 缓存过期时间
 }
 ```
 
 ### context 字段结构
+
 ```json
 {
   "MODEL": "Device",           // 模型类名或注册别名
@@ -62,6 +86,7 @@
 ---
 
 ## 3. 核心字段说明
+
 - **unique_id**：每条 DSL 的唯一标识，便于追踪和调试。
 - **type**：DSL 类型，支持 generate（生成）、filter（过滤）、transform（转换）、validate（校验）。
 - **priority**：合并时的优先级，数值越大优先级越高。
@@ -74,6 +99,7 @@
 ---
 
 ## 4. 类型与用法
+
 - **generate**：批量生成对象，支持递归嵌套、内置函数、表达式。
 - **filter**：对象过滤，支持字段条件、表达式、组合规则。
 - **transform**：对象转换，支持字段映射、表达式、批量处理。
@@ -82,7 +108,9 @@
 ---
 
 ## 5. 表达式与引擎
+
 - **$EXPR** 字段支持多种表达式引擎（如 QLExpress、SpEL、自定义）：
+
 ```json
 {
   "$EXPR": {
@@ -91,15 +119,19 @@
   }
 }
 ```
+
 - 也可直接用字符串，默认 QLExpress：
+
 ```json
 {"$EXPR": "status == 'OFFLINE' ? 0 : range(10, 100)"}
 ```
+
 - **可插拔机制**：实现 `ExpressionEngine` 接口并注册到 `ExpressionEngineRegistry`，即可扩展新引擎。
 
 ---
 
 ## 6. 多来源合并与优先级
+
 - 支持多来源（如 project、user、task）规则合并。
 - 合并策略：高优先级覆盖低优先级，同字段/规则优先级高的生效。
 - 提供多种合并模式（覆盖、合并、交集、并集），可定制。
@@ -108,6 +140,7 @@
 ---
 
 ## 7. 冲突检测与调试
+
 - 每次合并可调用冲突检测方法，输出冲突详情。
 - 支持调试模式（context.debug=true），详细输出合并、解析、执行过程。
 - 唯一 ID、优先级、来源追踪，便于定位问题。
@@ -115,6 +148,7 @@
 ---
 
 ## 8. 可扩展点
+
 - **表达式引擎**：实现 `ExpressionEngine` 并注册。
 - **内置函数**：扩展 `BuiltinFunc` 和 `BuiltinFunctions`，或通过表达式引擎扩展。
 - **类型注册**：通过 `TypeRegistry.register` 注册新模型类型。
@@ -126,6 +160,7 @@
 ---
 
 ## 9. 与旧版区别
+
 - 结构更标准化，字段更清晰，支持元数据和扩展。
 - 支持多类型 DSL（生成/过滤/转换/校验），表达能力更强。
 - 合并与优先级机制更完善，支持冲突检测。
@@ -137,27 +172,54 @@
 ## 10. 常见用法示例
 
 ### 生成设备数据
+
 ```json
 {
   "unique_id": "device_gen_001",
   "type": "generate",
-  "context": {"MODEL": "Device", "COUNT": 2},
+  "context": {
+    "MODEL": "Device",
+    "COUNT": 2
+  },
   "fieldDsl": {
-    "$deviceId": {"$JOIN": ["device-", "&.index"]},
-    "$status": {"$CHOICE": ["ONLINE", "OFFLINE"]},
-    "$createdTime": {"$EXPR": {"lang": "ql", "expr": "now('yyyy-MM-dd HH:mm:ss')"}}
+    "$deviceId": {
+      "$JOIN": [
+        "device-",
+        "&.index"
+      ]
+    },
+    "$status": {
+      "$CHOICE": [
+        "ONLINE",
+        "OFFLINE"
+      ]
+    },
+    "$createdTime": {
+      "$EXPR": {
+        "lang": "ql",
+        "expr": "now('yyyy-MM-dd HH:mm:ss')"
+      }
+    }
   }
 }
 ```
 
 ### 过滤在线设备
+
 ```json
 {
   "unique_id": "online_filter",
   "type": "filter",
   "fieldDsl": {
-    "$status": {"eq": "ONLINE"},
-    "$groupId": {"in": ["us", "gb"]}
+    "$status": {
+      "eq": "ONLINE"
+    },
+    "$groupId": {
+      "in": [
+        "us",
+        "gb"
+      ]
+    }
   },
   "combine_dsl": {
     "battery_check": "batteryLevel >= 20"
@@ -166,23 +228,43 @@
 ```
 
 ### 复杂嵌套与表达式
+
 ```json
 {
   "unique_id": "complex_gen",
   "type": "generate",
-  "context": {"MODEL": "Device", "COUNT": 1},
+  "context": {
+    "MODEL": "Device",
+    "COUNT": 1
+  },
   "fieldDsl": {
-    "$deviceId": {"$JOIN": ["device-", "&.index"]},
+    "$deviceId": {
+      "$JOIN": [
+        "device-",
+        "&.index"
+      ]
+    },
     "$tasks": {
       "$TYPE": "LIST",
       "$COUNT": 2,
       "$MODEL": "Task",
       "$FIELDS": {
-        "$tid": {"$UUID": true},
-        "$taskName": {"$JOIN": ["Task-", "&.index", "-of-Device-", "&Device.index"]}
+        "$tid": {
+          "$UUID": true
+        },
+        "$taskName": {
+          "$JOIN": [
+            "Task-",
+            "&.index",
+            "-of-Device-",
+            "&Device.index"
+          ]
+        }
       }
     },
-    "$onlineStrategy": {"$EXPR": "status == 'OFFLINE' ? 0 : range(10, 100)"}
+    "$onlineStrategy": {
+      "$EXPR": "status == 'OFFLINE' ? 0 : range(10, 100)"
+    }
   }
 }
 ```
@@ -190,6 +272,7 @@
 ---
 
 ## 11. 调试与安全建议
+
 - **调试模式**：建议开发/排查时开启 context.debug=true，输出详细日志。
 - **唯一 ID**：每条 DSL 建议分配唯一 ID，便于追踪。
 - **表达式安全**：自定义表达式引擎时注意注入风险，做好沙箱隔离。
@@ -244,7 +327,10 @@
   "extensions": {
     "customField": "customValue"
   },
-  "tags": ["user", "generator"],
+  "tags": [
+    "user",
+    "generator"
+  ],
   "author": "system",
   "enabled": true,
   "cacheable": false,
@@ -254,26 +340,27 @@
 
 ### 核心字段说明
 
-| 字段 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| uniqueId | String | 是 | DSL 唯一标识符 |
-| type | String | 是 | DSL 类型：generate/filter/transform/validate |
-| priority | Integer | 否 | 优先级，数字越小优先级越高 |
-| description | String | 否 | DSL 描述信息 |
-| version | String | 否 | 版本号，默认 "1.0" |
-| context | Object | 否 | 上下文配置 |
-| fieldDsl | Object | 否 | 字段 DSL 配置 |
-| combineDsl | Object | 否 | 组合规则配置 |
-| extensions | Object | 否 | 扩展配置 |
-| tags | Array | 否 | 标签列表 |
-| author | String | 否 | 作者信息 |
-| enabled | Boolean | 否 | 是否启用，默认 true |
-| cacheable | Boolean | 否 | 是否缓存，默认 false |
-| cacheExpireSeconds | Integer | 否 | 缓存过期时间（秒） |
+| 字段                 | 类型      | 必填 | 说明                                        |
+|--------------------|---------|----|-------------------------------------------|
+| uniqueId           | String  | 是  | DSL 唯一标识符                                 |
+| type               | String  | 是  | DSL 类型：generate/filter/transform/validate |
+| priority           | Integer | 否  | 优先级，数字越小优先级越高                             |
+| description        | String  | 否  | DSL 描述信息                                  |
+| version            | String  | 否  | 版本号，默认 "1.0"                              |
+| context            | Object  | 否  | 上下文配置                                     |
+| fieldDsl           | Object  | 否  | 字段 DSL 配置                                 |
+| combineDsl         | Object  | 否  | 组合规则配置                                    |
+| extensions         | Object  | 否  | 扩展配置                                      |
+| tags               | Array   | 否  | 标签列表                                      |
+| author             | String  | 否  | 作者信息                                      |
+| enabled            | Boolean | 否  | 是否启用，默认 true                              |
+| cacheable          | Boolean | 否  | 是否缓存，默认 false                             |
+| cacheExpireSeconds | Integer | 否  | 缓存过期时间（秒）                                 |
 
 ### DSL 类型
 
 #### 1. Generate（生成）
+
 用于生成对象实例
 
 ```json
@@ -293,6 +380,7 @@
 ```
 
 #### 2. Filter（过滤）
+
 用于过滤对象列表
 
 ```json
@@ -310,6 +398,7 @@
 ```
 
 #### 3. Transform（转换）
+
 用于转换对象格式
 
 ```json
@@ -324,6 +413,7 @@
 ```
 
 #### 4. Validate（校验）
+
 用于校验对象有效性
 
 ```json
@@ -419,11 +509,14 @@ ExpressionEngineRegistry.register("custom", new CustomExpressionEngine());
 ```java
 public interface BuiltinFunction {
     Object execute(Object... args);
+
     String getName();
 }
 
 // 注册自定义函数
-BuiltinFunctionRegistry.register(new CustomFunction());
+BuiltinFunctionRegistry.
+
+register(new CustomFunction());
 ```
 
 ### 3. 类型注册扩展
@@ -461,8 +554,12 @@ MergeStrategyRegistry.register("custom", new CustomMergeStrategy());
 
 ```java
 ProcessingContext context = new ProcessingContext();
-context.setParameter("customParam", "value");
-context.setVariable("customVar", "value");
+context.
+
+setParameter("customParam","value");
+context.
+
+setVariable("customVar","value");
 ```
 
 ### 7. 缓存扩展
@@ -490,12 +587,15 @@ context.setVariable("customVar", "value");
 
 ```java
 // 旧方式
-String legacyFormat = "{ "$name": "$RANDOM_NAME" }";
+String legacyFormat = "{ "
+$name": "$RANDOM_NAME" }";
 List<Object> result = JsonDslEngine.generateList(legacyFormat);
 
 // 新方式
 JsonDslDefinition dsl = new JsonDslDefinition("generator", DslType.GENERATE);
-dsl.setFieldDsl(Map.of("$name", "$RANDOM_NAME"));
+dsl.
+
+setFieldDsl(Map.of("$name", "$RANDOM_NAME"));
 Object result = JsonDslProcessorEngine.process(dsl);
 ```
 
@@ -505,7 +605,8 @@ Object result = JsonDslProcessorEngine.process(dsl);
 
 #### 方法泛型接口
 
-新版所有强类型处理器接口（GenerateProcessor、FilterProcessor、TransformProcessor、ValidateProcessor）均采用"方法泛型"，不再使用类泛型。例如：
+新版所有强类型处理器接口（GenerateProcessor、FilterProcessor、TransformProcessor、ValidateProcessor）均采用"方法泛型"
+，不再使用类泛型。例如：
 
 ```java
 public interface GenerateProcessor extends JsonDslProcessor {
@@ -555,11 +656,12 @@ List<User> filtered = filterProcessor.filter(users, filterDsl, context);
 #### 示例：异常捕获
 
 ```java
-try {
-    generateProcessor.generate(null, context, User.class);
-} catch (JsonDslException e) {
-    // 处理参数校验异常
-}
+try{
+        generateProcessor.generate(null,context, User .class);
+}catch(
+JsonDslException e){
+        // 处理参数校验异常
+        }
 ```
 
 ---
@@ -567,26 +669,31 @@ try {
 ## 新的标准 DSL 框架说明与问题记录
 
 ### 1. 自动注册机制
+
 - 所有内置函数（如 `$choice`、`$range`、`$join` 等）在 `BuiltinFunctions` 的 static 块中注册到 `FUNCTION_MAP`。
 - `BuiltinFunctions` 提供统一的注册表管理，避免重复注册。
 - QLExpress 注册时自动排除内置操作符（如 `in`、`eq`、`gte` 等），避免冲突。
 
 ### 2. mock/表达式/类型适配
+
 - 所有 mock 生成、filter、表达式等统一走 `TemplateValueResolver` + `BuiltinFunctions`。
 - 类型适配统一走 `TypeAdapterUtil.adaptType`，支持字符串、数字、下标、boolean→枚举等常见场景。
 - boolean→枚举支持智能映射（如 true→ONLINE/ENABLED/YES，false→OFFLINE/DISABLED/NO），否则 fallback 为第一个常量。
 
 ### 3. 测试隔离与全局状态
+
 - 单测时，`BuiltinFunctions` 等 static 注册表可能被其它测试污染，导致注册缺失或 mock 失败。
 - 解决方案：每个测试用例前后清理注册表，并强制触发 `BuiltinFunctions` static 块，保证注册一致性。
 - 但全量测试时，仍可能因其它测试用例的 DSL/mock 规则污染导致部分用例表现异常。
 
 ### 4. 遗留/待排查问题点
+
 - 全量测试时，`NewStandardDslTypeRegistrationTest` 仍偶发 `$CHOICE` 未被递归执行，mock 结果为原始 Map，导致类型适配异常。
 - `QLExpressBuiltinTest` 可能因注册表未及时注册 `range` 等函数导致表达式找不到。
 - 目前通过在 `@BeforeEach` 强制触发 static 块可缓解，但根因可能是注册表/DSL/mock 规则全局污染，需进一步彻查。
 
 ### 5. 建议与后续方向
+
 - 后续可考虑将注册表/内置函数注册彻底与测试用例解耦，或每次 mock/表达式前自动检测并补注册。
 - 可增加详细日志，辅助定位全局状态污染来源。
 - 继续优化类型适配和 mock 递归逻辑，保证所有场景下 mock 结果与预期一致。
@@ -603,7 +710,8 @@ try {
 - TypeAdapterUtil.adaptType 增强：支持 boolean→枚举智能映射，兼容历史 mock 行为。
 - BuiltinFunctions.registerToQLExpress 增强：自动排除所有内置操作符，彻底防止 in/eq/gte 等冲突。
 - 增加防御拦截和详细日志，辅助定位注册冲突。
-- 测试用例（如 NewStandardDslTypeRegistrationTest、QLExpressBuiltinTest）增加 @BeforeEach 强制触发 BuiltinFunctions static 块，保证每次测试前注册表一致。
+- 测试用例（如 NewStandardDslTypeRegistrationTest、QLExpressBuiltinTest）增加 @BeforeEach 强制触发 BuiltinFunctions static
+  块，保证每次测试前注册表一致。
 - mockFromDsl 兼容新 DSL 结构：顶层无 MODEL 字段时自动从 context.MODEL 取值。
 - 文档同步更新，记录所有机制、问题点与建议。
 
@@ -651,21 +759,22 @@ try {
 ## 3. 其他说明
 
 - 支持嵌套、链式调用。
-- 详见测试用例和示例。 
+- 详见测试用例和示例。
 
 ## 4. 参数风格兼容说明
 
 - 支持如下写法：
-  - `$choice('A', 'B', 'C')`
-  - `$CHOICE(A, B, C)`
-  - `$join('a', 'b', 'c')`
-  - `$JOIN(a, b, c)`
-  - `$range(1, 100)`
-  - `$RANGE(1, 100)`
+    - `$choice('A', 'B', 'C')`
+    - `$CHOICE(A, B, C)`
+    - `$join('a', 'b', 'c')`
+    - `$JOIN(a, b, c)`
+    - `$range(1, 100)`
+    - `$RANGE(1, 100)`
 - 推荐表达式用 `{ "$EXPR": "score > 80" }`。
 - 以上所有风格均可混用，详见测试用例。
 
 ### 例子
+
 ```json
 {
   "name": "$choice('Alice', 'Bob')",

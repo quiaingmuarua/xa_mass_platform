@@ -5,12 +5,15 @@ import com.xa.mass.base.jsondsl.builtin.JsonDslException;
 import java.text.SimpleDateFormat;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.*;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.function.Function;
 
 class TypeAdapterUtil {
     // 类型适配器注册表
     static final Map<Class<?>, Function<Object, Object>> TYPE_ADAPTERS = new HashMap<>();
+
     static {
         TYPE_ADAPTERS.put(LocalDateTime.class, v -> {
             if (v == null) return null;
@@ -23,7 +26,8 @@ class TypeAdapterUtil {
                         if (fmt.length() == str.length()) {
                             return LocalDateTime.parse(str, formatter);
                         }
-                    } catch (Exception ignored) {}
+                    } catch (Exception ignored) {
+                    }
                 }
             }
             return null;
@@ -40,7 +44,8 @@ class TypeAdapterUtil {
                         if (fmt.length() == str.length()) {
                             return sdf.parse(str);
                         }
-                    } catch (Exception ignored) {}
+                    } catch (Exception ignored) {
+                    }
                 }
             }
             return null;

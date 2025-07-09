@@ -3,13 +3,13 @@ package com.xa.mass.base.jsondsl.processor;
 import com.google.gson.Gson;
 import com.xa.mass.base.jsondsl.builtin.DslContext;
 import com.xa.mass.base.jsondsl.builtin.GsonConfig;
+import com.xa.mass.base.jsondsl.builtin.JsonDslException;
 import com.xa.mass.base.jsondsl.builtin.TemplateValueResolver;
 import com.xa.mass.base.jsondsl.model.JsonDslDefinition;
-import com.xa.mass.base.jsondsl.builtin.JsonDslException;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.ArrayList;
 
 class DefaultFilterProcessor implements FilterProcessor {
     private static final Gson gson = GsonConfig.buildGson();
@@ -44,7 +44,7 @@ class DefaultFilterProcessor implements FilterProcessor {
 
     /**
      * 过滤Map对象
-     * 
+     *
      * @param dataMap Map对象
      * @param def DSL定义
      * @param ctx 处理上下文
@@ -54,13 +54,13 @@ class DefaultFilterProcessor implements FilterProcessor {
         ParameterValidator.notNull(dataMap, "dataMap");
         ParameterValidator.notNull(def, "definition");
         ParameterValidator.notNull(ctx, "context");
-        
+
         DslContext dslContext = new DslContext();
         // 先将所有字段都set到上下文，保证组合条件表达式能访问
         for (Map.Entry<String, Object> entry : dataMap.entrySet()) {
             dslContext.setVariable(entry.getKey(), entry.getValue());
         }
-        
+
         // 检查字段条件
         Map<String, Object> fieldConds = def.getFieldDsl();
         if (fieldConds != null) {
@@ -68,12 +68,12 @@ class DefaultFilterProcessor implements FilterProcessor {
                 String field = entry.getKey();
                 Object cond = entry.getValue();
                 Object val = dataMap.get(field);
-                
+
                 try {
                     dslContext.setVariable(field, val);
                     dslContext.setVariable("curFiledVal", val);
                     Object result = TemplateValueResolver.resolve(cond, dslContext);
-                    
+
                     // 只要有一个字段条件不通过就 fail
                     if (!(result instanceof Boolean) || !((Boolean) result)) {
                         return false;
@@ -86,14 +86,14 @@ class DefaultFilterProcessor implements FilterProcessor {
                 }
             }
         }
-        
+
         // 检查组合条件
         Map<String, Object> combineConds = def.getCombineDsl();
         if (combineConds != null) {
             for (Map.Entry<String, Object> entry : combineConds.entrySet()) {
                 String exprName = entry.getKey();
                 Object expr = entry.getValue();
-                
+
                 try {
                     Object result = TemplateValueResolver.resolve(expr, dslContext);
                     boolean ok = false;
@@ -101,7 +101,7 @@ class DefaultFilterProcessor implements FilterProcessor {
                     else if (result instanceof Number) ok = ((Number) result).doubleValue() != 0;
                     else if (result instanceof String) ok = !((String) result).isEmpty();
                     else ok = result != null;
-                    
+
                     if (!ok) {
                         return false;
                     }
@@ -113,13 +113,13 @@ class DefaultFilterProcessor implements FilterProcessor {
                 }
             }
         }
-        
+
         return true;
     }
 
     /**
      * 过滤Map对象并返回详细结果
-     * 
+     *
      * @param dataMap Map对象
      * @param def DSL定义
      * @param ctx 处理上下文
@@ -129,15 +129,15 @@ class DefaultFilterProcessor implements FilterProcessor {
         ParameterValidator.notNull(dataMap, "dataMap");
         ParameterValidator.notNull(def, "definition");
         ParameterValidator.notNull(ctx, "context");
-        
+
         DslContext dslContext = new DslContext();
         // 先将所有字段都set到上下文，保证组合条件表达式能访问
         for (Map.Entry<String, Object> entry : dataMap.entrySet()) {
             dslContext.setVariable(entry.getKey(), entry.getValue());
         }
-        
+
         List<String> failReasons = new ArrayList<>();
-        
+
         // 检查字段条件
         Map<String, Object> fieldConds = def.getFieldDsl();
         if (fieldConds != null) {
@@ -145,12 +145,12 @@ class DefaultFilterProcessor implements FilterProcessor {
                 String field = entry.getKey();
                 Object cond = entry.getValue();
                 Object val = dataMap.get(field);
-                
+
                 try {
                     dslContext.setVariable(field, val);
                     dslContext.setVariable("curFiledVal", val);
                     Object result = TemplateValueResolver.resolve(cond, dslContext);
-                    
+
                     // 只要有一个字段条件不通过就记录失败原因
                     if (!(result instanceof Boolean) || !((Boolean) result)) {
                         failReasons.add(field + " 不满足条件: " + cond);
@@ -160,14 +160,14 @@ class DefaultFilterProcessor implements FilterProcessor {
                 }
             }
         }
-        
+
         // 检查组合条件
         Map<String, Object> combineConds = def.getCombineDsl();
         if (combineConds != null) {
             for (Map.Entry<String, Object> entry : combineConds.entrySet()) {
                 String exprName = entry.getKey();
                 Object expr = entry.getValue();
-                
+
                 try {
                     Object result = TemplateValueResolver.resolve(expr, dslContext);
                     boolean ok = false;
@@ -175,7 +175,7 @@ class DefaultFilterProcessor implements FilterProcessor {
                     else if (result instanceof Number) ok = ((Number) result).doubleValue() != 0;
                     else if (result instanceof String) ok = !((String) result).isEmpty();
                     else ok = result != null;
-                    
+
                     if (!ok) {
                         failReasons.add("组合条件 " + exprName + " 不满足: " + expr);
                     }
@@ -184,7 +184,7 @@ class DefaultFilterProcessor implements FilterProcessor {
                 }
             }
         }
-        
+
         if (failReasons.isEmpty()) {
             return new FilterResult<>(List.of(dataMap), null, 1);
         } else {
@@ -200,14 +200,14 @@ class DefaultFilterProcessor implements FilterProcessor {
         ParameterValidator.notNull(ctx, "context");
         ParameterValidator.validateDslType(definition, JsonDslDefinition.DslType.FILTER);
         ParameterValidator.validateDslFieldOrCombine(definition);
-        
+
         if (ctx.isDebug()) {
             System.out.println("[DefaultFilterProcessor] 开始批量过滤，数据量: " + dataList.size());
         }
-        
+
         List<T> passed = new ArrayList<>();
         List<FilterResult.FilterFailure<T>> failed = new ArrayList<>();
-        
+
         for (T item : dataList) {
             Map<String, Object> objMap = convertToMap(item);
             if (objMap != null) {
@@ -223,17 +223,17 @@ class DefaultFilterProcessor implements FilterProcessor {
                 failed.add(new FilterResult.FilterFailure<>(item, List.of("对象转换失败")));
             }
         }
-        
+
         if (ctx.isDebug()) {
             System.out.println("[DefaultFilterProcessor] 批量过滤完成，通过: " + passed.size() + "/" + dataList.size());
         }
-        
+
         return new FilterResult<>(passed, failed, dataList.size());
     }
-    
+
     /**
      * 将对象转换为Map
-     * 
+     *
      * @param obj 要转换的对象
      * @return Map对象，转换失败返回null
      */

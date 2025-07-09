@@ -4,7 +4,7 @@ import java.util.List;
 
 /**
  * 过滤结果类，支持单对象和列表过滤
- * 
+ *
  * @param <T> 数据类型
  */
 public class FilterResult<T> {
@@ -15,7 +15,7 @@ public class FilterResult<T> {
 
     /**
      * 构造函数
-     * 
+     *
      * @param passed 通过过滤的对象列表
      * @param failed 过滤失败的对象列表
      * @param total 总对象数量
@@ -29,7 +29,7 @@ public class FilterResult<T> {
 
     /**
      * 创建单对象过滤结果
-     * 
+     *
      * @param data 过滤的对象
      * @param passed 是否通过
      * @param failureReasons 失败原因（如果未通过）
@@ -45,7 +45,7 @@ public class FilterResult<T> {
 
     /**
      * 创建列表过滤结果
-     * 
+     *
      * @param passed 通过的对象列表
      * @param failed 失败的对象列表
      * @return 过滤结果
@@ -58,29 +58,29 @@ public class FilterResult<T> {
     /**
      * 获取通过过滤的对象列表
      */
-    public List<T> getPassed() { 
-        return passed; 
+    public List<T> getPassed() {
+        return passed;
     }
 
     /**
      * 获取过滤失败的对象列表
      */
-    public List<FilterFailure<T>> getFailed() { 
-        return failed; 
+    public List<FilterFailure<T>> getFailed() {
+        return failed;
     }
 
     /**
      * 获取总对象数量
      */
-    public int getTotal() { 
-        return total; 
+    public int getTotal() {
+        return total;
     }
 
     /**
      * 获取拒绝率
      */
-    public double getRejectRate() { 
-        return rejectRate; 
+    public double getRejectRate() {
+        return rejectRate;
     }
 
     /**
@@ -113,7 +113,7 @@ public class FilterResult<T> {
 
     /**
      * 过滤失败信息
-     * 
+     *
      * @param <T> 数据类型
      */
     public static class FilterFailure<T> {
@@ -128,15 +128,15 @@ public class FilterResult<T> {
         /**
          * 获取失败的对象
          */
-        public T getData() { 
-            return data; 
+        public T getData() {
+            return data;
         }
 
         /**
          * 获取失败原因列表
          */
-        public List<String> getReasons() { 
-            return reasons; 
+        public List<String> getReasons() {
+            return reasons;
         }
 
         /**

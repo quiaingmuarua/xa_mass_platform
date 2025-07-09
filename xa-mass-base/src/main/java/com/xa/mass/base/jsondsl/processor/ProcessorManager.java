@@ -1,7 +1,7 @@
 package com.xa.mass.base.jsondsl.processor;
 
-import com.xa.mass.base.jsondsl.model.JsonDslDefinition;
 import com.xa.mass.base.jsondsl.builtin.JsonDslException;
+import com.xa.mass.base.jsondsl.model.JsonDslDefinition;
 
 import java.util.List;
 import java.util.Map;
@@ -15,25 +15,17 @@ import java.util.concurrent.ConcurrentHashMap;
  * </p>
  */
 public class ProcessorManager {
-    
+
     private static final Map<JsonDslDefinition.DslType, ProcessorFactory> factories = new ConcurrentHashMap<>();
     private static final Map<JsonDslDefinition.DslType, JsonDslProcessor> defaultProcessors = new ConcurrentHashMap<>();
-    
+
     static {
         // 注册默认处理器工厂
         registerDefaultFactories();
         // 初始化默认处理器
         initializeDefaultProcessors();
     }
-    
-    /**
-     * 处理器工厂接口
-     */
-    public interface ProcessorFactory {
-        JsonDslProcessor createProcessor();
-        boolean isSingleton();
-    }
-    
+
     /**
      * 注册处理器工厂
      */
@@ -44,7 +36,7 @@ public class ProcessorManager {
             defaultProcessors.put(type, factory.createProcessor());
         }
     }
-    
+
     /**
      * 获取处理器（优先使用缓存的单例，否则创建新实例）
      */
@@ -54,16 +46,16 @@ public class ProcessorManager {
         if (cached != null) {
             return cached;
         }
-        
+
         // 查找工厂并创建新实例
         ProcessorFactory factory = factories.get(type);
         if (factory == null) {
             throw new JsonDslException("未找到类型 " + type + " 的处理器工厂");
         }
-        
+
         return factory.createProcessor();
     }
-    
+
     /**
      * 获取强类型生成处理器
      */
@@ -74,7 +66,7 @@ public class ProcessorManager {
         }
         throw new JsonDslException("未找到生成处理器");
     }
-    
+
     /**
      * 获取强类型过滤处理器
      */
@@ -85,7 +77,7 @@ public class ProcessorManager {
         }
         throw new JsonDslException("未找到过滤处理器");
     }
-    
+
     /**
      * 获取强类型转换处理器
      */
@@ -96,7 +88,7 @@ public class ProcessorManager {
         }
         throw new JsonDslException("未找到转换处理器");
     }
-    
+
     /**
      * 获取强类型校验处理器
      */
@@ -107,19 +99,19 @@ public class ProcessorManager {
         }
         throw new JsonDslException("未找到校验处理器");
     }
-    
+
     /**
      * 链式处理多个 DSL（使用强类型处理器）
      */
     public static <T> List<T> processGenerateChain(List<JsonDslDefinition> definitions, ProcessingContext context, Class<T> targetType) {
         List<T> result = null;
-        
+
         for (JsonDslDefinition definition : definitions) {
             if (context.isDebug()) {
-                System.out.println("[ProcessorManager] 处理 DSL: " + definition.getUniqueId() + 
-                    " (类型: " + definition.getType() + ")");
+                System.out.println("[ProcessorManager] 处理 DSL: " + definition.getUniqueId() +
+                        " (类型: " + definition.getType() + ")");
             }
-            
+
             if (JsonDslDefinition.DslType.GENERATE.equals(definition.getType())) {
                 GenerateProcessor processor = getGenerateProcessor();
                 result = processor.generate(definition, context, targetType);
@@ -132,8 +124,8 @@ public class ProcessorManager {
                 TransformProcessor processor = getTransformProcessor();
                 ParameterValidator.notEmpty(result, "previous generation result");
                 List<T> transformed = result.stream()
-                    .map(obj -> processor.transform(obj, definition, context))
-                    .toList();
+                        .map(obj -> processor.transform(obj, definition, context))
+                        .toList();
                 result = transformed;
             } else if (JsonDslDefinition.DslType.VALIDATE.equals(definition.getType())) {
                 ValidateProcessor processor = getValidateProcessor();
@@ -149,10 +141,10 @@ public class ProcessorManager {
                 throw new JsonDslException("不支持的 DSL 类型: " + definition.getType());
             }
         }
-        
+
         return result;
     }
-    
+
     /**
      * 注册默认处理器工厂
      */
@@ -163,53 +155,53 @@ public class ProcessorManager {
             public JsonDslProcessor createProcessor() {
                 return new DefaultGenerateProcessor();
             }
-            
+
             @Override
             public boolean isSingleton() {
                 return true; // 生成处理器使用单例模式
             }
         });
-        
+
         // 过滤处理器工厂
         registerFactory(JsonDslDefinition.DslType.FILTER, new ProcessorFactory() {
             @Override
             public JsonDslProcessor createProcessor() {
                 return new DefaultFilterProcessor();
             }
-            
+
             @Override
             public boolean isSingleton() {
                 return true; // 过滤处理器使用单例模式
             }
         });
-        
+
         // 转换处理器工厂
         registerFactory(JsonDslDefinition.DslType.TRANSFORM, new ProcessorFactory() {
             @Override
             public JsonDslProcessor createProcessor() {
                 return new DefaultTransformProcessor();
             }
-            
+
             @Override
             public boolean isSingleton() {
                 return true; // 转换处理器使用单例模式
             }
         });
-        
+
         // 校验处理器工厂
         registerFactory(JsonDslDefinition.DslType.VALIDATE, new ProcessorFactory() {
             @Override
             public JsonDslProcessor createProcessor() {
                 return new DefaultValidateProcessor();
             }
-            
+
             @Override
             public boolean isSingleton() {
                 return true; // 校验处理器使用单例模式
             }
         });
     }
-    
+
     /**
      * 初始化默认处理器
      */
@@ -224,7 +216,7 @@ public class ProcessorManager {
             }
         }
     }
-    
+
     /**
      * 清除所有处理器和工厂
      */
@@ -232,7 +224,7 @@ public class ProcessorManager {
         factories.clear();
         defaultProcessors.clear();
     }
-    
+
     /**
      * 重置为默认配置
      */
@@ -240,5 +232,14 @@ public class ProcessorManager {
         clear();
         registerDefaultFactories();
         initializeDefaultProcessors();
+    }
+
+    /**
+     * 处理器工厂接口
+     */
+    public interface ProcessorFactory {
+        JsonDslProcessor createProcessor();
+
+        boolean isSingleton();
     }
 } 

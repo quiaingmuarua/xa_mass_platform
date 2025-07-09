@@ -1,27 +1,29 @@
 package com.xa.mass.base.jsondsl.processor;
 
 import com.xa.mass.base.jsondsl.model.JsonDslDefinition;
-import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.BeforeEach;
-import static org.junit.jupiter.api.Assertions.*;
+import org.junit.jupiter.api.Test;
+
 import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * JsonDslProcessor 接口测试
  */
 public class JsonDslProcessorTest {
-    
+
     private TestProcessor processor;
     private JsonDslDefinition definition;
     private ProcessingContext context;
-    
+
     @BeforeEach
     void setUp() {
         processor = new TestProcessor();
         definition = new JsonDslDefinition("test-dsl", JsonDslDefinition.DslType.GENERATE);
         context = new ProcessingContext("test-context");
     }
-    
+
     @Test
     void testProcessorSupports() {
         // 测试支持的类型
@@ -30,19 +32,19 @@ public class JsonDslProcessorTest {
         assertFalse(processor.supports(JsonDslDefinition.DslType.TRANSFORM));
         assertFalse(processor.supports(JsonDslDefinition.DslType.VALIDATE));
     }
-    
+
     @Test
     void testProcessorName() {
         // 测试处理器名称
         assertEquals("TestProcessor", processor.getName());
     }
-    
+
     @Test
     void testProcessorPriority() {
         // 测试处理器优先级
         assertEquals(100, processor.getPriority());
     }
-    
+
     @Test
     void testProcessorDefaultSupports() {
         // 测试默认的 supports 实现
@@ -50,33 +52,33 @@ public class JsonDslProcessorTest {
         assertTrue(generateProcessor.supports(JsonDslDefinition.DslType.GENERATE));
         assertFalse(generateProcessor.supports(JsonDslDefinition.DslType.FILTER));
     }
-    
+
     /**
      * 测试用的基础处理器实现
      */
     private static class TestProcessor implements JsonDslProcessor {
-        
+
         @Override
         public boolean supports(JsonDslDefinition.DslType type) {
             return JsonDslDefinition.DslType.GENERATE.equals(type);
         }
-        
+
         @Override
         public String getName() {
             return "TestProcessor";
         }
-        
+
         @Override
         public int getPriority() {
             return 100;
         }
     }
-    
+
     /**
      * 测试生成处理器
      */
     private static class TestGenerateProcessor implements GenerateProcessor {
-        
+
         @Override
         public <T> List<T> generate(JsonDslDefinition definition, ProcessingContext context, Class<T> targetType) {
             if (String.class.equals(targetType)) {
@@ -86,17 +88,17 @@ public class JsonDslProcessorTest {
             }
             throw new IllegalArgumentException("Unsupported target type: " + targetType);
         }
-        
+
         @Override
         public boolean supports(JsonDslDefinition.DslType type) {
             return JsonDslDefinition.DslType.GENERATE.equals(type);
         }
-        
+
         @Override
         public String getName() {
             return "TestGenerateProcessor";
         }
-        
+
         @Override
         public int getPriority() {
             return 100;

@@ -2,11 +2,9 @@ package com.xa.mass.base.jsondsl.builtin;
 
 import com.github.javafaker.Faker;
 
-import java.util.Random;
-
 public class BuiltinMockFunctions {
 
-   static Faker faker = new Faker();
+    static Faker faker = new Faker();
 
     //$RANDOM_NAME
     public static String randomName(Object obj) {

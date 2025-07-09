@@ -1,4 +1,3 @@
-
 package com.xa.mass.base.example;
 
 import com.xa.mass.base.jsondsl.JsonDslEngine;
@@ -33,7 +32,7 @@ public class JsonDslExample {
                   }
                 }
                 """;
-        List<Device> devices= JsonDslEngine.generateList(deviceDsl,Device.class);
+        List<Device> devices = JsonDslEngine.generateList(deviceDsl, Device.class);
         System.out.println("=== Generated Devices ===");
         devices.forEach(System.out::println);
 
@@ -51,7 +50,7 @@ public class JsonDslExample {
                   }
                 }
                 """;
-        List<Task> tasks= JsonDslEngine.generateList(taskDsl,Task.class);
+        List<Task> tasks = JsonDslEngine.generateList(taskDsl, Task.class);
         System.out.println("\n=== Generated Tasks ===");
         tasks.forEach(System.out::println);
 
@@ -79,7 +78,7 @@ public class JsonDslExample {
                   }
                 }
                 """;
-        List<Device> devices1= JsonDslEngine.generateList(nestedExampleDsl,Device.class);
+        List<Device> devices1 = JsonDslEngine.generateList(nestedExampleDsl, Device.class);
         System.out.println("\n=== Nested Scope Variable Examples ===");
         devices1.forEach(System.out::println);
 
@@ -96,7 +95,7 @@ public class JsonDslExample {
                   }
                 }
                 """;
-        List<Task> timeExamples= JsonDslEngine.generateList(timeExampleDsl,Task.class);
+        List<Task> timeExamples = JsonDslEngine.generateList(timeExampleDsl, Task.class);
         System.out.println("\n=== Time Function Examples ===");
         timeExamples.forEach(System.out::println);
 
@@ -112,7 +111,7 @@ public class JsonDslExample {
                   }
                 }
                 """;
-        List<Device> relativeTimeExamples= JsonDslEngine.generateList(relativeTimeExampleDsl,Device.class);
+        List<Device> relativeTimeExamples = JsonDslEngine.generateList(relativeTimeExampleDsl, Device.class);
         System.out.println("\n=== Relative Time Examples ===");
         relativeTimeExamples.forEach(System.out::println);
     }

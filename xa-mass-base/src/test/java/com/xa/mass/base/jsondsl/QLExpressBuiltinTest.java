@@ -6,7 +6,6 @@ import com.xa.mass.base.jsondsl.builtin.BuiltinFunctions;
 import com.xa.mass.base.jsondsl.model.JsonDslDefinition;
 import com.xa.mass.base.jsondsl.processor.FilterProcessor;
 import com.xa.mass.base.jsondsl.processor.FilterProcessorTest;
-import com.xa.mass.base.jsondsl.processor.FilterResult;
 import com.xa.mass.base.jsondsl.processor.ProcessingContext;
 import org.junit.jupiter.api.Test;
 
@@ -16,12 +15,12 @@ import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.setAllowComparingPrivateFields;
 
 public class QLExpressBuiltinTest {
     private FilterProcessor processor;
     private JsonDslDefinition definition;
     private ProcessingContext context;
+
     @Test
     public void testGenerateFunction() throws Exception {
         // 强制触发 BuiltinFunctions 的 static 块，确保所有内置函数注册
@@ -33,7 +32,7 @@ public class QLExpressBuiltinTest {
         assertThat(Integer.class.isAssignableFrom(result.getClass())).isTrue();
         System.out.println("range result: " + result);
         Object result1 = runner.execute("$choice('active', 'inactive', 'pending')", null, null, true, false);
-        System.out.println("choice result: "+result1);
+        System.out.println("choice result: " + result1);
         assertThat(String.class.isAssignableFrom(result1.getClass())).isTrue();
 
 
@@ -41,7 +40,7 @@ public class QLExpressBuiltinTest {
 
 
     @Test
-    public void testFilterFunction() throws  Exception{
+    public void testFilterFunction() throws Exception {
         // 设置测试数据
         List<FilterProcessorTest.TestUser> testUsers = Arrays.asList(
 
@@ -59,11 +58,11 @@ public class QLExpressBuiltinTest {
         qlContext.put("users", testUsers);
         qlContext.put("user", testUsers.get(0));
         qlContext.put("age", 40);
-        Object age =runner.execute("user.age > 30",qlContext,null, true, false);
+        Object age = runner.execute("user.age > 30", qlContext, null, true, false);
         System.out.println(age);
         //age is true
         assertThat(Boolean.class.isAssignableFrom(age.getClass())).isTrue();
-        Object result =runner.execute("user.name == 'Bob'",qlContext,null, true, false);
+        Object result = runner.execute("user.name == 'Bob'", qlContext, null, true, false);
         System.out.println(result);
 
 
@@ -86,18 +85,34 @@ public class QLExpressBuiltinTest {
         private Integer age;
         private String status;
 
-        public String getName() { return name; }
-        public void setName(String name) { this.name = name; }
+        public String getName() {
+            return name;
+        }
 
-        public Integer getAge() { return age; }
-        public void setAge(Integer age) { this.age = age; }
+        public void setName(String name) {
+            this.name = name;
+        }
+
+        public Integer getAge() {
+            return age;
+        }
+
+        public void setAge(Integer age) {
+            this.age = age;
+        }
+
         public void setAge(String s) {
             if (s != null) {
                 this.age = Integer.parseInt(s);
             }
         }
 
-        public String getStatus() { return status; }
-        public void setStatus(String status) { this.status = status; }
+        public String getStatus() {
+            return status;
+        }
+
+        public void setStatus(String status) {
+            this.status = status;
+        }
     }
 } 

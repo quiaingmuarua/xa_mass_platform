@@ -14,6 +14,7 @@ public class ResolutionResult {
     private final String messageType;
     private final String subMessageType;
     private final String resolutionPath; // 解析路径，如 "project" 或 "global" 或 "fallback"
+
     private ResolutionResult(Status status, MassMessageHandler handler, String project,
                              String messageType, String subMessageType, String resolutionPath) {
         this.status = status;

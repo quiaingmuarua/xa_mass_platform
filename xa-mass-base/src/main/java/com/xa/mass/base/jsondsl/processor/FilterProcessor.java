@@ -11,20 +11,20 @@ import java.util.List;
  * </p>
  */
 public interface FilterProcessor extends JsonDslProcessor {
-    
+
     /**
      * 过滤单个对象
-     * 
+     *
      * @param data 要过滤的单个对象
      * @param definition DSL 定义
      * @param context 处理上下文
      * @return 过滤结果
      */
     <T> FilterResult<T> filter(T data, JsonDslDefinition definition, ProcessingContext context);
-    
+
     /**
      * 过滤对象列表
-     * 
+     *
      * @param dataList 要过滤的对象列表
      * @param definition DSL 定义
      * @param context 处理上下文

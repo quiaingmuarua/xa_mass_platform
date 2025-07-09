@@ -7,8 +7,7 @@ import com.xa.mass.base.model.Task;
 
 import java.util.List;
 
-public class JsonDslEngineExample
-{
+public class JsonDslEngineExample {
 
     public static void main(String[] args) {
         // 注册类型
@@ -28,7 +27,7 @@ public class JsonDslEngineExample
                   }
                 }
                 """;
-        List<Device> relativeTimeExamples = JsonDslEngine.generateList(relativeTimeExampleDsl,Device.class);
+        List<Device> relativeTimeExamples = JsonDslEngine.generateList(relativeTimeExampleDsl, Device.class);
         System.out.println("\n=== Relative Time Examples ===");
         relativeTimeExamples.forEach(System.out::println);
 

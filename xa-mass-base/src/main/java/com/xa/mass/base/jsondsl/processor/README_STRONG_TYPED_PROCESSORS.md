@@ -9,6 +9,7 @@
 ### 1. 基础接口
 
 **原接口**：
+
 ```java
 public interface JsonDslProcessor {
     Object process(JsonDslDefinition definition, ProcessingContext context);
@@ -19,6 +20,7 @@ public interface JsonDslProcessor {
 ```
 
 **新接口**：
+
 ```java
 public interface JsonDslProcessor {
     boolean supports(JsonDslDefinition.DslType type);
@@ -30,6 +32,7 @@ public interface JsonDslProcessor {
 ### 2. 强类型子接口
 
 #### GenerateProcessor<T>
+
 ```java
 public interface GenerateProcessor<T> extends JsonDslProcessor {
     List<T> generate(JsonDslDefinition definition, ProcessingContext context, Class<T> targetType);
@@ -37,6 +40,7 @@ public interface GenerateProcessor<T> extends JsonDslProcessor {
 ```
 
 #### FilterProcessor<T>
+
 ```java
 public interface FilterProcessor<T> extends JsonDslProcessor {
     List<T> filter(List<T> input, JsonDslDefinition definition, ProcessingContext context);
@@ -44,6 +48,7 @@ public interface FilterProcessor<T> extends JsonDslProcessor {
 ```
 
 #### TransformProcessor<T>
+
 ```java
 public interface TransformProcessor<T> extends JsonDslProcessor {
     T transform(T input, JsonDslDefinition definition, ProcessingContext context);
@@ -51,6 +56,7 @@ public interface TransformProcessor<T> extends JsonDslProcessor {
 ```
 
 #### ValidateProcessor<T>
+
 ```java
 public interface ValidateProcessor<T> extends JsonDslProcessor {
     List<String> validate(T obj, JsonDslDefinition definition, ProcessingContext context);
@@ -67,21 +73,25 @@ public interface ValidateProcessor<T> extends JsonDslProcessor {
 ## 设计优势
 
 ### 1. 类型安全
+
 - 编译时类型检查，避免运行时类型转换错误
 - 泛型约束确保输入输出类型一致性
 - IDE 自动补全和错误提示
 
 ### 2. 清晰的 API
+
 - 每个处理器接口职责单一，方法签名明确
 - 参数类型明确，无需猜测参数含义
 - 返回值类型明确，无需类型转换
 
 ### 3. 更好的扩展性
+
 - 可以针对特定类型实现专用处理器
 - 支持自定义处理器实现
 - 便于单元测试和模拟
 
 ### 4. 代码可读性
+
 - 方法名和参数名更加直观
 - 类型信息在编译时就能确定
 - 减少运行时类型检查
@@ -119,12 +129,12 @@ public class CustomDeviceProcessor implements GenerateProcessor<Device> {
         // 自定义生成逻辑
         return customGenerateLogic(definition, context);
     }
-    
+
     @Override
     public String getName() {
         return "CustomDeviceProcessor";
     }
-    
+
     @Override
     public int getPriority() {
         return 150;
@@ -137,6 +147,7 @@ public class CustomDeviceProcessor implements GenerateProcessor<Device> {
 ### 从旧接口迁移
 
 **旧代码**：
+
 ```java
 JsonDslProcessor processor = new GenerateProcessor();
 Object result = processor.process(definition, context);
@@ -144,6 +155,7 @@ List<Device> devices = (List<Device>) result;
 ```
 
 **新代码**：
+
 ```java
 GenerateProcessor<Device> processor = new DefaultGenerateProcessor<>();
 List<Device> devices = processor.generate(definition, context, Device.class);
@@ -158,21 +170,25 @@ List<Device> devices = processor.generate(definition, context, Device.class);
 ## 最佳实践
 
 ### 1. 类型选择
+
 - 优先使用具体的业务类型而不是 `Object`
 - 为不同的业务模型创建专门的处理器
 - 利用泛型约束确保类型安全
 
 ### 2. 处理器实现
+
 - 实现类应该专注于单一职责
 - 提供清晰的错误信息和调试日志
 - 遵循接口契约，确保行为一致性
 
 ### 3. 性能考虑
+
 - 避免不必要的类型转换
 - 合理使用缓存机制
 - 注意内存使用，特别是处理大量数据时
 
 ### 4. 测试策略
+
 - 为每个处理器编写单元测试
 - 测试边界条件和异常情况
 - 使用模拟对象测试复杂场景

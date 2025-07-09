@@ -6,7 +6,9 @@ import com.xa.mass.base.jsondsl.builtin.JsonDslException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import java.util.*;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -143,8 +145,8 @@ class DslObjectBuilderTest {
         JsonDslException exception = assertThrows(JsonDslException.class, () -> {
             DslObjectBuilder.mockFromDsl(dsl, context, TestData.class);
         });
-        assertTrue(exception.getMessage().contains("未注册类型") || 
-                   exception.getMessage().contains("无法实例化模型"));
+        assertTrue(exception.getMessage().contains("未注册类型") ||
+                exception.getMessage().contains("无法实例化模型"));
     }
 
     @Test
@@ -169,28 +171,78 @@ class DslObjectBuilderTest {
         private Object nested;
         private List<Object> items;
         private Map<String, Object> properties;
-        public String getName() { return name; }
-        public void setName(String name) { this.name = name; }
-        public int getAge() { return age; }
-        public void setAge(int age) { this.age = age; }
-        public Object getNested() { return nested; }
-        public void setNested(Object nested) { this.nested = nested; }
-        public List<Object> getItems() { return items; }
-        public void setItems(List<Object> items) { this.items = items; }
-        public Map<String, Object> getProperties() { return properties; }
-        public void setProperties(Map<String, Object> properties) { this.properties = properties; }
+
+        public String getName() {
+            return name;
+        }
+
+        public void setName(String name) {
+            this.name = name;
+        }
+
+        public int getAge() {
+            return age;
+        }
+
+        public void setAge(int age) {
+            this.age = age;
+        }
+
+        public Object getNested() {
+            return nested;
+        }
+
+        public void setNested(Object nested) {
+            this.nested = nested;
+        }
+
+        public List<Object> getItems() {
+            return items;
+        }
+
+        public void setItems(List<Object> items) {
+            this.items = items;
+        }
+
+        public Map<String, Object> getProperties() {
+            return properties;
+        }
+
+        public void setProperties(Map<String, Object> properties) {
+            this.properties = properties;
+        }
     }
+
     public static class NestedData {
         private String value;
         private Object subNested;
-        public String getValue() { return value; }
-        public void setValue(String value) { this.value = value; }
-        public Object getSubNested() { return subNested; }
-        public void setSubNested(Object subNested) { this.subNested = subNested; }
+
+        public String getValue() {
+            return value;
+        }
+
+        public void setValue(String value) {
+            this.value = value;
+        }
+
+        public Object getSubNested() {
+            return subNested;
+        }
+
+        public void setSubNested(Object subNested) {
+            this.subNested = subNested;
+        }
     }
+
     public static class SubNestedData {
         private String subValue;
-        public String getSubValue() { return subValue; }
-        public void setSubValue(String subValue) { this.subValue = subValue; }
+
+        public String getSubValue() {
+            return subValue;
+        }
+
+        public void setSubValue(String subValue) {
+            this.subValue = subValue;
+        }
     }
 } 

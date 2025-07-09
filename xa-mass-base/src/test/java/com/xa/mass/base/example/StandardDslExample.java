@@ -2,8 +2,8 @@ package com.xa.mass.base.example;
 
 import com.xa.mass.base.jsondsl.JsonDslEngine;
 import com.xa.mass.base.jsondsl.generate.TypeRegistry;
-import com.xa.mass.base.jsondsl.model.JsonDslDefinition;
 import com.xa.mass.base.jsondsl.model.JsonDslContext;
+import com.xa.mass.base.jsondsl.model.JsonDslDefinition;
 import com.xa.mass.base.jsondsl.parser.JsonDslParser;
 import com.xa.mass.base.model.Device;
 import com.xa.mass.base.model.Task;
@@ -46,51 +46,51 @@ public class StandardDslExample {
 
         // 新的标准化 DSL 格式
         String standardDsl = """
-            {
-              "unique_id": "device_generator_001",
-              "type": "generate",
-              "priority": 1,
-              "desc": "生成测试设备数据",
-              "version": "1.0",
-              "author": "test_user",
-              "tags": ["device", "test", "mock"],
-              "enabled": true,
-              "cacheable": true,
-              "cache_expire_seconds": 600,
-              "context": {
-                "MODEL": "Device",
-                "COUNT": 3,
-                "scope_name": "Device",
-                "debug": false,
-                "strict": true
-              },
-              "fieldDsl": {
-                "deviceId": {
-                  "$JOIN": ["device-", "&.index"]
-                },
-                "status": {
-                  "$CHOICE": ["ONLINE", "OFFLINE"]
-                },
-                "groupId": {
-                  "$CHOICE": ["us", "gb", "cn"]
-                },
-                "agentVersion": {
-                  "$JOIN": ["1.0.", "&.index"]
-                },
-                "supportedProjects": ["demoApp", "otherApp", "testApp"]
-              },
-              "combine_dsl": {
-                "status_group_rule": "status == 'ONLINE' ? groupId : 'unknown'",
-                "version_check_rule": "agentVersion.startsWith('1.0') ? 'stable' : 'beta'"
-              },
-              "extensions": {
-                "metadata": {
-                  "source": "test_data",
-                  "environment": "dev"
+                {
+                  "unique_id": "device_generator_001",
+                  "type": "generate",
+                  "priority": 1,
+                  "desc": "生成测试设备数据",
+                  "version": "1.0",
+                  "author": "test_user",
+                  "tags": ["device", "test", "mock"],
+                  "enabled": true,
+                  "cacheable": true,
+                  "cache_expire_seconds": 600,
+                  "context": {
+                    "MODEL": "Device",
+                    "COUNT": 3,
+                    "scope_name": "Device",
+                    "debug": false,
+                    "strict": true
+                  },
+                  "fieldDsl": {
+                    "deviceId": {
+                      "$JOIN": ["device-", "&.index"]
+                    },
+                    "status": {
+                      "$CHOICE": ["ONLINE", "OFFLINE"]
+                    },
+                    "groupId": {
+                      "$CHOICE": ["us", "gb", "cn"]
+                    },
+                    "agentVersion": {
+                      "$JOIN": ["1.0.", "&.index"]
+                    },
+                    "supportedProjects": ["demoApp", "otherApp", "testApp"]
+                  },
+                  "combine_dsl": {
+                    "status_group_rule": "status == 'ONLINE' ? groupId : 'unknown'",
+                    "version_check_rule": "agentVersion.startsWith('1.0') ? 'stable' : 'beta'"
+                  },
+                  "extensions": {
+                    "metadata": {
+                      "source": "test_data",
+                      "environment": "dev"
+                    }
+                  }
                 }
-              }
-            }
-            """;
+                """;
 
         // 解析标准化 DSL
         JsonDslDefinition definition = JsonDslParser.parse(standardDsl);
@@ -109,8 +109,8 @@ public class StandardDslExample {
 
         List<Device> devices = JsonDslEngine.generateList(legacyFormat, Device.class);
         System.out.println("\n生成的设备:");
-        devices.forEach(device -> 
-            System.out.println("  - " + device.getDeviceId() + " (" + device.getStatus() + ", " + device.getGroupId() + ")")
+        devices.forEach(device ->
+                System.out.println("  - " + device.getDeviceId() + " (" + device.getStatus() + ", " + device.getGroupId() + ")")
         );
         System.out.println();
     }
@@ -123,18 +123,18 @@ public class StandardDslExample {
 
         // 传统 DSL 格式
         String legacyDsl = """
-            {
-              "MODEL": "Task",
-              "COUNT": 2,
-              "FIELDS": {
-                "tid": {"$UUID": true},
-                "taskName": {"$JOIN": ["Task-", "&.index"]},
-                "taskCountry": {"$CHOICE": ["us", "gb"]},
-                "taskInitNumber": {"$RANGE": [10, 100]},
-                "batchSize": {"$RANGE": [1, 5]}
-              }
-            }
-            """;
+                {
+                  "MODEL": "Task",
+                  "COUNT": 2,
+                  "FIELDS": {
+                    "tid": {"$UUID": true},
+                    "taskName": {"$JOIN": ["Task-", "&.index"]},
+                    "taskCountry": {"$CHOICE": ["us", "gb"]},
+                    "taskInitNumber": {"$RANGE": [10, 100]},
+                    "batchSize": {"$RANGE": [1, 5]}
+                  }
+                }
+                """;
 
         // 解析传统 DSL（会自动转换为标准化格式）
         JsonDslDefinition definition = JsonDslParser.parse(legacyDsl);
@@ -146,8 +146,8 @@ public class StandardDslExample {
         // 直接生成数据（向后兼容）
         List<Task> tasks = JsonDslEngine.generateList(legacyDsl, Task.class);
         System.out.println("\n生成的任务:");
-        tasks.forEach(task -> 
-            System.out.println("  - " + task.getTaskName() + " (" + task.getTaskCountry() + ", 批次: " + task.getBatchSize() + ")")
+        tasks.forEach(task ->
+                System.out.println("  - " + task.getTaskName() + " (" + task.getTaskCountry() + ", 批次: " + task.getBatchSize() + ")")
         );
         System.out.println();
     }
@@ -160,51 +160,51 @@ public class StandardDslExample {
 
         // 包含组合规则的复杂 DSL
         String complexDsl = """
-            {
-              "unique_id": "complex_device_task_001",
-              "type": "generate",
-              "priority": 2,
-              "desc": "生成包含嵌套任务的复杂设备数据",
-              "author": "advanced_user",
-              "tags": ["complex", "nested", "advanced"],
-              "context": {
-                "MODEL": "Device",
-                "COUNT": 2,
-                "scope_name": "Device",
-                "debug": true
-              },
-              "fieldDsl": {
-                "deviceId": {"$JOIN": ["complex-device-", "&.index"]},
-                "status": {"$CHOICE": ["ONLINE", "OFFLINE"]},
-                "groupId": {"$CHOICE": ["us", "gb", "cn"]},
-                "agentVersion": {"$JOIN": ["2.0.", "&.index"]},
-                "tasks": {
-                  "TYPE": "LIST",
-                  "COUNT": 2,
-                  "MODEL": "Task",
-                  "FIELDS": {
-                    "tid": {"$UUID": true},
-                    "taskName": {"$JOIN": ["ComplexTask-", "&.index", "-of-Device-", "&Device.index"]},
-                    "taskCountry": "&Device.groupId",
-                    "taskInitNumber": {"$RANGE": [50, 200]},
-                    "batchSize": {"$RANGE": [2, 8]}
+                {
+                  "unique_id": "complex_device_task_001",
+                  "type": "generate",
+                  "priority": 2,
+                  "desc": "生成包含嵌套任务的复杂设备数据",
+                  "author": "advanced_user",
+                  "tags": ["complex", "nested", "advanced"],
+                  "context": {
+                    "MODEL": "Device",
+                    "COUNT": 2,
+                    "scope_name": "Device",
+                    "debug": true
+                  },
+                  "fieldDsl": {
+                    "deviceId": {"$JOIN": ["complex-device-", "&.index"]},
+                    "status": {"$CHOICE": ["ONLINE", "OFFLINE"]},
+                    "groupId": {"$CHOICE": ["us", "gb", "cn"]},
+                    "agentVersion": {"$JOIN": ["2.0.", "&.index"]},
+                    "tasks": {
+                      "TYPE": "LIST",
+                      "COUNT": 2,
+                      "MODEL": "Task",
+                      "FIELDS": {
+                        "tid": {"$UUID": true},
+                        "taskName": {"$JOIN": ["ComplexTask-", "&.index", "-of-Device-", "&Device.index"]},
+                        "taskCountry": "&Device.groupId",
+                        "taskInitNumber": {"$RANGE": [50, 200]},
+                        "batchSize": {"$RANGE": [2, 8]}
+                      }
+                    }
+                  },
+                  "combine_dsl": {
+                    "device_task_balance": "tasks.size() <= 3 ? 'balanced' : 'overloaded'",
+                    "status_performance": "status == 'ONLINE' && agentVersion.startsWith('2.0') ? 'high_performance' : 'standard'",
+                    "group_capacity": "groupId == 'us' ? 100 : groupId == 'gb' ? 50 : 30"
+                  },
+                  "extensions": {
+                    "business_rules": {
+                      "max_tasks_per_device": 5,
+                      "preferred_groups": ["us", "gb"],
+                      "performance_threshold": 0.8
+                    }
                   }
                 }
-              },
-              "combine_dsl": {
-                "device_task_balance": "tasks.size() <= 3 ? 'balanced' : 'overloaded'",
-                "status_performance": "status == 'ONLINE' && agentVersion.startsWith('2.0') ? 'high_performance' : 'standard'",
-                "group_capacity": "groupId == 'us' ? 100 : groupId == 'gb' ? 50 : 30"
-              },
-              "extensions": {
-                "business_rules": {
-                  "max_tasks_per_device": 5,
-                  "preferred_groups": ["us", "gb"],
-                  "performance_threshold": 0.8
-                }
-              }
-            }
-            """;
+                """;
 
         JsonDslDefinition definition = JsonDslParser.parse(complexDsl);
         System.out.println("复杂 DSL 定义:");
@@ -216,7 +216,7 @@ public class StandardDslExample {
         // 生成数据
         String legacyFormat = JsonDslParser.toJson(definition);
         List<Device> devices = JsonDslEngine.generateList(legacyFormat, Device.class);
-        
+
         System.out.println("\n生成的复杂设备:");
         devices.forEach(device -> {
             System.out.println("  - 设备: " + device.getDeviceId() + " (" + device.getStatus() + ", " + device.getGroupId() + ")");
@@ -246,9 +246,9 @@ public class StandardDslExample {
 
         // 设置字段 DSL
         definition.setFieldDsl(java.util.Map.of(
-            "deviceId", "test-device-001",
-            "status", "ONLINE",
-            "groupId", "test"
+                "deviceId", "test-device-001",
+                "status", "ONLINE",
+                "groupId", "test"
         ));
 
         // 转换为 JSON
@@ -271,8 +271,8 @@ public class StandardDslExample {
         // 生成数据验证
         List<Device> devices = JsonDslEngine.generateList(legacyJson, Device.class);
         System.out.println("\n生成验证:");
-        devices.forEach(device -> 
-            System.out.println("  - " + device.getDeviceId() + " (" + device.getStatus() + ")")
+        devices.forEach(device ->
+                System.out.println("  - " + device.getDeviceId() + " (" + device.getStatus() + ")")
         );
         System.out.println();
     }

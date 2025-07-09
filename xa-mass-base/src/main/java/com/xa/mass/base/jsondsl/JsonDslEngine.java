@@ -5,22 +5,24 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.xa.mass.base.jsondsl.builtin.DslContext;
 import com.xa.mass.base.jsondsl.builtin.DslKeyword;
+import com.xa.mass.base.jsondsl.builtin.GsonConfig;
 import com.xa.mass.base.jsondsl.builtin.JsonDslException;
 import com.xa.mass.base.jsondsl.generate.DslObjectBuilder;
-import com.xa.mass.base.jsondsl.builtin.GsonConfig;
 import com.xa.mass.base.jsondsl.processor.FilterProcessor;
 import com.xa.mass.base.jsondsl.processor.FilterResult;
 import com.xa.mass.base.jsondsl.processor.ProcessingContext;
 import com.xa.mass.base.jsondsl.processor.ProcessorRegistry;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 
 /**
  * 通用 JSON-DSL mock 主入口。
  * 支持通过 DSL 批量生成任意对象，支持 MODEL、FIELDS、COUNT、TYPE，递归嵌套、内置函数、注册表。
  * 提供独立的 generate 和 filter 方法，支持灵活组合使用。
- * 
- * @deprecated 建议使用新的标准化 DSL 结构，通过 {@link com.xa.mass.base.jsondsl.model.JsonDslDefinition} 
+ *
+ * @deprecated 建议使用新的标准化 DSL 结构，通过 {@link com.xa.mass.base.jsondsl.model.JsonDslDefinition}
  * 和 {@link com.xa.mass.base.jsondsl.parser.JsonDslParser} 进行 DSL 定义和解析。
  * 新标准提供更好的类型安全、元数据管理和扩展性。
  */
@@ -35,24 +37,24 @@ public class JsonDslEngine {
      * @param jsonDsl JSON-DSL 字符串（只处理单一模型）
      * @param <T> 目标类型
      * @return 对象列表
-     * 
-     * @deprecated 建议使用新的标准化 DSL 结构，通过 {@link com.xa.mass.base.jsondsl.model.JsonDslDefinition} 
+     *
+     * @deprecated 建议使用新的标准化 DSL 结构，通过 {@link com.xa.mass.base.jsondsl.model.JsonDslDefinition}
      * 定义 DSL，然后使用 {@link com.xa.mass.base.jsondsl.parser.JsonDslParser} 解析。
      */
     @Deprecated(since = "2.0.0", forRemoval = true)
     @SuppressWarnings("unchecked")
     public static <T> List<T> generateList(String jsonDsl, Class<T> targetType) {
         JsonObject root = JsonParser.parseString(jsonDsl).getAsJsonObject();
-        
+
         // 检查是否有多个 MODEL（根级别）
         if (hasMultipleModels(root)) {
             throw new JsonDslException("generateList 方法只支持单一模型");
         }
-        
+
         // 单个模型的情况
         int count = root.has(DslKeyword.COUNT.name()) ? root.get(DslKeyword.COUNT.name()).getAsInt() : 1;
         String modelName = root.has(DslKeyword.MODEL.name()) ? root.get(DslKeyword.MODEL.name()).getAsString() : "Root";
-        
+
         List<T> result = new ArrayList<>();
         for (int i = 0; i < count; i++) {
             DslContext context = new DslContext();
@@ -61,7 +63,7 @@ public class JsonDslEngine {
             T obj = DslObjectBuilder.mockFromDsl(root, context, targetType);
             result.add(obj);
         }
-        
+
         return result;
     }
     // ==================== Filter 方法 ====================
@@ -99,12 +101,12 @@ public class JsonDslEngine {
                 modelCount++;
             }
         }
-        
+
         // 如果根级别有 MODEL 字段，说明是单个模型
         if (modelCount > 0) {
             return false;
         }
-        
+
         // 检查是否有多个子对象，每个子对象都有自己的 MODEL 字段
         int subModelCount = 0;
         for (String key : root.keySet()) {
@@ -116,7 +118,7 @@ public class JsonDslEngine {
                 }
             }
         }
-        
+
         return subModelCount > 1;
     }
 } 

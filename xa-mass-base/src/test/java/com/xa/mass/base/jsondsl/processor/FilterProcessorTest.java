@@ -1,15 +1,16 @@
 package com.xa.mass.base.jsondsl.processor;
 
-import com.xa.mass.base.jsondsl.model.JsonDslDefinition;
 import com.xa.mass.base.jsondsl.builtin.JsonDslException;
-import org.junit.jupiter.api.Test;
+import com.xa.mass.base.jsondsl.model.JsonDslDefinition;
 import org.junit.jupiter.api.BeforeEach;
-import static org.junit.jupiter.api.Assertions.*;
+import org.junit.jupiter.api.Test;
 
+import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.HashMap;
-import java.util.Arrays;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * FilterProcessor 测试
@@ -235,18 +236,34 @@ public class FilterProcessorTest {
         private Integer age;
         private String status;
 
-        public String getName() { return name; }
-        public void setName(String name) { this.name = name; }
+        public String getName() {
+            return name;
+        }
 
-        public Integer getAge() { return age; }
-        public void setAge(Integer age) { this.age = age; }
+        public void setName(String name) {
+            this.name = name;
+        }
+
+        public Integer getAge() {
+            return age;
+        }
+
+        public void setAge(Integer age) {
+            this.age = age;
+        }
+
         public void setAge(String s) {
             if (s != null) {
                 this.age = Integer.parseInt(s);
             }
         }
 
-        public String getStatus() { return status; }
-        public void setStatus(String status) { this.status = status; }
+        public String getStatus() {
+            return status;
+        }
+
+        public void setStatus(String status) {
+            this.status = status;
+        }
     }
 } 

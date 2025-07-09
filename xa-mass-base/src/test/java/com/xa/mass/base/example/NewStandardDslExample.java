@@ -77,8 +77,8 @@ public class NewStandardDslExample {
         List<Device> devices = JsonDslEngine.generateList(legacyFormat, Device.class);
 
         System.out.println("生成的设备数量: " + devices.size());
-        devices.forEach(device -> 
-            System.out.println("  - " + device.getDeviceId() + " (" + device.getStatus() + ", " + device.getGroupId() + ")")
+        devices.forEach(device ->
+                System.out.println("  - " + device.getDeviceId() + " (" + device.getStatus() + ", " + device.getGroupId() + ")")
         );
         System.out.println();
     }
@@ -109,7 +109,7 @@ public class NewStandardDslExample {
         fieldDsl.put("status", Map.of("$CHOICE", Arrays.asList("ONLINE", "OFFLINE")));
         fieldDsl.put("groupId", Map.of("$CHOICE", Arrays.asList("us", "gb", "cn")));
         fieldDsl.put("agentVersion", Map.of("$JOIN", Arrays.asList("2.0.", "&.index")));
-        
+
         // 嵌套任务（使用全类名）
         Map<String, Object> tasksField = new HashMap<>();
         tasksField.put("TYPE", "LIST");
@@ -127,8 +127,8 @@ public class NewStandardDslExample {
         // 表达式字段
         Map<String, Object> onlineStrategy = new HashMap<>();
         onlineStrategy.put("$EXPR", Map.of(
-            "lang", "ql",
-            "expr", "status == 'OFFLINE' ? 0 : range(10, 100)"
+                "lang", "ql",
+                "expr", "status == 'OFFLINE' ? 0 : range(10, 100)"
         ));
         fieldDsl.put("onlineStrategy", onlineStrategy);
 
@@ -269,39 +269,39 @@ public class NewStandardDslExample {
 
         // 1. 标准化 DSL JSON
         String jsonDsl = """
-            {
-              "unique_id": "json_device_generator",
-              "type": "generate",
-              "priority": 1,
-              "desc": "从 JSON 解析的设备生成器",
-              "version": "1.0",
-              "author": "json_user",
-              "tags": ["json", "device"],
-              "context": {
-                "MODEL": "com.xa.mass.base.model.Device",
-                "COUNT": 2,
-                "scope_name": "Device",
-                "debug": true
-              },
-              "fieldDsl": {
-                "deviceId": {"$JOIN": ["json-device-", "&.index"]},
-                "status": {"$CHOICE": ["ONLINE", "OFFLINE"]},
-                "groupId": {"$CHOICE": ["us", "gb"]},
-                "createdTime": {
-                  "$EXPR": {
-                    "lang": "ql",
-                    "expr": "now('yyyy-MM-dd HH:mm:ss')"
+                {
+                  "unique_id": "json_device_generator",
+                  "type": "generate",
+                  "priority": 1,
+                  "desc": "从 JSON 解析的设备生成器",
+                  "version": "1.0",
+                  "author": "json_user",
+                  "tags": ["json", "device"],
+                  "context": {
+                    "MODEL": "com.xa.mass.base.model.Device",
+                    "COUNT": 2,
+                    "scope_name": "Device",
+                    "debug": true
+                  },
+                  "fieldDsl": {
+                    "deviceId": {"$JOIN": ["json-device-", "&.index"]},
+                    "status": {"$CHOICE": ["ONLINE", "OFFLINE"]},
+                    "groupId": {"$CHOICE": ["us", "gb"]},
+                    "createdTime": {
+                      "$EXPR": {
+                        "lang": "ql",
+                        "expr": "now('yyyy-MM-dd HH:mm:ss')"
+                      }
+                    }
+                  },
+                  "combine_dsl": {
+                    "status_group": "status == 'ONLINE' ? groupId : 'unknown'"
+                  },
+                  "extensions": {
+                    "source": "json_parser"
                   }
                 }
-              },
-              "combine_dsl": {
-                "status_group": "status == 'ONLINE' ? groupId : 'unknown'"
-              },
-              "extensions": {
-                "source": "json_parser"
-              }
-            }
-            """;
+                """;
 
         // 2. 解析 JSON
         JsonDslDefinition definition = JsonDslParser.parse(jsonDsl);
@@ -318,8 +318,8 @@ public class NewStandardDslExample {
         List<Device> devices = JsonDslEngine.generateList(legacyFormat, Device.class);
 
         System.out.println("从 JSON 生成的设备数量: " + devices.size());
-        devices.forEach(device -> 
-            System.out.println("  - " + device.getDeviceId() + " (" + device.getStatus() + ", " + device.getGroupId() + ")")
+        devices.forEach(device ->
+                System.out.println("  - " + device.getDeviceId() + " (" + device.getStatus() + ", " + device.getGroupId() + ")")
         );
         System.out.println();
     }

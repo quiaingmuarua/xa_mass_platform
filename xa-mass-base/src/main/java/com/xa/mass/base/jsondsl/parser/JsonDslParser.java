@@ -3,10 +3,10 @@ package com.xa.mass.base.jsondsl.parser;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.xa.mass.base.jsondsl.builtin.GsonConfig;
 import com.xa.mass.base.jsondsl.builtin.JsonDslException;
 import com.xa.mass.base.jsondsl.model.JsonDslContext;
 import com.xa.mass.base.jsondsl.model.JsonDslDefinition;
-import com.xa.mass.base.jsondsl.builtin.GsonConfig;
 
 import java.util.Map;
 
@@ -17,12 +17,12 @@ import java.util.Map;
  * </p>
  */
 public class JsonDslParser {
-    
+
     private static final Gson gson = GsonConfig.buildGson();
-    
+
     /**
      * 解析 JSON 字符串为标准 DSL 定义
-     * 
+     *
      * @param jsonDsl JSON 字符串
      * @return 标准化的 DSL 定义
      */
@@ -35,20 +35,20 @@ public class JsonDslParser {
             throw new JsonDslException("解析 DSL 失败: " + e.getMessage(), e);
         }
     }
-    
+
     /**
      * 解析标准化 DSL 结构
      */
     private static JsonDslDefinition parseStandardDsl(JsonObject root) {
         JsonDslDefinition definition = new JsonDslDefinition();
-        
+
         // 解析核心字段（支持下划线和驼峰命名）
         definition.setUniqueId(getString(root, "unique_id", getString(root, "uniqueId")));
         definition.setType(JsonDslDefinition.DslType.fromCode(getString(root, "type")));
         definition.setPriority(getInteger(root, "priority", 1));
         definition.setDescription(getString(root, "desc", getString(root, "description")));
         definition.setVersion(getString(root, "version", "1.0"));
-        
+
         // 解析时间戳（支持下划线和驼峰命名）
         Long createTime = getLong(root, "create_time");
         if (createTime == null) {
@@ -57,7 +57,7 @@ public class JsonDslParser {
         if (createTime != null) {
             definition.setCreateTime(createTime);
         }
-        
+
         Long updateTime = getLong(root, "update_time");
         if (updateTime == null) {
             updateTime = getLong(root, "updateTime");
@@ -65,27 +65,27 @@ public class JsonDslParser {
         if (updateTime != null) {
             definition.setUpdateTime(updateTime);
         }
-        
+
         // 解析上下文配置
         if (root.has("context")) {
             definition.setContext(parseContext(root.getAsJsonObject("context")));
         }
-        
+
         // 解析字段 DSL
         if (root.has("fieldDsl")) {
             definition.setFieldDsl(gson.fromJson(root.get("fieldDsl"), Map.class));
         }
-        
+
         // 解析组合 DSL
         if (root.has("combine_dsl")) {
             definition.setCombineDsl(gson.fromJson(root.get("combine_dsl"), Map.class));
         }
-        
+
         // 解析扩展配置
         if (root.has("extensions")) {
             definition.setExtensions(gson.fromJson(root.get("extensions"), Map.class));
         }
-        
+
         // 解析元数据
         if (root.has("tags")) {
             definition.setTags(gson.fromJson(root.get("tags"), String[].class));
@@ -94,19 +94,19 @@ public class JsonDslParser {
         definition.setEnabled(getBoolean(root, "enabled", true));
         definition.setCacheable(getBoolean(root, "cacheable", false));
         definition.setCacheExpireSeconds(getInteger(root, "cache_expire_seconds", 300));
-        
+
         // 验证 DSL 定义
         definition.validate();
-        
+
         return definition;
     }
-    
+
     /**
      * 解析上下文配置
      */
     private static JsonDslContext parseContext(JsonObject contextObj) {
         JsonDslContext context = new JsonDslContext();
-        
+
         // 支持大写和小写
         if (contextObj.has("MODEL")) {
             context.setModel(contextObj.get("MODEL").getAsString());
@@ -138,40 +138,40 @@ public class JsonDslParser {
         }
         context.setDebug(getBoolean(contextObj, "debug", false));
         context.setStrict(getBoolean(contextObj, "strict", false));
-        
+
         context.validate();
         return context;
     }
-    
+
     /**
      * 将标准 DSL 定义转换为 JSON 字符串
      */
     public static String toJson(JsonDslDefinition definition) {
         return gson.toJson(definition);
     }
-    
+
     // ==================== 工具方法 ====================
-    
+
     private static String getString(JsonObject obj, String key) {
         return obj.has(key) ? obj.get(key).getAsString() : null;
     }
-    
+
     private static String getString(JsonObject obj, String key, String defaultValue) {
         return obj.has(key) ? obj.get(key).getAsString() : defaultValue;
     }
-    
+
     private static Integer getInteger(JsonObject obj, String key, Integer defaultValue) {
         return obj.has(key) ? obj.get(key).getAsInt() : defaultValue;
     }
-    
+
     private static Long getLong(JsonObject obj, String key) {
         return obj.has(key) ? obj.get(key).getAsLong() : null;
     }
-    
+
     private static Long getLong(JsonObject obj, String key, Long defaultValue) {
         return obj.has(key) ? obj.get(key).getAsLong() : defaultValue;
     }
-    
+
     private static Boolean getBoolean(JsonObject obj, String key, Boolean defaultValue) {
         return obj.has(key) ? obj.get(key).getAsBoolean() : defaultValue;
     }

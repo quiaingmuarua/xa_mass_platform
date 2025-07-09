@@ -163,7 +163,9 @@
                     <div class="btn-group" role="group">
                         <button class="btn btn-outline-primary btn-sm" onclick="filterRules('all')" type="button">全部
                         </button>
-                        <button class="btn btn-outline-primary btn-sm" th:attr="onclick='filterRules(\'' + ${ruleType.name()} + '\')'" th:each="ruleType : ${ruleTypes}"
+                        <button class="btn btn-outline-primary btn-sm"
+                                th:attr="onclick='filterRules(\'' + ${ruleType.name()} + '\')'"
+                                th:each="ruleType : ${ruleTypes}"
                                 th:text="${ruleType.name()}"
                                 type="button">QL_EXPRESS
                         </button>

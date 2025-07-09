@@ -33,7 +33,7 @@ public class JsonDslQlExample {
                   }
                 }
                 """;
-        List<Device> relativeTimeExamples = JsonDslEngine.generateList(dsl,Device.class);
+        List<Device> relativeTimeExamples = JsonDslEngine.generateList(dsl, Device.class);
         relativeTimeExamples.forEach(System.out::println);
     }
 }

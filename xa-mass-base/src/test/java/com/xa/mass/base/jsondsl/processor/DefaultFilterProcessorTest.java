@@ -1,17 +1,18 @@
 package com.xa.mass.base.jsondsl.processor;
 
-import com.xa.mass.base.jsondsl.model.JsonDslDefinition;
 import com.xa.mass.base.jsondsl.builtin.JsonDslException;
-import org.junit.jupiter.api.Test;
+import com.xa.mass.base.jsondsl.model.JsonDslDefinition;
 import org.junit.jupiter.api.BeforeEach;
-import static org.junit.jupiter.api.Assertions.*;
+import org.junit.jupiter.api.Test;
 
+import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.HashMap;
-import java.util.Arrays;
 import java.util.stream.Collectors;
+
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * DefaultFilterProcessor 重构后的测试
@@ -66,9 +67,9 @@ public class DefaultFilterProcessorTest {
     void testFilterBatchWithMixedTypes() {
         // 创建混合类型的测试数据
         List<Object> testData = Arrays.asList(
-            createTestUser("Alice", 25, "active"),
-            createTestMap("Bob", 35, "inactive"),
-            createTestUser("Charlie", 45, "active")
+                createTestUser("Alice", 25, "active"),
+                createTestMap("Bob", 35, "inactive"),
+                createTestUser("Charlie", 45, "active")
         );
 
         // 设置过滤条件：年龄大于30
@@ -169,9 +170,9 @@ public class DefaultFilterProcessorTest {
     void testFilterBatchWithDetails() {
         // 创建测试数据
         List<TestUser> testUsers = Arrays.asList(
-            createTestUser("Alice", 15, "active"),  // 年龄不满足
-            createTestUser("Bob", 25, "inactive"),  // 状态不满足
-            createTestUser("Charlie", 35, "active") // 都满足
+                createTestUser("Alice", 15, "active"),  // 年龄不满足
+                createTestUser("Bob", 25, "inactive"),  // 状态不满足
+                createTestUser("Charlie", 35, "active") // 都满足
         );
 
         // 设置过滤条件
@@ -202,23 +203,23 @@ public class DefaultFilterProcessorTest {
 
         // 测试用户：年龄15（不满足），状态inactive（不满足）
         TestUser user = new TestUser("YoungUser", 15, "inactive");
-        
+
         FilterProcessor processor = new DefaultFilterProcessor();
         ProcessingContext context = new ProcessingContext();
         context.setDebug(true);
-        
+
         FilterResult<TestUser> result = processor.filter(user, filterDef, context);
-        
+
         // 验证失败
         assertThat(result.getPassed()).isEmpty();
         assertThat(result.getFailed()).hasSize(1);
-        
+
         // 验证详细的失败原因
         List<String> failReasons = result.getFailed().get(0).getReasons();
         assertThat(failReasons).hasSize(2);
         assertThat(failReasons).anyMatch(reason -> reason.contains("age") && reason.contains("不满足条件"));
         assertThat(failReasons).anyMatch(reason -> reason.contains("status") && reason.contains("不满足条件"));
-        
+
         System.out.println("失败原因: " + failReasons);
     }
 
@@ -232,25 +233,25 @@ public class DefaultFilterProcessorTest {
 
         // 测试用户列表：包含通过和不通过的用户
         List<TestUser> users = Arrays.asList(
-            createTestUser("Alice", 25, "active"),   // 通过
-            createTestUser("Bob", 15, "active"),     // 不通过：年龄太小
-            createTestUser("Charlie", 35, "active")  // 通过
+                createTestUser("Alice", 25, "active"),   // 通过
+                createTestUser("Bob", 15, "active"),     // 不通过：年龄太小
+                createTestUser("Charlie", 35, "active")  // 通过
         );
-        
+
         FilterProcessor processor = new DefaultFilterProcessor();
         ProcessingContext context = new ProcessingContext();
-        
+
         FilterResult<TestUser> result = processor.filterList(users, filterDef, context);
-        
+
         // 验证结果
         assertThat(result.getPassed()).hasSize(2);
         assertThat(result.getFailed()).hasSize(1);
-        
+
         // 验证失败用户的详细原因
         List<String> failReasons = result.getFailed().get(0).getReasons();
         assertThat(failReasons).hasSize(1);
         assertThat(failReasons.get(0)).contains("age").contains("不满足条件");
-        
+
         System.out.println("通过的用户: " + result.getPassed().stream().map(TestUser::getName).collect(Collectors.toList()));
         System.out.println("失败的用户: " + result.getFailed().get(0).getData().getName());
         System.out.println("失败原因: " + failReasons);
@@ -266,21 +267,21 @@ public class DefaultFilterProcessorTest {
 
         // 测试用户：年龄15，状态active（组合条件不满足）
         TestUser user = new TestUser("YoungUser", 15, "active");
-        
+
         FilterProcessor processor = new DefaultFilterProcessor();
         ProcessingContext context = new ProcessingContext();
-        
+
         FilterResult<TestUser> result = processor.filter(user, filterDef, context);
-        
+
         // 验证失败
         assertThat(result.getPassed()).isEmpty();
         assertThat(result.getFailed()).hasSize(1);
-        
+
         // 验证组合条件的失败原因
         List<String> failReasons = result.getFailed().get(0).getReasons();
         assertThat(failReasons).hasSize(1);
         assertThat(failReasons.get(0)).contains("组合条件").contains("ageAndStatus");
-        
+
         System.out.println("组合条件失败原因: " + failReasons);
     }
 
@@ -324,13 +325,28 @@ public class DefaultFilterProcessorTest {
             this.status = status;
         }
 
-        public String getName() { return name; }
-        public void setName(String name) { this.name = name; }
+        public String getName() {
+            return name;
+        }
 
-        public Integer getAge() { return age; }
-        public void setAge(Integer age) { this.age = age; }
+        public void setName(String name) {
+            this.name = name;
+        }
 
-        public String getStatus() { return status; }
-        public void setStatus(String status) { this.status = status; }
+        public Integer getAge() {
+            return age;
+        }
+
+        public void setAge(Integer age) {
+            this.age = age;
+        }
+
+        public String getStatus() {
+            return status;
+        }
+
+        public void setStatus(String status) {
+            this.status = status;
+        }
     }
 } 

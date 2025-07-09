@@ -19,7 +19,7 @@ XA-Mass 基础平台，提供 JSON-DSL 框架和核心功能组件。
 #### DSL 类型
 
 1. **GENERATE** - 数据生成
-2. **FILTER** - 数据过滤  
+2. **FILTER** - 数据过滤
 3. **TRANSFORM** - 数据转换
 4. **VALIDATE** - 数据验证
 
@@ -28,6 +28,7 @@ XA-Mass 基础平台，提供 JSON-DSL 框架和核心功能组件。
 ### 重构背景
 
 原始的 `FilterProcessor` 接口存在以下问题：
+
 - 强制要求 `List<T>` 输入，限制了单对象过滤场景
 - 泛型类型混乱，`T` 可能是单个对象也可能是列表
 - 接口设计不够灵活，无法适应不同的使用场景
@@ -38,20 +39,20 @@ XA-Mass 基础平台，提供 JSON-DSL 框架和核心功能组件。
 
 ```java
 public interface FilterProcessor extends JsonDslProcessor {
-    
+
     /**
      * 过滤单个对象
-     * 
+     *
      * @param data 要过滤的单个对象
      * @param definition DSL 定义
      * @param context 处理上下文
      * @return 过滤结果
      */
     <T> FilterResult<T> filter(T data, JsonDslDefinition definition, ProcessingContext context);
-    
+
     /**
      * 过滤对象列表
-     * 
+     *
      * @param dataList 要过滤的对象列表
      * @param definition DSL 定义
      * @param context 处理上下文
@@ -76,18 +77,30 @@ public interface FilterProcessor extends JsonDslProcessor {
 // 创建过滤条件
 JsonDslDefinition filterDef = new JsonDslDefinition("age-filter", JsonDslDefinition.DslType.FILTER);
 Map<String, Object> fieldDsl = new HashMap<>();
-fieldDsl.put("age", Map.of("$EXPR", "age > 20"));
-filterDef.setFieldDsl(fieldDsl);
+fieldDsl.
+
+put("age",Map.of("$EXPR", "age > 20"));
+        filterDef.
+
+setFieldDsl(fieldDsl);
 
 // 过滤单个用户
 User user = new User("Alice", 25, "active");
 FilterProcessor processor = new DefaultFilterProcessor();
 FilterResult<User> result = processor.filter(user, filterDef, context);
 
-if (!result.getPassed().isEmpty()) {
-    System.out.println("用户通过过滤");
-} else {
-    System.out.println("用户未通过过滤");
+if(!result.
+
+getPassed().
+
+isEmpty()){
+        System.out.
+
+println("用户通过过滤");
+}else{
+        System.out.
+
+println("用户未通过过滤");
 }
 ```
 
@@ -117,9 +130,15 @@ for (User user : result.getPassed()) {
 ```java
 // 过滤 Map 对象
 Map<String, Object> userMap = new HashMap<>();
-userMap.put("name", "Eve");
-userMap.put("age", 30);
-userMap.put("status", "active");
+userMap.
+
+put("name","Eve");
+userMap.
+
+put("age",30);
+userMap.
+
+put("status","active");
 
 FilterResult<Map<String, Object>> result = processor.filter(userMap, filterDef, context);
 ```
@@ -168,19 +187,20 @@ FilterResult<Map<String, Object>> result3 = processor.filter(userMap, def, ctx);
 ### 添加自定义处理器
 
 ```java
+
 @Component
 public class CustomFilterProcessor implements FilterProcessor {
-    
+
     @Override
     public <T> FilterResult<T> filter(T data, JsonDslDefinition definition, ProcessingContext context) {
         // 实现单对象过滤逻辑
     }
-    
+
     @Override
     public <T> FilterResult<T> filterList(List<T> dataList, JsonDslDefinition definition, ProcessingContext context) {
         // 实现列表过滤逻辑
     }
-    
+
     @Override
     public boolean supports(JsonDslDefinition.DslType type) {
         return JsonDslDefinition.DslType.FILTER.equals(type);
@@ -198,7 +218,9 @@ public class CustomFilterProcessor implements FilterProcessor {
 }
 
 // 手动注册
-JsonDslProcessorEngine.registerProcessor(new CustomFilterProcessor());
+JsonDslProcessorEngine.
+
+registerProcessor(new CustomFilterProcessor());
 ```
 
 ## 测试
@@ -217,9 +239,11 @@ mvn test -Dtest=GenericTypeTest
 ## 版本历史
 
 ### v1.0.0
+
 - 初始版本，支持基本的 JSON-DSL 功能
 
-### v1.1.0  
+### v1.1.0
+
 - 重构 FilterProcessor 接口，解决泛型类型安全问题
 - 明确区分单对象和列表过滤
 - 提供批量过滤便利方法

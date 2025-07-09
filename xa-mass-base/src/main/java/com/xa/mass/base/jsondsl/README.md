@@ -46,7 +46,9 @@ String deviceDsl = "..."; // 上面的 JSON
 
 // 默认返回列表（推荐）
 List<Object> devices = JsonDslEngine.generate(deviceDsl);
-devices.forEach(System.out::println);
+devices.
+
+forEach(System.out::println);
 
 // 指定返回类型
 Object singleDevice = JsonDslEngine.generate(deviceDsl, JsonDslEngine.ReturnType.SINGLE);
@@ -70,12 +72,14 @@ public enum ReturnType {
 ### 核心方法
 
 #### `generate(String jsonDsl)` - 默认返回列表
+
 ```java
 // 默认返回 List<Object>，即使 DSL 只定义了一个对象也会包装为列表
 List<Object> devices = JsonDslEngine.generate(deviceDsl);
 ```
 
 #### `generate(String jsonDsl, ReturnType returnType)` - 指定返回类型
+
 ```java
 // 返回单个对象
 Object device = JsonDslEngine.generate(deviceDsl, JsonDslEngine.ReturnType.SINGLE);
@@ -93,25 +97,33 @@ Object result = JsonDslEngine.generate(deviceDsl, JsonDslEngine.ReturnType.AUTO)
 ### 便利方法
 
 #### `generateSingle(String jsonDsl)`
+
 强制返回单个对象：
+
 ```java
 Object device = JsonDslEngine.generateSingle(deviceDsl);
 ```
 
 #### `generateList(String jsonDsl)`
+
 强制返回对象列表：
+
 ```java
 List<Object> devices = JsonDslEngine.generateList(deviceDsl);
 ```
 
 #### `generateMap(String jsonDsl, String modelName)`
+
 强制返回模型映射：
+
 ```java
 Map<String, Object> models = JsonDslEngine.generateMap(deviceDsl, "Device");
 ```
 
 #### `generateTyped(String jsonDsl, Class<T> targetType)`
+
 带类型转换的生成方法：
+
 ```java
 List<Object> devices = JsonDslEngine.generateTyped(deviceDsl, List.class);
 Map<String, Object> models = JsonDslEngine.generateTyped(modelsDsl, Map.class);
@@ -123,102 +135,116 @@ Map<String, Object> models = JsonDslEngine.generateTyped(modelsDsl, Map.class);
 
 ```java
 String singleDeviceDsl = """
-{
-    "MODEL": "Device",
-    "FIELDS": {
-        "deviceId": "device-001",
-        "status": "ONLINE"
-    }
-}
-""";
+        {
+            "MODEL": "Device",
+            "FIELDS": {
+                "deviceId": "device-001",
+                "status": "ONLINE"
+            }
+        }
+        """;
 
 // 默认返回 List<Object>，即使只有一个对象
 List<Object> devices = JsonDslEngine.generate(singleDeviceDsl);
-System.out.println("生成了 " + devices.size() + " 个设备");
+System.out.
+
+println("生成了 "+devices.size() +" 个设备");
 ```
 
 ### 示例2：指定返回单个对象
 
 ```java
 String deviceDsl = """
-{
-    "MODEL": "Device",
-    "COUNT": 3,
-    "FIELDS": {
-        "deviceId": {"$JOIN": ["device-", "&.index"]},
-        "status": {"$CHOICE": ["ONLINE", "OFFLINE"]}
-    }
-}
-""";
+        {
+            "MODEL": "Device",
+            "COUNT": 3,
+            "FIELDS": {
+                "deviceId": {"$JOIN": ["device-", "&.index"]},
+                "status": {"$CHOICE": ["ONLINE", "OFFLINE"]}
+            }
+        }
+        """;
 
 // 返回第一个对象
 Object device = JsonDslEngine.generate(deviceDsl, JsonDslEngine.ReturnType.SINGLE);
-System.out.println("第一个设备: " + device);
+System.out.
+
+println("第一个设备: "+device);
 ```
 
 ### 示例3：指定返回列表
 
 ```java
 String singleDsl = """
-{
-    "MODEL": "Device",
-    "FIELDS": {
-        "deviceId": "device-001",
-        "status": "ONLINE"
-    }
-}
-""";
+        {
+            "MODEL": "Device",
+            "FIELDS": {
+                "deviceId": "device-001",
+                "status": "ONLINE"
+            }
+        }
+        """;
 
 // 强制返回列表，单个对象会被包装
 List<Object> devices = JsonDslEngine.generate(singleDsl, JsonDslEngine.ReturnType.LIST);
-System.out.println("列表大小: " + devices.size()); // 输出: 1
+System.out.
+
+println("列表大小: "+devices.size()); // 输出: 1
 ```
 
 ### 示例4：指定返回映射
 
 ```java
 String deviceDsl = """
-{
-    "MODEL": "Device",
-    "FIELDS": {
-        "deviceId": "device-001",
-        "status": "ONLINE"
-    }
-}
-""";
+        {
+            "MODEL": "Device",
+            "FIELDS": {
+                "deviceId": "device-001",
+                "status": "ONLINE"
+            }
+        }
+        """;
 
 // 强制返回映射，单个对象会被包装
 Map<String, Object> models = JsonDslEngine.generate(deviceDsl, JsonDslEngine.ReturnType.MAP);
-System.out.println("映射键: " + models.keySet()); // 输出: [result]
+System.out.
+
+println("映射键: "+models.keySet()); // 输出: [result]
 ```
 
 ### 示例5：多个模型
 
 ```java
 String multipleModelsDsl = """
-{
-    "device": {
-        "MODEL": "Device",
-        "FIELDS": {
-            "deviceId": "device-001",
-            "status": "ONLINE"
+        {
+            "device": {
+                "MODEL": "Device",
+                "FIELDS": {
+                    "deviceId": "device-001",
+                    "status": "ONLINE"
+                }
+            },
+            "task": {
+                "MODEL": "Task",
+                "FIELDS": {
+                    "taskId": "task-001",
+                    "priority": "HIGH"
+                }
+            }
         }
-    },
-    "task": {
-        "MODEL": "Task",
-        "FIELDS": {
-            "taskId": "task-001",
-            "priority": "HIGH"
-        }
-    }
-}
-""";
+        """;
 
 // 返回 Map<String, Object>
 Map<String, Object> models = JsonDslEngine.generate(multipleModelsDsl, JsonDslEngine.ReturnType.MAP);
-models.forEach((key, value) -> {
-    System.out.println("模型 " + key + ": " + value.getClass().getSimpleName());
-});
+models.
+
+forEach((key, value) ->{
+        System.out.
+
+println("模型 "+key +": "+value.getClass().
+
+getSimpleName());
+        });
 ```
 
 ### 示例6：使用便利方法
@@ -238,12 +264,12 @@ Map<String, Object> map = JsonDslEngine.generateMap(deviceDsl, "Device");
 
 ## 返回类型说明
 
-| ReturnType | 说明 | 示例 |
-|-----------|------|------|
-| `LIST` (默认) | 总是返回 `List<Object>` | 单个对象包装为单元素列表 |
-| `SINGLE` | 总是返回 `Object` | 多个对象时返回第一个 |
-| `MAP` | 总是返回 `Map<String, Object>` | 单个对象包装为 `{"result": object}` |
-| `AUTO` | 根据 DSL 结构自动判断 | 单个对象返回 Object，多个对象返回 List，多个模型返回 Map |
+| ReturnType  | 说明                         | 示例                                   |
+|-------------|----------------------------|--------------------------------------|
+| `LIST` (默认) | 总是返回 `List<Object>`        | 单个对象包装为单元素列表                         |
+| `SINGLE`    | 总是返回 `Object`              | 多个对象时返回第一个                           |
+| `MAP`       | 总是返回 `Map<String, Object>` | 单个对象包装为 `{"result": object}`         |
+| `AUTO`      | 根据 DSL 结构自动判断              | 单个对象返回 Object，多个对象返回 List，多个模型返回 Map |
 
 ## 最佳实践
 

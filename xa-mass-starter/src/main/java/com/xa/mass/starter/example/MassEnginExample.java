@@ -7,8 +7,8 @@ public class MassEnginExample {
 
 
     public static void main(String[] args) {
-        EngineConfig engineConfig=new EngineConfig();
-        MassEngine massEngine=new MassEngine(engineConfig);
+        EngineConfig engineConfig = new EngineConfig();
+        MassEngine massEngine = new MassEngine(engineConfig);
 
 
         massEngine.start();

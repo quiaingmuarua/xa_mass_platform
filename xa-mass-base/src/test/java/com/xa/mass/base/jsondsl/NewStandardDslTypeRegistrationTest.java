@@ -118,27 +118,27 @@ public class NewStandardDslTypeRegistrationTest {
         // 测试：从 JSON 解析的 DSL 也支持全类名，无需注册
 
         String jsonDsl = """
-            {
-              "unique_id": "json_test_generator",
-              "type": "generate",
-              "priority": 1,
-              "desc": "JSON 测试生成器",
-              "version": "1.0",
-              "author": "test",
-              "tags": ["json", "test"],
-              "context": {
-                "MODEL": "com.xa.mass.base.model.Device",
-                "COUNT": 1,
-                "scope_name": "Device",
-                "debug": true
-              },
-              "fieldDsl": {
-                "deviceId": "json-device-001",
-                "status": "ONLINE",
-                "groupId": "gb"
-              }
-            }
-            """;
+                {
+                  "unique_id": "json_test_generator",
+                  "type": "generate",
+                  "priority": 1,
+                  "desc": "JSON 测试生成器",
+                  "version": "1.0",
+                  "author": "test",
+                  "tags": ["json", "test"],
+                  "context": {
+                    "MODEL": "com.xa.mass.base.model.Device",
+                    "COUNT": 1,
+                    "scope_name": "Device",
+                    "debug": true
+                  },
+                  "fieldDsl": {
+                    "deviceId": "json-device-001",
+                    "status": "ONLINE",
+                    "groupId": "gb"
+                  }
+                }
+                """;
 
         // 1. 解析 JSON
         JsonDslDefinition definition = JsonDslParser.parse(jsonDsl);

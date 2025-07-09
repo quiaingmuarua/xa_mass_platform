@@ -1,12 +1,12 @@
 package com.xa.mass.base.jsondsl.processor;
 
 import com.google.gson.Gson;
-import com.xa.mass.base.jsondsl.model.JsonDslDefinition;
 import com.xa.mass.base.jsondsl.builtin.GsonConfig;
 import com.xa.mass.base.jsondsl.builtin.JsonDslException;
+import com.xa.mass.base.jsondsl.model.JsonDslDefinition;
 
-import java.util.List;
 import java.util.ArrayList;
+import java.util.List;
 
 /**
  * JSON-DSL 处理器引擎
@@ -17,12 +17,12 @@ import java.util.ArrayList;
  * </p>
  */
 public class JsonDslProcessorEngine {
-    
+
     private static final Gson gson = GsonConfig.buildGson();
-    
+
     /**
      * 处理单个 DSL 定义（使用强类型处理器）
-     * 
+     *
      * @param definition DSL 定义
      * @param context 处理上下文
      * @param targetType 目标类型
@@ -33,7 +33,7 @@ public class JsonDslProcessorEngine {
         ParameterValidator.notNull(definition, "definition");
         ParameterValidator.notNull(context, "context");
         ParameterValidator.notNull(targetType, "targetType");
-        
+
         if (JsonDslDefinition.DslType.GENERATE.equals(definition.getType())) {
             // 优先使用注册的处理器，如果没有则使用默认处理器
             List<JsonDslProcessor> processors = ProcessorRegistry.getProcessors(definition.getType());
@@ -97,10 +97,10 @@ public class JsonDslProcessorEngine {
             throw new JsonDslException("不支持的 DSL 类型: " + definition.getType());
         }
     }
-    
+
     /**
      * 链式处理多个 DSL 定义（使用强类型处理器）
-     * 
+     *
      * @param definitions DSL 定义列表
      * @param context 处理上下文
      * @param targetType 目标类型
@@ -109,13 +109,13 @@ public class JsonDslProcessorEngine {
     public static <T> List<T> processChain(List<JsonDslDefinition> definitions, ProcessingContext context, Class<T> targetType) {
         ParameterValidator.notNull(definitions, "definitions");
         List<T> result = null;
-        
+
         for (JsonDslDefinition definition : definitions) {
             if (context.isDebug()) {
-                System.out.println("[JsonDslProcessorEngine] 处理 DSL: " + definition.getUniqueId() + 
-                    " (类型: " + definition.getType() + ")");
+                System.out.println("[JsonDslProcessorEngine] 处理 DSL: " + definition.getUniqueId() +
+                        " (类型: " + definition.getType() + ")");
             }
-            
+
             if (JsonDslDefinition.DslType.GENERATE.equals(definition.getType())) {
                 // 优先使用注册的处理器，如果没有则使用默认处理器
                 List<JsonDslProcessor> processors = ProcessorRegistry.getProcessors(definition.getType());
@@ -149,8 +149,8 @@ public class JsonDslProcessorEngine {
                 }
                 ParameterValidator.notEmpty(result, "previous generation result");
                 List<T> transformed = result.stream()
-                    .map(obj -> processor.transform(obj, definition, context))
-                    .toList();
+                        .map(obj -> processor.transform(obj, definition, context))
+                        .toList();
                 result = transformed;
             } else if (JsonDslDefinition.DslType.VALIDATE.equals(definition.getType())) {
                 // 优先使用注册的处理器，如果没有则使用默认处理器
@@ -173,13 +173,13 @@ public class JsonDslProcessorEngine {
                 throw new JsonDslException("不支持的 DSL 类型: " + definition.getType());
             }
         }
-        
+
         return result;
     }
-    
+
     /**
      * 从 JSON 字符串处理 DSL（使用强类型处理器）
-     * 
+     *
      * @param jsonDsl JSON DSL 字符串
      * @param context 处理上下文
      * @param targetType 目标类型
@@ -189,10 +189,10 @@ public class JsonDslProcessorEngine {
         JsonDslDefinition definition = gson.fromJson(jsonDsl, JsonDslDefinition.class);
         return process(definition, context, targetType);
     }
-    
+
     /**
      * 从 JSON 字符串链式处理多个 DSL（使用强类型处理器）
-     * 
+     *
      * @param jsonDslList JSON DSL 字符串列表
      * @param context 处理上下文
      * @param targetType 目标类型
@@ -200,14 +200,14 @@ public class JsonDslProcessorEngine {
      */
     public static <T> List<T> processChainFromJson(List<String> jsonDslList, ProcessingContext context, Class<T> targetType) {
         List<JsonDslDefinition> definitions = jsonDslList.stream()
-            .map(json -> gson.fromJson(json, JsonDslDefinition.class))
-            .toList();
+                .map(json -> gson.fromJson(json, JsonDslDefinition.class))
+                .toList();
         return processChain(definitions, context, targetType);
     }
-    
+
     /**
      * 批量过滤对象列表
-     * 
+     *
      * @param dataList 要过滤的对象列表
      * @param definition DSL 定义
      * @param context 处理上下文
@@ -220,7 +220,7 @@ public class JsonDslProcessorEngine {
         ParameterValidator.notNull(definition, "definition");
         ParameterValidator.notNull(context, "context");
         ParameterValidator.notNull(targetType, "targetType");
-        
+
         // 获取过滤处理器
         List<JsonDslProcessor> processors = ProcessorRegistry.getProcessors(definition.getType());
         FilterProcessor processor;
@@ -229,15 +229,15 @@ public class JsonDslProcessorEngine {
         } else {
             processor = ProcessorManager.getFilterProcessor();
         }
-        
+
         // 批量过滤
         FilterResult<T> result = processor.filterList(dataList, definition, context);
         return result.getPassed();
     }
-    
+
     /**
      * 批量过滤对象列表（带失败详情）
-     * 
+     *
      * @param dataList 要过滤的对象列表
      * @param definition DSL 定义
      * @param context 处理上下文
@@ -250,7 +250,7 @@ public class JsonDslProcessorEngine {
         ParameterValidator.notNull(definition, "definition");
         ParameterValidator.notNull(context, "context");
         ParameterValidator.notNull(targetType, "targetType");
-        
+
         // 获取过滤处理器
         List<JsonDslProcessor> processors = ProcessorRegistry.getProcessors(definition.getType());
         FilterProcessor processor;
@@ -259,11 +259,11 @@ public class JsonDslProcessorEngine {
         } else {
             processor = ProcessorManager.getFilterProcessor();
         }
-        
+
         // 批量过滤
         List<T> passed = new ArrayList<>();
         List<FilterResult.FilterFailure<T>> failed = new ArrayList<>();
-        
+
         for (T item : dataList) {
             FilterResult<T> itemResult = processor.filter(item, definition, context);
             if (!itemResult.getPassed().isEmpty()) {
@@ -273,68 +273,68 @@ public class JsonDslProcessorEngine {
                 failed.add(new FilterResult.FilterFailure<>(item, List.of("未通过过滤条件")));
             }
         }
-        
+
         return new FilterResult<>(passed, failed, dataList.size());
     }
-    
+
     /**
      * 注册自定义处理器
-     * 
+     *
      * @param processor 自定义处理器
      */
     public static void registerProcessor(JsonDslProcessor processor) {
         ProcessorRegistry.register(processor);
     }
-    
+
     /**
      * 获取所有处理器
-     * 
+     *
      * @return 处理器列表
      */
     public static List<JsonDslProcessor> getAllProcessors() {
         return ProcessorRegistry.getAllProcessors();
     }
-    
+
     /**
      * 获取支持指定类型的处理器
-     * 
+     *
      * @param type DSL 类型
      * @return 处理器列表
      */
     public static List<JsonDslProcessor> getProcessors(JsonDslDefinition.DslType type) {
         return ProcessorRegistry.getProcessors(type);
     }
-    
+
     /**
      * 获取强类型生成处理器
-     * 
+     *
      * @return 生成处理器
      */
     public static GenerateProcessor getGenerateProcessor() {
         return ProcessorManager.getGenerateProcessor();
     }
-    
+
     /**
      * 获取强类型过滤处理器
-     * 
+     *
      * @return 过滤处理器
      */
     public static FilterProcessor getFilterProcessor() {
         return ProcessorManager.getFilterProcessor();
     }
-    
+
     /**
      * 获取强类型转换处理器
-     * 
+     *
      * @return 转换处理器
      */
     public static TransformProcessor getTransformProcessor() {
         return ProcessorManager.getTransformProcessor();
     }
-    
+
     /**
      * 获取强类型校验处理器
-     * 
+     *
      * @return 校验处理器
      */
     public static ValidateProcessor getValidateProcessor() {
