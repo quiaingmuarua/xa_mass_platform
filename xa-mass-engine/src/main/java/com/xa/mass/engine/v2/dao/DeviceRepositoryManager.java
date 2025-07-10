@@ -1,6 +1,8 @@
 package com.xa.mass.engine.v2.dao;
 
+import com.xa.mass.base.channel.queue.InMemoryMessageMap;
 import com.xa.mass.base.channel.queue.MessageMap;
+import com.xa.mass.base.enums.Project;
 import com.xa.mass.engine.v2.entity.DeviceEntity;
 import com.xa.mass.engine.v2.entity.TokenEntity;
 
@@ -20,9 +22,9 @@ import java.util.Objects;
 public class DeviceRepositoryManager {
     
     // 设备ID -> 设备实体
-    private final ConcurrentMap<String, DeviceEntity> deviceEntityMap = new ConcurrentHashMap<>();
+    private final MessageMap<String, DeviceEntity> deviceEntityMap;
     // 设备ID -> Token实体
-    private final ConcurrentMap<String, TokenEntity> tokenEntityMap = new ConcurrentHashMap<>();
+    private final MessageMap<String, TokenEntity> tokenEntityMap;
     // 项目 -> (设备ID -> Token实体)
     private final ConcurrentMap<String, MessageMap<String, TokenEntity>> projectTokenEntityMap = new ConcurrentHashMap<>();
 
@@ -33,8 +35,8 @@ public class DeviceRepositoryManager {
      */
     public DeviceRepositoryManager(MessageMap<String, DeviceEntity> deviceEntityMap, 
                                  MessageMap<String, TokenEntity> tokenEntityMap) {
-        this.deviceEntityMap = Objects.requireNonNull(deviceEntityMap, "Device entity map cannot be null");
-        this.tokenEntityMap = Objects.requireNonNull(tokenEntityMap, "Token entity map cannot be null");
+        this.deviceEntityMap = deviceEntityMap;
+        this.tokenEntityMap = tokenEntityMap;
     }
 
     /**
@@ -183,14 +185,14 @@ public class DeviceRepositoryManager {
      */
     public static void main(String[] args) {
         // 创建内存映射实例
-        MessageMap<String, DeviceEntity> deviceMap = new ConcurrentHashMap<>();
-        MessageMap<String, TokenEntity> tokenMap = new ConcurrentHashMap<>();
+        MessageMap<String, DeviceEntity> deviceMap = new InMemoryMessageMap<>();
+        MessageMap<String, TokenEntity> tokenMap = new InMemoryMessageMap<>();
         
         // 创建设备仓库管理器
         DeviceRepositoryManager deviceRepositoryManager = new DeviceRepositoryManager(deviceMap, tokenMap);
         
         // 添加项目设备令牌映射
-        deviceRepositoryManager.addProjectDeviceTokenMap(Project.DEMO_APP.getCode(), new ConcurrentHashMap<>());
+        deviceRepositoryManager.addProjectDeviceTokenMap(Project.DEMO_APP.getCode(), new InMemoryMessageMap<>());
         
         System.out.println("DeviceRepositoryManager initialized successfully");
     }
