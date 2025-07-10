@@ -40,3 +40,5 @@ build/
 /.mvn/
 /logs/
 /xa-mass-mock/logs/
+.DS_Store
+**/.DS_Store

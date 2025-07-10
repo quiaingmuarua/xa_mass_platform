@@ -3,7 +3,6 @@ package com.xa.mass.engine.v2.entity;
 import lombok.Data;
 import java.util.List;
 
-@Data
 public class TaskMsgEntity {
     private String msgId;
     private String taskId;
@@ -95,5 +94,102 @@ public class TaskMsgEntity {
 
     public boolean canRetry(int maxRetries) {
         return retryCount < maxRetries;
+    }
+
+    // Getter and Setter methods
+    public String getMsgId() {
+        return msgId;
+    }
+
+    public void setMsgId(String msgId) {
+        this.msgId = msgId;
+    }
+
+    public String getTaskId() {
+        return taskId;
+    }
+
+    public void setTaskId(String taskId) {
+        this.taskId = taskId;
+    }
+
+    public String getTaskMsgStatus() {
+        return taskMsgStatus;
+    }
+
+    public void setTaskMsgStatus(String taskMsgStatus) {
+        this.taskMsgStatus = taskMsgStatus;
+    }
+
+    public String getCompleteStatus() {
+        return completeStatus;
+    }
+
+    public void setCompleteStatus(String completeStatus) {
+        this.completeStatus = completeStatus;
+    }
+
+    public List<String> getDeviceIds() {
+        return deviceIds;
+    }
+
+    public void setDeviceIds(List<String> deviceIds) {
+        this.deviceIds = deviceIds;
+    }
+
+    public List<String> getDeviceTokens() {
+        return deviceTokens;
+    }
+
+    public void setDeviceTokens(List<String> deviceTokens) {
+        this.deviceTokens = deviceTokens;
+    }
+
+    public List<String> getBatchRawSeeds() {
+        return batchRawSeeds;
+    }
+
+    public void setBatchRawSeeds(List<String> batchRawSeeds) {
+        this.batchRawSeeds = batchRawSeeds;
+    }
+
+    public int getRetryCount() {
+        return retryCount;
+    }
+
+    public void setRetryCount(int retryCount) {
+        this.retryCount = retryCount;
+    }
+
+    public long getSendTime() {
+        return sendTime;
+    }
+
+    public void setSendTime(long sendTime) {
+        this.sendTime = sendTime;
+    }
+
+    public long getCreateTime() {
+        return createTime;
+    }
+
+    public void setCreateTime(long createTime) {
+        this.createTime = createTime;
+    }
+
+    public long getStartTime() {
+        return startTime;
+    }
+
+    public void setStartTime(long startTime) {
+        this.startTime = startTime;
+    }
+
+    public long getCompleteTime() {
+        return completeTime;
+    }
+
+    public void setCompleteTime(long completeTime) {
+        this.completeTime = completeTime;
     }
 }

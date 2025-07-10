@@ -2,7 +2,6 @@ package com.xa.mass.engine.v2.entity;
 
 import lombok.Data;
 
-@Data
 public class TokenEntity {
     private String tokenId;
     private String deviceId;
@@ -96,5 +95,82 @@ public class TokenEntity {
 
     public boolean isIdle(long idleThresholdMs) {
         return getTimeSinceLastUse() > idleThresholdMs;
+    }
+
+    // Getter and Setter methods
+    public String getTokenId() {
+        return tokenId;
+    }
+
+    public void setTokenId(String tokenId) {
+        this.tokenId = tokenId;
+    }
+
+    public String getDeviceId() {
+        return deviceId;
+    }
+
+    public void setDeviceId(String deviceId) {
+        this.deviceId = deviceId;
+    }
+
+    public String getProject() {
+        return project;
+    }
+
+    public void setProject(String project) {
+        this.project = project;
+    }
+
+    public String getCountry() {
+        return country;
+    }
+
+    public void setCountry(String country) {
+        this.country = country;
+    }
+
+    public String getPlatform() {
+        return platform;
+    }
+
+    public void setPlatform(String platform) {
+        this.platform = platform;
+    }
+
+    public String getTokenStatus() {
+        return tokenStatus;
+    }
+
+    public void setTokenStatus(String tokenStatus) {
+        this.tokenStatus = tokenStatus;
+    }
+
+    public long getLastUserTime() {
+        return lastUserTime;
+    }
+
+    public void setLastUserTime(long lastUserTime) {
+        this.lastUserTime = lastUserTime;
+    }
+
+    public long getExpireTime() {
+        return expireTime;
+    }
+
+    public long getCreateTime() {
+        return createTime;
+    }
+
+    public void setCreateTime(long createTime) {
+        this.createTime = createTime;
+    }
+
+    public long getUpdateTime() {
+        return updateTime;
+    }
+
+    public void setUpdateTime(long updateTime) {
+        this.updateTime = updateTime;
     }
 }

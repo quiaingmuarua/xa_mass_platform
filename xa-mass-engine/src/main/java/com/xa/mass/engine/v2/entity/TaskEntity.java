@@ -5,7 +5,6 @@ import lombok.Data;
 
 import java.util.Map;
 
-@Data
 public class TaskEntity {
     private String taskId;
     private String taskName;
@@ -62,5 +61,118 @@ public class TaskEntity {
         this.taskStatus = "COMPLETED";
         this.endTime = System.currentTimeMillis();
         this.updateTime = System.currentTimeMillis();
+    }
+
+    // Getter and Setter methods
+    public String getTaskId() {
+        return taskId;
+    }
+
+    public void setTaskId(String taskId) {
+        this.taskId = taskId;
+    }
+
+    public String getTaskName() {
+        return taskName;
+    }
+
+    public void setTaskName(String taskName) {
+        this.taskName = taskName;
+    }
+
+    public String getProject() {
+        return project;
+    }
+
+    public void setProject(String project) {
+        this.project = project;
+    }
+
+    public String getTaskStatus() {
+        return taskStatus;
+    }
+
+    public void setTaskStatus(String taskStatus) {
+        this.taskStatus = taskStatus;
+    }
+
+    public String getTaskCountry() {
+        return taskCountry;
+    }
+
+    public void setTaskCountry(String taskCountry) {
+        this.taskCountry = taskCountry;
+    }
+
+    public User getUser() {
+        return user;
+    }
+
+    public void setUser(User user) {
+        this.user = user;
+    }
+
+    public long getTaskCount() {
+        return taskCount;
+    }
+
+    public void setTaskCount(long taskCount) {
+        this.taskCount = taskCount;
+    }
+
+    public String getTextContent() {
+        return textContent;
+    }
+
+    public void setTextContent(String textContent) {
+        this.textContent = textContent;
+    }
+
+    public Map<String, Object> getTaskScheduleRules() {
+        return taskScheduleRules;
+    }
+
+    public void setTaskScheduleRules(Map<String, Object> taskScheduleRules) {
+        this.taskScheduleRules = taskScheduleRules;
+    }
+
+    public Map<String, Object> getTaskDeviceMatchRules() {
+        return taskDeviceMatchRules;
+    }
+
+    public void setTaskDeviceMatchRules(Map<String, Object> taskDeviceMatchRules) {
+        this.taskDeviceMatchRules = taskDeviceMatchRules;
+    }
+
+    public long getCreateTime() {
+        return createTime;
+    }
+
+    public void setCreateTime(long createTime) {
+        this.createTime = createTime;
+    }
+
+    public long getUpdateTime() {
+        return updateTime;
+    }
+
+    public void setUpdateTime(long updateTime) {
+        this.updateTime = updateTime;
+    }
+
+    public long getStartTime() {
+        return startTime;
+    }
+
+    public void setStartTime(long startTime) {
+        this.startTime = startTime;
+    }
+
+    public long getEndTime() {
+        return endTime;
+    }
+
+    public void setEndTime(long endTime) {
+        this.endTime = endTime;
     }
 }

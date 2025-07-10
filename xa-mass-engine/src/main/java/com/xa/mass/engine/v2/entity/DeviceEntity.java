@@ -3,7 +3,6 @@ package com.xa.mass.engine.v2.entity;
 import lombok.Data;
 import java.util.Map;
 
-@Data
 public class DeviceEntity {
     private String deviceId;
     private String deviceStatus; // ONLINE OFFLINE BUSY MAINTENANCE
@@ -101,5 +100,86 @@ public class DeviceEntity {
 
     public boolean isHeartbeatExpired(long maxAgeMs) {
         return getHeartbeatAge() > maxAgeMs;
+    }
+
+    // Getter and Setter methods
+    public String getDeviceId() {
+        return deviceId;
+    }
+
+    public void setDeviceId(String deviceId) {
+        this.deviceId = deviceId;
+    }
+
+    public String getDeviceStatus() {
+        return deviceStatus;
+    }
+
+    public void setDeviceStatus(String deviceStatus) {
+        this.deviceStatus = deviceStatus;
+    }
+
+    public String getAgentVersion() {
+        return agentVersion;
+    }
+
+    public void setAgentVersion(String agentVersion) {
+        this.agentVersion = agentVersion;
+    }
+
+    public String getOnlineStrategy() {
+        return onlineStrategy;
+    }
+
+    public void setOnlineStrategy(String onlineStrategy) {
+        this.onlineStrategy = onlineStrategy;
+    }
+
+    public String getGroupId() {
+        return groupId;
+    }
+
+    public void setGroupId(String groupId) {
+        this.groupId = groupId;
+    }
+
+    public Map<String, String> getProjectTokens() {
+        return projectTokens;
+    }
+
+    public void setProjectTokens(Map<String, String> projectTokens) {
+        this.projectTokens = projectTokens;
+    }
+
+    public long getLockExpireTime() {
+        return lockExpireTime;
+    }
+
+    public void setLockExpireTime(long lockExpireTime) {
+        this.lockExpireTime = lockExpireTime;
+    }
+
+    public long getLastHeartbeat() {
+        return lastHeartbeat;
+    }
+
+    public void setLastHeartbeat(long lastHeartbeat) {
+        this.lastHeartbeat = lastHeartbeat;
+    }
+
+    public long getCreateTime() {
+        return createTime;
+    }
+
+    public void setCreateTime(long createTime) {
+        this.createTime = createTime;
+    }
+
+    public long getUpdateTime() {
+        return updateTime;
+    }
+
+    public void setUpdateTime(long updateTime) {
+        this.updateTime = updateTime;
     }
 }
