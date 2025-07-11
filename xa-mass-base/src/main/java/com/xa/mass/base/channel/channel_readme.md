@@ -291,3 +291,30 @@ public class FileMessageMap<K, V> implements MessageMap<K, V> {
 - 边界条件测试
 - 性能测试
 - 异常处理测试
+
+---
+
+## 2024-07-11 重大重构日志
+
+### 1. 接口精简与职责分层
+- 明确区分 Repository（数据层）与 Service（业务层），所有业务逻辑移至 Service 层，Repository 只做纯数据操作。
+- 所有队列、Map、Set 等抽象均保持最小 API，避免冗余方法。
+
+### 2. 统一注册机制
+- 引入 EngineRegistry（原 TaskServiceRegistry），支持默认服务和自定义服务注册，key 由 project 改为 service 名称。
+- 支持 TaskService、DeviceService 等多种服务的统一注册和获取。
+
+### 3. 测试覆盖与集成
+- 所有核心数据结构和服务均有单元测试和集成测试。
+- 新增 DataFlowIntegrationTest，覆盖任务-设备-消息的完整流转。
+- 测试用例全部适配最新接口，移除过时方法。
+
+### 4. 文档与 TODO
+- 新增/完善了 TODO.md，明确后续架构演进方向（状态机、事件驱动、监控、配置等）。
+- channel_readme.md 文档同步更新，接口示例与实现说明与代码保持一致。
+
+### 5. 兼容性与扩展性
+- 保持所有接口向后兼容，老实现可平滑迁移。
+- 支持多种队列/Map/Set/Transporter 实现，便于后续扩展。
+
+---

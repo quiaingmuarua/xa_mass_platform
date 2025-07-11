@@ -99,18 +99,18 @@ public class SimpleFunctionalExample {
         TaskEntity task = new TaskEntity();
         task.setTaskId(taskId);
         task.setTaskName(taskName);
-        manager.createTask(task);
+        manager.saveTask(task);
 
         // 添加种子数据
-        manager.addTaskSeed(taskId, "seed-data-1");
-        manager.addTaskSeed(taskId, "seed-data-2");
+        manager.addSeed(taskId, "seed-data-1");
+        manager.addSeed(taskId, "seed-data-2");
 
         // 添加任务消息
         TaskMsgEntity taskMsg = new TaskMsgEntity("msg-" + taskId, taskId);
         taskMsg.markAsBinding();
-        manager.addTaskMsg(taskId, taskMsg);
+        manager.addMsg(taskId, taskMsg);
 
         logger.info("任务 {} - 种子数: {}, 消息数: {}", 
-            taskName, manager.getTaskSeedCount(taskId), manager.getTaskMsgCount(taskId));
+            taskName, manager.getSeedCount(taskId), manager.getMsgCount(taskId));
     }
 } 
