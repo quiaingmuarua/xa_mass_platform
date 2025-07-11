@@ -5,12 +5,6 @@ import com.xa.mass.base.channel.queue.api.MessageMap;
 import com.xa.mass.base.channel.queue.memory.InMemoryMessageMap;
 import com.xa.mass.base.channel.queue.redis.LettuceRedisMessageMap;
 import com.xa.mass.base.channel.queue.redis.RedisConnectionManager;
-import com.xa.mass.base.enums.Project;
-import com.xa.mass.base.jsondsl.model.JsonDslContext;
-import com.xa.mass.base.jsondsl.model.JsonDslDefinition;
-import com.xa.mass.base.jsondsl.processor.GenerateProcessor;
-import com.xa.mass.base.jsondsl.processor.ProcessingContext;
-import com.xa.mass.base.jsondsl.processor.ProcessorRegistry;
 import com.xa.mass.engine.v2.dao.DeviceRepositoryManager;
 import com.xa.mass.engine.v2.dao.TaskRepositoryManager;
 import com.xa.mass.engine.v2.entity.DeviceEntity;
@@ -19,7 +13,6 @@ import com.xa.mass.engine.v2.entity.TokenEntity;
 import com.xa.mass.engine.v2.monkey.MockEngineGenerator;
 
 import java.util.List;
-import java.util.Map;
 
 public class RepositoryManagerExample {
 
@@ -44,14 +37,14 @@ public class RepositoryManagerExample {
             RedisConnectionManager.init("localhost", 6379, null, 0);
             // 2. 创建Redis消息映射
             deviceMap = new LettuceRedisMessageMap<>("xa_mass_platform::deviceMap", String.class, DeviceEntity.class);
-            tokenMap = new LettuceRedisMessageMap<>("xa_mass_platform::tokenMap", String.class, TokenEntity.class);
             taskEntityMessageMap = new LettuceRedisMessageMap<>("xa_mass_platform::taskEntityMessageMap", String.class, TaskEntity.class);
             demoAppTokenMap = new LettuceRedisMessageMap<>("xa_mass_platform::demoAppTokenMap", String.class, TokenEntity.class);
 
 
         }
         //init manager
-        DeviceRepositoryManager deviceRepositoryManager = new DeviceRepositoryManager(deviceMap, tokenMap);
+        DeviceRepositoryManager deviceRepositoryManager = new DeviceRepositoryManager(deviceMap);
+
         TaskRepositoryManager taskRepositoryManager = new TaskRepositoryManager(taskEntityMessageMap,
                 queueType.equals("内存") ? QueueProviderType.IN_MEMORY : QueueProviderType.REDIS);
 
@@ -65,6 +58,9 @@ public class RepositoryManagerExample {
 
 
     private static void mockGenerate(TaskRepositoryManager taskRepositoryManager, DeviceRepositoryManager deviceRepositoryManager, String queueType) {
+        // 注册所有项目分组
+        deviceRepositoryManager.registerAllProjects(project -> new InMemoryMessageMap<>(project.getCode() + "TokenMap"));
+
         //init entity list
         String deviceFieldDslJson = """
                 {
@@ -77,7 +73,7 @@ public class RepositoryManagerExample {
                 {
                   "tokenId": {"$UUID": true},
                   "deviceId": {"$JOIN": ["device-", "&.index"]},
-                  "project": {"$CHOICE": ["demoApp", "testApp", "otherApp"]},
+                  "project": {"$CHOICE": ["demoApp", "testApp"]},
                   "country": {"$CHOICE": ["us", "gb", "cn"]},
                   "platform": {"$CHOICE": ["android", "ios", "web"]},
                   "tokenStatus": {"$CHOICE": ["ACTIVE", "INACTIVE", "EXPIRED", "BLOCKED"]},
@@ -91,7 +87,7 @@ public class RepositoryManagerExample {
                 {
                   "taskId": {"$UUID": true},
                   "taskName": {"$JOIN": ["Task-", "&.index"]},
-                  "project": {"$CHOICE": ["demoApp", "testApp", "otherApp"]},
+                  "project": {"$CHOICE": ["demoApp", "testApp"]},
                   "taskStatus": {"$CHOICE": ["NEW", "READY", "RUNNING", "PAUSED"]},
                   "taskCountry": {"$CHOICE": ["us", "gb", "cn"]},
                   "taskCount": {"$RANGE": [10, 200]},

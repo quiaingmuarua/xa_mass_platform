@@ -1,17 +1,14 @@
 package com.xa.mass.engine.v2.dao;
 
-import com.xa.mass.base.channel.queue.memory.InMemoryMessageMap;
 import com.xa.mass.base.channel.queue.api.MessageMap;
+import com.xa.mass.base.channel.queue.memory.InMemoryMessageMap;
 import com.xa.mass.base.enums.Project;
 import com.xa.mass.engine.v2.entity.DeviceEntity;
 import com.xa.mass.engine.v2.entity.TokenEntity;
 
+import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-import java.util.Objects;
-import java.util.Set;
-import java.util.Collections;
-import java.util.stream.Collectors;
 
 /**
  * 设备仓库管理器
@@ -26,31 +23,52 @@ public class DeviceRepositoryManager {
     
     // 设备ID -> 设备实体
     private final MessageMap<String, DeviceEntity> deviceEntityMap;
-    // 设备ID -> Token实体
-    private final MessageMap<String, TokenEntity> tokenEntityMap;
-    // 项目 -> tokenId集合
-    private final ConcurrentMap<String, Set<String>> projectTokenIdMap = new ConcurrentHashMap<>();
+    // 设备ID -> Token实体（全局cache，仅内存）
+    private final MessageMap<String, TokenEntity> tokenEntityMap = new com.xa.mass.base.channel.queue.memory.InMemoryMessageMap<>();
+    // 项目 -> (设备ID -> Token实体)
+    private final ConcurrentMap<String, MessageMap<String, TokenEntity>> projectTokenEntityMap = new ConcurrentHashMap<>();
 
     /**
      * 构造函数
      * @param deviceEntityMap 设备实体映射
-     * @param tokenEntityMap 设备令牌映射
      */
-    public DeviceRepositoryManager(MessageMap<String, DeviceEntity> deviceEntityMap, 
-                                 MessageMap<String, TokenEntity> tokenEntityMap) {
+    public DeviceRepositoryManager(MessageMap<String, DeviceEntity> deviceEntityMap) {
         this.deviceEntityMap = deviceEntityMap;
-        this.tokenEntityMap = tokenEntityMap;
     }
 
     /**
-     * 添加设备绑定令牌
-     * @param tokenEntity 令牌实体
+     * 测试方法
      */
-    public void addDeviceBindToken(TokenEntity tokenEntity) {
-        Objects.requireNonNull(tokenEntity, "Token entity cannot be null");
-        Objects.requireNonNull(tokenEntity.getProject(), "Token project cannot be null");
-        Objects.requireNonNull(tokenEntity.getDeviceId(), "Token device ID cannot be null");
-        tokenEntityMap.put(tokenEntity.getDeviceId(), tokenEntity);
+    public static void main(String[] args) {
+        // 创建内存映射实例
+        MessageMap<String, DeviceEntity> deviceMap = new InMemoryMessageMap<>();
+
+        // 创建设备仓库管理器
+        DeviceRepositoryManager deviceRepositoryManager = new DeviceRepositoryManager(deviceMap);
+
+        // 添加项目设备令牌映射
+        // deviceRepositoryManager.addProjectDeviceTokenMap(Project.DEMO_APP.getCode(), new InMemoryMessageMap<>()); // Removed
+
+        System.out.println("DeviceRepositoryManager initialized successfully");
+    }
+
+    /**
+     * 注册项目分组，必须显式传入具体的 MessageMap 实现
+     */
+    public void registerProject(Project project, MessageMap<String, TokenEntity> map) {
+        Objects.requireNonNull(project, "Project cannot be null");
+        Objects.requireNonNull(map, "Project token map cannot be null");
+        projectTokenEntityMap.putIfAbsent(project.getCode(), map);
+    }
+
+    /**
+     * 注册所有项目分组
+     */
+    public void registerAllProjects(java.util.function.Function<Project, MessageMap<String, TokenEntity>> mapSupplier) {
+        Objects.requireNonNull(mapSupplier, "Map supplier cannot be null");
+        for (Project project : Project.values()) {
+            registerProject(project, mapSupplier.apply(project));
+        }
     }
 
     /**
@@ -94,13 +112,21 @@ public class DeviceRepositoryManager {
     }
 
     /**
-     * 获取项目下所有TokenEntity
+     * 添加设备绑定令牌
+     * @param tokenEntity 令牌实体
      */
-    public java.util.List<TokenEntity> getProjectTokens(String project) {
-        Objects.requireNonNull(project, "Project cannot be null");
-        return tokenEntityMap.values().stream()
-            .filter(token -> project.equals(token.getProject()))
-            .collect(Collectors.toList());
+    public void addDeviceBindToken(TokenEntity tokenEntity) {
+        Objects.requireNonNull(tokenEntity, "Token entity cannot be null");
+        Objects.requireNonNull(tokenEntity.getProject(), "Token project cannot be null");
+        Objects.requireNonNull(tokenEntity.getDeviceId(), "Token device ID cannot be null");
+        String project = tokenEntity.getProject();
+        String deviceId = tokenEntity.getDeviceId();
+        MessageMap<String, TokenEntity> map = projectTokenEntityMap.get(project);
+        if (map == null) {
+            throw new IllegalStateException("Project not registered: " + project);
+        }
+        map.put(deviceId, tokenEntity);
+        tokenEntityMap.put(deviceId, tokenEntity);
     }
 
     /**
@@ -160,28 +186,19 @@ public class DeviceRepositoryManager {
     }
 
     /**
+     * 获取项目下所有TokenEntity
+     */
+    public java.util.List<TokenEntity> getProjectTokens(String project) {
+        Objects.requireNonNull(project, "Project cannot be null");
+        MessageMap<String, TokenEntity> map = projectTokenEntityMap.get(project);
+        return map == null ? java.util.Collections.emptyList() : new java.util.ArrayList<>(map.values());
+    }
+
+    /**
      * 获取项目数量
      * @return 项目数量
      */
     public int getProjectCount() {
-        // 统计不同project数量
-        return (int) tokenEntityMap.values().stream().map(TokenEntity::getProject).distinct().count();
-    }
-
-    /**
-     * 测试方法
-     */
-    public static void main(String[] args) {
-        // 创建内存映射实例
-        MessageMap<String, DeviceEntity> deviceMap = new InMemoryMessageMap<>();
-        MessageMap<String, TokenEntity> tokenMap = new InMemoryMessageMap<>();
-        
-        // 创建设备仓库管理器
-        DeviceRepositoryManager deviceRepositoryManager = new DeviceRepositoryManager(deviceMap, tokenMap);
-        
-        // 添加项目设备令牌映射
-        // deviceRepositoryManager.addProjectDeviceTokenMap(Project.DEMO_APP.getCode(), new InMemoryMessageMap<>()); // Removed
-        
-        System.out.println("DeviceRepositoryManager initialized successfully");
+        return projectTokenEntityMap.size();
     }
 }

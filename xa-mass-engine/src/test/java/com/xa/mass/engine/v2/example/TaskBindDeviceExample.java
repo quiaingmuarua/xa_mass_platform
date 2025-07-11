@@ -2,7 +2,6 @@ package com.xa.mass.engine.v2.example;
 
 import com.xa.mass.base.channel.queue.QueueProviderType;
 import com.xa.mass.base.channel.queue.memory.InMemoryMessageMap;
-import com.xa.mass.base.enums.Project;
 import com.xa.mass.engine.v2.dao.DeviceRepositoryManager;
 import com.xa.mass.engine.v2.dao.TaskRepositoryManager;
 import com.xa.mass.engine.v2.entity.DeviceEntity;
@@ -16,7 +15,7 @@ public class TaskBindDeviceExample {
 
 
     public static void main(String[] args) {
-        DeviceRepositoryManager deviceRepositoryManager = new DeviceRepositoryManager(new InMemoryMessageMap<>("deviceMap"), new InMemoryMessageMap<>("tokenMap"));
+        DeviceRepositoryManager deviceRepositoryManager = new DeviceRepositoryManager(new InMemoryMessageMap<>("deviceMap"));
         TaskRepositoryManager taskRepositoryManager = new TaskRepositoryManager(new InMemoryMessageMap<>("taskEntityMessageMap"), QueueProviderType.IN_MEMORY);
 
         generateData(deviceRepositoryManager, taskRepositoryManager);
@@ -28,6 +27,8 @@ public class TaskBindDeviceExample {
     }
 
     public static void generateData(DeviceRepositoryManager deviceRepositoryManager, TaskRepositoryManager taskRepositoryManager) {
+        // 注册所有项目分组
+        deviceRepositoryManager.registerAllProjects(project -> new InMemoryMessageMap<>(project.getCode() + "TokenMap"));
 
         // 初始化内存队列
         List<DeviceEntity> deviceEntityList = mockDevices(100);
