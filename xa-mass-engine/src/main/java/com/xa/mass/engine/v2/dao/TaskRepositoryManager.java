@@ -1,9 +1,9 @@
 package com.xa.mass.engine.v2.dao;
 
-import com.xa.mass.base.channel.queue.api.MessageMap;
-import com.xa.mass.base.channel.queue.api.MessageQueue;
 import com.xa.mass.base.channel.queue.MessageQueueProviderRegistry;
 import com.xa.mass.base.channel.queue.QueueProviderType;
+import com.xa.mass.base.channel.queue.api.MessageMap;
+import com.xa.mass.base.channel.queue.api.MessageQueue;
 import com.xa.mass.engine.v2.entity.TaskEntity;
 import com.xa.mass.engine.v2.entity.TaskMsgEntity;
 
@@ -51,10 +51,10 @@ public class TaskRepositoryManager {
         taskMap.put(taskEntity.getTaskId(), taskEntity);
         
         // 使用函数式提供者创建种子队列
-        taskSeedsMap.put(taskEntity.getTaskId(), MessageQueueProviderRegistry.createQueue(seedQueueType, "seed-" + taskEntity.getTaskId()));
+        taskSeedsMap.put(taskEntity.getTaskId(), MessageQueueProviderRegistry.createQueue(seedQueueType, "xa_mass_platform::seed-" + taskEntity.getTaskId()));
         
         // 使用函数式提供者创建任务消息队列
-        taskMsgMap.put(taskEntity.getTaskId(), MessageQueueProviderRegistry.createQueue(msgQueueType, "msg-" + taskEntity.getTaskId()));
+        taskMsgMap.put(taskEntity.getTaskId(), MessageQueueProviderRegistry.createQueue(msgQueueType, "xa_mass_platform::msg-" + taskEntity.getTaskId()));
     }
 
     /**

@@ -5,8 +5,7 @@ import com.google.gson.GsonBuilder;
 import com.xa.mass.base.channel.queue.api.MessageMap;
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.api.sync.RedisHashCommands;
-import java.lang.reflect.ParameterizedType;
-import java.lang.reflect.Type;
+
 import java.util.Objects;
 
 /**
@@ -27,7 +26,7 @@ public class LettuceRedisMessageMap<K, V> implements MessageMap<K, V> {
         this.connection = RedisConnectionManager.getConnection();
         this.hashCommands = connection.sync();
         this.name = name;
-        this.redisKey = name;
+        this.redisKey = name+"::hash";
         this.gson = new GsonBuilder().create();
         this.keyType = keyType;
         this.valueType = valueType;

@@ -3,10 +3,10 @@ package com.xa.mass.base.channel.queue.redis;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.xa.mass.base.channel.queue.api.MessageQueue;
+import io.lettuce.core.KeyValue;
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.api.sync.RedisCommands;
 
-import io.lettuce.core.KeyValue;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -26,7 +26,7 @@ public class LettuceRedisQueue<T> implements MessageQueue<T> {
     public LettuceRedisQueue(String queueKey, String name, Class<T> messageType) {
         this.connection = RedisConnectionManager.getConnection();
         this.commands = connection.sync();
-        this.queueKey = queueKey;
+        this.queueKey = queueKey+"::queue";
         this.name = name;
         this.messageType = messageType;
         this.gson = new GsonBuilder().create();
