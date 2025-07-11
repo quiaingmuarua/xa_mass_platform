@@ -25,7 +25,7 @@ public class LettuceRedisMessageMap<K, V> implements MessageMap<K, V> {
     public LettuceRedisMessageMap(String name, Class<K> keyType, Class<V> valueType) {
         this.connection = RedisConnectionManager.getConnection();
         this.hashCommands = connection.sync();
-        this.name = name;
+        this.name = name+"::hash";
         this.redisKey = name+"::hash";
         this.gson = new GsonBuilder().create();
         this.keyType = keyType;

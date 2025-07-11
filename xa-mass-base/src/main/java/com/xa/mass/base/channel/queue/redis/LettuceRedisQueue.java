@@ -27,7 +27,7 @@ public class LettuceRedisQueue<T> implements MessageQueue<T> {
         this.connection = RedisConnectionManager.getConnection();
         this.commands = connection.sync();
         this.queueKey = queueKey+"::queue";
-        this.name = name;
+        this.name = name+"::queue";
         this.messageType = messageType;
         this.gson = new GsonBuilder().create();
     }

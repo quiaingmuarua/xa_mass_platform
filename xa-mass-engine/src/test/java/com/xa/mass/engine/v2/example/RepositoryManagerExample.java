@@ -71,30 +71,36 @@ public class RepositoryManagerExample {
                                    MessageMap<String, TokenEntity> demoAppTokenMap,
                                    String queueType){
 
-
+        //init manager
         DeviceRepositoryManager deviceRepositoryManager = new DeviceRepositoryManager(deviceMap, tokenMap);
         deviceRepositoryManager.addProjectDeviceTokenMap(Project.DEMO_APP.getCode(), demoAppTokenMap);
         TaskRepositoryManager taskRepositoryManager = new TaskRepositoryManager(taskEntityMessageMap,
                 queueType.equals("内存") ? QueueProviderType.IN_MEMORY : QueueProviderType.REDIS);
+
+
+        //init entity list
         List<DeviceEntity> deviceEntityList = generateDevices();
         List<TokenEntity> tokenEntityList = generateTokens();
-        initEnv(deviceEntityList, tokenEntityList, deviceRepositoryManager,taskRepositoryManager,queueType);
-        //push seed
-        pushSeed(generateTasks(), new TaskRepositoryManager(taskEntityMessageMap, QueueProviderType.REDIS));
+        List<TaskEntity> taskEntityList = generateTasks();
+
+        //bind to manager
+        initEnv(deviceEntityList, tokenEntityList, taskEntityList,deviceRepositoryManager,taskRepositoryManager,queueType);
+
+        //push seed to queue
+        pushSeed(taskEntityList, taskRepositoryManager);
     }
 
 
     /**
      * 公共示例执行逻辑
      */
-    private static void initEnv(List<DeviceEntity> deviceEntityList, List<TokenEntity> tokenEntityList, DeviceRepositoryManager deviceRepositoryManager,TaskRepositoryManager taskRepositoryManager,String queueType) {
+    private static void initEnv(List<DeviceEntity> deviceEntityList, List<TokenEntity> tokenEntityList, List<TaskEntity> taskEntityList, DeviceRepositoryManager deviceRepositoryManager,TaskRepositoryManager taskRepositoryManager,String queueType) {
         for (int i = 0; i < Math.min(deviceEntityList.size(), tokenEntityList.size()); i++) {
             TokenEntity token = tokenEntityList.get(i);
             token.setDeviceId(deviceEntityList.get(i).getDeviceId());
             deviceRepositoryManager.addDeviceBindToken(token);
         }
         deviceEntityList.forEach(deviceRepositoryManager::addDevice);
-        List<TaskEntity> taskEntityList = generateTasks();
         taskEntityList.forEach(taskRepositoryManager::createTask);
         System.out.println("[" + queueType + "] DeviceRepositoryManager initialized successfully");
         System.out.println("[" + queueType + "] Generated " + deviceEntityList.size() + " devices");
@@ -103,10 +109,11 @@ public class RepositoryManagerExample {
 
     }
 
+
     private static void pushSeed(List<TaskEntity> taskEntityList, TaskRepositoryManager taskRepositoryManager){
         taskEntityList.forEach(taskEntity -> {
             for (int i = 0; i < taskEntity.getTaskCount(); i++) {
-                taskRepositoryManager.addTaskSeed(taskEntity.getTaskId(), "seed-" + i);
+                taskRepositoryManager.addTaskSeed(taskEntity.getTaskId(), "seed-" + i+taskEntity.getTaskId());
             }
         });
 
