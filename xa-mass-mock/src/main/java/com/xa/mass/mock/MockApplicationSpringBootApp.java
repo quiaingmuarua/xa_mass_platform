@@ -4,7 +4,7 @@ import com.xa.mass.engine.DeviceManager;
 import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.gateway.queue.Envelope;
-import com.xa.mass.base.channel.queue.MessageQueue;
+import com.xa.mass.base.channel.queue.api.MessageQueue;
 import com.xa.mass.starter.MassApplication;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

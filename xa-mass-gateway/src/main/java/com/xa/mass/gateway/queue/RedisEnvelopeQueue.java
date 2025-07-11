@@ -1,7 +1,7 @@
 package com.xa.mass.gateway.queue;
 
 
-import com.xa.mass.base.channel.queue.MessageQueue;
+import com.xa.mass.base.channel.queue.api.MessageQueue;
 import io.lettuce.core.*;
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.api.sync.RedisStreamCommands;

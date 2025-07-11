@@ -1,4 +1,4 @@
-package com.xa.mass.base.channel.queue;
+package com.xa.mass.base.channel.queue.api;
 
 /**
  * 通用消息集合接口，支持唯一元素存储

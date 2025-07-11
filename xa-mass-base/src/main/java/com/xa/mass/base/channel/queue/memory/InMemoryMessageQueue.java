@@ -1,5 +1,6 @@
-package com.xa.mass.base.channel.queue;
+package com.xa.mass.base.channel.queue.memory;
 
+import com.xa.mass.base.channel.queue.api.MessageQueue;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -18,9 +19,15 @@ public class InMemoryMessageQueue<T> implements MessageQueue<T> {
     
     // 使用 BlockingQueue，例如 LinkedBlockingQueue
     private final BlockingQueue<T> queue;
+    private final String name;
 
     public InMemoryMessageQueue() {
+        this("InMemoryMessageQueue");
+    }
+
+    public InMemoryMessageQueue(String name) {
         this.queue = new LinkedBlockingQueue<>(); // 无界队列
+        this.name = name != null ? name : "InMemoryMessageQueue";
     }
 
     @Override
@@ -72,6 +79,6 @@ public class InMemoryMessageQueue<T> implements MessageQueue<T> {
 
     @Override
     public String getName() {
-        return "InMemoryMessageQueue";
+        return name;
     }
 }

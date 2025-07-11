@@ -1,4 +1,4 @@
-package com.xa.mass.base.channel.queue;
+package com.xa.mass.base.channel.queue.api;
 
 /**
  * 通用消息映射接口，支持 key-value 消息存储

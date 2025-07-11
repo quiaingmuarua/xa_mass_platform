@@ -1,4 +1,4 @@
-package com.xa.mass.base.channel.queue;
+package com.xa.mass.base.channel.queue.api;
 
 /**
  * 结合队列和映射的消息存储接口

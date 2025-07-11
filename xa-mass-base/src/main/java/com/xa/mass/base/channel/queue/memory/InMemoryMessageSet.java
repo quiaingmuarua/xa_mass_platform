@@ -1,4 +1,6 @@
-package com.xa.mass.base.channel.queue;
+package com.xa.mass.base.channel.queue.memory;
+
+import com.xa.mass.base.channel.queue.api.MessageSet;
 
 import java.util.Objects;
 import java.util.Set;

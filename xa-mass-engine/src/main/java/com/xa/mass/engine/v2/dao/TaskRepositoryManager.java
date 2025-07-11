@@ -1,14 +1,10 @@
 package com.xa.mass.engine.v2.dao;
 
-import com.xa.mass.base.channel.queue.InMemoryMessageMap;
-import com.xa.mass.base.channel.queue.MessageMap;
-import com.xa.mass.base.channel.queue.MessageQueue;
-import com.xa.mass.base.channel.queue.MessageQueueFactory;
-import com.xa.mass.engine.v2.config.QueueConfig;
-import com.xa.mass.engine.v2.entity.DeviceEntity;
+import com.xa.mass.base.channel.queue.api.MessageMap;
+import com.xa.mass.base.channel.queue.api.MessageQueue;
+import com.xa.mass.base.channel.queue.MessageQueueProviderRegistry;
 import com.xa.mass.engine.v2.entity.TaskEntity;
 import com.xa.mass.engine.v2.entity.TaskMsgEntity;
-import com.xa.mass.engine.v2.entity.TokenEntity;
 
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
@@ -29,20 +25,22 @@ public class TaskRepositoryManager {
     // 任务消息队列：Map<TaskId, MessageQueue<TaskMsgEntity>>
     private final ConcurrentMap<String, MessageQueue<TaskMsgEntity>> taskMsgMap = new ConcurrentHashMap<>();
 
-    // 队列配置
-    private final QueueConfig queueConfig;
+    // 队列提供者类型
+    private final String seedQueueType;
+    private final String msgQueueType;
 
     public TaskRepositoryManager(MessageMap<String, TaskEntity> taskMap) {
-        this(taskMap, QueueConfig.createDevelopment());
+        this(taskMap, MessageQueueProviderRegistry.IN_MEMORY, MessageQueueProviderRegistry.IN_MEMORY);
     }
 
-    public TaskRepositoryManager(MessageMap<String, TaskEntity> taskMap, MessageQueueFactory.QueueType queueType) {
-        this(taskMap, new QueueConfig(queueType));
+    public TaskRepositoryManager(MessageMap<String, TaskEntity> taskMap, String queueType) {
+        this(taskMap, queueType, queueType);
     }
 
-    public TaskRepositoryManager(MessageMap<String, TaskEntity> taskMap, QueueConfig queueConfig) {
+    public TaskRepositoryManager(MessageMap<String, TaskEntity> taskMap, String seedQueueType, String msgQueueType) {
         this.taskMap = Objects.requireNonNull(taskMap, "Task map cannot be null");
-        this.queueConfig = Objects.requireNonNull(queueConfig, "Queue config cannot be null");
+        this.seedQueueType = Objects.requireNonNull(seedQueueType, "Seed queue type cannot be null");
+        this.msgQueueType = Objects.requireNonNull(msgQueueType, "Message queue type cannot be null");
     }
 
     /**
@@ -55,11 +53,11 @@ public class TaskRepositoryManager {
         
         taskMap.put(taskEntity.getTaskId(), taskEntity);
         
-        // 使用工厂创建种子队列
-        taskSeedsMap.put(taskEntity.getTaskId(), MessageQueueFactory.create(queueConfig.getTaskSeedQueueType()));
+        // 使用函数式提供者创建种子队列
+        taskSeedsMap.put(taskEntity.getTaskId(), MessageQueueProviderRegistry.createQueue(seedQueueType, "seed-" + taskEntity.getTaskId()));
         
-        // 使用工厂创建任务消息队列
-        taskMsgMap.put(taskEntity.getTaskId(), MessageQueueFactory.create(queueConfig.getTaskMsgQueueType()));
+        // 使用函数式提供者创建任务消息队列
+        taskMsgMap.put(taskEntity.getTaskId(), MessageQueueProviderRegistry.createQueue(msgQueueType, "msg-" + taskEntity.getTaskId()));
     }
 
     /**

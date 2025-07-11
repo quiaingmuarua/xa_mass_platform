@@ -1,4 +1,6 @@
-package com.xa.mass.base.channel.queue;
+package com.xa.mass.base.channel.queue.api;
+
+import com.xa.mass.base.channel.queue.memory.InMemoryMessageQueue;
 
 /**
  * MessageQueue 工厂类

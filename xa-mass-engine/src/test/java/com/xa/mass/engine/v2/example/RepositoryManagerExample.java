@@ -1,14 +1,13 @@
 package com.xa.mass.engine.v2.example;
 
-import com.xa.mass.base.channel.queue.InMemoryMessageMap;
-import com.xa.mass.base.channel.queue.MessageMap;
+import com.xa.mass.base.channel.queue.memory.InMemoryMessageMap;
+import com.xa.mass.base.channel.queue.api.MessageMap;
 import com.xa.mass.base.enums.Project;
 import com.xa.mass.base.jsondsl.model.JsonDslContext;
 import com.xa.mass.base.jsondsl.model.JsonDslDefinition;
 import com.xa.mass.base.jsondsl.processor.GenerateProcessor;
 import com.xa.mass.base.jsondsl.processor.ProcessingContext;
 import com.xa.mass.base.jsondsl.processor.ProcessorRegistry;
-import com.xa.mass.base.model.Device;
 import com.xa.mass.engine.v2.dao.DeviceRepositoryManager;
 import com.xa.mass.engine.v2.dao.TaskRepositoryManager;
 import com.xa.mass.engine.v2.entity.DeviceEntity;

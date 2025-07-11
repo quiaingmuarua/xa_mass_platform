@@ -1,7 +1,7 @@
 package com.xa.mass.engine.v2.dao;
 
-import com.xa.mass.base.channel.queue.InMemoryMessageMap;
-import com.xa.mass.base.channel.queue.MessageMap;
+import com.xa.mass.base.channel.queue.memory.InMemoryMessageMap;
+import com.xa.mass.base.channel.queue.api.MessageMap;
 import com.xa.mass.base.enums.Project;
 import com.xa.mass.engine.v2.entity.DeviceEntity;
 import com.xa.mass.engine.v2.entity.TokenEntity;

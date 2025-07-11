@@ -1,4 +1,6 @@
-package com.xa.mass.base.channel.queue;
+package com.xa.mass.base.channel.queue.memory;
+
+import com.xa.mass.base.channel.queue.api.MessageQueueWithMap;
 
 import java.util.Objects;
 import java.util.concurrent.BlockingQueue;

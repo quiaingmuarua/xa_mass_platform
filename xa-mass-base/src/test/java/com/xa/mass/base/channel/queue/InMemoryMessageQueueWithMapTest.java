@@ -1,5 +1,6 @@
 package com.xa.mass.base.channel.queue;
 
+import com.xa.mass.base.channel.queue.memory.InMemoryMessageQueueWithMap;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;

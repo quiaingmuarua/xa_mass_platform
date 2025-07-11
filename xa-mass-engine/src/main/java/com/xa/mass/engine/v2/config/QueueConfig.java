@@ -1,6 +1,6 @@
 package com.xa.mass.engine.v2.config;
 
-import com.xa.mass.base.channel.queue.MessageQueueFactory;
+import com.xa.mass.base.channel.queue.api.MessageQueueFactory;
 
 /**
  * 队列配置类
