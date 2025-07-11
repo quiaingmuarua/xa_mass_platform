@@ -6,6 +6,7 @@ import com.xa.mass.base.channel.queue.api.MessageMap;
 import com.xa.mass.base.channel.queue.api.MessageQueue;
 import com.xa.mass.engine.v2.entity.TaskEntity;
 import com.xa.mass.engine.v2.entity.TaskMsgEntity;
+import com.xa.mass.base.enums.Project;
 
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
@@ -17,36 +18,45 @@ import java.util.concurrent.ConcurrentMap;
 public class TaskRepositoryManager {
 
     private final ConcurrentMap<String, MessageQueue<String>> taskSeedsMap = new ConcurrentHashMap<>();
-    private final MessageMap<String, TaskEntity> taskMap;
+    private final ConcurrentMap<Project, MessageMap<String, TaskEntity>> projectTaskMap = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, MessageQueue<TaskMsgEntity>> taskMsgMap = new ConcurrentHashMap<>();
     private final QueueProviderType seedQueueType;
     private final QueueProviderType msgQueueType;
 
-    public TaskRepositoryManager(MessageMap<String, TaskEntity> taskMap, QueueProviderType queueType) {
-        this(taskMap, queueType, queueType);
+    // 构造函数，直接传入项目-任务Map
+    public TaskRepositoryManager(ConcurrentMap<Project, MessageMap<String, TaskEntity>> projectTaskMap, QueueProviderType queueType) {
+        this(projectTaskMap, queueType, queueType);
     }
 
-    public TaskRepositoryManager(MessageMap<String, TaskEntity> taskMap, QueueProviderType seedQueueType, QueueProviderType msgQueueType) {
-        this.taskMap = Objects.requireNonNull(taskMap);
+    public TaskRepositoryManager(ConcurrentMap<Project, MessageMap<String, TaskEntity>> projectTaskMap, QueueProviderType seedQueueType, QueueProviderType msgQueueType) {
+        this.projectTaskMap.putAll(Objects.requireNonNull(projectTaskMap));
         this.seedQueueType = Objects.requireNonNull(seedQueueType);
         this.msgQueueType = Objects.requireNonNull(msgQueueType);
     }
 
     // 任务实体操作
-    public void saveTask(TaskEntity taskEntity) {
-        taskMap.put(taskEntity.getTaskId(), taskEntity);
+    public void saveTask(Project project, TaskEntity taskEntity) {
+        projectTaskMap.computeIfAbsent(project, k -> new com.xa.mass.base.channel.queue.memory.InMemoryMessageMap<>())
+                      .put(taskEntity.getTaskId(), taskEntity);
     }
 
-    public TaskEntity getTask(String taskId) {
-        return taskMap.get(taskId);
+    public TaskEntity getTask(Project project, String taskId) {
+        MessageMap<String, TaskEntity> map = projectTaskMap.get(project);
+        return map != null ? map.get(taskId) : null;
     }
 
-    public boolean containsTask(String taskId) {
-        return taskMap.containsKey(taskId);
+    public boolean containsTask(Project project, String taskId) {
+        MessageMap<String, TaskEntity> map = projectTaskMap.get(project);
+        return map != null && map.containsKey(taskId);
     }
 
-    public int getTotalTaskCount() {
-        return taskMap.size();
+    public int getTotalTaskCount(Project project) {
+        MessageMap<String, TaskEntity> map = projectTaskMap.get(project);
+        return map != null ? map.size() : 0;
+    }
+
+    public int getTotalProjectCount() {
+        return projectTaskMap.size();
     }
 
     // 种子队列操作

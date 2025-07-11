@@ -6,7 +6,9 @@ import com.xa.mass.base.channel.queue.api.MessageMap;
 import com.xa.mass.base.channel.queue.api.MessageQueue;
 import com.xa.mass.base.channel.queue.MessageQueueProviderRegistry;
 import com.xa.mass.base.channel.queue.QueueProviderType;
+import com.xa.mass.base.enums.Project;
 import com.xa.mass.engine.v2.dao.TaskRepositoryManager;
+import com.xa.mass.engine.v2.entity.DeviceEntity;
 import com.xa.mass.engine.v2.entity.TaskEntity;
 import com.xa.mass.engine.v2.entity.TaskMsgEntity;
 import org.slf4j.Logger;
@@ -76,30 +78,43 @@ public class SimpleFunctionalExample {
     private static void exampleTaskRepositoryManager() {
         logger.info("=== 示例3: TaskRepositoryManager集成 ===");
 
-        MessageMap<String, TaskEntity> taskMap = new InMemoryMessageMap<>();
-
-        // 使用默认配置（内存队列）
-        TaskRepositoryManager manager1 = new TaskRepositoryManager(taskMap, QueueProviderType.IN_MEMORY);
-        createAndTestTask(manager1, "task-001", "默认配置任务");
-
+        // 使用默认配置
+        MessageMap<String, DeviceEntity> deviceMap = new InMemoryMessageMap<>();
+        java.util.concurrent.ConcurrentMap<Project, MessageMap<String, TaskEntity>> projectTaskMap = new java.util.concurrent.ConcurrentHashMap<>();
+        for (Project project : Project.values()) {
+            projectTaskMap.put(project, new InMemoryMessageMap<>());
+        }
+        
+        TaskRepositoryManager defaultManager = new TaskRepositoryManager(projectTaskMap, QueueProviderType.IN_MEMORY);
+        
         // 使用自定义队列类型
-        TaskRepositoryManager manager2 = new TaskRepositoryManager(
-            taskMap, 
-            QueueProviderType.IN_MEMORY,  // 种子队列使用内存队列
-            QueueProviderType.IN_MEMORY   // 消息队列使用内存队列
-        );
-        createAndTestTask(manager2, "task-002", "自定义队列任务");
+        TaskRepositoryManager customManager = new TaskRepositoryManager(projectTaskMap, QueueProviderType.IN_MEMORY, QueueProviderType.IN_MEMORY);
+
+        // 演示任务操作
+        TaskEntity task = new TaskEntity("task001", "测试任务", Project.DEMO_APP.getCode());
+        defaultManager.saveTask(Project.DEMO_APP, task);
+
+        // 创建队列并添加种子数据
+        defaultManager.createSeedQueue("task001");
+        defaultManager.addSeed("task001", "seed-data-1");
+        defaultManager.addSeed("task001", "seed-data-2");
+
+        // 创建队列并添加任务消息
+        defaultManager.createMsgQueue("task001");
+        TaskMsgEntity taskMsg = new TaskMsgEntity("msg-task001", "task001");
+        taskMsg.markAsBinding();
+        defaultManager.addMsg("task001", taskMsg);
+
+        logger.info("任务 {} - 种子数: {}, 消息数: {}", 
+            task.getTaskName(), defaultManager.getSeedCount("task001"), defaultManager.getMsgCount("task001"));
     }
 
     /**
      * 创建并测试任务的辅助方法
      */
     private static void createAndTestTask(TaskRepositoryManager manager, String taskId, String taskName) {
-        // 创建任务
-        TaskEntity task = new TaskEntity();
-        task.setTaskId(taskId);
-        task.setTaskName(taskName);
-        manager.saveTask(task);
+        TaskEntity task = new TaskEntity(taskId, taskName, Project.DEMO_APP.getCode());
+        manager.saveTask(Project.DEMO_APP, task);
 
         // 添加种子数据
         manager.addSeed(taskId, "seed-data-1");

@@ -32,10 +32,13 @@ public class DataFlowIntegrationTest {
     @BeforeEach
     void setUp() {
         // 初始化数据层
-        InMemoryMessageMap<String, TaskEntity> taskMap = new InMemoryMessageMap<>();
+        java.util.concurrent.ConcurrentMap<com.xa.mass.base.enums.Project, com.xa.mass.base.channel.queue.api.MessageMap<String, com.xa.mass.engine.v2.entity.TaskEntity>> projectTaskMap = new java.util.concurrent.ConcurrentHashMap<>();
+        for (com.xa.mass.base.enums.Project project : com.xa.mass.base.enums.Project.values()) {
+            projectTaskMap.put(project, new InMemoryMessageMap<>());
+        }
         InMemoryMessageMap<String, DeviceEntity> deviceMap = new InMemoryMessageMap<>();
         
-        taskRepositoryManager = new TaskRepositoryManager(taskMap, QueueProviderType.IN_MEMORY);
+        taskRepositoryManager = new TaskRepositoryManager(projectTaskMap, QueueProviderType.IN_MEMORY);
         deviceRepositoryManager = new DeviceRepositoryManager(deviceMap);
         
         // 初始化服务层
@@ -70,47 +73,47 @@ public class DataFlowIntegrationTest {
         
         // 2. 创建任务
         TaskEntity task = createTestTask("task001", Project.DEMO_APP);
-        taskService.createTask(task);
+        taskService.createTask(Project.DEMO_APP, task);
         
         // 验证任务创建
-        assertTrue(taskService.containsTask("task001"));
-        TaskEntity retrievedTask = taskService.getTask("task001");
+        assertTrue(taskService.containsTask(Project.DEMO_APP, "task001"));
+        TaskEntity retrievedTask = taskService.getTask(Project.DEMO_APP, "task001");
         assertNotNull(retrievedTask);
         assertEquals("task001", retrievedTask.getTaskId());
         
         // 3. 添加任务种子
-        taskService.addTaskSeed("task001", "seed1");
-        taskService.addTaskSeed("task001", "seed2");
-        taskService.addTaskSeed("task001", "seed3");
+        taskService.addTaskSeed(Project.DEMO_APP, "task001", "seed1");
+        taskService.addTaskSeed(Project.DEMO_APP, "task001", "seed2");
+        taskService.addTaskSeed(Project.DEMO_APP, "task001", "seed3");
         
         // 验证种子数量
-        assertEquals(3, taskService.getTaskSeedCount("task001"));
+        assertEquals(3, taskService.getTaskSeedCount(Project.DEMO_APP, "task001"));
         
         // 4. 更新任务状态
-        taskService.updateTaskStatus("task001", "READY");
-        TaskEntity readyTask = taskService.getTask("task001");
+        taskService.updateTaskStatus(Project.DEMO_APP, "task001", "READY");
+        TaskEntity readyTask = taskService.getTask(Project.DEMO_APP, "task001");
         assertEquals("READY", readyTask.getTaskStatus());
         
         // 5. 消费种子并创建任务消息
-        String seed1 = taskService.getTaskSeed("task001");
+        String seed1 = taskService.getTaskSeed(Project.DEMO_APP, "task001");
         assertEquals("seed1", seed1);
         
         TaskMsgEntity taskMsg = createTestTaskMsg("msg001", "task001");
-        taskService.addTaskMsg("task001", taskMsg);
+        taskService.addTaskMsg(Project.DEMO_APP, "task001", taskMsg);
         
         // 验证消息数量
-        assertEquals(1, taskService.getTaskMsgCount("task001"));
+        assertEquals(1, taskService.getTaskMsgCount(Project.DEMO_APP, "task001"));
         
         // 6. 消费任务消息
-        TaskMsgEntity retrievedMsg = taskService.getTaskMsg("task001");
+        TaskMsgEntity retrievedMsg = taskService.getTaskMsg(Project.DEMO_APP, "task001");
         assertNotNull(retrievedMsg);
         assertEquals("msg001", retrievedMsg.getMsgId());
         assertEquals("task001", retrievedMsg.getTaskId());
         
         // 7. 验证最终状态
-        assertEquals(2, taskService.getTaskSeedCount("task001")); // 剩余2个种子
-        assertEquals(0, taskService.getTaskMsgCount("task001")); // 消息已消费
-        assertEquals(1, taskService.getTotalTaskCount()); // 1个任务
+        assertEquals(2, taskService.getTaskSeedCount(Project.DEMO_APP, "task001")); // 剩余2个种子
+        assertEquals(0, taskService.getTaskMsgCount(Project.DEMO_APP, "task001")); // 消息已消费
+        assertEquals(1, taskService.getTotalTaskCount(Project.DEMO_APP)); // 1个任务
         assertEquals(1, deviceService.getDeviceCount()); // 1个设备
         assertEquals(1, deviceService.getTokenCount()); // 1个令牌
     }
@@ -132,11 +135,11 @@ public class DataFlowIntegrationTest {
         // 创建任务
         for (int i = 0; i < taskCount; i++) {
             TaskEntity task = createTestTask("task" + i, Project.DEMO_APP);
-            taskService.createTask(task);
+            taskService.createTask(Project.DEMO_APP, task);
             
             // 为每个任务添加种子
             for (int j = 0; j < 3; j++) {
-                taskService.addTaskSeed("task" + i, "seed" + i + "_" + j);
+                taskService.addTaskSeed(Project.DEMO_APP, "task" + i, "seed" + i + "_" + j);
             }
         }
         
@@ -148,15 +151,15 @@ public class DataFlowIntegrationTest {
                 String taskId = "task" + taskIndex;
                 
                 // 消费种子
-                String seed = taskService.getTaskSeed(taskId);
+                String seed = taskService.getTaskSeed(Project.DEMO_APP, taskId);
                 assertNotNull(seed);
                 
                 // 创建消息
                 TaskMsgEntity taskMsg = createTestTaskMsg("msg" + taskIndex, taskId);
-                taskService.addTaskMsg(taskId, taskMsg);
+                taskService.addTaskMsg(Project.DEMO_APP, taskId, taskMsg);
                 
                 // 消费消息
-                TaskMsgEntity retrievedMsg = taskService.getTaskMsg(taskId);
+                TaskMsgEntity retrievedMsg = taskService.getTaskMsg(Project.DEMO_APP, taskId);
                 assertNotNull(retrievedMsg);
                 assertEquals("msg" + taskIndex, retrievedMsg.getMsgId());
             });
@@ -173,14 +176,14 @@ public class DataFlowIntegrationTest {
         }
         
         // 验证最终状态
-        assertEquals(taskCount, taskService.getTotalTaskCount());
+        assertEquals(taskCount, taskService.getTotalTaskCount(Project.DEMO_APP));
         assertEquals(deviceCount, deviceService.getDeviceCount());
         assertEquals(deviceCount, deviceService.getTokenCount());
         
         // 验证每个任务的种子数量（应该减少1个）
         for (int i = 0; i < taskCount; i++) {
-            assertEquals(2, taskService.getTaskSeedCount("task" + i));
-            assertEquals(0, taskService.getTaskMsgCount("task" + i));
+            assertEquals(2, taskService.getTaskSeedCount(Project.DEMO_APP, "task" + i));
+            assertEquals(0, taskService.getTaskMsgCount(Project.DEMO_APP, "task" + i));
         }
     }
 
@@ -194,8 +197,8 @@ public class DataFlowIntegrationTest {
         
         // 验证服务功能
         TaskEntity task = createTestTask("task001", Project.DEMO_APP);
-        EngineRegistry.getTaskService().createTask(task);
-        assertTrue(EngineRegistry.getTaskService().containsTask("task001"));
+        EngineRegistry.getTaskService().createTask(Project.DEMO_APP, task);
+        assertTrue(EngineRegistry.getTaskService().containsTask(Project.DEMO_APP, "task001"));
         
         DeviceEntity device = createTestDevice("device001");
         EngineRegistry.getDeviceService().registerDevice(device);

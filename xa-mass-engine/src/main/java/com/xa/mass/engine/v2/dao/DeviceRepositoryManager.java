@@ -24,7 +24,7 @@ public class DeviceRepositoryManager {
     // 设备ID -> 设备实体
     private final MessageMap<String, DeviceEntity> deviceEntityMap;
     // 设备ID -> Token实体（全局cache，仅内存）
-    private final MessageMap<String, TokenEntity> tokenEntityMap = new com.xa.mass.base.channel.queue.memory.InMemoryMessageMap<>();
+    private final MessageMap<String, TokenEntity> tokenEntityMap = new InMemoryMessageMap<>();
     // 项目 -> (设备ID -> Token实体)
     private final ConcurrentMap<String, MessageMap<String, TokenEntity>> projectTokenEntityMap = new ConcurrentHashMap<>();
 

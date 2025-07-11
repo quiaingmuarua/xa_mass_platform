@@ -2,6 +2,7 @@ package com.xa.mass.engine.v2.example;
 
 import com.xa.mass.base.channel.queue.QueueProviderType;
 import com.xa.mass.base.channel.queue.memory.InMemoryMessageMap;
+import com.xa.mass.base.enums.Project;
 import com.xa.mass.engine.v2.dao.DeviceRepositoryManager;
 import com.xa.mass.engine.v2.dao.TaskRepositoryManager;
 import com.xa.mass.engine.v2.entity.DeviceEntity;
@@ -16,13 +17,15 @@ public class TaskBindDeviceExample {
 
     public static void main(String[] args) {
         DeviceRepositoryManager deviceRepositoryManager = new DeviceRepositoryManager(new InMemoryMessageMap<>("deviceMap"));
-        TaskRepositoryManager taskRepositoryManager = new TaskRepositoryManager(new InMemoryMessageMap<>("taskEntityMessageMap"), QueueProviderType.IN_MEMORY);
+        java.util.concurrent.ConcurrentMap<Project, com.xa.mass.base.channel.queue.api.MessageMap<String, TaskEntity>> projectTaskMap = new java.util.concurrent.ConcurrentHashMap<>();
+        for (Project project : Project.values()) {
+            projectTaskMap.put(project, new com.xa.mass.base.channel.queue.memory.InMemoryMessageMap<>());
+        }
+        TaskRepositoryManager taskRepositoryManager = new TaskRepositoryManager(projectTaskMap, com.xa.mass.base.channel.queue.QueueProviderType.IN_MEMORY);
 
         generateData(deviceRepositoryManager, taskRepositoryManager);
         System.out.println("TaskRepositoryManager initialized successfully");
         //开始绑定task 和 token 生成taskMsg
-
-//          taskRepositoryManager.ge
 
     }
 
@@ -31,24 +34,25 @@ public class TaskBindDeviceExample {
         deviceRepositoryManager.registerAllProjects(project -> new InMemoryMessageMap<>(project.getCode() + "TokenMap"));
 
         // 初始化内存队列
-        List<DeviceEntity> deviceEntityList = mockDevices(100);
-        List<TokenEntity> tokenEntityList = mockTokens(100);
+        List<DeviceEntity> deviceEntities = mockDevices(100);
+        //获取demo app project token
+        List<TokenEntity> tokenEntityList = deviceRepositoryManager.getProjectTokens(Project.DEMO_APP.getCode());
         List<TaskEntity> taskEntityList = mockTasks(1);
-        deviceEntityList.forEach(deviceRepositoryManager::addDevice);
+        deviceEntities.forEach(deviceRepositoryManager::addDevice);
 
-        for (int i = 0; i < Math.min(deviceEntityList.size(), tokenEntityList.size()); i++) {
+        for (int i = 0; i < Math.min(deviceEntities.size(), tokenEntityList.size()); i++) {
             TokenEntity token = tokenEntityList.get(i);
-            token.setDeviceId(deviceEntityList.get(i).getDeviceId());
+            token.setDeviceId(deviceEntities.get(i).getDeviceId());
             deviceRepositoryManager.addDeviceBindToken(token);
         }
         System.out.println("DeviceRepositoryManager initialized successfully");
-        System.out.println("Generated " + deviceEntityList.size() + " devices");
+        System.out.println("Generated " + deviceEntities.size() + " devices");
         System.out.println("Generated " + tokenEntityList.size() + " tokens");
         System.out.println("Generated " + taskEntityList.size() + " tasks");
         
         // 创建任务
         taskEntityList.forEach(taskEntity -> {
-            taskRepositoryManager.saveTask(taskEntity);
+            taskRepositoryManager.saveTask(Project.fromCode(taskEntity.getProject()), taskEntity);
             taskRepositoryManager.createSeedQueue(taskEntity.getTaskId());
             taskRepositoryManager.createMsgQueue(taskEntity.getTaskId());
         });

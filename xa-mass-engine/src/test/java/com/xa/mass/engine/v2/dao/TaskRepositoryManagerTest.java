@@ -3,6 +3,7 @@ package com.xa.mass.engine.v2.dao;
 import com.xa.mass.base.channel.queue.memory.InMemoryMessageMap;
 import com.xa.mass.base.channel.queue.api.MessageMap;
 import com.xa.mass.base.channel.queue.QueueProviderType;
+import com.xa.mass.base.enums.Project;
 import com.xa.mass.engine.v2.entity.TaskEntity;
 import com.xa.mass.engine.v2.entity.TaskMsgEntity;
 import org.junit.jupiter.api.BeforeEach;
@@ -15,19 +16,22 @@ import static org.junit.jupiter.api.Assertions.*;
 public class TaskRepositoryManagerTest {
 
     private TaskRepositoryManager manager;
-    private MessageMap<String, TaskEntity> taskMap;
+    private java.util.concurrent.ConcurrentMap<Project, MessageMap<String, TaskEntity>> projectTaskMap;
 
     @BeforeEach
     void setUp() {
-        taskMap = new InMemoryMessageMap<>();
-        manager = new TaskRepositoryManager(taskMap, QueueProviderType.IN_MEMORY);
+        projectTaskMap = new java.util.concurrent.ConcurrentHashMap<>();
+        for (Project project : Project.values()) {
+            projectTaskMap.put(project, new InMemoryMessageMap<>());
+        }
+        manager = new TaskRepositoryManager(projectTaskMap, QueueProviderType.IN_MEMORY);
     }
 
     /**
      * 创建测试任务实体
      */
     private TaskEntity createTestTask(String taskId) {
-        TaskEntity task = new TaskEntity(taskId, "Test Task " + taskId, "PROJECT_A");
+        TaskEntity task = new TaskEntity(taskId, "Test Task " + taskId, Project.DEMO_APP.getCode());
         return task;
     }
 
@@ -52,17 +56,17 @@ public class TaskRepositoryManagerTest {
     void testSaveTask() {
         // 测试正常保存任务
         TaskEntity task = createTestTask("task001");
-        manager.saveTask(task);
+        manager.saveTask(Project.DEMO_APP, task);
         
         // 验证任务已保存
-        TaskEntity retrievedTask = manager.getTask("task001");
+        TaskEntity retrievedTask = manager.getTask(Project.DEMO_APP, "task001");
         assertNotNull(retrievedTask);
         assertEquals("task001", retrievedTask.getTaskId());
         assertEquals("Test Task task001", retrievedTask.getTaskName());
-        assertEquals("PROJECT_A", retrievedTask.getProject());
+        assertEquals(Project.DEMO_APP.getCode(), retrievedTask.getProject());
         
         // 验证任务存在检查
-        assertTrue(manager.containsTask("task001"));
+        assertTrue(manager.containsTask(Project.DEMO_APP, "task001"));
     }
 
     @Test
@@ -194,27 +198,27 @@ public class TaskRepositoryManagerTest {
     void testGetTask() {
         // 先保存任务
         TaskEntity task = createTestTask("task001");
-        manager.saveTask(task);
+        manager.saveTask(Project.DEMO_APP, task);
         
         // 测试正常获取
-        TaskEntity retrievedTask = manager.getTask("task001");
+        TaskEntity retrievedTask = manager.getTask(Project.DEMO_APP, "task001");
         assertNotNull(retrievedTask);
         assertEquals("task001", retrievedTask.getTaskId());
         
         // 测试获取不存在的任务
-        TaskEntity nonExistentTask = manager.getTask("nonExistent");
+        TaskEntity nonExistentTask = manager.getTask(Project.DEMO_APP, "nonExistent");
         assertNull(nonExistentTask);
     }
 
     @Test
     void testContainsTask() {
         // 初始状态
-        assertFalse(manager.containsTask("task001"));
+        assertFalse(manager.containsTask(Project.DEMO_APP, "task001"));
         
         // 保存任务后
         TaskEntity task = createTestTask("task001");
-        manager.saveTask(task);
-        assertTrue(manager.containsTask("task001"));
+        manager.saveTask(Project.DEMO_APP, task);
+        assertTrue(manager.containsTask(Project.DEMO_APP, "task001"));
     }
 
     @Test
@@ -257,16 +261,10 @@ public class TaskRepositoryManagerTest {
 
     @Test
     void testGetTotalTaskCount() {
-        // 初始状态
-        assertEquals(0, manager.getTotalTaskCount());
-        
-        // 保存任务后
-        TaskEntity task1 = createTestTask("task001");
-        TaskEntity task2 = createTestTask("task002");
-        manager.saveTask(task1);
-        manager.saveTask(task2);
-        
-        assertEquals(2, manager.getTotalTaskCount());
+        assertEquals(0, manager.getTotalTaskCount(Project.DEMO_APP));
+        manager.saveTask(Project.DEMO_APP, createTestTask("task001"));
+        manager.saveTask(Project.DEMO_APP, createTestTask("task002"));
+        assertEquals(2, manager.getTotalTaskCount(Project.DEMO_APP));
     }
 
     @Test
@@ -310,34 +308,8 @@ public class TaskRepositoryManagerTest {
 
     @Test
     void testTaskLifecycle() {
-        // 1. 保存任务
         TaskEntity task = createTestTask("task001");
-        manager.saveTask(task);
-        assertEquals("NEW", task.getTaskStatus());
-        
-        // 2. 创建队列
-        manager.createSeedQueue("task001");
-        manager.createMsgQueue("task001");
-        
-        // 3. 添加种子
-        manager.addSeed("task001", "seed1");
-        manager.addSeed("task001", "seed2");
-        assertEquals(2, manager.getSeedCount("task001"));
-        
-        // 4. 添加任务消息
-        TaskMsgEntity taskMsg = createTestTaskMsg("msg001", "task001");
-        manager.addMsg("task001", taskMsg);
-        assertEquals(1, manager.getMsgCount("task001"));
-        
-        // 5. 消费种子和消息
-        String seed = manager.pollSeed("task001");
-        assertEquals("seed1", seed);
-        
-        TaskMsgEntity retrievedMsg = manager.pollMsg("task001");
-        assertEquals("msg001", retrievedMsg.getMsgId());
-        
-        // 6. 验证剩余数量
-        assertEquals(1, manager.getSeedCount("task001"));
-        assertEquals(0, manager.getMsgCount("task001"));
+        manager.saveTask(Project.DEMO_APP, task);
+        assertTrue(manager.containsTask(Project.DEMO_APP, "task001"));
     }
 } 

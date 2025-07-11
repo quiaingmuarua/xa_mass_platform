@@ -5,6 +5,7 @@ import com.xa.mass.base.channel.queue.api.MessageMap;
 import com.xa.mass.base.channel.queue.memory.InMemoryMessageMap;
 import com.xa.mass.base.channel.queue.redis.LettuceRedisMessageMap;
 import com.xa.mass.base.channel.queue.redis.RedisConnectionManager;
+import com.xa.mass.base.enums.Project;
 import com.xa.mass.engine.v2.dao.DeviceRepositoryManager;
 import com.xa.mass.engine.v2.dao.TaskRepositoryManager;
 import com.xa.mass.engine.v2.entity.DeviceEntity;
@@ -46,7 +47,11 @@ public class RepositoryManagerExample {
         }
         //init manager
         DeviceRepositoryManager deviceRepositoryManager = new DeviceRepositoryManager(deviceMap);
-        TaskRepositoryManager taskRepositoryManager = new TaskRepositoryManager(taskEntityMessageMap,
+        java.util.concurrent.ConcurrentMap<Project, com.xa.mass.base.channel.queue.api.MessageMap<String, TaskEntity>> projectTaskMap = new java.util.concurrent.ConcurrentHashMap<>();
+        for (Project project : Project.values()) {
+            projectTaskMap.put(project, new com.xa.mass.base.channel.queue.memory.InMemoryMessageMap<>());
+        }
+        TaskRepositoryManager taskRepositoryManager = new TaskRepositoryManager(projectTaskMap,
                 queueType.equals("内存") ? QueueProviderType.IN_MEMORY : QueueProviderType.REDIS);
         TaskService taskService = new TaskServiceImpl(taskRepositoryManager);
 
@@ -118,7 +123,7 @@ public class RepositoryManagerExample {
             deviceRepositoryManager.addDeviceBindToken(token);
         }
         deviceEntityList.forEach(deviceRepositoryManager::addDevice);
-        taskEntityList.forEach(taskService::createTask);
+        taskEntityList.forEach(task -> taskService.createTask(Project.fromCode(task.getProject()), task));
         System.out.println("[" + queueType + "] DeviceRepositoryManager initialized successfully");
         System.out.println("[" + queueType + "] Generated " + deviceEntityList.size() + " devices");
         System.out.println("[" + queueType + "] Generated " + taskEntityList.size() + " tasks");
@@ -132,7 +137,7 @@ public class RepositoryManagerExample {
         {
             for (int i = 0; i < taskEntity.getTaskCount(); i++) {
                 String seed = "seed-" + i + taskEntity.getTaskId();
-                taskService.addTaskSeed(taskEntity.getTaskId(), seed);
+                taskService.addTaskSeed(Project.fromCode(taskEntity.getProject()), taskEntity.getTaskId(), seed);
             }
         });
 

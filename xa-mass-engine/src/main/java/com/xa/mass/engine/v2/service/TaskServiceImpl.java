@@ -3,6 +3,7 @@ package com.xa.mass.engine.v2.service;
 import com.xa.mass.engine.v2.dao.TaskRepositoryManager;
 import com.xa.mass.engine.v2.entity.TaskEntity;
 import com.xa.mass.engine.v2.entity.TaskMsgEntity;
+import com.xa.mass.base.enums.Project;
 
 import java.util.Objects;
 
@@ -18,12 +19,12 @@ public class TaskServiceImpl implements TaskService {
     }
 
     @Override
-    public void createTask(TaskEntity taskEntity) {
+    public void createTask(Project project, TaskEntity taskEntity) {
         Objects.requireNonNull(taskEntity, "Task entity cannot be null");
         Objects.requireNonNull(taskEntity.getTaskId(), "Task ID cannot be null");
         
         // 保存任务实体
-        repository.saveTask(taskEntity);
+        repository.saveTask(project, taskEntity);
         
         // 创建关联的队列
         repository.createSeedQueue(taskEntity.getTaskId());
@@ -31,11 +32,11 @@ public class TaskServiceImpl implements TaskService {
     }
 
     @Override
-    public void addTaskSeed(String taskId, String seed) {
+    public void addTaskSeed(Project project, String taskId, String seed) {
         Objects.requireNonNull(taskId, "Task ID cannot be null");
         Objects.requireNonNull(seed, "Seed cannot be null");
         
-        if (!repository.containsTask(taskId)) {
+        if (!repository.containsTask(project, taskId)) {
             throw new IllegalArgumentException("Task not found: " + taskId);
         }
         
@@ -43,11 +44,11 @@ public class TaskServiceImpl implements TaskService {
     }
 
     @Override
-    public void batchAddSeed(String taskId, String[] seeds) {
+    public void batchAddSeed(Project project, String taskId, String[] seeds) {
         Objects.requireNonNull(taskId, "Task ID cannot be null");
         Objects.requireNonNull(seeds, "Seeds cannot be null");
         
-        if (!repository.containsTask(taskId)) {
+        if (!repository.containsTask(project, taskId)) {
             throw new IllegalArgumentException("Task not found: " + taskId);
         }
         
@@ -55,10 +56,10 @@ public class TaskServiceImpl implements TaskService {
     }
 
     @Override
-    public String getTaskSeed(String taskId) {
+    public String getTaskSeed(Project project, String taskId) {
         Objects.requireNonNull(taskId, "Task ID cannot be null");
         
-        if (!repository.containsTask(taskId)) {
+        if (!repository.containsTask(project, taskId)) {
             return null;
         }
         
@@ -66,26 +67,26 @@ public class TaskServiceImpl implements TaskService {
     }
 
     @Override
-    public void updateTaskStatus(String taskId, String status) {
+    public void updateTaskStatus(Project project, String taskId, String status) {
         Objects.requireNonNull(taskId, "Task ID cannot be null");
         Objects.requireNonNull(status, "Status cannot be null");
         
-        TaskEntity task = repository.getTask(taskId);
+        TaskEntity task = repository.getTask(project, taskId);
         if (task == null) {
             throw new IllegalArgumentException("Task not found: " + taskId);
         }
         
         task.setTaskStatus(status);
         task.setUpdateTime(System.currentTimeMillis());
-        repository.saveTask(task);
+        repository.saveTask(project, task);
     }
 
     @Override
-    public void addTaskMsg(String taskId, TaskMsgEntity taskMsg) {
+    public void addTaskMsg(Project project, String taskId, TaskMsgEntity taskMsg) {
         Objects.requireNonNull(taskId, "Task ID cannot be null");
         Objects.requireNonNull(taskMsg, "Task message cannot be null");
         
-        if (!repository.containsTask(taskId)) {
+        if (!repository.containsTask(project, taskId)) {
             throw new IllegalArgumentException("Task not found: " + taskId);
         }
         
@@ -93,10 +94,10 @@ public class TaskServiceImpl implements TaskService {
     }
 
     @Override
-    public TaskMsgEntity getTaskMsg(String taskId) {
+    public TaskMsgEntity getTaskMsg(Project project, String taskId) {
         Objects.requireNonNull(taskId, "Task ID cannot be null");
         
-        if (!repository.containsTask(taskId)) {
+        if (!repository.containsTask(project, taskId)) {
             return null;
         }
         
@@ -104,22 +105,22 @@ public class TaskServiceImpl implements TaskService {
     }
 
     @Override
-    public TaskEntity getTask(String taskId) {
+    public TaskEntity getTask(Project project, String taskId) {
         Objects.requireNonNull(taskId, "Task ID cannot be null");
-        return repository.getTask(taskId);
+        return repository.getTask(project, taskId);
     }
 
     @Override
-    public boolean containsTask(String taskId) {
+    public boolean containsTask(Project project, String taskId) {
         Objects.requireNonNull(taskId, "Task ID cannot be null");
-        return repository.containsTask(taskId);
+        return repository.containsTask(project, taskId);
     }
 
     @Override
-    public int getTaskSeedCount(String taskId) {
+    public int getTaskSeedCount(Project project, String taskId) {
         Objects.requireNonNull(taskId, "Task ID cannot be null");
         
-        if (!repository.containsTask(taskId)) {
+        if (!repository.containsTask(project, taskId)) {
             return 0;
         }
         
@@ -127,10 +128,10 @@ public class TaskServiceImpl implements TaskService {
     }
 
     @Override
-    public int getTaskMsgCount(String taskId) {
+    public int getTaskMsgCount(Project project, String taskId) {
         Objects.requireNonNull(taskId, "Task ID cannot be null");
         
-        if (!repository.containsTask(taskId)) {
+        if (!repository.containsTask(project, taskId)) {
             return 0;
         }
         
@@ -138,7 +139,7 @@ public class TaskServiceImpl implements TaskService {
     }
 
     @Override
-    public int getTotalTaskCount() {
-        return repository.getTotalTaskCount();
+    public int getTotalTaskCount(Project project) {
+        return repository.getTotalTaskCount(project);
     }
 } 
