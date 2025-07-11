@@ -2,6 +2,7 @@ package com.xa.mass.engine.v2.example;
 
 import com.xa.mass.base.channel.queue.QueueProviderType;
 import com.xa.mass.base.channel.queue.memory.InMemoryMessageMap;
+import com.xa.mass.base.enums.Project;
 import com.xa.mass.engine.v2.dao.DeviceRepositoryManager;
 import com.xa.mass.engine.v2.dao.TaskRepositoryManager;
 import com.xa.mass.engine.v2.entity.DeviceEntity;
@@ -17,6 +18,7 @@ public class TaskBindDeviceExample {
     public static void main(String[] args) {
         DeviceRepositoryManager deviceRepositoryManager = new DeviceRepositoryManager(new InMemoryMessageMap<>("deviceMap"), new InMemoryMessageMap<>("tokenMap"));
         TaskRepositoryManager taskRepositoryManager = new TaskRepositoryManager(new InMemoryMessageMap<>("taskEntityMessageMap"), QueueProviderType.IN_MEMORY);
+
         generateData(deviceRepositoryManager, taskRepositoryManager);
         System.out.println("TaskRepositoryManager initialized successfully");
         //开始绑定task 和 token 生成taskMsg
@@ -26,6 +28,7 @@ public class TaskBindDeviceExample {
     }
 
     public static void generateData(DeviceRepositoryManager deviceRepositoryManager, TaskRepositoryManager taskRepositoryManager) {
+
         // 初始化内存队列
         List<DeviceEntity> deviceEntityList = mockDevices(100);
         List<TokenEntity> tokenEntityList = mockTokens(100);
@@ -71,7 +74,7 @@ public class TaskBindDeviceExample {
                 {
                   "tokenId": {"$UUID": true},
                   "deviceId": {"$JOIN": ["device-", "&.index"]},
-                  "project": {"$CHOICE": ["demoApp", "testApp", "otherApp"]},
+                  "project": {"$CHOICE": ["demoApp", "testApp"]},
                   "country": {"$CHOICE": ["us", "gb", "cn"]},
                   "platform": {"$CHOICE": ["android", "ios", "web"]},
                   "tokenStatus": {"$CHOICE": ["ACTIVE", "INACTIVE", "EXPIRED", "BLOCKED"]},
@@ -89,7 +92,7 @@ public class TaskBindDeviceExample {
                 {
                   "taskId": {"$UUID": true},
                   "taskName": {"$JOIN": ["Task-", "&.index"]},
-                  "project": {"$CHOICE": ["demoApp", "testApp", "otherApp"]},
+                  "project": {"$CHOICE": ["demoApp", "testApp"]},
                   "taskStatus": {"$CHOICE": ["NEW", "READY", "RUNNING", "PAUSED"]},
                   "taskCountry": {"$CHOICE": ["us", "gb", "cn"]},
                   "taskCount": {"$RANGE": [10, 200]},

@@ -52,7 +52,6 @@ public class RepositoryManagerExample {
         }
         //init manager
         DeviceRepositoryManager deviceRepositoryManager = new DeviceRepositoryManager(deviceMap, tokenMap);
-        deviceRepositoryManager.addProjectDeviceTokenMap(Project.DEMO_APP.getCode(), demoAppTokenMap);
         TaskRepositoryManager taskRepositoryManager = new TaskRepositoryManager(taskEntityMessageMap,
                 queueType.equals("内存") ? QueueProviderType.IN_MEMORY : QueueProviderType.REDIS);
 

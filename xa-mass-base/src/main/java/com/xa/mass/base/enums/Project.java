@@ -13,6 +13,7 @@ import java.util.stream.Collectors;
 @JsonFormat(shape = JsonFormat.Shape.OBJECT)
 public enum Project {
     DEMO_APP("demoApp", "演示应用"),
+    TEST_APP("testApp", "testApp"),
     RCS_APP("rcsApp", "GoogleRcs"),
     TELEGRAM_APP("telegramApp", "Telegram"),
     // 可以在这里添加更多默认项目

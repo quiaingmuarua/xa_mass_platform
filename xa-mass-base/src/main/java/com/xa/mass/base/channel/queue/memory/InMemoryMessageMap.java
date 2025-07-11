@@ -2,6 +2,7 @@ package com.xa.mass.base.channel.queue.memory;
 
 import com.xa.mass.base.channel.queue.api.MessageMap;
 
+import java.util.Collection;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -52,6 +53,11 @@ public class InMemoryMessageMap<K, V> implements MessageMap<K, V> {
     @Override
     public int size() {
         return map.size();
+    }
+
+    @Override
+    public Collection<V> values() {
+        return map.values();
     }
 
     @Override

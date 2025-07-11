@@ -1,5 +1,7 @@
 package com.xa.mass.base.channel.queue.api;
 
+import java.util.Collection;
+
 /**
  * 通用消息映射接口，支持 key-value 消息存储
  * @param <K> 键类型
@@ -12,4 +14,5 @@ public interface MessageMap<K, V> {
     boolean containsKey(K key);
     int size();
     String getName();
+    Collection<V> values();
 } 

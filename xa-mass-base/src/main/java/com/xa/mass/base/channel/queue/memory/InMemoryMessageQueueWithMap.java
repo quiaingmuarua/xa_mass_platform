@@ -83,6 +83,11 @@ public class InMemoryMessageQueueWithMap<K, V> implements MessageQueueWithMap<K,
         return map.containsKey(key);
     }
 
+    @Override
+    public java.util.Collection<V> values() {
+        return map.values();
+    }
+
     // Map 的 size 不一定等于队列 size，这里返回队列 size
     // 如需 map 的 size 可用 getMapSize()
     public int getMapSize() {

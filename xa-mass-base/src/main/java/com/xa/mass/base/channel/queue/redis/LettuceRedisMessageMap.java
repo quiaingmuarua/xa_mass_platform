@@ -7,6 +7,8 @@ import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.api.sync.RedisHashCommands;
 
 import java.util.Objects;
+import java.util.Collection;
+import java.util.ArrayList;
 
 /**
  * 基于Lettuce的Redis消息映射实现，底层用Redis hash存储，支持泛型和Gson序列化
@@ -70,6 +72,18 @@ public class LettuceRedisMessageMap<K, V> implements MessageMap<K, V> {
     public int size() {
         Long len = hashCommands.hlen(redisKey);
         return len != null ? len.intValue() : 0;
+    }
+
+    @Override
+    public Collection<V> values() {
+        java.util.List<V> result = new ArrayList<>();
+        for (String keyStr : hashCommands.hkeys(redisKey)) {
+            String valueStr = hashCommands.hget(redisKey, keyStr);
+            if (valueStr != null) {
+                result.add(gson.fromJson(valueStr, valueType));
+            }
+        }
+        return result;
     }
 
     @Override

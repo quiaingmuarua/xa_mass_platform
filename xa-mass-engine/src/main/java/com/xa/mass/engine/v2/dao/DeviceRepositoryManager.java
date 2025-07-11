@@ -9,6 +9,9 @@ import com.xa.mass.engine.v2.entity.TokenEntity;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.Objects;
+import java.util.Set;
+import java.util.Collections;
+import java.util.stream.Collectors;
 
 /**
  * 设备仓库管理器
@@ -25,8 +28,8 @@ public class DeviceRepositoryManager {
     private final MessageMap<String, DeviceEntity> deviceEntityMap;
     // 设备ID -> Token实体
     private final MessageMap<String, TokenEntity> tokenEntityMap;
-    // 项目 -> (设备ID -> Token实体)
-    private final ConcurrentMap<String, MessageMap<String, TokenEntity>> projectTokenEntityMap = new ConcurrentHashMap<>();
+    // 项目 -> tokenId集合
+    private final ConcurrentMap<String, Set<String>> projectTokenIdMap = new ConcurrentHashMap<>();
 
     /**
      * 构造函数
@@ -40,17 +43,6 @@ public class DeviceRepositoryManager {
     }
 
     /**
-     * 添加项目设备令牌映射
-     * @param project 项目代码
-     * @param projectDeviceTokenMap 项目设备令牌映射
-     */
-    public void addProjectDeviceTokenMap(String project, MessageMap<String, TokenEntity> projectDeviceTokenMap) {
-        Objects.requireNonNull(project, "Project cannot be null");
-        Objects.requireNonNull(projectDeviceTokenMap, "Project device token map cannot be null");
-        this.projectTokenEntityMap.put(project, projectDeviceTokenMap);
-    }
-
-    /**
      * 添加设备绑定令牌
      * @param tokenEntity 令牌实体
      */
@@ -58,18 +50,7 @@ public class DeviceRepositoryManager {
         Objects.requireNonNull(tokenEntity, "Token entity cannot be null");
         Objects.requireNonNull(tokenEntity.getProject(), "Token project cannot be null");
         Objects.requireNonNull(tokenEntity.getDeviceId(), "Token device ID cannot be null");
-        
-        String project = tokenEntity.getProject();
-        String deviceId = tokenEntity.getDeviceId();
-        
-        // 添加到项目设备令牌映射
-        MessageMap<String, TokenEntity> projectMap = projectTokenEntityMap.get(project);
-        if (projectMap != null) {
-            projectMap.put(deviceId, tokenEntity);
-        }
-        
-        // 添加到全局令牌映射
-        tokenEntityMap.put(deviceId, tokenEntity);
+        tokenEntityMap.put(tokenEntity.getDeviceId(), tokenEntity);
     }
 
     /**
@@ -102,18 +83,24 @@ public class DeviceRepositoryManager {
         Objects.requireNonNull(deviceId, "Device ID cannot be null");
         Objects.requireNonNull(project, "Project cannot be null");
         
-        MessageMap<String, TokenEntity> projectMap = projectTokenEntityMap.get(project);
-        return projectMap != null ? projectMap.get(deviceId) : null;
+        // The original code used projectTokenEntityMap here, which is being removed.
+        // This method will need to be refactored to use projectTokenIdMap if it's to remain functional.
+        // For now, assuming projectTokenIdMap is the intended source for project-specific tokens.
+        return tokenEntityMap.values().stream()
+            .filter(token -> token.getProject().equals(project))
+            .filter(token -> token.getDeviceId().equals(deviceId))
+            .findFirst()
+            .orElse(null);
     }
 
     /**
-     * 获取项目设备令牌映射
-     * @param project 项目代码
-     * @return 项目设备令牌映射，如果不存在返回null
+     * 获取项目下所有TokenEntity
      */
-    public MessageMap<String, TokenEntity> getDeviceToken(String project) {
+    public java.util.List<TokenEntity> getProjectTokens(String project) {
         Objects.requireNonNull(project, "Project cannot be null");
-        return projectTokenEntityMap.get(project);
+        return tokenEntityMap.values().stream()
+            .filter(token -> project.equals(token.getProject()))
+            .collect(Collectors.toList());
     }
 
     /**
@@ -177,7 +164,8 @@ public class DeviceRepositoryManager {
      * @return 项目数量
      */
     public int getProjectCount() {
-        return projectTokenEntityMap.size();
+        // 统计不同project数量
+        return (int) tokenEntityMap.values().stream().map(TokenEntity::getProject).distinct().count();
     }
 
     /**
@@ -192,7 +180,7 @@ public class DeviceRepositoryManager {
         DeviceRepositoryManager deviceRepositoryManager = new DeviceRepositoryManager(deviceMap, tokenMap);
         
         // 添加项目设备令牌映射
-        deviceRepositoryManager.addProjectDeviceTokenMap(Project.DEMO_APP.getCode(), new InMemoryMessageMap<>());
+        // deviceRepositoryManager.addProjectDeviceTokenMap(Project.DEMO_APP.getCode(), new InMemoryMessageMap<>()); // Removed
         
         System.out.println("DeviceRepositoryManager initialized successfully");
     }
