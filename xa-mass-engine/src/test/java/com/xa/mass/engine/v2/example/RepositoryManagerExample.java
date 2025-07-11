@@ -34,26 +34,14 @@ public class RepositoryManagerExample {
      */
     private static void runInMemoryQueueExample() {
         System.out.println("=== 内存队列示例 ===");
+        // 初始化内存队列
         MessageMap<String, DeviceEntity> deviceMap = new InMemoryMessageMap<>("deviceMap");
         MessageMap<String, TokenEntity> tokenMap = new InMemoryMessageMap<>("tokenMap");
         MessageMap<String, TaskEntity> taskEntityMessageMap = new InMemoryMessageMap<>("taskEntityMessageMap");
-        DeviceRepositoryManager deviceRepositoryManager = new DeviceRepositoryManager(deviceMap, tokenMap);
-        deviceRepositoryManager.addProjectDeviceTokenMap(Project.DEMO_APP.getCode(), new InMemoryMessageMap<>("demoAppTokenMap"));
-        TaskRepositoryManager taskRepositoryManager = new TaskRepositoryManager(taskEntityMessageMap);
-        List<DeviceEntity> deviceEntityList = generateDevices();
-        List<TokenEntity> tokenEntityList = generateTokens();
-        for (int i = 0; i < Math.min(deviceEntityList.size(), tokenEntityList.size()); i++) {
-            TokenEntity token = tokenEntityList.get(i);
-            token.setDeviceId(deviceEntityList.get(i).getDeviceId());
-            deviceRepositoryManager.addDeviceBindToken(token);
-        }
-        deviceEntityList.forEach(deviceRepositoryManager::addDevice);
-        List<TaskEntity> taskEntityList = generateTasks();
-        taskEntityList.forEach(taskRepositoryManager::createTask);
-        System.out.println("[内存] DeviceRepositoryManager initialized successfully");
-        System.out.println("[内存] Generated " + deviceEntityList.size() + " devices");
-        System.out.println("[内存] Generated " + taskEntityList.size() + " tasks");
-        System.out.println("[内存] Generated " + tokenEntityList.size() + " tokens");
+        MessageMap<String, TokenEntity> demoAppTokenMap = new InMemoryMessageMap<>("demoAppTokenMap");
+        
+        // 执行公共逻辑
+        runExample(deviceMap, tokenMap, taskEntityMessageMap, demoAppTokenMap, "内存");
     }
 
     /**
@@ -63,27 +51,45 @@ public class RepositoryManagerExample {
         System.out.println("=== Redis队列示例 ===");
         // 1. 初始化全局Redis连接
         RedisConnectionManager.init("localhost", 6379, null, 0);
-        // 2. 创建Redis消息映射（与InMemoryMessageMap构造参数一致）
-        LettuceRedisMessageMap<String, DeviceEntity> deviceMap = new LettuceRedisMessageMap<>("deviceMap", String.class, DeviceEntity.class);
-        LettuceRedisMessageMap<String, TokenEntity> tokenMap = new LettuceRedisMessageMap<>("tokenMap", String.class, TokenEntity.class);
-        LettuceRedisMessageMap<String, TaskEntity> taskEntityMessageMap = new LettuceRedisMessageMap<>("taskEntityMessageMap", String.class, TaskEntity.class);
+        // 2. 创建Redis消息映射
+        MessageMap<String, DeviceEntity> deviceMap = new LettuceRedisMessageMap<>("deviceMap", String.class, DeviceEntity.class);
+        MessageMap<String, TokenEntity> tokenMap = new LettuceRedisMessageMap<>("tokenMap", String.class, TokenEntity.class);
+        MessageMap<String, TaskEntity> taskEntityMessageMap = new LettuceRedisMessageMap<>("taskEntityMessageMap", String.class, TaskEntity.class);
+        MessageMap<String, TokenEntity> demoAppTokenMap = new LettuceRedisMessageMap<>("demoAppTokenMap", String.class, TokenEntity.class);
+        
+        // 执行公共逻辑
+        runExample(deviceMap, tokenMap, taskEntityMessageMap, demoAppTokenMap, "Redis");
+    }
+
+    /**
+     * 公共示例执行逻辑
+     */
+    private static void runExample(MessageMap<String, DeviceEntity> deviceMap, 
+                                  MessageMap<String, TokenEntity> tokenMap,
+                                  MessageMap<String, TaskEntity> taskEntityMessageMap,
+                                  MessageMap<String, TokenEntity> demoAppTokenMap,
+                                  String queueType) {
         DeviceRepositoryManager deviceRepositoryManager = new DeviceRepositoryManager(deviceMap, tokenMap);
-        deviceRepositoryManager.addProjectDeviceTokenMap(Project.DEMO_APP.getCode(), new LettuceRedisMessageMap<>("demoAppTokenMap", String.class, TokenEntity.class));
+        deviceRepositoryManager.addProjectDeviceTokenMap(Project.DEMO_APP.getCode(), demoAppTokenMap);
         TaskRepositoryManager taskRepositoryManager = new TaskRepositoryManager(taskEntityMessageMap);
+        
         List<DeviceEntity> deviceEntityList = generateDevices();
         List<TokenEntity> tokenEntityList = generateTokens();
+        
         for (int i = 0; i < Math.min(deviceEntityList.size(), tokenEntityList.size()); i++) {
             TokenEntity token = tokenEntityList.get(i);
             token.setDeviceId(deviceEntityList.get(i).getDeviceId());
             deviceRepositoryManager.addDeviceBindToken(token);
         }
+        
         deviceEntityList.forEach(deviceRepositoryManager::addDevice);
         List<TaskEntity> taskEntityList = generateTasks();
         taskEntityList.forEach(taskRepositoryManager::createTask);
-        System.out.println("[Redis] DeviceRepositoryManager initialized successfully");
-        System.out.println("[Redis] Generated " + deviceEntityList.size() + " devices");
-        System.out.println("[Redis] Generated " + taskEntityList.size() + " tasks");
-        System.out.println("[Redis] Generated " + tokenEntityList.size() + " tokens");
+        
+        System.out.println("[" + queueType + "] DeviceRepositoryManager initialized successfully");
+        System.out.println("[" + queueType + "] Generated " + deviceEntityList.size() + " devices");
+        System.out.println("[" + queueType + "] Generated " + taskEntityList.size() + " tasks");
+        System.out.println("[" + queueType + "] Generated " + tokenEntityList.size() + " tokens");
     }
 
 
