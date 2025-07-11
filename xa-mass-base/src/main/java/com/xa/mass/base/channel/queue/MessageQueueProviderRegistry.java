@@ -3,6 +3,7 @@ package com.xa.mass.base.channel.queue;
 import com.xa.mass.base.channel.queue.api.MessageQueue;
 import com.xa.mass.base.channel.queue.memory.InMemoryMessageQueue;
 import com.xa.mass.base.channel.queue.redis.LettuceRedisQueue;
+import com.xa.mass.base.channel.queue.redis.RedisConnectionManager;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -24,21 +25,16 @@ public class MessageQueueProviderRegistry {
     public static final String RABBITMQ = "rabbitmq";
     
     static {
-        // 注册默认的内存队列提供者
+        // 内存队列
         register(IN_MEMORY, name -> new InMemoryMessageQueue<>(name));
-        
-        // 注册 Lettuce Redis 队列提供者
+
+        // Redis队列（要求先手动初始化RedisConnectionManager，否则抛异常）
         register(REDIS, name -> {
-            // 默认Redis配置
-            String host = System.getProperty("redis.host", "localhost");
-            int port = Integer.parseInt(System.getProperty("redis.port", "6379"));
-            String password = System.getProperty("redis.password");
-            int database = Integer.parseInt(System.getProperty("redis.database", "0"));
-            
-            return new LettuceRedisQueue<>(host, port, password, database, "queue:" + name, name, Object.class);
+            // 不再自动init，没初始化直接抛错
+            return new LettuceRedisQueue<>("queue:" + name, name, Object.class);
         });
     }
-    
+
     /**
      * 注册队列提供者
      * 

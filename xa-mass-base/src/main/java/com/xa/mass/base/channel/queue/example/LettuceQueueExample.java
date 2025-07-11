@@ -1,7 +1,7 @@
 package com.xa.mass.base.channel.queue.example;
 
 import com.xa.mass.base.channel.queue.redis.LettuceRedisQueue;
-
+import com.xa.mass.base.channel.queue.redis.RedisConnectionManager;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -11,10 +11,13 @@ import java.util.concurrent.TimeUnit;
 public class LettuceQueueExample {
     
     public static void main(String[] args) {
+        // 推荐：先初始化全局Redis连接
+        RedisConnectionManager.init("localhost", 6379, null, 0);
+
         // 示例1: 基本使用
         basicUsage();
         
-        // 示例2: 性能对比演示
+        // 示例2: 性能测试
         performanceComparison();
         
         // 示例3: 多队列共享连接
@@ -37,15 +40,13 @@ public class LettuceQueueExample {
         try {
             System.out.println("队列名称: " + queue.getName());
             System.out.println("队列键名: " + queue.getQueueKey());
-            System.out.println("连接状态: " + (queue.getConnection().isOpen() ? "已连接" : "未连接"));
-            
             // 发送消息
             queue.offer("Hello Lettuce!");
             queue.offer("这是Lettuce队列的消息");
             
             System.out.println("队列大小: " + queue.size());
             
-            // 接收消息（带超时）
+            // 接收消息
             String message1 = null;
             String message2 = null;
             try {
@@ -61,8 +62,7 @@ public class LettuceQueueExample {
             System.out.println("队列大小: " + queue.size());
             
         } finally {
-            // 关闭队列（关闭连接和客户端）
-            queue.close();
+            // 不再需要单独关闭队列，连接由RedisConnectionManager统一管理
         }
     }
     
@@ -111,7 +111,6 @@ public class LettuceQueueExample {
             System.out.println("平均每条消息接收时间: " + ((double)(recvEnd - recvStart) / messageCount) + "ms");
             
         } finally {
-            queue.close();
         }
     }
     
@@ -160,10 +159,6 @@ public class LettuceQueueExample {
             }
             
         } finally {
-            // 关闭所有队列
-            stringQueue.close();
-            numberQueue.close();
-            doubleQueue.close();
         }
     }
 } 
