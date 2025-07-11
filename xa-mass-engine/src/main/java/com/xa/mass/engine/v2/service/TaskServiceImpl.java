@@ -47,23 +47,21 @@ public class TaskServiceImpl implements TaskService {
     public void batchAddSeed(Project project, String taskId, String[] seeds) {
         Objects.requireNonNull(taskId, "Task ID cannot be null");
         Objects.requireNonNull(seeds, "Seeds cannot be null");
-        
         if (!repository.containsTask(project, taskId)) {
             throw new IllegalArgumentException("Task not found: " + taskId);
         }
-        
-        repository.addSeeds(taskId, seeds);
+        for (String seed : seeds) {
+            repository.addSeed(taskId, seed);
+        }
     }
 
     @Override
     public String getTaskSeed(Project project, String taskId) {
         Objects.requireNonNull(taskId, "Task ID cannot be null");
-        
         if (!repository.containsTask(project, taskId)) {
-            return null;
+            throw new IllegalArgumentException("Task not found: " + taskId);
         }
-        
-        return repository.pollSeed(taskId);
+        return repository.getSeed(taskId);
     }
 
     @Override
@@ -96,12 +94,10 @@ public class TaskServiceImpl implements TaskService {
     @Override
     public TaskMsgEntity getTaskMsg(Project project, String taskId) {
         Objects.requireNonNull(taskId, "Task ID cannot be null");
-        
         if (!repository.containsTask(project, taskId)) {
-            return null;
+            throw new IllegalArgumentException("Task not found: " + taskId);
         }
-        
-        return repository.pollMsg(taskId);
+        return repository.getMsg(taskId);
     }
 
     @Override
@@ -140,6 +136,7 @@ public class TaskServiceImpl implements TaskService {
 
     @Override
     public int getTotalTaskCount(Project project) {
-        return repository.getTotalTaskCount(project);
+        Objects.requireNonNull(project, "Project cannot be null");
+        return repository.getProjectTaskCount(project);
     }
 } 

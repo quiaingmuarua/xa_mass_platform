@@ -1,15 +1,17 @@
 package com.xa.mass.engine.v2.service;
 
+import com.xa.mass.base.channel.queue.memory.InMemoryMessageMap;
 import com.xa.mass.engine.v2.dao.DeviceRepositoryManager;
 import com.xa.mass.engine.v2.entity.DeviceEntity;
 import com.xa.mass.engine.v2.entity.TokenEntity;
-import com.xa.mass.base.enums.Project;
-import com.xa.mass.base.channel.queue.memory.InMemoryMessageMap;
-import java.util.List;
-import java.util.Objects;
-import java.util.stream.Collectors;
 
+import java.util.Objects;
+
+/**
+ * 设备服务实现 v2
+ */
 public class DeviceServiceImpl implements DeviceService {
+
     private final DeviceRepositoryManager repository;
 
     public DeviceServiceImpl(DeviceRepositoryManager repository) {
@@ -17,50 +19,54 @@ public class DeviceServiceImpl implements DeviceService {
     }
 
     @Override
-    public void registerDevice(DeviceEntity deviceEntity) {
-        Objects.requireNonNull(deviceEntity, "Device entity cannot be null");
-        repository.addDevice(deviceEntity);
+    public void createDevice(DeviceEntity device) {
+        Objects.requireNonNull(device, "Device cannot be null");
+        repository.saveDevice(device);
     }
 
     @Override
-    public void registerDevices(List<DeviceEntity> deviceEntities) {
-        Objects.requireNonNull(deviceEntities, "Device entities cannot be null");
-        for (DeviceEntity device : deviceEntities) {
-            repository.addDevice(device);
+    public void updateDevice(DeviceEntity device) {
+        Objects.requireNonNull(device, "Device cannot be null");
+        if (!repository.containsDevice(device.getDeviceId())) {
+            throw new IllegalArgumentException("Device not found: " + device.getDeviceId());
         }
+        repository.saveDevice(device);
     }
 
     @Override
-    public void bindDeviceToken(TokenEntity tokenEntity) {
-        Objects.requireNonNull(tokenEntity, "Token entity cannot be null");
-        repository.addDeviceBindToken(tokenEntity);
+    public void createToken(TokenEntity token) {
+        Objects.requireNonNull(token, "Token cannot be null");
+        Objects.requireNonNull(token.getProject(), "Token project cannot be null");
+        repository.saveToken(token.getProject(), token);
     }
 
     @Override
-    public void registerProject(Project project) {
+    public void registerProjectAndCreateTokenMapping(String project) {
         repository.registerProject(project, new InMemoryMessageMap<>());
     }
 
     @Override
-    public void registerAllProjects() {
-        repository.registerAllProjects(p -> new InMemoryMessageMap<>());
+    public void bulkRegisterProjectsAndCreateTokenMapping() {
+        repository.registerAllProjects(project -> new InMemoryMessageMap<>());
     }
 
     @Override
     public DeviceEntity getDevice(String deviceId) {
-        return repository.getDeviceEntity(deviceId);
+        Objects.requireNonNull(deviceId, "Device ID cannot be null");
+        return repository.getDevice(deviceId);
     }
 
     @Override
-    public TokenEntity getDeviceToken(String deviceId, Project project) {
-        return repository.getProjectTokens(project.getCode()).stream()
-            .filter(token -> token.getDeviceId().equals(deviceId))
-            .findFirst().orElse(null);
+    public boolean existsDevice(String deviceId) {
+        Objects.requireNonNull(deviceId, "Device ID cannot be null");
+        return repository.containsDevice(deviceId);
     }
 
     @Override
-    public List<TokenEntity> getProjectTokens(Project project) {
-        return repository.getProjectTokens(project.getCode());
+    public TokenEntity getToken(String project, String tokenId) {
+        Objects.requireNonNull(project, "Project cannot be null");
+        Objects.requireNonNull(tokenId, "Token ID cannot be null");
+        return repository.getToken(project, tokenId);
     }
 
     @Override
@@ -69,32 +75,35 @@ public class DeviceServiceImpl implements DeviceService {
     }
 
     @Override
-    public int getTokenCount() {
-        return repository.getTokenCount();
+    public int getTokenCount(String project) {
+        Objects.requireNonNull(project, "Project cannot be null");
+        return repository.getTokenCount(project);
     }
 
     @Override
     public int getProjectCount() {
-        return repository.getProjectCount();
+        return repository.getTotalProjects();
     }
 
     @Override
-    public boolean containsDevice(String deviceId) {
-        return repository.containsDevice(deviceId);
+    public boolean removeDevice(String deviceId) {
+        Objects.requireNonNull(deviceId, "Device ID cannot be null");
+        DeviceEntity removed = repository.removeDevice(deviceId);
+        return removed != null;
     }
 
     @Override
-    public boolean containsToken(String deviceId) {
-        return repository.containsToken(deviceId);
+    public boolean existsToken(String project, String tokenId) {
+        Objects.requireNonNull(project, "Project cannot be null");
+        Objects.requireNonNull(tokenId, "Token ID cannot be null");
+        return repository.containsToken(project, tokenId);
     }
 
     @Override
-    public DeviceEntity removeDevice(String deviceId) {
-        return repository.removeDevice(deviceId);
-    }
-
-    @Override
-    public TokenEntity removeToken(String deviceId) {
-        return repository.removeToken(deviceId);
+    public boolean removeToken(String project, String tokenId) {
+        Objects.requireNonNull(project, "Project cannot be null");
+        Objects.requireNonNull(tokenId, "Token ID cannot be null");
+        TokenEntity removed = repository.removeToken(project, tokenId);
+        return removed != null;
     }
 } 

@@ -47,11 +47,7 @@ public class RepositoryManagerExample {
         }
         //init manager
         DeviceRepositoryManager deviceRepositoryManager = new DeviceRepositoryManager(deviceMap);
-        java.util.concurrent.ConcurrentMap<Project, com.xa.mass.base.channel.queue.api.MessageMap<String, TaskEntity>> projectTaskMap = new java.util.concurrent.ConcurrentHashMap<>();
-        for (Project project : Project.values()) {
-            projectTaskMap.put(project, new com.xa.mass.base.channel.queue.memory.InMemoryMessageMap<>());
-        }
-        TaskRepositoryManager taskRepositoryManager = new TaskRepositoryManager(projectTaskMap,
+        TaskRepositoryManager taskRepositoryManager = TaskRepositoryManager.createWithDefaultProjects(
                 queueType.equals("内存") ? QueueProviderType.IN_MEMORY : QueueProviderType.REDIS);
         TaskService taskService = new TaskServiceImpl(taskRepositoryManager);
 
@@ -120,9 +116,9 @@ public class RepositoryManagerExample {
         for (int i = 0; i < Math.min(deviceEntityList.size(), tokenEntityList.size()); i++) {
             TokenEntity token = tokenEntityList.get(i);
             token.setDeviceId(deviceEntityList.get(i).getDeviceId());
-            deviceRepositoryManager.addDeviceBindToken(token);
+            deviceRepositoryManager.saveToken(token.getProject(), token);
         }
-        deviceEntityList.forEach(deviceRepositoryManager::addDevice);
+        deviceEntityList.forEach(deviceRepositoryManager::saveDevice);
         taskEntityList.forEach(task -> taskService.createTask(Project.fromCode(task.getProject()), task));
         System.out.println("[" + queueType + "] DeviceRepositoryManager initialized successfully");
         System.out.println("[" + queueType + "] Generated " + deviceEntityList.size() + " devices");

@@ -10,6 +10,11 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
+import java.util.List;
+import java.util.Objects;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
+
 /**
  * TaskRepositoryManager 测试类 - 纯数据操作测试
  */
@@ -20,11 +25,7 @@ public class TaskRepositoryManagerTest {
 
     @BeforeEach
     void setUp() {
-        projectTaskMap = new java.util.concurrent.ConcurrentHashMap<>();
-        for (Project project : Project.values()) {
-            projectTaskMap.put(project, new InMemoryMessageMap<>());
-        }
-        manager = new TaskRepositoryManager(projectTaskMap, QueueProviderType.IN_MEMORY);
+        manager = TaskRepositoryManager.createWithDefaultProjects(QueueProviderType.IN_MEMORY);
     }
 
     /**
@@ -100,10 +101,10 @@ public class TaskRepositoryManagerTest {
         assertEquals(2, manager.getSeedCount("task001"));
         
         // 测试获取种子
-        String seed1 = manager.pollSeed("task001");
+        String seed1 = manager.getSeed("task001");
         assertEquals("seed1", seed1);
         
-        String seed2 = manager.pollSeed("task001");
+        String seed2 = manager.getSeed("task001");
         assertEquals("seed2", seed2);
         
         // 验证种子已消费
@@ -117,19 +118,21 @@ public class TaskRepositoryManagerTest {
         
         // 测试批量添加种子
         String[] seeds = {"seed1", "seed2", "seed3"};
-        manager.addSeeds("task001", seeds);
+        for (String seed : seeds) {
+            manager.addSeed("task001", seed);
+        }
         
         // 验证种子数量
         assertEquals(3, manager.getSeedCount("task001"));
         
         // 测试获取种子
-        String seed1 = manager.pollSeed("task001");
+        String seed1 = manager.getSeed("task001");
         assertEquals("seed1", seed1);
         
-        String seed2 = manager.pollSeed("task001");
+        String seed2 = manager.getSeed("task001");
         assertEquals("seed2", seed2);
         
-        String seed3 = manager.pollSeed("task001");
+        String seed3 = manager.getSeed("task001");
         assertEquals("seed3", seed3);
     }
 
@@ -139,12 +142,12 @@ public class TaskRepositoryManagerTest {
         manager.createSeedQueue("task001");
         
         // 测试获取不存在的种子
-        String nonExistentSeed = manager.pollSeed("task001");
+        String nonExistentSeed = manager.getSeed("task001");
         assertNull(nonExistentSeed);
         
         // 添加种子后获取
         manager.addSeed("task001", "seed1");
-        String seed = manager.pollSeed("task001");
+        String seed = manager.getSeed("task001");
         assertEquals("seed1", seed);
     }
 
@@ -164,11 +167,11 @@ public class TaskRepositoryManagerTest {
         assertEquals(2, manager.getMsgCount("task001"));
         
         // 测试获取消息
-        TaskMsgEntity retrievedMsg1 = manager.pollMsg("task001");
+        TaskMsgEntity retrievedMsg1 = manager.getMsg("task001");
         assertNotNull(retrievedMsg1);
         assertEquals("msg001", retrievedMsg1.getMsgId());
         
-        TaskMsgEntity retrievedMsg2 = manager.pollMsg("task001");
+        TaskMsgEntity retrievedMsg2 = manager.getMsg("task001");
         assertNotNull(retrievedMsg2);
         assertEquals("msg002", retrievedMsg2.getMsgId());
         
@@ -182,14 +185,14 @@ public class TaskRepositoryManagerTest {
         manager.createMsgQueue("task001");
         
         // 测试获取不存在的消息
-        TaskMsgEntity nonExistentMsg = manager.pollMsg("task001");
+        TaskMsgEntity nonExistentMsg = manager.getMsg("task001");
         assertNull(nonExistentMsg);
         
         // 添加消息后获取
         TaskMsgEntity taskMsg = createTestTaskMsg("msg001", "task001");
         manager.addMsg("task001", taskMsg);
         
-        TaskMsgEntity retrievedMsg = manager.pollMsg("task001");
+        TaskMsgEntity retrievedMsg = manager.getMsg("task001");
         assertNotNull(retrievedMsg);
         assertEquals("msg001", retrievedMsg.getMsgId());
     }
@@ -235,7 +238,7 @@ public class TaskRepositoryManagerTest {
         assertEquals(2, manager.getSeedCount("task001"));
         
         // 消费种子后
-        manager.pollSeed("task001");
+        manager.getSeed("task001");
         assertEquals(1, manager.getSeedCount("task001"));
     }
 
@@ -255,16 +258,16 @@ public class TaskRepositoryManagerTest {
         assertEquals(2, manager.getMsgCount("task001"));
         
         // 消费消息后
-        manager.pollMsg("task001");
+        manager.getMsg("task001");
         assertEquals(1, manager.getMsgCount("task001"));
     }
 
     @Test
     void testGetTotalTaskCount() {
-        assertEquals(0, manager.getTotalTaskCount(Project.DEMO_APP));
+        assertEquals(0, manager.getTotalTaskCount());
         manager.saveTask(Project.DEMO_APP, createTestTask("task001"));
         manager.saveTask(Project.DEMO_APP, createTestTask("task002"));
-        assertEquals(2, manager.getTotalTaskCount(Project.DEMO_APP));
+        assertEquals(2, manager.getTotalTaskCount());
     }
 
     @Test
@@ -311,5 +314,167 @@ public class TaskRepositoryManagerTest {
         TaskEntity task = createTestTask("task001");
         manager.saveTask(Project.DEMO_APP, task);
         assertTrue(manager.containsTask(Project.DEMO_APP, "task001"));
+    }
+
+    @Test
+    void testSeedOperations() {
+        String taskId = "task001";
+        manager.createSeedQueue(taskId);
+        
+        // 添加种子
+        manager.addSeed(taskId, "seed1");
+        manager.addSeed(taskId, "seed2");
+        
+        // 验证种子数量
+        assertEquals(2, manager.getSeedCount(taskId));
+        
+        // 获取种子
+        String seed1 = manager.getSeed(taskId);
+        assertNotNull(seed1);
+        assertEquals(1, manager.getSeedCount(taskId));
+        
+        String seed2 = manager.getSeed(taskId);
+        assertNotNull(seed2);
+        assertEquals(0, manager.getSeedCount(taskId));
+        
+        // 队列空时返回null
+        String nullSeed = manager.getSeed(taskId);
+        assertNull(nullSeed);
+    }
+
+    @Test
+    void testBatchSeedOperations() {
+        String taskId = "task002";
+        manager.createSeedQueue(taskId);
+        
+        // 批量添加种子
+        String[] seeds = {"seed1", "seed2", "seed3"};
+        for (String seed : seeds) {
+            manager.addSeed(taskId, seed);
+        }
+        
+        // 验证种子数量
+        assertEquals(3, manager.getSeedCount(taskId));
+        
+        // 批量获取种子
+        String seed1 = manager.getSeed(taskId);
+        assertNotNull(seed1);
+        
+        String seed2 = manager.getSeed(taskId);
+        assertNotNull(seed2);
+        
+        String seed3 = manager.getSeed(taskId);
+        assertNotNull(seed3);
+        
+        assertEquals(0, manager.getSeedCount(taskId));
+    }
+
+    @Test
+    void testSeedQueueConcurrency() {
+        String taskId = "task003";
+        manager.createSeedQueue(taskId);
+        
+        // 并发添加和获取种子
+        IntStream.range(0, 100).parallel().forEach(i -> {
+            manager.addSeed(taskId, "seed" + i);
+        });
+        
+        // 验证所有种子都被添加
+        assertEquals(100, manager.getSeedCount(taskId));
+        
+        // 并发获取种子
+        List<String> retrievedSeeds = IntStream.range(0, 100)
+            .parallel()
+            .mapToObj(i -> manager.getSeed(taskId))
+            .filter(Objects::nonNull)
+            .collect(Collectors.toList());
+        
+        // 验证获取的种子数量
+        assertTrue(retrievedSeeds.size() <= 100);
+        assertTrue(manager.getSeedCount(taskId) >= 0);
+    }
+
+    @Test
+    void testMsgOperations() {
+        String taskId = "task004";
+        manager.createMsgQueue(taskId);
+        
+        // 添加消息
+        TaskMsgEntity msg1 = new TaskMsgEntity("msg1", taskId);
+        TaskMsgEntity msg2 = new TaskMsgEntity("msg2", taskId);
+        
+        manager.addMsg(taskId, msg1);
+        manager.addMsg(taskId, msg2);
+        
+        // 验证消息数量
+        assertEquals(2, manager.getMsgCount(taskId));
+        
+        // 获取消息
+        TaskMsgEntity retrievedMsg1 = manager.getMsg(taskId);
+        assertNotNull(retrievedMsg1);
+        assertEquals(1, manager.getMsgCount(taskId));
+        
+        TaskMsgEntity retrievedMsg2 = manager.getMsg(taskId);
+        assertNotNull(retrievedMsg2);
+        assertEquals(0, manager.getMsgCount(taskId));
+    }
+
+    @Test
+    void testMsgQueueConcurrency() {
+        String taskId = "task005";
+        manager.createMsgQueue(taskId);
+        
+        // 并发添加消息
+        IntStream.range(0, 50).parallel().forEach(i -> {
+            TaskMsgEntity msg = new TaskMsgEntity("msg" + i, taskId);
+            manager.addMsg(taskId, msg);
+        });
+        
+        // 验证消息数量
+        assertEquals(50, manager.getMsgCount(taskId));
+        
+        // 并发获取消息
+        List<TaskMsgEntity> retrievedMsgs = IntStream.range(0, 50)
+            .parallel()
+            .mapToObj(i -> manager.getMsg(taskId))
+            .filter(Objects::nonNull)
+            .collect(Collectors.toList());
+        
+        // 验证获取的消息数量
+        assertTrue(retrievedMsgs.size() <= 50);
+        assertTrue(manager.getMsgCount(taskId) >= 0);
+    }
+
+    @Test
+    void testIntegratedOperations() {
+        // 创建任务
+        TaskEntity task1 = createTestTask("task100");
+        TaskEntity task2 = createTestTask("task200");
+        
+        manager.saveTask(Project.DEMO_APP, task1);
+        manager.saveTask(Project.TEST_APP, task2);
+        
+        // 验证项目任务数量
+        assertEquals(1, manager.getProjectTaskCount(Project.DEMO_APP));
+        assertEquals(1, manager.getProjectTaskCount(Project.TEST_APP));
+        assertEquals(2, manager.getTotalTaskCount());
+        
+        // 创建队列并操作
+        manager.createSeedQueue("task100");
+        manager.createMsgQueue("task200");
+        
+        manager.addSeed("task100", "seed100");
+        TaskMsgEntity msg = new TaskMsgEntity("msg200", "task200");
+        manager.addMsg("task200", msg);
+        
+        // 验证操作结果
+        assertEquals(1, manager.getSeedCount("task100"));
+        assertEquals(1, manager.getMsgCount("task200"));
+        
+        String retrievedSeed = manager.getSeed("task100");
+        assertEquals("seed100", retrievedSeed);
+        
+        TaskMsgEntity retrievedMsg = manager.getMsg("task200");
+        assertEquals("msg200", retrievedMsg.getMsgId());
     }
 } 

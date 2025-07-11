@@ -80,15 +80,11 @@ public class SimpleFunctionalExample {
 
         // 使用默认配置
         MessageMap<String, DeviceEntity> deviceMap = new InMemoryMessageMap<>();
-        java.util.concurrent.ConcurrentMap<Project, MessageMap<String, TaskEntity>> projectTaskMap = new java.util.concurrent.ConcurrentHashMap<>();
-        for (Project project : Project.values()) {
-            projectTaskMap.put(project, new InMemoryMessageMap<>());
-        }
         
-        TaskRepositoryManager defaultManager = new TaskRepositoryManager(projectTaskMap, QueueProviderType.IN_MEMORY);
+        TaskRepositoryManager defaultManager = TaskRepositoryManager.createWithDefaultProjects(QueueProviderType.IN_MEMORY);
         
         // 使用自定义队列类型
-        TaskRepositoryManager customManager = new TaskRepositoryManager(projectTaskMap, QueueProviderType.IN_MEMORY, QueueProviderType.IN_MEMORY);
+        TaskRepositoryManager customManager = TaskRepositoryManager.createWithDefaultProjects(QueueProviderType.IN_MEMORY, QueueProviderType.IN_MEMORY);
 
         // 演示任务操作
         TaskEntity task = new TaskEntity("task001", "测试任务", Project.DEMO_APP.getCode());

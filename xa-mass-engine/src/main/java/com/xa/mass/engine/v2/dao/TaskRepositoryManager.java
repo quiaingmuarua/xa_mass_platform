@@ -4,22 +4,25 @@ import com.xa.mass.base.channel.queue.MessageQueueProviderRegistry;
 import com.xa.mass.base.channel.queue.QueueProviderType;
 import com.xa.mass.base.channel.queue.api.MessageMap;
 import com.xa.mass.base.channel.queue.api.MessageQueue;
+import com.xa.mass.base.channel.queue.memory.InMemoryMessageMap;
+import com.xa.mass.base.enums.Project;
 import com.xa.mass.engine.v2.entity.TaskEntity;
 import com.xa.mass.engine.v2.entity.TaskMsgEntity;
-import com.xa.mass.base.enums.Project;
 
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
 /**
- * 任务仓库管理器 - 纯数据操作层
+ * 任务仓储管理器 v2
+ * 支持项目隔离的任务存储和队列管理
  */
 public class TaskRepositoryManager {
 
-    private final ConcurrentMap<String, MessageQueue<String>> taskSeedsMap = new ConcurrentHashMap<>();
+    // 外层 key: project，内层 key: taskId
     private final ConcurrentMap<Project, MessageMap<String, TaskEntity>> projectTaskMap = new ConcurrentHashMap<>();
-    private final ConcurrentMap<String, MessageQueue<TaskMsgEntity>> taskMsgMap = new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, MessageQueue<String>> seedQueues = new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, MessageQueue<TaskMsgEntity>> msgQueues = new ConcurrentHashMap<>();
     private final QueueProviderType seedQueueType;
     private final QueueProviderType msgQueueType;
 
@@ -36,7 +39,7 @@ public class TaskRepositoryManager {
 
     // 任务实体操作
     public void saveTask(Project project, TaskEntity taskEntity) {
-        projectTaskMap.computeIfAbsent(project, k -> new com.xa.mass.base.channel.queue.memory.InMemoryMessageMap<>())
+        projectTaskMap.computeIfAbsent(project, k -> new InMemoryMessageMap<>())
                       .put(taskEntity.getTaskId(), taskEntity);
     }
 
@@ -50,65 +53,114 @@ public class TaskRepositoryManager {
         return map != null && map.containsKey(taskId);
     }
 
-    public int getTotalTaskCount(Project project) {
+    public TaskEntity removeTask(Project project, String taskId) {
+        MessageMap<String, TaskEntity> map = projectTaskMap.get(project);
+        return map != null ? map.remove(taskId) : null;
+    }
+
+    public int getProjectTaskCount(Project project) {
         MessageMap<String, TaskEntity> map = projectTaskMap.get(project);
         return map != null ? map.size() : 0;
     }
 
-    public int getTotalProjectCount() {
-        return projectTaskMap.size();
+    public int getTotalTaskCount() {
+        return projectTaskMap.values().stream().mapToInt(MessageMap::size).sum();
+    }
+
+    /**
+     * 注册所有项目分组
+     */
+    public void registerAllProjects(java.util.function.Function<Project, MessageMap<String, TaskEntity>> mapSupplier) {
+        Objects.requireNonNull(mapSupplier, "Map supplier cannot be null");
+        for (Project project : Project.values()) {
+            registerProject(project, mapSupplier.apply(project));
+        }
+    }
+
+    /**
+     * 注册单个项目
+     */
+    public void registerProject(Project project, MessageMap<String, TaskEntity> taskMap) {
+        Objects.requireNonNull(project, "Project cannot be null");
+        Objects.requireNonNull(taskMap, "Task map cannot be null");
+        projectTaskMap.put(project, taskMap);
+    }
+
+    /**
+     * 便捷构造器：使用默认的内存队列为所有项目初始化
+     */
+    public static TaskRepositoryManager createWithDefaultProjects(QueueProviderType queueType) {
+        return createWithDefaultProjects(queueType, queueType);
+    }
+
+    /**
+     * 便捷构造器：使用默认的内存队列为所有项目初始化
+     */
+    public static TaskRepositoryManager createWithDefaultProjects(QueueProviderType seedQueueType, QueueProviderType msgQueueType) {
+        TaskRepositoryManager manager = new TaskRepositoryManager(new ConcurrentHashMap<>(), seedQueueType, msgQueueType);
+        manager.registerAllProjects(project -> new InMemoryMessageMap<>());
+        return manager;
     }
 
     // 种子队列操作
     public void createSeedQueue(String taskId) {
-        taskSeedsMap.put(taskId, MessageQueueProviderRegistry.createQueue(seedQueueType, "xa_mass_platform::seed-" + taskId));
+        MessageQueue<String> queue = MessageQueueProviderRegistry.createQueue(seedQueueType, taskId + ":seeds");
+        seedQueues.put(taskId, queue);
     }
 
     public void addSeed(String taskId, String seed) {
-        taskSeedsMap.get(taskId).offer(seed);
-    }
-
-    public void addSeeds(String taskId, String[] seeds) {
-        MessageQueue<String> queue = taskSeedsMap.get(taskId);
-        for (String seed : seeds) {
+        MessageQueue<String> queue = seedQueues.get(taskId);
+        if (queue != null) {
             queue.offer(seed);
         }
     }
 
-    public String pollSeed(String taskId) {
-        try {
-            return taskSeedsMap.get(taskId).poll(0, java.util.concurrent.TimeUnit.MILLISECONDS);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            return null;
+    public String getSeed(String taskId) {
+        MessageQueue<String> queue = seedQueues.get(taskId);
+        if (queue != null) {
+            try {
+                return queue.poll(0, java.util.concurrent.TimeUnit.MILLISECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return null;
+            }
         }
+        return null;
     }
 
     public int getSeedCount(String taskId) {
-        MessageQueue<String> queue = taskSeedsMap.get(taskId);
+        MessageQueue<String> queue = seedQueues.get(taskId);
         return queue != null ? queue.size() : 0;
     }
 
-    // 消息队列操作
+    // 消息队列操作  
     public void createMsgQueue(String taskId) {
-        taskMsgMap.put(taskId, MessageQueueProviderRegistry.createQueue(msgQueueType, "xa_mass_platform::msg-" + taskId));
+        MessageQueue<TaskMsgEntity> queue = MessageQueueProviderRegistry.createQueue(msgQueueType, taskId + ":msgs");
+        msgQueues.put(taskId, queue);
     }
 
-    public void addMsg(String taskId, TaskMsgEntity taskMsg) {
-        taskMsgMap.get(taskId).offer(taskMsg);
-    }
-
-    public TaskMsgEntity pollMsg(String taskId) {
-        try {
-            return taskMsgMap.get(taskId).poll(0, java.util.concurrent.TimeUnit.MILLISECONDS);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            return null;
+    public void addMsg(String taskId, TaskMsgEntity msg) {
+        MessageQueue<TaskMsgEntity> queue = msgQueues.get(taskId);
+        if (queue != null) {
+            queue.offer(msg);
         }
     }
 
+    public TaskMsgEntity getMsg(String taskId) {
+        MessageQueue<TaskMsgEntity> queue = msgQueues.get(taskId);
+        if (queue != null) {
+            try {
+                return queue.poll(0, java.util.concurrent.TimeUnit.MILLISECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return null;
+            }
+        }
+        return null;
+    }
+
     public int getMsgCount(String taskId) {
-        MessageQueue<TaskMsgEntity> queue = taskMsgMap.get(taskId);
+        MessageQueue<TaskMsgEntity> queue = msgQueues.get(taskId);
         return queue != null ? queue.size() : 0;
     }
 }
