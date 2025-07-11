@@ -17,7 +17,7 @@ public class TaskBindDeviceExample {
 
     public static void main(String[] args) {
         DeviceRepositoryManager deviceRepositoryManager = new DeviceRepositoryManager(new InMemoryMessageMap<>("deviceMap"));
-        TaskRepositoryManager taskRepositoryManager = TaskRepositoryManager.createWithDefaultProjects(com.xa.mass.base.channel.queue.QueueProviderType.IN_MEMORY);
+        TaskRepositoryManager taskRepositoryManager = TaskRepositoryManager.createWithDefaultProjects(QueueProviderType.IN_MEMORY);
 
         generateData(deviceRepositoryManager, taskRepositoryManager);
         System.out.println("TaskRepositoryManager initialized successfully");
