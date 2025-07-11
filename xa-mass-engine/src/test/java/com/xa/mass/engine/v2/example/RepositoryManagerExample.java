@@ -20,7 +20,7 @@ import com.xa.mass.engine.v2.entity.TokenEntity;
 import java.util.List;
 import java.util.Map;
 
-public class RepositoryManagerGenerateExample {
+public class RepositoryManagerExample {
 
 
     public static void main(String[] args) {

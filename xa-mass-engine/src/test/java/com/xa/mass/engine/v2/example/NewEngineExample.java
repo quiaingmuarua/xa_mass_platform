@@ -1,4 +1,4 @@
-package com.xa.mass.engine.v2;
+package com.xa.mass.engine.v2.example;
 
 import com.xa.mass.base.enums.Project;
 import com.xa.mass.engine.v2.service.TaskServiceManager;
