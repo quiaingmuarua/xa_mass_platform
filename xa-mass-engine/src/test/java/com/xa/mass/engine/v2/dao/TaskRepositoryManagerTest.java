@@ -2,6 +2,7 @@ package com.xa.mass.engine.v2.dao;
 
 import com.xa.mass.base.channel.queue.memory.InMemoryMessageMap;
 import com.xa.mass.base.channel.queue.api.MessageMap;
+import com.xa.mass.base.channel.queue.QueueProviderType;
 import com.xa.mass.engine.v2.entity.TaskEntity;
 import com.xa.mass.engine.v2.entity.TaskMsgEntity;
 import org.junit.jupiter.api.BeforeEach;
@@ -19,7 +20,7 @@ public class TaskRepositoryManagerTest {
     @BeforeEach
     void setUp() {
         taskMap = new InMemoryMessageMap<>();
-        manager = new TaskRepositoryManager(taskMap);
+        manager = new TaskRepositoryManager(taskMap, QueueProviderType.IN_MEMORY);
     }
 
     /**
@@ -44,7 +45,7 @@ public class TaskRepositoryManagerTest {
         assertNotNull(manager);
         
         // 测试空参数构造 - 应该抛出异常
-        assertThrows(NullPointerException.class, () -> new TaskRepositoryManager(null));
+        assertThrows(NullPointerException.class, () -> new TaskRepositoryManager(null, null));
     }
 
     @Test

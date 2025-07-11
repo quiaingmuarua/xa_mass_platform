@@ -3,6 +3,7 @@ package com.xa.mass.engine.v2.dao;
 import com.xa.mass.base.channel.queue.api.MessageMap;
 import com.xa.mass.base.channel.queue.api.MessageQueue;
 import com.xa.mass.base.channel.queue.MessageQueueProviderRegistry;
+import com.xa.mass.base.channel.queue.QueueProviderType;
 import com.xa.mass.engine.v2.entity.TaskEntity;
 import com.xa.mass.engine.v2.entity.TaskMsgEntity;
 
@@ -26,18 +27,14 @@ public class TaskRepositoryManager {
     private final ConcurrentMap<String, MessageQueue<TaskMsgEntity>> taskMsgMap = new ConcurrentHashMap<>();
 
     // 队列提供者类型
-    private final String seedQueueType;
-    private final String msgQueueType;
+    private final QueueProviderType seedQueueType;
+    private final QueueProviderType msgQueueType;
 
-    public TaskRepositoryManager(MessageMap<String, TaskEntity> taskMap) {
-        this(taskMap, MessageQueueProviderRegistry.IN_MEMORY, MessageQueueProviderRegistry.IN_MEMORY);
-    }
-
-    public TaskRepositoryManager(MessageMap<String, TaskEntity> taskMap, String queueType) {
+    public TaskRepositoryManager(MessageMap<String, TaskEntity> taskMap, QueueProviderType queueType) {
         this(taskMap, queueType, queueType);
     }
 
-    public TaskRepositoryManager(MessageMap<String, TaskEntity> taskMap, String seedQueueType, String msgQueueType) {
+    public TaskRepositoryManager(MessageMap<String, TaskEntity> taskMap, QueueProviderType seedQueueType, QueueProviderType msgQueueType) {
         this.taskMap = Objects.requireNonNull(taskMap, "Task map cannot be null");
         this.seedQueueType = Objects.requireNonNull(seedQueueType, "Seed queue type cannot be null");
         this.msgQueueType = Objects.requireNonNull(msgQueueType, "Message queue type cannot be null");

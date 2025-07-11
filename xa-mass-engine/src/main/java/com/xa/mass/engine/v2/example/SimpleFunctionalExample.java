@@ -5,6 +5,7 @@ import com.xa.mass.base.channel.queue.memory.InMemoryMessageQueue;
 import com.xa.mass.base.channel.queue.api.MessageMap;
 import com.xa.mass.base.channel.queue.api.MessageQueue;
 import com.xa.mass.base.channel.queue.MessageQueueProviderRegistry;
+import com.xa.mass.base.channel.queue.QueueProviderType;
 import com.xa.mass.engine.v2.dao.TaskRepositoryManager;
 import com.xa.mass.engine.v2.entity.TaskEntity;
 import com.xa.mass.engine.v2.entity.TaskMsgEntity;
@@ -36,7 +37,7 @@ public class SimpleFunctionalExample {
         logger.info("=== 示例1: 基本使用 ===");
 
         // 使用默认内存队列
-        MessageQueue<String> queue = MessageQueueProviderRegistry.createQueue("memory", "test-queue");
+        MessageQueue<String> queue = MessageQueueProviderRegistry.createQueue(QueueProviderType.IN_MEMORY, "test-queue");
         queue.offer("message1");
         queue.offer("message2");
 
@@ -51,16 +52,22 @@ public class SimpleFunctionalExample {
         logger.info("=== 示例2: 注册自定义提供者 ===");
 
         // 注册一个自定义的内存队列提供者
-        MessageQueueProviderRegistry.register("custom", name -> {
+        // MessageQueueProviderRegistry.register("custom", name -> {
+        //     logger.info("创建自定义队列: {}", name);
+        //     return new InMemoryMessageQueue<>();
+        // });
+        // 由于 QueueProviderType 没有 CUSTOM，如需自定义请扩展枚举或用 IN_MEMORY 演示
+        // 这里用 IN_MEMORY 演示
+        MessageQueueProviderRegistry.register(QueueProviderType.IN_MEMORY, name -> {
             logger.info("创建自定义队列: {}", name);
             return new InMemoryMessageQueue<>();
         });
 
         // 使用自定义提供者
-        MessageQueue<String> queue = MessageQueueProviderRegistry.createQueue("custom", "my-queue");
-        queue.offer("test message");
+        MessageQueue<String> queue2 = MessageQueueProviderRegistry.createQueue(QueueProviderType.IN_MEMORY, "my-queue");
+        queue2.offer("test message");
         
-        logger.info("自定义队列大小: {}", queue.size());
+        logger.info("自定义队列大小: {}", queue2.size());
     }
 
     /**
@@ -72,14 +79,14 @@ public class SimpleFunctionalExample {
         MessageMap<String, TaskEntity> taskMap = new InMemoryMessageMap<>();
 
         // 使用默认配置（内存队列）
-        TaskRepositoryManager manager1 = new TaskRepositoryManager(taskMap);
+        TaskRepositoryManager manager1 = new TaskRepositoryManager(taskMap, QueueProviderType.IN_MEMORY);
         createAndTestTask(manager1, "task-001", "默认配置任务");
 
         // 使用自定义队列类型
         TaskRepositoryManager manager2 = new TaskRepositoryManager(
             taskMap, 
-            "memory",  // 种子队列使用内存队列
-            "memory"   // 消息队列使用内存队列
+            QueueProviderType.IN_MEMORY,  // 种子队列使用内存队列
+            QueueProviderType.IN_MEMORY   // 消息队列使用内存队列
         );
         createAndTestTask(manager2, "task-002", "自定义队列任务");
     }

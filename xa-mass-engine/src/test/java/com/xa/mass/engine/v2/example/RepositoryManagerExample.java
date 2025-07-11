@@ -18,6 +18,8 @@ import com.xa.mass.engine.v2.entity.TaskEntity;
 import com.xa.mass.engine.v2.entity.TokenEntity;
 import java.util.List;
 import java.util.Map;
+import com.xa.mass.base.channel.queue.MessageQueueProviderRegistry;
+import com.xa.mass.base.channel.queue.QueueProviderType;
 
 public class RepositoryManagerExample {
 
@@ -71,7 +73,8 @@ public class RepositoryManagerExample {
                                   String queueType) {
         DeviceRepositoryManager deviceRepositoryManager = new DeviceRepositoryManager(deviceMap, tokenMap);
         deviceRepositoryManager.addProjectDeviceTokenMap(Project.DEMO_APP.getCode(), demoAppTokenMap);
-        TaskRepositoryManager taskRepositoryManager = new TaskRepositoryManager(taskEntityMessageMap);
+        TaskRepositoryManager taskRepositoryManager = new TaskRepositoryManager(taskEntityMessageMap, 
+            queueType.equals("内存") ? QueueProviderType.IN_MEMORY : QueueProviderType.REDIS);
         
         List<DeviceEntity> deviceEntityList = generateDevices();
         List<TokenEntity> tokenEntityList = generateTokens();
