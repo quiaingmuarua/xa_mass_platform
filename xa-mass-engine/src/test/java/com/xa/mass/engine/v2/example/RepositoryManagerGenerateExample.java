@@ -20,63 +20,51 @@ import com.xa.mass.engine.v2.entity.TokenEntity;
 import java.util.List;
 import java.util.Map;
 
-public class RepositoryManagerExample {
+public class RepositoryManagerGenerateExample {
 
 
     public static void main(String[] args) {
-        // 内存队列示例
-        runInMemoryQueueExample();
-        // Redis队列示例
-        runRedisQueueExample();
-    }
+        String queueType = "内存";
+        MessageMap<String, DeviceEntity> deviceMap;
+        MessageMap<String, TokenEntity> tokenMap;
+        MessageMap<String, TaskEntity> taskEntityMessageMap;
+        MessageMap<String, TokenEntity> demoAppTokenMap;
+        if ("内存".equals(queueType)) {
+            System.out.println("=== 内存队列示例 ===");
+            // 初始化内存队列
+            deviceMap = new InMemoryMessageMap<>("deviceMap");
+            tokenMap = new InMemoryMessageMap<>("tokenMap");
+            taskEntityMessageMap = new InMemoryMessageMap<>("taskEntityMessageMap");
+            demoAppTokenMap = new InMemoryMessageMap<>("demoAppTokenMap");
 
-    /**
-     * 内存队列示例
-     */
-    private static void runInMemoryQueueExample() {
-        System.out.println("=== 内存队列示例 ===");
-        // 初始化内存队列
-        MessageMap<String, DeviceEntity> deviceMap = new InMemoryMessageMap<>("deviceMap");
-        MessageMap<String, TokenEntity> tokenMap = new InMemoryMessageMap<>("tokenMap");
-        MessageMap<String, TaskEntity> taskEntityMessageMap = new InMemoryMessageMap<>("taskEntityMessageMap");
-        MessageMap<String, TokenEntity> demoAppTokenMap = new InMemoryMessageMap<>("demoAppTokenMap");
-        
-        // 执行公共逻辑
-        runExample(deviceMap, tokenMap, taskEntityMessageMap, demoAppTokenMap, "内存");
-    }
-
-    /**
-     * Redis队列示例
-     */
-    private static void runRedisQueueExample() {
-        System.out.println("=== Redis队列示例 ===");
-        // 1. 初始化全局Redis连接
-        RedisConnectionManager.init("localhost", 6379, null, 0);
-        // 2. 创建Redis消息映射
-        MessageMap<String, DeviceEntity> deviceMap = new LettuceRedisMessageMap<>("xa_mass_platform::deviceMap", String.class, DeviceEntity.class);
-        MessageMap<String, TokenEntity> tokenMap = new LettuceRedisMessageMap<>("xa_mass_platform::tokenMap", String.class, TokenEntity.class);
-        MessageMap<String, TaskEntity> taskEntityMessageMap = new LettuceRedisMessageMap<>("xa_mass_platform::taskEntityMessageMap", String.class, TaskEntity.class);
-        MessageMap<String, TokenEntity> demoAppTokenMap = new LettuceRedisMessageMap<>("xa_mass_platform::demoAppTokenMap", String.class, TokenEntity.class);
-        
-        // 执行公共逻辑
-        runExample(deviceMap, tokenMap, taskEntityMessageMap, demoAppTokenMap, "Redis");
+        } else {
+            System.out.println("=== Redis队列示例 ===");
+            // 1. 初始化全局Redis连接
+            RedisConnectionManager.init("localhost", 6379, null, 0);
+            // 2. 创建Redis消息映射
+            deviceMap = new LettuceRedisMessageMap<>("xa_mass_platform::deviceMap", String.class, DeviceEntity.class);
+            tokenMap = new LettuceRedisMessageMap<>("xa_mass_platform::tokenMap", String.class, TokenEntity.class);
+            taskEntityMessageMap = new LettuceRedisMessageMap<>("xa_mass_platform::taskEntityMessageMap", String.class, TaskEntity.class);
+            demoAppTokenMap = new LettuceRedisMessageMap<>("xa_mass_platform::demoAppTokenMap", String.class, TokenEntity.class);
 
 
-
-    }
-
-    private static void runExample(MessageMap<String, DeviceEntity> deviceMap,
-                                   MessageMap<String, TokenEntity> tokenMap,
-                                   MessageMap<String, TaskEntity> taskEntityMessageMap,
-                                   MessageMap<String, TokenEntity> demoAppTokenMap,
-                                   String queueType){
-
+        }
         //init manager
         DeviceRepositoryManager deviceRepositoryManager = new DeviceRepositoryManager(deviceMap, tokenMap);
         deviceRepositoryManager.addProjectDeviceTokenMap(Project.DEMO_APP.getCode(), demoAppTokenMap);
         TaskRepositoryManager taskRepositoryManager = new TaskRepositoryManager(taskEntityMessageMap,
                 queueType.equals("内存") ? QueueProviderType.IN_MEMORY : QueueProviderType.REDIS);
 
+        //mock 关键数据
+        mockGenerate(taskRepositoryManager, deviceRepositoryManager, queueType);
+        //匹配任务和device
+
+
+
+    }
+
+
+    private static void mockGenerate(TaskRepositoryManager taskRepositoryManager, DeviceRepositoryManager deviceRepositoryManager, String queueType) {
 
         //init entity list
         List<DeviceEntity> deviceEntityList = generateDevices();
@@ -84,7 +72,7 @@ public class RepositoryManagerExample {
         List<TaskEntity> taskEntityList = generateTasks();
 
         //bind to manager
-        initEnv(deviceEntityList, tokenEntityList, taskEntityList,deviceRepositoryManager,taskRepositoryManager,queueType);
+        initEnv(deviceEntityList, tokenEntityList, taskEntityList, deviceRepositoryManager, taskRepositoryManager, queueType);
 
         //push seed to queue
         pushSeed(taskEntityList, taskRepositoryManager);
