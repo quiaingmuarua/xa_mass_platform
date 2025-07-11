@@ -74,6 +74,18 @@ public class TaskRepositoryManager {
         seedQueue.offer(seed);
     }
 
+    public void batchAddSeed(String taskId, String[] seeds){
+        Objects.requireNonNull(taskId, "Task ID cannot be null");
+        Objects.requireNonNull(seeds, "Seeds cannot be null");
+        MessageQueue<String> seedQueue = taskSeedsMap.get(taskId);
+        if (seedQueue == null) {
+            throw new IllegalArgumentException("Task not found: " + taskId);
+        }
+        for (String seed : seeds) {
+            seedQueue.offer(seed);
+        }
+    }
+
     /**
      * 获取任务种子
      * @param taskId 任务ID

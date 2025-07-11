@@ -16,6 +16,7 @@ import com.xa.mass.engine.v2.dao.TaskRepositoryManager;
 import com.xa.mass.engine.v2.entity.DeviceEntity;
 import com.xa.mass.engine.v2.entity.TaskEntity;
 import com.xa.mass.engine.v2.entity.TokenEntity;
+import com.xa.mass.engine.v2.monkey.MockEngineGenerator;
 
 import java.util.List;
 import java.util.Map;
@@ -65,15 +66,46 @@ public class RepositoryManagerExample {
 
 
     private static void mockGenerate(TaskRepositoryManager taskRepositoryManager, DeviceRepositoryManager deviceRepositoryManager, String queueType) {
-
         //init entity list
-        List<DeviceEntity> deviceEntityList = generateDevices();
-        List<TokenEntity> tokenEntityList = generateTokens();
-        List<TaskEntity> taskEntityList = generateTasks();
-
+        String deviceFieldDslJson = """
+                {
+                  "deviceId": {"$JOIN": ["", "&.index"]},
+                  "groupId": {"$RANGE": [16, 65]},
+                  "status": {"$CHOICE": ["OFFLINE", "ONLINE"]}
+                }
+                """;
+        String tokenFieldDslJson = """
+                {
+                  "tokenId": {"$UUID": true},
+                  "deviceId": {"$JOIN": ["device-", "&.index"]},
+                  "project": {"$CHOICE": ["demoApp", "testApp", "otherApp"]},
+                  "country": {"$CHOICE": ["us", "gb", "cn"]},
+                  "platform": {"$CHOICE": ["android", "ios", "web"]},
+                  "tokenStatus": {"$CHOICE": ["ACTIVE", "INACTIVE", "EXPIRED", "BLOCKED"]},
+                  "lastUserTime": {"$EXPR": "System.currentTimeMillis()"},
+                  "expireTime": {"$EXPR": "System.currentTimeMillis() + 86400000"},
+                  "createTime": {"$EXPR": "System.currentTimeMillis()"},
+                  "updateTime": {"$EXPR": "System.currentTimeMillis()"}
+                }
+                """;
+        String taskFieldDslJson = """
+                {
+                  "taskId": {"$UUID": true},
+                  "taskName": {"$JOIN": ["Task-", "&.index"]},
+                  "project": {"$CHOICE": ["demoApp", "testApp", "otherApp"]},
+                  "taskStatus": {"$CHOICE": ["NEW", "READY", "RUNNING", "PAUSED"]},
+                  "taskCountry": {"$CHOICE": ["us", "gb", "cn"]},
+                  "taskCount": {"$RANGE": [10, 200]},
+                  "textContent": {"$JOIN": ["Content for task ", "&.index"]},
+                  "createTime": {"$EXPR": "System.currentTimeMillis()"},
+                  "updateTime": {"$EXPR": "System.currentTimeMillis()"}
+                }
+                """;
+        List<DeviceEntity> deviceEntityList = MockEngineGenerator.generateDevices(deviceFieldDslJson, 300);
+        List<TokenEntity> tokenEntityList = MockEngineGenerator.generateTokens(tokenFieldDslJson, 100);
+        List<TaskEntity> taskEntityList = MockEngineGenerator.generateTasks(taskFieldDslJson, 50);
         //bind to manager
         initEnv(deviceEntityList, tokenEntityList, taskEntityList, deviceRepositoryManager, taskRepositoryManager, queueType);
-
         //push seed to queue
         pushSeed(taskEntityList, taskRepositoryManager);
     }
@@ -110,108 +142,4 @@ public class RepositoryManagerExample {
 
 
 
-    private  static  List<TaskEntity> generateTasks(){
-        // 1. 创建 DSL 定义
-        JsonDslDefinition definition = new JsonDslDefinition("task_generator", JsonDslDefinition.DslType.GENERATE);
-        definition.setDescription("生成 50 个测试任务");
-        definition.setAuthor("integration_test");
-        definition.setTags(new String[]{"task", "integration"});
-        definition.setPriority(1);
-        JsonDslContext context = new JsonDslContext("com.xa.mass.engine.v2.entity.TaskEntity", 50);
-        context.setScopeName("TaskEntity");
-        context.setDebug(false);
-        definition.setContext(context);
-
-        String fieldDslJson = """
-                {
-                  "taskId": {"$UUID": true},
-                  "taskName": {"$JOIN": ["Task-", "&.index"]},
-                  "project": {"$CHOICE": ["demoApp", "testApp", "otherApp"]},
-                  "taskStatus": {"$CHOICE": ["NEW", "READY", "RUNNING", "PAUSED"]},
-                  "taskCountry": {"$CHOICE": ["us", "gb", "cn"]},
-                  "taskCount": {"$RANGE": [10, 200]},
-                  "textContent": {"$JOIN": ["Content for task ", "&.index"]},
-                  "createTime": {"$EXPR": "System.currentTimeMillis()"},
-                  "updateTime": {"$EXPR": "System.currentTimeMillis()"}
-                }
-                """;
-        
-        // 解析JSON字符串为Map
-        com.google.gson.Gson gson = new com.google.gson.Gson();
-        Map<String, Object> fieldDsl = gson.fromJson(fieldDslJson, Map.class);
-        definition.setFieldDsl(fieldDsl);
-        
-        GenerateProcessor processor = ProcessorRegistry.getGenerateProcessor();
-        return processor.generate(definition, new ProcessingContext("test-context"), TaskEntity.class);
-    }
-    
-     private static  List<TokenEntity> generateTokens() {
-        // 1. 创建 DSL 定义
-        JsonDslDefinition definition = new JsonDslDefinition("token_generator", JsonDslDefinition.DslType.GENERATE);
-        definition.setDescription("生成 100 个测试令牌");
-        definition.setAuthor("integration_test");
-        definition.setTags(new String[]{"token", "integration"});
-        definition.setPriority(1);
-        JsonDslContext context = new JsonDslContext("com.xa.mass.engine.v2.entity.TokenEntity", 100);
-        context.setScopeName("TokenEntity");
-        context.setDebug(false);
-        definition.setContext(context);
-
-        String fieldDslJson = """
-                {
-                  "tokenId": {"$UUID": true},
-                  "deviceId": {"$JOIN": ["device-", "&.index"]},
-                  "project": {"$CHOICE": ["demoApp", "testApp", "otherApp"]},
-                  "country": {"$CHOICE": ["us", "gb", "cn"]},
-                  "platform": {"$CHOICE": ["android", "ios", "web"]},
-                  "tokenStatus": {"$CHOICE": ["ACTIVE", "INACTIVE", "EXPIRED", "BLOCKED"]},
-                  "lastUserTime": {"$EXPR": "System.currentTimeMillis()"},
-                  "expireTime": {"$EXPR": "System.currentTimeMillis() + 86400000"},
-                  "createTime": {"$EXPR": "System.currentTimeMillis()"},
-                  "updateTime": {"$EXPR": "System.currentTimeMillis()"}
-                }
-                """;
-        
-        // 解析JSON字符串为Map
-        com.google.gson.Gson gson = new com.google.gson.Gson();
-        Map<String, Object> fieldDsl = gson.fromJson(fieldDslJson, Map.class);
-        definition.setFieldDsl(fieldDsl);
-        
-        GenerateProcessor processor = ProcessorRegistry.getGenerateProcessor();
-        return processor.generate(definition, new ProcessingContext("test-context"), TokenEntity.class);
-    }
-
-
-    /**
-     * 使用新标准 DSL 生成设备
-     */
-    private static List<DeviceEntity> generateDevices() {
-        // 1. 创建 DSL 定义
-        JsonDslDefinition definition = new JsonDslDefinition("device_generator", JsonDslDefinition.DslType.GENERATE);
-        definition.setDescription("生成 300 个测试设备");
-        definition.setAuthor("integration_test");
-        definition.setTags(new String[]{"device", "integration"});
-        definition.setPriority(1);
-        JsonDslContext context = new JsonDslContext("com.xa.mass.engine.v2.entity.DeviceEntity", 300);
-        context.setScopeName("DeviceEntity");
-        context.setDebug(false);
-        definition.setContext(context);
-
-        String fieldDslJson = """
-                {
-                  "deviceId": {"$JOIN": ["", "&.index"]},
-                  "groupId": {"$RANGE": [16, 65]},
-                  "status": {"$CHOICE": ["OFFLINE", "ONLINE"]}
-                }
-                """;
-        
-        // 解析JSON字符串为Map
-        com.google.gson.Gson gson = new com.google.gson.Gson();
-        Map<String, Object> fieldDsl = gson.fromJson(fieldDslJson, Map.class);
-        definition.setFieldDsl(fieldDsl);
-        GenerateProcessor processor = ProcessorRegistry.getGenerateProcessor();
-        return processor.generate(definition, new ProcessingContext("test-context"), DeviceEntity.class);
-
-
-    }
 }
