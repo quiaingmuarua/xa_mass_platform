@@ -14,8 +14,6 @@ import com.xa.mass.engine.v2.dao.TaskRepositoryManager;
 import com.xa.mass.engine.v2.entity.DeviceEntity;
 import com.xa.mass.engine.v2.entity.TaskEntity;
 import com.xa.mass.engine.v2.entity.TokenEntity;
-
-import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
@@ -24,32 +22,36 @@ public class RepositoryManagerExample {
 
     public static void main(String[] args) {
         // 创建内存映射实例
-        MessageMap<String, DeviceEntity> deviceMap = new InMemoryMessageMap<>();
-        MessageMap<String, TokenEntity> tokenMap = new InMemoryMessageMap<>();
-        MessageMap<String, TaskEntity> taskEntityMessageMap=new InMemoryMessageMap<>();
+        MessageMap<String, DeviceEntity> deviceMap = new InMemoryMessageMap<>("deviceMap");
+        MessageMap<String, TokenEntity> tokenMap = new InMemoryMessageMap<>("tokenMap");
+        MessageMap<String, TaskEntity> taskEntityMessageMap=new InMemoryMessageMap<>("taskEntityMessageMap");
 
         // 创建设备仓库管理器
         DeviceRepositoryManager deviceRepositoryManager = new DeviceRepositoryManager(deviceMap, tokenMap);
         // 添加项目设备令牌映射
-        deviceRepositoryManager.addProjectDeviceTokenMap(Project.DEMO_APP.getCode(), new InMemoryMessageMap<>());
+        deviceRepositoryManager.addProjectDeviceTokenMap(Project.DEMO_APP.getCode(), new InMemoryMessageMap<>("demoAppTokenMap"));
 
         TaskRepositoryManager taskRepositoryManager=new TaskRepositoryManager(taskEntityMessageMap);
 
 
 
         List<DeviceEntity> deviceEntityList=generateDevices();
-        List<TaskEntity> taskEntityList=generateTasks();
         List<TokenEntity> tokenEntityList=generateTokens();
-
-        deviceEntityList.forEach(deviceRepositoryManager::addDevice);
-        taskEntityList.forEach(taskRepositoryManager::createTask);
-        
         // 为每个设备添加对应的令牌
         for (int i = 0; i < Math.min(deviceEntityList.size(), tokenEntityList.size()); i++) {
             TokenEntity token = tokenEntityList.get(i);
             token.setDeviceId(deviceEntityList.get(i).getDeviceId());
             deviceRepositoryManager.addDeviceBindToken(token);
         }
+        deviceEntityList.forEach(deviceRepositoryManager::addDevice);
+
+        //生成task
+        List<TaskEntity> taskEntityList=generateTasks();
+        taskEntityList.forEach(taskRepositoryManager::createTask);
+
+
+        
+
 
         System.out.println("DeviceRepositoryManager initialized successfully");
         System.out.println("Generated " + deviceEntityList.size() + " devices");
