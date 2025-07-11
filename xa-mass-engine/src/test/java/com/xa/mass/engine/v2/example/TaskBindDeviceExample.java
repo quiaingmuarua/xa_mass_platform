@@ -45,12 +45,20 @@ public class TaskBindDeviceExample {
         System.out.println("Generated " + deviceEntityList.size() + " devices");
         System.out.println("Generated " + tokenEntityList.size() + " tokens");
         System.out.println("Generated " + taskEntityList.size() + " tasks");
-        taskEntityList.forEach(taskRepositoryManager::createTask);
+        
+        // 创建任务
+        taskEntityList.forEach(taskEntity -> {
+            taskRepositoryManager.saveTask(taskEntity);
+            taskRepositoryManager.createSeedQueue(taskEntity.getTaskId());
+            taskRepositoryManager.createMsgQueue(taskEntity.getTaskId());
+        });
+        
+        // 添加种子
         taskEntityList.forEach(taskEntity ->
         {
             for (int i = 0; i < taskEntity.getTaskCount(); i++) {
                 String seed = "seed-" + i + taskEntity.getTaskId();
-                taskRepositoryManager.addTaskSeed(taskEntity.getTaskId(), seed);
+                taskRepositoryManager.addSeed(taskEntity.getTaskId(), seed);
             }
         });
 

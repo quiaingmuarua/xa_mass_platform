@@ -11,6 +11,8 @@ import com.xa.mass.engine.v2.entity.DeviceEntity;
 import com.xa.mass.engine.v2.entity.TaskEntity;
 import com.xa.mass.engine.v2.entity.TokenEntity;
 import com.xa.mass.engine.v2.monkey.MockEngineGenerator;
+import com.xa.mass.engine.v2.service.TaskService;
+import com.xa.mass.engine.v2.service.TaskServiceImpl;
 
 import java.util.List;
 
@@ -44,12 +46,12 @@ public class RepositoryManagerExample {
         }
         //init manager
         DeviceRepositoryManager deviceRepositoryManager = new DeviceRepositoryManager(deviceMap);
-
         TaskRepositoryManager taskRepositoryManager = new TaskRepositoryManager(taskEntityMessageMap,
                 queueType.equals("内存") ? QueueProviderType.IN_MEMORY : QueueProviderType.REDIS);
+        TaskService taskService = new TaskServiceImpl(taskRepositoryManager);
 
         //mock 关键数据
-        mockGenerate(taskRepositoryManager, deviceRepositoryManager, queueType);
+        mockGenerate(taskService, deviceRepositoryManager, queueType);
         //匹配任务和device
 
 
@@ -57,7 +59,7 @@ public class RepositoryManagerExample {
     }
 
 
-    private static void mockGenerate(TaskRepositoryManager taskRepositoryManager, DeviceRepositoryManager deviceRepositoryManager, String queueType) {
+    private static void mockGenerate(TaskService taskService, DeviceRepositoryManager deviceRepositoryManager, String queueType) {
         // 注册所有项目分组
         deviceRepositoryManager.registerAllProjects(project -> new InMemoryMessageMap<>(project.getCode() + "TokenMap"));
 
@@ -100,23 +102,23 @@ public class RepositoryManagerExample {
         List<TokenEntity> tokenEntityList = MockEngineGenerator.generateTokens(tokenFieldDslJson, 100);
         List<TaskEntity> taskEntityList = MockEngineGenerator.generateTasks(taskFieldDslJson, 50);
         //bind to manager
-        initEnv(deviceEntityList, tokenEntityList, taskEntityList, deviceRepositoryManager, taskRepositoryManager, queueType);
+        initEnv(deviceEntityList, tokenEntityList, taskEntityList, deviceRepositoryManager, taskService, queueType);
         //push seed to queue
-        pushSeed(taskEntityList, taskRepositoryManager);
+        pushSeed(taskEntityList, taskService);
     }
 
 
     /**
      * 公共示例执行逻辑
      */
-    private static void initEnv(List<DeviceEntity> deviceEntityList, List<TokenEntity> tokenEntityList, List<TaskEntity> taskEntityList, DeviceRepositoryManager deviceRepositoryManager,TaskRepositoryManager taskRepositoryManager,String queueType) {
+    private static void initEnv(List<DeviceEntity> deviceEntityList, List<TokenEntity> tokenEntityList, List<TaskEntity> taskEntityList, DeviceRepositoryManager deviceRepositoryManager, TaskService taskService, String queueType) {
         for (int i = 0; i < Math.min(deviceEntityList.size(), tokenEntityList.size()); i++) {
             TokenEntity token = tokenEntityList.get(i);
             token.setDeviceId(deviceEntityList.get(i).getDeviceId());
             deviceRepositoryManager.addDeviceBindToken(token);
         }
         deviceEntityList.forEach(deviceRepositoryManager::addDevice);
-        taskEntityList.forEach(taskRepositoryManager::createTask);
+        taskEntityList.forEach(taskService::createTask);
         System.out.println("[" + queueType + "] DeviceRepositoryManager initialized successfully");
         System.out.println("[" + queueType + "] Generated " + deviceEntityList.size() + " devices");
         System.out.println("[" + queueType + "] Generated " + taskEntityList.size() + " tasks");
@@ -125,10 +127,12 @@ public class RepositoryManagerExample {
     }
 
 
-    private static void pushSeed(List<TaskEntity> taskEntityList, TaskRepositoryManager taskRepositoryManager){
-        taskEntityList.forEach(taskEntity -> {
+    private static void pushSeed(List<TaskEntity> taskEntityList, TaskService taskService){
+        taskEntityList.forEach(taskEntity ->
+        {
             for (int i = 0; i < taskEntity.getTaskCount(); i++) {
-                taskRepositoryManager.addTaskSeed(taskEntity.getTaskId(), "seed-" + i+taskEntity.getTaskId());
+                String seed = "seed-" + i + taskEntity.getTaskId();
+                taskService.addTaskSeed(taskEntity.getTaskId(), seed);
             }
         });
 
