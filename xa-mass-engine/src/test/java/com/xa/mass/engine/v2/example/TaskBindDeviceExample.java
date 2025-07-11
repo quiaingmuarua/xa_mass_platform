@@ -30,11 +30,11 @@ public class TaskBindDeviceExample {
         deviceRepositoryManager.registerAllProjects(project -> new InMemoryMessageMap<>(project.getCode() + "TokenMap"));
 
         //mock device
-        List<DeviceEntity> deviceEntityList = MockEngineGenerator.generateDevices("default", 20);
+        List<DeviceEntity> deviceEntityList = mockDevices( 20);
         deviceEntityList.forEach(deviceRepositoryManager::saveDevice);
 
         //mock device token binding
-        List<TokenEntity> generatedTokens = MockEngineGenerator.generateTokens("default", 20);
+        List<TokenEntity> generatedTokens =mockTokens( 20);
         generatedTokens.forEach(tokenEntity -> 
             deviceRepositoryManager.saveToken(tokenEntity.getProject(), tokenEntity));
 

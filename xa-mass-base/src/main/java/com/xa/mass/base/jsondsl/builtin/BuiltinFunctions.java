@@ -405,7 +405,7 @@ public class BuiltinFunctions {
                             return function.apply(java.util.Arrays.asList(list));
                         }
                     });
-                    System.out.println("[BuiltinFunctions] 成功注册函数 " + funcName + " 到 QLExpress");
+//                    System.out.println("[BuiltinFunctions] 成功注册函数 " + funcName + " 到 QLExpress");
                 } catch (Exception e) {
                     System.err.println("[BuiltinFunctions] 注册函数 " + funcName + " 到 QLExpress 失败: " + e.getMessage());
                     // 继续注册其他函数，不中断整个流程

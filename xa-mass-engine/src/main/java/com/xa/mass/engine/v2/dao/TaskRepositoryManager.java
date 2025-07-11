@@ -27,12 +27,11 @@ public class TaskRepositoryManager {
     private final QueueProviderType msgQueueType;
 
     // 构造函数，直接传入项目-任务Map
-    public TaskRepositoryManager(ConcurrentMap<Project, MessageMap<String, TaskEntity>> projectTaskMap, QueueProviderType queueType) {
-        this(projectTaskMap, queueType, queueType);
+    public TaskRepositoryManager( QueueProviderType queueType) {
+        this( queueType, queueType);
     }
 
-    public TaskRepositoryManager(ConcurrentMap<Project, MessageMap<String, TaskEntity>> projectTaskMap, QueueProviderType seedQueueType, QueueProviderType msgQueueType) {
-        this.projectTaskMap.putAll(Objects.requireNonNull(projectTaskMap));
+    public TaskRepositoryManager(QueueProviderType seedQueueType, QueueProviderType msgQueueType) {
         this.seedQueueType = Objects.requireNonNull(seedQueueType);
         this.msgQueueType = Objects.requireNonNull(msgQueueType);
     }
@@ -97,7 +96,7 @@ public class TaskRepositoryManager {
      * 便捷构造器：使用默认的内存队列为所有项目初始化
      */
     public static TaskRepositoryManager createWithDefaultProjects(QueueProviderType seedQueueType, QueueProviderType msgQueueType) {
-        TaskRepositoryManager manager = new TaskRepositoryManager(new ConcurrentHashMap<>(), seedQueueType, msgQueueType);
+        TaskRepositoryManager manager = new TaskRepositoryManager( seedQueueType, msgQueueType);
         manager.registerAllProjects(project -> new InMemoryMessageMap<>());
         return manager;
     }
