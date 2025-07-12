@@ -4,6 +4,8 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.xa.mass.base.channel.queue.api.MessageStream;
 import io.lettuce.core.Consumer;
+import io.lettuce.core.StreamMessage;
+
 import io.lettuce.core.XReadArgs;
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.api.sync.RedisCommands;
@@ -16,7 +18,7 @@ import java.util.concurrent.TimeUnit;
 
 public class LettuceRedisStream<T> implements MessageStream<T> {
     private static final Logger log = LoggerFactory.getLogger(LettuceRedisStream.class);
-    
+
     // 默认消费者组和消费者名称
     private static final String DEFAULT_GROUP = "default-group";
     private static final String DEFAULT_CONSUMER = "default-consumer";
@@ -32,24 +34,10 @@ public class LettuceRedisStream<T> implements MessageStream<T> {
     private final String group;
     private final String consumerName;
 
-    /**
-     * 创建Redis Stream实例（使用默认消费者组和消费者）
-     * @param streamKey Redis Stream的键名
-     * @param name 流名称
-     * @param messageType 消息类型
-     */
     public LettuceRedisStream(String streamKey, String name, Class<T> messageType) {
         this(streamKey, name, messageType, DEFAULT_GROUP, DEFAULT_CONSUMER);
     }
 
-    /**
-     * 创建Redis Stream实例
-     * @param streamKey Redis Stream的键名
-     * @param name 流名称
-     * @param messageType 消息类型
-     * @param group 消费组名
-     * @param consumerName 消费者名
-     */
     public LettuceRedisStream(String streamKey, String name, Class<T> messageType, String group, String consumerName) {
         this.connection = RedisConnectionManager.getConnection();
         this.commands = connection.sync();
@@ -59,8 +47,6 @@ public class LettuceRedisStream<T> implements MessageStream<T> {
         this.group = group != null ? group : DEFAULT_GROUP;
         this.consumerName = consumerName != null ? consumerName : DEFAULT_CONSUMER;
         this.gson = new GsonBuilder().create();
-
-        // 确保消费者组存在
         ensureConsumerGroup();
     }
 
@@ -75,46 +61,25 @@ public class LettuceRedisStream<T> implements MessageStream<T> {
         return streamId;
     }
 
-    /**
-     * 拉取新消息（仅获取未消费的新消息），支持阻塞timeout
-     */
     @Override
     public StreamMessage<T> poll(long timeout, TimeUnit unit) throws InterruptedException {
         if (Thread.currentThread().isInterrupted()) {
             throw new InterruptedException("Thread interrupted");
         }
         long timeoutMs = unit.toMillis(timeout);
-
         List<io.lettuce.core.StreamMessage<String, String>> messages = commands.xreadgroup(
                 Consumer.from(group, consumerName),
                 XReadArgs.Builder.block(timeoutMs).count(1),
                 XReadArgs.StreamOffset.from(streamKey, ">")
         );
-
         if (messages != null && !messages.isEmpty()) {
-            // 解析Redis Stream消息格式
-            List<Object> streamData = (List<Object>) messages.get(0);
-            List<Object> messageList = (List<Object>) streamData.get(1);
-            
-            if (!messageList.isEmpty()) {
-                List<Object> messageData = (List<Object>) messageList.get(0);
-                String messageId = (String) messageData.get(0);
-                List<Object> fields = (List<Object>) messageData.get(1);
-                
-                // 查找data字段
-                String jsonMessage = null;
-                for (int i = 0; i < fields.size(); i += 2) {
-                    if ("data".equals(fields.get(i))) {
-                        jsonMessage = (String) fields.get(i + 1);
-                        break;
-                    }
-                }
-                
-                if (jsonMessage != null) {
-                    T message = gson.fromJson(jsonMessage, messageType);
-                    log.debug("Message polled from Redis stream: messageId={}", messageId);
-                    return new StreamMessage<>(messageId, message);
-                }
+            io.lettuce.core.StreamMessage<String, String> msg = messages.get(0);
+            String messageId = msg.getId();
+            String jsonMessage = msg.getBody().get("data");
+            if (jsonMessage != null) {
+                T message = gson.fromJson(jsonMessage, messageType);
+                log.debug("Message polled from Redis stream: messageId={}", messageId);
+                return new StreamMessage<>(messageId, message);
             }
         }
         return null;
@@ -167,9 +132,6 @@ public class LettuceRedisStream<T> implements MessageStream<T> {
 
     @Override
     public boolean claim(String messageId, long minIdleTime, TimeUnit unit) {
-        // 推荐使用 XAUTOCLAIM/XCLAIM 处理超时pending消息
-        // 可补充 claim 实现（如有需要）
-        // 此处简化为不实现
         log.warn("Claim operation not implemented in this version.");
         return false;
     }
@@ -188,7 +150,6 @@ public class LettuceRedisStream<T> implements MessageStream<T> {
     @Override
     public int processingSize() {
         try {
-            // 查询 pending 条数（所有消费者pending消息总数）
             Object pending = commands.xpending(streamKey, group);
             if (pending != null) {
                 // 解析pending信息
@@ -217,41 +178,66 @@ public class LettuceRedisStream<T> implements MessageStream<T> {
 
     @Override
     public int cleanupExpiredMessages() {
-        // 复杂场景可用 XTRIM/MAXLEN 或定期批量 XDEL 已确认的消息，简单版此处略
+        // 可补充定期trim，见之前建议
         return 0;
     }
-    
-    /**
-     * 确保消费者组存在
-     */
-    private void ensureConsumerGroup() {
+
+    @Override
+    public int ackBatch(List<String> messageIds) {
+        if (messageIds == null || messageIds.isEmpty()) {
+            return 0;
+        }
+        
         try {
-            // 尝试创建消费者组，如果已存在则忽略错误
-            commands.xgroupCreate(XReadArgs.StreamOffset.from(streamKey, "$"), group);
-            log.debug("Consumer group created or already exists: {}", group);
+            // 批量确认消息
+            Long ackCount = commands.xack(streamKey, group, messageIds.toArray(new String[0]));
+            int successCount = ackCount != null ? ackCount.intValue() : 0;
+            
+            if (successCount > 0) {
+                log.debug("Batch acknowledged {} messages from {} total", successCount, messageIds.size());
+            } else {
+                log.warn("No messages were acknowledged from batch of {}", messageIds.size());
+            }
+            
+            return successCount;
         } catch (Exception e) {
-            // 消费者组可能已存在，这是正常的
-            log.debug("Consumer group may already exist: {}", group);
+            log.error("Failed to batch ack messages: {}", messageIds, e);
+            return 0;
         }
     }
     
-    /**
-     * 获取Stream键名
-     */
+    @Override
+    public StreamStats getStats() {
+        try {
+            int totalSize = size();
+            int processingSize = processingSize();
+            int pendingSize = totalSize - processingSize; // 简化计算
+            
+            return new StreamStats(totalSize, processingSize, pendingSize, name);
+        } catch (Exception e) {
+            log.error("Failed to get stream stats for: {}", name, e);
+            return new StreamStats(0, 0, 0, name);
+        }
+    }
+
+    private void ensureConsumerGroup() {
+        try {
+            // 用 "0" 避免遗漏历史
+            commands.xgroupCreate(XReadArgs.StreamOffset.from(streamKey, "0"), group);
+            log.debug("Consumer group created or already exists: {}", group);
+        } catch (Exception e) {
+            log.debug("Consumer group may already exist: {}", group);
+        }
+    }
+
     public String getStreamKey() {
         return streamKey;
     }
-    
-    /**
-     * 获取消费者组名称
-     */
+
     public String getGroup() {
         return group;
     }
-    
-    /**
-     * 获取消费者名称
-     */
+
     public String getConsumerName() {
         return consumerName;
     }

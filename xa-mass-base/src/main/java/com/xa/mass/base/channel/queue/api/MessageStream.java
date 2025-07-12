@@ -55,6 +55,19 @@ public interface MessageStream<T> {
     boolean claim(String messageId, long newTimeout, TimeUnit unit);
     
     /**
+     * 批量确认消息已被成功处理
+     * @param messageIds 消息ID列表
+     * @return 成功确认的消息数量
+     */
+    int ackBatch(List<String> messageIds);
+    
+    /**
+     * 获取流的统计信息
+     * @return 流统计信息
+     */
+    StreamStats getStats();
+    
+    /**
      * 获取流中待处理的消息数量
      * @return 消息数量
      */
@@ -114,6 +127,51 @@ public interface MessageStream<T> {
         @Override
         public String toString() {
             return "StreamMessage{messageId='" + messageId + "', message=" + message + ", timestamp=" + timestamp + "}";
+        }
+    }
+    
+    /**
+     * 流统计信息
+     */
+    class StreamStats {
+        private final int totalSize;
+        private final int processingSize;
+        private final int pendingSize;
+        private final String streamName;
+        private final long timestamp;
+        
+        public StreamStats(int totalSize, int processingSize, int pendingSize, String streamName) {
+            this.totalSize = totalSize;
+            this.processingSize = processingSize;
+            this.pendingSize = pendingSize;
+            this.streamName = streamName;
+            this.timestamp = System.currentTimeMillis();
+        }
+        
+        public int getTotalSize() {
+            return totalSize;
+        }
+        
+        public int getProcessingSize() {
+            return processingSize;
+        }
+        
+        public int getPendingSize() {
+            return pendingSize;
+        }
+        
+        public String getStreamName() {
+            return streamName;
+        }
+        
+        public long getTimestamp() {
+            return timestamp;
+        }
+        
+        @Override
+        public String toString() {
+            return String.format("StreamStats{name='%s', total=%d, processing=%d, pending=%d, timestamp=%d}", 
+                               streamName, totalSize, processingSize, pendingSize, timestamp);
         }
     }
 }

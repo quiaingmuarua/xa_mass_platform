@@ -199,6 +199,32 @@ public class InMemoryMessageStream<T> implements MessageStream<T> {
         return result;
     }
     
+    @Override
+    public int ackBatch(List<String> messageIds) {
+        if (messageIds == null || messageIds.isEmpty()) {
+            return 0;
+        }
+        
+        int successCount = 0;
+        for (String messageId : messageIds) {
+            if (ack(messageId)) {
+                successCount++;
+            }
+        }
+        
+        log.debug("Batch acknowledged {} messages from {} total", successCount, messageIds.size());
+        return successCount;
+    }
+    
+    @Override
+    public StreamStats getStats() {
+        int totalSize = size() + processingSize();
+        int processingSize = processingSize();
+        int pendingSize = size();
+        
+        return new StreamStats(totalSize, processingSize, pendingSize, name);
+    }
+    
     /**
      * 生成唯一的消息ID
      */
