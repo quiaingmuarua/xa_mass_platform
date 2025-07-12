@@ -83,7 +83,32 @@ public interface MessageQueueWithMap<K, V> extends MessageQueue<V>, MessageMap<K
 - 适用于需要快速查找的场景
 - 提供 `getMapSize()` 方法获取映射大小
 
-### 5. MessageTransporter<T> - 消息传输器抽象
+### 5. MessageStream<T> - 消息流抽象
+
+消息流提供可靠的消息处理能力，支持确认(ACK)和认领(CLAIM)功能。
+
+```java
+public interface MessageStream<T> {
+    String offer(T message);                                    // 投递消息，返回消息ID
+    StreamMessage<T> poll(long timeout, TimeUnit unit);         // 消费消息
+    boolean ack(String messageId);                              // 确认消息处理完成
+    boolean claim(String messageId, long timeout, TimeUnit unit); // 认领消息重新处理
+    int size();                                                 // 待处理消息数量
+    int processingSize();                                       // 处理中消息数量
+    boolean isEmpty();                                          // 是否为空
+    String getName();                                           // 流名称
+    int cleanupExpiredMessages();                               // 清理过期消息
+}
+```
+
+**特点：**
+- 支持消息确认机制，确保可靠处理
+- 支持消息认领，处理失败时可重新分配
+- 区分待处理和处理中消息状态
+- 自动过期消息清理
+- 适用于需要可靠消息处理的场景
+
+### 6. MessageTransporter<T> - 消息传输器抽象
 
 消息传输器封装了消息的发送和接收逻辑，隐藏底层实现细节。
 
@@ -176,6 +201,45 @@ queueMap.put("key1", 200);     // 映射操作
 - 支持混合使用场景
 - 提供 `getMapSize()` 方法
 
+## 消息流实现
+
+### 1. InMemoryMessageStream<T>
+
+基于内存的消息流实现，支持ACK和CLAIM功能。
+
+```java
+// 使用示例
+MessageStream<String> stream = new InMemoryMessageStream<>("my-stream");
+String messageId = stream.offer("Hello Stream!");
+StreamMessage<String> msg = stream.poll(1, TimeUnit.SECONDS);
+stream.ack(msg.getMessageId());  // 确认消息
+stream.claim(msg.getMessageId(), 10, TimeUnit.SECONDS);  // 认领消息
+```
+
+**特性：**
+- 支持消息确认和认领
+- 自动过期消息清理
+- 区分待处理和处理中状态
+- 线程安全
+- 高性能内存操作
+
+### 2. LettuceRedisStream<T>
+
+基于Redis Stream的消息流实现（简化版本）。
+
+```java
+// 使用示例（需要先初始化Redis连接）
+RedisConnectionManager.init("localhost", 6379, null, 0);
+MessageStream<String> stream = new LettuceRedisStream<>("my-stream", "stream-name", String.class);
+String messageId = stream.offer("Hello Redis Stream!");
+```
+
+**特性：**
+- 基于Redis Stream数据结构
+- 支持分布式场景
+- 简化版本，支持基本ACK功能
+- 自动JSON序列化
+
 ## 传输器实现
 
 ### 1. QueueBasedMessageTransporter<T>
@@ -209,6 +273,26 @@ MessageTransporter<T> transporter = new ApiBasedMessageTransporter<>(
 ```
 
 ## 工厂模式
+
+### MessageQueueProviderRegistry
+
+提供统一的队列创建接口。
+
+```java
+// 创建不同类型的队列
+MessageQueue<String> memoryQueue = MessageQueueProviderRegistry.createQueue(QueueProviderType.IN_MEMORY, "my-queue");
+MessageQueue<String> redisQueue = MessageQueueProviderRegistry.createQueue(QueueProviderType.REDIS, "my-queue");
+```
+
+### MessageStreamProviderRegistry
+
+提供统一的消息流创建接口。
+
+```java
+// 创建不同类型的消息流
+MessageStream<String> memoryStream = MessageStreamProviderRegistry.createStream(QueueProviderType.IN_MEMORY_STREAM, "my-stream");
+MessageStream<String> redisStream = MessageStreamProviderRegistry.createStream(QueueProviderType.REDIS_STREAM, "my-stream");
+```
 
 ### MessageTransporterFactory
 
@@ -244,7 +328,23 @@ assignmentQueue.offer(new AssignmentRecord());           // 队列操作
 assignmentQueue.put("record001", new AssignmentRecord()); // 映射操作
 ```
 
-### 4. 消息传输
+### 4. 消息流处理
+```java
+MessageStream<String> stream = new InMemoryMessageStream<>("task-stream");
+String messageId = stream.offer("task-data");
+StreamMessage<String> msg = stream.poll(1, TimeUnit.SECONDS);
+if (msg != null) {
+    // 处理消息
+    boolean success = processMessage(msg.getMessage());
+    if (success) {
+        stream.ack(msg.getMessageId());  // 确认成功
+    } else {
+        stream.claim(msg.getMessageId(), 30, TimeUnit.SECONDS);  // 重新认领
+    }
+}
+```
+
+### 5. 消息传输
 ```java
 MessageTransporter<Envelope> transporter = MessageTransporterFactory.createQueueBased(inputQueue, outputQueue);
 transporter.sendInput(envelope);
@@ -283,6 +383,13 @@ public class FileMessageMap<K, V> implements MessageMap<K, V> {
 }
 ```
 
+### 实现新的消息流
+```java
+public class DatabaseMessageStream<T> implements MessageStream<T> {
+    // 实现所有接口方法
+}
+```
+
 ## 测试覆盖
 
 所有实现都包含完整的测试用例：
@@ -316,5 +423,35 @@ public class FileMessageMap<K, V> implements MessageMap<K, V> {
 ### 5. 兼容性与扩展性
 - 保持所有接口向后兼容，老实现可平滑迁移。
 - 支持多种队列/Map/Set/Transporter 实现，便于后续扩展。
+
+## 2024-12-19 MessageStream 新增日志
+
+### 1. 消息流接口设计
+- 新增 MessageStream<T> 接口，支持可靠的消息处理
+- 实现 ACK（确认）和 CLAIM（认领）功能
+- 区分待处理和处理中消息状态
+- 支持过期消息自动清理
+
+### 2. 内存实现
+- InMemoryMessageStream<T> 提供完整的内存消息流实现
+- 基于 ConcurrentHashMap 和 LinkedBlockingQueue
+- 支持消息超时和自动清理
+- 线程安全，高性能
+
+### 3. Redis 实现
+- LettuceRedisStream<T> 基于 Redis Stream 数据结构
+- 简化版本，支持基本 ACK 功能
+- 自动 JSON 序列化/反序列化
+- 支持分布式场景
+
+### 4. 注册机制
+- 新增 MessageStreamProviderRegistry 专门管理消息流提供者
+- 扩展 QueueProviderType 枚举，增加 STREAM 类型
+- 分离队列和消息流的注册管理，避免泛型冲突
+
+### 5. 示例与文档
+- 新增 MessageStreamExample 展示完整使用流程
+- 更新 channel_readme.md，详细说明消息流特性和使用方法
+- 提供 ACK 和 CLAIM 功能的具体示例
 
 ---

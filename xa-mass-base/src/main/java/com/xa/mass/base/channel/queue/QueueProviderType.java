@@ -3,6 +3,8 @@ package com.xa.mass.base.channel.queue;
 public enum QueueProviderType {
     IN_MEMORY("memory"),
     REDIS("redis"),
+    IN_MEMORY_STREAM("memory-stream"),
+    REDIS_STREAM("redis-stream"),
     DATABASE("database"),
     KAFKA("kafka"),
     RABBITMQ("rabbitmq");
