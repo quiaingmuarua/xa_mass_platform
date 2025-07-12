@@ -4,6 +4,29 @@
 
 ---
 
+## 2024-07-12
+
+### MessageStreamProviderRegistry (xa-mass-base)
+- **增强类型转换逻辑**：添加对字符串类型队列类型的支持，自动转换为QueueProviderType枚举
+- **新增测试清理方法**：添加`clearCache()`方法用于测试时清理缓存，避免测试间冲突
+- **提升健壮性**：改进错误处理，确保传入的类型总是被正确处理
+
+### EngineRegistry
+- **新增测试清理方法**：添加`clearDefaultServices()`和`clearAllServices()`方法
+- **支持测试隔离**：允许测试运行时清理全局服务状态，避免测试间干扰
+
+### TaskRepositoryManager
+- **修复测试冲突**：解决"Unsupported queue type: memory"错误
+- **增强测试稳定性**：在测试类中添加缓存和服务状态清理
+- **完善测试覆盖**：确保所有测试用例能够独立运行且互不干扰
+
+### 测试改进
+- **TaskRepositoryManagerTest**：添加`@BeforeEach`清理逻辑，确保测试隔离
+- **DataFlowIntegrationTest**：添加全局状态清理，避免与其他测试冲突
+- **测试稳定性提升**：所有29个测试用例现在可以稳定通过
+
+---
+
 ## 2024-06-25
 
 ### DeviceRepositoryManager
