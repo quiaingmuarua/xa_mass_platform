@@ -4,8 +4,6 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.xa.mass.base.channel.queue.api.MessageStream;
 import io.lettuce.core.Consumer;
-import io.lettuce.core.StreamMessage;
-
 import io.lettuce.core.XReadArgs;
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.api.sync.RedisCommands;
@@ -23,7 +21,6 @@ public class LettuceRedisStream<T> implements MessageStream<T> {
     private static final String DEFAULT_GROUP = "default-group";
     private static final String DEFAULT_CONSUMER = "default-consumer";
 
-    private final StatefulRedisConnection<String, String> connection;
     private final RedisCommands<String, String> commands;
     private final String streamKey;
     private final String name;
@@ -39,7 +36,7 @@ public class LettuceRedisStream<T> implements MessageStream<T> {
     }
 
     public LettuceRedisStream(String streamKey, String name, Class<T> messageType, String group, String consumerName) {
-        this.connection = RedisConnectionManager.getConnection();
+        StatefulRedisConnection<String, String> connection = RedisConnectionManager.getConnection();
         this.commands = connection.sync();
         this.streamKey = streamKey + "::stream";
         this.name = name + "::stream";
@@ -153,8 +150,7 @@ public class LettuceRedisStream<T> implements MessageStream<T> {
             Object pending = commands.xpending(streamKey, group);
             if (pending != null) {
                 // 解析pending信息
-                if (pending instanceof List) {
-                    List<?> pendingList = (List<?>) pending;
+                if (pending instanceof List<?> pendingList) {
                     if (!pendingList.isEmpty()) {
                         return ((Long) pendingList.get(0)).intValue();
                     }
@@ -187,32 +183,32 @@ public class LettuceRedisStream<T> implements MessageStream<T> {
         if (messageIds == null || messageIds.isEmpty()) {
             return 0;
         }
-        
+
         try {
             // 批量确认消息
             Long ackCount = commands.xack(streamKey, group, messageIds.toArray(new String[0]));
             int successCount = ackCount != null ? ackCount.intValue() : 0;
-            
+
             if (successCount > 0) {
                 log.debug("Batch acknowledged {} messages from {} total", successCount, messageIds.size());
             } else {
                 log.warn("No messages were acknowledged from batch of {}", messageIds.size());
             }
-            
+
             return successCount;
         } catch (Exception e) {
             log.error("Failed to batch ack messages: {}", messageIds, e);
             return 0;
         }
     }
-    
+
     @Override
     public StreamStats getStats() {
         try {
             int totalSize = size();
             int processingSize = processingSize();
             int pendingSize = totalSize - processingSize; // 简化计算
-            
+
             return new StreamStats(totalSize, processingSize, pendingSize, name);
         } catch (Exception e) {
             log.error("Failed to get stream stats for: {}", name, e);
@@ -229,6 +225,7 @@ public class LettuceRedisStream<T> implements MessageStream<T> {
             log.debug("Consumer group may already exist: {}", group);
         }
     }
+
 
     public String getStreamKey() {
         return streamKey;

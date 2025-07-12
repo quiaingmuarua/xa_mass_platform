@@ -3,9 +3,11 @@ package com.xa.mass.engine.v2.dao;
 import com.xa.mass.base.channel.queue.memory.InMemoryMessageMap;
 import com.xa.mass.base.channel.queue.api.MessageMap;
 import com.xa.mass.base.channel.queue.QueueProviderType;
+import com.xa.mass.base.channel.queue.MessageStreamProviderRegistry;
 import com.xa.mass.base.enums.Project;
 import com.xa.mass.engine.v2.entity.TaskEntity;
 import com.xa.mass.engine.v2.entity.TaskMsgEntity;
+import com.xa.mass.engine.v2.service.EngineRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
@@ -25,6 +27,8 @@ public class TaskRepositoryManagerTest {
 
     @BeforeEach
     void setUp() {
+        MessageStreamProviderRegistry.clearCache();
+        EngineRegistry.clearAllServices();
         manager = TaskRepositoryManager.createWithDefaultProjects(QueueProviderType.IN_MEMORY);
     }
 
@@ -71,80 +75,66 @@ public class TaskRepositoryManagerTest {
     }
 
     @Test
-    void testCreateSeedQueue() {
-        // 测试创建种子队列
-        manager.createSeedQueue("task001");
-        
-        // 验证种子队列已创建
+    void testCreateSeedStream() {
+        // 测试创建种子流
+        manager.createSeedStream("task001");
+        // 验证种子流已创建
         assertEquals(0, manager.getSeedCount("task001"));
     }
 
     @Test
-    void testCreateMsgQueue() {
-        // 测试创建消息队列
-        manager.createMsgQueue("task001");
-        
-        // 验证消息队列已创建
+    void testCreateMsgStream() {
+        // 测试创建消息流
+        manager.createMsgStream("task001");
+        // 验证消息流已创建
         assertEquals(0, manager.getMsgCount("task001"));
     }
 
     @Test
     void testAddSeed() {
-        // 先创建种子队列
-        manager.createSeedQueue("task001");
-        
+        // 先创建种子流
+        manager.createSeedStream("task001");
         // 测试正常添加种子
         manager.addSeed("task001", "seed1");
         manager.addSeed("task001", "seed2");
-        
         // 验证种子数量
         assertEquals(2, manager.getSeedCount("task001"));
-        
         // 测试获取种子
         String seed1 = manager.getSeed("task001");
         assertEquals("seed1", seed1);
-        
         String seed2 = manager.getSeed("task001");
         assertEquals("seed2", seed2);
-        
         // 验证种子已消费
         assertEquals(0, manager.getSeedCount("task001"));
     }
 
     @Test
-    void testAddSeeds() {
-        // 先创建种子队列
-        manager.createSeedQueue("task001");
-        
+    void testAddSeedsBatch() {
+        // 先创建种子流
+        manager.createSeedStream("task001");
         // 测试批量添加种子
         String[] seeds = {"seed1", "seed2", "seed3"};
         for (String seed : seeds) {
             manager.addSeed("task001", seed);
         }
-        
         // 验证种子数量
         assertEquals(3, manager.getSeedCount("task001"));
-        
         // 测试获取种子
         String seed1 = manager.getSeed("task001");
         assertEquals("seed1", seed1);
-        
         String seed2 = manager.getSeed("task001");
         assertEquals("seed2", seed2);
-        
         String seed3 = manager.getSeed("task001");
         assertEquals("seed3", seed3);
     }
 
     @Test
     void testPollSeed() {
-        // 先创建种子队列
-        manager.createSeedQueue("task001");
-        
+        // 先创建种子流
+        manager.createSeedStream("task001");
         // 测试获取不存在的种子
         String nonExistentSeed = manager.getSeed("task001");
         assertNull(nonExistentSeed);
-        
         // 添加种子后获取
         manager.addSeed("task001", "seed1");
         String seed = manager.getSeed("task001");
@@ -153,45 +143,36 @@ public class TaskRepositoryManagerTest {
 
     @Test
     void testAddMsg() {
-        // 先创建消息队列
-        manager.createMsgQueue("task001");
-        
+        // 先创建消息流
+        manager.createMsgStream("task001");
         // 测试正常添加任务消息
         TaskMsgEntity taskMsg1 = createTestTaskMsg("msg001", "task001");
         TaskMsgEntity taskMsg2 = createTestTaskMsg("msg002", "task001");
-        
         manager.addMsg("task001", taskMsg1);
         manager.addMsg("task001", taskMsg2);
-        
         // 验证消息数量
         assertEquals(2, manager.getMsgCount("task001"));
-        
         // 测试获取消息
         TaskMsgEntity retrievedMsg1 = manager.getMsg("task001");
         assertNotNull(retrievedMsg1);
         assertEquals("msg001", retrievedMsg1.getMsgId());
-        
         TaskMsgEntity retrievedMsg2 = manager.getMsg("task001");
         assertNotNull(retrievedMsg2);
         assertEquals("msg002", retrievedMsg2.getMsgId());
-        
         // 验证消息已消费
         assertEquals(0, manager.getMsgCount("task001"));
     }
 
     @Test
     void testPollMsg() {
-        // 先创建消息队列
-        manager.createMsgQueue("task001");
-        
+        // 先创建消息流
+        manager.createMsgStream("task001");
         // 测试获取不存在的消息
         TaskMsgEntity nonExistentMsg = manager.getMsg("task001");
         assertNull(nonExistentMsg);
-        
         // 添加消息后获取
         TaskMsgEntity taskMsg = createTestTaskMsg("msg001", "task001");
         manager.addMsg("task001", taskMsg);
-        
         TaskMsgEntity retrievedMsg = manager.getMsg("task001");
         assertNotNull(retrievedMsg);
         assertEquals("msg001", retrievedMsg.getMsgId());
@@ -226,17 +207,14 @@ public class TaskRepositoryManagerTest {
 
     @Test
     void testGetSeedCount() {
-        // 先创建种子队列
-        manager.createSeedQueue("task001");
-        
+        // 先创建种子流
+        manager.createSeedStream("task001");
         // 初始状态
         assertEquals(0, manager.getSeedCount("task001"));
-        
         // 添加种子后
         manager.addSeed("task001", "seed1");
         manager.addSeed("task001", "seed2");
         assertEquals(2, manager.getSeedCount("task001"));
-        
         // 消费种子后
         manager.getSeed("task001");
         assertEquals(1, manager.getSeedCount("task001"));
@@ -244,19 +222,16 @@ public class TaskRepositoryManagerTest {
 
     @Test
     void testGetMsgCount() {
-        // 先创建消息队列
-        manager.createMsgQueue("task001");
-        
+        // 先创建消息流
+        manager.createMsgStream("task001");
         // 初始状态
         assertEquals(0, manager.getMsgCount("task001"));
-        
         // 添加消息后
         TaskMsgEntity taskMsg1 = createTestTaskMsg("msg001", "task001");
         TaskMsgEntity taskMsg2 = createTestTaskMsg("msg002", "task001");
         manager.addMsg("task001", taskMsg1);
         manager.addMsg("task001", taskMsg2);
         assertEquals(2, manager.getMsgCount("task001"));
-        
         // 消费消息后
         manager.getMsg("task001");
         assertEquals(1, manager.getMsgCount("task001"));
@@ -272,38 +247,32 @@ public class TaskRepositoryManagerTest {
 
     @Test
     void testConcurrentOperations() throws InterruptedException {
-        // 创建种子队列和消息队列
-        manager.createSeedQueue("task001");
-        manager.createMsgQueue("task001");
-        
+        // 创建种子流和消息流
+        manager.createSeedStream("task001");
+        manager.createMsgStream("task001");
         // 并发添加种子和消息
         int threadCount = 10;
         int operationsPerThread = 100;
         Thread[] threads = new Thread[threadCount];
-        
         for (int i = 0; i < threadCount; i++) {
             final int threadId = i;
             threads[i] = new Thread(() -> {
                 for (int j = 0; j < operationsPerThread; j++) {
                     String seed = "seed_" + threadId + "_" + j;
                     TaskMsgEntity taskMsg = createTestTaskMsg("msg_" + threadId + "_" + j, "task001");
-                    
                     manager.addSeed("task001", seed);
                     manager.addMsg("task001", taskMsg);
                 }
             });
         }
-        
         // 启动所有线程
         for (Thread thread : threads) {
             thread.start();
         }
-        
         // 等待所有线程完成
         for (Thread thread : threads) {
             thread.join();
         }
-        
         // 验证结果
         assertEquals(threadCount * operationsPerThread, manager.getSeedCount("task001"));
         assertEquals(threadCount * operationsPerThread, manager.getMsgCount("task001"));
@@ -319,7 +288,7 @@ public class TaskRepositoryManagerTest {
     @Test
     void testSeedOperations() {
         String taskId = "task001";
-        manager.createSeedQueue(taskId);
+        manager.createSeedStream(taskId);
         
         // 添加种子
         manager.addSeed(taskId, "seed1");
@@ -345,7 +314,7 @@ public class TaskRepositoryManagerTest {
     @Test
     void testBatchSeedOperations() {
         String taskId = "task002";
-        manager.createSeedQueue(taskId);
+        manager.createSeedStream(taskId);
         
         // 批量添加种子
         String[] seeds = {"seed1", "seed2", "seed3"};
@@ -372,7 +341,7 @@ public class TaskRepositoryManagerTest {
     @Test
     void testSeedQueueConcurrency() {
         String taskId = "task003";
-        manager.createSeedQueue(taskId);
+        manager.createSeedStream(taskId);
         
         // 并发添加和获取种子
         IntStream.range(0, 100).parallel().forEach(i -> {
@@ -397,7 +366,7 @@ public class TaskRepositoryManagerTest {
     @Test
     void testMsgOperations() {
         String taskId = "task004";
-        manager.createMsgQueue(taskId);
+        manager.createMsgStream(taskId);
         
         // 添加消息
         TaskMsgEntity msg1 = new TaskMsgEntity("msg1", taskId);
@@ -422,7 +391,7 @@ public class TaskRepositoryManagerTest {
     @Test
     void testMsgQueueConcurrency() {
         String taskId = "task005";
-        manager.createMsgQueue(taskId);
+        manager.createMsgStream(taskId);
         
         // 并发添加消息
         IntStream.range(0, 50).parallel().forEach(i -> {
@@ -460,8 +429,8 @@ public class TaskRepositoryManagerTest {
         assertEquals(2, manager.getTotalTaskCount());
         
         // 创建队列并操作
-        manager.createSeedQueue("task100");
-        manager.createMsgQueue("task200");
+        manager.createSeedStream("task100");
+        manager.createMsgStream("task200");
         
         manager.addSeed("task100", "seed100");
         TaskMsgEntity msg = new TaskMsgEntity("msg200", "task200");

@@ -6,6 +6,7 @@ import com.xa.mass.base.enums.Project;
 import com.xa.mass.engine.v2.entity.DeviceEntity;
 import com.xa.mass.engine.v2.entity.TokenEntity;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
@@ -102,7 +103,7 @@ public class DeviceRepositoryManager {
     public List<TokenEntity> getProjectTokens(String project) {
         MessageMap<String, TokenEntity> tokenMap = projectTokenEntityMap.get(project);
         if (tokenMap != null) {
-            return tokenMap.values().stream().collect(Collectors.toList());
+            return new ArrayList<>(tokenMap.values());
         }
         return java.util.Collections.emptyList();
     }
@@ -121,7 +122,7 @@ public class DeviceRepositoryManager {
 
     // 批量获取设备
     public List<DeviceEntity> getAllDevices() {
-        return deviceMap.values().stream().collect(Collectors.toList());
+        return new ArrayList<>(deviceMap.values());
     }
 
     // 按状态过滤设备

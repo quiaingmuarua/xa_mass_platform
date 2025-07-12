@@ -91,12 +91,12 @@ public class SimpleFunctionalExample {
         defaultManager.saveTask(Project.DEMO_APP, task);
 
         // 创建队列并添加种子数据
-        defaultManager.createSeedQueue("task001");
+        defaultManager.createSeedStream("task001");
         defaultManager.addSeed("task001", "seed-data-1");
         defaultManager.addSeed("task001", "seed-data-2");
 
         // 创建队列并添加任务消息
-        defaultManager.createMsgQueue("task001");
+        defaultManager.createMsgStream("task001");
         TaskMsgEntity taskMsg = new TaskMsgEntity("msg-task001", "task001");
         taskMsg.markAsBinding();
         defaultManager.addMsg("task001", taskMsg);

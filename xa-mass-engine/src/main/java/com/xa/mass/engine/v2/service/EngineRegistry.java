@@ -81,4 +81,18 @@ public class EngineRegistry {
     public static boolean hasDefaultDeviceService() {
         return defaultDeviceService != null;
     }
+    
+    // 清除默认服务（主要用于测试）
+    public static void clearDefaultServices() {
+        defaultTaskService = null;
+        defaultDeviceService = null;
+    }
+    
+    // 清除所有注册的服务（主要用于测试）
+    public static void clearAllServices() {
+        taskServiceRegistry.clear();
+        deviceServiceRegistry.clear();
+        defaultTaskService = null;
+        defaultDeviceService = null;
+    }
 } 

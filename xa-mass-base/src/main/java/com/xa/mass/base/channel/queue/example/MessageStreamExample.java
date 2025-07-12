@@ -188,7 +188,7 @@ public class MessageStreamExample {
         try {
             // 通过注册表创建内存消息流
             MessageStream<String> memoryStream = MessageStreamProviderRegistry.createStream(
-                QueueProviderType.IN_MEMORY_STREAM, "registry-demo"
+                QueueProviderType.IN_MEMORY_STREAM, "registry-demo", String.class
             );
             
             System.out.println("通过注册表创建的内存流: " + memoryStream.getName());

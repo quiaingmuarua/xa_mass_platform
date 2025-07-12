@@ -55,8 +55,8 @@ public class TaskBindDeviceExample {
         // 创建任务
         taskEntityList.forEach(taskEntity -> {
             taskRepositoryManager.saveTask(Project.fromCode(taskEntity.getProject()), taskEntity);
-            taskRepositoryManager.createSeedQueue(taskEntity.getTaskId());
-            taskRepositoryManager.createMsgQueue(taskEntity.getTaskId());
+            taskRepositoryManager.createSeedStream(taskEntity.getTaskId());
+            taskRepositoryManager.createMsgStream(taskEntity.getTaskId());
         });
         
         // 添加种子

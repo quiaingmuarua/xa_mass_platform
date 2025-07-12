@@ -26,9 +26,9 @@ public class TaskServiceImpl implements TaskService {
         // 保存任务实体
         repository.saveTask(project, taskEntity);
         
-        // 创建关联的队列
-        repository.createSeedQueue(taskEntity.getTaskId());
-        repository.createMsgQueue(taskEntity.getTaskId());
+        // 创建关联的流
+        repository.createSeedStream(taskEntity.getTaskId());
+        repository.createMsgStream(taskEntity.getTaskId());
     }
 
     @Override

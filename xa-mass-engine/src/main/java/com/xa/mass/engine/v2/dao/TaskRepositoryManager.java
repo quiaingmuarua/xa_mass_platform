@@ -1,39 +1,43 @@
 package com.xa.mass.engine.v2.dao;
 
-import com.xa.mass.base.channel.queue.MessageQueueProviderRegistry;
+import com.xa.mass.base.channel.queue.MessageStreamProviderRegistry;
 import com.xa.mass.base.channel.queue.QueueProviderType;
 import com.xa.mass.base.channel.queue.api.MessageMap;
-import com.xa.mass.base.channel.queue.api.MessageQueue;
+import com.xa.mass.base.channel.queue.api.MessageStream;
 import com.xa.mass.base.channel.queue.memory.InMemoryMessageMap;
 import com.xa.mass.base.enums.Project;
 import com.xa.mass.engine.v2.entity.TaskEntity;
 import com.xa.mass.engine.v2.entity.TaskMsgEntity;
 
+import java.util.Collections;
+import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 /**
  * 任务仓储管理器 v2
- * 支持项目隔离的任务存储和队列管理
+ * 支持项目隔离的任务存储和流管理
  */
 public class TaskRepositoryManager {
 
     // 外层 key: project，内层 key: taskId
     private final ConcurrentMap<Project, MessageMap<String, TaskEntity>> projectTaskMap = new ConcurrentHashMap<>();
-    private final ConcurrentMap<String, MessageQueue<String>> seedQueues = new ConcurrentHashMap<>();
-    private final ConcurrentMap<String, MessageQueue<TaskMsgEntity>> msgQueues = new ConcurrentHashMap<>();
-    private final QueueProviderType seedQueueType;
-    private final QueueProviderType msgQueueType;
+    private final ConcurrentMap<String, MessageStream<String>> seedStreams = new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, MessageStream<TaskMsgEntity>> msgStreams = new ConcurrentHashMap<>();
+    private final QueueProviderType seedStreamType;
+    private final QueueProviderType msgStreamType;
 
     // 构造函数，直接传入项目-任务Map
-    public TaskRepositoryManager( QueueProviderType queueType) {
-        this( queueType, queueType);
+    public TaskRepositoryManager(QueueProviderType streamType) {
+        this(streamType, streamType);
     }
 
-    public TaskRepositoryManager(QueueProviderType seedQueueType, QueueProviderType msgQueueType) {
-        this.seedQueueType = Objects.requireNonNull(seedQueueType);
-        this.msgQueueType = Objects.requireNonNull(msgQueueType);
+    public TaskRepositoryManager(QueueProviderType seedStreamType, QueueProviderType msgStreamType) {
+        this.seedStreamType = Objects.requireNonNull(seedStreamType);
+        this.msgStreamType = Objects.requireNonNull(msgStreamType);
     }
 
     // 任务实体操作
@@ -86,80 +90,157 @@ public class TaskRepositoryManager {
     }
 
     /**
-     * 便捷构造器：使用默认的内存队列为所有项目初始化
+     * 便捷构造器：使用默认的内存流为所有项目初始化
      */
-    public static TaskRepositoryManager createWithDefaultProjects(QueueProviderType queueType) {
-        return createWithDefaultProjects(queueType, queueType);
+    public static TaskRepositoryManager createWithDefaultProjects(QueueProviderType streamType) {
+        return createWithDefaultProjects(streamType, streamType);
     }
 
     /**
-     * 便捷构造器：使用默认的内存队列为所有项目初始化
+     * 便捷构造器：使用默认的内存流为所有项目初始化
      */
-    public static TaskRepositoryManager createWithDefaultProjects(QueueProviderType seedQueueType, QueueProviderType msgQueueType) {
-        TaskRepositoryManager manager = new TaskRepositoryManager( seedQueueType, msgQueueType);
+    public static TaskRepositoryManager createWithDefaultProjects(QueueProviderType seedStreamType, QueueProviderType msgStreamType) {
+        TaskRepositoryManager manager = new TaskRepositoryManager(seedStreamType, msgStreamType);
         manager.registerAllProjects(project -> new InMemoryMessageMap<>());
         return manager;
     }
 
-    // 种子队列操作
-    public void createSeedQueue(String taskId) {
-        MessageQueue<String> queue = MessageQueueProviderRegistry.createQueue(seedQueueType, taskId + ":seeds");
-        seedQueues.put(taskId, queue);
+    // 种子流操作
+    public void createSeedStream(String taskId) {
+        MessageStream<String> stream = MessageStreamProviderRegistry.createStreamWithDefaultGroup(
+            seedStreamType, taskId + ":seeds", String.class);
+        seedStreams.put(taskId, stream);
     }
 
     public void addSeed(String taskId, String seed) {
-        MessageQueue<String> queue = seedQueues.get(taskId);
-        if (queue != null) {
-            queue.offer(seed);
+        MessageStream<String> stream = seedStreams.get(taskId);
+        if (stream != null) {
+            stream.offer(seed);
         }
     }
 
     public String getSeed(String taskId) {
-        MessageQueue<String> queue = seedQueues.get(taskId);
-        if (queue != null) {
+        MessageStream<String> stream = seedStreams.get(taskId);
+        if (stream != null) {
             try {
-                return queue.poll(0, java.util.concurrent.TimeUnit.MILLISECONDS);
+                MessageStream.StreamMessage<String> message = stream.poll(0, TimeUnit.MILLISECONDS);
+                if (message != null) {
+                    return message.getMessage();
+                }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                return null;
             }
         }
         return null;
     }
 
     public int getSeedCount(String taskId) {
-        MessageQueue<String> queue = seedQueues.get(taskId);
-        return queue != null ? queue.size() : 0;
+        MessageStream<String> stream = seedStreams.get(taskId);
+        return stream != null ? stream.size() : 0;
     }
 
-    // 消息队列操作  
-    public void createMsgQueue(String taskId) {
-        MessageQueue<TaskMsgEntity> queue = MessageQueueProviderRegistry.createQueue(msgQueueType, taskId + ":msgs");
-        msgQueues.put(taskId, queue);
+    // 消息流操作  
+    public void createMsgStream(String taskId) {
+        MessageStream<TaskMsgEntity> stream = MessageStreamProviderRegistry.createStreamWithDefaultGroup(
+            msgStreamType, taskId + ":msgs", TaskMsgEntity.class);
+        msgStreams.put(taskId, stream);
     }
 
     public void addMsg(String taskId, TaskMsgEntity msg) {
-        MessageQueue<TaskMsgEntity> queue = msgQueues.get(taskId);
-        if (queue != null) {
-            queue.offer(msg);
+        MessageStream<TaskMsgEntity> stream = msgStreams.get(taskId);
+        if (stream != null) {
+            stream.offer(msg);
         }
     }
 
     public TaskMsgEntity getMsg(String taskId) {
-        MessageQueue<TaskMsgEntity> queue = msgQueues.get(taskId);
-        if (queue != null) {
+        MessageStream<TaskMsgEntity> stream = msgStreams.get(taskId);
+        if (stream != null) {
             try {
-                return queue.poll(0, java.util.concurrent.TimeUnit.MILLISECONDS);
+                MessageStream.StreamMessage<TaskMsgEntity> message = stream.poll(0, TimeUnit.MILLISECONDS);
+                if (message != null) {
+                    return message.getMessage();
+                }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                return null;
             }
         }
         return null;
     }
 
     public int getMsgCount(String taskId) {
-        MessageQueue<TaskMsgEntity> queue = msgQueues.get(taskId);
-        return queue != null ? queue.size() : 0;
+        MessageStream<TaskMsgEntity> stream = msgStreams.get(taskId);
+        return stream != null ? stream.size() : 0;
     }
-}
+
+    // 新增：批量操作支持
+    public void addSeedsBatch(String taskId, List<String> seeds) {
+        MessageStream<String> stream = seedStreams.get(taskId);
+        if (stream != null) {
+            for (String seed : seeds) {
+                stream.offer(seed);
+            }
+        }
+    }
+
+    public List<String> getSeedsBatch(String taskId, int batchSize) {
+        MessageStream<String> stream = seedStreams.get(taskId);
+        if (stream != null) {
+            try {
+                List<MessageStream.StreamMessage<String>> messages = stream.pollBatch(batchSize, 0, TimeUnit.MILLISECONDS);
+                return messages.stream()
+                    .map(MessageStream.StreamMessage::getMessage)
+                    .collect(Collectors.toList());
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
+        return Collections.emptyList();
+    }
+
+    public void addMsgsBatch(String taskId, List<TaskMsgEntity> msgs) {
+        MessageStream<TaskMsgEntity> stream = msgStreams.get(taskId);
+        if (stream != null) {
+            for (TaskMsgEntity msg : msgs) {
+                stream.offer(msg);
+            }
+        }
+    }
+
+    public List<TaskMsgEntity> getMsgsBatch(String taskId, int batchSize) {
+        MessageStream<TaskMsgEntity> stream = msgStreams.get(taskId);
+        if (stream != null) {
+            try {
+                List<MessageStream.StreamMessage<TaskMsgEntity>> messages = stream.pollBatch(batchSize, 0, TimeUnit.MILLISECONDS);
+                return messages.stream()
+                    .map(MessageStream.StreamMessage::getMessage)
+                    .collect(Collectors.toList());
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
+        return Collections.emptyList();
+    }
+
+    // 新增：统计信息支持
+    public MessageStream.StreamStats getSeedStreamStats(String taskId) {
+        MessageStream<String> stream = seedStreams.get(taskId);
+        return stream != null ? stream.getStats() : null;
+    }
+
+    public MessageStream.StreamStats getMsgStreamStats(String taskId) {
+        MessageStream<TaskMsgEntity> stream = msgStreams.get(taskId);
+        return stream != null ? stream.getStats() : null;
+    }
+
+    // 新增：清理过期消息
+    public int cleanupExpiredSeeds(String taskId) {
+        MessageStream<String> stream = seedStreams.get(taskId);
+        return stream != null ? stream.cleanupExpiredMessages() : 0;
+    }
+
+    public int cleanupExpiredMsgs(String taskId) {
+        MessageStream<TaskMsgEntity> stream = msgStreams.get(taskId);
+        return stream != null ? stream.cleanupExpiredMessages() : 0;
+    }
+} 
