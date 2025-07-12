@@ -1,5 +1,6 @@
 package com.xa.mass.base.channel.queue.api;
 
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -26,6 +27,16 @@ public interface MessageStream<T> {
      * @throws InterruptedException 如果等待时线程被中断
      */
     StreamMessage<T> poll(long timeout, TimeUnit unit) throws InterruptedException;
+    
+    /**
+     * 批量拉取消息
+     * @param batchSize 批量数量
+     * @param timeout 超时时间
+     * @param unit 时间单位
+     * @return 消息列表
+     * @throws InterruptedException 如果线程被中断
+     */
+    List<StreamMessage<T>> pollBatch(int batchSize, long timeout, TimeUnit unit) throws InterruptedException;
     
     /**
      * 确认消息已被成功处理

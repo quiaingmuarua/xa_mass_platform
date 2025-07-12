@@ -4,6 +4,8 @@ import com.xa.mass.base.channel.queue.api.MessageStream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.BlockingQueue;
@@ -169,6 +171,32 @@ public class InMemoryMessageStream<T> implements MessageStream<T> {
         }
         
         return cleanedCount[0];
+    }
+    
+    @Override
+    public List<StreamMessage<T>> pollBatch(int batchSize, long timeout, TimeUnit unit) throws InterruptedException {
+        if (Thread.currentThread().isInterrupted()) {
+            throw new InterruptedException("Thread interrupted");
+        }
+        List<StreamMessage<T>> result = new ArrayList<>(batchSize);
+        long deadline = System.currentTimeMillis() + unit.toMillis(timeout);
+        for (int i = 0; i < batchSize; i++) {
+            long now = System.currentTimeMillis();
+            long remain = deadline - now;
+            if (remain <= 0 && result.isEmpty()) {
+                break;
+            }
+            StreamMessage<T> msg = (remain > 0)
+                ? pendingQueue.poll(remain, TimeUnit.MILLISECONDS)
+                : pendingQueue.poll();
+            if (msg != null) {
+                processingMessages.put(msg.getMessageId(), msg);
+                result.add(msg);
+            } else {
+                break;
+            }
+        }
+        return result;
     }
     
     /**
