@@ -21,7 +21,7 @@ public class RepositoryManagerExample {
 
 
     public static void main(String[] args) {
-        String queueType = "内存";
+        String queueType = "redis";
         MessageMap<String, DeviceEntity> deviceMap;
         MessageMap<String, TokenEntity> tokenMap;
         MessageMap<String, TaskEntity> taskEntityMessageMap;

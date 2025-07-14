@@ -1,10 +1,10 @@
 package com.xa.mass.engine.v2.dao;
 
+import com.xa.mass.base.channel.queue.MessageMapProviderRegistry;
 import com.xa.mass.base.channel.queue.MessageStreamProviderRegistry;
 import com.xa.mass.base.channel.queue.QueueProviderType;
 import com.xa.mass.base.channel.queue.api.MessageMap;
 import com.xa.mass.base.channel.queue.api.MessageStream;
-import com.xa.mass.base.channel.queue.memory.InMemoryMessageMap;
 import com.xa.mass.base.enums.Project;
 import com.xa.mass.engine.v2.entity.TaskEntity;
 import com.xa.mass.engine.v2.entity.TaskMsgEntity;
@@ -42,7 +42,7 @@ public class TaskRepositoryManager {
 
     // 任务实体操作
     public void saveTask(Project project, TaskEntity taskEntity) {
-        projectTaskMap.computeIfAbsent(project, k -> new InMemoryMessageMap<>())
+        projectTaskMap.computeIfAbsent(project, k -> MessageMapProviderRegistry.createMap(seedStreamType, "task:" + project.name()))
                       .put(taskEntity.getTaskId(), taskEntity);
     }
 
@@ -97,11 +97,11 @@ public class TaskRepositoryManager {
     }
 
     /**
-     * 便捷构造器：使用默认的内存流为所有项目初始化
+     * 便捷构造器：使用指定的队列类型为所有项目初始化
      */
     public static TaskRepositoryManager createWithDefaultProjects(QueueProviderType seedStreamType, QueueProviderType msgStreamType) {
         TaskRepositoryManager manager = new TaskRepositoryManager(seedStreamType, msgStreamType);
-        manager.registerAllProjects(project -> new InMemoryMessageMap<>());
+        manager.registerAllProjects(project -> MessageMapProviderRegistry.createMap(seedStreamType, "task:" + project.name()));
         return manager;
     }
 

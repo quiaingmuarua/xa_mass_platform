@@ -25,11 +25,7 @@ public class DeviceRepositoryManager {
     private final ConcurrentMap<String, MessageMap<String, TokenEntity>> projectTokenEntityMap = new ConcurrentHashMap<>();
 
     public DeviceRepositoryManager(MessageMap<String, DeviceEntity> deviceMap) {
-        this.deviceMap = deviceMap != null ? deviceMap : new InMemoryMessageMap<>();
-        // 初始化时为所有项目创建空的 token 映射
-        for (Project project : Project.values()) {
-            projectTokenEntityMap.put(project.getCode(), new InMemoryMessageMap<>());
-        }
+        this.deviceMap = deviceMap;
     }
 
     // 设备管理

@@ -1,0 +1,29 @@
+---
+description:
+globs:
+alwaysApply: true
+---
+
+
+
+Always use the project logging framework. Do not use System.out.println.
+
+Rebuild with Maven after every code change.
+
+Document any major architectural or module changes.
+
+All PRs must be code reviewed and pass static analysis.
+
+Add clear comments for all public APIs and core methods.
+
+Prefer functional interfaces and lambda expressions.
+
+For core resources, throw business exceptions on null; do not silently handle.
+
+Use unified exception handling; never swallow errors.
+
+Document and communicate all config changes.
+
+Provide basic unit tests for core modules.
+
+Follow layered architecture; avoid cross-module logic.
