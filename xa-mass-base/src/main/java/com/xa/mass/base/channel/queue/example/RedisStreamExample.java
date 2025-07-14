@@ -40,11 +40,7 @@ public class RedisStreamExample {
             System.out.println("Redis连接初始化成功");
             
             // 创建Redis Stream
-            MessageStream<String> stream = new LettuceRedisStream<>(
-                "redis-stream-demo", 
-                "demo-stream", 
-                String.class
-            );
+            MessageStream<String> stream = new LettuceRedisStream<>("redis-stream-demo", String.class, java.util.Collections.emptyMap());
             
             System.out.println("Redis Stream名称: " + stream.getName());
             System.out.println("Redis Stream键名: " + ((LettuceRedisStream<String>) stream).getStreamKey());
@@ -98,11 +94,7 @@ public class RedisStreamExample {
         
         try {
             // 创建Redis Stream
-            MessageStream<Integer> stream = new LettuceRedisStream<>(
-                "redis-batch-demo", 
-                "batch-stream", 
-                Integer.class
-            );
+            MessageStream<Integer> stream = new LettuceRedisStream<>("redis-int-stream", Integer.class, java.util.Collections.emptyMap());
             
             // 批量投递消息
             System.out.println("开始批量投递消息...");
@@ -180,11 +172,7 @@ public class RedisStreamExample {
         
         try {
             // 创建Redis Stream
-            MessageStream<String> stream = new LettuceRedisStream<>(
-                "redis-error-demo", 
-                "error-stream", 
-                String.class
-            );
+            MessageStream<String> stream = new LettuceRedisStream<>("redis-claim-demo", String.class, java.util.Collections.emptyMap());
             
             // 投递测试消息
             String messageId = stream.offer("需要重试处理的消息");
@@ -252,7 +240,7 @@ public class RedisStreamExample {
         try {
             // 通过注册表创建Redis Stream
             MessageStream<String> stream = MessageStreamProviderRegistry.createStream(
-                QueueProviderType.REDIS_STREAM, "registry-redis-stream", String.class
+                QueueProviderType.REDIS_STREAM, "registry-redis-stream", String.class, java.util.Collections.emptyMap()
             );
             
             System.out.println("通过注册表创建的Redis Stream: " + stream.getName());

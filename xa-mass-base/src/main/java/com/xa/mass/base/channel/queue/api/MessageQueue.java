@@ -21,4 +21,14 @@ public interface MessageQueue<T> {
 
 
     String getName();
+    
+    /**
+     * 统一的构造方法接口
+     * 所有实现类都应该提供这个构造方法
+     * @param queueKey 队列键名
+     * @param messageType 消息类型Class
+     * @param extraParams 扩展参数（可选）
+     */
+    // 注意：接口中不能定义构造方法，这里只是文档说明
+    // 所有实现类都应该提供：MessageQueue(String queueKey, Class<T> messageType, Map<String, String> extraParams)
 }

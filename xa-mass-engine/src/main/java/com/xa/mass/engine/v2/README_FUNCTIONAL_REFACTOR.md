@@ -24,11 +24,11 @@ public interface MessageQueueProvider<T> {
 
 ```java
 // 注册提供者
-MessageQueueProviderRegistry.register("memory", name -> new InMemoryMessageQueue<>());
-MessageQueueProviderRegistry.register("redis", name -> new RedisMessageQueue<>(name));
+MessageQueue.register("memory", (queueKey, messageType, extraParams) -> new InMemoryMessageQueue<>());
+MessageQueue.register("redis", (queueKey, messageType, extraParams) -> new RedisMessageQueue<>(queueKey));
 
 // 创建队列
-MessageQueue<String> queue = MessageQueueProviderRegistry.createQueue("memory", "my-queue");
+MessageQueue<String> queue = MessageQueue.createQueue("memory", "my-queue", String.class);
 ```
 
 **优势：**
@@ -42,7 +42,7 @@ MessageQueue<String> queue = MessageQueueProviderRegistry.createQueue("memory", 
 
 ```java
 // 使用默认内存队列
-MessageQueue<String> queue = MessageQueueProviderRegistry.createQueue("memory", "test-queue");
+MessageQueue<String> queue = MessageQueue.createQueue("memory", "test-queue", String.class);
 queue.offer("message");
 ```
 
@@ -50,13 +50,13 @@ queue.offer("message");
 
 ```java
 // 注册自定义提供者
-MessageQueueProviderRegistry.register("custom", name -> {
-    logger.info("创建自定义队列: {}", name);
+MessageQueue.register("custom", (queueKey, messageType, extraParams) -> {
+    logger.info("创建自定义队列: {}", queueKey);
     return new InMemoryMessageQueue<>();
 });
 
 // 使用自定义提供者
-MessageQueue<String> queue = MessageQueueProviderRegistry.createQueue("custom", "my-queue");
+MessageQueue<String> queue = MessageQueue.createQueue("custom", "my-queue", String.class);
 ```
 
 ### 3. TaskRepositoryManager 集成
@@ -107,12 +107,12 @@ public static <T> MessageQueue<T> create(QueueType type, Object... params) {
 
 ```java
 // 注册提供者（一次注册，到处使用）
-MessageQueueProviderRegistry.register("memory", name -> new InMemoryMessageQueue<>());
-MessageQueueProviderRegistry.register("redis", name -> new RedisMessageQueue<>(name));
-MessageQueueProviderRegistry.register("database", name -> new DatabaseMessageQueue<>(name));
+MessageQueue.register("memory", (queueKey, messageType, extraParams) -> new InMemoryMessageQueue<>());
+MessageQueue.register("redis", (queueKey, messageType, extraParams) -> new RedisMessageQueue<>(queueKey));
+MessageQueue.register("database", (queueKey, messageType, extraParams) -> new DatabaseMessageQueue<>(queueKey));
 
 // 使用（简洁明了）
-MessageQueue<String> queue = MessageQueueProviderRegistry.createQueue("memory", "my-queue");
+MessageQueue<String> queue = MessageQueue.createQueue("memory", "my-queue", String.class);
 ```
 
 **优势：**
@@ -127,22 +127,22 @@ MessageQueue<String> queue = MessageQueueProviderRegistry.createQueue("memory", 
 
 ```java
 // 注册 Redis 提供者
-MessageQueueProviderRegistry.register("redis", name -> {
-    return new RedisMessageQueue<>(name, redisConfig);
+MessageQueue.register("redis", (queueKey, messageType, extraParams) -> {
+    return new RedisMessageQueue<>(queueKey, redisConfig);
 });
 
 // 使用 Redis 队列
-MessageQueue<String> queue = MessageQueueProviderRegistry.createQueue("redis", "user-queue");
+MessageQueue<String> queue = MessageQueue.createQueue("redis", "user-queue", String.class);
 ```
 
 ### 2. 添加条件化提供者
 
 ```java
 // 根据名称创建不同类型的队列
-MessageQueueProviderRegistry.register("smart", name -> {
-    if (name.contains("high-priority")) {
+MessageQueue.register("smart", (queueKey, messageType, extraParams) -> {
+    if (queueKey.contains("high-priority")) {
         return new PriorityMessageQueue<>();
-    } else if (name.contains("persistent")) {
+    } else if (queueKey.contains("persistent")) {
         return new PersistentMessageQueue<>();
     } else {
         return new InMemoryMessageQueue<>();
@@ -154,9 +154,9 @@ MessageQueueProviderRegistry.register("smart", name -> {
 
 ```java
 // 从配置文件读取队列类型
-MessageQueueProviderRegistry.register("config", name -> {
-    String queueType = config.getProperty("queue." + name + ".type", "memory");
-    return MessageQueueProviderRegistry.createQueue(queueType, name);
+MessageQueue.register("config", (queueKey, messageType, extraParams) -> {
+    String queueType = config.getProperty("queue." + queueKey + ".type", "memory");
+    return MessageQueue.createQueue(queueType, queueKey, messageType);
 });
 ```
 
@@ -168,10 +168,10 @@ MessageQueueProviderRegistry.register("config", name -> {
 @Test
 public void testWithMockQueue() {
     // 注册 Mock 提供者
-    MessageQueueProviderRegistry.register("mock", name -> mock(MessageQueue.class));
+    MessageQueue.register("mock", (queueKey, messageType, extraParams) -> mock(MessageQueue.class));
     
     // 测试
-    MessageQueue<String> queue = MessageQueueProviderRegistry.createQueue("mock", "test");
+    MessageQueue<String> queue = MessageQueue.createQueue("mock", "test", String.class);
     // ... 测试逻辑
 }
 ```
@@ -182,7 +182,7 @@ public void testWithMockQueue() {
 @Test
 public void testWithRealQueue() {
     // 使用真实的 Redis 队列
-    MessageQueue<String> queue = MessageQueueProviderRegistry.createQueue("redis", "test");
+    MessageQueue<String> queue = MessageQueue.createQueue("redis", "test", String.class);
     // ... 集成测试逻辑
 }
 ```
@@ -193,9 +193,9 @@ public void testWithRealQueue() {
 
 ```java
 // 提供者只在需要时才创建队列
-MessageQueueProviderRegistry.register("lazy", name -> {
+MessageQueue.register("lazy", (queueKey, messageType, extraParams) -> {
     // 这里可以进行复杂的初始化逻辑
-    return new LazyInitializedQueue<>(name);
+    return new LazyInitializedQueue<>(queueKey);
 });
 ```
 
@@ -203,8 +203,8 @@ MessageQueueProviderRegistry.register("lazy", name -> {
 
 ```java
 // 支持队列缓存
-MessageQueueProviderRegistry.register("cached", name -> {
-    return queueCache.computeIfAbsent(name, k -> new InMemoryMessageQueue<>());
+MessageQueue.register("cached", (queueKey, messageType, extraParams) -> {
+    return queueCache.computeIfAbsent(queueKey, k -> new InMemoryMessageQueue<>());
 });
 ```
 
@@ -215,12 +215,12 @@ MessageQueueProviderRegistry.register("cached", name -> {
 ```java
 // 开发环境
 if (isDevelopment()) {
-    MessageQueueProviderRegistry.register("default", name -> new InMemoryMessageQueue<>());
+    MessageQueue.register("default", (queueKey, messageType, extraParams) -> new InMemoryMessageQueue<>());
 }
 
 // 生产环境
 if (isProduction()) {
-    MessageQueueProviderRegistry.register("default", name -> new RedisMessageQueue<>(name));
+    MessageQueue.register("default", (queueKey, messageType, extraParams) -> new RedisMessageQueue<>(queueKey));
 }
 ```
 
@@ -229,7 +229,7 @@ if (isProduction()) {
 ```java
 // 支持运行时切换队列类型
 public void switchQueueType(String taskId, String newType) {
-    MessageQueue<String> newQueue = MessageQueueProviderRegistry.createQueue(newType, taskId);
+    MessageQueue<String> newQueue = MessageQueue.createQueue(newType, taskId, String.class);
     // 迁移数据并替换队列
 }
 ```

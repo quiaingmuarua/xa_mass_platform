@@ -6,13 +6,18 @@ import com.xa.mass.base.channel.queue.api.MessageQueue;
 import io.lettuce.core.KeyValue;
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.api.sync.RedisCommands;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 /**
  * 基于Lettuce的Redis消息队列实现（复用全局连接）
  */
 public class LettuceRedisQueue<T> implements MessageQueue<T> {
+    private static final Logger log = LoggerFactory.getLogger(LettuceRedisQueue.class);
+    
     private final StatefulRedisConnection<String, String> connection;
     private final RedisCommands<String, String> commands;
     private final String queueKey;
@@ -21,15 +26,29 @@ public class LettuceRedisQueue<T> implements MessageQueue<T> {
     private final Class<T> messageType;
 
     /**
-     * 推荐：只用queueKey区分队列，所有实例复用全局连接
+     * 统一的构造方法
+     * @param queueKey 队列键名
+     * @param messageType 消息类型Class
+     * @param extraParams 扩展参数（可选）
      */
-    public LettuceRedisQueue(String queueKey, String name, Class<T> messageType) {
+    public LettuceRedisQueue(String queueKey, Class<T> messageType, Map<String, String> extraParams) {
         this.connection = RedisConnectionManager.getConnection();
         this.commands = connection.sync();
-        this.queueKey = queueKey+"::queue";
-        this.name = name+"::queue";
+        this.queueKey = queueKey + "::queue";
+        this.name = queueKey + "::queue";
         this.messageType = messageType;
         this.gson = new GsonBuilder().create();
+        
+        log.debug("Created LettuceRedisQueue: queueKey={}, messageType={}", queueKey, messageType.getSimpleName());
+    }
+
+    /**
+     * 简化的构造方法（向后兼容）
+     * @param queueKey 队列键名
+     * @param messageType 消息类型Class
+     */
+    public LettuceRedisQueue(String queueKey, Class<T> messageType) {
+        this(queueKey, messageType, null);
     }
 
     @Override

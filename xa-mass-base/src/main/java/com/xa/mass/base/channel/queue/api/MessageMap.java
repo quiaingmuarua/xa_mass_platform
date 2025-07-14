@@ -15,4 +15,14 @@ public interface MessageMap<K, V> {
     int size();
     String getName();
     Collection<V> values();
+    
+    /**
+     * 统一的构造方法接口
+     * 所有实现类都应该提供这个构造方法
+     * @param queueKey 映射键名
+     * @param messageType 消息类型Class（对于Map，通常是value的类型）
+     * @param extraParams 扩展参数（可选）
+     */
+    // 注意：接口中不能定义构造方法，这里只是文档说明
+    // 所有实现类都应该提供：MessageMap(String queueKey, Class<V> messageType, Map<String, String> extraParams)
 } 

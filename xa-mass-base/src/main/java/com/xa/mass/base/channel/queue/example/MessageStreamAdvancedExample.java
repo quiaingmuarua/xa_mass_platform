@@ -30,7 +30,7 @@ public class MessageStreamAdvancedExample {
     private static void batchAckDemo() {
         System.out.println("=== 示例1: 批量ACK功能演示 ===");
         
-        MessageStream<String> stream = new InMemoryMessageStream<>("batch-ack-demo");
+        MessageStream<String> stream = new InMemoryMessageStream<>("batch-ack-demo",String.class);
         
         try {
             // 投递多个消息
@@ -74,7 +74,7 @@ public class MessageStreamAdvancedExample {
     private static void statsDemo() {
         System.out.println("\n=== 示例2: 统计功能演示 ===");
         
-        MessageStream<Integer> stream = new InMemoryMessageStream<>("stats-demo");
+        MessageStream<Integer> stream = new InMemoryMessageStream<>("stats-demo",Integer.class);
         
         try {
             // 初始状态
@@ -120,7 +120,7 @@ public class MessageStreamAdvancedExample {
     private static void batchProcessingDemo() {
         System.out.println("\n=== 示例3: 批量处理完整流程 ===");
         
-        MessageStream<String> stream = new InMemoryMessageStream<>("batch-processing-demo");
+        MessageStream<String> stream = new InMemoryMessageStream<>("batch-processing-demo",String.class);
         
         try {
             // 投递大量消息

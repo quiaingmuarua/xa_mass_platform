@@ -42,8 +42,11 @@ public class TaskRepositoryManager {
 
     // 任务实体操作
     public void saveTask(Project project, TaskEntity taskEntity) {
-        projectTaskMap.computeIfAbsent(project, k -> MessageMapProviderRegistry.createMap(seedStreamType, "task:" + project.name()))
-                      .put(taskEntity.getTaskId(), taskEntity);
+        projectTaskMap.computeIfAbsent(project, (Project k) -> {
+            MessageMap<String, TaskEntity> map = MessageMapProviderRegistry.createMap(seedStreamType, "task:" + project.name(), TaskEntity.class);
+            return map;
+        })
+        .put(taskEntity.getTaskId(), taskEntity);
     }
 
     public TaskEntity getTask(Project project, String taskId) {
@@ -101,14 +104,17 @@ public class TaskRepositoryManager {
      */
     public static TaskRepositoryManager createWithDefaultProjects(QueueProviderType seedStreamType, QueueProviderType msgStreamType) {
         TaskRepositoryManager manager = new TaskRepositoryManager(seedStreamType, msgStreamType);
-        manager.registerAllProjects(project -> MessageMapProviderRegistry.createMap(seedStreamType, "task:" + project.name()));
+        manager.registerAllProjects((Project project) -> {
+            MessageMap<String, TaskEntity> map = MessageMapProviderRegistry.createMap(seedStreamType, "task:" + project.name(), TaskEntity.class);
+            return map;
+        });
         return manager;
     }
 
     // 种子流操作
     public void createSeedStream(String taskId) {
-        MessageStream<String> stream = MessageStreamProviderRegistry.createStreamWithDefaultGroup(
-            seedStreamType, taskId + ":seeds", String.class);
+        MessageStream<String> stream = MessageStreamProviderRegistry.createStream(
+            seedStreamType, taskId + ":seeds", String.class, java.util.Collections.<String, String>emptyMap());
         seedStreams.put(taskId, stream);
     }
 
@@ -141,8 +147,8 @@ public class TaskRepositoryManager {
 
     // 消息流操作  
     public void createMsgStream(String taskId) {
-        MessageStream<TaskMsgEntity> stream = MessageStreamProviderRegistry.createStreamWithDefaultGroup(
-            msgStreamType, taskId + ":msgs", TaskMsgEntity.class);
+        MessageStream<TaskMsgEntity> stream = MessageStreamProviderRegistry.createStream(
+            msgStreamType, taskId + ":msgs", TaskMsgEntity.class, java.util.Collections.<String, String>emptyMap());
         msgStreams.put(taskId, stream);
     }
 

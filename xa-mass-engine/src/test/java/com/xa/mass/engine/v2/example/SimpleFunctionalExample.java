@@ -4,7 +4,6 @@ import com.xa.mass.base.channel.queue.memory.InMemoryMessageMap;
 import com.xa.mass.base.channel.queue.memory.InMemoryMessageQueue;
 import com.xa.mass.base.channel.queue.api.MessageMap;
 import com.xa.mass.base.channel.queue.api.MessageQueue;
-import com.xa.mass.base.channel.queue.MessageQueueProviderRegistry;
 import com.xa.mass.base.channel.queue.QueueProviderType;
 import com.xa.mass.base.enums.Project;
 import com.xa.mass.engine.v2.dao.TaskRepositoryManager;
@@ -39,7 +38,7 @@ public class SimpleFunctionalExample {
         logger.info("=== 示例1: 基本使用 ===");
 
         // 使用默认内存队列
-        MessageQueue<String> queue = MessageQueueProviderRegistry.createQueue(QueueProviderType.IN_MEMORY, "test-queue");
+        MessageQueue<String> queue = MessageQueue.createQueue(QueueProviderType.IN_MEMORY, "test-queue");
         queue.offer("message1");
         queue.offer("message2");
 
@@ -60,13 +59,13 @@ public class SimpleFunctionalExample {
         // });
         // 由于 QueueProviderType 没有 CUSTOM，如需自定义请扩展枚举或用 IN_MEMORY 演示
         // 这里用 IN_MEMORY 演示
-        MessageQueueProviderRegistry.register(QueueProviderType.IN_MEMORY, name -> {
+        MessageQueue.register(QueueProviderType.IN_MEMORY, name -> {
             logger.info("创建自定义队列: {}", name);
             return new InMemoryMessageQueue<>();
         });
 
         // 使用自定义提供者
-        MessageQueue<String> queue2 = MessageQueueProviderRegistry.createQueue(QueueProviderType.IN_MEMORY, "my-queue");
+        MessageQueue<String> queue2 = MessageQueue.createQueue(QueueProviderType.IN_MEMORY, "my-queue");
         queue2.offer("test message");
         
         logger.info("自定义队列大小: {}", queue2.size());

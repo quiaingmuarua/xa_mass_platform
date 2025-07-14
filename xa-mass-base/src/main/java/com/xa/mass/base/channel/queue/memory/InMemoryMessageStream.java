@@ -37,20 +37,40 @@ public class InMemoryMessageStream<T> implements MessageStream<T> {
     
     // 消息ID计数器
     private final AtomicInteger messageIdCounter = new AtomicInteger(0);
-    
-    public InMemoryMessageStream() {
-        this("InMemoryMessageStream", 30000); // 默认30秒超时
-    }
-    
-    public InMemoryMessageStream(String name) {
-        this(name, 30000);
-    }
-    
-    public InMemoryMessageStream(String name, long defaultTimeoutMs) {
+
+    /**
+     * 统一的构造方法
+     * @param queueKey 流键名
+     * @param messageType 消息类型Class
+     * @param extraParams 扩展参数（可选，包含group、consumerName等）
+     */
+    public InMemoryMessageStream(String queueKey, Class<T> messageType, Map<String, String> extraParams) {
         this.pendingQueue = new LinkedBlockingQueue<>();
         this.processingMessages = new ConcurrentHashMap<>();
-        this.name = name != null ? name : "InMemoryMessageStream";
-        this.defaultTimeoutMs = defaultTimeoutMs;
+        this.name = queueKey != null ? queueKey : "InMemoryMessageStream";
+        
+        // 从扩展参数中获取超时时间，默认30秒
+        long timeoutMs = 30000;
+        if (extraParams != null && extraParams.containsKey("timeout")) {
+            try {
+                timeoutMs = Long.parseLong(extraParams.get("timeout"));
+            } catch (NumberFormatException e) {
+                log.warn("Invalid timeout value in extraParams, using default 30000ms");
+            }
+        }
+        this.defaultTimeoutMs = timeoutMs;
+        
+        log.debug("Created InMemoryMessageStream: name={}, messageType={}, timeout={}ms", 
+                 name, messageType.getSimpleName(), defaultTimeoutMs);
+    }
+
+    /**
+     * 简化的构造方法（向后兼容）
+     * @param queueKey 流键名
+     * @param messageType 消息类型Class
+     */
+    public InMemoryMessageStream(String queueKey, Class<T> messageType) {
+        this(queueKey, messageType, null);
     }
     
     @Override
@@ -205,47 +225,40 @@ public class InMemoryMessageStream<T> implements MessageStream<T> {
             return 0;
         }
         
-        int successCount = 0;
+        int ackCount = 0;
         for (String messageId : messageIds) {
             if (ack(messageId)) {
-                successCount++;
+                ackCount++;
             }
         }
         
-        log.debug("Batch acknowledged {} messages from {} total", successCount, messageIds.size());
-        return successCount;
+        log.debug("Batch acknowledged {} messages from {} total", ackCount, messageIds.size());
+        return ackCount;
     }
     
     @Override
     public StreamStats getStats() {
-        int totalSize = size() + processingSize();
-        int processingSize = processingSize();
-        int pendingSize = size();
-        
-        return new StreamStats(totalSize, processingSize, pendingSize, name);
+        return new StreamStats(
+            size() + processingSize(),
+            size(),
+            processingSize(),
+            name
+        );
     }
     
-    /**
-     * 生成唯一的消息ID
-     */
     private String generateMessageId() {
-        return name + ":" + System.currentTimeMillis() + ":" + messageIdCounter.incrementAndGet();
+        return name + ":" + messageIdCounter.incrementAndGet() + ":" + UUID.randomUUID().toString().substring(0, 8);
     }
     
-    /**
-     * 获取处理中消息的详细信息（用于调试）
-     */
+    // 测试和调试用的方法
     public Map<String, StreamMessage<T>> getProcessingMessages() {
         return new ConcurrentHashMap<>(processingMessages);
     }
     
-    /**
-     * 强制清理所有处理中的消息（谨慎使用）
-     */
     public int forceCleanupAllProcessing() {
         int count = processingMessages.size();
         processingMessages.clear();
-        log.warn("Force cleaned up all {} processing messages from stream: {}", count, name);
+        log.info("Force cleaned up {} processing messages from stream: {}", count, name);
         return count;
     }
 } 

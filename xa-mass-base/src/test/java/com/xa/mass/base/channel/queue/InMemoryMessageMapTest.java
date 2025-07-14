@@ -10,11 +10,11 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 public class InMemoryMessageMapTest {
 
-    private InMemoryMessageMap<String, Integer> messageMap;
+    private InMemoryMessageMap<Integer> messageMap;
 
     @BeforeEach
     void setUp() {
-        messageMap = new InMemoryMessageMap<>();
+        messageMap = new InMemoryMessageMap<>("test-map", Integer.class);
     }
 
     @Test
@@ -69,7 +69,7 @@ public class InMemoryMessageMapTest {
         // 测试 getName 操作
         assertEquals("InMemoryMessageMap", messageMap.getName());
 
-        InMemoryMessageMap<String, Integer> customMap = new InMemoryMessageMap<>("CustomMap");
+        InMemoryMessageMap<Integer> customMap = new InMemoryMessageMap<>("CustomMap", Integer.class);
         assertEquals("CustomMap", customMap.getName());
     }
 

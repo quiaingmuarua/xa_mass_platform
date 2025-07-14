@@ -42,12 +42,12 @@ public class DeviceServiceImpl implements DeviceService {
 
     @Override
     public void registerProjectAndCreateTokenMapping(String project) {
-        repository.registerProject(project, new InMemoryMessageMap<>());
+//        repository.registerProject(project, new InMemoryMessageMap<>());
     }
 
     @Override
     public void bulkRegisterProjectsAndCreateTokenMapping() {
-        repository.registerAllProjects(project -> new InMemoryMessageMap<>());
+//        repository.registerAllProjects(project -> new InMemoryMessageMap<>());
     }
 
     @Override

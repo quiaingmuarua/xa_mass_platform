@@ -16,7 +16,7 @@ public class InMemoryMessageQueueTest {
 
     @BeforeEach
     void setUp() {
-        messageQueue = new InMemoryMessageQueue<>();
+        messageQueue = new InMemoryMessageQueue<>("test-queue", String.class);
     }
 
     @Test

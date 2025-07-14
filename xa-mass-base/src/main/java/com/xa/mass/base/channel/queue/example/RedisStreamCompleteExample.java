@@ -28,7 +28,7 @@ public class RedisStreamCompleteExample {
             System.out.println("Redis连接初始化成功");
             
             // 创建消息流
-            MessageStream<String> stream = new LettuceRedisStream<>(STREAM_KEY, STREAM_NAME, String.class);
+            MessageStream<String> stream = new LettuceRedisStream<>(STREAM_KEY, String.class, java.util.Collections.emptyMap());
             System.out.println("创建消息流: " + stream.getName());
             
             // 启动生产者和消费者

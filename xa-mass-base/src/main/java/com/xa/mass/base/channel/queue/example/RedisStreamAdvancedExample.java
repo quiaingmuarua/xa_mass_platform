@@ -49,7 +49,7 @@ public class RedisStreamAdvancedExample {
         String group = "demo-group";
         String consumer = "demo-consumer";
         
-        MessageStream<String> stream = new LettuceRedisStream<String>(streamKey, "redis-batch-ack-demo", String.class, group, consumer);
+        MessageStream<String> stream = new LettuceRedisStream<>(streamKey, String.class, java.util.Map.of("group", group, "consumerName", consumer));
         
         try {
             // 投递多个消息
@@ -101,7 +101,7 @@ public class RedisStreamAdvancedExample {
         String group = "stats-group";
         String consumer = "stats-consumer";
         
-        MessageStream<Integer> stream = new LettuceRedisStream<Integer>(streamKey, "redis-stats-demo", Integer.class, group, consumer);
+        MessageStream<Integer> stream = new LettuceRedisStream<>(streamKey, Integer.class, java.util.Map.of("group", group, "consumerName", consumer));
         
         try {
             // 初始状态
@@ -151,7 +151,7 @@ public class RedisStreamAdvancedExample {
         String group = "processing-group";
         String consumer = "processing-consumer";
         
-        MessageStream<String> stream = new LettuceRedisStream<String>(streamKey, "redis-batch-processing-demo", String.class, group, consumer);
+        MessageStream<String> stream = new LettuceRedisStream<>(streamKey, String.class, java.util.Map.of("group", group, "consumerName", consumer));
         
         try {
             // 投递大量消息

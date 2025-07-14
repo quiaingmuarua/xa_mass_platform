@@ -5,143 +5,70 @@ import com.xa.mass.base.channel.queue.memory.InMemoryMessageStream;
 import com.xa.mass.base.channel.queue.redis.LettuceRedisStream;
 import com.xa.mass.base.channel.queue.redis.RedisConnectionManager;
 
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
+import java.util.function.BiFunction;
 
 /**
  * 消息流提供者注册表
  * 用于注册和管理不同类型的消息流提供者
  */
 public class MessageStreamProviderRegistry {
-    
-    private static final ConcurrentMap<String, MessageStream<?>> streamCache = new ConcurrentHashMap<>();
-    
-    /**
-     * 创建MessageStream实例
-     * @param type 队列类型
-     * @param name 流名称
-     * @param messageType 消息类型Class
-     * @param <T> 消息类型
-     * @return MessageStream实例
-     */
-    @SuppressWarnings("unchecked")
-    public static <T> MessageStream<T> createStream(QueueProviderType type, String name, Class<T> messageType) {
-        return createStream(type, name, messageType, null, null);
+    // type -> (queueKey, messageType) -> MessageStream
+    private static final Map<String, TriFunction<String, Class<?>, Map<String, String>, MessageStream<?>>> providers = new ConcurrentHashMap<>();
+    private static final Map<String, MessageStream<?>> streamCache = new ConcurrentHashMap<>();
+
+    static {
+        // 内存流
+        register(QueueProviderType.IN_MEMORY, (queueKey, messageType, extraParams) -> new InMemoryMessageStream<>(queueKey, messageType, extraParams));
+        // Redis流
+        register(QueueProviderType.REDIS, (queueKey, messageType, extraParams) -> new LettuceRedisStream<>(queueKey, messageType, extraParams));
     }
-    
+
     /**
-     * 创建MessageStream实例（带消费者组信息）
+     * 注册流提供者
      * @param type 队列类型
-     * @param name 流名称
+     * @param provider 提供者函数 (queueKey, messageType, extraParams) -> MessageStream
+     */
+    public static void register(QueueProviderType type, TriFunction<String, Class<?>, Map<String, String>, MessageStream<?>> provider) {
+        providers.put(type.toString(), provider);
+    }
+
+    /**
+     * 创建流实例（必须传queueKey和messageType，可选extraParams）
+     * @param type 队列类型
+     * @param queueKey 流键名
      * @param messageType 消息类型Class
-     * @param group 消费者组名
-     * @param consumer 消费者名
+     * @param extraParams 扩展参数（可选，包含group、consumerName等）
      * @param <T> 消息类型
      * @return MessageStream实例
      */
     @SuppressWarnings("unchecked")
-    public static <T> MessageStream<T> createStream(QueueProviderType type, String name, Class<T> messageType, String group, String consumer) {
-        final QueueProviderType realType;
-        if (type == null) {
-            throw new IllegalArgumentException("QueueProviderType cannot be null");
-        } else if (type instanceof QueueProviderType) {
-            realType = (QueueProviderType) type;
-        } else {
-            realType = QueueProviderType.fromString(type.toString());
+    public static <T> MessageStream<T> createStream(QueueProviderType type, String queueKey, Class<T> messageType, Map<String, String> extraParams) {
+        String cacheKey = queueKey + ":" + type + ":" + messageType.getSimpleName();
+        if (extraParams != null) {
+            if (extraParams.containsKey("group")) cacheKey += ":" + extraParams.get("group");
+            if (extraParams.containsKey("consumerName")) cacheKey += ":" + extraParams.get("consumerName");
         }
-        String cacheKey = name + ":" + realType + ":" + (group != null ? group : "default") + ":" + (consumer != null ? consumer : "default");
-        
         return (MessageStream<T>) streamCache.computeIfAbsent(cacheKey, k -> {
-            switch (realType) {
-                case IN_MEMORY:
-                case IN_MEMORY_STREAM:
-                    return new InMemoryMessageStream<>(name);
-                case REDIS:
-                case REDIS_STREAM:
-                    return new LettuceRedisStream<>(name, name, messageType, group, consumer);
-                default:
-                    throw new IllegalArgumentException("Unsupported queue type: " + realType);
+            TriFunction<String, Class<?>, Map<String, String>, MessageStream<?>> provider = providers.get(type.toString());
+            if (provider == null) {
+                throw new IllegalArgumentException("No provider registered for type: " + type);
             }
+            return provider.apply(queueKey, messageType, extraParams);
         });
     }
-    
-    /**
-     * 创建MessageStream实例（使用默认消费者组）
-     * @param type 队列类型
-     * @param name 流名称
-     * @param messageType 消息类型Class
-     * @param <T> 消息类型
-     * @return MessageStream实例
-     */
-    @SuppressWarnings("unchecked")
-    public static <T> MessageStream<T> createStreamWithDefaultGroup(QueueProviderType type, String name, Class<T> messageType) {
-        String defaultGroup = "default-group";
-        String defaultConsumer = "default-consumer";
-        return createStream(type, name, messageType, defaultGroup, defaultConsumer);
-    }
-    
-    /**
-     * 创建MessageStream实例（使用字符串类型）
-     * @param typeName 队列类型名称
-     * @param name 流名称
-     * @param messageType 消息类型Class
-     * @param <T> 消息类型
-     * @return MessageStream实例
-     */
-    @SuppressWarnings("unchecked")
-    public static <T> MessageStream<T> createStream(String typeName, String name, Class<T> messageType) {
-        QueueProviderType type = QueueProviderType.fromString(typeName);
-        return createStream(type, name, messageType);
-    }
-    
-    /**
-     * 创建MessageStream实例（使用字符串类型，带消费者组信息）
-     * @param typeName 队列类型名称
-     * @param name 流名称
-     * @param messageType 消息类型Class
-     * @param group 消费者组名
-     * @param consumer 消费者名
-     * @param <T> 消息类型
-     * @return MessageStream实例
-     */
-    @SuppressWarnings("unchecked")
-    public static <T> MessageStream<T> createStream(String typeName, String name, Class<T> messageType, String group, String consumer) {
-        QueueProviderType type = QueueProviderType.fromString(typeName);
-        return createStream(type, name, messageType, group, consumer);
-    }
-    
-    /**
-     * 创建MessageStream实例（使用字符串类型，使用默认消费者组）
-     * @param typeName 队列类型名称
-     * @param name 流名称
-     * @param messageType 消息类型Class
-     * @param <T> 消息类型
-     * @return MessageStream实例
-     */
-    @SuppressWarnings("unchecked")
-    public static <T> MessageStream<T> createStreamWithDefaultGroup(String typeName, String name, Class<T> messageType) {
-        QueueProviderType type = QueueProviderType.fromString(typeName);
-        return createStreamWithDefaultGroup(type, name, messageType);
-    }
-    
+
     /**
      * 清理缓存
      */
     public static void clearCache() {
         streamCache.clear();
     }
-    
-    /**
-     * 获取缓存大小
-     */
-    public static int getCacheSize() {
-        return streamCache.size();
-    }
-    
-    /**
-     * 移除指定的流缓存
-     */
-    public static void removeFromCache(String name) {
-        streamCache.entrySet().removeIf(entry -> entry.getKey().startsWith(name + ":"));
+
+    // TriFunction接口定义
+    @FunctionalInterface
+    public interface TriFunction<A, B, C, R> {
+        R apply(A a, B b, C c);
     }
 } 

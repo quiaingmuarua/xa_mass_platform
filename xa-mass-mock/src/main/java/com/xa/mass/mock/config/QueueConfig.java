@@ -15,12 +15,12 @@ public class QueueConfig { // 可以移除 ("customQueueConfigName") 如果不�
     @Bean
     @Qualifier("inputQueue")
     public MessageQueue<Envelope> inputQueue() { // 返回类型改为 MessageQueue<StoredMessage>
-        return new InMemoryMessageQueue<>(); // InMemoryMessageQueue 应该实现 MessageQueue<StoredMessage>
+        return new InMemoryMessageQueue<>("Envelope",Envelope.class);// InMemoryMessageQueue 应该实现 MessageQueue<StoredMessage>
     }
 
     @Bean
     @Qualifier("outputQueue")
     public MessageQueue<Envelope> outputQueue() { // 返回类型改为 MessageQueue<StoredMessage>
-        return new InMemoryMessageQueue<>();
+        return new InMemoryMessageQueue<>("Envelope",Envelope.class);
     }
 }

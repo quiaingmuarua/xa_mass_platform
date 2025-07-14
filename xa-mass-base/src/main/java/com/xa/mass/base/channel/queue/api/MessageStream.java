@@ -98,6 +98,16 @@ public interface MessageStream<T> {
     int cleanupExpiredMessages();
     
     /**
+     * 统一的构造方法接口
+     * 所有实现类都应该提供这个构造方法
+     * @param queueKey 流键名
+     * @param messageType 消息类型Class
+     * @param extraParams 扩展参数（可选，包含group、consumerName等）
+     */
+    // 注意：接口中不能定义构造方法，这里只是文档说明
+    // 所有实现类都应该提供：MessageStream(String queueKey, Class<T> messageType, Map<String, String> extraParams)
+    
+    /**
      * 消息包装类，包含消息ID和内容
      * @param <T> 消息类型
      */
@@ -135,15 +145,15 @@ public interface MessageStream<T> {
      */
     class StreamStats {
         private final int totalSize;
-        private final int processingSize;
         private final int pendingSize;
+        private final int processingSize;
         private final String streamName;
         private final long timestamp;
         
-        public StreamStats(int totalSize, int processingSize, int pendingSize, String streamName) {
+        public StreamStats(int totalSize, int pendingSize, int processingSize, String streamName) {
             this.totalSize = totalSize;
-            this.processingSize = processingSize;
             this.pendingSize = pendingSize;
+            this.processingSize = processingSize;
             this.streamName = streamName;
             this.timestamp = System.currentTimeMillis();
         }
@@ -152,12 +162,12 @@ public interface MessageStream<T> {
             return totalSize;
         }
         
-        public int getProcessingSize() {
-            return processingSize;
-        }
-        
         public int getPendingSize() {
             return pendingSize;
+        }
+        
+        public int getProcessingSize() {
+            return processingSize;
         }
         
         public String getStreamName() {
@@ -170,8 +180,9 @@ public interface MessageStream<T> {
         
         @Override
         public String toString() {
-            return String.format("StreamStats{name='%s', total=%d, processing=%d, pending=%d, timestamp=%d}", 
-                               streamName, totalSize, processingSize, pendingSize, timestamp);
+            return "StreamStats{totalSize=" + totalSize + ", pendingSize=" + pendingSize + 
+                   ", processingSize=" + processingSize + ", streamName='" + streamName + 
+                   "', timestamp=" + timestamp + "}";
         }
     }
 }

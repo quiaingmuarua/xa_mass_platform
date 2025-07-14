@@ -4,6 +4,7 @@ import com.xa.mass.base.channel.queue.api.MessageQueue;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.Map;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
@@ -21,13 +22,25 @@ public class InMemoryMessageQueue<T> implements MessageQueue<T> {
     private final BlockingQueue<T> queue;
     private final String name;
 
-    public InMemoryMessageQueue() {
-        this("InMemoryMessageQueue");
+    /**
+     * 统一的构造方法
+     * @param queueKey 队列键名
+     * @param messageType 消息类型Class
+     * @param extraParams 扩展参数（可选）
+     */
+    public InMemoryMessageQueue(String queueKey, Class<T> messageType, Map<String, String> extraParams) {
+        this.queue = new LinkedBlockingQueue<>(); // 无界队列
+        this.name = queueKey != null ? queueKey : "InMemoryMessageQueue";
+        log.debug("Created InMemoryMessageQueue: name={}, messageType={}", name, messageType.getSimpleName());
     }
 
-    public InMemoryMessageQueue(String name) {
-        this.queue = new LinkedBlockingQueue<>(); // 无界队列
-        this.name = name != null ? name : "InMemoryMessageQueue";
+    /**
+     * 简化的构造方法（向后兼容）
+     * @param queueKey 队列键名
+     * @param messageType 消息类型Class
+     */
+    public InMemoryMessageQueue(String queueKey, Class<T> messageType) {
+        this(queueKey, messageType, null);
     }
 
     @Override

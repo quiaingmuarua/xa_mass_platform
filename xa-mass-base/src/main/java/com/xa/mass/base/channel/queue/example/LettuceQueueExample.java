@@ -33,7 +33,6 @@ public class LettuceQueueExample {
         // 创建Lettuce队列（单连接，无需连接池）
         LettuceRedisQueue<String> queue = new LettuceRedisQueue<>(
             "queue:lettuce-example",  // Redis键名
-            "lettuce-queue",          // 队列名称
             String.class              // 消息类型
         );
         
@@ -74,7 +73,7 @@ public class LettuceQueueExample {
         
         // Lettuce队列（单连接多路复用）
         LettuceRedisQueue<Integer> queue = new LettuceRedisQueue<>(
-            "queue:lettuce-perf", "lettuce-perf", Integer.class
+            "queue:lettuce-perf", Integer.class
         );
         
         try {
@@ -122,15 +121,15 @@ public class LettuceQueueExample {
         
         // 创建多个Lettuce队列（共享同一个Redis客户端连接）
         LettuceRedisQueue<String> stringQueue = new LettuceRedisQueue<>(
-            "queue:strings", "string-queue", String.class
+            "queue:strings", String.class
         );
         
         LettuceRedisQueue<Integer> numberQueue = new LettuceRedisQueue<>(
-            "queue:numbers", "number-queue", Integer.class
+            "queue:numbers", Integer.class
         );
         
         LettuceRedisQueue<Double> doubleQueue = new LettuceRedisQueue<>(
-            "queue:doubles", "double-queue", Double.class
+            "queue:doubles", Double.class
         );
         
         try {

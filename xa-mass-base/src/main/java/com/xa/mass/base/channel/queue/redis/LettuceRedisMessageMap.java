@@ -5,15 +5,20 @@ import com.google.gson.GsonBuilder;
 import com.xa.mass.base.channel.queue.api.MessageMap;
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.api.sync.RedisHashCommands;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.Objects;
 import java.util.Collection;
 import java.util.ArrayList;
+import java.util.Map;
 
 /**
  * 基于Lettuce的Redis消息映射实现，底层用Redis hash存储，支持泛型和Gson序列化
  */
 public class LettuceRedisMessageMap<K, V> implements MessageMap<K, V> {
+    private static final Logger log = LoggerFactory.getLogger(LettuceRedisMessageMap.class);
+    
     private final StatefulRedisConnection<String, String> connection;
     private final RedisHashCommands<String, String> hashCommands;
     private final String redisKey;
@@ -22,16 +27,36 @@ public class LettuceRedisMessageMap<K, V> implements MessageMap<K, V> {
     private final Class<K> keyType;
     private final Class<V> valueType;
 
-
-
-    public LettuceRedisMessageMap(String name, Class<K> keyType, Class<V> valueType) {
+    /**
+     * 统一的构造方法
+     * @param queueKey 映射键名
+     * @param messageType 消息类型Class（对于Map，通常是value的类型）
+     * @param extraParams 扩展参数（可选）
+     */
+    public LettuceRedisMessageMap(String queueKey, Class<V> messageType, Map<String, String> extraParams) {
         this.connection = RedisConnectionManager.getConnection();
         this.hashCommands = connection.sync();
-        this.name = name+"::hash";
-        this.redisKey = name+"::hash";
+        this.name = queueKey + "::hash";
+        this.redisKey = queueKey + "::hash";
         this.gson = new GsonBuilder().create();
-        this.keyType = keyType;
-        this.valueType = valueType;
+        
+        // 对于Map，key类型默认为String，value类型为传入的messageType
+        @SuppressWarnings("unchecked")
+        Class<K> defaultKeyType = (Class<K>) String.class;
+        this.keyType = defaultKeyType;
+        this.valueType = messageType;
+        
+        log.debug("Created LettuceRedisMessageMap: queueKey={}, keyType={}, valueType={}", 
+                 queueKey, keyType.getSimpleName(), valueType.getSimpleName());
+    }
+
+    /**
+     * 简化的构造方法（向后兼容）
+     * @param queueKey 映射键名
+     * @param messageType 消息类型Class
+     */
+    public LettuceRedisMessageMap(String queueKey, Class<V> messageType) {
+        this(queueKey, messageType, null);
     }
 
     @Override

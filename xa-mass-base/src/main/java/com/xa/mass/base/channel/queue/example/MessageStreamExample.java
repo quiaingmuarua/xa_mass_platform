@@ -34,7 +34,7 @@ public class MessageStreamExample {
         System.out.println("=== 示例1: MessageStream基本使用 ===");
         
         // 创建内存消息流
-        MessageStream<String> stream = new InMemoryMessageStream<>("test-stream");
+        MessageStream<String> stream = new InMemoryMessageStream<>("test-stream", String.class);
         
         try {
             System.out.println("流名称: " + stream.getName());
@@ -91,7 +91,7 @@ public class MessageStreamExample {
     private static void ackDemo() {
         System.out.println("\n=== 示例2: ACK功能演示 ===");
         
-        MessageStream<Integer> stream = new InMemoryMessageStream<>("ack-demo");
+        MessageStream<Integer> stream = new InMemoryMessageStream<>("ack-demo", Integer.class);
         
         try {
             // 投递多个消息
@@ -135,7 +135,7 @@ public class MessageStreamExample {
     private static void claimDemo() {
         System.out.println("\n=== 示例3: CLAIM功能演示 ===");
         
-        MessageStream<String> stream = new InMemoryMessageStream<>("claim-demo");
+        MessageStream<String> stream = new InMemoryMessageStream<>("claim-demo", String.class);
         
         try {
             // 投递消息
@@ -188,7 +188,7 @@ public class MessageStreamExample {
         try {
             // 通过注册表创建内存消息流
             MessageStream<String> memoryStream = MessageStreamProviderRegistry.createStream(
-                QueueProviderType.IN_MEMORY_STREAM, "registry-demo", String.class
+                QueueProviderType.IN_MEMORY, "registry-demo", String.class, java.util.Collections.emptyMap()
             );
             
             System.out.println("通过注册表创建的内存流: " + memoryStream.getName());

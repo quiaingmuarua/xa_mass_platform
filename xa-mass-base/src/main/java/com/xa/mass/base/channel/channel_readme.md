@@ -274,27 +274,27 @@ MessageTransporter<T> transporter = new ApiBasedMessageTransporter<>(
 
 ## 工厂模式
 
-### MessageQueueProviderRegistry
+### MessageQueue Provider
 
 提供统一的队列创建接口。
 
 ```java
 // 创建不同类型的队列
-MessageQueue<String> memoryQueue = MessageQueueProviderRegistry.createQueue(QueueProviderType.IN_MEMORY, "my-queue");
-MessageQueue<String> redisQueue = MessageQueueProviderRegistry.createQueue(QueueProviderType.REDIS, "my-queue");
+MessageQueue<String> memoryQueue = MessageQueue.createQueue("my-queue", String.class);
+MessageQueue<String> redisQueue = MessageQueue.createQueue("my-queue", String.class, QueueProviderType.REDIS);
 ```
 
-### MessageStreamProviderRegistry
+### MessageStream Provider
 
 提供统一的消息流创建接口。
 
 ```java
 // 创建不同类型的消息流
-MessageStream<String> memoryStream = MessageStreamProviderRegistry.createStream(QueueProviderType.IN_MEMORY_STREAM, "my-stream");
-MessageStream<String> redisStream = MessageStreamProviderRegistry.createStream(QueueProviderType.REDIS_STREAM, "my-stream");
+MessageStream<String> memoryStream = MessageStream.createStream("my-stream", String.class);
+MessageStream<String> redisStream = MessageStream.createStream("my-stream", String.class, QueueProviderType.REDIS_STREAM);
 ```
 
-### MessageTransporterFactory
+### MessageTransporter Factory
 
 提供统一的传输器创建接口。
 

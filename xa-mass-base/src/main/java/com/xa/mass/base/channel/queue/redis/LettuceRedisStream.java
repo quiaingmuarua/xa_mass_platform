@@ -12,6 +12,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 public class LettuceRedisStream<T> implements MessageStream<T> {
@@ -31,20 +32,38 @@ public class LettuceRedisStream<T> implements MessageStream<T> {
     private final String group;
     private final String consumerName;
 
-    public LettuceRedisStream(String streamKey, String name, Class<T> messageType) {
-        this(streamKey, name, messageType, DEFAULT_GROUP, DEFAULT_CONSUMER);
-    }
-
-    public LettuceRedisStream(String streamKey, String name, Class<T> messageType, String group, String consumerName) {
+    /**
+     * 统一的构造方法
+     * @param queueKey 流键名
+     * @param messageType 消息类型Class
+     * @param extraParams 扩展参数（可选，包含group、consumerName等）
+     */
+    public LettuceRedisStream(String queueKey, Class<T> messageType, Map<String, String> extraParams) {
         StatefulRedisConnection<String, String> connection = RedisConnectionManager.getConnection();
         this.commands = connection.sync();
-        this.streamKey = streamKey + "::stream";
-        this.name = name + "::stream";
+        this.streamKey = queueKey + "::stream";
+        this.name = queueKey + "::stream";
         this.messageType = messageType;
-        this.group = group != null ? group : DEFAULT_GROUP;
-        this.consumerName = consumerName != null ? consumerName : DEFAULT_CONSUMER;
+        
+        // 从扩展参数中获取group和consumerName，使用默认值
+        this.group = extraParams != null ? extraParams.getOrDefault("group", DEFAULT_GROUP) : DEFAULT_GROUP;
+        this.consumerName = extraParams != null ? extraParams.getOrDefault("consumerName", DEFAULT_CONSUMER) : DEFAULT_CONSUMER;
+        
         this.gson = new GsonBuilder().create();
+        
+        log.debug("Created LettuceRedisStream: queueKey={}, messageType={}, group={}, consumer={}", 
+                 queueKey, messageType.getSimpleName(), group, consumerName);
+        
         ensureConsumerGroup();
+    }
+
+    /**
+     * 简化的构造方法（向后兼容）
+     * @param queueKey 流键名
+     * @param messageType 消息类型Class
+     */
+    public LettuceRedisStream(String queueKey, Class<T> messageType) {
+        this(queueKey, messageType, null);
     }
 
     @Override
@@ -204,28 +223,24 @@ public class LettuceRedisStream<T> implements MessageStream<T> {
 
     @Override
     public StreamStats getStats() {
-        try {
-            int totalSize = size();
-            int processingSize = processingSize();
-            int pendingSize = totalSize - processingSize; // 简化计算
-
-            return new StreamStats(totalSize, processingSize, pendingSize, name);
-        } catch (Exception e) {
-            log.error("Failed to get stream stats for: {}", name, e);
-            return new StreamStats(0, 0, 0, name);
-        }
+        return new StreamStats(
+            size() + processingSize(),
+            size(),
+            processingSize(),
+            name
+        );
     }
 
     private void ensureConsumerGroup() {
         try {
-            // 用 "0" 避免遗漏历史
+            // 尝试创建消费者组，如果已存在则忽略错误
             commands.xgroupCreate(XReadArgs.StreamOffset.from(streamKey, "0"), group);
-            log.debug("Consumer group created or already exists: {}", group);
+            log.debug("Consumer group created or already exists: group={}, stream={}", group, streamKey);
         } catch (Exception e) {
-            log.debug("Consumer group may already exist: {}", group);
+            // 消费者组已存在，这是正常的
+            log.debug("Consumer group already exists: group={}, stream={}", group, streamKey);
         }
     }
-
 
     public String getStreamKey() {
         return streamKey;
