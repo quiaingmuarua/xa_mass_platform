@@ -67,7 +67,7 @@ public class InMemoryMessageMapTest {
     @Test
     void testGetName() {
         // 测试 getName 操作
-        assertEquals("InMemoryMessageMap", messageMap.getName());
+        assertEquals("test-map", messageMap.getName());
 
         InMemoryMessageMap<Integer> customMap = new InMemoryMessageMap<>("CustomMap", Integer.class);
         assertEquals("CustomMap", customMap.getName());

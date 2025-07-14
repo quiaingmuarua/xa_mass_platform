@@ -95,7 +95,7 @@ public class InMemoryMessageQueueTest {
     @Test
     void testGetName() {
         // 测试 getName 操作
-        assertEquals("InMemoryMessageQueue", messageQueue.getName());
+        assertEquals("test-queue", messageQueue.getName());
     }
 
     @Test

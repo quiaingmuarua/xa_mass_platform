@@ -36,7 +36,7 @@ public class MessageMapProviderExample {
 
         // 创建内存映射
         MessageMap<String, TaskEntity> memoryMap = MessageMapProviderRegistry.createMap(
-            QueueProviderType.IN_MEMORY, "task-map", String.class, TaskEntity.class);
+            QueueProviderType.IN_MEMORY, "task-map", TaskEntity.class);
         
         // 基本操作
         TaskEntity task = new TaskEntity();
@@ -58,14 +58,14 @@ public class MessageMapProviderExample {
 
         // 内存类型
         MessageMap<String, TaskEntity> memoryMap = MessageMapProviderRegistry.createMap(
-            QueueProviderType.IN_MEMORY, "memory-task-map", String.class, TaskEntity.class);
+            QueueProviderType.IN_MEMORY, "memory-task-map", TaskEntity.class);
         logger.info("创建内存映射: {}", memoryMap.getClass().getSimpleName());
 
         // Redis 类型（需要先初始化 Redis 连接）
         try {
             // 这里会抛出异常，因为 Redis 连接未初始化
             MessageMap<String, TaskEntity> redisMap = MessageMapProviderRegistry.createMap(
-                QueueProviderType.REDIS, "redis-task-map", String.class, TaskEntity.class);
+                QueueProviderType.REDIS, "redis-task-map", TaskEntity.class);
             logger.info("创建 Redis 映射: {}", redisMap.getClass().getSimpleName());
         } catch (Exception e) {
             logger.info("Redis 映射创建失败（预期行为）: {}", e.getMessage());
@@ -74,7 +74,7 @@ public class MessageMapProviderExample {
         // 测试不支持的类型
         try {
             MessageMap<String, TaskEntity> kafkaMap = MessageMapProviderRegistry.createMap(
-                QueueProviderType.KAFKA, "kafka-task-map", String.class, TaskEntity.class);
+                QueueProviderType.KAFKA, "kafka-task-map", TaskEntity.class);
         } catch (Exception e) {
             logger.info("Kafka 映射创建失败（预期行为）: {}", e.getMessage());
         }

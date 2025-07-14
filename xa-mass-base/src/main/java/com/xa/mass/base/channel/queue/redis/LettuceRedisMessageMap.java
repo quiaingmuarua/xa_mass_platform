@@ -16,7 +16,7 @@ import java.util.Map;
 /**
  * 基于Lettuce的Redis消息映射实现，底层用Redis hash存储，支持泛型和Gson序列化
  */
-public class LettuceRedisMessageMap<K, V> implements MessageMap<K, V> {
+public class LettuceRedisMessageMap< V> implements MessageMap<String, V> {
     private static final Logger log = LoggerFactory.getLogger(LettuceRedisMessageMap.class);
     
     private final StatefulRedisConnection<String, String> connection;
@@ -24,7 +24,7 @@ public class LettuceRedisMessageMap<K, V> implements MessageMap<K, V> {
     private final String redisKey;
     private final String name;
     private final Gson gson;
-    private final Class<K> keyType;
+    private final Class keyType;
     private final Class<V> valueType;
 
     /**
@@ -41,9 +41,7 @@ public class LettuceRedisMessageMap<K, V> implements MessageMap<K, V> {
         this.gson = new GsonBuilder().create();
         
         // 对于Map，key类型默认为String，value类型为传入的messageType
-        @SuppressWarnings("unchecked")
-        Class<K> defaultKeyType = (Class<K>) String.class;
-        this.keyType = defaultKeyType;
+        this.keyType = String.class;;
         this.valueType = messageType;
         
         log.debug("Created LettuceRedisMessageMap: queueKey={}, keyType={}, valueType={}", 
@@ -60,7 +58,7 @@ public class LettuceRedisMessageMap<K, V> implements MessageMap<K, V> {
     }
 
     @Override
-    public void put(K key, V value) {
+    public void put(String key, V value) {
         Objects.requireNonNull(key, "Null keys are not supported");
         Objects.requireNonNull(value, "Null values are not supported");
         String keyStr = gson.toJson(key);
@@ -69,7 +67,7 @@ public class LettuceRedisMessageMap<K, V> implements MessageMap<K, V> {
     }
 
     @Override
-    public V get(K key) {
+    public V get(String key) {
         Objects.requireNonNull(key, "Null keys are not supported");
         String keyStr = gson.toJson(key);
         String valueStr = hashCommands.hget(redisKey, keyStr);
@@ -78,7 +76,7 @@ public class LettuceRedisMessageMap<K, V> implements MessageMap<K, V> {
     }
 
     @Override
-    public V remove(K key) {
+    public V remove(String key) {
         Objects.requireNonNull(key, "Null keys are not supported");
         V old = get(key);
         String keyStr = gson.toJson(key);
@@ -87,7 +85,7 @@ public class LettuceRedisMessageMap<K, V> implements MessageMap<K, V> {
     }
 
     @Override
-    public boolean containsKey(K key) {
+    public boolean containsKey(String key) {
         Objects.requireNonNull(key, "Null keys are not supported");
         String keyStr = gson.toJson(key);
         return hashCommands.hexists(redisKey, keyStr);

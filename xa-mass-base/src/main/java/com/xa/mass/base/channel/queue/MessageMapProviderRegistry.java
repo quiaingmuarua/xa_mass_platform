@@ -19,8 +19,8 @@ public class MessageMapProviderRegistry {
 
     static {
         // 注册默认提供者
-        register(QueueProviderType.IN_MEMORY, (queueKey, valueType) -> new InMemoryMessageMap<>(queueKey, valueType));
-        register(QueueProviderType.REDIS, (queueKey, valueType) -> new LettuceRedisMessageMap<>(queueKey, valueType));
+        register(QueueProviderType.IN_MEMORY, InMemoryMessageMap::new);
+        register(QueueProviderType.REDIS, LettuceRedisMessageMap::new);
     }
 
     /**

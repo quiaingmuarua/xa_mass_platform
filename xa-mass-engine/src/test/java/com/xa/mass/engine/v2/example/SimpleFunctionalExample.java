@@ -10,6 +10,7 @@ import com.xa.mass.engine.v2.dao.TaskRepositoryManager;
 import com.xa.mass.engine.v2.entity.DeviceEntity;
 import com.xa.mass.engine.v2.entity.TaskEntity;
 import com.xa.mass.engine.v2.entity.TaskMsgEntity;
+import com.xa.mass.engine.v2.entity.TokenEntity;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -22,10 +23,10 @@ public class SimpleFunctionalExample {
 
     public static void main(String[] args) {
         // 示例1: 基本使用
-        exampleBasicUsage();
+//        exampleBasicUsage();
 
         // 示例2: 注册自定义提供者
-        exampleCustomProvider();
+//        exampleCustomProvider();
 
         // 示例3: TaskRepositoryManager集成
         exampleTaskRepositoryManager();
@@ -34,42 +35,18 @@ public class SimpleFunctionalExample {
     /**
      * 示例1: 基本使用
      */
-    private static void exampleBasicUsage() {
-        logger.info("=== 示例1: 基本使用 ===");
+//    private static void exampleBasicUsage() {
+//        logger.info("=== 示例1: 基本使用 ===");
+//
+//        // 使用默认内存队列
+//        MessageQueue<String> queue = MessageQueue.createQueue(QueueProviderType.IN_MEMORY, "test-queue", String.class);
+//        queue.offer("message1");
+//        queue.offer("message2");
+//
+//        logger.info("队列大小: {}", queue.size());
+//        logger.info("队列是否为空: {}", queue.isEmpty());
+//    }
 
-        // 使用默认内存队列
-        MessageQueue<String> queue = MessageQueue.createQueue(QueueProviderType.IN_MEMORY, "test-queue");
-        queue.offer("message1");
-        queue.offer("message2");
-
-        logger.info("队列大小: {}", queue.size());
-        logger.info("队列是否为空: {}", queue.isEmpty());
-    }
-
-    /**
-     * 示例2: 注册自定义提供者
-     */
-    private static void exampleCustomProvider() {
-        logger.info("=== 示例2: 注册自定义提供者 ===");
-
-        // 注册一个自定义的内存队列提供者
-        // MessageQueueProviderRegistry.register("custom", name -> {
-        //     logger.info("创建自定义队列: {}", name);
-        //     return new InMemoryMessageQueue<>();
-        // });
-        // 由于 QueueProviderType 没有 CUSTOM，如需自定义请扩展枚举或用 IN_MEMORY 演示
-        // 这里用 IN_MEMORY 演示
-        MessageQueue.register(QueueProviderType.IN_MEMORY, name -> {
-            logger.info("创建自定义队列: {}", name);
-            return new InMemoryMessageQueue<>();
-        });
-
-        // 使用自定义提供者
-        MessageQueue<String> queue2 = MessageQueue.createQueue(QueueProviderType.IN_MEMORY, "my-queue");
-        queue2.offer("test message");
-        
-        logger.info("自定义队列大小: {}", queue2.size());
-    }
 
     /**
      * 示例3: TaskRepositoryManager集成
@@ -78,7 +55,7 @@ public class SimpleFunctionalExample {
         logger.info("=== 示例3: TaskRepositoryManager集成 ===");
 
         // 使用默认配置
-        MessageMap<String, DeviceEntity> deviceMap = new InMemoryMessageMap<>();
+        MessageMap<String, DeviceEntity> deviceMap = new InMemoryMessageMap<>("",DeviceEntity.class);
         
         TaskRepositoryManager defaultManager = TaskRepositoryManager.createWithDefaultProjects(QueueProviderType.IN_MEMORY);
         

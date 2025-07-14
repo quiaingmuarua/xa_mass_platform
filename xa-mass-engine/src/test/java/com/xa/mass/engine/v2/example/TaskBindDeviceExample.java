@@ -16,7 +16,7 @@ public class TaskBindDeviceExample {
 
 
     public static void main(String[] args) {
-        DeviceRepositoryManager deviceRepositoryManager = new DeviceRepositoryManager(new InMemoryMessageMap<>("deviceMap"));
+        DeviceRepositoryManager deviceRepositoryManager = new DeviceRepositoryManager(new InMemoryMessageMap<>("deviceMap",DeviceEntity.class));
         TaskRepositoryManager taskRepositoryManager = TaskRepositoryManager.createWithDefaultProjects(QueueProviderType.IN_MEMORY);
 
         generateData(deviceRepositoryManager, taskRepositoryManager);
@@ -27,7 +27,7 @@ public class TaskBindDeviceExample {
 
     public static void generateData(DeviceRepositoryManager deviceRepositoryManager, TaskRepositoryManager taskRepositoryManager) {
         // 注册所有项目分组
-        deviceRepositoryManager.registerAllProjects(project -> new InMemoryMessageMap<>(project.getCode() + "TokenMap"));
+        deviceRepositoryManager.registerAllProjects(project -> new InMemoryMessageMap<>(project.getCode() + "TokenMap",TokenEntity.class));
 
         //mock device
         List<DeviceEntity> deviceEntityList = mockDevices( 20);

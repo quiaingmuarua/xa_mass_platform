@@ -29,19 +29,19 @@ public class RepositoryManagerExample {
         if ("内存".equals(queueType)) {
             System.out.println("=== 内存队列示例 ===");
             // 初始化内存队列
-            deviceMap = new InMemoryMessageMap<>("deviceMap");
-            tokenMap = new InMemoryMessageMap<>("tokenMap");
-            taskEntityMessageMap = new InMemoryMessageMap<>("taskEntityMessageMap");
-            demoAppTokenMap = new InMemoryMessageMap<>("demoAppTokenMap");
+            deviceMap = new InMemoryMessageMap<>("deviceMap",DeviceEntity.class);
+            tokenMap = new InMemoryMessageMap<>("tokenMap",TokenEntity.class);
+            taskEntityMessageMap = new InMemoryMessageMap<>("taskEntityMessageMap",TaskEntity.class);
+            demoAppTokenMap = new InMemoryMessageMap<>("demoAppTokenMap",TokenEntity.class);
 
         } else {
             System.out.println("=== Redis队列示例 ===");
             // 1. 初始化全局Redis连接
             RedisConnectionManager.init("localhost", 6379, null, 0);
             // 2. 创建Redis消息映射
-            deviceMap = new LettuceRedisMessageMap<>("xa_mass_platform::deviceMap", String.class, DeviceEntity.class);
-            taskEntityMessageMap = new LettuceRedisMessageMap<>("xa_mass_platform::taskEntityMessageMap", String.class, TaskEntity.class);
-            demoAppTokenMap = new LettuceRedisMessageMap<>("xa_mass_platform::demoAppTokenMap", String.class, TokenEntity.class);
+            deviceMap = new LettuceRedisMessageMap<>("xa_mass_platform::deviceMap", DeviceEntity.class);
+            taskEntityMessageMap = new LettuceRedisMessageMap<>("xa_mass_platform::taskEntityMessageMap", TaskEntity.class);
+            demoAppTokenMap = new LettuceRedisMessageMap<>("xa_mass_platform::demoAppTokenMap", TokenEntity.class);
 
 
         }
@@ -62,7 +62,7 @@ public class RepositoryManagerExample {
 
     private static void mockGenerate(TaskService taskService, DeviceRepositoryManager deviceRepositoryManager, String queueType) {
         // 注册所有项目分组
-        deviceRepositoryManager.registerAllProjects(project -> new InMemoryMessageMap<>(project.getCode() + "TokenMap"));
+        deviceRepositoryManager.registerAllProjects(project -> new InMemoryMessageMap<>(project.getCode() + "TokenMap",TokenEntity.class));
 
         //init entity list
         String deviceFieldDslJson = """
