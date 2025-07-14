@@ -15,6 +15,7 @@ import com.xa.mass.engine.v2.service.DeviceServiceImpl;
 import com.xa.mass.engine.v2.service.EngineRegistry;
 import com.xa.mass.engine.v2.service.TaskService;
 import com.xa.mass.engine.v2.service.TaskServiceImpl;
+import com.xa.mass.engine.v2.util.QueueKeyUtil;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
@@ -51,7 +52,7 @@ public class DataFlowIntegrationTest {
         EngineRegistry.setDefaultDeviceService(deviceService);
         
         // 注册项目
-        deviceService.registerAllProjects();
+        deviceService.registerAllProjects(project -> new InMemoryMessageMap<>(QueueKeyUtil.getProjectAllTokenHashKey(project),TokenEntity.class));
     }
 
     @Test

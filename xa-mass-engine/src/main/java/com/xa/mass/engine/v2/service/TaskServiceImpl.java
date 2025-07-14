@@ -59,7 +59,7 @@ public class TaskServiceImpl implements TaskService {
     @Override
     public String getTaskSeed(Project project, String taskId) {
         Objects.requireNonNull(taskId, "Task ID cannot be null");
-        if (!repository.containsTask(project, QueueKeyUtil.getSeedStreamKey(project, taskId))) {
+        if (!repository.containsTask(project,taskId)) {
             throw new IllegalArgumentException("Task not found: " + taskId);
         }
         return repository.getSeed(QueueKeyUtil.getSeedStreamKey(project, taskId));
@@ -85,7 +85,7 @@ public class TaskServiceImpl implements TaskService {
         Objects.requireNonNull(taskId, "Task ID cannot be null");
         Objects.requireNonNull(taskMsg, "Task message cannot be null");
         
-        if (!repository.containsTask(project, QueueKeyUtil.getSeedStreamKey(project, taskId))) {
+        if (!repository.containsTask(project, taskId)) {
             throw new IllegalArgumentException("Task not found: " + taskId);
         }
         
@@ -95,7 +95,7 @@ public class TaskServiceImpl implements TaskService {
     @Override
     public TaskMsgEntity getTaskMsg(Project project, String taskId) {
         Objects.requireNonNull(taskId, "Task ID cannot be null");
-        if (!repository.containsTask(project, QueueKeyUtil.getSeedStreamKey(project, taskId))) {
+        if (!repository.containsTask(project, taskId)) {
             throw new IllegalArgumentException("Task not found: " + taskId);
         }
         return repository.getMsg(QueueKeyUtil.getMsgStreamKey(project, taskId));
@@ -104,23 +104,20 @@ public class TaskServiceImpl implements TaskService {
     @Override
     public TaskEntity getTask(Project project, String taskId) {
         Objects.requireNonNull(taskId, "Task ID cannot be null");
-        return repository.getTask(project, QueueKeyUtil.getSeedStreamKey(project, taskId));
+        return repository.getTask(project, taskId);
     }
 
     @Override
     public boolean containsTask(Project project, String taskId) {
         Objects.requireNonNull(taskId, "Task ID cannot be null");
-        return repository.containsTask(project, QueueKeyUtil.getSeedStreamKey(project, taskId));
+
+        return repository.containsTask(project, taskId);
     }
 
     @Override
     public int getTaskSeedCount(Project project, String taskId) {
         Objects.requireNonNull(taskId, "Task ID cannot be null");
-        
-        if (!repository.containsTask(project, QueueKeyUtil.getSeedStreamKey(project, taskId))) {
-            return 0;
-        }
-        
+
         return repository.getSeedCount(QueueKeyUtil.getSeedStreamKey(project, taskId));
     }
 
@@ -128,7 +125,7 @@ public class TaskServiceImpl implements TaskService {
     public int getTaskMsgCount(Project project, String taskId) {
         Objects.requireNonNull(taskId, "Task ID cannot be null");
         
-        if (!repository.containsTask(project, QueueKeyUtil.getSeedStreamKey(project, taskId))) {
+        if (!repository.containsTask(project, taskId)) {
             return 0;
         }
         

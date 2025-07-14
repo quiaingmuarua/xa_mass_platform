@@ -1,6 +1,8 @@
 package com.xa.mass.engine.v2.service;
 
+import com.xa.mass.base.channel.queue.api.MessageMap;
 import com.xa.mass.engine.v2.entity.DeviceEntity;
+import com.xa.mass.engine.v2.entity.TaskEntity;
 import com.xa.mass.engine.v2.entity.TokenEntity;
 import com.xa.mass.base.enums.Project;
 import java.util.List;
@@ -22,8 +24,8 @@ public interface DeviceService {
     int getTokenCount(String project);
 
     // 项目管理
-    void registerProjectAndCreateTokenMapping(String project);
-    void bulkRegisterProjectsAndCreateTokenMapping();
+    void registerAllProjects(java.util.function.Function<Project, MessageMap<String, TokenEntity>> mapSupplier);
+    void registerProject(String project, MessageMap<String, TokenEntity> tokenMap);
     int getProjectCount();
 
     // 兼容旧接口的方法（标记为过时）
@@ -40,16 +42,6 @@ public interface DeviceService {
     @Deprecated
     default void bindDeviceToken(TokenEntity tokenEntity) {
         createToken(tokenEntity);
-    }
-
-    @Deprecated
-    default void registerProject(Project project) {
-        registerProjectAndCreateTokenMapping(project.getCode());
-    }
-
-    @Deprecated
-    default void registerAllProjects() {
-        bulkRegisterProjectsAndCreateTokenMapping();
     }
 
     @Deprecated

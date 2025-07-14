@@ -1,11 +1,14 @@
 package com.xa.mass.engine.v2.service;
 
+import com.xa.mass.base.channel.queue.api.MessageMap;
 import com.xa.mass.base.channel.queue.memory.InMemoryMessageMap;
+import com.xa.mass.base.enums.Project;
 import com.xa.mass.engine.v2.dao.DeviceRepositoryManager;
 import com.xa.mass.engine.v2.entity.DeviceEntity;
 import com.xa.mass.engine.v2.entity.TokenEntity;
 
 import java.util.Objects;
+import java.util.function.Function;
 
 /**
  * 设备服务实现 v2
@@ -40,15 +43,6 @@ public class DeviceServiceImpl implements DeviceService {
         repository.saveToken(token.getProject(), token);
     }
 
-    @Override
-    public void registerProjectAndCreateTokenMapping(String project) {
-//        repository.registerProject(project, new InMemoryMessageMap<>());
-    }
-
-    @Override
-    public void bulkRegisterProjectsAndCreateTokenMapping() {
-//        repository.registerAllProjects(project -> new InMemoryMessageMap<>());
-    }
 
     @Override
     public DeviceEntity getDevice(String deviceId) {
@@ -78,6 +72,16 @@ public class DeviceServiceImpl implements DeviceService {
     public int getTokenCount(String project) {
         Objects.requireNonNull(project, "Project cannot be null");
         return repository.getTokenCount(project);
+    }
+
+    @Override
+    public void registerAllProjects(Function<Project, MessageMap<String, TokenEntity>> mapSupplier) {
+        repository.registerAllProjects(mapSupplier);
+    }
+
+    @Override
+    public void registerProject(String project, MessageMap<String, TokenEntity> tokenMap) {
+        repository.registerProject(project,tokenMap);
     }
 
     @Override
