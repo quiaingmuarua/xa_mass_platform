@@ -27,7 +27,7 @@ public class RepositoryManagerExample {
         // 1. 初始化全局Redis连接
         RedisConnectionManager.init("localhost", 6379, null, 0);
         // 2. 创建Redis消息映射
-        MessageMap<String, DeviceEntity> deviceMap = new LettuceRedisMessageMap<>("xa_mass_platform::deviceMap", DeviceEntity.class);
+        MessageMap<String, DeviceEntity> deviceMap = new LettuceRedisMessageMap<>(QueueKeyUtil.getDeviceHashKey(), DeviceEntity.class);
         //init manager
         DeviceRepositoryManager deviceRepositoryManager = new DeviceRepositoryManager(deviceMap);
         TaskRepositoryManager taskRepositoryManager = TaskRepositoryManager.createWithDefaultProjects(
@@ -45,7 +45,7 @@ public class RepositoryManagerExample {
 
     private static void mockGenerate(TaskService taskService, DeviceRepositoryManager deviceRepositoryManager, String queueType) {
         // 注册所有项目分组
-        deviceRepositoryManager.registerAllProjects(project -> new InMemoryMessageMap<>(project.getCode() + "TokenMap",TokenEntity.class));
+        deviceRepositoryManager.registerAllProjects(project -> new LettuceRedisMessageMap<>(QueueKeyUtil.getProjectAllTokenHashKey(project),TokenEntity.class));
 
         //init entity list
         String deviceFieldDslJson = """
@@ -116,7 +116,7 @@ public class RepositoryManagerExample {
         {
             for (int i = 0; i < taskEntity.getTaskCount(); i++) {
                 String seedContent = "seed-" + i + taskEntity.getTaskId()+"-text";
-                taskService.addTaskSeed(Project.fromCode(taskEntity.getProject()), QueueKeyUtil.getTaskQueueKey(Project.fromCode(taskEntity.getProject()), taskEntity.getTaskId()), seedContent);
+                taskService.addTaskSeed(Project.fromCode(taskEntity.getProject()), taskEntity.getTaskId(), seedContent);
             }
         });
 

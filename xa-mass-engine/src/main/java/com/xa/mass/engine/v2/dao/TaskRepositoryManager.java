@@ -106,9 +106,8 @@ public class TaskRepositoryManager {
     public static TaskRepositoryManager createWithDefaultProjects(QueueProviderType seedStreamType, QueueProviderType msgStreamType) {
         TaskRepositoryManager manager = new TaskRepositoryManager(seedStreamType, msgStreamType);
         manager.registerAllProjects((Project project) -> {
-            // 这里只能用 project，无法用 taskId，保留原有逻辑或用 project+"all"
-            MessageMap<String, TaskEntity> map = MessageMapProviderRegistry.createMap(seedStreamType, QueueKeyUtil.getProjectTaskStreamKey(project, "all"), TaskEntity.class);
-            return map;
+            // 只初始化空的 MessageMap，不注册 project:all 队列名
+            return MessageMapProviderRegistry.createMap(seedStreamType, QueueKeyUtil.getProjectAllTaskHashKey(project), TaskEntity.class);
         });
         return manager;
     }

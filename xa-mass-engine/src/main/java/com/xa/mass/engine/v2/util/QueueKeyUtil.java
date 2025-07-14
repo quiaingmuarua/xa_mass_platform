@@ -11,6 +11,20 @@ public class QueueKeyUtil {
         return "task:" + project.getCode() + ":" + taskId;
     }
 
+
+    public static String getProjectAllTaskHashKey(Project project){
+        return "task:project:" + project.getCode() + ":all:tasks";
+    }
+
+    public static String getProjectAllTokenHashKey(Project project){
+        return "device:project:" + project.getCode() + ":all:tokens";
+    }
+
+
+    public static  String getDeviceHashKey(){
+        return "device:all";
+    }
+
     /**
      * 获取任务种子流队列 key
      */
