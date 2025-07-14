@@ -4,6 +4,7 @@ import com.xa.mass.engine.v2.dao.TaskRepositoryManager;
 import com.xa.mass.engine.v2.entity.TaskEntity;
 import com.xa.mass.engine.v2.entity.TaskMsgEntity;
 import com.xa.mass.base.enums.Project;
+import com.xa.mass.engine.v2.util.QueueKeyUtil;
 
 import java.util.Objects;
 
@@ -27,8 +28,8 @@ public class TaskServiceImpl implements TaskService {
         repository.saveTask(project, taskEntity);
         
         // 创建关联的流
-        repository.createSeedStream(taskEntity.getTaskId());
-        repository.createMsgStream(taskEntity.getTaskId());
+        repository.createSeedStream(QueueKeyUtil.getSeedStreamKey(project, taskEntity.getTaskId()));
+        repository.createMsgStream(QueueKeyUtil.getMsgStreamKey(project, taskEntity.getTaskId()));
     }
 
     @Override
@@ -40,7 +41,7 @@ public class TaskServiceImpl implements TaskService {
             throw new IllegalArgumentException("Task not found: " + taskId);
         }
         
-        repository.addSeed(taskId, seed);
+        repository.addSeed(QueueKeyUtil.getSeedStreamKey(project, taskId), seed);
     }
 
     @Override
@@ -51,7 +52,7 @@ public class TaskServiceImpl implements TaskService {
             throw new IllegalArgumentException("Task not found: " + taskId);
         }
         for (String seed : seeds) {
-            repository.addSeed(taskId, seed);
+            repository.addSeed(QueueKeyUtil.getSeedStreamKey(project, taskId), seed);
         }
     }
 
@@ -61,7 +62,7 @@ public class TaskServiceImpl implements TaskService {
         if (!repository.containsTask(project, taskId)) {
             throw new IllegalArgumentException("Task not found: " + taskId);
         }
-        return repository.getSeed(taskId);
+        return repository.getSeed(QueueKeyUtil.getSeedStreamKey(project, taskId));
     }
 
     @Override
@@ -88,7 +89,7 @@ public class TaskServiceImpl implements TaskService {
             throw new IllegalArgumentException("Task not found: " + taskId);
         }
         
-        repository.addMsg(taskId, taskMsg);
+        repository.addMsg(QueueKeyUtil.getMsgStreamKey(project, taskId), taskMsg);
     }
 
     @Override
@@ -97,7 +98,7 @@ public class TaskServiceImpl implements TaskService {
         if (!repository.containsTask(project, taskId)) {
             throw new IllegalArgumentException("Task not found: " + taskId);
         }
-        return repository.getMsg(taskId);
+        return repository.getMsg(QueueKeyUtil.getMsgStreamKey(project, taskId));
     }
 
     @Override
@@ -120,7 +121,7 @@ public class TaskServiceImpl implements TaskService {
             return 0;
         }
         
-        return repository.getSeedCount(taskId);
+        return repository.getSeedCount(QueueKeyUtil.getSeedStreamKey(project, taskId));
     }
 
     @Override
@@ -131,7 +132,7 @@ public class TaskServiceImpl implements TaskService {
             return 0;
         }
         
-        return repository.getMsgCount(taskId);
+        return repository.getMsgCount(QueueKeyUtil.getMsgStreamKey(project, taskId));
     }
 
     @Override

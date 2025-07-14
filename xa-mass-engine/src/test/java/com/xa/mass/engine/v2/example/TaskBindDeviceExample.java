@@ -9,6 +9,7 @@ import com.xa.mass.engine.v2.entity.DeviceEntity;
 import com.xa.mass.engine.v2.entity.TaskEntity;
 import com.xa.mass.engine.v2.entity.TokenEntity;
 import com.xa.mass.engine.v2.monkey.MockEngineGenerator;
+import com.xa.mass.engine.v2.util.QueueKeyUtil;
 
 import java.util.List;
 
@@ -55,8 +56,8 @@ public class TaskBindDeviceExample {
         // 创建任务
         taskEntityList.forEach(taskEntity -> {
             taskRepositoryManager.saveTask(Project.fromCode(taskEntity.getProject()), taskEntity);
-            taskRepositoryManager.createSeedStream(taskEntity.getTaskId());
-            taskRepositoryManager.createMsgStream(taskEntity.getTaskId());
+            taskRepositoryManager.createSeedStream(QueueKeyUtil.getSeedStreamKey(Project.fromCode(taskEntity.getProject()), taskEntity.getTaskId()));
+            taskRepositoryManager.createMsgStream(QueueKeyUtil.getMsgStreamKey(Project.fromCode(taskEntity.getProject()), taskEntity.getTaskId()));
         });
         
         // 添加种子

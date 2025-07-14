@@ -8,6 +8,7 @@ import com.xa.mass.base.channel.queue.api.MessageStream;
 import com.xa.mass.base.enums.Project;
 import com.xa.mass.engine.v2.entity.TaskEntity;
 import com.xa.mass.engine.v2.entity.TaskMsgEntity;
+import com.xa.mass.engine.v2.util.QueueKeyUtil;
 
 import java.util.Collections;
 import java.util.List;
@@ -43,7 +44,7 @@ public class TaskRepositoryManager {
     // 任务实体操作
     public void saveTask(Project project, TaskEntity taskEntity) {
         projectTaskMap.computeIfAbsent(project, (Project k) -> {
-            MessageMap<String, TaskEntity> map = MessageMapProviderRegistry.createMap(seedStreamType, "task:" + project.name(), TaskEntity.class);
+            MessageMap<String, TaskEntity> map = MessageMapProviderRegistry.createMap(seedStreamType, QueueKeyUtil.getProjectTaskStreamKey(taskEntity), TaskEntity.class);
             return map;
         })
         .put(taskEntity.getTaskId(), taskEntity);
@@ -105,28 +106,29 @@ public class TaskRepositoryManager {
     public static TaskRepositoryManager createWithDefaultProjects(QueueProviderType seedStreamType, QueueProviderType msgStreamType) {
         TaskRepositoryManager manager = new TaskRepositoryManager(seedStreamType, msgStreamType);
         manager.registerAllProjects((Project project) -> {
-            MessageMap<String, TaskEntity> map = MessageMapProviderRegistry.createMap(seedStreamType, "task:" + project.name(), TaskEntity.class);
+            // 这里只能用 project，无法用 taskId，保留原有逻辑或用 project+"all"
+            MessageMap<String, TaskEntity> map = MessageMapProviderRegistry.createMap(seedStreamType, QueueKeyUtil.getProjectTaskStreamKey(project, "all"), TaskEntity.class);
             return map;
         });
         return manager;
     }
 
     // 种子流操作
-    public void createSeedStream(String taskId) {
+    public void createSeedStream(String seedStreamKey) {
         MessageStream<String> stream = MessageStreamProviderRegistry.createStream(
-            seedStreamType, taskId + ":seeds", String.class, java.util.Collections.<String, String>emptyMap());
-        seedStreams.put(taskId, stream);
+            seedStreamType, seedStreamKey, String.class, java.util.Collections.<String, String>emptyMap());
+        seedStreams.put(seedStreamKey, stream);
     }
 
-    public void addSeed(String taskId, String seed) {
-        MessageStream<String> stream = seedStreams.get(taskId);
+    public void addSeed(String seedStreamKey, String seed) {
+        MessageStream<String> stream = seedStreams.get(seedStreamKey);
         if (stream != null) {
             stream.offer(seed);
         }
     }
 
-    public String getSeed(String taskId) {
-        MessageStream<String> stream = seedStreams.get(taskId);
+    public String getSeed(String seedStreamKey) {
+        MessageStream<String> stream = seedStreams.get(seedStreamKey);
         if (stream != null) {
             try {
                 MessageStream.StreamMessage<String> message = stream.poll(0, TimeUnit.MILLISECONDS);
@@ -140,27 +142,27 @@ public class TaskRepositoryManager {
         return null;
     }
 
-    public int getSeedCount(String taskId) {
-        MessageStream<String> stream = seedStreams.get(taskId);
+    public int getSeedCount(String seedStreamKey) {
+        MessageStream<String> stream = seedStreams.get(seedStreamKey);
         return stream != null ? stream.size() : 0;
     }
 
-    // 消息流操作  
-    public void createMsgStream(String taskId) {
+    // 消息流操作
+    public void createMsgStream(String msgStreamKey) {
         MessageStream<TaskMsgEntity> stream = MessageStreamProviderRegistry.createStream(
-            msgStreamType, taskId + ":msgs", TaskMsgEntity.class, java.util.Collections.<String, String>emptyMap());
-        msgStreams.put(taskId, stream);
+            msgStreamType, msgStreamKey, TaskMsgEntity.class, java.util.Collections.<String, String>emptyMap());
+        msgStreams.put(msgStreamKey, stream);
     }
 
-    public void addMsg(String taskId, TaskMsgEntity msg) {
-        MessageStream<TaskMsgEntity> stream = msgStreams.get(taskId);
+    public void addMsg(String msgStreamKey, TaskMsgEntity msg) {
+        MessageStream<TaskMsgEntity> stream = msgStreams.get(msgStreamKey);
         if (stream != null) {
             stream.offer(msg);
         }
     }
 
-    public TaskMsgEntity getMsg(String taskId) {
-        MessageStream<TaskMsgEntity> stream = msgStreams.get(taskId);
+    public TaskMsgEntity getMsg(String msgStreamKey) {
+        MessageStream<TaskMsgEntity> stream = msgStreams.get(msgStreamKey);
         if (stream != null) {
             try {
                 MessageStream.StreamMessage<TaskMsgEntity> message = stream.poll(0, TimeUnit.MILLISECONDS);
@@ -174,14 +176,14 @@ public class TaskRepositoryManager {
         return null;
     }
 
-    public int getMsgCount(String taskId) {
-        MessageStream<TaskMsgEntity> stream = msgStreams.get(taskId);
+    public int getMsgCount(String msgStreamKey) {
+        MessageStream<TaskMsgEntity> stream = msgStreams.get(msgStreamKey);
         return stream != null ? stream.size() : 0;
     }
 
     // 新增：批量操作支持
-    public void addSeedsBatch(String taskId, List<String> seeds) {
-        MessageStream<String> stream = seedStreams.get(taskId);
+    public void addSeedsBatch(String seedStreamKey, List<String> seeds) {
+        MessageStream<String> stream = seedStreams.get(seedStreamKey);
         if (stream != null) {
             for (String seed : seeds) {
                 stream.offer(seed);
@@ -189,8 +191,8 @@ public class TaskRepositoryManager {
         }
     }
 
-    public List<String> getSeedsBatch(String taskId, int batchSize) {
-        MessageStream<String> stream = seedStreams.get(taskId);
+    public List<String> getSeedsBatch(String seedStreamKey, int batchSize) {
+        MessageStream<String> stream = seedStreams.get(seedStreamKey);
         if (stream != null) {
             try {
                 List<MessageStream.StreamMessage<String>> messages = stream.pollBatch(batchSize, 0, TimeUnit.MILLISECONDS);
@@ -204,8 +206,8 @@ public class TaskRepositoryManager {
         return Collections.emptyList();
     }
 
-    public void addMsgsBatch(String taskId, List<TaskMsgEntity> msgs) {
-        MessageStream<TaskMsgEntity> stream = msgStreams.get(taskId);
+    public void addMsgsBatch(String msgStreamKey, List<TaskMsgEntity> msgs) {
+        MessageStream<TaskMsgEntity> stream = msgStreams.get(msgStreamKey);
         if (stream != null) {
             for (TaskMsgEntity msg : msgs) {
                 stream.offer(msg);
@@ -213,8 +215,8 @@ public class TaskRepositoryManager {
         }
     }
 
-    public List<TaskMsgEntity> getMsgsBatch(String taskId, int batchSize) {
-        MessageStream<TaskMsgEntity> stream = msgStreams.get(taskId);
+    public List<TaskMsgEntity> getMsgsBatch(String msgStreamKey, int batchSize) {
+        MessageStream<TaskMsgEntity> stream = msgStreams.get(msgStreamKey);
         if (stream != null) {
             try {
                 List<MessageStream.StreamMessage<TaskMsgEntity>> messages = stream.pollBatch(batchSize, 0, TimeUnit.MILLISECONDS);
@@ -229,24 +231,24 @@ public class TaskRepositoryManager {
     }
 
     // 新增：统计信息支持
-    public MessageStream.StreamStats getSeedStreamStats(String taskId) {
-        MessageStream<String> stream = seedStreams.get(taskId);
+    public MessageStream.StreamStats getSeedStreamStats(String seedStreamKey) {
+        MessageStream<String> stream = seedStreams.get(seedStreamKey);
         return stream != null ? stream.getStats() : null;
     }
 
-    public MessageStream.StreamStats getMsgStreamStats(String taskId) {
-        MessageStream<TaskMsgEntity> stream = msgStreams.get(taskId);
+    public MessageStream.StreamStats getMsgStreamStats(String msgStreamKey) {
+        MessageStream<TaskMsgEntity> stream = msgStreams.get(msgStreamKey);
         return stream != null ? stream.getStats() : null;
     }
 
     // 新增：清理过期消息
-    public int cleanupExpiredSeeds(String taskId) {
-        MessageStream<String> stream = seedStreams.get(taskId);
+    public int cleanupExpiredSeeds(String seedStreamKey) {
+        MessageStream<String> stream = seedStreams.get(seedStreamKey);
         return stream != null ? stream.cleanupExpiredMessages() : 0;
     }
 
-    public int cleanupExpiredMsgs(String taskId) {
-        MessageStream<TaskMsgEntity> stream = msgStreams.get(taskId);
+    public int cleanupExpiredMsgs(String msgStreamKey) {
+        MessageStream<TaskMsgEntity> stream = msgStreams.get(msgStreamKey);
         return stream != null ? stream.cleanupExpiredMessages() : 0;
     }
 } 

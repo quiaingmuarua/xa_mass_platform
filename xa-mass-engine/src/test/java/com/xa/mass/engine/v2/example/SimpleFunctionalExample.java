@@ -13,6 +13,7 @@ import com.xa.mass.engine.v2.entity.TaskMsgEntity;
 import com.xa.mass.engine.v2.entity.TokenEntity;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import com.xa.mass.engine.v2.util.QueueKeyUtil;
 
 /**
  * 简化的函数式队列提供者使用示例
@@ -67,18 +68,18 @@ public class SimpleFunctionalExample {
         defaultManager.saveTask(Project.DEMO_APP, task);
 
         // 创建队列并添加种子数据
-        defaultManager.createSeedStream("task001");
-        defaultManager.addSeed("task001", "seed-data-1");
-        defaultManager.addSeed("task001", "seed-data-2");
+        defaultManager.createSeedStream(QueueKeyUtil.getSeedStreamKey(Project.DEMO_APP, task.getTaskId()));
+        defaultManager.addSeed(QueueKeyUtil.getSeedStreamKey(Project.DEMO_APP, task.getTaskId()), "seed-data-1");
+        defaultManager.addSeed(QueueKeyUtil.getSeedStreamKey(Project.DEMO_APP, task.getTaskId()), "seed-data-2");
 
         // 创建队列并添加任务消息
-        defaultManager.createMsgStream("task001");
+        defaultManager.createMsgStream(QueueKeyUtil.getMsgStreamKey(Project.DEMO_APP, task.getTaskId()));
         TaskMsgEntity taskMsg = new TaskMsgEntity("msg-task001", "task001");
         taskMsg.markAsBinding();
-        defaultManager.addMsg("task001", taskMsg);
+        defaultManager.addMsg(QueueKeyUtil.getMsgStreamKey(Project.DEMO_APP, task.getTaskId()), taskMsg);
 
         logger.info("任务 {} - 种子数: {}, 消息数: {}", 
-            task.getTaskName(), defaultManager.getSeedCount("task001"), defaultManager.getMsgCount("task001"));
+            task.getTaskName(), defaultManager.getSeedCount(QueueKeyUtil.getSeedStreamKey(Project.DEMO_APP, task.getTaskId())), defaultManager.getMsgCount(QueueKeyUtil.getMsgStreamKey(Project.DEMO_APP, task.getTaskId())));
     }
 
     /**

@@ -6,6 +6,7 @@ import com.xa.mass.base.enums.Project;
 import com.xa.mass.engine.v2.dao.TaskRepositoryManager;
 import com.xa.mass.engine.v2.entity.TaskEntity;
 import com.xa.mass.engine.v2.entity.TaskMsgEntity;
+import com.xa.mass.engine.v2.util.QueueKeyUtil;
 
 import java.util.Arrays;
 import java.util.List;
@@ -47,8 +48,8 @@ public class TaskRepositoryManagerExample {
         System.out.println("保存任务: " + task.getTaskId());
         
         // 创建种子流和消息流
-        manager.createSeedStream("task-001");
-        manager.createMsgStream("task-001");
+        manager.createSeedStream(QueueKeyUtil.getSeedStreamKey(task.getProject(), task.getTaskId()));
+        manager.createMsgStream(QueueKeyUtil.getMsgStreamKey(task.getProject(), task.getTaskId()));
         
         // 添加种子
         manager.addSeed("task-001", "https://example.com/1");
@@ -92,8 +93,8 @@ public class TaskRepositoryManagerExample {
         task.setTaskId("task-002");
         task.setProject(Project.DEMO_APP.getCode());
         manager.saveTask(Project.DEMO_APP, task);
-        manager.createSeedStream("task-002");
-        manager.createMsgStream("task-002");
+        manager.createSeedStream(QueueKeyUtil.getSeedStreamKey(task.getProject(), task.getTaskId()));
+        manager.createMsgStream(QueueKeyUtil.getMsgStreamKey(task.getProject(), task.getTaskId()));
         
         // 批量添加种子
         List<String> seeds = Arrays.asList(
@@ -140,8 +141,8 @@ public class TaskRepositoryManagerExample {
         task.setTaskId("task-003");
         task.setProject(Project.DEMO_APP.getCode());
         manager.saveTask(Project.DEMO_APP, task);
-        manager.createSeedStream("task-003");
-        manager.createMsgStream("task-003");
+        manager.createSeedStream(QueueKeyUtil.getSeedStreamKey(task.getProject(), task.getTaskId()));
+        manager.createMsgStream(QueueKeyUtil.getMsgStreamKey(task.getProject(), task.getTaskId()));
         
         // 添加一些数据
         manager.addSeed("task-003", "https://example.com/stats1");
