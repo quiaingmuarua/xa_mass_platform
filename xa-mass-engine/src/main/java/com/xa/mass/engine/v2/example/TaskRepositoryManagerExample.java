@@ -34,7 +34,7 @@ public class TaskRepositoryManagerExample {
         System.out.println("=== 示例1: 内存流基本操作 ===");
         
         // 创建使用内存流的TaskRepositoryManager
-        TaskRepositoryManager manager = TaskRepositoryManager.createWithDefaultProjects(QueueProviderType.IN_MEMORY_STREAM);
+        TaskRepositoryManager manager = TaskRepositoryManager.createWithDefaultProjects(QueueProviderType.IN_MEMORY);
         
         // 创建任务
         TaskEntity task = new TaskEntity();
@@ -85,7 +85,7 @@ public class TaskRepositoryManagerExample {
     private static void batchOperationDemo() {
         System.out.println("\n=== 示例2: 批量操作演示 ===");
         
-        TaskRepositoryManager manager = TaskRepositoryManager.createWithDefaultProjects(QueueProviderType.IN_MEMORY_STREAM);
+        TaskRepositoryManager manager = TaskRepositoryManager.createWithDefaultProjects(QueueProviderType.IN_MEMORY);
         
         // 创建任务和流
         TaskEntity task = new TaskEntity();
@@ -133,7 +133,7 @@ public class TaskRepositoryManagerExample {
     private static void statsDemo() {
         System.out.println("\n=== 示例3: 统计信息演示 ===");
         
-        TaskRepositoryManager manager = TaskRepositoryManager.createWithDefaultProjects(QueueProviderType.IN_MEMORY_STREAM);
+        TaskRepositoryManager manager = TaskRepositoryManager.createWithDefaultProjects(QueueProviderType.IN_MEMORY);
         
         // 创建任务和流
         TaskEntity task = new TaskEntity();

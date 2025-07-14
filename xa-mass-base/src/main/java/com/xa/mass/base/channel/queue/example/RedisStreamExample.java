@@ -240,7 +240,7 @@ public class RedisStreamExample {
         try {
             // 通过注册表创建Redis Stream
             MessageStream<String> stream = MessageStreamProviderRegistry.createStream(
-                QueueProviderType.REDIS_STREAM, "registry-redis-stream", String.class, java.util.Collections.emptyMap()
+                QueueProviderType.REDIS, "registry-redis-stream", String.class, java.util.Collections.emptyMap()
             );
             
             System.out.println("通过注册表创建的Redis Stream: " + stream.getName());
