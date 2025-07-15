@@ -173,4 +173,21 @@ public class TokenEntity {
     public void setUpdateTime(long updateTime) {
         this.updateTime = updateTime;
     }
+
+
+    @Override
+    public String toString() {
+        return "TokenEntity{" +
+                "tokenId='" + tokenId + '\'' +
+                ", deviceId='" + deviceId + '\'' +
+                ", project='" + project + '\'' +
+                ", country='" + country + '\'' +
+                ", platform='" + platform + '\'' +
+                ", tokenStatus='" + tokenStatus + '\'' +
+                ", lastUserTime=" + lastUserTime +
+                ", expireTime=" + expireTime +
+                ", createTime=" + createTime +
+                ", updateTime=" + updateTime +
+                '}';
+    }
 }

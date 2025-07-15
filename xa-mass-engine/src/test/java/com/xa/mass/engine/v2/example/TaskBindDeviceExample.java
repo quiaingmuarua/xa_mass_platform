@@ -24,7 +24,11 @@ public class TaskBindDeviceExample {
         generateData(deviceRepositoryManager, taskRepositoryManager);
         System.out.println("TaskRepositoryManager initialized successfully");
         //开始绑定task 和 token 生成taskMsg
+        deviceRepositoryManager.getAllDevices().forEach(System.out::println);
+
         Collection<TaskEntity> taskEntityList= taskRepositoryManager.getProjectTasks(Project.DEMO_APP);
+
+        deviceRepositoryManager.getProjectTokens(Project.DEMO_APP.getCode()).forEach(System.out::println);
         taskEntityList.forEach(taskEntity ->
                 {
                     System.out.println("start check task "+taskEntity.getTaskId());

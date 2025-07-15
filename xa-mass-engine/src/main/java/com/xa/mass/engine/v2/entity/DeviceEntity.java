@@ -182,4 +182,21 @@ public class DeviceEntity {
     public void setUpdateTime(long updateTime) {
         this.updateTime = updateTime;
     }
+
+
+    @Override
+    public String toString() {
+        return "DeviceEntity{" +
+                "deviceId='" + deviceId + '\'' +
+                ", deviceStatus='" + deviceStatus + '\'' +
+                ", agentVersion='" + agentVersion + '\'' +
+                ", onlineStrategy='" + onlineStrategy + '\'' +
+                ", groupId='" + groupId + '\'' +
+                ", projectTokens=" + projectTokens +
+                ", lockExpireTime=" + lockExpireTime +
+                ", lastHeartbeat=" + lastHeartbeat +
+                ", createTime=" + createTime +
+                ", updateTime=" + updateTime +
+                '}';
+    }
 }
