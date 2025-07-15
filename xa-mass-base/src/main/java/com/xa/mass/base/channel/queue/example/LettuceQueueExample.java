@@ -1,7 +1,7 @@
 package com.xa.mass.base.channel.queue.example;
 
 import com.xa.mass.base.channel.queue.redis.LettuceRedisQueue;
-import com.xa.mass.base.channel.queue.redis.RedisConnectionManager;
+import com.xa.mass.base.tool.RedisConnectionManager;
 import java.util.concurrent.TimeUnit;
 
 /**

@@ -4,7 +4,7 @@ import com.xa.mass.base.channel.queue.MessageStreamProviderRegistry;
 import com.xa.mass.base.channel.queue.QueueProviderType;
 import com.xa.mass.base.channel.queue.api.MessageStream;
 import com.xa.mass.base.channel.queue.redis.LettuceRedisStream;
-import com.xa.mass.base.channel.queue.redis.RedisConnectionManager;
+import com.xa.mass.base.tool.RedisConnectionManager;
 
 import java.util.concurrent.TimeUnit;
 

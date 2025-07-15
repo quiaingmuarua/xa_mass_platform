@@ -3,6 +3,7 @@ package com.xa.mass.base.channel.queue.redis;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.xa.mass.base.channel.queue.api.MessageMap;
+import com.xa.mass.base.tool.RedisConnectionManager;
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.api.sync.RedisHashCommands;
 import org.slf4j.Logger;
@@ -18,13 +19,11 @@ import java.util.Map;
  */
 public class LettuceRedisMessageMap< V> implements MessageMap<String, V> {
     private static final Logger log = LoggerFactory.getLogger(LettuceRedisMessageMap.class);
-    
-    private final StatefulRedisConnection<String, String> connection;
+
     private final RedisHashCommands<String, String> hashCommands;
     private final String redisKey;
     private final String name;
     private final Gson gson;
-    private final Class keyType;
     private final Class<V> valueType;
 
     /**
@@ -34,14 +33,14 @@ public class LettuceRedisMessageMap< V> implements MessageMap<String, V> {
      * @param extraParams 扩展参数（可选）
      */
     public LettuceRedisMessageMap(String queueKey, Class<V> messageType, Map<String, String> extraParams) {
-        this.connection = RedisConnectionManager.getConnection();
+        StatefulRedisConnection<String, String> connection = RedisConnectionManager.getConnection();
         this.hashCommands = connection.sync();
         this.name = queueKey + "::hash";
         this.redisKey = queueKey + "::hash";
         this.gson = new GsonBuilder().create();
         
         // 对于Map，key类型默认为String，value类型为传入的messageType
-        this.keyType = String.class;;
+        Class keyType = String.class;
         this.valueType = messageType;
         
         log.debug("Created LettuceRedisMessageMap: queueKey={}, keyType={}, valueType={}", 

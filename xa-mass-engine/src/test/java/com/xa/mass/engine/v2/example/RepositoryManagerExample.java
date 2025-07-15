@@ -2,9 +2,8 @@ package com.xa.mass.engine.v2.example;
 
 import com.xa.mass.base.channel.queue.QueueProviderType;
 import com.xa.mass.base.channel.queue.api.MessageMap;
-import com.xa.mass.base.channel.queue.memory.InMemoryMessageMap;
 import com.xa.mass.base.channel.queue.redis.LettuceRedisMessageMap;
-import com.xa.mass.base.channel.queue.redis.RedisConnectionManager;
+import com.xa.mass.base.tool.RedisConnectionManager;
 import com.xa.mass.base.enums.Project;
 import com.xa.mass.engine.v2.dao.DeviceRepositoryManager;
 import com.xa.mass.engine.v2.dao.TaskRepositoryManager;

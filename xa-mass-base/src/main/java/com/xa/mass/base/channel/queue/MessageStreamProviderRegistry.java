@@ -3,11 +3,9 @@ package com.xa.mass.base.channel.queue;
 import com.xa.mass.base.channel.queue.api.MessageStream;
 import com.xa.mass.base.channel.queue.memory.InMemoryMessageStream;
 import com.xa.mass.base.channel.queue.redis.LettuceRedisStream;
-import com.xa.mass.base.channel.queue.redis.RedisConnectionManager;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.BiFunction;
 
 /**
  * 消息流提供者注册表
@@ -20,9 +18,9 @@ public class MessageStreamProviderRegistry {
 
     static {
         // 内存流
-        register(QueueProviderType.IN_MEMORY, (queueKey, messageType, extraParams) -> new InMemoryMessageStream<>(queueKey, messageType, extraParams));
+        register(QueueProviderType.IN_MEMORY, InMemoryMessageStream::new);
         // Redis流
-        register(QueueProviderType.REDIS, (queueKey, messageType, extraParams) -> new LettuceRedisStream<>(queueKey, messageType, extraParams));
+        register(QueueProviderType.REDIS, LettuceRedisStream::new);
     }
 
     /**
