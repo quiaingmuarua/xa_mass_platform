@@ -10,6 +10,7 @@ import com.xa.mass.engine.v2.entity.TaskEntity;
 import com.xa.mass.engine.v2.entity.TaskMsgEntity;
 import com.xa.mass.engine.v2.util.QueueKeyUtil;
 
+import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
@@ -43,11 +44,13 @@ public class TaskRepositoryManager {
 
     // 任务实体操作
     public void saveTask(Project project, TaskEntity taskEntity) {
-        projectTaskMap.computeIfAbsent(project, (Project k) -> {
-            MessageMap<String, TaskEntity> map = MessageMapProviderRegistry.createMap(seedStreamType, QueueKeyUtil.getProjectTaskStreamKey(taskEntity), TaskEntity.class);
-            return map;
-        })
+        projectTaskMap.computeIfAbsent(project, (Project k) -> MessageMapProviderRegistry.createMap(seedStreamType, QueueKeyUtil.getProjectTaskStreamKey(taskEntity), TaskEntity.class))
         .put(taskEntity.getTaskId(), taskEntity);
+    }
+
+    public Collection<TaskEntity> getProjectTasks(Project project){
+        MessageMap<String, TaskEntity> map = projectTaskMap.get(project);
+       return  map.values();
     }
 
     public TaskEntity getTask(Project project, String taskId) {

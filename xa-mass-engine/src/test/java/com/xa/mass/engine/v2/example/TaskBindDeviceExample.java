@@ -11,6 +11,7 @@ import com.xa.mass.engine.v2.entity.TokenEntity;
 import com.xa.mass.engine.v2.monkey.MockEngineGenerator;
 import com.xa.mass.engine.v2.util.QueueKeyUtil;
 
+import java.util.Collection;
 import java.util.List;
 
 public class TaskBindDeviceExample {
@@ -23,6 +24,16 @@ public class TaskBindDeviceExample {
         generateData(deviceRepositoryManager, taskRepositoryManager);
         System.out.println("TaskRepositoryManager initialized successfully");
         //开始绑定task 和 token 生成taskMsg
+        Collection<TaskEntity> taskEntityList= taskRepositoryManager.getProjectTasks(Project.DEMO_APP);
+        taskEntityList.forEach(taskEntity ->
+                {
+                    System.out.println("start check task "+taskEntity.getTaskId());
+
+                }
+
+                );
+
+
 
     }
 
@@ -65,7 +76,7 @@ public class TaskBindDeviceExample {
         {
             for (int i = 0; i < taskEntity.getTaskCount(); i++) {
                 String seed = "seed-" + i + taskEntity.getTaskId();
-                taskRepositoryManager.addSeed(taskEntity.getTaskId(), seed);
+                taskRepositoryManager.addSeed(QueueKeyUtil.getSeedStreamKey(taskEntity), seed);
             }
         });
 

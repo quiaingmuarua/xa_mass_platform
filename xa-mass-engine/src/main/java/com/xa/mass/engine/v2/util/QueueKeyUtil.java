@@ -32,6 +32,11 @@ public class QueueKeyUtil {
         return "task:" + project.getCode() + ":" + taskId + ":seeds";
     }
 
+    public static String getSeedStreamKey(TaskEntity taskEntity) {
+        return "task:" + taskEntity.getProject() + ":" + taskEntity.getTaskId() + ":seeds";
+    }
+
+
     /**
      * 获取任务消息流队列 key
      */
@@ -50,6 +55,6 @@ public class QueueKeyUtil {
      * 获取项目下某个任务的主队列 key，支持 TaskEntity
      */
     public static String getProjectTaskStreamKey(TaskEntity taskEntity) {
-        return getProjectTaskStreamKey(Project.valueOf(taskEntity.getProject()), taskEntity.getTaskId());
+        return getProjectTaskStreamKey(Project.fromCode(taskEntity.getProject()), taskEntity.getTaskId());
     }
 } 
