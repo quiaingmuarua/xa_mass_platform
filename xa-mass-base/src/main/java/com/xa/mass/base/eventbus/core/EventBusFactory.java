@@ -10,6 +10,9 @@ public class EventBusFactory {
                     if ("guava".equalsIgnoreCase(type)) {
                         INSTANCE = new GuavaEventBusFacade(4);
                     }
+                    else if ("redis".equalsIgnoreCase(type)) {
+                        INSTANCE = new RedisStreamEventBusFacade("mass_event_stream", "mass_group", "consumer-1");
+                    }
                     // else if ("spring".equalsIgnoreCase(type)) { ... }
                     else {
                         throw new IllegalArgumentException("Unknown EventBus type: " + type);
