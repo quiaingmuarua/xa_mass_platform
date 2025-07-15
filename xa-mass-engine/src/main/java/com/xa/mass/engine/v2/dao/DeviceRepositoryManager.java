@@ -22,7 +22,7 @@ import java.util.stream.Collectors;
  */
 public class DeviceRepositoryManager {
 
-    // 简单设备映射
+    // 简单设备映射 Map<deviceId, DeviceEntity>
     private final MessageMap<String, DeviceEntity> deviceMap;
     // 项目token映射
     private final ConcurrentMap<String, MessageMap<String, TokenEntity>> projectTokenEntityMap = new ConcurrentHashMap<>();

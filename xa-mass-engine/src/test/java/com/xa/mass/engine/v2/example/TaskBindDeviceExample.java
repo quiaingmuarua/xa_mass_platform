@@ -29,6 +29,9 @@ public class TaskBindDeviceExample {
         Collection<TaskEntity> taskEntityList= taskRepositoryManager.getProjectTasks(Project.DEMO_APP);
 
         deviceRepositoryManager.getProjectTokens(Project.DEMO_APP.getCode()).forEach(System.out::println);
+
+
+
         taskEntityList.forEach(taskEntity ->
                 {
                     System.out.println("start check task "+taskEntity.getTaskId());
