@@ -13,6 +13,21 @@ import java.util.Map;
 
 import static org.junit.Assert.*;
 
+// 负载对象
+class TestPayload {
+    public String name;
+    public int value;
+    public TestPayload() {}
+    public TestPayload(String name, int value) { this.name = name; this.value = value; }
+    @Override public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        TestPayload that = (TestPayload) o;
+        return value == that.value && java.util.Objects.equals(name, that.name);
+    }
+    @Override public int hashCode() { return java.util.Objects.hash(name, value); }
+}
+
 public class MessageStreamProviderRegistryTest {
     private static final String QUEUE_KEY = "test-provider-registry";
     private static final String GROUP = "test-group";
@@ -84,5 +99,49 @@ public class MessageStreamProviderRegistryTest {
                 MessageProviderType.valueOf("CUSTOM"), QUEUE_KEY, String.class, null);
         assertNotNull(stream);
         assertTrue(stream instanceof InMemoryMessageStream);
+    }
+
+    @Test
+    public void testCreateInMemoryStreamWithObject() throws Exception {
+        Map<String, String> params = new HashMap<>();
+        params.put("group", GROUP);
+        params.put("consumerName", CONSUMER);
+        MessageStream<TestPayload> stream = MessageStreamProviderRegistry.createStream(
+                MessageProviderType.IN_MEMORY, QUEUE_KEY, TestPayload.class, params);
+        assertNotNull(stream);
+        assertTrue(stream instanceof InMemoryMessageStream);
+        TestPayload payload = new TestPayload("foo", 42);
+        stream.offer(payload);
+        TestPayload polled = stream.poll(1, java.util.concurrent.TimeUnit.SECONDS).getMessage();
+        assertEquals(payload, polled);
+    }
+
+    @Test
+    public void testCreateRedisStreamWithObject() throws Exception {
+        Map<String, String> params = new HashMap<>();
+        params.put("group", GROUP);
+        params.put("consumerName", CONSUMER);
+        MessageStream<TestPayload> stream = MessageStreamProviderRegistry.createStream(
+                MessageProviderType.REDIS, QUEUE_KEY, TestPayload.class, params);
+        assertNotNull(stream);
+        assertTrue(stream instanceof LettuceRedisStream);
+        TestPayload payload = new TestPayload("bar", 99);
+        stream.offer(payload);
+        TestPayload polled = stream.poll(1, java.util.concurrent.TimeUnit.SECONDS).getMessage();
+        assertEquals(payload, polled);
+    }
+
+    @Test
+    public void testCustomProviderWithObject() throws Exception {
+        MessageStreamProviderRegistry.register(MessageProviderType.CUSTOM,
+                (queueKey, messageType, extraParams) -> new InMemoryMessageStream<>(queueKey, messageType));
+        MessageStream<TestPayload> stream = MessageStreamProviderRegistry.createStream(
+                MessageProviderType.CUSTOM, QUEUE_KEY, TestPayload.class, null);
+        assertNotNull(stream);
+        assertTrue(stream instanceof InMemoryMessageStream);
+        TestPayload payload = new TestPayload("baz", 7);
+        stream.offer(payload);
+        TestPayload polled = stream.poll(1, java.util.concurrent.TimeUnit.SECONDS).getMessage();
+        assertEquals(payload, polled);
     }
 } 
