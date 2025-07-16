@@ -11,80 +11,82 @@ import io.lettuce.core.api.sync.RedisCommands;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
 
+/**
+ * 高性能、可插拔的 Redis Stream 消息流实现（Lettuce版）。
+ * 支持单类型流、消费组、批量操作、自动 trim。
+ *
+ * @param <T> 消息类型（建议同一流内为单一类型）
+ */
 public class LettuceRedisStream<T> implements MessageStream<T> {
     private static final Logger log = LoggerFactory.getLogger(LettuceRedisStream.class);
 
-    // 默认消费者组和消费者名称
     private static final String DEFAULT_GROUP = "default-group";
     private static final String DEFAULT_CONSUMER = "default-consumer";
 
     private final RedisCommands<String, String> commands;
     private final String streamKey;
-    private final String name;
-    private final Gson gson;
     private final Class<T> messageType;
-
-    // 消费组名和消费者名
+    private final Gson gson;
     private final String group;
     private final String consumerName;
 
     /**
-     * 统一的构造方法
-     * @param queueKey 流键名
-     * @param messageType 消息类型Class
-     * @param extraParams 扩展参数（可选，包含group、consumerName等）
+     * 推荐构造：全参数
      */
-    public LettuceRedisStream(String queueKey, Class<T> messageType, Map<String, String> extraParams) {
+    public LettuceRedisStream(String streamKey, Class<T> messageType, Map<String, String> extraParams, Gson gson) {
         StatefulRedisConnection<String, String> connection = RedisConnectionManager.getConnection();
         this.commands = connection.sync();
-        this.streamKey = queueKey + "::stream";
-        this.name = queueKey + "::stream";
-        this.messageType = messageType;
-        
-        // 从扩展参数中获取group和consumerName，使用默认值
+        this.streamKey = streamKey.endsWith("::stream") ? streamKey : streamKey + "::stream";
+        this.messageType = Objects.requireNonNull(messageType);
+        this.gson = gson != null ? gson : new GsonBuilder().create();
+
         this.group = extraParams != null ? extraParams.getOrDefault("group", DEFAULT_GROUP) : DEFAULT_GROUP;
         this.consumerName = extraParams != null ? extraParams.getOrDefault("consumerName", DEFAULT_CONSUMER) : DEFAULT_CONSUMER;
-        
-        this.gson = new GsonBuilder().create();
-        
-        log.debug("Created LettuceRedisStream: queueKey={}, messageType={}, group={}, consumer={}", 
-                 queueKey, messageType.getSimpleName(), group, consumerName);
-        
+
+        log.debug("Created LettuceRedisStream: streamKey={}, messageType={}, group={}, consumer={}",
+                this.streamKey, messageType.getSimpleName(), group, consumerName);
         ensureConsumerGroup();
     }
 
     /**
-     * 简化的构造方法（向后兼容）
-     * @param queueKey 流键名
-     * @param messageType 消息类型Class
+     * 兼容构造（可选外部 Gson）
      */
-    public LettuceRedisStream(String queueKey, Class<T> messageType) {
-        this(queueKey, messageType, null);
+    public LettuceRedisStream(String streamKey, Class<T> messageType, Map<String, String> extraParams) {
+        this(streamKey, messageType, extraParams, null);
+    }
+    public LettuceRedisStream(String streamKey, Class<T> messageType) {
+        this(streamKey, messageType, null, null);
     }
 
     @Override
     public String offer(T message) {
-        if (message == null) {
-            throw new IllegalArgumentException("Message cannot be null");
-        }
+        if (message == null) throw new IllegalArgumentException("Message cannot be null");
         String jsonMessage = gson.toJson(message);
-        String typeName = message.getClass().getName();
-        String streamId = commands.xadd(streamKey, Map.of("data", jsonMessage, "type", typeName));
-        log.debug("Message offered to Redis stream: streamId={}, message={}, type={}", streamId, message, typeName);
+        String streamId = commands.xadd(streamKey, Map.of("data", jsonMessage));
+        log.debug("Offered message to Redis stream: streamId={}, type={}", streamId, messageType.getSimpleName());
         return streamId;
+    }
+
+    /**
+     * 批量 offer
+     */
+    public List<String> offerBatch(List<T> messages) {
+        if (messages == null || messages.isEmpty()) return Collections.emptyList();
+        List<String> ids = new ArrayList<>(messages.size());
+        for (T msg : messages) {
+            ids.add(offer(msg));
+        }
+        return ids;
     }
 
     @Override
     public StreamMessage<T> poll(long timeout, TimeUnit unit) throws InterruptedException {
-        if (Thread.currentThread().isInterrupted()) {
-            throw new InterruptedException("Thread interrupted");
-        }
+        if (Thread.currentThread().isInterrupted()) throw new InterruptedException("Thread interrupted");
         long timeoutMs = unit.toMillis(timeout);
+
         List<io.lettuce.core.StreamMessage<String, String>> messages = commands.xreadgroup(
                 Consumer.from(group, consumerName),
                 XReadArgs.Builder.block(timeoutMs).count(1),
@@ -94,15 +96,13 @@ public class LettuceRedisStream<T> implements MessageStream<T> {
             io.lettuce.core.StreamMessage<String, String> msg = messages.get(0);
             String messageId = msg.getId();
             String jsonMessage = msg.getBody().get("data");
-            String typeName = msg.getBody().get("type");
-            if (jsonMessage != null && typeName != null) {
+            if (jsonMessage != null) {
                 try {
-                    Class<?> clazz = Class.forName(typeName);
-                    Object message = gson.fromJson(jsonMessage, clazz);
-                    log.debug("Message polled from Redis stream: messageId={}, type={}", messageId, typeName);
-                    return new StreamMessage<>(messageId, (T) message);
+                    T message = gson.fromJson(jsonMessage, messageType);
+                    log.debug("Polled message: messageId={}, streamKey={}", messageId, streamKey);
+                    return new StreamMessage<>(messageId, message);
                 } catch (Exception e) {
-                    log.error("Failed to deserialize message: type={}, json={}", typeName, jsonMessage, e);
+                    log.error("Failed to deserialize message: messageId={}, json={}", messageId, jsonMessage, e);
                 }
             }
         }
@@ -111,10 +111,9 @@ public class LettuceRedisStream<T> implements MessageStream<T> {
 
     @Override
     public List<StreamMessage<T>> pollBatch(int batchSize, long timeout, TimeUnit unit) throws InterruptedException {
-        if (Thread.currentThread().isInterrupted()) {
-            throw new InterruptedException("Thread interrupted");
-        }
+        if (Thread.currentThread().isInterrupted()) throw new InterruptedException("Thread interrupted");
         long timeoutMs = unit.toMillis(timeout);
+
         List<io.lettuce.core.StreamMessage<String, String>> redisMsgs = commands.xreadgroup(
                 Consumer.from(group, consumerName),
                 XReadArgs.Builder.block(timeoutMs).count(batchSize),
@@ -125,14 +124,12 @@ public class LettuceRedisStream<T> implements MessageStream<T> {
             for (io.lettuce.core.StreamMessage<String, String> redisMsg : redisMsgs) {
                 String messageId = redisMsg.getId();
                 String jsonMessage = redisMsg.getBody().get("data");
-                String typeName = redisMsg.getBody().get("type");
-                if (jsonMessage != null && typeName != null) {
+                if (jsonMessage != null) {
                     try {
-                        Class<?> clazz = Class.forName(typeName);
-                        Object message = gson.fromJson(jsonMessage, clazz);
-                        result.add(new StreamMessage<>(messageId, (T) message));
+                        T message = gson.fromJson(jsonMessage, messageType);
+                        result.add(new StreamMessage<>(messageId, message));
                     } catch (Exception e) {
-                        log.error("Failed to deserialize message in batch: type={}, json={}", typeName, jsonMessage, e);
+                        log.error("Failed to deserialize message in batch: messageId= {}, json= {}", messageId, e.getMessage());
                     }
                 }
             }
@@ -142,14 +139,12 @@ public class LettuceRedisStream<T> implements MessageStream<T> {
 
     @Override
     public boolean ack(String messageId) {
-        if (messageId == null) {
-            return false;
-        }
+        if (messageId == null) return false;
         try {
             Long ackCount = commands.xack(streamKey, group, messageId);
             boolean success = ackCount != null && ackCount > 0;
             if (success) {
-                log.debug("Message acknowledged: messageId={}", messageId);
+                log.debug("Acknowledged message: messageId={}", messageId);
             } else {
                 log.warn("Message not found for ack: messageId={}", messageId);
             }
@@ -157,6 +152,24 @@ public class LettuceRedisStream<T> implements MessageStream<T> {
         } catch (Exception e) {
             log.error("Failed to ack message: messageId={}", messageId, e);
             return false;
+        }
+    }
+
+    @Override
+    public int ackBatch(List<String> messageIds) {
+        if (messageIds == null || messageIds.isEmpty()) return 0;
+        try {
+            Long ackCount = commands.xack(streamKey, group, messageIds.toArray(new String[0]));
+            int successCount = ackCount != null ? ackCount.intValue() : 0;
+            if (successCount > 0) {
+                log.debug("Batch acknowledged {} messages from {} total", successCount, messageIds.size());
+            } else {
+                log.warn("No messages were acknowledged from batch of {}", messageIds.size());
+            }
+            return successCount;
+        } catch (Exception e) {
+            log.error("Failed to batch ack messages: {}", messageIds, e);
+            return 0;
         }
     }
 
@@ -180,19 +193,14 @@ public class LettuceRedisStream<T> implements MessageStream<T> {
     @Override
     public int processingSize() {
         try {
-            Object pending = commands.xpending(streamKey, group);
-            if (pending != null) {
-                // 解析pending信息
-                if (pending instanceof List<?> pendingList) {
-                    if (!pendingList.isEmpty()) {
-                        return ((Long) pendingList.get(0)).intValue();
-                    }
-                }
-            }
+            // Lettuce 6.x+ 支持 getCount()
+            return Optional.ofNullable(commands.xpending(streamKey, group))
+                    .map(info -> (int) info.getCount())
+                    .orElse(0);
         } catch (Exception e) {
             log.error("Failed to get processingSize for stream: {}", streamKey, e);
+            return 0;
         }
-        return 0;
     }
 
     @Override
@@ -202,35 +210,19 @@ public class LettuceRedisStream<T> implements MessageStream<T> {
 
     @Override
     public String getName() {
-        return name;
+        return streamKey;
     }
 
     @Override
     public int cleanupExpiredMessages() {
-        // 可补充定期trim，见之前建议
-        return 0;
-    }
-
-    @Override
-    public int ackBatch(List<String> messageIds) {
-        if (messageIds == null || messageIds.isEmpty()) {
-            return 0;
-        }
-
+        // 默认保留最新 100000 条，可参数化
+        long maxLen = 100_000L;
         try {
-            // 批量确认消息
-            Long ackCount = commands.xack(streamKey, group, messageIds.toArray(new String[0]));
-            int successCount = ackCount != null ? ackCount.intValue() : 0;
-
-            if (successCount > 0) {
-                log.debug("Batch acknowledged {} messages from {} total", successCount, messageIds.size());
-            } else {
-                log.warn("No messages were acknowledged from batch of {}", messageIds.size());
-            }
-
-            return successCount;
+            Long trimmed = commands.xtrim(streamKey, maxLen);
+            log.info("Trimmed {} entries from Redis stream {}", trimmed, streamKey);
+            return trimmed != null ? trimmed.intValue() : 0;
         } catch (Exception e) {
-            log.error("Failed to batch ack messages: {}", messageIds, e);
+            log.error("Failed to trim stream: {}", streamKey, e);
             return 0;
         }
     }
@@ -238,20 +230,24 @@ public class LettuceRedisStream<T> implements MessageStream<T> {
     @Override
     public StreamStats getStats() {
         return new StreamStats(
-            size() + processingSize(),
-            size(),
-            processingSize(),
-            name
+                size() + processingSize(),
+                size(),
+                processingSize(),
+                streamKey
         );
     }
 
+    /**
+     * 确保消费组存在（幂等，线程安全）
+     */
     private void ensureConsumerGroup() {
         try {
-            // 尝试创建消费者组，如果已存在则忽略错误，stream不存在时自动创建
-            commands.xgroupCreate(XReadArgs.StreamOffset.from(streamKey, "0"), group, io.lettuce.core.XGroupCreateArgs.Builder.mkstream(true));
+            commands.xgroupCreate(XReadArgs.StreamOffset.from(streamKey, "0"), group,
+                    io.lettuce.core.XGroupCreateArgs.Builder.mkstream(true));
             log.debug("Consumer group created: group={}, stream={}", group, streamKey);
         } catch (io.lettuce.core.RedisCommandExecutionException e) {
             if (e.getMessage() != null && e.getMessage().contains("BUSYGROUP")) {
+                // group 已存在，安全忽略
                 log.debug("Consumer group already exists: group={}, stream={}", group, streamKey);
             } else {
                 log.error("Failed to create consumer group: group={}, stream={}", group, streamKey, e);
@@ -260,15 +256,20 @@ public class LettuceRedisStream<T> implements MessageStream<T> {
         }
     }
 
-    public String getStreamKey() {
-        return streamKey;
+    /**
+     * 清空整个stream（测试专用）
+     */
+    public void clear() {
+        try {
+            commands.del(streamKey);
+            log.info("Cleared Redis stream: {}", streamKey);
+        } catch (Exception e) {
+            log.error("Failed to clear stream: {}", streamKey, e);
+        }
     }
 
-    public String getGroup() {
-        return group;
-    }
-
-    public String getConsumerName() {
-        return consumerName;
-    }
+    // 便于单元测试/诊断
+    public String getStreamKey() { return streamKey; }
+    public String getGroup() { return group; }
+    public String getConsumerName() { return consumerName; }
 }
