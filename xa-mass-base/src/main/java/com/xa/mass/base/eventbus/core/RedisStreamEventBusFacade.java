@@ -14,6 +14,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 public class RedisStreamEventBusFacade implements EventBusFacade {
     private final String streamKey;
@@ -26,7 +27,10 @@ public class RedisStreamEventBusFacade implements EventBusFacade {
             Instant.parse(json.getAsString()))
         .create();
     private final MassEventDispatcher dispatcher = new MassEventDispatcher();
-    private final ExecutorService executor = Executors.newSingleThreadExecutor();
+    // 消费线程池：单线程，专门负责从Redis拉取消息
+    private final ExecutorService consumerExecutor = Executors.newSingleThreadExecutor(r -> new Thread(r, "redis-event-consumer"));
+    // 处理线程池：多线程（这里用4个），负责执行具体的事件处理逻辑，避免阻塞消费线程
+    private final ExecutorService handlerExecutor = Executors.newFixedThreadPool(4, r -> new Thread(r, "redis-event-handler"));
     private volatile boolean running = true;
 
     public RedisStreamEventBusFacade(String streamKey, String group, String consumerName) {
@@ -66,7 +70,7 @@ public class RedisStreamEventBusFacade implements EventBusFacade {
     }
 
     private void startListenerLoop() {
-        executor.submit(() -> {
+        consumerExecutor.submit(() -> {
             StatefulRedisConnection<String, String> conn = RedisConnectionManager.getConnection();
             RedisCommands<String, String> commands = conn.sync();
             while (running) {
@@ -83,7 +87,10 @@ public class RedisStreamEventBusFacade implements EventBusFacade {
                         try {
                             Class<?> clazz = Class.forName(type);
                             Object event = gson.fromJson(json, clazz);
-                            dispatcher.dispatch(event);
+                            // 将事件处理任务提交到专门的handler线程池，而不是在当前消费线程中直接执行
+                            handlerExecutor.submit(() -> {
+                                dispatcher.dispatch(event);
+                            });
                         } catch (Exception e) {
                             System.err.println("Error processing Redis Stream event: " + type);
                             e.printStackTrace();
@@ -102,7 +109,15 @@ public class RedisStreamEventBusFacade implements EventBusFacade {
     @Override
     public void shutdown() {
         running = false;
-        executor.shutdown();
+        consumerExecutor.shutdown();
+        handlerExecutor.shutdown();
+        try {
+            // 等待线程池优雅关闭
+            if (!consumerExecutor.awaitTermination(5, TimeUnit.SECONDS)) consumerExecutor.shutdownNow();
+            if (!handlerExecutor.awaitTermination(5, TimeUnit.SECONDS)) handlerExecutor.shutdownNow();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     /**
