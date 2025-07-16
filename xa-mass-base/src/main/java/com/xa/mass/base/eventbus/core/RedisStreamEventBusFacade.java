@@ -12,10 +12,8 @@ import io.lettuce.core.api.sync.RedisCommands;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import com.xa.mass.base.eventbus.core.MassSubscribe;
 
 public class RedisStreamEventBusFacade implements EventBusFacade {
     private final String streamKey;
@@ -27,7 +25,7 @@ public class RedisStreamEventBusFacade implements EventBusFacade {
         .registerTypeAdapter(Instant.class, (com.google.gson.JsonDeserializer<Instant>) (json, typeOfT, context) ->
             Instant.parse(json.getAsString()))
         .create();
-    private final List<Object> listeners = new CopyOnWriteArrayList<>();
+    private final MassEventDispatcher dispatcher = new MassEventDispatcher();
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private volatile boolean running = true;
 
@@ -51,12 +49,12 @@ public class RedisStreamEventBusFacade implements EventBusFacade {
 
     @Override
     public void register(Object listener) {
-        listeners.add(listener);
+        dispatcher.registerListener(listener);
     }
 
     @Override
     public void unregister(Object listener) {
-        listeners.remove(listener);
+        dispatcher.unregisterListener(listener);
     }
 
     @Override
@@ -80,20 +78,10 @@ public class RedisStreamEventBusFacade implements EventBusFacade {
                     try {
                         Class<?> clazz = Class.forName(type);
                         Object event = gson.fromJson(json, clazz);
-                        for (Object listener : listeners) {
-                            for (var method : listener.getClass().getMethods()) {
-                                if (method.isAnnotationPresent(MassSubscribe.class)) {
-                                    Class<?>[] params = method.getParameterTypes();
-                                    if (params.length == 1 && params[0].isAssignableFrom(clazz)) {
-                                        if (!method.canAccess(listener)) {
-                                            method.setAccessible(true);
-                                        }
-                                        method.invoke(listener, event);
-                                    }
-                                }
-                            }
-                        }
+                        // 使用优化后的事件分发器，大幅简化事件处理逻辑
+                        dispatcher.dispatch(event);
                     } catch (Exception e) {
+                        System.err.println("Error processing Redis Stream event: " + type);
                         e.printStackTrace();
                     }
                     // 手动ack
@@ -110,13 +98,39 @@ public class RedisStreamEventBusFacade implements EventBusFacade {
         executor.shutdown();
     }
 
+    /**
+     * 获取已注册的监听器数量
+     * @return 监听器数量
+     */
+    public int getListenerCount() {
+        return dispatcher.getTotalHandlerCount();
+    }
+
+    /**
+     * 获取指定事件类型的处理器数量
+     * @param eventType 事件类型
+     * @return 处理器数量
+     */
+    public int getHandlerCount(Class<?> eventType) {
+        return dispatcher.getHandlerCount(eventType);
+    }
+
+    /**
+     * 获取Redis Stream配置信息
+     * @return 配置信息字符串
+     */
+    public String getStreamInfo() {
+        return String.format("StreamKey: %s, Group: %s, Consumer: %s, Handlers: %d", 
+            streamKey, group, consumerName, getListenerCount());
+    }
+
     @Override
     public <E extends MassEvent> void register(Class<E> eventType, java.util.function.Consumer<E> handler) {
-        throw new UnsupportedOperationException("请直接注册带有@Subscribe注解的listener实例");
+        throw new UnsupportedOperationException("请直接注册带有@MassSubscribe注解的listener实例");
     }
 
     @Override
     public <E extends MassEvent> void unregister(Class<E> eventType, java.util.function.Consumer<E> handler) {
-        throw new UnsupportedOperationException("请直接注销带有@Subscribe注解的listener实例");
+        throw new UnsupportedOperationException("请直接注销带有@MassSubscribe注解的listener实例");
     }
 } 
