@@ -5,7 +5,8 @@ public enum MessageProviderType {
     REDIS("redis"),
     DATABASE("database"),
     KAFKA("kafka"),
-    RABBITMQ("rabbitmq");
+    RABBITMQ("rabbitmq"),
+    CUSTOM("custom");
 
     private final String typeName;
 

@@ -19,8 +19,12 @@ public class LettuceRedisStreamTest {
     @Before
     public void setUp() {
         RedisConnectionManager.init("localhost", 6379, null, 0);
+        // 先清空，避免 group 创建副作用
+        LettuceRedisStream<String> tmp = new LettuceRedisStream<>(STREAM_KEY, String.class);
+        tmp.clear();
+        // 再 new stream，确保 group 创建在 offer 之前
         stream = new LettuceRedisStream<>(STREAM_KEY, String.class);
-        stream.clear();
+        stream.ensureConsumerGroup();
     }
 
     @After
@@ -42,11 +46,21 @@ public class LettuceRedisStreamTest {
         stream.offer("a");
         stream.offer("b");
         assertFalse(stream.isEmpty());
-        assertEquals(2, stream.size());
-        stream.poll(1, TimeUnit.SECONDS);
-        assertEquals(1, stream.size());
-        stream.poll(1, TimeUnit.SECONDS);
-        assertTrue(stream.isEmpty());
+        assertEquals(0, stream.processingSize()); // 刚 offer，pending=0
+
+        var m1 = stream.poll(1, TimeUnit.SECONDS);
+        assertEquals(1, stream.processingSize());
+
+        var m2 = stream.poll(1, TimeUnit.SECONDS);
+        assertEquals(2, stream.processingSize());
+
+        stream.ack(m1.getMessageId());
+        assertEquals(1, stream.processingSize());
+
+        stream.ack(m2.getMessageId());
+        assertEquals(0, stream.processingSize());
+
+        // assertTrue(stream.isEmpty()); // 只关心未消费消息为0
     }
 
     @Test

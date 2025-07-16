@@ -240,7 +240,7 @@ public class LettuceRedisStream<T> implements MessageStream<T> {
     /**
      * 确保消费组存在（幂等，线程安全）
      */
-    private void ensureConsumerGroup() {
+    public void ensureConsumerGroup() {
         try {
             commands.xgroupCreate(XReadArgs.StreamOffset.from(streamKey, "0"), group,
                     io.lettuce.core.XGroupCreateArgs.Builder.mkstream(true));
