@@ -3,7 +3,6 @@ package com.xa.mass.base.channel.messaging.redis;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.xa.mass.base.channel.messaging.api.MessageStream;
-import com.xa.mass.base.tool.RedisConnectionManager;
 import io.lettuce.core.Consumer;
 import io.lettuce.core.XReadArgs;
 import io.lettuce.core.api.StatefulRedisConnection;

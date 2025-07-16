@@ -4,7 +4,7 @@ import com.xa.mass.base.channel.eventbus.core.EventBusFacade;
 import com.xa.mass.base.old.eventbus.core.EventBusFactory;
 import com.xa.mass.base.old.eventbus.event.device.DeviceOfflineEvent;
 import com.xa.mass.base.old.eventbus.event.device.DeviceOnlineEvent;
-import com.xa.mass.base.tool.RedisConnectionManager;
+import com.xa.mass.base.channel.messaging.redis.RedisConnectionManager;
 
 
 public class RedisStreamEventBusExample {

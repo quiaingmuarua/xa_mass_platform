@@ -4,7 +4,7 @@ import com.xa.mass.base.channel.messaging.MessageProviderType;
 import com.xa.mass.base.channel.messaging.api.MessageMap;
 import com.xa.mass.base.channel.messaging.redis.LettuceRedisMessageMap;
 import com.xa.mass.base.enums.Project;
-import com.xa.mass.base.tool.RedisConnectionManager;
+import com.xa.mass.base.channel.messaging.redis.RedisConnectionManager;
 import com.xa.mass.engine.v2.dao.DeviceRepositoryManager;
 import com.xa.mass.engine.v2.dao.TaskRepositoryManager;
 import com.xa.mass.engine.v2.entity.DeviceEntity;

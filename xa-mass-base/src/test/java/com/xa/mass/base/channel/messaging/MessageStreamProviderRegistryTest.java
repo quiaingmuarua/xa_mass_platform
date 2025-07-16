@@ -3,7 +3,7 @@ package com.xa.mass.base.channel.messaging;
 import com.xa.mass.base.channel.messaging.api.MessageStream;
 import com.xa.mass.base.channel.messaging.memory.InMemoryMessageStream;
 import com.xa.mass.base.channel.messaging.redis.LettuceRedisStream;
-import com.xa.mass.base.tool.RedisConnectionManager;
+import com.xa.mass.base.channel.messaging.redis.RedisConnectionManager;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;

@@ -5,7 +5,7 @@ import com.xa.mass.base.channel.eventbus.core.MassSubscribe;
 import com.xa.mass.base.channel.eventbus.core.StreamEventBusFacade;
 import com.xa.mass.base.channel.messaging.api.MessageStream;
 import com.xa.mass.base.channel.messaging.api.MessageStreamFactory;
-import com.xa.mass.base.tool.RedisConnectionManager;
+import com.xa.mass.base.channel.messaging.redis.RedisConnectionManager;
 
 import java.time.Instant;
 

@@ -1,27 +1,82 @@
 # XA-Mass Base Platform
 
-XA-Mass 基础平台，提供 JSON-DSL 框架和核心功能组件。
+XA-Mass 基础平台，提供两大核心能力：
 
-## 核心功能
+- **JSON-DSL 框架**：强类型、可扩展的 JSON 驱动领域特定语言引擎
+- **Channel 消息通信集成**：统一抽象的消息流/队列/映射/事件总线，支持多实现（内存/Redis等）
 
-### JSON-DSL 框架
+---
+
+## 1. JSON-DSL 框架
 
 一个强大的 JSON 驱动的领域特定语言框架，支持数据生成、过滤、转换和验证。
 
-#### 主要特性
-
+### 主要特性
 - **类型安全**：强类型处理器，编译时检查
 - **扩展性强**：支持自定义处理器和函数
 - **统一接口**：标准化的处理器接口
 - **智能过滤**：支持单对象和列表的智能过滤
 - **链式处理**：支持多个 DSL 的链式执行
 
-#### DSL 类型
-
+### DSL 类型
 1. **GENERATE** - 数据生成
 2. **FILTER** - 数据过滤
 3. **TRANSFORM** - 数据转换
 4. **VALIDATE** - 数据验证
+
+（详细用法见下文原有说明）
+
+---
+
+## 2. Channel 消息通信集成
+
+### 设计目标
+- **统一抽象**：提供 `MessageStream`、`MessageQueue`、`MessageMap`、`EventBus` 等通用接口，屏蔽底层实现细节
+- **多实现切换**：支持内存、Redis 等多种实现，便于本地开发、集成测试和生产部署灵活切换
+- **高可扩展性**：可扩展为 Kafka、RabbitMQ、数据库等其它消息中间件
+- **极简 API**：统一构造签名，极简用法，便于上层业务集成
+
+### 典型用法
+
+```java
+// 创建消息流（自动切换内存/Redis等实现）
+MessageStream<MyEvent> stream = MessageStreamProviderRegistry.createStream(
+    MessageProviderType.REDIS, "my-stream", MyEvent.class, Map.of("group", "g1", "consumerName", "c1"));
+
+// 发布消息
+stream.offer(new MyEvent(...));
+
+// 消费消息
+StreamMessage<MyEvent> msg = stream.poll(2, TimeUnit.SECONDS);
+
+// ack 消息
+stream.ack(msg.getMessageId());
+```
+
+### 主要模块
+- `channel/messaging`：统一的消息流/队列/映射接口与实现
+- `channel/eventbus`：高性能事件总线，支持内存/Redis Stream 等多实现
+- `channel/tranporter`：通用消息传输器
+- `channel/example`、`channel/test`：丰富的用法示例与测试
+
+### 目录结构示意
+```
+xa-mass-base/
+  src/main/java/com/xa/mass/base/channel/
+    messaging/    # 消息流/队列/映射接口与实现（内存、Redis等）
+    eventbus/     # 事件总线核心与适配器
+    tranporter/   # 通用消息传输器
+    ...
+```
+
+### 设计亮点
+- **统一构造签名**：所有消息流/队列/映射/事件总线均采用 (queueKey, Class<T>, extraParams) 构造，参数一致
+- **极简切换**：一行切换内存/Redis/其它实现，便于测试与生产环境隔离
+- **多态事件支持**：事件流支持多类型事件安全分发
+- **高可测性**：本地可用内存实现，集成测试无需依赖外部中间件
+- **高性能**：Redis Stream 支持批量、ack、pending、trim等高级特性
+
+---
 
 ## FilterProcessor 重构说明
 

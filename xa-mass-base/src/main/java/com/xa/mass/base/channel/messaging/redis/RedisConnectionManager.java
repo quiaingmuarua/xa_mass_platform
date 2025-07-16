@@ -1,4 +1,4 @@
-package com.xa.mass.base.tool;
+package com.xa.mass.base.channel.messaging.redis;
 
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.RedisURI;

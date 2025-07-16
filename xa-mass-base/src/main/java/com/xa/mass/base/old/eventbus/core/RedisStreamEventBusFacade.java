@@ -5,7 +5,7 @@ import com.google.gson.GsonBuilder;
 import com.xa.mass.base.channel.eventbus.core.EventBusFacade;
 import com.xa.mass.base.channel.eventbus.core.MassEvent;
 import com.xa.mass.base.channel.eventbus.core.MassEventDispatcher;
-import com.xa.mass.base.tool.RedisConnectionManager;
+import com.xa.mass.base.channel.messaging.redis.RedisConnectionManager;
 import io.lettuce.core.Consumer;
 import io.lettuce.core.StreamMessage;
 import io.lettuce.core.XReadArgs;
