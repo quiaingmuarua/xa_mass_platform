@@ -2,7 +2,7 @@ package com.xa.mass.base.old.eventbus.core;
 
 import com.xa.mass.base.channel.eventbus.core.MassEvent;
 import com.xa.mass.base.channel.eventbus.core.MassSubscribe;
-import com.xa.mass.base.channel.eventbus.example.StreamEventBusFacade;
+import com.xa.mass.base.channel.eventbus.core.StreamEventBusFacade;
 import com.xa.mass.base.channel.messaging.api.MessageStream;
 import com.xa.mass.base.channel.messaging.memory.InMemoryMessageStream;
 import org.junit.After;

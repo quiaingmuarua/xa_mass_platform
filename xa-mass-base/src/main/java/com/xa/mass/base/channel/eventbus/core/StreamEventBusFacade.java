@@ -1,9 +1,6 @@
-package com.xa.mass.base.channel.eventbus.example;
+package com.xa.mass.base.channel.eventbus.core;
 
-import com.xa.mass.base.channel.eventbus.core.EventBusFacade;
-import com.xa.mass.base.channel.eventbus.core.MassEvent;
 import com.xa.mass.base.channel.messaging.api.MessageStream;
-import com.xa.mass.base.channel.eventbus.core.MassEventDispatcher;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import java.util.concurrent.ExecutorService;

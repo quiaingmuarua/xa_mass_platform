@@ -59,10 +59,10 @@ public class MassEventDispatcher {
         if (listener == null) {
             return;
         }
-        allHandlers.removeIf(wrapper -> wrapper.getTarget() == listener);
+        allHandlers.removeIf(wrapper -> wrapper.target() == listener);
         handlerMap.entrySet().removeIf(entry -> {
             List<HandlerWrapper> handlers = entry.getValue();
-            handlers.removeIf(wrapper -> wrapper.getTarget() == listener);
+            handlers.removeIf(wrapper -> wrapper.target() == listener);
             return handlers.isEmpty();
         });
     }
