@@ -1,5 +1,7 @@
 package com.xa.mass.engine;
 
+import com.xa.mass.base.eventbus.event.device.DeviceOfflineEvent;
+import com.xa.mass.base.eventbus.event.device.DeviceOnlineEvent;
 import com.xa.mass.base.model.Device;
 import com.xa.mass.base.model.Token;
 import com.xa.mass.engine.storage.DeviceStorage;
@@ -159,7 +161,7 @@ public class DeviceManager {
         }
 
         @com.google.common.eventbus.Subscribe
-        public void onDeviceOnline(com.xa.mass.base.eventbus.device.DeviceOnlineEvent event) {
+        public void onDeviceOnline(DeviceOnlineEvent event) {
             log.info("Device_online: {}", event.getDeviceId());
             String deviceId = event.getDeviceId();
             com.xa.mass.base.model.Device device = deviceManager.getDevice(deviceId);
@@ -174,7 +176,7 @@ public class DeviceManager {
         }
 
         @com.google.common.eventbus.Subscribe
-        public void onDeviceOffline(com.xa.mass.base.eventbus.device.DeviceOfflineEvent event) {
+        public void onDeviceOffline(DeviceOfflineEvent event) {
             String deviceId = event.getDeviceId();
             deviceManager.updateOnlineStatus(deviceId, false);
         }

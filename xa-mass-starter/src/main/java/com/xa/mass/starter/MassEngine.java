@@ -2,7 +2,7 @@ package com.xa.mass.starter;
 
 import com.xa.mass.base.eventbus.core.EventBusFacade;
 import com.xa.mass.base.eventbus.core.EventBusFactory;
-import com.xa.mass.base.eventbus.task.TaskCreatedEvent;
+import com.xa.mass.base.eventbus.event.task.TaskCreatedEvent;
 import com.xa.mass.base.model.Device;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.Token;

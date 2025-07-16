@@ -2,8 +2,8 @@ package com.xa.mass.engine.service;
 
 import com.xa.mass.base.eventbus.core.EventBusFacade;
 import com.xa.mass.base.eventbus.core.EventBusFactory;
-import com.xa.mass.base.eventbus.task.TaskAssignedEvent;
-import com.xa.mass.base.eventbus.task.TaskAuditedEvent;
+import com.xa.mass.base.eventbus.event.task.TaskAssignedEvent;
+import com.xa.mass.base.eventbus.event.task.TaskAuditedEvent;
 import com.xa.mass.base.model.Task;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

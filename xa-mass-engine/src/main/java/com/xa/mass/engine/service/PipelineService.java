@@ -1,6 +1,6 @@
 package com.xa.mass.engine.service;
 
-import com.xa.mass.base.eventbus.task.TaskAssignedEvent;
+import com.xa.mass.base.eventbus.event.task.TaskAssignedEvent;
 import com.xa.mass.engine.monkey.report.AssignmentPipelineStep;
 import com.xa.mass.engine.monkey.report.AssignmentReportStep;
 import com.xa.mass.engine.monkey.report.ConflictReportStep;

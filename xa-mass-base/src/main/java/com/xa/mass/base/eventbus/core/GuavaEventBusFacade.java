@@ -9,6 +9,11 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
+@Deprecated
+/**
+ * 已过时：请优先使用StreamEventBusFacade + MessageStream实现。
+ * 本地事件总线建议用InMemoryMessageStream，分布式用LettuceRedisStream。
+ */
 public class GuavaEventBusFacade implements EventBusFacade {
     private final AsyncEventBus eventBus;
     private final ExecutorService executor;

@@ -4,6 +4,8 @@
 
 EventBus是Mass平台的核心事件驱动架构模块，提供高性能、可扩展的事件发布-订阅机制，支持本地异步和分布式事件处理。
 
+---
+
 ## 🏗️ 架构设计
 
 ```
@@ -11,18 +13,24 @@ eventbus/
 ├── core/           # 核心组件
 │   ├── EventBusFacade.java           # 统一接口
 │   ├── EventBusFactory.java          # 工厂模式
-│   ├── GuavaEventBusFacade.java       # Guava本地实现
+│   ├── GuavaEventBusFacade.java      # Guava本地实现
 │   ├── RedisStreamEventBusFacade.java # Redis分布式实现
-│   ├── MassEventDispatcher.java       # 高性能事件分发器
-│   ├── HandlerWrapper.java            # 反射缓存包装器
-│   ├── MassEvent.java                 # 事件基类
-│   ├── MassPlatformEventType.java     # 平台事件类型
-│   ├── MassSubscribe.java             # 订阅注解
-│   └── EventPublisher.java            # 事件发布器
+│   ├── StreamEventBusFacade.java     # 通用Stream事件总线（可插拔）
+│   ├── MassEventDispatcher.java      # 高性能事件分发器
+│   ├── HandlerWrapper.java           # 反射缓存包装器
+│   ├── MassEvent.java                # 事件基类
+│   ├── MassPlatformEventType.java    # 平台事件类型
+│   ├── MassSubscribe.java            # 订阅注解
+│   └── EventPublisher.java           # 事件发布器
+├── channel/queue/api/MessageStream.java      # 消息流抽象接口
+├── channel/queue/memory/InMemoryMessageStream.java # 内存流实现
+├── channel/queue/redis/LettuceRedisStream.java     # Redis流实现
 ├── device/         # 设备相关事件
 ├── task/           # 任务相关事件
 └── example/        # 使用示例
 ```
+
+---
 
 ## ⚡ 核心特性
 
@@ -42,6 +50,8 @@ eventbus/
 - **事件追踪**: 所有事件包含traceId、requestId
 - **性能监控**: 提供处理器数量、事件类型统计
 - **异常处理**: 统一异常处理和日志记录
+
+---
 
 ## 🎯 核心组件
 
@@ -76,92 +86,78 @@ public interface MassEvent extends Serializable {
 }
 ```
 
-## 🚀 快速开始
+---
 
-### 1. 本地事件总线 (Guava)
+## 🚀 快速开始（可插拔事件总线）
+
+### 1. 选择消息流实现
 
 ```java
-// 1. 创建监听器
-class TaskEventListener {
-    @Subscribe  // 使用Guava的@Subscribe注解
-    public void onTaskCreated(TaskCreatedEvent event) {
-        System.out.println("任务创建: " + event.getTask().getTid());
+// 通过工厂一行切换内存/Redis实现
+String streamType = "memory"; // "redis" 也可
+MessageStream<MassEvent> stream = MessageStreamFactory.create(streamType, "test-bus", MassEvent.class);
+StreamEventBusFacade eventBus = new StreamEventBusFacade(stream);
+```
+
+### 2. 注册监听器
+
+```java
+class MyListener {
+    @MassSubscribe
+    public void onTestEvent(TestEvent event) {
+        log.info("收到事件: {}", event.getMessage());
     }
 }
+eventBus.register(new MyListener());
+```
 
-// 2. 使用事件总线
-EventBusFacade eventBus = EventBusFactory.get("guava");
-TaskEventListener listener = new TaskEventListener();
-eventBus.register(listener);
+### 3. 发布事件
 
-// 3. 发布事件
-Task task = new Task();
-task.setTid("task-001");
-eventBus.post(new TaskCreatedEvent(task, "trace-123", "req-456"));
+```java
+eventBus.post(new TestEvent("Hello EventBus!"));
+```
 
-// 4. 清理
-eventBus.unregister(listener);
+### 4. 注销监听器
+
+```java
+eventBus.unregister(myListener);
+```
+
+### 5. 关闭事件总线
+
+```java
 eventBus.shutdown();
 ```
 
-### 2. 分布式事件总线 (Redis)
+---
 
-```java
-// 1. 初始化Redis连接
-RedisConnectionManager.init("localhost", 6379, null, 0);
+## 🧪 单元测试最佳实践
 
-// 2. 创建监听器服务
-class DeviceEventService implements Runnable {
-    @MassSubscribe  // 使用自定义@MassSubscribe注解
-    public void onDeviceOffline(DeviceOfflineEvent event) {
-        System.out.println("设备下线: " + event.getDeviceId());
-    }
-    
-    public void run() {
-        EventBusFacade eventBus = EventBusFactory.get("redis");
-        eventBus.register(this);
-        // 保持服务运行...
-    }
-}
+- 推荐用 InMemoryMessageStream 进行事件总线功能测试
+- 参考 `StreamEventBusFacadeTest.java`，覆盖注册、注销、分发、多类型、批量等场景
 
-// 3. 发布事件 (可在不同进程中)
-EventBusFacade eventBus = EventBusFactory.get("redis");
-eventBus.post(new DeviceOfflineEvent("device-001", "网络异常", "trace-123"));
-```
+---
 
-### 3. 简化发布器
+## 💡 设计优势
 
-```java
-// 使用EventPublisher简化事件发布
-EventPublisher.post(new DeviceOnlineEvent("device-002", "恢复上线", "trace-456"));
-```
+- **解耦**：事件总线与消息流实现彻底解耦，便于维护和扩展
+- **可测试性**：内存实现极大提升单元测试和本地开发效率
+- **可扩展性**：未来如需支持Kafka、RocketMQ只需实现MessageStream接口
+- **配置灵活**：可通过配置/工厂灵活切换实现
 
-## 📈 性能测试结果
+---
 
-我们对优化后的EventBus进行了性能测试：
+## 📝 变更历史
 
-### 测试环境
-- **硬件**: MacBook Pro (M1 Pro)
-- **JVM**: OpenJDK 17
-- **测试场景**: 高频事件分发
+详见 [CHANGELOG.md](./CHANGELOG.md)
 
-### 测试结果
-```
-=== MassEventDispatcher性能测试 ===
-- 2000个事件分发耗时: 13.01ms
-- 平均每个事件耗时: 0.0065ms
-- 注册监听器数: 3个处理器
+---
 
-=== HandlerWrapper性能测试 ===  
-- 1万次处理器调用耗时: 6.05ms
-- 平均每次调用耗时: 0.0006ms
-```
+## 📚 更多示例
 
-### 性能优势
-- **90%+反射开销减少**: 预编译缓存vs运行时查找
-- **O(1)事件分发**: 精确类型匹配 + HashMap查找
-- **内存友好**: 减少临时对象创建
-- **高并发支持**: CopyOnWriteArrayList保证读性能
+- `StreamEventBusExample.java` - 可插拔事件总线最佳实践
+- `StreamEventBusFacadeTest.java` - 单元测试用例
+- 其它示例详见 example/ 目录
 
 ## 🎨 事件类型
 

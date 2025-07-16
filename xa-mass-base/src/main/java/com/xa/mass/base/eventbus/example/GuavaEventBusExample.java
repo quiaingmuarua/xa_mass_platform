@@ -4,9 +4,9 @@ import com.google.common.eventbus.Subscribe;
 
 import com.xa.mass.base.eventbus.core.EventBusFacade;
 import com.xa.mass.base.eventbus.core.EventBusFactory;
-import com.xa.mass.base.eventbus.device.DeviceOfflineEvent;
-import com.xa.mass.base.eventbus.device.DeviceOnlineEvent;
-import com.xa.mass.base.eventbus.task.TaskAssignedEvent;
+import com.xa.mass.base.eventbus.event.device.DeviceOfflineEvent;
+import com.xa.mass.base.eventbus.event.device.DeviceOnlineEvent;
+import com.xa.mass.base.eventbus.event.task.TaskAssignedEvent;
 import com.xa.mass.base.model.Task;
 
 import java.util.concurrent.CountDownLatch;

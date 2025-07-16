@@ -1,8 +1,8 @@
 package com.xa.mass.base.eventbus.example;
 
 import com.xa.mass.base.eventbus.core.*;
-import com.xa.mass.base.eventbus.device.DeviceOfflineEvent;
-import com.xa.mass.base.eventbus.device.DeviceOnlineEvent;
+import com.xa.mass.base.eventbus.event.device.DeviceOfflineEvent;
+import com.xa.mass.base.eventbus.event.device.DeviceOnlineEvent;
 
 public class DeviceEventListenerService implements Runnable {
     private final EventBusFacade eventBus;

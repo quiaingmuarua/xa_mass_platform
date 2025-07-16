@@ -1,4 +1,4 @@
-package com.xa.mass.base.eventbus.device;
+package com.xa.mass.base.eventbus.event.device;
 
 import com.xa.mass.base.eventbus.core.MassEvent;
 import com.xa.mass.base.eventbus.core.MassPlatformEventType;

@@ -1,4 +1,4 @@
-package com.xa.mass.base.eventbus.task;
+package com.xa.mass.base.eventbus.event.task;
 
 import com.xa.mass.base.eventbus.core.MassEvent;
 import com.xa.mass.base.eventbus.core.MassPlatformEventType;

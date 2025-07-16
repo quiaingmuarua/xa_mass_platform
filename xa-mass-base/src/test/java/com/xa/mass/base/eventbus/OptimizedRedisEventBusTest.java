@@ -1,9 +1,9 @@
 package com.xa.mass.base.eventbus;
 
 import com.xa.mass.base.eventbus.core.*;
-import com.xa.mass.base.eventbus.device.DeviceOfflineEvent;
-import com.xa.mass.base.eventbus.device.DeviceOnlineEvent;
-import com.xa.mass.base.eventbus.task.TaskCreatedEvent;
+import com.xa.mass.base.eventbus.event.device.DeviceOfflineEvent;
+import com.xa.mass.base.eventbus.event.device.DeviceOnlineEvent;
+import com.xa.mass.base.eventbus.event.task.TaskCreatedEvent;
 import com.xa.mass.base.model.Task;
 /**
  * 测试优化后的RedisStreamEventBusFacade性能和功能
