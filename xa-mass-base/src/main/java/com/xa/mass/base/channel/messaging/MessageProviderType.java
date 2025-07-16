@@ -1,6 +1,6 @@
 package com.xa.mass.base.channel.messaging;
 
-public enum QueueProviderType {
+public enum MessageProviderType {
     IN_MEMORY("memory"),
     REDIS("redis"),
     DATABASE("database"),
@@ -9,7 +9,7 @@ public enum QueueProviderType {
 
     private final String typeName;
 
-    QueueProviderType(String typeName) {
+    MessageProviderType(String typeName) {
         this.typeName = typeName;
     }
 
@@ -22,8 +22,8 @@ public enum QueueProviderType {
         return typeName;
     }
 
-    public static QueueProviderType fromString(String typeName) {
-        for (QueueProviderType t : values()) {
+    public static MessageProviderType fromString(String typeName) {
+        for (MessageProviderType t : values()) {
             if (t.typeName.equalsIgnoreCase(typeName)) {
                 return t;
             }

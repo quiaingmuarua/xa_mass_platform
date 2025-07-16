@@ -19,8 +19,8 @@ public class MessageMapProviderRegistry {
 
     static {
         // 注册默认提供者
-        register(QueueProviderType.IN_MEMORY, InMemoryMessageMap::new);
-        register(QueueProviderType.REDIS, LettuceRedisMessageMap::new);
+        register(MessageProviderType.IN_MEMORY, InMemoryMessageMap::new);
+        register(MessageProviderType.REDIS, LettuceRedisMessageMap::new);
     }
 
     /**
@@ -28,7 +28,7 @@ public class MessageMapProviderRegistry {
      * @param type 队列类型
      * @param provider 提供者函数 (queueKey, valueType) -> MessageMap
      */
-    public static void register(QueueProviderType type, BiFunction<String, Class<?>, MessageMap<String, ?>> provider) {
+    public static void register(MessageProviderType type, BiFunction<String, Class<?>, MessageMap<String, ?>> provider) {
         providers.put(type.toString(), provider);
     }
 
@@ -41,7 +41,7 @@ public class MessageMapProviderRegistry {
      * @return MessageMap实例
      */
     @SuppressWarnings("unchecked")
-    public static <V> MessageMap<String, V> createMap(QueueProviderType type, String queueKey, Class<V> valueType) {
+    public static <V> MessageMap<String, V> createMap(MessageProviderType type, String queueKey, Class<V> valueType) {
         String cacheKey = queueKey + ":" + type + ":" + valueType.getSimpleName();
         return (MessageMap<String, V>) mapCache.computeIfAbsent(cacheKey, k -> {
             BiFunction<String, Class<?>, MessageMap<String, ?>> provider = providers.get(type.toString());
@@ -64,7 +64,7 @@ public class MessageMapProviderRegistry {
      * @param type 队列类型
      * @return 是否存在
      */
-    public static boolean hasProvider(QueueProviderType type) {
+    public static boolean hasProvider(MessageProviderType type) {
         return providers.containsKey(type.toString());
     }
 
@@ -72,7 +72,7 @@ public class MessageMapProviderRegistry {
      * 移除提供者
      * @param type 队列类型
      */
-    public static void removeProvider(QueueProviderType type) {
+    public static void removeProvider(MessageProviderType type) {
         providers.remove(type.toString());
     }
 } 

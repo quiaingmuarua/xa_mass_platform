@@ -18,9 +18,9 @@ public class MessageStreamProviderRegistry {
 
     static {
         // 内存流
-        register(QueueProviderType.IN_MEMORY, InMemoryMessageStream::new);
+        register(MessageProviderType.IN_MEMORY, InMemoryMessageStream::new);
         // Redis流
-        register(QueueProviderType.REDIS, LettuceRedisStream::new);
+        register(MessageProviderType.REDIS, LettuceRedisStream::new);
     }
 
     /**
@@ -28,7 +28,7 @@ public class MessageStreamProviderRegistry {
      * @param type 队列类型
      * @param provider 提供者函数 (queueKey, messageType, extraParams) -> MessageStream
      */
-    public static void register(QueueProviderType type, TriFunction<String, Class<?>, Map<String, String>, MessageStream<?>> provider) {
+    public static void register(MessageProviderType type, TriFunction<String, Class<?>, Map<String, String>, MessageStream<?>> provider) {
         providers.put(type.toString(), provider);
     }
 
@@ -42,7 +42,7 @@ public class MessageStreamProviderRegistry {
      * @return MessageStream实例
      */
     @SuppressWarnings("unchecked")
-    public static <T> MessageStream<T> createStream(QueueProviderType type, String queueKey, Class<T> messageType, Map<String, String> extraParams) {
+    public static <T> MessageStream<T> createStream(MessageProviderType type, String queueKey, Class<T> messageType, Map<String, String> extraParams) {
         String cacheKey = queueKey + ":" + type + ":" + messageType.getSimpleName();
         if (extraParams != null) {
             if (extraParams.containsKey("group")) cacheKey += ":" + extraParams.get("group");

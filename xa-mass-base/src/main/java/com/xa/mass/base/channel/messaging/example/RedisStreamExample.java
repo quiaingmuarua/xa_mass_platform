@@ -1,7 +1,7 @@
 package com.xa.mass.base.channel.messaging.example;
 
+import com.xa.mass.base.channel.messaging.MessageProviderType;
 import com.xa.mass.base.channel.messaging.MessageStreamProviderRegistry;
-import com.xa.mass.base.channel.messaging.QueueProviderType;
 import com.xa.mass.base.channel.messaging.api.MessageStream;
 import com.xa.mass.base.channel.messaging.redis.LettuceRedisStream;
 import com.xa.mass.base.tool.RedisConnectionManager;
@@ -240,7 +240,7 @@ public class RedisStreamExample {
         try {
             // 通过注册表创建Redis Stream
             MessageStream<String> stream = MessageStreamProviderRegistry.createStream(
-                QueueProviderType.REDIS, "registry-redis-stream", String.class, java.util.Collections.emptyMap()
+                MessageProviderType.REDIS, "registry-redis-stream", String.class, java.util.Collections.emptyMap()
             );
             
             System.out.println("通过注册表创建的Redis Stream: " + stream.getName());

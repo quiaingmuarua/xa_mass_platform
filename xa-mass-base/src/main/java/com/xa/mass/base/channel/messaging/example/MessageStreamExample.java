@@ -1,7 +1,7 @@
 package com.xa.mass.base.channel.messaging.example;
 
+import com.xa.mass.base.channel.messaging.MessageProviderType;
 import com.xa.mass.base.channel.messaging.MessageStreamProviderRegistry;
-import com.xa.mass.base.channel.messaging.QueueProviderType;
 import com.xa.mass.base.channel.messaging.api.MessageStream;
 import com.xa.mass.base.channel.messaging.memory.InMemoryMessageStream;
 
@@ -188,7 +188,7 @@ public class MessageStreamExample {
         try {
             // 通过注册表创建内存消息流
             MessageStream<String> memoryStream = MessageStreamProviderRegistry.createStream(
-                QueueProviderType.IN_MEMORY, "registry-demo", String.class, java.util.Collections.emptyMap()
+                MessageProviderType.IN_MEMORY, "registry-demo", String.class, java.util.Collections.emptyMap()
             );
             
             System.out.println("通过注册表创建的内存流: " + memoryStream.getName());

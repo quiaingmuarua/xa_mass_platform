@@ -1,8 +1,8 @@
 package com.xa.mass.engine.v2.dao;
 
 import com.xa.mass.base.channel.messaging.MessageMapProviderRegistry;
+import com.xa.mass.base.channel.messaging.MessageProviderType;
 import com.xa.mass.base.channel.messaging.MessageStreamProviderRegistry;
-import com.xa.mass.base.channel.messaging.QueueProviderType;
 import com.xa.mass.base.channel.messaging.api.MessageMap;
 import com.xa.mass.base.channel.messaging.api.MessageStream;
 import com.xa.mass.base.enums.Project;
@@ -29,15 +29,15 @@ public class TaskRepositoryManager {
     private final ConcurrentMap<Project, MessageMap<String, TaskEntity>> projectTaskMap = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, MessageStream<String>> seedStreams = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, MessageStream<TaskMsgEntity>> msgStreams = new ConcurrentHashMap<>();
-    private final QueueProviderType seedStreamType;
-    private final QueueProviderType msgStreamType;
+    private final MessageProviderType seedStreamType;
+    private final MessageProviderType msgStreamType;
 
     // 构造函数，直接传入项目-任务Map
-    public TaskRepositoryManager(QueueProviderType streamType) {
+    public TaskRepositoryManager(MessageProviderType streamType) {
         this(streamType, streamType);
     }
 
-    public TaskRepositoryManager(QueueProviderType seedStreamType, QueueProviderType msgStreamType) {
+    public TaskRepositoryManager(MessageProviderType seedStreamType, MessageProviderType msgStreamType) {
         this.seedStreamType = Objects.requireNonNull(seedStreamType);
         this.msgStreamType = Objects.requireNonNull(msgStreamType);
     }
@@ -99,14 +99,14 @@ public class TaskRepositoryManager {
     /**
      * 便捷构造器：使用默认的内存流为所有项目初始化
      */
-    public static TaskRepositoryManager createWithDefaultProjects(QueueProviderType streamType) {
+    public static TaskRepositoryManager createWithDefaultProjects(MessageProviderType streamType) {
         return createWithDefaultProjects(streamType, streamType);
     }
 
     /**
      * 便捷构造器：使用指定的队列类型为所有项目初始化
      */
-    public static TaskRepositoryManager createWithDefaultProjects(QueueProviderType seedStreamType, QueueProviderType msgStreamType) {
+    public static TaskRepositoryManager createWithDefaultProjects(MessageProviderType seedStreamType, MessageProviderType msgStreamType) {
         TaskRepositoryManager manager = new TaskRepositoryManager(seedStreamType, msgStreamType);
         manager.registerAllProjects((Project project) -> {
             // 只初始化空的 MessageMap，不注册 project:all 队列名

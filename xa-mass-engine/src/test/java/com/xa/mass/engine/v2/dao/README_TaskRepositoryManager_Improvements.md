@@ -23,7 +23,7 @@ public class MessageMapProviderRegistry {
     private static final ConcurrentMap<String, MessageMap<?, ?>> mapCache = new ConcurrentHashMap<>();
     private static final ConcurrentMap<String, Function<String, MessageMap<?, ?>>> providers = new ConcurrentHashMap<>();
     
-    // 支持根据 QueueProviderType 创建不同类型的 MessageMap
+    // 支持根据 MessageProviderType 创建不同类型的 MessageMap
     public static <K, V> MessageMap<K, V> createMap(QueueProviderType type, String name)
 }
 ```

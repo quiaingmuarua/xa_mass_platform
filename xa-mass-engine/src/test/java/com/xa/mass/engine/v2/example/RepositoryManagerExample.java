@@ -1,10 +1,10 @@
 package com.xa.mass.engine.v2.example;
 
-import com.xa.mass.base.channel.messaging.QueueProviderType;
+import com.xa.mass.base.channel.messaging.MessageProviderType;
 import com.xa.mass.base.channel.messaging.api.MessageMap;
 import com.xa.mass.base.channel.messaging.redis.LettuceRedisMessageMap;
-import com.xa.mass.base.tool.RedisConnectionManager;
 import com.xa.mass.base.enums.Project;
+import com.xa.mass.base.tool.RedisConnectionManager;
 import com.xa.mass.engine.v2.dao.DeviceRepositoryManager;
 import com.xa.mass.engine.v2.dao.TaskRepositoryManager;
 import com.xa.mass.engine.v2.entity.DeviceEntity;
@@ -30,7 +30,7 @@ public class RepositoryManagerExample {
         //init manager
         DeviceRepositoryManager deviceRepositoryManager = new DeviceRepositoryManager(deviceMap);
         TaskRepositoryManager taskRepositoryManager = TaskRepositoryManager.createWithDefaultProjects(
-               QueueProviderType.REDIS);
+               MessageProviderType.REDIS);
         TaskService taskService = new TaskServiceImpl(taskRepositoryManager);
 
         //mock 关键数据

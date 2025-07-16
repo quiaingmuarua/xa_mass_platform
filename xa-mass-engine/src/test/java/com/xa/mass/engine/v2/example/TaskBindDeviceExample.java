@@ -1,6 +1,6 @@
 package com.xa.mass.engine.v2.example;
 
-import com.xa.mass.base.channel.messaging.QueueProviderType;
+import com.xa.mass.base.channel.messaging.MessageProviderType;
 import com.xa.mass.base.channel.messaging.memory.InMemoryMessageMap;
 import com.xa.mass.base.enums.Project;
 import com.xa.mass.engine.v2.dao.DeviceRepositoryManager;
@@ -19,7 +19,7 @@ public class TaskBindDeviceExample {
 
     public static void main(String[] args) {
         DeviceRepositoryManager deviceRepositoryManager = new DeviceRepositoryManager(new InMemoryMessageMap<>("deviceMap",DeviceEntity.class));
-        TaskRepositoryManager taskRepositoryManager = TaskRepositoryManager.createWithDefaultProjects(QueueProviderType.IN_MEMORY);
+        TaskRepositoryManager taskRepositoryManager = TaskRepositoryManager.createWithDefaultProjects(MessageProviderType.IN_MEMORY);
 
         generateData(deviceRepositoryManager, taskRepositoryManager);
         System.out.println("TaskRepositoryManager initialized successfully");

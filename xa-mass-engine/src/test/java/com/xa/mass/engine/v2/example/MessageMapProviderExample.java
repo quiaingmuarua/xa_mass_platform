@@ -1,7 +1,7 @@
 package com.xa.mass.engine.v2.example;
 
 import com.xa.mass.base.channel.messaging.MessageMapProviderRegistry;
-import com.xa.mass.base.channel.messaging.QueueProviderType;
+import com.xa.mass.base.channel.messaging.MessageProviderType;
 import com.xa.mass.base.channel.messaging.api.MessageMap;
 import com.xa.mass.base.enums.Project;
 import com.xa.mass.engine.v2.dao.TaskRepositoryManager;
@@ -11,7 +11,7 @@ import org.slf4j.LoggerFactory;
 
 /**
  * MessageMapProviderRegistry 使用示例
- * 展示如何根据不同的 QueueProviderType 创建不同类型的 MessageMap
+ * 展示如何根据不同的 MessageProviderType 创建不同类型的 MessageMap
  */
 public class MessageMapProviderExample {
     
@@ -36,7 +36,7 @@ public class MessageMapProviderExample {
 
         // 创建内存映射
         MessageMap<String, TaskEntity> memoryMap = MessageMapProviderRegistry.createMap(
-            QueueProviderType.IN_MEMORY, "task-map", TaskEntity.class);
+            MessageProviderType.IN_MEMORY, "task-map", TaskEntity.class);
         
         // 基本操作
         TaskEntity task = new TaskEntity();
@@ -58,14 +58,14 @@ public class MessageMapProviderExample {
 
         // 内存类型
         MessageMap<String, TaskEntity> memoryMap = MessageMapProviderRegistry.createMap(
-            QueueProviderType.IN_MEMORY, "memory-task-map", TaskEntity.class);
+            MessageProviderType.IN_MEMORY, "memory-task-map", TaskEntity.class);
         logger.info("创建内存映射: {}", memoryMap.getClass().getSimpleName());
 
         // Redis 类型（需要先初始化 Redis 连接）
         try {
             // 这里会抛出异常，因为 Redis 连接未初始化
             MessageMap<String, TaskEntity> redisMap = MessageMapProviderRegistry.createMap(
-                QueueProviderType.REDIS, "redis-task-map", TaskEntity.class);
+                MessageProviderType.REDIS, "redis-task-map", TaskEntity.class);
             logger.info("创建 Redis 映射: {}", redisMap.getClass().getSimpleName());
         } catch (Exception e) {
             logger.info("Redis 映射创建失败（预期行为）: {}", e.getMessage());
@@ -74,7 +74,7 @@ public class MessageMapProviderExample {
         // 测试不支持的类型
         try {
             MessageMap<String, TaskEntity> kafkaMap = MessageMapProviderRegistry.createMap(
-                QueueProviderType.KAFKA, "kafka-task-map", TaskEntity.class);
+                MessageProviderType.KAFKA, "kafka-task-map", TaskEntity.class);
         } catch (Exception e) {
             logger.info("Kafka 映射创建失败（预期行为）: {}", e.getMessage());
         }
@@ -88,7 +88,7 @@ public class MessageMapProviderExample {
 
         // 使用内存队列类型
         TaskRepositoryManager memoryManager = TaskRepositoryManager.createWithDefaultProjects(
-            QueueProviderType.IN_MEMORY, QueueProviderType.IN_MEMORY);
+            MessageProviderType.IN_MEMORY, MessageProviderType.IN_MEMORY);
         
         // 创建任务
         TaskEntity task = new TaskEntity();
@@ -104,7 +104,7 @@ public class MessageMapProviderExample {
         // 使用 Redis 队列类型（需要先初始化 Redis 连接）
         try {
             TaskRepositoryManager redisManager = TaskRepositoryManager.createWithDefaultProjects(
-                QueueProviderType.REDIS, QueueProviderType.REDIS);
+                MessageProviderType.REDIS, MessageProviderType.REDIS);
             
             TaskEntity redisTask = new TaskEntity();
             redisTask.setTaskId("task003");
@@ -122,8 +122,8 @@ public class MessageMapProviderExample {
         // 混合使用：内存映射 + Redis 流
         try {
             TaskRepositoryManager mixedManager = TaskRepositoryManager.createWithDefaultProjects(
-                QueueProviderType.IN_MEMORY,  // 任务存储使用内存
-                QueueProviderType.REDIS       // 消息流使用 Redis
+                MessageProviderType.IN_MEMORY,  // 任务存储使用内存
+                MessageProviderType.REDIS       // 消息流使用 Redis
             );
             
             TaskEntity mixedTask = new TaskEntity();
@@ -147,7 +147,7 @@ public class MessageMapProviderExample {
         logger.info("=== 示例4: 项目隔离 ===");
 
         TaskRepositoryManager manager = TaskRepositoryManager.createWithDefaultProjects(
-            QueueProviderType.IN_MEMORY, QueueProviderType.IN_MEMORY);
+            MessageProviderType.IN_MEMORY, MessageProviderType.IN_MEMORY);
 
         // 为不同项目创建任务
         for (Project project : Project.values()) {

@@ -1,8 +1,8 @@
 package com.xa.mass.engine.v2.integration;
 
-import com.xa.mass.base.channel.messaging.QueueProviderType;
-import com.xa.mass.base.channel.messaging.memory.InMemoryMessageMap;
+import com.xa.mass.base.channel.messaging.MessageProviderType;
 import com.xa.mass.base.channel.messaging.MessageStreamProviderRegistry;
+import com.xa.mass.base.channel.messaging.memory.InMemoryMessageMap;
 import com.xa.mass.base.enums.Project;
 import com.xa.mass.engine.v2.dao.DeviceRepositoryManager;
 import com.xa.mass.engine.v2.dao.TaskRepositoryManager;
@@ -10,14 +10,11 @@ import com.xa.mass.engine.v2.entity.DeviceEntity;
 import com.xa.mass.engine.v2.entity.TaskEntity;
 import com.xa.mass.engine.v2.entity.TaskMsgEntity;
 import com.xa.mass.engine.v2.entity.TokenEntity;
-import com.xa.mass.engine.v2.service.DeviceService;
-import com.xa.mass.engine.v2.service.DeviceServiceImpl;
-import com.xa.mass.engine.v2.service.EngineRegistry;
-import com.xa.mass.engine.v2.service.TaskService;
-import com.xa.mass.engine.v2.service.TaskServiceImpl;
+import com.xa.mass.engine.v2.service.*;
 import com.xa.mass.engine.v2.util.QueueKeyUtil;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
@@ -40,7 +37,7 @@ public class DataFlowIntegrationTest {
         // 初始化数据层
         InMemoryMessageMap< DeviceEntity> deviceMap = new InMemoryMessageMap<>("deviceMap",DeviceEntity.class);
         
-        taskRepositoryManager = TaskRepositoryManager.createWithDefaultProjects(QueueProviderType.IN_MEMORY);
+        taskRepositoryManager = TaskRepositoryManager.createWithDefaultProjects(MessageProviderType.IN_MEMORY);
         deviceRepositoryManager = new DeviceRepositoryManager(deviceMap);
         
         // 初始化服务层

@@ -1,6 +1,6 @@
 package com.xa.mass.engine.v2.example;
 
-import com.xa.mass.base.channel.messaging.QueueProviderType;
+import com.xa.mass.base.channel.messaging.MessageProviderType;
 import com.xa.mass.base.channel.messaging.api.MessageStream;
 import com.xa.mass.base.enums.Project;
 import com.xa.mass.engine.v2.dao.TaskRepositoryManager;
@@ -34,7 +34,7 @@ public class TaskRepositoryManagerExample {
         System.out.println("=== 示例1: 内存流基本操作 ===");
         
         // 创建使用内存流的TaskRepositoryManager
-        TaskRepositoryManager manager = TaskRepositoryManager.createWithDefaultProjects(QueueProviderType.IN_MEMORY);
+        TaskRepositoryManager manager = TaskRepositoryManager.createWithDefaultProjects(MessageProviderType.IN_MEMORY);
         
         // 创建任务
         TaskEntity task = new TaskEntity();
@@ -85,7 +85,7 @@ public class TaskRepositoryManagerExample {
     private static void batchOperationDemo() {
         System.out.println("\n=== 示例2: 批量操作演示 ===");
         
-        TaskRepositoryManager manager = TaskRepositoryManager.createWithDefaultProjects(QueueProviderType.IN_MEMORY);
+        TaskRepositoryManager manager = TaskRepositoryManager.createWithDefaultProjects(MessageProviderType.IN_MEMORY);
         
         // 创建任务和流
         TaskEntity task = new TaskEntity();
@@ -133,7 +133,7 @@ public class TaskRepositoryManagerExample {
     private static void statsDemo() {
         System.out.println("\n=== 示例3: 统计信息演示 ===");
         
-        TaskRepositoryManager manager = TaskRepositoryManager.createWithDefaultProjects(QueueProviderType.IN_MEMORY);
+        TaskRepositoryManager manager = TaskRepositoryManager.createWithDefaultProjects(MessageProviderType.IN_MEMORY);
         
         // 创建任务和流
         TaskEntity task = new TaskEntity();

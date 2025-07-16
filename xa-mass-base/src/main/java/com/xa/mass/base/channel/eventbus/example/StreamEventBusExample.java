@@ -1,10 +1,11 @@
 package com.xa.mass.base.channel.eventbus.example;
 
-import com.xa.mass.base.channel.messaging.api.MessageStream;
-import com.xa.mass.base.channel.messaging.api.MessageStreamFactory;
 import com.xa.mass.base.channel.eventbus.core.MassEvent;
 import com.xa.mass.base.channel.eventbus.core.MassSubscribe;
 import com.xa.mass.base.channel.eventbus.core.StreamEventBusFacade;
+import com.xa.mass.base.channel.messaging.api.MessageStream;
+import com.xa.mass.base.channel.messaging.api.MessageStreamFactory;
+import com.xa.mass.base.tool.RedisConnectionManager;
 
 import java.time.Instant;
 
@@ -61,7 +62,9 @@ public class StreamEventBusExample {
 
     public static void main(String[] args) throws Exception {
         // 一行切换内存/redis实现
-        String streamType = "memory"; // 改为"redis"即可切换
+        String streamType = "redis"; // 改为"redis"即可切换
+        // 创建Redis连接
+        RedisConnectionManager.init("localhost", 6379, null, 0);
         MessageStream<MassEvent> stream = MessageStreamFactory.create(streamType, "test-bus", MassEvent.class);
         // 构建事件总线
         StreamEventBusFacade eventBus = new StreamEventBusFacade(stream);
@@ -78,6 +81,7 @@ public class StreamEventBusExample {
             eventBus.post(new TestEvent("Batch event " + i));
             eventBus.post(new AnotherEvent(i));
         }
+        Thread.sleep(10000);
         // 注销一个监听器
         eventBus.unregister(testListener);
         System.out.println("[Main] 注销TestListener后再发事件");

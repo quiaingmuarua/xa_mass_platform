@@ -1,16 +1,16 @@
 package com.xa.mass.engine.v2.example;
 
-import com.xa.mass.base.channel.messaging.memory.InMemoryMessageMap;
+import com.xa.mass.base.channel.messaging.MessageProviderType;
 import com.xa.mass.base.channel.messaging.api.MessageMap;
-import com.xa.mass.base.channel.messaging.QueueProviderType;
+import com.xa.mass.base.channel.messaging.memory.InMemoryMessageMap;
 import com.xa.mass.base.enums.Project;
 import com.xa.mass.engine.v2.dao.TaskRepositoryManager;
 import com.xa.mass.engine.v2.entity.DeviceEntity;
 import com.xa.mass.engine.v2.entity.TaskEntity;
 import com.xa.mass.engine.v2.entity.TaskMsgEntity;
+import com.xa.mass.engine.v2.util.QueueKeyUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import com.xa.mass.engine.v2.util.QueueKeyUtil;
 
 /**
  * 简化的函数式队列提供者使用示例
@@ -37,7 +37,7 @@ public class SimpleFunctionalExample {
 //        logger.info("=== 示例1: 基本使用 ===");
 //
 //        // 使用默认内存队列
-//        MessageQueue<String> queue = MessageQueue.createQueue(QueueProviderType.IN_MEMORY, "test-queue", String.class);
+//        MessageQueue<String> queue = MessageQueue.createQueue(MessageProviderType.IN_MEMORY, "test-queue", String.class);
 //        queue.offer("message1");
 //        queue.offer("message2");
 //
@@ -55,10 +55,10 @@ public class SimpleFunctionalExample {
         // 使用默认配置
         MessageMap<String, DeviceEntity> deviceMap = new InMemoryMessageMap<>("",DeviceEntity.class);
         
-        TaskRepositoryManager defaultManager = TaskRepositoryManager.createWithDefaultProjects(QueueProviderType.IN_MEMORY);
+        TaskRepositoryManager defaultManager = TaskRepositoryManager.createWithDefaultProjects(MessageProviderType.IN_MEMORY);
         
         // 使用自定义队列类型
-        TaskRepositoryManager customManager = TaskRepositoryManager.createWithDefaultProjects(QueueProviderType.IN_MEMORY, QueueProviderType.IN_MEMORY);
+        TaskRepositoryManager customManager = TaskRepositoryManager.createWithDefaultProjects(MessageProviderType.IN_MEMORY, MessageProviderType.IN_MEMORY);
 
         // 演示任务操作
         TaskEntity task = new TaskEntity("task001", "测试任务", Project.DEMO_APP.getCode());

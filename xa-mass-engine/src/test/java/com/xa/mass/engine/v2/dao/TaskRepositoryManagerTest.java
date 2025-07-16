@@ -1,22 +1,23 @@
 package com.xa.mass.engine.v2.dao;
 
-import com.xa.mass.base.channel.messaging.api.MessageMap;
-import com.xa.mass.base.channel.messaging.QueueProviderType;
-import com.xa.mass.base.channel.messaging.MessageStreamProviderRegistry;
 import com.xa.mass.base.channel.messaging.MessageMapProviderRegistry;
+import com.xa.mass.base.channel.messaging.MessageProviderType;
+import com.xa.mass.base.channel.messaging.MessageStreamProviderRegistry;
+import com.xa.mass.base.channel.messaging.api.MessageMap;
 import com.xa.mass.base.enums.Project;
 import com.xa.mass.engine.v2.entity.TaskEntity;
 import com.xa.mass.engine.v2.entity.TaskMsgEntity;
 import com.xa.mass.engine.v2.service.EngineRegistry;
+import com.xa.mass.engine.v2.util.QueueKeyUtil;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import static org.junit.jupiter.api.Assertions.*;
 
 import java.util.List;
 import java.util.Objects;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
-import com.xa.mass.engine.v2.util.QueueKeyUtil;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * TaskRepositoryManager 测试类 - 纯数据操作测试
@@ -31,7 +32,7 @@ public class TaskRepositoryManagerTest {
         MessageStreamProviderRegistry.clearCache();
         MessageMapProviderRegistry.clearCache();
         EngineRegistry.clearAllServices();
-        manager = TaskRepositoryManager.createWithDefaultProjects(QueueProviderType.IN_MEMORY);
+        manager = TaskRepositoryManager.createWithDefaultProjects(MessageProviderType.IN_MEMORY);
     }
 
     /**
