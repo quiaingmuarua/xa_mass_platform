@@ -19,6 +19,20 @@ jobs:
 
     runs-on: ubuntu-latest
 
+    # 定义此作业所需的服务容器
+    services:
+      # 'redis' 是服务的标签，可以在作业中通过此名称访问
+      redis:
+        # 使用官方的 Redis Docker 镜像，建议指定版本
+        image: redis:6.2
+        # 端口映射：将容器的6379端口映射到宿主机（Runner）的6379端口
+        # 这使得你的测试代码可以使用 localhost:6379 连接到Redis
+        ports:
+          - 6379:6379
+        # 健康检查选项，确保在运行测试之前Redis已完全就绪
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 10s --health-timeout 5s --health-retries 5
+
     steps:
     - uses: actions/checkout@v4
     - name: Set up JDK 17

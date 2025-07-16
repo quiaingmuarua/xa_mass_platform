@@ -73,8 +73,9 @@ public class LettuceRedisStream<T> implements MessageStream<T> {
             throw new IllegalArgumentException("Message cannot be null");
         }
         String jsonMessage = gson.toJson(message);
-        String streamId = commands.xadd(streamKey, "data", jsonMessage);
-        log.debug("Message offered to Redis stream: streamId={}, message={}", streamId, message);
+        String typeName = message.getClass().getName();
+        String streamId = commands.xadd(streamKey, Map.of("data", jsonMessage, "type", typeName));
+        log.debug("Message offered to Redis stream: streamId={}, message={}, type={}", streamId, message, typeName);
         return streamId;
     }
 
@@ -93,10 +94,16 @@ public class LettuceRedisStream<T> implements MessageStream<T> {
             io.lettuce.core.StreamMessage<String, String> msg = messages.get(0);
             String messageId = msg.getId();
             String jsonMessage = msg.getBody().get("data");
-            if (jsonMessage != null) {
-                T message = gson.fromJson(jsonMessage, messageType);
-                log.debug("Message polled from Redis stream: messageId={}", messageId);
-                return new StreamMessage<>(messageId, message);
+            String typeName = msg.getBody().get("type");
+            if (jsonMessage != null && typeName != null) {
+                try {
+                    Class<?> clazz = Class.forName(typeName);
+                    Object message = gson.fromJson(jsonMessage, clazz);
+                    log.debug("Message polled from Redis stream: messageId={}, type={}", messageId, typeName);
+                    return new StreamMessage<>(messageId, (T) message);
+                } catch (Exception e) {
+                    log.error("Failed to deserialize message: type={}, json={}", typeName, jsonMessage, e);
+                }
             }
         }
         return null;
@@ -118,9 +125,15 @@ public class LettuceRedisStream<T> implements MessageStream<T> {
             for (io.lettuce.core.StreamMessage<String, String> redisMsg : redisMsgs) {
                 String messageId = redisMsg.getId();
                 String jsonMessage = redisMsg.getBody().get("data");
-                if (jsonMessage != null) {
-                    T message = gson.fromJson(jsonMessage, messageType);
-                    result.add(new StreamMessage<>(messageId, message));
+                String typeName = redisMsg.getBody().get("type");
+                if (jsonMessage != null && typeName != null) {
+                    try {
+                        Class<?> clazz = Class.forName(typeName);
+                        Object message = gson.fromJson(jsonMessage, clazz);
+                        result.add(new StreamMessage<>(messageId, (T) message));
+                    } catch (Exception e) {
+                        log.error("Failed to deserialize message in batch: type={}, json={}", typeName, jsonMessage, e);
+                    }
                 }
             }
         }
@@ -234,12 +247,16 @@ public class LettuceRedisStream<T> implements MessageStream<T> {
 
     private void ensureConsumerGroup() {
         try {
-            // 尝试创建消费者组，如果已存在则忽略错误
-            commands.xgroupCreate(XReadArgs.StreamOffset.from(streamKey, "0"), group);
-            log.debug("Consumer group created or already exists: group={}, stream={}", group, streamKey);
-        } catch (Exception e) {
-            // 消费者组已存在，这是正常的
-            log.debug("Consumer group already exists: group={}, stream={}", group, streamKey);
+            // 尝试创建消费者组，如果已存在则忽略错误，stream不存在时自动创建
+            commands.xgroupCreate(XReadArgs.StreamOffset.from(streamKey, "0"), group, io.lettuce.core.XGroupCreateArgs.Builder.mkstream(true));
+            log.debug("Consumer group created: group={}, stream={}", group, streamKey);
+        } catch (io.lettuce.core.RedisCommandExecutionException e) {
+            if (e.getMessage() != null && e.getMessage().contains("BUSYGROUP")) {
+                log.debug("Consumer group already exists: group={}, stream={}", group, streamKey);
+            } else {
+                log.error("Failed to create consumer group: group={}, stream={}", group, streamKey, e);
+                throw e;
+            }
         }
     }
 
