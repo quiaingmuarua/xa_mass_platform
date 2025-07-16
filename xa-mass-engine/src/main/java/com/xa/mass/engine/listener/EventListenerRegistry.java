@@ -1,6 +1,6 @@
 package com.xa.mass.engine.listener;
 
-import com.xa.mass.base.eventbus.core.EventBusFacade;
+import com.xa.mass.base.channel.eventbus.core.EventBusFacade;
 import com.xa.mass.engine.DeviceManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

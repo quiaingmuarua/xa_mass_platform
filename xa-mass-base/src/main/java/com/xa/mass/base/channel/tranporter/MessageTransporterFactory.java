@@ -1,7 +1,7 @@
 package com.xa.mass.base.channel.tranporter;
 
 
-import com.xa.mass.base.channel.queue.api.MessageQueue;
+import com.xa.mass.base.channel.messaging.api.MessageQueue;
 
 /**
  * MessageTransporter 工厂类

@@ -1,9 +1,9 @@
 package com.xa.mass.engine.v2.dao;
 
-import com.xa.mass.base.channel.queue.MessageMapProviderRegistry;
-import com.xa.mass.base.channel.queue.QueueProviderType;
-import com.xa.mass.base.channel.queue.api.MessageMap;
-import com.xa.mass.base.channel.queue.memory.InMemoryMessageMap;
+import com.xa.mass.base.channel.messaging.MessageMapProviderRegistry;
+import com.xa.mass.base.channel.messaging.QueueProviderType;
+import com.xa.mass.base.channel.messaging.api.MessageMap;
+import com.xa.mass.base.channel.messaging.memory.InMemoryMessageMap;
 import com.xa.mass.engine.v2.entity.TaskEntity;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

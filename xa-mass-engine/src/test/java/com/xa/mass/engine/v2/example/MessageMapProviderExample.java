@@ -1,8 +1,8 @@
 package com.xa.mass.engine.v2.example;
 
-import com.xa.mass.base.channel.queue.MessageMapProviderRegistry;
-import com.xa.mass.base.channel.queue.QueueProviderType;
-import com.xa.mass.base.channel.queue.api.MessageMap;
+import com.xa.mass.base.channel.messaging.MessageMapProviderRegistry;
+import com.xa.mass.base.channel.messaging.QueueProviderType;
+import com.xa.mass.base.channel.messaging.api.MessageMap;
 import com.xa.mass.base.enums.Project;
 import com.xa.mass.engine.v2.dao.TaskRepositoryManager;
 import com.xa.mass.engine.v2.entity.TaskEntity;

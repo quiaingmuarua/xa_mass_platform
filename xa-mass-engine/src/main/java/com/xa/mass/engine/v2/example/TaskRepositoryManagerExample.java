@@ -1,7 +1,7 @@
 package com.xa.mass.engine.v2.example;
 
-import com.xa.mass.base.channel.queue.QueueProviderType;
-import com.xa.mass.base.channel.queue.api.MessageStream;
+import com.xa.mass.base.channel.messaging.QueueProviderType;
+import com.xa.mass.base.channel.messaging.api.MessageStream;
 import com.xa.mass.base.enums.Project;
 import com.xa.mass.engine.v2.dao.TaskRepositoryManager;
 import com.xa.mass.engine.v2.entity.TaskEntity;
@@ -10,7 +10,6 @@ import com.xa.mass.engine.v2.util.QueueKeyUtil;
 
 import java.util.Arrays;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 
 /**
  * TaskRepositoryManager使用MessageStream的示例

@@ -1,7 +1,6 @@
 package com.xa.mass.engine.v2.service;
 
-import com.xa.mass.base.channel.queue.api.MessageMap;
-import com.xa.mass.base.channel.queue.memory.InMemoryMessageMap;
+import com.xa.mass.base.channel.messaging.api.MessageMap;
 import com.xa.mass.base.enums.Project;
 import com.xa.mass.engine.v2.dao.DeviceRepositoryManager;
 import com.xa.mass.engine.v2.entity.DeviceEntity;

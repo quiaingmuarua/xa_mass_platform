@@ -1,7 +1,7 @@
 package com.xa.mass.engine;
 
-import com.xa.mass.base.eventbus.event.device.DeviceOfflineEvent;
-import com.xa.mass.base.eventbus.event.device.DeviceOnlineEvent;
+import com.xa.mass.base.old.eventbus.event.device.DeviceOfflineEvent;
+import com.xa.mass.base.old.eventbus.event.device.DeviceOnlineEvent;
 import com.xa.mass.base.model.Device;
 import com.xa.mass.base.model.Token;
 import com.xa.mass.engine.storage.DeviceStorage;

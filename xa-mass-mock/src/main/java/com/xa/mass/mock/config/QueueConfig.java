@@ -1,8 +1,8 @@
 package com.xa.mass.mock.config;
 
 import com.xa.mass.gateway.queue.Envelope;
-import com.xa.mass.base.channel.queue.memory.InMemoryMessageQueue;
-import com.xa.mass.base.channel.queue.api.MessageQueue;
+import com.xa.mass.base.channel.messaging.memory.InMemoryMessageQueue;
+import com.xa.mass.base.channel.messaging.api.MessageQueue;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;

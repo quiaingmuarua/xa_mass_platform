@@ -1,6 +1,6 @@
 package com.xa.mass.starter.config;
 
-import com.xa.mass.base.channel.queue.api.MessageQueue;
+import com.xa.mass.base.channel.messaging.api.MessageQueue;
 import com.xa.mass.base.channel.tranporter.MessageTransporter;
 import com.xa.mass.base.channel.tranporter.MessageTransporterFactory;
 import com.xa.mass.gateway.queue.*;

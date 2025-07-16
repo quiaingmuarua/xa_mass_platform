@@ -1,16 +1,13 @@
 package com.xa.mass.engine.v2.example;
 
-import com.xa.mass.base.channel.queue.memory.InMemoryMessageMap;
-import com.xa.mass.base.channel.queue.memory.InMemoryMessageQueue;
-import com.xa.mass.base.channel.queue.api.MessageMap;
-import com.xa.mass.base.channel.queue.api.MessageQueue;
-import com.xa.mass.base.channel.queue.QueueProviderType;
+import com.xa.mass.base.channel.messaging.memory.InMemoryMessageMap;
+import com.xa.mass.base.channel.messaging.api.MessageMap;
+import com.xa.mass.base.channel.messaging.QueueProviderType;
 import com.xa.mass.base.enums.Project;
 import com.xa.mass.engine.v2.dao.TaskRepositoryManager;
 import com.xa.mass.engine.v2.entity.DeviceEntity;
 import com.xa.mass.engine.v2.entity.TaskEntity;
 import com.xa.mass.engine.v2.entity.TaskMsgEntity;
-import com.xa.mass.engine.v2.entity.TokenEntity;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import com.xa.mass.engine.v2.util.QueueKeyUtil;

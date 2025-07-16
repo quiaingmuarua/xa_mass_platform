@@ -1,13 +1,9 @@
 package com.xa.mass.engine.v2.dao;
 
-import com.xa.mass.base.channel.queue.api.MessageMap;
-import com.xa.mass.base.channel.queue.memory.InMemoryMessageMap;
+import com.xa.mass.base.channel.messaging.api.MessageMap;
 import com.xa.mass.base.enums.Project;
 import com.xa.mass.engine.v2.entity.DeviceEntity;
 import com.xa.mass.engine.v2.entity.TokenEntity;
-import com.xa.mass.engine.v2.util.QueueKeyUtil;
-import com.xa.mass.base.channel.queue.QueueProviderType;
-import com.xa.mass.base.channel.queue.MessageMapProviderRegistry;
 
 import java.util.ArrayList;
 import java.util.List;

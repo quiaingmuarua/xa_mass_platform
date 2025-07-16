@@ -1,8 +1,8 @@
 package com.xa.mass.gateway.session;
 
-import com.xa.mass.base.eventbus.core.EventPublisher;
-import com.xa.mass.base.eventbus.event.device.DeviceOfflineEvent;
-import com.xa.mass.base.eventbus.event.device.DeviceOnlineEvent;
+import com.xa.mass.base.old.eventbus.core.EventPublisher;
+import com.xa.mass.base.old.eventbus.event.device.DeviceOfflineEvent;
+import com.xa.mass.base.old.eventbus.event.device.DeviceOnlineEvent;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;
