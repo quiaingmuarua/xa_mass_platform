@@ -5,7 +5,7 @@ import com.xa.mass.base.eventbus.core.EventBusFactory;
 import com.xa.mass.base.eventbus.device.DeviceOfflineEvent;
 import com.xa.mass.base.eventbus.device.DeviceOnlineEvent;
 import com.xa.mass.base.tool.RedisConnectionManager;
-import com.xa.mass.base.eventbus.example.DeviceEventListenerService;
+
 
 public class RedisStreamEventBusExample {
     public static void main(String[] args) throws InterruptedException {
@@ -21,11 +21,11 @@ public class RedisStreamEventBusExample {
         for (int i = 1; i <= 5; i++) {
             eventBus.post(new DeviceOfflineEvent("device-" + i, "网络异常", "trace-redis-" + i));
             eventBus.post(new DeviceOnlineEvent("device-" + i, "恢复上线", "trace-redis-" + i));
-            Thread.sleep(200);
+
         }
 
         // 让主线程等待一会儿，观察后台服务输出
-        Thread.sleep(3000);
+        Thread.sleep(6000);
 
         // 关闭服务
         listenerThread.interrupt();

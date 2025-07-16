@@ -70,24 +70,31 @@ public class RedisStreamEventBusFacade implements EventBusFacade {
             StatefulRedisConnection<String, String> conn = RedisConnectionManager.getConnection();
             RedisCommands<String, String> commands = conn.sync();
             while (running) {
-                List<StreamMessage<String, String>> messages =
-                        commands.xreadgroup(Consumer.from(group, consumerName), XReadArgs.StreamOffset.lastConsumed(streamKey));
-                for (StreamMessage<String, String> msg : messages) {
-                    String json = msg.getBody().get("event");
-                    String type = msg.getBody().get("type");
-                    try {
-                        Class<?> clazz = Class.forName(type);
-                        Object event = gson.fromJson(json, clazz);
-                        // 使用优化后的事件分发器，大幅简化事件处理逻辑
-                        dispatcher.dispatch(event);
-                    } catch (Exception e) {
-                        System.err.println("Error processing Redis Stream event: " + type);
-                        e.printStackTrace();
+                try {
+                    // 使用阻塞读(BLOCK)和数量限制(COUNT)，比Thread.sleep()轮询更高效
+                    List<StreamMessage<String, String>> messages =
+                            commands.xreadgroup(
+                                    Consumer.from(group, consumerName),
+                                    XReadArgs.Builder.block(5000).count(10), // 阻塞等待5秒，最多取10条
+                                    XReadArgs.StreamOffset.lastConsumed(streamKey));
+                    for (StreamMessage<String, String> msg : messages) {
+                        String json = msg.getBody().get("event");
+                        String type = msg.getBody().get("type");
+                        try {
+                            Class<?> clazz = Class.forName(type);
+                            Object event = gson.fromJson(json, clazz);
+                            dispatcher.dispatch(event);
+                        } catch (Exception e) {
+                            System.err.println("Error processing Redis Stream event: " + type);
+                            e.printStackTrace();
+                        }
+                        // 确认(ack)消息，防止重复消费
+                        commands.xack(streamKey, group, msg.getId());
                     }
-                    // 手动ack
-                    commands.xack(streamKey, group, msg.getId());
+                } catch (io.lettuce.core.RedisException e) {
+                    System.err.println("Redis listener error, will retry in 5s: " + e.getMessage());
+                    try { Thread.sleep(5000); } catch (InterruptedException ignored) {}
                 }
-                try { Thread.sleep(200); } catch (InterruptedException ignored) {}
             }
         });
     }
