@@ -63,7 +63,7 @@ public class LettuceRedisStream<T> implements MessageStream<T> {
     @Override
     public String offer(T message) {
         if (message == null) throw new IllegalArgumentException("Message cannot be null");
-        String jsonMessage = gson.toJson(message);
+        String jsonMessage = gson.toJson(message, messageType);
         String streamId = commands.xadd(streamKey, Map.of("data", jsonMessage));
         log.debug("Offered message to Redis stream: streamId={}, type={}", streamId, messageType.getSimpleName());
         return streamId;

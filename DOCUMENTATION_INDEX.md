@@ -66,9 +66,11 @@ xa-mass-platform/
 
 ### ✅ Event-Driven Architecture
 
-- **EventBus System**: Guava-based event publishing and handling
-- **Event Types**: Task events, device events, system events
-- **Custom Events**: Guidelines for creating business-specific events
+- **EventBus System**: 高性能泛型事件总线，支持任意POJO和结构化事件
+- **Multi-Implementation**: 内存(InMemoryMessageStream) / Redis(LettuceRedisStream)分布式支持
+- **Event Types**: 灵活的事件类型设计，支持trace追踪和元数据
+- **Custom Events**: 既支持轻量级POJO，也支持完整结构化MassEvent
+- **Performance**: 20K+ events/sec吞吐量，精确匹配分发算法
 
 ### ✅ Core Components
 
@@ -167,6 +169,29 @@ This documentation is designed to be:
 - **Example-Rich**: Practical, runnable examples for every feature
 - **Comprehensive**: Covers all public APIs and integration patterns
 - **Accessible**: Multiple documentation levels for different user needs
+
+## 📁 Module-Level Documentation
+
+### Core Infrastructure (xa-mass-base)
+
+- 🎯 **[EventBus Documentation](./xa-mass-base/src/main/java/com/xa/mass/base/channel/eventbus/README.md)** - 泛型事件总线完整指南
+- 📊 **[JSON-DSL System](./xa-mass-base/README_NEW_DSL.md)** - 灵活的JSON DSL数据生成
+- 🔄 **[Channel Messaging](./xa-mass-base/src/main/java/com/xa/mass/base/channel/queue/README.md)** - 统一消息传输抽象
+
+### Business Logic (xa-mass-engine)
+
+- 🎮 **[Rule Engine](./xa-mass-engine/README_RULE_ENGINE.md)** - QLExpress规则引擎
+- ⚙️ **[Task Management](./xa-mass-engine/README.md)** - 任务调度与生命周期
+
+### Communication Layer (xa-mass-gateway)
+
+- 🌐 **[WebSocket Gateway](./xa-mass-gateway/README.md)** - 实时通信网关
+- 📡 **[Message Routing](./xa-mass-gateway/src/main/java/com/xa/mass/gateway/queue/README.md)** - 消息路由与队列
+
+### Testing & Development (xa-mass-mock)
+
+- 🧪 **[Mock Framework](./xa-mass-mock/README.md)** - 完整的测试与模拟框架
+- 📝 **[Testing Patterns](./xa-mass-mock/verify-no-conflict.md)** - 测试最佳实践
 
 ## 📞 Support & Contribution
 

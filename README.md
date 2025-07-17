@@ -32,23 +32,42 @@
 
 ## 事件驱动架构
 
-- 事件总线基础设施位于 `xa-mass-base`，核心接口为 `EventBusFacade`，通过 `EventBusFactory.get("guava")` 获取实例。
-- 所有事件均实现 `MassEvent` 接口，常见事件如：
-    - 任务相关：`TaskCreatedEvent`、`TaskAuditedEvent`、`TaskAssignedEvent`（`eventbus.task` 包）
-    - 设备相关：`DeviceOnlineBatchEvent`、`DeviceOfflineSingleEvent`（`eventbus.device` 包）
-- 事件注册与发布示例：
+**EventBus 2.0 - 泛型重构版本**
+
+- 🔧 **泛型支持**：`StreamEventBusFacade<T>` 支持任意类型事件（POJO/MassEvent）
+- ⚡ **高性能**：20K+ events/sec，精确匹配分发，无继承查找开销
+- 🔄 **多实现**：内存(`InMemoryMessageStream`) / Redis(`LettuceRedisStream`)分布式支持
+- 📊 **完整Trace**：MassEvent提供eventId、timestamp、traceId等元数据
+
+### 使用示例
 
 ```java
-EventBusFacade eventBus = EventBusFactory.get("guava");
-eventBus.register(TaskCreatedEvent.class, event -> {
-    // 处理任务创建
-});
-eventBus.post(new TaskCreatedEvent(task, traceId, requestId));
+// 场景1：结构化事件（生产环境推荐）
+var stream = new InMemoryMessageStream<MassEvent>("events", MassEvent.class);
+var eventBus = new StreamEventBusFacade<MassEvent>(stream);
+
+class TaskListener {
+    @MassSubscribe
+    public void onTaskCreated(TaskCreatedEvent event) {
+        log.info("任务创建: {} [Trace: {}]", event.getDescription(), event.getTraceId());
+    }
+}
+eventBus.register(new TaskListener());
+eventBus.post(new TaskCreatedEvent(task, "trace-001", "req-001"));
+
+// 场景2：轻量级POJO（快速开发）
+var eventBus = new StreamEventBusFacade<Object>(stream);
+eventBus.post(new OrderCreated("order-123", 99.99));  // 任意POJO
+eventBus.post("系统维护通知");                          // 基础类型
+
+// 场景3：分布式事件总线
+var redisStream = new LettuceRedisStream<MassEvent>("distributed-events", MassEvent.class);
+var distributedEventBus = new StreamEventBusFacade<MassEvent>(redisStream);
 ```
 
-- 事件驱动带来高内聚、低耦合、易扩展、易插拔混沌注入/监控等优势。
+**迁移说明**：旧版 Guava EventBus 已废弃，推荐使用 `StreamEventBusFacade` + `MessageStream`
 
-详细设计见 `doc/规划.md`。
+详细文档：[EventBus README](./xa-mass-base/src/main/java/com/xa/mass/base/channel/eventbus/README.md)
 
 ## Mock 能力
 
