@@ -75,7 +75,12 @@ public class MassEventDispatcher<T> {
         List<HandlerWrapper<T>> exactHandlers = handlerMap.get(eventClass);
         if (exactHandlers != null && !exactHandlers.isEmpty()) {
             for (HandlerWrapper<T> handler : exactHandlers) {
-                invokeHandler(handler, event);
+                try {
+                    invokeHandler(handler, event);
+                } catch (Exception e) {
+                    // 这里捕获invokeHandler可能抛出的任何异常
+                    log.error("Unexpected error in event handler invocation", e);
+                }
             }
         }
     }
@@ -88,8 +93,9 @@ public class MassEventDispatcher<T> {
     private void invokeHandler(HandlerWrapper<T> handler, T event) {
         try {
             handler.invoke(event);
-        } catch (Exception e) {
-            log.error("Error invoking event handler: {} for event: {}", handler, event.getClass().getSimpleName(), e);
+        } catch (Throwable e) {  // MethodHandle抛出Throwable
+            log.error("Error invoking event handler: {} for event: {}", 
+                handler.getDescription(), event.getClass().getSimpleName(), e);
         }
     }
 
