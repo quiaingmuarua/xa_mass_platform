@@ -24,7 +24,7 @@ import java.util.concurrent.TimeUnit;
  * 已过时：请优先使用StreamEventBusFacade + MessageStream实现。
  * 本地事件总线建议用InMemoryMessageStream，分布式用LettuceRedisStream。
  */
-public class RedisStreamEventBusFacade implements EventBusFacade {
+public class RedisStreamEventBusFacade implements EventBusFacade<MassEvent> {
     private final String streamKey;
     private final String group;
     private final String consumerName;
@@ -34,7 +34,7 @@ public class RedisStreamEventBusFacade implements EventBusFacade {
         .registerTypeAdapter(Instant.class, (com.google.gson.JsonDeserializer<Instant>) (json, typeOfT, context) ->
             Instant.parse(json.getAsString()))
         .create();
-    private final MassEventDispatcher dispatcher = new MassEventDispatcher();
+    private final MassEventDispatcher<MassEvent> dispatcher = new MassEventDispatcher<>();
     // 消费线程池：单线程，专门负责从Redis拉取消息
     private final ExecutorService consumerExecutor = Executors.newSingleThreadExecutor(r -> new Thread(r, "redis-event-consumer"));
     // 处理线程池：多线程（这里用4个），负责执行具体的事件处理逻辑，避免阻塞消费线程
@@ -97,7 +97,11 @@ public class RedisStreamEventBusFacade implements EventBusFacade {
                             Object event = gson.fromJson(json, clazz);
                             // 将事件处理任务提交到专门的handler线程池，而不是在当前消费线程中直接执行
                             handlerExecutor.submit(() -> {
-                                dispatcher.dispatch(event);
+                                if (event instanceof MassEvent) {
+                                    dispatcher.dispatch((MassEvent) event);
+                                } else {
+                                    System.err.println("Event is not a MassEvent: " + event.getClass());
+                                }
                             });
                         } catch (Exception e) {
                             System.err.println("Error processing Redis Stream event: " + type);

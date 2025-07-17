@@ -2,12 +2,16 @@ package com.xa.mass.base.channel.eventbus.core;
 
 import java.util.function.Consumer;
 
-public interface EventBusFacade {
-    <E extends MassEvent> void register(Class<E> eventType, Consumer<E> handler);
+/**
+ * 事件总线门面接口，支持泛型事件类型
+ * @param <T> 事件的基础类型
+ */
+public interface EventBusFacade<T> {
+    <E extends T> void register(Class<E> eventType, Consumer<E> handler);
 
-    <E extends MassEvent> void unregister(Class<E> eventType, Consumer<E> handler);
+    <E extends T> void unregister(Class<E> eventType, Consumer<E> handler);
 
-    <E extends MassEvent> void post(E event);
+    <E extends T> void post(E event);
 
     void shutdown();
 

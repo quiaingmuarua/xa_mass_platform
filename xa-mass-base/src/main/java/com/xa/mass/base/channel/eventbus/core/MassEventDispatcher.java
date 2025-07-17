@@ -11,20 +11,16 @@ import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
  * 事件分发器，负责管理事件监听器和高效分发事件。
- * 支持注解扫描、类型继承、线程安全。
+ * 支持注解扫描、精确类型匹配、线程安全。
+ * 支持泛型，可以处理任意类型的事件对象。
  */
-public class MassEventDispatcher {
+public class MassEventDispatcher<T> {
     private static final Logger log = LoggerFactory.getLogger(MassEventDispatcher.class);
     /**
      * 事件类型到处理器映射表，支持快速查找
      * 使用ConcurrentHashMap保证线程安全
      */
-    private final Map<Class<?>, List<HandlerWrapper>> handlerMap = new ConcurrentHashMap<>();
-    /**
-     * 所有注册的处理器列表，用于支持事件继承
-     * 使用CopyOnWriteArrayList保证读操作的高性能和线程安全
-     */
-    private final List<HandlerWrapper> allHandlers = new CopyOnWriteArrayList<>();
+    private final Map<Class<?>, List<HandlerWrapper<T>>> handlerMap = new ConcurrentHashMap<>();
 
     /**
      * 注册事件监听器
@@ -41,9 +37,8 @@ public class MassEventDispatcher {
                 // 验证方法签名：必须有且仅有一个参数
                 if (params.length == 1) {
                     Class<?> eventType = params[0];
-                    HandlerWrapper wrapper = new HandlerWrapper(listener, method, eventType);
+                    HandlerWrapper<T> wrapper = new HandlerWrapper<>(listener, method, eventType);
                     handlerMap.computeIfAbsent(eventType, k -> new CopyOnWriteArrayList<>()).add(wrapper);
-                    allHandlers.add(wrapper);
                 } else {
                     log.warn("Method {} in {} has @MassSubscribe but invalid parameters (expected 1, got {})", method.getName(), listener.getClass().getSimpleName(), params.length);
                 }
@@ -59,36 +54,27 @@ public class MassEventDispatcher {
         if (listener == null) {
             return;
         }
-        allHandlers.removeIf(wrapper -> wrapper.target() == listener);
         handlerMap.entrySet().removeIf(entry -> {
-            List<HandlerWrapper> handlers = entry.getValue();
+            List<HandlerWrapper<T>> handlers = entry.getValue();
             handlers.removeIf(wrapper -> wrapper.target() == listener);
             return handlers.isEmpty();
         });
     }
 
     /**
-     * 分发事件到所有匹配的处理器
+     * 分发事件到所有匹配的处理器（仅精确匹配，不支持继承）
      * @param event 事件对象
      */
-    public void dispatch(Object event) {
+    public void dispatch(T event) {
         if (event == null) {
             return;
         }
         Class<?> eventClass = event.getClass();
-        // 首先尝试精确匹配
-        List<HandlerWrapper> exactHandlers = handlerMap.get(eventClass);
+        
+        // 仅处理精确匹配的处理器，提高性能和透明度
+        List<HandlerWrapper<T>> exactHandlers = handlerMap.get(eventClass);
         if (exactHandlers != null && !exactHandlers.isEmpty()) {
-            for (HandlerWrapper handler : exactHandlers) {
-                invokeHandler(handler, event);
-            }
-        }
-        // 然后查找支持继承的处理器（避免重复调用精确匹配的处理器）
-        for (HandlerWrapper handler : allHandlers) {
-            if (exactHandlers != null && exactHandlers.contains(handler)) {
-                continue;
-            }
-            if (handler.canHandle(eventClass)) {
+            for (HandlerWrapper<T> handler : exactHandlers) {
                 invokeHandler(handler, event);
             }
         }
@@ -99,7 +85,7 @@ public class MassEventDispatcher {
      * @param handler 处理器
      * @param event 事件对象
      */
-    private void invokeHandler(HandlerWrapper handler, Object event) {
+    private void invokeHandler(HandlerWrapper<T> handler, T event) {
         try {
             handler.invoke(event);
         } catch (Exception e) {
@@ -113,7 +99,7 @@ public class MassEventDispatcher {
      * @return 处理器数量
      */
     public int getHandlerCount(Class<?> eventType) {
-        List<HandlerWrapper> handlers = handlerMap.get(eventType);
+        List<HandlerWrapper<T>> handlers = handlerMap.get(eventType);
         return handlers != null ? handlers.size() : 0;
     }
 
@@ -122,7 +108,11 @@ public class MassEventDispatcher {
      * @return 处理器总数
      */
     public int getTotalHandlerCount() {
-        return allHandlers.size();
+        int total = 0;
+        for (List<HandlerWrapper<T>> handlers : handlerMap.values()) {
+            total += handlers.size();
+        }
+        return total;
     }
 
     /**
@@ -130,7 +120,6 @@ public class MassEventDispatcher {
      */
     public void clear() {
         handlerMap.clear();
-        allHandlers.clear();
     }
 
     /**

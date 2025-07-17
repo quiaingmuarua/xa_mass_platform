@@ -10,11 +10,12 @@ import java.util.concurrent.TimeUnit;
 /**
  * 通用Stream事件总线门面，支持内存、Redis等多种消息流实现。
  * 通过注入MessageStream实现解耦，便于测试和扩展。
+ * 支持泛型，可以处理任意类型的事件对象。
  */
-public class StreamEventBusFacade implements EventBusFacade {
+public class StreamEventBusFacade<T> implements EventBusFacade<T> {
     private static final Logger log = LoggerFactory.getLogger(StreamEventBusFacade.class);
-    private final MessageStream<MassEvent> stream;
-    private final MassEventDispatcher dispatcher = new MassEventDispatcher();
+    private final MessageStream<T> stream;
+    private final MassEventDispatcher<T> dispatcher = new MassEventDispatcher<>();
     private final ExecutorService consumerExecutor = Executors.newSingleThreadExecutor(r -> new Thread(r, "stream-event-consumer"));
     private final ExecutorService handlerExecutor = Executors.newFixedThreadPool(4, r -> new Thread(r, "stream-event-handler"));
     private volatile boolean running = true;
@@ -23,7 +24,7 @@ public class StreamEventBusFacade implements EventBusFacade {
      * 构造方法，注入消息流实现
      * @param stream 消息流（可为内存、Redis等）
      */
-    public StreamEventBusFacade(MessageStream<MassEvent> stream) {
+    public StreamEventBusFacade(MessageStream<T> stream) {
         this.stream = stream;
         startListenerLoop();
     }
@@ -36,13 +37,13 @@ public class StreamEventBusFacade implements EventBusFacade {
             while (running) {
                 try {
                     // 批量拉取消息，提升吞吐量
-                    java.util.List<MessageStream.StreamMessage<MassEvent>> messages = 
+                    java.util.List<MessageStream.StreamMessage<T>> messages = 
                         stream.pollBatch(10, 1000, TimeUnit.MILLISECONDS);
                     if (messages != null && !messages.isEmpty()) {
                         // 收集消息ID用于批量ack
                         java.util.List<String> messageIds = new java.util.ArrayList<>();
                         // 批量提交处理任务，只在遇到异常时跳过
-                        for (MessageStream.StreamMessage<MassEvent> msg : messages) {
+                        for (MessageStream.StreamMessage<T> msg : messages) {
                             messageIds.add(msg.getMessageId());
                             // 提交处理任务，只在遇到异常时跳过
                             try {
@@ -83,7 +84,7 @@ public class StreamEventBusFacade implements EventBusFacade {
     }
 
     @Override
-    public <E extends MassEvent> void post(E event) {
+    public <E extends T> void post(E event) {
         if (event == null) {
             throw new IllegalArgumentException("event cannot be null");
         }
@@ -91,12 +92,12 @@ public class StreamEventBusFacade implements EventBusFacade {
     }
 
     @Override
-    public <E extends MassEvent> void register(Class<E> eventType, java.util.function.Consumer<E> handler) {
+    public <E extends T> void register(Class<E> eventType, java.util.function.Consumer<E> handler) {
         throw new UnsupportedOperationException("请直接注册带有@MassSubscribe注解的listener实例");
     }
 
     @Override
-    public <E extends MassEvent> void unregister(Class<E> eventType, java.util.function.Consumer<E> handler) {
+    public <E extends T> void unregister(Class<E> eventType, java.util.function.Consumer<E> handler) {
         throw new UnsupportedOperationException("请直接注销带有@MassSubscribe注解的listener实例");
     }
 

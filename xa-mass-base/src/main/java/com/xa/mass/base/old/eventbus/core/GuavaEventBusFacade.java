@@ -10,13 +10,14 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.function.Consumer;
 
 @Deprecated
 /**
  * 已过时：请优先使用StreamEventBusFacade + MessageStream实现。
  * 本地事件总线建议用InMemoryMessageStream，分布式用LettuceRedisStream。
  */
-public class GuavaEventBusFacade implements EventBusFacade {
+public class GuavaEventBusFacade implements EventBusFacade<MassEvent> {
     private final AsyncEventBus eventBus;
     private final ExecutorService executor;
     private final Map<Class<?>, List<Object>> listenerWrappers = new ConcurrentHashMap<>();
@@ -28,25 +29,36 @@ public class GuavaEventBusFacade implements EventBusFacade {
 
     public void register(Object listener) {
         eventBus.register(listener);
-        listenerWrappers.computeIfAbsent(listener.getClass(), k -> new ArrayList<>()).add(listener);
     }
 
     public void unregister(Object listener) {
         eventBus.unregister(listener);
-        List<Object> wrappers = listenerWrappers.get(listener.getClass());
+    }
+
+    @Override
+    public <E extends MassEvent> void register(Class<E> eventType, Consumer<E> handler) {
+        // 创建包装器对象来适配Guava EventBus
+        Object wrapper = new Object() {
+            @com.google.common.eventbus.Subscribe
+            public void handle(E event) {
+                if (eventType.isAssignableFrom(event.getClass())) {
+                    handler.accept(event);
+                }
+            }
+        };
+        
+        listenerWrappers.computeIfAbsent(eventType, k -> new ArrayList<>()).add(wrapper);
+        eventBus.register(wrapper);
+    }
+
+    @Override
+    public <E extends MassEvent> void unregister(Class<E> eventType, Consumer<E> handler) {
+        List<Object> wrappers = listenerWrappers.get(eventType);
         if (wrappers != null) {
-            wrappers.remove(listener);
+            // 简化处理：移除所有该类型的监听器
+            wrappers.forEach(eventBus::unregister);
+            wrappers.clear();
         }
-    }
-
-    @Override
-    public <E extends MassEvent> void register(Class<E> eventType, java.util.function.Consumer<E> handler) {
-        throw new UnsupportedOperationException("请直接注册带有@Subscribe注解的listener实例");
-    }
-
-    @Override
-    public <E extends MassEvent> void unregister(Class<E> eventType, java.util.function.Consumer<E> handler) {
-        throw new UnsupportedOperationException("请直接注销带有@Subscribe注解的listener实例");
     }
 
     @Override

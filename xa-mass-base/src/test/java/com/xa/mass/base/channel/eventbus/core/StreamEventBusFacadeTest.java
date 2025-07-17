@@ -14,7 +14,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.junit.jupiter.api.Assertions.*;
 
 public class StreamEventBusFacadeTest {
-    private StreamEventBusFacade eventBus;
+    private StreamEventBusFacade<MassEvent> eventBus;
     private MessageStream<MassEvent> stream;
 
     // 测试事件类型
@@ -78,7 +78,7 @@ public class StreamEventBusFacadeTest {
     @BeforeEach
     public void setUp() {
         stream = new InMemoryMessageStream<>("test-eventbus", MassEvent.class);
-        eventBus = new StreamEventBusFacade(stream);
+        eventBus = new StreamEventBusFacade<>(stream);
     }
 
     @AfterEach
@@ -215,5 +215,42 @@ public class StreamEventBusFacadeTest {
         assertThrows(UnsupportedOperationException.class, () -> {
             eventBus.unregister(TestEvent.class, event -> {});
         });
+    }
+
+    @Test
+    public void testDispatchPerformance() throws Exception {
+        // 创建多个监听器来模拟复杂场景
+        TestListener[] listeners = new TestListener[50];
+        for (int i = 0; i < listeners.length; i++) {
+            listeners[i] = new TestListener(new CountDownLatch(1));
+            eventBus.register(listeners[i]);
+        }
+        
+        // 预热
+        for (int i = 0; i < 100; i++) {
+            eventBus.post(new TestEvent("warmup"));
+        }
+        
+        // 性能测试
+        long startTime = System.nanoTime();
+        int iterations = 1000;
+        for (int i = 0; i < iterations; i++) {
+            eventBus.post(new TestEvent("performance test " + i));
+        }
+        long endTime = System.nanoTime();
+        
+        long durationMs = (endTime - startTime) / 1_000_000;
+        System.out.println("=== Dispatch Performance Test ===");
+        System.out.println("Listeners: " + listeners.length);
+        System.out.println("Events: " + iterations);
+        System.out.println("Duration: " + durationMs + " ms");
+        System.out.println("Events/sec: " + (iterations * 1000 / Math.max(durationMs, 1)));
+        
+        // 验证所有事件都被处理了
+        Thread.sleep(100); // 等待异步处理完成
+        for (TestListener listener : listeners) {
+            assertTrue(listener.getCount() >= iterations, 
+                "Each listener should receive at least " + iterations + " events, got " + listener.getCount());
+        }
     }
 } 

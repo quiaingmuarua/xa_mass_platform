@@ -4,8 +4,9 @@ import java.lang.reflect.Method;
 
 /**
  * 事件处理器包装类，缓存反射信息以提升性能
+ * 支持泛型，可以处理任意类型的事件对象
  */
-public record HandlerWrapper(Object target, Method method, Class<?> eventType) {
+public record HandlerWrapper<T>(Object target, Method method, Class<?> eventType) {
     public HandlerWrapper(Object target, Method method, Class<?> eventType) {
         this.target = target;
         this.method = method;
@@ -22,16 +23,7 @@ public record HandlerWrapper(Object target, Method method, Class<?> eventType) {
      * @param event 事件对象
      * @throws Exception 调用异常
      */
-    public void invoke(Object event) throws Exception {
+    public void invoke(T event) throws Exception {
         method.invoke(target, event);
-    }
-
-    /**
-     * 检查是否可以处理指定类型的事件
-     * @param eventClass 事件类型
-     * @return 是否可以处理
-     */
-    public boolean canHandle(Class<?> eventClass) {
-        return eventType.isAssignableFrom(eventClass);
     }
 } 
