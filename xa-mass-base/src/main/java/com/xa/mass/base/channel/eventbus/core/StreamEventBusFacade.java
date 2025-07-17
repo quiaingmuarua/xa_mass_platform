@@ -35,20 +35,38 @@ public class StreamEventBusFacade implements EventBusFacade {
         consumerExecutor.submit(() -> {
             while (running) {
                 try {
-                    MessageStream.StreamMessage<MassEvent> msg = stream.poll(5000, TimeUnit.MILLISECONDS);
-                    if (msg != null) {
-                        handlerExecutor.submit(() -> {
-                            dispatcher.dispatch(msg.getMessage());
-                            // 消费成功后ack
-                            stream.ack(msg.getMessageId());
-                        });
+                    // 批量拉取消息，提升吞吐量
+                    java.util.List<MessageStream.StreamMessage<MassEvent>> messages = 
+                        stream.pollBatch(10, 1000, TimeUnit.MILLISECONDS);
+                    if (messages != null && !messages.isEmpty()) {
+                        // 收集消息ID用于批量ack
+                        java.util.List<String> messageIds = new java.util.ArrayList<>();
+                        // 批量提交处理任务，只在遇到异常时跳过
+                        for (MessageStream.StreamMessage<MassEvent> msg : messages) {
+                            messageIds.add(msg.getMessageId());
+                            // 提交处理任务，只在遇到异常时跳过
+                            try {
+                                handlerExecutor.submit(() -> {
+                                    dispatcher.dispatch(msg.getMessage());
+                                });
+                            } catch (java.util.concurrent.RejectedExecutionException e) {
+                                log.debug("Handler executor already shutdown, skipping message processing");
+                                break;
+                            }
+                        }
+                        // 批量ack，提升性能
+                        if (!messageIds.isEmpty()) {
+                            stream.ackBatch(messageIds);
+                        }
                     }
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                     break;
                 } catch (Exception e) {
-                    log.error("Stream listener error, will retry: {}", e.getMessage(), e);
-                    try { Thread.sleep(5000); } catch (InterruptedException ignored) {}
+                    if (running) {
+                        log.error("Stream listener error, will retry: {}", e.getMessage(), e);
+                        try { Thread.sleep(1000); } catch (InterruptedException ignored) { break; }
+                    }
                 }
             }
         });
@@ -85,13 +103,27 @@ public class StreamEventBusFacade implements EventBusFacade {
     @Override
     public void shutdown() {
         running = false;
+        
+        // 先关闭消费者线程，停止新任务提交
         consumerExecutor.shutdown();
-        handlerExecutor.shutdown();
         try {
-            if (!consumerExecutor.awaitTermination(5, TimeUnit.SECONDS)) consumerExecutor.shutdownNow();
-            if (!handlerExecutor.awaitTermination(5, TimeUnit.SECONDS)) handlerExecutor.shutdownNow();
+            if (!consumerExecutor.awaitTermination(2, TimeUnit.SECONDS)) {
+                consumerExecutor.shutdownNow();
+            }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+            consumerExecutor.shutdownNow();
+        }
+        
+        // 再关闭处理器线程池
+        handlerExecutor.shutdown();
+        try {
+            if (!handlerExecutor.awaitTermination(3, TimeUnit.SECONDS)) {
+                handlerExecutor.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            handlerExecutor.shutdownNow();
         }
     }
 

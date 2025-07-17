@@ -56,6 +56,8 @@
         <!--            <artifactId>xa-mass-gateway</artifactId>-->
         <!--            <version>0.0.1-SNAPSHOT</version>-->
         <!--        </dependency>-->
+        
+        <!-- 保留 JUnit 4 以支持其他现有测试 -->
         <dependency>
             <groupId>junit</groupId>
             <artifactId>junit</artifactId>
