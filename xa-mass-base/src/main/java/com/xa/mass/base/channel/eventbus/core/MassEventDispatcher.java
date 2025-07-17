@@ -64,6 +64,7 @@ public class MassEventDispatcher<T> {
     /**
      * 分发事件到所有匹配的处理器（仅精确匹配，不支持继承）
      * @param event 事件对象
+     * @throws RuntimeException 如果任何处理器抛出异常
      */
     public void dispatch(T event) {
         if (event == null) {
@@ -74,21 +75,30 @@ public class MassEventDispatcher<T> {
         // 仅处理精确匹配的处理器，提高性能和透明度
         List<HandlerWrapper<T>> exactHandlers = handlerMap.get(eventClass);
         if (exactHandlers != null && !exactHandlers.isEmpty()) {
+            RuntimeException firstException = null;
             for (HandlerWrapper<T> handler : exactHandlers) {
                 try {
                     invokeHandler(handler, event);
                 } catch (Exception e) {
-                    // 这里捕获invokeHandler可能抛出的任何异常
+                    // 记录第一个异常，继续处理其他handler，但最后抛出异常
+                    if (firstException == null) {
+                        firstException = (e instanceof RuntimeException) ? (RuntimeException) e : new RuntimeException(e);
+                    }
                     log.error("Unexpected error in event handler invocation", e);
                 }
+            }
+            // 如果有异常发生，抛出第一个异常以便上层统计
+            if (firstException != null) {
+                throw firstException;
             }
         }
     }
 
     /**
-     * 安全调用事件处理器
+     * 调用事件处理器
      * @param handler 处理器
      * @param event 事件对象
+     * @throws RuntimeException 如果处理器抛出异常
      */
     private void invokeHandler(HandlerWrapper<T> handler, T event) {
         try {
@@ -96,6 +106,8 @@ public class MassEventDispatcher<T> {
         } catch (Throwable e) {  // MethodHandle抛出Throwable
             log.error("Error invoking event handler: {} for event: {}", 
                 handler.getDescription(), event.getClass().getSimpleName(), e);
+            // 重新抛出异常以便上层统计
+            throw (e instanceof RuntimeException) ? (RuntimeException) e : new RuntimeException(e);
         }
     }
 

@@ -12,6 +12,7 @@ import java.util.concurrent.TimeUnit;
  * 通过注入MessageStream实现解耦，便于测试和扩展。
  * 支持泛型，可以处理任意类型的事件对象。
  */
+@Deprecated
 public class StreamEventBusFacade<T> implements EventBusFacade<T> {
     private static final Logger log = LoggerFactory.getLogger(StreamEventBusFacade.class);
     private final MessageStream<T> stream;
