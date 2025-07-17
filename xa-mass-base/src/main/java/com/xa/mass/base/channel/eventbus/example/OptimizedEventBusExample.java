@@ -83,7 +83,7 @@ public class OptimizedEventBusExample {
         
         // 创建优化的事件总线
         MessageStream<Object> stream = MessageStreamFactory.create("memory", "optimized-bus", Object.class);
-        OptimizedStreamEventBusFacade<Object> eventBus = new OptimizedStreamEventBusFacade<>(stream, config);
+        StreamEventBusFacade<Object> eventBus = new StreamEventBusFacade<>(stream, config);
         
         // 注册正确的监听器
         PerformanceTestListener listener = new PerformanceTestListener();
@@ -113,7 +113,7 @@ public class OptimizedEventBusExample {
         Thread.sleep(3000);
         
         // 显示性能统计
-        OptimizedStreamEventBusFacade.EventBusStatistics stats = eventBus.getStatistics();
+        StreamEventBusFacade.EventBusStatistics stats = eventBus.getStatistics();
         System.out.println("\n--- 性能统计 ---");
         System.out.println("处理消息数: " + stats.getProcessedMessages());
         System.out.println("失败消息数: " + stats.getFailedMessages());

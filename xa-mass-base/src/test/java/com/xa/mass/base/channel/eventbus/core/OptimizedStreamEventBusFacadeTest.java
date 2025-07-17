@@ -11,7 +11,6 @@ import java.time.Instant;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -20,7 +19,7 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 class OptimizedStreamEventBusFacadeTest {
 
-    private OptimizedStreamEventBusFacade<Object> eventBus;
+    private StreamEventBusFacade<Object> eventBus;
     private MessageStream<Object> stream;
     private EventBusConfig config;
 
@@ -129,7 +128,7 @@ class OptimizedStreamEventBusFacadeTest {
             .setHandlerTimeoutSeconds(5L)
             .setCorePoolSize(2)
             .setMaxPoolSize(4);
-        eventBus = new OptimizedStreamEventBusFacade<>(stream, config);
+        eventBus = new StreamEventBusFacade<>(stream, config);
     }
 
     @AfterEach
@@ -212,7 +211,7 @@ class OptimizedStreamEventBusFacadeTest {
         
         // 检查错误统计 - 等待异步处理完成
         Thread.sleep(1000); // 等待统计更新
-        OptimizedStreamEventBusFacade.EventBusStatistics stats = eventBus.getStatistics();
+        StreamEventBusFacade.EventBusStatistics stats = eventBus.getStatistics();
         assertTrue(stats.getFailedMessages() > 0, "Should have failed messages recorded");
     }
 
@@ -226,7 +225,7 @@ class OptimizedStreamEventBusFacadeTest {
             .setHandlerTimeoutSeconds(1L); // 1秒超时
         
         eventBus.shutdown();
-        eventBus = new OptimizedStreamEventBusFacade<>(stream, shortTimeoutConfig);
+        eventBus = new StreamEventBusFacade<>(stream, shortTimeoutConfig);
         
         SlowListener slowListener = new SlowListener(2, 2000L); // 2秒处理时间
         eventBus.register(slowListener);
@@ -237,7 +236,7 @@ class OptimizedStreamEventBusFacadeTest {
 
         // Assert
         Thread.sleep(3000); // 等待超时处理
-        OptimizedStreamEventBusFacade.EventBusStatistics stats = eventBus.getStatistics();
+        StreamEventBusFacade.EventBusStatistics stats = eventBus.getStatistics();
         assertTrue(stats.getTimeoutMessages() > 0, "Should have timeout messages recorded");
     }
 
@@ -256,7 +255,7 @@ class OptimizedStreamEventBusFacadeTest {
         assertTrue(listener.awaitCompletion(2, TimeUnit.SECONDS), "Events should be processed");
 
         // Assert
-        OptimizedStreamEventBusFacade.EventBusStatistics stats = eventBus.getStatistics();
+        StreamEventBusFacade.EventBusStatistics stats = eventBus.getStatistics();
         assertEquals(5, stats.getProcessedMessages(), "Should process 5 messages");
         assertEquals(0, stats.getFailedMessages(), "Should have no failed messages");
         assertEquals(0, stats.getTimeoutMessages(), "Should have no timeout messages");
@@ -289,7 +288,7 @@ class OptimizedStreamEventBusFacadeTest {
         MessageStream<Object> newStream = new InMemoryMessageStream<>("test-stream-2", Object.class);
         
         // Act
-        OptimizedStreamEventBusFacade<Object> defaultEventBus = new OptimizedStreamEventBusFacade<>(newStream);
+        StreamEventBusFacade<Object> defaultEventBus = new StreamEventBusFacade<>(newStream);
         
         // Assert
         assertNotNull(defaultEventBus.getConfig(), "Should have default config");
@@ -336,7 +335,7 @@ class OptimizedStreamEventBusFacadeTest {
         eventBus.shutdown();
 
         // Assert - 验证统计信息被记录
-        OptimizedStreamEventBusFacade.EventBusStatistics finalStats = eventBus.getStatistics();
+        StreamEventBusFacade.EventBusStatistics finalStats = eventBus.getStatistics();
         assertNotNull(finalStats, "Final statistics should be available");
     }
 

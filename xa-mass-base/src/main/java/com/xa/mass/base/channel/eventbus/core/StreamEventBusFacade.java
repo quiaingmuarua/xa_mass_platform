@@ -3,92 +3,161 @@ package com.xa.mass.base.channel.eventbus.core;
 import com.xa.mass.base.channel.messaging.api.MessageStream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
+
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.List;
+import java.util.ArrayList;
 
 /**
- * 通用Stream事件总线门面，支持内存、Redis等多种消息流实现。
- * 通过注入MessageStream实现解耦，便于测试和扩展。
+ * 优化的Stream事件总线门面，支持批量ACK、可配置线程池、详细性能监控。
  * 支持泛型，可以处理任意类型的事件对象。
  */
-@Deprecated
 public class StreamEventBusFacade<T> implements EventBusFacade<T> {
     private static final Logger log = LoggerFactory.getLogger(StreamEventBusFacade.class);
+
     private final MessageStream<T> stream;
     private final MassEventDispatcher<T> dispatcher = new MassEventDispatcher<>();
-    private final ExecutorService consumerExecutor = Executors.newSingleThreadExecutor(r -> new Thread(r, "stream-event-consumer"));
-    private final ExecutorService handlerExecutor = Executors.newFixedThreadPool(4, r -> new Thread(r, "stream-event-handler"));
+    private final EventBusConfig config;
+    private final ExecutorService consumerExecutor;
+    private final ThreadPoolExecutor handlerExecutor;
     private volatile boolean running = true;
 
-    /**
-     * 构造方法，注入消息流实现
-     * @param stream 消息流（可为内存、Redis等）
-     */
-    public StreamEventBusFacade(MessageStream<T> stream) {
-        this.stream = stream;
-        startListenerLoop();
-    }
+    // 性能监控指标
+    private final AtomicLong processedMessages = new AtomicLong(0);
+    private final AtomicLong failedMessages = new AtomicLong(0);
+    private final AtomicLong timeoutMessages = new AtomicLong(0);
 
     /**
-     * 启动消费线程，循环拉取消息并分发
+     * 推荐用自定义配置构造
      */
+    public StreamEventBusFacade(MessageStream<T> stream, EventBusConfig config) {
+        this.stream = stream;
+        this.config = config;
+        this.consumerExecutor = createConsumerExecutor();
+        this.handlerExecutor = createHandlerExecutor();
+        startListenerLoop();
+        log.info("OptimizedStreamEventBusFacade started with config: {}", config);
+    }
+
+    public StreamEventBusFacade(MessageStream<T> stream) {
+        this(stream, EventBusConfig.defaultConfig());
+    }
+
+    private ExecutorService createConsumerExecutor() {
+        return Executors.newSingleThreadExecutor(r -> {
+            Thread t = new Thread(r, "optimized-stream-event-consumer");
+            t.setDaemon(true);
+            return t;
+        });
+    }
+
+    private ThreadPoolExecutor createHandlerExecutor() {
+        return new ThreadPoolExecutor(
+                config.getCorePoolSize(),
+                config.getMaxPoolSize(),
+                config.getKeepAliveTimeSeconds(), TimeUnit.SECONDS,
+                new LinkedBlockingQueue<>(config.getQueueCapacity()),
+                r -> {
+                    Thread t = new Thread(r, "event-handler-" + System.nanoTime());
+                    t.setDaemon(true);
+                    return t;
+                },
+                new ThreadPoolExecutor.CallerRunsPolicy()
+        );
+    }
+
     private void startListenerLoop() {
         consumerExecutor.submit(() -> {
             while (running) {
                 try {
-                    // 批量拉取消息，提升吞吐量
-                    java.util.List<MessageStream.StreamMessage<T>> messages = 
-                        stream.pollBatch(10, 1000, TimeUnit.MILLISECONDS);
+                    List<MessageStream.StreamMessage<T>> messages =
+                            stream.pollBatch(config.getBatchSize(), config.getBatchTimeoutMs(), TimeUnit.MILLISECONDS);
+
                     if (messages != null && !messages.isEmpty()) {
-                        // 收集消息ID用于批量ack
-                        java.util.List<String> messageIds = new java.util.ArrayList<>();
-                        // 批量提交处理任务，只在遇到异常时跳过
-                        for (MessageStream.StreamMessage<T> msg : messages) {
-                            messageIds.add(msg.getMessageId());
-                            // 提交处理任务，只在遇到异常时跳过
-                            try {
-                                handlerExecutor.submit(() -> {
-                                    dispatcher.dispatch(msg.getMessage());
-                                });
-                            } catch (java.util.concurrent.RejectedExecutionException e) {
-                                log.debug("Handler executor already shutdown, skipping message processing");
-                                break;
-                            }
-                        }
-                        // 批量ack，提升性能
-                        if (!messageIds.isEmpty()) {
-                            stream.ackBatch(messageIds);
-                        }
+                        processBatchSafely(messages);
                     }
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                     break;
                 } catch (Exception e) {
                     if (running) {
-                        log.error("Stream listener error, will retry: {}", e.getMessage(), e);
-                        try { Thread.sleep(1000); } catch (InterruptedException ignored) { break; }
+                        log.error("Stream listener error: ", e);
+                        try {
+                            Thread.sleep(1000);
+                        } catch (InterruptedException ignored) {
+                            Thread.currentThread().interrupt();
+                            break;
+                        }
                     }
                 }
             }
+            log.info("EventBus consumer thread exited.");
         });
+    }
+
+    /**
+     * 批量处理并仅ACK真正成功的消息
+     */
+    private void processBatchSafely(List<MessageStream.StreamMessage<T>> messages) {
+        List<String> toAck = new CopyOnWriteArrayList<>();
+        List<CompletableFuture<Void>> futures = new ArrayList<>(messages.size());
+
+        for (MessageStream.StreamMessage<T> msg : messages) {
+            CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
+                try {
+                    dispatcher.dispatch(msg.getMessage());
+                    processedMessages.incrementAndGet();
+                    toAck.add(msg.getMessageId());
+                } catch (Throwable e) {
+                    failedMessages.incrementAndGet();
+                    log.error("Failed to process message: {}", msg.getMessageId(), e);
+                }
+            }, handlerExecutor);
+            futures.add(future);
+        }
+
+        // 等待所有消息处理完成或超时
+        try {
+            CompletableFuture<Void> all = CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]));
+            all.get(config.getHandlerTimeoutSeconds(), TimeUnit.SECONDS);
+        } catch (TimeoutException e) {
+            int notDone = 0;
+            for (CompletableFuture<Void> f : futures) {
+                if (!f.isDone()) notDone++;
+            }
+            timeoutMessages.addAndGet(notDone);
+            log.warn("Timeout: {} message(s) not processed within {}s", notDone, config.getHandlerTimeoutSeconds());
+        } catch (Exception e) {
+            log.error("Exception while waiting for batch processing", e);
+        }
+
+        // 只ACK真正被添加到toAck的（即无异常和无超时的）
+        if (!toAck.isEmpty()) {
+            try {
+                int acked = stream.ackBatch(toAck);
+                log.debug("Successfully ACKed {} messages", acked);
+            } catch (Exception e) {
+                log.error("Failed to ACK messages", e);
+            }
+        }
     }
 
     @Override
     public void register(Object listener) {
         dispatcher.registerListener(listener);
+        log.debug("Registered listener: {}", listener.getClass().getSimpleName());
     }
 
     @Override
     public void unregister(Object listener) {
         dispatcher.unregisterListener(listener);
+        log.debug("Unregistered listener: {}", listener.getClass().getSimpleName());
     }
 
     @Override
     public <E extends T> void post(E event) {
-        if (event == null) {
-            throw new IllegalArgumentException("event cannot be null");
-        }
+        if (event == null) throw new IllegalArgumentException("event cannot be null");
         stream.offer(event);
     }
 
@@ -105,52 +174,98 @@ public class StreamEventBusFacade<T> implements EventBusFacade<T> {
     @Override
     public void shutdown() {
         running = false;
-        
-        // 先关闭消费者线程，停止新任务提交
-        consumerExecutor.shutdown();
+        log.info("Shutting down OptimizedStreamEventBusFacade...");
+
+        consumerExecutor.shutdownNow();
         try {
-            if (!consumerExecutor.awaitTermination(2, TimeUnit.SECONDS)) {
-                consumerExecutor.shutdownNow();
-            }
+            consumerExecutor.awaitTermination(2, TimeUnit.SECONDS);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            consumerExecutor.shutdownNow();
         }
-        
-        // 再关闭处理器线程池
+
         handlerExecutor.shutdown();
         try {
-            if (!handlerExecutor.awaitTermination(3, TimeUnit.SECONDS)) {
-                handlerExecutor.shutdownNow();
-            }
+            handlerExecutor.awaitTermination(config.getHandlerTimeoutSeconds(), TimeUnit.SECONDS);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            handlerExecutor.shutdownNow();
         }
+        logFinalStatistics();
     }
 
-    /**
-     * 获取已注册的监听器数量
-     * @return 监听器数量
-     */
+    public EventBusStatistics getStatistics() {
+        return new EventBusStatistics(
+                processedMessages.get(),
+                failedMessages.get(),
+                timeoutMessages.get(),
+                dispatcher.getTotalHandlerCount(),
+                handlerExecutor.getActiveCount(),
+                handlerExecutor.getQueue().size(),
+                handlerExecutor.getCompletedTaskCount()
+        );
+    }
+
+    private void logFinalStatistics() {
+        EventBusStatistics stats = getStatistics();
+        log.info("EventBus shutdown statistics: {}", stats);
+    }
+
     public int getListenerCount() {
         return dispatcher.getTotalHandlerCount();
     }
 
-    /**
-     * 获取指定事件类型的处理器数量
-     * @param eventType 事件类型
-     * @return 处理器数量
-     */
     public int getHandlerCount(Class<?> eventType) {
         return dispatcher.getHandlerCount(eventType);
     }
 
-    /**
-     * 获取流配置信息
-     * @return 配置信息字符串
-     */
-    public String getStreamInfo() {
-        return String.format("Stream: %s, Handlers: %d", stream.getName(), getListenerCount());
+    public EventBusConfig getConfig() {
+        return config;
     }
-} 
+
+    public String getStreamInfo() {
+        return String.format("Stream: %s, Handlers: %d, Config: %s",
+                stream.getName(), getListenerCount(), config);
+    }
+
+    public static class EventBusStatistics {
+        private final long processedMessages;
+        private final long failedMessages;
+        private final long timeoutMessages;
+        private final int totalHandlers;
+        private final int activeThreads;
+        private final int queuedTasks;
+        private final long completedTasks;
+
+        public EventBusStatistics(long processedMessages, long failedMessages, long timeoutMessages,
+                                  int totalHandlers, int activeThreads, int queuedTasks, long completedTasks) {
+            this.processedMessages = processedMessages;
+            this.failedMessages = failedMessages;
+            this.timeoutMessages = timeoutMessages;
+            this.totalHandlers = totalHandlers;
+            this.activeThreads = activeThreads;
+            this.queuedTasks = queuedTasks;
+            this.completedTasks = completedTasks;
+        }
+
+        // Getters
+        public long getProcessedMessages() { return processedMessages; }
+        public long getFailedMessages() { return failedMessages; }
+        public long getTimeoutMessages() { return timeoutMessages; }
+        public int getTotalHandlers() { return totalHandlers; }
+        public int getActiveThreads() { return activeThreads; }
+        public int getQueuedTasks() { return queuedTasks; }
+        public long getCompletedTasks() { return completedTasks; }
+
+        @Override
+        public String toString() {
+            return "EventBusStatistics{" +
+                    "processedMessages=" + processedMessages +
+                    ", failedMessages=" + failedMessages +
+                    ", timeoutMessages=" + timeoutMessages +
+                    ", totalHandlers=" + totalHandlers +
+                    ", activeThreads=" + activeThreads +
+                    ", queuedTasks=" + queuedTasks +
+                    ", completedTasks=" + completedTasks +
+                    '}';
+        }
+    }
+}
