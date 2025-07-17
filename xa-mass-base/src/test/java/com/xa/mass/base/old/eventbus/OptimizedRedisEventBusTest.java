@@ -77,7 +77,11 @@ public class OptimizedRedisEventBusTest {
             
             // 调用1万次
             for (int i = 0; i < 10000; i++) {
-                wrapper.invoke(event);
+                try {
+                    wrapper.invoke(event);
+                } catch (Throwable e) {
+                    throw new RuntimeException(e);
+                }
             }
             
             long endTime = System.nanoTime();
