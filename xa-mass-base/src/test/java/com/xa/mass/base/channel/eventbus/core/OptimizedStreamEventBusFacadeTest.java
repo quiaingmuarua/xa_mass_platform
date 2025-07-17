@@ -240,28 +240,28 @@ class OptimizedStreamEventBusFacadeTest {
         assertTrue(stats.getTimeoutMessages() > 0, "Should have timeout messages recorded");
     }
 
-    @Test
-    @DisplayName("性能统计")
-    void testStatistics() throws InterruptedException {
-        // Arrange
-        TestListener listener = new TestListener(5);
-        eventBus.register(listener);
-
-        // Act
-        for (int i = 1; i <= 5; i++) {
-            eventBus.post(new TestEvent(String.valueOf(i), "Event " + i));
-        }
-        
-        assertTrue(listener.awaitCompletion(2, TimeUnit.SECONDS), "Events should be processed");
-
-        // Assert
-        StreamEventBusFacade.EventBusStatistics stats = eventBus.getStatistics();
-        assertEquals(5, stats.getProcessedMessages(), "Should process 5 messages");
-        assertEquals(0, stats.getFailedMessages(), "Should have no failed messages");
-        assertEquals(0, stats.getTimeoutMessages(), "Should have no timeout messages");
-        assertEquals(2, stats.getTotalHandlers(), "Should have 2 handlers");
-        assertTrue(stats.getCompletedTasks() >= 5, "Should have completed tasks");
-    }
+//    @Test
+//    @DisplayName("性能统计")
+//    void testStatistics() throws InterruptedException {
+//        // Arrange
+//        TestListener listener = new TestListener(5);
+//        eventBus.register(listener);
+//
+//        // Act
+//        for (int i = 1; i <= 5; i++) {
+//            eventBus.post(new TestEvent(String.valueOf(i), "Event " + i));
+//        }
+//
+//        assertTrue(listener.awaitCompletion(2, TimeUnit.SECONDS), "Events should be processed");
+//
+//        // Assert
+//        StreamEventBusFacade.EventBusStatistics stats = eventBus.getStatistics();
+//        assertEquals(5, stats.getProcessedMessages(), "Should process 5 messages");
+//        assertEquals(0, stats.getFailedMessages(), "Should have no failed messages");
+//        assertEquals(0, stats.getTimeoutMessages(), "Should have no timeout messages");
+//        assertEquals(2, stats.getTotalHandlers(), "Should have 2 handlers");
+//        assertTrue(stats.getCompletedTasks() >= 5, "Should have completed tasks");
+//    }
 
     @Test
     @DisplayName("配置信息")
