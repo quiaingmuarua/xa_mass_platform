@@ -18,11 +18,11 @@ public class MockEngineGenerator {
     public static List<DeviceEntity> generateDevices(String fieldDslJson , int count) {
         // 1. 创建 DSL 定义
         JsonDslDefinition definition = new JsonDslDefinition("device_generator", JsonDslDefinition.DslType.GENERATE);
-        definition.setDescription("生成 300 个测试设备");
+        definition.setDescription("生成 " + count + " 个测试设备");
         definition.setAuthor("integration_test");
         definition.setTags(new String[]{"device", "integration"});
         definition.setPriority(1);
-        JsonDslContext context = new JsonDslContext("com.xa.mass.engine.v2.entity.DeviceEntity", 300);
+        JsonDslContext context = new JsonDslContext("com.xa.mass.engine.v2.entity.DeviceEntity", count);
         context.setScopeName("DeviceEntity");
         context.setDebug(false);
         definition.setContext(context);
@@ -42,7 +42,7 @@ public class MockEngineGenerator {
     public static List<TaskEntity> generateTasks(  String fieldDslJson,int count){
         // 1. 创建 DSL 定义
         JsonDslDefinition definition = new JsonDslDefinition("task_generator", JsonDslDefinition.DslType.GENERATE);
-        definition.setDescription("生成 50 个测试任务");
+        definition.setDescription("生成 " + count + " 个测试任务");
         definition.setAuthor("integration_test");
         definition.setTags(new String[]{"task", "integration"});
         definition.setPriority(1);

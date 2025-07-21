@@ -2,14 +2,14 @@ package com.xa.mass.engine.v2.entity;
 
 import lombok.Data;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class DeviceEntity {
     private String deviceId;
     private String deviceStatus; // ONLINE OFFLINE BUSY MAINTENANCE
     private String agentVersion;
-    private String onlineStrategy;
     private String groupId;
-    private Map<String,String> projectTokens; //key project, value tokenId
+    private Map<String,String> projectTokens=new ConcurrentHashMap<>(); //key project, value tokenId
     private long lockExpireTime;
     private long lastHeartbeat;
     private long createTime;
@@ -83,9 +83,6 @@ public class DeviceEntity {
     }
 
     public void setTokenForProject(String project, String tokenId) {
-        if (projectTokens == null) {
-            projectTokens = new java.util.HashMap<>();
-        }
         projectTokens.put(project, tokenId);
         this.updateTime = System.currentTimeMillis();
     }
@@ -127,13 +124,6 @@ public class DeviceEntity {
         this.agentVersion = agentVersion;
     }
 
-    public String getOnlineStrategy() {
-        return onlineStrategy;
-    }
-
-    public void setOnlineStrategy(String onlineStrategy) {
-        this.onlineStrategy = onlineStrategy;
-    }
 
     public String getGroupId() {
         return groupId;
@@ -190,7 +180,6 @@ public class DeviceEntity {
                 "deviceId='" + deviceId + '\'' +
                 ", deviceStatus='" + deviceStatus + '\'' +
                 ", agentVersion='" + agentVersion + '\'' +
-                ", onlineStrategy='" + onlineStrategy + '\'' +
                 ", groupId='" + groupId + '\'' +
                 ", projectTokens=" + projectTokens +
                 ", lockExpireTime=" + lockExpireTime +

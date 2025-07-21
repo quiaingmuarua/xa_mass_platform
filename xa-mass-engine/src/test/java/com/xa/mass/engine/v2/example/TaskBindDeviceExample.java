@@ -31,7 +31,6 @@ public class TaskBindDeviceExample {
         deviceRepositoryManager.getProjectTokens(Project.DEMO_APP.getCode()).forEach(System.out::println);
 
 
-
         taskEntityList.forEach(taskEntity ->
                 {
                     System.out.println("start check task "+taskEntity.getTaskId());
@@ -49,27 +48,35 @@ public class TaskBindDeviceExample {
         deviceRepositoryManager.registerAllProjects(project -> new InMemoryMessageMap<>(project.getCode() + "TokenMap",TokenEntity.class));
 
         //mock device
-        List<DeviceEntity> deviceEntityList = mockDevices( 20);
+        List<DeviceEntity> deviceEntityList = mockDevices( 100);
         deviceEntityList.forEach(deviceRepositoryManager::saveDevice);
 
         //mock device token binding
-        List<TokenEntity> generatedTokens =mockTokens( 20);
+        List<TokenEntity> generatedTokens =mockTokens( 100);
         generatedTokens.forEach(tokenEntity -> 
             deviceRepositoryManager.saveToken(tokenEntity.getProject(), tokenEntity));
 
         //获取demo app project token
-        List<TokenEntity> tokenEntityList = deviceRepositoryManager.getProjectTokens(Project.DEMO_APP.getCode());
-        List<TaskEntity> taskEntityList = mockTasks(1);
+        for (Project project : Project.values()) {
+            List<TokenEntity> tokenEntityList = deviceRepositoryManager.getProjectTokens(project.getCode());
 
-        for (int i = 0; i < Math.min(deviceEntityList.size(), tokenEntityList.size()); i++) {
-            TokenEntity token = tokenEntityList.get(i);
-            token.setDeviceId(deviceEntityList.get(i).getDeviceId());
-            deviceRepositoryManager.saveToken(token.getProject(), token);
-        }
+            for (TokenEntity token : tokenEntityList) {
+                token.setDeviceId(token.getDeviceId());
+                deviceRepositoryManager.saveToken(token.getProject(), token);
+                //绑定到设备
+                DeviceEntity device =deviceRepositoryManager.getDevice(token.getDeviceId());
+                if(device!=null){
+                    device.setTokenForProject(token.getProject(), token.getTokenId());
+                }
+            }
+            ;
+        };
+        List<TaskEntity> taskEntityList = mockTasks(1);
         System.out.println("DeviceRepositoryManager initialized successfully");
         System.out.println("Generated " + deviceEntityList.size() + " devices");
         System.out.println("Generated " + generatedTokens.size() + " tokens");
         System.out.println("Generated " + taskEntityList.size() + " tasks");
+
         
         // 创建任务
         taskEntityList.forEach(taskEntity -> {
@@ -95,9 +102,12 @@ public class TaskBindDeviceExample {
     public static List<DeviceEntity> mockDevices(int count) {
         String deviceFieldDslJson = """
                 {
-                  "deviceId": {"$JOIN": ["", "&.index"]},
+                  "deviceId": "&.index",
                   "groupId": {"$RANGE": [16, 65]},
-                  "status": {"$CHOICE": ["OFFLINE", "ONLINE"]}
+                  "agentVersion": {"$CHOICE": ["1.0", "1.1"]},
+                  "deviceStatus": {"$CHOICE": ["OFFLINE", "ONLINE"]},
+                  "createTime": {"$EXPR": "System.currentTimeMillis()"},
+                  "updateTime": {"$EXPR": "System.currentTimeMillis()"}
                 }
                 """;
         return MockEngineGenerator.generateDevices(deviceFieldDslJson, count);
@@ -107,13 +117,12 @@ public class TaskBindDeviceExample {
         String tokenFieldDslJson = """
                 {
                   "tokenId": {"$UUID": true},
-                  "deviceId": {"$JOIN": ["device-", "&.index"]},
+                  "deviceId": {"$RANGE": [0, 100]},
                   "project": {"$CHOICE": ["demoApp", "testApp"]},
                   "country": {"$CHOICE": ["us", "gb", "cn"]},
                   "platform": {"$CHOICE": ["android", "ios", "web"]},
-                  "tokenStatus": {"$CHOICE": ["ACTIVE", "INACTIVE", "EXPIRED", "BLOCKED"]},
+                  "tokenStatus": {"$CHOICE": ["ACTIVE", "INACTIVE"]},
                   "lastUserTime": {"$EXPR": "System.currentTimeMillis()"},
-                  "expireTime": {"$EXPR": "System.currentTimeMillis() + 86400000"},
                   "createTime": {"$EXPR": "System.currentTimeMillis()"},
                   "updateTime": {"$EXPR": "System.currentTimeMillis()"}
                 }

@@ -9,7 +9,7 @@ public class TaskEntity {
     private String taskId;
     private String taskName;
     private String project;
-    private String taskStatus; //NEW BLOCKED READY RUNNING PAUSED TERMINAL
+    private String taskStatus; //NEW(新建任务) BLOCKED(审核完成) READY(分配资源中)  RUNNING(运行中可以被调度的任务) PAUSED(暂停) TERMINAL(结束、中止)
     private String taskCountry;
     private User user;
     private long  taskCount;

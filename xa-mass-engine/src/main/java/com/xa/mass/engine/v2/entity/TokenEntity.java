@@ -21,7 +21,7 @@ public class TokenEntity {
         this.tokenId = tokenId;
         this.deviceId = deviceId;
         this.project = project;
-        this.tokenStatus = "ACTIVE";
+        this.tokenStatus = "INACTIVE";
         this.createTime = System.currentTimeMillis();
         this.updateTime = System.currentTimeMillis();
         this.lastUserTime = System.currentTimeMillis();
