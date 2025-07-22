@@ -16,6 +16,8 @@ public class TaskEntity {
     private String textContent;
     private Map<String,Object> taskScheduleRules; //任务分配规则，比如batch_size
     private Map<String,Object> taskDeviceMatchRules; //任务绑定设备规则
+
+    private long lockExpireTime;
     private long  createTime;
     private long  updateTime;
     private long  startTime;
@@ -174,5 +176,34 @@ public class TaskEntity {
 
     public void setEndTime(long endTime) {
         this.endTime = endTime;
+    }
+
+    public long getLockExpireTime() {
+        return lockExpireTime;
+    }
+
+    public void setLockExpireTime(long lockExpireTime) {
+        this.lockExpireTime = lockExpireTime;
+    }
+
+    @Override
+    public String toString() {
+        return "TaskEntity{" +
+                "taskId='" + taskId + '\'' +
+                ", taskName='" + taskName + '\'' +
+                ", project='" + project + '\'' +
+                ", taskStatus='" + taskStatus + '\'' +
+                ", taskCountry='" + taskCountry + '\'' +
+                ", user=" + user +
+                ", taskCount=" + taskCount +
+                ", textContent='" + textContent + '\'' +
+                ", taskScheduleRules=" + taskScheduleRules +
+                ", taskDeviceMatchRules=" + taskDeviceMatchRules +
+                ", lockExpireTime=" + lockExpireTime +
+                ", createTime=" + createTime +
+                ", updateTime=" + updateTime +
+                ", startTime=" + startTime +
+                ", endTime=" + endTime +
+                '}';
     }
 }

@@ -4,7 +4,9 @@ import com.xa.mass.base.channel.messaging.MessageMapProviderRegistry;
 import com.xa.mass.base.channel.messaging.MessageProviderType;
 import com.xa.mass.base.channel.messaging.MessageStreamProviderRegistry;
 import com.xa.mass.base.channel.messaging.api.MessageMap;
+import com.xa.mass.base.channel.messaging.api.MessageQueue;
 import com.xa.mass.base.channel.messaging.api.MessageStream;
+import com.xa.mass.base.channel.messaging.memory.InMemoryMessageQueue;
 import com.xa.mass.base.enums.Project;
 import com.xa.mass.engine.v2.entity.TaskEntity;
 import com.xa.mass.engine.v2.entity.TaskMsgEntity;
@@ -29,6 +31,8 @@ public class TaskRepositoryManager {
     private final ConcurrentMap<Project, MessageMap<String, TaskEntity>> projectTaskMap = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, MessageStream<String>> seedStreams = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, MessageStream<TaskMsgEntity>> msgStreams = new ConcurrentHashMap<>();
+
+    private final ConcurrentMap<Project, MessageQueue<String>> availableTaskQueueMap = new ConcurrentHashMap<>();
     private final MessageProviderType seedStreamType;
     private final MessageProviderType msgStreamType;
 
@@ -94,6 +98,9 @@ public class TaskRepositoryManager {
         Objects.requireNonNull(project, "Project cannot be null");
         Objects.requireNonNull(taskMap, "Task map cannot be null");
         projectTaskMap.put(project, taskMap);
+        if(!availableTaskQueueMap.containsKey(project)){
+            availableTaskQueueMap.put(project, new InMemoryMessageQueue<>(project.getCode(),String.class));
+        }
     }
 
     /**
@@ -161,6 +168,25 @@ public class TaskRepositoryManager {
         if (stream != null) {
             stream.offer(msg);
         }
+    }
+
+    //添加任务到可用队列
+    public void addTaskToAvailableQueue(TaskEntity task) {
+        availableTaskQueueMap.get(Project.valueOf(task.getProject())).offer(task.getTaskId());
+    }
+
+    //从可用队列中获取任务
+    public TaskEntity getTaskFromAvailableQueue(Project project) {
+        try {
+            String taskId = availableTaskQueueMap.get(project).poll(1, TimeUnit.SECONDS);
+            if (taskId != null) {
+                return getTask(project, taskId);
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            // Optionally log the interruption
+        }
+        return null;
     }
 
     public TaskMsgEntity getMsg(String msgStreamKey) {

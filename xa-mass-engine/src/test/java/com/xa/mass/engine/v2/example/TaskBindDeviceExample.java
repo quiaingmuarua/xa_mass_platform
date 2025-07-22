@@ -9,6 +9,8 @@ import com.xa.mass.engine.v2.entity.DeviceEntity;
 import com.xa.mass.engine.v2.entity.TaskEntity;
 import com.xa.mass.engine.v2.entity.TokenEntity;
 import com.xa.mass.engine.v2.monkey.MockEngineGenerator;
+import com.xa.mass.engine.v2.schedule.AutoRecoveryService;
+import com.xa.mass.engine.v2.schedule.DaemonServiceRegistry;
 import com.xa.mass.engine.v2.util.QueueKeyUtil;
 
 import java.util.Collection;
@@ -18,6 +20,8 @@ public class TaskBindDeviceExample {
 
 
     public static void main(String[] args) {
+
+
         DeviceRepositoryManager deviceRepositoryManager = new DeviceRepositoryManager(new InMemoryMessageMap<>("deviceMap",DeviceEntity.class));
         TaskRepositoryManager taskRepositoryManager = TaskRepositoryManager.createWithDefaultProjects(MessageProviderType.IN_MEMORY);
 
@@ -31,14 +35,18 @@ public class TaskBindDeviceExample {
         deviceRepositoryManager.getProjectTokens(Project.DEMO_APP.getCode()).forEach(System.out::println);
 
 
-        taskEntityList.forEach(taskEntity ->
-                {
-                    System.out.println("start check task "+taskEntity.getTaskId());
+        taskEntityList.forEach(System.out::println);
+        DaemonServiceRegistry daemonServiceRegistry = new DaemonServiceRegistry();
+        daemonServiceRegistry.register( new AutoRecoveryService(taskRepositoryManager,deviceRepositoryManager,Project.DEMO_APP));
+        daemonServiceRegistry.startAll();
 
-                }
 
-                );
-
+        //阻塞主进程
+        try {
+            Thread.currentThread().join();
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
 
 
     }
@@ -71,7 +79,7 @@ public class TaskBindDeviceExample {
             }
             ;
         };
-        List<TaskEntity> taskEntityList = mockTasks(1);
+        List<TaskEntity> taskEntityList = mockTasks(10);
         System.out.println("DeviceRepositoryManager initialized successfully");
         System.out.println("Generated " + deviceEntityList.size() + " devices");
         System.out.println("Generated " + generatedTokens.size() + " tokens");
@@ -136,7 +144,7 @@ public class TaskBindDeviceExample {
                   "taskId": {"$UUID": true},
                   "taskName": {"$JOIN": ["Task-", "&.index"]},
                   "project": {"$CHOICE": ["demoApp", "testApp"]},
-                  "taskStatus": {"$CHOICE": ["NEW", "READY", "RUNNING", "PAUSED"]},
+                  "taskStatus": {"$CHOICE": ["NEW", "PAUSED"]},
                   "taskCountry": {"$CHOICE": ["us", "gb", "cn"]},
                   "taskCount": {"$RANGE": [10, 200]},
                   "textContent": {"$JOIN": ["Content for task ", "&.index"]},
