@@ -6,7 +6,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class DeviceEntity {
     private String deviceId;
-    private String deviceStatus; // ONLINE OFFLINE BUSY MAINTENANCE
+    private String deviceStatus; // ONLINE(在线 可用) OFFLINE(不在线) BUSY(任务中) LOGGING(上号中)
     private String agentVersion;
     private String groupId;
     private Map<String,String> projectTokens=new ConcurrentHashMap<>(); //key project, value tokenId

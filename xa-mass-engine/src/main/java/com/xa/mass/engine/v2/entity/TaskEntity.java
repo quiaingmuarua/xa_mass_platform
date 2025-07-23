@@ -96,6 +96,7 @@ public class TaskEntity {
 
     public void setTaskStatus(String taskStatus) {
         this.taskStatus = taskStatus;
+        this.updateTime=System.currentTimeMillis();
     }
 
     public String getTaskCountry() {

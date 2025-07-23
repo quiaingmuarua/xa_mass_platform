@@ -172,7 +172,7 @@ public class TaskRepositoryManager {
 
     //添加任务到可用队列
     public void addTaskToAvailableQueue(TaskEntity task) {
-        availableTaskQueueMap.get(Project.valueOf(task.getProject())).offer(task.getTaskId());
+        availableTaskQueueMap.get(Project.fromCode(task.getProject())).offer(task.getTaskId());
     }
 
     //从可用队列中获取任务

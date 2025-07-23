@@ -15,6 +15,7 @@ import com.xa.mass.engine.v2.util.QueueKeyUtil;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Objects;
 
 public class TaskBindDeviceExample {
 
@@ -36,9 +37,19 @@ public class TaskBindDeviceExample {
 
 
         taskEntityList.forEach(System.out::println);
+
+
+        taskEntityList.forEach(taskEntity -> {
+            if(Objects.equals(taskEntity.getTaskStatus(), "NEW")){
+                taskEntity.setTaskStatus("BLOCKED");
+            }
+
+        });
         DaemonServiceRegistry daemonServiceRegistry = new DaemonServiceRegistry();
         daemonServiceRegistry.register( new AutoRecoveryService(taskRepositoryManager,deviceRepositoryManager,Project.DEMO_APP));
         daemonServiceRegistry.startAll();
+
+
 
 
         //阻塞主进程

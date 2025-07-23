@@ -42,21 +42,30 @@ public class AutoRecoveryService extends AbstractDaemonService{
 
     public void checkAllTask(){
         System.out.println("checkAllTask");
-
-
         this.taskRepositoryManager.getProjectTasks(this.project).forEach(taskEntity->{
-
             long timestampInSeconds = Instant.now().getEpochSecond()*1000;
             if(Objects.equals(taskEntity.getTaskStatus(), "BLOCKED")||taskEntity.getTaskStatus().equals("READY")||taskEntity.getTaskStatus().equals("RUNNING")) {
-                System.out.println("start to check taskEntity"+taskEntity + "time "+(timestampInSeconds-taskEntity.getUpdateTime()));
                 if ((taskEntity.getLockExpireTime() < taskEntity.getUpdateTime()) &&(timestampInSeconds-taskEntity.getUpdateTime()>10)){
                     System.out.println("add task to available queue"+taskEntity);
                         taskRepositoryManager.addTaskToAvailableQueue(taskEntity);
+                        taskEntity.setLockExpireTime(timestampInSeconds);
                 }
             }
 
         });
 
+    }
+
+
+    public void checkAllDevice(){
+        System.out.println("checkAllDevice");
+        this.deviceRepositoryManager.getAllDevices().forEach(deviceEntity->{    
+            if(deviceEntity.getLockExpireTime()<deviceEntity.getUpdateTime() && (Instant.now().getEpochSecond()*1000-deviceEntity.getUpdateTime()>10) && deviceEntity.getDeviceStatus().equals("ONLINE")){
+                System.out.println("add device to available queue"+deviceEntity);
+//                deviceRepositoryManager.addDeviceToAvailableQueue(deviceEntity);
+//                deviceEntity.setLockExpireTime(Instant.now().getEpochSecond()*1000);
+            }
+        });
     }
 
 
