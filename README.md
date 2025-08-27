@@ -118,7 +118,3 @@ var distributedEventBus = new StreamEventBusFacade<MassEvent>(redisStream);
 
 ---
 
-> 本项目持续演进中，欢迎贡献与建议！
-
-> 说明：
-> - **json-dsl** 是 xa-mass-base 下的一个子模块（包），用于批量 mock、表达式、嵌套、内置函数等，广泛服务于 mock、测试和规则链。
