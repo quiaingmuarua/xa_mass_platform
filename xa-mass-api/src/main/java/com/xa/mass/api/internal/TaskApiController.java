@@ -246,15 +246,9 @@ public class TaskApiController {
                 if (task.getUser() != null) {
                     task.getUser().setName(request.getUserId());
                 }
-                try {
-                    java.lang.reflect.Method setTargetList = task.getClass().getMethod("setTargetList", java.util.List.class);
-                    setTargetList.invoke(task, request.getTargetList());
-                } catch (Exception ignore) {
-                }
-                try {
-                    java.lang.reflect.Method setBatchSize = task.getClass().getMethod("setBatchSize", int.class);
-                    setBatchSize.invoke(task, request.getBatchSize());
-                } catch (Exception ignore) {
+                // Task does not have setTargetList; batch size can be set directly
+                if (request.getBatchSize() > 0) {
+                    task.setBatchSize(request.getBatchSize());
                 }
                 taskManager.updateTask(task);
                 return ResponseEntity.ok(java.util.Map.of(

@@ -11,6 +11,8 @@ import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.Map;
+
 public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWebSocketFrame> {
     private static final Logger logger = LoggerFactory.getLogger(DispatcherInboundHandler.class);
     private final DispatchRuntimeContext dispatcherContext;
@@ -22,29 +24,34 @@ public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWe
     @Override
     protected void channelRead0(ChannelHandlerContext ctx, TextWebSocketFrame msgFrame) {
         String raw = msgFrame.text();
-        if (raw == null || !raw.trim().startsWith("{")) {
-            throw new ValidationException("Dropped invalid message: " + raw);
-        }
-        MassMessage massMessage = MessageParser.INSTANCE.tryDecode(raw);
-        if (massMessage == null || !MessageParser.INSTANCE.isValid(massMessage)) {
-            logger.error("Message parse/validate failed. Raw: {}", raw);
-            throw new ValidationException("Message missing context info: " + raw);
-        }
-        if (massMessage.getContext() == null) {
-            logger.error("Parsed context is null. Raw: {}", raw);
-            throw new ValidationException("Message context is null.");
-        }
-
-        String deviceId = massMessage.getContext().getDeviceId();
-        String connRole = massMessage.getContext().getConnRole();
-        String project = massMessage.getProject();
-        String msgId = massMessage.getMsgId();
-        if (deviceId == null || connRole == null || project == null || msgId == null) {
-            logger.error("deviceId/connRole/project/msgId is null: deviceId={}, connRole={}, project={}, msgId={}, raw={}",
-                    deviceId, connRole, project, msgId, raw);
-            throw new ValidationException("message 基本字段不全");
-        }
         try {
+            if (raw == null || !raw.trim().startsWith("{")) {
+                sendError(ctx, "INVALID_FORMAT", "Message must be a JSON object");
+                return;
+            }
+            MassMessage massMessage = MessageParser.INSTANCE.tryDecode(raw);
+            if (massMessage == null || !MessageParser.INSTANCE.isValid(massMessage)) {
+                logger.error("Message parse/validate failed. Raw: {}", raw);
+                sendError(ctx, "PARSE_FAILED", "Message missing context info");
+                return;
+            }
+            if (massMessage.getContext() == null) {
+                logger.error("Parsed context is null. Raw: {}", raw);
+                sendError(ctx, "MISSING_CONTEXT", "Message context is null");
+                return;
+            }
+
+            String deviceId = massMessage.getContext().getDeviceId();
+            String connRole = massMessage.getContext().getConnRole();
+            String project = massMessage.getProject();
+            String msgId = massMessage.getMsgId();
+            if (deviceId == null || connRole == null || project == null || msgId == null) {
+                logger.error("deviceId/connRole/project/msgId is null: deviceId={}, connRole={}, project={}, msgId={}, raw={}",
+                        deviceId, connRole, project, msgId, raw);
+                sendError(ctx, "MISSING_FIELDS", "deviceId/connRole/project/msgId are required");
+                return;
+            }
+
             Envelope envelope = Envelope.builder()
                     .rawJson(raw)
                     .deviceId(deviceId)
@@ -59,7 +66,6 @@ public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWe
             org.slf4j.MDC.put("traceId", envelope.getTraceId());
             org.slf4j.MDC.put("project", envelope.getProject());
             org.slf4j.MDC.put("receivedAt", String.valueOf(envelope.getReceivedAt()));
-//            org.slf4j.MDC.put("rawJson", envelope.getRawJson());
             try {
                 logger.info("channelRead0 envelope");
             } finally {
@@ -69,9 +75,26 @@ public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWe
             dispatcherContext.getMessageTransporter().sendInput(envelope);
             dispatcherContext.getSessionManager().addSession(deviceId, connRole, ctx.channel(), ctx);
             logger.info("queue size {}", dispatcherContext.getMessageTransporter().inputQueueSize());
-        } catch (Exception e) {
-            logger.error("Error in channelRead0", e);
-        }
 
+        } catch (Exception e) {
+            logger.error("Unexpected error in channelRead0", e);
+            sendError(ctx, "INTERNAL_ERROR", "Internal server error");
+        }
+    }
+
+    @Override
+    public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
+        logger.error("Channel exception: {}", cause.getMessage(), cause);
+        if (ctx.channel().isActive()) {
+            sendError(ctx, "CHANNEL_ERROR", cause.getMessage());
+        }
+    }
+
+    private void sendError(ChannelHandlerContext ctx, String code, String message) {
+        if (ctx.channel().isActive()) {
+            String errorJson = new com.google.gson.Gson().toJson(
+                    Map.of("code", code, "message", message, "type", "ERROR"));
+            ctx.writeAndFlush(new TextWebSocketFrame(errorJson));
+        }
     }
 } 

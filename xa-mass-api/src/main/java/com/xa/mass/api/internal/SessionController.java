@@ -4,6 +4,7 @@ import com.xa.mass.api.model.ApiResponse;
 import com.xa.mass.gateway.dispatcher.DispatcherContextRegistry;
 import com.xa.mass.gateway.dispatcher.context.SessionContext;
 import com.xa.mass.gateway.session.ServerSessionManager;
+import io.netty.channel.Channel;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -24,14 +25,22 @@ public class SessionController {
     @Operation(summary = "获取所有在线Session/Device详情")
     public ApiResponse<List<Map<String, Object>>> listSessions() {
         List<Map<String, Object>> data = new ArrayList<>();
-        SessionContext sessionContext = DispatcherContextRegistry.getSessionContext();
-        if (sessionContext != null) {
-            ServerSessionManager sessionManager = sessionContext.getSessionManager();
-            if (sessionManager != null) {
-                Map<String, Object> info = new HashMap<>();
-                info.put("sessionManager", sessionManager.toString());
-                data.add(info);
-            }
+        ServerSessionManager sessionManager = resolveSessionManager();
+        if (sessionManager != null) {
+            sessionManager.getAllDeviceChannels().forEach((deviceId, roleMap) -> {
+                Map<String, Object> entry = new HashMap<>();
+                entry.put("deviceId", deviceId);
+                List<Map<String, Object>> roles = new ArrayList<>();
+                roleMap.forEach((role, channel) -> {
+                    Map<String, Object> roleInfo = new HashMap<>();
+                    roleInfo.put("role", role);
+                    roleInfo.put("active", channel.isActive());
+                    roleInfo.put("channelId", channel.id().asShortText());
+                    roles.add(roleInfo);
+                });
+                entry.put("connections", roles);
+                data.add(entry);
+            });
         }
         return ApiResponse.success(data);
     }
@@ -40,17 +49,19 @@ public class SessionController {
     @Operation(summary = "连接统计")
     public ApiResponse<Map<String, Object>> sessionStats() {
         Map<String, Object> data = new HashMap<>();
-        SessionContext sessionContext = DispatcherContextRegistry.getSessionContext();
-        if (sessionContext != null) {
-            ServerSessionManager sessionManager = sessionContext.getSessionManager();
-            if (sessionManager != null) {
-                data.put("sessionManager", sessionManager.toString());
-            } else {
-                data.put("sessionManager", "null");
-            }
+        ServerSessionManager sessionManager = resolveSessionManager();
+        if (sessionManager != null) {
+            data.put("activeConnections", sessionManager.getDeviceConnectionCount());
+            data.put("deviceCount", sessionManager.getAllDeviceChannels().size());
         } else {
-            data.put("sessionManager", "null");
+            data.put("activeConnections", 0);
+            data.put("deviceCount", 0);
         }
         return ApiResponse.success(data);
     }
-} 
+
+    private ServerSessionManager resolveSessionManager() {
+        SessionContext ctx = DispatcherContextRegistry.getSessionContext();
+        return ctx != null ? ctx.getSessionManager() : null;
+    }
+}

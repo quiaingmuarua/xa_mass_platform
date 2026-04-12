@@ -77,9 +77,11 @@ public class TaskManager {
 
             // 5. 存储任务
             taskStorage.saveTask(task);
-            for (String target : dto.getTargetList()) {
-                String msgId = java.util.UUID.randomUUID().toString();
-                addTaskMessage(tid, new TaskMsg(msgId, tid, target));
+            if (dto.getTargetList() != null) {
+                for (String target : dto.getTargetList()) {
+                    String msgId = java.util.UUID.randomUUID().toString();
+                    addTaskMessage(tid, new TaskMsg(msgId, tid, target));
+                }
             }
 
             long duration = System.currentTimeMillis() - startTime;
@@ -137,6 +139,22 @@ public class TaskManager {
     public boolean deleteTask(String taskId) {
         LogUtils.setTaskId(taskId);
         LogUtils.logOperationStart("DELETE_TASK", "TaskManager", "taskId", taskId);
+
+        Task task = taskStorage.getTask(taskId).orElse(null);
+        if (task == null) {
+            LogUtils.logOperationFailure("TASK_DELETE_ERROR", "任务不存在", 0);
+            return false;
+        }
+        // Only NEW and TERMINAL tasks can be deleted safely.
+        // Deleting a READY/RUNNING/PAUSED task would leave in-progress work orphaned.
+        com.xa.mass.base.enums.task.TaskStatus status = task.getStatus();
+        if (status != com.xa.mass.base.enums.task.TaskStatus.NEW
+                && status != com.xa.mass.base.enums.task.TaskStatus.TERMINAL) {
+            logger.warn("拒绝删除非终态任务: taskId={}, status={}", taskId, status);
+            LogUtils.logOperationFailure("TASK_DELETE_REJECTED",
+                    "任务状态 " + status + " 不允许删除，请先终止任务", 0);
+            return false;
+        }
 
         boolean result = taskStorage.deleteTask(taskId);
 
