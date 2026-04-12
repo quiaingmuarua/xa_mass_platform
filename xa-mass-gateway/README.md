@@ -1,5 +1,22 @@
 # xa-mass-gateway
 
+## Agent Notes
+
+- Current role: WebSocket/session/message dispatch layer
+- Current runtime validation: verified only as part of full startup via `xa-mass-mock`
+- Do not assume this module has a separately verified standalone boot path
+- For verified commands and runtime behavior, read:
+  - [`../AGENTS.md`](../AGENTS.md)
+  - [`../doc/AGENT_BASELINE.md`](../doc/AGENT_BASELINE.md)
+  - [`../doc/VERIFIED_RUNBOOK.md`](../doc/VERIFIED_RUNBOOK.md)
+
+## Start Here
+
+Open these first if you are debugging WebSocket/session behavior:
+
+- `src/main/java/com/xa/mass/gateway/server/WebSocketServerImpl.java`
+- `src/main/java/com/xa/mass/gateway/dispatcher/ServerMessageDispatcher.java`
+
 本模块为消息网关与协议适配层，负责：
 
 - WebSocket 连接管理

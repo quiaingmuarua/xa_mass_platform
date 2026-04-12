@@ -270,6 +270,33 @@ Lifecycle-only command:
   test
 ```
 
+Verified API controller test command:
+
+```bash
+./mvnw -pl xa-mass-api -am clean \
+  -Dtest=TaskApiControllerTest \
+  -Dsurefire.failIfNoSpecifiedTests=false \
+  test
+```
+
+Verified result:
+
+- `com.xa.mass.api.internal.TaskApiControllerTest`
+- 14 tests, 0 failures, 0 errors
+- covers:
+  - `createTask`
+  - `getTask`
+  - `getTask` not-found path
+  - `DELETE /{taskId}`
+  - `PUT /{taskId}`
+  - `PUT /{taskId}` not-found path
+  - `GET /{taskId}/messages`
+  - `audit`
+  - `pause`
+  - `resume`
+  - `terminate`
+  - `PUT /status` branch selection for `approve` vs `resume`
+
 ## 8. Historical Test Debt
 
 Do not treat `xa-mass-engine/src/test/java/com/xa/mass/engine/v2/**` as current regression.

@@ -251,3 +251,30 @@ curl -i -X POST "http://127.0.0.1:8088/status/api/tasks/{taskId}/audit?approved=
 ### 10.3 当前测试面说明
 
 `xa-mass-engine/src/test/java/com/xa/mass/engine/v2/**` 下的历史测试/示例已从主线测试流程排除，因为它们依赖已经不存在的 `com.xa.mass.base.channel.messaging.*` 包树。
+
+### 10.4 API 控制器测试
+
+```bash
+./mvnw -pl xa-mass-api -am clean \
+  -Dtest=TaskApiControllerTest \
+  -Dsurefire.failIfNoSpecifiedTests=false \
+  test
+```
+
+2026-04-12 已实测：
+
+- `com.xa.mass.api.internal.TaskApiControllerTest`
+- 共 `14` 个测试，`0` failures，`0` errors
+- 已覆盖：
+  - `createTask`
+  - `getTask`
+  - `getTask` not-found 分支
+  - `DELETE /{taskId}`
+  - `PUT /{taskId}`
+  - `PUT /{taskId}` not-found 分支
+  - `GET /{taskId}/messages`
+  - `audit`
+  - `pause`
+  - `resume`
+  - `terminate`
+  - `PUT /status` 对 `approve/resume` 分支选择

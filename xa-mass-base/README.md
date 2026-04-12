@@ -1,5 +1,26 @@
 # XA-Mass Base Platform
 
+## Agent Notes
+
+- Current role: shared infrastructure and models
+- Contains both mainline and historical infrastructure code
+- EventBus is split between:
+  - `channel/eventbus`
+  - `old/eventbus`
+- Current runtime still uses parts of the old path
+- For verified commands and runtime behavior, read:
+  - [`../AGENTS.md`](../AGENTS.md)
+  - [`../doc/AGENT_BASELINE.md`](../doc/AGENT_BASELINE.md)
+  - [`../doc/VERIFIED_RUNBOOK.md`](../doc/VERIFIED_RUNBOOK.md)
+
+## Start Here
+
+Open these first if you are debugging shared behavior:
+
+- `src/main/java/com/xa/mass/base/enums/task/TaskStatus.java`
+- `src/main/java/com/xa/mass/base/model/Task.java`
+- `src/main/java/com/xa/mass/base/model/TaskMsg.java`
+
 XA-Mass 基础平台，提供两大核心能力：
 
 - **JSON-DSL 框架**：强类型、可扩展的 JSON 驱动领域特定语言引擎

@@ -1,5 +1,31 @@
 # xa-mass-engine
 
+## Agent Notes
+
+- Current role: mainline business logic
+- Current status: active production path
+- `v2` exists in this module but is not the current mainline
+- Verified engine regression is currently green through:
+  - `TaskDeviceAssignListenerTest`
+  - `TaskManagerLifecycleTest`
+- For verified commands and runtime behavior, read:
+  - [`../AGENTS.md`](../AGENTS.md)
+  - [`../doc/AGENT_BASELINE.md`](../doc/AGENT_BASELINE.md)
+  - [`../doc/VERIFIED_RUNBOOK.md`](../doc/VERIFIED_RUNBOOK.md)
+
+## Start Here
+
+Open these first if you are debugging task/device behavior:
+
+- `src/main/java/com/xa/mass/engine/TaskManager.java`
+- `src/main/java/com/xa/mass/engine/DeviceManager.java`
+- `src/main/java/com/xa/mass/engine/rules/RuleManager.java`
+
+Important:
+
+- Do not assume `src/test/java/com/xa/mass/engine/v2/**` belongs to current regression.
+- Those historical tests were excluded because they depend on removed messaging packages.
+
 本模块为业务核心模块，负责：
 
 - 任务调度与分发（通过事件驱动）
