@@ -17,10 +17,9 @@ public class TaskStorageFactory {
             case MEMORY:
                 return new InMemoryTaskStorage();
             case REDIS:
-                return new RedisTaskStorage();
+                throw new UnsupportedOperationException("Redis task storage is not implemented yet; use MEMORY");
             case DATABASE:
-                // TODO: 实现数据库存储
-                throw new UnsupportedOperationException("Database storage not implemented yet");
+                throw new UnsupportedOperationException("Database task storage is not implemented yet; use MEMORY");
             default:
                 throw new IllegalArgumentException("Unsupported storage type: " + type);
         }
@@ -37,10 +36,9 @@ public class TaskStorageFactory {
             case MEMORY:
                 return new InMemoryDeviceStorage();
             case REDIS:
-                return new RedisDeviceStorage();
+                throw new UnsupportedOperationException("Redis device storage is not implemented yet; use MEMORY");
             case DATABASE:
-                // TODO: 实现数据库存储
-                throw new UnsupportedOperationException("Database storage not implemented yet");
+                throw new UnsupportedOperationException("Database device storage is not implemented yet; use MEMORY");
             default:
                 throw new IllegalArgumentException("Unsupported storage type: " + type);
         }
@@ -57,10 +55,9 @@ public class TaskStorageFactory {
             case MEMORY:
                 return new InMemoryRuleStorage();
             case REDIS:
-                return new RedisRuleStorage();
+                throw new UnsupportedOperationException("Redis rule storage is not implemented yet; use MEMORY");
             case DATABASE:
-                // TODO: 实现数据库存储
-                throw new UnsupportedOperationException("Database storage not implemented yet");
+                throw new UnsupportedOperationException("Database rule storage is not implemented yet; use MEMORY");
             default:
                 throw new IllegalArgumentException("Unsupported storage type: " + type);
         }
