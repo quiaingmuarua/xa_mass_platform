@@ -2,6 +2,7 @@ package com.xa.mass.starter;
 
 import com.xa.mass.gateway.dispatcher.ServerMessageDispatcher;
 import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
+import com.xa.mass.gateway.session.ServerSessionManager;
 import com.xa.mass.starter.config.GatewayConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -119,17 +120,8 @@ public class MassGateway {
      */
     private void initializeConnectionManagement() {
         logger.info("🔌 Initializing connection management...");
-
-        try {
-            // TODO: 实现连接管理初始化
-            // 例如：初始化连接池、设置最大连接数等
-
-            logger.info("✅ Connection management initialized");
-
-        } catch (Exception e) {
-            logger.error("❌ Failed to initialize connection management", e);
-            throw new RuntimeException("Failed to initialize connection management", e);
-        }
+        // ServerSessionManager.INSTANCE is a self-initializing singleton; no explicit setup needed
+        logger.info("✅ Connection management ready (max={} connections)", config.getMaxConnections());
     }
 
     /**
@@ -137,13 +129,9 @@ public class MassGateway {
      */
     private void shutdownConnectionManagement() {
         logger.info("🔌 Shutting down connection management...");
-
         try {
-            // TODO: 实现连接管理关闭
-            // 例如：关闭所有连接、释放资源等
-
+            ServerSessionManager.INSTANCE.shutdown();
             logger.info("✅ Connection management shut down");
-
         } catch (Exception e) {
             logger.error("❌ Error shutting down connection management", e);
         }

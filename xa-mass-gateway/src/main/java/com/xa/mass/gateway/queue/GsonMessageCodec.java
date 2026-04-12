@@ -30,7 +30,7 @@ public class GsonMessageCodec implements MessageCodec {
             return gson.toJson(message);
         } catch (Exception e) {
             logger.error("Failed to encode message: {}", message, e);
-            return null;
+            throw new IllegalArgumentException("Cannot encode message: " + message, e);
         }
     }
 
@@ -40,7 +40,7 @@ public class GsonMessageCodec implements MessageCodec {
             return gson.fromJson(json, MassMessage.class);
         } catch (Exception e) {
             logger.error("Failed to decode JSON: {}", json, e);
-            return null;
+            return null; // callers guard with isValid() / null check
         }
     }
 

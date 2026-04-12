@@ -166,6 +166,25 @@ public class ServerSessionManager {
     }
 
     /**
+     * 关闭所有活跃连接并清除内部状态。
+     * 在应用停机时调用。
+     */
+    public synchronized void shutdown() {
+        logger.info("Shutting down session manager, closing {} device connections...", deviceChannelMap.size());
+        for (Map<String, Channel> roleMap : deviceChannelMap.values()) {
+            for (Channel channel : roleMap.values()) {
+                if (channel.isActive()) {
+                    channel.close();
+                }
+            }
+        }
+        deviceChannelMap.clear();
+        deviceChannelCtxMap.clear();
+        channelIndex.clear();
+        logger.info("Session manager shutdown complete.");
+    }
+
+    /**
      * 获取当前所有设备连接 Channel 的只读副本
      *
      * @return 一个包含设备ID到角色映射，再到Channel的只读Map
