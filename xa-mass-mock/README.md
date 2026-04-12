@@ -1,6 +1,8 @@
 # xa-mass-mock
 
-Mock 全链路应用模块，提供完整的模拟环境，包括 Gateway、Engine 和 API 服务。
+Mock 全链路应用模块。
+
+它是当前仓库里已验证的真实 Spring Boot 入口，但本 README 里的部分历史启动命令已经失效。实际启动方式以仓库根目录的 [`doc/VERIFIED_RUNBOOK.md`](../doc/VERIFIED_RUNBOOK.md) 为准。
 
 ## 功能特性
 
@@ -12,17 +14,33 @@ Mock 全链路应用模块，提供完整的模拟环境，包括 Gateway、Engi
 
 ## 快速启动
 
-### 1. 全链路服务启动（推荐）
+### 1. 全链路服务启动（已失效，不要直接照做）
 
 ```bash
-# 开发环境启动
+# 这些命令在当前仓库状态下不可靠
 mvn spring-boot:run -Dspring-boot.run.profiles=dev
-
-# 生产环境启动
 mvn spring-boot:run -Dspring-boot.run.profiles=prod
 ```
 
-### 2. 客户端模拟启动
+原因：
+
+- `xa-mass-mock` 不能像独立单模块应用那样直接解析同仓库依赖
+- 当前可行方式是从仓库根目录先编译 reactor，再按 classpath 直接启动主类
+
+### 2. 全链路服务启动（当前已验证）
+
+在仓库根目录执行：
+
+```bash
+./mvnw -DskipTests compile
+./mvnw -pl xa-mass-mock -am dependency:build-classpath \
+  -Dmdep.outputFile=/tmp/xa-mass-mock.cp \
+  -DincludeScope=runtime
+java -cp "xa-mass-mock/target/classes:xa-mass-starter/target/classes:xa-mass-api/target/classes:xa-mass-engine/target/classes:xa-mass-gateway/target/classes:xa-mass-base/target/classes:$(cat /tmp/xa-mass-mock.cp)" \
+  com.xa.mass.mock.MockApplicationSpringBootApp
+```
+
+### 3. 客户端模拟启动
 
 ```bash
 # 启动客户端模拟器
@@ -32,11 +50,10 @@ mvn spring-boot:run -Dspring-boot.run.profiles=client
 java -jar xa-mass-mock.jar --spring.profiles.active=client
 ```
 
-### 3. 分离式启动
+### 4. 分离式启动
 
 ```bash
-# 终端1: 启动服务端
-mvn spring-boot:run -Dspring-boot.run.profiles=dev
+# 终端1: 先按上面的“当前已验证”方式启动服务端
 
 # 终端2: 启动客户端
 mvn spring-boot:run -Dspring-boot.run.profiles=client
@@ -113,9 +130,9 @@ mvn spring-boot:run -Dspring-boot.run.profiles=client
 
 ## 启动流程
 
-1. **Spring Boot 启动** - 初始化 Web API 服务
-2. **MassApplication 构建** - 使用 Builder 模式构建应用
-3. **组件启动** - 根据配置启动 Gateway 和 Engine
+1. **Spring Boot 启动** - 初始化 Web/API 服务
+2. **MassApplicationBuilder 构建** - 组装 Gateway 和 Engine
+3. **组件启动** - 启动 Gateway、Engine、WebSocket
 4. **健康检查** - 验证组件启动状态
 5. **Mock数据加载** - 加载模拟数据
 6. **事件发布** - 发布初始任务事件
@@ -182,11 +199,15 @@ mvn spring-boot:run -Dspring-boot.run.profiles=custom
     - 检查 8088 和 18088 端口是否被占用
     - 修改配置文件中的端口设置
 
-2. **Mock数据加载失败**
+2. **按 README 命令启动失败**
+    - 不要在模块目录直接执行 `mvn spring-boot:run`
+    - 按 `../doc/VERIFIED_RUNBOOK.md` 使用根目录启动方式
+
+3. **Mock数据加载失败**
     - 检查配置文件路径是否正确
     - 确认 JSON 文件格式是否有效
 
-3. **组件启动失败**
+4. **组件启动失败**
     - 检查组件配置是否正确
     - 查看详细错误日志
 

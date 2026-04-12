@@ -1,9 +1,13 @@
 # XA Mass Platform - Documentation Index
 
+> Important: this index contains historical documents mixed with current ones.
+> For agent handoff and verified commands, start with:
+> - [`doc/AGENT_BASELINE.md`](./doc/AGENT_BASELINE.md)
+> - [`doc/VERIFIED_RUNBOOK.md`](./doc/VERIFIED_RUNBOOK.md)
+
 ## 📚 Documentation Overview
 
-This directory contains comprehensive documentation for the XA Mass Platform - a multi-module, event-driven message
-scheduling and distribution platform built with Spring Boot.
+This repository contains both current and historical documentation. Some files describe intended architecture rather than verified runtime behavior.
 
 ## 📖 Available Documentation
 
@@ -31,7 +35,7 @@ scheduling and distribution platform built with Spring Boot.
 - Testing & mock setup
 - Troubleshooting guide
 
-**Best for:** Developers who need quick access to common operations and configurations.
+**Best for:** Quick lookup after you have checked the verified runbook.
 
 ### 3. [README.md](./README.md) 🏠
 
@@ -93,9 +97,10 @@ xa-mass-platform/
 
 ## 🚀 Getting Started Quickly
 
-1. **First Time Users**: Start with [README.md](./README.md)
-2. **API Integration**: Go to [API_DOCUMENTATION.md](./API_DOCUMENTATION.md)
-3. **Quick Operations**: Use [QUICK_REFERENCE.md](./QUICK_REFERENCE.md)
+1. **Reality Check First**: Start with [doc/AGENT_BASELINE.md](./doc/AGENT_BASELINE.md)
+2. **Verified Commands**: Use [doc/VERIFIED_RUNBOOK.md](./doc/VERIFIED_RUNBOOK.md)
+3. **Project Overview**: Then read [README.md](./README.md)
+4. **Quick Operations**: Use [QUICK_REFERENCE.md](./QUICK_REFERENCE.md)
 
 ## 📋 Common Use Cases
 
@@ -126,7 +131,7 @@ The platform integrates with several key technologies:
 
 - **Spring Boot 3.3.0**: Core framework and dependency injection
 - **Netty**: High-performance WebSocket server implementation
-- **Guava EventBus**: Event-driven communication infrastructure
+- **Guava EventBus / old.eventbus**: still part of the current runtime path
 - **QLExpress**: Rule engine for flexible business logic evaluation
 - **Logback**: Structured JSON logging with observability features
 
@@ -165,7 +170,7 @@ Each documentation file includes practical examples:
 
 This documentation is designed to be:
 
-- **Living Documentation**: Updated alongside code changes
+- **Mixed Fidelity**: contains both verified docs and historical design docs
 - **Example-Rich**: Practical, runnable examples for every feature
 - **Comprehensive**: Covers all public APIs and integration patterns
 - **Accessible**: Multiple documentation levels for different user needs
@@ -204,6 +209,6 @@ For questions, issues, or contributions:
 ---
 
 **Document Version**: 1.0  
-**Last Updated**: January 2025  
+**Last Updated**: April 12, 2026  
 **Platform Version**: 0.0.1-SNAPSHOT  
-**Coverage**: All public APIs, functions, and components documented
+**Coverage**: Mixed; verify against baseline/runbook before relying on a document

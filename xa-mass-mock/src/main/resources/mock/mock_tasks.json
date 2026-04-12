@@ -29,12 +29,18 @@
           5
         ]
       },
-      "targetList": {
-        "TYPE": "LIST",
-        "COUNT": 10,
-        "MODEL": "java.lang.String",
-        "FIELDS": {}
-      }
+      "targetList": [
+        "target-us-000",
+        "target-us-001",
+        "target-us-002",
+        "target-us-003",
+        "target-us-004",
+        "target-us-005",
+        "target-us-006",
+        "target-us-007",
+        "target-us-008",
+        "target-us-009"
+      ]
     }
   },
   {
@@ -67,12 +73,13 @@
           5
         ]
       },
-      "targetList": {
-        "TYPE": "LIST",
-        "COUNT": 5,
-        "MODEL": "java.lang.String",
-        "FIELDS": {}
-      }
+      "targetList": [
+        "target-gb-000",
+        "target-gb-001",
+        "target-gb-002",
+        "target-gb-003",
+        "target-gb-004"
+      ]
     }
   }
 ] 

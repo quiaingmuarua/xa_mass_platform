@@ -1,6 +1,12 @@
 # xa-mass-starter
 
-本模块为平台启动与聚合模块，负责组装和启动所有子系统（如 gateway、engine、api 等）。
+本模块为平台启动与聚合模块，负责组装 Gateway / Engine 生命周期。
+
+需要明确：
+
+- 它不是当前仓库里已验证的 Spring Boot 入口
+- 不要把它当成 `mvn spring-boot:run` 的启动模块
+- 当前真实入口在 `xa-mass-mock`
 
 ## 架构设计
 
@@ -35,7 +41,7 @@ MassGateway/MassEngine (组件实例化)
 - 管理应用启动、关闭流程
 - 构建MassGateway（需要dispatcherContext）
 - 组件生命周期管理
-- 作为 Spring Boot 启动入口
+- 供上层入口调用的生命周期壳
 
 ## 使用方式
 
@@ -113,12 +119,16 @@ start();
 
 - xa-mass-gateway
 - xa-mass-engine
-- xa-mass-api
 
 ## 设计原则
 
 > 仅在此模块中进行系统启动和聚合，其他模块不包含启动逻辑。
 > mock、测试、演示入口已迁移至 `xa-mass-mock` 模块。
+
+实际运行时：
+
+- `xa-mass-api` 由 `xa-mass-mock` 的 Spring Boot 扫描加载
+- `xa-mass-starter` 本身不直接提供当前已验证的 Web 启动入口
 
 所有子系统通过事件总线（eventbus）解耦，事件注册与发布见项目总 README。
 

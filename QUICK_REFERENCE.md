@@ -1,19 +1,27 @@
 # XA Mass Platform - Quick Reference Guide
 
+> This file contains historical quick notes.
+> For commands and behavior that were actually verified on 2026-04-12, use [`doc/VERIFIED_RUNBOOK.md`](./doc/VERIFIED_RUNBOOK.md) first.
+
 ## 🚀 Quick Start
 
 ### Start the Platform
 
 ```bash
-cd xa-mass-starter
-mvn spring-boot:run
+./mvnw -DskipTests compile
+./mvnw -pl xa-mass-mock -am dependency:build-classpath \
+  -Dmdep.outputFile=/tmp/xa-mass-mock.cp \
+  -DincludeScope=runtime
+java -cp "xa-mass-mock/target/classes:xa-mass-starter/target/classes:xa-mass-api/target/classes:xa-mass-engine/target/classes:xa-mass-gateway/target/classes:xa-mass-base/target/classes:$(cat /tmp/xa-mass-mock.cp)" \
+  com.xa.mass.mock.MockApplicationSpringBootApp
 ```
 
 ### Access Points
 
-- **REST API**: `http://localhost:8080/api`
-- **WebSocket**: `ws://localhost:8081/ws`
-- **Status Page**: `http://localhost:8080/status`
+- **Status Page**: `http://localhost:8088/status`
+- **Task Page**: `http://localhost:8088/status/tasks`
+- **API Doc**: `http://localhost:8088/doc.html`
+- **WebSocket**: `ws://localhost:18088`
 
 ## 📋 Common API Endpoints
 
@@ -75,6 +83,11 @@ register(TaskCreatedEvent .class, event ->{
 post(new TaskCreatedEvent(task, traceId, requestId));
 ```
 
+Note:
+
+- This still reflects the current runtime path more closely than the newer EventBus docs.
+- Do not assume the newer generic EventBus has fully replaced the old path.
+
 ### TaskManager
 
 ```java
@@ -122,8 +135,8 @@ Channel channel = server.getClientChannel("deviceId");
 
 ```properties
 # Server
-server.port=8080
-xa.mass.websocket.port=8081
+server.port=8088
+xa.mass.websocket.port=18088
 xa.mass.websocket.path=/ws
 # Event Bus
 xa.mass.eventbus.type=guava
@@ -146,6 +159,10 @@ BLOCKED PAUSED  ↓
         ↓       ↓
        READY → TERMINAL
 ```
+
+Verified minimum path:
+
+- `NEW -> READY -> PAUSED -> READY`
 
 **Status Descriptions:**
 

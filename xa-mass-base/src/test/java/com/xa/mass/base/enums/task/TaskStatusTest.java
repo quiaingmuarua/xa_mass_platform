@@ -11,10 +11,10 @@ public class TaskStatusTest {
 
     @Test
     public void testNewStateTransitions() {
-        // NEW 状态只能转换为 BLOCKED 或 TERMINAL
+        // NEW 状态可以转换为 READY、BLOCKED 或 TERMINAL
         assertTrue(TaskStatus.NEW.canTransitionTo(TaskStatus.BLOCKED));
+        assertTrue(TaskStatus.NEW.canTransitionTo(TaskStatus.READY));
         assertTrue(TaskStatus.NEW.canTransitionTo(TaskStatus.TERMINAL));
-        assertFalse(TaskStatus.NEW.canTransitionTo(TaskStatus.READY));
         assertFalse(TaskStatus.NEW.canTransitionTo(TaskStatus.RUNNING));
         assertFalse(TaskStatus.NEW.canTransitionTo(TaskStatus.PAUSED));
     }
@@ -31,12 +31,12 @@ public class TaskStatusTest {
 
     @Test
     public void testReadyStateTransitions() {
-        // READY 状态可以转换为 RUNNING、BLOCKED 或 TERMINAL
+        // READY 状态可以转换为 RUNNING、PAUSED、BLOCKED 或 TERMINAL
         assertTrue(TaskStatus.READY.canTransitionTo(TaskStatus.RUNNING));
+        assertTrue(TaskStatus.READY.canTransitionTo(TaskStatus.PAUSED));
         assertTrue(TaskStatus.READY.canTransitionTo(TaskStatus.BLOCKED));
         assertTrue(TaskStatus.READY.canTransitionTo(TaskStatus.TERMINAL));
         assertFalse(TaskStatus.READY.canTransitionTo(TaskStatus.NEW));
-        assertFalse(TaskStatus.READY.canTransitionTo(TaskStatus.PAUSED));
     }
 
     @Test

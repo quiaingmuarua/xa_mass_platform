@@ -2,8 +2,8 @@ package com.xa.mass.base.enums.task;
 
 /**
  * 任务状态枚举
- * 状态流转：NEW -> BLOCKED -> READY -> RUNNING -> TERMINAL
- * 或者：NEW -> BLOCKED -> READY -> BLOCKED -> READY -> RUNNING -> TERMINAL
+ * 状态流转：NEW -> READY/BLOCKED -> RUNNING/PAUSED/BLOCKED -> TERMINAL
+ * 或者：NEW -> READY -> PAUSED -> READY -> RUNNING -> TERMINAL
  */
 public enum TaskStatus {
     /**
@@ -52,11 +52,11 @@ public enum TaskStatus {
     public boolean canTransitionTo(TaskStatus targetStatus) {
         switch (this) {
             case NEW:
-                return targetStatus == BLOCKED || targetStatus == TERMINAL;
+                return targetStatus == READY || targetStatus == BLOCKED || targetStatus == TERMINAL;
             case BLOCKED:
                 return targetStatus == READY || targetStatus == TERMINAL;
             case READY:
-                return targetStatus == RUNNING || targetStatus == BLOCKED || targetStatus == TERMINAL;
+                return targetStatus == RUNNING || targetStatus == PAUSED || targetStatus == BLOCKED || targetStatus == TERMINAL;
             case RUNNING:
                 return targetStatus == BLOCKED || targetStatus == PAUSED || targetStatus == TERMINAL;
             case PAUSED:

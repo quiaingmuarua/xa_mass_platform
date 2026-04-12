@@ -63,17 +63,33 @@ public class TaskApiController {
     public ResponseEntity<?> updateTaskStatus(@PathVariable String taskId, @RequestParam TaskStatus status) {
         try {
             Task task = taskManager.getTask(taskId);
-            if (task != null) {
-                task.setStatus(status);
-                taskManager.updateTask(task);
+            if (task == null) {
+                return ResponseEntity.notFound().build();
+            }
+
+            boolean success = switch (status) {
+                case READY -> task.getStatus() == TaskStatus.PAUSED
+                        ? taskManager.resumeTask(taskId)
+                        : taskManager.approveTask(taskId);
+                case BLOCKED -> taskManager.rejectTask(taskId);
+                case PAUSED -> taskManager.pauseTask(taskId);
+                case TERMINAL -> taskManager.cancelTask(taskId);
+                default -> false;
+            };
+
+            Task updatedTask = taskManager.getTask(taskId);
+            if (success && updatedTask != null) {
                 return ResponseEntity.ok(java.util.Map.of(
                         "success", true,
                         "message", "任务状态更新成功",
-                        "newStatus", status.name()
+                        "newStatus", updatedTask.getStatus().name()
                 ));
-            } else {
-                return ResponseEntity.notFound().build();
             }
+
+            return ResponseEntity.badRequest().body(java.util.Map.of(
+                    "success", false,
+                    "message", "当前任务状态不允许更新为 " + status.name()
+            ));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(java.util.Map.of(
                     "success", false,
@@ -86,22 +102,28 @@ public class TaskApiController {
     public ResponseEntity<?> auditTask(@PathVariable String taskId, @RequestParam String approved, @RequestParam(required = false) String comment) {
         try {
             Task task = taskManager.getTask(taskId);
-            if (task != null) {
-                boolean isApproved = "true".equalsIgnoreCase(approved);
-                if (isApproved) {
-                    task.setStatus(TaskStatus.READY);
-                } else {
-                    task.setStatus(TaskStatus.BLOCKED);
-                }
-                taskManager.updateTask(task);
+            if (task == null) {
+                return ResponseEntity.notFound().build();
+            }
+
+            boolean isApproved = "true".equalsIgnoreCase(approved);
+            boolean success = isApproved
+                    ? taskManager.approveTask(taskId)
+                    : taskManager.rejectTask(taskId);
+            Task updatedTask = taskManager.getTask(taskId);
+
+            if (success && updatedTask != null) {
                 return ResponseEntity.ok(java.util.Map.of(
                         "success", true,
                         "message", isApproved ? "任务审核通过" : "任务审核拒绝",
-                        "newStatus", task.getStatus().name()
+                        "newStatus", updatedTask.getStatus().name()
                 ));
-            } else {
-                return ResponseEntity.notFound().build();
             }
+
+            return ResponseEntity.badRequest().body(java.util.Map.of(
+                    "success", false,
+                    "message", "当前任务状态不允许审核"
+            ));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(java.util.Map.of(
                     "success", false,
@@ -114,16 +136,21 @@ public class TaskApiController {
     public ResponseEntity<?> pauseTask(@PathVariable String taskId) {
         try {
             Task task = taskManager.getTask(taskId);
-            if (task != null) {
-                task.setStatus(TaskStatus.PAUSED);
-                taskManager.updateTask(task);
+            if (task == null) {
+                return ResponseEntity.notFound().build();
+            }
+
+            if (taskManager.pauseTask(taskId)) {
                 return ResponseEntity.ok(java.util.Map.of(
                         "success", true,
                         "message", "任务已暂停"
                 ));
-            } else {
-                return ResponseEntity.notFound().build();
             }
+
+            return ResponseEntity.badRequest().body(java.util.Map.of(
+                    "success", false,
+                    "message", "当前任务状态不允许暂停"
+            ));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(java.util.Map.of(
                     "success", false,
@@ -136,16 +163,21 @@ public class TaskApiController {
     public ResponseEntity<?> resumeTask(@PathVariable String taskId) {
         try {
             Task task = taskManager.getTask(taskId);
-            if (task != null) {
-                task.setStatus(TaskStatus.READY);
-                taskManager.updateTask(task);
+            if (task == null) {
+                return ResponseEntity.notFound().build();
+            }
+
+            if (taskManager.resumeTask(taskId)) {
                 return ResponseEntity.ok(java.util.Map.of(
                         "success", true,
                         "message", "任务已恢复"
                 ));
-            } else {
-                return ResponseEntity.notFound().build();
             }
+
+            return ResponseEntity.badRequest().body(java.util.Map.of(
+                    "success", false,
+                    "message", "当前任务状态不允许恢复"
+            ));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(java.util.Map.of(
                     "success", false,
@@ -158,16 +190,21 @@ public class TaskApiController {
     public ResponseEntity<?> terminateTask(@PathVariable String taskId) {
         try {
             Task task = taskManager.getTask(taskId);
-            if (task != null) {
-                task.setStatus(TaskStatus.TERMINAL);
-                taskManager.updateTask(task);
+            if (task == null) {
+                return ResponseEntity.notFound().build();
+            }
+
+            if (taskManager.cancelTask(taskId)) {
                 return ResponseEntity.ok(java.util.Map.of(
                         "success", true,
                         "message", "任务已中止"
                 ));
-            } else {
-                return ResponseEntity.notFound().build();
             }
+
+            return ResponseEntity.badRequest().body(java.util.Map.of(
+                    "success", false,
+                    "message", "当前任务状态不允许中止"
+            ));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(java.util.Map.of(
                     "success", false,

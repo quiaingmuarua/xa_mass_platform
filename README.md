@@ -1,38 +1,59 @@
 # xa_mass_platform
 
+> 当前仓库存在明显的“文档先行、实现滞后”历史痕迹。
+> 开始接手前，先看已验证文档：
+> - [`AGENTS.md`](./AGENTS.md)
+> - [`doc/AGENT_BASELINE.md`](./doc/AGENT_BASELINE.md)
+> - [`doc/VERIFIED_RUNBOOK.md`](./doc/VERIFIED_RUNBOOK.md)
+
 ## 项目亮点
 
-- **事件驱动**：全模块统一事件总线，极致解耦与可观测性
+- **可运行主链已确认**：`xa-mass-mock` 可作为当前真实入口启动 Web/API/Gateway/Engine
+- **事件驱动**：项目内部大量通过事件总线解耦，但新旧实现仍并存
 - **全链路 Mock**：支持端到端集成测试、规则链调试、批量分配演练
-- **分层多模块**：Starter 聚合，Engine/Gateway/API/Mock 各司其职
+- **分层多模块**：Starter 负责组装生命周期，Mock 负责真实 Spring Boot 启动壳
 - **高可扩展性**：插件式中间件、规则链、设备/任务动态扩展
 - **观测与调试**：分配日志、规则评估、冲突检测、热加载 mock 配置
 
 ## 架构概览
 
-本项目采用分层多模块架构，所有核心模块（engine、gateway、mock等）通过统一的事件总线（eventbus）进行解耦通信，支持高并发消息调度与分发、复杂业务解耦与快速集成测试。
+本项目采用分层多模块架构，但需要注意：
+
+- `xa-mass-mock` 是当前已验证的真实 Spring Boot 入口
+- `xa-mass-starter` 是生命周期组装层，不是当前可直接 `spring-boot:run` 的入口
+- 事件系统存在新旧两套实现，运行主链仍依赖部分旧实现
 
 ## 快速上手
 
-1. 进入 `xa-mass-starter` 目录。
-2. 运行 `src/main/java/com/xa/mass/starter/MassApplication.java`（Spring Boot 入口）。
-3. 所有子系统（gateway/engine/api/mock）均由 starter 层自动组装启动。
-4. 可通过 mock 配置文件体验全链路演示与集成测试。
+不要直接按历史 README 从 `xa-mass-starter` 启动。
+
+当前已验证的启动方式见 [`doc/VERIFIED_RUNBOOK.md`](./doc/VERIFIED_RUNBOOK.md)。
+
+最小流程：
+
+1. 在仓库根目录执行 `./mvnw -DskipTests compile`
+2. 生成 `xa-mass-mock` 运行时 classpath
+3. 直接启动 `com.xa.mass.mock.MockApplicationSpringBootApp`
+4. 访问：
+   - `http://localhost:8088/status`
+   - `http://localhost:8088/status/tasks`
+   - `http://localhost:8088/doc.html`
+   - `ws://localhost:18088`
 
 ## 主要模块
 
 | 模块              | 说明                                                                     |
 |-----------------|------------------------------------------------------------------------|
-| xa-mass-starter | 启动与聚合，唯一入口，负责组装和启动所有子系统                                                |
+| xa-mass-starter | 启动与聚合层，负责组装 Gateway/Engine 生命周期，不是当前真实 Spring Boot 入口                      |
 | xa-mass-gateway | 消息网关、协议适配，负责 WebSocket 连接、消息分发、中间件链                                    |
 | xa-mass-engine  | 业务核心，负责任务调度、设备管理、分配策略、规则链等                                             |
 | xa-mass-api     | RESTful API 层，提供控制器、DTO、AOP、全局异常处理                                     |
-| xa-mass-mock    | 测试与自测模块，集成测试、端到端 mock、演示与联调                                            |
+| xa-mass-mock    | 当前真实运行入口，负责启动 Spring Boot Web/API，并串起 starter/gateway/engine/mock 数据               |
 | xa-mass-base    | 基础设施模块，包含事件总线（eventbus）、通用模型、异常、枚举，以及 **json-dsl**（通用对象生成/批量 mock 框架）等 |
 
 ## 事件驱动架构
 
-**EventBus 2.0 - 泛型重构版本**
+以下内容只能当设计目标，不应直接视为当前运行事实。
 
 - 🔧 **泛型支持**：`StreamEventBusFacade<T>` 支持任意类型事件（POJO/MassEvent）
 - ⚡ **高性能**：20K+ events/sec，精确匹配分发，无继承查找开销
@@ -65,7 +86,11 @@ var redisStream = new LettuceRedisStream<MassEvent>("distributed-events", MassEv
 var distributedEventBus = new StreamEventBusFacade<MassEvent>(redisStream);
 ```
 
-**迁移说明**：旧版 Guava EventBus 已废弃，推荐使用 `StreamEventBusFacade` + `MessageStream`
+当前已验证结论：
+
+- 旧版 Guava EventBus 没有真正退出运行主链
+- `old.eventbus` 与新 `channel.eventbus` 仍并存
+- 是否迁移到新 EventBus，需要单独收敛，不要默认已经完成
 
 详细文档：[EventBus README](./xa-mass-base/src/main/java/com/xa/mass/base/channel/eventbus/README.md)
 
@@ -88,6 +113,10 @@ var distributedEventBus = new StreamEventBusFacade<MassEvent>(redisStream);
 
 - 每个模块均有独立 README 说明其职责与边界。
 - 详细开发文档见 `doc/` 目录。
+- 当前最可信的入口文档：
+  - [`AGENTS.md`](./AGENTS.md)
+  - [`doc/AGENT_BASELINE.md`](./doc/AGENT_BASELINE.md)
+  - [`doc/VERIFIED_RUNBOOK.md`](./doc/VERIFIED_RUNBOOK.md)
 - [API 文档](doc/xa-mass-api-接口文档.md)
 
 ## Maven 仓库配置与离线依赖
@@ -117,4 +146,3 @@ var distributedEventBus = new StreamEventBusFacade<MassEvent>(redisStream);
 - mock 相关请勿引入 core 依赖，保持依赖方向
 
 ---
-

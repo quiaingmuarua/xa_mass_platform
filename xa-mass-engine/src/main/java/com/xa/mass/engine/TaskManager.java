@@ -76,11 +76,10 @@ public class TaskManager {
             // 可扩展设置 extraParams、targetType 等
 
             // 5. 存储任务
-            String msgId = java.util.UUID.randomUUID().toString();
-
             taskStorage.saveTask(task);
             for (String target : dto.getTargetList()) {
-                addTaskMessage(tid, new TaskMsg(tid, msgId, target));
+                String msgId = java.util.UUID.randomUUID().toString();
+                addTaskMessage(tid, new TaskMsg(msgId, tid, target));
             }
 
             long duration = System.currentTimeMillis() - startTime;
@@ -234,11 +233,11 @@ public class TaskManager {
         try {
             Task task = getTask(taskId);
             if (task != null && task.getStatus() == TaskStatus.NEW) {
-                boolean result = task.transitionTo(TaskStatus.TERMINAL);
+                boolean result = task.transitionTo(TaskStatus.BLOCKED);
                 if (result) {
                     taskStorage.updateTask(task);
                     long duration = System.currentTimeMillis() - startTime;
-                    LogUtils.logOperationSuccess("任务拒绝成功", duration);
+                    LogUtils.logOperationSuccess("任务拒绝成功，已阻塞", duration);
                 } else {
                     long duration = System.currentTimeMillis() - startTime;
                     LogUtils.logOperationFailure("TASK_REJECT_ERROR", "任务状态转换失败", duration);
