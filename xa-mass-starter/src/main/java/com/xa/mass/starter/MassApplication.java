@@ -89,20 +89,20 @@ public class MassApplication {
         logger.info("🛑 Stopping Mass Application...");
 
         try {
-            if (serverStater != null) {
-                serverStater.stop();
+            // 1. Stop the message dispatcher first so in-flight messages can drain
+            //    before the network layer shuts down.
+            if (massGateway != null && gatewayConfig.isEnabled()) {
+                massGateway.stop();
             }
 
-            // ServerMessageDispatcher is owned by MassGateway; stopped via massGateway.stop() below
-
-            // 根据配置停止引擎
+            // 2. Stop the engine (task processing) after the dispatcher has drained.
             if (engine != null && engineConfig.isEnabled()) {
                 engine.stop();
             }
 
-            // 根据配置停止网关
-            if (massGateway != null && gatewayConfig.isEnabled()) {
-                massGateway.stop();
+            // 3. Shut down the Netty WebSocket server last.
+            if (serverStater != null) {
+                serverStater.stop();
             }
 
             logger.info("✅ Mass Application stopped successfully!");
