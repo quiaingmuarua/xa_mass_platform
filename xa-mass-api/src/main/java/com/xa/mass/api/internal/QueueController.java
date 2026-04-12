@@ -12,7 +12,6 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -50,13 +49,16 @@ public class QueueController {
     }
 
     @GetMapping("/detail")
-    @Operation(summary = "获取队列明细（预留，后续可扩展）")
+    @Operation(summary = "获取队列明细")
     public com.xa.mass.api.model.ApiResponse<Map<String, Object>> getQueueDetail() {
         Map<String, Object> map = new HashMap<>();
         TransportContext transportContext = DispatcherContextRegistry.getTransportContext();
         MessageTransporter messageTransporter = transportContext != null ? transportContext.getMessageTransporter() : null;
-        map.put("inputQueueDetail", messageTransporter != null ? messageTransporter.toString() : Collections.emptyList());
-        map.put("outputQueueDetail", messageTransporter != null ? messageTransporter.toString() : Collections.emptyList());
+        int inputSize = messageTransporter != null ? messageTransporter.inputQueueSize() : -1;
+        int outputSize = messageTransporter != null ? messageTransporter.outputQueueSize() : -1;
+        map.put("inputQueueSize", inputSize);
+        map.put("outputQueueSize", outputSize);
+        map.put("transporterAvailable", messageTransporter != null);
         return com.xa.mass.api.model.ApiResponse.success(map);
     }
 

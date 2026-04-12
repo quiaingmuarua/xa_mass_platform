@@ -1,5 +1,6 @@
 package com.xa.mass.api.internal;
 
+import com.google.gson.Gson;
 import com.xa.mass.gateway.dispatcher.DispatcherContextRegistry;
 import com.xa.mass.gateway.dispatcher.context.TransportContext;
 import com.xa.mass.gateway.queue.Envelope;
@@ -19,6 +20,8 @@ import java.util.Map;
 @Tag(name = "消息推送")
 public class MessageController {
 
+    private static final Gson GSON = new Gson();
+
     @PostMapping("/send")
     @Operation(summary = "主动推送消息到指定 device/role")
     public Map<String, Object> sendMessage(@RequestBody Map<String, Object> req) {
@@ -29,8 +32,7 @@ public class MessageController {
         if (transportContext != null) {
             MessageTransporter messageTransporter = transportContext.getMessageTransporter();
             if (messageTransporter != null) {
-                // 这里只做简单演示，实际应构造 Envelope
-                String rawJson = req.toString();
+                String rawJson = GSON.toJson(req);
                 Envelope env = Envelope.builder().rawJson(rawJson).receivedAt(System.currentTimeMillis()).build();
                 messageTransporter.sendOutput(env);
                 successFlag = true;

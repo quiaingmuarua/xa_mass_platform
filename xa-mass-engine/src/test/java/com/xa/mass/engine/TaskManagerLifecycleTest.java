@@ -74,6 +74,52 @@ class TaskManagerLifecycleTest {
         assertFalse(taskManager.resumeTask(task.getTid()));
     }
 
+    @Test
+    void createTaskWithNullTargetListDoesNotThrow() {
+        TaskCreateRequestDto dto = new TaskCreateRequestDto();
+        dto.setTaskName("no-targets");
+        dto.setProject("demoApp");
+        dto.setCountryCode("us");
+        dto.setTextContent("smoke");
+        dto.setUserId("agent");
+        dto.setTargetList(null); // previously caused NPE at line 80
+        dto.setBatchSize(0);
+
+        Task task = assertDoesNotThrow(() -> taskManager.createTask(dto));
+        assertNotNull(task);
+        assertTrue(taskManager.getTaskMessages(task.getTid()).isEmpty());
+    }
+
+    @Test
+    void deleteTaskRejectedForReadyTask() {
+        Task task = taskManager.createTask(buildRequest("del-ready"));
+        taskManager.approveTask(task.getTid()); // NEW -> READY
+
+        assertFalse(taskManager.deleteTask(task.getTid()),
+                "READY task must not be deletable");
+        assertNotNull(taskManager.getTask(task.getTid()),
+                "Task should still exist after rejected delete");
+    }
+
+    @Test
+    void deleteTaskAllowedForNewTask() {
+        Task task = taskManager.createTask(buildRequest("del-new"));
+        assertTrue(taskManager.deleteTask(task.getTid()),
+                "NEW task should be deletable");
+        assertNull(taskManager.getTask(task.getTid()));
+    }
+
+    @Test
+    void deleteTaskAllowedForTerminalTask() {
+        Task task = taskManager.createTask(buildRequest("del-terminal"));
+        taskManager.approveTask(task.getTid());
+        taskManager.cancelTask(task.getTid()); // -> TERMINAL
+
+        assertTrue(taskManager.deleteTask(task.getTid()),
+                "TERMINAL task should be deletable");
+        assertNull(taskManager.getTask(task.getTid()));
+    }
+
     private TaskCreateRequestDto buildRequest(String taskName) {
         TaskCreateRequestDto dto = new TaskCreateRequestDto();
         dto.setTaskName(taskName);
