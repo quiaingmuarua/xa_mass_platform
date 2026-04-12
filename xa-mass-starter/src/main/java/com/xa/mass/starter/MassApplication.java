@@ -4,7 +4,6 @@ import com.xa.mass.base.model.Device;
 import com.xa.mass.gateway.dispatcher.DispatcherContext;
 import com.xa.mass.gateway.dispatcher.DispatcherContextRegistry;
 import com.xa.mass.gateway.dispatcher.MessageHandlerRegistry;
-import com.xa.mass.gateway.dispatcher.ServerMessageDispatcher;
 import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
 import com.xa.mass.gateway.dispatcher.middleware.MiddlewareRegistry;
 import com.xa.mass.gateway.queue.MessageCodec;
@@ -35,7 +34,6 @@ public class MassApplication {
     private final MassEngine engine; // 可能为null（当engine被禁用时）
     private MassGateway massGateway; // 将在initializeComponents中构建（当gateway被启用时）
     private DispatchRuntimeContext dispatcherContext;
-    private ServerMessageDispatcher messageDispatcher;
     private MassServerStater serverStater;
 
     public MassApplication(MassEngine engine, int serverPort, String webSocketPath, GatewayConfig gatewayConfig, EngineConfig engineConfig) {
@@ -95,10 +93,7 @@ public class MassApplication {
                 serverStater.stop();
             }
 
-            if (messageDispatcher != null) {
-                // TODO: 添加停止方法到 ServerMessageDispatcher
-                logger.info("Message dispatcher stopped");
-            }
+            // ServerMessageDispatcher is owned by MassGateway; stopped via massGateway.stop() below
 
             // 根据配置停止引擎
             if (engine != null && engineConfig.isEnabled()) {

@@ -100,7 +100,9 @@ public class MassEngine {
         }
         logger.info("🛑 Stopping MassEngine...");
         try {
-            // TODO: 实现引擎停止逻辑
+            if (assignWorker != null) {
+                assignWorker.stop();
+            }
             running = false;
             logger.info("✅ MassEngine stopped successfully");
         } catch (Exception e) {
@@ -112,10 +114,10 @@ public class MassEngine {
      * 创建任务
      */
     public Task createTask(com.xa.mass.engine.model.TaskCreateRequestDto dto) {
-        if (taskManager != null) {
-            return taskManager.createTask(dto);
+        if (taskManager == null) {
+            throw new IllegalStateException("MassEngine has not been started or mockMode is disabled; taskManager is unavailable");
         }
-        return null;
+        return taskManager.createTask(dto);
     }
 
     /**

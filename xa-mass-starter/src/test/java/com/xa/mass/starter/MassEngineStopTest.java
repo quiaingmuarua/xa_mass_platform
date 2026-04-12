@@ -1,0 +1,80 @@
+package com.xa.mass.starter;
+
+import com.xa.mass.engine.listener.TaskAssignWorker;
+import com.xa.mass.starter.config.EngineConfig;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
+
+class MassEngineStopTest {
+
+    @Test
+    void stopWhenNotRunningIsIdempotent() {
+        MassEngine engine = new MassEngine(new EngineConfig());
+        assertFalse(engine.isRunning());
+        assertDoesNotThrow(engine::stop);
+        assertFalse(engine.isRunning());
+    }
+
+    @Test
+    void stopSetsRunningFalse() {
+        MassEngine engine = runningEngine();
+        assertTrue(engine.isRunning());
+
+        engine.stop();
+
+        assertFalse(engine.isRunning());
+    }
+
+    @Test
+    void stopDelegatesToAssignWorker() {
+        TaskAssignWorker worker = mock(TaskAssignWorker.class);
+        MassEngine engine = runningEngineWithWorker(worker);
+
+        engine.stop();
+
+        verify(worker).stop();
+        assertFalse(engine.isRunning());
+    }
+
+    @Test
+    void stopIsIdempotentOnSecondCall() {
+        TaskAssignWorker worker = mock(TaskAssignWorker.class);
+        MassEngine engine = runningEngineWithWorker(worker);
+
+        engine.stop();
+        engine.stop(); // second call should be no-op
+
+        verify(worker, times(1)).stop(); // only once
+    }
+
+    // ---- helpers ----
+
+    /** Returns a MassEngine that has been put into running=true via reflection. */
+    private MassEngine runningEngine() {
+        MassEngine engine = new MassEngine(new EngineConfig());
+        setRunning(engine, true);
+        return engine;
+    }
+
+    private MassEngine runningEngineWithWorker(TaskAssignWorker worker) {
+        MassEngine engine = runningEngine();
+        setField(engine, "assignWorker", worker);
+        return engine;
+    }
+
+    private void setRunning(MassEngine engine, boolean value) {
+        setField(engine, "running", value);
+    }
+
+    private void setField(Object target, String fieldName, Object value) {
+        try {
+            var field = target.getClass().getDeclaredField(fieldName);
+            field.setAccessible(true);
+            field.set(target, value);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+}
