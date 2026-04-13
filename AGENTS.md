@@ -7,8 +7,9 @@ This file is the fastest entry point for coding agents such as Claude Code, Code
 - Real boot entry: `xa-mass-mock`
 - Do not start from `xa-mass-starter`
 - Trust code and verified runtime over repository docs
-- Current verified task path: `NEW -> READY -> PAUSED -> READY`
-- Current targeted regression also covers: `READY -> RUNNING -> TERMINAL`
+- Current verified task path: `NEW -> READY -> RUNNING -> TERMINAL`
+- Pause/resume regression is also verified: `NEW -> READY -> PAUSED -> READY`
+- Windows startup should prefer short classpath: module `target/classes` + `logs/runtime-libs/*`
 - Current verified engine regression is green
 - Treat `engine/v2` as historical, not mainline
 
@@ -69,6 +70,11 @@ java -cp "xa-mass-mock/target/classes:xa-mass-starter/target/classes:xa-mass-api
   com.xa.mass.mock.MockApplicationSpringBootApp
 ```
 
+Windows note:
+
+- Prefer a short classpath: module `target/classes` plus `logs/runtime-libs/*`
+- The expanded dependency classpath can exceed Windows command-line limits and surface false missing-class errors
+
 Verified endpoints:
 
 - `http://localhost:8088/status`
@@ -110,6 +116,7 @@ Notes:
 
 - This is the real operational entry, not just a demo shell.
 - Use this module when verifying runtime behavior.
+- Default `dev` startup now also auto-starts mock WebSocket clients when `mock.client.auto-start=true`.
 
 ### `xa-mass-starter`
 
@@ -271,6 +278,9 @@ Important current implementation facts (verified through Phase 1–4 fixes):
 - `GatewayTaskResultHandler` now handles inbound `TASK/step` results and writes them back through `TaskManager.handleTaskMessageResult(...)`
 - `TaskManager.handleTaskMessageResult(...)` now updates persisted `TaskMsg` state by `taskId + msgId`, recalculates task progress, and closes RUNNING tasks to `TERMINAL` when all messages finish
 - `MassWebSocketClientImpl` now echoes `project` on mock `TASK/step` responses so inbound validation passes
+- `MassApplication.loadMockData(...)` now normalizes mock `supportedProjects` to `Project` enums and auto-seeds `LOGIN_READY` tokens for devices missing token data
+- `WebSocketClientStarter` now starts on `ApplicationReadyEvent` behind `mock.client.auto-start=true`, so default `dev` startup includes mock client result write-back
+- Verified on 2026-04-13: API-created tasks now move `NEW -> READY -> RUNNING -> TERMINAL`, and their persisted `TaskMsg` records move `INIT -> SENT -> SUCCESS` with `deviceId` / `tokenId` / `batchId`
 - `TaskAssignWorker` uses `CopyOnWriteArrayList` for listeners (was `ArrayList`, ConcurrentModificationException risk)
 - `TaskAssignWorker.stop()` calls `shutdownNow()` + `awaitTermination(10s)` (was leaking threads)
 - `ServerSessionManager.removeSession()` correctly evicts `ChannelHandlerContext` on disconnect (was memory leak)
@@ -305,6 +315,7 @@ Key test classes by module:
 | xa-mass-starter | `MassEngineStopTest` | 5 |
 | xa-mass-starter | `GatewayTaskResultHandlerTest` | 2 |
 | xa-mass-starter | `MassApplicationStopOrderTest` | 2 |
+| xa-mass-mock | `WebSocketClientStarterTest` | 4 |
 
 Single-module commands:
 
@@ -331,7 +342,7 @@ The engine POM currently excludes those tests from `testCompile` and `surefire`.
 - **Shutdown still needs two interrupts**: The running app may need Ctrl-C twice to fully exit.
 - **EventBus not converged**: Runtime uses old Guava-based `EventBusFactory.get("guava")` in places. New `StreamEventBusFacade` is the target but not fully adopted.
 - **Redis/Database storage unimplemented**: Both throw `UnsupportedOperationException` at creation time (fail-fast). Only MEMORY storage works.
-- **API/UI end-to-end coverage is still thin**: engine/gateway regressions are green, but the highest-value remaining gap is API-level integration around create/audit/assign/run from the real mock app
+- **API/UI end-to-end automated coverage is still thin**: manual smoke now confirms `create -> approve -> assign -> run -> complete`, but this still needs a repeatable integration test harness
 
 ## 10. Good Next Tasks
 

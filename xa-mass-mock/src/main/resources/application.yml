@@ -13,6 +13,7 @@ server:
 
 mock:
   client:
+    auto-start: true
     count: 5
     task:
       interval: 30000

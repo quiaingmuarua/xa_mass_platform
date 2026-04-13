@@ -103,6 +103,9 @@ public class EngineConfig {
     }
 
     public JsonObject getMockConfigRoot() {
+        if (mockConfigRoot != null) {
+            return mockConfigRoot.deepCopy();
+        }
         JsonObject root = new JsonObject();
         // 读取设备
         try {

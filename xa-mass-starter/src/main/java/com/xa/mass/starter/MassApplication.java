@@ -1,6 +1,9 @@
 package com.xa.mass.starter;
 
+import com.xa.mass.base.enums.Project;
+import com.xa.mass.base.enums.task.TokenStatus;
 import com.xa.mass.base.model.Device;
+import com.xa.mass.base.model.Token;
 import com.xa.mass.gateway.dispatcher.DispatcherContext;
 import com.xa.mass.gateway.dispatcher.DispatcherContextRegistry;
 import com.xa.mass.gateway.dispatcher.MessageHandlerRegistry;
@@ -17,6 +20,10 @@ import com.xa.mass.starter.config.EngineConfig;
 import com.xa.mass.starter.config.GatewayConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
 
 /**
  * Mass 应用主程序
@@ -278,7 +285,9 @@ public class MassApplication {
                 }
                 logger.info("📱 生成 {} 个设备", devices.size());
                 for (com.xa.mass.base.model.Device device : devices) {
+                    normalizeMockDevice(device);
                     engine.addDevice(device);
+                    ensureMockToken(engine, device);
                     logger.debug("添加设备: {} (分组: {}, 状态: {})", device.getDeviceId(), device.getGroupId(), device.getStatus());
                 }
                 verifyDeviceData(engine);
@@ -321,7 +330,62 @@ public class MassApplication {
         }
     }
 
+    void normalizeMockDevice(Device device) {
+        if (device == null) {
+            return;
+        }
+        if (device.getGroupId() != null) {
+            device.setGroupId(device.getGroupId().toLowerCase());
+        }
+        List<Project> supportedProjects = normalizeSupportedProjects(device);
+        if (!supportedProjects.isEmpty()) {
+            device.setSupportedProjects(supportedProjects);
+        }
+    }
+
+    void ensureMockToken(MassEngine engine, Device device) {
+        if (engine == null || device == null || engine.getDeviceManager() == null) {
+            return;
+        }
+        if (engine.getDeviceManager().getToken(device.getDeviceId()) != null) {
+            return;
+        }
+        Token token = new Token();
+        token.setTokenId("token-" + device.getDeviceId());
+        token.setDeviceId(device.getDeviceId());
+        token.setChannel(device.getGroupId());
+        token.setStatus(TokenStatus.LOGIN_READY);
+        engine.addToken(token);
+    }
+
+    private List<Project> normalizeSupportedProjects(Device device) {
+        if (device.getSupportedProjects() == null) {
+            return defaultSupportedProjects();
+        }
+        List<?> rawProjects = (List<?>) device.getSupportedProjects();
+        if (rawProjects.isEmpty()) {
+            return defaultSupportedProjects();
+        }
+
+        List<Project> normalized = new ArrayList<>();
+        for (Object rawProject : rawProjects) {
+            if (rawProject instanceof Project project) {
+                normalized.add(project);
+                continue;
+            }
+            if (rawProject == null) {
+                continue;
+            }
+            normalized.add(Project.fromCode(String.valueOf(rawProject)));
+        }
+        return normalized.stream().filter(Objects::nonNull).distinct().toList();
+    }
+
+    private List<Project> defaultSupportedProjects() {
+        return List.of(Project.DEMO_APP, Project.TEST_APP);
+    }
+
     public MassEngine getEngine() {
         return engine;
     }
-} 
+}

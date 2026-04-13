@@ -15,8 +15,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.CommandLineRunner;
-import org.springframework.context.annotation.Profile;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 
 import java.net.URI;
@@ -25,15 +26,20 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Random;
-import java.util.concurrent.*;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * WebSocket 客户端启动器
- * 负责管理多个模拟设备客户端的连接和心跳
+ * Starts mock WebSocket clients after the full dev stack is ready.
  */
 @Component
-@Profile("client")
-public class WebSocketClientStarter implements CommandLineRunner {
+@ConditionalOnProperty(prefix = "mock.client", name = "auto-start", havingValue = "true")
+public class WebSocketClientStarter {
 
     private static final Logger log = LoggerFactory.getLogger(WebSocketClientStarter.class);
 
@@ -43,7 +49,6 @@ public class WebSocketClientStarter implements CommandLineRunner {
     @Autowired
     private ClientSessionManager clientSessionManager;
 
-    // 配置属性注入
     @Value("${mock.client.devices-config:mock/mock_devices.json}")
     private String devicesConfigPath;
 
@@ -65,48 +70,63 @@ public class WebSocketClientStarter implements CommandLineRunner {
     @Value("${mock.client.retry-delay:5}")
     private int retryDelay;
 
+    private final AtomicBoolean started = new AtomicBoolean(false);
     private ExecutorService clientExecutor;
     private ScheduledExecutorService pingScheduler;
     private volatile boolean isShuttingDown = false;
 
-    @Override
-    public void run(String... args) throws Exception {
-        log.info("🔌 开始启动 WebSocket 客户端...");
+    @EventListener(ApplicationReadyEvent.class)
+    public void onApplicationReady(ApplicationReadyEvent event) {
+        startClients();
+    }
 
-        String baseUri = mockConfig.getClient().getUri();
-        log.info("目标服务器: {}", baseUri);
-        log.info("设备配置文件: {}", devicesConfigPath);
-
-        // 读取并解析设备配置
-        List<Device> devices = loadDevices();
-        if (devices == null || devices.isEmpty()) {
-            log.warn("⚠️ 未找到设备配置，客户端启动终止");
+    void startClients() {
+        if (!started.compareAndSet(false, true)) {
+            log.info("Mock WebSocket clients already started, skipping duplicate startup");
             return;
         }
 
-        log.info("📱 发现 {} 个设备，开始建立连接...", devices.size());
+        log.info("Starting mock WebSocket clients");
 
-        // 初始化连接池
-        clientExecutor = Executors.newFixedThreadPool(Math.min(devices.size(), maxPoolSize));
+        try {
+            String baseUri = mockConfig.getClient().getUri();
+            log.info("Target server: {}", baseUri);
+            log.info("Device config: {}", devicesConfigPath);
 
-        // 批量建立连接
-        establishConnections(devices, baseUri);
+            List<Device> devices = loadDevices();
+            if (devices == null || devices.isEmpty()) {
+                log.warn("No mock devices found, skipping client startup");
+                started.set(false);
+                return;
+            }
 
-        // 启动心跳任务
-        startPingTask();
+            log.info("Found {} mock devices, establishing connections", devices.size());
 
-        log.info("✅ WebSocket 客户端启动完成，活跃连接: {}", clientSessionManager.getClientCount());
+            clientExecutor = Executors.newFixedThreadPool(Math.min(devices.size(), maxPoolSize));
+            establishConnections(devices, baseUri);
+            startPingTask();
+
+            log.info("Mock WebSocket clients started, active connections: {}",
+                    clientSessionManager.getClientCount());
+        } catch (RuntimeException e) {
+            started.set(false);
+            throw e;
+        } catch (Exception e) {
+            started.set(false);
+            throw new IllegalStateException("Failed to start mock WebSocket clients", e);
+        }
     }
 
     /**
-     * 加载设备配置
+     * Loads device definitions from the configured classpath resource.
      */
-    private List<Device> loadDevices() {
+    protected List<Device> loadDevices() {
         try (var is = getClass().getClassLoader().getResourceAsStream(devicesConfigPath)) {
             if (is == null) {
-                log.error("❌ 未找到设备配置文件: {}", devicesConfigPath);
+                log.error("Device config was not found: {}", devicesConfigPath);
                 return null;
             }
+
             String deviceJson = new String(is.readAllBytes(), StandardCharsets.UTF_8);
             com.google.gson.JsonElement elem = com.google.gson.JsonParser.parseString(deviceJson);
             List<Device> devices = new ArrayList<>();
@@ -119,15 +139,15 @@ public class WebSocketClientStarter implements CommandLineRunner {
             }
             return devices;
         } catch (Exception e) {
-            log.error("❌ 加载设备配置失败", e);
+            log.error("Failed to load mock devices", e);
             return null;
         }
     }
 
     /**
-     * 建立设备连接
+     * Establishes device connections against the gateway endpoint.
      */
-    private void establishConnections(List<Device> devices, String baseUri) throws InterruptedException {
+    protected void establishConnections(List<Device> devices, String baseUri) throws InterruptedException {
         CountDownLatch latch = new CountDownLatch(devices.size());
         List<Future<?>> futures = new ArrayList<>();
 
@@ -137,7 +157,7 @@ public class WebSocketClientStarter implements CommandLineRunner {
                 try {
                     connectDeviceWithRetry(deviceId, baseUri);
                 } catch (Exception e) {
-                    log.error("❌ 设备 {} 连接失败", deviceId, e);
+                    log.error("Device {} failed to connect", deviceId, e);
                 } finally {
                     latch.countDown();
                 }
@@ -145,20 +165,18 @@ public class WebSocketClientStarter implements CommandLineRunner {
             futures.add(future);
         }
 
-        // 等待所有连接尝试完成
         boolean completed = latch.await(devices.size() * (connectionTimeout + 5L), TimeUnit.SECONDS);
         if (!completed) {
-            log.warn("⚠️ 部分设备连接超时");
+            log.warn("Some mock device connections timed out");
         }
 
-        // 检查连接结果
         int successCount = clientSessionManager.getClientCount();
         int failCount = devices.size() - successCount;
-        log.info("📊 连接结果统计: 成功 {}, 失败 {}", successCount, failCount);
+        log.info("Connection summary: success={}, failed={}", successCount, failCount);
     }
 
     /**
-     * 带重试的设备连接
+     * Connects a single mock device with retry.
      */
     private void connectDeviceWithRetry(String deviceId, String baseUri) {
         for (int attempt = 1; attempt <= retryAttempts; attempt++) {
@@ -168,18 +186,17 @@ public class WebSocketClientStarter implements CommandLineRunner {
                 clientSessionManager.addClient(client);
 
                 if (client.connectBlocking(connectionTimeout, TimeUnit.SECONDS)) {
-                    log.info("✅ 设备 {} 连接成功 (尝试 {}/{})", deviceId, attempt, retryAttempts);
+                    log.info("Device {} connected successfully ({}/{})", deviceId, attempt, retryAttempts);
                     return;
-                } else {
-                    log.warn("⚠️ 设备 {} 连接超时 (尝试 {}/{})", deviceId, attempt, retryAttempts);
                 }
+
+                log.warn("Device {} connection timed out ({}/{})", deviceId, attempt, retryAttempts);
             } catch (Exception e) {
-                log.warn("⚠️ 设备 {} 连接异常 (尝试 {}/{}): {}", deviceId, attempt, retryAttempts, e.getMessage());
+                log.warn("Device {} connection failed ({}/{}): {}", deviceId, attempt, retryAttempts, e.getMessage());
             }
 
             clientSessionManager.removeClient(deviceId);
 
-            // 重试前等待
             if (attempt < retryAttempts) {
                 try {
                     Thread.sleep(retryDelay * 1000L);
@@ -190,13 +207,13 @@ public class WebSocketClientStarter implements CommandLineRunner {
             }
         }
 
-        log.error("❌ 设备 {} 连接失败，已重试 {} 次", deviceId, retryAttempts);
+        log.error("Device {} failed after {} retries", deviceId, retryAttempts);
     }
 
     /**
-     * 启动心跳任务
+     * Starts the periodic client heartbeat.
      */
-    private void startPingTask() {
+    protected void startPingTask() {
         if (pingScheduler == null) {
             pingScheduler = Executors.newSingleThreadScheduledExecutor(r -> {
                 Thread t = new Thread(r, "client-ping-scheduler");
@@ -205,12 +222,12 @@ public class WebSocketClientStarter implements CommandLineRunner {
             });
 
             pingScheduler.scheduleAtFixedRate(this::sendRandomPing, pingDelay, pingInterval, TimeUnit.SECONDS);
-            log.info("💓 心跳任务已启动，间隔: {}秒", pingInterval);
+            log.info("Mock client heartbeat started, interval={}s", pingInterval);
         }
     }
 
     /**
-     * 发送随机心跳
+     * Sends a ping from a random connected client to keep sessions warm.
      */
     private void sendRandomPing() {
         if (isShuttingDown) {
@@ -219,7 +236,7 @@ public class WebSocketClientStarter implements CommandLineRunner {
 
         Collection<MassWebSocketClientImpl> clients = clientSessionManager.getAllClients();
         if (clients.isEmpty()) {
-            log.debug("📭 没有活跃的客户端连接");
+            log.debug("No active mock client connections");
             return;
         }
 
@@ -239,41 +256,35 @@ public class WebSocketClientStarter implements CommandLineRunner {
             ping.setContext(ctx);
 
             client.send(new com.google.gson.Gson().toJson(ping));
-            log.debug("💓 [{}] 发送心跳消息", client.getDeviceId());
+            log.debug("[{}] heartbeat sent", client.getDeviceId());
         } catch (Exception e) {
-            log.warn("⚠️ [{}] 发送心跳失败: {}", client.getDeviceId(), e.getMessage());
-            // 心跳失败可能表示连接已断开，移除客户端
+            log.warn("[{}] heartbeat failed: {}", client.getDeviceId(), e.getMessage());
             clientSessionManager.removeClient(client.getDeviceId());
         }
     }
 
-    /**
-     * 获取连接统计信息
-     */
     public String getConnectionStats() {
         int totalClients = clientSessionManager.getClientCount();
-        return String.format("活跃连接: %d", totalClients);
+        return String.format("Active connections: %d", totalClients);
     }
 
     @PreDestroy
     public void shutdown() {
-        log.info("🛑 正在关闭 WebSocket 客户端...");
+        log.info("Shutting down mock WebSocket clients");
         isShuttingDown = true;
 
-        // 关闭所有客户端连接
         Collection<MassWebSocketClientImpl> clients = clientSessionManager.getAllClients();
-        log.info("📴 正在断开 {} 个客户端连接...", clients.size());
+        log.info("Disconnecting {} mock clients", clients.size());
 
         for (MassWebSocketClientImpl client : clients) {
             try {
                 client.disconnect();
-                log.debug("✅ 客户端 {} 已断开", client.getDeviceId());
+                log.debug("Client {} disconnected", client.getDeviceId());
             } catch (Exception e) {
-                log.warn("⚠️ 断开客户端 {} 时发生错误", client.getDeviceId(), e);
+                log.warn("Failed to disconnect client {}", client.getDeviceId(), e);
             }
         }
 
-        // 关闭线程池
         if (clientExecutor != null) {
             clientExecutor.shutdown();
             try {
@@ -298,6 +309,6 @@ public class WebSocketClientStarter implements CommandLineRunner {
             }
         }
 
-        log.info("✅ WebSocket 客户端已关闭");
+        log.info("Mock WebSocket clients stopped");
     }
 }
