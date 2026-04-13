@@ -322,6 +322,8 @@ Important current implementation facts:
 - `ServerSessionManager.removeSession()` evicts `ChannelHandlerContext` on disconnect.
 - `DispatcherInboundHandler` sends structured JSON error frames instead of silently closing connections.
 - `MassApplication.stop()` is now idempotent, and the mock Spring Boot entry no longer adds an extra manual shutdown hook around the runtime.
+- `WebSocketServerImpl.stop()` now calls `shutdownGracefully().syncUninterruptibly()` on both EventLoopGroups so a single Ctrl-C is sufficient for clean exit.
+- `TaskManager.advanceTaskMsgForCompletion()` always advances through `INIT→BINDING→SENT→RUNNING` before the final `markAsSuccess`/`markAsFailed` call, ensuring `RUNNING` appears in the state history for both success and failure paths.
 
 ## 7. Known Good Test Surface
 
@@ -374,19 +376,16 @@ Reason:
 ## 9. Known Problems
 
 - `SimpleTaskScheduler.scheduleTasks()` is still a stub. Scheduler APIs are not the current source of `READY -> RUNNING`.
-- Shutdown path has been partially converged: runtime stop is Spring-managed and idempotent, but single-Ctrl-C exit still needs real-process verification.
-- EventBus has converged onto the current `channel/eventbus/core` and `channel/eventbus/event` namespace.
-- The active implementation is still Guava-backed; Redis remains an unimplemented/fail-fast path.
+- EventBus is converged onto `channel/eventbus/core` and `channel/eventbus/event` namespace. Active implementation is Guava-backed; Redis remains fail-fast only.
 - Redis and Database storage remain fail-fast only. `MEMORY` is the only implemented storage path.
 - API integration coverage is still selective. Callback replay and running terminate/delete are now covered end-to-end, but some cancel follow-up variants still need integration tests.
 
 ## 10. Good Next Tasks
 
 1. Add API-level integration coverage for remaining cancel follow-up variants.
-2. Verify and finish single-Ctrl-C shutdown behavior in a real running process.
-3. Expand EventBus coverage and diagnostics around the current `channel/eventbus/core` path.
-4. Expand diagnostics around task dispatch and result write-back so stuck tasks are easier to localize.
-5. Keep UI work secondary until API/runtime convergence is stable.
+2. Expand diagnostics around task dispatch and result write-back so stuck tasks are easier to localize.
+3. Expand EventBus observability around the `channel/eventbus/core` path.
+4. Keep UI work secondary until API/runtime convergence is stable.
 
 ## 11. Files Worth Opening Early
 
