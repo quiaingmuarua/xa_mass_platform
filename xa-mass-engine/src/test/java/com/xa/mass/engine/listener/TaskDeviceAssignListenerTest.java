@@ -6,6 +6,7 @@ import com.xa.mass.base.model.Device;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.Token;
 import com.xa.mass.engine.DeviceManager;
+import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.rules.RuleDefinition;
 import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.engine.service.AssignmentRecordService;
@@ -42,12 +43,15 @@ public class TaskDeviceAssignListenerTest {
     @Mock
     private AssignmentRecordService recordService;
 
+    @Mock
+    private TaskManager taskManager;
+
     private TaskDeviceAssignListener listener;
 
     @BeforeEach
     public void setUp() {
         MockitoAnnotations.openMocks(this);
-        listener = new TaskDeviceAssignListener(ruleManager, deviceManager, msgAssignListener, recordService);
+        listener = new TaskDeviceAssignListener(ruleManager, deviceManager, msgAssignListener, recordService, taskManager);
     }
 
     @Test
@@ -195,7 +199,7 @@ public class TaskDeviceAssignListenerTest {
         task.setStatus(TaskStatus.READY);
         Device customDevice = createTestDevice("custom-device");
         TaskDeviceMatchingStrategy customStrategy = mock(TaskDeviceMatchingStrategy.class);
-        TaskDeviceAssignListener customListener = new TaskDeviceAssignListener(customStrategy, msgAssignListener);
+        TaskDeviceAssignListener customListener = new TaskDeviceAssignListener(customStrategy, msgAssignListener, taskManager);
 
         when(customStrategy.matchDevices(same(task), eq(2))).thenReturn(List.of(customDevice));
 

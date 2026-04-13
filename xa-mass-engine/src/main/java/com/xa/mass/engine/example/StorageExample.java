@@ -190,7 +190,7 @@ public class StorageExample {
         var recordService = new AssignmentRecordService();
         var taskManager = new TaskManager(new SimpleTaskScheduler(), new InMemoryTaskStorage());
         var msgAssignListener = new SimpleTaskMsgAssignListener(taskManager, deviceManager, recordService);
-        var deviceAssignListener = new TaskDeviceAssignListener(ruleManager, deviceManager, msgAssignListener, recordService);
+        var deviceAssignListener = new TaskDeviceAssignListener(ruleManager, deviceManager, msgAssignListener, recordService, taskManager);
 
         // 显示规则信息
         var rules = ruleManager.getDefaultRules();
@@ -354,7 +354,7 @@ public class StorageExample {
         var recordService = new AssignmentRecordService();
         var taskManager = new TaskManager(new SimpleTaskScheduler(), new InMemoryTaskStorage());
         var msgAssignListener = new SimpleTaskMsgAssignListener(taskManager, deviceManager, recordService);
-        var deviceAssignListener = new TaskDeviceAssignListener(ruleManager, deviceManager, msgAssignListener, recordService);
+        var deviceAssignListener = new TaskDeviceAssignListener(ruleManager, deviceManager, msgAssignListener, recordService, taskManager);
 
         // 2. 使用默认配置生成设备和Token
         String defaultConfig = MonkeyGenerator.exampleJsonDsl();

@@ -14,11 +14,15 @@ public class AuditService {
 
     public void onTaskCreated(TaskCreatedEvent event) {
         Task task = event.getTask();
-        // 瀹℃牳閫昏緫
-        task.transitionTo(TaskStatus.READY);
-        log.info("[AuditService] 瀹℃牳閫氳繃: {}", task.getTid());
-        // 瀹℃牳閫氳繃鍚庡彂甯冧笅涓€涓簨浠?
+        boolean transitioned = task.transitionTo(TaskStatus.READY);
+        if (!transitioned) {
+            // Task may already be in a non-NEW state (e.g. BLOCKED); do not fire
+            // TaskAuditedEvent with a task that failed to reach READY.
+            log.warn("[AuditService] 审核失败，状态不允许转换: tid={}, currentStatus={}", task.getTid(), task.getStatus());
+            return;
+        }
+        log.info("[AuditService] 审核通过: {}", task.getTid());
         EventBusFacade eventBus = EventBusFactory.get("guava");
         eventBus.post(new TaskAuditedEvent(task, null, null));
     }
-} 
+}

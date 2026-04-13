@@ -20,11 +20,20 @@ class TaskAssignWorkerTest {
     private TaskAssignWorker worker;
     private List<Task> assigned;
 
-    /** Stub TaskDeviceAssignListener that records tasks handed to it */
+    /**
+     * Stub TaskDeviceAssignListener that records tasks and transitions them to RUNNING,
+     * simulating a successful device assignment. Without the READY→RUNNING transition,
+     * the worker treats the task as unassigned and schedules a retry — completion
+     * notifications would never fire.
+     */
     private TaskDeviceAssignListener recordingListener(List<Task> sink) {
         TaskDeviceAssignListener stub = mock(TaskDeviceAssignListener.class);
-        doAnswer(inv -> { sink.add(inv.getArgument(0)); return null; })
-                .when(stub).onTaskAssign(any());
+        doAnswer(inv -> {
+            Task t = inv.getArgument(0);
+            t.transitionTo(TaskStatus.RUNNING); // simulate successful assignment
+            sink.add(t);
+            return null;
+        }).when(stub).onTaskAssign(any());
         return stub;
     }
 

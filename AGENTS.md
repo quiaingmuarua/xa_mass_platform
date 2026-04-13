@@ -20,6 +20,7 @@ This file is the fastest entry point for coding agents such as Claude Code, Code
 - `TaskApiLifecycleGuardsIntegrationTest` now covers `reject -> approve`, `pause -> resume`, and delete guard through real HTTP APIs
 - `TaskApiTerminateRunningIntegrationTest` now covers `approve -> assign -> running -> terminate -> delete` without mock client callbacks
 - `TaskApiCallbackReplayIntegrationTest` now covers duplicate `TASK/step` callback replay through the real gateway path
+- `TaskApiPauseCompletionIntegrationTest` now covers `approve -> assign -> running -> pause -> callback -> terminal` through the real gateway path
 - `MassWebSocketClientImpl` ignores `response=true` `TASK/step` frames to avoid mock echo loops
 - `mock.client.task-result-status` can force mock result frames to `SUCCESS` or `FAILED`
 - Treat `engine/v2` as historical archive material, not mainline
@@ -310,6 +311,7 @@ Important current implementation facts:
 - `MassWebSocketClientImpl` now ignores `response=true` task frames to prevent mock client echo loops and duplicate result writes.
 - Verified on `2026-04-13`: API-created tasks move `NEW -> READY -> RUNNING -> TERMINAL`, and persisted `TaskMsg` rows move `INIT -> SENT -> SUCCESS` with `deviceId` / `tokenId` / `batchId`.
 - Verified on `2026-04-13`: with `mock.client.task-result-status=FAILED`, API-created tasks still move `NEW -> READY -> RUNNING -> TERMINAL`, `taskExecutedNumber` stays `0`, and persisted `TaskMsg` rows move `INIT -> SENT -> FAILED`.
+- Verified on `2026-04-13`: after `RUNNING -> PAUSED`, real `TASK/step` callbacks can still finish the paused task to `TERMINAL` without requiring a manual resume.
 - `TaskAssignWorker` uses `CopyOnWriteArrayList` for listeners.
 - `TaskAssignWorker` now delayed-retries `READY` tasks that receive no device match, so they do not become orphaned after a single dequeue attempt.
 - `TaskAssignWorker.stop()` calls `shutdownNow()` plus `awaitTermination(10s)`.
@@ -322,7 +324,7 @@ Important current implementation facts:
 Focused verified regression command on `2026-04-13`:
 
 ```bash
-mvn --% -pl xa-mass-mock -am -Dtest=TaskManagerLifecycleTest,TaskAssignWorkerTest,MassApplicationStopOrderTest,MassEngineStopTest,MassWebSocketClientImplTest,TaskApiIntegrationTest,TaskApiFailureResultIntegrationTest,TaskApiLifecycleGuardsIntegrationTest,TaskApiTerminateRunningIntegrationTest,TaskApiCallbackReplayIntegrationTest,WebSocketClientStarterTest -Dsurefire.failIfNoSpecifiedTests=false test
+mvn --% -pl xa-mass-mock -am -Dtest=TaskManagerLifecycleTest,TaskAssignWorkerTest,MassApplicationStopOrderTest,MassEngineStopTest,MassWebSocketClientImplTest,TaskApiIntegrationTest,TaskApiFailureResultIntegrationTest,TaskApiLifecycleGuardsIntegrationTest,TaskApiTerminateRunningIntegrationTest,TaskApiCallbackReplayIntegrationTest,TaskApiPauseCompletionIntegrationTest,WebSocketClientStarterTest -Dsurefire.failIfNoSpecifiedTests=false test
 ```
 
 Verified focused classes:
@@ -332,6 +334,7 @@ Verified focused classes:
 - `xa-mass-mock/src/test/java/com/xa/mass/mock/api/TaskApiLifecycleGuardsIntegrationTest.java`
 - `xa-mass-mock/src/test/java/com/xa/mass/mock/api/TaskApiTerminateRunningIntegrationTest.java`
 - `xa-mass-mock/src/test/java/com/xa/mass/mock/api/TaskApiCallbackReplayIntegrationTest.java`
+- `xa-mass-mock/src/test/java/com/xa/mass/mock/api/TaskApiPauseCompletionIntegrationTest.java`
 - `xa-mass-mock/src/test/java/com/xa/mass/mock/client/MassWebSocketClientImplTest.java`
 - `xa-mass-mock/src/test/java/com/xa/mass/mock/starter/WebSocketClientStarterTest.java`
 - `xa-mass-engine/src/test/java/com/xa/mass/engine/TaskManagerLifecycleTest.java`
@@ -347,6 +350,7 @@ What the new focused coverage proves:
 - API lifecycle guards for reject/approve, pause/resume, and delete protection are verified through real HTTP calls
 - API terminate-from-running is verified after real assignment and before any mock callback completion, and terminal cleanup delete is also verified
 - duplicate `TASK/step` callback replay is verified end-to-end through the real gateway path and keeps the first final result
+- a paused task can still complete to `TERMINAL` through real callback write-back after assignment, without requiring a manual resume
 - mock clients no longer respond to server response frames
 - mock result status can be forced to `FAILED` without changing business logic code paths
 - duplicate `TASK/step` result callbacks are covered at engine/runtime regression level and keep the first final state

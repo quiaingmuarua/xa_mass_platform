@@ -41,6 +41,7 @@ Working rule:
 - `xa-mass-engine/archive/v2/` is historical experiment code, not the current mainline
 - EventBus mainline has converged onto `com.xa.mass.base.channel.eventbus.core` and `com.xa.mass.base.channel.eventbus.event`
 - API integration coverage includes terminate-from-running and delete-after-terminal after real assignment but before downstream callbacks
+- API integration coverage also proves that paused tasks can still close to terminal when real callbacks arrive after pause
 - Engine regression coverage now locks two important closure rules:
   - paused tasks must close to terminal once all persisted message callbacks are final
   - ready tasks without a current device match must stay in the assignment loop through retry

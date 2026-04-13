@@ -54,9 +54,13 @@ public class TaskAssignWorker {
                     if (task.getStatus() == TaskStatus.READY) {
                         deviceAssignListener.onTaskAssign(task);
                         if (running && task.getStatus() == TaskStatus.READY) {
+                            // No devices matched yet — retry later. Do NOT notify completion
+                            // until the task actually leaves READY, otherwise pendingTasks
+                            // and onAllTasksCompleted fire prematurely.
                             scheduleRetry(task);
+                        } else {
+                            notifyTaskCompleted(task);
                         }
-                        notifyTaskCompleted(task);
                     }
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
@@ -72,6 +76,9 @@ public class TaskAssignWorker {
         pendingTasks.set(tasks.size());
         tasks.forEach(this::submit);
 
+        // Use the common pool instead of `executor`: the task-processing loop already occupies
+        // the single thread in `executor`, so submitting this polling future to the same
+        // executor would queue it behind a loop that never exits — causing a deadlock.
         return CompletableFuture.runAsync(() -> {
             while (pendingTasks.get() > 0 && running) {
                 try {
@@ -81,7 +88,7 @@ public class TaskAssignWorker {
                     break;
                 }
             }
-        }, executor);
+        });
     }
 
     public void submit(Task task) {

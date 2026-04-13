@@ -316,7 +316,13 @@ public class TaskManager {
     }
 
     /**
-     * 恢复任务
+     * 恢复任务。
+     * <p>
+     * 注意：此方法有两条路径，调用方需通过后续 {@link #getTask(String)} 确认实际结果：
+     * <ul>
+     *   <li>若恢复时所有消息均已完成 → 任务直接进入 TERMINAL（无需重新调度）</li>
+     *   <li>否则 → 任务进入 READY，重新进入调度队列</li>
+     * </ul>
      */
     public boolean resumeTask(String taskId) {
         long startTime = System.currentTimeMillis();
@@ -328,12 +334,15 @@ public class TaskManager {
             if (task != null && task.getStatus() == TaskStatus.PAUSED) {
                 TaskStorage.TaskMessageStats stats = getTaskMessageStats(taskId);
                 if (allTaskMessagesCompleted(stats)) {
+                    // All messages finished while the task was paused — terminate directly
+                    // instead of re-queuing. Callers should check getTask() to distinguish
+                    // this PAUSED→TERMINAL path from the normal PAUSED→READY path.
                     task.setTaskExecutedNumber((int) stats.getSuccess());
                     boolean result = task.transitionTo(TaskStatus.TERMINAL);
                     if (result) {
                         taskStorage.updateTask(task);
                         long duration = System.currentTimeMillis() - startTime;
-                        LogUtils.logOperationSuccess("任务恢复前已完成，直接收尾", duration);
+                        LogUtils.logOperationSuccess("任务暂停期间已全部完成，直接终止 (PAUSED→TERMINAL)", duration);
                     } else {
                         long duration = System.currentTimeMillis() - startTime;
                         LogUtils.logOperationFailure("TASK_RESUME_ERROR", "任务已完成但收尾失败", duration);
@@ -452,6 +461,10 @@ public class TaskManager {
                     if (result) {
                         taskStorage.updateTask(task);
                     }
+                } else {
+                    // Task is already in a final state but taskExecutedNumber was just updated
+                    // in memory — persist it so the stored record stays accurate.
+                    taskStorage.updateTask(task);
                 }
             } else {
                 // 更新任务状态

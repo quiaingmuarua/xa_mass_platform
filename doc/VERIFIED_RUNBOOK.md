@@ -36,6 +36,10 @@ For endpoint inventory, response shapes, and implementation status, use [INTERNA
   - `NEW -> READY -> RUNNING -> TERMINAL`
   - `TaskMsg INIT -> SENT`, then remain non-final when the task is manually terminated before client callbacks
   - the terminal task can then be deleted through the real API
+- A paused-after-assignment callback path is also verified:
+  - `NEW -> READY -> RUNNING -> PAUSED -> TERMINAL`
+  - persisted `TaskMsg` rows can move from `SENT` to final states while the task remains paused
+  - no manual `resume` is required for terminal closure
 
 ## 2. Recommended Startup
 
@@ -187,6 +191,7 @@ What it verifies:
 - each message finishes as `SUCCESS`
 - each message has non-null `deviceId`, `tokenId`, and `batchId`
 - separate lifecycle guard coverage now verifies reject/approve, pause/resume, and delete guard through real HTTP APIs with no assignable devices
+- separate pause-completion coverage now verifies `RUNNING -> PAUSED -> TERMINAL` through real gateway callback write-back after assignment
 - engine lifecycle coverage now verifies paused-task final callback closure into `TERMINAL`
 - engine worker coverage now verifies retry of `READY` tasks that initially have no device match
 
@@ -291,8 +296,7 @@ Verified result:
 
 Recommended next test-driven additions:
 
-1. `RUNNING -> PAUSED -> READY` end-to-end with real assigned messages
+1. `RUNNING -> PAUSED -> READY` end-to-end with real assigned messages and then resumed dispatch behavior validation
 2. cancel path variants from `NEW`, `READY`, and `PAUSED` with message-state assertions
 3. mixed-result aggregation coverage where one message succeeds and another fails
-4. full end-to-end proof that a paused task with in-flight callbacks closes through the real gateway path without requiring a manual resume
 

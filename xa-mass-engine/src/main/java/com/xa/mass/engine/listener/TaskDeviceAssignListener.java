@@ -4,6 +4,7 @@ import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Device;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.engine.DeviceManager;
+import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.engine.service.AssignmentRecordService;
 import com.xa.mass.engine.strategy.RuleBasedTaskDeviceMatchingStrategy;
@@ -22,18 +23,22 @@ public class TaskDeviceAssignListener {
 
     private final TaskDeviceMatchingStrategy matchingStrategy;
     private final TaskMsgAssignListener msgAssignListener;
+    private final TaskManager taskManager;
 
     public TaskDeviceAssignListener(RuleManager<Map<String, Object>> ruleManager,
                                     DeviceManager deviceManager,
                                     TaskMsgAssignListener msgAssignListener,
-                                    AssignmentRecordService recordService) {
-        this(new RuleBasedTaskDeviceMatchingStrategy(ruleManager, deviceManager, recordService), msgAssignListener);
+                                    AssignmentRecordService recordService,
+                                    TaskManager taskManager) {
+        this(new RuleBasedTaskDeviceMatchingStrategy(ruleManager, deviceManager, recordService), msgAssignListener, taskManager);
     }
 
     public TaskDeviceAssignListener(TaskDeviceMatchingStrategy matchingStrategy,
-                                    TaskMsgAssignListener msgAssignListener) {
+                                    TaskMsgAssignListener msgAssignListener,
+                                    TaskManager taskManager) {
         this.matchingStrategy = matchingStrategy;
         this.msgAssignListener = msgAssignListener;
+        this.taskManager = taskManager;
     }
 
     /**
@@ -47,6 +52,7 @@ public class TaskDeviceAssignListener {
             task.setScheduleDeviceCnt(matched.size());
             if (task.getStatus() == TaskStatus.READY) {
                 task.transitionTo(TaskStatus.RUNNING);
+                taskManager.updateTask(task); // persist READY→RUNNING before dispatching messages
             }
             msgAssignListener.onMsgAssign(task, matched);
         }
