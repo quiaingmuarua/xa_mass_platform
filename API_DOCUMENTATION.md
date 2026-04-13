@@ -1,3 +1,7 @@
+> **⚠️ 部分过时** — 本文档生成于 Phase 1 之前，不反映以下修复：
+> deleteTask 状态约束、WebSocket 错误帧格式、SessionController 真实数据、消息分配管道。
+> **当前权威参考**：[`doc/内部管理接口文档.md`](./doc/内部管理接口文档.md)（含实现状态标注）和 [`doc/VERIFIED_RUNBOOK.md`](./doc/VERIFIED_RUNBOOK.md)
+
 # XA Mass Platform - Comprehensive API Documentation
 
 ## Table of Contents
