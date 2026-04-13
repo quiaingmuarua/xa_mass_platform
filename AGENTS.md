@@ -101,7 +101,7 @@ Default `dev` startup facts:
 ## 5. Current Reality, Not Marketing
 
 - The app can compile and run.
-- The current runtime path still uses parts of `old.eventbus`.
+- The active runtime path now uses the current `channel/eventbus/core` and `channel/eventbus/event` packages.
 - New EventBus docs describe target architecture, not fully verified runtime reality.
 - `v2` is not the mainline implementation.
 - API-first task flow is the current source of truth. UI pages are a secondary validation surface.
@@ -157,7 +157,7 @@ Open first:
 Notes:
 
 - Do not treat this as the current `spring-boot:run` target.
-- Runtime still uses parts of `old.eventbus` from this layer.
+- Runtime publishes and consumes events through the current `channel/eventbus/core` and `channel/eventbus/event` packages from this module.
 
 ### `xa-mass-api`
 
@@ -223,7 +223,7 @@ Role:
 Current status:
 
 - Stable enough for current mainline
-- Contains both current and historical infra paths
+- Contains the active EventBus implementation under `channel/eventbus/core` and `channel/eventbus/event`
 - Maven module name is `xa-mass-core`; Java packages remain under `com.xa.mass.base`
 
 Open first:
@@ -234,8 +234,8 @@ Open first:
 
 Notes:
 
-- Event bus is split between `channel/eventbus` and `old/eventbus`.
-- Current runtime still depends on old path in places.
+- The mainline EventBus namespace is the current `channel/eventbus/core` and `channel/eventbus/event` path.
+- The former legacy compatibility package has been removed from the active source tree to reduce agent confusion.
 
 ### `xa-mass-gateway`
 
@@ -355,7 +355,8 @@ Reason:
 
 - `SimpleTaskScheduler.scheduleTasks()` is still a stub. Scheduler APIs are not the current source of `READY -> RUNNING`.
 - Shutdown may still require two interrupts in the running app.
-- EventBus is not yet converged. Runtime still uses Guava-based `old.eventbus` in places.
+- EventBus has converged onto the current `channel/eventbus/core` and `channel/eventbus/event` namespace.
+- The active implementation is still Guava-backed; Redis remains an unimplemented/fail-fast path.
 - Redis and Database storage remain fail-fast only. `MEMORY` is the only implemented storage path.
 - API integration coverage is still selective. Callback replay is now covered end-to-end, but some cancel-path behavior still needs integration tests.
 
@@ -363,7 +364,7 @@ Reason:
 
 1. Add API-level integration coverage for remaining cancel-path variants.
 2. Improve shutdown so a single Ctrl-C exits cleanly.
-3. Converge EventBus call sites onto the current intended runtime abstraction.
+3. Expand EventBus coverage and diagnostics around the current `channel/eventbus/core` path.
 4. Expand diagnostics around task dispatch and result write-back so stuck tasks are easier to localize.
 5. Keep UI work secondary until API/runtime convergence is stable.
 
@@ -404,7 +405,7 @@ For event bus questions:
 
 - inspect current call sites first
 - do not start from architecture docs
-- verify whether the code path uses `old.eventbus` or `channel.eventbus`
+- verify whether the code path uses the current `channel.eventbus.core` / `channel.eventbus.event` path before trusting older architecture notes
 
 ## 13. Working Rule
 

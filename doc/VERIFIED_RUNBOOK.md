@@ -252,7 +252,8 @@ Verified result:
 
 - `SimpleTaskScheduler.scheduleTasks()` is still a stub
 - the running app may still need two interrupts to exit
-- EventBus runtime is not yet converged and still uses `old.eventbus` in places
+- EventBus runtime now uses the current `channel.eventbus.core` and `channel.eventbus.event` namespace
+- The verified implementation remains Guava-backed; Redis is still fail-fast
 - Redis and Database storage remain fail-fast placeholders
 - API integration coverage is still selective beyond the current happy, guard, failed-result, and callback-replay paths
 - Multiple matching policies are now possible at engine level, but only the rule-based strategy is covered in the current integrated runtime path

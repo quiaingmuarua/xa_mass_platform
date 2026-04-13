@@ -1,7 +1,7 @@
 package com.xa.mass.engine;
 
-import com.xa.mass.base.old.eventbus.event.device.DeviceOfflineEvent;
-import com.xa.mass.base.old.eventbus.event.device.DeviceOnlineEvent;
+import com.xa.mass.base.channel.eventbus.event.device.DeviceOfflineEvent;
+import com.xa.mass.base.channel.eventbus.event.device.DeviceOnlineEvent;
 import com.xa.mass.base.model.Device;
 import com.xa.mass.base.model.Token;
 import com.xa.mass.engine.storage.DeviceStorage;
@@ -14,15 +14,15 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentSkipListSet;
 
 /**
- * 设备管理器
- * 负责设备的CRUD操作和Token管理
+ * 璁惧绠＄悊鍣?
+ * 璐熻矗璁惧鐨凜RUD鎿嶄綔鍜孴oken绠＄悊
  */
 public class DeviceManager {
 
     private static final Logger log = LoggerFactory.getLogger(DeviceManager.class);
     private final DeviceStorage deviceStorage;
 
-    // 在线状态管理
+    // 鍦ㄧ嚎鐘舵€佺鐞?
     private final Set<String> onlineDevices = new ConcurrentSkipListSet<>();
 
     public DeviceManager() {
@@ -34,111 +34,111 @@ public class DeviceManager {
     }
 
     /**
-     * 添加设备
+     * 娣诲姞璁惧
      */
     public void addDevice(Device device) {
         deviceStorage.addDevice(device);
     }
 
     /**
-     * 根据设备ID获取设备
+     * 鏍规嵁璁惧ID鑾峰彇璁惧
      */
     public Device getDevice(String deviceId) {
         return deviceStorage.getDevice(deviceId).orElse(null);
     }
 
     /**
-     * 更新设备
+     * 鏇存柊璁惧
      */
     public boolean updateDevice(Device device) {
         return deviceStorage.updateDevice(device);
     }
 
     /**
-     * 删除设备
+     * 鍒犻櫎璁惧
      */
     public boolean deleteDevice(String deviceId) {
         return deviceStorage.deleteDevice(deviceId);
     }
 
     /**
-     * 根据国家获取设备列表
+     * 鏍规嵁鍥藉鑾峰彇璁惧鍒楄〃
      */
     public List<Device> getDevicesByCountry(String country) {
         return deviceStorage.getDevicesByCountry(country);
     }
 
     /**
-     * 添加Token
+     * 娣诲姞Token
      */
     public void addToken(String deviceId, Token token) {
         deviceStorage.addToken(deviceId, token);
     }
 
     /**
-     * 根据设备ID获取Token
+     * 鏍规嵁璁惧ID鑾峰彇Token
      */
     public Token getToken(String deviceId) {
         return deviceStorage.getToken(deviceId).orElse(null);
     }
 
     /**
-     * 更新Token
+     * 鏇存柊Token
      */
     public boolean updateToken(String deviceId, Token token) {
         return deviceStorage.updateToken(deviceId, token);
     }
 
     /**
-     * 删除Token
+     * 鍒犻櫎Token
      */
     public boolean deleteToken(String deviceId) {
         return deviceStorage.deleteToken(deviceId);
     }
 
     /**
-     * 尝试锁定设备
+     * 灏濊瘯閿佸畾璁惧
      */
     public boolean tryLockDevice(String deviceId) {
         return deviceStorage.tryLockDevice(deviceId);
     }
 
     /**
-     * 解锁设备
+     * 瑙ｉ攣璁惧
      */
     public void unlockDevice(String deviceId) {
         deviceStorage.unlockDevice(deviceId);
     }
 
     /**
-     * 检查设备是否被锁定
+     * 妫€鏌ヨ澶囨槸鍚﹁閿佸畾
      */
     public boolean isLocked(String deviceId) {
         return deviceStorage.isLocked(deviceId);
     }
 
     /**
-     * 获取所有设备
+     * 鑾峰彇鎵€鏈夎澶?
      */
     public List<Device> getAllDevices() {
         return deviceStorage.getAllDevices();
     }
 
     /**
-     * 获取所有Token
+     * 鑾峰彇鎵€鏈塗oken
      */
     public List<Token> getAllTokens() {
         return deviceStorage.getAllTokens();
     }
 
     /**
-     * 获取所有锁定的设备ID
+     * 鑾峰彇鎵€鏈夐攣瀹氱殑璁惧ID
      */
     public List<String> getLockedDevices() {
         return deviceStorage.getLockedDevices();
     }
 
-    // 在线状态管理
+    // 鍦ㄧ嚎鐘舵€佺鐞?
     public void updateOnlineStatus(String deviceId, boolean online) {
         if (online) {
             onlineDevices.add(deviceId);
@@ -152,7 +152,7 @@ public class DeviceManager {
     }
 
 
-    // 事件监听器
+    // 浜嬩欢鐩戝惉鍣?
     public static class DeviceStatusEventListener {
         private final DeviceManager deviceManager;
 

@@ -24,7 +24,7 @@
 ## Boundaries
 
 - API controllers are not started here directly; they are loaded by `xa-mass-mock`
-- runtime still uses parts of `old.eventbus` from this layer
+- runtime event publishing uses the current `channel/eventbus/core` and `channel/eventbus/event` packages from this module
 - use these documents before trusting module-local assumptions:
   - [`../AGENTS.md`](../AGENTS.md)
   - [`../doc/AGENT_BASELINE.md`](../doc/AGENT_BASELINE.md)

@@ -39,7 +39,7 @@ Working rule:
 - API-first task flow is the current mainline truth
 - `com.xa.mass.engine` is the active engine path
 - `xa-mass-engine/archive/v2/` is historical experiment code, not the current mainline
-- EventBus convergence is incomplete; parts of the runtime still depend on `com.xa.mass.base.old.eventbus`
+- EventBus mainline has converged onto `com.xa.mass.base.channel.eventbus.core` and `com.xa.mass.base.channel.eventbus.event`
 
 ## 3. Module Facts
 
@@ -73,7 +73,7 @@ Working rule:
 - shared models, enums, messaging abstractions, JSON DSL, and event bus code
 - Maven module is `xa-mass-core`
 - Java package names intentionally remain under `com.xa.mass.base`
-- `old.eventbus` is still partially used by the mainline runtime
+- the active EventBus code now lives under `channel.eventbus.core` and `channel.eventbus.event`
 
 ### `xa-mass-gateway`
 
@@ -99,20 +99,20 @@ Working rule:
 
 ### Event Bus
 
-- do not assume new event bus abstractions have fully replaced Guava-based paths
+- the current EventBus namespace is converged, but the active implementation remains Guava-backed
 - inspect real call sites before making architecture claims
 
 ### Historical Code
 
 - `xa-mass-engine/archive/v2/` is kept only as archive material
 - it is outside the active source tree by design to reduce agent confusion
-- `com.xa.mass.base.old` is not fully removable yet because mainline still imports parts of it
+- the former `channel.eventbus.legacy` compatibility package has been removed from the active source tree
 
 ## 5. Known Gaps
 
 - `SimpleTaskScheduler.scheduleTasks()` is still a stub
 - app shutdown may still need more than one interrupt
-- EventBus paths are not yet converged
+- EventBus naming is converged on the current core/event namespace, but Redis remains unimplemented
 - Redis and Database storage are still fail-fast placeholders
 - API integration coverage is improved but still not exhaustive for cancel variants
 
@@ -142,7 +142,7 @@ Do not assume, without re-verification:
 
 - `xa-mass-runtime` is the only runnable entry
 - `v2` is the active engine generation
-- new EventBus abstractions have fully replaced old ones
+- Redis-backed EventBus behavior exists in the active runtime path
 - older API docs still match implementation exactly
 - a documented capability is live just because it is written down
 

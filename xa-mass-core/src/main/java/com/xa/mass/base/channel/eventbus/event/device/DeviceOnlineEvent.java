@@ -1,31 +1,26 @@
-package com.xa.mass.base.old.eventbus.event.device;
+package com.xa.mass.base.channel.eventbus.event.device;
 
 import com.xa.mass.base.channel.eventbus.core.MassEvent;
-import com.xa.mass.base.model.Device;
+import com.xa.mass.base.channel.eventbus.core.MassPlatformEventType;
 
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 
-/**
- * 设备单个上线事件
- */
-public class DeviceOnlineSingleEvent extends MassEvent.BaseMassEvent {
+public class DeviceOnlineEvent extends MassEvent.BaseMassEvent {
     private final String deviceId;
     private final String reason;
-    private final Device device;
 
-    public DeviceOnlineSingleEvent(String deviceId, Device device, String reason, String traceId) {
+    public DeviceOnlineEvent(String deviceId, String reason, String traceId) {
         super(
-                "DEVICE_ONLINE_SINGLE",
-                null,
-                String.format("设备 %s 上线，原因: %s", deviceId, reason),
+                "DEVICE_ONLINE",
+                MassPlatformEventType.DEVICE_ONLINE_BATCH,
+                String.format("Device %s is online: %s", deviceId, reason),
                 createMetadata(deviceId, reason),
                 traceId,
                 null
         );
         this.deviceId = deviceId;
-        this.device = device;
         this.reason = reason;
     }
 
@@ -43,8 +38,4 @@ public class DeviceOnlineSingleEvent extends MassEvent.BaseMassEvent {
     public String getReason() {
         return reason;
     }
-
-    public Device getDevice() {
-        return device;
-    }
-} 
+}

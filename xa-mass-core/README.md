@@ -9,8 +9,8 @@
 
 ## Current Status
 
-- contains both active and historical infrastructure paths
-- `old.eventbus` still appears in the verified runtime path
+- contains the active EventBus implementation under `channel/eventbus/core` and `channel/eventbus/event`
+- the legacy EventBus compatibility package has been removed from the active source tree
 - do not assume every README under `src/main/java/**` describes current production behavior
 
 ## Start Here

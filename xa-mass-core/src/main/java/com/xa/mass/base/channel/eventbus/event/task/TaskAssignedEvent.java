@@ -1,4 +1,4 @@
-package com.xa.mass.base.old.eventbus.event.task;
+package com.xa.mass.base.channel.eventbus.event.task;
 
 import com.xa.mass.base.channel.eventbus.core.MassEvent;
 import com.xa.mass.base.channel.eventbus.core.MassPlatformEventType;
@@ -14,7 +14,7 @@ public class TaskAssignedEvent extends MassEvent.BaseMassEvent {
         super(
                 "TASK_ASSIGNED",
                 MassPlatformEventType.TASK_ASSIGNED,
-                String.format("任务分配: %s", task != null ? task.getTid() : "null"),
+                String.format("Task assigned: %s", task != null ? task.getTid() : "null"),
                 createMetadata(task),
                 traceId,
                 requestId

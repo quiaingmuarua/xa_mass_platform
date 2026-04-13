@@ -1,4 +1,4 @@
-package com.xa.mass.base.old.eventbus.event.task;
+package com.xa.mass.base.channel.eventbus.event.task;
 
 import com.xa.mass.base.channel.eventbus.core.MassEvent;
 import com.xa.mass.base.channel.eventbus.core.MassPlatformEventType;
@@ -7,14 +7,14 @@ import com.xa.mass.base.model.Task;
 import java.util.Collections;
 import java.util.Map;
 
-public class TaskAuditedEvent extends MassEvent.BaseMassEvent {
+public class TaskCreatedEvent extends MassEvent.BaseMassEvent {
     private final Task task;
 
-    public TaskAuditedEvent(Task task, String traceId, String requestId) {
+    public TaskCreatedEvent(Task task, String traceId, String requestId) {
         super(
-                "TASK_AUDITED",
-                MassPlatformEventType.TASK_AUDITED,
-                String.format("任务审核通过: %s", task != null ? task.getTid() : "null"),
+                "TASK_CREATED",
+                MassPlatformEventType.TASK_CREATED,
+                String.format("Task created: %s", task != null ? task.getTid() : "null"),
                 createMetadata(task),
                 traceId,
                 requestId

@@ -1,6 +1,6 @@
 package com.xa.mass.engine.service;
 
-import com.xa.mass.base.old.eventbus.event.task.TaskAssignedEvent;
+import com.xa.mass.base.channel.eventbus.event.task.TaskAssignedEvent;
 import com.xa.mass.engine.monkey.report.AssignmentPipelineStep;
 import com.xa.mass.engine.monkey.report.AssignmentReportStep;
 import com.xa.mass.engine.monkey.report.ConflictReportStep;
@@ -20,7 +20,7 @@ public class PipelineService {
     }
 
     public void onTaskAssigned(TaskAssignedEvent event) {
-        log.info("[PipelineService] Pipeline处理: {}", event.getTask().getTid());
+        log.info("[PipelineService] Pipeline澶勭悊: {}", event.getTask().getTid());
         CompletableFuture.runAsync(() -> {
             List<AssignmentPipelineStep> pipeline = List.of(
                     new AssignmentReportStep(true),
