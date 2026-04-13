@@ -26,6 +26,7 @@ This file is the fastest entry point for coding agents such as Claude Code, Code
 - `TaskApiTerminateRunningIntegrationTest` now covers `approve -> assign -> running -> terminate -> delete` without mock client callbacks
 - `TaskApiCallbackReplayIntegrationTest` now covers duplicate `TASK/step` callback replay through the real gateway path
 - `TaskApiPauseCompletionIntegrationTest` now covers `approve -> assign -> running -> pause -> callback -> terminal` through the real gateway path
+- `TaskApiStateValidationIntegrationTest` now covers `GET /status/api/tasks/{taskId}` state-audit output for valid terminal tasks, forced `needsResolution=true` tasks, and invalid terminal-reason variants
 - `MassWebSocketClientImpl` ignores `response=true` `TASK/step` frames to avoid mock echo loops
 - `mock.client.task-result-status` can force mock result frames to `SUCCESS` or `FAILED`
 - Treat `engine/v2` as historical archive material, not mainline
@@ -362,7 +363,7 @@ Important current implementation facts:
 Focused verified regression command on `2026-04-13`:
 
 ```bash
-mvn --% -pl xa-mass-mock -am -Dtest=TaskManagerLifecycleTest,TaskAssignWorkerTest,MassApplicationStopOrderTest,MassEngineStopTest,MassWebSocketClientImplTest,TaskApiIntegrationTest,TaskApiFailureResultIntegrationTest,TaskApiLifecycleGuardsIntegrationTest,TaskApiTerminateRunningIntegrationTest,TaskApiCallbackReplayIntegrationTest,TaskApiPauseCompletionIntegrationTest,WebSocketClientStarterTest -Dsurefire.failIfNoSpecifiedTests=false test
+mvn --% -pl xa-mass-mock -am -Dtest=TaskManagerLifecycleTest,TaskAssignWorkerTest,MassApplicationStopOrderTest,MassEngineStopTest,MassWebSocketClientImplTest,TaskApiIntegrationTest,TaskApiFailureResultIntegrationTest,TaskApiLifecycleGuardsIntegrationTest,TaskApiTerminateRunningIntegrationTest,TaskApiCallbackReplayIntegrationTest,TaskApiPauseCompletionIntegrationTest,TaskApiStateValidationIntegrationTest,WebSocketClientStarterTest -Dsurefire.failIfNoSpecifiedTests=false test
 ```
 
 Verified focused classes:
@@ -373,6 +374,7 @@ Verified focused classes:
 - `xa-mass-mock/src/test/java/com/xa/mass/mock/api/TaskApiTerminateRunningIntegrationTest.java`
 - `xa-mass-mock/src/test/java/com/xa/mass/mock/api/TaskApiCallbackReplayIntegrationTest.java`
 - `xa-mass-mock/src/test/java/com/xa/mass/mock/api/TaskApiPauseCompletionIntegrationTest.java`
+- `xa-mass-mock/src/test/java/com/xa/mass/mock/api/TaskApiStateValidationIntegrationTest.java`
 - `xa-mass-mock/src/test/java/com/xa/mass/mock/client/MassWebSocketClientImplTest.java`
 - `xa-mass-mock/src/test/java/com/xa/mass/mock/starter/WebSocketClientStarterTest.java`
 - `xa-mass-engine/src/test/java/com/xa/mass/engine/TaskManagerLifecycleTest.java`
@@ -389,6 +391,8 @@ What the new focused coverage proves:
 - API terminate-from-running is verified after real assignment and before any mock callback completion, and terminal cleanup delete is also verified
 - duplicate `TASK/step` callback replay is verified end-to-end through the real gateway path and keeps the first final result
 - a paused task can still complete to `TERMINAL` through real callback write-back after assignment, without requiring a manual resume
+- `GET /status/api/tasks/{taskId}` exposes `stateValidation` over the real HTTP/runtime path, including `needsResolution=true` when a task is manually reopened after all persisted message callbacks are already final
+- invalid terminal metadata is also covered end-to-end: missing `terminalReason` and message/result mismatch both surface through `stateValidation.violations`
 - mock clients no longer respond to server response frames
 - mock result status can be forced to `FAILED` without changing business logic code paths
 - duplicate `TASK/step` result callbacks are covered at engine/runtime regression level and keep the first final state

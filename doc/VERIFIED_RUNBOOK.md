@@ -297,10 +297,24 @@ What it verifies:
 - no `TaskMsg` is incorrectly rewritten to `SUCCESS` or `FAILED` just because the task was terminated
 - `DELETE /status/api/tasks/{taskId}` succeeds after the task reaches `TERMINAL`
 
-### 5.9 Focused Verified Test Command
+### 5.9 State Validation Is Covered End-to-End
+
+Integration test:
+
+- `xa-mass-mock/src/test/java/com/xa/mass/mock/api/TaskApiStateValidationIntegrationTest.java`
+
+What it verifies:
+
+- `GET /status/api/tasks/{taskId}` returns `stateValidation` over the real HTTP/runtime path
+- a freshly created task reports `stateValidation.valid=true`, `needsResolution=false`, `status=NEW`
+- a normal runtime-completed task reports `stateValidation.valid=true`, `needsResolution=false`, `status=TERMINAL`
+- after a completed task is intentionally reopened to `RUNNING` without changing persisted `TaskMsg` finals, the same API reports `stateValidation.valid=true` and `needsResolution=true`
+- if terminal metadata is intentionally corrupted, the same API reports `stateValidation.valid=false` and exposes concrete violations such as `TERMINAL_REASON_MISSING` or `TERMINAL_REASON_MISMATCH_ALL_FAILED`
+
+### 5.10 Focused Verified Test Command
 
 ```bash
-mvn --% -pl xa-mass-mock -am -Dtest=MassWebSocketClientImplTest,TaskApiIntegrationTest,TaskApiFailureResultIntegrationTest,TaskApiLifecycleGuardsIntegrationTest,TaskApiTerminateRunningIntegrationTest,TaskApiCallbackReplayIntegrationTest,WebSocketClientStarterTest -Dsurefire.failIfNoSpecifiedTests=false test
+mvn --% -pl xa-mass-mock -am -Dtest=MassWebSocketClientImplTest,TaskApiIntegrationTest,TaskApiFailureResultIntegrationTest,TaskApiLifecycleGuardsIntegrationTest,TaskApiTerminateRunningIntegrationTest,TaskApiCallbackReplayIntegrationTest,TaskApiStateValidationIntegrationTest,WebSocketClientStarterTest -Dsurefire.failIfNoSpecifiedTests=false test
 ```
 
 Verified result:
