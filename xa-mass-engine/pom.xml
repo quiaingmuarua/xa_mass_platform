@@ -30,33 +30,4 @@
         </dependency>
     </dependencies>
 
-    <build>
-        <plugins>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-compiler-plugin</artifactId>
-                <configuration>
-                    <testExcludes>
-                        <!-- Historical v2 tests/examples depend on a removed messaging package tree -->
-                        <testExclude>**/com/xa/mass/engine/v2/dao/MessageMapProviderRegistryTest.java</testExclude>
-                        <testExclude>**/com/xa/mass/engine/v2/dao/TaskRepositoryManagerTest.java</testExclude>
-                        <testExclude>**/com/xa/mass/engine/v2/integration/DataFlowIntegrationTest.java</testExclude>
-                        <testExclude>**/com/xa/mass/engine/v2/example/**/*.java</testExclude>
-                    </testExcludes>
-                </configuration>
-            </plugin>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-surefire-plugin</artifactId>
-                <configuration>
-                    <excludes>
-                        <exclude>**/com/xa/mass/engine/v2/dao/MessageMapProviderRegistryTest.java</exclude>
-                        <exclude>**/com/xa/mass/engine/v2/dao/TaskRepositoryManagerTest.java</exclude>
-                        <exclude>**/com/xa/mass/engine/v2/integration/DataFlowIntegrationTest.java</exclude>
-                        <exclude>**/com/xa/mass/engine/v2/example/**/*.java</exclude>
-                    </excludes>
-                </configuration>
-            </plugin>
-        </plugins>
-    </build>
 </project> 

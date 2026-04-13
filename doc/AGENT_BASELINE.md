@@ -1,128 +1,154 @@
 # XA Mass Platform Agent Baseline
 
-本文件只保留后续 agent 最需要的基线事实�?
-- 模块真实职责
-- 当前主线与历史目录的边界
-- 排查时应优先相信什�?- 已知仍未收敛的问�?
-不负责记录：
+This document keeps only the stable baseline facts that coding agents need first:
 
-- 启动命令
-- 运行验证过程
-- 回归测试命令
-- 历史排查过程日志
+- real module responsibilities
+- mainline versus historical directory boundaries
+- what to trust when docs and runtime disagree
+- current unresolved convergence gaps
 
-这些内容分别见：
+It intentionally does not duplicate run commands, verification logs, or daily investigation notes.
+
+For those, use:
 
 - [../AGENTS.md](../AGENTS.md)
 - [./VERIFIED_RUNBOOK.md](./VERIFIED_RUNBOOK.md)
 
-## 1. 事实优先�?
-排查时按以下顺序判断真相�?
-1. 代码实际调用关系
-2. 已验证运行行�?3. `AGENTS.md`
-4. 本文�?5. 模块 README
-6. `doc/archive/` 下的历史文档
+## 1. Truth Order
 
-工作规则�?
-- 不要默认 README 或历史设计文档描述的是当前实�?- 如果代码、运行表现、文档三者冲突，优先相信代码和已验证运行行为
-- 发现事实变化后，先修当前文档，再考虑保留历史说明
+When code, runtime behavior, and docs disagree, use this order:
 
-## 2. 当前主线判断
+1. Actual code paths
+2. Verified runtime behavior
+3. [../AGENTS.md](../AGENTS.md)
+4. This file
+5. Module READMEs
+6. `doc/archive/` historical material
 
-- 真实 Spring Boot 入口�?`xa-mass-mock`
-- `xa-mass-runtime` 不是当前可直接运行的 Boot 入口
-- API-first 任务流是当前主线真相，UI 页面只是辅助观察�?- `engine/v2` 不是当前生产主线
-- 事件总线没有完全收敛，`old.eventbus` 仍在运行链中出现
+Working rule:
 
-## 3. 模块真相
+- do not assume old READMEs or architecture notes still describe the live path
+- update active docs after confirming runtime truth
+- keep historical explanation in archive paths instead of letting it leak back into mainline docs
+
+## 2. Mainline Reality
+
+- The real Spring Boot entry is `xa-mass-mock`
+- `xa-mass-runtime` is a composition layer, not the primary Boot entry
+- The project is library/SDK-first; backend pages and HTTP endpoints are validation surfaces
+- API-first task flow is the current mainline truth
+- `com.xa.mass.engine` is the active engine path
+- `xa-mass-engine/archive/v2/` is historical experiment code, not the current mainline
+- EventBus convergence is incomplete; parts of the runtime still depend on `com.xa.mass.base.old.eventbus`
+
+## 3. Module Facts
 
 ### `xa-mass-mock`
 
-- 当前真实可运行入�?- 串起 `api + starter + gateway + engine`
-- 用于全链路验证和 mock 数据加载
+- real Spring Boot shell
+- wires `api + runtime + gateway + engine`
+- best place for end-to-end lifecycle verification
 
 ### `xa-mass-runtime`
 
-- 生命周期 / 组装�?- 负责构建和启�?`MassApplication`、`MassEngine`、`MassGateway`
-- 不是当前 `spring-boot:run` 入口
+- lifecycle and composition layer
+- builds `MassApplication`, `MassEngine`, and `MassGateway`
+- not the main `spring-boot:run` target
 
 ### `xa-mass-api`
 
-- REST controller、状态页、模板层
-- �?`xa-mass-mock` �?Spring Boot 扫描加载
-- 不是独立验证过的应用入口
+- REST controllers, status pages, and DTO layer
+- loaded through `xa-mass-mock`
+- not the independently verified application entry
 
 ### `xa-mass-engine`
 
-- 主线业务逻辑所�?- 当前应优先关�?`TaskManager`、`DeviceManager`、`RuleManager`
-- `v2` 目录与其测试属于历史资产，不应默认纳入主线判�?
+- active business-logic module
+- state-machine correctness, assignment, and rule management live here
+- matching policy extension seam is `TaskDeviceMatchingStrategy`
+- do not route new work into archived `v2`
+
 ### `xa-mass-core`
 
-- Maven ģ����������Ϊ `xa-mass-core`���� Java ��·���Ա��� `com.xa.mass.base`
-- 共享模型、枚举、消息抽象、JSON DSL、事件总线
-- 同时存在当前和历史基础设施路径
+- shared models, enums, messaging abstractions, JSON DSL, and event bus code
+- Maven module is `xa-mass-core`
+- Java package names intentionally remain under `com.xa.mass.base`
+- `old.eventbus` is still partially used by the mainline runtime
 
 ### `xa-mass-gateway`
 
-- WebSocket 连接、分发、会话上下文
-- 已作�?mock 全链路的一部分被验�?- 不应默认视为独立可运行应�?
-## 4. 关键收敛结论
+- WebSocket server, routing, and session context
+- validated as part of the full mock runtime path
 
-### 启动�?
-- 入口应从 `xa-mass-mock` 开�?- 不要�?`xa-mass-runtime` 倒推“它就是运行入口�?
-### 任务生命周期
+## 4. Convergence Conclusions
 
-- 生命周期的业务真相应�?`TaskManager` + `TaskStatus` 为准
-- API 控制器当前已基本对齐 `TaskManager`
-- 文档中若出现�?`TaskStatus.canTransitionTo()` 冲突的规则，应视为过�?
-### 事件总线
+### Startup
 
-- 新旧事件总线并存
-- 不要默认 `StreamEventBusFacade` 已完全替�?Guava 路径
-- 讨论事件总线问题时，先看调用点，再看架构文档
+- start from `xa-mass-mock`
+- do not infer runtime entry from `xa-mass-runtime`
 
-### 测试�?
-- 主线回归应优先看 engine/api/mock 当前测试
-- `xa-mass-engine/src/test/java/com/xa/mass/engine/v2/**` 属于历史测试�?
-## 5. 当前已知未收敛问�?
-- `SimpleTaskScheduler.scheduleTasks()` 仍是 stub
-- 运行中的应用退出仍可能需要两次中�?- EventBus 仍未收敛到单一路径
-- Redis / Database storage 仍是 fail-fast 占位实现
-- API 端到端覆盖仍偏薄，尤其是失败路径、终止路径、重复回调路�?
-## 6. 建议的排查起�?
-按问题类型优先打开这些文件�?
-### 启动 / 运行
+### Task Lifecycle
+
+- trust `TaskManager` and `TaskStatus` over older docs
+- if a document disagrees with `TaskStatus.canTransitionTo(...)`, the document is stale
+
+### Matching
+
+- task-to-device selection should extend through engine strategy interfaces
+- `RuleBasedTaskDeviceMatchingStrategy` is the current default implementation
+
+### Event Bus
+
+- do not assume new event bus abstractions have fully replaced Guava-based paths
+- inspect real call sites before making architecture claims
+
+### Historical Code
+
+- `xa-mass-engine/archive/v2/` is kept only as archive material
+- it is outside the active source tree by design to reduce agent confusion
+- `com.xa.mass.base.old` is not fully removable yet because mainline still imports parts of it
+
+## 5. Known Gaps
+
+- `SimpleTaskScheduler.scheduleTasks()` is still a stub
+- app shutdown may still need more than one interrupt
+- EventBus paths are not yet converged
+- Redis and Database storage are still fail-fast placeholders
+- API integration coverage is improved but still not exhaustive for cancel variants
+
+## 6. Recommended Entry Files
+
+For startup/runtime:
 
 - `xa-mass-mock/src/main/java/com/xa/mass/mock/MockApplicationSpringBootApp.java`
 - `xa-mass-runtime/src/main/java/com/xa/mass/starter/MassApplication.java`
 - `xa-mass-runtime/src/main/java/com/xa/mass/starter/MassEngine.java`
 
-### 生命周期 / API
+For lifecycle/API:
 
 - `xa-mass-api/src/main/java/com/xa/mass/api/internal/TaskApiController.java`
 - `xa-mass-engine/src/main/java/com/xa/mass/engine/TaskManager.java`
 - `xa-mass-core/src/main/java/com/xa/mass/base/enums/task/TaskStatus.java`
 
-### 分配 / 回写
+For assignment/result handling:
 
 - `xa-mass-engine/src/main/java/com/xa/mass/engine/listener/TaskDeviceAssignListener.java`
 - `xa-mass-engine/src/main/java/com/xa/mass/engine/listener/SimpleTaskMsgAssignListener.java`
-- `xa-mass-gateway` 下的任务发布与结果处理链�?
-### 事件总线
+- `xa-mass-gateway/src/main/java/com/xa/mass/gateway/dispatcher/ServerMessageDispatcher.java`
 
-- `xa-mass-runtime/src/main/java/com/xa/mass/starter/MassEngine.java`
-- `xa-mass-core` �?`old.eventbus` �?`channel.eventbus` 的实际调用点
+## 7. Guardrails For Future Agents
 
-## 7. 对后�?agent 的要�?
-后续 agent 在没有额外验证前，不要默认：
+Do not assume, without re-verification:
 
-- `starter` 就是唯一入口
-- `v2` 就是当前主线
-- �?EventBus 已完全替代旧 EventBus
-- 历史 API 文档仍与实现一�?- 文档里写到的能力都已经可�?
-更好的做法是�?
-- 从真实入口和真实调用点开�?- 先补测试再修行为
-- 修完行为后同步更新当前文�?- 把历史说明留�?`doc/archive/`，不要再回流到主入口文档
+- `xa-mass-runtime` is the only runnable entry
+- `v2` is the active engine generation
+- new EventBus abstractions have fully replaced old ones
+- older API docs still match implementation exactly
+- a documented capability is live just because it is written down
 
+Better default behavior:
 
-
+- start from the real entrypoint and current call sites
+- add or update regression coverage before changing behavior
+- sync active docs after verified behavior changes
+- keep archive material under archive paths instead of active source trees

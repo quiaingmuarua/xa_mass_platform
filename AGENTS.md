@@ -16,9 +16,10 @@ This file is the fastest entry point for coding agents such as Claude Code, Code
 - `TaskApiIntegrationTest` now covers `create -> approve -> assign -> run -> complete`
 - `TaskApiFailureResultIntegrationTest` now covers `create -> approve -> assign -> fail -> terminal`
 - `TaskApiLifecycleGuardsIntegrationTest` now covers `reject -> approve`, `pause -> resume`, and delete guard through real HTTP APIs
+- `TaskApiCallbackReplayIntegrationTest` now covers duplicate `TASK/step` callback replay through the real gateway path
 - `MassWebSocketClientImpl` ignores `response=true` `TASK/step` frames to avoid mock echo loops
 - `mock.client.task-result-status` can force mock result frames to `SUCCESS` or `FAILED`
-- Treat `engine/v2` as historical, not mainline
+- Treat `engine/v2` as historical archive material, not mainline
 
 ## 1. What This Repo Is
 
@@ -194,7 +195,8 @@ Role:
 Current status:
 
 - Mainline implementation lives here
-- `v2` exists but is not the active production path
+- Active production code lives under `xa-mass-engine/src/main/java/com/xa/mass/engine`
+- Historical `v2` code has been moved under `xa-mass-engine/archive/v2/` to keep it out of the active source tree
 
 Open first:
 
@@ -206,7 +208,7 @@ Notes:
 
 - Mainline engine tests are the active regression surface.
 - `TaskDeviceMatchingStrategy` is now the engine extension seam for pluggable task-to-device matching policies.
-- `src/test/java/com/xa/mass/engine/v2/**` is historical test debt, not active regression.
+- `xa-mass-engine/archive/v2/**` is historical experiment code, not active regression.
 
 ### `xa-mass-core`
 
@@ -313,7 +315,7 @@ Important current implementation facts:
 Focused verified regression command on `2026-04-13`:
 
 ```bash
-mvn --% -pl xa-mass-mock -am -Dtest=MassWebSocketClientImplTest,TaskApiIntegrationTest,TaskApiFailureResultIntegrationTest,TaskApiLifecycleGuardsIntegrationTest,WebSocketClientStarterTest -Dsurefire.failIfNoSpecifiedTests=false test
+mvn --% -pl xa-mass-mock -am -Dtest=MassWebSocketClientImplTest,TaskApiIntegrationTest,TaskApiFailureResultIntegrationTest,TaskApiLifecycleGuardsIntegrationTest,TaskApiCallbackReplayIntegrationTest,WebSocketClientStarterTest -Dsurefire.failIfNoSpecifiedTests=false test
 ```
 
 Verified focused classes:
@@ -321,6 +323,7 @@ Verified focused classes:
 - `xa-mass-mock/src/test/java/com/xa/mass/mock/api/TaskApiIntegrationTest.java`
 - `xa-mass-mock/src/test/java/com/xa/mass/mock/api/TaskApiFailureResultIntegrationTest.java`
 - `xa-mass-mock/src/test/java/com/xa/mass/mock/api/TaskApiLifecycleGuardsIntegrationTest.java`
+- `xa-mass-mock/src/test/java/com/xa/mass/mock/api/TaskApiCallbackReplayIntegrationTest.java`
 - `xa-mass-mock/src/test/java/com/xa/mass/mock/client/MassWebSocketClientImplTest.java`
 - `xa-mass-mock/src/test/java/com/xa/mass/mock/starter/WebSocketClientStarterTest.java`
 - `xa-mass-engine/src/test/java/com/xa/mass/engine/TaskManagerLifecycleTest.java`
@@ -333,20 +336,20 @@ What the new focused coverage proves:
 - API create + approve flows through assignment, dispatch, result write-back, and terminal completion
 - API create + approve also covers failed downstream result write-back through terminal completion
 - API lifecycle guards for reject/approve, pause/resume, and delete protection are verified through real HTTP calls
+- duplicate `TASK/step` callback replay is verified end-to-end through the real gateway path and keeps the first final result
 - mock clients no longer respond to server response frames
 - mock result status can be forced to `FAILED` without changing business logic code paths
 - duplicate `TASK/step` result callbacks are covered at engine/runtime regression level and keep the first final state
 
 ## 8. Historical Test Debt
 
-Do not treat `xa-mass-engine/src/test/java/com/xa/mass/engine/v2/**` as current regression.
+Do not treat `xa-mass-engine/archive/v2/**` as current regression.
 
 Reason:
 
 - those tests/examples depend on removed `com.xa.mass.base.channel.messaging.*` packages
 - they represent historical experimental code, not the current mainline
-
-The engine POM excludes those tests from active test compilation/execution.
+- they were moved out of `src/main/java` and `src/test/java` into `xa-mass-engine/archive/v2/` to reduce agent confusion
 
 ## 9. Known Problems
 
@@ -354,11 +357,11 @@ The engine POM excludes those tests from active test compilation/execution.
 - Shutdown may still require two interrupts in the running app.
 - EventBus is not yet converged. Runtime still uses Guava-based `old.eventbus` in places.
 - Redis and Database storage remain fail-fast only. `MEMORY` is the only implemented storage path.
-- API integration coverage is still selective. Duplicate result/idempotency is covered at unit level, but some end-to-end callback replay and cancel-path behavior still need integration tests.
+- API integration coverage is still selective. Callback replay is now covered end-to-end, but some cancel-path behavior still needs integration tests.
 
 ## 10. Good Next Tasks
 
-1. Add API-level integration coverage for callback replay/idempotency and remaining cancel-path variants.
+1. Add API-level integration coverage for remaining cancel-path variants.
 2. Improve shutdown so a single Ctrl-C exits cleanly.
 3. Converge EventBus call sites onto the current intended runtime abstraction.
 4. Expand diagnostics around task dispatch and result write-back so stuck tasks are easier to localize.

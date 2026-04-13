@@ -10,7 +10,8 @@
 ## Current Status
 
 - this is the active production path
-- `v2` exists in this module but is not the current mainline
+- active production code lives under `src/main/java/com/xa/mass/engine`
+- historical `v2` material has been moved under `archive/v2/`
 - mainline regression work should target current engine tests, not historical `v2` tests
 
 ## Start Here
@@ -21,7 +22,7 @@
 
 ## Boundaries
 
-- do not treat `src/test/java/com/xa/mass/engine/v2/**` as current regression
+- do not treat `archive/v2/**` as current regression
 - do not assume scheduler stubs represent the current runtime path for `READY -> RUNNING`
 - prefer extending assignment through engine strategy interfaces instead of hard-coding API or demo-layer behavior
 - use these documents before trusting module-local assumptions:

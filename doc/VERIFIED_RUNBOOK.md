@@ -27,6 +27,9 @@ For endpoint inventory, response shapes, and implementation status, use [INTERNA
 - A failed downstream result path is also verified:
   - `NEW -> READY -> RUNNING -> TERMINAL`
   - `TaskMsg INIT -> SENT -> FAILED`
+- A duplicate callback replay path is also verified:
+  - a repeated `TASK/step` result for the same `taskId + msgId` is accepted as a no-op
+  - the first final message state and terminal task counts are preserved
 
 ## 2. Recommended Startup
 
@@ -221,10 +224,24 @@ What they verify:
 - `taskExecutedNumber` and task final status remain consistent
 - scheduler completion/failure callbacks are not triggered twice
 
-### 5.7 Focused Verified Test Command
+### 5.7 Duplicate Callback Replay Is Covered End-to-End
+
+Integration test:
+
+- `xa-mass-mock/src/test/java/com/xa/mass/mock/api/TaskApiCallbackReplayIntegrationTest.java`
+
+What it verifies:
+
+- the task first completes through the normal `NEW -> READY -> RUNNING -> TERMINAL` runtime path
+- a separate WebSocket client then replays a conflicting `TASK/step` result for an already-final `msgId`
+- the gateway still acknowledges the replay frame
+- the persisted `TaskMsg` keeps its first final state and is not overwritten
+- `taskExecutedNumber` remains stable after the replay
+
+### 5.8 Focused Verified Test Command
 
 ```bash
-mvn --% -pl xa-mass-mock -am -Dtest=MassWebSocketClientImplTest,TaskApiIntegrationTest,TaskApiFailureResultIntegrationTest,TaskApiLifecycleGuardsIntegrationTest,WebSocketClientStarterTest -Dsurefire.failIfNoSpecifiedTests=false test
+mvn --% -pl xa-mass-mock -am -Dtest=MassWebSocketClientImplTest,TaskApiIntegrationTest,TaskApiFailureResultIntegrationTest,TaskApiLifecycleGuardsIntegrationTest,TaskApiCallbackReplayIntegrationTest,WebSocketClientStarterTest -Dsurefire.failIfNoSpecifiedTests=false test
 ```
 
 Verified result:
@@ -237,13 +254,12 @@ Verified result:
 - the running app may still need two interrupts to exit
 - EventBus runtime is not yet converged and still uses `old.eventbus` in places
 - Redis and Database storage remain fail-fast placeholders
-- API integration coverage is still selective beyond the current happy, guard, and failed-result paths; duplicate callback behavior is covered at unit level, not end-to-end
+- API integration coverage is still selective beyond the current happy, guard, failed-result, and callback-replay paths
 - Multiple matching policies are now possible at engine level, but only the rule-based strategy is covered in the current integrated runtime path
 
 Recommended next test-driven additions:
 
 1. `RUNNING -> PAUSED -> READY` end-to-end with real assigned messages
 2. terminate path end-to-end from `READY`, `RUNNING`, and `PAUSED`
-3. repeated callback replay end-to-end through the gateway and mock runtime
-4. mixed-result aggregation coverage where one message succeeds and another fails
+3. mixed-result aggregation coverage where one message succeeds and another fails
 
