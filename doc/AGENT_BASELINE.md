@@ -35,6 +35,8 @@ Working rule:
 
 - The real Spring Boot entry is `xa-mass-mock`
 - `xa-mass-runtime` is a composition layer, not the primary Boot entry
+- The current mainline reactor is defined by the root `pom.xml`: `xa-mass-api`, `xa-mass-core`, `xa-mass-engine`, `xa-mass-gateway`, `xa-mass-runtime`, `xa-mass-mock`
+- `xa-mass-base` and `xa-mass-starter` still exist as top-level directories but are not current root-reactor modules
 - The project is library/SDK-first; backend pages and HTTP endpoints are validation surfaces
 - API-first task flow is the current mainline truth
 - `com.xa.mass.engine` is the active engine path
@@ -83,6 +85,7 @@ Working rule:
 - Maven module is `xa-mass-core`
 - Java package names intentionally remain under `com.xa.mass.base`
 - the active EventBus code now lives under `channel.eventbus.core` and `channel.eventbus.event`
+- do not infer active module ownership from package names alone
 
 ### `xa-mass-gateway`
 
@@ -162,6 +165,7 @@ Do not assume, without re-verification:
 Better default behavior:
 
 - start from the real entrypoint and current call sites
+- check the root `pom.xml` before treating a top-level directory as active mainline code
 - add or update regression coverage before changing behavior
 - sync active docs after verified behavior changes
 - keep archive material under archive paths instead of active source trees

@@ -25,6 +25,8 @@ Role split:
 - Primary product direction is library/SDK-first. The HTTP backend and status pages are validation/demo surfaces, not the architectural center.
 - Real Spring Boot entrypoint: `xa-mass-mock`
 - Do not start from `xa-mass-runtime`
+- Current root reactor modules are `xa-mass-api`, `xa-mass-core`, `xa-mass-engine`, `xa-mass-gateway`, `xa-mass-runtime`, and `xa-mass-mock`
+- `xa-mass-base` and `xa-mass-starter` directories remain in the repository but are not part of the current root reactor
 - Verified HTTP port: `server.port=8088`
 - Verified WebSocket gateway port: `mass.websocket.port=18088`
 - Verified task lifecycle coverage includes:
@@ -59,9 +61,14 @@ Primary endpoints:
 - `xa-mass-gateway`: WebSocket server and dispatch
 - `xa-mass-core`: shared models and infrastructure
 
+Module boundary note:
+
+- top-level directories are not automatically active modules
+- check the root `pom.xml` before treating a directory as current mainline
+- `xa-mass-base` and `xa-mass-starter` are currently reference/legacy directories, not root-reactor modules
+
 ## Documentation Layout
 
 - Keep active operational docs under `doc/`
 - Historical, duplicated, or low-trust docs have been moved to [doc/archive/README.md](./doc/archive/README.md)
 - If a document disagrees with code or runtime, prefer code and verified runtime
-

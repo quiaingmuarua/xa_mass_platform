@@ -31,6 +31,7 @@ This file is the fastest entry point for coding agents such as Claude Code, Code
 ## 1. What This Repo Is
 
 - Maven multi-module Java project
+- Current root reactor modules come from `pom.xml`, not from every top-level directory
 - Modules:
   - `xa-mass-core`
   - `xa-mass-engine`
@@ -38,6 +39,13 @@ This file is the fastest entry point for coding agents such as Claude Code, Code
   - `xa-mass-api`
   - `xa-mass-runtime`
   - `xa-mass-mock`
+
+Important boundary:
+
+- `xa-mass-base` and `xa-mass-starter` directories still exist in the repo, but they are not in the current root reactor
+- do not assume those directories represent the active mainline just because their package names or filenames look familiar
+- for active shared models/enums/eventbus code, prefer `xa-mass-core`
+- for active lifecycle/composition code, prefer `xa-mass-runtime`
 
 ## 2. Read This First
 
@@ -108,6 +116,7 @@ Default `dev` startup facts:
 ## 5. Current Reality, Not Marketing
 
 - The app can compile and run.
+- The current mainline is `core + engine + gateway + api + runtime + mock`, as defined by the root `pom.xml`.
 - The active runtime path now uses the current `channel/eventbus/core` and `channel/eventbus/event` packages.
 - New EventBus docs describe target architecture, not fully verified runtime reality.
 - `v2` is not the mainline implementation.
@@ -243,6 +252,7 @@ Notes:
 
 - The mainline EventBus namespace is the current `channel/eventbus/core` and `channel/eventbus/event` path.
 - The former legacy compatibility package has been removed from the active source tree to reduce agent confusion.
+- Many Java packages still use `com.xa.mass.base.*`; package names do not imply that `xa-mass-base` is the active reactor module.
 
 ### `xa-mass-gateway`
 
@@ -433,6 +443,6 @@ If code, runtime behavior, and docs disagree:
 - trust code and verified runtime
 - update docs after confirmation
 - do not assume historical architecture docs describe the live path
-
+- check the root `pom.xml` before treating a top-level directory as an active module
 
 

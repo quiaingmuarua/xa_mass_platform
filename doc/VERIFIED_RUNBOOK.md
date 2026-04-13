@@ -17,6 +17,8 @@ For endpoint inventory, response shapes, and implementation status, use [INTERNA
 
 - The real Spring Boot entrypoint is `xa-mass-mock`.
 - `xa-mass-runtime` is not the runnable Boot entry.
+- The current root reactor is `xa-mass-api`, `xa-mass-core`, `xa-mass-engine`, `xa-mass-gateway`, `xa-mass-runtime`, and `xa-mass-mock`.
+- `xa-mass-base` and `xa-mass-starter` remain in the repository as directories, but they are not part of the current root reactor.
 - The repository direction is library/SDK-first; HTTP/API surfaces are used primarily for validation and demonstration.
 - Default `dev` startup now auto-starts mock WebSocket clients through `mock.client.auto-start=true`.
 - The currently verified API happy path is:
@@ -310,4 +312,3 @@ Recommended next test-driven additions:
 1. `RUNNING -> PAUSED -> READY` end-to-end with real assigned messages and then resumed dispatch behavior validation
 2. cancel path variants from `NEW`, `READY`, and `PAUSED` with message-state assertions
 3. mixed-result aggregation coverage where one message succeeds and another fails
-
