@@ -4,7 +4,7 @@
 set -e
 
 MODULES=("." "xa-mass-api" "xa-mass-eventbus" "xa-mass-engine" \ 
-  "xa-mass-gateway" "xa-mass-starter" "xa-mass-mock")
+  "xa-mass-gateway" "xa-mass-runtime" "xa-mass-mock")
 
 for module in "${MODULES[@]}"; do
   echo "Prefetching $module"
@@ -12,5 +12,6 @@ for module in "${MODULES[@]}"; do
 done
 
 echo "Dependencies cached in $HOME/.m2/repository"
+
 
 

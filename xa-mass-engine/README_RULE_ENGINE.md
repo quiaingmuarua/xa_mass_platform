@@ -2,7 +2,7 @@
 
 ## 概述
 
-本次重构将 `TaskEnginExample` 中的硬编码设备匹配逻辑替换为基于 QLExpress 的规则引擎，提供了更灵活、可配置的设备匹配策略。
+本次重构将 `EngineExample` 中的硬编码设备匹配逻辑替换为基于 QLExpress 的规则引擎，提供了更灵活、可配置的设备匹配策略。
 
 ## 主要改进
 
@@ -76,13 +76,13 @@ RuleManager<Map<String, Object>> ruleManager = initRuleManagerWithLooseRules();
 
 ```bash
 # 使用默认规则
-java TaskEnginExample
+java EngineExample
 
 # 使用宽松规则
-java TaskEnginExample loose
+java EngineExample loose
 
 # 使用项目特定规则
-java TaskEnginExample project
+java EngineExample project
 ```
 
 ### 4. 规则引擎优势

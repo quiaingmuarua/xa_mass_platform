@@ -9,6 +9,7 @@ import com.xa.mass.engine.DeviceManager;
 import com.xa.mass.engine.rules.RuleDefinition;
 import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.engine.service.AssignmentRecordService;
+import com.xa.mass.engine.strategy.TaskDeviceMatchingStrategy;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mock;
@@ -186,6 +187,26 @@ public class TaskDeviceAssignListenerTest {
         assertEquals(1, task.getScheduleDeviceCnt());
         verify(msgAssignListener).onMsgAssign(same(task), argThat(devices ->
                 devices.size() == 1 && "device-1".equals(devices.get(0).getDeviceId())));
+    }
+
+    @Test
+    public void testOnTaskAssignUsesInjectedCustomMatchingStrategy() {
+        Task task = createTestTask();
+        task.setStatus(TaskStatus.READY);
+        Device customDevice = createTestDevice("custom-device");
+        TaskDeviceMatchingStrategy customStrategy = mock(TaskDeviceMatchingStrategy.class);
+        TaskDeviceAssignListener customListener = new TaskDeviceAssignListener(customStrategy, msgAssignListener);
+
+        when(customStrategy.matchDevices(same(task), eq(2))).thenReturn(List.of(customDevice));
+
+        customListener.onTaskAssign(task);
+
+        assertEquals(TaskStatus.RUNNING, task.getStatus());
+        assertEquals(1, task.getScheduleDeviceCnt());
+        verify(customStrategy).matchDevices(same(task), eq(2));
+        verify(msgAssignListener).onMsgAssign(same(task), argThat(devices ->
+                devices.size() == 1 && "custom-device".equals(devices.get(0).getDeviceId())));
+        verifyNoInteractions(ruleManager, deviceManager, recordService);
     }
 
     private Task createTestTask() {

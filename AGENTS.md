@@ -5,10 +5,11 @@ This file is the fastest entry point for coding agents such as Claude Code, Code
 ## 0. TL;DR
 
 - Real boot entry: `xa-mass-mock`
-- Do not start from `xa-mass-starter`
+- Do not start from `xa-mass-runtime`
 - Trust code and verified runtime over repository docs
 - Default `dev` startup now auto-starts mock WebSocket clients through `mock.client.auto-start=true`
 - Port split is explicit: `server.port` for HTTP and `mass.websocket.port` for the gateway WebSocket server
+- Project direction is library/SDK-first; HTTP pages and backend endpoints are validation/demo surfaces
 - Current verified API task path: `NEW -> READY -> RUNNING -> TERMINAL`
 - Pause/resume regression is also verified: `NEW -> READY -> PAUSED -> READY`
 - Current focused mock/runtime regression is green
@@ -23,11 +24,11 @@ This file is the fastest entry point for coding agents such as Claude Code, Code
 
 - Maven multi-module Java project
 - Modules:
-  - `xa-mass-base`
+  - `xa-mass-core`
   - `xa-mass-engine`
   - `xa-mass-gateway`
   - `xa-mass-api`
-  - `xa-mass-starter`
+  - `xa-mass-runtime`
   - `xa-mass-mock`
 
 ## 2. Read This First
@@ -60,10 +61,10 @@ Current verified Spring Boot entrypoint:
 
 Do not assume:
 
-- `xa-mass-starter` is the runnable Spring Boot app
+- `xa-mass-runtime` is the runnable Spring Boot app
 - `MassApplication.java` is a Spring Boot entry
 
-`xa-mass-starter` is a lifecycle/composition layer, not the verified Boot entry.
+`xa-mass-runtime` is a lifecycle/composition layer, not the verified Boot entry.
 
 ## 4. Verified Startup
 
@@ -71,7 +72,7 @@ Run from repo root:
 
 ```bash
 ./mvnw -DskipTests compile
-java -cp "xa-mass-mock/target/classes:xa-mass-starter/target/classes:xa-mass-api/target/classes:xa-mass-engine/target/classes:xa-mass-gateway/target/classes:xa-mass-base/target/classes:<runtime-classpath>" \
+java -cp "xa-mass-mock/target/classes:xa-mass-runtime/target/classes:xa-mass-api/target/classes:xa-mass-engine/target/classes:xa-mass-gateway/target/classes:xa-mass-core/target/classes:<runtime-classpath>" \
   com.xa.mass.mock.MockApplicationSpringBootApp
 ```
 
@@ -112,7 +113,7 @@ Default `dev` startup facts:
 Role:
 
 - Real Spring Boot entrypoint
-- Wires `api + starter + gateway + engine`
+- Wires `api + runtime + gateway + engine`
 - Loads mock data and starts mock clients for end-to-end validation
 
 Current status:
@@ -134,7 +135,7 @@ Notes:
 - Legacy client-only Spring Boot entry and client monitor endpoints have been removed.
 - New focused runtime regression tests live here.
 
-### `xa-mass-starter`
+### `xa-mass-runtime`
 
 Role:
 
@@ -148,9 +149,9 @@ Current status:
 
 Open first:
 
-- `xa-mass-starter/src/main/java/com/xa/mass/starter/MassApplication.java`
-- `xa-mass-starter/src/main/java/com/xa/mass/starter/builder/MassApplicationBuilder.java`
-- `xa-mass-starter/src/main/java/com/xa/mass/starter/MassEngine.java`
+- `xa-mass-runtime/src/main/java/com/xa/mass/starter/MassApplication.java`
+- `xa-mass-runtime/src/main/java/com/xa/mass/starter/builder/MassApplicationBuilder.java`
+- `xa-mass-runtime/src/main/java/com/xa/mass/starter/MassEngine.java`
 
 Notes:
 
@@ -204,9 +205,10 @@ Open first:
 Notes:
 
 - Mainline engine tests are the active regression surface.
+- `TaskDeviceMatchingStrategy` is now the engine extension seam for pluggable task-to-device matching policies.
 - `src/test/java/com/xa/mass/engine/v2/**` is historical test debt, not active regression.
 
-### `xa-mass-base`
+### `xa-mass-core`
 
 Role:
 
@@ -220,12 +222,13 @@ Current status:
 
 - Stable enough for current mainline
 - Contains both current and historical infra paths
+- Maven module name is `xa-mass-core`; Java packages remain under `com.xa.mass.base`
 
 Open first:
 
-- `xa-mass-base/src/main/java/com/xa/mass/base/enums/task/TaskStatus.java`
-- `xa-mass-base/src/main/java/com/xa/mass/base/model/Task.java`
-- `xa-mass-base/src/main/java/com/xa/mass/base/model/TaskMsg.java`
+- `xa-mass-core/src/main/java/com/xa/mass/base/enums/task/TaskStatus.java`
+- `xa-mass-core/src/main/java/com/xa/mass/base/model/Task.java`
+- `xa-mass-core/src/main/java/com/xa/mass/base/model/TaskMsg.java`
 
 Notes:
 
@@ -288,10 +291,12 @@ Important current implementation facts:
 - `TaskManager` persists one `TaskMsg` per target with the correct `taskId`, distinct `msgId`, and actual target value.
 - `MassEngine` starts `TaskAssignWorker` regardless of `mockMode`, submits existing `READY` tasks on startup, and subscribes to READY events from approve/resume.
 - `TaskDeviceAssignListener` sets `scheduleDeviceCnt` and transitions matched tasks from `READY` to `RUNNING`.
+- `TaskDeviceAssignListener` now delegates matching to `TaskDeviceMatchingStrategy`; `RuleBasedTaskDeviceMatchingStrategy` is the current default.
 - `SimpleTaskMsgAssignListener` reuses persisted `TaskMsg` records, fills `deviceId` / `tokenId` / `batchId`, and moves them to `SENT`.
 - `GatewayTaskMsgPublisher` pushes task messages downstream as `TASK/step`.
 - `GatewayTaskResultHandler` handles inbound `TASK/step` results and writes them back through `TaskManager.handleTaskMessageResult(...)`.
 - `TaskManager.handleTaskMessageResult(...)` updates persisted `TaskMsg` state by `taskId + msgId`, recalculates progress, and closes `RUNNING` tasks to `TERMINAL` when all messages finish.
+- `TaskManager.handleTaskMessageResult(...)` treats duplicate final callbacks as idempotent: the first final result is kept, progress is recalculated, and scheduler callbacks are not triggered twice.
 - `MassApplication.loadMockData(...)` normalizes mock `supportedProjects`, lowercases `groupId`, and auto-seeds `LOGIN_READY` tokens when devices do not already have token data.
 - `WebSocketClientStarter` now starts on `ApplicationReadyEvent` behind `mock.client.auto-start=true`, so default `dev` startup includes mock client result write-back.
 - `WebSocketClientStarter` passes `mock.client.task-result-status` into each mock client so result write-back can be forced to `SUCCESS` or `FAILED`.
@@ -318,7 +323,9 @@ Verified focused classes:
 - `xa-mass-mock/src/test/java/com/xa/mass/mock/api/TaskApiLifecycleGuardsIntegrationTest.java`
 - `xa-mass-mock/src/test/java/com/xa/mass/mock/client/MassWebSocketClientImplTest.java`
 - `xa-mass-mock/src/test/java/com/xa/mass/mock/starter/WebSocketClientStarterTest.java`
-- Existing engine/api/starter regressions remain the primary mainline unit-test surface
+- `xa-mass-engine/src/test/java/com/xa/mass/engine/TaskManagerLifecycleTest.java`
+- `xa-mass-runtime/src/test/java/com/xa/mass/starter/GatewayTaskResultHandlerTest.java`
+- Existing engine/api/runtime regressions remain the primary mainline unit-test surface
 
 What the new focused coverage proves:
 
@@ -328,6 +335,7 @@ What the new focused coverage proves:
 - API lifecycle guards for reject/approve, pause/resume, and delete protection are verified through real HTTP calls
 - mock clients no longer respond to server response frames
 - mock result status can be forced to `FAILED` without changing business logic code paths
+- duplicate `TASK/step` result callbacks are covered at engine/runtime regression level and keep the first final state
 
 ## 8. Historical Test Debt
 
@@ -346,11 +354,11 @@ The engine POM excludes those tests from active test compilation/execution.
 - Shutdown may still require two interrupts in the running app.
 - EventBus is not yet converged. Runtime still uses Guava-based `old.eventbus` in places.
 - Redis and Database storage remain fail-fast only. `MEMORY` is the only implemented storage path.
-- API integration coverage is still selective. Duplicate result/idempotency and some cancel-path behavior still need end-to-end tests.
+- API integration coverage is still selective. Duplicate result/idempotency is covered at unit level, but some end-to-end callback replay and cancel-path behavior still need integration tests.
 
 ## 10. Good Next Tasks
 
-1. Add API-level integration coverage for duplicate result/idempotency and remaining cancel-path variants.
+1. Add API-level integration coverage for callback replay/idempotency and remaining cancel-path variants.
 2. Improve shutdown so a single Ctrl-C exits cleanly.
 3. Converge EventBus call sites onto the current intended runtime abstraction.
 4. Expand diagnostics around task dispatch and result write-back so stuck tasks are easier to localize.
@@ -363,20 +371,20 @@ The engine POM excludes those tests from active test compilation/execution.
 - `xa-mass-mock/src/main/java/com/xa/mass/mock/MockApplicationSpringBootApp.java`
 - `xa-mass-api/src/main/java/com/xa/mass/api/internal/TaskApiController.java`
 - `xa-mass-engine/src/main/java/com/xa/mass/engine/TaskManager.java`
-- `xa-mass-base/src/main/java/com/xa/mass/base/enums/task/TaskStatus.java`
+- `xa-mass-core/src/main/java/com/xa/mass/base/enums/task/TaskStatus.java`
 
 ## 12. If You Need Fast Orientation By Task
 
 For startup/runtime issues:
 
 - start in `xa-mass-mock`
-- then inspect `xa-mass-starter`
+- then inspect `xa-mass-runtime`
 
 For task lifecycle/API issues:
 
 - start in `xa-mass-api/internal/TaskApiController`
 - then inspect `xa-mass-engine/TaskManager`
-- then inspect `xa-mass-base/TaskStatus` and `Task`
+- then inspect `xa-mass-core/TaskStatus` and `Task`
 
 For message/target data issues:
 
@@ -402,3 +410,6 @@ If code, runtime behavior, and docs disagree:
 - trust code and verified runtime
 - update docs after confirmation
 - do not assume historical architecture docs describe the live path
+
+
+

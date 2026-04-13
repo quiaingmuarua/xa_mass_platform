@@ -9,8 +9,8 @@ Current high-trust documents:
 - [../../AGENTS.md](../../AGENTS.md)
 - [../AGENT_BASELINE.md](../AGENT_BASELINE.md)
 - [../VERIFIED_RUNBOOK.md](../VERIFIED_RUNBOOK.md)
-- [../内部管理接口文档.md](../内部管理接口文档.md)
-- [../engine/任务执行流.md](../engine/任务执行流.md)
+- [../INTERNAL_API_REFERENCE.md](../INTERNAL_API_REFERENCE.md)
+- [../engine/TASK_EXECUTION_FLOW.md](../engine/TASK_EXECUTION_FLOW.md)
 
 Archived items in this directory currently include:
 
@@ -18,14 +18,3 @@ Archived items in this directory currently include:
 - `DOCUMENTATION_INDEX.md`
 - `QUICK_REFERENCE.md`
 - `message_model.md`
-- `xa-mass-api-接口文档.md`
-- `日志输出规范.md`
-- `结构化JSON日志配置说明.md`
-- `编码规范.md`
-- `项目流程.md`
-
-Reason for archival:
-
-- overlaps with current runbook or agent baseline
-- reflects historical or target architecture rather than verified runtime
-- increases root-level noise without improving operational clarity

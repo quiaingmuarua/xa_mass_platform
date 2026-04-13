@@ -5,8 +5,8 @@
 
 # XA Mass Platform - Quick Reference Guide
 
-> **⚠️ 部分过时** — 启动命令和接口示例以 [`doc/VERIFIED_RUNBOOK.md`](./doc/VERIFIED_RUNBOOK.md) 为准。
-> 本文件保留为辅助速查，不保证与当前代码完全一致。
+> **⚠️ 部分过时** �?启动命令和接口示例以 [`doc/VERIFIED_RUNBOOK.md`](./doc/VERIFIED_RUNBOOK.md) 为准�?
+> 本文件保留为辅助速查，不保证与当前代码完全一致�?
 
 ## 🚀 Quick Start
 
@@ -17,7 +17,7 @@
 ./mvnw -pl xa-mass-mock -am dependency:build-classpath \
   -Dmdep.outputFile=/tmp/xa-mass-mock.cp \
   -DincludeScope=runtime
-java -cp "xa-mass-mock/target/classes:xa-mass-starter/target/classes:xa-mass-api/target/classes:xa-mass-engine/target/classes:xa-mass-gateway/target/classes:xa-mass-base/target/classes:$(cat /tmp/xa-mass-mock.cp)" \
+java -cp "xa-mass-mock/target/classes:xa-mass-runtime/target/classes:xa-mass-api/target/classes:xa-mass-engine/target/classes:xa-mass-gateway/target/classes:xa-mass-core/target/classes:$(cat /tmp/xa-mass-mock.cp)" \
   com.xa.mass.mock.MockApplicationSpringBootApp
 ```
 
@@ -158,11 +158,11 @@ xa.mass.device.offline-threshold=90000
 ## 📊 Task Status Flow
 
 ```
-NEW → READY → RUNNING → TERMINAL
- ↓      ↓       ↓
-BLOCKED PAUSED  ↓
-        ↓       ↓
-       READY → TERMINAL
+NEW �?READY �?RUNNING �?TERMINAL
+ �?     �?      �?
+BLOCKED PAUSED  �?
+        �?      �?
+       READY �?TERMINAL
 ```
 
 Verified minimum path:
@@ -248,7 +248,7 @@ logging.level.com.xa.mass.engine=INFO
 logging.level.com.xa.mass.gateway=WARN
 ```
 
-## 🛠️ Common Integration Patterns
+## 🛠�?Common Integration Patterns
 
 ### Spring Bean Configuration
 
@@ -372,3 +372,5 @@ curl http://localhost:8080/api/queue/status
 ---
 
 For detailed documentation, see [API_DOCUMENTATION.md](./API_DOCUMENTATION.md)
+
+

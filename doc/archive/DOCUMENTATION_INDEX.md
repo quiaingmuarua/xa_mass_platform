@@ -6,8 +6,8 @@
 
 # XA Mass Platform - Documentation Index
 
-> **⚠️ 部分过时** — 以下文档已删除（daily/、doc/规划.md、v2 草稿），索引内容不再完整。
-> Agent 入口请直接看 [`AGENTS.md`](./AGENTS.md)。
+> **⚠️ 部分过时** �?以下文档已删除（daily/、doc/规划.md、v2 草稿），索引内容不再完整�?
+> Agent 入口请直接看 [`AGENTS.md`](./AGENTS.md)�?
 > 当前权威参考：
 > - [`doc/AGENT_BASELINE.md`](./doc/AGENT_BASELINE.md)
 > - [`doc/VERIFIED_RUNBOOK.md`](./doc/VERIFIED_RUNBOOK.md)
@@ -31,7 +31,7 @@ This repository contains both current and historical documentation. Some files d
 
 **Best for:** Developers who need complete API reference and detailed integration guidance.
 
-### 2. [QUICK_REFERENCE.md](./QUICK_REFERENCE.md) ⚡
+### 2. [QUICK_REFERENCE.md](./QUICK_REFERENCE.md) �?
 
 **Quick Reference Guide**
 
@@ -55,48 +55,48 @@ This repository contains both current and historical documentation. Some files d
 
 **Best for:** First-time users and project overview.
 
-## 🏗️ Platform Architecture Summary
+## 🏗�?Platform Architecture Summary
 
 ```
 xa-mass-platform/
 ├── xa-mass-api/        # REST API layer with controllers and DTOs
-├── xa-mass-base/       # Core infrastructure & event bus system
+├── xa-mass-core/       # Core infrastructure & event bus system
 ├── xa-mass-engine/     # Business logic, task scheduling & device management
 ├── xa-mass-gateway/    # WebSocket gateway & message routing
-├── xa-mass-starter/    # Application startup & module aggregation
+├── xa-mass-runtime/    # Application startup & module aggregation
 └── xa-mass-mock/       # Comprehensive testing & mock framework
 ```
 
 ## 🎯 Key Features Documented
 
-### ✅ REST APIs
+### �?REST APIs
 
 - **Task Management**: Create, update, control, and monitor tasks
 - **Session Management**: WebSocket session tracking and statistics
 - **System Health**: Monitoring and observability endpoints
 
-### ✅ Event-Driven Architecture
+### �?Event-Driven Architecture
 
 - **EventBus System**: 高性能泛型事件总线，支持任意POJO和结构化事件
-- **Multi-Implementation**: 内存(InMemoryMessageStream) / Redis(LettuceRedisStream)分布式支持
+- **Multi-Implementation**: 内存(InMemoryMessageStream) / Redis(LettuceRedisStream)分布式支�?
 - **Event Types**: 灵活的事件类型设计，支持trace追踪和元数据
 - **Custom Events**: 既支持轻量级POJO，也支持完整结构化MassEvent
 - **Performance**: 20K+ events/sec吞吐量，精确匹配分发算法
 
-### ✅ Core Components
+### �?Core Components
 
 - **TaskManager**: Complete task lifecycle management
 - **DeviceManager**: Device state and token allocation
 - **TaskScheduler**: Flexible task scheduling strategies
 - **Rule Engine**: QLExpress-based rule evaluation system
 
-### ✅ WebSocket Gateway
+### �?WebSocket Gateway
 
 - **Real-time Communication**: Netty-based WebSocket server
 - **Message Transport**: Multi-level message queue system
 - **Protocol Adaptation**: Flexible message handling and routing
 
-### ✅ Testing & Mock Framework
+### �?Testing & Mock Framework
 
 - **End-to-end Testing**: Complete mock device and task simulation
 - **Configuration-driven**: JSON-based mock scenario configuration
@@ -146,21 +146,21 @@ The platform integrates with several key technologies:
 
 ### REST Endpoints
 
-- ✅ **10+ Task Management APIs**: Complete CRUD and control operations
-- ✅ **Session Management APIs**: Connection tracking and statistics
-- ✅ **Health/Monitoring APIs**: System observability endpoints
+- �?**10+ Task Management APIs**: Complete CRUD and control operations
+- �?**Session Management APIs**: Connection tracking and statistics
+- �?**Health/Monitoring APIs**: System observability endpoints
 
 ### Java APIs
 
-- ✅ **30+ Public Classes/Interfaces**: Comprehensive business logic APIs
-- ✅ **Event System**: 15+ event types with extensible framework
-- ✅ **Configuration APIs**: Flexible system configuration options
+- �?**30+ Public Classes/Interfaces**: Comprehensive business logic APIs
+- �?**Event System**: 15+ event types with extensible framework
+- �?**Configuration APIs**: Flexible system configuration options
 
 ### WebSocket Protocol
 
-- ✅ **Message Types**: Device registration, task assignment, status updates
-- ✅ **Connection Management**: Session tracking and heartbeat mechanisms
-- ✅ **Protocol Extensions**: Middleware chain for custom message handling
+- �?**Message Types**: Device registration, task assignment, status updates
+- �?**Connection Management**: Session tracking and heartbeat mechanisms
+- �?**Protocol Extensions**: Middleware chain for custom message handling
 
 ## 🎨 Code Examples Included
 
@@ -184,26 +184,26 @@ This documentation is designed to be:
 
 ## 📁 Module-Level Documentation
 
-### Core Infrastructure (xa-mass-base)
+### Core Infrastructure (xa-mass-core)
 
-- 🎯 **[EventBus Documentation](./xa-mass-base/src/main/java/com/xa/mass/base/channel/eventbus/README.md)** - 泛型事件总线完整指南
-- 📊 **[JSON-DSL System](./xa-mass-base/README_NEW_DSL.md)** - 灵活的JSON DSL数据生成
-- 🔄 **[Channel Messaging](./xa-mass-base/src/main/java/com/xa/mass/base/channel/queue/README.md)** - 统一消息传输抽象
+- 🎯 **[EventBus Documentation](./xa-mass-core/src/main/java/com/xa/mass/base/channel/eventbus/README.md)** - 泛型事件总线完整指南
+- 📊 **[JSON-DSL System](./xa-mass-core/README_NEW_DSL.md)** - 灵活的JSON DSL数据生成
+- 🔄 **[Channel Messaging](./xa-mass-core/src/main/java/com/xa/mass/base/channel/queue/README.md)** - 统一消息传输抽象
 
 ### Business Logic (xa-mass-engine)
 
 - 🎮 **[Rule Engine](./xa-mass-engine/README_RULE_ENGINE.md)** - QLExpress规则引擎
-- ⚙️ **[Task Management](./xa-mass-engine/README.md)** - 任务调度与生命周期
+- ⚙️ **[Task Management](./xa-mass-engine/README.md)** - 任务调度与生命周�?
 
 ### Communication Layer (xa-mass-gateway)
 
 - 🌐 **[WebSocket Gateway](./xa-mass-gateway/README.md)** - 实时通信网关
-- 📡 **[Message Routing](./xa-mass-gateway/src/main/java/com/xa/mass/gateway/queue/README.md)** - 消息路由与队列
+- 📡 **[Message Routing](./xa-mass-gateway/src/main/java/com/xa/mass/gateway/queue/README.md)** - 消息路由与队�?
 
 ### Testing & Development (xa-mass-mock)
 
 - 🧪 **[Mock Framework](./xa-mass-mock/README.md)** - 完整的测试与模拟框架
-- 📝 **[Testing Patterns](./xa-mass-mock/verify-no-conflict.md)** - 测试最佳实践
+- 📝 **[Testing Patterns](./xa-mass-mock/verify-no-conflict.md)** - 测试最佳实�?
 
 ## 📞 Support & Contribution
 
@@ -219,3 +219,5 @@ For questions, issues, or contributions:
 **Last Updated**: April 12, 2026  
 **Platform Version**: 0.0.1-SNAPSHOT  
 **Coverage**: Mixed; verify against baseline/runbook before relying on a document
+
+

@@ -11,12 +11,13 @@ Document scope:
 - verified execution path
 - focused regression coverage
 
-For endpoint inventory, response shapes, and implementation status, use [内部管理接口文档.md](./内部管理接口文档.md).
+For endpoint inventory, response shapes, and implementation status, use [INTERNAL_API_REFERENCE.md](./INTERNAL_API_REFERENCE.md).
 
 ## 1. Current Conclusions
 
 - The real Spring Boot entrypoint is `xa-mass-mock`.
-- `xa-mass-starter` is not the runnable Boot entry.
+- `xa-mass-runtime` is not the runnable Boot entry.
+- The repository direction is library/SDK-first; HTTP/API surfaces are used primarily for validation and demonstration.
 - Default `dev` startup now auto-starts mock WebSocket clients through `mock.client.auto-start=true`.
 - The currently verified API happy path is:
   - `NEW -> READY -> RUNNING -> TERMINAL`
@@ -33,7 +34,7 @@ Run from repo root:
 
 ```bash
 ./mvnw -DskipTests compile
-java -cp "xa-mass-mock/target/classes:xa-mass-starter/target/classes:xa-mass-api/target/classes:xa-mass-engine/target/classes:xa-mass-gateway/target/classes:xa-mass-base/target/classes:<runtime-classpath>" \
+java -cp "xa-mass-mock/target/classes:xa-mass-runtime/target/classes:xa-mass-api/target/classes:xa-mass-engine/target/classes:xa-mass-gateway/target/classes:xa-mass-core/target/classes:<runtime-classpath>" \
   com.xa.mass.mock.MockApplicationSpringBootApp
 ```
 
@@ -41,7 +42,7 @@ Windows guidance:
 
 - Prefer a short classpath: module `target/classes` plus `logs/runtime-libs/*`
 - Very long expanded `-cp` values can exceed Windows command-line limits and produce misleading missing-class errors
-- As of 2026-04-13, removing `javafaker` from `xa-mass-base` avoids pulling `snakeyaml-android` into the Boot runtime path
+- As of 2026-04-13, removing `javafaker` from `xa-mass-core` avoids pulling `snakeyaml-android` into the Boot runtime path
 
 ## 3. Boot Checks
 
@@ -95,7 +96,7 @@ Verified state transitions:
 - `resumeTask`: `PAUSED` -> `READY`
 - `deleteTask`: only `NEW`, `TERMINAL`
 
-The full endpoint matrix is maintained in [内部管理接口文档.md](./内部管理接口文档.md).
+The full endpoint matrix is maintained in [INTERNAL_API_REFERENCE.md](./INTERNAL_API_REFERENCE.md).
 
 ### 4.2 Assign and Run
 
@@ -105,10 +106,11 @@ Verified runtime path:
 2. `MassEngine` starts `TaskAssignWorker` regardless of `mockMode`.
 3. `MassEngine` also resubmits pre-existing `READY` tasks at startup and subscribes to READY events from approve/resume.
 4. `TaskDeviceAssignListener` performs device matching.
-5. On successful matching it writes `scheduleDeviceCnt` and moves the task from `READY` to `RUNNING`.
-6. `SimpleTaskMsgAssignListener` reuses the persisted `TaskMsg` records created during task creation.
-7. Each `TaskMsg` is filled with `deviceId`, `tokenId`, and `batchId`, then moved to `SENT`.
-8. `GatewayTaskMsgPublisher` pushes the downstream payload as `TASK/step`.
+5. `TaskDeviceAssignListener` now delegates matching through `TaskDeviceMatchingStrategy`; the verified default implementation is `RuleBasedTaskDeviceMatchingStrategy`.
+6. On successful matching it writes `scheduleDeviceCnt` and moves the task from `READY` to `RUNNING`.
+7. `SimpleTaskMsgAssignListener` reuses the persisted `TaskMsg` records created during task creation.
+8. Each `TaskMsg` is filled with `deviceId`, `tokenId`, and `batchId`, then moved to `SENT`.
+9. `GatewayTaskMsgPublisher` pushes the downstream payload as `TASK/step`.
 
 ### 4.3 Result Write-Back and Completion
 
@@ -205,7 +207,21 @@ What it verifies:
 - a task request frame produces exactly one mock response
 - a task response frame does not trigger another response
 
-### 5.6 Focused Verified Test Command
+### 5.6 Duplicate Result Idempotency Is Covered at Engine/Starter Level
+
+Regression tests:
+
+- `xa-mass-engine/src/test/java/com/xa/mass/engine/TaskManagerLifecycleTest.java`
+- `xa-mass-runtime/src/test/java/com/xa/mass/starter/GatewayTaskResultHandlerTest.java`
+
+What they verify:
+
+- a second callback for the same `taskId + msgId` is accepted as a no-op rather than reprocessed
+- the first final state is preserved and not overwritten by a later conflicting callback
+- `taskExecutedNumber` and task final status remain consistent
+- scheduler completion/failure callbacks are not triggered twice
+
+### 5.7 Focused Verified Test Command
 
 ```bash
 mvn --% -pl xa-mass-mock -am -Dtest=MassWebSocketClientImplTest,TaskApiIntegrationTest,TaskApiFailureResultIntegrationTest,TaskApiLifecycleGuardsIntegrationTest,WebSocketClientStarterTest -Dsurefire.failIfNoSpecifiedTests=false test
@@ -221,11 +237,13 @@ Verified result:
 - the running app may still need two interrupts to exit
 - EventBus runtime is not yet converged and still uses `old.eventbus` in places
 - Redis and Database storage remain fail-fast placeholders
-- API integration coverage is still selective beyond the current happy, guard, and failed-result paths
+- API integration coverage is still selective beyond the current happy, guard, and failed-result paths; duplicate callback behavior is covered at unit level, not end-to-end
+- Multiple matching policies are now possible at engine level, but only the rule-based strategy is covered in the current integrated runtime path
 
 Recommended next test-driven additions:
 
 1. `RUNNING -> PAUSED -> READY` end-to-end with real assigned messages
 2. terminate path end-to-end from `READY`, `RUNNING`, and `PAUSED`
-3. duplicate result / repeated callback idempotency coverage
+3. repeated callback replay end-to-end through the gateway and mock runtime
 4. mixed-result aggregation coverage where one message succeeds and another fails
+

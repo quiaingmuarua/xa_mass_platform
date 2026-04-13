@@ -1,9 +1,9 @@
-> **⚠️ 历史实验目录 — 非主线代码**
+> Historical experiment directory, not mainline code.
 >
-> `v2/` 目录是一次函数式重构实验，**未合并入主线**。
-> - 测试代码 (`engine/src/test/java/.../v2/**`) 已从 surefire 排除
-> - 本目录下的所有文档（CHANGELOG、REFACTOR_SUMMARY、TODO 等）描述的是实验性设计，不代表当前行为
-> - 如需了解当前引擎实现，请看：
+> `v2/` contains a functional-refactor experiment that was not merged into the current runtime path.
+> - Tests under `engine/src/test/java/.../v2/**` are excluded from active surefire execution
+> - Documents in this directory describe experimental design, not current verified behavior
+> - For the current engine path, start with:
 >   - `xa-mass-engine/src/main/java/com/xa/mass/engine/TaskManager.java`
 >   - `xa-mass-engine/README.md`
->   - `doc/engine/任务执行流.md`
+>   - `doc/engine/TASK_EXECUTION_FLOW.md`

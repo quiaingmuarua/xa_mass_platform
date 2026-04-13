@@ -5,6 +5,7 @@
 - mainline business logic
 - task lifecycle and progress tracking
 - device assignment and rule management
+- core library surface for state-machine correctness and pluggable matching behavior
 
 ## Current Status
 
@@ -22,8 +23,9 @@
 
 - do not treat `src/test/java/com/xa/mass/engine/v2/**` as current regression
 - do not assume scheduler stubs represent the current runtime path for `READY -> RUNNING`
+- prefer extending assignment through engine strategy interfaces instead of hard-coding API or demo-layer behavior
 - use these documents before trusting module-local assumptions:
   - [`../AGENTS.md`](../AGENTS.md)
   - [`../doc/AGENT_BASELINE.md`](../doc/AGENT_BASELINE.md)
   - [`../doc/VERIFIED_RUNBOOK.md`](../doc/VERIFIED_RUNBOOK.md)
-  - [`../doc/engine/任务执行流.md`](../doc/engine/任务执行流.md)
+  - [`../doc/engine/TASK_EXECUTION_FLOW.md`](../doc/engine/TASK_EXECUTION_FLOW.md)

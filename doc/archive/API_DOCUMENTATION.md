@@ -1,12 +1,11 @@
 > Archived during repository convergence.
 > Current high-trust references:
-> - [../内部管理接口文档.md](../内部管理接口文档.md)
+> - [../INTERNAL_API_REFERENCE.md](../INTERNAL_API_REFERENCE.md)
 > - [../VERIFIED_RUNBOOK.md](../VERIFIED_RUNBOOK.md)
 > - [../../AGENTS.md](../../AGENTS.md)
 
-> **⚠️ 部分过时** — 本文档生成于 Phase 1 之前，不反映以下修复：
-> deleteTask 状态约束、WebSocket 错误帧格式、SessionController 真实数据、消息分配管道。
-> **当前权威参考**：[`doc/内部管理接口文档.md`](./doc/内部管理接口文档.md)（含实现状态标注）和 [`doc/VERIFIED_RUNBOOK.md`](./doc/VERIFIED_RUNBOOK.md)
+> **⚠️ 部分过时** �?本文档生成于 Phase 1 之前，不反映以下修复�?> deleteTask 状态约束、WebSocket 错误帧格式、SessionController 真实数据、消息分配管道�?
+> **��ǰȨ���ο�**��[`doc/INTERNAL_API_REFERENCE.md`](./doc/INTERNAL_API_REFERENCE.md)����ʵ��״̬��ע���� [`doc/VERIFIED_RUNBOOK.md`](./doc/VERIFIED_RUNBOOK.md)
 
 # XA Mass Platform - Comprehensive API Documentation
 
@@ -48,10 +47,10 @@ provides:
 ```
 xa-mass-platform/
 ├── xa-mass-api/        # REST API layer
-├── xa-mass-base/       # Core infrastructure & event bus
+├── xa-mass-core/       # Core infrastructure & event bus
 ├── xa-mass-engine/     # Business logic & task scheduling
 ├── xa-mass-gateway/    # WebSocket gateway & message routing
-├── xa-mass-starter/    # Application startup & aggregation
+├── xa-mass-runtime/    # Application startup & aggregation
 └── xa-mass-mock/       # Testing & mock framework
 ```
 
@@ -893,7 +892,7 @@ public class BusinessRuleService {
 ```xml
 <dependency>
     <groupId>com.xa.mass</groupId>
-    <artifactId>xa-mass-starter</artifactId>
+    <artifactId>xa-mass-runtime</artifactId>
     <version>0.0.1-SNAPSHOT</version>
 </dependency>
 ```
@@ -1005,3 +1004,5 @@ public class MassMonitoringService {
 This documentation provides a comprehensive guide to all public APIs, functions, and components in the XA Mass Platform.
 Each section includes detailed examples and usage instructions to help developers integrate and extend the platform
 effectively.
+
+

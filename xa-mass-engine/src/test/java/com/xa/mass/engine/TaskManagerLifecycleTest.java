@@ -192,14 +192,43 @@ class TaskManagerLifecycleTest {
         assertEquals(0, taskManager.getTask(task.getTid()).getTaskExecutedNumber());
     }
 
+    @Test
+    void duplicateTaskMessageResultKeepsFirstFinalStateAndDoesNotTriggerSchedulerTwice() {
+        Task task = taskManager.createTask(buildRequest("task-result-duplicate", List.of("alpha")));
+        taskManager.approveTask(task.getTid());
+        task.setStatus(TaskStatus.RUNNING);
+
+        TaskMsg message = taskManager.getTaskMessages(task.getTid()).get(0);
+        message.transitionTo(TaskMsgStatus.BINDING);
+        message.markAsSent();
+        taskManager.updateTaskMessage(task.getTid(), message);
+
+        assertTrue(taskManager.handleTaskMessageResult(task.getTid(), message.getMsgId(), true, "done-once"));
+        assertTrue(taskManager.handleTaskMessageResult(task.getTid(), message.getMsgId(), false, "boom-twice"));
+
+        TaskMsg updatedMessage = taskManager.getTaskMessage(task.getTid(), message.getMsgId());
+        Task updatedTask = taskManager.getTask(task.getTid());
+        assertEquals(TaskMsgStatus.SUCCESS, updatedMessage.getStatus());
+        assertEquals("done-once", updatedMessage.getResult());
+        assertNull(updatedMessage.getErrorMessage());
+        assertEquals(TaskStatus.TERMINAL, updatedTask.getStatus());
+        assertEquals(1, updatedTask.getTaskExecutedNumber());
+        assertEquals(1, scheduler.completedTaskMsgCount);
+        assertEquals(0, scheduler.failedTaskMsgCount);
+    }
+
     private TaskCreateRequestDto buildRequest(String taskName) {
+        return buildRequest(taskName, List.of("alpha", "beta"));
+    }
+
+    private TaskCreateRequestDto buildRequest(String taskName, List<String> targets) {
         TaskCreateRequestDto dto = new TaskCreateRequestDto();
         dto.setTaskName(taskName);
         dto.setProject("demoApp");
         dto.setCountryCode("us");
         dto.setTextContent("smoke");
         dto.setUserId("agent");
-        dto.setTargetList(List.of("alpha", "beta"));
+        dto.setTargetList(targets);
         dto.setBatchSize(1);
         return dto;
     }
@@ -208,6 +237,8 @@ class TaskManagerLifecycleTest {
         private final List<String> pausedTaskIds = new java.util.ArrayList<>();
         private final List<String> resumedTaskIds = new java.util.ArrayList<>();
         private final List<String> cancelledTaskIds = new java.util.ArrayList<>();
+        private int completedTaskMsgCount;
+        private int failedTaskMsgCount;
 
         @Override
         public SchedulingResult scheduleTask(Task task) {
@@ -221,11 +252,13 @@ class TaskManagerLifecycleTest {
 
         @Override
         public boolean handleTaskMsgCompletion(TaskMsg taskMsg) {
+            completedTaskMsgCount++;
             return true;
         }
 
         @Override
         public boolean handleTaskMsgFailure(TaskMsg taskMsg, String errorMessage) {
+            failedTaskMsgCount++;
             return true;
         }
 
