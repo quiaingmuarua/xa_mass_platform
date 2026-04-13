@@ -48,19 +48,6 @@ After startup:
 - HTTP: `http://localhost:8088/doc.html`
 - WebSocket: `ws://localhost:18088/ws`
 
-## Client-Only Bootstrap
-
-`com.xa.mass.mock.WebSocketClientSpringBootApp` still exists as an optional client-only bootstrap, but it is no longer intended to be a separate Spring Web application.
-
-Current behavior:
-
-- starts a non-web Spring Boot context
-- activates `client` profile by default
-- starts mock WebSocket clients only
-- does not start an extra HTTP monitoring server
-
-This path is optional and not the verified mainline startup.
-
 ## Effective Mock Client Startup
 
 For the verified default `dev` path, mock clients are started by:
@@ -72,6 +59,7 @@ Startup behavior:
 - gated by `mock.client.auto-start=true`
 - triggered by `ApplicationReadyEvent`
 - idempotent startup protection through an internal `AtomicBoolean`
+- there is no longer a separate client-only Spring Boot application or `/mock/status` monitor surface
 
 ## Key Config
 

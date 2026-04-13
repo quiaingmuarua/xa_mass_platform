@@ -1,27 +1,22 @@
-# Mass Mock 应用生产环境配置
+# Production-like profile overrides for the verified mock runtime.
 mass:
-  server:
-    port: 18088  # Mass WebSocket 服务器端口
-  
+  websocket:
+    port: 18088
   gateway:
-    max-connections: 5000  # 生产环境更大的连接数
-    enabled: true  # 是否启用网关
-  
+    max-connections: 5000
+    enabled: true
   engine:
-    worker-threads: 16  # 生产环境更多工作线程
-    enabled: true  # 是否启用引擎
-  
+    worker-threads: 16
+    enabled: true
   mock:
     data:
-      devices: mock/mock_devices.json  # 设备配置文件路径
-      tasks: mock/mock_tasks.json      # 任务配置文件路径
-      rules: mock/mock_rules.json      # 规则配置文件路径
+      devices: mock/mock_devices.json
+      tasks: mock/mock_tasks.json
+      rules: mock/mock_rules.json
 
-# Spring Boot 配置
 server:
-  port: 8088  # Web API 服务端口
+  port: 8088
 
-# 日志配置
 logging:
   level:
     com.xa.mass: INFO
@@ -29,4 +24,4 @@ logging:
     com.xa.mass.gateway: INFO
     com.xa.mass.engine: INFO
   pattern:
-    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n" 
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"

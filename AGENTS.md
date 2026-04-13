@@ -127,7 +127,7 @@ Notes:
 
 - This is the real operational entry, not just a demo shell.
 - Default `dev` startup now includes mock WebSocket clients when `mock.client.auto-start=true`.
-- `WebSocketClientSpringBootApp` is now an optional client-only non-web bootstrap, not part of the verified mainline.
+- Legacy client-only Spring Boot entry and client monitor endpoints have been removed.
 - New focused runtime regression tests live here.
 
 ### `xa-mass-starter`

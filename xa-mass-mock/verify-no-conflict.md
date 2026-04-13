@@ -16,16 +16,11 @@ Notes:
 - `mass.websocket.port=18088` serves the internal gateway WebSocket server.
 - mock clients connect outbound to `ws://localhost:18088/ws`.
 
-## Optional Client-Only Bootstrap
+## Legacy Client-Only Path
 
-`WebSocketClientSpringBootApp` is now optional and non-web.
+The former client-only Spring Boot bootstrap and its `/mock/status` monitoring endpoints have been removed.
 
-| Entry | Runtime role | HTTP port | WebSocket role |
-| --- | --- | --- | --- |
-| `WebSocketClientSpringBootApp` | client-only mock device bootstrap | none | outbound client only |
+Current expectation:
 
-Notes:
-
-- it no longer starts a separate Spring Web server
-- it should not be treated as part of the mainline verified path
-- it exists only for isolated client bootstrap scenarios
+- mock clients are started only through the verified mainline runtime
+- there is no second HTTP process to monitor mock clients separately

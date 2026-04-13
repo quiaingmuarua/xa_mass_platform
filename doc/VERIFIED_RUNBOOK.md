@@ -56,6 +56,7 @@ Default `dev` startup facts:
 - `server.port` is the HTTP port, currently `8088`
 - `mass.websocket.port` is the gateway WebSocket port, currently `18088`
 - In the verified default path, mock devices connect automatically to `ws://localhost:18088/ws`
+- legacy client-only Spring Boot bootstrap has been removed
 
 ## 4. Current API Mainline
 
