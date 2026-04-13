@@ -1,10 +1,14 @@
 package com.xa.mass.engine;
 
 import com.xa.mass.base.enums.task.TaskStatus;
+import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.engine.model.TaskCreateRequestDto;
+import com.xa.mass.engine.model.TaskResumeResult;
+import com.xa.mass.engine.model.TaskStateResolutionResult;
+import com.xa.mass.engine.model.TaskStateValidationResult;
 import com.xa.mass.engine.storage.InMemoryTaskStorage;
 import com.xa.mass.engine.storage.TaskStorage;
 import com.xa.mass.engine.strategy.TaskScheduler;
@@ -61,6 +65,20 @@ class TaskManagerLifecycleTest {
     }
 
     @Test
+    void resumeTaskDetailedReportsReadyOutcome() {
+        Task task = taskManager.createTask(buildRequest("task-resume-detailed"));
+        assertTrue(taskManager.approveTask(task.getTid()));
+        assertTrue(taskManager.pauseTask(task.getTid()));
+
+        TaskResumeResult result = taskManager.resumeTaskDetailed(task.getTid());
+
+        assertTrue(result.isSuccess());
+        assertEquals(TaskResumeResult.Outcome.RESUMED_TO_READY, result.getOutcome());
+        assertEquals(TaskStatus.READY, result.getStatus());
+        assertNull(result.getTerminalReason());
+    }
+
+    @Test
     void blockedTaskCanBeApprovedBackToReady() {
         Task task = taskManager.createTask(buildRequest("task-blocked"));
 
@@ -101,6 +119,7 @@ class TaskManagerLifecycleTest {
 
         assertTrue(taskManager.cancelTask(task.getTid()));
         assertEquals(TaskStatus.TERMINAL, taskManager.getTask(task.getTid()).getStatus());
+        assertEquals(TaskTerminalReason.MANUAL_CANCELLED, taskManager.getTask(task.getTid()).getTerminalReason());
         assertFalse(taskManager.resumeTask(task.getTid()));
     }
 
@@ -131,6 +150,15 @@ class TaskManagerLifecycleTest {
 
         UnsupportedOperationException error = assertThrows(UnsupportedOperationException.class, () -> taskManager.createTask(dto));
         assertTrue(error.getMessage().contains("targetJsonList"));
+    }
+
+    @Test
+    void createTaskRejectsUnsupportedProject() {
+        TaskCreateRequestDto dto = buildRequest("bad-project");
+        dto.setProject("whatsapp");
+
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> taskManager.createTask(dto));
+        assertTrue(error.getMessage().contains("Unsupported project code"));
     }
 
     @Test
@@ -191,6 +219,7 @@ class TaskManagerLifecycleTest {
 
         Task updatedTask = taskManager.getTask(task.getTid());
         assertEquals(TaskStatus.TERMINAL, updatedTask.getStatus());
+        assertEquals(TaskTerminalReason.ALL_MESSAGES_SUCCEEDED, updatedTask.getTerminalReason());
         assertEquals(2, updatedTask.getTaskExecutedNumber());
         assertEquals(TaskMsgStatus.SUCCESS, taskManager.getTaskMessage(task.getTid(), messages.get(0).getMsgId()).getStatus());
         assertEquals(TaskMsgStatus.SUCCESS, taskManager.getTaskMessage(task.getTid(), messages.get(1).getMsgId()).getStatus());
@@ -216,6 +245,21 @@ class TaskManagerLifecycleTest {
     }
 
     @Test
+    void resolveTaskStateFromMessagesReportsNotFinalizedWhileMessagesRemainOpen() {
+        Task task = taskManager.createTask(buildRequest("task-resolution-pending"));
+        taskManager.approveTask(task.getTid());
+
+        TaskStateResolutionResult result = taskManager.resolveTaskStateFromMessages(task.getTid());
+
+        assertEquals(TaskStateResolutionResult.Outcome.NOT_FINALIZED, result.getOutcome());
+        assertEquals(TaskStatus.READY, result.getStatus());
+        assertEquals(2, result.getTotalMessages());
+        assertEquals(0, result.getSuccessMessages());
+        assertEquals(0, result.getFailedMessages());
+        assertNull(result.getTerminalReason());
+    }
+
+    @Test
     void pausedTaskCompletesToTerminalWhenFinalResultArrives() {
         Task task = taskManager.createTask(buildRequest("task-paused-completion", List.of("alpha")));
         taskManager.approveTask(task.getTid());
@@ -234,9 +278,86 @@ class TaskManagerLifecycleTest {
         Task updatedTask = taskManager.getTask(task.getTid());
         TaskMsg updatedMessage = taskManager.getTaskMessage(task.getTid(), message.getMsgId());
         assertEquals(TaskStatus.TERMINAL, updatedTask.getStatus());
+        assertEquals(TaskTerminalReason.ALL_MESSAGES_SUCCEEDED, updatedTask.getTerminalReason());
         assertEquals(1, updatedTask.getTaskExecutedNumber());
         assertEquals(TaskMsgStatus.SUCCESS, updatedMessage.getStatus());
         assertEquals(List.of(task.getTid()), scheduler.pausedTaskIds);
+        assertTrue(scheduler.resumedTaskIds.isEmpty());
+    }
+
+    @Test
+    void resolveTaskStateFromMessagesFinalizesRunningTaskWhenAllMessagesAreFinal() {
+        Task task = taskManager.createTask(buildRequest("task-resolution-finalized"));
+        taskManager.approveTask(task.getTid());
+        task.setStatus(TaskStatus.RUNNING);
+
+        List<TaskMsg> messages = taskManager.getTaskMessages(task.getTid());
+        messages.forEach(msg -> {
+            msg.transitionTo(TaskMsgStatus.BINDING);
+            msg.markAsSent();
+            taskManager.updateTaskMessage(task.getTid(), msg);
+        });
+        taskManager.handleTaskMessageResult(task.getTid(), messages.get(0).getMsgId(), true, "done-1");
+        taskManager.handleTaskMessageResult(task.getTid(), messages.get(1).getMsgId(), true, "done-2");
+
+        task.setStatus(TaskStatus.RUNNING);
+        task.setTerminalReason(null);
+        taskManager.updateTask(task);
+
+        TaskStateResolutionResult result = taskManager.resolveTaskStateFromMessages(task.getTid());
+
+        assertEquals(TaskStateResolutionResult.Outcome.FINALIZED_TO_TERMINAL, result.getOutcome());
+        assertEquals(TaskStatus.TERMINAL, result.getStatus());
+        assertEquals(TaskTerminalReason.ALL_MESSAGES_SUCCEEDED, result.getTerminalReason());
+        assertEquals(2, result.getSuccessMessages());
+        assertEquals(0, result.getFailedMessages());
+    }
+
+    @Test
+    void resolveTaskStateFromMessagesReportsAlreadyFinalForManuallyCancelledTask() {
+        Task task = taskManager.createTask(buildRequest("task-resolution-already-final", List.of("alpha")));
+        taskManager.approveTask(task.getTid());
+        task.setStatus(TaskStatus.RUNNING);
+
+        TaskMsg message = taskManager.getTaskMessages(task.getTid()).get(0);
+        message.transitionTo(TaskMsgStatus.BINDING);
+        message.markAsSent();
+        taskManager.updateTaskMessage(task.getTid(), message);
+
+        assertTrue(taskManager.cancelTask(task.getTid()));
+
+        TaskStateResolutionResult result = taskManager.resolveTaskStateFromMessages(task.getTid());
+
+        assertEquals(TaskStateResolutionResult.Outcome.ALREADY_FINAL, result.getOutcome());
+        assertEquals(TaskStatus.TERMINAL, result.getStatus());
+        assertEquals(TaskTerminalReason.MANUAL_CANCELLED, result.getTerminalReason());
+        assertEquals(1, result.getTotalMessages());
+    }
+
+    @Test
+    void resumeTaskDetailedReportsTerminalOutcomeWhenPausedTaskAlreadyCompleted() {
+        Task task = taskManager.createTask(buildRequest("task-paused-resume-terminal", List.of("alpha")));
+        taskManager.approveTask(task.getTid());
+        task.setStatus(TaskStatus.RUNNING);
+
+        TaskMsg message = taskManager.getTaskMessages(task.getTid()).get(0);
+        message.transitionTo(TaskMsgStatus.BINDING);
+        message.markAsSent();
+        taskManager.updateTaskMessage(task.getTid(), message);
+
+        assertTrue(taskManager.pauseTask(task.getTid()));
+        assertTrue(taskManager.handleTaskMessageResult(task.getTid(), message.getMsgId(), true, "done-while-paused"));
+
+        task.setStatus(TaskStatus.PAUSED);
+        task.setTerminalReason(null);
+        taskManager.updateTask(task);
+
+        TaskResumeResult result = taskManager.resumeTaskDetailed(task.getTid());
+
+        assertTrue(result.isSuccess());
+        assertEquals(TaskResumeResult.Outcome.COMPLETED_TO_TERMINAL, result.getOutcome());
+        assertEquals(TaskStatus.TERMINAL, result.getStatus());
+        assertEquals(TaskTerminalReason.ALL_MESSAGES_SUCCEEDED, result.getTerminalReason());
         assertTrue(scheduler.resumedTaskIds.isEmpty());
     }
 
@@ -259,6 +380,7 @@ class TaskManagerLifecycleTest {
         Task updatedTask = taskManager.getTask(task.getTid());
         TaskMsg updatedMessage = taskManager.getTaskMessage(task.getTid(), message.getMsgId());
         assertEquals(TaskStatus.TERMINAL, updatedTask.getStatus());
+        assertEquals(TaskTerminalReason.MANUAL_CANCELLED, updatedTask.getTerminalReason());
         assertEquals(0, updatedTask.getTaskExecutedNumber());
         assertEquals(TaskMsgStatus.SENT, updatedMessage.getStatus());
         assertEquals(0, scheduler.completedTaskMsgCount);
@@ -285,9 +407,166 @@ class TaskManagerLifecycleTest {
         assertEquals("done-once", updatedMessage.getResult());
         assertNull(updatedMessage.getErrorMessage());
         assertEquals(TaskStatus.TERMINAL, updatedTask.getStatus());
+        assertEquals(TaskTerminalReason.ALL_MESSAGES_SUCCEEDED, updatedTask.getTerminalReason());
         assertEquals(1, updatedTask.getTaskExecutedNumber());
         assertEquals(1, scheduler.completedTaskMsgCount);
         assertEquals(0, scheduler.failedTaskMsgCount);
+    }
+
+    @Test
+    void mixedFinalTaskMessagesProduceMixedTerminalReason() {
+        Task task = taskManager.createTask(buildRequest("task-result-mixed"));
+        taskManager.approveTask(task.getTid());
+        task.setStatus(TaskStatus.RUNNING);
+
+        List<TaskMsg> messages = taskManager.getTaskMessages(task.getTid());
+        messages.forEach(msg -> {
+            msg.transitionTo(TaskMsgStatus.BINDING);
+            msg.markAsSent();
+            taskManager.updateTaskMessage(task.getTid(), msg);
+        });
+
+        assertTrue(taskManager.handleTaskMessageResult(task.getTid(), messages.get(0).getMsgId(), true, "done"));
+        assertTrue(taskManager.handleTaskMessageResult(task.getTid(), messages.get(1).getMsgId(), false, "boom"));
+
+        Task updatedTask = taskManager.getTask(task.getTid());
+        assertEquals(TaskStatus.TERMINAL, updatedTask.getStatus());
+        assertEquals(TaskTerminalReason.MIXED_MESSAGE_RESULTS, updatedTask.getTerminalReason());
+        assertEquals(1, updatedTask.getTaskExecutedNumber());
+    }
+
+    @Test
+    void allFailedTaskMessagesProduceFailedTerminalReason() {
+        Task task = taskManager.createTask(buildRequest("task-result-all-failed"));
+        taskManager.approveTask(task.getTid());
+        task.setStatus(TaskStatus.RUNNING);
+
+        List<TaskMsg> messages = taskManager.getTaskMessages(task.getTid());
+        messages.forEach(msg -> {
+            msg.transitionTo(TaskMsgStatus.BINDING);
+            msg.markAsSent();
+            taskManager.updateTaskMessage(task.getTid(), msg);
+        });
+
+        assertTrue(taskManager.handleTaskMessageResult(task.getTid(), messages.get(0).getMsgId(), false, "boom-1"));
+        assertTrue(taskManager.handleTaskMessageResult(task.getTid(), messages.get(1).getMsgId(), false, "boom-2"));
+
+        Task updatedTask = taskManager.getTask(task.getTid());
+        assertEquals(TaskStatus.TERMINAL, updatedTask.getStatus());
+        assertEquals(TaskTerminalReason.ALL_MESSAGES_FAILED, updatedTask.getTerminalReason());
+        assertEquals(0, updatedTask.getTaskExecutedNumber());
+    }
+
+    @Test
+    void validateTaskStateReportsValidTerminalSuccessTask() {
+        Task task = taskManager.createTask(buildRequest("task-validate-valid-terminal"));
+        taskManager.approveTask(task.getTid());
+        task.setStatus(TaskStatus.RUNNING);
+
+        List<TaskMsg> messages = taskManager.getTaskMessages(task.getTid());
+        messages.forEach(msg -> {
+            msg.transitionTo(TaskMsgStatus.BINDING);
+            msg.markAsSent();
+            taskManager.updateTaskMessage(task.getTid(), msg);
+        });
+
+        assertTrue(taskManager.handleTaskMessageResult(task.getTid(), messages.get(0).getMsgId(), true, "done-1"));
+        assertTrue(taskManager.handleTaskMessageResult(task.getTid(), messages.get(1).getMsgId(), true, "done-2"));
+
+        TaskStateValidationResult result = taskManager.validateTaskState(task.getTid());
+
+        assertTrue(result.isValid());
+        assertFalse(result.isNeedsResolution());
+        assertEquals(TaskStatus.TERMINAL, result.getStatus());
+        assertEquals(TaskTerminalReason.ALL_MESSAGES_SUCCEEDED, result.getTerminalReason());
+        assertEquals(2, result.getTotalMessages());
+        assertEquals(2, result.getSuccessMessages());
+        assertEquals(0, result.getFailedMessages());
+        assertTrue(result.getViolations().isEmpty());
+    }
+
+    @Test
+    void validateTaskStateReportsNeedsResolutionWhenMessagesAreFinalButTaskIsStillRunning() {
+        Task task = taskManager.createTask(buildRequest("task-validate-needs-resolution"));
+        taskManager.approveTask(task.getTid());
+        task.setStatus(TaskStatus.RUNNING);
+
+        List<TaskMsg> messages = taskManager.getTaskMessages(task.getTid());
+        messages.forEach(msg -> {
+            msg.transitionTo(TaskMsgStatus.BINDING);
+            msg.markAsSent();
+            taskManager.updateTaskMessage(task.getTid(), msg);
+        });
+        assertTrue(taskManager.handleTaskMessageResult(task.getTid(), messages.get(0).getMsgId(), true, "done-1"));
+        assertTrue(taskManager.handleTaskMessageResult(task.getTid(), messages.get(1).getMsgId(), true, "done-2"));
+
+        task.setStatus(TaskStatus.RUNNING);
+        task.setTerminalReason(null);
+        taskManager.updateTask(task);
+
+        TaskStateValidationResult result = taskManager.validateTaskState(task.getTid());
+
+        assertTrue(result.isValid());
+        assertTrue(result.isNeedsResolution());
+        assertEquals(TaskStatus.RUNNING, result.getStatus());
+        assertNull(result.getTerminalReason());
+        assertEquals(2, result.getSuccessMessages());
+        assertEquals(0, result.getFailedMessages());
+        assertTrue(result.getViolations().isEmpty());
+    }
+
+    @Test
+    void validateTaskStateRejectsTerminalTaskWithoutTerminalReason() {
+        Task task = taskManager.createTask(buildRequest("task-validate-missing-terminal-reason", List.of("alpha")));
+        taskManager.approveTask(task.getTid());
+        task.setStatus(TaskStatus.RUNNING);
+
+        TaskMsg message = taskManager.getTaskMessages(task.getTid()).get(0);
+        message.transitionTo(TaskMsgStatus.BINDING);
+        message.markAsSent();
+        taskManager.updateTaskMessage(task.getTid(), message);
+        assertTrue(taskManager.handleTaskMessageResult(task.getTid(), message.getMsgId(), true, "done"));
+
+        task.setStatus(TaskStatus.TERMINAL);
+        task.setTerminalReason(null);
+        taskManager.updateTask(task);
+
+        TaskStateValidationResult result = taskManager.validateTaskState(task.getTid());
+
+        assertFalse(result.isValid());
+        assertFalse(result.isNeedsResolution());
+        assertEquals(TaskStatus.TERMINAL, result.getStatus());
+        assertNull(result.getTerminalReason());
+        assertTrue(result.getViolations().contains(TaskStateValidationResult.ViolationCode.TERMINAL_REASON_MISSING));
+    }
+
+    @Test
+    void validateTaskStateRejectsMismatchedTerminalReason() {
+        Task task = taskManager.createTask(buildRequest("task-validate-reason-mismatch"));
+        taskManager.approveTask(task.getTid());
+        task.setStatus(TaskStatus.RUNNING);
+
+        List<TaskMsg> messages = taskManager.getTaskMessages(task.getTid());
+        messages.forEach(msg -> {
+            msg.transitionTo(TaskMsgStatus.BINDING);
+            msg.markAsSent();
+            taskManager.updateTaskMessage(task.getTid(), msg);
+        });
+        assertTrue(taskManager.handleTaskMessageResult(task.getTid(), messages.get(0).getMsgId(), true, "done"));
+        assertTrue(taskManager.handleTaskMessageResult(task.getTid(), messages.get(1).getMsgId(), false, "boom"));
+
+        task.setStatus(TaskStatus.TERMINAL);
+        task.setTerminalReason(TaskTerminalReason.ALL_MESSAGES_SUCCEEDED);
+        taskManager.updateTask(task);
+
+        TaskStateValidationResult result = taskManager.validateTaskState(task.getTid());
+
+        assertFalse(result.isValid());
+        assertFalse(result.isNeedsResolution());
+        assertEquals(TaskStatus.TERMINAL, result.getStatus());
+        assertEquals(TaskTerminalReason.ALL_MESSAGES_SUCCEEDED, result.getTerminalReason());
+        assertTrue(result.getViolations().contains(
+                TaskStateValidationResult.ViolationCode.TERMINAL_REASON_MISMATCH_ALL_SUCCEEDED));
     }
 
     private TaskCreateRequestDto buildRequest(String taskName) {

@@ -12,7 +12,9 @@ This file is the fastest entry point for coding agents such as Claude Code, Code
 - Project direction is library/SDK-first; HTTP pages and backend endpoints are validation/demo surfaces
 - Current verified API task path: `NEW -> READY -> RUNNING -> TERMINAL`
 - Pause/resume regression is also verified: `NEW -> READY -> PAUSED -> READY`
-- `TaskManager.createTask()` is now fail-fast for unsupported inputs: empty/null `targetList` is rejected, non-empty `targetJsonList` is rejected, and request `batchSize` is preserved on the task
+- `TaskManager.createTask()` is now fail-fast for unsupported inputs: empty/null `targetList` is rejected, non-empty `targetJsonList` is rejected, unsupported `project` codes are rejected, and request `batchSize` is preserved on the task
+- `Task.terminalReason` now distinguishes manual cancel from message-driven terminal closure
+- `TaskManager.validateTaskState()` now provides an explicit SDK-facing audit for `Task + TaskMsg` consistency and pending terminal resolution
 - Engine regression now verifies that paused tasks close to `TERMINAL` once all `TaskMsg` callbacks finish
 - Engine regression now verifies that `READY` tasks without a device match are retried instead of falling out of the assignment loop
 - Engine regression now verifies that assignment does not dispatch if a task leaves `READY` during the matching window
@@ -307,6 +309,7 @@ Important current implementation facts:
 - `TaskApiController` uses `TaskManager` lifecycle methods for all state changes.
 - `deleteTask()` enforces the state guard. `READY`, `RUNNING`, and `PAUSED` tasks cannot be deleted.
 - `TaskManager.createTask()` requires at least one materialized `targetList` entry, rejects non-empty `targetJsonList`, and persists request `batchSize` onto the task.
+- `TaskManager.createTask()` also rejects unsupported `project` codes instead of silently falling back to `demoApp`.
 - `TaskManager` persists one `TaskMsg` per target with the correct `taskId`, distinct `msgId`, and actual target value.
 - `MassEngine` starts `TaskAssignWorker` regardless of `mockMode`, submits existing `READY` tasks on startup, and subscribes to READY events from approve/resume.
 - `TaskDeviceAssignListener` re-checks that the task is still `READY` after matching; if the task left `READY` during the matching window, dispatch is skipped.
@@ -318,7 +321,26 @@ Important current implementation facts:
 - `TaskManager.handleTaskMessageResult(...)` updates persisted `TaskMsg` state by `taskId + msgId`, recalculates progress, closes any non-final task to `TERMINAL` once all messages finish, and ignores late non-final callbacks after manual terminal closure.
 - `TaskManager.updateTaskProgress(...)` now closes any non-final task to `TERMINAL` once all persisted `TaskMsg` rows are final, including tasks that were paused while callbacks were still arriving.
 - `TaskManager.resumeTask(...)` now short-circuits paused tasks that already fully completed underneath them and closes them to `TERMINAL` instead of re-queueing them as `READY`.
+- `TaskManager.resumeTaskDetailed(...)` is now the explicit SDK-facing resume API:
+  - `RESUMED_TO_READY`
+  - `COMPLETED_TO_TERMINAL`
+  - `REJECTED`
+- `TaskManager.resolveTaskStateFromMessages(...)` is now the explicit SDK-facing aggregation API:
+  - `TASK_NOT_FOUND`
+  - `NOT_FINALIZED`
+  - `FINALIZED_TO_TERMINAL`
+  - `ALREADY_FINAL`
+- `TaskManager.validateTaskState(...)` is now the explicit SDK-facing state-audit API:
+  - validates task counters against persisted `TaskMsg` aggregates
+  - validates whether `terminalReason` is present and semantically matched
+  - reports `needsResolution=true` when all messages are final but the task itself is still non-final
+- `Task.terminalReason` is part of the live task model. Read `status=TERMINAL` together with `terminalReason`:
+  - `MANUAL_CANCELLED`
+  - `ALL_MESSAGES_SUCCEEDED`
+  - `ALL_MESSAGES_FAILED`
+  - `MIXED_MESSAGE_RESULTS`
 - `TaskManager.handleTaskMessageResult(...)` treats duplicate final callbacks as idempotent: the first final result is kept, progress is recalculated, and scheduler callbacks are not triggered twice.
+- `GET /status/api/tasks/{taskId}` now includes `stateValidation` so API/demo surfaces can expose the same state-audit result used by SDK callers.
 - `MassApplication.loadMockData(...)` normalizes mock `supportedProjects`, lowercases `groupId`, and auto-seeds `LOGIN_READY` tokens when devices do not already have token data.
 - `WebSocketClientStarter` now starts on `ApplicationReadyEvent` behind `mock.client.auto-start=true`, so default `dev` startup includes mock client result write-back.
 - `WebSocketClientStarter` passes `mock.client.task-result-status` into each mock client so result write-back can be forced to `SUCCESS` or `FAILED`.
@@ -444,5 +466,3 @@ If code, runtime behavior, and docs disagree:
 - update docs after confirmation
 - do not assume historical architecture docs describe the live path
 - check the root `pom.xml` before treating a top-level directory as an active module
-
-

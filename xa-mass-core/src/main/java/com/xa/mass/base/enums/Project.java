@@ -37,6 +37,13 @@ public enum Project {
                 .orElse(DEMO_APP); // 默认返回 DEMO_APP
     }
 
+    public static Project requireCode(String code) {
+        return Arrays.stream(values())
+                .filter(project -> project.code.equals(code))
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("Unsupported project code: " + code));
+    }
+
     /**
      * 获取所有项目代码
      */

@@ -1,10 +1,13 @@
 package com.xa.mass.api.internal;
 
 import com.xa.mass.base.enums.task.TaskStatus;
+import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.model.TaskCreateRequestDto;
+import com.xa.mass.engine.model.TaskResumeResult;
+import com.xa.mass.engine.model.TaskStateValidationResult;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -94,14 +97,15 @@ class TaskApiControllerTest {
     @Test
     void resumeReturnsSuccessWhenTaskManagerAllowsIt() throws Exception {
         when(taskManager.getTask(TASK_ID)).thenReturn(taskWithStatus(TaskStatus.PAUSED));
-        when(taskManager.resumeTask(TASK_ID)).thenReturn(true);
+        when(taskManager.resumeTaskDetailed(TASK_ID)).thenReturn(TaskResumeResult.resumedToReady());
 
         mockMvc.perform(post("/status/api/tasks/{taskId}/resume", TASK_ID))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.message").value("任务已恢复"));
+                .andExpect(jsonPath("$.message").value("任务已恢复"))
+                .andExpect(jsonPath("$.newStatus").value("READY"));
 
-        verify(taskManager).resumeTask(TASK_ID);
+        verify(taskManager).resumeTaskDetailed(TASK_ID);
     }
 
     @Test
@@ -123,7 +127,7 @@ class TaskApiControllerTest {
         Task readyTask = taskWithStatus(TaskStatus.READY);
 
         when(taskManager.getTask(TASK_ID)).thenReturn(pausedTask, readyTask);
-        when(taskManager.resumeTask(TASK_ID)).thenReturn(true);
+        when(taskManager.resumeTaskDetailed(TASK_ID)).thenReturn(TaskResumeResult.resumedToReady());
 
         mockMvc.perform(put("/status/api/tasks/{taskId}/status", TASK_ID)
                         .param("status", "READY"))
@@ -131,7 +135,7 @@ class TaskApiControllerTest {
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.newStatus").value("READY"));
 
-        verify(taskManager).resumeTask(TASK_ID);
+        verify(taskManager).resumeTaskDetailed(TASK_ID);
         verify(taskManager, never()).approveTask(TASK_ID);
     }
 
@@ -150,7 +154,21 @@ class TaskApiControllerTest {
                 .andExpect(jsonPath("$.newStatus").value("READY"));
 
         verify(taskManager).approveTask(TASK_ID);
-        verify(taskManager, never()).resumeTask(TASK_ID);
+        verify(taskManager, never()).resumeTaskDetailed(TASK_ID);
+    }
+
+    @Test
+    void resumeReturnsTerminalWhenPausedTaskAlreadyCompleted() throws Exception {
+        when(taskManager.getTask(TASK_ID)).thenReturn(taskWithStatus(TaskStatus.PAUSED));
+        when(taskManager.resumeTaskDetailed(TASK_ID))
+                .thenReturn(TaskResumeResult.completedToTerminal(TaskTerminalReason.ALL_MESSAGES_SUCCEEDED));
+
+        mockMvc.perform(post("/status/api/tasks/{taskId}/resume", TASK_ID))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.message").value("任务在暂停期间已完成，直接收口为终态"))
+                .andExpect(jsonPath("$.newStatus").value("TERMINAL"))
+                .andExpect(jsonPath("$.terminalReason").value("ALL_MESSAGES_SUCCEEDED"));
     }
 
     @Test
@@ -189,14 +207,48 @@ class TaskApiControllerTest {
     }
 
     @Test
+    void createTaskReturnsBadRequestWhenProjectIsUnsupported() throws Exception {
+        when(taskManager.createTask(any(TaskCreateRequestDto.class)))
+                .thenThrow(new IllegalArgumentException("Unsupported project code: whatsapp"));
+
+        mockMvc.perform(post("/status/api/tasks")
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "taskName":"bad-project",
+                                  "project":"whatsapp",
+                                  "countryCode":"us",
+                                  "textContent":"hello",
+                                  "userId":"agent",
+                                  "targetList":["alpha"]
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.message").value("任务创建失败: Unsupported project code: whatsapp"));
+    }
+
+    @Test
     void getTaskReturnsTaskAndAggregatedTargetList() throws Exception {
         Task task = taskWithStatus(TaskStatus.READY);
+        TaskStateValidationResult validationResult = new TaskStateValidationResult(
+                true,
+                false,
+                TaskStatus.READY,
+                null,
+                2,
+                0,
+                0,
+                2,
+                java.util.List.of()
+        );
 
         when(taskManager.getTask(TASK_ID)).thenReturn(task);
         when(taskManager.getTaskMessages(TASK_ID)).thenReturn(java.util.List.of(
                 new TaskMsg("msg-1", TASK_ID, "alpha"),
                 new TaskMsg("msg-2", TASK_ID, "beta")
         ));
+        when(taskManager.validateTaskState(TASK_ID)).thenReturn(validationResult);
 
         mockMvc.perform(get("/status/api/tasks/{taskId}", TASK_ID))
                 .andExpect(status().isOk())
@@ -205,7 +257,10 @@ class TaskApiControllerTest {
                 .andExpect(jsonPath("$.task.tid").value(TASK_ID))
                 .andExpect(jsonPath("$.task.status").value("READY"))
                 .andExpect(jsonPath("$.targetList[0]").value("alpha"))
-                .andExpect(jsonPath("$.targetList[1]").value("beta"));
+                .andExpect(jsonPath("$.targetList[1]").value("beta"))
+                .andExpect(jsonPath("$.stateValidation.valid").value(true))
+                .andExpect(jsonPath("$.stateValidation.needsResolution").value(false))
+                .andExpect(jsonPath("$.stateValidation.status").value("READY"));
     }
 
     @Test
@@ -289,6 +344,28 @@ class TaskApiControllerTest {
                                 }
                                 """))
                 .andExpect(status().isNotFound());
+
+        verify(taskManager, never()).updateTask(any(Task.class));
+    }
+
+    @Test
+    void updateTaskReturnsBadRequestWhenProjectIsUnsupported() throws Exception {
+        Task existingTask = taskWithStatus(TaskStatus.NEW);
+        existingTask.setUser(new com.xa.mass.base.model.User());
+        when(taskManager.getTask(TASK_ID)).thenReturn(existingTask);
+
+        mockMvc.perform(put("/status/api/tasks/{taskId}", TASK_ID)
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "taskName":"updated-name",
+                                  "project":"whatsapp",
+                                  "countryCode":"sg"
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.message").value("更新任务失败: Unsupported project code: whatsapp"));
 
         verify(taskManager, never()).updateTask(any(Task.class));
     }

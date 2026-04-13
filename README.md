@@ -33,6 +33,8 @@ Role split:
   - `NEW -> READY -> RUNNING -> TERMINAL`
   - `NEW -> READY -> PAUSED -> READY`
   - `NEW -> BLOCKED -> READY`
+- `TERMINAL` is not self-describing anymore; inspect `task.terminalReason` to distinguish manual cancel from message-driven completion
+- Unsupported task `project` codes now fail fast instead of silently falling back to `demoApp`
 
 ## Quick Start
 

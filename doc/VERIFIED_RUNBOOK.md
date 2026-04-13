@@ -29,6 +29,7 @@ For endpoint inventory, response shapes, and implementation status, use [INTERNA
 - Create-time validation is now verified:
   - `targetList` must contain at least one materialized target
   - non-empty `targetJsonList` is rejected by the current mainline runtime
+  - unsupported `project` codes are rejected instead of silently falling back to `demoApp`
   - request `batchSize` is preserved on the persisted task
 - Engine regression also verifies a paused-completion closure rule:
   - if all persisted `TaskMsg` callbacks finish while the task is `PAUSED`, the task is closed to `TERMINAL`
@@ -113,6 +114,7 @@ Verified state transitions:
 - create: `targetList` is persisted as real `TaskMsg` rows
 - create: `TaskManager.createTask()` requires at least one `targetList` value
 - create: non-empty `targetJsonList` is rejected by the current mainline runtime
+- create: unsupported `project` codes are rejected
 - create: request `batchSize` is persisted onto the task
 - `approveTask`: `NEW`, `BLOCKED` -> `READY`
 - `rejectTask`: `NEW` -> `BLOCKED`
@@ -123,6 +125,14 @@ Verified state transitions:
 Additional implementation rule verified at engine regression level:
 
 - if a paused task already has all persisted `TaskMsg` rows in final states, it is closed to `TERMINAL` instead of being put back into `READY`
+- SDK callers can distinguish these two resume outcomes through `TaskManager.resumeTaskDetailed(...)`
+- SDK callers can also use `TaskManager.resolveTaskStateFromMessages(...)` to ask whether current `TaskMsg` aggregation leaves the task pending, finalizes it, or observes an already-final task
+- SDK callers can use `TaskManager.validateTaskState(...)` to audit whether task counters, `terminalReason`, and persisted `TaskMsg` aggregates are still self-consistent
+- when a task reaches `TERMINAL`, inspect `task.terminalReason` to distinguish:
+  - `MANUAL_CANCELLED`
+  - `ALL_MESSAGES_SUCCEEDED`
+  - `ALL_MESSAGES_FAILED`
+  - `MIXED_MESSAGE_RESULTS`
 
 The full endpoint matrix is maintained in [INTERNAL_API_REFERENCE.md](./INTERNAL_API_REFERENCE.md).
 

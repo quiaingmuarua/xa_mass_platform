@@ -5,6 +5,8 @@ import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.model.TaskCreateRequestDto;
+import com.xa.mass.engine.model.TaskResumeResult;
+import com.xa.mass.engine.model.TaskStateValidationResult;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -46,7 +48,8 @@ public class TaskApiController {
                 return ResponseEntity.ok(java.util.Map.of(
                         "success", true,
                         "task", task,
-                        "targetList", targetList
+                        "targetList", targetList,
+                        "stateValidation", taskManager.validateTaskState(taskId)
                 ));
             } else {
                 return ResponseEntity.notFound().build();
@@ -69,7 +72,7 @@ public class TaskApiController {
 
             boolean success = switch (status) {
                 case READY -> task.getStatus() == TaskStatus.PAUSED
-                        ? taskManager.resumeTask(taskId)
+                        ? taskManager.resumeTaskDetailed(taskId).isSuccess()
                         : taskManager.approveTask(taskId);
                 case BLOCKED -> taskManager.rejectTask(taskId);
                 case PAUSED -> taskManager.pauseTask(taskId);
@@ -167,10 +170,16 @@ public class TaskApiController {
                 return ResponseEntity.notFound().build();
             }
 
-            if (taskManager.resumeTask(taskId)) {
+            TaskResumeResult result = taskManager.resumeTaskDetailed(taskId);
+            if (result.isSuccess()) {
+                String message = result.getOutcome() == TaskResumeResult.Outcome.COMPLETED_TO_TERMINAL
+                        ? "任务在暂停期间已完成，直接收口为终态"
+                        : "任务已恢复";
                 return ResponseEntity.ok(java.util.Map.of(
                         "success", true,
-                        "message", "任务已恢复"
+                        "message", message,
+                        "newStatus", result.getStatus().name(),
+                        "terminalReason", result.getTerminalReason() != null ? result.getTerminalReason().name() : ""
                 ));
             }
 

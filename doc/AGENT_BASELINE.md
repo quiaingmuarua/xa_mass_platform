@@ -44,13 +44,15 @@ Working rule:
 - EventBus mainline has converged onto `com.xa.mass.base.channel.eventbus.core` and `com.xa.mass.base.channel.eventbus.event`
 - API integration coverage includes terminate-from-running and delete-after-terminal after real assignment but before downstream callbacks
 - API integration coverage also proves that paused tasks can still close to terminal when real callbacks arrive after pause
-- `TaskManager.createTask()` is now fail-fast in the mainline runtime: it requires a materialized `targetList`, rejects non-empty `targetJsonList`, and preserves request `batchSize`
+- `TaskManager.createTask()` is now fail-fast in the mainline runtime: it requires a materialized `targetList`, rejects non-empty `targetJsonList`, rejects unsupported `project` codes, and preserves request `batchSize`
 - Engine regression coverage now locks two important closure rules:
   - paused tasks must close to terminal once all persisted message callbacks are final
   - ready tasks without a current device match must stay in the assignment loop through retry
 - Engine regression coverage also locks two race/immutability rules:
   - assignment must not dispatch if a task leaves `READY` during device matching
   - late callbacks must not mutate a task that was already closed to `TERMINAL`
+- `Task` now carries `terminalReason`, so `TERMINAL` can be interpreted as manual cancel, all-success completion, all-failed completion, or mixed-result completion
+- `TaskManager.validateTaskState(...)` now gives an explicit state-audit result for `Task + TaskMsg` consistency and whether a non-final task still needs terminal closure
 
 ## 3. Module Facts
 
@@ -104,6 +106,10 @@ Working rule:
 - trust `TaskManager` and `TaskStatus` over older docs
 - if a document disagrees with `TaskStatus.canTransitionTo(...)`, the document is stale
 - task completion is driven by persisted `TaskMsg` finality, not only by the current task status label
+- read terminal tasks as `TaskStatus + terminalReason`, not `TaskStatus` alone
+- use `TaskManager.resumeTaskDetailed(...)` when the caller needs to distinguish `PAUSED -> READY` from `PAUSED -> TERMINAL`
+- use `TaskManager.resolveTaskStateFromMessages(...)` when the caller needs an explicit message-aggregation verdict instead of relying on `updateTaskProgress()` side effects
+- use `TaskManager.validateTaskState(...)` when the caller needs to audit whether counters, terminal reason, and persisted message aggregates are still self-consistent
 - terminal closure freezes later non-final callbacks; duplicate results are only accepted as idempotent no-ops once the message is already final
 
 ### Matching

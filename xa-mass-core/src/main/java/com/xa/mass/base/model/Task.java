@@ -3,6 +3,7 @@ package com.xa.mass.base.model;
 
 import com.xa.mass.base.enums.Project;
 import com.xa.mass.base.enums.task.TaskStatus;
+import com.xa.mass.base.enums.task.TaskTerminalReason;
 
 import java.time.LocalDateTime;
 import java.util.Objects;
@@ -103,6 +104,11 @@ public class Task {
      */
     private int batchSize;
 
+    /**
+     * 进入终态的业务原因。
+     */
+    private TaskTerminalReason terminalReason;
+
     public Task() {
         this.status = TaskStatus.NEW;
         this.createTime = LocalDateTime.now();
@@ -114,7 +120,7 @@ public class Task {
         this();
         this.tid = tid;
         this.taskName = taskName;
-        this.project = Project.fromCode(project);
+        this.project = Project.requireCode(project);
         this.taskCountry = taskCountry;
         this.taskInitNumber = taskInitNumber;
         this.taskValidNumber = taskInitNumber;
@@ -149,7 +155,7 @@ public class Task {
     }
 
     public void setProject(String projectCode) {
-        this.project = Project.fromCode(projectCode);
+        this.project = Project.requireCode(projectCode);
     }
 
     public String getProjectCode() {
@@ -280,6 +286,14 @@ public class Task {
         this.batchSize = batchSize;
     }
 
+    public TaskTerminalReason getTerminalReason() {
+        return terminalReason;
+    }
+
+    public void setTerminalReason(TaskTerminalReason terminalReason) {
+        this.terminalReason = terminalReason;
+    }
+
     /**
      * 检查任务是否可以调度
      */
@@ -320,6 +334,17 @@ public class Task {
         return false;
     }
 
+    public boolean transitionTo(TaskStatus targetStatus, TaskTerminalReason terminalReason) {
+        if (!targetStatus.isFinal()) {
+            throw new IllegalArgumentException("Terminal reason is only valid for final task states");
+        }
+        if (transitionTo(targetStatus)) {
+            this.terminalReason = terminalReason;
+            return true;
+        }
+        return false;
+    }
+
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
@@ -347,6 +372,7 @@ public class Task {
                 ", taskUnExecutedNumber=" + taskUnExecutedNumber +
                 ", progress=" + String.format("%.1f%%", getProgressPercentage()) +
                 ", batchSize=" + batchSize +
+                ", terminalReason=" + terminalReason +
                 '}';
     }
-} 
+}

@@ -1,11 +1,15 @@
 package com.xa.mass.engine;
 
 import com.xa.mass.base.enums.task.TaskStatus;
+import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.User;
 import com.xa.mass.engine.model.TaskCreateRequestDto;
+import com.xa.mass.engine.model.TaskResumeResult;
+import com.xa.mass.engine.model.TaskStateResolutionResult;
+import com.xa.mass.engine.model.TaskStateValidationResult;
 import com.xa.mass.engine.storage.TaskStorage;
 import com.xa.mass.engine.storage.TaskStorageFactory;
 import com.xa.mass.engine.strategy.TaskScheduler;
@@ -15,6 +19,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.ArrayList;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
 
@@ -325,7 +330,7 @@ public class TaskManager {
      *   <li>否则 → 任务进入 READY，重新进入调度队列</li>
      * </ul>
      */
-    public boolean resumeTask(String taskId) {
+    public TaskResumeResult resumeTaskDetailed(String taskId) {
         long startTime = System.currentTimeMillis();
         LogUtils.setTaskId(taskId);
         LogUtils.logOperationStart("RESUME_TASK", "TaskManager", "taskId", taskId);
@@ -339,16 +344,18 @@ public class TaskManager {
                     // instead of re-queuing. Callers should check getTask() to distinguish
                     // this PAUSED→TERMINAL path from the normal PAUSED→READY path.
                     task.setTaskExecutedNumber((int) stats.getSuccess());
-                    boolean result = task.transitionTo(TaskStatus.TERMINAL);
+                    TaskTerminalReason terminalReason = determineTerminalReason(stats);
+                    boolean result = task.transitionTo(TaskStatus.TERMINAL, terminalReason);
                     if (result) {
                         taskStorage.updateTask(task);
                         long duration = System.currentTimeMillis() - startTime;
                         LogUtils.logOperationSuccess("任务暂停期间已全部完成，直接终止 (PAUSED→TERMINAL)", duration);
+                        return TaskResumeResult.completedToTerminal(terminalReason);
                     } else {
                         long duration = System.currentTimeMillis() - startTime;
                         LogUtils.logOperationFailure("TASK_RESUME_ERROR", "任务已完成但收尾失败", duration);
                     }
-                    return result;
+                    return TaskResumeResult.rejected();
                 }
                 boolean result = task.transitionTo(TaskStatus.READY);
                 if (result) {
@@ -357,22 +364,27 @@ public class TaskManager {
                     notifyTaskReady(task);
                     long duration = System.currentTimeMillis() - startTime;
                     LogUtils.logOperationSuccess("任务恢复成功", duration);
+                    return TaskResumeResult.resumedToReady();
                 } else {
                     long duration = System.currentTimeMillis() - startTime;
                     LogUtils.logOperationFailure("TASK_RESUME_ERROR", "任务状态转换失败", duration);
                 }
-                return result;
+                return TaskResumeResult.rejected();
             } else {
                 long duration = System.currentTimeMillis() - startTime;
                 LogUtils.logOperationFailure("TASK_RESUME_ERROR", "任务不存在或状态不允许恢复", duration);
-                return false;
+                return TaskResumeResult.rejected();
             }
         } catch (Exception e) {
             long duration = System.currentTimeMillis() - startTime;
             LogUtils.logOperationFailure("TASK_RESUME_ERROR", e.getMessage(), duration);
             logger.error("恢复任务失败", e);
-            return false;
+            return TaskResumeResult.rejected();
         }
+    }
+
+    public boolean resumeTask(String taskId) {
+        return resumeTaskDetailed(taskId).isSuccess();
     }
 
     /**
@@ -386,7 +398,7 @@ public class TaskManager {
         try {
             Task task = getTask(taskId);
             if (task != null && !task.getStatus().isFinal()) {
-                boolean result = task.transitionTo(TaskStatus.TERMINAL);
+                boolean result = task.transitionTo(TaskStatus.TERMINAL, TaskTerminalReason.MANUAL_CANCELLED);
                 if (result) {
                     taskStorage.updateTask(task);
                     taskScheduler.cancelTask(taskId);
@@ -450,28 +462,145 @@ public class TaskManager {
      * 更新任务进度
      */
     public void updateTaskProgress(String taskId) {
-        Task task = getTask(taskId);
-        if (task != null) {
-            TaskStorage.TaskMessageStats stats = getTaskMessageStats(taskId);
-            task.setTaskExecutedNumber((int) stats.getSuccess());
+        resolveTaskStateFromMessages(taskId);
+    }
 
-            // 如果所有消息都已完成，将任务标记为终止
-            if (allTaskMessagesCompleted(stats)) {
-                if (!task.getStatus().isFinal()) {
-                    boolean result = task.transitionTo(TaskStatus.TERMINAL);
-                    if (result) {
-                        taskStorage.updateTask(task);
+    /**
+     * 根据当前 TaskMsg 聚合结果显式解析任务状态。
+     * 这是 SDK 侧应该依赖的主入口，而不是猜测 updateTaskProgress() 的内部行为。
+     */
+    public TaskStateResolutionResult resolveTaskStateFromMessages(String taskId) {
+        Task task = getTask(taskId);
+        if (task == null) {
+            return TaskStateResolutionResult.taskNotFound();
+        }
+
+        TaskStorage.TaskMessageStats stats = getTaskMessageStats(taskId);
+        task.setTaskExecutedNumber((int) stats.getSuccess());
+
+        if (task.getStatus().isFinal()) {
+            taskStorage.updateTask(task);
+            return TaskStateResolutionResult.alreadyFinal(
+                    task.getStatus(),
+                    task.getTerminalReason(),
+                    stats.getTotal(),
+                    stats.getSuccess(),
+                    stats.getFailed()
+            );
+        }
+
+        if (!allTaskMessagesCompleted(stats)) {
+            taskStorage.updateTask(task);
+            return TaskStateResolutionResult.notFinalized(
+                    task.getStatus(),
+                    stats.getTotal(),
+                    stats.getSuccess(),
+                    stats.getFailed()
+            );
+        }
+
+        TaskTerminalReason reason = determineTerminalReason(stats);
+        boolean result = task.transitionTo(TaskStatus.TERMINAL, reason);
+        if (result) {
+            taskStorage.updateTask(task);
+            return TaskStateResolutionResult.finalizedToTerminal(
+                    reason,
+                    stats.getTotal(),
+                    stats.getSuccess(),
+                    stats.getFailed()
+            );
+        }
+
+        taskStorage.updateTask(task);
+        return TaskStateResolutionResult.notFinalized(
+                task.getStatus(),
+                stats.getTotal(),
+                stats.getSuccess(),
+                stats.getFailed()
+        );
+    }
+
+    public TaskStateValidationResult validateTaskState(String taskId) {
+        Task task = getTask(taskId);
+        if (task == null) {
+            return new TaskStateValidationResult(
+                    false,
+                    false,
+                    null,
+                    null,
+                    0,
+                    0,
+                    0,
+                    0,
+                    List.of(TaskStateValidationResult.ViolationCode.TASK_NOT_FOUND)
+            );
+        }
+
+        TaskStorage.TaskMessageStats stats = getTaskMessageStats(taskId);
+        List<TaskStateValidationResult.ViolationCode> violations = new ArrayList<>();
+
+        if (task.getTaskValidNumber() < 0) {
+            violations.add(TaskStateValidationResult.ViolationCode.NEGATIVE_VALID_COUNT);
+        }
+        if (task.getTaskExecutedNumber() < 0) {
+            violations.add(TaskStateValidationResult.ViolationCode.NEGATIVE_EXECUTED_COUNT);
+        }
+        if (task.getTaskExecutedNumber() > task.getTaskValidNumber()) {
+            violations.add(TaskStateValidationResult.ViolationCode.EXECUTED_EXCEEDS_VALID);
+        }
+        if (task.getTaskUnExecutedNumber() != task.getTaskValidNumber() - task.getTaskExecutedNumber()) {
+            violations.add(TaskStateValidationResult.ViolationCode.UNEXECUTED_COUNT_MISMATCH);
+        }
+
+        boolean finalStatus = task.getStatus() != null && task.getStatus().isFinal();
+        boolean hasTerminalReason = task.getTerminalReason() != null;
+        if (finalStatus && !hasTerminalReason) {
+            violations.add(TaskStateValidationResult.ViolationCode.TERMINAL_REASON_MISSING);
+        }
+        if (!finalStatus && hasTerminalReason) {
+            violations.add(TaskStateValidationResult.ViolationCode.TERMINAL_REASON_PRESENT_ON_NON_TERMINAL);
+        }
+
+        if (finalStatus && hasTerminalReason) {
+            switch (task.getTerminalReason()) {
+                case ALL_MESSAGES_SUCCEEDED -> {
+                    if (!(stats.getTotal() > 0 && stats.getSuccess() == stats.getTotal() && stats.getFailed() == 0 && stats.getProcessing() == 0)) {
+                        violations.add(TaskStateValidationResult.ViolationCode.TERMINAL_REASON_MISMATCH_ALL_SUCCEEDED);
                     }
-                } else {
-                    // Task is already in a final state but taskExecutedNumber was just updated
-                    // in memory — persist it so the stored record stays accurate.
-                    taskStorage.updateTask(task);
                 }
-            } else {
-                // 更新任务状态
-                taskStorage.updateTask(task);
+                case ALL_MESSAGES_FAILED -> {
+                    if (!(stats.getTotal() > 0 && stats.getFailed() == stats.getTotal() && stats.getSuccess() == 0 && stats.getProcessing() == 0)) {
+                        violations.add(TaskStateValidationResult.ViolationCode.TERMINAL_REASON_MISMATCH_ALL_FAILED);
+                    }
+                }
+                case MIXED_MESSAGE_RESULTS -> {
+                    boolean mixed = stats.getTotal() > 0
+                            && stats.getSuccess() > 0
+                            && stats.getFailed() > 0
+                            && stats.getSuccess() + stats.getFailed() == stats.getTotal()
+                            && stats.getProcessing() == 0;
+                    if (!mixed) {
+                        violations.add(TaskStateValidationResult.ViolationCode.TERMINAL_REASON_MISMATCH_MIXED_RESULTS);
+                    }
+                }
+                case MANUAL_CANCELLED -> {
+                    // Manual cancel is allowed regardless of message finality snapshot.
+                }
             }
         }
+
+        boolean needsResolution = !finalStatus && allTaskMessagesCompleted(stats);
+        return new TaskStateValidationResult(
+                violations.isEmpty(),
+                needsResolution,
+                task.getStatus(),
+                task.getTerminalReason(),
+                stats.getTotal(),
+                stats.getSuccess(),
+                stats.getFailed(),
+                stats.getProcessing(),
+                List.copyOf(violations)
+        );
     }
 
     public TaskScheduler getScheduler() {
@@ -579,5 +708,15 @@ public class TaskManager {
 
     private boolean allTaskMessagesCompleted(TaskStorage.TaskMessageStats stats) {
         return stats.getTotal() > 0 && stats.getSuccess() + stats.getFailed() == stats.getTotal();
+    }
+
+    private TaskTerminalReason determineTerminalReason(TaskStorage.TaskMessageStats stats) {
+        if (stats.getSuccess() == stats.getTotal()) {
+            return TaskTerminalReason.ALL_MESSAGES_SUCCEEDED;
+        }
+        if (stats.getFailed() == stats.getTotal()) {
+            return TaskTerminalReason.ALL_MESSAGES_FAILED;
+        }
+        return TaskTerminalReason.MIXED_MESSAGE_RESULTS;
     }
 }
