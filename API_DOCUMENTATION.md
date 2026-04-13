@@ -644,8 +644,8 @@ public class MassApplicationBuilder {
 ```properties
 # Server Configuration
 server.port=8080
-xa.mass.websocket.port=8081
-xa.mass.websocket.path=/ws
+mass.websocket.port=8081
+# WebSocket path is currently fixed in code as /ws
 
 # Event Bus Configuration
 xa.mass.eventbus.type=guava

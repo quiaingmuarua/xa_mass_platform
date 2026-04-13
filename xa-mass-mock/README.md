@@ -1,220 +1,100 @@
 # xa-mass-mock
 
-Mock 全链路应用模块。
+`xa-mass-mock` is the verified runnable entry module for the current repository mainline.
 
-它是当前仓库里已验证的真实 Spring Boot 入口，但本 README 里的部分历史启动命令已经失效。实际启动方式以仓库根目录的 [`doc/VERIFIED_RUNBOOK.md`](../doc/VERIFIED_RUNBOOK.md) 为准。
+Use this module for end-to-end validation of:
 
-## 功能特性
+- Spring Boot HTTP APIs
+- the internal gateway WebSocket server
+- mock device bootstrap and result write-back
 
-- 🚀 **全链路启动** - 一键启动 Gateway、Engine 和 Web API
-- ⚙️ **灵活配置** - 支持开发/生产环境配置
-- 🔧 **组件选择** - 可选择启动特定组件
-- 📊 **Mock数据** - 支持设备、任务、规则数据模拟
-- 🔌 **WebSocket服务** - 提供实时通信能力
+Repository-level startup instructions in [`../doc/VERIFIED_RUNBOOK.md`](../doc/VERIFIED_RUNBOOK.md) are the source of truth.
 
-## 快速启动
+## Current Role
 
-### 1. 全链路服务启动（已失效，不要直接照做）
+- real Spring Boot entrypoint: `com.xa.mass.mock.MockApplicationSpringBootApp`
+- wires `api + starter + gateway + engine`
+- default `dev` startup auto-starts mock WebSocket clients
 
-```bash
-# 这些命令在当前仓库状态下不可靠
-mvn spring-boot:run -Dspring-boot.run.profiles=dev
-mvn spring-boot:run -Dspring-boot.run.profiles=prod
-```
+## Port Model
 
-原因：
+Two ports are used on purpose:
 
-- `xa-mass-mock` 不能像独立单模块应用那样直接解析同仓库依赖
-- 当前可行方式是从仓库根目录先编译 reactor，再按 classpath 直接启动主类
+| Property | Default | Purpose |
+| --- | --- | --- |
+| `server.port` | `8088` | Spring Boot HTTP port for `/status`, `/doc.html`, and task APIs |
+| `mass.websocket.port` | `18088` | internal gateway WebSocket server port |
 
-### 2. 全链路服务启动（当前已验证）
+Mock clients connect through:
 
-在仓库根目录执行：
+| Property | Default |
+| --- | --- |
+| `mock.client.uri` | `ws://localhost:${mass.websocket.port}/ws` |
+
+## Verified Main Entry
+
+Start from the repository root:
 
 ```bash
 ./mvnw -DskipTests compile
-./mvnw -pl xa-mass-mock -am dependency:build-classpath \
-  -Dmdep.outputFile=/tmp/xa-mass-mock.cp \
-  -DincludeScope=runtime
-java -cp "xa-mass-mock/target/classes:xa-mass-starter/target/classes:xa-mass-api/target/classes:xa-mass-engine/target/classes:xa-mass-gateway/target/classes:xa-mass-base/target/classes:$(cat /tmp/xa-mass-mock.cp)" \
+java -cp "xa-mass-mock/target/classes:xa-mass-starter/target/classes:xa-mass-api/target/classes:xa-mass-engine/target/classes:xa-mass-gateway/target/classes:xa-mass-base/target/classes:<runtime-classpath>" \
   com.xa.mass.mock.MockApplicationSpringBootApp
 ```
 
-### 3. 客户端模拟启动
+After startup:
+
+- HTTP: `http://localhost:8088/status`
+- HTTP: `http://localhost:8088/status/tasks`
+- HTTP: `http://localhost:8088/doc.html`
+- WebSocket: `ws://localhost:18088/ws`
+
+## Client-Only Bootstrap
+
+`com.xa.mass.mock.WebSocketClientSpringBootApp` still exists as an optional client-only bootstrap, but it is no longer intended to be a separate Spring Web application.
+
+Current behavior:
+
+- starts a non-web Spring Boot context
+- activates `client` profile by default
+- starts mock WebSocket clients only
+- does not start an extra HTTP monitoring server
+
+This path is optional and not the verified mainline startup.
+
+## Effective Mock Client Startup
+
+For the verified default `dev` path, mock clients are started by:
+
+- `xa-mass-mock/src/main/java/com/xa/mass/mock/starter/WebSocketClientStarter.java`
+
+Startup behavior:
+
+- gated by `mock.client.auto-start=true`
+- triggered by `ApplicationReadyEvent`
+- idempotent startup protection through an internal `AtomicBoolean`
+
+## Key Config
+
+| Property | Default | Meaning |
+| --- | --- | --- |
+| `server.port` | `8088` | HTTP port |
+| `mass.websocket.port` | `18088` | gateway WebSocket port |
+| `mock.client.auto-start` | `true` | auto-start mock clients in default `dev` path |
+| `mock.client.uri` | `ws://localhost:${mass.websocket.port}/ws` | target gateway address |
+| `mass.mock.data.devices` | `mock/mock_devices.json` | mock device data |
+| `mass.mock.data.tasks` | `mock/mock_tasks.json` | mock task data |
+| `mass.mock.data.rules` | `mock/mock_rules.json` | mock rule data |
+
+## Regression Coverage
+
+Focused verified regression command:
 
 ```bash
-# 启动客户端模拟器
-mvn spring-boot:run -Dspring-boot.run.profiles=client
-
-# 或指定配置文件
-java -jar xa-mass-mock.jar --spring.profiles.active=client
+mvn --% -pl xa-mass-mock -am -Dtest=MassWebSocketClientImplTest,TaskApiIntegrationTest,WebSocketClientStarterTest -Dsurefire.failIfNoSpecifiedTests=false test
 ```
 
-### 4. 分离式启动
+Covered areas:
 
-```bash
-# 终端1: 先按上面的“当前已验证”方式启动服务端
-
-# 终端2: 启动客户端
-mvn spring-boot:run -Dspring-boot.run.profiles=client
-```
-
-## 配置说明
-
-### 核心配置
-
-| 配置项                            | 默认值                    | 说明                   |
-|--------------------------------|------------------------|----------------------|
-| `mass.server.port`             | 18088                  | Mass WebSocket 服务器端口 |
-| `mass.gateway.max-connections` | 1000                   | 网关最大连接数              |
-| `mass.gateway.enabled`         | true                   | 是否启用网关               |
-| `mass.engine.worker-threads`   | 8                      | 引擎工作线程数              |
-| `mass.engine.enabled`          | true                   | 是否启用引擎               |
-| `mass.mock.data.devices`       | mock/mock_devices.json | 设备配置文件路径             |
-| `mass.mock.data.tasks`         | mock/mock_tasks.json   | 任务配置文件路径             |
-| `mass.mock.data.rules`         | mock/mock_rules.json   | 规则配置文件路径             |
-
-### 客户端配置 (client profile)
-
-| 配置项                              | 默认值                     | 说明        |
-|----------------------------------|-------------------------|-----------|
-| `mock.client.uri`                | ws://localhost:18088/ws | 目标服务器地址   |
-| `mock.client.devices-config`     | mock/mock_devices.json  | 设备配置文件路径  |
-| `mock.client.connection-timeout` | 10                      | 连接超时时间(秒) |
-| `mock.client.max-pool-size`      | 20                      | 最大连接池大小   |
-| `mock.client.retry-attempts`     | 3                       | 重试次数      |
-| `mock.client.retry-delay`        | 5                       | 重试间隔(秒)   |
-| `mock.client.ping-interval`      | 10                      | 心跳间隔(秒)   |
-| `mock.client.ping-delay`         | 5                       | 心跳启动延迟(秒) |
-
-### 环境配置
-
-#### 开发环境 (application-dev.yml)
-
-- 较小的连接数和线程数
-- DEBUG 级别日志
-- 适合开发和测试
-
-#### 生产环境 (application-prod.yml)
-
-- 更大的连接数和线程数
-- INFO 级别日志
-- 适合生产部署
-
-#### 客户端环境 (application-client.yml)
-
-- 客户端连接配置
-- 心跳和重试机制
-- 连接池管理
-
-## 服务地址
-
-启动成功后，可通过以下地址访问服务：
-
-### 全链路服务 (dev/prod profile)
-
-- **Web API 服务**: http://localhost:8088
-    - 状态概览: http://localhost:8088/status
-    - 任务管理: http://localhost:8088/status/tasks
-    - 设备管理: http://localhost:8088/status/devices
-    - 规则管理: http://localhost:8088/status/rules
-    - API 文档: http://localhost:8088/doc.html
-- **WebSocket 服务**: ws://localhost:18088/ws
-
-### 客户端模拟服务 (client profile)
-
-- **客户端状态**: http://localhost:8089/status
-- **连接管理**: http://localhost:8089/status/clients
-- **连接统计**: http://localhost:8089/status/stats
-- **目标服务器**: ws://localhost:18088/ws
-
-## 启动流程
-
-1. **Spring Boot 启动** - 初始化 Web/API 服务
-2. **MassApplicationBuilder 构建** - 组装 Gateway 和 Engine
-3. **组件启动** - 启动 Gateway、Engine、WebSocket
-4. **健康检查** - 验证组件启动状态
-5. **Mock数据加载** - 加载模拟数据
-6. **事件发布** - 发布初始任务事件
-
-## 错误处理
-
-- **启动失败** - 详细的错误日志和异常分类
-- **Mock数据加载失败** - 警告日志，不影响启动
-- **事件发布失败** - 警告日志，不影响启动
-- **优雅关闭** - 注册关闭钩子，确保资源释放
-
-## 扩展配置
-
-### 自定义配置
-
-```yaml
-# application-custom.yml
-mass:
-  server:
-    port: 19000
-  gateway:
-    max-connections: 2000
-  engine:
-    worker-threads: 12
-  mock:
-    data:
-      devices: custom/devices.json
-      tasks: custom/tasks.json
-      rules: custom/rules.json
-```
-
-### 启动命令
-
-```bash
-mvn spring-boot:run -Dspring-boot.run.profiles=custom
-```
-
-## 依赖模块
-
-- **xa-mass-starter** - 启动和配置管理
-- **xa-mass-gateway** - 网关服务
-- **xa-mass-engine** - 引擎服务
-- **xa-mass-api** - Web API 服务
-
-## 开发指南
-
-### 添加新配置
-
-1. 在 `MockApplicationSpringBootApp` 中添加 `@Value` 注解
-2. 在配置文件中添加对应配置项
-3. 在 Builder 中使用配置值
-
-### 添加新组件
-
-1. 在 `MassApplicationBuilder` 中添加组件配置
-2. 在 `MassApplication` 中添加组件生命周期管理
-3. 在配置文件中添加组件配置项
-
-## 故障排除
-
-### 常见问题
-
-1. **端口冲突**
-    - 检查 8088 和 18088 端口是否被占用
-    - 修改配置文件中的端口设置
-
-2. **按 README 命令启动失败**
-    - 不要在模块目录直接执行 `mvn spring-boot:run`
-    - 按 `../doc/VERIFIED_RUNBOOK.md` 使用根目录启动方式
-
-3. **Mock数据加载失败**
-    - 检查配置文件路径是否正确
-    - 确认 JSON 文件格式是否有效
-
-4. **组件启动失败**
-    - 检查组件配置是否正确
-    - 查看详细错误日志
-
-### 日志级别调整
-
-```yaml
-logging:
-  level:
-    com.xa.mass: DEBUG  # 调整为 DEBUG 获取更多信息
-``` 
+- `TaskApiIntegrationTest`: create -> approve -> assign -> run -> complete
+- `WebSocketClientStarterTest`: auto-start and idempotent startup behavior
+- `MassWebSocketClientImplTest`: ignore `response=true` task frames and avoid echo loops

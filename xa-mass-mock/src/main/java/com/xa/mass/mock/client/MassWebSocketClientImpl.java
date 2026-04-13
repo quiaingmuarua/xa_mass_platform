@@ -100,6 +100,10 @@ public class MassWebSocketClientImpl extends WebSocketClient implements MassWebS
 
     private void handleTaskMessage(String message) {
         MassMessage taskMessage = gson.fromJson(message, MassMessage.class);
+        if (taskMessage.isResponse()) {
+            logger.info("[{}] Ignoring task response frame for msgId: {}", deviceId, taskMessage.getMsgId());
+            return;
+        }
         TaskPayload taskPayload = gson.fromJson(taskMessage.getPayload(), TaskPayload.class);
 
         MassMessage response = new MassMessage();

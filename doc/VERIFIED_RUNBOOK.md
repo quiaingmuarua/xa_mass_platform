@@ -1,23 +1,23 @@
 # XA Mass Platform Verified Runbook
 
-最后更新：2026-04-13
+Last updated: 2026-04-13
 
-本文档只记录已经被代码、测试或真实运行验证过的事实。若与历史文档冲突，以代码和运行结果为准。
+This runbook records only facts that were verified by code, tests, or real runtime behavior. If older docs disagree, trust code and runtime.
 
-## 1. 当前结论
+## 1. Current Conclusions
 
-- 真实启动入口是 `xa-mass-mock`
-- `xa-mass-starter` 不是 Spring Boot 启动入口
-- 默认 `dev` 启动现在会自动拉起 mock WebSocket clients
-- 当前已验证 API 主链路：
+- The real Spring Boot entrypoint is `xa-mass-mock`.
+- `xa-mass-starter` is not the runnable Boot entry.
+- Default `dev` startup now auto-starts mock WebSocket clients through `mock.client.auto-start=true`.
+- The currently verified API happy path is:
   - `NEW -> READY -> RUNNING -> TERMINAL`
   - `TaskMsg INIT -> SENT -> SUCCESS`
-- 暂停恢复链路也已验证：
+- The pause/resume lifecycle regression is also verified:
   - `NEW -> READY -> PAUSED -> READY`
 
-## 2. 推荐启动方式
+## 2. Recommended Startup
 
-在仓库根目录执行：
+Run from repo root:
 
 ```bash
 ./mvnw -DskipTests compile
@@ -25,13 +25,13 @@ java -cp "xa-mass-mock/target/classes:xa-mass-starter/target/classes:xa-mass-api
   com.xa.mass.mock.MockApplicationSpringBootApp
 ```
 
-Windows 建议：
+Windows guidance:
 
-- 使用短 classpath：各模块 `target/classes` 加 `logs/runtime-libs/*`
-- 长展开 `-cp` 在 Windows 上可能被命令行长度截断，表现成假的缺类问题
-- 2026-04-13 已确认 `xa-mass-base` 去掉 `javafaker` 后，不再把 `snakeyaml-android` 带进 Spring Boot 运行时
+- Prefer a short classpath: module `target/classes` plus `logs/runtime-libs/*`
+- Very long expanded `-cp` values can exceed Windows command-line limits and produce misleading missing-class errors
+- As of 2026-04-13, removing `javafaker` from `xa-mass-base` avoids pulling `snakeyaml-android` into the Boot runtime path
 
-## 3. 启动后检查点
+## 3. Boot Checks
 
 HTTP:
 
@@ -48,15 +48,18 @@ WebSocket:
 nc -zv 127.0.0.1 18088
 ```
 
-默认 `dev` 启动的补充事实：
+Default `dev` startup facts:
 
-- `MockApplicationSpringBootApp` 固定激活 `dev`
-- `WebSocketClientStarter` 现在由 `ApplicationReadyEvent` 触发启动
-- `mock.client.auto-start=true` 时会自动加载 mock 设备并连接 `ws://localhost:18088/ws`
+- `MockApplicationSpringBootApp` is the verified entry path
+- `WebSocketClientStarter` now starts on `ApplicationReadyEvent`
+- `xa-mass-mock/src/main/resources/application.yml` enables `mock.client.auto-start=true`
+- `server.port` is the HTTP port, currently `8088`
+- `mass.websocket.port` is the gateway WebSocket port, currently `18088`
+- In the verified default path, mock devices connect automatically to `ws://localhost:18088/ws`
 
-## 4. 当前 API 主链路
+## 4. Current API Mainline
 
-### 4.1 创建任务
+### 4.1 Create a Task
 
 ```bash
 curl -s -X POST http://127.0.0.1:8088/status/api/tasks \
@@ -64,13 +67,13 @@ curl -s -X POST http://127.0.0.1:8088/status/api/tasks \
   -d '{"taskName":"smoke-lifecycle","project":"demoApp","countryCode":"us","textContent":"smoke","userId":"agent","targetList":["smoke-target-001","smoke-target-002"],"batchSize":1}'
 ```
 
-已确认：
+Verified facts:
 
-- 初始状态为 `NEW`
-- `targetList` 会持久化成真实 `TaskMsg`
-- `TaskManager.createTask()` 已处理 `targetList = null`，不再触发 NPE
+- Initial task status is `NEW`
+- `targetList` is persisted as real `TaskMsg` rows
+- `TaskManager.createTask()` now guards `targetList = null` and no longer throws NPE on that path
 
-### 4.2 审核 / 暂停 / 恢复
+### 4.2 Audit, Pause, Resume
 
 ```bash
 curl -i -X POST "http://127.0.0.1:8088/status/api/tasks/{taskId}/audit?approved=true&comment=smoke"
@@ -78,103 +81,123 @@ curl -i -X POST http://127.0.0.1:8088/status/api/tasks/{taskId}/pause
 curl -i -X POST http://127.0.0.1:8088/status/api/tasks/{taskId}/resume
 ```
 
-已确认：
+Verified state transitions:
 
-- `approveTask`: `NEW, BLOCKED -> READY`
-- `pauseTask`: `READY, RUNNING -> PAUSED`
-- `resumeTask`: `PAUSED -> READY`
-- `deleteTask` 只允许 `NEW, TERMINAL`
+- `approveTask`: `NEW`, `BLOCKED` -> `READY`
+- `pauseTask`: `READY`, `RUNNING` -> `PAUSED`
+- `resumeTask`: `PAUSED` -> `READY`
+- `deleteTask`: only `NEW`, `TERMINAL`
 
-### 4.3 分配与运行
+### 4.3 Assign and Run
 
-当前代码路径：
+Verified runtime path:
 
-1. 任务进入 `READY`
-2. `MassEngine` 无论 `mockMode` 与否都会启动 `TaskAssignWorker`
-3. `MassEngine` 会在启动时补提已有 `READY` 任务，并订阅 approve/resume 触发的 READY 事件
-4. `TaskDeviceAssignListener` 负责设备匹配
-5. 匹配成功后写入 `scheduleDeviceCnt`，并把任务从 `READY` 推到 `RUNNING`
-6. `SimpleTaskMsgAssignListener` 复用持久化 `TaskMsg`
-7. 每条 `TaskMsg` 会绑定 `deviceId`、`tokenId`、`batchId`，并推进到 `SENT`
-8. `GatewayTaskMsgPublisher` 将消息下发为 `TASK/step`
+1. The task enters `READY` after approval or resume.
+2. `MassEngine` starts `TaskAssignWorker` regardless of `mockMode`.
+3. `MassEngine` also resubmits pre-existing `READY` tasks at startup and subscribes to READY events from approve/resume.
+4. `TaskDeviceAssignListener` performs device matching.
+5. On successful matching it writes `scheduleDeviceCnt` and moves the task from `READY` to `RUNNING`.
+6. `SimpleTaskMsgAssignListener` reuses the persisted `TaskMsg` records created during task creation.
+7. Each `TaskMsg` is filled with `deviceId`, `tokenId`, and `batchId`, then moved to `SENT`.
+8. `GatewayTaskMsgPublisher` pushes the downstream payload as `TASK/step`.
 
-### 4.4 回执与收敛
+### 4.4 Result Write-Back and Completion
 
-当前代码路径：
+Verified runtime path:
 
-1. mock client 收到 `TASK/step`
-2. mock client 回传 `TASK/step` 结果
-3. `GatewayTaskResultHandler` 调用 `TaskManager.handleTaskMessageResult(...)`
-4. `TaskManager` 根据 `taskId + msgId` 更新持久化 `TaskMsg`
-5. `TaskMsg` 进入 `SUCCESS` 或 `FAILED`
-6. 当任务处于 `RUNNING` 且全部 `TaskMsg` 都进入终态时，任务自动收敛到 `TERMINAL`
+1. Mock clients receive `TASK/step`.
+2. Mock clients send back a `TASK/step` result frame.
+3. `GatewayTaskResultHandler` calls `TaskManager.handleTaskMessageResult(...)`.
+4. `TaskManager` updates the persisted `TaskMsg` by `taskId + msgId`.
+5. Each `TaskMsg` reaches `SUCCESS` or `FAILED`.
+6. When all task messages are final and the task is in `RUNNING`, the task is closed to `TERMINAL`.
 
-## 5. 2026-04-13 已验证的真实 smoke
+Important guard added in the verified runtime:
 
-### 5.1 Mock 数据前置条件
+- `MassWebSocketClientImpl` ignores `response=true` `TASK/step` frames so mock clients do not echo server response frames back into the system
 
-`MassApplication.loadMockData(...)` 现在会：
+## 5. Verified Smoke and Test Coverage on 2026-04-13
 
-- 归一化 mock 设备的 `supportedProjects` 为 `Project` 枚举
-- 为缺少 token 的设备自动补一个 `LOGIN_READY` token
+### 5.1 Mock Data Preconditions
 
-这修复了此前“API 审核后任务长期停在 `READY`”的问题，根因不是 worker 没跑，而是 mock 设备不满足默认规则。
+`MassApplication.loadMockData(...)` now:
 
-### 5.2 默认 dev 启动会自动拉起 mock clients
+- normalizes `supportedProjects` into `Project` enums
+- lowercases `groupId`
+- auto-seeds a `LOGIN_READY` token when a mock device has no token data
 
-`WebSocketClientStarter` 现在：
+This fixes the earlier false-stuck case where approved tasks remained in `READY` because mock devices did not satisfy assignment prerequisites.
 
-- 不再依赖 `client` profile 才能启动
-- 改为在 `ApplicationReadyEvent` 时启动
-- 受 `mock.client.auto-start` 控制
+### 5.2 Default `dev` Startup Launches Mock Clients
 
-对应回归测试：
+`WebSocketClientStarter` now:
+
+- no longer depends on a separate `client` profile
+- starts on `ApplicationReadyEvent`
+- is enabled by `mock.client.auto-start=true`
+- prevents duplicate startup through an internal `AtomicBoolean`
+
+Regression test:
 
 - `xa-mass-mock/src/test/java/com/xa/mass/mock/starter/WebSocketClientStarterTest.java`
 
-### 5.3 真实 API smoke 结果
+### 5.3 Real API Happy Path Is Covered by Integration Test
 
-已在真实运行中的 `xa-mass-mock` 进程上验证：
+Integration test:
 
-1. `POST /status/api/tasks`
-2. `POST /status/api/tasks/{taskId}/audit?approved=true`
-3. `GET /status/api/tasks/{taskId}`
-4. `GET /status/api/tasks/{taskId}/messages`
+- `xa-mass-mock/src/test/java/com/xa/mass/mock/api/TaskApiIntegrationTest.java`
 
-观察结果：
+What it verifies:
 
-- 创建后状态为 `NEW`
-- 审核后任务进入 `RUNNING`，随后自动收敛到 `TERMINAL`
-- `scheduleDeviceCnt = 2`
-- `taskExecutedNumber = 2`
-- 两条 `TaskMsg` 都变为 `SUCCESS`
-- 每条 `TaskMsg` 都写回了 `deviceId`
+- `POST /status/api/tasks`
+- `GET /status/api/tasks/{taskId}` starts at `NEW`
+- `POST /status/api/tasks/{taskId}/audit?approved=true`
+- the task reaches `TERMINAL`
+- `scheduleDeviceCnt == 2`
+- `taskExecutedNumber == 2`
+- two persisted messages exist
+- each message finishes as `SUCCESS`
+- each message has non-null `deviceId`, `tokenId`, and `batchId`
 
-## 6. 已验证定向回归
+Implementation details that matter:
 
-本轮已重新验证：
+- It uses `@SpringBootTest` against the real `MockApplicationSpringBootApp`
+- It dynamically allocates a free WebSocket port
+- It wires both `mass.websocket.port` and `mock.client.uri` to that allocated port
+- It uses minimal dedicated mock fixtures to keep the run deterministic
+
+### 5.4 Mock Echo Loop Regression Is Covered
+
+Regression test:
+
+- `xa-mass-mock/src/test/java/com/xa/mass/mock/client/MassWebSocketClientImplTest.java`
+
+What it verifies:
+
+- a task request frame produces exactly one mock response
+- a task response frame does not trigger another response
+
+### 5.5 Focused Verified Test Command
 
 ```bash
-mvn --% -pl xa-mass-mock -am -Dtest=WebSocketClientStarterTest,MassApplicationLoadMockDataTest,GatewayTaskMsgPublisherTest,GatewayTaskResultHandlerTest,MassEngineStopTest,MassApplicationStopOrderTest -Dsurefire.failIfNoSpecifiedTests=false test
+mvn --% -pl xa-mass-mock -am -Dtest=MassWebSocketClientImplTest,TaskApiIntegrationTest,WebSocketClientStarterTest -Dsurefire.failIfNoSpecifiedTests=false test
 ```
 
-结果：
+Verified result:
 
 - `BUILD SUCCESS`
 
-覆盖点：
+## 6. Remaining Gaps
 
-- `WebSocketClientStarterTest`
-- `MassApplicationLoadMockDataTest`
-- `GatewayTaskMsgPublisherTest`
-- `GatewayTaskResultHandlerTest`
-- `MassEngineStopTest`
-- `MassApplicationStopOrderTest`
+- `SimpleTaskScheduler.scheduleTasks()` is still a stub
+- the running app may still need two interrupts to exit
+- EventBus runtime is not yet converged and still uses `old.eventbus` in places
+- Redis and Database storage remain fail-fast placeholders
+- API integration coverage is still incomplete beyond the happy path
 
-## 7. 仍然存在的缺口
+Recommended next test-driven additions:
 
-- `SimpleTaskScheduler.scheduleTasks()` 仍是 stub
-- 应用退出有时仍需要两次 `Ctrl-C`
-- EventBus 仍未完全收敛，运行时还有 `old.eventbus`
-- Redis / Database 存储仍是 fail-fast 未实现
-- 当前真实主链路已能跑通，但还缺自动化 API 级集成测试
+1. reject path end-to-end
+2. pause/resume end-to-end
+3. delete guard end-to-end
+4. failed message result path end-to-end

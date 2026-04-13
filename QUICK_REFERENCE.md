@@ -136,8 +136,8 @@ Channel channel = server.getClientChannel("deviceId");
 ```properties
 # Server
 server.port=8088
-xa.mass.websocket.port=18088
-xa.mass.websocket.path=/ws
+mass.websocket.port=18088
+# WebSocket path is currently fixed in code as /ws
 # Event Bus
 xa.mass.eventbus.type=guava
 xa.mass.eventbus.async=true

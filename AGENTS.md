@@ -7,10 +7,13 @@ This file is the fastest entry point for coding agents such as Claude Code, Code
 - Real boot entry: `xa-mass-mock`
 - Do not start from `xa-mass-starter`
 - Trust code and verified runtime over repository docs
-- Current verified task path: `NEW -> READY -> RUNNING -> TERMINAL`
+- Default `dev` startup now auto-starts mock WebSocket clients through `mock.client.auto-start=true`
+- Port split is explicit: `server.port` for HTTP and `mass.websocket.port` for the gateway WebSocket server
+- Current verified API task path: `NEW -> READY -> RUNNING -> TERMINAL`
 - Pause/resume regression is also verified: `NEW -> READY -> PAUSED -> READY`
-- Windows startup should prefer short classpath: module `target/classes` + `logs/runtime-libs/*`
-- Current verified engine regression is green
+- Current focused mock/runtime regression is green
+- `TaskApiIntegrationTest` now covers `create -> approve -> assign -> run -> complete`
+- `MassWebSocketClientImpl` ignores `response=true` `TASK/step` frames to avoid mock echo loops
 - Treat `engine/v2` as historical, not mainline
 
 ## 1. What This Repo Is
@@ -35,14 +38,16 @@ Trust order:
 3. `AGENTS.md`
 4. `doc/AGENT_BASELINE.md`
 5. `doc/VERIFIED_RUNBOOK.md`
-6. module READMEs / `doc/内部管理接口文档.md` / `doc/engine/任务执行流.md`
-7. `API_DOCUMENTATION.md` / `QUICK_REFERENCE.md` — ⚠️ 部分过时，顶部有警告
-8. `old/` / `v2/` docs — 历史存档，`v2/README.md` 有说明
+6. module READMEs / internal API doc under `doc/` / task flow doc under `doc/engine/`
+7. `API_DOCUMENTATION.md` / `QUICK_REFERENCE.md` - partially outdated, warnings exist at the top
+8. `old/` / `v2/` docs - historical archive only
 
-**已删除**（不要去找）：
-- `doc/daily/` — 全部开发笔记已删除
-- `doc/规划.md` — 旧模块规划，已删除
-- `xa-mass-engine/.../v2/new_engine_refactory.md` / `匹配策略.md` — 草稿，已删除
+Deleted historical docs that should not be treated as missing:
+
+- `doc/daily/`
+- former planning doc under `doc/`
+- `xa-mass-engine/.../v2/new_engine_refactory.md`
+- former v2 matching-strategy draft under `xa-mass-engine/.../v2/`
 
 ## 3. Real Entry Point
 
@@ -55,7 +60,7 @@ Do not assume:
 - `xa-mass-starter` is the runnable Spring Boot app
 - `MassApplication.java` is a Spring Boot entry
 
-`xa-mass-starter` is currently a lifecycle/composition layer, not the verified Boot entry.
+`xa-mass-starter` is a lifecycle/composition layer, not the verified Boot entry.
 
 ## 4. Verified Startup
 
@@ -63,17 +68,14 @@ Run from repo root:
 
 ```bash
 ./mvnw -DskipTests compile
-./mvnw -pl xa-mass-mock -am dependency:build-classpath \
-  -Dmdep.outputFile=/tmp/xa-mass-mock.cp \
-  -DincludeScope=runtime
-java -cp "xa-mass-mock/target/classes:xa-mass-starter/target/classes:xa-mass-api/target/classes:xa-mass-engine/target/classes:xa-mass-gateway/target/classes:xa-mass-base/target/classes:$(cat /tmp/xa-mass-mock.cp)" \
+java -cp "xa-mass-mock/target/classes:xa-mass-starter/target/classes:xa-mass-api/target/classes:xa-mass-engine/target/classes:xa-mass-gateway/target/classes:xa-mass-base/target/classes:<runtime-classpath>" \
   com.xa.mass.mock.MockApplicationSpringBootApp
 ```
 
 Windows note:
 
 - Prefer a short classpath: module `target/classes` plus `logs/runtime-libs/*`
-- The expanded dependency classpath can exceed Windows command-line limits and surface false missing-class errors
+- Fully expanded dependency classpaths can exceed Windows command-line limits and produce false missing-class errors
 
 Verified endpoints:
 
@@ -83,13 +85,22 @@ Verified endpoints:
 - `http://localhost:8088/actuator/health`
 - `ws://localhost:18088`
 
+Default `dev` startup facts:
+
+- `xa-mass-mock/src/main/resources/application.yml` sets `mock.client.auto-start=true`
+- `server.port` is the Spring Boot HTTP port, currently `8088`
+- `mass.websocket.port` is the gateway WebSocket port, currently `18088`
+- `WebSocketClientStarter` listens on `ApplicationReadyEvent`
+- Mock device clients now connect automatically to the gateway in the default verified startup path
+
 ## 5. Current Reality, Not Marketing
 
 - The app can compile and run.
 - The current runtime path still uses parts of `old.eventbus`.
 - New EventBus docs describe target architecture, not fully verified runtime reality.
 - `v2` is not the mainline implementation.
-- Some historical docs overstate coverage and completion.
+- API-first task flow is the current source of truth. UI pages are a secondary validation surface.
+- Some historical docs still overstate completion and should not be trusted over code.
 
 ## 5.1 Module Map
 
@@ -99,24 +110,25 @@ Role:
 
 - Real Spring Boot entrypoint
 - Wires `api + starter + gateway + engine`
-- Loads mock data and publishes initial task events
+- Loads mock data and starts mock clients for end-to-end validation
 
 Current status:
 
 - Verified runnable
-- Best module for end-to-end validation
+- Best module for end-to-end verification
 
 Open first:
 
 - `xa-mass-mock/src/main/java/com/xa/mass/mock/MockApplicationSpringBootApp.java`
 - `xa-mass-mock/src/main/resources/application.yml`
-- `xa-mass-mock/src/main/resources/mock/mock_tasks.json`
+- `xa-mass-mock/src/main/java/com/xa/mass/mock/starter/WebSocketClientStarter.java`
 
 Notes:
 
 - This is the real operational entry, not just a demo shell.
-- Use this module when verifying runtime behavior.
-- Default `dev` startup now also auto-starts mock WebSocket clients when `mock.client.auto-start=true`.
+- Default `dev` startup now includes mock WebSocket clients when `mock.client.auto-start=true`.
+- `WebSocketClientSpringBootApp` is now an optional client-only non-web bootstrap, not part of the verified mainline.
+- New focused runtime regression tests live here.
 
 ### `xa-mass-starter`
 
@@ -152,7 +164,7 @@ Role:
 Current status:
 
 - Loaded via `xa-mass-mock` Spring Boot scanning
-- Not an independent verified app
+- Not an independently verified app
 
 Open first:
 
@@ -162,8 +174,8 @@ Open first:
 
 Notes:
 
-- Task lifecycle endpoints have been aligned to `TaskManager`.
-- API tests are still the highest-value missing test layer.
+- Task lifecycle endpoints are aligned to `TaskManager`.
+- API happy-path integration coverage now exists, but API edge coverage is still incomplete.
 
 ### `xa-mass-engine`
 
@@ -187,7 +199,7 @@ Open first:
 
 Notes:
 
-- Mainline engine tests are now small but green.
+- Mainline engine tests are the active regression surface.
 - `src/test/java/com/xa/mass/engine/v2/**` is historical test debt, not active regression.
 
 ### `xa-mass-base`
@@ -227,7 +239,7 @@ Role:
 Current status:
 
 - Verified as part of full mock startup
-- Not independently validated as standalone app
+- Not independently validated as a standalone app
 
 Open first:
 
@@ -237,93 +249,74 @@ Open first:
 Notes:
 
 - WebSocket port `18088` is part of the verified startup path.
-- Session/queue APIs exist, but some observability surfaces still look thin.
+- Gateway now participates in real task message publish/result write-back for the verified happy path.
 
 ## 6. Task Lifecycle Status
 
 Verified current lifecycle behavior:
 
-```
-NEW ──approve──► READY ──pause──► PAUSED ──resume──► READY
- │                 │                                    │
- └──reject──► BLOCKED ──approve──► READY               │
- │                                                       │
- └──cancel/terminate──────────────────────────────► TERMINAL
+```text
+NEW --approve--> READY --pause--> PAUSED --resume--> READY
+ |                  |                                     |
+ +--reject-------> BLOCKED --approve--------------------> +
+ |                                                        |
+ +--cancel/terminate-----------------------------------> TERMINAL
+
+READY --assign--> RUNNING --all task messages final--> TERMINAL
 ```
 
 State machine constraints enforced in code (`TaskStatus.canTransitionTo`):
 
 | Action | Allowed from | Target |
-|--------|-------------|--------|
-| `approveTask` | NEW, BLOCKED | READY |
-| `rejectTask` | NEW | BLOCKED |
-| `pauseTask` | READY | PAUSED |
-| `resumeTask` | PAUSED | READY |
-| `cancelTask` | any non-TERMINAL | TERMINAL |
-| `deleteTask` | **NEW, TERMINAL only** | (physical delete) |
+|--------|--------------|--------|
+| `approveTask` | `NEW`, `BLOCKED` | `READY` |
+| `rejectTask` | `NEW` | `BLOCKED` |
+| `pauseTask` | `READY`, `RUNNING` | `PAUSED` |
+| `resumeTask` | `PAUSED` | `READY` |
+| `cancelTask` | any non-`TERMINAL` | `TERMINAL` |
+| `deleteTask` | `NEW`, `TERMINAL` only | physical delete |
 
-Important current implementation facts (verified through Phase 1–4 fixes):
+Important current implementation facts:
 
-- `TaskApiController` uses `TaskManager` lifecycle methods for all state changes
-- `deleteTask()` now enforces state guard — READY/PAUSED/RUNNING tasks cannot be deleted; returns `success=false` with reason
-- `TaskManager.createTask()` guards null `targetList` (no NPE)
-- `TaskManager` task-message creation preserves:
-  - correct `taskId`
-  - distinct `msgId` per message
-  - real `targetList` values as `target` field on each `TaskMsg`
-- `SimpleTaskMsgAssignListener` now binds the persisted `TaskMsg` records created by `TaskManager.createTask()`, fills `deviceId` / `tokenId` / `batchId`, and marks them `SENT`
-- `MassEngine` now starts `TaskAssignWorker` regardless of `mockMode`, submits existing READY tasks on startup, and subscribes to READY events from approve/resume
-- `TaskDeviceAssignListener` now sets `scheduleDeviceCnt` and transitions matched READY tasks to `RUNNING`
-- `GatewayTaskMsgPublisher` now pushes task messages to the gateway output transporter as `TASK/step`
-- `GatewayTaskResultHandler` now handles inbound `TASK/step` results and writes them back through `TaskManager.handleTaskMessageResult(...)`
-- `TaskManager.handleTaskMessageResult(...)` now updates persisted `TaskMsg` state by `taskId + msgId`, recalculates task progress, and closes RUNNING tasks to `TERMINAL` when all messages finish
-- `MassWebSocketClientImpl` now echoes `project` on mock `TASK/step` responses so inbound validation passes
-- `MassApplication.loadMockData(...)` now normalizes mock `supportedProjects` to `Project` enums and auto-seeds `LOGIN_READY` tokens for devices missing token data
-- `WebSocketClientStarter` now starts on `ApplicationReadyEvent` behind `mock.client.auto-start=true`, so default `dev` startup includes mock client result write-back
-- Verified on 2026-04-13: API-created tasks now move `NEW -> READY -> RUNNING -> TERMINAL`, and their persisted `TaskMsg` records move `INIT -> SENT -> SUCCESS` with `deviceId` / `tokenId` / `batchId`
-- `TaskAssignWorker` uses `CopyOnWriteArrayList` for listeners (was `ArrayList`, ConcurrentModificationException risk)
-- `TaskAssignWorker.stop()` calls `shutdownNow()` + `awaitTermination(10s)` (was leaking threads)
-- `ServerSessionManager.removeSession()` correctly evicts `ChannelHandlerContext` on disconnect (was memory leak)
-- `DispatcherInboundHandler` sends structured JSON error frames to clients instead of silently closing the channel
+- `TaskApiController` uses `TaskManager` lifecycle methods for all state changes.
+- `deleteTask()` enforces the state guard. `READY`, `RUNNING`, and `PAUSED` tasks cannot be deleted.
+- `TaskManager.createTask()` guards null `targetList`.
+- `TaskManager` persists one `TaskMsg` per target with the correct `taskId`, distinct `msgId`, and actual target value.
+- `MassEngine` starts `TaskAssignWorker` regardless of `mockMode`, submits existing `READY` tasks on startup, and subscribes to READY events from approve/resume.
+- `TaskDeviceAssignListener` sets `scheduleDeviceCnt` and transitions matched tasks from `READY` to `RUNNING`.
+- `SimpleTaskMsgAssignListener` reuses persisted `TaskMsg` records, fills `deviceId` / `tokenId` / `batchId`, and moves them to `SENT`.
+- `GatewayTaskMsgPublisher` pushes task messages downstream as `TASK/step`.
+- `GatewayTaskResultHandler` handles inbound `TASK/step` results and writes them back through `TaskManager.handleTaskMessageResult(...)`.
+- `TaskManager.handleTaskMessageResult(...)` updates persisted `TaskMsg` state by `taskId + msgId`, recalculates progress, and closes `RUNNING` tasks to `TERMINAL` when all messages finish.
+- `MassApplication.loadMockData(...)` normalizes mock `supportedProjects`, lowercases `groupId`, and auto-seeds `LOGIN_READY` tokens when devices do not already have token data.
+- `WebSocketClientStarter` now starts on `ApplicationReadyEvent` behind `mock.client.auto-start=true`, so default `dev` startup includes mock client result write-back.
+- `MassWebSocketClientImpl` now ignores `response=true` task frames to prevent mock client echo loops and duplicate result writes.
+- Verified on `2026-04-13`: API-created tasks move `NEW -> READY -> RUNNING -> TERMINAL`, and persisted `TaskMsg` rows move `INIT -> SENT -> SUCCESS` with `deviceId` / `tokenId` / `batchId`.
+- `TaskAssignWorker` uses `CopyOnWriteArrayList` for listeners.
+- `TaskAssignWorker.stop()` calls `shutdownNow()` plus `awaitTermination(10s)`.
+- `ServerSessionManager.removeSession()` evicts `ChannelHandlerContext` on disconnect.
+- `DispatcherInboundHandler` sends structured JSON error frames instead of silently closing connections.
 
 ## 7. Known Good Test Surface
 
-Full suite command (verified 2026-04-13):
+Focused verified regression command on `2026-04-13`:
 
 ```bash
-./mvnw clean test
+mvn --% -pl xa-mass-mock -am -Dtest=MassWebSocketClientImplTest,TaskApiIntegrationTest,WebSocketClientStarterTest -Dsurefire.failIfNoSpecifiedTests=false test
 ```
 
-Result: **618 tests, 0 failures, 0 errors** across all modules.
+Verified focused classes:
 
-Key test classes by module:
+- `xa-mass-mock/src/test/java/com/xa/mass/mock/api/TaskApiIntegrationTest.java`
+- `xa-mass-mock/src/test/java/com/xa/mass/mock/client/MassWebSocketClientImplTest.java`
+- `xa-mass-mock/src/test/java/com/xa/mass/mock/starter/WebSocketClientStarterTest.java`
+- Existing engine/api/starter regressions remain the primary mainline unit-test surface
 
-| Module | Test Class | Tests |
-|--------|-----------|-------|
-| xa-mass-engine | `TaskManagerLifecycleTest` | 11 |
-| xa-mass-engine | `TaskAssignWorkerTest` | 5 |
-| xa-mass-engine | `SimpleTaskMsgAssignListenerTest` | 4 |
-| xa-mass-engine | `TaskDeviceAssignListenerTest` | 5 |
-| xa-mass-engine | `DeviceManagerTest` | 12 |
-| xa-mass-engine | `RuleManagerTest` | 14 |
-| xa-mass-engine | `TaskStorageFactoryTest` | 10 |
-| xa-mass-gateway | `DispatcherInboundHandlerTest` | 5 |
-| xa-mass-gateway | `MessageHandlerRegistryTest` | 8 |
-| xa-mass-gateway | `ProcessEnvelopeMiddlewareTest` | 4 |
-| xa-mass-gateway | `ServerSessionManagerShutdownTest` | 3 |
-| xa-mass-api | `TaskApiControllerTest` | 15 |
-| xa-mass-starter | `MassEngineStopTest` | 5 |
-| xa-mass-starter | `GatewayTaskResultHandlerTest` | 2 |
-| xa-mass-starter | `MassApplicationStopOrderTest` | 2 |
-| xa-mass-mock | `WebSocketClientStarterTest` | 4 |
+What the new focused coverage proves:
 
-Single-module commands:
-
-```bash
-./mvnw -pl xa-mass-engine -am clean test
-./mvnw -pl xa-mass-gateway -am clean test
-./mvnw -pl xa-mass-api -am clean test
-```
+- default `dev` startup can auto-create mock client connections
+- API create + approve flows through assignment, dispatch, result write-back, and terminal completion
+- mock clients no longer respond to server response frames
 
 ## 8. Historical Test Debt
 
@@ -334,26 +327,23 @@ Reason:
 - those tests/examples depend on removed `com.xa.mass.base.channel.messaging.*` packages
 - they represent historical experimental code, not the current mainline
 
-The engine POM currently excludes those tests from `testCompile` and `surefire`.
+The engine POM excludes those tests from active test compilation/execution.
 
 ## 9. Known Problems
 
-- **`SimpleTaskScheduler.scheduleTasks()` is still a stub**: batch scheduler APIs still return an empty list, but the current mainline no longer depends on that path for `READY -> RUNNING`
-- **Shutdown still needs two interrupts**: The running app may need Ctrl-C twice to fully exit.
-- **EventBus not converged**: Runtime uses old Guava-based `EventBusFactory.get("guava")` in places. New `StreamEventBusFacade` is the target but not fully adopted.
-- **Redis/Database storage unimplemented**: Both throw `UnsupportedOperationException` at creation time (fail-fast). Only MEMORY storage works.
-- **API/UI end-to-end automated coverage is still thin**: manual smoke now confirms `create -> approve -> assign -> run -> complete`, but this still needs a repeatable integration test harness
+- `SimpleTaskScheduler.scheduleTasks()` is still a stub. Scheduler APIs are not the current source of `READY -> RUNNING`.
+- Shutdown may still require two interrupts in the running app.
+- EventBus is not yet converged. Runtime still uses Guava-based `old.eventbus` in places.
+- Redis and Database storage remain fail-fast only. `MEMORY` is the only implemented storage path.
+- API edge-case integration coverage is still thin. The happy path is covered, but reject/pause-resume/delete-guard/failure cases still need end-to-end tests.
 
 ## 10. Good Next Tasks
 
-Best next tasks for an agent:
-
-1. Add API-level integration tests for `create -> approve -> assign -> run -> complete` against the real `xa-mass-mock` startup path
-2. Verify the same flow through the status web pages after the API path is stable; treat UI as a validation surface, not the source of truth
-3. Improve shutdown so a single Ctrl-C cleanly exits
-4. Converge EventBus: migrate `EventBusFactory.get("guava")` call sites to `StreamEventBusFacade`
-5. Expand observability around task dispatch/result write-back so stuck tasks are easier to diagnose
-6. Keep Redis/Database paths fail-fast until they are actually implemented
+1. Add API-level integration coverage for reject, pause/resume, delete guard, and failed message result handling.
+2. Improve shutdown so a single Ctrl-C exits cleanly.
+3. Converge EventBus call sites onto the current intended runtime abstraction.
+4. Expand diagnostics around task dispatch and result write-back so stuck tasks are easier to localize.
+5. Keep UI work secondary until API/runtime convergence is stable.
 
 ## 11. Files Worth Opening Early
 
@@ -381,7 +371,7 @@ For message/target data issues:
 
 - inspect `TaskManager.createTask`
 - inspect `TaskMsg`
-- inspect `mock_tasks.json`
+- inspect mock fixtures
 
 For WebSocket/session issues:
 

@@ -9,31 +9,19 @@ spring:
     active: local
 
 server:
-  port: 0
+  port: 8088
 
 mock:
   client:
     auto-start: true
+    uri: ws://localhost:${mass.websocket.port:18088}/ws
     count: 5
     task:
       interval: 30000
 
-websocket:
-  server:
-    uri: ws://localhost:8088/ws
-
----
-#spring:
-#  config:
-#    activate:
-#      on-profile: client   # 这里改为 server profile
-
-websocket:
-  server:
-    port: 8088
-    path: /ws
-
 mass:
+  websocket:
+    port: 18088
   queue:
     input:
       stream-key: mass_server_input_stream
@@ -44,10 +32,9 @@ mass:
       group-name: mass_server_output_group
       consumer-name: mass_server_output_consumer_instance_1
 
-
 logging:
   level:
-    root: INFO # 设置根日志级别为 DEBUG
+    root: INFO
 
 knife4j:
   enable: true

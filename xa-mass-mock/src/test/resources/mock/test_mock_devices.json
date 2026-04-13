@@ -1,0 +1,20 @@
+[
+  {
+    "MODEL": "Device",
+    "COUNT": 2,
+    "FIELDS": {
+      "deviceId": {
+        "$JOIN": [
+          "it-device-",
+          "&.index"
+        ]
+      },
+      "groupId": "us",
+      "agentVersion": "1.0.0",
+      "status": "ONLINE",
+      "supportedProjects": [
+        "demoApp"
+      ]
+    }
+  }
+]

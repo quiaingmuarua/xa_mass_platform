@@ -1,154 +1,153 @@
 package com.xa.mass.mock;
 
+import com.xa.mass.base.channel.messaging.api.MessageQueue;
 import com.xa.mass.engine.DeviceManager;
 import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.gateway.queue.Envelope;
-import com.xa.mass.base.channel.messaging.api.MessageQueue;
 import com.xa.mass.starter.MassApplication;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Profile;
+import org.springframework.core.env.Environment;
 
 /**
- * Mock 全链路应用启动类
- * 串联 Gateway、Engine 和 API，提供完整的模拟环境
+ * Verified mainline Spring Boot entry for the full mock runtime.
  */
 @SpringBootApplication(scanBasePackages = {"com.xa.mass.mock", "com.xa.mass.api"})
 public class MockApplicationSpringBootApp {
 
     private static final Logger log = LoggerFactory.getLogger(MockApplicationSpringBootApp.class);
+
     @Autowired
-    TaskManager taskManager;
+    private TaskManager taskManager;
+
     @Autowired
-    DeviceManager deviceManager;
+    private DeviceManager deviceManager;
+
     @Autowired
     private RuleManager ruleManager;
-    // 配置属性注入
-    @Value("${mass.server.port:18088}")
-    private int massServerPort;
+
+    @Value("${mass.websocket.port:18088}")
+    private int massWebSocketPort;
+
     @Value("${mass.gateway.max-connections:1000}")
     private int maxConnections;
+
     @Value("${mass.engine.worker-threads:8}")
     private int workerThreads;
+
     @Value("${mass.mock.data.devices:mock/mock_devices.json}")
     private String devicesConfigPath;
+
     @Value("${mass.mock.data.tasks:mock/mock_tasks.json}")
     private String tasksConfigPath;
+
     @Value("${mass.mock.data.rules:mock/mock_rules.json}")
     private String rulesConfigPath;
 
     public static void main(String[] args) {
-        // 设置开发环境配置
-        String profile = "dev";
-        System.setProperty("spring.profiles.active", profile);
-        String port = "8088";
-        System.setProperty("server.port", port);
+        String profile = System.getProperty("spring.profiles.active");
+        if (profile == null || profile.isBlank()) {
+            profile = "dev";
+            System.setProperty("spring.profiles.active", profile);
+        }
 
-        log.info("🚀 启动 Mock 全链路应用...");
-        log.info("Profile: {}, 端口: {}", profile, port);
+        log.info("Starting mock full-stack application");
+        log.info("Active profile: {}", profile);
 
-        SpringApplication.run(MockApplicationSpringBootApp.class, args);
+        ConfigurableApplicationContext context = SpringApplication.run(MockApplicationSpringBootApp.class, args);
+        Environment environment = context.getEnvironment();
+        String httpPort = environment.getProperty("local.server.port",
+                environment.getProperty("server.port", "8088"));
+        String webSocketPort = environment.getProperty("mass.websocket.port", "18088");
 
-        log.info("✅ Mock 全链路应用启动完成");
-        log.info("\n==============================");
-        log.info("🌐 Web 服务地址:");
-        log.info("   - 状态概览: http://localhost:{}/status", port);
-        log.info("   - 任务管理: http://localhost:{}/status/tasks", port);
-        log.info("   - 设备管理: http://localhost:{}/status/devices", port);
-        log.info("   - 规则管理: http://localhost:{}/status/rules", port);
-        log.info("   - API 文档: http://localhost:{}/doc.html", port);
-        log.info("🔌 WebSocket 服务: ws://localhost:18088");
-        log.info("==============================\n");
+        log.info("Mock full-stack application started");
+        log.info("==============================");
+        log.info("HTTP status page: http://localhost:{}/status", httpPort);
+        log.info("HTTP task page: http://localhost:{}/status/tasks", httpPort);
+        log.info("HTTP device page: http://localhost:{}/status/devices", httpPort);
+        log.info("HTTP rule page: http://localhost:{}/status/rules", httpPort);
+        log.info("HTTP API docs: http://localhost:{}/doc.html", httpPort);
+        log.info("Gateway WebSocket: ws://localhost:{}/ws", webSocketPort);
+        log.info("==============================");
     }
 
-    /**
-     * 全链路启动器 - 串联 Gateway、Engine 和 API
-     */
     @Bean
     @Profile("dev")
     public CommandLineRunner fullStackStarter(
-            @org.springframework.beans.factory.annotation.Qualifier("outputQueue") MessageQueue<Envelope> outputQueue,
-            @org.springframework.beans.factory.annotation.Qualifier("inputQueue") MessageQueue<Envelope> inputQueue) {
+            @Qualifier("outputQueue") MessageQueue<Envelope> outputQueue,
+            @Qualifier("inputQueue") MessageQueue<Envelope> inputQueue) {
         return args -> {
-            log.info("🔗 开始启动全链路服务...");
+            log.info("Starting internal gateway + engine runtime");
             try {
-                // 用 MassApplicationBuilder 构建
                 MassApplication app = com.xa.mass.starter.builder.MassApplicationBuilder.create()
-                        .server(massServerPort)
+                        .server(massWebSocketPort)
                         .gateway(gateway -> gateway
                                 .enabled(true)
                                 .maxConnections(maxConnections)
                                 .inputQueue(inputQueue)
                                 .outputQueue(outputQueue)
-                                .queueMode()
-                        )
+                                .queueMode())
                         .engine(engine -> engine
                                 .enabled(true)
                                 .workerThreads(workerThreads)
                                 .taskManager(taskManager)
                                 .deviceManager(deviceManager)
                                 .ruleManager(ruleManager)
-                                .mockData(devicesConfigPath, tasksConfigPath, rulesConfigPath)
-                        )
+                                .mockData(devicesConfigPath, tasksConfigPath, rulesConfigPath))
                         .build();
 
-                // 启动应用
                 app.start();
-
-                // 健康检查
                 if (!app.isRunning()) {
-                    throw new RuntimeException("MassApplication failed to start properly");
+                    throw new IllegalStateException("MassApplication failed to start properly");
                 }
 
-                // 等待组件完全启动
-                Thread.sleep(1000);
+                Thread.sleep(1000L);
 
-                // 加载Mock数据
                 try {
                     app.loadMockData(app.getEngine(), app.getEngine().getConfig());
-                    log.info("✅ Mock数据加载成功");
+                    log.info("Mock data loaded");
                 } catch (Exception e) {
-                    log.warn("⚠️ Mock数据加载失败，继续启动: {}", e.getMessage());
+                    log.warn("Mock data load failed but startup will continue: {}", e.getMessage());
                 }
 
-                // 发布任务事件
                 try {
                     app.getEngine().publishTaskEvents();
-                    log.info("✅ 任务事件发布成功");
+                    log.info("Initial task events published");
                 } catch (Exception e) {
-                    log.warn("⚠️ 任务事件发布失败: {}", e.getMessage());
+                    log.warn("Initial task event publish failed: {}", e.getMessage());
                 }
 
-                // 注册关闭钩子
                 Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-                    log.info("🛑 正在关闭全链路服务...");
+                    log.info("Stopping full-stack runtime");
                     try {
                         app.stop();
-                        log.info("✅ 全链路服务已关闭");
+                        log.info("Full-stack runtime stopped");
                     } catch (Exception e) {
-                        log.error("❌ 关闭全链路服务时发生错误", e);
+                        log.error("Failed while stopping full-stack runtime", e);
                     }
                 }));
 
-                log.info("✅ API 服务已通过 Spring Boot 自动启动");
-                log.info("🎉 全链路服务启动完成！");
-
+                log.info("Spring Boot HTTP API is ready");
+                log.info("Full-stack runtime startup complete");
             } catch (InterruptedException e) {
-                log.error("❌ 启动过程被中断", e);
                 Thread.currentThread().interrupt();
+                log.error("Startup interrupted", e);
                 throw new RuntimeException("Startup process was interrupted", e);
             } catch (RuntimeException e) {
-                log.error("❌ 全链路服务启动失败: {}", e.getMessage(), e);
+                log.error("Full-stack startup failed: {}", e.getMessage(), e);
                 throw e;
             } catch (Exception e) {
-                log.error("❌ 全链路服务启动失败", e);
+                log.error("Full-stack startup failed", e);
                 throw new RuntimeException("Failed to start full-stack services", e);
             }
         };
