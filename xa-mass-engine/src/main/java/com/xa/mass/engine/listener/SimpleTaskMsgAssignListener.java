@@ -47,8 +47,13 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
                 Token token = deviceManager.getToken(device.getDeviceId());
                 String tokenId = token != null ? token.getTokenId() : null;
                 String currentBatchId = "batch-" + batchId;
-                //todo 有问题
-//                pushQueue.add(msg);
+
+                // 构建 TaskMsg，绑定目标设备和 token
+                TaskMsg msg = new TaskMsg(msgId, task.getTid(), device.getDeviceId());
+                msg.setDeviceId(device.getDeviceId());
+                msg.setTokenId(tokenId);
+                msg.setBatchId(currentBatchId);
+                pushQueue.add(msg);
 
                 // 记录消息分配
                 recordService.recordMessageAssignment(
@@ -59,7 +64,8 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
             batchId++;
         }
 
-        log.info("[MsgAssign] Task {} pushQueue size: {} (should equal totalMessages)", task.getTid(), pushQueue.size());
-        // 实际可推送到 MQ 或下游队列
+        log.info("[MsgAssign] Task {} pushQueue size: {} (expected totalMessages={})",
+                task.getTid(), pushQueue.size(), totalMessages);
+        // pushQueue 中的消息已就绪，调用方可通过回调或注入的 transporter 进一步下发
     }
 } 

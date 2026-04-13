@@ -219,6 +219,7 @@ class TaskApiControllerTest {
     @Test
     void deleteTaskReturnsSuccessWhenTaskExists() throws Exception {
         when(taskManager.getTask(TASK_ID)).thenReturn(taskWithStatus(TaskStatus.NEW));
+        when(taskManager.deleteTask(TASK_ID)).thenReturn(true);
 
         mockMvc.perform(delete("/status/api/tasks/{taskId}", TASK_ID))
                 .andExpect(status().isOk())
@@ -226,6 +227,16 @@ class TaskApiControllerTest {
                 .andExpect(jsonPath("$.message").value("任务删除成功"));
 
         verify(taskManager).deleteTask(TASK_ID);
+    }
+
+    @Test
+    void deleteTaskReturnsBadRequestWhenDeleteRejected() throws Exception {
+        when(taskManager.getTask(TASK_ID)).thenReturn(taskWithStatus(TaskStatus.READY));
+        when(taskManager.deleteTask(TASK_ID)).thenReturn(false);
+
+        mockMvc.perform(delete("/status/api/tasks/{taskId}", TASK_ID))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false));
     }
 
     @Test

@@ -5,16 +5,16 @@ import com.xa.mass.base.model.Task;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.*;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class TaskAssignWorker {
     private static final Logger log = LoggerFactory.getLogger(TaskAssignWorker.class);
     private final TaskDeviceAssignListener deviceAssignListener;
     private final BlockingQueue<Task> queue = new LinkedBlockingQueue<>();
-    private final List<TaskCompletionListener> listeners = new ArrayList<>();
+    private final List<TaskCompletionListener> listeners = new CopyOnWriteArrayList<>();
     private final AtomicInteger pendingTasks = new AtomicInteger(0);
     private volatile boolean running = true;
     private ExecutorService executor;
@@ -83,8 +83,17 @@ public class TaskAssignWorker {
 
     public void stop() {
         running = false;
+        // Interrupt the blocking queue.take() so the worker thread exits promptly
         if (executor != null) {
-            executor.shutdown();
+            executor.shutdownNow();
+            try {
+                if (!executor.awaitTermination(10, TimeUnit.SECONDS)) {
+                    log.warn("TaskAssignWorker executor did not terminate within 10 seconds");
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                log.warn("Interrupted while waiting for TaskAssignWorker to stop");
+            }
         }
     }
 } 
