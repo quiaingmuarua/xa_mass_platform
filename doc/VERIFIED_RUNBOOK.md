@@ -1,6 +1,6 @@
 # XA Mass Platform Verified Runbook
 
-本文件只记录 2026-04-12 已实测通过的运行方式。
+本文件只记录已实测通过的运行方式。最后更新：2026-04-13（Phase 4 修复后）。
 
 ## 1. 目标
 
@@ -176,39 +176,41 @@ curl -i -X POST "http://127.0.0.1:8088/status/api/tasks/{taskId}/audit?approved=
 - 返回 `success = false`
 - 返回 `当前任务状态不允许审核`
 
-## 8. 当前已知问题
+## 8. 当前已知问题与修复历史
 
 ### 8.1 文档命令过时
 
-- README 中的启动命令不能直接代表真实启动方式
+- `doc/项目流程.md` 描述的启动类已不存在，已标注归档
+- 以本 Runbook 为准
 
-### 8.2 任务生命周期现在已基本收敛
+### 8.2 任务生命周期（已修复，Phase 1–3）
 
 已确认：
 
-- `TaskApiController` 不再直接改 `Task.status`
-- 生命周期接口已走 `TaskManager`
-- `READY -> PAUSED -> READY` 已经实测通过
+- `TaskApiController` 走 `TaskManager` 生命周期方法
+- `READY -> PAUSED -> READY` 实测通过
+- `deleteTask` 现在只允许 `NEW` / `TERMINAL` 状态删除，其他状态返回 `success=false`
+- `createTask` 传 null `targetList` 不再抛 NPE
 
-之前存在的 `READY` 无法暂停问题，根因是 `TaskStatus.canTransitionTo()` 漏掉了 `READY -> PAUSED`，现已修复。
+### 8.3 任务目标数据（已修复，Phase 1）
 
-### 8.3 任务目标数据问题已修复
+`GET /status/api/tasks/{id}` 返回真实 `targetList`，每条 `TaskMsg` 的 `target` 字段正确。
 
-`GET /status/api/tasks/{id}` 现在会返回真实 `targetList`，不再是一串空字符串。
+### 8.4 WebSocket 错误帧（已修复，Phase 3）
 
-例如可看到类似：
+非法消息现在会收到 JSON 错误帧而不是静默断开：
 
-- `target-us-000`
-- `target-us-001`
-- `smoke-target-001`
-- `smoke-target-002`
+```json
+{"type":"ERROR","code":"INVALID_FORMAT","message":"Message must be a JSON object"}
+```
 
-### 8.4 停机链路不够稳
+### 8.5 消息分配管道（已修复，Phase 4）
 
-实测停止时：
+`SimpleTaskMsgAssignListener` 现在会正确构建 `TaskMsg` 对象（之前 `pushQueue` 永远为空）。
 
-- 第一次中断进入关闭流程
-- 第二次中断才完全退出
+### 8.6 停机链路
+
+实测停止时仍需两次 Ctrl-C 才能完全退出。`TaskAssignWorker.stop()` 已改为 `shutdownNow()` + `awaitTermination`，有所改善。
 
 ## 9. 推荐的后续排查顺序
 
@@ -220,61 +222,50 @@ curl -i -X POST "http://127.0.0.1:8088/status/api/tasks/{taskId}/audit?approved=
 
 ## 10. 已验证的测试命令
 
-### 10.1 engine 主线回归
+### 10.1 全量回归（推荐）
 
 ```bash
-./mvnw -pl xa-mass-engine -am clean test
+./mvnw clean test
 ```
 
-2026-04-12 已实测：
+2026-04-13 已实测：
 
 - `BUILD SUCCESS`
-- `xa-mass-engine` 当前主线进入回归的测试只有 2 组：
-  - `com.xa.mass.engine.listener.TaskDeviceAssignListenerTest`
-  - `com.xa.mass.engine.TaskManagerLifecycleTest`
-- 共 `7` 个测试，`0` failures，`0` errors
+- **618 个测试，0 failures，0 errors**
 
-### 10.2 生命周期单测
+### 10.2 单模块快速验证
 
 ```bash
-./mvnw -pl xa-mass-engine -am clean \
-  -Dtest=TaskManagerLifecycleTest \
-  -Dsurefire.failIfNoSpecifiedTests=false \
-  test
+# engine 主线
+./mvnw -pl xa-mass-engine -am clean test
+
+# gateway 主线
+./mvnw -pl xa-mass-gateway -am clean test
+
+# API 控制器
+./mvnw -pl xa-mass-api -am clean test
 ```
 
-用途：
+### 10.3 当前主线测试清单
 
-- 只验证任务生命周期主链
-- 避免 reactor 上游模块因为“不含该测试类”而直接失败
+| 模块 | 测试类 | 数量 |
+|------|--------|------|
+| engine | `TaskManagerLifecycleTest` | 7 |
+| engine | `TaskAssignWorkerTest` | 5 |
+| engine | `SimpleTaskMsgAssignListenerTest` | 5 |
+| engine | `TaskDeviceAssignListenerTest` | 4 |
+| engine | `DeviceManagerTest` | 12 |
+| engine | `RuleManagerTest` | 14 |
+| engine | `TaskStorageFactoryTest` | 10 |
+| gateway | `DispatcherInboundHandlerTest` | 5 |
+| gateway | `MessageHandlerRegistryTest` | 8 |
+| gateway | `ProcessEnvelopeMiddlewareTest` | 4 |
+| gateway | `ServerSessionManagerShutdownTest` | 3 |
+| api | `TaskApiControllerTest` | 15 |
+| starter | `MassEngineStopTest` | 4 |
+| starter | `MassApplicationStopOrderTest` | 2 |
 
-### 10.3 当前测试面说明
+### 10.4 已排除的历史测试
 
-`xa-mass-engine/src/test/java/com/xa/mass/engine/v2/**` 下的历史测试/示例已从主线测试流程排除，因为它们依赖已经不存在的 `com.xa.mass.base.channel.messaging.*` 包树。
-
-### 10.4 API 控制器测试
-
-```bash
-./mvnw -pl xa-mass-api -am clean \
-  -Dtest=TaskApiControllerTest \
-  -Dsurefire.failIfNoSpecifiedTests=false \
-  test
-```
-
-2026-04-12 已实测：
-
-- `com.xa.mass.api.internal.TaskApiControllerTest`
-- 共 `14` 个测试，`0` failures，`0` errors
-- 已覆盖：
-  - `createTask`
-  - `getTask`
-  - `getTask` not-found 分支
-  - `DELETE /{taskId}`
-  - `PUT /{taskId}`
-  - `PUT /{taskId}` not-found 分支
-  - `GET /{taskId}/messages`
-  - `audit`
-  - `pause`
-  - `resume`
-  - `terminate`
-  - `PUT /status` 对 `approve/resume` 分支选择
+`xa-mass-engine/src/test/java/com/xa/mass/engine/v2/**` 已从主线排除，
+依赖已删除的 `com.xa.mass.base.channel.messaging.*` 包，不代表当前功能。

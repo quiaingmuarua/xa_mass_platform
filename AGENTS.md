@@ -229,73 +229,76 @@ Notes:
 
 Verified current lifecycle behavior:
 
-- `NEW -> READY`
-- `READY -> PAUSED`
-- `PAUSED -> READY`
-- invalid actions are rejected
+```
+NEW ──approve──► READY ──pause──► PAUSED ──resume──► READY
+ │                 │                                    │
+ └──reject──► BLOCKED ──approve──► READY               │
+ │                                                       │
+ └──cancel/terminate──────────────────────────────► TERMINAL
+```
 
-Important current implementation facts:
+State machine constraints enforced in code (`TaskStatus.canTransitionTo`):
 
-- `TaskApiController` has been aligned to use `TaskManager` lifecycle methods
-- `TaskStatus.canTransitionTo()` now includes `READY -> PAUSED`
-- `TaskManager` task-message creation now preserves:
+| Action | Allowed from | Target |
+|--------|-------------|--------|
+| `approveTask` | NEW, BLOCKED | READY |
+| `rejectTask` | NEW | BLOCKED |
+| `pauseTask` | READY | PAUSED |
+| `resumeTask` | PAUSED | READY |
+| `cancelTask` | any non-TERMINAL | TERMINAL |
+| `deleteTask` | **NEW, TERMINAL only** | (physical delete) |
+
+Important current implementation facts (verified through Phase 1–4 fixes):
+
+- `TaskApiController` uses `TaskManager` lifecycle methods for all state changes
+- `deleteTask()` now enforces state guard — READY/PAUSED/RUNNING tasks cannot be deleted; returns `success=false` with reason
+- `TaskManager.createTask()` guards null `targetList` (no NPE)
+- `TaskManager` task-message creation preserves:
   - correct `taskId`
   - distinct `msgId` per message
-  - real `targetList` values
+  - real `targetList` values as `target` field on each `TaskMsg`
+- `SimpleTaskMsgAssignListener` now correctly instantiates `TaskMsg` with `deviceId`, `tokenId`, `batchId` (was previously commented out, so `pushQueue` was always empty)
+- `TaskAssignWorker` uses `CopyOnWriteArrayList` for listeners (was `ArrayList`, ConcurrentModificationException risk)
+- `TaskAssignWorker.stop()` calls `shutdownNow()` + `awaitTermination(10s)` (was leaking threads)
+- `ServerSessionManager.removeSession()` correctly evicts `ChannelHandlerContext` on disconnect (was memory leak)
+- `DispatcherInboundHandler` sends structured JSON error frames to clients instead of silently closing the channel
 
 ## 7. Known Good Test Surface
 
-Verified command:
+Full suite command (verified 2026-04-13):
+
+```bash
+./mvnw clean test
+```
+
+Result: **618 tests, 0 failures, 0 errors** across all modules.
+
+Key test classes by module:
+
+| Module | Test Class | Tests |
+|--------|-----------|-------|
+| xa-mass-engine | `TaskManagerLifecycleTest` | 7 |
+| xa-mass-engine | `TaskAssignWorkerTest` | 5 |
+| xa-mass-engine | `SimpleTaskMsgAssignListenerTest` | 5 |
+| xa-mass-engine | `TaskDeviceAssignListenerTest` | 4 |
+| xa-mass-engine | `DeviceManagerTest` | 12 |
+| xa-mass-engine | `RuleManagerTest` | 14 |
+| xa-mass-engine | `TaskStorageFactoryTest` | 10 |
+| xa-mass-gateway | `DispatcherInboundHandlerTest` | 5 |
+| xa-mass-gateway | `MessageHandlerRegistryTest` | 8 |
+| xa-mass-gateway | `ProcessEnvelopeMiddlewareTest` | 4 |
+| xa-mass-gateway | `ServerSessionManagerShutdownTest` | 3 |
+| xa-mass-api | `TaskApiControllerTest` | 15 |
+| xa-mass-starter | `MassEngineStopTest` | 4 |
+| xa-mass-starter | `MassApplicationStopOrderTest` | 2 |
+
+Single-module commands:
 
 ```bash
 ./mvnw -pl xa-mass-engine -am clean test
+./mvnw -pl xa-mass-gateway -am clean test
+./mvnw -pl xa-mass-api -am clean test
 ```
-
-Current `xa-mass-engine` mainline tests in active regression:
-
-- `com.xa.mass.engine.listener.TaskDeviceAssignListenerTest`
-- `com.xa.mass.engine.TaskManagerLifecycleTest`
-
-Verified result:
-
-- `BUILD SUCCESS`
-- 7 tests, 0 failures, 0 errors
-
-Lifecycle-only command:
-
-```bash
-./mvnw -pl xa-mass-engine -am clean \
-  -Dtest=TaskManagerLifecycleTest \
-  -Dsurefire.failIfNoSpecifiedTests=false \
-  test
-```
-
-Verified API controller test command:
-
-```bash
-./mvnw -pl xa-mass-api -am clean \
-  -Dtest=TaskApiControllerTest \
-  -Dsurefire.failIfNoSpecifiedTests=false \
-  test
-```
-
-Verified result:
-
-- `com.xa.mass.api.internal.TaskApiControllerTest`
-- 14 tests, 0 failures, 0 errors
-- covers:
-  - `createTask`
-  - `getTask`
-  - `getTask` not-found path
-  - `DELETE /{taskId}`
-  - `PUT /{taskId}`
-  - `PUT /{taskId}` not-found path
-  - `GET /{taskId}/messages`
-  - `audit`
-  - `pause`
-  - `resume`
-  - `terminate`
-  - `PUT /status` branch selection for `approve` vs `resume`
 
 ## 8. Historical Test Debt
 
@@ -310,19 +313,23 @@ The engine POM currently excludes those tests from `testCompile` and `surefire`.
 
 ## 9. Known Problems
 
-- Shutdown path is still weak; stopping the running app may need a second interrupt.
-- EventBus mainline is still not fully converged.
-- `session/queue` observability endpoints exist, but parts of them still look placeholder-like.
+- **MassEngine mock-only**: `TaskAssignWorker` only starts when `config.isMockMode()` is true. In non-mock production config, tasks reach READY but are never auto-assigned to devices.
+- **pushQueue not wired to transport**: `SimpleTaskMsgAssignListener` builds the queue of `TaskMsg` correctly but does not push them to the WebSocket downstream. The gateway transport is a separate layer not yet connected.
+- **scheduleTasks() is a stub**: `SimpleTaskScheduler.scheduleTasks()` always returns an empty list. Tasks do not auto-transition to RUNNING.
+- **Shutdown still needs two interrupts**: The running app may need Ctrl-C twice to fully exit.
+- **EventBus not converged**: Runtime uses old Guava-based `EventBusFactory.get("guava")` in places. New `StreamEventBusFacade` is the target but not fully adopted.
+- **Redis/Database storage unimplemented**: Both throw `UnsupportedOperationException` at creation time (fail-fast). Only MEMORY storage works.
 
 ## 10. Good Next Tasks
 
 Best next tasks for an agent:
 
-1. Add controller/API tests for `audit / pause / resume / terminate`
-2. Expand `TaskManager` lifecycle boundary tests
-3. Improve shutdown behavior
-4. Continue documenting what is verified vs historical
-5. Only then consider EventBus convergence work
+1. Wire `pushQueue` → WebSocket downstream (connect `SimpleTaskMsgAssignListener` output to the gateway transporter)
+2. Implement auto-transition: READY → RUNNING when devices are assigned
+3. Start `TaskAssignWorker` unconditionally (decouple from mockMode)
+4. Converge EventBus: migrate `EventBusFactory.get("guava")` call sites to `StreamEventBusFacade`
+5. Add `POST /api/message/send` endpoint for manual device push
+6. Improve shutdown: single Ctrl-C should cleanly exit
 
 ## 11. Files Worth Opening Early
 
