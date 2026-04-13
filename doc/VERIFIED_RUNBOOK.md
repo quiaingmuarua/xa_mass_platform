@@ -50,6 +50,12 @@ For endpoint inventory, response shapes, and implementation status, use [INTERNA
   - `NEW -> READY -> RUNNING -> PAUSED -> TERMINAL`
   - persisted `TaskMsg` rows can move from `SENT` to final states while the task remains paused
   - no manual `resume` is required for terminal closure
+- A multi-task assignment path is also verified:
+  - two approved single-target tasks can be assigned onto separate devices and both complete to `TERMINAL`
+  - each task keeps `scheduleDeviceCnt == 1`, `taskExecutedNumber == 1`, and one `SUCCESS` `TaskMsg`
+- A delayed device availability path is also verified:
+  - a task can remain `READY` with zero initial matches
+  - after a matching device plus `LOGIN_READY` token are added later, the task is assigned and completes to `TERMINAL`
 
 ## 2. Recommended Startup
 
@@ -214,6 +220,8 @@ What it verifies:
 - each message has non-null `deviceId`, `tokenId`, and `batchId`
 - separate lifecycle guard coverage now verifies reject/approve, pause/resume, and delete guard through real HTTP APIs with no assignable devices
 - separate pause-completion coverage now verifies `RUNNING -> PAUSED -> TERMINAL` through real gateway callback write-back after assignment
+- separate multi-task coverage now verifies two approved tasks are distributed across separate mock devices and both complete through the real gateway path
+- separate delayed-availability coverage now verifies a `READY` task with zero initial device matches advances automatically after a matching device and token appear later
 - engine lifecycle coverage now verifies paused-task final callback closure into `TERMINAL`
 - engine worker coverage now verifies retry of `READY` tasks that initially have no device match
 
@@ -311,10 +319,39 @@ What it verifies:
 - after a completed task is intentionally reopened to `RUNNING` without changing persisted `TaskMsg` finals, the same API reports `stateValidation.valid=true` and `needsResolution=true`
 - if terminal metadata is intentionally corrupted, the same API reports `stateValidation.valid=false` and exposes concrete violations such as `TERMINAL_REASON_MISSING` or `TERMINAL_REASON_MISMATCH_ALL_FAILED`
 
-### 5.10 Focused Verified Test Command
+### 5.10 Multi-Task Assignment Is Covered End-to-End
+
+Integration test:
+
+- `xa-mass-mock/src/test/java/com/xa/mass/mock/api/TaskApiMultiTaskAssignmentIntegrationTest.java`
+
+What it verifies:
+
+- two separate tasks are created through the real HTTP API
+- both are approved into `READY`
+- both are assigned and complete through the real gateway/mock-client path
+- each task reaches `TERMINAL` with `terminalReason = ALL_MESSAGES_SUCCEEDED`
+- each task uses exactly one device and executes exactly one message
+- the two tasks land on different devices rather than colliding onto the same mock device
+
+### 5.11 Delayed Device Availability Is Covered End-to-End
+
+Integration test:
+
+- `xa-mass-mock/src/test/java/com/xa/mass/mock/api/TaskApiDelayedDeviceAvailabilityIntegrationTest.java`
+
+What it verifies:
+
+- a task can be created and approved while the device inventory is empty
+- the task remains `READY` with `scheduleDeviceCnt == 0` and its message stays at `INIT`
+- after a matching device and `LOGIN_READY` token are added later, the existing retry loop picks the task up
+- a real WebSocket client for that late device receives the dispatch and writes the result back
+- the task then reaches `TERMINAL` with `terminalReason = ALL_MESSAGES_SUCCEEDED`
+
+### 5.12 Focused Verified Test Command
 
 ```bash
-mvn --% -pl xa-mass-mock -am -Dtest=MassWebSocketClientImplTest,TaskApiIntegrationTest,TaskApiFailureResultIntegrationTest,TaskApiLifecycleGuardsIntegrationTest,TaskApiTerminateRunningIntegrationTest,TaskApiCallbackReplayIntegrationTest,TaskApiStateValidationIntegrationTest,WebSocketClientStarterTest -Dsurefire.failIfNoSpecifiedTests=false test
+mvn --% -pl xa-mass-mock -am -Dtest=MassWebSocketClientImplTest,TaskApiIntegrationTest,TaskApiFailureResultIntegrationTest,TaskApiLifecycleGuardsIntegrationTest,TaskApiTerminateRunningIntegrationTest,TaskApiCallbackReplayIntegrationTest,TaskApiPauseCompletionIntegrationTest,TaskApiStateValidationIntegrationTest,TaskApiMultiTaskAssignmentIntegrationTest,TaskApiDelayedDeviceAvailabilityIntegrationTest,WebSocketClientStarterTest -Dsurefire.failIfNoSpecifiedTests=false test
 ```
 
 Verified result:
@@ -329,10 +366,11 @@ Verified result:
 - The verified implementation remains Guava-backed; Redis is still fail-fast
 - Redis and Database storage remain fail-fast placeholders
 - API integration coverage is still selective beyond the current happy, guard, failed-result, running-terminate-delete, and callback-replay paths
+- Multi-task scheduling coverage now exists for separate-device assignment, but more complex contention and reuse scenarios are still not covered
 - Multiple matching policies are now possible at engine level, but only the rule-based strategy is covered in the current integrated runtime path
 
 Recommended next test-driven additions:
 
-1. `RUNNING -> PAUSED -> READY` end-to-end with real assigned messages and then resumed dispatch behavior validation
-2. cancel path variants from `NEW`, `READY`, and `PAUSED` with message-state assertions
-3. mixed-result aggregation coverage where one message succeeds and another fails
+1. cancel path variants from `NEW`, `READY`, and `PAUSED` with message-state assertions
+2. mixed-result aggregation coverage where one message succeeds and another fails
+3. device reuse or queued-follow-up coverage after one task holds or releases the only matching device
