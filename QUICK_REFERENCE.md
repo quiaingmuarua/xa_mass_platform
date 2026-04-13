@@ -1,7 +1,7 @@
 # XA Mass Platform - Quick Reference Guide
 
-> This file contains historical quick notes.
-> For commands and behavior that were actually verified on 2026-04-12, use [`doc/VERIFIED_RUNBOOK.md`](./doc/VERIFIED_RUNBOOK.md) first.
+> **⚠️ 部分过时** — 启动命令和接口示例以 [`doc/VERIFIED_RUNBOOK.md`](./doc/VERIFIED_RUNBOOK.md) 为准。
+> 本文件保留为辅助速查，不保证与当前代码完全一致。
 
 ## 🚀 Quick Start
 

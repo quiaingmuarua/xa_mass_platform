@@ -33,8 +33,14 @@ Trust order:
 3. `AGENTS.md`
 4. `doc/AGENT_BASELINE.md`
 5. `doc/VERIFIED_RUNBOOK.md`
-6. module READMEs / top-level README / quick references
-7. `old` / `v2` / refactor / todo docs
+6. module READMEs / `doc/内部管理接口文档.md` / `doc/engine/任务执行流.md`
+7. `API_DOCUMENTATION.md` / `QUICK_REFERENCE.md` — ⚠️ 部分过时，顶部有警告
+8. `old/` / `v2/` docs — 历史存档，`v2/README.md` 有说明
+
+**已删除**（不要去找）：
+- `doc/daily/` — 全部开发笔记已删除
+- `doc/规划.md` — 旧模块规划，已删除
+- `xa-mass-engine/.../v2/new_engine_refactory.md` / `匹配策略.md` — 草稿，已删除
 
 ## 3. Real Entry Point
 

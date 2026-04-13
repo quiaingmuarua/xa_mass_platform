@@ -1,7 +1,8 @@
 # XA Mass Platform - Documentation Index
 
-> Important: this index contains historical documents mixed with current ones.
-> For agent handoff and verified commands, start with:
+> **⚠️ 部分过时** — 以下文档已删除（daily/、doc/规划.md、v2 草稿），索引内容不再完整。
+> Agent 入口请直接看 [`AGENTS.md`](./AGENTS.md)。
+> 当前权威参考：
 > - [`doc/AGENT_BASELINE.md`](./doc/AGENT_BASELINE.md)
 > - [`doc/VERIFIED_RUNBOOK.md`](./doc/VERIFIED_RUNBOOK.md)
 
