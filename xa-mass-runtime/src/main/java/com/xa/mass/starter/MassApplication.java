@@ -24,6 +24,7 @@ import org.slf4j.LoggerFactory;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Mass 应用主程序
@@ -38,6 +39,7 @@ public class MassApplication {
     private final String webSocketPath;
     private final GatewayConfig gatewayConfig;
     private final EngineConfig engineConfig;
+    private final AtomicBoolean running = new AtomicBoolean(false);
 
     private final MassEngine engine; // 可能为null（当engine被禁用时）
     private MassGateway massGateway; // 将在initializeComponents中构建（当gateway被启用时）
@@ -56,6 +58,10 @@ public class MassApplication {
      * 启动整个 Mass 应用
      */
     public void start() {
+        if (!running.compareAndSet(false, true)) {
+            logger.info("Mass Application is already running, skipping duplicate start");
+            return;
+        }
         logger.info("🚀 Starting Mass Application...");
 
         try {
@@ -85,6 +91,7 @@ public class MassApplication {
             logger.info("✅ Mass Application started successfully!");
 
         } catch (Exception e) {
+            running.set(false);
             logger.error("❌ Failed to start Mass Application", e);
             throw new RuntimeException("Failed to start Mass Application", e);
         }
@@ -94,6 +101,10 @@ public class MassApplication {
      * 停止整个 Mass 应用
      */
     public void stop() {
+        if (!running.compareAndSet(true, false)) {
+            logger.info("Mass Application is not running, skipping stop");
+            return;
+        }
         logger.info("🛑 Stopping Mass Application...");
 
         try {
@@ -246,7 +257,7 @@ public class MassApplication {
      * 检查应用是否正在运行
      */
     public boolean isRunning() {
-        return serverStater != null && serverStater.isRunning();
+        return running.get() && serverStater != null && serverStater.isRunning();
     }
 
     // 注册mock消息处理器

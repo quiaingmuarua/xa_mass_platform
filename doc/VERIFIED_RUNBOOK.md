@@ -30,6 +30,10 @@ For endpoint inventory, response shapes, and implementation status, use [INTERNA
 - A duplicate callback replay path is also verified:
   - a repeated `TASK/step` result for the same `taskId + msgId` is accepted as a no-op
   - the first final message state and terminal task counts are preserved
+- A running-task terminate path is also verified:
+  - `NEW -> READY -> RUNNING -> TERMINAL`
+  - `TaskMsg INIT -> SENT`, then remain non-final when the task is manually terminated before client callbacks
+  - the terminal task can then be deleted through the real API
 
 ## 2. Recommended Startup
 
@@ -238,10 +242,27 @@ What it verifies:
 - the persisted `TaskMsg` keeps its first final state and is not overwritten
 - `taskExecutedNumber` remains stable after the replay
 
-### 5.8 Focused Verified Test Command
+### 5.8 Running Terminate Path Is Covered End-to-End
+
+Integration test:
+
+- `xa-mass-mock/src/test/java/com/xa/mass/mock/api/TaskApiTerminateRunningIntegrationTest.java`
+
+What it verifies:
+
+- mock devices are available for real assignment, but mock clients are not auto-started
+- approval still drives the task into `RUNNING`
+- `scheduleDeviceCnt` is populated from real matching and assignment
+- persisted `TaskMsg` rows advance to `SENT`
+- `POST /status/api/tasks/{taskId}/terminate` transitions the task to `TERMINAL`
+- `taskExecutedNumber` remains `0`
+- no `TaskMsg` is incorrectly rewritten to `SUCCESS` or `FAILED` just because the task was terminated
+- `DELETE /status/api/tasks/{taskId}` succeeds after the task reaches `TERMINAL`
+
+### 5.9 Focused Verified Test Command
 
 ```bash
-mvn --% -pl xa-mass-mock -am -Dtest=MassWebSocketClientImplTest,TaskApiIntegrationTest,TaskApiFailureResultIntegrationTest,TaskApiLifecycleGuardsIntegrationTest,TaskApiCallbackReplayIntegrationTest,WebSocketClientStarterTest -Dsurefire.failIfNoSpecifiedTests=false test
+mvn --% -pl xa-mass-mock -am -Dtest=MassWebSocketClientImplTest,TaskApiIntegrationTest,TaskApiFailureResultIntegrationTest,TaskApiLifecycleGuardsIntegrationTest,TaskApiTerminateRunningIntegrationTest,TaskApiCallbackReplayIntegrationTest,WebSocketClientStarterTest -Dsurefire.failIfNoSpecifiedTests=false test
 ```
 
 Verified result:
@@ -255,12 +276,12 @@ Verified result:
 - EventBus runtime now uses the current `channel.eventbus.core` and `channel.eventbus.event` namespace
 - The verified implementation remains Guava-backed; Redis is still fail-fast
 - Redis and Database storage remain fail-fast placeholders
-- API integration coverage is still selective beyond the current happy, guard, failed-result, and callback-replay paths
+- API integration coverage is still selective beyond the current happy, guard, failed-result, running-terminate-delete, and callback-replay paths
 - Multiple matching policies are now possible at engine level, but only the rule-based strategy is covered in the current integrated runtime path
 
 Recommended next test-driven additions:
 
 1. `RUNNING -> PAUSED -> READY` end-to-end with real assigned messages
-2. terminate path end-to-end from `READY`, `RUNNING`, and `PAUSED`
+2. cancel path variants from `NEW`, `READY`, and `PAUSED` with message-state assertions
 3. mixed-result aggregation coverage where one message succeeds and another fails
 

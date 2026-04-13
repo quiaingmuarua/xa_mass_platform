@@ -40,6 +40,7 @@ Working rule:
 - `com.xa.mass.engine` is the active engine path
 - `xa-mass-engine/archive/v2/` is historical experiment code, not the current mainline
 - EventBus mainline has converged onto `com.xa.mass.base.channel.eventbus.core` and `com.xa.mass.base.channel.eventbus.event`
+- API integration coverage includes terminate-from-running and delete-after-terminal after real assignment but before downstream callbacks
 
 ## 3. Module Facts
 
@@ -114,7 +115,7 @@ Working rule:
 - app shutdown may still need more than one interrupt
 - EventBus naming is converged on the current core/event namespace, but Redis remains unimplemented
 - Redis and Database storage are still fail-fast placeholders
-- API integration coverage is improved but still not exhaustive for cancel variants
+- API integration coverage is improved but still not exhaustive for remaining cancel follow-up variants
 
 ## 6. Recommended Entry Files
 

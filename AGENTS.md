@@ -16,6 +16,7 @@ This file is the fastest entry point for coding agents such as Claude Code, Code
 - `TaskApiIntegrationTest` now covers `create -> approve -> assign -> run -> complete`
 - `TaskApiFailureResultIntegrationTest` now covers `create -> approve -> assign -> fail -> terminal`
 - `TaskApiLifecycleGuardsIntegrationTest` now covers `reject -> approve`, `pause -> resume`, and delete guard through real HTTP APIs
+- `TaskApiTerminateRunningIntegrationTest` now covers `approve -> assign -> running -> terminate -> delete` without mock client callbacks
 - `TaskApiCallbackReplayIntegrationTest` now covers duplicate `TASK/step` callback replay through the real gateway path
 - `MassWebSocketClientImpl` ignores `response=true` `TASK/step` frames to avoid mock echo loops
 - `mock.client.task-result-status` can force mock result frames to `SUCCESS` or `FAILED`
@@ -315,7 +316,7 @@ Important current implementation facts:
 Focused verified regression command on `2026-04-13`:
 
 ```bash
-mvn --% -pl xa-mass-mock -am -Dtest=MassWebSocketClientImplTest,TaskApiIntegrationTest,TaskApiFailureResultIntegrationTest,TaskApiLifecycleGuardsIntegrationTest,TaskApiCallbackReplayIntegrationTest,WebSocketClientStarterTest -Dsurefire.failIfNoSpecifiedTests=false test
+mvn --% -pl xa-mass-mock -am -Dtest=MassWebSocketClientImplTest,TaskApiIntegrationTest,TaskApiFailureResultIntegrationTest,TaskApiLifecycleGuardsIntegrationTest,TaskApiTerminateRunningIntegrationTest,TaskApiCallbackReplayIntegrationTest,WebSocketClientStarterTest -Dsurefire.failIfNoSpecifiedTests=false test
 ```
 
 Verified focused classes:
@@ -323,6 +324,7 @@ Verified focused classes:
 - `xa-mass-mock/src/test/java/com/xa/mass/mock/api/TaskApiIntegrationTest.java`
 - `xa-mass-mock/src/test/java/com/xa/mass/mock/api/TaskApiFailureResultIntegrationTest.java`
 - `xa-mass-mock/src/test/java/com/xa/mass/mock/api/TaskApiLifecycleGuardsIntegrationTest.java`
+- `xa-mass-mock/src/test/java/com/xa/mass/mock/api/TaskApiTerminateRunningIntegrationTest.java`
 - `xa-mass-mock/src/test/java/com/xa/mass/mock/api/TaskApiCallbackReplayIntegrationTest.java`
 - `xa-mass-mock/src/test/java/com/xa/mass/mock/client/MassWebSocketClientImplTest.java`
 - `xa-mass-mock/src/test/java/com/xa/mass/mock/starter/WebSocketClientStarterTest.java`
@@ -336,6 +338,7 @@ What the new focused coverage proves:
 - API create + approve flows through assignment, dispatch, result write-back, and terminal completion
 - API create + approve also covers failed downstream result write-back through terminal completion
 - API lifecycle guards for reject/approve, pause/resume, and delete protection are verified through real HTTP calls
+- API terminate-from-running is verified after real assignment and before any mock callback completion, and terminal cleanup delete is also verified
 - duplicate `TASK/step` callback replay is verified end-to-end through the real gateway path and keeps the first final result
 - mock clients no longer respond to server response frames
 - mock result status can be forced to `FAILED` without changing business logic code paths
@@ -358,11 +361,11 @@ Reason:
 - EventBus has converged onto the current `channel/eventbus/core` and `channel/eventbus/event` namespace.
 - The active implementation is still Guava-backed; Redis remains an unimplemented/fail-fast path.
 - Redis and Database storage remain fail-fast only. `MEMORY` is the only implemented storage path.
-- API integration coverage is still selective. Callback replay is now covered end-to-end, but some cancel-path behavior still needs integration tests.
+- API integration coverage is still selective. Callback replay and running terminate/delete are now covered end-to-end, but some cancel follow-up variants still need integration tests.
 
 ## 10. Good Next Tasks
 
-1. Add API-level integration coverage for remaining cancel-path variants.
+1. Add API-level integration coverage for remaining cancel follow-up variants.
 2. Improve shutdown so a single Ctrl-C exits cleanly.
 3. Expand EventBus coverage and diagnostics around the current `channel/eventbus/core` path.
 4. Expand diagnostics around task dispatch and result write-back so stuck tasks are easier to localize.

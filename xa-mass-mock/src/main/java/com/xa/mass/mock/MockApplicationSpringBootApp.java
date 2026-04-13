@@ -83,29 +83,33 @@ public class MockApplicationSpringBootApp {
 
     @Bean
     @Profile("dev")
-    public CommandLineRunner fullStackStarter(
+    public MassApplication fullStackRuntimeApplication(
             @Qualifier("outputQueue") MessageQueue<Envelope> outputQueue,
             @Qualifier("inputQueue") MessageQueue<Envelope> inputQueue) {
+        return com.xa.mass.starter.builder.MassApplicationBuilder.create()
+                .server(massWebSocketPort)
+                .gateway(gateway -> gateway
+                        .enabled(true)
+                        .maxConnections(maxConnections)
+                        .inputQueue(inputQueue)
+                        .outputQueue(outputQueue)
+                        .queueMode())
+                .engine(engine -> engine
+                        .enabled(true)
+                        .workerThreads(workerThreads)
+                        .taskManager(taskManager)
+                        .deviceManager(deviceManager)
+                        .ruleManager(ruleManager)
+                        .mockData(devicesConfigPath, tasksConfigPath, rulesConfigPath))
+                .build();
+    }
+
+    @Bean
+    @Profile("dev")
+    public CommandLineRunner fullStackStarter(MassApplication app) {
         return args -> {
             log.info("Starting internal gateway + engine runtime");
             try {
-                MassApplication app = com.xa.mass.starter.builder.MassApplicationBuilder.create()
-                        .server(massWebSocketPort)
-                        .gateway(gateway -> gateway
-                                .enabled(true)
-                                .maxConnections(maxConnections)
-                                .inputQueue(inputQueue)
-                                .outputQueue(outputQueue)
-                                .queueMode())
-                        .engine(engine -> engine
-                                .enabled(true)
-                                .workerThreads(workerThreads)
-                                .taskManager(taskManager)
-                                .deviceManager(deviceManager)
-                                .ruleManager(ruleManager)
-                                .mockData(devicesConfigPath, tasksConfigPath, rulesConfigPath))
-                        .build();
-
                 app.start();
                 if (!app.isRunning()) {
                     throw new IllegalStateException("MassApplication failed to start properly");
@@ -126,16 +130,6 @@ public class MockApplicationSpringBootApp {
                 } catch (Exception e) {
                     log.warn("Initial task event publish failed: {}", e.getMessage());
                 }
-
-                Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-                    log.info("Stopping full-stack runtime");
-                    try {
-                        app.stop();
-                        log.info("Full-stack runtime stopped");
-                    } catch (Exception e) {
-                        log.error("Failed while stopping full-stack runtime", e);
-                    }
-                }));
 
                 log.info("Spring Boot HTTP API is ready");
                 log.info("Full-stack runtime startup complete");
