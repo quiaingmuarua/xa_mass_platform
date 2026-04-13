@@ -82,6 +82,33 @@ public class InMemoryTaskStorage implements TaskStorage {
     }
 
     @Override
+    public Optional<TaskMsg> getTaskMessage(String taskId, String msgId) {
+        List<TaskMsg> messages = taskMessages.get(taskId);
+        if (messages == null) {
+            return Optional.empty();
+        }
+        return messages.stream()
+                .filter(message -> msgId != null && msgId.equals(message.getMsgId()))
+                .findFirst();
+    }
+
+    @Override
+    public boolean updateTaskMessage(String taskId, TaskMsg taskMsg) {
+        List<TaskMsg> messages = taskMessages.get(taskId);
+        if (messages == null || taskMsg == null || taskMsg.getMsgId() == null) {
+            return false;
+        }
+        for (int i = 0; i < messages.size(); i++) {
+            TaskMsg existing = messages.get(i);
+            if (taskMsg.getMsgId().equals(existing.getMsgId())) {
+                messages.set(i, taskMsg);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    @Override
     public TaskMessageStats getTaskMessageStats(String taskId) {
         List<TaskMsg> messages = getTaskMessages(taskId);
 

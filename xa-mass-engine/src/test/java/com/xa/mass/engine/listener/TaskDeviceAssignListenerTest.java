@@ -1,6 +1,7 @@
 package com.xa.mass.engine.listener;
 
 import com.xa.mass.base.enums.Project;
+import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Device;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.Token;
@@ -163,6 +164,28 @@ public class TaskDeviceAssignListenerTest {
         // 验证只尝试锁定第一个设备
         verify(deviceManager).tryLockDevice("device-1");
         verify(deviceManager, never()).tryLockDevice("device-2");
+    }
+
+    @Test
+    public void testOnTaskAssignTransitionsReadyTaskToRunning() {
+        Task task = createTestTask();
+        task.setStatus(TaskStatus.READY);
+        Device device = createTestDevice();
+        Token token = createTestToken();
+        List<RuleDefinition> rules = createTestRules();
+
+        when(deviceManager.getDevicesByCountry("us")).thenReturn(Arrays.asList(device));
+        when(deviceManager.getToken("device-1")).thenReturn(token);
+        when(ruleManager.getDefaultRules()).thenReturn(rules);
+        when(ruleManager.evaluateDefaultRules(any())).thenReturn(Arrays.asList("rule1", "rule2"));
+        when(deviceManager.tryLockDevice("device-1")).thenReturn(true);
+
+        listener.onTaskAssign(task);
+
+        assertEquals(TaskStatus.RUNNING, task.getStatus());
+        assertEquals(1, task.getScheduleDeviceCnt());
+        verify(msgAssignListener).onMsgAssign(same(task), argThat(devices ->
+                devices.size() == 1 && "device-1".equals(devices.get(0).getDeviceId())));
     }
 
     private Task createTestTask() {

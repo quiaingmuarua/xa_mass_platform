@@ -1,6 +1,7 @@
 package com.xa.mass.engine;
 
 import com.xa.mass.base.enums.task.TaskStatus;
+import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.User;
@@ -13,6 +14,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.function.Consumer;
 
 /**
  * 任务管理器
@@ -24,6 +27,7 @@ public class TaskManager {
 
     private final TaskStorage taskStorage;
     private final TaskScheduler taskScheduler;
+    private final List<Consumer<Task>> taskReadyListeners = new CopyOnWriteArrayList<>();
 
     public TaskManager(TaskScheduler taskScheduler) {
         this(taskScheduler, TaskStorageFactory.createDefaultTaskStorage());
@@ -216,10 +220,12 @@ public class TaskManager {
 
         try {
             Task task = getTask(taskId);
-            if (task != null && task.getStatus() == TaskStatus.NEW) {
+            if (task != null
+                    && (task.getStatus() == TaskStatus.NEW || task.getStatus() == TaskStatus.BLOCKED)) {
                 boolean result = task.transitionTo(TaskStatus.READY);
                 if (result) {
                     taskStorage.updateTask(task);
+                    notifyTaskReady(task);
                     long duration = System.currentTimeMillis() - startTime;
                     LogUtils.logOperationSuccess("任务审核通过", duration);
                 } else {
@@ -324,6 +330,7 @@ public class TaskManager {
                 if (result) {
                     taskStorage.updateTask(task);
                     taskScheduler.resumeTask(taskId);
+                    notifyTaskReady(task);
                     long duration = System.currentTimeMillis() - startTime;
                     LogUtils.logOperationSuccess("任务恢复成功", duration);
                 } else {
@@ -400,6 +407,14 @@ public class TaskManager {
         return taskStorage.getTaskMessages(taskId);
     }
 
+    public TaskMsg getTaskMessage(String taskId, String msgId) {
+        return taskStorage.getTaskMessage(taskId, msgId).orElse(null);
+    }
+
+    public boolean updateTaskMessage(String taskId, TaskMsg taskMsg) {
+        return taskStorage.updateTaskMessage(taskId, taskMsg);
+    }
+
     /**
      * 获取任务消息统计
      */
@@ -433,5 +448,92 @@ public class TaskManager {
 
     public TaskScheduler getScheduler() {
         return this.taskScheduler;
+    }
+
+    public void addTaskReadyListener(Consumer<Task> listener) {
+        if (listener != null) {
+            taskReadyListeners.add(listener);
+        }
+    }
+
+    private void notifyTaskReady(Task task) {
+        for (Consumer<Task> listener : taskReadyListeners) {
+            try {
+                listener.accept(task);
+            } catch (Exception e) {
+                logger.error("READY listener execution failed for task {}", task.getTid(), e);
+            }
+        }
+    }
+
+    public boolean handleTaskMessageResult(String taskId, String msgId, boolean success, String detail) {
+        Task task = getTask(taskId);
+        if (task == null) {
+            logger.warn("Cannot handle task message result because task {} was not found", taskId);
+            return false;
+        }
+
+        TaskMsg taskMsg = getTaskMessage(taskId, msgId);
+        if (taskMsg == null) {
+            logger.warn("Cannot handle task message result because msg {} was not found in task {}", msgId, taskId);
+            return false;
+        }
+
+        if (taskMsg.isCompleted()) {
+            logger.info("Task message {} of task {} is already in final status {}, skipping duplicate result",
+                    msgId, taskId, taskMsg.getStatus());
+            updateTaskProgress(taskId);
+            return true;
+        }
+
+        if (!advanceTaskMsgForCompletion(taskMsg, success)) {
+            logger.warn("Cannot advance task message {} from status {} for completion",
+                    msgId, taskMsg.getStatus());
+            return false;
+        }
+
+        boolean statusUpdated = success ? taskMsg.markAsSuccess(detail) : taskMsg.markAsFailed(detail);
+        if (!statusUpdated) {
+            logger.warn("Failed to mark task message {} as {}", msgId, success ? "SUCCESS" : "FAILED");
+            return false;
+        }
+
+        boolean stored = updateTaskMessage(taskId, taskMsg);
+        if (!stored) {
+            logger.warn("Failed to persist task message {} for task {}", msgId, taskId);
+            return false;
+        }
+
+        if (success) {
+            taskScheduler.handleTaskMsgCompletion(taskMsg);
+        } else {
+            taskScheduler.handleTaskMsgFailure(taskMsg, detail);
+        }
+
+        updateTaskProgress(taskId);
+        return true;
+    }
+    private boolean advanceTaskMsgForCompletion(TaskMsg taskMsg, boolean success) {
+        TaskMsgStatus status = taskMsg.getStatus();
+        if (status == null) {
+            return false;
+        }
+        if (status.isFinal()) {
+            return true;
+        }
+        if (status == TaskMsgStatus.INIT && !taskMsg.transitionTo(TaskMsgStatus.BINDING)) {
+            return false;
+        }
+        status = taskMsg.getStatus();
+        if (status == TaskMsgStatus.BINDING && success) {
+            if (!taskMsg.markAsSent()) {
+                return false;
+            }
+            status = taskMsg.getStatus();
+        }
+        if (status == TaskMsgStatus.SENT && success) {
+            return taskMsg.markAsRunning();
+        }
+        return true;
     }
 }

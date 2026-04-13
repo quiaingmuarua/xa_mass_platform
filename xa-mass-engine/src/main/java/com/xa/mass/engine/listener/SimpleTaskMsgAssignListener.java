@@ -1,71 +1,118 @@
 package com.xa.mass.engine.listener;
 
 import com.xa.mass.base.enums.assignment.AssignmentResult;
+import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.base.model.Device;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.Token;
 import com.xa.mass.engine.DeviceManager;
+import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.service.AssignmentRecordService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.UUID;
+import java.util.stream.Collectors;
 
 /**
- * 简单消息分配监听器实现，模拟为每个设备分配消息
+ * Binds persisted task messages to matched devices and emits the dispatch queue.
  */
 public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
     private static final Logger log = LoggerFactory.getLogger(SimpleTaskMsgAssignListener.class);
+
+    private final TaskManager taskManager;
     private final DeviceManager deviceManager;
     private final AssignmentRecordService recordService;
+    private final TaskMsgDispatchListener dispatchListener;
 
-    public SimpleTaskMsgAssignListener(DeviceManager deviceManager, AssignmentRecordService recordService) {
+    public SimpleTaskMsgAssignListener(TaskManager taskManager,
+                                       DeviceManager deviceManager,
+                                       AssignmentRecordService recordService) {
+        this(taskManager, deviceManager, recordService, null);
+    }
+
+    public SimpleTaskMsgAssignListener(TaskManager taskManager,
+                                       DeviceManager deviceManager,
+                                       AssignmentRecordService recordService,
+                                       TaskMsgDispatchListener dispatchListener) {
+        this.taskManager = taskManager;
         this.deviceManager = deviceManager;
         this.recordService = recordService;
+        this.dispatchListener = dispatchListener;
     }
 
     @Override
     public void onMsgAssign(Task task, List<Device> devices) {
-        int totalMessages = task.getTaskInitNumber();
+        if (devices == null || devices.isEmpty()) {
+            log.info("[MsgAssign] Skip task {} because no matched devices were provided", task.getTid());
+            return;
+        }
+
+        List<TaskMsg> pendingMessages = taskManager.getTaskMessages(task.getTid()).stream()
+                .filter(this::isPendingDispatch)
+                .collect(Collectors.toList());
+        int totalMessages = pendingMessages.size();
+        if (totalMessages == 0) {
+            log.info("[MsgAssign] Skip task {} because there are no pending task messages to dispatch", task.getTid());
+            return;
+        }
+
         int deviceCount = devices.size();
         int baseMsgPerDevice = totalMessages / deviceCount;
         int remainder = totalMessages % deviceCount;
         int batchId = 0;
+        int cursor = 0;
         List<TaskMsg> pushQueue = new ArrayList<>();
 
-        log.info("[MsgAssign] Starting message assignment for task {} with {} devices, totalMessages={}, baseMsgPerDevice={}, remainder={}",
+        log.info("[MsgAssign] Starting assignment for task {} with {} devices, totalMessages={}, baseMsgPerDevice={}, remainder={}",
                 task.getTid(), deviceCount, totalMessages, baseMsgPerDevice, remainder);
 
         for (int i = 0; i < deviceCount; i++) {
             Device device = devices.get(i);
-            int assignCount = baseMsgPerDevice + (i < remainder ? 1 : 0); // 平均分配，余数补齐
-            for (int j = 0; j < assignCount; j++) {
-                String msgId = UUID.randomUUID().toString();
-                Token token = deviceManager.getToken(device.getDeviceId());
-                String tokenId = token != null ? token.getTokenId() : null;
-                String currentBatchId = "batch-" + batchId;
+            int assignCount = baseMsgPerDevice + (i < remainder ? 1 : 0);
+            String currentBatchId = "batch-" + batchId;
+            Token token = deviceManager.getToken(device.getDeviceId());
+            String tokenId = token != null ? token.getTokenId() : null;
 
-                // 构建 TaskMsg，绑定目标设备和 token
-                TaskMsg msg = new TaskMsg(msgId, task.getTid(), device.getDeviceId());
-                msg.setDeviceId(device.getDeviceId());
-                msg.setTokenId(tokenId);
-                msg.setBatchId(currentBatchId);
+            for (int j = 0; j < assignCount && cursor < totalMessages; j++) {
+                TaskMsg msg = pendingMessages.get(cursor++);
+                if (!bindTaskMessage(msg, device.getDeviceId(), tokenId, currentBatchId)) {
+                    log.warn("[MsgAssign] Skip task message {} because it could not transition from status {}",
+                            msg.getMsgId(), msg.getStatus());
+                    continue;
+                }
+                taskManager.updateTaskMessage(task.getTid(), msg);
                 pushQueue.add(msg);
 
-                // 记录消息分配
                 recordService.recordMessageAssignment(
-                        task, device, token, msgId, currentBatchId,
-                        AssignmentResult.SUCCESS, "消息分配成功"
+                        task, device, token, msg.getMsgId(), currentBatchId,
+                        AssignmentResult.SUCCESS, "message assigned"
                 );
             }
             batchId++;
         }
 
-        log.info("[MsgAssign] Task {} pushQueue size: {} (expected totalMessages={})",
+        log.info("[MsgAssign] Task {} pushQueue size: {} (expected pending={})",
                 task.getTid(), pushQueue.size(), totalMessages);
-        // pushQueue 中的消息已就绪，调用方可通过回调或注入的 transporter 进一步下发
+
+        if (dispatchListener != null && !pushQueue.isEmpty()) {
+            dispatchListener.onTaskMsgsReady(task, List.copyOf(pushQueue));
+        }
     }
-} 
+
+    private boolean isPendingDispatch(TaskMsg taskMsg) {
+        return taskMsg != null && taskMsg.getStatus() == TaskMsgStatus.INIT;
+    }
+
+    private boolean bindTaskMessage(TaskMsg taskMsg, String deviceId, String tokenId, String batchId) {
+        if (!taskMsg.transitionTo(TaskMsgStatus.BINDING)) {
+            return false;
+        }
+        taskMsg.setDeviceId(deviceId);
+        taskMsg.setTokenId(tokenId);
+        taskMsg.setBatchId(batchId);
+        return taskMsg.markAsSent();
+    }
+}

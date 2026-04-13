@@ -7,6 +7,7 @@ import com.xa.mass.gateway.model.massMessage.MassMessage;
 import com.xa.mass.gateway.model.massMessage.MessageContext;
 import com.xa.mass.gateway.model.massMessage.TaskStep;
 import com.xa.mass.gateway.model.payload.TaskPayload;
+import com.xa.mass.gateway.session.SessionRoles;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -57,7 +58,7 @@ public class ClientSessionManager {
 
         MessageContext ctx = new MessageContext();
         ctx.setDeviceId(deviceId);
-        ctx.setConnRole("messages_task");
+        ctx.setConnRole(SessionRoles.TASK_MESSAGES);
         ctx.setTid("mock_task_" + System.currentTimeMillis());
         message.setContext(ctx);
 

@@ -1,6 +1,7 @@
 package com.xa.mass.engine;
 
 import com.xa.mass.base.enums.task.TaskStatus;
+import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.engine.model.TaskCreateRequestDto;
@@ -11,6 +12,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -56,6 +58,34 @@ class TaskManagerLifecycleTest {
         assertTrue(taskManager.resumeTask(task.getTid()));
         assertEquals(TaskStatus.READY, taskManager.getTask(task.getTid()).getStatus());
         assertEquals(List.of(task.getTid()), scheduler.resumedTaskIds);
+    }
+
+    @Test
+    void blockedTaskCanBeApprovedBackToReady() {
+        Task task = taskManager.createTask(buildRequest("task-blocked"));
+
+        assertTrue(taskManager.rejectTask(task.getTid()));
+        assertEquals(TaskStatus.BLOCKED, taskManager.getTask(task.getTid()).getStatus());
+
+        assertTrue(taskManager.approveTask(task.getTid()));
+        assertEquals(TaskStatus.READY, taskManager.getTask(task.getTid()).getStatus());
+    }
+
+    @Test
+    void taskReadyListenersRunOnApproveAndResume() {
+        Task task = taskManager.createTask(buildRequest("task-ready-hook"));
+        AtomicInteger notifications = new AtomicInteger();
+        taskManager.addTaskReadyListener(t -> {
+            if (task.getTid().equals(t.getTid())) {
+                notifications.incrementAndGet();
+            }
+        });
+
+        assertTrue(taskManager.approveTask(task.getTid()));
+        assertTrue(taskManager.pauseTask(task.getTid()));
+        assertTrue(taskManager.resumeTask(task.getTid()));
+
+        assertEquals(2, notifications.get());
     }
 
     @Test
@@ -118,6 +148,48 @@ class TaskManagerLifecycleTest {
         assertTrue(taskManager.deleteTask(task.getTid()),
                 "TERMINAL task should be deletable");
         assertNull(taskManager.getTask(task.getTid()));
+    }
+
+    @Test
+    void handleTaskMessageResultMarksSuccessAndFinishesRunningTask() {
+        Task task = taskManager.createTask(buildRequest("task-result-success"));
+        taskManager.approveTask(task.getTid());
+        task.setStatus(TaskStatus.RUNNING);
+
+        List<TaskMsg> messages = taskManager.getTaskMessages(task.getTid());
+        messages.forEach(msg -> {
+            msg.transitionTo(TaskMsgStatus.BINDING);
+            msg.markAsSent();
+            taskManager.updateTaskMessage(task.getTid(), msg);
+        });
+
+        assertTrue(taskManager.handleTaskMessageResult(task.getTid(), messages.get(0).getMsgId(), true, "done-1"));
+        assertTrue(taskManager.handleTaskMessageResult(task.getTid(), messages.get(1).getMsgId(), true, "done-2"));
+
+        Task updatedTask = taskManager.getTask(task.getTid());
+        assertEquals(TaskStatus.TERMINAL, updatedTask.getStatus());
+        assertEquals(2, updatedTask.getTaskExecutedNumber());
+        assertEquals(TaskMsgStatus.SUCCESS, taskManager.getTaskMessage(task.getTid(), messages.get(0).getMsgId()).getStatus());
+        assertEquals(TaskMsgStatus.SUCCESS, taskManager.getTaskMessage(task.getTid(), messages.get(1).getMsgId()).getStatus());
+    }
+
+    @Test
+    void handleTaskMessageResultMarksFailureAndKeepsExecutedCountAtSuccessOnly() {
+        Task task = taskManager.createTask(buildRequest("task-result-failure"));
+        taskManager.approveTask(task.getTid());
+        task.setStatus(TaskStatus.RUNNING);
+
+        TaskMsg message = taskManager.getTaskMessages(task.getTid()).get(0);
+        message.transitionTo(TaskMsgStatus.BINDING);
+        message.markAsSent();
+        taskManager.updateTaskMessage(task.getTid(), message);
+
+        assertTrue(taskManager.handleTaskMessageResult(task.getTid(), message.getMsgId(), false, "boom"));
+
+        TaskMsg updatedMessage = taskManager.getTaskMessage(task.getTid(), message.getMsgId());
+        assertEquals(TaskMsgStatus.FAILED, updatedMessage.getStatus());
+        assertEquals("boom", updatedMessage.getErrorMessage());
+        assertEquals(0, taskManager.getTask(task.getTid()).getTaskExecutedNumber());
     }
 
     private TaskCreateRequestDto buildRequest(String taskName) {

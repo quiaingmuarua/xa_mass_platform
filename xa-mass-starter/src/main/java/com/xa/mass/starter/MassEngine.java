@@ -1,6 +1,7 @@
 package com.xa.mass.starter;
 
 import com.xa.mass.base.channel.eventbus.core.EventBusFacade;
+import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.old.eventbus.core.EventBusFactory;
 import com.xa.mass.base.old.eventbus.event.task.TaskCreatedEvent;
 import com.xa.mass.base.model.Device;
@@ -12,6 +13,7 @@ import com.xa.mass.engine.listener.EventListenerRegistry;
 import com.xa.mass.engine.listener.SimpleTaskMsgAssignListener;
 import com.xa.mass.engine.listener.TaskAssignWorker;
 import com.xa.mass.engine.listener.TaskDeviceAssignListener;
+import com.xa.mass.engine.listener.TaskMsgDispatchListener;
 import com.xa.mass.engine.monkey.MonkeyGenerator;
 import com.xa.mass.engine.service.AssignmentRecordService;
 import com.xa.mass.engine.strategy.SimpleTaskScheduler;
@@ -65,23 +67,28 @@ public class MassEngine {
             logger.info("MassEngine is disabled, skipping start");
             return;
         }
+        if (running) {
+            logger.info("MassEngine is already running, skipping duplicate start");
+            return;
+        }
         logger.info("⚙️ Starting MassEngine with {} worker threads", config.getWorkerThreads());
         try {
-            if (config.isMockMode()) {
-                // 1. 启动/注册所有资源和服务
-                scheduler = config.getScheduler();
-                taskManager = config.getTaskManager();
-                deviceManager = config.getDeviceManager();
-                recordService = config.getRecordService();
-                var ruleManager = config.getRuleManager();
-                var msgAssignListener = new SimpleTaskMsgAssignListener(deviceManager, recordService);
-                var deviceAssignListener = new TaskDeviceAssignListener(ruleManager, deviceManager, msgAssignListener, recordService);
-                assignWorker = new TaskAssignWorker(deviceAssignListener);
-                assignWorker.start();
-                // 注册事件驱动服务
-                EventBusFacade eventBus = EventBusFactory.get("guava");
-                EventListenerRegistry.registerDeviceStatusListeners(eventBus, deviceManager);
-            }
+            // 1. 启动/注册所有资源和服务
+            scheduler = config.getScheduler();
+            taskManager = config.getTaskManager();
+            deviceManager = config.getDeviceManager();
+            recordService = config.getRecordService();
+            TaskMsgDispatchListener taskMsgDispatchListener = config.getTaskMsgDispatchListener();
+            var ruleManager = config.getRuleManager();
+            var msgAssignListener = new SimpleTaskMsgAssignListener(taskManager, deviceManager, recordService, taskMsgDispatchListener);
+            var deviceAssignListener = new TaskDeviceAssignListener(ruleManager, deviceManager, msgAssignListener, recordService);
+            assignWorker = new TaskAssignWorker(deviceAssignListener);
+            assignWorker.start();
+            taskManager.addTaskReadyListener(assignWorker::submit);
+            taskManager.getTasksByStatus(TaskStatus.READY).forEach(assignWorker::submit);
+            // 注册事件驱动服务
+            EventBusFacade eventBus = EventBusFactory.get("guava");
+            EventListenerRegistry.registerDeviceStatusListeners(eventBus, deviceManager);
             running = true;
             logger.info("✅ MassEngine started successfully");
         } catch (Exception e) {
@@ -115,7 +122,7 @@ public class MassEngine {
      */
     public Task createTask(com.xa.mass.engine.model.TaskCreateRequestDto dto) {
         if (taskManager == null) {
-            throw new IllegalStateException("MassEngine has not been started or mockMode is disabled; taskManager is unavailable");
+            throw new IllegalStateException("MassEngine has not been started; taskManager is unavailable");
         }
         return taskManager.createTask(dto);
     }

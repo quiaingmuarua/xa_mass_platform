@@ -57,6 +57,10 @@ public interface TaskStorage {
      */
     List<TaskMsg> getTaskMessages(String taskId);
 
+    Optional<TaskMsg> getTaskMessage(String taskId, String msgId);
+
+    boolean updateTaskMessage(String taskId, TaskMsg taskMsg);
+
     /**
      * 获取任务消息统计
      */

@@ -6,6 +6,7 @@ import com.xa.mass.gateway.model.enums.MessageDirection;
 import com.xa.mass.gateway.model.enums.MessageType;
 import com.xa.mass.gateway.model.massMessage.MassMessage;
 import com.xa.mass.gateway.model.massMessage.MessageContext;
+import com.xa.mass.gateway.session.SessionRoles;
 import com.xa.mass.mock.client.ClientSessionManager;
 import com.xa.mass.mock.client.MassWebSocketClientImpl;
 import com.xa.mass.mock.config.MockConfig;
@@ -234,7 +235,7 @@ public class WebSocketClientStarter implements CommandLineRunner {
 
             MessageContext ctx = new MessageContext();
             ctx.setDeviceId(client.getDeviceId());
-            ctx.setConnRole("messages_task");
+            ctx.setConnRole(SessionRoles.TASK_MESSAGES);
             ping.setContext(ctx);
 
             client.send(new com.google.gson.Gson().toJson(ping));

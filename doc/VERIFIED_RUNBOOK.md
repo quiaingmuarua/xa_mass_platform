@@ -1,68 +1,53 @@
 # XA Mass Platform Verified Runbook
 
-本文件只记录已实测通过的运行方式。最后更新：2026-04-13（Phase 4 修复后）。
+最后更新：2026-04-13
+
+本文档只记录当前已经由代码和测试确认的主线事实，优先级低于源码，高于仓库里的历史说明。
 
 ## 1. 目标
 
-给后续 agent 或开发者一个可直接复用的启动/验证入口，避免继续使用仓库里已经失真的启动说明。
+- 给后续 agent 和开发者一个可复用的启动、验证、排障入口
+- 先服务于 API-first 的任务主流程收敛
+- 页面能力可以作为验证面，但当前不作为事实来源
 
-## 2. 已验证前提
+## 2. 当前主线结论
 
-- JDK 17+ 可用
-- 在仓库根目录执行
-- 不依赖 Redis 即可启动主链
-- 当前主链入口是 `xa-mass-mock`
+- 真实启动入口是 `xa-mass-mock`
+- `xa-mass-starter` 不是 Spring Boot 入口
+- 任务生命周期主线目前可按以下路径验证
+  - `NEW -> READY -> PAUSED -> READY`
+  - `READY -> RUNNING -> TERMINAL`
+- 当前已收敛的执行闭环是
+  - 创建任务
+  - 审核任务
+  - 设备匹配与分配
+  - WebSocket 下发 `TASK/step`
+  - 客户端回执 `TASK/step`
+  - 回写 `TaskMsg` / 汇总任务进度
 
-## 3. 不要直接照做的命令
-
-以下命令在当前仓库状态下不可靠：
-
-### 3.1 顶层 README 的 starter 入口
-
-- 不要把 `xa-mass-starter/MassApplication.java` 当成 Spring Boot 入口
-
-### 3.2 `xa-mass-mock/README.md` 里的单模块运行
-
-以下命令当前会误导：
-
-```bash
-cd xa-mass-mock
-mvn spring-boot:run -Dspring-boot.run.profiles=dev
-```
-
-原因：
-
-- `xa-mass-mock` 不是一个可独立解析同仓库模块依赖的自洽启动单元
-- 单模块跑时会出现“找不到 engine/base/gateway 类”的编译错误
-
-## 4. 当前可行的启动方式
-
-### 4.1 编译整个 reactor
+## 3. 启动方式
 
 在仓库根目录执行：
 
 ```bash
 ./mvnw -DskipTests compile
-```
-
-### 4.2 生成运行时 classpath
-
-```bash
 ./mvnw -pl xa-mass-mock -am dependency:build-classpath \
   -Dmdep.outputFile=/tmp/xa-mass-mock.cp \
   -DincludeScope=runtime
-```
-
-### 4.3 直接启动真实入口
-
-```bash
 java -cp "xa-mass-mock/target/classes:xa-mass-starter/target/classes:xa-mass-api/target/classes:xa-mass-engine/target/classes:xa-mass-gateway/target/classes:xa-mass-base/target/classes:$(cat /tmp/xa-mass-mock.cp)" \
   com.xa.mass.mock.MockApplicationSpringBootApp
 ```
 
-## 5. 启动成功后的验证点
+不要把下面这条当成当前可验证入口：
 
-### 5.1 HTTP
+```bash
+cd xa-mass-mock
+mvn spring-boot:run
+```
+
+## 4. 启动后的验证点
+
+HTTP：
 
 ```bash
 curl -i http://127.0.0.1:8088/status
@@ -74,44 +59,17 @@ curl -i http://127.0.0.1:8088/api/session/stats
 curl -i http://127.0.0.1:8088/api/queue/status
 ```
 
-已实测结果：
-
-- `/status` 返回 `200`
-- `/status/tasks` 返回 `200`
-- `/doc.html` 返回 `200`
-- `/actuator/health` 返回 `{"status":"UP"}`
-- `/api/session/*` 返回 `200`
-- `/api/queue/status` 返回 `200`
-
-### 5.2 WebSocket 端口
+WebSocket：
 
 ```bash
 nc -zv 127.0.0.1 18088
 ```
 
-已实测结果：
+## 5. 当前任务主流程
 
-- 连接成功
+### 5.1 创建任务
 
-## 6. 已验证的运行时现状
-
-启动后页面展示：
-
-- 任务数：5
-- 设备数：150
-- 规则数：5
-- Token 数：0
-
-说明：
-
-- 这套 mock 主链当前使用的是内存队列
-- 没有 Redis 也能把 Web + Gateway + Engine + WebSocket 跑起来
-
-## 7. 已验证的任务接口
-
-示例任务 ID 可从 `/status/tasks` 页面取得，也可以直接创建一条临时 smoke 任务。
-
-### 7.0 创建 smoke 任务
+通过：
 
 ```bash
 curl -s -X POST http://127.0.0.1:8088/status/api/tasks \
@@ -119,153 +77,110 @@ curl -s -X POST http://127.0.0.1:8088/status/api/tasks \
   -d '{"taskName":"smoke-lifecycle","project":"demoApp","countryCode":"us","textContent":"smoke","userId":"agent","targetList":["smoke-target-001","smoke-target-002"],"batchSize":1}'
 ```
 
-已实测：
+当前已确认：
 
-- 返回 `success = true`
-- 返回新的 `taskId`
-- 新建任务初始状态为 `NEW`
+- 初始状态为 `NEW`
+- `targetList` 会落成真实的 `TaskMsg`
+- `targetList = null` 不再触发 NPE
 
-### 7.1 读取任务详情
-
-```bash
-curl -i http://127.0.0.1:8088/status/api/tasks/{taskId}
-```
-
-### 7.2 审核任务
+### 5.2 审核 / 暂停 / 恢复
 
 ```bash
 curl -i -X POST "http://127.0.0.1:8088/status/api/tasks/{taskId}/audit?approved=true&comment=smoke"
-```
-
-已实测：
-
-- 返回 `newStatus = READY`
-
-### 7.3 暂停任务
-
-```bash
 curl -i -X POST http://127.0.0.1:8088/status/api/tasks/{taskId}/pause
-```
-
-已实测：
-
-- 返回成功
-- 再读取详情时状态确实变为 `PAUSED`
-
-### 7.4 恢复任务
-
-```bash
 curl -i -X POST http://127.0.0.1:8088/status/api/tasks/{taskId}/resume
 ```
 
-已实测：
+当前已确认：
 
-- 返回成功
-- 再读取详情时状态确实回到 `READY`
+- `approveTask`: `NEW, BLOCKED -> READY`
+- `pauseTask`: `READY, RUNNING -> PAUSED`
+- `resumeTask`: `PAUSED -> READY`
+- `deleteTask` 只允许 `NEW, TERMINAL`
 
-### 7.5 非法动作边界
+### 5.3 分配与运行
 
-例如任务已经是 `READY` 时，再执行拒绝审核：
+当前代码路径：
+
+1. 任务进入 `READY`
+2. `MassEngine` 无论 `mockMode` 与否都会启动 `TaskAssignWorker`
+3. `MassEngine` 会：
+   - 启动时提交已有 `READY` 任务
+   - 对 `approveTask()` / `resumeTask()` 触发的 READY 事件订阅提交
+4. `TaskDeviceAssignListener` 负责设备匹配
+5. 匹配成功后：
+   - 设置 `scheduleDeviceCnt`
+   - 将任务从 `READY` 转成 `RUNNING`
+6. `SimpleTaskMsgAssignListener` 不再新建一批临时消息，而是复用已持久化的 `TaskMsg`
+7. 每条 `TaskMsg` 会绑定：
+   - `deviceId`
+   - `tokenId`
+   - `batchId`
+   - 状态推进到 `SENT`
+8. `GatewayTaskMsgPublisher` 将这些消息转成 `TASK/step` 下发到 WebSocket 输出链路
+
+### 5.4 回执与完成
+
+当前代码路径：
+
+1. 客户端回传 `TASK/step`
+2. `MassApplication` 在 gateway registry 中注册了 `GatewayTaskResultHandler`
+3. handler 调用 `TaskManager.handleTaskMessageResult(taskId, msgId, success, detail)`
+4. `TaskManager` 会：
+   - 按 `taskId + msgId` 找到持久化 `TaskMsg`
+   - 更新 `TaskMsg` 为 `SUCCESS` 或 `FAILED`
+   - 回算 `taskExecutedNumber`
+   - 当 RUNNING 任务的全部消息进入终态时，将任务收敛为 `TERMINAL`
+
+当前 mock 客户端也已经补齐：
+
+- 回执 `project`
+- `response=true`
+- `TASK/step` 回执 payload 中的 `status`
+
+## 6. 当前仍然存在的问题
+
+- `SimpleTaskScheduler.scheduleTasks()` 仍是 stub
+  - 但主线 `READY -> RUNNING` 已不再依赖这条调度 API
+- 应用退出有时仍需两次 Ctrl-C
+- EventBus 仍未完成收敛，运行时还有 `old.eventbus` 路径
+- Redis / Database 存储仍是 fail-fast 未实现状态
+- 最高价值缺口已经从引擎单测转移到 API 级集成验证
+
+## 7. 当前推荐验证顺序
+
+1. 先用 API 验证 `create -> approve -> assign -> run`
+2. 再用 mock WebSocket 客户端验证 `TASK/step` 下发与回执
+3. 最后再用页面验证同一条链路，不要反过来
+
+## 8. 最新已验证测试
+
+本次修改后，已验证的定向回归命令：
 
 ```bash
-curl -i -X POST "http://127.0.0.1:8088/status/api/tasks/{taskId}/audit?approved=false&comment=invalid-after-ready"
+mvn --% -pl xa-mass-engine,xa-mass-starter,xa-mass-gateway,xa-mass-mock -am -Dtest=TaskManagerLifecycleTest,SimpleTaskMsgAssignListenerTest,TaskDeviceAssignListenerTest,GatewayTaskMsgPublisherTest,GatewayTaskResultHandlerTest,MassEngineStopTest,ProcessEnvelopeMiddlewareTest -Dsurefire.failIfNoSpecifiedTests=false test
 ```
 
-已实测：
+结果：
 
-- 返回 `success = false`
-- 返回 `当前任务状态不允许审核`
+- `BUILD SUCCESS`
 
-## 8. 当前已知问题与修复历史
+本次定向回归覆盖了：
 
-### 8.1 文档命令过时
+- `TaskManagerLifecycleTest`：11
+- `SimpleTaskMsgAssignListenerTest`：4
+- `TaskDeviceAssignListenerTest`：5
+- `GatewayTaskMsgPublisherTest`：1
+- `GatewayTaskResultHandlerTest`：2
+- `MassEngineStopTest`：5
+- `ProcessEnvelopeMiddlewareTest`：4
 
-- `doc/项目流程.md` 描述的启动类已不存在，已标注归档
-- 以本 Runbook 为准
+## 9. 仍推荐的完整回归
 
-### 8.2 任务生命周期（已修复，Phase 1–3）
-
-已确认：
-
-- `TaskApiController` 走 `TaskManager` 生命周期方法
-- `READY -> PAUSED -> READY` 实测通过
-- `deleteTask` 现在只允许 `NEW` / `TERMINAL` 状态删除，其他状态返回 `success=false`
-- `createTask` 传 null `targetList` 不再抛 NPE
-
-### 8.3 任务目标数据（已修复，Phase 1）
-
-`GET /status/api/tasks/{id}` 返回真实 `targetList`，每条 `TaskMsg` 的 `target` 字段正确。
-
-### 8.4 WebSocket 错误帧（已修复，Phase 3）
-
-非法消息现在会收到 JSON 错误帧而不是静默断开：
-
-```json
-{"type":"ERROR","code":"INVALID_FORMAT","message":"Message must be a JSON object"}
-```
-
-### 8.5 消息分配管道（已修复，Phase 4）
-
-`SimpleTaskMsgAssignListener` 现在会正确构建 `TaskMsg` 对象（之前 `pushQueue` 永远为空）。
-
-### 8.6 停机链路
-
-实测停止时仍需两次 Ctrl-C 才能完全退出。`TaskAssignWorker.stop()` 已改为 `shutdownNow()` + `awaitTermination`，有所改善。
-
-## 9. 推荐的后续排查顺序
-
-1. 补一组任务生命周期测试，固化 `NEW/READY/PAUSED/TERMINAL` 边界
-2. 清理失效启动文档
-3. 收敛旧/新 EventBus 的主线标准
-4. 补强 shutdown 行为
-5. 继续核实 `session/queue` 观测接口到底哪些是真功能、哪些是占位
-
-## 10. 已验证的测试命令
-
-### 10.1 全量回归（推荐）
+完整回归命令仍然是：
 
 ```bash
 ./mvnw clean test
 ```
 
-2026-04-13 已实测：
-
-- `BUILD SUCCESS`
-- **618 个测试，0 failures，0 errors**
-
-### 10.2 单模块快速验证
-
-```bash
-# engine 主线
-./mvnw -pl xa-mass-engine -am clean test
-
-# gateway 主线
-./mvnw -pl xa-mass-gateway -am clean test
-
-# API 控制器
-./mvnw -pl xa-mass-api -am clean test
-```
-
-### 10.3 当前主线测试清单
-
-| 模块 | 测试类 | 数量 |
-|------|--------|------|
-| engine | `TaskManagerLifecycleTest` | 7 |
-| engine | `TaskAssignWorkerTest` | 5 |
-| engine | `SimpleTaskMsgAssignListenerTest` | 5 |
-| engine | `TaskDeviceAssignListenerTest` | 4 |
-| engine | `DeviceManagerTest` | 12 |
-| engine | `RuleManagerTest` | 14 |
-| engine | `TaskStorageFactoryTest` | 10 |
-| gateway | `DispatcherInboundHandlerTest` | 5 |
-| gateway | `MessageHandlerRegistryTest` | 8 |
-| gateway | `ProcessEnvelopeMiddlewareTest` | 4 |
-| gateway | `ServerSessionManagerShutdownTest` | 3 |
-| api | `TaskApiControllerTest` | 15 |
-| starter | `MassEngineStopTest` | 4 |
-| starter | `MassApplicationStopOrderTest` | 2 |
-
-### 10.4 已排除的历史测试
-
-`xa-mass-engine/src/test/java/com/xa/mass/engine/v2/**` 已从主线排除，
-依赖已删除的 `com.xa.mass.base.channel.messaging.*` 包，不代表当前功能。
+但本轮文档只声明上面“第 8 节”的定向命令为当前已重新验证结果。

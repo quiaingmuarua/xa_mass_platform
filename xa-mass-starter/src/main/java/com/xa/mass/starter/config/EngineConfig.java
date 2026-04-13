@@ -4,6 +4,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.xa.mass.engine.DeviceManager;
 import com.xa.mass.engine.TaskManager;
+import com.xa.mass.engine.listener.TaskMsgDispatchListener;
 import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.engine.rules.RuleManagerFactory;
 import com.xa.mass.engine.service.AssignmentRecordService;
@@ -35,6 +36,7 @@ public class EngineConfig {
     private DeviceManager deviceManager = new DeviceManager();
     private AssignmentRecordService recordService = new AssignmentRecordService();
     private RuleManager<Map<String, Object>> ruleManager = RuleManagerFactory.getProjectRuleManager("demoApp");
+    private TaskMsgDispatchListener taskMsgDispatchListener;
 
     // 默认 mock 配置
     private static String getDefaultMockConfig() {
@@ -205,5 +207,13 @@ public class EngineConfig {
 
     public void setRuleManager(RuleManager<Map<String, Object>> ruleManager) {
         this.ruleManager = ruleManager;
+    }
+
+    public TaskMsgDispatchListener getTaskMsgDispatchListener() {
+        return taskMsgDispatchListener;
+    }
+
+    public void setTaskMsgDispatchListener(TaskMsgDispatchListener taskMsgDispatchListener) {
+        this.taskMsgDispatchListener = taskMsgDispatchListener;
     }
 }

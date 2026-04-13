@@ -6,6 +6,7 @@ import com.xa.mass.gateway.dispatcher.DispatcherContextRegistry;
 import com.xa.mass.gateway.dispatcher.MessageHandlerRegistry;
 import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
 import com.xa.mass.gateway.dispatcher.middleware.MiddlewareRegistry;
+import com.xa.mass.gateway.model.enums.MessageType;
 import com.xa.mass.gateway.queue.MessageCodec;
 import com.xa.mass.base.channel.tranporter.MessageTransporter;
 import com.xa.mass.gateway.server.MassServerBuilder;
@@ -147,6 +148,10 @@ public class MassApplication {
             // 注册消息处理器
             MessageHandlerRegistry messageHandlerRegistry = new MessageHandlerRegistry();
             messageHandlerRegistry.autoRegister();
+            if (engineConfig.isEnabled() && engineConfig.getTaskManager() != null) {
+                messageHandlerRegistry.register(null, MessageType.TASK, "step",
+                        new GatewayTaskResultHandler(engineConfig.getTaskManager()));
+            }
             dispatcherContext.setMessageHandlerRegistry(messageHandlerRegistry);
             logger.info("✅ Message handler registry initialized");
 
@@ -156,6 +161,7 @@ public class MassApplication {
 
             // 根据配置构建MassGateway（需要dispatcherContext）
             if (gatewayConfig.isEnabled()) {
+                engineConfig.setTaskMsgDispatchListener(new GatewayTaskMsgPublisher(dispatcherContext));
                 massGateway = new MassGateway(gatewayConfig, dispatcherContext);
                 logger.info("✅ MassGateway built");
             } else {

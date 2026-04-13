@@ -188,7 +188,8 @@ public class StorageExample {
         // 6. 测试规则匹配
         var ruleManager = RuleManagerFactory.getProjectRuleManager("demoApp");
         var recordService = new AssignmentRecordService();
-        var msgAssignListener = new SimpleTaskMsgAssignListener(deviceManager, recordService);
+        var taskManager = new TaskManager(new SimpleTaskScheduler(), new InMemoryTaskStorage());
+        var msgAssignListener = new SimpleTaskMsgAssignListener(taskManager, deviceManager, recordService);
         var deviceAssignListener = new TaskDeviceAssignListener(ruleManager, deviceManager, msgAssignListener, recordService);
 
         // 显示规则信息
@@ -351,7 +352,8 @@ public class StorageExample {
         var deviceManager = new DeviceManager();
         var ruleManager = RuleManagerFactory.getProjectRuleManager("demoApp");
         var recordService = new AssignmentRecordService();
-        var msgAssignListener = new SimpleTaskMsgAssignListener(deviceManager, recordService);
+        var taskManager = new TaskManager(new SimpleTaskScheduler(), new InMemoryTaskStorage());
+        var msgAssignListener = new SimpleTaskMsgAssignListener(taskManager, deviceManager, recordService);
         var deviceAssignListener = new TaskDeviceAssignListener(ruleManager, deviceManager, msgAssignListener, recordService);
 
         // 2. 使用默认配置生成设备和Token

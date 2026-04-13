@@ -2,6 +2,7 @@ package com.xa.mass.gateway.server;
 
 import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
 import com.xa.mass.gateway.session.ServerSessionManager;
+import com.xa.mass.gateway.session.SessionRoles;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.*;
 import io.netty.channel.epoll.Epoll;
@@ -165,7 +166,7 @@ public class WebSocketServerImpl implements MassWebSocketServer {
     @Override
     public Channel getClientChannel(String clientId) {
         // 通过会话管理器获取指定客户端 ID 和固定角色 "messaegs_task" 的 Channel
-        return sessionManager.getChannel(clientId, "messaegs_task");
+        return sessionManager.getChannel(clientId, SessionRoles.TASK_MESSAGES);
     }
 
     /**

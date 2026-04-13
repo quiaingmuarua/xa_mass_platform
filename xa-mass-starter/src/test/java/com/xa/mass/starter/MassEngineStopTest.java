@@ -49,6 +49,21 @@ class MassEngineStopTest {
         verify(worker, times(1)).stop(); // only once
     }
 
+    @Test
+    void startInitializesAssignWorkerEvenWhenMockModeDisabled() {
+        EngineConfig config = new EngineConfig();
+        config.setMockMode(false);
+        MassEngine engine = new MassEngine(config);
+
+        assertDoesNotThrow(engine::start);
+        assertTrue(engine.isRunning());
+        assertNotNull(engine.getAssignWorker());
+        assertSame(config.getTaskManager(), engine.getTaskManager());
+        assertSame(config.getDeviceManager(), engine.getDeviceManager());
+
+        engine.stop();
+    }
+
     // ---- helpers ----
 
     /** Returns a MassEngine that has been put into running=true via reflection. */

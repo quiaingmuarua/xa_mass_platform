@@ -2,6 +2,7 @@ package com.xa.mass.engine.listener;
 
 import com.xa.mass.base.enums.Project;
 import com.xa.mass.base.enums.assignment.AssignmentResult;
+import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Device;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.Token;
@@ -47,6 +48,10 @@ public class TaskDeviceAssignListener {
         int batchSize = Math.max(task.getRunTaskMinDeviceCnt(), maxDeviceCount);
         List<Device> matched = matchDevicesWithRules(task, batchSize);
         if (!matched.isEmpty()) {
+            task.setScheduleDeviceCnt(matched.size());
+            if (task.getStatus() == TaskStatus.READY) {
+                task.transitionTo(TaskStatus.RUNNING);
+            }
             // 推送到消息分配监听器
             msgAssignListener.onMsgAssign(task, matched);
         }

@@ -8,6 +8,7 @@ This file is the fastest entry point for coding agents such as Claude Code, Code
 - Do not start from `xa-mass-starter`
 - Trust code and verified runtime over repository docs
 - Current verified task path: `NEW -> READY -> PAUSED -> READY`
+- Current targeted regression also covers: `READY -> RUNNING -> TERMINAL`
 - Current verified engine regression is green
 - Treat `engine/v2` as historical, not mainline
 
@@ -263,7 +264,13 @@ Important current implementation facts (verified through Phase 1–4 fixes):
   - correct `taskId`
   - distinct `msgId` per message
   - real `targetList` values as `target` field on each `TaskMsg`
-- `SimpleTaskMsgAssignListener` now correctly instantiates `TaskMsg` with `deviceId`, `tokenId`, `batchId` (was previously commented out, so `pushQueue` was always empty)
+- `SimpleTaskMsgAssignListener` now binds the persisted `TaskMsg` records created by `TaskManager.createTask()`, fills `deviceId` / `tokenId` / `batchId`, and marks them `SENT`
+- `MassEngine` now starts `TaskAssignWorker` regardless of `mockMode`, submits existing READY tasks on startup, and subscribes to READY events from approve/resume
+- `TaskDeviceAssignListener` now sets `scheduleDeviceCnt` and transitions matched READY tasks to `RUNNING`
+- `GatewayTaskMsgPublisher` now pushes task messages to the gateway output transporter as `TASK/step`
+- `GatewayTaskResultHandler` now handles inbound `TASK/step` results and writes them back through `TaskManager.handleTaskMessageResult(...)`
+- `TaskManager.handleTaskMessageResult(...)` now updates persisted `TaskMsg` state by `taskId + msgId`, recalculates task progress, and closes RUNNING tasks to `TERMINAL` when all messages finish
+- `MassWebSocketClientImpl` now echoes `project` on mock `TASK/step` responses so inbound validation passes
 - `TaskAssignWorker` uses `CopyOnWriteArrayList` for listeners (was `ArrayList`, ConcurrentModificationException risk)
 - `TaskAssignWorker.stop()` calls `shutdownNow()` + `awaitTermination(10s)` (was leaking threads)
 - `ServerSessionManager.removeSession()` correctly evicts `ChannelHandlerContext` on disconnect (was memory leak)
@@ -283,10 +290,10 @@ Key test classes by module:
 
 | Module | Test Class | Tests |
 |--------|-----------|-------|
-| xa-mass-engine | `TaskManagerLifecycleTest` | 7 |
+| xa-mass-engine | `TaskManagerLifecycleTest` | 11 |
 | xa-mass-engine | `TaskAssignWorkerTest` | 5 |
-| xa-mass-engine | `SimpleTaskMsgAssignListenerTest` | 5 |
-| xa-mass-engine | `TaskDeviceAssignListenerTest` | 4 |
+| xa-mass-engine | `SimpleTaskMsgAssignListenerTest` | 4 |
+| xa-mass-engine | `TaskDeviceAssignListenerTest` | 5 |
 | xa-mass-engine | `DeviceManagerTest` | 12 |
 | xa-mass-engine | `RuleManagerTest` | 14 |
 | xa-mass-engine | `TaskStorageFactoryTest` | 10 |
@@ -295,7 +302,8 @@ Key test classes by module:
 | xa-mass-gateway | `ProcessEnvelopeMiddlewareTest` | 4 |
 | xa-mass-gateway | `ServerSessionManagerShutdownTest` | 3 |
 | xa-mass-api | `TaskApiControllerTest` | 15 |
-| xa-mass-starter | `MassEngineStopTest` | 4 |
+| xa-mass-starter | `MassEngineStopTest` | 5 |
+| xa-mass-starter | `GatewayTaskResultHandlerTest` | 2 |
 | xa-mass-starter | `MassApplicationStopOrderTest` | 2 |
 
 Single-module commands:
@@ -319,23 +327,22 @@ The engine POM currently excludes those tests from `testCompile` and `surefire`.
 
 ## 9. Known Problems
 
-- **MassEngine mock-only**: `TaskAssignWorker` only starts when `config.isMockMode()` is true. In non-mock production config, tasks reach READY but are never auto-assigned to devices.
-- **pushQueue not wired to transport**: `SimpleTaskMsgAssignListener` builds the queue of `TaskMsg` correctly but does not push them to the WebSocket downstream. The gateway transport is a separate layer not yet connected.
-- **scheduleTasks() is a stub**: `SimpleTaskScheduler.scheduleTasks()` always returns an empty list. Tasks do not auto-transition to RUNNING.
+- **`SimpleTaskScheduler.scheduleTasks()` is still a stub**: batch scheduler APIs still return an empty list, but the current mainline no longer depends on that path for `READY -> RUNNING`
 - **Shutdown still needs two interrupts**: The running app may need Ctrl-C twice to fully exit.
 - **EventBus not converged**: Runtime uses old Guava-based `EventBusFactory.get("guava")` in places. New `StreamEventBusFacade` is the target but not fully adopted.
 - **Redis/Database storage unimplemented**: Both throw `UnsupportedOperationException` at creation time (fail-fast). Only MEMORY storage works.
+- **API/UI end-to-end coverage is still thin**: engine/gateway regressions are green, but the highest-value remaining gap is API-level integration around create/audit/assign/run from the real mock app
 
 ## 10. Good Next Tasks
 
 Best next tasks for an agent:
 
-1. Wire `pushQueue` → WebSocket downstream (connect `SimpleTaskMsgAssignListener` output to the gateway transporter)
-2. Implement auto-transition: READY → RUNNING when devices are assigned
-3. Start `TaskAssignWorker` unconditionally (decouple from mockMode)
+1. Add API-level integration tests for `create -> approve -> assign -> run -> complete` against the real `xa-mass-mock` startup path
+2. Verify the same flow through the status web pages after the API path is stable; treat UI as a validation surface, not the source of truth
+3. Improve shutdown so a single Ctrl-C cleanly exits
 4. Converge EventBus: migrate `EventBusFactory.get("guava")` call sites to `StreamEventBusFacade`
-5. Add `POST /api/message/send` endpoint for manual device push
-6. Improve shutdown: single Ctrl-C should cleanly exit
+5. Expand observability around task dispatch/result write-back so stuck tasks are easier to diagnose
+6. Keep Redis/Database paths fail-fast until they are actually implemented
 
 ## 11. Files Worth Opening Early
 

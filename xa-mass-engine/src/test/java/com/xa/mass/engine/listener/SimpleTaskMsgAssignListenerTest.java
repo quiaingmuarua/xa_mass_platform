@@ -1,16 +1,25 @@
 package com.xa.mass.engine.listener;
 
+import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.base.model.Device;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.Token;
 import com.xa.mass.engine.DeviceManager;
+import com.xa.mass.engine.TaskManager;
+import com.xa.mass.engine.model.TaskCreateRequestDto;
 import com.xa.mass.engine.service.AssignmentRecordService;
+import com.xa.mass.engine.storage.InMemoryTaskStorage;
+import com.xa.mass.engine.storage.TaskStorage;
+import com.xa.mass.engine.strategy.TaskScheduler;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
@@ -20,58 +29,56 @@ class SimpleTaskMsgAssignListenerTest {
 
     private DeviceManager deviceManager;
     private AssignmentRecordService recordService;
+    private TaskManager taskManager;
     private SimpleTaskMsgAssignListener listener;
-
-    // Spy-friendly subclass that captures the pushQueue via onMsgAssign override
-    private final List<TaskMsg> capturedMsgs = new ArrayList<>();
 
     @BeforeEach
     void setUp() {
         deviceManager = mock(DeviceManager.class);
         recordService = mock(AssignmentRecordService.class);
-        listener = new SimpleTaskMsgAssignListener(deviceManager, recordService) {
-            // Override the interface method so we can inspect pushQueue indirectly
-            // via verifying recordService calls (the real impl calls recordService once per msg)
-        };
+        TaskStorage taskStorage = new InMemoryTaskStorage();
+        taskManager = new TaskManager(new NoopTaskScheduler(), taskStorage);
+        listener = new SimpleTaskMsgAssignListener(taskManager, deviceManager, recordService);
     }
 
     @Test
-    void messagesAreCreatedOnePerSlot() {
-        Task task = task(6);
-        List<Device> devices = List.of(device("d1"), device("d2"), device("d3"));
-        Token token = token("tk1", "d1");
-        when(deviceManager.getToken(anyString())).thenReturn(token);
+    void usesPersistedTaskMessagesInsteadOfGeneratingNewOnes() {
+        Task task = createTask(3);
+        List<String> storedMsgIds = taskManager.getTaskMessages(task.getTid()).stream()
+                .map(TaskMsg::getMsgId)
+                .collect(Collectors.toList());
+        AtomicReference<List<TaskMsg>> dispatched = new AtomicReference<>();
+        listener = new SimpleTaskMsgAssignListener(taskManager, deviceManager, recordService, (t, msgs) -> dispatched.set(msgs));
 
-        listener.onMsgAssign(task, devices);
-
-        // 6 messages / 3 devices = 2 per device → recordService called 6 times
-        verify(recordService, times(6)).recordMessageAssignment(
-                any(), any(), any(), anyString(), anyString(), any(), anyString()
-        );
-    }
-
-    @Test
-    void remainderIsDistributedAcrossFirstDevices() {
-        // 7 messages / 3 devices → [3, 2, 2]
-        Task task = task(7);
-        List<Device> devices = List.of(device("d1"), device("d2"), device("d3"));
-        when(deviceManager.getToken(anyString())).thenReturn(null);
-
-        listener.onMsgAssign(task, devices);
-
-        // 7 total recordService calls
-        verify(recordService, times(7)).recordMessageAssignment(
-                any(), any(), any(), anyString(), anyString(), any(), anyString()
-        );
-    }
-
-    @Test
-    void singleDeviceTakesAllMessages() {
-        Task task = task(4);
-        List<Device> devices = List.of(device("d1"));
         when(deviceManager.getToken("d1")).thenReturn(token("tk1", "d1"));
+        when(deviceManager.getToken("d2")).thenReturn(token("tk2", "d2"));
 
-        listener.onMsgAssign(task, devices);
+        listener.onMsgAssign(task, List.of(device("d1"), device("d2")));
+
+        List<TaskMsg> pushed = dispatched.get();
+        assertNotNull(pushed);
+        assertEquals(storedMsgIds, pushed.stream().map(TaskMsg::getMsgId).collect(Collectors.toList()));
+        assertEquals(List.of("target-0", "target-1", "target-2"),
+                pushed.stream().map(TaskMsg::getTarget).collect(Collectors.toList()));
+    }
+
+    @Test
+    void assignmentWritesDeviceBatchAndSentStatusBackToStorage() {
+        Task task = createTask(4);
+
+        when(deviceManager.getToken("d1")).thenReturn(token("tk1", "d1"));
+        when(deviceManager.getToken("d2")).thenReturn(token("tk2", "d2"));
+
+        listener.onMsgAssign(task, List.of(device("d1"), device("d2")));
+
+        List<TaskMsg> stored = taskManager.getTaskMessages(task.getTid());
+        assertEquals(4, stored.size());
+        assertEquals(List.of(TaskMsgStatus.SENT, TaskMsgStatus.SENT, TaskMsgStatus.SENT, TaskMsgStatus.SENT),
+                stored.stream().map(TaskMsg::getStatus).collect(Collectors.toList()));
+        assertEquals(List.of("d1", "d1", "d2", "d2"),
+                stored.stream().map(TaskMsg::getDeviceId).collect(Collectors.toList()));
+        assertEquals(List.of("batch-0", "batch-0", "batch-1", "batch-1"),
+                stored.stream().map(TaskMsg::getBatchId).collect(Collectors.toList()));
 
         verify(recordService, times(4)).recordMessageAssignment(
                 any(), any(), any(), anyString(), anyString(), any(), anyString()
@@ -80,43 +87,45 @@ class SimpleTaskMsgAssignListenerTest {
 
     @Test
     void nullTokenIsHandledGracefully() {
-        Task task = task(2);
-        List<Device> devices = List.of(device("d1"));
-        when(deviceManager.getToken("d1")).thenReturn(null);  // no token
+        Task task = createTask(2);
+        when(deviceManager.getToken("d1")).thenReturn(null);
 
-        assertDoesNotThrow(() -> listener.onMsgAssign(task, devices));
+        assertDoesNotThrow(() -> listener.onMsgAssign(task, List.of(device("d1"))));
+
+        List<TaskMsg> stored = taskManager.getTaskMessages(task.getTid());
+        assertTrue(stored.stream().allMatch(msg -> msg.getTokenId() == null));
         verify(recordService, times(2)).recordMessageAssignment(
                 any(), any(), isNull(), anyString(), anyString(), any(), anyString()
         );
     }
 
     @Test
-    void batchIdsAreAssignedPerDevice() {
-        // Each device gets its own batch-N id
-        Task task = task(2);
-        List<Device> devices = List.of(device("d1"), device("d2"));
-        when(deviceManager.getToken(anyString())).thenReturn(null);
+    void emptyDeviceListSkipsWithoutMutation() {
+        Task task = createTask(2);
+        List<String> before = taskManager.getTaskMessages(task.getTid()).stream()
+                .map(TaskMsg::getMsgId)
+                .collect(Collectors.toList());
 
-        // We can verify batch-0 used for d1, batch-1 for d2
-        listener.onMsgAssign(task, devices);
+        listener.onMsgAssign(task, List.of());
 
-        verify(recordService, times(1)).recordMessageAssignment(
-                any(), argThat(d -> "d1".equals(d.getDeviceId())), any(), anyString(),
-                eq("batch-0"), any(), anyString()
-        );
-        verify(recordService, times(1)).recordMessageAssignment(
-                any(), argThat(d -> "d2".equals(d.getDeviceId())), any(), anyString(),
-                eq("batch-1"), any(), anyString()
-        );
+        List<TaskMsg> after = taskManager.getTaskMessages(task.getTid());
+        assertEquals(before, after.stream().map(TaskMsg::getMsgId).collect(Collectors.toList()));
+        assertTrue(after.stream().allMatch(msg -> msg.getStatus() == TaskMsgStatus.INIT));
+        verifyNoInteractions(recordService);
     }
 
-    // ---- helpers ----
-
-    private Task task(int initNumber) {
-        Task t = new Task();
-        t.setTid("task-test");
-        t.setTaskInitNumber(initNumber);
-        return t;
+    private Task createTask(int messageCount) {
+        TaskCreateRequestDto dto = new TaskCreateRequestDto();
+        dto.setTaskName("task");
+        dto.setProject("demoApp");
+        dto.setCountryCode("us");
+        dto.setTextContent("hello");
+        dto.setUserId("agent");
+        dto.setBatchSize(1);
+        dto.setTargetList(IntStream.range(0, messageCount)
+                .mapToObj(i -> "target-" + i)
+                .collect(Collectors.toCollection(ArrayList::new)));
+        return taskManager.createTask(dto);
     }
 
     private Device device(String id) {
@@ -130,5 +139,47 @@ class SimpleTaskMsgAssignListenerTest {
         t.setTokenId(tokenId);
         t.setDeviceId(deviceId);
         return t;
+    }
+
+    private static class NoopTaskScheduler implements TaskScheduler {
+        @Override
+        public SchedulingResult scheduleTask(Task task) {
+            return SchedulingResult.success(List.of());
+        }
+
+        @Override
+        public List<SchedulingResult> scheduleTasks(List<Task> tasks) {
+            return List.of();
+        }
+
+        @Override
+        public boolean handleTaskMsgCompletion(TaskMsg taskMsg) {
+            return true;
+        }
+
+        @Override
+        public boolean handleTaskMsgFailure(TaskMsg taskMsg, String errorMessage) {
+            return true;
+        }
+
+        @Override
+        public boolean retryTaskMsg(TaskMsg taskMsg) {
+            return true;
+        }
+
+        @Override
+        public boolean cancelTask(String taskId) {
+            return true;
+        }
+
+        @Override
+        public boolean pauseTask(String taskId) {
+            return true;
+        }
+
+        @Override
+        public boolean resumeTask(String taskId) {
+            return true;
+        }
     }
 }
