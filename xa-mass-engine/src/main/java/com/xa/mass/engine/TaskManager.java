@@ -326,6 +326,20 @@ public class TaskManager {
         try {
             Task task = getTask(taskId);
             if (task != null && task.getStatus() == TaskStatus.PAUSED) {
+                TaskStorage.TaskMessageStats stats = getTaskMessageStats(taskId);
+                if (allTaskMessagesCompleted(stats)) {
+                    task.setTaskExecutedNumber((int) stats.getSuccess());
+                    boolean result = task.transitionTo(TaskStatus.TERMINAL);
+                    if (result) {
+                        taskStorage.updateTask(task);
+                        long duration = System.currentTimeMillis() - startTime;
+                        LogUtils.logOperationSuccess("任务恢复前已完成，直接收尾", duration);
+                    } else {
+                        long duration = System.currentTimeMillis() - startTime;
+                        LogUtils.logOperationFailure("TASK_RESUME_ERROR", "任务已完成但收尾失败", duration);
+                    }
+                    return result;
+                }
                 boolean result = task.transitionTo(TaskStatus.READY);
                 if (result) {
                     taskStorage.updateTask(task);
@@ -432,8 +446,8 @@ public class TaskManager {
             task.setTaskExecutedNumber((int) stats.getSuccess());
 
             // 如果所有消息都已完成，将任务标记为终止
-            if (stats.getTotal() > 0 && stats.getSuccess() + stats.getFailed() == stats.getTotal()) {
-                if (task.getStatus() == TaskStatus.RUNNING) {
+            if (allTaskMessagesCompleted(stats)) {
+                if (!task.getStatus().isFinal()) {
                     boolean result = task.transitionTo(TaskStatus.TERMINAL);
                     if (result) {
                         taskStorage.updateTask(task);
@@ -535,5 +549,9 @@ public class TaskManager {
             return taskMsg.markAsRunning();
         }
         return true;
+    }
+
+    private boolean allTaskMessagesCompleted(TaskStorage.TaskMessageStats stats) {
+        return stats.getTotal() > 0 && stats.getSuccess() + stats.getFailed() == stats.getTotal();
     }
 }

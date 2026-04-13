@@ -57,6 +57,34 @@ class TaskAssignWorkerTest {
     }
 
     @Test
+    void readyTaskWithoutMatchIsRetriedUntilAssignmentSucceeds() throws InterruptedException {
+        worker.stop();
+
+        AtomicInteger attempts = new AtomicInteger();
+        CountDownLatch assignedLatch = new CountDownLatch(1);
+        TaskDeviceAssignListener retryingListener = mock(TaskDeviceAssignListener.class);
+        doAnswer(invocation -> {
+            Task task = invocation.getArgument(0);
+            if (attempts.incrementAndGet() >= 2) {
+                task.transitionTo(TaskStatus.RUNNING);
+                assignedLatch.countDown();
+            }
+            return null;
+        }).when(retryingListener).onTaskAssign(any());
+
+        worker = new TaskAssignWorker(retryingListener, 50L);
+        worker.start();
+
+        Task task = readyTask("retry");
+        worker.submit(task);
+
+        assertTrue(assignedLatch.await(3, TimeUnit.SECONDS), "READY task should be retried until assignment succeeds");
+        assertEquals(TaskStatus.RUNNING, task.getStatus());
+        assertEquals(2, attempts.get());
+        verify(retryingListener, atLeast(2)).onTaskAssign(same(task));
+    }
+
+    @Test
     void nonReadyTaskIsSkippedAndNotCounted() throws InterruptedException {
         // Submit a NEW-status task (not READY) — should be skipped without calling the listener
         CountDownLatch readyLatch = new CountDownLatch(1);

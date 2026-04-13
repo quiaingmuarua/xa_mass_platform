@@ -24,6 +24,8 @@ For endpoint inventory, response shapes, and implementation status, use [INTERNA
   - `TaskMsg INIT -> SENT -> SUCCESS`
 - The pause/resume lifecycle regression is also verified:
   - `NEW -> READY -> PAUSED -> READY`
+- Engine regression also verifies a paused-completion closure rule:
+  - if all persisted `TaskMsg` callbacks finish while the task is `PAUSED`, the task is closed to `TERMINAL`
 - A failed downstream result path is also verified:
   - `NEW -> READY -> RUNNING -> TERMINAL`
   - `TaskMsg INIT -> SENT -> FAILED`
@@ -103,6 +105,10 @@ Verified state transitions:
 - `resumeTask`: `PAUSED` -> `READY`
 - `deleteTask`: only `NEW`, `TERMINAL`
 
+Additional implementation rule verified at engine regression level:
+
+- if a paused task already has all persisted `TaskMsg` rows in final states, it is closed to `TERMINAL` instead of being put back into `READY`
+
 The full endpoint matrix is maintained in [INTERNAL_API_REFERENCE.md](./INTERNAL_API_REFERENCE.md).
 
 ### 4.2 Assign and Run
@@ -115,9 +121,11 @@ Verified runtime path:
 4. `TaskDeviceAssignListener` performs device matching.
 5. `TaskDeviceAssignListener` now delegates matching through `TaskDeviceMatchingStrategy`; the verified default implementation is `RuleBasedTaskDeviceMatchingStrategy`.
 6. On successful matching it writes `scheduleDeviceCnt` and moves the task from `READY` to `RUNNING`.
-7. `SimpleTaskMsgAssignListener` reuses the persisted `TaskMsg` records created during task creation.
-8. Each `TaskMsg` is filled with `deviceId`, `tokenId`, and `batchId`, then moved to `SENT`.
-9. `GatewayTaskMsgPublisher` pushes the downstream payload as `TASK/step`.
+7. If no device matches at that moment, `TaskAssignWorker` delayed-retries the `READY` task instead of letting it fall out of the assignment loop.
+8. `SimpleTaskMsgAssignListener` reuses the persisted `TaskMsg` records created during task creation.
+9. Each `TaskMsg` is filled with `deviceId`, `tokenId`, and `batchId`, then moved to `SENT`.
+10. `GatewayTaskMsgPublisher` pushes the downstream payload as `TASK/step`.
+11. Once all persisted `TaskMsg` rows are final, `TaskManager.updateTaskProgress(...)` closes any non-final task to `TERMINAL`, including tasks paused while callbacks were still arriving.
 
 ### 4.3 Result Write-Back and Completion
 
@@ -179,6 +187,8 @@ What it verifies:
 - each message finishes as `SUCCESS`
 - each message has non-null `deviceId`, `tokenId`, and `batchId`
 - separate lifecycle guard coverage now verifies reject/approve, pause/resume, and delete guard through real HTTP APIs with no assignable devices
+- engine lifecycle coverage now verifies paused-task final callback closure into `TERMINAL`
+- engine worker coverage now verifies retry of `READY` tasks that initially have no device match
 
 Implementation details that matter:
 
@@ -272,7 +282,7 @@ Verified result:
 ## 6. Remaining Gaps
 
 - `SimpleTaskScheduler.scheduleTasks()` is still a stub
-- the running app may still need two interrupts to exit
+- runtime stop is now Spring-managed and `MassApplication.stop()` is idempotent, but single-interrupt exit has not yet been re-verified in a live process
 - EventBus runtime now uses the current `channel.eventbus.core` and `channel.eventbus.event` namespace
 - The verified implementation remains Guava-backed; Redis is still fail-fast
 - Redis and Database storage remain fail-fast placeholders
@@ -284,4 +294,5 @@ Recommended next test-driven additions:
 1. `RUNNING -> PAUSED -> READY` end-to-end with real assigned messages
 2. cancel path variants from `NEW`, `READY`, and `PAUSED` with message-state assertions
 3. mixed-result aggregation coverage where one message succeeds and another fails
+4. full end-to-end proof that a paused task with in-flight callbacks closes through the real gateway path without requiring a manual resume
 

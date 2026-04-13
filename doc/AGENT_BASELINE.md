@@ -41,6 +41,9 @@ Working rule:
 - `xa-mass-engine/archive/v2/` is historical experiment code, not the current mainline
 - EventBus mainline has converged onto `com.xa.mass.base.channel.eventbus.core` and `com.xa.mass.base.channel.eventbus.event`
 - API integration coverage includes terminate-from-running and delete-after-terminal after real assignment but before downstream callbacks
+- Engine regression coverage now locks two important closure rules:
+  - paused tasks must close to terminal once all persisted message callbacks are final
+  - ready tasks without a current device match must stay in the assignment loop through retry
 
 ## 3. Module Facts
 
@@ -92,11 +95,13 @@ Working rule:
 
 - trust `TaskManager` and `TaskStatus` over older docs
 - if a document disagrees with `TaskStatus.canTransitionTo(...)`, the document is stale
+- task completion is driven by persisted `TaskMsg` finality, not only by the current task status label
 
 ### Matching
 
 - task-to-device selection should extend through engine strategy interfaces
 - `RuleBasedTaskDeviceMatchingStrategy` is the current default implementation
+- a no-match assignment attempt should be treated as retryable backlog, not as a terminal dequeue
 
 ### Event Bus
 
@@ -112,7 +117,7 @@ Working rule:
 ## 5. Known Gaps
 
 - `SimpleTaskScheduler.scheduleTasks()` is still a stub
-- app shutdown may still need more than one interrupt
+- app shutdown path is now Spring-managed and idempotent at the runtime layer, but single-interrupt behavior is not yet re-verified end-to-end
 - EventBus naming is converged on the current core/event namespace, but Redis remains unimplemented
 - Redis and Database storage are still fail-fast placeholders
 - API integration coverage is improved but still not exhaustive for remaining cancel follow-up variants

@@ -33,6 +33,7 @@ class MassApplicationStopOrderTest {
         MassApplication app = new MassApplication(null, 0, "/", enabledGateway(), disabledEngine());
         inject(app, "massGateway", gateway);
         inject(app, "serverStater", serverStater);
+        setApplicationRunning(app, true);
 
         app.stop();
 
@@ -60,11 +61,35 @@ class MassApplicationStopOrderTest {
         MassApplication app = new MassApplication(engine, 0, "/", enabledGateway(), enabledEngine());
         inject(app, "massGateway", gateway);
         inject(app, "serverStater", serverStater);
+        setApplicationRunning(app, true);
 
         app.stop();
 
         assertEquals(List.of("gateway", "engine", "netty"), order,
                 "Stop order must be: gateway → engine → netty");
+    }
+
+    @Test
+    void stopIsIdempotentWhenTriggeredTwice() {
+        MassGateway gateway = spy(new MassGateway(enabledGateway(), null) {
+            @Override public boolean isRunning() { return false; }
+        });
+        MassEngine engine = spy(new MassEngine(enabledEngine()) {
+            @Override public boolean isRunning() { return true; }
+        });
+        MassServerStater serverStater = mock(MassServerStater.class);
+
+        MassApplication app = new MassApplication(engine, 0, "/", enabledGateway(), enabledEngine());
+        inject(app, "massGateway", gateway);
+        inject(app, "serverStater", serverStater);
+        setApplicationRunning(app, true);
+
+        app.stop();
+        app.stop();
+
+        verify(gateway, times(1)).stop();
+        verify(engine, times(1)).stop();
+        verify(serverStater, times(1)).stop();
     }
 
     // ---- helpers ----
@@ -95,6 +120,18 @@ class MassApplicationStopOrderTest {
                 }
             }
             throw new NoSuchFieldException(field + " not found in " + target.getClass());
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private void setApplicationRunning(MassApplication app, boolean value) {
+        try {
+            var field = MassApplication.class.getDeclaredField("running");
+            field.setAccessible(true);
+            java.util.concurrent.atomic.AtomicBoolean running =
+                    (java.util.concurrent.atomic.AtomicBoolean) field.get(app);
+            running.set(value);
         } catch (Exception e) {
             throw new RuntimeException(e);
         }

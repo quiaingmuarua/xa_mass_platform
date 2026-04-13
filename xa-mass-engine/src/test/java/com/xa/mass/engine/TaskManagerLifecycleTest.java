@@ -193,6 +193,31 @@ class TaskManagerLifecycleTest {
     }
 
     @Test
+    void pausedTaskCompletesToTerminalWhenFinalResultArrives() {
+        Task task = taskManager.createTask(buildRequest("task-paused-completion", List.of("alpha")));
+        taskManager.approveTask(task.getTid());
+        task.setStatus(TaskStatus.RUNNING);
+
+        TaskMsg message = taskManager.getTaskMessages(task.getTid()).get(0);
+        message.transitionTo(TaskMsgStatus.BINDING);
+        message.markAsSent();
+        taskManager.updateTaskMessage(task.getTid(), message);
+
+        assertTrue(taskManager.pauseTask(task.getTid()));
+        assertEquals(TaskStatus.PAUSED, taskManager.getTask(task.getTid()).getStatus());
+
+        assertTrue(taskManager.handleTaskMessageResult(task.getTid(), message.getMsgId(), true, "done-while-paused"));
+
+        Task updatedTask = taskManager.getTask(task.getTid());
+        TaskMsg updatedMessage = taskManager.getTaskMessage(task.getTid(), message.getMsgId());
+        assertEquals(TaskStatus.TERMINAL, updatedTask.getStatus());
+        assertEquals(1, updatedTask.getTaskExecutedNumber());
+        assertEquals(TaskMsgStatus.SUCCESS, updatedMessage.getStatus());
+        assertEquals(List.of(task.getTid()), scheduler.pausedTaskIds);
+        assertTrue(scheduler.resumedTaskIds.isEmpty());
+    }
+
+    @Test
     void duplicateTaskMessageResultKeepsFirstFinalStateAndDoesNotTriggerSchedulerTwice() {
         Task task = taskManager.createTask(buildRequest("task-result-duplicate", List.of("alpha")));
         taskManager.approveTask(task.getTid());

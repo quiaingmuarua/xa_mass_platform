@@ -12,6 +12,8 @@ This file is the fastest entry point for coding agents such as Claude Code, Code
 - Project direction is library/SDK-first; HTTP pages and backend endpoints are validation/demo surfaces
 - Current verified API task path: `NEW -> READY -> RUNNING -> TERMINAL`
 - Pause/resume regression is also verified: `NEW -> READY -> PAUSED -> READY`
+- Engine regression now verifies that paused tasks close to `TERMINAL` once all `TaskMsg` callbacks finish
+- Engine regression now verifies that `READY` tasks without a device match are retried instead of falling out of the assignment loop
 - Current focused mock/runtime regression is green
 - `TaskApiIntegrationTest` now covers `create -> approve -> assign -> run -> complete`
 - `TaskApiFailureResultIntegrationTest` now covers `create -> approve -> assign -> fail -> terminal`
@@ -299,6 +301,8 @@ Important current implementation facts:
 - `GatewayTaskMsgPublisher` pushes task messages downstream as `TASK/step`.
 - `GatewayTaskResultHandler` handles inbound `TASK/step` results and writes them back through `TaskManager.handleTaskMessageResult(...)`.
 - `TaskManager.handleTaskMessageResult(...)` updates persisted `TaskMsg` state by `taskId + msgId`, recalculates progress, and closes `RUNNING` tasks to `TERMINAL` when all messages finish.
+- `TaskManager.updateTaskProgress(...)` now closes any non-final task to `TERMINAL` once all persisted `TaskMsg` rows are final, including tasks that were paused while callbacks were still arriving.
+- `TaskManager.resumeTask(...)` now short-circuits paused tasks that already fully completed underneath them and closes them to `TERMINAL` instead of re-queueing them as `READY`.
 - `TaskManager.handleTaskMessageResult(...)` treats duplicate final callbacks as idempotent: the first final result is kept, progress is recalculated, and scheduler callbacks are not triggered twice.
 - `MassApplication.loadMockData(...)` normalizes mock `supportedProjects`, lowercases `groupId`, and auto-seeds `LOGIN_READY` tokens when devices do not already have token data.
 - `WebSocketClientStarter` now starts on `ApplicationReadyEvent` behind `mock.client.auto-start=true`, so default `dev` startup includes mock client result write-back.
@@ -307,16 +311,18 @@ Important current implementation facts:
 - Verified on `2026-04-13`: API-created tasks move `NEW -> READY -> RUNNING -> TERMINAL`, and persisted `TaskMsg` rows move `INIT -> SENT -> SUCCESS` with `deviceId` / `tokenId` / `batchId`.
 - Verified on `2026-04-13`: with `mock.client.task-result-status=FAILED`, API-created tasks still move `NEW -> READY -> RUNNING -> TERMINAL`, `taskExecutedNumber` stays `0`, and persisted `TaskMsg` rows move `INIT -> SENT -> FAILED`.
 - `TaskAssignWorker` uses `CopyOnWriteArrayList` for listeners.
+- `TaskAssignWorker` now delayed-retries `READY` tasks that receive no device match, so they do not become orphaned after a single dequeue attempt.
 - `TaskAssignWorker.stop()` calls `shutdownNow()` plus `awaitTermination(10s)`.
 - `ServerSessionManager.removeSession()` evicts `ChannelHandlerContext` on disconnect.
 - `DispatcherInboundHandler` sends structured JSON error frames instead of silently closing connections.
+- `MassApplication.stop()` is now idempotent, and the mock Spring Boot entry no longer adds an extra manual shutdown hook around the runtime.
 
 ## 7. Known Good Test Surface
 
 Focused verified regression command on `2026-04-13`:
 
 ```bash
-mvn --% -pl xa-mass-mock -am -Dtest=MassWebSocketClientImplTest,TaskApiIntegrationTest,TaskApiFailureResultIntegrationTest,TaskApiLifecycleGuardsIntegrationTest,TaskApiTerminateRunningIntegrationTest,TaskApiCallbackReplayIntegrationTest,WebSocketClientStarterTest -Dsurefire.failIfNoSpecifiedTests=false test
+mvn --% -pl xa-mass-mock -am -Dtest=TaskManagerLifecycleTest,TaskAssignWorkerTest,MassApplicationStopOrderTest,MassEngineStopTest,MassWebSocketClientImplTest,TaskApiIntegrationTest,TaskApiFailureResultIntegrationTest,TaskApiLifecycleGuardsIntegrationTest,TaskApiTerminateRunningIntegrationTest,TaskApiCallbackReplayIntegrationTest,WebSocketClientStarterTest -Dsurefire.failIfNoSpecifiedTests=false test
 ```
 
 Verified focused classes:
@@ -329,6 +335,7 @@ Verified focused classes:
 - `xa-mass-mock/src/test/java/com/xa/mass/mock/client/MassWebSocketClientImplTest.java`
 - `xa-mass-mock/src/test/java/com/xa/mass/mock/starter/WebSocketClientStarterTest.java`
 - `xa-mass-engine/src/test/java/com/xa/mass/engine/TaskManagerLifecycleTest.java`
+- `xa-mass-engine/src/test/java/com/xa/mass/engine/listener/TaskAssignWorkerTest.java`
 - `xa-mass-runtime/src/test/java/com/xa/mass/starter/GatewayTaskResultHandlerTest.java`
 - Existing engine/api/runtime regressions remain the primary mainline unit-test surface
 
@@ -343,6 +350,8 @@ What the new focused coverage proves:
 - mock clients no longer respond to server response frames
 - mock result status can be forced to `FAILED` without changing business logic code paths
 - duplicate `TASK/step` result callbacks are covered at engine/runtime regression level and keep the first final state
+- paused tasks are closed to `TERMINAL` when their final callbacks arrive instead of getting stranded in `PAUSED` or resurrected back into `READY`
+- `READY` tasks without an immediate device match stay in the assignment loop through delayed worker retry instead of silently orphaning
 
 ## 8. Historical Test Debt
 
@@ -357,7 +366,7 @@ Reason:
 ## 9. Known Problems
 
 - `SimpleTaskScheduler.scheduleTasks()` is still a stub. Scheduler APIs are not the current source of `READY -> RUNNING`.
-- Shutdown may still require two interrupts in the running app.
+- Shutdown path has been partially converged: runtime stop is Spring-managed and idempotent, but single-Ctrl-C exit still needs real-process verification.
 - EventBus has converged onto the current `channel/eventbus/core` and `channel/eventbus/event` namespace.
 - The active implementation is still Guava-backed; Redis remains an unimplemented/fail-fast path.
 - Redis and Database storage remain fail-fast only. `MEMORY` is the only implemented storage path.
@@ -366,7 +375,7 @@ Reason:
 ## 10. Good Next Tasks
 
 1. Add API-level integration coverage for remaining cancel follow-up variants.
-2. Improve shutdown so a single Ctrl-C exits cleanly.
+2. Verify and finish single-Ctrl-C shutdown behavior in a real running process.
 3. Expand EventBus coverage and diagnostics around the current `channel/eventbus/core` path.
 4. Expand diagnostics around task dispatch and result write-back so stuck tasks are easier to localize.
 5. Keep UI work secondary until API/runtime convergence is stable.
