@@ -217,14 +217,20 @@ public class TaskApiController {
     public ResponseEntity<?> deleteTask(@PathVariable String taskId) {
         try {
             Task task = taskManager.getTask(taskId);
-            if (task != null) {
-                taskManager.deleteTask(taskId);
+            if (task == null) {
+                return ResponseEntity.notFound().build();
+            }
+            boolean deleted = taskManager.deleteTask(taskId);
+            if (deleted) {
                 return ResponseEntity.ok(java.util.Map.of(
                         "success", true,
                         "message", "任务删除成功"
                 ));
             } else {
-                return ResponseEntity.notFound().build();
+                return ResponseEntity.badRequest().body(java.util.Map.of(
+                        "success", false,
+                        "message", "任务删除失败：当前状态 " + task.getStatus().name() + " 不允许删除"
+                ));
             }
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(java.util.Map.of(

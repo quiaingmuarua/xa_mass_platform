@@ -88,9 +88,12 @@ public class ServerSessionManager {
             }
             Map<String, ChannelHandlerContext> roleCtxMap = deviceChannelCtxMap.get(key.getDeviceId());
             if (roleCtxMap != null) {
-                // 同样，仅当存储的 channel 与当前要移除的 channel 是同一个实例时才移除对应的 context
-                Channel existingChannelInMap = deviceChannelMap.getOrDefault(key.getDeviceId(), Collections.emptyMap()).get(key.getConnRole());
-                if (channel.equals(existingChannelInMap)) {
+                // Use the already-captured roleMap reference (not deviceChannelMap, which may have
+                // had the entry removed above). This prevents the ctx from leaking when the channel
+                // entry was just deleted in the block above.
+                Channel remainingChannel = roleMap != null ? roleMap.get(key.getConnRole()) : null;
+                if (remainingChannel == null) {
+                    // The channel entry was removed above; remove the matching ctx too
                     roleCtxMap.remove(key.getConnRole());
                 }
                 if (roleCtxMap.isEmpty()) {
