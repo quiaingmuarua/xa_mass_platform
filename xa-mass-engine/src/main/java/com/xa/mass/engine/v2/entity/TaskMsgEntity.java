@@ -1,6 +1,5 @@
 package com.xa.mass.engine.v2.entity;
 
-import lombok.Data;
 import java.util.List;
 
 public class TaskMsgEntity {

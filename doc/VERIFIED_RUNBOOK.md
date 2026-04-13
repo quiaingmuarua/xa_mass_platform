@@ -147,6 +147,7 @@ Regression test:
 Integration test:
 
 - `xa-mass-mock/src/test/java/com/xa/mass/mock/api/TaskApiIntegrationTest.java`
+- `xa-mass-mock/src/test/java/com/xa/mass/mock/api/TaskApiLifecycleGuardsIntegrationTest.java`
 
 What it verifies:
 
@@ -159,6 +160,7 @@ What it verifies:
 - two persisted messages exist
 - each message finishes as `SUCCESS`
 - each message has non-null `deviceId`, `tokenId`, and `batchId`
+- separate lifecycle guard coverage now verifies reject/approve, pause/resume, and delete guard through real HTTP APIs with no assignable devices
 
 Implementation details that matter:
 
@@ -181,7 +183,7 @@ What it verifies:
 ### 5.5 Focused Verified Test Command
 
 ```bash
-mvn --% -pl xa-mass-mock -am -Dtest=MassWebSocketClientImplTest,TaskApiIntegrationTest,WebSocketClientStarterTest -Dsurefire.failIfNoSpecifiedTests=false test
+mvn --% -pl xa-mass-mock -am -Dtest=MassWebSocketClientImplTest,TaskApiIntegrationTest,TaskApiLifecycleGuardsIntegrationTest,WebSocketClientStarterTest -Dsurefire.failIfNoSpecifiedTests=false test
 ```
 
 Verified result:

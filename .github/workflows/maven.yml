@@ -53,6 +53,6 @@ jobs:
       - name: Run API lifecycle happy-path integration checks
         run: >-
           mvn -B -pl xa-mass-mock -am
-          -Dtest=TaskApiIntegrationTest,MassWebSocketClientImplTest,WebSocketClientStarterTest
+          -Dtest=TaskApiIntegrationTest,TaskApiLifecycleGuardsIntegrationTest,MassWebSocketClientImplTest,WebSocketClientStarterTest
           -Dsurefire.failIfNoSpecifiedTests=false
           test

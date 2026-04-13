@@ -1,7 +1,5 @@
 package com.xa.mass.engine.v2.entity;
 
-import lombok.Data;
-
 public class TokenEntity {
     private String tokenId;
     private String deviceId;

@@ -13,6 +13,7 @@ This file is the fastest entry point for coding agents such as Claude Code, Code
 - Pause/resume regression is also verified: `NEW -> READY -> PAUSED -> READY`
 - Current focused mock/runtime regression is green
 - `TaskApiIntegrationTest` now covers `create -> approve -> assign -> run -> complete`
+- `TaskApiLifecycleGuardsIntegrationTest` now covers `reject -> approve`, `pause -> resume`, and delete guard through real HTTP APIs
 - `MassWebSocketClientImpl` ignores `response=true` `TASK/step` frames to avoid mock echo loops
 - Treat `engine/v2` as historical, not mainline
 
@@ -302,12 +303,13 @@ Important current implementation facts:
 Focused verified regression command on `2026-04-13`:
 
 ```bash
-mvn --% -pl xa-mass-mock -am -Dtest=MassWebSocketClientImplTest,TaskApiIntegrationTest,WebSocketClientStarterTest -Dsurefire.failIfNoSpecifiedTests=false test
+mvn --% -pl xa-mass-mock -am -Dtest=MassWebSocketClientImplTest,TaskApiIntegrationTest,TaskApiLifecycleGuardsIntegrationTest,WebSocketClientStarterTest -Dsurefire.failIfNoSpecifiedTests=false test
 ```
 
 Verified focused classes:
 
 - `xa-mass-mock/src/test/java/com/xa/mass/mock/api/TaskApiIntegrationTest.java`
+- `xa-mass-mock/src/test/java/com/xa/mass/mock/api/TaskApiLifecycleGuardsIntegrationTest.java`
 - `xa-mass-mock/src/test/java/com/xa/mass/mock/client/MassWebSocketClientImplTest.java`
 - `xa-mass-mock/src/test/java/com/xa/mass/mock/starter/WebSocketClientStarterTest.java`
 - Existing engine/api/starter regressions remain the primary mainline unit-test surface
@@ -316,6 +318,7 @@ What the new focused coverage proves:
 
 - default `dev` startup can auto-create mock client connections
 - API create + approve flows through assignment, dispatch, result write-back, and terminal completion
+- API lifecycle guards for reject/approve, pause/resume, and delete protection are verified through real HTTP calls
 - mock clients no longer respond to server response frames
 
 ## 8. Historical Test Debt

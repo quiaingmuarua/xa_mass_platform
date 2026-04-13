@@ -78,11 +78,12 @@ Startup behavior:
 Focused verified regression command:
 
 ```bash
-mvn --% -pl xa-mass-mock -am -Dtest=MassWebSocketClientImplTest,TaskApiIntegrationTest,WebSocketClientStarterTest -Dsurefire.failIfNoSpecifiedTests=false test
+mvn --% -pl xa-mass-mock -am -Dtest=MassWebSocketClientImplTest,TaskApiIntegrationTest,TaskApiLifecycleGuardsIntegrationTest,WebSocketClientStarterTest -Dsurefire.failIfNoSpecifiedTests=false test
 ```
 
 Covered areas:
 
 - `TaskApiIntegrationTest`: create -> approve -> assign -> run -> complete
+- `TaskApiLifecycleGuardsIntegrationTest`: reject/approve, pause/resume, delete guard through real HTTP APIs
 - `WebSocketClientStarterTest`: auto-start and idempotent startup behavior
 - `MassWebSocketClientImplTest`: ignore `response=true` task frames and avoid echo loops

@@ -4,12 +4,10 @@ import com.xa.mass.base.enums.Project;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.engine.v2.dao.DeviceRepositoryManager;
 import com.xa.mass.engine.v2.dao.TaskRepositoryManager;
-import lombok.extern.slf4j.Slf4j;
 
 import java.time.Instant;
 import java.util.Objects;
 
-@Slf4j
 public class AutoRecoveryService extends AbstractDaemonService{
     TaskRepositoryManager taskRepositoryManager;
     DeviceRepositoryManager deviceRepositoryManager;
