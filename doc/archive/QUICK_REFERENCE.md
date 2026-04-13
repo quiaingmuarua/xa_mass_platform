@@ -1,3 +1,8 @@
+> Archived during repository convergence.
+> For current startup and runtime behavior, use:
+> - [../VERIFIED_RUNBOOK.md](../VERIFIED_RUNBOOK.md)
+> - [../../AGENTS.md](../../AGENTS.md)
+
 # XA Mass Platform - Quick Reference Guide
 
 > **⚠️ 部分过时** — 启动命令和接口示例以 [`doc/VERIFIED_RUNBOOK.md`](./doc/VERIFIED_RUNBOOK.md) 为准。

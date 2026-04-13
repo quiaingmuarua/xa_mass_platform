@@ -31,13 +31,19 @@ public class MassWebSocketClientImpl extends WebSocketClient implements MassWebS
     private final ScheduledExecutorService reconnectScheduler;
     private final AtomicInteger reconnectAttempts = new AtomicInteger(0);
     private final String deviceId;
+    private final String taskResultStatus;
 
     private boolean intentionalClose = false;
     private URI uri;
 
     public MassWebSocketClientImpl(URI serverUri, String deviceId) {
+        this(serverUri, deviceId, "SUCCESS");
+    }
+
+    public MassWebSocketClientImpl(URI serverUri, String deviceId, String taskResultStatus) {
         super(serverUri);
         this.deviceId = deviceId;
+        this.taskResultStatus = normalizeTaskResultStatus(taskResultStatus);
         this.reconnectScheduler = Executors.newSingleThreadScheduledExecutor(r -> {
             Thread t = new Thread(r, "websocket-reconnect-scheduler-" + deviceId);
             t.setDaemon(true);
@@ -47,7 +53,7 @@ public class MassWebSocketClientImpl extends WebSocketClient implements MassWebS
     }
 
     public MassWebSocketClientImpl(String deviceId) {
-        this(URI.create("ws://localhost:8088/ws"), deviceId);
+        this(URI.create("ws://localhost:8088/ws"), deviceId, "SUCCESS");
     }
 
     @Override
@@ -130,7 +136,7 @@ public class MassWebSocketClientImpl extends WebSocketClient implements MassWebS
                 : "step-0-default";
         payloadMap.put("stepId", stepId);
         payloadMap.put("mockData", "Executed by mock client " + deviceId);
-        payloadMap.put("status", "SUCCESS");
+        payloadMap.put("status", taskResultStatus);
 
         response.setPayload(gson.toJsonTree(payloadMap));
 
@@ -206,6 +212,14 @@ public class MassWebSocketClientImpl extends WebSocketClient implements MassWebS
 
     public String getDeviceId() {
         return deviceId;
+    }
+
+    private String normalizeTaskResultStatus(String taskResultStatus) {
+        if (taskResultStatus == null || taskResultStatus.isBlank()) {
+            return "SUCCESS";
+        }
+        String normalized = taskResultStatus.trim().toUpperCase();
+        return "FAILED".equals(normalized) ? "FAILED" : "SUCCESS";
     }
 
     @Override

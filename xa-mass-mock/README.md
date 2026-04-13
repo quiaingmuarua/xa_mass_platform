@@ -69,6 +69,7 @@ Startup behavior:
 | `mass.websocket.port` | `18088` | gateway WebSocket port |
 | `mock.client.auto-start` | `true` | auto-start mock clients in default `dev` path |
 | `mock.client.uri` | `ws://localhost:${mass.websocket.port}/ws` | target gateway address |
+| `mock.client.task-result-status` | `SUCCESS` | force mock result frames to `SUCCESS` or `FAILED` |
 | `mass.mock.data.devices` | `mock/mock_devices.json` | mock device data |
 | `mass.mock.data.tasks` | `mock/mock_tasks.json` | mock task data |
 | `mass.mock.data.rules` | `mock/mock_rules.json` | mock rule data |
@@ -78,12 +79,13 @@ Startup behavior:
 Focused verified regression command:
 
 ```bash
-mvn --% -pl xa-mass-mock -am -Dtest=MassWebSocketClientImplTest,TaskApiIntegrationTest,TaskApiLifecycleGuardsIntegrationTest,WebSocketClientStarterTest -Dsurefire.failIfNoSpecifiedTests=false test
+mvn --% -pl xa-mass-mock -am -Dtest=MassWebSocketClientImplTest,TaskApiIntegrationTest,TaskApiFailureResultIntegrationTest,TaskApiLifecycleGuardsIntegrationTest,WebSocketClientStarterTest -Dsurefire.failIfNoSpecifiedTests=false test
 ```
 
 Covered areas:
 
 - `TaskApiIntegrationTest`: create -> approve -> assign -> run -> complete
+- `TaskApiFailureResultIntegrationTest`: create -> approve -> assign -> fail -> terminal through the real mock runtime
 - `TaskApiLifecycleGuardsIntegrationTest`: reject/approve, pause/resume, delete guard through real HTTP APIs
 - `WebSocketClientStarterTest`: auto-start and idempotent startup behavior
-- `MassWebSocketClientImplTest`: ignore `response=true` task frames and avoid echo loops
+- `MassWebSocketClientImplTest`: ignore `response=true` task frames, avoid echo loops, and allow configurable `SUCCESS` / `FAILED` result payloads

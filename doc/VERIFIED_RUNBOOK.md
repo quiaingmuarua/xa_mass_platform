@@ -4,6 +4,15 @@ Last updated: 2026-04-13
 
 This runbook records only facts that were verified by code, tests, or real runtime behavior. If older docs disagree, trust code and runtime.
 
+Document scope:
+
+- startup commands
+- runtime verification checks
+- verified execution path
+- focused regression coverage
+
+For endpoint inventory, response shapes, and implementation status, use [内部管理接口文档.md](./内部管理接口文档.md).
+
 ## 1. Current Conclusions
 
 - The real Spring Boot entrypoint is `xa-mass-mock`.
@@ -14,6 +23,9 @@ This runbook records only facts that were verified by code, tests, or real runti
   - `TaskMsg INIT -> SENT -> SUCCESS`
 - The pause/resume lifecycle regression is also verified:
   - `NEW -> READY -> PAUSED -> READY`
+- A failed downstream result path is also verified:
+  - `NEW -> READY -> RUNNING -> TERMINAL`
+  - `TaskMsg INIT -> SENT -> FAILED`
 
 ## 2. Recommended Startup
 
@@ -56,27 +68,17 @@ Default `dev` startup facts:
 - `server.port` is the HTTP port, currently `8088`
 - `mass.websocket.port` is the gateway WebSocket port, currently `18088`
 - In the verified default path, mock devices connect automatically to `ws://localhost:18088/ws`
+- `mock.client.task-result-status` can force mock result frames to `SUCCESS` or `FAILED`
 - legacy client-only Spring Boot bootstrap has been removed
 
-## 4. Current API Mainline
+## 4. Current Runtime Mainline
 
-### 4.1 Create a Task
+### 4.1 Lifecycle Entry Points
 
 ```bash
 curl -s -X POST http://127.0.0.1:8088/status/api/tasks \
   -H 'Content-Type: application/json' \
   -d '{"taskName":"smoke-lifecycle","project":"demoApp","countryCode":"us","textContent":"smoke","userId":"agent","targetList":["smoke-target-001","smoke-target-002"],"batchSize":1}'
-```
-
-Verified facts:
-
-- Initial task status is `NEW`
-- `targetList` is persisted as real `TaskMsg` rows
-- `TaskManager.createTask()` now guards `targetList = null` and no longer throws NPE on that path
-
-### 4.2 Audit, Pause, Resume
-
-```bash
 curl -i -X POST "http://127.0.0.1:8088/status/api/tasks/{taskId}/audit?approved=true&comment=smoke"
 curl -i -X POST http://127.0.0.1:8088/status/api/tasks/{taskId}/pause
 curl -i -X POST http://127.0.0.1:8088/status/api/tasks/{taskId}/resume
@@ -84,12 +86,18 @@ curl -i -X POST http://127.0.0.1:8088/status/api/tasks/{taskId}/resume
 
 Verified state transitions:
 
+- create: initial task status is `NEW`
+- create: `targetList` is persisted as real `TaskMsg` rows
+- create: `TaskManager.createTask()` now guards `targetList = null` and no longer throws NPE on that path
 - `approveTask`: `NEW`, `BLOCKED` -> `READY`
+- `rejectTask`: `NEW` -> `BLOCKED`
 - `pauseTask`: `READY`, `RUNNING` -> `PAUSED`
 - `resumeTask`: `PAUSED` -> `READY`
 - `deleteTask`: only `NEW`, `TERMINAL`
 
-### 4.3 Assign and Run
+The full endpoint matrix is maintained in [内部管理接口文档.md](./内部管理接口文档.md).
+
+### 4.2 Assign and Run
 
 Verified runtime path:
 
@@ -102,7 +110,7 @@ Verified runtime path:
 7. Each `TaskMsg` is filled with `deviceId`, `tokenId`, and `batchId`, then moved to `SENT`.
 8. `GatewayTaskMsgPublisher` pushes the downstream payload as `TASK/step`.
 
-### 4.4 Result Write-Back and Completion
+### 4.3 Result Write-Back and Completion
 
 Verified runtime path:
 
@@ -116,8 +124,9 @@ Verified runtime path:
 Important guard added in the verified runtime:
 
 - `MassWebSocketClientImpl` ignores `response=true` `TASK/step` frames so mock clients do not echo server response frames back into the system
+- `WebSocketClientStarter` passes `mock.client.task-result-status` into each mock client so failure-path result handling can be exercised without changing the engine path
 
-## 5. Verified Smoke and Test Coverage on 2026-04-13
+## 5. Verified Smoke and Regression Coverage on 2026-04-13
 
 ### 5.1 Mock Data Preconditions
 
@@ -142,7 +151,7 @@ Regression test:
 
 - `xa-mass-mock/src/test/java/com/xa/mass/mock/starter/WebSocketClientStarterTest.java`
 
-### 5.3 Real API Happy Path Is Covered by Integration Test
+### 5.3 Real API Happy and Guard Paths Are Covered by Integration Tests
 
 Integration test:
 
@@ -169,7 +178,23 @@ Implementation details that matter:
 - It wires both `mass.websocket.port` and `mock.client.uri` to that allocated port
 - It uses minimal dedicated mock fixtures to keep the run deterministic
 
-### 5.4 Mock Echo Loop Regression Is Covered
+### 5.4 Failed Result Write-Back Path Is Covered
+
+Integration test:
+
+- `xa-mass-mock/src/test/java/com/xa/mass/mock/api/TaskApiFailureResultIntegrationTest.java`
+
+What it verifies:
+
+- `mock.client.task-result-status=FAILED` drives real mock clients to send failure result frames
+- the task still reaches `TERMINAL`
+- `scheduleDeviceCnt == 2`
+- `taskExecutedNumber == 0`
+- both persisted messages finish as `FAILED`
+- each failed message keeps non-null `deviceId`, `tokenId`, and `batchId`
+- each failed message writes `errorMessage = "Executed by mock client " + deviceId`
+
+### 5.5 Mock Echo Loop Regression Is Covered
 
 Regression test:
 
@@ -180,10 +205,10 @@ What it verifies:
 - a task request frame produces exactly one mock response
 - a task response frame does not trigger another response
 
-### 5.5 Focused Verified Test Command
+### 5.6 Focused Verified Test Command
 
 ```bash
-mvn --% -pl xa-mass-mock -am -Dtest=MassWebSocketClientImplTest,TaskApiIntegrationTest,TaskApiLifecycleGuardsIntegrationTest,WebSocketClientStarterTest -Dsurefire.failIfNoSpecifiedTests=false test
+mvn --% -pl xa-mass-mock -am -Dtest=MassWebSocketClientImplTest,TaskApiIntegrationTest,TaskApiFailureResultIntegrationTest,TaskApiLifecycleGuardsIntegrationTest,WebSocketClientStarterTest -Dsurefire.failIfNoSpecifiedTests=false test
 ```
 
 Verified result:
@@ -196,11 +221,11 @@ Verified result:
 - the running app may still need two interrupts to exit
 - EventBus runtime is not yet converged and still uses `old.eventbus` in places
 - Redis and Database storage remain fail-fast placeholders
-- API integration coverage is still incomplete beyond the happy path
+- API integration coverage is still selective beyond the current happy, guard, and failed-result paths
 
 Recommended next test-driven additions:
 
-1. reject path end-to-end
-2. pause/resume end-to-end
-3. delete guard end-to-end
-4. failed message result path end-to-end
+1. `RUNNING -> PAUSED -> READY` end-to-end with real assigned messages
+2. terminate path end-to-end from `READY`, `RUNNING`, and `PAUSED`
+3. duplicate result / repeated callback idempotency coverage
+4. mixed-result aggregation coverage where one message succeeds and another fails

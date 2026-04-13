@@ -140,6 +140,49 @@ class TaskApiLifecycleGuardsIntegrationTest {
         assertEquals(404, missingTaskResponse.getStatusCode().value());
     }
 
+    @Test
+    void terminateWorksForReadyAndPausedTasks() {
+        String readyTaskId = createTask("guard-terminate-ready");
+        Map<String, Object> approveReadyResponse = exchange(
+                "/status/api/tasks/" + readyTaskId + "/audit?approved=true&comment=approve",
+                HttpMethod.POST,
+                null
+        );
+        assertEquals(Boolean.TRUE, approveReadyResponse.get("success"));
+        assertEquals("READY", task(readyTaskId).get("status"));
+
+        Map<String, Object> terminateReadyResponse = exchange(
+                "/status/api/tasks/" + readyTaskId + "/terminate",
+                HttpMethod.POST,
+                null
+        );
+        assertEquals(Boolean.TRUE, terminateReadyResponse.get("success"));
+        assertEquals("TERMINAL", task(readyTaskId).get("status"));
+
+        String pausedTaskId = createTask("guard-terminate-paused");
+        Map<String, Object> approvePausedResponse = exchange(
+                "/status/api/tasks/" + pausedTaskId + "/audit?approved=true&comment=approve",
+                HttpMethod.POST,
+                null
+        );
+        assertEquals(Boolean.TRUE, approvePausedResponse.get("success"));
+        Map<String, Object> pauseResponse = exchange(
+                "/status/api/tasks/" + pausedTaskId + "/pause",
+                HttpMethod.POST,
+                null
+        );
+        assertEquals(Boolean.TRUE, pauseResponse.get("success"));
+        assertEquals("PAUSED", task(pausedTaskId).get("status"));
+
+        Map<String, Object> terminatePausedResponse = exchange(
+                "/status/api/tasks/" + pausedTaskId + "/terminate",
+                HttpMethod.POST,
+                null
+        );
+        assertEquals(Boolean.TRUE, terminatePausedResponse.get("success"));
+        assertEquals("TERMINAL", task(pausedTaskId).get("status"));
+    }
+
     private String createTask(String taskName) {
         Map<String, Object> createBody = new LinkedHashMap<>();
         createBody.put("taskName", taskName);

@@ -45,6 +45,17 @@ class MassWebSocketClientImplTest {
         assertTrue(client.sentMessages.isEmpty());
     }
 
+    @Test
+    void taskRequestCanProduceFailedMockResponseWhenConfigured() {
+        CapturingMassWebSocketClient client = new CapturingMassWebSocketClient("device-test", "FAILED");
+
+        client.onMessage(gson.toJson(taskMessage(false)));
+
+        assertEquals(1, client.sentMessages.size());
+        MassMessage response = gson.fromJson(client.sentMessages.get(0), MassMessage.class);
+        assertEquals("FAILED", response.getPayload().getAsJsonObject().get("status").getAsString());
+    }
+
     private MassMessage taskMessage(boolean response) {
         MassMessage message = new MassMessage();
         message.setMsgId("msg-1");
@@ -74,7 +85,11 @@ class MassWebSocketClientImplTest {
         private final List<String> sentMessages = new ArrayList<>();
 
         private CapturingMassWebSocketClient(String deviceId) {
-            super(URI.create("ws://127.0.0.1:65535/ws"), deviceId);
+            this(deviceId, "SUCCESS");
+        }
+
+        private CapturingMassWebSocketClient(String deviceId, String taskResultStatus) {
+            super(URI.create("ws://127.0.0.1:65535/ws"), deviceId, taskResultStatus);
         }
 
         @Override

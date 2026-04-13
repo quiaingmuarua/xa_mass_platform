@@ -13,8 +13,10 @@ This file is the fastest entry point for coding agents such as Claude Code, Code
 - Pause/resume regression is also verified: `NEW -> READY -> PAUSED -> READY`
 - Current focused mock/runtime regression is green
 - `TaskApiIntegrationTest` now covers `create -> approve -> assign -> run -> complete`
+- `TaskApiFailureResultIntegrationTest` now covers `create -> approve -> assign -> fail -> terminal`
 - `TaskApiLifecycleGuardsIntegrationTest` now covers `reject -> approve`, `pause -> resume`, and delete guard through real HTTP APIs
 - `MassWebSocketClientImpl` ignores `response=true` `TASK/step` frames to avoid mock echo loops
+- `mock.client.task-result-status` can force mock result frames to `SUCCESS` or `FAILED`
 - Treat `engine/v2` as historical, not mainline
 
 ## 1. What This Repo Is
@@ -40,7 +42,7 @@ Trust order:
 4. `doc/AGENT_BASELINE.md`
 5. `doc/VERIFIED_RUNBOOK.md`
 6. module READMEs / internal API doc under `doc/` / task flow doc under `doc/engine/`
-7. `API_DOCUMENTATION.md` / `QUICK_REFERENCE.md` - partially outdated, warnings exist at the top
+7. `doc/archive/API_DOCUMENTATION.md` / `doc/archive/QUICK_REFERENCE.md` - archived reference docs, partially outdated
 8. `old/` / `v2/` docs - historical archive only
 
 Deleted historical docs that should not be treated as missing:
@@ -128,6 +130,7 @@ Notes:
 
 - This is the real operational entry, not just a demo shell.
 - Default `dev` startup now includes mock WebSocket clients when `mock.client.auto-start=true`.
+- `mock.client.task-result-status` can be used to simulate success or failure result write-back in tests.
 - Legacy client-only Spring Boot entry and client monitor endpoints have been removed.
 - New focused runtime regression tests live here.
 
@@ -291,8 +294,10 @@ Important current implementation facts:
 - `TaskManager.handleTaskMessageResult(...)` updates persisted `TaskMsg` state by `taskId + msgId`, recalculates progress, and closes `RUNNING` tasks to `TERMINAL` when all messages finish.
 - `MassApplication.loadMockData(...)` normalizes mock `supportedProjects`, lowercases `groupId`, and auto-seeds `LOGIN_READY` tokens when devices do not already have token data.
 - `WebSocketClientStarter` now starts on `ApplicationReadyEvent` behind `mock.client.auto-start=true`, so default `dev` startup includes mock client result write-back.
+- `WebSocketClientStarter` passes `mock.client.task-result-status` into each mock client so result write-back can be forced to `SUCCESS` or `FAILED`.
 - `MassWebSocketClientImpl` now ignores `response=true` task frames to prevent mock client echo loops and duplicate result writes.
 - Verified on `2026-04-13`: API-created tasks move `NEW -> READY -> RUNNING -> TERMINAL`, and persisted `TaskMsg` rows move `INIT -> SENT -> SUCCESS` with `deviceId` / `tokenId` / `batchId`.
+- Verified on `2026-04-13`: with `mock.client.task-result-status=FAILED`, API-created tasks still move `NEW -> READY -> RUNNING -> TERMINAL`, `taskExecutedNumber` stays `0`, and persisted `TaskMsg` rows move `INIT -> SENT -> FAILED`.
 - `TaskAssignWorker` uses `CopyOnWriteArrayList` for listeners.
 - `TaskAssignWorker.stop()` calls `shutdownNow()` plus `awaitTermination(10s)`.
 - `ServerSessionManager.removeSession()` evicts `ChannelHandlerContext` on disconnect.
@@ -303,12 +308,13 @@ Important current implementation facts:
 Focused verified regression command on `2026-04-13`:
 
 ```bash
-mvn --% -pl xa-mass-mock -am -Dtest=MassWebSocketClientImplTest,TaskApiIntegrationTest,TaskApiLifecycleGuardsIntegrationTest,WebSocketClientStarterTest -Dsurefire.failIfNoSpecifiedTests=false test
+mvn --% -pl xa-mass-mock -am -Dtest=MassWebSocketClientImplTest,TaskApiIntegrationTest,TaskApiFailureResultIntegrationTest,TaskApiLifecycleGuardsIntegrationTest,WebSocketClientStarterTest -Dsurefire.failIfNoSpecifiedTests=false test
 ```
 
 Verified focused classes:
 
 - `xa-mass-mock/src/test/java/com/xa/mass/mock/api/TaskApiIntegrationTest.java`
+- `xa-mass-mock/src/test/java/com/xa/mass/mock/api/TaskApiFailureResultIntegrationTest.java`
 - `xa-mass-mock/src/test/java/com/xa/mass/mock/api/TaskApiLifecycleGuardsIntegrationTest.java`
 - `xa-mass-mock/src/test/java/com/xa/mass/mock/client/MassWebSocketClientImplTest.java`
 - `xa-mass-mock/src/test/java/com/xa/mass/mock/starter/WebSocketClientStarterTest.java`
@@ -318,8 +324,10 @@ What the new focused coverage proves:
 
 - default `dev` startup can auto-create mock client connections
 - API create + approve flows through assignment, dispatch, result write-back, and terminal completion
+- API create + approve also covers failed downstream result write-back through terminal completion
 - API lifecycle guards for reject/approve, pause/resume, and delete protection are verified through real HTTP calls
 - mock clients no longer respond to server response frames
+- mock result status can be forced to `FAILED` without changing business logic code paths
 
 ## 8. Historical Test Debt
 
@@ -338,11 +346,11 @@ The engine POM excludes those tests from active test compilation/execution.
 - Shutdown may still require two interrupts in the running app.
 - EventBus is not yet converged. Runtime still uses Guava-based `old.eventbus` in places.
 - Redis and Database storage remain fail-fast only. `MEMORY` is the only implemented storage path.
-- API edge-case integration coverage is still thin. The happy path is covered, but reject/pause-resume/delete-guard/failure cases still need end-to-end tests.
+- API integration coverage is still selective. Duplicate result/idempotency and some cancel-path behavior still need end-to-end tests.
 
 ## 10. Good Next Tasks
 
-1. Add API-level integration coverage for reject, pause/resume, delete guard, and failed message result handling.
+1. Add API-level integration coverage for duplicate result/idempotency and remaining cancel-path variants.
 2. Improve shutdown so a single Ctrl-C exits cleanly.
 3. Converge EventBus call sites onto the current intended runtime abstraction.
 4. Expand diagnostics around task dispatch and result write-back so stuck tasks are easier to localize.

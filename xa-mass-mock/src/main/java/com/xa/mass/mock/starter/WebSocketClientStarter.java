@@ -70,6 +70,9 @@ public class WebSocketClientStarter {
     @Value("${mock.client.retry-delay:5}")
     private int retryDelay;
 
+    @Value("${mock.client.task-result-status:SUCCESS}")
+    private String taskResultStatus;
+
     private final AtomicBoolean started = new AtomicBoolean(false);
     private ExecutorService clientExecutor;
     private ScheduledExecutorService pingScheduler;
@@ -182,7 +185,7 @@ public class WebSocketClientStarter {
         for (int attempt = 1; attempt <= retryAttempts; attempt++) {
             try {
                 URI uri = new URI(baseUri);
-                MassWebSocketClientImpl client = new MassWebSocketClientImpl(uri, deviceId);
+                MassWebSocketClientImpl client = new MassWebSocketClientImpl(uri, deviceId, taskResultStatus);
                 clientSessionManager.addClient(client);
 
                 if (client.connectBlocking(connectionTimeout, TimeUnit.SECONDS)) {

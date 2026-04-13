@@ -1,29 +1,29 @@
 # xa-mass-api
 
-## Agent Notes
+## Role
 
-- Current role: controller/template layer
-- Current boot path: loaded by `xa-mass-mock` Spring Boot scanning
-- Do not treat this module as an independent runnable app
-- For verified commands and runtime behavior, read:
-  - [`../AGENTS.md`](../AGENTS.md)
-  - [`../doc/AGENT_BASELINE.md`](../doc/AGENT_BASELINE.md)
-  - [`../doc/VERIFIED_RUNBOOK.md`](../doc/VERIFIED_RUNBOOK.md)
+- REST controller and status page layer
+- DTO / request-response boundary
+- loaded by `xa-mass-mock` Spring Boot scanning
+
+## Current Status
+
+- not an independently verified runnable app
+- API lifecycle endpoints are aligned to `TaskManager`
+- UI pages are a secondary validation surface, not the source of truth
 
 ## Start Here
-
-Open these first if you are debugging API behavior:
 
 - `src/main/java/com/xa/mass/api/internal/TaskApiController.java`
 - `src/main/java/com/xa/mass/api/internal/StatusPageController.java`
 - `src/main/resources/templates/tasks.html`
 
-本模块为 API 层，负责：
+## Boundaries
 
-- RESTful API 控制器
-- DTO、AOP、全局异常处理
-- 仅暴露接口，不包含业务实现
-
-不包含启动入口，由 app 模块统一装配。
-
-> mock、测试、接口联动等由 `xa-mass-mock` 模块统一提供。 
+- do not treat this module as the Boot entry
+- do not debug task lifecycle rules here first; check `xa-mass-engine` and `TaskStatus`
+- use these documents before trusting module-local assumptions:
+  - [`../AGENTS.md`](../AGENTS.md)
+  - [`../doc/AGENT_BASELINE.md`](../doc/AGENT_BASELINE.md)
+  - [`../doc/VERIFIED_RUNBOOK.md`](../doc/VERIFIED_RUNBOOK.md)
+  - [`../doc/内部管理接口文档.md`](../doc/内部管理接口文档.md)

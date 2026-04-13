@@ -1,3 +1,9 @@
+> Archived during repository convergence.
+> Start from:
+> - [../../AGENTS.md](../../AGENTS.md)
+> - [../AGENT_BASELINE.md](../AGENT_BASELINE.md)
+> - [../VERIFIED_RUNBOOK.md](../VERIFIED_RUNBOOK.md)
+
 # XA Mass Platform - Documentation Index
 
 > **⚠️ 部分过时** — 以下文档已删除（daily/、doc/规划.md、v2 草稿），索引内容不再完整。
