@@ -81,7 +81,7 @@ public class MassEngine {
             TaskMsgDispatchListener taskMsgDispatchListener = config.getTaskMsgDispatchListener();
             var ruleManager = config.getRuleManager();
             var msgAssignListener = new SimpleTaskMsgAssignListener(taskManager, deviceManager, recordService, taskMsgDispatchListener);
-            var deviceAssignListener = new TaskDeviceAssignListener(ruleManager, deviceManager, msgAssignListener, recordService);
+            var deviceAssignListener = new TaskDeviceAssignListener(ruleManager, deviceManager, msgAssignListener, recordService, taskManager);
             assignWorker = new TaskAssignWorker(deviceAssignListener);
             assignWorker.start();
             taskManager.addTaskReadyListener(assignWorker::submit);

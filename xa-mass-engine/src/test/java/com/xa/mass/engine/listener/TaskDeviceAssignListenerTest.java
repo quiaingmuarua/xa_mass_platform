@@ -213,6 +213,28 @@ public class TaskDeviceAssignListenerTest {
         verifyNoInteractions(ruleManager, deviceManager, recordService);
     }
 
+    @Test
+    public void testOnTaskAssignDoesNotDispatchIfTaskLeavesReadyDuringMatching() {
+        Task task = createTestTask();
+        task.setStatus(TaskStatus.READY);
+        Device customDevice = createTestDevice("custom-device");
+        TaskDeviceMatchingStrategy customStrategy = mock(TaskDeviceMatchingStrategy.class);
+        TaskDeviceAssignListener customListener = new TaskDeviceAssignListener(customStrategy, msgAssignListener, taskManager);
+
+        when(customStrategy.matchDevices(same(task), eq(2))).thenAnswer(invocation -> {
+            task.setStatus(TaskStatus.PAUSED);
+            return List.of(customDevice);
+        });
+
+        customListener.onTaskAssign(task);
+
+        assertEquals(TaskStatus.PAUSED, task.getStatus());
+        assertEquals(0, task.getScheduleDeviceCnt());
+        verify(customStrategy).matchDevices(same(task), eq(2));
+        verifyNoInteractions(msgAssignListener);
+        verify(taskManager, never()).updateTask(any());
+    }
+
     private Task createTestTask() {
         Task task = new Task();
         task.setTid("task-1");

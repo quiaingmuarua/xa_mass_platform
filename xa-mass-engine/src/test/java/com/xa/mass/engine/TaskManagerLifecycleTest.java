@@ -105,19 +105,42 @@ class TaskManagerLifecycleTest {
     }
 
     @Test
-    void createTaskWithNullTargetListDoesNotThrow() {
+    void createTaskRejectsWhenNoTargetsProvided() {
         TaskCreateRequestDto dto = new TaskCreateRequestDto();
         dto.setTaskName("no-targets");
         dto.setProject("demoApp");
         dto.setCountryCode("us");
         dto.setTextContent("smoke");
         dto.setUserId("agent");
-        dto.setTargetList(null); // previously caused NPE at line 80
+        dto.setTargetList(null);
         dto.setBatchSize(0);
 
-        Task task = assertDoesNotThrow(() -> taskManager.createTask(dto));
-        assertNotNull(task);
-        assertTrue(taskManager.getTaskMessages(task.getTid()).isEmpty());
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> taskManager.createTask(dto));
+        assertTrue(error.getMessage().contains("target"));
+    }
+
+    @Test
+    void createTaskRejectsUnsupportedTargetJsonList() {
+        TaskCreateRequestDto dto = new TaskCreateRequestDto();
+        dto.setTaskName("json-targets");
+        dto.setProject("demoApp");
+        dto.setCountryCode("us");
+        dto.setTextContent("smoke");
+        dto.setUserId("agent");
+        dto.setTargetJsonList(List.of("{\"phone\":\"123\"}"));
+
+        UnsupportedOperationException error = assertThrows(UnsupportedOperationException.class, () -> taskManager.createTask(dto));
+        assertTrue(error.getMessage().contains("targetJsonList"));
+    }
+
+    @Test
+    void createTaskPersistsRequestedBatchSize() {
+        TaskCreateRequestDto dto = buildRequest("batch-size");
+        dto.setBatchSize(3);
+
+        Task task = taskManager.createTask(dto);
+
+        assertEquals(3, task.getBatchSize());
     }
 
     @Test
@@ -215,6 +238,31 @@ class TaskManagerLifecycleTest {
         assertEquals(TaskMsgStatus.SUCCESS, updatedMessage.getStatus());
         assertEquals(List.of(task.getTid()), scheduler.pausedTaskIds);
         assertTrue(scheduler.resumedTaskIds.isEmpty());
+    }
+
+    @Test
+    void lateCallbackAfterCancelDoesNotMutateTerminalTask() {
+        Task task = taskManager.createTask(buildRequest("task-cancel-late-callback", List.of("alpha")));
+        taskManager.approveTask(task.getTid());
+        task.setStatus(TaskStatus.RUNNING);
+
+        TaskMsg message = taskManager.getTaskMessages(task.getTid()).get(0);
+        message.transitionTo(TaskMsgStatus.BINDING);
+        message.markAsSent();
+        taskManager.updateTaskMessage(task.getTid(), message);
+
+        assertTrue(taskManager.cancelTask(task.getTid()));
+        assertEquals(TaskStatus.TERMINAL, taskManager.getTask(task.getTid()).getStatus());
+
+        assertTrue(taskManager.handleTaskMessageResult(task.getTid(), message.getMsgId(), true, "late-success"));
+
+        Task updatedTask = taskManager.getTask(task.getTid());
+        TaskMsg updatedMessage = taskManager.getTaskMessage(task.getTid(), message.getMsgId());
+        assertEquals(TaskStatus.TERMINAL, updatedTask.getStatus());
+        assertEquals(0, updatedTask.getTaskExecutedNumber());
+        assertEquals(TaskMsgStatus.SENT, updatedMessage.getStatus());
+        assertEquals(0, scheduler.completedTaskMsgCount);
+        assertEquals(0, scheduler.failedTaskMsgCount);
     }
 
     @Test

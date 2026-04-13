@@ -13,6 +13,7 @@ import com.xa.mass.engine.util.LogUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
@@ -59,13 +60,14 @@ public class TaskManager {
             LogUtils.setUserId(dto.getUserId());
 
             // 3. 统计初始消息数
-            int initNumber = 0;
-            if (dto.getTargetList() != null) {
-                initNumber += dto.getTargetList().size();
+            List<String> targets = dto.getTargetList() == null ? Collections.emptyList() : dto.getTargetList();
+            if (dto.getTargetJsonList() != null && !dto.getTargetJsonList().isEmpty()) {
+                throw new UnsupportedOperationException("targetJsonList is not supported by the current runtime");
             }
-            if (dto.getTargetJsonList() != null) {
-                initNumber += dto.getTargetJsonList().size();
+            if (targets.isEmpty()) {
+                throw new IllegalArgumentException("targetList must contain at least one target");
             }
+            int initNumber = targets.size();
 
             // 4. 构建Task对象
             Task task = new Task(
@@ -77,15 +79,14 @@ public class TaskManager {
                     dto.getTextContent(),
                     user
             );
+            task.setBatchSize(dto.getBatchSize());
             // 可扩展设置 extraParams、targetType 等
 
             // 5. 存储任务
             taskStorage.saveTask(task);
-            if (dto.getTargetList() != null) {
-                for (String target : dto.getTargetList()) {
-                    String msgId = java.util.UUID.randomUUID().toString();
-                    addTaskMessage(tid, new TaskMsg(msgId, tid, target));
-                }
+            for (String target : targets) {
+                String msgId = java.util.UUID.randomUUID().toString();
+                addTaskMessage(tid, new TaskMsg(msgId, tid, target));
             }
 
             long duration = System.currentTimeMillis() - startTime;
@@ -510,6 +511,12 @@ public class TaskManager {
             logger.info("Task message {} of task {} is already in final status {}, skipping duplicate result",
                     msgId, taskId, taskMsg.getStatus());
             updateTaskProgress(taskId);
+            return true;
+        }
+
+        if (task.getStatus().isFinal()) {
+            logger.info("Ignoring late result for terminal task {}, msg {} still in status {}",
+                    taskId, msgId, taskMsg.getStatus());
             return true;
         }
 

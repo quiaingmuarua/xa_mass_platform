@@ -24,8 +24,15 @@ For endpoint inventory, response shapes, and implementation status, use [INTERNA
   - `TaskMsg INIT -> SENT -> SUCCESS`
 - The pause/resume lifecycle regression is also verified:
   - `NEW -> READY -> PAUSED -> READY`
+- Create-time validation is now verified:
+  - `targetList` must contain at least one materialized target
+  - non-empty `targetJsonList` is rejected by the current mainline runtime
+  - request `batchSize` is preserved on the persisted task
 - Engine regression also verifies a paused-completion closure rule:
   - if all persisted `TaskMsg` callbacks finish while the task is `PAUSED`, the task is closed to `TERMINAL`
+- Engine regression also verifies two state-machine safety rules:
+  - assignment does not dispatch if a task leaves `READY` during the device-matching window
+  - late callbacks after manual terminal closure are ignored instead of mutating task/message progress
 - A failed downstream result path is also verified:
   - `NEW -> READY -> RUNNING -> TERMINAL`
   - `TaskMsg INIT -> SENT -> FAILED`
@@ -102,7 +109,9 @@ Verified state transitions:
 
 - create: initial task status is `NEW`
 - create: `targetList` is persisted as real `TaskMsg` rows
-- create: `TaskManager.createTask()` now guards `targetList = null` and no longer throws NPE on that path
+- create: `TaskManager.createTask()` requires at least one `targetList` value
+- create: non-empty `targetJsonList` is rejected by the current mainline runtime
+- create: request `batchSize` is persisted onto the task
 - `approveTask`: `NEW`, `BLOCKED` -> `READY`
 - `rejectTask`: `NEW` -> `BLOCKED`
 - `pauseTask`: `READY`, `RUNNING` -> `PAUSED`
@@ -124,7 +133,7 @@ Verified runtime path:
 3. `MassEngine` also resubmits pre-existing `READY` tasks at startup and subscribes to READY events from approve/resume.
 4. `TaskDeviceAssignListener` performs device matching.
 5. `TaskDeviceAssignListener` now delegates matching through `TaskDeviceMatchingStrategy`; the verified default implementation is `RuleBasedTaskDeviceMatchingStrategy`.
-6. On successful matching it writes `scheduleDeviceCnt` and moves the task from `READY` to `RUNNING`.
+6. On successful matching it writes `scheduleDeviceCnt` and moves the task from `READY` to `RUNNING`, but only if the task is still `READY` when matching returns.
 7. If no device matches at that moment, `TaskAssignWorker` delayed-retries the `READY` task instead of letting it fall out of the assignment loop.
 8. `SimpleTaskMsgAssignListener` reuses the persisted `TaskMsg` records created during task creation.
 9. Each `TaskMsg` is filled with `deviceId`, `tokenId`, and `batchId`, then moved to `SENT`.
@@ -140,12 +149,13 @@ Verified runtime path:
 3. `GatewayTaskResultHandler` calls `TaskManager.handleTaskMessageResult(...)`.
 4. `TaskManager` updates the persisted `TaskMsg` by `taskId + msgId`.
 5. Each `TaskMsg` reaches `SUCCESS` or `FAILED`.
-6. When all task messages are final and the task is in `RUNNING`, the task is closed to `TERMINAL`.
+6. When all persisted task messages are final, `TaskManager.updateTaskProgress(...)` closes any non-final task to `TERMINAL`.
 
 Important guard added in the verified runtime:
 
 - `MassWebSocketClientImpl` ignores `response=true` `TASK/step` frames so mock clients do not echo server response frames back into the system
 - `WebSocketClientStarter` passes `mock.client.task-result-status` into each mock client so failure-path result handling can be exercised without changing the engine path
+- `TaskManager.handleTaskMessageResult(...)` ignores late non-final callbacks for tasks already closed to `TERMINAL`, so manual cancel/terminate freezes later progress mutation
 
 ## 5. Verified Smoke and Regression Coverage on 2026-04-13
 
@@ -242,6 +252,7 @@ What they verify:
 - the first final state is preserved and not overwritten by a later conflicting callback
 - `taskExecutedNumber` and task final status remain consistent
 - scheduler completion/failure callbacks are not triggered twice
+- a manual `TERMINAL` closure also freezes later non-final callbacks so they do not alter `TaskMsg` state or task counters
 
 ### 5.7 Duplicate Callback Replay Is Covered End-to-End
 

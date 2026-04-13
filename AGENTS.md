@@ -12,8 +12,11 @@ This file is the fastest entry point for coding agents such as Claude Code, Code
 - Project direction is library/SDK-first; HTTP pages and backend endpoints are validation/demo surfaces
 - Current verified API task path: `NEW -> READY -> RUNNING -> TERMINAL`
 - Pause/resume regression is also verified: `NEW -> READY -> PAUSED -> READY`
+- `TaskManager.createTask()` is now fail-fast for unsupported inputs: empty/null `targetList` is rejected, non-empty `targetJsonList` is rejected, and request `batchSize` is preserved on the task
 - Engine regression now verifies that paused tasks close to `TERMINAL` once all `TaskMsg` callbacks finish
 - Engine regression now verifies that `READY` tasks without a device match are retried instead of falling out of the assignment loop
+- Engine regression now verifies that assignment does not dispatch if a task leaves `READY` during the matching window
+- Engine regression now verifies that late callbacks after manual terminal closure are ignored instead of mutating task/message progress
 - Current focused mock/runtime regression is green
 - `TaskApiIntegrationTest` now covers `create -> approve -> assign -> run -> complete`
 - `TaskApiFailureResultIntegrationTest` now covers `create -> approve -> assign -> fail -> terminal`
@@ -293,15 +296,16 @@ Important current implementation facts:
 
 - `TaskApiController` uses `TaskManager` lifecycle methods for all state changes.
 - `deleteTask()` enforces the state guard. `READY`, `RUNNING`, and `PAUSED` tasks cannot be deleted.
-- `TaskManager.createTask()` guards null `targetList`.
+- `TaskManager.createTask()` requires at least one materialized `targetList` entry, rejects non-empty `targetJsonList`, and persists request `batchSize` onto the task.
 - `TaskManager` persists one `TaskMsg` per target with the correct `taskId`, distinct `msgId`, and actual target value.
 - `MassEngine` starts `TaskAssignWorker` regardless of `mockMode`, submits existing `READY` tasks on startup, and subscribes to READY events from approve/resume.
+- `TaskDeviceAssignListener` re-checks that the task is still `READY` after matching; if the task left `READY` during the matching window, dispatch is skipped.
 - `TaskDeviceAssignListener` sets `scheduleDeviceCnt` and transitions matched tasks from `READY` to `RUNNING`.
 - `TaskDeviceAssignListener` now delegates matching to `TaskDeviceMatchingStrategy`; `RuleBasedTaskDeviceMatchingStrategy` is the current default.
 - `SimpleTaskMsgAssignListener` reuses persisted `TaskMsg` records, fills `deviceId` / `tokenId` / `batchId`, and moves them to `SENT`.
 - `GatewayTaskMsgPublisher` pushes task messages downstream as `TASK/step`.
 - `GatewayTaskResultHandler` handles inbound `TASK/step` results and writes them back through `TaskManager.handleTaskMessageResult(...)`.
-- `TaskManager.handleTaskMessageResult(...)` updates persisted `TaskMsg` state by `taskId + msgId`, recalculates progress, and closes `RUNNING` tasks to `TERMINAL` when all messages finish.
+- `TaskManager.handleTaskMessageResult(...)` updates persisted `TaskMsg` state by `taskId + msgId`, recalculates progress, closes any non-final task to `TERMINAL` once all messages finish, and ignores late non-final callbacks after manual terminal closure.
 - `TaskManager.updateTaskProgress(...)` now closes any non-final task to `TERMINAL` once all persisted `TaskMsg` rows are final, including tasks that were paused while callbacks were still arriving.
 - `TaskManager.resumeTask(...)` now short-circuits paused tasks that already fully completed underneath them and closes them to `TERMINAL` instead of re-queueing them as `READY`.
 - `TaskManager.handleTaskMessageResult(...)` treats duplicate final callbacks as idempotent: the first final result is kept, progress is recalculated, and scheduler callbacks are not triggered twice.

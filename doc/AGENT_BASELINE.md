@@ -42,9 +42,13 @@ Working rule:
 - EventBus mainline has converged onto `com.xa.mass.base.channel.eventbus.core` and `com.xa.mass.base.channel.eventbus.event`
 - API integration coverage includes terminate-from-running and delete-after-terminal after real assignment but before downstream callbacks
 - API integration coverage also proves that paused tasks can still close to terminal when real callbacks arrive after pause
+- `TaskManager.createTask()` is now fail-fast in the mainline runtime: it requires a materialized `targetList`, rejects non-empty `targetJsonList`, and preserves request `batchSize`
 - Engine regression coverage now locks two important closure rules:
   - paused tasks must close to terminal once all persisted message callbacks are final
   - ready tasks without a current device match must stay in the assignment loop through retry
+- Engine regression coverage also locks two race/immutability rules:
+  - assignment must not dispatch if a task leaves `READY` during device matching
+  - late callbacks must not mutate a task that was already closed to `TERMINAL`
 
 ## 3. Module Facts
 
@@ -97,12 +101,14 @@ Working rule:
 - trust `TaskManager` and `TaskStatus` over older docs
 - if a document disagrees with `TaskStatus.canTransitionTo(...)`, the document is stale
 - task completion is driven by persisted `TaskMsg` finality, not only by the current task status label
+- terminal closure freezes later non-final callbacks; duplicate results are only accepted as idempotent no-ops once the message is already final
 
 ### Matching
 
 - task-to-device selection should extend through engine strategy interfaces
 - `RuleBasedTaskDeviceMatchingStrategy` is the current default implementation
 - a no-match assignment attempt should be treated as retryable backlog, not as a terminal dequeue
+- a successful device match is still not enough to dispatch if the task status changed away from `READY` during the matching window
 
 ### Event Bus
 

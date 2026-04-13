@@ -48,14 +48,23 @@ public class TaskDeviceAssignListener {
         int maxDeviceCount = (int) Math.ceil((double) task.getTaskInitNumber() / task.getBatchSize());
         int batchSize = Math.max(task.getRunTaskMinDeviceCnt(), maxDeviceCount);
         List<Device> matched = matchDevicesWithRules(task, batchSize);
-        if (!matched.isEmpty()) {
-            task.setScheduleDeviceCnt(matched.size());
-            if (task.getStatus() == TaskStatus.READY) {
-                task.transitionTo(TaskStatus.RUNNING);
-                taskManager.updateTask(task); // persist READY→RUNNING before dispatching messages
-            }
-            msgAssignListener.onMsgAssign(task, matched);
+        if (matched.isEmpty()) {
+            return;
         }
+        if (task.getStatus() != TaskStatus.READY) {
+            log.info("[DeviceAssign] Skip dispatch for task {} because status changed to {} during matching",
+                    task.getTid(), task.getStatus());
+            return;
+        }
+
+        task.setScheduleDeviceCnt(matched.size());
+        if (!task.transitionTo(TaskStatus.RUNNING)) {
+            log.warn("[DeviceAssign] Failed to transition task {} from READY to RUNNING", task.getTid());
+            return;
+        }
+
+        taskManager.updateTask(task);
+        msgAssignListener.onMsgAssign(task, matched);
     }
 
     /**
