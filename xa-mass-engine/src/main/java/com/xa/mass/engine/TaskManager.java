@@ -555,17 +555,23 @@ public class TaskManager {
         if (status.isFinal()) {
             return true;
         }
+        // Always advance through INIT→BINDING regardless of outcome.
         if (status == TaskMsgStatus.INIT && !taskMsg.transitionTo(TaskMsgStatus.BINDING)) {
             return false;
         }
         status = taskMsg.getStatus();
-        if (status == TaskMsgStatus.BINDING && success) {
+        // Always advance BINDING→SENT regardless of success/failure so the
+        // final markAsSuccess/markAsFailed is always called from RUNNING state.
+        // (BINDING→FAILED is technically allowed by the state machine but skips
+        // the RUNNING stage that callers expect to see in logs/metrics.)
+        if (status == TaskMsgStatus.BINDING) {
             if (!taskMsg.markAsSent()) {
                 return false;
             }
             status = taskMsg.getStatus();
         }
-        if (status == TaskMsgStatus.SENT && success) {
+        // Always advance SENT→RUNNING before the caller applies the terminal mark.
+        if (status == TaskMsgStatus.SENT) {
             return taskMsg.markAsRunning();
         }
         return true;

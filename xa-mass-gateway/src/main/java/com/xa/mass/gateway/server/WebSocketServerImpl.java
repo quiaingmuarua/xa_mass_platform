@@ -139,11 +139,11 @@ public class WebSocketServerImpl implements MassWebSocketServer {
         logger.info("🔻 Shutting down WebSocket server...");
         // 优雅关闭 Boss Group
         if (bossGroup != null) {
-            bossGroup.shutdownGracefully();
+            bossGroup.shutdownGracefully().syncUninterruptibly();
         }
         // 优雅关闭 Worker Group
         if (workerGroup != null) {
-            workerGroup.shutdownGracefully();
+            workerGroup.shutdownGracefully().syncUninterruptibly();
         }
         logger.info("WebSocket server shutdown complete.");
     }

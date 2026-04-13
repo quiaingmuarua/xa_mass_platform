@@ -50,7 +50,7 @@ public class InMemoryDeviceStorage implements DeviceStorage {
     @Override
     public List<Device> getDevicesByCountry(String country) {
         return devices.values().stream()
-                .filter(d -> d.getGroupId().equals(country))
+                .filter(d -> country != null && country.equals(d.getGroupId()))
                 .collect(Collectors.toList());
     }
 
