@@ -90,14 +90,16 @@ public class RuleBasedTaskDeviceMatchingStrategy implements TaskDeviceMatchingSt
                     if (deviceManager.tryLockDevice(device.getDeviceId())) {
                         recordService.recordDeviceAssignment(
                                 task, device, token, AssignmentResult.SUCCESS,
-                                "鎵€鏈夎鍒欏尮閰嶆垚鍔燂紝璁惧閿佸畾鎴愬姛", ruleEvaluations, matchContext.getContext()
+                                "all rules matched and device lock acquired",
+                                ruleEvaluations, matchContext.getContext()
                         );
                         matchedDevices.add(device);
                         log.info("Device matched: {} for task {}", device.getDeviceId(), task.getTid());
                     } else {
                         recordService.recordDeviceAssignment(
                                 task, device, token, AssignmentResult.CONFLICT,
-                                "璁惧宸茶閿佸畾锛屾棤娉曞垎閰?, ruleEvaluations, matchContext.getContext()
+                                "device lock conflict after rules matched",
+                                ruleEvaluations, matchContext.getContext()
                         );
                         log.info("Device locked: {}", device.getDeviceId());
                     }
@@ -108,7 +110,8 @@ public class RuleBasedTaskDeviceMatchingStrategy implements TaskDeviceMatchingSt
                             .collect(Collectors.joining(", "));
                     recordService.recordDeviceAssignment(
                             task, device, token, AssignmentResult.RULE_NOT_MATCH,
-                            "瑙勫垯涓嶅尮閰? " + failedRules, ruleEvaluations, matchContext.getContext()
+                            "rule evaluation failed: " + failedRules,
+                            ruleEvaluations, matchContext.getContext()
                     );
                     log.info("Rule not matched: {} (failed rules: {})", device.getDeviceId(), failedRules);
 
@@ -124,7 +127,8 @@ public class RuleBasedTaskDeviceMatchingStrategy implements TaskDeviceMatchingSt
             } catch (Exception e) {
                 recordService.recordDeviceAssignment(
                         task, device, token, AssignmentResult.FAILED,
-                        "瑙勫垯璇勪及寮傚父: " + e.getMessage(), new ArrayList<>(), matchContext.getContext()
+                        "rule evaluation exception: " + e.getMessage(),
+                        new ArrayList<>(), matchContext.getContext()
                 );
                 log.error("Error evaluating rules for device {}: {}", device.getDeviceId(), e.getMessage());
             }
@@ -148,13 +152,14 @@ public class RuleBasedTaskDeviceMatchingStrategy implements TaskDeviceMatchingSt
                 result = String.valueOf(passed);
 
                 if (!passed) {
-                    log.info("[Debug] Rule: {} ({}), result: 澶辫触", rule.getId(), rule.getDesc());
+                    log.info("[Debug] Rule: {} ({}), result: FAIL", rule.getId(), rule.getDesc());
                 } else {
-                    log.debug("[Debug] Rule: {} ({}), result: 閫氳繃", rule.getId(), rule.getDesc());
+                    log.debug("[Debug] Rule: {} ({}), result: PASS", rule.getId(), rule.getDesc());
                 }
             } catch (Exception e) {
                 result = "Exception: " + e.getMessage();
-                log.info("[Debug] Rule: {} ({}), result: 寮傚父 - {}", rule.getId(), rule.getDesc(), e.getMessage());
+                log.info("[Debug] Rule: {} ({}), result: EXCEPTION - {}",
+                        rule.getId(), rule.getDesc(), e.getMessage());
             }
 
             long evaluationTime = System.currentTimeMillis() - startTime;

@@ -151,7 +151,7 @@
                     <td>
                         <button class="btn btn-sm btn-outline-primary" data-bs-target="#editDeviceModal"
                                 data-bs-toggle="modal"
-                                th:attr="data-device-id=${device.deviceId},data-supported-projects=${#strings.arrayJoin(device.supportedProjects, ',')},data-group-id=${device.deviceGroupId},data-agent-version=${device.agentVersion}">
+                                th:attr="data-device-id=${device.deviceId},data-supported-projects=${#strings.arrayJoin(device.supportedProjects, ',')},data-device-group-id=${device.deviceGroupId},data-agent-version=${device.agentVersion}">
                             <i class="bi bi-pencil"></i> 缂栬緫
                         </button>
                     </td>
@@ -183,7 +183,7 @@
                         </div>
                         <div class="mb-3">
                             <label class="form-label">鍒嗙粍</label>
-                            <input class="form-control" id="editGroupIdDisplay" readonly type="text">
+                            <input class="form-control" id="editDeviceGroupIdDisplay" readonly type="text">
                         </div>
                         <div class="mb-3">
                             <label class="form-label">Agent鐗堟湰</label>
@@ -230,11 +230,11 @@
         var button = event.relatedTarget;
         var deviceId = button.getAttribute('data-device-id');
         var supportedProjects = button.getAttribute('data-supported-projects') || '';
-        var deviceGroupId = button.getAttribute('data-group-id') || '';
+        var deviceGroupId = button.getAttribute('data-device-group-id') || '';
         var agentVersion = button.getAttribute('data-agent-version') || '';
         document.getElementById('editDeviceId').value = deviceId;
         document.getElementById('editDeviceIdDisplay').value = deviceId;
-        document.getElementById('editGroupIdDisplay').value = deviceGroupId;
+        document.getElementById('editDeviceGroupIdDisplay').value = deviceGroupId;
         document.getElementById('editAgentVersionDisplay').value = agentVersion;
         // 鍔犺浇鎵€鏈夐」鐩苟鍥炴樉
         loadAllProjects(function () {

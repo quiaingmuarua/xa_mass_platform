@@ -99,7 +99,7 @@ appCount < 10
 
 - `appCount`
 - `supportsProject`
-- `deviceGroupMatchesRoutingCountry`
+- `deviceGroupIdEqualsRoutingCountry`
 - `tokenChannelMatchesRoutingCountry`
 - `tokenAttributeCountryMatchesRoutingCountry`
 

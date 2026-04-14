@@ -73,7 +73,7 @@ public class DeviceMatchContext {
         ctx.put("appCount", device.getSupportedProjects() != null ? device.getSupportedProjects().size() : 0);
         ctx.put("supportsProject", device.getSupportedProjects() != null &&
                 device.getSupportedProjects().contains(task.getProject()));
-        ctx.put("deviceGroupMatchesRoutingCountry",
+        ctx.put("deviceGroupIdEqualsRoutingCountry",
                 routingCountryCode != null && routingCountryCode.equals(device.getDeviceGroupId()));
         ctx.put("tokenChannelMatchesRoutingCountry",
                 token != null && routingCountryCode != null && routingCountryCode.equals(token.getChannel()));

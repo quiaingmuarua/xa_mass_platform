@@ -49,7 +49,7 @@ class DeviceMatchContextTest {
         assertEquals(Map.of("country", "us"), context.getContext().get("tokenAttributes"));
         assertEquals(0, context.getContext().get("taskTargetNumber"));
         assertEquals("us", context.getContext().get("taskRoutingCountryCode"));
-        assertEquals(true, context.getContext().get("deviceGroupMatchesRoutingCountry"));
+        assertEquals(true, context.getContext().get("deviceGroupIdEqualsRoutingCountry"));
         assertEquals(true, context.getContext().get("tokenChannelMatchesRoutingCountry"));
         assertEquals(true, context.getContext().get("tokenAttributeCountryMatchesRoutingCountry"));
     }

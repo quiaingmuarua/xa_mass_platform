@@ -32,23 +32,23 @@ public class EngineExample {
          DeviceManager deviceManager = new DeviceManager(new InMemoryDeviceStorage());
          log.info("taskManager:"+taskManager );
          log.info("deviceManager:"+deviceManager );
-        //鐩戝惉浠诲姟鏄惁闇€瑕佸垎閰嶈澶?
+        //閻╂垵鎯夋禒璇插閺勵垰鎯侀棁鈧憰浣稿瀻闁板秷顔曟径?
 
 
 
-        //鐢熸垚璁惧
+        //閻㈢喐鍨氱拋鎯ь槵
         List<Device> devices= genMockDevice();
         devices.forEach(deviceManager::addDevice);
-        //涓妕oken
+        //娑撳oken
         List<Token> tokens=genMockToken();
         tokens.forEach(token -> {deviceManager.addToken(token.getDeviceId(),token);});
-        //鐢熸垚浠诲姟
+        //閻㈢喐鍨氭禒璇插
         TaskCreateRequestDto task=new TaskCreateRequestDto();
         taskManager.createTask(task);
 
         //
 
-        //妯℃嫙瀹℃牳
+        //濡剝瀚欑€光剝鐗?
 
 
 
@@ -70,8 +70,8 @@ public class EngineExample {
     public static  List<Device> genMockDevice(){
 
         JsonDslDefinition definition = new JsonDslDefinition("device_generator", JsonDslDefinition.DslType.GENERATE);
-        definition.setDescription("鐢熸垚 300 涓祴璇曡澶?);
-        // 3. 璁剧疆瀛楁 DSL
+        definition.setDescription("Generate 300 mock devices");
+        // 3. 鐠佸墽鐤嗙€涙顔?DSL
         Map<String, Object> fieldDsl = new HashMap<>();
         fieldDsl.put("deviceId", Map.of("$JOIN", Arrays.asList("", "&.index")));
         fieldDsl.put("deviceGroupId", Map.of("$RANGE", Arrays.asList(16, 65)));

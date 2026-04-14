@@ -1,5 +1,6 @@
 package com.xa.mass.starter;
 
+import com.xa.mass.base.channel.tranporter.MessageTransporter;
 import com.xa.mass.base.enums.Project;
 import com.xa.mass.base.enums.task.TokenStatus;
 import com.xa.mass.base.model.Device;
@@ -11,7 +12,6 @@ import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
 import com.xa.mass.gateway.dispatcher.middleware.MiddlewareRegistry;
 import com.xa.mass.gateway.model.enums.MessageType;
 import com.xa.mass.gateway.queue.MessageCodec;
-import com.xa.mass.base.channel.tranporter.MessageTransporter;
 import com.xa.mass.gateway.server.MassServerBuilder;
 import com.xa.mass.gateway.server.MassServerConfig;
 import com.xa.mass.gateway.server.MassServerStater;
@@ -27,26 +27,25 @@ import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * Mass 搴旂敤涓荤▼搴?
- * 缁熶竴绠＄悊绯荤粺鐨勫惎鍔ㄦ祦绋嬶紝鍖呮嫭缃戝叧銆佸紩鎿庣瓑缁勪欢鐨勫垵濮嬪寲
+ * Main runtime composition entry for engine, gateway, dispatcher, and server startup.
  */
 public class MassApplication {
 
     private static final Logger logger = LoggerFactory.getLogger(MassApplication.class);
 
-    // 鐩存帴绠＄悊宸叉瀯寤虹殑缁勪欢鍜岄厤缃弬鏁?
     private final int serverPort;
     private final String webSocketPath;
     private final GatewayConfig gatewayConfig;
     private final EngineConfig engineConfig;
     private final AtomicBoolean running = new AtomicBoolean(false);
 
-    private final MassEngine engine; // 鍙兘涓簄ull锛堝綋engine琚鐢ㄦ椂锛?
-    private MassGateway massGateway; // 灏嗗湪initializeComponents涓瀯寤猴紙褰揼ateway琚惎鐢ㄦ椂锛?
+    private final MassEngine engine;
+    private MassGateway massGateway;
     private DispatchRuntimeContext dispatcherContext;
     private MassServerStater serverStater;
 
-    public MassApplication(MassEngine engine, int serverPort, String webSocketPath, GatewayConfig gatewayConfig, EngineConfig engineConfig) {
+    public MassApplication(MassEngine engine, int serverPort, String webSocketPath,
+                           GatewayConfig gatewayConfig, EngineConfig engineConfig) {
         this.engine = engine;
         this.serverPort = serverPort;
         this.webSocketPath = webSocketPath;
@@ -55,184 +54,161 @@ public class MassApplication {
     }
 
     /**
-     * 鍚姩鏁翠釜 Mass 搴旂敤
+     * Starts the composed runtime.
      */
     public void start() {
         if (!running.compareAndSet(false, true)) {
             logger.info("Mass Application is already running, skipping duplicate start");
             return;
         }
-        logger.info("馃殌 Starting Mass Application...");
+        logger.info("Starting Mass Application");
 
         try {
-            // 1. 鍒濆鍖栨牳蹇冪粍浠?
             initializeComponents();
 
-            // 2. 鏍规嵁閰嶇疆鍚姩缃戝叧
             if (gatewayConfig.isEnabled()) {
                 startGateway();
             } else {
-                logger.info("馃寪 MassGateway is disabled, skipping start");
+                logger.info("MassGateway is disabled, skipping start");
             }
 
-            // 3. 鏍规嵁閰嶇疆鍚姩寮曟搸
             if (engineConfig.isEnabled()) {
                 startEngine();
             } else {
-                logger.info("鈿欙笍 MassEngine is disabled, skipping start");
+                logger.info("MassEngine is disabled, skipping start");
             }
 
-            // 4. 鍚姩娑堟伅鍒嗗彂鍣?
             startMessageDispatcher();
-
-            // 5. 鍚姩 WebSocket 鏈嶅姟鍣?
             startWebSocketServer();
 
-            logger.info("鉁?Mass Application started successfully!");
-
+            logger.info("Mass Application started successfully");
         } catch (Exception e) {
             running.set(false);
-            logger.error("鉂?Failed to start Mass Application", e);
+            logger.error("Failed to start Mass Application", e);
             throw new RuntimeException("Failed to start Mass Application", e);
         }
     }
 
     /**
-     * 鍋滄鏁翠釜 Mass 搴旂敤
+     * Stops the composed runtime.
      */
     public void stop() {
         if (!running.compareAndSet(true, false)) {
             logger.info("Mass Application is not running, skipping stop");
             return;
         }
-        logger.info("馃洃 Stopping Mass Application...");
+        logger.info("Stopping Mass Application");
 
         try {
-            // 1. Stop the message dispatcher first so in-flight messages can drain
-            //    before the network layer shuts down.
             if (massGateway != null && gatewayConfig.isEnabled()) {
                 massGateway.stop();
             }
 
-            // 2. Stop the engine (task processing) after the dispatcher has drained.
             if (engine != null && engineConfig.isEnabled()) {
                 engine.stop();
             }
 
-            // 3. Shut down the Netty WebSocket server last.
             if (serverStater != null) {
                 serverStater.stop();
             }
 
-            logger.info("鉁?Mass Application stopped successfully!");
-
+            logger.info("Mass Application stopped successfully");
         } catch (Exception e) {
-            logger.error("鉂?Error stopping Mass Application", e);
+            logger.error("Error stopping Mass Application", e);
         }
     }
 
     /**
-     * 鍒濆鍖栨牳蹇冪粍浠?
+     * Initializes dispatcher, message handlers, middleware, and gateway composition.
      */
     private void initializeComponents() {
-        logger.info("馃敡 Initializing core components...");
+        logger.info("Initializing core components");
 
         try {
-            // 鍒濆鍖栦細璇濈鐞嗗櫒
             ServerSessionManager sessionManager = ServerSessionManager.INSTANCE;
-            logger.info("鉁?Session manager initialized");
+            logger.info("Session manager initialized");
 
-            // 鍒涘缓娑堟伅浼犺緭鍣?
             MessageTransporter messageTransporter = gatewayConfig.createMessageTransporter();
-            logger.info("鉁?Message transporter created");
+            logger.info("Message transporter created");
 
-            // 鍒涘缓娑堟伅缂栬В鐮佸櫒
             MessageCodec messageCodec = gatewayConfig.createMessageCodec();
-            logger.info("鉁?Message codec created");
+            logger.info("Message codec created");
 
-            // 鍒涘缓鍒嗗彂鍣ㄤ笂涓嬫枃
             dispatcherContext = new DispatcherContext(messageTransporter, sessionManager, messageCodec);
-            logger.info("鉁?Dispatcher context created");
+            logger.info("Dispatcher context created");
 
-            // 娉ㄥ唽鍒版敞鍐岃〃
-            try {
-                DispatcherContextRegistry.register(dispatcherContext);
-                logger.info("鉁?Dispatcher context registered");
-            } catch (Exception e) {
-                logger.error("鉂?Failed to register dispatcher context", e);
-                throw e;
-            }
+            DispatcherContextRegistry.register(dispatcherContext);
+            logger.info("Dispatcher context registered");
 
-            // 娉ㄥ唽娑堟伅澶勭悊鍣?
             MessageHandlerRegistry messageHandlerRegistry = new MessageHandlerRegistry();
             messageHandlerRegistry.autoRegister();
             if (engineConfig.isEnabled() && engineConfig.getTaskManager() != null) {
-                messageHandlerRegistry.register(null, MessageType.TASK, "step",
-                        new GatewayTaskResultHandler(engineConfig.getTaskManager()));
+                messageHandlerRegistry.register(
+                        null,
+                        MessageType.TASK,
+                        "step",
+                        new GatewayTaskResultHandler(engineConfig.getTaskManager())
+                );
             }
             dispatcherContext.setMessageHandlerRegistry(messageHandlerRegistry);
-            logger.info("鉁?Message handler registry initialized");
+            logger.info("Message handler registry initialized");
 
-            // 娉ㄥ唽涓棿浠?
             MiddlewareRegistry.autoRegister();
-            logger.info("鉁?Middleware registry initialized");
+            logger.info("Middleware registry initialized");
 
-            // 鏍规嵁閰嶇疆鏋勫缓MassGateway锛堥渶瑕乨ispatcherContext锛?
             if (gatewayConfig.isEnabled()) {
                 engineConfig.setTaskMsgDispatchListener(new GatewayTaskMsgPublisher(dispatcherContext));
                 massGateway = new MassGateway(gatewayConfig, dispatcherContext);
-                logger.info("鉁?MassGateway built");
+                logger.info("MassGateway built");
             } else {
-                logger.info("馃寪 MassGateway is disabled, skipping build");
+                logger.info("MassGateway is disabled, skipping build");
             }
-
         } catch (Exception e) {
-            logger.error("鉂?Failed to initialize core components", e);
+            logger.error("Failed to initialize core components", e);
             throw new RuntimeException("Failed to initialize core components", e);
         }
 
-        logger.info("鉁?Core components initialized");
+        logger.info("Core components initialized");
     }
 
     /**
-     * 鍚姩缃戝叧
+     * Starts gateway processing.
      */
     private void startGateway() {
-        logger.info("馃寪 Starting MassGateway...");
+        logger.info("Starting MassGateway");
         if (massGateway != null) {
             massGateway.start();
-            logger.info("鉁?MassGateway started");
+            logger.info("MassGateway started");
         } else {
-            logger.error("鉂?MassGateway is null");
+            logger.error("MassGateway is null");
         }
     }
 
     /**
-     * 鍚姩寮曟搸
+     * Starts engine processing.
      */
     private void startEngine() {
-        logger.info("鈿欙笍 Starting MassEngine...");
+        logger.info("Starting MassEngine");
         if (engine != null) {
             engine.start();
-            logger.info("鉁?MassEngine started");
+            logger.info("MassEngine started");
         } else {
-            logger.error("鉂?MassEngine is null - check if engine is enabled in config");
+            logger.error("MassEngine is null - check if engine is enabled in config");
         }
     }
 
     /**
-     * 鍚姩娑堟伅鍒嗗彂鍣?
+     * Dispatcher lifecycle is currently owned by MassGateway.
      */
     private void startMessageDispatcher() {
-        // 娑堟伅鍒嗗彂鍣ㄧ幇鍦ㄧ敱 MassGateway 绠＄悊锛屼笉闇€瑕佸崟鐙惎鍔?
-        logger.info("馃摠 Message Dispatcher is managed by MassGateway");
+        logger.info("Message Dispatcher is managed by MassGateway");
     }
 
     /**
-     * 鍚姩 WebSocket 鏈嶅姟鍣?
+     * Starts the WebSocket server.
      */
     private void startWebSocketServer() {
-        logger.info("馃攲 Starting WebSocket Server...");
+        logger.info("Starting WebSocket Server");
 
         MassServerConfig serverConfig = MassServerBuilder.create()
                 .withPort(serverPort)
@@ -243,48 +219,53 @@ public class MassApplication {
         serverStater = new MassServerStater(serverConfig);
         serverStater.start();
 
-        logger.info("鉁?WebSocket Server started on port {}", serverPort);
+        logger.info("WebSocket Server started on port {}", serverPort);
     }
 
     /**
-     * 鑾峰彇鍒嗗彂鍣ㄤ笂涓嬫枃
+     * Returns the live dispatch runtime context.
      */
     public DispatchRuntimeContext getDispatcherContext() {
         return dispatcherContext;
     }
 
     /**
-     * 妫€鏌ュ簲鐢ㄦ槸鍚︽鍦ㄨ繍琛?     */
+     * Returns whether the composed runtime is currently running.
+     */
     public boolean isRunning() {
         return running.get() && serverStater != null && serverStater.isRunning();
     }
 
-    // 娉ㄥ唽mock娑堟伅澶勭悊鍣?
     private void registerMockMessageHandlers(DispatchRuntimeContext dispatcherContext) {
-        logger.info("馃摑 娉ㄥ唽Mock娑堟伅澶勭悊鍣?..");
-        // 娉ㄥ唽浠诲姟娑堟伅澶勭悊鍣?
+        logger.info("Registering mock gateway message handlers");
+
         com.xa.mass.gateway.dispatcher.handler.MassMessageHandler taskHandler = msg -> {
-            logger.info("[Gateway Handler] 澶勭悊浠诲姟娑堟伅: {}", msg);
-            return new java.util.ArrayList<>();
+            logger.info("[Gateway Handler] Received mock task message: {}", msg);
+            return new ArrayList<>();
         };
-        // 娉ㄥ唽璁惧娑堟伅澶勭悊鍣?
         com.xa.mass.gateway.dispatcher.handler.MassMessageHandler deviceHandler = msg -> {
-            logger.info("[Gateway Handler] 澶勭悊璁惧娑堟伅: {}", msg);
-            return new java.util.ArrayList<>();
+            logger.info("[Gateway Handler] Received mock device status message: {}", msg);
+            return new ArrayList<>();
         };
-        dispatcherContext.getMessageHandlerRegistry().register("mock-task", com.xa.mass.gateway.model.enums.MessageType.TASK, "", taskHandler);
-        dispatcherContext.getMessageHandlerRegistry().register("mock-device", com.xa.mass.gateway.model.enums.MessageType.STATUS, "", deviceHandler);
-        logger.info("鉁?Mock娑堟伅澶勭悊鍣ㄦ敞鍐屽畬鎴?);
+
+        dispatcherContext.getMessageHandlerRegistry().register(
+                "mock-task", MessageType.TASK, "", taskHandler
+        );
+        dispatcherContext.getMessageHandlerRegistry().register(
+                "mock-device", MessageType.STATUS, "", deviceHandler
+        );
+        logger.info("Mock gateway message handlers registered");
     }
 
-    // mock鏁版嵁鍔犺浇
     public void loadMockData(MassEngine engine, EngineConfig config) {
-        logger.info("馃搳 鍔犺浇 Mock 鏁版嵁...");
+        logger.info("Loading mock data");
+
         try {
-            com.google.gson.JsonObject root = engineConfig.getMockConfigRoot();
-            logger.info("鉁?Mock 閰嶇疆鍔犺浇鎴愬姛");
+            com.google.gson.JsonObject root = config.getMockConfigRoot();
+            logger.info("Mock config loaded successfully");
+
             if (root.has("devices")) {
-                java.util.List<com.xa.mass.base.model.Device> devices = new java.util.ArrayList<>();
+                List<Device> devices = new ArrayList<>();
                 com.google.gson.JsonElement deviceElem = root.get("devices");
                 if (deviceElem.isJsonArray()) {
                     for (com.google.gson.JsonElement dsl : deviceElem.getAsJsonArray()) {
@@ -293,17 +274,20 @@ public class MassApplication {
                 } else {
                     devices.addAll(com.xa.mass.engine.monkey.MonkeyGenerator.generateDevices(deviceElem.toString()));
                 }
-                logger.info("馃摫 鐢熸垚 {} 涓澶?, devices.size());
-                for (com.xa.mass.base.model.Device device : devices) {
+
+                logger.info("Generated {} mock devices", devices.size());
+                for (Device device : devices) {
                     normalizeMockDevice(device);
                     engine.addDevice(device);
                     ensureMockToken(engine, device);
-                    logger.debug("娣诲姞璁惧: {} (鍒嗙粍: {}, 鐘舵€? {})", device.getDeviceId(), device.getDeviceGroupId(), device.getStatus());
+                    logger.debug("Loaded mock device: {} (deviceGroupId: {}, status: {})",
+                            device.getDeviceId(), device.getDeviceGroupId(), device.getStatus());
                 }
                 verifyDeviceData(engine);
             }
+
             if (root.has("tasks")) {
-                java.util.List<com.xa.mass.engine.model.TaskCreateRequestDto> taskDtos = new java.util.ArrayList<>();
+                List<com.xa.mass.engine.model.TaskCreateRequestDto> taskDtos = new ArrayList<>();
                 com.google.gson.JsonElement taskElem = root.get("tasks");
                 if (taskElem.isJsonArray()) {
                     for (com.google.gson.JsonElement dsl : taskElem.getAsJsonArray()) {
@@ -312,15 +296,18 @@ public class MassApplication {
                 } else {
                     taskDtos.addAll(com.xa.mass.engine.monkey.MonkeyGenerator.generateTasks(taskElem.toString()));
                 }
-                logger.info("馃搵 鐢熸垚 {} 涓换鍔?, taskDtos.size());
+
+                logger.info("Generated {} mock task requests", taskDtos.size());
                 for (com.xa.mass.engine.model.TaskCreateRequestDto dto : taskDtos) {
                     engine.createTask(dto);
-                    logger.debug("鍒涘缓浠诲姟: {} (鍥藉: {}, 椤圭洰: {}, 鏁伴噺: {})", dto.getTaskName(), dto.getCountryCode(), dto.getProject(), dto.getBatchSize());
+                    logger.debug("Loaded mock task request: {} (routingCountryCode: {}, project: {}, batchSize: {})",
+                            dto.getTaskName(), dto.getCountryCode(), dto.getProject(), dto.getBatchSize());
                 }
             }
-            logger.info("鉁?Mock 鏁版嵁鍔犺浇瀹屾垚");
+
+            logger.info("Mock data load completed");
         } catch (Exception e) {
-            logger.error("鉂?Mock 鏁版嵁鍔犺浇澶辫触", e);
+            logger.error("Mock data load failed", e);
             throw new RuntimeException(e);
         }
     }
@@ -328,14 +315,23 @@ public class MassApplication {
     public void verifyDeviceData(MassEngine engine) {
         com.xa.mass.engine.DeviceManager deviceManager = engine.getDeviceManager();
         if (deviceManager != null) {
-            java.util.List<Device> allDevices = deviceManager.getAllDevices();
-            java.util.List<Device> usDevices = deviceManager.getDevicesByGroupId("us");
-            java.util.List<Device> gbDevices = deviceManager.getDevicesByGroupId("gb");
-            logger.info("馃搳 璁惧鏁版嵁楠岃瘉 - 鎬昏: {}, 缇庡浗: {}, 鑻卞浗: {}", allDevices.size(), usDevices.size(), gbDevices.size());
+            List<Device> allDevices = deviceManager.getAllDevices();
+            List<Device> usDevices = deviceManager.getDevicesByGroupId("us");
+            List<Device> gbDevices = deviceManager.getDevicesByGroupId("gb");
+
+            logger.info("Verified mock devices: total={}, usGroup={}, gbGroup={}",
+                    allDevices.size(), usDevices.size(), gbDevices.size());
+
             for (int i = 0; i < Math.min(3, allDevices.size()); i++) {
                 Device device = allDevices.get(i);
-                com.xa.mass.base.model.Token token = deviceManager.getToken(device.getDeviceId());
-                logger.info("璁惧 {}: ID={}, 鍒嗙粍={}, 鐘舵€?{}, Token={}, Token鐘舵€?{}", i + 1, device.getDeviceId(), device.getDeviceGroupId(), device.getStatus(), token != null ? token.getTokenId() : "null", token != null ? token.getStatus() : "null");
+                Token token = deviceManager.getToken(device.getDeviceId());
+                logger.info("Device {}: id={}, deviceGroupId={}, status={}, tokenId={}, tokenStatus={}",
+                        i + 1,
+                        device.getDeviceId(),
+                        device.getDeviceGroupId(),
+                        device.getStatus(),
+                        token != null ? token.getTokenId() : "null",
+                        token != null ? token.getStatus() : "null");
             }
         }
     }
@@ -360,6 +356,7 @@ public class MassApplication {
         if (engine.getDeviceManager().getToken(device.getDeviceId()) != null) {
             return;
         }
+
         Token token = new Token();
         token.setTokenId("token-" + device.getDeviceId());
         token.setDeviceId(device.getDeviceId());

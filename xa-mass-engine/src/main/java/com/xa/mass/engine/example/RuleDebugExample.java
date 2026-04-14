@@ -125,7 +125,7 @@ public class RuleDebugExample {
         System.out.println("Computed context:");
         System.out.println("  - appCount: " + context.get("appCount"));
         System.out.println("  - supportsProject: " + context.get("supportsProject"));
-        System.out.println("  - deviceGroupMatchesRoutingCountry: " + context.get("deviceGroupMatchesRoutingCountry"));
+        System.out.println("  - deviceGroupIdEqualsRoutingCountry: " + context.get("deviceGroupIdEqualsRoutingCountry"));
         System.out.println("  - tokenChannelMatchesRoutingCountry: " + context.get("tokenChannelMatchesRoutingCountry"));
         System.out.println("  - tokenAttributeCountryMatchesRoutingCountry: " + context.get("tokenAttributeCountryMatchesRoutingCountry"));
 
