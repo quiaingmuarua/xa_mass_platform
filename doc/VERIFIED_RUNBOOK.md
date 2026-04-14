@@ -33,10 +33,15 @@ For endpoint inventory, response shapes, and implementation status, use [INTERNA
 - The pause/resume lifecycle regression is also verified:
   - `NEW -> READY -> PAUSED -> READY`
 - Create-time validation is now verified:
+  - supported create fields are limited to `userId`, `project`, `taskName`, `textContent`, `targetList`, `countryCode`, and `batchSize`
   - `targetList` must contain at least one materialized target
-  - non-empty `targetJsonList` is rejected by the current mainline runtime
   - unsupported `project` codes are rejected instead of silently falling back to `demoApp`
+  - unknown JSON fields such as retired `targetJsonList`, `targetType`, and `extraParams` are rejected at the API boundary
   - request `batchSize` is preserved on the persisted task
+- Update-time validation is now verified:
+  - supported update fields are limited to `userId`, `project`, `taskName`, `textContent`, `countryCode`, and `batchSize`
+  - `targetList` and other unknown JSON fields are rejected at the API boundary
+  - task edits are only allowed while status is `NEW` or `BLOCKED`
 - Engine regression also verifies a paused-completion closure rule:
   - if all persisted `TaskMsg` callbacks finish while the task is `PAUSED`, the task is closed to `TERMINAL`
 - Engine regression also verifies two state-machine safety rules:
@@ -126,9 +131,13 @@ Verified state transitions:
 - create: initial task status is `NEW`
 - create: `targetList` is persisted as real `TaskMsg` rows
 - create: `TaskManager.createTask()` requires at least one `targetList` value
-- create: non-empty `targetJsonList` is rejected by the current mainline runtime
+- create: only `userId`, `project`, `taskName`, `textContent`, `targetList`, `countryCode`, and `batchSize` are part of the supported request contract
 - create: unsupported `project` codes are rejected
+- create: unknown JSON fields such as retired `targetJsonList`, `targetType`, and `extraParams` are rejected at the API boundary
 - create: request `batchSize` is persisted onto the task
+- update: only `userId`, `project`, `taskName`, `textContent`, `countryCode`, and `batchSize` are part of the supported request contract
+- update: `targetList` and other unknown JSON fields are rejected at the API boundary
+- update: only `NEW` and `BLOCKED` tasks may be edited
 - `approveTask`: `NEW`, `BLOCKED` -> `READY`
 - `rejectTask`: `NEW` -> `BLOCKED`
 - `pauseTask`: `READY`, `RUNNING` -> `PAUSED`

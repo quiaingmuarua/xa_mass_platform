@@ -93,6 +93,73 @@ class TaskApiLifecycleGuardsIntegrationTest extends AbstractMockE2eTest {
     }
 
     @Test
+    void createTaskRejectsUnknownFieldsInRequestBody() {
+        Map<String, Object> createBody = new java.util.LinkedHashMap<>();
+        createBody.put("taskName", "guard-unknown-fields");
+        createBody.put("project", "demoApp");
+        createBody.put("countryCode", "us");
+        createBody.put("textContent", "guard lifecycle");
+        createBody.put("userId", "itest");
+        createBody.put("targetList", java.util.List.of("target-a"));
+        createBody.put("batchSize", 1);
+        createBody.put("targetJsonList", java.util.List.of("{\"phone\":\"123\"}"));
+
+        ResponseEntity<String> response = restTemplate.exchange(
+                "http://127.0.0.1:" + port + "/status/api/tasks",
+                HttpMethod.POST,
+                new HttpEntity<>(createBody),
+                String.class
+        );
+
+        assertEquals(400, response.getStatusCode().value());
+    }
+
+    @Test
+    void updateTaskRejectsUnsupportedFieldsInRequestBody() {
+        String taskId = createTask("guard-update-unknown-fields");
+
+        Map<String, Object> updateBody = new java.util.LinkedHashMap<>();
+        updateBody.put("taskName", "guard-update-renamed");
+        updateBody.put("targetList", java.util.List.of("target-x"));
+
+        ResponseEntity<String> response = restTemplate.exchange(
+                "http://127.0.0.1:" + port + "/status/api/tasks/" + taskId,
+                HttpMethod.PUT,
+                new HttpEntity<>(updateBody),
+                String.class
+        );
+
+        assertEquals(400, response.getStatusCode().value());
+        assertEquals("NEW", task(taskId).get("status"));
+    }
+
+    @Test
+    void updateTaskRejectsReadyTaskMutation() {
+        String taskId = createTask("guard-update-ready");
+
+        Map<String, Object> approveResponse = exchange(
+                "/status/api/tasks/" + taskId + "/audit?approved=true&comment=approve",
+                HttpMethod.POST,
+                null
+        );
+        assertEquals(Boolean.TRUE, approveResponse.get("success"));
+        assertEquals("READY", task(taskId).get("status"));
+
+        Map<String, Object> updateBody = new java.util.LinkedHashMap<>();
+        updateBody.put("taskName", "ready-should-not-update");
+
+        ResponseEntity<String> response = restTemplate.exchange(
+                "http://127.0.0.1:" + port + "/status/api/tasks/" + taskId,
+                HttpMethod.PUT,
+                new HttpEntity<>(updateBody),
+                String.class
+        );
+
+        assertEquals(400, response.getStatusCode().value());
+        assertEquals("READY", task(taskId).get("status"));
+    }
+
+    @Test
     void deleteGuardRejectsApprovedTaskButAllowsDeletingNewTask() {
         String approvedTaskId = createTask("guard-delete-approved");
 

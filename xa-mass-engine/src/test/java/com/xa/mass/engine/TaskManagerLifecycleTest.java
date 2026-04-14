@@ -139,20 +139,6 @@ class TaskManagerLifecycleTest {
     }
 
     @Test
-    void createTaskRejectsUnsupportedTargetJsonList() {
-        TaskCreateRequestDto dto = new TaskCreateRequestDto();
-        dto.setTaskName("json-targets");
-        dto.setProject("demoApp");
-        dto.setCountryCode("us");
-        dto.setTextContent("smoke");
-        dto.setUserId("agent");
-        dto.setTargetJsonList(List.of("{\"phone\":\"123\"}"));
-
-        UnsupportedOperationException error = assertThrows(UnsupportedOperationException.class, () -> taskManager.createTask(dto));
-        assertTrue(error.getMessage().contains("targetJsonList"));
-    }
-
-    @Test
     void createTaskRejectsUnsupportedProject() {
         TaskCreateRequestDto dto = buildRequest("bad-project");
         dto.setProject("whatsapp");

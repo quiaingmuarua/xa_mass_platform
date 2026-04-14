@@ -13,7 +13,9 @@ This file is the fastest entry point for coding agents such as Claude Code, Code
 - Mainline change discipline is now end-to-end integration-test-driven first; unit tests remain important, but they are support coverage rather than the primary acceptance gate
 - Current verified API task path: `NEW -> READY -> RUNNING -> TERMINAL`
 - Pause/resume regression is also verified: `NEW -> READY -> PAUSED -> READY`
-- `TaskManager.createTask()` is now fail-fast for unsupported inputs: empty/null `targetList` is rejected, non-empty `targetJsonList` is rejected, unsupported `project` codes are rejected, and request `batchSize` is preserved on the task
+- `TaskManager.createTask()` now accepts only the supported create contract fields: `userId`, `project`, `taskName`, `textContent`, `targetList`, `countryCode`, and `batchSize`
+- task-create requests fail fast when `targetList` is empty/null, when `project` is unsupported, or when clients send unknown JSON fields such as retired `targetJsonList` / `targetType` / `extraParams`
+- `PUT /status/api/tasks/{taskId}` is now intentionally narrower than create: it accepts only metadata fields (`userId`, `project`, `taskName`, `textContent`, `countryCode`, `batchSize`), rejects `targetList` and other unknown fields, and only allows edits while the task is still `NEW` or `BLOCKED`
 - `Task` aggregate counters are now named by real meaning:
   - `taskTargetNumber`
   - `taskEligibleNumber`
@@ -318,7 +320,8 @@ Important current implementation facts:
 
 - `TaskApiController` uses `TaskManager` lifecycle methods for all state changes.
 - `deleteTask()` enforces the state guard. `READY`, `RUNNING`, and `PAUSED` tasks cannot be deleted.
-- `TaskManager.createTask()` requires at least one materialized `targetList` entry, rejects non-empty `targetJsonList`, and persists request `batchSize` onto the task.
+- `TaskManager.createTask()` requires at least one materialized `targetList` entry, accepts only the supported create fields, and persists request `batchSize` onto the task.
+- `TaskApiController.updateTask(...)` is metadata-only: it rejects unsupported fields such as `targetList` and refuses to mutate `READY`, `RUNNING`, `PAUSED`, or `TERMINAL` tasks.
 - `TaskManager.createTask()` also rejects unsupported `project` codes instead of silently falling back to `demoApp`.
 - `TaskManager` persists one `TaskMsg` per target with the correct `taskId`, distinct `msgId`, and actual target value.
 - `MassEngine` starts `TaskAssignWorker` regardless of `mockMode`, submits existing `READY` tasks on startup, and subscribes to READY events from approve/resume.

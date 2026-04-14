@@ -66,9 +66,6 @@ public class TaskManager {
 
             // 3. 统计初始消息数
             List<String> targets = dto.getTargetList() == null ? Collections.emptyList() : dto.getTargetList();
-            if (dto.getTargetJsonList() != null && !dto.getTargetJsonList().isEmpty()) {
-                throw new UnsupportedOperationException("targetJsonList is not supported by the current runtime");
-            }
             if (targets.isEmpty()) {
                 throw new IllegalArgumentException("targetList must contain at least one target");
             }
