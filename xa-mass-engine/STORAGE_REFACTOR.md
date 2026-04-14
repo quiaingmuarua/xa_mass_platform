@@ -1,21 +1,21 @@
-# TaskManager、DeviceManager 和 RuleManager 存储层重构说明
+# TaskManager銆丏eviceManager 鍜?RuleManager 瀛樺偍灞傞噸鏋勮鏄?
 
-## 重构背景
+## 閲嶆瀯鑳屾櫙
 
-原始的 `TaskManager`、`DeviceManager` 和 `RuleManager` 直接使用 `ConcurrentHashMap` 进行内存存储，存在以下问题：
+鍘熷鐨?`TaskManager`銆乣DeviceManager` 鍜?`RuleManager` 鐩存帴浣跨敤 `ConcurrentHashMap` 杩涜鍐呭瓨瀛樺偍锛屽瓨鍦ㄤ互涓嬮棶棰橈細
 
-1. **紧耦合**：Manager 类与具体存储实现紧密耦合
-2. **扩展性差**：无法轻松切换到其他存储后端（如 Redis、数据库）
-3. **代码重复**：存储逻辑与业务逻辑混合在一起
-4. **测试困难**：难以进行单元测试和集成测试
+1. **绱ц€﹀悎**锛歁anager 绫讳笌鍏蜂綋瀛樺偍瀹炵幇绱у瘑鑰﹀悎
+2. **鎵╁睍鎬у樊**锛氭棤娉曡交鏉惧垏鎹㈠埌鍏朵粬瀛樺偍鍚庣锛堝 Redis銆佹暟鎹簱锛?
+3. **浠ｇ爜閲嶅**锛氬瓨鍌ㄩ€昏緫涓庝笟鍔￠€昏緫娣峰悎鍦ㄤ竴璧?
+4. **娴嬭瘯鍥伴毦**锛氶毦浠ヨ繘琛屽崟鍏冩祴璇曞拰闆嗘垚娴嬭瘯
 
-## 重构方案
+## 閲嶆瀯鏂规
 
-### 1. 抽象存储接口
+### 1. 鎶借薄瀛樺偍鎺ュ彛
 
-#### TaskStorage 接口
+#### TaskStorage 鎺ュ彛
 
-创建了 `TaskStorage` 接口，定义了任务和任务消息的存储抽象：
+鍒涘缓浜?`TaskStorage` 鎺ュ彛锛屽畾涔変簡浠诲姟鍜屼换鍔℃秷鎭殑瀛樺偍鎶借薄锛?
 
 ```java
 public interface TaskStorage {
@@ -41,9 +41,9 @@ public interface TaskStorage {
 }
 ```
 
-#### DeviceStorage 接口
+#### DeviceStorage 鎺ュ彛
 
-创建了 `DeviceStorage` 接口，定义了设备和Token的存储抽象：
+鍒涘缓浜?`DeviceStorage` 鎺ュ彛锛屽畾涔変簡璁惧鍜孴oken鐨勫瓨鍌ㄦ娊璞★細
 
 ```java
 public interface DeviceStorage {
@@ -55,7 +55,7 @@ public interface DeviceStorage {
 
     boolean deleteDevice(String deviceId);
 
-    List<Device> getDevicesByCountry(String country);
+List<Device> getDevicesByGroupId(String deviceGroupId);
 
     List<Device> getAllDevices();
 
@@ -79,9 +79,9 @@ public interface DeviceStorage {
 }
 ```
 
-#### RuleStorage 接口
+#### RuleStorage 鎺ュ彛
 
-创建了 `RuleStorage` 接口，定义了规则定义和规则评估器的存储抽象：
+鍒涘缓浜?`RuleStorage` 鎺ュ彛锛屽畾涔変簡瑙勫垯瀹氫箟鍜岃鍒欒瘎浼板櫒鐨勫瓨鍌ㄦ娊璞★細
 
 ```java
 public interface RuleStorage {
@@ -113,70 +113,70 @@ public interface RuleStorage {
 }
 ```
 
-### 2. 存储实现
+### 2. 瀛樺偍瀹炵幇
 
-#### 内存存储实现
+#### 鍐呭瓨瀛樺偍瀹炵幇
 
-- **InMemoryTaskStorage**: 将原来的Map逻辑封装到实现类中
-- **InMemoryDeviceStorage**: 将原来的Map逻辑封装到实现类中
-- **InMemoryRuleStorage**: 将原来的Map逻辑封装到实现类中
-- 保持线程安全（使用 ConcurrentHashMap 和 Collections.synchronizedSet）
-- 作为默认存储实现
+- **InMemoryTaskStorage**: 灏嗗師鏉ョ殑Map閫昏緫灏佽鍒板疄鐜扮被涓?
+- **InMemoryDeviceStorage**: 灏嗗師鏉ョ殑Map閫昏緫灏佽鍒板疄鐜扮被涓?
+- **InMemoryRuleStorage**: 灏嗗師鏉ョ殑Map閫昏緫灏佽鍒板疄鐜扮被涓?
+- 淇濇寔绾跨▼瀹夊叏锛堜娇鐢?ConcurrentHashMap 鍜?Collections.synchronizedSet锛?
+- 浣滀负榛樿瀛樺偍瀹炵幇
 
-#### Redis 存储实现
+#### Redis 瀛樺偍瀹炵幇
 
-- **RedisTaskStorage**: 提供 Redis 存储的示例实现
-- **RedisDeviceStorage**: 提供 Redis 存储的示例实现
-- **RedisRuleStorage**: 提供 Redis 存储的示例实现
-- 使用 JSON 序列化存储数据
-- 支持按状态索引查询
+- **RedisTaskStorage**: 鎻愪緵 Redis 瀛樺偍鐨勭ず渚嬪疄鐜?
+- **RedisDeviceStorage**: 鎻愪緵 Redis 瀛樺偍鐨勭ず渚嬪疄鐜?
+- **RedisRuleStorage**: 鎻愪緵 Redis 瀛樺偍鐨勭ず渚嬪疄鐜?
+- 浣跨敤 JSON 搴忓垪鍖栧瓨鍌ㄦ暟鎹?
+- 鏀寔鎸夌姸鎬佺储寮曟煡璇?
 
-### 3. 存储工厂 (`TaskStorageFactory`)
+### 3. 瀛樺偍宸ュ巶 (`TaskStorageFactory`)
 
-提供统一的存储创建入口，支持任务存储、设备存储和规则存储：
+鎻愪緵缁熶竴鐨勫瓨鍌ㄥ垱寤哄叆鍙ｏ紝鏀寔浠诲姟瀛樺偍銆佽澶囧瓨鍌ㄥ拰瑙勫垯瀛樺偍锛?
 
 ```java
-// 创建任务存储
+// 鍒涘缓浠诲姟瀛樺偍
 TaskStorage taskStorage = TaskStorageFactory.createDefaultTaskStorage();
 TaskStorage redisTaskStorage = TaskStorageFactory.createTaskStorage(StorageType.REDIS);
 
-// 创建设备存储
+// 鍒涘缓璁惧瀛樺偍
 DeviceStorage deviceStorage = TaskStorageFactory.createDefaultDeviceStorage();
 DeviceStorage redisDeviceStorage = TaskStorageFactory.createDeviceStorage(StorageType.REDIS);
 
-// 创建规则存储
+// 鍒涘缓瑙勫垯瀛樺偍
 RuleStorage ruleStorage = TaskStorageFactory.createDefaultRuleStorage();
 RuleStorage redisRuleStorage = TaskStorageFactory.createRuleStorage(StorageType.REDIS);
 
-// 通过配置字符串创建
+// 閫氳繃閰嶇疆瀛楃涓插垱寤?
 TaskStorage configTaskStorage = TaskStorageFactory.createTaskStorage("memory");
 DeviceStorage configDeviceStorage = TaskStorageFactory.createDeviceStorage("memory");
 RuleStorage configRuleStorage = TaskStorageFactory.createRuleStorage("memory");
 ```
 
-### 4. Manager 类重构
+### 4. Manager 绫婚噸鏋?
 
-#### TaskManager 重构
+#### TaskManager 閲嶆瀯
 
-重构后的 `TaskManager`：
+閲嶆瀯鍚庣殑 `TaskManager`锛?
 
 ```java
 public class TaskManager {
     private final TaskStorage taskStorage;
     private final TaskScheduler taskScheduler;
 
-    // 使用默认存储
+    // 浣跨敤榛樿瀛樺偍
     public TaskManager(TaskScheduler taskScheduler) {
         this(taskScheduler, TaskStorageFactory.createDefaultTaskStorage());
     }
 
-    // 使用自定义存储
+    // 浣跨敤鑷畾涔夊瓨鍌?
     public TaskManager(TaskScheduler taskScheduler, TaskStorage taskStorage) {
         this.taskScheduler = taskScheduler;
         this.taskStorage = taskStorage;
     }
 
-    // 所有存储操作都委托给 taskStorage
+    // 鎵€鏈夊瓨鍌ㄦ搷浣滈兘濮旀墭缁?taskStorage
     public Task getTask(String taskId) {
         return taskStorage.getTask(taskId).orElse(null);
     }
@@ -184,29 +184,29 @@ public class TaskManager {
     public boolean updateTask(Task task) {
         return taskStorage.updateTask(task);
     }
-    // ... 其他方法
+    // ... 鍏朵粬鏂规硶
 }
 ```
 
-#### DeviceManager 重构
+#### DeviceManager 閲嶆瀯
 
-重构后的 `DeviceManager`：
+閲嶆瀯鍚庣殑 `DeviceManager`锛?
 
 ```java
 public class DeviceManager {
     private final DeviceStorage deviceStorage;
 
-    // 使用默认存储
+    // 浣跨敤榛樿瀛樺偍
     public DeviceManager() {
         this(TaskStorageFactory.createDefaultDeviceStorage());
     }
 
-    // 使用自定义存储
+    // 浣跨敤鑷畾涔夊瓨鍌?
     public DeviceManager(DeviceStorage deviceStorage) {
         this.deviceStorage = deviceStorage;
     }
 
-    // 所有存储操作都委托给 deviceStorage
+    // 鎵€鏈夊瓨鍌ㄦ搷浣滈兘濮旀墭缁?deviceStorage
     public void addDevice(Device device) {
         deviceStorage.addDevice(device);
     }
@@ -215,32 +215,32 @@ public class DeviceManager {
         return deviceStorage.getDevice(deviceId).orElse(null);
     }
 
-    public List<Device> getDevicesByCountry(String country) {
-        return deviceStorage.getDevicesByCountry(country);
-    }
-    // ... 其他方法
+public List<Device> getDevicesByGroupId(String deviceGroupId) {
+    return deviceStorage.getDevicesByGroupId(deviceGroupId);
+}
+    // ... 鍏朵粬鏂规硶
 }
 ```
 
-#### RuleManager 重构
+#### RuleManager 閲嶆瀯
 
-重构后的 `RuleManager`：
+閲嶆瀯鍚庣殑 `RuleManager`锛?
 
 ```java
 public class RuleManager<T> {
     private final RuleStorage ruleStorage;
 
-    // 使用默认存储
+    // 浣跨敤榛樿瀛樺偍
     public RuleManager() {
         this(TaskStorageFactory.createDefaultRuleStorage());
     }
 
-    // 使用自定义存储
+    // 浣跨敤鑷畾涔夊瓨鍌?
     public RuleManager(RuleStorage ruleStorage) {
         this.ruleStorage = ruleStorage;
     }
 
-    // 所有存储操作都委托给 ruleStorage
+    // 鎵€鏈夊瓨鍌ㄦ搷浣滈兘濮旀墭缁?ruleStorage
     public void addDefaultRule(RuleDefinition rule) {
         ruleStorage.addRule(rule);
     }
@@ -256,31 +256,31 @@ public class RuleManager<T> {
     public boolean evaluate(RuleDefinition rule, T context) throws Exception {
         Optional<RuleEvaluator> evaluatorOpt = ruleStorage.getEvaluator(rule.getType());
         if (evaluatorOpt.isEmpty()) {
-            throw new IllegalArgumentException("不支持的规则类型:" + rule.getType());
+            throw new IllegalArgumentException("涓嶆敮鎸佺殑瑙勫垯绫诲瀷:" + rule.getType());
         }
         return evaluatorOpt.get().evaluate(rule, context);
     }
-    // ... 其他方法
+    // ... 鍏朵粬鏂规硶
 }
 ```
 
-## 使用方式
+## 浣跨敤鏂瑰紡
 
-### 1. 使用默认内存存储
+### 1. 浣跨敤榛樿鍐呭瓨瀛樺偍
 
 ```java
 // TaskManager
 TaskScheduler scheduler = new SimpleTaskScheduler();
-TaskManager taskManager = new TaskManager(scheduler); // 自动使用内存存储
+TaskManager taskManager = new TaskManager(scheduler); // 鑷姩浣跨敤鍐呭瓨瀛樺偍
 
 // DeviceManager
-DeviceManager deviceManager = new DeviceManager(); // 自动使用内存存储
+DeviceManager deviceManager = new DeviceManager(); // 鑷姩浣跨敤鍐呭瓨瀛樺偍
 
 // RuleManager
-RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(); // 自动使用内存存储
+RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(); // 鑷姩浣跨敤鍐呭瓨瀛樺偍
 ```
 
-### 2. 使用自定义存储
+### 2. 浣跨敤鑷畾涔夊瓨鍌?
 
 ```java
 // TaskManager
@@ -297,10 +297,10 @@ RuleStorage redisRuleStorage = TaskStorageFactory.createRuleStorage(StorageType.
 RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(redisRuleStorage);
 ```
 
-### 3. 通过配置切换存储
+### 3. 閫氳繃閰嶇疆鍒囨崲瀛樺偍
 
 ```java
-// 从配置文件读取存储类型
+// 浠庨厤缃枃浠惰鍙栧瓨鍌ㄧ被鍨?
 String taskStorageType = config.getProperty("task.storage.type", "memory");
 String deviceStorageType = config.getProperty("device.storage.type", "memory");
 String ruleStorageType = config.getProperty("rule.storage.type", "memory");
@@ -314,30 +314,30 @@ DeviceManager deviceManager = new DeviceManager(deviceStorage);
 RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(ruleStorage);
 ```
 
-## 扩展新的存储实现
+## 鎵╁睍鏂扮殑瀛樺偍瀹炵幇
 
-要添加新的存储实现，只需：
+瑕佹坊鍔犳柊鐨勫瓨鍌ㄥ疄鐜帮紝鍙渶锛?
 
-1. 实现对应的存储接口（`TaskStorage`、`DeviceStorage` 或 `RuleStorage`）
-2. 在 `TaskStorageFactory` 中添加新的存储类型
-3. 在工厂方法中创建对应的实例
+1. 瀹炵幇瀵瑰簲鐨勫瓨鍌ㄦ帴鍙ｏ紙`TaskStorage`銆乣DeviceStorage` 鎴?`RuleStorage`锛?
+2. 鍦?`TaskStorageFactory` 涓坊鍔犳柊鐨勫瓨鍌ㄧ被鍨?
+3. 鍦ㄥ伐鍘傛柟娉曚腑鍒涘缓瀵瑰簲鐨勫疄渚?
 
-例如，添加数据库存储：
+渚嬪锛屾坊鍔犳暟鎹簱瀛樺偍锛?
 
 ```java
 public class DatabaseTaskStorage implements TaskStorage {
-    // 实现所有接口方法
+    // 瀹炵幇鎵€鏈夋帴鍙ｆ柟娉?
 }
 
 public class DatabaseDeviceStorage implements DeviceStorage {
-    // 实现所有接口方法
+    // 瀹炵幇鎵€鏈夋帴鍙ｆ柟娉?
 }
 
 public class DatabaseRuleStorage implements RuleStorage {
-    // 实现所有接口方法
+    // 瀹炵幇鎵€鏈夋帴鍙ｆ柟娉?
 }
 
-// 在 TaskStorageFactory 中
+// 鍦?TaskStorageFactory 涓?
 public static TaskStorage createTaskStorage(StorageType type) {
     switch (type) {
         case MEMORY:
@@ -345,7 +345,7 @@ public static TaskStorage createTaskStorage(StorageType type) {
         case REDIS:
             return new RedisTaskStorage();
         case DATABASE:
-            return new DatabaseTaskStorage(); // 新增
+            return new DatabaseTaskStorage(); // 鏂板
         default:
             throw new IllegalArgumentException("Unsupported storage type: " + type);
     }
@@ -358,7 +358,7 @@ public static DeviceStorage createDeviceStorage(StorageType type) {
         case REDIS:
             return new RedisDeviceStorage();
         case DATABASE:
-            return new DatabaseDeviceStorage(); // 新增
+            return new DatabaseDeviceStorage(); // 鏂板
         default:
             throw new IllegalArgumentException("Unsupported storage type: " + type);
     }
@@ -371,61 +371,61 @@ public static RuleStorage createRuleStorage(StorageType type) {
         case REDIS:
             return new RedisRuleStorage();
         case DATABASE:
-            return new DatabaseRuleStorage(); // 新增
+            return new DatabaseRuleStorage(); // 鏂板
         default:
             throw new IllegalArgumentException("Unsupported storage type: " + type);
     }
 }
 ```
 
-## 优势
+## 浼樺娍
 
-1. **解耦**：Manager 类不再依赖具体存储实现
-2. **可扩展**：轻松添加新的存储后端
-3. **可测试**：可以轻松进行单元测试和集成测试
-4. **配置化**：可以通过配置切换存储实现
-5. **向后兼容**：保持原有 API 不变
-6. **统一架构**：TaskManager、DeviceManager 和 RuleManager 使用相同的存储抽象模式
-7. **类型安全**：使用泛型保证类型安全
+1. **瑙ｈ€?*锛歁anager 绫讳笉鍐嶄緷璧栧叿浣撳瓨鍌ㄥ疄鐜?
+2. **鍙墿灞?*锛氳交鏉炬坊鍔犳柊鐨勫瓨鍌ㄥ悗绔?
+3. **鍙祴璇?*锛氬彲浠ヨ交鏉捐繘琛屽崟鍏冩祴璇曞拰闆嗘垚娴嬭瘯
+4. **閰嶇疆鍖?*锛氬彲浠ラ€氳繃閰嶇疆鍒囨崲瀛樺偍瀹炵幇
+5. **鍚戝悗鍏煎**锛氫繚鎸佸師鏈?API 涓嶅彉
+6. **缁熶竴鏋舵瀯**锛歍askManager銆丏eviceManager 鍜?RuleManager 浣跨敤鐩稿悓鐨勫瓨鍌ㄦ娊璞℃ā寮?
+7. **绫诲瀷瀹夊叏**锛氫娇鐢ㄦ硾鍨嬩繚璇佺被鍨嬪畨鍏?
 
-## 注意事项
+## 娉ㄦ剰浜嬮」
 
-1. **线程安全**：所有存储实现都应该保证线程安全
-2. **性能考虑**：不同存储实现的性能特征不同，需要根据实际需求选择
-3. **数据一致性**：在分布式环境下需要特别注意数据一致性问题
-4. **错误处理**：存储操作可能失败，需要适当的错误处理机制
-5. **向后兼容**：保留了原有的工厂方法，但标记为 @Deprecated
-6. **评估器序列化**：Redis存储中的评估器序列化需要特别注意，可能需要使用工厂模式
+1. **绾跨▼瀹夊叏**锛氭墍鏈夊瓨鍌ㄥ疄鐜伴兘搴旇淇濊瘉绾跨▼瀹夊叏
+2. **鎬ц兘鑰冭檻**锛氫笉鍚屽瓨鍌ㄥ疄鐜扮殑鎬ц兘鐗瑰緛涓嶅悓锛岄渶瑕佹牴鎹疄闄呴渶姹傞€夋嫨
+3. **鏁版嵁涓€鑷存€?*锛氬湪鍒嗗竷寮忕幆澧冧笅闇€瑕佺壒鍒敞鎰忔暟鎹竴鑷存€ч棶棰?
+4. **閿欒澶勭悊**锛氬瓨鍌ㄦ搷浣滃彲鑳藉け璐ワ紝闇€瑕侀€傚綋鐨勯敊璇鐞嗘満鍒?
+5. **鍚戝悗鍏煎**锛氫繚鐣欎簡鍘熸湁鐨勫伐鍘傛柟娉曪紝浣嗘爣璁颁负 @Deprecated
+6. **璇勪及鍣ㄥ簭鍒楀寲**锛歊edis瀛樺偍涓殑璇勪及鍣ㄥ簭鍒楀寲闇€瑕佺壒鍒敞鎰忥紝鍙兘闇€瑕佷娇鐢ㄥ伐鍘傛ā寮?
 
-## 新增文件列表
+## 鏂板鏂囦欢鍒楄〃
 
-### 任务存储相关
+### 浠诲姟瀛樺偍鐩稿叧
 
-- `TaskStorage.java` - 任务存储接口
-- `InMemoryTaskStorage.java` - 内存任务存储实现
-- `RedisTaskStorage.java` - Redis任务存储示例实现
+- `TaskStorage.java` - 浠诲姟瀛樺偍鎺ュ彛
+- `InMemoryTaskStorage.java` - 鍐呭瓨浠诲姟瀛樺偍瀹炵幇
+- `RedisTaskStorage.java` - Redis浠诲姟瀛樺偍绀轰緥瀹炵幇
 
-### 设备存储相关
+### 璁惧瀛樺偍鐩稿叧
 
-- `DeviceStorage.java` - 设备存储接口
-- `InMemoryDeviceStorage.java` - 内存设备存储实现
-- `RedisDeviceStorage.java` - Redis设备存储示例实现
+- `DeviceStorage.java` - 璁惧瀛樺偍鎺ュ彛
+- `InMemoryDeviceStorage.java` - 鍐呭瓨璁惧瀛樺偍瀹炵幇
+- `RedisDeviceStorage.java` - Redis璁惧瀛樺偍绀轰緥瀹炵幇
 
-### 规则存储相关
+### 瑙勫垯瀛樺偍鐩稿叧
 
-- `RuleStorage.java` - 规则存储接口
-- `InMemoryRuleStorage.java` - 内存规则存储实现
-- `RedisRuleStorage.java` - Redis规则存储示例实现
+- `RuleStorage.java` - 瑙勫垯瀛樺偍鎺ュ彛
+- `InMemoryRuleStorage.java` - 鍐呭瓨瑙勫垯瀛樺偍瀹炵幇
+- `RedisRuleStorage.java` - Redis瑙勫垯瀛樺偍绀轰緥瀹炵幇
 
-### 工厂和示例
+### 宸ュ巶鍜岀ず渚?
 
-- `TaskStorageFactory.java` - 存储工厂（支持任务、设备和规则存储）
-- `StorageExample.java` - 任务存储使用示例
-- `DeviceStorageExample.java` - 设备存储使用示例
-- `RuleStorageExample.java` - 规则存储使用示例
+- `TaskStorageFactory.java` - 瀛樺偍宸ュ巶锛堟敮鎸佷换鍔°€佽澶囧拰瑙勫垯瀛樺偍锛?
+- `StorageExample.java` - 浠诲姟瀛樺偍浣跨敤绀轰緥
+- `DeviceStorageExample.java` - 璁惧瀛樺偍浣跨敤绀轰緥
+- `RuleStorageExample.java` - 瑙勫垯瀛樺偍浣跨敤绀轰緥
 
-### 重构的类
+### 閲嶆瀯鐨勭被
 
-- `TaskManager.java` - 重构后使用TaskStorage接口
-- `DeviceManager.java` - 重构后使用DeviceStorage接口
-- `RuleManager.java` - 重构后使用RuleStorage接口 
+- `TaskManager.java` - 閲嶆瀯鍚庝娇鐢═askStorage鎺ュ彛
+- `DeviceManager.java` - 閲嶆瀯鍚庝娇鐢―eviceStorage鎺ュ彛
+- `RuleManager.java` - 閲嶆瀯鍚庝娇鐢≧uleStorage鎺ュ彛 

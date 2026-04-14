@@ -63,11 +63,11 @@ class TaskApiTokenAttributeRoutingIntegrationTest extends AbstractMockE2eTest {
                 rule("basic_device_check", "isDeviceAvailable == true && isDeviceLocked == false"),
                 rule("token_status_check", "isTokenAllocatable == true && isTokenAvailable == true"),
                 rule("app_support_check", "supportsProject == true"),
-                rule("token_attribute_country", "tokenAttributes['country'] == taskCountry")
+                rule("token_attribute_country", "tokenAttributes['country'] == taskRoutingCountryCode")
         ));
 
-        addCandidate("matched-device", "us");
-        addCandidate("other-device", "gb");
+        addCandidate("matched-device", "pool-east", "shared", "us");
+        addCandidate("other-device", "pool-west", "shared", "gb");
 
         URI uri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
         MassWebSocketClientImpl matchedClient = new MassWebSocketClientImpl(uri, "matched-device");
@@ -105,10 +105,10 @@ class TaskApiTokenAttributeRoutingIntegrationTest extends AbstractMockE2eTest {
         return rule;
     }
 
-    private void addCandidate(String deviceId, String countryAttribute) {
+    private void addCandidate(String deviceId, String deviceGroupId, String tokenChannel, String countryAttribute) {
         Device device = new Device();
         device.setDeviceId(deviceId);
-        device.setGroupId("us");
+        device.setDeviceGroupId(deviceGroupId);
         device.setStatus(DeviceStatus.ONLINE);
         device.setSupportedProjects(List.of(Project.DEMO_APP));
         deviceManager.addDevice(device);
@@ -116,7 +116,7 @@ class TaskApiTokenAttributeRoutingIntegrationTest extends AbstractMockE2eTest {
         Token token = new Token();
         token.setTokenId("token-" + deviceId);
         token.setDeviceId(deviceId);
-        token.setChannel("us");
+        token.setChannel(tokenChannel);
         token.setStatus(TokenStatus.LOGIN_READY);
         token.setAttributes(Map.of("country", countryAttribute));
         deviceManager.addToken(deviceId, token);

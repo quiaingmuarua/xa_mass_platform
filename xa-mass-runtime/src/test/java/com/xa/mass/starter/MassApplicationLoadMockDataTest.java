@@ -78,7 +78,11 @@ class MassApplicationLoadMockDataTest {
         assertTrue(tokens.stream().allMatch(token -> token.getDeviceId() != null && token.getTokenId() != null));
         assertTrue(tokens.stream().allMatch(token -> {
             Device device = deviceManager.getDevice(token.getDeviceId());
-            return device != null && device.getGroupId().equals(token.getChannel());
+            return device != null && device.getDeviceGroupId().equals(token.getChannel());
+        }));
+        assertTrue(tokens.stream().allMatch(token -> {
+            Device device = deviceManager.getDevice(token.getDeviceId());
+            return device != null && device.getDeviceGroupId().equals(token.getAttributes().get("country"));
         }));
     }
 
@@ -91,7 +95,7 @@ class MassApplicationLoadMockDataTest {
                       "COUNT": 1,
                       "FIELDS": {
                         "deviceId": "device-us-1",
-                        "groupId": "US",
+                        "deviceGroupId": "US",
                         "agentVersion": "1.0.0",
                         "status": "ONLINE",
                         "supportedProjects": ["demoApp", "testApp"]
@@ -102,7 +106,7 @@ class MassApplicationLoadMockDataTest {
                       "COUNT": 1,
                       "FIELDS": {
                         "deviceId": "device-gb-1",
-                        "groupId": "GB",
+                        "deviceGroupId": "GB",
                         "agentVersion": "1.0.1",
                         "status": "ONLINE",
                         "supportedProjects": ["demoApp", "testApp"]

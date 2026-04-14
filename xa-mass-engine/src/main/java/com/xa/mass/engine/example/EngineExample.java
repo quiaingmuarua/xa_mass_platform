@@ -32,23 +32,23 @@ public class EngineExample {
          DeviceManager deviceManager = new DeviceManager(new InMemoryDeviceStorage());
          log.info("taskManager:"+taskManager );
          log.info("deviceManager:"+deviceManager );
-        //监听任务是否需要分配设备
+        //鐩戝惉浠诲姟鏄惁闇€瑕佸垎閰嶈澶?
 
 
 
-        //生成设备
+        //鐢熸垚璁惧
         List<Device> devices= genMockDevice();
         devices.forEach(deviceManager::addDevice);
-        //上token
+        //涓妕oken
         List<Token> tokens=genMockToken();
         tokens.forEach(token -> {deviceManager.addToken(token.getDeviceId(),token);});
-        //生成任务
+        //鐢熸垚浠诲姟
         TaskCreateRequestDto task=new TaskCreateRequestDto();
         taskManager.createTask(task);
 
         //
 
-        //模拟审核
+        //妯℃嫙瀹℃牳
 
 
 
@@ -70,11 +70,11 @@ public class EngineExample {
     public static  List<Device> genMockDevice(){
 
         JsonDslDefinition definition = new JsonDslDefinition("device_generator", JsonDslDefinition.DslType.GENERATE);
-        definition.setDescription("生成 300 个测试设备");
-        // 3. 设置字段 DSL
+        definition.setDescription("鐢熸垚 300 涓祴璇曡澶?);
+        // 3. 璁剧疆瀛楁 DSL
         Map<String, Object> fieldDsl = new HashMap<>();
         fieldDsl.put("deviceId", Map.of("$JOIN", Arrays.asList("", "&.index")));
-        fieldDsl.put("groupId", Map.of("$RANGE", Arrays.asList(16, 65)));
+        fieldDsl.put("deviceGroupId", Map.of("$RANGE", Arrays.asList(16, 65)));
         fieldDsl.put("status", Map.of("$CHOICE", Arrays.asList("OFFLINE", "ONLINE")));
         definition.setFieldDsl(fieldDsl);
         GenerateProcessor processor = ProcessorRegistry.getGenerateProcessor();

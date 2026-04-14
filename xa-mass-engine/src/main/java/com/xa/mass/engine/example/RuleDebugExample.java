@@ -1,6 +1,9 @@
 package com.xa.mass.engine.example;
 
 import com.xa.mass.base.enums.Project;
+import com.xa.mass.base.enums.device.DeviceStatus;
+import com.xa.mass.base.enums.task.TaskStatus;
+import com.xa.mass.base.enums.task.TokenStatus;
 import com.xa.mass.base.model.Device;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.Token;
@@ -20,57 +23,49 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
- * 规则调试示例
- * 帮助诊断设备匹配规则的问题
+ * Simple debugging entry for rule-based device matching.
  */
 public class RuleDebugExample {
 
     private static final Logger logger = LoggerFactory.getLogger(RuleDebugExample.class);
 
     public static void main(String[] args) {
-        System.out.println("=== 规则调试示例 ===");
+        System.out.println("=== Rule Debug Example ===");
 
-        // 创建设备管理器
         DeviceStorage deviceStorage = TaskStorageFactory.createDefaultDeviceStorage();
         DeviceManager deviceManager = new DeviceManager(deviceStorage);
-
-        // 创建规则管理器
         RuleManager<Map<String, Object>> ruleManager = RuleManagerFactory.getDefaultRuleManager();
 
-        // 生成测试数据
         generateTestData(deviceManager);
-
-        // 创建测试任务
         Task testTask = createTestTask();
 
-        // 获取候选设备
-        List<Device> candidates = deviceManager.getDevicesByCountry(testTask.getTaskCountry());
-        System.out.println("候选设备数量: " + candidates.size());
+        List<Device> candidates = deviceManager.getAllDevices();
+        System.out.println("Candidate device count: " + candidates.size());
 
-        // 调试每个设备的规则评估
         for (Device device : candidates) {
             debugDeviceEvaluation(device, testTask, deviceManager, ruleManager);
         }
     }
 
     private static void generateTestData(DeviceManager deviceManager) {
-        // 生成一些测试设备
         String[] countries = {"us", "gb", "ca"};
-        String[] projects = {"demoApp", "testApp", "prodApp"};
 
         for (int i = 0; i < 10; i++) {
+            String country = countries[i % countries.length];
+
             Device device = new Device();
             device.setDeviceId("device-" + i);
-            device.setGroupId(countries[i % countries.length]);
-            device.setStatus(com.xa.mass.base.enums.device.DeviceStatus.ONLINE);
+            device.setDeviceGroupId(country);
+            device.setStatus(DeviceStatus.ONLINE);
             device.setAgentVersion("1.0." + (i % 5));
             device.setSupportedProjects(Arrays.asList(Project.DEMO_APP));
 
-            // 创建设备对应的Token
             Token token = new Token();
             token.setTokenId("token-" + i);
-            token.setStatus(com.xa.mass.base.enums.task.TokenStatus.LOGIN_READY);
-            token.setChannel(countries[i % countries.length]);
+            token.setDeviceId(device.getDeviceId());
+            token.setStatus(TokenStatus.LOGIN_READY);
+            token.setChannel(country);
+            token.setAttributes(Map.of("country", country));
 
             deviceManager.addDevice(device);
             deviceManager.addToken(device.getDeviceId(), token);
@@ -81,93 +76,76 @@ public class RuleDebugExample {
                             .collect(Collectors.joining(", ")));
         }
 
-        System.out.println("生成了 " + 10 + " 个测试设备和Token");
+        System.out.println("Generated 10 test devices and tokens");
     }
 
     private static Task createTestTask() {
         Task task = new Task();
         task.setTid("test-task-001");
-        task.setTaskName("测试任务");
+        task.setTaskName("routing-country-debug");
         task.setProject("demoApp");
-        task.setTaskCountry("us");
-        task.setStatus(com.xa.mass.base.enums.task.TaskStatus.READY);
+        task.setTaskRoutingCountryCode("us");
+        task.setStatus(TaskStatus.READY);
         task.setTaskTargetNumber(100);
         task.setBatchSize(10);
         task.setRunTaskMinDeviceCnt(5);
-
         return task;
     }
 
     private static void debugDeviceEvaluation(Device device, Task task, DeviceManager deviceManager,
                                               RuleManager<Map<String, Object>> ruleManager) {
-        System.out.println("\n=== 调试设备: " + device.getDeviceId() + " ===");
+        System.out.println("\n=== Debugging device: " + device.getDeviceId() + " ===");
 
-        // 获取设备的Token
         Token token = deviceManager.getToken(device.getDeviceId());
-
-        // 创建设备匹配上下文
         DeviceMatchContext matchContext = new DeviceMatchContext(device, token, task, deviceManager);
 
-        // 打印上下文信息
-        System.out.println("设备信息:");
-        System.out.println("  - 设备ID: " + device.getDeviceId());
-        System.out.println("  - 国家: " + device.getGroupId());
-        System.out.println("  - 状态: " + device.getStatus());
-        System.out.println("  - Agent版本: " + device.getAgentVersion());
-        System.out.println("  - 支持的项目: " + device.getSupportedProjects());
-        System.out.println("  - 是否可用: " + device.isAvailable());
-        System.out.println("  - 是否锁定: " + device.isLocked());
+        System.out.println("Device:");
+        System.out.println("  - id: " + device.getDeviceId());
+        System.out.println("  - deviceGroupId: " + device.getDeviceGroupId());
+        System.out.println("  - status: " + device.getStatus());
+        System.out.println("  - agentVersion: " + device.getAgentVersion());
+        System.out.println("  - supportedProjects: " + device.getSupportedProjects());
 
         if (token != null) {
-            System.out.println("Token信息:");
-            System.out.println("  - TokenID: " + token.getTokenId());
-            System.out.println("  - 状态: " + token.getStatus());
-            System.out.println("  - 渠道: " + token.getChannel());
-            System.out.println("  - 是否可分配: " + token.isAllocatable());
-            System.out.println("  - 是否可用: " + token.isAvailable());
+            System.out.println("Token:");
+            System.out.println("  - id: " + token.getTokenId());
+            System.out.println("  - status: " + token.getStatus());
+            System.out.println("  - channel: " + token.getChannel());
+            System.out.println("  - attributes: " + token.getAttributes());
         } else {
-            System.out.println("Token信息: null");
+            System.out.println("Token: null");
         }
 
-        System.out.println("任务信息:");
-        System.out.println("  - 任务ID: " + task.getTid());
-        System.out.println("  - 项目: " + task.getProjectCode());
-        System.out.println("  - 国家: " + task.getTaskCountry());
+        System.out.println("Task:");
+        System.out.println("  - id: " + task.getTid());
+        System.out.println("  - project: " + task.getProjectCode());
+        System.out.println("  - routingCountryCode: " + task.getTaskRoutingCountryCode());
 
-        // 打印计算属性
         Map<String, Object> context = matchContext.getContext();
-        System.out.println("计算属性:");
+        System.out.println("Computed context:");
         System.out.println("  - appCount: " + context.get("appCount"));
         System.out.println("  - supportsProject: " + context.get("supportsProject"));
-        System.out.println("  - countryMatch: " + context.get("countryMatch"));
-        System.out.println("  - channelMatch: " + context.get("channelMatch"));
+        System.out.println("  - deviceGroupMatchesRoutingCountry: " + context.get("deviceGroupMatchesRoutingCountry"));
+        System.out.println("  - tokenChannelMatchesRoutingCountry: " + context.get("tokenChannelMatchesRoutingCountry"));
+        System.out.println("  - tokenAttributeCountryMatchesRoutingCountry: " + context.get("tokenAttributeCountryMatchesRoutingCountry"));
 
-        // 评估每个规则
         List<RuleDefinition> rules = ruleManager.getDefaultRules();
-        System.out.println("\n规则评估结果:");
+        System.out.println("\nRule evaluation:");
 
         int passedRules = 0;
         for (RuleDefinition rule : rules) {
             try {
                 boolean result = ruleManager.evaluate(rule, context);
-                System.out.println("  - " + rule.getId() + " (" + rule.getDesc() + "): " +
-                        (result ? "✓ 通过" : "✗ 失败"));
-                if (result) passedRules++;
-
-                // 打印规则内容
-                System.out.println("    规则内容: " + rule.getContent());
-
+                System.out.println("  - " + rule.getId() + " (" + rule.getDesc() + "): " + (result ? "PASS" : "FAIL"));
+                System.out.println("    expression: " + rule.getContent());
+                if (result) {
+                    passedRules++;
+                }
             } catch (Exception e) {
-                System.out.println("  - " + rule.getId() + ": ✗ 异常 - " + e.getMessage());
+                System.out.println("  - " + rule.getId() + ": ERROR - " + e.getMessage());
             }
         }
 
-        System.out.println("总结: " + passedRules + "/" + rules.size() + " 个规则通过");
-
-        if (passedRules == rules.size()) {
-            System.out.println("✓ 设备匹配成功!");
-        } else {
-            System.out.println("✗ 设备匹配失败");
-        }
+        System.out.println("Summary: " + passedRules + "/" + rules.size() + " rules passed");
     }
-} 
+}

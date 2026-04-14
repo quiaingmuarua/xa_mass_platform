@@ -28,17 +28,17 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Verifies the PAUSED → READY → RUNNING → TERMINAL path via a real resume call
+ * Verifies the PAUSED 鈫?READY 鈫?RUNNING 鈫?TERMINAL path via a real resume call
  * followed by device connection and mock callback.
  *
  * <p>Specifically:
  * <ol>
- *   <li>Task is approved while NO devices are available → stays READY, scheduleDeviceCnt=0.</li>
- *   <li>Task is paused (READY → PAUSED).</li>
+ *   <li>Task is approved while NO devices are available 鈫?stays READY, scheduleDeviceCnt=0.</li>
+ *   <li>Task is paused (READY 鈫?PAUSED).</li>
  *   <li>A matching device is registered and a mock client connects.</li>
- *   <li>Task is resumed (PAUSED → READY); {@code notifyTaskReady} kicks the assign worker.</li>
- *   <li>TaskAssignWorker assigns the task to the new device (READY → RUNNING).</li>
- *   <li>Mock client auto-sends a SUCCESS callback → task closes to TERMINAL.</li>
+ *   <li>Task is resumed (PAUSED 鈫?READY); {@code notifyTaskReady} kicks the assign worker.</li>
+ *   <li>TaskAssignWorker assigns the task to the new device (READY 鈫?RUNNING).</li>
+ *   <li>Mock client auto-sends a SUCCESS callback 鈫?task closes to TERMINAL.</li>
  * </ol>
  *
  * <p>This path is distinct from {@link TaskApiPauseCompletionIntegrationTest}, which covers
@@ -70,7 +70,7 @@ class TaskApiResumeAndCompleteIntegrationTest extends AbstractMockE2eTest {
 
     @Test
     void resumedPausedTaskCompletesAfterDeviceConnectsAndSendsCallback() throws Exception {
-        // 1. Create and approve a task — no devices online yet.
+        // 1. Create and approve a task 鈥?no devices online yet.
         String taskId = createTaskId("resume-and-complete", "resume and complete integration test", "target-a");
 
         Map<String, Object> approveResponse = exchange(
@@ -96,7 +96,7 @@ class TaskApiResumeAndCompleteIntegrationTest extends AbstractMockE2eTest {
 
         TaskSnapshot pausedSnapshot = waitForTaskSnapshot(taskId, "PAUSED", 4, 500L);
         assertEquals("PAUSED", pausedSnapshot.task().get("status"));
-        // Message is still INIT — no device was ever assigned.
+        // Message is still INIT 鈥?no device was ever assigned.
         assertEquals("INIT", pausedSnapshot.messages().get(0).get("status"));
 
         // 4. Register a matching device and connect a mock client.
@@ -108,7 +108,7 @@ class TaskApiResumeAndCompleteIntegrationTest extends AbstractMockE2eTest {
         try {
             assertTrue(client.connectBlocking(), "Mock client failed to connect");
 
-            // 5. Resume the task: PAUSED → READY → assign worker picks it up → RUNNING → TERMINAL.
+            // 5. Resume the task: PAUSED 鈫?READY 鈫?assign worker picks it up 鈫?RUNNING 鈫?TERMINAL.
             Map<String, Object> resumeResponse = exchange(
                     "/status/api/tasks/" + taskId + "/resume",
                     HttpMethod.POST,
@@ -134,12 +134,12 @@ class TaskApiResumeAndCompleteIntegrationTest extends AbstractMockE2eTest {
         }
     }
 
-    // ─── helpers ────────────────────────────────────────────────────────────
+    // 鈹€鈹€鈹€ helpers 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 
     private void registerDevice(String deviceId) {
         Device device = new Device();
         device.setDeviceId(deviceId);
-        device.setGroupId("us");
+        device.setDeviceGroupId("us");
         device.setStatus(DeviceStatus.ONLINE);
         device.setSupportedProjects(List.of(Project.DEMO_APP));
         deviceManager.addDevice(device);

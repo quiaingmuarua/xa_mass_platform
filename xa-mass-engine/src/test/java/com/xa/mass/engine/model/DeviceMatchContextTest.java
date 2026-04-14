@@ -24,7 +24,7 @@ class DeviceMatchContextTest {
         Device device = new Device();
         device.setDeviceId("device-1");
         device.setStatus(DeviceStatus.ONLINE);
-        device.setGroupId("us");
+        device.setDeviceGroupId("us");
         device.setSupportedProjects(List.of(Project.DEMO_APP));
         device.setAttributes(Map.of("pool", "warmup"));
 
@@ -38,7 +38,7 @@ class DeviceMatchContextTest {
         Task task = new Task();
         task.setTid("task-1");
         task.setProject(Project.DEMO_APP);
-        task.setTaskCountry("us");
+        task.setTaskRoutingCountryCode("us");
         task.setStatus(TaskStatus.READY);
 
         DeviceManager deviceManager = new DeviceManager(new InMemoryDeviceStorage());
@@ -48,8 +48,10 @@ class DeviceMatchContextTest {
         assertEquals(Map.of("pool", "warmup"), context.getContext().get("deviceAttributes"));
         assertEquals(Map.of("country", "us"), context.getContext().get("tokenAttributes"));
         assertEquals(0, context.getContext().get("taskTargetNumber"));
-        assertEquals(true, context.getContext().get("countryMatch"));
-        assertEquals(true, context.getContext().get("channelMatch"));
+        assertEquals("us", context.getContext().get("taskRoutingCountryCode"));
+        assertEquals(true, context.getContext().get("deviceGroupMatchesRoutingCountry"));
+        assertEquals(true, context.getContext().get("tokenChannelMatchesRoutingCountry"));
+        assertEquals(true, context.getContext().get("tokenAttributeCountryMatchesRoutingCountry"));
     }
 
     @Test
@@ -57,13 +59,13 @@ class DeviceMatchContextTest {
         Device device = new Device();
         device.setDeviceId("device-2");
         device.setStatus(DeviceStatus.ONLINE);
-        device.setGroupId("us");
+        device.setDeviceGroupId("us");
         device.setSupportedProjects(List.of(Project.DEMO_APP));
 
         Task task = new Task();
         task.setTid("task-2");
         task.setProject(Project.DEMO_APP);
-        task.setTaskCountry("us");
+        task.setTaskRoutingCountryCode("us");
         task.setStatus(TaskStatus.READY);
 
         DeviceManager deviceManager = new DeviceManager(new InMemoryDeviceStorage());

@@ -44,17 +44,17 @@ class DeviceManagerTest {
         assertEquals(3, manager.getAllDevices().size());
     }
 
-    // ---- filter by country ----
+    // ---- filter by group ----
 
     @Test
-    void getDevicesByCountryFiltersCorrectly() {
+    void getDevicesByGroupIdFiltersCorrectly() {
         manager.addDevice(device("us1", "us"));
         manager.addDevice(device("us2", "us"));
         manager.addDevice(device("gb1", "gb"));
 
-        List<Device> us = manager.getDevicesByCountry("us");
+        List<Device> us = manager.getDevicesByGroupId("us");
         assertEquals(2, us.size());
-        assertTrue(us.stream().allMatch(d -> "us".equals(d.getGroupId())));
+        assertTrue(us.stream().allMatch(d -> "us".equals(d.getDeviceGroupId())));
     }
 
     // ---- update / delete ----
@@ -139,10 +139,10 @@ class DeviceManagerTest {
 
     // ---- helpers ----
 
-    private Device device(String id, String country) {
+    private Device device(String id, String deviceGroupId) {
         Device d = new Device();
         d.setDeviceId(id);
-        d.setGroupId(country);
+        d.setDeviceGroupId(deviceGroupId);
         d.setStatus(DeviceStatus.ONLINE);
         return d;
     }

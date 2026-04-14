@@ -7,83 +7,83 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * 设备存储接口
- * 提供设备和Token的存储抽象能力
+ * 璁惧瀛樺偍鎺ュ彛
+ * 鎻愪緵璁惧鍜孴oken鐨勫瓨鍌ㄦ娊璞¤兘鍔?
  */
 public interface DeviceStorage {
 
     /**
-     * 添加设备
+     * 娣诲姞璁惧
      */
     void addDevice(Device device);
 
     /**
-     * 根据设备ID获取设备
+     * 鏍规嵁璁惧ID鑾峰彇璁惧
      */
     Optional<Device> getDevice(String deviceId);
 
     /**
-     * 更新设备
+     * 鏇存柊璁惧
      */
     boolean updateDevice(Device device);
 
     /**
-     * 删除设备
+     * 鍒犻櫎璁惧
      */
     boolean deleteDevice(String deviceId);
 
     /**
-     * 根据国家获取设备列表
+     * 鏍规嵁鍥藉鑾峰彇璁惧鍒楄〃
      */
-    List<Device> getDevicesByCountry(String country);
+    List<Device> getDevicesByGroupId(String deviceGroupId);
 
     /**
-     * 获取所有设备
+     * 鑾峰彇鎵€鏈夎澶?
      */
     List<Device> getAllDevices();
 
     /**
-     * 添加Token
+     * 娣诲姞Token
      */
     void addToken(String deviceId, Token token);
 
     /**
-     * 根据设备ID获取Token
+     * 鏍规嵁璁惧ID鑾峰彇Token
      */
     Optional<Token> getToken(String deviceId);
 
     /**
-     * 更新Token
+     * 鏇存柊Token
      */
     boolean updateToken(String deviceId, Token token);
 
     /**
-     * 删除Token
+     * 鍒犻櫎Token
      */
     boolean deleteToken(String deviceId);
 
     /**
-     * 获取所有Token
+     * 鑾峰彇鎵€鏈塗oken
      */
     List<Token> getAllTokens();
 
     /**
-     * 尝试锁定设备
+     * 灏濊瘯閿佸畾璁惧
      */
     boolean tryLockDevice(String deviceId);
 
     /**
-     * 解锁设备
+     * 瑙ｉ攣璁惧
      */
     void unlockDevice(String deviceId);
 
     /**
-     * 检查设备是否被锁定
+     * 妫€鏌ヨ澶囨槸鍚﹁閿佸畾
      */
     boolean isLocked(String deviceId);
 
     /**
-     * 获取所有锁定的设备ID
+     * 鑾峰彇鎵€鏈夐攣瀹氱殑璁惧ID
      */
     List<String> getLockedDevices();
 } 

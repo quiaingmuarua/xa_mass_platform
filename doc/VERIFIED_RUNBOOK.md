@@ -59,7 +59,7 @@ For endpoint inventory, response shapes, and implementation status, use [INTERNA
 - Device and token auxiliary rule labels are also verified:
   - `Device.attributes` and `Token.attributes` are defensive-copied and exposed as read-only maps
   - `DeviceMatchContext` exposes them to QLExpress as `deviceAttributes` and `tokenAttributes`
-  - token-attribute routing is verified end-to-end through `tokenAttributes['country'] == taskCountry`
+- token-attribute routing is verified end-to-end through `tokenAttributes['country'] == taskRoutingCountryCode`
 
 ## 2. Recommended Startup
 
@@ -169,7 +169,10 @@ Verified runtime path:
 
 Current matching-context note:
 
-- `DeviceMatchContext` now exposes nested `deviceAttributes` and `tokenAttributes` maps for QLExpress access such as `tokenAttributes['country'] == taskCountry`
+- `Task.taskRoutingCountryCode` is the active routing-country input for matching and diagnostics
+- `DeviceManager.getDevicesByGroupId(...)` / `DeviceStorage.getDevicesByGroupId(...)` are grouping helpers only, not country-routing APIs
+- `RuleBasedTaskDeviceMatchingStrategy` no longer treats device `deviceGroupId` as a hard prefilter for routing country
+- `DeviceMatchContext` now exposes nested `deviceAttributes` and `tokenAttributes` maps for QLExpress access such as `tokenAttributes['country'] == taskRoutingCountryCode`
 - these maps are auxiliary rule labels only and are not the source of truth for lifecycle, lock, or online state
 
 ### 4.3 Result Write-Back and Completion
@@ -196,7 +199,7 @@ Important guard added in the verified runtime:
 `MassApplication.loadMockData(...)` now:
 
 - normalizes `supportedProjects` into `Project` enums
-- lowercases `groupId`
+- lowercases `deviceGroupId`
 - auto-seeds a `LOGIN_READY` token when a mock device has no token data
 
 This fixes the earlier false-stuck case where approved tasks remained in `READY` because mock devices did not satisfy assignment prerequisites.

@@ -7,7 +7,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 设备属性快照
+ * 璁惧灞炴€у揩鐓?
  */
 public class DeviceSnapshot {
     private String deviceId;
@@ -15,7 +15,7 @@ public class DeviceSnapshot {
     private String agentVersion;
     private LocalDateTime lastHeartbeat;
     private List<Project> supportedProjects;
-    private String groupId;
+    private String deviceGroupId;
     private LocalDateTime lockExpireTime;
     private String onlineStrategy;
     private Map<String, String> attributes;
@@ -69,12 +69,12 @@ public class DeviceSnapshot {
         this.supportedProjects = supportedProjects;
     }
 
-    public String getGroupId() {
-        return groupId;
+    public String getDeviceGroupId() {
+        return deviceGroupId;
     }
 
-    public void setGroupId(String groupId) {
-        this.groupId = groupId;
+    public void setDeviceGroupId(String deviceGroupId) {
+        this.deviceGroupId = deviceGroupId;
     }
 
     public LocalDateTime getLockExpireTime() {

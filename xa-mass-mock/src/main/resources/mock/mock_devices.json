@@ -9,7 +9,7 @@
           "&.index"
         ]
       },
-      "groupId": "us",
+      "deviceGroupId": "us",
       "agentVersion": "1.0.0",
       "status": {
         "$CHOICE": [
@@ -34,7 +34,7 @@
           "&.index"
         ]
       },
-      "groupId": "gb",
+      "deviceGroupId": "gb",
       "agentVersion": "1.0.1",
       "status": {
         "$CHOICE": [

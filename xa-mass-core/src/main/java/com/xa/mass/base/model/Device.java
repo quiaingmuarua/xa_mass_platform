@@ -12,60 +12,60 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * 设备实体
- * 仅负责维护自身物理/网络/版本等属性
- * 是否可调度由 Task/Token 筛选决定
+ * 璁惧瀹炰綋
+ * 浠呰礋璐ｇ淮鎶よ嚜韬墿鐞?缃戠粶/鐗堟湰绛夊睘鎬?
+ * 鏄惁鍙皟搴︾敱 Task/Token 绛涢€夊喅瀹?
  */
 public class Device {
     /**
-     * 唯一标识
+     * 鍞竴鏍囪瘑
      */
     private String deviceId;
 
     /**
-     * 状态
+     * 鐘舵€?
      */
     private DeviceStatus status;
 
     /**
-     * 插件/Agent版本
+     * 鎻掍欢/Agent鐗堟湰
      */
     private String agentVersion;
 
     /**
-     * 最后心跳时间
+     * 鏈€鍚庡績璺虫椂闂?
      */
     private LocalDateTime lastHeartbeat;
 
     /**
-     * 支持的project列表
+     * 鏀寔鐨刾roject鍒楄〃
      */
     private List<Project> supportedProjects;
 
     /**
-     * 分组信息
+     * 鍒嗙粍淇℃伅
      */
-    private String groupId;
+    private String deviceGroupId;
 
     /**
-     * 当前分配锁过期时间
+     * 褰撳墠鍒嗛厤閿佽繃鏈熸椂闂?
      */
     private LocalDateTime lockExpireTime;
 
     /**
-     * 策略字段（可选）
+     * 绛栫暐瀛楁锛堝彲閫夛級
      */
     private String onlineStrategy;
 
     private Map<String, String> attributes = Collections.emptyMap();
 
     /**
-     * 创建时间
+     * 鍒涘缓鏃堕棿
      */
     private LocalDateTime createTime;
 
     /**
-     * 更新时间
+     * 鏇存柊鏃堕棿
      */
     private LocalDateTime updateTime;
 
@@ -125,12 +125,12 @@ public class Device {
         this.supportedProjects = supportedProjects;
     }
 
-    public String getGroupId() {
-        return groupId;
+    public String getDeviceGroupId() {
+        return deviceGroupId;
     }
 
-    public void setGroupId(String groupId) {
-        this.groupId = groupId;
+    public void setDeviceGroupId(String deviceGroupId) {
+        this.deviceGroupId = deviceGroupId;
     }
 
     public LocalDateTime getLockExpireTime() {
@@ -178,14 +178,14 @@ public class Device {
     }
 
     /**
-     * 检查设备是否可用
+     * 妫€鏌ヨ澶囨槸鍚﹀彲鐢?
      */
     public boolean isAvailable() {
         return status.isAvailable();
     }
 
     /**
-     * 检查设备是否支持指定应用
+     * 妫€鏌ヨ澶囨槸鍚︽敮鎸佹寚瀹氬簲鐢?
      */
     public boolean supportsProject(Project project) {
         return supportedProjects != null && supportedProjects.contains(project);
@@ -197,27 +197,27 @@ public class Device {
     }
 
     /**
-     * 检查设备是否被锁定
+     * 妫€鏌ヨ澶囨槸鍚﹁閿佸畾
      */
     public boolean isLocked() {
         return lockExpireTime != null && lockExpireTime.isAfter(LocalDateTime.now());
     }
 
     /**
-     * 更新心跳时间
+     * 鏇存柊蹇冭烦鏃堕棿
      */
     public void updateHeartbeat() {
         this.lastHeartbeat = LocalDateTime.now();
         this.updateTime = LocalDateTime.now();
 
-        // 如果设备离线，更新为在线状态
+        // 濡傛灉璁惧绂荤嚎锛屾洿鏂颁负鍦ㄧ嚎鐘舵€?
         if (this.status == DeviceStatus.OFFLINE) {
             this.status = DeviceStatus.ONLINE;
         }
     }
 
     /**
-     * 检查心跳是否超时
+     * 妫€鏌ュ績璺虫槸鍚﹁秴鏃?
      */
     public boolean isHeartbeatExpired(int timeoutSeconds) {
         if (lastHeartbeat == null) {
@@ -227,7 +227,7 @@ public class Device {
     }
 
     /**
-     * 状态转换
+     * 鐘舵€佽浆鎹?
      */
     public boolean transitionTo(DeviceStatus targetStatus) {
         if (this.status != targetStatus) {
@@ -259,7 +259,7 @@ public class Device {
                 ", agentVersion='" + agentVersion + '\'' +
                 ", lastHeartbeat=" + lastHeartbeat +
                 ", supportedProjects=" + supportedProjects +
-                ", groupId='" + groupId + '\'' +
+                ", deviceGroupId='" + deviceGroupId + '\'' +
                 ", lockExpireTime=" + lockExpireTime +
                 ", onlineStrategy='" + onlineStrategy + '\'' +
                 ", attributes=" + attributes +

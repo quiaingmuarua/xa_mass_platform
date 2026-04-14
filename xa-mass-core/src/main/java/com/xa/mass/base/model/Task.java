@@ -21,7 +21,7 @@ public class Task {
     private String taskName;
     private Project project;
     private TaskStatus status;
-    private String taskCountry;
+    private String taskRoutingCountryCode;
     private int taskTargetNumber;
     private int taskEligibleNumber;
     private int taskSuccessNumber;
@@ -43,13 +43,13 @@ public class Task {
         this.updateTime = LocalDateTime.now();
     }
 
-    public Task(String tid, String taskName, String project, String taskCountry,
+    public Task(String tid, String taskName, String project, String taskRoutingCountryCode,
                 int taskTargetNumber, String textContent, User user) {
         this();
         this.tid = tid;
         this.taskName = taskName;
         this.project = Project.requireCode(project);
-        this.taskCountry = taskCountry;
+        this.taskRoutingCountryCode = taskRoutingCountryCode;
         this.taskTargetNumber = taskTargetNumber;
         this.taskEligibleNumber = taskTargetNumber;
         this.taskSuccessNumber = 0;
@@ -99,12 +99,12 @@ public class Task {
         this.updateTime = LocalDateTime.now();
     }
 
-    public String getTaskCountry() {
-        return taskCountry;
+    public String getTaskRoutingCountryCode() {
+        return taskRoutingCountryCode;
     }
 
-    public void setTaskCountry(String taskCountry) {
-        this.taskCountry = taskCountry;
+    public void setTaskRoutingCountryCode(String taskRoutingCountryCode) {
+        this.taskRoutingCountryCode = taskRoutingCountryCode;
     }
 
     public int getTaskTargetNumber() {
@@ -287,7 +287,7 @@ public class Task {
                 ", taskName='" + taskName + '\'' +
                 ", project='" + (project != null ? project.getCode() : null) + '\'' +
                 ", status=" + status +
-                ", taskCountry='" + taskCountry + '\'' +
+                ", taskRoutingCountryCode='" + taskRoutingCountryCode + '\'' +
                 ", taskTargetNumber=" + taskTargetNumber +
                 ", taskEligibleNumber=" + taskEligibleNumber +
                 ", taskSuccessNumber=" + taskSuccessNumber +

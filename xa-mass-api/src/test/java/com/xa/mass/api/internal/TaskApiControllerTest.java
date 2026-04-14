@@ -324,7 +324,7 @@ class TaskApiControllerTest {
                 TASK_ID.equals(task.getTid())
                         && "updated-name".equals(task.getTaskName())
                         && "telegramApp".equals(task.getProjectCode())
-                        && "sg".equals(task.getTaskCountry())
+                        && "sg".equals(task.getTaskRoutingCountryCode())
                         && "updated-content".equals(task.getTextContent())
                         && task.getUser() != null
                         && "updated-user".equals(task.getUser().getName())

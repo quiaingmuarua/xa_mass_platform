@@ -14,15 +14,15 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentSkipListSet;
 
 /**
- * 璁惧绠＄悊鍣?
- * 璐熻矗璁惧鐨凜RUD鎿嶄綔鍜孴oken绠＄悊
+ * 鐠佹儳顦粻锛勬倞閸?
+ * 鐠愮喕鐭楃拋鎯ь槵閻ㄥ嚋RUD閹垮秳缍旈崪瀛磑ken缁狅紕鎮?
  */
 public class DeviceManager {
 
     private static final Logger log = LoggerFactory.getLogger(DeviceManager.class);
     private final DeviceStorage deviceStorage;
 
-    // 鍦ㄧ嚎鐘舵€佺鐞?
+    // 閸︺劎鍤庨悩鑸碘偓浣侯吀閻?
     private final Set<String> onlineDevices = new ConcurrentSkipListSet<>();
 
     public DeviceManager() {
@@ -34,111 +34,111 @@ public class DeviceManager {
     }
 
     /**
-     * 娣诲姞璁惧
+     * 濞ｈ濮炵拋鎯ь槵
      */
     public void addDevice(Device device) {
         deviceStorage.addDevice(device);
     }
 
     /**
-     * 鏍规嵁璁惧ID鑾峰彇璁惧
+     * 閺嶈宓佺拋鎯ь槵ID閼惧嘲褰囩拋鎯ь槵
      */
     public Device getDevice(String deviceId) {
         return deviceStorage.getDevice(deviceId).orElse(null);
     }
 
     /**
-     * 鏇存柊璁惧
+     * 閺囧瓨鏌婄拋鎯ь槵
      */
     public boolean updateDevice(Device device) {
         return deviceStorage.updateDevice(device);
     }
 
     /**
-     * 鍒犻櫎璁惧
+     * 閸掔娀娅庣拋鎯ь槵
      */
     public boolean deleteDevice(String deviceId) {
         return deviceStorage.deleteDevice(deviceId);
     }
 
     /**
-     * 鏍规嵁鍥藉鑾峰彇璁惧鍒楄〃
+     * 閺嶈宓侀崶钘夘啀閼惧嘲褰囩拋鎯ь槵閸掓銆?
      */
-    public List<Device> getDevicesByCountry(String country) {
-        return deviceStorage.getDevicesByCountry(country);
+    public List<Device> getDevicesByGroupId(String deviceGroupId) {
+        return deviceStorage.getDevicesByGroupId(deviceGroupId);
     }
 
     /**
-     * 娣诲姞Token
+     * 濞ｈ濮濼oken
      */
     public void addToken(String deviceId, Token token) {
         deviceStorage.addToken(deviceId, token);
     }
 
     /**
-     * 鏍规嵁璁惧ID鑾峰彇Token
+     * 閺嶈宓佺拋鎯ь槵ID閼惧嘲褰嘥oken
      */
     public Token getToken(String deviceId) {
         return deviceStorage.getToken(deviceId).orElse(null);
     }
 
     /**
-     * 鏇存柊Token
+     * 閺囧瓨鏌奣oken
      */
     public boolean updateToken(String deviceId, Token token) {
         return deviceStorage.updateToken(deviceId, token);
     }
 
     /**
-     * 鍒犻櫎Token
+     * 閸掔娀娅嶵oken
      */
     public boolean deleteToken(String deviceId) {
         return deviceStorage.deleteToken(deviceId);
     }
 
     /**
-     * 灏濊瘯閿佸畾璁惧
+     * 鐏忔繆鐦柨浣哥暰鐠佹儳顦?
      */
     public boolean tryLockDevice(String deviceId) {
         return deviceStorage.tryLockDevice(deviceId);
     }
 
     /**
-     * 瑙ｉ攣璁惧
+     * 鐟欙綁鏀ｇ拋鎯ь槵
      */
     public void unlockDevice(String deviceId) {
         deviceStorage.unlockDevice(deviceId);
     }
 
     /**
-     * 妫€鏌ヨ澶囨槸鍚﹁閿佸畾
+     * 濡偓閺屻儴顔曟径鍥ㄦЦ閸氾箒顫﹂柨浣哥暰
      */
     public boolean isLocked(String deviceId) {
         return deviceStorage.isLocked(deviceId);
     }
 
     /**
-     * 鑾峰彇鎵€鏈夎澶?
+     * 閼惧嘲褰囬幍鈧張澶庮啎婢?
      */
     public List<Device> getAllDevices() {
         return deviceStorage.getAllDevices();
     }
 
     /**
-     * 鑾峰彇鎵€鏈塗oken
+     * 閼惧嘲褰囬幍鈧張濉梠ken
      */
     public List<Token> getAllTokens() {
         return deviceStorage.getAllTokens();
     }
 
     /**
-     * 鑾峰彇鎵€鏈夐攣瀹氱殑璁惧ID
+     * 閼惧嘲褰囬幍鈧張澶愭敚鐎规氨娈戠拋鎯ь槵ID
      */
     public List<String> getLockedDevices() {
         return deviceStorage.getLockedDevices();
     }
 
-    // 鍦ㄧ嚎鐘舵€佺鐞?
+    // 閸︺劎鍤庨悩鑸碘偓浣侯吀閻?
     public void updateOnlineStatus(String deviceId, boolean online) {
         if (online) {
             onlineDevices.add(deviceId);
@@ -152,7 +152,7 @@ public class DeviceManager {
     }
 
 
-    // 浜嬩欢鐩戝惉鍣?
+    // 娴滃娆㈤惄鎴濇儔閸?
     public static class DeviceStatusEventListener {
         private final DeviceManager deviceManager;
 

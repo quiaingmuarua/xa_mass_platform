@@ -9,13 +9,13 @@ import com.xa.mass.engine.model.TaskCreateRequestDto;
 import java.util.List;
 
 /**
- * 基于 JSON-DSL 的 mock 设备/Token 生成器。
+ * 鍩轰簬 JSON-DSL 鐨?mock 璁惧/Token 鐢熸垚鍣ㄣ€?
  */
 public class MonkeyGenerator {
 
     static {
 
-        // 注册类型
+        // 娉ㄥ唽绫诲瀷
         TypeRegistry.register("Device", Device.class);
         TypeRegistry.register("Token", Token.class);
         TypeRegistry.register("RuleDefinition", com.xa.mass.engine.rules.RuleDefinition.class);
@@ -25,35 +25,35 @@ public class MonkeyGenerator {
 
 
     /**
-     * 根据 JSON-DSL 生成设备列表（支持递归嵌套 Token）。
-     * @param jsonDsl JSON-DSL 字符串
-     * @return 设备列表
+     * 鏍规嵁 JSON-DSL 鐢熸垚璁惧鍒楄〃锛堟敮鎸侀€掑綊宓屽 Token锛夈€?
+     * @param jsonDsl JSON-DSL 瀛楃涓?
+     * @return 璁惧鍒楄〃
      */
     public static List<Device> generateDevices(String jsonDsl) {
-        // 生成
+        // 鐢熸垚
         return JsonDslEngine.generateList(jsonDsl, Device.class);
     }
 
     /**
-     * 根据 JSON-DSL 生成 Token 列表（假设 DSL 里有嵌套 Token 字段）。
-     * @param jsonDsl JSON-DSL 字符串
-     * @return Token 列表
+     * 鏍规嵁 JSON-DSL 鐢熸垚 Token 鍒楄〃锛堝亣璁?DSL 閲屾湁宓屽 Token 瀛楁锛夈€?
+     * @param jsonDsl JSON-DSL 瀛楃涓?
+     * @return Token 鍒楄〃
      */
     public static List<Token> generateTokens(String jsonDsl) {
-        // 目前仅支持通过 DSL 直接生成 Token 列表
+        // 鐩墠浠呮敮鎸侀€氳繃 DSL 鐩存帴鐢熸垚 Token 鍒楄〃
         return JsonDslEngine.generateList(jsonDsl, Token.class);
     }
 
     /**
-     * 根据 JSON-DSL 生成 TaskCreateRequestDto 列表。
-     * @param jsonDsl JSON-DSL 字符串
-     * @return 任务请求列表
+     * 鏍规嵁 JSON-DSL 鐢熸垚 TaskCreateRequestDto 鍒楄〃銆?
+     * @param jsonDsl JSON-DSL 瀛楃涓?
+     * @return 浠诲姟璇锋眰鍒楄〃
      */
     public static List<TaskCreateRequestDto> generateTasks(String jsonDsl) {
         return JsonDslEngine.generateList(jsonDsl, TaskCreateRequestDto.class);
     }
 
-    // 示例 JSON-DSL（推荐用 README.md 里的 DSL 语法）
+    // 绀轰緥 JSON-DSL锛堟帹鑽愮敤 README.md 閲岀殑 DSL 璇硶锛?
     public static String exampleTasksJsonDsl() {
         return """
                 {
@@ -78,7 +78,7 @@ public class MonkeyGenerator {
     }
 
 
-    // 示例 JSON-DSL（推荐用 README.md 里的 DSL 语法）
+    // 绀轰緥 JSON-DSL锛堟帹鑽愮敤 README.md 閲岀殑 DSL 璇硶锛?
     public static String exampleJsonDsl() {
         return """
                 {
@@ -87,7 +87,7 @@ public class MonkeyGenerator {
                   "FIELDS": {
                     "deviceId": {"$JOIN": ["device-", "&.index"]},
                     "status": {"$CHOICE": ["ONLINE", "OFFLINE"]},
-                    "groupId": {"$CHOICE": ["us", "gb", "cn"]},
+                    "deviceGroupId": {"$CHOICE": ["us", "gb", "cn"]},
                     "agentVersion": {"$JOIN": ["1.0.", "&.index"]}
                   }
                 }

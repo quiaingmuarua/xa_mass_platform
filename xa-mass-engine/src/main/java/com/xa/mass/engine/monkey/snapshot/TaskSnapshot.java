@@ -9,7 +9,7 @@ public class TaskSnapshot {
     private String taskId;
     private String taskName;
     private String project;
-    private String taskCountry;
+    private String taskRoutingCountryCode;
     private String taskStatus;
     private int taskTargetNumber;
     private int taskEligibleNumber;
@@ -45,12 +45,12 @@ public class TaskSnapshot {
         this.project = project;
     }
 
-    public String getTaskCountry() {
-        return taskCountry;
+    public String getTaskRoutingCountryCode() {
+        return taskRoutingCountryCode;
     }
 
-    public void setTaskCountry(String taskCountry) {
-        this.taskCountry = taskCountry;
+    public void setTaskRoutingCountryCode(String taskRoutingCountryCode) {
+        this.taskRoutingCountryCode = taskRoutingCountryCode;
     }
 
     public String getTaskStatus() {

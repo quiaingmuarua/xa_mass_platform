@@ -9,8 +9,11 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * 设备匹配上下文
- * 封装设备、Token、任务等信息，用于规则评估
+ * Rule-evaluation context for device matching.
+ *
+ * <p>The routing-country signal is task-owned input, but the country truth used
+ * for matching should come from token/account-facing data rather than device
+ * grouping. Device group remains exposed only as a diagnostic signal.
  */
 public class DeviceMatchContext {
     private final Device device;
@@ -30,18 +33,15 @@ public class DeviceMatchContext {
     private Map<String, Object> buildContext() {
         Map<String, Object> ctx = new HashMap<>();
 
-        // 设备相关属性
         ctx.put("deviceId", device.getDeviceId());
         ctx.put("deviceStatus", device.getStatus().name());
-        ctx.put("deviceGroupId", device.getGroupId());
+        ctx.put("deviceGroupId", device.getDeviceGroupId());
         ctx.put("deviceAttributes", device.getAttributes());
         ctx.put("agentVersion", device.getAgentVersion());
         ctx.put("supportedProjects", device.getSupportedProjects());
         ctx.put("isDeviceAvailable", device.isAvailable());
-        // 使用DeviceManager检查锁定状态，确保与分配逻辑一致
         ctx.put("isDeviceLocked", deviceManager.isLocked(device.getDeviceId()));
 
-        // Token相关属性
         if (token != null) {
             ctx.put("tokenId", token.getTokenId());
             ctx.put("tokenStatus", token.getStatus().name());
@@ -58,22 +58,27 @@ public class DeviceMatchContext {
             ctx.put("isTokenAvailable", false);
         }
 
-        // 任务相关属性
+        String routingCountryCode = task.getTaskRoutingCountryCode();
+        String tokenAttributeCountry = token != null ? token.getAttributes().get("country") : null;
+
         ctx.put("taskId", task.getTid());
         ctx.put("taskName", task.getTaskName());
         ctx.put("taskProject", task.getProject());
-        ctx.put("taskCountry", task.getTaskCountry());
+        ctx.put("taskRoutingCountryCode", routingCountryCode);
         ctx.put("taskStatus", task.getStatus().name());
         ctx.put("taskTargetNumber", task.getTaskTargetNumber());
         ctx.put("batchSize", task.getBatchSize());
         ctx.put("runTaskMinDeviceCnt", task.getRunTaskMinDeviceCnt());
 
-        // 计算属性
         ctx.put("appCount", device.getSupportedProjects() != null ? device.getSupportedProjects().size() : 0);
         ctx.put("supportsProject", device.getSupportedProjects() != null &&
                 device.getSupportedProjects().contains(task.getProject()));
-        ctx.put("countryMatch", task.getTaskCountry().equals(device.getGroupId()));
-        ctx.put("channelMatch", token != null && task.getTaskCountry().equals(token.getChannel()));
+        ctx.put("deviceGroupMatchesRoutingCountry",
+                routingCountryCode != null && routingCountryCode.equals(device.getDeviceGroupId()));
+        ctx.put("tokenChannelMatchesRoutingCountry",
+                token != null && routingCountryCode != null && routingCountryCode.equals(token.getChannel()));
+        ctx.put("tokenAttributeCountryMatchesRoutingCountry",
+                routingCountryCode != null && routingCountryCode.equals(tokenAttributeCountry));
 
         return ctx;
     }
@@ -104,7 +109,7 @@ public class DeviceMatchContext {
                 "deviceId='" + device.getDeviceId() + '\'' +
                 ", taskId='" + task.getTid() + '\'' +
                 ", supportsProject=" + context.get("supportsProject") +
-                ", countryMatch=" + context.get("countryMatch") +
+                ", tokenChannelMatchesRoutingCountry=" + context.get("tokenChannelMatchesRoutingCountry") +
                 '}';
     }
-} 
+}

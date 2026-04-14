@@ -270,14 +270,14 @@
                     <td style="padding: 10px;" th:text="${task.tid}">-</td>
                     <td style="padding: 10px;" th:text="${task.taskName}">-</td>
                     <td style="padding: 10px;" th:text="${task.project}">-</td>
-                    <td style="padding: 10px;" th:text="${task.taskCountry}">-</td>
+                    <td style="padding: 10px;" th:text="${task.taskRoutingCountryCode}">-</td>
                     <td style="padding: 10px;">
                                 <span class="status-badge"
                                       th:classappend="'status-' + ${#strings.toLowerCase(task.status.name())}"
                                       th:text="${task.status.description}">状态</span>
                     </td>
                     <td style="padding: 10px;"
-                        th:text="${task.taskInitNumber > 0 ? task.taskExecutedNumber + '/' + task.taskInitNumber : '0/0'}">
+                        th:text="${task.taskTargetNumber > 0 ? task.taskSuccessNumber + '/' + task.taskTargetNumber : '0/0'}">
                         0/0
                     </td>
                 </tr>

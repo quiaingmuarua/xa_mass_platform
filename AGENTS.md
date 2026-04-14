@@ -324,6 +324,9 @@ Important current implementation facts:
 - `TaskDeviceAssignListener` re-checks that the task is still `READY` after matching; if the task left `READY` during the matching window, dispatch is skipped.
 - `TaskDeviceAssignListener` sets `scheduleDeviceCnt` and transitions matched tasks from `READY` to `RUNNING`.
 - `TaskDeviceAssignListener` now delegates matching to `TaskDeviceMatchingStrategy`; `RuleBasedTaskDeviceMatchingStrategy` is the current default.
+- `Task.taskRoutingCountryCode` is the active routing-country input; older `taskCountry` naming is retired from the mainline.
+- `DeviceManager.getDevicesByGroupId(...)` / `DeviceStorage.getDevicesByGroupId(...)` are grouping helpers only; do not treat them as country-routing APIs.
+- `RuleBasedTaskDeviceMatchingStrategy` no longer prefilters candidates by device `deviceGroupId`; routing-country satisfaction should come from token/account-facing signals and explicit rules.
 - `DeviceMatchContext` now exposes nested `deviceAttributes` and `tokenAttributes` maps to QLExpress rules.
 - `SimpleTaskMsgAssignListener` reuses persisted `TaskMsg` records, fills `deviceId` / `tokenId` / `batchId`, and moves them to `SENT`.
 - `GatewayTaskMsgPublisher` pushes task messages downstream as `TASK/step`.
@@ -352,7 +355,7 @@ Important current implementation facts:
 - `TaskManager.handleTaskMessageResult(...)` treats duplicate final callbacks as idempotent: the first final result is kept, progress is recalculated, and scheduler callbacks are not triggered twice.
 - `TaskManager.cancelTask(...)` now drains in-flight `TaskMsg` rows during manual terminal closure: `INIT/BINDING -> FAILED`, `SENT/RUNNING -> EXPIRED`.
 - `GET /status/api/tasks/{taskId}` now includes `stateValidation` so API/demo surfaces can expose the same state-audit result used by SDK callers.
-- `MassApplication.loadMockData(...)` normalizes mock `supportedProjects`, lowercases `groupId`, and auto-seeds `LOGIN_READY` tokens when devices do not already have token data.
+- `MassApplication.loadMockData(...)` normalizes mock `supportedProjects`, lowercases `deviceGroupId`, and auto-seeds `LOGIN_READY` tokens when devices do not already have token data.
 - `Device` and `Token` now expose `attributes: Map<String, String>` with defensive-copy and read-only semantics; callers may replace the whole map on update, but there is no per-entry mutation API.
 - `WebSocketClientStarter` now starts on `ApplicationReadyEvent` behind `mock.client.auto-start=true`, so default `dev` startup includes mock client result write-back.
 - `WebSocketClientStarter` passes `mock.client.task-result-status` into each mock client so result write-back can be forced to `SUCCESS` or `FAILED`.
@@ -367,7 +370,7 @@ Important current implementation facts:
 - `DispatcherInboundHandler` sends structured JSON error frames instead of silently closing connections.
 - `MassApplication.stop()` is now idempotent, and the mock Spring Boot entry no longer adds an extra manual shutdown hook around the runtime.
 - `WebSocketServerImpl.stop()` now calls `shutdownGracefully().syncUninterruptibly()` on both EventLoopGroups so a single Ctrl-C is sufficient for clean exit.
-- `TaskManager.advanceTaskMsgForCompletion()` always advances through `INIT→BINDING→SENT→RUNNING` before the final `markAsSuccess`/`markAsFailed` call, ensuring `RUNNING` appears in the state history for both success and failure paths.
+- `TaskManager.advanceTaskMsgForCompletion()` always advances through `INIT鈫払INDING鈫扴ENT鈫扲UNNING` before the final `markAsSuccess`/`markAsFailed` call, ensuring `RUNNING` appears in the state history for both success and failure paths.
 
 ## 7. Known Good Test Surface
 
@@ -416,7 +419,7 @@ What the new focused coverage proves:
 - a paused task can still complete to `TERMINAL` through real callback write-back after assignment, without requiring a manual resume
 - `GET /status/api/tasks/{taskId}` exposes `stateValidation` over the real HTTP/runtime path, including `needsResolution=true` when a task is manually reopened after all persisted message callbacks are already final
 - invalid terminal metadata is also covered end-to-end: missing `terminalReason` and message/result mismatch both surface through `stateValidation.violations`
-- token-attribute-based routing is covered end-to-end through a custom QLExpress rule using `tokenAttributes['country'] == taskCountry`
+- token-attribute-based routing is covered end-to-end through a custom QLExpress rule using `tokenAttributes['country'] == taskRoutingCountryCode`
 - mock clients no longer respond to server response frames
 - mock result status can be forced to `FAILED` without changing business logic code paths
 - duplicate `TASK/step` result callbacks are covered at engine/runtime regression level and keep the first final state

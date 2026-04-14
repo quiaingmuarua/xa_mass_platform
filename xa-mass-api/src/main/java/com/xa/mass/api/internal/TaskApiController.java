@@ -256,7 +256,7 @@ public class TaskApiController {
             if (task != null) {
                 task.setTaskName(request.getTaskName());
                 task.setProject(request.getProject());
-                task.setTaskCountry(request.getCountryCode());
+                task.setTaskRoutingCountryCode(request.getCountryCode());
                 task.setTextContent(request.getTextContent());
                 if (task.getUser() != null) {
                     task.getUser().setName(request.getUserId());

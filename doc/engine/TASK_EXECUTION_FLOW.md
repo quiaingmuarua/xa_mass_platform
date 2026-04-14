@@ -60,7 +60,7 @@ Key implementation facts:
 `MassApplication.loadMockData(...)` now fills the minimum device prerequisites needed for assignment:
 
 - normalizes `supportedProjects` into `Project` enums
-- lowercases `groupId`
+- lowercases `deviceGroupId`
 - auto-creates a `LOGIN_READY` token when the device does not already have one
 
 This fixed the previous false symptom where approved tasks stayed in `READY` because the mock devices did not satisfy project/token matching requirements.

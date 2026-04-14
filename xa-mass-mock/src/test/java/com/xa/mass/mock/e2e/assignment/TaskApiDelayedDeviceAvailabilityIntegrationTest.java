@@ -94,7 +94,7 @@ class TaskApiDelayedDeviceAvailabilityIntegrationTest extends AbstractMockE2eTes
     private void addMatchingDevice(String deviceId) {
         Device device = new Device();
         device.setDeviceId(deviceId);
-        device.setGroupId("us");
+        device.setDeviceGroupId("us");
         device.setStatus(DeviceStatus.ONLINE);
         device.setSupportedProjects(java.util.List.of(Project.DEMO_APP));
         deviceManager.addDevice(device);

@@ -1,30 +1,30 @@
-# JSON-DSL 框架
+# JSON-DSL 妗嗘灦
 
-一个基于 JSON-DSL 的通用 Java 对象生成框架，支持批量生成任意对象、递归嵌套、内置函数和类型注册表。
+涓€涓熀浜?JSON-DSL 鐨勯€氱敤 Java 瀵硅薄鐢熸垚妗嗘灦锛屾敮鎸佹壒閲忕敓鎴愪换鎰忓璞°€侀€掑綊宓屽銆佸唴缃嚱鏁板拰绫诲瀷娉ㄥ唽琛ㄣ€?
 
-## 特性
+## 鐗规€?
 
-- 🚀 **通用性**: 支持生成任意 Java 对象
-- 📝 **DSL 驱动**: 使用简洁的 JSON-DSL 语法定义生成规则
-- 🔄 **递归嵌套**: 支持复杂的嵌套对象和集合结构
-- 🛠️ **内置函数**: 提供丰富的内置函数（随机选择、范围、UUID、时间等）
-- 📋 **类型注册**: 支持类型别名注册，避免硬编码全类名
-- 🎯 **类型安全**: 通过参数控制返回类型，提供明确的类型保证
-- 🔧 **多级作用域变量**: 支持 `&.index`（当前作用域索引简写）和 `&Model.index`，自动递归查找父作用域
-- ⏰ **时间支持**: 支持当前时间和时间范围随机生成
-- 🔧 **可扩展**: 内置函数和类型注册表支持动态扩展
+- 馃殌 **閫氱敤鎬?*: 鏀寔鐢熸垚浠绘剰 Java 瀵硅薄
+- 馃摑 **DSL 椹卞姩**: 浣跨敤绠€娲佺殑 JSON-DSL 璇硶瀹氫箟鐢熸垚瑙勫垯
+- 馃攧 **閫掑綊宓屽**: 鏀寔澶嶆潅鐨勫祵濂楀璞″拰闆嗗悎缁撴瀯
+- 馃洜锔?**鍐呯疆鍑芥暟**: 鎻愪緵涓板瘜鐨勫唴缃嚱鏁帮紙闅忔満閫夋嫨銆佽寖鍥淬€乁UID銆佹椂闂寸瓑锛?
+- 馃搵 **绫诲瀷娉ㄥ唽**: 鏀寔绫诲瀷鍒悕娉ㄥ唽锛岄伩鍏嶇‖缂栫爜鍏ㄧ被鍚?
+- 馃幆 **绫诲瀷瀹夊叏**: 閫氳繃鍙傛暟鎺у埗杩斿洖绫诲瀷锛屾彁渚涙槑纭殑绫诲瀷淇濊瘉
+- 馃敡 **澶氱骇浣滅敤鍩熷彉閲?*: 鏀寔 `&.index`锛堝綋鍓嶄綔鐢ㄥ煙绱㈠紩绠€鍐欙級鍜?`&Model.index`锛岃嚜鍔ㄩ€掑綊鏌ユ壘鐖朵綔鐢ㄥ煙
+- 鈴?**鏃堕棿鏀寔**: 鏀寔褰撳墠鏃堕棿鍜屾椂闂磋寖鍥撮殢鏈虹敓鎴?
+- 馃敡 **鍙墿灞?*: 鍐呯疆鍑芥暟鍜岀被鍨嬫敞鍐岃〃鏀寔鍔ㄦ€佹墿灞?
 
-## 快速开始
+## 蹇€熷紑濮?
 
-### 1. 注册类型
+### 1. 娉ㄥ唽绫诲瀷
 
 ```java
-// 注册类型别名
+// 娉ㄥ唽绫诲瀷鍒悕
 TypeRegistry.register("Device", Device.class);
 TypeRegistry.register("Task", Task.class);
 ```
 
-### 2. 定义 DSL
+### 2. 瀹氫箟 DSL
 
 ```json
 {
@@ -33,72 +33,72 @@ TypeRegistry.register("Task", Task.class);
   "FIELDS": {
     "deviceId": {"$JOIN": ["device-", "&.index"]},
     "status": {"$CHOICE": ["ONLINE", "OFFLINE"]},
-    "groupId": {"$CHOICE": ["us", "gb", "cn"]},
+    "deviceGroupId": {"$CHOICE": ["us", "gb", "cn"]},
     "agentVersion": {"$JOIN": ["1.0.", "&.index"]}
   }
 }
 ```
 
-### 3. 生成数据
+### 3. 鐢熸垚鏁版嵁
 
 ```java
-String deviceDsl = "..."; // 上面的 JSON
+String deviceDsl = "..."; // 涓婇潰鐨?JSON
 
-// 默认返回列表（推荐）
+// 榛樿杩斿洖鍒楄〃锛堟帹鑽愶級
 List<Object> devices = JsonDslEngine.generate(deviceDsl);
 devices.
 
 forEach(System.out::println);
 
-// 指定返回类型
+// 鎸囧畾杩斿洖绫诲瀷
 Object singleDevice = JsonDslEngine.generate(deviceDsl, JsonDslEngine.ReturnType.SINGLE);
 List<Object> deviceList = JsonDslEngine.generate(deviceDsl, JsonDslEngine.ReturnType.LIST);
 Map<String, Object> deviceMap = JsonDslEngine.generate(deviceDsl, JsonDslEngine.ReturnType.MAP);
 ```
 
-## API 设计
+## API 璁捐
 
-### 返回类型枚举
+### 杩斿洖绫诲瀷鏋氫妇
 
 ```java
 public enum ReturnType {
-    AUTO,    // 自动判断：单个对象返回 Object，多个对象返回 List，多个模型返回 Map
-    SINGLE,  // 强制返回单个对象
-    LIST,    // 强制返回对象列表（默认）
-    MAP      // 强制返回模型映射
+    AUTO,    // 鑷姩鍒ゆ柇锛氬崟涓璞¤繑鍥?Object锛屽涓璞¤繑鍥?List锛屽涓ā鍨嬭繑鍥?Map
+    SINGLE,  // 寮哄埗杩斿洖鍗曚釜瀵硅薄
+    LIST,    // 寮哄埗杩斿洖瀵硅薄鍒楄〃锛堥粯璁わ級
+    MAP      // 寮哄埗杩斿洖妯″瀷鏄犲皠
 }
 ```
 
-### 核心方法
+### 鏍稿績鏂规硶
 
-#### `generate(String jsonDsl)` - 默认返回列表
+#### `generate(String jsonDsl)` - 榛樿杩斿洖鍒楄〃
 
 ```java
-// 默认返回 List<Object>，即使 DSL 只定义了一个对象也会包装为列表
+// 榛樿杩斿洖 List<Object>锛屽嵆浣?DSL 鍙畾涔変簡涓€涓璞′篃浼氬寘瑁呬负鍒楄〃
 List<Object> devices = JsonDslEngine.generate(deviceDsl);
 ```
 
-#### `generate(String jsonDsl, ReturnType returnType)` - 指定返回类型
+#### `generate(String jsonDsl, ReturnType returnType)` - 鎸囧畾杩斿洖绫诲瀷
 
 ```java
-// 返回单个对象
+// 杩斿洖鍗曚釜瀵硅薄
 Object device = JsonDslEngine.generate(deviceDsl, JsonDslEngine.ReturnType.SINGLE);
 
-// 返回列表（与默认方法相同）
+// 杩斿洖鍒楄〃锛堜笌榛樿鏂规硶鐩稿悓锛?
 List<Object> devices = JsonDslEngine.generate(deviceDsl, JsonDslEngine.ReturnType.LIST);
 
-// 返回映射
+// 杩斿洖鏄犲皠
 Map<String, Object> models = JsonDslEngine.generate(modelsDsl, JsonDslEngine.ReturnType.MAP);
 
-// 自动判断（根据 DSL 结构）
+// 鑷姩鍒ゆ柇锛堟牴鎹?DSL 缁撴瀯锛?
 Object result = JsonDslEngine.generate(deviceDsl, JsonDslEngine.ReturnType.AUTO);
 ```
 
-### 便利方法
+### 渚垮埄鏂规硶
 
 #### `generateSingle(String jsonDsl)`
 
-强制返回单个对象：
+寮哄埗杩斿洖鍗曚釜瀵硅薄锛?
 
 ```java
 Object device = JsonDslEngine.generateSingle(deviceDsl);
@@ -106,7 +106,7 @@ Object device = JsonDslEngine.generateSingle(deviceDsl);
 
 #### `generateList(String jsonDsl)`
 
-强制返回对象列表：
+寮哄埗杩斿洖瀵硅薄鍒楄〃锛?
 
 ```java
 List<Object> devices = JsonDslEngine.generateList(deviceDsl);
@@ -114,7 +114,7 @@ List<Object> devices = JsonDslEngine.generateList(deviceDsl);
 
 #### `generateMap(String jsonDsl, String modelName)`
 
-强制返回模型映射：
+寮哄埗杩斿洖妯″瀷鏄犲皠锛?
 
 ```java
 Map<String, Object> models = JsonDslEngine.generateMap(deviceDsl, "Device");
@@ -122,16 +122,16 @@ Map<String, Object> models = JsonDslEngine.generateMap(deviceDsl, "Device");
 
 #### `generateTyped(String jsonDsl, Class<T> targetType)`
 
-带类型转换的生成方法：
+甯︾被鍨嬭浆鎹㈢殑鐢熸垚鏂规硶锛?
 
 ```java
 List<Object> devices = JsonDslEngine.generateTyped(deviceDsl, List.class);
 Map<String, Object> models = JsonDslEngine.generateTyped(modelsDsl, Map.class);
 ```
 
-## 使用示例
+## 浣跨敤绀轰緥
 
-### 示例1：默认返回列表（推荐）
+### 绀轰緥1锛氶粯璁よ繑鍥炲垪琛紙鎺ㄨ崘锛?
 
 ```java
 String singleDeviceDsl = """
@@ -144,14 +144,14 @@ String singleDeviceDsl = """
         }
         """;
 
-// 默认返回 List<Object>，即使只有一个对象
+// 榛樿杩斿洖 List<Object>锛屽嵆浣垮彧鏈変竴涓璞?
 List<Object> devices = JsonDslEngine.generate(singleDeviceDsl);
 System.out.
 
-println("生成了 "+devices.size() +" 个设备");
+println("鐢熸垚浜?"+devices.size() +" 涓澶?);
 ```
 
-### 示例2：指定返回单个对象
+### 绀轰緥2锛氭寚瀹氳繑鍥炲崟涓璞?
 
 ```java
 String deviceDsl = """
@@ -165,14 +165,14 @@ String deviceDsl = """
         }
         """;
 
-// 返回第一个对象
+// 杩斿洖绗竴涓璞?
 Object device = JsonDslEngine.generate(deviceDsl, JsonDslEngine.ReturnType.SINGLE);
 System.out.
 
-println("第一个设备: "+device);
+println("绗竴涓澶? "+device);
 ```
 
-### 示例3：指定返回列表
+### 绀轰緥3锛氭寚瀹氳繑鍥炲垪琛?
 
 ```java
 String singleDsl = """
@@ -185,14 +185,14 @@ String singleDsl = """
         }
         """;
 
-// 强制返回列表，单个对象会被包装
+// 寮哄埗杩斿洖鍒楄〃锛屽崟涓璞′細琚寘瑁?
 List<Object> devices = JsonDslEngine.generate(singleDsl, JsonDslEngine.ReturnType.LIST);
 System.out.
 
-println("列表大小: "+devices.size()); // 输出: 1
+println("鍒楄〃澶у皬: "+devices.size()); // 杈撳嚭: 1
 ```
 
-### 示例4：指定返回映射
+### 绀轰緥4锛氭寚瀹氳繑鍥炴槧灏?
 
 ```java
 String deviceDsl = """
@@ -205,14 +205,14 @@ String deviceDsl = """
         }
         """;
 
-// 强制返回映射，单个对象会被包装
+// 寮哄埗杩斿洖鏄犲皠锛屽崟涓璞′細琚寘瑁?
 Map<String, Object> models = JsonDslEngine.generate(deviceDsl, JsonDslEngine.ReturnType.MAP);
 System.out.
 
-println("映射键: "+models.keySet()); // 输出: [result]
+println("鏄犲皠閿? "+models.keySet()); // 杈撳嚭: [result]
 ```
 
-### 示例5：多个模型
+### 绀轰緥5锛氬涓ā鍨?
 
 ```java
 String multipleModelsDsl = """
@@ -234,82 +234,82 @@ String multipleModelsDsl = """
         }
         """;
 
-// 返回 Map<String, Object>
+// 杩斿洖 Map<String, Object>
 Map<String, Object> models = JsonDslEngine.generate(multipleModelsDsl, JsonDslEngine.ReturnType.MAP);
 models.
 
 forEach((key, value) ->{
         System.out.
 
-println("模型 "+key +": "+value.getClass().
+println("妯″瀷 "+key +": "+value.getClass().
 
 getSimpleName());
         });
 ```
 
-### 示例6：使用便利方法
+### 绀轰緥6锛氫娇鐢ㄤ究鍒╂柟娉?
 
 ```java
-String deviceDsl = "..."; // 包含 COUNT: 2 的 DSL
+String deviceDsl = "..."; // 鍖呭惈 COUNT: 2 鐨?DSL
 
-// 强制获取单个对象
+// 寮哄埗鑾峰彇鍗曚釜瀵硅薄
 Object single = JsonDslEngine.generateSingle(deviceDsl);
 
-// 强制获取列表
+// 寮哄埗鑾峰彇鍒楄〃
 List<Object> list = JsonDslEngine.generateList(deviceDsl);
 
-// 强制获取映射
+// 寮哄埗鑾峰彇鏄犲皠
 Map<String, Object> map = JsonDslEngine.generateMap(deviceDsl, "Device");
 ```
 
-## 返回类型说明
+## 杩斿洖绫诲瀷璇存槑
 
-| ReturnType  | 说明                         | 示例                                   |
+| ReturnType  | 璇存槑                         | 绀轰緥                                   |
 |-------------|----------------------------|--------------------------------------|
-| `LIST` (默认) | 总是返回 `List<Object>`        | 单个对象包装为单元素列表                         |
-| `SINGLE`    | 总是返回 `Object`              | 多个对象时返回第一个                           |
-| `MAP`       | 总是返回 `Map<String, Object>` | 单个对象包装为 `{"result": object}`         |
-| `AUTO`      | 根据 DSL 结构自动判断              | 单个对象返回 Object，多个对象返回 List，多个模型返回 Map |
+| `LIST` (榛樿) | 鎬绘槸杩斿洖 `List<Object>`        | 鍗曚釜瀵硅薄鍖呰涓哄崟鍏冪礌鍒楄〃                         |
+| `SINGLE`    | 鎬绘槸杩斿洖 `Object`              | 澶氫釜瀵硅薄鏃惰繑鍥炵涓€涓?                          |
+| `MAP`       | 鎬绘槸杩斿洖 `Map<String, Object>` | 鍗曚釜瀵硅薄鍖呰涓?`{"result": object}`         |
+| `AUTO`      | 鏍规嵁 DSL 缁撴瀯鑷姩鍒ゆ柇              | 鍗曚釜瀵硅薄杩斿洖 Object锛屽涓璞¤繑鍥?List锛屽涓ā鍨嬭繑鍥?Map |
 
-## 最佳实践
+## 鏈€浣冲疄璺?
 
-1. **推荐使用默认方法**: `JsonDslEngine.generate(dsl)` 总是返回列表，类型安全且一致
-2. **明确指定返回类型**: 当需要特定类型时，使用 `ReturnType` 参数
-3. **使用便利方法**: 对于常见场景，使用 `generateSingle()`, `generateList()`, `generateMap()`
-4. **类型检查**: 使用 `instanceof` 检查返回类型，特别是在使用 `AUTO` 模式时
+1. **鎺ㄨ崘浣跨敤榛樿鏂规硶**: `JsonDslEngine.generate(dsl)` 鎬绘槸杩斿洖鍒楄〃锛岀被鍨嬪畨鍏ㄤ笖涓€鑷?
+2. **鏄庣‘鎸囧畾杩斿洖绫诲瀷**: 褰撻渶瑕佺壒瀹氱被鍨嬫椂锛屼娇鐢?`ReturnType` 鍙傛暟
+3. **浣跨敤渚垮埄鏂规硶**: 瀵逛簬甯歌鍦烘櫙锛屼娇鐢?`generateSingle()`, `generateList()`, `generateMap()`
+4. **绫诲瀷妫€鏌?*: 浣跨敤 `instanceof` 妫€鏌ヨ繑鍥炵被鍨嬶紝鐗瑰埆鏄湪浣跨敤 `AUTO` 妯″紡鏃?
 
-## DSL 语法
+## DSL 璇硶
 
-### 核心关键字
+### 鏍稿績鍏抽敭瀛?
 
-| 关键字      | 类型     | 说明             |
+| 鍏抽敭瀛?     | 绫诲瀷     | 璇存槑             |
 |----------|--------|----------------|
-| `MODEL`  | String | 指定要生成的模型类名（必需） |
-| `FIELDS` | Object | 字段配置映射         |
-| `COUNT`  | Number | 生成数量（默认1）      |
-| `TYPE`   | String | 集合类型（LIST/SET） |
+| `MODEL`  | String | 鎸囧畾瑕佺敓鎴愮殑妯″瀷绫诲悕锛堝繀闇€锛?|
+| `FIELDS` | Object | 瀛楁閰嶇疆鏄犲皠         |
+| `COUNT`  | Number | 鐢熸垚鏁伴噺锛堥粯璁?锛?     |
+| `TYPE`   | String | 闆嗗悎绫诲瀷锛圠IST/SET锛?|
 
-### 内置函数
+### 鍐呯疆鍑芥暟
 
-| 函数            | 语法                                            | 说明           | 示例                                                                      |
+| 鍑芥暟            | 璇硶                                            | 璇存槑           | 绀轰緥                                                                      |
 |---------------|-----------------------------------------------|--------------|-------------------------------------------------------------------------|
-| `$CHOICE`     | `{"$CHOICE": [选项列表]}`                         | 从列表中随机选择     | `{"$CHOICE": ["A", "B", "C"]}`                                          |
-| `$RANGE`      | `{"$RANGE": [最小值, 最大值]}`                      | 生成指定范围内的随机数  | `{"$RANGE": [1, 100]}`                                                  |
-| `$UUID`       | `{"$UUID": true}`                             | 生成 UUID      | `{"$UUID": true}`                                                       |
-| `$RANDOM`     | `{"$RANDOM": true}`                           | 生成随机整数       | `{"$RANDOM": true}`                                                     |
-| `$JOIN`       | `{"$JOIN": [字符串列表]}`                          | 字符串拼接        | `{"$JOIN": ["prefix-", "&.index", "-suffix"]}`                          |
-| `$NOW`        | `{"$NOW": "格式化字符串"}`                          | 获取当前时间       | `{"$NOW": "yyyy-MM-dd HH:mm:ss"}`                                       |
-| `$TIME_RANGE` | `{"$TIME_RANGE": [开始时间, 结束时间, 时间单位, 格式化字符串]}` | 在时间范围内随机生成时间 | `{"$TIME_RANGE": ["now-1d", "now+1d", "HOURS", "yyyy-MM-dd HH:mm:ss"]}` |
+| `$CHOICE`     | `{"$CHOICE": [閫夐」鍒楄〃]}`                         | 浠庡垪琛ㄤ腑闅忔満閫夋嫨     | `{"$CHOICE": ["A", "B", "C"]}`                                          |
+| `$RANGE`      | `{"$RANGE": [鏈€灏忓€? 鏈€澶у€糫}`                      | 鐢熸垚鎸囧畾鑼冨洿鍐呯殑闅忔満鏁? | `{"$RANGE": [1, 100]}`                                                  |
+| `$UUID`       | `{"$UUID": true}`                             | 鐢熸垚 UUID      | `{"$UUID": true}`                                                       |
+| `$RANDOM`     | `{"$RANDOM": true}`                           | 鐢熸垚闅忔満鏁存暟       | `{"$RANDOM": true}`                                                     |
+| `$JOIN`       | `{"$JOIN": [瀛楃涓插垪琛╙}`                          | 瀛楃涓叉嫾鎺?       | `{"$JOIN": ["prefix-", "&.index", "-suffix"]}`                          |
+| `$NOW`        | `{"$NOW": "鏍煎紡鍖栧瓧绗︿覆"}`                          | 鑾峰彇褰撳墠鏃堕棿       | `{"$NOW": "yyyy-MM-dd HH:mm:ss"}`                                       |
+| `$TIME_RANGE` | `{"$TIME_RANGE": [寮€濮嬫椂闂? 缁撴潫鏃堕棿, 鏃堕棿鍗曚綅, 鏍煎紡鍖栧瓧绗︿覆]}` | 鍦ㄦ椂闂磋寖鍥村唴闅忔満鐢熸垚鏃堕棿 | `{"$TIME_RANGE": ["now-1d", "now+1d", "HOURS", "yyyy-MM-dd HH:mm:ss"]}` |
 
-### 多级作用域变量与简写
+### 澶氱骇浣滅敤鍩熷彉閲忎笌绠€鍐?
 
-- 以 `&` 开头的字符串（如 `&.index`、`&Device.index`）会自动在当前及父作用域递归查找
-- `&.index` 表示"当前作用域的索引"，推荐优先使用
-- `&Model.index` 精确指向指定作用域的索引
-- 支持多层嵌套、父子作用域隔离
-- 推荐所有索引、作用域变量都用 `&.index` 或 `&Model.index` 方式命名
+- 浠?`&` 寮€澶寸殑瀛楃涓诧紙濡?`&.index`銆乣&Device.index`锛変細鑷姩鍦ㄥ綋鍓嶅強鐖朵綔鐢ㄥ煙閫掑綊鏌ユ壘
+- `&.index` 琛ㄧず"褰撳墠浣滅敤鍩熺殑绱㈠紩"锛屾帹鑽愪紭鍏堜娇鐢?
+- `&Model.index` 绮剧‘鎸囧悜鎸囧畾浣滅敤鍩熺殑绱㈠紩
+- 鏀寔澶氬眰宓屽銆佺埗瀛愪綔鐢ㄥ煙闅旂
+- 鎺ㄨ崘鎵€鏈夌储寮曘€佷綔鐢ㄥ煙鍙橀噺閮界敤 `&.index` 鎴?`&Model.index` 鏂瑰紡鍛藉悕
 
-#### 变量查找示例
+#### 鍙橀噺鏌ユ壘绀轰緥
 
 ```json
 {
@@ -330,11 +330,11 @@ Map<String, Object> map = JsonDslEngine.generateMap(deviceDsl, "Device");
 }
 ```
 
-- `&.index`：查找当前作用域的 index（如 Task 作用域时为 Task 的 index，Device 作用域时为 Device 的 index）
-- `&Device.index`：查找最近的 Device 作用域的 index
-- `&Device.deviceId`：查找最近的 Device 作用域的 deviceId
+- `&.index`锛氭煡鎵惧綋鍓嶄綔鐢ㄥ煙鐨?index锛堝 Task 浣滅敤鍩熸椂涓?Task 鐨?index锛孌evice 浣滅敤鍩熸椂涓?Device 鐨?index锛?
+- `&Device.index`锛氭煡鎵炬渶杩戠殑 Device 浣滅敤鍩熺殑 index
+- `&Device.deviceId`锛氭煡鎵炬渶杩戠殑 Device 浣滅敤鍩熺殑 deviceId
 
-### 时间函数示例
+### 鏃堕棿鍑芥暟绀轰緥
 
 ```json
 {
@@ -349,26 +349,26 @@ Map<String, Object> map = JsonDslEngine.generateMap(deviceDsl, "Device");
 }
 ```
 
-## 类型注册
+## 绫诲瀷娉ㄥ唽
 
-### 注册类型别名
+### 娉ㄥ唽绫诲瀷鍒悕
 
 ```java
-// 使用类对象注册
+// 浣跨敤绫诲璞℃敞鍐?
 TypeRegistry.register("Device",Device .class);
 TypeRegistry.
 
 register("Task",Task .class);
 
-// 使用全类名注册
+// 浣跨敤鍏ㄧ被鍚嶆敞鍐?
 TypeRegistry.
 
 register("RuleDefinition","com.xa.mass.engine.rules.RuleDefinition");
 ```
 
-### 使用全类名
+### 浣跨敤鍏ㄧ被鍚?
 
-如果类型未注册，可以直接使用全类名：
+濡傛灉绫诲瀷鏈敞鍐岋紝鍙互鐩存帴浣跨敤鍏ㄧ被鍚嶏細
 
 ```json
 {
@@ -379,9 +379,9 @@ register("RuleDefinition","com.xa.mass.engine.rules.RuleDefinition");
 }
 ```
 
-## 错误处理
+## 閿欒澶勭悊
 
-框架使用 `JsonDslException` 统一处理错误：
+妗嗘灦浣跨敤 `JsonDslException` 缁熶竴澶勭悊閿欒锛?
 
 ```java
 try{
@@ -390,40 +390,40 @@ List<Object> objects = JsonDslEngine.generate(dsl);
 JsonDslException e){
         System.err.
 
-println("DSL 生成失败: "+e.getMessage());
+println("DSL 鐢熸垚澶辫触: "+e.getMessage());
         }
 ```
 
-常见错误：
+甯歌閿欒锛?
 
-- DSL 缺少 `MODEL` 字段
-- 类型未注册或无法加载
-- 字段设置失败
-- 不支持的内置函数
-- 时间格式解析失败
+- DSL 缂哄皯 `MODEL` 瀛楁
+- 绫诲瀷鏈敞鍐屾垨鏃犳硶鍔犺浇
+- 瀛楁璁剧疆澶辫触
+- 涓嶆敮鎸佺殑鍐呯疆鍑芥暟
+- 鏃堕棿鏍煎紡瑙ｆ瀽澶辫触
 
-## 扩展性
+## 鎵╁睍鎬?
 
-### 添加新的内置函数
+### 娣诲姞鏂扮殑鍐呯疆鍑芥暟
 
-1. 在 `BuiltinFunc` 枚举中添加新函数
-2. 在 `BuiltinFunctions` 中实现函数逻辑
-3. 在 `TemplateValueResolver` 中注册解析器
+1. 鍦?`BuiltinFunc` 鏋氫妇涓坊鍔犳柊鍑芥暟
+2. 鍦?`BuiltinFunctions` 涓疄鐜板嚱鏁伴€昏緫
+3. 鍦?`TemplateValueResolver` 涓敞鍐岃В鏋愬櫒
 
-### 自定义类型解析
+### 鑷畾涔夌被鍨嬭В鏋?
 
-可以通过继承或组合的方式扩展类型解析逻辑。
+鍙互閫氳繃缁ф壙鎴栫粍鍚堢殑鏂瑰紡鎵╁睍绫诲瀷瑙ｆ瀽閫昏緫銆?
 
-## 表达式引擎与内置函数别名
+## 琛ㄨ揪寮忓紩鎿庝笌鍐呯疆鍑芥暟鍒悕
 
-### QLExpress 表达式支持
+### QLExpress 琛ㄨ揪寮忔敮鎸?
 
-- 支持通过 `$EXPR` 字段嵌入 QLExpress 表达式，表达式可引用当前上下文变量和所有内置函数。
-- 所有内置函数（如 random、choice、range、uuid、join、now、timeRange 等）均支持多种别名（如
-  random/rand、timeRange/timerange），可在表达式中直接调用。
-- 内置函数注册采用集中自动注册机制，所有别名和实现统一维护于 BuiltinFunc 和 BuiltinFunctions，无需手动注册。
+- 鏀寔閫氳繃 `$EXPR` 瀛楁宓屽叆 QLExpress 琛ㄨ揪寮忥紝琛ㄨ揪寮忓彲寮曠敤褰撳墠涓婁笅鏂囧彉閲忓拰鎵€鏈夊唴缃嚱鏁般€?
+- 鎵€鏈夊唴缃嚱鏁帮紙濡?random銆乧hoice銆乺ange銆乽uid銆乯oin銆乶ow銆乼imeRange 绛夛級鍧囨敮鎸佸绉嶅埆鍚嶏紙濡?
+  random/rand銆乼imeRange/timerange锛夛紝鍙湪琛ㄨ揪寮忎腑鐩存帴璋冪敤銆?
+- 鍐呯疆鍑芥暟娉ㄥ唽閲囩敤闆嗕腑鑷姩娉ㄥ唽鏈哄埗锛屾墍鏈夊埆鍚嶅拰瀹炵幇缁熶竴缁存姢浜?BuiltinFunc 鍜?BuiltinFunctions锛屾棤闇€鎵嬪姩娉ㄥ唽銆?
 
-#### 示例：动态 mock 字段依赖表达式
+#### 绀轰緥锛氬姩鎬?mock 瀛楁渚濊禆琛ㄨ揪寮?
 
 ```json
 {
@@ -444,20 +444,20 @@ println("DSL 生成失败: "+e.getMessage());
 }
 ```
 
-- 支持表达式内任意组合内置函数、上下文变量、三元表达式等。
-- 所有内置函数别名（如 random/rand、timeRange/timerange）均可直接在表达式中调用。
-- 表达式变量自动注入，无需手动声明。
+- 鏀寔琛ㄨ揪寮忓唴浠绘剰缁勫悎鍐呯疆鍑芥暟銆佷笂涓嬫枃鍙橀噺銆佷笁鍏冭〃杈惧紡绛夈€?
+- 鎵€鏈夊唴缃嚱鏁板埆鍚嶏紙濡?random/rand銆乼imeRange/timerange锛夊潎鍙洿鎺ュ湪琛ㄨ揪寮忎腑璋冪敤銆?
+- 琛ㄨ揪寮忓彉閲忚嚜鍔ㄦ敞鍏ワ紝鏃犻渶鎵嬪姩澹版槑銆?
 
-### 内置函数别名与自动注册机制
+### 鍐呯疆鍑芥暟鍒悕涓庤嚜鍔ㄦ敞鍐屾満鍒?
 
-- BuiltinFunc 枚举支持为每个内置函数配置多个别名。
-- BuiltinFunctions.registerToQLExpress 会自动遍历所有别名批量注册，无需手动维护注册代码。
-- 新增内置函数时，只需在 BuiltinFunc 和 FUNCTION_MAP 中补充即可，注册和别名自动生效。
+- BuiltinFunc 鏋氫妇鏀寔涓烘瘡涓唴缃嚱鏁伴厤缃涓埆鍚嶃€?
+- BuiltinFunctions.registerToQLExpress 浼氳嚜鍔ㄩ亶鍘嗘墍鏈夊埆鍚嶆壒閲忔敞鍐岋紝鏃犻渶鎵嬪姩缁存姢娉ㄥ唽浠ｇ爜銆?
+- 鏂板鍐呯疆鍑芥暟鏃讹紝鍙渶鍦?BuiltinFunc 鍜?FUNCTION_MAP 涓ˉ鍏呭嵆鍙紝娉ㄥ唽鍜屽埆鍚嶈嚜鍔ㄧ敓鏁堛€?
 
-### $EXPR 语法糖支持
+### $EXPR 璇硶绯栨敮鎸?
 
-- 支持直接写字符串作为表达式，等价于 `{lang: 'ql', expr: ...}`，无需冗余对象包裹。
-- 推荐写法：
+- 鏀寔鐩存帴鍐欏瓧绗︿覆浣滀负琛ㄨ揪寮忥紝绛変环浜?`{lang: 'ql', expr: ...}`锛屾棤闇€鍐椾綑瀵硅薄鍖呰９銆?
+- 鎺ㄨ崘鍐欐硶锛?
 
 ```json
 {
@@ -469,7 +469,7 @@ println("DSL 生成失败: "+e.getMessage());
 }
 ```
 
-- 兼容原有对象写法：
+- 鍏煎鍘熸湁瀵硅薄鍐欐硶锛?
 
 ```json
 {
@@ -477,14 +477,14 @@ println("DSL 生成失败: "+e.getMessage());
 }
 ```
 
-- 绝大多数场景推荐直接用字符串写法，简洁直观。
+- 缁濆ぇ澶氭暟鍦烘櫙鎺ㄨ崘鐩存帴鐢ㄥ瓧绗︿覆鍐欐硶锛岀畝娲佺洿瑙傘€?
 
-## 依赖
+## 渚濊禆
 
 - Java 8+
-- Gson (用于 JSON 解析)
-- 无其他外部依赖
+- Gson (鐢ㄤ簬 JSON 瑙ｆ瀽)
+- 鏃犲叾浠栧閮ㄤ緷璧?
 
-## 许可证
+## 璁稿彲璇?
 
-本项目遵循项目整体许可证。 
+鏈」鐩伒寰」鐩暣浣撹鍙瘉銆?

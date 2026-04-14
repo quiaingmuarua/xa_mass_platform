@@ -35,22 +35,22 @@ class RuleBasedTaskDeviceMatchingStrategyTest {
                 rule("basic_device_check", "isDeviceAvailable == true && isDeviceLocked == false"),
                 rule("token_status_check", "isTokenAllocatable == true && isTokenAvailable == true"),
                 rule("app_support_check", "supportsProject == true"),
-                rule("token_attribute_country", "tokenAttributes['country'] == taskCountry")
+                rule("token_attribute_country", "tokenAttributes['country'] == taskRoutingCountryCode")
         ));
 
         Task task = new Task();
         task.setTid("task-1");
         task.setProject(Project.DEMO_APP);
-        task.setTaskCountry("us");
+        task.setTaskRoutingCountryCode("us");
         task.setStatus(TaskStatus.READY);
 
-        Device matchingDevice = device("device-us");
-        Device nonMatchingDevice = device("device-gb");
+        Device matchingDevice = device("device-us", "pool-east");
+        Device nonMatchingDevice = device("device-gb", "pool-west");
         deviceManager.addDevice(matchingDevice);
         deviceManager.addDevice(nonMatchingDevice);
 
-        deviceManager.addToken(matchingDevice.getDeviceId(), token("device-us", "token-us", "us"));
-        deviceManager.addToken(nonMatchingDevice.getDeviceId(), token("device-gb", "token-gb", "gb"));
+        deviceManager.addToken(matchingDevice.getDeviceId(), token("device-us", "token-us", "shared", "us"));
+        deviceManager.addToken(nonMatchingDevice.getDeviceId(), token("device-gb", "token-gb", "shared", "gb"));
 
         List<Device> matched = strategy.matchDevices(task, 2);
 
@@ -66,20 +66,20 @@ class RuleBasedTaskDeviceMatchingStrategyTest {
         return rule;
     }
 
-    private Device device(String deviceId) {
+    private Device device(String deviceId, String deviceGroupId) {
         Device device = new Device();
         device.setDeviceId(deviceId);
-        device.setGroupId("us");
+        device.setDeviceGroupId(deviceGroupId);
         device.setStatus(DeviceStatus.ONLINE);
         device.setSupportedProjects(List.of(Project.DEMO_APP));
         return device;
     }
 
-    private Token token(String deviceId, String tokenId, String country) {
+    private Token token(String deviceId, String tokenId, String channel, String country) {
         Token token = new Token();
         token.setDeviceId(deviceId);
         token.setTokenId(tokenId);
-        token.setChannel("us");
+        token.setChannel(channel);
         token.setStatus(TokenStatus.LOGIN_READY);
         token.setAttributes(Map.of("country", country));
         return token;
