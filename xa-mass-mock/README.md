@@ -71,8 +71,17 @@ Startup behavior:
 | `mock.client.uri` | `ws://localhost:${mass.websocket.port}/ws` | target gateway address |
 | `mock.client.task-result-status` | `SUCCESS` | force mock result frames to `SUCCESS` or `FAILED` |
 | `mass.mock.data.devices` | `mock/mock_devices.json` | mock device data |
+| `mass.mock.data.tokens` | `mock/mock_tokens.json` | explicit mock token data |
 | `mass.mock.data.tasks` | `mock/mock_tasks.json` | mock task data |
 | `mass.mock.data.rules` | `mock/mock_rules.json` | mock rule data |
+
+Mock-data loading order:
+
+- devices
+- explicit tokens
+- tasks
+- rules
+- fallback token seeding only for devices that still have no token
 
 ## Regression Coverage
 

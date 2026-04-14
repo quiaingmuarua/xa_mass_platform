@@ -191,6 +191,7 @@ Important guard added in the verified runtime:
 - `MassWebSocketClientImpl` ignores `response=true` `TASK/step` frames so mock clients do not echo server response frames back into the system
 - `WebSocketClientStarter` passes `mock.client.task-result-status` into each mock client so failure-path result handling can be exercised without changing the engine path
 - `TaskManager.handleTaskMessageResult(...)` ignores late non-final callbacks for tasks already closed to `TERMINAL`, so manual cancel/terminate freezes later progress mutation
+- `DeviceManager` now uses `Device.status` as the single online truth for runtime availability; gateway online/offline events update the device model directly
 
 ## 5. Verified Smoke and Regression Coverage on 2026-04-13
 
@@ -200,9 +201,10 @@ Important guard added in the verified runtime:
 
 - normalizes `supportedProjects` into `Project` enums
 - lowercases `deviceGroupId`
-- auto-seeds a `LOGIN_READY` token when a mock device has no token data
+- loads explicit mock `tokens` when present
+- auto-seeds only a minimal `LOGIN_READY` fallback token when a mock device still has no token data
 
-This fixes the earlier false-stuck case where approved tasks remained in `READY` because mock devices did not satisfy assignment prerequisites.
+This keeps the verified startup runnable without letting `deviceGroupId` silently become token-side routing truth in the mock path.
 
 ### 5.2 Default `dev` Startup Launches Mock Clients
 

@@ -24,6 +24,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
                 "mock.client.auto-start=false",
                 "mock.client.devices-config=mock/test_mock_devices_empty.json",
                 "mass.mock.data.devices=mock/test_mock_devices_empty.json",
+                "mass.mock.data.tokens=mock/test_mock_tokens_empty.json",
                 "mass.mock.data.tasks=mock/test_mock_tasks.json",
                 "mass.mock.data.rules=mock/test_mock_rules.json"
         }

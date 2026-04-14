@@ -1,5 +1,7 @@
 package com.xa.mass.engine;
 
+import com.xa.mass.base.channel.eventbus.event.device.DeviceOfflineEvent;
+import com.xa.mass.base.channel.eventbus.event.device.DeviceOnlineEvent;
 import com.xa.mass.base.enums.device.DeviceStatus;
 import com.xa.mass.base.model.Device;
 import com.xa.mass.base.model.Token;
@@ -128,13 +130,32 @@ class DeviceManagerTest {
     @Test
     void onlineStatusTracking() {
         manager.addDevice(device("d8", "us"));
+        manager.updateOnlineStatus("d8", false);
         assertFalse(manager.isDeviceOnline("d8"));
+        assertEquals(DeviceStatus.OFFLINE, manager.getDevice("d8").getStatus());
 
         manager.updateOnlineStatus("d8", true);
         assertTrue(manager.isDeviceOnline("d8"));
+        assertEquals(DeviceStatus.ONLINE, manager.getDevice("d8").getStatus());
 
         manager.updateOnlineStatus("d8", false);
         assertFalse(manager.isDeviceOnline("d8"));
+        assertEquals(DeviceStatus.OFFLINE, manager.getDevice("d8").getStatus());
+    }
+
+    @Test
+    void deviceStatusEventListenerKeepsModelStatusInSync() {
+        DeviceManager.DeviceStatusEventListener listener = new DeviceManager.DeviceStatusEventListener(manager);
+        manager.addDevice(device("d9", "us"));
+        manager.updateOnlineStatus("d9", false);
+
+        listener.onDeviceOnline(new DeviceOnlineEvent("d9", "connected", null));
+        assertTrue(manager.isDeviceOnline("d9"));
+        assertEquals(DeviceStatus.ONLINE, manager.getDevice("d9").getStatus());
+
+        listener.onDeviceOffline(new DeviceOfflineEvent("d9", "disconnected", null));
+        assertFalse(manager.isDeviceOnline("d9"));
+        assertEquals(DeviceStatus.OFFLINE, manager.getDevice("d9").getStatus());
     }
 
     // ---- helpers ----

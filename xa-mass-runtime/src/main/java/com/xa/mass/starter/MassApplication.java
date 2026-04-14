@@ -279,12 +279,37 @@ public class MassApplication {
                 for (Device device : devices) {
                     normalizeMockDevice(device);
                     engine.addDevice(device);
-                    ensureMockToken(engine, device);
                     logger.debug("Loaded mock device: {} (deviceGroupId: {}, status: {})",
                             device.getDeviceId(), device.getDeviceGroupId(), device.getStatus());
                 }
-                verifyDeviceData(engine);
             }
+
+            if (root.has("tokens")) {
+                List<Token> tokens = new ArrayList<>();
+                com.google.gson.JsonElement tokenElem = root.get("tokens");
+                if (tokenElem.isJsonArray()) {
+                    for (com.google.gson.JsonElement dsl : tokenElem.getAsJsonArray()) {
+                        tokens.addAll(com.xa.mass.engine.monkey.MonkeyGenerator.generateTokens(dsl.toString()));
+                    }
+                } else {
+                    tokens.addAll(com.xa.mass.engine.monkey.MonkeyGenerator.generateTokens(tokenElem.toString()));
+                }
+
+                logger.info("Generated {} mock tokens", tokens.size());
+                for (Token token : tokens) {
+                    normalizeMockToken(token);
+                    if (token.getDeviceId() == null || token.getDeviceId().isBlank()) {
+                        logger.warn("Skipping mock token {} because deviceId is missing", token.getTokenId());
+                        continue;
+                    }
+                    engine.addToken(token);
+                    logger.debug("Loaded mock token: {} (deviceId: {}, channel: {}, attributes: {})",
+                            token.getTokenId(), token.getDeviceId(), token.getChannel(), token.getAttributes());
+                }
+            }
+
+            ensureMockTokens(engine);
+            verifyDeviceData(engine);
 
             if (root.has("tasks")) {
                 List<com.xa.mass.engine.model.TaskCreateRequestDto> taskDtos = new ArrayList<>();
@@ -349,6 +374,35 @@ public class MassApplication {
         }
     }
 
+    void normalizeMockToken(Token token) {
+        if (token == null) {
+            return;
+        }
+        if (token.getChannel() != null) {
+            token.setChannel(token.getChannel().toLowerCase());
+        }
+        if (token.getStatus() == null) {
+            token.setStatus(TokenStatus.LOGIN_READY);
+        }
+        if (!token.getAttributes().isEmpty()) {
+            java.util.Map<String, String> normalizedAttributes = new java.util.LinkedHashMap<>(token.getAttributes());
+            String country = normalizedAttributes.get("country");
+            if (country != null) {
+                normalizedAttributes.put("country", country.toLowerCase());
+            }
+            token.setAttributes(normalizedAttributes);
+        }
+    }
+
+    void ensureMockTokens(MassEngine engine) {
+        if (engine == null || engine.getDeviceManager() == null) {
+            return;
+        }
+        for (Device device : engine.getDeviceManager().getAllDevices()) {
+            ensureMockToken(engine, device);
+        }
+    }
+
     void ensureMockToken(MassEngine engine, Device device) {
         if (engine == null || device == null || engine.getDeviceManager() == null) {
             return;
@@ -360,11 +414,7 @@ public class MassApplication {
         Token token = new Token();
         token.setTokenId("token-" + device.getDeviceId());
         token.setDeviceId(device.getDeviceId());
-        token.setChannel(device.getDeviceGroupId());
         token.setStatus(TokenStatus.LOGIN_READY);
-        if (device.getDeviceGroupId() != null) {
-            token.setAttributes(java.util.Map.of("country", device.getDeviceGroupId()));
-        }
         engine.addToken(token);
     }
 

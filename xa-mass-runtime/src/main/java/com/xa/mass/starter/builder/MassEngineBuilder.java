@@ -26,6 +26,7 @@ public class MassEngineBuilder {
     private Boolean mockMode;
     private Integer workerThreads;
     private String deviceConfigPath;
+    private String tokenConfigPath;
     private String taskConfigPath;
     private String ruleConfigPath;
     private String mockConfigPath;
@@ -77,8 +78,9 @@ public class MassEngineBuilder {
         return this;
     }
 
-    public MassEngineBuilder mockData(String deviceConfigPath, String taskConfigPath, String ruleConfigPath) {
+    public MassEngineBuilder mockData(String deviceConfigPath, String tokenConfigPath, String taskConfigPath, String ruleConfigPath) {
         this.deviceConfigPath = deviceConfigPath;
+        this.tokenConfigPath = tokenConfigPath;
         this.taskConfigPath = taskConfigPath;
         this.ruleConfigPath = ruleConfigPath;
         return this;
@@ -93,6 +95,7 @@ public class MassEngineBuilder {
         if (workerThreads != null) config.setWorkerThreads(workerThreads);
         if (mockMode != null) config.setMockMode(mockMode);
         if (deviceConfigPath != null) config.setDeviceConfigPath(deviceConfigPath);
+        if (tokenConfigPath != null) config.setTokenConfigPath(tokenConfigPath);
         if (taskConfigPath != null) config.setTaskConfigPath(taskConfigPath);
         if (ruleConfigPath != null) config.setRuleConfigPath(ruleConfigPath);
         if (mockConfigPath != null) config.setMockConfigPath(mockConfigPath);

@@ -25,6 +25,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
                 "mock.client.auto-start=true",
                 "mock.client.devices-config=mock/test_mock_devices.json",
                 "mass.mock.data.devices=mock/test_mock_devices.json",
+                "mass.mock.data.tokens=mock/test_mock_tokens.json",
                 "mass.mock.data.tasks=mock/test_mock_tasks.json",
                 "mass.mock.data.rules=mock/test_mock_rules.json",
                 "mock.client.retry-attempts=1",

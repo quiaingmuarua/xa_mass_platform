@@ -188,6 +188,7 @@ public class MassApplicationExample {
                         .workerThreads(4)
                         .mockData(
                                 "mock/mock_devices.json",
+                                "mock/mock_tokens.json",
                                 "mock/mock_tasks.json",
                                 "mock/mock_rules.json"
                         ))
