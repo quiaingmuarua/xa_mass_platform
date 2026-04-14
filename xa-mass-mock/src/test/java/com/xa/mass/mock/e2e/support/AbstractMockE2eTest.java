@@ -74,7 +74,7 @@ public abstract class AbstractMockE2eTest {
         createBody.put("taskName", taskName);
         createBody.put("project", "demoApp");
         createBody.put("countryCode", "us");
-        createBody.put("textContent", textContent);
+        createBody.put("sharedConfig", java.util.Map.of("textContent", textContent));
         createBody.put("userId", "itest");
         createBody.put("targetList", targets);
         createBody.put("batchSize", batchSize);

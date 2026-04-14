@@ -62,7 +62,7 @@ public class Token {
     private Map<String, String> attributes = Collections.emptyMap();
 
     public Token() {
-        this.status = TokenStatus.LOGIN_READY;
+        this.status = TokenStatus.IDLE;
         this.createTime = LocalDateTime.now();
         this.updateTime = LocalDateTime.now();
     }
@@ -98,7 +98,7 @@ public class Token {
     public void setStatus(TokenStatus status) {
         this.status = Objects.requireNonNull(status, "status");
         this.updateTime = LocalDateTime.now();
-        if (status == TokenStatus.SENDING) {
+        if (status == TokenStatus.OCCUPIED) {
             this.lastUsedTime = LocalDateTime.now();
         }
     }
@@ -198,8 +198,8 @@ public class Token {
         if (taskId == null || taskId.isBlank()) {
             return false;
         }
-        if (status.canTransitionTo(TokenStatus.BIND_READY)) {
-            setStatus(TokenStatus.BIND_READY);
+        if (status.canTransitionTo(TokenStatus.RESERVED)) {
+            setStatus(TokenStatus.RESERVED);
             setLastBindTaskId(taskId);
             return true;
         }
@@ -207,11 +207,11 @@ public class Token {
     }
 
     /**
-     * 开始发送
+     * 开始执行
      */
-    public boolean startSending() {
-        if (status.canTransitionTo(TokenStatus.SENDING)) {
-            setStatus(TokenStatus.SENDING);
+    public boolean startOccupying() {
+        if (status.canTransitionTo(TokenStatus.OCCUPIED)) {
+            setStatus(TokenStatus.OCCUPIED);
             return true;
         }
         return false;
@@ -221,8 +221,8 @@ public class Token {
      * 释放Token
      */
     public boolean release() {
-        if (status == TokenStatus.BIND_READY || status == TokenStatus.SENDING) {
-            setStatus(TokenStatus.LOGIN_READY);
+        if (status == TokenStatus.RESERVED || status == TokenStatus.OCCUPIED) {
+            setStatus(TokenStatus.IDLE);
             setLastBindTaskId(null);
             return true;
         }
@@ -244,8 +244,8 @@ public class Token {
      * 解锁Token
      */
     public boolean unblock() {
-        if (status.canTransitionTo(TokenStatus.LOGIN_READY)) {
-            setStatus(TokenStatus.LOGIN_READY);
+        if (status.canTransitionTo(TokenStatus.IDLE)) {
+            setStatus(TokenStatus.IDLE);
             return true;
         }
         return false;

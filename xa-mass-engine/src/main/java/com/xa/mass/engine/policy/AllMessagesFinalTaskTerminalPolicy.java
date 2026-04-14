@@ -16,6 +16,10 @@ public class AllMessagesFinalTaskTerminalPolicy implements TaskTerminalPolicy {
         if (stats.getTotal() <= 0) {
             return TaskTerminalPolicyDecision.keepRunning();
         }
+        // Open-ended tasks never auto-terminate; caller must seal() or cancel to close.
+        if (task.isOpenEnded()) {
+            return TaskTerminalPolicyDecision.keepRunning();
+        }
         if (stats.getSuccess() + stats.getFailed() + stats.getExpired() != stats.getTotal()) {
             return TaskTerminalPolicyDecision.keepRunning();
         }

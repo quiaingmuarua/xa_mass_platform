@@ -68,7 +68,7 @@ class TaskApiTerminateReuseIntegrationTest extends AbstractMockE2eTest {
 
         TaskSnapshot firstTerminal = waitForTaskSnapshot(firstTaskId, "TERMINAL", 20, 500L);
         assertEquals("EXPIRED", firstTerminal.messages().get(0).get("status"));
-        assertEquals(TokenStatus.LOGIN_READY, deviceManager.getToken(deviceId).getStatus());
+        assertEquals(TokenStatus.IDLE, deviceManager.getToken(deviceId).getStatus());
 
         String secondTaskId = createTaskId("terminate-reuse-second", "terminate reuse second", "target-b");
         Map<String, Object> secondApprove = audit(secondTaskId, "terminate-reuse-2");
@@ -84,7 +84,7 @@ class TaskApiTerminateReuseIntegrationTest extends AbstractMockE2eTest {
         );
         assertEquals(Boolean.TRUE, secondTerminate.get("success"));
         waitForTaskSnapshot(secondTaskId, "TERMINAL", 20, 500L);
-        assertEquals(TokenStatus.LOGIN_READY, deviceManager.getToken(deviceId).getStatus());
+        assertEquals(TokenStatus.IDLE, deviceManager.getToken(deviceId).getStatus());
     }
 
     private void registerDevice(String deviceId) {
@@ -99,7 +99,7 @@ class TaskApiTerminateReuseIntegrationTest extends AbstractMockE2eTest {
         token.setTokenId("token-" + deviceId);
         token.setDeviceId(deviceId);
         token.setChannel("us");
-        token.setStatus(TokenStatus.LOGIN_READY);
+        token.setStatus(TokenStatus.IDLE);
         deviceManager.addToken(deviceId, token);
     }
 }

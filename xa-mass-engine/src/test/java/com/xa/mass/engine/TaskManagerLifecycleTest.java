@@ -131,7 +131,7 @@ class TaskManagerLifecycleTest {
         dto.setTaskName("no-targets");
         dto.setProject("demoApp");
         dto.setCountryCode("us");
-        dto.setTextContent("smoke");
+        dto.setSharedConfig(java.util.Map.of("textContent", "smoke"));
         dto.setUserId("agent");
         dto.setTargetList(null);
         dto.setBatchSize(0);
@@ -776,7 +776,7 @@ class TaskManagerLifecycleTest {
         dto.setTaskName(taskName);
         dto.setProject("demoApp");
         dto.setCountryCode("us");
-        dto.setTextContent("smoke");
+        dto.setSharedConfig(java.util.Map.of("textContent", "smoke"));
         dto.setUserId("agent");
         dto.setTargetList(targets);
         dto.setBatchSize(1);

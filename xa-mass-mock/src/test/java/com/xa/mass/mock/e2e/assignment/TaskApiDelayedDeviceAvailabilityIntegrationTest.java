@@ -104,7 +104,7 @@ class TaskApiDelayedDeviceAvailabilityIntegrationTest extends AbstractMockE2eTes
         token.setTokenId("token-" + deviceId);
         token.setDeviceId(deviceId);
         token.setChannel("us");
-        token.setStatus(TokenStatus.LOGIN_READY);
+        token.setStatus(TokenStatus.IDLE);
         deviceManager.addToken(deviceId, token);
     }
 

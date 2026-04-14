@@ -8,7 +8,7 @@ class TaskAggregateFieldsTest {
 
     @Test
     void successCountIsTheCanonicalAggregateField() {
-        Task task = new Task("task-1", "aggregate", "demoApp", "us", 3, "hello", new User());
+        Task task = new Task("task-1", "aggregate", "demoApp", "us", 3, java.util.Map.of("textContent", "hello"), new User());
 
         task.setTaskSuccessNumber(1);
 
@@ -18,7 +18,7 @@ class TaskAggregateFieldsTest {
 
     @Test
     void updatingEligibleCountRecomputesNonSuccessCount() {
-        Task task = new Task("task-2", "aggregate", "demoApp", "us", 2, "hello", new User());
+        Task task = new Task("task-2", "aggregate", "demoApp", "us", 2, java.util.Map.of("textContent", "hello"), new User());
         task.setTaskSuccessNumber(1);
 
         task.setTaskEligibleNumber(4);
@@ -29,7 +29,7 @@ class TaskAggregateFieldsTest {
 
     @Test
     void nonSuccessCountCanStillBeExplicitlyOverriddenForAuditScenarios() {
-        Task task = new Task("task-3", "aggregate", "demoApp", "us", 2, "hello", new User());
+        Task task = new Task("task-3", "aggregate", "demoApp", "us", 2, java.util.Map.of("textContent", "hello"), new User());
 
         task.setTaskSuccessNumber(2);
         task.setTaskNonSuccessNumber(0);

@@ -93,7 +93,7 @@ public class TaskResourceReleaseListener {
         if (token.getLastBindTaskId() != null && !taskId.equals(token.getLastBindTaskId())) {
             return;
         }
-        if (token.getStatus() == TokenStatus.LOGIN_READY) {
+        if (token.getStatus() == TokenStatus.IDLE) {
             return;
         }
         if (token.release()) {

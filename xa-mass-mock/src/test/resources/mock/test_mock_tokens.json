@@ -16,7 +16,7 @@
         ]
       },
       "channel": "us",
-      "status": "LOGIN_READY",
+      "status": "IDLE",
       "attributes": {
         "country": "us"
       }

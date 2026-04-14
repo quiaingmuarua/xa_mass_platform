@@ -91,17 +91,20 @@ public class TaskManager {
                     dto.getProject(),
                     dto.getCountryCode(),
                     initNumber,
-                    dto.getTextContent(),
+                    dto.getSharedConfig() != null ? dto.getSharedConfig() : new java.util.HashMap<>(),
                     user
             );
             task.setBatchSize(dto.getBatchSize());
+            task.setOpenEnded(dto.isOpenEnded());
             // 可扩展设置 extraParams、targetType 等
 
             // 5. 存储任务
             taskStorage.saveTask(task);
             for (String target : targets) {
                 String msgId = java.util.UUID.randomUUID().toString();
-                addTaskMessage(tid, new TaskMsg(msgId, tid, target));
+                TaskMsg taskMsg = new TaskMsg(msgId, tid, target);
+                taskMsg.setMaxRetryCount(dto.getDefaultMsgMaxRetryCount());
+                addTaskMessage(tid, taskMsg);
             }
 
             long duration = System.currentTimeMillis() - startTime;
@@ -474,6 +477,58 @@ public class TaskManager {
             logger.error("取消任务失败", e);
             return false;
         }
+    }
+
+    /**
+     * Appends new work items to a READY or RUNNING open-ended task.
+     * Only tasks created with {@code openEnded=true} may call this method.
+     * Use {@link #sealTask(String)} when no more items will be added.
+     *
+     * @return number of items added
+     */
+    public int appendTaskItems(String taskId, java.util.List<java.util.Map<String, Object>> inputs) {
+        Task task = getTask(taskId);
+        if (task == null) {
+            throw new IllegalArgumentException("Task not found: " + taskId);
+        }
+        if (!task.isOpenEnded()) {
+            throw new IllegalStateException("Task is not open-ended: " + taskId);
+        }
+        if (!task.getStatus().isActive()) {
+            throw new IllegalStateException("Task not active: " + task.getStatus());
+        }
+
+        int added = 0;
+        for (java.util.Map<String, Object> input : inputs) {
+            String msgId = java.util.UUID.randomUUID().toString();
+            TaskMsg taskMsg = new TaskMsg(msgId, taskId, input);
+            addTaskMessage(taskId, taskMsg);
+            added++;
+        }
+        task.setTaskTargetNumber(task.getTaskTargetNumber() + added);
+        task.setTaskEligibleNumber(task.getTaskEligibleNumber() + added);
+        updateTask(task);
+        notifyTaskDispatchRequested(task);
+        logger.info("[appendTaskItems] Added {} items to open-ended task {}", added, taskId);
+        return added;
+    }
+
+    /**
+     * Seals an open-ended task — disables further item appending and allows the terminal
+     * policy to close the task once all existing messages reach a final state.
+     *
+     * @return true if seal was applied; false if task was not found or not open-ended
+     */
+    public boolean sealTask(String taskId) {
+        Task task = getTask(taskId);
+        if (task == null || !task.isOpenEnded()) {
+            return false;
+        }
+        task.setOpenEnded(false);
+        updateTask(task);
+        updateTaskProgress(taskId);
+        logger.info("[sealTask] Sealed task {}", taskId);
+        return true;
     }
 
     /**

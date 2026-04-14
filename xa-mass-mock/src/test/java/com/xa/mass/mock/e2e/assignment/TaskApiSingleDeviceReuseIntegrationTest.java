@@ -81,7 +81,7 @@ class TaskApiSingleDeviceReuseIntegrationTest extends AbstractMockE2eTest {
             assertEquals(deviceId, secondTerminal.messages().get(0).get("deviceId"));
 
             Token token = deviceManager.getToken(deviceId);
-            assertEquals(TokenStatus.LOGIN_READY, token.getStatus());
+            assertEquals(TokenStatus.IDLE, token.getStatus());
         } finally {
             client.disconnect();
         }
@@ -99,7 +99,7 @@ class TaskApiSingleDeviceReuseIntegrationTest extends AbstractMockE2eTest {
         token.setTokenId("token-" + deviceId);
         token.setDeviceId(deviceId);
         token.setChannel("us");
-        token.setStatus(TokenStatus.LOGIN_READY);
+        token.setStatus(TokenStatus.IDLE);
         deviceManager.addToken(deviceId, token);
     }
 }

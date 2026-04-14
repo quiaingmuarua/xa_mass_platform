@@ -194,22 +194,22 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
 
         boolean changed = false;
         String taskId = task.getTid();
-        if (token.getStatus() == TokenStatus.LOGIN_READY) {
+        if (token.getStatus() == TokenStatus.IDLE) {
             if (!token.bindToTask(taskId)) {
                 return false;
             }
             changed = true;
         }
-        if (token.getStatus() == TokenStatus.BIND_READY && taskId.equals(token.getLastBindTaskId())) {
-            if (!token.startSending()) {
+        if (token.getStatus() == TokenStatus.RESERVED && taskId.equals(token.getLastBindTaskId())) {
+            if (!token.startOccupying()) {
                 return false;
             }
             changed = true;
         }
 
-        boolean alreadySendingForTask = token.getStatus() == TokenStatus.SENDING
+        boolean alreadySendingForTask = token.getStatus() == TokenStatus.OCCUPIED
                 && taskId.equals(token.getLastBindTaskId());
-        if (!alreadySendingForTask && token.getStatus() != TokenStatus.SENDING) {
+        if (!alreadySendingForTask && token.getStatus() != TokenStatus.OCCUPIED) {
             return false;
         }
 

@@ -56,8 +56,8 @@ class MassApplicationLoadMockDataTest {
         assertEquals("route-gb", gbToken.getChannel());
         assertEquals("us", usToken.getAttributes().get("country"));
         assertEquals("gb", gbToken.getAttributes().get("country"));
-        assertEquals(TokenStatus.LOGIN_READY, usToken.getStatus());
-        assertEquals(TokenStatus.LOGIN_READY, gbToken.getStatus());
+        assertEquals(TokenStatus.IDLE, usToken.getStatus());
+        assertEquals(TokenStatus.IDLE, gbToken.getStatus());
     }
 
     @Test
@@ -75,7 +75,7 @@ class MassApplicationLoadMockDataTest {
         assertEquals(2, devices.size());
         assertEquals(devices.size(), tokens.size());
         assertEquals(0, harness.createdTasks().get());
-        assertTrue(tokens.stream().allMatch(token -> token.getStatus() == TokenStatus.LOGIN_READY));
+        assertTrue(tokens.stream().allMatch(token -> token.getStatus() == TokenStatus.IDLE));
         assertTrue(tokens.stream().allMatch(token -> token.getDeviceId() != null && token.getTokenId() != null));
         assertTrue(tokens.stream().allMatch(token -> token.getChannel() == null));
         assertTrue(tokens.stream().allMatch(token -> token.getAttributes().isEmpty()));
@@ -142,7 +142,7 @@ class MassApplicationLoadMockDataTest {
                         "tokenId": "token-us-1",
                         "deviceId": "device-us-1",
                         "channel": "route-us",
-                        "status": "LOGIN_READY",
+                        "status": "IDLE",
                         "attributes": {
                           "country": "US",
                           "carrier": "tmobile"
@@ -156,7 +156,7 @@ class MassApplicationLoadMockDataTest {
                         "tokenId": "token-gb-1",
                         "deviceId": "device-gb-1",
                         "channel": "route-gb",
-                        "status": "LOGIN_READY",
+                        "status": "IDLE",
                         "attributes": {
                           "country": "GB",
                           "carrier": "o2"
@@ -173,7 +173,7 @@ class MassApplicationLoadMockDataTest {
                         "project": "demoApp",
                         "countryCode": "us",
                         "userId": "agent",
-                        "textContent": "smoke",
+                        "sharedConfig": {"textContent": "smoke"},
                         "batchSize": 1,
                         "targetList": ["target-1"]
                       }

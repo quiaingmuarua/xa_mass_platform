@@ -118,7 +118,7 @@ class TaskApiTokenAttributeRoutingIntegrationTest extends AbstractMockE2eTest {
         token.setTokenId("token-" + deviceId);
         token.setDeviceId(deviceId);
         token.setChannel(tokenChannel);
-        token.setStatus(TokenStatus.LOGIN_READY);
+        token.setStatus(TokenStatus.IDLE);
         token.setAttributes(Map.of("country", countryAttribute));
         deviceManager.addToken(deviceId, token);
     }

@@ -49,12 +49,12 @@ public class StorageFactoryExample {
         device.setDeviceGroupId("us");
 
         Token token = new Token("token-001", "device-001", "us");
-        token.setStatus(TokenStatus.LOGIN_READY);
+        token.setStatus(TokenStatus.IDLE);
 
         User user = new User();
         user.setName("testUser");
 
-        Task task = new Task("task-001", "Test Task", "demoApp", "us", 100, "Test content", user);
+        Task task = new Task("task-001", "Test Task", "demoApp", "us", 100, java.util.Map.of("textContent", "Test content"), user);
 
         deviceStorage.addDevice(device);
         deviceStorage.addToken("device-001", token);
@@ -94,12 +94,12 @@ public class StorageFactoryExample {
             device.setDeviceGroupId("gb");
 
             Token token = new Token("token-002", "device-002", "gb");
-            token.setStatus(TokenStatus.LOGIN_READY);
+            token.setStatus(TokenStatus.IDLE);
 
             User user = new User();
             user.setName("testUser2");
 
-            Task task = new Task("task-002", "Test Task 2", Project.DEMO_APP.getCode(), "gb", 50, "Test content 2", user);
+            Task task = new Task("task-002", "Test Task 2", Project.DEMO_APP.getCode(), "gb", 50, java.util.Map.of("textContent", "Test content 2"), user);
 
             deviceStorage.addDevice(device);
             deviceStorage.addToken("device-002", token);
@@ -150,8 +150,8 @@ public class StorageFactoryExample {
         User user2 = new User();
         user2.setName("factoryUser2");
 
-        Task task1 = new Task("task-factory-001", "Factory Task 1", Project.DEMO_APP.getCode(), "us", 100, "Factory content 1", user1);
-        Task task2 = new Task("task-factory-002", "Factory Task 2", Project.DEMO_APP.getCode(), "gb", 50, "Factory content 2", user2);
+        Task task1 = new Task("task-factory-001", "Factory Task 1", Project.DEMO_APP.getCode(), "us", 100, java.util.Map.of("textContent", "Factory content 1"), user1);
+        Task task2 = new Task("task-factory-002", "Factory Task 2", Project.DEMO_APP.getCode(), "gb", 50, java.util.Map.of("textContent", "Factory content 2"), user2);
 
         inMemoryStorage.saveTask(task1);
         inMemoryStorage.saveTask(task2);

@@ -188,7 +188,7 @@ class TaskApiControllerTest {
                                   "taskName":"smoke-create",
                                   "project":"demoApp",
                                   "countryCode":"us",
-                                  "textContent":"hello",
+                                  "sharedConfig":{"textContent":"hello"},
                                   "userId":"agent",
                                   "targetList":["alpha","beta"],
                                   "batchSize":2
@@ -203,7 +203,7 @@ class TaskApiControllerTest {
                 "smoke-create".equals(dto.getTaskName())
                         && "demoApp".equals(dto.getProject())
                         && "us".equals(dto.getCountryCode())
-                        && "hello".equals(dto.getTextContent())
+                        && "hello".equals(dto.getSharedConfig() != null ? dto.getSharedConfig().get("textContent") : null)
                         && "agent".equals(dto.getUserId())
                         && dto.getBatchSize() == 2
                         && java.util.List.of("alpha", "beta").equals(dto.getTargetList())
@@ -219,7 +219,7 @@ class TaskApiControllerTest {
                                   "taskName":"smoke-create",
                                   "project":"demoApp",
                                   "countryCode":"us",
-                                  "textContent":"hello",
+                                  "sharedConfig":{"textContent":"hello"},
                                   "userId":"agent",
                                   "targetList":["alpha"],
                                   "targetJsonList":["{\\"phone\\":\\"1\\"}"]
@@ -244,7 +244,7 @@ class TaskApiControllerTest {
                                   "taskName":"bad-project",
                                   "project":"whatsapp",
                                   "countryCode":"us",
-                                  "textContent":"hello",
+                                  "sharedConfig":{"textContent":"hello"},
                                   "userId":"agent",
                                   "targetList":["alpha"]
                                 }
@@ -337,7 +337,7 @@ class TaskApiControllerTest {
                                   "taskName":"updated-name",
                                   "project":"telegramApp",
                                   "countryCode":"sg",
-                                  "textContent":"updated-content",
+                                  "sharedConfig":{"textContent":"updated-content"},
                                   "userId":"updated-user",
                                   "batchSize":5
                                 }
@@ -351,7 +351,7 @@ class TaskApiControllerTest {
                         && "updated-name".equals(task.getTaskName())
                         && "telegramApp".equals(task.getProjectCode())
                         && "sg".equals(task.getTaskRoutingCountryCode())
-                        && "updated-content".equals(task.getTextContent())
+                        && "updated-content".equals(task.getSharedConfig() != null ? task.getSharedConfig().get("textContent") : null)
                         && task.getUser() != null
                         && "updated-user".equals(task.getUser().getName())
                         && task.getBatchSize() == 5

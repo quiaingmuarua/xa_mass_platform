@@ -62,8 +62,19 @@ class TaskApiMixedResultsIntegrationTest extends AbstractMockE2eTest {
 
     @Test
     void taskWithOneSuccessAndOneFailureClosesToTerminalWithMixedReason() throws Exception {
-        // Arrange: create a task with 2 targets so we get 2 TaskMsg rows.
-        String taskId = createTaskId("mixed-results", "mixed results integration test", List.of("target-a", "target-b"), 1);
+        // Arrange: create a task with 2 targets — disable retries so the first FAILED is final.
+        java.util.Map<String, Object> createBody = new java.util.LinkedHashMap<>();
+        createBody.put("taskName", "mixed-results");
+        createBody.put("project", "demoApp");
+        createBody.put("countryCode", "us");
+        createBody.put("sharedConfig", Map.of("textContent", "mixed results integration test"));
+        createBody.put("userId", "itest");
+        createBody.put("targetList", List.of("target-a", "target-b"));
+        createBody.put("batchSize", 1);
+        createBody.put("defaultMsgMaxRetryCount", 0);
+        Map<String, Object> createResponse = exchange("/status/api/tasks", HttpMethod.POST, createBody);
+        assertEquals(Boolean.TRUE, createResponse.get("success"));
+        String taskId = String.valueOf(createResponse.get("taskId"));
 
         // Act: approve triggers READY → RUNNING assignment.
         Map<String, Object> approveResponse = exchange(

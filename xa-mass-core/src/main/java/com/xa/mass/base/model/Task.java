@@ -5,6 +5,8 @@ import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
 
 import java.time.LocalDateTime;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Objects;
 
 /**
@@ -28,7 +30,8 @@ public class Task {
     private int taskNonSuccessNumber;
     private int runTaskMinDeviceCnt;
     private int scheduleDeviceCnt;
-    private String textContent;
+    private Map<String, Object> sharedConfig = new HashMap<>();
+    private boolean openEnded = false;
     private User user;
     private LocalDateTime createTime;
     private LocalDateTime updateTime;
@@ -44,7 +47,7 @@ public class Task {
     }
 
     public Task(String tid, String taskName, String project, String taskRoutingCountryCode,
-                int taskTargetNumber, String textContent, User user) {
+                int taskTargetNumber, Map<String, Object> sharedConfig, User user) {
         this();
         this.tid = tid;
         this.taskName = taskName;
@@ -54,7 +57,7 @@ public class Task {
         this.taskEligibleNumber = taskTargetNumber;
         this.taskSuccessNumber = 0;
         this.taskNonSuccessNumber = taskTargetNumber;
-        this.textContent = textContent;
+        this.sharedConfig = sharedConfig;
         this.user = user;
     }
 
@@ -160,12 +163,20 @@ public class Task {
         this.updateTime = LocalDateTime.now();
     }
 
-    public String getTextContent() {
-        return textContent;
+    public Map<String, Object> getSharedConfig() {
+        return sharedConfig;
     }
 
-    public void setTextContent(String textContent) {
-        this.textContent = textContent;
+    public void setSharedConfig(Map<String, Object> sharedConfig) {
+        this.sharedConfig = sharedConfig;
+    }
+
+    public boolean isOpenEnded() {
+        return openEnded;
+    }
+
+    public void setOpenEnded(boolean openEnded) {
+        this.openEnded = openEnded;
     }
 
     public User getUser() {

@@ -47,7 +47,7 @@ class TaskResourceReleaseListenerTest {
 
         Token token = new Token("token-1", "device-1", "us");
         token.bindToTask("task-1");
-        token.startSending();
+        token.startOccupying();
 
         when(taskManager.getTaskMessages("task-1")).thenReturn(List.of(msg));
         when(deviceManager.getToken("device-1")).thenReturn(token);
@@ -70,7 +70,7 @@ class TaskResourceReleaseListenerTest {
 
         Token token = new Token("token-1", "device-1", "us");
         token.bindToTask("other-task");
-        token.startSending();
+        token.startOccupying();
 
         when(taskManager.getTaskMessages("task-1")).thenReturn(List.of(msg));
         when(deviceManager.getToken("device-1")).thenReturn(token);
@@ -94,7 +94,7 @@ class TaskResourceReleaseListenerTest {
 
         Token token = new Token("token-1", "device-1", "us");
         token.bindToTask("task-1");
-        token.startSending();
+        token.startOccupying();
 
         when(taskManager.getTaskMessages("task-1")).thenReturn(List.of(finalMsg));
         when(taskManager.hasPendingDispatchableMessages("task-1")).thenReturn(true);

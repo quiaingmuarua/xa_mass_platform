@@ -85,11 +85,15 @@ public class GatewayTaskMsgPublisher implements TaskMsgDispatchListener {
         Map<String, Object> params = new LinkedHashMap<>();
         params.put("taskId", task.getTid());
         params.put("taskName", task.getTaskName());
-        params.put("target", taskMsg.getTarget());
+        if (taskMsg.getInput() != null) {
+            params.putAll(taskMsg.getInput());
+        }
         params.put("deviceId", taskMsg.getDeviceId());
         params.put("tokenId", taskMsg.getTokenId());
         params.put("batchId", taskMsg.getBatchId());
-        params.put("textContent", task.getTextContent());
+        if (task.getSharedConfig() != null) {
+            params.putAll(task.getSharedConfig());
+        }
         step.setParams(params);
 
         TaskPayload payload = new TaskPayload();

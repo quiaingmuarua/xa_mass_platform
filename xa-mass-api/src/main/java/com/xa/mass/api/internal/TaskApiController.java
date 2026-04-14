@@ -23,16 +23,18 @@ public class TaskApiController {
             "userId",
             "project",
             "taskName",
-            "textContent",
+            "sharedConfig",
             "targetList",
             "countryCode",
-            "batchSize"
+            "batchSize",
+            "defaultMsgMaxRetryCount",
+            "openEnded"
     );
     private static final Set<String> SUPPORTED_TASK_UPDATE_FIELDS = Set.of(
             "userId",
             "project",
             "taskName",
-            "textContent",
+            "sharedConfig",
             "countryCode",
             "batchSize"
     );
@@ -293,7 +295,7 @@ public class TaskApiController {
             task.setTaskName(request.getTaskName());
             task.setProject(request.getProject());
             task.setTaskRoutingCountryCode(request.getCountryCode());
-            task.setTextContent(request.getTextContent());
+            task.setSharedConfig(request.getSharedConfig());
             if (task.getUser() != null) {
                 task.getUser().setName(request.getUserId());
             }
@@ -329,6 +331,64 @@ public class TaskApiController {
         }
 
         return objectMapper.convertValue(requestBody, TaskCreateRequestDto.class);
+    }
+
+    @PostMapping("/{taskId}/items")
+    public ResponseEntity<?> appendTaskItems(@PathVariable String taskId,
+                                             @RequestBody Map<String, Object> requestBody) {
+        try {
+            @SuppressWarnings("unchecked")
+            java.util.List<java.util.Map<String, Object>> inputs =
+                    (java.util.List<java.util.Map<String, Object>>) requestBody.get("inputs");
+            if (inputs == null || inputs.isEmpty()) {
+                return ResponseEntity.badRequest().body(Map.of(
+                        "success", false,
+                        "message", "inputs must be a non-empty list"
+                ));
+            }
+            int added = taskManager.appendTaskItems(taskId, inputs);
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "message", "Items appended",
+                    "added", added
+            ));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.notFound().build();
+        } catch (IllegalStateException e) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "message", e.getMessage()
+            ));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "message", "Append items failed: " + e.getMessage()
+            ));
+        }
+    }
+
+    @PutMapping("/{taskId}/seal")
+    public ResponseEntity<?> sealTask(@PathVariable String taskId) {
+        try {
+            boolean sealed = taskManager.sealTask(taskId);
+            if (sealed) {
+                Task task = taskManager.getTask(taskId);
+                return ResponseEntity.ok(Map.of(
+                        "success", true,
+                        "message", "Task sealed",
+                        "status", task != null ? task.getStatus().name() : ""
+                ));
+            }
+            return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "message", "Task not found or not open-ended"
+            ));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "message", "Seal task failed: " + e.getMessage()
+            ));
+        }
     }
 
     @GetMapping("/{taskId}/messages")

@@ -17,15 +17,15 @@ class TokenLifecycleTest {
         Token token = new Token("tok-1", "dev-1", "us");
 
         assertTrue(token.bindToTask("task-1"));
-        assertEquals(TokenStatus.BIND_READY, token.getStatus());
+        assertEquals(TokenStatus.RESERVED, token.getStatus());
         assertEquals("task-1", token.getLastBindTaskId());
 
-        assertTrue(token.startSending());
-        assertEquals(TokenStatus.SENDING, token.getStatus());
+        assertTrue(token.startOccupying());
+        assertEquals(TokenStatus.OCCUPIED, token.getStatus());
         assertNotNull(token.getLastUsedTime());
 
         assertTrue(token.release());
-        assertEquals(TokenStatus.LOGIN_READY, token.getStatus());
+        assertEquals(TokenStatus.IDLE, token.getStatus());
         assertNull(token.getLastBindTaskId());
     }
 
@@ -34,7 +34,7 @@ class TokenLifecycleTest {
         Token token = new Token("tok-2", "dev-2", "us");
 
         assertFalse(token.bindToTask(" "));
-        assertEquals(TokenStatus.LOGIN_READY, token.getStatus());
+        assertEquals(TokenStatus.IDLE, token.getStatus());
     }
 
     @Test
@@ -46,7 +46,7 @@ class TokenLifecycleTest {
         assertEquals(TokenStatus.BLOCKED, token.getStatus());
 
         assertTrue(token.unblock());
-        assertEquals(TokenStatus.LOGIN_READY, token.getStatus());
+        assertEquals(TokenStatus.IDLE, token.getStatus());
     }
 
     @Test

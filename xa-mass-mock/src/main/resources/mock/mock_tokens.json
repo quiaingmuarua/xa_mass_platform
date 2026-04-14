@@ -16,7 +16,7 @@
         ]
       },
       "channel": "us",
-      "status": "LOGIN_READY",
+      "status": "IDLE",
       "attributes": {
         "country": "us"
       }
@@ -39,7 +39,7 @@
         ]
       },
       "channel": "gb",
-      "status": "LOGIN_READY",
+      "status": "IDLE",
       "attributes": {
         "country": "gb"
       }

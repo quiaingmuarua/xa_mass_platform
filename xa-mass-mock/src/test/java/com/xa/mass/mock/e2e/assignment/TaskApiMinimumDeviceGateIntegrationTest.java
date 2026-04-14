@@ -70,7 +70,7 @@ class TaskApiMinimumDeviceGateIntegrationTest extends AbstractMockE2eTest {
         TaskSnapshot readySnapshot = waitForTaskSnapshot(taskId, "READY", 8, 500L);
         assertEquals(0, ((Number) readySnapshot.task().get("scheduleDeviceCnt")).intValue());
         assertEquals("INIT", readySnapshot.messages().get(0).get("status"));
-        assertEquals(TokenStatus.LOGIN_READY, deviceManager.getToken(firstDeviceId).getStatus());
+        assertEquals(TokenStatus.IDLE, deviceManager.getToken(firstDeviceId).getStatus());
 
         String secondDeviceId = "min-gate-device-1";
         registerDevice(secondDeviceId);
@@ -104,7 +104,7 @@ class TaskApiMinimumDeviceGateIntegrationTest extends AbstractMockE2eTest {
         token.setTokenId("token-" + deviceId);
         token.setDeviceId(deviceId);
         token.setChannel("us");
-        token.setStatus(TokenStatus.LOGIN_READY);
+        token.setStatus(TokenStatus.IDLE);
         deviceManager.addToken(deviceId, token);
     }
 }

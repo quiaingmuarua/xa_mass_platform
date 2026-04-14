@@ -99,7 +99,7 @@ public class TaskDeviceAssignListener {
             return false;
         }
 
-        task.setScheduleDeviceCnt((int) usedDeviceCount);
+        task.setScheduleDeviceCnt(Math.max(task.getScheduleDeviceCnt(), (int) usedDeviceCount));
         if (initialStatus == TaskStatus.READY && !task.transitionTo(TaskStatus.RUNNING)) {
             log.warn("[DeviceAssign] Failed to transition task {} from READY to RUNNING", task.getTid());
             unlockDevices(dispatchDevices);

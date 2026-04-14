@@ -67,9 +67,9 @@ public class StorageExample {
         device2.setDeviceGroupId("gb");
 
         Token token1 = new Token("token-001", "device-001", "us");
-        token1.setStatus(TokenStatus.LOGIN_READY);
+        token1.setStatus(TokenStatus.IDLE);
         Token token2 = new Token("token-002", "device-002", "gb");
-        token2.setStatus(TokenStatus.LOGIN_READY);
+        token2.setStatus(TokenStatus.IDLE);
 
         deviceManager.addDevice(device1);
         deviceManager.addDevice(device2);
@@ -150,7 +150,7 @@ public class StorageExample {
 
         // 2. 缂佺喕顓窽oken閻樿埖鈧?
         long loginReadyCount = tokenList.stream()
-                .filter(token -> token.getStatus() == TokenStatus.LOGIN_READY)
+                .filter(token -> token.getStatus() == TokenStatus.IDLE)
                 .count();
         long invalidCount = tokenList.stream()
                 .filter(token -> token.getStatus() == TokenStatus.INVALID)
@@ -262,7 +262,7 @@ public class StorageExample {
 
         // 2. 缂佺喕顓窽oken閻樿埖鈧?
         long loginReadyCount = tokenList.stream()
-                .filter(token -> token.getStatus() == TokenStatus.LOGIN_READY)
+                .filter(token -> token.getStatus() == TokenStatus.IDLE)
                 .count();
         long invalidCount = tokenList.stream()
                 .filter(token -> token.getStatus() == TokenStatus.INVALID)

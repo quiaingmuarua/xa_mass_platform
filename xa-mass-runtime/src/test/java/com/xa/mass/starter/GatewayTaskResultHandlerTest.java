@@ -60,6 +60,8 @@ class GatewayTaskResultHandlerTest {
     void failureResponseMarksTaskMessageFailed() {
         Task task = createRunningTask("task-failure");
         TaskMsg taskMsg = taskManager.getTaskMessages(task.getTid()).get(0);
+        taskMsg.setMaxRetryCount(0);
+        taskManager.updateTaskMessage(task.getTid(), taskMsg);
 
         handler.handle(message(task, taskMsg, "FAILED", "boom"));
 
@@ -92,7 +94,7 @@ class GatewayTaskResultHandlerTest {
         dto.setTaskName(taskName);
         dto.setProject("demoApp");
         dto.setCountryCode("us");
-        dto.setTextContent("hello");
+        dto.setSharedConfig(java.util.Map.of("textContent", "hello"));
         dto.setUserId("agent");
         dto.setBatchSize(1);
         dto.setTargetList(List.of("alpha"));

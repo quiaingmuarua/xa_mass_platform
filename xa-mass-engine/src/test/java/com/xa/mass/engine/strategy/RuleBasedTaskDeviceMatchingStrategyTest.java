@@ -121,7 +121,7 @@ class RuleBasedTaskDeviceMatchingStrategyTest {
         token.setDeviceId(deviceId);
         token.setTokenId(tokenId);
         token.setChannel(channel);
-        token.setStatus(TokenStatus.LOGIN_READY);
+        token.setStatus(TokenStatus.IDLE);
         token.setAttributes(Map.of("country", country));
         return token;
     }

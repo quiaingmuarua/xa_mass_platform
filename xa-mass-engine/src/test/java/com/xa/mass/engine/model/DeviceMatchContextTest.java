@@ -31,7 +31,7 @@ class DeviceMatchContextTest {
         Token token = new Token();
         token.setTokenId("token-1");
         token.setDeviceId("device-1");
-        token.setStatus(TokenStatus.LOGIN_READY);
+        token.setStatus(TokenStatus.IDLE);
         token.setChannel("us");
         token.setAttributes(Map.of("country", "us"));
 

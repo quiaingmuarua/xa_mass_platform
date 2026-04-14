@@ -102,4 +102,10 @@ public enum TaskStatus {
     public boolean isPaused() {
         return this == PAUSED;
     }
-} 
+    /**
+     * 检查任务是否处于活跃状态（允许追加 work item）
+     */
+    public boolean isActive() {
+        return this == READY || this == RUNNING;
+    }
+}

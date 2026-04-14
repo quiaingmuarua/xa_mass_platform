@@ -13,10 +13,10 @@ This file is the fastest entry point for coding agents such as Claude Code, Code
 - Mainline change discipline is now end-to-end integration-test-driven first; unit tests remain important, but they are support coverage rather than the primary acceptance gate
 - Current verified API task path: `NEW -> READY -> RUNNING -> TERMINAL`
 - Pause/resume regression is also verified: `NEW -> READY -> PAUSED -> READY`
-- `TaskManager.createTask()` now accepts only the supported create contract fields: `userId`, `project`, `taskName`, `textContent`, `targetList`, `countryCode`, and `batchSize`
+- `TaskManager.createTask()` now accepts only the supported create contract fields: `userId`, `project`, `taskName`, `sharedConfig`, `targetList`, `countryCode`, `batchSize`, `defaultMsgMaxRetryCount`, and `openEnded`
 - current mainline preserves request `batchSize` and now enforces it as a per-device hard cap for each dispatch round
 - task-create requests fail fast when `targetList` is empty/null, when `project` is unsupported, or when clients send unknown JSON fields such as retired `targetJsonList` / `targetType` / `extraParams`
-- `PUT /status/api/tasks/{taskId}` is now intentionally narrower than create: it accepts only metadata fields (`userId`, `project`, `taskName`, `textContent`, `countryCode`, `batchSize`), rejects `targetList` and other unknown fields, and only allows edits while the task is still `NEW` or `BLOCKED`
+- `PUT /status/api/tasks/{taskId}` is now intentionally narrower than create: it accepts only metadata fields (`userId`, `project`, `taskName`, `sharedConfig`, `countryCode`, `batchSize`), rejects `targetList` and other unknown fields, and only allows edits while the task is still `NEW` or `BLOCKED`
 - `Task` aggregate counters are now named by real meaning:
   - `taskTargetNumber`
   - `taskEligibleNumber`
@@ -46,7 +46,7 @@ This file is the fastest entry point for coding agents such as Claude Code, Code
 - `mock.client.task-result-status` can force mock result frames to `SUCCESS` or `FAILED`
 - `Device.attributes` and `Token.attributes` are now read-only auxiliary rule labels for matching and diagnostics only
 - `Device.status` is the single online truth, and runtime device lock truth now lives only in `DeviceStorage` / `DeviceManager.isLocked(...)`
-- `DeviceStatus`, `Token`, and dispatch-time token binding are now stricter: null statuses are rejected, token release only frees real dispatch ownership, and assignment moves tokens into `SENDING`
+- `DeviceStatus`, `Token`, and dispatch-time token binding are now stricter: null statuses are rejected, token release only frees real dispatch ownership, and assignment moves tokens into `OCCUPIED`
 - Treat `engine/v2` as historical archive material, not mainline
 
 ## 1. What This Repo Is
@@ -377,7 +377,7 @@ Important current implementation facts:
 - `TaskManager.handleTaskMessageResult(...)` treats duplicate final callbacks as idempotent: the first final result is kept, progress is recalculated, and scheduler callbacks are not triggered twice.
 - `TaskManager.cancelTask(...)` now drains in-flight `TaskMsg` rows during manual terminal closure: `INIT/BINDING -> FAILED`, `SENT/RUNNING -> EXPIRED`.
 - `GET /status/api/tasks/{taskId}` now includes `stateValidation` so API/demo surfaces can expose the same state-audit result used by SDK callers.
-- `MassApplication.loadMockData(...)` normalizes mock `supportedProjects`, lowercases `deviceGroupId`, loads explicit mock `tokens` when present, and only auto-seeds minimal `LOGIN_READY` fallback tokens for devices that still have none.
+- `MassApplication.loadMockData(...)` normalizes mock `supportedProjects`, lowercases `deviceGroupId`, loads explicit mock `tokens` when present, and only auto-seeds minimal `IDLE` fallback tokens for devices that still have none.
 - `DeviceManager` now treats `Device.status` as the single online truth for matching/runtime availability; gateway online/offline events update the device model directly instead of maintaining a separate online-state registry.
 - `DeviceManager` / `DeviceStorage` now also own the single device-lock truth; active mainline code should read lock state through `DeviceManager.isLocked(...)` instead of from `Device`.
 - `Device` and `Token` now expose `attributes: Map<String, String>` with defensive-copy and read-only semantics; callers may replace the whole map on update, but there is no per-entry mutation API.

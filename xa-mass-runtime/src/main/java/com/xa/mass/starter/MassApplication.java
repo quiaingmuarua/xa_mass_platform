@@ -382,7 +382,7 @@ public class MassApplication {
             token.setChannel(token.getChannel().toLowerCase());
         }
         if (token.getStatus() == null) {
-            token.setStatus(TokenStatus.LOGIN_READY);
+            token.setStatus(TokenStatus.IDLE);
         }
         if (!token.getAttributes().isEmpty()) {
             java.util.Map<String, String> normalizedAttributes = new java.util.LinkedHashMap<>(token.getAttributes());
@@ -414,7 +414,7 @@ public class MassApplication {
         Token token = new Token();
         token.setTokenId("token-" + device.getDeviceId());
         token.setDeviceId(device.getDeviceId());
-        token.setStatus(TokenStatus.LOGIN_READY);
+        token.setStatus(TokenStatus.IDLE);
         engine.addToken(token);
     }
 

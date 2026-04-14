@@ -63,7 +63,7 @@ public class RuleDebugExample {
             Token token = new Token();
             token.setTokenId("token-" + i);
             token.setDeviceId(device.getDeviceId());
-            token.setStatus(TokenStatus.LOGIN_READY);
+            token.setStatus(TokenStatus.IDLE);
             token.setChannel(country);
             token.setAttributes(Map.of("country", country));
 

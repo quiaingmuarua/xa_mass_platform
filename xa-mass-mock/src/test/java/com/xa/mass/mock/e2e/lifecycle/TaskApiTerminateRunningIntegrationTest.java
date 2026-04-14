@@ -106,7 +106,7 @@ class TaskApiTerminateRunningIntegrationTest {
         createBody.put("taskName", taskName);
         createBody.put("project", "demoApp");
         createBody.put("countryCode", "us");
-        createBody.put("textContent", "terminate running integration");
+        createBody.put("sharedConfig", java.util.Map.of("textContent", "terminate running integration"));
         createBody.put("userId", "itest");
         createBody.put("targetList", List.of("target-a", "target-b"));
         createBody.put("batchSize", 1);

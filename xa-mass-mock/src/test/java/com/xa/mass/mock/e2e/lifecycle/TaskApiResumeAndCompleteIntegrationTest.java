@@ -149,7 +149,7 @@ class TaskApiResumeAndCompleteIntegrationTest extends AbstractMockE2eTest {
         token.setTokenId("token-" + deviceId);
         token.setDeviceId(deviceId);
         token.setChannel("us");
-        token.setStatus(TokenStatus.LOGIN_READY);
+        token.setStatus(TokenStatus.IDLE);
         deviceManager.addToken(deviceId, token);
     }
 

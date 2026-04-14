@@ -86,9 +86,9 @@ class SimpleTaskMsgAssignListenerTest {
                 stored.stream().map(TaskMsg::getDeviceId).collect(Collectors.toList()));
         assertEquals(List.of("batch-0", "batch-1", "batch-0", "batch-1"),
                 stored.stream().map(TaskMsg::getBatchId).collect(Collectors.toList()));
-        assertEquals(TokenStatus.SENDING, token1.getStatus());
+        assertEquals(TokenStatus.OCCUPIED, token1.getStatus());
         assertEquals(task.getTid(), token1.getLastBindTaskId());
-        assertEquals(TokenStatus.SENDING, token2.getStatus());
+        assertEquals(TokenStatus.OCCUPIED, token2.getStatus());
         assertEquals(task.getTid(), token2.getLastBindTaskId());
 
         verify(recordService, times(4)).recordMessageAssignment(
@@ -177,7 +177,7 @@ class SimpleTaskMsgAssignListenerTest {
         dto.setTaskName("task");
         dto.setProject("demoApp");
         dto.setCountryCode("us");
-        dto.setTextContent("hello");
+        dto.setSharedConfig(java.util.Map.of("textContent", "hello"));
         dto.setUserId("agent");
         dto.setBatchSize(1);
         dto.setTargetList(IntStream.range(0, messageCount)
