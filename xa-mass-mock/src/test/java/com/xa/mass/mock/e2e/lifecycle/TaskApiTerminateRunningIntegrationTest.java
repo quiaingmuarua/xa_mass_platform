@@ -81,7 +81,7 @@ class TaskApiTerminateRunningIntegrationTest {
         assertEquals("TERMINAL", terminalSnapshot.task().get("status"));
         assertEquals(0, ((Number) terminalSnapshot.task().get("taskSuccessNumber")).intValue());
         assertEquals(2, terminalSnapshot.messages().size());
-        assertTrue(terminalSnapshot.messages().stream().allMatch(message -> "SENT".equals(message.get("status"))));
+        assertTrue(terminalSnapshot.messages().stream().allMatch(message -> "EXPIRED".equals(message.get("status"))));
 
         Map<String, Object> deleteResponse = exchange(
                 "/status/api/tasks/" + taskId,

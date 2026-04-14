@@ -229,7 +229,7 @@ public class Task {
     }
 
     public boolean isCompleted() {
-        return status.isFinal() || taskNonSuccessNumber <= 0;
+        return status.isFinal();
     }
 
     public double getProgressPercentage() {

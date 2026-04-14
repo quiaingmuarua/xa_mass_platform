@@ -50,7 +50,7 @@ For endpoint inventory, response shapes, and implementation status, use [INTERNA
   - the first final message state and terminal task counts are preserved
 - A running-task terminate path is also verified:
   - `NEW -> READY -> RUNNING -> TERMINAL`
-  - `TaskMsg INIT -> SENT`, then remain non-final when the task is manually terminated before client callbacks
+  - `TaskMsg INIT -> SENT -> EXPIRED` when the task is manually terminated before client callbacks
   - the terminal task can then be deleted through the real API
 - A paused-after-assignment callback path is also verified:
   - `NEW -> READY -> RUNNING -> PAUSED -> TERMINAL`
@@ -316,6 +316,7 @@ What it verifies:
 - `POST /status/api/tasks/{taskId}/terminate` transitions the task to `TERMINAL`
 - `taskSuccessNumber` remains `0`
 - no `TaskMsg` is incorrectly rewritten to `SUCCESS` or `FAILED` just because the task was terminated
+- dispatched `TaskMsg` rows are explicitly drained to `EXPIRED`
 - `DELETE /status/api/tasks/{taskId}` succeeds after the task reaches `TERMINAL`
 
 ### 5.9 State Validation Is Covered End-to-End

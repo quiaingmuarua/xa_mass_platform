@@ -350,6 +350,7 @@ Important current implementation facts:
   - `ALL_MESSAGES_FAILED`
   - `MIXED_MESSAGE_RESULTS`
 - `TaskManager.handleTaskMessageResult(...)` treats duplicate final callbacks as idempotent: the first final result is kept, progress is recalculated, and scheduler callbacks are not triggered twice.
+- `TaskManager.cancelTask(...)` now drains in-flight `TaskMsg` rows during manual terminal closure: `INIT/BINDING -> FAILED`, `SENT/RUNNING -> EXPIRED`.
 - `GET /status/api/tasks/{taskId}` now includes `stateValidation` so API/demo surfaces can expose the same state-audit result used by SDK callers.
 - `MassApplication.loadMockData(...)` normalizes mock `supportedProjects`, lowercases `groupId`, and auto-seeds `LOGIN_READY` tokens when devices do not already have token data.
 - `Device` and `Token` now expose `attributes: Map<String, String>` with defensive-copy and read-only semantics; callers may replace the whole map on update, but there is no per-entry mutation API.
