@@ -287,6 +287,27 @@ public class TaskMsg {
     }
 
     /**
+     * 将消息重置到 INIT 状态以进行下一次重试。
+     * 只通过此方法触发 FAILED/EXPIRED → INIT 的反向转换，不走通用状态机。
+     *
+     * @return true 表示已重置并登记本次重试；false 表示不可重试
+     */
+    public boolean resetForRetry() {
+        if (!canRetry()) {
+            return false;
+        }
+        incrementRetryCount();
+        this.status = TaskMsgStatus.INIT;
+        this.deviceId = null;
+        this.tokenId = null;
+        this.startTime = null;
+        this.completeTime = null;
+        this.errorMessage = null;
+        this.updateTime = LocalDateTime.now();
+        return true;
+    }
+
+    /**
      * 获取执行时长（毫秒）
      */
     public long getExecutionDuration() {

@@ -73,12 +73,14 @@ public interface TaskStorage {
         private final long total;
         private final long success;
         private final long failed;
+        private final long expired;
         private final long processing;
 
-        public TaskMessageStats(long total, long success, long failed, long processing) {
+        public TaskMessageStats(long total, long success, long failed, long expired, long processing) {
             this.total = total;
             this.success = success;
             this.failed = failed;
+            this.expired = expired;
             this.processing = processing;
         }
 
@@ -90,8 +92,14 @@ public interface TaskStorage {
             return success;
         }
 
+        /** FAILED 状态的消息数，不含 EXPIRED。 */
         public long getFailed() {
             return failed;
+        }
+
+        /** EXPIRED 状态的消息数，不含 FAILED。 */
+        public long getExpired() {
+            return expired;
         }
 
         public long getProcessing() {
@@ -103,7 +111,7 @@ public interface TaskStorage {
         }
 
         public double getFailureRate() {
-            return total > 0 ? (double) failed / total * 100 : 0.0;
+            return total > 0 ? (double) (failed + expired) / total * 100 : 0.0;
         }
     }
 } 

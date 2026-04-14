@@ -10,6 +10,9 @@ import com.xa.mass.engine.model.TaskCreateRequestDto;
 import com.xa.mass.engine.model.TaskResumeResult;
 import com.xa.mass.engine.model.TaskStateResolutionResult;
 import com.xa.mass.engine.model.TaskStateValidationResult;
+import com.xa.mass.engine.model.TaskTerminalPolicyDecision;
+import com.xa.mass.engine.policy.AllMessagesFinalTaskTerminalPolicy;
+import com.xa.mass.engine.policy.TaskTerminalPolicy;
 import com.xa.mass.engine.storage.TaskStorage;
 import com.xa.mass.engine.storage.TaskStorageFactory;
 import com.xa.mass.engine.strategy.TaskScheduler;
@@ -21,6 +24,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.ArrayList;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
 /**
@@ -33,15 +37,24 @@ public class TaskManager {
 
     private final TaskStorage taskStorage;
     private final TaskScheduler taskScheduler;
+    private final TaskTerminalPolicy taskTerminalPolicy;
     private final List<Consumer<Task>> taskReadyListeners = new CopyOnWriteArrayList<>();
+    private final List<Consumer<Task>> taskDispatchListeners = new CopyOnWriteArrayList<>();
+    private final List<Consumer<Task>> taskTerminalListeners = new CopyOnWriteArrayList<>();
+    private final List<BiConsumer<Task, TaskMsg>> taskMessageFinalListeners = new CopyOnWriteArrayList<>();
 
     public TaskManager(TaskScheduler taskScheduler) {
-        this(taskScheduler, TaskStorageFactory.createDefaultTaskStorage());
+        this(taskScheduler, TaskStorageFactory.createDefaultTaskStorage(), new AllMessagesFinalTaskTerminalPolicy());
     }
 
     public TaskManager(TaskScheduler taskScheduler, TaskStorage taskStorage) {
+        this(taskScheduler, taskStorage, new AllMessagesFinalTaskTerminalPolicy());
+    }
+
+    public TaskManager(TaskScheduler taskScheduler, TaskStorage taskStorage, TaskTerminalPolicy taskTerminalPolicy) {
         this.taskScheduler = taskScheduler;
         this.taskStorage = taskStorage;
+        this.taskTerminalPolicy = taskTerminalPolicy;
     }
 
     /**
@@ -376,15 +389,17 @@ public class TaskManager {
             Task task = getTask(taskId);
             if (task != null && task.getStatus() == TaskStatus.PAUSED) {
                 TaskStorage.TaskMessageStats stats = getTaskMessageStats(taskId);
-                if (allTaskMessagesCompleted(stats)) {
+                TaskTerminalPolicyDecision decision = taskTerminalPolicy.evaluate(task, stats);
+                if (decision.getOutcome() == TaskTerminalPolicyDecision.Outcome.FINALIZE_TO_TERMINAL) {
                     // All messages finished while the task was paused — terminate directly
                     // instead of re-queuing. Callers should check getTask() to distinguish
                     // this PAUSED→TERMINAL path from the normal PAUSED→READY path.
                     task.setTaskSuccessNumber((int) stats.getSuccess());
-                    TaskTerminalReason terminalReason = determineTerminalReason(stats);
+                    TaskTerminalReason terminalReason = decision.getTerminalReason();
                     boolean result = task.transitionTo(TaskStatus.TERMINAL, terminalReason);
                     if (result) {
                         taskStorage.updateTask(task);
+                        notifyTaskTerminal(task);
                         long duration = System.currentTimeMillis() - startTime;
                         LogUtils.logOperationSuccess("任务暂停期间已全部完成，直接终止 (PAUSED→TERMINAL)", duration);
                         return TaskResumeResult.completedToTerminal(terminalReason);
@@ -440,6 +455,7 @@ public class TaskManager {
                     taskStorage.updateTask(task);
                     cancelPendingMessages(taskId); // drain non-final messages to a terminal state
                     taskScheduler.cancelTask(taskId);
+                    notifyTaskTerminal(task);
                     long duration = System.currentTimeMillis() - startTime;
                     LogUtils.logOperationSuccess("任务取消成功", duration);
                 } else {
@@ -538,6 +554,16 @@ public class TaskManager {
         return taskStorage.getTaskMessageStats(taskId);
     }
 
+    public int countPendingDispatchableMessages(String taskId) {
+        return (int) getTaskMessages(taskId).stream()
+                .filter(taskMsg -> taskMsg != null && taskMsg.getStatus() == TaskMsgStatus.INIT)
+                .count();
+    }
+
+    public boolean hasPendingDispatchableMessages(String taskId) {
+        return countPendingDispatchableMessages(taskId) > 0;
+    }
+
     /**
      * 更新任务进度
      */
@@ -569,7 +595,8 @@ public class TaskManager {
             );
         }
 
-        if (!allTaskMessagesCompleted(stats)) {
+        TaskTerminalPolicyDecision decision = taskTerminalPolicy.evaluate(task, stats);
+        if (decision.getOutcome() != TaskTerminalPolicyDecision.Outcome.FINALIZE_TO_TERMINAL) {
             taskStorage.updateTask(task);
             return TaskStateResolutionResult.notFinalized(
                     task.getStatus(),
@@ -579,10 +606,11 @@ public class TaskManager {
             );
         }
 
-        TaskTerminalReason reason = determineTerminalReason(stats);
+        TaskTerminalReason reason = decision.getTerminalReason();
         boolean result = task.transitionTo(TaskStatus.TERMINAL, reason);
         if (result) {
             taskStorage.updateTask(task);
+            notifyTaskTerminal(task);
             return TaskStateResolutionResult.finalizedToTerminal(
                     reason,
                     stats.getTotal(),
@@ -644,20 +672,20 @@ public class TaskManager {
         if (finalStatus && hasTerminalReason) {
             switch (task.getTerminalReason()) {
                 case ALL_MESSAGES_SUCCEEDED -> {
-                    if (!(stats.getTotal() > 0 && stats.getSuccess() == stats.getTotal() && stats.getFailed() == 0 && stats.getProcessing() == 0)) {
+                    if (!(stats.getTotal() > 0 && stats.getSuccess() == stats.getTotal() && stats.getFailed() == 0 && stats.getExpired() == 0 && stats.getProcessing() == 0)) {
                         violations.add(TaskStateValidationResult.ViolationCode.TERMINAL_REASON_MISMATCH_ALL_SUCCEEDED);
                     }
                 }
                 case ALL_MESSAGES_FAILED -> {
-                    if (!(stats.getTotal() > 0 && stats.getFailed() == stats.getTotal() && stats.getSuccess() == 0 && stats.getProcessing() == 0)) {
+                    if (!(stats.getTotal() > 0 && stats.getFailed() + stats.getExpired() == stats.getTotal() && stats.getSuccess() == 0 && stats.getProcessing() == 0)) {
                         violations.add(TaskStateValidationResult.ViolationCode.TERMINAL_REASON_MISMATCH_ALL_FAILED);
                     }
                 }
                 case MIXED_MESSAGE_RESULTS -> {
                     boolean mixed = stats.getTotal() > 0
                             && stats.getSuccess() > 0
-                            && stats.getFailed() > 0
-                            && stats.getSuccess() + stats.getFailed() == stats.getTotal()
+                            && stats.getFailed() + stats.getExpired() > 0
+                            && stats.getSuccess() + stats.getFailed() + stats.getExpired() == stats.getTotal()
                             && stats.getProcessing() == 0;
                     if (!mixed) {
                         violations.add(TaskStateValidationResult.ViolationCode.TERMINAL_REASON_MISMATCH_MIXED_RESULTS);
@@ -669,7 +697,8 @@ public class TaskManager {
             }
         }
 
-        boolean needsResolution = !finalStatus && allTaskMessagesCompleted(stats);
+        boolean needsResolution = !finalStatus
+                && taskTerminalPolicy.evaluate(task, stats).getOutcome() == TaskTerminalPolicyDecision.Outcome.FINALIZE_TO_TERMINAL;
         return new TaskStateValidationResult(
                 violations.isEmpty(),
                 needsResolution,
@@ -693,12 +722,60 @@ public class TaskManager {
         }
     }
 
+    public void addTaskDispatchListener(Consumer<Task> listener) {
+        if (listener != null) {
+            taskDispatchListeners.add(listener);
+        }
+    }
+
+    public void addTaskTerminalListener(Consumer<Task> listener) {
+        if (listener != null) {
+            taskTerminalListeners.add(listener);
+        }
+    }
+
+    public void addTaskMessageFinalListener(BiConsumer<Task, TaskMsg> listener) {
+        if (listener != null) {
+            taskMessageFinalListeners.add(listener);
+        }
+    }
+
     private void notifyTaskReady(Task task) {
         for (Consumer<Task> listener : taskReadyListeners) {
             try {
                 listener.accept(task);
             } catch (Exception e) {
                 logger.error("READY listener execution failed for task {}", task.getTid(), e);
+            }
+        }
+    }
+
+    private void notifyTaskTerminal(Task task) {
+        for (Consumer<Task> listener : taskTerminalListeners) {
+            try {
+                listener.accept(task);
+            } catch (Exception e) {
+                logger.error("TERMINAL listener execution failed for task {}", task.getTid(), e);
+            }
+        }
+    }
+
+    private void notifyTaskDispatchRequested(Task task) {
+        for (Consumer<Task> listener : taskDispatchListeners) {
+            try {
+                listener.accept(task);
+            } catch (Exception e) {
+                logger.error("Dispatch listener execution failed for task {}", task.getTid(), e);
+            }
+        }
+    }
+
+    private void notifyTaskMessageFinal(Task task, TaskMsg taskMsg) {
+        for (BiConsumer<Task, TaskMsg> listener : taskMessageFinalListeners) {
+            try {
+                listener.accept(task, taskMsg);
+            } catch (Exception e) {
+                logger.error("Task message final listener failed for task {}, msg {}", task.getTid(), taskMsg.getMsgId(), e);
             }
         }
     }
@@ -741,6 +818,24 @@ public class TaskManager {
             return false;
         }
 
+        // Before persisting a terminal failure: attempt retry.
+        // resetForRetry() transitions the message back to INIT so the policy never sees it as
+        // failed — the task stays RUNNING and re-dispatch fires via notifyTaskMessageFinal.
+        if (!success && taskMsg.resetForRetry()) {
+            logger.info("Task message {} of task {} reset for retry (attempt {})", msgId, taskId, taskMsg.getRetryCount());
+            boolean stored = updateTaskMessage(taskId, taskMsg);
+            if (!stored) {
+                logger.warn("Failed to persist retry state for task message {} in task {}", msgId, taskId);
+                return false;
+            }
+            updateTaskProgress(taskId);
+            Task updatedTask = getTask(taskId);
+            if (updatedTask != null && !updatedTask.getStatus().isFinal()) {
+                notifyTaskMessageFinal(updatedTask, taskMsg);
+            }
+            return true;
+        }
+
         boolean stored = updateTaskMessage(taskId, taskMsg);
         if (!stored) {
             logger.warn("Failed to persist task message {} for task {}", msgId, taskId);
@@ -754,6 +849,10 @@ public class TaskManager {
         }
 
         updateTaskProgress(taskId);
+        Task updatedTask = getTask(taskId);
+        if (updatedTask != null && !updatedTask.getStatus().isFinal()) {
+            notifyTaskMessageFinal(updatedTask, taskMsg);
+        }
         return true;
     }
     private boolean advanceTaskMsgForCompletion(TaskMsg taskMsg, boolean success) {
@@ -784,20 +883,6 @@ public class TaskManager {
             return taskMsg.markAsRunning();
         }
         return true;
-    }
-
-    private boolean allTaskMessagesCompleted(TaskStorage.TaskMessageStats stats) {
-        return stats.getTotal() > 0 && stats.getSuccess() + stats.getFailed() == stats.getTotal();
-    }
-
-    private TaskTerminalReason determineTerminalReason(TaskStorage.TaskMessageStats stats) {
-        if (stats.getSuccess() == stats.getTotal()) {
-            return TaskTerminalReason.ALL_MESSAGES_SUCCEEDED;
-        }
-        if (stats.getFailed() == stats.getTotal()) {
-            return TaskTerminalReason.ALL_MESSAGES_FAILED;
-        }
-        return TaskTerminalReason.MIXED_MESSAGE_RESULTS;
     }
 
     /**

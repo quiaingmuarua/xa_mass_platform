@@ -1,6 +1,7 @@
 package com.xa.mass.engine.storage;
 
 import com.xa.mass.base.enums.task.TaskStatus;
+import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
 
@@ -114,9 +115,10 @@ public class InMemoryTaskStorage implements TaskStorage {
 
         long total = messages.size();
         long success = messages.stream().filter(TaskMsg::isSuccess).count();
-        long failed = messages.stream().filter(TaskMsg::isFailed).count();
+        long failed = messages.stream().filter(m -> m.getStatus() == TaskMsgStatus.FAILED).count();
+        long expired = messages.stream().filter(m -> m.getStatus() == TaskMsgStatus.EXPIRED).count();
         long processing = messages.stream().filter(TaskMsg::isProcessing).count();
 
-        return new TaskMessageStats(total, success, failed, processing);
+        return new TaskMessageStats(total, success, failed, expired, processing);
     }
 } 

@@ -14,6 +14,7 @@ import com.xa.mass.engine.listener.SimpleTaskMsgAssignListener;
 import com.xa.mass.engine.listener.TaskAssignWorker;
 import com.xa.mass.engine.listener.TaskDeviceAssignListener;
 import com.xa.mass.engine.listener.TaskMsgDispatchListener;
+import com.xa.mass.engine.listener.TaskResourceReleaseListener;
 import com.xa.mass.engine.monkey.MonkeyGenerator;
 import com.xa.mass.engine.service.AssignmentRecordService;
 import com.xa.mass.engine.strategy.SimpleTaskScheduler;
@@ -84,7 +85,12 @@ public class MassEngine {
             var deviceAssignListener = new TaskDeviceAssignListener(ruleManager, deviceManager, msgAssignListener, recordService, taskManager);
             assignWorker = new TaskAssignWorker(deviceAssignListener);
             assignWorker.start();
+            TaskResourceReleaseListener resourceReleaseListener =
+                    new TaskResourceReleaseListener(taskManager, deviceManager, assignWorker::submit);
             taskManager.addTaskReadyListener(assignWorker::submit);
+            taskManager.addTaskDispatchListener(assignWorker::submit);
+            taskManager.addTaskMessageFinalListener(resourceReleaseListener::onTaskMessageFinal);
+            taskManager.addTaskTerminalListener(resourceReleaseListener::onTaskTerminal);
             taskManager.getTasksByStatus(TaskStatus.READY).forEach(assignWorker::submit);
             // 娉ㄥ唽浜嬩欢椹卞姩鏈嶅姟
             EventBusFacade eventBus = EventBusFactory.get("guava");

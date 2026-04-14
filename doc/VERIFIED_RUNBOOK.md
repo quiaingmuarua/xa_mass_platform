@@ -38,6 +38,7 @@ For endpoint inventory, response shapes, and implementation status, use [INTERNA
   - unsupported `project` codes are rejected instead of silently falling back to `demoApp`
   - unknown JSON fields such as retired `targetJsonList`, `targetType`, and `extraParams` are rejected at the API boundary
   - request `batchSize` is preserved on the persisted task
+  - current mainline uses `batchSize` as the per-device hard cap for each dispatch round
 - Update-time validation is now verified:
   - supported update fields are limited to `userId`, `project`, `taskName`, `textContent`, `countryCode`, and `batchSize`
   - `targetList` and other unknown JSON fields are rejected at the API boundary
@@ -68,6 +69,24 @@ For endpoint inventory, response shapes, and implementation status, use [INTERNA
 - device availability truths are single-sourced:
   - online truth comes from `Device.status`
   - lock truth comes from `DeviceStorage` / `DeviceManager.isLocked(...)`, not from the `Device` model
+- core device/token state is stricter:
+  - `DeviceStatus` transitions are explicit instead of "any different value"
+  - `Device` / `Token` reject null statuses
+  - dispatch-time token binding moves `LOGIN_READY -> BIND_READY -> SENDING`
+  - token release now only frees real dispatch ownership, not arbitrary blocked/invalid states
+- terminal resource release is verified:
+  - normal terminal completion releases the device lock and returns the token to `LOGIN_READY`
+  - manual `RUNNING -> TERMINAL` closure also releases the same runtime occupancy
+- multi-round dispatch refill is verified:
+  - when `batchSize` is smaller than the remaining target count, only up to `batchSize` messages are dispatched per device in the current round
+  - once a device finishes its in-flight messages for the task, that device/token slot is released and the still-`RUNNING` task can dispatch the next round of pending `INIT` messages
+- minimum-device gating is verified:
+  - `runTaskMinDeviceCnt` is a real start threshold, not just a matching hint
+  - if matched devices are below the minimum, the task stays `READY` and provisional locks are released
+- terminal policy is now an explicit engine seam:
+  - `TaskManager` delegates terminal closure decisions through `TaskTerminalPolicy`
+  - the current default policy is still "all persisted task messages are final"
+  - future policy-driven terminal reasons are reserved for runtime limits, success-rate thresholds, and retry-budget exhaustion
 
 ## 2. Recommended Startup
 
@@ -135,6 +154,7 @@ Verified state transitions:
 - create: unsupported `project` codes are rejected
 - create: unknown JSON fields such as retired `targetJsonList`, `targetType`, and `extraParams` are rejected at the API boundary
 - create: request `batchSize` is persisted onto the task
+- create: current mainline treats `batchSize` as the per-device hard cap for each dispatch round
 - update: only `userId`, `project`, `taskName`, `textContent`, `countryCode`, and `batchSize` are part of the supported request contract
 - update: `targetList` and other unknown JSON fields are rejected at the API boundary
 - update: only `NEW` and `BLOCKED` tasks may be edited
@@ -172,12 +192,20 @@ Verified runtime path:
 3. `MassEngine` also resubmits pre-existing `READY` tasks at startup and subscribes to READY events from approve/resume.
 4. `TaskDeviceAssignListener` performs device matching.
 5. `TaskDeviceAssignListener` now delegates matching through `TaskDeviceMatchingStrategy`; the verified default implementation is `RuleBasedTaskDeviceMatchingStrategy`.
-6. On successful matching it writes `scheduleDeviceCnt` and moves the task from `READY` to `RUNNING`, but only if the task is still `READY` when matching returns.
+6. On successful matching it writes `scheduleDeviceCnt` for the current dispatch round and moves the task from `READY` to `RUNNING`, but only if the task is still `READY` when matching returns.
 7. If no device matches at that moment, `TaskAssignWorker` delayed-retries the `READY` task instead of letting it fall out of the assignment loop.
-8. `SimpleTaskMsgAssignListener` reuses the persisted `TaskMsg` records created during task creation.
-9. Each `TaskMsg` is filled with `deviceId`, `tokenId`, and `batchId`, then moved to `SENT`.
-10. `GatewayTaskMsgPublisher` pushes the downstream payload as `TASK/step`.
-11. Once all persisted `TaskMsg` rows are final, `TaskManager.updateTaskProgress(...)` closes any non-final task to `TERMINAL`, including tasks paused while callbacks were still arriving.
+8. The same delayed-retry behavior now also applies to explicit `RUNNING` re-dispatch attempts when a later dispatch round is requested before a slot is actually free.
+9. `SimpleTaskMsgAssignListener` reuses the persisted `TaskMsg` records created during task creation.
+10. It round-robins pending `INIT` messages across matched devices and enforces `batchSize` as a per-device cap for the current round.
+11. Each dispatched `TaskMsg` is filled with `deviceId`, `tokenId`, and `batchId`, then moved to `SENT`.
+12. Dispatch-time token ownership is now explicit: assignment binds `LOGIN_READY` tokens to the task, advances them to `SENDING`, and skips non-dispatchable token states.
+13. `runTaskMinDeviceCnt` is now enforced before `READY -> RUNNING`; insufficient matches leave the task in `READY`.
+14. Any devices matched only to satisfy the start gate, but not needed for current message dispatch, are unlocked immediately instead of being stranded as zero-message reservations.
+15. `GatewayTaskMsgPublisher` pushes the downstream payload as `TASK/step`.
+16. When a device has no more in-flight `TaskMsg` rows for the current task, `TaskResourceReleaseListener` releases that device/token slot and re-submits the still-`RUNNING` task if pending `INIT` messages remain.
+17. Once the task reaches `TERMINAL`, `TaskResourceReleaseListener` releases any remaining token/device occupancy so later tasks can reuse the same runtime slot.
+18. Once all persisted `TaskMsg` rows are final, `TaskManager.updateTaskProgress(...)` closes any non-final task to `TERMINAL`, including tasks paused while callbacks were still arriving.
+18. The default terminal rule is now implemented through `AllMessagesFinalTaskTerminalPolicy`, so future stop conditions can be added without rewriting `TaskManager` state transitions again.
 
 Current matching-context note:
 
@@ -206,6 +234,7 @@ Important guard added in the verified runtime:
 - `TaskManager.handleTaskMessageResult(...)` ignores late non-final callbacks for tasks already closed to `TERMINAL`, so manual cancel/terminate freezes later progress mutation
 - `DeviceManager` now uses `Device.status` as the single online truth for runtime availability; gateway online/offline events update the device model directly
 - runtime lock state is stored in `DeviceStorage` and exposed through `DeviceManager.isLocked(...)`; active diagnostics no longer infer lock from `Device`
+- terminal resource release also runs on manual `cancel/terminate`, not only on message-driven completion, so device/token occupancy is not stranded after a forced stop
 
 ## 5. Verified Smoke and Regression Coverage on 2026-04-13
 
@@ -257,6 +286,8 @@ What it verifies:
 - engine worker coverage now verifies retry of `READY` tasks that initially have no device match
 - separate token-attribute routing coverage now verifies that a custom QLExpress rule can select the correct token via `tokenAttributes['country']`
 - engine strategy and message-assignment coverage now verifies that assignment snapshots carry runtime lock state from `DeviceManager.isLocked(...)`
+- separate single-device reuse coverage now verifies that a task completing to `TERMINAL` returns the token to `LOGIN_READY` and frees the same device for the next task
+- separate minimum-device-gate coverage now verifies that one matching device is insufficient when `runTaskMinDeviceCnt=2`, and the task advances only after a second device becomes available
 
 Implementation details that matter:
 
@@ -338,6 +369,21 @@ What it verifies:
 - no `TaskMsg` is incorrectly rewritten to `SUCCESS` or `FAILED` just because the task was terminated
 - dispatched `TaskMsg` rows are explicitly drained to `EXPIRED`
 - `DELETE /status/api/tasks/{taskId}` succeeds after the task reaches `TERMINAL`
+
+### 5.9 Single-Device Reuse Is Covered End-to-End
+
+Integration tests:
+
+- `xa-mass-mock/src/test/java/com/xa/mass/mock/e2e/assignment/TaskApiSingleDeviceReuseIntegrationTest.java`
+- `xa-mass-mock/src/test/java/com/xa/mass/mock/e2e/assignment/TaskApiTerminateReuseIntegrationTest.java`
+
+What they verify:
+
+- a single manually registered `ONLINE` device with one `LOGIN_READY` token can run a task to terminal completion
+- after normal terminal completion, the same token returns to `LOGIN_READY`
+- the same device can then be assigned to the next task
+- after a manual `RUNNING -> TERMINAL` stop, the same token also returns to `LOGIN_READY`
+- the same device can then be assigned to the next task again without restarting the runtime
 
 ### 5.9 State Validation Is Covered End-to-End
 

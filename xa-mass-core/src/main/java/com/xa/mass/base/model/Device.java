@@ -69,8 +69,9 @@ public class Device {
 
     public Device() {
         this.status = DeviceStatus.OFFLINE;
-//        this.createTime = LocalDateTime.now();
-//        this.updateTime = LocalDateTime.now();
+        this.supportedProjects = Collections.emptyList();
+        this.createTime = LocalDateTime.now();
+        this.updateTime = LocalDateTime.now();
     }
 
     public Device(String deviceId, String agentVersion, List<Project> supportedProjects) {
@@ -94,7 +95,7 @@ public class Device {
     }
 
     public void setStatus(DeviceStatus status) {
-        this.status = status;
+        this.status = Objects.requireNonNull(status, "status");
         this.updateTime = LocalDateTime.now();
     }
 
@@ -120,7 +121,11 @@ public class Device {
     }
 
     public void setSupportedProjects(List<Project> supportedProjects) {
-        this.supportedProjects = supportedProjects;
+        if (supportedProjects == null || supportedProjects.isEmpty()) {
+            this.supportedProjects = Collections.emptyList();
+            return;
+        }
+        this.supportedProjects = List.copyOf(supportedProjects);
     }
 
     public String getDeviceGroupId() {
@@ -196,8 +201,8 @@ public class Device {
         this.lastHeartbeat = LocalDateTime.now();
         this.updateTime = LocalDateTime.now();
 
-        // 濡傛灉璁惧绂荤嚎锛屾洿鏂颁负鍦ㄧ嚎鐘舵€?
-        if (this.status == DeviceStatus.OFFLINE) {
+        // A fresh heartbeat revives any unavailable device back to ONLINE.
+        if (this.status != DeviceStatus.ONLINE) {
             this.status = DeviceStatus.ONLINE;
         }
     }
@@ -216,7 +221,7 @@ public class Device {
      * 鐘舵€佽浆鎹?
      */
     public boolean transitionTo(DeviceStatus targetStatus) {
-        if (this.status != targetStatus) {
+        if (targetStatus != null && this.status.canTransitionTo(targetStatus)) {
             setStatus(targetStatus);
             return true;
         }

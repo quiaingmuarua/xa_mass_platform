@@ -163,13 +163,14 @@ public class RedisTaskStorage implements TaskStorage {
     public TaskMessageStats getTaskMessageStats(String taskId) {
         // TODO: 实现Redis获取任务消息统计逻辑
         // List<TaskMsg> messages = getTaskMessages(taskId);
-        // 
+        //
         // long total = messages.size();
         // long success = messages.stream().filter(TaskMsg::isSuccess).count();
-        // long failed = messages.stream().filter(TaskMsg::isFailed).count();
+        // long failed = messages.stream().filter(m -> m.getStatus() == TaskMsgStatus.FAILED).count();
+        // long expired = messages.stream().filter(m -> m.getStatus() == TaskMsgStatus.EXPIRED).count();
         // long processing = messages.stream().filter(TaskMsg::isProcessing).count();
-        // 
-        // return new TaskMessageStats(total, success, failed, processing);
+        //
+        // return new TaskMessageStats(total, success, failed, expired, processing);
         throw new UnsupportedOperationException("Redis storage not fully implemented yet");
     }
 } 

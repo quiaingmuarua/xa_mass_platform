@@ -9,6 +9,8 @@ import com.xa.mass.engine.model.TaskCreateRequestDto;
 import com.xa.mass.engine.model.TaskResumeResult;
 import com.xa.mass.engine.model.TaskStateResolutionResult;
 import com.xa.mass.engine.model.TaskStateValidationResult;
+import com.xa.mass.engine.model.TaskTerminalPolicyDecision;
+import com.xa.mass.engine.policy.TaskTerminalPolicy;
 import com.xa.mass.engine.storage.InMemoryTaskStorage;
 import com.xa.mass.engine.storage.TaskStorage;
 import com.xa.mass.engine.strategy.TaskScheduler;
@@ -220,6 +222,7 @@ class TaskManagerLifecycleTest {
         TaskMsg message = taskManager.getTaskMessages(task.getTid()).get(0);
         message.transitionTo(TaskMsgStatus.BINDING);
         message.markAsSent();
+        message.setMaxRetryCount(0);
         taskManager.updateTaskMessage(task.getTid(), message);
 
         assertTrue(taskManager.handleTaskMessageResult(task.getTid(), message.getMsgId(), false, "boom"));
@@ -410,6 +413,7 @@ class TaskManagerLifecycleTest {
         messages.forEach(msg -> {
             msg.transitionTo(TaskMsgStatus.BINDING);
             msg.markAsSent();
+            msg.setMaxRetryCount(0);
             taskManager.updateTaskMessage(task.getTid(), msg);
         });
 
@@ -432,6 +436,7 @@ class TaskManagerLifecycleTest {
         messages.forEach(msg -> {
             msg.transitionTo(TaskMsgStatus.BINDING);
             msg.markAsSent();
+            msg.setMaxRetryCount(0);
             taskManager.updateTaskMessage(task.getTid(), msg);
         });
 
@@ -554,6 +559,57 @@ class TaskManagerLifecycleTest {
         assertEquals(TaskTerminalReason.ALL_MESSAGES_SUCCEEDED, result.getTerminalReason());
         assertTrue(result.getViolations().contains(
                 TaskStateValidationResult.ViolationCode.TERMINAL_REASON_MISMATCH_ALL_SUCCEEDED));
+    }
+
+    @Test
+    void customTerminalPolicyCanKeepTaskRunningEvenWhenMessagesAreFinal() {
+        TaskManager policyAwareManager = new TaskManager(
+                scheduler,
+                new InMemoryTaskStorage(),
+                (task, stats) -> TaskTerminalPolicyDecision.keepRunning()
+        );
+        Task task = policyAwareManager.createTask(buildRequest("task-policy-keep-running", List.of("alpha")));
+        policyAwareManager.approveTask(task.getTid());
+        task.setStatus(TaskStatus.RUNNING);
+        policyAwareManager.updateTask(task);
+
+        TaskMsg message = policyAwareManager.getTaskMessages(task.getTid()).get(0);
+        message.transitionTo(TaskMsgStatus.BINDING);
+        message.markAsSent();
+        policyAwareManager.updateTaskMessage(task.getTid(), message);
+        assertTrue(policyAwareManager.handleTaskMessageResult(task.getTid(), message.getMsgId(), true, "done"));
+
+        task.setStatus(TaskStatus.RUNNING);
+        task.setTerminalReason(null);
+        policyAwareManager.updateTask(task);
+
+        TaskStateResolutionResult result = policyAwareManager.resolveTaskStateFromMessages(task.getTid());
+
+        assertEquals(TaskStateResolutionResult.Outcome.NOT_FINALIZED, result.getOutcome());
+        assertEquals(TaskStatus.RUNNING, policyAwareManager.getTask(task.getTid()).getStatus());
+        assertNull(policyAwareManager.getTask(task.getTid()).getTerminalReason());
+    }
+
+    @Test
+    void customTerminalPolicyCanForceTerminalBeforeAllMessagesAreFinal() {
+        TaskTerminalPolicy runtimeLimitPolicy = (task, stats) ->
+                TaskTerminalPolicyDecision.finalizeToTerminal(TaskTerminalReason.MAX_RUNTIME_REACHED);
+        TaskManager policyAwareManager = new TaskManager(
+                scheduler,
+                new InMemoryTaskStorage(),
+                runtimeLimitPolicy
+        );
+        Task task = policyAwareManager.createTask(buildRequest("task-policy-force-terminal"));
+        policyAwareManager.approveTask(task.getTid());
+        task.setStatus(TaskStatus.RUNNING);
+        policyAwareManager.updateTask(task);
+
+        TaskStateResolutionResult result = policyAwareManager.resolveTaskStateFromMessages(task.getTid());
+
+        assertEquals(TaskStateResolutionResult.Outcome.FINALIZED_TO_TERMINAL, result.getOutcome());
+        assertEquals(TaskTerminalReason.MAX_RUNTIME_REACHED, result.getTerminalReason());
+        assertEquals(TaskStatus.TERMINAL, policyAwareManager.getTask(task.getTid()).getStatus());
+        assertEquals(TaskTerminalReason.MAX_RUNTIME_REACHED, policyAwareManager.getTask(task.getTid()).getTerminalReason());
     }
 
     // ---- Bug1: READY/RUNNING → BLOCKED (blockTask) ----

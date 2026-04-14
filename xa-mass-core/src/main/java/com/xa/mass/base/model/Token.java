@@ -96,7 +96,7 @@ public class Token {
     }
 
     public void setStatus(TokenStatus status) {
-        this.status = status;
+        this.status = Objects.requireNonNull(status, "status");
         this.updateTime = LocalDateTime.now();
         if (status == TokenStatus.SENDING) {
             this.lastUsedTime = LocalDateTime.now();
@@ -195,6 +195,9 @@ public class Token {
      * 绑定到任务
      */
     public boolean bindToTask(String taskId) {
+        if (taskId == null || taskId.isBlank()) {
+            return false;
+        }
         if (status.canTransitionTo(TokenStatus.BIND_READY)) {
             setStatus(TokenStatus.BIND_READY);
             setLastBindTaskId(taskId);
@@ -218,7 +221,7 @@ public class Token {
      * 释放Token
      */
     public boolean release() {
-        if (status.canTransitionTo(TokenStatus.LOGIN_READY)) {
+        if (status == TokenStatus.BIND_READY || status == TokenStatus.SENDING) {
             setStatus(TokenStatus.LOGIN_READY);
             setLastBindTaskId(null);
             return true;
