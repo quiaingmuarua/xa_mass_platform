@@ -45,7 +45,7 @@ public class TaskDeviceAssignListener {
      * Processes a task assignment attempt.
      */
     public void onTaskAssign(Task task) {
-        int maxDeviceCount = (int) Math.ceil((double) task.getTaskInitNumber() / task.getBatchSize());
+        int maxDeviceCount = (int) Math.ceil((double) task.getTaskTargetNumber() / task.getBatchSize());
         int batchSize = Math.max(task.getRunTaskMinDeviceCnt(), maxDeviceCount);
         List<Device> matched = matchDevicesWithRules(task, batchSize);
         if (matched.isEmpty()) {

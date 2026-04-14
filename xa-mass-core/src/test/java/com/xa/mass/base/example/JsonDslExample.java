@@ -45,7 +45,7 @@ public class JsonDslExample {
                     "tid": {"$UUID": true},
                     "taskName": {"$JOIN": ["Task-", "&.index"]},
                     "taskCountry": {"$CHOICE": ["us", "gb"]},
-                    "taskInitNumber": {"$RANGE": [10, 100]},
+        "taskTargetNumber": {"$RANGE": [10, 100]},
                     "batchSize": {"$RANGE": [1, 5]}
                   }
                 }

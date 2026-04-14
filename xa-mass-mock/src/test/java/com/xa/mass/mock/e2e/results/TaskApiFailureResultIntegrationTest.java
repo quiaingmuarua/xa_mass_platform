@@ -60,7 +60,7 @@ class TaskApiFailureResultIntegrationTest extends AbstractMockE2eTest {
 
         assertEquals("TERMINAL", snapshot.task().get("status"));
         assertEquals(2, ((Number) snapshot.task().get("scheduleDeviceCnt")).intValue());
-        assertEquals(0, ((Number) snapshot.task().get("taskExecutedNumber")).intValue());
+        assertEquals(0, ((Number) snapshot.task().get("taskSuccessNumber")).intValue());
         assertEquals(2, snapshot.messages().size());
 
         for (Map<String, Object> message : snapshot.messages()) {

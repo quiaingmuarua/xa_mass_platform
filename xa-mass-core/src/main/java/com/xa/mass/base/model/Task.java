@@ -1,6 +1,5 @@
 package com.xa.mass.base.model;
 
-
 import com.xa.mass.base.enums.Project;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
@@ -9,104 +8,33 @@ import java.time.LocalDateTime;
 import java.util.Objects;
 
 /**
- * 任务实体
- * 管理"业务级"生命周期和状态，是发起点
- * 维护所有消息、进度、归属等信息
+ * Core task aggregate.
+ *
+ * <p>The task-level counters are intentionally coarse-grained and explicit:
+ * {@code taskTargetNumber} is the initial persisted target count,
+ * {@code taskEligibleNumber} is the count currently included in the mainline aggregate,
+ * {@code taskSuccessNumber} is the count already in SUCCESS,
+ * and {@code taskNonSuccessNumber} is the eligible count that is not yet SUCCESS.
  */
 public class Task {
-    /**
-     * 任务唯一ID
-     */
     private String tid;
-
-    /**
-     * 任务名称
-     */
     private String taskName;
-
-    /**
-     * 所属project/app
-     */
     private Project project;
-
-    /**
-     * 状态
-     */
     private TaskStatus status;
-
-    /**
-     * 区域/国家
-     */
     private String taskCountry;
-
-    /**
-     * 总消息数
-     */
-    private int taskInitNumber;
-
-    /**
-     * 有效消息数
-     */
-    private int taskValidNumber;
-
-    /**
-     * 已完成消息数
-     */
-    private int taskExecutedNumber;
-
-    /**
-     * 剩余消息数
-     */
-    private int taskUnExecutedNumber;
-
-    /**
-     * 运行时最低设备数
-     */
+    private int taskTargetNumber;
+    private int taskEligibleNumber;
+    private int taskSuccessNumber;
+    private int taskNonSuccessNumber;
     private int runTaskMinDeviceCnt;
-
-    /**
-     * 当前调度设备数
-     */
     private int scheduleDeviceCnt;
-
-    /**
-     * 任务内容/模版
-     */
     private String textContent;
-
-    /**
-     * 所属用户/操作者
-     */
     private User user;
-
-    /**
-     * 创建时间
-     */
     private LocalDateTime createTime;
-
-    /**
-     * 更新时间
-     */
     private LocalDateTime updateTime;
-
-    /**
-     * 开始时间
-     */
     private LocalDateTime startTime;
-
-    /**
-     * 结束时间
-     */
     private LocalDateTime endTime;
-
-    /**
-     * 每个设备批次消息数
-     */
     private int batchSize;
-
-    /**
-     * 进入终态的业务原因。
-     */
     private TaskTerminalReason terminalReason;
 
     public Task() {
@@ -116,20 +44,20 @@ public class Task {
     }
 
     public Task(String tid, String taskName, String project, String taskCountry,
-                int taskInitNumber, String textContent, User user) {
+                int taskTargetNumber, String textContent, User user) {
         this();
         this.tid = tid;
         this.taskName = taskName;
         this.project = Project.requireCode(project);
         this.taskCountry = taskCountry;
-        this.taskInitNumber = taskInitNumber;
-        this.taskValidNumber = taskInitNumber;
-        this.taskUnExecutedNumber = taskInitNumber;
+        this.taskTargetNumber = taskTargetNumber;
+        this.taskEligibleNumber = taskTargetNumber;
+        this.taskSuccessNumber = 0;
+        this.taskNonSuccessNumber = taskTargetNumber;
         this.textContent = textContent;
         this.user = user;
     }
 
-    // Getters and Setters
     public String getTid() {
         return tid;
     }
@@ -179,38 +107,40 @@ public class Task {
         this.taskCountry = taskCountry;
     }
 
-    public int getTaskInitNumber() {
-        return taskInitNumber;
+    public int getTaskTargetNumber() {
+        return taskTargetNumber;
     }
 
-    public void setTaskInitNumber(int taskInitNumber) {
-        this.taskInitNumber = taskInitNumber;
+    public void setTaskTargetNumber(int taskTargetNumber) {
+        this.taskTargetNumber = taskTargetNumber;
     }
 
-    public int getTaskValidNumber() {
-        return taskValidNumber;
+    public int getTaskEligibleNumber() {
+        return taskEligibleNumber;
     }
 
-    public void setTaskValidNumber(int taskValidNumber) {
-        this.taskValidNumber = taskValidNumber;
+    public void setTaskEligibleNumber(int taskEligibleNumber) {
+        this.taskEligibleNumber = taskEligibleNumber;
+        recomputeNonSuccessNumber();
     }
 
-    public int getTaskExecutedNumber() {
-        return taskExecutedNumber;
+    public int getTaskSuccessNumber() {
+        return taskSuccessNumber;
     }
 
-    public void setTaskExecutedNumber(int taskExecutedNumber) {
-        this.taskExecutedNumber = taskExecutedNumber;
-        this.taskUnExecutedNumber = this.taskValidNumber - this.taskExecutedNumber;
+    public void setTaskSuccessNumber(int taskSuccessNumber) {
+        this.taskSuccessNumber = taskSuccessNumber;
+        recomputeNonSuccessNumber();
         this.updateTime = LocalDateTime.now();
     }
 
-    public int getTaskUnExecutedNumber() {
-        return taskUnExecutedNumber;
+    public int getTaskNonSuccessNumber() {
+        return taskNonSuccessNumber;
     }
 
-    public void setTaskUnExecutedNumber(int taskUnExecutedNumber) {
-        this.taskUnExecutedNumber = taskUnExecutedNumber;
+    public void setTaskNonSuccessNumber(int taskNonSuccessNumber) {
+        this.taskNonSuccessNumber = taskNonSuccessNumber;
+        this.updateTime = LocalDateTime.now();
     }
 
     public int getRunTaskMinDeviceCnt() {
@@ -294,33 +224,21 @@ public class Task {
         this.terminalReason = terminalReason;
     }
 
-    /**
-     * 检查任务是否可以调度
-     */
     public boolean isSchedulable() {
-        return status.isSchedulable() && taskUnExecutedNumber > 0;
+        return status.isSchedulable() && taskNonSuccessNumber > 0;
     }
 
-    /**
-     * 检查任务是否已完成
-     */
     public boolean isCompleted() {
-        return status.isFinal() || taskUnExecutedNumber <= 0;
+        return status.isFinal() || taskNonSuccessNumber <= 0;
     }
 
-    /**
-     * 获取完成进度百分比
-     */
     public double getProgressPercentage() {
-        if (taskValidNumber == 0) {
+        if (taskEligibleNumber == 0) {
             return 0.0;
         }
-        return (double) taskExecutedNumber / taskValidNumber * 100;
+        return (double) taskSuccessNumber / taskEligibleNumber * 100;
     }
 
-    /**
-     * 状态转换
-     */
     public boolean transitionTo(TaskStatus targetStatus) {
         if (status.canTransitionTo(targetStatus)) {
             setStatus(targetStatus);
@@ -345,6 +263,10 @@ public class Task {
         return false;
     }
 
+    private void recomputeNonSuccessNumber() {
+        this.taskNonSuccessNumber = this.taskEligibleNumber - this.taskSuccessNumber;
+    }
+
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
@@ -366,10 +288,10 @@ public class Task {
                 ", project='" + (project != null ? project.getCode() : null) + '\'' +
                 ", status=" + status +
                 ", taskCountry='" + taskCountry + '\'' +
-                ", taskInitNumber=" + taskInitNumber +
-                ", taskValidNumber=" + taskValidNumber +
-                ", taskExecutedNumber=" + taskExecutedNumber +
-                ", taskUnExecutedNumber=" + taskUnExecutedNumber +
+                ", taskTargetNumber=" + taskTargetNumber +
+                ", taskEligibleNumber=" + taskEligibleNumber +
+                ", taskSuccessNumber=" + taskSuccessNumber +
+                ", taskNonSuccessNumber=" + taskNonSuccessNumber +
                 ", progress=" + String.format("%.1f%%", getProgressPercentage()) +
                 ", batchSize=" + batchSize +
                 ", terminalReason=" + terminalReason +

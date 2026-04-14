@@ -90,7 +90,7 @@ class TaskApiPauseCompletionIntegrationTest extends AbstractMockE2eTest {
 
         TaskSnapshot terminalSnapshot = waitForTaskSnapshot(taskId, "TERMINAL");
         assertEquals("TERMINAL", terminalSnapshot.task().get("status"));
-        assertEquals(2, ((Number) terminalSnapshot.task().get("taskExecutedNumber")).intValue());
+        assertEquals(2, ((Number) terminalSnapshot.task().get("taskSuccessNumber")).intValue());
         assertEquals(2, terminalSnapshot.messages().size());
         for (Map<String, Object> message : terminalSnapshot.messages()) {
             assertEquals("SUCCESS", message.get("status"));

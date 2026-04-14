@@ -64,7 +64,7 @@ public class DeviceMatchContext {
         ctx.put("taskProject", task.getProject());
         ctx.put("taskCountry", task.getTaskCountry());
         ctx.put("taskStatus", task.getStatus().name());
-        ctx.put("taskInitNumber", task.getTaskInitNumber());
+        ctx.put("taskTargetNumber", task.getTaskTargetNumber());
         ctx.put("batchSize", task.getBatchSize());
         ctx.put("runTaskMinDeviceCnt", task.getRunTaskMinDeviceCnt());
 

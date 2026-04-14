@@ -31,7 +31,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Verifies that a task with one SUCCESS and one FAILED message closes to TERMINAL
- * with terminalReason=MIXED_MESSAGE_RESULTS and taskExecutedNumber reflecting only successes.
+ * with terminalReason=MIXED_MESSAGE_RESULTS and taskSuccessNumber reflecting only successes.
  *
  * <p>This covers the {@code determineTerminalReason()} MIXED branch which is not exercised
  * by any other integration test (all-succeed and all-fail are already covered).
@@ -106,8 +106,8 @@ class TaskApiMixedResultsIntegrationTest extends AbstractMockE2eTest {
         TaskSnapshot terminalSnapshot = waitForTaskSnapshot(taskId, "TERMINAL");
         assertEquals("TERMINAL", terminalSnapshot.task().get("status"));
         assertEquals("MIXED_MESSAGE_RESULTS", terminalSnapshot.task().get("terminalReason"));
-        // taskExecutedNumber counts only successes.
-        assertEquals(1, ((Number) terminalSnapshot.task().get("taskExecutedNumber")).intValue());
+        // taskSuccessNumber counts only successes.
+        assertEquals(1, ((Number) terminalSnapshot.task().get("taskSuccessNumber")).intValue());
         assertEquals(2, ((Number) terminalSnapshot.task().get("scheduleDeviceCnt")).intValue());
 
         assertEquals(2, terminalSnapshot.messages().size());

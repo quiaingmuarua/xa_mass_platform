@@ -135,7 +135,7 @@ java EngineExample project
 - `taskProject`: 任务项目
 - `taskCountry`: 任务国家
 - `taskStatus`: 任务状态
-- `taskInitNumber`: 初始消息数
+- `taskTargetNumber`: 初始目标数
 - `batchSize`: 批次大小
 - `runTaskMinDeviceCnt`: 最小设备数
 

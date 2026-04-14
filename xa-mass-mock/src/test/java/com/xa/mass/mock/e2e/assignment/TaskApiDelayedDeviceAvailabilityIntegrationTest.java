@@ -78,7 +78,7 @@ class TaskApiDelayedDeviceAvailabilityIntegrationTest extends AbstractMockE2eTes
             assertEquals("TERMINAL", terminalSnapshot.task().get("status"));
             assertEquals("ALL_MESSAGES_SUCCEEDED", terminalSnapshot.task().get("terminalReason"));
             assertEquals(1, ((Number) terminalSnapshot.task().get("scheduleDeviceCnt")).intValue());
-            assertEquals(1, ((Number) terminalSnapshot.task().get("taskExecutedNumber")).intValue());
+        assertEquals(1, ((Number) terminalSnapshot.task().get("taskSuccessNumber")).intValue());
             assertEquals(1, terminalSnapshot.messages().size());
 
             Map<String, Object> message = terminalSnapshot.messages().get(0);

@@ -239,7 +239,7 @@ public class TaskDeviceAssignListenerTest {
         Task task = new Task();
         task.setTid("task-1");
         task.setTaskCountry("us");
-        task.setTaskInitNumber(10);
+        task.setTaskTargetNumber(10);
         task.setBatchSize(5);
         task.setRunTaskMinDeviceCnt(1);
         return task;

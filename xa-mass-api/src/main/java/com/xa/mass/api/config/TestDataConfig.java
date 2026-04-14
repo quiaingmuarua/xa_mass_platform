@@ -159,11 +159,11 @@
 //
 //        // 设置一些进度数据
 //        if (status == TaskStatus.RUNNING) {
-//            task.setTaskExecutedNumber(initNumber / 2);
-//            task.setTaskUnExecutedNumber(initNumber / 2);
+//            task.setTaskSuccessNumber(initNumber / 2);
+//            task.setTaskNonSuccessNumber(initNumber / 2);
 //        } else if (status == TaskStatus.TERMINAL) {
-//            task.setTaskExecutedNumber(initNumber);
-//            task.setTaskUnExecutedNumber(0);
+//            task.setTaskSuccessNumber(initNumber);
+//            task.setTaskNonSuccessNumber(0);
 //        }
 //
 //        return task;

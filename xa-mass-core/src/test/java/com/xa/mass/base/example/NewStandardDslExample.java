@@ -119,7 +119,7 @@ public class NewStandardDslExample {
         taskFields.put("tid", Map.of("$UUID", true));
         taskFields.put("taskName", Map.of("$JOIN", Arrays.asList("ComplexTask-", "&.index", "-of-Device-", "&Device.index")));
         taskFields.put("taskCountry", "&Device.groupId");
-        taskFields.put("taskInitNumber", Map.of("$RANGE", Arrays.asList(50, 200)));
+        taskFields.put("taskTargetNumber", Map.of("$RANGE", Arrays.asList(50, 200)));
         taskFields.put("batchSize", Map.of("$RANGE", Arrays.asList(2, 8)));
         tasksField.put("FIELDS", taskFields);
         fieldDsl.put("tasks", tasksField);

@@ -91,7 +91,7 @@ public class RuleDebugExample {
         task.setProject("demoApp");
         task.setTaskCountry("us");
         task.setStatus(com.xa.mass.base.enums.task.TaskStatus.READY);
-        task.setTaskInitNumber(100);
+        task.setTaskTargetNumber(100);
         task.setBatchSize(10);
         task.setRunTaskMinDeviceCnt(5);
 

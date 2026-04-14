@@ -71,7 +71,7 @@ class TaskApiCallbackReplayIntegrationTest extends AbstractMockE2eTest {
 
         TaskSnapshot terminalSnapshot = waitForTerminalTask(taskId);
         assertEquals("TERMINAL", terminalSnapshot.task().get("status"));
-        assertEquals(2, ((Number) terminalSnapshot.task().get("taskExecutedNumber")).intValue());
+        assertEquals(2, ((Number) terminalSnapshot.task().get("taskSuccessNumber")).intValue());
         assertEquals(2, terminalSnapshot.messages().size());
 
         Map<String, Object> firstMessage = terminalSnapshot.messages().get(0);
@@ -90,7 +90,7 @@ class TaskApiCallbackReplayIntegrationTest extends AbstractMockE2eTest {
         Map<String, Object> replayedMessage = findMessage(afterReplay.messages(), msgId);
 
         assertEquals("TERMINAL", afterReplay.task().get("status"));
-        assertEquals(2, ((Number) afterReplay.task().get("taskExecutedNumber")).intValue());
+        assertEquals(2, ((Number) afterReplay.task().get("taskSuccessNumber")).intValue());
         assertNotNull(replayedMessage);
         assertEquals(originalStatus, replayedMessage.get("status"));
         assertEquals(originalResult, replayedMessage.get("result"));

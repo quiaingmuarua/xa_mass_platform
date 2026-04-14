@@ -131,10 +131,10 @@ public class AssignmentRecordService {
         snapshot.setProject(task.getProjectCode());
         snapshot.setTaskCountry(task.getTaskCountry());
         snapshot.setTaskStatus(task.getStatus().name());
-        snapshot.setTaskInitNumber(task.getTaskInitNumber());
-        snapshot.setTaskValidNumber(task.getTaskValidNumber());
-        snapshot.setTaskExecutedNumber(task.getTaskExecutedNumber());
-        snapshot.setTaskUnExecutedNumber(task.getTaskUnExecutedNumber());
+        snapshot.setTaskTargetNumber(task.getTaskTargetNumber());
+        snapshot.setTaskEligibleNumber(task.getTaskEligibleNumber());
+        snapshot.setTaskSuccessNumber(task.getTaskSuccessNumber());
+        snapshot.setTaskNonSuccessNumber(task.getTaskNonSuccessNumber());
         snapshot.setRunTaskMinDeviceCnt(task.getRunTaskMinDeviceCnt());
         snapshot.setScheduleDeviceCnt(task.getScheduleDeviceCnt());
         snapshot.setBatchSize(task.getBatchSize());

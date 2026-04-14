@@ -121,7 +121,7 @@ class TaskApiResumeAndCompleteIntegrationTest extends AbstractMockE2eTest {
             assertEquals("TERMINAL", terminalSnapshot.task().get("status"));
             assertEquals("ALL_MESSAGES_SUCCEEDED", terminalSnapshot.task().get("terminalReason"));
             assertEquals(1, ((Number) terminalSnapshot.task().get("scheduleDeviceCnt")).intValue());
-            assertEquals(1, ((Number) terminalSnapshot.task().get("taskExecutedNumber")).intValue());
+        assertEquals(1, ((Number) terminalSnapshot.task().get("taskSuccessNumber")).intValue());
 
             assertEquals(1, terminalSnapshot.messages().size());
             Map<String, Object> msg = terminalSnapshot.messages().get(0);

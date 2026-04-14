@@ -97,8 +97,11 @@ The current verified API-first happy path is:
 
 Observed verified outcomes:
 
+- `taskTargetNumber` is the initial persisted target count created from `targetList`
+- `taskEligibleNumber` is the count currently included in progress/statistical aggregation
 - `scheduleDeviceCnt` is updated from real assignment results
-- `taskExecutedNumber` is updated from real message completion results
+- `taskSuccessNumber` is updated from real message completion results
+- `taskNonSuccessNumber` tracks eligible message rows that are still not `SUCCESS`
 - persisted `TaskMsg` rows contain `deviceId`, `tokenId`, and `batchId`
 
 ## 6. Key Code Locations

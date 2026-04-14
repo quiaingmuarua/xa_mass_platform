@@ -70,7 +70,7 @@ class TaskApiMultiTaskAssignmentIntegrationTest extends AbstractMockE2eTest {
         assertEquals("TERMINAL", snapshot.task().get("status"));
         assertEquals("ALL_MESSAGES_SUCCEEDED", snapshot.task().get("terminalReason"));
         assertEquals(1, ((Number) snapshot.task().get("scheduleDeviceCnt")).intValue());
-        assertEquals(1, ((Number) snapshot.task().get("taskExecutedNumber")).intValue());
+        assertEquals(1, ((Number) snapshot.task().get("taskSuccessNumber")).intValue());
         assertEquals(1, snapshot.messages().size());
         Map<String, Object> message = snapshot.messages().get(0);
         assertEquals("SUCCESS", message.get("status"));

@@ -130,7 +130,7 @@ public class StandardDslExample {
                     "tid": {"$UUID": true},
                     "taskName": {"$JOIN": ["Task-", "&.index"]},
                     "taskCountry": {"$CHOICE": ["us", "gb"]},
-                    "taskInitNumber": {"$RANGE": [10, 100]},
+        "taskTargetNumber": {"$RANGE": [10, 100]},
                     "batchSize": {"$RANGE": [1, 5]}
                   }
                 }
@@ -186,7 +186,7 @@ public class StandardDslExample {
                         "tid": {"$UUID": true},
                         "taskName": {"$JOIN": ["ComplexTask-", "&.index", "-of-Device-", "&Device.index"]},
                         "taskCountry": "&Device.groupId",
-                        "taskInitNumber": {"$RANGE": [50, 200]},
+        "taskTargetNumber": {"$RANGE": [50, 200]},
                         "batchSize": {"$RANGE": [2, 8]}
                       }
                     }

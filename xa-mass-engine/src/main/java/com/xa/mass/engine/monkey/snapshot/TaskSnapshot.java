@@ -3,7 +3,7 @@ package com.xa.mass.engine.monkey.snapshot;
 import java.time.LocalDateTime;
 
 /**
- * 任务属性快照
+ * Task snapshot payload used for assignment diagnostics.
  */
 public class TaskSnapshot {
     private String taskId;
@@ -11,20 +11,16 @@ public class TaskSnapshot {
     private String project;
     private String taskCountry;
     private String taskStatus;
-    private int taskInitNumber;
-    private int taskValidNumber;
-    private int taskExecutedNumber;
-    private int taskUnExecutedNumber;
+    private int taskTargetNumber;
+    private int taskEligibleNumber;
+    private int taskSuccessNumber;
+    private int taskNonSuccessNumber;
     private int runTaskMinDeviceCnt;
     private int scheduleDeviceCnt;
     private int batchSize;
     private LocalDateTime createTime;
     private LocalDateTime updateTime;
 
-    public TaskSnapshot() {
-    }
-
-    // Getters and Setters
     public String getTaskId() {
         return taskId;
     }
@@ -65,36 +61,36 @@ public class TaskSnapshot {
         this.taskStatus = taskStatus;
     }
 
-    public int getTaskInitNumber() {
-        return taskInitNumber;
+    public int getTaskTargetNumber() {
+        return taskTargetNumber;
     }
 
-    public void setTaskInitNumber(int taskInitNumber) {
-        this.taskInitNumber = taskInitNumber;
+    public void setTaskTargetNumber(int taskTargetNumber) {
+        this.taskTargetNumber = taskTargetNumber;
     }
 
-    public int getTaskValidNumber() {
-        return taskValidNumber;
+    public int getTaskEligibleNumber() {
+        return taskEligibleNumber;
     }
 
-    public void setTaskValidNumber(int taskValidNumber) {
-        this.taskValidNumber = taskValidNumber;
+    public void setTaskEligibleNumber(int taskEligibleNumber) {
+        this.taskEligibleNumber = taskEligibleNumber;
     }
 
-    public int getTaskExecutedNumber() {
-        return taskExecutedNumber;
+    public int getTaskSuccessNumber() {
+        return taskSuccessNumber;
     }
 
-    public void setTaskExecutedNumber(int taskExecutedNumber) {
-        this.taskExecutedNumber = taskExecutedNumber;
+    public void setTaskSuccessNumber(int taskSuccessNumber) {
+        this.taskSuccessNumber = taskSuccessNumber;
     }
 
-    public int getTaskUnExecutedNumber() {
-        return taskUnExecutedNumber;
+    public int getTaskNonSuccessNumber() {
+        return taskNonSuccessNumber;
     }
 
-    public void setTaskUnExecutedNumber(int taskUnExecutedNumber) {
-        this.taskUnExecutedNumber = taskUnExecutedNumber;
+    public void setTaskNonSuccessNumber(int taskNonSuccessNumber) {
+        this.taskNonSuccessNumber = taskNonSuccessNumber;
     }
 
     public int getRunTaskMinDeviceCnt() {
@@ -136,4 +132,4 @@ public class TaskSnapshot {
     public void setUpdateTime(LocalDateTime updateTime) {
         this.updateTime = updateTime;
     }
-} 
+}

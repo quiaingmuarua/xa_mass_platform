@@ -66,7 +66,7 @@ class TaskApiTerminateRunningIntegrationTest {
 
         TaskSnapshot runningSnapshot = waitForTaskSnapshot(taskId, "RUNNING");
         assertEquals(2, ((Number) runningSnapshot.task().get("scheduleDeviceCnt")).intValue());
-        assertEquals(0, ((Number) runningSnapshot.task().get("taskExecutedNumber")).intValue());
+        assertEquals(0, ((Number) runningSnapshot.task().get("taskSuccessNumber")).intValue());
         assertEquals(2, runningSnapshot.messages().size());
         assertTrue(runningSnapshot.messages().stream().allMatch(message -> "SENT".equals(message.get("status"))));
 
@@ -79,7 +79,7 @@ class TaskApiTerminateRunningIntegrationTest {
 
         TaskSnapshot terminalSnapshot = waitForTaskSnapshot(taskId, "TERMINAL");
         assertEquals("TERMINAL", terminalSnapshot.task().get("status"));
-        assertEquals(0, ((Number) terminalSnapshot.task().get("taskExecutedNumber")).intValue());
+        assertEquals(0, ((Number) terminalSnapshot.task().get("taskSuccessNumber")).intValue());
         assertEquals(2, terminalSnapshot.messages().size());
         assertTrue(terminalSnapshot.messages().stream().allMatch(message -> "SENT".equals(message.get("status"))));
 

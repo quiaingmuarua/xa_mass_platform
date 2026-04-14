@@ -138,6 +138,11 @@ Additional implementation rule verified at engine regression level:
 - SDK callers can distinguish these two resume outcomes through `TaskManager.resumeTaskDetailed(...)`
 - SDK callers can also use `TaskManager.resolveTaskStateFromMessages(...)` to ask whether current `TaskMsg` aggregation leaves the task pending, finalizes it, or observes an already-final task
 - SDK callers can use `TaskManager.validateTaskState(...)` to audit whether task counters, `terminalReason`, and persisted `TaskMsg` aggregates are still self-consistent
+- `Task` aggregate counters now use explicit names:
+  - `taskTargetNumber`: initial persisted target count
+  - `taskEligibleNumber`: target count currently included in progress/statistical aggregation
+  - `taskSuccessNumber`: persisted `TaskMsg` rows already in `SUCCESS`
+  - `taskNonSuccessNumber`: valid rows that are not yet `SUCCESS`, including failed and still-in-flight rows
 - when a task reaches `TERMINAL`, inspect `task.terminalReason` to distinguish:
   - `MANUAL_CANCELLED`
   - `ALL_MESSAGES_SUCCEEDED`
@@ -223,7 +228,7 @@ What it verifies:
 - `POST /status/api/tasks/{taskId}/audit?approved=true`
 - the task reaches `TERMINAL`
 - `scheduleDeviceCnt == 2`
-- `taskExecutedNumber == 2`
+- `taskSuccessNumber == 2`
 - two persisted messages exist
 - each message finishes as `SUCCESS`
 - each message has non-null `deviceId`, `tokenId`, and `batchId`
@@ -251,7 +256,7 @@ What it verifies:
 - `mock.client.task-result-status=FAILED` drives real mock clients to send failure result frames
 - the task still reaches `TERMINAL`
 - `scheduleDeviceCnt == 2`
-- `taskExecutedNumber == 0`
+- `taskSuccessNumber == 0`
 - both persisted messages finish as `FAILED`
 - each failed message keeps non-null `deviceId`, `tokenId`, and `batchId`
 - each failed message writes `errorMessage = "Executed by mock client " + deviceId`
@@ -278,7 +283,7 @@ What they verify:
 
 - a second callback for the same `taskId + msgId` is accepted as a no-op rather than reprocessed
 - the first final state is preserved and not overwritten by a later conflicting callback
-- `taskExecutedNumber` and task final status remain consistent
+- `taskSuccessNumber` and task final status remain consistent
 - scheduler completion/failure callbacks are not triggered twice
 - a manual `TERMINAL` closure also freezes later non-final callbacks so they do not alter `TaskMsg` state or task counters
 
@@ -294,7 +299,7 @@ What it verifies:
 - a separate WebSocket client then replays a conflicting `TASK/step` result for an already-final `msgId`
 - the gateway still acknowledges the replay frame
 - the persisted `TaskMsg` keeps its first final state and is not overwritten
-- `taskExecutedNumber` remains stable after the replay
+- `taskSuccessNumber` remains stable after the replay
 
 ### 5.8 Running Terminate Path Is Covered End-to-End
 
@@ -309,7 +314,7 @@ What it verifies:
 - `scheduleDeviceCnt` is populated from real matching and assignment
 - persisted `TaskMsg` rows advance to `SENT`
 - `POST /status/api/tasks/{taskId}/terminate` transitions the task to `TERMINAL`
-- `taskExecutedNumber` remains `0`
+- `taskSuccessNumber` remains `0`
 - no `TaskMsg` is incorrectly rewritten to `SUCCESS` or `FAILED` just because the task was terminated
 - `DELETE /status/api/tasks/{taskId}` succeeds after the task reaches `TERMINAL`
 

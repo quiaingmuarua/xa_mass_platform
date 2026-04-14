@@ -47,6 +47,7 @@ class DeviceMatchContextTest {
 
         assertEquals(Map.of("pool", "warmup"), context.getContext().get("deviceAttributes"));
         assertEquals(Map.of("country", "us"), context.getContext().get("tokenAttributes"));
+        assertEquals(0, context.getContext().get("taskTargetNumber"));
         assertEquals(true, context.getContext().get("countryMatch"));
         assertEquals(true, context.getContext().get("channelMatch"));
     }
