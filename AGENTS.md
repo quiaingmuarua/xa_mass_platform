@@ -10,9 +10,17 @@ This file is the fastest entry point for coding agents such as Claude Code, Code
 - Default `dev` startup now auto-starts mock WebSocket clients through `mock.client.auto-start=true`
 - Port split is explicit: `server.port` for HTTP and `mass.websocket.port` for the gateway WebSocket server
 - Project direction is library/SDK-first; HTTP pages and backend endpoints are validation/demo surfaces
+- Mainline change discipline is now end-to-end integration-test-driven first; unit tests remain important, but they are support coverage rather than the primary acceptance gate
 - Current verified API task path: `NEW -> READY -> RUNNING -> TERMINAL`
 - Pause/resume regression is also verified: `NEW -> READY -> PAUSED -> READY`
-- `TaskManager.createTask()` is now fail-fast for unsupported inputs: empty/null `targetList` is rejected, non-empty `targetJsonList` is rejected, unsupported `project` codes are rejected, and request `batchSize` is preserved on the task
+- `TaskManager.createTask()` now accepts only the supported create contract fields: `userId`, `project`, `taskName`, `textContent`, `targetList`, `countryCode`, and `batchSize`
+- task-create requests fail fast when `targetList` is empty/null, when `project` is unsupported, or when clients send unknown JSON fields such as retired `targetJsonList` / `targetType` / `extraParams`
+- `PUT /status/api/tasks/{taskId}` is now intentionally narrower than create: it accepts only metadata fields (`userId`, `project`, `taskName`, `textContent`, `countryCode`, `batchSize`), rejects `targetList` and other unknown fields, and only allows edits while the task is still `NEW` or `BLOCKED`
+- `Task` aggregate counters are now named by real meaning:
+  - `taskTargetNumber`
+  - `taskEligibleNumber`
+  - `taskSuccessNumber`
+  - `taskNonSuccessNumber`
 - `Task.terminalReason` now distinguishes manual cancel from message-driven terminal closure
 - `TaskManager.validateTaskState()` now provides an explicit SDK-facing audit for `Task + TaskMsg` consistency and pending terminal resolution
 - Engine regression now verifies that paused tasks close to `TERMINAL` once all `TaskMsg` callbacks finish
@@ -27,10 +35,11 @@ This file is the fastest entry point for coding agents such as Claude Code, Code
 - `TaskApiCallbackReplayIntegrationTest` now covers duplicate `TASK/step` callback replay through the real gateway path
 - `TaskApiPauseCompletionIntegrationTest` now covers `approve -> assign -> running -> pause -> callback -> terminal` through the real gateway path
 - `TaskApiStateValidationIntegrationTest` now covers `GET /status/api/tasks/{taskId}` state-audit output for valid terminal tasks, forced `needsResolution=true` tasks, and invalid terminal-reason variants
-- `TaskApiMultiTaskAssignmentIntegrationTest` now covers two approved tasks being assigned onto separate devices and both completing through the real gateway path
-- `TaskApiDelayedDeviceAvailabilityIntegrationTest` now covers a task staying `READY` with zero initial matches, then advancing once a matching device and token appear later
+- `TaskApiTokenAttributeRoutingIntegrationTest` now covers token-attribute-based routing through the real assignment and gateway path
 - `MassWebSocketClientImpl` ignores `response=true` `TASK/step` frames to avoid mock echo loops
 - `mock.client.task-result-status` can force mock result frames to `SUCCESS` or `FAILED`
+- `Device.attributes` and `Token.attributes` are now read-only auxiliary rule labels for matching and diagnostics only
+- `Device.status` is the single online truth, and runtime device lock truth now lives only in `DeviceStorage` / `DeviceManager.isLocked(...)`
 - Treat `engine/v2` as historical archive material, not mainline
 
 ## 1. What This Repo Is
@@ -311,13 +320,18 @@ Important current implementation facts:
 
 - `TaskApiController` uses `TaskManager` lifecycle methods for all state changes.
 - `deleteTask()` enforces the state guard. `READY`, `RUNNING`, and `PAUSED` tasks cannot be deleted.
-- `TaskManager.createTask()` requires at least one materialized `targetList` entry, rejects non-empty `targetJsonList`, and persists request `batchSize` onto the task.
+- `TaskManager.createTask()` requires at least one materialized `targetList` entry, accepts only the supported create fields, and persists request `batchSize` onto the task.
+- `TaskApiController.updateTask(...)` is metadata-only: it rejects unsupported fields such as `targetList` and refuses to mutate `READY`, `RUNNING`, `PAUSED`, or `TERMINAL` tasks.
 - `TaskManager.createTask()` also rejects unsupported `project` codes instead of silently falling back to `demoApp`.
 - `TaskManager` persists one `TaskMsg` per target with the correct `taskId`, distinct `msgId`, and actual target value.
 - `MassEngine` starts `TaskAssignWorker` regardless of `mockMode`, submits existing `READY` tasks on startup, and subscribes to READY events from approve/resume.
 - `TaskDeviceAssignListener` re-checks that the task is still `READY` after matching; if the task left `READY` during the matching window, dispatch is skipped.
 - `TaskDeviceAssignListener` sets `scheduleDeviceCnt` and transitions matched tasks from `READY` to `RUNNING`.
 - `TaskDeviceAssignListener` now delegates matching to `TaskDeviceMatchingStrategy`; `RuleBasedTaskDeviceMatchingStrategy` is the current default.
+- `Task.taskRoutingCountryCode` is the active routing-country input; older `taskCountry` naming is retired from the mainline.
+- `DeviceManager.getDevicesByGroupId(...)` / `DeviceStorage.getDevicesByGroupId(...)` are grouping helpers only; do not treat them as country-routing APIs.
+- `RuleBasedTaskDeviceMatchingStrategy` no longer prefilters candidates by device `deviceGroupId`; routing-country satisfaction should come from token/account-facing signals and explicit rules.
+- `DeviceMatchContext` now exposes nested `deviceAttributes` and `tokenAttributes` maps to QLExpress rules.
 - `SimpleTaskMsgAssignListener` reuses persisted `TaskMsg` records, fills `deviceId` / `tokenId` / `batchId`, and moves them to `SENT`.
 - `GatewayTaskMsgPublisher` pushes task messages downstream as `TASK/step`.
 - `GatewayTaskResultHandler` handles inbound `TASK/step` results and writes them back through `TaskManager.handleTaskMessageResult(...)`.
@@ -343,13 +357,18 @@ Important current implementation facts:
   - `ALL_MESSAGES_FAILED`
   - `MIXED_MESSAGE_RESULTS`
 - `TaskManager.handleTaskMessageResult(...)` treats duplicate final callbacks as idempotent: the first final result is kept, progress is recalculated, and scheduler callbacks are not triggered twice.
+- `TaskManager.cancelTask(...)` now drains in-flight `TaskMsg` rows during manual terminal closure: `INIT/BINDING -> FAILED`, `SENT/RUNNING -> EXPIRED`.
 - `GET /status/api/tasks/{taskId}` now includes `stateValidation` so API/demo surfaces can expose the same state-audit result used by SDK callers.
-- `MassApplication.loadMockData(...)` normalizes mock `supportedProjects`, lowercases `groupId`, and auto-seeds `LOGIN_READY` tokens when devices do not already have token data.
+- `MassApplication.loadMockData(...)` normalizes mock `supportedProjects`, lowercases `deviceGroupId`, loads explicit mock `tokens` when present, and only auto-seeds minimal `LOGIN_READY` fallback tokens for devices that still have none.
+- `DeviceManager` now treats `Device.status` as the single online truth for matching/runtime availability; gateway online/offline events update the device model directly instead of maintaining a separate online-state registry.
+- `DeviceManager` / `DeviceStorage` now also own the single device-lock truth; active mainline code should read lock state through `DeviceManager.isLocked(...)` instead of from `Device`.
+- `Device` and `Token` now expose `attributes: Map<String, String>` with defensive-copy and read-only semantics; callers may replace the whole map on update, but there is no per-entry mutation API.
+- `AssignmentRecordService` now snapshots `deviceLocked` from live runtime lock state instead of from stale `Device` fields.
 - `WebSocketClientStarter` now starts on `ApplicationReadyEvent` behind `mock.client.auto-start=true`, so default `dev` startup includes mock client result write-back.
 - `WebSocketClientStarter` passes `mock.client.task-result-status` into each mock client so result write-back can be forced to `SUCCESS` or `FAILED`.
 - `MassWebSocketClientImpl` now ignores `response=true` task frames to prevent mock client echo loops and duplicate result writes.
 - Verified on `2026-04-13`: API-created tasks move `NEW -> READY -> RUNNING -> TERMINAL`, and persisted `TaskMsg` rows move `INIT -> SENT -> SUCCESS` with `deviceId` / `tokenId` / `batchId`.
-- Verified on `2026-04-13`: with `mock.client.task-result-status=FAILED`, API-created tasks still move `NEW -> READY -> RUNNING -> TERMINAL`, `taskExecutedNumber` stays `0`, and persisted `TaskMsg` rows move `INIT -> SENT -> FAILED`.
+- Verified on `2026-04-13`: with `mock.client.task-result-status=FAILED`, API-created tasks still move `NEW -> READY -> RUNNING -> TERMINAL`, `taskSuccessNumber` stays `0`, and persisted `TaskMsg` rows move `INIT -> SENT -> FAILED`.
 - Verified on `2026-04-13`: after `RUNNING -> PAUSED`, real `TASK/step` callbacks can still finish the paused task to `TERMINAL` without requiring a manual resume.
 - `TaskAssignWorker` uses `CopyOnWriteArrayList` for listeners.
 - `TaskAssignWorker` now delayed-retries `READY` tasks that receive no device match, so they do not become orphaned after a single dequeue attempt.
@@ -358,33 +377,44 @@ Important current implementation facts:
 - `DispatcherInboundHandler` sends structured JSON error frames instead of silently closing connections.
 - `MassApplication.stop()` is now idempotent, and the mock Spring Boot entry no longer adds an extra manual shutdown hook around the runtime.
 - `WebSocketServerImpl.stop()` now calls `shutdownGracefully().syncUninterruptibly()` on both EventLoopGroups so a single Ctrl-C is sufficient for clean exit.
-- `TaskManager.advanceTaskMsgForCompletion()` always advances through `INIT→BINDING→SENT→RUNNING` before the final `markAsSuccess`/`markAsFailed` call, ensuring `RUNNING` appears in the state history for both success and failure paths.
+- `TaskManager.advanceTaskMsgForCompletion()` always advances through `INIT鈫払INDING鈫扴ENT鈫扲UNNING` before the final `markAsSuccess`/`markAsFailed` call, ensuring `RUNNING` appears in the state history for both success and failure paths.
 
 ## 7. Known Good Test Surface
 
-Focused verified regression command on `2026-04-13`:
+Focused verified regression command on `2026-04-14`:
 
 ```bash
-mvn --% -pl xa-mass-mock -am -Dtest=TaskManagerLifecycleTest,TaskAssignWorkerTest,MassApplicationStopOrderTest,MassEngineStopTest,MassWebSocketClientImplTest,TaskApiIntegrationTest,TaskApiFailureResultIntegrationTest,TaskApiLifecycleGuardsIntegrationTest,TaskApiTerminateRunningIntegrationTest,TaskApiCallbackReplayIntegrationTest,TaskApiPauseCompletionIntegrationTest,TaskApiStateValidationIntegrationTest,TaskApiMultiTaskAssignmentIntegrationTest,TaskApiDelayedDeviceAvailabilityIntegrationTest,WebSocketClientStarterTest -Dsurefire.failIfNoSpecifiedTests=false test
+mvn --% -pl xa-mass-mock -am -Dtest=DeviceAttributesTest,TokenAttributesTest,DeviceMatchContextTest,QLExpressRuleEvaluatorTest,RuleBasedTaskDeviceMatchingStrategyTest,TaskApiDelayedDeviceAvailabilityIntegrationTest,TaskApiTokenAttributeRoutingIntegrationTest,MassApplicationLoadMockDataTest -Dsurefire.failIfNoSpecifiedTests=false test
 ```
 
 Verified focused classes:
 
-- `xa-mass-mock/src/test/java/com/xa/mass/mock/api/TaskApiIntegrationTest.java`
-- `xa-mass-mock/src/test/java/com/xa/mass/mock/api/TaskApiFailureResultIntegrationTest.java`
-- `xa-mass-mock/src/test/java/com/xa/mass/mock/api/TaskApiLifecycleGuardsIntegrationTest.java`
-- `xa-mass-mock/src/test/java/com/xa/mass/mock/api/TaskApiTerminateRunningIntegrationTest.java`
-- `xa-mass-mock/src/test/java/com/xa/mass/mock/api/TaskApiCallbackReplayIntegrationTest.java`
-- `xa-mass-mock/src/test/java/com/xa/mass/mock/api/TaskApiPauseCompletionIntegrationTest.java`
-- `xa-mass-mock/src/test/java/com/xa/mass/mock/api/TaskApiStateValidationIntegrationTest.java`
-- `xa-mass-mock/src/test/java/com/xa/mass/mock/api/TaskApiMultiTaskAssignmentIntegrationTest.java`
-- `xa-mass-mock/src/test/java/com/xa/mass/mock/api/TaskApiDelayedDeviceAvailabilityIntegrationTest.java`
+- `xa-mass-mock` end-to-end integration suites are now organized by domain instead of a flat `api/` package:
+- `xa-mass-mock/src/test/java/com/xa/mass/mock/e2e/lifecycle/TaskApiIntegrationTest.java`
+- `xa-mass-mock/src/test/java/com/xa/mass/mock/e2e/lifecycle/TaskApiLifecycleGuardsIntegrationTest.java`
+- `xa-mass-mock/src/test/java/com/xa/mass/mock/e2e/lifecycle/TaskApiPauseCompletionIntegrationTest.java`
+- `xa-mass-mock/src/test/java/com/xa/mass/mock/e2e/lifecycle/TaskApiResumeAndCompleteIntegrationTest.java`
+- `xa-mass-mock/src/test/java/com/xa/mass/mock/e2e/lifecycle/TaskApiTerminateRunningIntegrationTest.java`
+- `xa-mass-mock/src/test/java/com/xa/mass/mock/e2e/results/TaskApiFailureResultIntegrationTest.java`
+- `xa-mass-mock/src/test/java/com/xa/mass/mock/e2e/results/TaskApiCallbackReplayIntegrationTest.java`
+- `xa-mass-mock/src/test/java/com/xa/mass/mock/e2e/results/TaskApiMixedResultsIntegrationTest.java`
+- `xa-mass-mock/src/test/java/com/xa/mass/mock/e2e/assignment/TaskApiDelayedDeviceAvailabilityIntegrationTest.java`
+- `xa-mass-mock/src/test/java/com/xa/mass/mock/e2e/assignment/TaskApiTokenAttributeRoutingIntegrationTest.java`
+- `xa-mass-mock/src/test/java/com/xa/mass/mock/e2e/assignment/TaskApiMultiTaskAssignmentIntegrationTest.java`
+- `xa-mass-mock/src/test/java/com/xa/mass/mock/e2e/audit/TaskApiStateValidationIntegrationTest.java`
+- `xa-mass-mock/src/test/java/com/xa/mass/mock/e2e/support/AbstractMockE2eTest.java` is the shared E2E base for HTTP helpers, task creation, snapshot polling, and dynamic WebSocket port wiring
 - `xa-mass-mock/src/test/java/com/xa/mass/mock/client/MassWebSocketClientImplTest.java`
 - `xa-mass-mock/src/test/java/com/xa/mass/mock/starter/WebSocketClientStarterTest.java`
 - `xa-mass-engine/src/test/java/com/xa/mass/engine/TaskManagerLifecycleTest.java`
 - `xa-mass-engine/src/test/java/com/xa/mass/engine/listener/TaskAssignWorkerTest.java`
+- `xa-mass-engine/src/test/java/com/xa/mass/engine/listener/SimpleTaskMsgAssignListenerTest.java`
+- `xa-mass-engine/src/test/java/com/xa/mass/engine/model/DeviceMatchContextTest.java`
+- `xa-mass-engine/src/test/java/com/xa/mass/engine/rules/QLExpressRuleEvaluatorTest.java`
+- `xa-mass-engine/src/test/java/com/xa/mass/engine/strategy/RuleBasedTaskDeviceMatchingStrategyTest.java`
+- `xa-mass-core/src/test/java/com/xa/mass/base/model/DeviceAttributesTest.java`
+- `xa-mass-core/src/test/java/com/xa/mass/base/model/TokenAttributesTest.java`
 - `xa-mass-runtime/src/test/java/com/xa/mass/starter/GatewayTaskResultHandlerTest.java`
-- Existing engine/api/runtime regressions remain the primary mainline unit-test surface
+- Existing engine/api/runtime unit and slice tests remain support coverage, but the primary acceptance gate is the grouped `xa-mass-mock` end-to-end domain suites
 
 What the new focused coverage proves:
 
@@ -397,8 +427,8 @@ What the new focused coverage proves:
 - a paused task can still complete to `TERMINAL` through real callback write-back after assignment, without requiring a manual resume
 - `GET /status/api/tasks/{taskId}` exposes `stateValidation` over the real HTTP/runtime path, including `needsResolution=true` when a task is manually reopened after all persisted message callbacks are already final
 - invalid terminal metadata is also covered end-to-end: missing `terminalReason` and message/result mismatch both surface through `stateValidation.violations`
-- two approved single-target tasks can run concurrently, land on separate devices, and both close to `TERMINAL`
-- a `READY` task with zero initial matching devices stays pending, then advances automatically once a matching device plus `LOGIN_READY` token are added later
+- token-attribute-based routing is covered end-to-end through a custom QLExpress rule using `tokenAttributes['country'] == taskRoutingCountryCode`
+- assignment diagnostics now snapshot runtime device lock state instead of stale `Device` model fields
 - mock clients no longer respond to server response frames
 - mock result status can be forced to `FAILED` without changing business logic code paths
 - duplicate `TASK/step` result callbacks are covered at engine/runtime regression level and keep the first final state

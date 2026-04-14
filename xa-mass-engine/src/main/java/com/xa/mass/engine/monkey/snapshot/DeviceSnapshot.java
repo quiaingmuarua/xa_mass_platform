@@ -4,9 +4,10 @@ import com.xa.mass.base.enums.Project;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 /**
- * 设备属性快照
+ * 璁惧灞炴€у揩鐓?
  */
 public class DeviceSnapshot {
     private String deviceId;
@@ -14,9 +15,9 @@ public class DeviceSnapshot {
     private String agentVersion;
     private LocalDateTime lastHeartbeat;
     private List<Project> supportedProjects;
-    private String groupId;
-    private LocalDateTime lockExpireTime;
+    private String deviceGroupId;
     private String onlineStrategy;
+    private Map<String, String> attributes;
     private LocalDateTime createTime;
     private LocalDateTime updateTime;
     private int appCount;
@@ -67,20 +68,12 @@ public class DeviceSnapshot {
         this.supportedProjects = supportedProjects;
     }
 
-    public String getGroupId() {
-        return groupId;
+    public String getDeviceGroupId() {
+        return deviceGroupId;
     }
 
-    public void setGroupId(String groupId) {
-        this.groupId = groupId;
-    }
-
-    public LocalDateTime getLockExpireTime() {
-        return lockExpireTime;
-    }
-
-    public void setLockExpireTime(LocalDateTime lockExpireTime) {
-        this.lockExpireTime = lockExpireTime;
+    public void setDeviceGroupId(String deviceGroupId) {
+        this.deviceGroupId = deviceGroupId;
     }
 
     public String getOnlineStrategy() {
@@ -89,6 +82,14 @@ public class DeviceSnapshot {
 
     public void setOnlineStrategy(String onlineStrategy) {
         this.onlineStrategy = onlineStrategy;
+    }
+
+    public Map<String, String> getAttributes() {
+        return attributes;
+    }
+
+    public void setAttributes(Map<String, String> attributes) {
+        this.attributes = attributes;
     }
 
     public LocalDateTime getCreateTime() {

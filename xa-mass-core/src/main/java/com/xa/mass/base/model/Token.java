@@ -3,6 +3,9 @@ package com.xa.mass.base.model;
 import com.xa.mass.base.enums.task.TokenStatus;
 
 import java.time.LocalDateTime;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Objects;
 
 /**
@@ -55,6 +58,8 @@ public class Token {
      * 最后使用时间
      */
     private LocalDateTime lastUsedTime;
+
+    private Map<String, String> attributes = Collections.emptyMap();
 
     public Token() {
         this.status = TokenStatus.LOGIN_READY;
@@ -144,6 +149,18 @@ public class Token {
 
     public void setLastUsedTime(LocalDateTime lastUsedTime) {
         this.lastUsedTime = lastUsedTime;
+    }
+
+    public Map<String, String> getAttributes() {
+        return attributes;
+    }
+
+    public void setAttributes(Map<String, String> attributes) {
+        if (attributes == null || attributes.isEmpty()) {
+            this.attributes = Collections.emptyMap();
+            return;
+        }
+        this.attributes = Collections.unmodifiableMap(new LinkedHashMap<>(attributes));
     }
 
     /**
@@ -273,6 +290,7 @@ public class Token {
                 ", deviceId='" + deviceId + '\'' +
                 ", status=" + status +
                 ", channel='" + channel + '\'' +
+                ", attributes=" + attributes +
                 ", lastBindTaskId='" + lastBindTaskId + '\'' +
                 ", isExpired=" + isExpired() +
                 '}';

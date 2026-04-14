@@ -18,23 +18,24 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 /**
- * 分配记录服务
- * 负责记录和管理所有分配尝试，支持归因分析和验证
+ * 鍒嗛厤璁板綍鏈嶅姟
+ * 璐熻矗璁板綍鍜岀鐞嗘墍鏈夊垎閰嶅皾璇曪紝鏀寔褰掑洜鍒嗘瀽鍜岄獙璇?
  */
 public class AssignmentRecordService {
 
     private static final Logger log = LoggerFactory.getLogger(AssignmentRecordService.class);
 
-    // 内存存储，实际项目中可替换为数据库
+    // 鍐呭瓨瀛樺偍锛屽疄闄呴」鐩腑鍙浛鎹负鏁版嵁搴?
     private final Map<String, AssignmentRecord> records = new ConcurrentHashMap<>();
 
     /**
-     * 记录设备分配尝试
+     * 璁板綍璁惧鍒嗛厤灏濊瘯
      */
     public AssignmentRecord recordDeviceAssignment(Task task, Device device, Token token,
                                                    AssignmentResult result, String reason,
                                                    List<RuleEvaluationDetail> ruleEvaluations,
-                                                   Map<String, Object> contextSnapshot) {
+                                                   Map<String, Object> contextSnapshot,
+                                                   boolean deviceLocked) {
         AssignmentRecord record = new AssignmentRecord();
         record.setRecordId(UUID.randomUUID().toString());
         record.setType(AssignmentType.DEVICE_ASSIGN);
@@ -46,27 +47,28 @@ public class AssignmentRecordService {
         record.setRuleEvaluations(ruleEvaluations);
         record.setContextSnapshot(contextSnapshot);
 
-        // 创建快照
+        // 鍒涘缓蹇収
         record.setTaskSnapshot(createTaskSnapshot(task));
-        record.setDeviceSnapshot(createDeviceSnapshot(device));
+        record.setDeviceSnapshot(createDeviceSnapshot(device, deviceLocked));
         if (token != null) {
             record.setTokenSnapshot(createTokenSnapshot(token));
         }
 
         records.put(record.getRecordId(), record);
 
-        // 输出归因日志
+        // 杈撳嚭褰掑洜鏃ュ織
         logAssignmentRecord(record);
 
         return record;
     }
 
     /**
-     * 记录消息分配尝试
+     * 璁板綍娑堟伅鍒嗛厤灏濊瘯
      */
     public AssignmentRecord recordMessageAssignment(Task task, Device device, Token token,
                                                     String messageId, String batchId,
-                                                    AssignmentResult result, String reason) {
+                                                    AssignmentResult result, String reason,
+                                                    boolean deviceLocked) {
         AssignmentRecord record = new AssignmentRecord();
         record.setRecordId(UUID.randomUUID().toString());
         record.setType(AssignmentType.MSG_ASSIGN);
@@ -77,23 +79,23 @@ public class AssignmentRecordService {
         record.setResult(result);
         record.setReason(reason);
 
-        // 创建快照
+        // 鍒涘缓蹇収
         record.setTaskSnapshot(createTaskSnapshot(task));
-        record.setDeviceSnapshot(createDeviceSnapshot(device));
+        record.setDeviceSnapshot(createDeviceSnapshot(device, deviceLocked));
         if (token != null) {
             record.setTokenSnapshot(createTokenSnapshot(token));
         }
 
         records.put(record.getRecordId(), record);
 
-        // 输出归因日志
+        // 杈撳嚭褰掑洜鏃ュ織
         logAssignmentRecord(record);
 
         return record;
     }
 
     /**
-     * 输出归因日志
+     * 杈撳嚭褰掑洜鏃ュ織
      */
     private void logAssignmentRecord(AssignmentRecord record) {
         StringBuilder logMsg = new StringBuilder();
@@ -122,19 +124,19 @@ public class AssignmentRecordService {
     }
 
     /**
-     * 创建任务快照
+     * 鍒涘缓浠诲姟蹇収
      */
     private TaskSnapshot createTaskSnapshot(Task task) {
         TaskSnapshot snapshot = new TaskSnapshot();
         snapshot.setTaskId(task.getTid());
         snapshot.setTaskName(task.getTaskName());
         snapshot.setProject(task.getProjectCode());
-        snapshot.setTaskCountry(task.getTaskCountry());
+        snapshot.setTaskRoutingCountryCode(task.getTaskRoutingCountryCode());
         snapshot.setTaskStatus(task.getStatus().name());
-        snapshot.setTaskInitNumber(task.getTaskInitNumber());
-        snapshot.setTaskValidNumber(task.getTaskValidNumber());
-        snapshot.setTaskExecutedNumber(task.getTaskExecutedNumber());
-        snapshot.setTaskUnExecutedNumber(task.getTaskUnExecutedNumber());
+        snapshot.setTaskTargetNumber(task.getTaskTargetNumber());
+        snapshot.setTaskEligibleNumber(task.getTaskEligibleNumber());
+        snapshot.setTaskSuccessNumber(task.getTaskSuccessNumber());
+        snapshot.setTaskNonSuccessNumber(task.getTaskNonSuccessNumber());
         snapshot.setRunTaskMinDeviceCnt(task.getRunTaskMinDeviceCnt());
         snapshot.setScheduleDeviceCnt(task.getScheduleDeviceCnt());
         snapshot.setBatchSize(task.getBatchSize());
@@ -144,28 +146,28 @@ public class AssignmentRecordService {
     }
 
     /**
-     * 创建设备快照
+     * 鍒涘缓璁惧蹇収
      */
-    private DeviceSnapshot createDeviceSnapshot(Device device) {
+    private DeviceSnapshot createDeviceSnapshot(Device device, boolean deviceLocked) {
         DeviceSnapshot snapshot = new DeviceSnapshot();
         snapshot.setDeviceId(device.getDeviceId());
         snapshot.setDeviceStatus(device.getStatus().name());
         snapshot.setAgentVersion(device.getAgentVersion());
         snapshot.setLastHeartbeat(device.getLastHeartbeat());
         snapshot.setSupportedProjects(device.getSupportedProjects());
-        snapshot.setGroupId(device.getGroupId());
-        snapshot.setLockExpireTime(device.getLockExpireTime());
+        snapshot.setDeviceGroupId(device.getDeviceGroupId());
         snapshot.setOnlineStrategy(device.getOnlineStrategy());
+        snapshot.setAttributes(device.getAttributes());
         snapshot.setCreateTime(device.getCreateTime());
         snapshot.setUpdateTime(device.getUpdateTime());
         snapshot.setAppCount(device.getSupportedProjects() != null ? device.getSupportedProjects().size() : 0);
         snapshot.setDeviceAvailable(device.isAvailable());
-        snapshot.setDeviceLocked(device.isLocked());
+        snapshot.setDeviceLocked(deviceLocked);
         return snapshot;
     }
 
     /**
-     * 创建Token快照
+     * 鍒涘缓Token蹇収
      */
     private TokenSnapshot createTokenSnapshot(Token token) {
         TokenSnapshot snapshot = new TokenSnapshot();
@@ -173,6 +175,7 @@ public class AssignmentRecordService {
         snapshot.setDeviceId(token.getDeviceId());
         snapshot.setTokenStatus(token.getStatus().name());
         snapshot.setChannel(token.getChannel());
+        snapshot.setAttributes(token.getAttributes());
         snapshot.setLastBindTaskId(token.getLastBindTaskId());
         snapshot.setExpireTime(token.getExpireTime());
         snapshot.setCreateTime(token.getCreateTime());
@@ -184,7 +187,7 @@ public class AssignmentRecordService {
     }
 
     /**
-     * 获取任务的所有分配记录
+     * 鑾峰彇浠诲姟鐨勬墍鏈夊垎閰嶈褰?
      */
     public List<AssignmentRecord> getRecordsByTaskId(String taskId) {
         return records.values().stream()
@@ -193,7 +196,7 @@ public class AssignmentRecordService {
     }
 
     /**
-     * 获取设备的所有分配记录
+     * 鑾峰彇璁惧鐨勬墍鏈夊垎閰嶈褰?
      */
     public List<AssignmentRecord> getRecordsByDeviceId(String deviceId) {
         return records.values().stream()
@@ -202,7 +205,7 @@ public class AssignmentRecordService {
     }
 
     /**
-     * 获取成功的分配记录
+     * 鑾峰彇鎴愬姛鐨勫垎閰嶈褰?
      */
     public List<AssignmentRecord> getSuccessfulRecords() {
         return records.values().stream()
@@ -211,7 +214,7 @@ public class AssignmentRecordService {
     }
 
     /**
-     * 获取失败的分配记录
+     * 鑾峰彇澶辫触鐨勫垎閰嶈褰?
      */
     public List<AssignmentRecord> getFailedRecords() {
         return records.values().stream()
@@ -220,7 +223,7 @@ public class AssignmentRecordService {
     }
 
     /**
-     * 获取规则不匹配的记录
+     * 鑾峰彇瑙勫垯涓嶅尮閰嶇殑璁板綍
      */
     public List<AssignmentRecord> getRuleNotMatchRecords() {
         return records.values().stream()
@@ -229,7 +232,7 @@ public class AssignmentRecordService {
     }
 
     /**
-     * 获取冲突记录
+     * 鑾峰彇鍐茬獊璁板綍
      */
     public List<AssignmentRecord> getConflictRecords() {
         return records.values().stream()
@@ -238,7 +241,7 @@ public class AssignmentRecordService {
     }
 
     /**
-     * 生成分配统计报告
+     * 鐢熸垚鍒嗛厤缁熻鎶ュ憡
      */
     public Map<String, Object> generateAssignmentReport() {
         Map<String, Object> report = new HashMap<>();
@@ -256,12 +259,12 @@ public class AssignmentRecordService {
         report.put("conflictCount", conflictCount);
         report.put("successRate", totalRecords > 0 ? (double) successCount / totalRecords : 0.0);
 
-        // 按任务分组统计
+        // 鎸変换鍔″垎缁勭粺璁?
         Map<String, Long> taskStats = records.values().stream()
                 .collect(Collectors.groupingBy(AssignmentRecord::getTaskId, Collectors.counting()));
         report.put("taskStats", taskStats);
 
-        // 按设备分组统计
+        // 鎸夎澶囧垎缁勭粺璁?
         Map<String, Long> deviceStats = records.values().stream()
                 .collect(Collectors.groupingBy(AssignmentRecord::getDeviceId, Collectors.counting()));
         report.put("deviceStats", deviceStats);
@@ -270,12 +273,12 @@ public class AssignmentRecordService {
     }
 
     /**
-     * 检测重复/冲突绑定
+     * 妫€娴嬮噸澶?鍐茬獊缁戝畾
      */
     public List<Map<String, Object>> detectConflicts() {
         List<Map<String, Object>> conflicts = new ArrayList<>();
 
-        // 检测同一设备在同一时间段的重复分配
+        // 妫€娴嬪悓涓€璁惧鍦ㄥ悓涓€鏃堕棿娈电殑閲嶅鍒嗛厤
         Map<String, List<AssignmentRecord>> deviceRecords = records.values().stream()
                 .collect(Collectors.groupingBy(AssignmentRecord::getDeviceId));
 
@@ -283,10 +286,10 @@ public class AssignmentRecordService {
             String deviceId = entry.getKey();
             List<AssignmentRecord> deviceRecordList = entry.getValue();
 
-            // 按时间排序
+            // 鎸夋椂闂存帓搴?
             deviceRecordList.sort(Comparator.comparing(AssignmentRecord::getAssignTime));
 
-            // 检查是否有时间重叠的成功分配
+            // 妫€鏌ユ槸鍚︽湁鏃堕棿閲嶅彔鐨勬垚鍔熷垎閰?
             for (int i = 0; i < deviceRecordList.size() - 1; i++) {
                 AssignmentRecord current = deviceRecordList.get(i);
                 AssignmentRecord next = deviceRecordList.get(i + 1);
@@ -294,9 +297,9 @@ public class AssignmentRecordService {
                 if (AssignmentResult.SUCCESS.equals(current.getResult()) &&
                         AssignmentResult.SUCCESS.equals(next.getResult())) {
 
-                    // 检查时间间隔是否过短（可能存在冲突）
+                    // 妫€鏌ユ椂闂撮棿闅旀槸鍚﹁繃鐭紙鍙兘瀛樺湪鍐茬獊锛?
                     long timeDiff = java.time.Duration.between(current.getAssignTime(), next.getAssignTime()).toMinutes();
-                    if (timeDiff < 5) { // 5分钟内重复分配视为潜在冲突
+                    if (timeDiff < 5) { // 5鍒嗛挓鍐呴噸澶嶅垎閰嶈涓烘綔鍦ㄥ啿绐?
                         Map<String, Object> conflict = new HashMap<>();
                         conflict.put("deviceId", deviceId);
                         conflict.put("conflictType", "TIME_OVERLAP");

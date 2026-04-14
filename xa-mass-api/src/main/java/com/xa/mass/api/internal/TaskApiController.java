@@ -1,37 +1,63 @@
 package com.xa.mass.api.internal;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.model.TaskCreateRequestDto;
 import com.xa.mass.engine.model.TaskResumeResult;
-import com.xa.mass.engine.model.TaskStateValidationResult;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/status/api/tasks")
 public class TaskApiController {
+    private static final Set<String> SUPPORTED_TASK_CREATE_FIELDS = Set.of(
+            "userId",
+            "project",
+            "taskName",
+            "textContent",
+            "targetList",
+            "countryCode",
+            "batchSize"
+    );
+    private static final Set<String> SUPPORTED_TASK_UPDATE_FIELDS = Set.of(
+            "userId",
+            "project",
+            "taskName",
+            "textContent",
+            "countryCode",
+            "batchSize"
+    );
+    private static final Set<TaskStatus> EDITABLE_TASK_STATUSES = Set.of(TaskStatus.NEW, TaskStatus.BLOCKED);
+
     @Autowired
     private TaskManager taskManager;
 
+    @Autowired
+    private ObjectMapper objectMapper;
+
     @PostMapping("")
-    public ResponseEntity<?> createTask(@RequestBody TaskCreateRequestDto request) {
+    public ResponseEntity<?> createTask(@RequestBody Map<String, Object> requestBody) {
         try {
+            TaskCreateRequestDto request = parseTaskRequest(requestBody, SUPPORTED_TASK_CREATE_FIELDS, "task create");
             Task task = taskManager.createTask(request);
-            return ResponseEntity.ok(java.util.Map.of(
+            return ResponseEntity.ok(Map.of(
                     "success", true,
-                    "message", "任务创建成功",
+                    "message", "Task created",
                     "taskId", task.getTid()
             ));
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body(java.util.Map.of(
+            return ResponseEntity.badRequest().body(Map.of(
                     "success", false,
-                    "message", "任务创建失败: " + e.getMessage()
+                    "message", "Task create failed: " + e.getMessage()
             ));
         }
     }
@@ -40,24 +66,24 @@ public class TaskApiController {
     public ResponseEntity<?> getTask(@PathVariable String taskId) {
         try {
             Task task = taskManager.getTask(taskId);
-            if (task != null) {
-                java.util.List<TaskMsg> msgs = taskManager.getTaskMessages(taskId);
-                java.util.List<String> targetList = msgs.stream()
-                        .map(TaskMsg::getTarget)
-                        .collect(Collectors.toList());
-                return ResponseEntity.ok(java.util.Map.of(
-                        "success", true,
-                        "task", task,
-                        "targetList", targetList,
-                        "stateValidation", taskManager.validateTaskState(taskId)
-                ));
-            } else {
+            if (task == null) {
                 return ResponseEntity.notFound().build();
             }
+
+            List<TaskMsg> msgs = taskManager.getTaskMessages(taskId);
+            List<String> targetList = msgs.stream()
+                    .map(TaskMsg::getTarget)
+                    .collect(Collectors.toList());
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "task", task,
+                    "targetList", targetList,
+                    "stateValidation", taskManager.validateTaskState(taskId)
+            ));
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body(java.util.Map.of(
+            return ResponseEntity.badRequest().body(Map.of(
                     "success", false,
-                    "message", "获取任务失败: " + e.getMessage()
+                    "message", "Task lookup failed: " + e.getMessage()
             ));
         }
     }
@@ -82,27 +108,29 @@ public class TaskApiController {
 
             Task updatedTask = taskManager.getTask(taskId);
             if (success && updatedTask != null) {
-                return ResponseEntity.ok(java.util.Map.of(
+                return ResponseEntity.ok(Map.of(
                         "success", true,
-                        "message", "任务状态更新成功",
+                        "message", "Task status updated",
                         "newStatus", updatedTask.getStatus().name()
                 ));
             }
 
-            return ResponseEntity.badRequest().body(java.util.Map.of(
+            return ResponseEntity.badRequest().body(Map.of(
                     "success", false,
-                    "message", "当前任务状态不允许更新为 " + status.name()
+                    "message", "Task cannot transition to status " + status.name()
             ));
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body(java.util.Map.of(
+            return ResponseEntity.badRequest().body(Map.of(
                     "success", false,
-                    "message", "更新任务状态失败: " + e.getMessage()
+                    "message", "Task status update failed: " + e.getMessage()
             ));
         }
     }
 
     @PostMapping("/{taskId}/audit")
-    public ResponseEntity<?> auditTask(@PathVariable String taskId, @RequestParam String approved, @RequestParam(required = false) String comment) {
+    public ResponseEntity<?> auditTask(@PathVariable String taskId,
+                                       @RequestParam String approved,
+                                       @RequestParam(required = false) String comment) {
         try {
             Task task = taskManager.getTask(taskId);
             if (task == null) {
@@ -116,21 +144,21 @@ public class TaskApiController {
             Task updatedTask = taskManager.getTask(taskId);
 
             if (success && updatedTask != null) {
-                return ResponseEntity.ok(java.util.Map.of(
+                return ResponseEntity.ok(Map.of(
                         "success", true,
-                        "message", isApproved ? "任务审核通过" : "任务审核拒绝",
+                        "message", isApproved ? "Task approved" : "Task rejected",
                         "newStatus", updatedTask.getStatus().name()
                 ));
             }
 
-            return ResponseEntity.badRequest().body(java.util.Map.of(
+            return ResponseEntity.badRequest().body(Map.of(
                     "success", false,
-                    "message", "当前任务状态不允许审核"
+                    "message", "Task cannot be audited from the current state"
             ));
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body(java.util.Map.of(
+            return ResponseEntity.badRequest().body(Map.of(
                     "success", false,
-                    "message", "任务审核失败: " + e.getMessage()
+                    "message", "Task audit failed: " + e.getMessage()
             ));
         }
     }
@@ -144,20 +172,20 @@ public class TaskApiController {
             }
 
             if (taskManager.pauseTask(taskId)) {
-                return ResponseEntity.ok(java.util.Map.of(
+                return ResponseEntity.ok(Map.of(
                         "success", true,
-                        "message", "任务已暂停"
+                        "message", "Task paused"
                 ));
             }
 
-            return ResponseEntity.badRequest().body(java.util.Map.of(
+            return ResponseEntity.badRequest().body(Map.of(
                     "success", false,
-                    "message", "当前任务状态不允许暂停"
+                    "message", "Task cannot be paused from the current state"
             ));
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body(java.util.Map.of(
+            return ResponseEntity.badRequest().body(Map.of(
                     "success", false,
-                    "message", "暂停任务失败: " + e.getMessage()
+                    "message", "Task pause failed: " + e.getMessage()
             ));
         }
     }
@@ -173,9 +201,9 @@ public class TaskApiController {
             TaskResumeResult result = taskManager.resumeTaskDetailed(taskId);
             if (result.isSuccess()) {
                 String message = result.getOutcome() == TaskResumeResult.Outcome.COMPLETED_TO_TERMINAL
-                        ? "任务在暂停期间已完成，直接收口为终态"
-                        : "任务已恢复";
-                return ResponseEntity.ok(java.util.Map.of(
+                        ? "Task already completed while paused and was closed to TERMINAL"
+                        : "Task resumed";
+                return ResponseEntity.ok(Map.of(
                         "success", true,
                         "message", message,
                         "newStatus", result.getStatus().name(),
@@ -183,14 +211,14 @@ public class TaskApiController {
                 ));
             }
 
-            return ResponseEntity.badRequest().body(java.util.Map.of(
+            return ResponseEntity.badRequest().body(Map.of(
                     "success", false,
-                    "message", "当前任务状态不允许恢复"
+                    "message", "Task cannot be resumed from the current state"
             ));
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body(java.util.Map.of(
+            return ResponseEntity.badRequest().body(Map.of(
                     "success", false,
-                    "message", "恢复任务失败: " + e.getMessage()
+                    "message", "Task resume failed: " + e.getMessage()
             ));
         }
     }
@@ -204,20 +232,20 @@ public class TaskApiController {
             }
 
             if (taskManager.cancelTask(taskId)) {
-                return ResponseEntity.ok(java.util.Map.of(
+                return ResponseEntity.ok(Map.of(
                         "success", true,
-                        "message", "任务已中止"
+                        "message", "Task terminated"
                 ));
             }
 
-            return ResponseEntity.badRequest().body(java.util.Map.of(
+            return ResponseEntity.badRequest().body(Map.of(
                     "success", false,
-                    "message", "当前任务状态不允许中止"
+                    "message", "Task cannot be terminated from the current state"
             ));
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body(java.util.Map.of(
+            return ResponseEntity.badRequest().body(Map.of(
                     "success", false,
-                    "message", "中止任务失败: " + e.getMessage()
+                    "message", "Task terminate failed: " + e.getMessage()
             ));
         }
     }
@@ -229,74 +257,93 @@ public class TaskApiController {
             if (task == null) {
                 return ResponseEntity.notFound().build();
             }
+
             boolean deleted = taskManager.deleteTask(taskId);
             if (deleted) {
-                return ResponseEntity.ok(java.util.Map.of(
+                return ResponseEntity.ok(Map.of(
                         "success", true,
-                        "message", "任务删除成功"
-                ));
-            } else {
-                return ResponseEntity.badRequest().body(java.util.Map.of(
-                        "success", false,
-                        "message", "任务删除失败：当前状态 " + task.getStatus().name() + " 不允许删除"
+                        "message", "Task deleted"
                 ));
             }
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(java.util.Map.of(
+
+            return ResponseEntity.badRequest().body(Map.of(
                     "success", false,
-                    "message", "删除任务失败: " + e.getMessage()
+                    "message", "Task delete failed: current status " + task.getStatus().name() + " cannot be deleted"
+            ));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "message", "Task delete failed: " + e.getMessage()
             ));
         }
     }
 
     @PutMapping("/{taskId}")
-    public ResponseEntity<?> updateTask(@PathVariable String taskId, @RequestBody TaskCreateRequestDto request) {
+    public ResponseEntity<?> updateTask(@PathVariable String taskId, @RequestBody Map<String, Object> requestBody) {
         try {
             Task task = taskManager.getTask(taskId);
-            if (task != null) {
-                task.setTaskName(request.getTaskName());
-                task.setProject(request.getProject());
-                task.setTaskCountry(request.getCountryCode());
-                task.setTextContent(request.getTextContent());
-                if (task.getUser() != null) {
-                    task.getUser().setName(request.getUserId());
-                }
-                // Task does not have setTargetList; batch size can be set directly
-                if (request.getBatchSize() > 0) {
-                    task.setBatchSize(request.getBatchSize());
-                }
-                taskManager.updateTask(task);
-                return ResponseEntity.ok(java.util.Map.of(
-                        "success", true,
-                        "message", "任务信息已更新"
-                ));
-            } else {
+            if (task == null) {
                 return ResponseEntity.notFound().build();
             }
+            if (!EDITABLE_TASK_STATUSES.contains(task.getStatus())) {
+                throw new IllegalStateException("Only NEW or BLOCKED tasks can be updated");
+            }
+
+            TaskCreateRequestDto request = parseTaskRequest(requestBody, SUPPORTED_TASK_UPDATE_FIELDS, "task update");
+            task.setTaskName(request.getTaskName());
+            task.setProject(request.getProject());
+            task.setTaskRoutingCountryCode(request.getCountryCode());
+            task.setTextContent(request.getTextContent());
+            if (task.getUser() != null) {
+                task.getUser().setName(request.getUserId());
+            }
+            if (request.getBatchSize() > 0) {
+                task.setBatchSize(request.getBatchSize());
+            }
+            taskManager.updateTask(task);
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "message", "Task updated"
+            ));
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body(java.util.Map.of(
+            return ResponseEntity.badRequest().body(Map.of(
                     "success", false,
-                    "message", "更新任务失败: " + e.getMessage()
+                    "message", "Task update failed: " + e.getMessage()
             ));
         }
     }
 
-    /**
-     * 分页获取任务消息
-     */
+    private TaskCreateRequestDto parseTaskRequest(Map<String, Object> requestBody,
+                                                  Set<String> supportedFields,
+                                                  String operationName) {
+        if (requestBody == null || requestBody.isEmpty()) {
+            throw new IllegalArgumentException("task request body is required");
+        }
+
+        List<String> unknownFields = requestBody.keySet().stream()
+                .filter(field -> !supportedFields.contains(field))
+                .sorted()
+                .collect(Collectors.toList());
+        if (!unknownFields.isEmpty()) {
+            throw new IllegalArgumentException("Unsupported " + operationName + " fields: " + String.join(", ", unknownFields));
+        }
+
+        return objectMapper.convertValue(requestBody, TaskCreateRequestDto.class);
+    }
+
     @GetMapping("/{taskId}/messages")
-    public java.util.Map<String, Object> getTaskMessages(
-            @PathVariable String taskId,
-            @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "20") int size
-    ) {
-        if (size > 500) size = 500;
-        java.util.List<TaskMsg> all = taskManager.getTaskMessages(taskId);
+    public Map<String, Object> getTaskMessages(@PathVariable String taskId,
+                                               @RequestParam(defaultValue = "1") int page,
+                                               @RequestParam(defaultValue = "20") int size) {
+        if (size > 500) {
+            size = 500;
+        }
+        List<TaskMsg> all = taskManager.getTaskMessages(taskId);
         int total = all.size();
         int from = Math.max(0, (page - 1) * size);
         int to = Math.min(from + size, total);
-        java.util.List<TaskMsg> pageList = from < to ? all.subList(from, to) : java.util.Collections.emptyList();
-        return java.util.Map.of(
+        List<TaskMsg> pageList = from < to ? all.subList(from, to) : java.util.Collections.emptyList();
+        return Map.of(
                 "success", true,
                 "total", total,
                 "page", page,
@@ -304,4 +351,4 @@ public class TaskApiController {
                 "messages", pageList
         );
     }
-} 
+}

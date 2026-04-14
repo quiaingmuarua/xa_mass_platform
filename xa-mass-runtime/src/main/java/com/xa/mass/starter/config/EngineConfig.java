@@ -18,7 +18,7 @@ import java.nio.file.Path;
 import java.util.Map;
 
 /**
- * 引擎配置类
+ * Runtime engine configuration.
  */
 public class EngineConfig {
     private boolean enabled = true;
@@ -27,24 +27,16 @@ public class EngineConfig {
     private boolean mockMode = true;
     private JsonObject mockConfigRoot;
     private String deviceConfigPath = "mock/mock_devices.json";
+    private String tokenConfigPath = "mock/mock_tokens.json";
     private String taskConfigPath = "mock/mock_tasks.json";
     private String ruleConfigPath = "mock/mock_rules.json";
 
-    // 引擎核心组件配置
     private SimpleTaskScheduler scheduler = new SimpleTaskScheduler();
     private TaskManager taskManager = new TaskManager(scheduler);
     private DeviceManager deviceManager = new DeviceManager();
     private AssignmentRecordService recordService = new AssignmentRecordService();
     private RuleManager<Map<String, Object>> ruleManager = RuleManagerFactory.getProjectRuleManager("demoApp");
     private TaskMsgDispatchListener taskMsgDispatchListener;
-
-    // 默认 mock 配置
-    private static String getDefaultMockConfig() {
-        return "{\n" +
-                "  \"devices\": " + com.xa.mass.engine.monkey.MonkeyGenerator.exampleJsonDsl() + ",\n" +
-                "  \"tasks\": " + com.xa.mass.engine.monkey.MonkeyGenerator.exampleTasksJsonDsl() + "\n" +
-                "}";
-    }
 
     public boolean isEnabled() {
         return enabled;
@@ -86,6 +78,14 @@ public class EngineConfig {
         this.deviceConfigPath = deviceConfigPath;
     }
 
+    public String getTokenConfigPath() {
+        return tokenConfigPath;
+    }
+
+    public void setTokenConfigPath(String tokenConfigPath) {
+        this.tokenConfigPath = tokenConfigPath;
+    }
+
     public String getTaskConfigPath() {
         return taskConfigPath;
     }
@@ -106,28 +106,12 @@ public class EngineConfig {
         if (mockConfigRoot != null) {
             return mockConfigRoot.deepCopy();
         }
+
         JsonObject root = new JsonObject();
-        // 读取设备
-        try {
-            String deviceJson = readConfigFile(deviceConfigPath);
-            root.add("devices", JsonParser.parseString(deviceJson).getAsJsonArray());
-        } catch (Exception e) {
-            // 处理异常或用默认
-        }
-        // 读取任务
-        try {
-            String taskJson = readConfigFile(taskConfigPath);
-            root.add("tasks", JsonParser.parseString(taskJson).getAsJsonArray());
-        } catch (Exception e) {
-            // 处理异常或用默认
-        }
-        // 读取规则
-        try {
-            String ruleJson = readConfigFile(ruleConfigPath);
-            root.add("rules", JsonParser.parseString(ruleJson).getAsJsonArray());
-        } catch (Exception e) {
-            // 处理异常或用默认
-        }
+        addArrayConfig(root, "devices", deviceConfigPath);
+        addArrayConfig(root, "tokens", tokenConfigPath);
+        addArrayConfig(root, "tasks", taskConfigPath);
+        addArrayConfig(root, "rules", ruleConfigPath);
         return root;
     }
 
@@ -135,12 +119,19 @@ public class EngineConfig {
         this.mockConfigRoot = mockConfigRoot;
     }
 
+    private void addArrayConfig(JsonObject root, String fieldName, String configPath) {
+        try {
+            String json = readConfigFile(configPath);
+            root.add(fieldName, JsonParser.parseString(json).getAsJsonArray());
+        } catch (Exception ignored) {
+            // Optional mock inputs may be absent.
+        }
+    }
+
     /**
-     * 读取配置文件内容
-     * 支持 classpath 路径和文件系统路径
+     * Reads config content from classpath or filesystem.
      */
     private String readConfigFile(String configPath) throws IOException {
-        // 首先尝试从 classpath 读取
         if (configPath.startsWith("classpath:")) {
             String classpathPath = configPath.substring("classpath:".length());
             try (InputStream is = getClass().getClassLoader().getResourceAsStream(classpathPath)) {
@@ -148,23 +139,19 @@ public class EngineConfig {
                     return new String(is.readAllBytes(), StandardCharsets.UTF_8);
                 }
             }
-            // classpath 中没有找到，抛出异常
             throw new IOException("Config file not found in classpath: " + classpathPath);
-        } else {
-            // 尝试从 classpath 读取（不带 classpath: 前缀）
-            try (InputStream is = getClass().getClassLoader().getResourceAsStream(configPath)) {
-                if (is != null) {
-                    return new String(is.readAllBytes(), StandardCharsets.UTF_8);
-                }
-            }
+        }
 
-            // 如果 classpath 中没有找到，尝试从文件系统读取
-            try {
-                return Files.readString(Path.of(configPath));
-            } catch (IOException e) {
-                // 文件系统读取失败，抛出异常
-                throw new IOException("Config file not found in classpath or file system: " + configPath, e);
+        try (InputStream is = getClass().getClassLoader().getResourceAsStream(configPath)) {
+            if (is != null) {
+                return new String(is.readAllBytes(), StandardCharsets.UTF_8);
             }
+        }
+
+        try {
+            return Files.readString(Path.of(configPath));
+        } catch (IOException e) {
+            throw new IOException("Config file not found in classpath or file system: " + configPath, e);
         }
     }
 
@@ -174,7 +161,6 @@ public class EngineConfig {
 
     public void setScheduler(SimpleTaskScheduler scheduler) {
         this.scheduler = scheduler;
-        // 级联更新 taskManager
         if (this.taskManager == null || this.taskManager.getScheduler() != scheduler) {
             this.taskManager = new TaskManager(scheduler);
         }

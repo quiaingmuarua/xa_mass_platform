@@ -1,6 +1,6 @@
 # Task Execution Flow
 
-Last updated: 2026-04-13
+Last updated: 2026-04-14
 
 This document describes only the verified mainline runtime path. It does not describe historical `v2` design ideas.
 
@@ -52,13 +52,15 @@ Key implementation facts:
 - `TaskAssignWorker` no longer depends on `mockMode=true`
 - `MassEngine` resubmits existing `READY` tasks on startup
 - both `approveTask()` and `resumeTask()` produce READY events
+- `DeviceMatchContext` now exposes nested `deviceAttributes` and `tokenAttributes` maps to QLExpress rules
+- `Device.attributes` and `Token.attributes` are auxiliary rule labels only; lifecycle and scheduling truth still come from strong fields and persisted state
 
 ## 3. Mock Preconditions for Assignment
 
 `MassApplication.loadMockData(...)` now fills the minimum device prerequisites needed for assignment:
 
 - normalizes `supportedProjects` into `Project` enums
-- lowercases `groupId`
+- lowercases `deviceGroupId`
 - auto-creates a `LOGIN_READY` token when the device does not already have one
 
 This fixed the previous false symptom where approved tasks stayed in `READY` because the mock devices did not satisfy project/token matching requirements.
@@ -95,8 +97,11 @@ The current verified API-first happy path is:
 
 Observed verified outcomes:
 
+- `taskTargetNumber` is the initial persisted target count created from `targetList`
+- `taskEligibleNumber` is the count currently included in progress/statistical aggregation
 - `scheduleDeviceCnt` is updated from real assignment results
-- `taskExecutedNumber` is updated from real message completion results
+- `taskSuccessNumber` is updated from real message completion results
+- `taskNonSuccessNumber` tracks eligible message rows that are still not `SUCCESS`
 - persisted `TaskMsg` rows contain `deviceId`, `tokenId`, and `batchId`
 
 ## 6. Key Code Locations

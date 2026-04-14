@@ -38,13 +38,15 @@ Working rule:
 - The current mainline reactor is defined by the root `pom.xml`: `xa-mass-api`, `xa-mass-core`, `xa-mass-engine`, `xa-mass-gateway`, `xa-mass-runtime`, `xa-mass-mock`
 - `xa-mass-base` and `xa-mass-starter` still exist as top-level directories but are not current root-reactor modules
 - The project is library/SDK-first; backend pages and HTTP endpoints are validation surfaces
+- Mainline acceptance is end-to-end integration-test-driven through `xa-mass-mock`; unit tests are support coverage, not the primary acceptance gate
 - API-first task flow is the current mainline truth
 - `com.xa.mass.engine` is the active engine path
 - `xa-mass-engine/archive/v2/` is historical experiment code, not the current mainline
 - EventBus mainline has converged onto `com.xa.mass.base.channel.eventbus.core` and `com.xa.mass.base.channel.eventbus.event`
 - API integration coverage includes terminate-from-running and delete-after-terminal after real assignment but before downstream callbacks
 - API integration coverage also proves that paused tasks can still close to terminal when real callbacks arrive after pause
-- `TaskManager.createTask()` is now fail-fast in the mainline runtime: it requires a materialized `targetList`, rejects non-empty `targetJsonList`, rejects unsupported `project` codes, and preserves request `batchSize`
+- `TaskManager.createTask()` is now fail-fast in the mainline runtime: it accepts only `userId`, `project`, `taskName`, `textContent`, `targetList`, `countryCode`, and `batchSize`; it rejects empty `targetList`, unsupported `project` codes, and unknown JSON fields such as retired `targetJsonList`, `targetType`, and `extraParams`
+- `PUT /status/api/tasks/{taskId}` is now metadata-only: it accepts `userId`, `project`, `taskName`, `textContent`, `countryCode`, and `batchSize`; it rejects `targetList` / other unknown fields and only allows edits while a task is still `NEW` or `BLOCKED`
 - Engine regression coverage now locks two important closure rules:
   - paused tasks must close to terminal once all persisted message callbacks are final
   - ready tasks without a current device match must stay in the assignment loop through retry
@@ -53,6 +55,7 @@ Working rule:
   - late callbacks must not mutate a task that was already closed to `TERMINAL`
 - `Task` now carries `terminalReason`, so `TERMINAL` can be interpreted as manual cancel, all-success completion, all-failed completion, or mixed-result completion
 - `TaskManager.validateTaskState(...)` now gives an explicit state-audit result for `Task + TaskMsg` consistency and whether a non-final task still needs terminal closure
+- `Device.attributes` and `Token.attributes` now exist as read-only auxiliary rule labels; they are for matching and diagnostics only, not lifecycle truth
 
 ## 3. Module Facts
 
@@ -61,6 +64,7 @@ Working rule:
 - real Spring Boot shell
 - wires `api + runtime + gateway + engine`
 - best place for end-to-end lifecycle verification
+- integration tests are now grouped by domain under `src/test/java/com/xa/mass/mock/e2e/{lifecycle,results,assignment,audit}`
 
 ### `xa-mass-runtime`
 
@@ -116,6 +120,7 @@ Working rule:
 
 - task-to-device selection should extend through engine strategy interfaces
 - `RuleBasedTaskDeviceMatchingStrategy` is the current default implementation
+- `DeviceMatchContext` now exposes nested `deviceAttributes` and `tokenAttributes` maps to rules
 - a no-match assignment attempt should be treated as retryable backlog, not as a terminal dequeue
 - a successful device match is still not enough to dispatch if the task status changed away from `READY` during the matching window
 

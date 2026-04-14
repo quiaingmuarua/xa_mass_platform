@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(mvn test:*)",
-      "Bash(mvn install:*)"
+      "Bash(mvn install:*)",
+      "Bash(xargs grep:*)"
     ]
   }
 }

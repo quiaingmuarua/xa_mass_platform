@@ -81,8 +81,9 @@ class SimpleTaskMsgAssignListenerTest {
                 stored.stream().map(TaskMsg::getBatchId).collect(Collectors.toList()));
 
         verify(recordService, times(4)).recordMessageAssignment(
-                any(), any(), any(), anyString(), anyString(), any(), anyString()
+                any(), any(), any(), anyString(), anyString(), any(), anyString(), anyBoolean()
         );
+        verify(deviceManager, times(4)).isLocked(anyString());
     }
 
     @Test
@@ -95,8 +96,9 @@ class SimpleTaskMsgAssignListenerTest {
         List<TaskMsg> stored = taskManager.getTaskMessages(task.getTid());
         assertTrue(stored.stream().allMatch(msg -> msg.getTokenId() == null));
         verify(recordService, times(2)).recordMessageAssignment(
-                any(), any(), isNull(), anyString(), anyString(), any(), anyString()
+                any(), any(), isNull(), anyString(), anyString(), any(), anyString(), anyBoolean()
         );
+        verify(deviceManager, times(2)).isLocked("d1");
     }
 
     @Test

@@ -1,13 +1,6 @@
-package com.xa.mass.mock.api;
+package com.xa.mass.mock.e2e.lifecycle;
 
-import com.xa.mass.base.enums.Project;
-import com.xa.mass.base.enums.device.DeviceStatus;
-import com.xa.mass.base.enums.task.TokenStatus;
-import com.xa.mass.base.model.Device;
-import com.xa.mass.base.model.Token;
-import com.xa.mass.engine.DeviceManager;
 import com.xa.mass.mock.MockApplicationSpringBootApp;
-import com.xa.mass.mock.client.MassWebSocketClientImpl;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -23,14 +16,13 @@ import org.springframework.test.context.DynamicPropertySource;
 
 import java.io.IOException;
 import java.net.ServerSocket;
-import java.net.URI;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SpringBootTest(
@@ -38,14 +30,16 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = {
                 "mock.client.auto-start=false",
-                "mass.mock.data.devices=mock/test_mock_devices_empty.json",
+                "mock.client.devices-config=mock/test_mock_devices.json",
+                "mass.mock.data.devices=mock/test_mock_devices.json",
+                "mass.mock.data.tokens=mock/test_mock_tokens.json",
                 "mass.mock.data.tasks=mock/test_mock_tasks.json",
                 "mass.mock.data.rules=mock/test_mock_rules.json"
         }
 )
 @ActiveProfiles("dev")
 @DirtiesContext
-class TaskApiDelayedDeviceAvailabilityIntegrationTest {
+class TaskApiTerminateRunningIntegrationTest {
 
     private static final int WEBSOCKET_PORT = findFreePort();
 
@@ -60,85 +54,74 @@ class TaskApiDelayedDeviceAvailabilityIntegrationTest {
     @Autowired
     private TestRestTemplate restTemplate;
 
-    @Autowired
-    private DeviceManager deviceManager;
-
     @Test
-    void readyTaskAdvancesAfterNewMatchingDeviceBecomesAvailable() throws Exception {
-        String taskId = createTask("delayed-device", "target-a");
+    void terminateStopsTaskAfterAssignmentButBeforeAnyClientResult() throws Exception {
+        String taskId = createTask("terminate-running");
 
-        Map<String, Object> auditResponse = exchange(
-                "/status/api/tasks/" + taskId + "/audit?approved=true&comment=delayed-device",
+        Map<String, Object> approveResponse = exchange(
+                "/status/api/tasks/" + taskId + "/audit?approved=true&comment=approve",
                 HttpMethod.POST,
                 null
         );
-        assertEquals(Boolean.TRUE, auditResponse.get("success"));
+        assertEquals(Boolean.TRUE, approveResponse.get("success"));
 
-        TaskSnapshot readySnapshot = waitForTaskStatus(taskId, "READY", 8);
-        assertEquals(0, ((Number) readySnapshot.task().get("scheduleDeviceCnt")).intValue());
-        assertEquals(1, readySnapshot.messages().size());
-        assertEquals("INIT", readySnapshot.messages().get(0).get("status"));
+        TaskSnapshot runningSnapshot = waitForTaskSnapshot(taskId, "RUNNING");
+        assertEquals(2, ((Number) runningSnapshot.task().get("scheduleDeviceCnt")).intValue());
+        assertEquals(0, ((Number) runningSnapshot.task().get("taskSuccessNumber")).intValue());
+        assertEquals(2, runningSnapshot.messages().size());
+        assertTrue(runningSnapshot.messages().stream().allMatch(message -> "SENT".equals(message.get("status"))));
 
-        String deviceId = "late-device-0";
-        addMatchingDevice(deviceId);
+        Map<String, Object> terminateResponse = exchange(
+                "/status/api/tasks/" + taskId + "/terminate",
+                HttpMethod.POST,
+                null
+        );
+        assertEquals(Boolean.TRUE, terminateResponse.get("success"));
 
-        URI uri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
-        MassWebSocketClientImpl client = new MassWebSocketClientImpl(uri, deviceId);
-        try {
-            assertTrue(client.connectBlocking(), "late device client failed to connect");
+        TaskSnapshot terminalSnapshot = waitForTaskSnapshot(taskId, "TERMINAL");
+        assertEquals("TERMINAL", terminalSnapshot.task().get("status"));
+        assertEquals(0, ((Number) terminalSnapshot.task().get("taskSuccessNumber")).intValue());
+        assertEquals(2, terminalSnapshot.messages().size());
+        assertTrue(terminalSnapshot.messages().stream().allMatch(message -> "EXPIRED".equals(message.get("status"))));
 
-            TaskSnapshot terminalSnapshot = waitForTaskStatus(taskId, "TERMINAL", 20);
-            assertEquals("TERMINAL", terminalSnapshot.task().get("status"));
-            assertEquals("ALL_MESSAGES_SUCCEEDED", terminalSnapshot.task().get("terminalReason"));
-            assertEquals(1, ((Number) terminalSnapshot.task().get("scheduleDeviceCnt")).intValue());
-            assertEquals(1, ((Number) terminalSnapshot.task().get("taskExecutedNumber")).intValue());
-            assertEquals(1, terminalSnapshot.messages().size());
+        Map<String, Object> deleteResponse = exchange(
+                "/status/api/tasks/" + taskId,
+                HttpMethod.DELETE,
+                null
+        );
+        assertEquals(Boolean.TRUE, deleteResponse.get("success"));
 
-            Map<String, Object> message = terminalSnapshot.messages().get(0);
-            assertEquals("SUCCESS", message.get("status"));
-            assertEquals(deviceId, message.get("deviceId"));
-            assertNotNull(message.get("tokenId"));
-            assertNotNull(message.get("batchId"));
-        } finally {
-            client.disconnect();
-        }
+        ResponseEntity<Map> deletedTaskResponse = restTemplate.exchange(
+                "http://127.0.0.1:" + port + "/status/api/tasks/" + taskId,
+                HttpMethod.GET,
+                HttpEntity.EMPTY,
+                Map.class
+        );
+        assertEquals(404, deletedTaskResponse.getStatusCode().value());
+        assertNull(deletedTaskResponse.getBody());
     }
 
-    private void addMatchingDevice(String deviceId) {
-        Device device = new Device();
-        device.setDeviceId(deviceId);
-        device.setGroupId("us");
-        device.setStatus(DeviceStatus.ONLINE);
-        device.setSupportedProjects(List.of(Project.DEMO_APP));
-        deviceManager.addDevice(device);
-
-        Token token = new Token();
-        token.setTokenId("token-" + deviceId);
-        token.setDeviceId(deviceId);
-        token.setChannel("us");
-        token.setStatus(TokenStatus.LOGIN_READY);
-        deviceManager.addToken(deviceId, token);
-    }
-
-    private String createTask(String taskName, String target) {
+    private String createTask(String taskName) {
         Map<String, Object> createBody = new LinkedHashMap<>();
         createBody.put("taskName", taskName);
         createBody.put("project", "demoApp");
         createBody.put("countryCode", "us");
-        createBody.put("textContent", "delayed device availability integration");
+        createBody.put("textContent", "terminate running integration");
         createBody.put("userId", "itest");
-        createBody.put("targetList", List.of(target));
+        createBody.put("targetList", List.of("target-a", "target-b"));
         createBody.put("batchSize", 1);
 
         Map<String, Object> createResponse = exchange("/status/api/tasks", HttpMethod.POST, createBody);
         assertEquals(Boolean.TRUE, createResponse.get("success"));
+
         String taskId = String.valueOf(createResponse.get("taskId"));
         assertFalse(taskId.isBlank());
+        assertEquals("NEW", task(taskId).get("status"));
         return taskId;
     }
 
-    private TaskSnapshot waitForTaskStatus(String taskId, String expectedStatus, int maxAttempts) throws InterruptedException {
-        for (int i = 0; i < maxAttempts; i++) {
+    private TaskSnapshot waitForTaskSnapshot(String taskId, String expectedStatus) throws InterruptedException {
+        for (int i = 0; i < 20; i++) {
             Map<String, Object> detailResponse = exchange("/status/api/tasks/" + taskId, HttpMethod.GET, null);
             Map<String, Object> messagesResponse = exchange(
                     "/status/api/tasks/" + taskId + "/messages?page=1&size=20",
@@ -150,9 +133,16 @@ class TaskApiDelayedDeviceAvailabilityIntegrationTest {
             if (expectedStatus.equals(task.get("status"))) {
                 return new TaskSnapshot(task, messages);
             }
-            Thread.sleep(500L);
+            Thread.sleep(250L);
         }
         throw new AssertionError("Task did not reach " + expectedStatus + " within timeout");
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> task(String taskId) {
+        Map<String, Object> detailResponse = exchange("/status/api/tasks/" + taskId, HttpMethod.GET, null);
+        assertEquals(Boolean.TRUE, detailResponse.get("success"));
+        return (Map<String, Object>) detailResponse.get("task");
     }
 
     @SuppressWarnings("unchecked")

@@ -15,11 +15,13 @@ import com.xa.mass.starter.config.GatewayConfig;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
@@ -29,7 +31,58 @@ import static org.mockito.Mockito.when;
 class MassApplicationLoadMockDataTest {
 
     @Test
-    void loadMockDataSeedsSupportedProjectsAndTokensForMockDevices() {
+    void loadMockDataUsesExplicitTokensWithoutDerivingRoutingSignalsFromDeviceGroup() {
+        TestHarness harness = createHarness();
+        MassApplication application = new MassApplication(
+                harness.engine(), 8088, "/ws", new GatewayConfig(), explicitTokenConfig()
+        );
+
+        application.loadMockData(harness.engine(), explicitTokenConfig());
+
+        List<Device> devices = harness.deviceManager().getAllDevices();
+        List<Token> tokens = harness.deviceManager().getAllTokens();
+
+        assertEquals(2, devices.size());
+        assertEquals(2, tokens.size());
+        assertEquals(1, harness.createdTasks().get());
+        assertTrue(devices.stream().allMatch(device -> device.supportsProject("demoApp")));
+        assertTrue(devices.stream().allMatch(device -> device.supportsProject("testApp")));
+
+        Token usToken = harness.deviceManager().getToken("device-us-1");
+        Token gbToken = harness.deviceManager().getToken("device-gb-1");
+        assertNotNull(usToken);
+        assertNotNull(gbToken);
+        assertEquals("route-us", usToken.getChannel());
+        assertEquals("route-gb", gbToken.getChannel());
+        assertEquals("us", usToken.getAttributes().get("country"));
+        assertEquals("gb", gbToken.getAttributes().get("country"));
+        assertEquals(TokenStatus.LOGIN_READY, usToken.getStatus());
+        assertEquals(TokenStatus.LOGIN_READY, gbToken.getStatus());
+    }
+
+    @Test
+    void loadMockDataSeedsMinimalTokensWhenExplicitTokenDataIsMissing() {
+        TestHarness harness = createHarness();
+        MassApplication application = new MassApplication(
+                harness.engine(), 8088, "/ws", new GatewayConfig(), fallbackSeedConfig()
+        );
+
+        application.loadMockData(harness.engine(), fallbackSeedConfig());
+
+        List<Device> devices = harness.deviceManager().getAllDevices();
+        List<Token> tokens = harness.deviceManager().getAllTokens();
+
+        assertEquals(2, devices.size());
+        assertEquals(devices.size(), tokens.size());
+        assertEquals(0, harness.createdTasks().get());
+        assertTrue(tokens.stream().allMatch(token -> token.getStatus() == TokenStatus.LOGIN_READY));
+        assertTrue(tokens.stream().allMatch(token -> token.getDeviceId() != null && token.getTokenId() != null));
+        assertTrue(tokens.stream().allMatch(token -> token.getChannel() == null));
+        assertTrue(tokens.stream().allMatch(token -> token.getAttributes().isEmpty()));
+        assertNull(harness.deviceManager().getToken("missing-device"));
+    }
+
+    private TestHarness createHarness() {
         DeviceManager deviceManager = new DeviceManager(new InMemoryDeviceStorage());
         MassEngine engine = mock(MassEngine.class);
         AtomicInteger createdTasks = new AtomicInteger();
@@ -50,40 +103,12 @@ class MassApplicationLoadMockDataTest {
             return new Task();
         }).when(engine).createTask(any(TaskCreateRequestDto.class));
 
-        EngineConfig engineConfig = new EngineConfig();
-        engineConfig.setMockConfigRoot(buildMockConfigRoot());
-        MassApplication application = new MassApplication(engine, 8088, "/ws", new GatewayConfig(), engineConfig);
-
-        application.loadMockData(engine, engineConfig);
-
-        List<Device> devices = deviceManager.getAllDevices();
-        List<Token> tokens = deviceManager.getAllTokens();
-
-        assertEquals(2, devices.size());
-        assertEquals(devices.size(), tokens.size());
-        assertEquals(1, createdTasks.get());
-        assertFalse(devices.isEmpty());
-
-        Device sampleDevice = devices.get(0);
-        assertNotNull(sampleDevice.getSupportedProjects());
-        assertFalse(sampleDevice.getSupportedProjects().isEmpty());
-        Project firstProject = sampleDevice.getSupportedProjects().get(0);
-        assertNotNull(firstProject);
-
-        assertTrue(devices.stream().allMatch(device ->
-                device.getSupportedProjects() != null && !device.getSupportedProjects().isEmpty()));
-        assertTrue(devices.stream().allMatch(device -> device.supportsProject("demoApp")));
-        assertTrue(devices.stream().allMatch(device -> device.supportsProject("testApp")));
-        assertTrue(tokens.stream().allMatch(token -> token.getStatus() == TokenStatus.LOGIN_READY));
-        assertTrue(tokens.stream().allMatch(token -> token.getDeviceId() != null && token.getTokenId() != null));
-        assertTrue(tokens.stream().allMatch(token -> {
-            Device device = deviceManager.getDevice(token.getDeviceId());
-            return device != null && device.getGroupId().equals(token.getChannel());
-        }));
+        return new TestHarness(engine, deviceManager, createdTasks);
     }
 
-    private JsonObject buildMockConfigRoot() {
-        String json = """
+    private EngineConfig explicitTokenConfig() {
+        EngineConfig engineConfig = new EngineConfig();
+        engineConfig.setMockConfigRoot(JsonParser.parseString("""
                 {
                   "devices": [
                     {
@@ -91,7 +116,7 @@ class MassApplicationLoadMockDataTest {
                       "COUNT": 1,
                       "FIELDS": {
                         "deviceId": "device-us-1",
-                        "groupId": "US",
+                        "deviceGroupId": "POOL-US",
                         "agentVersion": "1.0.0",
                         "status": "ONLINE",
                         "supportedProjects": ["demoApp", "testApp"]
@@ -102,10 +127,40 @@ class MassApplicationLoadMockDataTest {
                       "COUNT": 1,
                       "FIELDS": {
                         "deviceId": "device-gb-1",
-                        "groupId": "GB",
+                        "deviceGroupId": "POOL-GB",
                         "agentVersion": "1.0.1",
                         "status": "ONLINE",
                         "supportedProjects": ["demoApp", "testApp"]
+                      }
+                    }
+                  ],
+                  "tokens": [
+                    {
+                      "MODEL": "Token",
+                      "COUNT": 1,
+                      "FIELDS": {
+                        "tokenId": "token-us-1",
+                        "deviceId": "device-us-1",
+                        "channel": "route-us",
+                        "status": "LOGIN_READY",
+                        "attributes": {
+                          "country": "US",
+                          "carrier": "tmobile"
+                        }
+                      }
+                    },
+                    {
+                      "MODEL": "Token",
+                      "COUNT": 1,
+                      "FIELDS": {
+                        "tokenId": "token-gb-1",
+                        "deviceId": "device-gb-1",
+                        "channel": "route-gb",
+                        "status": "LOGIN_READY",
+                        "attributes": {
+                          "country": "GB",
+                          "carrier": "o2"
+                        }
                       }
                     }
                   ],
@@ -125,7 +180,43 @@ class MassApplicationLoadMockDataTest {
                     }
                   ]
                 }
-                """;
-        return JsonParser.parseString(json).getAsJsonObject();
+                """).getAsJsonObject());
+        return engineConfig;
+    }
+
+    private EngineConfig fallbackSeedConfig() {
+        EngineConfig engineConfig = new EngineConfig();
+        engineConfig.setMockConfigRoot(JsonParser.parseString("""
+                {
+                  "devices": [
+                    {
+                      "MODEL": "Device",
+                      "COUNT": 1,
+                      "FIELDS": {
+                        "deviceId": "device-us-1",
+                        "deviceGroupId": "POOL-US",
+                        "agentVersion": "1.0.0",
+                        "status": "ONLINE",
+                        "supportedProjects": ["demoApp", "testApp"]
+                      }
+                    },
+                    {
+                      "MODEL": "Device",
+                      "COUNT": 1,
+                      "FIELDS": {
+                        "deviceId": "device-gb-1",
+                        "deviceGroupId": "POOL-GB",
+                        "agentVersion": "1.0.1",
+                        "status": "ONLINE",
+                        "supportedProjects": ["demoApp", "testApp"]
+                      }
+                    }
+                  ]
+                }
+                """).getAsJsonObject());
+        return engineConfig;
+    }
+
+    private record TestHarness(MassEngine engine, DeviceManager deviceManager, AtomicInteger createdTasks) {
     }
 }

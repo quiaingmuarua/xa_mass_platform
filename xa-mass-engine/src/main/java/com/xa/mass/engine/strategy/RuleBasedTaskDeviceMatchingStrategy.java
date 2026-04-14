@@ -41,11 +41,11 @@ public class RuleBasedTaskDeviceMatchingStrategy implements TaskDeviceMatchingSt
     @Override
     public List<Device> matchDevices(Task task, int maxDeviceCount) {
         List<Device> matchedDevices = new ArrayList<>();
-        List<Device> candidates = deviceManager.getDevicesByCountry(task.getTaskCountry());
+        List<Device> candidates = deviceManager.getAllDevices();
         List<RuleDefinition> rules = ruleManager.getDefaultRules();
 
-        log.info("[DeviceAssign] Matching devices for task {} (country: {}, candidates: {}, rules: {})",
-                task.getTid(), task.getTaskCountry(), candidates.size(), rules.size());
+        log.info("[DeviceAssign] Matching devices for task {} (routingCountryCode: {}, candidates: {}, rules: {})",
+                task.getTid(), task.getTaskRoutingCountryCode(), candidates.size(), rules.size());
 
         if (log.isDebugEnabled()) {
             for (RuleDefinition rule : rules) {
@@ -64,9 +64,9 @@ public class RuleBasedTaskDeviceMatchingStrategy implements TaskDeviceMatchingSt
             DeviceMatchContext matchContext = new DeviceMatchContext(device, token, task, deviceManager);
 
             if (log.isDebugEnabled()) {
-                log.debug("[Debug] DeviceId={}, groupId={}, status={}, locked={}, supportedProjects={}, tokenId={}, tokenStatus={}, tokenChannel={}",
+                log.debug("[Debug] DeviceId={}, deviceGroupId={}, status={}, locked={}, supportedProjects={}, tokenId={}, tokenStatus={}, tokenChannel={}",
                         device.getDeviceId(),
-                        device.getGroupId(),
+                        device.getDeviceGroupId(),
                         device.getStatus(),
                         deviceManager.isLocked(device.getDeviceId()),
                         device.getSupportedProjects().stream()
@@ -90,14 +90,17 @@ public class RuleBasedTaskDeviceMatchingStrategy implements TaskDeviceMatchingSt
                     if (deviceManager.tryLockDevice(device.getDeviceId())) {
                         recordService.recordDeviceAssignment(
                                 task, device, token, AssignmentResult.SUCCESS,
-                                "所有规则匹配成功，设备锁定成功", ruleEvaluations, matchContext.getContext()
+                                "all rules matched and device lock acquired",
+                                ruleEvaluations, matchContext.getContext(), true
                         );
                         matchedDevices.add(device);
                         log.info("Device matched: {} for task {}", device.getDeviceId(), task.getTid());
                     } else {
                         recordService.recordDeviceAssignment(
                                 task, device, token, AssignmentResult.CONFLICT,
-                                "设备已被锁定，无法分配", ruleEvaluations, matchContext.getContext()
+                                "device lock conflict after rules matched",
+                                ruleEvaluations, matchContext.getContext(),
+                                deviceManager.isLocked(device.getDeviceId())
                         );
                         log.info("Device locked: {}", device.getDeviceId());
                     }
@@ -108,7 +111,9 @@ public class RuleBasedTaskDeviceMatchingStrategy implements TaskDeviceMatchingSt
                             .collect(Collectors.joining(", "));
                     recordService.recordDeviceAssignment(
                             task, device, token, AssignmentResult.RULE_NOT_MATCH,
-                            "规则不匹配: " + failedRules, ruleEvaluations, matchContext.getContext()
+                            "rule evaluation failed: " + failedRules,
+                            ruleEvaluations, matchContext.getContext(),
+                            deviceManager.isLocked(device.getDeviceId())
                     );
                     log.info("Rule not matched: {} (failed rules: {})", device.getDeviceId(), failedRules);
 
@@ -124,7 +129,9 @@ public class RuleBasedTaskDeviceMatchingStrategy implements TaskDeviceMatchingSt
             } catch (Exception e) {
                 recordService.recordDeviceAssignment(
                         task, device, token, AssignmentResult.FAILED,
-                        "规则评估异常: " + e.getMessage(), new ArrayList<>(), matchContext.getContext()
+                        "rule evaluation exception: " + e.getMessage(),
+                        new ArrayList<>(), matchContext.getContext(),
+                        deviceManager.isLocked(device.getDeviceId())
                 );
                 log.error("Error evaluating rules for device {}: {}", device.getDeviceId(), e.getMessage());
             }
@@ -148,13 +155,14 @@ public class RuleBasedTaskDeviceMatchingStrategy implements TaskDeviceMatchingSt
                 result = String.valueOf(passed);
 
                 if (!passed) {
-                    log.info("[Debug] Rule: {} ({}), result: 失败", rule.getId(), rule.getDesc());
+                    log.info("[Debug] Rule: {} ({}), result: FAIL", rule.getId(), rule.getDesc());
                 } else {
-                    log.debug("[Debug] Rule: {} ({}), result: 通过", rule.getId(), rule.getDesc());
+                    log.debug("[Debug] Rule: {} ({}), result: PASS", rule.getId(), rule.getDesc());
                 }
             } catch (Exception e) {
                 result = "Exception: " + e.getMessage();
-                log.info("[Debug] Rule: {} ({}), result: 异常 - {}", rule.getId(), rule.getDesc(), e.getMessage());
+                log.info("[Debug] Rule: {} ({}), result: EXCEPTION - {}",
+                        rule.getId(), rule.getDesc(), e.getMessage());
             }
 
             long evaluationTime = System.currentTimeMillis() - startTime;

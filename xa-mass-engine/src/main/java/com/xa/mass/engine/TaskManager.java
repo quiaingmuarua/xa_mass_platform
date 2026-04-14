@@ -66,9 +66,6 @@ public class TaskManager {
 
             // 3. 统计初始消息数
             List<String> targets = dto.getTargetList() == null ? Collections.emptyList() : dto.getTargetList();
-            if (dto.getTargetJsonList() != null && !dto.getTargetJsonList().isEmpty()) {
-                throw new UnsupportedOperationException("targetJsonList is not supported by the current runtime");
-            }
             if (targets.isEmpty()) {
                 throw new IllegalArgumentException("targetList must contain at least one target");
             }
@@ -287,6 +284,46 @@ public class TaskManager {
     }
 
     /**
+     * 阻塞任务（READY 或 RUNNING → BLOCKED）。
+     * <p>
+     * 与 {@link #rejectTask(String)}（仅 NEW→BLOCKED）不同，此方法用于已进入调度流程
+     * 但因临时资源不足、策略限制等原因需要暂缓的任务。
+     * 阻塞后可通过 {@link #approveTask(String)} 恢复到 READY。
+     */
+    public boolean blockTask(String taskId) {
+        long startTime = System.currentTimeMillis();
+        LogUtils.setTaskId(taskId);
+        LogUtils.logOperationStart("BLOCK_TASK", "TaskManager", "taskId", taskId);
+
+        try {
+            Task task = getTask(taskId);
+            if (task != null
+                    && (task.getStatus() == TaskStatus.READY || task.getStatus() == TaskStatus.RUNNING)) {
+                boolean result = task.transitionTo(TaskStatus.BLOCKED);
+                if (result) {
+                    taskStorage.updateTask(task);
+                    taskScheduler.pauseTask(taskId); // stop scheduling while blocked
+                    long duration = System.currentTimeMillis() - startTime;
+                    LogUtils.logOperationSuccess("任务已阻塞", duration);
+                } else {
+                    long duration = System.currentTimeMillis() - startTime;
+                    LogUtils.logOperationFailure("TASK_BLOCK_ERROR", "任务状态转换失败", duration);
+                }
+                return result;
+            } else {
+                long duration = System.currentTimeMillis() - startTime;
+                LogUtils.logOperationFailure("TASK_BLOCK_ERROR", "任务不存在或状态不允许阻塞", duration);
+                return false;
+            }
+        } catch (Exception e) {
+            long duration = System.currentTimeMillis() - startTime;
+            LogUtils.logOperationFailure("TASK_BLOCK_ERROR", e.getMessage(), duration);
+            logger.error("阻塞任务失败", e);
+            return false;
+        }
+    }
+
+    /**
      * 暂停任务
      */
     public boolean pauseTask(String taskId) {
@@ -343,7 +380,7 @@ public class TaskManager {
                     // All messages finished while the task was paused — terminate directly
                     // instead of re-queuing. Callers should check getTask() to distinguish
                     // this PAUSED→TERMINAL path from the normal PAUSED→READY path.
-                    task.setTaskExecutedNumber((int) stats.getSuccess());
+                    task.setTaskSuccessNumber((int) stats.getSuccess());
                     TaskTerminalReason terminalReason = determineTerminalReason(stats);
                     boolean result = task.transitionTo(TaskStatus.TERMINAL, terminalReason);
                     if (result) {
@@ -401,6 +438,7 @@ public class TaskManager {
                 boolean result = task.transitionTo(TaskStatus.TERMINAL, TaskTerminalReason.MANUAL_CANCELLED);
                 if (result) {
                     taskStorage.updateTask(task);
+                    cancelPendingMessages(taskId); // drain non-final messages to a terminal state
                     taskScheduler.cancelTask(taskId);
                     long duration = System.currentTimeMillis() - startTime;
                     LogUtils.logOperationSuccess("任务取消成功", duration);
@@ -452,6 +490,48 @@ public class TaskManager {
     }
 
     /**
+     * 将单条消息标记为 EXPIRED，并触发任务进度重算。
+     * <p>
+     * 仅 SENT 或 RUNNING 状态的消息可以过期（已下发但超时无回执）。
+     * INIT / BINDING 阶段的消息尚未真正下发，应通过 {@link #cancelTask} 清理，
+     * 不能通过此方法过期。
+     *
+     * @return true 表示成功过期，false 表示消息不存在、状态不允许或持久化失败
+     */
+    public boolean expireTaskMessage(String taskId, String msgId) {
+        LogUtils.setTaskId(taskId);
+        LogUtils.logOperationStart("EXPIRE_TASK_MESSAGE", "TaskManager",
+                "taskId", taskId, "msgId", msgId);
+
+        TaskMsg taskMsg = getTaskMessage(taskId, msgId);
+        if (taskMsg == null) {
+            LogUtils.logOperationFailure("EXPIRE_MSG_ERROR", "消息不存在", 0);
+            return false;
+        }
+        if (taskMsg.isCompleted()) {
+            logger.info("Task message {} of task {} is already in final status {}, skip expiry",
+                    msgId, taskId, taskMsg.getStatus());
+            return false;
+        }
+        // Only dispatched messages (SENT / RUNNING) can be expired.
+        // INIT / BINDING never left the engine, so they should not be expired.
+        boolean expired = taskMsg.markAsExpired();
+        if (!expired) {
+            LogUtils.logOperationFailure("EXPIRE_MSG_ERROR",
+                    "消息状态 " + taskMsg.getStatus() + " 不允许过期（仅 SENT/RUNNING 可过期）", 0);
+            return false;
+        }
+        boolean stored = updateTaskMessage(taskId, taskMsg);
+        if (!stored) {
+            LogUtils.logOperationFailure("EXPIRE_MSG_ERROR", "消息持久化失败", 0);
+            return false;
+        }
+        LogUtils.logOperationSuccess("消息已过期", 0);
+        updateTaskProgress(taskId); // may transition task to TERMINAL if all messages are now done
+        return true;
+    }
+
+    /**
      * 获取任务消息统计
      */
     public TaskStorage.TaskMessageStats getTaskMessageStats(String taskId) {
@@ -476,7 +556,7 @@ public class TaskManager {
         }
 
         TaskStorage.TaskMessageStats stats = getTaskMessageStats(taskId);
-        task.setTaskExecutedNumber((int) stats.getSuccess());
+        task.setTaskSuccessNumber((int) stats.getSuccess());
 
         if (task.getStatus().isFinal()) {
             taskStorage.updateTask(task);
@@ -539,17 +619,17 @@ public class TaskManager {
         TaskStorage.TaskMessageStats stats = getTaskMessageStats(taskId);
         List<TaskStateValidationResult.ViolationCode> violations = new ArrayList<>();
 
-        if (task.getTaskValidNumber() < 0) {
-            violations.add(TaskStateValidationResult.ViolationCode.NEGATIVE_VALID_COUNT);
+        if (task.getTaskEligibleNumber() < 0) {
+            violations.add(TaskStateValidationResult.ViolationCode.NEGATIVE_ELIGIBLE_COUNT);
         }
-        if (task.getTaskExecutedNumber() < 0) {
-            violations.add(TaskStateValidationResult.ViolationCode.NEGATIVE_EXECUTED_COUNT);
+        if (task.getTaskSuccessNumber() < 0) {
+            violations.add(TaskStateValidationResult.ViolationCode.NEGATIVE_SUCCESS_COUNT);
         }
-        if (task.getTaskExecutedNumber() > task.getTaskValidNumber()) {
-            violations.add(TaskStateValidationResult.ViolationCode.EXECUTED_EXCEEDS_VALID);
+        if (task.getTaskSuccessNumber() > task.getTaskEligibleNumber()) {
+            violations.add(TaskStateValidationResult.ViolationCode.SUCCESS_EXCEEDS_ELIGIBLE);
         }
-        if (task.getTaskUnExecutedNumber() != task.getTaskValidNumber() - task.getTaskExecutedNumber()) {
-            violations.add(TaskStateValidationResult.ViolationCode.UNEXECUTED_COUNT_MISMATCH);
+        if (task.getTaskNonSuccessNumber() != task.getTaskEligibleNumber() - task.getTaskSuccessNumber()) {
+            violations.add(TaskStateValidationResult.ViolationCode.NON_SUCCESS_COUNT_MISMATCH);
         }
 
         boolean finalStatus = task.getStatus() != null && task.getStatus().isFinal();
@@ -718,5 +798,34 @@ public class TaskManager {
             return TaskTerminalReason.ALL_MESSAGES_FAILED;
         }
         return TaskTerminalReason.MIXED_MESSAGE_RESULTS;
+    }
+
+    /**
+     * 将任务所有非终态消息强制转换到终态，在 cancelTask 后调用。
+     * <ul>
+     *   <li>INIT / BINDING — 从未真正下发，标记为 FAILED</li>
+     *   <li>SENT / RUNNING  — 已下发但被中止，标记为 EXPIRED</li>
+     * </ul>
+     */
+    private void cancelPendingMessages(String taskId) {
+        List<TaskMsg> messages = getTaskMessages(taskId);
+        for (TaskMsg msg : messages) {
+            if (msg.isCompleted()) continue;
+
+            TaskMsgStatus s = msg.getStatus();
+            boolean updated = false;
+            if (s == TaskMsgStatus.INIT) {
+                // INIT can only go to BINDING first, then BINDING→FAILED
+                msg.transitionTo(TaskMsgStatus.BINDING);
+                updated = msg.markAsFailed("task cancelled");
+            } else if (s == TaskMsgStatus.BINDING) {
+                updated = msg.markAsFailed("task cancelled");
+            } else if (s == TaskMsgStatus.SENT || s == TaskMsgStatus.RUNNING) {
+                updated = msg.markAsExpired();
+            }
+            if (updated) {
+                updateTaskMessage(taskId, msg);
+            }
+        }
     }
 }

@@ -1,6 +1,6 @@
 # XA Mass Platform Verified Runbook
 
-Last updated: 2026-04-13
+Last updated: 2026-04-14
 
 This runbook records only facts that were verified by code, tests, or real runtime behavior. If older docs disagree, trust code and runtime.
 
@@ -10,6 +10,12 @@ Document scope:
 - runtime verification checks
 - verified execution path
 - focused regression coverage
+
+Testing stance:
+
+- the project now treats end-to-end integration coverage as the primary acceptance gate
+- unit and slice tests still matter, but they are support coverage
+- the `xa-mass-mock` integration suites are organized by domain under `com.xa.mass.mock.e2e`
 
 For endpoint inventory, response shapes, and implementation status, use [INTERNAL_API_REFERENCE.md](./INTERNAL_API_REFERENCE.md).
 
@@ -27,10 +33,15 @@ For endpoint inventory, response shapes, and implementation status, use [INTERNA
 - The pause/resume lifecycle regression is also verified:
   - `NEW -> READY -> PAUSED -> READY`
 - Create-time validation is now verified:
+  - supported create fields are limited to `userId`, `project`, `taskName`, `textContent`, `targetList`, `countryCode`, and `batchSize`
   - `targetList` must contain at least one materialized target
-  - non-empty `targetJsonList` is rejected by the current mainline runtime
   - unsupported `project` codes are rejected instead of silently falling back to `demoApp`
+  - unknown JSON fields such as retired `targetJsonList`, `targetType`, and `extraParams` are rejected at the API boundary
   - request `batchSize` is preserved on the persisted task
+- Update-time validation is now verified:
+  - supported update fields are limited to `userId`, `project`, `taskName`, `textContent`, `countryCode`, and `batchSize`
+  - `targetList` and other unknown JSON fields are rejected at the API boundary
+  - task edits are only allowed while status is `NEW` or `BLOCKED`
 - Engine regression also verifies a paused-completion closure rule:
   - if all persisted `TaskMsg` callbacks finish while the task is `PAUSED`, the task is closed to `TERMINAL`
 - Engine regression also verifies two state-machine safety rules:
@@ -44,18 +55,19 @@ For endpoint inventory, response shapes, and implementation status, use [INTERNA
   - the first final message state and terminal task counts are preserved
 - A running-task terminate path is also verified:
   - `NEW -> READY -> RUNNING -> TERMINAL`
-  - `TaskMsg INIT -> SENT`, then remain non-final when the task is manually terminated before client callbacks
+  - `TaskMsg INIT -> SENT -> EXPIRED` when the task is manually terminated before client callbacks
   - the terminal task can then be deleted through the real API
 - A paused-after-assignment callback path is also verified:
   - `NEW -> READY -> RUNNING -> PAUSED -> TERMINAL`
   - persisted `TaskMsg` rows can move from `SENT` to final states while the task remains paused
   - no manual `resume` is required for terminal closure
-- A multi-task assignment path is also verified:
-  - two approved single-target tasks can be assigned onto separate devices and both complete to `TERMINAL`
-  - each task keeps `scheduleDeviceCnt == 1`, `taskExecutedNumber == 1`, and one `SUCCESS` `TaskMsg`
-- A delayed device availability path is also verified:
-  - a task can remain `READY` with zero initial matches
-  - after a matching device plus `LOGIN_READY` token are added later, the task is assigned and completes to `TERMINAL`
+- Device and token auxiliary rule labels are also verified:
+  - `Device.attributes` and `Token.attributes` are defensive-copied and exposed as read-only maps
+  - `DeviceMatchContext` exposes them to QLExpress as `deviceAttributes` and `tokenAttributes`
+- token-attribute routing is verified end-to-end through `tokenAttributes['country'] == taskRoutingCountryCode`
+- device availability truths are single-sourced:
+  - online truth comes from `Device.status`
+  - lock truth comes from `DeviceStorage` / `DeviceManager.isLocked(...)`, not from the `Device` model
 
 ## 2. Recommended Startup
 
@@ -119,9 +131,13 @@ Verified state transitions:
 - create: initial task status is `NEW`
 - create: `targetList` is persisted as real `TaskMsg` rows
 - create: `TaskManager.createTask()` requires at least one `targetList` value
-- create: non-empty `targetJsonList` is rejected by the current mainline runtime
+- create: only `userId`, `project`, `taskName`, `textContent`, `targetList`, `countryCode`, and `batchSize` are part of the supported request contract
 - create: unsupported `project` codes are rejected
+- create: unknown JSON fields such as retired `targetJsonList`, `targetType`, and `extraParams` are rejected at the API boundary
 - create: request `batchSize` is persisted onto the task
+- update: only `userId`, `project`, `taskName`, `textContent`, `countryCode`, and `batchSize` are part of the supported request contract
+- update: `targetList` and other unknown JSON fields are rejected at the API boundary
+- update: only `NEW` and `BLOCKED` tasks may be edited
 - `approveTask`: `NEW`, `BLOCKED` -> `READY`
 - `rejectTask`: `NEW` -> `BLOCKED`
 - `pauseTask`: `READY`, `RUNNING` -> `PAUSED`
@@ -134,6 +150,11 @@ Additional implementation rule verified at engine regression level:
 - SDK callers can distinguish these two resume outcomes through `TaskManager.resumeTaskDetailed(...)`
 - SDK callers can also use `TaskManager.resolveTaskStateFromMessages(...)` to ask whether current `TaskMsg` aggregation leaves the task pending, finalizes it, or observes an already-final task
 - SDK callers can use `TaskManager.validateTaskState(...)` to audit whether task counters, `terminalReason`, and persisted `TaskMsg` aggregates are still self-consistent
+- `Task` aggregate counters now use explicit names:
+  - `taskTargetNumber`: initial persisted target count
+  - `taskEligibleNumber`: target count currently included in progress/statistical aggregation
+  - `taskSuccessNumber`: persisted `TaskMsg` rows already in `SUCCESS`
+  - `taskNonSuccessNumber`: valid rows that are not yet `SUCCESS`, including failed and still-in-flight rows
 - when a task reaches `TERMINAL`, inspect `task.terminalReason` to distinguish:
   - `MANUAL_CANCELLED`
   - `ALL_MESSAGES_SUCCEEDED`
@@ -158,6 +179,15 @@ Verified runtime path:
 10. `GatewayTaskMsgPublisher` pushes the downstream payload as `TASK/step`.
 11. Once all persisted `TaskMsg` rows are final, `TaskManager.updateTaskProgress(...)` closes any non-final task to `TERMINAL`, including tasks paused while callbacks were still arriving.
 
+Current matching-context note:
+
+- `Task.taskRoutingCountryCode` is the active routing-country input for matching and diagnostics
+- `DeviceManager.getDevicesByGroupId(...)` / `DeviceStorage.getDevicesByGroupId(...)` are grouping helpers only, not country-routing APIs
+- `RuleBasedTaskDeviceMatchingStrategy` no longer treats device `deviceGroupId` as a hard prefilter for routing country
+- `DeviceMatchContext` now exposes nested `deviceAttributes` and `tokenAttributes` maps for QLExpress access such as `tokenAttributes['country'] == taskRoutingCountryCode`
+- these maps are auxiliary rule labels only and are not the source of truth for lifecycle, lock, or online state
+- `AssignmentRecordService` snapshots `deviceLocked` from live runtime lock state instead of from fields on `Device`
+
 ### 4.3 Result Write-Back and Completion
 
 Verified runtime path:
@@ -174,6 +204,8 @@ Important guard added in the verified runtime:
 - `MassWebSocketClientImpl` ignores `response=true` `TASK/step` frames so mock clients do not echo server response frames back into the system
 - `WebSocketClientStarter` passes `mock.client.task-result-status` into each mock client so failure-path result handling can be exercised without changing the engine path
 - `TaskManager.handleTaskMessageResult(...)` ignores late non-final callbacks for tasks already closed to `TERMINAL`, so manual cancel/terminate freezes later progress mutation
+- `DeviceManager` now uses `Device.status` as the single online truth for runtime availability; gateway online/offline events update the device model directly
+- runtime lock state is stored in `DeviceStorage` and exposed through `DeviceManager.isLocked(...)`; active diagnostics no longer infer lock from `Device`
 
 ## 5. Verified Smoke and Regression Coverage on 2026-04-13
 
@@ -182,10 +214,11 @@ Important guard added in the verified runtime:
 `MassApplication.loadMockData(...)` now:
 
 - normalizes `supportedProjects` into `Project` enums
-- lowercases `groupId`
-- auto-seeds a `LOGIN_READY` token when a mock device has no token data
+- lowercases `deviceGroupId`
+- loads explicit mock `tokens` when present
+- auto-seeds only a minimal `LOGIN_READY` fallback token when a mock device still has no token data
 
-This fixes the earlier false-stuck case where approved tasks remained in `READY` because mock devices did not satisfy assignment prerequisites.
+This keeps the verified startup runnable without letting `deviceGroupId` silently become token-side routing truth in the mock path.
 
 ### 5.2 Default `dev` Startup Launches Mock Clients
 
@@ -204,8 +237,8 @@ Regression test:
 
 Integration test:
 
-- `xa-mass-mock/src/test/java/com/xa/mass/mock/api/TaskApiIntegrationTest.java`
-- `xa-mass-mock/src/test/java/com/xa/mass/mock/api/TaskApiLifecycleGuardsIntegrationTest.java`
+- `xa-mass-mock/src/test/java/com/xa/mass/mock/e2e/lifecycle/TaskApiIntegrationTest.java`
+- `xa-mass-mock/src/test/java/com/xa/mass/mock/e2e/lifecycle/TaskApiLifecycleGuardsIntegrationTest.java`
 
 What it verifies:
 
@@ -214,16 +247,16 @@ What it verifies:
 - `POST /status/api/tasks/{taskId}/audit?approved=true`
 - the task reaches `TERMINAL`
 - `scheduleDeviceCnt == 2`
-- `taskExecutedNumber == 2`
+- `taskSuccessNumber == 2`
 - two persisted messages exist
 - each message finishes as `SUCCESS`
 - each message has non-null `deviceId`, `tokenId`, and `batchId`
 - separate lifecycle guard coverage now verifies reject/approve, pause/resume, and delete guard through real HTTP APIs with no assignable devices
 - separate pause-completion coverage now verifies `RUNNING -> PAUSED -> TERMINAL` through real gateway callback write-back after assignment
-- separate multi-task coverage now verifies two approved tasks are distributed across separate mock devices and both complete through the real gateway path
-- separate delayed-availability coverage now verifies a `READY` task with zero initial device matches advances automatically after a matching device and token appear later
 - engine lifecycle coverage now verifies paused-task final callback closure into `TERMINAL`
 - engine worker coverage now verifies retry of `READY` tasks that initially have no device match
+- separate token-attribute routing coverage now verifies that a custom QLExpress rule can select the correct token via `tokenAttributes['country']`
+- engine strategy and message-assignment coverage now verifies that assignment snapshots carry runtime lock state from `DeviceManager.isLocked(...)`
 
 Implementation details that matter:
 
@@ -236,14 +269,14 @@ Implementation details that matter:
 
 Integration test:
 
-- `xa-mass-mock/src/test/java/com/xa/mass/mock/api/TaskApiFailureResultIntegrationTest.java`
+- `xa-mass-mock/src/test/java/com/xa/mass/mock/e2e/results/TaskApiFailureResultIntegrationTest.java`
 
 What it verifies:
 
 - `mock.client.task-result-status=FAILED` drives real mock clients to send failure result frames
 - the task still reaches `TERMINAL`
 - `scheduleDeviceCnt == 2`
-- `taskExecutedNumber == 0`
+- `taskSuccessNumber == 0`
 - both persisted messages finish as `FAILED`
 - each failed message keeps non-null `deviceId`, `tokenId`, and `batchId`
 - each failed message writes `errorMessage = "Executed by mock client " + deviceId`
@@ -270,7 +303,7 @@ What they verify:
 
 - a second callback for the same `taskId + msgId` is accepted as a no-op rather than reprocessed
 - the first final state is preserved and not overwritten by a later conflicting callback
-- `taskExecutedNumber` and task final status remain consistent
+- `taskSuccessNumber` and task final status remain consistent
 - scheduler completion/failure callbacks are not triggered twice
 - a manual `TERMINAL` closure also freezes later non-final callbacks so they do not alter `TaskMsg` state or task counters
 
@@ -278,7 +311,7 @@ What they verify:
 
 Integration test:
 
-- `xa-mass-mock/src/test/java/com/xa/mass/mock/api/TaskApiCallbackReplayIntegrationTest.java`
+- `xa-mass-mock/src/test/java/com/xa/mass/mock/e2e/results/TaskApiCallbackReplayIntegrationTest.java`
 
 What it verifies:
 
@@ -286,13 +319,13 @@ What it verifies:
 - a separate WebSocket client then replays a conflicting `TASK/step` result for an already-final `msgId`
 - the gateway still acknowledges the replay frame
 - the persisted `TaskMsg` keeps its first final state and is not overwritten
-- `taskExecutedNumber` remains stable after the replay
+- `taskSuccessNumber` remains stable after the replay
 
 ### 5.8 Running Terminate Path Is Covered End-to-End
 
 Integration test:
 
-- `xa-mass-mock/src/test/java/com/xa/mass/mock/api/TaskApiTerminateRunningIntegrationTest.java`
+- `xa-mass-mock/src/test/java/com/xa/mass/mock/e2e/lifecycle/TaskApiTerminateRunningIntegrationTest.java`
 
 What it verifies:
 
@@ -301,15 +334,16 @@ What it verifies:
 - `scheduleDeviceCnt` is populated from real matching and assignment
 - persisted `TaskMsg` rows advance to `SENT`
 - `POST /status/api/tasks/{taskId}/terminate` transitions the task to `TERMINAL`
-- `taskExecutedNumber` remains `0`
+- `taskSuccessNumber` remains `0`
 - no `TaskMsg` is incorrectly rewritten to `SUCCESS` or `FAILED` just because the task was terminated
+- dispatched `TaskMsg` rows are explicitly drained to `EXPIRED`
 - `DELETE /status/api/tasks/{taskId}` succeeds after the task reaches `TERMINAL`
 
 ### 5.9 State Validation Is Covered End-to-End
 
 Integration test:
 
-- `xa-mass-mock/src/test/java/com/xa/mass/mock/api/TaskApiStateValidationIntegrationTest.java`
+- `xa-mass-mock/src/test/java/com/xa/mass/mock/e2e/audit/TaskApiStateValidationIntegrationTest.java`
 
 What it verifies:
 
@@ -319,44 +353,25 @@ What it verifies:
 - after a completed task is intentionally reopened to `RUNNING` without changing persisted `TaskMsg` finals, the same API reports `stateValidation.valid=true` and `needsResolution=true`
 - if terminal metadata is intentionally corrupted, the same API reports `stateValidation.valid=false` and exposes concrete violations such as `TERMINAL_REASON_MISSING` or `TERMINAL_REASON_MISMATCH_ALL_FAILED`
 
-### 5.10 Multi-Task Assignment Is Covered End-to-End
-
-Integration test:
-
-- `xa-mass-mock/src/test/java/com/xa/mass/mock/api/TaskApiMultiTaskAssignmentIntegrationTest.java`
-
-What it verifies:
-
-- two separate tasks are created through the real HTTP API
-- both are approved into `READY`
-- both are assigned and complete through the real gateway/mock-client path
-- each task reaches `TERMINAL` with `terminalReason = ALL_MESSAGES_SUCCEEDED`
-- each task uses exactly one device and executes exactly one message
-- the two tasks land on different devices rather than colliding onto the same mock device
-
-### 5.11 Delayed Device Availability Is Covered End-to-End
-
-Integration test:
-
-- `xa-mass-mock/src/test/java/com/xa/mass/mock/api/TaskApiDelayedDeviceAvailabilityIntegrationTest.java`
-
-What it verifies:
-
-- a task can be created and approved while the device inventory is empty
-- the task remains `READY` with `scheduleDeviceCnt == 0` and its message stays at `INIT`
-- after a matching device and `LOGIN_READY` token are added later, the existing retry loop picks the task up
-- a real WebSocket client for that late device receives the dispatch and writes the result back
-- the task then reaches `TERMINAL` with `terminalReason = ALL_MESSAGES_SUCCEEDED`
-
-### 5.12 Focused Verified Test Command
+### 5.10 Focused Verified Test Command
 
 ```bash
-mvn --% -pl xa-mass-mock -am -Dtest=MassWebSocketClientImplTest,TaskApiIntegrationTest,TaskApiFailureResultIntegrationTest,TaskApiLifecycleGuardsIntegrationTest,TaskApiTerminateRunningIntegrationTest,TaskApiCallbackReplayIntegrationTest,TaskApiPauseCompletionIntegrationTest,TaskApiStateValidationIntegrationTest,TaskApiMultiTaskAssignmentIntegrationTest,TaskApiDelayedDeviceAvailabilityIntegrationTest,WebSocketClientStarterTest -Dsurefire.failIfNoSpecifiedTests=false test
+mvn --% -pl xa-mass-mock -am -Dtest=MassWebSocketClientImplTest,TaskApiIntegrationTest,TaskApiFailureResultIntegrationTest,TaskApiLifecycleGuardsIntegrationTest,TaskApiTerminateRunningIntegrationTest,TaskApiCallbackReplayIntegrationTest,TaskApiStateValidationIntegrationTest,WebSocketClientStarterTest -Dsurefire.failIfNoSpecifiedTests=false test
 ```
 
 Verified result:
 
 - `BUILD SUCCESS`
+
+### 5.11 Domain Grouping for E2E Suites
+
+Current `xa-mass-mock` integration directory layout:
+
+- `com.xa.mass.mock.e2e.lifecycle`: create/approve/pause/resume/terminate/complete flows
+- `com.xa.mass.mock.e2e.results`: success/failure/mixed-result/callback-replay semantics
+- `com.xa.mass.mock.e2e.assignment`: delayed device availability and multi-task scheduling fairness
+- `com.xa.mass.mock.e2e.audit`: state-validation and consistency exposure through the real HTTP path
+- `com.xa.mass.mock.e2e.support.AbstractMockE2eTest`: shared E2E base for task creation, HTTP exchange helpers, task snapshot polling, and dynamic WebSocket port registration
 
 ## 6. Remaining Gaps
 
@@ -366,11 +381,10 @@ Verified result:
 - The verified implementation remains Guava-backed; Redis is still fail-fast
 - Redis and Database storage remain fail-fast placeholders
 - API integration coverage is still selective beyond the current happy, guard, failed-result, running-terminate-delete, and callback-replay paths
-- Multi-task scheduling coverage now exists for separate-device assignment, but more complex contention and reuse scenarios are still not covered
 - Multiple matching policies are now possible at engine level, but only the rule-based strategy is covered in the current integrated runtime path
 
 Recommended next test-driven additions:
 
-1. cancel path variants from `NEW`, `READY`, and `PAUSED` with message-state assertions
-2. mixed-result aggregation coverage where one message succeeds and another fails
-3. device reuse or queued-follow-up coverage after one task holds or releases the only matching device
+1. `RUNNING -> PAUSED -> READY` end-to-end with real assigned messages and then resumed dispatch behavior validation
+2. cancel path variants from `NEW`, `READY`, and `PAUSED` with message-state assertions
+3. mixed-result aggregation coverage where one message succeeds and another fails

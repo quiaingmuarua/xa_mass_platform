@@ -9,7 +9,7 @@ import java.util.List;
 
 public class JsonDslExample {
     public static void main(String[] args) {
-        // 注册类型
+        // 娉ㄥ唽绫诲瀷
         TypeRegistry.register("Device", Device.class);
         TypeRegistry.register("Task", Task.class);
 //        try {
@@ -19,7 +19,7 @@ public class JsonDslExample {
 //            throw new RuntimeException("RuleDefinition class not found", e);
 //        }
 
-        // 批量 mock Device - 使用 &.index 简写
+        // 鎵归噺 mock Device - 浣跨敤 &.index 绠€鍐?
         String deviceDsl = """
                 {
                   "MODEL": "Device",
@@ -27,7 +27,7 @@ public class JsonDslExample {
                   "FIELDS": {
                     "deviceId": {"$JOIN": ["device-", "&.index"]},
                     "status": {"$CHOICE": ["ONLINE", "OFFLINE"]},
-                    "groupId": {"$CHOICE": ["us", "gb", "cn"]},
+                    "deviceGroupId": {"$CHOICE": ["us", "gb", "cn"]},
                     "agentVersion": {"$JOIN": ["1.0.", "&.index"]}
                   }
                 }
@@ -36,7 +36,7 @@ public class JsonDslExample {
         System.out.println("=== Generated Devices ===");
         devices.forEach(System.out::println);
 
-        // 批量 mock Task - 使用 &.index 简写
+        // 鎵归噺 mock Task - 浣跨敤 &.index 绠€鍐?
         String taskDsl = """
                 {
                   "MODEL": "Task",
@@ -44,8 +44,8 @@ public class JsonDslExample {
                   "FIELDS": {
                     "tid": {"$UUID": true},
                     "taskName": {"$JOIN": ["Task-", "&.index"]},
-                    "taskCountry": {"$CHOICE": ["us", "gb"]},
-                    "taskInitNumber": {"$RANGE": [10, 100]},
+                    "taskRoutingCountryCode": {"$CHOICE": ["us", "gb"]},
+        "taskTargetNumber": {"$RANGE": [10, 100]},
                     "batchSize": {"$RANGE": [1, 5]}
                   }
                 }
@@ -54,7 +54,7 @@ public class JsonDslExample {
         System.out.println("\n=== Generated Tasks ===");
         tasks.forEach(System.out::println);
 
-        // 多级作用域变量查找示例，&.index 和 &Model.index 混用
+        // 澶氱骇浣滅敤鍩熷彉閲忔煡鎵剧ず渚嬶紝&.index 鍜?&Model.index 娣风敤
         String nestedExampleDsl = """
                 {
                   "MODEL": "Device",
@@ -62,9 +62,9 @@ public class JsonDslExample {
                   "FIELDS": {
                     "deviceId": {"$JOIN": ["device-", "&.index"]},
                     "status": {"$CHOICE": ["ONLINE", "OFFLINE"]},
-                    "groupId": {"$CHOICE": ["us", "gb", "cn"]},
+                    "deviceGroupId": {"$CHOICE": ["us", "gb", "cn"]},
                     "agentVersion": {"$JOIN": ["1.0.", "&.index"]},
-                    "description": {"$JOIN": ["Device ", "&.index", " in group ", "&Device.groupId"]},
+                    "description": {"$JOIN": ["Device ", "&.index", " in group ", "&Device.deviceGroupId"]},
                     "tasks": {
                       "TYPE": "LIST",
                       "COUNT": 2,
@@ -82,7 +82,7 @@ public class JsonDslExample {
         System.out.println("\n=== Nested Scope Variable Examples ===");
         devices1.forEach(System.out::println);
 
-        // 演示时间函数
+        // 婕旂ず鏃堕棿鍑芥暟
         String timeExampleDsl = """
                 {
                   "MODEL": "Task",
@@ -99,7 +99,7 @@ public class JsonDslExample {
         System.out.println("\n=== Time Function Examples ===");
         timeExamples.forEach(System.out::println);
 
-        // 演示相对时间
+        // 婕旂ず鐩稿鏃堕棿
         String relativeTimeExampleDsl = """
                 {
                   "MODEL": "Device",

@@ -11,11 +11,11 @@ public class JsonDslQlExample {
 
 
     public static void main(String[] args) {
-        // 注册类型
+        // 娉ㄥ唽绫诲瀷
         TypeRegistry.register("Device", Device.class);
         TypeRegistry.register("Task", Task.class);
 
-        // 演示相对时间
+        // 婕旂ず鐩稿鏃堕棿
         String dsl = """
                 {
                   "MODEL": "Device",
@@ -23,7 +23,7 @@ public class JsonDslQlExample {
                   "FIELDS": {
                     "status": {"$CHOICE": ["OFFLINE", "ONLINE"]},
                     "deviceId": {"$EXPR": "join('device-', '1')"},
-                     "groupId": {"$JOIN": ["device-", "&.index"]},
+                     "deviceGroupId": {"$JOIN": ["device-", "&.index"]},
                     "onlineStrategy": {
                       "$EXPR": {
                         "lang": "ql",
