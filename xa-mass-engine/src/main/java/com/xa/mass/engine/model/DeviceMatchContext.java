@@ -34,6 +34,7 @@ public class DeviceMatchContext {
         ctx.put("deviceId", device.getDeviceId());
         ctx.put("deviceStatus", device.getStatus().name());
         ctx.put("deviceGroupId", device.getGroupId());
+        ctx.put("deviceAttributes", device.getAttributes());
         ctx.put("agentVersion", device.getAgentVersion());
         ctx.put("supportedProjects", device.getSupportedProjects());
         ctx.put("isDeviceAvailable", device.isAvailable());
@@ -45,12 +46,14 @@ public class DeviceMatchContext {
             ctx.put("tokenId", token.getTokenId());
             ctx.put("tokenStatus", token.getStatus().name());
             ctx.put("tokenChannel", token.getChannel());
+            ctx.put("tokenAttributes", token.getAttributes());
             ctx.put("isTokenAllocatable", token.isAllocatable());
             ctx.put("isTokenAvailable", token.isAvailable());
         } else {
             ctx.put("tokenId", null);
             ctx.put("tokenStatus", null);
             ctx.put("tokenChannel", null);
+            ctx.put("tokenAttributes", Map.of());
             ctx.put("isTokenAllocatable", false);
             ctx.put("isTokenAvailable", false);
         }

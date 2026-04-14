@@ -1,6 +1,6 @@
 # XA Mass Platform Verified Runbook
 
-Last updated: 2026-04-13
+Last updated: 2026-04-14
 
 This runbook records only facts that were verified by code, tests, or real runtime behavior. If older docs disagree, trust code and runtime.
 
@@ -10,6 +10,12 @@ Document scope:
 - runtime verification checks
 - verified execution path
 - focused regression coverage
+
+Testing stance:
+
+- the project now treats end-to-end integration coverage as the primary acceptance gate
+- unit and slice tests still matter, but they are support coverage
+- the `xa-mass-mock` integration suites are organized by domain under `com.xa.mass.mock.e2e`
 
 For endpoint inventory, response shapes, and implementation status, use [INTERNAL_API_REFERENCE.md](./INTERNAL_API_REFERENCE.md).
 
@@ -50,6 +56,10 @@ For endpoint inventory, response shapes, and implementation status, use [INTERNA
   - `NEW -> READY -> RUNNING -> PAUSED -> TERMINAL`
   - persisted `TaskMsg` rows can move from `SENT` to final states while the task remains paused
   - no manual `resume` is required for terminal closure
+- Device and token auxiliary rule labels are also verified:
+  - `Device.attributes` and `Token.attributes` are defensive-copied and exposed as read-only maps
+  - `DeviceMatchContext` exposes them to QLExpress as `deviceAttributes` and `tokenAttributes`
+  - token-attribute routing is verified end-to-end through `tokenAttributes['country'] == taskCountry`
 
 ## 2. Recommended Startup
 
@@ -152,6 +162,11 @@ Verified runtime path:
 10. `GatewayTaskMsgPublisher` pushes the downstream payload as `TASK/step`.
 11. Once all persisted `TaskMsg` rows are final, `TaskManager.updateTaskProgress(...)` closes any non-final task to `TERMINAL`, including tasks paused while callbacks were still arriving.
 
+Current matching-context note:
+
+- `DeviceMatchContext` now exposes nested `deviceAttributes` and `tokenAttributes` maps for QLExpress access such as `tokenAttributes['country'] == taskCountry`
+- these maps are auxiliary rule labels only and are not the source of truth for lifecycle, lock, or online state
+
 ### 4.3 Result Write-Back and Completion
 
 Verified runtime path:
@@ -198,8 +213,8 @@ Regression test:
 
 Integration test:
 
-- `xa-mass-mock/src/test/java/com/xa/mass/mock/api/TaskApiIntegrationTest.java`
-- `xa-mass-mock/src/test/java/com/xa/mass/mock/api/TaskApiLifecycleGuardsIntegrationTest.java`
+- `xa-mass-mock/src/test/java/com/xa/mass/mock/e2e/lifecycle/TaskApiIntegrationTest.java`
+- `xa-mass-mock/src/test/java/com/xa/mass/mock/e2e/lifecycle/TaskApiLifecycleGuardsIntegrationTest.java`
 
 What it verifies:
 
@@ -216,6 +231,7 @@ What it verifies:
 - separate pause-completion coverage now verifies `RUNNING -> PAUSED -> TERMINAL` through real gateway callback write-back after assignment
 - engine lifecycle coverage now verifies paused-task final callback closure into `TERMINAL`
 - engine worker coverage now verifies retry of `READY` tasks that initially have no device match
+- separate token-attribute routing coverage now verifies that a custom QLExpress rule can select the correct token via `tokenAttributes['country']`
 
 Implementation details that matter:
 
@@ -228,7 +244,7 @@ Implementation details that matter:
 
 Integration test:
 
-- `xa-mass-mock/src/test/java/com/xa/mass/mock/api/TaskApiFailureResultIntegrationTest.java`
+- `xa-mass-mock/src/test/java/com/xa/mass/mock/e2e/results/TaskApiFailureResultIntegrationTest.java`
 
 What it verifies:
 
@@ -270,7 +286,7 @@ What they verify:
 
 Integration test:
 
-- `xa-mass-mock/src/test/java/com/xa/mass/mock/api/TaskApiCallbackReplayIntegrationTest.java`
+- `xa-mass-mock/src/test/java/com/xa/mass/mock/e2e/results/TaskApiCallbackReplayIntegrationTest.java`
 
 What it verifies:
 
@@ -284,7 +300,7 @@ What it verifies:
 
 Integration test:
 
-- `xa-mass-mock/src/test/java/com/xa/mass/mock/api/TaskApiTerminateRunningIntegrationTest.java`
+- `xa-mass-mock/src/test/java/com/xa/mass/mock/e2e/lifecycle/TaskApiTerminateRunningIntegrationTest.java`
 
 What it verifies:
 
@@ -301,7 +317,7 @@ What it verifies:
 
 Integration test:
 
-- `xa-mass-mock/src/test/java/com/xa/mass/mock/api/TaskApiStateValidationIntegrationTest.java`
+- `xa-mass-mock/src/test/java/com/xa/mass/mock/e2e/audit/TaskApiStateValidationIntegrationTest.java`
 
 What it verifies:
 
@@ -320,6 +336,16 @@ mvn --% -pl xa-mass-mock -am -Dtest=MassWebSocketClientImplTest,TaskApiIntegrati
 Verified result:
 
 - `BUILD SUCCESS`
+
+### 5.11 Domain Grouping for E2E Suites
+
+Current `xa-mass-mock` integration directory layout:
+
+- `com.xa.mass.mock.e2e.lifecycle`: create/approve/pause/resume/terminate/complete flows
+- `com.xa.mass.mock.e2e.results`: success/failure/mixed-result/callback-replay semantics
+- `com.xa.mass.mock.e2e.assignment`: delayed device availability and multi-task scheduling fairness
+- `com.xa.mass.mock.e2e.audit`: state-validation and consistency exposure through the real HTTP path
+- `com.xa.mass.mock.e2e.support.AbstractMockE2eTest`: shared E2E base for task creation, HTTP exchange helpers, task snapshot polling, and dynamic WebSocket port registration
 
 ## 6. Remaining Gaps
 

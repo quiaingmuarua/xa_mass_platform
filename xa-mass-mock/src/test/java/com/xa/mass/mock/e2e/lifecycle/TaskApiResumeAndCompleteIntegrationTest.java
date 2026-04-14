@@ -1,4 +1,4 @@
-package com.xa.mass.mock.api;
+package com.xa.mass.mock.e2e.lifecycle;
 
 import com.xa.mass.base.enums.Project;
 import com.xa.mass.base.enums.device.DeviceStatus;
@@ -8,23 +8,17 @@ import com.xa.mass.base.model.Token;
 import com.xa.mass.engine.DeviceManager;
 import com.xa.mass.mock.MockApplicationSpringBootApp;
 import com.xa.mass.mock.client.MassWebSocketClientImpl;
+import com.xa.mass.mock.e2e.support.AbstractMockE2eTest;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.web.client.TestRestTemplate;
-import org.springframework.boot.test.web.server.LocalServerPort;
-import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpMethod;
-import org.springframework.http.ResponseEntity;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 
-import java.io.IOException;
-import java.net.ServerSocket;
 import java.net.URI;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -62,20 +56,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 )
 @ActiveProfiles("dev")
 @DirtiesContext
-class TaskApiResumeAndCompleteIntegrationTest {
+class TaskApiResumeAndCompleteIntegrationTest extends AbstractMockE2eTest {
 
     private static final int WEBSOCKET_PORT = findFreePort();
 
     @DynamicPropertySource
     static void registerProperties(DynamicPropertyRegistry registry) {
-        registry.add("mass.websocket.port", () -> WEBSOCKET_PORT);
+        registerWebSocketProperties(registry, WEBSOCKET_PORT);
     }
-
-    @LocalServerPort
-    private int port;
-
-    @Autowired
-    private TestRestTemplate restTemplate;
 
     @Autowired
     private DeviceManager deviceManager;
@@ -83,7 +71,7 @@ class TaskApiResumeAndCompleteIntegrationTest {
     @Test
     void resumedPausedTaskCompletesAfterDeviceConnectsAndSendsCallback() throws Exception {
         // 1. Create and approve a task — no devices online yet.
-        String taskId = createTask("resume-and-complete");
+        String taskId = createTaskId("resume-and-complete", "resume and complete integration test", "target-a");
 
         Map<String, Object> approveResponse = exchange(
                 "/status/api/tasks/" + taskId + "/audit?approved=true&comment=resume-and-complete",
@@ -93,7 +81,7 @@ class TaskApiResumeAndCompleteIntegrationTest {
         assertEquals(Boolean.TRUE, approveResponse.get("success"));
 
         // 2. Task reaches READY but stays there (no matching device).
-        TaskSnapshot readySnapshot = waitForTaskStatus(taskId, "READY", 8);
+        TaskSnapshot readySnapshot = waitForTaskSnapshot(taskId, "READY", 8, 500L);
         assertEquals(0, ((Number) readySnapshot.task().get("scheduleDeviceCnt")).intValue());
         assertEquals(1, readySnapshot.messages().size());
         assertEquals("INIT", readySnapshot.messages().get(0).get("status"));
@@ -106,7 +94,7 @@ class TaskApiResumeAndCompleteIntegrationTest {
         );
         assertEquals(Boolean.TRUE, pauseResponse.get("success"));
 
-        TaskSnapshot pausedSnapshot = waitForTaskStatus(taskId, "PAUSED", 4);
+        TaskSnapshot pausedSnapshot = waitForTaskSnapshot(taskId, "PAUSED", 4, 500L);
         assertEquals("PAUSED", pausedSnapshot.task().get("status"));
         // Message is still INIT — no device was ever assigned.
         assertEquals("INIT", pausedSnapshot.messages().get(0).get("status"));
@@ -129,7 +117,7 @@ class TaskApiResumeAndCompleteIntegrationTest {
             assertEquals(Boolean.TRUE, resumeResponse.get("success"));
 
             // 6. Task should proceed all the way to TERMINAL via the new device.
-            TaskSnapshot terminalSnapshot = waitForTaskStatus(taskId, "TERMINAL", 20);
+            TaskSnapshot terminalSnapshot = waitForTaskSnapshot(taskId, "TERMINAL", 20, 500L);
             assertEquals("TERMINAL", terminalSnapshot.task().get("status"));
             assertEquals("ALL_MESSAGES_SUCCEEDED", terminalSnapshot.task().get("terminalReason"));
             assertEquals(1, ((Number) terminalSnapshot.task().get("scheduleDeviceCnt")).intValue());
@@ -164,63 +152,4 @@ class TaskApiResumeAndCompleteIntegrationTest {
         deviceManager.addToken(deviceId, token);
     }
 
-    private String createTask(String taskName) {
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("taskName", taskName);
-        body.put("project", "demoApp");
-        body.put("countryCode", "us");
-        body.put("textContent", "resume and complete integration test");
-        body.put("userId", "itest");
-        body.put("targetList", List.of("target-a"));
-        body.put("batchSize", 1);
-
-        Map<String, Object> response = exchange("/status/api/tasks", HttpMethod.POST, body);
-        assertEquals(Boolean.TRUE, response.get("success"));
-        String taskId = String.valueOf(response.get("taskId"));
-        assertFalse(taskId.isBlank());
-        return taskId;
-    }
-
-    private TaskSnapshot waitForTaskStatus(String taskId, String expectedStatus, int maxAttempts)
-            throws InterruptedException {
-        for (int i = 0; i < maxAttempts; i++) {
-            Map<String, Object> detail = exchange("/status/api/tasks/" + taskId, HttpMethod.GET, null);
-            Map<String, Object> msgs = exchange(
-                    "/status/api/tasks/" + taskId + "/messages?page=1&size=20", HttpMethod.GET, null);
-            Map<String, Object> task = task(detail);
-            List<Map<String, Object>> messages = messages(msgs);
-            if (expectedStatus.equals(task.get("status"))) {
-                return new TaskSnapshot(task, messages);
-            }
-            Thread.sleep(500L);
-        }
-        throw new AssertionError("Task " + taskId + " did not reach " + expectedStatus + " within timeout");
-    }
-
-    @SuppressWarnings("unchecked")
-    private Map<String, Object> task(Map<String, Object> response) {
-        return (Map<String, Object>) response.get("task");
-    }
-
-    @SuppressWarnings("unchecked")
-    private List<Map<String, Object>> messages(Map<String, Object> response) {
-        return (List<Map<String, Object>>) response.get("messages");
-    }
-
-    @SuppressWarnings("unchecked")
-    private Map<String, Object> exchange(String path, HttpMethod method, Object body) {
-        ResponseEntity<Map> response = restTemplate.exchange(
-                "http://127.0.0.1:" + port + path, method, new HttpEntity<>(body), Map.class);
-        return response.getBody();
-    }
-
-    private static int findFreePort() {
-        try (ServerSocket s = new ServerSocket(0)) {
-            return s.getLocalPort();
-        } catch (IOException e) {
-            throw new IllegalStateException("Failed to allocate free port", e);
-        }
-    }
-
-    private record TaskSnapshot(Map<String, Object> task, List<Map<String, Object>> messages) {}
 }

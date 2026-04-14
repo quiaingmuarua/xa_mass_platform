@@ -156,6 +156,7 @@ public class AssignmentRecordService {
         snapshot.setGroupId(device.getGroupId());
         snapshot.setLockExpireTime(device.getLockExpireTime());
         snapshot.setOnlineStrategy(device.getOnlineStrategy());
+        snapshot.setAttributes(device.getAttributes());
         snapshot.setCreateTime(device.getCreateTime());
         snapshot.setUpdateTime(device.getUpdateTime());
         snapshot.setAppCount(device.getSupportedProjects() != null ? device.getSupportedProjects().size() : 0);
@@ -173,6 +174,7 @@ public class AssignmentRecordService {
         snapshot.setDeviceId(token.getDeviceId());
         snapshot.setTokenStatus(token.getStatus().name());
         snapshot.setChannel(token.getChannel());
+        snapshot.setAttributes(token.getAttributes());
         snapshot.setLastBindTaskId(token.getLastBindTaskId());
         snapshot.setExpireTime(token.getExpireTime());
         snapshot.setCreateTime(token.getCreateTime());

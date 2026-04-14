@@ -1,6 +1,6 @@
 # Task Execution Flow
 
-Last updated: 2026-04-13
+Last updated: 2026-04-14
 
 This document describes only the verified mainline runtime path. It does not describe historical `v2` design ideas.
 
@@ -52,6 +52,8 @@ Key implementation facts:
 - `TaskAssignWorker` no longer depends on `mockMode=true`
 - `MassEngine` resubmits existing `READY` tasks on startup
 - both `approveTask()` and `resumeTask()` produce READY events
+- `DeviceMatchContext` now exposes nested `deviceAttributes` and `tokenAttributes` maps to QLExpress rules
+- `Device.attributes` and `Token.attributes` are auxiliary rule labels only; lifecycle and scheduling truth still come from strong fields and persisted state
 
 ## 3. Mock Preconditions for Assignment
 

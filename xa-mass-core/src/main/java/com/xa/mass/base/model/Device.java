@@ -5,7 +5,10 @@ import com.xa.mass.base.enums.Project;
 import com.xa.mass.base.enums.device.DeviceStatus;
 
 import java.time.LocalDateTime;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 /**
@@ -53,6 +56,8 @@ public class Device {
      * 策略字段（可选）
      */
     private String onlineStrategy;
+
+    private Map<String, String> attributes = Collections.emptyMap();
 
     /**
      * 创建时间
@@ -142,6 +147,18 @@ public class Device {
 
     public void setOnlineStrategy(String onlineStrategy) {
         this.onlineStrategy = onlineStrategy;
+    }
+
+    public Map<String, String> getAttributes() {
+        return attributes;
+    }
+
+    public void setAttributes(Map<String, String> attributes) {
+        if (attributes == null || attributes.isEmpty()) {
+            this.attributes = Collections.emptyMap();
+            return;
+        }
+        this.attributes = Collections.unmodifiableMap(new LinkedHashMap<>(attributes));
     }
 
     public LocalDateTime getCreateTime() {
@@ -245,6 +262,7 @@ public class Device {
                 ", groupId='" + groupId + '\'' +
                 ", lockExpireTime=" + lockExpireTime +
                 ", onlineStrategy='" + onlineStrategy + '\'' +
+                ", attributes=" + attributes +
                 ", createTime=" + createTime +
                 ", updateTime=" + updateTime +
                 '}';

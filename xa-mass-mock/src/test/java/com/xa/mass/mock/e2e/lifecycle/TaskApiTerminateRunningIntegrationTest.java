@@ -1,4 +1,4 @@
-package com.xa.mass.mock.api;
+package com.xa.mass.mock.e2e.lifecycle;
 
 import com.xa.mass.mock.MockApplicationSpringBootApp;
 import org.junit.jupiter.api.Test;

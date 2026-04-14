@@ -4,6 +4,7 @@ import com.xa.mass.base.enums.Project;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 设备属性快照
@@ -17,6 +18,7 @@ public class DeviceSnapshot {
     private String groupId;
     private LocalDateTime lockExpireTime;
     private String onlineStrategy;
+    private Map<String, String> attributes;
     private LocalDateTime createTime;
     private LocalDateTime updateTime;
     private int appCount;
@@ -89,6 +91,14 @@ public class DeviceSnapshot {
 
     public void setOnlineStrategy(String onlineStrategy) {
         this.onlineStrategy = onlineStrategy;
+    }
+
+    public Map<String, String> getAttributes() {
+        return attributes;
+    }
+
+    public void setAttributes(Map<String, String> attributes) {
+        this.attributes = attributes;
     }
 
     public LocalDateTime getCreateTime() {

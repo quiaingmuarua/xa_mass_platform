@@ -1,6 +1,7 @@
 package com.xa.mass.engine.monkey.snapshot;
 
 import java.time.LocalDateTime;
+import java.util.Map;
 
 /**
  * Token属性快照
@@ -10,6 +11,7 @@ public class TokenSnapshot {
     private String deviceId;
     private String tokenStatus;
     private String channel;
+    private Map<String, String> attributes;
     private String lastBindTaskId;
     private LocalDateTime expireTime;
     private LocalDateTime createTime;
@@ -52,6 +54,14 @@ public class TokenSnapshot {
 
     public void setChannel(String channel) {
         this.channel = channel;
+    }
+
+    public Map<String, String> getAttributes() {
+        return attributes;
+    }
+
+    public void setAttributes(Map<String, String> attributes) {
+        this.attributes = attributes;
     }
 
     public String getLastBindTaskId() {

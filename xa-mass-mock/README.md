@@ -76,6 +76,13 @@ Startup behavior:
 
 ## Regression Coverage
 
+Mainline stance:
+
+- end-to-end integration coverage is the primary acceptance gate for runtime behavior
+- unit tests remain important support coverage, but they are not the main proof for task lifecycle correctness
+- integration suites are grouped by domain under `src/test/java/com/xa/mass/mock/e2e`
+- shared HTTP/task polling helpers now live in `src/test/java/com/xa/mass/mock/e2e/support/AbstractMockE2eTest`
+
 Focused verified regression command:
 
 ```bash
@@ -84,9 +91,10 @@ mvn --% -pl xa-mass-mock -am -Dtest=MassWebSocketClientImplTest,TaskApiIntegrati
 
 Covered areas:
 
-- `TaskApiIntegrationTest`: create -> approve -> assign -> run -> complete
-- `TaskApiFailureResultIntegrationTest`: create -> approve -> assign -> fail -> terminal through the real mock runtime
-- `TaskApiLifecycleGuardsIntegrationTest`: reject/approve, pause/resume, delete guard through real HTTP APIs
+- `e2e/lifecycle`: create -> approve -> assign -> run -> complete, pause/resume guards, pause-completion, terminate-running, resume-and-complete
+- `e2e/results`: failed-result terminal closure, mixed results, callback replay idempotency
+- `e2e/assignment`: delayed device availability and multi-task assignment behavior
+- `e2e/audit`: `stateValidation` exposure and terminal metadata consistency through the real HTTP path
 - `WebSocketClientStarterTest`: auto-start and idempotent startup behavior
 - `MassWebSocketClientImplTest`: ignore `response=true` task frames, avoid echo loops, and allow configurable `SUCCESS` / `FAILED` result payloads
 
