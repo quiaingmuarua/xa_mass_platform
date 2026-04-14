@@ -91,7 +91,7 @@ public class RuleBasedTaskDeviceMatchingStrategy implements TaskDeviceMatchingSt
                         recordService.recordDeviceAssignment(
                                 task, device, token, AssignmentResult.SUCCESS,
                                 "all rules matched and device lock acquired",
-                                ruleEvaluations, matchContext.getContext()
+                                ruleEvaluations, matchContext.getContext(), true
                         );
                         matchedDevices.add(device);
                         log.info("Device matched: {} for task {}", device.getDeviceId(), task.getTid());
@@ -99,7 +99,8 @@ public class RuleBasedTaskDeviceMatchingStrategy implements TaskDeviceMatchingSt
                         recordService.recordDeviceAssignment(
                                 task, device, token, AssignmentResult.CONFLICT,
                                 "device lock conflict after rules matched",
-                                ruleEvaluations, matchContext.getContext()
+                                ruleEvaluations, matchContext.getContext(),
+                                deviceManager.isLocked(device.getDeviceId())
                         );
                         log.info("Device locked: {}", device.getDeviceId());
                     }
@@ -111,7 +112,8 @@ public class RuleBasedTaskDeviceMatchingStrategy implements TaskDeviceMatchingSt
                     recordService.recordDeviceAssignment(
                             task, device, token, AssignmentResult.RULE_NOT_MATCH,
                             "rule evaluation failed: " + failedRules,
-                            ruleEvaluations, matchContext.getContext()
+                            ruleEvaluations, matchContext.getContext(),
+                            deviceManager.isLocked(device.getDeviceId())
                     );
                     log.info("Rule not matched: {} (failed rules: {})", device.getDeviceId(), failedRules);
 
@@ -128,7 +130,8 @@ public class RuleBasedTaskDeviceMatchingStrategy implements TaskDeviceMatchingSt
                 recordService.recordDeviceAssignment(
                         task, device, token, AssignmentResult.FAILED,
                         "rule evaluation exception: " + e.getMessage(),
-                        new ArrayList<>(), matchContext.getContext()
+                        new ArrayList<>(), matchContext.getContext(),
+                        deviceManager.isLocked(device.getDeviceId())
                 );
                 log.error("Error evaluating rules for device {}: {}", device.getDeviceId(), e.getMessage());
             }

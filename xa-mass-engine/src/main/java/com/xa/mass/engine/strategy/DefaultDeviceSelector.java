@@ -13,6 +13,10 @@ import java.util.stream.Collectors;
  * <p>Selection priority stays device-centric. It must not inject routing-country
  * assumptions from {@code device.deviceGroupId}; routing country belongs to rule/token
  * matching instead.
+ *
+ * <p>This selector reasons only over fields carried on {@link Device}. Runtime
+ * lock ownership is enforced by the active matching strategy rather than by
+ * stale state on the device model itself.
  */
 public class DefaultDeviceSelector implements DeviceSelector {
 
@@ -28,9 +32,6 @@ public class DefaultDeviceSelector implements DeviceSelector {
     @Override
     public boolean isDeviceSuitable(Device device, Task task) {
         if (!device.isAvailable()) {
-            return false;
-        }
-        if (device.isLocked()) {
             return false;
         }
         if (!device.supportsProject(task.getProject())) {

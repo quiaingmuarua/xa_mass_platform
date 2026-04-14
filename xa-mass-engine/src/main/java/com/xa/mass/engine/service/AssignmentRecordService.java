@@ -34,7 +34,8 @@ public class AssignmentRecordService {
     public AssignmentRecord recordDeviceAssignment(Task task, Device device, Token token,
                                                    AssignmentResult result, String reason,
                                                    List<RuleEvaluationDetail> ruleEvaluations,
-                                                   Map<String, Object> contextSnapshot) {
+                                                   Map<String, Object> contextSnapshot,
+                                                   boolean deviceLocked) {
         AssignmentRecord record = new AssignmentRecord();
         record.setRecordId(UUID.randomUUID().toString());
         record.setType(AssignmentType.DEVICE_ASSIGN);
@@ -48,7 +49,7 @@ public class AssignmentRecordService {
 
         // 鍒涘缓蹇収
         record.setTaskSnapshot(createTaskSnapshot(task));
-        record.setDeviceSnapshot(createDeviceSnapshot(device));
+        record.setDeviceSnapshot(createDeviceSnapshot(device, deviceLocked));
         if (token != null) {
             record.setTokenSnapshot(createTokenSnapshot(token));
         }
@@ -66,7 +67,8 @@ public class AssignmentRecordService {
      */
     public AssignmentRecord recordMessageAssignment(Task task, Device device, Token token,
                                                     String messageId, String batchId,
-                                                    AssignmentResult result, String reason) {
+                                                    AssignmentResult result, String reason,
+                                                    boolean deviceLocked) {
         AssignmentRecord record = new AssignmentRecord();
         record.setRecordId(UUID.randomUUID().toString());
         record.setType(AssignmentType.MSG_ASSIGN);
@@ -79,7 +81,7 @@ public class AssignmentRecordService {
 
         // 鍒涘缓蹇収
         record.setTaskSnapshot(createTaskSnapshot(task));
-        record.setDeviceSnapshot(createDeviceSnapshot(device));
+        record.setDeviceSnapshot(createDeviceSnapshot(device, deviceLocked));
         if (token != null) {
             record.setTokenSnapshot(createTokenSnapshot(token));
         }
@@ -146,7 +148,7 @@ public class AssignmentRecordService {
     /**
      * 鍒涘缓璁惧蹇収
      */
-    private DeviceSnapshot createDeviceSnapshot(Device device) {
+    private DeviceSnapshot createDeviceSnapshot(Device device, boolean deviceLocked) {
         DeviceSnapshot snapshot = new DeviceSnapshot();
         snapshot.setDeviceId(device.getDeviceId());
         snapshot.setDeviceStatus(device.getStatus().name());
@@ -154,14 +156,13 @@ public class AssignmentRecordService {
         snapshot.setLastHeartbeat(device.getLastHeartbeat());
         snapshot.setSupportedProjects(device.getSupportedProjects());
         snapshot.setDeviceGroupId(device.getDeviceGroupId());
-        snapshot.setLockExpireTime(device.getLockExpireTime());
         snapshot.setOnlineStrategy(device.getOnlineStrategy());
         snapshot.setAttributes(device.getAttributes());
         snapshot.setCreateTime(device.getCreateTime());
         snapshot.setUpdateTime(device.getUpdateTime());
         snapshot.setAppCount(device.getSupportedProjects() != null ? device.getSupportedProjects().size() : 0);
         snapshot.setDeviceAvailable(device.isAvailable());
-        snapshot.setDeviceLocked(device.isLocked());
+        snapshot.setDeviceLocked(deviceLocked);
         return snapshot;
     }
 

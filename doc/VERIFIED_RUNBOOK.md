@@ -60,6 +60,9 @@ For endpoint inventory, response shapes, and implementation status, use [INTERNA
   - `Device.attributes` and `Token.attributes` are defensive-copied and exposed as read-only maps
   - `DeviceMatchContext` exposes them to QLExpress as `deviceAttributes` and `tokenAttributes`
 - token-attribute routing is verified end-to-end through `tokenAttributes['country'] == taskRoutingCountryCode`
+- device availability truths are single-sourced:
+  - online truth comes from `Device.status`
+  - lock truth comes from `DeviceStorage` / `DeviceManager.isLocked(...)`, not from the `Device` model
 
 ## 2. Recommended Startup
 
@@ -174,6 +177,7 @@ Current matching-context note:
 - `RuleBasedTaskDeviceMatchingStrategy` no longer treats device `deviceGroupId` as a hard prefilter for routing country
 - `DeviceMatchContext` now exposes nested `deviceAttributes` and `tokenAttributes` maps for QLExpress access such as `tokenAttributes['country'] == taskRoutingCountryCode`
 - these maps are auxiliary rule labels only and are not the source of truth for lifecycle, lock, or online state
+- `AssignmentRecordService` snapshots `deviceLocked` from live runtime lock state instead of from fields on `Device`
 
 ### 4.3 Result Write-Back and Completion
 
@@ -192,6 +196,7 @@ Important guard added in the verified runtime:
 - `WebSocketClientStarter` passes `mock.client.task-result-status` into each mock client so failure-path result handling can be exercised without changing the engine path
 - `TaskManager.handleTaskMessageResult(...)` ignores late non-final callbacks for tasks already closed to `TERMINAL`, so manual cancel/terminate freezes later progress mutation
 - `DeviceManager` now uses `Device.status` as the single online truth for runtime availability; gateway online/offline events update the device model directly
+- runtime lock state is stored in `DeviceStorage` and exposed through `DeviceManager.isLocked(...)`; active diagnostics no longer infer lock from `Device`
 
 ## 5. Verified Smoke and Regression Coverage on 2026-04-13
 
@@ -242,6 +247,7 @@ What it verifies:
 - engine lifecycle coverage now verifies paused-task final callback closure into `TERMINAL`
 - engine worker coverage now verifies retry of `READY` tasks that initially have no device match
 - separate token-attribute routing coverage now verifies that a custom QLExpress rule can select the correct token via `tokenAttributes['country']`
+- engine strategy and message-assignment coverage now verifies that assignment snapshots carry runtime lock state from `DeviceManager.isLocked(...)`
 
 Implementation details that matter:
 

@@ -50,8 +50,6 @@ public class Device {
     /**
      * 褰撳墠鍒嗛厤閿佽繃鏈熸椂闂?
      */
-    private LocalDateTime lockExpireTime;
-
     /**
      * 绛栫暐瀛楁锛堝彲閫夛級
      */
@@ -133,14 +131,6 @@ public class Device {
         this.deviceGroupId = deviceGroupId;
     }
 
-    public LocalDateTime getLockExpireTime() {
-        return lockExpireTime;
-    }
-
-    public void setLockExpireTime(LocalDateTime lockExpireTime) {
-        this.lockExpireTime = lockExpireTime;
-    }
-
     public String getOnlineStrategy() {
         return onlineStrategy;
     }
@@ -199,10 +189,6 @@ public class Device {
     /**
      * 妫€鏌ヨ澶囨槸鍚﹁閿佸畾
      */
-    public boolean isLocked() {
-        return lockExpireTime != null && lockExpireTime.isAfter(LocalDateTime.now());
-    }
-
     /**
      * 鏇存柊蹇冭烦鏃堕棿
      */
@@ -260,7 +246,6 @@ public class Device {
                 ", lastHeartbeat=" + lastHeartbeat +
                 ", supportedProjects=" + supportedProjects +
                 ", deviceGroupId='" + deviceGroupId + '\'' +
-                ", lockExpireTime=" + lockExpireTime +
                 ", onlineStrategy='" + onlineStrategy + '\'' +
                 ", attributes=" + attributes +
                 ", createTime=" + createTime +

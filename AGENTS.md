@@ -37,6 +37,7 @@ This file is the fastest entry point for coding agents such as Claude Code, Code
 - `MassWebSocketClientImpl` ignores `response=true` `TASK/step` frames to avoid mock echo loops
 - `mock.client.task-result-status` can force mock result frames to `SUCCESS` or `FAILED`
 - `Device.attributes` and `Token.attributes` are now read-only auxiliary rule labels for matching and diagnostics only
+- `Device.status` is the single online truth, and runtime device lock truth now lives only in `DeviceStorage` / `DeviceManager.isLocked(...)`
 - Treat `engine/v2` as historical archive material, not mainline
 
 ## 1. What This Repo Is
@@ -357,7 +358,9 @@ Important current implementation facts:
 - `GET /status/api/tasks/{taskId}` now includes `stateValidation` so API/demo surfaces can expose the same state-audit result used by SDK callers.
 - `MassApplication.loadMockData(...)` normalizes mock `supportedProjects`, lowercases `deviceGroupId`, loads explicit mock `tokens` when present, and only auto-seeds minimal `LOGIN_READY` fallback tokens for devices that still have none.
 - `DeviceManager` now treats `Device.status` as the single online truth for matching/runtime availability; gateway online/offline events update the device model directly instead of maintaining a separate online-state registry.
+- `DeviceManager` / `DeviceStorage` now also own the single device-lock truth; active mainline code should read lock state through `DeviceManager.isLocked(...)` instead of from `Device`.
 - `Device` and `Token` now expose `attributes: Map<String, String>` with defensive-copy and read-only semantics; callers may replace the whole map on update, but there is no per-entry mutation API.
+- `AssignmentRecordService` now snapshots `deviceLocked` from live runtime lock state instead of from stale `Device` fields.
 - `WebSocketClientStarter` now starts on `ApplicationReadyEvent` behind `mock.client.auto-start=true`, so default `dev` startup includes mock client result write-back.
 - `WebSocketClientStarter` passes `mock.client.task-result-status` into each mock client so result write-back can be forced to `SUCCESS` or `FAILED`.
 - `MassWebSocketClientImpl` now ignores `response=true` task frames to prevent mock client echo loops and duplicate result writes.
@@ -401,6 +404,7 @@ Verified focused classes:
 - `xa-mass-mock/src/test/java/com/xa/mass/mock/starter/WebSocketClientStarterTest.java`
 - `xa-mass-engine/src/test/java/com/xa/mass/engine/TaskManagerLifecycleTest.java`
 - `xa-mass-engine/src/test/java/com/xa/mass/engine/listener/TaskAssignWorkerTest.java`
+- `xa-mass-engine/src/test/java/com/xa/mass/engine/listener/SimpleTaskMsgAssignListenerTest.java`
 - `xa-mass-engine/src/test/java/com/xa/mass/engine/model/DeviceMatchContextTest.java`
 - `xa-mass-engine/src/test/java/com/xa/mass/engine/rules/QLExpressRuleEvaluatorTest.java`
 - `xa-mass-engine/src/test/java/com/xa/mass/engine/strategy/RuleBasedTaskDeviceMatchingStrategyTest.java`
@@ -421,6 +425,7 @@ What the new focused coverage proves:
 - `GET /status/api/tasks/{taskId}` exposes `stateValidation` over the real HTTP/runtime path, including `needsResolution=true` when a task is manually reopened after all persisted message callbacks are already final
 - invalid terminal metadata is also covered end-to-end: missing `terminalReason` and message/result mismatch both surface through `stateValidation.violations`
 - token-attribute-based routing is covered end-to-end through a custom QLExpress rule using `tokenAttributes['country'] == taskRoutingCountryCode`
+- assignment diagnostics now snapshot runtime device lock state instead of stale `Device` model fields
 - mock clients no longer respond to server response frames
 - mock result status can be forced to `FAILED` without changing business logic code paths
 - duplicate `TASK/step` result callbacks are covered at engine/runtime regression level and keep the first final state

@@ -88,7 +88,8 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
 
                 recordService.recordMessageAssignment(
                         task, device, token, msg.getMsgId(), currentBatchId,
-                        AssignmentResult.SUCCESS, "message assigned"
+                        AssignmentResult.SUCCESS, "message assigned",
+                        deviceManager.isLocked(device.getDeviceId())
                 );
             }
             batchId++;

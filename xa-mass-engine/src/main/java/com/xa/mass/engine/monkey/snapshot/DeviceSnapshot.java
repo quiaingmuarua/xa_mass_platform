@@ -16,7 +16,6 @@ public class DeviceSnapshot {
     private LocalDateTime lastHeartbeat;
     private List<Project> supportedProjects;
     private String deviceGroupId;
-    private LocalDateTime lockExpireTime;
     private String onlineStrategy;
     private Map<String, String> attributes;
     private LocalDateTime createTime;
@@ -75,14 +74,6 @@ public class DeviceSnapshot {
 
     public void setDeviceGroupId(String deviceGroupId) {
         this.deviceGroupId = deviceGroupId;
-    }
-
-    public LocalDateTime getLockExpireTime() {
-        return lockExpireTime;
-    }
-
-    public void setLockExpireTime(LocalDateTime lockExpireTime) {
-        this.lockExpireTime = lockExpireTime;
     }
 
     public String getOnlineStrategy() {

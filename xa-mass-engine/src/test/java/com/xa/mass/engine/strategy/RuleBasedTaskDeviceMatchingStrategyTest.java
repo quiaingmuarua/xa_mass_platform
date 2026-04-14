@@ -8,6 +8,7 @@ import com.xa.mass.base.model.Device;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.Token;
 import com.xa.mass.engine.DeviceManager;
+import com.xa.mass.engine.model.AssignmentRecord;
 import com.xa.mass.engine.rules.RuleDefinition;
 import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.engine.rules.RuleType;
@@ -20,6 +21,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class RuleBasedTaskDeviceMatchingStrategyTest {
 
@@ -56,6 +58,45 @@ class RuleBasedTaskDeviceMatchingStrategyTest {
 
         assertEquals(1, matched.size());
         assertEquals("device-us", matched.get(0).getDeviceId());
+        AssignmentRecord record = recordService.getRecordsByTaskId("task-1").stream()
+                .filter(item -> "device-us".equals(item.getDeviceId()))
+                .findFirst()
+                .orElseThrow();
+        assertTrue(record.getDeviceSnapshot().isDeviceLocked());
+    }
+
+    @Test
+    void recordsRuntimeLockStateForPreLockedDevices() {
+        DeviceManager deviceManager = new DeviceManager(new InMemoryDeviceStorage());
+        RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(new InMemoryRuleStorage());
+        AssignmentRecordService recordService = new AssignmentRecordService();
+        RuleBasedTaskDeviceMatchingStrategy strategy =
+                new RuleBasedTaskDeviceMatchingStrategy(ruleManager, deviceManager, recordService);
+
+        ruleManager.addDefaultRules(List.of(
+                rule("basic_device_check", "isDeviceAvailable == true && isDeviceLocked == false"),
+                rule("token_status_check", "isTokenAllocatable == true && isTokenAvailable == true"),
+                rule("app_support_check", "supportsProject == true")
+        ));
+
+        Task task = new Task();
+        task.setTid("task-locked");
+        task.setProject(Project.DEMO_APP);
+        task.setStatus(TaskStatus.READY);
+
+        Device device = device("device-locked", "pool-east");
+        deviceManager.addDevice(device);
+        deviceManager.addToken(device.getDeviceId(), token("device-locked", "token-locked", "shared", "us"));
+        assertTrue(deviceManager.tryLockDevice(device.getDeviceId()));
+
+        List<Device> matched = strategy.matchDevices(task, 1);
+
+        assertTrue(matched.isEmpty());
+        AssignmentRecord record = recordService.getRecordsByTaskId("task-locked").stream()
+                .filter(item -> "device-locked".equals(item.getDeviceId()))
+                .findFirst()
+                .orElseThrow();
+        assertTrue(record.getDeviceSnapshot().isDeviceLocked());
     }
 
     private RuleDefinition rule(String id, String content) {
