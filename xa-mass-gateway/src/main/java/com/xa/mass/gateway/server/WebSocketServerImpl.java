@@ -208,6 +208,7 @@ public class WebSocketServerImpl implements MassWebSocketServer {
         public void channelInactive(ChannelHandlerContext ctx) throws Exception {
             long count = activeConnections.decrementAndGet(); // 原子减少活跃连接数
             logger.debug("Connection closed: {}, total={}", ctx.channel().remoteAddress(), count);
+            sessionManager.removeSession(ctx.channel());
             super.channelInactive(ctx); // 调用父类方法
         }
     }

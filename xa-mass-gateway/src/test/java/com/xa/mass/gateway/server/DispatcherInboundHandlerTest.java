@@ -11,10 +11,13 @@ import com.xa.mass.gateway.queue.Envelope;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelId;
+import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.lang.reflect.Constructor;
+import java.util.Arrays;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -126,5 +129,51 @@ class DispatcherInboundHandlerTest {
 
     private TextWebSocketFrame frame(String text) {
         return new TextWebSocketFrame(text);
+    }
+}
+
+class WebSocketServerImplDisconnectTest {
+
+    @Test
+    void channelInactiveRemovesDisconnectedSessionFromSessionManager() throws Exception {
+        WebSocketServerImpl server = new WebSocketServerImpl();
+        ServerSessionManager sessionManager = spy(new ServerSessionManager());
+        server.setSessionManager(sessionManager);
+
+        Channel channel = mock(Channel.class);
+        ChannelId channelId = mock(ChannelId.class);
+        when(channelId.asShortText()).thenReturn("disconnect-ch");
+        when(channel.id()).thenReturn(channelId);
+        when(channel.isActive()).thenReturn(true);
+
+        ChannelHandlerContext ctx = mock(ChannelHandlerContext.class);
+        when(ctx.channel()).thenReturn(channel);
+        when(ctx.fireChannelActive()).thenReturn(ctx);
+        when(ctx.fireChannelInactive()).thenReturn(ctx);
+
+        sessionManager.addSession("worker-1", SessionRoles.TASK_MESSAGES, channel, ctx);
+
+        ChannelInboundHandlerAdapter handler = newConnectionStatsHandler(server);
+        handler.channelActive(ctx);
+        assertEquals(1L, server.getActiveConnectionCount());
+        assertEquals(1, sessionManager.getWorkerConnectionCount());
+
+        handler.channelInactive(ctx);
+
+        verify(sessionManager).removeSession(channel);
+        assertEquals(0L, server.getActiveConnectionCount());
+        assertTrue(sessionManager.getAllWorkerChannels().isEmpty());
+        assertNull(sessionManager.getChannel("worker-1", SessionRoles.TASK_MESSAGES));
+        assertNull(sessionManager.getWorkerConnKey(channel));
+    }
+
+    private ChannelInboundHandlerAdapter newConnectionStatsHandler(WebSocketServerImpl server) throws Exception {
+        Class<?> handlerClass = Arrays.stream(WebSocketServerImpl.class.getDeclaredClasses())
+                .filter(candidate -> candidate.getSimpleName().equals("ConnectionStatsHandler"))
+                .findFirst()
+                .orElseThrow();
+        Constructor<?> constructor = handlerClass.getDeclaredConstructor(WebSocketServerImpl.class);
+        constructor.setAccessible(true);
+        return (ChannelInboundHandlerAdapter) constructor.newInstance(server);
     }
 }

@@ -108,6 +108,38 @@ class TaskResourceReleaseListenerTest {
     }
 
     @Test
+    void finalMessageReleasesWorkerWhenRemainingMessagesAreNotProcessing() {
+        Task task = new Task();
+        task.setTid("task-1");
+        task.setStatus(TaskStatus.RUNNING);
+
+        TaskMsg finalMsg = new TaskMsg("msg-1", "task-1", "target-a");
+        finalMsg.setWorkerId("worker-1");
+        finalMsg.setWorkerContextId("wctx-1");
+        finalMsg.setStatus(TaskMsgStatus.SUCCESS);
+
+        TaskMsg retriedMsg = new TaskMsg("msg-2", "task-1", "target-b");
+        retriedMsg.setWorkerId("worker-1");
+        retriedMsg.setWorkerContextId("wctx-1");
+        retriedMsg.setStatus(TaskMsgStatus.INIT);
+
+        WorkerContext wctx = new WorkerContext("wctx-1", "worker-1", "us");
+        wctx.bindToTask("task-1");
+        wctx.startOccupying();
+
+        when(taskManager.getTaskMessages("task-1")).thenReturn(List.of(finalMsg, retriedMsg));
+        when(taskManager.hasPendingDispatchableMessages("task-1")).thenReturn(true);
+        when(workerManager.getWorkerContext("worker-1")).thenReturn(wctx);
+        when(workerManager.updateWorkerContext("worker-1", wctx)).thenReturn(true);
+
+        listener.onTaskMessageFinal(task, finalMsg);
+
+        verify(workerManager).updateWorkerContext("worker-1", wctx);
+        verify(workerManager).unlockWorker("worker-1");
+        verify(dispatchRequester).accept(same(task));
+    }
+
+    @Test
     void finalMessageKeepsWorkerLockedWhenAnotherMessageIsStillProcessing() {
         Task task = new Task();
         task.setTid("task-1");

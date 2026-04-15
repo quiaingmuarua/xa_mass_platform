@@ -225,6 +225,51 @@ class TaskManagerLifecycleTest {
     }
 
     @Test
+    void retryReusesSameTaskMessageAndFinalSuccessCountDoesNotInflate() {
+        Task task = taskManager.createTask(buildRequest("task-result-retry", List.of("alpha")));
+        taskManager.approveTask(task.getTid());
+        task.setStatus(TaskStatus.RUNNING);
+        taskManager.updateTask(task);
+
+        TaskMsg message = taskManager.getTaskMessages(task.getTid()).get(0);
+        String msgId = message.getMsgId();
+        message.transitionTo(TaskMsgStatus.BINDING);
+        message.markAsSent();
+        message.setWorkerId("worker-1");
+        message.setWorkerContextId("worker-context-1");
+        taskManager.updateTaskMessage(task.getTid(), message);
+
+        assertTrue(taskManager.handleTaskMessageResult(task.getTid(), msgId, false, "boom-once"));
+
+        List<TaskMsg> afterRetryMessages = taskManager.getTaskMessages(task.getTid());
+        assertEquals(1, afterRetryMessages.size());
+        TaskMsg retriedMessage = afterRetryMessages.get(0);
+        assertEquals(msgId, retriedMessage.getMsgId());
+        assertEquals(TaskMsgStatus.INIT, retriedMessage.getStatus());
+        assertEquals(1, retriedMessage.getRetryCount());
+        assertEquals("worker-1", retriedMessage.getWorkerId());
+        assertEquals("worker-context-1", retriedMessage.getWorkerContextId());
+        assertNull(retriedMessage.getErrorMessage());
+        assertEquals(TaskStatus.RUNNING, taskManager.getTask(task.getTid()).getStatus());
+        assertEquals(0, taskManager.getTask(task.getTid()).getTaskSuccessNumber());
+        assertEquals(0, scheduler.completedTaskMsgCount);
+        assertEquals(0, scheduler.failedTaskMsgCount);
+
+        assertTrue(taskManager.handleTaskMessageResult(task.getTid(), msgId, true, "done-after-retry"));
+
+        TaskMsg finalMessage = taskManager.getTaskMessage(task.getTid(), msgId);
+        Task updatedTask = taskManager.getTask(task.getTid());
+        assertEquals(TaskMsgStatus.SUCCESS, finalMessage.getStatus());
+        assertEquals(1, finalMessage.getRetryCount());
+        assertEquals("done-after-retry", finalMessage.getResult());
+        assertEquals(TaskStatus.TERMINAL, updatedTask.getStatus());
+        assertEquals(TaskTerminalReason.ALL_MESSAGES_SUCCEEDED, updatedTask.getTerminalReason());
+        assertEquals(1, updatedTask.getTaskSuccessNumber());
+        assertEquals(1, scheduler.completedTaskMsgCount);
+        assertEquals(0, scheduler.failedTaskMsgCount);
+    }
+
+    @Test
     void resolveTaskStateFromMessagesReportsNotFinalizedWhileMessagesRemainOpen() {
         Task task = taskManager.createTask(buildRequest("task-resolution-pending"));
         taskManager.approveTask(task.getTid());

@@ -125,6 +125,53 @@ class SimpleTaskMsgAssignListenerTest {
     }
 
     @Test
+    void singleWorkerDoesNotExceedBatchSizeWithinOneDispatchRound() {
+        Task task = createTask(4);
+        task.setBatchSize(2);
+
+        WorkerContext wc1 = workerContext("tk1", "d1");
+        when(workerManager.getWorkerContext("d1")).thenReturn(wc1);
+        when(workerManager.updateWorkerContext(anyString(), any(WorkerContext.class))).thenReturn(true);
+
+        List<TaskMsg> dispatched = listener.onMsgAssign(task, List.of(worker("d1")));
+
+        assertEquals(2, dispatched.size());
+        List<TaskMsg> stored = taskManager.getTaskMessages(task.getTid());
+        assertEquals(List.of(
+                        TaskMsgStatus.SENT,
+                        TaskMsgStatus.SENT,
+                        TaskMsgStatus.INIT,
+                        TaskMsgStatus.INIT),
+                stored.stream().map(TaskMsg::getStatus).collect(Collectors.toList()));
+        assertEquals(java.util.Arrays.asList("d1", "d1", null, null),
+                stored.stream().map(TaskMsg::getWorkerId).collect(Collectors.toList()));
+    }
+
+    @Test
+    void finalDispatchRoundCanUseLessThanBatchSizeWhenFewerMessagesRemain() {
+        Task task = createTask(3);
+        task.setBatchSize(2);
+
+        WorkerContext wc1 = workerContext("tk1", "d1");
+        WorkerContext wc2 = workerContext("tk2", "d2");
+        when(workerManager.getWorkerContext("d1")).thenReturn(wc1);
+        when(workerManager.getWorkerContext("d2")).thenReturn(wc2);
+        when(workerManager.updateWorkerContext(anyString(), any(WorkerContext.class))).thenReturn(true);
+
+        List<TaskMsg> dispatched = listener.onMsgAssign(task, List.of(worker("d1"), worker("d2")));
+
+        assertEquals(3, dispatched.size());
+        List<TaskMsg> stored = taskManager.getTaskMessages(task.getTid());
+        assertEquals(List.of(
+                        TaskMsgStatus.SENT,
+                        TaskMsgStatus.SENT,
+                        TaskMsgStatus.SENT),
+                stored.stream().map(TaskMsg::getStatus).collect(Collectors.toList()));
+        assertEquals(java.util.Arrays.asList("d1", "d2", "d1"),
+                stored.stream().map(TaskMsg::getWorkerId).collect(Collectors.toList()));
+    }
+
+    @Test
     void nullWorkerContextIsHandledGracefully() {
         Task task = createTask(2);
         task.setBatchSize(10);
