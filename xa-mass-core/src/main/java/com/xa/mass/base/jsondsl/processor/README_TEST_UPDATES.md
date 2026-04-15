@@ -20,7 +20,7 @@ ctx.
 
 setParameter("includeFailedDetail",true);
 
-FilterResult<Device> result = filterProcessor.filter(devices, filterDef, ctx);
+FilterResult<Worker> result = filterProcessor.filter(workers, filterDef, ctx);
 System.out.
 
 println("通过: "+result.getPassed().
@@ -33,14 +33,14 @@ println("拒绝率: "+result.getRejectRate());
 
 getFailed() !=null){
         for(
-FilterReport.FilterFail<Device> fail :result.
+FilterReport.FilterFail<Worker> fail :result.
 
 getFailed()){
         System.out.
 
 println("设备: "+fail.getObject().
 
-getDeviceId() +", 原因: "+fail.
+getWorkerId() +", 原因: "+fail.
 
 getFailedConditions());
         }

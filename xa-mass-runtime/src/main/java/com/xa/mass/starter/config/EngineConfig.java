@@ -2,7 +2,7 @@ package com.xa.mass.starter.config;
 
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import com.xa.mass.engine.DeviceManager;
+import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.listener.TaskMsgDispatchListener;
 import com.xa.mass.engine.rules.RuleManager;
@@ -26,14 +26,14 @@ public class EngineConfig {
     private String mockConfigPath = "mock_config.json";
     private boolean mockMode = true;
     private JsonObject mockConfigRoot;
-    private String deviceConfigPath = "mock/mock_devices.json";
-    private String tokenConfigPath = "mock/mock_tokens.json";
+    private String workerConfigPath = "mock/mock_workers.json";
+    private String workerContextConfigPath = "mock/mock_worker_contexts.json";
     private String taskConfigPath = "mock/mock_tasks.json";
     private String ruleConfigPath = "mock/mock_rules.json";
 
     private SimpleTaskScheduler scheduler = new SimpleTaskScheduler();
     private TaskManager taskManager = new TaskManager(scheduler);
-    private DeviceManager deviceManager = new DeviceManager();
+    private WorkerManager workerManager = new WorkerManager();
     private AssignmentRecordService recordService = new AssignmentRecordService();
     private RuleManager<Map<String, Object>> ruleManager = RuleManagerFactory.getProjectRuleManager("demoApp");
     private TaskMsgDispatchListener taskMsgDispatchListener;
@@ -70,20 +70,20 @@ public class EngineConfig {
         this.mockMode = mockMode;
     }
 
-    public String getDeviceConfigPath() {
-        return deviceConfigPath;
+    public String getWorkerConfigPath() {
+        return workerConfigPath;
     }
 
-    public void setDeviceConfigPath(String deviceConfigPath) {
-        this.deviceConfigPath = deviceConfigPath;
+    public void setWorkerConfigPath(String workerConfigPath) {
+        this.workerConfigPath = workerConfigPath;
     }
 
-    public String getTokenConfigPath() {
-        return tokenConfigPath;
+    public String getWorkerContextConfigPath() {
+        return workerContextConfigPath;
     }
 
-    public void setTokenConfigPath(String tokenConfigPath) {
-        this.tokenConfigPath = tokenConfigPath;
+    public void setWorkerContextConfigPath(String workerContextConfigPath) {
+        this.workerContextConfigPath = workerContextConfigPath;
     }
 
     public String getTaskConfigPath() {
@@ -108,8 +108,8 @@ public class EngineConfig {
         }
 
         JsonObject root = new JsonObject();
-        addArrayConfig(root, "devices", deviceConfigPath);
-        addArrayConfig(root, "tokens", tokenConfigPath);
+        addArrayConfig(root, "workers", workerConfigPath);
+        addArrayConfig(root, "workerContexts", workerContextConfigPath);
         addArrayConfig(root, "tasks", taskConfigPath);
         addArrayConfig(root, "rules", ruleConfigPath);
         return root;
@@ -128,9 +128,6 @@ public class EngineConfig {
         }
     }
 
-    /**
-     * Reads config content from classpath or filesystem.
-     */
     private String readConfigFile(String configPath) throws IOException {
         if (configPath.startsWith("classpath:")) {
             String classpathPath = configPath.substring("classpath:".length());
@@ -174,12 +171,12 @@ public class EngineConfig {
         this.taskManager = taskManager;
     }
 
-    public DeviceManager getDeviceManager() {
-        return deviceManager;
+    public WorkerManager getWorkerManager() {
+        return workerManager;
     }
 
-    public void setDeviceManager(DeviceManager deviceManager) {
-        this.deviceManager = deviceManager;
+    public void setWorkerManager(WorkerManager workerManager) {
+        this.workerManager = workerManager;
     }
 
     public AssignmentRecordService getRecordService() {

@@ -25,17 +25,17 @@ class ServerSessionManagerShutdownTest {
         ChannelHandlerContext ctx1 = mock(ChannelHandlerContext.class);
         ChannelHandlerContext ctx2 = mock(ChannelHandlerContext.class);
 
-        manager.addSession("device-1", "task", ch1, ctx1);
-        manager.addSession("device-2", "task", ch2, ctx2);
+        manager.addSession("worker-1", "task", ch1, ctx1);
+        manager.addSession("worker-2", "task", ch2, ctx2);
 
-        assertEquals(2, manager.getDeviceConnectionCount());
+        assertEquals(2, manager.getWorkerConnectionCount());
 
         manager.shutdown();
 
         verify(ch1).close();
         verify(ch2).close();
         // Internal maps cleared: no more connections reported
-        assertEquals(0, manager.getAllDeviceChannels().size());
+        assertEquals(0, manager.getAllWorkerChannels().size());
     }
 
     @Test

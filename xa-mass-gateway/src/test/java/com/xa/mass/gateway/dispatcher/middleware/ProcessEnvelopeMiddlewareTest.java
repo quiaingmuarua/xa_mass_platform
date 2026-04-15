@@ -89,7 +89,7 @@ class ProcessEnvelopeMiddlewareTest {
     // ---- helpers ----
 
     private Envelope envelope(String rawJson) {
-        return Envelope.builder().rawJson(rawJson).deviceId("dev-1").connRole("task").build();
+        return Envelope.builder().rawJson(rawJson).workerId("dev-1").connRole("task").build();
     }
 
     private MassMessage message(String project, MessageType type, String subType) {
@@ -98,7 +98,7 @@ class ProcessEnvelopeMiddlewareTest {
         msg.setMsgType(type);
         msg.setSubMsgType(subType);
         MessageContext ctx = new MessageContext();
-        ctx.setDeviceId("dev-1");
+        ctx.setWorkerId("dev-1");
         ctx.setConnRole("task");
         msg.setContext(ctx);
         return msg;

@@ -1,12 +1,13 @@
 package com.xa.mass.engine.example;
 
-import com.xa.mass.base.enums.task.TokenStatus;
-import com.xa.mass.base.model.Device;
-import com.xa.mass.base.model.Token;
-import com.xa.mass.engine.DeviceManager;
+import com.xa.mass.base.enums.worker.WorkerContextStatus;
+import com.xa.mass.base.enums.worker.WorkerStatus;
+import com.xa.mass.base.model.Worker;
+import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.TaskManager;
+import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.listener.SimpleTaskMsgAssignListener;
-import com.xa.mass.engine.listener.TaskDeviceAssignListener;
+import com.xa.mass.engine.listener.TaskWorkerAssignListener;
 import com.xa.mass.engine.model.TaskCreateRequestDto;
 import com.xa.mass.engine.monkey.MonkeyGenerator;
 import com.xa.mass.engine.rules.RuleManagerFactory;
@@ -22,424 +23,281 @@ import java.util.Arrays;
 import java.util.List;
 
 /**
- * 鐎涙ê鍋嶇化鑽ょ埠娴ｈ法鏁ょ粈杞扮伐
- * 鐏炴洜銇氭俊鍌欑秿娴ｈ法鏁ゆ稉宥呮倱閻ㄥ嫬鐡ㄩ崒銊ョ杽閻滃府绱欓崘鍛摠閵嗕阜edis缁涘绱?
+ * StorageExample — demonstrates in-memory worker/workerContext storage and task assignment.
+ * Switch to Redis by swapping InMemoryWorkerStorage for RedisWorkerStorage.
  */
 public class StorageExample {
 
     private static final Logger log = LoggerFactory.getLogger(StorageExample.class);
 
     public static void main(String[] args) {
-        // 濞村鐦崺鐑樻拱鐎涙ê鍋嶉崝鐔诲厴
         testBasicStorage();
-
-        // 濞村鐦禒璇插閸掑棝鍘ら崝鐔诲厴
         testTaskAssignment();
-
-        // 濞村鐦?MockTaskEngineSpringBootApp 姒涙顓婚柊宥囩枂
         testMockAppDefaultConfig();
-
-        // 濞村鐦?MockTaskEngineSpringBootApp 鐎圭偤妾潻鎰攽閹懎鍠?
         testMockAppActualRun();
     }
 
-    /**
-     * 濞村鐦崺鐑樻拱鐎涙ê鍋嶉崝鐔诲厴
-     */
     public static void testBasicStorage() {
-        log.info("=== 濞村鐦崺鐑樻拱鐎涙ê鍋嶉崝鐔诲厴 ===");
+        log.info("=== testBasicStorage ===");
 
-        // 1. 閸掓稑缂撶€涙ê鍋嶇€圭偘绶?
-        DeviceStorage deviceStorage = new InMemoryDeviceStorage();
+        WorkerStorage workerStorage = new InMemoryWorkerStorage();
         TaskStorage taskStorage = new InMemoryTaskStorage();
         RuleStorage ruleStorage = new InMemoryRuleStorage();
 
-        // 2. 閸掓稑缂撶粻锛勬倞閸?
-        DeviceManager deviceManager = new DeviceManager(deviceStorage);
+        WorkerManager workerManager = new WorkerManager(workerStorage);
         TaskScheduler taskScheduler = new SimpleTaskScheduler();
         TaskManager taskManager = new TaskManager(taskScheduler, taskStorage);
 
-        // 3. 濞ｈ濮炲ù瀣槸閺佺増宓?
-        Device device1 = new Device("device-001", "1.0.0", Arrays.asList("demoApp"));
-        device1.setDeviceGroupId("us");
-        Device device2 = new Device("device-002", "1.0.1", Arrays.asList("demoApp"));
-        device2.setDeviceGroupId("gb");
+        Worker worker1 = new Worker();
+        worker1.setWorkerId("worker-001");
+        worker1.setAgentVersion("1.0.0");
+        worker1.setSupportedProjects(Arrays.asList("demoApp"));
+        worker1.setWorkerGroupId("us");
+        worker1.setStatus(WorkerStatus.ONLINE);
 
-        Token token1 = new Token("token-001", "device-001", "us");
-        token1.setStatus(TokenStatus.IDLE);
-        Token token2 = new Token("token-002", "device-002", "gb");
-        token2.setStatus(TokenStatus.IDLE);
+        Worker worker2 = new Worker();
+        worker2.setWorkerId("worker-002");
+        worker2.setAgentVersion("1.0.1");
+        worker2.setSupportedProjects(Arrays.asList("demoApp"));
+        worker2.setWorkerGroupId("gb");
+        worker2.setStatus(WorkerStatus.ONLINE);
 
-        deviceManager.addDevice(device1);
-        deviceManager.addDevice(device2);
-        deviceManager.addToken("device-001", token1);
-        deviceManager.addToken("device-002", token2);
+        WorkerContext ctx1 = new WorkerContext();
+        ctx1.setWorkerContextId("ctx-001");
+        ctx1.setWorkerId("worker-001");
+        ctx1.setChannel("us");
+        ctx1.setStatus(WorkerContextStatus.IDLE);
 
-        // 4. 妤犲矁鐦夐弫鐗堝祦
-        List<Device> allDevices = deviceManager.getAllDevices();
-        List<Device> usDevices = deviceManager.getDevicesByGroupId("us");
-        List<Device> gbDevices = deviceManager.getDevicesByGroupId("gb");
+        WorkerContext ctx2 = new WorkerContext();
+        ctx2.setWorkerContextId("ctx-002");
+        ctx2.setWorkerId("worker-002");
+        ctx2.setChannel("gb");
+        ctx2.setStatus(WorkerContextStatus.IDLE);
 
-        log.info("閹碘偓閺堝顔曟径? {}", allDevices.size());
-        log.info("US鐠佹儳顦? {}", usDevices.size());
-        log.info("GB鐠佹儳顦? {}", gbDevices.size());
+        workerManager.addWorker(worker1);
+        workerManager.addWorker(worker2);
+        workerManager.addWorkerContext("worker-001", ctx1);
+        workerManager.addWorkerContext("worker-002", ctx2);
 
-        Token retrievedToken1 = deviceManager.getToken("device-001");
-        Token retrievedToken2 = deviceManager.getToken("device-002");
+        List<Worker> allWorkers = workerManager.getAllWorkers();
+        List<Worker> usWorkers = workerManager.getWorkersByGroupId("us");
+        List<Worker> gbWorkers = workerManager.getWorkersByGroupId("gb");
 
-        log.info("Token1: {}", retrievedToken1 != null ? retrievedToken1.getTokenId() : "null");
-        log.info("Token2: {}", retrievedToken2 != null ? retrievedToken2.getTokenId() : "null");
+        log.info("All workers: {}", allWorkers.size());
+        log.info("US workers: {}", usWorkers.size());
+        log.info("GB workers: {}", gbWorkers.size());
 
-        log.info("=== 閸╃儤婀扮€涙ê鍋嶉崝鐔诲厴濞村鐦€瑰本鍨?===");
+        WorkerContext retrievedCtx1 = workerManager.getWorkerContext("worker-001");
+        WorkerContext retrievedCtx2 = workerManager.getWorkerContext("worker-002");
+
+        log.info("WorkerContext1: {}", retrievedCtx1 != null ? retrievedCtx1.getWorkerContextId() : "null");
+        log.info("WorkerContext2: {}", retrievedCtx2 != null ? retrievedCtx2.getWorkerContextId() : "null");
+
+        log.info("=== testBasicStorage complete ===");
     }
 
-    /**
-     * 濞村鐦禒璇插閸掑棝鍘ら崝鐔诲厴
-     */
     public static void testTaskAssignment() {
-        log.info("=== 濞村鐦禒璇插閸掑棝鍘ら崝鐔诲厴 ===");
+        log.info("=== testTaskAssignment ===");
 
-        // 1. 娴ｈ法鏁ock_config.json闁板秶鐤嗛悽鐔稿灇鐠佹儳顦?
-        String mockConfig = "{\n" +
-                "  \"devices\": [\n" +
-                "    {\n" +
-                "      \"deviceIdTemplate\": \"device-{i}\",\n" +
-                "      \"count\": 100,\n" +
-                "      \"deviceGroupId\": \"us\",\n" +
-                "      \"agentVersion\": \"1.0.0\",\n" +
-                "      \"supportedApps\": [\"demoApp\", \"otherApp\", \"testApp\"],\n" +
-                "      \"tokens\": [\n" +
-                "        {\n" +
-                "          \"tokenIdTemplate\": \"token-{i}-A\",\n" +
-                "          \"count\": 20,\n" +
-                "          \"channel\": \"us\",\n" +
-                "          \"randomStatus\": false\n" +
-                "        },\n" +
-                "        {\n" +
-                "          \"tokenIdTemplate\": \"token-{i}-B\",\n" +
-                "          \"count\": 10,\n" +
-                "          \"channel\": \"us\",\n" +
-                "          \"randomStatus\": false\n" +
-                "        }\n" +
-                "      ]\n" +
-                "    },\n" +
-                "    {\n" +
-                "      \"deviceIdTemplate\": \"gb-device-{i}\",\n" +
-                "      \"count\": 50,\n" +
-                "      \"deviceGroupId\": \"gb\",\n" +
-                "      \"agentVersion\": \"1.0.1\",\n" +
-                "      \"supportedApps\": [\"demoApp\", \"testApp\"],\n" +
-                "      \"tokens\": [\n" +
-                "        {\n" +
-                "          \"tokenIdTemplate\": \"gb-token-{i}-{j}\",\n" +
-                "          \"count\": 1,\n" +
-                "          \"channel\": \"gb\",\n" +
-                "          \"randomStatus\": false\n" +
-                "        }\n" +
-                "      ]\n" +
-                "    }\n" +
-                "  ]\n" +
-                "}";
+        List<Worker> workers = MonkeyGenerator.generateWorkers(MonkeyGenerator.exampleJsonDsl());
 
-        com.google.gson.JsonObject root = com.google.gson.JsonParser.parseString(mockConfig).getAsJsonObject();
-        List<Token> tokenList = new ArrayList<>();
-        List<Device> devices = MonkeyGenerator.generateDevices(root.getAsJsonArray("devices").toString());
+        log.info("Generated {} workers", workers.size());
 
-        log.info("閻㈢喐鍨氭禍?{} 娑擃亣顔曟径鍥ф嫲 {} 娑撶寘oken", devices.size(), tokenList.size());
-
-        // 2. 缂佺喕顓窽oken閻樿埖鈧?
-        long idleCount = tokenList.stream()
-                .filter(token -> token.getStatus() == TokenStatus.IDLE)
+        long usCount = workers.stream()
+                .filter(w -> "us".equals(w.getWorkerGroupId()))
                 .count();
-        long invalidCount = tokenList.stream()
-                .filter(token -> token.getStatus() == TokenStatus.INVALID)
+        long gbCount = workers.stream()
+                .filter(w -> "gb".equals(w.getWorkerGroupId()))
                 .count();
+        log.info("Workers by group - US: {}, GB: {}", usCount, gbCount);
 
-        log.info("Token閻樿埖鈧胶绮虹拋?- IDLE: {}, INVALID: {}", idleCount, invalidCount);
-
-        // 3. 缂佺喕顓哥拋鎯ь槵閸掑棛绮?
-        long usCount = devices.stream()
-                .filter(device -> "us".equals(device.getDeviceGroupId()))
-                .count();
-        long gbCount = devices.stream()
-                .filter(device -> "gb".equals(device.getDeviceGroupId()))
-                .count();
-
-        log.info("鐠佹儳顦崚鍡欑矋缂佺喕顓?- US: {}, GB: {}", usCount, gbCount);
-
-        // 4. 閸掓稑缂撶拋鎯ь槵缁狅紕鎮婇崳銊ヨ嫙濞ｈ濮炵拋鎯ь槵
-        var deviceManager = new DeviceManager();
-        for (Device device : devices) {
-            deviceManager.addDevice(device);
-        }
-        for (Token token : tokenList) {
-            deviceManager.addToken(token.getDeviceId(), token);
+        var workerManager = new WorkerManager();
+        for (Worker w : workers) {
+            workerManager.addWorker(w);
         }
 
-        // 5. 閻㈢喐鍨氬ù瀣槸娴犺濮?
         String taskJson = MonkeyGenerator.exampleTasksJsonDsl();
-        log.info("娴犺濮熼悽鐔稿灇JSON: {}", taskJson);
-
-        com.google.gson.JsonArray taskArray = com.google.gson.JsonParser.parseString(taskJson).getAsJsonArray();
-        List<TaskCreateRequestDto> taskDtos = MonkeyGenerator.generateTasks(taskArray.toString());
+        List<TaskCreateRequestDto> taskDtos = MonkeyGenerator.generateTasks(taskJson);
         log.info("Generated {} mock tasks", taskDtos.size());
 
-        // 6. 濞村鐦憴鍕灟閸栧綊鍘?
         var ruleManager = RuleManagerFactory.getProjectRuleManager("demoApp");
         var recordService = new AssignmentRecordService();
         var taskManager = new TaskManager(new SimpleTaskScheduler(), new InMemoryTaskStorage());
-        var msgAssignListener = new SimpleTaskMsgAssignListener(taskManager, deviceManager, recordService);
-        var deviceAssignListener = new TaskDeviceAssignListener(ruleManager, deviceManager, msgAssignListener, recordService, taskManager);
+        var msgAssignListener = new SimpleTaskMsgAssignListener(taskManager, workerManager, recordService);
+        var workerAssignListener = new TaskWorkerAssignListener(ruleManager, workerManager, msgAssignListener, recordService, taskManager);
 
-        // 閺勫墽銇氱憴鍕灟娣団剝浼?
-        var rules = ruleManager.getDefaultRules();
-        log.info("鐟欏嫬鍨弫浼村櫤: {}", rules.size());
-        for (var rule : rules) {
-            log.info("鐟欏嫬鍨? {} - {}", rule.getId(), rule.getContent());
-        }
-
-        // 7. 濞村鐦禒璇插閸掑棝鍘?
         for (TaskCreateRequestDto dto : taskDtos) {
-            log.info("濞村鐦禒璇插: {} (country: {}, project: {})", dto.getTaskName(), dto.getCountryCode(), dto.getProject());
+            log.info("Testing task: {} (country: {}, project: {})", dto.getTaskName(), dto.getCountryCode(), dto.getProject());
 
-            // 閼惧嘲褰囬崐娆撯偓澶庮啎婢?
-            List<Device> candidates = deviceManager.getDevicesByGroupId(dto.getCountryCode());
-            log.info("閸婃瑩鈧顔曟径鍥ㄦ殶闁? {}", candidates.size());
+            List<Worker> candidates = workerManager.getWorkersByGroupId(dto.getCountryCode());
+            log.info("Candidates: {}", candidates.size());
 
-            // 濡剝瀚?TaskDeviceAssignListener 閻ㄥ嫬灏柊宥夆偓鏄忕帆
-            List<Device> matchedDevices = new ArrayList<>();
-            for (Device device : candidates) {
-                Token token = deviceManager.getToken(device.getDeviceId());
-                if (token != null) {
-                    // 濡偓閺岊櫄oken閻樿埖鈧?
-                    boolean tokenAllocatable = token.isAllocatable();
-                    boolean tokenAvailable = token.isAvailable();
+            List<Worker> matchedWorkers = new ArrayList<>();
+            for (Worker w : candidates) {
+                WorkerContext wc = workerManager.getWorkerContext(w.getWorkerId());
+                if (wc != null) {
+                    boolean allocatable = wc.isAllocatable();
+                    boolean available = wc.isAvailable();
 
-                    if (tokenAllocatable && tokenAvailable) {
-                        // 鐏忔繆鐦柨浣哥暰鐠佹儳顦?
-                        if (deviceManager.tryLockDevice(device.getDeviceId())) {
-                            matchedDevices.add(device);
-                            log.info("閴?鐠佹儳顦崠褰掑帳閹存劕濮? {} (token: {}, status: {})",
-                                    device.getDeviceId(), token.getTokenId(), token.getStatus());
+                    if (allocatable && available) {
+                        if (workerManager.tryLockWorker(w.getWorkerId())) {
+                            matchedWorkers.add(w);
+                            log.info("Matched worker: {} (workerContext: {}, status: {})",
+                                    w.getWorkerId(), wc.getWorkerContextId(), wc.getStatus());
                         } else {
-                            log.info("閴?鐠佹儳顦柨浣哥暰婢惰精瑙? {} (閸欘垵鍏樺鑼额潶閸忔湹绮禒璇插閸楃姷鏁?", device.getDeviceId());
+                            log.info("Worker locked: {}", w.getWorkerId());
                         }
                     } else {
-                        log.debug("閴?鐠佹儳顦稉宥呭爱闁? {} (token: {}, allocatable: {}, available: {})",
-                                device.getDeviceId(), token.getTokenId(), tokenAllocatable, tokenAvailable);
+                        log.debug("Worker not eligible: {} (allocatable: {}, available: {})",
+                                w.getWorkerId(), allocatable, available);
                     }
                 } else {
-                    log.debug("閴?鐠佹儳顦弮鐕璷ken: {}", device.getDeviceId());
+                    log.debug("Worker has no workerContext: {}", w.getWorkerId());
                 }
             }
 
-            log.info("娴犺濮?{} 閸栧綊鍘ょ拋鎯ь槵閺佷即鍣? {}", dto.getTaskName(), matchedDevices.size());
+            log.info("Task {} matched {} workers", dto.getTaskName(), matchedWorkers.size());
 
-            // 鐟欙綁鏀ｇ拋鎯ь槵閿涘奔璐熸稉瀣╃娑擃亙鎹㈤崝鈥充粵閸戝棗顦?
-            for (Device device : matchedDevices) {
-                deviceManager.unlockDevice(device.getDeviceId());
+            for (Worker w : matchedWorkers) {
+                workerManager.unlockWorker(w.getWorkerId());
             }
         }
 
-        log.info("=== 娴犺濮熼崚鍡涘帳閸旂喕鍏樺ù瀣槸鐎瑰本鍨?===");
+        log.info("=== testTaskAssignment complete ===");
     }
 
-    /**
-     * 濞村鐦?MockTaskEngineSpringBootApp 閻ㄥ嫰绮拋銈夊帳缂?
-     */
     public static void testMockAppDefaultConfig() {
-        log.info("=== 濞村鐦?MockTaskEngineSpringBootApp 姒涙顓婚柊宥囩枂 ===");
+        log.info("=== testMockAppDefaultConfig ===");
 
-        // 1. 娴ｈ法鏁ゆ妯款吇闁板秶鐤嗛悽鐔稿灇鐠佹儳顦?
         String defaultConfig = MonkeyGenerator.exampleJsonDsl();
-        log.info("姒涙顓婚柊宥囩枂: {}", defaultConfig);
+        log.info("Default config: {}", defaultConfig);
 
-        List<Token> tokenList = new ArrayList<>();
-        List<Device> devices = MonkeyGenerator.generateDevices(defaultConfig);
+        List<Worker> workers = MonkeyGenerator.generateWorkers(defaultConfig);
+        log.info("Generated {} workers", workers.size());
 
-        log.info("閻㈢喐鍨氭禍?{} 娑擃亣顔曟径鍥ф嫲 {} 娑撶寘oken", devices.size(), tokenList.size());
-
-        // 2. 缂佺喕顓窽oken閻樿埖鈧?
-        long idleCount = tokenList.stream()
-                .filter(token -> token.getStatus() == TokenStatus.IDLE)
+        long usCount = workers.stream()
+                .filter(w -> "us".equals(w.getWorkerGroupId()))
                 .count();
-        long invalidCount = tokenList.stream()
-                .filter(token -> token.getStatus() == TokenStatus.INVALID)
+        long gbCount = workers.stream()
+                .filter(w -> "gb".equals(w.getWorkerGroupId()))
                 .count();
+        log.info("Workers by group - US: {}, GB: {}", usCount, gbCount);
 
-        log.info("Token閻樿埖鈧胶绮虹拋?- IDLE: {}, INVALID: {}", idleCount, invalidCount);
-
-        // 3. 缂佺喕顓哥拋鎯ь槵閸掑棛绮?
-        long usCount = devices.stream()
-                .filter(device -> "us".equals(device.getDeviceGroupId()))
-                .count();
-        long gbCount = devices.stream()
-                .filter(device -> "gb".equals(device.getDeviceGroupId()))
-                .count();
-
-        log.info("鐠佹儳顦崚鍡欑矋缂佺喕顓?- US: {}, GB: {}", usCount, gbCount);
-
-        // 4. 閸掓稑缂撶拋鎯ь槵缁狅紕鎮婇崳銊ヨ嫙濞ｈ濮炵拋鎯ь槵
-        var deviceManager = new DeviceManager();
-        for (Device device : devices) {
-            deviceManager.addDevice(device);
-        }
-        for (Token token : tokenList) {
-            deviceManager.addToken(token.getDeviceId(), token);
+        var workerManager = new WorkerManager();
+        for (Worker w : workers) {
+            workerManager.addWorker(w);
         }
 
-        // 5. 閻㈢喐鍨氬ù瀣槸娴犺濮?
         String taskJson = MonkeyGenerator.exampleTasksJsonDsl();
-        com.google.gson.JsonArray taskArray = com.google.gson.JsonParser.parseString(taskJson).getAsJsonArray();
-        List<TaskCreateRequestDto> taskDtos = MonkeyGenerator.generateTasks(taskArray.toString());
-
+        List<TaskCreateRequestDto> taskDtos = MonkeyGenerator.generateTasks(taskJson);
         log.info("Generated {} mock tasks", taskDtos.size());
 
-        // 6. 濞村鐦禒璇插閸掑棝鍘?
         for (TaskCreateRequestDto dto : taskDtos) {
-            log.info("濞村鐦禒璇插: {} (country: {}, project: {})", dto.getTaskName(), dto.getCountryCode(), dto.getProject());
+            log.info("Task: {} (country: {}, project: {})", dto.getTaskName(), dto.getCountryCode(), dto.getProject());
 
-            // 閼惧嘲褰囬崐娆撯偓澶庮啎婢?
-            List<Device> candidates = deviceManager.getDevicesByGroupId(dto.getCountryCode());
-            log.info("閸婃瑩鈧顔曟径鍥ㄦ殶闁? {}", candidates.size());
+            List<Worker> candidates = workerManager.getWorkersByGroupId(dto.getCountryCode());
+            log.info("Candidates: {}", candidates.size());
 
-            // 濡剝瀚?TaskDeviceAssignListener 閻ㄥ嫬灏柊宥夆偓鏄忕帆
-            List<Device> matchedDevices = new ArrayList<>();
-            for (Device device : candidates) {
-                Token token = deviceManager.getToken(device.getDeviceId());
-                if (token != null) {
-                    // 濡偓閺岊櫄oken閻樿埖鈧?
-                    boolean tokenAllocatable = token.isAllocatable();
-                    boolean tokenAvailable = token.isAvailable();
-
-                    if (tokenAllocatable && tokenAvailable) {
-                        // 鐏忔繆鐦柨浣哥暰鐠佹儳顦?
-                        if (deviceManager.tryLockDevice(device.getDeviceId())) {
-                            matchedDevices.add(device);
-                            log.info("閴?鐠佹儳顦崠褰掑帳閹存劕濮? {} (token: {}, status: {})",
-                                    device.getDeviceId(), token.getTokenId(), token.getStatus());
-                        } else {
-                            log.info("閴?鐠佹儳顦柨浣哥暰婢惰精瑙? {} (閸欘垵鍏樺鑼额潶閸忔湹绮禒璇插閸楃姷鏁?", device.getDeviceId());
-                        }
+            List<Worker> matchedWorkers = new ArrayList<>();
+            for (Worker w : candidates) {
+                WorkerContext wc = workerManager.getWorkerContext(w.getWorkerId());
+                if (wc != null && wc.isAllocatable() && wc.isAvailable()) {
+                    if (workerManager.tryLockWorker(w.getWorkerId())) {
+                        matchedWorkers.add(w);
+                        log.info("Matched: {} (ctx: {}, status: {})", w.getWorkerId(), wc.getWorkerContextId(), wc.getStatus());
                     } else {
-                        log.debug("閴?鐠佹儳顦稉宥呭爱闁? {} (token: {}, allocatable: {}, available: {})",
-                                device.getDeviceId(), token.getTokenId(), tokenAllocatable, tokenAvailable);
+                        log.info("Locked: {}", w.getWorkerId());
                     }
                 } else {
-                    log.debug("閴?鐠佹儳顦弮鐕璷ken: {}", device.getDeviceId());
+                    log.debug("Not eligible: {}", w.getWorkerId());
                 }
             }
 
-            log.info("娴犺濮?{} 閸栧綊鍘ょ拋鎯ь槵閺佷即鍣? {}", dto.getTaskName(), matchedDevices.size());
+            log.info("Task {} matched {} workers", dto.getTaskName(), matchedWorkers.size());
 
-            // 鐟欙綁鏀ｇ拋鎯ь槵閿涘奔璐熸稉瀣╃娑擃亙鎹㈤崝鈥充粵閸戝棗顦?
-            for (Device device : matchedDevices) {
-                deviceManager.unlockDevice(device.getDeviceId());
+            for (Worker w : matchedWorkers) {
+                workerManager.unlockWorker(w.getWorkerId());
             }
         }
 
-        log.info("=== 濞村鐦€瑰本鍨?===");
+        log.info("=== testMockAppDefaultConfig complete ===");
     }
 
-    /**
-     * 濞村鐦?MockTaskEngineSpringBootApp 閻ㄥ嫬鐤勯梽鍛扮箥鐞涘本鍎忛崘?
-     */
     public static void testMockAppActualRun() {
-        log.info("=== 濞村鐦?MockTaskEngineSpringBootApp 鐎圭偤妾潻鎰攽閹懎鍠?===");
+        log.info("=== testMockAppActualRun ===");
 
-        // 1. 濡剝瀚?MassEngine 閻ㄥ嫬鎯庨崝銊ㄧ箖缁?
-        var deviceManager = new DeviceManager();
+        var workerManager = new WorkerManager();
         var ruleManager = RuleManagerFactory.getProjectRuleManager("demoApp");
         var recordService = new AssignmentRecordService();
         var taskManager = new TaskManager(new SimpleTaskScheduler(), new InMemoryTaskStorage());
-        var msgAssignListener = new SimpleTaskMsgAssignListener(taskManager, deviceManager, recordService);
-        var deviceAssignListener = new TaskDeviceAssignListener(ruleManager, deviceManager, msgAssignListener, recordService, taskManager);
+        var msgAssignListener = new SimpleTaskMsgAssignListener(taskManager, workerManager, recordService);
+        var workerAssignListener = new TaskWorkerAssignListener(ruleManager, workerManager, msgAssignListener, recordService, taskManager);
 
-        // 2. 娴ｈ法鏁ゆ妯款吇闁板秶鐤嗛悽鐔稿灇鐠佹儳顦崪瀛磑ken
         String defaultConfig = MonkeyGenerator.exampleJsonDsl();
-        List<Token> tokenList = new ArrayList<>();
-        List<Device> devices = MonkeyGenerator.generateDevices(defaultConfig);
+        List<Worker> workers = MonkeyGenerator.generateWorkers(defaultConfig);
+        log.info("Generated {} workers", workers.size());
 
-        log.info("閻㈢喐鍨氭禍?{} 娑擃亣顔曟径鍥ф嫲 {} 娑撶寘oken", devices.size(), tokenList.size());
-
-        // 3. 濞ｈ濮炵拋鎯ь槵閸滃oken閸掓壆顓搁悶鍡楁珤
-        for (Device device : devices) {
-            deviceManager.addDevice(device);
-        }
-        for (Token token : tokenList) {
-            deviceManager.addToken(token.getDeviceId(), token);
+        for (Worker w : workers) {
+            workerManager.addWorker(w);
         }
 
-        // 4. 妤犲矁鐦夌拋鎯ь槵閸滃oken濞ｈ濮為幆鍛枌
-        List<Device> allDevices = deviceManager.getAllDevices();
-        List<Device> usDevices = deviceManager.getDevicesByGroupId("us");
-        List<Device> gbDevices = deviceManager.getDevicesByGroupId("gb");
+        List<Worker> allWorkers = workerManager.getAllWorkers();
+        List<Worker> usWorkers = workerManager.getWorkersByGroupId("us");
+        List<Worker> gbWorkers = workerManager.getWorkersByGroupId("gb");
 
-        log.info("鐠佹儳顦宀冪槈 - 閹粯鏆? {}, US: {}, GB: {}", allDevices.size(), usDevices.size(), gbDevices.size());
+        log.info("Workers - all: {}, US: {}, GB: {}", allWorkers.size(), usWorkers.size(), gbWorkers.size());
 
-        // 5. 閺勫墽銇氶崜宥呭殤娑擃亣顔曟径鍥╂畱鐠囷妇绮忔穱鈩冧紖
-        for (int i = 0; i < Math.min(3, allDevices.size()); i++) {
-            Device device = allDevices.get(i);
-            Token token = deviceManager.getToken(device.getDeviceId());
-            log.info("鐠佹儳顦?{}: id={}, deviceGroupId={}, status={}, token={}, tokenStatus={}",
-                    i + 1, device.getDeviceId(), device.getDeviceGroupId(), device.getStatus(),
-                    token != null ? token.getTokenId() : "null",
-                    token != null ? token.getStatus() : "null");
+        for (int i = 0; i < Math.min(3, allWorkers.size()); i++) {
+            Worker w = allWorkers.get(i);
+            WorkerContext wc = workerManager.getWorkerContext(w.getWorkerId());
+            log.info("Worker {}: id={}, groupId={}, status={}, ctx={}, ctxStatus={}",
+                    i + 1, w.getWorkerId(), w.getWorkerGroupId(), w.getStatus(),
+                    wc != null ? wc.getWorkerContextId() : "null",
+                    wc != null ? wc.getStatus() : "null");
         }
 
-        // 6. 閻㈢喐鍨氬ù瀣槸娴犺濮?
         String taskJson = MonkeyGenerator.exampleTasksJsonDsl();
-        com.google.gson.JsonArray taskArray = com.google.gson.JsonParser.parseString(taskJson).getAsJsonArray();
-        List<TaskCreateRequestDto> taskDtos = MonkeyGenerator.generateTasks(taskArray.toString());
-
+        List<TaskCreateRequestDto> taskDtos = MonkeyGenerator.generateTasks(taskJson);
         log.info("Generated {} mock tasks", taskDtos.size());
 
-        // 7. 濞村鐦禒璇插閸掑棝鍘ら敍灞灸侀幏鐔风杽闂勫懓绻嶇悰宀冪箖缁?
         for (TaskCreateRequestDto dto : taskDtos) {
-            log.info("濞村鐦禒璇插: {} (country: {}, project: {})", dto.getTaskName(), dto.getCountryCode(), dto.getProject());
+            log.info("Task: {} (country: {}, project: {})", dto.getTaskName(), dto.getCountryCode(), dto.getProject());
 
-            // 閼惧嘲褰囬崐娆撯偓澶庮啎婢?
-            List<Device> candidates = deviceManager.getDevicesByGroupId(dto.getCountryCode());
-            log.info("閸婃瑩鈧顔曟径鍥ㄦ殶闁? {}", candidates.size());
+            List<Worker> candidates = workerManager.getWorkersByGroupId(dto.getCountryCode());
+            log.info("Candidates: {}", candidates.size());
 
-            // 濡剝瀚?TaskDeviceAssignListener 閻ㄥ嫬灏柊宥夆偓鏄忕帆
-            List<Device> matchedDevices = new ArrayList<>();
-            for (Device device : candidates) {
-                Token token = deviceManager.getToken(device.getDeviceId());
-                if (token != null) {
-                    // 濡偓閺岊櫄oken閻樿埖鈧?
-                    boolean tokenAllocatable = token.isAllocatable();
-                    boolean tokenAvailable = token.isAvailable();
+            List<Worker> matchedWorkers = new ArrayList<>();
+            for (Worker w : candidates) {
+                WorkerContext wc = workerManager.getWorkerContext(w.getWorkerId());
+                if (wc != null) {
+                    boolean allocatable = wc.isAllocatable();
+                    boolean available = wc.isAvailable();
 
-                    log.debug("鐠佹儳顦?{}: token={}, status={}, allocatable={}, available={}",
-                            device.getDeviceId(), token.getTokenId(), token.getStatus(), tokenAllocatable, tokenAvailable);
+                    log.debug("Worker {}: ctx={}, status={}, allocatable={}, available={}",
+                            w.getWorkerId(), wc.getWorkerContextId(), wc.getStatus(), allocatable, available);
 
-                    if (tokenAllocatable && tokenAvailable) {
-                        // 鐏忔繆鐦柨浣哥暰鐠佹儳顦?
-                        if (deviceManager.tryLockDevice(device.getDeviceId())) {
-                            matchedDevices.add(device);
-                            log.info("閴?鐠佹儳顦崠褰掑帳閹存劕濮? {} (token: {}, status: {})",
-                                    device.getDeviceId(), token.getTokenId(), token.getStatus());
+                    if (allocatable && available) {
+                        if (workerManager.tryLockWorker(w.getWorkerId())) {
+                            matchedWorkers.add(w);
+                            log.info("Matched: {} (ctx: {}, status: {})", w.getWorkerId(), wc.getWorkerContextId(), wc.getStatus());
                         } else {
-                            log.info("閴?鐠佹儳顦柨浣哥暰婢惰精瑙? {} (閸欘垵鍏樺鑼额潶閸忔湹绮禒璇插閸楃姷鏁?", device.getDeviceId());
+                            log.info("Locked: {}", w.getWorkerId());
                         }
                     } else {
-                        log.debug("閴?鐠佹儳顦稉宥呭爱闁? {} (token: {}, allocatable: {}, available: {})",
-                                device.getDeviceId(), token.getTokenId(), tokenAllocatable, tokenAvailable);
+                        log.debug("Not eligible: {} (allocatable: {}, available: {})", w.getWorkerId(), allocatable, available);
                     }
                 } else {
-                    log.debug("閴?鐠佹儳顦弮鐕璷ken: {}", device.getDeviceId());
+                    log.debug("No workerContext: {}", w.getWorkerId());
                 }
             }
 
-            log.info("娴犺濮?{} 閸栧綊鍘ょ拋鎯ь槵閺佷即鍣? {}", dto.getTaskName(), matchedDevices.size());
+            log.info("Task {} matched {} workers", dto.getTaskName(), matchedWorkers.size());
 
-            // 鐟欙綁鏀ｇ拋鎯ь槵閿涘奔璐熸稉瀣╃娑擃亙鎹㈤崝鈥充粵閸戝棗顦?
-            for (Device device : matchedDevices) {
-                deviceManager.unlockDevice(device.getDeviceId());
+            for (Worker w : matchedWorkers) {
+                workerManager.unlockWorker(w.getWorkerId());
             }
         }
 
-        log.info("=== 濞村鐦€瑰本鍨?===");
+        log.info("=== testMockAppActualRun complete ===");
     }
-} 
+}

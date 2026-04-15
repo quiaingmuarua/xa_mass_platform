@@ -4,20 +4,20 @@ This document describes the active rule-matching surface in `xa-mass-engine`.
 
 ## Purpose
 
-The engine no longer hard-codes task-to-device matching around a single device-country assumption.
-The current mainline evaluates `DeviceMatchContext` through QLExpress rules and treats routing country as a task input that should normally be satisfied by token/account-facing signals.
+The engine no longer hard-codes task-to-worker matching around a single worker-country assumption.
+The current mainline evaluates `WorkerMatchContext` through QLExpress rules and treats routing country as a task input that should normally be satisfied by worker-context/account-facing signals.
 
 ## Active Components
 
-### `DeviceMatchContext`
+### `WorkerMatchContext`
 
-Location: `com.xa.mass.engine.model.DeviceMatchContext`
+Location: `com.xa.mass.engine.model.WorkerMatchContext`
 
 Responsibilities:
 
-- Build a stable rule-evaluation context for one `device + token + task` candidate
+- Build a stable rule-evaluation context for one `worker + workerContext + task` candidate
 - Expose strong-typed mainline fields and auxiliary attribute maps together
-- Keep routing-country diagnostics explicit instead of hiding them in ad hoc device filters
+- Keep routing-country diagnostics explicit instead of hiding them in ad hoc worker filters
 
 ### `RuleConfig`
 
@@ -32,22 +32,22 @@ Responsibilities:
 
 Current default rule set:
 
-1. `basic_device_check`
+1. `basic_worker_check`
 
 ```ql
-isDeviceAvailable == true && isDeviceLocked == false
+isWorkerAvailable == true && isWorkerLocked == false
 ```
 
-2. `token_status_check`
+2. `worker_context_status_check`
 
 ```ql
-isTokenAllocatable == true && isTokenAvailable == true
+isWorkerContextAllocatable == true && isWorkerContextAvailable == true
 ```
 
 3. `routing_country_match`
 
 ```ql
-tokenAttributeCountryMatchesRoutingCountry == true || tokenChannelMatchesRoutingCountry == true
+workerContextAttributeCountryMatchesRoutingCountry == true || workerContextChannelMatchesRoutingCountry == true
 ```
 
 4. `app_support_check`
@@ -56,7 +56,7 @@ tokenAttributeCountryMatchesRoutingCountry == true || tokenChannelMatchesRouting
 supportsProject == true
 ```
 
-5. `device_load_check`
+5. `worker_load_check`
 
 ```ql
 appCount < 10
@@ -64,25 +64,25 @@ appCount < 10
 
 ## Context Keys
 
-### Device
+### Worker
 
-- `deviceId`
-- `deviceStatus`
-- `deviceGroupId`
-- `deviceAttributes`
+- `workerId`
+- `workerStatus`
+- `workerGroupId`
+- `workerAttributes`
 - `agentVersion`
 - `supportedProjects`
-- `isDeviceAvailable`
-- `isDeviceLocked`
+- `isWorkerAvailable`
+- `isWorkerLocked`
 
-### Token
+### WorkerContext
 
-- `tokenId`
-- `tokenStatus`
-- `tokenChannel`
-- `tokenAttributes`
-- `isTokenAllocatable`
-- `isTokenAvailable`
+- `workerContextId`
+- `workerContextStatus`
+- `workerContextChannel`
+- `workerContextAttributes`
+- `isWorkerContextAllocatable`
+- `isWorkerContextAvailable`
 
 ### Task
 
@@ -99,22 +99,22 @@ appCount < 10
 
 - `appCount`
 - `supportsProject`
-- `deviceGroupIdEqualsRoutingCountry`
-- `tokenChannelMatchesRoutingCountry`
-- `tokenAttributeCountryMatchesRoutingCountry`
+- `workerGroupIdEqualsRoutingCountry`
+- `workerContextChannelMatchesRoutingCountry`
+- `workerContextAttributeCountryMatchesRoutingCountry`
 
 ## Example Rules
 
-Token attribute routing:
+Worker-context attribute routing:
 
 ```ql
-tokenAttributes['country'] == taskRoutingCountryCode
+workerContextAttributes['country'] == taskRoutingCountryCode
 ```
 
-Fallback to token channel:
+Fallback to worker-context channel:
 
 ```ql
-tokenChannelMatchesRoutingCountry == true
+workerContextChannelMatchesRoutingCountry == true
 ```
 
 Project-specific example:
@@ -123,18 +123,18 @@ Project-specific example:
 supportsProject == true &&
 appCount <= 5 &&
 agentVersion.startsWith('1.0') &&
-(tokenAttributeCountryMatchesRoutingCountry == true || tokenChannelMatchesRoutingCountry == true)
+(workerContextAttributeCountryMatchesRoutingCountry == true || workerContextChannelMatchesRoutingCountry == true)
 ```
 
 ## Boundaries
 
-- `deviceAttributes` and `tokenAttributes` are auxiliary labels only
+- `workerAttributes` and `workerContextAttributes` are auxiliary labels only
 - Lifecycle, lock, and online truth must continue to come from strong-typed fields and managers
 - `taskRoutingCountryCode` is a routing hint, not a claim that the task itself owns country truth
-- Device `deviceGroupId` can still appear in diagnostics, but it is no longer the mainline country truth source
+- Worker `workerGroupId` can still appear in diagnostics, but it is no longer the mainline country truth source
 
 ## Guidance
 
 - Prefer explicit context keys over flattened aliases
 - Prefer end-to-end tests for routing behavior over isolated expression-only confidence
-- If matching semantics change, update `RuleConfig`, `DeviceMatchContext`, and the mock E2E routing coverage together
+- If matching semantics change, update `RuleConfig`, `WorkerMatchContext`, and the mock E2E routing coverage together

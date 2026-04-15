@@ -1,11 +1,11 @@
 package com.xa.mass.api.internal;
 
-import com.xa.mass.base.enums.device.DeviceStatus;
 import com.xa.mass.base.enums.task.TaskStatus;
-import com.xa.mass.base.model.Device;
+import com.xa.mass.base.enums.worker.WorkerStatus;
+import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.Token;
-import com.xa.mass.engine.DeviceManager;
+import com.xa.mass.base.model.WorkerContext;
+import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.rules.RuleDefinition;
 import com.xa.mass.engine.rules.RuleManager;
@@ -16,6 +16,7 @@ import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -26,7 +27,7 @@ public class StatusPageController {
     @Autowired
     private TaskManager taskManager;
     @Autowired
-    private DeviceManager deviceManager;
+    private WorkerManager workerManager;
     @Autowired
     private RuleManager ruleManager;
 
@@ -35,25 +36,25 @@ public class StatusPageController {
         List<Task> allTasks = taskManager.getAllTasks();
         Map<TaskStatus, Long> taskStatusCount = allTasks.stream()
                 .collect(Collectors.groupingBy(Task::getStatus, Collectors.counting()));
-        List<Device> allDevices = deviceManager.getAllDevices();
-        Map<DeviceStatus, Long> deviceStatusCount = allDevices.stream()
-                .collect(Collectors.groupingBy(Device::getStatus, Collectors.counting()));
-        List<Token> allTokens = deviceManager.getAllTokens();
-        Map<String, Long> tokenStatusCount = allTokens.stream()
-                .collect(Collectors.groupingBy(token -> token.getStatus().name(), Collectors.counting()));
+        List<Worker> allWorkers = workerManager.getAllWorkers();
+        Map<WorkerStatus, Long> workerStatusCount = allWorkers.stream()
+                .collect(Collectors.groupingBy(Worker::getStatus, Collectors.counting()));
+        List<WorkerContext> allWorkerContexts = workerManager.getAllWorkerContexts();
+        Map<String, Long> workerContextStatusCount = allWorkerContexts.stream()
+                .collect(Collectors.groupingBy(wc -> wc.getStatus().name(), Collectors.counting()));
         List<RuleDefinition> allRules = ruleManager.getDefaultRules();
         Map<RuleType, Long> ruleTypeCount = allRules.stream()
                 .collect(Collectors.groupingBy(RuleDefinition::getType, Collectors.counting()));
         model.addAttribute("tasks", allTasks);
         model.addAttribute("taskStatusCount", taskStatusCount);
-        model.addAttribute("devices", allDevices);
-        model.addAttribute("deviceStatusCount", deviceStatusCount);
-        model.addAttribute("tokens", allTokens);
-        model.addAttribute("tokenStatusCount", tokenStatusCount);
+        model.addAttribute("workers", allWorkers);
+        model.addAttribute("workerStatusCount", workerStatusCount);
+        model.addAttribute("workerContexts", allWorkerContexts);
+        model.addAttribute("workerContextStatusCount", workerContextStatusCount);
         model.addAttribute("rules", allRules);
         model.addAttribute("ruleTypeCount", ruleTypeCount);
         model.addAttribute("taskStatuses", TaskStatus.values());
-        model.addAttribute("deviceStatuses", DeviceStatus.values());
+        model.addAttribute("workerStatuses", WorkerStatus.values());
         model.addAttribute("ruleTypes", RuleType.values());
         return "status";
     }
@@ -69,17 +70,19 @@ public class StatusPageController {
         return "tasks";
     }
 
-    @GetMapping("/devices")
-    public String devicesPage(Model model) {
-        List<Device> allDevices = deviceManager.getAllDevices();
-        List<Token> allTokens = deviceManager.getAllTokens();
-        model.addAttribute("devices", allDevices);
-        model.addAttribute("tokens", allTokens);
-        model.addAttribute("deviceStatuses", DeviceStatus.values());
-        Map<DeviceStatus, Long> deviceStatusCount = allDevices.stream()
-                .collect(java.util.stream.Collectors.groupingBy(Device::getStatus, java.util.stream.Collectors.counting()));
-        model.addAttribute("deviceStatusCount", deviceStatusCount);
-        return "devices";
+    @GetMapping("/workers")
+    public String workersPage(Model model) {
+        List<Worker> allWorkers = workerManager.getAllWorkers();
+        List<WorkerContext> allWorkerContexts = workerManager.getAllWorkerContexts();
+        HashSet<String> lockedWorkerIds = new HashSet<>(workerManager.getLockedWorkers());
+        model.addAttribute("workers", allWorkers);
+        model.addAttribute("workerContexts", allWorkerContexts);
+        model.addAttribute("lockedWorkerIds", lockedWorkerIds);
+        model.addAttribute("workerStatuses", WorkerStatus.values());
+        Map<WorkerStatus, Long> workerStatusCount = allWorkers.stream()
+                .collect(Collectors.groupingBy(Worker::getStatus, Collectors.counting()));
+        model.addAttribute("workerStatusCount", workerStatusCount);
+        return "workers";
     }
 
     @GetMapping("/rules")
@@ -114,19 +117,19 @@ public class StatusPageController {
     /**
      * 获取所有项目code，供前端多选下拉使用
      */
-    @GetMapping("/devices/allProjects")
+    @GetMapping("/workers/allProjects")
     @ResponseBody
     public List<String> getAllProjects() {
         return com.xa.mass.base.enums.Project.getAllCodes();
     }
 
     /**
-     * 更新设备支持的应用
+     * 更新Worker支持的应用
      */
-    @PostMapping("/devices/updateSupportedProjects")
+    @PostMapping("/workers/updateSupportedProjects")
     @ResponseBody
     public Map<String, Object> updateSupportedProjects(@RequestBody Map<String, Object> req) {
-        String deviceId = (String) req.get("deviceId");
+        String workerId = (String) req.get("workerId");
         Object supportedProjectsObj = req.get("supportedProjects");
         List<String> supportedProjects;
         if (supportedProjectsObj instanceof List) {
@@ -136,13 +139,13 @@ public class StatusPageController {
         } else {
             supportedProjects = List.of();
         }
-        Device device = deviceManager.getDevice(deviceId);
-        if (device != null) {
-            device.setSupportedProjects(supportedProjects);
-            deviceManager.updateDevice(device);
+        Worker worker = workerManager.getWorker(workerId);
+        if (worker != null) {
+            worker.setSupportedProjects(supportedProjects);
+            workerManager.updateWorker(worker);
             return Map.of("success", true, "msg", "更新成功");
         } else {
-            return Map.of("success", false, "msg", "设备不存在");
+            return Map.of("success", false, "msg", "Worker不存在");
         }
     }
-} 
+}

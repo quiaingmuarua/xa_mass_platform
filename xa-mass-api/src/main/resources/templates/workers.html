@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta content="width=device-width, initial-scale=1.0" name="viewport">
+    <title>Worker 管理 - XA Mass Platform</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+        .worker-card {
+            transition: transform 0.2s;
+        }
+
+        .worker-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .status-badge {
+            font-size: 0.8em;
+            font-weight: bold;
+        }
+
+        .app-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+        }
+
+        .app-tag {
+            background-color: #e3f2fd;
+            color: #1976d2;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 10px;
+        }
+
+        .locked-indicator {
+            color: #f57c00;
+            font-weight: bold;
+        }
+
+        .timestamp {
+            font-size: 12px;
+            color: #999;
+        }
+    </style>
+</head>
+<body>
+<div class="container-fluid">
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary mb-4">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/status">
+                <i class="bi bi-gear-fill me-2"></i>XA Mass Platform
+            </a>
+            <div class="navbar-nav">
+                <a class="nav-link" href="/status">状态概览</a>
+                <a class="nav-link" href="/status/tasks">任务管理</a>
+                <a class="nav-link active" href="/status/workers">Worker 管理</a>
+                <a class="nav-link" href="/status/rules">规则管理</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="row mb-4">
+        <div class="col">
+            <h2><i class="bi bi-phone me-2"></i>Worker 管理</h2>
+            <p class="text-muted">查看和管理所有 Worker 及其状态</p>
+            <button class="btn btn-success btn-sm" onclick="location.reload()">
+                <i class="bi bi-arrow-clockwise"></i> 刷新数据
+            </button>
+        </div>
+    </div>
+
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card bg-primary text-white worker-card">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between">
+                        <div>
+                            <h4 class="card-title" th:text="${#lists.size(workers)}">0</h4>
+                            <p class="card-text">Worker 总数</p>
+                        </div>
+                        <div class="align-self-center">
+                            <i class="bi bi-phone fs-1"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3" th:each="status : ${workerStatuses}">
+            <div class="card bg-info text-white mb-2 worker-card">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between">
+                        <div>
+                            <h4 class="card-title" th:text="${workerStatusCount[status] ?: 0}">0</h4>
+                            <p class="card-text" th:text="${status.name()}">状态</p>
+                        </div>
+                        <div class="align-self-center">
+                            <i class="bi bi-circle-half fs-1"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-12">
+            <table class="table table-hover align-middle">
+                <thead class="table-light">
+                <tr>
+                    <th>Worker ID</th>
+                    <th>状态</th>
+                    <th>分组</th>
+                    <th>Agent 版本</th>
+                    <th>支持的应用</th>
+                    <th>锁定状态</th>
+                    <th>最后心跳</th>
+                    <th>创建时间</th>
+                    <th>操作</th>
+                </tr>
+                </thead>
+                <tbody>
+                <tr th:each="worker : ${workers}">
+                    <td th:text="${worker.workerId}">Worker ID</td>
+                    <td><span class="badge bg-secondary" th:text="${worker.status.name()}">状态</span></td>
+                    <td th:text="${worker.workerGroupId}">-</td>
+                    <td th:text="${worker.agentVersion}">-</td>
+                    <td>
+                        <span th:if="${!#lists.isEmpty(worker.supportedProjects)}"
+                              th:text="${#strings.arrayJoin(worker.supportedProjects, ', ')}">-</span>
+                        <span th:if="${#lists.isEmpty(worker.supportedProjects)}">-</span>
+                    </td>
+                    <td>
+                        <span class="locked-indicator" th:if="${lockedWorkerIds.contains(worker.workerId)}">已锁定</span>
+                        <span th:unless="${lockedWorkerIds.contains(worker.workerId)}">可用</span>
+                    </td>
+                    <td>
+                        <span class="timestamp"
+                              th:text="${worker.lastHeartbeat != null ? #temporals.format(worker.lastHeartbeat, 'yyyy-MM-dd HH:mm:ss') : '-'}">-</span>
+                    </td>
+                    <td>
+                        <span class="timestamp"
+                              th:text="${worker.createTime != null ? #temporals.format(worker.createTime, 'yyyy-MM-dd HH:mm:ss') : '-'}">-</span>
+                    </td>
+                    <td>
+                        <button class="btn btn-sm btn-outline-primary" data-bs-target="#editWorkerModal"
+                                data-bs-toggle="modal"
+                                th:attr="data-worker-id=${worker.workerId},data-supported-projects=${#strings.arrayJoin(worker.supportedProjects, ',')},data-worker-group-id=${worker.workerGroupId},data-agent-version=${worker.agentVersion}">
+                            <i class="bi bi-pencil"></i> 编辑
+                        </button>
+                    </td>
+                </tr>
+                </tbody>
+            </table>
+            <div class="text-center text-muted mt-5" th:if="${#lists.isEmpty(workers)}">
+                <h4>暂无 Worker 数据</h4>
+                <p>当前系统中没有 Worker，请先添加一些 Worker。</p>
+            </div>
+        </div>
+    </div>
+
+    <div aria-hidden="true" aria-labelledby="editWorkerModalLabel" class="modal fade" id="editWorkerModal"
+         tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="editWorkerModalLabel">编辑 Worker 支持的应用</h5>
+                    <button aria-label="Close" class="btn-close" data-bs-dismiss="modal" type="button"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="editWorkerForm">
+                        <input id="editWorkerId" name="workerId" type="hidden">
+                        <div class="mb-3">
+                            <label class="form-label">Worker ID</label>
+                            <input class="form-control" id="editWorkerIdDisplay" readonly type="text">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">分组</label>
+                            <input class="form-control" id="editWorkerGroupIdDisplay" readonly type="text">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Agent 版本</label>
+                            <input class="form-control" id="editAgentVersionDisplay" readonly type="text">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label" for="editSupportedProjects">支持的应用（可多选）</label>
+                            <select class="form-select" id="editSupportedProjects" multiple name="supportedProjects">
+                            </select>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" data-bs-dismiss="modal" type="button">取消</button>
+                    <button class="btn btn-primary" id="saveWorkerBtn" type="button">保存</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+    let allProjectCodes = [];
+
+    function loadAllProjects(callback) {
+        if (allProjectCodes.length > 0) {
+            callback && callback();
+            return;
+        }
+        fetch('/status/workers/allProjects')
+            .then(res => res.json())
+            .then(data => {
+                allProjectCodes = data;
+                callback && callback();
+            });
+    }
+
+    const editWorkerModal = document.getElementById('editWorkerModal');
+    editWorkerModal.addEventListener('show.bs.modal', function (event) {
+        const button = event.relatedTarget;
+        const workerId = button.getAttribute('data-worker-id');
+        const supportedProjects = button.getAttribute('data-supported-projects') || '';
+        const workerGroupId = button.getAttribute('data-worker-group-id') || '';
+        const agentVersion = button.getAttribute('data-agent-version') || '';
+        document.getElementById('editWorkerId').value = workerId;
+        document.getElementById('editWorkerIdDisplay').value = workerId;
+        document.getElementById('editWorkerGroupIdDisplay').value = workerGroupId;
+        document.getElementById('editAgentVersionDisplay').value = agentVersion;
+        loadAllProjects(function () {
+            const select = document.getElementById('editSupportedProjects');
+            select.innerHTML = '';
+            allProjectCodes.forEach(function (code) {
+                const option = document.createElement('option');
+                option.value = code;
+                option.text = code;
+                select.appendChild(option);
+            });
+            const selected = supportedProjects ? supportedProjects.split(',') : [];
+            Array.from(select.options).forEach(function (opt) {
+                opt.selected = selected.includes(opt.value);
+            });
+        });
+    });
+
+    const saveBtn = document.getElementById('saveWorkerBtn');
+    saveBtn.addEventListener('click', function () {
+        const workerId = document.getElementById('editWorkerId').value;
+        const select = document.getElementById('editSupportedProjects');
+        const selected = Array.from(select.selectedOptions).map(opt => opt.value);
+        fetch('/status/workers/updateSupportedProjects', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({workerId: workerId, supportedProjects: selected})
+        })
+            .then(response => {
+                if (response.ok) {
+                    location.reload();
+                } else {
+                    alert('保存失败');
+                }
+            })
+            .catch(() => alert('请求失败'));
+    });
+</script>
+</body>
+</html>

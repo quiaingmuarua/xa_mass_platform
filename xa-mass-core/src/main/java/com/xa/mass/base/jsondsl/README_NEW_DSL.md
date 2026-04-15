@@ -72,10 +72,10 @@
 
 ```json
 {
-  "MODEL": "Device",           // 妯″瀷绫诲悕鎴栨敞鍐屽埆鍚?
+  "MODEL": "Worker",           // 妯″瀷绫诲悕鎴栨敞鍐屽埆鍚?
   "COUNT": 3,                   // 鐢熸垚鏁伴噺锛岄粯璁?1
   "TYPE": "LIST",              // 闆嗗悎绫诲瀷锛歀IST/SET/MAP
-  "scope_name": "Device",      // 浣滅敤鍩熷悕绉?
+  "scope_name": "Worker",      // 浣滅敤鍩熷悕绉?
   "parent_scope": "Parent",    // 鐖朵綔鐢ㄥ煙寮曠敤
   "parameters": { ... },        // 棰濆鍙傛暟
   "debug": false,               // 璋冭瘯妯″紡
@@ -175,16 +175,16 @@
 
 ```json
 {
-  "unique_id": "device_gen_001",
+  "unique_id": "worker_gen_001",
   "type": "generate",
   "context": {
-    "MODEL": "Device",
+    "MODEL": "Worker",
     "COUNT": 2
   },
   "fieldDsl": {
-    "$deviceId": {
+    "$workerId": {
       "$JOIN": [
-        "device-",
+        "worker-",
         "&.index"
       ]
     },
@@ -214,7 +214,7 @@
     "$status": {
       "eq": "ONLINE"
     },
-    "$deviceGroupId": {
+    "$workerGroupId": {
       "in": [
         "us",
         "gb"
@@ -234,13 +234,13 @@
   "unique_id": "complex_gen",
   "type": "generate",
   "context": {
-    "MODEL": "Device",
+    "MODEL": "Worker",
     "COUNT": 1
   },
   "fieldDsl": {
-    "$deviceId": {
+    "$workerId": {
       "$JOIN": [
-        "device-",
+        "worker-",
         "&.index"
       ]
     },
@@ -256,8 +256,8 @@
           "$JOIN": [
             "Task-",
             "&.index",
-            "-of-Device-",
-            "&Device.index"
+            "-of-Worker-",
+            "&Worker.index"
           ]
         }
       }

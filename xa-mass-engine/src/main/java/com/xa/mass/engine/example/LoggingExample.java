@@ -37,32 +37,32 @@ public class LoggingExample {
             LogUtils.logOperationFailure("TASK_CREATE_ERROR", e.getMessage(), 100);
         }
 
-        // 记录设备操作日志
-        LogUtils.logDeviceOperation("device-001", "LOGIN", "SUCCESS");
-        LogUtils.logDeviceOperation("device-002", "TASK_EXECUTE", "FAILED");
+        // 记录Worker操作日志
+        LogUtils.logWorkerOperation("worker-001", "LOGIN", "SUCCESS");
+        LogUtils.logWorkerOperation("worker-002", "TASK_EXECUTE", "FAILED");
 
         // 记录任务操作日志
         LogUtils.logTaskOperation("task-001", "ASSIGN", "SUCCESS");
         LogUtils.logTaskOperation("task-002", "PAUSE", "SUCCESS");
 
-        // 记录令牌操作日志
-        LogUtils.logTokenOperation("token-001", "VALIDATE", "SUCCESS");
-        LogUtils.logTokenOperation("token-002", "REFRESH", "FAILED");
+        // 记录WorkerContext操作日志
+        LogUtils.logWorkerContextOperation("worker-context-001", "VALIDATE", "SUCCESS");
+        LogUtils.logWorkerContextOperation("worker-context-002", "REFRESH", "FAILED");
 
         // 记录规则评估日志
-        LogUtils.logRuleEvaluation("rule-001", "device-001", "task-001", true);
-        LogUtils.logRuleEvaluation("rule-002", "device-002", "task-002", false);
+        LogUtils.logRuleEvaluation("rule-001", "worker-001", "task-001", true);
+        LogUtils.logRuleEvaluation("rule-002", "worker-002", "task-002", false);
 
         // 记录任务分配日志
-        LogUtils.logTaskAssignment("task-001", "device-001", "SUCCESS");
-        LogUtils.logTaskAssignment("task-002", "device-002", "FAILED");
+        LogUtils.logTaskAssignment("task-001", "worker-001", "SUCCESS");
+        LogUtils.logTaskAssignment("task-002", "worker-002", "FAILED");
 
         // 演示MDC字段的使用
         LogUtils.setTraceId("trace-12345");
         LogUtils.setUserId("user-001");
-        LogUtils.setDeviceId("device-001");
+        LogUtils.setWorkerId("worker-001");
         LogUtils.setTaskId("task-001");
-        LogUtils.setTokenId("token-001");
+        LogUtils.setWorkerContextId("worker-context-001");
         LogUtils.setOperation("COMPLEX_OPERATION");
         LogUtils.setModule("BUSINESS_LOGIC");
         LogUtils.setResult("SUCCESS");
@@ -77,4 +77,4 @@ public class LoggingExample {
 
         System.out.println("=== 日志示例完成 ===");
     }
-} 
+}

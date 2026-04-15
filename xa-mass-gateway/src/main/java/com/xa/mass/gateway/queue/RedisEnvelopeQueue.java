@@ -61,7 +61,7 @@ public class RedisEnvelopeQueue implements MessageQueue<Envelope> {
         try {
             Map<String, String> fields = new LinkedHashMap<>();
             fields.put("rawJson", envelope.getRawJson());
-            fields.put("deviceId", envelope.getDeviceId());
+            fields.put("workerId", envelope.getWorkerId());
             fields.put("connRole", envelope.getConnRole());
             fields.put("receivedAt", String.valueOf(envelope.getReceivedAt()));
             if (envelope.getTraceId() != null) {
@@ -103,7 +103,7 @@ public class RedisEnvelopeQueue implements MessageQueue<Envelope> {
     private Envelope fromFields(Map<String, String> map) {
         return Envelope.builder()
                 .rawJson(map.get("rawJson"))
-                .deviceId(map.get("deviceId"))
+                .workerId(map.get("workerId"))
                 .connRole(map.get("connRole"))
                 .traceId(map.get("traceId"))
                 .receivedAt(Long.parseLong(map.getOrDefault("receivedAt", String.valueOf(System.currentTimeMillis()))))

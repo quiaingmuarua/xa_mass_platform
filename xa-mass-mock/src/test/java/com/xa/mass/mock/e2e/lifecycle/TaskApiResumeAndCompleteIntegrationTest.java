@@ -1,10 +1,10 @@
 package com.xa.mass.mock.e2e.lifecycle;
 
-import com.xa.mass.base.enums.device.DeviceStatus;
-import com.xa.mass.base.enums.task.TokenStatus;
-import com.xa.mass.base.model.Device;
-import com.xa.mass.base.model.Token;
-import com.xa.mass.engine.DeviceManager;
+import com.xa.mass.base.enums.worker.WorkerStatus;
+import com.xa.mass.base.enums.worker.WorkerContextStatus;
+import com.xa.mass.base.model.Worker;
+import com.xa.mass.base.model.WorkerContext;
+import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.mock.MockApplicationSpringBootApp;
 import com.xa.mass.mock.client.MassWebSocketClientImpl;
 import com.xa.mass.mock.e2e.support.AbstractMockE2eTest;
@@ -27,17 +27,17 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Verifies the PAUSED 鈫?READY 鈫?RUNNING 鈫?TERMINAL path via a real resume call
+ * Verifies the PAUSED → READY → RUNNING → TERMINAL path via a real resume call
  * followed by device connection and mock callback.
  *
  * <p>Specifically:
  * <ol>
- *   <li>Task is approved while NO devices are available 鈫?stays READY, scheduleDeviceCnt=0.</li>
- *   <li>Task is paused (READY 鈫?PAUSED).</li>
+ *   <li>Task is approved while NO devices are available → stays READY, scheduleDeviceCnt=0.</li>
+ *   <li>Task is paused (READY → PAUSED).</li>
  *   <li>A matching device is registered and a mock client connects.</li>
- *   <li>Task is resumed (PAUSED 鈫?READY); {@code notifyTaskReady} kicks the assign worker.</li>
- *   <li>TaskAssignWorker assigns the task to the new device (READY 鈫?RUNNING).</li>
- *   <li>Mock client auto-sends a SUCCESS callback 鈫?task closes to TERMINAL.</li>
+ *   <li>Task is resumed (PAUSED → READY); {@code notifyTaskReady} kicks the assign worker.</li>
+ *   <li>TaskAssignWorker assigns the task to the new device (READY → RUNNING).</li>
+ *   <li>Mock client auto-sends a SUCCESS callback → task closes to TERMINAL.</li>
  * </ol>
  *
  * <p>This path is distinct from {@link TaskApiPauseCompletionIntegrationTest}, which covers
@@ -48,8 +48,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = {
                 "mock.client.auto-start=false",
-                "mass.mock.data.devices=mock/test_mock_devices_empty.json",
-                "mass.mock.data.tokens=mock/test_mock_tokens_empty.json",
+                "mass.mock.data.workers=mock/test_mock_workers_empty.json",
+                "mass.mock.data.worker-contexts=mock/test_mock_worker_contexts_empty.json",
                 "mass.mock.data.tasks=mock/test_mock_tasks.json",
                 "mass.mock.data.rules=mock/test_mock_rules.json"
         }
@@ -66,11 +66,11 @@ class TaskApiResumeAndCompleteIntegrationTest extends AbstractMockE2eTest {
     }
 
     @Autowired
-    private DeviceManager deviceManager;
+    private WorkerManager workerManager;
 
     @Test
     void resumedPausedTaskCompletesAfterDeviceConnectsAndSendsCallback() throws Exception {
-        // 1. Create and approve a task 鈥?no devices online yet.
+        // 1. Create and approve a task — no devices online yet.
         String taskId = createTaskId("resume-and-complete", "resume and complete integration test", "target-a");
 
         Map<String, Object> approveResponse = exchange(
@@ -96,19 +96,19 @@ class TaskApiResumeAndCompleteIntegrationTest extends AbstractMockE2eTest {
 
         TaskSnapshot pausedSnapshot = waitForTaskSnapshot(taskId, "PAUSED", 4, 500L);
         assertEquals("PAUSED", pausedSnapshot.task().get("status"));
-        // Message is still INIT 鈥?no device was ever assigned.
+        // Message is still INIT — no device was ever assigned.
         assertEquals("INIT", pausedSnapshot.messages().get(0).get("status"));
 
         // 4. Register a matching device and connect a mock client.
-        String deviceId = "resume-device-0";
-        registerDevice(deviceId);
+        String workerId = "resume-device-0";
+        registerWorker(workerId);
 
         URI wsUri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
-        MassWebSocketClientImpl client = new MassWebSocketClientImpl(wsUri, deviceId);
+        MassWebSocketClientImpl client = new MassWebSocketClientImpl(wsUri, workerId);
         try {
             assertTrue(client.connectBlocking(), "Mock client failed to connect");
 
-            // 5. Resume the task: PAUSED 鈫?READY 鈫?assign worker picks it up 鈫?RUNNING 鈫?TERMINAL.
+            // 5. Resume the task: PAUSED → READY → assign worker picks it up → RUNNING → TERMINAL.
             Map<String, Object> resumeResponse = exchange(
                     "/status/api/tasks/" + taskId + "/resume",
                     HttpMethod.POST,
@@ -126,30 +126,30 @@ class TaskApiResumeAndCompleteIntegrationTest extends AbstractMockE2eTest {
             assertEquals(1, terminalSnapshot.messages().size());
             Map<String, Object> msg = terminalSnapshot.messages().get(0);
             assertEquals("SUCCESS", msg.get("status"));
-            assertEquals(deviceId, msg.get("deviceId"));
-            assertNotNull(msg.get("tokenId"));
+            assertEquals(workerId, msg.get("workerId"));
+            assertNotNull(msg.get("workerContextId"));
             assertNotNull(msg.get("batchId"));
         } finally {
             client.disconnect();
         }
     }
 
-    // 鈹€鈹€鈹€ helpers 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+    // ─── helpers ────────────────────────────────────────────────────────────
 
-    private void registerDevice(String deviceId) {
-        Device device = new Device();
-        device.setDeviceId(deviceId);
-        device.setDeviceGroupId("us");
-        device.setStatus(DeviceStatus.ONLINE);
-        device.setSupportedProjects(List.of("demoApp"));
-        deviceManager.addDevice(device);
+    private void registerWorker(String workerId) {
+        Worker worker = new Worker();
+        worker.setWorkerId(workerId);
+        worker.setWorkerGroupId("us");
+        worker.setStatus(WorkerStatus.ONLINE);
+        worker.setSupportedProjects(List.of("demoApp"));
+        workerManager.addWorker(worker);
 
-        Token token = new Token();
-        token.setTokenId("token-" + deviceId);
-        token.setDeviceId(deviceId);
-        token.setChannel("us");
-        token.setStatus(TokenStatus.IDLE);
-        deviceManager.addToken(deviceId, token);
+        WorkerContext workerContext = new WorkerContext();
+        workerContext.setWorkerContextId("token-" + workerId);
+        workerContext.setWorkerId(workerId);
+        workerContext.setChannel("us");
+        workerContext.setStatus(WorkerContextStatus.IDLE);
+        workerManager.addWorkerContext(workerId, workerContext);
     }
 
 }

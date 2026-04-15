@@ -24,14 +24,14 @@ public class TaskMsg {
     private String taskId;
 
     /**
-     * 目标设备
+     * 目标 Worker
      */
-    private String deviceId;
+    private String workerId;
 
     /**
-     * 使用token
+     * 使用 WorkerContext
      */
-    private String tokenId;
+    private String workerContextId;
 
     /**
      * 状态
@@ -132,20 +132,20 @@ public class TaskMsg {
         this.taskId = taskId;
     }
 
-    public String getDeviceId() {
-        return deviceId;
+    public String getWorkerId() {
+        return workerId;
     }
 
-    public void setDeviceId(String deviceId) {
-        this.deviceId = deviceId;
+    public void setWorkerId(String workerId) {
+        this.workerId = workerId;
     }
 
-    public String getTokenId() {
-        return tokenId;
+    public String getWorkerContextId() {
+        return workerContextId;
     }
 
-    public void setTokenId(String tokenId) {
-        this.tokenId = tokenId;
+    public void setWorkerContextId(String workerContextId) {
+        this.workerContextId = workerContextId;
     }
 
     public TaskMsgStatus getStatus() {
@@ -315,7 +315,7 @@ public class TaskMsg {
         }
         incrementRetryCount();
         this.status = TaskMsgStatus.INIT;
-        // Keep deviceId/tokenId so TaskResourceReleaseListener can release the token.
+        // Keep workerId/workerContextId so TaskResourceReleaseListener can release the workerContext.
         // They will be overwritten with the new assignment at next dispatch.
         this.startTime = null;
         this.completeTime = null;
@@ -411,8 +411,8 @@ public class TaskMsg {
         return "TaskMsg{" +
                 "msgId='" + msgId + '\'' +
                 ", taskId='" + taskId + '\'' +
-                ", deviceId='" + deviceId + '\'' +
-                ", tokenId='" + tokenId + '\'' +
+                ", workerId='" + workerId + '\'' +
+                ", workerContextId='" + workerContextId + '\'' +
                 ", status=" + status +
                 ", batchId='" + batchId + '\'' +
                 ", retryCount=" + retryCount +

@@ -1,12 +1,12 @@
 package com.xa.mass.engine.listener;
 
 import com.xa.mass.base.enums.task.TaskStatus;
-import com.xa.mass.base.enums.task.TokenStatus;
+import com.xa.mass.base.enums.worker.WorkerContextStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
-import com.xa.mass.base.model.Token;
-import com.xa.mass.engine.DeviceManager;
+import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.TaskManager;
+import com.xa.mass.engine.WorkerManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -23,14 +23,14 @@ public class TaskResourceReleaseListener {
     private static final Logger log = LoggerFactory.getLogger(TaskResourceReleaseListener.class);
 
     private final TaskManager taskManager;
-    private final DeviceManager deviceManager;
+    private final WorkerManager workerManager;
     private final Consumer<Task> dispatchRequester;
 
     public TaskResourceReleaseListener(TaskManager taskManager,
-                                       DeviceManager deviceManager,
+                                       WorkerManager workerManager,
                                        Consumer<Task> dispatchRequester) {
         this.taskManager = taskManager;
-        this.deviceManager = deviceManager;
+        this.workerManager = workerManager;
         this.dispatchRequester = dispatchRequester;
     }
 
@@ -40,18 +40,18 @@ public class TaskResourceReleaseListener {
         }
 
         List<TaskMsg> messages = taskManager.getTaskMessages(task.getTid());
-        Set<String> deviceIds = new LinkedHashSet<>();
+        Set<String> workerIds = new LinkedHashSet<>();
 
         for (TaskMsg message : messages) {
-            if (message == null || message.getDeviceId() == null || message.getDeviceId().isBlank()) {
+            if (message == null || message.getWorkerId() == null || message.getWorkerId().isBlank()) {
                 continue;
             }
-            deviceIds.add(message.getDeviceId());
-            releaseTokenIfOwnedByTask(task.getTid(), message.getDeviceId(), message.getTokenId());
+            workerIds.add(message.getWorkerId());
+            releaseWorkerContextIfOwnedByTask(task.getTid(), message.getWorkerId(), message.getWorkerContextId());
         }
 
-        for (String deviceId : deviceIds) {
-            deviceManager.unlockDevice(deviceId);
+        for (String workerId : workerIds) {
+            workerManager.unlockWorker(workerId);
         }
     }
 
@@ -59,20 +59,20 @@ public class TaskResourceReleaseListener {
         if (task == null || taskMsg == null || task.getStatus().isFinal()) {
             return;
         }
-        String deviceId = taskMsg.getDeviceId();
-        if (deviceId == null || deviceId.isBlank()) {
+        String workerId = taskMsg.getWorkerId();
+        if (workerId == null || workerId.isBlank()) {
             return;
         }
-        boolean deviceStillBusy = taskManager.getTaskMessages(task.getTid()).stream()
+        boolean workerStillBusy = taskManager.getTaskMessages(task.getTid()).stream()
                 .filter(message -> message != null)
-                .filter(message -> deviceId.equals(message.getDeviceId()))
+                .filter(message -> workerId.equals(message.getWorkerId()))
                 .anyMatch(TaskMsg::isProcessing);
-        if (deviceStillBusy) {
+        if (workerStillBusy) {
             return;
         }
 
-        releaseTokenIfOwnedByTask(task.getTid(), deviceId, taskMsg.getTokenId());
-        deviceManager.unlockDevice(deviceId);
+        releaseWorkerContextIfOwnedByTask(task.getTid(), workerId, taskMsg.getWorkerContextId());
+        workerManager.unlockWorker(workerId);
 
         if (dispatchRequester != null
                 && task.getStatus() == TaskStatus.RUNNING
@@ -81,27 +81,27 @@ public class TaskResourceReleaseListener {
         }
     }
 
-    private void releaseTokenIfOwnedByTask(String taskId, String deviceId, String tokenId) {
-        if (tokenId == null || tokenId.isBlank()) {
+    private void releaseWorkerContextIfOwnedByTask(String taskId, String workerId, String workerContextId) {
+        if (workerContextId == null || workerContextId.isBlank()) {
             return;
         }
 
-        Token token = deviceManager.getToken(deviceId);
-        if (token == null || !tokenId.equals(token.getTokenId())) {
+        WorkerContext workerContext = workerManager.getWorkerContext(workerId);
+        if (workerContext == null || !workerContextId.equals(workerContext.getWorkerContextId())) {
             return;
         }
-        if (token.getLastBindTaskId() != null && !taskId.equals(token.getLastBindTaskId())) {
+        if (workerContext.getLastBindTaskId() != null && !taskId.equals(workerContext.getLastBindTaskId())) {
             return;
         }
-        if (token.getStatus() == TokenStatus.IDLE) {
+        if (workerContext.getStatus() == WorkerContextStatus.IDLE) {
             return;
         }
-        if (token.release()) {
-            deviceManager.updateToken(deviceId, token);
+        if (workerContext.release()) {
+            workerManager.updateWorkerContext(workerId, workerContext);
             return;
         }
 
-        log.warn("Token {} on device {} could not be released from status {} for task {}",
-                tokenId, deviceId, token.getStatus(), taskId);
+        log.warn("WorkerContext {} on worker {} could not be released from status {} for task {}",
+                workerContextId, workerId, workerContext.getStatus(), taskId);
     }
 }

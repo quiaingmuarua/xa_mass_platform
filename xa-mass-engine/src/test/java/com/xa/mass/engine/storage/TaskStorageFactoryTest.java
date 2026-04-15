@@ -15,9 +15,9 @@ class TaskStorageFactoryTest {
     }
 
     @Test
-    void memoryDeviceStorageIsCreated() {
-        assertInstanceOf(InMemoryDeviceStorage.class,
-                TaskStorageFactory.createDeviceStorage(TaskStorageFactory.StorageType.MEMORY));
+    void memoryWorkerStorageIsCreated() {
+        assertInstanceOf(InMemoryWorkerStorage.class,
+                TaskStorageFactory.createWorkerStorage(TaskStorageFactory.StorageType.MEMORY));
     }
 
     @Test
@@ -36,9 +36,9 @@ class TaskStorageFactoryTest {
     }
 
     @Test
-    void redisDeviceStorageThrowsAtCreation() {
+    void redisWorkerStorageThrowsAtCreation() {
         assertThrows(UnsupportedOperationException.class,
-                () -> TaskStorageFactory.createDeviceStorage(TaskStorageFactory.StorageType.REDIS));
+                () -> TaskStorageFactory.createWorkerStorage(TaskStorageFactory.StorageType.REDIS));
     }
 
     @Test
@@ -60,7 +60,7 @@ class TaskStorageFactoryTest {
     @Test
     void defaultStoragesAreInMemory() {
         assertInstanceOf(InMemoryTaskStorage.class, TaskStorageFactory.createDefaultTaskStorage());
-        assertInstanceOf(InMemoryDeviceStorage.class, TaskStorageFactory.createDefaultDeviceStorage());
+        assertInstanceOf(InMemoryWorkerStorage.class, TaskStorageFactory.createDefaultWorkerStorage());
         assertInstanceOf(InMemoryRuleStorage.class, TaskStorageFactory.createDefaultRuleStorage());
     }
 

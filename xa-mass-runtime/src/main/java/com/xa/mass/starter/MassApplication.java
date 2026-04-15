@@ -1,9 +1,9 @@
 package com.xa.mass.starter;
 
 import com.xa.mass.base.channel.tranporter.MessageTransporter;
-import com.xa.mass.base.enums.task.TokenStatus;
-import com.xa.mass.base.model.Device;
-import com.xa.mass.base.model.Token;
+import com.xa.mass.base.enums.worker.WorkerContextStatus;
+import com.xa.mass.base.model.Worker;
+import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.gateway.dispatcher.DispatcherContext;
 import com.xa.mass.gateway.dispatcher.DispatcherContextRegistry;
 import com.xa.mass.gateway.dispatcher.MessageHandlerRegistry;
@@ -52,9 +52,6 @@ public class MassApplication {
         this.engineConfig = engineConfig;
     }
 
-    /**
-     * Starts the composed runtime.
-     */
     public void start() {
         if (!running.compareAndSet(false, true)) {
             logger.info("Mass Application is already running, skipping duplicate start");
@@ -88,9 +85,6 @@ public class MassApplication {
         }
     }
 
-    /**
-     * Stops the composed runtime.
-     */
     public void stop() {
         if (!running.compareAndSet(true, false)) {
             logger.info("Mass Application is not running, skipping stop");
@@ -117,9 +111,6 @@ public class MassApplication {
         }
     }
 
-    /**
-     * Initializes dispatcher, message handlers, middleware, and gateway composition.
-     */
     private void initializeComponents() {
         logger.info("Initializing core components");
 
@@ -173,9 +164,6 @@ public class MassApplication {
         logger.info("Core components initialized");
     }
 
-    /**
-     * Starts gateway processing.
-     */
     private void startGateway() {
         logger.info("Starting MassGateway");
         if (massGateway != null) {
@@ -186,9 +174,6 @@ public class MassApplication {
         }
     }
 
-    /**
-     * Starts engine processing.
-     */
     private void startEngine() {
         logger.info("Starting MassEngine");
         if (engine != null) {
@@ -199,16 +184,10 @@ public class MassApplication {
         }
     }
 
-    /**
-     * Dispatcher lifecycle is currently owned by MassGateway.
-     */
     private void startMessageDispatcher() {
         logger.info("Message Dispatcher is managed by MassGateway");
     }
 
-    /**
-     * Starts the WebSocket server.
-     */
     private void startWebSocketServer() {
         logger.info("Starting WebSocket Server");
 
@@ -224,16 +203,10 @@ public class MassApplication {
         logger.info("WebSocket Server started on port {}", serverPort);
     }
 
-    /**
-     * Returns the live dispatch runtime context.
-     */
     public DispatchRuntimeContext getDispatcherContext() {
         return dispatcherContext;
     }
 
-    /**
-     * Returns whether the composed runtime is currently running.
-     */
     public boolean isRunning() {
         return running.get() && serverStater != null && serverStater.isRunning();
     }
@@ -245,8 +218,8 @@ public class MassApplication {
             logger.info("[Gateway Handler] Received mock task message: {}", msg);
             return new ArrayList<>();
         };
-        com.xa.mass.gateway.dispatcher.handler.MassMessageHandler deviceHandler = msg -> {
-            logger.info("[Gateway Handler] Received mock device status message: {}", msg);
+        com.xa.mass.gateway.dispatcher.handler.MassMessageHandler workerHandler = msg -> {
+            logger.info("[Gateway Handler] Received mock worker status message: {}", msg);
             return new ArrayList<>();
         };
 
@@ -254,7 +227,7 @@ public class MassApplication {
                 "mock-task", MessageType.TASK, "", taskHandler
         );
         dispatcherContext.getMessageHandlerRegistry().register(
-                "mock-device", MessageType.STATUS, "", deviceHandler
+                "mock-worker", MessageType.STATUS, "", workerHandler
         );
         logger.info("Mock gateway message handlers registered");
     }
@@ -266,52 +239,52 @@ public class MassApplication {
             com.google.gson.JsonObject root = config.getMockConfigRoot();
             logger.info("Mock config loaded successfully");
 
-            if (root.has("devices")) {
-                List<Device> devices = new ArrayList<>();
-                com.google.gson.JsonElement deviceElem = root.get("devices");
-                if (deviceElem.isJsonArray()) {
-                    for (com.google.gson.JsonElement dsl : deviceElem.getAsJsonArray()) {
-                        devices.addAll(com.xa.mass.engine.monkey.MonkeyGenerator.generateDevices(dsl.toString()));
+            if (root.has("workers")) {
+                List<Worker> workers = new ArrayList<>();
+                com.google.gson.JsonElement workerElem = root.get("workers");
+                if (workerElem.isJsonArray()) {
+                    for (com.google.gson.JsonElement dsl : workerElem.getAsJsonArray()) {
+                        workers.addAll(com.xa.mass.engine.monkey.MonkeyGenerator.generateWorkers(dsl.toString()));
                     }
                 } else {
-                    devices.addAll(com.xa.mass.engine.monkey.MonkeyGenerator.generateDevices(deviceElem.toString()));
+                    workers.addAll(com.xa.mass.engine.monkey.MonkeyGenerator.generateWorkers(workerElem.toString()));
                 }
 
-                logger.info("Generated {} mock devices", devices.size());
-                for (Device device : devices) {
-                    normalizeMockDevice(device);
-                    engine.addDevice(device);
-                    logger.debug("Loaded mock device: {} (deviceGroupId: {}, status: {})",
-                            device.getDeviceId(), device.getDeviceGroupId(), device.getStatus());
+                logger.info("Generated {} mock workers", workers.size());
+                for (Worker worker : workers) {
+                    normalizeMockWorker(worker);
+                    engine.addWorker(worker);
+                    logger.debug("Loaded mock worker: {} (workerGroupId: {}, status: {})",
+                            worker.getWorkerId(), worker.getWorkerGroupId(), worker.getStatus());
                 }
             }
 
-            if (root.has("tokens")) {
-                List<Token> tokens = new ArrayList<>();
-                com.google.gson.JsonElement tokenElem = root.get("tokens");
-                if (tokenElem.isJsonArray()) {
-                    for (com.google.gson.JsonElement dsl : tokenElem.getAsJsonArray()) {
-                        tokens.addAll(com.xa.mass.engine.monkey.MonkeyGenerator.generateTokens(dsl.toString()));
+            if (root.has("workerContexts")) {
+                List<WorkerContext> workerContexts = new ArrayList<>();
+                com.google.gson.JsonElement wcElem = root.get("workerContexts");
+                if (wcElem.isJsonArray()) {
+                    for (com.google.gson.JsonElement dsl : wcElem.getAsJsonArray()) {
+                        workerContexts.addAll(com.xa.mass.engine.monkey.MonkeyGenerator.generateWorkerContexts(dsl.toString()));
                     }
                 } else {
-                    tokens.addAll(com.xa.mass.engine.monkey.MonkeyGenerator.generateTokens(tokenElem.toString()));
+                    workerContexts.addAll(com.xa.mass.engine.monkey.MonkeyGenerator.generateWorkerContexts(wcElem.toString()));
                 }
 
-                logger.info("Generated {} mock tokens", tokens.size());
-                for (Token token : tokens) {
-                    normalizeMockToken(token);
-                    if (token.getDeviceId() == null || token.getDeviceId().isBlank()) {
-                        logger.warn("Skipping mock token {} because deviceId is missing", token.getTokenId());
+                logger.info("Generated {} mock workerContexts", workerContexts.size());
+                for (WorkerContext wc : workerContexts) {
+                    normalizeMockWorkerContext(wc);
+                    if (wc.getWorkerId() == null || wc.getWorkerId().isBlank()) {
+                        logger.warn("Skipping mock workerContext {} because workerId is missing", wc.getWorkerContextId());
                         continue;
                     }
-                    engine.addToken(token);
-                    logger.debug("Loaded mock token: {} (deviceId: {}, channel: {}, attributes: {})",
-                            token.getTokenId(), token.getDeviceId(), token.getChannel(), token.getAttributes());
+                    engine.addWorkerContext(wc);
+                    logger.debug("Loaded mock workerContext: {} (workerId: {}, channel: {}, attributes: {})",
+                            wc.getWorkerContextId(), wc.getWorkerId(), wc.getChannel(), wc.getAttributes());
                 }
             }
 
-            ensureMockTokens(engine);
-            verifyDeviceData(engine);
+            ensureMockWorkerContexts(engine);
+            verifyWorkerData(engine);
 
             if (root.has("tasks")) {
                 List<com.xa.mass.engine.model.TaskCreateRequestDto> taskDtos = new ArrayList<>();
@@ -339,89 +312,89 @@ public class MassApplication {
         }
     }
 
-    public void verifyDeviceData(MassEngine engine) {
-        com.xa.mass.engine.DeviceManager deviceManager = engine.getDeviceManager();
-        if (deviceManager != null) {
-            List<Device> allDevices = deviceManager.getAllDevices();
-            List<Device> usDevices = deviceManager.getDevicesByGroupId("us");
-            List<Device> gbDevices = deviceManager.getDevicesByGroupId("gb");
+    public void verifyWorkerData(MassEngine engine) {
+        com.xa.mass.engine.WorkerManager workerManager = engine.getWorkerManager();
+        if (workerManager != null) {
+            List<Worker> allWorkers = workerManager.getAllWorkers();
+            List<Worker> usWorkers = workerManager.getWorkersByGroupId("us");
+            List<Worker> gbWorkers = workerManager.getWorkersByGroupId("gb");
 
-            logger.info("Verified mock devices: total={}, usGroup={}, gbGroup={}",
-                    allDevices.size(), usDevices.size(), gbDevices.size());
+            logger.info("Verified mock workers: total={}, usGroup={}, gbGroup={}",
+                    allWorkers.size(), usWorkers.size(), gbWorkers.size());
 
-            for (int i = 0; i < Math.min(3, allDevices.size()); i++) {
-                Device device = allDevices.get(i);
-                Token token = deviceManager.getToken(device.getDeviceId());
-                logger.info("Device {}: id={}, deviceGroupId={}, status={}, tokenId={}, tokenStatus={}",
+            for (int i = 0; i < Math.min(3, allWorkers.size()); i++) {
+                Worker worker = allWorkers.get(i);
+                WorkerContext wc = workerManager.getWorkerContext(worker.getWorkerId());
+                logger.info("Worker {}: id={}, workerGroupId={}, status={}, workerContextId={}, workerContextStatus={}",
                         i + 1,
-                        device.getDeviceId(),
-                        device.getDeviceGroupId(),
-                        device.getStatus(),
-                        token != null ? token.getTokenId() : "null",
-                        token != null ? token.getStatus() : "null");
+                        worker.getWorkerId(),
+                        worker.getWorkerGroupId(),
+                        worker.getStatus(),
+                        wc != null ? wc.getWorkerContextId() : "null",
+                        wc != null ? wc.getStatus() : "null");
             }
         }
     }
 
-    void normalizeMockDevice(Device device) {
-        if (device == null) {
+    void normalizeMockWorker(Worker worker) {
+        if (worker == null) {
             return;
         }
-        if (device.getDeviceGroupId() != null) {
-            device.setDeviceGroupId(device.getDeviceGroupId().toLowerCase());
+        if (worker.getWorkerGroupId() != null) {
+            worker.setWorkerGroupId(worker.getWorkerGroupId().toLowerCase());
         }
-        List<String> supportedProjects = normalizeSupportedProjects(device);
+        List<String> supportedProjects = normalizeSupportedProjects(worker);
         if (!supportedProjects.isEmpty()) {
-            device.setSupportedProjects(supportedProjects);
+            worker.setSupportedProjects(supportedProjects);
         }
     }
 
-    void normalizeMockToken(Token token) {
-        if (token == null) {
+    void normalizeMockWorkerContext(WorkerContext wc) {
+        if (wc == null) {
             return;
         }
-        if (token.getChannel() != null) {
-            token.setChannel(token.getChannel().toLowerCase());
+        if (wc.getChannel() != null) {
+            wc.setChannel(wc.getChannel().toLowerCase());
         }
-        if (token.getStatus() == null) {
-            token.setStatus(TokenStatus.IDLE);
+        if (wc.getStatus() == null) {
+            wc.setStatus(WorkerContextStatus.IDLE);
         }
-        if (!token.getAttributes().isEmpty()) {
-            java.util.Map<String, String> normalizedAttributes = new java.util.LinkedHashMap<>(token.getAttributes());
+        if (!wc.getAttributes().isEmpty()) {
+            java.util.Map<String, String> normalizedAttributes = new java.util.LinkedHashMap<>(wc.getAttributes());
             String country = normalizedAttributes.get("country");
             if (country != null) {
                 normalizedAttributes.put("country", country.toLowerCase());
             }
-            token.setAttributes(normalizedAttributes);
+            wc.setAttributes(normalizedAttributes);
         }
     }
 
-    void ensureMockTokens(MassEngine engine) {
-        if (engine == null || engine.getDeviceManager() == null) {
+    void ensureMockWorkerContexts(MassEngine engine) {
+        if (engine == null || engine.getWorkerManager() == null) {
             return;
         }
-        for (Device device : engine.getDeviceManager().getAllDevices()) {
-            ensureMockToken(engine, device);
+        for (Worker worker : engine.getWorkerManager().getAllWorkers()) {
+            ensureMockWorkerContext(engine, worker);
         }
     }
 
-    void ensureMockToken(MassEngine engine, Device device) {
-        if (engine == null || device == null || engine.getDeviceManager() == null) {
+    void ensureMockWorkerContext(MassEngine engine, Worker worker) {
+        if (engine == null || worker == null || engine.getWorkerManager() == null) {
             return;
         }
-        if (engine.getDeviceManager().getToken(device.getDeviceId()) != null) {
+        if (engine.getWorkerManager().getWorkerContext(worker.getWorkerId()) != null) {
             return;
         }
 
-        Token token = new Token();
-        token.setTokenId("token-" + device.getDeviceId());
-        token.setDeviceId(device.getDeviceId());
-        token.setStatus(TokenStatus.IDLE);
-        engine.addToken(token);
+        WorkerContext wc = new WorkerContext();
+        wc.setWorkerContextId("wc-" + worker.getWorkerId());
+        wc.setWorkerId(worker.getWorkerId());
+        wc.setStatus(WorkerContextStatus.IDLE);
+        engine.addWorkerContext(wc);
     }
 
-    private List<String> normalizeSupportedProjects(Device device) {
-        List<String> projects = device.getSupportedProjects();
+    private List<String> normalizeSupportedProjects(Worker worker) {
+        List<String> projects = worker.getSupportedProjects();
         if (projects == null || projects.isEmpty()) {
             return defaultSupportedProjects();
         }

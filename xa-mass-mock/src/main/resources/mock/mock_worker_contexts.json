@@ -1,0 +1,48 @@
+[
+  {
+    "MODEL": "WorkerContext",
+    "COUNT": 100,
+    "FIELDS": {
+      "workerContextId": {
+        "$JOIN": [
+          "token-",
+          "&.index"
+        ]
+      },
+      "workerId": {
+        "$JOIN": [
+          "device-",
+          "&.index"
+        ]
+      },
+      "channel": "us",
+      "status": "IDLE",
+      "attributes": {
+        "country": "us"
+      }
+    }
+  },
+  {
+    "MODEL": "WorkerContext",
+    "COUNT": 50,
+    "FIELDS": {
+      "workerContextId": {
+        "$JOIN": [
+          "gb-token-",
+          "&.index"
+        ]
+      },
+      "workerId": {
+        "$JOIN": [
+          "gb-device-",
+          "&.index"
+        ]
+      },
+      "channel": "gb",
+      "status": "IDLE",
+      "attributes": {
+        "country": "gb"
+      }
+    }
+  }
+]

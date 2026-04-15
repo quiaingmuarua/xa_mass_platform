@@ -66,7 +66,7 @@ public class MiddlewareRegistry {
                         for (MassMessage resp : responses) {
                             String json = context.getMessageCodec().encode(resp);
                             context.getMessageTransporter().sendOutput(Envelope.builder()
-                                    .deviceId(ctx.getDeviceId())
+                                    .workerId(ctx.getWorkerId())
                                     .connRole(ctx.getConnRole())
                                     .rawJson(json)
                                     .build());
@@ -91,7 +91,7 @@ public class MiddlewareRegistry {
         return (envelope, context) -> {
             try {
                 logger.info("sendEnvelopeMiddleware {}", envelope);
-                ChannelHandlerContext ctx = context.getSessionManager().getChannelContext(envelope.getDeviceId(), envelope.getConnRole());
+                ChannelHandlerContext ctx = context.getSessionManager().getChannelContext(envelope.getWorkerId(), envelope.getConnRole());
                 if (ctx != null && ctx.channel().isActive()) {
                     logger.info("sendEnvelopeMiddleware ctx {}", ctx);
                     ctx.writeAndFlush(new TextWebSocketFrame(envelope.getRawJson()));

@@ -74,7 +74,7 @@ public class MassServerConfig {
         // SessionManager
         Map<String, Object> sessionInfo = new LinkedHashMap<>();
         sessionInfo.put("class", ctx.getSessionManager().getClass().getSimpleName());
-        sessionInfo.put("activeConnections", ctx.getSessionManager().getDeviceConnectionCount());
+        sessionInfo.put("activeConnections", ctx.getSessionManager().getWorkerConnectionCount());
         info.put("sessionManager", sessionInfo);
         // 输出 JSON
         return new GsonBuilder().setPrettyPrinting().create().toJson(info);

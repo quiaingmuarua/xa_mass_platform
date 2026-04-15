@@ -1,12 +1,12 @@
 package com.xa.mass.engine.listener;
 
-import com.xa.mass.base.enums.task.TokenStatus;
+import com.xa.mass.base.enums.worker.WorkerContextStatus;
 import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
-import com.xa.mass.base.model.Device;
+import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
-import com.xa.mass.base.model.Token;
-import com.xa.mass.engine.DeviceManager;
+import com.xa.mass.base.model.WorkerContext;
+import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.model.TaskCreateRequestDto;
 import com.xa.mass.engine.service.AssignmentRecordService;
@@ -28,18 +28,18 @@ import static org.mockito.Mockito.*;
 
 class SimpleTaskMsgAssignListenerTest {
 
-    private DeviceManager deviceManager;
+    private WorkerManager workerManager;
     private AssignmentRecordService recordService;
     private TaskManager taskManager;
     private SimpleTaskMsgAssignListener listener;
 
     @BeforeEach
     void setUp() {
-        deviceManager = mock(DeviceManager.class);
+        workerManager = mock(WorkerManager.class);
         recordService = mock(AssignmentRecordService.class);
         TaskStorage taskStorage = new InMemoryTaskStorage();
         taskManager = new TaskManager(new NoopTaskScheduler(), taskStorage);
-        listener = new SimpleTaskMsgAssignListener(taskManager, deviceManager, recordService);
+        listener = new SimpleTaskMsgAssignListener(taskManager, workerManager, recordService);
     }
 
     @Test
@@ -50,13 +50,13 @@ class SimpleTaskMsgAssignListenerTest {
                 .map(TaskMsg::getMsgId)
                 .collect(Collectors.toList());
         AtomicReference<List<TaskMsg>> dispatched = new AtomicReference<>();
-        listener = new SimpleTaskMsgAssignListener(taskManager, deviceManager, recordService, (t, msgs) -> dispatched.set(msgs));
+        listener = new SimpleTaskMsgAssignListener(taskManager, workerManager, recordService, (t, msgs) -> dispatched.set(msgs));
 
-        when(deviceManager.getToken("d1")).thenReturn(token("tk1", "d1"));
-        when(deviceManager.getToken("d2")).thenReturn(token("tk2", "d2"));
-        when(deviceManager.updateToken(anyString(), any(Token.class))).thenReturn(true);
+        when(workerManager.getWorkerContext("d1")).thenReturn(workerContext("tk1", "d1"));
+        when(workerManager.getWorkerContext("d2")).thenReturn(workerContext("tk2", "d2"));
+        when(workerManager.updateWorkerContext(anyString(), any(WorkerContext.class))).thenReturn(true);
 
-        listener.onMsgAssign(task, List.of(device("d1"), device("d2")));
+        listener.onMsgAssign(task, List.of(worker("d1"), worker("d2")));
 
         List<TaskMsg> pushed = dispatched.get();
         assertNotNull(pushed);
@@ -66,50 +66,50 @@ class SimpleTaskMsgAssignListenerTest {
     }
 
     @Test
-    void assignmentWritesDeviceBatchAndSentStatusBackToStorage() {
+    void assignmentWritesWorkerBatchAndSentStatusBackToStorage() {
         Task task = createTask(4);
         task.setBatchSize(10);
 
-        Token token1 = token("tk1", "d1");
-        Token token2 = token("tk2", "d2");
-        when(deviceManager.getToken("d1")).thenReturn(token1);
-        when(deviceManager.getToken("d2")).thenReturn(token2);
-        when(deviceManager.updateToken(anyString(), any(Token.class))).thenReturn(true);
+        WorkerContext wc1 = workerContext("tk1", "d1");
+        WorkerContext wc2 = workerContext("tk2", "d2");
+        when(workerManager.getWorkerContext("d1")).thenReturn(wc1);
+        when(workerManager.getWorkerContext("d2")).thenReturn(wc2);
+        when(workerManager.updateWorkerContext(anyString(), any(WorkerContext.class))).thenReturn(true);
 
-        listener.onMsgAssign(task, List.of(device("d1"), device("d2")));
+        listener.onMsgAssign(task, List.of(worker("d1"), worker("d2")));
 
         List<TaskMsg> stored = taskManager.getTaskMessages(task.getTid());
         assertEquals(4, stored.size());
         assertEquals(List.of(TaskMsgStatus.SENT, TaskMsgStatus.SENT, TaskMsgStatus.SENT, TaskMsgStatus.SENT),
                 stored.stream().map(TaskMsg::getStatus).collect(Collectors.toList()));
         assertEquals(List.of("d1", "d2", "d1", "d2"),
-                stored.stream().map(TaskMsg::getDeviceId).collect(Collectors.toList()));
+                stored.stream().map(TaskMsg::getWorkerId).collect(Collectors.toList()));
         assertEquals(List.of("batch-0", "batch-1", "batch-0", "batch-1"),
                 stored.stream().map(TaskMsg::getBatchId).collect(Collectors.toList()));
-        assertEquals(TokenStatus.OCCUPIED, token1.getStatus());
-        assertEquals(task.getTid(), token1.getLastBindTaskId());
-        assertEquals(TokenStatus.OCCUPIED, token2.getStatus());
-        assertEquals(task.getTid(), token2.getLastBindTaskId());
+        assertEquals(WorkerContextStatus.OCCUPIED, wc1.getStatus());
+        assertEquals(task.getTid(), wc1.getLastBindTaskId());
+        assertEquals(WorkerContextStatus.OCCUPIED, wc2.getStatus());
+        assertEquals(task.getTid(), wc2.getLastBindTaskId());
 
         verify(recordService, times(4)).recordMessageAssignment(
                 any(), any(), any(), anyString(), anyString(), any(), anyString(), anyBoolean()
         );
-        verify(deviceManager, times(4)).isLocked(anyString());
-        verify(deviceManager, times(2)).updateToken(anyString(), any(Token.class));
+        verify(workerManager, times(4)).isLocked(anyString());
+        verify(workerManager, times(2)).updateWorkerContext(anyString(), any(WorkerContext.class));
     }
 
     @Test
-    void assignmentRespectsPerDeviceBatchSizeAndLeavesRemainingMessagesPending() {
+    void assignmentRespectsPerWorkerBatchSizeAndLeavesRemainingMessagesPending() {
         Task task = createTask(5);
         task.setBatchSize(2);
 
-        Token token1 = token("tk1", "d1");
-        Token token2 = token("tk2", "d2");
-        when(deviceManager.getToken("d1")).thenReturn(token1);
-        when(deviceManager.getToken("d2")).thenReturn(token2);
-        when(deviceManager.updateToken(anyString(), any(Token.class))).thenReturn(true);
+        WorkerContext wc1 = workerContext("tk1", "d1");
+        WorkerContext wc2 = workerContext("tk2", "d2");
+        when(workerManager.getWorkerContext("d1")).thenReturn(wc1);
+        when(workerManager.getWorkerContext("d2")).thenReturn(wc2);
+        when(workerManager.updateWorkerContext(anyString(), any(WorkerContext.class))).thenReturn(true);
 
-        List<TaskMsg> dispatched = listener.onMsgAssign(task, List.of(device("d1"), device("d2")));
+        List<TaskMsg> dispatched = listener.onMsgAssign(task, List.of(worker("d1"), worker("d2")));
 
         assertEquals(4, dispatched.size());
         List<TaskMsg> stored = taskManager.getTaskMessages(task.getTid());
@@ -121,44 +121,44 @@ class SimpleTaskMsgAssignListenerTest {
                         TaskMsgStatus.INIT),
                 stored.stream().map(TaskMsg::getStatus).collect(Collectors.toList()));
         assertEquals(java.util.Arrays.asList("d1", "d2", "d1", "d2", null),
-                stored.stream().map(TaskMsg::getDeviceId).collect(Collectors.toList()));
+                stored.stream().map(TaskMsg::getWorkerId).collect(Collectors.toList()));
     }
 
     @Test
-    void nullTokenIsHandledGracefully() {
+    void nullWorkerContextIsHandledGracefully() {
         Task task = createTask(2);
         task.setBatchSize(10);
-        when(deviceManager.getToken("d1")).thenReturn(null);
+        when(workerManager.getWorkerContext("d1")).thenReturn(null);
 
-        assertDoesNotThrow(() -> listener.onMsgAssign(task, List.of(device("d1"))));
+        assertDoesNotThrow(() -> listener.onMsgAssign(task, List.of(worker("d1"))));
 
         List<TaskMsg> stored = taskManager.getTaskMessages(task.getTid());
-        assertTrue(stored.stream().allMatch(msg -> msg.getTokenId() == null));
+        assertTrue(stored.stream().allMatch(msg -> msg.getWorkerContextId() == null));
         verify(recordService, times(2)).recordMessageAssignment(
                 any(), any(), isNull(), anyString(), anyString(), any(), anyString(), anyBoolean()
         );
-        verify(deviceManager, times(2)).isLocked("d1");
+        verify(workerManager, times(2)).isLocked("d1");
     }
 
     @Test
-    void nonDispatchableTokenSkipsDeviceAndUnlocksIt() {
+    void nonDispatchableWorkerContextSkipsWorkerAndUnlocksIt() {
         Task task = createTask(1);
-        Token blocked = token("tk-blocked", "d1");
+        WorkerContext blocked = workerContext("tk-blocked", "d1");
         blocked.block();
-        when(deviceManager.getToken("d1")).thenReturn(blocked);
+        when(workerManager.getWorkerContext("d1")).thenReturn(blocked);
 
-        assertTrue(listener.onMsgAssign(task, List.of(device("d1"))).isEmpty());
+        assertTrue(listener.onMsgAssign(task, List.of(worker("d1"))).isEmpty());
 
         List<TaskMsg> stored = taskManager.getTaskMessages(task.getTid());
         assertEquals(TaskMsgStatus.INIT, stored.get(0).getStatus());
-        verify(deviceManager).unlockDevice("d1");
+        verify(workerManager).unlockWorker("d1");
         verify(recordService, never()).recordMessageAssignment(
                 any(), any(), any(), anyString(), anyString(), any(), anyString(), anyBoolean()
         );
     }
 
     @Test
-    void emptyDeviceListSkipsWithoutMutation() {
+    void emptyWorkerListSkipsWithoutMutation() {
         Task task = createTask(2);
         List<String> before = taskManager.getTaskMessages(task.getTid()).stream()
                 .map(TaskMsg::getMsgId)
@@ -186,17 +186,17 @@ class SimpleTaskMsgAssignListenerTest {
         return taskManager.createTask(dto);
     }
 
-    private Device device(String id) {
-        Device d = new Device();
-        d.setDeviceId(id);
-        return d;
+    private Worker worker(String id) {
+        Worker w = new Worker();
+        w.setWorkerId(id);
+        return w;
     }
 
-    private Token token(String tokenId, String deviceId) {
-        Token t = new Token();
-        t.setTokenId(tokenId);
-        t.setDeviceId(deviceId);
-        return t;
+    private WorkerContext workerContext(String workerContextId, String workerId) {
+        WorkerContext wc = new WorkerContext();
+        wc.setWorkerContextId(workerContextId);
+        wc.setWorkerId(workerId);
+        return wc;
     }
 
     private static class NoopTaskScheduler implements TaskScheduler {

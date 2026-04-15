@@ -1,10 +1,11 @@
 package com.xa.mass.engine.example;
 
-import com.xa.mass.base.enums.task.TokenStatus;
-import com.xa.mass.base.model.Device;
+import com.xa.mass.base.enums.worker.WorkerContextStatus;
+import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.Token;
 import com.xa.mass.base.model.User;
+import com.xa.mass.base.model.Worker;
+import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.storage.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -14,138 +15,126 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * 瀛樺偍宸ュ巶浣跨敤绀轰緥
- * 灞曠ず濡備綍浣跨敤 TaskStorageFactory 鍒涘缓涓嶅悓绫诲瀷鐨勫瓨鍌ㄥ疄渚?
+ * StorageFactoryExample — demonstrates how to use TaskStorageFactory to create different storage types.
+ * Switch to Redis by changing the factory call.
  */
 public class StorageFactoryExample {
 
     private static final Logger log = LoggerFactory.getLogger(StorageFactoryExample.class);
 
     public static void main(String[] args) {
-        // 娴嬭瘯鍐呭瓨瀛樺偍
         testInMemoryStorage();
-
-        // 娴嬭瘯Redis瀛樺偍
         testRedisStorage();
-
-        // 娴嬭瘯瀛樺偍宸ュ巶
         testStorageFactory();
     }
 
-    /**
-     * 娴嬭瘯鍐呭瓨瀛樺偍
-     */
     public static void testInMemoryStorage() {
-        log.info("=== 娴嬭瘯鍐呭瓨瀛樺偍 ===");
+        log.info("=== testInMemoryStorage ===");
 
-        // 1. 鍒涘缓鍐呭瓨瀛樺偍瀹炰緥
-        DeviceStorage deviceStorage = new InMemoryDeviceStorage();
+        WorkerStorage workerStorage = new InMemoryWorkerStorage();
         TaskStorage taskStorage = new InMemoryTaskStorage();
         RuleStorage ruleStorage = new InMemoryRuleStorage();
 
-        // 2. 娣诲姞娴嬭瘯鏁版嵁
-        Device device = new Device("device-001", "1.0.0", Arrays.asList("demoApp"));
-        device.setDeviceGroupId("us");
+        Worker worker = new Worker();
+        worker.setWorkerId("worker-001");
+        worker.setAgentVersion("1.0.0");
+        worker.setSupportedProjects(Arrays.asList("demoApp"));
+        worker.setWorkerGroupId("us");
+        worker.setStatus(WorkerStatus.ONLINE);
 
-        Token token = new Token("token-001", "device-001", "us");
-        token.setStatus(TokenStatus.IDLE);
+        WorkerContext workerContext = new WorkerContext();
+        workerContext.setWorkerContextId("ctx-001");
+        workerContext.setWorkerId("worker-001");
+        workerContext.setChannel("us");
+        workerContext.setStatus(WorkerContextStatus.IDLE);
 
         User user = new User();
         user.setName("testUser");
 
         Task task = new Task("task-001", "Test Task", "demoApp", "us", 100, java.util.Map.of("textContent", "Test content"), user);
 
-        deviceStorage.addDevice(device);
-        deviceStorage.addToken("device-001", token);
+        workerStorage.addWorker(worker);
+        workerStorage.addWorkerContext("worker-001", workerContext);
         taskStorage.saveTask(task);
 
-        // 3. 楠岃瘉鏁版嵁
-        List<Device> devices = deviceStorage.getAllDevices();
-        Optional<Token> retrievedToken = deviceStorage.getToken("device-001");
+        List<Worker> workers = workerStorage.getAllWorkers();
+        Optional<WorkerContext> retrievedCtx = workerStorage.getWorkerContext("worker-001");
         Optional<Task> retrievedTask = taskStorage.getTask("task-001");
 
-        log.info("璁惧鏁伴噺: {}", devices.size());
-        log.info("Token: {}", retrievedToken.map(Token::getTokenId).orElse("null"));
+        log.info("Workers: {}", workers.size());
+        log.info("WorkerContext: {}", retrievedCtx.map(WorkerContext::getWorkerContextId).orElse("null"));
         log.info("Task: {}", retrievedTask.map(Task::getTid).orElse("null"));
 
-        log.info("=== 鍐呭瓨瀛樺偍娴嬭瘯瀹屾垚 ===");
+        log.info("=== testInMemoryStorage complete ===");
     }
 
-    /**
-     * 娴嬭瘯Redis瀛樺偍
-     */
     public static void testRedisStorage() {
-        log.info("=== 娴嬭瘯Redis瀛樺偍 ===");
-
-        // 娉ㄦ剰锛歊edis瀛樺偍闇€瑕丷edis鏈嶅姟鍣ㄨ繍琛?
-        // 杩欓噷鍙槸灞曠ず濡備綍鍒涘缓Redis瀛樺偍瀹炰緥
+        log.info("=== testRedisStorage ===");
 
         try {
-            // 1. 鍒涘缓Redis瀛樺偍瀹炰緥
-            DeviceStorage deviceStorage = new RedisDeviceStorage();
+            WorkerStorage workerStorage = new RedisWorkerStorage();
             TaskStorage taskStorage = new RedisTaskStorage();
             RuleStorage ruleStorage = new RedisRuleStorage();
 
-            log.info("Redis瀛樺偍瀹炰緥鍒涘缓鎴愬姛");
+            log.info("Redis storage instances created");
 
-            // 2. 娣诲姞娴嬭瘯鏁版嵁
-            Device device = new Device("device-002", "1.0.1", Arrays.asList("demoApp"));
-            device.setDeviceGroupId("gb");
+            Worker worker = new Worker();
+            worker.setWorkerId("worker-002");
+            worker.setAgentVersion("1.0.1");
+            worker.setSupportedProjects(Arrays.asList("demoApp"));
+            worker.setWorkerGroupId("gb");
 
-            Token token = new Token("token-002", "device-002", "gb");
-            token.setStatus(TokenStatus.IDLE);
+            WorkerContext workerContext = new WorkerContext();
+            workerContext.setWorkerContextId("ctx-002");
+            workerContext.setWorkerId("worker-002");
+            workerContext.setChannel("gb");
+            workerContext.setStatus(WorkerContextStatus.IDLE);
 
             User user = new User();
             user.setName("testUser2");
 
             Task task = new Task("task-002", "Test Task 2", "demoApp", "gb", 50, java.util.Map.of("textContent", "Test content 2"), user);
 
-            deviceStorage.addDevice(device);
-            deviceStorage.addToken("device-002", token);
+            workerStorage.addWorker(worker);
+            workerStorage.addWorkerContext("worker-002", workerContext);
             taskStorage.saveTask(task);
 
-            // 3. 楠岃瘉鏁版嵁
-            List<Device> devices = deviceStorage.getAllDevices();
-            Optional<Token> retrievedToken = deviceStorage.getToken("device-002");
+            List<Worker> workers = workerStorage.getAllWorkers();
+            Optional<WorkerContext> retrievedCtx = workerStorage.getWorkerContext("worker-002");
             Optional<Task> retrievedTask = taskStorage.getTask("task-002");
 
-            log.info("璁惧鏁伴噺: {}", devices.size());
-            log.info("Token: {}", retrievedToken.map(Token::getTokenId).orElse("null"));
+            log.info("Workers: {}", workers.size());
+            log.info("WorkerContext: {}", retrievedCtx.map(WorkerContext::getWorkerContextId).orElse("null"));
             log.info("Task: {}", retrievedTask.map(Task::getTid).orElse("null"));
 
         } catch (Exception e) {
-            log.warn("Redis瀛樺偍娴嬭瘯澶辫触锛屽彲鑳絉edis鏈嶅姟鍣ㄦ湭杩愯: {}", e.getMessage());
+            log.warn("Redis storage test failed — Redis server may not be running: {}", e.getMessage());
         }
 
-        log.info("=== Redis瀛樺偍娴嬭瘯瀹屾垚 ===");
+        log.info("=== testRedisStorage complete ===");
     }
 
-    /**
-     * 娴嬭瘯瀛樺偍宸ュ巶
-     */
     public static void testStorageFactory() {
-        log.info("=== 娴嬭瘯瀛樺偍宸ュ巶 ===");
+        log.info("=== testStorageFactory ===");
 
-        // 1. 浣跨敤宸ュ巶鍒涘缓鍐呭瓨瀛樺偍
         TaskStorage inMemoryStorage = TaskStorageFactory.createStorage("memory");
-        log.info("鍐呭瓨瀛樺偍鍒涘缓鎴愬姛: {}", inMemoryStorage.getClass().getSimpleName());
+        log.info("In-memory storage created: {}", inMemoryStorage.getClass().getSimpleName());
 
-        // 2. 浣跨敤宸ュ巶鍒涘缓Redis瀛樺偍
         try {
             TaskStorage redisStorage = TaskStorageFactory.createStorage("redis");
-            log.info("Redis瀛樺偍鍒涘缓鎴愬姛: {}", redisStorage.getClass().getSimpleName());
+            log.info("Redis storage created: {}", redisStorage.getClass().getSimpleName());
         } catch (Exception e) {
-            log.warn("Redis瀛樺偍鍒涘缓澶辫触: {}", e.getMessage());
+            log.warn("Redis storage creation failed: {}", e.getMessage());
         }
 
-        // 3. 娴嬭瘯榛樿瀛樺偍
-        TaskStorage defaultStorage = TaskStorageFactory.createStorage("unknown");
-        log.info("榛樿瀛樺偍鍒涘缓鎴愬姛: {}", defaultStorage.getClass().getSimpleName());
+        try {
+            TaskStorage unknownStorage = TaskStorageFactory.createStorage("unknown");
+        } catch (IllegalArgumentException e) {
+            log.info("Unknown storage type correctly rejected: {}", e.getMessage());
+        }
 
-        // 4. 浣跨敤瀛樺偍
         User user1 = new User();
         user1.setName("factoryUser1");
-
         User user2 = new User();
         user2.setName("factoryUser2");
 
@@ -156,13 +145,12 @@ public class StorageFactoryExample {
         inMemoryStorage.saveTask(task2);
 
         List<Task> allTasks = inMemoryStorage.getAllTasks();
-        log.info("瀛樺偍涓殑浠诲姟鏁伴噺: {}", allTasks.size());
+        log.info("Tasks in storage: {}", allTasks.size());
 
         for (Task task : allTasks) {
-            log.info("浠诲姟: {} (country: {}, project: {})",
-                    task.getTid(), task.getTaskRoutingCountryCode(), task.getProject());
+            log.info("Task: {} (country: {}, project: {})", task.getTid(), task.getTaskRoutingCountryCode(), task.getProject());
         }
 
-        log.info("=== 瀛樺偍宸ュ巶娴嬭瘯瀹屾垚 ===");
+        log.info("=== testStorageFactory complete ===");
     }
-} 
+}

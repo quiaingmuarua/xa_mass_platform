@@ -41,9 +41,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = {
                 "mock.client.auto-start=false",
-                "mock.client.devices-config=mock/test_mock_devices.json",
-                "mass.mock.data.devices=mock/test_mock_devices.json",
-                "mass.mock.data.tokens=mock/test_mock_tokens.json",
+                "mock.client.workers-config=mock/test_mock_workers.json",
+                "mass.mock.data.workers=mock/test_mock_workers.json",
+                "mass.mock.data.worker-contexts=mock/test_mock_worker_contexts.json",
                 "mass.mock.data.tasks=mock/test_mock_tasks.json",
                 "mass.mock.data.rules=mock/test_mock_rules.json"
         }
@@ -97,7 +97,7 @@ class TaskApiMixedResultsIntegrationTest extends AbstractMockE2eTest {
         AckSnapshot ack1 = submitTaskResult(
                 taskId,
                 String.valueOf(firstMsg.get("msgId")),
-                String.valueOf(firstMsg.get("deviceId")),
+                String.valueOf(firstMsg.get("workerId")),
                 "SUCCESS",
                 "mixed-ok"
         );
@@ -107,7 +107,7 @@ class TaskApiMixedResultsIntegrationTest extends AbstractMockE2eTest {
         AckSnapshot ack2 = submitTaskResult(
                 taskId,
                 String.valueOf(secondMsg.get("msgId")),
-                String.valueOf(secondMsg.get("deviceId")),
+                String.valueOf(secondMsg.get("workerId")),
                 "FAILED",
                 "mixed-fail"
         );
@@ -132,8 +132,8 @@ class TaskApiMixedResultsIntegrationTest extends AbstractMockE2eTest {
 
         // Both messages must have device/token/batch binding.
         for (Map<String, Object> msg : terminalSnapshot.messages()) {
-            assertNotNull(msg.get("deviceId"));
-            assertNotNull(msg.get("tokenId"));
+            assertNotNull(msg.get("workerId"));
+            assertNotNull(msg.get("workerContextId"));
             assertNotNull(msg.get("batchId"));
         }
     }
@@ -141,13 +141,13 @@ class TaskApiMixedResultsIntegrationTest extends AbstractMockE2eTest {
     // ─── helpers ────────────────────────────────────────────────────────────
 
     private AckSnapshot submitTaskResult(
-            String taskId, String msgId, String deviceId, String status, String detail
+            String taskId, String msgId, String workerId, String status, String detail
     ) throws Exception {
         URI uri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
-        ReplayClient client = new ReplayClient(uri, deviceId, msgId);
+        ReplayClient client = new ReplayClient(uri, workerId, msgId);
         try {
-            assertTrue(client.connectBlocking(), "ReplayClient failed to connect for device " + deviceId);
-            client.sendMessage(buildResultPayload(taskId, msgId, deviceId, status, detail));
+            assertTrue(client.connectBlocking(), "ReplayClient failed to connect for worker " + workerId);
+            client.sendMessage(buildResultPayload(taskId, msgId, workerId, status, detail));
             assertTrue(client.awaitAck(3, TimeUnit.SECONDS), "Timed out waiting for gateway ack on msg " + msgId);
             return client.ackSnapshot();
         } finally {
@@ -156,7 +156,7 @@ class TaskApiMixedResultsIntegrationTest extends AbstractMockE2eTest {
     }
 
     private String buildResultPayload(
-            String taskId, String msgId, String deviceId, String status, String detail
+            String taskId, String msgId, String workerId, String status, String detail
     ) {
         MassMessage msg = new MassMessage();
         msg.setMsgId(msgId);
@@ -168,7 +168,7 @@ class TaskApiMixedResultsIntegrationTest extends AbstractMockE2eTest {
 
         MessageContext ctx = new MessageContext();
         ctx.setTid(taskId);
-        ctx.setDeviceId(deviceId);
+        ctx.setWorkerId(workerId);
         ctx.setConnRole(SessionRoles.TASK_MESSAGES);
         msg.setContext(ctx);
         msg.setPayload(GSON.toJsonTree(Map.of("status", status, "mockData", detail)));
@@ -177,14 +177,14 @@ class TaskApiMixedResultsIntegrationTest extends AbstractMockE2eTest {
 
     private record AckSnapshot(int code, String message) {}
 
-    /** Connects as a device, sends a pre-built result payload, and captures the gateway ACK. */
+    /** Connects as a worker, sends a pre-built result payload, and captures the gateway ACK. */
     private static final class ReplayClient extends MassWebSocketClientImpl {
         private final String expectedMsgId;
         private final CountDownLatch ackLatch = new CountDownLatch(1);
         private volatile AckSnapshot ack;
 
-        ReplayClient(URI uri, String deviceId, String expectedMsgId) {
-            super(uri, deviceId);
+        ReplayClient(URI uri, String workerId, String expectedMsgId) {
+            super(uri, workerId);
             this.expectedMsgId = expectedMsgId;
         }
 

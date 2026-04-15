@@ -10,7 +10,8 @@ mass:
     enabled: true
   mock:
     data:
-      devices: mock/mock_devices.json
+      workers: mock/mock_workers.json
+      worker-contexts: mock/mock_worker_contexts.json
       tasks: mock/mock_tasks.json
       rules: mock/mock_rules.json
 

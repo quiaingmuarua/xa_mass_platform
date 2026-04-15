@@ -20,7 +20,7 @@
 
 ```java
 // 娉ㄥ唽绫诲瀷鍒悕
-TypeRegistry.register("Device", Device.class);
+TypeRegistry.register("Worker", Worker.class);
 TypeRegistry.register("Task", Task.class);
 ```
 
@@ -28,12 +28,12 @@ TypeRegistry.register("Task", Task.class);
 
 ```json
 {
-  "MODEL": "Device",
+  "MODEL": "Worker",
   "COUNT": 3,
   "FIELDS": {
-    "deviceId": {"$JOIN": ["device-", "&.index"]},
+    "workerId": {"$JOIN": ["worker-", "&.index"]},
     "status": {"$CHOICE": ["ONLINE", "OFFLINE"]},
-    "deviceGroupId": {"$CHOICE": ["us", "gb", "cn"]},
+    "workerGroupId": {"$CHOICE": ["us", "gb", "cn"]},
     "agentVersion": {"$JOIN": ["1.0.", "&.index"]}
   }
 }
@@ -42,18 +42,18 @@ TypeRegistry.register("Task", Task.class);
 ### 3. 鐢熸垚鏁版嵁
 
 ```java
-String deviceDsl = "..."; // 涓婇潰鐨?JSON
+String workerDsl = "..."; // 涓婇潰鐨?JSON
 
 // 榛樿杩斿洖鍒楄〃锛堟帹鑽愶級
-List<Object> devices = JsonDslEngine.generate(deviceDsl);
-devices.
+List<Object> workers = JsonDslEngine.generate(workerDsl);
+workers.
 
 forEach(System.out::println);
 
 // 鎸囧畾杩斿洖绫诲瀷
-Object singleDevice = JsonDslEngine.generate(deviceDsl, JsonDslEngine.ReturnType.SINGLE);
-List<Object> deviceList = JsonDslEngine.generate(deviceDsl, JsonDslEngine.ReturnType.LIST);
-Map<String, Object> deviceMap = JsonDslEngine.generate(deviceDsl, JsonDslEngine.ReturnType.MAP);
+Object singleWorker = JsonDslEngine.generate(workerDsl, JsonDslEngine.ReturnType.SINGLE);
+List<Object> workerList = JsonDslEngine.generate(workerDsl, JsonDslEngine.ReturnType.LIST);
+Map<String, Object> workerMap = JsonDslEngine.generate(workerDsl, JsonDslEngine.ReturnType.MAP);
 ```
 
 ## API 璁捐
@@ -75,23 +75,23 @@ public enum ReturnType {
 
 ```java
 // 榛樿杩斿洖 List<Object>锛屽嵆浣?DSL 鍙畾涔変簡涓€涓璞′篃浼氬寘瑁呬负鍒楄〃
-List<Object> devices = JsonDslEngine.generate(deviceDsl);
+List<Object> workers = JsonDslEngine.generate(workerDsl);
 ```
 
 #### `generate(String jsonDsl, ReturnType returnType)` - 鎸囧畾杩斿洖绫诲瀷
 
 ```java
 // 杩斿洖鍗曚釜瀵硅薄
-Object device = JsonDslEngine.generate(deviceDsl, JsonDslEngine.ReturnType.SINGLE);
+Object worker = JsonDslEngine.generate(workerDsl, JsonDslEngine.ReturnType.SINGLE);
 
 // 杩斿洖鍒楄〃锛堜笌榛樿鏂规硶鐩稿悓锛?
-List<Object> devices = JsonDslEngine.generate(deviceDsl, JsonDslEngine.ReturnType.LIST);
+List<Object> workers = JsonDslEngine.generate(workerDsl, JsonDslEngine.ReturnType.LIST);
 
 // 杩斿洖鏄犲皠
 Map<String, Object> models = JsonDslEngine.generate(modelsDsl, JsonDslEngine.ReturnType.MAP);
 
 // 鑷姩鍒ゆ柇锛堟牴鎹?DSL 缁撴瀯锛?
-Object result = JsonDslEngine.generate(deviceDsl, JsonDslEngine.ReturnType.AUTO);
+Object result = JsonDslEngine.generate(workerDsl, JsonDslEngine.ReturnType.AUTO);
 ```
 
 ### 渚垮埄鏂规硶
@@ -101,7 +101,7 @@ Object result = JsonDslEngine.generate(deviceDsl, JsonDslEngine.ReturnType.AUTO)
 寮哄埗杩斿洖鍗曚釜瀵硅薄锛?
 
 ```java
-Object device = JsonDslEngine.generateSingle(deviceDsl);
+Object worker = JsonDslEngine.generateSingle(workerDsl);
 ```
 
 #### `generateList(String jsonDsl)`
@@ -109,7 +109,7 @@ Object device = JsonDslEngine.generateSingle(deviceDsl);
 寮哄埗杩斿洖瀵硅薄鍒楄〃锛?
 
 ```java
-List<Object> devices = JsonDslEngine.generateList(deviceDsl);
+List<Object> workers = JsonDslEngine.generateList(workerDsl);
 ```
 
 #### `generateMap(String jsonDsl, String modelName)`
@@ -117,7 +117,7 @@ List<Object> devices = JsonDslEngine.generateList(deviceDsl);
 寮哄埗杩斿洖妯″瀷鏄犲皠锛?
 
 ```java
-Map<String, Object> models = JsonDslEngine.generateMap(deviceDsl, "Device");
+Map<String, Object> models = JsonDslEngine.generateMap(workerDsl, "Worker");
 ```
 
 #### `generateTyped(String jsonDsl, Class<T> targetType)`
@@ -125,7 +125,7 @@ Map<String, Object> models = JsonDslEngine.generateMap(deviceDsl, "Device");
 甯︾被鍨嬭浆鎹㈢殑鐢熸垚鏂规硶锛?
 
 ```java
-List<Object> devices = JsonDslEngine.generateTyped(deviceDsl, List.class);
+List<Object> workers = JsonDslEngine.generateTyped(workerDsl, List.class);
 Map<String, Object> models = JsonDslEngine.generateTyped(modelsDsl, Map.class);
 ```
 
@@ -134,42 +134,42 @@ Map<String, Object> models = JsonDslEngine.generateTyped(modelsDsl, Map.class);
 ### 绀轰緥1锛氶粯璁よ繑鍥炲垪琛紙鎺ㄨ崘锛?
 
 ```java
-String singleDeviceDsl = """
+String singleWorkerDsl = """
         {
-            "MODEL": "Device",
+            "MODEL": "Worker",
             "FIELDS": {
-                "deviceId": "device-001",
+                "workerId": "worker-001",
                 "status": "ONLINE"
             }
         }
         """;
 
 // 榛樿杩斿洖 List<Object>锛屽嵆浣垮彧鏈変竴涓璞?
-List<Object> devices = JsonDslEngine.generate(singleDeviceDsl);
+List<Object> workers = JsonDslEngine.generate(singleWorkerDsl);
 System.out.
 
-println("鐢熸垚浜?"+devices.size() +" 涓澶?);
+println("鐢熸垚浜?"+workers.size() +" 涓澶?);
 ```
 
 ### 绀轰緥2锛氭寚瀹氳繑鍥炲崟涓璞?
 
 ```java
-String deviceDsl = """
+String workerDsl = """
         {
-            "MODEL": "Device",
+            "MODEL": "Worker",
             "COUNT": 3,
             "FIELDS": {
-                "deviceId": {"$JOIN": ["device-", "&.index"]},
+                "workerId": {"$JOIN": ["worker-", "&.index"]},
                 "status": {"$CHOICE": ["ONLINE", "OFFLINE"]}
             }
         }
         """;
 
 // 杩斿洖绗竴涓璞?
-Object device = JsonDslEngine.generate(deviceDsl, JsonDslEngine.ReturnType.SINGLE);
+Object worker = JsonDslEngine.generate(workerDsl, JsonDslEngine.ReturnType.SINGLE);
 System.out.
 
-println("绗竴涓澶? "+device);
+println("绗竴涓澶? "+worker);
 ```
 
 ### 绀轰緥3锛氭寚瀹氳繑鍥炲垪琛?
@@ -177,36 +177,36 @@ println("绗竴涓澶? "+device);
 ```java
 String singleDsl = """
         {
-            "MODEL": "Device",
+            "MODEL": "Worker",
             "FIELDS": {
-                "deviceId": "device-001",
+                "workerId": "worker-001",
                 "status": "ONLINE"
             }
         }
         """;
 
 // 寮哄埗杩斿洖鍒楄〃锛屽崟涓璞′細琚寘瑁?
-List<Object> devices = JsonDslEngine.generate(singleDsl, JsonDslEngine.ReturnType.LIST);
+List<Object> workers = JsonDslEngine.generate(singleDsl, JsonDslEngine.ReturnType.LIST);
 System.out.
 
-println("鍒楄〃澶у皬: "+devices.size()); // 杈撳嚭: 1
+println("鍒楄〃澶у皬: "+workers.size()); // 杈撳嚭: 1
 ```
 
 ### 绀轰緥4锛氭寚瀹氳繑鍥炴槧灏?
 
 ```java
-String deviceDsl = """
+String workerDsl = """
         {
-            "MODEL": "Device",
+            "MODEL": "Worker",
             "FIELDS": {
-                "deviceId": "device-001",
+                "workerId": "worker-001",
                 "status": "ONLINE"
             }
         }
         """;
 
 // 寮哄埗杩斿洖鏄犲皠锛屽崟涓璞′細琚寘瑁?
-Map<String, Object> models = JsonDslEngine.generate(deviceDsl, JsonDslEngine.ReturnType.MAP);
+Map<String, Object> models = JsonDslEngine.generate(workerDsl, JsonDslEngine.ReturnType.MAP);
 System.out.
 
 println("鏄犲皠閿? "+models.keySet()); // 杈撳嚭: [result]
@@ -217,10 +217,10 @@ println("鏄犲皠閿? "+models.keySet()); // 杈撳嚭: [result]
 ```java
 String multipleModelsDsl = """
         {
-            "device": {
-                "MODEL": "Device",
+            "worker": {
+                "MODEL": "Worker",
                 "FIELDS": {
-                    "deviceId": "device-001",
+                    "workerId": "worker-001",
                     "status": "ONLINE"
                 }
             },
@@ -250,16 +250,16 @@ getSimpleName());
 ### 绀轰緥6锛氫娇鐢ㄤ究鍒╂柟娉?
 
 ```java
-String deviceDsl = "..."; // 鍖呭惈 COUNT: 2 鐨?DSL
+String workerDsl = "..."; // 鍖呭惈 COUNT: 2 鐨?DSL
 
 // 寮哄埗鑾峰彇鍗曚釜瀵硅薄
-Object single = JsonDslEngine.generateSingle(deviceDsl);
+Object single = JsonDslEngine.generateSingle(workerDsl);
 
 // 寮哄埗鑾峰彇鍒楄〃
-List<Object> list = JsonDslEngine.generateList(deviceDsl);
+List<Object> list = JsonDslEngine.generateList(workerDsl);
 
 // 寮哄埗鑾峰彇鏄犲皠
-Map<String, Object> map = JsonDslEngine.generateMap(deviceDsl, "Device");
+Map<String, Object> map = JsonDslEngine.generateMap(workerDsl, "Worker");
 ```
 
 ## 杩斿洖绫诲瀷璇存槑
@@ -303,7 +303,7 @@ Map<String, Object> map = JsonDslEngine.generateMap(deviceDsl, "Device");
 
 ### 澶氱骇浣滅敤鍩熷彉閲忎笌绠€鍐?
 
-- 浠?`&` 寮€澶寸殑瀛楃涓诧紙濡?`&.index`銆乣&Device.index`锛変細鑷姩鍦ㄥ綋鍓嶅強鐖朵綔鐢ㄥ煙閫掑綊鏌ユ壘
+- 浠?`&` 寮€澶寸殑瀛楃涓诧紙濡?`&.index`銆乣&Worker.index`锛変細鑷姩鍦ㄥ綋鍓嶅強鐖朵綔鐢ㄥ煙閫掑綊鏌ユ壘
 - `&.index` 琛ㄧず"褰撳墠浣滅敤鍩熺殑绱㈠紩"锛屾帹鑽愪紭鍏堜娇鐢?
 - `&Model.index` 绮剧‘鎸囧悜鎸囧畾浣滅敤鍩熺殑绱㈠紩
 - 鏀寔澶氬眰宓屽銆佺埗瀛愪綔鐢ㄥ煙闅旂
@@ -313,26 +313,26 @@ Map<String, Object> map = JsonDslEngine.generateMap(deviceDsl, "Device");
 
 ```json
 {
-  "MODEL": "Device",
+  "MODEL": "Worker",
   "COUNT": 2,
   "FIELDS": {
-    "deviceId": {"$JOIN": ["device-", "&.index"]},
+    "workerId": {"$JOIN": ["worker-", "&.index"]},
     "tasks": {
       "TYPE": "LIST",
       "COUNT": 2,
       "MODEL": "Task",
       "FIELDS": {
-        "taskName": {"$JOIN": ["Task-", "&.index", "-of-Device-", "&Device.index"]},
-        "parentDeviceId": "&Device.deviceId"
+        "taskName": {"$JOIN": ["Task-", "&.index", "-of-Worker-", "&Worker.index"]},
+        "parentWorkerId": "&Worker.workerId"
       }
     }
   }
 }
 ```
 
-- `&.index`锛氭煡鎵惧綋鍓嶄綔鐢ㄥ煙鐨?index锛堝 Task 浣滅敤鍩熸椂涓?Task 鐨?index锛孌evice 浣滅敤鍩熸椂涓?Device 鐨?index锛?
-- `&Device.index`锛氭煡鎵炬渶杩戠殑 Device 浣滅敤鍩熺殑 index
-- `&Device.deviceId`锛氭煡鎵炬渶杩戠殑 Device 浣滅敤鍩熺殑 deviceId
+- `&.index`锛氭煡鎵惧綋鍓嶄綔鐢ㄥ煙鐨?index锛堝 Task 浣滅敤鍩熸椂涓?Task 鐨?index锛孌evice 浣滅敤鍩熸椂涓?Worker 鐨?index锛?
+- `&Worker.index`锛氭煡鎵炬渶杩戠殑 Worker 浣滅敤鍩熺殑 index
+- `&Worker.workerId`锛氭煡鎵炬渶杩戠殑 Worker 浣滅敤鍩熺殑 workerId
 
 ### 鏃堕棿鍑芥暟绀轰緥
 
@@ -355,7 +355,7 @@ Map<String, Object> map = JsonDslEngine.generateMap(deviceDsl, "Device");
 
 ```java
 // 浣跨敤绫诲璞℃敞鍐?
-TypeRegistry.register("Device",Device .class);
+TypeRegistry.register("Worker",Worker .class);
 TypeRegistry.
 
 register("Task",Task .class);
@@ -372,9 +372,9 @@ register("RuleDefinition","com.xa.mass.engine.rules.RuleDefinition");
 
 ```json
 {
-  "MODEL": "com.xa.mass.base.model.Device",
+  "MODEL": "com.xa.mass.base.model.Worker",
   "FIELDS": {
-    "deviceId": "device-001"
+    "workerId": "worker-001"
   }
 }
 ```
@@ -427,7 +427,7 @@ println("DSL 鐢熸垚澶辫触: "+e.getMessage());
 
 ```json
 {
-  "MODEL": "Device",
+  "MODEL": "Worker",
   "FIELDS": {
     "status": {"$CHOICE": ["OFFLINE", "ONLINE"]},
     "onlineStrategy": {
@@ -461,7 +461,7 @@ println("DSL 鐢熸垚澶辫触: "+e.getMessage());
 
 ```json
 {
-  "MODEL": "Device",
+  "MODEL": "Worker",
   "FIELDS": {
     "randValue": {"$EXPR": "random(1, 10)"},
     "status": {"$EXPR": "choice(['ONLINE','OFFLINE'])"}

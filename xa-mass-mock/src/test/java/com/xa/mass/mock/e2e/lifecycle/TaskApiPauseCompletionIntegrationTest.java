@@ -34,9 +34,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = {
                 "mock.client.auto-start=false",
-                "mock.client.devices-config=mock/test_mock_devices.json",
-                "mass.mock.data.devices=mock/test_mock_devices.json",
-                "mass.mock.data.tokens=mock/test_mock_tokens.json",
+                "mock.client.workers-config=mock/test_mock_workers.json",
+                "mass.mock.data.workers=mock/test_mock_workers.json",
+                "mass.mock.data.worker-contexts=mock/test_mock_worker_contexts.json",
                 "mass.mock.data.tasks=mock/test_mock_tasks.json",
                 "mass.mock.data.rules=mock/test_mock_rules.json"
         }
@@ -83,8 +83,8 @@ class TaskApiPauseCompletionIntegrationTest extends AbstractMockE2eTest {
 
         for (Map<String, Object> message : pausedSnapshot.messages()) {
             String msgId = String.valueOf(message.get("msgId"));
-            String deviceId = String.valueOf(message.get("deviceId"));
-            AckSnapshot ack = submitTaskResult(taskId, msgId, deviceId, "SUCCESS", "paused-complete-" + deviceId);
+            String workerId = String.valueOf(message.get("workerId"));
+            AckSnapshot ack = submitTaskResult(taskId, msgId, workerId, "SUCCESS", "paused-complete-" + workerId);
             assertEquals(200, ack.code());
             assertEquals("task result processed", ack.message());
         }
@@ -95,18 +95,18 @@ class TaskApiPauseCompletionIntegrationTest extends AbstractMockE2eTest {
         assertEquals(2, terminalSnapshot.messages().size());
         for (Map<String, Object> message : terminalSnapshot.messages()) {
             assertEquals("SUCCESS", message.get("status"));
-            assertNotNull(message.get("deviceId"));
-            assertNotNull(message.get("tokenId"));
+            assertNotNull(message.get("workerId"));
+            assertNotNull(message.get("workerContextId"));
             assertNotNull(message.get("batchId"));
         }
     }
 
-    private AckSnapshot submitTaskResult(String taskId, String msgId, String deviceId, String status, String detail) throws Exception {
+    private AckSnapshot submitTaskResult(String taskId, String msgId, String workerId, String status, String detail) throws Exception {
         URI uri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
-        ReplayWebSocketClient client = new ReplayWebSocketClient(uri, deviceId, msgId);
+        ReplayWebSocketClient client = new ReplayWebSocketClient(uri, workerId, msgId);
         try {
             assertTrue(client.connectBlocking(), "Replay WebSocket client failed to connect");
-            client.sendMessage(buildTaskResultPayload(taskId, msgId, deviceId, status, detail));
+            client.sendMessage(buildTaskResultPayload(taskId, msgId, workerId, status, detail));
             assertTrue(client.awaitAck(3, TimeUnit.SECONDS), "Timed out waiting for gateway ack");
             return client.ackSnapshot();
         } finally {
@@ -114,7 +114,7 @@ class TaskApiPauseCompletionIntegrationTest extends AbstractMockE2eTest {
         }
     }
 
-    private String buildTaskResultPayload(String taskId, String msgId, String deviceId, String status, String detail) {
+    private String buildTaskResultPayload(String taskId, String msgId, String workerId, String status, String detail) {
         MassMessage result = new MassMessage();
         result.setMsgId(msgId);
         result.setResponse(true);
@@ -125,7 +125,7 @@ class TaskApiPauseCompletionIntegrationTest extends AbstractMockE2eTest {
 
         MessageContext context = new MessageContext();
         context.setTid(taskId);
-        context.setDeviceId(deviceId);
+        context.setWorkerId(workerId);
         context.setConnRole(SessionRoles.TASK_MESSAGES);
         result.setContext(context);
         result.setPayload(GSON.toJsonTree(Map.of(
@@ -150,8 +150,8 @@ class TaskApiPauseCompletionIntegrationTest extends AbstractMockE2eTest {
         private final CountDownLatch ackLatch = new CountDownLatch(1);
         private volatile AckSnapshot ackSnapshot;
 
-        private ReplayWebSocketClient(URI serverUri, String deviceId, String expectedMsgId) {
-            super(serverUri, deviceId);
+        private ReplayWebSocketClient(URI serverUri, String workerId, String expectedMsgId) {
+            super(serverUri, workerId);
             this.expectedMsgId = expectedMsgId;
         }
 

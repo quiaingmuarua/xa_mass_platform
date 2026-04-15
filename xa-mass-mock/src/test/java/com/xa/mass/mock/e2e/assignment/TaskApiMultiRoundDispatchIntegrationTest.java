@@ -1,10 +1,10 @@
 package com.xa.mass.mock.e2e.assignment;
 
-import com.xa.mass.base.enums.device.DeviceStatus;
-import com.xa.mass.base.enums.task.TokenStatus;
-import com.xa.mass.base.model.Device;
-import com.xa.mass.base.model.Token;
-import com.xa.mass.engine.DeviceManager;
+import com.xa.mass.base.enums.worker.WorkerStatus;
+import com.xa.mass.base.enums.worker.WorkerContextStatus;
+import com.xa.mass.base.model.Worker;
+import com.xa.mass.base.model.WorkerContext;
+import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.mock.MockApplicationSpringBootApp;
 import com.xa.mass.mock.client.MassWebSocketClientImpl;
 import com.xa.mass.mock.e2e.support.AbstractMockE2eTest;
@@ -29,8 +29,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = {
                 "mock.client.auto-start=false",
-                "mass.mock.data.devices=mock/test_mock_devices_empty.json",
-                "mass.mock.data.tokens=mock/test_mock_tokens_empty.json",
+                "mass.mock.data.workers=mock/test_mock_workers_empty.json",
+                "mass.mock.data.worker-contexts=mock/test_mock_worker_contexts_empty.json",
                 "mass.mock.data.tasks=mock/test_mock_tasks.json",
                 "mass.mock.data.rules=mock/test_mock_rules.json"
         }
@@ -47,15 +47,15 @@ class TaskApiMultiRoundDispatchIntegrationTest extends AbstractMockE2eTest {
     }
 
     @Autowired
-    private DeviceManager deviceManager;
+    private WorkerManager workerManager;
 
     @Test
     void singleDeviceWithBatchSizeOneCompletesTaskAcrossMultipleRounds() throws Exception {
-        String deviceId = "round-device-0";
-        registerDevice(deviceId);
+        String workerId = "round-device-0";
+        registerWorker(workerId);
 
         URI wsUri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
-        MassWebSocketClientImpl client = new MassWebSocketClientImpl(wsUri, deviceId);
+        MassWebSocketClientImpl client = new MassWebSocketClientImpl(wsUri, workerId);
         try {
             assertTrue(client.connectBlocking(), "Mock client failed to connect");
 
@@ -82,29 +82,29 @@ class TaskApiMultiRoundDispatchIntegrationTest extends AbstractMockE2eTest {
 
             for (Map<String, Object> message : terminal.messages()) {
                 assertEquals("SUCCESS", message.get("status"));
-                assertEquals(deviceId, message.get("deviceId"));
+                assertEquals(workerId, message.get("workerId"));
             }
 
-            Token token = deviceManager.getToken(deviceId);
-            assertEquals(TokenStatus.IDLE, token.getStatus());
+            WorkerContext workerContext = workerManager.getWorkerContext(workerId);
+            assertEquals(WorkerContextStatus.IDLE, workerContext.getStatus());
         } finally {
             client.disconnect();
         }
     }
 
-    private void registerDevice(String deviceId) {
-        Device device = new Device();
-        device.setDeviceId(deviceId);
-        device.setDeviceGroupId("us");
-        device.setStatus(DeviceStatus.ONLINE);
-        device.setSupportedProjects(List.of("demoApp"));
-        deviceManager.addDevice(device);
+    private void registerWorker(String workerId) {
+        Worker worker = new Worker();
+        worker.setWorkerId(workerId);
+        worker.setWorkerGroupId("us");
+        worker.setStatus(WorkerStatus.ONLINE);
+        worker.setSupportedProjects(List.of("demoApp"));
+        workerManager.addWorker(worker);
 
-        Token token = new Token();
-        token.setTokenId("token-" + deviceId);
-        token.setDeviceId(deviceId);
-        token.setChannel("us");
-        token.setStatus(TokenStatus.IDLE);
-        deviceManager.addToken(deviceId, token);
+        WorkerContext workerContext = new WorkerContext();
+        workerContext.setWorkerContextId("token-" + workerId);
+        workerContext.setWorkerId(workerId);
+        workerContext.setChannel("us");
+        workerContext.setStatus(WorkerContextStatus.IDLE);
+        workerManager.addWorkerContext(workerId, workerContext);
     }
 }

@@ -187,8 +187,8 @@ public class MassApplicationExample {
                         .enabled(true)
                         .workerThreads(4)
                         .mockData(
-                                "mock/mock_devices.json",
-                                "mock/mock_tokens.json",
+                                "mock/mock_workers.json",
+                                "mock/mock_worker_contexts.json",
                                 "mock/mock_tasks.json",
                                 "mock/mock_rules.json"
                         ))

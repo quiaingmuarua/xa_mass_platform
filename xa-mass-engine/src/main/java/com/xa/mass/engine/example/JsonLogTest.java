@@ -29,7 +29,7 @@ public class JsonLogTest {
         // 测试MDC字段
         LogUtils.setTraceId("trace-12345");
         LogUtils.setUserId("user-001");
-        LogUtils.setDeviceId("device-001");
+        LogUtils.setWorkerId("worker-001");
         LogUtils.setTaskId("task-001");
         LogUtils.setOperation("TEST_OPERATION");
         LogUtils.setModule("TEST_MODULE");
@@ -45,7 +45,7 @@ public class JsonLogTest {
 
         LogUtils.logOperationSuccess("Task created successfully", 150);
 
-        LogUtils.logDeviceOperation("device-001", "LOGIN", "SUCCESS");
+        LogUtils.logWorkerOperation("worker-001", "LOGIN", "SUCCESS");
         LogUtils.logTaskOperation("task-001", "ASSIGN", "SUCCESS");
 
         // 清除MDC字段
@@ -54,4 +54,4 @@ public class JsonLogTest {
 
         System.out.println("JSON Logging test completed. Check console output for JSON format.");
     }
-} 
+}

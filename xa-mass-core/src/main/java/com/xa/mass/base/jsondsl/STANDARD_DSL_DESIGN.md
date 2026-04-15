@@ -109,16 +109,16 @@
 
 ```json
 {
-  "unique_id": "device_generator",
+  "unique_id": "worker_generator",
   "type": "generate",
   "context": {
-    "MODEL": "Device",
+    "MODEL": "Worker",
     "COUNT": 3
   },
   "fieldDsl": {
-    "deviceId": {
+    "workerId": {
       "$JOIN": [
-        "device-",
+        "worker-",
         "&.index"
       ]
     },
@@ -138,13 +138,13 @@
 
 ```json
 {
-  "unique_id": "online_device_filter",
+  "unique_id": "online_worker_filter",
   "type": "filter",
   "fieldDsl": {
     "status": {
       "eq": "ONLINE"
     },
-    "deviceGroupId": {
+    "workerGroupId": {
       "in": [
         "us",
         "gb"
@@ -160,10 +160,10 @@
 
 ```json
 {
-  "unique_id": "device_transformer",
+  "unique_id": "worker_transformer",
   "type": "transform",
   "fieldDsl": {
-    "deviceId": {"$UPPER": "&.deviceId"},
+    "workerId": {"$UPPER": "&.workerId"},
     "status": {"$MAP": {"ONLINE": "active", "OFFLINE": "inactive"}}
   }
 }
@@ -175,10 +175,10 @@
 
 ```json
 {
-  "unique_id": "device_validator",
+  "unique_id": "worker_validator",
   "type": "validate",
   "fieldDsl": {
-    "deviceId": {"required": true, "pattern": "^device-\\d+$"},
+    "workerId": {"required": true, "pattern": "^worker-\\d+$"},
     "status": {"enum": ["ONLINE", "OFFLINE"]}
   }
 }
@@ -191,10 +191,10 @@
 ```json
 {
   "context": {
-    "MODEL": "Device",           // 妯″瀷绫诲悕鎴栨敞鍐屽埆鍚?
+    "MODEL": "Worker",           // 妯″瀷绫诲悕鎴栨敞鍐屽埆鍚?
     "COUNT": 3,                  // 鐢熸垚鏁伴噺锛岄粯璁?1
     "TYPE": "LIST",              // 闆嗗悎绫诲瀷锛歀IST/SET/MAP
-    "scope_name": "Device",      // 浣滅敤鍩熷悕绉?
+    "scope_name": "Worker",      // 浣滅敤鍩熷悕绉?
     "parent_scope": "Parent",    // 鐖朵綔鐢ㄥ煙寮曠敤
     "parameters": {              // 棰濆鍙傛暟
       "env": "dev",
@@ -215,9 +215,9 @@
 ```json
 {
   "combine_dsl": {
-    "status_group_rule": "status == 'ONLINE' ? deviceGroupId : 'unknown'",
+    "status_group_rule": "status == 'ONLINE' ? workerGroupId : 'unknown'",
     "version_check_rule": "agentVersion.startsWith('1.0') ? 'stable' : 'beta'",
-    "capacity_rule": "deviceGroupId == 'us' ? 100 : deviceGroupId == 'gb' ? 50 : 30"
+    "capacity_rule": "workerGroupId == 'us' ? 100 : workerGroupId == 'gb' ? 50 : 30"
   }
 }
 ```
@@ -232,10 +232,10 @@
 
 ```json
 {
-  "MODEL": "Device",
+  "MODEL": "Worker",
   "COUNT": 3,
   "FIELDS": {
-    "deviceId": {"$JOIN": ["device-", "&.index"]},
+    "workerId": {"$JOIN": ["worker-", "&.index"]},
     "status": {"$CHOICE": ["ONLINE", "OFFLINE"]}
   }
 }
@@ -250,13 +250,13 @@
   "desc": "浠庝紶缁?DSL 缁撴瀯杞崲",
   "version": "1.0",
   "context": {
-    "MODEL": "Device",
+    "MODEL": "Worker",
     "COUNT": 3
   },
   "fieldDsl": {
-    "deviceId": {
+    "workerId": {
       "$JOIN": [
-        "device-",
+        "worker-",
         "&.index"
       ]
     },
@@ -276,7 +276,7 @@
 
 ```java
 // 鍒涘缓 DSL 瀹氫箟
-JsonDslDefinition definition = new JsonDslDefinition("my_device_generator", JsonDslDefinition.DslType.GENERATE);
+JsonDslDefinition definition = new JsonDslDefinition("my_worker_generator", JsonDslDefinition.DslType.GENERATE);
 definition.
 
 setDescription("鐢熸垚娴嬭瘯璁惧鏁版嵁");
@@ -286,14 +286,14 @@ setAuthor("test_user");
 definition.
 
 setTags(new String[] {
-    "device", "test"
+    "worker", "test"
 });
 
 // 璁剧疆涓婁笅鏂?
-JsonDslContext context = new JsonDslContext("Device", 3);
+JsonDslContext context = new JsonDslContext("Worker", 3);
 context.
 
-setScopeName("Device");
+setScopeName("Worker");
 definition.
 
 setContext(context);
@@ -302,7 +302,7 @@ setContext(context);
 definition.
 
 setFieldDsl(Map.of(
-        "deviceId", Map.of("$JOIN", List.of("device-", "&.index")),
+        "workerId", Map.of("$JOIN", List.of("worker-", "&.index")),
         "status",Map.
 
 of("$CHOICE",List.of("ONLINE", "OFFLINE"))
@@ -323,7 +323,7 @@ JsonDslDefinition definition = JsonDslParser.parse(jsonDsl);
 
 // 杞崲涓轰紶缁熸牸寮忓苟鐢熸垚鏁版嵁
 String legacyFormat = JsonDslParser.toJson(definition);
-List<Device> devices = JsonDslEngine.generateList(legacyFormat, Device.class);
+List<Worker> workers = JsonDslEngine.generateList(legacyFormat, Worker.class);
 ```
 
 ### 3. 鍚戝悗鍏煎浣跨敤
@@ -332,15 +332,15 @@ List<Device> devices = JsonDslEngine.generateList(legacyFormat, Device.class);
 // 鐩存帴浣跨敤浼犵粺鏍煎紡锛堣嚜鍔ㄨ浆鎹級
 String legacyDsl = """
                 {
-                  "MODEL": "Device",
+                  "MODEL": "Worker",
                   "COUNT": 3,
                   "FIELDS": {
-                    "deviceId": {"$JOIN": ["device-", "&.index"]}
+                    "workerId": {"$JOIN": ["worker-", "&.index"]}
                   }
                 }
                 """;
 
-List<Device> devices = JsonDslEngine.generateList(legacyDsl, Device.class);
+List<Worker> workers = JsonDslEngine.generateList(legacyDsl, Worker.class);
 ```
 
 ## 鎵╁睍鏈哄埗
@@ -353,7 +353,7 @@ List<Device> devices = JsonDslEngine.generateList(legacyDsl, Device.class);
 {
   "extensions": {
     "business_rules": {
-      "max_devices": 100,
+      "max_workers": 100,
       "preferred_groups": ["us", "gb"]
     },
     "performance": {
@@ -382,7 +382,7 @@ public enum DslType {
 
 ### 1. 鍛藉悕瑙勮寖
 
-- `unique_id`: 浣跨敤鏈夋剰涔夌殑鏍囪瘑绗︼紝濡?`device_generator_v1`
+- `unique_id`: 浣跨敤鏈夋剰涔夌殑鏍囪瘑绗︼紝濡?`worker_generator_v1`
 - `desc`: 鎻愪緵娓呮櫚鐨勬弿杩颁俊鎭?
 - `tags`: 浣跨敤涓€鑷寸殑鏍囩浣撶郴
 

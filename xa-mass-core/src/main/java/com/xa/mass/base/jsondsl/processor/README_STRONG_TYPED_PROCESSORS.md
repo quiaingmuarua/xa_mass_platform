@@ -102,37 +102,37 @@ public interface ValidateProcessor<T> extends JsonDslProcessor {
 
 ```java
 // 创建强类型处理器
-GenerateProcessor<Device> generateProcessor = new DefaultGenerateProcessor<>();
-FilterProcessor<Device> filterProcessor = new DefaultFilterProcessor<>();
-TransformProcessor<Device> transformProcessor = new DefaultTransformProcessor<>();
-ValidateProcessor<Device> validateProcessor = new DefaultValidateProcessor<>();
+GenerateProcessor<Worker> generateProcessor = new DefaultGenerateProcessor<>();
+FilterProcessor<Worker> filterProcessor = new DefaultFilterProcessor<>();
+TransformProcessor<Worker> transformProcessor = new DefaultTransformProcessor<>();
+ValidateProcessor<Worker> validateProcessor = new DefaultValidateProcessor<>();
 
 // 生成设备数据
-List<Device> devices = generateProcessor.generate(dsl, context, Device.class);
+List<Worker> workers = generateProcessor.generate(dsl, context, Worker.class);
 
 // 过滤设备数据
-List<Device> filteredDevices = filterProcessor.filter(devices, dsl, context);
+List<Worker> filteredWorkers = filterProcessor.filter(workers, dsl, context);
 
 // 转换设备数据
-Device transformedDevice = transformProcessor.transform(device, dsl, context);
+Worker transformedWorker = transformProcessor.transform(worker, dsl, context);
 
 // 校验设备数据
-List<String> errors = validateProcessor.validate(device, dsl, context);
+List<String> errors = validateProcessor.validate(worker, dsl, context);
 ```
 
 ### 自定义处理器
 
 ```java
-public class CustomDeviceProcessor implements GenerateProcessor<Device> {
+public class CustomWorkerProcessor implements GenerateProcessor<Worker> {
     @Override
-    public List<Device> generate(JsonDslDefinition definition, ProcessingContext context, Class<Device> targetType) {
+    public List<Worker> generate(JsonDslDefinition definition, ProcessingContext context, Class<Worker> targetType) {
         // 自定义生成逻辑
         return customGenerateLogic(definition, context);
     }
 
     @Override
     public String getName() {
-        return "CustomDeviceProcessor";
+        return "CustomWorkerProcessor";
     }
 
     @Override
@@ -151,14 +151,14 @@ public class CustomDeviceProcessor implements GenerateProcessor<Device> {
 ```java
 JsonDslProcessor processor = new GenerateProcessor();
 Object result = processor.process(definition, context);
-List<Device> devices = (List<Device>) result;
+List<Worker> workers = (List<Worker>) result;
 ```
 
 **新代码**：
 
 ```java
-GenerateProcessor<Device> processor = new DefaultGenerateProcessor<>();
-List<Device> devices = processor.generate(definition, context, Device.class);
+GenerateProcessor<Worker> processor = new DefaultGenerateProcessor<>();
+List<Worker> workers = processor.generate(definition, context, Worker.class);
 ```
 
 ### 兼容性处理

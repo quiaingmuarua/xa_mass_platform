@@ -34,7 +34,7 @@ public class MessageParser {
 
     public Envelope toStoredMessage(String rawJson, MassMessage msg) {
         MessageContext ctx = msg.getContext();
-        return Envelope.builder().rawJson(rawJson).deviceId(ctx.getDeviceId())
+        return Envelope.builder().rawJson(rawJson).workerId(ctx.getWorkerId())
                 .connRole(ctx.getConnRole()).traceId(msg.getMsgId()).receivedAt(System.currentTimeMillis()).build();
     }
 
@@ -42,7 +42,7 @@ public class MessageParser {
         if (msg == null) return false;
         MessageContext ctx = msg.getContext();
         return ctx != null &&
-                ctx.getDeviceId() != null &&
+                ctx.getWorkerId() != null &&
                 ctx.getConnRole() != null;
     }
 

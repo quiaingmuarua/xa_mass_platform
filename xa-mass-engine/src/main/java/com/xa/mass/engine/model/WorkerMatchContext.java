@@ -1,0 +1,114 @@
+package com.xa.mass.engine.model;
+
+import com.xa.mass.base.model.Task;
+import com.xa.mass.base.model.Worker;
+import com.xa.mass.base.model.WorkerContext;
+import com.xa.mass.engine.WorkerManager;
+
+import java.util.HashMap;
+import java.util.Map;
+
+/**
+ * Rule-evaluation context for worker matching.
+ *
+ * <p>The routing-country signal is task-owned input, but the country truth used
+ * for matching should come from workerContext/account-facing data rather than worker
+ * grouping. Worker group remains exposed only as a diagnostic signal.
+ */
+public class WorkerMatchContext {
+    private final Worker worker;
+    private final WorkerContext workerContext;
+    private final Task task;
+    private final WorkerManager workerManager;
+    private final Map<String, Object> context;
+
+    public WorkerMatchContext(Worker worker, WorkerContext workerContext, Task task, WorkerManager workerManager) {
+        this.worker = worker;
+        this.workerContext = workerContext;
+        this.task = task;
+        this.workerManager = workerManager;
+        this.context = buildContext();
+    }
+
+    private Map<String, Object> buildContext() {
+        Map<String, Object> ctx = new HashMap<>();
+
+        ctx.put("workerId", worker.getWorkerId());
+        ctx.put("workerStatus", worker.getStatus().name());
+        ctx.put("workerGroupId", worker.getWorkerGroupId());
+        ctx.put("workerAttributes", worker.getAttributes());
+        ctx.put("agentVersion", worker.getAgentVersion());
+        ctx.put("supportedProjects", worker.getSupportedProjects());
+        ctx.put("isWorkerAvailable", worker.isAvailable());
+        ctx.put("isWorkerLocked", workerManager.isLocked(worker.getWorkerId()));
+
+        if (workerContext != null) {
+            ctx.put("workerContextId", workerContext.getWorkerContextId());
+            ctx.put("workerContextStatus", workerContext.getStatus().name());
+            ctx.put("workerContextChannel", workerContext.getChannel());
+            ctx.put("workerContextAttributes", workerContext.getAttributes());
+            ctx.put("isWorkerContextAllocatable", workerContext.isAllocatable());
+            ctx.put("isWorkerContextAvailable", workerContext.isAvailable());
+        } else {
+            ctx.put("workerContextId", null);
+            ctx.put("workerContextStatus", null);
+            ctx.put("workerContextChannel", null);
+            ctx.put("workerContextAttributes", Map.of());
+            ctx.put("isWorkerContextAllocatable", false);
+            ctx.put("isWorkerContextAvailable", false);
+        }
+
+        String routingCountryCode = task.getTaskRoutingCountryCode();
+        String workerContextAttributeCountry = workerContext != null ? workerContext.getAttributes().get("country") : null;
+
+        ctx.put("taskId", task.getTid());
+        ctx.put("taskName", task.getTaskName());
+        ctx.put("taskProject", task.getProject());
+        ctx.put("taskRoutingCountryCode", routingCountryCode);
+        ctx.put("taskStatus", task.getStatus().name());
+        ctx.put("taskTargetNumber", task.getTaskTargetNumber());
+        ctx.put("batchSize", task.getBatchSize());
+        ctx.put("runTaskMinDeviceCnt", task.getRunTaskMinDeviceCnt());
+
+        ctx.put("appCount", worker.getSupportedProjects() != null ? worker.getSupportedProjects().size() : 0);
+        ctx.put("supportsProject", worker.supportsProject(task.getProject()));
+        ctx.put("workerGroupIdEqualsRoutingCountry",
+                routingCountryCode != null && routingCountryCode.equals(worker.getWorkerGroupId()));
+        ctx.put("workerContextChannelMatchesRoutingCountry",
+                workerContext != null && routingCountryCode != null && routingCountryCode.equals(workerContext.getChannel()));
+        ctx.put("workerContextAttributeCountryMatchesRoutingCountry",
+                routingCountryCode != null && routingCountryCode.equals(workerContextAttributeCountry));
+
+        return ctx;
+    }
+
+    public Worker getWorker() {
+        return worker;
+    }
+
+    public WorkerContext getWorkerContext() {
+        return workerContext;
+    }
+
+    public Task getTask() {
+        return task;
+    }
+
+    public WorkerManager getWorkerManager() {
+        return workerManager;
+    }
+
+    public Map<String, Object> getContext() {
+        return context;
+    }
+
+    @Override
+    public String toString() {
+        return "WorkerMatchContext{" +
+                "workerId='" + worker.getWorkerId() + '\'' +
+                ", taskId='" + task.getTid() + '\'' +
+                ", supportsProject=" + context.get("supportsProject") +
+                ", workerContextChannelMatchesRoutingCountry=" + context.get("workerContextChannelMatchesRoutingCountry") +
+                '}';
+    }
+}

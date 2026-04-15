@@ -309,7 +309,7 @@
     <div class="nav-links">
         <a href="/status">📊 总览</a>
         <a href="/status/tasks">📋 任务详情</a>
-        <a href="/status/devices">📱 设备详情</a>
+        <a href="/status/workers">👷 Worker 详情</a>
         <a href="/status/rules">📏 规则管理</a>
         <a href="/config">⚙️ 全局配置</a>
     </div>
@@ -845,10 +845,10 @@
     function renderTaskMsgTable(msgs) {
         let html = '<table style="width:100%;border-collapse:collapse;">';
         html += '<thead><tr>' +
-            '<th>msgId</th><th>deviceId</th><th>target</th><th>状态</th><th>发送时间</th><th>回执</th><th>错误</th>' +
+            '<th>msgId</th><th>workerId</th><th>target</th><th>状态</th><th>发送时间</th><th>回执</th><th>错误</th>' +
             '</tr></thead><tbody>';
         msgs.forEach(m => {
-            html += `<tr><td>${m.msgId || ''}</td><td>${m.deviceId || ''}</td><td>${m.target || ''}</td><td>${m.status || ''}</td><td>${m.sendTime || ''}</td><td>${m.result || ''}</td><td>${m.errorMessage || ''}</td></tr>`;
+            html += `<tr><td>${m.msgId || ''}</td><td>${m.workerId || ''}</td><td>${m.target || ''}</td><td>${m.status || ''}</td><td>${m.sendTime || ''}</td><td>${m.result || ''}</td><td>${m.errorMessage || ''}</td></tr>`;
         });
         html += '</tbody></table>';
         document.getElementById('taskMsgTableContainer').innerHTML = html;

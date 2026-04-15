@@ -1,17 +1,17 @@
 package com.xa.mass.engine.example;
 
-import com.xa.mass.base.enums.device.DeviceStatus;
+import com.xa.mass.base.enums.worker.WorkerStatus;
+import com.xa.mass.base.enums.worker.WorkerContextStatus;
 import com.xa.mass.base.enums.task.TaskStatus;
-import com.xa.mass.base.enums.task.TokenStatus;
-import com.xa.mass.base.model.Device;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.Token;
-import com.xa.mass.engine.DeviceManager;
-import com.xa.mass.engine.model.DeviceMatchContext;
+import com.xa.mass.base.model.Worker;
+import com.xa.mass.base.model.WorkerContext;
+import com.xa.mass.engine.WorkerManager;
+import com.xa.mass.engine.model.WorkerMatchContext;
 import com.xa.mass.engine.rules.RuleDefinition;
 import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.engine.rules.RuleManagerFactory;
-import com.xa.mass.engine.storage.DeviceStorage;
+import com.xa.mass.engine.storage.WorkerStorage;
 import com.xa.mass.engine.storage.TaskStorageFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,7 +22,7 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
- * Simple debugging entry for rule-based device matching.
+ * Simple debugging entry for rule-based worker matching.
  */
 public class RuleDebugExample {
 
@@ -31,49 +31,49 @@ public class RuleDebugExample {
     public static void main(String[] args) {
         System.out.println("=== Rule Debug Example ===");
 
-        DeviceStorage deviceStorage = TaskStorageFactory.createDefaultDeviceStorage();
-        DeviceManager deviceManager = new DeviceManager(deviceStorage);
+        WorkerStorage workerStorage = TaskStorageFactory.createDefaultWorkerStorage();
+        WorkerManager workerManager = new WorkerManager(workerStorage);
         RuleManager<Map<String, Object>> ruleManager = RuleManagerFactory.getDefaultRuleManager();
 
-        generateTestData(deviceManager);
+        generateTestData(workerManager);
         Task testTask = createTestTask();
 
-        List<Device> candidates = deviceManager.getAllDevices();
-        System.out.println("Candidate device count: " + candidates.size());
+        List<Worker> candidates = workerManager.getAllWorkers();
+        System.out.println("Candidate worker count: " + candidates.size());
 
-        for (Device device : candidates) {
-            debugDeviceEvaluation(device, testTask, deviceManager, ruleManager);
+        for (Worker worker : candidates) {
+            debugWorkerEvaluation(worker, testTask, workerManager, ruleManager);
         }
     }
 
-    private static void generateTestData(DeviceManager deviceManager) {
+    private static void generateTestData(WorkerManager workerManager) {
         String[] countries = {"us", "gb", "ca"};
 
         for (int i = 0; i < 10; i++) {
             String country = countries[i % countries.length];
 
-            Device device = new Device();
-            device.setDeviceId("device-" + i);
-            device.setDeviceGroupId(country);
-            device.setStatus(DeviceStatus.ONLINE);
-            device.setAgentVersion("1.0." + (i % 5));
-            device.setSupportedProjects(Arrays.asList("demoApp"));
+            Worker worker = new Worker();
+            worker.setWorkerId("worker-" + i);
+            worker.setWorkerGroupId(country);
+            worker.setStatus(WorkerStatus.ONLINE);
+            worker.setAgentVersion("1.0." + (i % 5));
+            worker.setSupportedProjects(Arrays.asList("demoApp"));
 
-            Token token = new Token();
-            token.setTokenId("token-" + i);
-            token.setDeviceId(device.getDeviceId());
-            token.setStatus(TokenStatus.IDLE);
-            token.setChannel(country);
-            token.setAttributes(Map.of("country", country));
+            WorkerContext workerContext = new WorkerContext();
+            workerContext.setWorkerContextId("ctx-" + i);
+            workerContext.setWorkerId(worker.getWorkerId());
+            workerContext.setStatus(WorkerContextStatus.IDLE);
+            workerContext.setChannel(country);
+            workerContext.setAttributes(Map.of("country", country));
 
-            deviceManager.addDevice(device);
-            deviceManager.addToken(device.getDeviceId(), token);
+            workerManager.addWorker(worker);
+            workerManager.addWorkerContext(worker.getWorkerId(), workerContext);
 
-            logger.info("Device {} supports projects: {}", device.getDeviceId(),
-                    String.join(", ", device.getSupportedProjects()));
+            logger.info("Worker {} supports projects: {}", worker.getWorkerId(),
+                    String.join(", ", worker.getSupportedProjects()));
         }
 
-        System.out.println("Generated 10 test devices and tokens");
+        System.out.println("Generated 10 test workers and workerContexts");
     }
 
     private static Task createTestTask() {
@@ -89,28 +89,28 @@ public class RuleDebugExample {
         return task;
     }
 
-    private static void debugDeviceEvaluation(Device device, Task task, DeviceManager deviceManager,
+    private static void debugWorkerEvaluation(Worker worker, Task task, WorkerManager workerManager,
                                               RuleManager<Map<String, Object>> ruleManager) {
-        System.out.println("\n=== Debugging device: " + device.getDeviceId() + " ===");
+        System.out.println("\n=== Debugging worker: " + worker.getWorkerId() + " ===");
 
-        Token token = deviceManager.getToken(device.getDeviceId());
-        DeviceMatchContext matchContext = new DeviceMatchContext(device, token, task, deviceManager);
+        WorkerContext workerContext = workerManager.getWorkerContext(worker.getWorkerId());
+        WorkerMatchContext matchContext = new WorkerMatchContext(worker, workerContext, task, workerManager);
 
-        System.out.println("Device:");
-        System.out.println("  - id: " + device.getDeviceId());
-        System.out.println("  - deviceGroupId: " + device.getDeviceGroupId());
-        System.out.println("  - status: " + device.getStatus());
-        System.out.println("  - agentVersion: " + device.getAgentVersion());
-        System.out.println("  - supportedProjects: " + device.getSupportedProjects());
+        System.out.println("Worker:");
+        System.out.println("  - id: " + worker.getWorkerId());
+        System.out.println("  - workerGroupId: " + worker.getWorkerGroupId());
+        System.out.println("  - status: " + worker.getStatus());
+        System.out.println("  - agentVersion: " + worker.getAgentVersion());
+        System.out.println("  - supportedProjects: " + worker.getSupportedProjects());
 
-        if (token != null) {
-            System.out.println("Token:");
-            System.out.println("  - id: " + token.getTokenId());
-            System.out.println("  - status: " + token.getStatus());
-            System.out.println("  - channel: " + token.getChannel());
-            System.out.println("  - attributes: " + token.getAttributes());
+        if (workerContext != null) {
+            System.out.println("WorkerContext:");
+            System.out.println("  - id: " + workerContext.getWorkerContextId());
+            System.out.println("  - status: " + workerContext.getStatus());
+            System.out.println("  - channel: " + workerContext.getChannel());
+            System.out.println("  - attributes: " + workerContext.getAttributes());
         } else {
-            System.out.println("Token: null");
+            System.out.println("WorkerContext: null");
         }
 
         System.out.println("Task:");
@@ -122,9 +122,9 @@ public class RuleDebugExample {
         System.out.println("Computed context:");
         System.out.println("  - appCount: " + context.get("appCount"));
         System.out.println("  - supportsProject: " + context.get("supportsProject"));
-        System.out.println("  - deviceGroupIdEqualsRoutingCountry: " + context.get("deviceGroupIdEqualsRoutingCountry"));
-        System.out.println("  - tokenChannelMatchesRoutingCountry: " + context.get("tokenChannelMatchesRoutingCountry"));
-        System.out.println("  - tokenAttributeCountryMatchesRoutingCountry: " + context.get("tokenAttributeCountryMatchesRoutingCountry"));
+        System.out.println("  - workerGroupIdEqualsRoutingCountry: " + context.get("workerGroupIdEqualsRoutingCountry"));
+        System.out.println("  - workerContextChannelMatchesRoutingCountry: " + context.get("workerContextChannelMatchesRoutingCountry"));
+        System.out.println("  - workerContextAttributeCountryMatchesRoutingCountry: " + context.get("workerContextAttributeCountryMatchesRoutingCountry"));
 
         List<RuleDefinition> rules = ruleManager.getDefaultRules();
         System.out.println("\nRule evaluation:");

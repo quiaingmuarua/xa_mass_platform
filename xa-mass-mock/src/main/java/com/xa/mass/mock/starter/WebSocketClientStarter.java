@@ -1,6 +1,6 @@
 package com.xa.mass.mock.starter;
 
-import com.xa.mass.base.model.Device;
+import com.xa.mass.base.model.Worker;
 import com.xa.mass.engine.monkey.MonkeyGenerator;
 import com.xa.mass.gateway.model.enums.MessageDirection;
 import com.xa.mass.gateway.model.enums.MessageType;
@@ -49,8 +49,8 @@ public class WebSocketClientStarter {
     @Autowired
     private ClientSessionManager clientSessionManager;
 
-    @Value("${mock.client.devices-config:mock/mock_devices.json}")
-    private String devicesConfigPath;
+    @Value("${mock.client.workers-config:mock/mock_workers.json}")
+    private String workersConfigPath;
 
     @Value("${mock.client.connection-timeout:10}")
     private int connectionTimeout;
@@ -94,19 +94,19 @@ public class WebSocketClientStarter {
         try {
             String baseUri = mockConfig.getClient().getUri();
             log.info("Target server: {}", baseUri);
-            log.info("Device config: {}", devicesConfigPath);
+            log.info("Worker config: {}", workersConfigPath);
 
-            List<Device> devices = loadDevices();
-            if (devices == null || devices.isEmpty()) {
-                log.warn("No mock devices found, skipping client startup");
+            List<Worker> workers = loadWorkers();
+            if (workers == null || workers.isEmpty()) {
+                log.warn("No mock workers found, skipping client startup");
                 started.set(false);
                 return;
             }
 
-            log.info("Found {} mock devices, establishing connections", devices.size());
+            log.info("Found {} mock workers, establishing connections", workers.size());
 
-            clientExecutor = Executors.newFixedThreadPool(Math.min(devices.size(), maxPoolSize));
-            establishConnections(devices, baseUri);
+            clientExecutor = Executors.newFixedThreadPool(Math.min(workers.size(), maxPoolSize));
+            establishConnections(workers, baseUri);
             startPingTask();
 
             log.info("Mock WebSocket clients started, active connections: {}",
@@ -121,46 +121,46 @@ public class WebSocketClientStarter {
     }
 
     /**
-     * Loads device definitions from the configured classpath resource.
+     * Loads worker definitions from the configured classpath resource.
      */
-    protected List<Device> loadDevices() {
-        try (var is = getClass().getClassLoader().getResourceAsStream(devicesConfigPath)) {
+    protected List<Worker> loadWorkers() {
+        try (var is = getClass().getClassLoader().getResourceAsStream(workersConfigPath)) {
             if (is == null) {
-                log.error("Device config was not found: {}", devicesConfigPath);
+                log.error("Worker config was not found: {}", workersConfigPath);
                 return null;
             }
 
-            String deviceJson = new String(is.readAllBytes(), StandardCharsets.UTF_8);
-            com.google.gson.JsonElement elem = com.google.gson.JsonParser.parseString(deviceJson);
-            List<Device> devices = new ArrayList<>();
+            String workerJson = new String(is.readAllBytes(), StandardCharsets.UTF_8);
+            com.google.gson.JsonElement elem = com.google.gson.JsonParser.parseString(workerJson);
+            List<Worker> workers = new ArrayList<>();
             if (elem.isJsonArray()) {
                 for (com.google.gson.JsonElement dsl : elem.getAsJsonArray()) {
-                    devices.addAll(MonkeyGenerator.generateDevices(dsl.toString()));
+                    workers.addAll(MonkeyGenerator.generateWorkers(dsl.toString()));
                 }
             } else {
-                devices.addAll(MonkeyGenerator.generateDevices(deviceJson));
+                workers.addAll(MonkeyGenerator.generateWorkers(workerJson));
             }
-            return devices;
+            return workers;
         } catch (Exception e) {
-            log.error("Failed to load mock devices", e);
+            log.error("Failed to load mock workers", e);
             return null;
         }
     }
 
     /**
-     * Establishes device connections against the gateway endpoint.
+     * Establishes worker connections against the gateway endpoint.
      */
-    protected void establishConnections(List<Device> devices, String baseUri) throws InterruptedException {
-        CountDownLatch latch = new CountDownLatch(devices.size());
+    protected void establishConnections(List<Worker> workers, String baseUri) throws InterruptedException {
+        CountDownLatch latch = new CountDownLatch(workers.size());
         List<Future<?>> futures = new ArrayList<>();
 
-        for (Device device : devices) {
-            String deviceId = device.getDeviceId();
+        for (Worker worker : workers) {
+            String workerId = worker.getWorkerId();
             Future<?> future = clientExecutor.submit(() -> {
                 try {
-                    connectDeviceWithRetry(deviceId, baseUri);
+                    connectWorkerWithRetry(workerId, baseUri);
                 } catch (Exception e) {
-                    log.error("Device {} failed to connect", deviceId, e);
+                    log.error("Worker {} failed to connect", workerId, e);
                 } finally {
                     latch.countDown();
                 }
@@ -168,37 +168,37 @@ public class WebSocketClientStarter {
             futures.add(future);
         }
 
-        boolean completed = latch.await(devices.size() * (connectionTimeout + 5L), TimeUnit.SECONDS);
+        boolean completed = latch.await(workers.size() * (connectionTimeout + 5L), TimeUnit.SECONDS);
         if (!completed) {
-            log.warn("Some mock device connections timed out");
+            log.warn("Some mock worker connections timed out");
         }
 
         int successCount = clientSessionManager.getClientCount();
-        int failCount = devices.size() - successCount;
+        int failCount = workers.size() - successCount;
         log.info("Connection summary: success={}, failed={}", successCount, failCount);
     }
 
     /**
-     * Connects a single mock device with retry.
+     * Connects a single mock worker with retry.
      */
-    private void connectDeviceWithRetry(String deviceId, String baseUri) {
+    private void connectWorkerWithRetry(String workerId, String baseUri) {
         for (int attempt = 1; attempt <= retryAttempts; attempt++) {
             try {
                 URI uri = new URI(baseUri);
-                MassWebSocketClientImpl client = new MassWebSocketClientImpl(uri, deviceId, taskResultStatus);
+                MassWebSocketClientImpl client = new MassWebSocketClientImpl(uri, workerId, taskResultStatus);
                 clientSessionManager.addClient(client);
 
                 if (client.connectBlocking(connectionTimeout, TimeUnit.SECONDS)) {
-                    log.info("Device {} connected successfully ({}/{})", deviceId, attempt, retryAttempts);
+                    log.info("Worker {} connected successfully ({}/{})", workerId, attempt, retryAttempts);
                     return;
                 }
 
-                log.warn("Device {} connection timed out ({}/{})", deviceId, attempt, retryAttempts);
+                log.warn("Worker {} connection timed out ({}/{})", workerId, attempt, retryAttempts);
             } catch (Exception e) {
-                log.warn("Device {} connection failed ({}/{}): {}", deviceId, attempt, retryAttempts, e.getMessage());
+                log.warn("Worker {} connection failed ({}/{}): {}", workerId, attempt, retryAttempts, e.getMessage());
             }
 
-            clientSessionManager.removeClient(deviceId);
+            clientSessionManager.removeClient(workerId);
 
             if (attempt < retryAttempts) {
                 try {
@@ -210,7 +210,7 @@ public class WebSocketClientStarter {
             }
         }
 
-        log.error("Device {} failed after {} retries", deviceId, retryAttempts);
+        log.error("Worker {} failed after {} retries", workerId, retryAttempts);
     }
 
     /**
@@ -248,21 +248,21 @@ public class WebSocketClientStarter {
 
         try {
             MassMessage ping = new MassMessage();
-            ping.setMsgId("ping-" + client.getDeviceId() + "-" + System.currentTimeMillis());
+            ping.setMsgId("ping-" + client.getWorkerId() + "-" + System.currentTimeMillis());
             ping.setMsgType(MessageType.PING);
             ping.setFrom(MessageDirection.CLIENT);
             ping.setSubMsgType("heartbeat");
 
             MessageContext ctx = new MessageContext();
-            ctx.setDeviceId(client.getDeviceId());
+            ctx.setWorkerId(client.getWorkerId());
             ctx.setConnRole(SessionRoles.TASK_MESSAGES);
             ping.setContext(ctx);
 
             client.send(new com.google.gson.Gson().toJson(ping));
-            log.debug("[{}] heartbeat sent", client.getDeviceId());
+            log.debug("[{}] heartbeat sent", client.getWorkerId());
         } catch (Exception e) {
-            log.warn("[{}] heartbeat failed: {}", client.getDeviceId(), e.getMessage());
-            clientSessionManager.removeClient(client.getDeviceId());
+            log.warn("[{}] heartbeat failed: {}", client.getWorkerId(), e.getMessage());
+            clientSessionManager.removeClient(client.getWorkerId());
         }
     }
 
@@ -282,9 +282,9 @@ public class WebSocketClientStarter {
         for (MassWebSocketClientImpl client : clients) {
             try {
                 client.disconnect();
-                log.debug("Client {} disconnected", client.getDeviceId());
+                log.debug("Client {} disconnected", client.getWorkerId());
             } catch (Exception e) {
-                log.warn("Failed to disconnect client {}", client.getDeviceId(), e);
+                log.warn("Failed to disconnect client {}", client.getWorkerId(), e);
             }
         }
 

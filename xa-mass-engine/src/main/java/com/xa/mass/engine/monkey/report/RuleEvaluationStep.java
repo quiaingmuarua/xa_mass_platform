@@ -22,7 +22,7 @@ public class RuleEvaluationStep implements AssignmentPipelineStep {
         if (!ruleNotMatchRecords.isEmpty()) {
             log.info("规则不匹配详情 (前5条):");
             ruleNotMatchRecords.stream().limit(5).forEach(record -> {
-                log.info("  设备: {}, 任务: {}, 原因: {}", record.getDeviceId(), record.getTaskId(), record.getReason());
+                log.info("  Worker: {}, Task: {}, Reason: {}", record.getWorkerId(), record.getTaskId(), record.getReason());
             });
         }
     }

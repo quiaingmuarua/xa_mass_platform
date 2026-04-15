@@ -2,7 +2,7 @@ package com.xa.mass.base.example.old;
 
 import com.xa.mass.base.jsondsl.JsonDslEngine;
 import com.xa.mass.base.jsondsl.generate.TypeRegistry;
-import com.xa.mass.base.model.Device;
+import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.Task;
 
 import java.util.List;
@@ -11,19 +11,19 @@ public class JsonDslQlExample {
 
 
     public static void main(String[] args) {
-        // 娉ㄥ唽绫诲瀷
-        TypeRegistry.register("Device", Device.class);
+        // 注册类型
+        TypeRegistry.register("Worker", Worker.class);
         TypeRegistry.register("Task", Task.class);
 
-        // 婕旂ず鐩稿鏃堕棿
+        // 演示相对时间
         String dsl = """
                 {
-                  "MODEL": "Device",
+                  "MODEL": "Worker",
                    "COUNT": 2,
                   "FIELDS": {
                     "status": {"$CHOICE": ["OFFLINE", "ONLINE"]},
-                    "deviceId": {"$EXPR": "join('device-', '1')"},
-                     "deviceGroupId": {"$JOIN": ["device-", "&.index"]},
+                    "workerId": {"$EXPR": "join('worker-', '1')"},
+                     "workerGroupId": {"$JOIN": ["worker-", "&.index"]},
                     "onlineStrategy": {
                       "$EXPR": {
                         "lang": "ql",
@@ -33,7 +33,7 @@ public class JsonDslQlExample {
                   }
                 }
                 """;
-        List<Device> relativeTimeExamples = JsonDslEngine.generateList(dsl, Device.class);
+        List<Worker> relativeTimeExamples = JsonDslEngine.generateList(dsl, Worker.class);
         relativeTimeExamples.forEach(System.out::println);
     }
 }

@@ -1,7 +1,7 @@
 package com.xa.mass.gateway.model.massMessage;
 
 public class MessageContext {
-    private String deviceId;     // 物理设备 ID
+    private String workerId;     // Worker ID
     private String connRole;     // 连接角色（如 "app", "controller", "docker"）
     private String sessionId;    // 当前连接唯一标识（用于重连判断）
     private String tid;
@@ -9,12 +9,12 @@ public class MessageContext {
     private String lastAckMsgId;
     private String curStepId;
 
-    public String getDeviceId() {
-        return deviceId;
+    public String getWorkerId() {
+        return workerId;
     }
 
-    public void setDeviceId(String deviceId) {
-        this.deviceId = deviceId;
+    public void setWorkerId(String workerId) {
+        this.workerId = workerId;
     }
 
     public String getConnRole() {
@@ -68,7 +68,7 @@ public class MessageContext {
     @Override
     public String toString() {
         return "MessageContext{" +
-                "deviceId='" + deviceId + '\'' +
+                "workerId='" + workerId + '\'' +
                 ", connRole='" + connRole + '\'' +
                 ", sessionId='" + sessionId + '\'' +
                 ", tid='" + tid + '\'' +
@@ -83,7 +83,7 @@ public class MessageContext {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
         MessageContext that = (MessageContext) o;
-        return (deviceId != null ? deviceId.equals(that.deviceId) : that.deviceId == null) &&
+        return (workerId != null ? workerId.equals(that.workerId) : that.workerId == null) &&
                 (connRole != null ? connRole.equals(that.connRole) : that.connRole == null) &&
                 (sessionId != null ? sessionId.equals(that.sessionId) : that.sessionId == null) &&
                 (tid != null ? tid.equals(that.tid) : that.tid == null) &&
@@ -94,7 +94,7 @@ public class MessageContext {
 
     @Override
     public int hashCode() {
-        int result = deviceId != null ? deviceId.hashCode() : 0;
+        int result = workerId != null ? workerId.hashCode() : 0;
         result = 31 * result + (connRole != null ? connRole.hashCode() : 0);
         result = 31 * result + (sessionId != null ? sessionId.hashCode() : 0);
         result = 31 * result + (tid != null ? tid.hashCode() : 0);

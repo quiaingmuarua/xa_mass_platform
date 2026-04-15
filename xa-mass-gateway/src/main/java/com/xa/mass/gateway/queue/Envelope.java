@@ -2,7 +2,7 @@ package com.xa.mass.gateway.queue;
 
 public class Envelope {
     private String rawJson;     // 原始 JSON 消息
-    private String deviceId;
+    private String workerId;
     private String connRole;
     private String traceId;     // 可选，用于日志追踪
     private long receivedAt;
@@ -15,7 +15,7 @@ public class Envelope {
 
     private Envelope(Builder builder) {
         this.rawJson = builder.rawJson;
-        this.deviceId = builder.deviceId;
+        this.workerId = builder.workerId;
         this.connRole = builder.connRole;
         this.traceId = builder.traceId;
         this.receivedAt = builder.receivedAt;
@@ -35,12 +35,12 @@ public class Envelope {
         this.rawJson = rawJson;
     }
 
-    public String getDeviceId() {
-        return deviceId;
+    public String getWorkerId() {
+        return workerId;
     }
 
-    public void setDeviceId(String deviceId) {
-        this.deviceId = deviceId;
+    public void setWorkerId(String workerId) {
+        this.workerId = workerId;
     }
 
     public String getConnRole() {
@@ -78,7 +78,7 @@ public class Envelope {
     @Override
     public String toString() {
         return "Envelope{" +
-                "deviceId='" + deviceId + '\'' +
+                "workerId='" + workerId + '\'' +
                 ", connRole='" + connRole + '\'' +
                 ", traceId='" + traceId + '\'' +
                 ", receivedAt=" + receivedAt +
@@ -90,7 +90,7 @@ public class Envelope {
     // ----------- Builder -----------
     public static class Builder {
         private String rawJson;
-        private String deviceId;
+        private String workerId;
         private String connRole;
         private String traceId;
         private long receivedAt;
@@ -101,8 +101,8 @@ public class Envelope {
             return this;
         }
 
-        public Builder deviceId(String deviceId) {
-            this.deviceId = deviceId;
+        public Builder workerId(String workerId) {
+            this.workerId = workerId;
             return this;
         }
 

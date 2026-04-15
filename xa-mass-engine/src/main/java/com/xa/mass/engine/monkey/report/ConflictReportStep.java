@@ -24,7 +24,7 @@ public class ConflictReportStep implements AssignmentPipelineStep {
         } else {
             log.info("检测到 {} 个潜在冲突:", conflicts.size());
             for (Map<String, Object> conflict : conflicts) {
-                log.info("  设备: {}, 冲突类型: {}, 时间间隔: {} 分钟", conflict.get("deviceId"), conflict.get("conflictType"), conflict.get("timeDiffMinutes"));
+                log.info("  Worker: {}, 冲突类型: {}, 时间间隔: {} 分钟", conflict.get("workerId"), conflict.get("conflictType"), conflict.get("timeDiffMinutes"));
             }
         }
     }

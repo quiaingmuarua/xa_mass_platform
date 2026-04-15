@@ -16,17 +16,17 @@ public enum MassPlatformEventType {
     TASK_AUDITED("任务审核通过"),
     TASK_ASSIGNED("任务分配"),
 
-    // 设备状态相关
-    DEVICE_OFFLINE_BATCH("设备批量下线"),
-    DEVICE_OFFLINE_SINGLE("设备单个下线"),
-    DEVICE_FLASH_DISCONNECT("设备闪断"),
-    DEVICE_LONG_ABSENCE("设备长时间不归队"),
-    DEVICE_ONLINE_BATCH("设备批量上线"),
+    // Worker 状态相关
+    WORKER_OFFLINE_BATCH("Worker批量下线"),
+    WORKER_OFFLINE_SINGLE("Worker单个下线"),
+    WORKER_FLASH_DISCONNECT("Worker闪断"),
+    WORKER_LONG_ABSENCE("Worker长时间不归队"),
+    WORKER_ONLINE_BATCH("Worker批量上线"),
 
-    // Token/消息异常
-    TOKEN_INVALIDATION("Token失效"),
-    TOKEN_RETRY_LOOP("Token反复重试"),
-    TOKEN_BATCH_UNAVAILABLE("Token批量不可用"),
+    // WorkerContext/消息异常
+    WORKER_CONTEXT_INVALIDATION("WorkerContext失效"),
+    WORKER_CONTEXT_RETRY_LOOP("WorkerContext反复重试"),
+    WORKER_CONTEXT_BATCH_UNAVAILABLE("WorkerContext批量不可用"),
     MESSAGE_PROCESSING_ERROR("消息处理异常"),
 
     // 任务分配冲突

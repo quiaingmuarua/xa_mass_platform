@@ -25,26 +25,7 @@ public class TaskStorageFactory {
         }
     }
 
-    /**
-     * 创建设备存储实例
-     *
-     * @param type 存储类型
-     * @return 设备存储实例
-     */
-    public static DeviceStorage createDeviceStorage(StorageType type) {
-        switch (type) {
-            case MEMORY:
-                return new InMemoryDeviceStorage();
-            case REDIS:
-                throw new UnsupportedOperationException("Redis device storage is not implemented yet; use MEMORY");
-            case DATABASE:
-                throw new UnsupportedOperationException("Database device storage is not implemented yet; use MEMORY");
-            default:
-                throw new IllegalArgumentException("Unsupported storage type: " + type);
-        }
-    }
-
-    /**
+/**
      * 创建规则存储实例
      *
      * @param type 存储类型
@@ -73,21 +54,55 @@ public class TaskStorageFactory {
     }
 
     /**
-     * 创建默认设备存储实例（内存存储）
-     *
-     * @return 内存设备存储实例
-     */
-    public static DeviceStorage createDefaultDeviceStorage() {
-        return createDeviceStorage(StorageType.MEMORY);
-    }
-
-    /**
      * 创建默认规则存储实例（内存存储）
      *
      * @return 内存规则存储实例
      */
     public static RuleStorage createDefaultRuleStorage() {
         return createRuleStorage(StorageType.MEMORY);
+    }
+
+    /**
+     * 创建 Worker 存储实例
+     *
+     * @param type 存储类型
+     * @return Worker 存储实例
+     */
+    public static WorkerStorage createWorkerStorage(StorageType type) {
+        switch (type) {
+            case MEMORY:
+                return new InMemoryWorkerStorage();
+            case REDIS:
+                throw new UnsupportedOperationException("Redis worker storage is not implemented yet; use MEMORY");
+            case DATABASE:
+                throw new UnsupportedOperationException("Database worker storage is not implemented yet; use MEMORY");
+            default:
+                throw new IllegalArgumentException("Unsupported storage type: " + type);
+        }
+    }
+
+    /**
+     * 创建默认 Worker 存储实例（内存存储）
+     *
+     * @return 内存 Worker 存储实例
+     */
+    public static WorkerStorage createDefaultWorkerStorage() {
+        return createWorkerStorage(StorageType.MEMORY);
+    }
+
+    /**
+     * 根据配置创建 Worker 存储实例
+     *
+     * @param storageType 存储类型字符串
+     * @return Worker 存储实例
+     */
+    public static WorkerStorage createWorkerStorage(String storageType) {
+        try {
+            StorageType type = StorageType.valueOf(storageType.toUpperCase());
+            return createWorkerStorage(type);
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("Unsupported storage type: " + storageType);
+        }
     }
 
     /**
@@ -100,21 +115,6 @@ public class TaskStorageFactory {
         try {
             StorageType type = StorageType.valueOf(storageType.toUpperCase());
             return createTaskStorage(type);
-        } catch (IllegalArgumentException e) {
-            throw new IllegalArgumentException("Unsupported storage type: " + storageType);
-        }
-    }
-
-    /**
-     * 根据配置创建设备存储实例
-     *
-     * @param storageType 存储类型字符串
-     * @return 设备存储实例
-     */
-    public static DeviceStorage createDeviceStorage(String storageType) {
-        try {
-            StorageType type = StorageType.valueOf(storageType.toUpperCase());
-            return createDeviceStorage(type);
         } catch (IllegalArgumentException e) {
             throw new IllegalArgumentException("Unsupported storage type: " + storageType);
         }

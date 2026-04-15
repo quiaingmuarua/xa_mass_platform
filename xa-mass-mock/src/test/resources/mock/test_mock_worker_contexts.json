@@ -1,0 +1,25 @@
+[
+  {
+    "MODEL": "WorkerContext",
+    "COUNT": 2,
+    "FIELDS": {
+      "workerContextId": {
+        "$JOIN": [
+          "it-token-",
+          "&.index"
+        ]
+      },
+      "workerId": {
+        "$JOIN": [
+          "it-device-",
+          "&.index"
+        ]
+      },
+      "channel": "us",
+      "status": "IDLE",
+      "attributes": {
+        "country": "us"
+      }
+    }
+  }
+]

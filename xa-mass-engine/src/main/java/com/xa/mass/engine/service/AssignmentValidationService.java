@@ -47,30 +47,30 @@ public class AssignmentValidationService {
     }
 
     /**
-     * 逆向验证：检查未分配的设备是否被合理排除
+     * 逆向验证：检查未分配的 Worker 是否被合理排除
      */
-    public ValidationResult validateUnassignedDevices(Set<String> allDeviceIds, Set<String> assignedDeviceIds) {
+    public ValidationResult validateUnassignedDevices(Set<String> allWorkerIds, Set<String> assignedWorkerIds) {
         ValidationResult result = new ValidationResult();
-        Set<String> unassignedDeviceIds = new HashSet<>(allDeviceIds);
-        unassignedDeviceIds.removeAll(assignedDeviceIds);
+        Set<String> unassignedWorkerIds = new HashSet<>(allWorkerIds);
+        unassignedWorkerIds.removeAll(assignedWorkerIds);
 
-        for (String deviceId : unassignedDeviceIds) {
-            List<AssignmentRecord> deviceRecords = recordService.getRecordsByDeviceId(deviceId);
+        for (String workerId : unassignedWorkerIds) {
+            List<AssignmentRecord> workerRecords = recordService.getRecordsByWorkerId(workerId);
 
-            if (deviceRecords.isEmpty()) {
-                result.addWarning("设备 " + deviceId + " 没有任何分配记录");
+            if (workerRecords.isEmpty()) {
+                result.addWarning("Worker " + workerId + " 没有任何分配记录");
                 continue;
             }
 
             // 检查是否有成功的分配记录
-            boolean hasSuccessfulRecord = deviceRecords.stream()
+            boolean hasSuccessfulRecord = workerRecords.stream()
                     .anyMatch(r -> AssignmentResult.SUCCESS.equals(r.getResult()));
 
             if (hasSuccessfulRecord) {
-                result.addError("设备 " + deviceId + " 有成功分配记录但未在已分配列表中");
+                result.addError("Worker " + workerId + " 有成功分配记录但未在已分配列表中");
             } else {
                 // 检查失败原因是否合理
-                boolean hasValidReason = deviceRecords.stream()
+                boolean hasValidReason = workerRecords.stream()
                         .anyMatch(r -> {
                             AssignmentResult res = r.getResult();
                             return AssignmentResult.RULE_NOT_MATCH.equals(res) ||
@@ -79,12 +79,12 @@ public class AssignmentValidationService {
                         });
 
                 if (!hasValidReason) {
-                    result.addWarning("设备 " + deviceId + " 的失败原因可能不合理");
+                    result.addWarning("Worker " + workerId + " 的失败原因可能不合理");
                 }
             }
         }
 
-        result.setTotalChecked(unassignedDeviceIds.size());
+        result.setTotalChecked(unassignedWorkerIds.size());
         result.setValidatedSuccessfully(result.getErrors().isEmpty());
 
         return result;
@@ -96,12 +96,12 @@ public class AssignmentValidationService {
     public ConflictDetectionResult detectConflicts() {
         ConflictDetectionResult result = new ConflictDetectionResult();
 
-        // 按设备分组检查
-        Map<String, List<AssignmentRecord>> deviceRecords = recordService.getSuccessfulRecords().stream()
-                .collect(Collectors.groupingBy(AssignmentRecord::getDeviceId));
+        // 按 Worker 分组检查
+        Map<String, List<AssignmentRecord>> workerRecords = recordService.getSuccessfulRecords().stream()
+                .collect(Collectors.groupingBy(AssignmentRecord::getWorkerId));
 
-        for (Map.Entry<String, List<AssignmentRecord>> entry : deviceRecords.entrySet()) {
-            String deviceId = entry.getKey();
+        for (Map.Entry<String, List<AssignmentRecord>> entry : workerRecords.entrySet()) {
+            String workerId = entry.getKey();
             List<AssignmentRecord> records = entry.getValue();
 
             if (records.size() > 1) {
@@ -118,12 +118,12 @@ public class AssignmentValidationService {
 
                     if (timeDiff < 5) { // 5分钟内重复分配视为冲突
                         ConflictInfo conflict = new ConflictInfo();
-                        conflict.setDeviceId(deviceId);
+                        conflict.setWorkerId(workerId);
                         conflict.setConflictType("TIME_OVERLAP");
                         conflict.setFirstRecord(current);
                         conflict.setSecondRecord(next);
                         conflict.setTimeDiffMinutes(timeDiff);
-                        conflict.setDescription("设备在短时间内被重复分配");
+                        conflict.setDescription("Worker在短时间内被重复分配");
                         result.addConflict(conflict);
                     }
                 }
@@ -157,7 +157,7 @@ public class AssignmentValidationService {
     /**
      * 生成验证报告
      */
-    public Map<String, Object> generateValidationReport(Set<String> allDeviceIds, Set<String> assignedDeviceIds) {
+    public Map<String, Object> generateValidationReport(Set<String> allWorkerIds, Set<String> assignedWorkerIds) {
         Map<String, Object> report = new HashMap<>();
 
         // 正向验证
@@ -165,7 +165,7 @@ public class AssignmentValidationService {
         report.put("positiveValidation", positiveValidation);
 
         // 逆向验证
-        ValidationResult negativeValidation = validateUnassignedDevices(allDeviceIds, assignedDeviceIds);
+        ValidationResult negativeValidation = validateUnassignedDevices(allWorkerIds, assignedWorkerIds);
         report.put("negativeValidation", negativeValidation);
 
         // 冲突检测
@@ -173,10 +173,10 @@ public class AssignmentValidationService {
         report.put("conflictDetection", conflictDetection);
 
         // 总体统计
-        report.put("totalDevices", allDeviceIds.size());
-        report.put("assignedDevices", assignedDeviceIds.size());
-        report.put("unassignedDevices", allDeviceIds.size() - assignedDeviceIds.size());
-        report.put("assignmentRate", (double) assignedDeviceIds.size() / allDeviceIds.size());
+        report.put("totalWorkers", allWorkerIds.size());
+        report.put("assignedWorkers", assignedWorkerIds.size());
+        report.put("unassignedWorkers", allWorkerIds.size() - assignedWorkerIds.size());
+        report.put("assignmentRate", (double) assignedWorkerIds.size() / allWorkerIds.size());
 
         return report;
     }
@@ -247,7 +247,7 @@ public class AssignmentValidationService {
      * 冲突信息
      */
     public static class ConflictInfo {
-        private String deviceId;
+        private String workerId;
         private String messageId;
         private String conflictType;
         private AssignmentRecord firstRecord;
@@ -256,12 +256,12 @@ public class AssignmentValidationService {
         private String description;
 
         // Getters and Setters
-        public String getDeviceId() {
-            return deviceId;
+        public String getWorkerId() {
+            return workerId;
         }
 
-        public void setDeviceId(String deviceId) {
-            this.deviceId = deviceId;
+        public void setWorkerId(String workerId) {
+            this.workerId = workerId;
         }
 
         public String getMessageId() {

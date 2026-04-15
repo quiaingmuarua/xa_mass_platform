@@ -23,13 +23,13 @@ public class ClientSessionManager {
     private final Random random = new Random();
 
     public void addClient(MassWebSocketClientImpl client) {
-        clients.put(client.getDeviceId(), client);
-        log.info("Added mock client: {}", client.getDeviceId());
+        clients.put(client.getWorkerId(), client);
+        log.info("Added mock client: {}", client.getWorkerId());
     }
 
-    public void removeClient(String deviceId) {
-        clients.remove(deviceId);
-        log.info("Removed mock client: {}", deviceId);
+    public void removeClient(String workerId) {
+        clients.remove(workerId);
+        log.info("Removed mock client: {}", workerId);
     }
 
     public void sendMockTask() {
@@ -39,17 +39,17 @@ public class ClientSessionManager {
         }
 
         // 随机选择一个客户端
-        String deviceId = new ArrayList<>(clients.keySet()).get(random.nextInt(clients.size()));
-        MassWebSocketClientImpl client = clients.get(deviceId);
+        String workerId = new ArrayList<>(clients.keySet()).get(random.nextInt(clients.size()));
+        MassWebSocketClientImpl client = clients.get(workerId);
 
         if (client != null && client.isOpen()) {
-            MassMessage taskMessage = createMockTaskMessage(deviceId);
+            MassMessage taskMessage = createMockTaskMessage(workerId);
             client.send(new Gson().toJson(taskMessage));
-            log.info("📤 Sent mock task to client: {}", deviceId);
+            log.info("📤 Sent mock task to client: {}", workerId);
         }
     }
 
-    private MassMessage createMockTaskMessage(String deviceId) {
+    private MassMessage createMockTaskMessage(String workerId) {
         MassMessage message = new MassMessage();
         message.setMsgId("task-" + UUID.randomUUID().toString());
         message.setMsgType(MessageType.TASK);
@@ -57,7 +57,7 @@ public class ClientSessionManager {
         message.setSubMsgType("mock_task");
 
         MessageContext ctx = new MessageContext();
-        ctx.setDeviceId(deviceId);
+        ctx.setWorkerId(workerId);
         ctx.setConnRole(SessionRoles.TASK_MESSAGES);
         ctx.setTid("mock_task_" + System.currentTimeMillis());
         message.setContext(ctx);

@@ -1,24 +1,24 @@
 {
-  "devices": [
+  "workers": [
     {
-      "deviceIdTemplate": "device-{i}",
+      "workerIdTemplate": "device-{i}",
       "count": 10,
-      "deviceGroupId": "us",
+      "workerGroupId": "us",
       "agentVersion": "1.0.0",
-      "supportedApps": [
+      "supportedProjects": [
         "demoApp",
         "otherApp",
         "testApp"
       ],
-      "tokens": [
+      "workerContexts": [
         {
-          "tokenIdTemplate": "token-{i}-A",
+          "workerContextIdTemplate": "token-{i}-A",
           "count": 200,
           "channel": "us",
           "randomStatus": false
         },
         {
-          "tokenIdTemplate": "token-{i}-B",
+          "workerContextIdTemplate": "token-{i}-B",
           "count": 100,
           "channel": "us",
           "randomStatus": false
@@ -26,17 +26,17 @@
       ]
     },
     {
-      "deviceIdTemplate": "gb-device-{i}",
+      "workerIdTemplate": "gb-device-{i}",
       "count": 12,
-      "deviceGroupId": "gb",
+      "workerGroupId": "gb",
       "agentVersion": "1.0.1",
-      "supportedApps": [
+      "supportedProjects": [
         "demoApp",
         "testApp"
       ],
-      "tokens": [
+      "workerContexts": [
         {
-          "tokenIdTemplate": "gb-token-{i}-{j}",
+          "workerContextIdTemplate": "gb-token-{i}-{j}",
           "count": 300,
           "channel": "gb",
           "randomStatus": false

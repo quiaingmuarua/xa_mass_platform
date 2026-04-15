@@ -5,7 +5,7 @@ import com.xa.mass.base.jsondsl.generate.TypeRegistry;
 import com.xa.mass.base.jsondsl.model.JsonDslContext;
 import com.xa.mass.base.jsondsl.model.JsonDslDefinition;
 import com.xa.mass.base.jsondsl.parser.JsonDslParser;
-import com.xa.mass.base.model.Device;
+import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.Task;
 
 import java.util.List;
@@ -16,7 +16,7 @@ import java.util.List;
 public class StandardDslExample {
 
     public static void main(String[] args) {
-        TypeRegistry.register("Device", Device.class);
+        TypeRegistry.register("Worker", Worker.class);
         TypeRegistry.register("Task", Task.class);
 
         System.out.println("=== Standard JSON-DSL Examples ===\n");
@@ -32,31 +32,31 @@ public class StandardDslExample {
 
         String standardDsl = """
                 {
-                  "unique_id": "device_generator_001",
+                  "unique_id": "worker_generator_001",
                   "type": "generate",
                   "priority": 1,
-                  "desc": "Generate mock devices",
+                  "desc": "Generate mock workers",
                   "version": "1.0",
                   "author": "test_user",
-                  "tags": ["device", "test", "mock"],
+                  "tags": ["worker", "test", "mock"],
                   "enabled": true,
                   "cacheable": true,
                   "cache_expire_seconds": 600,
                   "context": {
-                    "MODEL": "Device",
+                    "MODEL": "Worker",
                     "COUNT": 3,
-                    "scope_name": "Device",
+                    "scope_name": "Worker",
                     "debug": false,
                     "strict": true
                   },
                   "fieldDsl": {
-                    "deviceId": {
-                      "$JOIN": ["device-", "&.index"]
+                    "workerId": {
+                      "$JOIN": ["worker-", "&.index"]
                     },
                     "status": {
                       "$CHOICE": ["ONLINE", "OFFLINE"]
                     },
-                    "deviceGroupId": {
+                    "workerGroupId": {
                       "$CHOICE": ["us", "gb", "cn"]
                     },
                     "agentVersion": {
@@ -65,7 +65,7 @@ public class StandardDslExample {
                     "supportedProjects": ["demoApp", "otherApp", "testApp"]
                   },
                   "combine_dsl": {
-                    "status_group_rule": "status == 'ONLINE' ? deviceGroupId : 'unknown'",
+                    "status_group_rule": "status == 'ONLINE' ? workerGroupId : 'unknown'",
                     "version_check_rule": "agentVersion.startsWith('1.0') ? 'stable' : 'beta'"
                   },
                   "extensions": {
@@ -85,11 +85,11 @@ public class StandardDslExample {
         System.out.println("  Author: " + definition.getAuthor());
 
         String legacyFormat = JsonDslParser.toJson(definition);
-        List<Device> devices = JsonDslEngine.generateList(legacyFormat, Device.class);
+        List<Worker> workers = JsonDslEngine.generateList(legacyFormat, Worker.class);
 
-        System.out.println("Generated devices:");
-        devices.forEach(device ->
-                System.out.println("  - " + device.getDeviceId() + " (" + device.getStatus() + ", " + device.getDeviceGroupId() + ")")
+        System.out.println("Generated workers:");
+        workers.forEach(worker ->
+                System.out.println("  - " + worker.getWorkerId() + " (" + worker.getStatus() + ", " + worker.getWorkerGroupId() + ")")
         );
         System.out.println();
     }
@@ -131,22 +131,22 @@ public class StandardDslExample {
 
         String complexDsl = """
                 {
-                  "unique_id": "complex_device_task_001",
+                  "unique_id": "complex_worker_task_001",
                   "type": "generate",
                   "priority": 2,
-                  "desc": "Generate devices with nested tasks",
+                  "desc": "Generate workers with nested tasks",
                   "author": "advanced_user",
                   "tags": ["complex", "nested", "advanced"],
                   "context": {
-                    "MODEL": "Device",
+                    "MODEL": "Worker",
                     "COUNT": 2,
-                    "scope_name": "Device",
+                    "scope_name": "Worker",
                     "debug": true
                   },
                   "fieldDsl": {
-                    "deviceId": {"$JOIN": ["complex-device-", "&.index"]},
+                    "workerId": {"$JOIN": ["complex-worker-", "&.index"]},
                     "status": {"$CHOICE": ["ONLINE", "OFFLINE"]},
-                    "deviceGroupId": {"$CHOICE": ["us", "gb", "cn"]},
+                    "workerGroupId": {"$CHOICE": ["us", "gb", "cn"]},
                     "agentVersion": {"$JOIN": ["2.0.", "&.index"]},
                     "tasks": {
                       "TYPE": "LIST",
@@ -154,21 +154,21 @@ public class StandardDslExample {
                       "MODEL": "Task",
                       "FIELDS": {
                         "tid": {"$UUID": true},
-                        "taskName": {"$JOIN": ["ComplexTask-", "&.index", "-of-Device-", "&Device.index"]},
-                        "taskRoutingCountryCode": "&Device.deviceGroupId",
+                        "taskName": {"$JOIN": ["ComplexTask-", "&.index", "-of-Worker-", "&Worker.index"]},
+                        "taskRoutingCountryCode": "&Worker.workerGroupId",
                         "taskTargetNumber": {"$RANGE": [50, 200]},
                         "batchSize": {"$RANGE": [2, 8]}
                       }
                     }
                   },
                   "combine_dsl": {
-                    "device_task_balance": "tasks.size() <= 3 ? 'balanced' : 'overloaded'",
+                    "worker_task_balance": "tasks.size() <= 3 ? 'balanced' : 'overloaded'",
                     "status_performance": "status == 'ONLINE' && agentVersion.startsWith('2.0') ? 'high_performance' : 'standard'",
-                    "group_capacity": "deviceGroupId == 'us' ? 100 : deviceGroupId == 'gb' ? 50 : 30"
+                    "group_capacity": "workerGroupId == 'us' ? 100 : workerGroupId == 'gb' ? 50 : 30"
                   },
                   "extensions": {
                     "business_rules": {
-                      "max_tasks_per_device": 5,
+                      "max_tasks_per_worker": 5,
                       "preferred_groups": ["us", "gb"],
                       "performance_threshold": 0.8
                     }
@@ -184,12 +184,12 @@ public class StandardDslExample {
         System.out.println("  Combine rules: " + definition.getCombineDsl().size());
 
         String legacyFormat = JsonDslParser.toJson(definition);
-        List<Device> devices = JsonDslEngine.generateList(legacyFormat, Device.class);
+        List<Worker> workers = JsonDslEngine.generateList(legacyFormat, Worker.class);
 
-        System.out.println("Generated complex devices:");
-        devices.forEach(device -> {
-            System.out.println("  - Device: " + device.getDeviceId() + " (" + device.getStatus() + ", " + device.getDeviceGroupId() + ")");
-            System.out.println("    Agent version: " + device.getAgentVersion());
+        System.out.println("Generated complex workers:");
+        workers.forEach(worker -> {
+            System.out.println("  - Worker: " + worker.getWorkerId() + " (" + worker.getStatus() + ", " + worker.getWorkerGroupId() + ")");
+            System.out.println("    Agent version: " + worker.getAgentVersion());
         });
         System.out.println();
     }
@@ -203,14 +203,14 @@ public class StandardDslExample {
         definition.setTags(new String[]{"test", "compatibility"});
         definition.setEnabled(true);
 
-        JsonDslContext context = new JsonDslContext("Device", 1);
-        context.setScopeName("Device");
+        JsonDslContext context = new JsonDslContext("Worker", 1);
+        context.setScopeName("Worker");
         definition.setContext(context);
 
         definition.setFieldDsl(java.util.Map.of(
-                "deviceId", "test-device-001",
+                "workerId", "test-worker-001",
                 "status", "ONLINE",
-                "deviceGroupId", "test"
+                "workerGroupId", "test"
         ));
 
         String json = JsonDslParser.toJson(definition);
@@ -227,10 +227,10 @@ public class StandardDslExample {
         System.out.println("  Type: " + parsedDefinition.getType());
         System.out.println("  Description: " + parsedDefinition.getDescription());
 
-        List<Device> devices = JsonDslEngine.generateList(legacyJson, Device.class);
+        List<Worker> workers = JsonDslEngine.generateList(legacyJson, Worker.class);
         System.out.println("Generated verification data:");
-        devices.forEach(device ->
-                System.out.println("  - " + device.getDeviceId() + " (" + device.getStatus() + ")")
+        workers.forEach(worker ->
+                System.out.println("  - " + worker.getWorkerId() + " (" + worker.getStatus() + ")")
         );
         System.out.println();
     }

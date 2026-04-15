@@ -23,9 +23,9 @@ public class MessageController {
     private static final Gson GSON = new Gson();
 
     @PostMapping("/send")
-    @Operation(summary = "主动推送消息到指定 device/role")
+    @Operation(summary = "主动推送消息到指定 worker/role")
     public Map<String, Object> sendMessage(@RequestBody Map<String, Object> req) {
-        // 示例参数: {"deviceId": "dev123", "role": "USER", "content": "hello"}
+        // 示例参数: {"workerId": "worker-123", "role": "USER", "content": "hello"}
         boolean successFlag = false;
         String msg = "";
         TransportContext transportContext = DispatcherContextRegistry.getTransportContext();

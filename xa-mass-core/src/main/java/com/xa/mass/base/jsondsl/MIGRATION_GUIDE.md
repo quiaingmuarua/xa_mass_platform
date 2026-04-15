@@ -33,26 +33,26 @@ DSL 系统。
 // 生成数据
 String dsl = """
                 {
-                  "MODEL": "Device",
+                  "MODEL": "Worker",
                   "COUNT": 3,
                   "FIELDS": {
-                    "deviceId": {"$JOIN": ["device-", "&.index"]},
+                    "workerId": {"$JOIN": ["worker-", "&.index"]},
                     "status": {"$CHOICE": ["ONLINE", "OFFLINE"]}
                   }
                 }
                 """;
 
-List<Device> devices = JsonDslEngine.generateList(dsl, Device.class);
+List<Worker> workers = JsonDslEngine.generateList(dsl, Worker.class);
 
 // 过滤数据
-List<Object> filtered = JsonDslEngine.filter(devices, "status", "eq", "ONLINE");
+List<Object> filtered = JsonDslEngine.filter(workers, "status", "eq", "ONLINE");
 ```
 
 **新方式：**
 
 ```java
 // 1. 创建标准化 DSL 定义
-JsonDslDefinition definition = new JsonDslDefinition("device_generator", JsonDslDefinition.DslType.GENERATE);
+JsonDslDefinition definition = new JsonDslDefinition("worker_generator", JsonDslDefinition.DslType.GENERATE);
 definition.
 
 setDescription("生成设备数据");
@@ -61,14 +61,14 @@ definition.
 setAuthor("system");
 
 // 2. 设置上下文
-JsonDslContext context = new JsonDslContext("Device", 3);
+JsonDslContext context = new JsonDslContext("Worker", 3);
 definition.
 
 setContext(context);
 
 // 3. 设置字段 DSL
 Map<String, Object> fieldDsl = Map.of(
-        "deviceId", Map.of("$JOIN", List.of("device-", "&.index")),
+        "workerId", Map.of("$JOIN", List.of("worker-", "&.index")),
         "status", Map.of("$CHOICE", List.of("ONLINE", "OFFLINE"))
 );
 definition.
@@ -77,7 +77,7 @@ setFieldDsl(fieldDsl);
 
 // 4. 解析并生成数据
 String legacyFormat = JsonDslParser.toJson(definition);
-List<Device> devices = JsonDslEngine.generateList(legacyFormat, Device.class);
+List<Worker> workers = JsonDslEngine.generateList(legacyFormat, Worker.class);
 
 // 5. 创建过滤器 DSL
 JsonDslDefinition filterDef = new JsonDslDefinition("status_filter", JsonDslDefinition.DslType.FILTER);
@@ -87,7 +87,7 @@ setFieldDsl(Map.of("status", Map.of("eq", "ONLINE")));
 
 // 6. 应用过滤
 String filterConfig = JsonDslParser.toJson(filterDef);
-List<Object> filtered = JsonDslEngine.filter(devices, filterConfig);
+List<Object> filtered = JsonDslEngine.filter(workers, filterConfig);
 ```
 
 ### 2. 从 DslContext 迁移
@@ -98,19 +98,19 @@ List<Object> filtered = JsonDslEngine.filter(devices, filterConfig);
 DslContext context = new DslContext();
 context.
 
-setScopeName("Device");
+setScopeName("Worker");
 context.
 
-setVariable("&Device.index",0);
+setVariable("&Worker.index",0);
 ```
 
 **新方式：**
 
 ```java
-JsonDslContext context = new JsonDslContext("Device", 1);
+JsonDslContext context = new JsonDslContext("Worker", 1);
 context.
 
-setScopeName("Device");
+setScopeName("Worker");
 context.
 
 setParameter("index",0);
@@ -128,9 +128,9 @@ setStrict(false);
 
 ```json
 {
-  "MODEL": "Device",
+  "MODEL": "Worker",
   "FIELDS": {
-    "deviceId": {"$JOIN": ["device-", "&.index"]},
+    "workerId": {"$JOIN": ["worker-", "&.index"]},
     "status": {"$CHOICE": ["ONLINE", "OFFLINE"]},
     "createdTime": {"$NOW": "yyyy-MM-dd HH:mm:ss"}
   }
@@ -141,16 +141,16 @@ setStrict(false);
 
 ```json
 {
-  "unique_id": "device_generator",
+  "unique_id": "worker_generator",
   "type": "generate",
   "context": {
-    "MODEL": "Device",
+    "MODEL": "Worker",
     "COUNT": 1
   },
   "fieldDsl": {
-    "deviceId": {
+    "workerId": {
       "$JOIN": [
-        "device-",
+        "worker-",
         "&.index"
       ]
     },
@@ -175,7 +175,7 @@ setStrict(false);
 **旧方式：**
 
 ```java
-TypeRegistry.register("Device", Device.class);
+TypeRegistry.register("Worker", Worker.class);
 TypeRegistry.register("Task", Task.class);
 ```
 
@@ -184,7 +184,7 @@ TypeRegistry.register("Task", Task.class);
 ```java
 // 新标准支持直接使用全类名，无需注册
 // 或者通过 context 中的 model 字段指定
-JsonDslContext context = new JsonDslContext("com.xa.mass.base.model.Device", 1);
+JsonDslContext context = new JsonDslContext("com.xa.mass.base.model.Worker", 1);
 ```
 
 ## 新标准优势

@@ -21,13 +21,13 @@ class TaskAssignWorkerTest {
     private List<Task> assigned;
 
     /**
-     * Stub TaskDeviceAssignListener that records tasks and transitions them to RUNNING,
-     * simulating a successful device assignment. Without the READY→RUNNING transition,
+     * Stub TaskWorkerAssignListener that records tasks and transitions them to RUNNING,
+     * simulating a successful worker assignment. Without the READY→RUNNING transition,
      * the worker treats the task as unassigned and schedules a retry — completion
      * notifications would never fire.
      */
-    private TaskDeviceAssignListener recordingListener(List<Task> sink) {
-        TaskDeviceAssignListener stub = mock(TaskDeviceAssignListener.class);
+    private TaskWorkerAssignListener recordingListener(List<Task> sink) {
+        TaskWorkerAssignListener stub = mock(TaskWorkerAssignListener.class);
         doAnswer(inv -> {
             Task t = inv.getArgument(0);
             t.transitionTo(TaskStatus.RUNNING); // simulate successful assignment
@@ -71,7 +71,7 @@ class TaskAssignWorkerTest {
 
         AtomicInteger attempts = new AtomicInteger();
         CountDownLatch assignedLatch = new CountDownLatch(1);
-        TaskDeviceAssignListener retryingListener = mock(TaskDeviceAssignListener.class);
+        TaskWorkerAssignListener retryingListener = mock(TaskWorkerAssignListener.class);
         doAnswer(invocation -> {
             Task task = invocation.getArgument(0);
             if (attempts.incrementAndGet() >= 2) {
@@ -100,7 +100,7 @@ class TaskAssignWorkerTest {
 
         AtomicInteger attempts = new AtomicInteger();
         CountDownLatch assignedLatch = new CountDownLatch(1);
-        TaskDeviceAssignListener retryingListener = mock(TaskDeviceAssignListener.class);
+        TaskWorkerAssignListener retryingListener = mock(TaskWorkerAssignListener.class);
         doAnswer(invocation -> {
             Task task = invocation.getArgument(0);
             if (attempts.incrementAndGet() >= 2) {
@@ -140,7 +140,7 @@ class TaskAssignWorkerTest {
         worker.submit(readyTask("processed"));
 
         assertTrue(readyLatch.await(3, TimeUnit.SECONDS));
-        // Only the READY task should have been passed to the device assign listener
+        // Only the READY task should have been passed to the worker assign listener
         assertEquals(1, assigned.size());
         assertEquals("processed", assigned.get(0).getTid());
     }
@@ -167,7 +167,7 @@ class TaskAssignWorkerTest {
         // If stop() blocks indefinitely we never reach this assertion
         assertTrue(true, "stop() returned without timeout");
         // Re-create for tearDown to call stop() again without a double-stop error
-        worker = new TaskAssignWorker(mock(TaskDeviceAssignListener.class));
+        worker = new TaskAssignWorker(mock(TaskWorkerAssignListener.class));
         worker.start();
     }
 

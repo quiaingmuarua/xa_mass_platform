@@ -1,13 +1,12 @@
 package com.xa.mass.engine.listener;
 
-import com.xa.mass.base.enums.task.TokenStatus;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
-import com.xa.mass.base.model.Token;
-import com.xa.mass.engine.DeviceManager;
+import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.TaskManager;
+import com.xa.mass.engine.WorkerManager;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -23,7 +22,7 @@ import static org.mockito.Mockito.when;
 class TaskResourceReleaseListenerTest {
 
     private TaskManager taskManager;
-    private DeviceManager deviceManager;
+    private WorkerManager workerManager;
     private TaskResourceReleaseListener listener;
     private Consumer<Task> dispatchRequester;
 
@@ -31,104 +30,104 @@ class TaskResourceReleaseListenerTest {
     @SuppressWarnings("unchecked")
     void setUp() {
         taskManager = mock(TaskManager.class);
-        deviceManager = mock(DeviceManager.class);
+        workerManager = mock(WorkerManager.class);
         dispatchRequester = mock(Consumer.class);
-        listener = new TaskResourceReleaseListener(taskManager, deviceManager, dispatchRequester);
+        listener = new TaskResourceReleaseListener(taskManager, workerManager, dispatchRequester);
     }
 
     @Test
-    void terminalTaskReleasesTokenAndUnlocksDevice() {
+    void terminalTaskReleasesWorkerContextAndUnlocksWorker() {
         Task task = new Task();
         task.setTid("task-1");
 
         TaskMsg msg = new TaskMsg("msg-1", "task-1", "target-a");
-        msg.setDeviceId("device-1");
-        msg.setTokenId("token-1");
+        msg.setWorkerId("worker-1");
+        msg.setWorkerContextId("wctx-1");
 
-        Token token = new Token("token-1", "device-1", "us");
-        token.bindToTask("task-1");
-        token.startOccupying();
+        WorkerContext wctx = new WorkerContext("wctx-1", "worker-1", "us");
+        wctx.bindToTask("task-1");
+        wctx.startOccupying();
 
         when(taskManager.getTaskMessages("task-1")).thenReturn(List.of(msg));
-        when(deviceManager.getToken("device-1")).thenReturn(token);
-        when(deviceManager.updateToken("device-1", token)).thenReturn(true);
+        when(workerManager.getWorkerContext("worker-1")).thenReturn(wctx);
+        when(workerManager.updateWorkerContext("worker-1", wctx)).thenReturn(true);
 
         listener.onTaskTerminal(task);
 
-        verify(deviceManager).updateToken("device-1", token);
-        verify(deviceManager).unlockDevice("device-1");
+        verify(workerManager).updateWorkerContext("worker-1", wctx);
+        verify(workerManager).unlockWorker("worker-1");
     }
 
     @Test
-    void listenerDoesNotReleaseTokenOwnedByAnotherTask() {
+    void listenerDoesNotReleaseWorkerContextOwnedByAnotherTask() {
         Task task = new Task();
         task.setTid("task-1");
 
         TaskMsg msg = new TaskMsg("msg-1", "task-1", "target-a");
-        msg.setDeviceId("device-1");
-        msg.setTokenId("token-1");
+        msg.setWorkerId("worker-1");
+        msg.setWorkerContextId("wctx-1");
 
-        Token token = new Token("token-1", "device-1", "us");
-        token.bindToTask("other-task");
-        token.startOccupying();
+        WorkerContext wctx = new WorkerContext("wctx-1", "worker-1", "us");
+        wctx.bindToTask("other-task");
+        wctx.startOccupying();
 
         when(taskManager.getTaskMessages("task-1")).thenReturn(List.of(msg));
-        when(deviceManager.getToken("device-1")).thenReturn(token);
+        when(workerManager.getWorkerContext("worker-1")).thenReturn(wctx);
 
         listener.onTaskTerminal(task);
 
-        verify(deviceManager, never()).updateToken("device-1", token);
-        verify(deviceManager).unlockDevice("device-1");
+        verify(workerManager, never()).updateWorkerContext("worker-1", wctx);
+        verify(workerManager).unlockWorker("worker-1");
     }
 
     @Test
-    void finalMessageReleasesIdleDeviceAndRequestsReplenishment() {
+    void finalMessageReleasesIdleWorkerAndRequestsReplenishment() {
         Task task = new Task();
         task.setTid("task-1");
         task.setStatus(TaskStatus.RUNNING);
 
         TaskMsg finalMsg = new TaskMsg("msg-1", "task-1", "target-a");
-        finalMsg.setDeviceId("device-1");
-        finalMsg.setTokenId("token-1");
+        finalMsg.setWorkerId("worker-1");
+        finalMsg.setWorkerContextId("wctx-1");
         finalMsg.setStatus(TaskMsgStatus.SUCCESS);
 
-        Token token = new Token("token-1", "device-1", "us");
-        token.bindToTask("task-1");
-        token.startOccupying();
+        WorkerContext wctx = new WorkerContext("wctx-1", "worker-1", "us");
+        wctx.bindToTask("task-1");
+        wctx.startOccupying();
 
         when(taskManager.getTaskMessages("task-1")).thenReturn(List.of(finalMsg));
         when(taskManager.hasPendingDispatchableMessages("task-1")).thenReturn(true);
-        when(deviceManager.getToken("device-1")).thenReturn(token);
-        when(deviceManager.updateToken("device-1", token)).thenReturn(true);
+        when(workerManager.getWorkerContext("worker-1")).thenReturn(wctx);
+        when(workerManager.updateWorkerContext("worker-1", wctx)).thenReturn(true);
 
         listener.onTaskMessageFinal(task, finalMsg);
 
-        verify(deviceManager).updateToken("device-1", token);
-        verify(deviceManager).unlockDevice("device-1");
+        verify(workerManager).updateWorkerContext("worker-1", wctx);
+        verify(workerManager).unlockWorker("worker-1");
         verify(dispatchRequester).accept(same(task));
     }
 
     @Test
-    void finalMessageKeepsDeviceLockedWhenAnotherMessageIsStillProcessing() {
+    void finalMessageKeepsWorkerLockedWhenAnotherMessageIsStillProcessing() {
         Task task = new Task();
         task.setTid("task-1");
         task.setStatus(TaskStatus.RUNNING);
 
         TaskMsg finalMsg = new TaskMsg("msg-1", "task-1", "target-a");
-        finalMsg.setDeviceId("device-1");
-        finalMsg.setTokenId("token-1");
+        finalMsg.setWorkerId("worker-1");
+        finalMsg.setWorkerContextId("wctx-1");
         finalMsg.setStatus(TaskMsgStatus.SUCCESS);
 
         TaskMsg runningMsg = new TaskMsg("msg-2", "task-1", "target-b");
-        runningMsg.setDeviceId("device-1");
-        runningMsg.setTokenId("token-1");
+        runningMsg.setWorkerId("worker-1");
+        runningMsg.setWorkerContextId("wctx-1");
         runningMsg.setStatus(TaskMsgStatus.RUNNING);
 
         when(taskManager.getTaskMessages("task-1")).thenReturn(List.of(finalMsg, runningMsg));
 
         listener.onTaskMessageFinal(task, finalMsg);
 
-        verify(deviceManager, never()).unlockDevice("device-1");
+        verify(workerManager, never()).unlockWorker("worker-1");
         verify(dispatchRequester, never()).accept(same(task));
     }
 }

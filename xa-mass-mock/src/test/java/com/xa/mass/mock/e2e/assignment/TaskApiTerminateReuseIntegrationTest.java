@@ -1,10 +1,10 @@
 package com.xa.mass.mock.e2e.assignment;
 
-import com.xa.mass.base.enums.device.DeviceStatus;
-import com.xa.mass.base.enums.task.TokenStatus;
-import com.xa.mass.base.model.Device;
-import com.xa.mass.base.model.Token;
-import com.xa.mass.engine.DeviceManager;
+import com.xa.mass.base.enums.worker.WorkerStatus;
+import com.xa.mass.base.enums.worker.WorkerContextStatus;
+import com.xa.mass.base.model.Worker;
+import com.xa.mass.base.model.WorkerContext;
+import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.mock.MockApplicationSpringBootApp;
 import com.xa.mass.mock.e2e.support.AbstractMockE2eTest;
 import org.junit.jupiter.api.Test;
@@ -26,8 +26,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = {
                 "mock.client.auto-start=false",
-                "mass.mock.data.devices=mock/test_mock_devices_empty.json",
-                "mass.mock.data.tokens=mock/test_mock_tokens_empty.json",
+                "mass.mock.data.workers=mock/test_mock_workers_empty.json",
+                "mass.mock.data.worker-contexts=mock/test_mock_worker_contexts_empty.json",
                 "mass.mock.data.tasks=mock/test_mock_tasks.json",
                 "mass.mock.data.rules=mock/test_mock_rules.json"
         }
@@ -44,19 +44,19 @@ class TaskApiTerminateReuseIntegrationTest extends AbstractMockE2eTest {
     }
 
     @Autowired
-    private DeviceManager deviceManager;
+    private WorkerManager workerManager;
 
     @Test
     void terminatedTaskReleasesSingleDeviceForNextTask() throws Exception {
-        String deviceId = "terminate-reuse-device-0";
-        registerDevice(deviceId);
+        String workerId = "terminate-reuse-device-0";
+        registerWorker(workerId);
 
         String firstTaskId = createTaskId("terminate-reuse-first", "terminate reuse first", "target-a");
         Map<String, Object> firstApprove = audit(firstTaskId, "terminate-reuse-1");
         assertEquals(Boolean.TRUE, firstApprove.get("success"));
 
         TaskSnapshot firstRunning = waitForTaskSnapshot(firstTaskId, "RUNNING", 20, 500L);
-        assertEquals(deviceId, firstRunning.messages().get(0).get("deviceId"));
+        assertEquals(workerId, firstRunning.messages().get(0).get("workerId"));
 
         Map<String, Object> firstTerminate = exchange(
                 "/status/api/tasks/" + firstTaskId + "/terminate",
@@ -67,14 +67,14 @@ class TaskApiTerminateReuseIntegrationTest extends AbstractMockE2eTest {
 
         TaskSnapshot firstTerminal = waitForTaskSnapshot(firstTaskId, "TERMINAL", 20, 500L);
         assertEquals("EXPIRED", firstTerminal.messages().get(0).get("status"));
-        assertEquals(TokenStatus.IDLE, deviceManager.getToken(deviceId).getStatus());
+        assertEquals(WorkerContextStatus.IDLE, workerManager.getWorkerContext(workerId).getStatus());
 
         String secondTaskId = createTaskId("terminate-reuse-second", "terminate reuse second", "target-b");
         Map<String, Object> secondApprove = audit(secondTaskId, "terminate-reuse-2");
         assertEquals(Boolean.TRUE, secondApprove.get("success"));
 
         TaskSnapshot secondRunning = waitForTaskSnapshot(secondTaskId, "RUNNING", 20, 500L);
-        assertEquals(deviceId, secondRunning.messages().get(0).get("deviceId"));
+        assertEquals(workerId, secondRunning.messages().get(0).get("workerId"));
 
         Map<String, Object> secondTerminate = exchange(
                 "/status/api/tasks/" + secondTaskId + "/terminate",
@@ -83,22 +83,22 @@ class TaskApiTerminateReuseIntegrationTest extends AbstractMockE2eTest {
         );
         assertEquals(Boolean.TRUE, secondTerminate.get("success"));
         waitForTaskSnapshot(secondTaskId, "TERMINAL", 20, 500L);
-        assertEquals(TokenStatus.IDLE, deviceManager.getToken(deviceId).getStatus());
+        assertEquals(WorkerContextStatus.IDLE, workerManager.getWorkerContext(workerId).getStatus());
     }
 
-    private void registerDevice(String deviceId) {
-        Device device = new Device();
-        device.setDeviceId(deviceId);
-        device.setDeviceGroupId("us");
-        device.setStatus(DeviceStatus.ONLINE);
-        device.setSupportedProjects(List.of("demoApp"));
-        deviceManager.addDevice(device);
+    private void registerWorker(String workerId) {
+        Worker worker = new Worker();
+        worker.setWorkerId(workerId);
+        worker.setWorkerGroupId("us");
+        worker.setStatus(WorkerStatus.ONLINE);
+        worker.setSupportedProjects(List.of("demoApp"));
+        workerManager.addWorker(worker);
 
-        Token token = new Token();
-        token.setTokenId("token-" + deviceId);
-        token.setDeviceId(deviceId);
-        token.setChannel("us");
-        token.setStatus(TokenStatus.IDLE);
-        deviceManager.addToken(deviceId, token);
+        WorkerContext workerContext = new WorkerContext();
+        workerContext.setWorkerContextId("token-" + workerId);
+        workerContext.setWorkerId(workerId);
+        workerContext.setChannel("us");
+        workerContext.setStatus(WorkerContextStatus.IDLE);
+        workerManager.addWorkerContext(workerId, workerContext);
     }
 }

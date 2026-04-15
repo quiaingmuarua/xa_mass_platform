@@ -42,7 +42,7 @@ class GatewayTaskMsgPublisherTest {
         verify(transporter).sendOutput(captor.capture());
 
         Envelope envelope = captor.getValue();
-        assertEquals("device-1", envelope.getDeviceId());
+        assertEquals("device-1", envelope.getWorkerId());
         assertEquals(GatewayTaskMsgPublisher.DEFAULT_CONN_ROLE, envelope.getConnRole());
         assertEquals("demoApp", envelope.getProject());
         assertEquals("msg-1", envelope.getTraceId());
@@ -53,7 +53,7 @@ class GatewayTaskMsgPublisherTest {
         assertEquals(MessageType.TASK, message.getMsgType());
         assertEquals("step", message.getSubMsgType());
         assertEquals(MessageDirection.SERVER, message.getFrom());
-        assertEquals("device-1", message.getContext().getDeviceId());
+        assertEquals("device-1", message.getContext().getWorkerId());
         assertEquals(GatewayTaskMsgPublisher.DEFAULT_CONN_ROLE, message.getContext().getConnRole());
         assertEquals("task-1", message.getContext().getTid());
 
@@ -75,8 +75,8 @@ class GatewayTaskMsgPublisherTest {
 
     private TaskMsg taskMsg() {
         TaskMsg taskMsg = new TaskMsg("msg-1", "task-1", "target-1");
-        taskMsg.setDeviceId("device-1");
-        taskMsg.setTokenId("token-1");
+        taskMsg.setWorkerId("device-1");
+        taskMsg.setWorkerContextId("token-1");
         taskMsg.setBatchId("batch-0");
         return taskMsg;
     }

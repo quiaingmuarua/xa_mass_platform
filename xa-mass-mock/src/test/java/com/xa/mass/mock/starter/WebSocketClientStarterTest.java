@@ -1,6 +1,6 @@
 package com.xa.mass.mock.starter;
 
-import com.xa.mass.base.model.Device;
+import com.xa.mass.base.model.Worker;
 import com.xa.mass.mock.client.ClientSessionManager;
 import com.xa.mass.mock.config.MockConfig;
 import org.junit.jupiter.api.Test;
@@ -36,7 +36,7 @@ class WebSocketClientStarterTest {
 
     @Test
     void onApplicationReadyStartsClientsOnlyOnce() {
-        TestWebSocketClientStarter starter = new TestWebSocketClientStarter(List.of(device("device-1")));
+        TestWebSocketClientStarter starter = new TestWebSocketClientStarter(List.of(worker("device-1")));
         MockConfig mockConfig = new MockConfig();
         mockConfig.getClient().setUri("ws://localhost:18088/ws");
         setField(starter, "mockConfig", mockConfig);
@@ -69,10 +69,10 @@ class WebSocketClientStarterTest {
         starter.shutdown();
     }
 
-    private static Device device(String deviceId) {
-        Device device = new Device();
-        device.setDeviceId(deviceId);
-        return device;
+    private static Worker worker(String workerId) {
+        Worker w = new Worker();
+        w.setWorkerId(workerId);
+        return w;
     }
 
     private static void setField(Object target, String fieldName, Object value) {
@@ -86,22 +86,22 @@ class WebSocketClientStarterTest {
     }
 
     private static class TestWebSocketClientStarter extends WebSocketClientStarter {
-        private final List<Device> devices;
+        private final List<Worker> workers;
         private int establishInvocations;
         private int pingInvocations;
         private String baseUriUsed;
 
-        private TestWebSocketClientStarter(List<Device> devices) {
-            this.devices = devices;
+        private TestWebSocketClientStarter(List<Worker> workers) {
+            this.workers = workers;
         }
 
         @Override
-        protected List<Device> loadDevices() {
-            return devices;
+        protected List<Worker> loadWorkers() {
+            return workers;
         }
 
         @Override
-        protected void establishConnections(List<Device> devices, String baseUri) {
+        protected void establishConnections(List<Worker> workers, String baseUri) {
             establishInvocations++;
             baseUriUsed = baseUri;
         }

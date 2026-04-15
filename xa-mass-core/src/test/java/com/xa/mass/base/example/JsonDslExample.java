@@ -2,41 +2,35 @@ package com.xa.mass.base.example;
 
 import com.xa.mass.base.jsondsl.JsonDslEngine;
 import com.xa.mass.base.jsondsl.generate.TypeRegistry;
-import com.xa.mass.base.model.Device;
+import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.Task;
 
 import java.util.List;
 
 public class JsonDslExample {
     public static void main(String[] args) {
-        // 娉ㄥ唽绫诲瀷
-        TypeRegistry.register("Device", Device.class);
+        // 注册类型
+        TypeRegistry.register("Worker", Worker.class);
         TypeRegistry.register("Task", Task.class);
-//        try {
-//            Class<?> ruleDefClass = Class.forName("com.xa.mass.engine.rules.RuleDefinition");
-//            TypeRegistry.register("RuleDefinition", ruleDefClass);
-//        } catch (ClassNotFoundException e) {
-//            throw new RuntimeException("RuleDefinition class not found", e);
-//        }
 
-        // 鎵归噺 mock Device - 浣跨敤 &.index 绠€鍐?
-        String deviceDsl = """
+        // 批量 mock Worker
+        String workerDsl = """
                 {
-                  "MODEL": "Device",
+                  "MODEL": "Worker",
                   "COUNT": 3,
                   "FIELDS": {
-                    "deviceId": {"$JOIN": ["device-", "&.index"]},
+                    "workerId": {"$JOIN": ["worker-", "&.index"]},
                     "status": {"$CHOICE": ["ONLINE", "OFFLINE"]},
-                    "deviceGroupId": {"$CHOICE": ["us", "gb", "cn"]},
+                    "workerGroupId": {"$CHOICE": ["us", "gb", "cn"]},
                     "agentVersion": {"$JOIN": ["1.0.", "&.index"]}
                   }
                 }
                 """;
-        List<Device> devices = JsonDslEngine.generateList(deviceDsl, Device.class);
-        System.out.println("=== Generated Devices ===");
-        devices.forEach(System.out::println);
+        List<Worker> workers = JsonDslEngine.generateList(workerDsl, Worker.class);
+        System.out.println("=== Generated Workers ===");
+        workers.forEach(System.out::println);
 
-        // 鎵归噺 mock Task - 浣跨敤 &.index 绠€鍐?
+        // 批量 mock Task
         String taskDsl = """
                 {
                   "MODEL": "Task",
@@ -54,35 +48,35 @@ public class JsonDslExample {
         System.out.println("\n=== Generated Tasks ===");
         tasks.forEach(System.out::println);
 
-        // 澶氱骇浣滅敤鍩熷彉閲忔煡鎵剧ず渚嬶紝&.index 鍜?&Model.index 娣风敤
+        // 多级作用域变量查找示例，&.index 和 &Model.index 混用
         String nestedExampleDsl = """
                 {
-                  "MODEL": "Device",
+                  "MODEL": "Worker",
                   "COUNT": 2,
                   "FIELDS": {
-                    "deviceId": {"$JOIN": ["device-", "&.index"]},
+                    "workerId": {"$JOIN": ["worker-", "&.index"]},
                     "status": {"$CHOICE": ["ONLINE", "OFFLINE"]},
-                    "deviceGroupId": {"$CHOICE": ["us", "gb", "cn"]},
+                    "workerGroupId": {"$CHOICE": ["us", "gb", "cn"]},
                     "agentVersion": {"$JOIN": ["1.0.", "&.index"]},
-                    "description": {"$JOIN": ["Device ", "&.index", " in group ", "&Device.deviceGroupId"]},
+                    "description": {"$JOIN": ["Worker ", "&.index", " in group ", "&Worker.workerGroupId"]},
                     "tasks": {
                       "TYPE": "LIST",
                       "COUNT": 2,
                       "MODEL": "Task",
                       "FIELDS": {
                         "tid": {"$UUID": true},
-                        "taskName": {"$JOIN": ["Task-", "&.index", "-of-Device-", "&Device.index"]},
-                        "parentDeviceId": "&Device.deviceId"
+                        "taskName": {"$JOIN": ["Task-", "&.index", "-of-Worker-", "&Worker.index"]},
+                        "parentWorkerId": "&Worker.workerId"
                       }
                     }
                   }
                 }
                 """;
-        List<Device> devices1 = JsonDslEngine.generateList(nestedExampleDsl, Device.class);
+        List<Worker> workers1 = JsonDslEngine.generateList(nestedExampleDsl, Worker.class);
         System.out.println("\n=== Nested Scope Variable Examples ===");
-        devices1.forEach(System.out::println);
+        workers1.forEach(System.out::println);
 
-        // 婕旂ず鏃堕棿鍑芥暟
+        // 演示时间函数
         String timeExampleDsl = """
                 {
                   "MODEL": "Task",
@@ -99,19 +93,19 @@ public class JsonDslExample {
         System.out.println("\n=== Time Function Examples ===");
         timeExamples.forEach(System.out::println);
 
-        // 婕旂ず鐩稿鏃堕棿
+        // 演示相对时间
         String relativeTimeExampleDsl = """
                 {
-                  "MODEL": "Device",
+                  "MODEL": "Worker",
                   "COUNT": 2,
                   "FIELDS": {
-                    "deviceId": {"$JOIN": ["device-", "&.index"]},
+                    "workerId": {"$JOIN": ["worker-", "&.index"]},
                     "status": {"$CHOICE": ["ONLINE", "OFFLINE"]},
                     "createdTime": {"$NOW": "yyyy-MM-dd HH:mm:ss"}
                   }
                 }
                 """;
-        List<Device> relativeTimeExamples = JsonDslEngine.generateList(relativeTimeExampleDsl, Device.class);
+        List<Worker> relativeTimeExamples = JsonDslEngine.generateList(relativeTimeExampleDsl, Worker.class);
         System.out.println("\n=== Relative Time Examples ===");
         relativeTimeExamples.forEach(System.out::println);
     }

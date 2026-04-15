@@ -41,27 +41,27 @@ public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWe
                 return;
             }
 
-            String deviceId = massMessage.getContext().getDeviceId();
+            String workerId = massMessage.getContext().getWorkerId();
             String connRole = massMessage.getContext().getConnRole();
             String project = massMessage.getProject();
             String msgId = massMessage.getMsgId();
-            if (deviceId == null || connRole == null || project == null || msgId == null) {
-                logger.error("deviceId/connRole/project/msgId is null: deviceId={}, connRole={}, project={}, msgId={}, raw={}",
-                        deviceId, connRole, project, msgId, raw);
-                sendError(ctx, "MISSING_FIELDS", "deviceId/connRole/project/msgId are required");
+            if (workerId == null || connRole == null || project == null || msgId == null) {
+                logger.error("workerId/connRole/project/msgId is null: workerId={}, connRole={}, project={}, msgId={}, raw={}",
+                        workerId, connRole, project, msgId, raw);
+                sendError(ctx, "MISSING_FIELDS", "workerId/connRole/project/msgId are required");
                 return;
             }
 
             Envelope envelope = Envelope.builder()
                     .rawJson(raw)
-                    .deviceId(deviceId)
+                    .workerId(workerId)
                     .connRole(connRole)
                     .project(project)
                     .receivedAt(System.currentTimeMillis())
                     .traceId(massMessage.getMsgId())
                     .build();
             org.slf4j.MDC.put("event", "channelRead0");
-            org.slf4j.MDC.put("deviceId", envelope.getDeviceId());
+            org.slf4j.MDC.put("workerId", envelope.getWorkerId());
             org.slf4j.MDC.put("connRole", envelope.getConnRole());
             org.slf4j.MDC.put("traceId", envelope.getTraceId());
             org.slf4j.MDC.put("project", envelope.getProject());
@@ -73,7 +73,7 @@ public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWe
             }
 
             dispatcherContext.getMessageTransporter().sendInput(envelope);
-            dispatcherContext.getSessionManager().addSession(deviceId, connRole, ctx.channel(), ctx);
+            dispatcherContext.getSessionManager().addSession(workerId, connRole, ctx.channel(), ctx);
             logger.info("queue size {}", dispatcherContext.getMessageTransporter().inputQueueSize());
 
         } catch (Exception e) {

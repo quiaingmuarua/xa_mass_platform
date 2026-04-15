@@ -1,6 +1,6 @@
 package com.xa.mass.starter.builder;
 
-import com.xa.mass.engine.DeviceManager;
+import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.engine.strategy.SimpleTaskScheduler;
@@ -232,9 +232,9 @@ public class MassApplicationBuilder {
             return this;
         }
 
-        public EngineBuilder mockData(String deviceConfigPath, String tokenConfigPath, String taskConfigPath, String ruleConfigPath) {
-            config.setDeviceConfigPath(deviceConfigPath);
-            config.setTokenConfigPath(tokenConfigPath);
+        public EngineBuilder mockData(String workerConfigPath, String workerContextConfigPath, String taskConfigPath, String ruleConfigPath) {
+            config.setWorkerConfigPath(workerConfigPath);
+            config.setWorkerContextConfigPath(workerContextConfigPath);
             config.setTaskConfigPath(taskConfigPath);
             config.setRuleConfigPath(ruleConfigPath);
             return this;
@@ -255,8 +255,8 @@ public class MassApplicationBuilder {
             return this;
         }
 
-        public EngineBuilder deviceManager(DeviceManager deviceManager) {
-            config.setDeviceManager(deviceManager);
+        public EngineBuilder workerManager(WorkerManager workerManager) {
+            config.setWorkerManager(workerManager);
             return this;
         }
 

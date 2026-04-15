@@ -2,17 +2,18 @@
 
 This document keeps only the stable baseline facts that coding agents need first:
 
-- real module responsibilities
+- platform definition and architectural guardrails
 - mainline versus historical directory boundaries
+- current API and lifecycle contract
 - what to trust when docs and runtime disagree
-- current unresolved convergence gaps
 
-It intentionally does not duplicate run commands, verification logs, or daily investigation notes.
+It intentionally does not duplicate run commands, verification logs, or detailed endpoint examples.
 
 For those, use:
 
 - [../AGENTS.md](../AGENTS.md)
 - [./VERIFIED_RUNBOOK.md](./VERIFIED_RUNBOOK.md)
+- [./INTERNAL_API_REFERENCE.md](./INTERNAL_API_REFERENCE.md)
 
 ## 1. Truth Order
 
@@ -31,119 +32,135 @@ Working rule:
 - update active docs after confirming runtime truth
 - keep historical explanation in archive paths instead of letting it leak back into mainline docs
 
-## 2. Mainline Reality
+## 2. Platform Definition
 
-- The real Spring Boot entry is `xa-mass-mock`
-- `xa-mass-runtime` is a composition layer, not the primary Boot entry
-- The current mainline reactor is defined by the root `pom.xml`: `xa-mass-api`, `xa-mass-core`, `xa-mass-engine`, `xa-mass-gateway`, `xa-mass-runtime`, `xa-mass-mock`
-- `xa-mass-base` and `xa-mass-starter` still exist as top-level directories but are not current root-reactor modules
-- The project is library/SDK-first; backend pages and HTTP endpoints are validation surfaces
-- Mainline acceptance is end-to-end integration-test-driven through `xa-mass-mock`; unit tests are support coverage, not the primary acceptance gate
-- API-first task flow is the current mainline truth
-- `com.xa.mass.engine` is the active engine path
-- `xa-mass-engine/archive/v2/` is historical experiment code, not the current mainline
-- EventBus mainline has converged onto `com.xa.mass.base.channel.eventbus.core` and `com.xa.mass.base.channel.eventbus.event`
-- API integration coverage includes terminate-from-running and delete-after-terminal after real assignment but before downstream callbacks
-- API integration coverage also proves that paused tasks can still close to terminal when real callbacks arrive after pause
-- `TaskManager.createTask()` is now fail-fast in the mainline runtime: it accepts only `userId`, `project`, `taskName`, `textContent`, `targetList`, `countryCode`, and `batchSize`; it rejects empty `targetList`, unsupported `project` codes, and unknown JSON fields such as retired `targetJsonList`, `targetType`, and `extraParams`
-- `PUT /status/api/tasks/{taskId}` is now metadata-only: it accepts `userId`, `project`, `taskName`, `textContent`, `countryCode`, and `batchSize`; it rejects `targetList` / other unknown fields and only allows edits while a task is still `NEW` or `BLOCKED`
-- Engine regression coverage now locks two important closure rules:
-  - paused tasks must close to terminal once all persisted message callbacks are final
-  - ready tasks without a current device match must stay in the assignment loop through retry
-- Engine regression coverage also locks two race/immutability rules:
-  - assignment must not dispatch if a task leaves `READY` during device matching
-  - late callbacks must not mutate a task that was already closed to `TERMINAL`
-- `Task` now carries `terminalReason`, so `TERMINAL` can be interpreted as manual cancel, all-success completion, all-failed completion, or mixed-result completion
-- `TaskManager.validateTaskState(...)` now gives an explicit state-audit result for `Task + TaskMsg` consistency and whether a non-final task still needs terminal closure
-- `Device.attributes` and `Token.attributes` now exist as read-only auxiliary rule labels; they are for matching and diagnostics only, not lifecycle truth
+- The project is a general distributed task scheduling platform.
+- Its core abstraction is: assign a batch of work items to a batch of online workers, track each execution result, and converge task-level completion state.
+- The platform is scenario-agnostic. It does not care what the business payload means; it cares about who is online, who can accept work, dispatch, result write-back, and task convergence.
+- The long-term stable kernel is `Task / TaskMsg / assignment / result / audit / terminal policy`.
+- The current mainline validates that kernel through a long-connection worker scenario using `Worker + WorkerContext + WebSocket gateway + mock clients`.
+- Workers can be phone apps, crawlers, LLM agents, IM bots, or other long-lived executors.
+- `Worker`, `WorkerContext`, WebSocket sessions, status pages, and demo REST APIs are current reference adapters and verification shells. They are not the permanent product boundary.
+- The project direction is library/SDK-first. Demo runtime surfaces exist to validate the kernel, not to redefine it.
 
-## 3. Module Facts
+## 3. Platform Model
 
-### `xa-mass-mock`
+| Abstract concept | Concrete type | Notes |
+| --- | --- | --- |
+| Worker | `Worker` | Current worker adapter. Examples include phone, crawler, LLM agent, and IM bot. |
+| Worker context | `WorkerContext` | Optional capability or credential context. Stateless workers do not require one. |
+| Work item | `TaskMsg` | Mainline message unit with `input: Map<String,Object>` and `output: Map<String,Object>`. |
+| Shared config | `Task.sharedConfig` | Platform-level dispatch config merged into each downstream dispatch payload. |
 
-- real Spring Boot shell
-- wires `api + runtime + gateway + engine`
-- best place for end-to-end lifecycle verification
-- integration tests are now grouped by domain under `src/test/java/com/xa/mass/mock/e2e/{lifecycle,results,assignment,audit}`
+Interpretation rules:
 
-### `xa-mass-runtime`
+- the abstract concepts are the stable architecture boundary
+- the concrete types are the current reference scenario and default adapters
+- future worker forms should extend these abstract slots instead of shrinking the platform back into `worker/workerContext` vocabulary
 
-- lifecycle and composition layer
-- builds `MassApplication`, `MassEngine`, and `MassGateway`
-- not the main `spring-boot:run` target
+## 4. Architectural Guardrails
 
-### `xa-mass-api`
+- Stable platform boundaries are `Task`, `TaskMsg`, assignment, result, audit, and terminal policy.
+- `Worker` is the current worker adapter name, not the permanent universal name for all worker/resource forms. Read it as the current concrete `Worker` implementation.
+- `WorkerContext` is optional worker context. Not every future worker model must require one.
+- `Task.sharedConfig` and `TaskMsg.input/output` are the main payload boundaries. Do not regress back to single-purpose top-level fields such as `textContent`.
+- Routing truth such as country/account affinity should come from explicit rules and worker-context signals, not from `workerGroupId`.
+- `Worker.attributes` and `WorkerContext.attributes` are auxiliary rule labels for matching and diagnostics only. They are not lifecycle, lock, or online truth.
+- UI pages, mock runtime, and demo APIs must not redefine the platform kernel.
 
-- REST controllers, status pages, and DTO layer
-- loaded through `xa-mass-mock`
-- not the independently verified application entry
+## 5. Mainline Reality
 
-### `xa-mass-engine`
+- The real Spring Boot entry is `xa-mass-mock`.
+- `xa-mass-runtime` is a composition layer, not the primary Boot entry.
+- The current mainline reactor is defined by the root `pom.xml`: `xa-mass-api`, `xa-mass-core`, `xa-mass-engine`, `xa-mass-gateway`, `xa-mass-runtime`, `xa-mass-mock`.
+- `xa-mass-base` and `xa-mass-starter` still exist as top-level directories but are not current root-reactor modules.
+- `com.xa.mass.engine` is the active engine path.
+- `xa-mass-engine/archive/v2/` is historical experiment code, not the current mainline.
+- EventBus mainline has converged onto `com.xa.mass.base.channel.eventbus.core` and `com.xa.mass.base.channel.eventbus.event`.
+- Mainline acceptance is end-to-end integration-test-driven through `xa-mass-mock`; unit tests are support coverage, not the primary acceptance gate.
 
-- active business-logic module
-- state-machine correctness, assignment, and rule management live here
-- matching policy extension seam is `TaskDeviceMatchingStrategy`
-- do not route new work into archived `v2`
+## 6. Current Task And Payload Contract
 
-### `xa-mass-core`
+### Task create contract
 
-- shared models, enums, messaging abstractions, JSON DSL, and event bus code
-- Maven module is `xa-mass-core`
-- Java package names intentionally remain under `com.xa.mass.base`
-- the active EventBus code now lives under `channel.eventbus.core` and `channel.eventbus.event`
-- do not infer active module ownership from package names alone
+`TaskManager.createTask()` and `POST /status/api/tasks` currently support only:
 
-### `xa-mass-gateway`
+- `userId`
+- `project`
+- `taskName`
+- `sharedConfig`
+- `targetList`
+- `countryCode`
+- `batchSize`
+- `defaultMsgMaxRetryCount`
+- `openEnded`
 
-- WebSocket server, routing, and session context
-- validated as part of the full mock runtime path
+Behavior locked in the mainline:
 
-## 4. Convergence Conclusions
+- `targetList` must contain at least one materialized target
+- unsupported `project` codes are rejected
+- unknown JSON fields such as retired `targetJsonList`, `targetType`, and `extraParams` are rejected
+- `batchSize` is preserved on the task and enforced as a per-device hard cap for each dispatch round
+- `defaultMsgMaxRetryCount` defaults to `3`
+- `openEnded=true` keeps the task open for runtime item append until sealed
 
-### Startup
+### Task update contract
 
-- start from `xa-mass-mock`
-- do not infer runtime entry from `xa-mass-runtime`
+`PUT /status/api/tasks/{taskId}` is metadata-only and currently supports only:
 
-### Task Lifecycle
+- `userId`
+- `project`
+- `taskName`
+- `sharedConfig`
+- `countryCode`
+- `batchSize`
 
-- trust `TaskManager` and `TaskStatus` over older docs
-- if a document disagrees with `TaskStatus.canTransitionTo(...)`, the document is stale
-- task completion is driven by persisted `TaskMsg` finality, not only by the current task status label
-- read terminal tasks as `TaskStatus + terminalReason`, not `TaskStatus` alone
-- use `TaskManager.resumeTaskDetailed(...)` when the caller needs to distinguish `PAUSED -> READY` from `PAUSED -> TERMINAL`
-- use `TaskManager.resolveTaskStateFromMessages(...)` when the caller needs an explicit message-aggregation verdict instead of relying on `updateTaskProgress()` side effects
-- use `TaskManager.validateTaskState(...)` when the caller needs to audit whether counters, terminal reason, and persisted message aggregates are still self-consistent
-- terminal closure freezes later non-final callbacks; duplicate results are only accepted as idempotent no-ops once the message is already final
+Update constraints:
 
-### Matching
+- `targetList` and other unknown fields are rejected
+- only `NEW` and `BLOCKED` tasks may be edited
 
-- task-to-device selection should extend through engine strategy interfaces
-- `RuleBasedTaskDeviceMatchingStrategy` is the current default implementation
-- `DeviceMatchContext` now exposes nested `deviceAttributes` and `tokenAttributes` maps to rules
-- a no-match assignment attempt should be treated as retryable backlog, not as a terminal dequeue
-- a successful device match is still not enough to dispatch if the task status changed away from `READY` during the matching window
+### Task and TaskMsg payload model
 
-### Event Bus
+- `Task.sharedConfig` is the task-level generic payload/config map
+- `TaskMsg.input` is the per-item input payload
+- `TaskMsg.output` is the per-item output payload
+- `TaskMsg.getTarget()` is only a backwards-compat accessor over `input["target"]`
+- `POST /status/api/tasks/{taskId}/items` appends new `TaskMsg.input` records to an active open-ended task
+- `PUT /status/api/tasks/{taskId}/seal` closes the append window for an open-ended task
 
-- the current EventBus namespace is converged, but the active implementation remains Guava-backed
-- inspect real call sites before making architecture claims
+## 7. Current Lifecycle Baseline
 
-### Historical Code
+Verified mainline lifecycle:
 
-- `xa-mass-engine/archive/v2/` is kept only as archive material
-- it is outside the active source tree by design to reduce agent confusion
-- the former `channel.eventbus.legacy` compatibility package has been removed from the active source tree
+```text
+NEW --approve--> READY --pause--> PAUSED --resume--> READY
+ |                  |                                     |
+ +--reject-------> BLOCKED --approve--------------------> +
+ |                                                        |
+ +--cancel/terminate-----------------------------------> TERMINAL
 
-## 5. Known Gaps
+READY --assign--> RUNNING --all task messages final--> TERMINAL
+```
 
-- `SimpleTaskScheduler.scheduleTasks()` is still a stub
-- app shutdown path is now Spring-managed and idempotent at the runtime layer, but single-interrupt behavior is not yet re-verified end-to-end
-- EventBus naming is converged on the current core/event namespace, but Redis remains unimplemented
-- Redis and Database storage are still fail-fast placeholders
-- API integration coverage is improved but still not exhaustive for remaining cancel follow-up variants
+Important current rules:
 
-## 6. Recommended Entry Files
+- task completion is driven by persisted `TaskMsg` finality, not only by the visible task status
+- paused tasks must still close to `TERMINAL` once all persisted callbacks are final
+- no-match assignment attempts are retryable backlog, not terminal dequeue
+- assignment must not dispatch if a task leaves `READY` during the matching window
+- late callbacks must not mutate a task already closed to `TERMINAL`
+- `Task.terminalReason` is required to interpret why a task ended
+
+## 8. WorkerContext And Matching Baseline
+
+- `WorkerContextStatus` is domain-neutral: `IDLE`, `RESERVED`, `OCCUPIED`, `BLOCKED`, `INVALID`
+- `WorkerMatchContext` exposes `workerAttributes` and `workerContextAttributes` to rule evaluation
+- `workerContextAttributes['country'] == taskRoutingCountryCode` is the verified attribute-routing pattern
+- `Worker.status` is the single online truth
+- worker lock truth lives in `WorkerStorage` and `WorkerManager.isLocked(...)`
+
+## 9. Recommended Entry Files
 
 For startup/runtime:
 
@@ -157,20 +174,20 @@ For lifecycle/API:
 - `xa-mass-engine/src/main/java/com/xa/mass/engine/TaskManager.java`
 - `xa-mass-core/src/main/java/com/xa/mass/base/enums/task/TaskStatus.java`
 
-For assignment/result handling:
+For payload and matching:
 
-- `xa-mass-engine/src/main/java/com/xa/mass/engine/listener/TaskDeviceAssignListener.java`
-- `xa-mass-engine/src/main/java/com/xa/mass/engine/listener/SimpleTaskMsgAssignListener.java`
-- `xa-mass-gateway/src/main/java/com/xa/mass/gateway/dispatcher/ServerMessageDispatcher.java`
+- `xa-mass-core/src/main/java/com/xa/mass/base/model/Task.java`
+- `xa-mass-core/src/main/java/com/xa/mass/base/model/TaskMsg.java`
+- `xa-mass-engine/src/main/java/com/xa/mass/engine/model/WorkerMatchContext.java`
 
-## 7. Guardrails For Future Agents
+## 10. Guardrails For Future Agents
 
 Do not assume, without re-verification:
 
-- `xa-mass-runtime` is the only runnable entry
+- `xa-mass-runtime` is the main runnable app
 - `v2` is the active engine generation
-- Redis-backed EventBus behavior exists in the active runtime path
 - older API docs still match implementation exactly
+- current `Worker / WorkerContext / WebSocket` names are the platform's only future resource model
 - a documented capability is live just because it is written down
 
 Better default behavior:

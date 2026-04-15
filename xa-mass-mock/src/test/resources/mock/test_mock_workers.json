@@ -1,0 +1,20 @@
+[
+  {
+    "MODEL": "Worker",
+    "COUNT": 2,
+    "FIELDS": {
+      "workerId": {
+        "$JOIN": [
+          "it-device-",
+          "&.index"
+        ]
+      },
+      "workerGroupId": "us",
+      "agentVersion": "1.0.0",
+      "status": "ONLINE",
+      "supportedProjects": [
+        "demoApp"
+      ]
+    }
+  }
+]

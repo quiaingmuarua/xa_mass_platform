@@ -175,7 +175,7 @@ public class TemplateValueResolver {
     static class StringRuleResolver {
 
         public static Object resolve(String str, DslContext context) {
-            // 处理作用域变量 &Device.index
+            // 处理作用域变量 &Worker.index
             if (str.startsWith("&.")) {
                 return ScopeVariableResolver.resolve(str, context);
             }
@@ -196,14 +196,14 @@ public class TemplateValueResolver {
     }
 
     /**
-     * 作用域变量解析器 - 处理 &Device.index 格式的变量
+     * 作用域变量解析器 - 处理 &Worker.index 格式的变量
      */
     static class ScopeVariableResolver {
 
         public static Object resolve(String str, DslContext context) {
             String scopeName = context.getScopeName();
             if (scopeName != null) {
-                String realKey = "&" + scopeName + str.substring(1); // 变成 &Device.index
+                String realKey = "&" + scopeName + str.substring(1); // 变成 &Worker.index
                 Object v = context.getVariable(realKey);
                 if (v != null) return v;
             }

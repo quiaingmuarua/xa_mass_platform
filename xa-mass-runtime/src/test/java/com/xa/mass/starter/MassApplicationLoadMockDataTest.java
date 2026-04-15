@@ -1,24 +1,21 @@
 package com.xa.mass.starter;
 
-import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import com.xa.mass.base.enums.task.TokenStatus;
-import com.xa.mass.base.model.Device;
+import com.xa.mass.base.enums.worker.WorkerContextStatus;
+import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.Token;
-import com.xa.mass.engine.DeviceManager;
+import com.xa.mass.base.model.WorkerContext;
+import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.model.TaskCreateRequestDto;
-import com.xa.mass.engine.storage.InMemoryDeviceStorage;
+import com.xa.mass.engine.storage.InMemoryWorkerStorage;
 import com.xa.mass.starter.config.EngineConfig;
 import com.xa.mass.starter.config.GatewayConfig;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -30,37 +27,37 @@ import static org.mockito.Mockito.when;
 class MassApplicationLoadMockDataTest {
 
     @Test
-    void loadMockDataUsesExplicitTokensWithoutDerivingRoutingSignalsFromDeviceGroup() {
+    void loadMockDataUsesExplicitWorkerContextsWithoutDerivingRoutingSignalsFromWorkerGroup() {
         TestHarness harness = createHarness();
         MassApplication application = new MassApplication(
-                harness.engine(), 8088, "/ws", new GatewayConfig(), explicitTokenConfig()
+                harness.engine(), 8088, "/ws", new GatewayConfig(), explicitWorkerContextConfig()
         );
 
-        application.loadMockData(harness.engine(), explicitTokenConfig());
+        application.loadMockData(harness.engine(), explicitWorkerContextConfig());
 
-        List<Device> devices = harness.deviceManager().getAllDevices();
-        List<Token> tokens = harness.deviceManager().getAllTokens();
+        List<Worker> workers = harness.workerManager().getAllWorkers();
+        List<WorkerContext> workerContexts = harness.workerManager().getAllWorkerContexts();
 
-        assertEquals(2, devices.size());
-        assertEquals(2, tokens.size());
+        assertEquals(2, workers.size());
+        assertEquals(2, workerContexts.size());
         assertEquals(1, harness.createdTasks().get());
-        assertTrue(devices.stream().allMatch(device -> device.supportsProject("demoApp")));
-        assertTrue(devices.stream().allMatch(device -> device.supportsProject("testApp")));
+        assertTrue(workers.stream().allMatch(worker -> worker.supportsProject("demoApp")));
+        assertTrue(workers.stream().allMatch(worker -> worker.supportsProject("testApp")));
 
-        Token usToken = harness.deviceManager().getToken("device-us-1");
-        Token gbToken = harness.deviceManager().getToken("device-gb-1");
-        assertNotNull(usToken);
-        assertNotNull(gbToken);
-        assertEquals("route-us", usToken.getChannel());
-        assertEquals("route-gb", gbToken.getChannel());
-        assertEquals("us", usToken.getAttributes().get("country"));
-        assertEquals("gb", gbToken.getAttributes().get("country"));
-        assertEquals(TokenStatus.IDLE, usToken.getStatus());
-        assertEquals(TokenStatus.IDLE, gbToken.getStatus());
+        WorkerContext usWc = harness.workerManager().getWorkerContext("worker-us-1");
+        WorkerContext gbWc = harness.workerManager().getWorkerContext("worker-gb-1");
+        assertNotNull(usWc);
+        assertNotNull(gbWc);
+        assertEquals("route-us", usWc.getChannel());
+        assertEquals("route-gb", gbWc.getChannel());
+        assertEquals("us", usWc.getAttributes().get("country"));
+        assertEquals("gb", gbWc.getAttributes().get("country"));
+        assertEquals(WorkerContextStatus.IDLE, usWc.getStatus());
+        assertEquals(WorkerContextStatus.IDLE, gbWc.getStatus());
     }
 
     @Test
-    void loadMockDataSeedsMinimalTokensWhenExplicitTokenDataIsMissing() {
+    void loadMockDataSeedsMinimalWorkerContextsWhenExplicitDataIsMissing() {
         TestHarness harness = createHarness();
         MassApplication application = new MassApplication(
                 harness.engine(), 8088, "/ws", new GatewayConfig(), fallbackSeedConfig()
@@ -68,78 +65,78 @@ class MassApplicationLoadMockDataTest {
 
         application.loadMockData(harness.engine(), fallbackSeedConfig());
 
-        List<Device> devices = harness.deviceManager().getAllDevices();
-        List<Token> tokens = harness.deviceManager().getAllTokens();
+        List<Worker> workers = harness.workerManager().getAllWorkers();
+        List<WorkerContext> workerContexts = harness.workerManager().getAllWorkerContexts();
 
-        assertEquals(2, devices.size());
-        assertEquals(devices.size(), tokens.size());
+        assertEquals(2, workers.size());
+        assertEquals(workers.size(), workerContexts.size());
         assertEquals(0, harness.createdTasks().get());
-        assertTrue(tokens.stream().allMatch(token -> token.getStatus() == TokenStatus.IDLE));
-        assertTrue(tokens.stream().allMatch(token -> token.getDeviceId() != null && token.getTokenId() != null));
-        assertTrue(tokens.stream().allMatch(token -> token.getChannel() == null));
-        assertTrue(tokens.stream().allMatch(token -> token.getAttributes().isEmpty()));
-        assertNull(harness.deviceManager().getToken("missing-device"));
+        assertTrue(workerContexts.stream().allMatch(wc -> wc.getStatus() == WorkerContextStatus.IDLE));
+        assertTrue(workerContexts.stream().allMatch(wc -> wc.getWorkerId() != null && wc.getWorkerContextId() != null));
+        assertTrue(workerContexts.stream().allMatch(wc -> wc.getChannel() == null));
+        assertTrue(workerContexts.stream().allMatch(wc -> wc.getAttributes().isEmpty()));
+        assertNull(harness.workerManager().getWorkerContext("missing-worker"));
     }
 
     private TestHarness createHarness() {
-        DeviceManager deviceManager = new DeviceManager(new InMemoryDeviceStorage());
+        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
         MassEngine engine = mock(MassEngine.class);
         AtomicInteger createdTasks = new AtomicInteger();
 
-        when(engine.getDeviceManager()).thenReturn(deviceManager);
+        when(engine.getWorkerManager()).thenReturn(workerManager);
         doAnswer(invocation -> {
-            Device device = invocation.getArgument(0);
-            deviceManager.addDevice(device);
+            Worker worker = invocation.getArgument(0);
+            workerManager.addWorker(worker);
             return null;
-        }).when(engine).addDevice(any(Device.class));
+        }).when(engine).addWorker(any(Worker.class));
         doAnswer(invocation -> {
-            Token token = invocation.getArgument(0);
-            deviceManager.addToken(token.getDeviceId(), token);
+            WorkerContext wc = invocation.getArgument(0);
+            workerManager.addWorkerContext(wc.getWorkerId(), wc);
             return null;
-        }).when(engine).addToken(any(Token.class));
+        }).when(engine).addWorkerContext(any(WorkerContext.class));
         doAnswer(invocation -> {
             createdTasks.incrementAndGet();
             return new Task();
         }).when(engine).createTask(any(TaskCreateRequestDto.class));
 
-        return new TestHarness(engine, deviceManager, createdTasks);
+        return new TestHarness(engine, workerManager, createdTasks);
     }
 
-    private EngineConfig explicitTokenConfig() {
+    private EngineConfig explicitWorkerContextConfig() {
         EngineConfig engineConfig = new EngineConfig();
         engineConfig.setMockConfigRoot(JsonParser.parseString("""
                 {
-                  "devices": [
+                  "workers": [
                     {
-                      "MODEL": "Device",
+                      "MODEL": "Worker",
                       "COUNT": 1,
                       "FIELDS": {
-                        "deviceId": "device-us-1",
-                        "deviceGroupId": "POOL-US",
+                        "workerId": "worker-us-1",
+                        "workerGroupId": "POOL-US",
                         "agentVersion": "1.0.0",
                         "status": "ONLINE",
                         "supportedProjects": ["demoApp", "testApp"]
                       }
                     },
                     {
-                      "MODEL": "Device",
+                      "MODEL": "Worker",
                       "COUNT": 1,
                       "FIELDS": {
-                        "deviceId": "device-gb-1",
-                        "deviceGroupId": "POOL-GB",
+                        "workerId": "worker-gb-1",
+                        "workerGroupId": "POOL-GB",
                         "agentVersion": "1.0.1",
                         "status": "ONLINE",
                         "supportedProjects": ["demoApp", "testApp"]
                       }
                     }
                   ],
-                  "tokens": [
+                  "workerContexts": [
                     {
-                      "MODEL": "Token",
+                      "MODEL": "WorkerContext",
                       "COUNT": 1,
                       "FIELDS": {
-                        "tokenId": "token-us-1",
-                        "deviceId": "device-us-1",
+                        "workerContextId": "wc-us-1",
+                        "workerId": "worker-us-1",
                         "channel": "route-us",
                         "status": "IDLE",
                         "attributes": {
@@ -149,11 +146,11 @@ class MassApplicationLoadMockDataTest {
                       }
                     },
                     {
-                      "MODEL": "Token",
+                      "MODEL": "WorkerContext",
                       "COUNT": 1,
                       "FIELDS": {
-                        "tokenId": "token-gb-1",
-                        "deviceId": "device-gb-1",
+                        "workerContextId": "wc-gb-1",
+                        "workerId": "worker-gb-1",
                         "channel": "route-gb",
                         "status": "IDLE",
                         "attributes": {
@@ -187,24 +184,24 @@ class MassApplicationLoadMockDataTest {
         EngineConfig engineConfig = new EngineConfig();
         engineConfig.setMockConfigRoot(JsonParser.parseString("""
                 {
-                  "devices": [
+                  "workers": [
                     {
-                      "MODEL": "Device",
+                      "MODEL": "Worker",
                       "COUNT": 1,
                       "FIELDS": {
-                        "deviceId": "device-us-1",
-                        "deviceGroupId": "POOL-US",
+                        "workerId": "worker-us-1",
+                        "workerGroupId": "POOL-US",
                         "agentVersion": "1.0.0",
                         "status": "ONLINE",
                         "supportedProjects": ["demoApp", "testApp"]
                       }
                     },
                     {
-                      "MODEL": "Device",
+                      "MODEL": "Worker",
                       "COUNT": 1,
                       "FIELDS": {
-                        "deviceId": "device-gb-1",
-                        "deviceGroupId": "POOL-GB",
+                        "workerId": "worker-gb-1",
+                        "workerGroupId": "POOL-GB",
                         "agentVersion": "1.0.1",
                         "status": "ONLINE",
                         "supportedProjects": ["demoApp", "testApp"]
@@ -216,6 +213,6 @@ class MassApplicationLoadMockDataTest {
         return engineConfig;
     }
 
-    private record TestHarness(MassEngine engine, DeviceManager deviceManager, AtomicInteger createdTasks) {
+    private record TestHarness(MassEngine engine, WorkerManager workerManager, AtomicInteger createdTasks) {
     }
 }

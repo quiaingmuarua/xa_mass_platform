@@ -23,9 +23,9 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = {
                 "mock.client.auto-start=true",
-                "mock.client.devices-config=mock/test_mock_devices.json",
-                "mass.mock.data.devices=mock/test_mock_devices.json",
-                "mass.mock.data.tokens=mock/test_mock_tokens.json",
+                "mock.client.workers-config=mock/test_mock_workers.json",
+                "mass.mock.data.workers=mock/test_mock_workers.json",
+                "mass.mock.data.worker-contexts=mock/test_mock_worker_contexts.json",
                 "mass.mock.data.tasks=mock/test_mock_tasks.json",
                 "mass.mock.data.rules=mock/test_mock_rules.json",
                 "mock.client.retry-attempts=1",
@@ -60,8 +60,8 @@ class TaskApiMultiTaskAssignmentIntegrationTest extends AbstractMockE2eTest {
         assertTerminalSingleDeviceTask(first);
         assertTerminalSingleDeviceTask(second);
 
-        String firstDeviceId = String.valueOf(first.messages().get(0).get("deviceId"));
-        String secondDeviceId = String.valueOf(second.messages().get(0).get("deviceId"));
+        String firstDeviceId = String.valueOf(first.messages().get(0).get("workerId"));
+        String secondDeviceId = String.valueOf(second.messages().get(0).get("workerId"));
         assertNotNull(firstDeviceId);
         assertNotNull(secondDeviceId);
         assertEquals(2, Set.of(firstDeviceId, secondDeviceId).size());
@@ -75,8 +75,8 @@ class TaskApiMultiTaskAssignmentIntegrationTest extends AbstractMockE2eTest {
         assertEquals(1, snapshot.messages().size());
         Map<String, Object> message = snapshot.messages().get(0);
         assertEquals("SUCCESS", message.get("status"));
-        assertNotNull(message.get("deviceId"));
-        assertNotNull(message.get("tokenId"));
+        assertNotNull(message.get("workerId"));
+        assertNotNull(message.get("workerContextId"));
         assertNotNull(message.get("batchId"));
     }
 

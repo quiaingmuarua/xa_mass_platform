@@ -10,14 +10,14 @@ public enum DslKeyword {
     /**
      * 指定要生成的模型类名。
      * 可以是注册的类型别名或全类名。
-     * 示例: "Device", "com.xa.mass.base.model.Task"
+     * 示例: "Worker", "com.xa.mass.base.model.Task"
      */
     MODEL,
 
     /**
      * 字段配置映射，定义对象各字段的生成规则。
      * 支持内置函数、嵌套对象、集合等复杂配置。
-     * 示例: {"deviceId": "device-{i}", "status": {"$CHOICE": ["ONLINE", "OFFLINE"]}}
+     * 示例: {"workerId": "worker-{i}", "status": {"$CHOICE": ["ONLINE", "OFFLINE"]}}
      */
     FIELDS,
 

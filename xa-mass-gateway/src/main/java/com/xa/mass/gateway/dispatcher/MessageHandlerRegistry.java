@@ -90,7 +90,7 @@ public class MessageHandlerRegistry {
     }
 
     private List<MassMessage> handlePing(MassMessage msg) {
-        log.info("Received Ping from {}/{}", msg.getContext().getDeviceId(), msg.getContext().getConnRole());
+        log.info("Received Ping from {}/{}", msg.getContext().getWorkerId(), msg.getContext().getConnRole());
         MassMessage pong = new MassMessage();
         pong.setMsgId(msg.getMsgId());
         pong.setResponse(true);
@@ -103,7 +103,7 @@ public class MessageHandlerRegistry {
     }
 
     private List<MassMessage> handlePong(MassMessage msg) {
-        log.info("Received PONG from {}/{}", msg.getContext().getDeviceId(), msg.getContext().getConnRole());
+        log.info("Received PONG from {}/{}", msg.getContext().getWorkerId(), msg.getContext().getConnRole());
         return Collections.emptyList();
     }
 

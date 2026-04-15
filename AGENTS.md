@@ -1,9 +1,10 @@
-# XA Mass Platform Agent Handoff
+﻿# XA Mass Platform Agent Handoff
 
 This file is the fastest entry point for coding agents such as Claude Code, Codex, and similar tools.
 
 ## 0. TL;DR
 
+- XA Mass Platform is a distributed task scheduling platform for large-scale work distribution, execution, result write-back, and lifecycle audit
 - Real boot entry: `xa-mass-mock`
 - Do not start from `xa-mass-runtime`
 - Trust code and verified runtime over repository docs
@@ -14,7 +15,7 @@ This file is the fastest entry point for coding agents such as Claude Code, Code
 - Current verified API task path: `NEW -> READY -> RUNNING -> TERMINAL`
 - Pause/resume regression is also verified: `NEW -> READY -> PAUSED -> READY`
 - `TaskManager.createTask()` now accepts only the supported create contract fields: `userId`, `project`, `taskName`, `sharedConfig`, `targetList`, `countryCode`, `batchSize`, `defaultMsgMaxRetryCount`, and `openEnded`
-- current mainline preserves request `batchSize` and now enforces it as a per-device hard cap for each dispatch round
+- current mainline preserves request `batchSize` and now enforces it as a per-worker hard cap for each dispatch round
 - task-create requests fail fast when `targetList` is empty/null, when `project` is unsupported, or when clients send unknown JSON fields such as retired `targetJsonList` / `targetType` / `extraParams`
 - `PUT /status/api/tasks/{taskId}` is now intentionally narrower than create: it accepts only metadata fields (`userId`, `project`, `taskName`, `sharedConfig`, `countryCode`, `batchSize`), rejects `targetList` and other unknown fields, and only allows edits while the task is still `NEW` or `BLOCKED`
 - `Task` aggregate counters are now named by real meaning:
@@ -26,7 +27,7 @@ This file is the fastest entry point for coding agents such as Claude Code, Code
 - `TaskTerminalPolicy` is now the engine seam for future task-level stop rules such as max runtime, success-rate thresholds, or retry-budget exhaustion
 - `TaskManager.validateTaskState()` now provides an explicit SDK-facing audit for `Task + TaskMsg` consistency and pending terminal resolution
 - Engine regression now verifies that paused tasks close to `TERMINAL` once all `TaskMsg` callbacks finish
-- Engine regression now verifies that `READY` tasks without a device match are retried instead of falling out of the assignment loop
+- Engine regression now verifies that `READY` tasks without a worker match are retried instead of falling out of the assignment loop
 - Engine regression now verifies that assignment does not dispatch if a task leaves `READY` during the matching window
 - Engine regression now verifies that late callbacks after manual terminal closure are ignored instead of mutating task/message progress
 - Current focused mock/runtime regression is green
@@ -37,26 +38,51 @@ This file is the fastest entry point for coding agents such as Claude Code, Code
 - `TaskApiCallbackReplayIntegrationTest` now covers duplicate `TASK/step` callback replay through the real gateway path
 - `TaskApiPauseCompletionIntegrationTest` now covers `approve -> assign -> running -> pause -> callback -> terminal` through the real gateway path
 - `TaskApiStateValidationIntegrationTest` now covers `GET /status/api/tasks/{taskId}` state-audit output for valid terminal tasks, forced `needsResolution=true` tasks, and invalid terminal-reason variants
-- `TaskApiTokenAttributeRoutingIntegrationTest` now covers token-attribute-based routing through the real assignment and gateway path
-- `TaskApiSingleDeviceReuseIntegrationTest` now covers normal `TERMINAL` completion releasing a single device/token for the next task
-- `TaskApiTerminateReuseIntegrationTest` now covers manual `RUNNING -> TERMINAL` release so the same single device/token can be assigned again
-- `TaskApiMinimumDeviceGateIntegrationTest` now covers `runTaskMinDeviceCnt` as a real start gate: one device is not enough to leave `READY` when the task requires two
-- `TaskApiMultiRoundDispatchIntegrationTest` now covers a single device completing a multi-target task across multiple dispatch rounds when `batchSize=1`
+- `TaskApiWorkerContextAttributeRoutingIntegrationTest` now covers worker-context-attribute-based routing through the real assignment and gateway path
+- `TaskApiSingleWorkerReuseIntegrationTest` now covers normal `TERMINAL` completion releasing a single worker/worker-context for the next task
+- `TaskApiTerminateReuseIntegrationTest` now covers manual `RUNNING -> TERMINAL` release so the same single worker/worker-context can be assigned again
+- `TaskApiMinimumWorkerGateIntegrationTest` now covers `runTaskMinDeviceCnt` as a real start gate: one worker is not enough to leave `READY` when the task requires two
+- `TaskApiMultiRoundDispatchIntegrationTest` now covers a single worker completing a multi-target task across multiple dispatch rounds when `batchSize=1`
 - `MassWebSocketClientImpl` ignores `response=true` `TASK/step` frames to avoid mock echo loops
 - `mock.client.task-result-status` can force mock result frames to `SUCCESS` or `FAILED`
-- `Device.attributes` and `Token.attributes` are now read-only auxiliary rule labels for matching and diagnostics only
-- `Device.status` is the single online truth, and runtime device lock truth now lives only in `DeviceStorage` / `DeviceManager.isLocked(...)`
-- `DeviceStatus`, `Token`, and dispatch-time token binding are now stricter: null statuses are rejected, token release only frees real dispatch ownership, and assignment moves tokens into `OCCUPIED`
-- `TokenStatus` vocabulary is domain-neutral: `IDLE` (free), `RESERVED` (pre-allocated), `OCCUPIED` (executing), `BLOCKED` (manually locked), `INVALID` (unusable); `Token.startOccupying()` replaces the former `startSending()`
+- `Worker.attributes` and `WorkerContext.attributes` are now read-only auxiliary rule labels for matching and diagnostics only
+- `Worker.status` is the single online truth, and runtime worker lock truth now lives only in `WorkerStorage` / `WorkerManager.isLocked(...)`
+- `WorkerStatus`, `WorkerContext`, and dispatch-time worker-context binding are now stricter: null statuses are rejected, worker-context release only frees real dispatch ownership, and assignment moves worker contexts into `OCCUPIED`
+- `WorkerContextStatus` vocabulary is domain-neutral: `IDLE` (free), `RESERVED` (pre-allocated), `OCCUPIED` (executing), `BLOCKED` (manually locked), `INVALID` (unusable); dispatch-time worker-context ownership now uses the `RESERVED -> OCCUPIED` progression.
 - `Task.sharedConfig: Map<String,Object>` replaces the former `textContent: String`; all keys are spread into WebSocket dispatch params alongside `TaskMsg.input` keys, so existing workers receive `textContent` transparently when it is stored in `sharedConfig`
 - `TaskMsg.input: Map<String,Object>` replaces the former `target: String`; `getTarget()` is a backwards-compat accessor reading `input["target"]`
 - `TaskCreateRequestDto.defaultMsgMaxRetryCount` (default `3`) configures per-task retry budget; callers may set to `0` to disable retries
 - `Task.openEnded=true` suppresses automatic terminal closure; append work items at runtime via `POST /status/api/tasks/{taskId}/items`, then close the append window with `PUT /status/api/tasks/{taskId}/seal`
 - Treat `engine/v2` as historical archive material, not mainline
 
+## 0.1 Platform Definition
+
+The project definition is broader than the current mock/demo shell:
+
+- The top-level product is a general distributed task scheduling platform. Its core abstraction is: assign a batch of work items to a batch of online workers, track each execution result, then converge task-level completion state.
+- The platform is intentionally scenario-agnostic. It does not define the business payload itself; it defines who is online, who can accept work, how work is dispatched, how results are written back, and how task state converges.
+- The stable kernel is `Task / TaskMsg / assignment / result / audit / terminal policy`.
+- The current mainline validates that kernel through a long-connection worker scenario built with `Worker + WorkerContext + WebSocket gateway + mock clients`.
+- Workers can be many things: phone apps, crawlers, LLM agents, IM bots, or other long-lived executors.
+- `Worker`, `WorkerContext`, WebSocket sessions, HTML pages, and demo REST APIs are current reference adapters and verification shells. They are not the permanent product boundary.
+- Project direction remains library/SDK-first. Runtime shells exist to prove the kernel, not to redefine it.
+
+## 0.2 Architectural Guardrails
+
+Keep these constraints fixed unless the kernel itself is intentionally redesigned:
+
+- Stable platform boundaries are `Task`, `TaskMsg`, assignment, result, audit, and terminal policy. UI/demo layers must not become the source of truth for those concepts.
+- `Worker` is the current worker adapter name. It should be read as the current concrete worker implementation, not as the universal final name for all worker/resource forms.
+- `WorkerContext` is optional worker context such as credentials, account scope, or capability context. Not every worker model must require one.
+- `Task.sharedConfig` and `TaskMsg.input/output` are the main payload boundaries. Do not regress the platform back into single-purpose fields such as top-level `textContent`.
+- Routing truth such as country/account affinity should come from explicit rules and worker-context signals. Do not re-couple routing truth to `workerGroupId`.
+- `attributes` on `Worker` and `WorkerContext` are auxiliary rule labels only. They are not a second source of lifecycle, lock, or online truth.
+- New features should extend the abstract platform model first. Do not let the current `worker/worker-context` reference scenario collapse the platform definition back into a single vertical system.
+
 ## 1. What This Repo Is
 
 - Maven multi-module Java project
+- Distributed task scheduling platform with a library/SDK-first direction
 - Current root reactor modules come from `pom.xml`, not from every top-level directory
 - Modules:
   - `xa-mass-core`
@@ -129,7 +155,7 @@ Verified endpoints:
 - `http://localhost:8088/status/tasks`
 - `http://localhost:8088/doc.html`
 - `http://localhost:8088/actuator/health`
-- `ws://localhost:18088`
+- `ws://localhost:18088/ws`
 
 Default `dev` startup facts:
 
@@ -137,7 +163,7 @@ Default `dev` startup facts:
 - `server.port` is the Spring Boot HTTP port, currently `8088`
 - `mass.websocket.port` is the gateway WebSocket port, currently `18088`
 - `WebSocketClientStarter` listens on `ApplicationReadyEvent`
-- Mock device clients now connect automatically to the gateway in the default verified startup path
+- Mock worker clients now connect automatically to the gateway in the default verified startup path
 
 ## 5. Current Reality, Not Marketing
 
@@ -231,7 +257,7 @@ Role:
 
 - Main business logic
 - task lifecycle
-- device assignment
+- worker assignment
 - rule management
 
 Current status:
@@ -243,13 +269,13 @@ Current status:
 Open first:
 
 - `xa-mass-engine/src/main/java/com/xa/mass/engine/TaskManager.java`
-- `xa-mass-engine/src/main/java/com/xa/mass/engine/DeviceManager.java`
+- `xa-mass-engine/src/main/java/com/xa/mass/engine/WorkerManager.java`
 - `xa-mass-engine/src/main/java/com/xa/mass/engine/rules/RuleManager.java`
 
 Notes:
 
 - Mainline engine tests are the active regression surface.
-- `TaskDeviceMatchingStrategy` is now the engine extension seam for pluggable task-to-device matching policies.
+- `TaskWorkerMatchingStrategy` is now the engine extension seam for pluggable task-to-worker matching policies.
 - `xa-mass-engine/archive/v2/**` is historical experiment code, not active regression.
 
 ### `xa-mass-core`
@@ -333,29 +359,29 @@ Important current implementation facts:
 - `TaskApiController` uses `TaskManager` lifecycle methods for all state changes.
 - `deleteTask()` enforces the state guard. `READY`, `RUNNING`, and `PAUSED` tasks cannot be deleted.
 - `TaskManager.createTask()` requires at least one materialized `targetList` entry, accepts only the supported create fields, and persists request `batchSize` onto the task.
-- current mainline uses `batchSize` as the per-device hard cap for each dispatch round, and remaining `INIT` messages are refilled in later rounds as device/token slots are released.
+- current mainline uses `batchSize` as the per-worker hard cap for each dispatch round, and remaining `INIT` messages are refilled in later rounds as worker/worker-context slots are released.
 - `TaskApiController.updateTask(...)` is metadata-only: it rejects unsupported fields such as `targetList` and refuses to mutate `READY`, `RUNNING`, `PAUSED`, or `TERMINAL` tasks.
 - `TaskManager.createTask()` also rejects unsupported `project` codes instead of silently falling back to `demoApp`.
 - `TaskManager` persists one `TaskMsg` per target with the correct `taskId`, distinct `msgId`, and actual target value.
 - `MassEngine` starts `TaskAssignWorker` regardless of `mockMode`, submits existing `READY` tasks on startup, and subscribes to READY events from approve/resume.
-- `TaskDeviceAssignListener` re-checks that the task is still `READY` after matching; if the task left `READY` during the matching window, dispatch is skipped.
-- `TaskDeviceAssignListener` now treats `runTaskMinDeviceCnt` as a real start gate: if matched devices are below the minimum, the task stays `READY` and provisional locks are released.
-- `TaskDeviceAssignListener` sets `scheduleDeviceCnt` only for the devices actually used for the current dispatch round and transitions matched tasks from `READY` to `RUNNING`.
-- `TaskDeviceAssignListener` now delegates matching to `TaskDeviceMatchingStrategy`; `RuleBasedTaskDeviceMatchingStrategy` is the current default.
-- `TaskDeviceAssignListener` also unlocks any surplus matched devices that were only needed to satisfy the start gate, so zero-message reservations do not leak.
+- `TaskWorkerAssignListener` re-checks that the task is still `READY` after matching; if the task left `READY` during the matching window, dispatch is skipped.
+- `TaskWorkerAssignListener` now treats `runTaskMinDeviceCnt` as a real start gate: if matched workers are below the minimum, the task stays `READY` and provisional locks are released.
+- `TaskWorkerAssignListener` sets `scheduleDeviceCnt` only for the workers actually used for the current dispatch round and transitions matched tasks from `READY` to `RUNNING`.
+- `TaskWorkerAssignListener` now delegates matching to `TaskWorkerMatchingStrategy`; `RuleBasedTaskWorkerMatchingStrategy` is the current default.
+- `TaskWorkerAssignListener` also unlocks any surplus matched workers that were only needed to satisfy the start gate, so zero-message reservations do not leak.
 - `Task.taskRoutingCountryCode` is the active routing-country input; older `taskCountry` naming is retired from the mainline.
-- `DeviceManager.getDevicesByGroupId(...)` / `DeviceStorage.getDevicesByGroupId(...)` are grouping helpers only; do not treat them as country-routing APIs.
-- `RuleBasedTaskDeviceMatchingStrategy` no longer prefilters candidates by device `deviceGroupId`; routing-country satisfaction should come from token/account-facing signals and explicit rules.
-- `DeviceMatchContext` now exposes nested `deviceAttributes` and `tokenAttributes` maps to QLExpress rules.
-- `SimpleTaskMsgAssignListener` reuses persisted `TaskMsg` records, fills `deviceId` / `tokenId` / `batchId`, moves them to `SENT`, and now round-robins messages across devices up to `batchSize` per device per round.
-- `SimpleTaskMsgAssignListener` now also binds dispatchable tokens to the current task and advances them into `OCCUPIED`; non-dispatchable token states are skipped instead of being silently reused.
-- `TaskResourceReleaseListener` now releases a device/token slot as soon as that device has no more in-flight `TaskMsg` rows for the current task, then re-submits the still-`RUNNING` task when pending `INIT` messages remain.
+- `WorkerManager.getWorkersByGroupId(...)` / `WorkerStorage.getWorkersByGroupId(...)` are grouping helpers only; do not treat them as country-routing APIs.
+- `RuleBasedTaskWorkerMatchingStrategy` no longer prefilters candidates by worker `workerGroupId`; routing-country satisfaction should come from worker-context-facing signals and explicit rules.
+- `WorkerMatchContext` now exposes nested `workerAttributes` and `workerContextAttributes` maps to QLExpress rules.
+- `SimpleTaskMsgAssignListener` reuses persisted `TaskMsg` records, fills `workerId` / `workerContextId` / `batchId`, moves them to `SENT`, and now round-robins messages across workers up to `batchSize` per worker per round.
+- `SimpleTaskMsgAssignListener` now also binds dispatchable worker contexts to the current task and advances them into `OCCUPIED`; non-dispatchable worker-context states are skipped instead of being silently reused.
+- `TaskResourceReleaseListener` now releases a worker/worker-context slot as soon as that worker has no more in-flight `TaskMsg` rows for the current task, then re-submits the still-`RUNNING` task when pending `INIT` messages remain.
 - `GatewayTaskMsgPublisher` pushes task messages downstream as `TASK/step`.
 - `GatewayTaskResultHandler` handles inbound `TASK/step` results and writes them back through `TaskManager.handleTaskMessageResult(...)`.
 - `TaskManager.handleTaskMessageResult(...)` updates persisted `TaskMsg` state by `taskId + msgId`, recalculates progress, closes any non-final task to `TERMINAL` once all messages finish, and ignores late non-final callbacks after manual terminal closure.
 - `TaskManager.updateTaskProgress(...)` now closes any non-final task to `TERMINAL` once all persisted `TaskMsg` rows are final, including tasks that were paused while callbacks were still arriving.
 - `TaskManager` now delegates terminal-closure decisions through `TaskTerminalPolicy`; the current default remains `AllMessagesFinalTaskTerminalPolicy`.
-- `TaskManager` now emits terminal-task notifications, and `TaskResourceReleaseListener` releases token/device occupancy on terminal closure so runtime locks do not leak across tasks.
+- `TaskManager` now emits terminal-task notifications, and `TaskResourceReleaseListener` releases worker-context/worker occupancy on terminal closure so runtime locks do not leak across tasks.
 - `TaskManager.resumeTask(...)` now short-circuits paused tasks that already fully completed underneath them and closes them to `TERMINAL` instead of re-queueing them as `READY`.
 - `TaskManager.resumeTaskDetailed(...)` is now the explicit SDK-facing resume API:
   - `RESUMED_TO_READY`
@@ -382,21 +408,21 @@ Important current implementation facts:
 - `TaskManager.handleTaskMessageResult(...)` treats duplicate final callbacks as idempotent: the first final result is kept, progress is recalculated, and scheduler callbacks are not triggered twice.
 - `TaskManager.cancelTask(...)` now drains in-flight `TaskMsg` rows during manual terminal closure: `INIT/BINDING -> FAILED`, `SENT/RUNNING -> EXPIRED`.
 - `GET /status/api/tasks/{taskId}` now includes `stateValidation` so API/demo surfaces can expose the same state-audit result used by SDK callers.
-- `MassApplication.loadMockData(...)` normalizes mock `supportedProjects`, lowercases `deviceGroupId`, loads explicit mock `tokens` when present, and only auto-seeds minimal `IDLE` fallback tokens for devices that still have none.
-- `DeviceManager` now treats `Device.status` as the single online truth for matching/runtime availability; gateway online/offline events update the device model directly instead of maintaining a separate online-state registry.
-- `DeviceManager` / `DeviceStorage` now also own the single device-lock truth; active mainline code should read lock state through `DeviceManager.isLocked(...)` instead of from `Device`.
-- `Device` and `Token` now expose `attributes: Map<String, String>` with defensive-copy and read-only semantics; callers may replace the whole map on update, but there is no per-entry mutation API.
-- `AssignmentRecordService` now snapshots `deviceLocked` from live runtime lock state instead of from stale `Device` fields.
+- `MassApplication.loadMockData(...)` normalizes mock `supportedProjects`, lowercases `workerGroupId`, loads explicit mock `workerContexts` when present, and only auto-seeds minimal `IDLE` fallback worker contexts for workers that still have none.
+- `WorkerManager` now treats `Worker.status` as the single online truth for matching/runtime availability; gateway online/offline events update the worker model directly instead of maintaining a separate online-state registry.
+- `WorkerManager` / `WorkerStorage` now also own the single worker-lock truth; active mainline code should read lock state through `WorkerManager.isLocked(...)` instead of from `Worker`.
+- `Worker` and `WorkerContext` now expose `attributes: Map<String, String>` with defensive-copy and read-only semantics; callers may replace the whole map on update, but there is no per-entry mutation API.
+- `AssignmentRecordService` now snapshots `workerLocked` from live runtime lock state instead of from stale `Worker` fields.
 - `WebSocketClientStarter` now starts on `ApplicationReadyEvent` behind `mock.client.auto-start=true`, so default `dev` startup includes mock client result write-back.
 - `WebSocketClientStarter` passes `mock.client.task-result-status` into each mock client so result write-back can be forced to `SUCCESS` or `FAILED`.
 - `MassWebSocketClientImpl` now ignores `response=true` task frames to prevent mock client echo loops and duplicate result writes.
-- Verified on `2026-04-13`: API-created tasks move `NEW -> READY -> RUNNING -> TERMINAL`, and persisted `TaskMsg` rows move `INIT -> SENT -> SUCCESS` with `deviceId` / `tokenId` / `batchId`.
+- Verified on `2026-04-13`: API-created tasks move `NEW -> READY -> RUNNING -> TERMINAL`, and persisted `TaskMsg` rows move `INIT -> SENT -> SUCCESS` with `workerId` / `workerContextId` / `batchId`.
 - Verified on `2026-04-13`: with `mock.client.task-result-status=FAILED`, API-created tasks still move `NEW -> READY -> RUNNING -> TERMINAL`, `taskSuccessNumber` stays `0`, and persisted `TaskMsg` rows move `INIT -> SENT -> FAILED`.
 - Verified on `2026-04-13`: after `RUNNING -> PAUSED`, real `TASK/step` callbacks can still finish the paused task to `TERMINAL` without requiring a manual resume.
-- Verified on `2026-04-14`: a single device/token can be reused after both normal terminal completion and manual running-task termination.
-- Verified on `2026-04-14`: a task with `runTaskMinDeviceCnt=2` stays `READY` with one matching device and only advances once a second matching device becomes available.
+- Verified on `2026-04-14`: a single worker/worker-context can be reused after both normal terminal completion and manual running-task termination.
+- Verified on `2026-04-14`: a task with `runTaskMinDeviceCnt=2` stays `READY` with one matching worker and only advances once a second matching worker becomes available.
 - `TaskAssignWorker` uses `CopyOnWriteArrayList` for listeners.
-- `TaskAssignWorker` now delayed-retries `READY` tasks that receive no device match, so they do not become orphaned after a single dequeue attempt.
+- `TaskAssignWorker` now delayed-retries `READY` tasks that receive no worker match, so they do not become orphaned after a single dequeue attempt.
 - `TaskAssignWorker` now also accepts explicit `RUNNING` task re-dispatch requests for multi-round refill.
 - `TaskAssignWorker` now also delayed-retries those `RUNNING` re-dispatch attempts when no slot is available yet, so refill is not dependent on a single callback timing window.
 - `TaskAssignWorker.stop()` calls `shutdownNow()` plus `awaitTermination(10s)`.
@@ -404,20 +430,26 @@ Important current implementation facts:
 - `DispatcherInboundHandler` sends structured JSON error frames instead of silently closing connections.
 - `MassApplication.stop()` is now idempotent, and the mock Spring Boot entry no longer adds an extra manual shutdown hook around the runtime.
 - `WebSocketServerImpl.stop()` now calls `shutdownGracefully().syncUninterruptibly()` on both EventLoopGroups so a single Ctrl-C is sufficient for clean exit.
-- `TaskManager.advanceTaskMsgForCompletion()` always advances through `INIT鈫払INDING鈫扴ENT鈫扲UNNING` before the final `markAsSuccess`/`markAsFailed` call, ensuring `RUNNING` appears in the state history for both success and failure paths.
+- `TaskManager.advanceTaskMsgForCompletion()` always advances through `INIT -> BINDING -> SENT -> RUNNING` before the final `markAsSuccess`/`markAsFailed` call, ensuring `RUNNING` appears in the state history for both success and failure paths.
 
 ## 6.1 Platform Model
 
-The scheduling backbone is scenario-agnostic. The following vocabulary maps the abstract concepts to familiar terms:
+The scheduling backbone is scenario-agnostic. The following mapping describes the current mainline carrier types, not a permanent product boundary:
 
 | Abstract concept | Concrete type | Notes |
 |---|---|---|
-| Worker | `Device` | Any long-connection client: phone, crawler, LLM agent, IM bot |
-| Worker context | `Token` | Optional capability / credential context. Stateless workers do not need one. |
+| Worker | `Worker` | Any long-connection client: phone, crawler, LLM agent, IM bot |
+| Worker context | `WorkerContext` | Optional capability / credential context. Stateless workers do not need one. |
 | Work item | `TaskMsg` | `input: Map<String,Object>` + `output: Map<String,Object>`. `target` is stored as `input["target"]` for backwards compat. |
 | Shared config | `Task.sharedConfig` | `Map<String,Object>` injected by the platform into every dispatch params via `putAll`. Workers interpret the keys. |
 
-**Token occupancy states** (domain-neutral since Phase A rename):
+Interpretation rules:
+
+- The abstract concepts are the stable architecture boundary.
+- The concrete types are the current reference scenario and default adapters.
+- Future worker forms should preferentially reuse these abstract slots instead of redefining the platform around `worker/worker-context` vocabulary.
+
+**Worker-context occupancy states** (domain-neutral since Phase A rename):
 
 | Status | Meaning |
 |---|---|
@@ -431,7 +463,7 @@ The scheduling backbone is scenario-agnostic. The following vocabulary maps the 
 
 - The terminal policy never auto-closes an open-ended task, even when all current messages are final.
 - Append new work items at runtime: `POST /status/api/tasks/{taskId}/items` with body `{"inputs": [{...}, ...]}`.
-- Close the append window: `PUT /status/api/tasks/{taskId}/seal` — the task terminates normally once all messages finish.
+- Close the append window with `PUT /status/api/tasks/{taskId}/seal`; once the append window is closed, the task terminates normally after all remaining messages finish.
 - Typical use case: crawler or agent pipeline where the full work list is not known at task creation time.
 
 ## 7. Known Good Test Surface
@@ -439,7 +471,7 @@ The scheduling backbone is scenario-agnostic. The following vocabulary maps the 
 Focused verified regression command on `2026-04-14`:
 
 ```bash
-mvn --% -pl xa-mass-mock -am -Dtest=DeviceAttributesTest,TokenAttributesTest,DeviceMatchContextTest,QLExpressRuleEvaluatorTest,RuleBasedTaskDeviceMatchingStrategyTest,TaskApiDelayedDeviceAvailabilityIntegrationTest,TaskApiTokenAttributeRoutingIntegrationTest,MassApplicationLoadMockDataTest -Dsurefire.failIfNoSpecifiedTests=false test
+mvn -pl xa-mass-mock -am -Dtest=WorkerAttributesTest,WorkerContextAttributesTest,WorkerMatchContextTest,QLExpressRuleEvaluatorTest,RuleBasedTaskWorkerMatchingStrategyTest,TaskApiDelayedWorkerAvailabilityIntegrationTest,TaskApiWorkerContextAttributeRoutingIntegrationTest,MassApplicationLoadMockDataTest -Dsurefire.failIfNoSpecifiedTests=false test
 ```
 
 Verified focused classes:
@@ -453,13 +485,13 @@ Verified focused classes:
 - `xa-mass-mock/src/test/java/com/xa/mass/mock/e2e/results/TaskApiFailureResultIntegrationTest.java`
 - `xa-mass-mock/src/test/java/com/xa/mass/mock/e2e/results/TaskApiCallbackReplayIntegrationTest.java`
 - `xa-mass-mock/src/test/java/com/xa/mass/mock/e2e/results/TaskApiMixedResultsIntegrationTest.java`
-- `xa-mass-mock/src/test/java/com/xa/mass/mock/e2e/assignment/TaskApiDelayedDeviceAvailabilityIntegrationTest.java`
-- `xa-mass-mock/src/test/java/com/xa/mass/mock/e2e/assignment/TaskApiTokenAttributeRoutingIntegrationTest.java`
+- `xa-mass-mock/src/test/java/com/xa/mass/mock/e2e/assignment/TaskApiDelayedWorkerAvailabilityIntegrationTest.java`
+- `xa-mass-mock/src/test/java/com/xa/mass/mock/e2e/assignment/TaskApiWorkerContextAttributeRoutingIntegrationTest.java`
 - `xa-mass-mock/src/test/java/com/xa/mass/mock/e2e/assignment/TaskApiMultiTaskAssignmentIntegrationTest.java`
 - `xa-mass-mock/src/test/java/com/xa/mass/mock/e2e/assignment/TaskApiMultiRoundDispatchIntegrationTest.java`
-- `xa-mass-mock/src/test/java/com/xa/mass/mock/e2e/assignment/TaskApiSingleDeviceReuseIntegrationTest.java`
+- `xa-mass-mock/src/test/java/com/xa/mass/mock/e2e/assignment/TaskApiSingleWorkerReuseIntegrationTest.java`
 - `xa-mass-mock/src/test/java/com/xa/mass/mock/e2e/assignment/TaskApiTerminateReuseIntegrationTest.java`
-- `xa-mass-mock/src/test/java/com/xa/mass/mock/e2e/assignment/TaskApiMinimumDeviceGateIntegrationTest.java`
+- `xa-mass-mock/src/test/java/com/xa/mass/mock/e2e/assignment/TaskApiMinimumWorkerGateIntegrationTest.java`
 - `xa-mass-mock/src/test/java/com/xa/mass/mock/e2e/audit/TaskApiStateValidationIntegrationTest.java`
 - `xa-mass-mock/src/test/java/com/xa/mass/mock/e2e/support/AbstractMockE2eTest.java` is the shared E2E base for HTTP helpers, task creation, snapshot polling, and dynamic WebSocket port wiring
 - `xa-mass-mock/src/test/java/com/xa/mass/mock/client/MassWebSocketClientImplTest.java`
@@ -469,11 +501,11 @@ Verified focused classes:
 - `xa-mass-engine/src/main/java/com/xa/mass/engine/policy/AllMessagesFinalTaskTerminalPolicy.java`
 - `xa-mass-engine/src/test/java/com/xa/mass/engine/listener/TaskAssignWorkerTest.java`
 - `xa-mass-engine/src/test/java/com/xa/mass/engine/listener/SimpleTaskMsgAssignListenerTest.java`
-- `xa-mass-engine/src/test/java/com/xa/mass/engine/model/DeviceMatchContextTest.java`
+- `xa-mass-engine/src/test/java/com/xa/mass/engine/model/WorkerMatchContextTest.java`
 - `xa-mass-engine/src/test/java/com/xa/mass/engine/rules/QLExpressRuleEvaluatorTest.java`
-- `xa-mass-engine/src/test/java/com/xa/mass/engine/strategy/RuleBasedTaskDeviceMatchingStrategyTest.java`
-- `xa-mass-core/src/test/java/com/xa/mass/base/model/DeviceAttributesTest.java`
-- `xa-mass-core/src/test/java/com/xa/mass/base/model/TokenAttributesTest.java`
+- `xa-mass-engine/src/test/java/com/xa/mass/engine/strategy/RuleBasedTaskWorkerMatchingStrategyTest.java`
+- `xa-mass-core/src/test/java/com/xa/mass/base/model/WorkerAttributesTest.java`
+- `xa-mass-core/src/test/java/com/xa/mass/base/model/WorkerContextAttributesTest.java`
 - `xa-mass-runtime/src/test/java/com/xa/mass/starter/GatewayTaskResultHandlerTest.java`
 - Existing engine/api/runtime unit and slice tests remain support coverage, but the primary acceptance gate is the grouped `xa-mass-mock` end-to-end domain suites
 
@@ -488,17 +520,17 @@ What the new focused coverage proves:
 - a paused task can still complete to `TERMINAL` through real callback write-back after assignment, without requiring a manual resume
 - `GET /status/api/tasks/{taskId}` exposes `stateValidation` over the real HTTP/runtime path, including `needsResolution=true` when a task is manually reopened after all persisted message callbacks are already final
 - invalid terminal metadata is also covered end-to-end: missing `terminalReason` and message/result mismatch both surface through `stateValidation.violations`
-- token-attribute-based routing is covered end-to-end through a custom QLExpress rule using `tokenAttributes['country'] == taskRoutingCountryCode`
-- assignment diagnostics now snapshot runtime device lock state instead of stale `Device` model fields
-- normal terminal completion releases token/device occupancy so a later task can reuse the same single-device slot
-- manual `RUNNING -> TERMINAL` closure also releases token/device occupancy so the next task can reuse the same single-device slot
-- `runTaskMinDeviceCnt` is enforced as a start threshold: a task remains `READY` until enough devices are simultaneously matchable
+- worker-context-attribute-based routing is covered end-to-end through a custom QLExpress rule using `workerContextAttributes['country'] == taskRoutingCountryCode`
+- assignment diagnostics now snapshot runtime worker lock state instead of stale `Worker` model fields
+- normal terminal completion releases worker-context/worker occupancy so a later task can reuse the same single-worker slot
+- manual `RUNNING -> TERMINAL` closure also releases worker-context/worker occupancy so the next task can reuse the same single-worker slot
+- `runTaskMinDeviceCnt` is enforced as a start threshold: a task remains `READY` until enough workers are simultaneously matchable
 - terminal closure is now explicitly policy-driven in code, even though the default policy still means "all task messages are final"
 - mock clients no longer respond to server response frames
 - mock result status can be forced to `FAILED` without changing business logic code paths
 - duplicate `TASK/step` result callbacks are covered at engine/runtime regression level and keep the first final state
 - paused tasks are closed to `TERMINAL` when their final callbacks arrive instead of getting stranded in `PAUSED` or resurrected back into `READY`
-- `READY` tasks without an immediate device match stay in the assignment loop through delayed worker retry instead of silently orphaning
+- `READY` tasks without an immediate worker match stay in the assignment loop through delayed worker retry instead of silently orphaning
 
 ## 8. Historical Test Debt
 

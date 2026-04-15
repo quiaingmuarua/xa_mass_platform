@@ -4,7 +4,7 @@
 
 - mainline business logic
 - task lifecycle and progress tracking
-- device assignment and rule management
+- worker assignment and rule management
 - core library surface for state-machine correctness and pluggable matching behavior
 
 ## Current Status
@@ -17,7 +17,7 @@
 ## Start Here
 
 - `src/main/java/com/xa/mass/engine/TaskManager.java`
-- `src/main/java/com/xa/mass/engine/DeviceManager.java`
+- `src/main/java/com/xa/mass/engine/WorkerManager.java`
 - `src/main/java/com/xa/mass/engine/rules/RuleManager.java`
 
 ## Boundaries

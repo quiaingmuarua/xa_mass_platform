@@ -1,8 +1,14 @@
 # Task Execution Flow
 
-Last updated: 2026-04-14
+Last updated: 2026-04-15
 
 This document describes only the verified mainline runtime path. It does not describe historical `v2` design ideas.
+
+Current reference scenario:
+
+- the platform kernel is generic, but the verified mainline currently runs through a long-connection worker path
+- current adapters are `Worker` as worker, `WorkerContext` as optional worker context, and WebSocket as the dispatch/result transport
+- this is a reference scenario, not the permanent platform boundary
 
 ## 1. Lifecycle
 
@@ -28,44 +34,75 @@ State constraints from `TaskStatus.canTransitionTo(...)`:
 | `cancelTask` | any non-`TERMINAL` | `TERMINAL` |
 | `deleteTask` | `NEW`, `TERMINAL` | physical delete |
 
-## 2. READY to RUNNING
+Important closure rules:
+
+- task completion is driven by persisted `TaskMsg` finality, not only by the current task label
+- a paused task still closes to `TERMINAL` when all persisted callbacks become final
+- late non-final callbacks after manual terminal closure are ignored
+
+## 2. READY To RUNNING
 
 Verified runtime path:
 
 1. A task enters `READY` after `approveTask()` or `resumeTask()`.
 2. `TaskManager` notifies READY listeners.
 3. `MassEngine` hands the task to `TaskAssignWorker`.
-4. `TaskDeviceAssignListener` performs device assignment.
-5. On success:
-   - `scheduleDeviceCnt` is written
+4. `TaskWorkerAssignListener` performs worker matching through `TaskWorkerMatchingStrategy`.
+5. If no worker matches at that moment, `TaskAssignWorker` delayed-retries the task instead of orphaning it.
+6. If matching succeeds and the task is still `READY`:
+   - `scheduleDeviceCnt` is written for the current round
    - the task transitions from `READY` to `RUNNING`
-6. `SimpleTaskMsgAssignListener` reuses the persisted `TaskMsg` rows created at task creation time.
-7. Each `TaskMsg` is populated with:
-   - `deviceId`
-   - `tokenId`
+7. `SimpleTaskMsgAssignListener` reuses the persisted `TaskMsg` rows created at task creation time.
+8. Each selected `TaskMsg` is populated with:
+   - `workerId`
+   - `workerContextId`
    - `batchId`
    - status `SENT`
-8. `GatewayTaskMsgPublisher` pushes the task downstream as `TASK/step`.
+9. `GatewayTaskMsgPublisher` pushes the task downstream as `TASK/step`.
 
 Key implementation facts:
 
 - `TaskAssignWorker` no longer depends on `mockMode=true`
 - `MassEngine` resubmits existing `READY` tasks on startup
 - both `approveTask()` and `resumeTask()` produce READY events
-- `DeviceMatchContext` now exposes nested `deviceAttributes` and `tokenAttributes` maps to QLExpress rules
-- `Device.attributes` and `Token.attributes` are auxiliary rule labels only; lifecycle and scheduling truth still come from strong fields and persisted state
+- `batchSize` is enforced as a per-worker cap for each dispatch round
+- `runTaskMinDeviceCnt` remains the current field name, but acts as the minimum matched-worker start gate
+- surplus matched workers that were only needed for start-gate satisfaction are unlocked immediately
 
-## 3. Mock Preconditions for Assignment
+## 3. Worker Context And Matching
 
-`MassApplication.loadMockData(...)` now fills the minimum device prerequisites needed for assignment:
+Mainline matching facts:
 
-- normalizes `supportedProjects` into `Project` enums
-- lowercases `deviceGroupId`
-- auto-creates a `LOGIN_READY` token when the device does not already have one
+- `Task.taskRoutingCountryCode` is the active routing-country input
+- `workerGroupId` is not the routing-country source of truth
+- routing-country satisfaction should come from explicit rules and worker-context-facing signals
+- `WorkerMatchContext` exposes `workerAttributes` and `workerContextAttributes` for rule evaluation
+- `Worker.attributes` and `WorkerContext.attributes` are auxiliary rule labels only
 
-This fixed the previous false symptom where approved tasks stayed in `READY` because the mock devices did not satisfy project/token matching requirements.
+Current worker-context lifecycle vocabulary:
 
-## 4. RUNNING to Result Write-Back
+| Status | Meaning |
+| --- | --- |
+| `IDLE` | Free and allocatable |
+| `RESERVED` | Pre-allocated |
+| `OCCUPIED` | Executing work |
+| `BLOCKED` | Manually locked out |
+| `INVALID` | Unusable |
+
+Dispatch-time rule:
+
+- assignment only uses dispatchable worker contexts and advances bound runtime ownership into `OCCUPIED`
+
+## 4. Open-Ended Tasks
+
+Verified open-ended behavior:
+
+- `openEnded=true` disables automatic terminal closure while the append window remains open
+- `POST /status/api/tasks/{taskId}/items` appends new work items as `TaskMsg.input`
+- `PUT /status/api/tasks/{taskId}/seal` closes the append window
+- once sealed, normal terminal convergence resumes when all persisted `TaskMsg` rows are final
+
+## 5. RUNNING To Result Write-Back
 
 Verified runtime path:
 
@@ -74,52 +111,38 @@ Verified runtime path:
 3. The mock client sends back a `TASK/step` result frame.
 4. `GatewayTaskResultHandler` calls `TaskManager.handleTaskMessageResult(...)`.
 5. `TaskManager` updates the persisted `TaskMsg` using `taskId + msgId`.
-6. Each `TaskMsg` reaches:
-   - `SUCCESS`, or
-   - `FAILED`
-7. When all `TaskMsg` rows are final and the task is still `RUNNING`:
-   - the task is automatically closed to `TERMINAL`
+6. Each `TaskMsg` reaches `SUCCESS` or `FAILED`.
+7. When all persisted `TaskMsg` rows are final, the task automatically converges to `TERMINAL`.
 
-Important guard:
+Important guards:
 
-- `MassWebSocketClientImpl` ignores `response=true` `TASK/step` frames so the mock side does not generate echo loops or duplicate result writes
+- `MassWebSocketClientImpl` ignores `response=true` `TASK/step` frames so the mock side does not generate echo loops
+- duplicate final callbacks are accepted only as idempotent replays
+- `TaskManager.advanceTaskMsgForCompletion()` records `INIT -> BINDING -> SENT -> RUNNING` before final completion
 
-## 5. Verified API Happy Path on 2026-04-13
+## 6. Resource Release
 
-The current verified API-first happy path is:
+Verified runtime release behavior:
 
-1. `POST /status/api/tasks`
-2. task starts at `NEW`
-3. `POST /status/api/tasks/{taskId}/audit?approved=true`
-4. task is assigned and reaches `RUNNING`
-5. task messages are dispatched and written back as `SUCCESS`
-6. task automatically converges to `TERMINAL`
+- when a worker has no more in-flight `TaskMsg` rows for the current task, `TaskResourceReleaseListener` releases that worker/worker-context slot
+- if pending `INIT` rows remain, the still-`RUNNING` task is re-submitted for another dispatch round
+- normal terminal completion releases runtime occupancy
+- manual `RUNNING -> TERMINAL` closure also releases runtime occupancy
 
-Observed verified outcomes:
-
-- `taskTargetNumber` is the initial persisted target count created from `targetList`
-- `taskEligibleNumber` is the count currently included in progress/statistical aggregation
-- `scheduleDeviceCnt` is updated from real assignment results
-- `taskSuccessNumber` is updated from real message completion results
-- `taskNonSuccessNumber` tracks eligible message rows that are still not `SUCCESS`
-- persisted `TaskMsg` rows contain `deviceId`, `tokenId`, and `batchId`
-
-## 6. Key Code Locations
+## 7. Key Code Locations
 
 - `xa-mass-engine/src/main/java/com/xa/mass/engine/TaskManager.java`
-- `xa-mass-engine/src/main/java/com/xa/mass/engine/listener/TaskDeviceAssignListener.java`
+- `xa-mass-engine/src/main/java/com/xa/mass/engine/listener/TaskWorkerAssignListener.java`
 - `xa-mass-engine/src/main/java/com/xa/mass/engine/listener/SimpleTaskMsgAssignListener.java`
+- `xa-mass-engine/src/main/java/com/xa/mass/engine/model/WorkerMatchContext.java`
 - `xa-mass-runtime/src/main/java/com/xa/mass/starter/MassEngine.java`
-- `xa-mass-runtime/src/main/java/com/xa/mass/starter/MassApplication.java`
 - `xa-mass-runtime/src/main/java/com/xa/mass/starter/GatewayTaskMsgPublisher.java`
 - `xa-mass-runtime/src/main/java/com/xa/mass/starter/GatewayTaskResultHandler.java`
 - `xa-mass-mock/src/main/java/com/xa/mass/mock/starter/WebSocketClientStarter.java`
 - `xa-mass-mock/src/main/java/com/xa/mass/mock/client/MassWebSocketClientImpl.java`
 
-## 7. Still Not Converged
+## 8. Still Not Converged
 
 - `SimpleTaskScheduler.scheduleTasks()` is still a stub
-- EventBus usage is still split and not fully migrated
-- shutdown still needs more work
-- broader API end-to-end coverage is still missing beyond the happy path
-
+- Redis and Database storage remain fail-fast placeholders
+- broader API end-to-end coverage is still incomplete for some cancel follow-up variants

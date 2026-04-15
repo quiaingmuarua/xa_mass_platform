@@ -2,7 +2,7 @@
 
 ## 閲嶆瀯鑳屾櫙
 
-鍘熷鐨?`TaskManager`銆乣DeviceManager` 鍜?`RuleManager` 鐩存帴浣跨敤 `ConcurrentHashMap` 杩涜鍐呭瓨瀛樺偍锛屽瓨鍦ㄤ互涓嬮棶棰橈細
+鍘熷鐨?`TaskManager`銆乣WorkerManager` 鍜?`RuleManager` 鐩存帴浣跨敤 `ConcurrentHashMap` 杩涜鍐呭瓨瀛樺偍锛屽瓨鍦ㄤ互涓嬮棶棰橈細
 
 1. **绱ц€﹀悎**锛歁anager 绫讳笌鍏蜂綋瀛樺偍瀹炵幇绱у瘑鑰﹀悎
 2. **鎵╁睍鎬у樊**锛氭棤娉曡交鏉惧垏鎹㈠埌鍏朵粬瀛樺偍鍚庣锛堝 Redis銆佹暟鎹簱锛?
@@ -41,41 +41,41 @@ public interface TaskStorage {
 }
 ```
 
-#### DeviceStorage 鎺ュ彛
+#### WorkerStorage 鎺ュ彛
 
-鍒涘缓浜?`DeviceStorage` 鎺ュ彛锛屽畾涔変簡璁惧鍜孴oken鐨勫瓨鍌ㄦ娊璞★細
+鍒涘缓浜?`WorkerStorage` 鎺ュ彛锛屽畾涔変簡璁惧鍜孴oken鐨勫瓨鍌ㄦ娊璞★細
 
 ```java
-public interface DeviceStorage {
-    void addDevice(Device device);
+public interface WorkerStorage {
+    void addWorker(Worker worker);
 
-    Optional<Device> getDevice(String deviceId);
+    Optional<Worker> getWorker(String workerId);
 
-    boolean updateDevice(Device device);
+    boolean updateWorker(Worker worker);
 
-    boolean deleteDevice(String deviceId);
+    boolean deleteWorker(String workerId);
 
-List<Device> getDevicesByGroupId(String deviceGroupId);
+List<Worker> getWorkersByGroupId(String workerGroupId);
 
-    List<Device> getAllDevices();
+    List<Worker> getAllWorkers();
 
-    void addToken(String deviceId, Token token);
+    void addWorkerContext(String workerId, WorkerContext workerContext);
 
-    Optional<Token> getToken(String deviceId);
+    Optional<WorkerContext> getWorkerContext(String workerId);
 
-    boolean updateToken(String deviceId, Token token);
+    boolean updateWorkerContext(String workerId, WorkerContext workerContext);
 
-    boolean deleteToken(String deviceId);
+    boolean deleteWorkerContext(String workerId);
 
-    List<Token> getAllTokens();
+    List<WorkerContext> getAllWorkerContexts();
 
-    boolean tryLockDevice(String deviceId);
+    boolean tryLockWorker(String workerId);
 
-    void unlockDevice(String deviceId);
+    void unlockWorker(String workerId);
 
-    boolean isLocked(String deviceId);
+    boolean isLocked(String workerId);
 
-    List<String> getLockedDevices();
+    List<String> getLockedWorkers();
 }
 ```
 
@@ -118,7 +118,7 @@ public interface RuleStorage {
 #### 鍐呭瓨瀛樺偍瀹炵幇
 
 - **InMemoryTaskStorage**: 灏嗗師鏉ョ殑Map閫昏緫灏佽鍒板疄鐜扮被涓?
-- **InMemoryDeviceStorage**: 灏嗗師鏉ョ殑Map閫昏緫灏佽鍒板疄鐜扮被涓?
+- **InMemoryWorkerStorage**: 灏嗗師鏉ョ殑Map閫昏緫灏佽鍒板疄鐜扮被涓?
 - **InMemoryRuleStorage**: 灏嗗師鏉ョ殑Map閫昏緫灏佽鍒板疄鐜扮被涓?
 - 淇濇寔绾跨▼瀹夊叏锛堜娇鐢?ConcurrentHashMap 鍜?Collections.synchronizedSet锛?
 - 浣滀负榛樿瀛樺偍瀹炵幇
@@ -126,7 +126,7 @@ public interface RuleStorage {
 #### Redis 瀛樺偍瀹炵幇
 
 - **RedisTaskStorage**: 鎻愪緵 Redis 瀛樺偍鐨勭ず渚嬪疄鐜?
-- **RedisDeviceStorage**: 鎻愪緵 Redis 瀛樺偍鐨勭ず渚嬪疄鐜?
+- **RedisWorkerStorage**: 鎻愪緵 Redis 瀛樺偍鐨勭ず渚嬪疄鐜?
 - **RedisRuleStorage**: 鎻愪緵 Redis 瀛樺偍鐨勭ず渚嬪疄鐜?
 - 浣跨敤 JSON 搴忓垪鍖栧瓨鍌ㄦ暟鎹?
 - 鏀寔鎸夌姸鎬佺储寮曟煡璇?
@@ -141,8 +141,8 @@ TaskStorage taskStorage = TaskStorageFactory.createDefaultTaskStorage();
 TaskStorage redisTaskStorage = TaskStorageFactory.createTaskStorage(StorageType.REDIS);
 
 // 鍒涘缓璁惧瀛樺偍
-DeviceStorage deviceStorage = TaskStorageFactory.createDefaultDeviceStorage();
-DeviceStorage redisDeviceStorage = TaskStorageFactory.createDeviceStorage(StorageType.REDIS);
+WorkerStorage workerStorage = TaskStorageFactory.createDefaultWorkerStorage();
+WorkerStorage redisWorkerStorage = TaskStorageFactory.createWorkerStorage(StorageType.REDIS);
 
 // 鍒涘缓瑙勫垯瀛樺偍
 RuleStorage ruleStorage = TaskStorageFactory.createDefaultRuleStorage();
@@ -150,7 +150,7 @@ RuleStorage redisRuleStorage = TaskStorageFactory.createRuleStorage(StorageType.
 
 // 閫氳繃閰嶇疆瀛楃涓插垱寤?
 TaskStorage configTaskStorage = TaskStorageFactory.createTaskStorage("memory");
-DeviceStorage configDeviceStorage = TaskStorageFactory.createDeviceStorage("memory");
+WorkerStorage configWorkerStorage = TaskStorageFactory.createWorkerStorage("memory");
 RuleStorage configRuleStorage = TaskStorageFactory.createRuleStorage("memory");
 ```
 
@@ -188,35 +188,35 @@ public class TaskManager {
 }
 ```
 
-#### DeviceManager 閲嶆瀯
+#### WorkerManager 閲嶆瀯
 
-閲嶆瀯鍚庣殑 `DeviceManager`锛?
+閲嶆瀯鍚庣殑 `WorkerManager`锛?
 
 ```java
-public class DeviceManager {
-    private final DeviceStorage deviceStorage;
+public class WorkerManager {
+    private final WorkerStorage workerStorage;
 
     // 浣跨敤榛樿瀛樺偍
-    public DeviceManager() {
-        this(TaskStorageFactory.createDefaultDeviceStorage());
+    public WorkerManager() {
+        this(TaskStorageFactory.createDefaultWorkerStorage());
     }
 
     // 浣跨敤鑷畾涔夊瓨鍌?
-    public DeviceManager(DeviceStorage deviceStorage) {
-        this.deviceStorage = deviceStorage;
+    public WorkerManager(WorkerStorage workerStorage) {
+        this.workerStorage = workerStorage;
     }
 
-    // 鎵€鏈夊瓨鍌ㄦ搷浣滈兘濮旀墭缁?deviceStorage
-    public void addDevice(Device device) {
-        deviceStorage.addDevice(device);
+    // 鎵€鏈夊瓨鍌ㄦ搷浣滈兘濮旀墭缁?workerStorage
+    public void addWorker(Worker worker) {
+        workerStorage.addWorker(device);
     }
 
-    public Device getDevice(String deviceId) {
-        return deviceStorage.getDevice(deviceId).orElse(null);
+    public Worker getWorker(String workerId) {
+        return workerStorage.getWorker(workerId).orElse(null);
     }
 
-public List<Device> getDevicesByGroupId(String deviceGroupId) {
-    return deviceStorage.getDevicesByGroupId(deviceGroupId);
+public List<Worker> getWorkersByGroupId(String workerGroupId) {
+    return workerStorage.getWorkersByGroupId(workerGroupId);
 }
     // ... 鍏朵粬鏂规硶
 }
@@ -273,8 +273,8 @@ public class RuleManager<T> {
 TaskScheduler scheduler = new SimpleTaskScheduler();
 TaskManager taskManager = new TaskManager(scheduler); // 鑷姩浣跨敤鍐呭瓨瀛樺偍
 
-// DeviceManager
-DeviceManager deviceManager = new DeviceManager(); // 鑷姩浣跨敤鍐呭瓨瀛樺偍
+// WorkerManager
+WorkerManager workerManager = new WorkerManager(); // 鑷姩浣跨敤鍐呭瓨瀛樺偍
 
 // RuleManager
 RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(); // 鑷姩浣跨敤鍐呭瓨瀛樺偍
@@ -288,9 +288,9 @@ TaskScheduler scheduler = new SimpleTaskScheduler();
 TaskStorage redisTaskStorage = TaskStorageFactory.createTaskStorage(StorageType.REDIS);
 TaskManager taskManager = new TaskManager(scheduler, redisTaskStorage);
 
-// DeviceManager
-DeviceStorage redisDeviceStorage = TaskStorageFactory.createDeviceStorage(StorageType.REDIS);
-DeviceManager deviceManager = new DeviceManager(redisDeviceStorage);
+// WorkerManager
+WorkerStorage redisWorkerStorage = TaskStorageFactory.createWorkerStorage(StorageType.REDIS);
+WorkerManager workerManager = new WorkerManager(redisWorkerStorage);
 
 // RuleManager
 RuleStorage redisRuleStorage = TaskStorageFactory.createRuleStorage(StorageType.REDIS);
@@ -302,15 +302,15 @@ RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(redisRuleStorag
 ```java
 // 浠庨厤缃枃浠惰鍙栧瓨鍌ㄧ被鍨?
 String taskStorageType = config.getProperty("task.storage.type", "memory");
-String deviceStorageType = config.getProperty("device.storage.type", "memory");
+String workerStorageType = config.getProperty("worker.storage.type", "memory");
 String ruleStorageType = config.getProperty("rule.storage.type", "memory");
 
 TaskStorage taskStorage = TaskStorageFactory.createTaskStorage(taskStorageType);
-DeviceStorage deviceStorage = TaskStorageFactory.createDeviceStorage(deviceStorageType);
+WorkerStorage workerStorage = TaskStorageFactory.createWorkerStorage(workerStorageType);
 RuleStorage ruleStorage = TaskStorageFactory.createRuleStorage(ruleStorageType);
 
 TaskManager taskManager = new TaskManager(scheduler, taskStorage);
-DeviceManager deviceManager = new DeviceManager(deviceStorage);
+WorkerManager workerManager = new WorkerManager(workerStorage);
 RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(ruleStorage);
 ```
 
@@ -318,7 +318,7 @@ RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(ruleStorage);
 
 瑕佹坊鍔犳柊鐨勫瓨鍌ㄥ疄鐜帮紝鍙渶锛?
 
-1. 瀹炵幇瀵瑰簲鐨勫瓨鍌ㄦ帴鍙ｏ紙`TaskStorage`銆乣DeviceStorage` 鎴?`RuleStorage`锛?
+1. 瀹炵幇瀵瑰簲鐨勫瓨鍌ㄦ帴鍙ｏ紙`TaskStorage`銆乣WorkerStorage` 鎴?`RuleStorage`锛?
 2. 鍦?`TaskStorageFactory` 涓坊鍔犳柊鐨勫瓨鍌ㄧ被鍨?
 3. 鍦ㄥ伐鍘傛柟娉曚腑鍒涘缓瀵瑰簲鐨勫疄渚?
 
@@ -329,7 +329,7 @@ public class DatabaseTaskStorage implements TaskStorage {
     // 瀹炵幇鎵€鏈夋帴鍙ｆ柟娉?
 }
 
-public class DatabaseDeviceStorage implements DeviceStorage {
+public class DatabaseWorkerStorage implements WorkerStorage {
     // 瀹炵幇鎵€鏈夋帴鍙ｆ柟娉?
 }
 
@@ -351,14 +351,14 @@ public static TaskStorage createTaskStorage(StorageType type) {
     }
 }
 
-public static DeviceStorage createDeviceStorage(StorageType type) {
+public static WorkerStorage createWorkerStorage(StorageType type) {
     switch (type) {
         case MEMORY:
-            return new InMemoryDeviceStorage();
+            return new InMemoryWorkerStorage();
         case REDIS:
-            return new RedisDeviceStorage();
+            return new RedisWorkerStorage();
         case DATABASE:
-            return new DatabaseDeviceStorage(); // 鏂板
+            return new DatabaseWorkerStorage(); // 鏂板
         default:
             throw new IllegalArgumentException("Unsupported storage type: " + type);
     }
@@ -407,9 +407,9 @@ public static RuleStorage createRuleStorage(StorageType type) {
 
 ### 璁惧瀛樺偍鐩稿叧
 
-- `DeviceStorage.java` - 璁惧瀛樺偍鎺ュ彛
-- `InMemoryDeviceStorage.java` - 鍐呭瓨璁惧瀛樺偍瀹炵幇
-- `RedisDeviceStorage.java` - Redis璁惧瀛樺偍绀轰緥瀹炵幇
+- `WorkerStorage.java` - 璁惧瀛樺偍鎺ュ彛
+- `InMemoryWorkerStorage.java` - 鍐呭瓨璁惧瀛樺偍瀹炵幇
+- `RedisWorkerStorage.java` - Redis璁惧瀛樺偍绀轰緥瀹炵幇
 
 ### 瑙勫垯瀛樺偍鐩稿叧
 
@@ -421,11 +421,11 @@ public static RuleStorage createRuleStorage(StorageType type) {
 
 - `TaskStorageFactory.java` - 瀛樺偍宸ュ巶锛堟敮鎸佷换鍔°€佽澶囧拰瑙勫垯瀛樺偍锛?
 - `StorageExample.java` - 浠诲姟瀛樺偍浣跨敤绀轰緥
-- `DeviceStorageExample.java` - 璁惧瀛樺偍浣跨敤绀轰緥
+- `WorkerStorageExample.java` - 璁惧瀛樺偍浣跨敤绀轰緥
 - `RuleStorageExample.java` - 瑙勫垯瀛樺偍浣跨敤绀轰緥
 
 ### 閲嶆瀯鐨勭被
 
 - `TaskManager.java` - 閲嶆瀯鍚庝娇鐢═askStorage鎺ュ彛
-- `DeviceManager.java` - 閲嶆瀯鍚庝娇鐢―eviceStorage鎺ュ彛
+- `WorkerManager.java` - 閲嶆瀯鍚庝娇鐢―eviceStorage鎺ュ彛
 - `RuleManager.java` - 閲嶆瀯鍚庝娇鐢≧uleStorage鎺ュ彛 

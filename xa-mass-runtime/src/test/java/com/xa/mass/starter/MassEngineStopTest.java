@@ -59,7 +59,7 @@ class MassEngineStopTest {
         assertTrue(engine.isRunning());
         assertNotNull(engine.getAssignWorker());
         assertSame(config.getTaskManager(), engine.getTaskManager());
-        assertSame(config.getDeviceManager(), engine.getDeviceManager());
+        assertSame(config.getWorkerManager(), engine.getWorkerManager());
 
         engine.stop();
     }

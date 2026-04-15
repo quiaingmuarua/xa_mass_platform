@@ -46,7 +46,7 @@ public class GatewayTaskMsgPublisher implements TaskMsgDispatchListener {
             MassMessage message = buildMessage(task, taskMsg);
             String json = dispatchRuntimeContext.getMessageCodec().encode(message);
             Envelope envelope = Envelope.builder()
-                    .deviceId(taskMsg.getDeviceId())
+                    .workerId(taskMsg.getWorkerId())
                     .connRole(DEFAULT_CONN_ROLE)
                     .project(task.getProject())
                     .traceId(taskMsg.getMsgId())
@@ -71,7 +71,7 @@ public class GatewayTaskMsgPublisher implements TaskMsgDispatchListener {
 
     private MessageContext buildContext(Task task, TaskMsg taskMsg) {
         MessageContext context = new MessageContext();
-        context.setDeviceId(taskMsg.getDeviceId());
+        context.setWorkerId(taskMsg.getWorkerId());
         context.setConnRole(DEFAULT_CONN_ROLE);
         context.setTid(task.getTid());
         context.setRetryCount(taskMsg.getRetryCount());
@@ -88,8 +88,8 @@ public class GatewayTaskMsgPublisher implements TaskMsgDispatchListener {
         if (taskMsg.getInput() != null) {
             params.putAll(taskMsg.getInput());
         }
-        params.put("deviceId", taskMsg.getDeviceId());
-        params.put("tokenId", taskMsg.getTokenId());
+        params.put("workerId", taskMsg.getWorkerId());
+        params.put("workerContextId", taskMsg.getWorkerContextId());
         params.put("batchId", taskMsg.getBatchId());
         if (task.getSharedConfig() != null) {
             params.putAll(task.getSharedConfig());

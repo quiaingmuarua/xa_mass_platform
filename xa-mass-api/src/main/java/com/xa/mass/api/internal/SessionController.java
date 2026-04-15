@@ -22,14 +22,14 @@ import java.util.Map;
 public class SessionController {
 
     @GetMapping("/list")
-    @Operation(summary = "获取所有在线Session/Device详情")
+    @Operation(summary = "获取所有在线Session/Worker详情")
     public ApiResponse<List<Map<String, Object>>> listSessions() {
         List<Map<String, Object>> data = new ArrayList<>();
         ServerSessionManager sessionManager = resolveSessionManager();
         if (sessionManager != null) {
-            sessionManager.getAllDeviceChannels().forEach((deviceId, roleMap) -> {
+            sessionManager.getAllWorkerChannels().forEach((workerId, roleMap) -> {
                 Map<String, Object> entry = new HashMap<>();
-                entry.put("deviceId", deviceId);
+                entry.put("workerId", workerId);
                 List<Map<String, Object>> roles = new ArrayList<>();
                 roleMap.forEach((role, channel) -> {
                     Map<String, Object> roleInfo = new HashMap<>();
@@ -51,11 +51,11 @@ public class SessionController {
         Map<String, Object> data = new HashMap<>();
         ServerSessionManager sessionManager = resolveSessionManager();
         if (sessionManager != null) {
-            data.put("activeConnections", sessionManager.getDeviceConnectionCount());
-            data.put("deviceCount", sessionManager.getAllDeviceChannels().size());
+            data.put("activeConnections", sessionManager.getWorkerConnectionCount());
+            data.put("workerCount", sessionManager.getAllWorkerChannels().size());
         } else {
             data.put("activeConnections", 0);
-            data.put("deviceCount", 0);
+            data.put("workerCount", 0);
         }
         return ApiResponse.success(data);
     }

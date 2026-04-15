@@ -15,14 +15,25 @@ Current high-trust entry points:
 Role split:
 
 - `AGENTS.md`: fastest handoff for coding agents and maintainers
-- `doc/AGENT_BASELINE.md`: code reality, module truth, known gaps
-- `doc/VERIFIED_RUNBOOK.md`: startup, verification, runtime path, regression commands
-- `doc/INTERNAL_API_REFERENCE.md`: endpoint inventory, implementation status, response/transition rules
+- `doc/AGENT_BASELINE.md`: code reality, module truth, and architectural guardrails
+- `doc/VERIFIED_RUNBOOK.md`: startup, verification, runtime path, and regression commands
+- `doc/INTERNAL_API_REFERENCE.md`: endpoint inventory, current contracts, and implementation status
 - `doc/engine/TASK_EXECUTION_FLOW.md`: task execution flow notes aligned to the current mainline
+
+## Platform Positioning
+
+XA Mass Platform is a general distributed task scheduling platform.
+
+- Its core abstraction is simple: assign a batch of work items to a batch of online workers, track each execution result, and converge task-level completion state.
+- The platform is scenario-agnostic. It does not define the business itself; it defines who is online, who can accept work, how work is dispatched, how results are collected, and how task state converges.
+- The stable kernel is `Task`, `TaskMsg`, assignment, result write-back, audit, and terminal policy.
+- The project is library/SDK-first. HTTP pages, demo APIs, and mock runtime surfaces exist to validate the kernel.
+- The current reference scenario is a long-connection worker scheduling path built from `Worker + WorkerContext + WebSocket gateway + mock clients`.
+- Workers can be phone apps, crawlers, LLM agents, IM bots, or other long-lived executors.
+- `Worker` and `WorkerContext` are the current reference adapters, not the permanent product boundary.
 
 ## Current Reality
 
-- Primary product direction is library/SDK-first. The HTTP backend and status pages are validation/demo surfaces, not the architectural center.
 - Real Spring Boot entrypoint: `xa-mass-mock`
 - Do not start from `xa-mass-runtime`
 - Current root reactor modules are `xa-mass-api`, `xa-mass-core`, `xa-mass-engine`, `xa-mass-gateway`, `xa-mass-runtime`, and `xa-mass-mock`
@@ -33,8 +44,10 @@ Role split:
   - `NEW -> READY -> RUNNING -> TERMINAL`
   - `NEW -> READY -> PAUSED -> READY`
   - `NEW -> BLOCKED -> READY`
-- `TERMINAL` is not self-describing anymore; inspect `task.terminalReason` to distinguish manual cancel from message-driven completion
-- Unsupported task `project` codes now fail fast instead of silently falling back to `demoApp`
+- `TERMINAL` is not self-describing anymore; inspect `task.terminalReason`
+- Active task-create contract now uses `sharedConfig`, `targetList`, `countryCode`, `batchSize`, `defaultMsgMaxRetryCount`, and `openEnded`
+- `PUT /status/api/tasks/{taskId}` is metadata-only and no longer accepts `targetList`
+- `Task.sharedConfig` is the task-level shared payload; `TaskMsg.input` and `TaskMsg.output` are the per-item payload boundary
 
 ## Quick Start
 
@@ -56,10 +69,10 @@ Primary endpoints:
 
 ## Module Map
 
-- `xa-mass-mock`: verified runnable entry, full-stack validation
+- `xa-mass-mock`: verified runnable entry and full-stack validation shell
 - `xa-mass-runtime`: lifecycle/composition layer, not the Boot entry
-- `xa-mass-api`: REST controllers and status pages for demo/validation
-- `xa-mass-engine`: core lifecycle, assignment, rules, and strategy extension points
+- `xa-mass-api`: REST controllers and status pages for validation/demo
+- `xa-mass-engine`: task state machine, assignment, result handling, and strategy extension points
 - `xa-mass-gateway`: WebSocket server and dispatch
 - `xa-mass-core`: shared models and infrastructure
 

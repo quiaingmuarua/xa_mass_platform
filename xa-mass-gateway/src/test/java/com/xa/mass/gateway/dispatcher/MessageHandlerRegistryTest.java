@@ -121,7 +121,7 @@ class MessageHandlerRegistryTest {
         msg.setMsgType(type);
         msg.setSubMsgType(subType);
         MessageContext ctx = new MessageContext();
-        ctx.setDeviceId("device-1");
+        ctx.setWorkerId("device-1");
         ctx.setConnRole("task");
         msg.setContext(ctx);
         return msg;

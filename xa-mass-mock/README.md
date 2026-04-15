@@ -70,18 +70,18 @@ Startup behavior:
 | `mock.client.auto-start` | `true` | auto-start mock clients in default `dev` path |
 | `mock.client.uri` | `ws://localhost:${mass.websocket.port}/ws` | target gateway address |
 | `mock.client.task-result-status` | `SUCCESS` | force mock result frames to `SUCCESS` or `FAILED` |
-| `mass.mock.data.devices` | `mock/mock_devices.json` | mock device data |
-| `mass.mock.data.tokens` | `mock/mock_tokens.json` | explicit mock token data |
+| `mass.mock.data.workers` | `mock/mock_workers.json` | mock worker data |
+| `mass.mock.data.worker-contexts` | `mock/mock_worker_contexts.json` | explicit mock worker-context data |
 | `mass.mock.data.tasks` | `mock/mock_tasks.json` | mock task data |
 | `mass.mock.data.rules` | `mock/mock_rules.json` | mock rule data |
 
 Mock-data loading order:
 
-- devices
-- explicit tokens
+- workers
+- explicit worker contexts
 - tasks
 - rules
-- fallback token seeding only for devices that still have no token
+- fallback worker-context seeding only for workers that still have no worker context
 
 ## Regression Coverage
 
@@ -102,7 +102,7 @@ Covered areas:
 
 - `e2e/lifecycle`: create -> approve -> assign -> run -> complete, pause/resume guards, pause-completion, terminate-running, resume-and-complete
 - `e2e/results`: failed-result terminal closure, mixed results, callback replay idempotency
-- `e2e/assignment`: delayed device availability and multi-task assignment behavior
+- `e2e/assignment`: delayed worker availability and multi-task assignment behavior
 - `e2e/audit`: `stateValidation` exposure and terminal metadata consistency through the real HTTP path
 - `WebSocketClientStarterTest`: auto-start and idempotent startup behavior
 - `MassWebSocketClientImplTest`: ignore `response=true` task frames, avoid echo loops, and allow configurable `SUCCESS` / `FAILED` result payloads

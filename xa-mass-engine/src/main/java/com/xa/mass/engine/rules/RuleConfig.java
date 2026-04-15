@@ -4,7 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Default rule definitions for device matching.
+ * Default rule definitions for worker matching.
  */
 public class RuleConfig {
 
@@ -12,39 +12,39 @@ public class RuleConfig {
         List<RuleDefinition> rules = new ArrayList<>();
 
         RuleDefinition basicRule = new RuleDefinition();
-        basicRule.setId("basic_device_check");
+        basicRule.setId("basic_worker_check");
         basicRule.setType(RuleType.QL_EXPRESS);
-        basicRule.setContent("isDeviceAvailable == true && isDeviceLocked == false");
-        basicRule.setDesc("Device must be available and unlocked");
+        basicRule.setContent("isWorkerAvailable == true && isWorkerLocked == false");
+        basicRule.setDesc("Worker must be available and unlocked");
         rules.add(basicRule);
 
-        RuleDefinition tokenRule = new RuleDefinition();
-        tokenRule.setId("token_status_check");
-        tokenRule.setType(RuleType.QL_EXPRESS);
-        tokenRule.setContent("isTokenAllocatable == true && isTokenAvailable == true");
-        tokenRule.setDesc("Token must be allocatable and available");
-        rules.add(tokenRule);
+        RuleDefinition workerContextRule = new RuleDefinition();
+        workerContextRule.setId("worker_context_status_check");
+        workerContextRule.setType(RuleType.QL_EXPRESS);
+        workerContextRule.setContent("isWorkerContextAllocatable == true && isWorkerContextAvailable == true");
+        workerContextRule.setDesc("Worker context must be allocatable and available");
+        rules.add(workerContextRule);
 
         RuleDefinition routingCountryRule = new RuleDefinition();
         routingCountryRule.setId("routing_country_match");
         routingCountryRule.setType(RuleType.QL_EXPRESS);
         routingCountryRule.setContent(
-                "tokenAttributeCountryMatchesRoutingCountry == true || tokenChannelMatchesRoutingCountry == true");
-        routingCountryRule.setDesc("Routing country must be satisfied by token attribute or token channel");
+                "workerContextAttributeCountryMatchesRoutingCountry == true || workerContextChannelMatchesRoutingCountry == true");
+        routingCountryRule.setDesc("Routing country must be satisfied by worker context attribute or worker context channel");
         rules.add(routingCountryRule);
 
         RuleDefinition appRule = new RuleDefinition();
         appRule.setId("app_support_check");
         appRule.setType(RuleType.QL_EXPRESS);
         appRule.setContent("supportsProject == true");
-        appRule.setDesc("Device must support the task project");
+        appRule.setDesc("Worker must support the task project");
         rules.add(appRule);
 
         RuleDefinition loadRule = new RuleDefinition();
-        loadRule.setId("device_load_check");
+        loadRule.setId("worker_load_check");
         loadRule.setType(RuleType.QL_EXPRESS);
         loadRule.setContent("appCount < 10");
-        loadRule.setDesc("Device-supported project count must stay below 10");
+        loadRule.setDesc("Worker-supported project count must stay below 10");
         rules.add(loadRule);
 
         return rules;
@@ -64,7 +64,7 @@ public class RuleConfig {
         frequencyRule.setId("usage_frequency_check");
         frequencyRule.setType(RuleType.QL_EXPRESS);
         frequencyRule.setContent("lastUsedTime == null || (System.currentTimeMillis() - lastUsedTime.toEpochSecond(java.time.ZoneOffset.UTC) * 1000) > 300000");
-        frequencyRule.setDesc("Device must not have been used within the last 5 minutes");
+        frequencyRule.setDesc("Worker must not have been used within the last 5 minutes");
         rules.add(frequencyRule);
 
         return rules;
@@ -89,18 +89,18 @@ public class RuleConfig {
         List<RuleDefinition> rules = new ArrayList<>();
 
         RuleDefinition basicRule = new RuleDefinition();
-        basicRule.setId("basic_device_check");
+        basicRule.setId("basic_worker_check");
         basicRule.setType(RuleType.QL_EXPRESS);
-        basicRule.setContent("isDeviceAvailable == true");
-        basicRule.setDesc("Device must be available");
+        basicRule.setContent("isWorkerAvailable == true");
+        basicRule.setDesc("Worker must be available");
         rules.add(basicRule);
 
         RuleDefinition routingCountryRule = new RuleDefinition();
         routingCountryRule.setId("routing_country_match");
         routingCountryRule.setType(RuleType.QL_EXPRESS);
         routingCountryRule.setContent(
-                "tokenAttributeCountryMatchesRoutingCountry == true || tokenChannelMatchesRoutingCountry == true");
-        routingCountryRule.setDesc("Routing country must be satisfied by token attribute or token channel");
+                "workerContextAttributeCountryMatchesRoutingCountry == true || workerContextChannelMatchesRoutingCountry == true");
+        routingCountryRule.setDesc("Routing country must be satisfied by worker context attribute or worker context channel");
         rules.add(routingCountryRule);
 
         return rules;

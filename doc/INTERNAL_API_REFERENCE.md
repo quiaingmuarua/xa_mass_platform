@@ -1,25 +1,368 @@
 # XA Mass Platform Internal API Reference
 
-> 最后核实：2026-04-13
->
-> 每个接口均标注了**当前实现状�?*�?> - 🟢 **已实�?* �?调用会返回真实数�?> - 🟡 **部分实现** �?接口存在，但返回数据为快�?占位
-> - 🔴 **未实�?* �?接口不存在，调用�?404
->
-> 文档范围�?> - HTTP / WebSocket 接口清单
-> - 当前实现状�?> - 返回格式与状态约�?>
-> 不负责记录：
-> - 启动命令
-> - 端到端运行链�?> - 回归测试命令
->
-> 这些内容统一�?[VERIFIED_RUNBOOK.md](./VERIFIED_RUNBOOK.md)
+Last updated: 2026-04-15
 
----
+This document tracks the current active HTTP/API surface in the mainline runtime.
 
-## 1. 队列监控 🟢 已实�?
+Status labels used below:
 
-- **路径**：`GET /api/queue/status`
-- **实现�?*：`QueueController.getQueueStatus()`
-- **实测返回**�?
+- `Implemented`: endpoint exists and is wired into the current runtime
+- `Partial`: endpoint exists but is mainly diagnostic, placeholder, or thin passthrough
+- `Demo`: endpoint exists for status/demo pages rather than as a stable SDK surface
+
+Scope:
+
+- HTTP endpoint inventory
+- current request contract
+- response shape notes
+- implementation status
+
+Out of scope:
+
+- startup commands
+- end-to-end verification logs
+- architecture history
+
+For verified runtime behavior and recommended startup, use [VERIFIED_RUNBOOK.md](./VERIFIED_RUNBOOK.md).
+
+## 1. Platform Contract Notes
+
+- The project is a general distributed task scheduling platform. Its core abstraction is: assign work items to online workers, collect execution results, and converge task state.
+- The current HTTP/API surface validates the kernel; it is not the kernel definition itself.
+- Current reference scenario is a long-connection worker path with `Worker + WorkerContext + WebSocket gateway + mock clients`.
+- Workers can be phone apps, crawlers, LLM agents, IM bots, or other long-lived executors.
+- Stable payload boundaries are `Task.sharedConfig` and `TaskMsg.input/output`.
+- `TaskMsg.getTarget()` remains only as a backwards-compat accessor over `input["target"]`.
+- `Worker` and `WorkerContext` are current reference adapters, not the permanent platform boundary.
+
+## 2. Task API
+
+Base path: `/status/api/tasks`
+
+### 2.1 Create Task
+
+- Method: `POST`
+- Path: `/status/api/tasks`
+- Status: `Implemented`
+
+Supported request fields:
+
+- `userId`
+- `project`
+- `taskName`
+- `sharedConfig`
+- `targetList`
+- `countryCode`
+- `batchSize`
+- `defaultMsgMaxRetryCount`
+- `openEnded`
+
+Contract rules:
+
+- `targetList` must be a non-empty list
+- unsupported `project` values are rejected
+- unknown JSON fields are rejected
+- retired fields such as `targetJsonList`, `targetType`, and `extraParams` are not supported
+- `defaultMsgMaxRetryCount` defaults to `3`
+- `openEnded` defaults to `false`
+
+Example request:
+
+```json
+{
+  "userId": "agent",
+  "project": "demoApp",
+  "taskName": "smoke-lifecycle",
+  "sharedConfig": {
+    "textContent": "hello"
+  },
+  "targetList": [
+    "target-001",
+    "target-002"
+  ],
+  "countryCode": "us",
+  "batchSize": 1,
+  "defaultMsgMaxRetryCount": 3,
+  "openEnded": false
+}
+```
+
+Example response:
+
+```json
+{
+  "success": true,
+  "message": "Task created",
+  "taskId": "task-uuid"
+}
+```
+
+### 2.2 Get Task
+
+- Method: `GET`
+- Path: `/status/api/tasks/{taskId}`
+- Status: `Implemented`
+
+Response notes:
+
+- returns `task`
+- returns materialized `targetList`
+- returns `stateValidation`
+
+Example response shape:
+
+```json
+{
+  "success": true,
+  "task": {
+    "tid": "task-uuid",
+    "taskName": "smoke-lifecycle",
+    "project": "demoApp",
+    "status": "NEW",
+    "taskRoutingCountryCode": "us",
+    "sharedConfig": {
+      "textContent": "hello"
+    },
+    "openEnded": false,
+    "batchSize": 1
+  },
+  "targetList": [
+    "target-001",
+    "target-002"
+  ],
+  "stateValidation": {
+    "valid": true,
+    "needsResolution": false,
+    "violations": []
+  }
+}
+```
+
+### 2.3 Update Task Metadata
+
+- Method: `PUT`
+- Path: `/status/api/tasks/{taskId}`
+- Status: `Implemented`
+
+Supported request fields:
+
+- `userId`
+- `project`
+- `taskName`
+- `sharedConfig`
+- `countryCode`
+- `batchSize`
+
+Contract rules:
+
+- metadata-only update path
+- only `NEW` and `BLOCKED` tasks may be updated
+- `targetList` and unknown fields are rejected
+
+### 2.4 Delete Task
+
+- Method: `DELETE`
+- Path: `/status/api/tasks/{taskId}`
+- Status: `Implemented`
+
+Contract rules:
+
+- only `NEW` and `TERMINAL` tasks can be deleted
+
+### 2.5 Audit Task
+
+- Method: `POST`
+- Path: `/status/api/tasks/{taskId}/audit`
+- Status: `Implemented`
+
+Query params:
+
+- `approved`: required, `true` or `false`
+- `comment`: optional
+
+Behavior:
+
+- `approved=true`: `NEW` or `BLOCKED` -> `READY`
+- `approved=false`: `NEW` -> `BLOCKED`
+
+### 2.6 Pause Task
+
+- Method: `POST`
+- Path: `/status/api/tasks/{taskId}/pause`
+- Status: `Implemented`
+
+Behavior:
+
+- `READY` or `RUNNING` -> `PAUSED`
+
+### 2.7 Resume Task
+
+- Method: `POST`
+- Path: `/status/api/tasks/{taskId}/resume`
+- Status: `Implemented`
+
+Behavior:
+
+- normally `PAUSED` -> `READY`
+- if the task already completed while paused, the response reports closure to `TERMINAL`
+
+Example success response:
+
+```json
+{
+  "success": true,
+  "message": "Task resumed",
+  "newStatus": "READY",
+  "terminalReason": ""
+}
+```
+
+Alternate success response when it already completed:
+
+```json
+{
+  "success": true,
+  "message": "Task already completed while paused and was closed to TERMINAL",
+  "newStatus": "TERMINAL",
+  "terminalReason": "ALL_MESSAGES_SUCCEEDED"
+}
+```
+
+### 2.8 Terminate Task
+
+- Method: `POST`
+- Path: `/status/api/tasks/{taskId}/terminate`
+- Status: `Implemented`
+
+Behavior:
+
+- any non-`TERMINAL` task may be closed to `TERMINAL`
+
+### 2.9 Status Routing Helper
+
+- Method: `PUT`
+- Path: `/status/api/tasks/{taskId}/status`
+- Status: `Implemented`
+
+Query param:
+
+- `status`: one of `READY`, `BLOCKED`, `PAUSED`, `TERMINAL`
+
+Behavior:
+
+- `READY` routes to approve or resume depending on current state
+- `BLOCKED` routes to reject
+- `PAUSED` routes to pause
+- `TERMINAL` routes to cancel
+- no direct route exists for `RUNNING` through this helper
+
+### 2.10 List Task Messages
+
+- Method: `GET`
+- Path: `/status/api/tasks/{taskId}/messages`
+- Status: `Implemented`
+
+Query params:
+
+- `page`: default `1`
+- `size`: default `20`, hard-capped at `500`
+
+Response shape:
+
+```json
+{
+  "success": true,
+  "total": 2,
+  "page": 1,
+  "size": 20,
+  "messages": [
+    {
+      "msgId": "msg-1",
+      "taskId": "task-uuid",
+      "workerId": "worker-a",
+      "workerContextId": "worker-context-a",
+      "status": "SUCCESS",
+      "batchId": "batch-1",
+      "input": {
+        "target": "target-001"
+      },
+      "output": {}
+    }
+  ]
+}
+```
+
+### 2.11 Append Items To Open-Ended Task
+
+- Method: `POST`
+- Path: `/status/api/tasks/{taskId}/items`
+- Status: `Implemented`
+
+Request shape:
+
+```json
+{
+  "inputs": [
+    {
+      "target": "target-003"
+    },
+    {
+      "target": "target-004",
+      "priority": "high"
+    }
+  ]
+}
+```
+
+Contract rules:
+
+- `inputs` must be a non-empty list
+- task must exist
+- task must be `openEnded=true`
+- task must still be active
+
+Example response:
+
+```json
+{
+  "success": true,
+  "message": "Items appended",
+  "added": 2
+}
+```
+
+### 2.12 Seal Open-Ended Task
+
+- Method: `PUT`
+- Path: `/status/api/tasks/{taskId}/seal`
+- Status: `Implemented`
+
+Behavior:
+
+- closes the append window for an open-ended task
+- once sealed, normal terminal convergence resumes when all persisted messages are final
+
+Example response:
+
+```json
+{
+  "success": true,
+  "message": "Task sealed",
+  "status": "RUNNING"
+}
+```
+
+## 3. Queue APIs
+
+Base path: `/api/queue`
+
+### 3.1 Queue Status
+
+- Method: `GET`
+- Path: `/api/queue/status`
+- Status: `Implemented`
+
+Response shape:
 
 ```json
 {
@@ -31,9 +374,13 @@
 }
 ```
 
-> 当前为内存队列，mock 启动后通常�?0（消息被快速消费）�?
+### 3.2 Queue Detail
 
-- **路径**：`GET /api/queue/detail`
+- Method: `GET`
+- Path: `/api/queue/detail`
+- Status: `Implemented`
+
+Response shape:
 
 ```json
 {
@@ -46,20 +393,35 @@
 }
 ```
 
----
+### 3.3 Queue Metrics
 
-## 2. Session 管理 🟢 已实现（返回真实数据�?
+- Method: `GET`
+- Path: `/api/queue/metrics`
+- Status: `Partial`
 
-- **路径**：`GET /api/session/list`
-- **实现�?*：`SessionController.listSessions()`
-- **返回示例**（有 WebSocket 连接时）�?
+Current behavior:
+
+- endpoint exists
+- currently returns static zero values rather than real throughput metrics
+
+## 4. Session APIs
+
+Base path: `/api/session`
+
+### 4.1 List Sessions
+
+- Method: `GET`
+- Path: `/api/session/list`
+- Status: `Implemented`
+
+Response shape:
 
 ```json
 {
   "success": true,
   "data": [
     {
-      "deviceId": "dev123",
+      "workerId": "dev123",
       "connections": [
         {
           "role": "task",
@@ -72,138 +434,112 @@
 }
 ```
 
-> 无连接时 `data` 为空数组 `[]`，不�?NPE�?
+### 4.2 Session Stats
 
-- **路径**：`GET /api/session/stats`
-- **返回示例**�?
+- Method: `GET`
+- Path: `/api/session/stats`
+- Status: `Implemented`
+
+Response shape:
 
 ```json
 {
   "success": true,
   "data": {
     "activeConnections": 2,
-    "deviceCount": 1
+    "workerCount": 1
   }
 }
 ```
 
----
+## 5. Config APIs
 
-## 3. 任务管理 🟢 已实�?
+### 5.1 Global Project List
 
-基路径：`/status/api/tasks`
+- Method: `GET`
+- Path: `/api/config/projects`
+- Status: `Implemented`
 
-| 方法 | 路径 | 功能 | 注意 |
-|------|------|------|------|
-| `POST` | `/status/api/tasks` | 创建任务 | 初始状态为 `NEW` |
-| `GET` | `/status/api/tasks/{taskId}` | 查询任务 + targetList | �?|
-| `PUT` | `/status/api/tasks/{taskId}` | 更新任务基本信息 | 不含状态变�?|
-| `DELETE` | `/status/api/tasks/{taskId}` | 删除任务 | **�?NEW / TERMINAL 可删** |
-| `POST` | `/status/api/tasks/{taskId}/audit` | 审核（approve/reject�?| `approved=true`: `NEW/BLOCKED -> READY`; `approved=false`: `NEW -> BLOCKED` |
-| `POST` | `/status/api/tasks/{taskId}/pause` | 暂停 | `READY/RUNNING -> PAUSED` |
-| `POST` | `/status/api/tasks/{taskId}/resume` | 恢复 | �?PAUSED 可恢�?|
-| `POST` | `/status/api/tasks/{taskId}/terminate` | 终止 | 任意�?TERMINAL 状�?|
-| `PUT` | `/status/api/tasks/{taskId}/status` | 状态路由辅助接�?| 通过 status 参数转发�?`approve/reject/pause/resume/cancel` |
-| `GET` | `/status/api/tasks/{taskId}/messages` | 分页获取 TaskMsg | `?page=1&size=20` |
+Behavior:
 
-### 任务状态机
+- returns the configured project code list from `GlobalConfig`
 
-```
-NEW ──approve──�?READY ──pause──�?PAUSED ──resume──�?READY
- �?                �?           �?                      �? ├──reject──�?BLOCKED ──approve─�?                      �? �?                �?                                   �? ├──────────────terminate───────────────────────────────�? └────────────────────────────────────────────────────�?TERMINAL
-```
+### 5.2 Config Page
 
-**deleteTask 限制**：只�?`NEW` �?`TERMINAL` 状态的任务可以删除；其余状态返�?`success=false`�?
-补充说明�?
-- `READY -> RUNNING` 由分配链路驱动，不是独立的手�?API 动作
-- `RUNNING -> PAUSED` �?`TaskManager` �?`TaskStatus` 中是允许�?- `READY -> BLOCKED` �?`RUNNING -> BLOCKED` 在状态机里允许，但当前没有独立公开 API 直接触发这两个动�?
-### 代码级状态约�?
-以下约束直接对应 `TaskStatus.canTransitionTo()`�?
-| 当前状�?| 允许进入 |
-|---------|---------|
-| `NEW` | `READY`, `BLOCKED`, `TERMINAL` |
-| `BLOCKED` | `READY`, `TERMINAL` |
-| `READY` | `RUNNING`, `PAUSED`, `BLOCKED`, `TERMINAL` |
-| `RUNNING` | `BLOCKED`, `PAUSED`, `TERMINAL` |
-| `PAUSED` | `READY`, `TERMINAL` |
-| `TERMINAL` | �?|
+- Method: `GET`
+- Path: `/config`
+- Status: `Demo`
 
----
+Behavior:
 
-## 4. WebSocket 消息格式
+- returns the config HTML page
 
-### 客户端发送（入站�?
+## 6. Message API
+
+### 6.1 Send Message
+
+- Method: `POST`
+- Path: `/api/message/send`
+- Status: `Partial`
+
+Current behavior:
+
+- thin passthrough into the current output transporter
+- accepts an arbitrary JSON body and serializes it as raw output envelope payload
+- primarily useful for diagnostics or manual transport probing, not as a stable platform SDK contract
+
+Response shape:
 
 ```json
 {
-  "msgId": "唯一消息ID",
-  "msgType": "PING",
-  "subMsgType": "heartbeat",
-  "project": "demoApp",
-  "context": {
-    "deviceId": "设备ID",
-    "connRole": "task"
+  "code": 0,
+  "msg": "ok",
+  "data": {
+    "success": true,
+    "msg": "message queued"
   }
 }
 ```
 
-必填字段：`msgId`、`msgType`、`project`、`context.deviceId`、`context.connRole`
+## 7. Status And Demo Pages
 
-### 服务端错误帧（出站）
+Base path: `/status`
 
-当消息解析失败或字段缺失时，服务端返回：
+### 7.1 Summary Pages
 
-```json
-{
-  "type": "ERROR",
-  "code": "错误�?,
-  "message": "错误说明"
-}
-```
+- `GET /status` - `Demo`
+- `GET /status/tasks` - `Demo`
+- `GET /status/workers` - `Demo`
+- `GET /status/rules` - `Demo`
 
-| 错误�?| 触发条件 |
-|--------|---------|
-| `INVALID_FORMAT` | 消息不是合法 JSON 对象 |
-| `PARSE_FAILED` | JSON 合法�?context 校验失败 |
-| `MISSING_CONTEXT` | context 字段�?null |
-| `MISSING_FIELDS` | deviceId/connRole/project/msgId 任一为空 |
-| `CHANNEL_ERROR` | Channel 异常（exceptionCaught 触发�?|
-| `INTERNAL_ERROR` | 服务端未预期异常 |
+Behavior:
 
----
+- return Thymeleaf status/demo pages for runtime inspection
 
-## 5. 健康检�?🟢 已实现（Spring Actuator�?
+### 7.2 Worker Project Helpers
 
-- **路径**：`GET /actuator/health`
-- **返回**：`{"status":"UP"}`
+- `GET /status/workers/allProjects` - `Demo`
+- `POST /status/workers/updateSupportedProjects` - `Demo`
 
----
+Current purpose:
 
-## 6. 未实现接口（规划中）🔴
+- support status/demo-page editing of mock worker project bindings
+- should not be treated as a stable SDK contract
 
-以下接口**尚未实现**，调用将返回 404�?
+## 8. Health And Docs
 
-| 路径 | 规划功能 |
-|------|---------|
-| `POST /api/message/send` | 主动推送消息到指定设备 |
-| `GET /api/metrics` | 消息速率统计（近 1min/5min�?|
-| `POST /api/debug/sendRaw` | 调试用原�?Envelope 注入 |
-| `GET /api/queue/drain` | 清空队列 |
+- `GET /actuator/health` - `Implemented`
+- `GET /doc.html` - `Demo`
 
-> `GET /api/queue/metrics` 路径存在但只返回静�?`0` 值，不是真实统计�?
+## 9. Response Shape Notes
 
----
+Current active API surface uses more than one response wrapper style:
 
-## 7. 返回格式说明
+- many internal APIs use `ApiResponse<T>` with `success`, `message`, and `data`
+- task APIs often return ad hoc `Map<String,Object>` responses
+- the message passthrough API returns legacy `code/msg/data`
 
-大多数接口使�?`ApiResponse<T>` 包装�?
+Implication:
 
-```json
-{
-  "success": true | false,
-  "message": "说明",
-  "data": { ... }
-}
-```
-
-部分旧接口直接返�?`Map`，格式相同但不经�?`ApiResponse` 包装类�?
+- consumers should treat task endpoints and internal diagnostic endpoints as separate response families
+- this inconsistency is current runtime reality and should not be hidden by docs

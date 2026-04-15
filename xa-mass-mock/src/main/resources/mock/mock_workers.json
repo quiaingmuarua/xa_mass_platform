@@ -1,0 +1,51 @@
+[
+  {
+    "MODEL": "Worker",
+    "COUNT": 100,
+    "FIELDS": {
+      "workerId": {
+        "$JOIN": [
+          "device-",
+          "&.index"
+        ]
+      },
+      "workerGroupId": "us",
+      "agentVersion": "1.0.0",
+      "status": {
+        "$CHOICE": [
+          "ONLINE",
+          "OFFLINE"
+        ]
+      },
+      "supportedProjects": [
+        "demoApp",
+        "otherApp",
+        "testApp"
+      ]
+    }
+  },
+  {
+    "MODEL": "Worker",
+    "COUNT": 50,
+    "FIELDS": {
+      "workerId": {
+        "$JOIN": [
+          "gb-device-",
+          "&.index"
+        ]
+      },
+      "workerGroupId": "gb",
+      "agentVersion": "1.0.1",
+      "status": {
+        "$CHOICE": [
+          "ONLINE",
+          "OFFLINE"
+        ]
+      },
+      "supportedProjects": [
+        "demoApp",
+        "testApp"
+      ]
+    }
+  }
+]

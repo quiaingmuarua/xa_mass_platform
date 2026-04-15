@@ -23,9 +23,9 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
         properties = {
                 "mock.client.auto-start=true",
                 "mock.client.task-result-status=FAILED",
-                "mock.client.devices-config=mock/test_mock_devices.json",
-                "mass.mock.data.devices=mock/test_mock_devices.json",
-                "mass.mock.data.tokens=mock/test_mock_tokens.json",
+                "mock.client.workers-config=mock/test_mock_workers.json",
+                "mass.mock.data.workers=mock/test_mock_workers.json",
+                "mass.mock.data.worker-contexts=mock/test_mock_worker_contexts.json",
                 "mass.mock.data.tasks=mock/test_mock_tasks.json",
                 "mass.mock.data.rules=mock/test_mock_rules.json",
                 "mock.client.retry-attempts=1",
@@ -66,10 +66,10 @@ class TaskApiFailureResultIntegrationTest extends AbstractMockE2eTest {
 
         for (Map<String, Object> message : snapshot.messages()) {
             assertEquals("FAILED", message.get("status"));
-            assertNotNull(message.get("deviceId"));
-            assertNotNull(message.get("tokenId"));
+            assertNotNull(message.get("workerId"));
+            assertNotNull(message.get("workerContextId"));
             assertNotNull(message.get("batchId"));
-            assertEquals("Executed by mock client " + message.get("deviceId"), message.get("errorMessage"));
+            assertEquals("Executed by mock client " + message.get("workerId"), message.get("errorMessage"));
         }
     }
 }

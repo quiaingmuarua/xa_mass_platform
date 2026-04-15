@@ -2,14 +2,14 @@ package com.xa.mass.engine.service;
 
 import com.xa.mass.base.enums.assignment.AssignmentResult;
 import com.xa.mass.base.enums.assignment.AssignmentType;
-import com.xa.mass.base.model.Device;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.Token;
+import com.xa.mass.base.model.Worker;
+import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.model.AssignmentRecord;
 import com.xa.mass.engine.model.RuleEvaluationDetail;
-import com.xa.mass.engine.monkey.snapshot.DeviceSnapshot;
 import com.xa.mass.engine.monkey.snapshot.TaskSnapshot;
-import com.xa.mass.engine.monkey.snapshot.TokenSnapshot;
+import com.xa.mass.engine.monkey.snapshot.WorkerContextSnapshot;
+import com.xa.mass.engine.monkey.snapshot.WorkerSnapshot;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -18,91 +18,80 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 /**
- * 鍒嗛厤璁板綍鏈嶅姟
- * 璐熻矗璁板綍鍜岀鐞嗘墍鏈夊垎閰嶅皾璇曪紝鏀寔褰掑洜鍒嗘瀽鍜岄獙璇?
+ * 分配记录服务
+ * 负责记录和管理所有分配尝试，支持归因分析和验证
  */
 public class AssignmentRecordService {
 
     private static final Logger log = LoggerFactory.getLogger(AssignmentRecordService.class);
 
-    // 鍐呭瓨瀛樺偍锛屽疄闄呴」鐩腑鍙浛鎹负鏁版嵁搴?
+    // 内存存储，实际项目中可替换为数据库
     private final Map<String, AssignmentRecord> records = new ConcurrentHashMap<>();
 
     /**
-     * 璁板綍璁惧鍒嗛厤灏濊瘯
+     * 记录 Worker 分配尝试
      */
-    public AssignmentRecord recordDeviceAssignment(Task task, Device device, Token token,
+    public AssignmentRecord recordWorkerAssignment(Task task, Worker worker, WorkerContext workerContext,
                                                    AssignmentResult result, String reason,
                                                    List<RuleEvaluationDetail> ruleEvaluations,
                                                    Map<String, Object> contextSnapshot,
-                                                   boolean deviceLocked) {
+                                                   boolean workerLocked) {
         AssignmentRecord record = new AssignmentRecord();
         record.setRecordId(UUID.randomUUID().toString());
         record.setType(AssignmentType.DEVICE_ASSIGN);
         record.setTaskId(task.getTid());
-        record.setDeviceId(device.getDeviceId());
+        record.setWorkerId(worker.getWorkerId());
         record.setBatchId("batch-" + System.currentTimeMillis());
         record.setResult(result);
         record.setReason(reason);
         record.setRuleEvaluations(ruleEvaluations);
         record.setContextSnapshot(contextSnapshot);
 
-        // 鍒涘缓蹇収
         record.setTaskSnapshot(createTaskSnapshot(task));
-        record.setDeviceSnapshot(createDeviceSnapshot(device, deviceLocked));
-        if (token != null) {
-            record.setTokenSnapshot(createTokenSnapshot(token));
+        record.setWorkerSnapshot(createWorkerSnapshot(worker, workerLocked));
+        if (workerContext != null) {
+            record.setWorkerContextSnapshot(createWorkerContextSnapshot(workerContext));
         }
 
         records.put(record.getRecordId(), record);
-
-        // 杈撳嚭褰掑洜鏃ュ織
         logAssignmentRecord(record);
-
         return record;
     }
 
     /**
-     * 璁板綍娑堟伅鍒嗛厤灏濊瘯
+     * 记录消息分配尝试
      */
-    public AssignmentRecord recordMessageAssignment(Task task, Device device, Token token,
+    public AssignmentRecord recordMessageAssignment(Task task, Worker worker, WorkerContext workerContext,
                                                     String messageId, String batchId,
                                                     AssignmentResult result, String reason,
-                                                    boolean deviceLocked) {
+                                                    boolean workerLocked) {
         AssignmentRecord record = new AssignmentRecord();
         record.setRecordId(UUID.randomUUID().toString());
         record.setType(AssignmentType.MSG_ASSIGN);
         record.setTaskId(task.getTid());
-        record.setDeviceId(device.getDeviceId());
+        record.setWorkerId(worker.getWorkerId());
         record.setMessageId(messageId);
         record.setBatchId(batchId);
         record.setResult(result);
         record.setReason(reason);
 
-        // 鍒涘缓蹇収
         record.setTaskSnapshot(createTaskSnapshot(task));
-        record.setDeviceSnapshot(createDeviceSnapshot(device, deviceLocked));
-        if (token != null) {
-            record.setTokenSnapshot(createTokenSnapshot(token));
+        record.setWorkerSnapshot(createWorkerSnapshot(worker, workerLocked));
+        if (workerContext != null) {
+            record.setWorkerContextSnapshot(createWorkerContextSnapshot(workerContext));
         }
 
         records.put(record.getRecordId(), record);
-
-        // 杈撳嚭褰掑洜鏃ュ織
         logAssignmentRecord(record);
-
         return record;
     }
 
-    /**
-     * 杈撳嚭褰掑洜鏃ュ織
-     */
     private void logAssignmentRecord(AssignmentRecord record) {
         StringBuilder logMsg = new StringBuilder();
         logMsg.append("[Assignment] ");
         logMsg.append("Type=").append(record.getType().getDescription()).append(", ");
         logMsg.append("Task=").append(record.getTaskId()).append(", ");
-        logMsg.append("Device=").append(record.getDeviceId()).append(", ");
+        logMsg.append("Worker=").append(record.getWorkerId()).append(", ");
 
         if (record.getMessageId() != null) {
             logMsg.append("Message=").append(record.getMessageId()).append(", ");
@@ -123,9 +112,6 @@ public class AssignmentRecordService {
         log.info(logMsg.toString());
     }
 
-    /**
-     * 鍒涘缓浠诲姟蹇収
-     */
     private TaskSnapshot createTaskSnapshot(Task task) {
         TaskSnapshot snapshot = new TaskSnapshot();
         snapshot.setTaskId(task.getTid());
@@ -145,104 +131,77 @@ public class AssignmentRecordService {
         return snapshot;
     }
 
-    /**
-     * 鍒涘缓璁惧蹇収
-     */
-    private DeviceSnapshot createDeviceSnapshot(Device device, boolean deviceLocked) {
-        DeviceSnapshot snapshot = new DeviceSnapshot();
-        snapshot.setDeviceId(device.getDeviceId());
-        snapshot.setDeviceStatus(device.getStatus().name());
-        snapshot.setAgentVersion(device.getAgentVersion());
-        snapshot.setLastHeartbeat(device.getLastHeartbeat());
-        snapshot.setSupportedProjects(device.getSupportedProjects());
-        snapshot.setDeviceGroupId(device.getDeviceGroupId());
-        snapshot.setOnlineStrategy(device.getOnlineStrategy());
-        snapshot.setAttributes(device.getAttributes());
-        snapshot.setCreateTime(device.getCreateTime());
-        snapshot.setUpdateTime(device.getUpdateTime());
-        snapshot.setAppCount(device.getSupportedProjects() != null ? device.getSupportedProjects().size() : 0);
-        snapshot.setDeviceAvailable(device.isAvailable());
-        snapshot.setDeviceLocked(deviceLocked);
+    private WorkerSnapshot createWorkerSnapshot(Worker worker, boolean workerLocked) {
+        WorkerSnapshot snapshot = new WorkerSnapshot();
+        snapshot.setWorkerId(worker.getWorkerId());
+        snapshot.setWorkerStatus(worker.getStatus().name());
+        snapshot.setAgentVersion(worker.getAgentVersion());
+        snapshot.setLastHeartbeat(worker.getLastHeartbeat());
+        snapshot.setSupportedProjects(worker.getSupportedProjects());
+        snapshot.setWorkerGroupId(worker.getWorkerGroupId());
+        snapshot.setOnlineStrategy(worker.getOnlineStrategy());
+        snapshot.setAttributes(worker.getAttributes());
+        snapshot.setCreateTime(worker.getCreateTime());
+        snapshot.setUpdateTime(worker.getUpdateTime());
+        snapshot.setAppCount(worker.getSupportedProjects() != null ? worker.getSupportedProjects().size() : 0);
+        snapshot.setWorkerAvailable(worker.isAvailable());
+        snapshot.setWorkerLocked(workerLocked);
         return snapshot;
     }
 
-    /**
-     * 鍒涘缓Token蹇収
-     */
-    private TokenSnapshot createTokenSnapshot(Token token) {
-        TokenSnapshot snapshot = new TokenSnapshot();
-        snapshot.setTokenId(token.getTokenId());
-        snapshot.setDeviceId(token.getDeviceId());
-        snapshot.setTokenStatus(token.getStatus().name());
-        snapshot.setChannel(token.getChannel());
-        snapshot.setAttributes(token.getAttributes());
-        snapshot.setLastBindTaskId(token.getLastBindTaskId());
-        snapshot.setExpireTime(token.getExpireTime());
-        snapshot.setCreateTime(token.getCreateTime());
-        snapshot.setUpdateTime(token.getUpdateTime());
-        snapshot.setLastUsedTime(token.getLastUsedTime());
-        snapshot.setTokenAllocatable(token.isAllocatable());
-        snapshot.setTokenAvailable(token.isAvailable());
+    private WorkerContextSnapshot createWorkerContextSnapshot(WorkerContext workerContext) {
+        WorkerContextSnapshot snapshot = new WorkerContextSnapshot();
+        snapshot.setWorkerContextId(workerContext.getWorkerContextId());
+        snapshot.setWorkerId(workerContext.getWorkerId());
+        snapshot.setWorkerContextStatus(workerContext.getStatus().name());
+        snapshot.setChannel(workerContext.getChannel());
+        snapshot.setAttributes(workerContext.getAttributes());
+        snapshot.setLastBindTaskId(workerContext.getLastBindTaskId());
+        snapshot.setExpireTime(workerContext.getExpireTime());
+        snapshot.setCreateTime(workerContext.getCreateTime());
+        snapshot.setUpdateTime(workerContext.getUpdateTime());
+        snapshot.setLastUsedTime(workerContext.getLastUsedTime());
+        snapshot.setWorkerContextAllocatable(workerContext.isAllocatable());
+        snapshot.setWorkerContextAvailable(workerContext.isAvailable());
         return snapshot;
     }
 
-    /**
-     * 鑾峰彇浠诲姟鐨勬墍鏈夊垎閰嶈褰?
-     */
     public List<AssignmentRecord> getRecordsByTaskId(String taskId) {
         return records.values().stream()
                 .filter(r -> taskId.equals(r.getTaskId()))
                 .collect(Collectors.toList());
     }
 
-    /**
-     * 鑾峰彇璁惧鐨勬墍鏈夊垎閰嶈褰?
-     */
-    public List<AssignmentRecord> getRecordsByDeviceId(String deviceId) {
+    public List<AssignmentRecord> getRecordsByWorkerId(String workerId) {
         return records.values().stream()
-                .filter(r -> deviceId.equals(r.getDeviceId()))
+                .filter(r -> workerId.equals(r.getWorkerId()))
                 .collect(Collectors.toList());
     }
 
-    /**
-     * 鑾峰彇鎴愬姛鐨勫垎閰嶈褰?
-     */
     public List<AssignmentRecord> getSuccessfulRecords() {
         return records.values().stream()
                 .filter(r -> AssignmentResult.SUCCESS.equals(r.getResult()))
                 .collect(Collectors.toList());
     }
 
-    /**
-     * 鑾峰彇澶辫触鐨勫垎閰嶈褰?
-     */
     public List<AssignmentRecord> getFailedRecords() {
         return records.values().stream()
                 .filter(r -> !AssignmentResult.SUCCESS.equals(r.getResult()))
                 .collect(Collectors.toList());
     }
 
-    /**
-     * 鑾峰彇瑙勫垯涓嶅尮閰嶇殑璁板綍
-     */
     public List<AssignmentRecord> getRuleNotMatchRecords() {
         return records.values().stream()
                 .filter(r -> AssignmentResult.RULE_NOT_MATCH.equals(r.getResult()))
                 .collect(Collectors.toList());
     }
 
-    /**
-     * 鑾峰彇鍐茬獊璁板綍
-     */
     public List<AssignmentRecord> getConflictRecords() {
         return records.values().stream()
                 .filter(r -> AssignmentResult.CONFLICT.equals(r.getResult()))
                 .collect(Collectors.toList());
     }
 
-    /**
-     * 鐢熸垚鍒嗛厤缁熻鎶ュ憡
-     */
     public Map<String, Object> generateAssignmentReport() {
         Map<String, Object> report = new HashMap<>();
 
@@ -259,49 +218,40 @@ public class AssignmentRecordService {
         report.put("conflictCount", conflictCount);
         report.put("successRate", totalRecords > 0 ? (double) successCount / totalRecords : 0.0);
 
-        // 鎸変换鍔″垎缁勭粺璁?
         Map<String, Long> taskStats = records.values().stream()
                 .collect(Collectors.groupingBy(AssignmentRecord::getTaskId, Collectors.counting()));
         report.put("taskStats", taskStats);
 
-        // 鎸夎澶囧垎缁勭粺璁?
-        Map<String, Long> deviceStats = records.values().stream()
-                .collect(Collectors.groupingBy(AssignmentRecord::getDeviceId, Collectors.counting()));
-        report.put("deviceStats", deviceStats);
+        Map<String, Long> workerStats = records.values().stream()
+                .collect(Collectors.groupingBy(AssignmentRecord::getWorkerId, Collectors.counting()));
+        report.put("workerStats", workerStats);
 
         return report;
     }
 
-    /**
-     * 妫€娴嬮噸澶?鍐茬獊缁戝畾
-     */
     public List<Map<String, Object>> detectConflicts() {
         List<Map<String, Object>> conflicts = new ArrayList<>();
 
-        // 妫€娴嬪悓涓€璁惧鍦ㄥ悓涓€鏃堕棿娈电殑閲嶅鍒嗛厤
-        Map<String, List<AssignmentRecord>> deviceRecords = records.values().stream()
-                .collect(Collectors.groupingBy(AssignmentRecord::getDeviceId));
+        Map<String, List<AssignmentRecord>> workerRecords = records.values().stream()
+                .collect(Collectors.groupingBy(AssignmentRecord::getWorkerId));
 
-        for (Map.Entry<String, List<AssignmentRecord>> entry : deviceRecords.entrySet()) {
-            String deviceId = entry.getKey();
-            List<AssignmentRecord> deviceRecordList = entry.getValue();
+        for (Map.Entry<String, List<AssignmentRecord>> entry : workerRecords.entrySet()) {
+            String workerId = entry.getKey();
+            List<AssignmentRecord> workerRecordList = entry.getValue();
 
-            // 鎸夋椂闂存帓搴?
-            deviceRecordList.sort(Comparator.comparing(AssignmentRecord::getAssignTime));
+            workerRecordList.sort(Comparator.comparing(AssignmentRecord::getAssignTime));
 
-            // 妫€鏌ユ槸鍚︽湁鏃堕棿閲嶅彔鐨勬垚鍔熷垎閰?
-            for (int i = 0; i < deviceRecordList.size() - 1; i++) {
-                AssignmentRecord current = deviceRecordList.get(i);
-                AssignmentRecord next = deviceRecordList.get(i + 1);
+            for (int i = 0; i < workerRecordList.size() - 1; i++) {
+                AssignmentRecord current = workerRecordList.get(i);
+                AssignmentRecord next = workerRecordList.get(i + 1);
 
                 if (AssignmentResult.SUCCESS.equals(current.getResult()) &&
                         AssignmentResult.SUCCESS.equals(next.getResult())) {
 
-                    // 妫€鏌ユ椂闂撮棿闅旀槸鍚﹁繃鐭紙鍙兘瀛樺湪鍐茬獊锛?
                     long timeDiff = java.time.Duration.between(current.getAssignTime(), next.getAssignTime()).toMinutes();
-                    if (timeDiff < 5) { // 5鍒嗛挓鍐呴噸澶嶅垎閰嶈涓烘綔鍦ㄥ啿绐?
+                    if (timeDiff < 5) {
                         Map<String, Object> conflict = new HashMap<>();
-                        conflict.put("deviceId", deviceId);
+                        conflict.put("workerId", workerId);
                         conflict.put("conflictType", "TIME_OVERLAP");
                         conflict.put("firstRecord", current);
                         conflict.put("secondRecord", next);
@@ -314,4 +264,4 @@ public class AssignmentRecordService {
 
         return conflicts;
     }
-} 
+}

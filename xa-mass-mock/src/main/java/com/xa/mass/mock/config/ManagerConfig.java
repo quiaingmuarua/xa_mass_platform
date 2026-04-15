@@ -1,10 +1,10 @@
 package com.xa.mass.mock.config;
 
-import com.xa.mass.engine.DeviceManager;
+import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.engine.rules.RuleManagerFactory;
-import com.xa.mass.engine.storage.DeviceStorage;
+import com.xa.mass.engine.storage.WorkerStorage;
 import com.xa.mass.engine.storage.RuleStorage;
 import com.xa.mass.engine.storage.TaskStorage;
 import com.xa.mass.engine.storage.TaskStorageFactory;
@@ -27,8 +27,8 @@ public class ManagerConfig {
     }
 
     @Bean
-    public DeviceStorage deviceStorage() {
-        return TaskStorageFactory.createDefaultDeviceStorage();
+    public WorkerStorage workerStorage() {
+        return TaskStorageFactory.createDefaultWorkerStorage();
     }
 
     @Bean
@@ -47,8 +47,8 @@ public class ManagerConfig {
     }
 
     @Bean
-    public DeviceManager deviceManager(DeviceStorage deviceStorage) {
-        return new DeviceManager(deviceStorage);
+    public WorkerManager workerManager(WorkerStorage workerStorage) {
+        return new WorkerManager(workerStorage);
     }
 
     @Bean

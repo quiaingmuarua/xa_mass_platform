@@ -13,7 +13,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class TaskAssignWorker {
     private static final Logger log = LoggerFactory.getLogger(TaskAssignWorker.class);
     private static final long DEFAULT_RETRY_DELAY_MILLIS = 1000L;
-    private final TaskDeviceAssignListener deviceAssignListener;
+    private final TaskWorkerAssignListener workerAssignListener;
     private final long retryDelayMillis;
     private final BlockingQueue<Task> queue = new LinkedBlockingQueue<>();
     private final List<TaskCompletionListener> listeners = new CopyOnWriteArrayList<>();
@@ -22,12 +22,12 @@ public class TaskAssignWorker {
     private ExecutorService executor;
     private ScheduledExecutorService retryExecutor;
 
-    public TaskAssignWorker(TaskDeviceAssignListener deviceAssignListener) {
-        this(deviceAssignListener, DEFAULT_RETRY_DELAY_MILLIS);
+    public TaskAssignWorker(TaskWorkerAssignListener workerAssignListener) {
+        this(workerAssignListener, DEFAULT_RETRY_DELAY_MILLIS);
     }
 
-    public TaskAssignWorker(TaskDeviceAssignListener deviceAssignListener, long retryDelayMillis) {
-        this.deviceAssignListener = deviceAssignListener;
+    public TaskAssignWorker(TaskWorkerAssignListener workerAssignListener, long retryDelayMillis) {
+        this.workerAssignListener = workerAssignListener;
         this.retryDelayMillis = retryDelayMillis;
     }
 
@@ -53,7 +53,7 @@ public class TaskAssignWorker {
                     Task task = queue.take();
                     TaskStatus initialStatus = task.getStatus();
                     if (initialStatus == TaskStatus.READY || initialStatus == TaskStatus.RUNNING) {
-                        boolean assigned = deviceAssignListener.onTaskAssign(task);
+                        boolean assigned = workerAssignListener.onTaskAssign(task);
                         if (running && !assigned && task.getStatus() == initialStatus) {
                             scheduleRetry(task, initialStatus);
                         } else {

@@ -75,7 +75,7 @@ class DispatcherInboundHandlerTest {
 
     @Test
     void missingContextFieldsSendsMissingFieldsError() throws Exception {
-        // Valid JSON but missing required fields (deviceId etc.)
+        // Valid JSON but missing required fields (workerId etc.)
         handler.channelRead0(ctx, frame("{\"msgType\":\"PING\"}"));
 
         String sent = sentFrame.get();
@@ -93,7 +93,7 @@ class DispatcherInboundHandlerTest {
                   "subMsgType": "heartbeat",
                   "project": "demoApp",
                   "context": {
-                    "deviceId": "dev-1",
+                    "workerId": "dev-1",
                     "connRole": "task"
                   }
                 }

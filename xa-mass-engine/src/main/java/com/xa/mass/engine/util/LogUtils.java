@@ -15,9 +15,9 @@ public class LogUtils {
     // MDC字段名常量
     public static final String TRACE_ID = "traceId";
     public static final String USER_ID = "userId";
-    public static final String DEVICE_ID = "deviceId";
+    public static final String WORKER_ID = "workerId";
     public static final String TASK_ID = "taskId";
-    public static final String TOKEN_ID = "tokenId";
+    public static final String WORKER_CONTEXT_ID = "workerContextId";
     public static final String OPERATION = "operation";
     public static final String MODULE = "module";
     public static final String RESULT = "result";
@@ -47,10 +47,10 @@ public class LogUtils {
     }
 
     /**
-     * 设置设备ID
+     * 设置Worker ID
      */
-    public static void setDeviceId(String deviceId) {
-        MDC.put(DEVICE_ID, deviceId);
+    public static void setWorkerId(String workerId) {
+        MDC.put(WORKER_ID, workerId);
     }
 
     /**
@@ -61,10 +61,10 @@ public class LogUtils {
     }
 
     /**
-     * 设置令牌ID
+     * 设置WorkerContext ID
      */
-    public static void setTokenId(String tokenId) {
-        MDC.put(TOKEN_ID, tokenId);
+    public static void setWorkerContextId(String workerContextId) {
+        MDC.put(WORKER_CONTEXT_ID, workerContextId);
     }
 
     /**
@@ -158,13 +158,13 @@ public class LogUtils {
     }
 
     /**
-     * 记录设备相关日志
+     * 记录Worker相关日志
      */
-    public static void logDeviceOperation(String deviceId, String operation, String result) {
-        setDeviceId(deviceId);
+    public static void logWorkerOperation(String workerId, String operation, String result) {
+        setWorkerId(workerId);
         setOperation(operation);
         setResult(result);
-        logger.info("设备操作: 设备ID={}, 操作={}, 结果={}", deviceId, operation, result);
+        logger.info("Worker操作: WorkerID={}, 操作={}, 结果={}", workerId, operation, result);
     }
 
     /**
@@ -178,35 +178,35 @@ public class LogUtils {
     }
 
     /**
-     * 记录令牌相关日志
+     * 记录WorkerContext相关日志
      */
-    public static void logTokenOperation(String tokenId, String operation, String result) {
-        setTokenId(tokenId);
+    public static void logWorkerContextOperation(String workerContextId, String operation, String result) {
+        setWorkerContextId(workerContextId);
         setOperation(operation);
         setResult(result);
-        logger.info("令牌操作: 令牌ID={}, 操作={}, 结果={}", tokenId, operation, result);
+        logger.info("WorkerContext操作: WorkerContextID={}, 操作={}, 结果={}", workerContextId, operation, result);
     }
 
     /**
      * 记录规则评估日志
      */
-    public static void logRuleEvaluation(String ruleId, String deviceId, String taskId, boolean passed) {
-        setDeviceId(deviceId);
+    public static void logRuleEvaluation(String ruleId, String workerId, String taskId, boolean passed) {
+        setWorkerId(workerId);
         setTaskId(taskId);
         setOperation("RULE_EVALUATION");
         setResult(passed ? "PASSED" : "FAILED");
-        logger.info("规则评估: 规则ID={}, 设备ID={}, 任务ID={}, 结果={}",
-                ruleId, deviceId, taskId, passed ? "通过" : "不通过");
+        logger.info("规则评估: 规则ID={}, WorkerID={}, 任务ID={}, 结果={}",
+                ruleId, workerId, taskId, passed ? "通过" : "不通过");
     }
 
     /**
      * 记录任务分配日志
      */
-    public static void logTaskAssignment(String taskId, String deviceId, String result) {
+    public static void logTaskAssignment(String taskId, String workerId, String result) {
         setTaskId(taskId);
-        setDeviceId(deviceId);
+        setWorkerId(workerId);
         setOperation("TASK_ASSIGNMENT");
         setResult(result);
-        logger.info("任务分配: 任务ID={}, 设备ID={}, 结果={}", taskId, deviceId, result);
+        logger.info("任务分配: 任务ID={}, WorkerID={}, 结果={}", taskId, workerId, result);
     }
-} 
+}

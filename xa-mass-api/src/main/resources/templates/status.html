@@ -159,14 +159,14 @@
 <div class="container">
     <div class="header">
         <h1>🚀 Mass Platform 状态监控</h1>
-        <p>实时监控任务、设备、Token 和消息状态</p>
+        <p>实时监控任务、Worker、WorkerContext 和消息状态</p>
         <button class="refresh-btn" onclick="location.reload()">🔄 刷新数据</button>
     </div>
 
     <div class="nav-links">
         <a href="/status">📊 总览</a>
         <a href="/status/tasks">📋 任务详情</a>
-        <a href="/status/devices">📱 设备详情</a>
+        <a href="/status/workers">👷 Worker 详情</a>
         <a href="/status/rules">📏 规则管理</a>
     </div>
 
@@ -187,30 +187,30 @@
             </div>
         </div>
 
-        <!-- 设备状态统计 -->
+        <!-- Worker状态统计 -->
         <div class="stat-card">
-            <h3>📱 设备状态统计</h3>
+            <h3>👷 Worker 状态统计</h3>
             <div class="stat-item">
-                <span class="stat-label">总设备数:</span>
-                <span class="stat-value" th:text="${#lists.size(devices)}">0</span>
+                <span class="stat-label">Worker 总数:</span>
+                <span class="stat-value" th:text="${#lists.size(workers)}">0</span>
             </div>
-            <div class="stat-item" th:each="status : ${deviceStatuses}">
+            <div class="stat-item" th:each="status : ${workerStatuses}">
                 <span class="stat-label" th:text="${status.name()}">状态</span>
                 <span class="stat-value">
                         <span class="status-badge" th:classappend="'status-' + ${#strings.toLowerCase(status.name())}"
-                              th:text="${deviceStatusCount.get(status) ?: 0}">0</span>
+                              th:text="${workerStatusCount.get(status) ?: 0}">0</span>
                     </span>
             </div>
         </div>
 
-        <!-- Token状态统计 -->
+        <!-- WorkerContext状态统计 -->
         <div class="stat-card">
-            <h3>🔑 Token状态统计</h3>
+            <h3>🔑 WorkerContext 状态统计</h3>
             <div class="stat-item">
-                <span class="stat-label">总Token数:</span>
-                <span class="stat-value" th:text="${#lists.size(tokens)}">0</span>
+                <span class="stat-label">WorkerContext 总数:</span>
+                <span class="stat-value" th:text="${#lists.size(workerContexts)}">0</span>
             </div>
-            <div class="stat-item" th:each="entry : ${tokenStatusCount}">
+            <div class="stat-item" th:each="entry : ${workerContextStatusCount}">
                 <span class="stat-label" th:text="${entry.key}">状态</span>
                 <span class="stat-value" th:text="${entry.value}">0</span>
             </div>

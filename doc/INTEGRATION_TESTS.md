@@ -43,10 +43,10 @@ Unit tests verify each state machine in isolation. But only integration tests ca
 
 - Task reaches `TERMINAL` while some `TaskMsg` rows are still `SENT` (counter mismatch)
 - `terminalReason` is `ALL_MESSAGES_SUCCEEDED` but a `FAILED` message exists (metadata corruption)
-- `scheduleDeviceCnt` is non-zero but no `deviceId` was ever written to any `TaskMsg` (assignment gap)
+- `scheduleDeviceCnt` is non-zero but no `workerId` was ever written to any `TaskMsg` (assignment gap)
 - A `PAUSED` task that received callbacks while paused never closes to `TERMINAL` (state convergence failure)
-- A `READY` task with no matching device is silently dropped from the assignment queue (orphan task)
-- Two concurrent tasks are assigned to the same device instead of separate devices (concurrency bug)
+- A `READY` task with no matching worker is silently dropped from the assignment queue (orphan task)
+- Two concurrent tasks are assigned to the same worker instead of separate workers (concurrency bug)
 
 These bugs are invisible at unit-test level because the two state machines talk through `TaskManager`, which is mocked out in unit tests.
 
@@ -57,7 +57,7 @@ These bugs are invisible at unit-test level because the two state machines talk 
 All integration tests are in:
 
 ```
-xa-mass-mock/src/test/java/com/xa/mass/mock/api/
+xa-mass-mock/src/test/java/com/xa/mass/mock/e2e/
 ```
 
 Each test:
@@ -72,8 +72,11 @@ Default fixture files used by most tests:
 
 | Property | File |
 |----------|------|
-| `mass.mock.data.devices` | `mock/test_mock_devices.json` — 2 devices, groupId=us, project=demoApp |
-| `mass.mock.data.devices` | `mock/test_mock_devices_empty.json` — 0 devices (for delayed-device tests) |
+| `mock.client.workers-config` | `mock/test_mock_workers.json` — 2 workers, workerGroupId=us, project=demoApp |
+| `mass.mock.data.workers` | `mock/test_mock_workers.json` — seeded workers for assignment tests |
+| `mass.mock.data.workers` | `mock/test_mock_workers_empty.json` — 0 workers (for delayed-worker tests) |
+| `mass.mock.data.worker-contexts` | `mock/test_mock_worker_contexts.json` — matching worker contexts |
+| `mass.mock.data.worker-contexts` | `mock/test_mock_worker_contexts_empty.json` — 0 worker contexts (for delayed-worker tests) |
 | `mass.mock.data.tasks` | `mock/test_mock_tasks.json` — no pre-seeded tasks |
 | `mass.mock.data.rules` | `mock/test_mock_rules.json` — 1 rule: country=us → demoApp |
 
@@ -100,7 +103,7 @@ Run only the integration tests by name:
 
 ```bash
 ./mvnw -pl xa-mass-mock -am \
-  -Dtest="TaskApiIntegrationTest,TaskApiFailureResultIntegrationTest,TaskApiMixedResultsIntegrationTest,TaskApiLifecycleGuardsIntegrationTest,TaskApiPauseCompletionIntegrationTest,TaskApiResumeAndCompleteIntegrationTest,TaskApiTerminateRunningIntegrationTest,TaskApiCallbackReplayIntegrationTest,TaskApiDelayedDeviceAvailabilityIntegrationTest,TaskApiMultiTaskAssignmentIntegrationTest,TaskApiStateValidationIntegrationTest,TaskApiMinimumDeviceGateIntegrationTest,TaskApiMultiRoundDispatchIntegrationTest,TaskApiSingleDeviceReuseIntegrationTest,TaskApiTerminateReuseIntegrationTest,TaskApiTokenAttributeRoutingIntegrationTest" \
+  -Dtest="TaskApiIntegrationTest,TaskApiFailureResultIntegrationTest,TaskApiMixedResultsIntegrationTest,TaskApiLifecycleGuardsIntegrationTest,TaskApiPauseCompletionIntegrationTest,TaskApiResumeAndCompleteIntegrationTest,TaskApiTerminateRunningIntegrationTest,TaskApiCallbackReplayIntegrationTest,TaskApiDelayedWorkerAvailabilityIntegrationTest,TaskApiMultiTaskAssignmentIntegrationTest,TaskApiStateValidationIntegrationTest,TaskApiMinimumWorkerGateIntegrationTest,TaskApiMultiRoundDispatchIntegrationTest,TaskApiSingleWorkerReuseIntegrationTest,TaskApiTerminateReuseIntegrationTest,TaskApiWorkerContextAttributeRoutingIntegrationTest" \
   -Dsurefire.failIfNoSpecifiedTests=false test
 ```
 
@@ -122,7 +125,7 @@ Expected result: `BUILD SUCCESS`, 0 failures.
 
 **Path covered**: `NEW → READY → RUNNING → TERMINAL` (happy path)
 
-**Setup**: auto-start=true, 2 devices, 2 targets
+**Setup**: auto-start=true, 2 workers, 2 targets
 
 **Scenario**:
 1. `POST /status/api/tasks` → task is `NEW`
@@ -132,7 +135,7 @@ Expected result: `BUILD SUCCESS`, 0 failures.
 **Assertions**:
 - `terminalReason = ALL_MESSAGES_SUCCEEDED`
 - `scheduleDeviceCnt = 2`, `taskExecutedNumber = 2`
-- Both `TaskMsg` rows: `status=SUCCESS`, `deviceId/tokenId/batchId` non-null
+- Both `TaskMsg` rows: `status=SUCCESS`, `workerId/workerContextId/batchId` non-null
 
 ---
 
@@ -140,14 +143,14 @@ Expected result: `BUILD SUCCESS`, 0 failures.
 
 **Path covered**: `NEW → READY → RUNNING → TERMINAL` (all-fail path)
 
-**Setup**: auto-start=true, 2 devices, `mock.client.task-result-status=FAILED`
+**Setup**: auto-start=true, 2 workers, `mock.client.task-result-status=FAILED`
 
 **Scenario**: same as 4.1, but mock clients respond with `FAILED`
 
 **Assertions**:
 - `terminalReason = ALL_MESSAGES_FAILED`
 - `scheduleDeviceCnt = 2`, `taskExecutedNumber = 0`
-- Both `TaskMsg` rows: `status=FAILED`, `errorMessage` contains `deviceId`
+- Both `TaskMsg` rows: `status=FAILED`, `errorMessage` contains `workerId`
 
 ---
 
@@ -155,7 +158,7 @@ Expected result: `BUILD SUCCESS`, 0 failures.
 
 **Path covered**: `NEW → READY → RUNNING → TERMINAL` (mixed-result path)
 
-**Setup**: auto-start=false, 2 devices, 2 targets
+**Setup**: auto-start=false, 2 workers, 2 targets
 
 **Scenario**:
 1. Approve task → wait for `RUNNING` with 2 `SENT` messages
@@ -176,11 +179,11 @@ Expected result: `BUILD SUCCESS`, 0 failures.
 
 **Paths covered**: reject/approve, pause/resume, delete guard
 
-**Setup**: auto-start=false, no assignable devices (for pause/resume tests)
+**Setup**: auto-start=false, no assignable workers (for pause/resume tests)
 
 **Scenarios**:
 1. `rejectThenApprove`: `NEW → BLOCKED → READY`
-2. `pauseAndResume`: `READY → PAUSED → READY` (no device available, so stays READY after resume)
+2. `pauseAndResume`: `READY → PAUSED → READY` (no worker available, so stays READY after resume)
 3. `deleteRejected`: `BLOCKED` task can be deleted
 4. `cannotDeleteReady`: `READY` task delete returns 400
 
@@ -192,7 +195,7 @@ Expected result: `BUILD SUCCESS`, 0 failures.
 
 **Path covered**: `NEW → READY → RUNNING → PAUSED → TERMINAL` (callbacks arrive while paused)
 
-**Setup**: auto-start=false, 2 devices, 2 targets
+**Setup**: auto-start=false, 2 workers, 2 targets
 
 **Scenario**:
 1. Approve → wait for `RUNNING` with 2 `SENT` messages
@@ -212,12 +215,12 @@ Expected result: `BUILD SUCCESS`, 0 failures.
 
 **Path covered**: `NEW → READY → PAUSED → READY → RUNNING → TERMINAL` (normal resume path)
 
-**Setup**: auto-start=false, **empty device list** initially, 1 target
+**Setup**: auto-start=false, **empty worker list** initially, 1 target
 
 **Scenario**:
 1. Approve → task reaches `READY` but stays there (`scheduleDeviceCnt=0`, message stays `INIT`)
 2. Pause the `READY` task → `PAUSED`
-3. Register a matching device programmatically via `DeviceManager`
+3. Register a matching worker programmatically via `WorkerManager`
 4. Connect a `MassWebSocketClientImpl` (auto-responds SUCCESS)
 5. `POST /status/api/tasks/{id}/resume` → `notifyTaskReady()` fires → assign worker picks it up → `RUNNING`
 6. Mock client auto-sends callback → `TERMINAL`
@@ -225,17 +228,17 @@ Expected result: `BUILD SUCCESS`, 0 failures.
 **Assertions**:
 - `terminalReason = ALL_MESSAGES_SUCCEEDED`
 - `scheduleDeviceCnt = 1`, `taskExecutedNumber = 1`
-- `message.deviceId = late-device-0`, `tokenId/batchId` non-null
+- `message.workerId` is non-null and `workerContextId/batchId` are non-null
 
-> Distinct from PauseCompletion: in that test, callbacks arrive *while paused*. Here, the task resumes first, then the device completes it.
+> Distinct from PauseCompletion: in that test, callbacks arrive *while paused*. Here, the task resumes first, then the worker completes it.
 
 ---
 
 ### 4.7 `TaskApiTerminateRunningIntegrationTest`
 
-**Path covered**: `NEW → READY → RUNNING → TERMINAL` (manual terminate, no device callbacks)
+**Path covered**: `NEW → READY → RUNNING → TERMINAL` (manual terminate, no worker callbacks)
 
-**Setup**: auto-start=false, 2 devices seeded (for assignment), 2 targets
+**Setup**: auto-start=false, 2 workers seeded (for assignment), 2 targets
 
 **Scenario**:
 1. Approve → wait for `RUNNING`, 2 messages at `SENT`
@@ -255,7 +258,7 @@ Expected result: `BUILD SUCCESS`, 0 failures.
 
 **Path covered**: duplicate callback idempotency
 
-**Setup**: auto-start=true, 2 devices, 2 targets
+**Setup**: auto-start=true, 2 workers, 2 targets
 
 **Scenario**:
 1. Happy path to `TERMINAL`
@@ -268,20 +271,20 @@ Expected result: `BUILD SUCCESS`, 0 failures.
 
 ---
 
-### 4.9 `TaskApiDelayedDeviceAvailabilityIntegrationTest`
+### 4.9 `TaskApiDelayedWorkerAvailabilityIntegrationTest`
 
-**Path covered**: `READY` task waits for a late device
+**Path covered**: `READY` task waits for a late worker
 
-**Setup**: auto-start=false, **empty device list** initially, 1 target
+**Setup**: auto-start=false, **empty worker list** initially, 1 target
 
 **Scenario**:
 1. Approve → task reaches `READY`, `scheduleDeviceCnt=0`, message stays `INIT`
-2. Register a matching device + connect `MassWebSocketClientImpl`
+2. Register a matching worker + connect `MassWebSocketClientImpl`
 3. TaskAssignWorker retry loop picks it up → `RUNNING → TERMINAL`
 
 **Assertions**:
 - `terminalReason = ALL_MESSAGES_SUCCEEDED`
-- `message.deviceId = late-device-0`
+- `message.workerId` is non-null
 
 > Proves `TaskAssignWorker` delayed-retry keeps orphaned `READY` tasks in the queue instead of dropping them.
 
@@ -289,9 +292,9 @@ Expected result: `BUILD SUCCESS`, 0 failures.
 
 ### 4.10 `TaskApiMultiTaskAssignmentIntegrationTest`
 
-**Path covered**: two concurrent tasks distributed across separate devices
+**Path covered**: two concurrent tasks distributed across separate workers
 
-**Setup**: auto-start=true, 2 devices, 2 separate tasks with 1 target each
+**Setup**: auto-start=true, 2 workers, 2 separate tasks with 1 target each
 
 **Scenario**:
 1. Create and approve two tasks simultaneously
@@ -299,7 +302,7 @@ Expected result: `BUILD SUCCESS`, 0 failures.
 
 **Assertions**:
 - Both tasks: `terminalReason = ALL_MESSAGES_SUCCEEDED`, `scheduleDeviceCnt = 1`
-- `messages[0].deviceId ≠ messages[1].deviceId` (tasks went to different devices)
+- `messages[0].workerId ≠ messages[1].workerId` (tasks went to different workers)
 
 ---
 
@@ -307,7 +310,7 @@ Expected result: `BUILD SUCCESS`, 0 failures.
 
 **Path covered**: `GET /status/api/tasks/{id}` `stateValidation` field
 
-**Setup**: auto-start=true, 2 devices, 2 targets
+**Setup**: auto-start=true, 2 workers, 2 targets
 
 **Scenarios**:
 1. `getTaskExposesValidTerminalState`: normal completed task → `valid=true`, `needsResolution=false`
@@ -317,88 +320,88 @@ Expected result: `BUILD SUCCESS`, 0 failures.
 
 ---
 
-### 4.12 `TaskApiMinimumDeviceGateIntegrationTest`
+### 4.12 `TaskApiMinimumWorkerGateIntegrationTest`
 
-**Path covered**: `READY` blocked by `runTaskMinDeviceCnt`, unblocked when enough devices arrive
+**Path covered**: `READY` blocked by `runTaskMinDeviceCnt`, unblocked when enough workers arrive
 
-**Setup**: auto-start=false, 1 device registered, `runTaskMinDeviceCnt=2`
+**Setup**: auto-start=false, 1 worker registered, `runTaskMinDeviceCnt=2`
 
 **Scenario**:
-1. Approve task → stays `READY` (`scheduleDeviceCnt=0`), first device token stays `IDLE`
-2. Register second device + connect both clients
+1. Approve task → stays `READY` (`scheduleDeviceCnt=0`), first worker context stays `IDLE`
+2. Register second worker + connect both clients
 3. Task advances to `RUNNING` → `TERMINAL`
 
 **Assertions**:
-- Task stays `READY` while device count below minimum (provisional locks released)
+- Task stays `READY` while worker count stays below minimum (provisional locks released)
 - Both messages complete to `SUCCESS` once gate is satisfied
 
 ---
 
 ### 4.13 `TaskApiMultiRoundDispatchIntegrationTest`
 
-**Path covered**: single device, `batchSize=1`, 3 targets → 3 sequential dispatch rounds
+**Path covered**: single worker, `batchSize=1`, 3 targets → 3 sequential dispatch rounds
 
-**Setup**: auto-start=false, 1 device, 3 targets, `batchSize=1`
+**Setup**: auto-start=false, 1 worker, 3 targets, `batchSize=1`
 
 **Scenario**:
-1. Approve → device gets 1 message (round 1)
-2. Device completes → device lock released → round 2 dispatched
-3. Device completes → round 3 dispatched → final `TERMINAL`
+1. Approve → worker gets 1 message (round 1)
+2. Worker completes → worker lock released → round 2 dispatched
+3. Worker completes → round 3 dispatched → final `TERMINAL`
 
 **Assertions**:
 - `terminalReason = ALL_MESSAGES_SUCCEEDED`, `taskSuccessNumber = 3`
-- Proves `batchSize` is a per-device per-round cap, not a total task cap
+- Proves `batchSize` is a per-worker per-round cap, not a total task cap
 
 ---
 
-### 4.14 `TaskApiSingleDeviceReuseIntegrationTest`
+### 4.14 `TaskApiSingleWorkerReuseIntegrationTest`
 
-**Path covered**: single device completes task 1, is reused for task 2
+**Path covered**: single worker completes task 1, is reused for task 2
 
-**Setup**: auto-start=false, 1 device, 2 sequential tasks
+**Setup**: auto-start=false, 1 worker, 2 sequential tasks
 
 **Scenario**:
 1. Approve task 1 → `TERMINAL`
-2. Approve task 2 → same device assigned → `TERMINAL`
+2. Approve task 2 → same worker assigned → `TERMINAL`
 
 **Assertions**:
 - Both tasks: `terminalReason = ALL_MESSAGES_SUCCEEDED`
-- Same `deviceId` appears in both task message records
-- Proves device/token lock is properly released on terminal completion
+- Same `workerId` appears in both task message records
+- Proves worker/worker-context locks are properly released on terminal completion
 
 ---
 
 ### 4.15 `TaskApiTerminateReuseIntegrationTest`
 
-**Path covered**: manual terminate releases device lock for next task
+**Path covered**: manual terminate releases worker lock for next task
 
-**Setup**: auto-start=false, 1 device, 2 tasks
+**Setup**: auto-start=false, 1 worker, 2 tasks
 
 **Scenario**:
 1. Approve task 1 → `RUNNING`
 2. Terminate task 1 before callbacks → `TERMINAL (MANUAL_CANCELLED)`
-3. Approve task 2 → same device available → `TERMINAL (ALL_MESSAGES_SUCCEEDED)`
+3. Approve task 2 → same worker available → `TERMINAL (ALL_MESSAGES_SUCCEEDED)`
 
 **Assertions**:
-- Proves `cancelPendingMessages()` + device release on manual terminal
-- Second task can reuse the same device after the first task's forced closure
+- Proves `cancelPendingMessages()` + worker release on manual terminal
+- Second task can reuse the same worker after the first task's forced closure
 
 ---
 
-### 4.16 `TaskApiTokenAttributeRoutingIntegrationTest`
+### 4.16 `TaskApiWorkerContextAttributeRoutingIntegrationTest`
 
-**Path covered**: token `attributes['country']` used as routing signal instead of `groupId` hard-filter
+**Path covered**: `workerContextAttributes['country']` is used as the routing signal instead of a hard `workerGroupId` filter
 
-**Setup**: auto-start=false, multiple devices with different `groupId` and token `attributes.country`
+**Setup**: auto-start=false, multiple workers with different `workerGroupId` values and `workerContextAttributes['country']`
 
 **Scenario**:
 - Task with `taskRoutingCountryCode=us`
-- Device A: `groupId=eu`, `token.attributes.country=us` → should match
-- Device B: `groupId=us`, no country attribute → may match depending on rule
-- Device C: `groupId=eu`, `token.attributes.country=eu` → should not match
+- Worker A: `workerGroupId=pool-east`, `workerContextAttributes['country']=us` → should match
+- Worker B: `workerGroupId=pool-west`, `workerContextAttributes['country']=gb` → should not match
 
 **Assertions**:
-- Matched device has `token.attributes.country = taskRoutingCountryCode`
+- The matched message has a non-null `workerId`
+- The matched `workerContextId` belongs to the worker context whose `country` attribute equals `taskRoutingCountryCode`
 - Proves attribute-based routing works end-to-end through QLExpress rules
 
 ---
@@ -414,13 +417,13 @@ Expected result: `BUILD SUCCESS`, 0 failures.
 | `NEW → READY → RUNNING → TERMINAL` (mixed) | 4.3 |
 | `NEW → READY → RUNNING → TERMINAL` (manual cancel) | 4.7 |
 | `NEW → BLOCKED → READY` (reject then approve) | 4.4 |
-| `NEW → READY → PAUSED → READY` (pause then resume, no device) | 4.4 |
+| `NEW → READY → PAUSED → READY` (pause then resume, no worker) | 4.4 |
 | `NEW → READY → RUNNING → PAUSED → TERMINAL` (callbacks while paused) | 4.5 |
-| `NEW → READY → PAUSED → READY → RUNNING → TERMINAL` (resume, late device) | 4.6 |
-| `READY` orphan retry (delayed device) | 4.9 |
-| `READY` blocked by minimum device gate | 4.12 |
-| Multi-round dispatch (batchSize cap per device per round) | 4.13 |
-| Device reuse across sequential tasks | 4.14, 4.15 |
+| `NEW → READY → PAUSED → READY → RUNNING → TERMINAL` (resume, late worker) | 4.6 |
+| `READY` orphan retry (delayed worker) | 4.9 |
+| `READY` blocked by minimum worker gate | 4.12 |
+| Multi-round dispatch (batchSize cap per worker per round) | 4.13 |
+| Worker reuse across sequential tasks | 4.14, 4.15 |
 
 ### TaskMsg state paths
 
@@ -431,7 +434,7 @@ Expected result: `BUILD SUCCESS`, 0 failures.
 | `INIT → SENT → EXPIRED` (task terminated before callback) | 4.7, 4.15 |
 | Duplicate result idempotency | 4.8 |
 | Mixed SUCCESS + FAILED in same task | 4.3 |
-| Multi-round: device reused after each batch completes | 4.13 |
+| Multi-round: worker reused after each batch completes | 4.13 |
 
 ### `TaskTerminalReason` values
 
@@ -458,14 +461,14 @@ Used by: 4.1, 4.2, 4.10, 4.11
 ```java
 properties = {
     "mock.client.auto-start=true",
-    "mock.client.devices-config=mock/test_mock_devices.json",
+    "mock.client.workers-config=mock/test_mock_workers.json",
     ...
 }
 ```
 
-`WebSocketClientStarter` connects all devices from the config file on `ApplicationReadyEvent`. The test only needs to approve the task and poll for `TERMINAL`.
+`WebSocketClientStarter` connects all workers from the config file on `ApplicationReadyEvent`. The test only needs to approve the task and poll for `TERMINAL`.
 
-Limitation: all clients use the same `mock.client.task-result-status` — you cannot mix SUCCESS and FAILED results across devices this way.
+Limitation: all clients use the same `mock.client.task-result-status` — you cannot mix `SUCCESS` and `FAILED` results across workers this way.
 
 ---
 
@@ -474,9 +477,9 @@ Limitation: all clients use the same `mock.client.task-result-status` — you ca
 Used by: 4.3, 4.5, 4.7, 4.8
 
 ```java
-ReplayClient client = new ReplayClient(wsUri, deviceId, msgId);
+ReplayClient client = new ReplayClient(wsUri, workerId, msgId);
 client.connectBlocking();
-client.sendMessage(buildResultPayload(taskId, msgId, deviceId, "SUCCESS", "detail"));
+client.sendMessage(buildResultPayload(taskId, msgId, workerId, "SUCCESS", "detail"));
 assertTrue(client.awaitAck(3, TimeUnit.SECONDS));
 assertEquals(200, client.ackSnapshot().code());
 ```
@@ -491,33 +494,33 @@ assertEquals(200, client.ackSnapshot().code());
 
 ---
 
-### Pattern C: Late device registration
+### Pattern C: Late worker registration
 
 Used by: 4.6, 4.9
 
 ```java
 @Autowired
-private DeviceManager deviceManager;
+private WorkerManager workerManager;
 
-Device device = new Device();
-device.setDeviceId(deviceId);
-device.setGroupId("us");
-device.setStatus(DeviceStatus.ONLINE);
-device.setSupportedProjects(List.of(Project.DEMO_APP));
-deviceManager.addDevice(device);
+Worker worker = new Worker();
+worker.setWorkerId(workerId);
+worker.setWorkerGroupId("us");
+worker.setStatus(WorkerStatus.ONLINE);
+worker.setSupportedProjects(List.of("demoApp"));
+workerManager.addWorker(worker);
 
-Token token = new Token();
-token.setTokenId("token-" + deviceId);
-token.setDeviceId(deviceId);
-token.setChannel("us");
-token.setStatus(TokenStatus.LOGIN_READY);
-deviceManager.addToken(deviceId, token);
+WorkerContext workerContext = new WorkerContext();
+workerContext.setWorkerContextId("worker-context-" + workerId);
+workerContext.setWorkerId(workerId);
+workerContext.setChannel("us");
+workerContext.setStatus(WorkerContextStatus.IDLE);
+workerManager.addWorkerContext(workerId, workerContext);
 
-MassWebSocketClientImpl client = new MassWebSocketClientImpl(wsUri, deviceId);
+MassWebSocketClientImpl client = new MassWebSocketClientImpl(wsUri, workerId);
 client.connectBlocking();
 ```
 
-Both a `Device` and a matching `Token` must be registered before the assignment rule can match. The `Token` status must be `LOGIN_READY`.
+Both a `Worker` and a matching `WorkerContext` must be registered before the assignment rule can match. The `WorkerContext` status must be `IDLE`.
 
 ---
 
@@ -540,7 +543,7 @@ private TaskSnapshot waitForTaskStatus(String taskId, String expected, int maxAt
 }
 ```
 
-`maxAttempts=20` with `sleep=250ms` gives a 5-second window, which is enough for in-memory assignment. Use `maxAttempts=8` with `sleep=500ms` for delayed-device scenarios that include worker retry.
+`maxAttempts=20` with `sleep=250ms` gives a 5-second window, which is enough for in-memory assignment. Use `maxAttempts=8` with `sleep=500ms` for delayed-worker scenarios that include assignment retry.
 
 ---
 
@@ -567,17 +570,17 @@ The following paths are **not yet covered** by any integration test. They are li
 
 ---
 
-### 7.2 🟡 Device disconnect mid-task
+### 7.2 🟡 Worker disconnect mid-task
 
-**Missing path**: device connects, receives `TASK/step`, then WebSocket disconnects before sending a result
+**Missing path**: a worker connects, receives `TASK/step`, then the WebSocket disconnects before sending a result
 
 **Why it matters**: the task stays `RUNNING` forever since no callback arrives. In production this causes stuck tasks. There is currently no timeout, expiry, or retry mechanism for this — the test would expose the gap explicitly.
 
-**Suggested test name**: `TaskApiDeviceDisconnectMidTaskIntegrationTest`
+**Suggested test name**: `TaskApiWorkerDisconnectMidTaskIntegrationTest`
 
 **Outline**:
 ```
-1. auto-start=false, 2 devices, 2 targets
+1. auto-start=false, 2 workers, 2 targets
 2. Approve → wait RUNNING, messages at SENT
 3. Disconnect all MassWebSocketClientImpl instances
 4. Assert task stays RUNNING (messages stay SENT)
@@ -590,7 +593,7 @@ This test intentionally documents the known limitation: the task does not self-h
 
 ### 7.3 🟡 Cancel from READY via HTTP API
 
-**Missing path**: `READY → TERMINAL (MANUAL_CANCELLED)` before any device assignment
+**Missing path**: `READY → TERMINAL (MANUAL_CANCELLED)` before any worker assignment
 
 **Why it matters**: the `POST /terminate` endpoint calls `cancelTask()` which accepts any non-TERMINAL task. A task that was never assigned should reach `TERMINAL` cleanly with `taskExecutedNumber=0` and all messages still `INIT`.
 
@@ -598,8 +601,8 @@ This test intentionally documents the known limitation: the task does not self-h
 
 **Outline**:
 ```
-1. auto-start=false, no devices, 1 target
-2. Approve → READY (stays there, no device)
+1. auto-start=false, no workers, 1 target
+2. Approve → READY (stays there, no worker)
 3. POST /terminate → TERMINAL
 4. Assert terminalReason = MANUAL_CANCELLED
 5. Assert message.status = INIT (was never sent)
@@ -618,7 +621,7 @@ This test intentionally documents the known limitation: the task does not self-h
 
 **Outline**:
 ```
-1. auto-start=false, 2 devices, 2 targets
+1. auto-start=false, 2 workers, 2 targets
 2. Approve → RUNNING → PAUSED
 3. Submit SUCCESS for both messages via ReplayClient (task closes to TERMINAL automatically)
 4. Reopen the task to PAUSED by directly calling taskManager.setStatus (or check if there's an API)
@@ -663,7 +666,7 @@ This test intentionally documents the known limitation: the task does not self-h
 5. Allocate a free WebSocket port and register it via `@DynamicPropertySource`
 6. Use `createTaskId()` from `AbstractMockE2eTest` — it builds the `sharedConfig` wrapper correctly
 7. Use `ReplayClient` (copy from `e2e/results/TaskApiMixedResultsIntegrationTest`) for per-message SUCCESS/FAILED
-8. Use `DeviceManager.addDevice` + `addToken` (Pattern C) for late device registration
+8. Use `WorkerManager.addWorker` + `addWorkerContext` (Pattern C) for late worker registration
 9. Assert both the `task` and `messages` layers
 
 ### Template
@@ -685,8 +688,9 @@ import org.springframework.test.context.DynamicPropertySource;
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
     properties = {
         "mock.client.auto-start=false",
-        "mock.client.devices-config=mock/test_mock_devices.json",
-        "mass.mock.data.devices=mock/test_mock_devices.json",
+        "mock.client.workers-config=mock/test_mock_workers.json",
+        "mass.mock.data.workers=mock/test_mock_workers.json",
+        "mass.mock.data.worker-contexts=mock/test_mock_worker_contexts.json",
         "mass.mock.data.tasks=mock/test_mock_tasks.json",
         "mass.mock.data.rules=mock/test_mock_rules.json"
     }
@@ -705,7 +709,7 @@ class TaskApiYourScenarioIntegrationTest extends AbstractMockE2eTest {
 
     @Test
     void yourScenario() throws Exception {
-        String taskId = createTaskId("scenario-name", "target-a");
+        String taskId = createTaskId("scenario-name", "scenario text", "target-a");
         // arrange, act, assert using inherited helpers
     }
 }

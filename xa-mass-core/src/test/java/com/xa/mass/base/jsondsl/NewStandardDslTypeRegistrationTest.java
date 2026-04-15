@@ -5,7 +5,7 @@ import com.xa.mass.base.jsondsl.model.JsonDslDefinition;
 import com.xa.mass.base.jsondsl.parser.JsonDslParser;
 import com.xa.mass.base.jsondsl.processor.JsonDslProcessorEngine;
 import com.xa.mass.base.jsondsl.processor.ProcessingContext;
-import com.xa.mass.base.model.Device;
+import com.xa.mass.base.model.Worker;
 import org.junit.jupiter.api.Test;
 
 import java.util.Arrays;
@@ -21,63 +21,63 @@ class NewStandardDslTypeRegistrationTest {
 
     @Test
     void processesGenerateDslWithoutManualTypeRegistration() {
-        JsonDslDefinition definition = new JsonDslDefinition("test_device_generator", JsonDslDefinition.DslType.GENERATE);
-        definition.setDescription("Generate devices without type registry setup");
+        JsonDslDefinition definition = new JsonDslDefinition("test_worker_generator", JsonDslDefinition.DslType.GENERATE);
+        definition.setDescription("Generate workers without type registry setup");
         definition.setAuthor("test");
 
-        JsonDslContext context = new JsonDslContext("com.xa.mass.base.model.Device", 2);
-        context.setScopeName("Device");
+        JsonDslContext context = new JsonDslContext("com.xa.mass.base.model.Worker", 2);
+        context.setScopeName("Worker");
         definition.setContext(context);
 
         Map<String, Object> fieldDsl = new HashMap<>();
-        fieldDsl.put("deviceId", Map.of("$JOIN", Arrays.asList("test-device-", "&.index")));
+        fieldDsl.put("workerId", Map.of("$JOIN", Arrays.asList("test-worker-", "&.index")));
         fieldDsl.put("status", Map.of("$CHOICE", Arrays.asList("ONLINE", "OFFLINE")));
-        fieldDsl.put("deviceGroupId", Map.of("$CHOICE", Arrays.asList("us", "gb")));
+        fieldDsl.put("workerGroupId", Map.of("$CHOICE", Arrays.asList("us", "gb")));
         definition.setFieldDsl(fieldDsl);
         definition.validate();
 
-        List<Device> devices = JsonDslProcessorEngine.process(definition, new ProcessingContext("test"), Device.class);
+        List<Worker> workers = JsonDslProcessorEngine.process(definition, new ProcessingContext("test"), Worker.class);
 
-        assertNotNull(devices);
-        assertEquals(2, devices.size());
-        for (Device device : devices) {
-            assertNotNull(device.getDeviceId());
-            assertTrue(device.getDeviceId().startsWith("test-device-"));
-            assertNotNull(device.getStatus());
-            assertNotNull(device.getDeviceGroupId());
-            assertTrue(Arrays.asList("us", "gb").contains(device.getDeviceGroupId()));
+        assertNotNull(workers);
+        assertEquals(2, workers.size());
+        for (Worker worker : workers) {
+            assertNotNull(worker.getWorkerId());
+            assertTrue(worker.getWorkerId().startsWith("test-worker-"));
+            assertNotNull(worker.getStatus());
+            assertNotNull(worker.getWorkerGroupId());
+            assertTrue(Arrays.asList("us", "gb").contains(worker.getWorkerGroupId()));
         }
     }
 
     @Test
     void processesGenerateDslWithConcreteFields() {
-        JsonDslDefinition definition = new JsonDslDefinition("complex_device_generator", JsonDslDefinition.DslType.GENERATE);
-        definition.setDescription("Generate one concrete device");
+        JsonDslDefinition definition = new JsonDslDefinition("complex_worker_generator", JsonDslDefinition.DslType.GENERATE);
+        definition.setDescription("Generate one concrete worker");
         definition.setAuthor("test");
 
-        JsonDslContext context = new JsonDslContext("com.xa.mass.base.model.Device", 1);
-        context.setScopeName("Device");
+        JsonDslContext context = new JsonDslContext("com.xa.mass.base.model.Worker", 1);
+        context.setScopeName("Worker");
         definition.setContext(context);
 
         Map<String, Object> fieldDsl = new HashMap<>();
-        fieldDsl.put("deviceId", "complex-device-001");
+        fieldDsl.put("workerId", "complex-worker-001");
         fieldDsl.put("status", "ONLINE");
-        fieldDsl.put("deviceGroupId", "us");
+        fieldDsl.put("workerGroupId", "us");
         fieldDsl.put("agentVersion", "2.0.1");
         fieldDsl.put("onlineStrategy", "100");
         definition.setFieldDsl(fieldDsl);
         definition.validate();
 
-        List<Device> devices = JsonDslProcessorEngine.process(definition, new ProcessingContext("test"), Device.class);
+        List<Worker> workers = JsonDslProcessorEngine.process(definition, new ProcessingContext("test"), Worker.class);
 
-        assertNotNull(devices);
-        assertEquals(1, devices.size());
-        Device device = devices.get(0);
-        assertEquals("complex-device-001", device.getDeviceId());
-        assertEquals("ONLINE", device.getStatus().name());
-        assertEquals("us", device.getDeviceGroupId());
-        assertEquals("2.0.1", device.getAgentVersion());
-        assertEquals("100", device.getOnlineStrategy());
+        assertNotNull(workers);
+        assertEquals(1, workers.size());
+        Worker worker = workers.get(0);
+        assertEquals("complex-worker-001", worker.getWorkerId());
+        assertEquals("ONLINE", worker.getStatus().name());
+        assertEquals("us", worker.getWorkerGroupId());
+        assertEquals("2.0.1", worker.getAgentVersion());
+        assertEquals("100", worker.getOnlineStrategy());
     }
 
     @Test
@@ -92,15 +92,15 @@ class NewStandardDslTypeRegistrationTest {
                   "author": "test",
                   "tags": ["json", "test"],
                   "context": {
-                    "MODEL": "com.xa.mass.base.model.Device",
+                    "MODEL": "com.xa.mass.base.model.Worker",
                     "COUNT": 1,
-                    "scope_name": "Device",
+                    "scope_name": "Worker",
                     "debug": true
                   },
                   "fieldDsl": {
-                    "deviceId": "json-device-001",
+                    "workerId": "json-worker-001",
                     "status": "ONLINE",
-                    "deviceGroupId": "gb"
+                    "workerGroupId": "gb"
                   }
                 }
                 """;
@@ -109,15 +109,15 @@ class NewStandardDslTypeRegistrationTest {
 
         assertEquals("json_test_generator", definition.getUniqueId());
         assertEquals(JsonDslDefinition.DslType.GENERATE, definition.getType());
-        assertEquals("com.xa.mass.base.model.Device", definition.getContext().getModel());
+        assertEquals("com.xa.mass.base.model.Worker", definition.getContext().getModel());
 
-        List<Device> devices = JsonDslProcessorEngine.process(definition, new ProcessingContext("test"), Device.class);
+        List<Worker> workers = JsonDslProcessorEngine.process(definition, new ProcessingContext("test"), Worker.class);
 
-        assertNotNull(devices);
-        assertEquals(1, devices.size());
-        Device device = devices.get(0);
-        assertEquals("json-device-001", device.getDeviceId());
-        assertEquals("ONLINE", device.getStatus().name());
-        assertEquals("gb", device.getDeviceGroupId());
+        assertNotNull(workers);
+        assertEquals(1, workers.size());
+        Worker worker = workers.get(0);
+        assertEquals("json-worker-001", worker.getWorkerId());
+        assertEquals("ONLINE", worker.getStatus().name());
+        assertEquals("gb", worker.getWorkerGroupId());
     }
 }

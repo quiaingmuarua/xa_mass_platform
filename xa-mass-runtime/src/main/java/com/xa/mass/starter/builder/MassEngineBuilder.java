@@ -1,6 +1,6 @@
 package com.xa.mass.starter.builder;
 
-import com.xa.mass.engine.DeviceManager;
+import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.engine.service.AssignmentRecordService;
@@ -12,21 +12,20 @@ import java.util.Map;
 
 /**
  * MassEngine 构建器
- * 支持链式配置和灵活扩展
  */
 public class MassEngineBuilder {
     private EngineConfig config = new EngineConfig();
 
     private TaskManager taskManager;
-    private DeviceManager deviceManager;
+    private WorkerManager workerManager;
     private RuleManager<Map<String, Object>> ruleManager;
     private SimpleTaskScheduler scheduler;
     private AssignmentRecordService recordService;
 
     private Boolean mockMode;
     private Integer workerThreads;
-    private String deviceConfigPath;
-    private String tokenConfigPath;
+    private String workerConfigPath;
+    private String workerContextConfigPath;
     private String taskConfigPath;
     private String ruleConfigPath;
     private String mockConfigPath;
@@ -48,8 +47,8 @@ public class MassEngineBuilder {
         return this;
     }
 
-    public MassEngineBuilder deviceManager(DeviceManager deviceManager) {
-        this.deviceManager = deviceManager;
+    public MassEngineBuilder workerManager(WorkerManager workerManager) {
+        this.workerManager = workerManager;
         return this;
     }
 
@@ -78,9 +77,9 @@ public class MassEngineBuilder {
         return this;
     }
 
-    public MassEngineBuilder mockData(String deviceConfigPath, String tokenConfigPath, String taskConfigPath, String ruleConfigPath) {
-        this.deviceConfigPath = deviceConfigPath;
-        this.tokenConfigPath = tokenConfigPath;
+    public MassEngineBuilder mockData(String workerConfigPath, String workerContextConfigPath, String taskConfigPath, String ruleConfigPath) {
+        this.workerConfigPath = workerConfigPath;
+        this.workerContextConfigPath = workerContextConfigPath;
         this.taskConfigPath = taskConfigPath;
         this.ruleConfigPath = ruleConfigPath;
         return this;
@@ -94,16 +93,16 @@ public class MassEngineBuilder {
     public MassEngine build() {
         if (workerThreads != null) config.setWorkerThreads(workerThreads);
         if (mockMode != null) config.setMockMode(mockMode);
-        if (deviceConfigPath != null) config.setDeviceConfigPath(deviceConfigPath);
-        if (tokenConfigPath != null) config.setTokenConfigPath(tokenConfigPath);
+        if (workerConfigPath != null) config.setWorkerConfigPath(workerConfigPath);
+        if (workerContextConfigPath != null) config.setWorkerContextConfigPath(workerContextConfigPath);
         if (taskConfigPath != null) config.setTaskConfigPath(taskConfigPath);
         if (ruleConfigPath != null) config.setRuleConfigPath(ruleConfigPath);
         if (mockConfigPath != null) config.setMockConfigPath(mockConfigPath);
         if (scheduler != null) config.setScheduler(scheduler);
         if (taskManager != null) config.setTaskManager(taskManager);
-        if (deviceManager != null) config.setDeviceManager(deviceManager);
+        if (workerManager != null) config.setWorkerManager(workerManager);
         if (recordService != null) config.setRecordService(recordService);
         if (ruleManager != null) config.setRuleManager(ruleManager);
         return new MassEngine(config);
     }
-} 
+}
