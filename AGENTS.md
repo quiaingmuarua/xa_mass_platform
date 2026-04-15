@@ -27,6 +27,10 @@ This file is the fastest entry point for coding agents such as Claude Code, Code
 - `TaskApiCallbackReplayIntegrationTest` now covers duplicate `TASK/step` callback replay through the real gateway path
 - `TaskApiPauseCompletionIntegrationTest` now covers `approve -> assign -> running -> pause -> callback -> terminal` through the real gateway path
 - `TaskApiStateValidationIntegrationTest` now covers `GET /status/api/tasks/{taskId}` state-audit output for valid terminal tasks, forced `needsResolution=true` tasks, and invalid terminal-reason variants
+- `TaskApiMixedResultsIntegrationTest` now covers one SUCCESS + one FAILED message → `terminalReason=MIXED_MESSAGE_RESULTS` end-to-end
+- `TaskApiResumeAndCompleteIntegrationTest` now covers `PAUSED -> READY -> RUNNING -> TERMINAL` via real resume call and late device connection
+- `TaskApiDelayedDeviceAvailabilityIntegrationTest` now covers a `READY` task waiting for a late device via `TaskAssignWorker` retry
+- `TaskApiMultiTaskAssignmentIntegrationTest` now covers two concurrent tasks assigned to separate devices
 - `MassWebSocketClientImpl` ignores `response=true` `TASK/step` frames to avoid mock echo loops
 - `mock.client.task-result-status` can force mock result frames to `SUCCESS` or `FAILED`
 - Treat `engine/v2` as historical archive material, not mainline
@@ -360,44 +364,39 @@ Important current implementation facts:
 
 ## 7. Known Good Test Surface
 
-Focused verified regression command on `2026-04-13`:
+For full integration test documentation, see **[doc/INTEGRATION_TESTS.md](doc/INTEGRATION_TESTS.md)**.
+
+Focused verified regression command:
 
 ```bash
-mvn --% -pl xa-mass-mock -am -Dtest=TaskManagerLifecycleTest,TaskAssignWorkerTest,MassApplicationStopOrderTest,MassEngineStopTest,MassWebSocketClientImplTest,TaskApiIntegrationTest,TaskApiFailureResultIntegrationTest,TaskApiLifecycleGuardsIntegrationTest,TaskApiTerminateRunningIntegrationTest,TaskApiCallbackReplayIntegrationTest,TaskApiPauseCompletionIntegrationTest,TaskApiStateValidationIntegrationTest,WebSocketClientStarterTest -Dsurefire.failIfNoSpecifiedTests=false test
+./mvnw -pl xa-mass-mock -am \
+  -Dtest="TaskManagerLifecycleTest,TaskAssignWorkerTest,MassApplicationStopOrderTest,MassEngineStopTest,MassWebSocketClientImplTest,TaskApiIntegrationTest,TaskApiFailureResultIntegrationTest,TaskApiMixedResultsIntegrationTest,TaskApiLifecycleGuardsIntegrationTest,TaskApiPauseCompletionIntegrationTest,TaskApiResumeAndCompleteIntegrationTest,TaskApiTerminateRunningIntegrationTest,TaskApiCallbackReplayIntegrationTest,TaskApiDelayedDeviceAvailabilityIntegrationTest,TaskApiMultiTaskAssignmentIntegrationTest,TaskApiStateValidationIntegrationTest,WebSocketClientStarterTest" \
+  -Dsurefire.failIfNoSpecifiedTests=false test
 ```
 
-Verified focused classes:
+Integration test files (all in `xa-mass-mock/src/test/java/com/xa/mass/mock/api/`):
 
-- `xa-mass-mock/src/test/java/com/xa/mass/mock/api/TaskApiIntegrationTest.java`
-- `xa-mass-mock/src/test/java/com/xa/mass/mock/api/TaskApiFailureResultIntegrationTest.java`
-- `xa-mass-mock/src/test/java/com/xa/mass/mock/api/TaskApiLifecycleGuardsIntegrationTest.java`
-- `xa-mass-mock/src/test/java/com/xa/mass/mock/api/TaskApiTerminateRunningIntegrationTest.java`
-- `xa-mass-mock/src/test/java/com/xa/mass/mock/api/TaskApiCallbackReplayIntegrationTest.java`
-- `xa-mass-mock/src/test/java/com/xa/mass/mock/api/TaskApiPauseCompletionIntegrationTest.java`
-- `xa-mass-mock/src/test/java/com/xa/mass/mock/api/TaskApiStateValidationIntegrationTest.java`
-- `xa-mass-mock/src/test/java/com/xa/mass/mock/client/MassWebSocketClientImplTest.java`
-- `xa-mass-mock/src/test/java/com/xa/mass/mock/starter/WebSocketClientStarterTest.java`
+| Test class | Task path | Key assertion |
+|---|---|---|
+| `TaskApiIntegrationTest` | NEW→READY→RUNNING→TERMINAL | ALL_MESSAGES_SUCCEEDED |
+| `TaskApiFailureResultIntegrationTest` | NEW→READY→RUNNING→TERMINAL | ALL_MESSAGES_FAILED |
+| `TaskApiMixedResultsIntegrationTest` | NEW→READY→RUNNING→TERMINAL | MIXED_MESSAGE_RESULTS |
+| `TaskApiLifecycleGuardsIntegrationTest` | NEW→BLOCKED→READY, READY→PAUSED→READY | lifecycle guards |
+| `TaskApiPauseCompletionIntegrationTest` | RUNNING→PAUSED→TERMINAL (no resume) | callbacks while paused |
+| `TaskApiResumeAndCompleteIntegrationTest` | PAUSED→READY→RUNNING→TERMINAL | resume then late device |
+| `TaskApiTerminateRunningIntegrationTest` | RUNNING→TERMINAL (manual) | MANUAL_CANCELLED |
+| `TaskApiCallbackReplayIntegrationTest` | — | duplicate callback idempotent |
+| `TaskApiDelayedDeviceAvailabilityIntegrationTest` | READY (no device)→TERMINAL | worker retry |
+| `TaskApiMultiTaskAssignmentIntegrationTest` | two tasks→separate devices | concurrency |
+| `TaskApiStateValidationIntegrationTest` | — | stateValidation API (4 cases) |
+
+Supporting unit tests:
+
 - `xa-mass-engine/src/test/java/com/xa/mass/engine/TaskManagerLifecycleTest.java`
 - `xa-mass-engine/src/test/java/com/xa/mass/engine/listener/TaskAssignWorkerTest.java`
 - `xa-mass-runtime/src/test/java/com/xa/mass/starter/GatewayTaskResultHandlerTest.java`
-- Existing engine/api/runtime regressions remain the primary mainline unit-test surface
-
-What the new focused coverage proves:
-
-- default `dev` startup can auto-create mock client connections
-- API create + approve flows through assignment, dispatch, result write-back, and terminal completion
-- API create + approve also covers failed downstream result write-back through terminal completion
-- API lifecycle guards for reject/approve, pause/resume, and delete protection are verified through real HTTP calls
-- API terminate-from-running is verified after real assignment and before any mock callback completion, and terminal cleanup delete is also verified
-- duplicate `TASK/step` callback replay is verified end-to-end through the real gateway path and keeps the first final result
-- a paused task can still complete to `TERMINAL` through real callback write-back after assignment, without requiring a manual resume
-- `GET /status/api/tasks/{taskId}` exposes `stateValidation` over the real HTTP/runtime path, including `needsResolution=true` when a task is manually reopened after all persisted message callbacks are already final
-- invalid terminal metadata is also covered end-to-end: missing `terminalReason` and message/result mismatch both surface through `stateValidation.violations`
-- mock clients no longer respond to server response frames
-- mock result status can be forced to `FAILED` without changing business logic code paths
-- duplicate `TASK/step` result callbacks are covered at engine/runtime regression level and keep the first final state
-- paused tasks are closed to `TERMINAL` when their final callbacks arrive instead of getting stranded in `PAUSED` or resurrected back into `READY`
-- `READY` tasks without an immediate device match stay in the assignment loop through delayed worker retry instead of silently orphaning
+- `xa-mass-mock/src/test/java/com/xa/mass/mock/client/MassWebSocketClientImplTest.java`
+- `xa-mass-mock/src/test/java/com/xa/mass/mock/starter/WebSocketClientStarterTest.java`
 
 ## 8. Historical Test Debt
 
@@ -414,13 +413,13 @@ Reason:
 - `SimpleTaskScheduler.scheduleTasks()` is still a stub. Scheduler APIs are not the current source of `READY -> RUNNING`.
 - EventBus is converged onto `channel/eventbus/core` and `channel/eventbus/event` namespace. Active implementation is Guava-backed; Redis remains fail-fast only.
 - Redis and Database storage remain fail-fast only. `MEMORY` is the only implemented storage path.
-- API integration coverage is still selective. Callback replay and running terminate/delete are now covered end-to-end, but some cancel follow-up variants still need integration tests.
+- API integration coverage still has gaps; see [doc/INTEGRATION_TESTS.md §7](doc/INTEGRATION_TESTS.md#7-important-missing-tests) for the prioritized list.
 
 ## 10. Good Next Tasks
 
-1. Add API-level integration coverage for remaining cancel follow-up variants.
-2. Expand diagnostics around task dispatch and result write-back so stuck tasks are easier to localize.
-3. Expand EventBus observability around the `channel/eventbus/core` path.
+1. Add `TaskApiLateCallbackAfterTerminateIntegrationTest` — verify callbacks after manual cancel are silently dropped (🔴 highest priority missing integration test).
+2. Add `TaskApiCancelReadyTaskIntegrationTest` — verify `READY → TERMINAL` with messages staying `INIT`.
+3. Expand diagnostics around task dispatch and result write-back so stuck tasks are easier to localize.
 4. Keep UI work secondary until API/runtime convergence is stable.
 
 ## 11. Files Worth Opening Early

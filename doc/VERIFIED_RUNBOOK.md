@@ -314,25 +314,21 @@ What it verifies:
 ### 5.10 Focused Verified Test Command
 
 ```bash
-mvn --% -pl xa-mass-mock -am -Dtest=MassWebSocketClientImplTest,TaskApiIntegrationTest,TaskApiFailureResultIntegrationTest,TaskApiLifecycleGuardsIntegrationTest,TaskApiTerminateRunningIntegrationTest,TaskApiCallbackReplayIntegrationTest,TaskApiStateValidationIntegrationTest,WebSocketClientStarterTest -Dsurefire.failIfNoSpecifiedTests=false test
+./mvnw -pl xa-mass-mock -am \
+  -Dtest="MassWebSocketClientImplTest,TaskApiIntegrationTest,TaskApiFailureResultIntegrationTest,TaskApiMixedResultsIntegrationTest,TaskApiLifecycleGuardsIntegrationTest,TaskApiPauseCompletionIntegrationTest,TaskApiResumeAndCompleteIntegrationTest,TaskApiTerminateRunningIntegrationTest,TaskApiCallbackReplayIntegrationTest,TaskApiDelayedDeviceAvailabilityIntegrationTest,TaskApiMultiTaskAssignmentIntegrationTest,TaskApiStateValidationIntegrationTest,WebSocketClientStarterTest" \
+  -Dsurefire.failIfNoSpecifiedTests=false test
 ```
 
 Verified result:
 
 - `BUILD SUCCESS`
 
+For full integration test documentation (scenarios, coverage map, missing tests, adding new tests), see [doc/INTEGRATION_TESTS.md](./INTEGRATION_TESTS.md).
+
 ## 6. Remaining Gaps
 
 - `SimpleTaskScheduler.scheduleTasks()` is still a stub
-- runtime stop is now Spring-managed and `MassApplication.stop()` is idempotent, but single-interrupt exit has not yet been re-verified in a live process
-- EventBus runtime now uses the current `channel.eventbus.core` and `channel.eventbus.event` namespace
-- The verified implementation remains Guava-backed; Redis is still fail-fast
+- EventBus runtime uses the current `channel.eventbus.core` and `channel.eventbus.event` namespace; Guava-backed; Redis is still fail-fast
 - Redis and Database storage remain fail-fast placeholders
-- API integration coverage is still selective beyond the current happy, guard, failed-result, running-terminate-delete, and callback-replay paths
+- API integration coverage is still selective; see [doc/INTEGRATION_TESTS.md §7](./INTEGRATION_TESTS.md#7-important-missing-tests) for prioritized missing scenarios
 - Multiple matching policies are now possible at engine level, but only the rule-based strategy is covered in the current integrated runtime path
-
-Recommended next test-driven additions:
-
-1. `RUNNING -> PAUSED -> READY` end-to-end with real assigned messages and then resumed dispatch behavior validation
-2. cancel path variants from `NEW`, `READY`, and `PAUSED` with message-state assertions
-3. mixed-result aggregation coverage where one message succeeds and another fails
