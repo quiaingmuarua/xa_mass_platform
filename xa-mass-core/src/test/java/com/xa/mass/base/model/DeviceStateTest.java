@@ -1,6 +1,5 @@
 package com.xa.mass.base.model;
 
-import com.xa.mass.base.enums.Project;
 import com.xa.mass.base.enums.device.DeviceStatus;
 import org.junit.jupiter.api.Test;
 
@@ -29,15 +28,15 @@ class DeviceStateTest {
     @Test
     void supportedProjectsAreCopiedAndReadOnly() {
         Device device = new Device();
-        List<Project> input = new ArrayList<>();
-        input.add(Project.DEMO_APP);
+        List<String> input = new ArrayList<>();
+        input.add("demoApp");
 
         device.setSupportedProjects(input);
         input.clear();
 
-        assertEquals(List.of(Project.DEMO_APP), device.getSupportedProjects());
+        assertEquals(List.of("demoApp"), device.getSupportedProjects());
         assertThrows(UnsupportedOperationException.class,
-                () -> device.getSupportedProjects().add(Project.TEST_APP));
+                () -> device.getSupportedProjects().add("testApp"));
     }
 
     @Test

@@ -1,6 +1,5 @@
 package com.xa.mass.base.model;
 
-import com.xa.mass.base.enums.Project;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
 
@@ -21,7 +20,7 @@ import java.util.Objects;
 public class Task {
     private String tid;
     private String taskName;
-    private Project project;
+    private String project;
     private TaskStatus status;
     private String taskRoutingCountryCode;
     private int taskTargetNumber;
@@ -51,7 +50,7 @@ public class Task {
         this();
         this.tid = tid;
         this.taskName = taskName;
-        this.project = Project.requireCode(project);
+        this.project = project;
         this.taskRoutingCountryCode = taskRoutingCountryCode;
         this.taskTargetNumber = taskTargetNumber;
         this.taskEligibleNumber = taskTargetNumber;
@@ -77,20 +76,12 @@ public class Task {
         this.taskName = taskName;
     }
 
-    public Project getProject() {
+    public String getProject() {
         return project;
     }
 
-    public void setProject(Project project) {
+    public void setProject(String project) {
         this.project = project;
-    }
-
-    public void setProject(String projectCode) {
-        this.project = Project.requireCode(projectCode);
-    }
-
-    public String getProjectCode() {
-        return project != null ? project.getCode() : null;
     }
 
     public TaskStatus getStatus() {
@@ -296,7 +287,7 @@ public class Task {
         return "Task{" +
                 "tid='" + tid + '\'' +
                 ", taskName='" + taskName + '\'' +
-                ", project='" + (project != null ? project.getCode() : null) + '\'' +
+                ", project='" + project + '\'' +
                 ", status=" + status +
                 ", taskRoutingCountryCode='" + taskRoutingCountryCode + '\'' +
                 ", taskTargetNumber=" + taskTargetNumber +

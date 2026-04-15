@@ -1,6 +1,5 @@
 package com.xa.mass.engine.model;
 
-import com.xa.mass.base.enums.Project;
 import com.xa.mass.base.enums.device.DeviceStatus;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TokenStatus;
@@ -25,7 +24,7 @@ class DeviceMatchContextTest {
         device.setDeviceId("device-1");
         device.setStatus(DeviceStatus.ONLINE);
         device.setDeviceGroupId("us");
-        device.setSupportedProjects(List.of(Project.DEMO_APP));
+        device.setSupportedProjects(List.of("demoApp"));
         device.setAttributes(Map.of("pool", "warmup"));
 
         Token token = new Token();
@@ -37,7 +36,7 @@ class DeviceMatchContextTest {
 
         Task task = new Task();
         task.setTid("task-1");
-        task.setProject(Project.DEMO_APP);
+        task.setProject("demoApp");
         task.setTaskRoutingCountryCode("us");
         task.setStatus(TaskStatus.READY);
 
@@ -60,11 +59,11 @@ class DeviceMatchContextTest {
         device.setDeviceId("device-2");
         device.setStatus(DeviceStatus.ONLINE);
         device.setDeviceGroupId("us");
-        device.setSupportedProjects(List.of(Project.DEMO_APP));
+        device.setSupportedProjects(List.of("demoApp"));
 
         Task task = new Task();
         task.setTid("task-2");
-        task.setProject(Project.DEMO_APP);
+        task.setProject("demoApp");
         task.setTaskRoutingCountryCode("us");
         task.setStatus(TaskStatus.READY);
 

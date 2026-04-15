@@ -1,6 +1,5 @@
 package com.xa.mass.engine.example;
 
-import com.xa.mass.base.enums.Project;
 import com.xa.mass.base.enums.task.TokenStatus;
 import com.xa.mass.base.model.Device;
 import com.xa.mass.base.model.Token;
@@ -61,9 +60,9 @@ public class StorageExample {
         TaskManager taskManager = new TaskManager(taskScheduler, taskStorage);
 
         // 3. 濞ｈ濮炲ù瀣槸閺佺増宓?
-        Device device1 = new Device("device-001", "1.0.0", Arrays.asList(Project.DEMO_APP));
+        Device device1 = new Device("device-001", "1.0.0", Arrays.asList("demoApp"));
         device1.setDeviceGroupId("us");
-        Device device2 = new Device("device-002", "1.0.1", Arrays.asList(Project.DEMO_APP));
+        Device device2 = new Device("device-002", "1.0.1", Arrays.asList("demoApp"));
         device2.setDeviceGroupId("gb");
 
         Token token1 = new Token("token-001", "device-001", "us");

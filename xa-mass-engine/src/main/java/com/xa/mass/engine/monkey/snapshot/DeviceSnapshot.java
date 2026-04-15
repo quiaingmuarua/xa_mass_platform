@@ -1,7 +1,5 @@
 package com.xa.mass.engine.monkey.snapshot;
 
-import com.xa.mass.base.enums.Project;
-
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
@@ -14,7 +12,7 @@ public class DeviceSnapshot {
     private String deviceStatus;
     private String agentVersion;
     private LocalDateTime lastHeartbeat;
-    private List<Project> supportedProjects;
+    private List<String> supportedProjects;
     private String deviceGroupId;
     private String onlineStrategy;
     private Map<String, String> attributes;
@@ -60,11 +58,11 @@ public class DeviceSnapshot {
         this.lastHeartbeat = lastHeartbeat;
     }
 
-    public List<Project> getSupportedProjects() {
+    public List<String> getSupportedProjects() {
         return supportedProjects;
     }
 
-    public void setSupportedProjects(List<Project> supportedProjects) {
+    public void setSupportedProjects(List<String> supportedProjects) {
         this.supportedProjects = supportedProjects;
     }
 

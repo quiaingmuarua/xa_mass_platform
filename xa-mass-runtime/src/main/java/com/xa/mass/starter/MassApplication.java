@@ -1,7 +1,6 @@
 package com.xa.mass.starter;
 
 import com.xa.mass.base.channel.tranporter.MessageTransporter;
-import com.xa.mass.base.enums.Project;
 import com.xa.mass.base.enums.task.TokenStatus;
 import com.xa.mass.base.model.Device;
 import com.xa.mass.base.model.Token;
@@ -143,11 +142,15 @@ public class MassApplication {
             MessageHandlerRegistry messageHandlerRegistry = new MessageHandlerRegistry();
             messageHandlerRegistry.autoRegister();
             if (engineConfig.isEnabled() && engineConfig.getTaskManager() != null) {
+                com.xa.mass.starter.worker.WebSocketWorkerAdapter workerAdapter =
+                        new com.xa.mass.starter.worker.WebSocketWorkerAdapter(
+                                dispatcherContext, engineConfig.getTaskManager());
+                engineConfig.setTaskMsgDispatchListener(workerAdapter);
                 messageHandlerRegistry.register(
                         null,
                         MessageType.TASK,
                         "step",
-                        new GatewayTaskResultHandler(engineConfig.getTaskManager())
+                        workerAdapter
                 );
             }
             dispatcherContext.setMessageHandlerRegistry(messageHandlerRegistry);
@@ -157,7 +160,6 @@ public class MassApplication {
             logger.info("Middleware registry initialized");
 
             if (gatewayConfig.isEnabled()) {
-                engineConfig.setTaskMsgDispatchListener(new GatewayTaskMsgPublisher(dispatcherContext));
                 massGateway = new MassGateway(gatewayConfig, dispatcherContext);
                 logger.info("MassGateway built");
             } else {
@@ -368,7 +370,7 @@ public class MassApplication {
         if (device.getDeviceGroupId() != null) {
             device.setDeviceGroupId(device.getDeviceGroupId().toLowerCase());
         }
-        List<Project> supportedProjects = normalizeSupportedProjects(device);
+        List<String> supportedProjects = normalizeSupportedProjects(device);
         if (!supportedProjects.isEmpty()) {
             device.setSupportedProjects(supportedProjects);
         }
@@ -418,31 +420,16 @@ public class MassApplication {
         engine.addToken(token);
     }
 
-    private List<Project> normalizeSupportedProjects(Device device) {
-        if (device.getSupportedProjects() == null) {
+    private List<String> normalizeSupportedProjects(Device device) {
+        List<String> projects = device.getSupportedProjects();
+        if (projects == null || projects.isEmpty()) {
             return defaultSupportedProjects();
         }
-        List<?> rawProjects = (List<?>) device.getSupportedProjects();
-        if (rawProjects.isEmpty()) {
-            return defaultSupportedProjects();
-        }
-
-        List<Project> normalized = new ArrayList<>();
-        for (Object rawProject : rawProjects) {
-            if (rawProject instanceof Project project) {
-                normalized.add(project);
-                continue;
-            }
-            if (rawProject == null) {
-                continue;
-            }
-            normalized.add(Project.fromCode(String.valueOf(rawProject)));
-        }
-        return normalized.stream().filter(Objects::nonNull).distinct().toList();
+        return projects.stream().filter(Objects::nonNull).distinct().toList();
     }
 
-    private List<Project> defaultSupportedProjects() {
-        return List.of(Project.DEMO_APP, Project.TEST_APP);
+    private List<String> defaultSupportedProjects() {
+        return List.of("demoApp", "testApp");
     }
 
     public MassEngine getEngine() {

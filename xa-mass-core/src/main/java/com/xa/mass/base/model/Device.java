@@ -1,7 +1,6 @@
 package com.xa.mass.base.model;
 
 
-import com.xa.mass.base.enums.Project;
 import com.xa.mass.base.enums.device.DeviceStatus;
 
 import java.time.LocalDateTime;
@@ -40,7 +39,7 @@ public class Device {
     /**
      * 鏀寔鐨刾roject鍒楄〃
      */
-    private List<Project> supportedProjects;
+    private List<String> supportedProjects;
 
     /**
      * 鍒嗙粍淇℃伅
@@ -74,7 +73,7 @@ public class Device {
         this.updateTime = LocalDateTime.now();
     }
 
-    public Device(String deviceId, String agentVersion, List<Project> supportedProjects) {
+    public Device(String deviceId, String agentVersion, List<String> supportedProjects) {
         this();
         this.deviceId = deviceId;
         this.agentVersion = agentVersion;
@@ -116,11 +115,11 @@ public class Device {
         this.updateTime = LocalDateTime.now();
     }
 
-    public List<Project> getSupportedProjects() {
+    public List<String> getSupportedProjects() {
         return supportedProjects;
     }
 
-    public void setSupportedProjects(List<Project> supportedProjects) {
+    public void setSupportedProjects(List<String> supportedProjects) {
         if (supportedProjects == null || supportedProjects.isEmpty()) {
             this.supportedProjects = Collections.emptyList();
             return;
@@ -182,13 +181,8 @@ public class Device {
     /**
      * 妫€鏌ヨ澶囨槸鍚︽敮鎸佹寚瀹氬簲鐢?
      */
-    public boolean supportsProject(Project project) {
-        return supportedProjects != null && supportedProjects.contains(project);
-    }
-
     public boolean supportsProject(String projectCode) {
-        if (supportedProjects == null) return false;
-        return supportedProjects.stream().anyMatch(p -> p.getCode().equals(projectCode));
+        return supportedProjects != null && supportedProjects.contains(projectCode);
     }
 
     /**

@@ -48,7 +48,7 @@ public class GatewayTaskMsgPublisher implements TaskMsgDispatchListener {
             Envelope envelope = Envelope.builder()
                     .deviceId(taskMsg.getDeviceId())
                     .connRole(DEFAULT_CONN_ROLE)
-                    .project(task.getProjectCode())
+                    .project(task.getProject())
                     .traceId(taskMsg.getMsgId())
                     .receivedAt(System.currentTimeMillis())
                     .rawJson(json)
@@ -63,7 +63,7 @@ public class GatewayTaskMsgPublisher implements TaskMsgDispatchListener {
         message.setMsgType(MessageType.TASK);
         message.setSubMsgType("step");
         message.setFrom(MessageDirection.SERVER);
-        message.setProject(task.getProjectCode());
+        message.setProject(task.getProject());
         message.setContext(buildContext(task, taskMsg));
         message.setPayload(gson.toJsonTree(buildPayload(task, taskMsg)));
         return message;

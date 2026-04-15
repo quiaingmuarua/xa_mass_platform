@@ -349,7 +349,7 @@ class TaskApiControllerTest {
         verify(taskManager).updateTask(argThat(task ->
                 TASK_ID.equals(task.getTid())
                         && "updated-name".equals(task.getTaskName())
-                        && "telegramApp".equals(task.getProjectCode())
+                        && "telegramApp".equals(task.getProject())
                         && "sg".equals(task.getTaskRoutingCountryCode())
                         && "updated-content".equals(task.getSharedConfig() != null ? task.getSharedConfig().get("textContent") : null)
                         && task.getUser() != null
@@ -413,27 +413,6 @@ class TaskApiControllerTest {
         verify(taskManager, never()).updateTask(any(Task.class));
     }
 
-    @Test
-    void updateTaskReturnsBadRequestWhenProjectIsUnsupported() throws Exception {
-        Task existingTask = taskWithStatus(TaskStatus.NEW);
-        existingTask.setUser(new com.xa.mass.base.model.User());
-        when(taskManager.getTask(TASK_ID)).thenReturn(existingTask);
-
-        mockMvc.perform(put("/status/api/tasks/{taskId}", TASK_ID)
-                        .contentType("application/json")
-                        .content("""
-                                {
-                                  "taskName":"updated-name",
-                                  "project":"whatsapp",
-                                  "countryCode":"sg"
-                                }
-                                """))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.message").value("Task update failed: Unsupported project code: whatsapp"));
-
-        verify(taskManager, never()).updateTask(any(Task.class));
-    }
 
     @Test
     void getTaskMessagesReturnsPagedMessages() throws Exception {
