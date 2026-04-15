@@ -47,6 +47,11 @@ This file is the fastest entry point for coding agents such as Claude Code, Code
 - `Device.attributes` and `Token.attributes` are now read-only auxiliary rule labels for matching and diagnostics only
 - `Device.status` is the single online truth, and runtime device lock truth now lives only in `DeviceStorage` / `DeviceManager.isLocked(...)`
 - `DeviceStatus`, `Token`, and dispatch-time token binding are now stricter: null statuses are rejected, token release only frees real dispatch ownership, and assignment moves tokens into `OCCUPIED`
+- `TokenStatus` vocabulary is domain-neutral: `IDLE` (free), `RESERVED` (pre-allocated), `OCCUPIED` (executing), `BLOCKED` (manually locked), `INVALID` (unusable); `Token.startOccupying()` replaces the former `startSending()`
+- `Task.sharedConfig: Map<String,Object>` replaces the former `textContent: String`; all keys are spread into WebSocket dispatch params alongside `TaskMsg.input` keys, so existing workers receive `textContent` transparently when it is stored in `sharedConfig`
+- `TaskMsg.input: Map<String,Object>` replaces the former `target: String`; `getTarget()` is a backwards-compat accessor reading `input["target"]`
+- `TaskCreateRequestDto.defaultMsgMaxRetryCount` (default `3`) configures per-task retry budget; callers may set to `0` to disable retries
+- `Task.openEnded=true` suppresses automatic terminal closure; append work items at runtime via `POST /status/api/tasks/{taskId}/items`, then close the append window with `PUT /status/api/tasks/{taskId}/seal`
 - Treat `engine/v2` as historical archive material, not mainline
 
 ## 1. What This Repo Is
@@ -343,7 +348,7 @@ Important current implementation facts:
 - `RuleBasedTaskDeviceMatchingStrategy` no longer prefilters candidates by device `deviceGroupId`; routing-country satisfaction should come from token/account-facing signals and explicit rules.
 - `DeviceMatchContext` now exposes nested `deviceAttributes` and `tokenAttributes` maps to QLExpress rules.
 - `SimpleTaskMsgAssignListener` reuses persisted `TaskMsg` records, fills `deviceId` / `tokenId` / `batchId`, moves them to `SENT`, and now round-robins messages across devices up to `batchSize` per device per round.
-- `SimpleTaskMsgAssignListener` now also binds dispatchable tokens to the current task and advances them into `SENDING`; non-dispatchable token states are skipped instead of being silently reused.
+- `SimpleTaskMsgAssignListener` now also binds dispatchable tokens to the current task and advances them into `OCCUPIED`; non-dispatchable token states are skipped instead of being silently reused.
 - `TaskResourceReleaseListener` now releases a device/token slot as soon as that device has no more in-flight `TaskMsg` rows for the current task, then re-submits the still-`RUNNING` task when pending `INIT` messages remain.
 - `GatewayTaskMsgPublisher` pushes task messages downstream as `TASK/step`.
 - `GatewayTaskResultHandler` handles inbound `TASK/step` results and writes them back through `TaskManager.handleTaskMessageResult(...)`.
@@ -400,6 +405,34 @@ Important current implementation facts:
 - `MassApplication.stop()` is now idempotent, and the mock Spring Boot entry no longer adds an extra manual shutdown hook around the runtime.
 - `WebSocketServerImpl.stop()` now calls `shutdownGracefully().syncUninterruptibly()` on both EventLoopGroups so a single Ctrl-C is sufficient for clean exit.
 - `TaskManager.advanceTaskMsgForCompletion()` always advances through `INIT鈫払INDING鈫扴ENT鈫扲UNNING` before the final `markAsSuccess`/`markAsFailed` call, ensuring `RUNNING` appears in the state history for both success and failure paths.
+
+## 6.1 Platform Model
+
+The scheduling backbone is scenario-agnostic. The following vocabulary maps the abstract concepts to familiar terms:
+
+| Abstract concept | Concrete type | Notes |
+|---|---|---|
+| Worker | `Device` | Any long-connection client: phone, crawler, LLM agent, IM bot |
+| Worker context | `Token` | Optional capability / credential context. Stateless workers do not need one. |
+| Work item | `TaskMsg` | `input: Map<String,Object>` + `output: Map<String,Object>`. `target` is stored as `input["target"]` for backwards compat. |
+| Shared config | `Task.sharedConfig` | `Map<String,Object>` injected by the platform into every dispatch params via `putAll`. Workers interpret the keys. |
+
+**Token occupancy states** (domain-neutral since Phase A rename):
+
+| Status | Meaning |
+|---|---|
+| `IDLE` | Free, can be reserved |
+| `RESERVED` | Pre-allocated for a task, waiting for dispatch |
+| `OCCUPIED` | Actively executing a task message |
+| `BLOCKED` | Manually locked out of scheduling |
+| `INVALID` | Permanently unusable |
+
+**Open-ended tasks** (`openEnded=true`):
+
+- The terminal policy never auto-closes an open-ended task, even when all current messages are final.
+- Append new work items at runtime: `POST /status/api/tasks/{taskId}/items` with body `{"inputs": [{...}, ...]}`.
+- Close the append window: `PUT /status/api/tasks/{taskId}/seal` — the task terminates normally once all messages finish.
+- Typical use case: crawler or agent pipeline where the full work list is not known at task creation time.
 
 ## 7. Known Good Test Surface
 

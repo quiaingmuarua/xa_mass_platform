@@ -179,17 +179,8 @@
 //
 //    private Token createToken(String deviceId, String country) {
 //        Token token = new Token(UUID.randomUUID().toString(), deviceId, country);
-//        token.setStatus(TokenStatus.LOGIN_READY);
+//        token.setStatus(TokenStatus.IDLE);
 //        return token;
 //    }
 //
-//    private com.xa.mass.engine.model.TaskCreateRequestDto createTaskRequestDto(Task task) {
-//        com.xa.mass.engine.model.TaskCreateRequestDto dto = new com.xa.mass.engine.model.TaskCreateRequestDto();
-//        dto.setTaskName(task.getTaskName());
-//        dto.setProject(task.getProjectCode());
-//        dto.setCountryCode(task.getTaskRoutingCountryCode());
-//        dto.setTextContent(task.getTextContent());
-//        dto.setUserId(task.getUser().getName());
-//        return dto;
-//    }
 //}

@@ -35,7 +35,6 @@ public class TaskCreateRequestDto {
     public void setOpenEnded(boolean openEnded) {
         this.openEnded = openEnded;
     }
-    }
 
     public TaskCreateRequestDto(String userId,
                                 String project,

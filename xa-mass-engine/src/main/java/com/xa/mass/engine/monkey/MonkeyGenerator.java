@@ -64,7 +64,7 @@ public class MonkeyGenerator {
                     "project": {"$CHOICE": ["demoApp", "testApp"]},
                     "countryCode": {"$CHOICE": ["us", "gb"]},
                     "userId": {"$JOIN": ["user-", "&.index"]},
-                    "textContent": {"$JOIN": ["content for ", "&.index"]},
+                    "sharedConfig": {"textContent": {"$JOIN": ["content for ", "&.index"]}},
                     "batchSize": {"$RANGE": [1, 5]},
                     "targetList": {
                       "TYPE": "LIST",

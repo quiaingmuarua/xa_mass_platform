@@ -149,14 +149,14 @@ public class StorageExample {
         log.info("閻㈢喐鍨氭禍?{} 娑擃亣顔曟径鍥ф嫲 {} 娑撶寘oken", devices.size(), tokenList.size());
 
         // 2. 缂佺喕顓窽oken閻樿埖鈧?
-        long loginReadyCount = tokenList.stream()
+        long idleCount = tokenList.stream()
                 .filter(token -> token.getStatus() == TokenStatus.IDLE)
                 .count();
         long invalidCount = tokenList.stream()
                 .filter(token -> token.getStatus() == TokenStatus.INVALID)
                 .count();
 
-        log.info("Token閻樿埖鈧胶绮虹拋?- LOGIN_READY: {}, INVALID: {}", loginReadyCount, invalidCount);
+        log.info("Token閻樿埖鈧胶绮虹拋?- IDLE: {}, INVALID: {}", idleCount, invalidCount);
 
         // 3. 缂佺喕顓哥拋鎯ь槵閸掑棛绮?
         long usCount = devices.stream()
@@ -261,14 +261,14 @@ public class StorageExample {
         log.info("閻㈢喐鍨氭禍?{} 娑擃亣顔曟径鍥ф嫲 {} 娑撶寘oken", devices.size(), tokenList.size());
 
         // 2. 缂佺喕顓窽oken閻樿埖鈧?
-        long loginReadyCount = tokenList.stream()
+        long idleCount = tokenList.stream()
                 .filter(token -> token.getStatus() == TokenStatus.IDLE)
                 .count();
         long invalidCount = tokenList.stream()
                 .filter(token -> token.getStatus() == TokenStatus.INVALID)
                 .count();
 
-        log.info("Token閻樿埖鈧胶绮虹拋?- LOGIN_READY: {}, INVALID: {}", loginReadyCount, invalidCount);
+        log.info("Token閻樿埖鈧胶绮虹拋?- IDLE: {}, INVALID: {}", idleCount, invalidCount);
 
         // 3. 缂佺喕顓哥拋鎯ь槵閸掑棛绮?
         long usCount = devices.stream()
