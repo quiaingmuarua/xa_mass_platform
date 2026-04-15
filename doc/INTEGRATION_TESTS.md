@@ -1,6 +1,6 @@
 # Integration Test Guide
 
-Last updated: 2026-04-13
+Last updated: 2026-04-15
 
 This document is the single authoritative reference for integration tests in `xa-mass-mock`.
 
@@ -13,6 +13,15 @@ Contents:
 6. [Test technique patterns](#6-test-technique-patterns)
 7. [Important missing tests](#7-important-missing-tests)
 8. [Adding a new integration test](#8-adding-a-new-integration-test)
+
+> **Package note**: all integration tests live under `com.xa.mass.mock.e2e` organized by domain:
+> `lifecycle/`, `assignment/`, `results/`, `audit/`. The shared base class is
+> `com.xa.mass.mock.e2e.support.AbstractMockE2eTest`.
+>
+> **Task creation note**: since `9aa791c`, `textContent` is no longer a top-level task field.
+> Pass it inside `sharedConfig: {"textContent": "..."}`. Unknown top-level fields are rejected
+> with HTTP 400 (`@JsonIgnoreProperties(ignoreUnknown = false)` on `TaskCreateRequestDto`).
+> Use `AbstractMockE2eTest.createTaskId()` which handles this correctly.
 
 ---
 
@@ -91,7 +100,7 @@ Run only the integration tests by name:
 
 ```bash
 ./mvnw -pl xa-mass-mock -am \
-  -Dtest="TaskApiIntegrationTest,TaskApiFailureResultIntegrationTest,TaskApiMixedResultsIntegrationTest,TaskApiLifecycleGuardsIntegrationTest,TaskApiPauseCompletionIntegrationTest,TaskApiResumeAndCompleteIntegrationTest,TaskApiTerminateRunningIntegrationTest,TaskApiCallbackReplayIntegrationTest,TaskApiDelayedDeviceAvailabilityIntegrationTest,TaskApiMultiTaskAssignmentIntegrationTest,TaskApiStateValidationIntegrationTest" \
+  -Dtest="TaskApiIntegrationTest,TaskApiFailureResultIntegrationTest,TaskApiMixedResultsIntegrationTest,TaskApiLifecycleGuardsIntegrationTest,TaskApiPauseCompletionIntegrationTest,TaskApiResumeAndCompleteIntegrationTest,TaskApiTerminateRunningIntegrationTest,TaskApiCallbackReplayIntegrationTest,TaskApiDelayedDeviceAvailabilityIntegrationTest,TaskApiMultiTaskAssignmentIntegrationTest,TaskApiStateValidationIntegrationTest,TaskApiMinimumDeviceGateIntegrationTest,TaskApiMultiRoundDispatchIntegrationTest,TaskApiSingleDeviceReuseIntegrationTest,TaskApiTerminateReuseIntegrationTest,TaskApiTokenAttributeRoutingIntegrationTest" \
   -Dsurefire.failIfNoSpecifiedTests=false test
 ```
 
@@ -236,8 +245,8 @@ Expected result: `BUILD SUCCESS`, 0 failures.
 
 **Assertions**:
 - `terminalReason` reflects manual cancel (`MANUAL_CANCELLED`)
-- `taskExecutedNumber = 0` (no callbacks processed)
-- Messages stay `SENT` (not flipped to SUCCESS/FAILED)
+- `taskSuccessNumber = 0` (no callbacks processed)
+- Pending `SENT` messages are drained to `EXPIRED` by `cancelPendingMessages()` on terminal transition
 - Delete succeeds; subsequent GET returns 404
 
 ---
@@ -308,13 +317,99 @@ Expected result: `BUILD SUCCESS`, 0 failures.
 
 ---
 
+### 4.12 `TaskApiMinimumDeviceGateIntegrationTest`
+
+**Path covered**: `READY` blocked by `runTaskMinDeviceCnt`, unblocked when enough devices arrive
+
+**Setup**: auto-start=false, 1 device registered, `runTaskMinDeviceCnt=2`
+
+**Scenario**:
+1. Approve task → stays `READY` (`scheduleDeviceCnt=0`), first device token stays `IDLE`
+2. Register second device + connect both clients
+3. Task advances to `RUNNING` → `TERMINAL`
+
+**Assertions**:
+- Task stays `READY` while device count below minimum (provisional locks released)
+- Both messages complete to `SUCCESS` once gate is satisfied
+
+---
+
+### 4.13 `TaskApiMultiRoundDispatchIntegrationTest`
+
+**Path covered**: single device, `batchSize=1`, 3 targets → 3 sequential dispatch rounds
+
+**Setup**: auto-start=false, 1 device, 3 targets, `batchSize=1`
+
+**Scenario**:
+1. Approve → device gets 1 message (round 1)
+2. Device completes → device lock released → round 2 dispatched
+3. Device completes → round 3 dispatched → final `TERMINAL`
+
+**Assertions**:
+- `terminalReason = ALL_MESSAGES_SUCCEEDED`, `taskSuccessNumber = 3`
+- Proves `batchSize` is a per-device per-round cap, not a total task cap
+
+---
+
+### 4.14 `TaskApiSingleDeviceReuseIntegrationTest`
+
+**Path covered**: single device completes task 1, is reused for task 2
+
+**Setup**: auto-start=false, 1 device, 2 sequential tasks
+
+**Scenario**:
+1. Approve task 1 → `TERMINAL`
+2. Approve task 2 → same device assigned → `TERMINAL`
+
+**Assertions**:
+- Both tasks: `terminalReason = ALL_MESSAGES_SUCCEEDED`
+- Same `deviceId` appears in both task message records
+- Proves device/token lock is properly released on terminal completion
+
+---
+
+### 4.15 `TaskApiTerminateReuseIntegrationTest`
+
+**Path covered**: manual terminate releases device lock for next task
+
+**Setup**: auto-start=false, 1 device, 2 tasks
+
+**Scenario**:
+1. Approve task 1 → `RUNNING`
+2. Terminate task 1 before callbacks → `TERMINAL (MANUAL_CANCELLED)`
+3. Approve task 2 → same device available → `TERMINAL (ALL_MESSAGES_SUCCEEDED)`
+
+**Assertions**:
+- Proves `cancelPendingMessages()` + device release on manual terminal
+- Second task can reuse the same device after the first task's forced closure
+
+---
+
+### 4.16 `TaskApiTokenAttributeRoutingIntegrationTest`
+
+**Path covered**: token `attributes['country']` used as routing signal instead of `groupId` hard-filter
+
+**Setup**: auto-start=false, multiple devices with different `groupId` and token `attributes.country`
+
+**Scenario**:
+- Task with `taskRoutingCountryCode=us`
+- Device A: `groupId=eu`, `token.attributes.country=us` → should match
+- Device B: `groupId=us`, no country attribute → may match depending on rule
+- Device C: `groupId=eu`, `token.attributes.country=eu` → should not match
+
+**Assertions**:
+- Matched device has `token.attributes.country = taskRoutingCountryCode`
+- Proves attribute-based routing works end-to-end through QLExpress rules
+
+---
+
 ## 5. State machine coverage map
 
 ### Task state paths
 
 | Path | Tested by |
 |------|-----------|
-| `NEW → READY → RUNNING → TERMINAL` (all succeed) | 4.1, 4.8, 4.9, 4.10, 4.11 |
+| `NEW → READY → RUNNING → TERMINAL` (all succeed) | 4.1, 4.8, 4.9, 4.10, 4.11, 4.13, 4.14, 4.15 |
 | `NEW → READY → RUNNING → TERMINAL` (all fail) | 4.2 |
 | `NEW → READY → RUNNING → TERMINAL` (mixed) | 4.3 |
 | `NEW → READY → RUNNING → TERMINAL` (manual cancel) | 4.7 |
@@ -323,27 +418,34 @@ Expected result: `BUILD SUCCESS`, 0 failures.
 | `NEW → READY → RUNNING → PAUSED → TERMINAL` (callbacks while paused) | 4.5 |
 | `NEW → READY → PAUSED → READY → RUNNING → TERMINAL` (resume, late device) | 4.6 |
 | `READY` orphan retry (delayed device) | 4.9 |
+| `READY` blocked by minimum device gate | 4.12 |
+| Multi-round dispatch (batchSize cap per device per round) | 4.13 |
+| Device reuse across sequential tasks | 4.14, 4.15 |
 
 ### TaskMsg state paths
 
 | Path | Tested by |
 |------|-----------|
-| `INIT → SENT → SUCCESS` | 4.1, 4.5, 4.6, 4.8, 4.9, 4.10 |
+| `INIT → SENT → SUCCESS` | 4.1, 4.5, 4.6, 4.8, 4.9, 4.10, 4.12–4.16 |
 | `INIT → SENT → FAILED` | 4.2, 4.3 (one of two) |
-| `INIT → SENT` (task terminated before callback) | 4.7 |
+| `INIT → SENT → EXPIRED` (task terminated before callback) | 4.7, 4.15 |
 | Duplicate result idempotency | 4.8 |
 | Mixed SUCCESS + FAILED in same task | 4.3 |
+| Multi-round: device reused after each batch completes | 4.13 |
 
 ### `TaskTerminalReason` values
 
 | Value | Tested by |
 |-------|-----------|
-| `ALL_MESSAGES_SUCCEEDED` | 4.1, 4.5, 4.6, 4.8, 4.9, 4.10 |
+| `ALL_MESSAGES_SUCCEEDED` | 4.1, 4.5, 4.6, 4.8–4.10, 4.12–4.16 |
 | `ALL_MESSAGES_FAILED` | 4.2 |
 | `MIXED_MESSAGE_RESULTS` | 4.3 |
-| `MANUAL_CANCELLED` | 4.7 |
+| `MANUAL_CANCELLED` | 4.7, 4.15 |
 
 All four `TaskTerminalReason` values are covered end-to-end.
+
+> `EXPIRED` messages count as "failed" in `AllMessagesFinalTaskTerminalPolicy`:
+> `ALL_MESSAGES_FAILED` if all are `FAILED + EXPIRED`; `MIXED_MESSAGE_RESULTS` if some are `SUCCESS`.
 
 ---
 
@@ -552,28 +654,32 @@ This test intentionally documents the known limitation: the task does not self-h
 
 ### Checklist
 
-1. Place the test in `xa-mass-mock/src/test/java/com/xa/mass/mock/api/`
-2. Annotate with `@SpringBootTest(classes = MockApplicationSpringBootApp.class, webEnvironment = RANDOM_PORT)`
-3. Add `@ActiveProfiles("dev")` and `@DirtiesContext`
-4. Allocate a free WebSocket port at class load:
-   ```java
-   private static final int WEBSOCKET_PORT = findFreePort();
-
-   @DynamicPropertySource
-   static void registerProperties(DynamicPropertyRegistry registry) {
-       registry.add("mass.websocket.port", () -> WEBSOCKET_PORT);
-       // Only needed if auto-start=true:
-       registry.add("mock.client.uri", () -> "ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
-   }
-   ```
-5. Use the `waitForTaskStatus` polling pattern; set `maxAttempts` generously (20 attempts × 250 ms = 5 s)
-6. Use `ReplayClient` (copy from `TaskApiMixedResultsIntegrationTest`) when you need per-message SUCCESS/FAILED control
-7. Use Pattern C (`DeviceManager.addDevice` + `addToken`) when the test needs a device to appear after the task is created
-8. Assert both the `task` and `messages` layers — a test that only checks `task.status=TERMINAL` misses the most interesting bugs
+1. Place the test in the right sub-package under `xa-mass-mock/src/test/java/com/xa/mass/mock/e2e/`:
+   `lifecycle/`, `assignment/`, `results/`, or `audit/`. Create a new sub-package if none fits.
+2. Extend `AbstractMockE2eTest` — it provides `exchange()`, `task()`, `messages()`, `stateValidation()`,
+   `createTaskId()`, `waitForTaskSnapshot()`, and `findFreePort()`.
+3. Annotate with `@SpringBootTest(classes = MockApplicationSpringBootApp.class, webEnvironment = RANDOM_PORT)`
+4. Add `@ActiveProfiles("dev")` and `@DirtiesContext`
+5. Allocate a free WebSocket port and register it via `@DynamicPropertySource`
+6. Use `createTaskId()` from `AbstractMockE2eTest` — it builds the `sharedConfig` wrapper correctly
+7. Use `ReplayClient` (copy from `e2e/results/TaskApiMixedResultsIntegrationTest`) for per-message SUCCESS/FAILED
+8. Use `DeviceManager.addDevice` + `addToken` (Pattern C) for late device registration
+9. Assert both the `task` and `messages` layers
 
 ### Template
 
 ```java
+package com.xa.mass.mock.e2e.lifecycle; // or assignment/results/audit
+
+import com.xa.mass.mock.MockApplicationSpringBootApp;
+import com.xa.mass.mock.e2e.support.AbstractMockE2eTest;
+import org.junit.jupiter.api.Test;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.annotation.DirtiesContext;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
+
 @SpringBootTest(
     classes = MockApplicationSpringBootApp.class,
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
@@ -587,24 +693,21 @@ This test intentionally documents the known limitation: the task does not self-h
 )
 @ActiveProfiles("dev")
 @DirtiesContext
-class TaskApiYourScenarioIntegrationTest {
+class TaskApiYourScenarioIntegrationTest extends AbstractMockE2eTest {
 
     private static final int WEBSOCKET_PORT = findFreePort();
 
     @DynamicPropertySource
     static void registerProperties(DynamicPropertyRegistry registry) {
-        registry.add("mass.websocket.port", () -> WEBSOCKET_PORT);
+        registerWebSocketProperties(registry, WEBSOCKET_PORT);
+        // also call registerWebSocketPropertiesWithClientUri if auto-start=true
     }
-
-    @LocalServerPort private int port;
-    @Autowired private TestRestTemplate restTemplate;
 
     @Test
     void yourScenario() throws Exception {
-        // arrange, act, assert
+        String taskId = createTaskId("scenario-name", "target-a");
+        // arrange, act, assert using inherited helpers
     }
-
-    // ... helpers from existing tests
 }
 ```
 
