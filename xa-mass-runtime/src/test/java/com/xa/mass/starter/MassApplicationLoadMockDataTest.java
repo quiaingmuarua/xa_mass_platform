@@ -2,7 +2,6 @@ package com.xa.mass.starter;
 
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import com.xa.mass.base.enums.Project;
 import com.xa.mass.base.enums.task.TokenStatus;
 import com.xa.mass.base.model.Device;
 import com.xa.mass.base.model.Task;

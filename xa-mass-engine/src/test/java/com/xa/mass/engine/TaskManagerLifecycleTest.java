@@ -141,15 +141,6 @@ class TaskManagerLifecycleTest {
     }
 
     @Test
-    void createTaskRejectsUnsupportedProject() {
-        TaskCreateRequestDto dto = buildRequest("bad-project");
-        dto.setProject("whatsapp");
-
-        IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> taskManager.createTask(dto));
-        assertTrue(error.getMessage().contains("Unsupported project code"));
-    }
-
-    @Test
     void createTaskPersistsRequestedBatchSize() {
         TaskCreateRequestDto dto = buildRequest("batch-size");
         dto.setBatchSize(3);

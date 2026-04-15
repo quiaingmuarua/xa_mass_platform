@@ -115,7 +115,7 @@ class GatewayTaskResultHandlerTest {
         msg.setMsgType(MessageType.TASK);
         msg.setSubMsgType("step");
         msg.setFrom(MessageDirection.CLIENT);
-        msg.setProject(task.getProjectCode());
+        msg.setProject(task.getProject());
         MessageContext context = new MessageContext();
         context.setTid(task.getTid());
         context.setDeviceId("device-1");

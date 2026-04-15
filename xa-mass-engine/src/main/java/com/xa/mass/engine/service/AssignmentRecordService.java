@@ -130,7 +130,7 @@ public class AssignmentRecordService {
         TaskSnapshot snapshot = new TaskSnapshot();
         snapshot.setTaskId(task.getTid());
         snapshot.setTaskName(task.getTaskName());
-        snapshot.setProject(task.getProjectCode());
+        snapshot.setProject(task.getProject());
         snapshot.setTaskRoutingCountryCode(task.getTaskRoutingCountryCode());
         snapshot.setTaskStatus(task.getStatus().name());
         snapshot.setTaskTargetNumber(task.getTaskTargetNumber());

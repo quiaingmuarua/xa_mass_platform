@@ -1,6 +1,5 @@
 package com.xa.mass.api.internal;
 
-import com.xa.mass.base.enums.Project;
 import com.xa.mass.base.enums.device.DeviceStatus;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Device;
@@ -118,7 +117,7 @@ public class StatusPageController {
     @GetMapping("/devices/allProjects")
     @ResponseBody
     public List<String> getAllProjects() {
-        return Project.getAllCodes();
+        return com.xa.mass.base.enums.Project.getAllCodes();
     }
 
     /**
@@ -139,10 +138,7 @@ public class StatusPageController {
         }
         Device device = deviceManager.getDevice(deviceId);
         if (device != null) {
-            List<Project> projectList = supportedProjects.stream()
-                    .map(Project::fromCode)
-                    .collect(Collectors.toList());
-            device.setSupportedProjects(projectList);
+            device.setSupportedProjects(supportedProjects);
             deviceManager.updateDevice(device);
             return Map.of("success", true, "msg", "更新成功");
         } else {

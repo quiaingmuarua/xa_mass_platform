@@ -1,6 +1,5 @@
 package com.xa.mass.engine.strategy;
 
-import com.xa.mass.base.enums.Project;
 import com.xa.mass.base.enums.device.DeviceStatus;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TokenStatus;
@@ -42,7 +41,7 @@ class RuleBasedTaskDeviceMatchingStrategyTest {
 
         Task task = new Task();
         task.setTid("task-1");
-        task.setProject(Project.DEMO_APP);
+        task.setProject("demoApp");
         task.setTaskRoutingCountryCode("us");
         task.setStatus(TaskStatus.READY);
 
@@ -81,7 +80,7 @@ class RuleBasedTaskDeviceMatchingStrategyTest {
 
         Task task = new Task();
         task.setTid("task-locked");
-        task.setProject(Project.DEMO_APP);
+        task.setProject("demoApp");
         task.setStatus(TaskStatus.READY);
 
         Device device = device("device-locked", "pool-east");
@@ -112,7 +111,7 @@ class RuleBasedTaskDeviceMatchingStrategyTest {
         device.setDeviceId(deviceId);
         device.setDeviceGroupId(deviceGroupId);
         device.setStatus(DeviceStatus.ONLINE);
-        device.setSupportedProjects(List.of(Project.DEMO_APP));
+        device.setSupportedProjects(List.of("demoApp"));
         return device;
     }
 

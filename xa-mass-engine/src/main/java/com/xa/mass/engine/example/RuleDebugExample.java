@@ -1,6 +1,5 @@
 package com.xa.mass.engine.example;
 
-import com.xa.mass.base.enums.Project;
 import com.xa.mass.base.enums.device.DeviceStatus;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TokenStatus;
@@ -58,7 +57,7 @@ public class RuleDebugExample {
             device.setDeviceGroupId(country);
             device.setStatus(DeviceStatus.ONLINE);
             device.setAgentVersion("1.0." + (i % 5));
-            device.setSupportedProjects(Arrays.asList(Project.DEMO_APP));
+            device.setSupportedProjects(Arrays.asList("demoApp"));
 
             Token token = new Token();
             token.setTokenId("token-" + i);
@@ -71,9 +70,7 @@ public class RuleDebugExample {
             deviceManager.addToken(device.getDeviceId(), token);
 
             logger.info("Device {} supports projects: {}", device.getDeviceId(),
-                    device.getSupportedProjects().stream()
-                            .map(Project::getCode)
-                            .collect(Collectors.joining(", ")));
+                    String.join(", ", device.getSupportedProjects()));
         }
 
         System.out.println("Generated 10 test devices and tokens");
@@ -118,7 +115,7 @@ public class RuleDebugExample {
 
         System.out.println("Task:");
         System.out.println("  - id: " + task.getTid());
-        System.out.println("  - project: " + task.getProjectCode());
+        System.out.println("  - project: " + task.getProject());
         System.out.println("  - routingCountryCode: " + task.getTaskRoutingCountryCode());
 
         Map<String, Object> context = matchContext.getContext();

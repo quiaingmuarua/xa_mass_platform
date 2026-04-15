@@ -1,6 +1,5 @@
 package com.xa.mass.engine.example;
 
-import com.xa.mass.base.enums.Project;
 import com.xa.mass.base.enums.task.TokenStatus;
 import com.xa.mass.base.model.Device;
 import com.xa.mass.base.model.Task;
@@ -45,7 +44,7 @@ public class StorageFactoryExample {
         RuleStorage ruleStorage = new InMemoryRuleStorage();
 
         // 2. 娣诲姞娴嬭瘯鏁版嵁
-        Device device = new Device("device-001", "1.0.0", Arrays.asList(Project.DEMO_APP));
+        Device device = new Device("device-001", "1.0.0", Arrays.asList("demoApp"));
         device.setDeviceGroupId("us");
 
         Token token = new Token("token-001", "device-001", "us");
@@ -90,7 +89,7 @@ public class StorageFactoryExample {
             log.info("Redis瀛樺偍瀹炰緥鍒涘缓鎴愬姛");
 
             // 2. 娣诲姞娴嬭瘯鏁版嵁
-            Device device = new Device("device-002", "1.0.1", Arrays.asList(Project.DEMO_APP));
+            Device device = new Device("device-002", "1.0.1", Arrays.asList("demoApp"));
             device.setDeviceGroupId("gb");
 
             Token token = new Token("token-002", "device-002", "gb");
@@ -99,7 +98,7 @@ public class StorageFactoryExample {
             User user = new User();
             user.setName("testUser2");
 
-            Task task = new Task("task-002", "Test Task 2", Project.DEMO_APP.getCode(), "gb", 50, java.util.Map.of("textContent", "Test content 2"), user);
+            Task task = new Task("task-002", "Test Task 2", "demoApp", "gb", 50, java.util.Map.of("textContent", "Test content 2"), user);
 
             deviceStorage.addDevice(device);
             deviceStorage.addToken("device-002", token);
@@ -150,8 +149,8 @@ public class StorageFactoryExample {
         User user2 = new User();
         user2.setName("factoryUser2");
 
-        Task task1 = new Task("task-factory-001", "Factory Task 1", Project.DEMO_APP.getCode(), "us", 100, java.util.Map.of("textContent", "Factory content 1"), user1);
-        Task task2 = new Task("task-factory-002", "Factory Task 2", Project.DEMO_APP.getCode(), "gb", 50, java.util.Map.of("textContent", "Factory content 2"), user2);
+        Task task1 = new Task("task-factory-001", "Factory Task 1", "demoApp", "us", 100, java.util.Map.of("textContent", "Factory content 1"), user1);
+        Task task2 = new Task("task-factory-002", "Factory Task 2", "demoApp", "gb", 50, java.util.Map.of("textContent", "Factory content 2"), user2);
 
         inMemoryStorage.saveTask(task1);
         inMemoryStorage.saveTask(task2);
@@ -161,7 +160,7 @@ public class StorageFactoryExample {
 
         for (Task task : allTasks) {
             log.info("浠诲姟: {} (country: {}, project: {})",
-                    task.getTid(), task.getTaskRoutingCountryCode(), task.getProjectCode());
+                    task.getTid(), task.getTaskRoutingCountryCode(), task.getProject());
         }
 
         log.info("=== 瀛樺偍宸ュ巶娴嬭瘯瀹屾垚 ===");

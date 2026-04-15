@@ -1,6 +1,5 @@
 package com.xa.mass.engine.listener;
 
-import com.xa.mass.base.enums.Project;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Device;
 import com.xa.mass.base.model.Task;
@@ -182,7 +181,7 @@ class TaskDeviceAssignListenerTest {
         Device device = new Device();
         device.setDeviceId(deviceId);
         device.setDeviceGroupId("pool-a");
-        device.setSupportedProjects(List.of(Project.DEMO_APP));
+        device.setSupportedProjects(List.of("demoApp"));
         return device;
     }
 

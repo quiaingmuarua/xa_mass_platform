@@ -1,6 +1,5 @@
 package com.xa.mass.mock.e2e.assignment;
 
-import com.xa.mass.base.enums.Project;
 import com.xa.mass.base.enums.device.DeviceStatus;
 import com.xa.mass.base.enums.task.TokenStatus;
 import com.xa.mass.base.model.Device;
@@ -97,7 +96,7 @@ class TaskApiDelayedDeviceAvailabilityIntegrationTest extends AbstractMockE2eTes
         device.setDeviceId(deviceId);
         device.setDeviceGroupId("us");
         device.setStatus(DeviceStatus.ONLINE);
-        device.setSupportedProjects(java.util.List.of(Project.DEMO_APP));
+        device.setSupportedProjects(java.util.List.of("demoApp"));
         deviceManager.addDevice(device);
 
         Token token = new Token();

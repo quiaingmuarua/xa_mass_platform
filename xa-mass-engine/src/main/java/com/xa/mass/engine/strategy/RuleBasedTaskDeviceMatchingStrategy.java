@@ -1,6 +1,5 @@
 package com.xa.mass.engine.strategy;
 
-import com.xa.mass.base.enums.Project;
 import com.xa.mass.base.enums.assignment.AssignmentResult;
 import com.xa.mass.base.model.Device;
 import com.xa.mass.base.model.Task;
@@ -69,9 +68,7 @@ public class RuleBasedTaskDeviceMatchingStrategy implements TaskDeviceMatchingSt
                         device.getDeviceGroupId(),
                         device.getStatus(),
                         deviceManager.isLocked(device.getDeviceId()),
-                        device.getSupportedProjects().stream()
-                                .map(Project::getCode)
-                                .collect(Collectors.joining(", ")),
+                        String.join(", ", device.getSupportedProjects()),
                         token != null ? token.getTokenId() : "null",
                         token != null ? token.getStatus() : "null",
                         token != null ? token.getChannel() : "null"
