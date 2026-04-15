@@ -53,6 +53,7 @@ This file is the fastest entry point for coding agents such as Claude Code, Code
 - `TaskMsg.input: Map<String,Object>` replaces the former `target: String`; `getTarget()` is a backwards-compat accessor reading `input["target"]`
 - `TaskCreateRequestDto.defaultMsgMaxRetryCount` (default `3`) configures per-task retry budget; callers may set to `0` to disable retries
 - `Task.openEnded=true` suppresses automatic terminal closure; append work items at runtime via `POST /status/api/tasks/{taskId}/items`, then close the append window with `PUT /status/api/tasks/{taskId}/seal`
+- `WorkerAdapter` interface (`xa-mass-engine/worker/`) is the transport extension seam: it extends `TaskMsgDispatchListener` and declares `protocol()`; `WebSocketWorkerAdapter` in `xa-mass-runtime` is the current WS implementation; future HTTP/gRPC adapters plug in here without touching engine internals
 - Treat `engine/v2` as historical archive material, not mainline
 
 ## 0.1 Platform Definition
@@ -226,6 +227,7 @@ Notes:
 
 - Do not treat this as the current `spring-boot:run` target.
 - Runtime publishes and consumes events through the current `channel/eventbus/core` and `channel/eventbus/event` packages from this module.
+- `xa-mass-runtime/src/main/java/com/xa/mass/starter/worker/WebSocketWorkerAdapter.java` is the concrete `WorkerAdapter` for WebSocket-connected workers; wires `GatewayTaskMsgPublisher` as the dispatch side.
 
 ### `xa-mass-api`
 
@@ -276,6 +278,7 @@ Notes:
 
 - Mainline engine tests are the active regression surface.
 - `TaskWorkerMatchingStrategy` is now the engine extension seam for pluggable task-to-worker matching policies.
+- `WorkerAdapter` interface (`xa-mass-engine/worker/WorkerAdapter.java`) is the transport adapter seam; concrete implementations live outside the engine (currently `xa-mass-runtime`).
 - `xa-mass-engine/archive/v2/**` is historical experiment code, not active regression.
 
 ### `xa-mass-core`
