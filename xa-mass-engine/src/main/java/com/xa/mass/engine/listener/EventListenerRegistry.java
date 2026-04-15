@@ -1,12 +1,12 @@
 package com.xa.mass.engine.listener;
 
 import com.xa.mass.base.channel.eventbus.core.EventBusFacade;
-import com.xa.mass.engine.DeviceManager;
+import com.xa.mass.engine.WorkerManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * 事件监听注册中心，只注册设备上下线事件
+ * 事件监听注册中心，只注册Worker上下线事件
  */
 public class EventListenerRegistry {
     private static final Logger log = LoggerFactory.getLogger(EventListenerRegistry.class);
@@ -14,9 +14,13 @@ public class EventListenerRegistry {
     private EventListenerRegistry() {
     }
 
-    public static void registerDeviceStatusListeners(EventBusFacade eventBus, DeviceManager deviceManager) {
-        log.info("registerDeviceStatusListeners: register device status event listeners ...");
-        DeviceManager.DeviceStatusEventListener listener = new DeviceManager.DeviceStatusEventListener(deviceManager);
+    public static WorkerManager.WorkerStatusEventListener registerWorkerStatusListeners(
+            EventBusFacade eventBus,
+            WorkerManager workerManager
+    ) {
+        log.info("registerWorkerStatusListeners: register worker status event listeners ...");
+        WorkerManager.WorkerStatusEventListener listener = new WorkerManager.WorkerStatusEventListener(workerManager);
         eventBus.register(listener);
+        return listener;
     }
-} 
+}

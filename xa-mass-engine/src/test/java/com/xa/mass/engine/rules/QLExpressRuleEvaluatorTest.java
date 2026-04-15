@@ -14,13 +14,13 @@ class QLExpressRuleEvaluatorTest {
     @Test
     void evaluatesNestedAttributesMapAccess() throws Exception {
         RuleDefinition rule = new RuleDefinition();
-        rule.setId("token-attr-country");
+        rule.setId("worker-context-attr-country");
         rule.setType(RuleType.QL_EXPRESS);
-        rule.setContent("tokenAttributes['country'] == 'us' && deviceAttributes['pool'] == 'premium'");
+        rule.setContent("workerContextAttributes['country'] == 'us' && workerAttributes['pool'] == 'premium'");
 
         Map<String, Object> context = Map.of(
-                "tokenAttributes", Map.of("country", "us"),
-                "deviceAttributes", Map.of("pool", "premium")
+                "workerContextAttributes", Map.of("country", "us"),
+                "workerAttributes", Map.of("pool", "premium")
         );
 
         assertTrue(evaluator.evaluate(rule, context));
@@ -29,10 +29,10 @@ class QLExpressRuleEvaluatorTest {
     @Test
     void missingNestedAttributeDoesNotMatch() throws Exception {
         RuleDefinition rule = new RuleDefinition();
-        rule.setId("token-attr-country");
+        rule.setId("worker-context-attr-country");
         rule.setType(RuleType.QL_EXPRESS);
-        rule.setContent("tokenAttributes['country'] == 'us'");
+        rule.setContent("workerContextAttributes['country'] == 'us'");
 
-        assertFalse(evaluator.evaluate(rule, Map.of("tokenAttributes", Map.of())));
+        assertFalse(evaluator.evaluate(rule, Map.of("workerContextAttributes", Map.of())));
     }
 }

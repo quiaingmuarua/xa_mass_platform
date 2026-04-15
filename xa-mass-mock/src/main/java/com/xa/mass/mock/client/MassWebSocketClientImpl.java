@@ -30,30 +30,30 @@ public class MassWebSocketClientImpl extends WebSocketClient implements MassWebS
     private final Gson gson = new Gson();
     private final ScheduledExecutorService reconnectScheduler;
     private final AtomicInteger reconnectAttempts = new AtomicInteger(0);
-    private final String deviceId;
+    private final String workerId;
     private final String taskResultStatus;
 
     private boolean intentionalClose = false;
     private URI uri;
 
-    public MassWebSocketClientImpl(URI serverUri, String deviceId) {
-        this(serverUri, deviceId, "SUCCESS");
+    public MassWebSocketClientImpl(URI serverUri, String workerId) {
+        this(serverUri, workerId, "SUCCESS");
     }
 
-    public MassWebSocketClientImpl(URI serverUri, String deviceId, String taskResultStatus) {
+    public MassWebSocketClientImpl(URI serverUri, String workerId, String taskResultStatus) {
         super(serverUri);
-        this.deviceId = deviceId;
+        this.workerId = workerId;
         this.taskResultStatus = normalizeTaskResultStatus(taskResultStatus);
         this.reconnectScheduler = Executors.newSingleThreadScheduledExecutor(r -> {
-            Thread t = new Thread(r, "websocket-reconnect-scheduler-" + deviceId);
+            Thread t = new Thread(r, "websocket-reconnect-scheduler-" + workerId);
             t.setDaemon(true);
             return t;
         });
         this.uri = serverUri;
     }
 
-    public MassWebSocketClientImpl(String deviceId) {
-        this(URI.create("ws://localhost:8088/ws"), deviceId, "SUCCESS");
+    public MassWebSocketClientImpl(String workerId) {
+        this(URI.create("ws://localhost:18088/ws"), workerId, "SUCCESS");
     }
 
     @Override
@@ -63,28 +63,28 @@ public class MassWebSocketClientImpl extends WebSocketClient implements MassWebS
 
     @Override
     public void onOpen(ServerHandshake handshakedata) {
-        logger.info("[{}] Connected to server: {}", deviceId, handshakedata.getHttpStatusMessage());
+        logger.info("[{}] Connected to server: {}", workerId, handshakedata.getHttpStatusMessage());
         reconnectAttempts.set(0);
         intentionalClose = false;
 
         MassMessage ping = new MassMessage();
-        ping.setMsgId("ping-" + deviceId + "-" + System.currentTimeMillis());
+        ping.setMsgId("ping-" + workerId + "-" + System.currentTimeMillis());
         ping.setMsgType(MessageType.PING);
         ping.setFrom(MessageDirection.CLIENT);
         ping.setSubMsgType("heartbeat");
 
         MessageContext ctx = new MessageContext();
-        ctx.setDeviceId(deviceId);
+        ctx.setWorkerId(workerId);
         ctx.setConnRole(SessionRoles.TASK_MESSAGES);
         ping.setContext(ctx);
 
         send(gson.toJson(ping));
-        logger.info("[{}] Sent PING message", deviceId);
+        logger.info("[{}] Sent PING message", workerId);
     }
 
     @Override
     public void onMessage(String message) {
-        logger.info("[{}] Received: {}", deviceId, message);
+        logger.info("[{}] Received: {}", workerId, message);
         try {
             JsonObject json = gson.fromJson(message, JsonObject.class);
             MessageType msgType = MessageType.valueOf(json.get("msgType").getAsString().toUpperCase());
@@ -94,20 +94,20 @@ public class MassWebSocketClientImpl extends WebSocketClient implements MassWebS
                     handleTaskMessage(message);
                     break;
                 case PONG:
-                    logger.info("[{}] Pong received", deviceId);
+                    logger.info("[{}] Pong received", workerId);
                     break;
                 default:
-                    logger.warn("[{}] Unhandled msgType: {}", deviceId, msgType);
+                    logger.warn("[{}] Unhandled msgType: {}", workerId, msgType);
             }
         } catch (Exception e) {
-            logger.error("[{}] Failed to parse or handle message: {}", deviceId, e.getMessage(), e);
+            logger.error("[{}] Failed to parse or handle message: {}", workerId, e.getMessage(), e);
         }
     }
 
     private void handleTaskMessage(String message) {
         MassMessage taskMessage = gson.fromJson(message, MassMessage.class);
         if (taskMessage.isResponse()) {
-            logger.info("[{}] Ignoring task response frame for msgId: {}", deviceId, taskMessage.getMsgId());
+            logger.info("[{}] Ignoring task response frame for msgId: {}", workerId, taskMessage.getMsgId());
             return;
         }
         TaskPayload taskPayload = gson.fromJson(taskMessage.getPayload(), TaskPayload.class);
@@ -126,7 +126,7 @@ public class MassWebSocketClientImpl extends WebSocketClient implements MassWebS
             responseContext.setConnRole(originalContext.getConnRole());
             responseContext.setTid(originalContext.getTid());
             responseContext.setRetryCount(originalContext.getRetryCount());
-            responseContext.setDeviceId(deviceId);
+            responseContext.setWorkerId(workerId);
             response.setContext(responseContext);
         }
 
@@ -135,20 +135,20 @@ public class MassWebSocketClientImpl extends WebSocketClient implements MassWebS
                 ? taskPayload.getSteps().get(0).getStepId()
                 : "step-0-default";
         payloadMap.put("stepId", stepId);
-        payloadMap.put("mockData", "Executed by mock client " + deviceId);
+        payloadMap.put("mockData", "Executed by mock client " + workerId);
         payloadMap.put("status", taskResultStatus);
 
         response.setPayload(gson.toJsonTree(payloadMap));
 
         send(gson.toJson(response));
-        logger.info("[{}] Sent mock task response for msgId: {}", deviceId, response.getMsgId());
+        logger.info("[{}] Sent mock task response for msgId: {}", workerId, response.getMsgId());
     }
 
     @Override
     public void onClose(int code, String reason, boolean remote) {
-        logger.info("[{}] Disconnected from server. Code: {}, Reason: {}, Remote: {}", deviceId, code, reason, remote);
+        logger.info("[{}] Disconnected from server. Code: {}, Reason: {}, Remote: {}", workerId, code, reason, remote);
         if (intentionalClose) {
-            logger.info("[{}] Connection closed intentionally. Will not attempt to reconnect.", deviceId);
+            logger.info("[{}] Connection closed intentionally. Will not attempt to reconnect.", workerId);
             shutdownScheduler();
             return;
         }
@@ -158,37 +158,37 @@ public class MassWebSocketClientImpl extends WebSocketClient implements MassWebS
             delay = Math.min(delay, MAX_RECONNECT_DELAY_MS);
 
             logger.info("[{}] Will attempt to reconnect in {} seconds. Attempt: {}",
-                    deviceId, (delay / 1000.0), (reconnectAttempts.get() + 1));
+                    workerId, (delay / 1000.0), (reconnectAttempts.get() + 1));
             reconnectScheduler.schedule(() -> {
                 logger.info("[{}] Attempting to reconnect... (Attempt {})",
-                        deviceId, reconnectAttempts.incrementAndGet());
+                        workerId, reconnectAttempts.incrementAndGet());
                 try {
                     reconnectBlocking();
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
-                    logger.error("[{}] Reconnect attempt interrupted: {}", deviceId, e.getMessage());
+                    logger.error("[{}] Reconnect attempt interrupted: {}", workerId, e.getMessage());
                 } catch (Exception e) {
-                    logger.error("[{}] Failed to reconnect: {}", deviceId, e.getMessage());
+                    logger.error("[{}] Failed to reconnect: {}", workerId, e.getMessage());
                 }
             }, delay, TimeUnit.MILLISECONDS);
         } else {
-            logger.warn("[{}] Reached max reconnect attempts ({}). Giving up.", deviceId, MAX_RECONNECT_ATTEMPTS);
+            logger.warn("[{}] Reached max reconnect attempts ({}). Giving up.", workerId, MAX_RECONNECT_ATTEMPTS);
             shutdownScheduler();
         }
     }
 
     @Override
     public void onError(Exception ex) {
-        logger.error("[{}] WebSocket error: {}", deviceId, ex.getMessage(), ex);
+        logger.error("[{}] WebSocket error: {}", workerId, ex.getMessage(), ex);
     }
 
     public void closeConnection() {
-        logger.info("[{}] Intentionally closing connection...", deviceId);
+        logger.info("[{}] Intentionally closing connection...", workerId);
         intentionalClose = true;
         try {
             super.closeBlocking();
         } catch (InterruptedException e) {
-            logger.warn("[{}] Interrupted while closing connection.", deviceId);
+            logger.warn("[{}] Interrupted while closing connection.", workerId);
             Thread.currentThread().interrupt();
             super.close();
         }
@@ -206,12 +206,12 @@ public class MassWebSocketClientImpl extends WebSocketClient implements MassWebS
                 reconnectScheduler.shutdownNow();
                 Thread.currentThread().interrupt();
             }
-            logger.info("[{}] Reconnect scheduler shut down.", deviceId);
+            logger.info("[{}] Reconnect scheduler shut down.", workerId);
         }
     }
 
-    public String getDeviceId() {
-        return deviceId;
+    public String getWorkerId() {
+        return workerId;
     }
 
     private String normalizeTaskResultStatus(String taskResultStatus) {

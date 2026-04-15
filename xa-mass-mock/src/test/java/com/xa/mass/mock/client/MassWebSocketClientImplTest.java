@@ -37,6 +37,13 @@ class MassWebSocketClientImplTest {
     }
 
     @Test
+    void defaultConstructorUsesGatewayPort() {
+        MassWebSocketClientImpl client = new MassWebSocketClientImpl("device-test");
+
+        assertEquals("ws://localhost:18088/ws", client.getURI().toString());
+    }
+
+    @Test
     void taskResponseDoesNotTriggerAnotherMockResponse() {
         CapturingMassWebSocketClient client = new CapturingMassWebSocketClient("device-test");
 
@@ -66,7 +73,7 @@ class MassWebSocketClientImplTest {
         message.setProject("demoApp");
 
         MessageContext context = new MessageContext();
-        context.setDeviceId("device-test");
+        context.setWorkerId("device-test");
         context.setConnRole(SessionRoles.TASK_MESSAGES);
         context.setTid("task-1");
         message.setContext(context);
@@ -84,12 +91,12 @@ class MassWebSocketClientImplTest {
     private static class CapturingMassWebSocketClient extends MassWebSocketClientImpl {
         private final List<String> sentMessages = new ArrayList<>();
 
-        private CapturingMassWebSocketClient(String deviceId) {
-            this(deviceId, "SUCCESS");
+        private CapturingMassWebSocketClient(String workerId) {
+            this(workerId, "SUCCESS");
         }
 
-        private CapturingMassWebSocketClient(String deviceId, String taskResultStatus) {
-            super(URI.create("ws://127.0.0.1:65535/ws"), deviceId, taskResultStatus);
+        private CapturingMassWebSocketClient(String workerId, String taskResultStatus) {
+            super(URI.create("ws://127.0.0.1:65535/ws"), workerId, taskResultStatus);
         }
 
         @Override

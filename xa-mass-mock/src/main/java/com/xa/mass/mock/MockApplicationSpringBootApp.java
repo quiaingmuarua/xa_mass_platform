@@ -1,7 +1,7 @@
 package com.xa.mass.mock;
 
 import com.xa.mass.base.channel.messaging.api.MessageQueue;
-import com.xa.mass.engine.DeviceManager;
+import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.gateway.queue.Envelope;
@@ -31,7 +31,7 @@ public class MockApplicationSpringBootApp {
     private TaskManager taskManager;
 
     @Autowired
-    private DeviceManager deviceManager;
+    private WorkerManager workerManager;
 
     @Autowired
     private RuleManager ruleManager;
@@ -45,14 +45,14 @@ public class MockApplicationSpringBootApp {
     @Value("${mass.engine.worker-threads:8}")
     private int workerThreads;
 
-    @Value("${mass.mock.data.devices:mock/mock_devices.json}")
-    private String devicesConfigPath;
+    @Value("${mass.mock.data.workers:mock/mock_workers.json}")
+    private String workersConfigPath;
 
     @Value("${mass.mock.data.tasks:mock/mock_tasks.json}")
     private String tasksConfigPath;
 
-    @Value("${mass.mock.data.tokens:mock/mock_tokens.json}")
-    private String tokensConfigPath;
+    @Value("${mass.mock.data.worker-contexts:mock/mock_worker_contexts.json}")
+    private String workerContextsConfigPath;
 
     @Value("${mass.mock.data.rules:mock/mock_rules.json}")
     private String rulesConfigPath;
@@ -77,14 +77,14 @@ public class MockApplicationSpringBootApp {
         log.info("==============================");
         log.info("HTTP status page: http://localhost:{}/status", httpPort);
         log.info("HTTP task page: http://localhost:{}/status/tasks", httpPort);
-        log.info("HTTP device page: http://localhost:{}/status/devices", httpPort);
+        log.info("HTTP worker page: http://localhost:{}/status/workers", httpPort);
         log.info("HTTP rule page: http://localhost:{}/status/rules", httpPort);
         log.info("HTTP API docs: http://localhost:{}/doc.html", httpPort);
         log.info("Gateway WebSocket: ws://localhost:{}/ws", webSocketPort);
         log.info("==============================");
     }
 
-    @Bean
+    @Bean(destroyMethod = "stop")
     @Profile("dev")
     public MassApplication fullStackRuntimeApplication(
             @Qualifier("outputQueue") MessageQueue<Envelope> outputQueue,
@@ -101,9 +101,9 @@ public class MockApplicationSpringBootApp {
                         .enabled(true)
                         .workerThreads(workerThreads)
                         .taskManager(taskManager)
-                        .deviceManager(deviceManager)
+                        .workerManager(workerManager)
                         .ruleManager(ruleManager)
-                        .mockData(devicesConfigPath, tokensConfigPath, tasksConfigPath, rulesConfigPath))
+                        .mockData(workersConfigPath, workerContextsConfigPath, tasksConfigPath, rulesConfigPath))
                 .build();
     }
 
