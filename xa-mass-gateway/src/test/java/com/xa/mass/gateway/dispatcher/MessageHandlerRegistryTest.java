@@ -5,6 +5,7 @@ import com.xa.mass.gateway.dispatcher.handler.ResolutionResult;
 import com.xa.mass.gateway.model.enums.MessageType;
 import com.xa.mass.gateway.model.massMessage.MassMessage;
 import com.xa.mass.gateway.model.massMessage.MessageContext;
+import com.xa.mass.gateway.session.SessionRoles;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -121,8 +122,8 @@ class MessageHandlerRegistryTest {
         msg.setMsgType(type);
         msg.setSubMsgType(subType);
         MessageContext ctx = new MessageContext();
-        ctx.setWorkerId("device-1");
-        ctx.setConnRole("task");
+        ctx.setWorkerId("worker-1");
+        ctx.setConnRole(SessionRoles.TASK_MESSAGES);
         msg.setContext(ctx);
         return msg;
     }

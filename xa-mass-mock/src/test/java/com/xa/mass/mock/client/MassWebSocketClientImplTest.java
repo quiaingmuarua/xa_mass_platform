@@ -24,7 +24,7 @@ class MassWebSocketClientImplTest {
 
     @Test
     void taskRequestProducesSingleMockResponse() {
-        CapturingMassWebSocketClient client = new CapturingMassWebSocketClient("device-test");
+        CapturingMassWebSocketClient client = new CapturingMassWebSocketClient("worker-test");
 
         client.onMessage(gson.toJson(taskMessage(false)));
 
@@ -38,14 +38,14 @@ class MassWebSocketClientImplTest {
 
     @Test
     void defaultConstructorUsesGatewayPort() {
-        MassWebSocketClientImpl client = new MassWebSocketClientImpl("device-test");
+        MassWebSocketClientImpl client = new MassWebSocketClientImpl("worker-test");
 
         assertEquals("ws://localhost:18088/ws", client.getURI().toString());
     }
 
     @Test
     void taskResponseDoesNotTriggerAnotherMockResponse() {
-        CapturingMassWebSocketClient client = new CapturingMassWebSocketClient("device-test");
+        CapturingMassWebSocketClient client = new CapturingMassWebSocketClient("worker-test");
 
         client.onMessage(gson.toJson(taskMessage(true)));
 
@@ -54,7 +54,7 @@ class MassWebSocketClientImplTest {
 
     @Test
     void taskRequestCanProduceFailedMockResponseWhenConfigured() {
-        CapturingMassWebSocketClient client = new CapturingMassWebSocketClient("device-test", "FAILED");
+        CapturingMassWebSocketClient client = new CapturingMassWebSocketClient("worker-test", "FAILED");
 
         client.onMessage(gson.toJson(taskMessage(false)));
 
@@ -73,7 +73,7 @@ class MassWebSocketClientImplTest {
         message.setProject("demoApp");
 
         MessageContext context = new MessageContext();
-        context.setWorkerId("device-test");
+        context.setWorkerId("worker-test");
         context.setConnRole(SessionRoles.TASK_MESSAGES);
         context.setTid("task-1");
         message.setContext(context);

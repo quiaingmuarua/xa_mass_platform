@@ -29,46 +29,36 @@ public class ServerMessageDispatcher {
 
     public void start() {
         if (running.compareAndSet(false, true)) {
-            logger.info("🚀 Starting ServerMessageDispatcher...");
+            logger.info("Starting ServerMessageDispatcher...");
 
-            // 创建线程池
             inputExecutor = Executors.newFixedThreadPool(8);
             outputExecutor = Executors.newFixedThreadPool(8);
 
-            // 启动处理线程
             for (int i = 0; i < 8; i++) {
                 inputExecutor.submit(this::processInputQueueLoop);
                 outputExecutor.submit(this::processOutputQueueLoop);
             }
 
-            logger.info("✅ ServerMessageDispatcher started successfully");
+            logger.info("ServerMessageDispatcher started successfully");
         }
     }
 
     public void stop() {
         if (running.compareAndSet(true, false)) {
-            logger.info("🛑 Stopping ServerMessageDispatcher...");
+            logger.info("Stopping ServerMessageDispatcher...");
 
             try {
-                // 关闭线程池
-                if (inputExecutor != null) {
-                    inputExecutor.shutdown();
-                    if (!inputExecutor.awaitTermination(10, TimeUnit.SECONDS)) {
-                        inputExecutor.shutdownNow();
-                    }
-                }
-
-                if (outputExecutor != null) {
-                    outputExecutor.shutdown();
-                    if (!outputExecutor.awaitTermination(10, TimeUnit.SECONDS)) {
-                        outputExecutor.shutdownNow();
-                    }
-                }
-
-                logger.info("✅ ServerMessageDispatcher stopped successfully");
-
+                shutdownExecutor(inputExecutor, "input");
+                shutdownExecutor(outputExecutor, "output");
+                logger.info("ServerMessageDispatcher stopped successfully");
             } catch (InterruptedException e) {
-                logger.error("❌ Error stopping ServerMessageDispatcher", e);
+                logger.warn("Stopping ServerMessageDispatcher was interrupted");
+                if (inputExecutor != null) {
+                    inputExecutor.shutdownNow();
+                }
+                if (outputExecutor != null) {
+                    outputExecutor.shutdownNow();
+                }
                 Thread.currentThread().interrupt();
             }
         }
@@ -89,6 +79,12 @@ public class ServerMessageDispatcher {
                     context.setDirection(DispatcherContext.MiddlewareDirection.INPUT);
                     runMiddlewareChain(MiddlewareRegistry.instance.getActiveInputMiddlewares(), envelope);
                 }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                if (running.get()) {
+                    logger.warn("processInputQueueLoop interrupted while dispatcher is still marked running");
+                }
+                break;
             } catch (Exception e) {
                 runExceptionMiddlewareChain(envelope, e);
             }
@@ -105,9 +101,14 @@ public class ServerMessageDispatcher {
                 if (envelope != null) {
                     logger.info("processOutputQueueLoop receive envelope {}", envelope);
                     context.setDirection(DispatcherContext.MiddlewareDirection.OUTPUT);
-
                     runMiddlewareChain(MiddlewareRegistry.instance.getActiveOutputMiddlewares(), envelope);
                 }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                if (running.get()) {
+                    logger.warn("processOutputQueueLoop interrupted while dispatcher is still marked running");
+                }
+                break;
             } catch (Exception e) {
                 runExceptionMiddlewareChain(envelope, e);
             }
@@ -117,14 +118,28 @@ public class ServerMessageDispatcher {
 
     private void runMiddlewareChain(List<EnvelopeMiddleware> chain, Envelope envelope) {
         for (EnvelopeMiddleware middleware : chain) {
-            if (!middleware.handle(envelope, context)) break;
+            if (!middleware.handle(envelope, context)) {
+                break;
+            }
         }
     }
 
     private void runExceptionMiddlewareChain(Envelope envelope, Exception e) {
         for (ExceptionMiddleware middleware : MiddlewareRegistry.instance.getExceptionMiddlewareList()) {
-            if (!middleware.handleException(envelope, context, e)) break;
+            if (!middleware.handleException(envelope, context, e)) {
+                break;
+            }
+        }
+    }
+
+    private void shutdownExecutor(ExecutorService executor, String name) throws InterruptedException {
+        if (executor == null) {
+            return;
+        }
+        List<Runnable> queuedTasks = executor.shutdownNow();
+        logger.info("Requested {} dispatcher executor shutdown, cancelled {} queued tasks", name, queuedTasks.size());
+        if (!executor.awaitTermination(10, TimeUnit.SECONDS)) {
+            logger.warn("{} dispatcher executor did not terminate within timeout", name);
         }
     }
 }
-

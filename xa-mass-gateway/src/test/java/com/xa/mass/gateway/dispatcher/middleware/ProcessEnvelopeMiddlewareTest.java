@@ -8,6 +8,7 @@ import com.xa.mass.gateway.model.massMessage.MessageContext;
 import com.xa.mass.gateway.queue.Envelope;
 import com.xa.mass.gateway.queue.GsonMessageCodec;
 import com.xa.mass.gateway.queue.MessageCodec;
+import com.xa.mass.gateway.session.SessionRoles;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -89,7 +90,7 @@ class ProcessEnvelopeMiddlewareTest {
     // ---- helpers ----
 
     private Envelope envelope(String rawJson) {
-        return Envelope.builder().rawJson(rawJson).workerId("dev-1").connRole("task").build();
+        return Envelope.builder().rawJson(rawJson).workerId("worker-1").connRole(SessionRoles.TASK_MESSAGES).build();
     }
 
     private MassMessage message(String project, MessageType type, String subType) {
@@ -98,8 +99,8 @@ class ProcessEnvelopeMiddlewareTest {
         msg.setMsgType(type);
         msg.setSubMsgType(subType);
         MessageContext ctx = new MessageContext();
-        ctx.setWorkerId("dev-1");
-        ctx.setConnRole("task");
+        ctx.setWorkerId("worker-1");
+        ctx.setConnRole(SessionRoles.TASK_MESSAGES);
         msg.setContext(ctx);
         return msg;
     }

@@ -1,7 +1,7 @@
 {
   "workers": [
     {
-      "workerIdTemplate": "device-{i}",
+      "workerIdTemplate": "worker-{i}",
       "count": 10,
       "workerGroupId": "us",
       "agentVersion": "1.0.0",
@@ -12,13 +12,13 @@
       ],
       "workerContexts": [
         {
-          "workerContextIdTemplate": "token-{i}-A",
+          "workerContextIdTemplate": "worker-context-{i}-A",
           "count": 200,
           "channel": "us",
           "randomStatus": false
         },
         {
-          "workerContextIdTemplate": "token-{i}-B",
+          "workerContextIdTemplate": "worker-context-{i}-B",
           "count": 100,
           "channel": "us",
           "randomStatus": false
@@ -26,7 +26,7 @@
       ]
     },
     {
-      "workerIdTemplate": "gb-device-{i}",
+      "workerIdTemplate": "gb-worker-{i}",
       "count": 12,
       "workerGroupId": "gb",
       "agentVersion": "1.0.1",
@@ -36,7 +36,7 @@
       ],
       "workerContexts": [
         {
-          "workerContextIdTemplate": "gb-token-{i}-{j}",
+          "workerContextIdTemplate": "gb-worker-context-{i}-{j}",
           "count": 300,
           "channel": "gb",
           "randomStatus": false
@@ -67,4 +67,4 @@
       "project": "testApp"
     }
   ]
-} 
+}

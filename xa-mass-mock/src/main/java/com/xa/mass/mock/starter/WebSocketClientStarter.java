@@ -10,6 +10,7 @@ import com.xa.mass.gateway.session.SessionRoles;
 import com.xa.mass.mock.client.ClientSessionManager;
 import com.xa.mass.mock.client.MassWebSocketClientImpl;
 import com.xa.mass.mock.config.MockConfig;
+import com.xa.mass.starter.MassApplication;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -48,6 +49,11 @@ public class WebSocketClientStarter {
 
     @Autowired
     private ClientSessionManager clientSessionManager;
+
+    // Keep a runtime dependency so Spring destroys mock clients before the embedded runtime.
+    @Autowired(required = false)
+    @SuppressWarnings("unused")
+    private MassApplication runtimeApplication;
 
     @Value("${mock.client.workers-config:mock/mock_workers.json}")
     private String workersConfigPath;
@@ -275,6 +281,7 @@ public class WebSocketClientStarter {
     public void shutdown() {
         log.info("Shutting down mock WebSocket clients");
         isShuttingDown = true;
+        started.set(false);
 
         Collection<MassWebSocketClientImpl> clients = clientSessionManager.getAllClients();
         log.info("Disconnecting {} mock clients", clients.size());

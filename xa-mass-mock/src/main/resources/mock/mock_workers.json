@@ -5,7 +5,7 @@
     "FIELDS": {
       "workerId": {
         "$JOIN": [
-          "device-",
+          "worker-",
           "&.index"
         ]
       },
@@ -30,7 +30,7 @@
     "FIELDS": {
       "workerId": {
         "$JOIN": [
-          "gb-device-",
+          "gb-worker-",
           "&.index"
         ]
       },

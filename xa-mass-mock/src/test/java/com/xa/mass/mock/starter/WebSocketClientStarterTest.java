@@ -36,7 +36,7 @@ class WebSocketClientStarterTest {
 
     @Test
     void onApplicationReadyStartsClientsOnlyOnce() {
-        TestWebSocketClientStarter starter = new TestWebSocketClientStarter(List.of(worker("device-1")));
+        TestWebSocketClientStarter starter = new TestWebSocketClientStarter(List.of(worker("worker-1")));
         MockConfig mockConfig = new MockConfig();
         mockConfig.getClient().setUri("ws://localhost:18088/ws");
         setField(starter, "mockConfig", mockConfig);

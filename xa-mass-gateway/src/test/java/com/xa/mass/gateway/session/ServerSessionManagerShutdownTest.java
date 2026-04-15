@@ -25,8 +25,8 @@ class ServerSessionManagerShutdownTest {
         ChannelHandlerContext ctx1 = mock(ChannelHandlerContext.class);
         ChannelHandlerContext ctx2 = mock(ChannelHandlerContext.class);
 
-        manager.addSession("worker-1", "task", ch1, ctx1);
-        manager.addSession("worker-2", "task", ch2, ctx2);
+        manager.addSession("worker-1", SessionRoles.TASK_MESSAGES, ch1, ctx1);
+        manager.addSession("worker-2", SessionRoles.TASK_MESSAGES, ch2, ctx2);
 
         assertEquals(2, manager.getWorkerConnectionCount());
 
@@ -53,8 +53,8 @@ class ServerSessionManagerShutdownTest {
         when(inactiveId.asShortText()).thenReturn("inactive");
 
         ChannelHandlerContext ctx = mock(ChannelHandlerContext.class);
-        manager.addSession("dev-a", "role", active, ctx);
-        manager.addSession("dev-b", "role", inactive, ctx);
+        manager.addSession("worker-a", "role", active, ctx);
+        manager.addSession("worker-b", "role", inactive, ctx);
 
         manager.shutdown();
 

@@ -5,7 +5,7 @@
     "FIELDS": {
       "workerId": {
         "$JOIN": [
-          "it-device-",
+          "it-worker-",
           "&.index"
         ]
       },

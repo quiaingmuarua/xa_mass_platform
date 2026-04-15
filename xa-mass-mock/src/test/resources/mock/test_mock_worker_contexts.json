@@ -5,13 +5,13 @@
     "FIELDS": {
       "workerContextId": {
         "$JOIN": [
-          "it-token-",
+          "it-worker-context-",
           "&.index"
         ]
       },
       "workerId": {
         "$JOIN": [
-          "it-device-",
+          "it-worker-",
           "&.index"
         ]
       },

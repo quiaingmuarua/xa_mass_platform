@@ -15,6 +15,7 @@ import org.slf4j.LoggerFactory;
 
 import java.net.URI;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -197,16 +198,15 @@ public class MassWebSocketClientImpl extends WebSocketClient implements MassWebS
 
     private void shutdownScheduler() {
         if (reconnectScheduler != null && !reconnectScheduler.isShutdown()) {
-            reconnectScheduler.shutdown();
+            List<Runnable> cancelledTasks = reconnectScheduler.shutdownNow();
             try {
                 if (!reconnectScheduler.awaitTermination(5, TimeUnit.SECONDS)) {
-                    reconnectScheduler.shutdownNow();
+                    logger.warn("[{}] Reconnect scheduler did not terminate cleanly within timeout.", workerId);
                 }
             } catch (InterruptedException e) {
-                reconnectScheduler.shutdownNow();
                 Thread.currentThread().interrupt();
             }
-            logger.info("[{}] Reconnect scheduler shut down.", workerId);
+            logger.info("[{}] Reconnect scheduler shut down. Cancelled {} queued tasks.", workerId, cancelledTasks.size());
         }
     }
 

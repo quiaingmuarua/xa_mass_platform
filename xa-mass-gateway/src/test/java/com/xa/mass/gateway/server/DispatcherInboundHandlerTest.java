@@ -5,6 +5,7 @@ import com.xa.mass.gateway.dispatcher.MessageHandlerRegistry;
 import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
 import com.xa.mass.gateway.queue.GsonMessageCodec;
 import com.xa.mass.gateway.session.ServerSessionManager;
+import com.xa.mass.gateway.session.SessionRoles;
 import com.xa.mass.base.channel.tranporter.MessageTransporter;
 import com.xa.mass.gateway.queue.Envelope;
 import io.netty.channel.Channel;
@@ -93,11 +94,11 @@ class DispatcherInboundHandlerTest {
                   "subMsgType": "heartbeat",
                   "project": "demoApp",
                   "context": {
-                    "workerId": "dev-1",
-                    "connRole": "task"
+                    "workerId": "worker-1",
+                    "connRole": "%s"
                   }
                 }
-                """;
+                """.formatted(SessionRoles.TASK_MESSAGES);
         handler.channelRead0(ctx, frame(validJson));
 
         // No error frame should be sent for a valid message
