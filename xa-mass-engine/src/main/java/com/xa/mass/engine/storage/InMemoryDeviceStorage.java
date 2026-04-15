@@ -8,8 +8,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 /**
- * 内存设备存储实现
- * 使用ConcurrentHashMap和Collections.synchronizedSet保证线程安全
+ * 鍐呭瓨璁惧瀛樺偍瀹炵幇
+ * 浣跨敤ConcurrentHashMap鍜孋ollections.synchronizedSet淇濊瘉绾跨▼瀹夊叏
  */
 public class InMemoryDeviceStorage implements DeviceStorage {
 
@@ -40,7 +40,7 @@ public class InMemoryDeviceStorage implements DeviceStorage {
     public boolean deleteDevice(String deviceId) {
         Device removed = devices.remove(deviceId);
         if (removed != null) {
-            // 同时删除相关的Token和锁定状态
+            // 鍚屾椂鍒犻櫎鐩稿叧鐨凾oken鍜岄攣瀹氱姸鎬?
             deviceToken.remove(deviceId);
             lockedDevices.remove(deviceId);
         }
@@ -48,9 +48,9 @@ public class InMemoryDeviceStorage implements DeviceStorage {
     }
 
     @Override
-    public List<Device> getDevicesByCountry(String country) {
+    public List<Device> getDevicesByGroupId(String deviceGroupId) {
         return devices.values().stream()
-                .filter(d -> country != null && country.equals(d.getGroupId()))
+                .filter(d -> deviceGroupId != null && deviceGroupId.equals(d.getDeviceGroupId()))
                 .collect(Collectors.toList());
     }
 

@@ -1,35 +1,35 @@
-# 标准化 JSON-DSL 设计文档
+# 鏍囧噯鍖?JSON-DSL 璁捐鏂囨。
 
-## 设计理念
+## 璁捐鐞嗗康
 
-### 问题背景
+### 闂鑳屾櫙
 
-原有的 JSON-DSL 结构过于简单，缺乏：
+鍘熸湁鐨?JSON-DSL 缁撴瀯杩囦簬绠€鍗曪紝缂轰箯锛?
 
-- 统一的标识和追踪机制
-- 类型区分和优先级控制
-- 元数据管理和文档化支持
-- 扩展性和兼容性保障
-- 调试和问题排查能力
+- 缁熶竴鐨勬爣璇嗗拰杩借釜鏈哄埗
+- 绫诲瀷鍖哄垎鍜屼紭鍏堢骇鎺у埗
+- 鍏冩暟鎹鐞嗗拰鏂囨。鍖栨敮鎸?
+- 鎵╁睍鎬у拰鍏煎鎬т繚闅?
+- 璋冭瘯鍜岄棶棰樻帓鏌ヨ兘鍔?
 
-### 设计目标
+### 璁捐鐩爣
 
-1. **标准化结构** - 定义明确的结构体，便于理解和维护
-2. **向后兼容** - 支持传统 DSL 格式，平滑迁移
-3. **可扩展性** - 预留扩展字段，支持未来功能
-4. **可追踪性** - 提供唯一标识和元数据，便于调试
-5. **类型安全** - 通过类型枚举确保 DSL 类型正确性
+1. **鏍囧噯鍖栫粨鏋?* - 瀹氫箟鏄庣‘鐨勭粨鏋勪綋锛屼究浜庣悊瑙ｅ拰缁存姢
+2. **鍚戝悗鍏煎** - 鏀寔浼犵粺 DSL 鏍煎紡锛屽钩婊戣縼绉?
+3. **鍙墿灞曟€?* - 棰勭暀鎵╁睍瀛楁锛屾敮鎸佹湭鏉ュ姛鑳?
+4. **鍙拷韪€?* - 鎻愪緵鍞竴鏍囪瘑鍜屽厓鏁版嵁锛屼究浜庤皟璇?
+5. **绫诲瀷瀹夊叏** - 閫氳繃绫诲瀷鏋氫妇纭繚 DSL 绫诲瀷姝ｇ‘鎬?
 
-## 核心结构
+## 鏍稿績缁撴瀯
 
-### 标准化 DSL 格式
+### 鏍囧噯鍖?DSL 鏍煎紡
 
 ```json
 {
   "unique_id": "dsl_identifier",
   "type": "generate|filter|transform|validate",
   "priority": 1,
-  "desc": "DSL 描述信息",
+  "desc": "DSL 鎻忚堪淇℃伅",
   "version": "1.0",
   "create_time": 1640995200000,
   "update_time": 1640995200000,
@@ -63,49 +63,49 @@
 }
 ```
 
-### 字段说明
+### 瀛楁璇存槑
 
-#### 核心字段
+#### 鏍稿績瀛楁
 
-| 字段          | 类型      | 必需 | 说明                                        |
+| 瀛楁          | 绫诲瀷      | 蹇呴渶 | 璇存槑                                        |
 |-------------|---------|----|-------------------------------------------|
-| `unique_id` | String  | 是  | DSL 唯一标识符，用于调试和缓存                         |
-| `type`      | String  | 是  | DSL 类型：generate/filter/transform/validate |
-| `priority`  | Integer | 否  | 执行优先级，数字越小优先级越高                           |
-| `desc`      | String  | 否  | DSL 描述信息，用于文档化                            |
-| `version`   | String  | 否  | 版本号，用于兼容性控制                               |
+| `unique_id` | String  | 鏄? | DSL 鍞竴鏍囪瘑绗︼紝鐢ㄤ簬璋冭瘯鍜岀紦瀛?                        |
+| `type`      | String  | 鏄? | DSL 绫诲瀷锛歡enerate/filter/transform/validate |
+| `priority`  | Integer | 鍚? | 鎵ц浼樺厛绾э紝鏁板瓧瓒婂皬浼樺厛绾ц秺楂?                          |
+| `desc`      | String  | 鍚? | DSL 鎻忚堪淇℃伅锛岀敤浜庢枃妗ｅ寲                            |
+| `version`   | String  | 鍚? | 鐗堟湰鍙凤紝鐢ㄤ簬鍏煎鎬ф帶鍒?                              |
 
-#### 时间字段
+#### 鏃堕棿瀛楁
 
-| 字段            | 类型   | 说明      |
+| 瀛楁            | 绫诲瀷   | 璇存槑      |
 |---------------|------|---------|
-| `create_time` | Long | 创建时间戳   |
-| `update_time` | Long | 最后修改时间戳 |
+| `create_time` | Long | 鍒涘缓鏃堕棿鎴?  |
+| `update_time` | Long | 鏈€鍚庝慨鏀规椂闂存埑 |
 
-#### 配置字段
+#### 閰嶇疆瀛楁
 
-| 字段            | 类型     | 说明                     |
+| 瀛楁            | 绫诲瀷     | 璇存槑                     |
 |---------------|--------|------------------------|
-| `context`     | Object | 上下文配置，包含 MODEL、COUNT 等 |
-| `fieldDsl`    | Object | 字段 DSL 配置，定义各字段生成规则    |
-| `combine_dsl` | Object | 组合规则配置，支持多字段联合判断       |
-| `extensions`  | Object | 扩展配置，用于未来功能扩展          |
+| `context`     | Object | 涓婁笅鏂囬厤缃紝鍖呭惈 MODEL銆丆OUNT 绛?|
+| `fieldDsl`    | Object | 瀛楁 DSL 閰嶇疆锛屽畾涔夊悇瀛楁鐢熸垚瑙勫垯    |
+| `combine_dsl` | Object | 缁勫悎瑙勫垯閰嶇疆锛屾敮鎸佸瀛楁鑱斿悎鍒ゆ柇       |
+| `extensions`  | Object | 鎵╁睍閰嶇疆锛岀敤浜庢湭鏉ュ姛鑳芥墿灞?         |
 
-#### 元数据字段
+#### 鍏冩暟鎹瓧娈?
 
-| 字段                     | 类型      | 说明               |
+| 瀛楁                     | 绫诲瀷      | 璇存槑               |
 |------------------------|---------|------------------|
-| `tags`                 | Array   | 标签列表，用于分类和筛选     |
-| `author`               | String  | 作者信息             |
-| `enabled`              | Boolean | 是否启用，默认为 true    |
-| `cacheable`            | Boolean | 是否缓存结果，默认为 false |
-| `cache_expire_seconds` | Integer | 缓存过期时间（秒）        |
+| `tags`                 | Array   | 鏍囩鍒楄〃锛岀敤浜庡垎绫诲拰绛涢€?    |
+| `author`               | String  | 浣滆€呬俊鎭?            |
+| `enabled`              | Boolean | 鏄惁鍚敤锛岄粯璁や负 true    |
+| `cacheable`            | Boolean | 鏄惁缂撳瓨缁撴灉锛岄粯璁や负 false |
+| `cache_expire_seconds` | Integer | 缂撳瓨杩囨湡鏃堕棿锛堢锛?       |
 
-## DSL 类型
+## DSL 绫诲瀷
 
-### 1. GENERATE（生成）
+### 1. GENERATE锛堢敓鎴愶級
 
-用于生成对象实例
+鐢ㄤ簬鐢熸垚瀵硅薄瀹炰緥
 
 ```json
 {
@@ -132,9 +132,9 @@
 }
 ```
 
-### 2. FILTER（过滤）
+### 2. FILTER锛堣繃婊わ級
 
-用于过滤对象列表
+鐢ㄤ簬杩囨护瀵硅薄鍒楄〃
 
 ```json
 {
@@ -144,7 +144,7 @@
     "status": {
       "eq": "ONLINE"
     },
-    "groupId": {
+    "deviceGroupId": {
       "in": [
         "us",
         "gb"
@@ -154,9 +154,9 @@
 }
 ```
 
-### 3. TRANSFORM（转换）
+### 3. TRANSFORM锛堣浆鎹級
 
-用于转换对象结构
+鐢ㄤ簬杞崲瀵硅薄缁撴瀯
 
 ```json
 {
@@ -169,9 +169,9 @@
 }
 ```
 
-### 4. VALIDATE（验证）
+### 4. VALIDATE锛堥獙璇侊級
 
-用于验证对象有效性
+鐢ㄤ簬楠岃瘉瀵硅薄鏈夋晥鎬?
 
 ```json
 {
@@ -184,51 +184,51 @@
 }
 ```
 
-## 上下文配置
+## 涓婁笅鏂囬厤缃?
 
-### context 字段详解
+### context 瀛楁璇﹁В
 
 ```json
 {
   "context": {
-    "MODEL": "Device",           // 模型类名或注册别名
-    "COUNT": 3,                  // 生成数量，默认 1
-    "TYPE": "LIST",              // 集合类型：LIST/SET/MAP
-    "scope_name": "Device",      // 作用域名称
-    "parent_scope": "Parent",    // 父作用域引用
-    "parameters": {              // 额外参数
+    "MODEL": "Device",           // 妯″瀷绫诲悕鎴栨敞鍐屽埆鍚?
+    "COUNT": 3,                  // 鐢熸垚鏁伴噺锛岄粯璁?1
+    "TYPE": "LIST",              // 闆嗗悎绫诲瀷锛歀IST/SET/MAP
+    "scope_name": "Device",      // 浣滅敤鍩熷悕绉?
+    "parent_scope": "Parent",    // 鐖朵綔鐢ㄥ煙寮曠敤
+    "parameters": {              // 棰濆鍙傛暟
       "env": "dev",
       "region": "us"
     },
-    "debug": false,              // 调试模式
-    "strict": true               // 严格模式
+    "debug": false,              // 璋冭瘯妯″紡
+    "strict": true               // 涓ユ牸妯″紡
   }
 }
 ```
 
-## 组合规则
+## 缁勫悎瑙勫垯
 
-### combine_dsl 字段详解
+### combine_dsl 瀛楁璇﹁В
 
-支持多字段联合判断和复杂业务逻辑：
+鏀寔澶氬瓧娈佃仈鍚堝垽鏂拰澶嶆潅涓氬姟閫昏緫锛?
 
 ```json
 {
   "combine_dsl": {
-    "status_group_rule": "status == 'ONLINE' ? groupId : 'unknown'",
+    "status_group_rule": "status == 'ONLINE' ? deviceGroupId : 'unknown'",
     "version_check_rule": "agentVersion.startsWith('1.0') ? 'stable' : 'beta'",
-    "capacity_rule": "groupId == 'us' ? 100 : groupId == 'gb' ? 50 : 30"
+    "capacity_rule": "deviceGroupId == 'us' ? 100 : deviceGroupId == 'gb' ? 50 : 30"
   }
 }
 ```
 
-## 向后兼容
+## 鍚戝悗鍏煎
 
-### 传统 DSL 格式支持
+### 浼犵粺 DSL 鏍煎紡鏀寔
 
-系统自动识别传统格式并转换为标准化格式：
+绯荤粺鑷姩璇嗗埆浼犵粺鏍煎紡骞惰浆鎹负鏍囧噯鍖栨牸寮忥細
 
-**传统格式：**
+**浼犵粺鏍煎紡锛?*
 
 ```json
 {
@@ -241,13 +241,13 @@
 }
 ```
 
-**自动转换为：**
+**鑷姩杞崲涓猴細**
 
 ```json
 {
   "unique_id": "legacy_1640995200000",
   "type": "generate",
-  "desc": "从传统 DSL 结构转换",
+  "desc": "浠庝紶缁?DSL 缁撴瀯杞崲",
   "version": "1.0",
   "context": {
     "MODEL": "Device",
@@ -270,16 +270,16 @@
 }
 ```
 
-## 使用示例
+## 浣跨敤绀轰緥
 
-### 1. 创建标准化 DSL
+### 1. 鍒涘缓鏍囧噯鍖?DSL
 
 ```java
-// 创建 DSL 定义
+// 鍒涘缓 DSL 瀹氫箟
 JsonDslDefinition definition = new JsonDslDefinition("my_device_generator", JsonDslDefinition.DslType.GENERATE);
 definition.
 
-setDescription("生成测试设备数据");
+setDescription("鐢熸垚娴嬭瘯璁惧鏁版嵁");
 definition.
 
 setAuthor("test_user");
@@ -289,7 +289,7 @@ setTags(new String[] {
     "device", "test"
 });
 
-// 设置上下文
+// 璁剧疆涓婁笅鏂?
 JsonDslContext context = new JsonDslContext("Device", 3);
 context.
 
@@ -298,7 +298,7 @@ definition.
 
 setContext(context);
 
-// 设置字段 DSL
+// 璁剧疆瀛楁 DSL
 definition.
 
 setFieldDsl(Map.of(
@@ -308,28 +308,28 @@ setFieldDsl(Map.of(
 of("$CHOICE",List.of("ONLINE", "OFFLINE"))
         ));
 
-// 验证
+// 楠岃瘉
         definition.
 
 validate();
 ```
 
-### 2. 解析 DSL
+### 2. 瑙ｆ瀽 DSL
 
 ```java
-// 解析标准化 DSL
-String jsonDsl = "..."; // 标准化 DSL JSON
+// 瑙ｆ瀽鏍囧噯鍖?DSL
+String jsonDsl = "..."; // 鏍囧噯鍖?DSL JSON
 JsonDslDefinition definition = JsonDslParser.parse(jsonDsl);
 
-// 转换为传统格式并生成数据
+// 杞崲涓轰紶缁熸牸寮忓苟鐢熸垚鏁版嵁
 String legacyFormat = JsonDslParser.toJson(definition);
 List<Device> devices = JsonDslEngine.generateList(legacyFormat, Device.class);
 ```
 
-### 3. 向后兼容使用
+### 3. 鍚戝悗鍏煎浣跨敤
 
 ```java
-// 直接使用传统格式（自动转换）
+// 鐩存帴浣跨敤浼犵粺鏍煎紡锛堣嚜鍔ㄨ浆鎹級
 String legacyDsl = """
                 {
                   "MODEL": "Device",
@@ -343,11 +343,11 @@ String legacyDsl = """
 List<Device> devices = JsonDslEngine.generateList(legacyDsl, Device.class);
 ```
 
-## 扩展机制
+## 鎵╁睍鏈哄埗
 
-### 1. 扩展字段
+### 1. 鎵╁睍瀛楁
 
-通过 `extensions` 字段支持未来功能扩展：
+閫氳繃 `extensions` 瀛楁鏀寔鏈潵鍔熻兘鎵╁睍锛?
 
 ```json
 {
@@ -364,70 +364,70 @@ List<Device> devices = JsonDslEngine.generateList(legacyDsl, Device.class);
 }
 ```
 
-### 2. 自定义 DSL 类型
+### 2. 鑷畾涔?DSL 绫诲瀷
 
-通过扩展 `DslType` 枚举支持新的 DSL 类型：
+閫氳繃鎵╁睍 `DslType` 鏋氫妇鏀寔鏂扮殑 DSL 绫诲瀷锛?
 
 ```java
 public enum DslType {
-    GENERATE("generate", "对象生成"),
-    FILTER("filter", "对象过滤"),
-    TRANSFORM("transform", "对象转换"),
-    VALIDATE("validate", "对象验证"),
-    CUSTOM("custom", "自定义类型"); // 新增类型
+    GENERATE("generate", "瀵硅薄鐢熸垚"),
+    FILTER("filter", "瀵硅薄杩囨护"),
+    TRANSFORM("transform", "瀵硅薄杞崲"),
+    VALIDATE("validate", "瀵硅薄楠岃瘉"),
+    CUSTOM("custom", "鑷畾涔夌被鍨?); // 鏂板绫诲瀷
 }
 ```
 
-## 最佳实践
+## 鏈€浣冲疄璺?
 
-### 1. 命名规范
+### 1. 鍛藉悕瑙勮寖
 
-- `unique_id`: 使用有意义的标识符，如 `device_generator_v1`
-- `desc`: 提供清晰的描述信息
-- `tags`: 使用一致的标签体系
+- `unique_id`: 浣跨敤鏈夋剰涔夌殑鏍囪瘑绗︼紝濡?`device_generator_v1`
+- `desc`: 鎻愪緵娓呮櫚鐨勬弿杩颁俊鎭?
+- `tags`: 浣跨敤涓€鑷寸殑鏍囩浣撶郴
 
-### 2. 版本管理
+### 2. 鐗堟湰绠＄悊
 
-- 使用语义化版本号
-- 在 `desc` 中记录变更信息
-- 通过 `version` 字段控制兼容性
+- 浣跨敤璇箟鍖栫増鏈彿
+- 鍦?`desc` 涓褰曞彉鏇翠俊鎭?
+- 閫氳繃 `version` 瀛楁鎺у埗鍏煎鎬?
 
-### 3. 缓存策略
+### 3. 缂撳瓨绛栫暐
 
-- 对于频繁使用的 DSL，设置 `cacheable: true`
-- 根据数据更新频率设置合适的 `cache_expire_seconds`
-- 在调试时设置 `debug: true`
+- 瀵逛簬棰戠箒浣跨敤鐨?DSL锛岃缃?`cacheable: true`
+- 鏍规嵁鏁版嵁鏇存柊棰戠巼璁剧疆鍚堥€傜殑 `cache_expire_seconds`
+- 鍦ㄨ皟璇曟椂璁剧疆 `debug: true`
 
-### 4. 错误处理
+### 4. 閿欒澶勭悊
 
-- 使用 `validate()` 方法验证 DSL 定义
-- 通过 `unique_id` 追踪问题
-- 利用 `desc` 和 `tags` 提供上下文信息
+- 浣跨敤 `validate()` 鏂规硶楠岃瘉 DSL 瀹氫箟
+- 閫氳繃 `unique_id` 杩借釜闂
+- 鍒╃敤 `desc` 鍜?`tags` 鎻愪緵涓婁笅鏂囦俊鎭?
 
-## 迁移指南
+## 杩佺Щ鎸囧崡
 
-### 从传统格式迁移
+### 浠庝紶缁熸牸寮忚縼绉?
 
-1. **渐进式迁移**：系统支持传统格式，可以逐步迁移
-2. **自动转换**：使用 `JsonDslParser.parse()` 自动转换
-3. **手动优化**：根据业务需求添加元数据和扩展字段
+1. **娓愯繘寮忚縼绉?*锛氱郴缁熸敮鎸佷紶缁熸牸寮忥紝鍙互閫愭杩佺Щ
+2. **鑷姩杞崲**锛氫娇鐢?`JsonDslParser.parse()` 鑷姩杞崲
+3. **鎵嬪姩浼樺寲**锛氭牴鎹笟鍔￠渶姹傛坊鍔犲厓鏁版嵁鍜屾墿灞曞瓧娈?
 
-### 迁移步骤
+### 杩佺Щ姝ラ
 
-1. 为现有 DSL 添加 `unique_id` 和 `type` 字段
-2. 将 `FIELDS` 重命名为 `fieldDsl`
-3. 将 `MODEL`、`COUNT` 等移到 `context` 中
-4. 添加描述性字段（`desc`、`author`、`tags`）
-5. 根据需要添加扩展字段
+1. 涓虹幇鏈?DSL 娣诲姞 `unique_id` 鍜?`type` 瀛楁
+2. 灏?`FIELDS` 閲嶅懡鍚嶄负 `fieldDsl`
+3. 灏?`MODEL`銆乣COUNT` 绛夌Щ鍒?`context` 涓?
+4. 娣诲姞鎻忚堪鎬у瓧娈碉紙`desc`銆乣author`銆乣tags`锛?
+5. 鏍规嵁闇€瑕佹坊鍔犳墿灞曞瓧娈?
 
-## 总结
+## 鎬荤粨
 
-标准化 DSL 结构提供了：
+鏍囧噯鍖?DSL 缁撴瀯鎻愪緵浜嗭細
 
-- **更好的可维护性**：明确的结构和元数据
-- **更强的扩展性**：预留扩展字段和类型系统
-- **更高的可追踪性**：唯一标识和调试信息
-- **完整的兼容性**：向后兼容传统格式
-- **丰富的功能**：支持多种 DSL 类型和组合规则
+- **鏇村ソ鐨勫彲缁存姢鎬?*锛氭槑纭殑缁撴瀯鍜屽厓鏁版嵁
+- **鏇村己鐨勬墿灞曟€?*锛氶鐣欐墿灞曞瓧娈靛拰绫诲瀷绯荤粺
+- **鏇撮珮鐨勫彲杩借釜鎬?*锛氬敮涓€鏍囪瘑鍜岃皟璇曚俊鎭?
+- **瀹屾暣鐨勫吋瀹规€?*锛氬悜鍚庡吋瀹逛紶缁熸牸寮?
+- **涓板瘜鐨勫姛鑳?*锛氭敮鎸佸绉?DSL 绫诲瀷鍜岀粍鍚堣鍒?
 
-这个设计既保持了原有 DSL 的简洁性，又提供了企业级应用所需的标准化和可扩展性。 
+杩欎釜璁捐鏃繚鎸佷簡鍘熸湁 DSL 鐨勭畝娲佹€э紝鍙堟彁渚涗簡浼佷笟绾у簲鐢ㄦ墍闇€鐨勬爣鍑嗗寲鍜屽彲鎵╁睍鎬с€?

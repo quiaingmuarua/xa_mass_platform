@@ -1,5 +1,6 @@
 package com.xa.mass.api.internal;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.model.Task;
@@ -44,6 +45,7 @@ class TaskApiControllerTest {
     void setUp() {
         TaskApiController controller = new TaskApiController();
         ReflectionTestUtils.setField(controller, "taskManager", taskManager);
+        ReflectionTestUtils.setField(controller, "objectMapper", new ObjectMapper());
         mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
     }
 
@@ -61,7 +63,7 @@ class TaskApiControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.newStatus").value("READY"))
-                .andExpect(jsonPath("$.message").value("任务审核通过"));
+                .andExpect(jsonPath("$.message").value("Task approved"));
 
         verify(taskManager).approveTask(TASK_ID);
         verify(taskManager, never()).rejectTask(TASK_ID);
@@ -78,7 +80,7 @@ class TaskApiControllerTest {
                         .param("approved", "false"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.message").value("当前任务状态不允许审核"));
+                .andExpect(jsonPath("$.message").value("Task cannot be audited from the current state"));
     }
 
     @Test
@@ -89,7 +91,7 @@ class TaskApiControllerTest {
         mockMvc.perform(post("/status/api/tasks/{taskId}/pause", TASK_ID))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.message").value("任务已暂停"));
+                .andExpect(jsonPath("$.message").value("Task paused"));
 
         verify(taskManager).pauseTask(TASK_ID);
     }
@@ -102,7 +104,7 @@ class TaskApiControllerTest {
         mockMvc.perform(post("/status/api/tasks/{taskId}/resume", TASK_ID))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.message").value("任务已恢复"))
+                .andExpect(jsonPath("$.message").value("Task resumed"))
                 .andExpect(jsonPath("$.newStatus").value("READY"));
 
         verify(taskManager).resumeTaskDetailed(TASK_ID);
@@ -116,7 +118,7 @@ class TaskApiControllerTest {
         mockMvc.perform(post("/status/api/tasks/{taskId}/terminate", TASK_ID))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.message").value("任务已中止"));
+                .andExpect(jsonPath("$.message").value("Task terminated"));
 
         verify(taskManager).cancelTask(TASK_ID);
     }
@@ -133,7 +135,8 @@ class TaskApiControllerTest {
                         .param("status", "READY"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.newStatus").value("READY"));
+                .andExpect(jsonPath("$.newStatus").value("READY"))
+                .andExpect(jsonPath("$.message").value("Task status updated"));
 
         verify(taskManager).resumeTaskDetailed(TASK_ID);
         verify(taskManager, never()).approveTask(TASK_ID);
@@ -151,7 +154,8 @@ class TaskApiControllerTest {
                         .param("status", "READY"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.newStatus").value("READY"));
+                .andExpect(jsonPath("$.newStatus").value("READY"))
+                .andExpect(jsonPath("$.message").value("Task status updated"));
 
         verify(taskManager).approveTask(TASK_ID);
         verify(taskManager, never()).resumeTaskDetailed(TASK_ID);
@@ -166,7 +170,7 @@ class TaskApiControllerTest {
         mockMvc.perform(post("/status/api/tasks/{taskId}/resume", TASK_ID))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.message").value("任务在暂停期间已完成，直接收口为终态"))
+                .andExpect(jsonPath("$.message").value("Task already completed while paused and was closed to TERMINAL"))
                 .andExpect(jsonPath("$.newStatus").value("TERMINAL"))
                 .andExpect(jsonPath("$.terminalReason").value("ALL_MESSAGES_SUCCEEDED"));
     }
@@ -184,7 +188,7 @@ class TaskApiControllerTest {
                                   "taskName":"smoke-create",
                                   "project":"demoApp",
                                   "countryCode":"us",
-                                  "textContent":"hello",
+                                  "sharedConfig":{"textContent":"hello"},
                                   "userId":"agent",
                                   "targetList":["alpha","beta"],
                                   "batchSize":2
@@ -193,17 +197,39 @@ class TaskApiControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.taskId").value(TASK_ID))
-                .andExpect(jsonPath("$.message").value("任务创建成功"));
+                .andExpect(jsonPath("$.message").value("Task created"));
 
         verify(taskManager).createTask(argThat(dto ->
                 "smoke-create".equals(dto.getTaskName())
                         && "demoApp".equals(dto.getProject())
                         && "us".equals(dto.getCountryCode())
-                        && "hello".equals(dto.getTextContent())
+                        && "hello".equals(dto.getSharedConfig() != null ? dto.getSharedConfig().get("textContent") : null)
                         && "agent".equals(dto.getUserId())
                         && dto.getBatchSize() == 2
                         && java.util.List.of("alpha", "beta").equals(dto.getTargetList())
         ));
+    }
+
+    @Test
+    void createTaskRejectsUnknownFields() throws Exception {
+        mockMvc.perform(post("/status/api/tasks")
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "taskName":"smoke-create",
+                                  "project":"demoApp",
+                                  "countryCode":"us",
+                                  "sharedConfig":{"textContent":"hello"},
+                                  "userId":"agent",
+                                  "targetList":["alpha"],
+                                  "targetJsonList":["{\\"phone\\":\\"1\\"}"]
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.message").value("Task create failed: Unsupported task create fields: targetJsonList"));
+
+        verify(taskManager, never()).createTask(any(TaskCreateRequestDto.class));
     }
 
     @Test
@@ -218,14 +244,14 @@ class TaskApiControllerTest {
                                   "taskName":"bad-project",
                                   "project":"whatsapp",
                                   "countryCode":"us",
-                                  "textContent":"hello",
+                                  "sharedConfig":{"textContent":"hello"},
                                   "userId":"agent",
                                   "targetList":["alpha"]
                                 }
                                 """))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.message").value("任务创建失败: Unsupported project code: whatsapp"));
+                .andExpect(jsonPath("$.message").value("Task create failed: Unsupported project code: whatsapp"));
     }
 
     @Test
@@ -279,7 +305,7 @@ class TaskApiControllerTest {
         mockMvc.perform(delete("/status/api/tasks/{taskId}", TASK_ID))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.message").value("任务删除成功"));
+                .andExpect(jsonPath("$.message").value("Task deleted"));
 
         verify(taskManager).deleteTask(TASK_ID);
     }
@@ -291,7 +317,8 @@ class TaskApiControllerTest {
 
         mockMvc.perform(delete("/status/api/tasks/{taskId}", TASK_ID))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.success").value(false));
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.message").value("Task delete failed: current status READY cannot be deleted"));
     }
 
     @Test
@@ -310,26 +337,64 @@ class TaskApiControllerTest {
                                   "taskName":"updated-name",
                                   "project":"telegramApp",
                                   "countryCode":"sg",
-                                  "textContent":"updated-content",
+                                  "sharedConfig":{"textContent":"updated-content"},
                                   "userId":"updated-user",
-                                  "targetList":["one","two"],
                                   "batchSize":5
                                 }
                                 """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.message").value("任务信息已更新"));
+                .andExpect(jsonPath("$.message").value("Task updated"));
 
         verify(taskManager).updateTask(argThat(task ->
                 TASK_ID.equals(task.getTid())
                         && "updated-name".equals(task.getTaskName())
                         && "telegramApp".equals(task.getProjectCode())
-                        && "sg".equals(task.getTaskCountry())
-                        && "updated-content".equals(task.getTextContent())
+                        && "sg".equals(task.getTaskRoutingCountryCode())
+                        && "updated-content".equals(task.getSharedConfig() != null ? task.getSharedConfig().get("textContent") : null)
                         && task.getUser() != null
                         && "updated-user".equals(task.getUser().getName())
                         && task.getBatchSize() == 5
         ));
+    }
+
+    @Test
+    void updateTaskRejectsUnsupportedFields() throws Exception {
+        Task existingTask = taskWithStatus(TaskStatus.NEW);
+        existingTask.setUser(new com.xa.mass.base.model.User());
+        when(taskManager.getTask(TASK_ID)).thenReturn(existingTask);
+
+        mockMvc.perform(put("/status/api/tasks/{taskId}", TASK_ID)
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "taskName":"updated-name",
+                                  "targetList":["one","two"]
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.message").value("Task update failed: Unsupported task update fields: targetList"));
+
+        verify(taskManager, never()).updateTask(any(Task.class));
+    }
+
+    @Test
+    void updateTaskRejectsNonEditableStatuses() throws Exception {
+        when(taskManager.getTask(TASK_ID)).thenReturn(taskWithStatus(TaskStatus.READY));
+
+        mockMvc.perform(put("/status/api/tasks/{taskId}", TASK_ID)
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "taskName":"updated-name"
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.message").value("Task update failed: Only NEW or BLOCKED tasks can be updated"));
+
+        verify(taskManager, never()).updateTask(any(Task.class));
     }
 
     @Test
@@ -365,7 +430,7 @@ class TaskApiControllerTest {
                                 """))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.message").value("更新任务失败: Unsupported project code: whatsapp"));
+                .andExpect(jsonPath("$.message").value("Task update failed: Unsupported project code: whatsapp"));
 
         verify(taskManager, never()).updateTask(any(Task.class));
     }

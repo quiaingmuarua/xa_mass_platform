@@ -51,6 +51,9 @@ public class MockApplicationSpringBootApp {
     @Value("${mass.mock.data.tasks:mock/mock_tasks.json}")
     private String tasksConfigPath;
 
+    @Value("${mass.mock.data.tokens:mock/mock_tokens.json}")
+    private String tokensConfigPath;
+
     @Value("${mass.mock.data.rules:mock/mock_rules.json}")
     private String rulesConfigPath;
 
@@ -100,7 +103,7 @@ public class MockApplicationSpringBootApp {
                         .taskManager(taskManager)
                         .deviceManager(deviceManager)
                         .ruleManager(ruleManager)
-                        .mockData(devicesConfigPath, tasksConfigPath, rulesConfigPath))
+                        .mockData(devicesConfigPath, tokensConfigPath, tasksConfigPath, rulesConfigPath))
                 .build();
     }
 

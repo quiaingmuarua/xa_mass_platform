@@ -3,6 +3,8 @@ package com.xa.mass.base.model;
 import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 
 import java.time.LocalDateTime;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Objects;
 
 /**
@@ -86,10 +88,8 @@ public class TaskMsg {
      */
     private String errorMessage;
 
-    /**
-     * 目标号码
-     */
-    private String target;
+    private Map<String, Object> input;
+    private Map<String, Object> output;
 
     public TaskMsg() {
         this.status = TaskMsgStatus.INIT;
@@ -97,13 +97,22 @@ public class TaskMsg {
         this.updateTime = LocalDateTime.now();
         this.retryCount = 0;
         this.maxRetryCount = 3;
+        this.input = new HashMap<>();
     }
 
     public TaskMsg(String msgId, String taskId, String target) {
         this();
         this.msgId = msgId;
         this.taskId = taskId;
-        this.target = target;
+        this.input = new HashMap<>();
+        if (target != null) this.input.put("target", target);
+    }
+
+    public TaskMsg(String msgId, String taskId, Map<String, Object> input) {
+        this();
+        this.msgId = msgId;
+        this.taskId = taskId;
+        this.input = input != null ? new HashMap<>(input) : new HashMap<>();
     }
 
     // Getters and Setters
@@ -235,13 +244,21 @@ public class TaskMsg {
         this.errorMessage = errorMessage;
     }
 
+    /** Compatibility accessor — returns input.get("target") cast to String. */
     public String getTarget() {
-        return target;
+        return input != null ? (String) input.get("target") : null;
     }
 
+    /** Compatibility accessor — sets "target" key in input map. */
     public void setTarget(String target) {
-        this.target = target;
+        if (input == null) input = new HashMap<>();
+        input.put("target", target);
     }
+
+    public Map<String, Object> getInput() { return input; }
+    public void setInput(Map<String, Object> input) { this.input = input; }
+    public Map<String, Object> getOutput() { return output; }
+    public void setOutput(Map<String, Object> output) { this.output = output; }
 
     /**
      * 检查消息是否已完成
@@ -284,6 +301,27 @@ public class TaskMsg {
     public void incrementRetryCount() {
         this.retryCount++;
         this.updateTime = LocalDateTime.now();
+    }
+
+    /**
+     * 将消息重置到 INIT 状态以进行下一次重试。
+     * 只通过此方法触发 FAILED/EXPIRED → INIT 的反向转换，不走通用状态机。
+     *
+     * @return true 表示已重置并登记本次重试；false 表示不可重试
+     */
+    public boolean resetForRetry() {
+        if (!canRetry()) {
+            return false;
+        }
+        incrementRetryCount();
+        this.status = TaskMsgStatus.INIT;
+        // Keep deviceId/tokenId so TaskResourceReleaseListener can release the token.
+        // They will be overwritten with the new assignment at next dispatch.
+        this.startTime = null;
+        this.completeTime = null;
+        this.errorMessage = null;
+        this.updateTime = LocalDateTime.now();
+        return true;
     }
 
     /**

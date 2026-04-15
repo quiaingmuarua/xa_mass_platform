@@ -8,7 +8,15 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 /**
- * 默认设备选择器实现
+ * Default device selector.
+ *
+ * <p>Selection priority stays device-centric. It must not inject routing-country
+ * assumptions from {@code device.deviceGroupId}; routing country belongs to rule/token
+ * matching instead.
+ *
+ * <p>This selector reasons only over fields carried on {@link Device}. Runtime
+ * lock ownership is enforced by the active matching strategy rather than by
+ * stale state on the device model itself.
  */
 public class DefaultDeviceSelector implements DeviceSelector {
 
@@ -23,22 +31,12 @@ public class DefaultDeviceSelector implements DeviceSelector {
 
     @Override
     public boolean isDeviceSuitable(Device device, Task task) {
-        // 检查设备是否可用
         if (!device.isAvailable()) {
             return false;
         }
-
-        // 检查设备是否被锁定
-        if (device.isLocked()) {
-            return false;
-        }
-
-        // 检查设备是否支持任务的项目
         if (!device.supportsProject(task.getProject())) {
             return false;
         }
-
-        // 检查设备心跳是否正常（30秒内）
         return !device.isHeartbeatExpired(30);
     }
 
@@ -46,36 +44,25 @@ public class DefaultDeviceSelector implements DeviceSelector {
     public double getDevicePriority(Device device, Task task) {
         double priority = 0.0;
 
-        // 基础分数：设备在线状态
         if (device.getStatus().isAvailable()) {
             priority += 100.0;
         }
 
-        // 心跳时间越近，优先级越高
         if (device.getLastHeartbeat() != null) {
             long secondsSinceHeartbeat = java.time.Duration.between(
                     device.getLastHeartbeat(),
                     java.time.LocalDateTime.now()
             ).getSeconds();
 
-            // 心跳时间在30秒内，分数递减
             if (secondsSinceHeartbeat <= 30) {
                 priority += (30 - secondsSinceHeartbeat) * 2.0;
             }
         }
 
-        // 版本匹配加分
         if (device.getAgentVersion() != null && device.getAgentVersion().startsWith("1.")) {
             priority += 10.0;
         }
 
-        // 分组匹配加分
-        if (device.getGroupId() != null && task.getTaskCountry() != null) {
-            if (device.getGroupId().equals(task.getTaskCountry())) {
-                priority += 20.0;
-            }
-        }
-
         return priority;
     }
-} 
+}

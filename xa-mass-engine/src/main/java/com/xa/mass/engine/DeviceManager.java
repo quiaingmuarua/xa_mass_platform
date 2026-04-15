@@ -2,6 +2,7 @@ package com.xa.mass.engine;
 
 import com.xa.mass.base.channel.eventbus.event.device.DeviceOfflineEvent;
 import com.xa.mass.base.channel.eventbus.event.device.DeviceOnlineEvent;
+import com.xa.mass.base.enums.device.DeviceStatus;
 import com.xa.mass.base.model.Device;
 import com.xa.mass.base.model.Token;
 import com.xa.mass.engine.storage.DeviceStorage;
@@ -10,20 +11,19 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.List;
-import java.util.Set;
-import java.util.concurrent.ConcurrentSkipListSet;
 
 /**
- * 璁惧绠＄悊鍣?
- * 璐熻矗璁惧鐨凜RUD鎿嶄綔鍜孴oken绠＄悊
+ * Device and token access facade for the active engine runtime.
+ *
+ * <p>Online truth is owned by {@link Device#getStatus()}. This manager keeps the
+ * convenience methods aligned with that single source of truth instead of
+ * maintaining a second in-memory online registry.
  */
 public class DeviceManager {
 
     private static final Logger log = LoggerFactory.getLogger(DeviceManager.class);
-    private final DeviceStorage deviceStorage;
 
-    // 鍦ㄧ嚎鐘舵€佺鐞?
-    private final Set<String> onlineDevices = new ConcurrentSkipListSet<>();
+    private final DeviceStorage deviceStorage;
 
     public DeviceManager() {
         this(TaskStorageFactory.createDefaultDeviceStorage());
@@ -33,126 +33,94 @@ public class DeviceManager {
         this.deviceStorage = deviceStorage;
     }
 
-    /**
-     * 娣诲姞璁惧
-     */
     public void addDevice(Device device) {
         deviceStorage.addDevice(device);
     }
 
-    /**
-     * 鏍规嵁璁惧ID鑾峰彇璁惧
-     */
     public Device getDevice(String deviceId) {
         return deviceStorage.getDevice(deviceId).orElse(null);
     }
 
-    /**
-     * 鏇存柊璁惧
-     */
     public boolean updateDevice(Device device) {
         return deviceStorage.updateDevice(device);
     }
 
-    /**
-     * 鍒犻櫎璁惧
-     */
     public boolean deleteDevice(String deviceId) {
         return deviceStorage.deleteDevice(deviceId);
     }
 
-    /**
-     * 鏍规嵁鍥藉鑾峰彇璁惧鍒楄〃
-     */
-    public List<Device> getDevicesByCountry(String country) {
-        return deviceStorage.getDevicesByCountry(country);
+    public List<Device> getDevicesByGroupId(String deviceGroupId) {
+        return deviceStorage.getDevicesByGroupId(deviceGroupId);
     }
 
-    /**
-     * 娣诲姞Token
-     */
     public void addToken(String deviceId, Token token) {
         deviceStorage.addToken(deviceId, token);
     }
 
-    /**
-     * 鏍规嵁璁惧ID鑾峰彇Token
-     */
     public Token getToken(String deviceId) {
         return deviceStorage.getToken(deviceId).orElse(null);
     }
 
-    /**
-     * 鏇存柊Token
-     */
     public boolean updateToken(String deviceId, Token token) {
         return deviceStorage.updateToken(deviceId, token);
     }
 
-    /**
-     * 鍒犻櫎Token
-     */
     public boolean deleteToken(String deviceId) {
         return deviceStorage.deleteToken(deviceId);
     }
 
-    /**
-     * 灏濊瘯閿佸畾璁惧
-     */
     public boolean tryLockDevice(String deviceId) {
         return deviceStorage.tryLockDevice(deviceId);
     }
 
-    /**
-     * 瑙ｉ攣璁惧
-     */
     public void unlockDevice(String deviceId) {
         deviceStorage.unlockDevice(deviceId);
     }
 
-    /**
-     * 妫€鏌ヨ澶囨槸鍚﹁閿佸畾
-     */
     public boolean isLocked(String deviceId) {
         return deviceStorage.isLocked(deviceId);
     }
 
-    /**
-     * 鑾峰彇鎵€鏈夎澶?
-     */
     public List<Device> getAllDevices() {
         return deviceStorage.getAllDevices();
     }
 
-    /**
-     * 鑾峰彇鎵€鏈塗oken
-     */
     public List<Token> getAllTokens() {
         return deviceStorage.getAllTokens();
     }
 
-    /**
-     * 鑾峰彇鎵€鏈夐攣瀹氱殑璁惧ID
-     */
     public List<String> getLockedDevices() {
         return deviceStorage.getLockedDevices();
     }
 
-    // 鍦ㄧ嚎鐘舵€佺鐞?
+    /**
+     * Updates the device model status so online checks and matching rules read a
+     * single truth source.
+     */
     public void updateOnlineStatus(String deviceId, boolean online) {
-        if (online) {
-            onlineDevices.add(deviceId);
-        } else {
-            onlineDevices.remove(deviceId);
+        Device device = getDevice(deviceId);
+        if (device == null) {
+            if (!online) {
+                return;
+            }
+            device = new Device();
+            device.setDeviceId(deviceId);
+            addDevice(device);
         }
+
+        device.transitionTo(online ? DeviceStatus.ONLINE : DeviceStatus.OFFLINE);
+        updateDevice(device);
     }
 
     public boolean isDeviceOnline(String deviceId) {
-        return onlineDevices.contains(deviceId);
+        Device device = getDevice(deviceId);
+        return device != null && device.getStatus() == DeviceStatus.ONLINE;
     }
 
-
-    // 浜嬩欢鐩戝惉鍣?
+    /**
+     * Event listener that keeps device model state synchronized with gateway
+     * connect/disconnect events.
+     */
     public static class DeviceStatusEventListener {
         private final DeviceManager deviceManager;
 
@@ -162,23 +130,21 @@ public class DeviceManager {
 
         @com.google.common.eventbus.Subscribe
         public void onDeviceOnline(DeviceOnlineEvent event) {
-            log.info("Device_online: {}", event.getDeviceId());
+            log.info("Device online: {}", event.getDeviceId());
             String deviceId = event.getDeviceId();
-            com.xa.mass.base.model.Device device = deviceManager.getDevice(deviceId);
+            Device device = deviceManager.getDevice(deviceId);
             if (device == null) {
-                device = new com.xa.mass.base.model.Device();
+                device = new Device();
                 device.setDeviceId(deviceId);
-                device.setStatus(com.xa.mass.base.enums.device.DeviceStatus.ONLINE);
                 deviceManager.addDevice(device);
             }
             device.updateHeartbeat();
-            deviceManager.updateOnlineStatus(deviceId, true);
+            deviceManager.updateDevice(device);
         }
 
         @com.google.common.eventbus.Subscribe
         public void onDeviceOffline(DeviceOfflineEvent event) {
-            String deviceId = event.getDeviceId();
-            deviceManager.updateOnlineStatus(deviceId, false);
+            deviceManager.updateOnlineStatus(event.getDeviceId(), false);
         }
     }
-} 
+}

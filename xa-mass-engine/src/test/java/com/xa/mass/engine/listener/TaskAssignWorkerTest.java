@@ -32,7 +32,7 @@ class TaskAssignWorkerTest {
             Task t = inv.getArgument(0);
             t.transitionTo(TaskStatus.RUNNING); // simulate successful assignment
             sink.add(t);
-            return null;
+            return true;
         }).when(stub).onTaskAssign(any());
         return stub;
     }
@@ -77,8 +77,9 @@ class TaskAssignWorkerTest {
             if (attempts.incrementAndGet() >= 2) {
                 task.transitionTo(TaskStatus.RUNNING);
                 assignedLatch.countDown();
+                return true;
             }
-            return null;
+            return false;
         }).when(retryingListener).onTaskAssign(any());
 
         worker = new TaskAssignWorker(retryingListener, 50L);
@@ -88,6 +89,34 @@ class TaskAssignWorkerTest {
         worker.submit(task);
 
         assertTrue(assignedLatch.await(3, TimeUnit.SECONDS), "READY task should be retried until assignment succeeds");
+        assertEquals(TaskStatus.RUNNING, task.getStatus());
+        assertEquals(2, attempts.get());
+        verify(retryingListener, atLeast(2)).onTaskAssign(same(task));
+    }
+
+    @Test
+    void runningTaskWithoutImmediateSlotIsRetriedUntilAssignmentSucceeds() throws InterruptedException {
+        worker.stop();
+
+        AtomicInteger attempts = new AtomicInteger();
+        CountDownLatch assignedLatch = new CountDownLatch(1);
+        TaskDeviceAssignListener retryingListener = mock(TaskDeviceAssignListener.class);
+        doAnswer(invocation -> {
+            Task task = invocation.getArgument(0);
+            if (attempts.incrementAndGet() >= 2) {
+                assignedLatch.countDown();
+                return true;
+            }
+            return false;
+        }).when(retryingListener).onTaskAssign(any());
+
+        worker = new TaskAssignWorker(retryingListener, 50L);
+        worker.start();
+
+        Task task = runningTask("running-retry");
+        worker.submit(task);
+
+        assertTrue(assignedLatch.await(3, TimeUnit.SECONDS), "RUNNING task should be retried until replenishment succeeds");
         assertEquals(TaskStatus.RUNNING, task.getStatus());
         assertEquals(2, attempts.get());
         verify(retryingListener, atLeast(2)).onTaskAssign(same(task));
@@ -177,6 +206,13 @@ class TaskAssignWorkerTest {
         Task t = new Task();
         t.setTid(tid);
         t.setStatus(TaskStatus.READY);
+        return t;
+    }
+
+    private Task runningTask(String tid) {
+        Task t = new Task();
+        t.setTid(tid);
+        t.setStatus(TaskStatus.RUNNING);
         return t;
     }
 }

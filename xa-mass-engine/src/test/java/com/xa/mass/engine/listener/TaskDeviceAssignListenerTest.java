@@ -4,282 +4,191 @@ import com.xa.mass.base.enums.Project;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Device;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.Token;
 import com.xa.mass.engine.DeviceManager;
 import com.xa.mass.engine.TaskManager;
-import com.xa.mass.engine.rules.RuleDefinition;
-import com.xa.mass.engine.rules.RuleManager;
-import com.xa.mass.engine.service.AssignmentRecordService;
 import com.xa.mass.engine.strategy.TaskDeviceMatchingStrategy;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.Mock;
-import org.mockito.MockitoAnnotations;
 
-import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
-import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.same;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 
-/**
- * TaskDeviceAssignListener 测试
- */
-public class TaskDeviceAssignListenerTest {
+class TaskDeviceAssignListenerTest {
 
-    @Mock
-    private RuleManager<Map<String, Object>> ruleManager;
-
-    @Mock
+    private TaskDeviceMatchingStrategy matchingStrategy;
     private DeviceManager deviceManager;
-
-    @Mock
     private TaskMsgAssignListener msgAssignListener;
-
-    @Mock
-    private AssignmentRecordService recordService;
-
-    @Mock
     private TaskManager taskManager;
-
     private TaskDeviceAssignListener listener;
 
     @BeforeEach
-    public void setUp() {
-        MockitoAnnotations.openMocks(this);
-        listener = new TaskDeviceAssignListener(ruleManager, deviceManager, msgAssignListener, recordService, taskManager);
+    void setUp() {
+        matchingStrategy = mock(TaskDeviceMatchingStrategy.class);
+        deviceManager = mock(DeviceManager.class);
+        msgAssignListener = mock(TaskMsgAssignListener.class);
+        taskManager = mock(TaskManager.class);
+        listener = new TaskDeviceAssignListener(matchingStrategy, deviceManager, msgAssignListener, taskManager);
     }
 
     @Test
-    public void testMatchDevicesWithRules_Success() {
-        // 准备测试数据
-        Task task = createTestTask();
-        Device device = createTestDevice();
-        Token token = createTestToken();
-        List<RuleDefinition> rules = createTestRules();
+    void onTaskAssignTransitionsReadyTaskToRunningAndDispatches() {
+        Task task = createTask(10, 5, 1, TaskStatus.READY);
+        Device device = createDevice("device-1");
 
-        // Mock 行为
-        when(deviceManager.getDevicesByCountry("us")).thenReturn(Arrays.asList(device));
-        when(deviceManager.getToken("device-1")).thenReturn(token);
-        when(ruleManager.getDefaultRules()).thenReturn(rules);
-        when(ruleManager.evaluateDefaultRules(any())).thenReturn(Arrays.asList("rule1", "rule2"));
-        when(deviceManager.tryLockDevice("device-1")).thenReturn(true);
+        when(taskManager.countPendingDispatchableMessages(task.getTid())).thenReturn(10);
+        when(matchingStrategy.matchDevices(same(task), eq(2))).thenReturn(List.of(device));
+        when(msgAssignListener.onMsgAssign(same(task), eq(List.of(device)))).thenReturn(List.of(msg("m1", "device-1")));
 
-        // 执行测试
-        List<Device> result = listener.matchDevicesWithRules(task, 1);
-
-        // 验证结果
-        assertNotNull(result);
-        assertEquals(1, result.size());
-        assertEquals("device-1", result.get(0).getDeviceId());
-
-        // 验证调用
-        verify(deviceManager).getDevicesByCountry("us");
-        verify(deviceManager).getToken("device-1");
-        verify(ruleManager, times(2)).getDefaultRules();
-        verify(ruleManager).evaluateDefaultRules(any());
-        verify(deviceManager).tryLockDevice("device-1");
-        verify(recordService).recordDeviceAssignment(eq(task), eq(device), eq(token),
-                eq(com.xa.mass.base.enums.assignment.AssignmentResult.SUCCESS),
-                anyString(), anyList(), anyMap());
-    }
-
-    @Test
-    public void testMatchDevicesWithRules_DeviceLocked() {
-        // 准备测试数据
-        Task task = createTestTask();
-        Device device = createTestDevice();
-        Token token = createTestToken();
-        List<RuleDefinition> rules = createTestRules();
-
-        // Mock 行为
-        when(deviceManager.getDevicesByCountry("us")).thenReturn(Arrays.asList(device));
-        when(deviceManager.getToken("device-1")).thenReturn(token);
-        when(ruleManager.getDefaultRules()).thenReturn(rules);
-        when(ruleManager.evaluateDefaultRules(any())).thenReturn(Arrays.asList("rule1", "rule2"));
-        when(deviceManager.tryLockDevice("device-1")).thenReturn(false); // 设备被锁定
-
-        // 执行测试
-        List<Device> result = listener.matchDevicesWithRules(task, 1);
-
-        // 验证结果
-        assertNotNull(result);
-        assertEquals(0, result.size()); // 没有匹配到设备
-
-        // 验证调用
-        verify(recordService).recordDeviceAssignment(eq(task), eq(device), eq(token),
-                eq(com.xa.mass.base.enums.assignment.AssignmentResult.CONFLICT),
-                anyString(), anyList(), anyMap());
-    }
-
-    @Test
-    public void testMatchDevicesWithRules_RuleNotMatch() {
-        // 准备测试数据
-        Task task = createTestTask();
-        Device device = createTestDevice();
-        Token token = createTestToken();
-        List<RuleDefinition> rules = createTestRules();
-
-        // Mock 行为
-        when(deviceManager.getDevicesByCountry("us")).thenReturn(Arrays.asList(device));
-        when(deviceManager.getToken("device-1")).thenReturn(token);
-        when(ruleManager.getDefaultRules()).thenReturn(rules);
-        when(ruleManager.evaluateDefaultRules(any())).thenReturn(Arrays.asList("rule1")); // 只通过一个规则
-
-        // 执行测试
-        List<Device> result = listener.matchDevicesWithRules(task, 1);
-
-        // 验证结果
-        assertNotNull(result);
-        assertEquals(0, result.size()); // 没有匹配到设备
-
-        // 验证调用
-        verify(recordService).recordDeviceAssignment(eq(task), eq(device), eq(token),
-                eq(com.xa.mass.base.enums.assignment.AssignmentResult.RULE_NOT_MATCH),
-                anyString(), anyList(), anyMap());
-    }
-
-    @Test
-    public void testMatchDevicesWithRules_MaxDeviceCountReached() {
-        // 准备测试数据
-        Task task = createTestTask();
-        Device device1 = createTestDevice("device-1");
-        Device device2 = createTestDevice("device-2");
-        Token token = createTestToken();
-        List<RuleDefinition> rules = createTestRules();
-
-        // Mock 行为
-        when(deviceManager.getDevicesByCountry("us")).thenReturn(Arrays.asList(device1, device2));
-        when(deviceManager.getToken(anyString())).thenReturn(token);
-        when(ruleManager.getDefaultRules()).thenReturn(rules);
-        when(ruleManager.evaluateDefaultRules(any())).thenReturn(Arrays.asList("rule1", "rule2"));
-        when(deviceManager.tryLockDevice(anyString())).thenReturn(true);
-
-        // 执行测试 - 限制最大设备数为1
-        List<Device> result = listener.matchDevicesWithRules(task, 1);
-
-        // 验证结果
-        assertNotNull(result);
-        assertEquals(1, result.size()); // 只匹配到一个设备
-
-        // 验证只尝试锁定第一个设备
-        verify(deviceManager).tryLockDevice("device-1");
-        verify(deviceManager, never()).tryLockDevice("device-2");
-    }
-
-    @Test
-    public void testOnTaskAssignTransitionsReadyTaskToRunning() {
-        Task task = createTestTask();
-        task.setStatus(TaskStatus.READY);
-        Device device = createTestDevice();
-        Token token = createTestToken();
-        List<RuleDefinition> rules = createTestRules();
-
-        when(deviceManager.getDevicesByCountry("us")).thenReturn(Arrays.asList(device));
-        when(deviceManager.getToken("device-1")).thenReturn(token);
-        when(ruleManager.getDefaultRules()).thenReturn(rules);
-        when(ruleManager.evaluateDefaultRules(any())).thenReturn(Arrays.asList("rule1", "rule2"));
-        when(deviceManager.tryLockDevice("device-1")).thenReturn(true);
-
-        listener.onTaskAssign(task);
+        assertTrue(listener.onTaskAssign(task));
 
         assertEquals(TaskStatus.RUNNING, task.getStatus());
         assertEquals(1, task.getScheduleDeviceCnt());
-        verify(msgAssignListener).onMsgAssign(same(task), argThat(devices ->
-                devices.size() == 1 && "device-1".equals(devices.get(0).getDeviceId())));
+        verify(matchingStrategy).matchDevices(same(task), eq(2));
+        verify(taskManager).updateTask(same(task));
+        verify(msgAssignListener).onMsgAssign(same(task), eq(List.of(device)));
     }
 
     @Test
-    public void testOnTaskAssignUsesInjectedCustomMatchingStrategy() {
-        Task task = createTestTask();
-        task.setStatus(TaskStatus.READY);
-        Device customDevice = createTestDevice("custom-device");
-        TaskDeviceMatchingStrategy customStrategy = mock(TaskDeviceMatchingStrategy.class);
-        TaskDeviceAssignListener customListener = new TaskDeviceAssignListener(customStrategy, msgAssignListener, taskManager);
+    void onTaskAssignUsesRunTaskMinDeviceCountWhenItExceedsCalculatedNeed() {
+        Task task = createTask(3, 10, 4, TaskStatus.READY);
+        Device device1 = createDevice("device-1");
+        Device device2 = createDevice("device-2");
+        Device device3 = createDevice("device-3");
+        Device device4 = createDevice("device-4");
 
-        when(customStrategy.matchDevices(same(task), eq(2))).thenReturn(List.of(customDevice));
+        when(taskManager.countPendingDispatchableMessages(task.getTid())).thenReturn(3);
+        when(matchingStrategy.matchDevices(same(task), eq(4))).thenReturn(List.of(device1, device2, device3, device4));
+        when(msgAssignListener.onMsgAssign(same(task), eq(List.of(device1)))).thenReturn(List.of(msg("m1", "device-1")));
 
-        customListener.onTaskAssign(task);
+        assertTrue(listener.onTaskAssign(task));
 
+        verify(matchingStrategy).matchDevices(same(task), eq(4));
         assertEquals(TaskStatus.RUNNING, task.getStatus());
         assertEquals(1, task.getScheduleDeviceCnt());
-        verify(customStrategy).matchDevices(same(task), eq(2));
-        verify(msgAssignListener).onMsgAssign(same(task), argThat(devices ->
-                devices.size() == 1 && "custom-device".equals(devices.get(0).getDeviceId())));
-        verifyNoInteractions(ruleManager, deviceManager, recordService);
+        verify(taskManager).updateTask(same(task));
+        verify(msgAssignListener).onMsgAssign(same(task), eq(List.of(device1)));
+        verify(deviceManager).unlockDevice("device-2");
+        verify(deviceManager).unlockDevice("device-3");
+        verify(deviceManager).unlockDevice("device-4");
     }
 
     @Test
-    public void testOnTaskAssignDoesNotDispatchIfTaskLeavesReadyDuringMatching() {
-        Task task = createTestTask();
-        task.setStatus(TaskStatus.READY);
-        Device customDevice = createTestDevice("custom-device");
-        TaskDeviceMatchingStrategy customStrategy = mock(TaskDeviceMatchingStrategy.class);
-        TaskDeviceAssignListener customListener = new TaskDeviceAssignListener(customStrategy, msgAssignListener, taskManager);
+    void onTaskAssignReturnsWhenNoDeviceMatches() {
+        Task task = createTask(10, 5, 1, TaskStatus.READY);
 
-        when(customStrategy.matchDevices(same(task), eq(2))).thenAnswer(invocation -> {
+        when(taskManager.countPendingDispatchableMessages(task.getTid())).thenReturn(10);
+        when(matchingStrategy.matchDevices(same(task), eq(2))).thenReturn(List.of());
+
+        assertFalse(listener.onTaskAssign(task));
+
+        assertEquals(TaskStatus.READY, task.getStatus());
+        assertEquals(0, task.getScheduleDeviceCnt());
+        verify(matchingStrategy).matchDevices(same(task), eq(2));
+        verify(taskManager).countPendingDispatchableMessages(task.getTid());
+        verifyNoInteractions(msgAssignListener);
+    }
+
+    @Test
+    void onTaskAssignSkipsDispatchIfTaskLeavesReadyDuringMatching() {
+        Task task = createTask(10, 5, 1, TaskStatus.READY);
+        Device device = createDevice("device-1");
+
+        when(taskManager.countPendingDispatchableMessages(task.getTid())).thenReturn(10);
+        when(matchingStrategy.matchDevices(same(task), eq(2))).thenAnswer(invocation -> {
             task.setStatus(TaskStatus.PAUSED);
-            return List.of(customDevice);
+            return List.of(device);
         });
 
-        customListener.onTaskAssign(task);
+        assertFalse(listener.onTaskAssign(task));
 
         assertEquals(TaskStatus.PAUSED, task.getStatus());
         assertEquals(0, task.getScheduleDeviceCnt());
-        verify(customStrategy).matchDevices(same(task), eq(2));
+        verify(matchingStrategy).matchDevices(same(task), eq(2));
+        verify(deviceManager).unlockDevice("device-1");
+        verify(taskManager, never()).updateTask(task);
         verifyNoInteractions(msgAssignListener);
-        verify(taskManager, never()).updateTask(any());
     }
 
-    private Task createTestTask() {
+    @Test
+    void onTaskAssignKeepsTaskReadyUntilMinimumDeviceCountIsMet() {
+        Task task = createTask(1, 1, 2, TaskStatus.READY);
+        Device device = createDevice("device-1");
+
+        when(taskManager.countPendingDispatchableMessages(task.getTid())).thenReturn(1);
+        when(matchingStrategy.matchDevices(same(task), eq(2))).thenReturn(List.of(device));
+
+        assertFalse(listener.onTaskAssign(task));
+
+        assertEquals(TaskStatus.READY, task.getStatus());
+        assertEquals(0, task.getScheduleDeviceCnt());
+        verify(matchingStrategy).matchDevices(same(task), eq(2));
+        verify(deviceManager).unlockDevice("device-1");
+        verify(taskManager, never()).updateTask(task);
+        verifyNoInteractions(msgAssignListener);
+    }
+
+    @Test
+    void matchDevicesWithRulesDelegatesToInjectedStrategy() {
+        Task task = createTask(10, 5, 1, TaskStatus.READY);
+        Device device = createDevice("device-1");
+
+        when(matchingStrategy.matchDevices(same(task), eq(3))).thenReturn(List.of(device));
+
+        List<Device> matched = listener.matchDevicesWithRules(task, 3);
+
+        assertEquals(List.of(device), matched);
+        verify(matchingStrategy).matchDevices(same(task), eq(3));
+    }
+
+    @Test
+    void runningTaskCanBeReplenishedWithoutLeavingRunning() {
+        Task task = createTask(5, 2, 1, TaskStatus.RUNNING);
+        Device device = createDevice("device-1");
+
+        when(taskManager.countPendingDispatchableMessages(task.getTid())).thenReturn(2);
+        when(matchingStrategy.matchDevices(same(task), eq(1))).thenReturn(List.of(device));
+        when(msgAssignListener.onMsgAssign(same(task), eq(List.of(device)))).thenReturn(List.of(msg("m1", "device-1")));
+
+        assertTrue(listener.onTaskAssign(task));
+
+        assertEquals(TaskStatus.RUNNING, task.getStatus());
+        assertEquals(1, task.getScheduleDeviceCnt());
+        verify(taskManager).updateTask(same(task));
+        verify(msgAssignListener).onMsgAssign(same(task), eq(List.of(device)));
+    }
+
+    private Task createTask(int targetNumber, int batchSize, int minDeviceCount, TaskStatus status) {
         Task task = new Task();
         task.setTid("task-1");
-        task.setTaskCountry("us");
-        task.setTaskInitNumber(10);
-        task.setBatchSize(5);
-        task.setRunTaskMinDeviceCnt(1);
+        task.setTaskRoutingCountryCode("us");
+        task.setTaskTargetNumber(targetNumber);
+        task.setBatchSize(batchSize);
+        task.setRunTaskMinDeviceCnt(minDeviceCount);
+        task.setStatus(status);
         return task;
     }
 
-    private Device createTestDevice() {
-        return createTestDevice("device-1");
-    }
-
-    private Device createTestDevice(String deviceId) {
+    private Device createDevice(String deviceId) {
         Device device = new Device();
         device.setDeviceId(deviceId);
-        device.setGroupId("us");
-        device.setSupportedProjects(Arrays.asList(Project.DEMO_APP));
+        device.setDeviceGroupId("pool-a");
+        device.setSupportedProjects(List.of(Project.DEMO_APP));
         return device;
     }
 
-    private Token createTestToken() {
-        Token token = new Token();
-        token.setTokenId("token-1");
-        token.setDeviceId("device-1");
-        token.setChannel("us");
-        return token;
+    private com.xa.mass.base.model.TaskMsg msg(String msgId, String deviceId) {
+        com.xa.mass.base.model.TaskMsg taskMsg = new com.xa.mass.base.model.TaskMsg(msgId, "task-1", "target");
+        taskMsg.setDeviceId(deviceId);
+        return taskMsg;
     }
-
-    private List<RuleDefinition> createTestRules() {
-        List<RuleDefinition> rules = new ArrayList<>();
-
-        RuleDefinition rule1 = new RuleDefinition();
-        rule1.setId("rule1");
-        rule1.setDesc("测试规则1");
-        rule1.setContent("device.groupId == 'us'");
-        rules.add(rule1);
-
-        RuleDefinition rule2 = new RuleDefinition();
-        rule2.setId("rule2");
-        rule2.setDesc("测试规则2");
-        rule2.setContent("token.channel == 'us'");
-        rules.add(rule2);
-
-        return rules;
-    }
-} 
+}

@@ -1,0 +1,48 @@
+[
+  {
+    "MODEL": "Token",
+    "COUNT": 100,
+    "FIELDS": {
+      "tokenId": {
+        "$JOIN": [
+          "token-",
+          "&.index"
+        ]
+      },
+      "deviceId": {
+        "$JOIN": [
+          "device-",
+          "&.index"
+        ]
+      },
+      "channel": "us",
+      "status": "IDLE",
+      "attributes": {
+        "country": "us"
+      }
+    }
+  },
+  {
+    "MODEL": "Token",
+    "COUNT": 50,
+    "FIELDS": {
+      "tokenId": {
+        "$JOIN": [
+          "gb-token-",
+          "&.index"
+        ]
+      },
+      "deviceId": {
+        "$JOIN": [
+          "gb-device-",
+          "&.index"
+        ]
+      },
+      "channel": "gb",
+      "status": "IDLE",
+      "attributes": {
+        "country": "gb"
+      }
+    }
+  }
+]

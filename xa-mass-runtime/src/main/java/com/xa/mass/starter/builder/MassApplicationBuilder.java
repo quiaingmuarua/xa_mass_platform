@@ -232,8 +232,9 @@ public class MassApplicationBuilder {
             return this;
         }
 
-        public EngineBuilder mockData(String deviceConfigPath, String taskConfigPath, String ruleConfigPath) {
+        public EngineBuilder mockData(String deviceConfigPath, String tokenConfigPath, String taskConfigPath, String ruleConfigPath) {
             config.setDeviceConfigPath(deviceConfigPath);
+            config.setTokenConfigPath(tokenConfigPath);
             config.setTaskConfigPath(taskConfigPath);
             config.setRuleConfigPath(ruleConfigPath);
             return this;

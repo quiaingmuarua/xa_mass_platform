@@ -1,6 +1,7 @@
 package com.xa.mass.engine.listener;
 
 import com.xa.mass.base.enums.assignment.AssignmentResult;
+import com.xa.mass.base.enums.task.TokenStatus;
 import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.base.model.Device;
 import com.xa.mass.base.model.Task;
@@ -44,10 +45,10 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
     }
 
     @Override
-    public void onMsgAssign(Task task, List<Device> devices) {
+    public List<TaskMsg> onMsgAssign(Task task, List<Device> devices) {
         if (devices == null || devices.isEmpty()) {
             log.info("[MsgAssign] Skip task {} because no matched devices were provided", task.getTid());
-            return;
+            return List.of();
         }
 
         List<TaskMsg> pendingMessages = taskManager.getTaskMessages(task.getTid()).stream()
@@ -56,42 +57,68 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
         int totalMessages = pendingMessages.size();
         if (totalMessages == 0) {
             log.info("[MsgAssign] Skip task {} because there are no pending task messages to dispatch", task.getTid());
-            return;
+            return List.of();
         }
 
-        int deviceCount = devices.size();
-        int baseMsgPerDevice = totalMessages / deviceCount;
-        int remainder = totalMessages % deviceCount;
+        int perDeviceBatchLimit = Math.max(task.getBatchSize(), 1);
         int batchId = 0;
         int cursor = 0;
         List<TaskMsg> pushQueue = new ArrayList<>();
+        List<DispatchSlot> dispatchSlots = new ArrayList<>();
 
-        log.info("[MsgAssign] Starting assignment for task {} with {} devices, totalMessages={}, baseMsgPerDevice={}, remainder={}",
-                task.getTid(), deviceCount, totalMessages, baseMsgPerDevice, remainder);
+        log.info("[MsgAssign] Starting assignment for task {} with {} devices, totalMessages={}, perDeviceBatchLimit={}",
+                task.getTid(), devices.size(), totalMessages, perDeviceBatchLimit);
 
-        for (int i = 0; i < deviceCount; i++) {
+        for (int i = 0; i < devices.size() && cursor < totalMessages; i++) {
             Device device = devices.get(i);
-            int assignCount = baseMsgPerDevice + (i < remainder ? 1 : 0);
             String currentBatchId = "batch-" + batchId;
             Token token = deviceManager.getToken(device.getDeviceId());
+            if (!prepareTokenForDispatch(task, device, token)) {
+                log.warn("[MsgAssign] Skip device {} for task {} because token state is not dispatchable",
+                        device.getDeviceId(), task.getTid());
+                deviceManager.unlockDevice(device.getDeviceId());
+                batchId++;
+                continue;
+            }
             String tokenId = token != null ? token.getTokenId() : null;
+            dispatchSlots.add(new DispatchSlot(device, token, tokenId, currentBatchId));
+            batchId++;
+        }
 
-            for (int j = 0; j < assignCount && cursor < totalMessages; j++) {
-                TaskMsg msg = pendingMessages.get(cursor++);
-                if (!bindTaskMessage(msg, device.getDeviceId(), tokenId, currentBatchId)) {
-                    log.warn("[MsgAssign] Skip task message {} because it could not transition from status {}",
-                            msg.getMsgId(), msg.getStatus());
+        while (cursor < totalMessages) {
+            boolean assignedInRound = false;
+            for (DispatchSlot slot : dispatchSlots) {
+                if (!slot.canAccept(perDeviceBatchLimit) || cursor >= totalMessages) {
                     continue;
                 }
+                TaskMsg msg = pendingMessages.get(cursor);
+                if (!bindTaskMessage(msg, slot.device().getDeviceId(), slot.tokenId(), slot.batchId())) {
+                    log.warn("[MsgAssign] Skip task message {} because it could not transition from status {}",
+                            msg.getMsgId(), msg.getStatus());
+                    cursor++;
+                    continue;
+                }
+                cursor++;
                 taskManager.updateTaskMessage(task.getTid(), msg);
                 pushQueue.add(msg);
+                slot.incrementAssigned();
+                assignedInRound = true;
 
                 recordService.recordMessageAssignment(
-                        task, device, token, msg.getMsgId(), currentBatchId,
-                        AssignmentResult.SUCCESS, "message assigned"
+                        task, slot.device(), slot.token(), msg.getMsgId(), slot.batchId(),
+                        AssignmentResult.SUCCESS, "message assigned",
+                        deviceManager.isLocked(slot.device().getDeviceId())
                 );
             }
-            batchId++;
+            if (!assignedInRound) {
+                break;
+            }
+        }
+
+        for (DispatchSlot slot : dispatchSlots) {
+            if (slot.assignedCount() == 0) {
+                deviceManager.unlockDevice(slot.device().getDeviceId());
+            }
         }
 
         log.info("[MsgAssign] Task {} pushQueue size: {} (expected pending={})",
@@ -99,6 +126,50 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
 
         if (dispatchListener != null && !pushQueue.isEmpty()) {
             dispatchListener.onTaskMsgsReady(task, List.copyOf(pushQueue));
+        }
+        return List.copyOf(pushQueue);
+    }
+
+    private static final class DispatchSlot {
+        private final Device device;
+        private final Token token;
+        private final String tokenId;
+        private final String batchId;
+        private int assignedCount;
+
+        private DispatchSlot(Device device, Token token, String tokenId, String batchId) {
+            this.device = device;
+            this.token = token;
+            this.tokenId = tokenId;
+            this.batchId = batchId;
+        }
+
+        private Device device() {
+            return device;
+        }
+
+        private Token token() {
+            return token;
+        }
+
+        private String tokenId() {
+            return tokenId;
+        }
+
+        private String batchId() {
+            return batchId;
+        }
+
+        private int assignedCount() {
+            return assignedCount;
+        }
+
+        private boolean canAccept(int perDeviceBatchLimit) {
+            return assignedCount < perDeviceBatchLimit;
+        }
+
+        private void incrementAssigned() {
+            assignedCount++;
         }
     }
 
@@ -114,5 +185,34 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
         taskMsg.setTokenId(tokenId);
         taskMsg.setBatchId(batchId);
         return taskMsg.markAsSent();
+    }
+
+    private boolean prepareTokenForDispatch(Task task, Device device, Token token) {
+        if (token == null) {
+            return true;
+        }
+
+        boolean changed = false;
+        String taskId = task.getTid();
+        if (token.getStatus() == TokenStatus.IDLE) {
+            if (!token.bindToTask(taskId)) {
+                return false;
+            }
+            changed = true;
+        }
+        if (token.getStatus() == TokenStatus.RESERVED && taskId.equals(token.getLastBindTaskId())) {
+            if (!token.startOccupying()) {
+                return false;
+            }
+            changed = true;
+        }
+
+        boolean alreadySendingForTask = token.getStatus() == TokenStatus.OCCUPIED
+                && taskId.equals(token.getLastBindTaskId());
+        if (!alreadySendingForTask && token.getStatus() != TokenStatus.OCCUPIED) {
+            return false;
+        }
+
+        return !changed || deviceManager.updateToken(device.getDeviceId(), token);
     }
 }

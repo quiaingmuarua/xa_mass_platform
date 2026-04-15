@@ -1,5 +1,7 @@
 package com.xa.mass.engine;
 
+import com.xa.mass.base.channel.eventbus.event.device.DeviceOfflineEvent;
+import com.xa.mass.base.channel.eventbus.event.device.DeviceOnlineEvent;
 import com.xa.mass.base.enums.device.DeviceStatus;
 import com.xa.mass.base.model.Device;
 import com.xa.mass.base.model.Token;
@@ -44,17 +46,17 @@ class DeviceManagerTest {
         assertEquals(3, manager.getAllDevices().size());
     }
 
-    // ---- filter by country ----
+    // ---- filter by group ----
 
     @Test
-    void getDevicesByCountryFiltersCorrectly() {
+    void getDevicesByGroupIdFiltersCorrectly() {
         manager.addDevice(device("us1", "us"));
         manager.addDevice(device("us2", "us"));
         manager.addDevice(device("gb1", "gb"));
 
-        List<Device> us = manager.getDevicesByCountry("us");
+        List<Device> us = manager.getDevicesByGroupId("us");
         assertEquals(2, us.size());
-        assertTrue(us.stream().allMatch(d -> "us".equals(d.getGroupId())));
+        assertTrue(us.stream().allMatch(d -> "us".equals(d.getDeviceGroupId())));
     }
 
     // ---- update / delete ----
@@ -128,21 +130,40 @@ class DeviceManagerTest {
     @Test
     void onlineStatusTracking() {
         manager.addDevice(device("d8", "us"));
+        manager.updateOnlineStatus("d8", false);
         assertFalse(manager.isDeviceOnline("d8"));
+        assertEquals(DeviceStatus.OFFLINE, manager.getDevice("d8").getStatus());
 
         manager.updateOnlineStatus("d8", true);
         assertTrue(manager.isDeviceOnline("d8"));
+        assertEquals(DeviceStatus.ONLINE, manager.getDevice("d8").getStatus());
 
         manager.updateOnlineStatus("d8", false);
         assertFalse(manager.isDeviceOnline("d8"));
+        assertEquals(DeviceStatus.OFFLINE, manager.getDevice("d8").getStatus());
+    }
+
+    @Test
+    void deviceStatusEventListenerKeepsModelStatusInSync() {
+        DeviceManager.DeviceStatusEventListener listener = new DeviceManager.DeviceStatusEventListener(manager);
+        manager.addDevice(device("d9", "us"));
+        manager.updateOnlineStatus("d9", false);
+
+        listener.onDeviceOnline(new DeviceOnlineEvent("d9", "connected", null));
+        assertTrue(manager.isDeviceOnline("d9"));
+        assertEquals(DeviceStatus.ONLINE, manager.getDevice("d9").getStatus());
+
+        listener.onDeviceOffline(new DeviceOfflineEvent("d9", "disconnected", null));
+        assertFalse(manager.isDeviceOnline("d9"));
+        assertEquals(DeviceStatus.OFFLINE, manager.getDevice("d9").getStatus());
     }
 
     // ---- helpers ----
 
-    private Device device(String id, String country) {
+    private Device device(String id, String deviceGroupId) {
         Device d = new Device();
         d.setDeviceId(id);
-        d.setGroupId(country);
+        d.setDeviceGroupId(deviceGroupId);
         d.setStatus(DeviceStatus.ONLINE);
         return d;
     }

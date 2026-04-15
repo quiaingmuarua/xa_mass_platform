@@ -1,4 +1,4 @@
-package com.xa.mass.mock.api;
+package com.xa.mass.mock.e2e.results;
 
 import com.google.gson.Gson;
 import com.xa.mass.gateway.model.enums.MessageDirection;
@@ -9,23 +9,16 @@ import com.xa.mass.gateway.model.massMessage.MessageResult;
 import com.xa.mass.gateway.session.SessionRoles;
 import com.xa.mass.mock.MockApplicationSpringBootApp;
 import com.xa.mass.mock.client.MassWebSocketClientImpl;
+import com.xa.mass.mock.e2e.support.AbstractMockE2eTest;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.web.client.TestRestTemplate;
-import org.springframework.boot.test.web.server.LocalServerPort;
-import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpMethod;
-import org.springframework.http.ResponseEntity;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 
-import java.io.IOException;
-import java.net.ServerSocket;
 import java.net.URI;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
@@ -38,7 +31,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Verifies that a task with one SUCCESS and one FAILED message closes to TERMINAL
- * with terminalReason=MIXED_MESSAGE_RESULTS and taskExecutedNumber reflecting only successes.
+ * with terminalReason=MIXED_MESSAGE_RESULTS and taskSuccessNumber reflecting only successes.
  *
  * <p>This covers the {@code determineTerminalReason()} MIXED branch which is not exercised
  * by any other integration test (all-succeed and all-fail are already covered).
@@ -50,32 +43,38 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
                 "mock.client.auto-start=false",
                 "mock.client.devices-config=mock/test_mock_devices.json",
                 "mass.mock.data.devices=mock/test_mock_devices.json",
+                "mass.mock.data.tokens=mock/test_mock_tokens.json",
                 "mass.mock.data.tasks=mock/test_mock_tasks.json",
                 "mass.mock.data.rules=mock/test_mock_rules.json"
         }
 )
 @ActiveProfiles("dev")
 @DirtiesContext
-class TaskApiMixedResultsIntegrationTest {
+class TaskApiMixedResultsIntegrationTest extends AbstractMockE2eTest {
 
     private static final int WEBSOCKET_PORT = findFreePort();
     private static final Gson GSON = new Gson();
 
     @DynamicPropertySource
     static void registerProperties(DynamicPropertyRegistry registry) {
-        registry.add("mass.websocket.port", () -> WEBSOCKET_PORT);
+        registerWebSocketProperties(registry, WEBSOCKET_PORT);
     }
-
-    @LocalServerPort
-    private int port;
-
-    @Autowired
-    private TestRestTemplate restTemplate;
 
     @Test
     void taskWithOneSuccessAndOneFailureClosesToTerminalWithMixedReason() throws Exception {
-        // Arrange: create a task with 2 targets so we get 2 TaskMsg rows.
-        String taskId = createTask("mixed-results");
+        // Arrange: create a task with 2 targets — disable retries so the first FAILED is final.
+        java.util.Map<String, Object> createBody = new java.util.LinkedHashMap<>();
+        createBody.put("taskName", "mixed-results");
+        createBody.put("project", "demoApp");
+        createBody.put("countryCode", "us");
+        createBody.put("sharedConfig", Map.of("textContent", "mixed results integration test"));
+        createBody.put("userId", "itest");
+        createBody.put("targetList", List.of("target-a", "target-b"));
+        createBody.put("batchSize", 1);
+        createBody.put("defaultMsgMaxRetryCount", 0);
+        Map<String, Object> createResponse = exchange("/status/api/tasks", HttpMethod.POST, createBody);
+        assertEquals(Boolean.TRUE, createResponse.get("success"));
+        String taskId = String.valueOf(createResponse.get("taskId"));
 
         // Act: approve triggers READY → RUNNING assignment.
         Map<String, Object> approveResponse = exchange(
@@ -119,8 +118,8 @@ class TaskApiMixedResultsIntegrationTest {
         TaskSnapshot terminalSnapshot = waitForTaskSnapshot(taskId, "TERMINAL");
         assertEquals("TERMINAL", terminalSnapshot.task().get("status"));
         assertEquals("MIXED_MESSAGE_RESULTS", terminalSnapshot.task().get("terminalReason"));
-        // taskExecutedNumber counts only successes.
-        assertEquals(1, ((Number) terminalSnapshot.task().get("taskExecutedNumber")).intValue());
+        // taskSuccessNumber counts only successes.
+        assertEquals(1, ((Number) terminalSnapshot.task().get("taskSuccessNumber")).intValue());
         assertEquals(2, ((Number) terminalSnapshot.task().get("scheduleDeviceCnt")).intValue());
 
         assertEquals(2, terminalSnapshot.messages().size());
@@ -175,64 +174,6 @@ class TaskApiMixedResultsIntegrationTest {
         msg.setPayload(GSON.toJsonTree(Map.of("status", status, "mockData", detail)));
         return GSON.toJson(msg);
     }
-
-    private String createTask(String taskName) {
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("taskName", taskName);
-        body.put("project", "demoApp");
-        body.put("countryCode", "us");
-        body.put("textContent", "mixed results integration test");
-        body.put("userId", "itest");
-        body.put("targetList", List.of("target-a", "target-b"));
-        body.put("batchSize", 1);
-
-        Map<String, Object> response = exchange("/status/api/tasks", HttpMethod.POST, body);
-        assertEquals(Boolean.TRUE, response.get("success"));
-        String taskId = String.valueOf(response.get("taskId"));
-        assertFalse(taskId.isBlank());
-        return taskId;
-    }
-
-    private TaskSnapshot waitForTaskSnapshot(String taskId, String expectedStatus) throws InterruptedException {
-        for (int i = 0; i < 20; i++) {
-            Map<String, Object> detail = exchange("/status/api/tasks/" + taskId, HttpMethod.GET, null);
-            Map<String, Object> msgs = exchange("/status/api/tasks/" + taskId + "/messages?page=1&size=20", HttpMethod.GET, null);
-            Map<String, Object> task = task(detail);
-            List<Map<String, Object>> messages = messages(msgs);
-            if (expectedStatus.equals(task.get("status"))) {
-                return new TaskSnapshot(task, messages);
-            }
-            Thread.sleep(250L);
-        }
-        throw new AssertionError("Task " + taskId + " did not reach " + expectedStatus + " within timeout");
-    }
-
-    @SuppressWarnings("unchecked")
-    private Map<String, Object> task(Map<String, Object> response) {
-        return (Map<String, Object>) response.get("task");
-    }
-
-    @SuppressWarnings("unchecked")
-    private List<Map<String, Object>> messages(Map<String, Object> response) {
-        return (List<Map<String, Object>>) response.get("messages");
-    }
-
-    @SuppressWarnings("unchecked")
-    private Map<String, Object> exchange(String path, HttpMethod method, Object body) {
-        ResponseEntity<Map> response = restTemplate.exchange(
-                "http://127.0.0.1:" + port + path, method, new HttpEntity<>(body), Map.class);
-        return response.getBody();
-    }
-
-    private static int findFreePort() {
-        try (ServerSocket s = new ServerSocket(0)) {
-            return s.getLocalPort();
-        } catch (IOException e) {
-            throw new IllegalStateException("Failed to allocate free port", e);
-        }
-    }
-
-    private record TaskSnapshot(Map<String, Object> task, List<Map<String, Object>> messages) {}
 
     private record AckSnapshot(int code, String message) {}
 

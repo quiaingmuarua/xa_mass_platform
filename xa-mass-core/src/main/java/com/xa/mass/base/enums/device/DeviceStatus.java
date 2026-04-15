@@ -43,4 +43,20 @@ public enum DeviceStatus {
     public boolean isUnavailable() {
         return this == OFFLINE || this == EXPIRED;
     }
-} 
+
+    /**
+     * Device model state transitions are intentionally simple:
+     * online truth is physical/connectivity truth only, while lock truth lives elsewhere.
+     */
+    public boolean canTransitionTo(DeviceStatus targetStatus) {
+        if (targetStatus == null || this == targetStatus) {
+            return false;
+        }
+
+        return switch (this) {
+            case ONLINE -> targetStatus == OFFLINE || targetStatus == EXPIRED;
+            case OFFLINE -> targetStatus == ONLINE || targetStatus == EXPIRED;
+            case EXPIRED -> targetStatus == ONLINE || targetStatus == OFFLINE;
+        };
+    }
+}

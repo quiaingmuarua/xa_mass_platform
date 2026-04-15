@@ -9,7 +9,7 @@
           "&.index"
         ]
       },
-      "groupId": "us",
+      "deviceGroupId": "us",
       "agentVersion": "1.0.0",
       "status": "ONLINE",
       "supportedProjects": [

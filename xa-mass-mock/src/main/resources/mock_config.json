@@ -3,7 +3,7 @@
     {
       "deviceIdTemplate": "device-{i}",
       "count": 10,
-      "groupId": "us",
+      "deviceGroupId": "us",
       "agentVersion": "1.0.0",
       "supportedApps": [
         "demoApp",
@@ -28,7 +28,7 @@
     {
       "deviceIdTemplate": "gb-device-{i}",
       "count": 12,
-      "groupId": "gb",
+      "deviceGroupId": "gb",
       "agentVersion": "1.0.1",
       "supportedApps": [
         "demoApp",

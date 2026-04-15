@@ -17,11 +17,13 @@
           "&.index"
         ]
       },
-      "textContent": {
-        "$JOIN": [
-          "content for us-",
-          "&.index"
-        ]
+      "sharedConfig": {
+        "textContent": {
+          "$JOIN": [
+            "content for us-",
+            "&.index"
+          ]
+        }
       },
       "batchSize": {
         "$RANGE": [
@@ -61,11 +63,13 @@
           "&.index"
         ]
       },
-      "textContent": {
-        "$JOIN": [
-          "content for gb-",
-          "&.index"
-        ]
+      "sharedConfig": {
+        "textContent": {
+          "$JOIN": [
+            "content for gb-",
+            "&.index"
+          ]
+        }
       },
       "batchSize": {
         "$RANGE": [

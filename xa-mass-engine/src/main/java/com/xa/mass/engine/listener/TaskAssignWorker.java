@@ -51,13 +51,11 @@ public class TaskAssignWorker {
             while (running) {
                 try {
                     Task task = queue.take();
-                    if (task.getStatus() == TaskStatus.READY) {
-                        deviceAssignListener.onTaskAssign(task);
-                        if (running && task.getStatus() == TaskStatus.READY) {
-                            // No devices matched yet — retry later. Do NOT notify completion
-                            // until the task actually leaves READY, otherwise pendingTasks
-                            // and onAllTasksCompleted fire prematurely.
-                            scheduleRetry(task);
+                    TaskStatus initialStatus = task.getStatus();
+                    if (initialStatus == TaskStatus.READY || initialStatus == TaskStatus.RUNNING) {
+                        boolean assigned = deviceAssignListener.onTaskAssign(task);
+                        if (running && !assigned && task.getStatus() == initialStatus) {
+                            scheduleRetry(task, initialStatus);
                         } else {
                             notifyTaskCompleted(task);
                         }
@@ -95,12 +93,12 @@ public class TaskAssignWorker {
         queue.offer(task);
     }
 
-    private void scheduleRetry(Task task) {
+    private void scheduleRetry(Task task, TaskStatus expectedStatus) {
         if (retryExecutor == null) {
             return;
         }
         retryExecutor.schedule(() -> {
-            if (running && task.getStatus() == TaskStatus.READY) {
+            if (running && task.getStatus() == expectedStatus) {
                 queue.offer(task);
             }
         }, retryDelayMillis, TimeUnit.MILLISECONDS);

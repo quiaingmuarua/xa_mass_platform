@@ -69,7 +69,7 @@ class GatewayTaskMsgPublisherTest {
         task.setTid("task-1");
         task.setTaskName("task-name");
         task.setProject("demoApp");
-        task.setTextContent("hello");
+        task.setSharedConfig(java.util.Map.of("textContent", "hello"));
         return task;
     }
 

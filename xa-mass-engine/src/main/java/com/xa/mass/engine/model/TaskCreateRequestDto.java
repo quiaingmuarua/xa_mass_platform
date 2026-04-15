@@ -1,56 +1,53 @@
 package com.xa.mass.engine.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+
 import java.util.List;
 import java.util.Map;
 
 /**
- * 任务创建请求 DTO
- * 支持多业务、多通道扩展
+ * Supported task-create contract for the current runtime.
+ *
+ * <p>This DTO intentionally exposes only fields that are implemented by the
+ * active mainline. Unknown JSON properties are rejected so outdated clients and
+ * agents fail fast instead of assuming unsupported behavior exists.
  */
+@JsonIgnoreProperties(ignoreUnknown = false)
 public class TaskCreateRequestDto {
-    /** 业务归属用户（或ID） */
+
     private String userId;
-
-    /** 所属 project/app（如 "whatsapp", "rcs" 等） */
     private String project;
-
-    /** 任务名称 */
     private String taskName;
-
-    /** 任务内容（支持模版） */
-    private String textContent;
-
-    /** 目标列表（最简单的手机号、账号等） */
+    private Map<String, Object> sharedConfig;
     private List<String> targetList;
-
-    /** 目标类型（如 "phone", "email", "json"），预留后续多通道扩展 */
-    private String targetType;
-
-    /** 区域/国家代码 */
     private String countryCode;
-
-    /** 附加属性（可选，业务自定义，比如计划时间、分组等） */
-    private Map<String, Object> extraParams;
-
-    /** 扩展：自定义 TaskMsg 的 Json 字符串（如果不是简单 string） */
-    private List<String> targetJsonList;
-
-    /** 每个设备批次消息数 */
     private int batchSize;
+    private int defaultMsgMaxRetryCount = 3;
+    private boolean openEnded = false;
 
     public TaskCreateRequestDto() {
     }
 
-    public TaskCreateRequestDto(String userId, String project, String taskName, String textContent, List<String> targetList, String targetType, String countryCode, Map<String, Object> extraParams, List<String> targetJsonList) {
+    public boolean isOpenEnded() {
+        return openEnded;
+    }
+
+    public void setOpenEnded(boolean openEnded) {
+        this.openEnded = openEnded;
+    }
+
+    public TaskCreateRequestDto(String userId,
+                                String project,
+                                String taskName,
+                                Map<String, Object> sharedConfig,
+                                List<String> targetList,
+                                String countryCode) {
         this.userId = userId;
         this.project = project;
         this.taskName = taskName;
-        this.textContent = textContent;
+        this.sharedConfig = sharedConfig;
         this.targetList = targetList;
-        this.targetType = targetType;
         this.countryCode = countryCode;
-        this.extraParams = extraParams;
-        this.targetJsonList = targetJsonList;
     }
 
     public String getUserId() {
@@ -77,12 +74,12 @@ public class TaskCreateRequestDto {
         this.taskName = taskName;
     }
 
-    public String getTextContent() {
-        return textContent;
+    public Map<String, Object> getSharedConfig() {
+        return sharedConfig;
     }
 
-    public void setTextContent(String textContent) {
-        this.textContent = textContent;
+    public void setSharedConfig(Map<String, Object> sharedConfig) {
+        this.sharedConfig = sharedConfig;
     }
 
     public List<String> getTargetList() {
@@ -93,14 +90,6 @@ public class TaskCreateRequestDto {
         this.targetList = targetList;
     }
 
-    public String getTargetType() {
-        return targetType;
-    }
-
-    public void setTargetType(String targetType) {
-        this.targetType = targetType;
-    }
-
     public String getCountryCode() {
         return countryCode;
     }
@@ -109,27 +98,19 @@ public class TaskCreateRequestDto {
         this.countryCode = countryCode;
     }
 
-    public Map<String, Object> getExtraParams() {
-        return extraParams;
-    }
-
-    public void setExtraParams(Map<String, Object> extraParams) {
-        this.extraParams = extraParams;
-    }
-
-    public List<String> getTargetJsonList() {
-        return targetJsonList;
-    }
-
-    public void setTargetJsonList(List<String> targetJsonList) {
-        this.targetJsonList = targetJsonList;
-    }
-
     public int getBatchSize() {
         return batchSize;
     }
 
     public void setBatchSize(int batchSize) {
         this.batchSize = batchSize;
+    }
+
+    public int getDefaultMsgMaxRetryCount() {
+        return defaultMsgMaxRetryCount;
+    }
+
+    public void setDefaultMsgMaxRetryCount(int defaultMsgMaxRetryCount) {
+        this.defaultMsgMaxRetryCount = defaultMsgMaxRetryCount;
     }
 }

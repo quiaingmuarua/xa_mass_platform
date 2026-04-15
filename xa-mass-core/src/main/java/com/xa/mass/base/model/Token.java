@@ -3,6 +3,9 @@ package com.xa.mass.base.model;
 import com.xa.mass.base.enums.task.TokenStatus;
 
 import java.time.LocalDateTime;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Objects;
 
 /**
@@ -56,8 +59,10 @@ public class Token {
      */
     private LocalDateTime lastUsedTime;
 
+    private Map<String, String> attributes = Collections.emptyMap();
+
     public Token() {
-        this.status = TokenStatus.LOGIN_READY;
+        this.status = TokenStatus.IDLE;
         this.createTime = LocalDateTime.now();
         this.updateTime = LocalDateTime.now();
     }
@@ -91,9 +96,9 @@ public class Token {
     }
 
     public void setStatus(TokenStatus status) {
-        this.status = status;
+        this.status = Objects.requireNonNull(status, "status");
         this.updateTime = LocalDateTime.now();
-        if (status == TokenStatus.SENDING) {
+        if (status == TokenStatus.OCCUPIED) {
             this.lastUsedTime = LocalDateTime.now();
         }
     }
@@ -146,6 +151,18 @@ public class Token {
         this.lastUsedTime = lastUsedTime;
     }
 
+    public Map<String, String> getAttributes() {
+        return attributes;
+    }
+
+    public void setAttributes(Map<String, String> attributes) {
+        if (attributes == null || attributes.isEmpty()) {
+            this.attributes = Collections.emptyMap();
+            return;
+        }
+        this.attributes = Collections.unmodifiableMap(new LinkedHashMap<>(attributes));
+    }
+
     /**
      * 检查Token是否可以分配
      */
@@ -178,8 +195,11 @@ public class Token {
      * 绑定到任务
      */
     public boolean bindToTask(String taskId) {
-        if (status.canTransitionTo(TokenStatus.BIND_READY)) {
-            setStatus(TokenStatus.BIND_READY);
+        if (taskId == null || taskId.isBlank()) {
+            return false;
+        }
+        if (status.canTransitionTo(TokenStatus.RESERVED)) {
+            setStatus(TokenStatus.RESERVED);
             setLastBindTaskId(taskId);
             return true;
         }
@@ -187,11 +207,11 @@ public class Token {
     }
 
     /**
-     * 开始发送
+     * 开始执行
      */
-    public boolean startSending() {
-        if (status.canTransitionTo(TokenStatus.SENDING)) {
-            setStatus(TokenStatus.SENDING);
+    public boolean startOccupying() {
+        if (status.canTransitionTo(TokenStatus.OCCUPIED)) {
+            setStatus(TokenStatus.OCCUPIED);
             return true;
         }
         return false;
@@ -201,8 +221,8 @@ public class Token {
      * 释放Token
      */
     public boolean release() {
-        if (status.canTransitionTo(TokenStatus.LOGIN_READY)) {
-            setStatus(TokenStatus.LOGIN_READY);
+        if (status == TokenStatus.RESERVED || status == TokenStatus.OCCUPIED) {
+            setStatus(TokenStatus.IDLE);
             setLastBindTaskId(null);
             return true;
         }
@@ -224,8 +244,8 @@ public class Token {
      * 解锁Token
      */
     public boolean unblock() {
-        if (status.canTransitionTo(TokenStatus.LOGIN_READY)) {
-            setStatus(TokenStatus.LOGIN_READY);
+        if (status.canTransitionTo(TokenStatus.IDLE)) {
+            setStatus(TokenStatus.IDLE);
             return true;
         }
         return false;
@@ -273,6 +293,7 @@ public class Token {
                 ", deviceId='" + deviceId + '\'' +
                 ", status=" + status +
                 ", channel='" + channel + '\'' +
+                ", attributes=" + attributes +
                 ", lastBindTaskId='" + lastBindTaskId + '\'' +
                 ", isExpired=" + isExpired() +
                 '}';

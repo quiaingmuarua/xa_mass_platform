@@ -1,11 +1,9 @@
-package com.xa.mass.mock.api;
+package com.xa.mass.mock.e2e.lifecycle;
 
 import com.xa.mass.mock.MockApplicationSpringBootApp;
+import com.xa.mass.mock.e2e.support.AbstractMockE2eTest;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.web.client.TestRestTemplate;
-import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
@@ -14,10 +12,6 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 
-import java.io.IOException;
-import java.net.ServerSocket;
-import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -30,26 +24,21 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
                 "mock.client.auto-start=false",
                 "mock.client.devices-config=mock/test_mock_devices_empty.json",
                 "mass.mock.data.devices=mock/test_mock_devices_empty.json",
+                "mass.mock.data.tokens=mock/test_mock_tokens_empty.json",
                 "mass.mock.data.tasks=mock/test_mock_tasks.json",
                 "mass.mock.data.rules=mock/test_mock_rules.json"
         }
 )
 @ActiveProfiles("dev")
 @DirtiesContext
-class TaskApiLifecycleGuardsIntegrationTest {
+class TaskApiLifecycleGuardsIntegrationTest extends AbstractMockE2eTest {
 
     private static final int WEBSOCKET_PORT = findFreePort();
 
     @DynamicPropertySource
     static void registerProperties(DynamicPropertyRegistry registry) {
-        registry.add("mass.websocket.port", () -> WEBSOCKET_PORT);
+        registerWebSocketProperties(registry, WEBSOCKET_PORT);
     }
-
-    @LocalServerPort
-    private int port;
-
-    @Autowired
-    private TestRestTemplate restTemplate;
 
     @Test
     void rejectThenApproveTransitionsTaskFromNewToBlockedToReady() {
@@ -100,6 +89,73 @@ class TaskApiLifecycleGuardsIntegrationTest {
                 null
         );
         assertEquals(Boolean.TRUE, resumeResponse.get("success"));
+        assertEquals("READY", task(taskId).get("status"));
+    }
+
+    @Test
+    void createTaskRejectsUnknownFieldsInRequestBody() {
+        Map<String, Object> createBody = new java.util.LinkedHashMap<>();
+        createBody.put("taskName", "guard-unknown-fields");
+        createBody.put("project", "demoApp");
+        createBody.put("countryCode", "us");
+        createBody.put("sharedConfig", java.util.Map.of("textContent", "guard lifecycle"));
+        createBody.put("userId", "itest");
+        createBody.put("targetList", java.util.List.of("target-a"));
+        createBody.put("batchSize", 1);
+        createBody.put("targetJsonList", java.util.List.of("{\"phone\":\"123\"}"));
+
+        ResponseEntity<String> response = restTemplate.exchange(
+                "http://127.0.0.1:" + port + "/status/api/tasks",
+                HttpMethod.POST,
+                new HttpEntity<>(createBody),
+                String.class
+        );
+
+        assertEquals(400, response.getStatusCode().value());
+    }
+
+    @Test
+    void updateTaskRejectsUnsupportedFieldsInRequestBody() {
+        String taskId = createTask("guard-update-unknown-fields");
+
+        Map<String, Object> updateBody = new java.util.LinkedHashMap<>();
+        updateBody.put("taskName", "guard-update-renamed");
+        updateBody.put("targetList", java.util.List.of("target-x"));
+
+        ResponseEntity<String> response = restTemplate.exchange(
+                "http://127.0.0.1:" + port + "/status/api/tasks/" + taskId,
+                HttpMethod.PUT,
+                new HttpEntity<>(updateBody),
+                String.class
+        );
+
+        assertEquals(400, response.getStatusCode().value());
+        assertEquals("NEW", task(taskId).get("status"));
+    }
+
+    @Test
+    void updateTaskRejectsReadyTaskMutation() {
+        String taskId = createTask("guard-update-ready");
+
+        Map<String, Object> approveResponse = exchange(
+                "/status/api/tasks/" + taskId + "/audit?approved=true&comment=approve",
+                HttpMethod.POST,
+                null
+        );
+        assertEquals(Boolean.TRUE, approveResponse.get("success"));
+        assertEquals("READY", task(taskId).get("status"));
+
+        Map<String, Object> updateBody = new java.util.LinkedHashMap<>();
+        updateBody.put("taskName", "ready-should-not-update");
+
+        ResponseEntity<String> response = restTemplate.exchange(
+                "http://127.0.0.1:" + port + "/status/api/tasks/" + taskId,
+                HttpMethod.PUT,
+                new HttpEntity<>(updateBody),
+                String.class
+        );
+
+        assertEquals(400, response.getStatusCode().value());
         assertEquals("READY", task(taskId).get("status"));
     }
 
@@ -184,30 +240,9 @@ class TaskApiLifecycleGuardsIntegrationTest {
     }
 
     private String createTask(String taskName) {
-        Map<String, Object> createBody = new LinkedHashMap<>();
-        createBody.put("taskName", taskName);
-        createBody.put("project", "demoApp");
-        createBody.put("countryCode", "us");
-        createBody.put("textContent", "guard lifecycle");
-        createBody.put("userId", "itest");
-        createBody.put("targetList", List.of("target-a", "target-b"));
-        createBody.put("batchSize", 1);
-
-        Map<String, Object> createResponse = exchange("/status/api/tasks", HttpMethod.POST, createBody);
-        assertEquals(Boolean.TRUE, createResponse.get("success"));
-
-        String taskId = String.valueOf(createResponse.get("taskId"));
-        assertFalse(taskId.isBlank());
+        String taskId = createTaskId(taskName, "guard lifecycle", java.util.List.of("target-a", "target-b"), 1);
         assertEquals("NEW", task(taskId).get("status"));
         return taskId;
-    }
-
-    private static int findFreePort() {
-        try (ServerSocket socket = new ServerSocket(0)) {
-            return socket.getLocalPort();
-        } catch (IOException e) {
-            throw new IllegalStateException("Failed to allocate free port", e);
-        }
     }
 
     @SuppressWarnings("unchecked")
@@ -215,12 +250,5 @@ class TaskApiLifecycleGuardsIntegrationTest {
         Map<String, Object> detailResponse = exchange("/status/api/tasks/" + taskId, HttpMethod.GET, null);
         assertEquals(Boolean.TRUE, detailResponse.get("success"));
         return (Map<String, Object>) detailResponse.get("task");
-    }
-
-    @SuppressWarnings("unchecked")
-    private Map<String, Object> exchange(String path, HttpMethod method, Object body) {
-        String url = "http://127.0.0.1:" + port + path;
-        ResponseEntity<Map> response = restTemplate.exchange(url, method, new HttpEntity<>(body), Map.class);
-        return response.getBody();
     }
 }

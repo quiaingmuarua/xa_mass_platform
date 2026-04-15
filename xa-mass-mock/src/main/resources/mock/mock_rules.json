@@ -11,20 +11,20 @@
       },
       "name": {
         "$JOIN": [
-          "规则-",
+          "瑙勫垯-",
           "&.index"
         ]
       },
       "description": {
         "$JOIN": [
-          "描述-",
+          "鎻忚堪-",
           "&.index"
         ]
       },
       "type": null,
       "content": {
         "$CHOICE": [
-          "device.groupId == 'us' || device.groupId == 'gb'",
+          "device.deviceGroupId == 'us' || device.deviceGroupId == 'gb'",
           "device.agentVersion >= '1.0.0'",
           "'demoApp' in device.supportedProjects"
         ]
