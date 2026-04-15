@@ -15,8 +15,8 @@ public class TaskSnapshot {
     private int taskEligibleNumber;
     private int taskSuccessNumber;
     private int taskNonSuccessNumber;
-    private int runTaskMinDeviceCnt;
-    private int scheduleDeviceCnt;
+    private int minRequiredWorkerCount;
+    private int peakAssignedWorkerCount;
     private int batchSize;
     private LocalDateTime createTime;
     private LocalDateTime updateTime;
@@ -93,20 +93,20 @@ public class TaskSnapshot {
         this.taskNonSuccessNumber = taskNonSuccessNumber;
     }
 
-    public int getRunTaskMinDeviceCnt() {
-        return runTaskMinDeviceCnt;
+    public int getMinRequiredWorkerCount() {
+        return minRequiredWorkerCount;
     }
 
-    public void setRunTaskMinDeviceCnt(int runTaskMinDeviceCnt) {
-        this.runTaskMinDeviceCnt = runTaskMinDeviceCnt;
+    public void setMinRequiredWorkerCount(int minRequiredWorkerCount) {
+        this.minRequiredWorkerCount = minRequiredWorkerCount;
     }
 
-    public int getScheduleDeviceCnt() {
-        return scheduleDeviceCnt;
+    public int getPeakAssignedWorkerCount() {
+        return peakAssignedWorkerCount;
     }
 
-    public void setScheduleDeviceCnt(int scheduleDeviceCnt) {
-        this.scheduleDeviceCnt = scheduleDeviceCnt;
+    public void setPeakAssignedWorkerCount(int peakAssignedWorkerCount) {
+        this.peakAssignedWorkerCount = peakAssignedWorkerCount;
     }
 
     public int getBatchSize() {

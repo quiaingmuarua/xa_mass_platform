@@ -66,7 +66,7 @@ class TaskApiTerminateRunningIntegrationTest {
         assertEquals(Boolean.TRUE, approveResponse.get("success"));
 
         TaskSnapshot runningSnapshot = waitForTaskSnapshot(taskId, "RUNNING");
-        assertEquals(2, ((Number) runningSnapshot.task().get("scheduleDeviceCnt")).intValue());
+        assertEquals(2, ((Number) runningSnapshot.task().get("peakAssignedWorkerCount")).intValue());
         assertEquals(0, ((Number) runningSnapshot.task().get("taskSuccessNumber")).intValue());
         assertEquals(2, runningSnapshot.messages().size());
         assertTrue(runningSnapshot.messages().stream().allMatch(message -> "SENT".equals(message.get("status"))));

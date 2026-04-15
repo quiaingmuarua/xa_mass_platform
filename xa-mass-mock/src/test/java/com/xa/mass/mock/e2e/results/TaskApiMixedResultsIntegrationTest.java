@@ -86,7 +86,7 @@ class TaskApiMixedResultsIntegrationTest extends AbstractMockE2eTest {
 
         // Wait for RUNNING with 2 messages assigned to devices.
         TaskSnapshot runningSnapshot = waitForTaskSnapshot(taskId, "RUNNING");
-        assertEquals(2, ((Number) runningSnapshot.task().get("scheduleDeviceCnt")).intValue());
+        assertEquals(2, ((Number) runningSnapshot.task().get("peakAssignedWorkerCount")).intValue());
         assertEquals(2, runningSnapshot.messages().size());
         assertTrue(runningSnapshot.messages().stream().allMatch(m -> "SENT".equals(m.get("status"))));
 
@@ -120,7 +120,7 @@ class TaskApiMixedResultsIntegrationTest extends AbstractMockE2eTest {
         assertEquals("MIXED_MESSAGE_RESULTS", terminalSnapshot.task().get("terminalReason"));
         // taskSuccessNumber counts only successes.
         assertEquals(1, ((Number) terminalSnapshot.task().get("taskSuccessNumber")).intValue());
-        assertEquals(2, ((Number) terminalSnapshot.task().get("scheduleDeviceCnt")).intValue());
+        assertEquals(2, ((Number) terminalSnapshot.task().get("peakAssignedWorkerCount")).intValue());
 
         assertEquals(2, terminalSnapshot.messages().size());
         long successCount = terminalSnapshot.messages().stream()

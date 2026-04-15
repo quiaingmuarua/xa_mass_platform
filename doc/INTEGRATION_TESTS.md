@@ -43,7 +43,7 @@ Unit tests verify each state machine in isolation. But only integration tests ca
 
 - Task reaches `TERMINAL` while some `TaskMsg` rows are still `SENT` (counter mismatch)
 - `terminalReason` is `ALL_MESSAGES_SUCCEEDED` but a `FAILED` message exists (metadata corruption)
-- `scheduleDeviceCnt` is non-zero but no `workerId` was ever written to any `TaskMsg` (assignment gap)
+- `peakAssignedWorkerCount` is non-zero but no `workerId` was ever written to any `TaskMsg` (assignment gap)
 - A `PAUSED` task that received callbacks while paused never closes to `TERMINAL` (state convergence failure)
 - A `READY` task with no matching worker is silently dropped from the assignment queue (orphan task)
 - Two concurrent tasks are assigned to the same worker instead of separate workers (concurrency bug)
@@ -134,7 +134,7 @@ Expected result: `BUILD SUCCESS`, 0 failures.
 
 **Assertions**:
 - `terminalReason = ALL_MESSAGES_SUCCEEDED`
-- `scheduleDeviceCnt = 2`, `taskExecutedNumber = 2`
+- `peakAssignedWorkerCount = 2`, `taskSuccessNumber = 2`
 - Both `TaskMsg` rows: `status=SUCCESS`, `workerId/workerContextId/batchId` non-null
 
 ---
@@ -149,7 +149,7 @@ Expected result: `BUILD SUCCESS`, 0 failures.
 
 **Assertions**:
 - `terminalReason = ALL_MESSAGES_FAILED`
-- `scheduleDeviceCnt = 2`, `taskExecutedNumber = 0`
+- `peakAssignedWorkerCount = 2`, `taskSuccessNumber = 0`
 - Both `TaskMsg` rows: `status=FAILED`, `errorMessage` contains `workerId`
 
 ---
@@ -168,7 +168,7 @@ Expected result: `BUILD SUCCESS`, 0 failures.
 
 **Assertions**:
 - `terminalReason = MIXED_MESSAGE_RESULTS`
-- `taskExecutedNumber = 1` (only successes count)
+- `taskSuccessNumber = 1`
 - `messages[0].status = SUCCESS`, `messages[1].status = FAILED`
 
 > This is the only test that exercises the `MIXED_MESSAGE_RESULTS` branch of `determineTerminalReason()`.
@@ -205,7 +205,7 @@ Expected result: `BUILD SUCCESS`, 0 failures.
 
 **Assertions**:
 - Task closes to `TERMINAL` without a manual resume call
-- `taskExecutedNumber = 2`, both messages `SUCCESS`
+- `taskSuccessNumber = 2`, both messages `SUCCESS`
 
 > Proves that `TaskManager.updateTaskProgress()` closes non-final tasks (including `PAUSED`) to `TERMINAL` once all `TaskMsg` rows are final.
 
@@ -218,7 +218,7 @@ Expected result: `BUILD SUCCESS`, 0 failures.
 **Setup**: auto-start=false, **empty worker list** initially, 1 target
 
 **Scenario**:
-1. Approve → task reaches `READY` but stays there (`scheduleDeviceCnt=0`, message stays `INIT`)
+1. Approve → task reaches `READY` but stays there (`peakAssignedWorkerCount=0`, message stays `INIT`)
 2. Pause the `READY` task → `PAUSED`
 3. Register a matching worker programmatically via `WorkerManager`
 4. Connect a `MassWebSocketClientImpl` (auto-responds SUCCESS)
@@ -227,7 +227,7 @@ Expected result: `BUILD SUCCESS`, 0 failures.
 
 **Assertions**:
 - `terminalReason = ALL_MESSAGES_SUCCEEDED`
-- `scheduleDeviceCnt = 1`, `taskExecutedNumber = 1`
+- `peakAssignedWorkerCount = 1`, `taskSuccessNumber = 1`
 - `message.workerId` is non-null and `workerContextId/batchId` are non-null
 
 > Distinct from PauseCompletion: in that test, callbacks arrive *while paused*. Here, the task resumes first, then the worker completes it.
@@ -267,7 +267,7 @@ Expected result: `BUILD SUCCESS`, 0 failures.
 **Assertions**:
 - Gateway still returns 200 ACK
 - `TaskMsg.status` remains what it was after the first result (not overwritten)
-- `taskExecutedNumber` unchanged
+- `taskSuccessNumber` unchanged
 
 ---
 
@@ -278,7 +278,7 @@ Expected result: `BUILD SUCCESS`, 0 failures.
 **Setup**: auto-start=false, **empty worker list** initially, 1 target
 
 **Scenario**:
-1. Approve → task reaches `READY`, `scheduleDeviceCnt=0`, message stays `INIT`
+1. Approve → task reaches `READY`, `peakAssignedWorkerCount=0`, message stays `INIT`
 2. Register a matching worker + connect `MassWebSocketClientImpl`
 3. TaskAssignWorker retry loop picks it up → `RUNNING → TERMINAL`
 
@@ -301,7 +301,7 @@ Expected result: `BUILD SUCCESS`, 0 failures.
 2. Wait for both to reach `TERMINAL`
 
 **Assertions**:
-- Both tasks: `terminalReason = ALL_MESSAGES_SUCCEEDED`, `scheduleDeviceCnt = 1`
+- Both tasks: `terminalReason = ALL_MESSAGES_SUCCEEDED`, `peakAssignedWorkerCount = 1`
 - `messages[0].workerId ≠ messages[1].workerId` (tasks went to different workers)
 
 ---
@@ -322,12 +322,12 @@ Expected result: `BUILD SUCCESS`, 0 failures.
 
 ### 4.12 `TaskApiMinimumWorkerGateIntegrationTest`
 
-**Path covered**: `READY` blocked by `runTaskMinDeviceCnt`, unblocked when enough workers arrive
+**Path covered**: `READY` blocked by `minRequiredWorkerCount`, unblocked when enough workers arrive
 
-**Setup**: auto-start=false, 1 worker registered, `runTaskMinDeviceCnt=2`
+**Setup**: auto-start=false, 1 worker registered, `minRequiredWorkerCount=2`
 
 **Scenario**:
-1. Approve task → stays `READY` (`scheduleDeviceCnt=0`), first worker context stays `IDLE`
+1. Approve task → stays `READY` (`peakAssignedWorkerCount=0`), first worker context stays `IDLE`
 2. Register second worker + connect both clients
 3. Task advances to `RUNNING` → `TERMINAL`
 
@@ -555,7 +555,7 @@ The following paths are **not yet covered** by any integration test. They are li
 
 **Missing path**: `RUNNING → TERMINAL (MANUAL_CANCELLED)` triggered by `POST /terminate` with subsequent late callbacks being ignored
 
-**Why it matters**: `TaskApiTerminateRunningIntegrationTest` (4.7) covers terminate-before-callbacks. What is not covered is sending callbacks **after** terminate and verifying they are silently dropped (not re-opening the task to `RUNNING` or corrupting `taskExecutedNumber`).
+**Why it matters**: `TaskApiTerminateRunningIntegrationTest` (4.7) covers terminate-before-callbacks. What is not covered is sending callbacks **after** terminate and verifying they are silently dropped (not re-opening the task to `RUNNING` or corrupting `taskSuccessNumber`).
 
 **Suggested test name**: `TaskApiLateCallbackAfterTerminateIntegrationTest`
 
@@ -564,7 +564,7 @@ The following paths are **not yet covered** by any integration test. They are li
 1. Approve → wait RUNNING, 2 messages SENT
 2. POST /terminate → TERMINAL
 3. Submit SUCCESS callback for both messages via ReplayClient
-4. Assert task stays TERMINAL, taskExecutedNumber stays 0
+4. Assert task stays TERMINAL, taskSuccessNumber stays 0
 5. Assert messages stay SENT (not flipped to SUCCESS)
 ```
 
@@ -584,7 +584,7 @@ The following paths are **not yet covered** by any integration test. They are li
 2. Approve → wait RUNNING, messages at SENT
 3. Disconnect all MassWebSocketClientImpl instances
 4. Assert task stays RUNNING (messages stay SENT)
-5. Assert scheduleDeviceCnt unchanged
+5. Assert peakAssignedWorkerCount unchanged
 ```
 
 This test intentionally documents the known limitation: the task does not self-heal today.
@@ -595,7 +595,7 @@ This test intentionally documents the known limitation: the task does not self-h
 
 **Missing path**: `READY → TERMINAL (MANUAL_CANCELLED)` before any worker assignment
 
-**Why it matters**: the `POST /terminate` endpoint calls `cancelTask()` which accepts any non-TERMINAL task. A task that was never assigned should reach `TERMINAL` cleanly with `taskExecutedNumber=0` and all messages still `INIT`.
+**Why it matters**: the `POST /terminate` endpoint calls `cancelTask()` which accepts any non-TERMINAL task. A task that was never assigned should reach `TERMINAL` cleanly with `taskSuccessNumber=0` and all messages still `INIT`.
 
 **Suggested test name**: `TaskApiCancelReadyTaskIntegrationTest`
 

@@ -62,7 +62,7 @@ class TaskApiDelayedWorkerAvailabilityIntegrationTest extends AbstractMockE2eTes
         assertEquals(Boolean.TRUE, auditResponse.get("success"));
 
         TaskSnapshot readySnapshot = waitForTaskSnapshot(taskId, "READY", 8, 500L);
-        assertEquals(0, ((Number) readySnapshot.task().get("scheduleDeviceCnt")).intValue());
+        assertEquals(0, ((Number) readySnapshot.task().get("peakAssignedWorkerCount")).intValue());
         assertEquals(1, readySnapshot.messages().size());
         assertEquals("INIT", readySnapshot.messages().get(0).get("status"));
 
@@ -77,7 +77,7 @@ class TaskApiDelayedWorkerAvailabilityIntegrationTest extends AbstractMockE2eTes
             TaskSnapshot terminalSnapshot = waitForTaskSnapshot(taskId, "TERMINAL", 20, 500L);
             assertEquals("TERMINAL", terminalSnapshot.task().get("status"));
             assertEquals("ALL_MESSAGES_SUCCEEDED", terminalSnapshot.task().get("terminalReason"));
-            assertEquals(1, ((Number) terminalSnapshot.task().get("scheduleDeviceCnt")).intValue());
+            assertEquals(1, ((Number) terminalSnapshot.task().get("peakAssignedWorkerCount")).intValue());
         assertEquals(1, ((Number) terminalSnapshot.task().get("taskSuccessNumber")).intValue());
             assertEquals(1, terminalSnapshot.messages().size());
 

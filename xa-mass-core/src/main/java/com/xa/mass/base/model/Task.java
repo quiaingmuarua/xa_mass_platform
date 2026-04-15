@@ -27,8 +27,8 @@ public class Task {
     private int taskEligibleNumber;
     private int taskSuccessNumber;
     private int taskNonSuccessNumber;
-    private int runTaskMinDeviceCnt;
-    private int scheduleDeviceCnt;
+    private int minRequiredWorkerCount;
+    private int peakAssignedWorkerCount;
     private Map<String, Object> sharedConfig = new HashMap<>();
     private boolean openEnded = false;
     private User user;
@@ -137,20 +137,20 @@ public class Task {
         this.updateTime = LocalDateTime.now();
     }
 
-    public int getRunTaskMinDeviceCnt() {
-        return runTaskMinDeviceCnt;
+    public int getMinRequiredWorkerCount() {
+        return minRequiredWorkerCount;
     }
 
-    public void setRunTaskMinDeviceCnt(int runTaskMinDeviceCnt) {
-        this.runTaskMinDeviceCnt = runTaskMinDeviceCnt;
+    public void setMinRequiredWorkerCount(int minRequiredWorkerCount) {
+        this.minRequiredWorkerCount = minRequiredWorkerCount;
     }
 
-    public int getScheduleDeviceCnt() {
-        return scheduleDeviceCnt;
+    public int getPeakAssignedWorkerCount() {
+        return peakAssignedWorkerCount;
     }
 
-    public void setScheduleDeviceCnt(int scheduleDeviceCnt) {
-        this.scheduleDeviceCnt = scheduleDeviceCnt;
+    public void setPeakAssignedWorkerCount(int peakAssignedWorkerCount) {
+        this.peakAssignedWorkerCount = peakAssignedWorkerCount;
         this.updateTime = LocalDateTime.now();
     }
 
@@ -294,6 +294,8 @@ public class Task {
                 ", taskEligibleNumber=" + taskEligibleNumber +
                 ", taskSuccessNumber=" + taskSuccessNumber +
                 ", taskNonSuccessNumber=" + taskNonSuccessNumber +
+                ", minRequiredWorkerCount=" + minRequiredWorkerCount +
+                ", peakAssignedWorkerCount=" + peakAssignedWorkerCount +
                 ", progress=" + String.format("%.1f%%", getProgressPercentage()) +
                 ", batchSize=" + batchSize +
                 ", terminalReason=" + terminalReason +

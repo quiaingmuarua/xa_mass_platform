@@ -52,14 +52,14 @@ class TaskWorkerAssignListenerTest {
         assertTrue(listener.onTaskAssign(task));
 
         assertEquals(TaskStatus.RUNNING, task.getStatus());
-        assertEquals(1, task.getScheduleDeviceCnt());
+        assertEquals(1, task.getPeakAssignedWorkerCount());
         verify(matchingStrategy).matchWorkers(same(task), eq(2));
         verify(taskManager).updateTask(same(task));
         verify(msgAssignListener).onMsgAssign(same(task), eq(List.of(worker)));
     }
 
     @Test
-    void onTaskAssignUsesRunTaskMinWorkerCountWhenItExceedsCalculatedNeed() {
+    void onTaskAssignUsesMinRequiredWorkerCountWhenItExceedsCalculatedNeed() {
         Task task = createTask(3, 10, 4, TaskStatus.READY);
         Worker worker1 = createWorker("worker-1");
         Worker worker2 = createWorker("worker-2");
@@ -74,7 +74,7 @@ class TaskWorkerAssignListenerTest {
 
         verify(matchingStrategy).matchWorkers(same(task), eq(4));
         assertEquals(TaskStatus.RUNNING, task.getStatus());
-        assertEquals(1, task.getScheduleDeviceCnt());
+        assertEquals(1, task.getPeakAssignedWorkerCount());
         verify(taskManager).updateTask(same(task));
         verify(msgAssignListener).onMsgAssign(same(task), eq(List.of(worker1)));
         verify(workerManager).unlockWorker("worker-2");
@@ -92,7 +92,7 @@ class TaskWorkerAssignListenerTest {
         assertFalse(listener.onTaskAssign(task));
 
         assertEquals(TaskStatus.READY, task.getStatus());
-        assertEquals(0, task.getScheduleDeviceCnt());
+        assertEquals(0, task.getPeakAssignedWorkerCount());
         verify(matchingStrategy).matchWorkers(same(task), eq(2));
         verify(taskManager).countPendingDispatchableMessages(task.getTid());
         verifyNoInteractions(msgAssignListener);
@@ -112,7 +112,7 @@ class TaskWorkerAssignListenerTest {
         assertFalse(listener.onTaskAssign(task));
 
         assertEquals(TaskStatus.PAUSED, task.getStatus());
-        assertEquals(0, task.getScheduleDeviceCnt());
+        assertEquals(0, task.getPeakAssignedWorkerCount());
         verify(matchingStrategy).matchWorkers(same(task), eq(2));
         verify(workerManager).unlockWorker("worker-1");
         verify(taskManager, never()).updateTask(task);
@@ -130,7 +130,7 @@ class TaskWorkerAssignListenerTest {
         assertFalse(listener.onTaskAssign(task));
 
         assertEquals(TaskStatus.READY, task.getStatus());
-        assertEquals(0, task.getScheduleDeviceCnt());
+        assertEquals(0, task.getPeakAssignedWorkerCount());
         verify(matchingStrategy).matchWorkers(same(task), eq(2));
         verify(workerManager).unlockWorker("worker-1");
         verify(taskManager, never()).updateTask(task);
@@ -162,7 +162,7 @@ class TaskWorkerAssignListenerTest {
         assertTrue(listener.onTaskAssign(task));
 
         assertEquals(TaskStatus.RUNNING, task.getStatus());
-        assertEquals(1, task.getScheduleDeviceCnt());
+        assertEquals(1, task.getPeakAssignedWorkerCount());
         verify(taskManager).updateTask(same(task));
         verify(msgAssignListener).onMsgAssign(same(task), eq(List.of(worker)));
     }
@@ -173,7 +173,7 @@ class TaskWorkerAssignListenerTest {
         task.setTaskRoutingCountryCode("us");
         task.setTaskTargetNumber(targetNumber);
         task.setBatchSize(batchSize);
-        task.setRunTaskMinDeviceCnt(minWorkerCount);
+        task.setMinRequiredWorkerCount(minWorkerCount);
         task.setStatus(status);
         return task;
     }

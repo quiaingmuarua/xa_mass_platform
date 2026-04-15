@@ -50,7 +50,7 @@ Verified runtime path:
 4. `TaskWorkerAssignListener` performs worker matching through `TaskWorkerMatchingStrategy`.
 5. If no worker matches at that moment, `TaskAssignWorker` delayed-retries the task instead of orphaning it.
 6. If matching succeeds and the task is still `READY`:
-   - `scheduleDeviceCnt` is written for the current round
+   - `peakAssignedWorkerCount` is updated to the highest number of workers actually used by the task
    - the task transitions from `READY` to `RUNNING`
 7. `SimpleTaskMsgAssignListener` reuses the persisted `TaskMsg` rows created at task creation time.
 8. Each selected `TaskMsg` is populated with:
@@ -66,7 +66,7 @@ Key implementation facts:
 - `MassEngine` resubmits existing `READY` tasks on startup
 - both `approveTask()` and `resumeTask()` produce READY events
 - `batchSize` is enforced as a per-worker cap for each dispatch round
-- `runTaskMinDeviceCnt` remains the current field name, but acts as the minimum matched-worker start gate
+- `minRequiredWorkerCount` is the minimum matched-worker start gate
 - surplus matched workers that were only needed for start-gate satisfaction are unlocked immediately
 
 ## 3. Worker Context And Matching

@@ -60,14 +60,14 @@ class TaskApiMinimumWorkerGateIntegrationTest extends AbstractMockE2eTest {
 
         String taskId = createTaskId("min-worker-gate", "minimum worker gate integration", "target-a");
         Task task = taskManager.getTask(taskId);
-        task.setRunTaskMinDeviceCnt(2);
+        task.setMinRequiredWorkerCount(2);
         taskManager.updateTask(task);
 
         Map<String, Object> auditResponse = audit(taskId, "min-worker-gate");
         assertEquals(Boolean.TRUE, auditResponse.get("success"));
 
         TaskSnapshot readySnapshot = waitForTaskSnapshot(taskId, "READY", 8, 500L);
-        assertEquals(0, ((Number) readySnapshot.task().get("scheduleDeviceCnt")).intValue());
+        assertEquals(0, ((Number) readySnapshot.task().get("peakAssignedWorkerCount")).intValue());
         assertEquals("INIT", readySnapshot.messages().get(0).get("status"));
         assertEquals(WorkerContextStatus.IDLE, workerManager.getWorkerContext(firstWorkerId).getStatus());
 
@@ -83,7 +83,7 @@ class TaskApiMinimumWorkerGateIntegrationTest extends AbstractMockE2eTest {
 
             TaskSnapshot terminalSnapshot = waitForTaskSnapshot(taskId, "TERMINAL", 20, 500L);
             assertEquals("ALL_MESSAGES_SUCCEEDED", terminalSnapshot.task().get("terminalReason"));
-            assertEquals(1, ((Number) terminalSnapshot.task().get("scheduleDeviceCnt")).intValue());
+            assertEquals(1, ((Number) terminalSnapshot.task().get("peakAssignedWorkerCount")).intValue());
             assertEquals(1, ((Number) terminalSnapshot.task().get("taskSuccessNumber")).intValue());
         } finally {
             firstClient.disconnect();

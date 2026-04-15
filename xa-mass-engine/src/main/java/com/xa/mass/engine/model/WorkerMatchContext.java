@@ -68,7 +68,7 @@ public class WorkerMatchContext {
         ctx.put("taskStatus", task.getStatus().name());
         ctx.put("taskTargetNumber", task.getTaskTargetNumber());
         ctx.put("batchSize", task.getBatchSize());
-        ctx.put("runTaskMinDeviceCnt", task.getRunTaskMinDeviceCnt());
+        ctx.put("minRequiredWorkerCount", task.getMinRequiredWorkerCount());
 
         ctx.put("appCount", worker.getSupportedProjects() != null ? worker.getSupportedProjects().size() : 0);
         ctx.put("supportsProject", worker.supportsProject(task.getProject()));

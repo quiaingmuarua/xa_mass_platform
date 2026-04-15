@@ -41,7 +41,7 @@ This file is the fastest entry point for coding agents such as Claude Code, Code
 - `TaskApiWorkerContextAttributeRoutingIntegrationTest` now covers worker-context-attribute-based routing through the real assignment and gateway path
 - `TaskApiSingleWorkerReuseIntegrationTest` now covers normal `TERMINAL` completion releasing a single worker/worker-context for the next task
 - `TaskApiTerminateReuseIntegrationTest` now covers manual `RUNNING -> TERMINAL` release so the same single worker/worker-context can be assigned again
-- `TaskApiMinimumWorkerGateIntegrationTest` now covers `runTaskMinDeviceCnt` as a real start gate: one worker is not enough to leave `READY` when the task requires two
+- `TaskApiMinimumWorkerGateIntegrationTest` now covers `minRequiredWorkerCount` as a real start gate: one worker is not enough to leave `READY` when the task requires two
 - `TaskApiMultiRoundDispatchIntegrationTest` now covers a single worker completing a multi-target task across multiple dispatch rounds when `batchSize=1`
 - `MassWebSocketClientImpl` ignores `response=true` `TASK/step` frames to avoid mock echo loops
 - `mock.client.task-result-status` can force mock result frames to `SUCCESS` or `FAILED`
@@ -365,8 +365,8 @@ Important current implementation facts:
 - `TaskManager` persists one `TaskMsg` per target with the correct `taskId`, distinct `msgId`, and actual target value.
 - `MassEngine` starts `TaskAssignWorker` regardless of `mockMode`, submits existing `READY` tasks on startup, and subscribes to READY events from approve/resume.
 - `TaskWorkerAssignListener` re-checks that the task is still `READY` after matching; if the task left `READY` during the matching window, dispatch is skipped.
-- `TaskWorkerAssignListener` now treats `runTaskMinDeviceCnt` as a real start gate: if matched workers are below the minimum, the task stays `READY` and provisional locks are released.
-- `TaskWorkerAssignListener` sets `scheduleDeviceCnt` only for the workers actually used for the current dispatch round and transitions matched tasks from `READY` to `RUNNING`.
+- `TaskWorkerAssignListener` now treats `minRequiredWorkerCount` as a real start gate: if matched workers are below the minimum, the task stays `READY` and provisional locks are released.
+- `TaskWorkerAssignListener` tracks `peakAssignedWorkerCount` as the high-water mark of workers actually used by the task and transitions matched tasks from `READY` to `RUNNING`.
 - `TaskWorkerAssignListener` now delegates matching to `TaskWorkerMatchingStrategy`; `RuleBasedTaskWorkerMatchingStrategy` is the current default.
 - `TaskWorkerAssignListener` also unlocks any surplus matched workers that were only needed to satisfy the start gate, so zero-message reservations do not leak.
 - `Task.taskRoutingCountryCode` is the active routing-country input; older `taskCountry` naming is retired from the mainline.
@@ -420,7 +420,7 @@ Important current implementation facts:
 - Verified on `2026-04-13`: with `mock.client.task-result-status=FAILED`, API-created tasks still move `NEW -> READY -> RUNNING -> TERMINAL`, `taskSuccessNumber` stays `0`, and persisted `TaskMsg` rows move `INIT -> SENT -> FAILED`.
 - Verified on `2026-04-13`: after `RUNNING -> PAUSED`, real `TASK/step` callbacks can still finish the paused task to `TERMINAL` without requiring a manual resume.
 - Verified on `2026-04-14`: a single worker/worker-context can be reused after both normal terminal completion and manual running-task termination.
-- Verified on `2026-04-14`: a task with `runTaskMinDeviceCnt=2` stays `READY` with one matching worker and only advances once a second matching worker becomes available.
+- Verified on `2026-04-14`: a task with `minRequiredWorkerCount=2` stays `READY` with one matching worker and only advances once a second matching worker becomes available.
 - `TaskAssignWorker` uses `CopyOnWriteArrayList` for listeners.
 - `TaskAssignWorker` now delayed-retries `READY` tasks that receive no worker match, so they do not become orphaned after a single dequeue attempt.
 - `TaskAssignWorker` now also accepts explicit `RUNNING` task re-dispatch requests for multi-round refill.
@@ -524,7 +524,7 @@ What the new focused coverage proves:
 - assignment diagnostics now snapshot runtime worker lock state instead of stale `Worker` model fields
 - normal terminal completion releases worker-context/worker occupancy so a later task can reuse the same single-worker slot
 - manual `RUNNING -> TERMINAL` closure also releases worker-context/worker occupancy so the next task can reuse the same single-worker slot
-- `runTaskMinDeviceCnt` is enforced as a start threshold: a task remains `READY` until enough workers are simultaneously matchable
+- `minRequiredWorkerCount` is enforced as a start threshold: a task remains `READY` until enough workers are simultaneously matchable
 - terminal closure is now explicitly policy-driven in code, even though the default policy still means "all task messages are final"
 - mock clients no longer respond to server response frames
 - mock result status can be forced to `FAILED` without changing business logic code paths

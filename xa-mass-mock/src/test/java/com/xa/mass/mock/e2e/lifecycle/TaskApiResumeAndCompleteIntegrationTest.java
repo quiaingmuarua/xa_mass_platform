@@ -32,7 +32,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *
  * <p>Specifically:
  * <ol>
- *   <li>Task is approved while NO devices are available → stays READY, scheduleDeviceCnt=0.</li>
+ *   <li>Task is approved while no workers are available -> stays READY, peakAssignedWorkerCount=0.</li>
  *   <li>Task is paused (READY → PAUSED).</li>
  *   <li>A matching device is registered and a mock client connects.</li>
  *   <li>Task is resumed (PAUSED → READY); {@code notifyTaskReady} kicks the assign worker.</li>
@@ -82,7 +82,7 @@ class TaskApiResumeAndCompleteIntegrationTest extends AbstractMockE2eTest {
 
         // 2. Task reaches READY but stays there (no matching device).
         TaskSnapshot readySnapshot = waitForTaskSnapshot(taskId, "READY", 8, 500L);
-        assertEquals(0, ((Number) readySnapshot.task().get("scheduleDeviceCnt")).intValue());
+        assertEquals(0, ((Number) readySnapshot.task().get("peakAssignedWorkerCount")).intValue());
         assertEquals(1, readySnapshot.messages().size());
         assertEquals("INIT", readySnapshot.messages().get(0).get("status"));
 
@@ -120,7 +120,7 @@ class TaskApiResumeAndCompleteIntegrationTest extends AbstractMockE2eTest {
             TaskSnapshot terminalSnapshot = waitForTaskSnapshot(taskId, "TERMINAL", 20, 500L);
             assertEquals("TERMINAL", terminalSnapshot.task().get("status"));
             assertEquals("ALL_MESSAGES_SUCCEEDED", terminalSnapshot.task().get("terminalReason"));
-            assertEquals(1, ((Number) terminalSnapshot.task().get("scheduleDeviceCnt")).intValue());
+            assertEquals(1, ((Number) terminalSnapshot.task().get("peakAssignedWorkerCount")).intValue());
         assertEquals(1, ((Number) terminalSnapshot.task().get("taskSuccessNumber")).intValue());
 
             assertEquals(1, terminalSnapshot.messages().size());

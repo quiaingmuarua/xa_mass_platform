@@ -85,7 +85,7 @@ public class RuleDebugExample {
         task.setStatus(TaskStatus.READY);
         task.setTaskTargetNumber(100);
         task.setBatchSize(10);
-        task.setRunTaskMinDeviceCnt(5);
+        task.setMinRequiredWorkerCount(5);
         return task;
     }
 

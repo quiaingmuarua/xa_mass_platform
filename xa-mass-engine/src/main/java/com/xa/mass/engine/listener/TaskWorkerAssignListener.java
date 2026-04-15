@@ -99,7 +99,7 @@ public class TaskWorkerAssignListener {
             return false;
         }
 
-        task.setScheduleDeviceCnt(Math.max(task.getScheduleDeviceCnt(), (int) usedWorkerCount));
+        task.setPeakAssignedWorkerCount(Math.max(task.getPeakAssignedWorkerCount(), (int) usedWorkerCount));
         if (initialStatus == TaskStatus.READY && !task.transitionTo(TaskStatus.RUNNING)) {
             log.warn("[WorkerAssign] Failed to transition task {} from READY to RUNNING", task.getTid());
             unlockWorkers(dispatchWorkers);
@@ -125,7 +125,7 @@ public class TaskWorkerAssignListener {
     }
 
     private int getRequiredStartWorkerCount(Task task) {
-        return Math.max(task.getRunTaskMinDeviceCnt(), 1);
+        return Math.max(task.getMinRequiredWorkerCount(), 1);
     }
 
     private void unlockWorkers(List<Worker> workers) {

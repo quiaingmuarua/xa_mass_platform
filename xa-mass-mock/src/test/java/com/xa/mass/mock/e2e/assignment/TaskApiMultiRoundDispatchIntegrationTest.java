@@ -76,7 +76,7 @@ class TaskApiMultiRoundDispatchIntegrationTest extends AbstractMockE2eTest {
             TaskSnapshot terminal = waitForTerminalTask(taskId);
             assertEquals("TERMINAL", terminal.task().get("status"));
             assertEquals("ALL_MESSAGES_SUCCEEDED", terminal.task().get("terminalReason"));
-            assertEquals(1, ((Number) terminal.task().get("scheduleDeviceCnt")).intValue());
+            assertEquals(1, ((Number) terminal.task().get("peakAssignedWorkerCount")).intValue());
             assertEquals(3, ((Number) terminal.task().get("taskSuccessNumber")).intValue());
             assertEquals(3, terminal.messages().size());
 

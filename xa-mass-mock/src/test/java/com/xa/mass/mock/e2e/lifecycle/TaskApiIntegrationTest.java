@@ -65,7 +65,7 @@ class TaskApiIntegrationTest extends AbstractMockE2eTest {
         TaskSnapshot snapshot = waitForTerminalTask(taskId);
 
         assertEquals("TERMINAL", snapshot.task().get("status"));
-        assertEquals(2, ((Number) snapshot.task().get("scheduleDeviceCnt")).intValue());
+        assertEquals(2, ((Number) snapshot.task().get("peakAssignedWorkerCount")).intValue());
         assertEquals(2, ((Number) snapshot.task().get("taskSuccessNumber")).intValue());
         assertEquals(2, snapshot.messages().size());
 

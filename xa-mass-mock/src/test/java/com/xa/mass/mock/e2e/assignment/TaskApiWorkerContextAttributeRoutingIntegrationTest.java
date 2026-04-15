@@ -84,7 +84,7 @@ class TaskApiWorkerContextAttributeRoutingIntegrationTest extends AbstractMockE2
 
             TaskSnapshot terminalSnapshot = waitForTaskSnapshot(taskId, "TERMINAL", 20, 500L);
             assertEquals("ALL_MESSAGES_SUCCEEDED", terminalSnapshot.task().get("terminalReason"));
-            assertEquals(1, ((Number) terminalSnapshot.task().get("scheduleDeviceCnt")).intValue());
+            assertEquals(1, ((Number) terminalSnapshot.task().get("peakAssignedWorkerCount")).intValue());
             assertEquals(1, terminalSnapshot.messages().size());
 
             Map<String, Object> message = terminalSnapshot.messages().get(0);

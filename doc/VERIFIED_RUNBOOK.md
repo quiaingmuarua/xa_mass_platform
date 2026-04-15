@@ -175,13 +175,13 @@ Verified runtime path:
 3. `MassEngine` resubmits pre-existing `READY` tasks at startup and subscribes to READY events from approve/resume.
 4. `TaskWorkerAssignListener` performs worker matching.
 5. `TaskWorkerAssignListener` delegates matching through `TaskWorkerMatchingStrategy`; the verified default is `RuleBasedTaskWorkerMatchingStrategy`.
-6. On successful matching it writes `scheduleDeviceCnt` for the current dispatch round and moves the task from `READY` to `RUNNING`, but only if the task is still `READY` when matching returns.
+6. On successful matching it updates `peakAssignedWorkerCount` as the task's worker-usage high-water mark and moves the task from `READY` to `RUNNING`, but only if the task is still `READY` when matching returns.
 7. If no worker matches at that moment, `TaskAssignWorker` delayed-retries the task instead of letting it fall out of the assignment loop.
 8. `SimpleTaskMsgAssignListener` reuses the persisted `TaskMsg` records created during task creation.
 9. It round-robins pending `INIT` messages across matched workers and enforces `batchSize` as a per-worker cap for the current round.
 10. Each dispatched `TaskMsg` is filled with `workerId`, `workerContextId`, and `batchId`, then moved to `SENT`.
 11. Dispatch-time worker-context ownership is explicit: assignment binds allocatable worker contexts, advances them into `OCCUPIED`, and skips non-dispatchable worker-context states.
-12. `runTaskMinDeviceCnt` is enforced before `READY -> RUNNING`; insufficient matched workers leave the task in `READY`.
+12. `minRequiredWorkerCount` is enforced before `READY -> RUNNING`; insufficient matched workers leave the task in `READY`.
 13. Any workers matched only to satisfy the start gate, but not needed for current message dispatch, are unlocked immediately.
 14. `GatewayTaskMsgPublisher` pushes the downstream payload as `TASK/step`.
 15. When a worker has no more in-flight `TaskMsg` rows for the current task, `TaskResourceReleaseListener` releases that worker/worker-context slot and re-submits the still-`RUNNING` task if pending `INIT` messages remain.
@@ -240,7 +240,7 @@ Representative coverage proves:
 - `GET /status/api/tasks/{taskId}` exposes `stateValidation`
 - worker-context-attribute-based routing is covered end-to-end
 - a single worker/worker-context can be reused after both normal completion and manual termination
-- `runTaskMinDeviceCnt` acts as a real start gate
+- `minRequiredWorkerCount` acts as a real start gate
 - multi-round refill works when `batchSize` is smaller than the total target count
 
 ## 7. Known Mainline Gaps

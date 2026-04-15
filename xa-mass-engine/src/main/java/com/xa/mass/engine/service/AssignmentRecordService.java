@@ -123,8 +123,8 @@ public class AssignmentRecordService {
         snapshot.setTaskEligibleNumber(task.getTaskEligibleNumber());
         snapshot.setTaskSuccessNumber(task.getTaskSuccessNumber());
         snapshot.setTaskNonSuccessNumber(task.getTaskNonSuccessNumber());
-        snapshot.setRunTaskMinDeviceCnt(task.getRunTaskMinDeviceCnt());
-        snapshot.setScheduleDeviceCnt(task.getScheduleDeviceCnt());
+        snapshot.setMinRequiredWorkerCount(task.getMinRequiredWorkerCount());
+        snapshot.setPeakAssignedWorkerCount(task.getPeakAssignedWorkerCount());
         snapshot.setBatchSize(task.getBatchSize());
         snapshot.setCreateTime(task.getCreateTime());
         snapshot.setUpdateTime(task.getUpdateTime());

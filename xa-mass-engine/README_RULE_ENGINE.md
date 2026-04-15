@@ -93,7 +93,7 @@ appCount < 10
 - `taskStatus`
 - `taskTargetNumber`
 - `batchSize`
-- `runTaskMinDeviceCnt`
+- `minRequiredWorkerCount`
 
 ### Derived Signals
 
