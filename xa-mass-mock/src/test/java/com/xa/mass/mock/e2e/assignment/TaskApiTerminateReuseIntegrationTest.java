@@ -48,7 +48,7 @@ class TaskApiTerminateReuseIntegrationTest extends AbstractMockE2eTest {
 
     @Test
     void terminatedTaskReleasesSingleDeviceForNextTask() throws Exception {
-        String workerId = "terminate-reuse-device-0";
+        String workerId = "terminate-reuse-worker-0";
         registerWorker(workerId);
 
         String firstTaskId = createTaskId("terminate-reuse-first", "terminate reuse first", "target-a");
@@ -95,7 +95,7 @@ class TaskApiTerminateReuseIntegrationTest extends AbstractMockE2eTest {
         workerManager.addWorker(worker);
 
         WorkerContext workerContext = new WorkerContext();
-        workerContext.setWorkerContextId("token-" + workerId);
+        workerContext.setWorkerContextId("worker-context-" + workerId);
         workerContext.setWorkerId(workerId);
         workerContext.setChannel("us");
         workerContext.setStatus(WorkerContextStatus.IDLE);

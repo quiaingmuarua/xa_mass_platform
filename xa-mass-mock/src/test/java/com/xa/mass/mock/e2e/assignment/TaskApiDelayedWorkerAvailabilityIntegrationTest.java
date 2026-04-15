@@ -66,7 +66,7 @@ class TaskApiDelayedWorkerAvailabilityIntegrationTest extends AbstractMockE2eTes
         assertEquals(1, readySnapshot.messages().size());
         assertEquals("INIT", readySnapshot.messages().get(0).get("status"));
 
-        String workerId = "late-device-0";
+        String workerId = "late-worker-0";
         addMatchingWorker(workerId);
 
         URI uri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
@@ -100,7 +100,7 @@ class TaskApiDelayedWorkerAvailabilityIntegrationTest extends AbstractMockE2eTes
         workerManager.addWorker(worker);
 
         WorkerContext workerContext = new WorkerContext();
-        workerContext.setWorkerContextId("token-" + workerId);
+        workerContext.setWorkerContextId("worker-context-" + workerId);
         workerContext.setWorkerId(workerId);
         workerContext.setChannel("us");
         workerContext.setStatus(WorkerContextStatus.IDLE);

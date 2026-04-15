@@ -51,7 +51,7 @@ class TaskApiMultiRoundDispatchIntegrationTest extends AbstractMockE2eTest {
 
     @Test
     void singleDeviceWithBatchSizeOneCompletesTaskAcrossMultipleRounds() throws Exception {
-        String workerId = "round-device-0";
+        String workerId = "round-worker-0";
         registerWorker(workerId);
 
         URI wsUri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
@@ -101,7 +101,7 @@ class TaskApiMultiRoundDispatchIntegrationTest extends AbstractMockE2eTest {
         workerManager.addWorker(worker);
 
         WorkerContext workerContext = new WorkerContext();
-        workerContext.setWorkerContextId("token-" + workerId);
+        workerContext.setWorkerContextId("worker-context-" + workerId);
         workerContext.setWorkerId(workerId);
         workerContext.setChannel("us");
         workerContext.setStatus(WorkerContextStatus.IDLE);

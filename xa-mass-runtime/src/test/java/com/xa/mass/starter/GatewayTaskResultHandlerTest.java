@@ -118,7 +118,7 @@ class GatewayTaskResultHandlerTest {
         msg.setProject(task.getProject());
         MessageContext context = new MessageContext();
         context.setTid(task.getTid());
-        context.setWorkerId("device-1");
+        context.setWorkerId("worker-1");
         context.setConnRole(GatewayTaskMsgPublisher.DEFAULT_CONN_ROLE);
         msg.setContext(context);
         msg.setPayload(gson.toJsonTree(Map.of("status", status, "mockData", detail)));

@@ -51,7 +51,7 @@ class TaskApiSingleWorkerReuseIntegrationTest extends AbstractMockE2eTest {
 
     @Test
     void singleWorkerCanBeReusedAfterPreviousTaskCompletes() throws Exception {
-        String workerId = "reuse-device-0";
+        String workerId = "reuse-worker-0";
         registerWorker(workerId);
 
         URI wsUri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
@@ -95,7 +95,7 @@ class TaskApiSingleWorkerReuseIntegrationTest extends AbstractMockE2eTest {
         workerManager.addWorker(worker);
 
         WorkerContext workerContext = new WorkerContext();
-        workerContext.setWorkerContextId("token-" + workerId);
+        workerContext.setWorkerContextId("worker-context-" + workerId);
         workerContext.setWorkerId(workerId);
         workerContext.setChannel("us");
         workerContext.setStatus(WorkerContextStatus.IDLE);

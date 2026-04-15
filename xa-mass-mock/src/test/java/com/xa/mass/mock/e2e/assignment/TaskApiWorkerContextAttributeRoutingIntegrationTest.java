@@ -66,17 +66,17 @@ class TaskApiWorkerContextAttributeRoutingIntegrationTest extends AbstractMockE2
                 rule("worker_context_attribute_country", "workerContextAttributes['country'] == taskRoutingCountryCode")
         ));
 
-        addCandidate("matched-device", "pool-east", "shared", "us");
-        addCandidate("other-device", "pool-west", "shared", "gb");
+        addCandidate("matched-worker", "pool-east", "shared", "us");
+        addCandidate("other-worker", "pool-west", "shared", "gb");
 
         URI uri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
-        MassWebSocketClientImpl matchedClient = new MassWebSocketClientImpl(uri, "matched-device");
+        MassWebSocketClientImpl matchedClient = new MassWebSocketClientImpl(uri, "matched-worker");
         try {
-            assertTrue(matchedClient.connectBlocking(), "matched device client failed to connect");
+            assertTrue(matchedClient.connectBlocking(), "matched worker client failed to connect");
 
-            String taskId = createTaskId("token-attribute-routing", "attribute routing integration", "target-a");
+            String taskId = createTaskId("worker-context-attribute-routing", "attribute routing integration", "target-a");
             Map<String, Object> auditResponse = exchange(
-                    "/status/api/tasks/" + taskId + "/audit?approved=true&comment=token-attribute-routing",
+                    "/status/api/tasks/" + taskId + "/audit?approved=true&comment=worker-context-attribute-routing",
                     HttpMethod.POST,
                     null
             );
@@ -88,8 +88,8 @@ class TaskApiWorkerContextAttributeRoutingIntegrationTest extends AbstractMockE2
             assertEquals(1, terminalSnapshot.messages().size());
 
             Map<String, Object> message = terminalSnapshot.messages().get(0);
-            assertEquals("matched-device", message.get("workerId"));
-            assertEquals("token-matched-device", message.get("workerContextId"));
+            assertEquals("matched-worker", message.get("workerId"));
+            assertEquals("worker-context-matched-worker", message.get("workerContextId"));
             assertEquals("SUCCESS", message.get("status"));
             assertNotNull(message.get("batchId"));
         } finally {
@@ -114,7 +114,7 @@ class TaskApiWorkerContextAttributeRoutingIntegrationTest extends AbstractMockE2
         workerManager.addWorker(worker);
 
         WorkerContext workerContext = new WorkerContext();
-        workerContext.setWorkerContextId("token-" + workerId);
+        workerContext.setWorkerContextId("worker-context-" + workerId);
         workerContext.setWorkerId(workerId);
         workerContext.setChannel(workerContextChannel);
         workerContext.setStatus(WorkerContextStatus.IDLE);

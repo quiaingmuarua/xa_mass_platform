@@ -100,7 +100,7 @@ class TaskApiResumeAndCompleteIntegrationTest extends AbstractMockE2eTest {
         assertEquals("INIT", pausedSnapshot.messages().get(0).get("status"));
 
         // 4. Register a matching device and connect a mock client.
-        String workerId = "resume-device-0";
+        String workerId = "resume-worker-0";
         registerWorker(workerId);
 
         URI wsUri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
@@ -145,7 +145,7 @@ class TaskApiResumeAndCompleteIntegrationTest extends AbstractMockE2eTest {
         workerManager.addWorker(worker);
 
         WorkerContext workerContext = new WorkerContext();
-        workerContext.setWorkerContextId("token-" + workerId);
+        workerContext.setWorkerContextId("worker-context-" + workerId);
         workerContext.setWorkerId(workerId);
         workerContext.setChannel("us");
         workerContext.setStatus(WorkerContextStatus.IDLE);

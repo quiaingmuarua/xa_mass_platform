@@ -55,7 +55,7 @@ class TaskApiMinimumWorkerGateIntegrationTest extends AbstractMockE2eTest {
 
     @Test
     void readyTaskWaitsUntilMinimumWorkerCountIsSatisfied() throws Exception {
-        String firstWorkerId = "min-gate-device-0";
+        String firstWorkerId = "min-gate-worker-0";
         registerWorker(firstWorkerId);
 
         String taskId = createTaskId("min-worker-gate", "minimum worker gate integration", "target-a");
@@ -71,7 +71,7 @@ class TaskApiMinimumWorkerGateIntegrationTest extends AbstractMockE2eTest {
         assertEquals("INIT", readySnapshot.messages().get(0).get("status"));
         assertEquals(WorkerContextStatus.IDLE, workerManager.getWorkerContext(firstWorkerId).getStatus());
 
-        String secondWorkerId = "min-gate-device-1";
+        String secondWorkerId = "min-gate-worker-1";
         registerWorker(secondWorkerId);
 
         URI uri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
@@ -100,7 +100,7 @@ class TaskApiMinimumWorkerGateIntegrationTest extends AbstractMockE2eTest {
         workerManager.addWorker(worker);
 
         WorkerContext workerContext = new WorkerContext();
-        workerContext.setWorkerContextId("token-" + workerId);
+        workerContext.setWorkerContextId("worker-context-" + workerId);
         workerContext.setWorkerId(workerId);
         workerContext.setChannel("us");
         workerContext.setStatus(WorkerContextStatus.IDLE);
