@@ -7,6 +7,7 @@ import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.WorkerManager;
+import com.xa.mass.engine.util.TraceEventLogger;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -52,6 +53,8 @@ public class TaskResourceReleaseListener {
 
         for (String workerId : workerIds) {
             workerManager.unlockWorker(workerId);
+            TraceEventLogger.workerLockReleased(task.getTid(), workerId,
+                    "ON_TASK_TERMINAL", "TaskResourceReleaseListener", "task reached terminal");
         }
     }
 
@@ -73,6 +76,8 @@ public class TaskResourceReleaseListener {
 
         releaseWorkerContextIfOwnedByTask(task.getTid(), workerId, taskMsg.getWorkerContextId());
         workerManager.unlockWorker(workerId);
+        TraceEventLogger.workerLockReleased(task.getTid(), workerId,
+                "ON_TASK_MESSAGE_FINAL", "TaskResourceReleaseListener", "worker has no in-flight messages");
 
         if (dispatchRequester != null
                 && task.getStatus() == TaskStatus.RUNNING
@@ -96,11 +101,24 @@ public class TaskResourceReleaseListener {
         if (workerContext.getStatus() == WorkerContextStatus.IDLE) {
             return;
         }
+        WorkerContextStatus fromStatus = workerContext.getStatus();
         if (workerContext.release()) {
             workerManager.updateWorkerContextById(workerContextId, workerContext);
+            TraceEventLogger.workerContextStatusTransition(
+                    taskId,
+                    workerContext,
+                    fromStatus,
+                    workerContext.getStatus(),
+                    "RELEASE_WORKER_CONTEXT",
+                    "TaskResourceReleaseListener",
+                    "workerContext released after task/message completion"
+            );
+            TraceEventLogger.resourceReleased(taskId, workerId, workerContextId, "workerContext released");
             return;
         }
 
+        TraceEventLogger.resourceReleaseFailed(taskId, workerId, workerContextId,
+                "workerContext could not transition to IDLE from " + workerContext.getStatus());
         log.warn("WorkerContext {} on worker {} could not be released from status {} for task {}",
                 workerContextId, workerId, workerContext.getStatus(), taskId);
     }

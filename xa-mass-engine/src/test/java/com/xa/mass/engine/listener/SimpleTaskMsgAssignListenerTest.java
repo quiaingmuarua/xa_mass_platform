@@ -14,6 +14,7 @@ import com.xa.mass.engine.service.AssignmentRecordService;
 import com.xa.mass.engine.storage.InMemoryTaskStorage;
 import com.xa.mass.engine.storage.TaskStorage;
 import com.xa.mass.engine.strategy.TaskScheduler;
+import com.xa.mass.engine.util.TraceEventLogCapture;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -94,6 +95,39 @@ class SimpleTaskMsgAssignListenerTest {
         );
         verify(workerManager, times(4)).isLocked(anyString());
         verify(workerManager, times(2)).updateWorkerContextById(anyString(), any(WorkerContext.class));
+    }
+
+    @Test
+    void assignmentEmitsTaskMsgAndWorkerContextTraceEvents() {
+        Task task = createTask(1);
+        task.setBatchSize(1);
+        WorkerContext wc = workerContext("tk1", "d1");
+        when(workerManager.updateWorkerContextById(anyString(), any(WorkerContext.class))).thenReturn(true);
+
+        try (TraceEventLogCapture capture = new TraceEventLogCapture()) {
+            listener.onMsgAssign(task, List.of(matched(worker("d1"), wc)));
+
+            capture.assertHasEvent("TASK_MSG_STATUS_TRANSITION", mdc ->
+                    task.getTid().equals(mdc.get("taskId"))
+                            && "INIT".equals(mdc.get("fromStatus"))
+                            && "BINDING".equals(mdc.get("toStatus")));
+            capture.assertHasEvent("TASK_MSG_STATUS_TRANSITION", mdc ->
+                    task.getTid().equals(mdc.get("taskId"))
+                            && "BINDING".equals(mdc.get("fromStatus"))
+                            && "ASSIGNED".equals(mdc.get("toStatus"))
+                            && "d1".equals(mdc.get("workerId"))
+                            && "tk1".equals(mdc.get("workerContextId")));
+            capture.assertHasEvent("WORKER_CONTEXT_STATUS_TRANSITION", mdc ->
+                    task.getTid().equals(mdc.get("taskId"))
+                            && "IDLE".equals(mdc.get("fromStatus"))
+                            && "RESERVED".equals(mdc.get("toStatus"))
+                            && "tk1".equals(mdc.get("workerContextId")));
+            capture.assertHasEvent("WORKER_CONTEXT_STATUS_TRANSITION", mdc ->
+                    task.getTid().equals(mdc.get("taskId"))
+                            && "RESERVED".equals(mdc.get("fromStatus"))
+                            && "OCCUPIED".equals(mdc.get("toStatus"))
+                            && "tk1".equals(mdc.get("workerContextId")));
+        }
     }
 
     @Test

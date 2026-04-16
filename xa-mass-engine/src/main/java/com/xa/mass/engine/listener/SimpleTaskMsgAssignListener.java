@@ -11,6 +11,7 @@ import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.model.MatchedWorkerContext;
 import com.xa.mass.engine.service.AssignmentRecordService;
+import com.xa.mass.engine.util.TraceEventLogger;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -81,6 +82,8 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
                         workerContext != null ? workerContext.getWorkerContextId() : "null",
                         task.getTid());
                 workerManager.unlockWorker(worker.getWorkerId());
+                TraceEventLogger.workerLockReleased(task.getTid(), worker.getWorkerId(),
+                        "UNLOCK_WORKER", "SimpleTaskMsgAssignListener", "workerContext not dispatchable");
                 batchId++;
                 continue;
             }
@@ -121,6 +124,8 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
         for (DispatchSlot slot : dispatchSlots) {
             if (slot.assignedCount() == 0) {
                 workerManager.unlockWorker(slot.worker().getWorkerId());
+                TraceEventLogger.workerLockReleased(task.getTid(), slot.worker().getWorkerId(),
+                        "UNLOCK_WORKER", "SimpleTaskMsgAssignListener", "matched worker received no messages");
             }
         }
 
@@ -179,13 +184,34 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
     }
 
     private boolean bindTaskMessage(TaskMsg taskMsg, String workerId, String workerContextId, String batchId) {
+        TaskMsgStatus beforeBinding = taskMsg.getStatus();
         if (!taskMsg.transitionTo(TaskMsgStatus.BINDING)) {
             return false;
         }
+        TraceEventLogger.taskMsgStatusTransition(
+                taskMsg,
+                beforeBinding,
+                taskMsg.getStatus(),
+                "BIND_TASK_MESSAGE",
+                "SimpleTaskMsgAssignListener",
+                "task message entered binding"
+        );
         taskMsg.setWorkerId(workerId);
         taskMsg.setWorkerContextId(workerContextId);
         taskMsg.setBatchId(batchId);
-        return taskMsg.markAsAssigned();
+        TaskMsgStatus beforeAssigned = taskMsg.getStatus();
+        if (!taskMsg.markAsAssigned()) {
+            return false;
+        }
+        TraceEventLogger.taskMsgStatusTransition(
+                taskMsg,
+                beforeAssigned,
+                taskMsg.getStatus(),
+                "BIND_TASK_MESSAGE",
+                "SimpleTaskMsgAssignListener",
+                "task message assigned to worker"
+        );
+        return true;
     }
 
     private boolean prepareWorkerContextForDispatch(Task task, WorkerContext workerContext) {
@@ -196,16 +222,36 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
         boolean changed = false;
         String taskId = task.getTid();
         if (workerContext.getStatus() == WorkerContextStatus.IDLE) {
+            WorkerContextStatus fromStatus = workerContext.getStatus();
             if (!workerContext.bindToTask(taskId)) {
                 return false;
             }
+            TraceEventLogger.workerContextStatusTransition(
+                    taskId,
+                    workerContext,
+                    fromStatus,
+                    workerContext.getStatus(),
+                    "PREPARE_FOR_DISPATCH",
+                    "SimpleTaskMsgAssignListener",
+                    "workerContext reserved for task"
+            );
             changed = true;
         }
         if (workerContext.getStatus() == WorkerContextStatus.RESERVED
                 && taskId.equals(workerContext.getLastBindTaskId())) {
+            WorkerContextStatus fromStatus = workerContext.getStatus();
             if (!workerContext.startOccupying()) {
                 return false;
             }
+            TraceEventLogger.workerContextStatusTransition(
+                    taskId,
+                    workerContext,
+                    fromStatus,
+                    workerContext.getStatus(),
+                    "PREPARE_FOR_DISPATCH",
+                    "SimpleTaskMsgAssignListener",
+                    "workerContext advanced to occupied"
+            );
             changed = true;
         }
 

@@ -10,6 +10,7 @@ import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.engine.service.AssignmentRecordService;
 import com.xa.mass.engine.strategy.RuleBasedTaskWorkerMatchingStrategy;
 import com.xa.mass.engine.strategy.TaskWorkerMatchingStrategy;
+import com.xa.mass.engine.util.TraceEventLogger;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -106,6 +107,16 @@ public class TaskWorkerAssignListener {
             unlockWorkers(dispatchCandidates);
             return false;
         }
+        if (initialStatus == TaskStatus.READY) {
+            TraceEventLogger.taskStatusTransition(
+                    task.getTid(),
+                    initialStatus,
+                    task.getStatus(),
+                    "ASSIGNMENT_SUCCEEDED",
+                    "TaskWorkerAssignListener",
+                    "matched workers dispatched"
+            );
+        }
         taskManager.updateTask(task);
         return true;
     }
@@ -135,6 +146,8 @@ public class TaskWorkerAssignListener {
                 .distinct()
                 .collect(Collectors.toList())) {
             workerManager.unlockWorker(workerId);
+            TraceEventLogger.workerLockReleased(null, workerId, "UNLOCK_WORKER", "TaskWorkerAssignListener",
+                    "surplus or skipped dispatch candidate");
         }
     }
 }

@@ -9,6 +9,7 @@ import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.model.MatchedWorkerContext;
 import com.xa.mass.engine.strategy.TaskWorkerMatchingStrategy;
+import com.xa.mass.engine.util.TraceEventLogCapture;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -59,6 +60,26 @@ class TaskWorkerAssignListenerTest {
         verify(matchingStrategy).matchWorkers(same(task), eq(2));
         verify(taskManager).updateTask(same(task));
         verify(msgAssignListener).onMsgAssign(same(task), eq(List.of(matchedWorker)));
+    }
+
+    @Test
+    void onTaskAssignEmitsReadyToRunningTrace() {
+        Task task = createTask(2, 2, 1, TaskStatus.READY);
+        Worker worker = createWorker("worker-1");
+        MatchedWorkerContext matchedWorker = matched(worker, "ctx-1");
+
+        when(taskManager.countPendingDispatchableMessages(task.getTid())).thenReturn(2);
+        when(matchingStrategy.matchWorkers(same(task), eq(1))).thenReturn(List.of(matchedWorker));
+        when(msgAssignListener.onMsgAssign(same(task), eq(List.of(matchedWorker)))).thenReturn(List.of(msg("m1", "worker-1")));
+
+        try (TraceEventLogCapture capture = new TraceEventLogCapture()) {
+            assertTrue(listener.onTaskAssign(task));
+            capture.assertHasEvent("TASK_STATUS_TRANSITION", mdc ->
+                    "task-1".equals(mdc.get("taskId"))
+                            && "READY".equals(mdc.get("fromStatus"))
+                            && "RUNNING".equals(mdc.get("toStatus"))
+                            && "ASSIGNMENT_SUCCEEDED".equals(mdc.get("trigger")));
+        }
     }
 
     @Test

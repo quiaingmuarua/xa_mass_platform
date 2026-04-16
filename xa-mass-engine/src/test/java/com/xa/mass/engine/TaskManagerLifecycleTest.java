@@ -14,6 +14,7 @@ import com.xa.mass.engine.policy.TaskTerminalPolicy;
 import com.xa.mass.engine.storage.InMemoryTaskStorage;
 import com.xa.mass.engine.storage.TaskStorage;
 import com.xa.mass.engine.strategy.TaskScheduler;
+import com.xa.mass.engine.util.TraceEventLogCapture;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -205,6 +206,36 @@ class TaskManagerLifecycleTest {
     }
 
     @Test
+    void handleTaskMessageResultEmitsRunningSuccessAndTerminalTrace() {
+        Task task = taskManager.createTask(buildRequest("task-result-trace", List.of("alpha")));
+        taskManager.approveTask(task.getTid());
+        task.setStatus(TaskStatus.RUNNING);
+        taskManager.updateTask(task);
+
+        TaskMsg message = taskManager.getTaskMessages(task.getTid()).get(0);
+        message.transitionTo(TaskMsgStatus.BINDING);
+        message.markAsAssigned();
+        taskManager.updateTaskMessage(task.getTid(), message);
+
+        try (TraceEventLogCapture capture = new TraceEventLogCapture()) {
+            assertTrue(taskManager.handleTaskMessageResult(task.getTid(), message.getMsgId(), true, "done"));
+            capture.assertHasEvent("TASK_MSG_STATUS_TRANSITION", mdc ->
+                    task.getTid().equals(mdc.get("taskId"))
+                            && message.getMsgId().equals(mdc.get("msgId"))
+                            && "ASSIGNED".equals(mdc.get("fromStatus"))
+                            && "RUNNING".equals(mdc.get("toStatus")));
+            capture.assertHasEvent("TASK_MSG_STATUS_TRANSITION", mdc ->
+                    task.getTid().equals(mdc.get("taskId"))
+                            && message.getMsgId().equals(mdc.get("msgId"))
+                            && "RUNNING".equals(mdc.get("fromStatus"))
+                            && "SUCCESS".equals(mdc.get("toStatus")));
+            capture.assertHasEvent("TASK_TERMINAL_CLOSED", mdc ->
+                    task.getTid().equals(mdc.get("taskId"))
+                            && "ALL_MESSAGES_SUCCEEDED".equals(mdc.get("terminalReason")));
+        }
+    }
+
+    @Test
     void handleTaskMessageResultMarksFailureAndKeepsExecutedCountAtSuccessOnly() {
         Task task = taskManager.createTask(buildRequest("task-result-failure"));
         taskManager.approveTask(task.getTid());
@@ -267,6 +298,30 @@ class TaskManagerLifecycleTest {
         assertEquals(1, updatedTask.getTaskSuccessNumber());
         assertEquals(1, scheduler.completedTaskMsgCount);
         assertEquals(0, scheduler.failedTaskMsgCount);
+    }
+
+    @Test
+    void retryEmitsRetryResetTrace() {
+        Task task = taskManager.createTask(buildRequest("task-result-retry-trace", List.of("alpha")));
+        taskManager.approveTask(task.getTid());
+        task.setStatus(TaskStatus.RUNNING);
+        taskManager.updateTask(task);
+
+        TaskMsg message = taskManager.getTaskMessages(task.getTid()).get(0);
+        message.transitionTo(TaskMsgStatus.BINDING);
+        message.markAsAssigned();
+        message.setWorkerId("worker-1");
+        message.setWorkerContextId("worker-context-1");
+        taskManager.updateTaskMessage(task.getTid(), message);
+
+        try (TraceEventLogCapture capture = new TraceEventLogCapture()) {
+            assertTrue(taskManager.handleTaskMessageResult(task.getTid(), message.getMsgId(), false, "boom-once"));
+            capture.assertHasEvent("TASK_MSG_RETRY_RESET", mdc ->
+                    task.getTid().equals(mdc.get("taskId"))
+                            && message.getMsgId().equals(mdc.get("msgId"))
+                            && "1".equals(mdc.get("retryCount"))
+                            && "INIT".equals(mdc.get("toStatus")));
+        }
     }
 
     @Test
@@ -414,6 +469,30 @@ class TaskManagerLifecycleTest {
     }
 
     @Test
+    void lateCallbackEmitsIgnoredLateTrace() {
+        Task task = taskManager.createTask(buildRequest("task-late-trace", List.of("alpha")));
+        taskManager.approveTask(task.getTid());
+        task.setStatus(TaskStatus.RUNNING);
+        taskManager.updateTask(task);
+
+        TaskMsg message = taskManager.getTaskMessages(task.getTid()).get(0);
+        message.transitionTo(TaskMsgStatus.BINDING);
+        message.markAsAssigned();
+        taskManager.updateTaskMessage(task.getTid(), message);
+
+        task.setStatus(TaskStatus.TERMINAL);
+        task.setTerminalReason(TaskTerminalReason.MANUAL_CANCELLED);
+        taskManager.updateTask(task);
+
+        try (TraceEventLogCapture capture = new TraceEventLogCapture()) {
+            assertTrue(taskManager.handleTaskMessageResult(task.getTid(), message.getMsgId(), true, "late-success"));
+            capture.assertHasEvent("CALLBACK_IGNORED_LATE", mdc ->
+                    task.getTid().equals(mdc.get("taskId"))
+                            && message.getMsgId().equals(mdc.get("msgId")));
+        }
+    }
+
+    @Test
     void duplicateTaskMessageResultKeepsFirstFinalStateAndDoesNotTriggerSchedulerTwice() {
         Task task = taskManager.createTask(buildRequest("task-result-duplicate", List.of("alpha")));
         taskManager.approveTask(task.getTid());
@@ -437,6 +516,27 @@ class TaskManagerLifecycleTest {
         assertEquals(1, updatedTask.getTaskSuccessNumber());
         assertEquals(1, scheduler.completedTaskMsgCount);
         assertEquals(0, scheduler.failedTaskMsgCount);
+    }
+
+    @Test
+    void duplicateCallbackEmitsIgnoredDuplicateTrace() {
+        Task task = taskManager.createTask(buildRequest("task-result-duplicate-trace", List.of("alpha")));
+        taskManager.approveTask(task.getTid());
+        task.setStatus(TaskStatus.RUNNING);
+
+        TaskMsg message = taskManager.getTaskMessages(task.getTid()).get(0);
+        message.transitionTo(TaskMsgStatus.BINDING);
+        message.markAsAssigned();
+        taskManager.updateTaskMessage(task.getTid(), message);
+
+        assertTrue(taskManager.handleTaskMessageResult(task.getTid(), message.getMsgId(), true, "done-once"));
+
+        try (TraceEventLogCapture capture = new TraceEventLogCapture()) {
+            assertTrue(taskManager.handleTaskMessageResult(task.getTid(), message.getMsgId(), true, "done-twice"));
+            capture.assertHasEvent("CALLBACK_IGNORED_DUPLICATE", mdc ->
+                    task.getTid().equals(mdc.get("taskId"))
+                            && message.getMsgId().equals(mdc.get("msgId")));
+        }
     }
 
     @Test

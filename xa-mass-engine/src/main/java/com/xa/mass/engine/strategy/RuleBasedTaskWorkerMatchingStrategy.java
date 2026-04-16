@@ -11,6 +11,7 @@ import com.xa.mass.engine.model.WorkerMatchContext;
 import com.xa.mass.engine.rules.RuleDefinition;
 import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.engine.service.AssignmentRecordService;
+import com.xa.mass.engine.util.TraceEventLogger;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -95,6 +96,11 @@ public class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatchingSt
 
                     if (hitRules.size() == rules.size()) {
                         if (workerManager.tryLockWorker(worker.getWorkerId())) {
+                            TraceEventLogger.workerLockAcquired(task.getTid(), worker.getWorkerId(),
+                                    "TRY_LOCK_WORKER", "RuleBasedTaskWorkerMatchingStrategy",
+                                    "all rules matched");
+                            TraceEventLogger.workerMatchAccepted(task.getTid(), worker, workerContext,
+                                    "all rules matched and worker lock acquired");
                             recordService.recordWorkerAssignment(
                                     task, worker, workerContext, AssignmentResult.SUCCESS,
                                     "all rules matched and worker lock acquired",
@@ -106,6 +112,8 @@ public class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatchingSt
                                     workerContext != null ? workerContext.getWorkerContextId() : "null",
                                     task.getTid());
                         } else {
+                            TraceEventLogger.workerMatchRejected(task.getTid(), worker, workerContext,
+                                    "worker lock conflict after rules matched");
                             recordService.recordWorkerAssignment(
                                     task, worker, workerContext, AssignmentResult.CONFLICT,
                                     "worker lock conflict after rules matched",
@@ -121,6 +129,8 @@ public class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatchingSt
                             .filter(r -> !r.isPassed())
                             .map(RuleEvaluationDetail::getRuleId)
                             .collect(Collectors.joining(", "));
+                    TraceEventLogger.workerMatchRejected(task.getTid(), worker, workerContext,
+                            "rule evaluation failed: " + failedRules);
                     recordService.recordWorkerAssignment(
                             task, worker, workerContext, AssignmentResult.RULE_NOT_MATCH,
                             "rule evaluation failed: " + failedRules,
@@ -141,6 +151,8 @@ public class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatchingSt
                         }
                     }
                 } catch (Exception e) {
+                    TraceEventLogger.workerMatchRejected(task.getTid(), worker, workerContext,
+                            "rule evaluation exception: " + e.getMessage());
                     recordService.recordWorkerAssignment(
                             task, worker, workerContext, AssignmentResult.FAILED,
                             "rule evaluation exception: " + e.getMessage(),
