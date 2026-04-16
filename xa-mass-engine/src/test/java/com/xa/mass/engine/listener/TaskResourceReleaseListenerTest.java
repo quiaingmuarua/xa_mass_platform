@@ -195,4 +195,33 @@ class TaskResourceReleaseListenerTest {
         verify(workerManager, never()).unlockWorker("worker-1");
         verify(dispatchRequester, never()).accept(same(task));
     }
+
+    @Test
+    void terminalTaskEmitsReleaseFailureTraceWhenWorkerContextCannotReturnToIdle() {
+        Task task = new Task();
+        task.setTid("task-1");
+
+        TaskMsg msg = new TaskMsg("msg-1", "task-1", "target-a");
+        msg.setWorkerId("worker-1");
+        msg.setWorkerContextId("wctx-1");
+
+        WorkerContext wctx = new WorkerContext("wctx-1", "worker-1", "us");
+        wctx.bindToTask("task-1");
+        wctx.startOccupying();
+        wctx.block();
+
+        when(taskManager.getTaskMessages("task-1")).thenReturn(List.of(msg));
+        when(workerManager.getWorkerContextById("wctx-1")).thenReturn(wctx);
+
+        try (TraceEventLogCapture capture = new TraceEventLogCapture()) {
+            listener.onTaskTerminal(task);
+            capture.assertHasEvent("RESOURCE_RELEASE_FAILED", mdc ->
+                    "task-1".equals(mdc.get("taskId"))
+                            && "worker-1".equals(mdc.get("workerId"))
+                            && "wctx-1".equals(mdc.get("workerContextId")));
+        }
+
+        verify(workerManager, never()).updateWorkerContextById("wctx-1", wctx);
+        verify(workerManager).unlockWorker("worker-1");
+    }
 }

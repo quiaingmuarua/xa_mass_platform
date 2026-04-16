@@ -15,6 +15,7 @@ import com.xa.mass.engine.rules.RuleType;
 import com.xa.mass.engine.service.AssignmentRecordService;
 import com.xa.mass.engine.storage.InMemoryWorkerStorage;
 import com.xa.mass.engine.storage.InMemoryRuleStorage;
+import com.xa.mass.engine.util.TraceEventLogCapture;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -64,6 +65,49 @@ class RuleBasedTaskWorkerMatchingStrategyTest {
                 .findFirst()
                 .orElseThrow();
         assertTrue(record.getWorkerSnapshot().isWorkerLocked());
+    }
+
+    @Test
+    void emitsAcceptedAndRejectedMatchTraceEvents() {
+        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
+        RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(new InMemoryRuleStorage());
+        AssignmentRecordService recordService = new AssignmentRecordService();
+        RuleBasedTaskWorkerMatchingStrategy strategy =
+                new RuleBasedTaskWorkerMatchingStrategy(ruleManager, workerManager, recordService);
+
+        ruleManager.addDefaultRules(List.of(
+                rule("basic_worker_check", "isWorkerAvailable == true && isWorkerLocked == false"),
+                rule("workerContext_status_check", "hasWorkerContext == false || isWorkerContextAllocatable == true"),
+                rule("workerContext_attribute_country", "workerContextAttributes['country'] == taskRoutingCode")
+        ));
+
+        Task task = new Task();
+        task.setTid("task-trace");
+        task.setProject("demoApp");
+        task.setTaskRoutingCode("us");
+        task.setStatus(TaskStatus.READY);
+
+        Worker acceptedWorker = worker("worker-us", "pool-east");
+        Worker rejectedWorker = worker("worker-gb", "pool-west");
+        workerManager.addWorker(acceptedWorker);
+        workerManager.addWorker(rejectedWorker);
+        workerManager.addWorkerContext(workerContext("worker-us", "ctx-us", "shared", "us"));
+        workerManager.addWorkerContext(workerContext("worker-gb", "ctx-gb", "shared", "gb"));
+
+        try (TraceEventLogCapture capture = new TraceEventLogCapture()) {
+            List<MatchedWorkerContext> matched = strategy.matchWorkers(task, 2);
+
+            assertEquals(1, matched.size());
+            capture.assertHasEvent("WORKER_MATCH_ACCEPTED", mdc ->
+                    "task-trace".equals(mdc.get("taskId"))
+                            && "worker-us".equals(mdc.get("workerId"))
+                            && "ctx-us".equals(mdc.get("workerContextId")));
+            capture.assertHasEvent("WORKER_MATCH_REJECTED", mdc ->
+                    "task-trace".equals(mdc.get("taskId"))
+                            && "worker-gb".equals(mdc.get("workerId"))
+                            && "ctx-gb".equals(mdc.get("workerContextId"))
+                            && mdc.get("reason").contains("rule evaluation failed"));
+        }
     }
 
     @Test

@@ -45,3 +45,4 @@ cursor.rules
 /xa-mass-mock/logs/
 .DS_Store
 **/.DS_Store
+/.claude/

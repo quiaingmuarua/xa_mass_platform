@@ -63,7 +63,7 @@ This file is the fastest entry point for coding agents such as Claude Code, Code
 - `TaskCreateRequestDto.defaultMsgMaxRetryCount` (default `3`) configures per-task retry budget; callers may set to `0` to disable retries
 - `Task.openEnded=true` suppresses automatic terminal closure; append work items at runtime via `POST /status/api/tasks/{taskId}/items`, then close the append window with `PUT /status/api/tasks/{taskId}/seal`
 - `WorkerAdapter` interface (`xa-mass-engine/worker/`) is the transport extension seam: it extends `TaskMsgDispatchListener` and declares `protocol()`; `WebSocketWorkerAdapter` in `xa-mass-runtime` is the current WS implementation; future HTTP/gRPC adapters plug in here without touching engine internals
-- Treat `engine/v2` as historical archive material, not mainline
+- Historical `v2` / archive engine generations have been removed from the current repository snapshot; if older notes mention them, treat those notes as stale history, not missing code
 
 ## 0.1 Platform Definition
 
@@ -107,10 +107,9 @@ Keep these constraints fixed unless the kernel itself is intentionally redesigne
 
 Important boundary:
 
-- `xa-mass-base` and `xa-mass-starter` directories still exist in the repo, but they are not in the current root reactor
-- do not assume those directories represent the active mainline just because their package names or filenames look familiar
 - for active shared models/enums/eventbus code, prefer `xa-mass-core`
 - for active lifecycle/composition code, prefer `xa-mass-runtime`
+- older docs may still mention removed modules such as `xa-mass-base` or `xa-mass-starter`; treat those names as historical only
 
 ## 2. Read This First
 
@@ -130,12 +129,13 @@ Trust order:
 10. `doc/archive/API_DOCUMENTATION.md` / `doc/archive/QUICK_REFERENCE.md` - archived reference docs, partially outdated
 11. `old/` / `v2/` docs - historical archive only
 
-Deleted historical docs that should not be treated as missing:
+Deleted historical material that should not be treated as missing:
 
 - `doc/daily/`
 - former planning doc under `doc/`
 - `xa-mass-engine/.../v2/new_engine_refactory.md`
 - former v2 matching-strategy draft under `xa-mass-engine/.../v2/`
+- removed top-level legacy modules such as `xa-mass-base` and `xa-mass-starter`
 
 ## 3. Real Entry Point
 
@@ -187,7 +187,7 @@ Default `dev` startup facts:
 - The current mainline is `core + engine + gateway + api + runtime + mock`, as defined by the root `pom.xml`.
 - The active runtime path now uses the current `channel/eventbus/core` and `channel/eventbus/event` packages.
 - New EventBus docs describe target architecture, not fully verified runtime reality.
-- `v2` is not the mainline implementation.
+- historical `v2` / archive code is no longer present in the current repository snapshot.
 - API-first task flow is the current source of truth. UI pages are a secondary validation surface.
 - Some historical docs still overstate completion and should not be trusted over code.
 
@@ -281,7 +281,7 @@ Current status:
 
 - Mainline implementation lives here
 - Active production code lives under `xa-mass-engine/src/main/java/com/xa/mass/engine`
-- Historical `v2` code has been moved under `xa-mass-engine/archive/v2/` to keep it out of the active source tree
+- Historical `v2` / archive engine code has been removed from the current repository snapshot to reduce agent confusion
 
 Open first:
 
@@ -294,7 +294,7 @@ Notes:
 - Mainline engine tests are the active regression surface.
 - `TaskWorkerMatchingStrategy` is now the engine extension seam for pluggable task-to-worker matching policies.
 - `WorkerAdapter` interface (`xa-mass-engine/worker/WorkerAdapter.java`) is the transport adapter seam; concrete implementations live outside the engine (currently `xa-mass-runtime`).
-- `xa-mass-engine/archive/v2/**` is historical experiment code, not active regression.
+- If an older note references `xa-mass-engine/archive/v2/**`, treat it as historical drift rather than an active path.
 
 ### `xa-mass-core`
 
@@ -322,7 +322,7 @@ Notes:
 
 - The mainline EventBus namespace is the current `channel/eventbus/core` and `channel/eventbus/event` path.
 - The former legacy compatibility package has been removed from the active source tree to reduce agent confusion.
-- Many Java packages still use `com.xa.mass.base.*`; package names do not imply that `xa-mass-base` is the active reactor module.
+- Many Java packages still use `com.xa.mass.base.*`; package names do not imply that a reactor module named `xa-mass-base` still exists in the current repo.
 
 ### `xa-mass-gateway`
 
@@ -565,13 +565,13 @@ What the new focused coverage proves:
 
 ## 8. Historical Test Debt
 
-Do not treat `xa-mass-engine/archive/v2/**` as current regression.
+Do not reconstruct old `v2` / archive test surfaces as current regression.
 
 Reason:
 
-- those tests/examples depend on removed `com.xa.mass.base.channel.messaging.*` packages
-- they represent historical experimental code, not the current mainline
-- they were moved out of `src/main/java` and `src/test/java` into `xa-mass-engine/archive/v2/` to reduce agent confusion
+- older references depended on removed `com.xa.mass.base.channel.messaging.*` packages
+- they represented historical experimental code, not the current mainline
+- the current repository intentionally keeps that code out of the active tree so agents start from live engine paths only
 
 ## 9. Known Problems
 

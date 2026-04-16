@@ -195,6 +195,39 @@ public final class TraceEventLogger {
         ));
     }
 
+    public static void dispatchRequested(String taskId,
+                                         String trigger,
+                                         String source,
+                                         String reason) {
+        emit("DISPATCH_REQUESTED", fields(
+                "entityType", "Task",
+                "entityId", taskId,
+                "taskId", taskId,
+                "trigger", trigger,
+                "source", source,
+                "reason", reason,
+                "result", "SUCCESS"
+        ));
+    }
+
+    public static void dispatchSkipped(String taskId,
+                                       String trigger,
+                                       String source,
+                                       String reason,
+                                       Integer requiredMinWorkerCount) {
+        emit("DISPATCH_SKIPPED", fields(
+                "entityType", "Task",
+                "entityId", taskId,
+                "taskId", taskId,
+                "trigger", trigger,
+                "source", source,
+                "reason", reason,
+                "requiredMinWorkerCount",
+                requiredMinWorkerCount != null ? String.valueOf(requiredMinWorkerCount) : null,
+                "result", "SKIPPED"
+        ));
+    }
+
     public static void callbackAccepted(TaskMsg taskMsg, String reason) {
         if (taskMsg == null) {
             return;

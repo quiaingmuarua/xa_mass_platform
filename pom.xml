@@ -61,7 +61,7 @@
 
     <build>
         <plugins>
-            <!-- Spring Boot插件已移除，仅在xa-mass-app中配�?-->
+            <!-- Spring Boot插件已移除，仅在xa-mass-app中配�?-->
         </plugins>
     </build>
 

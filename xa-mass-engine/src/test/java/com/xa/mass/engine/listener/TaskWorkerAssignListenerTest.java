@@ -83,6 +83,25 @@ class TaskWorkerAssignListenerTest {
     }
 
     @Test
+    void onTaskAssignEmitsDispatchRequestedTrace() {
+        Task task = createTask(2, 2, 1, TaskStatus.READY);
+        Worker worker = createWorker("worker-1");
+        MatchedWorkerContext matchedWorker = matched(worker, "ctx-1");
+
+        when(taskManager.countPendingDispatchableMessages(task.getTid())).thenReturn(2);
+        when(matchingStrategy.matchWorkers(same(task), eq(1))).thenReturn(List.of(matchedWorker));
+        when(msgAssignListener.onMsgAssign(same(task), eq(List.of(matchedWorker)))).thenReturn(List.of(msg("m1", "worker-1")));
+
+        try (TraceEventLogCapture capture = new TraceEventLogCapture()) {
+            assertTrue(listener.onTaskAssign(task));
+            capture.assertHasEvent("DISPATCH_REQUESTED", mdc ->
+                    "task-1".equals(mdc.get("taskId"))
+                            && "ON_TASK_ASSIGN".equals(mdc.get("trigger"))
+                            && "TaskWorkerAssignListener".equals(mdc.get("source")));
+        }
+    }
+
+    @Test
     void onTaskAssignUsesMinRequiredWorkerCountWhenItExceedsCalculatedNeed() {
         Task task = createTask(3, 10, 4, TaskStatus.READY);
         Worker worker1 = createWorker("worker-1");
@@ -149,6 +168,28 @@ class TaskWorkerAssignListenerTest {
     }
 
     @Test
+    void onTaskAssignEmitsDispatchSkippedTraceWhenTaskLeavesReadyDuringMatching() {
+        Task task = createTask(10, 5, 1, TaskStatus.READY);
+        Worker worker = createWorker("worker-1");
+        MatchedWorkerContext matchedWorker = matched(worker, "ctx-1");
+
+        when(taskManager.countPendingDispatchableMessages(task.getTid())).thenReturn(10);
+        when(matchingStrategy.matchWorkers(same(task), eq(2))).thenAnswer(invocation -> {
+            task.setStatus(TaskStatus.PAUSED);
+            return List.of(matchedWorker);
+        });
+
+        try (TraceEventLogCapture capture = new TraceEventLogCapture()) {
+            assertFalse(listener.onTaskAssign(task));
+            capture.assertHasEvent("DISPATCH_SKIPPED", mdc ->
+                    "task-1".equals(mdc.get("taskId"))
+                            && "ON_TASK_ASSIGN".equals(mdc.get("trigger"))
+                            && "SKIPPED".equals(mdc.get("result"))
+                            && mdc.get("reason").contains("status changed during matching"));
+        }
+    }
+
+    @Test
     void onTaskAssignKeepsTaskReadyUntilMinimumWorkerCountIsMet() {
         Task task = createTask(1, 1, 2, TaskStatus.READY);
         Worker worker = createWorker("worker-1");
@@ -165,6 +206,24 @@ class TaskWorkerAssignListenerTest {
         verify(workerManager).unlockWorker("worker-1");
         verify(taskManager, never()).updateTask(task);
         verifyNoInteractions(msgAssignListener);
+    }
+
+    @Test
+    void onTaskAssignEmitsDispatchSkippedTraceWhenBelowMinimumWorkerCount() {
+        Task task = createTask(1, 1, 2, TaskStatus.READY);
+        Worker worker = createWorker("worker-1");
+        MatchedWorkerContext matchedWorker = matched(worker, "ctx-1");
+
+        when(taskManager.countPendingDispatchableMessages(task.getTid())).thenReturn(1);
+        when(matchingStrategy.matchWorkers(same(task), eq(2))).thenReturn(List.of(matchedWorker));
+
+        try (TraceEventLogCapture capture = new TraceEventLogCapture()) {
+            assertFalse(listener.onTaskAssign(task));
+            capture.assertHasEvent("DISPATCH_SKIPPED", mdc ->
+                    "task-1".equals(mdc.get("taskId"))
+                            && "2".equals(mdc.get("requiredMinWorkerCount"))
+                            && mdc.get("reason").contains("below minimum start gate"));
+        }
     }
 
     @Test

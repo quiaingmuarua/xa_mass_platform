@@ -37,7 +37,7 @@ XA Mass Platform is a general distributed task scheduling platform.
 - Real Spring Boot entrypoint: `xa-mass-mock`
 - Do not start from `xa-mass-runtime`
 - Current root reactor modules are `xa-mass-api`, `xa-mass-core`, `xa-mass-engine`, `xa-mass-gateway`, `xa-mass-runtime`, and `xa-mass-mock`
-- `xa-mass-base` and `xa-mass-starter` directories remain in the repository but are not part of the current root reactor
+- historical reactor/module experiments such as `xa-mass-base`, `xa-mass-starter`, and engine archive generations are no longer present in the current repository snapshot
 - Verified HTTP port: `server.port=8088`
 - Verified WebSocket gateway port: `mass.websocket.port=18088`
 - Verified task lifecycle coverage includes:
@@ -80,7 +80,7 @@ Module boundary note:
 
 - top-level directories are not automatically active modules
 - check the root `pom.xml` before treating a directory as current mainline
-- `xa-mass-base` and `xa-mass-starter` are currently reference/legacy directories, not root-reactor modules
+- if an older doc references removed modules or archive code, treat that as historical drift rather than something missing from the current repo
 
 ## Documentation Layout
 

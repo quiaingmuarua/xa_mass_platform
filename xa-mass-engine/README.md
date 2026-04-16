@@ -11,8 +11,8 @@
 
 - this is the active production path
 - active production code lives under `src/main/java/com/xa/mass/engine`
-- historical `v2` material has been moved under `archive/v2/`
-- mainline regression work should target current engine tests, not historical `v2` tests
+- historical `v2` / archive engine generations are not part of the current repository snapshot
+- mainline regression work should target current engine tests, not historical notes or removed archive tests
 
 ## Start Here
 
@@ -22,7 +22,7 @@
 
 ## Boundaries
 
-- do not treat `archive/v2/**` as current regression
+- do not reconstruct removed `v2` / archive code as current regression
 - do not assume scheduler stubs represent the current runtime path for `READY -> RUNNING`
 - prefer extending assignment through engine strategy interfaces instead of hard-coding API or demo-layer behavior
 - use these documents before trusting module-local assumptions:

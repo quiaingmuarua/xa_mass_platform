@@ -82,9 +82,8 @@ Interpretation rules:
 - The real Spring Boot entry is `xa-mass-mock`.
 - `xa-mass-runtime` is a composition layer, not the primary Boot entry.
 - The current mainline reactor is defined by the root `pom.xml`: `xa-mass-api`, `xa-mass-core`, `xa-mass-engine`, `xa-mass-gateway`, `xa-mass-runtime`, `xa-mass-mock`.
-- `xa-mass-base` and `xa-mass-starter` still exist as top-level directories but are not current root-reactor modules.
 - `com.xa.mass.engine` is the active engine path.
-- `xa-mass-engine/archive/v2/` is historical experiment code, not the current mainline.
+- historical `v2` / archive engine generations are no longer present in the current repository snapshot.
 - EventBus mainline has converged onto `com.xa.mass.base.channel.eventbus.core` and `com.xa.mass.base.channel.eventbus.event`.
 - Mainline acceptance is end-to-end integration-test-driven through `xa-mass-mock`; unit tests are support coverage, not the primary acceptance gate.
 
@@ -109,7 +108,7 @@ Behavior locked in the mainline:
 - `targetList` must contain at least one materialized target
 - unsupported `project` codes are rejected
 - unknown JSON fields such as retired `targetJsonList`, `targetType`, and `extraParams` are rejected
-- `batchSize` is preserved on the task and enforced as a per-device hard cap for each dispatch round
+- `batchSize` is preserved on the task and enforced as a per-worker hard cap for each dispatch round
 - `defaultMsgMaxRetryCount` defaults to `3`
 - `openEnded=true` keeps the task open for runtime item append until sealed
 
@@ -202,7 +201,7 @@ For payload and matching:
 Do not assume, without re-verification:
 
 - `xa-mass-runtime` is the main runnable app
-- `v2` is the active engine generation
+- removed `v2` / archive code is not locally available to inspect
 - older API docs still match implementation exactly
 - current `Worker / WorkerContext / WebSocket` names are the platform's only future resource model
 - a documented capability is live just because it is written down

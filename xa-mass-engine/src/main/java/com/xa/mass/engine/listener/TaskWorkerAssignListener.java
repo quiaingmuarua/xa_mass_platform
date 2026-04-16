@@ -54,11 +54,15 @@ public class TaskWorkerAssignListener {
     public boolean onTaskAssign(Task task) {
         TaskStatus initialStatus = task.getStatus();
         if (initialStatus != TaskStatus.READY && initialStatus != TaskStatus.RUNNING) {
+            TraceEventLogger.dispatchSkipped(task.getTid(), "ON_TASK_ASSIGN", "TaskWorkerAssignListener",
+                    "task status is not dispatchable: " + initialStatus, null);
             return false;
         }
 
         int pendingDispatchCount = taskManager.countPendingDispatchableMessages(task.getTid());
         if (pendingDispatchCount <= 0) {
+            TraceEventLogger.dispatchSkipped(task.getTid(), "ON_TASK_ASSIGN", "TaskWorkerAssignListener",
+                    "no pending INIT task messages", null);
             return false;
         }
 
@@ -69,23 +73,32 @@ public class TaskWorkerAssignListener {
         int matchRequestCount = Math.max(requiredStartWorkerCount, desiredDispatchWorkerCount);
         List<MatchedWorkerContext> matched = matchWorkersWithRules(task, matchRequestCount);
         if (matched.isEmpty()) {
+            TraceEventLogger.dispatchSkipped(task.getTid(), "ON_TASK_ASSIGN", "TaskWorkerAssignListener",
+                    "no matched worker-context candidates", requiredStartWorkerCount);
             return false;
         }
         if (initialStatus == TaskStatus.READY && matched.size() < requiredStartWorkerCount) {
             log.info("[WorkerAssign] Keep task {} in READY because matched workers {} are below required minimum {}",
                     task.getTid(), matched.size(), requiredStartWorkerCount);
+            TraceEventLogger.dispatchSkipped(task.getTid(), "ON_TASK_ASSIGN", "TaskWorkerAssignListener",
+                    "matched workers below minimum start gate", requiredStartWorkerCount);
             unlockWorkers(matched);
             return false;
         }
         if (task.getStatus() != initialStatus) {
             log.info("[WorkerAssign] Skip dispatch for task {} because status changed from {} to {} during matching",
                     task.getTid(), initialStatus, task.getStatus());
+            TraceEventLogger.dispatchSkipped(task.getTid(), "ON_TASK_ASSIGN", "TaskWorkerAssignListener",
+                    "task status changed during matching from " + initialStatus + " to " + task.getStatus(),
+                    requiredStartWorkerCount);
             unlockWorkers(matched);
             return false;
         }
 
         List<MatchedWorkerContext> dispatchCandidates = matched.subList(0, Math.min(matched.size(), desiredDispatchWorkerCount));
         if (dispatchCandidates.isEmpty()) {
+            TraceEventLogger.dispatchSkipped(task.getTid(), "ON_TASK_ASSIGN", "TaskWorkerAssignListener",
+                    "no dispatch candidates remained after capacity trim", requiredStartWorkerCount);
             unlockWorkers(matched);
             return false;
         }
@@ -98,8 +111,13 @@ public class TaskWorkerAssignListener {
                 .distinct()
                 .count();
         if (usedWorkerCount <= 0) {
+            TraceEventLogger.dispatchSkipped(task.getTid(), "ON_TASK_ASSIGN", "TaskWorkerAssignListener",
+                    "matched candidates produced no bound task messages", requiredStartWorkerCount);
             return false;
         }
+
+        TraceEventLogger.dispatchRequested(task.getTid(), "ON_TASK_ASSIGN", "TaskWorkerAssignListener",
+                "matched candidates produced dispatchable task messages");
 
         task.setPeakAssignedWorkerCount(Math.max(task.getPeakAssignedWorkerCount(), (int) usedWorkerCount));
         if (initialStatus == TaskStatus.READY && !task.transitionTo(TaskStatus.RUNNING)) {
