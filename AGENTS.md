@@ -2,67 +2,44 @@
 
 This file is the fastest entry point for coding agents such as Claude Code, Codex, and similar tools.
 
+## 0. Navigation Index
+
+Use this index before reading the full document end to end.
+
+If you need fast orientation:
+
+- Platform definition and hard constraints: [0. TL;DR](#0-tldr), [0.1 Platform Definition](#01-platform-definition), [0.2 Architectural Guardrails](#02-architectural-guardrails), [0.3 Encoding And Comment Rules](#03-encoding-and-comment-rules)
+- Active repository truth: [1. What This Repo Is](#1-what-this-repo-is), [2. Read This First](#2-read-this-first), [5. Current Reality, Not Marketing](#5-current-reality-not-marketing), [5.1 Module Map](#51-module-map)
+- Startup and runtime entry: [3. Real Entry Point](#3-real-entry-point), [4. Verified Startup](#4-verified-startup)
+- State machine and payload model: [6. Task Lifecycle Status](#6-task-lifecycle-status), [6.1 Platform Model](#61-platform-model)
+- Regression surface: [7. Known Good Test Surface](#7-known-good-test-surface)
+- Current gaps and next work: [9. Known Problems](#9-known-problems), [10. Good Next Tasks](#10-good-next-tasks)
+- Fast file-entry shortcuts: [11. Files Worth Opening Early](#11-files-worth-opening-early), [12. If You Need Fast Orientation By Task](#12-if-you-need-fast-orientation-by-task), [13. Working Rule](#13-working-rule)
+
 ## 0. TL;DR
 
 - XA Mass Platform is a distributed task scheduling platform for large-scale work distribution, execution, result write-back, and lifecycle audit
 - Real boot entry: `xa-mass-mock`
 - Do not start from `xa-mass-runtime`
 - Trust code and verified runtime over repository docs
-- Default `dev` startup now auto-starts mock WebSocket clients through `mock.client.auto-start=true`
-- Port split is explicit: `server.port` for HTTP and `mass.websocket.port` for the gateway WebSocket server
 - Project direction is library/SDK-first; HTTP pages and backend endpoints are validation/demo surfaces
 - Mainline change discipline is now end-to-end integration-test-driven first; unit tests remain important, but they are support coverage rather than the primary acceptance gate
-- Mainline maintainability also depends on three short baseline docs:
-  - `doc/STATE_MACHINE_BASELINE.md`
-  - `doc/TRACE_CONTRACT.md`
-  - `doc/E2E_BASELINE.md`
-- Current verified API task path: `NEW -> READY -> RUNNING -> TERMINAL`
-- Pause/resume regression is also verified: `NEW -> READY -> PAUSED -> READY`
-- `TaskManager.createTask()` now accepts only the supported create contract fields: `userId`, `project`, `taskName`, `sharedConfig`, `targetList`, `routingCode`, `batchSize`, `defaultMsgMaxRetryCount`, and `openEnded`
-- current mainline preserves request `batchSize` and now enforces it as a per-worker hard cap for each dispatch round
-- task-create requests fail fast when `targetList` is empty/null, when `project` is unsupported, or when clients send unknown JSON fields such as retired `targetJsonList` / `targetType` / `extraParams`
-- `PUT /status/api/tasks/{taskId}` is now intentionally narrower than create: it accepts only metadata fields (`userId`, `project`, `taskName`, `sharedConfig`, `routingCode`, `batchSize`), rejects `targetList` and other unknown fields, and only allows edits while the task is still `NEW` or `BLOCKED`
-- Runtime task blocking is intentionally distinct from review rejection: `rejectTask` is `NEW -> BLOCKED`, while `blockTask` is `READY/RUNNING -> BLOCKED`; controller `/status` and `/block` endpoints now preserve that distinction
-- `Task` aggregate counters are now named by real meaning:
-  - `taskTargetNumber`
-  - `taskEligibleNumber`
-  - `taskSuccessNumber`
-  - `taskNonSuccessNumber`
-- `Task.terminalReason` now distinguishes manual cancel from message-driven terminal closure
-- `TaskTerminalPolicy` is now the engine seam for future task-level stop rules such as max runtime, success-rate thresholds, or retry-budget exhaustion
-- `TaskManager.validateTaskState()` now provides an explicit SDK-facing audit for `Task + TaskMsg` consistency and pending terminal resolution
-- Engine regression now verifies that paused tasks close to `TERMINAL` once all `TaskMsg` callbacks finish
-- Engine regression now verifies that `READY` tasks without a worker match are retried instead of falling out of the assignment loop
-- Engine regression now verifies that assignment does not dispatch if a task leaves `READY` during the matching window
-- Engine regression now verifies that late callbacks after manual terminal closure are ignored instead of mutating task/message progress
-- Current focused mock/runtime regression is green
-- `TaskApiIntegrationTest` now covers `create -> approve -> assign -> run -> complete`
-- `TaskApiFailureResultIntegrationTest` now covers `create -> approve -> assign -> fail -> terminal`
-- `TaskApiLifecycleGuardsIntegrationTest` now covers `reject -> approve`, `pause -> resume`, and delete guard through real HTTP APIs
-- `TaskApiTerminateRunningIntegrationTest` now covers `approve -> assign -> running -> terminate -> delete` without mock client callbacks
-- `TaskApiCallbackReplayIntegrationTest` now covers duplicate `TASK/step` callback replay through the real gateway path
-- `TaskApiPauseCompletionIntegrationTest` now covers `approve -> assign -> running -> pause -> callback -> terminal` through the real gateway path
-- `TaskApiStateValidationIntegrationTest` now covers `GET /status/api/tasks/{taskId}` state-audit output for valid terminal tasks, forced `needsResolution=true` tasks, and invalid terminal-reason variants
-- `TaskApiWorkerContextAttributeRoutingIntegrationTest` now covers worker-context-attribute-based routing through the real assignment and gateway path
-- `TaskApiWorkerWithoutContextIntegrationTest` now covers stateless-worker execution: a `Worker` with no `WorkerContext` can still complete tasks that do not require worker-context-based routing
-- `TaskApiSingleWorkerReuseIntegrationTest` now covers normal `TERMINAL` completion releasing a single worker/worker-context for the next task
-- `TaskApiTerminateReuseIntegrationTest` now covers manual `RUNNING -> TERMINAL` release so the same single worker/worker-context can be assigned again
-- `TaskApiMinimumWorkerGateIntegrationTest` now covers `minRequiredWorkerCount` as a real start gate: one worker is not enough to leave `READY` when the task requires two
-- `TaskApiMultiRoundDispatchIntegrationTest` now covers a single worker completing a multi-target task across multiple dispatch rounds when `batchSize=1`
-- `MassWebSocketClientImpl` ignores `response=true` `TASK/step` frames to avoid mock echo loops
-- `mock.client.task-result-status` can force mock result frames to `SUCCESS` or `FAILED`
-- `MassApplication.loadMockData(...)` now applies non-empty explicit mock rules from `mass.mock.data.rules`; an empty rules fixture keeps the current default worker-match rules in place
-- `Worker.attributes` and `WorkerContext.attributes` are now read-only auxiliary rule labels for matching and diagnostics only
-- `Worker.status` is the single online truth, and runtime worker lock truth now lives only in `WorkerStorage` / `WorkerManager.isLocked(...)`
-- `WorkerStatus`, `WorkerContext`, and dispatch-time worker-context binding are now stricter: null statuses are rejected, worker-context release only frees real dispatch ownership, and assignment moves worker contexts into `OCCUPIED`
-- `WorkerContextStatus` vocabulary is domain-neutral: `IDLE` (free), `RESERVED` (pre-allocated), `OCCUPIED` (executing), `BLOCKED` (manually locked), `INVALID` (unusable); dispatch-time worker-context ownership now uses the `RESERVED -> OCCUPIED` progression.
-- `WorkerContext` runtime signals are now stricter: `isWorkerContextAvailable` means truly free for new assignment (`IDLE` and not expired), while `isWorkerContextUsable` is only a broader diagnostic/runtime-health signal.
-- Stateless workers are now part of the verified mainline: a `Worker` may execute tasks without any `WorkerContext` when the task does not require worker-context-based routing.
-- `Task.sharedConfig: Map<String,Object>` replaces the former `textContent: String`; all keys are spread into WebSocket dispatch params alongside `TaskMsg.input` keys, so existing workers receive `textContent` transparently when it is stored in `sharedConfig`
-- `TaskMsg.input: Map<String,Object>` replaces the former `target: String`; `getTarget()` is a backwards-compat accessor reading `input["target"]`
-- `TaskCreateRequestDto.defaultMsgMaxRetryCount` (default `3`) configures per-task retry budget; callers may set to `0` to disable retries
-- `Task.openEnded=true` suppresses automatic terminal closure; append work items at runtime via `POST /status/api/tasks/{taskId}/items`, then close the append window with `PUT /status/api/tasks/{taskId}/seal`
-- `WorkerAdapter` interface (`xa-mass-engine/worker/`) is the transport extension seam: it extends `TaskMsgDispatchListener` and declares `protocol()`; `WebSocketWorkerAdapter` in `xa-mass-runtime` is the current WS implementation; future HTTP/gRPC adapters plug in here without touching engine internals
+- Default `dev` startup auto-connects mock WebSocket clients when `mock.client.auto-start=true`
+- Port split is explicit: `server.port` for HTTP and `mass.websocket.port` for gateway WebSocket
+- The most important baseline docs are `doc/STATE_MACHINE_BASELINE.md`, `doc/TRACE_CONTRACT.md`, and `doc/E2E_BASELINE.md`
+- Verified mainline task lifecycle is `NEW -> READY -> RUNNING -> TERMINAL`, with pause/resume `NEW -> READY -> PAUSED -> READY`
+- Create contract is strict: `userId`, `project`, `taskName`, `sharedConfig`, `targetList`, `routingCode`, `batchSize`, `defaultMsgMaxRetryCount`, and `openEnded`; unknown retired fields fail fast
+- Update contract is narrower than create and only allowed while the task is `NEW` or `BLOCKED`
+- `batchSize` is a per-worker hard cap for each dispatch round
+- Runtime blocking and review rejection are intentionally distinct: `rejectTask` is `NEW -> BLOCKED`, while `blockTask` is `READY/RUNNING -> BLOCKED`
+- Task aggregate counters now use their real meanings: `taskTargetNumber`, `taskEligibleNumber`, `taskSuccessNumber`, `taskNonSuccessNumber`
+- Read terminal tasks as `TaskStatus + terminalReason`; `TaskTerminalPolicy` is the seam for future stop policies
+- `TaskManager.validateTaskState()` is the SDK-facing audit for `Task + TaskMsg` consistency and pending resolution
+- `Task.sharedConfig` is the task-level payload boundary; `TaskMsg.input/output` is the work-item payload boundary; `getTarget()` is only a backwards-compat accessor
+- `Worker.status` is the single online truth; worker lock truth lives in `WorkerStorage` / `WorkerManager.isLocked(...)`
+- `Worker.attributes` and `WorkerContext.attributes` are read-only auxiliary rule labels only
+- `WorkerContext` is optional; stateless workers are part of the verified mainline
+- Regression focus is healthy: mock/runtime E2E covers lifecycle, pause completion, callback replay, worker-context routing, stateless workers, single-worker reuse, minimum-worker gate, and multi-round dispatch
 - Historical `v2` / archive engine generations have been removed from the current repository snapshot; if older notes mention them, treat those notes as stale history, not missing code
 
 ## 0.1 Platform Definition
@@ -91,6 +68,16 @@ Keep these constraints fixed unless the kernel itself is intentionally redesigne
 - `attributes` on `Worker` and `WorkerContext` are auxiliary rule labels only. They are not a second source of lifecycle, lock, or online truth.
 - New features should extend the abstract platform model first. Do not let the current `worker/worker-context` reference scenario collapse the platform definition back into a single vertical system.
 - If lifecycle semantics change, update code, `STATE_MACHINE_BASELINE`, `TRACE_CONTRACT`, and E2E coverage together.
+
+## 0.3 Encoding And Comment Rules
+
+Keep these text-formatting rules fixed to reduce agent and Windows-tooling drift:
+
+- Source files, Markdown docs, JSON, YAML, and HTML should be saved as UTF-8.
+- New code comments should be written in English.
+- When touching a file that already contains mojibake or encoding-drifted comments, prefer rewriting the touched comments into clear English instead of adding more localized comments beside them.
+- Avoid adding new Chinese comments in Java source files. User-facing API payloads and business strings may still use the language required by the product, but source comments should stay English.
+- If a file's displayed text looks garbled in Windows tooling, verify it with explicit UTF-8 decoding before assuming the file contents are corrupt.
 
 ## 1. What This Repo Is
 
@@ -497,71 +484,47 @@ Matching/runtime signal semantics:
 
 ## 7. Known Good Test Surface
 
-Focused verified regression command on `2026-04-14`:
+Focused verified regression command:
 
 ```bash
 mvn -pl xa-mass-mock -am -Dtest=WorkerAttributesTest,WorkerContextAttributesTest,WorkerMatchContextTest,QLExpressRuleEvaluatorTest,RuleBasedTaskWorkerMatchingStrategyTest,TaskApiDelayedWorkerAvailabilityIntegrationTest,TaskApiWorkerContextAttributeRoutingIntegrationTest,TaskApiWorkerWithoutContextIntegrationTest,MassApplicationLoadMockDataTest -Dsurefire.failIfNoSpecifiedTests=false test
 ```
 
-Verified focused classes:
+Current regression shape:
 
-- `xa-mass-mock` end-to-end integration suites are now organized by domain instead of a flat `api/` package:
-- `xa-mass-mock/src/test/java/com/xa/mass/mock/e2e/lifecycle/TaskApiIntegrationTest.java`
-- `xa-mass-mock/src/test/java/com/xa/mass/mock/e2e/lifecycle/TaskApiLifecycleGuardsIntegrationTest.java`
-- `xa-mass-mock/src/test/java/com/xa/mass/mock/e2e/lifecycle/TaskApiPauseCompletionIntegrationTest.java`
-- `xa-mass-mock/src/test/java/com/xa/mass/mock/e2e/lifecycle/TaskApiResumeAndCompleteIntegrationTest.java`
-- `xa-mass-mock/src/test/java/com/xa/mass/mock/e2e/lifecycle/TaskApiTerminateRunningIntegrationTest.java`
-- `xa-mass-mock/src/test/java/com/xa/mass/mock/e2e/results/TaskApiFailureResultIntegrationTest.java`
-- `xa-mass-mock/src/test/java/com/xa/mass/mock/e2e/results/TaskApiCallbackReplayIntegrationTest.java`
-- `xa-mass-mock/src/test/java/com/xa/mass/mock/e2e/results/TaskApiMixedResultsIntegrationTest.java`
-- `xa-mass-mock/src/test/java/com/xa/mass/mock/e2e/assignment/TaskApiDelayedWorkerAvailabilityIntegrationTest.java`
-- `xa-mass-mock/src/test/java/com/xa/mass/mock/e2e/assignment/TaskApiWorkerContextAttributeRoutingIntegrationTest.java`
-- `xa-mass-mock/src/test/java/com/xa/mass/mock/e2e/assignment/TaskApiWorkerWithoutContextIntegrationTest.java`
-- `xa-mass-mock/src/test/java/com/xa/mass/mock/e2e/assignment/TaskApiMultiTaskAssignmentIntegrationTest.java`
-- `xa-mass-mock/src/test/java/com/xa/mass/mock/e2e/assignment/TaskApiMultiRoundDispatchIntegrationTest.java`
-- `xa-mass-mock/src/test/java/com/xa/mass/mock/e2e/assignment/TaskApiSingleWorkerReuseIntegrationTest.java`
-- `xa-mass-mock/src/test/java/com/xa/mass/mock/e2e/assignment/TaskApiTerminateReuseIntegrationTest.java`
-- `xa-mass-mock/src/test/java/com/xa/mass/mock/e2e/assignment/TaskApiMinimumWorkerGateIntegrationTest.java`
-- `xa-mass-mock/src/test/java/com/xa/mass/mock/e2e/audit/TaskApiStateValidationIntegrationTest.java`
-- `xa-mass-mock/src/test/java/com/xa/mass/mock/e2e/support/AbstractMockE2eTest.java` is the shared E2E base for HTTP helpers, task creation, snapshot polling, and dynamic WebSocket port wiring
-- `xa-mass-mock/src/test/java/com/xa/mass/mock/client/MassWebSocketClientImplTest.java`
-- `xa-mass-mock/src/test/java/com/xa/mass/mock/starter/WebSocketClientStarterTest.java`
-- `xa-mass-engine/src/test/java/com/xa/mass/engine/TaskManagerLifecycleTest.java`
-- `xa-mass-engine/src/main/java/com/xa/mass/engine/policy/TaskTerminalPolicy.java`
-- `xa-mass-engine/src/main/java/com/xa/mass/engine/policy/AllMessagesFinalTaskTerminalPolicy.java`
-- `xa-mass-engine/src/test/java/com/xa/mass/engine/listener/TaskAssignWorkerTest.java`
-- `xa-mass-engine/src/test/java/com/xa/mass/engine/listener/SimpleTaskMsgAssignListenerTest.java`
-- `xa-mass-engine/src/test/java/com/xa/mass/engine/model/WorkerMatchContextTest.java`
-- `xa-mass-engine/src/test/java/com/xa/mass/engine/rules/QLExpressRuleEvaluatorTest.java`
-- `xa-mass-engine/src/test/java/com/xa/mass/engine/strategy/RuleBasedTaskWorkerMatchingStrategyTest.java`
-- `xa-mass-core/src/test/java/com/xa/mass/base/model/WorkerAttributesTest.java`
-- `xa-mass-core/src/test/java/com/xa/mass/base/model/WorkerContextAttributesTest.java`
-- `xa-mass-runtime/src/test/java/com/xa/mass/starter/GatewayTaskResultHandlerTest.java`
-- Existing engine/api/runtime unit and slice tests remain support coverage, but the primary acceptance gate is the grouped `xa-mass-mock` end-to-end domain suites
+- `xa-mass-mock` is the primary acceptance gate, with E2E suites grouped by domain under `com.xa.mass.mock.e2e`
+- Domain groups are:
+  - lifecycle
+  - assignment
+  - results
+  - audit
+  - support
+- Representative E2E coverage includes:
+  - create, approve, assign, run, and terminal completion
+  - reject/approve, pause/resume, running terminate, and delete guard
+  - callback replay, failed results, mixed results, and state validation
+  - worker-context attribute routing and worker-without-context execution
+  - single-worker reuse, minimum-worker gate, delayed worker availability, and multi-round dispatch
+- Shared E2E base: `xa-mass-mock/src/test/java/com/xa/mass/mock/e2e/support/AbstractMockE2eTest.java`
+- Important engine/runtime support coverage includes:
+  - `TaskManagerLifecycleTest`
+  - `TaskAssignWorkerTest`
+  - `SimpleTaskMsgAssignListenerTest`
+  - `WorkerMatchContextTest`
+  - `QLExpressRuleEvaluatorTest`
+  - `RuleBasedTaskWorkerMatchingStrategyTest`
+  - `GatewayTaskResultHandlerTest`
+  - `MassWebSocketClientImplTest`
+  - `WebSocketClientStarterTest`
 
-What the new focused coverage proves:
+What this regression surface currently proves:
 
 - default `dev` startup can auto-create mock client connections
-- API create + approve flows through assignment, dispatch, result write-back, and terminal completion
-- API create + approve also covers failed downstream result write-back through terminal completion
-- API lifecycle guards for reject/approve, pause/resume, and delete protection are verified through real HTTP calls
-- API terminate-from-running is verified after real assignment and before any mock callback completion, and terminal cleanup delete is also verified
-- duplicate `TASK/step` callback replay is verified end-to-end through the real gateway path and keeps the first final result
-- a paused task can still complete to `TERMINAL` through real callback write-back after assignment, without requiring a manual resume
-- `GET /status/api/tasks/{taskId}` exposes `stateValidation` over the real HTTP/runtime path, including `needsResolution=true` when a task is manually reopened after all persisted message callbacks are already final
-- invalid terminal metadata is also covered end-to-end: missing `terminalReason` and message/result mismatch both surface through `stateValidation.violations`
-- worker-context-attribute-based routing is covered end-to-end through a custom QLExpress rule using `workerContextAttributes['country'] == taskRoutingCode`
-- worker-without-context execution is also covered end-to-end for tasks that do not declare worker-context-based routing requirements
-- assignment diagnostics now snapshot runtime worker lock state instead of stale `Worker` model fields
-- normal terminal completion releases worker-context/worker occupancy so a later task can reuse the same single-worker slot
-- manual `RUNNING -> TERMINAL` closure also releases worker-context/worker occupancy so the next task can reuse the same single-worker slot
-- `minRequiredWorkerCount` is enforced as a start threshold: a task remains `READY` until enough workers are simultaneously matchable
-- terminal closure is now explicitly policy-driven in code, even though the default policy still means "all task messages are final"
-- mock clients no longer respond to server response frames
-- mock result status can be forced to `FAILED` without changing business logic code paths
-- duplicate `TASK/step` result callbacks are covered at engine/runtime regression level and keep the first final state
-- paused tasks are closed to `TERMINAL` when their final callbacks arrive instead of getting stranded in `PAUSED` or resurrected back into `READY`
-- `READY` tasks without an immediate worker match stay in the assignment loop through delayed worker retry instead of silently orphaning
+- API lifecycle changes flow through real assignment, dispatch, callback write-back, and terminal convergence
+- pause/resume, running terminate, callback replay, and state validation are covered through the real HTTP and gateway path
+- worker-context routing and stateless-worker execution are both verified end to end
+- single-worker reuse, minimum-worker gate, delayed worker availability, and multi-round refill are verified
+- duplicate final callbacks stay idempotent, late callbacks after manual terminal closure are ignored, and paused tasks still close to `TERMINAL`
 
 ## 8. Historical Test Debt
 
