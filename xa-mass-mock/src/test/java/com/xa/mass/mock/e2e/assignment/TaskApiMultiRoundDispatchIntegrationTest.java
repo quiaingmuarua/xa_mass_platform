@@ -63,7 +63,7 @@ class TaskApiMultiRoundDispatchIntegrationTest extends AbstractMockE2eTest {
     private WorkerManager workerManager;
 
     @Test
-    void singleDeviceWithBatchSizeOneCompletesTaskAcrossMultipleRounds() throws Exception {
+    void singleWorkerWithBatchSizeOneCompletesTaskAcrossMultipleRounds() throws Exception {
         String workerId = "round-worker-0";
         registerWorker(workerId);
 
@@ -74,7 +74,7 @@ class TaskApiMultiRoundDispatchIntegrationTest extends AbstractMockE2eTest {
 
             String taskId = createTaskId(
                     "multi-round",
-                    "single device multi round dispatch",
+                    "single worker multi round dispatch",
                     List.of("target-a", "target-b", "target-c"),
                     1
             );
@@ -106,7 +106,7 @@ class TaskApiMultiRoundDispatchIntegrationTest extends AbstractMockE2eTest {
     }
 
     @Test
-    void singleDeviceWithBatchSizeTwoWaitsForNextRoundUntilCurrentRoundFinishes() throws Exception {
+    void singleWorkerWithBatchSizeTwoWaitsForNextRoundUntilCurrentRoundFinishes() throws Exception {
         String workerId = "round-worker-batch-2";
         registerWorker(workerId);
 
@@ -117,7 +117,7 @@ class TaskApiMultiRoundDispatchIntegrationTest extends AbstractMockE2eTest {
 
             String taskId = createTaskId(
                     "multi-round-batch-two",
-                    "single device waits for current round to finish",
+                    "single worker waits for current round to finish",
                     List.of("target-a", "target-b", "target-c"),
                     2
             );

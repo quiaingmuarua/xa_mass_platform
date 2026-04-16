@@ -101,7 +101,7 @@ class TaskApiCallbackReplayIntegrationTest extends AbstractMockE2eTest {
 
     private AckSnapshot replayConflictingTaskResult(String taskId, String msgId, String status, String detail) throws Exception {
         URI uri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
-        ReplayWebSocketClient client = new ReplayWebSocketClient(uri, "replay-device", msgId);
+        ReplayWebSocketClient client = new ReplayWebSocketClient(uri, "replay-worker", msgId);
         try {
             assertTrue(client.connectBlocking(), "Replay WebSocket client failed to connect");
             client.sendMessage(buildReplayPayload(taskId, msgId, status, detail));
@@ -123,7 +123,7 @@ class TaskApiCallbackReplayIntegrationTest extends AbstractMockE2eTest {
 
         MessageContext context = new MessageContext();
         context.setTid(taskId);
-        context.setWorkerId("replay-device");
+        context.setWorkerId("replay-worker");
         context.setConnRole(SessionRoles.TASK_MESSAGES);
         replay.setContext(context);
         replay.setPayload(GSON.toJsonTree(Map.of(

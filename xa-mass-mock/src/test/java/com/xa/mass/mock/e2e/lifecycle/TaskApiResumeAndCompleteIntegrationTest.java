@@ -28,15 +28,15 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Verifies the PAUSED → READY → RUNNING → TERMINAL path via a real resume call
- * followed by device connection and mock callback.
+ * followed by worker connection and mock callback.
  *
  * <p>Specifically:
  * <ol>
  *   <li>Task is approved while no workers are available -> stays READY, peakAssignedWorkerCount=0.</li>
  *   <li>Task is paused (READY → PAUSED).</li>
- *   <li>A matching device is registered and a mock client connects.</li>
+ *   <li>A matching worker is registered and a mock client connects.</li>
  *   <li>Task is resumed (PAUSED → READY); {@code notifyTaskReady} kicks the assign worker.</li>
- *   <li>TaskAssignWorker assigns the task to the new device (READY → RUNNING).</li>
+ *   <li>TaskAssignWorker assigns the task to the new worker (READY → RUNNING).</li>
  *   <li>Mock client auto-sends a SUCCESS callback → task closes to TERMINAL.</li>
  * </ol>
  *
@@ -69,8 +69,8 @@ class TaskApiResumeAndCompleteIntegrationTest extends AbstractMockE2eTest {
     private WorkerManager workerManager;
 
     @Test
-    void resumedPausedTaskCompletesAfterDeviceConnectsAndSendsCallback() throws Exception {
-        // 1. Create and approve a task — no devices online yet.
+    void resumedPausedTaskCompletesAfterWorkerConnectsAndSendsCallback() throws Exception {
+        // 1. Create and approve a task — no workers online yet.
         String taskId = createTaskId("resume-and-complete", "resume and complete integration test", "target-a");
 
         Map<String, Object> approveResponse = exchange(
@@ -80,7 +80,7 @@ class TaskApiResumeAndCompleteIntegrationTest extends AbstractMockE2eTest {
         );
         assertEquals(Boolean.TRUE, approveResponse.get("success"));
 
-        // 2. Task reaches READY but stays there (no matching device).
+        // 2. Task reaches READY but stays there (no matching worker).
         TaskSnapshot readySnapshot = waitForTaskSnapshot(taskId, "READY", 8, 500L);
         assertEquals(0, ((Number) readySnapshot.task().get("peakAssignedWorkerCount")).intValue());
         assertEquals(1, readySnapshot.messages().size());
@@ -96,10 +96,10 @@ class TaskApiResumeAndCompleteIntegrationTest extends AbstractMockE2eTest {
 
         TaskSnapshot pausedSnapshot = waitForTaskSnapshot(taskId, "PAUSED", 4, 500L);
         assertEquals("PAUSED", pausedSnapshot.task().get("status"));
-        // Message is still INIT — no device was ever assigned.
+        // Message is still INIT — no worker was ever assigned.
         assertEquals("INIT", pausedSnapshot.messages().get(0).get("status"));
 
-        // 4. Register a matching device and connect a mock client.
+        // 4. Register a matching worker and connect a mock client.
         String workerId = "resume-worker-0";
         registerWorker(workerId);
 
@@ -116,7 +116,7 @@ class TaskApiResumeAndCompleteIntegrationTest extends AbstractMockE2eTest {
             );
             assertEquals(Boolean.TRUE, resumeResponse.get("success"));
 
-            // 6. Task should proceed all the way to TERMINAL via the new device.
+            // 6. Task should proceed all the way to TERMINAL via the new worker.
             TaskSnapshot terminalSnapshot = waitForTaskSnapshot(taskId, "TERMINAL", 20, 500L);
             assertEquals("TERMINAL", terminalSnapshot.task().get("status"));
             assertEquals("ALL_MESSAGES_SUCCEEDED", terminalSnapshot.task().get("terminalReason"));

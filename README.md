@@ -85,5 +85,5 @@ Module boundary note:
 ## Documentation Layout
 
 - Keep active operational docs under `doc/`
-- Historical, duplicated, or low-trust docs have been moved to [doc/archive/README.md](./doc/archive/README.md)
+- Historical archive docs have been removed from the current repository snapshot during convergence
 - If a document disagrees with code or runtime, prefer code and verified runtime

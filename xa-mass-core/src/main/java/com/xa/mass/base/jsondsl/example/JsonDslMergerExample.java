@@ -47,7 +47,7 @@ public class JsonDslMergerExample {
 
         // 项目级别的筛选规则（优先级最低）
         JsonDslDefinition projectFilter = new JsonDslDefinition();
-        projectFilter.setUniqueId("project_device_filter");
+        projectFilter.setUniqueId("project_worker_filter");
         projectFilter.setType(JsonDslDefinition.DslType.FILTER);
         projectFilter.setPriority(100); // 低优先级
         projectFilter.setDescription("项目级别的设备筛选规则");
@@ -56,7 +56,7 @@ public class JsonDslMergerExample {
         Map<String, Object> fieldDsl = new HashMap<>();
         fieldDsl.put("status", "ONLINE");
         fieldDsl.put("region", "华东");
-        fieldDsl.put("deviceType", "CAMERA");
+        fieldDsl.put("workerType", "CAMERA");
 
         // 设置组合筛选条件
         Map<String, Object> combineDsl = new HashMap<>();
@@ -83,7 +83,7 @@ public class JsonDslMergerExample {
 
         // 用户级别的筛选规则（中等优先级）
         JsonDslDefinition userFilter = new JsonDslDefinition();
-        userFilter.setUniqueId("user_device_filter");
+        userFilter.setUniqueId("user_worker_filter");
         userFilter.setType(JsonDslDefinition.DslType.FILTER);
         userFilter.setPriority(50); // 中等优先级
         userFilter.setDescription("用户级别的设备筛选规则");
@@ -91,7 +91,7 @@ public class JsonDslMergerExample {
         // 设置字段筛选条件
         Map<String, Object> fieldDsl = new HashMap<>();
         fieldDsl.put("status", "ONLINE");
-        fieldDsl.put("deviceType", "CAMERA");
+        fieldDsl.put("workerType", "CAMERA");
         fieldDsl.put("permission", "READ"); // 用户特有的权限要求
 
         // 设置组合筛选条件
@@ -119,7 +119,7 @@ public class JsonDslMergerExample {
 
         // 任务级别的筛选规则（最高优先级）
         JsonDslDefinition taskFilter = new JsonDslDefinition();
-        taskFilter.setUniqueId("task_device_filter");
+        taskFilter.setUniqueId("task_worker_filter");
         taskFilter.setType(JsonDslDefinition.DslType.FILTER);
         taskFilter.setPriority(10); // 高优先级
         taskFilter.setDescription("任务级别的设备筛选规则");
@@ -127,7 +127,7 @@ public class JsonDslMergerExample {
         // 设置字段筛选条件
         Map<String, Object> fieldDsl = new HashMap<>();
         fieldDsl.put("status", "ONLINE");
-        fieldDsl.put("deviceType", "CAMERA");
+        fieldDsl.put("workerType", "CAMERA");
         fieldDsl.put("resolution", "4K"); // 任务特有的分辨率要求
         fieldDsl.put("nightVision", true); // 任务特有的夜视要求
 
@@ -173,7 +173,7 @@ public class JsonDslMergerExample {
         // 分析合并结果
         System.out.println("合并结果分析：");
         System.out.println("- 字段 'status' 被所有规则覆盖，最终值为：" + mergedFilter.getFieldDsl().get("status"));
-        System.out.println("- 字段 'deviceType' 被所有规则覆盖，最终值为：" + mergedFilter.getFieldDsl().get("deviceType"));
+        System.out.println("- 字段 'workerType' 被所有规则覆盖，最终值为：" + mergedFilter.getFieldDsl().get("workerType"));
         System.out.println("- 字段 'region' 来自项目规则：" + mergedFilter.getFieldDsl().get("region"));
         System.out.println("- 字段 'permission' 来自用户规则：" + mergedFilter.getFieldDsl().get("permission"));
         System.out.println("- 字段 'resolution' 来自任务规则：" + mergedFilter.getFieldDsl().get("resolution"));
@@ -249,7 +249,7 @@ public class JsonDslMergerExample {
 
     private static JsonDslDefinition createProjectFilter() {
         JsonDslDefinition filter = new JsonDslDefinition();
-        filter.setUniqueId("project_device_filter");
+        filter.setUniqueId("project_worker_filter");
         filter.setType(JsonDslDefinition.DslType.FILTER);
         filter.setPriority(100);
         filter.setDescription("项目级别的设备筛选规则");
@@ -257,7 +257,7 @@ public class JsonDslMergerExample {
         Map<String, Object> fieldDsl = new HashMap<>();
         fieldDsl.put("status", "ONLINE");
         fieldDsl.put("region", "华东");
-        fieldDsl.put("deviceType", "CAMERA");
+        fieldDsl.put("workerType", "CAMERA");
 
         Map<String, Object> combineDsl = new HashMap<>();
         combineDsl.put("AND", Arrays.asList(
@@ -272,14 +272,14 @@ public class JsonDslMergerExample {
 
     private static JsonDslDefinition createUserFilter() {
         JsonDslDefinition filter = new JsonDslDefinition();
-        filter.setUniqueId("user_device_filter");
+        filter.setUniqueId("user_worker_filter");
         filter.setType(JsonDslDefinition.DslType.FILTER);
         filter.setPriority(50);
         filter.setDescription("用户级别的设备筛选规则");
 
         Map<String, Object> fieldDsl = new HashMap<>();
         fieldDsl.put("status", "ONLINE");
-        fieldDsl.put("deviceType", "CAMERA");
+        fieldDsl.put("workerType", "CAMERA");
         fieldDsl.put("permission", "READ");
 
         Map<String, Object> combineDsl = new HashMap<>();
@@ -295,14 +295,14 @@ public class JsonDslMergerExample {
 
     private static JsonDslDefinition createTaskFilter() {
         JsonDslDefinition filter = new JsonDslDefinition();
-        filter.setUniqueId("task_device_filter");
+        filter.setUniqueId("task_worker_filter");
         filter.setType(JsonDslDefinition.DslType.FILTER);
         filter.setPriority(10);
         filter.setDescription("任务级别的设备筛选规则");
 
         Map<String, Object> fieldDsl = new HashMap<>();
         fieldDsl.put("status", "ONLINE");
-        fieldDsl.put("deviceType", "CAMERA");
+        fieldDsl.put("workerType", "CAMERA");
         fieldDsl.put("resolution", "4K");
         fieldDsl.put("nightVision", true);
 

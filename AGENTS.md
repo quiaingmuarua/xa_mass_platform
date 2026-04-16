@@ -126,13 +126,13 @@ Trust order:
 7. `doc/E2E_BASELINE.md`
 8. `doc/VERIFIED_RUNBOOK.md`
 9. module READMEs / internal API doc under `doc/` / task flow doc under `doc/engine/`
-10. `doc/archive/API_DOCUMENTATION.md` / `doc/archive/QUICK_REFERENCE.md` - archived reference docs, partially outdated
-11. `old/` / `v2/` docs - historical archive only
+10. removed archive or `v2` material referenced by older notes - historical only, not expected local files
 
 Deleted historical material that should not be treated as missing:
 
 - `doc/daily/`
 - former planning doc under `doc/`
+- `doc/archive/`
 - `xa-mass-engine/.../v2/new_engine_refactory.md`
 - former v2 matching-strategy draft under `xa-mass-engine/.../v2/`
 - removed top-level legacy modules such as `xa-mass-base` and `xa-mass-starter`

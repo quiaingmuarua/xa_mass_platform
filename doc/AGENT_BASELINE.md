@@ -30,7 +30,7 @@ When code, runtime behavior, and docs disagree, use this order:
 6. [./E2E_BASELINE.md](./E2E_BASELINE.md)
 7. This file
 8. Module READMEs
-9. `doc/archive/` historical material
+9. removed historical/archive material mentioned by older notes
 
 Working rule:
 

@@ -84,7 +84,7 @@ class TaskApiMixedResultsIntegrationTest extends AbstractMockE2eTest {
         );
         assertEquals(Boolean.TRUE, approveResponse.get("success"));
 
-        // Wait for RUNNING with 2 messages assigned to devices.
+        // Wait for RUNNING with 2 messages assigned to workers.
         TaskSnapshot runningSnapshot = waitForTaskSnapshot(taskId, "RUNNING");
         assertEquals(2, ((Number) runningSnapshot.task().get("peakAssignedWorkerCount")).intValue());
         assertEquals(2, runningSnapshot.messages().size());
@@ -130,7 +130,7 @@ class TaskApiMixedResultsIntegrationTest extends AbstractMockE2eTest {
         assertEquals(1, successCount);
         assertEquals(1, failedCount);
 
-        // Both messages must have device/token/batch binding.
+        // Both messages must have worker/workerContext/batch binding.
         for (Map<String, Object> msg : terminalSnapshot.messages()) {
             assertNotNull(msg.get("workerId"));
             assertNotNull(msg.get("workerContextId"));
