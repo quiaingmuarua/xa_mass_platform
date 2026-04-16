@@ -13,23 +13,26 @@ import com.xa.mass.engine.monkey.snapshot.WorkerSnapshot;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 /**
- * 分配记录服务
- * 负责记录和管理所有分配尝试，支持归因分析和验证
+ * Stores assignment-attempt diagnostics for later audit and report generation.
  */
 public class AssignmentRecordService {
 
     private static final Logger log = LoggerFactory.getLogger(AssignmentRecordService.class);
 
-    // 内存存储，实际项目中可替换为数据库
     private final Map<String, AssignmentRecord> records = new ConcurrentHashMap<>();
 
     /**
-     * 记录 Worker 分配尝试
+     * Records a worker-level assignment attempt.
      */
     public AssignmentRecord recordWorkerAssignment(Task task, Worker worker, WorkerContext workerContext,
                                                    AssignmentResult result, String reason,
@@ -38,7 +41,7 @@ public class AssignmentRecordService {
                                                    boolean workerLocked) {
         AssignmentRecord record = new AssignmentRecord();
         record.setRecordId(UUID.randomUUID().toString());
-        record.setType(AssignmentType.DEVICE_ASSIGN);
+        record.setType(AssignmentType.WORKER_ASSIGN);
         record.setTaskId(task.getTid());
         record.setWorkerId(worker.getWorkerId());
         record.setBatchId("batch-" + System.currentTimeMillis());
@@ -59,7 +62,7 @@ public class AssignmentRecordService {
     }
 
     /**
-     * 记录消息分配尝试
+     * Records a message-level assignment attempt.
      */
     public AssignmentRecord recordMessageAssignment(Task task, Worker worker, WorkerContext workerContext,
                                                     String messageId, String batchId,
@@ -89,7 +92,7 @@ public class AssignmentRecordService {
     private void logAssignmentRecord(AssignmentRecord record) {
         StringBuilder logMsg = new StringBuilder();
         logMsg.append("[Assignment] ");
-        logMsg.append("Type=").append(record.getType().getDescription()).append(", ");
+        logMsg.append("type=").append(record.getType().name()).append(", ");
         logMsg.append("Task=").append(record.getTaskId()).append(", ");
         logMsg.append("Worker=").append(record.getWorkerId()).append(", ");
 
@@ -98,8 +101,13 @@ public class AssignmentRecordService {
         }
 
         logMsg.append("Batch=").append(record.getBatchId()).append(", ");
-        logMsg.append("Result=").append(record.getResult().getDescription()).append(", ");
+        logMsg.append("Result=").append(record.getResult().name()).append(", ");
         logMsg.append("Reason=").append(record.getReason());
+
+        if (record.getWorkerContextSnapshot() != null) {
+            logMsg.append(", WorkerContext=")
+                    .append(record.getWorkerContextSnapshot().getWorkerContextId());
+        }
 
         if (record.getRuleEvaluations() != null && !record.getRuleEvaluations().isEmpty()) {
             logMsg.append(", Rules=[");
@@ -248,10 +256,10 @@ public class AssignmentRecordService {
                 AssignmentRecord current = workerRecordList.get(i);
                 AssignmentRecord next = workerRecordList.get(i + 1);
 
-                if (AssignmentResult.SUCCESS.equals(current.getResult()) &&
-                        AssignmentResult.SUCCESS.equals(next.getResult())) {
-
-                    long timeDiff = java.time.Duration.between(current.getAssignTime(), next.getAssignTime()).toMinutes();
+                if (AssignmentResult.SUCCESS.equals(current.getResult())
+                        && AssignmentResult.SUCCESS.equals(next.getResult())) {
+                    long timeDiff = java.time.Duration.between(
+                            current.getAssignTime(), next.getAssignTime()).toMinutes();
                     if (timeDiff < 5) {
                         Map<String, Object> conflict = new HashMap<>();
                         conflict.put("workerId", workerId);

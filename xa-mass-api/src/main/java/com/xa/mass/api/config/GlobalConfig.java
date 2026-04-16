@@ -6,15 +6,15 @@ import org.springframework.stereotype.Component;
 import java.util.List;
 
 /**
- * 全局配置管理
+ * Small holder for globally shared API-side configuration.
  */
 @Component
 public class GlobalConfig {
 
     /**
-     * 获取所有项目代码列表
+     * Return all supported project codes.
      */
     public List<String> getAllProjects() {
         return Project.getAllCodes();
     }
-} 
+}

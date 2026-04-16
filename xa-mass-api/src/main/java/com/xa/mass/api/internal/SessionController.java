@@ -4,12 +4,11 @@ import com.xa.mass.api.model.ApiResponse;
 import com.xa.mass.gateway.dispatcher.DispatcherContextRegistry;
 import com.xa.mass.gateway.dispatcher.context.SessionContext;
 import com.xa.mass.gateway.session.ServerSessionManager;
-import io.netty.channel.Channel;
-import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -18,11 +17,11 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/session")
-@Tag(name = "Session管理")
+@Tag(name = "Session Status")
 public class SessionController {
 
     @GetMapping("/list")
-    @Operation(summary = "获取所有在线Session/Worker详情")
+    @Operation(summary = "List all active worker sessions")
     public ApiResponse<List<Map<String, Object>>> listSessions() {
         List<Map<String, Object>> data = new ArrayList<>();
         ServerSessionManager sessionManager = resolveSessionManager();
@@ -46,7 +45,7 @@ public class SessionController {
     }
 
     @GetMapping("/stats")
-    @Operation(summary = "连接统计")
+    @Operation(summary = "Get aggregate session statistics")
     public ApiResponse<Map<String, Object>> sessionStats() {
         Map<String, Object> data = new HashMap<>();
         ServerSessionManager sessionManager = resolveSessionManager();

@@ -1,12 +1,12 @@
 package com.xa.mass.starter.builder;
 
-import com.xa.mass.engine.WorkerManager;
+import com.xa.mass.base.channel.messaging.api.MessageQueue;
+import com.xa.mass.base.channel.tranporter.MessageTransporterFactory;
 import com.xa.mass.engine.TaskManager;
+import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.engine.strategy.SimpleTaskScheduler;
 import com.xa.mass.gateway.queue.Envelope;
-import com.xa.mass.base.channel.messaging.api.MessageQueue;
-import com.xa.mass.base.channel.tranporter.MessageTransporterFactory;
 import com.xa.mass.starter.MassApplication;
 import com.xa.mass.starter.MassEngine;
 import com.xa.mass.starter.config.EngineConfig;
@@ -18,19 +18,12 @@ import java.util.Map;
 import java.util.function.Consumer;
 
 /**
- * Mass 应用构建器
- * 提供流式API来构建MassApplication实例，支持多种预设配置和自定义配置
- *
- * 架构说明：
- * - MassApplicationBuilder: 负责配置聚合和参数验证
- * - MassApplication: 负责组件生命周期管理
- * - MassGateway/MassEngine: 直接通过配置对象实例化
+ * Builds {@link MassApplication} instances from gateway and engine configuration.
  */
 public class MassApplicationBuilder {
 
     private static final Logger logger = LoggerFactory.getLogger(MassApplicationBuilder.class);
 
-    // 直接管理配置参数，不再依赖 MassApplicationConfig
     private int serverPort = 8080;
     private String webSocketPath = "/ws";
     private GatewayConfig gatewayConfig = new GatewayConfig();
@@ -39,16 +32,10 @@ public class MassApplicationBuilder {
     private MassApplicationBuilder() {
     }
 
-    /**
-     * 创建构建器实例
-     */
     public static MassApplicationBuilder create() {
         return new MassApplicationBuilder();
     }
 
-    /**
-     * 快速创建开发环境应用
-     */
     public static MassApplication createDevelopment(int port, MessageQueue<Envelope> inputQueue, MessageQueue<Envelope> outputQueue) {
         return create()
                 .server(port)
@@ -63,9 +50,6 @@ public class MassApplicationBuilder {
                 .build();
     }
 
-    /**
-     * 快速创建生产环境应用
-     */
     public static MassApplication createProduction(int port, MessageQueue<Envelope> inputQueue, MessageQueue<Envelope> outputQueue) {
         return create()
                 .server(port)
@@ -80,9 +64,6 @@ public class MassApplicationBuilder {
                 .build();
     }
 
-    /**
-     * 快速创建API模式应用
-     */
     public static MassApplication createApiMode(int port, String inputApiUrl, String outputApiUrl, String apiKey) {
         return create()
                 .server(port)
@@ -96,9 +77,6 @@ public class MassApplicationBuilder {
                 .build();
     }
 
-    /**
-     * 快速创建测试环境应用
-     */
     public static MassApplication createTest(int port) {
         return create()
                 .server(port)
@@ -111,66 +89,45 @@ public class MassApplicationBuilder {
                 .build();
     }
 
-    /**
-     * 配置服务器
-     */
     public MassApplicationBuilder server(int port) {
         return server(port, "/ws");
     }
 
-    /**
-     * 配置服务器
-     */
     public MassApplicationBuilder server(int port, String webSocketPath) {
         this.serverPort = port;
         this.webSocketPath = webSocketPath;
         return this;
     }
 
-    /**
-     * 配置网关
-     */
     public MassApplicationBuilder gateway(Consumer<GatewayBuilder> gatewayConfigurator) {
         GatewayBuilder gatewayBuilder = new GatewayBuilder(gatewayConfig);
         gatewayConfigurator.accept(gatewayBuilder);
         return this;
     }
 
-    /**
-     * 配置引擎
-     */
     public MassApplicationBuilder engine(Consumer<EngineBuilder> engineConfigurator) {
         EngineBuilder engineBuilder = new EngineBuilder(engineConfig);
         engineConfigurator.accept(engineBuilder);
         return this;
     }
 
-    /**
-     * 构建MassApplication实例
-     */
     public MassApplication build() {
-        logger.info("🔨 Building MassApplication with configuration: port={}, gateway={}, engine={}",
+        logger.info("Building MassApplication with configuration: port={}, gateway={}, engine={}",
                 serverPort,
                 gatewayConfig.isEnabled(),
                 engineConfig.isEnabled());
 
-        // 根据配置构建MassEngine（不需要dispatcherContext）
         MassEngine engine = null;
         if (engineConfig.isEnabled()) {
             engine = new MassEngine(engineConfig);
-            logger.info("✅ MassEngine built");
+            logger.info("MassEngine built");
         } else {
-            logger.info("⚙️ MassEngine is disabled, skipping build");
+            logger.info("MassEngine is disabled, skipping build");
         }
 
-        // 创建MassApplication实例，传递已构建的engine和配置
-        // MassGateway将在MassApplication.initializeComponents()中构建，因为需要dispatcherContext
         return new MassApplication(engine, serverPort, webSocketPath, gatewayConfig, engineConfig);
     }
 
-    /**
-     * 网关配置构建器
-     */
     public static class GatewayBuilder {
         private final GatewayConfig config;
 
@@ -212,9 +169,6 @@ public class MassApplicationBuilder {
         }
     }
 
-    /**
-     * 引擎配置构建器
-     */
     public static class EngineBuilder {
         private final EngineConfig config;
 
@@ -265,4 +219,4 @@ public class MassApplicationBuilder {
             return this;
         }
     }
-} 
+}

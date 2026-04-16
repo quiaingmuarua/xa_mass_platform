@@ -36,9 +36,12 @@ If you need fast orientation:
 - Read terminal tasks as `TaskStatus + terminalReason`; `TaskTerminalPolicy` is the seam for future stop policies
 - `TaskManager.validateTaskState()` is the SDK-facing audit for `Task + TaskMsg` consistency and pending resolution
 - `Task.sharedConfig` is the task-level payload boundary; `TaskMsg.input/output` is the work-item payload boundary; `getTarget()` is only a backwards-compat accessor
+- Keep task closure modeled as single final `TERMINAL` plus `terminalReason`; do not split task status into multiple terminal enums without an intentional kernel redesign
+- Treat `TaskMsgStatus` as the platform lifecycle contract, not as a full transport-event history
 - `Worker.status` is the single online truth; worker lock truth lives in `WorkerStorage` / `WorkerManager.isLocked(...)`
 - `Worker.attributes` and `WorkerContext.attributes` are read-only auxiliary rule labels only
 - `WorkerContext` is optional; stateless workers are part of the verified mainline
+- The current runtime concurrency model is conservative: one worker is one active execution lane even if it owns multiple worker contexts
 - Regression focus is healthy: mock/runtime E2E covers lifecycle, pause completion, callback replay, worker-context routing, stateless workers, single-worker reuse, minimum-worker gate, and multi-round dispatch
 - Historical `v2` / archive engine generations have been removed from the current repository snapshot; if older notes mention them, treat those notes as stale history, not missing code
 
@@ -59,8 +62,11 @@ The project definition is broader than the current mock/demo shell:
 Keep these constraints fixed unless the kernel itself is intentionally redesigned:
 
 - Stable platform boundaries are `Task`, `TaskMsg`, assignment, result, audit, and terminal policy. UI/demo layers must not become the source of truth for those concepts.
+- Task-level closure stays modeled as one final `TERMINAL` plus `terminalReason`. Do not split task status into multiple terminal enums such as `SUCCEEDED` / `FAILED` / `CANCELLED` unless API, validation, audit, and E2E baselines are being redesigned together.
+- `TaskMsgStatus` is the platform lifecycle contract, not a complete transport-event log. If transport-level phases such as queueing, downstream ack, broker retry, or delivery confirmation become first-class, model them in trace/event data or a separate transport layer instead of overloading `TaskMsgStatus`.
 - `Worker` is the current worker adapter name. It should be read as the current concrete worker implementation, not as the universal final name for all worker/resource forms.
 - `WorkerContext` is optional worker context such as credentials, account scope, or capability context. Not every worker model must require one.
+- The current runtime concurrency model is conservative: one `Worker` is treated as one active execution lane even if it owns multiple `WorkerContext` rows. Do not assume same-worker parallel execution by multiple contexts unless worker-level locking, assignment, release, and E2E coverage are redesigned together.
 - Active mainline no longer exposes compatibility single-context lookup by `workerId`; use `getWorkerContexts(workerId)` for ownership and `getWorkerContextById(workerContextId)` for precise mutation/read paths.
 - `WorkerContext.workerId` is now the single owner truth for context attachment. Do not reintroduce `addWorkerContext(workerId, workerContext)`-style APIs that duplicate owner identity across parameters.
 - `Task.sharedConfig` and `TaskMsg.input/output` are the main payload boundaries. Do not regress the platform back into single-purpose fields such as top-level `textContent`.

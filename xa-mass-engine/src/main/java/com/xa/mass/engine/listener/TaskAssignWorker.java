@@ -2,22 +2,38 @@ package com.xa.mass.engine.listener;
 
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
+import com.xa.mass.engine.util.TraceEventLogger;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.List;
-import java.util.concurrent.*;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
+/**
+ * Single-threaded assignment queue worker.
+ *
+ * <p>This component drains assignment requests and retries unmatched dispatch
+ * attempts. Its listener callbacks describe queue-processing progress only,
+ * not task business completion.
+ */
 public class TaskAssignWorker {
     private static final Logger log = LoggerFactory.getLogger(TaskAssignWorker.class);
     private static final long DEFAULT_RETRY_DELAY_MILLIS = 1000L;
+
     private final TaskWorkerAssignListener workerAssignListener;
     private final long retryDelayMillis;
     private final BlockingQueue<Task> queue = new LinkedBlockingQueue<>();
-    private final List<TaskCompletionListener> listeners = new CopyOnWriteArrayList<>();
+    private final List<TaskAssignmentQueueListener> listeners = new CopyOnWriteArrayList<>();
     private final AtomicInteger pendingTasks = new AtomicInteger(0);
+
     private volatile boolean running = true;
     private ExecutorService executor;
     private ScheduledExecutorService retryExecutor;
@@ -31,8 +47,10 @@ public class TaskAssignWorker {
         this.retryDelayMillis = retryDelayMillis;
     }
 
-    public void addListener(TaskCompletionListener listener) {
-        listeners.add(listener);
+    public void addAssignmentQueueListener(TaskAssignmentQueueListener listener) {
+        if (listener != null) {
+            listeners.add(listener);
+        }
     }
 
     public void start() {
@@ -57,7 +75,7 @@ public class TaskAssignWorker {
                         if (running && !assigned && task.getStatus() == initialStatus) {
                             scheduleRetry(task, initialStatus);
                         } else {
-                            notifyTaskCompleted(task);
+                            notifyAssignmentProcessed(task);
                         }
                     }
                 } catch (InterruptedException e) {
@@ -76,7 +94,7 @@ public class TaskAssignWorker {
 
         // Use the common pool instead of `executor`: the task-processing loop already occupies
         // the single thread in `executor`, so submitting this polling future to the same
-        // executor would queue it behind a loop that never exits — causing a deadlock.
+        // executor would queue it behind a loop that never exits, causing a deadlock.
         return CompletableFuture.runAsync(() -> {
             while (pendingTasks.get() > 0 && running) {
                 try {
@@ -97,6 +115,14 @@ public class TaskAssignWorker {
         if (retryExecutor == null) {
             return;
         }
+        TraceEventLogger.assignmentRetryScheduled(
+                task.getTid(),
+                expectedStatus,
+                "NO_ASSIGNMENT_RESULT",
+                "TaskAssignWorker",
+                "task remained eligible after assignment attempt",
+                retryDelayMillis
+        );
         retryExecutor.schedule(() -> {
             if (running && task.getStatus() == expectedStatus) {
                 queue.offer(task);
@@ -104,19 +130,18 @@ public class TaskAssignWorker {
         }, retryDelayMillis, TimeUnit.MILLISECONDS);
     }
 
-    private void notifyTaskCompleted(Task task) {
+    private void notifyAssignmentProcessed(Task task) {
         int previous = pendingTasks.getAndUpdate(current -> current > 0 ? current - 1 : 0);
         int remaining = previous > 0 ? previous - 1 : 0;
-        listeners.forEach(l -> l.onTaskCompleted(task));
+        listeners.forEach(l -> l.onTaskAssignmentProcessed(task));
 
         if (previous > 0 && remaining == 0) {
-            listeners.forEach(TaskCompletionListener::onAllTasksCompleted);
+            listeners.forEach(TaskAssignmentQueueListener::onAssignmentQueueDrained);
         }
     }
 
     public void stop() {
         running = false;
-        // Interrupt the blocking queue.take() so the worker thread exits promptly
         if (retryExecutor != null) {
             retryExecutor.shutdownNow();
             try {
@@ -140,4 +165,4 @@ public class TaskAssignWorker {
             }
         }
     }
-} 
+}

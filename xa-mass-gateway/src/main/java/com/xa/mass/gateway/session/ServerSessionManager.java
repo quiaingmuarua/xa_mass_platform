@@ -14,7 +14,6 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-
 public class ServerSessionManager {
 
     public static final ServerSessionManager INSTANCE = new ServerSessionManager();
@@ -27,9 +26,8 @@ public class ServerSessionManager {
     // workerId -> connRole -> ChannelHandlerContext
     private final Map<String, Map<String, ChannelHandlerContext>> workerChannelCtxMap = new ConcurrentHashMap<>();
 
-    // Channel -> [workerId, connRole] 反向索引
+    // Reverse index: Channel -> [workerId, connRole]
     private final Map<Channel, WorkerConnKey> channelIndex = new ConcurrentHashMap<>();
-
 
     public synchronized void addSession(String workerId, String connRole, Channel channel, ChannelHandlerContext ctx) {
         Map<String, Channel> existingRoleMap = workerChannelMap.get(workerId);
@@ -46,16 +44,16 @@ public class ServerSessionManager {
         }
 
         workerChannelMap
-                .computeIfAbsent(workerId, k -> new ConcurrentHashMap<>())
+                .computeIfAbsent(workerId, key -> new ConcurrentHashMap<>())
                 .put(connRole, channel);
 
         workerChannelCtxMap
-                .computeIfAbsent(workerId, k -> new ConcurrentHashMap<>())
+                .computeIfAbsent(workerId, key -> new ConcurrentHashMap<>())
                 .put(connRole, ctx);
 
         channelIndex.put(channel, new WorkerConnKey(workerId, connRole));
 
-        logger.info("🟢 Connected: workerId={} role={} channelId={} totalWorkers={}",
+        logger.info("Connected: workerId={} role={} channelId={} totalWorkers={}",
                 workerId, connRole, channel.id().asShortText(), workerChannelMap.size());
         EventPublisher.post(new WorkerOnlineEvent(workerId, "websocket connected", null));
     }
@@ -72,6 +70,7 @@ public class ServerSessionManager {
                     workerChannelMap.remove(key.getWorkerId());
                 }
             }
+
             Map<String, ChannelHandlerContext> roleCtxMap = workerChannelCtxMap.get(key.getWorkerId());
             if (roleCtxMap != null) {
                 Channel remainingChannel = roleMap != null ? roleMap.get(key.getConnRole()) : null;
@@ -82,7 +81,8 @@ public class ServerSessionManager {
                     workerChannelCtxMap.remove(key.getWorkerId());
                 }
             }
-            logger.info("🔒 Disconnected: workerId={} role={} channelId={}",
+
+            logger.info("Disconnected: workerId={} role={} channelId={}",
                     key.getWorkerId(), key.getConnRole(), channel.id().asShortText());
             EventPublisher.post(new WorkerOfflineEvent(key.getWorkerId(), "websocket disconnected", null));
         } else {
@@ -119,7 +119,9 @@ public class ServerSessionManager {
 
     public boolean isWorkerOnline(String workerId, String connRole) {
         Map<String, Channel> roleMap = workerChannelMap.get(workerId);
-        if (roleMap == null) return false;
+        if (roleMap == null) {
+            return false;
+        }
         Channel ch = roleMap.get(connRole);
         return ch != null && ch.isActive();
     }

@@ -31,12 +31,12 @@ public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWe
             }
             MassMessage massMessage = MessageParser.INSTANCE.tryDecode(raw);
             if (massMessage == null || !MessageParser.INSTANCE.isValid(massMessage)) {
-                logger.error("Message parse/validate failed. Raw: {}", raw);
+                logger.error("Message parse/validate failed");
                 sendError(ctx, "PARSE_FAILED", "Message missing context info");
                 return;
             }
             if (massMessage.getContext() == null) {
-                logger.error("Parsed context is null. Raw: {}", raw);
+                logger.error("Parsed context is null");
                 sendError(ctx, "MISSING_CONTEXT", "Message context is null");
                 return;
             }
@@ -46,8 +46,8 @@ public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWe
             String project = massMessage.getProject();
             String msgId = massMessage.getMsgId();
             if (workerId == null || connRole == null || project == null || msgId == null) {
-                logger.error("workerId/connRole/project/msgId is null: workerId={}, connRole={}, project={}, msgId={}, raw={}",
-                        workerId, connRole, project, msgId, raw);
+                logger.error("workerId/connRole/project/msgId is null: workerId={}, connRole={}, project={}, msgId={}",
+                        workerId, connRole, project, msgId);
                 sendError(ctx, "MISSING_FIELDS", "workerId/connRole/project/msgId are required");
                 return;
             }
@@ -67,14 +67,14 @@ public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWe
             org.slf4j.MDC.put("project", envelope.getProject());
             org.slf4j.MDC.put("receivedAt", String.valueOf(envelope.getReceivedAt()));
             try {
-                logger.info("channelRead0 envelope");
+                logger.debug("channelRead0 envelope");
             } finally {
                 org.slf4j.MDC.clear();
             }
 
             dispatcherContext.getMessageTransporter().sendInput(envelope);
             dispatcherContext.getSessionManager().addSession(workerId, connRole, ctx.channel(), ctx);
-            logger.info("queue size {}", dispatcherContext.getMessageTransporter().inputQueueSize());
+            logger.debug("Input queue size={}", dispatcherContext.getMessageTransporter().inputQueueSize());
 
         } catch (Exception e) {
             logger.error("Unexpected error in channelRead0", e);

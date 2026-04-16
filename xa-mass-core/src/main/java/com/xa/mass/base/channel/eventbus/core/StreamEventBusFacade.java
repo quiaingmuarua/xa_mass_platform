@@ -4,14 +4,20 @@ import com.xa.mass.base.channel.messaging.api.MessageStream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.concurrent.*;
-import java.util.concurrent.atomic.AtomicLong;
-import java.util.List;
 import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * 优化的Stream事件总线门面，支持批量ACK、可配置线程池、详细性能监控。
- * 支持泛型，可以处理任意类型的事件对象。
+ * Stream-backed event bus facade with batching, ACK control, and runtime metrics.
  */
 public class StreamEventBusFacade<T> implements EventBusFacade<T> {
     private static final Logger log = LoggerFactory.getLogger(StreamEventBusFacade.class);
@@ -23,14 +29,10 @@ public class StreamEventBusFacade<T> implements EventBusFacade<T> {
     private final ThreadPoolExecutor handlerExecutor;
     private volatile boolean running = true;
 
-    // 性能监控指标
     private final AtomicLong processedMessages = new AtomicLong(0);
     private final AtomicLong failedMessages = new AtomicLong(0);
     private final AtomicLong timeoutMessages = new AtomicLong(0);
 
-    /**
-     * 推荐用自定义配置构造
-     */
     public StreamEventBusFacade(MessageStream<T> stream, EventBusConfig config) {
         this.stream = stream;
         this.config = config;
@@ -56,7 +58,8 @@ public class StreamEventBusFacade<T> implements EventBusFacade<T> {
         return new ThreadPoolExecutor(
                 config.getCorePoolSize(),
                 config.getMaxPoolSize(),
-                config.getKeepAliveTimeSeconds(), TimeUnit.SECONDS,
+                config.getKeepAliveTimeSeconds(),
+                TimeUnit.SECONDS,
                 new LinkedBlockingQueue<>(config.getQueueCapacity()),
                 r -> {
                     Thread t = new Thread(r, "event-handler-" + System.nanoTime());
@@ -82,7 +85,7 @@ public class StreamEventBusFacade<T> implements EventBusFacade<T> {
                     break;
                 } catch (Exception e) {
                     if (running) {
-                        log.error("Stream listener error: ", e);
+                        log.error("Stream listener error", e);
                         try {
                             Thread.sleep(1000);
                         } catch (InterruptedException ignored) {
@@ -96,9 +99,6 @@ public class StreamEventBusFacade<T> implements EventBusFacade<T> {
         });
     }
 
-    /**
-     * 批量处理并仅ACK真正成功的消息
-     */
     private void processBatchSafely(List<MessageStream.StreamMessage<T>> messages) {
         List<String> toAck = new CopyOnWriteArrayList<>();
         List<CompletableFuture<Void>> futures = new ArrayList<>(messages.size());
@@ -117,14 +117,15 @@ public class StreamEventBusFacade<T> implements EventBusFacade<T> {
             futures.add(future);
         }
 
-        // 等待所有消息处理完成或超时
         try {
             CompletableFuture<Void> all = CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]));
             all.get(config.getHandlerTimeoutSeconds(), TimeUnit.SECONDS);
         } catch (TimeoutException e) {
             int notDone = 0;
-            for (CompletableFuture<Void> f : futures) {
-                if (!f.isDone()) notDone++;
+            for (CompletableFuture<Void> future : futures) {
+                if (!future.isDone()) {
+                    notDone++;
+                }
             }
             timeoutMessages.addAndGet(notDone);
             log.warn("Timeout: {} message(s) not processed within {}s", notDone, config.getHandlerTimeoutSeconds());
@@ -132,7 +133,6 @@ public class StreamEventBusFacade<T> implements EventBusFacade<T> {
             log.error("Exception while waiting for batch processing", e);
         }
 
-        // 只ACK真正被添加到toAck的（即无异常和无超时的）
         if (!toAck.isEmpty()) {
             try {
                 int acked = stream.ackBatch(toAck);
@@ -157,18 +157,20 @@ public class StreamEventBusFacade<T> implements EventBusFacade<T> {
 
     @Override
     public <E extends T> void post(E event) {
-        if (event == null) throw new IllegalArgumentException("event cannot be null");
+        if (event == null) {
+            throw new IllegalArgumentException("event cannot be null");
+        }
         stream.offer(event);
     }
 
     @Override
     public <E extends T> void register(Class<E> eventType, java.util.function.Consumer<E> handler) {
-        throw new UnsupportedOperationException("请直接注册带有@MassSubscribe注解的listener实例");
+        throw new UnsupportedOperationException("Register listener instances annotated with @MassSubscribe directly");
     }
 
     @Override
     public <E extends T> void unregister(Class<E> eventType, java.util.function.Consumer<E> handler) {
-        throw new UnsupportedOperationException("请直接注销带有@MassSubscribe注解的listener实例");
+        throw new UnsupportedOperationException("Unregister listener instances annotated with @MassSubscribe directly");
     }
 
     @Override
@@ -246,14 +248,33 @@ public class StreamEventBusFacade<T> implements EventBusFacade<T> {
             this.completedTasks = completedTasks;
         }
 
-        // Getters
-        public long getProcessedMessages() { return processedMessages; }
-        public long getFailedMessages() { return failedMessages; }
-        public long getTimeoutMessages() { return timeoutMessages; }
-        public int getTotalHandlers() { return totalHandlers; }
-        public int getActiveThreads() { return activeThreads; }
-        public int getQueuedTasks() { return queuedTasks; }
-        public long getCompletedTasks() { return completedTasks; }
+        public long getProcessedMessages() {
+            return processedMessages;
+        }
+
+        public long getFailedMessages() {
+            return failedMessages;
+        }
+
+        public long getTimeoutMessages() {
+            return timeoutMessages;
+        }
+
+        public int getTotalHandlers() {
+            return totalHandlers;
+        }
+
+        public int getActiveThreads() {
+            return activeThreads;
+        }
+
+        public int getQueuedTasks() {
+            return queuedTasks;
+        }
+
+        public long getCompletedTasks() {
+            return completedTasks;
+        }
 
         @Override
         public String toString() {

@@ -4,6 +4,7 @@ import com.xa.mass.base.channel.messaging.api.MessageQueue;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.rules.RuleManager;
+import com.xa.mass.engine.util.LogUtils;
 import com.xa.mass.gateway.queue.Envelope;
 import com.xa.mass.starter.MassApplication;
 import org.slf4j.Logger;
@@ -122,28 +123,36 @@ public class MockApplicationSpringBootApp {
 
                 try {
                     app.loadMockData(app.getEngine(), app.getEngine().getConfig());
+                    LogUtils.clearMdc();
                     log.info("Mock data loaded");
                 } catch (Exception e) {
+                    LogUtils.clearMdc();
                     log.warn("Mock data load failed but startup will continue: {}", e.getMessage());
                 }
 
                 try {
                     app.getEngine().publishTaskEvents();
+                    LogUtils.clearMdc();
                     log.info("Initial task events published");
                 } catch (Exception e) {
+                    LogUtils.clearMdc();
                     log.warn("Initial task event publish failed: {}", e.getMessage());
                 }
 
+                LogUtils.clearMdc();
                 log.info("Spring Boot HTTP API is ready");
                 log.info("Full-stack runtime startup complete");
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
+                LogUtils.clearMdc();
                 log.error("Startup interrupted", e);
                 throw new RuntimeException("Startup process was interrupted", e);
             } catch (RuntimeException e) {
+                LogUtils.clearMdc();
                 log.error("Full-stack startup failed: {}", e.getMessage(), e);
                 throw e;
             } catch (Exception e) {
+                LogUtils.clearMdc();
                 log.error("Full-stack startup failed", e);
                 throw new RuntimeException("Failed to start full-stack services", e);
             }

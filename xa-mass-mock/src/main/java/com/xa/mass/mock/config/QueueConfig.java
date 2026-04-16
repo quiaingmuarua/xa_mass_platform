@@ -1,26 +1,26 @@
 package com.xa.mass.mock.config;
 
-import com.xa.mass.gateway.queue.Envelope;
-import com.xa.mass.base.channel.messaging.memory.InMemoryMessageQueue;
 import com.xa.mass.base.channel.messaging.api.MessageQueue;
+import com.xa.mass.base.channel.messaging.memory.InMemoryMessageQueue;
+import com.xa.mass.gateway.queue.Envelope;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
 
 @Configuration
-@Profile("!local") // 只在 "local" profile 激活时生效
-public class QueueConfig { // 可以移除 ("customQueueConfigName") 如果不需要特定bean
+@Profile("!local")
+public class QueueConfig {
 
     @Bean
     @Qualifier("inputQueue")
-    public MessageQueue<Envelope> inputQueue() { // 返回类型改为 MessageQueue<StoredMessage>
-        return new InMemoryMessageQueue<>("Envelope",Envelope.class);// InMemoryMessageQueue 应该实现 MessageQueue<StoredMessage>
+    public MessageQueue<Envelope> inputQueue() {
+        return new InMemoryMessageQueue<>("Envelope", Envelope.class);
     }
 
     @Bean
     @Qualifier("outputQueue")
-    public MessageQueue<Envelope> outputQueue() { // 返回类型改为 MessageQueue<StoredMessage>
-        return new InMemoryMessageQueue<>("Envelope",Envelope.class);
+    public MessageQueue<Envelope> outputQueue() {
+        return new InMemoryMessageQueue<>("Envelope", Envelope.class);
     }
 }

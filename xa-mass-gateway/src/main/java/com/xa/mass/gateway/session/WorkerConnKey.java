@@ -3,7 +3,7 @@ package com.xa.mass.gateway.session;
 import java.util.Objects;
 
 /**
- * 表示一个 Worker 连接的唯一标识：workerId + connRole
+ * Unique identifier for a worker connection: workerId + connRole.
  */
 public class WorkerConnKey {
     private final String workerId;
@@ -27,8 +27,8 @@ public class WorkerConnKey {
         if (this == o) return true;
         if (!(o instanceof WorkerConnKey)) return false;
         WorkerConnKey that = (WorkerConnKey) o;
-        return Objects.equals(workerId, that.workerId) &&
-                Objects.equals(connRole, that.connRole);
+        return Objects.equals(workerId, that.workerId)
+                && Objects.equals(connRole, that.connRole);
     }
 
     @Override
@@ -38,9 +38,9 @@ public class WorkerConnKey {
 
     @Override
     public String toString() {
-        return "WorkerConnKey{" +
-                "workerId='" + workerId + '\'' +
-                ", connRole='" + connRole + '\'' +
-                '}';
+        return "WorkerConnKey{"
+                + "workerId='" + workerId + '\''
+                + ", connRole='" + connRole + '\''
+                + '}';
     }
 }

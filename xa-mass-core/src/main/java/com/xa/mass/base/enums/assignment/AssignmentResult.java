@@ -1,16 +1,16 @@
 package com.xa.mass.base.enums.assignment;
 
 /**
- * 分配结果枚举
+ * Outcome of a worker or message assignment attempt.
  */
 public enum AssignmentResult {
-    SUCCESS("成功"),
-    FAILED("失败"),
-    CONFLICT("冲突"),
-    SKIPPED("跳过"),
-    RULE_NOT_MATCH("规则不匹配"),
-    RESOURCE_UNAVAILABLE("资源不可用"),
-    QUOTA_EXCEEDED("配额超限");
+    SUCCESS("Success"),
+    FAILED("Failed"),
+    CONFLICT("Conflict"),
+    SKIPPED("Skipped"),
+    RULE_NOT_MATCH("Rule not matched"),
+    RESOURCE_UNAVAILABLE("Resource unavailable"),
+    QUOTA_EXCEEDED("Quota exceeded");
 
     private final String description;
 
@@ -21,4 +21,4 @@ public enum AssignmentResult {
     public String getDescription() {
         return description;
     }
-} 
+}

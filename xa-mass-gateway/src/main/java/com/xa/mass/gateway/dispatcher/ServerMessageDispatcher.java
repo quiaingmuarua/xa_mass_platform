@@ -23,7 +23,7 @@ public class ServerMessageDispatcher {
     private ExecutorService outputExecutor;
 
     public ServerMessageDispatcher(DispatchRuntimeContext context) {
-        logger.info("ServerMessageDispatcher DispatchRuntimeContext={}", context);
+        logger.debug("ServerMessageDispatcher context={}", context);
         this.context = context;
     }
 
@@ -69,13 +69,13 @@ public class ServerMessageDispatcher {
     }
 
     private void processInputQueueLoop() {
-        logger.info("processInputQueueLoop start");
+        logger.debug("processInputQueueLoop start");
         while (running.get() && !Thread.currentThread().isInterrupted()) {
             Envelope envelope = null;
             try {
                 envelope = context.getMessageTransporter().receiveInput(15, TimeUnit.SECONDS);
                 if (envelope != null) {
-                    logger.info("processInputQueueLoop receive envelope {}", envelope);
+                    logger.debug("processInputQueueLoop receive envelope {}", envelope);
                     context.setDirection(DispatcherContext.MiddlewareDirection.INPUT);
                     runMiddlewareChain(MiddlewareRegistry.instance.getActiveInputMiddlewares(), envelope);
                 }
@@ -89,17 +89,17 @@ public class ServerMessageDispatcher {
                 runExceptionMiddlewareChain(envelope, e);
             }
         }
-        logger.info("processInputQueueLoop stopped");
+        logger.debug("processInputQueueLoop stopped");
     }
 
     private void processOutputQueueLoop() {
-        logger.info("processOutputQueueLoop start");
+        logger.debug("processOutputQueueLoop start");
         while (running.get() && !Thread.currentThread().isInterrupted()) {
             Envelope envelope = null;
             try {
                 envelope = context.getMessageTransporter().receiveOutput(15, TimeUnit.SECONDS);
                 if (envelope != null) {
-                    logger.info("processOutputQueueLoop receive envelope {}", envelope);
+                    logger.debug("processOutputQueueLoop receive envelope {}", envelope);
                     context.setDirection(DispatcherContext.MiddlewareDirection.OUTPUT);
                     runMiddlewareChain(MiddlewareRegistry.instance.getActiveOutputMiddlewares(), envelope);
                 }
@@ -113,7 +113,7 @@ public class ServerMessageDispatcher {
                 runExceptionMiddlewareChain(envelope, e);
             }
         }
-        logger.info("processOutputQueueLoop stopped");
+        logger.debug("processOutputQueueLoop stopped");
     }
 
     private void runMiddlewareChain(List<EnvelopeMiddleware> chain, Envelope envelope) {

@@ -5,8 +5,7 @@ import com.xa.mass.starter.MassGateway;
 import com.xa.mass.starter.config.GatewayConfig;
 
 /**
- * MassGateway 构建器
- * 支持链式配置和灵活扩展
+ * Builder for {@link MassGateway}.
  */
 public class MassGatewayBuilder {
     private GatewayConfig config = new GatewayConfig();
@@ -39,9 +38,9 @@ public class MassGatewayBuilder {
         return this;
     }
 
-    // 可扩展更多链式配置方法
+    // Additional fluent configuration methods can be added here as needed.
 
     public MassGateway build() {
         return new MassGateway(config, dispatcherContext);
     }
-} 
+}

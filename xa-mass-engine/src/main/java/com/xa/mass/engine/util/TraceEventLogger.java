@@ -228,6 +228,25 @@ public final class TraceEventLogger {
         ));
     }
 
+    public static void assignmentRetryScheduled(String taskId,
+                                                TaskStatus currentStatus,
+                                                String trigger,
+                                                String source,
+                                                String reason,
+                                                long retryDelayMillis) {
+        emit("ASSIGNMENT_RETRY_SCHEDULED", fields(
+                "entityType", "Task",
+                "entityId", taskId,
+                "taskId", taskId,
+                "currentStatus", enumName(currentStatus),
+                "retryDelayMillis", String.valueOf(retryDelayMillis),
+                "trigger", trigger,
+                "source", source,
+                "reason", reason,
+                "result", "SCHEDULED"
+        ));
+    }
+
     public static void callbackAccepted(TaskMsg taskMsg, String reason) {
         if (taskMsg == null) {
             return;

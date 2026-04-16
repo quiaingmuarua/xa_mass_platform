@@ -80,12 +80,12 @@ public class MassWebSocketClientImpl extends WebSocketClient implements MassWebS
         ping.setContext(ctx);
 
         send(gson.toJson(ping));
-        logger.info("[{}] Sent PING message", workerId);
+        logger.debug("[{}] Sent PING message", workerId);
     }
 
     @Override
     public void onMessage(String message) {
-        logger.info("[{}] Received: {}", workerId, message);
+        logger.debug("[{}] Received frame: {}", workerId, message);
         try {
             JsonObject json = gson.fromJson(message, JsonObject.class);
             MessageType msgType = MessageType.valueOf(json.get("msgType").getAsString().toUpperCase());
@@ -95,7 +95,7 @@ public class MassWebSocketClientImpl extends WebSocketClient implements MassWebS
                     handleTaskMessage(message);
                     break;
                 case PONG:
-                    logger.info("[{}] Pong received", workerId);
+                    logger.debug("[{}] Pong received", workerId);
                     break;
                 default:
                     logger.warn("[{}] Unhandled msgType: {}", workerId, msgType);
@@ -108,7 +108,7 @@ public class MassWebSocketClientImpl extends WebSocketClient implements MassWebS
     private void handleTaskMessage(String message) {
         MassMessage taskMessage = gson.fromJson(message, MassMessage.class);
         if (taskMessage.isResponse()) {
-            logger.info("[{}] Ignoring task response frame for msgId: {}", workerId, taskMessage.getMsgId());
+            logger.debug("[{}] Ignoring task response frame for msgId: {}", workerId, taskMessage.getMsgId());
             return;
         }
         TaskPayload taskPayload = gson.fromJson(taskMessage.getPayload(), TaskPayload.class);
@@ -142,7 +142,7 @@ public class MassWebSocketClientImpl extends WebSocketClient implements MassWebS
         response.setPayload(gson.toJsonTree(payloadMap));
 
         send(gson.toJson(response));
-        logger.info("[{}] Sent mock task response for msgId: {}", workerId, response.getMsgId());
+        logger.debug("[{}] Sent mock task response for msgId: {}", workerId, response.getMsgId());
     }
 
     @Override

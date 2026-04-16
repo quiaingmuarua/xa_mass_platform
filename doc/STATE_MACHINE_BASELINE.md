@@ -20,6 +20,9 @@ Use with:
    - trace update
    - E2E coverage update
 3. `TERMINAL` task semantics are interpreted by `status + terminalReason`, not status alone.
+4. Task closure stays modeled as one final status plus terminal reason. Do not split `TaskStatus` into multiple terminal enums unless API, validation, trace, and E2E baselines are redesigned together.
+5. `TaskMsgStatus` is the platform lifecycle contract, not a complete transport-event history. Transport-specific delivery phases belong in trace/event data or a dedicated transport model.
+6. The current runtime concurrency model is conservative: one worker is one active execution lane, even when that worker owns multiple worker contexts.
 
 ## 2. TaskStatus
 
@@ -92,6 +95,7 @@ Must hold:
 - `workerId`, `workerContextId`, and `batchId` are written before downstream dispatch
 - duplicate final callbacks do not mutate final state
 - `RUNNING` must be observable before final success/failure in the normalized completion path
+- richer transport phases must not be silently backfilled into `TaskMsgStatus` without a baseline redesign
 
 ## 4. WorkerContextStatus
 
@@ -122,6 +126,7 @@ Must hold:
 - `lastBindTaskId` is the ownership truth for task-bound contexts
 - releasing one context must not release sibling contexts
 - current model is conservative `1:N`: one worker may own many contexts, but only one active context per worker executes at a time
+- true same-worker multi-context parallelism would require redesign of worker locking, assignment, release, and E2E baselines
 
 ## 5. TaskTerminalReason
 

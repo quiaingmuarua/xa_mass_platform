@@ -7,8 +7,11 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * Worker 存储接口
- * 提供 Worker 和 WorkerContext 的存储抽象能力
+ * Storage abstraction for worker and worker-context state.
+ *
+ * <p>The active lock contract is intentionally worker-level: the lock protects
+ * one active execution lane per worker in the current runtime model, even when
+ * a worker owns multiple worker contexts.
  */
 public interface WorkerStorage {
 

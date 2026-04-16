@@ -4,20 +4,20 @@ import com.xa.mass.base.channel.eventbus.core.EventBusFacade;
 import com.xa.mass.base.channel.eventbus.core.EventBusFactory;
 import com.xa.mass.base.channel.eventbus.event.task.TaskCreatedEvent;
 import com.xa.mass.base.enums.task.TaskStatus;
-import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.Task;
+import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
-import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.TaskManager;
+import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.listener.EventListenerRegistry;
 import com.xa.mass.engine.listener.SimpleTaskMsgAssignListener;
 import com.xa.mass.engine.listener.TaskAssignWorker;
-import com.xa.mass.engine.listener.TaskWorkerAssignListener;
 import com.xa.mass.engine.listener.TaskMsgDispatchListener;
 import com.xa.mass.engine.listener.TaskResourceReleaseListener;
+import com.xa.mass.engine.listener.TaskWorkerAssignListener;
 import com.xa.mass.engine.monkey.MonkeyGenerator;
 import com.xa.mass.engine.service.AssignmentRecordService;
-import com.xa.mass.engine.strategy.SimpleTaskScheduler;
+import com.xa.mass.engine.util.LogUtils;
 import com.xa.mass.starter.config.EngineConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -31,7 +31,6 @@ public class MassEngine {
     private final EngineConfig config;
     private boolean running = false;
 
-    private SimpleTaskScheduler scheduler;
     private TaskManager taskManager;
     private WorkerManager workerManager;
     private AssignmentRecordService recordService;
@@ -51,6 +50,7 @@ public class MassEngine {
     }
 
     public void start() {
+        LogUtils.clearMdc();
         if (!config.isEnabled()) {
             logger.info("MassEngine is disabled, skipping start");
             return;
@@ -59,18 +59,27 @@ public class MassEngine {
             logger.info("MassEngine is already running, skipping duplicate start");
             return;
         }
-        logger.info("⚙️ Starting MassEngine with {} worker threads", config.getWorkerThreads());
+        logger.info("Starting MassEngine with {} worker threads", config.getWorkerThreads());
         try {
-            scheduler = config.getScheduler();
             taskManager = config.getTaskManager();
             workerManager = config.getWorkerManager();
             recordService = config.getRecordService();
             TaskMsgDispatchListener taskMsgDispatchListener = config.getTaskMsgDispatchListener();
             var ruleManager = config.getRuleManager();
-            var msgAssignListener = new SimpleTaskMsgAssignListener(taskManager, workerManager, recordService, taskMsgDispatchListener);
-            var workerAssignListener = new TaskWorkerAssignListener(ruleManager, workerManager, msgAssignListener, recordService, taskManager);
+            var msgAssignListener = new SimpleTaskMsgAssignListener(
+                    taskManager,
+                    workerManager,
+                    recordService,
+                    taskMsgDispatchListener);
+            var workerAssignListener = new TaskWorkerAssignListener(
+                    ruleManager,
+                    workerManager,
+                    msgAssignListener,
+                    recordService,
+                    taskManager);
             assignWorker = new TaskAssignWorker(workerAssignListener);
             assignWorker.start();
+
             TaskResourceReleaseListener resourceReleaseListener =
                     new TaskResourceReleaseListener(taskManager, workerManager, assignWorker::submit);
             taskManager.addTaskReadyListener(assignWorker::submit);
@@ -78,22 +87,25 @@ public class MassEngine {
             taskManager.addTaskMessageFinalListener(resourceReleaseListener::onTaskMessageFinal);
             taskManager.addTaskTerminalListener(resourceReleaseListener::onTaskTerminal);
             taskManager.getTasksByStatus(TaskStatus.READY).forEach(assignWorker::submit);
+
             eventBus = EventBusFactory.get("guava");
             workerStatusEventListener = EventListenerRegistry.registerWorkerStatusListeners(eventBus, workerManager);
             running = true;
-            logger.info("✅ MassEngine started successfully");
+            logger.info("MassEngine started successfully");
         } catch (Exception e) {
-            logger.error("❌ Failed to start MassEngine", e);
+            LogUtils.clearMdc();
+            logger.error("Failed to start MassEngine", e);
             throw new RuntimeException("Failed to start MassEngine", e);
         }
     }
 
     public void stop() {
+        LogUtils.clearMdc();
         if (!running) {
             logger.info("MassEngine is not running, skipping stop");
             return;
         }
-        logger.info("🛑 Stopping MassEngine...");
+        logger.info("Stopping MassEngine...");
         try {
             if (eventBus != null && workerStatusEventListener != null) {
                 try {
@@ -110,9 +122,10 @@ public class MassEngine {
             }
             eventBus = null;
             running = false;
-            logger.info("✅ MassEngine stopped successfully");
+            logger.info("MassEngine stopped successfully");
         } catch (Exception e) {
-            logger.error("❌ Error stopping MassEngine", e);
+            LogUtils.clearMdc();
+            logger.error("Error stopping MassEngine", e);
         }
     }
 

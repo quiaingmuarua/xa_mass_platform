@@ -3,6 +3,11 @@ package com.xa.mass.base.enums.taskmsg;
 /**
  * Task message lifecycle states.
  * Mainline flow: INIT -> BINDING -> ASSIGNED -> RUNNING -> SUCCESS/FAILED/EXPIRED.
+ *
+ * <p>This enum models the platform lifecycle contract for a work item. It is
+ * not a full transport-event history. Transport-specific phases such as
+ * broker queueing, downstream ack, or delivery retries should live in trace or
+ * transport-layer data instead of being overloaded into this enum.
  */
 public enum TaskMsgStatus {
     INIT("初始"),

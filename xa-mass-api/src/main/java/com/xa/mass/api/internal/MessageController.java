@@ -1,10 +1,10 @@
 package com.xa.mass.api.internal;
 
 import com.google.gson.Gson;
+import com.xa.mass.base.channel.tranporter.MessageTransporter;
 import com.xa.mass.gateway.dispatcher.DispatcherContextRegistry;
 import com.xa.mass.gateway.dispatcher.context.TransportContext;
 import com.xa.mass.gateway.queue.Envelope;
-import com.xa.mass.base.channel.tranporter.MessageTransporter;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -17,32 +17,36 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/message")
-@Tag(name = "消息推送")
+@Tag(name = "Message Dispatch")
 public class MessageController {
 
     private static final Gson GSON = new Gson();
 
     @PostMapping("/send")
-    @Operation(summary = "主动推送消息到指定 worker/role")
+    @Operation(summary = "Push a raw message envelope into the outbound transporter")
     public Map<String, Object> sendMessage(@RequestBody Map<String, Object> req) {
-        // 示例参数: {"workerId": "worker-123", "role": "USER", "content": "hello"}
         boolean successFlag = false;
-        String msg = "";
+        String msg;
+
         TransportContext transportContext = DispatcherContextRegistry.getTransportContext();
         if (transportContext != null) {
             MessageTransporter messageTransporter = transportContext.getMessageTransporter();
             if (messageTransporter != null) {
                 String rawJson = GSON.toJson(req);
-                Envelope env = Envelope.builder().rawJson(rawJson).receivedAt(System.currentTimeMillis()).build();
+                Envelope env = Envelope.builder()
+                        .rawJson(rawJson)
+                        .receivedAt(System.currentTimeMillis())
+                        .build();
                 messageTransporter.sendOutput(env);
                 successFlag = true;
-                msg = "消息已入队";
+                msg = "message enqueued";
             } else {
-                msg = "MessageTransporter 未初始化";
+                msg = "message transporter is not initialized";
             }
         } else {
-            msg = "TransportContext 未初始化";
+            msg = "transport context is not initialized";
         }
+
         Map<String, Object> result = new HashMap<>();
         result.put("success", successFlag);
         result.put("msg", msg);
@@ -56,5 +60,4 @@ public class MessageController {
         resp.put("data", data);
         return resp;
     }
-
-} 
+}

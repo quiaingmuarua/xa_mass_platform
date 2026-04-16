@@ -3,26 +3,30 @@ package com.xa.mass.starter.config;
 import com.xa.mass.base.channel.messaging.api.MessageQueue;
 import com.xa.mass.base.channel.tranporter.MessageTransporter;
 import com.xa.mass.base.channel.tranporter.MessageTransporterFactory;
-import com.xa.mass.gateway.queue.*;
+import com.xa.mass.gateway.queue.Envelope;
+import com.xa.mass.gateway.queue.EnvelopeMessageTransporter;
+import com.xa.mass.gateway.queue.MessageCodec;
+import com.xa.mass.gateway.queue.MessageCodecFactory;
 
 /**
- * 网关配置类
+ * Gateway runtime configuration.
  */
 public class GatewayConfig {
     private boolean enabled = true;
     private int maxConnections = 1000;
 
-    // 消息传输器配置
-    private MessageTransporterFactory.TransporterType transporterType = MessageTransporterFactory.TransporterType.QUEUE_BASED;
+    // Transport configuration.
+    private MessageTransporterFactory.TransporterType transporterType =
+            MessageTransporterFactory.TransporterType.QUEUE_BASED;
     private MessageQueue<Envelope> inputQueue;
     private MessageQueue<Envelope> outputQueue;
 
-    // 外部API配置（当使用API_BASED传输器时）
+    // External API configuration used by API_BASED transporters.
     private String inputApiUrl;
     private String outputApiUrl;
     private String apiKey;
 
-    // 编解码器配置
+    // Codec configuration.
     private MessageCodecFactory.CodecType codecType = MessageCodecFactory.CodecType.GSON;
     private MessageCodec messageCodec;
 
@@ -43,51 +47,55 @@ public class GatewayConfig {
     }
 
     /**
-     * 创建消息传输器
+     * Create the configured message transporter.
      */
     public MessageTransporter<Envelope> createMessageTransporter() {
         switch (transporterType) {
             case QUEUE_BASED:
                 if (inputQueue == null || outputQueue == null) {
-                    throw new IllegalStateException("QUEUE_BASED 类型需要提供 inputQueue 和 outputQueue");
+                    throw new IllegalStateException(
+                            "QUEUE_BASED transporter requires both inputQueue and outputQueue");
                 }
                 return MessageTransporterFactory.createQueueBased(inputQueue, outputQueue);
             case MULTI_LEVEL:
                 return MessageTransporterFactory.createMultiLevel();
             case API_BASED:
                 if (inputApiUrl == null || outputApiUrl == null || apiKey == null) {
-                    throw new IllegalStateException("API_BASED 类型需要提供 inputApiUrl, outputApiUrl 和 apiKey");
+                    throw new IllegalStateException(
+                            "API_BASED transporter requires inputApiUrl, outputApiUrl, and apiKey");
                 }
                 return MessageTransporterFactory.createApiBased(inputApiUrl, outputApiUrl, apiKey);
             default:
-                throw new IllegalArgumentException("不支持的传输器类型: " + transporterType);
+                throw new IllegalArgumentException("Unsupported transporter type: " + transporterType);
         }
     }
 
     /**
-     * 创建 Envelope 消息传输器（推荐使用）
+     * Create the envelope-aware transporter used by the gateway.
      */
     public EnvelopeMessageTransporter createEnvelopeMessageTransporter() {
         switch (transporterType) {
             case QUEUE_BASED:
                 if (inputQueue == null || outputQueue == null) {
-                    throw new IllegalStateException("QUEUE_BASED 类型需要提供 inputQueue 和 outputQueue");
+                    throw new IllegalStateException(
+                            "QUEUE_BASED transporter requires both inputQueue and outputQueue");
                 }
                 return EnvelopeMessageTransporter.createQueueBased(inputQueue, outputQueue);
             case MULTI_LEVEL:
                 return EnvelopeMessageTransporter.createMultiLevel();
             case API_BASED:
                 if (inputApiUrl == null || outputApiUrl == null || apiKey == null) {
-                    throw new IllegalStateException("API_BASED 类型需要提供 inputApiUrl, outputApiUrl 和 apiKey");
+                    throw new IllegalStateException(
+                            "API_BASED transporter requires inputApiUrl, outputApiUrl, and apiKey");
                 }
                 return EnvelopeMessageTransporter.createApiBased(inputApiUrl, outputApiUrl, apiKey);
             default:
-                throw new IllegalArgumentException("不支持的传输器类型: " + transporterType);
+                throw new IllegalArgumentException("Unsupported transporter type: " + transporterType);
         }
     }
 
     /**
-     * 创建消息编解码器
+     * Create the configured message codec.
      */
     public MessageCodec createMessageCodec() {
         if (messageCodec != null) {
@@ -96,7 +104,6 @@ public class GatewayConfig {
         return MessageCodecFactory.create(codecType);
     }
 
-    // Getter 和 Setter 方法
     public MessageTransporterFactory.TransporterType getTransporterType() {
         return transporterType;
     }

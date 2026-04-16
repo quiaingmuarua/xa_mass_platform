@@ -2,6 +2,7 @@ package com.xa.mass.engine.listener;
 
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
+import com.xa.mass.engine.util.TraceEventLogCapture;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -12,8 +13,14 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.atLeast;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.same;
+import static org.mockito.Mockito.verify;
 
 class TaskAssignWorkerTest {
 
@@ -22,15 +29,15 @@ class TaskAssignWorkerTest {
 
     /**
      * Stub TaskWorkerAssignListener that records tasks and transitions them to RUNNING,
-     * simulating a successful worker assignment. Without the READY→RUNNING transition,
-     * the worker treats the task as unassigned and schedules a retry — completion
+     * simulating a successful worker assignment. Without the READY->RUNNING transition,
+     * the worker treats the task as unassigned and schedules a retry, so assignment-queue
      * notifications would never fire.
      */
     private TaskWorkerAssignListener recordingListener(List<Task> sink) {
         TaskWorkerAssignListener stub = mock(TaskWorkerAssignListener.class);
         doAnswer(inv -> {
             Task t = inv.getArgument(0);
-            t.transitionTo(TaskStatus.RUNNING); // simulate successful assignment
+            t.transitionTo(TaskStatus.RUNNING);
             sink.add(t);
             return true;
         }).when(stub).onTaskAssign(any());
@@ -52,9 +59,9 @@ class TaskAssignWorkerTest {
     @Test
     void submittedReadyTaskIsProcessed() throws InterruptedException {
         CountDownLatch latch = new CountDownLatch(1);
-        worker.addListener(new TaskCompletionListener() {
-            @Override public void onTaskCompleted(Task t) { latch.countDown(); }
-            @Override public void onAllTasksCompleted() {}
+        worker.addAssignmentQueueListener(new TaskAssignmentQueueListener() {
+            @Override public void onTaskAssignmentProcessed(Task t) { latch.countDown(); }
+            @Override public void onAssignmentQueueDrained() {}
         });
 
         Task task = readyTask("t1");
@@ -86,12 +93,19 @@ class TaskAssignWorkerTest {
         worker.start();
 
         Task task = readyTask("retry");
-        worker.submit(task);
+        try (TraceEventLogCapture capture = new TraceEventLogCapture()) {
+            worker.submit(task);
 
-        assertTrue(assignedLatch.await(3, TimeUnit.SECONDS), "READY task should be retried until assignment succeeds");
-        assertEquals(TaskStatus.RUNNING, task.getStatus());
-        assertEquals(2, attempts.get());
-        verify(retryingListener, atLeast(2)).onTaskAssign(same(task));
+            assertTrue(assignedLatch.await(3, TimeUnit.SECONDS), "READY task should be retried until assignment succeeds");
+            assertEquals(TaskStatus.RUNNING, task.getStatus());
+            assertEquals(2, attempts.get());
+            verify(retryingListener, atLeast(2)).onTaskAssign(same(task));
+            capture.assertHasEvent("ASSIGNMENT_RETRY_SCHEDULED", mdc ->
+                    "retry".equals(mdc.get("taskId"))
+                            && "READY".equals(mdc.get("currentStatus"))
+                            && "50".equals(mdc.get("retryDelayMillis"))
+                            && "TaskAssignWorker".equals(mdc.get("source")));
+        }
     }
 
     @Test
@@ -114,93 +128,92 @@ class TaskAssignWorkerTest {
         worker.start();
 
         Task task = runningTask("running-retry");
-        worker.submit(task);
+        try (TraceEventLogCapture capture = new TraceEventLogCapture()) {
+            worker.submit(task);
 
-        assertTrue(assignedLatch.await(3, TimeUnit.SECONDS), "RUNNING task should be retried until replenishment succeeds");
-        assertEquals(TaskStatus.RUNNING, task.getStatus());
-        assertEquals(2, attempts.get());
-        verify(retryingListener, atLeast(2)).onTaskAssign(same(task));
+            assertTrue(assignedLatch.await(3, TimeUnit.SECONDS), "RUNNING task should be retried until replenishment succeeds");
+            assertEquals(TaskStatus.RUNNING, task.getStatus());
+            assertEquals(2, attempts.get());
+            verify(retryingListener, atLeast(2)).onTaskAssign(same(task));
+            capture.assertHasEvent("ASSIGNMENT_RETRY_SCHEDULED", mdc ->
+                    "running-retry".equals(mdc.get("taskId"))
+                            && "RUNNING".equals(mdc.get("currentStatus"))
+                            && "50".equals(mdc.get("retryDelayMillis"))
+                            && "TaskAssignWorker".equals(mdc.get("source")));
+        }
     }
 
     @Test
     void nonReadyTaskIsSkippedAndNotCounted() throws InterruptedException {
-        // Submit a NEW-status task (not READY) — should be skipped without calling the listener
         CountDownLatch readyLatch = new CountDownLatch(1);
-        worker.addListener(new TaskCompletionListener() {
-            @Override public void onTaskCompleted(Task t) { readyLatch.countDown(); }
-            @Override public void onAllTasksCompleted() {}
+        worker.addAssignmentQueueListener(new TaskAssignmentQueueListener() {
+            @Override public void onTaskAssignmentProcessed(Task t) { readyLatch.countDown(); }
+            @Override public void onAssignmentQueueDrained() {}
         });
 
         Task newTask = new Task();
         newTask.setTid("skipped");
         newTask.setStatus(TaskStatus.NEW);
 
-        // Submit non-READY task then a READY task to verify ordering
         worker.submit(newTask);
         worker.submit(readyTask("processed"));
 
         assertTrue(readyLatch.await(3, TimeUnit.SECONDS));
-        // Only the READY task should have been passed to the worker assign listener
         assertEquals(1, assigned.size());
         assertEquals("processed", assigned.get(0).getTid());
     }
 
     @Test
-    void listenerReceivesOnAllTasksCompletedAfterLastTask() throws InterruptedException {
+    void listenerReceivesQueueDrainedAfterLastSubmittedTask() throws InterruptedException {
         CountDownLatch allDoneLatch = new CountDownLatch(1);
         AtomicInteger completedCount = new AtomicInteger(0);
-        worker.addListener(new TaskCompletionListener() {
-            @Override public void onTaskCompleted(Task t) { completedCount.incrementAndGet(); }
-            @Override public void onAllTasksCompleted() { allDoneLatch.countDown(); }
+        worker.addAssignmentQueueListener(new TaskAssignmentQueueListener() {
+            @Override public void onTaskAssignmentProcessed(Task t) { completedCount.incrementAndGet(); }
+            @Override public void onAssignmentQueueDrained() { allDoneLatch.countDown(); }
         });
 
         worker.submitAll(List.of(readyTask("a"), readyTask("b")));
 
-        assertTrue(allDoneLatch.await(5, TimeUnit.SECONDS), "onAllTasksCompleted should fire");
+        assertTrue(allDoneLatch.await(5, TimeUnit.SECONDS), "onAssignmentQueueDrained should fire");
         assertEquals(2, completedCount.get());
     }
 
     @Test
     void stopTerminatesWorkerCleanly() {
-        // start() already called in setUp; stop should complete without hanging
         worker.stop();
-        // If stop() blocks indefinitely we never reach this assertion
         assertTrue(true, "stop() returned without timeout");
-        // Re-create for tearDown to call stop() again without a double-stop error
         worker = new TaskAssignWorker(mock(TaskWorkerAssignListener.class));
         worker.start();
     }
 
     @Test
     void multipleListenersAddedConcurrentlyDoNotCauseCME() throws InterruptedException {
-        // Regression: former ArrayList caused ConcurrentModificationException when listeners
-        // were added while the worker thread was iterating them on task completion.
         int threadCount = 10;
         CountDownLatch start = new CountDownLatch(1);
         CountDownLatch done = new CountDownLatch(threadCount);
 
         for (int i = 0; i < threadCount; i++) {
             new Thread(() -> {
-                try { start.await(); } catch (InterruptedException ignored) {}
-                worker.addListener(new TaskCompletionListener() {
-                    @Override public void onTaskCompleted(Task t) {}
-                    @Override public void onAllTasksCompleted() {}
+                try {
+                    start.await();
+                } catch (InterruptedException ignored) {
+                    Thread.currentThread().interrupt();
+                }
+                worker.addAssignmentQueueListener(new TaskAssignmentQueueListener() {
+                    @Override public void onTaskAssignmentProcessed(Task t) {}
+                    @Override public void onAssignmentQueueDrained() {}
                 });
                 done.countDown();
             }).start();
         }
 
-        // Submit tasks concurrently with listener registration
         start.countDown();
         for (int i = 0; i < 5; i++) {
             worker.submit(readyTask("concurrent-" + i));
         }
 
         assertTrue(done.await(5, TimeUnit.SECONDS), "All listener-adder threads should finish");
-        // No ConcurrentModificationException means the test passes
     }
-
-    // ---- helpers ----
 
     private Task readyTask(String tid) {
         Task t = new Task();

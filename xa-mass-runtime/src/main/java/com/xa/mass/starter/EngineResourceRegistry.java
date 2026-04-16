@@ -5,29 +5,29 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * 引擎资源注册表，starter 层唯一实现
+ * Simple registry for runtime-layer engine resources.
  */
 public class EngineResourceRegistry {
     private final Map<Class<?>, Object> resources = new HashMap<>();
 
     /**
-     * 注册资源
+     * Register a resource instance by type.
      */
     public <T> void register(Class<T> type, T instance) {
         resources.put(type, instance);
     }
 
     /**
-     * 获取资源
+     * Look up a resource by type.
      */
     public <T> T get(Class<T> type) {
         return type.cast(resources.get(type));
     }
 
     /**
-     * 获取所有资源
+     * Return all registered resources.
      */
     public Collection<Object> allResources() {
         return resources.values();
     }
-} 
+}

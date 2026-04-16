@@ -12,7 +12,12 @@ import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.NavigableMap;
+import java.util.TreeMap;
 
 public class MiddlewareRegistry {
     public static final MiddlewareRegistry instance = new MiddlewareRegistry();
@@ -24,11 +29,10 @@ public class MiddlewareRegistry {
     private final List<ExceptionMiddleware> exceptionMiddlewareList = new ArrayList<>();
 
     private MiddlewareRegistry() {
-
     }
 
     public static void autoRegister() {
-        // 自动注册主流程 middleware（优先级最大，保证在链尾）
+        // Register the default mainline middlewares at the highest priority so they wrap the full chain.
         MiddlewareRegistry.instance.registerInput(Integer.MAX_VALUE, processEnvelopeMiddleware());
         MiddlewareRegistry.instance.registerOutput(Integer.MAX_VALUE, sendEnvelopeMiddleware());
 
@@ -48,17 +52,18 @@ public class MiddlewareRegistry {
         });
     }
 
-    // 可作为 input/output middleware 链的最后一环
+    // Final middleware for the input/output chain that decodes, routes, and emits downstream responses.
     public static EnvelopeMiddleware processEnvelopeMiddleware() {
         return (envelope, context) -> {
             try {
                 MassMessage msg = context.getMessageCodec().decode(envelope.getRawJson());
-                if (msg == null || msg.getContext() == null) return true;
+                if (msg == null || msg.getContext() == null) {
+                    return true;
+                }
                 MessageContext ctx = msg.getContext();
 
                 ResolutionResult result = context.getMessageHandlerRegistry().resolve(msg);
 
-                // 根据解析结果处理
                 if (result.isFound()) {
                     logger.debug("Found handler for message: {}", result);
                     List<MassMessage> responses = result.getHandler().handle(msg);
@@ -75,7 +80,6 @@ public class MiddlewareRegistry {
                 } else if (result.isFallback()) {
                     logger.warn("Using fallback handler for message: msgType={}, subType={}, payload={}",
                             msg.getMsgType(), msg.getSubMsgType(), msg.getPayload());
-                    // fallback handler 已经返回空列表，不需要额外处理
                 } else {
                     logger.warn("No handler found for message: {}", result);
                 }
@@ -90,14 +94,14 @@ public class MiddlewareRegistry {
     public static EnvelopeMiddleware sendEnvelopeMiddleware() {
         return (envelope, context) -> {
             try {
-                logger.info("sendEnvelopeMiddleware {}", envelope);
+                logger.debug("sendEnvelopeMiddleware {}", envelope);
                 ChannelHandlerContext ctx = context.getSessionManager().getChannelContext(envelope.getWorkerId(), envelope.getConnRole());
                 if (ctx != null && ctx.channel().isActive()) {
-                    logger.info("sendEnvelopeMiddleware ctx {}", ctx);
+                    logger.debug("sendEnvelopeMiddleware channelContext {}", ctx);
                     ctx.writeAndFlush(new TextWebSocketFrame(envelope.getRawJson()));
                     return true;
                 }
-                logger.info("sendEnvelopeMiddleware ctx is null, skip sending");
+                logger.debug("sendEnvelopeMiddleware skipped because channelContext is null");
             } catch (Exception e) {
                 logger.error("Error in sendEnvelopeMiddleware", e);
                 return false;
@@ -155,7 +159,7 @@ public class MiddlewareRegistry {
                 list.add(entry.getValue());
             }
         }
-        logger.info("getActiveOutputMiddlewares {}", list);
+        logger.debug("getActiveOutputMiddlewares {}", list);
         return list;
     }
 
@@ -182,5 +186,4 @@ public class MiddlewareRegistry {
     public List<ExceptionMiddleware> getExceptionMiddlewareList() {
         return exceptionMiddlewareList;
     }
-
-} 
+}

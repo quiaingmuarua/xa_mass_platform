@@ -5,12 +5,17 @@ import com.xa.mass.base.enums.assignment.AssignmentType;
 import com.xa.mass.engine.model.AssignmentRecord;
 import com.xa.mass.engine.model.RuleEvaluationDetail;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
- * 分配验证服务
- * 支持正向验证、逆向验证和冲突检测
+ * Validates assignment diagnostics for consistency, exclusion reasons, and conflicts.
  */
 public class AssignmentValidationService {
 
@@ -21,35 +26,35 @@ public class AssignmentValidationService {
     }
 
     /**
-     * 正向验证：检查每个成功的分配是否都满足规则
+     * Forward validation: every successful assignment should have all rules passed.
      */
     public ValidationResult validateSuccessfulAssignments() {
         ValidationResult result = new ValidationResult();
         List<AssignmentRecord> successfulRecords = recordService.getSuccessfulRecords();
 
         for (AssignmentRecord record : successfulRecords) {
-            if (record.getRuleEvaluations() != null) {
-                // 检查是否所有规则都通过
-                boolean allRulesPassed = record.getRuleEvaluations().stream()
-                        .allMatch(RuleEvaluationDetail::isPassed);
+            if (record.getRuleEvaluations() == null) {
+                continue;
+            }
 
-                if (!allRulesPassed) {
-                    result.addError("分配记录 " + record.getRecordId() +
-                            " 标记为成功但存在规则未通过");
-                }
+            boolean allRulesPassed = record.getRuleEvaluations().stream()
+                    .allMatch(RuleEvaluationDetail::isPassed);
+
+            if (!allRulesPassed) {
+                result.addError("Assignment record " + record.getRecordId()
+                        + " is marked successful but contains failed rule evaluations");
             }
         }
 
         result.setTotalChecked(successfulRecords.size());
         result.setValidatedSuccessfully(result.getErrors().isEmpty());
-
         return result;
     }
 
     /**
-     * 逆向验证：检查未分配的 Worker 是否被合理排除
+     * Reverse validation: unassigned workers should have a valid exclusion reason.
      */
-    public ValidationResult validateUnassignedDevices(Set<String> allWorkerIds, Set<String> assignedWorkerIds) {
+    public ValidationResult validateUnassignedWorkers(Set<String> allWorkerIds, Set<String> assignedWorkerIds) {
         ValidationResult result = new ValidationResult();
         Set<String> unassignedWorkerIds = new HashSet<>(allWorkerIds);
         unassignedWorkerIds.removeAll(assignedWorkerIds);
@@ -58,45 +63,44 @@ public class AssignmentValidationService {
             List<AssignmentRecord> workerRecords = recordService.getRecordsByWorkerId(workerId);
 
             if (workerRecords.isEmpty()) {
-                result.addWarning("Worker " + workerId + " 没有任何分配记录");
+                result.addWarning("Worker " + workerId + " has no assignment records");
                 continue;
             }
 
-            // 检查是否有成功的分配记录
             boolean hasSuccessfulRecord = workerRecords.stream()
                     .anyMatch(r -> AssignmentResult.SUCCESS.equals(r.getResult()));
 
             if (hasSuccessfulRecord) {
-                result.addError("Worker " + workerId + " 有成功分配记录但未在已分配列表中");
-            } else {
-                // 检查失败原因是否合理
-                boolean hasValidReason = workerRecords.stream()
-                        .anyMatch(r -> {
-                            AssignmentResult res = r.getResult();
-                            return AssignmentResult.RULE_NOT_MATCH.equals(res) ||
-                                    AssignmentResult.CONFLICT.equals(res) ||
-                                    AssignmentResult.RESOURCE_UNAVAILABLE.equals(res);
-                        });
+                result.addError("Worker " + workerId
+                        + " has a successful assignment record but is missing from the assigned-worker set");
+                continue;
+            }
 
-                if (!hasValidReason) {
-                    result.addWarning("Worker " + workerId + " 的失败原因可能不合理");
-                }
+            boolean hasValidReason = workerRecords.stream()
+                    .anyMatch(r -> {
+                        AssignmentResult res = r.getResult();
+                        return AssignmentResult.RULE_NOT_MATCH.equals(res)
+                                || AssignmentResult.CONFLICT.equals(res)
+                                || AssignmentResult.RESOURCE_UNAVAILABLE.equals(res);
+                    });
+
+            if (!hasValidReason) {
+                result.addWarning("Worker " + workerId
+                        + " was excluded without a recognized conflict/resource/rule reason");
             }
         }
 
         result.setTotalChecked(unassignedWorkerIds.size());
         result.setValidatedSuccessfully(result.getErrors().isEmpty());
-
         return result;
     }
 
     /**
-     * 检测重复/冲突绑定
+     * Detects worker reuse conflicts and duplicate message assignment conflicts.
      */
     public ConflictDetectionResult detectConflicts() {
         ConflictDetectionResult result = new ConflictDetectionResult();
 
-        // 按 Worker 分组检查
         Map<String, List<AssignmentRecord>> workerRecords = recordService.getSuccessfulRecords().stream()
                 .collect(Collectors.groupingBy(AssignmentRecord::getWorkerId));
 
@@ -104,33 +108,32 @@ public class AssignmentValidationService {
             String workerId = entry.getKey();
             List<AssignmentRecord> records = entry.getValue();
 
-            if (records.size() > 1) {
-                // 按时间排序
-                records.sort(Comparator.comparing(AssignmentRecord::getAssignTime));
+            if (records.size() <= 1) {
+                continue;
+            }
 
-                // 检查时间重叠
-                for (int i = 0; i < records.size() - 1; i++) {
-                    AssignmentRecord current = records.get(i);
-                    AssignmentRecord next = records.get(i + 1);
+            records.sort(Comparator.comparing(AssignmentRecord::getAssignTime));
 
-                    long timeDiff = java.time.Duration.between(
-                            current.getAssignTime(), next.getAssignTime()).toMinutes();
+            for (int i = 0; i < records.size() - 1; i++) {
+                AssignmentRecord current = records.get(i);
+                AssignmentRecord next = records.get(i + 1);
 
-                    if (timeDiff < 5) { // 5分钟内重复分配视为冲突
-                        ConflictInfo conflict = new ConflictInfo();
-                        conflict.setWorkerId(workerId);
-                        conflict.setConflictType("TIME_OVERLAP");
-                        conflict.setFirstRecord(current);
-                        conflict.setSecondRecord(next);
-                        conflict.setTimeDiffMinutes(timeDiff);
-                        conflict.setDescription("Worker在短时间内被重复分配");
-                        result.addConflict(conflict);
-                    }
+                long timeDiff = java.time.Duration.between(
+                        current.getAssignTime(), next.getAssignTime()).toMinutes();
+
+                if (timeDiff < 5) {
+                    ConflictInfo conflict = new ConflictInfo();
+                    conflict.setWorkerId(workerId);
+                    conflict.setConflictType("TIME_OVERLAP");
+                    conflict.setFirstRecord(current);
+                    conflict.setSecondRecord(next);
+                    conflict.setTimeDiffMinutes(timeDiff);
+                    conflict.setDescription("Worker was assigned again within a suspiciously short interval");
+                    result.addConflict(conflict);
                 }
             }
         }
 
-        // 检查消息分配冲突
         Map<String, List<AssignmentRecord>> messageRecords = recordService.getSuccessfulRecords().stream()
                 .filter(r -> AssignmentType.MSG_ASSIGN.equals(r.getType()))
                 .collect(Collectors.groupingBy(AssignmentRecord::getMessageId));
@@ -139,40 +142,37 @@ public class AssignmentValidationService {
             String messageId = entry.getKey();
             List<AssignmentRecord> records = entry.getValue();
 
-            if (records.size() > 1) {
-                ConflictInfo conflict = new ConflictInfo();
-                conflict.setMessageId(messageId);
-                conflict.setConflictType("DUPLICATE_MESSAGE");
-                conflict.setFirstRecord(records.get(0));
-                conflict.setSecondRecord(records.get(1));
-                conflict.setDescription("同一消息被分配给多个设备");
-
-                result.addConflict(conflict);
+            if (records.size() <= 1) {
+                continue;
             }
+
+            ConflictInfo conflict = new ConflictInfo();
+            conflict.setMessageId(messageId);
+            conflict.setConflictType("DUPLICATE_MESSAGE");
+            conflict.setFirstRecord(records.get(0));
+            conflict.setSecondRecord(records.get(1));
+            conflict.setDescription("The same message was assigned more than once");
+            result.addConflict(conflict);
         }
 
         return result;
     }
 
     /**
-     * 生成验证报告
+     * Builds a summary validation report across success checks, exclusion checks, and conflicts.
      */
     public Map<String, Object> generateValidationReport(Set<String> allWorkerIds, Set<String> assignedWorkerIds) {
         Map<String, Object> report = new HashMap<>();
 
-        // 正向验证
         ValidationResult positiveValidation = validateSuccessfulAssignments();
         report.put("positiveValidation", positiveValidation);
 
-        // 逆向验证
-        ValidationResult negativeValidation = validateUnassignedDevices(allWorkerIds, assignedWorkerIds);
+        ValidationResult negativeValidation = validateUnassignedWorkers(allWorkerIds, assignedWorkerIds);
         report.put("negativeValidation", negativeValidation);
 
-        // 冲突检测
         ConflictDetectionResult conflictDetection = detectConflicts();
         report.put("conflictDetection", conflictDetection);
 
-        // 总体统计
         report.put("totalWorkers", allWorkerIds.size());
         report.put("assignedWorkers", assignedWorkerIds.size());
         report.put("unassignedWorkers", allWorkerIds.size() - assignedWorkerIds.size());
@@ -181,9 +181,6 @@ public class AssignmentValidationService {
         return report;
     }
 
-    /**
-     * 验证结果
-     */
     public static class ValidationResult {
         private final List<String> errors = new ArrayList<>();
         private final List<String> warnings = new ArrayList<>();
@@ -198,7 +195,6 @@ public class AssignmentValidationService {
             warnings.add(warning);
         }
 
-        // Getters and Setters
         public List<String> getErrors() {
             return errors;
         }
@@ -224,9 +220,6 @@ public class AssignmentValidationService {
         }
     }
 
-    /**
-     * 冲突检测结果
-     */
     public static class ConflictDetectionResult {
         private final List<ConflictInfo> conflicts = new ArrayList<>();
 
@@ -243,9 +236,6 @@ public class AssignmentValidationService {
         }
     }
 
-    /**
-     * 冲突信息
-     */
     public static class ConflictInfo {
         private String workerId;
         private String messageId;
@@ -255,7 +245,6 @@ public class AssignmentValidationService {
         private long timeDiffMinutes;
         private String description;
 
-        // Getters and Setters
         public String getWorkerId() {
             return workerId;
         }
@@ -312,4 +301,4 @@ public class AssignmentValidationService {
             this.description = description;
         }
     }
-} 
+}

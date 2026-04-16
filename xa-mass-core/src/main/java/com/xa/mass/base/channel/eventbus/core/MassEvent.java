@@ -13,13 +13,15 @@ public interface MassEvent extends Serializable {
 
     String getDescription();
 
+    // Business-facing event type identifier.
     default String getEventType() {
         return null;
-    }            // 业务事件类型标识
+    }
 
+    // Platform-level event type. Business events may leave this unset.
     default MassPlatformEventType getPlatformEventType() {
         return null;
-    } // 平台事件类型，业务事件可不实现
+    }
 
     default Map<String, Object> getMetadata() {
         return Collections.emptyMap();

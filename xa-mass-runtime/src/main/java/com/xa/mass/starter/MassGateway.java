@@ -6,10 +6,11 @@ import com.xa.mass.gateway.session.ServerSessionManager;
 import com.xa.mass.starter.config.GatewayConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 
 /**
- * 网关组件
- * 负责处理外部连接、消息路由和消息处理引擎
+ * Gateway runtime component.
+ * Handles external connections, message routing, and message processing.
  */
 public class MassGateway {
 
@@ -25,142 +26,103 @@ public class MassGateway {
         this.dispatcherContext = dispatcherContext;
     }
 
-    /**
-     * 启动网关
-     */
     public void start() {
+        MDC.clear();
         if (!config.isEnabled()) {
             logger.info("MassGateway is disabled, skipping start");
             return;
         }
 
-        logger.info("🌐 Starting MassGateway with max connections: {}", config.getMaxConnections());
+        logger.info("Starting MassGateway with max connections: {}", config.getMaxConnections());
 
         try {
-            // 1. 启动消息处理引擎
             startMessageEngine();
-
-            // 2. 初始化连接管理
             initializeConnectionManagement();
 
             running = true;
-            logger.info("✅ MassGateway started successfully");
-
+            logger.info("MassGateway started successfully");
         } catch (Exception e) {
-            logger.error("❌ Failed to start MassGateway", e);
+            MDC.clear();
+            logger.error("Failed to start MassGateway", e);
             throw new RuntimeException("Failed to start MassGateway", e);
         }
     }
 
-    /**
-     * 停止网关
-     */
     public void stop() {
+        MDC.clear();
         if (!running) {
             logger.info("MassGateway is not running, skipping stop");
             return;
         }
 
-        logger.info("🛑 Stopping MassGateway...");
+        logger.info("Stopping MassGateway...");
 
         try {
-            // 1. 停止消息处理引擎
             stopMessageEngine();
-
-            // 2. 关闭连接管理
             shutdownConnectionManagement();
 
             running = false;
-            logger.info("✅ MassGateway stopped successfully");
-
+            logger.info("MassGateway stopped successfully");
         } catch (Exception e) {
-            logger.error("❌ Error stopping MassGateway", e);
+            MDC.clear();
+            logger.error("Error stopping MassGateway", e);
         }
     }
 
-    /**
-     * 启动消息处理引擎
-     */
     private void startMessageEngine() {
-        logger.info("⚙️ Starting Message Processing MassEngine...");
+        logger.info("Starting message processing engine...");
 
         try {
-            // 创建消息分发器
             messageDispatcher = new ServerMessageDispatcher(dispatcherContext);
-
-            // 启动消息处理
             messageDispatcher.start();
-
-            logger.info("✅ Message Processing MassEngine started successfully");
-
+            logger.info("Message processing engine started successfully");
         } catch (Exception e) {
-            logger.error("❌ Failed to start Message Processing MassEngine", e);
-            throw new RuntimeException("Failed to start Message Processing MassEngine", e);
+            logger.error("Failed to start message processing engine", e);
+            throw new RuntimeException("Failed to start message processing engine", e);
         }
     }
 
-    /**
-     * 停止消息处理引擎
-     */
     private void stopMessageEngine() {
-        logger.info("🛑 Stopping Message Processing MassEngine...");
+        logger.info("Stopping message processing engine...");
 
         try {
             if (messageDispatcher != null) {
                 messageDispatcher.stop();
-                logger.info("✅ Message Processing MassEngine stopped successfully");
+                logger.info("Message processing engine stopped successfully");
             }
         } catch (Exception e) {
-            logger.error("❌ Error stopping Message Processing MassEngine", e);
+            logger.error("Error stopping message processing engine", e);
         }
     }
 
-    /**
-     * 初始化连接管理
-     */
     private void initializeConnectionManagement() {
-        logger.info("🔌 Initializing connection management...");
-        // ServerSessionManager.INSTANCE is a self-initializing singleton; no explicit setup needed
-        logger.info("✅ Connection management ready (max={} connections)", config.getMaxConnections());
+        logger.info("Initializing connection management...");
+        // ServerSessionManager.INSTANCE is a self-initializing singleton; no explicit setup needed.
+        logger.info("Connection management ready (max={} connections)", config.getMaxConnections());
     }
 
-    /**
-     * 关闭连接管理
-     */
     private void shutdownConnectionManagement() {
-        logger.info("🔌 Shutting down connection management...");
+        logger.info("Shutting down connection management...");
         try {
             ServerSessionManager.INSTANCE.shutdown();
-            logger.info("✅ Connection management shut down");
+            logger.info("Connection management shut down");
         } catch (Exception e) {
-            logger.error("❌ Error shutting down connection management", e);
+            logger.error("Error shutting down connection management", e);
         }
     }
 
-    /**
-     * 检查网关是否正在运行
-     */
     public boolean isRunning() {
         return running && messageDispatcher != null && messageDispatcher.isRunning();
     }
 
-    /**
-     * 获取网关配置
-     */
     public GatewayConfig getConfig() {
         return config;
     }
 
-    /**
-     * 获取消息分发器
-     */
     public ServerMessageDispatcher getMessageDispatcher() {
         return messageDispatcher;
     }
 
-    /**
-     * 获取分发器上下文
-     */
     public DispatchRuntimeContext getDispatcherContext() {
         return dispatcherContext;
     }

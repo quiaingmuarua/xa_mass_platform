@@ -18,6 +18,7 @@ import com.xa.mass.gateway.server.MassServerStater;
 import com.xa.mass.gateway.session.ServerSessionManager;
 import com.xa.mass.starter.config.EngineConfig;
 import com.xa.mass.starter.config.GatewayConfig;
+import com.xa.mass.engine.util.LogUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -55,9 +56,11 @@ public class MassApplication {
 
     public void start() {
         if (!running.compareAndSet(false, true)) {
+            LogUtils.clearMdc();
             logger.info("Mass Application is already running, skipping duplicate start");
             return;
         }
+        LogUtils.clearMdc();
         logger.info("Starting Mass Application");
 
         try {
@@ -78,9 +81,11 @@ public class MassApplication {
             startMessageDispatcher();
             startWebSocketServer();
 
+            LogUtils.clearMdc();
             logger.info("Mass Application started successfully");
         } catch (Exception e) {
             running.set(false);
+            LogUtils.clearMdc();
             logger.error("Failed to start Mass Application", e);
             throw new RuntimeException("Failed to start Mass Application", e);
         }
@@ -88,9 +93,11 @@ public class MassApplication {
 
     public void stop() {
         if (!running.compareAndSet(true, false)) {
+            LogUtils.clearMdc();
             logger.info("Mass Application is not running, skipping stop");
             return;
         }
+        LogUtils.clearMdc();
         logger.info("Stopping Mass Application");
 
         try {
@@ -106,8 +113,10 @@ public class MassApplication {
                 serverStater.stop();
             }
 
+            LogUtils.clearMdc();
             logger.info("Mass Application stopped successfully");
         } catch (Exception e) {
+            LogUtils.clearMdc();
             logger.error("Error stopping Mass Application", e);
         }
     }

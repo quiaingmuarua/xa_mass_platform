@@ -2,6 +2,7 @@ package com.xa.mass.base.channel.eventbus.core;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
@@ -10,46 +11,33 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
- * 事件分发器，负责管理事件监听器和高效分发事件。
- * 支持注解扫描、精确类型匹配、线程安全。
- * 支持泛型，可以处理任意类型的事件对象。
+ * Dispatches events to registered listeners using exact event-type matching.
  */
 public class MassEventDispatcher<T> {
     private static final Logger log = LoggerFactory.getLogger(MassEventDispatcher.class);
-    /**
-     * 事件类型到处理器映射表，支持快速查找
-     * 使用ConcurrentHashMap保证线程安全
-     */
+
     private final Map<Class<?>, List<HandlerWrapper<T>>> handlerMap = new ConcurrentHashMap<>();
 
-    /**
-     * 注册事件监听器
-     * @param listener 监听器对象
-     */
     public void registerListener(Object listener) {
         if (listener == null) {
             throw new IllegalArgumentException("Listener cannot be null");
         }
-        // 扫描监听器中所有带有@MassSubscribe注解的方法
+
         for (Method method : listener.getClass().getDeclaredMethods()) {
             if (method.isAnnotationPresent(MassSubscribe.class)) {
                 Class<?>[] params = method.getParameterTypes();
-                // 验证方法签名：必须有且仅有一个参数
                 if (params.length == 1) {
                     Class<?> eventType = params[0];
                     HandlerWrapper<T> wrapper = new HandlerWrapper<>(listener, method, eventType);
-                    handlerMap.computeIfAbsent(eventType, k -> new CopyOnWriteArrayList<>()).add(wrapper);
+                    handlerMap.computeIfAbsent(eventType, key -> new CopyOnWriteArrayList<>()).add(wrapper);
                 } else {
-                    log.warn("Method {} in {} has @MassSubscribe but invalid parameters (expected 1, got {})", method.getName(), listener.getClass().getSimpleName(), params.length);
+                    log.warn("Method {} in {} has @MassSubscribe but invalid parameters (expected 1, got {})",
+                            method.getName(), listener.getClass().getSimpleName(), params.length);
                 }
             }
         }
     }
 
-    /**
-     * 注销事件监听器
-     * @param listener 监听器对象
-     */
     public void unregisterListener(Object listener) {
         if (listener == null) {
             return;
@@ -61,70 +49,47 @@ public class MassEventDispatcher<T> {
         });
     }
 
-    /**
-     * 分发事件到所有匹配的处理器（仅精确匹配，不支持继承）
-     * @param event 事件对象
-     * @throws RuntimeException 如果任何处理器抛出异常
-     */
     public void dispatch(T event) {
         if (event == null) {
             return;
         }
-        Class<?> eventClass = event.getClass();
-        
-        // 仅处理精确匹配的处理器，提高性能和透明度
-        List<HandlerWrapper<T>> exactHandlers = handlerMap.get(eventClass);
+
+        List<HandlerWrapper<T>> exactHandlers = handlerMap.get(event.getClass());
         if (exactHandlers != null && !exactHandlers.isEmpty()) {
             RuntimeException firstException = null;
             for (HandlerWrapper<T> handler : exactHandlers) {
                 try {
                     invokeHandler(handler, event);
                 } catch (Exception e) {
-                    // 记录第一个异常，继续处理其他handler，但最后抛出异常
                     if (firstException == null) {
-                        firstException = (e instanceof RuntimeException) ? (RuntimeException) e : new RuntimeException(e);
+                        firstException = (e instanceof RuntimeException)
+                                ? (RuntimeException) e
+                                : new RuntimeException(e);
                     }
                     log.error("Unexpected error in event handler invocation", e);
                 }
             }
-            // 如果有异常发生，抛出第一个异常以便上层统计
             if (firstException != null) {
                 throw firstException;
             }
         }
     }
 
-    /**
-     * 调用事件处理器
-     * @param handler 处理器
-     * @param event 事件对象
-     * @throws RuntimeException 如果处理器抛出异常
-     */
     private void invokeHandler(HandlerWrapper<T> handler, T event) {
         try {
             handler.invoke(event);
-        } catch (Throwable e) {  // MethodHandle抛出Throwable
-            log.error("Error invoking event handler: {} for event: {}", 
-                handler.getDescription(), event.getClass().getSimpleName(), e);
-            // 重新抛出异常以便上层统计
+        } catch (Throwable e) {
+            log.error("Error invoking event handler: {} for event: {}",
+                    handler.getDescription(), event.getClass().getSimpleName(), e);
             throw (e instanceof RuntimeException) ? (RuntimeException) e : new RuntimeException(e);
         }
     }
 
-    /**
-     * 获取指定事件类型的处理器数量
-     * @param eventType 事件类型
-     * @return 处理器数量
-     */
     public int getHandlerCount(Class<?> eventType) {
         List<HandlerWrapper<T>> handlers = handlerMap.get(eventType);
         return handlers != null ? handlers.size() : 0;
     }
 
-    /**
-     * 获取所有注册的处理器总数
-     * @return 处理器总数
-     */
     public int getTotalHandlerCount() {
         int total = 0;
         for (List<HandlerWrapper<T>> handlers : handlerMap.values()) {
@@ -133,18 +98,11 @@ public class MassEventDispatcher<T> {
         return total;
     }
 
-    /**
-     * 清除所有注册的处理器
-     */
     public void clear() {
         handlerMap.clear();
     }
 
-    /**
-     * 获取所有注册的事件类型
-     * @return 事件类型列表
-     */
     public List<Class<?>> getRegisteredEventTypes() {
         return new ArrayList<>(handlerMap.keySet());
     }
-} 
+}

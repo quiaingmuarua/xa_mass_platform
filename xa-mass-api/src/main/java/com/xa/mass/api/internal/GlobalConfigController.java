@@ -10,8 +10,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 
 /**
- * 全局配置控制器
- * 提供项目管理等全局配置功能
+ * Exposes small global-configuration endpoints used by demo pages.
  */
 @RestController
 @RequestMapping("/api/config")
@@ -21,7 +20,7 @@ public class GlobalConfigController {
     private GlobalConfig globalConfig;
 
     /**
-     * 获取所有项目列表
+     * Return all supported project codes.
      */
     @GetMapping("/projects")
     public ApiResponse<List<String>> getProjects() {
@@ -29,7 +28,7 @@ public class GlobalConfigController {
             List<String> projects = globalConfig.getAllProjects();
             return ApiResponse.success(projects);
         } catch (Exception e) {
-            return ApiResponse.error(500, "获取项目列表失败: " + e.getMessage());
+            return ApiResponse.error(500, "Failed to load projects: " + e.getMessage());
         }
     }
-} 
+}

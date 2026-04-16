@@ -2,18 +2,22 @@ package com.xa.mass.api.internal;
 
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.worker.WorkerStatus;
-import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.Task;
+import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
-import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.TaskManager;
+import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.rules.RuleDefinition;
 import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.engine.rules.RuleType;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.ResponseBody;
 
 import java.util.Arrays;
 import java.util.HashSet;
@@ -115,7 +119,7 @@ public class StatusPageController {
     }
 
     /**
-     * 获取所有项目code，供前端多选下拉使用
+     * Return all supported project codes for worker-edit forms.
      */
     @GetMapping("/workers/allProjects")
     @ResponseBody
@@ -124,10 +128,11 @@ public class StatusPageController {
     }
 
     /**
-     * 更新Worker支持的应用
+     * Replace the supported project list for a worker.
      */
     @PostMapping("/workers/updateSupportedProjects")
     @ResponseBody
+    @SuppressWarnings("unchecked")
     public Map<String, Object> updateSupportedProjects(@RequestBody Map<String, Object> req) {
         String workerId = (String) req.get("workerId");
         Object supportedProjectsObj = req.get("supportedProjects");
@@ -143,9 +148,8 @@ public class StatusPageController {
         if (worker != null) {
             worker.setSupportedProjects(supportedProjects);
             workerManager.updateWorker(worker);
-            return Map.of("success", true, "msg", "更新成功");
-        } else {
-            return Map.of("success", false, "msg", "Worker不存在");
+            return Map.of("success", true, "msg", "Updated successfully");
         }
+        return Map.of("success", false, "msg", "Worker not found");
     }
 }

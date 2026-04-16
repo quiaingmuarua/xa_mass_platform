@@ -55,7 +55,7 @@ public class WebSocketWorkerAdapter implements WorkerAdapter, MassMessageHandler
         return "websocket";
     }
 
-    // ── Dispatch side ────────────────────────────────────────────────────────
+    // Dispatch side.
 
     @Override
     public void onTaskMsgsReady(Task task, List<TaskMsg> taskMsgs) {
@@ -125,7 +125,7 @@ public class WebSocketWorkerAdapter implements WorkerAdapter, MassMessageHandler
         return payload;
     }
 
-    // ── Result side ──────────────────────────────────────────────────────────
+    // Result side.
 
     @Override
     public List<MassMessage> handle(MassMessage msg) {

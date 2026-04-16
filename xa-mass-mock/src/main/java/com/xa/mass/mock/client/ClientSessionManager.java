@@ -12,7 +12,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
+import java.util.Map;
+import java.util.Random;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 @Service
@@ -38,20 +43,20 @@ public class ClientSessionManager {
             return;
         }
 
-        // 随机选择一个客户端
+        // Pick one connected client at random.
         String workerId = new ArrayList<>(clients.keySet()).get(random.nextInt(clients.size()));
         MassWebSocketClientImpl client = clients.get(workerId);
 
         if (client != null && client.isOpen()) {
             MassMessage taskMessage = createMockTaskMessage(workerId);
             client.send(new Gson().toJson(taskMessage));
-            log.info("📤 Sent mock task to client: {}", workerId);
+            log.info("Sent mock task to client: {}", workerId);
         }
     }
 
     private MassMessage createMockTaskMessage(String workerId) {
         MassMessage message = new MassMessage();
-        message.setMsgId("task-" + UUID.randomUUID().toString());
+        message.setMsgId("task-" + UUID.randomUUID());
         message.setMsgType(MessageType.TASK);
         message.setFrom(MessageDirection.SERVER);
         message.setSubMsgType("mock_task");
@@ -80,4 +85,4 @@ public class ClientSessionManager {
     public int getClientCount() {
         return clients.size();
     }
-} 
+}

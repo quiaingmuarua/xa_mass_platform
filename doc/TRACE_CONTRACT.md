@@ -15,6 +15,7 @@ The contract covers:
 - worker lock acquire/release
 - worker match accept/reject
 - dispatch accept/skip
+- assignment-queue retry scheduling
 - callback accept/ignore
 - resource release
 
@@ -33,6 +34,7 @@ Required event names:
 - `WORKER_MATCH_REJECTED`
 - `DISPATCH_REQUESTED`
 - `DISPATCH_SKIPPED`
+- `ASSIGNMENT_RETRY_SCHEDULED`
 - `CALLBACK_ACCEPTED`
 - `CALLBACK_IGNORED_DUPLICATE`
 - `CALLBACK_IGNORED_LATE`
@@ -69,6 +71,8 @@ Specialized fields when relevant:
 - `terminalReason`
 - `retryCount`
 - `requiredMinWorkerCount`
+- `currentStatus`
+- `retryDelayMillis`
 
 ## 4. Minimum Required Paths
 
@@ -80,6 +84,7 @@ Must be traceable:
 - `WorkerContext`: `IDLE -> RESERVED -> OCCUPIED -> IDLE`
 - worker lock acquire/release
 - worker match reject reason
+- assignment retry scheduling after a skipped dispatch when a `READY` or `RUNNING` task remains eligible
 - callback ignored because duplicate
 - callback ignored because task already terminal
 
@@ -116,5 +121,6 @@ Minimum trace assertions:
 - `ASSIGNED -> RUNNING -> SUCCESS/FAILED`
 - `IDLE -> RESERVED -> OCCUPIED -> IDLE`
 - `TASK_MSG_RETRY_RESET` when retry is exercised
+- `ASSIGNMENT_RETRY_SCHEDULED` when delayed assignment retry is exercised
 - `CALLBACK_IGNORED_DUPLICATE` when replay is exercised
 - `CALLBACK_IGNORED_LATE` when late callback is exercised

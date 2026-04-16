@@ -1,7 +1,7 @@
 package com.xa.mass.starter.builder;
 
-import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.TaskManager;
+import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.engine.service.AssignmentRecordService;
 import com.xa.mass.engine.strategy.SimpleTaskScheduler;
@@ -11,7 +11,7 @@ import com.xa.mass.starter.config.EngineConfig;
 import java.util.Map;
 
 /**
- * MassEngine 构建器
+ * Builder for {@link MassEngine}.
  */
 public class MassEngineBuilder {
     private EngineConfig config = new EngineConfig();
@@ -77,7 +77,8 @@ public class MassEngineBuilder {
         return this;
     }
 
-    public MassEngineBuilder mockData(String workerConfigPath, String workerContextConfigPath, String taskConfigPath, String ruleConfigPath) {
+    public MassEngineBuilder mockData(String workerConfigPath, String workerContextConfigPath,
+                                      String taskConfigPath, String ruleConfigPath) {
         this.workerConfigPath = workerConfigPath;
         this.workerContextConfigPath = workerContextConfigPath;
         this.taskConfigPath = taskConfigPath;

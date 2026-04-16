@@ -4,16 +4,16 @@ import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.GetMapping;
 
 /**
- * 配置页面控制器
+ * Controller for the lightweight config page.
  */
 @Controller
 public class ConfigController {
 
     /**
-     * 全局配置页面
+     * Render the config page.
      */
     @GetMapping("/config")
     public String configPage() {
         return "config";
     }
-} 
+}

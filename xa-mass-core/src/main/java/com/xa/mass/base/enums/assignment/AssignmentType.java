@@ -1,11 +1,11 @@
 package com.xa.mass.base.enums.assignment;
 
 /**
- * 分配类型枚举
+ * Assignment record categories used by diagnostics and audit snapshots.
  */
 public enum AssignmentType {
-    DEVICE_ASSIGN("设备分配"),
-    MSG_ASSIGN("消息分配");
+    WORKER_ASSIGN("Worker assignment"),
+    MSG_ASSIGN("Message assignment");
 
     private final String description;
 
@@ -16,4 +16,4 @@ public enum AssignmentType {
     public String getDescription() {
         return description;
     }
-} 
+}

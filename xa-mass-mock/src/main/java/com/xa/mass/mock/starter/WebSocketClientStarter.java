@@ -14,6 +14,7 @@ import com.xa.mass.starter.MassApplication;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -90,6 +91,7 @@ public class WebSocketClientStarter {
     }
 
     void startClients() {
+        MDC.clear();
         if (!started.compareAndSet(false, true)) {
             log.info("Mock WebSocket clients already started, skipping duplicate startup");
             return;
@@ -279,6 +281,7 @@ public class WebSocketClientStarter {
 
     @PreDestroy
     public void shutdown() {
+        MDC.clear();
         log.info("Shutting down mock WebSocket clients");
         isShuttingDown = true;
         started.set(false);
@@ -320,5 +323,6 @@ public class WebSocketClientStarter {
         }
 
         log.info("Mock WebSocket clients stopped");
+        MDC.clear();
     }
 }
