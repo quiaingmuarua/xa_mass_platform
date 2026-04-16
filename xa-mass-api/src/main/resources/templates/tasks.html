@@ -343,7 +343,7 @@
                         <div class="task-id" th:text="${task.tid}">-</div>
                     </td>
                     <td th:text="${task.taskName}">-</td>
-                    <td th:text="${task.project != null ? task.project.code : '-'}">-</td>
+                    <td th:text="${task.project != null ? task.project : '-'}">-</td>
                     <td th:text="${task.taskRoutingCode}">-</td>
                     <td>
                                 <span class="status-badge"
@@ -716,12 +716,12 @@
                     const t = data.task;
                     document.getElementById('editTaskId').value = t.tid;
                     document.getElementById('editTaskName').value = t.taskName;
-                    document.getElementById('editProject').value = t.project.code;
+                    document.getElementById('editProject').value = t.project || '';
                     document.getElementById('editRoutingCode').value = t.taskRoutingCode;
                     // 只展示前100个号码
                     const targets = (data.targetList || []).slice(0, 100);
                     document.getElementById('editTargetList').value = targets.join('\n');
-                    document.getElementById('editTextContent').value = t.textContent;
+                    document.getElementById('editTextContent').value = (t.sharedConfig && t.sharedConfig.textContent) ? t.sharedConfig.textContent : '';
                     document.getElementById('editUserId').value = t.user ? t.user.name : '';
                     document.getElementById('editBatchSize').value = t.batchSize || 5;
                     updateEditTargetCount();
@@ -802,11 +802,11 @@
                     const t = data.task;
                     document.getElementById('auditTaskId').value = t.tid;
                     document.getElementById('auditTaskName').value = t.taskName;
-                    document.getElementById('auditProject').value = t.project.code;
+                    document.getElementById('auditProject').value = t.project || '';
                     document.getElementById('auditRoutingCode').value = t.taskRoutingCode;
                     document.getElementById('auditUserId').value = t.user ? t.user.name : '';
-                    document.getElementById('auditTargetCount').value = (t.targetList ? t.targetList.length : 0);
-                    document.getElementById('auditTextContent').value = t.textContent;
+                    document.getElementById('auditTargetCount').value = (data.targetList ? data.targetList.length : 0);
+                    document.getElementById('auditTextContent').value = (t.sharedConfig && t.sharedConfig.textContent) ? t.sharedConfig.textContent : '';
                     document.getElementById('auditComment').value = '';
                     document.querySelectorAll('input[name="approved"]').forEach(r => r.checked = r.value === 'true');
                     showModal('auditTaskModal');

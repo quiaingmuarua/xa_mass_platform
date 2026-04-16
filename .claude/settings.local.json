@@ -9,7 +9,8 @@
       "Bash(python -)",
       "Bash(./mvnw -pl xa-mass-api -am -DskipTests compile)",
       "Bash(./mvnw -pl xa-mass-mock -am -DskipTests compile)",
-      "Bash(./mvnw -pl xa-mass-mock -am -Dtest=MassWebSocketClientImplTest,TaskApiDelayedWorkerAvailabilityIntegrationTest,TaskApiMinimumWorkerGateIntegrationTest,TaskApiSingleWorkerReuseIntegrationTest,TaskApiWorkerContextAttributeRoutingIntegrationTest,TaskApiPauseCompletionIntegrationTest,TaskApiCallbackReplayIntegrationTest,TaskApiMixedResultsIntegrationTest -Dsurefire.failIfNoSpecifiedTests=false test)"
+      "Bash(./mvnw -pl xa-mass-mock -am -Dtest=MassWebSocketClientImplTest,TaskApiDelayedWorkerAvailabilityIntegrationTest,TaskApiMinimumWorkerGateIntegrationTest,TaskApiSingleWorkerReuseIntegrationTest,TaskApiWorkerContextAttributeRoutingIntegrationTest,TaskApiPauseCompletionIntegrationTest,TaskApiCallbackReplayIntegrationTest,TaskApiMixedResultsIntegrationTest -Dsurefire.failIfNoSpecifiedTests=false test)",
+      "Bash(curl -i \"http://localhost:8088/status/tasks\")"
     ]
   }
 }
