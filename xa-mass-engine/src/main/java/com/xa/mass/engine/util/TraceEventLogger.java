@@ -440,6 +440,72 @@ public final class TraceEventLogger {
         ));
     }
 
+    public static void taskStateValidationSummary(String taskId,
+                                                  TaskStatus taskStatus,
+                                                  TaskTerminalReason terminalReason,
+                                                  long totalMessages,
+                                                  long successMessages,
+                                                  long failedMessages,
+                                                  long processingMessages,
+                                                  boolean valid,
+                                                  boolean needsResolution,
+                                                  int violationCount,
+                                                  String violations,
+                                                  String trigger,
+                                                  String source,
+                                                  String reason,
+                                                  String result) {
+        long finalMessages = successMessages + failedMessages;
+        emit("TASK_STATE_VALIDATION_SUMMARY", fields(
+                "entityType", "Task",
+                "entityId", taskId,
+                "taskId", taskId,
+                "taskStatus", enumName(taskStatus),
+                "terminalReason", enumName(terminalReason),
+                "totalMessages", String.valueOf(totalMessages),
+                "successMessages", String.valueOf(successMessages),
+                "failedMessages", String.valueOf(failedMessages),
+                "processingMessages", String.valueOf(processingMessages),
+                "pendingMessages", String.valueOf(Math.max(totalMessages - finalMessages, 0)),
+                "valid", String.valueOf(valid),
+                "needsResolution", String.valueOf(needsResolution),
+                "violationCount", String.valueOf(violationCount),
+                "violations", violations,
+                "trigger", trigger,
+                "source", source,
+                "reason", reason,
+                "result", result
+        ));
+    }
+
+    public static void assignmentQueueSnapshot(String taskId,
+                                               TaskStatus taskStatus,
+                                               int queueDepth,
+                                               int trackedBatchPendingCount,
+                                               int scheduledRetryCount,
+                                               String queueAction,
+                                               Long retryDelayMillis,
+                                               String trigger,
+                                               String source,
+                                               String reason,
+                                               String result) {
+        emit("ASSIGNMENT_QUEUE_SNAPSHOT", fields(
+                "entityType", "AssignmentQueue",
+                "entityId", taskId != null && !taskId.isBlank() ? taskId : "task-assign-queue",
+                "taskId", taskId,
+                "taskStatus", enumName(taskStatus),
+                "queueDepth", String.valueOf(queueDepth),
+                "trackedBatchPendingCount", String.valueOf(trackedBatchPendingCount),
+                "scheduledRetryCount", String.valueOf(scheduledRetryCount),
+                "queueAction", queueAction,
+                "retryDelayMillis", stringValue(retryDelayMillis),
+                "trigger", trigger,
+                "source", source,
+                "reason", reason,
+                "result", result
+        ));
+    }
+
     private static void emit(String event, Map<String, String> fields) {
         Map<String, String> previous = MDC.getCopyOfContextMap();
         try {
@@ -471,6 +537,10 @@ public final class TraceEventLogger {
     }
 
     private static String stringValue(Integer value) {
+        return value != null ? String.valueOf(value) : null;
+    }
+
+    private static String stringValue(Long value) {
         return value != null ? String.valueOf(value) : null;
     }
 

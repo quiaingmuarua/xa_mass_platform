@@ -670,6 +670,39 @@ class TaskManagerLifecycleTest {
     }
 
     @Test
+    void validateTaskStateEmitsValidationSummaryWhenResolutionIsNeeded() {
+        Task task = taskManager.createTask(buildRequest("task-validate-needs-resolution-trace"));
+        taskManager.approveTask(task.getTid());
+        task.setStatus(TaskStatus.RUNNING);
+
+        List<TaskMsg> messages = taskManager.getTaskMessages(task.getTid());
+        messages.forEach(msg -> {
+            msg.transitionTo(TaskMsgStatus.BINDING);
+            msg.markAsAssigned();
+            taskManager.updateTaskMessage(task.getTid(), msg);
+        });
+        assertTrue(taskManager.handleTaskMessageResult(task.getTid(), messages.get(0).getMsgId(), true, "done-1"));
+        assertTrue(taskManager.handleTaskMessageResult(task.getTid(), messages.get(1).getMsgId(), true, "done-2"));
+
+        task.setStatus(TaskStatus.RUNNING);
+        task.setTerminalReason(null);
+        taskManager.updateTask(task);
+
+        try (TraceEventLogCapture capture = new TraceEventLogCapture()) {
+            TaskStateValidationResult result = taskManager.validateTaskState(task.getTid());
+            assertTrue(result.isValid());
+            assertTrue(result.isNeedsResolution());
+            capture.assertHasEvent("TASK_STATE_VALIDATION_SUMMARY", mdc ->
+                    task.getTid().equals(mdc.get("taskId"))
+                            && "RUNNING".equals(mdc.get("taskStatus"))
+                            && "true".equals(mdc.get("valid"))
+                            && "true".equals(mdc.get("needsResolution"))
+                            && "0".equals(mdc.get("violationCount"))
+                            && "ANOMALY".equals(mdc.get("result")));
+        }
+    }
+
+    @Test
     void validateTaskStateRejectsTerminalTaskWithoutTerminalReason() {
         Task task = taskManager.createTask(buildRequest("task-validate-missing-terminal-reason", List.of("alpha")));
         taskManager.approveTask(task.getTid());

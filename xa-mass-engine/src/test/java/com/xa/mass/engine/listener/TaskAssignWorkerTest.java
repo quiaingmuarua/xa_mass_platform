@@ -65,11 +65,21 @@ class TaskAssignWorkerTest {
         });
 
         Task task = readyTask("t1");
-        worker.submit(task);
+        try (TraceEventLogCapture capture = new TraceEventLogCapture()) {
+            worker.submit(task);
 
-        assertTrue(latch.await(3, TimeUnit.SECONDS), "Task should be processed within 3s");
-        assertEquals(1, assigned.size());
-        assertEquals("t1", assigned.get(0).getTid());
+            assertTrue(latch.await(3, TimeUnit.SECONDS), "Task should be processed within 3s");
+            assertEquals(1, assigned.size());
+            assertEquals("t1", assigned.get(0).getTid());
+            capture.assertHasEvent("ASSIGNMENT_QUEUE_SNAPSHOT", mdc ->
+                    "t1".equals(mdc.get("taskId"))
+                            && "SUBMITTED".equals(mdc.get("queueAction"))
+                            && "TaskAssignWorker".equals(mdc.get("source")));
+            capture.assertHasEvent("ASSIGNMENT_QUEUE_SNAPSHOT", mdc ->
+                    "t1".equals(mdc.get("taskId"))
+                            && "PROCESSED".equals(mdc.get("queueAction"))
+                            && "TaskAssignWorker".equals(mdc.get("source")));
+        }
     }
 
     @Test
@@ -104,6 +114,14 @@ class TaskAssignWorkerTest {
                     "retry".equals(mdc.get("taskId"))
                             && "READY".equals(mdc.get("currentStatus"))
                             && "50".equals(mdc.get("retryDelayMillis"))
+                            && "TaskAssignWorker".equals(mdc.get("source")));
+            capture.assertHasEvent("ASSIGNMENT_QUEUE_SNAPSHOT", mdc ->
+                    "retry".equals(mdc.get("taskId"))
+                            && "RETRY_SCHEDULED".equals(mdc.get("queueAction"))
+                            && "1".equals(mdc.get("scheduledRetryCount")));
+            capture.assertHasEvent("ASSIGNMENT_QUEUE_SNAPSHOT", mdc ->
+                    "retry".equals(mdc.get("taskId"))
+                            && "RETRY_ENQUEUED".equals(mdc.get("queueAction"))
                             && "TaskAssignWorker".equals(mdc.get("source")));
         }
     }
@@ -145,9 +163,9 @@ class TaskAssignWorkerTest {
 
     @Test
     void nonReadyTaskIsSkippedAndNotCounted() throws InterruptedException {
-        CountDownLatch readyLatch = new CountDownLatch(1);
+        CountDownLatch processedLatch = new CountDownLatch(2);
         worker.addAssignmentQueueListener(new TaskAssignmentQueueListener() {
-            @Override public void onTaskAssignmentProcessed(Task t) { readyLatch.countDown(); }
+            @Override public void onTaskAssignmentProcessed(Task t) { processedLatch.countDown(); }
             @Override public void onAssignmentQueueDrained() {}
         });
 
@@ -158,9 +176,29 @@ class TaskAssignWorkerTest {
         worker.submit(newTask);
         worker.submit(readyTask("processed"));
 
-        assertTrue(readyLatch.await(3, TimeUnit.SECONDS));
+        assertTrue(processedLatch.await(3, TimeUnit.SECONDS));
         assertEquals(1, assigned.size());
         assertEquals("processed", assigned.get(0).getTid());
+    }
+
+    @Test
+    void submitAllDrainsEvenWhenOneTaskIsSkippedAsNonDispatchable() throws InterruptedException {
+        CountDownLatch allDoneLatch = new CountDownLatch(1);
+        worker.addAssignmentQueueListener(new TaskAssignmentQueueListener() {
+            @Override public void onTaskAssignmentProcessed(Task t) {}
+            @Override public void onAssignmentQueueDrained() { allDoneLatch.countDown(); }
+        });
+
+        Task newTask = new Task();
+        newTask.setTid("skipped-batch");
+        newTask.setStatus(TaskStatus.NEW);
+
+        worker.submitAll(List.of(newTask, readyTask("processed-batch")));
+
+        assertTrue(allDoneLatch.await(5, TimeUnit.SECONDS),
+                "submitAll should still drain when one task is skipped");
+        assertEquals(1, assigned.size());
+        assertEquals("processed-batch", assigned.get(0).getTid());
     }
 
     @Test

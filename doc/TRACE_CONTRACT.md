@@ -17,7 +17,9 @@ The contract covers:
 - worker match accept/reject
 - dispatch accept/skip
 - assignment summaries
+- task-state validation summaries
 - dispatch binding summaries
+- assignment-queue snapshots
 - assignment-queue retry scheduling
 - callback accept/ignore
 - resource release
@@ -39,7 +41,9 @@ Required event names:
 - `DISPATCH_REQUESTED`
 - `DISPATCH_SKIPPED`
 - `ASSIGNMENT_SUMMARY`
+- `TASK_STATE_VALIDATION_SUMMARY`
 - `DISPATCH_BINDING_SUMMARY`
+- `ASSIGNMENT_QUEUE_SNAPSHOT`
 - `ASSIGNMENT_RETRY_SCHEDULED`
 - `CALLBACK_ACCEPTED`
 - `CALLBACK_IGNORED_DUPLICATE`
@@ -93,6 +97,10 @@ Specialized fields when relevant:
 - `progressPercent`
 - `resolutionOutcome`
 - `needsTerminalClosure`
+- `valid`
+- `needsResolution`
+- `violationCount`
+- `violations`
 - `pendingDispatchCount`
 - `desiredDispatchWorkerCount`
 - `requestedMatchCount`
@@ -104,6 +112,10 @@ Specialized fields when relevant:
 - `uniqueWorkerCount`
 - `uniqueWorkerContextCount`
 - `perWorkerBatchLimit`
+- `queueDepth`
+- `trackedBatchPendingCount`
+- `scheduledRetryCount`
+- `queueAction`
 
 ## 4. Minimum Required Paths
 
@@ -117,7 +129,9 @@ Must be traceable:
 - worker lock acquire/release
 - worker match reject reason
 - assignment attempt summary with requested/matched/dispatched counts
+- task-state validation summary when a task needs explicit reconciliation or violates invariants
 - dispatch binding summary with per-worker batch usage
+- assignment queue snapshot with backlog and scheduled retry pressure
 - assignment retry scheduling after a skipped dispatch when a `READY` or `RUNNING` task remains eligible
 - callback ignored because duplicate
 - callback ignored because task already terminal
@@ -133,6 +147,8 @@ Rules:
 7. task progress snapshot must include both task aggregate counters and persisted message aggregate counters
 8. assignment summary must include requested/matched/dispatched worker or message counts
 9. dispatch binding summary must include per-worker batch limit and unique worker/context counts
+10. task-state validation summary must include `valid`, `needsResolution`, and violation details when emitted
+11. assignment queue snapshot must include queue depth and scheduled retry count
 
 ## 5. Replayability Requirement
 
@@ -147,6 +163,8 @@ Given a `taskId`, an operator or agent must be able to reconstruct:
 7. which resources were released
 8. what the aggregate task funnel looked like at each reconciliation point
 9. how many workers were requested, matched, and actually used during each assignment attempt
+10. whether the task state audit detected invariant drift or pending terminal reconciliation
+11. whether assignment pressure came from queue backlog or delayed retry accumulation
 
 ## 6. Test Requirement
 
@@ -161,7 +179,9 @@ Minimum trace assertions:
 - `ASSIGNED -> RUNNING -> SUCCESS/FAILED`
 - `IDLE -> RESERVED -> OCCUPIED -> IDLE`
 - `ASSIGNMENT_SUMMARY` for at least one successful assignment attempt
+- `TASK_STATE_VALIDATION_SUMMARY` when validation reports `needsResolution=true` or invariant violations
 - `DISPATCH_BINDING_SUMMARY` for at least one successful binding round
+- `ASSIGNMENT_QUEUE_SNAPSHOT` for at least one submission and one retry path
 - `TASK_MSG_RETRY_RESET` when retry is exercised
 - `ASSIGNMENT_RETRY_SCHEDULED` when delayed assignment retry is exercised
 - `CALLBACK_IGNORED_DUPLICATE` when replay is exercised

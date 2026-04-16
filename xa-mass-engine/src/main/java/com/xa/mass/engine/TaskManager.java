@@ -721,7 +721,7 @@ public class TaskManager {
     public TaskStateValidationResult validateTaskState(String taskId) {
         Task task = getTask(taskId);
         if (task == null) {
-            return new TaskStateValidationResult(
+            TaskStateValidationResult result = new TaskStateValidationResult(
                     false,
                     false,
                     null,
@@ -732,6 +732,8 @@ public class TaskManager {
                     0,
                     List.of(TaskStateValidationResult.ViolationCode.TASK_NOT_FOUND)
             );
+            emitTaskStateValidationSummary(taskId, result, "task not found");
+            return result;
         }
 
         TaskStorage.TaskMessageStats stats = getTaskMessageStats(taskId);
@@ -789,7 +791,7 @@ public class TaskManager {
 
         boolean needsResolution = !finalStatus
                 && taskTerminalPolicy.evaluate(task, stats).getOutcome() == TaskTerminalPolicyDecision.Outcome.FINALIZE_TO_TERMINAL;
-        return new TaskStateValidationResult(
+        TaskStateValidationResult result = new TaskStateValidationResult(
                 violations.isEmpty(),
                 needsResolution,
                 task.getStatus(),
@@ -800,6 +802,13 @@ public class TaskManager {
                 stats.getProcessing(),
                 List.copyOf(violations)
         );
+        if (!result.isValid() || result.isNeedsResolution()) {
+            emitTaskStateValidationSummary(taskId, result,
+                    result.isNeedsResolution()
+                            ? "task requires explicit terminal reconciliation"
+                            : "task validation found invariant violations");
+        }
+        return result;
     }
 
     private void emitTaskProgressSnapshot(Task task,
@@ -817,6 +826,32 @@ public class TaskManager {
                 trigger,
                 source,
                 reason
+        );
+    }
+
+    private void emitTaskStateValidationSummary(String taskId,
+                                                TaskStateValidationResult validationResult,
+                                                String reason) {
+        String violationSummary = validationResult.getViolations().stream()
+                .map(Enum::name)
+                .reduce((left, right) -> left + "," + right)
+                .orElse("");
+        TraceEventLogger.taskStateValidationSummary(
+                taskId,
+                validationResult.getStatus(),
+                validationResult.getTerminalReason(),
+                validationResult.getTotalMessages(),
+                validationResult.getSuccessMessages(),
+                validationResult.getFailedMessages(),
+                validationResult.getProcessingMessages(),
+                validationResult.isValid(),
+                validationResult.isNeedsResolution(),
+                validationResult.getViolations().size(),
+                violationSummary,
+                "VALIDATE_TASK_STATE",
+                "TaskManager",
+                reason,
+                validationResult.isValid() && !validationResult.isNeedsResolution() ? "SUCCESS" : "ANOMALY"
         );
     }
 

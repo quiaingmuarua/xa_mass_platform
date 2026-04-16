@@ -6,8 +6,7 @@ import com.xa.mass.base.enums.task.TaskTerminalReason;
 import java.util.List;
 
 /**
- * 任务状态审计结果。
- * 用于判断当前 Task + TaskMsg 聚合状态是否自洽，以及是否只差一次显式收口。
+ * Result of validating the current Task + TaskMsg aggregate invariants.
  */
 public class TaskStateValidationResult {
     public enum ViolationCode {

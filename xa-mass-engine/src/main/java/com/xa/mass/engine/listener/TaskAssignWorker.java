@@ -33,6 +33,7 @@ public class TaskAssignWorker {
     private final BlockingQueue<Task> queue = new LinkedBlockingQueue<>();
     private final List<TaskAssignmentQueueListener> listeners = new CopyOnWriteArrayList<>();
     private final AtomicInteger pendingTasks = new AtomicInteger(0);
+    private final AtomicInteger scheduledRetryCount = new AtomicInteger(0);
 
     private volatile boolean running = true;
     private ExecutorService executor;
@@ -77,6 +78,10 @@ public class TaskAssignWorker {
                         } else {
                             notifyAssignmentProcessed(task);
                         }
+                    } else {
+                        emitQueueSnapshot(task, initialStatus, "SKIPPED_NON_DISPATCHABLE", null,
+                                "task skipped because status is not READY or RUNNING", "SKIPPED");
+                        notifyAssignmentProcessed(task);
                     }
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
@@ -109,12 +114,15 @@ public class TaskAssignWorker {
 
     public void submit(Task task) {
         queue.offer(task);
+        emitQueueSnapshot(task, task != null ? task.getStatus() : null, "SUBMITTED", null,
+                "task submitted to assignment queue", "SUCCESS");
     }
 
     private void scheduleRetry(Task task, TaskStatus expectedStatus) {
         if (retryExecutor == null) {
             return;
         }
+        scheduledRetryCount.incrementAndGet();
         TraceEventLogger.assignmentRetryScheduled(
                 task.getTid(),
                 expectedStatus,
@@ -123,25 +131,39 @@ public class TaskAssignWorker {
                 "task remained eligible after assignment attempt",
                 retryDelayMillis
         );
+        emitQueueSnapshot(task, expectedStatus, "RETRY_SCHEDULED", retryDelayMillis,
+                "task remained eligible after assignment attempt", "SCHEDULED");
         retryExecutor.schedule(() -> {
+            scheduledRetryCount.updateAndGet(current -> current > 0 ? current - 1 : 0);
             if (running && task.getStatus() == expectedStatus) {
                 queue.offer(task);
+                emitQueueSnapshot(task, expectedStatus, "RETRY_ENQUEUED", retryDelayMillis,
+                        "delayed retry enqueued task back into assignment queue", "SUCCESS");
+                return;
             }
+            emitQueueSnapshot(task, task.getStatus(), "RETRY_DROPPED", retryDelayMillis,
+                    "delayed retry was dropped because task is no longer eligible", "SKIPPED");
         }, retryDelayMillis, TimeUnit.MILLISECONDS);
     }
 
     private void notifyAssignmentProcessed(Task task) {
         int previous = pendingTasks.getAndUpdate(current -> current > 0 ? current - 1 : 0);
         int remaining = previous > 0 ? previous - 1 : 0;
+        emitQueueSnapshot(task, task != null ? task.getStatus() : null, "PROCESSED", null,
+                "assignment attempt finished processing", "SUCCESS");
         listeners.forEach(l -> l.onTaskAssignmentProcessed(task));
 
         if (previous > 0 && remaining == 0) {
+            emitQueueSnapshot(task, task != null ? task.getStatus() : null, "DRAINED", null,
+                    "tracked assignment batch drained", "SUCCESS");
             listeners.forEach(TaskAssignmentQueueListener::onAssignmentQueueDrained);
         }
     }
 
     public void stop() {
         running = false;
+        emitQueueSnapshot(null, null, "STOPPING", null,
+                "assignment queue worker is stopping", "SUCCESS");
         if (retryExecutor != null) {
             retryExecutor.shutdownNow();
             try {
@@ -164,5 +186,26 @@ public class TaskAssignWorker {
                 log.warn("Interrupted while waiting for TaskAssignWorker to stop");
             }
         }
+    }
+
+    private void emitQueueSnapshot(Task task,
+                                   TaskStatus taskStatus,
+                                   String queueAction,
+                                   Long retryDelayMillis,
+                                   String reason,
+                                   String result) {
+        TraceEventLogger.assignmentQueueSnapshot(
+                task != null ? task.getTid() : null,
+                taskStatus,
+                queue.size(),
+                pendingTasks.get(),
+                scheduledRetryCount.get(),
+                queueAction,
+                retryDelayMillis,
+                queueAction,
+                "TaskAssignWorker",
+                reason,
+                result
+        );
     }
 }
