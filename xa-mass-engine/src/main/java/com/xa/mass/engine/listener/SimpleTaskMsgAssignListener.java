@@ -50,6 +50,20 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
     public List<TaskMsg> onMsgAssign(Task task, List<MatchedWorkerContext> matchedWorkers) {
         if (matchedWorkers == null || matchedWorkers.isEmpty()) {
             log.info("[MsgAssign] Skip task {} because no matched worker-context candidates were provided", task.getTid());
+            TraceEventLogger.dispatchBindingSummary(
+                    task.getTid(),
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    Math.max(task.getBatchSize(), 1),
+                    "ON_MSG_ASSIGN",
+                    "SimpleTaskMsgAssignListener",
+                    "no matched worker-context candidates were provided",
+                    "SKIPPED"
+            );
             return List.of();
         }
 
@@ -59,6 +73,20 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
         int totalMessages = pendingMessages.size();
         if (totalMessages == 0) {
             log.info("[MsgAssign] Skip task {} because there are no pending task messages to dispatch", task.getTid());
+            TraceEventLogger.dispatchBindingSummary(
+                    task.getTid(),
+                    0,
+                    matchedWorkers.size(),
+                    0,
+                    0,
+                    0,
+                    0,
+                    Math.max(task.getBatchSize(), 1),
+                    "ON_MSG_ASSIGN",
+                    "SimpleTaskMsgAssignListener",
+                    "there are no pending task messages to dispatch",
+                    "SKIPPED"
+            );
             return List.of();
         }
 
@@ -128,6 +156,33 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
                         "UNLOCK_WORKER", "SimpleTaskMsgAssignListener", "matched worker received no messages");
             }
         }
+
+        int uniqueWorkerCount = (int) pushQueue.stream()
+                .map(TaskMsg::getWorkerId)
+                .filter(workerId -> workerId != null && !workerId.isBlank())
+                .distinct()
+                .count();
+        int uniqueWorkerContextCount = (int) pushQueue.stream()
+                .map(TaskMsg::getWorkerContextId)
+                .filter(workerContextId -> workerContextId != null && !workerContextId.isBlank())
+                .distinct()
+                .count();
+        TraceEventLogger.dispatchBindingSummary(
+                task.getTid(),
+                totalMessages,
+                matchedWorkers.size(),
+                dispatchSlots.size(),
+                pushQueue.size(),
+                uniqueWorkerCount,
+                uniqueWorkerContextCount,
+                perWorkerBatchLimit,
+                "ON_MSG_ASSIGN",
+                "SimpleTaskMsgAssignListener",
+                pushQueue.isEmpty()
+                        ? "matched workers produced no dispatchable bindings"
+                        : "task messages bound to dispatch slots",
+                pushQueue.isEmpty() ? "SKIPPED" : "SUCCESS"
+        );
 
         log.info("[MsgAssign] Task {} pushQueue size: {} (expected pending={})",
                 task.getTid(), pushQueue.size(), totalMessages);

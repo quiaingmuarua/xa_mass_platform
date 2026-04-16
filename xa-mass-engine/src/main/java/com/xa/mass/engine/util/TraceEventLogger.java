@@ -3,10 +3,12 @@ package com.xa.mass.engine.util;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
+import com.xa.mass.base.model.Task;
 import com.xa.mass.base.enums.worker.WorkerContextStatus;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
+import com.xa.mass.engine.storage.TaskStorage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
@@ -324,6 +326,120 @@ public final class TraceEventLogger {
         ));
     }
 
+    public static void taskProgressSnapshot(Task task,
+                                            TaskStorage.TaskMessageStats stats,
+                                            String resolutionOutcome,
+                                            boolean needsTerminalClosure,
+                                            String trigger,
+                                            String source,
+                                            String reason) {
+        if (task == null || stats == null) {
+            return;
+        }
+        long finalMessages = stats.getSuccess() + stats.getFailed() + stats.getExpired();
+        emit("TASK_PROGRESS_SNAPSHOT", fields(
+                "entityType", "Task",
+                "entityId", task.getTid(),
+                "taskId", task.getTid(),
+                "taskStatus", enumName(task.getStatus()),
+                "terminalReason", enumName(task.getTerminalReason()),
+                "taskTargetNumber", String.valueOf(task.getTaskTargetNumber()),
+                "taskEligibleNumber", String.valueOf(task.getTaskEligibleNumber()),
+                "taskSuccessNumber", String.valueOf(task.getTaskSuccessNumber()),
+                "taskNonSuccessNumber", String.valueOf(task.getTaskNonSuccessNumber()),
+                "peakAssignedWorkerCount", String.valueOf(task.getPeakAssignedWorkerCount()),
+                "minRequiredWorkerCount", String.valueOf(task.getMinRequiredWorkerCount()),
+                "batchSize", String.valueOf(task.getBatchSize()),
+                "openEnded", String.valueOf(task.isOpenEnded()),
+                "schedulable", String.valueOf(task.isSchedulable()),
+                "progressPercent", formatDouble(task.getProgressPercentage()),
+                "totalMessages", String.valueOf(stats.getTotal()),
+                "successMessages", String.valueOf(stats.getSuccess()),
+                "failedMessages", String.valueOf(stats.getFailed()),
+                "expiredMessages", String.valueOf(stats.getExpired()),
+                "processingMessages", String.valueOf(stats.getProcessing()),
+                "finalMessages", String.valueOf(finalMessages),
+                "pendingMessages", String.valueOf(Math.max(stats.getTotal() - finalMessages, 0)),
+                "successRate", formatDouble(stats.getSuccessRate()),
+                "failureRate", formatDouble(stats.getFailureRate()),
+                "resolutionOutcome", resolutionOutcome,
+                "needsTerminalClosure", String.valueOf(needsTerminalClosure),
+                "trigger", trigger,
+                "source", source,
+                "reason", reason,
+                "result", "SUCCESS"
+        ));
+    }
+
+    public static void assignmentSummary(String taskId,
+                                         TaskStatus initialStatus,
+                                         TaskStatus currentStatus,
+                                         Integer pendingDispatchCount,
+                                         Integer desiredDispatchWorkerCount,
+                                         Integer requiredStartWorkerCount,
+                                         Integer requestedMatchCount,
+                                         Integer matchedWorkerCount,
+                                         Integer dispatchCandidateCount,
+                                         Integer dispatchedMessageCount,
+                                         Integer usedWorkerCount,
+                                         Integer peakAssignedWorkerCount,
+                                         String trigger,
+                                         String source,
+                                         String reason,
+                                         String result) {
+        emit("ASSIGNMENT_SUMMARY", fields(
+                "entityType", "Task",
+                "entityId", taskId,
+                "taskId", taskId,
+                "initialStatus", enumName(initialStatus),
+                "currentStatus", enumName(currentStatus),
+                "pendingDispatchCount", stringValue(pendingDispatchCount),
+                "desiredDispatchWorkerCount", stringValue(desiredDispatchWorkerCount),
+                "requiredStartWorkerCount", stringValue(requiredStartWorkerCount),
+                "requestedMatchCount", stringValue(requestedMatchCount),
+                "matchedWorkerCount", stringValue(matchedWorkerCount),
+                "dispatchCandidateCount", stringValue(dispatchCandidateCount),
+                "dispatchedMessageCount", stringValue(dispatchedMessageCount),
+                "usedWorkerCount", stringValue(usedWorkerCount),
+                "peakAssignedWorkerCount", stringValue(peakAssignedWorkerCount),
+                "trigger", trigger,
+                "source", source,
+                "reason", reason,
+                "result", result
+        ));
+    }
+
+    public static void dispatchBindingSummary(String taskId,
+                                              int pendingMessageCount,
+                                              int matchedWorkerCount,
+                                              int dispatchSlotCount,
+                                              int dispatchedMessageCount,
+                                              int uniqueWorkerCount,
+                                              int uniqueWorkerContextCount,
+                                              int perWorkerBatchLimit,
+                                              String trigger,
+                                              String source,
+                                              String reason,
+                                              String result) {
+        emit("DISPATCH_BINDING_SUMMARY", fields(
+                "entityType", "Task",
+                "entityId", taskId,
+                "taskId", taskId,
+                "pendingMessageCount", String.valueOf(pendingMessageCount),
+                "matchedWorkerCount", String.valueOf(matchedWorkerCount),
+                "dispatchSlotCount", String.valueOf(dispatchSlotCount),
+                "dispatchedMessageCount", String.valueOf(dispatchedMessageCount),
+                "unassignedMessageCount", String.valueOf(Math.max(pendingMessageCount - dispatchedMessageCount, 0)),
+                "uniqueWorkerCount", String.valueOf(uniqueWorkerCount),
+                "uniqueWorkerContextCount", String.valueOf(uniqueWorkerContextCount),
+                "perWorkerBatchLimit", String.valueOf(perWorkerBatchLimit),
+                "trigger", trigger,
+                "source", source,
+                "reason", reason,
+                "result", result
+        ));
+    }
+
     private static void emit(String event, Map<String, String> fields) {
         Map<String, String> previous = MDC.getCopyOfContextMap();
         try {
@@ -352,5 +468,13 @@ public final class TraceEventLogger {
 
     private static String enumName(Enum<?> value) {
         return value != null ? value.name() : null;
+    }
+
+    private static String stringValue(Integer value) {
+        return value != null ? String.valueOf(value) : null;
+    }
+
+    private static String formatDouble(double value) {
+        return String.format(java.util.Locale.ROOT, "%.1f", value);
     }
 }

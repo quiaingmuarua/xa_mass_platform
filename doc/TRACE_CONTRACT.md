@@ -10,11 +10,14 @@ Summary logs are useful, but they do not satisfy this contract by themselves.
 The contract covers:
 
 - task transitions
+- task progress snapshots
 - task-message transitions
 - worker-context transitions
 - worker lock acquire/release
 - worker match accept/reject
 - dispatch accept/skip
+- assignment summaries
+- dispatch binding summaries
 - assignment-queue retry scheduling
 - callback accept/ignore
 - resource release
@@ -25,6 +28,7 @@ Required event names:
 
 - `TASK_STATUS_TRANSITION`
 - `TASK_TERMINAL_CLOSED`
+- `TASK_PROGRESS_SNAPSHOT`
 - `TASK_MSG_STATUS_TRANSITION`
 - `TASK_MSG_RETRY_RESET`
 - `WORKER_CONTEXT_STATUS_TRANSITION`
@@ -34,6 +38,8 @@ Required event names:
 - `WORKER_MATCH_REJECTED`
 - `DISPATCH_REQUESTED`
 - `DISPATCH_SKIPPED`
+- `ASSIGNMENT_SUMMARY`
+- `DISPATCH_BINDING_SUMMARY`
 - `ASSIGNMENT_RETRY_SCHEDULED`
 - `CALLBACK_ACCEPTED`
 - `CALLBACK_IGNORED_DUPLICATE`
@@ -73,17 +79,45 @@ Specialized fields when relevant:
 - `requiredMinWorkerCount`
 - `currentStatus`
 - `retryDelayMillis`
+- `taskStatus`
+- `taskTargetNumber`
+- `taskEligibleNumber`
+- `taskSuccessNumber`
+- `taskNonSuccessNumber`
+- `totalMessages`
+- `successMessages`
+- `failedMessages`
+- `expiredMessages`
+- `processingMessages`
+- `pendingMessages`
+- `progressPercent`
+- `resolutionOutcome`
+- `needsTerminalClosure`
+- `pendingDispatchCount`
+- `desiredDispatchWorkerCount`
+- `requestedMatchCount`
+- `matchedWorkerCount`
+- `dispatchCandidateCount`
+- `dispatchedMessageCount`
+- `usedWorkerCount`
+- `dispatchSlotCount`
+- `uniqueWorkerCount`
+- `uniqueWorkerContextCount`
+- `perWorkerBatchLimit`
 
 ## 4. Minimum Required Paths
 
 Must be traceable:
 
 - `Task`: `NEW -> READY`, `READY -> RUNNING`, `RUNNING/PAUSED/BLOCKED -> TERMINAL`
+- task-level funnel snapshot after progress reconciliation
 - `TaskMsg`: `INIT -> BINDING -> ASSIGNED -> RUNNING -> SUCCESS/FAILED/EXPIRED`
 - retry reset: `FAILED/EXPIRED -> INIT`
 - `WorkerContext`: `IDLE -> RESERVED -> OCCUPIED -> IDLE`
 - worker lock acquire/release
 - worker match reject reason
+- assignment attempt summary with requested/matched/dispatched counts
+- dispatch binding summary with per-worker batch usage
 - assignment retry scheduling after a skipped dispatch when a `READY` or `RUNNING` task remains eligible
 - callback ignored because duplicate
 - callback ignored because task already terminal
@@ -96,6 +130,9 @@ Rules:
 4. terminal closure must include `terminalReason`
 5. retry reset must include `retryCount`
 6. match rejection must include explicit `reason`
+7. task progress snapshot must include both task aggregate counters and persisted message aggregate counters
+8. assignment summary must include requested/matched/dispatched worker or message counts
+9. dispatch binding summary must include per-worker batch limit and unique worker/context counts
 
 ## 5. Replayability Requirement
 
@@ -108,6 +145,8 @@ Given a `taskId`, an operator or agent must be able to reconstruct:
 5. whether retry happened
 6. why the task closed to `TERMINAL`
 7. which resources were released
+8. what the aggregate task funnel looked like at each reconciliation point
+9. how many workers were requested, matched, and actually used during each assignment attempt
 
 ## 6. Test Requirement
 
@@ -117,9 +156,12 @@ Minimum trace assertions:
 
 - `READY -> RUNNING`
 - `RUNNING -> TERMINAL` with `terminalReason`
+- `TASK_PROGRESS_SNAPSHOT` after message reconciliation
 - `INIT -> BINDING -> ASSIGNED`
 - `ASSIGNED -> RUNNING -> SUCCESS/FAILED`
 - `IDLE -> RESERVED -> OCCUPIED -> IDLE`
+- `ASSIGNMENT_SUMMARY` for at least one successful assignment attempt
+- `DISPATCH_BINDING_SUMMARY` for at least one successful binding round
 - `TASK_MSG_RETRY_RESET` when retry is exercised
 - `ASSIGNMENT_RETRY_SCHEDULED` when delayed assignment retry is exercised
 - `CALLBACK_IGNORED_DUPLICATE` when replay is exercised

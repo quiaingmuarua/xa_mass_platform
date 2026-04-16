@@ -102,6 +102,31 @@ class TaskWorkerAssignListenerTest {
     }
 
     @Test
+    void onTaskAssignEmitsAssignmentSummary() {
+        Task task = createTask(2, 2, 1, TaskStatus.READY);
+        Worker worker = createWorker("worker-1");
+        MatchedWorkerContext matchedWorker = matched(worker, "ctx-1");
+
+        when(taskManager.countPendingDispatchableMessages(task.getTid())).thenReturn(2);
+        when(matchingStrategy.matchWorkers(same(task), eq(1))).thenReturn(List.of(matchedWorker));
+        when(msgAssignListener.onMsgAssign(same(task), eq(List.of(matchedWorker)))).thenReturn(List.of(msg("m1", "worker-1")));
+
+        try (TraceEventLogCapture capture = new TraceEventLogCapture()) {
+            assertTrue(listener.onTaskAssign(task));
+            capture.assertHasEvent("ASSIGNMENT_SUMMARY", mdc ->
+                    "task-1".equals(mdc.get("taskId"))
+                            && "READY".equals(mdc.get("initialStatus"))
+                            && "RUNNING".equals(mdc.get("currentStatus"))
+                            && "2".equals(mdc.get("pendingDispatchCount"))
+                            && "1".equals(mdc.get("matchedWorkerCount"))
+                            && "1".equals(mdc.get("dispatchCandidateCount"))
+                            && "1".equals(mdc.get("dispatchedMessageCount"))
+                            && "1".equals(mdc.get("usedWorkerCount"))
+                            && "SUCCESS".equals(mdc.get("result")));
+        }
+    }
+
+    @Test
     void onTaskAssignUsesMinRequiredWorkerCountWhenItExceedsCalculatedNeed() {
         Task task = createTask(3, 10, 4, TaskStatus.READY);
         Worker worker1 = createWorker("worker-1");

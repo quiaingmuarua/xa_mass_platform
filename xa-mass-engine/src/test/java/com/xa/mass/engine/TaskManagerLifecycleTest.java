@@ -236,6 +236,32 @@ class TaskManagerLifecycleTest {
     }
 
     @Test
+    void handleTaskMessageResultEmitsTaskProgressSnapshot() {
+        Task task = taskManager.createTask(buildRequest("task-progress-snapshot", List.of("alpha")));
+        taskManager.approveTask(task.getTid());
+        task.setStatus(TaskStatus.RUNNING);
+        taskManager.updateTask(task);
+
+        TaskMsg message = taskManager.getTaskMessages(task.getTid()).get(0);
+        message.transitionTo(TaskMsgStatus.BINDING);
+        message.markAsAssigned();
+        taskManager.updateTaskMessage(task.getTid(), message);
+
+        try (TraceEventLogCapture capture = new TraceEventLogCapture()) {
+            assertTrue(taskManager.handleTaskMessageResult(task.getTid(), message.getMsgId(), true, "done"));
+            capture.assertHasEvent("TASK_PROGRESS_SNAPSHOT", mdc ->
+                    task.getTid().equals(mdc.get("taskId"))
+                            && "FINALIZED_TO_TERMINAL".equals(mdc.get("resolutionOutcome"))
+                            && "TERMINAL".equals(mdc.get("taskStatus"))
+                            && "ALL_MESSAGES_SUCCEEDED".equals(mdc.get("terminalReason"))
+                            && "1".equals(mdc.get("totalMessages"))
+                            && "1".equals(mdc.get("successMessages"))
+                            && "0".equals(mdc.get("pendingMessages"))
+                            && "100.0".equals(mdc.get("progressPercent")));
+        }
+    }
+
+    @Test
     void handleTaskMessageResultMarksFailureAndKeepsExecutedCountAtSuccessOnly() {
         Task task = taskManager.createTask(buildRequest("task-result-failure"));
         taskManager.approveTask(task.getTid());

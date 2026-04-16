@@ -131,6 +131,31 @@ class SimpleTaskMsgAssignListenerTest {
     }
 
     @Test
+    void assignmentEmitsDispatchBindingSummary() {
+        Task task = createTask(3);
+        task.setBatchSize(2);
+        WorkerContext wc1 = workerContext("tk1", "d1");
+        WorkerContext wc2 = workerContext("tk2", "d2");
+        when(workerManager.updateWorkerContextById(anyString(), any(WorkerContext.class))).thenReturn(true);
+
+        try (TraceEventLogCapture capture = new TraceEventLogCapture()) {
+            List<TaskMsg> dispatched = listener.onMsgAssign(task, List.of(matched(worker("d1"), wc1), matched(worker("d2"), wc2)));
+            assertEquals(3, dispatched.size());
+            capture.assertHasEvent("DISPATCH_BINDING_SUMMARY", mdc ->
+                    task.getTid().equals(mdc.get("taskId"))
+                            && "3".equals(mdc.get("pendingMessageCount"))
+                            && "2".equals(mdc.get("matchedWorkerCount"))
+                            && "2".equals(mdc.get("dispatchSlotCount"))
+                            && "3".equals(mdc.get("dispatchedMessageCount"))
+                            && "2".equals(mdc.get("uniqueWorkerCount"))
+                            && "2".equals(mdc.get("uniqueWorkerContextCount"))
+                            && "2".equals(mdc.get("perWorkerBatchLimit"))
+                            && "0".equals(mdc.get("unassignedMessageCount"))
+                            && "SUCCESS".equals(mdc.get("result")));
+        }
+    }
+
+    @Test
     void assignmentRespectsPerWorkerBatchSizeAndLeavesRemainingMessagesPending() {
         Task task = createTask(5);
         task.setBatchSize(2);

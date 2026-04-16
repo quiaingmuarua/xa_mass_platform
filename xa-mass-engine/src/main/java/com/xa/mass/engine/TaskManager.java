@@ -663,6 +663,8 @@ public class TaskManager {
 
         if (task.getStatus().isFinal()) {
             taskStorage.updateTask(task);
+            emitTaskProgressSnapshot(task, stats, "ALREADY_FINAL", false,
+                    "RESOLVE_TASK_STATE_FROM_MESSAGES", "TaskManager", "task already final");
             return TaskStateResolutionResult.alreadyFinal(
                     task.getStatus(),
                     task.getTerminalReason(),
@@ -675,6 +677,8 @@ public class TaskManager {
         TaskTerminalPolicyDecision decision = taskTerminalPolicy.evaluate(task, stats);
         if (decision.getOutcome() != TaskTerminalPolicyDecision.Outcome.FINALIZE_TO_TERMINAL) {
             taskStorage.updateTask(task);
+            emitTaskProgressSnapshot(task, stats, "NOT_FINALIZED", false,
+                    "RESOLVE_TASK_STATE_FROM_MESSAGES", "TaskManager", "task remains non-final after progress evaluation");
             return TaskStateResolutionResult.notFinalized(
                     task.getStatus(),
                     stats.getTotal(),
@@ -692,6 +696,8 @@ public class TaskManager {
             TraceEventLogger.taskTerminalClosed(taskId, fromStatus, reason,
                     "RESOLVE_TASK_STATE_FROM_MESSAGES", "TaskManager", "all persisted messages finalized");
             taskStorage.updateTask(task);
+            emitTaskProgressSnapshot(task, stats, "FINALIZED_TO_TERMINAL", false,
+                    "RESOLVE_TASK_STATE_FROM_MESSAGES", "TaskManager", "all persisted messages finalized");
             notifyTaskTerminal(task);
             return TaskStateResolutionResult.finalizedToTerminal(
                     reason,
@@ -702,6 +708,8 @@ public class TaskManager {
         }
 
         taskStorage.updateTask(task);
+        emitTaskProgressSnapshot(task, stats, "FINALIZE_REJECTED", true,
+                "RESOLVE_TASK_STATE_FROM_MESSAGES", "TaskManager", "task terminal transition was rejected");
         return TaskStateResolutionResult.notFinalized(
                 task.getStatus(),
                 stats.getTotal(),
@@ -791,6 +799,24 @@ public class TaskManager {
                 stats.getFailed(),
                 stats.getProcessing(),
                 List.copyOf(violations)
+        );
+    }
+
+    private void emitTaskProgressSnapshot(Task task,
+                                          TaskStorage.TaskMessageStats stats,
+                                          String resolutionOutcome,
+                                          boolean needsTerminalClosure,
+                                          String trigger,
+                                          String source,
+                                          String reason) {
+        TraceEventLogger.taskProgressSnapshot(
+                task,
+                stats,
+                resolutionOutcome,
+                needsTerminalClosure,
+                trigger,
+                source,
+                reason
         );
     }
 

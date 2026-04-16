@@ -4,6 +4,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
 
+import java.util.ArrayDeque;
+import java.util.Deque;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -26,6 +30,8 @@ public final class LogUtils {
     public static final String ERROR_CODE = "errorCode";
 
     private static final Logger logger = LoggerFactory.getLogger(LogUtils.class);
+    private static final ThreadLocal<Deque<Map<String, String>>> OPERATION_CONTEXT_STACK =
+            ThreadLocal.withInitial(ArrayDeque::new);
 
     private LogUtils() {
     }
@@ -76,6 +82,7 @@ public final class LogUtils {
 
     public static void clearMdc() {
         MDC.clear();
+        OPERATION_CONTEXT_STACK.remove();
     }
 
     public static void removeMdc(String key) {
@@ -83,9 +90,13 @@ public final class LogUtils {
     }
 
     public static void logOperationStart(String operation, String module, String... params) {
+        pushOperationContext();
         setOperation(operation);
         setModule(module);
         setTraceId(generateTraceId());
+        removeMdc(RESULT);
+        removeMdc(DURATION);
+        removeMdc(ERROR_CODE);
 
         StringBuilder message = new StringBuilder("Operation started: ").append(operation);
         if (params.length > 0) {
@@ -105,6 +116,7 @@ public final class LogUtils {
         setResult("SUCCESS");
         setDuration(duration);
         logger.info("Operation succeeded: result={}, durationMs={}", result, duration);
+        restoreOperationContext();
     }
 
     public static void logOperationFailure(String errorCode, String errorMessage, long duration) {
@@ -113,6 +125,7 @@ public final class LogUtils {
         setDuration(duration);
         logger.error("Operation failed: errorCode={}, errorMessage={}, durationMs={}",
                 errorCode, errorMessage, duration);
+        restoreOperationContext();
     }
 
     public static void logWorkerOperation(String workerId, String operation, String result) {
@@ -152,5 +165,54 @@ public final class LogUtils {
         setOperation("TASK_ASSIGNMENT");
         setResult(result);
         logger.info("Task assignment: taskId={}, workerId={}, result={}", taskId, workerId, result);
+    }
+
+    private static void pushOperationContext() {
+        OPERATION_CONTEXT_STACK.get().push(captureOperationContext());
+    }
+
+    private static Map<String, String> captureOperationContext() {
+        Map<String, String> snapshot = new LinkedHashMap<>();
+        snapshot.put(TRACE_ID, MDC.get(TRACE_ID));
+        snapshot.put(OPERATION, MDC.get(OPERATION));
+        snapshot.put(MODULE, MDC.get(MODULE));
+        snapshot.put(RESULT, MDC.get(RESULT));
+        snapshot.put(DURATION, MDC.get(DURATION));
+        snapshot.put(ERROR_CODE, MDC.get(ERROR_CODE));
+        return snapshot;
+    }
+
+    private static void restoreOperationContext() {
+        Deque<Map<String, String>> stack = OPERATION_CONTEXT_STACK.get();
+        if (stack.isEmpty()) {
+            removeMdc(TRACE_ID);
+            removeMdc(OPERATION);
+            removeMdc(MODULE);
+            removeMdc(RESULT);
+            removeMdc(DURATION);
+            removeMdc(ERROR_CODE);
+            OPERATION_CONTEXT_STACK.remove();
+            return;
+        }
+
+        Map<String, String> previous = stack.pop();
+        restoreManagedKey(TRACE_ID, previous.get(TRACE_ID));
+        restoreManagedKey(OPERATION, previous.get(OPERATION));
+        restoreManagedKey(MODULE, previous.get(MODULE));
+        restoreManagedKey(RESULT, previous.get(RESULT));
+        restoreManagedKey(DURATION, previous.get(DURATION));
+        restoreManagedKey(ERROR_CODE, previous.get(ERROR_CODE));
+
+        if (stack.isEmpty()) {
+            OPERATION_CONTEXT_STACK.remove();
+        }
+    }
+
+    private static void restoreManagedKey(String key, String value) {
+        if (value == null || value.isBlank()) {
+            MDC.remove(key);
+        } else {
+            MDC.put(key, value);
+        }
     }
 }
