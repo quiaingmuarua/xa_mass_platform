@@ -12,6 +12,9 @@ It intentionally does not duplicate run commands, verification logs, or detailed
 For those, use:
 
 - [../AGENTS.md](../AGENTS.md)
+- [./STATE_MACHINE_BASELINE.md](./STATE_MACHINE_BASELINE.md)
+- [./TRACE_CONTRACT.md](./TRACE_CONTRACT.md)
+- [./E2E_BASELINE.md](./E2E_BASELINE.md)
 - [./VERIFIED_RUNBOOK.md](./VERIFIED_RUNBOOK.md)
 - [./INTERNAL_API_REFERENCE.md](./INTERNAL_API_REFERENCE.md)
 
@@ -22,9 +25,12 @@ When code, runtime behavior, and docs disagree, use this order:
 1. Actual code paths
 2. Verified runtime behavior
 3. [../AGENTS.md](../AGENTS.md)
-4. This file
-5. Module READMEs
-6. `doc/archive/` historical material
+4. [./STATE_MACHINE_BASELINE.md](./STATE_MACHINE_BASELINE.md)
+5. [./TRACE_CONTRACT.md](./TRACE_CONTRACT.md)
+6. [./E2E_BASELINE.md](./E2E_BASELINE.md)
+7. This file
+8. Module READMEs
+9. `doc/archive/` historical material
 
 Working rule:
 
@@ -57,12 +63,15 @@ Interpretation rules:
 - the abstract concepts are the stable architecture boundary
 - the concrete types are the current reference scenario and default adapters
 - future worker forms should extend these abstract slots instead of shrinking the platform back into `worker/workerContext` vocabulary
+- mock/runtime loading does not auto-create fallback worker contexts; a worker with no explicit `workerContexts` stays stateless
 
 ## 4. Architectural Guardrails
 
 - Stable platform boundaries are `Task`, `TaskMsg`, assignment, result, audit, and terminal policy.
 - `Worker` is the current worker adapter name, not the permanent universal name for all worker/resource forms. Read it as the current concrete `Worker` implementation.
 - `WorkerContext` is optional worker context. Not every future worker model must require one.
+- The active API is explicitly `0..n`: do not reintroduce single-context helper APIs keyed only by `workerId`; use `getWorkerContexts(...)` or `getWorkerContextById(...)`.
+- `WorkerContext.workerId` is the single owner truth; attachment APIs should accept the `WorkerContext` object itself rather than duplicating the owner `workerId` as a second parameter.
 - `Task.sharedConfig` and `TaskMsg.input/output` are the main payload boundaries. Do not regress back to single-purpose top-level fields such as `textContent`.
 - Routing truth such as country/account affinity should come from explicit rules and worker-context signals, not from `workerGroupId`.
 - `Worker.attributes` and `WorkerContext.attributes` are auxiliary rule labels for matching and diagnostics only. They are not lifecycle, lock, or online truth.
@@ -119,6 +128,7 @@ Update constraints:
 
 - `targetList` and other unknown fields are rejected
 - only `NEW` and `BLOCKED` tasks may be edited
+- `BLOCKED` is not reject-only: `rejectTask` is `NEW -> BLOCKED`, while `blockTask` is the runtime path from `READY` or `RUNNING`
 
 ### Task and TaskMsg payload model
 
@@ -151,6 +161,9 @@ Important current rules:
 - assignment must not dispatch if a task leaves `READY` during the matching window
 - late callbacks must not mutate a task already closed to `TERMINAL`
 - `Task.terminalReason` is required to interpret why a task ended
+- `BLOCKED` has two distinct intents that must stay separate at the API layer:
+  - review rejection uses `rejectTask` for `NEW -> BLOCKED`
+  - runtime/manual blocking uses `blockTask` for `READY/RUNNING -> BLOCKED`
 
 ## 8. WorkerContext And Matching Baseline
 
@@ -199,5 +212,6 @@ Better default behavior:
 - start from the real entrypoint and current call sites
 - check the root `pom.xml` before treating a top-level directory as active mainline code
 - add or update regression coverage before changing behavior
+- update the short state-machine, trace, and E2E baselines when lifecycle semantics change
 - sync active docs after verified behavior changes
 - keep archive material under archive paths instead of active source trees

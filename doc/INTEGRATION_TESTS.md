@@ -536,7 +536,7 @@ workerContext.setWorkerContextId("worker-context-" + workerId);
 workerContext.setWorkerId(workerId);
 workerContext.setChannel("us");
 workerContext.setStatus(WorkerContextStatus.IDLE);
-workerManager.addWorkerContext(workerId, workerContext);
+workerManager.addWorkerContext(workerContext);
 
 MassWebSocketClientImpl client = new MassWebSocketClientImpl(wsUri, workerId);
 client.connectBlocking();

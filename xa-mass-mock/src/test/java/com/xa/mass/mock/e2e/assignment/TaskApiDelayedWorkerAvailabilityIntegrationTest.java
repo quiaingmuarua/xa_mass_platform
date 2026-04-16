@@ -104,7 +104,7 @@ class TaskApiDelayedWorkerAvailabilityIntegrationTest extends AbstractMockE2eTes
         workerContext.setWorkerId(workerId);
         workerContext.setChannel("us");
         workerContext.setStatus(WorkerContextStatus.IDLE);
-        workerManager.addWorkerContext(workerId, workerContext);
+        workerManager.addWorkerContext(workerContext);
     }
 
 }

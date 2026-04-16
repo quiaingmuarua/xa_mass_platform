@@ -47,8 +47,8 @@ class MassApplicationLoadMockDataTest {
         assertTrue(workers.stream().allMatch(worker -> worker.supportsProject("demoApp")));
         assertTrue(workers.stream().allMatch(worker -> worker.supportsProject("testApp")));
 
-        WorkerContext usWc = harness.workerManager().getWorkerContext("worker-us-1");
-        WorkerContext gbWc = harness.workerManager().getWorkerContext("worker-gb-1");
+        WorkerContext usWc = harness.workerManager().getWorkerContexts("worker-us-1").get(0);
+        WorkerContext gbWc = harness.workerManager().getWorkerContexts("worker-gb-1").get(0);
         assertNotNull(usWc);
         assertNotNull(gbWc);
         assertEquals("route-us", usWc.getChannel());
@@ -60,25 +60,23 @@ class MassApplicationLoadMockDataTest {
     }
 
     @Test
-    void loadMockDataSeedsMinimalWorkerContextsWhenExplicitDataIsMissing() {
+    void loadMockDataKeepsWorkersStatelessWhenExplicitDataIsMissing() {
         TestHarness harness = createHarness();
         MassApplication application = new MassApplication(
-                harness.engine(), 8088, "/ws", new GatewayConfig(), fallbackSeedConfig()
+                harness.engine(), 8088, "/ws", new GatewayConfig(), statelessWorkerConfig()
         );
 
-        application.loadMockData(harness.engine(), fallbackSeedConfig());
+        application.loadMockData(harness.engine(), statelessWorkerConfig());
 
         List<Worker> workers = harness.workerManager().getAllWorkers();
         List<WorkerContext> workerContexts = harness.workerManager().getAllWorkerContexts();
 
         assertEquals(2, workers.size());
-        assertEquals(workers.size(), workerContexts.size());
+        assertEquals(0, workerContexts.size());
         assertEquals(0, harness.createdTasks().get());
-        assertTrue(workerContexts.stream().allMatch(wc -> wc.getStatus() == WorkerContextStatus.IDLE));
-        assertTrue(workerContexts.stream().allMatch(wc -> wc.getWorkerId() != null && wc.getWorkerContextId() != null));
-        assertTrue(workerContexts.stream().allMatch(wc -> wc.getChannel() == null));
         assertTrue(workerContexts.stream().allMatch(wc -> wc.getAttributes().isEmpty()));
-        assertNull(harness.workerManager().getWorkerContext("missing-worker"));
+        assertTrue(workers.stream().allMatch(worker -> harness.workerManager().getWorkerContexts(worker.getWorkerId()).isEmpty()));
+        assertTrue(harness.workerManager().getWorkerContexts("missing-worker").isEmpty());
     }
 
     @Test
@@ -157,7 +155,7 @@ class MassApplicationLoadMockDataTest {
         }).when(engine).addWorker(any(Worker.class));
         doAnswer(invocation -> {
             WorkerContext wc = invocation.getArgument(0);
-            workerManager.addWorkerContext(wc.getWorkerId(), wc);
+            workerManager.addWorkerContext(wc);
             return null;
         }).when(engine).addWorkerContext(any(WorkerContext.class));
         doAnswer(invocation -> {
@@ -245,7 +243,7 @@ class MassApplicationLoadMockDataTest {
         return engineConfig;
     }
 
-    private EngineConfig fallbackSeedConfig() {
+    private EngineConfig statelessWorkerConfig() {
         EngineConfig engineConfig = new EngineConfig();
         engineConfig.setMockConfigRoot(JsonParser.parseString("""
                 {

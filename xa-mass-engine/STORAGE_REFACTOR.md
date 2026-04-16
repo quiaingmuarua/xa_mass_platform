@@ -59,13 +59,15 @@ List<Worker> getWorkersByGroupId(String workerGroupId);
 
     List<Worker> getAllWorkers();
 
-    void addWorkerContext(String workerId, WorkerContext workerContext);
+    void addWorkerContext(WorkerContext workerContext);
 
-    Optional<WorkerContext> getWorkerContext(String workerId);
+    List<WorkerContext> getWorkerContexts(String workerId);
 
-    boolean updateWorkerContext(String workerId, WorkerContext workerContext);
+    Optional<WorkerContext> getWorkerContextById(String workerContextId);
 
-    boolean deleteWorkerContext(String workerId);
+    boolean updateWorkerContextById(String workerContextId, WorkerContext workerContext);
+
+    boolean deleteWorkerContextById(String workerContextId);
 
     List<WorkerContext> getAllWorkerContexts();
 

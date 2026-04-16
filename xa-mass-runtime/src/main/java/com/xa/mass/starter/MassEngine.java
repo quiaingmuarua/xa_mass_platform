@@ -131,7 +131,7 @@ public class MassEngine {
 
     public void addWorkerContext(WorkerContext workerContext) {
         if (workerManager != null && workerContext != null) {
-            workerManager.addWorkerContext(workerContext.getWorkerId(), workerContext);
+            workerManager.addWorkerContext(workerContext);
         }
     }
 

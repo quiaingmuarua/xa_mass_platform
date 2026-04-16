@@ -51,8 +51,8 @@ class RuleBasedTaskWorkerMatchingStrategyTest {
         workerManager.addWorker(matchingWorker);
         workerManager.addWorker(nonMatchingWorker);
 
-        workerManager.addWorkerContext(matchingWorker.getWorkerId(), workerContext("worker-us", "ctx-us", "shared", "us"));
-        workerManager.addWorkerContext(nonMatchingWorker.getWorkerId(), workerContext("worker-gb", "ctx-gb", "shared", "gb"));
+        workerManager.addWorkerContext(workerContext("worker-us", "ctx-us", "shared", "us"));
+        workerManager.addWorkerContext(workerContext("worker-gb", "ctx-gb", "shared", "gb"));
 
         List<MatchedWorkerContext> matched = strategy.matchWorkers(task, 2);
 
@@ -87,7 +87,7 @@ class RuleBasedTaskWorkerMatchingStrategyTest {
 
         Worker w = worker("worker-locked", "pool-east");
         workerManager.addWorker(w);
-        workerManager.addWorkerContext(w.getWorkerId(), workerContext("worker-locked", "ctx-locked", "shared", "us"));
+        workerManager.addWorkerContext(workerContext("worker-locked", "ctx-locked", "shared", "us"));
         assertTrue(workerManager.tryLockWorker(w.getWorkerId()));
 
         List<MatchedWorkerContext> matched = strategy.matchWorkers(task, 1);
@@ -122,8 +122,8 @@ class RuleBasedTaskWorkerMatchingStrategyTest {
 
         Worker worker = worker("worker-multi", "pool-east");
         workerManager.addWorker(worker);
-        workerManager.addWorkerContext(worker.getWorkerId(), workerContext("worker-multi", "ctx-gb", "shared", "gb"));
-        workerManager.addWorkerContext(worker.getWorkerId(), workerContext("worker-multi", "ctx-us", "shared", "us"));
+        workerManager.addWorkerContext(workerContext("worker-multi", "ctx-gb", "shared", "gb"));
+        workerManager.addWorkerContext(workerContext("worker-multi", "ctx-us", "shared", "us"));
 
         List<MatchedWorkerContext> matched = strategy.matchWorkers(task, 1);
 

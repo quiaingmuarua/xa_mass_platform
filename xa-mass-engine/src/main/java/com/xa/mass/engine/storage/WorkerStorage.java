@@ -19,13 +19,10 @@ public interface WorkerStorage {
     List<Worker> getWorkersByGroupId(String workerGroupId);
     List<Worker> getAllWorkers();
 
-    void addWorkerContext(String workerId, WorkerContext workerContext);
-    Optional<WorkerContext> getWorkerContext(String workerId);
+    void addWorkerContext(WorkerContext workerContext);
     List<WorkerContext> getWorkerContexts(String workerId);
     Optional<WorkerContext> getWorkerContextById(String workerContextId);
-    boolean updateWorkerContext(String workerId, WorkerContext workerContext);
     boolean updateWorkerContextById(String workerContextId, WorkerContext workerContext);
-    boolean deleteWorkerContext(String workerId);
     boolean deleteWorkerContextById(String workerContextId);
     List<WorkerContext> getAllWorkerContexts();
 

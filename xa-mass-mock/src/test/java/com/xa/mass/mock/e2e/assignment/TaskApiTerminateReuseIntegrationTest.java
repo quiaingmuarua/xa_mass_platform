@@ -67,7 +67,7 @@ class TaskApiTerminateReuseIntegrationTest extends AbstractMockE2eTest {
 
         TaskSnapshot firstTerminal = waitForTaskSnapshot(firstTaskId, "TERMINAL", 20, 500L);
         assertEquals("EXPIRED", firstTerminal.messages().get(0).get("status"));
-        assertEquals(WorkerContextStatus.IDLE, workerManager.getWorkerContext(workerId).getStatus());
+        assertEquals(WorkerContextStatus.IDLE, workerManager.getWorkerContexts(workerId).get(0).getStatus());
 
         String secondTaskId = createTaskId("terminate-reuse-second", "terminate reuse second", "target-b");
         Map<String, Object> secondApprove = audit(secondTaskId, "terminate-reuse-2");
@@ -83,7 +83,7 @@ class TaskApiTerminateReuseIntegrationTest extends AbstractMockE2eTest {
         );
         assertEquals(Boolean.TRUE, secondTerminate.get("success"));
         waitForTaskSnapshot(secondTaskId, "TERMINAL", 20, 500L);
-        assertEquals(WorkerContextStatus.IDLE, workerManager.getWorkerContext(workerId).getStatus());
+        assertEquals(WorkerContextStatus.IDLE, workerManager.getWorkerContexts(workerId).get(0).getStatus());
     }
 
     private void registerWorker(String workerId) {
@@ -99,6 +99,6 @@ class TaskApiTerminateReuseIntegrationTest extends AbstractMockE2eTest {
         workerContext.setWorkerId(workerId);
         workerContext.setChannel("us");
         workerContext.setStatus(WorkerContextStatus.IDLE);
-        workerManager.addWorkerContext(workerId, workerContext);
+        workerManager.addWorkerContext(workerContext);
     }
 }

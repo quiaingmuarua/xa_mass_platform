@@ -102,7 +102,7 @@ public class TaskApiController {
                 case READY -> task.getStatus() == TaskStatus.PAUSED
                         ? taskManager.resumeTaskDetailed(taskId).isSuccess()
                         : taskManager.approveTask(taskId);
-                case BLOCKED -> taskManager.rejectTask(taskId);
+                case BLOCKED -> blockTask(task);
                 case PAUSED -> taskManager.pauseTask(taskId);
                 case TERMINAL -> taskManager.cancelTask(taskId);
                 default -> false;
@@ -125,6 +125,33 @@ public class TaskApiController {
             return ResponseEntity.badRequest().body(Map.of(
                     "success", false,
                     "message", "Task status update failed: " + e.getMessage()
+            ));
+        }
+    }
+
+    @PostMapping("/{taskId}/block")
+    public ResponseEntity<?> blockTask(@PathVariable String taskId) {
+        try {
+            Task task = taskManager.getTask(taskId);
+            if (task == null) {
+                return ResponseEntity.notFound().build();
+            }
+
+            if (blockTask(task)) {
+                return ResponseEntity.ok(Map.of(
+                        "success", true,
+                        "message", "Task blocked"
+                ));
+            }
+
+            return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "message", "Task cannot be blocked from the current state"
+            ));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "message", "Task block failed: " + e.getMessage()
             ));
         }
     }
@@ -331,6 +358,16 @@ public class TaskApiController {
         }
 
         return objectMapper.convertValue(requestBody, TaskCreateRequestDto.class);
+    }
+
+    private boolean blockTask(Task task) {
+        if (task == null) {
+            return false;
+        }
+        if (task.getStatus() == TaskStatus.NEW) {
+            return taskManager.rejectTask(task.getTid());
+        }
+        return taskManager.blockTask(task.getTid());
     }
 
     @PostMapping("/{taskId}/items")

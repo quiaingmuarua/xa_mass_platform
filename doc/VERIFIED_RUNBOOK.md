@@ -139,6 +139,7 @@ Verified state transitions:
 - update: only `NEW` and `BLOCKED` tasks may be edited
 - `approveTask`: `NEW`, `BLOCKED` -> `READY`
 - `rejectTask`: `NEW` -> `BLOCKED`
+- `blockTask`: `READY`, `RUNNING` -> `BLOCKED`
 - `pauseTask`: `READY`, `RUNNING` -> `PAUSED`
 - `resumeTask`: `PAUSED` -> `READY` or `TERMINAL` if the task already completed while paused
 - `deleteTask`: only `NEW`, `TERMINAL`
@@ -195,7 +196,9 @@ Matching-context facts:
 - routing-code satisfaction should come from worker-context-facing signals and explicit rules, not from `workerGroupId`
 - `WorkerMatchContext` exposes nested `workerAttributes` and `workerContextAttributes` maps for QLExpress access such as `workerContextAttributes['country'] == taskRoutingCode`
 - `WorkerMatchContext` also exposes `hasWorkerContext` and `taskHasRoutingRequirement` so rules can distinguish stateless workers from worker-context-routed tasks
+- `MassApplication.loadMockData(...)` does not auto-seed fallback worker contexts; workers remain stateless unless mock data provides explicit `workerContexts`
 - these maps are auxiliary rule labels only and are not the source of truth for lifecycle, lock, or online state
+- `WorkerContext.workerId` is the single ownership source; active runtime code no longer passes a duplicate owner `workerId` into add-context APIs
 
 ### 5.3 Result Write-Back and Completion
 

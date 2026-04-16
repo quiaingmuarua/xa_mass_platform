@@ -162,6 +162,56 @@ class TaskApiControllerTest {
     }
 
     @Test
+    void updateStatusUsesRejectWhenBlockingNewTask() throws Exception {
+        Task newTask = taskWithStatus(TaskStatus.NEW);
+        Task blockedTask = taskWithStatus(TaskStatus.BLOCKED);
+
+        when(taskManager.getTask(TASK_ID)).thenReturn(newTask, blockedTask);
+        when(taskManager.rejectTask(TASK_ID)).thenReturn(true);
+
+        mockMvc.perform(put("/status/api/tasks/{taskId}/status", TASK_ID)
+                        .param("status", "BLOCKED"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.newStatus").value("BLOCKED"));
+
+        verify(taskManager).rejectTask(TASK_ID);
+        verify(taskManager, never()).blockTask(TASK_ID);
+    }
+
+    @Test
+    void updateStatusUsesRuntimeBlockWhenBlockingReadyTask() throws Exception {
+        Task readyTask = taskWithStatus(TaskStatus.READY);
+        Task blockedTask = taskWithStatus(TaskStatus.BLOCKED);
+
+        when(taskManager.getTask(TASK_ID)).thenReturn(readyTask, blockedTask);
+        when(taskManager.blockTask(TASK_ID)).thenReturn(true);
+
+        mockMvc.perform(put("/status/api/tasks/{taskId}/status", TASK_ID)
+                        .param("status", "BLOCKED"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.newStatus").value("BLOCKED"));
+
+        verify(taskManager).blockTask(TASK_ID);
+        verify(taskManager, never()).rejectTask(TASK_ID);
+    }
+
+    @Test
+    void blockEndpointUsesRuntimeBlockPath() throws Exception {
+        when(taskManager.getTask(TASK_ID)).thenReturn(taskWithStatus(TaskStatus.READY));
+        when(taskManager.blockTask(TASK_ID)).thenReturn(true);
+
+        mockMvc.perform(post("/status/api/tasks/{taskId}/block", TASK_ID))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.message").value("Task blocked"));
+
+        verify(taskManager).blockTask(TASK_ID);
+        verify(taskManager, never()).rejectTask(TASK_ID);
+    }
+
+    @Test
     void resumeReturnsTerminalWhenPausedTaskAlreadyCompleted() throws Exception {
         when(taskManager.getTask(TASK_ID)).thenReturn(taskWithStatus(TaskStatus.PAUSED));
         when(taskManager.resumeTaskDetailed(TASK_ID))

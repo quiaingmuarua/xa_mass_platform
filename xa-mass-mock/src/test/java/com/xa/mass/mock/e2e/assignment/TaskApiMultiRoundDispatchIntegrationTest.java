@@ -98,7 +98,7 @@ class TaskApiMultiRoundDispatchIntegrationTest extends AbstractMockE2eTest {
                 assertEquals(workerId, message.get("workerId"));
             }
 
-            WorkerContext workerContext = workerManager.getWorkerContext(workerId);
+            WorkerContext workerContext = workerManager.getWorkerContexts(workerId).get(0);
             assertEquals(WorkerContextStatus.IDLE, workerContext.getStatus());
         } finally {
             client.disconnect();
@@ -211,7 +211,7 @@ class TaskApiMultiRoundDispatchIntegrationTest extends AbstractMockE2eTest {
         workerContext.setWorkerId(workerId);
         workerContext.setChannel("us");
         workerContext.setStatus(WorkerContextStatus.IDLE);
-        workerManager.addWorkerContext(workerId, workerContext);
+        workerManager.addWorkerContext(workerContext);
     }
 
     private boolean isTerminalMessageStatus(Object status) {

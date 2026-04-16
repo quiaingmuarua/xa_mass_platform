@@ -76,8 +76,8 @@ public class StorageExample {
 
         workerManager.addWorker(worker1);
         workerManager.addWorker(worker2);
-        workerManager.addWorkerContext("worker-001", ctx1);
-        workerManager.addWorkerContext("worker-002", ctx2);
+        workerManager.addWorkerContext(ctx1);
+        workerManager.addWorkerContext(ctx2);
 
         List<Worker> allWorkers = workerManager.getAllWorkers();
         List<Worker> usWorkers = workerManager.getWorkersByGroupId("us");
@@ -87,8 +87,8 @@ public class StorageExample {
         log.info("US workers: {}", usWorkers.size());
         log.info("GB workers: {}", gbWorkers.size());
 
-        WorkerContext retrievedCtx1 = workerManager.getWorkerContext("worker-001");
-        WorkerContext retrievedCtx2 = workerManager.getWorkerContext("worker-002");
+        WorkerContext retrievedCtx1 = workerManager.getWorkerContexts("worker-001").stream().findFirst().orElse(null);
+        WorkerContext retrievedCtx2 = workerManager.getWorkerContexts("worker-002").stream().findFirst().orElse(null);
 
         log.info("WorkerContext1: {}", retrievedCtx1 != null ? retrievedCtx1.getWorkerContextId() : "null");
         log.info("WorkerContext2: {}", retrievedCtx2 != null ? retrievedCtx2.getWorkerContextId() : "null");
@@ -134,7 +134,7 @@ public class StorageExample {
 
             List<Worker> matchedWorkers = new ArrayList<>();
             for (Worker w : candidates) {
-                WorkerContext wc = workerManager.getWorkerContext(w.getWorkerId());
+                WorkerContext wc = workerManager.getWorkerContexts(w.getWorkerId()).stream().findFirst().orElse(null);
                 if (wc != null) {
                     boolean allocatable = wc.isAllocatable();
                     boolean available = wc.isAvailable();
@@ -201,7 +201,7 @@ public class StorageExample {
 
             List<Worker> matchedWorkers = new ArrayList<>();
             for (Worker w : candidates) {
-                WorkerContext wc = workerManager.getWorkerContext(w.getWorkerId());
+                WorkerContext wc = workerManager.getWorkerContexts(w.getWorkerId()).stream().findFirst().orElse(null);
                 if (wc != null && wc.isAllocatable()) {
                     if (workerManager.tryLockWorker(w.getWorkerId())) {
                         matchedWorkers.add(w);
@@ -250,7 +250,7 @@ public class StorageExample {
 
         for (int i = 0; i < Math.min(3, allWorkers.size()); i++) {
             Worker w = allWorkers.get(i);
-            WorkerContext wc = workerManager.getWorkerContext(w.getWorkerId());
+            WorkerContext wc = workerManager.getWorkerContexts(w.getWorkerId()).stream().findFirst().orElse(null);
             log.info("Worker {}: id={}, groupId={}, status={}, ctx={}, ctxStatus={}",
                     i + 1, w.getWorkerId(), w.getWorkerGroupId(), w.getStatus(),
                     wc != null ? wc.getWorkerContextId() : "null",
@@ -269,7 +269,7 @@ public class StorageExample {
 
             List<Worker> matchedWorkers = new ArrayList<>();
             for (Worker w : candidates) {
-                WorkerContext wc = workerManager.getWorkerContext(w.getWorkerId());
+                WorkerContext wc = workerManager.getWorkerContexts(w.getWorkerId()).stream().findFirst().orElse(null);
                 if (wc != null) {
                     boolean allocatable = wc.isAllocatable();
                     boolean available = wc.isAvailable();

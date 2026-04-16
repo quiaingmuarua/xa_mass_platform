@@ -53,16 +53,8 @@ public class WorkerManager {
         return workerStorage.getWorkersByGroupId(workerGroupId);
     }
 
-    public void addWorkerContext(String workerId, WorkerContext workerContext) {
-        workerStorage.addWorkerContext(workerId, workerContext);
-    }
-
-    /**
-     * Compatibility wrapper for legacy single-context callers.
-     * Prefer {@link #getWorkerContexts(String)} or {@link #getWorkerContextById(String)} for new code.
-     */
-    public WorkerContext getWorkerContext(String workerId) {
-        return workerStorage.getWorkerContext(workerId).orElse(null);
+    public void addWorkerContext(WorkerContext workerContext) {
+        workerStorage.addWorkerContext(workerContext);
     }
 
     public List<WorkerContext> getWorkerContexts(String workerId) {
@@ -73,16 +65,8 @@ public class WorkerManager {
         return workerStorage.getWorkerContextById(workerContextId).orElse(null);
     }
 
-    public boolean updateWorkerContext(String workerId, WorkerContext workerContext) {
-        return workerStorage.updateWorkerContext(workerId, workerContext);
-    }
-
     public boolean updateWorkerContextById(String workerContextId, WorkerContext workerContext) {
         return workerStorage.updateWorkerContextById(workerContextId, workerContext);
-    }
-
-    public boolean deleteWorkerContext(String workerId) {
-        return workerStorage.deleteWorkerContext(workerId);
     }
 
     public boolean deleteWorkerContextById(String workerContextId) {

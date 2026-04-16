@@ -62,8 +62,15 @@ public class InMemoryWorkerStorage implements WorkerStorage {
     }
 
     @Override
-    public void addWorkerContext(String workerId, WorkerContext workerContext) {
+    public void addWorkerContext(WorkerContext workerContext) {
         synchronized (this) {
+            if (workerContext == null) {
+                throw new IllegalArgumentException("workerContext is required");
+            }
+            String workerId = workerContext.getWorkerId();
+            if (workerId == null || workerId.isBlank()) {
+                throw new IllegalArgumentException("workerId is required on workerContext");
+            }
             LinkedHashMap<String, WorkerContext> contexts =
                     workerContextsByWorker.computeIfAbsent(workerId, ignored -> new LinkedHashMap<>());
             String workerContextId = workerContext.getWorkerContextId();
@@ -83,14 +90,6 @@ public class InMemoryWorkerStorage implements WorkerStorage {
             }
 
             contexts.put(workerContextId, workerContext);
-        }
-    }
-
-    @Override
-    public Optional<WorkerContext> getWorkerContext(String workerId) {
-        synchronized (this) {
-            LinkedHashMap<String, WorkerContext> contexts = workerContextsByWorker.get(workerId);
-            return Optional.ofNullable(selectCompatibilityContext(contexts));
         }
     }
 
@@ -121,52 +120,11 @@ public class InMemoryWorkerStorage implements WorkerStorage {
     }
 
     @Override
-    public boolean updateWorkerContext(String workerId, WorkerContext workerContext) {
-        synchronized (this) {
-            LinkedHashMap<String, WorkerContext> contexts = workerContextsByWorker.get(workerId);
-            if (contexts == null || contexts.isEmpty()) {
-                return false;
-            }
-
-            String targetContextId = workerContext.getWorkerContextId();
-            if (targetContextId != null && contexts.containsKey(targetContextId)) {
-                contexts.put(targetContextId, workerContext);
-                workerIdByContextId.put(targetContextId, workerId);
-                return true;
-            }
-
-            if (contexts.size() != 1) {
-                return false;
-            }
-
-            WorkerContext compatibility = selectCompatibilityContext(contexts);
-            if (compatibility == null) {
-                return false;
-            }
-            targetContextId = compatibility.getWorkerContextId();
-            if (targetContextId == null || targetContextId.isBlank()) {
-                return false;
-            }
-
-            String newContextId = workerContext.getWorkerContextId();
-            if (newContextId == null || newContextId.isBlank()) {
-                workerContext.setWorkerContextId(targetContextId);
-                newContextId = targetContextId;
-            }
-            if (!targetContextId.equals(newContextId)) {
-                contexts.remove(targetContextId);
-                workerIdByContextId.remove(targetContextId);
-            }
-
-            contexts.put(newContextId, workerContext);
-            workerIdByContextId.put(newContextId, workerId);
-            return true;
-        }
-    }
-
-    @Override
     public boolean updateWorkerContextById(String workerContextId, WorkerContext workerContext) {
         synchronized (this) {
+            if (workerContext == null) {
+                return false;
+            }
             String workerId = workerIdByContextId.get(workerContextId);
             if (workerId == null) {
                 return false;
@@ -180,6 +138,10 @@ public class InMemoryWorkerStorage implements WorkerStorage {
             if (newContextId == null || newContextId.isBlank()) {
                 return false;
             }
+            String ownerWorkerId = workerContext.getWorkerId();
+            if (ownerWorkerId == null || ownerWorkerId.isBlank() || !workerId.equals(ownerWorkerId)) {
+                return false;
+            }
             if (!workerContextId.equals(newContextId)) {
                 contexts.remove(workerContextId);
                 workerIdByContextId.remove(workerContextId);
@@ -187,18 +149,6 @@ public class InMemoryWorkerStorage implements WorkerStorage {
             contexts.put(newContextId, workerContext);
             workerIdByContextId.put(newContextId, workerId);
             return true;
-        }
-    }
-
-    @Override
-    public boolean deleteWorkerContext(String workerId) {
-        synchronized (this) {
-            LinkedHashMap<String, WorkerContext> contexts = workerContextsByWorker.get(workerId);
-            WorkerContext compatibility = selectCompatibilityContext(contexts);
-            if (compatibility == null) {
-                return false;
-            }
-            return workerContextByIdRemove(workerId, compatibility.getWorkerContextId());
         }
     }
 
@@ -240,18 +190,6 @@ public class InMemoryWorkerStorage implements WorkerStorage {
     @Override
     public List<String> getLockedWorkers() {
         return new ArrayList<>(lockedWorkers);
-    }
-
-    private WorkerContext selectCompatibilityContext(LinkedHashMap<String, WorkerContext> contexts) {
-        if (contexts == null || contexts.isEmpty()) {
-            return null;
-        }
-
-        return contexts.values().stream()
-                .filter(WorkerContext::isInUse)
-                .findFirst()
-                .or(() -> contexts.values().stream().filter(WorkerContext::isAllocatable).findFirst())
-                .orElseGet(() -> contexts.values().iterator().next());
     }
 
     private boolean workerContextByIdRemove(String workerId, String workerContextId) {

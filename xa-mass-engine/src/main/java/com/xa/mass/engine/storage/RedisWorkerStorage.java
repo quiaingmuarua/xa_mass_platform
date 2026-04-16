@@ -56,12 +56,7 @@ public class RedisWorkerStorage implements WorkerStorage {
     }
 
     @Override
-    public void addWorkerContext(String workerId, WorkerContext workerContext) {
-        throw unsupported();
-    }
-
-    @Override
-    public Optional<WorkerContext> getWorkerContext(String workerId) {
+    public void addWorkerContext(WorkerContext workerContext) {
         throw unsupported();
     }
 
@@ -76,21 +71,10 @@ public class RedisWorkerStorage implements WorkerStorage {
     }
 
     @Override
-    public boolean updateWorkerContext(String workerId, WorkerContext workerContext) {
-        throw unsupported();
-    }
-
-    @Override
     public boolean updateWorkerContextById(String workerContextId, WorkerContext workerContext) {
         throw unsupported();
     }
 
-    @Override
-    public boolean deleteWorkerContext(String workerId) {
-        throw unsupported();
-    }
-
-    @Override
     public boolean deleteWorkerContextById(String workerContextId) {
         throw unsupported();
     }

@@ -67,7 +67,7 @@ public class RuleDebugExample {
             workerContext.setAttributes(Map.of("country", country));
 
             workerManager.addWorker(worker);
-            workerManager.addWorkerContext(worker.getWorkerId(), workerContext);
+            workerManager.addWorkerContext(workerContext);
 
             logger.info("Worker {} supports projects: {}", worker.getWorkerId(),
                     String.join(", ", worker.getSupportedProjects()));
@@ -93,7 +93,7 @@ public class RuleDebugExample {
                                               RuleManager<Map<String, Object>> ruleManager) {
         System.out.println("\n=== Debugging worker: " + worker.getWorkerId() + " ===");
 
-        WorkerContext workerContext = workerManager.getWorkerContext(worker.getWorkerId());
+        WorkerContext workerContext = workerManager.getWorkerContexts(worker.getWorkerId()).stream().findFirst().orElse(null);
         WorkerMatchContext matchContext = new WorkerMatchContext(worker, workerContext, task, workerManager);
 
         System.out.println("Worker:");

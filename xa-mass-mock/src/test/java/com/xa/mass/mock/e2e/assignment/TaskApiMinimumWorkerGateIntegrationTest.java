@@ -69,7 +69,7 @@ class TaskApiMinimumWorkerGateIntegrationTest extends AbstractMockE2eTest {
         TaskSnapshot readySnapshot = waitForTaskSnapshot(taskId, "READY", 8, 500L);
         assertEquals(0, ((Number) readySnapshot.task().get("peakAssignedWorkerCount")).intValue());
         assertEquals("INIT", readySnapshot.messages().get(0).get("status"));
-        assertEquals(WorkerContextStatus.IDLE, workerManager.getWorkerContext(firstWorkerId).getStatus());
+        assertEquals(WorkerContextStatus.IDLE, workerManager.getWorkerContexts(firstWorkerId).get(0).getStatus());
 
         String secondWorkerId = "min-gate-worker-1";
         registerWorker(secondWorkerId);
@@ -104,6 +104,6 @@ class TaskApiMinimumWorkerGateIntegrationTest extends AbstractMockE2eTest {
         workerContext.setWorkerId(workerId);
         workerContext.setChannel("us");
         workerContext.setStatus(WorkerContextStatus.IDLE);
-        workerManager.addWorkerContext(workerId, workerContext);
+        workerManager.addWorkerContext(workerContext);
     }
 }

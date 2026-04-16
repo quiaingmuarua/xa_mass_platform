@@ -284,7 +284,6 @@ public class MassApplication {
                 }
             }
 
-            ensureMockWorkerContexts(engine);
             verifyWorkerData(engine);
             loadMockRules(config);
 
@@ -371,30 +370,6 @@ public class MassApplication {
             }
             wc.setAttributes(normalizedAttributes);
         }
-    }
-
-    void ensureMockWorkerContexts(MassEngine engine) {
-        if (engine == null || engine.getWorkerManager() == null) {
-            return;
-        }
-        for (Worker worker : engine.getWorkerManager().getAllWorkers()) {
-            ensureMockWorkerContext(engine, worker);
-        }
-    }
-
-    void ensureMockWorkerContext(MassEngine engine, Worker worker) {
-        if (engine == null || worker == null || engine.getWorkerManager() == null) {
-            return;
-        }
-        if (!engine.getWorkerManager().getWorkerContexts(worker.getWorkerId()).isEmpty()) {
-            return;
-        }
-
-        WorkerContext wc = new WorkerContext();
-        wc.setWorkerContextId("wc-" + worker.getWorkerId());
-        wc.setWorkerId(worker.getWorkerId());
-        wc.setStatus(WorkerContextStatus.IDLE);
-        engine.addWorkerContext(wc);
     }
 
     void loadMockRules(EngineConfig config) {

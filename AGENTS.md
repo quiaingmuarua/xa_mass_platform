@@ -12,12 +12,17 @@ This file is the fastest entry point for coding agents such as Claude Code, Code
 - Port split is explicit: `server.port` for HTTP and `mass.websocket.port` for the gateway WebSocket server
 - Project direction is library/SDK-first; HTTP pages and backend endpoints are validation/demo surfaces
 - Mainline change discipline is now end-to-end integration-test-driven first; unit tests remain important, but they are support coverage rather than the primary acceptance gate
+- Mainline maintainability also depends on three short baseline docs:
+  - `doc/STATE_MACHINE_BASELINE.md`
+  - `doc/TRACE_CONTRACT.md`
+  - `doc/E2E_BASELINE.md`
 - Current verified API task path: `NEW -> READY -> RUNNING -> TERMINAL`
 - Pause/resume regression is also verified: `NEW -> READY -> PAUSED -> READY`
 - `TaskManager.createTask()` now accepts only the supported create contract fields: `userId`, `project`, `taskName`, `sharedConfig`, `targetList`, `routingCode`, `batchSize`, `defaultMsgMaxRetryCount`, and `openEnded`
 - current mainline preserves request `batchSize` and now enforces it as a per-worker hard cap for each dispatch round
 - task-create requests fail fast when `targetList` is empty/null, when `project` is unsupported, or when clients send unknown JSON fields such as retired `targetJsonList` / `targetType` / `extraParams`
 - `PUT /status/api/tasks/{taskId}` is now intentionally narrower than create: it accepts only metadata fields (`userId`, `project`, `taskName`, `sharedConfig`, `routingCode`, `batchSize`), rejects `targetList` and other unknown fields, and only allows edits while the task is still `NEW` or `BLOCKED`
+- Runtime task blocking is intentionally distinct from review rejection: `rejectTask` is `NEW -> BLOCKED`, while `blockTask` is `READY/RUNNING -> BLOCKED`; controller `/status` and `/block` endpoints now preserve that distinction
 - `Task` aggregate counters are now named by real meaning:
   - `taskTargetNumber`
   - `taskEligibleNumber`
@@ -79,10 +84,13 @@ Keep these constraints fixed unless the kernel itself is intentionally redesigne
 - Stable platform boundaries are `Task`, `TaskMsg`, assignment, result, audit, and terminal policy. UI/demo layers must not become the source of truth for those concepts.
 - `Worker` is the current worker adapter name. It should be read as the current concrete worker implementation, not as the universal final name for all worker/resource forms.
 - `WorkerContext` is optional worker context such as credentials, account scope, or capability context. Not every worker model must require one.
+- Active mainline no longer exposes compatibility single-context lookup by `workerId`; use `getWorkerContexts(workerId)` for ownership and `getWorkerContextById(workerContextId)` for precise mutation/read paths.
+- `WorkerContext.workerId` is now the single owner truth for context attachment. Do not reintroduce `addWorkerContext(workerId, workerContext)`-style APIs that duplicate owner identity across parameters.
 - `Task.sharedConfig` and `TaskMsg.input/output` are the main payload boundaries. Do not regress the platform back into single-purpose fields such as top-level `textContent`.
 - Routing truth such as country/account affinity should come from explicit rules and worker-context signals. Do not re-couple routing truth to `workerGroupId`.
 - `attributes` on `Worker` and `WorkerContext` are auxiliary rule labels only. They are not a second source of lifecycle, lock, or online truth.
 - New features should extend the abstract platform model first. Do not let the current `worker/worker-context` reference scenario collapse the platform definition back into a single vertical system.
+- If lifecycle semantics change, update code, `STATE_MACHINE_BASELINE`, `TRACE_CONTRACT`, and E2E coverage together.
 
 ## 1. What This Repo Is
 
@@ -114,10 +122,13 @@ Trust order:
 2. Verified runtime behavior
 3. `AGENTS.md`
 4. `doc/AGENT_BASELINE.md`
-5. `doc/VERIFIED_RUNBOOK.md`
-6. module READMEs / internal API doc under `doc/` / task flow doc under `doc/engine/`
-7. `doc/archive/API_DOCUMENTATION.md` / `doc/archive/QUICK_REFERENCE.md` - archived reference docs, partially outdated
-8. `old/` / `v2/` docs - historical archive only
+5. `doc/STATE_MACHINE_BASELINE.md`
+6. `doc/TRACE_CONTRACT.md`
+7. `doc/E2E_BASELINE.md`
+8. `doc/VERIFIED_RUNBOOK.md`
+9. module READMEs / internal API doc under `doc/` / task flow doc under `doc/engine/`
+10. `doc/archive/API_DOCUMENTATION.md` / `doc/archive/QUICK_REFERENCE.md` - archived reference docs, partially outdated
+11. `old/` / `v2/` docs - historical archive only
 
 Deleted historical docs that should not be treated as missing:
 
@@ -356,6 +367,7 @@ State machine constraints enforced in code (`TaskStatus.canTransitionTo`):
 |--------|--------------|--------|
 | `approveTask` | `NEW`, `BLOCKED` | `READY` |
 | `rejectTask` | `NEW` | `BLOCKED` |
+| `blockTask` | `READY`, `RUNNING` | `BLOCKED` |
 | `pauseTask` | `READY`, `RUNNING` | `PAUSED` |
 | `resumeTask` | `PAUSED` | `READY` |
 | `cancelTask` | any non-`TERMINAL` | `TERMINAL` |
@@ -416,7 +428,7 @@ Important current implementation facts:
 - `TaskManager.handleTaskMessageResult(...)` treats duplicate final callbacks as idempotent: the first final result is kept, progress is recalculated, and scheduler callbacks are not triggered twice.
 - `TaskManager.cancelTask(...)` now drains in-flight `TaskMsg` rows during manual terminal closure: `INIT/BINDING -> FAILED`, `ASSIGNED/RUNNING -> EXPIRED`.
 - `GET /status/api/tasks/{taskId}` now includes `stateValidation` so API/demo surfaces can expose the same state-audit result used by SDK callers.
-- `MassApplication.loadMockData(...)` normalizes mock `supportedProjects`, lowercases `workerGroupId`, loads explicit mock `workerContexts` when present, and only auto-seeds minimal `IDLE` fallback worker contexts for workers that still have none.
+- `MassApplication.loadMockData(...)` normalizes mock `supportedProjects`, lowercases `workerGroupId`, and loads explicit mock `workerContexts` only when they are provided; workers without mock `workerContexts` remain stateless.
 - `WorkerManager` now treats `Worker.status` as the single online truth for matching/runtime availability; gateway online/offline events update the worker model directly instead of maintaining a separate online-state registry.
 - `WorkerManager` / `WorkerStorage` now also own the single worker-lock truth; active mainline code should read lock state through `WorkerManager.isLocked(...)` instead of from `Worker`.
 - `Worker` and `WorkerContext` now expose `attributes: Map<String, String>` with defensive-copy and read-only semantics; callers may replace the whole map on update, but there is no per-entry mutation API.
@@ -578,6 +590,9 @@ Reason:
 ## 11. Files Worth Opening Early
 
 - `doc/AGENT_BASELINE.md`
+- `doc/STATE_MACHINE_BASELINE.md`
+- `doc/TRACE_CONTRACT.md`
+- `doc/E2E_BASELINE.md`
 - `doc/VERIFIED_RUNBOOK.md`
 - `xa-mass-mock/src/main/java/com/xa/mass/mock/MockApplicationSpringBootApp.java`
 - `xa-mass-api/src/main/java/com/xa/mass/api/internal/TaskApiController.java`
@@ -620,5 +635,6 @@ If code, runtime behavior, and docs disagree:
 
 - trust code and verified runtime
 - update docs after confirmation
+- keep `STATE_MACHINE_BASELINE`, `TRACE_CONTRACT`, and `E2E_BASELINE` aligned with the verified mainline
 - do not assume historical architecture docs describe the live path
 - check the root `pom.xml` before treating a top-level directory as an active module

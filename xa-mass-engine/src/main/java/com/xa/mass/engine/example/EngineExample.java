@@ -35,7 +35,7 @@ public class EngineExample {
         workers.forEach(workerManager::addWorker);
 
         List<WorkerContext> workerContexts = genMockWorkerContext();
-        workerContexts.forEach(wc -> workerManager.addWorkerContext(wc.getWorkerId(), wc));
+        workerContexts.forEach(workerManager::addWorkerContext);
 
         TaskCreateRequestDto taskDto = new TaskCreateRequestDto();
         taskManager.createTask(taskDto);

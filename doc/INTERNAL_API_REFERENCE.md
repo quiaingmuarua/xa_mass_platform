@@ -251,12 +251,27 @@ Query param:
 Behavior:
 
 - `READY` routes to approve or resume depending on current state
-- `BLOCKED` routes to reject
+- `BLOCKED` routes by current state:
+  - `NEW -> BLOCKED` uses review rejection
+  - `READY/RUNNING -> BLOCKED` uses runtime blocking
 - `PAUSED` routes to pause
 - `TERMINAL` routes to cancel
 - no direct route exists for `RUNNING` through this helper
 
-### 2.10 List Task Messages
+### 2.10 Runtime Block Task
+
+- Method: `POST`
+- Path: `/status/api/tasks/{taskId}/block`
+- Status: `Implemented`
+
+Behavior:
+
+- explicit runtime block endpoint
+- allowed from `READY` and `RUNNING`
+- moves the task to `BLOCKED`
+- unlike audit reject, this is not limited to `NEW`
+
+### 2.11 List Task Messages
 
 - Method: `GET`
 - Path: `/status/api/tasks/{taskId}/messages`

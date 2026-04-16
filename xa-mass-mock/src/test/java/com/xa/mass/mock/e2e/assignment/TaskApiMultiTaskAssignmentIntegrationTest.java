@@ -152,7 +152,7 @@ class TaskApiMultiTaskAssignmentIntegrationTest extends AbstractMockE2eTest {
         workerContext.setWorkerId(workerId);
         workerContext.setChannel("us");
         workerContext.setStatus(WorkerContextStatus.IDLE);
-        workerManager.addWorkerContext(workerId, workerContext);
+        workerManager.addWorkerContext(workerContext);
     }
 
     private record AckSnapshot(String msgId, int code, String message) {

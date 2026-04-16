@@ -54,11 +54,11 @@ public class StorageFactoryExample {
         Task task = new Task("task-001", "Test Task", "demoApp", "us", 100, java.util.Map.of("textContent", "Test content"), user);
 
         workerStorage.addWorker(worker);
-        workerStorage.addWorkerContext("worker-001", workerContext);
+        workerStorage.addWorkerContext(workerContext);
         taskStorage.saveTask(task);
 
         List<Worker> workers = workerStorage.getAllWorkers();
-        Optional<WorkerContext> retrievedCtx = workerStorage.getWorkerContext("worker-001");
+        Optional<WorkerContext> retrievedCtx = workerStorage.getWorkerContexts("worker-001").stream().findFirst();
         Optional<Task> retrievedTask = taskStorage.getTask("task-001");
 
         log.info("Workers: {}", workers.size());
@@ -96,11 +96,11 @@ public class StorageFactoryExample {
             Task task = new Task("task-002", "Test Task 2", "demoApp", "gb", 50, java.util.Map.of("textContent", "Test content 2"), user);
 
             workerStorage.addWorker(worker);
-            workerStorage.addWorkerContext("worker-002", workerContext);
+            workerStorage.addWorkerContext(workerContext);
             taskStorage.saveTask(task);
 
             List<Worker> workers = workerStorage.getAllWorkers();
-            Optional<WorkerContext> retrievedCtx = workerStorage.getWorkerContext("worker-002");
+            Optional<WorkerContext> retrievedCtx = workerStorage.getWorkerContexts("worker-002").stream().findFirst();
             Optional<Task> retrievedTask = taskStorage.getTask("task-002");
 
             log.info("Workers: {}", workers.size());

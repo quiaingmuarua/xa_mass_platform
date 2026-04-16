@@ -119,6 +119,6 @@ class TaskApiWorkerContextAttributeRoutingIntegrationTest extends AbstractMockE2
         workerContext.setChannel(workerContextChannel);
         workerContext.setStatus(WorkerContextStatus.IDLE);
         workerContext.setAttributes(Map.of("country", countryAttribute));
-        workerManager.addWorkerContext(workerId, workerContext);
+        workerManager.addWorkerContext(workerContext);
     }
 }

@@ -89,23 +89,22 @@ class WorkerManagerTest {
         WorkerContext workerContext = new WorkerContext();
         workerContext.setWorkerContextId("ctx-1");
         workerContext.setWorkerId("w4");
-        manager.addWorkerContext("w4", workerContext);
+        manager.addWorkerContext(workerContext);
 
-        WorkerContext found = manager.getWorkerContext("w4");
-        assertNotNull(found);
-        assertEquals("ctx-1", found.getWorkerContextId());
         assertEquals(List.of(workerContext), manager.getWorkerContexts("w4"));
         assertEquals("ctx-1", manager.getWorkerContextById("ctx-1").getWorkerContextId());
     }
 
     @Test
-    void deleteWorkerContextRemovesIt() {
+    void deleteWorkerContextByIdRemovesIt() {
         manager.addWorker(worker("w5", "us"));
         WorkerContext workerContext = new WorkerContext();
         workerContext.setWorkerContextId("ctx-2");
-        manager.addWorkerContext("w5", workerContext);
-        assertTrue(manager.deleteWorkerContext("w5"));
-        assertNull(manager.getWorkerContext("w5"));
+        workerContext.setWorkerId("w5");
+        manager.addWorkerContext(workerContext);
+        assertTrue(manager.deleteWorkerContextById("ctx-2"));
+        assertTrue(manager.getWorkerContexts("w5").isEmpty());
+        assertNull(manager.getWorkerContextById("ctx-2"));
     }
 
     @Test
@@ -118,8 +117,8 @@ class WorkerManagerTest {
         second.setWorkerContextId("ctx-10-b");
         second.setWorkerId("w10");
 
-        manager.addWorkerContext("w10", first);
-        manager.addWorkerContext("w10", second);
+        manager.addWorkerContext(first);
+        manager.addWorkerContext(second);
 
         assertEquals(2, manager.getWorkerContexts("w10").size());
         assertNotNull(manager.getWorkerContextById("ctx-10-a"));
@@ -127,7 +126,7 @@ class WorkerManagerTest {
     }
 
     @Test
-    void compatibilityGetWorkerContextPrefersAllocatableContext() {
+    void getWorkerContextsReturnsAllOwnedContexts() {
         manager.addWorker(worker("w11", "us"));
         WorkerContext blocked = new WorkerContext();
         blocked.setWorkerContextId("ctx-11-blocked");
@@ -137,12 +136,43 @@ class WorkerManagerTest {
         idle.setWorkerContextId("ctx-11-idle");
         idle.setWorkerId("w11");
 
-        manager.addWorkerContext("w11", blocked);
-        manager.addWorkerContext("w11", idle);
+        manager.addWorkerContext(blocked);
+        manager.addWorkerContext(idle);
 
-        WorkerContext found = manager.getWorkerContext("w11");
-        assertNotNull(found);
-        assertEquals("ctx-11-idle", found.getWorkerContextId());
+        assertEquals(
+                List.of("ctx-11-blocked", "ctx-11-idle"),
+                manager.getWorkerContexts("w11").stream().map(WorkerContext::getWorkerContextId).toList()
+        );
+    }
+
+    @Test
+    void addWorkerContextRejectsMissingOwnerWorkerId() {
+        WorkerContext workerContext = new WorkerContext();
+        workerContext.setWorkerContextId("ctx-missing-owner");
+
+        IllegalArgumentException error = assertThrows(
+                IllegalArgumentException.class,
+                () -> manager.addWorkerContext(workerContext)
+        );
+        assertEquals("workerId is required on workerContext", error.getMessage());
+    }
+
+    @Test
+    void updateWorkerContextByIdRejectsChangingOwnerWorkerId() {
+        manager.addWorker(worker("w12", "us"));
+        manager.addWorker(worker("w13", "gb"));
+
+        WorkerContext workerContext = new WorkerContext();
+        workerContext.setWorkerContextId("ctx-12");
+        workerContext.setWorkerId("w12");
+        manager.addWorkerContext(workerContext);
+
+        WorkerContext moved = new WorkerContext();
+        moved.setWorkerContextId("ctx-12");
+        moved.setWorkerId("w13");
+
+        assertFalse(manager.updateWorkerContextById("ctx-12", moved));
+        assertEquals("w12", manager.getWorkerContextById("ctx-12").getWorkerId());
     }
 
     // ---- lock ----

@@ -93,6 +93,57 @@ class TaskApiLifecycleGuardsIntegrationTest extends AbstractMockE2eTest {
     }
 
     @Test
+    void readyTaskCanBeBlockedAndApprovedBackToReady() {
+        String taskId = createTask("guard-block-approve");
+
+        Map<String, Object> approveResponse = exchange(
+                "/status/api/tasks/" + taskId + "/audit?approved=true&comment=approve",
+                HttpMethod.POST,
+                null
+        );
+        assertEquals(Boolean.TRUE, approveResponse.get("success"));
+        assertEquals("READY", task(taskId).get("status"));
+
+        Map<String, Object> blockResponse = exchange(
+                "/status/api/tasks/" + taskId + "/block",
+                HttpMethod.POST,
+                null
+        );
+        assertEquals(Boolean.TRUE, blockResponse.get("success"));
+        assertEquals("BLOCKED", task(taskId).get("status"));
+
+        Map<String, Object> reapproveResponse = exchange(
+                "/status/api/tasks/" + taskId + "/audit?approved=true&comment=reapprove",
+                HttpMethod.POST,
+                null
+        );
+        assertEquals(Boolean.TRUE, reapproveResponse.get("success"));
+        assertEquals("READY", task(taskId).get("status"));
+    }
+
+    @Test
+    void statusEndpointBlocksReadyTaskViaRuntimeBlockPath() {
+        String taskId = createTask("guard-status-block");
+
+        Map<String, Object> approveResponse = exchange(
+                "/status/api/tasks/" + taskId + "/audit?approved=true&comment=approve",
+                HttpMethod.POST,
+                null
+        );
+        assertEquals(Boolean.TRUE, approveResponse.get("success"));
+        assertEquals("READY", task(taskId).get("status"));
+
+        Map<String, Object> blockResponse = exchange(
+                "/status/api/tasks/" + taskId + "/status?status=BLOCKED",
+                HttpMethod.PUT,
+                null
+        );
+        assertEquals(Boolean.TRUE, blockResponse.get("success"));
+        assertEquals("BLOCKED", blockResponse.get("newStatus"));
+        assertEquals("BLOCKED", task(taskId).get("status"));
+    }
+
+    @Test
     void createTaskRejectsUnknownFieldsInRequestBody() {
         Map<String, Object> createBody = new java.util.LinkedHashMap<>();
         createBody.put("taskName", "guard-unknown-fields");

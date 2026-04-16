@@ -79,7 +79,7 @@ class TaskApiSingleWorkerReuseIntegrationTest extends AbstractMockE2eTest {
             TaskSnapshot secondTerminal = waitForTaskSnapshot(secondTaskId, "TERMINAL", 20, 500L);
             assertEquals(workerId, secondTerminal.messages().get(0).get("workerId"));
 
-            WorkerContext workerContext = workerManager.getWorkerContext(workerId);
+            WorkerContext workerContext = workerManager.getWorkerContexts(workerId).get(0);
             assertEquals(WorkerContextStatus.IDLE, workerContext.getStatus());
         } finally {
             client.disconnect();
@@ -99,6 +99,6 @@ class TaskApiSingleWorkerReuseIntegrationTest extends AbstractMockE2eTest {
         workerContext.setWorkerId(workerId);
         workerContext.setChannel("us");
         workerContext.setStatus(WorkerContextStatus.IDLE);
-        workerManager.addWorkerContext(workerId, workerContext);
+        workerManager.addWorkerContext(workerContext);
     }
 }
