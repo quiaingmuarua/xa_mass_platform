@@ -135,7 +135,19 @@ class TaskApiMultiRoundDispatchIntegrationTest extends AbstractMockE2eTest {
             assertNotNull(second, "First round should dispatch the second message");
             assertNull(client.awaitTask(750, TimeUnit.MILLISECONDS), "Third message should wait for the next dispatch round");
 
-            TaskSnapshot firstRound = waitForTaskSnapshot(taskId, "RUNNING", 20, 100L);
+            TaskSnapshot firstRound = waitForTaskSnapshot(
+                    taskId,
+                    snapshot -> "RUNNING".equals(snapshot.task().get("status"))
+                            && snapshot.messages().size() == 3
+                            && snapshot.messages().stream()
+                            .map(msg -> String.valueOf(msg.get("status")))
+                            .sorted()
+                            .collect(Collectors.toList())
+                            .equals(List.of("INIT", "SENT", "SENT")),
+                    "RUNNING with two SENT messages and one INIT message",
+                    20,
+                    100L
+            );
             assertEquals(List.of("INIT", "SENT", "SENT"),
                     firstRound.messages().stream()
                             .map(msg -> String.valueOf(msg.get("status")))
@@ -152,7 +164,19 @@ class TaskApiMultiRoundDispatchIntegrationTest extends AbstractMockE2eTest {
             assertEquals("task result processed", firstAck.message());
             assertNull(client.awaitTask(750, TimeUnit.MILLISECONDS), "Worker should stay busy until the whole round finishes");
 
-            TaskSnapshot afterFirstResult = waitForTaskSnapshot(taskId, "RUNNING", 20, 100L);
+            TaskSnapshot afterFirstResult = waitForTaskSnapshot(
+                    taskId,
+                    snapshot -> "RUNNING".equals(snapshot.task().get("status"))
+                            && snapshot.messages().size() == 3
+                            && snapshot.messages().stream()
+                            .map(msg -> String.valueOf(msg.get("status")))
+                            .sorted()
+                            .collect(Collectors.toList())
+                            .equals(List.of("INIT", "SENT", "SUCCESS")),
+                    "RUNNING with one SUCCESS, one SENT, and one INIT message",
+                    20,
+                    100L
+            );
             assertEquals(List.of("INIT", "SENT", "SUCCESS"),
                     afterFirstResult.messages().stream()
                             .map(msg -> String.valueOf(msg.get("status")))

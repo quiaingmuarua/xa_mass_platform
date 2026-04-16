@@ -13,6 +13,7 @@ import java.net.ServerSocket;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Predicate;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -104,21 +105,29 @@ public abstract class AbstractMockE2eTest {
 
     protected TaskSnapshot waitForTaskSnapshot(String taskId, String expectedStatus, int maxAttempts, long sleepMillis)
             throws InterruptedException {
+        return waitForTaskSnapshot(taskId,
+                snapshot -> expectedStatus.equals(snapshot.task().get("status")),
+                expectedStatus,
+                maxAttempts,
+                sleepMillis);
+    }
+
+    protected TaskSnapshot waitForTaskSnapshot(String taskId,
+                                               Predicate<TaskSnapshot> condition,
+                                               String expectation,
+                                               int maxAttempts,
+                                               long sleepMillis) throws InterruptedException {
+        TaskSnapshot latestSnapshot = null;
         for (int i = 0; i < maxAttempts; i++) {
-            Map<String, Object> detailResponse = exchange("/status/api/tasks/" + taskId, HttpMethod.GET, null);
-            Map<String, Object> messagesResponse = exchange(
-                    "/status/api/tasks/" + taskId + "/messages?page=1&size=20",
-                    HttpMethod.GET,
-                    null
-            );
-            Map<String, Object> task = task(detailResponse);
-            List<Map<String, Object>> messages = messages(messagesResponse);
-            if (expectedStatus.equals(task.get("status"))) {
-                return new TaskSnapshot(task, messages);
+            latestSnapshot = fetchTaskSnapshot(taskId);
+            if (condition.test(latestSnapshot)) {
+                return latestSnapshot;
             }
             Thread.sleep(sleepMillis);
         }
-        throw new AssertionError("Task " + taskId + " did not reach " + expectedStatus + " within timeout");
+        throw new AssertionError("Task " + taskId + " did not reach expected snapshot: " + expectation
+                + ". Last status=" + (latestSnapshot == null ? "<none>" : latestSnapshot.task().get("status"))
+                + ", messages=" + (latestSnapshot == null ? 0 : latestSnapshot.messages().size()));
     }
 
     protected TaskSnapshot waitForTerminalTask(String taskId) throws InterruptedException {
@@ -139,6 +148,16 @@ public abstract class AbstractMockE2eTest {
             Thread.sleep(sleepMillis);
         }
         throw new AssertionError("Task " + taskId + " did not reach " + expectedStatus + " within timeout");
+    }
+
+    protected TaskSnapshot fetchTaskSnapshot(String taskId) {
+        Map<String, Object> detailResponse = exchange("/status/api/tasks/" + taskId, HttpMethod.GET, null);
+        Map<String, Object> messagesResponse = exchange(
+                "/status/api/tasks/" + taskId + "/messages?page=1&size=20",
+                HttpMethod.GET,
+                null
+        );
+        return new TaskSnapshot(task(detailResponse), messages(messagesResponse));
     }
 
     protected record TaskSnapshot(Map<String, Object> task, List<Map<String, Object>> messages) {
