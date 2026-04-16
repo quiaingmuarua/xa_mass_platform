@@ -93,7 +93,7 @@ class GatewayTaskResultHandlerTest {
         TaskCreateRequestDto dto = new TaskCreateRequestDto();
         dto.setTaskName(taskName);
         dto.setProject("demoApp");
-        dto.setCountryCode("us");
+        dto.setRoutingCode("us");
         dto.setSharedConfig(java.util.Map.of("textContent", "hello"));
         dto.setUserId("agent");
         dto.setBatchSize(1);

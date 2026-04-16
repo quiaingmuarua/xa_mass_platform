@@ -10,7 +10,7 @@
         ]
       },
       "project": "demoApp",
-      "countryCode": "us",
+      "routingCode": "us",
       "userId": {
         "$JOIN": [
           "user-us-",
@@ -56,7 +56,7 @@
         ]
       },
       "project": "testApp",
-      "countryCode": "gb",
+      "routingCode": "gb",
       "userId": {
         "$JOIN": [
           "user-gb-",

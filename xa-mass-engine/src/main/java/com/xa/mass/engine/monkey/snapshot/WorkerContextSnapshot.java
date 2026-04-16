@@ -19,6 +19,9 @@ public class WorkerContextSnapshot {
     private LocalDateTime lastUsedTime;
     private boolean isWorkerContextAllocatable;
     private boolean isWorkerContextAvailable;
+    private boolean isWorkerContextUsable;
+    private boolean isWorkerContextReserved;
+    private boolean isWorkerContextOccupied;
 
     public WorkerContextSnapshot() {}
 
@@ -46,4 +49,10 @@ public class WorkerContextSnapshot {
     public void setWorkerContextAllocatable(boolean workerContextAllocatable) { isWorkerContextAllocatable = workerContextAllocatable; }
     public boolean isWorkerContextAvailable() { return isWorkerContextAvailable; }
     public void setWorkerContextAvailable(boolean workerContextAvailable) { isWorkerContextAvailable = workerContextAvailable; }
+    public boolean isWorkerContextUsable() { return isWorkerContextUsable; }
+    public void setWorkerContextUsable(boolean workerContextUsable) { isWorkerContextUsable = workerContextUsable; }
+    public boolean isWorkerContextReserved() { return isWorkerContextReserved; }
+    public void setWorkerContextReserved(boolean workerContextReserved) { isWorkerContextReserved = workerContextReserved; }
+    public boolean isWorkerContextOccupied() { return isWorkerContextOccupied; }
+    public void setWorkerContextOccupied(boolean workerContextOccupied) { isWorkerContextOccupied = workerContextOccupied; }
 }

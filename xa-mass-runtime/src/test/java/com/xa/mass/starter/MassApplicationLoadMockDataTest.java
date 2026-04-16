@@ -116,7 +116,7 @@ class MassApplicationLoadMockDataTest {
                 .map(com.xa.mass.engine.rules.RuleDefinition::getId)
                 .sorted()
                 .toList();
-        assertEquals(List.of("explicit_app_support", "explicit_routing_country"), afterRuleIds);
+        assertEquals(List.of("explicit_app_support", "explicit_routing_code"), afterRuleIds);
         assertTrue(harness.ruleManager().getEvaluator(RuleType.QL_EXPRESS).isPresent());
     }
 
@@ -232,7 +232,7 @@ class MassApplicationLoadMockDataTest {
                       "FIELDS": {
                         "taskName": "task-1",
                         "project": "demoApp",
-                        "countryCode": "us",
+                        "routingCode": "us",
                         "userId": "agent",
                         "sharedConfig": {"textContent": "smoke"},
                         "batchSize": 1,
@@ -288,12 +288,12 @@ class MassApplicationLoadMockDataTest {
                       "MODEL": "RuleDefinition",
                       "COUNT": 1,
                       "FIELDS": {
-                        "id": "explicit_routing_country",
+                        "id": "explicit_routing_code",
                         "name": "Explicit routing rule",
                         "description": "Uses worker-context country attribute",
                         "desc": "Uses worker-context country attribute",
                         "type": "QL_EXPRESS",
-                        "content": "workerContextAttributes['country'] == taskRoutingCountryCode",
+                        "content": "workerContextAttributes['country'] == taskRoutingCode",
                         "priority": 1,
                         "enabled": true
                       }

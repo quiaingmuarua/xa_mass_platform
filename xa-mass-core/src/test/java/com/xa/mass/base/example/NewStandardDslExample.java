@@ -87,7 +87,7 @@ public class NewStandardDslExample {
         Map<String, Object> taskFields = new HashMap<>();
         taskFields.put("tid", Map.of("$UUID", true));
         taskFields.put("taskName", Map.of("$JOIN", Arrays.asList("ComplexTask-", "&.index", "-of-Worker-", "&Worker.index")));
-        taskFields.put("taskRoutingCountryCode", "&Worker.workerGroupId");
+        taskFields.put("taskRoutingCode", "&Worker.workerGroupId");
         taskFields.put("taskTargetNumber", Map.of("$RANGE", Arrays.asList(50, 200)));
         taskFields.put("batchSize", Map.of("$RANGE", Arrays.asList(2, 8)));
         tasksField.put("FIELDS", taskFields);

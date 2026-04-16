@@ -52,7 +52,7 @@ Supported request fields:
 - `taskName`
 - `sharedConfig`
 - `targetList`
-- `countryCode`
+- `routingCode`
 - `batchSize`
 - `defaultMsgMaxRetryCount`
 - `openEnded`
@@ -80,7 +80,7 @@ Example request:
     "target-001",
     "target-002"
   ],
-  "countryCode": "us",
+  "routingCode": "us",
   "batchSize": 1,
   "defaultMsgMaxRetryCount": 3,
   "openEnded": false
@@ -119,7 +119,7 @@ Example response shape:
     "taskName": "smoke-lifecycle",
     "project": "demoApp",
     "status": "NEW",
-    "taskRoutingCountryCode": "us",
+    "taskRoutingCode": "us",
     "sharedConfig": {
       "textContent": "hello"
     },
@@ -150,7 +150,7 @@ Supported request fields:
 - `project`
 - `taskName`
 - `sharedConfig`
-- `countryCode`
+- `routingCode`
 - `batchSize`
 
 Contract rules:

@@ -14,10 +14,10 @@ This file is the fastest entry point for coding agents such as Claude Code, Code
 - Mainline change discipline is now end-to-end integration-test-driven first; unit tests remain important, but they are support coverage rather than the primary acceptance gate
 - Current verified API task path: `NEW -> READY -> RUNNING -> TERMINAL`
 - Pause/resume regression is also verified: `NEW -> READY -> PAUSED -> READY`
-- `TaskManager.createTask()` now accepts only the supported create contract fields: `userId`, `project`, `taskName`, `sharedConfig`, `targetList`, `countryCode`, `batchSize`, `defaultMsgMaxRetryCount`, and `openEnded`
+- `TaskManager.createTask()` now accepts only the supported create contract fields: `userId`, `project`, `taskName`, `sharedConfig`, `targetList`, `routingCode`, `batchSize`, `defaultMsgMaxRetryCount`, and `openEnded`
 - current mainline preserves request `batchSize` and now enforces it as a per-worker hard cap for each dispatch round
 - task-create requests fail fast when `targetList` is empty/null, when `project` is unsupported, or when clients send unknown JSON fields such as retired `targetJsonList` / `targetType` / `extraParams`
-- `PUT /status/api/tasks/{taskId}` is now intentionally narrower than create: it accepts only metadata fields (`userId`, `project`, `taskName`, `sharedConfig`, `countryCode`, `batchSize`), rejects `targetList` and other unknown fields, and only allows edits while the task is still `NEW` or `BLOCKED`
+- `PUT /status/api/tasks/{taskId}` is now intentionally narrower than create: it accepts only metadata fields (`userId`, `project`, `taskName`, `sharedConfig`, `routingCode`, `batchSize`), rejects `targetList` and other unknown fields, and only allows edits while the task is still `NEW` or `BLOCKED`
 - `Task` aggregate counters are now named by real meaning:
   - `taskTargetNumber`
   - `taskEligibleNumber`
@@ -39,6 +39,7 @@ This file is the fastest entry point for coding agents such as Claude Code, Code
 - `TaskApiPauseCompletionIntegrationTest` now covers `approve -> assign -> running -> pause -> callback -> terminal` through the real gateway path
 - `TaskApiStateValidationIntegrationTest` now covers `GET /status/api/tasks/{taskId}` state-audit output for valid terminal tasks, forced `needsResolution=true` tasks, and invalid terminal-reason variants
 - `TaskApiWorkerContextAttributeRoutingIntegrationTest` now covers worker-context-attribute-based routing through the real assignment and gateway path
+- `TaskApiWorkerWithoutContextIntegrationTest` now covers stateless-worker execution: a `Worker` with no `WorkerContext` can still complete tasks that do not require worker-context-based routing
 - `TaskApiSingleWorkerReuseIntegrationTest` now covers normal `TERMINAL` completion releasing a single worker/worker-context for the next task
 - `TaskApiTerminateReuseIntegrationTest` now covers manual `RUNNING -> TERMINAL` release so the same single worker/worker-context can be assigned again
 - `TaskApiMinimumWorkerGateIntegrationTest` now covers `minRequiredWorkerCount` as a real start gate: one worker is not enough to leave `READY` when the task requires two
@@ -50,6 +51,8 @@ This file is the fastest entry point for coding agents such as Claude Code, Code
 - `Worker.status` is the single online truth, and runtime worker lock truth now lives only in `WorkerStorage` / `WorkerManager.isLocked(...)`
 - `WorkerStatus`, `WorkerContext`, and dispatch-time worker-context binding are now stricter: null statuses are rejected, worker-context release only frees real dispatch ownership, and assignment moves worker contexts into `OCCUPIED`
 - `WorkerContextStatus` vocabulary is domain-neutral: `IDLE` (free), `RESERVED` (pre-allocated), `OCCUPIED` (executing), `BLOCKED` (manually locked), `INVALID` (unusable); dispatch-time worker-context ownership now uses the `RESERVED -> OCCUPIED` progression.
+- `WorkerContext` runtime signals are now stricter: `isWorkerContextAvailable` means truly free for new assignment (`IDLE` and not expired), while `isWorkerContextUsable` is only a broader diagnostic/runtime-health signal.
+- Stateless workers are now part of the verified mainline: a `Worker` may execute tasks without any `WorkerContext` when the task does not require worker-context-based routing.
 - `Task.sharedConfig: Map<String,Object>` replaces the former `textContent: String`; all keys are spread into WebSocket dispatch params alongside `TaskMsg.input` keys, so existing workers receive `textContent` transparently when it is stored in `sharedConfig`
 - `TaskMsg.input: Map<String,Object>` replaces the former `target: String`; `getTarget()` is a backwards-compat accessor reading `input["target"]`
 - `TaskCreateRequestDto.defaultMsgMaxRetryCount` (default `3`) configures per-task retry budget; callers may set to `0` to disable retries
@@ -373,10 +376,11 @@ Important current implementation facts:
 - `TaskWorkerAssignListener` tracks `peakAssignedWorkerCount` as the high-water mark of workers actually used by the task and transitions matched tasks from `READY` to `RUNNING`.
 - `TaskWorkerAssignListener` now delegates matching to `TaskWorkerMatchingStrategy`; `RuleBasedTaskWorkerMatchingStrategy` is the current default.
 - `TaskWorkerAssignListener` also unlocks any surplus matched workers that were only needed to satisfy the start gate, so zero-message reservations do not leak.
-- `Task.taskRoutingCountryCode` is the active routing-country input; older `taskCountry` naming is retired from the mainline.
+- `Task.taskRoutingCode` is the active task-owned routing input; older task-country naming is retired from the mainline.
 - `WorkerManager.getWorkersByGroupId(...)` / `WorkerStorage.getWorkersByGroupId(...)` are grouping helpers only; do not treat them as country-routing APIs.
-- `RuleBasedTaskWorkerMatchingStrategy` no longer prefilters candidates by worker `workerGroupId`; routing-country satisfaction should come from worker-context-facing signals and explicit rules.
+- `RuleBasedTaskWorkerMatchingStrategy` no longer prefilters candidates by worker `workerGroupId`; routing-code satisfaction should come from worker-context-facing signals and explicit rules.
 - `WorkerMatchContext` now exposes nested `workerAttributes` and `workerContextAttributes` maps to QLExpress rules.
+- `WorkerMatchContext` also exposes `hasWorkerContext` and `taskHasRoutingRequirement`, so rules can distinguish stateless workers from worker-context-routed tasks.
 - `SimpleTaskMsgAssignListener` reuses persisted `TaskMsg` records, fills `workerId` / `workerContextId` / `batchId`, moves them to `ASSIGNED`, and now round-robins messages across workers up to `batchSize` per worker per round.
 - `SimpleTaskMsgAssignListener` now also binds dispatchable worker contexts to the current task and advances them into `OCCUPIED`; non-dispatchable worker-context states are skipped instead of being silently reused.
 - `TaskResourceReleaseListener` now releases a worker/worker-context slot as soon as that worker has no more in-flight `TaskMsg` rows for the current task, then re-submits the still-`RUNNING` task when pending `INIT` messages remain.
@@ -463,6 +467,15 @@ Interpretation rules:
 | `BLOCKED` | Manually locked out of scheduling |
 | `INVALID` | Permanently unusable |
 
+Matching/runtime signal semantics:
+
+- `isWorkerContextAllocatable`: the context can be newly reserved now (`IDLE` and not expired)
+- `isWorkerContextAvailable`: same "truly free now" meaning, kept for readability in diagnostics
+- `isWorkerContextUsable`: broader health signal for diagnostics and audits (`IDLE`, `RESERVED`, `OCCUPIED`, excluding expired, blocked, invalid)
+- `hasWorkerContext`: whether the current worker candidate actually carries a `WorkerContext`
+- `taskHasRoutingRequirement`: whether the current task requires worker-context-based routing signals
+- A stateless worker can match only when the task does not require worker-context-specific routing; routing-required tasks must still be satisfied by worker-context signals
+
 **Open-ended tasks** (`openEnded=true`):
 
 - The terminal policy never auto-closes an open-ended task, even when all current messages are final.
@@ -475,7 +488,7 @@ Interpretation rules:
 Focused verified regression command on `2026-04-14`:
 
 ```bash
-mvn -pl xa-mass-mock -am -Dtest=WorkerAttributesTest,WorkerContextAttributesTest,WorkerMatchContextTest,QLExpressRuleEvaluatorTest,RuleBasedTaskWorkerMatchingStrategyTest,TaskApiDelayedWorkerAvailabilityIntegrationTest,TaskApiWorkerContextAttributeRoutingIntegrationTest,MassApplicationLoadMockDataTest -Dsurefire.failIfNoSpecifiedTests=false test
+mvn -pl xa-mass-mock -am -Dtest=WorkerAttributesTest,WorkerContextAttributesTest,WorkerMatchContextTest,QLExpressRuleEvaluatorTest,RuleBasedTaskWorkerMatchingStrategyTest,TaskApiDelayedWorkerAvailabilityIntegrationTest,TaskApiWorkerContextAttributeRoutingIntegrationTest,TaskApiWorkerWithoutContextIntegrationTest,MassApplicationLoadMockDataTest -Dsurefire.failIfNoSpecifiedTests=false test
 ```
 
 Verified focused classes:
@@ -491,6 +504,7 @@ Verified focused classes:
 - `xa-mass-mock/src/test/java/com/xa/mass/mock/e2e/results/TaskApiMixedResultsIntegrationTest.java`
 - `xa-mass-mock/src/test/java/com/xa/mass/mock/e2e/assignment/TaskApiDelayedWorkerAvailabilityIntegrationTest.java`
 - `xa-mass-mock/src/test/java/com/xa/mass/mock/e2e/assignment/TaskApiWorkerContextAttributeRoutingIntegrationTest.java`
+- `xa-mass-mock/src/test/java/com/xa/mass/mock/e2e/assignment/TaskApiWorkerWithoutContextIntegrationTest.java`
 - `xa-mass-mock/src/test/java/com/xa/mass/mock/e2e/assignment/TaskApiMultiTaskAssignmentIntegrationTest.java`
 - `xa-mass-mock/src/test/java/com/xa/mass/mock/e2e/assignment/TaskApiMultiRoundDispatchIntegrationTest.java`
 - `xa-mass-mock/src/test/java/com/xa/mass/mock/e2e/assignment/TaskApiSingleWorkerReuseIntegrationTest.java`
@@ -524,7 +538,8 @@ What the new focused coverage proves:
 - a paused task can still complete to `TERMINAL` through real callback write-back after assignment, without requiring a manual resume
 - `GET /status/api/tasks/{taskId}` exposes `stateValidation` over the real HTTP/runtime path, including `needsResolution=true` when a task is manually reopened after all persisted message callbacks are already final
 - invalid terminal metadata is also covered end-to-end: missing `terminalReason` and message/result mismatch both surface through `stateValidation.violations`
-- worker-context-attribute-based routing is covered end-to-end through a custom QLExpress rule using `workerContextAttributes['country'] == taskRoutingCountryCode`
+- worker-context-attribute-based routing is covered end-to-end through a custom QLExpress rule using `workerContextAttributes['country'] == taskRoutingCode`
+- worker-without-context execution is also covered end-to-end for tasks that do not declare worker-context-based routing requirements
 - assignment diagnostics now snapshot runtime worker lock state instead of stale `Worker` model fields
 - normal terminal completion releases worker-context/worker occupancy so a later task can reuse the same single-worker slot
 - manual `RUNNING -> TERMINAL` closure also releases worker-context/worker occupancy so the next task can reuse the same single-worker slot

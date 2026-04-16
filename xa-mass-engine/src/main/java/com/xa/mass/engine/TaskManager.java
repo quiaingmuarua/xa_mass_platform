@@ -65,7 +65,7 @@ public class TaskManager {
         LogUtils.logOperationStart("CREATE_TASK", "TaskManager",
                 "taskName", dto.getTaskName(),
                 "project", dto.getProject(),
-                "countryCode", dto.getCountryCode());
+                "routingCode", dto.getRoutingCode());
 
         try {
             // 1. 生成唯一任务ID
@@ -89,7 +89,7 @@ public class TaskManager {
                     tid,
                     dto.getTaskName(),
                     dto.getProject(),
-                    dto.getCountryCode(),
+                    dto.getRoutingCode(),
                     initNumber,
                     dto.getSharedConfig() != null ? dto.getSharedConfig() : new java.util.HashMap<>(),
                     user

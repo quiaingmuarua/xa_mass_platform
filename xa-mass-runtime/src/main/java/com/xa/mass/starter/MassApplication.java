@@ -302,8 +302,8 @@ public class MassApplication {
                 logger.info("Generated {} mock task requests", taskDtos.size());
                 for (com.xa.mass.engine.model.TaskCreateRequestDto dto : taskDtos) {
                     engine.createTask(dto);
-                    logger.debug("Loaded mock task request: {} (routingCountryCode: {}, project: {}, batchSize: {})",
-                            dto.getTaskName(), dto.getCountryCode(), dto.getProject(), dto.getBatchSize());
+                    logger.debug("Loaded mock task request: {} (routingCode: {}, project: {}, batchSize: {})",
+                            dto.getTaskName(), dto.getRoutingCode(), dto.getProject(), dto.getBatchSize());
                 }
             }
 

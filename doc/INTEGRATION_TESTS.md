@@ -395,15 +395,35 @@ Expected result: `BUILD SUCCESS`, 0 failures.
 **Setup**: auto-start=false, multiple workers with different `workerGroupId` values and `workerContextAttributes['country']`
 
 **Scenario**:
-- Task with `taskRoutingCountryCode=us`
+- Task with `taskRoutingCode=us`
 - Worker A: `workerGroupId=pool-east`, `workerContextAttributes['country']=us` → should match
 - Worker B: `workerGroupId=pool-west`, `workerContextAttributes['country']=gb` → should not match
 
 **Assertions**:
 - The matched message has a non-null `workerId`
-- The matched `workerContextId` belongs to the worker context whose `country` attribute equals `taskRoutingCountryCode`
+- The matched `workerContextId` belongs to the worker context whose `country` attribute equals `taskRoutingCode`
 - Proves attribute-based routing works end-to-end through QLExpress rules
 - The test clears the default rules in code and injects its own explicit worker-context-attribute rule set, so it does not depend on the shared mock rule fixture
+
+---
+
+### 4.17 `TaskApiWorkerWithoutContextIntegrationTest`
+
+**Path covered**: stateless worker execution without any `WorkerContext`
+
+**Setup**: auto-start=false, one worker registered programmatically, **no worker contexts**
+
+**Scenario**:
+- Create a task without `routingCode`
+- Approve task
+- Connect a real WebSocket worker client with no associated `WorkerContext`
+- Wait for `TERMINAL`
+
+**Assertions**:
+- `terminalReason = ALL_MESSAGES_SUCCEEDED`
+- `message.workerId` is non-null
+- `message.workerContextId = null`
+- Proves the mainline platform can dispatch to a stateless worker when the task does not require worker-context-based routing
 
 ---
 
@@ -425,6 +445,7 @@ Expected result: `BUILD SUCCESS`, 0 failures.
 | `READY` blocked by minimum worker gate | 4.12 |
 | Multi-round dispatch (batchSize cap per worker per round) | 4.13 |
 | Worker reuse across sequential tasks | 4.14, 4.15 |
+| Stateless worker with no WorkerContext | 4.17 |
 
 ### TaskMsg state paths
 

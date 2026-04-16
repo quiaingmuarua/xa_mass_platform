@@ -117,7 +117,7 @@ public class AssignmentRecordService {
         snapshot.setTaskId(task.getTid());
         snapshot.setTaskName(task.getTaskName());
         snapshot.setProject(task.getProject());
-        snapshot.setTaskRoutingCountryCode(task.getTaskRoutingCountryCode());
+        snapshot.setTaskRoutingCode(task.getTaskRoutingCode());
         snapshot.setTaskStatus(task.getStatus().name());
         snapshot.setTaskTargetNumber(task.getTaskTargetNumber());
         snapshot.setTaskEligibleNumber(task.getTaskEligibleNumber());
@@ -163,6 +163,9 @@ public class AssignmentRecordService {
         snapshot.setLastUsedTime(workerContext.getLastUsedTime());
         snapshot.setWorkerContextAllocatable(workerContext.isAllocatable());
         snapshot.setWorkerContextAvailable(workerContext.isAvailable());
+        snapshot.setWorkerContextUsable(workerContext.isUsable());
+        snapshot.setWorkerContextReserved(workerContext.isReserved());
+        snapshot.setWorkerContextOccupied(workerContext.isOccupied());
         return snapshot;
     }
 

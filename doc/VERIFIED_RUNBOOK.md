@@ -45,7 +45,7 @@ For endpoint inventory, request contracts, and response shapes, use [INTERNAL_AP
 
 Create-time validation is verified:
 
-- supported create fields are limited to `userId`, `project`, `taskName`, `sharedConfig`, `targetList`, `countryCode`, `batchSize`, `defaultMsgMaxRetryCount`, and `openEnded`
+- supported create fields are limited to `userId`, `project`, `taskName`, `sharedConfig`, `targetList`, `routingCode`, `batchSize`, `defaultMsgMaxRetryCount`, and `openEnded`
 - `targetList` must contain at least one materialized target
 - unsupported `project` codes are rejected instead of silently falling back to `demoApp`
 - unknown JSON fields such as retired `targetJsonList`, `targetType`, and `extraParams` are rejected at the API boundary
@@ -56,7 +56,7 @@ Create-time validation is verified:
 
 Update-time validation is verified:
 
-- supported update fields are limited to `userId`, `project`, `taskName`, `sharedConfig`, `countryCode`, and `batchSize`
+- supported update fields are limited to `userId`, `project`, `taskName`, `sharedConfig`, `routingCode`, and `batchSize`
 - `targetList` and other unknown JSON fields are rejected at the API boundary
 - task edits are only allowed while status is `NEW` or `BLOCKED`
 
@@ -66,7 +66,8 @@ Additional verified rules:
 - assignment does not dispatch if a task leaves `READY` during the worker-matching window
 - late callbacks after manual terminal closure are ignored instead of mutating task/message progress
 - duplicate final callbacks are handled idempotently
-- worker-context-attribute routing is verified end-to-end through `workerContextAttributes['country'] == taskRoutingCountryCode`
+- worker-context-attribute routing is verified end-to-end through `workerContextAttributes['country'] == taskRoutingCode`
+- stateless-worker execution is verified end-to-end for tasks that do not declare worker-context-based routing requirements
 
 ## 3. Recommended Startup
 
@@ -117,7 +118,7 @@ Default `dev` startup facts:
 ```bash
 curl -s -X POST http://127.0.0.1:8088/status/api/tasks \
   -H 'Content-Type: application/json' \
-  -d '{"taskName":"smoke-lifecycle","project":"demoApp","countryCode":"us","sharedConfig":{"textContent":"smoke"},"userId":"agent","targetList":["smoke-target-001","smoke-target-002"],"batchSize":1,"defaultMsgMaxRetryCount":3,"openEnded":false}'
+  -d '{"taskName":"smoke-lifecycle","project":"demoApp","routingCode":"us","sharedConfig":{"textContent":"smoke"},"userId":"agent","targetList":["smoke-target-001","smoke-target-002"],"batchSize":1,"defaultMsgMaxRetryCount":3,"openEnded":false}'
 curl -i -X POST "http://127.0.0.1:8088/status/api/tasks/{taskId}/audit?approved=true&comment=smoke"
 curl -i -X POST http://127.0.0.1:8088/status/api/tasks/{taskId}/pause
 curl -i -X POST http://127.0.0.1:8088/status/api/tasks/{taskId}/resume
@@ -127,13 +128,13 @@ Verified state transitions:
 
 - create: initial task status is `NEW`
 - create: `targetList` is materialized into persisted `TaskMsg` rows
-- create: only `userId`, `project`, `taskName`, `sharedConfig`, `targetList`, `countryCode`, `batchSize`, `defaultMsgMaxRetryCount`, and `openEnded` are part of the supported request contract
+- create: only `userId`, `project`, `taskName`, `sharedConfig`, `targetList`, `routingCode`, `batchSize`, `defaultMsgMaxRetryCount`, and `openEnded` are part of the supported request contract
 - create: unsupported `project` codes are rejected
 - create: unknown JSON fields such as retired `targetJsonList`, `targetType`, and `extraParams` are rejected at the API boundary
 - create: request `batchSize` is persisted onto the task
 - create: `defaultMsgMaxRetryCount` is copied into each created `TaskMsg.maxRetryCount`
 - create: `openEnded=true` prevents automatic terminal closure until the append window is sealed
-- update: only `userId`, `project`, `taskName`, `sharedConfig`, `countryCode`, and `batchSize` are part of the supported request contract
+- update: only `userId`, `project`, `taskName`, `sharedConfig`, `routingCode`, and `batchSize` are part of the supported request contract
 - update: `targetList` and other unknown JSON fields are rejected at the API boundary
 - update: only `NEW` and `BLOCKED` tasks may be edited
 - `approveTask`: `NEW`, `BLOCKED` -> `READY`
@@ -189,10 +190,11 @@ Verified runtime path:
 
 Matching-context facts:
 
-- `Task.taskRoutingCountryCode` is the active routing-country input for matching and diagnostics
+- `Task.taskRoutingCode` is the active task-owned routing input for matching and diagnostics
 - `WorkerManager.getWorkersByGroupId(...)` and `WorkerStorage.getWorkersByGroupId(...)` are grouping helpers only, not country-routing APIs
-- routing-country satisfaction should come from worker-context-facing signals and explicit rules, not from `workerGroupId`
-- `WorkerMatchContext` exposes nested `workerAttributes` and `workerContextAttributes` maps for QLExpress access such as `workerContextAttributes['country'] == taskRoutingCountryCode`
+- routing-code satisfaction should come from worker-context-facing signals and explicit rules, not from `workerGroupId`
+- `WorkerMatchContext` exposes nested `workerAttributes` and `workerContextAttributes` maps for QLExpress access such as `workerContextAttributes['country'] == taskRoutingCode`
+- `WorkerMatchContext` also exposes `hasWorkerContext` and `taskHasRoutingRequirement` so rules can distinguish stateless workers from worker-context-routed tasks
 - these maps are auxiliary rule labels only and are not the source of truth for lifecycle, lock, or online state
 
 ### 5.3 Result Write-Back and Completion
@@ -220,6 +222,9 @@ Important guards:
 - worker lock truth lives in `WorkerStorage` and is exposed through `WorkerManager.isLocked(...)`
 - `Worker.attributes` and `WorkerContext.attributes` are defensive-copied, read-only auxiliary rule labels
 - `WorkerContextStatus` vocabulary is `IDLE`, `RESERVED`, `OCCUPIED`, `BLOCKED`, `INVALID`
+- `isWorkerContextAllocatable` is the matching gate for new reservations (`IDLE` and not expired)
+- `isWorkerContextAvailable` now has the same strict "free now" meaning; `isWorkerContextUsable` is the broader diagnostic signal for non-blocked, non-invalid runtime contexts
+- a worker without any `WorkerContext` can still be matched for tasks that do not require worker-context-specific routing
 - normal terminal completion and manual `RUNNING -> TERMINAL` closure both release runtime occupancy so the same worker/worker-context can be reused
 
 ## 6. Verified Coverage Snapshot
@@ -227,7 +232,7 @@ Important guards:
 Focused verified regression command on 2026-04-14:
 
 ```bash
-mvn -pl xa-mass-mock -am -Dtest=WorkerAttributesTest,WorkerContextAttributesTest,WorkerMatchContextTest,QLExpressRuleEvaluatorTest,RuleBasedTaskWorkerMatchingStrategyTest,TaskApiDelayedWorkerAvailabilityIntegrationTest,TaskApiWorkerContextAttributeRoutingIntegrationTest,MassApplicationLoadMockDataTest -Dsurefire.failIfNoSpecifiedTests=false test
+mvn -pl xa-mass-mock -am -Dtest=WorkerAttributesTest,WorkerContextAttributesTest,WorkerMatchContextTest,QLExpressRuleEvaluatorTest,RuleBasedTaskWorkerMatchingStrategyTest,TaskApiDelayedWorkerAvailabilityIntegrationTest,TaskApiWorkerContextAttributeRoutingIntegrationTest,TaskApiWorkerWithoutContextIntegrationTest,MassApplicationLoadMockDataTest -Dsurefire.failIfNoSpecifiedTests=false test
 ```
 
 Representative coverage proves:

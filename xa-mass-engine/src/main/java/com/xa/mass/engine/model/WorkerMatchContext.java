@@ -11,7 +11,7 @@ import java.util.Map;
 /**
  * Rule-evaluation context for worker matching.
  *
- * <p>The routing-country signal is task-owned input, but the country truth used
+ * <p>The routing signal is task-owned input, but the country truth used
  * for matching should come from workerContext/account-facing data rather than worker
  * grouping. Worker group remains exposed only as a diagnostic signal.
  */
@@ -43,28 +43,38 @@ public class WorkerMatchContext {
         ctx.put("isWorkerLocked", workerManager.isLocked(worker.getWorkerId()));
 
         if (workerContext != null) {
+            ctx.put("hasWorkerContext", true);
             ctx.put("workerContextId", workerContext.getWorkerContextId());
             ctx.put("workerContextStatus", workerContext.getStatus().name());
             ctx.put("workerContextChannel", workerContext.getChannel());
             ctx.put("workerContextAttributes", workerContext.getAttributes());
             ctx.put("isWorkerContextAllocatable", workerContext.isAllocatable());
             ctx.put("isWorkerContextAvailable", workerContext.isAvailable());
+            ctx.put("isWorkerContextUsable", workerContext.isUsable());
+            ctx.put("isWorkerContextReserved", workerContext.isReserved());
+            ctx.put("isWorkerContextOccupied", workerContext.isOccupied());
         } else {
+            ctx.put("hasWorkerContext", false);
             ctx.put("workerContextId", null);
             ctx.put("workerContextStatus", null);
             ctx.put("workerContextChannel", null);
             ctx.put("workerContextAttributes", Map.of());
             ctx.put("isWorkerContextAllocatable", false);
             ctx.put("isWorkerContextAvailable", false);
+            ctx.put("isWorkerContextUsable", false);
+            ctx.put("isWorkerContextReserved", false);
+            ctx.put("isWorkerContextOccupied", false);
         }
 
-        String routingCountryCode = task.getTaskRoutingCountryCode();
+        String routingCode = task.getTaskRoutingCode();
+        boolean taskHasRoutingRequirement = routingCode != null && !routingCode.isBlank();
         String workerContextAttributeCountry = workerContext != null ? workerContext.getAttributes().get("country") : null;
 
         ctx.put("taskId", task.getTid());
         ctx.put("taskName", task.getTaskName());
         ctx.put("taskProject", task.getProject());
-        ctx.put("taskRoutingCountryCode", routingCountryCode);
+        ctx.put("taskRoutingCode", routingCode);
+        ctx.put("taskHasRoutingRequirement", taskHasRoutingRequirement);
         ctx.put("taskStatus", task.getStatus().name());
         ctx.put("taskTargetNumber", task.getTaskTargetNumber());
         ctx.put("batchSize", task.getBatchSize());
@@ -72,12 +82,12 @@ public class WorkerMatchContext {
 
         ctx.put("appCount", worker.getSupportedProjects() != null ? worker.getSupportedProjects().size() : 0);
         ctx.put("supportsProject", worker.supportsProject(task.getProject()));
-        ctx.put("workerGroupIdEqualsRoutingCountry",
-                routingCountryCode != null && routingCountryCode.equals(worker.getWorkerGroupId()));
-        ctx.put("workerContextChannelMatchesRoutingCountry",
-                workerContext != null && routingCountryCode != null && routingCountryCode.equals(workerContext.getChannel()));
-        ctx.put("workerContextAttributeCountryMatchesRoutingCountry",
-                routingCountryCode != null && routingCountryCode.equals(workerContextAttributeCountry));
+        ctx.put("workerGroupIdEqualsRoutingCode",
+                routingCode != null && routingCode.equals(worker.getWorkerGroupId()));
+        ctx.put("workerContextChannelMatchesRoutingCode",
+                workerContext != null && routingCode != null && routingCode.equals(workerContext.getChannel()));
+        ctx.put("workerContextAttributeCountryMatchesRoutingCode",
+                routingCode != null && routingCode.equals(workerContextAttributeCountry));
 
         return ctx;
     }
@@ -108,7 +118,7 @@ public class WorkerMatchContext {
                 "workerId='" + worker.getWorkerId() + '\'' +
                 ", taskId='" + task.getTid() + '\'' +
                 ", supportsProject=" + context.get("supportsProject") +
-                ", workerContextChannelMatchesRoutingCountry=" + context.get("workerContextChannelMatchesRoutingCountry") +
+                ", workerContextChannelMatchesRoutingCode=" + context.get("workerContextChannelMatchesRoutingCode") +
                 '}';
     }
 }

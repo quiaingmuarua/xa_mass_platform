@@ -104,7 +104,7 @@ public class StandardDslExample {
                   "FIELDS": {
                     "tid": {"$UUID": true},
                     "taskName": {"$JOIN": ["Task-", "&.index"]},
-                    "taskRoutingCountryCode": {"$CHOICE": ["us", "gb"]},
+                    "taskRoutingCode": {"$CHOICE": ["us", "gb"]},
                     "taskTargetNumber": {"$RANGE": [10, 100]},
                     "batchSize": {"$RANGE": [1, 5]}
                   }
@@ -121,7 +121,7 @@ public class StandardDslExample {
         System.out.println("Generated tasks:");
         tasks.forEach(task ->
                 System.out.println("  - " + task.getTaskName() + " (" +
-                        task.getTaskRoutingCountryCode() + ", batch: " + task.getBatchSize() + ")")
+                        task.getTaskRoutingCode() + ", batch: " + task.getBatchSize() + ")")
         );
         System.out.println();
     }
@@ -155,7 +155,7 @@ public class StandardDslExample {
                       "FIELDS": {
                         "tid": {"$UUID": true},
                         "taskName": {"$JOIN": ["ComplexTask-", "&.index", "-of-Worker-", "&Worker.index"]},
-                        "taskRoutingCountryCode": "&Worker.workerGroupId",
+                        "taskRoutingCode": "&Worker.workerGroupId",
                         "taskTargetNumber": {"$RANGE": [50, 200]},
                         "batchSize": {"$RANGE": [2, 8]}
                       }

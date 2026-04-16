@@ -20,7 +20,7 @@ public class TaskCreateRequestDto {
     private String taskName;
     private Map<String, Object> sharedConfig;
     private List<String> targetList;
-    private String countryCode;
+    private String routingCode;
     private int batchSize;
     private int defaultMsgMaxRetryCount = 3;
     private boolean openEnded = false;
@@ -41,13 +41,13 @@ public class TaskCreateRequestDto {
                                 String taskName,
                                 Map<String, Object> sharedConfig,
                                 List<String> targetList,
-                                String countryCode) {
+                                String routingCode) {
         this.userId = userId;
         this.project = project;
         this.taskName = taskName;
         this.sharedConfig = sharedConfig;
         this.targetList = targetList;
-        this.countryCode = countryCode;
+        this.routingCode = routingCode;
     }
 
     public String getUserId() {
@@ -90,12 +90,12 @@ public class TaskCreateRequestDto {
         this.targetList = targetList;
     }
 
-    public String getCountryCode() {
-        return countryCode;
+    public String getRoutingCode() {
+        return routingCode;
     }
 
-    public void setCountryCode(String countryCode) {
-        this.countryCode = countryCode;
+    public void setRoutingCode(String routingCode) {
+        this.routingCode = routingCode;
     }
 
     public int getBatchSize() {

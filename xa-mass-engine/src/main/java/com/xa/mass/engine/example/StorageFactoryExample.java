@@ -148,7 +148,7 @@ public class StorageFactoryExample {
         log.info("Tasks in storage: {}", allTasks.size());
 
         for (Task task : allTasks) {
-            log.info("Task: {} (country: {}, project: {})", task.getTid(), task.getTaskRoutingCountryCode(), task.getProject());
+            log.info("Task: {} (routingCode: {}, project: {})", task.getTid(), task.getTaskRoutingCode(), task.getProject());
         }
 
         log.info("=== testStorageFactory complete ===");

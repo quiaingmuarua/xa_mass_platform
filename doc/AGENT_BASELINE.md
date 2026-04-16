@@ -90,7 +90,7 @@ Interpretation rules:
 - `taskName`
 - `sharedConfig`
 - `targetList`
-- `countryCode`
+- `routingCode`
 - `batchSize`
 - `defaultMsgMaxRetryCount`
 - `openEnded`
@@ -112,7 +112,7 @@ Behavior locked in the mainline:
 - `project`
 - `taskName`
 - `sharedConfig`
-- `countryCode`
+- `routingCode`
 - `batchSize`
 
 Update constraints:
@@ -156,7 +156,11 @@ Important current rules:
 
 - `WorkerContextStatus` is domain-neutral: `IDLE`, `RESERVED`, `OCCUPIED`, `BLOCKED`, `INVALID`
 - `WorkerMatchContext` exposes `workerAttributes` and `workerContextAttributes` to rule evaluation
-- `workerContextAttributes['country'] == taskRoutingCountryCode` is the verified attribute-routing pattern
+- `WorkerMatchContext` also exposes `hasWorkerContext` and `taskHasRoutingRequirement`
+- `isWorkerContextAvailable` now means truly free for new assignment (`IDLE` and not expired)
+- `isWorkerContextUsable` is the broader diagnostic signal (`IDLE` / `RESERVED` / `OCCUPIED`, excluding expired, blocked, and invalid contexts)
+- `workerContextAttributes['country'] == taskRoutingCode` is the verified attribute-routing pattern
+- a `WorkerContext` is optional in the active platform model: workers without one can still run tasks that do not require worker-context-specific routing
 - `Worker.status` is the single online truth
 - worker lock truth lives in `WorkerStorage` and `WorkerManager.isLocked(...)`
 

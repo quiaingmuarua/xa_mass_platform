@@ -19,10 +19,10 @@
     "FIELDS": {
       "id": "worker_context_status_check",
       "name": "Worker context status check",
-      "description": "Worker context must be allocatable and available",
-      "desc": "Worker context must be allocatable and available",
+      "description": "Worker without context is allowed; otherwise worker context must be allocatable",
+      "desc": "Worker without context is allowed; otherwise worker context must be allocatable",
       "type": "QL_EXPRESS",
-      "content": "isWorkerContextAllocatable == true && isWorkerContextAvailable == true",
+      "content": "hasWorkerContext == false || isWorkerContextAllocatable == true",
       "priority": 2,
       "enabled": true
     }
@@ -33,10 +33,10 @@
     "FIELDS": {
       "id": "routing_country_match",
       "name": "Routing country match",
-      "description": "Routing country must come from worker context",
-      "desc": "Routing country must come from worker context",
+      "description": "Routing country, when required, must come from worker context",
+      "desc": "Routing country, when required, must come from worker context",
       "type": "QL_EXPRESS",
-      "content": "workerContextAttributeCountryMatchesRoutingCountry == true || workerContextChannelMatchesRoutingCountry == true",
+      "content": "taskHasRoutingRequirement == false || workerContextAttributeCountryMatchesRoutingCode == true || workerContextChannelMatchesRoutingCode == true",
       "priority": 3,
       "enabled": true
     }

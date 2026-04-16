@@ -73,7 +73,7 @@ Key implementation facts:
 
 Mainline matching facts:
 
-- `Task.taskRoutingCountryCode` is the active routing-country input
+- `Task.taskRoutingCode` is the active task-owned routing input
 - `workerGroupId` is not the routing-country source of truth
 - routing-country satisfaction should come from explicit rules and worker-context-facing signals
 - `WorkerMatchContext` exposes `workerAttributes` and `workerContextAttributes` for rule evaluation

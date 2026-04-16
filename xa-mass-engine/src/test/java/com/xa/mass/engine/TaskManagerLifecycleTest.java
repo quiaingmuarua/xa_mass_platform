@@ -130,7 +130,7 @@ class TaskManagerLifecycleTest {
         TaskCreateRequestDto dto = new TaskCreateRequestDto();
         dto.setTaskName("no-targets");
         dto.setProject("demoApp");
-        dto.setCountryCode("us");
+        dto.setRoutingCode("us");
         dto.setSharedConfig(java.util.Map.of("textContent", "smoke"));
         dto.setUserId("agent");
         dto.setTargetList(null);
@@ -811,7 +811,7 @@ class TaskManagerLifecycleTest {
         TaskCreateRequestDto dto = new TaskCreateRequestDto();
         dto.setTaskName(taskName);
         dto.setProject("demoApp");
-        dto.setCountryCode("us");
+        dto.setRoutingCode("us");
         dto.setSharedConfig(java.util.Map.of("textContent", "smoke"));
         dto.setUserId("agent");
         dto.setTargetList(targets);

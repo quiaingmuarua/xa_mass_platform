@@ -181,7 +181,7 @@ class TaskWorkerAssignListenerTest {
     private Task createTask(int targetNumber, int batchSize, int minWorkerCount, TaskStatus status) {
         Task task = new Task();
         task.setTid("task-1");
-        task.setTaskRoutingCountryCode("us");
+        task.setTaskRoutingCode("us");
         task.setTaskTargetNumber(targetNumber);
         task.setBatchSize(batchSize);
         task.setMinRequiredWorkerCount(minWorkerCount);

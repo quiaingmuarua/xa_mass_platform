@@ -97,7 +97,7 @@ class TaskApiLifecycleGuardsIntegrationTest extends AbstractMockE2eTest {
         Map<String, Object> createBody = new java.util.LinkedHashMap<>();
         createBody.put("taskName", "guard-unknown-fields");
         createBody.put("project", "demoApp");
-        createBody.put("countryCode", "us");
+        createBody.put("routingCode", "us");
         createBody.put("sharedConfig", java.util.Map.of("textContent", "guard lifecycle"));
         createBody.put("userId", "itest");
         createBody.put("targetList", java.util.List.of("target-a"));

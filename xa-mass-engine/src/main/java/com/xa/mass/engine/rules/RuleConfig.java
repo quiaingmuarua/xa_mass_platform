@@ -21,17 +21,17 @@ public class RuleConfig {
         RuleDefinition workerContextRule = new RuleDefinition();
         workerContextRule.setId("worker_context_status_check");
         workerContextRule.setType(RuleType.QL_EXPRESS);
-        workerContextRule.setContent("isWorkerContextAllocatable == true && isWorkerContextAvailable == true");
-        workerContextRule.setDesc("Worker context must be allocatable and available");
+        workerContextRule.setContent("hasWorkerContext == false || isWorkerContextAllocatable == true");
+        workerContextRule.setDesc("Worker without context is allowed; otherwise worker context must be allocatable");
         rules.add(workerContextRule);
 
-        RuleDefinition routingCountryRule = new RuleDefinition();
-        routingCountryRule.setId("routing_country_match");
-        routingCountryRule.setType(RuleType.QL_EXPRESS);
-        routingCountryRule.setContent(
-                "workerContextAttributeCountryMatchesRoutingCountry == true || workerContextChannelMatchesRoutingCountry == true");
-        routingCountryRule.setDesc("Routing country must be satisfied by worker context attribute or worker context channel");
-        rules.add(routingCountryRule);
+        RuleDefinition routingRule = new RuleDefinition();
+        routingRule.setId("routing_code_match");
+        routingRule.setType(RuleType.QL_EXPRESS);
+        routingRule.setContent(
+                "taskHasRoutingRequirement == false || workerContextAttributeCountryMatchesRoutingCode == true || workerContextChannelMatchesRoutingCode == true");
+        routingRule.setDesc("Routing code, when required, must be satisfied by worker context attribute or worker context channel");
+        rules.add(routingRule);
 
         RuleDefinition appRule = new RuleDefinition();
         appRule.setId("app_support_check");
@@ -95,13 +95,13 @@ public class RuleConfig {
         basicRule.setDesc("Worker must be available");
         rules.add(basicRule);
 
-        RuleDefinition routingCountryRule = new RuleDefinition();
-        routingCountryRule.setId("routing_country_match");
-        routingCountryRule.setType(RuleType.QL_EXPRESS);
-        routingCountryRule.setContent(
-                "workerContextAttributeCountryMatchesRoutingCountry == true || workerContextChannelMatchesRoutingCountry == true");
-        routingCountryRule.setDesc("Routing country must be satisfied by worker context attribute or worker context channel");
-        rules.add(routingCountryRule);
+        RuleDefinition routingRule = new RuleDefinition();
+        routingRule.setId("routing_code_match");
+        routingRule.setType(RuleType.QL_EXPRESS);
+        routingRule.setContent(
+                "taskHasRoutingRequirement == false || workerContextAttributeCountryMatchesRoutingCode == true || workerContextChannelMatchesRoutingCode == true");
+        routingRule.setDesc("Routing code, when required, must be satisfied by worker context attribute or worker context channel");
+        rules.add(routingRule);
 
         return rules;
     }

@@ -25,7 +25,7 @@ public class TaskApiController {
             "taskName",
             "sharedConfig",
             "targetList",
-            "countryCode",
+            "routingCode",
             "batchSize",
             "defaultMsgMaxRetryCount",
             "openEnded"
@@ -35,7 +35,7 @@ public class TaskApiController {
             "project",
             "taskName",
             "sharedConfig",
-            "countryCode",
+            "routingCode",
             "batchSize"
     );
     private static final Set<TaskStatus> EDITABLE_TASK_STATUSES = Set.of(TaskStatus.NEW, TaskStatus.BLOCKED);
@@ -294,7 +294,7 @@ public class TaskApiController {
             TaskCreateRequestDto request = parseTaskRequest(requestBody, SUPPORTED_TASK_UPDATE_FIELDS, "task update");
             task.setTaskName(request.getTaskName());
             task.setProject(request.getProject());
-            task.setTaskRoutingCountryCode(request.getCountryCode());
+            task.setTaskRoutingCode(request.getRoutingCode());
             task.setSharedConfig(request.getSharedConfig());
             if (task.getUser() != null) {
                 task.getUser().setName(request.getUserId());

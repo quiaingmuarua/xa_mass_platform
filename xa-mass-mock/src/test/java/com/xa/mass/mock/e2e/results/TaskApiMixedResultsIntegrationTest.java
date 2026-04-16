@@ -66,7 +66,7 @@ class TaskApiMixedResultsIntegrationTest extends AbstractMockE2eTest {
         java.util.Map<String, Object> createBody = new java.util.LinkedHashMap<>();
         createBody.put("taskName", "mixed-results");
         createBody.put("project", "demoApp");
-        createBody.put("countryCode", "us");
+        createBody.put("routingCode", "us");
         createBody.put("sharedConfig", Map.of("textContent", "mixed results integration test"));
         createBody.put("userId", "itest");
         createBody.put("targetList", List.of("target-a", "target-b"));

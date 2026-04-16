@@ -79,9 +79,9 @@ public class RuleDebugExample {
     private static Task createTestTask() {
         Task task = new Task();
         task.setTid("test-task-001");
-        task.setTaskName("routing-country-debug");
+        task.setTaskName("routing-code-debug");
         task.setProject("demoApp");
-        task.setTaskRoutingCountryCode("us");
+        task.setTaskRoutingCode("us");
         task.setStatus(TaskStatus.READY);
         task.setTaskTargetNumber(100);
         task.setBatchSize(10);
@@ -116,15 +116,15 @@ public class RuleDebugExample {
         System.out.println("Task:");
         System.out.println("  - id: " + task.getTid());
         System.out.println("  - project: " + task.getProject());
-        System.out.println("  - routingCountryCode: " + task.getTaskRoutingCountryCode());
+        System.out.println("  - routingCode: " + task.getTaskRoutingCode());
 
         Map<String, Object> context = matchContext.getContext();
         System.out.println("Computed context:");
         System.out.println("  - appCount: " + context.get("appCount"));
         System.out.println("  - supportsProject: " + context.get("supportsProject"));
-        System.out.println("  - workerGroupIdEqualsRoutingCountry: " + context.get("workerGroupIdEqualsRoutingCountry"));
-        System.out.println("  - workerContextChannelMatchesRoutingCountry: " + context.get("workerContextChannelMatchesRoutingCountry"));
-        System.out.println("  - workerContextAttributeCountryMatchesRoutingCountry: " + context.get("workerContextAttributeCountryMatchesRoutingCountry"));
+        System.out.println("  - workerGroupIdEqualsRoutingCode: " + context.get("workerGroupIdEqualsRoutingCode"));
+        System.out.println("  - workerContextChannelMatchesRoutingCode: " + context.get("workerContextChannelMatchesRoutingCode"));
+        System.out.println("  - workerContextAttributeCountryMatchesRoutingCode: " + context.get("workerContextAttributeCountryMatchesRoutingCode"));
 
         List<RuleDefinition> rules = ruleManager.getDefaultRules();
         System.out.println("\nRule evaluation:");

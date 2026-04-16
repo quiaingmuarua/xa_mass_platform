@@ -127,9 +127,9 @@ public class StorageExample {
         var workerAssignListener = new TaskWorkerAssignListener(ruleManager, workerManager, msgAssignListener, recordService, taskManager);
 
         for (TaskCreateRequestDto dto : taskDtos) {
-            log.info("Testing task: {} (country: {}, project: {})", dto.getTaskName(), dto.getCountryCode(), dto.getProject());
+            log.info("Testing task: {} (routingCode: {}, project: {})", dto.getTaskName(), dto.getRoutingCode(), dto.getProject());
 
-            List<Worker> candidates = workerManager.getWorkersByGroupId(dto.getCountryCode());
+            List<Worker> candidates = workerManager.getWorkersByGroupId(dto.getRoutingCode());
             log.info("Candidates: {}", candidates.size());
 
             List<Worker> matchedWorkers = new ArrayList<>();
@@ -138,8 +138,9 @@ public class StorageExample {
                 if (wc != null) {
                     boolean allocatable = wc.isAllocatable();
                     boolean available = wc.isAvailable();
+                    boolean usable = wc.isUsable();
 
-                    if (allocatable && available) {
+                    if (allocatable) {
                         if (workerManager.tryLockWorker(w.getWorkerId())) {
                             matchedWorkers.add(w);
                             log.info("Matched worker: {} (workerContext: {}, status: {})",
@@ -148,8 +149,8 @@ public class StorageExample {
                             log.info("Worker locked: {}", w.getWorkerId());
                         }
                     } else {
-                        log.debug("Worker not eligible: {} (allocatable: {}, available: {})",
-                                w.getWorkerId(), allocatable, available);
+                        log.debug("Worker not eligible: {} (allocatable: {}, available: {}, usable: {})",
+                                w.getWorkerId(), allocatable, available, usable);
                     }
                 } else {
                     log.debug("Worker has no workerContext: {}", w.getWorkerId());
@@ -193,15 +194,15 @@ public class StorageExample {
         log.info("Generated {} mock tasks", taskDtos.size());
 
         for (TaskCreateRequestDto dto : taskDtos) {
-            log.info("Task: {} (country: {}, project: {})", dto.getTaskName(), dto.getCountryCode(), dto.getProject());
+            log.info("Task: {} (routingCode: {}, project: {})", dto.getTaskName(), dto.getRoutingCode(), dto.getProject());
 
-            List<Worker> candidates = workerManager.getWorkersByGroupId(dto.getCountryCode());
+            List<Worker> candidates = workerManager.getWorkersByGroupId(dto.getRoutingCode());
             log.info("Candidates: {}", candidates.size());
 
             List<Worker> matchedWorkers = new ArrayList<>();
             for (Worker w : candidates) {
                 WorkerContext wc = workerManager.getWorkerContext(w.getWorkerId());
-                if (wc != null && wc.isAllocatable() && wc.isAvailable()) {
+                if (wc != null && wc.isAllocatable()) {
                     if (workerManager.tryLockWorker(w.getWorkerId())) {
                         matchedWorkers.add(w);
                         log.info("Matched: {} (ctx: {}, status: {})", w.getWorkerId(), wc.getWorkerContextId(), wc.getStatus());
@@ -261,9 +262,9 @@ public class StorageExample {
         log.info("Generated {} mock tasks", taskDtos.size());
 
         for (TaskCreateRequestDto dto : taskDtos) {
-            log.info("Task: {} (country: {}, project: {})", dto.getTaskName(), dto.getCountryCode(), dto.getProject());
+            log.info("Task: {} (routingCode: {}, project: {})", dto.getTaskName(), dto.getRoutingCode(), dto.getProject());
 
-            List<Worker> candidates = workerManager.getWorkersByGroupId(dto.getCountryCode());
+            List<Worker> candidates = workerManager.getWorkersByGroupId(dto.getRoutingCode());
             log.info("Candidates: {}", candidates.size());
 
             List<Worker> matchedWorkers = new ArrayList<>();
@@ -272,11 +273,12 @@ public class StorageExample {
                 if (wc != null) {
                     boolean allocatable = wc.isAllocatable();
                     boolean available = wc.isAvailable();
+                    boolean usable = wc.isUsable();
 
-                    log.debug("Worker {}: ctx={}, status={}, allocatable={}, available={}",
-                            w.getWorkerId(), wc.getWorkerContextId(), wc.getStatus(), allocatable, available);
+                    log.debug("Worker {}: ctx={}, status={}, allocatable={}, available={}, usable={}",
+                            w.getWorkerId(), wc.getWorkerContextId(), wc.getStatus(), allocatable, available, usable);
 
-                    if (allocatable && available) {
+                    if (allocatable) {
                         if (workerManager.tryLockWorker(w.getWorkerId())) {
                             matchedWorkers.add(w);
                             log.info("Matched: {} (ctx: {}, status: {})", w.getWorkerId(), wc.getWorkerContextId(), wc.getStatus());
@@ -284,7 +286,8 @@ public class StorageExample {
                             log.info("Locked: {}", w.getWorkerId());
                         }
                     } else {
-                        log.debug("Not eligible: {} (allocatable: {}, available: {})", w.getWorkerId(), allocatable, available);
+                        log.debug("Not eligible: {} (allocatable: {}, available: {}, usable: {})",
+                                w.getWorkerId(), allocatable, available, usable);
                     }
                 } else {
                     log.debug("No workerContext: {}", w.getWorkerId());

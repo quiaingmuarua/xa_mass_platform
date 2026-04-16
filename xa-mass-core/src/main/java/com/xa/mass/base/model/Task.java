@@ -22,7 +22,7 @@ public class Task {
     private String taskName;
     private String project;
     private TaskStatus status;
-    private String taskRoutingCountryCode;
+    private String taskRoutingCode;
     private int taskTargetNumber;
     private int taskEligibleNumber;
     private int taskSuccessNumber;
@@ -45,13 +45,13 @@ public class Task {
         this.updateTime = LocalDateTime.now();
     }
 
-    public Task(String tid, String taskName, String project, String taskRoutingCountryCode,
+    public Task(String tid, String taskName, String project, String taskRoutingCode,
                 int taskTargetNumber, Map<String, Object> sharedConfig, User user) {
         this();
         this.tid = tid;
         this.taskName = taskName;
         this.project = project;
-        this.taskRoutingCountryCode = taskRoutingCountryCode;
+        this.taskRoutingCode = taskRoutingCode;
         this.taskTargetNumber = taskTargetNumber;
         this.taskEligibleNumber = taskTargetNumber;
         this.taskSuccessNumber = 0;
@@ -93,12 +93,12 @@ public class Task {
         this.updateTime = LocalDateTime.now();
     }
 
-    public String getTaskRoutingCountryCode() {
-        return taskRoutingCountryCode;
+    public String getTaskRoutingCode() {
+        return taskRoutingCode;
     }
 
-    public void setTaskRoutingCountryCode(String taskRoutingCountryCode) {
-        this.taskRoutingCountryCode = taskRoutingCountryCode;
+    public void setTaskRoutingCode(String taskRoutingCode) {
+        this.taskRoutingCode = taskRoutingCode;
     }
 
     public int getTaskTargetNumber() {
@@ -289,7 +289,7 @@ public class Task {
                 ", taskName='" + taskName + '\'' +
                 ", project='" + project + '\'' +
                 ", status=" + status +
-                ", taskRoutingCountryCode='" + taskRoutingCountryCode + '\'' +
+                ", taskRoutingCode='" + taskRoutingCode + '\'' +
                 ", taskTargetNumber=" + taskTargetNumber +
                 ", taskEligibleNumber=" + taskEligibleNumber +
                 ", taskSuccessNumber=" + taskSuccessNumber +

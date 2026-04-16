@@ -44,8 +44,8 @@ public class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatchingSt
         List<Worker> candidates = workerManager.getAllWorkers();
         List<RuleDefinition> rules = ruleManager.getDefaultRules();
 
-        log.info("[WorkerAssign] Matching workers for task {} (routingCountryCode: {}, candidates: {}, rules: {})",
-                task.getTid(), task.getTaskRoutingCountryCode(), candidates.size(), rules.size());
+        log.info("[WorkerAssign] Matching workers for task {} (routingCode: {}, candidates: {}, rules: {})",
+                task.getTid(), task.getTaskRoutingCode(), candidates.size(), rules.size());
 
         if (log.isDebugEnabled()) {
             for (RuleDefinition rule : rules) {

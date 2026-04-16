@@ -35,15 +35,15 @@ class RuleBasedTaskWorkerMatchingStrategyTest {
 
         ruleManager.addDefaultRules(List.of(
                 rule("basic_worker_check", "isWorkerAvailable == true && isWorkerLocked == false"),
-                rule("workerContext_status_check", "isWorkerContextAllocatable == true && isWorkerContextAvailable == true"),
+                rule("workerContext_status_check", "hasWorkerContext == false || isWorkerContextAllocatable == true"),
                 rule("app_support_check", "supportsProject == true"),
-                rule("workerContext_attribute_country", "workerContextAttributes['country'] == taskRoutingCountryCode")
+                rule("workerContext_attribute_country", "workerContextAttributes['country'] == taskRoutingCode")
         ));
 
         Task task = new Task();
         task.setTid("task-1");
         task.setProject("demoApp");
-        task.setTaskRoutingCountryCode("us");
+        task.setTaskRoutingCode("us");
         task.setStatus(TaskStatus.READY);
 
         Worker matchingWorker = worker("worker-us", "pool-east");
@@ -76,7 +76,7 @@ class RuleBasedTaskWorkerMatchingStrategyTest {
 
         ruleManager.addDefaultRules(List.of(
                 rule("basic_worker_check", "isWorkerAvailable == true && isWorkerLocked == false"),
-                rule("workerContext_status_check", "isWorkerContextAllocatable == true && isWorkerContextAvailable == true"),
+                rule("workerContext_status_check", "hasWorkerContext == false || isWorkerContextAllocatable == true"),
                 rule("app_support_check", "supportsProject == true")
         ));
 
@@ -110,14 +110,14 @@ class RuleBasedTaskWorkerMatchingStrategyTest {
 
         ruleManager.addDefaultRules(List.of(
                 rule("basic_worker_check", "isWorkerAvailable == true && isWorkerLocked == false"),
-                rule("workerContext_status_check", "isWorkerContextAllocatable == true && isWorkerContextAvailable == true"),
-                rule("workerContext_attribute_country", "workerContextAttributes['country'] == taskRoutingCountryCode")
+                rule("workerContext_status_check", "hasWorkerContext == false || isWorkerContextAllocatable == true"),
+                rule("workerContext_attribute_country", "workerContextAttributes['country'] == taskRoutingCode")
         ));
 
         Task task = new Task();
         task.setTid("task-multi");
         task.setProject("demoApp");
-        task.setTaskRoutingCountryCode("us");
+        task.setTaskRoutingCode("us");
         task.setStatus(TaskStatus.READY);
 
         Worker worker = worker("worker-multi", "pool-east");
@@ -130,6 +130,66 @@ class RuleBasedTaskWorkerMatchingStrategyTest {
         assertEquals(1, matched.size());
         assertEquals("worker-multi", matched.get(0).getWorkerId());
         assertEquals("ctx-us", matched.get(0).getWorkerContextId());
+    }
+
+    @Test
+    void matchesWorkerWithoutWorkerContextWhenTaskDoesNotRequireRoutingContext() {
+        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
+        RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(new InMemoryRuleStorage());
+        AssignmentRecordService recordService = new AssignmentRecordService();
+        RuleBasedTaskWorkerMatchingStrategy strategy =
+                new RuleBasedTaskWorkerMatchingStrategy(ruleManager, workerManager, recordService);
+
+        ruleManager.addDefaultRules(List.of(
+                rule("basic_worker_check", "isWorkerAvailable == true && isWorkerLocked == false"),
+                rule("workerContext_status_check", "hasWorkerContext == false || isWorkerContextAllocatable == true"),
+                rule("routing_code_match", "taskHasRoutingRequirement == false || workerContextAttributeCountryMatchesRoutingCode == true || workerContextChannelMatchesRoutingCode == true"),
+                rule("app_support_check", "supportsProject == true")
+        ));
+
+        Task task = new Task();
+        task.setTid("task-no-context");
+        task.setProject("demoApp");
+        task.setTaskRoutingCode(null);
+        task.setStatus(TaskStatus.READY);
+
+        Worker worker = worker("worker-stateless", "pool-east");
+        workerManager.addWorker(worker);
+
+        List<MatchedWorkerContext> matched = strategy.matchWorkers(task, 1);
+
+        assertEquals(1, matched.size());
+        assertEquals("worker-stateless", matched.get(0).getWorkerId());
+        assertEquals(null, matched.get(0).getWorkerContextId());
+    }
+
+    @Test
+    void routingRequirementStillRejectsWorkerWithoutWorkerContext() {
+        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
+        RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(new InMemoryRuleStorage());
+        AssignmentRecordService recordService = new AssignmentRecordService();
+        RuleBasedTaskWorkerMatchingStrategy strategy =
+                new RuleBasedTaskWorkerMatchingStrategy(ruleManager, workerManager, recordService);
+
+        ruleManager.addDefaultRules(List.of(
+                rule("basic_worker_check", "isWorkerAvailable == true && isWorkerLocked == false"),
+                rule("workerContext_status_check", "hasWorkerContext == false || isWorkerContextAllocatable == true"),
+                rule("routing_code_match", "taskHasRoutingRequirement == false || workerContextAttributeCountryMatchesRoutingCode == true || workerContextChannelMatchesRoutingCode == true"),
+                rule("app_support_check", "supportsProject == true")
+        ));
+
+        Task task = new Task();
+        task.setTid("task-no-context-routing");
+        task.setProject("demoApp");
+        task.setTaskRoutingCode("us");
+        task.setStatus(TaskStatus.READY);
+
+        Worker worker = worker("worker-stateless", "pool-east");
+        workerManager.addWorker(worker);
+
+        List<MatchedWorkerContext> matched = strategy.matchWorkers(task, 1);
+
+        assertTrue(matched.isEmpty());
     }
 
     private RuleDefinition rule(String id, String content) {

@@ -344,7 +344,7 @@
                     </td>
                     <td th:text="${task.taskName}">-</td>
                     <td th:text="${task.project != null ? task.project.code : '-'}">-</td>
-                    <td th:text="${task.taskRoutingCountryCode}">-</td>
+                    <td th:text="${task.taskRoutingCode}">-</td>
                     <td>
                                 <span class="status-badge"
                                       th:classappend="'status-' + ${#strings.toLowerCase(task.status.name())}"
@@ -438,8 +438,8 @@
                 </select>
             </div>
             <div class="form-group">
-                <label for="countryCode">国家代码 *</label>
-                <select id="countryCode" name="countryCode" required>
+                <label for="routingCode">路由代码 *</label>
+                <select id="routingCode" name="routingCode" required>
                     <option value="">请选择国家</option>
                     <option value="us">美国 (US)</option>
                     <option value="gb">英国 (GB)</option>
@@ -499,7 +499,7 @@
             </div>
             <div class="form-group">
                 <label>国家</label>
-                <input id="auditCountryCode" readonly style="background:#f5f5f5;" type="text">
+                <input id="auditRoutingCode" readonly style="background:#f5f5f5;" type="text">
             </div>
             <div class="form-group">
                 <label>用户ID</label>
@@ -553,8 +553,8 @@
                 </select>
             </div>
             <div class="form-group">
-                <label for="editCountryCode">国家代码 *</label>
-                <select id="editCountryCode" name="countryCode" required>
+                <label for="editRoutingCode">国家代码 *</label>
+                <select id="editRoutingCode" name="routingCode" required>
                     <option value="">请选择国家</option>
                     <option value="us">美国 (US)</option>
                     <option value="gb">英国 (GB)</option>
@@ -717,7 +717,7 @@
                     document.getElementById('editTaskId').value = t.tid;
                     document.getElementById('editTaskName').value = t.taskName;
                     document.getElementById('editProject').value = t.project.code;
-                    document.getElementById('editCountryCode').value = t.taskRoutingCountryCode;
+                    document.getElementById('editRoutingCode').value = t.taskRoutingCode;
                     // 只展示前100个号码
                     const targets = (data.targetList || []).slice(0, 100);
                     document.getElementById('editTargetList').value = targets.join('\n');
@@ -759,7 +759,7 @@
         const requestData = {
             taskName: formData.get('taskName'),
             project: formData.get('project'),
-            countryCode: formData.get('countryCode'),
+            routingCode: formData.get('routingCode'),
             textContent: formData.get('textContent'),
             userId: formData.get('userId'),
             targetList: targetList,
@@ -803,7 +803,7 @@
                     document.getElementById('auditTaskId').value = t.tid;
                     document.getElementById('auditTaskName').value = t.taskName;
                     document.getElementById('auditProject').value = t.project.code;
-                    document.getElementById('auditCountryCode').value = t.taskRoutingCountryCode;
+                    document.getElementById('auditRoutingCode').value = t.taskRoutingCode;
                     document.getElementById('auditUserId').value = t.user ? t.user.name : '';
                     document.getElementById('auditTargetCount').value = (t.targetList ? t.targetList.length : 0);
                     document.getElementById('auditTextContent').value = t.textContent;
@@ -895,7 +895,7 @@
         const requestData = {
             taskName: formData.get('taskName'),
             project: formData.get('project'),
-            countryCode: formData.get('countryCode'),
+            routingCode: formData.get('routingCode'),
             textContent: formData.get('textContent'),
             userId: formData.get('userId'),
             targetList: targetList,

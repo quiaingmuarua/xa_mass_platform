@@ -24,7 +24,10 @@ public enum WorkerContextStatus {
 
     public boolean isAllocatable() { return this == IDLE; }
     public boolean isInUse()       { return this == RESERVED || this == OCCUPIED; }
-    public boolean isAvailable()   { return this == IDLE || this == RESERVED; }
+    public boolean isAvailable()   { return this == IDLE; }
+    public boolean isUsable()      { return this == IDLE || this == RESERVED || this == OCCUPIED; }
+    public boolean isReserved()    { return this == RESERVED; }
+    public boolean isOccupied()    { return this == OCCUPIED; }
     public boolean isFinal()       { return this == INVALID; }
 
     public boolean canTransitionTo(WorkerContextStatus targetStatus) {

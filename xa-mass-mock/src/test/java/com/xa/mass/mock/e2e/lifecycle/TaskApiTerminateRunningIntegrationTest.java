@@ -105,7 +105,7 @@ class TaskApiTerminateRunningIntegrationTest {
         Map<String, Object> createBody = new LinkedHashMap<>();
         createBody.put("taskName", taskName);
         createBody.put("project", "demoApp");
-        createBody.put("countryCode", "us");
+        createBody.put("routingCode", "us");
         createBody.put("sharedConfig", java.util.Map.of("textContent", "terminate running integration"));
         createBody.put("userId", "itest");
         createBody.put("targetList", List.of("target-a", "target-b"));

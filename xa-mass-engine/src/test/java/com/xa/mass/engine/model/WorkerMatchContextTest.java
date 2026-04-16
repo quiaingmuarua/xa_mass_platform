@@ -15,6 +15,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class WorkerMatchContextTest {
 
@@ -37,7 +38,7 @@ class WorkerMatchContextTest {
         Task task = new Task();
         task.setTid("task-1");
         task.setProject("demoApp");
-        task.setTaskRoutingCountryCode("us");
+        task.setTaskRoutingCode("us");
         task.setStatus(TaskStatus.READY);
 
         WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
@@ -46,11 +47,17 @@ class WorkerMatchContextTest {
 
         assertEquals(Map.of("pool", "warmup"), context.getContext().get("workerAttributes"));
         assertEquals(Map.of("country", "us"), context.getContext().get("workerContextAttributes"));
+        assertEquals(true, context.getContext().get("hasWorkerContext"));
         assertEquals(0, context.getContext().get("taskTargetNumber"));
-        assertEquals("us", context.getContext().get("taskRoutingCountryCode"));
-        assertEquals(true, context.getContext().get("workerGroupIdEqualsRoutingCountry"));
-        assertEquals(true, context.getContext().get("workerContextChannelMatchesRoutingCountry"));
-        assertEquals(true, context.getContext().get("workerContextAttributeCountryMatchesRoutingCountry"));
+        assertEquals("us", context.getContext().get("taskRoutingCode"));
+        assertEquals(true, context.getContext().get("taskHasRoutingRequirement"));
+        assertEquals(true, context.getContext().get("workerGroupIdEqualsRoutingCode"));
+        assertEquals(true, context.getContext().get("workerContextChannelMatchesRoutingCode"));
+        assertEquals(true, context.getContext().get("workerContextAttributeCountryMatchesRoutingCode"));
+        assertEquals(true, context.getContext().get("isWorkerContextAvailable"));
+        assertEquals(true, context.getContext().get("isWorkerContextUsable"));
+        assertEquals(false, context.getContext().get("isWorkerContextReserved"));
+        assertEquals(false, context.getContext().get("isWorkerContextOccupied"));
     }
 
     @Test
@@ -64,7 +71,7 @@ class WorkerMatchContextTest {
         Task task = new Task();
         task.setTid("task-2");
         task.setProject("demoApp");
-        task.setTaskRoutingCountryCode("us");
+        task.setTaskRoutingCode("us");
         task.setStatus(TaskStatus.READY);
 
         WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
@@ -72,6 +79,63 @@ class WorkerMatchContextTest {
         WorkerMatchContext context = new WorkerMatchContext(worker, null, task, workerManager);
 
         assertEquals(Map.of(), context.getContext().get("workerContextAttributes"));
+        assertFalse((Boolean) context.getContext().get("hasWorkerContext"));
         assertFalse((Boolean) context.getContext().get("isWorkerContextAllocatable"));
+        assertFalse((Boolean) context.getContext().get("isWorkerContextAvailable"));
+        assertFalse((Boolean) context.getContext().get("isWorkerContextUsable"));
+    }
+
+    @Test
+    void reservedWorkerContextIsUsableButNotAvailableForNewAssignment() {
+        Worker worker = new Worker();
+        worker.setWorkerId("worker-3");
+        worker.setStatus(WorkerStatus.ONLINE);
+        worker.setWorkerGroupId("us");
+        worker.setSupportedProjects(List.of("demoApp"));
+
+        WorkerContext workerContext = new WorkerContext();
+        workerContext.setWorkerContextId("ctx-3");
+        workerContext.setWorkerId("worker-3");
+        workerContext.setStatus(WorkerContextStatus.RESERVED);
+        workerContext.setChannel("us");
+
+        Task task = new Task();
+        task.setTid("task-3");
+        task.setProject("demoApp");
+        task.setTaskRoutingCode("us");
+        task.setStatus(TaskStatus.READY);
+
+        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
+
+        WorkerMatchContext context = new WorkerMatchContext(worker, workerContext, task, workerManager);
+
+        assertFalse((Boolean) context.getContext().get("isWorkerContextAllocatable"));
+        assertFalse((Boolean) context.getContext().get("isWorkerContextAvailable"));
+        assertTrue((Boolean) context.getContext().get("isWorkerContextUsable"));
+        assertTrue((Boolean) context.getContext().get("isWorkerContextReserved"));
+        assertFalse((Boolean) context.getContext().get("isWorkerContextOccupied"));
+    }
+
+    @Test
+    void contextMarksRoutingRequirementFalseWhenTaskHasNoCountryConstraint() {
+        Worker worker = new Worker();
+        worker.setWorkerId("worker-4");
+        worker.setStatus(WorkerStatus.ONLINE);
+        worker.setWorkerGroupId("pool-a");
+        worker.setSupportedProjects(List.of("demoApp"));
+
+        Task task = new Task();
+        task.setTid("task-4");
+        task.setProject("demoApp");
+        task.setTaskRoutingCode(null);
+        task.setStatus(TaskStatus.READY);
+
+        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
+
+        WorkerMatchContext context = new WorkerMatchContext(worker, null, task, workerManager);
+
+        assertEquals(false, context.getContext().get("taskHasRoutingRequirement"));
+        assertEquals(false, context.getContext().get("workerContextAttributeCountryMatchesRoutingCode"));
+        assertEquals(false, context.getContext().get("workerContextChannelMatchesRoutingCode"));
     }
 }

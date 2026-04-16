@@ -134,12 +134,24 @@ public class WorkerContext {
         return status.isInUse();
     }
 
+    public boolean isReserved() {
+        return status.isReserved();
+    }
+
+    public boolean isOccupied() {
+        return status.isOccupied();
+    }
+
     public boolean isExpired() {
         return expireTime != null && expireTime.isBefore(LocalDateTime.now());
     }
 
     public boolean isAvailable() {
         return status.isAvailable() && !isExpired();
+    }
+
+    public boolean isUsable() {
+        return status.isUsable() && !isExpired();
     }
 
     public boolean bindToTask(String taskId) {

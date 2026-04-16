@@ -187,7 +187,7 @@ class TaskApiControllerTest {
                                 {
                                   "taskName":"smoke-create",
                                   "project":"demoApp",
-                                  "countryCode":"us",
+                                  "routingCode":"us",
                                   "sharedConfig":{"textContent":"hello"},
                                   "userId":"agent",
                                   "targetList":["alpha","beta"],
@@ -202,7 +202,7 @@ class TaskApiControllerTest {
         verify(taskManager).createTask(argThat(dto ->
                 "smoke-create".equals(dto.getTaskName())
                         && "demoApp".equals(dto.getProject())
-                        && "us".equals(dto.getCountryCode())
+                        && "us".equals(dto.getRoutingCode())
                         && "hello".equals(dto.getSharedConfig() != null ? dto.getSharedConfig().get("textContent") : null)
                         && "agent".equals(dto.getUserId())
                         && dto.getBatchSize() == 2
@@ -218,7 +218,7 @@ class TaskApiControllerTest {
                                 {
                                   "taskName":"smoke-create",
                                   "project":"demoApp",
-                                  "countryCode":"us",
+                                  "routingCode":"us",
                                   "sharedConfig":{"textContent":"hello"},
                                   "userId":"agent",
                                   "targetList":["alpha"],
@@ -243,7 +243,7 @@ class TaskApiControllerTest {
                                 {
                                   "taskName":"bad-project",
                                   "project":"whatsapp",
-                                  "countryCode":"us",
+                                  "routingCode":"us",
                                   "sharedConfig":{"textContent":"hello"},
                                   "userId":"agent",
                                   "targetList":["alpha"]
@@ -336,7 +336,7 @@ class TaskApiControllerTest {
                                 {
                                   "taskName":"updated-name",
                                   "project":"telegramApp",
-                                  "countryCode":"sg",
+                                  "routingCode":"sg",
                                   "sharedConfig":{"textContent":"updated-content"},
                                   "userId":"updated-user",
                                   "batchSize":5
@@ -350,7 +350,7 @@ class TaskApiControllerTest {
                 TASK_ID.equals(task.getTid())
                         && "updated-name".equals(task.getTaskName())
                         && "telegramApp".equals(task.getProject())
-                        && "sg".equals(task.getTaskRoutingCountryCode())
+                        && "sg".equals(task.getTaskRoutingCode())
                         && "updated-content".equals(task.getSharedConfig() != null ? task.getSharedConfig().get("textContent") : null)
                         && task.getUser() != null
                         && "updated-user".equals(task.getUser().getName())

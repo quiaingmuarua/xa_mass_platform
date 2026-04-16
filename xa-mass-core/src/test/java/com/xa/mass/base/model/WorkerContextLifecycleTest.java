@@ -15,18 +15,30 @@ class WorkerContextLifecycleTest {
     @Test
     void bindSendReleaseFollowsMainlineLifecycle() {
         WorkerContext wc = new WorkerContext("wc-1", "worker-1", "us");
+        assertTrue(wc.isAllocatable());
+        assertTrue(wc.isAvailable());
+        assertTrue(wc.isUsable());
 
         assertTrue(wc.bindToTask("task-1"));
         assertEquals(WorkerContextStatus.RESERVED, wc.getStatus());
         assertEquals("task-1", wc.getLastBindTaskId());
+        assertFalse(wc.isAllocatable());
+        assertFalse(wc.isAvailable());
+        assertTrue(wc.isUsable());
+        assertTrue(wc.isReserved());
 
         assertTrue(wc.startOccupying());
         assertEquals(WorkerContextStatus.OCCUPIED, wc.getStatus());
         assertNotNull(wc.getLastUsedTime());
+        assertFalse(wc.isAvailable());
+        assertTrue(wc.isUsable());
+        assertTrue(wc.isOccupied());
 
         assertTrue(wc.release());
         assertEquals(WorkerContextStatus.IDLE, wc.getStatus());
         assertNull(wc.getLastBindTaskId());
+        assertTrue(wc.isAvailable());
+        assertTrue(wc.isUsable());
     }
 
     @Test
@@ -64,5 +76,15 @@ class WorkerContextLifecycleTest {
         WorkerContext wc = new WorkerContext();
 
         assertThrows(NullPointerException.class, () -> wc.setStatus(null));
+    }
+
+    @Test
+    void expiredWorkerContextIsNotAvailableOrUsable() {
+        WorkerContext wc = new WorkerContext("wc-5", "worker-5", "us");
+        wc.setExpireTime(java.time.LocalDateTime.now().minusMinutes(1));
+
+        assertFalse(wc.isAllocatable());
+        assertFalse(wc.isAvailable());
+        assertFalse(wc.isUsable());
     }
 }
