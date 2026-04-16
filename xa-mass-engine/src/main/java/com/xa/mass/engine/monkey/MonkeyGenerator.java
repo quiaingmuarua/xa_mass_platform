@@ -5,6 +5,7 @@ import com.xa.mass.base.jsondsl.generate.TypeRegistry;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.model.TaskCreateRequestDto;
+import com.xa.mass.engine.rules.RuleDefinition;
 
 import java.util.List;
 
@@ -39,6 +40,13 @@ public class MonkeyGenerator {
      */
     public static List<TaskCreateRequestDto> generateTasks(String jsonDsl) {
         return JsonDslEngine.generateList(jsonDsl, TaskCreateRequestDto.class);
+    }
+
+    /**
+     * Generates rule definitions from JSON-DSL.
+     */
+    public static List<RuleDefinition> generateRules(String jsonDsl) {
+        return JsonDslEngine.generateList(jsonDsl, RuleDefinition.class);
     }
 
     public static String exampleTasksJsonDsl() {

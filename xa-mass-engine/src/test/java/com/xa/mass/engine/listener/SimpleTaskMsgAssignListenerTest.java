@@ -8,6 +8,7 @@ import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.TaskManager;
+import com.xa.mass.engine.model.MatchedWorkerContext;
 import com.xa.mass.engine.model.TaskCreateRequestDto;
 import com.xa.mass.engine.service.AssignmentRecordService;
 import com.xa.mass.engine.storage.InMemoryTaskStorage;
@@ -52,11 +53,9 @@ class SimpleTaskMsgAssignListenerTest {
         AtomicReference<List<TaskMsg>> dispatched = new AtomicReference<>();
         listener = new SimpleTaskMsgAssignListener(taskManager, workerManager, recordService, (t, msgs) -> dispatched.set(msgs));
 
-        when(workerManager.getWorkerContext("d1")).thenReturn(workerContext("tk1", "d1"));
-        when(workerManager.getWorkerContext("d2")).thenReturn(workerContext("tk2", "d2"));
-        when(workerManager.updateWorkerContext(anyString(), any(WorkerContext.class))).thenReturn(true);
+        when(workerManager.updateWorkerContextById(anyString(), any(WorkerContext.class))).thenReturn(true);
 
-        listener.onMsgAssign(task, List.of(worker("d1"), worker("d2")));
+        listener.onMsgAssign(task, List.of(matched("d1", "tk1"), matched("d2", "tk2")));
 
         List<TaskMsg> pushed = dispatched.get();
         assertNotNull(pushed);
@@ -66,26 +65,25 @@ class SimpleTaskMsgAssignListenerTest {
     }
 
     @Test
-    void assignmentWritesWorkerBatchAndSentStatusBackToStorage() {
+    void assignmentWritesWorkerBatchAndAssignedStatusBackToStorage() {
         Task task = createTask(4);
         task.setBatchSize(10);
 
         WorkerContext wc1 = workerContext("tk1", "d1");
         WorkerContext wc2 = workerContext("tk2", "d2");
-        when(workerManager.getWorkerContext("d1")).thenReturn(wc1);
-        when(workerManager.getWorkerContext("d2")).thenReturn(wc2);
-        when(workerManager.updateWorkerContext(anyString(), any(WorkerContext.class))).thenReturn(true);
+        when(workerManager.updateWorkerContextById(anyString(), any(WorkerContext.class))).thenReturn(true);
 
-        listener.onMsgAssign(task, List.of(worker("d1"), worker("d2")));
+        listener.onMsgAssign(task, List.of(matched(worker("d1"), wc1), matched(worker("d2"), wc2)));
 
         List<TaskMsg> stored = taskManager.getTaskMessages(task.getTid());
         assertEquals(4, stored.size());
-        assertEquals(List.of(TaskMsgStatus.SENT, TaskMsgStatus.SENT, TaskMsgStatus.SENT, TaskMsgStatus.SENT),
+        assertEquals(List.of(TaskMsgStatus.ASSIGNED, TaskMsgStatus.ASSIGNED, TaskMsgStatus.ASSIGNED, TaskMsgStatus.ASSIGNED),
                 stored.stream().map(TaskMsg::getStatus).collect(Collectors.toList()));
         assertEquals(List.of("d1", "d2", "d1", "d2"),
                 stored.stream().map(TaskMsg::getWorkerId).collect(Collectors.toList()));
         assertEquals(List.of("batch-0", "batch-1", "batch-0", "batch-1"),
                 stored.stream().map(TaskMsg::getBatchId).collect(Collectors.toList()));
+        assertTrue(stored.stream().allMatch(msg -> msg.getAssignedTime() != null));
         assertEquals(WorkerContextStatus.OCCUPIED, wc1.getStatus());
         assertEquals(task.getTid(), wc1.getLastBindTaskId());
         assertEquals(WorkerContextStatus.OCCUPIED, wc2.getStatus());
@@ -95,7 +93,7 @@ class SimpleTaskMsgAssignListenerTest {
                 any(), any(), any(), anyString(), anyString(), any(), anyString(), anyBoolean()
         );
         verify(workerManager, times(4)).isLocked(anyString());
-        verify(workerManager, times(2)).updateWorkerContext(anyString(), any(WorkerContext.class));
+        verify(workerManager, times(2)).updateWorkerContextById(anyString(), any(WorkerContext.class));
     }
 
     @Test
@@ -105,19 +103,17 @@ class SimpleTaskMsgAssignListenerTest {
 
         WorkerContext wc1 = workerContext("tk1", "d1");
         WorkerContext wc2 = workerContext("tk2", "d2");
-        when(workerManager.getWorkerContext("d1")).thenReturn(wc1);
-        when(workerManager.getWorkerContext("d2")).thenReturn(wc2);
-        when(workerManager.updateWorkerContext(anyString(), any(WorkerContext.class))).thenReturn(true);
+        when(workerManager.updateWorkerContextById(anyString(), any(WorkerContext.class))).thenReturn(true);
 
-        List<TaskMsg> dispatched = listener.onMsgAssign(task, List.of(worker("d1"), worker("d2")));
+        List<TaskMsg> dispatched = listener.onMsgAssign(task, List.of(matched(worker("d1"), wc1), matched(worker("d2"), wc2)));
 
         assertEquals(4, dispatched.size());
         List<TaskMsg> stored = taskManager.getTaskMessages(task.getTid());
         assertEquals(List.of(
-                        TaskMsgStatus.SENT,
-                        TaskMsgStatus.SENT,
-                        TaskMsgStatus.SENT,
-                        TaskMsgStatus.SENT,
+                        TaskMsgStatus.ASSIGNED,
+                        TaskMsgStatus.ASSIGNED,
+                        TaskMsgStatus.ASSIGNED,
+                        TaskMsgStatus.ASSIGNED,
                         TaskMsgStatus.INIT),
                 stored.stream().map(TaskMsg::getStatus).collect(Collectors.toList()));
         assertEquals(java.util.Arrays.asList("d1", "d2", "d1", "d2", null),
@@ -130,16 +126,15 @@ class SimpleTaskMsgAssignListenerTest {
         task.setBatchSize(2);
 
         WorkerContext wc1 = workerContext("tk1", "d1");
-        when(workerManager.getWorkerContext("d1")).thenReturn(wc1);
-        when(workerManager.updateWorkerContext(anyString(), any(WorkerContext.class))).thenReturn(true);
+        when(workerManager.updateWorkerContextById(anyString(), any(WorkerContext.class))).thenReturn(true);
 
-        List<TaskMsg> dispatched = listener.onMsgAssign(task, List.of(worker("d1")));
+        List<TaskMsg> dispatched = listener.onMsgAssign(task, List.of(matched(worker("d1"), wc1)));
 
         assertEquals(2, dispatched.size());
         List<TaskMsg> stored = taskManager.getTaskMessages(task.getTid());
         assertEquals(List.of(
-                        TaskMsgStatus.SENT,
-                        TaskMsgStatus.SENT,
+                        TaskMsgStatus.ASSIGNED,
+                        TaskMsgStatus.ASSIGNED,
                         TaskMsgStatus.INIT,
                         TaskMsgStatus.INIT),
                 stored.stream().map(TaskMsg::getStatus).collect(Collectors.toList()));
@@ -154,18 +149,16 @@ class SimpleTaskMsgAssignListenerTest {
 
         WorkerContext wc1 = workerContext("tk1", "d1");
         WorkerContext wc2 = workerContext("tk2", "d2");
-        when(workerManager.getWorkerContext("d1")).thenReturn(wc1);
-        when(workerManager.getWorkerContext("d2")).thenReturn(wc2);
-        when(workerManager.updateWorkerContext(anyString(), any(WorkerContext.class))).thenReturn(true);
+        when(workerManager.updateWorkerContextById(anyString(), any(WorkerContext.class))).thenReturn(true);
 
-        List<TaskMsg> dispatched = listener.onMsgAssign(task, List.of(worker("d1"), worker("d2")));
+        List<TaskMsg> dispatched = listener.onMsgAssign(task, List.of(matched(worker("d1"), wc1), matched(worker("d2"), wc2)));
 
         assertEquals(3, dispatched.size());
         List<TaskMsg> stored = taskManager.getTaskMessages(task.getTid());
         assertEquals(List.of(
-                        TaskMsgStatus.SENT,
-                        TaskMsgStatus.SENT,
-                        TaskMsgStatus.SENT),
+                        TaskMsgStatus.ASSIGNED,
+                        TaskMsgStatus.ASSIGNED,
+                        TaskMsgStatus.ASSIGNED),
                 stored.stream().map(TaskMsg::getStatus).collect(Collectors.toList()));
         assertEquals(java.util.Arrays.asList("d1", "d2", "d1"),
                 stored.stream().map(TaskMsg::getWorkerId).collect(Collectors.toList()));
@@ -175,9 +168,7 @@ class SimpleTaskMsgAssignListenerTest {
     void nullWorkerContextIsHandledGracefully() {
         Task task = createTask(2);
         task.setBatchSize(10);
-        when(workerManager.getWorkerContext("d1")).thenReturn(null);
-
-        assertDoesNotThrow(() -> listener.onMsgAssign(task, List.of(worker("d1"))));
+        assertDoesNotThrow(() -> listener.onMsgAssign(task, List.of(new MatchedWorkerContext(worker("d1"), null))));
 
         List<TaskMsg> stored = taskManager.getTaskMessages(task.getTid());
         assertTrue(stored.stream().allMatch(msg -> msg.getWorkerContextId() == null));
@@ -192,9 +183,7 @@ class SimpleTaskMsgAssignListenerTest {
         Task task = createTask(1);
         WorkerContext blocked = workerContext("tk-blocked", "d1");
         blocked.block();
-        when(workerManager.getWorkerContext("d1")).thenReturn(blocked);
-
-        assertTrue(listener.onMsgAssign(task, List.of(worker("d1"))).isEmpty());
+        assertTrue(listener.onMsgAssign(task, List.of(matched(worker("d1"), blocked))).isEmpty());
 
         List<TaskMsg> stored = taskManager.getTaskMessages(task.getTid());
         assertEquals(TaskMsgStatus.INIT, stored.get(0).getStatus());
@@ -244,6 +233,14 @@ class SimpleTaskMsgAssignListenerTest {
         wc.setWorkerContextId(workerContextId);
         wc.setWorkerId(workerId);
         return wc;
+    }
+
+    private MatchedWorkerContext matched(String workerId, String workerContextId) {
+        return matched(worker(workerId), workerContext(workerContextId, workerId));
+    }
+
+    private MatchedWorkerContext matched(Worker worker, WorkerContext workerContext) {
+        return new MatchedWorkerContext(worker, workerContext);
     }
 
     private static class NoopTaskScheduler implements TaskScheduler {

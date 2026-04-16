@@ -7,12 +7,15 @@ import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.model.TaskCreateRequestDto;
+import com.xa.mass.engine.rules.RuleManager;
+import com.xa.mass.engine.rules.RuleType;
 import com.xa.mass.engine.storage.InMemoryWorkerStorage;
 import com.xa.mass.starter.config.EngineConfig;
 import com.xa.mass.starter.config.GatewayConfig;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -78,10 +81,73 @@ class MassApplicationLoadMockDataTest {
         assertNull(harness.workerManager().getWorkerContext("missing-worker"));
     }
 
+    @Test
+    void loadMockDataKeepsMultipleContextsForSameWorker() {
+        TestHarness harness = createHarness();
+        MassApplication application = new MassApplication(
+                harness.engine(), 8088, "/ws", new GatewayConfig(), multiContextConfig()
+        );
+
+        application.loadMockData(harness.engine(), multiContextConfig());
+
+        List<WorkerContext> workerContexts = harness.workerManager().getWorkerContexts("worker-us-1");
+        assertEquals(2, workerContexts.size());
+        assertNotNull(harness.workerManager().getWorkerContextById("wc-us-1-a"));
+        assertNotNull(harness.workerManager().getWorkerContextById("wc-us-1-b"));
+    }
+
+    @Test
+    void loadMockDataReplacesDefaultRulesWhenExplicitRuleConfigIsProvided() {
+        TestHarness harness = createHarness();
+        EngineConfig config = explicitRuleConfig(harness.ruleManager());
+        MassApplication application = new MassApplication(
+                harness.engine(), 8088, "/ws", new GatewayConfig(), config
+        );
+
+        List<String> beforeRuleIds = harness.ruleManager().getDefaultRules().stream()
+                .map(com.xa.mass.engine.rules.RuleDefinition::getId)
+                .sorted()
+                .toList();
+        assertTrue(beforeRuleIds.contains("basic_worker_check"));
+
+        application.loadMockData(harness.engine(), config);
+
+        List<String> afterRuleIds = harness.ruleManager().getDefaultRules().stream()
+                .map(com.xa.mass.engine.rules.RuleDefinition::getId)
+                .sorted()
+                .toList();
+        assertEquals(List.of("explicit_app_support", "explicit_routing_country"), afterRuleIds);
+        assertTrue(harness.ruleManager().getEvaluator(RuleType.QL_EXPRESS).isPresent());
+    }
+
+    @Test
+    void loadMockDataKeepsDefaultRulesWhenExplicitRuleConfigIsEmpty() {
+        TestHarness harness = createHarness();
+        EngineConfig config = emptyRuleConfig(harness.ruleManager());
+        MassApplication application = new MassApplication(
+                harness.engine(), 8088, "/ws", new GatewayConfig(), config
+        );
+
+        List<String> beforeRuleIds = harness.ruleManager().getDefaultRules().stream()
+                .map(com.xa.mass.engine.rules.RuleDefinition::getId)
+                .sorted()
+                .toList();
+
+        application.loadMockData(harness.engine(), config);
+
+        List<String> afterRuleIds = harness.ruleManager().getDefaultRules().stream()
+                .map(com.xa.mass.engine.rules.RuleDefinition::getId)
+                .sorted()
+                .toList();
+        assertEquals(beforeRuleIds, afterRuleIds);
+        assertTrue(harness.ruleManager().getEvaluator(RuleType.QL_EXPRESS).isPresent());
+    }
+
     private TestHarness createHarness() {
         WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
         MassEngine engine = mock(MassEngine.class);
         AtomicInteger createdTasks = new AtomicInteger();
+        RuleManager<Map<String, Object>> ruleManager = new EngineConfig().getRuleManager();
 
         when(engine.getWorkerManager()).thenReturn(workerManager);
         doAnswer(invocation -> {
@@ -98,8 +164,7 @@ class MassApplicationLoadMockDataTest {
             createdTasks.incrementAndGet();
             return new Task();
         }).when(engine).createTask(any(TaskCreateRequestDto.class));
-
-        return new TestHarness(engine, workerManager, createdTasks);
+        return new TestHarness(engine, workerManager, createdTasks, ruleManager);
     }
 
     private EngineConfig explicitWorkerContextConfig() {
@@ -213,6 +278,112 @@ class MassApplicationLoadMockDataTest {
         return engineConfig;
     }
 
-    private record TestHarness(MassEngine engine, WorkerManager workerManager, AtomicInteger createdTasks) {
+    private EngineConfig explicitRuleConfig(RuleManager<Map<String, Object>> ruleManager) {
+        EngineConfig engineConfig = new EngineConfig();
+        engineConfig.setRuleManager(ruleManager);
+        engineConfig.setMockConfigRoot(JsonParser.parseString("""
+                {
+                  "rules": [
+                    {
+                      "MODEL": "RuleDefinition",
+                      "COUNT": 1,
+                      "FIELDS": {
+                        "id": "explicit_routing_country",
+                        "name": "Explicit routing rule",
+                        "description": "Uses worker-context country attribute",
+                        "desc": "Uses worker-context country attribute",
+                        "type": "QL_EXPRESS",
+                        "content": "workerContextAttributes['country'] == taskRoutingCountryCode",
+                        "priority": 1,
+                        "enabled": true
+                      }
+                    },
+                    {
+                      "MODEL": "RuleDefinition",
+                      "COUNT": 1,
+                      "FIELDS": {
+                        "id": "explicit_app_support",
+                        "name": "Explicit app support",
+                        "description": "Worker must support project",
+                        "desc": "Worker must support project",
+                        "type": "QL_EXPRESS",
+                        "content": "supportsProject == true",
+                        "priority": 2,
+                        "enabled": true
+                      }
+                    }
+                  ]
+                }
+                """).getAsJsonObject());
+        return engineConfig;
+    }
+
+    private EngineConfig multiContextConfig() {
+        EngineConfig engineConfig = new EngineConfig();
+        engineConfig.setMockConfigRoot(JsonParser.parseString("""
+                {
+                  "workers": [
+                    {
+                      "MODEL": "Worker",
+                      "COUNT": 1,
+                      "FIELDS": {
+                        "workerId": "worker-us-1",
+                        "workerGroupId": "POOL-US",
+                        "agentVersion": "1.0.0",
+                        "status": "ONLINE",
+                        "supportedProjects": ["demoApp", "testApp"]
+                      }
+                    }
+                  ],
+                  "workerContexts": [
+                    {
+                      "MODEL": "WorkerContext",
+                      "COUNT": 1,
+                      "FIELDS": {
+                        "workerContextId": "wc-us-1-a",
+                        "workerId": "worker-us-1",
+                        "channel": "route-us-a",
+                        "status": "IDLE",
+                        "attributes": {
+                          "country": "US",
+                          "carrier": "tmobile"
+                        }
+                      }
+                    },
+                    {
+                      "MODEL": "WorkerContext",
+                      "COUNT": 1,
+                      "FIELDS": {
+                        "workerContextId": "wc-us-1-b",
+                        "workerId": "worker-us-1",
+                        "channel": "route-us-b",
+                        "status": "IDLE",
+                        "attributes": {
+                          "country": "US",
+                          "carrier": "verizon"
+                        }
+                      }
+                    }
+                  ]
+                }
+                """).getAsJsonObject());
+        return engineConfig;
+    }
+
+    private EngineConfig emptyRuleConfig(RuleManager<Map<String, Object>> ruleManager) {
+        EngineConfig engineConfig = new EngineConfig();
+        engineConfig.setRuleManager(ruleManager);
+        engineConfig.setMockConfigRoot(JsonParser.parseString("""
+                {
+                  "rules": []
+                }
+                """).getAsJsonObject());
+        return engineConfig;
+    }
+
+    private record TestHarness(MassEngine engine,
+                               WorkerManager workerManager,
+                               AtomicInteger createdTasks,
+                               RuleManager<Map<String, Object>> ruleManager) {
     }
 }

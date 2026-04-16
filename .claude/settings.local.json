@@ -3,7 +3,13 @@
     "allow": [
       "Bash(mvn test:*)",
       "Bash(mvn install:*)",
-      "Bash(xargs grep:*)"
+      "Bash(xargs grep:*)",
+      "Bash(./mvnw -pl xa-mass-engine -am -DskipTests compile)",
+      "Bash(./mvnw -pl xa-mass-gateway -am -DskipTests compile)",
+      "Bash(python -)",
+      "Bash(./mvnw -pl xa-mass-api -am -DskipTests compile)",
+      "Bash(./mvnw -pl xa-mass-mock -am -DskipTests compile)",
+      "Bash(./mvnw -pl xa-mass-mock -am -Dtest=MassWebSocketClientImplTest,TaskApiDelayedWorkerAvailabilityIntegrationTest,TaskApiMinimumWorkerGateIntegrationTest,TaskApiSingleWorkerReuseIntegrationTest,TaskApiWorkerContextAttributeRoutingIntegrationTest,TaskApiPauseCompletionIntegrationTest,TaskApiCallbackReplayIntegrationTest,TaskApiMixedResultsIntegrationTest -Dsurefire.failIfNoSpecifiedTests=false test)"
     ]
   }
 }

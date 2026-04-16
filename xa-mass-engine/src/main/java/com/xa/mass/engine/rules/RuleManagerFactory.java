@@ -5,7 +5,7 @@ import java.util.Map;
 public class RuleManagerFactory {
     public static RuleManager<Map<String, Object>> getDefaultRuleManager() {
         RuleManager<Map<String, Object>> manager = new RuleManager<>();
-        manager.addDefaultRules(RuleConfig.getDefaultDeviceMatchRules());
+        manager.addDefaultRules(RuleConfig.getDefaultWorkerMatchRules());
         return manager;
     }
 
@@ -17,7 +17,7 @@ public class RuleManagerFactory {
 
     public static RuleManager<Map<String, Object>> getLooseRuleManager() {
         RuleManager<Map<String, Object>> manager = new RuleManager<>();
-        manager.addDefaultRules(RuleConfig.getLooseDeviceMatchRules());
+        manager.addDefaultRules(RuleConfig.getLooseWorkerMatchRules());
         return manager;
     }
-} 
+}

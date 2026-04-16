@@ -6,7 +6,7 @@ Use this module for end-to-end validation of:
 
 - Spring Boot HTTP APIs
 - the internal gateway WebSocket server
-- mock device bootstrap and result write-back
+- mock worker bootstrap and result write-back
 
 Repository-level startup instructions in [`../doc/VERIFIED_RUNBOOK.md`](../doc/VERIFIED_RUNBOOK.md) are the source of truth.
 
@@ -73,15 +73,15 @@ Startup behavior:
 | `mass.mock.data.workers` | `mock/mock_workers.json` | mock worker data |
 | `mass.mock.data.worker-contexts` | `mock/mock_worker_contexts.json` | explicit mock worker-context data |
 | `mass.mock.data.tasks` | `mock/mock_tasks.json` | mock task data |
-| `mass.mock.data.rules` | `mock/mock_rules.json` | mock rule data |
+| `mass.mock.data.rules` | `mock/mock_rules.json` | explicit mock worker-match rules; non-empty config overrides the current defaults |
 
 Mock-data loading order:
 
 - workers
 - explicit worker contexts
-- tasks
-- rules
 - fallback worker-context seeding only for workers that still have no worker context
+- rules: non-empty config replaces the current default rules; empty config is treated as no override
+- tasks
 
 ## Regression Coverage
 
@@ -106,4 +106,3 @@ Covered areas:
 - `e2e/audit`: `stateValidation` exposure and terminal metadata consistency through the real HTTP path
 - `WebSocketClientStarterTest`: auto-start and idempotent startup behavior
 - `MassWebSocketClientImplTest`: ignore `response=true` task frames, avoid echo loops, and allow configurable `SUCCESS` / `FAILED` result payloads
-

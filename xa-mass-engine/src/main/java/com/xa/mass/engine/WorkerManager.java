@@ -57,16 +57,36 @@ public class WorkerManager {
         workerStorage.addWorkerContext(workerId, workerContext);
     }
 
+    /**
+     * Compatibility wrapper for legacy single-context callers.
+     * Prefer {@link #getWorkerContexts(String)} or {@link #getWorkerContextById(String)} for new code.
+     */
     public WorkerContext getWorkerContext(String workerId) {
         return workerStorage.getWorkerContext(workerId).orElse(null);
+    }
+
+    public List<WorkerContext> getWorkerContexts(String workerId) {
+        return workerStorage.getWorkerContexts(workerId);
+    }
+
+    public WorkerContext getWorkerContextById(String workerContextId) {
+        return workerStorage.getWorkerContextById(workerContextId).orElse(null);
     }
 
     public boolean updateWorkerContext(String workerId, WorkerContext workerContext) {
         return workerStorage.updateWorkerContext(workerId, workerContext);
     }
 
+    public boolean updateWorkerContextById(String workerContextId, WorkerContext workerContext) {
+        return workerStorage.updateWorkerContextById(workerContextId, workerContext);
+    }
+
     public boolean deleteWorkerContext(String workerId) {
         return workerStorage.deleteWorkerContext(workerId);
+    }
+
+    public boolean deleteWorkerContextById(String workerContextId) {
+        return workerStorage.deleteWorkerContextById(workerContextId);
     }
 
     public boolean tryLockWorker(String workerId) {

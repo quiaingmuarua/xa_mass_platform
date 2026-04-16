@@ -8,86 +8,25 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * 任务消息实体
- * 记录单条任务的下发与执行过程
- * 用于批次调度、失败重试、回执跟踪
+ * Task message entity.
+ * Records assignment, dispatch, and execution progress for a single work item.
  */
 public class TaskMsg {
-    /**
-     * 消息唯一标识
-     */
     private String msgId;
-
-    /**
-     * 所属任务
-     */
     private String taskId;
-
-    /**
-     * 目标 Worker
-     */
     private String workerId;
-
-    /**
-     * 使用 WorkerContext
-     */
     private String workerContextId;
-
-    /**
-     * 状态
-     */
     private TaskMsgStatus status;
-
-    /**
-     * 批次信息
-     */
     private String batchId;
-
-    /**
-     * 发送时间
-     */
-    private LocalDateTime sendTime;
-
-    /**
-     * 最终回执/响应码
-     */
+    private LocalDateTime assignedTime;
     private String result;
-
-    /**
-     * 创建时间
-     */
     private LocalDateTime createTime;
-
-    /**
-     * 更新时间
-     */
     private LocalDateTime updateTime;
-
-    /**
-     * 开始执行时间
-     */
     private LocalDateTime startTime;
-
-    /**
-     * 完成时间
-     */
     private LocalDateTime completeTime;
-
-    /**
-     * 重试次数
-     */
     private int retryCount;
-
-    /**
-     * 最大重试次数
-     */
     private int maxRetryCount;
-
-    /**
-     * 错误信息
-     */
     private String errorMessage;
-
     private Map<String, Object> input;
     private Map<String, Object> output;
 
@@ -105,7 +44,9 @@ public class TaskMsg {
         this.msgId = msgId;
         this.taskId = taskId;
         this.input = new HashMap<>();
-        if (target != null) this.input.put("target", target);
+        if (target != null) {
+            this.input.put("target", target);
+        }
     }
 
     public TaskMsg(String msgId, String taskId, Map<String, Object> input) {
@@ -115,7 +56,6 @@ public class TaskMsg {
         this.input = input != null ? new HashMap<>(input) : new HashMap<>();
     }
 
-    // Getters and Setters
     public String getMsgId() {
         return msgId;
     }
@@ -156,10 +96,9 @@ public class TaskMsg {
         this.status = status;
         this.updateTime = LocalDateTime.now();
 
-        // 记录关键时间点
         if (status == TaskMsgStatus.RUNNING && startTime == null) {
             this.startTime = LocalDateTime.now();
-        } else if (status.isFinal()) {
+        } else if (status != null && status.isFinal()) {
             this.completeTime = LocalDateTime.now();
         }
     }
@@ -172,12 +111,12 @@ public class TaskMsg {
         this.batchId = batchId;
     }
 
-    public LocalDateTime getSendTime() {
-        return sendTime;
+    public LocalDateTime getAssignedTime() {
+        return assignedTime;
     }
 
-    public void setSendTime(LocalDateTime sendTime) {
-        this.sendTime = sendTime;
+    public void setAssignedTime(LocalDateTime assignedTime) {
+        this.assignedTime = assignedTime;
     }
 
     public String getResult() {
@@ -244,70 +183,62 @@ public class TaskMsg {
         this.errorMessage = errorMessage;
     }
 
-    /** Compatibility accessor — returns input.get("target") cast to String. */
+    /** Compatibility accessor: returns input.get("target") cast to String. */
     public String getTarget() {
         return input != null ? (String) input.get("target") : null;
     }
 
-    /** Compatibility accessor — sets "target" key in input map. */
+    /** Compatibility accessor: sets "target" key in input map. */
     public void setTarget(String target) {
-        if (input == null) input = new HashMap<>();
+        if (input == null) {
+            input = new HashMap<>();
+        }
         input.put("target", target);
     }
 
-    public Map<String, Object> getInput() { return input; }
-    public void setInput(Map<String, Object> input) { this.input = input; }
-    public Map<String, Object> getOutput() { return output; }
-    public void setOutput(Map<String, Object> output) { this.output = output; }
+    public Map<String, Object> getInput() {
+        return input;
+    }
 
-    /**
-     * 检查消息是否已完成
-     */
+    public void setInput(Map<String, Object> input) {
+        this.input = input;
+    }
+
+    public Map<String, Object> getOutput() {
+        return output;
+    }
+
+    public void setOutput(Map<String, Object> output) {
+        this.output = output;
+    }
+
     public boolean isCompleted() {
-        return status.isFinal();
+        return status != null && status.isFinal();
     }
 
-    /**
-     * 检查消息是否成功
-     */
     public boolean isSuccess() {
-        return status.isSuccess();
+        return status != null && status.isSuccess();
     }
 
-    /**
-     * 检查消息是否失败
-     */
     public boolean isFailed() {
-        return status.isFailed();
+        return status != null && status.isFailed();
     }
 
-    /**
-     * 检查消息是否正在处理中
-     */
     public boolean isProcessing() {
-        return status.isProcessing();
+        return status != null && status.isProcessing();
     }
 
-    /**
-     * 检查是否可以重试
-     */
     public boolean canRetry() {
-        return status.isRetryable() && retryCount < maxRetryCount;
+        return status != null && status.isRetryable() && retryCount < maxRetryCount;
     }
 
-    /**
-     * 增加重试次数
-     */
     public void incrementRetryCount() {
         this.retryCount++;
         this.updateTime = LocalDateTime.now();
     }
 
     /**
-     * 将消息重置到 INIT 状态以进行下一次重试。
-     * 只通过此方法触发 FAILED/EXPIRED → INIT 的反向转换，不走通用状态机。
-     *
-     * @return true 表示已重置并登记本次重试；false 表示不可重试
+     * Resets the message to INIT for the next retry attempt.
      */
     public boolean resetForRetry() {
         if (!canRetry()) {
@@ -324,9 +255,6 @@ public class TaskMsg {
         return true;
     }
 
-    /**
-     * 获取执行时长（毫秒）
-     */
     public long getExecutionDuration() {
         if (startTime == null) {
             return 0;
@@ -335,9 +263,6 @@ public class TaskMsg {
         return java.time.Duration.between(startTime, endTime).toMillis();
     }
 
-    /**
-     * 状态转换
-     */
     public boolean transitionTo(TaskMsgStatus targetStatus) {
         if (status.canTransitionTo(targetStatus)) {
             setStatus(targetStatus);
@@ -346,27 +271,18 @@ public class TaskMsg {
         return false;
     }
 
-    /**
-     * 标记为发送
-     */
-    public boolean markAsSent() {
-        if (transitionTo(TaskMsgStatus.SENT)) {
-            setSendTime(LocalDateTime.now());
+    public boolean markAsAssigned() {
+        if (transitionTo(TaskMsgStatus.ASSIGNED)) {
+            setAssignedTime(LocalDateTime.now());
             return true;
         }
         return false;
     }
 
-    /**
-     * 标记为开始执行
-     */
     public boolean markAsRunning() {
         return transitionTo(TaskMsgStatus.RUNNING);
     }
 
-    /**
-     * 标记为成功
-     */
     public boolean markAsSuccess(String result) {
         if (transitionTo(TaskMsgStatus.SUCCESS)) {
             setResult(result);
@@ -375,9 +291,6 @@ public class TaskMsg {
         return false;
     }
 
-    /**
-     * 标记为失败
-     */
     public boolean markAsFailed(String errorMessage) {
         if (transitionTo(TaskMsgStatus.FAILED)) {
             setErrorMessage(errorMessage);
@@ -386,17 +299,18 @@ public class TaskMsg {
         return false;
     }
 
-    /**
-     * 标记为过期
-     */
     public boolean markAsExpired() {
         return transitionTo(TaskMsgStatus.EXPIRED);
     }
 
     @Override
     public boolean equals(Object o) {
-        if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
+        if (this == o) {
+            return true;
+        }
+        if (o == null || getClass() != o.getClass()) {
+            return false;
+        }
         TaskMsg taskMsg = (TaskMsg) o;
         return Objects.equals(msgId, taskMsg.msgId);
     }
@@ -419,4 +333,4 @@ public class TaskMsg {
                 ", result='" + result + '\'' +
                 '}';
     }
-} 
+}

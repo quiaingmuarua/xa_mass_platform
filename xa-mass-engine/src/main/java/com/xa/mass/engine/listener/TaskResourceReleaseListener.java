@@ -86,8 +86,8 @@ public class TaskResourceReleaseListener {
             return;
         }
 
-        WorkerContext workerContext = workerManager.getWorkerContext(workerId);
-        if (workerContext == null || !workerContextId.equals(workerContext.getWorkerContextId())) {
+        WorkerContext workerContext = workerManager.getWorkerContextById(workerContextId);
+        if (workerContext == null || !workerId.equals(workerContext.getWorkerId())) {
             return;
         }
         if (workerContext.getLastBindTaskId() != null && !taskId.equals(workerContext.getLastBindTaskId())) {
@@ -97,7 +97,7 @@ public class TaskResourceReleaseListener {
             return;
         }
         if (workerContext.release()) {
-            workerManager.updateWorkerContext(workerId, workerContext);
+            workerManager.updateWorkerContextById(workerContextId, workerContext);
             return;
         }
 

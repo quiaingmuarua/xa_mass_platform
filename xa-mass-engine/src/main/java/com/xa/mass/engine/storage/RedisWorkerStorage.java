@@ -8,7 +8,8 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * Redis Worker 存储实现（示例骨架，所有方法均抛出 UnsupportedOperationException）
+ * Redis-backed Worker storage placeholder.
+ * The active mainline still uses the in-memory storage implementation.
  */
 public class RedisWorkerStorage implements WorkerStorage {
 
@@ -16,25 +17,117 @@ public class RedisWorkerStorage implements WorkerStorage {
     private static final String WORKER_CONTEXT_KEY_PREFIX = "workerContext:";
     private static final String LOCKED_WORKERS_KEY = "locked_workers";
     private static final String WORKER_GROUP_INDEX_PREFIX = "worker_group:";
+
+    @SuppressWarnings("FieldCanBeLocal")
     private final Gson gson = new Gson();
 
     public RedisWorkerStorage() {
-        // TODO: 初始化Redis客户端
+        // TODO: initialize Redis client when the Redis storage path becomes active.
     }
 
-    @Override public void addWorker(Worker worker) { throw new UnsupportedOperationException("Redis storage not fully implemented yet"); }
-    @Override public Optional<Worker> getWorker(String workerId) { throw new UnsupportedOperationException("Redis storage not fully implemented yet"); }
-    @Override public boolean updateWorker(Worker worker) { throw new UnsupportedOperationException("Redis storage not fully implemented yet"); }
-    @Override public boolean deleteWorker(String workerId) { throw new UnsupportedOperationException("Redis storage not fully implemented yet"); }
-    @Override public List<Worker> getWorkersByGroupId(String workerGroupId) { throw new UnsupportedOperationException("Redis storage not fully implemented yet"); }
-    @Override public List<Worker> getAllWorkers() { throw new UnsupportedOperationException("Redis storage not fully implemented yet"); }
-    @Override public void addWorkerContext(String workerId, WorkerContext workerContext) { throw new UnsupportedOperationException("Redis storage not fully implemented yet"); }
-    @Override public Optional<WorkerContext> getWorkerContext(String workerId) { throw new UnsupportedOperationException("Redis storage not fully implemented yet"); }
-    @Override public boolean updateWorkerContext(String workerId, WorkerContext workerContext) { throw new UnsupportedOperationException("Redis storage not fully implemented yet"); }
-    @Override public boolean deleteWorkerContext(String workerId) { throw new UnsupportedOperationException("Redis storage not fully implemented yet"); }
-    @Override public List<WorkerContext> getAllWorkerContexts() { throw new UnsupportedOperationException("Redis storage not fully implemented yet"); }
-    @Override public boolean tryLockWorker(String workerId) { throw new UnsupportedOperationException("Redis storage not fully implemented yet"); }
-    @Override public void unlockWorker(String workerId) { throw new UnsupportedOperationException("Redis storage not fully implemented yet"); }
-    @Override public boolean isLocked(String workerId) { throw new UnsupportedOperationException("Redis storage not fully implemented yet"); }
-    @Override public List<String> getLockedWorkers() { throw new UnsupportedOperationException("Redis storage not fully implemented yet"); }
+    @Override
+    public void addWorker(Worker worker) {
+        throw unsupported();
+    }
+
+    @Override
+    public Optional<Worker> getWorker(String workerId) {
+        throw unsupported();
+    }
+
+    @Override
+    public boolean updateWorker(Worker worker) {
+        throw unsupported();
+    }
+
+    @Override
+    public boolean deleteWorker(String workerId) {
+        throw unsupported();
+    }
+
+    @Override
+    public List<Worker> getWorkersByGroupId(String workerGroupId) {
+        throw unsupported();
+    }
+
+    @Override
+    public List<Worker> getAllWorkers() {
+        throw unsupported();
+    }
+
+    @Override
+    public void addWorkerContext(String workerId, WorkerContext workerContext) {
+        throw unsupported();
+    }
+
+    @Override
+    public Optional<WorkerContext> getWorkerContext(String workerId) {
+        throw unsupported();
+    }
+
+    @Override
+    public List<WorkerContext> getWorkerContexts(String workerId) {
+        throw unsupported();
+    }
+
+    @Override
+    public Optional<WorkerContext> getWorkerContextById(String workerContextId) {
+        throw unsupported();
+    }
+
+    @Override
+    public boolean updateWorkerContext(String workerId, WorkerContext workerContext) {
+        throw unsupported();
+    }
+
+    @Override
+    public boolean updateWorkerContextById(String workerContextId, WorkerContext workerContext) {
+        throw unsupported();
+    }
+
+    @Override
+    public boolean deleteWorkerContext(String workerId) {
+        throw unsupported();
+    }
+
+    @Override
+    public boolean deleteWorkerContextById(String workerContextId) {
+        throw unsupported();
+    }
+
+    @Override
+    public List<WorkerContext> getAllWorkerContexts() {
+        throw unsupported();
+    }
+
+    @Override
+    public boolean tryLockWorker(String workerId) {
+        throw unsupported();
+    }
+
+    @Override
+    public void unlockWorker(String workerId) {
+        throw unsupported();
+    }
+
+    @Override
+    public boolean isLocked(String workerId) {
+        throw unsupported();
+    }
+
+    @Override
+    public List<String> getLockedWorkers() {
+        throw unsupported();
+    }
+
+    private UnsupportedOperationException unsupported() {
+        return new UnsupportedOperationException(
+                "Redis storage is not implemented yet. Active mainline uses InMemoryWorkerStorage. "
+                        + "Prefixes reserved: "
+                        + WORKER_KEY_PREFIX + ", "
+                        + WORKER_CONTEXT_KEY_PREFIX + ", "
+                        + LOCKED_WORKERS_KEY + ", "
+                        + WORKER_GROUP_INDEX_PREFIX
+        );
+    }
 }

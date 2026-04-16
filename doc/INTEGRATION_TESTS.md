@@ -34,14 +34,14 @@ Task:    NEW → READY → RUNNING → TERMINAL
                 ↘ BLOCKED          ↑
                 ↘ PAUSED ──────────┘
 
-TaskMsg: INIT → BINDING → SENT → RUNNING → SUCCESS
+TaskMsg: INIT → BINDING → ASSIGNED → RUNNING → SUCCESS
                                          ↘ FAILED
                                          ↘ EXPIRED
 ```
 
 Unit tests verify each state machine in isolation. But only integration tests can catch:
 
-- Task reaches `TERMINAL` while some `TaskMsg` rows are still `SENT` (counter mismatch)
+- Task reaches `TERMINAL` while some `TaskMsg` rows are still `ASSIGNED` (counter mismatch)
 - `terminalReason` is `ALL_MESSAGES_SUCCEEDED` but a `FAILED` message exists (metadata corruption)
 - `peakAssignedWorkerCount` is non-zero but no `workerId` was ever written to any `TaskMsg` (assignment gap)
 - A `PAUSED` task that received callbacks while paused never closes to `TERMINAL` (state convergence failure)
@@ -78,7 +78,7 @@ Default fixture files used by most tests:
 | `mass.mock.data.worker-contexts` | `mock/test_mock_worker_contexts.json` — matching worker contexts |
 | `mass.mock.data.worker-contexts` | `mock/test_mock_worker_contexts_empty.json` — 0 worker contexts (for delayed-worker tests) |
 | `mass.mock.data.tasks` | `mock/test_mock_tasks.json` — no pre-seeded tasks |
-| `mass.mock.data.rules` | `mock/test_mock_rules.json` — 1 rule: country=us → demoApp |
+| `mass.mock.data.rules` | `mock/test_mock_rules.json` — empty array; keeps the current default worker-match rules unless the test overrides `RuleManager` explicitly |
 
 Key `@SpringBootTest` properties:
 
@@ -161,7 +161,7 @@ Expected result: `BUILD SUCCESS`, 0 failures.
 **Setup**: auto-start=false, 2 workers, 2 targets
 
 **Scenario**:
-1. Approve task → wait for `RUNNING` with 2 `SENT` messages
+1. Approve task → wait for `RUNNING` with 2 `ASSIGNED` messages
 2. Send `SUCCESS` for `messages[0]` via `ReplayClient` directly to the gateway WebSocket
 3. Send `FAILED` for `messages[1]` via `ReplayClient` directly to the gateway WebSocket
 4. Poll until `TERMINAL`
@@ -198,7 +198,7 @@ Expected result: `BUILD SUCCESS`, 0 failures.
 **Setup**: auto-start=false, 2 workers, 2 targets
 
 **Scenario**:
-1. Approve → wait for `RUNNING` with 2 `SENT` messages
+1. Approve → wait for `RUNNING` with 2 `ASSIGNED` messages
 2. `POST /status/api/tasks/{id}/pause` → `PAUSED`
 3. Send `SUCCESS` for both messages via `ReplayClient` directly to the gateway — **no resume called**
 4. Poll until `TERMINAL`
@@ -241,7 +241,7 @@ Expected result: `BUILD SUCCESS`, 0 failures.
 **Setup**: auto-start=false, 2 workers seeded (for assignment), 2 targets
 
 **Scenario**:
-1. Approve → wait for `RUNNING`, 2 messages at `SENT`
+1. Approve → wait for `RUNNING`, 2 messages at `ASSIGNED`
 2. `POST /status/api/tasks/{id}/terminate` before any client callback
 3. `DELETE /status/api/tasks/{id}` after terminal
 4. `GET /status/api/tasks/{id}` returns 404
@@ -249,7 +249,7 @@ Expected result: `BUILD SUCCESS`, 0 failures.
 **Assertions**:
 - `terminalReason` reflects manual cancel (`MANUAL_CANCELLED`)
 - `taskSuccessNumber = 0` (no callbacks processed)
-- Pending `SENT` messages are drained to `EXPIRED` by `cancelPendingMessages()` on terminal transition
+- Pending `ASSIGNED` messages are drained to `EXPIRED` by `cancelPendingMessages()` on terminal transition
 - Delete succeeds; subsequent GET returns 404
 
 ---
@@ -403,6 +403,7 @@ Expected result: `BUILD SUCCESS`, 0 failures.
 - The matched message has a non-null `workerId`
 - The matched `workerContextId` belongs to the worker context whose `country` attribute equals `taskRoutingCountryCode`
 - Proves attribute-based routing works end-to-end through QLExpress rules
+- The test clears the default rules in code and injects its own explicit worker-context-attribute rule set, so it does not depend on the shared mock rule fixture
 
 ---
 
@@ -429,9 +430,9 @@ Expected result: `BUILD SUCCESS`, 0 failures.
 
 | Path | Tested by |
 |------|-----------|
-| `INIT → SENT → SUCCESS` | 4.1, 4.5, 4.6, 4.8, 4.9, 4.10, 4.12–4.16 |
-| `INIT → SENT → FAILED` | 4.2, 4.3 (one of two) |
-| `INIT → SENT → EXPIRED` (task terminated before callback) | 4.7, 4.15 |
+| `INIT → ASSIGNED → SUCCESS` | 4.1, 4.5, 4.6, 4.8, 4.9, 4.10, 4.12–4.16 |
+| `INIT → ASSIGNED → FAILED` | 4.2, 4.3 (one of two) |
+| `INIT → ASSIGNED → EXPIRED` (task terminated before callback) | 4.7, 4.15 |
 | Duplicate result idempotency | 4.8 |
 | Mixed SUCCESS + FAILED in same task | 4.3 |
 | Multi-round: worker reused after each batch completes | 4.13 |
@@ -561,11 +562,11 @@ The following paths are **not yet covered** by any integration test. They are li
 
 **Outline**:
 ```
-1. Approve → wait RUNNING, 2 messages SENT
+1. Approve → wait RUNNING, 2 messages ASSIGNED
 2. POST /terminate → TERMINAL
 3. Submit SUCCESS callback for both messages via ReplayClient
 4. Assert task stays TERMINAL, taskSuccessNumber stays 0
-5. Assert messages stay SENT (not flipped to SUCCESS)
+5. Assert messages stay ASSIGNED (not flipped to SUCCESS)
 ```
 
 ---
@@ -581,9 +582,9 @@ The following paths are **not yet covered** by any integration test. They are li
 **Outline**:
 ```
 1. auto-start=false, 2 workers, 2 targets
-2. Approve → wait RUNNING, messages at SENT
+2. Approve → wait RUNNING, messages at ASSIGNED
 3. Disconnect all MassWebSocketClientImpl instances
-4. Assert task stays RUNNING (messages stay SENT)
+4. Assert task stays RUNNING (messages stay ASSIGNED)
 5. Assert peakAssignedWorkerCount unchanged
 ```
 
@@ -649,7 +650,7 @@ This test intentionally documents the known limitation: the task does not self-h
 
 **Missing path**: a `TaskMsg` that times out and moves to `EXPIRED` instead of `SUCCESS`/`FAILED`
 
-**Why it matters**: `TaskMsgStatus.canTransitionTo(EXPIRED)` allows transitions from `SENT` and `RUNNING`. No code path currently triggers this in production. A test would first require implementing the timeout mechanism.
+**Why it matters**: `TaskMsgStatus.canTransitionTo(EXPIRED)` allows transitions from `ASSIGNED` and `RUNNING`. No code path currently triggers this in production. A test would first require implementing the timeout mechanism.
 
 ---
 

@@ -189,7 +189,7 @@ class TaskManagerLifecycleTest {
         List<TaskMsg> messages = taskManager.getTaskMessages(task.getTid());
         messages.forEach(msg -> {
             msg.transitionTo(TaskMsgStatus.BINDING);
-            msg.markAsSent();
+            msg.markAsAssigned();
             taskManager.updateTaskMessage(task.getTid(), msg);
         });
 
@@ -212,7 +212,7 @@ class TaskManagerLifecycleTest {
 
         TaskMsg message = taskManager.getTaskMessages(task.getTid()).get(0);
         message.transitionTo(TaskMsgStatus.BINDING);
-        message.markAsSent();
+        message.markAsAssigned();
         message.setMaxRetryCount(0);
         taskManager.updateTaskMessage(task.getTid(), message);
 
@@ -234,7 +234,7 @@ class TaskManagerLifecycleTest {
         TaskMsg message = taskManager.getTaskMessages(task.getTid()).get(0);
         String msgId = message.getMsgId();
         message.transitionTo(TaskMsgStatus.BINDING);
-        message.markAsSent();
+        message.markAsAssigned();
         message.setWorkerId("worker-1");
         message.setWorkerContextId("worker-context-1");
         taskManager.updateTaskMessage(task.getTid(), message);
@@ -292,7 +292,7 @@ class TaskManagerLifecycleTest {
 
         TaskMsg message = taskManager.getTaskMessages(task.getTid()).get(0);
         message.transitionTo(TaskMsgStatus.BINDING);
-        message.markAsSent();
+        message.markAsAssigned();
         taskManager.updateTaskMessage(task.getTid(), message);
 
         assertTrue(taskManager.pauseTask(task.getTid()));
@@ -319,7 +319,7 @@ class TaskManagerLifecycleTest {
         List<TaskMsg> messages = taskManager.getTaskMessages(task.getTid());
         messages.forEach(msg -> {
             msg.transitionTo(TaskMsgStatus.BINDING);
-            msg.markAsSent();
+            msg.markAsAssigned();
             taskManager.updateTaskMessage(task.getTid(), msg);
         });
         taskManager.handleTaskMessageResult(task.getTid(), messages.get(0).getMsgId(), true, "done-1");
@@ -346,7 +346,7 @@ class TaskManagerLifecycleTest {
 
         TaskMsg message = taskManager.getTaskMessages(task.getTid()).get(0);
         message.transitionTo(TaskMsgStatus.BINDING);
-        message.markAsSent();
+        message.markAsAssigned();
         taskManager.updateTaskMessage(task.getTid(), message);
 
         assertTrue(taskManager.cancelTask(task.getTid()));
@@ -367,7 +367,7 @@ class TaskManagerLifecycleTest {
 
         TaskMsg message = taskManager.getTaskMessages(task.getTid()).get(0);
         message.transitionTo(TaskMsgStatus.BINDING);
-        message.markAsSent();
+        message.markAsAssigned();
         taskManager.updateTaskMessage(task.getTid(), message);
 
         assertTrue(taskManager.pauseTask(task.getTid()));
@@ -394,7 +394,7 @@ class TaskManagerLifecycleTest {
 
         TaskMsg message = taskManager.getTaskMessages(task.getTid()).get(0);
         message.transitionTo(TaskMsgStatus.BINDING);
-        message.markAsSent();
+        message.markAsAssigned();
         taskManager.updateTaskMessage(task.getTid(), message);
 
         assertTrue(taskManager.cancelTask(task.getTid()));
@@ -407,7 +407,7 @@ class TaskManagerLifecycleTest {
         assertEquals(TaskStatus.TERMINAL, updatedTask.getStatus());
         assertEquals(TaskTerminalReason.MANUAL_CANCELLED, updatedTask.getTerminalReason());
         assertEquals(0, updatedTask.getTaskSuccessNumber());
-        // cancelTask now drains in-flight SENT messages to EXPIRED
+        // cancelTask now drains in-flight ASSIGNED messages to EXPIRED
         assertEquals(TaskMsgStatus.EXPIRED, updatedMessage.getStatus());
         assertEquals(0, scheduler.completedTaskMsgCount);
         assertEquals(0, scheduler.failedTaskMsgCount);
@@ -421,7 +421,7 @@ class TaskManagerLifecycleTest {
 
         TaskMsg message = taskManager.getTaskMessages(task.getTid()).get(0);
         message.transitionTo(TaskMsgStatus.BINDING);
-        message.markAsSent();
+        message.markAsAssigned();
         taskManager.updateTaskMessage(task.getTid(), message);
 
         assertTrue(taskManager.handleTaskMessageResult(task.getTid(), message.getMsgId(), true, "done-once"));
@@ -448,7 +448,7 @@ class TaskManagerLifecycleTest {
         List<TaskMsg> messages = taskManager.getTaskMessages(task.getTid());
         messages.forEach(msg -> {
             msg.transitionTo(TaskMsgStatus.BINDING);
-            msg.markAsSent();
+            msg.markAsAssigned();
             msg.setMaxRetryCount(0);
             taskManager.updateTaskMessage(task.getTid(), msg);
         });
@@ -471,7 +471,7 @@ class TaskManagerLifecycleTest {
         List<TaskMsg> messages = taskManager.getTaskMessages(task.getTid());
         messages.forEach(msg -> {
             msg.transitionTo(TaskMsgStatus.BINDING);
-            msg.markAsSent();
+            msg.markAsAssigned();
             msg.setMaxRetryCount(0);
             taskManager.updateTaskMessage(task.getTid(), msg);
         });
@@ -494,7 +494,7 @@ class TaskManagerLifecycleTest {
         List<TaskMsg> messages = taskManager.getTaskMessages(task.getTid());
         messages.forEach(msg -> {
             msg.transitionTo(TaskMsgStatus.BINDING);
-            msg.markAsSent();
+            msg.markAsAssigned();
             taskManager.updateTaskMessage(task.getTid(), msg);
         });
 
@@ -522,7 +522,7 @@ class TaskManagerLifecycleTest {
         List<TaskMsg> messages = taskManager.getTaskMessages(task.getTid());
         messages.forEach(msg -> {
             msg.transitionTo(TaskMsgStatus.BINDING);
-            msg.markAsSent();
+            msg.markAsAssigned();
             taskManager.updateTaskMessage(task.getTid(), msg);
         });
         assertTrue(taskManager.handleTaskMessageResult(task.getTid(), messages.get(0).getMsgId(), true, "done-1"));
@@ -551,7 +551,7 @@ class TaskManagerLifecycleTest {
 
         TaskMsg message = taskManager.getTaskMessages(task.getTid()).get(0);
         message.transitionTo(TaskMsgStatus.BINDING);
-        message.markAsSent();
+        message.markAsAssigned();
         taskManager.updateTaskMessage(task.getTid(), message);
         assertTrue(taskManager.handleTaskMessageResult(task.getTid(), message.getMsgId(), true, "done"));
 
@@ -577,7 +577,7 @@ class TaskManagerLifecycleTest {
         List<TaskMsg> messages = taskManager.getTaskMessages(task.getTid());
         messages.forEach(msg -> {
             msg.transitionTo(TaskMsgStatus.BINDING);
-            msg.markAsSent();
+            msg.markAsAssigned();
             taskManager.updateTaskMessage(task.getTid(), msg);
         });
         assertTrue(taskManager.handleTaskMessageResult(task.getTid(), messages.get(0).getMsgId(), true, "done"));
@@ -611,7 +611,7 @@ class TaskManagerLifecycleTest {
 
         TaskMsg message = policyAwareManager.getTaskMessages(task.getTid()).get(0);
         message.transitionTo(TaskMsgStatus.BINDING);
-        message.markAsSent();
+        message.markAsAssigned();
         policyAwareManager.updateTaskMessage(task.getTid(), message);
         assertTrue(policyAwareManager.handleTaskMessageResult(task.getTid(), message.getMsgId(), true, "done"));
 
@@ -693,7 +693,7 @@ class TaskManagerLifecycleTest {
     // ---- Bug2: TaskMsg.EXPIRED — expireTaskMessage ----
 
     @Test
-    void expireSentMessageTransitionsToExpiredAndTaskAutoCompletes() {
+    void expireAssignedMessageTransitionsToExpiredAndTaskAutoCompletes() {
         Task task = taskManager.createTask(buildRequest("expire-msg", List.of("alpha")));
         taskManager.approveTask(task.getTid());
         task.setStatus(TaskStatus.RUNNING);
@@ -701,7 +701,7 @@ class TaskManagerLifecycleTest {
 
         TaskMsg message = taskManager.getTaskMessages(task.getTid()).get(0);
         message.transitionTo(TaskMsgStatus.BINDING);
-        message.markAsSent(); // SENT
+        message.markAsAssigned(); // ASSIGNED
         taskManager.updateTaskMessage(task.getTid(), message);
 
         assertTrue(taskManager.expireTaskMessage(task.getTid(), message.getMsgId()));
@@ -724,7 +724,7 @@ class TaskManagerLifecycleTest {
 
         TaskMsg message = taskManager.getTaskMessages(task.getTid()).get(0);
         message.transitionTo(TaskMsgStatus.BINDING);
-        message.markAsSent();
+        message.markAsAssigned();
         message.markAsRunning(); // RUNNING
         taskManager.updateTaskMessage(task.getTid(), message);
 
@@ -759,9 +759,9 @@ class TaskManagerLifecycleTest {
         // msg[1]: advance to BINDING
         messages.get(1).transitionTo(TaskMsgStatus.BINDING);
         taskManager.updateTaskMessage(task.getTid(), messages.get(1));
-        // msg[2]: advance to SENT
+        // msg[2]: advance to ASSIGNED
         messages.get(2).transitionTo(TaskMsgStatus.BINDING);
-        messages.get(2).markAsSent();
+        messages.get(2).markAsAssigned();
         taskManager.updateTaskMessage(task.getTid(), messages.get(2));
 
         assertTrue(taskManager.cancelTask(task.getTid()));
@@ -770,12 +770,12 @@ class TaskManagerLifecycleTest {
         TaskMsg msg1 = taskManager.getTaskMessage(task.getTid(), messages.get(1).getMsgId());
         TaskMsg msg2 = taskManager.getTaskMessage(task.getTid(), messages.get(2).getMsgId());
 
-        // INIT and BINDING → FAILED; SENT → EXPIRED
+        // INIT and BINDING → FAILED; ASSIGNED → EXPIRED
         assertTrue(msg0.isCompleted(), "INIT message should be in final state after cancel");
         assertEquals(TaskMsgStatus.FAILED, msg0.getStatus());
         assertTrue(msg1.isCompleted(), "BINDING message should be in final state after cancel");
         assertEquals(TaskMsgStatus.FAILED, msg1.getStatus());
-        assertTrue(msg2.isCompleted(), "SENT message should be in final state after cancel");
+        assertTrue(msg2.isCompleted(), "ASSIGNED message should be in final state after cancel");
         assertEquals(TaskMsgStatus.EXPIRED, msg2.getStatus());
     }
 

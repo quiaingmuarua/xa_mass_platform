@@ -8,6 +8,7 @@ import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.model.AssignmentRecord;
+import com.xa.mass.engine.model.MatchedWorkerContext;
 import com.xa.mass.engine.rules.RuleDefinition;
 import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.engine.rules.RuleType;
@@ -53,10 +54,11 @@ class RuleBasedTaskWorkerMatchingStrategyTest {
         workerManager.addWorkerContext(matchingWorker.getWorkerId(), workerContext("worker-us", "ctx-us", "shared", "us"));
         workerManager.addWorkerContext(nonMatchingWorker.getWorkerId(), workerContext("worker-gb", "ctx-gb", "shared", "gb"));
 
-        List<Worker> matched = strategy.matchWorkers(task, 2);
+        List<MatchedWorkerContext> matched = strategy.matchWorkers(task, 2);
 
         assertEquals(1, matched.size());
         assertEquals("worker-us", matched.get(0).getWorkerId());
+        assertEquals("ctx-us", matched.get(0).getWorkerContextId());
         AssignmentRecord record = recordService.getRecordsByTaskId("task-1").stream()
                 .filter(item -> "worker-us".equals(item.getWorkerId()))
                 .findFirst()
@@ -88,7 +90,7 @@ class RuleBasedTaskWorkerMatchingStrategyTest {
         workerManager.addWorkerContext(w.getWorkerId(), workerContext("worker-locked", "ctx-locked", "shared", "us"));
         assertTrue(workerManager.tryLockWorker(w.getWorkerId()));
 
-        List<Worker> matched = strategy.matchWorkers(task, 1);
+        List<MatchedWorkerContext> matched = strategy.matchWorkers(task, 1);
 
         assertTrue(matched.isEmpty());
         AssignmentRecord record = recordService.getRecordsByTaskId("task-locked").stream()
@@ -96,6 +98,38 @@ class RuleBasedTaskWorkerMatchingStrategyTest {
                 .findFirst()
                 .orElseThrow();
         assertTrue(record.getWorkerSnapshot().isWorkerLocked());
+    }
+
+    @Test
+    void choosesMatchingContextWhenWorkerHasMultipleContexts() {
+        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
+        RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(new InMemoryRuleStorage());
+        AssignmentRecordService recordService = new AssignmentRecordService();
+        RuleBasedTaskWorkerMatchingStrategy strategy =
+                new RuleBasedTaskWorkerMatchingStrategy(ruleManager, workerManager, recordService);
+
+        ruleManager.addDefaultRules(List.of(
+                rule("basic_worker_check", "isWorkerAvailable == true && isWorkerLocked == false"),
+                rule("workerContext_status_check", "isWorkerContextAllocatable == true && isWorkerContextAvailable == true"),
+                rule("workerContext_attribute_country", "workerContextAttributes['country'] == taskRoutingCountryCode")
+        ));
+
+        Task task = new Task();
+        task.setTid("task-multi");
+        task.setProject("demoApp");
+        task.setTaskRoutingCountryCode("us");
+        task.setStatus(TaskStatus.READY);
+
+        Worker worker = worker("worker-multi", "pool-east");
+        workerManager.addWorker(worker);
+        workerManager.addWorkerContext(worker.getWorkerId(), workerContext("worker-multi", "ctx-gb", "shared", "gb"));
+        workerManager.addWorkerContext(worker.getWorkerId(), workerContext("worker-multi", "ctx-us", "shared", "us"));
+
+        List<MatchedWorkerContext> matched = strategy.matchWorkers(task, 1);
+
+        assertEquals(1, matched.size());
+        assertEquals("worker-multi", matched.get(0).getWorkerId());
+        assertEquals("ctx-us", matched.get(0).getWorkerContextId());
     }
 
     private RuleDefinition rule(String id, String content) {

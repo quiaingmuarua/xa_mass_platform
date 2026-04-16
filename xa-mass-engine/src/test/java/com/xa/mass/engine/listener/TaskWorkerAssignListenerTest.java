@@ -4,8 +4,10 @@ import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.Worker;
+import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.WorkerManager;
+import com.xa.mass.engine.model.MatchedWorkerContext;
 import com.xa.mass.engine.strategy.TaskWorkerMatchingStrategy;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -44,10 +46,11 @@ class TaskWorkerAssignListenerTest {
     void onTaskAssignTransitionsReadyTaskToRunningAndDispatches() {
         Task task = createTask(10, 5, 1, TaskStatus.READY);
         Worker worker = createWorker("worker-1");
+        MatchedWorkerContext matchedWorker = matched(worker, "ctx-1");
 
         when(taskManager.countPendingDispatchableMessages(task.getTid())).thenReturn(10);
-        when(matchingStrategy.matchWorkers(same(task), eq(2))).thenReturn(List.of(worker));
-        when(msgAssignListener.onMsgAssign(same(task), eq(List.of(worker)))).thenReturn(List.of(msg("m1", "worker-1")));
+        when(matchingStrategy.matchWorkers(same(task), eq(2))).thenReturn(List.of(matchedWorker));
+        when(msgAssignListener.onMsgAssign(same(task), eq(List.of(matchedWorker)))).thenReturn(List.of(msg("m1", "worker-1")));
 
         assertTrue(listener.onTaskAssign(task));
 
@@ -55,7 +58,7 @@ class TaskWorkerAssignListenerTest {
         assertEquals(1, task.getPeakAssignedWorkerCount());
         verify(matchingStrategy).matchWorkers(same(task), eq(2));
         verify(taskManager).updateTask(same(task));
-        verify(msgAssignListener).onMsgAssign(same(task), eq(List.of(worker)));
+        verify(msgAssignListener).onMsgAssign(same(task), eq(List.of(matchedWorker)));
     }
 
     @Test
@@ -65,10 +68,14 @@ class TaskWorkerAssignListenerTest {
         Worker worker2 = createWorker("worker-2");
         Worker worker3 = createWorker("worker-3");
         Worker worker4 = createWorker("worker-4");
+        MatchedWorkerContext matched1 = matched(worker1, "ctx-1");
+        MatchedWorkerContext matched2 = matched(worker2, "ctx-2");
+        MatchedWorkerContext matched3 = matched(worker3, "ctx-3");
+        MatchedWorkerContext matched4 = matched(worker4, "ctx-4");
 
         when(taskManager.countPendingDispatchableMessages(task.getTid())).thenReturn(3);
-        when(matchingStrategy.matchWorkers(same(task), eq(4))).thenReturn(List.of(worker1, worker2, worker3, worker4));
-        when(msgAssignListener.onMsgAssign(same(task), eq(List.of(worker1)))).thenReturn(List.of(msg("m1", "worker-1")));
+        when(matchingStrategy.matchWorkers(same(task), eq(4))).thenReturn(List.of(matched1, matched2, matched3, matched4));
+        when(msgAssignListener.onMsgAssign(same(task), eq(List.of(matched1)))).thenReturn(List.of(msg("m1", "worker-1")));
 
         assertTrue(listener.onTaskAssign(task));
 
@@ -76,7 +83,7 @@ class TaskWorkerAssignListenerTest {
         assertEquals(TaskStatus.RUNNING, task.getStatus());
         assertEquals(1, task.getPeakAssignedWorkerCount());
         verify(taskManager).updateTask(same(task));
-        verify(msgAssignListener).onMsgAssign(same(task), eq(List.of(worker1)));
+        verify(msgAssignListener).onMsgAssign(same(task), eq(List.of(matched1)));
         verify(workerManager).unlockWorker("worker-2");
         verify(workerManager).unlockWorker("worker-3");
         verify(workerManager).unlockWorker("worker-4");
@@ -102,11 +109,12 @@ class TaskWorkerAssignListenerTest {
     void onTaskAssignSkipsDispatchIfTaskLeavesReadyDuringMatching() {
         Task task = createTask(10, 5, 1, TaskStatus.READY);
         Worker worker = createWorker("worker-1");
+        MatchedWorkerContext matchedWorker = matched(worker, "ctx-1");
 
         when(taskManager.countPendingDispatchableMessages(task.getTid())).thenReturn(10);
         when(matchingStrategy.matchWorkers(same(task), eq(2))).thenAnswer(invocation -> {
             task.setStatus(TaskStatus.PAUSED);
-            return List.of(worker);
+            return List.of(matchedWorker);
         });
 
         assertFalse(listener.onTaskAssign(task));
@@ -123,9 +131,10 @@ class TaskWorkerAssignListenerTest {
     void onTaskAssignKeepsTaskReadyUntilMinimumWorkerCountIsMet() {
         Task task = createTask(1, 1, 2, TaskStatus.READY);
         Worker worker = createWorker("worker-1");
+        MatchedWorkerContext matchedWorker = matched(worker, "ctx-1");
 
         when(taskManager.countPendingDispatchableMessages(task.getTid())).thenReturn(1);
-        when(matchingStrategy.matchWorkers(same(task), eq(2))).thenReturn(List.of(worker));
+        when(matchingStrategy.matchWorkers(same(task), eq(2))).thenReturn(List.of(matchedWorker));
 
         assertFalse(listener.onTaskAssign(task));
 
@@ -141,12 +150,13 @@ class TaskWorkerAssignListenerTest {
     void matchWorkersWithRulesDelegatesToInjectedStrategy() {
         Task task = createTask(10, 5, 1, TaskStatus.READY);
         Worker worker = createWorker("worker-1");
+        MatchedWorkerContext matchedWorker = matched(worker, "ctx-1");
 
-        when(matchingStrategy.matchWorkers(same(task), eq(3))).thenReturn(List.of(worker));
+        when(matchingStrategy.matchWorkers(same(task), eq(3))).thenReturn(List.of(matchedWorker));
 
-        List<Worker> matched = listener.matchWorkersWithRules(task, 3);
+        List<MatchedWorkerContext> matched = listener.matchWorkersWithRules(task, 3);
 
-        assertEquals(List.of(worker), matched);
+        assertEquals(List.of(matchedWorker), matched);
         verify(matchingStrategy).matchWorkers(same(task), eq(3));
     }
 
@@ -154,17 +164,18 @@ class TaskWorkerAssignListenerTest {
     void runningTaskCanBeReplenishedWithoutLeavingRunning() {
         Task task = createTask(5, 2, 1, TaskStatus.RUNNING);
         Worker worker = createWorker("worker-1");
+        MatchedWorkerContext matchedWorker = matched(worker, "ctx-1");
 
         when(taskManager.countPendingDispatchableMessages(task.getTid())).thenReturn(2);
-        when(matchingStrategy.matchWorkers(same(task), eq(1))).thenReturn(List.of(worker));
-        when(msgAssignListener.onMsgAssign(same(task), eq(List.of(worker)))).thenReturn(List.of(msg("m1", "worker-1")));
+        when(matchingStrategy.matchWorkers(same(task), eq(1))).thenReturn(List.of(matchedWorker));
+        when(msgAssignListener.onMsgAssign(same(task), eq(List.of(matchedWorker)))).thenReturn(List.of(msg("m1", "worker-1")));
 
         assertTrue(listener.onTaskAssign(task));
 
         assertEquals(TaskStatus.RUNNING, task.getStatus());
         assertEquals(1, task.getPeakAssignedWorkerCount());
         verify(taskManager).updateTask(same(task));
-        verify(msgAssignListener).onMsgAssign(same(task), eq(List.of(worker)));
+        verify(msgAssignListener).onMsgAssign(same(task), eq(List.of(matchedWorker)));
     }
 
     private Task createTask(int targetNumber, int batchSize, int minWorkerCount, TaskStatus status) {
@@ -190,5 +201,12 @@ class TaskWorkerAssignListenerTest {
         TaskMsg taskMsg = new TaskMsg(msgId, "task-1", "target");
         taskMsg.setWorkerId(workerId);
         return taskMsg;
+    }
+
+    private MatchedWorkerContext matched(Worker worker, String workerContextId) {
+        WorkerContext workerContext = new WorkerContext();
+        workerContext.setWorkerId(worker.getWorkerId());
+        workerContext.setWorkerContextId(workerContextId);
+        return new MatchedWorkerContext(worker, workerContext);
     }
 }

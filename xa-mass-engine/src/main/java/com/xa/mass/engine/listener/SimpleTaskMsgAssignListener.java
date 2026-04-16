@@ -1,14 +1,15 @@
 package com.xa.mass.engine.listener;
 
 import com.xa.mass.base.enums.assignment.AssignmentResult;
-import com.xa.mass.base.enums.worker.WorkerContextStatus;
 import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
+import com.xa.mass.base.enums.worker.WorkerContextStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.WorkerManager;
+import com.xa.mass.engine.model.MatchedWorkerContext;
 import com.xa.mass.engine.service.AssignmentRecordService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -45,9 +46,9 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
     }
 
     @Override
-    public List<TaskMsg> onMsgAssign(Task task, List<Worker> workers) {
-        if (workers == null || workers.isEmpty()) {
-            log.info("[MsgAssign] Skip task {} because no matched workers were provided", task.getTid());
+    public List<TaskMsg> onMsgAssign(Task task, List<MatchedWorkerContext> matchedWorkers) {
+        if (matchedWorkers == null || matchedWorkers.isEmpty()) {
+            log.info("[MsgAssign] Skip task {} because no matched worker-context candidates were provided", task.getTid());
             return List.of();
         }
 
@@ -66,22 +67,24 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
         List<TaskMsg> pushQueue = new ArrayList<>();
         List<DispatchSlot> dispatchSlots = new ArrayList<>();
 
-        log.info("[MsgAssign] Starting assignment for task {} with {} workers, totalMessages={}, perWorkerBatchLimit={}",
-                task.getTid(), workers.size(), totalMessages, perWorkerBatchLimit);
+        log.info("[MsgAssign] Starting assignment for task {} with {} matched candidates, totalMessages={}, perWorkerBatchLimit={}",
+                task.getTid(), matchedWorkers.size(), totalMessages, perWorkerBatchLimit);
 
-        for (int i = 0; i < workers.size() && cursor < totalMessages; i++) {
-            Worker worker = workers.get(i);
+        for (int i = 0; i < matchedWorkers.size() && cursor < totalMessages; i++) {
+            MatchedWorkerContext matchedWorker = matchedWorkers.get(i);
+            Worker worker = matchedWorker.getWorker();
+            WorkerContext workerContext = matchedWorker.getWorkerContext();
             String currentBatchId = "batch-" + batchId;
-            WorkerContext workerContext = workerManager.getWorkerContext(worker.getWorkerId());
-            if (!prepareWorkerContextForDispatch(task, worker, workerContext)) {
-                log.warn("[MsgAssign] Skip worker {} for task {} because workerContext state is not dispatchable",
-                        worker.getWorkerId(), task.getTid());
+            if (!prepareWorkerContextForDispatch(task, workerContext)) {
+                log.warn("[MsgAssign] Skip worker {} context {} for task {} because workerContext state is not dispatchable",
+                        worker.getWorkerId(),
+                        workerContext != null ? workerContext.getWorkerContextId() : "null",
+                        task.getTid());
                 workerManager.unlockWorker(worker.getWorkerId());
                 batchId++;
                 continue;
             }
-            String workerContextId = workerContext != null ? workerContext.getWorkerContextId() : null;
-            dispatchSlots.add(new DispatchSlot(worker, workerContext, workerContextId, currentBatchId));
+            dispatchSlots.add(new DispatchSlot(worker, workerContext, currentBatchId));
             batchId++;
         }
 
@@ -133,14 +136,12 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
     private static final class DispatchSlot {
         private final Worker worker;
         private final WorkerContext workerContext;
-        private final String workerContextId;
         private final String batchId;
         private int assignedCount;
 
-        private DispatchSlot(Worker worker, WorkerContext workerContext, String workerContextId, String batchId) {
+        private DispatchSlot(Worker worker, WorkerContext workerContext, String batchId) {
             this.worker = worker;
             this.workerContext = workerContext;
-            this.workerContextId = workerContextId;
             this.batchId = batchId;
         }
 
@@ -153,7 +154,7 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
         }
 
         private String workerContextId() {
-            return workerContextId;
+            return workerContext != null ? workerContext.getWorkerContextId() : null;
         }
 
         private String batchId() {
@@ -184,10 +185,10 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
         taskMsg.setWorkerId(workerId);
         taskMsg.setWorkerContextId(workerContextId);
         taskMsg.setBatchId(batchId);
-        return taskMsg.markAsSent();
+        return taskMsg.markAsAssigned();
     }
 
-    private boolean prepareWorkerContextForDispatch(Task task, Worker worker, WorkerContext workerContext) {
+    private boolean prepareWorkerContextForDispatch(Task task, WorkerContext workerContext) {
         if (workerContext == null) {
             return true;
         }
@@ -200,7 +201,8 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
             }
             changed = true;
         }
-        if (workerContext.getStatus() == WorkerContextStatus.RESERVED && taskId.equals(workerContext.getLastBindTaskId())) {
+        if (workerContext.getStatus() == WorkerContextStatus.RESERVED
+                && taskId.equals(workerContext.getLastBindTaskId())) {
             if (!workerContext.startOccupying()) {
                 return false;
             }
@@ -213,6 +215,6 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
             return false;
         }
 
-        return !changed || workerManager.updateWorkerContext(worker.getWorkerId(), workerContext);
+        return !changed || workerManager.updateWorkerContextById(workerContext.getWorkerContextId(), workerContext);
     }
 }

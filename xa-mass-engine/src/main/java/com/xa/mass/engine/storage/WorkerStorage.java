@@ -21,8 +21,12 @@ public interface WorkerStorage {
 
     void addWorkerContext(String workerId, WorkerContext workerContext);
     Optional<WorkerContext> getWorkerContext(String workerId);
+    List<WorkerContext> getWorkerContexts(String workerId);
+    Optional<WorkerContext> getWorkerContextById(String workerContextId);
     boolean updateWorkerContext(String workerId, WorkerContext workerContext);
+    boolean updateWorkerContextById(String workerContextId, WorkerContext workerContext);
     boolean deleteWorkerContext(String workerId);
+    boolean deleteWorkerContextById(String workerContextId);
     List<WorkerContext> getAllWorkerContexts();
 
     boolean tryLockWorker(String workerId);

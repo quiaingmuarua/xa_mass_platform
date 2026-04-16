@@ -3,9 +3,9 @@ package com.xa.mass.engine.listener;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
-import com.xa.mass.base.model.Worker;
 import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.WorkerManager;
+import com.xa.mass.engine.model.MatchedWorkerContext;
 import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.engine.service.AssignmentRecordService;
 import com.xa.mass.engine.strategy.RuleBasedTaskWorkerMatchingStrategy;
@@ -15,6 +15,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * Listens for task assignment events and delegates worker matching to a pluggable strategy.
@@ -65,7 +66,7 @@ public class TaskWorkerAssignListener {
                 ? getRequiredStartWorkerCount(task)
                 : 1;
         int matchRequestCount = Math.max(requiredStartWorkerCount, desiredDispatchWorkerCount);
-        List<Worker> matched = matchWorkersWithRules(task, matchRequestCount);
+        List<MatchedWorkerContext> matched = matchWorkersWithRules(task, matchRequestCount);
         if (matched.isEmpty()) {
             return false;
         }
@@ -82,14 +83,14 @@ public class TaskWorkerAssignListener {
             return false;
         }
 
-        List<Worker> dispatchWorkers = matched.subList(0, Math.min(matched.size(), desiredDispatchWorkerCount));
-        if (dispatchWorkers.isEmpty()) {
+        List<MatchedWorkerContext> dispatchCandidates = matched.subList(0, Math.min(matched.size(), desiredDispatchWorkerCount));
+        if (dispatchCandidates.isEmpty()) {
             unlockWorkers(matched);
             return false;
         }
-        unlockWorkers(matched.subList(dispatchWorkers.size(), matched.size()));
+        unlockWorkers(matched.subList(dispatchCandidates.size(), matched.size()));
 
-        List<TaskMsg> dispatchedMessages = msgAssignListener.onMsgAssign(task, List.copyOf(dispatchWorkers));
+        List<TaskMsg> dispatchedMessages = msgAssignListener.onMsgAssign(task, List.copyOf(dispatchCandidates));
         long usedWorkerCount = dispatchedMessages.stream()
                 .map(TaskMsg::getWorkerId)
                 .filter(workerId -> workerId != null && !workerId.isBlank())
@@ -102,7 +103,7 @@ public class TaskWorkerAssignListener {
         task.setPeakAssignedWorkerCount(Math.max(task.getPeakAssignedWorkerCount(), (int) usedWorkerCount));
         if (initialStatus == TaskStatus.READY && !task.transitionTo(TaskStatus.RUNNING)) {
             log.warn("[WorkerAssign] Failed to transition task {} from READY to RUNNING", task.getTid());
-            unlockWorkers(dispatchWorkers);
+            unlockWorkers(dispatchCandidates);
             return false;
         }
         taskManager.updateTask(task);
@@ -112,9 +113,9 @@ public class TaskWorkerAssignListener {
     /**
      * Kept for compatibility with current tests and callers; the implementation is now strategy-based.
      */
-    List<Worker> matchWorkersWithRules(Task task, int maxWorkerCount) {
-        List<Worker> matchedWorkers = matchingStrategy.matchWorkers(task, maxWorkerCount);
-        log.info("[WorkerAssign] Strategy {} matched {} workers for task {}",
+    List<MatchedWorkerContext> matchWorkersWithRules(Task task, int maxWorkerCount) {
+        List<MatchedWorkerContext> matchedWorkers = matchingStrategy.matchWorkers(task, maxWorkerCount);
+        log.info("[WorkerAssign] Strategy {} matched {} worker-context candidates for task {}",
                 matchingStrategy.getClass().getSimpleName(), matchedWorkers.size(), task.getTid());
         return matchedWorkers;
     }
@@ -128,9 +129,12 @@ public class TaskWorkerAssignListener {
         return Math.max(task.getMinRequiredWorkerCount(), 1);
     }
 
-    private void unlockWorkers(List<Worker> workers) {
-        for (Worker worker : workers) {
-            workerManager.unlockWorker(worker.getWorkerId());
+    private void unlockWorkers(List<MatchedWorkerContext> workers) {
+        for (String workerId : workers.stream()
+                .map(MatchedWorkerContext::getWorkerId)
+                .distinct()
+                .collect(Collectors.toList())) {
+            workerManager.unlockWorker(workerId);
         }
     }
 }

@@ -104,7 +104,7 @@ class GatewayTaskResultHandlerTest {
 
         TaskMsg taskMsg = taskManager.getTaskMessages(task.getTid()).get(0);
         taskMsg.transitionTo(TaskMsgStatus.BINDING);
-        taskMsg.markAsSent();
+        taskMsg.markAsAssigned();
         taskManager.updateTaskMessage(task.getTid(), taskMsg);
         return task;
     }

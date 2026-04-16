@@ -4,6 +4,7 @@ import com.xa.mass.base.channel.tranporter.MessageTransporter;
 import com.xa.mass.base.enums.worker.WorkerContextStatus;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
+import com.xa.mass.engine.rules.RuleDefinition;
 import com.xa.mass.gateway.dispatcher.DispatcherContext;
 import com.xa.mass.gateway.dispatcher.DispatcherContextRegistry;
 import com.xa.mass.gateway.dispatcher.MessageHandlerRegistry;
@@ -285,6 +286,7 @@ public class MassApplication {
 
             ensureMockWorkerContexts(engine);
             verifyWorkerData(engine);
+            loadMockRules(config);
 
             if (root.has("tasks")) {
                 List<com.xa.mass.engine.model.TaskCreateRequestDto> taskDtos = new ArrayList<>();
@@ -324,12 +326,14 @@ public class MassApplication {
 
             for (int i = 0; i < Math.min(3, allWorkers.size()); i++) {
                 Worker worker = allWorkers.get(i);
-                WorkerContext wc = workerManager.getWorkerContext(worker.getWorkerId());
-                logger.info("Worker {}: id={}, workerGroupId={}, status={}, workerContextId={}, workerContextStatus={}",
+                List<WorkerContext> workerContexts = workerManager.getWorkerContexts(worker.getWorkerId());
+                WorkerContext wc = workerContexts.isEmpty() ? null : workerContexts.get(0);
+                logger.info("Worker {}: id={}, workerGroupId={}, status={}, workerContextCount={}, sampleWorkerContextId={}, sampleWorkerContextStatus={}",
                         i + 1,
                         worker.getWorkerId(),
                         worker.getWorkerGroupId(),
                         worker.getStatus(),
+                        workerContexts.size(),
                         wc != null ? wc.getWorkerContextId() : "null",
                         wc != null ? wc.getStatus() : "null");
             }
@@ -382,7 +386,7 @@ public class MassApplication {
         if (engine == null || worker == null || engine.getWorkerManager() == null) {
             return;
         }
-        if (engine.getWorkerManager().getWorkerContext(worker.getWorkerId()) != null) {
+        if (!engine.getWorkerManager().getWorkerContexts(worker.getWorkerId()).isEmpty()) {
             return;
         }
 
@@ -391,6 +395,37 @@ public class MassApplication {
         wc.setWorkerId(worker.getWorkerId());
         wc.setStatus(WorkerContextStatus.IDLE);
         engine.addWorkerContext(wc);
+    }
+
+    void loadMockRules(EngineConfig config) {
+        if (config == null || config.getRuleManager() == null) {
+            return;
+        }
+
+        com.google.gson.JsonObject root = config.getMockConfigRoot();
+        if (!root.has("rules")) {
+            return;
+        }
+
+        List<RuleDefinition> rules = new ArrayList<>();
+        com.google.gson.JsonElement ruleElem = root.get("rules");
+        if (ruleElem.isJsonArray()) {
+            for (com.google.gson.JsonElement dsl : ruleElem.getAsJsonArray()) {
+                rules.addAll(com.xa.mass.engine.monkey.MonkeyGenerator.generateRules(dsl.toString()));
+            }
+        } else {
+            rules.addAll(com.xa.mass.engine.monkey.MonkeyGenerator.generateRules(ruleElem.toString()));
+        }
+
+        if (rules.isEmpty()) {
+            logger.info("Mock rules config is empty; keeping existing default rules ({})",
+                    config.getRuleManager().getDefaultRules().size());
+            return;
+        }
+
+        config.getRuleManager().clear();
+        config.getRuleManager().addDefaultRules(rules);
+        logger.info("Loaded {} explicit mock rules", rules.size());
     }
 
     private List<String> normalizeSupportedProjects(Worker worker) {

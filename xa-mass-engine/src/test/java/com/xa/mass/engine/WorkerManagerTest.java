@@ -94,6 +94,8 @@ class WorkerManagerTest {
         WorkerContext found = manager.getWorkerContext("w4");
         assertNotNull(found);
         assertEquals("ctx-1", found.getWorkerContextId());
+        assertEquals(List.of(workerContext), manager.getWorkerContexts("w4"));
+        assertEquals("ctx-1", manager.getWorkerContextById("ctx-1").getWorkerContextId());
     }
 
     @Test
@@ -104,6 +106,43 @@ class WorkerManagerTest {
         manager.addWorkerContext("w5", workerContext);
         assertTrue(manager.deleteWorkerContext("w5"));
         assertNull(manager.getWorkerContext("w5"));
+    }
+
+    @Test
+    void sameWorkerCanOwnMultipleContextsWithoutOverwrite() {
+        manager.addWorker(worker("w10", "us"));
+        WorkerContext first = new WorkerContext();
+        first.setWorkerContextId("ctx-10-a");
+        first.setWorkerId("w10");
+        WorkerContext second = new WorkerContext();
+        second.setWorkerContextId("ctx-10-b");
+        second.setWorkerId("w10");
+
+        manager.addWorkerContext("w10", first);
+        manager.addWorkerContext("w10", second);
+
+        assertEquals(2, manager.getWorkerContexts("w10").size());
+        assertNotNull(manager.getWorkerContextById("ctx-10-a"));
+        assertNotNull(manager.getWorkerContextById("ctx-10-b"));
+    }
+
+    @Test
+    void compatibilityGetWorkerContextPrefersAllocatableContext() {
+        manager.addWorker(worker("w11", "us"));
+        WorkerContext blocked = new WorkerContext();
+        blocked.setWorkerContextId("ctx-11-blocked");
+        blocked.setWorkerId("w11");
+        blocked.block();
+        WorkerContext idle = new WorkerContext();
+        idle.setWorkerContextId("ctx-11-idle");
+        idle.setWorkerId("w11");
+
+        manager.addWorkerContext("w11", blocked);
+        manager.addWorkerContext("w11", idle);
+
+        WorkerContext found = manager.getWorkerContext("w11");
+        assertNotNull(found);
+        assertEquals("ctx-11-idle", found.getWorkerContextId());
     }
 
     // ---- lock ----

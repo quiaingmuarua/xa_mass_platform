@@ -39,7 +39,7 @@ For endpoint inventory, request contracts, and response shapes, use [INTERNAL_AP
 - Default `dev` startup auto-starts mock WebSocket clients through `mock.client.auto-start=true`.
 - The currently verified API happy path is:
   - `NEW -> READY -> RUNNING -> TERMINAL`
-  - `TaskMsg INIT -> SENT -> SUCCESS`
+  - `TaskMsg INIT -> ASSIGNED -> SUCCESS`
 - The pause/resume lifecycle regression is also verified:
   - `NEW -> READY -> PAUSED -> READY`
 
@@ -179,7 +179,7 @@ Verified runtime path:
 7. If no worker matches at that moment, `TaskAssignWorker` delayed-retries the task instead of letting it fall out of the assignment loop.
 8. `SimpleTaskMsgAssignListener` reuses the persisted `TaskMsg` records created during task creation.
 9. It round-robins pending `INIT` messages across matched workers and enforces `batchSize` as a per-worker cap for the current round.
-10. Each dispatched `TaskMsg` is filled with `workerId`, `workerContextId`, and `batchId`, then moved to `SENT`.
+10. Each dispatched `TaskMsg` is filled with `workerId`, `workerContextId`, and `batchId`, then moved to `ASSIGNED`.
 11. Dispatch-time worker-context ownership is explicit: assignment binds allocatable worker contexts, advances them into `OCCUPIED`, and skips non-dispatchable worker-context states.
 12. `minRequiredWorkerCount` is enforced before `READY -> RUNNING`; insufficient matched workers leave the task in `READY`.
 13. Any workers matched only to satisfy the start gate, but not needed for current message dispatch, are unlocked immediately.
@@ -211,7 +211,7 @@ Important guards:
 - `MassWebSocketClientImpl` ignores `response=true` `TASK/step` frames so mock clients do not echo server response frames back into the system
 - `TaskManager.handleTaskMessageResult(...)` ignores late non-final callbacks for tasks already closed to `TERMINAL`
 - duplicate final callbacks are treated as idempotent no-ops after the first final result is stored
-- `TaskManager.advanceTaskMsgForCompletion()` advances through `INIT -> BINDING -> SENT -> RUNNING` before final success/failure marking so state history remains coherent
+- `TaskManager.advanceTaskMsgForCompletion()` advances through `INIT -> BINDING -> ASSIGNED -> RUNNING` before final success/failure marking so state history remains coherent
 
 ### 5.4 Worker And Worker-Context Truth Sources
 

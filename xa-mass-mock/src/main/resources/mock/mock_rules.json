@@ -1,41 +1,72 @@
 [
   {
     "MODEL": "RuleDefinition",
-    "COUNT": 3,
+    "COUNT": 1,
     "FIELDS": {
-      "id": {
-        "$JOIN": [
-          "rule-",
-          "&.index"
-        ]
-      },
-      "name": {
-        "$JOIN": [
-          "瑙勫垯-",
-          "&.index"
-        ]
-      },
-      "description": {
-        "$JOIN": [
-          "鎻忚堪-",
-          "&.index"
-        ]
-      },
-      "type": null,
-      "content": {
-        "$CHOICE": [
-          "device.deviceGroupId == 'us' || device.deviceGroupId == 'gb'",
-          "device.agentVersion >= '1.0.0'",
-          "'demoApp' in device.supportedProjects"
-        ]
-      },
-      "priority": {
-        "$RANGE": [
-          1,
-          3
-        ]
-      },
+      "id": "basic_worker_check",
+      "name": "Basic worker check",
+      "description": "Worker must be online and unlocked",
+      "desc": "Worker must be online and unlocked",
+      "type": "QL_EXPRESS",
+      "content": "isWorkerAvailable == true && isWorkerLocked == false",
+      "priority": 1,
+      "enabled": true
+    }
+  },
+  {
+    "MODEL": "RuleDefinition",
+    "COUNT": 1,
+    "FIELDS": {
+      "id": "worker_context_status_check",
+      "name": "Worker context status check",
+      "description": "Worker context must be allocatable and available",
+      "desc": "Worker context must be allocatable and available",
+      "type": "QL_EXPRESS",
+      "content": "isWorkerContextAllocatable == true && isWorkerContextAvailable == true",
+      "priority": 2,
+      "enabled": true
+    }
+  },
+  {
+    "MODEL": "RuleDefinition",
+    "COUNT": 1,
+    "FIELDS": {
+      "id": "routing_country_match",
+      "name": "Routing country match",
+      "description": "Routing country must come from worker context",
+      "desc": "Routing country must come from worker context",
+      "type": "QL_EXPRESS",
+      "content": "workerContextAttributeCountryMatchesRoutingCountry == true || workerContextChannelMatchesRoutingCountry == true",
+      "priority": 3,
+      "enabled": true
+    }
+  },
+  {
+    "MODEL": "RuleDefinition",
+    "COUNT": 1,
+    "FIELDS": {
+      "id": "app_support_check",
+      "name": "App support check",
+      "description": "Worker must support the task project",
+      "desc": "Worker must support the task project",
+      "type": "QL_EXPRESS",
+      "content": "supportsProject == true",
+      "priority": 4,
+      "enabled": true
+    }
+  },
+  {
+    "MODEL": "RuleDefinition",
+    "COUNT": 1,
+    "FIELDS": {
+      "id": "worker_load_check",
+      "name": "Worker load check",
+      "description": "Worker-supported project count must stay below 10",
+      "desc": "Worker-supported project count must stay below 10",
+      "type": "QL_EXPRESS",
+      "content": "appCount < 10",
+      "priority": 5,
       "enabled": true
     }
   }
-] 
+]

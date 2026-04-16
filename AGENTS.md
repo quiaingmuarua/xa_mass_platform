@@ -1,4 +1,4 @@
-﻿# XA Mass Platform Agent Handoff
+# XA Mass Platform Agent Handoff
 
 This file is the fastest entry point for coding agents such as Claude Code, Codex, and similar tools.
 
@@ -45,6 +45,7 @@ This file is the fastest entry point for coding agents such as Claude Code, Code
 - `TaskApiMultiRoundDispatchIntegrationTest` now covers a single worker completing a multi-target task across multiple dispatch rounds when `batchSize=1`
 - `MassWebSocketClientImpl` ignores `response=true` `TASK/step` frames to avoid mock echo loops
 - `mock.client.task-result-status` can force mock result frames to `SUCCESS` or `FAILED`
+- `MassApplication.loadMockData(...)` now applies non-empty explicit mock rules from `mass.mock.data.rules`; an empty rules fixture keeps the current default worker-match rules in place
 - `Worker.attributes` and `WorkerContext.attributes` are now read-only auxiliary rule labels for matching and diagnostics only
 - `Worker.status` is the single online truth, and runtime worker lock truth now lives only in `WorkerStorage` / `WorkerManager.isLocked(...)`
 - `WorkerStatus`, `WorkerContext`, and dispatch-time worker-context binding are now stricter: null statuses are rejected, worker-context release only frees real dispatch ownership, and assignment moves worker contexts into `OCCUPIED`
@@ -376,7 +377,7 @@ Important current implementation facts:
 - `WorkerManager.getWorkersByGroupId(...)` / `WorkerStorage.getWorkersByGroupId(...)` are grouping helpers only; do not treat them as country-routing APIs.
 - `RuleBasedTaskWorkerMatchingStrategy` no longer prefilters candidates by worker `workerGroupId`; routing-country satisfaction should come from worker-context-facing signals and explicit rules.
 - `WorkerMatchContext` now exposes nested `workerAttributes` and `workerContextAttributes` maps to QLExpress rules.
-- `SimpleTaskMsgAssignListener` reuses persisted `TaskMsg` records, fills `workerId` / `workerContextId` / `batchId`, moves them to `SENT`, and now round-robins messages across workers up to `batchSize` per worker per round.
+- `SimpleTaskMsgAssignListener` reuses persisted `TaskMsg` records, fills `workerId` / `workerContextId` / `batchId`, moves them to `ASSIGNED`, and now round-robins messages across workers up to `batchSize` per worker per round.
 - `SimpleTaskMsgAssignListener` now also binds dispatchable worker contexts to the current task and advances them into `OCCUPIED`; non-dispatchable worker-context states are skipped instead of being silently reused.
 - `TaskResourceReleaseListener` now releases a worker/worker-context slot as soon as that worker has no more in-flight `TaskMsg` rows for the current task, then re-submits the still-`RUNNING` task when pending `INIT` messages remain.
 - `GatewayTaskMsgPublisher` pushes task messages downstream as `TASK/step`.
@@ -409,7 +410,7 @@ Important current implementation facts:
     - `SUCCESS_RATE_REACHED`
     - `RETRY_BUDGET_EXHAUSTED`
 - `TaskManager.handleTaskMessageResult(...)` treats duplicate final callbacks as idempotent: the first final result is kept, progress is recalculated, and scheduler callbacks are not triggered twice.
-- `TaskManager.cancelTask(...)` now drains in-flight `TaskMsg` rows during manual terminal closure: `INIT/BINDING -> FAILED`, `SENT/RUNNING -> EXPIRED`.
+- `TaskManager.cancelTask(...)` now drains in-flight `TaskMsg` rows during manual terminal closure: `INIT/BINDING -> FAILED`, `ASSIGNED/RUNNING -> EXPIRED`.
 - `GET /status/api/tasks/{taskId}` now includes `stateValidation` so API/demo surfaces can expose the same state-audit result used by SDK callers.
 - `MassApplication.loadMockData(...)` normalizes mock `supportedProjects`, lowercases `workerGroupId`, loads explicit mock `workerContexts` when present, and only auto-seeds minimal `IDLE` fallback worker contexts for workers that still have none.
 - `WorkerManager` now treats `Worker.status` as the single online truth for matching/runtime availability; gateway online/offline events update the worker model directly instead of maintaining a separate online-state registry.
@@ -419,8 +420,8 @@ Important current implementation facts:
 - `WebSocketClientStarter` now starts on `ApplicationReadyEvent` behind `mock.client.auto-start=true`, so default `dev` startup includes mock client result write-back.
 - `WebSocketClientStarter` passes `mock.client.task-result-status` into each mock client so result write-back can be forced to `SUCCESS` or `FAILED`.
 - `MassWebSocketClientImpl` now ignores `response=true` task frames to prevent mock client echo loops and duplicate result writes.
-- Verified on `2026-04-13`: API-created tasks move `NEW -> READY -> RUNNING -> TERMINAL`, and persisted `TaskMsg` rows move `INIT -> SENT -> SUCCESS` with `workerId` / `workerContextId` / `batchId`.
-- Verified on `2026-04-13`: with `mock.client.task-result-status=FAILED`, API-created tasks still move `NEW -> READY -> RUNNING -> TERMINAL`, `taskSuccessNumber` stays `0`, and persisted `TaskMsg` rows move `INIT -> SENT -> FAILED`.
+- Verified on `2026-04-13`: API-created tasks move `NEW -> READY -> RUNNING -> TERMINAL`, and persisted `TaskMsg` rows move `INIT -> ASSIGNED -> SUCCESS` with `workerId` / `workerContextId` / `batchId`.
+- Verified on `2026-04-13`: with `mock.client.task-result-status=FAILED`, API-created tasks still move `NEW -> READY -> RUNNING -> TERMINAL`, `taskSuccessNumber` stays `0`, and persisted `TaskMsg` rows move `INIT -> ASSIGNED -> FAILED`.
 - Verified on `2026-04-13`: after `RUNNING -> PAUSED`, real `TASK/step` callbacks can still finish the paused task to `TERMINAL` without requiring a manual resume.
 - Verified on `2026-04-14`: a single worker/worker-context can be reused after both normal terminal completion and manual running-task termination.
 - Verified on `2026-04-14`: a task with `minRequiredWorkerCount=2` stays `READY` with one matching worker and only advances once a second matching worker becomes available.
@@ -433,7 +434,7 @@ Important current implementation facts:
 - `DispatcherInboundHandler` sends structured JSON error frames instead of silently closing connections.
 - `MassApplication.stop()` is now idempotent, and the mock Spring Boot entry no longer adds an extra manual shutdown hook around the runtime.
 - `WebSocketServerImpl.stop()` now calls `shutdownGracefully().syncUninterruptibly()` on both EventLoopGroups so a single Ctrl-C is sufficient for clean exit.
-- `TaskManager.advanceTaskMsgForCompletion()` always advances through `INIT -> BINDING -> SENT -> RUNNING` before the final `markAsSuccess`/`markAsFailed` call, ensuring `RUNNING` appears in the state history for both success and failure paths.
+- `TaskManager.advanceTaskMsgForCompletion()` always advances through `INIT -> BINDING -> ASSIGNED -> RUNNING` before the final `markAsSuccess`/`markAsFailed` call, ensuring `RUNNING` appears in the state history for both success and failure paths.
 
 ## 6.1 Platform Model
 

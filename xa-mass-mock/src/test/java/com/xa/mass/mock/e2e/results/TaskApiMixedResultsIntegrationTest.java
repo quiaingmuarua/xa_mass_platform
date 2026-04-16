@@ -88,7 +88,7 @@ class TaskApiMixedResultsIntegrationTest extends AbstractMockE2eTest {
         TaskSnapshot runningSnapshot = waitForTaskSnapshot(taskId, "RUNNING");
         assertEquals(2, ((Number) runningSnapshot.task().get("peakAssignedWorkerCount")).intValue());
         assertEquals(2, runningSnapshot.messages().size());
-        assertTrue(runningSnapshot.messages().stream().allMatch(m -> "SENT".equals(m.get("status"))));
+        assertTrue(runningSnapshot.messages().stream().allMatch(m -> "ASSIGNED".equals(m.get("status"))));
 
         // Submit SUCCESS for the first message and FAILED for the second via the real gateway.
         Map<String, Object> firstMsg = runningSnapshot.messages().get(0);

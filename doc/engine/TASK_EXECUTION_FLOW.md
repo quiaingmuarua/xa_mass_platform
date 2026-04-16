@@ -57,7 +57,7 @@ Verified runtime path:
    - `workerId`
    - `workerContextId`
    - `batchId`
-   - status `SENT`
+   - status `ASSIGNED`
 9. `GatewayTaskMsgPublisher` pushes the task downstream as `TASK/step`.
 
 Key implementation facts:
@@ -118,7 +118,7 @@ Important guards:
 
 - `MassWebSocketClientImpl` ignores `response=true` `TASK/step` frames so the mock side does not generate echo loops
 - duplicate final callbacks are accepted only as idempotent replays
-- `TaskManager.advanceTaskMsgForCompletion()` records `INIT -> BINDING -> SENT -> RUNNING` before final completion
+- `TaskManager.advanceTaskMsgForCompletion()` records `INIT -> BINDING -> ASSIGNED -> RUNNING` before final completion
 
 ## 6. Resource Release
 

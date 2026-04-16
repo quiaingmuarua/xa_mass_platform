@@ -8,7 +8,7 @@ import java.util.List;
  */
 public class RuleConfig {
 
-    public static List<RuleDefinition> getDefaultDeviceMatchRules() {
+    public static List<RuleDefinition> getDefaultWorkerMatchRules() {
         List<RuleDefinition> rules = new ArrayList<>();
 
         RuleDefinition basicRule = new RuleDefinition();
@@ -50,8 +50,8 @@ public class RuleConfig {
         return rules;
     }
 
-    public static List<RuleDefinition> getAdvancedDeviceMatchRules() {
-        List<RuleDefinition> rules = getDefaultDeviceMatchRules();
+    public static List<RuleDefinition> getAdvancedWorkerMatchRules() {
+        List<RuleDefinition> rules = getDefaultWorkerMatchRules();
 
         RuleDefinition versionRule = new RuleDefinition();
         versionRule.setId("agent_version_check");
@@ -71,7 +71,7 @@ public class RuleConfig {
     }
 
     public static List<RuleDefinition> getProjectSpecificRules(String projectName) {
-        List<RuleDefinition> rules = getDefaultDeviceMatchRules();
+        List<RuleDefinition> rules = getDefaultWorkerMatchRules();
 
         if ("demoApp".equals(projectName)) {
             RuleDefinition demoRule = new RuleDefinition();
@@ -85,7 +85,7 @@ public class RuleConfig {
         return rules;
     }
 
-    public static List<RuleDefinition> getLooseDeviceMatchRules() {
+    public static List<RuleDefinition> getLooseWorkerMatchRules() {
         List<RuleDefinition> rules = new ArrayList<>();
 
         RuleDefinition basicRule = new RuleDefinition();

@@ -49,12 +49,12 @@ class TaskResourceReleaseListenerTest {
         wctx.startOccupying();
 
         when(taskManager.getTaskMessages("task-1")).thenReturn(List.of(msg));
-        when(workerManager.getWorkerContext("worker-1")).thenReturn(wctx);
-        when(workerManager.updateWorkerContext("worker-1", wctx)).thenReturn(true);
+        when(workerManager.getWorkerContextById("wctx-1")).thenReturn(wctx);
+        when(workerManager.updateWorkerContextById("wctx-1", wctx)).thenReturn(true);
 
         listener.onTaskTerminal(task);
 
-        verify(workerManager).updateWorkerContext("worker-1", wctx);
+        verify(workerManager).updateWorkerContextById("wctx-1", wctx);
         verify(workerManager).unlockWorker("worker-1");
     }
 
@@ -72,11 +72,11 @@ class TaskResourceReleaseListenerTest {
         wctx.startOccupying();
 
         when(taskManager.getTaskMessages("task-1")).thenReturn(List.of(msg));
-        when(workerManager.getWorkerContext("worker-1")).thenReturn(wctx);
+        when(workerManager.getWorkerContextById("wctx-1")).thenReturn(wctx);
 
         listener.onTaskTerminal(task);
 
-        verify(workerManager, never()).updateWorkerContext("worker-1", wctx);
+        verify(workerManager, never()).updateWorkerContextById("wctx-1", wctx);
         verify(workerManager).unlockWorker("worker-1");
     }
 
@@ -97,12 +97,12 @@ class TaskResourceReleaseListenerTest {
 
         when(taskManager.getTaskMessages("task-1")).thenReturn(List.of(finalMsg));
         when(taskManager.hasPendingDispatchableMessages("task-1")).thenReturn(true);
-        when(workerManager.getWorkerContext("worker-1")).thenReturn(wctx);
-        when(workerManager.updateWorkerContext("worker-1", wctx)).thenReturn(true);
+        when(workerManager.getWorkerContextById("wctx-1")).thenReturn(wctx);
+        when(workerManager.updateWorkerContextById("wctx-1", wctx)).thenReturn(true);
 
         listener.onTaskMessageFinal(task, finalMsg);
 
-        verify(workerManager).updateWorkerContext("worker-1", wctx);
+        verify(workerManager).updateWorkerContextById("wctx-1", wctx);
         verify(workerManager).unlockWorker("worker-1");
         verify(dispatchRequester).accept(same(task));
     }
@@ -129,12 +129,12 @@ class TaskResourceReleaseListenerTest {
 
         when(taskManager.getTaskMessages("task-1")).thenReturn(List.of(finalMsg, retriedMsg));
         when(taskManager.hasPendingDispatchableMessages("task-1")).thenReturn(true);
-        when(workerManager.getWorkerContext("worker-1")).thenReturn(wctx);
-        when(workerManager.updateWorkerContext("worker-1", wctx)).thenReturn(true);
+        when(workerManager.getWorkerContextById("wctx-1")).thenReturn(wctx);
+        when(workerManager.updateWorkerContextById("wctx-1", wctx)).thenReturn(true);
 
         listener.onTaskMessageFinal(task, finalMsg);
 
-        verify(workerManager).updateWorkerContext("worker-1", wctx);
+        verify(workerManager).updateWorkerContextById("wctx-1", wctx);
         verify(workerManager).unlockWorker("worker-1");
         verify(dispatchRequester).accept(same(task));
     }

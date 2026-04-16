@@ -67,7 +67,7 @@ class TaskApiPauseCompletionIntegrationTest extends AbstractMockE2eTest {
         TaskSnapshot runningSnapshot = waitForTaskSnapshot(taskId, "RUNNING");
         assertEquals(2, ((Number) runningSnapshot.task().get("peakAssignedWorkerCount")).intValue());
         assertEquals(2, runningSnapshot.messages().size());
-        assertTrue(runningSnapshot.messages().stream().allMatch(message -> "SENT".equals(message.get("status"))));
+        assertTrue(runningSnapshot.messages().stream().allMatch(message -> "ASSIGNED".equals(message.get("status"))));
 
         Map<String, Object> pauseResponse = exchange(
                 "/status/api/tasks/" + taskId + "/pause",
@@ -79,7 +79,7 @@ class TaskApiPauseCompletionIntegrationTest extends AbstractMockE2eTest {
         TaskSnapshot pausedSnapshot = waitForTaskSnapshot(taskId, "PAUSED");
         assertEquals("PAUSED", pausedSnapshot.task().get("status"));
         assertEquals(2, pausedSnapshot.messages().size());
-        assertTrue(pausedSnapshot.messages().stream().allMatch(message -> "SENT".equals(message.get("status"))));
+        assertTrue(pausedSnapshot.messages().stream().allMatch(message -> "ASSIGNED".equals(message.get("status"))));
 
         for (Map<String, Object> message : pausedSnapshot.messages()) {
             String msgId = String.valueOf(message.get("msgId"));

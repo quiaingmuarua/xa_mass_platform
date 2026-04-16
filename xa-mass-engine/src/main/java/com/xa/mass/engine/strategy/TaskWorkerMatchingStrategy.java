@@ -1,7 +1,7 @@
 package com.xa.mass.engine.strategy;
 
 import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.Worker;
+import com.xa.mass.engine.model.MatchedWorkerContext;
 
 import java.util.List;
 
@@ -19,7 +19,7 @@ public interface TaskWorkerMatchingStrategy {
      *
      * @param task task being assigned
      * @param maxWorkerCount upper bound for matched workers
-     * @return matched workers, never {@code null}
+     * @return matched worker/context candidates, never {@code null}
      */
-    List<Worker> matchWorkers(Task task, int maxWorkerCount);
+    List<MatchedWorkerContext> matchWorkers(Task task, int maxWorkerCount);
 }

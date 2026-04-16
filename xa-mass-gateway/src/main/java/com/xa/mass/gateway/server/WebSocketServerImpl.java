@@ -166,6 +166,9 @@ public class WebSocketServerImpl implements MassWebSocketServer {
     @Override
     public Channel getClientChannel(String clientId) {
         // 通过会话管理器获取指定客户端 ID 和固定角色 "messaegs_task" 的 Channel
+        if (sessionManager == null) {
+            return null;
+        }
         return sessionManager.getChannel(clientId, SessionRoles.TASK_MESSAGES);
     }
 
@@ -210,7 +213,9 @@ public class WebSocketServerImpl implements MassWebSocketServer {
             logger.debug("Connection closed: {}, total={}", ctx.channel().remoteAddress(), count);
             // Remove the session before propagating channelInactive so worker offline state
             // and future dispatch decisions observe the closed channel consistently.
-            sessionManager.removeSession(ctx.channel());
+            if (sessionManager != null) {
+                sessionManager.removeSession(ctx.channel());
+            }
             super.channelInactive(ctx); // 调用父类方法
         }
     }

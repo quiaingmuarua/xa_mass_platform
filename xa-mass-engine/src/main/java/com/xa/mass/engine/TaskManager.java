@@ -563,7 +563,7 @@ public class TaskManager {
     /**
      * 将单条消息标记为 EXPIRED，并触发任务进度重算。
      * <p>
-     * 仅 SENT 或 RUNNING 状态的消息可以过期（已下发但超时无回执）。
+     * 仅 ASSIGNED 或 RUNNING 状态的消息可以过期（已分配/已下发但超时无回执）。
      * INIT / BINDING 阶段的消息尚未真正下发，应通过 {@link #cancelTask} 清理，
      * 不能通过此方法过期。
      *
@@ -584,12 +584,12 @@ public class TaskManager {
                     msgId, taskId, taskMsg.getStatus());
             return false;
         }
-        // Only dispatched messages (SENT / RUNNING) can be expired.
+        // Only assigned/dispatched messages (ASSIGNED / RUNNING) can be expired.
         // INIT / BINDING never left the engine, so they should not be expired.
         boolean expired = taskMsg.markAsExpired();
         if (!expired) {
             LogUtils.logOperationFailure("EXPIRE_MSG_ERROR",
-                    "消息状态 " + taskMsg.getStatus() + " 不允许过期（仅 SENT/RUNNING 可过期）", 0);
+                    "消息状态 " + taskMsg.getStatus() + " 不允许过期（仅 ASSIGNED/RUNNING 可过期）", 0);
             return false;
         }
         boolean stored = updateTaskMessage(taskId, taskMsg);
@@ -923,18 +923,18 @@ public class TaskManager {
             return false;
         }
         status = taskMsg.getStatus();
-        // Always advance BINDING→SENT regardless of success/failure so the
+        // Always advance BINDING→ASSIGNED regardless of success/failure so the
         // final markAsSuccess/markAsFailed is always called from RUNNING state.
         // (BINDING→FAILED is technically allowed by the state machine but skips
         // the RUNNING stage that callers expect to see in logs/metrics.)
         if (status == TaskMsgStatus.BINDING) {
-            if (!taskMsg.markAsSent()) {
+            if (!taskMsg.markAsAssigned()) {
                 return false;
             }
             status = taskMsg.getStatus();
         }
-        // Always advance SENT→RUNNING before the caller applies the terminal mark.
-        if (status == TaskMsgStatus.SENT) {
+        // Always advance ASSIGNED→RUNNING before the caller applies the terminal mark.
+        if (status == TaskMsgStatus.ASSIGNED) {
             return taskMsg.markAsRunning();
         }
         return true;
@@ -944,7 +944,7 @@ public class TaskManager {
      * 将任务所有非终态消息强制转换到终态，在 cancelTask 后调用。
      * <ul>
      *   <li>INIT / BINDING — 从未真正下发，标记为 FAILED</li>
-     *   <li>SENT / RUNNING  — 已下发但被中止，标记为 EXPIRED</li>
+     *   <li>ASSIGNED / RUNNING  — 已分配/已下发但被中止，标记为 EXPIRED</li>
      * </ul>
      */
     private void cancelPendingMessages(String taskId) {
@@ -960,7 +960,7 @@ public class TaskManager {
                 updated = msg.markAsFailed("task cancelled");
             } else if (s == TaskMsgStatus.BINDING) {
                 updated = msg.markAsFailed("task cancelled");
-            } else if (s == TaskMsgStatus.SENT || s == TaskMsgStatus.RUNNING) {
+            } else if (s == TaskMsgStatus.ASSIGNED || s == TaskMsgStatus.RUNNING) {
                 updated = msg.markAsExpired();
             }
             if (updated) {
