@@ -111,6 +111,12 @@ public class MassWebSocketClientImpl extends WebSocketClient implements MassWebS
             logger.debug("[{}] Ignoring task response frame for msgId: {}", workerId, taskMessage.getMsgId());
             return;
         }
+        MessageContext originalContext = taskMessage.getContext();
+        if (originalContext == null || originalContext.getTid() == null || originalContext.getTid().isBlank()) {
+            logger.info("[{}] Received manual TASK message without tid, skipping task-result callback. msgId={}",
+                    workerId, taskMessage.getMsgId());
+            return;
+        }
         TaskPayload taskPayload = gson.fromJson(taskMessage.getPayload(), TaskPayload.class);
 
         MassMessage response = new MassMessage();
@@ -121,15 +127,12 @@ public class MassWebSocketClientImpl extends WebSocketClient implements MassWebS
         response.setSubMsgType("step");
         response.setProject(taskMessage.getProject());
 
-        MessageContext originalContext = taskMessage.getContext();
-        if (originalContext != null) {
-            MessageContext responseContext = new MessageContext();
-            responseContext.setConnRole(originalContext.getConnRole());
-            responseContext.setTid(originalContext.getTid());
-            responseContext.setRetryCount(originalContext.getRetryCount());
-            responseContext.setWorkerId(workerId);
-            response.setContext(responseContext);
-        }
+        MessageContext responseContext = new MessageContext();
+        responseContext.setConnRole(originalContext.getConnRole());
+        responseContext.setTid(originalContext.getTid());
+        responseContext.setRetryCount(originalContext.getRetryCount());
+        responseContext.setWorkerId(workerId);
+        response.setContext(responseContext);
 
         Map<String, Object> payloadMap = new HashMap<>();
         String stepId = (taskPayload != null && taskPayload.getSteps() != null && !taskPayload.getSteps().isEmpty())

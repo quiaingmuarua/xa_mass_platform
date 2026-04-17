@@ -326,11 +326,17 @@ public class MassApplication {
         com.xa.mass.engine.WorkerManager workerManager = engine.getWorkerManager();
         if (workerManager != null) {
             List<Worker> allWorkers = workerManager.getAllWorkers();
-            List<Worker> usWorkers = workerManager.getWorkersByGroupId("us");
-            List<Worker> gbWorkers = workerManager.getWorkersByGroupId("gb");
+            java.util.Map<String, Long> workerGroupCounts = allWorkers.stream()
+                    .collect(java.util.stream.Collectors.groupingBy(
+                            worker -> worker.getWorkerGroupId() == null || worker.getWorkerGroupId().isBlank()
+                                    ? "(blank)"
+                                    : worker.getWorkerGroupId(),
+                            java.util.LinkedHashMap::new,
+                            java.util.stream.Collectors.counting()
+                    ));
 
-            logger.info("Verified mock workers: total={}, usGroup={}, gbGroup={}",
-                    allWorkers.size(), usWorkers.size(), gbWorkers.size());
+            logger.info("Verified mock workers: total={}, groups={}",
+                    allWorkers.size(), workerGroupCounts);
 
             for (int i = 0; i < Math.min(3, allWorkers.size()); i++) {
                 Worker worker = allWorkers.get(i);

@@ -348,7 +348,7 @@
                     <td>
                                 <span class="status-badge"
                                       th:classappend="'status-' + ${#strings.toLowerCase(task.status.name())}"
-                                      th:text="${task.status.description}">状态</span>
+                                      th:text="${task.displayStatusLabel}">状态</span>
                     </td>
                     <td>
                         <div style="display: flex; align-items: center; gap: 10px;">
@@ -413,7 +413,7 @@
             <div style="font-size: 24px; font-weight: bold; color: #333;"
                  th:text="${taskStatusCount[status] ?: 0}">0
             </div>
-            <div style="color: #666; margin-top: 5px;" th:text="${status.description}">状态</div>
+            <div style="color: #666; margin-top: 5px;" th:text="${status.name() == 'TERMINAL' ? '终态' : status.description}">状态</div>
         </div>
     </div>
 </div>
@@ -565,12 +565,12 @@
             </div>
             <div class="form-group">
                 <label for="editTargetFile">上传号码txt文件</label>
-                <input accept=".txt" id="editTargetFile" type="file"/>
+                <input accept=".txt" disabled id="editTargetFile" type="file"/>
                 <small>每行一个号码，自动识别并填充到下方号码列表</small>
             </div>
             <div class="form-group">
                 <label for="editTargetList">目标列表 (每行一个)</label>
-                <textarea id="editTargetList" name="targetList"></textarea>
+                <textarea id="editTargetList" name="targetList" readonly></textarea>
                 <div style="margin-top:5px;color:#888;">
                     号码数量：<span id="editTargetCount">0</span>
                 </div>
@@ -613,10 +613,16 @@
 
 <script>
     console.log('tasks.html script loaded');
+    const DEFAULT_BATCH_SIZE = 5;
+    const DEFAULT_MAX_RETRY_COUNT = 3;
+    const PROJECT_PLACEHOLDER = '<option value="">请选择项目</option>';
 
     // 页面加载时获取项目列表
     document.addEventListener('DOMContentLoaded', function () {
         loadProjects();
+        bindTargetCounter('targetList', 'targetCount');
+        bindTextFileInput('targetFile', 'targetList', 'targetCount');
+        bindTargetCounter('editTargetList', 'editTargetCount');
     });
 
     // 加载项目列表
@@ -629,7 +635,7 @@
             const result = await response.json();
 
             if (result.code === 0) {
-                populateProjectSelects(result.data);
+                populateProjectSelects(normalizeProjects(result.data));
             } else {
                 console.error('加载项目列表失败:', result.msg);
             }
@@ -639,6 +645,21 @@
     }
 
     // 填充项目下拉框
+    function normalizeProjects(projects) {
+        if (!Array.isArray(projects)) {
+            return [];
+        }
+        return projects.map(project => {
+            if (typeof project === 'string') {
+                return {code: project, name: project};
+            }
+            return {
+                code: project.code,
+                name: project.name || project.code
+            };
+        }).filter(project => project.code);
+    }
+
     function populateProjectSelects(projects) {
         const projectSelect = document.getElementById('project');
         const editProjectSelect = document.getElementById('editProject');
@@ -680,6 +701,40 @@
 
     function showCreateTaskModal() {
         showModal('createTaskModal');
+    }
+
+    function bindTargetCounter(textareaId, countId) {
+        const textarea = document.getElementById(textareaId);
+        if (!textarea) {
+            return;
+        }
+        const update = () => {
+            const count = textarea.value.split('\n').filter(item => item.trim()).length;
+            document.getElementById(countId).innerText = count;
+        };
+        textarea.addEventListener('input', update);
+        update();
+    }
+
+    function bindTextFileInput(fileId, textareaId, countId) {
+        const input = document.getElementById(fileId);
+        const textarea = document.getElementById(textareaId);
+        if (!input || !textarea || input.disabled) {
+            return;
+        }
+        input.addEventListener('change', event => {
+            const file = event.target.files[0];
+            if (!file) {
+                return;
+            }
+            const reader = new FileReader();
+            reader.onload = loadEvent => {
+                textarea.value = loadEvent.target.result.replace(/\r/g, '');
+                const count = textarea.value.split('\n').filter(item => item.trim()).length;
+                document.getElementById(countId).innerText = count;
+            };
+            reader.readAsText(file, 'utf-8');
+        });
     }
 
     // 号码数量统计
@@ -755,15 +810,15 @@
     document.getElementById('editTaskForm').addEventListener('submit', function (e) {
         e.preventDefault();
         const formData = new FormData(this);
-        const targetList = formData.get('targetList').split('\n').filter(item => item.trim());
         const requestData = {
-            taskName: formData.get('taskName'),
-            project: formData.get('project'),
-            routingCode: formData.get('routingCode'),
-            textContent: formData.get('textContent'),
             userId: formData.get('userId'),
-            targetList: targetList,
-            batchSize: parseInt(formData.get('batchSize')) || 5
+            project: formData.get('project'),
+            taskName: formData.get('taskName'),
+            routingCode: formData.get('routingCode'),
+            sharedConfig: {
+                textContent: formData.get('textContent')
+            },
+            batchSize: parseInt(formData.get('batchSize'), 10) || DEFAULT_BATCH_SIZE
         };
         const taskId = formData.get('taskId');
         fetch(`/status/api/tasks/${taskId}`, {
@@ -848,7 +903,8 @@
             '<th>msgId</th><th>workerId</th><th>target</th><th>状态</th><th>发送时间</th><th>回执</th><th>错误</th>' +
             '</tr></thead><tbody>';
         msgs.forEach(m => {
-            html += `<tr><td>${m.msgId || ''}</td><td>${m.workerId || ''}</td><td>${m.target || ''}</td><td>${m.status || ''}</td><td>${m.sendTime || ''}</td><td>${m.result || ''}</td><td>${m.errorMessage || ''}</td></tr>`;
+            const timestamp = m.assignedTime || m.startTime || m.completeTime || m.createTime || '';
+            html += `<tr><td>${m.msgId || ''}</td><td>${m.workerId || ''}</td><td>${m.target || ''}</td><td>${m.status || ''}</td><td>${timestamp}</td><td>${m.result || ''}</td><td>${m.errorMessage || ''}</td></tr>`;
         });
         html += '</tbody></table>';
         document.getElementById('taskMsgTableContainer').innerHTML = html;
@@ -891,15 +947,18 @@
     document.getElementById('createTaskForm').addEventListener('submit', function (e) {
         e.preventDefault(); // 阻止表单默认提交
         const formData = new FormData(this);
-        const targetList = formData.get('targetList').split('\n').filter(item => item.trim());
         const requestData = {
-            taskName: formData.get('taskName'),
-            project: formData.get('project'),
-            routingCode: formData.get('routingCode'),
-            textContent: formData.get('textContent'),
             userId: formData.get('userId'),
-            targetList: targetList,
-            batchSize: parseInt(formData.get('batchSize')) || 5
+            project: formData.get('project'),
+            taskName: formData.get('taskName'),
+            routingCode: formData.get('routingCode'),
+            sharedConfig: {
+                textContent: formData.get('textContent')
+            },
+            targetList: (formData.get('targetList') || '').split('\n').filter(item => item.trim()),
+            batchSize: parseInt(formData.get('batchSize'), 10) || DEFAULT_BATCH_SIZE,
+            defaultMsgMaxRetryCount: DEFAULT_MAX_RETRY_COUNT,
+            openEnded: false
         };
         fetch('/status/api/tasks', {
             method: 'POST',

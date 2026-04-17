@@ -226,6 +226,36 @@ public class Task {
         this.terminalReason = terminalReason;
     }
 
+    public String getDisplayStatusLabel() {
+        if (status == null) {
+            return "-";
+        }
+        if (!status.isFinal()) {
+            return status.getDescription();
+        }
+        if (terminalReason == null) {
+            return status.getDescription();
+        }
+        switch (terminalReason) {
+            case MANUAL_CANCELLED:
+                return "已取消";
+            case ALL_MESSAGES_SUCCEEDED:
+                return "已完成";
+            case ALL_MESSAGES_FAILED:
+                return "已完成(失败)";
+            case MIXED_MESSAGE_RESULTS:
+                return "已完成(部分成功)";
+            case MAX_RUNTIME_REACHED:
+                return "已结束(超时)";
+            case SUCCESS_RATE_REACHED:
+                return "已完成(达标)";
+            case RETRY_BUDGET_EXHAUSTED:
+                return "已结束(重试耗尽)";
+            default:
+                return status.getDescription();
+        }
+    }
+
     public boolean isSchedulable() {
         return status.isSchedulable() && taskNonSuccessNumber > 0;
     }

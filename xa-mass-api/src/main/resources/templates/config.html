@@ -1,310 +1,152 @@
 <!DOCTYPE html>
-<html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
 <head>
     <meta charset="UTF-8">
     <meta content="width=device-width, initial-scale=1.0" name="viewport">
-    <title>全局配置 - 任务管理系统</title>
+    <title>配置面板 - XA Mass Platform</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css" rel="stylesheet">
     <style>
-        .config-section {
-            background: #f8f9fa;
-            border-radius: 8px;
-            padding: 20px;
-            margin-bottom: 20px;
+        body {
+            background: #f5f7fb;
         }
 
-        .project-item {
-            background: white;
-            border: 1px solid #dee2e6;
-            border-radius: 6px;
-            padding: 15px;
-            margin-bottom: 10px;
-            display: flex;
-            justify-content: space-between;
+        .topbar {
+            background: linear-gradient(120deg, #0d6efd 0%, #0b5ed7 55%, #0a58ca 100%);
+        }
+
+        .panel-card {
+            border: 0;
+            border-radius: 16px;
+            box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+        }
+
+        .hero-card {
+            background: linear-gradient(135deg, #111827 0%, #1d4ed8 55%, #2563eb 100%);
+            color: #fff;
+        }
+
+        .tag {
+            display: inline-flex;
             align-items: center;
-        }
-
-        .project-info {
-            flex: 1;
-        }
-
-        .project-actions {
-            display: flex;
-            gap: 10px;
-        }
-
-        .default-badge {
-            background: #28a745;
-            color: white;
-            padding: 2px 8px;
-            border-radius: 12px;
+            padding: 5px 10px;
+            border-radius: 999px;
             font-size: 12px;
+            font-weight: 600;
+            background: #eef2ff;
+            color: #334155;
+            border: 1px solid #dbe4ff;
         }
 
-        .custom-badge {
-            background: #007bff;
-            color: white;
-            padding: 2px 8px;
-            border-radius: 12px;
-            font-size: 12px;
+        .project-card {
+            border: 1px solid #e5e7eb;
+            border-radius: 16px;
+            background: linear-gradient(135deg, #ffffff 0%, #f8fbff 100%);
+        }
+
+        .read-only-note {
+            border-left: 4px solid #0d6efd;
+            background: #eff6ff;
+            color: #1d4ed8;
         }
     </style>
 </head>
 <body>
-<div class="container-fluid">
-    <!-- 导航栏 -->
-    <nav class="navbar navbar-expand-lg navbar-dark bg-primary mb-4">
-        <div class="container-fluid">
-            <a class="navbar-brand" href="#">任务管理系统</a>
+<div class="container-fluid px-3 px-lg-4 py-3 py-lg-4">
+    <nav class="navbar navbar-expand-lg navbar-dark topbar rounded-4 px-3 px-lg-4 mb-4 panel-card">
+        <div class="container-fluid px-0">
+            <a class="navbar-brand fw-semibold" href="/status">
+                <i class="bi bi-gear-fill me-2"></i>XA Mass Platform
+            </a>
             <div class="navbar-nav">
+                <a class="nav-link" href="/status">状态概览</a>
                 <a class="nav-link" href="/status/tasks">任务管理</a>
                 <a class="nav-link" href="/status/workers">Worker 管理</a>
                 <a class="nav-link" href="/status/rules">规则管理</a>
-                <a class="nav-link active" href="/config">全局配置</a>
-                <a class="nav-link" href="/status">系统状态</a>
+                <a class="nav-link active" href="/config">配置面板</a>
             </div>
         </div>
     </nav>
 
-    <div class="row">
-        <div class="col-12">
-            <h2 class="mb-4">
-                <i class="bi bi-gear-fill"></i>
-                全局配置
-            </h2>
+    <section class="panel-card hero-card p-4 mb-4">
+        <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
+            <div>
+                <h1 class="h3 mb-2">配置面板</h1>
+                <p class="mb-0 opacity-75">项目当前是 SDK-first 演进方向，所以配置面不应该假装自己能写运行态。这里明确改成只读说明页，展示当前已知配置边界和支持项目。</p>
+            </div>
+            <a class="btn btn-light" href="/status">
+                <i class="bi bi-arrow-left me-1"></i>返回状态页
+            </a>
+        </div>
+    </section>
 
-            <!-- 项目管理 -->
-            <div class="config-section">
-                <div class="d-flex justify-content-between align-items-center mb-3">
-                    <h4>
-                        <i class="bi bi-folder-fill"></i>
-                        项目管理
-                    </h4>
-                </div>
-                <div id="projectsList">
-                    <!-- 项目列表将通过 JavaScript 动态加载 -->
-                    <div class="text-center">
-                        <div class="spinner-border" role="status">
-                            <span class="visually-hidden">加载中...</span>
-                        </div>
+    <section class="panel-card bg-white p-4 mb-4">
+        <div class="read-only-note rounded-3 p-3 mb-4">
+            <div class="fw-semibold mb-1">当前页面为只读说明面</div>
+            <div>之前模板里挂着的 `/api/config/projects` 等写接口在当前主线并不存在，继续保留只会误导使用者，所以这里明确退回成只读展示。</div>
+        </div>
+
+        <div class="row g-4">
+            <div class="col-12 col-xl-6">
+                <div class="project-card p-4 h-100">
+                    <h2 class="h5 mb-3">支持项目</h2>
+                    <p class="text-muted">这里展示当前代码枚举里可用的 project code，任务创建页也应该以这组值为准。</p>
+                    <div class="d-flex flex-wrap gap-2" th:if="${!#lists.isEmpty(projectCodes)}">
+                        <span class="tag" th:each="projectCode : ${projectCodes}" th:text="${projectCode}">demoApp</span>
                     </div>
+                    <div class="text-muted" th:if="${#lists.isEmpty(projectCodes)}">暂无项目配置。</div>
                 </div>
             </div>
 
-            <!-- 其他配置区域 -->
-            <div class="config-section">
-                <h4>
-                    <i class="bi bi-sliders"></i>
-                    系统配置
-                </h4>
-                <p class="text-muted">更多系统配置选项将在这里添加...</p>
+            <div class="col-12 col-xl-6">
+                <div class="project-card p-4 h-100">
+                    <h2 class="h5 mb-3">当前页面边界</h2>
+                    <ul class="mb-0">
+                        <li>配置页只展示代码主线已经存在的静态配置能力。</li>
+                        <li>运行态修改仍应通过真实 API 或 SDK 调用完成，而不是页面伪操作。</li>
+                        <li>若后续补充真实配置接口，再把这里扩成可编辑页面，不要先做假按钮。</li>
+                    </ul>
+                </div>
             </div>
         </div>
-    </div>
-</div>
+    </section>
 
-<!-- 新增项目模态框 -->
-<div class="modal fade" id="addProjectModal" tabindex="-1">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">新增项目</h5>
-                <button class="btn-close" data-bs-dismiss="modal" type="button"></button>
-            </div>
-            <div class="modal-body">
-                <form id="addProjectForm">
-                    <div class="mb-3">
-                        <label class="form-label" for="projectCode">项目代码 *</label>
-                        <input class="form-control" id="projectCode" placeholder="请输入项目代码，如：myApp" required
-                               type="text">
-                        <div class="form-text">项目代码必须唯一，只能包含字母、数字和下划线</div>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label" for="projectName">项目名称 *</label>
-                        <input class="form-control" id="projectName" placeholder="请输入项目名称，如：我的应用" required
-                               type="text">
-                    </div>
-                </form>
-            </div>
-            <div class="modal-footer">
-                <button class="btn btn-secondary" data-bs-dismiss="modal" type="button">取消</button>
-                <button class="btn btn-primary" onclick="addProject()" type="button">确定</button>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- 删除确认模态框 -->
-<div class="modal fade" id="deleteProjectModal" tabindex="-1">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">确认删除</h5>
-                <button class="btn-close" data-bs-dismiss="modal" type="button"></button>
-            </div>
-            <div class="modal-body">
-                <p>确定要删除项目 <strong id="deleteProjectName"></strong> 吗？</p>
-                <p class="text-danger">此操作不可撤销！</p>
-            </div>
-            <div class="modal-footer">
-                <button class="btn btn-secondary" data-bs-dismiss="modal" type="button">取消</button>
-                <button class="btn btn-danger" onclick="confirmDeleteProject()" type="button">确定删除</button>
-            </div>
-        </div>
-    </div>
-</div>
-
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
-<script>
-    let currentDeleteProjectCode = null;
-
-    // 页面加载完成后执行
-    document.addEventListener('DOMContentLoaded', function () {
-        loadProjects();
-    });
-
-    // 加载项目列表
-    async function loadProjects() {
-        try {
-            const response = await fetch('/api/config/projects');
-            if (!response.ok) {
-                throw new Error('HTTP ' + response.status);
-            }
-            const result = await response.json();
-
-            if (result.code === 0) {
-                displayProjects(result.data);
-            } else {
-                showError('加载项目列表失败: ' + result.msg);
-            }
-        } catch (error) {
-            showError('加载项目列表失败: ' + error.message);
-        }
-    }
-
-    // 显示项目列表
-    function displayProjects(projects) {
-        const container = document.getElementById('projectsList');
-
-        if (projects.length === 0) {
-            container.innerHTML = '<p class="text-muted">暂无项目</p>';
-            return;
-        }
-
-        const html = projects.map(project => `
-                <div class="project-item">
-                    <div class="project-info">
-                        <div class="d-flex align-items-center gap-2">
-                            <h6 class="mb-1">${project.name}</h6>
-                            <span class="default-badge">枚举</span>
-                        </div>
-                        <small class="text-muted">代码: ${project.code}</small>
-                    </div>
+    <section class="row g-4">
+        <div class="col-12 col-xl-6">
+            <div class="panel-card bg-white p-4 h-100">
+                <h2 class="h5 mb-3">主线入口</h2>
+                <div class="list-group list-group-flush">
+                    <a class="list-group-item list-group-item-action px-0" href="/status">
+                        <div class="fw-semibold">状态概览</div>
+                        <div class="text-muted small">看 task / worker / context / message 聚合分布</div>
+                    </a>
+                    <a class="list-group-item list-group-item-action px-0" href="/status/tasks">
+                        <div class="fw-semibold">任务管理</div>
+                        <div class="text-muted small">创建任务、审核任务、查看消息和状态校验</div>
+                    </a>
+                    <a class="list-group-item list-group-item-action px-0" href="/status/workers">
+                        <div class="fw-semibold">Worker 管理</div>
+                        <div class="text-muted small">查看设备状态、attributes，并向指定 worker 发消息</div>
+                    </a>
+                    <a class="list-group-item list-group-item-action px-0" href="/status/rules">
+                        <div class="fw-semibold">规则管理</div>
+                        <div class="text-muted small">查看匹配规则、优先级和 evaluator 注册情况</div>
+                    </a>
                 </div>
-            `).join('');
+            </div>
+        </div>
 
-        container.innerHTML = html;
-    }
-
-    // 显示新增项目模态框
-    function showAddProjectModal() {
-        document.getElementById('addProjectForm').reset();
-        const modal = new bootstrap.Modal(document.getElementById('addProjectModal'));
-        modal.show();
-    }
-
-    // 添加项目
-    async function addProject() {
-        const code = document.getElementById('projectCode').value.trim();
-        const name = document.getElementById('projectName').value.trim();
-
-        if (!code || !name) {
-            showError('请填写完整的项目信息');
-            return;
-        }
-
-        // 验证项目代码格式
-        if (!/^[a-zA-Z0-9_]+$/.test(code)) {
-            showError('项目代码只能包含字母、数字和下划线');
-            return;
-        }
-
-        try {
-            const response = await fetch('/api/config/projects', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({code, name})
-            });
-
-            if (!response.ok) {
-                throw new Error('HTTP ' + response.status);
-            }
-
-            const result = await response.json();
-
-            if (result.code === 0) {
-                showSuccess('项目添加成功');
-                bootstrap.Modal.getInstance(document.getElementById('addProjectModal')).hide();
-                loadProjects(); // 重新加载列表
-            } else {
-                showError('添加项目失败: ' + result.msg);
-            }
-        } catch (error) {
-            showError('添加项目失败: ' + error.message);
-        }
-    }
-
-    // 显示删除项目模态框
-    function showDeleteProjectModal(code, name) {
-        currentDeleteProjectCode = code;
-        document.getElementById('deleteProjectName').textContent = name;
-        const modal = new bootstrap.Modal(document.getElementById('deleteProjectModal'));
-        modal.show();
-    }
-
-    // 确认删除项目
-    async function confirmDeleteProject() {
-        if (!currentDeleteProjectCode) {
-            return;
-        }
-
-        try {
-            const response = await fetch(`/api/config/projects/${currentDeleteProjectCode}`, {
-                method: 'DELETE'
-            });
-
-            if (!response.ok) {
-                throw new Error('HTTP ' + response.status);
-            }
-
-            const result = await response.json();
-
-            if (result.code === 0) {
-                showSuccess('项目删除成功');
-                bootstrap.Modal.getInstance(document.getElementById('deleteProjectModal')).hide();
-                loadProjects(); // 重新加载列表
-            } else {
-                showError('删除项目失败: ' + result.msg);
-            }
-        } catch (error) {
-            showError('删除项目失败: ' + error.message);
-        }
-    }
-
-    // 显示成功消息
-    function showSuccess(message) {
-        // 这里可以使用 Bootstrap 的 toast 或 alert
-        alert('成功: ' + message);
-    }
-
-    // 显示错误消息
-    function showError(message) {
-        // 这里可以使用 Bootstrap 的 toast 或 alert
-        alert('错误: ' + message);
-    }
-</script>
+        <div class="col-12 col-xl-6">
+            <div class="panel-card bg-white p-4 h-100">
+                <h2 class="h5 mb-3">页面建设原则</h2>
+                <ul class="mb-0">
+                    <li>页面必须服从当前代码和 API 事实，不能发明不存在的操作能力。</li>
+                    <li>演示面可以轻量，但至少要做到字段可信、交互可用、文案不乱码。</li>
+                    <li>如果某个功能只有 SDK 能做，页面应明确说明，而不是伪装成支持。</li>
+                </ul>
+            </div>
+        </div>
+    </section>
+</div>
 </body>
-</html> 
+</html>

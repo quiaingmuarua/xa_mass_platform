@@ -9,7 +9,7 @@
           "&.index"
         ]
       },
-      "workerGroupId": "us",
+      "workerGroupId": "pool-a",
       "agentVersion": "1.0.0",
       "status": {
         "$CHOICE": [
@@ -34,7 +34,7 @@
           "&.index"
         ]
       },
-      "workerGroupId": "gb",
+      "workerGroupId": "pool-b",
       "agentVersion": "1.0.1",
       "status": {
         "$CHOICE": [

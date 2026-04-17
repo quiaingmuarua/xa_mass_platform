@@ -3,7 +3,7 @@
     {
       "workerIdTemplate": "worker-{i}",
       "count": 10,
-      "workerGroupId": "us",
+      "workerGroupId": "pool-a",
       "agentVersion": "1.0.0",
       "supportedProjects": [
         "demoApp",
@@ -28,7 +28,7 @@
     {
       "workerIdTemplate": "gb-worker-{i}",
       "count": 12,
-      "workerGroupId": "gb",
+      "workerGroupId": "pool-b",
       "agentVersion": "1.0.1",
       "supportedProjects": [
         "demoApp",
