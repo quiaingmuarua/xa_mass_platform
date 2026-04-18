@@ -90,7 +90,10 @@ public class StreamEventBusFacadeTest {
     @BeforeEach
     public void setUp() {
         MessageStream<MassEvent> stream = new InMemoryMessageStream<>("test-bus", MassEvent.class);
-        eventBus = new StreamEventBusFacade<>(stream);
+        EventBusConfig testConfig = EventBusConfig.defaultConfig()
+                .setBatchSize(1)
+                .setBatchTimeoutMs(100L);
+        eventBus = new StreamEventBusFacade<>(stream, testConfig);
         received = new ArrayList<>();
         testListener = new TestListener();
         anotherListener = new AnotherListener();
