@@ -7,8 +7,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -90,8 +90,11 @@ public class StreamEventBusFacadeTest {
     @BeforeEach
     public void setUp() {
         MessageStream<MassEvent> stream = new InMemoryMessageStream<>("test-bus", MassEvent.class);
-        eventBus = new StreamEventBusFacade<>(stream);
-        received = new ArrayList<>();
+        EventBusConfig testConfig = EventBusConfig.defaultConfig()
+                .setBatchSize(1)
+                .setBatchTimeoutMs(50);
+        eventBus = new StreamEventBusFacade<>(stream, testConfig);
+        received = new CopyOnWriteArrayList<>();
         testListener = new TestListener();
         anotherListener = new AnotherListener();
     }
