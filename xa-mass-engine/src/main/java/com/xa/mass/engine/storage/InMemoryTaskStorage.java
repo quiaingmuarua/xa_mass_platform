@@ -54,10 +54,9 @@ public class InMemoryTaskStorage implements TaskStorage {
     }
 
     @Override
-    public List<Task> getTasksByStatus(String status) {
-        TaskStatus taskStatus = TaskStatus.valueOf(status);
+    public List<Task> getTasksByStatus(TaskStatus status) {
         return tasks.values().stream()
-                .filter(task -> task.getStatus() == taskStatus)
+                .filter(task -> task.getStatus() == status)
                 .collect(Collectors.toList());
     }
 

@@ -110,7 +110,7 @@ public class RedisTaskStorage implements TaskStorage {
     }
 
     @Override
-    public List<Task> getTasksByStatus(String status) {
+    public List<Task> getTasksByStatus(com.xa.mass.base.enums.task.TaskStatus status) {
         // TODO: 实现Redis按状态获取任务逻辑
         // String statusKey = TASK_STATUS_KEY_PREFIX + status;
         // Set<String> taskIds = redisTemplate.opsForSet().members(statusKey);

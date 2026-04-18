@@ -31,7 +31,7 @@ public class EngineConfig {
     private boolean enabled = true;
     private int workerThreads = 8;
     private String mockConfigPath = "mock_config.json";
-    private boolean mockMode = true;
+    private boolean mockMode = false;
     private JsonObject mockConfigRoot;
     private String workerConfigPath = "mock/mock_workers.json";
     private String workerContextConfigPath = "mock/mock_worker_contexts.json";
@@ -43,7 +43,7 @@ public class EngineConfig {
     private TaskWorkerMatchingStrategy matchingStrategy;
     private WorkerManager workerManager = new WorkerManager();
     private AssignmentRecordService recordService = new AssignmentRecordService();
-    private RuleManager<Map<String, Object>> ruleManager = RuleManagerFactory.getProjectRuleManager("demoApp");
+    private RuleManager<Map<String, Object>> ruleManager;
     private TaskMsgDispatchListener taskMsgDispatchListener;
     private long assignmentRetryDelayMillis = 1000L;
 
@@ -208,6 +208,9 @@ public class EngineConfig {
     }
 
     public RuleManager<Map<String, Object>> getRuleManager() {
+        if (ruleManager == null) {
+            ruleManager = RuleManagerFactory.getDefaultRuleManager();
+        }
         return ruleManager;
     }
 

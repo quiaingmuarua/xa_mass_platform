@@ -207,7 +207,7 @@ public class TaskManager {
     public List<Task> getTasksByStatus(TaskStatus status) {
         LogUtils.logOperationStart("GET_TASKS_BY_STATUS", "TaskManager", "status", status.name());
 
-        List<Task> tasks = taskStorage.getTasksByStatus(status.name());
+        List<Task> tasks = taskStorage.getTasksByStatus(status);
 
         LogUtils.logOperationSuccess("loaded tasks by status: status=" + status + ", count=" + tasks.size(), 0);
 
