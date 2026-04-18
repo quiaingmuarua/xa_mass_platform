@@ -92,6 +92,13 @@ public class TaskMsg {
         return status;
     }
 
+    /**
+     * Direct status setter — for framework deserialization only.
+     * All business state changes must go through {@link #transitionTo(TaskMsgStatus)},
+     * which enforces the state machine guard and fires lifecycle hooks.
+     * Exception: {@link #resetForRetry()} intentionally bypasses the state machine
+     * for the FAILED→INIT resurrection arc.
+     */
     public void setStatus(TaskMsgStatus status) {
         this.status = status;
         this.updateTime = LocalDateTime.now();
@@ -239,8 +246,15 @@ public class TaskMsg {
 
     /**
      * Resets the message to INIT for the next retry attempt.
+     *
+     * <p>This intentionally bypasses {@link #transitionTo} because FAILED→INIT is not a valid
+     * arc in the normal lifecycle state machine — resurrection after failure is a special
+     * operation outside the transport contract. The state-machine guard ({@link TaskMsgStatus#canTransitionTo})
+     * would reject FAILED→INIT if this went through the normal path.
+     *
+     * <p>Caller must only invoke this when {@link #canRetry()} returns true.
      */
-    public boolean resetForRetry() {
+    public synchronized boolean resetForRetry() {
         if (!canRetry()) {
             return false;
         }
@@ -263,7 +277,7 @@ public class TaskMsg {
         return java.time.Duration.between(startTime, endTime).toMillis();
     }
 
-    public boolean transitionTo(TaskMsgStatus targetStatus) {
+    public synchronized boolean transitionTo(TaskMsgStatus targetStatus) {
         if (status.canTransitionTo(targetStatus)) {
             setStatus(targetStatus);
             return true;

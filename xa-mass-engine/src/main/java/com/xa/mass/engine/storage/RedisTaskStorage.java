@@ -161,6 +161,11 @@ public class RedisTaskStorage implements TaskStorage {
     }
 
     @Override
+    public List<Task> getTasksByProject(String project) {
+        throw new UnsupportedOperationException("Redis storage not fully implemented yet");
+    }
+
+    @Override
     public TaskMessageStats getTaskMessageStats(String taskId) {
         // TODO: 实现Redis获取任务消息统计逻辑
         // List<TaskMsg> messages = getTaskMessages(taskId);

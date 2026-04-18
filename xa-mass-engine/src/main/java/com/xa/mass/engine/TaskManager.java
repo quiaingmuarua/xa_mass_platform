@@ -936,36 +936,40 @@ public class TaskManager {
             return false;
         }
 
-        if (taskMsg.isCompleted()) {
-            TraceEventLogger.callbackIgnoredDuplicate(taskMsg,
-                    "task message already final in status " + taskMsg.getStatus());
-            logger.info("Task message {} of task {} is already in final status {}, skipping duplicate result",
-                    msgId, taskId, taskMsg.getStatus());
-            updateTaskProgress(taskId);
-            return true;
-        }
+        // Synchronize on taskMsg to make the duplicate-check + status-change atomic.
+        // Without this, two concurrent callbacks for the same msgId could both pass
+        // the isCompleted() guard and both attempt a terminal transition.
+        synchronized (taskMsg) {
+            if (taskMsg.isCompleted()) {
+                TraceEventLogger.callbackIgnoredDuplicate(taskMsg,
+                        "task message already final in status " + taskMsg.getStatus());
+                logger.info("Task message {} of task {} is already in final status {}, skipping duplicate result",
+                        msgId, taskId, taskMsg.getStatus());
+                updateTaskProgress(taskId);
+                return true;
+            }
 
-        if (task.getStatus().isFinal()) {
-            TraceEventLogger.callbackIgnoredLate(taskMsg,
-                    "task already terminal in status " + task.getStatus());
-            logger.info("Ignoring late result for terminal task {}, msg {} still in status {}",
-                    taskId, msgId, taskMsg.getStatus());
-            return true;
-        }
+            if (task.getStatus().isFinal()) {
+                TraceEventLogger.callbackIgnoredLate(taskMsg,
+                        "task already terminal in status " + task.getStatus());
+                logger.info("Ignoring late result for terminal task {}, msg {} still in status {}",
+                        taskId, msgId, taskMsg.getStatus());
+                return true;
+            }
 
-        TraceEventLogger.callbackAccepted(taskMsg, success ? "success callback received" : "failure callback received");
-        if (!advanceTaskMsgForCompletion(taskMsg, success)) {
-            logger.warn("Cannot advance task message {} from status {} for completion",
-                    msgId, taskMsg.getStatus());
-            return false;
-        }
+            TraceEventLogger.callbackAccepted(taskMsg, success ? "success callback received" : "failure callback received");
+            if (!advanceTaskMsgForCompletion(taskMsg, success)) {
+                logger.warn("Cannot advance task message {} from status {} for completion",
+                        msgId, taskMsg.getStatus());
+                return false;
+            }
 
-        TaskMsgStatus beforeFinalStatus = taskMsg.getStatus();
-        boolean statusUpdated = success ? taskMsg.markAsSuccess(detail) : taskMsg.markAsFailed(detail);
-        if (!statusUpdated) {
-            logger.warn("Failed to mark task message {} as {}", msgId, success ? "SUCCESS" : "FAILED");
-            return false;
-        }
+            TaskMsgStatus beforeFinalStatus = taskMsg.getStatus();
+            boolean statusUpdated = success ? taskMsg.markAsSuccess(detail) : taskMsg.markAsFailed(detail);
+            if (!statusUpdated) {
+                logger.warn("Failed to mark task message {} as {}", msgId, success ? "SUCCESS" : "FAILED");
+                return false;
+            }
         TraceEventLogger.taskMsgStatusTransition(
                 taskMsg,
                 beforeFinalStatus,
@@ -1014,6 +1018,7 @@ public class TaskManager {
             notifyTaskMessageFinal(updatedTask, taskMsg);
         }
         return true;
+        } // end synchronized (taskMsg)
     }
     private boolean advanceTaskMsgForCompletion(TaskMsg taskMsg, boolean success) {
         TaskMsgStatus status = taskMsg.getStatus();

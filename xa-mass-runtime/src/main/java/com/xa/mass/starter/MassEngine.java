@@ -16,6 +16,7 @@ import com.xa.mass.engine.listener.TaskMsgDispatchListener;
 import com.xa.mass.engine.listener.TaskResourceReleaseListener;
 import com.xa.mass.engine.listener.TaskWorkerAssignListener;
 import com.xa.mass.engine.monkey.MonkeyGenerator;
+import com.xa.mass.engine.strategy.TaskWorkerMatchingStrategy;
 import com.xa.mass.engine.service.AssignmentRecordService;
 import com.xa.mass.engine.util.LogUtils;
 import com.xa.mass.starter.config.EngineConfig;
@@ -71,13 +72,11 @@ public class MassEngine {
                     workerManager,
                     recordService,
                     taskMsgDispatchListener);
-            var workerAssignListener = new TaskWorkerAssignListener(
-                    ruleManager,
-                    workerManager,
-                    msgAssignListener,
-                    recordService,
-                    taskManager);
-            assignWorker = new TaskAssignWorker(workerAssignListener);
+            TaskWorkerMatchingStrategy customStrategy = config.getMatchingStrategy();
+            var workerAssignListener = customStrategy != null
+                    ? new TaskWorkerAssignListener(customStrategy, workerManager, msgAssignListener, taskManager)
+                    : new TaskWorkerAssignListener(ruleManager, workerManager, msgAssignListener, recordService, taskManager);
+            assignWorker = new TaskAssignWorker(workerAssignListener, config.getAssignmentRetryDelayMillis());
             assignWorker.start();
 
             TaskResourceReleaseListener resourceReleaseListener =

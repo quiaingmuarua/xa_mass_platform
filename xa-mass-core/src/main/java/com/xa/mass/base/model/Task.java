@@ -88,6 +88,11 @@ public class Task {
         return status;
     }
 
+    /**
+     * Direct status setter — for framework deserialization only.
+     * All business state changes must go through {@link #transitionTo(TaskStatus)},
+     * which enforces the state machine guard and fires lifecycle hooks.
+     */
     public void setStatus(TaskStatus status) {
         this.status = status;
         this.updateTime = LocalDateTime.now();
@@ -271,7 +276,7 @@ public class Task {
         return (double) taskSuccessNumber / taskEligibleNumber * 100;
     }
 
-    public boolean transitionTo(TaskStatus targetStatus) {
+    public synchronized boolean transitionTo(TaskStatus targetStatus) {
         if (status.canTransitionTo(targetStatus)) {
             setStatus(targetStatus);
             if (targetStatus == TaskStatus.RUNNING && startTime == null) {
@@ -284,7 +289,7 @@ public class Task {
         return false;
     }
 
-    public boolean transitionTo(TaskStatus targetStatus, TaskTerminalReason terminalReason) {
+    public synchronized boolean transitionTo(TaskStatus targetStatus, TaskTerminalReason terminalReason) {
         if (!targetStatus.isFinal()) {
             throw new IllegalArgumentException("Terminal reason is only valid for final task states");
         }

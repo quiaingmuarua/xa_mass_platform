@@ -2,6 +2,8 @@ package com.xa.mass.engine.rules;
 
 import com.xa.mass.engine.storage.RuleStorage;
 import com.xa.mass.engine.storage.TaskStorageFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.Collection;
 import java.util.List;
@@ -12,6 +14,8 @@ import java.util.Optional;
  * 负责规则的CRUD操作和规则评估
  */
 public class RuleManager<T> {
+
+    private static final Logger log = LoggerFactory.getLogger(RuleManager.class);
 
     private final RuleStorage ruleStorage;
 
@@ -73,7 +77,7 @@ public class RuleManager<T> {
                     hitRules.add(rule.getId());
                 }
             } catch (Exception e) {
-                // 可记录异常归因
+                log.warn("Rule evaluation failed [ruleId={}, ruleType={}]: {}", rule.getId(), rule.getType(), e.getMessage());
             }
         }
         return hitRules;
