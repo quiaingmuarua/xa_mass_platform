@@ -43,6 +43,18 @@ public interface TaskStorage {
     List<Task> getTasksByStatus(String status);
 
     /**
+     * Returns all tasks belonging to the given project.
+     *
+     * <p>Default implementation scans {@link #getAllTasks()}; storage backends
+     * should override this with an indexed query for better performance.
+     */
+    default List<Task> getTasksByProject(String project) {
+        return getAllTasks().stream()
+                .filter(t -> project != null && project.equals(t.getProject()))
+                .collect(java.util.stream.Collectors.toList());
+    }
+
+    /**
      * 获取可调度的任务
      */
     List<Task> getSchedulableTasks();

@@ -4,7 +4,8 @@ import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.engine.service.AssignmentRecordService;
-import com.xa.mass.engine.strategy.SimpleTaskScheduler;
+import com.xa.mass.engine.strategy.TaskScheduler;
+import com.xa.mass.engine.strategy.TaskWorkerMatchingStrategy;
 import com.xa.mass.starter.MassEngine;
 import com.xa.mass.starter.config.EngineConfig;
 
@@ -19,7 +20,8 @@ public class MassEngineBuilder {
     private TaskManager taskManager;
     private WorkerManager workerManager;
     private RuleManager<Map<String, Object>> ruleManager;
-    private SimpleTaskScheduler scheduler;
+    private TaskScheduler scheduler;
+    private TaskWorkerMatchingStrategy matchingStrategy;
     private AssignmentRecordService recordService;
 
     private Boolean mockMode;
@@ -57,8 +59,13 @@ public class MassEngineBuilder {
         return this;
     }
 
-    public MassEngineBuilder scheduler(SimpleTaskScheduler scheduler) {
+    public MassEngineBuilder scheduler(TaskScheduler scheduler) {
         this.scheduler = scheduler;
+        return this;
+    }
+
+    public MassEngineBuilder matchingStrategy(TaskWorkerMatchingStrategy matchingStrategy) {
+        this.matchingStrategy = matchingStrategy;
         return this;
     }
 
@@ -100,6 +107,7 @@ public class MassEngineBuilder {
         if (ruleConfigPath != null) config.setRuleConfigPath(ruleConfigPath);
         if (mockConfigPath != null) config.setMockConfigPath(mockConfigPath);
         if (scheduler != null) config.setScheduler(scheduler);
+        if (matchingStrategy != null) config.setMatchingStrategy(matchingStrategy);
         if (taskManager != null) config.setTaskManager(taskManager);
         if (workerManager != null) config.setWorkerManager(workerManager);
         if (recordService != null) config.setRecordService(recordService);

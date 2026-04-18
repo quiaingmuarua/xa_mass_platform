@@ -85,16 +85,16 @@ public class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatchingSt
                 }
 
                 try {
-                    List<String> hitRules = ruleManager.evaluateDefaultRules(matchContext.getContext());
                     List<RuleEvaluationDetail> ruleEvaluations = evaluateRulesWithDetails(matchContext);
+                    long hitCount = ruleEvaluations.stream().filter(RuleEvaluationDetail::isPassed).count();
 
                     log.debug("[WorkerAssign] Worker {} context {} - Hit rules: {}/{}",
                             worker.getWorkerId(),
                             workerContext != null ? workerContext.getWorkerContextId() : "null",
-                            hitRules.size(),
+                            hitCount,
                             rules.size());
 
-                    if (hitRules.size() == rules.size()) {
+                    if (hitCount == rules.size()) {
                         if (workerManager.tryLockWorker(worker.getWorkerId())) {
                             TraceEventLogger.workerLockAcquired(task.getTid(), worker.getWorkerId(),
                                     "TRY_LOCK_WORKER", "RuleBasedTaskWorkerMatchingStrategy",

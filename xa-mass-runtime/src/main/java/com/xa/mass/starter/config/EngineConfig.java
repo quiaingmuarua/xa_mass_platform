@@ -9,6 +9,8 @@ import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.engine.rules.RuleManagerFactory;
 import com.xa.mass.engine.service.AssignmentRecordService;
 import com.xa.mass.engine.strategy.SimpleTaskScheduler;
+import com.xa.mass.engine.strategy.TaskScheduler;
+import com.xa.mass.engine.strategy.TaskWorkerMatchingStrategy;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -36,12 +38,14 @@ public class EngineConfig {
     private String taskConfigPath = "mock/mock_tasks.json";
     private String ruleConfigPath = "mock/mock_rules.json";
 
-    private SimpleTaskScheduler scheduler = new SimpleTaskScheduler();
+    private TaskScheduler scheduler = new SimpleTaskScheduler();
     private TaskManager taskManager = new TaskManager(scheduler);
+    private TaskWorkerMatchingStrategy matchingStrategy;
     private WorkerManager workerManager = new WorkerManager();
     private AssignmentRecordService recordService = new AssignmentRecordService();
     private RuleManager<Map<String, Object>> ruleManager = RuleManagerFactory.getProjectRuleManager("demoApp");
     private TaskMsgDispatchListener taskMsgDispatchListener;
+    private long assignmentRetryDelayMillis = 1000L;
 
     public boolean isEnabled() {
         return enabled;
@@ -160,15 +164,23 @@ public class EngineConfig {
         }
     }
 
-    public SimpleTaskScheduler getScheduler() {
+    public TaskScheduler getScheduler() {
         return scheduler;
     }
 
-    public void setScheduler(SimpleTaskScheduler scheduler) {
+    public void setScheduler(TaskScheduler scheduler) {
         this.scheduler = scheduler;
         if (this.taskManager == null || this.taskManager.getScheduler() != scheduler) {
             this.taskManager = new TaskManager(scheduler);
         }
+    }
+
+    public TaskWorkerMatchingStrategy getMatchingStrategy() {
+        return matchingStrategy;
+    }
+
+    public void setMatchingStrategy(TaskWorkerMatchingStrategy matchingStrategy) {
+        this.matchingStrategy = matchingStrategy;
     }
 
     public TaskManager getTaskManager() {
@@ -209,5 +221,13 @@ public class EngineConfig {
 
     public void setTaskMsgDispatchListener(TaskMsgDispatchListener taskMsgDispatchListener) {
         this.taskMsgDispatchListener = taskMsgDispatchListener;
+    }
+
+    public long getAssignmentRetryDelayMillis() {
+        return assignmentRetryDelayMillis;
+    }
+
+    public void setAssignmentRetryDelayMillis(long assignmentRetryDelayMillis) {
+        this.assignmentRetryDelayMillis = assignmentRetryDelayMillis;
     }
 }
