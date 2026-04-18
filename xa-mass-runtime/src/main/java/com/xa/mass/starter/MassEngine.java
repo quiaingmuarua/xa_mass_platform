@@ -147,12 +147,13 @@ public class MassEngine {
         }
     }
 
+    @SuppressWarnings("unchecked")
     public void publishTaskEvents() {
-        if (taskManager != null) {
-            EventBusFacade eventBus = EventBusFactory.get("guava");
+        if (taskManager != null && eventBus != null) {
+            EventBusFacade<Object> bus = (EventBusFacade<Object>) eventBus;
             List<Task> allTasks = taskManager.getAllTasks();
             for (Task task : allTasks) {
-                eventBus.post(new TaskCreatedEvent(task, null, null));
+                bus.post(new TaskCreatedEvent(task, null, null));
             }
         }
     }
