@@ -59,12 +59,26 @@
         </dependency>
     </dependencies>
 
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>com.google.guava</groupId>
+                <artifactId>guava</artifactId>
+                <version>32.1.2-jre</version>
+            </dependency>
+            <dependency>
+                <groupId>io.lettuce</groupId>
+                <artifactId>lettuce-core</artifactId>
+                <version>6.3.1.RELEASE</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
     <build>
         <plugins>
-            <!-- Spring Boot插件已移除，仅在xa-mass-app中配�?-->
+            <!-- Spring Boot plugin is configured only in xa-mass-mock (the runnable module). -->
         </plugins>
     </build>
 
 
 </project>
-

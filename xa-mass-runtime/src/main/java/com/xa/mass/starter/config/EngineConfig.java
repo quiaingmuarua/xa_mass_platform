@@ -10,6 +10,9 @@ import com.xa.mass.engine.rules.RuleManagerFactory;
 import com.xa.mass.engine.service.AssignmentRecordService;
 import com.xa.mass.engine.strategy.SimpleTaskScheduler;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -21,6 +24,8 @@ import java.util.Map;
  * Runtime engine configuration.
  */
 public class EngineConfig {
+
+    private static final Logger logger = LoggerFactory.getLogger(EngineConfig.class);
     private boolean enabled = true;
     private int workerThreads = 8;
     private String mockConfigPath = "mock_config.json";
@@ -123,8 +128,11 @@ public class EngineConfig {
         try {
             String json = readConfigFile(configPath);
             root.add(fieldName, JsonParser.parseString(json).getAsJsonArray());
-        } catch (Exception ignored) {
-            // Optional mock inputs may be absent.
+        } catch (IOException e) {
+            // Config file is optional; absence is expected in test/minimal environments.
+            logger.debug("Optional config file not found, skipping [field={}, path={}]", fieldName, configPath);
+        } catch (Exception e) {
+            logger.warn("Failed to parse config file [field={}, path={}]: {}", fieldName, configPath, e.getMessage());
         }
     }
 

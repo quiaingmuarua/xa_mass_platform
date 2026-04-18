@@ -4,14 +4,14 @@ import com.xa.mass.base.channel.messaging.api.MessageStream;
 import com.xa.mass.base.channel.messaging.memory.InMemoryMessageStream;
 import com.xa.mass.base.channel.messaging.redis.LettuceRedisStream;
 import com.xa.mass.base.channel.messaging.redis.RedisConnectionManager;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 import java.util.HashMap;
 import java.util.Map;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 
 // 负载对象
 class TestPayload {
@@ -33,13 +33,13 @@ public class MessageStreamProviderRegistryTest {
     private static final String GROUP = "test-group";
     private static final String CONSUMER = "test-consumer";
 
-    @Before
+    @BeforeEach
     public void setUp() {
         RedisConnectionManager.init("localhost", 6379, null, 0);
         MessageStreamProviderRegistry.clearCache();
     }
 
-    @After
+    @AfterEach
     public void tearDown() {
         MessageStreamProviderRegistry.clearCache();
     }

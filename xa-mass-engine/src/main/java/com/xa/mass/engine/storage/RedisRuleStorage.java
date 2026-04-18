@@ -11,11 +11,12 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * Redis规则存储实现
- * 使用Redis作为规则定义和评估器的存储后端
+ * Redis-backed Rule storage placeholder. All methods throw {@link UnsupportedOperationException}.
+ * The active mainline uses in-memory rule storage. StorageType.REDIS is not yet implemented.
  *
- * 注意：这是一个示例实现，实际使用时需要添加Redis客户端依赖
+ * @deprecated Not implemented. Do not wire via StorageType.REDIS until this class is complete.
  */
+@Deprecated
 public class RedisRuleStorage implements RuleStorage {
 
     // 存储键前缀

@@ -2,19 +2,19 @@ package com.xa.mass.base.channel.messaging;
 
 import com.xa.mass.base.channel.messaging.redis.LettuceRedisQueue;
 import com.xa.mass.base.channel.messaging.redis.RedisConnectionManager;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 import java.util.concurrent.TimeUnit;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 
 public class LettuceRedisQueueTest {
     private LettuceRedisQueue<String> queue;
     private static final String QUEUE_KEY = "test-redis-queue";
 
-    @Before
+    @BeforeEach
     public void setUp() {
         // 确保Redis连接初始化
         RedisConnectionManager.init("localhost", 6379, null, 0);
@@ -37,7 +37,7 @@ public class LettuceRedisQueueTest {
         }
     }
 
-    @After
+    @AfterEach
     public void tearDown() {
         // 清空队列
         while (!queue.isEmpty()) {

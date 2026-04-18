@@ -2,21 +2,21 @@ package com.xa.mass.base.channel.messaging;
 
 import com.xa.mass.base.channel.messaging.redis.LettuceRedisStream;
 import com.xa.mass.base.channel.messaging.redis.RedisConnectionManager;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 
 public class LettuceRedisStreamTest {
     private LettuceRedisStream<String> stream;
     private static final String STREAM_KEY = "test-redis-stream";
 
-    @Before
+    @BeforeEach
     public void setUp() {
         RedisConnectionManager.init("localhost", 6379, null, 0);
         // 先清空，避免 group 创建副作用
@@ -27,7 +27,7 @@ public class LettuceRedisStreamTest {
         stream.ensureConsumerGroup();
     }
 
-    @After
+    @AfterEach
     public void tearDown() {
         stream.clear();
     }

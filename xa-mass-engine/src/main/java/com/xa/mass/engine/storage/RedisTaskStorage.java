@@ -8,11 +8,12 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * Redis任务存储实现
- * 使用Redis作为任务和任务消息的存储后端
+ * Redis-backed Task storage placeholder. All methods throw {@link UnsupportedOperationException}.
+ * The active mainline uses {@link InMemoryTaskStorage}. StorageType.REDIS is not yet implemented.
  *
- * 注意：这是一个示例实现，实际使用时需要添加Redis客户端依赖
+ * @deprecated Not implemented. Do not wire via StorageType.REDIS until this class is complete.
  */
+@Deprecated
 public class RedisTaskStorage implements TaskStorage {
 
     // 存储键前缀
