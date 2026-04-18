@@ -8,9 +8,12 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * Redis-backed Worker storage placeholder.
- * The active mainline still uses the in-memory storage implementation.
+ * Redis-backed Worker storage placeholder. All methods throw {@link UnsupportedOperationException}.
+ * The active mainline uses in-memory worker storage. StorageType.REDIS is not yet implemented.
+ *
+ * @deprecated Not implemented. Do not wire via StorageType.REDIS until this class is complete.
  */
+@Deprecated
 public class RedisWorkerStorage implements WorkerStorage {
 
     private static final String WORKER_KEY_PREFIX = "worker:";

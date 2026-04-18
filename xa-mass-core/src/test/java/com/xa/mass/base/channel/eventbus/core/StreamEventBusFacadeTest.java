@@ -2,16 +2,16 @@ package com.xa.mass.base.channel.eventbus.core;
 
 import com.xa.mass.base.channel.messaging.api.MessageStream;
 import com.xa.mass.base.channel.messaging.memory.InMemoryMessageStream;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class StreamEventBusFacadeTest {
     private StreamEventBusFacade<MassEvent> eventBus;
@@ -87,7 +87,7 @@ public class StreamEventBusFacadeTest {
         }
     }
 
-    @Before
+    @BeforeEach
     public void setUp() {
         MessageStream<MassEvent> stream = new InMemoryMessageStream<>("test-bus", MassEvent.class);
         eventBus = new StreamEventBusFacade<>(stream);
@@ -96,7 +96,7 @@ public class StreamEventBusFacadeTest {
         anotherListener = new AnotherListener();
     }
 
-    @After
+    @AfterEach
     public void tearDown() {
         eventBus.shutdown();
     }

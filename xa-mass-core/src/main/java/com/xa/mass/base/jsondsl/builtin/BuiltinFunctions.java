@@ -267,7 +267,7 @@ public class BuiltinFunctions {
                         return LocalDateTime.parse(timeStr, formatter);
                     }
                 } catch (Exception ignored) {
-                    // 继续尝试下一个格式
+                    // Try next format pattern.
                 }
             }
 

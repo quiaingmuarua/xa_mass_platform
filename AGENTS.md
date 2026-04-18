@@ -166,13 +166,21 @@ Verified endpoints:
 - `http://localhost:8088/actuator/health`
 - `ws://localhost:18088/ws`
 
-Default `dev` startup facts:
+Default startup facts:
 
-- `xa-mass-mock/src/main/resources/application.yml` sets `mock.client.auto-start=true`
+- `xa-mass-mock/src/main/resources/application.yml` activates the `local` Spring profile by default (`spring.profiles.active: local`).
+- `application-local.yml` is the active developer override (low connection limits, DEBUG logging). `application-dev.yml` targets CI/integration environments.
 - `server.port` is the Spring Boot HTTP port, currently `8088`
 - `mass.websocket.port` is the gateway WebSocket port, currently `18088`
 - `WebSocketClientStarter` listens on `ApplicationReadyEvent`
 - Mock worker clients now connect automatically to the gateway in the default verified startup path
+
+Profile selection guide:
+| Profile | File | When to edit |
+|---------|------|--------------|
+| `local` (default) | `application-local.yml` | Local developer tweaks (port, log level) |
+| `dev` | `application-dev.yml` | CI / integration test overrides |
+| `prod` | `application-prod.yml` | Production settings |
 
 ## 5. Current Reality, Not Marketing
 

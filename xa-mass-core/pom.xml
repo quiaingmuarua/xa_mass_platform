@@ -26,24 +26,12 @@
         <dependency>
             <groupId>com.google.guava</groupId>
             <artifactId>guava</artifactId>
-            <version>32.1.2-jre</version>
         </dependency>
 
-
-
-        
-        <!-- Lettuce Redis客户端（性能更高，支持单连接多路复用） -->
+        <!-- Lettuce Redis client (high-throughput, single-connection multiplexing). -->
         <dependency>
             <groupId>io.lettuce</groupId>
             <artifactId>lettuce-core</artifactId>
-            <version>6.3.1.RELEASE</version>
-        </dependency>
-
-        <!-- Gson 依赖 -->
-        <dependency>
-            <groupId>com.google.code.gson</groupId>
-            <artifactId>gson</artifactId>
-            <version>2.10.1</version>
         </dependency>
 
         <!--        <dependency>-->

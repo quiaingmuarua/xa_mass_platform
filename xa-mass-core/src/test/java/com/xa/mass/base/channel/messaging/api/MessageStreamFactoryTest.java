@@ -3,15 +3,14 @@ package com.xa.mass.base.channel.messaging.api;
 import com.xa.mass.base.channel.messaging.memory.InMemoryMessageStream;
 import com.xa.mass.base.channel.messaging.redis.LettuceRedisStream;
 import com.xa.mass.base.channel.messaging.redis.RedisConnectionManager;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 import java.util.HashMap;
 import java.util.Map;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 
-// 测试负载对象
 class TestPayload {
     public String name;
     public int value;
@@ -29,7 +28,7 @@ class TestPayload {
 public class MessageStreamFactoryTest {
     private static final String QUEUE_KEY = "test-factory-stream";
 
-    @Before
+    @BeforeEach
     public void setUp() {
         RedisConnectionManager.init("localhost", 6379, null, 0);
     }
@@ -38,7 +37,7 @@ public class MessageStreamFactoryTest {
     public void testCreateMemoryStream() {
         MessageStream<String> stream = MessageStreamFactory.create("memory", QUEUE_KEY, String.class);
         assertNotNull(stream);
-        assertTrue(stream instanceof InMemoryMessageStream);
+        assertInstanceOf(InMemoryMessageStream.class, stream);
         assertEquals(QUEUE_KEY, stream.getName());
     }
 
@@ -46,7 +45,7 @@ public class MessageStreamFactoryTest {
     public void testCreateRedisStream() {
         MessageStream<String> stream = MessageStreamFactory.create("redis", QUEUE_KEY, String.class);
         assertNotNull(stream);
-        assertTrue(stream instanceof LettuceRedisStream);
+        assertInstanceOf(LettuceRedisStream.class, stream);
     }
 
     @Test
@@ -56,7 +55,7 @@ public class MessageStreamFactoryTest {
         params.put("consumerName", "test-consumer");
         MessageStream<TestPayload> stream = MessageStreamFactory.create("memory", QUEUE_KEY, TestPayload.class, params);
         assertNotNull(stream);
-        assertTrue(stream instanceof InMemoryMessageStream);
+        assertInstanceOf(InMemoryMessageStream.class, stream);
     }
 
     @Test
@@ -66,41 +65,39 @@ public class MessageStreamFactoryTest {
         params.put("consumerName", "test-consumer");
         MessageStream<TestPayload> stream = MessageStreamFactory.create("redis", QUEUE_KEY, TestPayload.class, params);
         assertNotNull(stream);
-        assertTrue(stream instanceof LettuceRedisStream);
+        assertInstanceOf(LettuceRedisStream.class, stream);
     }
 
     @Test
     public void testCaseInsensitive() {
-        MessageStream<String> stream1 = MessageStreamFactory.create("MEMORY", QUEUE_KEY, String.class);
-        assertTrue(stream1 instanceof InMemoryMessageStream);
-
-        MessageStream<String> stream2 = MessageStreamFactory.create("Redis", QUEUE_KEY, String.class);
-        assertTrue(stream2 instanceof LettuceRedisStream);
-
-        MessageStream<String> stream3 = MessageStreamFactory.create("rEdIs", QUEUE_KEY, String.class);
-        assertTrue(stream3 instanceof LettuceRedisStream);
+        assertInstanceOf(InMemoryMessageStream.class, MessageStreamFactory.create("MEMORY", QUEUE_KEY, String.class));
+        assertInstanceOf(LettuceRedisStream.class, MessageStreamFactory.create("Redis", QUEUE_KEY, String.class));
+        assertInstanceOf(LettuceRedisStream.class, MessageStreamFactory.create("rEdIs", QUEUE_KEY, String.class));
     }
 
-    @Test(expected = IllegalArgumentException.class)
+    @Test
     public void testUnknownStreamType() {
-        MessageStreamFactory.create("kafka", QUEUE_KEY, String.class);
+        assertThrows(IllegalArgumentException.class,
+                () -> MessageStreamFactory.create("kafka", QUEUE_KEY, String.class));
     }
 
-    @Test(expected = IllegalArgumentException.class)
+    @Test
     public void testNullStreamType() {
-        MessageStreamFactory.create(null, QUEUE_KEY, String.class);
+        assertThrows(IllegalArgumentException.class,
+                () -> MessageStreamFactory.create(null, QUEUE_KEY, String.class));
     }
 
-    @Test(expected = IllegalArgumentException.class)
+    @Test
     public void testEmptyStreamType() {
-        MessageStreamFactory.create("", QUEUE_KEY, String.class);
+        assertThrows(IllegalArgumentException.class,
+                () -> MessageStreamFactory.create("", QUEUE_KEY, String.class));
     }
 
     @Test
     public void testCreateWithNullParams() {
         MessageStream<String> stream = MessageStreamFactory.create("memory", QUEUE_KEY, String.class, null);
         assertNotNull(stream);
-        assertTrue(stream instanceof InMemoryMessageStream);
+        assertInstanceOf(InMemoryMessageStream.class, stream);
     }
 
     @Test
@@ -108,6 +105,6 @@ public class MessageStreamFactoryTest {
         Map<String, String> params = new HashMap<>();
         MessageStream<String> stream = MessageStreamFactory.create("memory", QUEUE_KEY, String.class, params);
         assertNotNull(stream);
-        assertTrue(stream instanceof InMemoryMessageStream);
+        assertInstanceOf(InMemoryMessageStream.class, stream);
     }
-} 
+}
