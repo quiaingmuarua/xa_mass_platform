@@ -3,6 +3,7 @@ package com.xa.mass.engine.storage;
 import com.google.gson.Gson;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
+import com.xa.mass.base.model.TaskMsgAttempt;
 
 import java.util.List;
 import java.util.Optional;
@@ -161,6 +162,26 @@ public class RedisTaskStorage implements TaskStorage {
     }
 
     @Override
+    public void addTaskMessageAttempt(String taskId, String msgId, TaskMsgAttempt attempt) {
+        throw new UnsupportedOperationException("Redis storage not fully implemented yet");
+    }
+
+    @Override
+    public List<TaskMsgAttempt> getTaskMessageAttempts(String taskId, String msgId) {
+        throw new UnsupportedOperationException("Redis storage not fully implemented yet");
+    }
+
+    @Override
+    public Optional<TaskMsgAttempt> getLatestTaskMessageAttempt(String taskId, String msgId) {
+        throw new UnsupportedOperationException("Redis storage not fully implemented yet");
+    }
+
+    @Override
+    public boolean updateTaskMessageAttempt(String taskId, String msgId, TaskMsgAttempt attempt) {
+        throw new UnsupportedOperationException("Redis storage not fully implemented yet");
+    }
+
+    @Override
     public List<Task> getTasksByProject(String project) {
         throw new UnsupportedOperationException("Redis storage not fully implemented yet");
     }
@@ -179,4 +200,9 @@ public class RedisTaskStorage implements TaskStorage {
         // return new TaskMessageStats(total, success, failed, expired, processing);
         throw new UnsupportedOperationException("Redis storage not fully implemented yet");
     }
-} 
+
+    @Override
+    public TaskMessageAttemptStats getTaskMessageAttemptStats(String taskId) {
+        throw new UnsupportedOperationException("Redis storage not fully implemented yet");
+    }
+}

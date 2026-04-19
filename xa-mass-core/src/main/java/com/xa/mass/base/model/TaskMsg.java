@@ -1,5 +1,6 @@
 package com.xa.mass.base.model;
 
+import com.xa.mass.base.enums.taskmsg.TaskMsgFinalReason;
 import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 
 import java.time.LocalDateTime;
@@ -27,6 +28,7 @@ public class TaskMsg {
     private int retryCount;
     private int maxRetryCount;
     private String errorMessage;
+    private TaskMsgFinalReason finalReason;
     private Map<String, Object> input;
     private Map<String, Object> output;
 
@@ -96,12 +98,13 @@ public class TaskMsg {
      * Direct status setter — for framework deserialization only.
      * All business state changes must go through {@link #transitionTo(TaskMsgStatus)},
      * which enforces the state machine guard and fires lifecycle hooks.
-     * Exception: {@link #resetForRetry()} intentionally bypasses the state machine
-     * for the FAILED→INIT resurrection arc.
      */
     public void setStatus(TaskMsgStatus status) {
         this.status = status;
         this.updateTime = LocalDateTime.now();
+        if (status != null && !status.isFinal()) {
+            this.finalReason = null;
+        }
 
         if (status == TaskMsgStatus.RUNNING && startTime == null) {
             this.startTime = LocalDateTime.now();
@@ -190,6 +193,14 @@ public class TaskMsg {
         this.errorMessage = errorMessage;
     }
 
+    public TaskMsgFinalReason getFinalReason() {
+        return finalReason;
+    }
+
+    public void setFinalReason(TaskMsgFinalReason finalReason) {
+        this.finalReason = finalReason;
+    }
+
     /** Compatibility accessor: returns input.get("target") cast to String. */
     public String getTarget() {
         return input != null ? (String) input.get("target") : null;
@@ -244,29 +255,14 @@ public class TaskMsg {
         this.updateTime = LocalDateTime.now();
     }
 
-    /**
-     * Resets the message to INIT for the next retry attempt.
-     *
-     * <p>This intentionally bypasses {@link #transitionTo} because FAILED→INIT is not a valid
-     * arc in the normal lifecycle state machine — resurrection after failure is a special
-     * operation outside the transport contract. The state-machine guard ({@link TaskMsgStatus#canTransitionTo})
-     * would reject FAILED→INIT if this went through the normal path.
-     *
-     * <p>Caller must only invoke this when {@link #canRetry()} returns true.
-     */
-    public synchronized boolean resetForRetry() {
-        if (!canRetry()) {
-            return false;
-        }
-        incrementRetryCount();
+    public synchronized void resetForRetry() {
         this.status = TaskMsgStatus.INIT;
-        // Keep workerId/workerContextId so TaskResourceReleaseListener can release the workerContext.
-        // They will be overwritten with the new assignment at next dispatch.
         this.startTime = null;
         this.completeTime = null;
         this.errorMessage = null;
+        this.result = null;
+        this.finalReason = null;
         this.updateTime = LocalDateTime.now();
-        return true;
     }
 
     public long getExecutionDuration() {
@@ -298,23 +294,54 @@ public class TaskMsg {
     }
 
     public boolean markAsSuccess(String result) {
+        return markAsSuccess(result, TaskMsgFinalReason.BUSINESS_SUCCESS);
+    }
+
+    public boolean markAsSuccess(String result, TaskMsgFinalReason finalReason) {
         if (transitionTo(TaskMsgStatus.SUCCESS)) {
             setResult(result);
+            setFinalReason(finalReason);
             return true;
         }
         return false;
     }
 
     public boolean markAsFailed(String errorMessage) {
+        return markAsFailed(errorMessage, TaskMsgFinalReason.BUSINESS_FAILED);
+    }
+
+    public boolean markAsFailed(String errorMessage, TaskMsgFinalReason finalReason) {
         if (transitionTo(TaskMsgStatus.FAILED)) {
             setErrorMessage(errorMessage);
+            setFinalReason(finalReason);
             return true;
         }
         return false;
     }
 
     public boolean markAsExpired() {
-        return transitionTo(TaskMsgStatus.EXPIRED);
+        return markAsExpired(TaskMsgFinalReason.LEASE_EXPIRED);
+    }
+
+    public boolean markAsExpired(TaskMsgFinalReason finalReason) {
+        if (transitionTo(TaskMsgStatus.EXPIRED)) {
+            setFinalReason(finalReason);
+            return true;
+        }
+        return false;
+    }
+
+    public void forceFinalize(TaskMsgStatus finalStatus, TaskMsgFinalReason finalReason, String detail) {
+        if (finalStatus == null || !finalStatus.isFinal()) {
+            throw new IllegalArgumentException("finalStatus must be terminal");
+        }
+        setStatus(finalStatus);
+        setFinalReason(finalReason);
+        if (finalStatus == TaskMsgStatus.SUCCESS) {
+            setResult(detail);
+        } else {
+            setErrorMessage(detail);
+        }
     }
 
     @Override

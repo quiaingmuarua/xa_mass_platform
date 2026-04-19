@@ -1,10 +1,16 @@
 package com.xa.mass.engine;
 
 import com.xa.mass.base.enums.task.TaskStatus;
+import com.xa.mass.base.enums.task.TaskHoldReason;
+import com.xa.mass.base.enums.task.TaskIntakeStatus;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
+import com.xa.mass.base.enums.taskmsg.TaskMsgAttemptFinalReason;
+import com.xa.mass.base.enums.taskmsg.TaskMsgAttemptStatus;
+import com.xa.mass.base.enums.taskmsg.TaskMsgFinalReason;
 import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
+import com.xa.mass.base.model.TaskMsgAttempt;
 import com.xa.mass.base.model.User;
 import com.xa.mass.engine.model.TaskCreateRequestDto;
 import com.xa.mass.engine.model.TaskResumeResult;
@@ -24,6 +30,7 @@ import org.slf4j.LoggerFactory;
 import java.util.Collections;
 import java.util.List;
 import java.util.ArrayList;
+import java.time.LocalDateTime;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
@@ -96,6 +103,7 @@ public class TaskManager {
             );
             task.setBatchSize(dto.getBatchSize());
             task.setOpenEnded(dto.isOpenEnded());
+            task.setIntakeStatus(dto.isOpenEnded() ? TaskIntakeStatus.OPEN : TaskIntakeStatus.SEALED);
             // 5. Persist the task and its task messages.
             taskStorage.saveTask(task);
             for (String target : targets) {
@@ -242,6 +250,7 @@ public class TaskManager {
                 TaskStatus fromStatus = task.getStatus();
                 boolean result = task.transitionTo(TaskStatus.READY);
                 if (result) {
+                    task.setHoldReason(null);
                     TraceEventLogger.taskStatusTransition(taskId, fromStatus, task.getStatus(),
                             "APPROVE_TASK", "TaskManager", "task approved");
                     taskStorage.updateTask(task);
@@ -280,6 +289,7 @@ public class TaskManager {
                 TaskStatus fromStatus = task.getStatus();
                 boolean result = task.transitionTo(TaskStatus.BLOCKED);
                 if (result) {
+                    task.setHoldReason(TaskHoldReason.REVIEW_REJECTED);
                     TraceEventLogger.taskStatusTransition(taskId, fromStatus, task.getStatus(),
                             "REJECT_TASK", "TaskManager", "task rejected");
                     taskStorage.updateTask(task);
@@ -318,6 +328,7 @@ public class TaskManager {
                 TaskStatus fromStatus = task.getStatus();
                 boolean result = task.transitionTo(TaskStatus.BLOCKED);
                 if (result) {
+                    task.setHoldReason(TaskHoldReason.MANUAL_BLOCKED);
                     TraceEventLogger.taskStatusTransition(taskId, fromStatus, task.getStatus(),
                             "BLOCK_TASK", "TaskManager", "task blocked");
                     taskStorage.updateTask(task);
@@ -356,6 +367,7 @@ public class TaskManager {
                 TaskStatus fromStatus = task.getStatus();
                 boolean result = task.transitionTo(TaskStatus.PAUSED);
                 if (result) {
+                    task.setHoldReason(null);
                     TraceEventLogger.taskStatusTransition(taskId, fromStatus, task.getStatus(),
                             "PAUSE_TASK", "TaskManager", "task paused");
                     taskStorage.updateTask(task);
@@ -425,6 +437,7 @@ public class TaskManager {
                 TaskStatus fromStatus = task.getStatus();
                 boolean result = task.transitionTo(TaskStatus.READY);
                 if (result) {
+                    task.setHoldReason(null);
                     TraceEventLogger.taskStatusTransition(taskId, fromStatus, task.getStatus(),
                             "RESUME_TASK", "TaskManager", "task resumed to ready");
                     taskStorage.updateTask(task);
@@ -509,7 +522,7 @@ public class TaskManager {
         if (task == null) {
             throw new IllegalArgumentException("Task not found: " + taskId);
         }
-        if (!task.isOpenEnded()) {
+        if (task.getIntakeStatus() != TaskIntakeStatus.OPEN) {
             throw new IllegalStateException("Task is not open-ended: " + taskId);
         }
         if (!task.getStatus().isActive()) {
@@ -539,9 +552,10 @@ public class TaskManager {
      */
     public boolean sealTask(String taskId) {
         Task task = getTask(taskId);
-        if (task == null || !task.isOpenEnded()) {
+        if (task == null || task.getIntakeStatus() != TaskIntakeStatus.OPEN) {
             return false;
         }
+        task.setIntakeStatus(TaskIntakeStatus.SEALED);
         task.setOpenEnded(false);
         updateTask(task);
         updateTaskProgress(taskId);
@@ -578,6 +592,33 @@ public class TaskManager {
         return taskStorage.updateTaskMessage(taskId, taskMsg);
     }
 
+    public void addTaskMessageAttempt(String taskId, String msgId, TaskMsgAttempt attempt) {
+        taskStorage.addTaskMessageAttempt(taskId, msgId, attempt);
+    }
+
+    public List<TaskMsgAttempt> getTaskMessageAttempts(String taskId, String msgId) {
+        return taskStorage.getTaskMessageAttempts(taskId, msgId);
+    }
+
+    public TaskMsgAttempt getLatestTaskMessageAttempt(String taskId, String msgId) {
+        return taskStorage.getLatestTaskMessageAttempt(taskId, msgId).orElse(null);
+    }
+
+    public TaskMsgAttempt getLatestActiveTaskMessageAttempt(String taskId, String msgId) {
+        List<TaskMsgAttempt> attempts = taskStorage.getTaskMessageAttempts(taskId, msgId);
+        for (int i = attempts.size() - 1; i >= 0; i--) {
+            TaskMsgAttempt attempt = attempts.get(i);
+            if (attempt.getStatus() != null && attempt.getStatus().isActive()) {
+                return attempt;
+            }
+        }
+        return null;
+    }
+
+    public boolean updateTaskMessageAttempt(String taskId, String msgId, TaskMsgAttempt attempt) {
+        return taskStorage.updateTaskMessageAttempt(taskId, msgId, attempt);
+    }
+
     /**
      * Expires a single in-flight task message and recalculates task convergence.
      */
@@ -596,12 +637,17 @@ public class TaskManager {
                     msgId, taskId, taskMsg.getStatus());
             return false;
         }
-        // Only ASSIGNED/RUNNING messages may expire. INIT/BINDING never left the
-        // engine, so they should be cleaned up through task cancellation instead.
-        // Only assigned/dispatched messages (ASSIGNED / RUNNING) can be expired.
-        // INIT / BINDING never left the engine, so they should not be expired.
+        TaskMsgAttempt activeAttempt = getLatestActiveTaskMessageAttempt(taskId, msgId);
+        if (activeAttempt != null) {
+            if (!expireAttempt(activeAttempt, TaskMsgAttemptFinalReason.LEASE_EXPIRED, "task message expired")) {
+                LogUtils.logOperationFailure("EXPIRE_MSG_ERROR", "attempt could not expire from status "
+                        + activeAttempt.getStatus(), 0);
+                return false;
+            }
+            updateTaskMessageAttempt(taskId, msgId, activeAttempt);
+        }
         TaskMsgStatus fromStatus = taskMsg.getStatus();
-        boolean expired = taskMsg.markAsExpired();
+        boolean expired = taskMsg.markAsExpired(TaskMsgFinalReason.LEASE_EXPIRED);
         if (!expired) {
             LogUtils.logOperationFailure("EXPIRE_MSG_ERROR",
                     "task message status " + taskMsg.getStatus() + " cannot expire; only ASSIGNED/RUNNING can expire", 0);
@@ -751,9 +797,20 @@ public class TaskManager {
         if (task.getTaskNonSuccessNumber() != task.getTaskEligibleNumber() - task.getTaskSuccessNumber()) {
             violations.add(TaskStateValidationResult.ViolationCode.NON_SUCCESS_COUNT_MISMATCH);
         }
+        if (task.getStatus() == TaskStatus.BLOCKED && task.getHoldReason() == null) {
+            violations.add(TaskStateValidationResult.ViolationCode.BLOCKED_HOLD_REASON_MISSING);
+        }
+        if (task.getStatus() != TaskStatus.BLOCKED && task.getHoldReason() != null) {
+            violations.add(TaskStateValidationResult.ViolationCode.HOLD_REASON_PRESENT_ON_NON_BLOCKED);
+        }
 
         boolean finalStatus = task.getStatus() != null && task.getStatus().isFinal();
         boolean hasTerminalReason = task.getTerminalReason() != null;
+        if (finalStatus
+                && task.getIntakeStatus() == TaskIntakeStatus.OPEN
+                && task.getTerminalReason() != TaskTerminalReason.MANUAL_CANCELLED) {
+            violations.add(TaskStateValidationResult.ViolationCode.OPEN_INTAKE_FINALIZED_NON_MANUALLY);
+        }
         if (finalStatus && !hasTerminalReason) {
             violations.add(TaskStateValidationResult.ViolationCode.TERMINAL_REASON_MISSING);
         }
@@ -789,8 +846,35 @@ public class TaskManager {
             }
         }
 
+        boolean attemptNeedsResolution = false;
+        for (TaskMsg taskMsg : getTaskMessages(taskId)) {
+            if (taskMsg == null) {
+                continue;
+            }
+            if (taskMsg.isCompleted() && taskMsg.getFinalReason() == null) {
+                violations.add(TaskStateValidationResult.ViolationCode.TASK_MSG_FINAL_REASON_MISSING);
+            }
+            if (taskMsg.isCompleted() && !isTaskMsgFinalReasonCompatible(taskMsg)) {
+                violations.add(TaskStateValidationResult.ViolationCode.TASK_MSG_FINAL_REASON_STATUS_MISMATCH);
+            }
+            List<TaskMsgAttempt> attempts = getTaskMessageAttempts(taskId, taskMsg.getMsgId());
+            boolean hasActiveAttempt = attempts.stream()
+                    .anyMatch(attempt -> attempt.getStatus() != null && attempt.getStatus().isActive());
+            if (hasActiveAttempt && taskMsg.isCompleted()) {
+                violations.add(TaskStateValidationResult.ViolationCode.ACTIVE_ATTEMPT_WITH_FINAL_MESSAGE);
+            }
+            if (!attempts.isEmpty()
+                    && attempts.stream().allMatch(TaskMsgAttempt::isFinal)
+                    && !taskMsg.isCompleted()
+                    && taskMsg.getStatus() != TaskMsgStatus.INIT) {
+                attemptNeedsResolution = true;
+                violations.add(TaskStateValidationResult.ViolationCode.ALL_ATTEMPTS_FINAL_BUT_MESSAGE_NOT_FINAL);
+            }
+        }
+
         boolean needsResolution = !finalStatus
                 && taskTerminalPolicy.evaluate(task, stats).getOutcome() == TaskTerminalPolicyDecision.Outcome.FINALIZE_TO_TERMINAL;
+        needsResolution = needsResolution || attemptNeedsResolution;
         TaskStateValidationResult result = new TaskStateValidationResult(
                 violations.isEmpty(),
                 needsResolution,
@@ -957,137 +1041,143 @@ public class TaskManager {
                 return true;
             }
 
+            TaskMsgAttempt activeAttempt = getLatestActiveTaskMessageAttempt(taskId, msgId);
+            if (activeAttempt == null) {
+                activeAttempt = ensureLegacyAttempt(taskMsg);
+            }
+            if (activeAttempt == null) {
+                logger.warn("Cannot handle task message result because msg {} in task {} has no active attempt", msgId, taskId);
+                return false;
+            }
+
             TraceEventLogger.callbackAccepted(taskMsg, success ? "success callback received" : "failure callback received");
-            if (!advanceTaskMsgForCompletion(taskMsg, success)) {
-                logger.warn("Cannot advance task message {} from status {} for completion",
-                        msgId, taskMsg.getStatus());
+
+            if (!advanceAttemptForCallback(activeAttempt)) {
+                logger.warn("Cannot advance attempt {} for task message {} from status {}",
+                        activeAttempt.getAttemptId(), msgId, activeAttempt.getStatus());
+                return false;
+            }
+            if (!updateTaskMessageAttempt(taskId, msgId, activeAttempt)) {
+                logger.warn("Failed to persist active attempt {} for task message {}", activeAttempt.getAttemptId(), msgId);
                 return false;
             }
 
+            if (success) {
+                if (taskMsg.getStatus() == TaskMsgStatus.INIT && !taskMsg.markAsAssigned()) {
+                    logger.warn("Failed to mark task message {} as ASSIGNED before success completion", msgId);
+                    return false;
+                }
+                if (taskMsg.getStatus() == TaskMsgStatus.ASSIGNED) {
+                    TaskMsgStatus beforeRunningStatus = taskMsg.getStatus();
+                    if (!taskMsg.markAsRunning()) {
+                        logger.warn("Failed to mark task message {} as RUNNING before success completion", msgId);
+                        return false;
+                    }
+                    TraceEventLogger.taskMsgStatusTransition(
+                            taskMsg,
+                            beforeRunningStatus,
+                            taskMsg.getStatus(),
+                            "HANDLE_TASK_MESSAGE_RESULT",
+                            "TaskManager",
+                            "task message entered running from callback"
+                    );
+                }
+                TaskMsgStatus beforeFinalStatus = taskMsg.getStatus();
+                boolean statusUpdated = taskMsg.markAsSuccess(detail, TaskMsgFinalReason.BUSINESS_SUCCESS);
+                if (!statusUpdated) {
+                    logger.warn("Failed to mark task message {} as SUCCESS", msgId);
+                    return false;
+                }
+                if (!activeAttempt.markSucceeded()) {
+                    logger.warn("Failed to mark attempt {} as SUCCEEDED", activeAttempt.getAttemptId());
+                    return false;
+                }
+                TraceEventLogger.taskMsgStatusTransition(
+                        taskMsg,
+                        beforeFinalStatus,
+                        taskMsg.getStatus(),
+                        "HANDLE_TASK_MESSAGE_RESULT",
+                        "TaskManager",
+                        "task message marked success"
+                );
+                updateTaskMessageAttempt(taskId, msgId, activeAttempt);
+                boolean stored = updateTaskMessage(taskId, taskMsg);
+                if (!stored) {
+                    logger.warn("Failed to persist task message {} for task {}", msgId, taskId);
+                    return false;
+                }
+                taskScheduler.handleTaskMsgCompletion(taskMsg);
+                updateTaskProgress(taskId);
+                Task updatedTask = getTask(taskId);
+                if (updatedTask != null && !updatedTask.getStatus().isFinal()) {
+                    notifyTaskMessageFinal(updatedTask, taskMsg);
+                }
+                return true;
+            }
+
+            if (!activeAttempt.markFailed(TaskMsgAttemptFinalReason.BUSINESS_FAILURE, detail)) {
+                logger.warn("Failed to mark attempt {} as FAILED", activeAttempt.getAttemptId());
+                return false;
+            }
+            updateTaskMessageAttempt(taskId, msgId, activeAttempt);
+
+            if (taskMsg.getRetryCount() < taskMsg.getMaxRetryCount()) {
+                taskMsg.incrementRetryCount();
+                taskMsg.resetForRetry();
+                TraceEventLogger.taskMsgRetryReset(taskMsg,
+                        "HANDLE_TASK_MESSAGE_RESULT", "TaskManager", "retry budget allows re-dispatch");
+                boolean stored = updateTaskMessage(taskId, taskMsg);
+                if (!stored) {
+                    logger.warn("Failed to persist retry state for task message {} in task {}", msgId, taskId);
+                    return false;
+                }
+                updateTaskProgress(taskId);
+                Task updatedTask = getTask(taskId);
+                if (updatedTask != null && !updatedTask.getStatus().isFinal()) {
+                    notifyTaskMessageFinal(updatedTask, taskMsg);
+                }
+                return true;
+            }
+
+            if (taskMsg.getStatus() == TaskMsgStatus.INIT && !taskMsg.markAsAssigned()) {
+                logger.warn("Failed to mark task message {} as ASSIGNED before failure finalization", msgId);
+                return false;
+            }
             TaskMsgStatus beforeFinalStatus = taskMsg.getStatus();
-            boolean statusUpdated = success ? taskMsg.markAsSuccess(detail) : taskMsg.markAsFailed(detail);
-            if (!statusUpdated) {
-                logger.warn("Failed to mark task message {} as {}", msgId, success ? "SUCCESS" : "FAILED");
+            if (!taskMsg.markAsFailed(detail, TaskMsgFinalReason.RETRY_EXHAUSTED)) {
+                logger.warn("Failed to mark task message {} as FAILED", msgId);
                 return false;
             }
-        TraceEventLogger.taskMsgStatusTransition(
-                taskMsg,
-                beforeFinalStatus,
-                taskMsg.getStatus(),
-                "HANDLE_TASK_MESSAGE_RESULT",
-                "TaskManager",
-                success ? "task message marked success" : "task message marked failure"
-        );
+            TraceEventLogger.taskMsgStatusTransition(
+                    taskMsg,
+                    beforeFinalStatus,
+                    taskMsg.getStatus(),
+                    "HANDLE_TASK_MESSAGE_RESULT",
+                    "TaskManager",
+                    "task message marked failure"
+            );
 
-        // Before persisting a terminal failure, attempt retry. resetForRetry()
-        // moves the message back to INIT so the terminal policy does not see a
-        // final failure yet. The task stays RUNNING and re-dispatch is triggered
-        // through notifyTaskMessageFinal(updatedTask, taskMsg).
-        if (!success && taskMsg.resetForRetry()) {
-            TraceEventLogger.taskMsgRetryReset(taskMsg,
-                    "HANDLE_TASK_MESSAGE_RESULT", "TaskManager", "retry budget allows re-dispatch");
-            logger.info("Task message {} of task {} reset for retry (attempt {})", msgId, taskId, taskMsg.getRetryCount());
             boolean stored = updateTaskMessage(taskId, taskMsg);
             if (!stored) {
-                logger.warn("Failed to persist retry state for task message {} in task {}", msgId, taskId);
+                logger.warn("Failed to persist task message {} for task {}", msgId, taskId);
                 return false;
             }
+
+            taskScheduler.handleTaskMsgFailure(taskMsg, detail);
             updateTaskProgress(taskId);
             Task updatedTask = getTask(taskId);
             if (updatedTask != null && !updatedTask.getStatus().isFinal()) {
                 notifyTaskMessageFinal(updatedTask, taskMsg);
             }
             return true;
-        }
-
-        boolean stored = updateTaskMessage(taskId, taskMsg);
-        if (!stored) {
-            logger.warn("Failed to persist task message {} for task {}", msgId, taskId);
-            return false;
-        }
-
-        if (success) {
-            taskScheduler.handleTaskMsgCompletion(taskMsg);
-        } else {
-            taskScheduler.handleTaskMsgFailure(taskMsg, detail);
-        }
-
-        updateTaskProgress(taskId);
-        Task updatedTask = getTask(taskId);
-        if (updatedTask != null && !updatedTask.getStatus().isFinal()) {
-            notifyTaskMessageFinal(updatedTask, taskMsg);
-        }
-        return true;
         } // end synchronized (taskMsg)
-    }
-    private boolean advanceTaskMsgForCompletion(TaskMsg taskMsg, boolean success) {
-        TaskMsgStatus status = taskMsg.getStatus();
-        if (status == null) {
-            return false;
-        }
-        if (status.isFinal()) {
-            return true;
-        }
-        // Normalize message history so completion always passes through the
-        // lifecycle stages that runtime metrics and trace expect.
-        // Always normalize INIT -> BINDING before final completion.
-        if (status == TaskMsgStatus.INIT) {
-            TaskMsgStatus fromStatus = status;
-            if (!taskMsg.transitionTo(TaskMsgStatus.BINDING)) {
-                return false;
-            }
-            TraceEventLogger.taskMsgStatusTransition(
-                    taskMsg,
-                    fromStatus,
-                    taskMsg.getStatus(),
-                    "ADVANCE_TASK_MSG_FOR_COMPLETION",
-                    "TaskManager",
-                    "normalized completion path"
-            );
-        }
-        status = taskMsg.getStatus();
-        // Always normalize BINDING -> ASSIGNED regardless of success/failure so the
-        // final markAsSuccess/markAsFailed is always called from RUNNING state.
-        // (BINDING -> FAILED is technically allowed by the state machine but skips
-        // the RUNNING stage that callers expect to see in logs/metrics.)
-        if (status == TaskMsgStatus.BINDING) {
-            TaskMsgStatus fromStatus = status;
-            if (!taskMsg.markAsAssigned()) {
-                return false;
-            }
-            TraceEventLogger.taskMsgStatusTransition(
-                    taskMsg,
-                    fromStatus,
-                    taskMsg.getStatus(),
-                    "ADVANCE_TASK_MSG_FOR_COMPLETION",
-                    "TaskManager",
-                    "normalized completion path"
-            );
-            status = taskMsg.getStatus();
-        }
-        // Always normalize ASSIGNED -> RUNNING before the caller applies the terminal mark.
-        if (status == TaskMsgStatus.ASSIGNED) {
-            if (!taskMsg.markAsRunning()) {
-                return false;
-            }
-            TraceEventLogger.taskMsgStatusTransition(
-                    taskMsg,
-                    status,
-                    taskMsg.getStatus(),
-                    "ADVANCE_TASK_MSG_FOR_COMPLETION",
-                    "TaskManager",
-                    "normalized completion path"
-            );
-            return true;
-        }
-        return true;
     }
 
     /**
      * Forces all non-final task messages into a terminal state after cancelTask.
      *
      * <ul>
-     *   <li>INIT / BINDING -> FAILED because the engine never dispatched them</li>
+     *   <li>INIT -> FAILED because the engine never dispatched them</li>
      *   <li>ASSIGNED / RUNNING -> EXPIRED because dispatch began but was aborted</li>
      * </ul>
      */
@@ -1096,47 +1186,30 @@ public class TaskManager {
         for (TaskMsg msg : messages) {
             if (msg.isCompleted()) continue;
 
+            TaskMsgAttempt activeAttempt = getLatestActiveTaskMessageAttempt(taskId, msg.getMsgId());
+            if (activeAttempt != null) {
+                if (expireAttempt(activeAttempt, TaskMsgAttemptFinalReason.MANUAL_CANCELLED, "task cancelled")) {
+                    updateTaskMessageAttempt(taskId, msg.getMsgId(), activeAttempt);
+                }
+            }
+
             TaskMsgStatus s = msg.getStatus();
             boolean updated = false;
-            // Messages that never left the engine are finalized as FAILED
-            // during manual task cancellation.
             if (s == TaskMsgStatus.INIT) {
-                // INIT must move through BINDING before it can become FAILED.
-                if (msg.transitionTo(TaskMsgStatus.BINDING)) {
+                msg.forceFinalize(TaskMsgStatus.FAILED, TaskMsgFinalReason.MANUAL_CANCELLED, "task cancelled");
+                updated = true;
+                if (updated) {
                     TraceEventLogger.taskMsgStatusTransition(
                             msg,
                             TaskMsgStatus.INIT,
-                            TaskMsgStatus.BINDING,
-                            "CANCEL_PENDING_MESSAGES",
-                            "TaskManager",
-                            "task cancelled before dispatch"
-                    );
-                }
-                updated = msg.markAsFailed("task cancelled");
-                if (updated) {
-                    TraceEventLogger.taskMsgStatusTransition(
-                            msg,
-                            TaskMsgStatus.BINDING,
                             msg.getStatus(),
                             "CANCEL_PENDING_MESSAGES",
                             "TaskManager",
                             "task cancelled before dispatch"
-                    );
-                }
-            } else if (s == TaskMsgStatus.BINDING) {
-                updated = msg.markAsFailed("task cancelled");
-                if (updated) {
-                    TraceEventLogger.taskMsgStatusTransition(
-                            msg,
-                            TaskMsgStatus.BINDING,
-                            msg.getStatus(),
-                            "CANCEL_PENDING_MESSAGES",
-                            "TaskManager",
-                            "task cancelled during binding"
                     );
                 }
             } else if (s == TaskMsgStatus.ASSIGNED || s == TaskMsgStatus.RUNNING) {
-                updated = msg.markAsExpired();
+                updated = msg.markAsExpired(TaskMsgFinalReason.MANUAL_CANCELLED);
                 if (updated) {
                     TraceEventLogger.taskMsgStatusTransition(
                             msg,
@@ -1152,5 +1225,84 @@ public class TaskManager {
                 updateTaskMessage(taskId, msg);
             }
         }
+    }
+
+    private boolean isTaskMsgFinalReasonCompatible(TaskMsg taskMsg) {
+        if (taskMsg == null || !taskMsg.isCompleted() || taskMsg.getFinalReason() == null) {
+            return false;
+        }
+        return switch (taskMsg.getStatus()) {
+            case SUCCESS -> taskMsg.getFinalReason() == TaskMsgFinalReason.BUSINESS_SUCCESS;
+            case FAILED -> taskMsg.getFinalReason() == TaskMsgFinalReason.BUSINESS_FAILED
+                    || taskMsg.getFinalReason() == TaskMsgFinalReason.MANUAL_CANCELLED
+                    || taskMsg.getFinalReason() == TaskMsgFinalReason.RETRY_EXHAUSTED;
+            case EXPIRED -> taskMsg.getFinalReason() == TaskMsgFinalReason.TIMEOUT
+                    || taskMsg.getFinalReason() == TaskMsgFinalReason.WORKER_LOST
+                    || taskMsg.getFinalReason() == TaskMsgFinalReason.MANUAL_CANCELLED
+                    || taskMsg.getFinalReason() == TaskMsgFinalReason.LEASE_EXPIRED;
+            default -> false;
+        };
+    }
+
+    private TaskMsgAttempt ensureLegacyAttempt(TaskMsg taskMsg) {
+        if (taskMsg == null || taskMsg.getMsgId() == null || taskMsg.getTaskId() == null) {
+            return null;
+        }
+        TaskMsgAttempt existing = getLatestActiveTaskMessageAttempt(taskMsg.getTaskId(), taskMsg.getMsgId());
+        if (existing != null) {
+            return existing;
+        }
+        TaskMsgAttempt attempt = new TaskMsgAttempt(
+                java.util.UUID.randomUUID().toString(),
+                taskMsg.getTaskId(),
+                taskMsg.getMsgId(),
+                getTaskMessageAttempts(taskMsg.getTaskId(), taskMsg.getMsgId()).size() + 1
+        );
+        attempt.setWorkerId(taskMsg.getWorkerId());
+        attempt.setWorkerContextId(taskMsg.getWorkerContextId());
+        attempt.setBatchId(taskMsg.getBatchId());
+        attempt.markLeased(LocalDateTime.now().plusMinutes(5));
+        attempt.markDispatched();
+        if (taskMsg.getStatus() == TaskMsgStatus.RUNNING) {
+            attempt.markRunning();
+        }
+        addTaskMessageAttempt(taskMsg.getTaskId(), taskMsg.getMsgId(), attempt);
+        return attempt;
+    }
+
+    private boolean advanceAttemptForCallback(TaskMsgAttempt attempt) {
+        if (attempt == null || attempt.getStatus() == null) {
+            return false;
+        }
+        if (attempt.getStatus().isFinal()) {
+            return true;
+        }
+        return switch (attempt.getStatus()) {
+            case CREATED -> attempt.markLeased(LocalDateTime.now().plusMinutes(5))
+                    && attempt.markDispatched()
+                    && attempt.markRunning();
+            case LEASED -> attempt.markDispatched() && attempt.markRunning();
+            case DISPATCHED, ACKED -> attempt.markRunning();
+            case RUNNING -> true;
+            default -> false;
+        };
+    }
+
+    private boolean expireAttempt(TaskMsgAttempt attempt,
+                                  TaskMsgAttemptFinalReason finalReason,
+                                  String errorMessage) {
+        if (attempt == null || attempt.getStatus() == null || attempt.getStatus().isFinal()) {
+            return false;
+        }
+        return switch (attempt.getStatus()) {
+            case CREATED -> {
+                attempt.setStatus(TaskMsgAttemptStatus.REVOKED);
+                attempt.setFinalReason(finalReason);
+                attempt.setErrorMessage(errorMessage);
+                yield true;
+            }
+            case LEASED, DISPATCHED, ACKED, RUNNING -> attempt.markExpired(finalReason, errorMessage);
+            default -> false;
+        };
     }
 }

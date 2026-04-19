@@ -1,10 +1,12 @@
 package com.xa.mass.engine.listener;
 
 import com.xa.mass.base.enums.worker.WorkerContextStatus;
+import com.xa.mass.base.enums.taskmsg.TaskMsgAttemptStatus;
 import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
+import com.xa.mass.base.model.TaskMsgAttempt;
 import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.TaskManager;
@@ -90,6 +92,16 @@ class SimpleTaskMsgAssignListenerTest {
         assertEquals(WorkerContextStatus.OCCUPIED, wc2.getStatus());
         assertEquals(task.getTid(), wc2.getLastBindTaskId());
 
+        List<TaskMsgAttempt> attempts = stored.stream()
+                .map(msg -> taskManager.getTaskMessageAttempts(task.getTid(), msg.getMsgId()))
+                .flatMap(List::stream)
+                .collect(Collectors.toList());
+        assertEquals(4, attempts.size());
+        assertTrue(attempts.stream().allMatch(attempt -> attempt.getAttemptNo() == 1));
+        assertTrue(attempts.stream().allMatch(attempt -> attempt.getStatus() == TaskMsgAttemptStatus.DISPATCHED));
+        assertTrue(attempts.stream().allMatch(attempt -> attempt.getWorkerId() != null));
+        assertTrue(attempts.stream().allMatch(attempt -> attempt.getDispatchTime() != null));
+
         verify(recordService, times(4)).recordMessageAssignment(
                 any(), any(), any(), anyString(), anyString(), any(), anyString(), anyBoolean()
         );
@@ -110,11 +122,19 @@ class SimpleTaskMsgAssignListenerTest {
             capture.assertHasEvent("TASK_MSG_STATUS_TRANSITION", mdc ->
                     task.getTid().equals(mdc.get("taskId"))
                             && "INIT".equals(mdc.get("fromStatus"))
-                            && "BINDING".equals(mdc.get("toStatus")));
-            capture.assertHasEvent("TASK_MSG_STATUS_TRANSITION", mdc ->
-                    task.getTid().equals(mdc.get("taskId"))
-                            && "BINDING".equals(mdc.get("fromStatus"))
                             && "ASSIGNED".equals(mdc.get("toStatus"))
+                            && "d1".equals(mdc.get("workerId"))
+                            && "tk1".equals(mdc.get("workerContextId")));
+            capture.assertHasEvent("TASK_MSG_ATTEMPT_STATUS_TRANSITION", mdc ->
+                    task.getTid().equals(mdc.get("taskId"))
+                            && "CREATED".equals(mdc.get("fromStatus"))
+                            && "LEASED".equals(mdc.get("toStatus"))
+                            && "d1".equals(mdc.get("workerId"))
+                            && "tk1".equals(mdc.get("workerContextId")));
+            capture.assertHasEvent("TASK_MSG_ATTEMPT_STATUS_TRANSITION", mdc ->
+                    task.getTid().equals(mdc.get("taskId"))
+                            && "LEASED".equals(mdc.get("fromStatus"))
+                            && "DISPATCHED".equals(mdc.get("toStatus"))
                             && "d1".equals(mdc.get("workerId"))
                             && "tk1".equals(mdc.get("workerContextId")));
             capture.assertHasEvent("WORKER_CONTEXT_STATUS_TRANSITION", mdc ->

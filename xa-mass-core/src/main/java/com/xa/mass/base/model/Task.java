@@ -1,6 +1,8 @@
 package com.xa.mass.base.model;
 
 import com.xa.mass.base.enums.task.TaskStatus;
+import com.xa.mass.base.enums.task.TaskHoldReason;
+import com.xa.mass.base.enums.task.TaskIntakeStatus;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
 
 import java.time.LocalDateTime;
@@ -31,6 +33,8 @@ public class Task {
     private int peakAssignedWorkerCount;
     private Map<String, Object> sharedConfig = new HashMap<>();
     private boolean openEnded = false;
+    private TaskHoldReason holdReason;
+    private TaskIntakeStatus intakeStatus;
     private User user;
     private LocalDateTime createTime;
     private LocalDateTime updateTime;
@@ -41,6 +45,7 @@ public class Task {
 
     public Task() {
         this.status = TaskStatus.NEW;
+        this.intakeStatus = TaskIntakeStatus.SEALED;
         this.createTime = LocalDateTime.now();
         this.updateTime = LocalDateTime.now();
     }
@@ -168,11 +173,31 @@ public class Task {
     }
 
     public boolean isOpenEnded() {
-        return openEnded;
+        return intakeStatus == TaskIntakeStatus.OPEN;
     }
 
     public void setOpenEnded(boolean openEnded) {
         this.openEnded = openEnded;
+        this.intakeStatus = openEnded ? TaskIntakeStatus.OPEN : TaskIntakeStatus.SEALED;
+    }
+
+    public TaskHoldReason getHoldReason() {
+        return holdReason;
+    }
+
+    public void setHoldReason(TaskHoldReason holdReason) {
+        this.holdReason = holdReason;
+        this.updateTime = LocalDateTime.now();
+    }
+
+    public TaskIntakeStatus getIntakeStatus() {
+        return intakeStatus;
+    }
+
+    public void setIntakeStatus(TaskIntakeStatus intakeStatus) {
+        this.intakeStatus = intakeStatus == null ? TaskIntakeStatus.SEALED : intakeStatus;
+        this.openEnded = this.intakeStatus == TaskIntakeStatus.OPEN;
+        this.updateTime = LocalDateTime.now();
     }
 
     public User getUser() {
@@ -279,6 +304,9 @@ public class Task {
     public synchronized boolean transitionTo(TaskStatus targetStatus) {
         if (status.canTransitionTo(targetStatus)) {
             setStatus(targetStatus);
+            if (targetStatus != TaskStatus.BLOCKED) {
+                this.holdReason = null;
+            }
             if (targetStatus == TaskStatus.RUNNING && startTime == null) {
                 setStartTime(LocalDateTime.now());
             } else if (targetStatus.isFinal()) {

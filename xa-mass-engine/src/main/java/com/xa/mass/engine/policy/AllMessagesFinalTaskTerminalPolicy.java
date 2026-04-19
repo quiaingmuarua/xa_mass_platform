@@ -1,5 +1,6 @@
 package com.xa.mass.engine.policy;
 
+import com.xa.mass.base.enums.task.TaskIntakeStatus;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.engine.model.TaskTerminalPolicyDecision;
@@ -16,8 +17,8 @@ public class AllMessagesFinalTaskTerminalPolicy implements TaskTerminalPolicy {
         if (stats.getTotal() <= 0) {
             return TaskTerminalPolicyDecision.keepRunning();
         }
-        // Open-ended tasks never auto-terminate; caller must seal() or cancel to close.
-        if (task.isOpenEnded()) {
+        // Tasks only auto-terminate after intake has been sealed.
+        if (task.getIntakeStatus() == TaskIntakeStatus.OPEN) {
             return TaskTerminalPolicyDecision.keepRunning();
         }
         if (stats.getSuccess() + stats.getFailed() + stats.getExpired() != stats.getTotal()) {

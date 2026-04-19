@@ -1,6 +1,6 @@
 # Trace Contract
 
-Last updated: 2026-04-16
+Last updated: 2026-04-19
 
 This file defines the minimum structured trace required to debug lifecycle issues.
 Summary logs are useful, but they do not satisfy this contract by themselves.
@@ -12,6 +12,7 @@ The contract covers:
 - task transitions
 - task progress snapshots
 - task-message transitions
+- task-message-attempt transitions
 - worker-context transitions
 - worker lock acquire/release
 - worker match accept/reject
@@ -19,6 +20,7 @@ The contract covers:
 - assignment summaries
 - task-state validation summaries
 - dispatch binding summaries
+- attempt lifecycle summaries
 - assignment-queue snapshots
 - assignment-queue retry scheduling
 - callback accept/ignore
@@ -32,6 +34,7 @@ Required event names:
 - `TASK_TERMINAL_CLOSED`
 - `TASK_PROGRESS_SNAPSHOT`
 - `TASK_MSG_STATUS_TRANSITION`
+- `TASK_MSG_ATTEMPT_STATUS_TRANSITION`
 - `TASK_MSG_RETRY_RESET`
 - `WORKER_CONTEXT_STATUS_TRANSITION`
 - `WORKER_LOCK_ACQUIRED`
@@ -70,6 +73,8 @@ Common fields:
 - `workerId`
 - `workerContextId`
 - `batchId`
+- `attemptId`
+- `attemptNo`
 
 Transition fields:
 
@@ -80,6 +85,7 @@ Specialized fields when relevant:
 
 - `terminalReason`
 - `retryCount`
+- `finalReason`
 - `requiredMinWorkerCount`
 - `currentStatus`
 - `retryDelayMillis`
@@ -116,6 +122,7 @@ Specialized fields when relevant:
 - `trackedBatchPendingCount`
 - `scheduledRetryCount`
 - `queueAction`
+- `leaseExpireTime`
 
 ## 4. Minimum Required Paths
 
@@ -123,8 +130,9 @@ Must be traceable:
 
 - `Task`: `NEW -> READY`, `READY -> RUNNING`, `RUNNING/PAUSED/BLOCKED -> TERMINAL`
 - task-level funnel snapshot after progress reconciliation
-- `TaskMsg`: `INIT -> BINDING -> ASSIGNED -> RUNNING -> SUCCESS/FAILED/EXPIRED`
-- retry reset: `FAILED/EXPIRED -> INIT`
+- `TaskMsg`: `INIT -> ASSIGNED -> RUNNING -> SUCCESS/FAILED/EXPIRED`
+- `TaskMsgAttempt`: `CREATED -> LEASED -> DISPATCHED -> ... -> final`
+- retry reset: final attempt closure plus logical `TaskMsg -> INIT`
 - `WorkerContext`: `IDLE -> RESERVED -> OCCUPIED -> IDLE`
 - worker lock acquire/release
 - worker match reject reason
@@ -149,6 +157,7 @@ Rules:
 9. dispatch binding summary must include per-worker batch limit and unique worker/context counts
 10. task-state validation summary must include `valid`, `needsResolution`, and violation details when emitted
 11. assignment queue snapshot must include queue depth and scheduled retry count
+12. task-message-attempt transitions must include `attemptId`, `attemptNo`, and `finalReason` when the attempt closes
 
 ## 5. Replayability Requirement
 
@@ -157,7 +166,7 @@ Given a `taskId`, an operator or agent must be able to reconstruct:
 1. when the task entered `READY`
 2. why it entered `RUNNING`
 3. which worker/context each message used
-4. which messages succeeded, failed, or expired
+4. which attempt delivered each message and how that attempt finished
 5. whether retry happened
 6. why the task closed to `TERMINAL`
 7. which resources were released
@@ -175,7 +184,8 @@ Minimum trace assertions:
 - `READY -> RUNNING`
 - `RUNNING -> TERMINAL` with `terminalReason`
 - `TASK_PROGRESS_SNAPSHOT` after message reconciliation
-- `INIT -> BINDING -> ASSIGNED`
+- `INIT -> ASSIGNED`
+- `TASK_MSG_ATTEMPT_STATUS_TRANSITION` for `CREATED -> LEASED -> DISPATCHED`
 - `ASSIGNED -> RUNNING -> SUCCESS/FAILED`
 - `IDLE -> RESERVED -> OCCUPIED -> IDLE`
 - `ASSIGNMENT_SUMMARY` for at least one successful assignment attempt

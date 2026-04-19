@@ -1,10 +1,12 @@
 package com.xa.mass.engine.listener;
 
 import com.xa.mass.base.enums.assignment.AssignmentResult;
+import com.xa.mass.base.enums.taskmsg.TaskMsgAttemptStatus;
 import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.base.enums.worker.WorkerContextStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
+import com.xa.mass.base.model.TaskMsgAttempt;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.TaskManager;
@@ -17,6 +19,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.time.LocalDateTime;
 import java.util.stream.Collectors;
 
 /**
@@ -239,21 +242,44 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
     }
 
     private boolean bindTaskMessage(TaskMsg taskMsg, String workerId, String workerContextId, String batchId) {
-        TaskMsgStatus beforeBinding = taskMsg.getStatus();
-        if (!taskMsg.transitionTo(TaskMsgStatus.BINDING)) {
-            return false;
-        }
-        TraceEventLogger.taskMsgStatusTransition(
-                taskMsg,
-                beforeBinding,
-                taskMsg.getStatus(),
-                "BIND_TASK_MESSAGE",
-                "SimpleTaskMsgAssignListener",
-                "task message entered binding"
-        );
         taskMsg.setWorkerId(workerId);
         taskMsg.setWorkerContextId(workerContextId);
         taskMsg.setBatchId(batchId);
+        TaskMsgAttempt attempt = new TaskMsgAttempt(
+                java.util.UUID.randomUUID().toString(),
+                taskMsg.getTaskId(),
+                taskMsg.getMsgId(),
+                taskManager.getTaskMessageAttempts(taskMsg.getTaskId(), taskMsg.getMsgId()).size() + 1
+        );
+        attempt.setWorkerId(workerId);
+        attempt.setWorkerContextId(workerContextId);
+        attempt.setBatchId(batchId);
+        TaskMsgAttemptStatus initialAttemptStatus = attempt.getStatus();
+        if (!attempt.markLeased(LocalDateTime.now().plusMinutes(5))) {
+            return false;
+        }
+        TraceEventLogger.taskMsgAttemptStatusTransition(
+                attempt,
+                initialAttemptStatus,
+                attempt.getStatus(),
+                "BIND_TASK_MESSAGE",
+                "SimpleTaskMsgAssignListener",
+                "attempt leased for dispatch"
+        );
+        TaskMsgAttemptStatus beforeDispatch = attempt.getStatus();
+        if (!attempt.markDispatched()) {
+            return false;
+        }
+        TraceEventLogger.taskMsgAttemptStatusTransition(
+                attempt,
+                beforeDispatch,
+                attempt.getStatus(),
+                "BIND_TASK_MESSAGE",
+                "SimpleTaskMsgAssignListener",
+                "attempt dispatched"
+        );
+        taskManager.addTaskMessageAttempt(taskMsg.getTaskId(), taskMsg.getMsgId(), attempt);
+
         TaskMsgStatus beforeAssigned = taskMsg.getStatus();
         if (!taskMsg.markAsAssigned()) {
             return false;

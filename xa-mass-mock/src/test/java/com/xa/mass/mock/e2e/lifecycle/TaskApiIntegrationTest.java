@@ -54,6 +54,8 @@ class TaskApiIntegrationTest extends AbstractMockE2eTest {
         assertEquals(Boolean.TRUE, beforeAudit.get("success"));
         Map<String, Object> createdTask = task(beforeAudit);
         assertEquals("NEW", createdTask.get("status"));
+        assertEquals("SEALED", createdTask.get("intakeStatus"));
+        assertEquals(Boolean.FALSE, createdTask.get("openEnded"));
 
         Map<String, Object> auditResponse = exchange(
                 "/status/api/tasks/" + taskId + "/audit?approved=true&comment=integration",
@@ -71,6 +73,7 @@ class TaskApiIntegrationTest extends AbstractMockE2eTest {
 
         for (Map<String, Object> message : snapshot.messages()) {
             assertEquals("SUCCESS", message.get("status"));
+            assertEquals("BUSINESS_SUCCESS", message.get("finalReason"));
             assertNotNull(message.get("workerId"));
             assertNotNull(message.get("workerContextId"));
             assertNotNull(message.get("batchId"));

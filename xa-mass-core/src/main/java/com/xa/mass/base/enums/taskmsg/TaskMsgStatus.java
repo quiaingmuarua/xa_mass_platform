@@ -2,7 +2,7 @@ package com.xa.mass.base.enums.taskmsg;
 
 /**
  * Task message lifecycle states.
- * Mainline flow: INIT -> BINDING -> ASSIGNED -> RUNNING -> SUCCESS/FAILED/EXPIRED.
+ * Mainline flow: INIT -> ASSIGNED -> RUNNING -> SUCCESS/FAILED/EXPIRED.
  *
  * <p>This enum models the platform lifecycle contract for a work item. It is
  * not a full transport-event history. Transport-specific phases such as
@@ -11,7 +11,6 @@ package com.xa.mass.base.enums.taskmsg;
  */
 public enum TaskMsgStatus {
     INIT("初始"),
-    BINDING("绑定中"),
     ASSIGNED("已分配"),
     RUNNING("执行中"),
     SUCCESS("成功"),
@@ -33,7 +32,7 @@ public enum TaskMsgStatus {
     }
 
     public boolean isProcessing() {
-        return this == BINDING || this == ASSIGNED || this == RUNNING;
+        return this == ASSIGNED || this == RUNNING;
     }
 
     public boolean isSuccess() {
@@ -51,9 +50,7 @@ public enum TaskMsgStatus {
     public boolean canTransitionTo(TaskMsgStatus targetStatus) {
         switch (this) {
             case INIT:
-                return targetStatus == BINDING;
-            case BINDING:
-                return targetStatus == ASSIGNED || targetStatus == FAILED;
+                return targetStatus == ASSIGNED;
             case ASSIGNED:
                 return targetStatus == RUNNING || targetStatus == FAILED || targetStatus == EXPIRED;
             case RUNNING:

@@ -185,8 +185,8 @@ Task paths currently pinned:
 
 Task message paths currently pinned:
 
-- `INIT -> BINDING -> ASSIGNED -> RUNNING -> SUCCESS`
-- `INIT -> BINDING -> ASSIGNED -> RUNNING -> FAILED`
+- `INIT -> ASSIGNED -> RUNNING -> SUCCESS`
+- `INIT -> ASSIGNED -> RUNNING -> FAILED`
 - duplicate final callback replay keeps the first final state
 
 Terminal metadata currently pinned:

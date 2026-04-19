@@ -216,7 +216,8 @@ Important guards:
 - `MassWebSocketClientImpl` ignores `response=true` `TASK/step` frames so mock clients do not echo server response frames back into the system
 - `TaskManager.handleTaskMessageResult(...)` ignores late non-final callbacks for tasks already closed to `TERMINAL`
 - duplicate final callbacks are treated as idempotent no-ops after the first final result is stored
-- `TaskManager.advanceTaskMsgForCompletion()` advances through `INIT -> BINDING -> ASSIGNED -> RUNNING` before final success/failure marking so state history remains coherent
+- `TaskMsgStatus` stays as the logical lifecycle (`INIT -> ASSIGNED -> RUNNING -> final`)
+- assignment/lease/retry transport history is tracked in `TaskMsgAttempt`
 
 ### 5.4 Worker And Worker-Context Truth Sources
 

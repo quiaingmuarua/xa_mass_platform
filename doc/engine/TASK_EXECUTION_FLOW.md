@@ -97,7 +97,7 @@ Dispatch-time rule:
 
 Verified open-ended behavior:
 
-- `openEnded=true` disables automatic terminal closure while the append window remains open
+- `openEnded=true` initializes `Task.intakeStatus=OPEN`, which disables automatic terminal closure while the append window remains open
 - `POST /status/api/tasks/{taskId}/items` appends new work items as `TaskMsg.input`
 - `PUT /status/api/tasks/{taskId}/seal` closes the append window
 - once sealed, normal terminal convergence resumes when all persisted `TaskMsg` rows are final
@@ -118,7 +118,8 @@ Important guards:
 
 - `MassWebSocketClientImpl` ignores `response=true` `TASK/step` frames so the mock side does not generate echo loops
 - duplicate final callbacks are accepted only as idempotent replays
-- `TaskManager.advanceTaskMsgForCompletion()` records `INIT -> BINDING -> ASSIGNED -> RUNNING` before final completion
+- `TaskMsgStatus` stays as the logical lifecycle (`INIT -> ASSIGNED -> RUNNING -> final`)
+- per-dispatch lease and retry history now lives in `TaskMsgAttempt`
 
 ## 6. Resource Release
 

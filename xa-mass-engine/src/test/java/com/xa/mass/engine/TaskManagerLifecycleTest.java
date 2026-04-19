@@ -1,10 +1,14 @@
 package com.xa.mass.engine;
 
 import com.xa.mass.base.enums.task.TaskStatus;
+import com.xa.mass.base.enums.task.TaskHoldReason;
+import com.xa.mass.base.enums.task.TaskIntakeStatus;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
+import com.xa.mass.base.enums.taskmsg.TaskMsgFinalReason;
 import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
+import com.xa.mass.base.model.TaskMsgAttempt;
 import com.xa.mass.engine.model.TaskCreateRequestDto;
 import com.xa.mass.engine.model.TaskResumeResult;
 import com.xa.mass.engine.model.TaskStateResolutionResult;
@@ -87,9 +91,11 @@ class TaskManagerLifecycleTest {
 
         assertTrue(taskManager.rejectTask(task.getTid()));
         assertEquals(TaskStatus.BLOCKED, taskManager.getTask(task.getTid()).getStatus());
+        assertEquals(TaskHoldReason.REVIEW_REJECTED, taskManager.getTask(task.getTid()).getHoldReason());
 
         assertTrue(taskManager.approveTask(task.getTid()));
         assertEquals(TaskStatus.READY, taskManager.getTask(task.getTid()).getStatus());
+        assertNull(taskManager.getTask(task.getTid()).getHoldReason());
     }
 
     @Test
@@ -189,7 +195,6 @@ class TaskManagerLifecycleTest {
 
         List<TaskMsg> messages = taskManager.getTaskMessages(task.getTid());
         messages.forEach(msg -> {
-            msg.transitionTo(TaskMsgStatus.BINDING);
             msg.markAsAssigned();
             taskManager.updateTaskMessage(task.getTid(), msg);
         });
@@ -213,7 +218,6 @@ class TaskManagerLifecycleTest {
         taskManager.updateTask(task);
 
         TaskMsg message = taskManager.getTaskMessages(task.getTid()).get(0);
-        message.transitionTo(TaskMsgStatus.BINDING);
         message.markAsAssigned();
         taskManager.updateTaskMessage(task.getTid(), message);
 
@@ -243,7 +247,6 @@ class TaskManagerLifecycleTest {
         taskManager.updateTask(task);
 
         TaskMsg message = taskManager.getTaskMessages(task.getTid()).get(0);
-        message.transitionTo(TaskMsgStatus.BINDING);
         message.markAsAssigned();
         taskManager.updateTaskMessage(task.getTid(), message);
 
@@ -268,7 +271,6 @@ class TaskManagerLifecycleTest {
         task.setStatus(TaskStatus.RUNNING);
 
         TaskMsg message = taskManager.getTaskMessages(task.getTid()).get(0);
-        message.transitionTo(TaskMsgStatus.BINDING);
         message.markAsAssigned();
         message.setMaxRetryCount(0);
         taskManager.updateTaskMessage(task.getTid(), message);
@@ -290,7 +292,6 @@ class TaskManagerLifecycleTest {
 
         TaskMsg message = taskManager.getTaskMessages(task.getTid()).get(0);
         String msgId = message.getMsgId();
-        message.transitionTo(TaskMsgStatus.BINDING);
         message.markAsAssigned();
         message.setWorkerId("worker-1");
         message.setWorkerContextId("worker-context-1");
@@ -304,6 +305,7 @@ class TaskManagerLifecycleTest {
         assertEquals(msgId, retriedMessage.getMsgId());
         assertEquals(TaskMsgStatus.INIT, retriedMessage.getStatus());
         assertEquals(1, retriedMessage.getRetryCount());
+        assertNull(retriedMessage.getFinalReason());
         assertEquals("worker-1", retriedMessage.getWorkerId());
         assertEquals("worker-context-1", retriedMessage.getWorkerContextId());
         assertNull(retriedMessage.getErrorMessage());
@@ -317,6 +319,7 @@ class TaskManagerLifecycleTest {
         TaskMsg finalMessage = taskManager.getTaskMessage(task.getTid(), msgId);
         Task updatedTask = taskManager.getTask(task.getTid());
         assertEquals(TaskMsgStatus.SUCCESS, finalMessage.getStatus());
+        assertEquals(TaskMsgFinalReason.BUSINESS_SUCCESS, finalMessage.getFinalReason());
         assertEquals(1, finalMessage.getRetryCount());
         assertEquals("done-after-retry", finalMessage.getResult());
         assertEquals(TaskStatus.TERMINAL, updatedTask.getStatus());
@@ -334,7 +337,6 @@ class TaskManagerLifecycleTest {
         taskManager.updateTask(task);
 
         TaskMsg message = taskManager.getTaskMessages(task.getTid()).get(0);
-        message.transitionTo(TaskMsgStatus.BINDING);
         message.markAsAssigned();
         message.setWorkerId("worker-1");
         message.setWorkerContextId("worker-context-1");
@@ -372,7 +374,6 @@ class TaskManagerLifecycleTest {
         task.setStatus(TaskStatus.RUNNING);
 
         TaskMsg message = taskManager.getTaskMessages(task.getTid()).get(0);
-        message.transitionTo(TaskMsgStatus.BINDING);
         message.markAsAssigned();
         taskManager.updateTaskMessage(task.getTid(), message);
 
@@ -399,7 +400,6 @@ class TaskManagerLifecycleTest {
 
         List<TaskMsg> messages = taskManager.getTaskMessages(task.getTid());
         messages.forEach(msg -> {
-            msg.transitionTo(TaskMsgStatus.BINDING);
             msg.markAsAssigned();
             taskManager.updateTaskMessage(task.getTid(), msg);
         });
@@ -426,7 +426,6 @@ class TaskManagerLifecycleTest {
         task.setStatus(TaskStatus.RUNNING);
 
         TaskMsg message = taskManager.getTaskMessages(task.getTid()).get(0);
-        message.transitionTo(TaskMsgStatus.BINDING);
         message.markAsAssigned();
         taskManager.updateTaskMessage(task.getTid(), message);
 
@@ -447,7 +446,6 @@ class TaskManagerLifecycleTest {
         task.setStatus(TaskStatus.RUNNING);
 
         TaskMsg message = taskManager.getTaskMessages(task.getTid()).get(0);
-        message.transitionTo(TaskMsgStatus.BINDING);
         message.markAsAssigned();
         taskManager.updateTaskMessage(task.getTid(), message);
 
@@ -468,13 +466,43 @@ class TaskManagerLifecycleTest {
     }
 
     @Test
+    void openEndedTaskStaysNonTerminalUntilSealed() {
+        TaskCreateRequestDto request = buildRequest("task-open-ended", List.of("alpha"));
+        request.setOpenEnded(true);
+        Task task = taskManager.createTask(request);
+
+        assertEquals(TaskIntakeStatus.OPEN, task.getIntakeStatus());
+
+        taskManager.approveTask(task.getTid());
+        task.setStatus(TaskStatus.RUNNING);
+        taskManager.updateTask(task);
+
+        TaskMsg message = taskManager.getTaskMessages(task.getTid()).get(0);
+        message.markAsAssigned();
+        taskManager.updateTaskMessage(task.getTid(), message);
+
+        assertTrue(taskManager.handleTaskMessageResult(task.getTid(), message.getMsgId(), true, "done"));
+
+        Task beforeSeal = taskManager.getTask(task.getTid());
+        assertEquals(TaskStatus.RUNNING, beforeSeal.getStatus());
+        assertNull(beforeSeal.getTerminalReason());
+        assertEquals(TaskIntakeStatus.OPEN, beforeSeal.getIntakeStatus());
+
+        assertTrue(taskManager.sealTask(task.getTid()));
+
+        Task sealed = taskManager.getTask(task.getTid());
+        assertEquals(TaskStatus.TERMINAL, sealed.getStatus());
+        assertEquals(TaskTerminalReason.ALL_MESSAGES_SUCCEEDED, sealed.getTerminalReason());
+        assertEquals(TaskIntakeStatus.SEALED, sealed.getIntakeStatus());
+    }
+
+    @Test
     void lateCallbackAfterCancelDoesNotMutateTerminalTask() {
         Task task = taskManager.createTask(buildRequest("task-cancel-late-callback", List.of("alpha")));
         taskManager.approveTask(task.getTid());
         task.setStatus(TaskStatus.RUNNING);
 
         TaskMsg message = taskManager.getTaskMessages(task.getTid()).get(0);
-        message.transitionTo(TaskMsgStatus.BINDING);
         message.markAsAssigned();
         taskManager.updateTaskMessage(task.getTid(), message);
 
@@ -502,7 +530,6 @@ class TaskManagerLifecycleTest {
         taskManager.updateTask(task);
 
         TaskMsg message = taskManager.getTaskMessages(task.getTid()).get(0);
-        message.transitionTo(TaskMsgStatus.BINDING);
         message.markAsAssigned();
         taskManager.updateTaskMessage(task.getTid(), message);
 
@@ -525,7 +552,6 @@ class TaskManagerLifecycleTest {
         task.setStatus(TaskStatus.RUNNING);
 
         TaskMsg message = taskManager.getTaskMessages(task.getTid()).get(0);
-        message.transitionTo(TaskMsgStatus.BINDING);
         message.markAsAssigned();
         taskManager.updateTaskMessage(task.getTid(), message);
 
@@ -551,7 +577,6 @@ class TaskManagerLifecycleTest {
         task.setStatus(TaskStatus.RUNNING);
 
         TaskMsg message = taskManager.getTaskMessages(task.getTid()).get(0);
-        message.transitionTo(TaskMsgStatus.BINDING);
         message.markAsAssigned();
         taskManager.updateTaskMessage(task.getTid(), message);
 
@@ -573,7 +598,6 @@ class TaskManagerLifecycleTest {
 
         List<TaskMsg> messages = taskManager.getTaskMessages(task.getTid());
         messages.forEach(msg -> {
-            msg.transitionTo(TaskMsgStatus.BINDING);
             msg.markAsAssigned();
             msg.setMaxRetryCount(0);
             taskManager.updateTaskMessage(task.getTid(), msg);
@@ -596,7 +620,6 @@ class TaskManagerLifecycleTest {
 
         List<TaskMsg> messages = taskManager.getTaskMessages(task.getTid());
         messages.forEach(msg -> {
-            msg.transitionTo(TaskMsgStatus.BINDING);
             msg.markAsAssigned();
             msg.setMaxRetryCount(0);
             taskManager.updateTaskMessage(task.getTid(), msg);
@@ -619,7 +642,6 @@ class TaskManagerLifecycleTest {
 
         List<TaskMsg> messages = taskManager.getTaskMessages(task.getTid());
         messages.forEach(msg -> {
-            msg.transitionTo(TaskMsgStatus.BINDING);
             msg.markAsAssigned();
             taskManager.updateTaskMessage(task.getTid(), msg);
         });
@@ -640,6 +662,60 @@ class TaskManagerLifecycleTest {
     }
 
     @Test
+    void validateTaskStateRejectsBlockedTaskWithoutHoldReason() {
+        Task task = taskManager.createTask(buildRequest("task-validate-blocked-hold-reason"));
+        assertTrue(taskManager.rejectTask(task.getTid()));
+
+        Task blocked = taskManager.getTask(task.getTid());
+        blocked.setHoldReason(null);
+        taskManager.updateTask(blocked);
+
+        TaskStateValidationResult result = taskManager.validateTaskState(task.getTid());
+
+        assertFalse(result.isValid());
+        assertTrue(result.getViolations().contains(
+                TaskStateValidationResult.ViolationCode.BLOCKED_HOLD_REASON_MISSING));
+    }
+
+    @Test
+    void validateTaskStateRejectsCompletedMessageWithoutFinalReason() {
+        Task task = taskManager.createTask(buildRequest("task-validate-message-final-reason", List.of("alpha")));
+        TaskMsg message = taskManager.getTaskMessages(task.getTid()).get(0);
+        message.markAsAssigned();
+        message.markAsRunning();
+        assertTrue(message.markAsSuccess("done"));
+        message.setFinalReason(null);
+        taskManager.updateTaskMessage(task.getTid(), message);
+
+        TaskStateValidationResult result = taskManager.validateTaskState(task.getTid());
+
+        assertFalse(result.isValid());
+        assertTrue(result.getViolations().contains(
+                TaskStateValidationResult.ViolationCode.TASK_MSG_FINAL_REASON_MISSING));
+    }
+
+    @Test
+    void validateTaskStateFlagsActiveAttemptWithFinalMessage() {
+        Task task = taskManager.createTask(buildRequest("task-validate-active-attempt-final-message", List.of("alpha")));
+        TaskMsg message = taskManager.getTaskMessages(task.getTid()).get(0);
+        message.markAsAssigned();
+        message.markAsRunning();
+        assertTrue(message.markAsSuccess("done", TaskMsgFinalReason.BUSINESS_SUCCESS));
+        taskManager.updateTaskMessage(task.getTid(), message);
+
+        TaskMsgAttempt activeAttempt = new TaskMsgAttempt("attempt-1", task.getTid(), message.getMsgId(), 1);
+        activeAttempt.setWorkerId("worker-1");
+        assertTrue(activeAttempt.markLeased(java.time.LocalDateTime.now().plusMinutes(1)));
+        taskManager.addTaskMessageAttempt(task.getTid(), message.getMsgId(), activeAttempt);
+
+        TaskStateValidationResult result = taskManager.validateTaskState(task.getTid());
+
+        assertFalse(result.isValid());
+        assertTrue(result.getViolations().contains(
+                TaskStateValidationResult.ViolationCode.ACTIVE_ATTEMPT_WITH_FINAL_MESSAGE));
+    }
+
+    @Test
     void validateTaskStateReportsNeedsResolutionWhenMessagesAreFinalButTaskIsStillRunning() {
         Task task = taskManager.createTask(buildRequest("task-validate-needs-resolution"));
         taskManager.approveTask(task.getTid());
@@ -647,7 +723,6 @@ class TaskManagerLifecycleTest {
 
         List<TaskMsg> messages = taskManager.getTaskMessages(task.getTid());
         messages.forEach(msg -> {
-            msg.transitionTo(TaskMsgStatus.BINDING);
             msg.markAsAssigned();
             taskManager.updateTaskMessage(task.getTid(), msg);
         });
@@ -677,7 +752,6 @@ class TaskManagerLifecycleTest {
 
         List<TaskMsg> messages = taskManager.getTaskMessages(task.getTid());
         messages.forEach(msg -> {
-            msg.transitionTo(TaskMsgStatus.BINDING);
             msg.markAsAssigned();
             taskManager.updateTaskMessage(task.getTid(), msg);
         });
@@ -709,7 +783,6 @@ class TaskManagerLifecycleTest {
         task.setStatus(TaskStatus.RUNNING);
 
         TaskMsg message = taskManager.getTaskMessages(task.getTid()).get(0);
-        message.transitionTo(TaskMsgStatus.BINDING);
         message.markAsAssigned();
         taskManager.updateTaskMessage(task.getTid(), message);
         assertTrue(taskManager.handleTaskMessageResult(task.getTid(), message.getMsgId(), true, "done"));
@@ -735,7 +808,6 @@ class TaskManagerLifecycleTest {
 
         List<TaskMsg> messages = taskManager.getTaskMessages(task.getTid());
         messages.forEach(msg -> {
-            msg.transitionTo(TaskMsgStatus.BINDING);
             msg.markAsAssigned();
             taskManager.updateTaskMessage(task.getTid(), msg);
         });
@@ -769,7 +841,6 @@ class TaskManagerLifecycleTest {
         policyAwareManager.updateTask(task);
 
         TaskMsg message = policyAwareManager.getTaskMessages(task.getTid()).get(0);
-        message.transitionTo(TaskMsgStatus.BINDING);
         message.markAsAssigned();
         policyAwareManager.updateTaskMessage(task.getTid(), message);
         assertTrue(policyAwareManager.handleTaskMessageResult(task.getTid(), message.getMsgId(), true, "done"));
@@ -816,6 +887,7 @@ class TaskManagerLifecycleTest {
 
         assertTrue(taskManager.blockTask(task.getTid()));
         assertEquals(TaskStatus.BLOCKED, taskManager.getTask(task.getTid()).getStatus());
+        assertEquals(TaskHoldReason.MANUAL_BLOCKED, taskManager.getTask(task.getTid()).getHoldReason());
     }
 
     @Test
@@ -859,7 +931,6 @@ class TaskManagerLifecycleTest {
         taskManager.updateTask(task);
 
         TaskMsg message = taskManager.getTaskMessages(task.getTid()).get(0);
-        message.transitionTo(TaskMsgStatus.BINDING);
         message.markAsAssigned(); // ASSIGNED
         taskManager.updateTaskMessage(task.getTid(), message);
 
@@ -867,6 +938,7 @@ class TaskManagerLifecycleTest {
 
         TaskMsg updated = taskManager.getTaskMessage(task.getTid(), message.getMsgId());
         assertEquals(TaskMsgStatus.EXPIRED, updated.getStatus());
+        assertEquals(TaskMsgFinalReason.LEASE_EXPIRED, updated.getFinalReason());
 
         // All messages now final → task should auto-terminate
         Task updatedTask = taskManager.getTask(task.getTid());
@@ -882,7 +954,6 @@ class TaskManagerLifecycleTest {
         taskManager.updateTask(task);
 
         TaskMsg message = taskManager.getTaskMessages(task.getTid()).get(0);
-        message.transitionTo(TaskMsgStatus.BINDING);
         message.markAsAssigned();
         message.markAsRunning(); // RUNNING
         taskManager.updateTaskMessage(task.getTid(), message);
@@ -915,11 +986,9 @@ class TaskManagerLifecycleTest {
 
         List<TaskMsg> messages = taskManager.getTaskMessages(task.getTid());
         // msg[0]: leave in INIT
-        // msg[1]: advance to BINDING
-        messages.get(1).transitionTo(TaskMsgStatus.BINDING);
+        // msg[1]: leave in INIT
         taskManager.updateTaskMessage(task.getTid(), messages.get(1));
         // msg[2]: advance to ASSIGNED
-        messages.get(2).transitionTo(TaskMsgStatus.BINDING);
         messages.get(2).markAsAssigned();
         taskManager.updateTaskMessage(task.getTid(), messages.get(2));
 
@@ -929,13 +998,16 @@ class TaskManagerLifecycleTest {
         TaskMsg msg1 = taskManager.getTaskMessage(task.getTid(), messages.get(1).getMsgId());
         TaskMsg msg2 = taskManager.getTaskMessage(task.getTid(), messages.get(2).getMsgId());
 
-        // INIT and BINDING → FAILED; ASSIGNED → EXPIRED
+        // INIT → FAILED; ASSIGNED → EXPIRED
         assertTrue(msg0.isCompleted(), "INIT message should be in final state after cancel");
         assertEquals(TaskMsgStatus.FAILED, msg0.getStatus());
-        assertTrue(msg1.isCompleted(), "BINDING message should be in final state after cancel");
+        assertEquals(TaskMsgFinalReason.MANUAL_CANCELLED, msg0.getFinalReason());
+        assertTrue(msg1.isCompleted(), "INIT message should be in final state after cancel");
         assertEquals(TaskMsgStatus.FAILED, msg1.getStatus());
+        assertEquals(TaskMsgFinalReason.MANUAL_CANCELLED, msg1.getFinalReason());
         assertTrue(msg2.isCompleted(), "ASSIGNED message should be in final state after cancel");
         assertEquals(TaskMsgStatus.EXPIRED, msg2.getStatus());
+        assertEquals(TaskMsgFinalReason.MANUAL_CANCELLED, msg2.getFinalReason());
     }
 
     // ---- Bug4: Task.isCompleted() only returns true when status is final ----

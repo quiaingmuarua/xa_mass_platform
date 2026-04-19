@@ -1,6 +1,6 @@
 # E2E Baseline
 
-Last updated: 2026-04-16
+Last updated: 2026-04-19
 
 This is the short release-gate baseline for active-mainline E2E coverage.
 Detailed inventory stays in [./INTEGRATION_TESTS.md](./INTEGRATION_TESTS.md).
@@ -23,15 +23,18 @@ Core lifecycle:
 - `create -> approve -> assign -> run -> complete`
 - `create -> approve -> assign -> fail -> terminal`
 - `reject -> approve`
+- `reject -> BLOCKED` exposes `holdReason=REVIEW_REJECTED`
 - `pause -> resume`
 - `approve -> assign -> running -> terminate -> delete`
 - `running -> pause -> callback -> terminal`
+- `openEnded -> complete current messages -> remain non-terminal -> seal -> terminal`
 
 Robustness:
 
 - duplicate callback replay is idempotent
 - late callback after manual terminal closure is ignored
 - mixed results close with `MIXED_MESSAGE_RESULTS`
+- task detail and message detail expose `intakeStatus` and item-level `finalReason`
 
 Assignment and capacity:
 
@@ -39,6 +42,8 @@ Assignment and capacity:
 - `minRequiredWorkerCount` gates `READY -> RUNNING`
 - `batchSize=1` multi-round dispatch completes across rounds
 - assignment skips dispatch if the task left `READY` during matching
+- each dispatch creates attempt state that remains consistent with message projection
+- retry creates a new attempt and re-queues the logical message without duplicating the `TaskMsg` row
 
 Worker and context:
 

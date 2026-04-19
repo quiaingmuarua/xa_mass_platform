@@ -2,10 +2,12 @@ package com.xa.mass.engine.util;
 
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
+import com.xa.mass.base.enums.taskmsg.TaskMsgAttemptStatus;
 import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.enums.worker.WorkerContextStatus;
 import com.xa.mass.base.model.TaskMsg;
+import com.xa.mass.base.model.TaskMsgAttempt;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.storage.TaskStorage;
@@ -85,6 +87,36 @@ public final class TraceEventLogger {
                 "batchId", taskMsg.getBatchId(),
                 "fromStatus", enumName(fromStatus),
                 "toStatus", enumName(toStatus),
+                "finalReason", enumName(taskMsg.getFinalReason()),
+                "trigger", trigger,
+                "source", source,
+                "reason", reason,
+                "result", "SUCCESS"
+        ));
+    }
+
+    public static void taskMsgAttemptStatusTransition(TaskMsgAttempt attempt,
+                                                      TaskMsgAttemptStatus fromStatus,
+                                                      TaskMsgAttemptStatus toStatus,
+                                                      String trigger,
+                                                      String source,
+                                                      String reason) {
+        if (attempt == null) {
+            return;
+        }
+        emit("TASK_MSG_ATTEMPT_STATUS_TRANSITION", fields(
+                "entityType", "TaskMsgAttempt",
+                "entityId", attempt.getAttemptId(),
+                "taskId", attempt.getTaskId(),
+                "msgId", attempt.getMsgId(),
+                "attemptId", attempt.getAttemptId(),
+                "attemptNo", String.valueOf(attempt.getAttemptNo()),
+                "workerId", attempt.getWorkerId(),
+                "workerContextId", attempt.getWorkerContextId(),
+                "batchId", attempt.getBatchId(),
+                "fromStatus", enumName(fromStatus),
+                "toStatus", enumName(toStatus),
+                "finalReason", enumName(attempt.getFinalReason()),
                 "trigger", trigger,
                 "source", source,
                 "reason", reason,
@@ -351,6 +383,8 @@ public final class TraceEventLogger {
                 "minRequiredWorkerCount", String.valueOf(task.getMinRequiredWorkerCount()),
                 "batchSize", String.valueOf(task.getBatchSize()),
                 "openEnded", String.valueOf(task.isOpenEnded()),
+                "intakeStatus", enumName(task.getIntakeStatus()),
+                "holdReason", enumName(task.getHoldReason()),
                 "schedulable", String.valueOf(task.isSchedulable()),
                 "progressPercent", formatDouble(task.getProgressPercentage()),
                 "totalMessages", String.valueOf(stats.getTotal()),

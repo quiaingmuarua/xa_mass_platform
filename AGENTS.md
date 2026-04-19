@@ -427,7 +427,7 @@ Important current implementation facts:
     - `SUCCESS_RATE_REACHED`
     - `RETRY_BUDGET_EXHAUSTED`
 - `TaskManager.handleTaskMessageResult(...)` treats duplicate final callbacks as idempotent: the first final result is kept, progress is recalculated, and scheduler callbacks are not triggered twice.
-- `TaskManager.cancelTask(...)` now drains in-flight `TaskMsg` rows during manual terminal closure: `INIT/BINDING -> FAILED`, `ASSIGNED/RUNNING -> EXPIRED`.
+- `TaskManager.cancelTask(...)` now drains in-flight `TaskMsg` rows during manual terminal closure: `INIT -> FAILED(MANUAL_CANCELLED)`, `ASSIGNED/RUNNING -> EXPIRED(MANUAL_CANCELLED)`.
 - `GET /status/api/tasks/{taskId}` now includes `stateValidation` so API/demo surfaces can expose the same state-audit result used by SDK callers.
 - `MassApplication.loadMockData(...)` normalizes mock `supportedProjects`, lowercases `workerGroupId`, and loads explicit mock `workerContexts` only when they are provided; workers without mock `workerContexts` remain stateless.
 - `WorkerManager` now treats `Worker.status` as the single online truth for matching/runtime availability; gateway online/offline events update the worker model directly instead of maintaining a separate online-state registry.
@@ -451,7 +451,9 @@ Important current implementation facts:
 - `DispatcherInboundHandler` sends structured JSON error frames instead of silently closing connections.
 - `MassApplication.stop()` is now idempotent, and the mock Spring Boot entry no longer adds an extra manual shutdown hook around the runtime.
 - `WebSocketServerImpl.stop()` now calls `shutdownGracefully().syncUninterruptibly()` on both EventLoopGroups so a single Ctrl-C is sufficient for clean exit.
-- `TaskManager.advanceTaskMsgForCompletion()` always advances through `INIT -> BINDING -> ASSIGNED -> RUNNING` before the final `markAsSuccess`/`markAsFailed` call, ensuring `RUNNING` appears in the state history for both success and failure paths.
+- `TaskMsgStatus` is now the logical item lifecycle (`INIT -> ASSIGNED -> RUNNING -> final`); transport-side assignment and retry details live in `TaskMsgAttempt`.
+- `TaskMsg.finalReason` is now the item-level terminal explanation (`BUSINESS_SUCCESS`, `RETRY_EXHAUSTED`, `MANUAL_CANCELLED`, `LEASE_EXPIRED`, etc.).
+- `TaskMsgAttempt` is now the assignment/lease/retry model; each dispatch round creates a new attempt and retry does not mutate a final attempt back to active.
 
 ## 6.1 Platform Model
 
@@ -491,7 +493,9 @@ Matching/runtime signal semantics:
 
 **Open-ended tasks** (`openEnded=true`):
 
-- The terminal policy never auto-closes an open-ended task, even when all current messages are final.
+- `openEnded` is the compatibility create flag; runtime lifecycle truth is `Task.intakeStatus`.
+- `openEnded=true` initializes `intakeStatus=OPEN`; `sealTask()` transitions it to `SEALED`.
+- The terminal policy never auto-closes an open-intake task, even when all current messages are final.
 - Append new work items at runtime: `POST /status/api/tasks/{taskId}/items` with body `{"inputs": [{...}, ...]}`.
 - Close the append window with `PUT /status/api/tasks/{taskId}/seal`; once the append window is closed, the task terminates normally after all remaining messages finish.
 - Typical use case: crawler or agent pipeline where the full work list is not known at task creation time.
