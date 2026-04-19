@@ -1132,9 +1132,12 @@ public class TaskManager {
                     return false;
                 }
                 updateTaskProgress(taskId);
+                // The message is back in INIT — it is not final. Fire the dispatch listener so the
+                // scheduler re-assigns it. notifyTaskMessageFinal must NOT be called here because
+                // listeners contract requires a terminal-status message.
                 Task updatedTask = getTask(taskId);
                 if (updatedTask != null && !updatedTask.getStatus().isFinal()) {
-                    notifyTaskMessageFinal(updatedTask, taskMsg);
+                    notifyTaskDispatchRequested(updatedTask);
                 }
                 return true;
             }
@@ -1294,14 +1297,9 @@ public class TaskManager {
         if (attempt == null || attempt.getStatus() == null || attempt.getStatus().isFinal()) {
             return false;
         }
+        // REVOKED is reserved for "cancelled in order to retry"; lease/cancel expiry must use EXPIRED.
         return switch (attempt.getStatus()) {
-            case CREATED -> {
-                attempt.setStatus(TaskMsgAttemptStatus.REVOKED);
-                attempt.setFinalReason(finalReason);
-                attempt.setErrorMessage(errorMessage);
-                yield true;
-            }
-            case LEASED, DISPATCHED, ACKED, RUNNING -> attempt.markExpired(finalReason, errorMessage);
+            case CREATED, LEASED, DISPATCHED, ACKED, RUNNING -> attempt.markExpired(finalReason, errorMessage);
             default -> false;
         };
     }

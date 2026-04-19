@@ -1,6 +1,6 @@
 # State Machine Baseline
 
-Last updated: 2026-04-19
+Last updated: 2026-04-19 (state machine convergence: retry transitions, REVOKED semantics, derived counter guard)
 
 This is the short normative baseline for the active mainline.
 If lifecycle semantics change, update this file, trace expectations, and E2E coverage together.
@@ -96,6 +96,8 @@ Allowed transitions:
 - `INIT -> ASSIGNED`
 - `ASSIGNED -> RUNNING/FAILED/EXPIRED`
 - `RUNNING -> SUCCESS/FAILED/EXPIRED`
+- `FAILED -> INIT` (retry reset only; `SUCCESS` is never reset)
+- `EXPIRED -> INIT` (retry reset only; `SUCCESS` is never reset)
 
 Current entry points:
 
@@ -105,13 +107,14 @@ Current entry points:
 - manual task terminate cleanup:
   - `INIT -> FAILED`
   - `ASSIGNED/RUNNING -> EXPIRED`
-- retry reset: attempt finalizes, logical `TaskMsg` returns to `INIT`
+- retry reset: `FAILED/EXPIRED -> INIT` via `TaskMsg.resetForRetry()` when retry budget remains; stale worker binding fields (`workerId`, `workerContextId`, `batchId`, `assignedTime`) are cleared on reset
 
 Must hold:
 
-- `workerId`, `workerContextId`, and `batchId` are projections of the latest attempt used for compatibility and UI
+- `workerId`, `workerContextId`, and `batchId` are projections of the latest attempt used for compatibility and UI; they are null between retry reset and next assignment
 - duplicate final callbacks do not mutate final state
 - final `TaskMsg` must carry a compatible `finalReason`
+- `notifyTaskMessageFinal` must only be called when `TaskMsg` is in a terminal status; retry-reset messages (status `INIT`) must not be passed to final listeners
 - richer transport phases must not be silently backfilled into `TaskMsgStatus` without a baseline redesign
 
 ## 5. TaskMsgAttempt
@@ -130,17 +133,23 @@ States:
 
 Allowed transitions:
 
-- `CREATED -> LEASED`
+- `CREATED -> LEASED/EXPIRED/REVOKED`
 - `LEASED -> DISPATCHED/EXPIRED/REVOKED`
 - `DISPATCHED -> ACKED/RUNNING/SUCCEEDED/FAILED/EXPIRED/REVOKED`
 - `ACKED -> RUNNING/SUCCEEDED/FAILED/EXPIRED/REVOKED`
 - `RUNNING -> SUCCEEDED/FAILED/EXPIRED/REVOKED`
+
+State semantics:
+
+- `EXPIRED`: attempt ended due to lease timeout, worker loss, or task cancellation — the parent `TaskMsg` is finalized as `EXPIRED` or `FAILED`
+- `REVOKED`: attempt cancelled by the orchestrator so the parent `TaskMsg` can be retried — `finalReason` must be `REVOKED_FOR_RETRY`; lease/cancel expiry must use `EXPIRED`, not `REVOKED`
 
 Must hold:
 
 - each dispatch round creates a new attempt with monotonically increasing `attemptNo`
 - retry never rewrites a final attempt back to active
 - active attempt truth outranks projected `workerId/workerContextId/batchId` on `TaskMsg`
+- `REVOKED` must not be used as an expiry shortcut; only `EXPIRED` carries expiry and cancellation final reasons
 
 ## 6. WorkerContextStatus
 
@@ -193,7 +202,7 @@ Must hold:
 
 ## 8. Core Invariants
 
-1. `taskNonSuccessNumber == taskEligibleNumber - taskSuccessNumber`
+1. `taskNonSuccessNumber == taskEligibleNumber - taskSuccessNumber` (derived; `setTaskNonSuccessNumber` ignores its argument and recomputes to prevent silent invariant breaks)
 2. late callbacks after manual terminal closure do not mutate task/message state
 3. routing-required tasks do not run on stateless workers
 4. worker release does not happen while that worker still has a non-final latest attempt for the same task

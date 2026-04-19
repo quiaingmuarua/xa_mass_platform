@@ -27,7 +27,7 @@ public enum TaskMsgAttemptStatus {
             return false;
         }
         return switch (this) {
-            case CREATED -> targetStatus == LEASED || targetStatus == REVOKED;
+            case CREATED -> targetStatus == LEASED || targetStatus == REVOKED || targetStatus == EXPIRED;
             case LEASED -> targetStatus == DISPATCHED || targetStatus == EXPIRED || targetStatus == REVOKED;
             case DISPATCHED -> targetStatus == ACKED || targetStatus == RUNNING || targetStatus == FAILED
                     || targetStatus == EXPIRED || targetStatus == REVOKED;

@@ -56,9 +56,12 @@ public enum TaskMsgStatus {
             case RUNNING:
                 return targetStatus == SUCCESS || targetStatus == FAILED || targetStatus == EXPIRED;
             case SUCCESS:
+                return false;
             case FAILED:
             case EXPIRED:
-                return false;
+                // Retry path: exhausted/timed-out messages may be reset to INIT for re-dispatch.
+                // SUCCESS is intentionally excluded — a succeeded message is never re-run.
+                return targetStatus == INIT;
             default:
                 return false;
         }
