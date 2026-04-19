@@ -24,6 +24,7 @@ public class TaskCreateRequestDto {
     private int batchSize;
     private int defaultMsgMaxRetryCount = 3;
     private boolean openEnded = false;
+    private int maxRuntimeSeconds = 0;
 
     public TaskCreateRequestDto() {
     }
@@ -112,5 +113,13 @@ public class TaskCreateRequestDto {
 
     public void setDefaultMsgMaxRetryCount(int defaultMsgMaxRetryCount) {
         this.defaultMsgMaxRetryCount = defaultMsgMaxRetryCount;
+    }
+
+    public int getMaxRuntimeSeconds() {
+        return maxRuntimeSeconds;
+    }
+
+    public void setMaxRuntimeSeconds(int maxRuntimeSeconds) {
+        this.maxRuntimeSeconds = maxRuntimeSeconds;
     }
 }

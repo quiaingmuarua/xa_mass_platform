@@ -42,6 +42,7 @@ public class Task {
     private LocalDateTime endTime;
     private int batchSize;
     private TaskTerminalReason terminalReason;
+    private int maxRuntimeSeconds; // 0 = unlimited; enforced by LeaseExpireWatchdog
 
     public Task() {
         this.status = TaskStatus.NEW;
@@ -260,6 +261,14 @@ public class Task {
 
     public void setTerminalReason(TaskTerminalReason terminalReason) {
         this.terminalReason = terminalReason;
+    }
+
+    public int getMaxRuntimeSeconds() {
+        return maxRuntimeSeconds;
+    }
+
+    public void setMaxRuntimeSeconds(int maxRuntimeSeconds) {
+        this.maxRuntimeSeconds = maxRuntimeSeconds;
     }
 
     public String getDisplayStatusLabel() {

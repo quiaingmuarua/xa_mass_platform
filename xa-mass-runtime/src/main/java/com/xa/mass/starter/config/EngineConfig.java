@@ -46,6 +46,7 @@ public class EngineConfig {
     private RuleManager<Map<String, Object>> ruleManager;
     private TaskMsgDispatchListener taskMsgDispatchListener;
     private long assignmentRetryDelayMillis = 1000L;
+    private long leaseWatchdogIntervalSeconds = 30L;
 
     public boolean isEnabled() {
         return enabled;
@@ -232,5 +233,13 @@ public class EngineConfig {
 
     public void setAssignmentRetryDelayMillis(long assignmentRetryDelayMillis) {
         this.assignmentRetryDelayMillis = assignmentRetryDelayMillis;
+    }
+
+    public long getLeaseWatchdogIntervalSeconds() {
+        return leaseWatchdogIntervalSeconds;
+    }
+
+    public void setLeaseWatchdogIntervalSeconds(long leaseWatchdogIntervalSeconds) {
+        this.leaseWatchdogIntervalSeconds = leaseWatchdogIntervalSeconds;
     }
 }

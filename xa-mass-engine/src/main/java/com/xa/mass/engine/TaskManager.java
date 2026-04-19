@@ -104,6 +104,7 @@ public class TaskManager {
             task.setBatchSize(dto.getBatchSize());
             task.setOpenEnded(dto.isOpenEnded());
             task.setIntakeStatus(dto.isOpenEnded() ? TaskIntakeStatus.OPEN : TaskIntakeStatus.SEALED);
+            task.setMaxRuntimeSeconds(dto.getMaxRuntimeSeconds());
             // 5. Persist the task and its task messages.
             taskStorage.saveTask(task);
             for (String target : targets) {
@@ -469,43 +470,55 @@ public class TaskManager {
     }
 
     /**
-     * Manually terminates a non-final task.
+     * Manually terminates a non-final task (operator/user-initiated cancellation).
      */
     public boolean cancelTask(String taskId) {
+        return doTerminateTask(taskId, TaskTerminalReason.MANUAL_CANCELLED, "CANCEL_TASK");
+    }
+
+    /**
+     * Policy-driven task termination (e.g. max-runtime exceeded, success-rate reached).
+     * Same mechanics as {@link #cancelTask} but records the supplied terminal reason.
+     */
+    public boolean terminateTask(String taskId, TaskTerminalReason reason) {
+        return doTerminateTask(taskId, reason, "TERMINATE_TASK");
+    }
+
+    private boolean doTerminateTask(String taskId, TaskTerminalReason reason, String trigger) {
         long startTime = System.currentTimeMillis();
         LogUtils.setTaskId(taskId);
-        LogUtils.logOperationStart("CANCEL_TASK", "TaskManager", "taskId", taskId);
+        LogUtils.logOperationStart(trigger, "TaskManager", "taskId", taskId, "reason", reason.name());
 
         try {
             Task task = getTask(taskId);
             if (task != null && !task.getStatus().isFinal()) {
                 TaskStatus fromStatus = task.getStatus();
-                boolean result = task.transitionTo(TaskStatus.TERMINAL, TaskTerminalReason.MANUAL_CANCELLED);
+                boolean result = task.transitionTo(TaskStatus.TERMINAL, reason);
                 if (result) {
                     TraceEventLogger.taskStatusTransition(taskId, fromStatus, task.getStatus(),
-                            "CANCEL_TASK", "TaskManager", "task manually cancelled");
-                    TraceEventLogger.taskTerminalClosed(taskId, fromStatus, TaskTerminalReason.MANUAL_CANCELLED,
-                            "CANCEL_TASK", "TaskManager", "task manually cancelled");
+                            trigger, "TaskManager", "task terminated: " + reason);
+                    TraceEventLogger.taskTerminalClosed(taskId, fromStatus, reason,
+                            trigger, "TaskManager", "task terminated: " + reason);
                     taskStorage.updateTask(task);
-                    cancelPendingMessages(taskId); // drain non-final messages to a terminal state
+                    cancelPendingMessages(taskId);
                     taskScheduler.cancelTask(taskId);
                     notifyTaskTerminal(task);
                     long duration = System.currentTimeMillis() - startTime;
-                    LogUtils.logOperationSuccess("task cancelled", duration);
+                    LogUtils.logOperationSuccess("task terminated: " + reason, duration);
                 } else {
                     long duration = System.currentTimeMillis() - startTime;
-                    LogUtils.logOperationFailure("TASK_CANCEL_ERROR", "task status transition failed", duration);
+                    LogUtils.logOperationFailure(trigger + "_ERROR", "task status transition failed", duration);
                 }
                 return result;
             } else {
                 long duration = System.currentTimeMillis() - startTime;
-                LogUtils.logOperationFailure("TASK_CANCEL_ERROR", "task not found or status is not cancellable", duration);
+                LogUtils.logOperationFailure(trigger + "_ERROR", "task not found or already terminal", duration);
                 return false;
             }
         } catch (Exception e) {
             long duration = System.currentTimeMillis() - startTime;
-            LogUtils.logOperationFailure("TASK_CANCEL_ERROR", e.getMessage(), duration);
-            logger.error("Failed to cancel task", e);
+            LogUtils.logOperationFailure(trigger + "_ERROR", e.getMessage(), duration);
+            logger.error("Failed to terminate task {}", taskId, e);
             return false;
         }
     }
@@ -668,6 +681,12 @@ public class TaskManager {
         }
         LogUtils.logOperationSuccess("task message expired", 0);
         updateTaskProgress(taskId); // may transition task to TERMINAL if all messages are now done
+        // Release the worker context held by this expired message.
+        // Must use fresh task state after updateTaskProgress() because the task may have just gone TERMINAL.
+        Task freshTask = getTask(taskId);
+        if (freshTask != null && !freshTask.getStatus().isFinal()) {
+            notifyTaskMessageFinal(freshTask, taskMsg);
+        }
         return true;
     }
 
@@ -1008,6 +1027,10 @@ public class TaskManager {
     }
 
     public boolean handleTaskMessageResult(String taskId, String msgId, boolean success, String detail) {
+        return handleTaskMessageResult(taskId, msgId, success, detail, null);
+    }
+
+    public boolean handleTaskMessageResult(String taskId, String msgId, boolean success, String detail, String errorCode) {
         Task task = getTask(taskId);
         if (task == null) {
             logger.warn("Cannot handle task message result because task {} was not found", taskId);
@@ -1151,6 +1174,7 @@ public class TaskManager {
                 logger.warn("Failed to mark task message {} as FAILED", msgId);
                 return false;
             }
+            taskMsg.setErrorCode(errorCode);
             TraceEventLogger.taskMsgStatusTransition(
                     taskMsg,
                     beforeFinalStatus,
