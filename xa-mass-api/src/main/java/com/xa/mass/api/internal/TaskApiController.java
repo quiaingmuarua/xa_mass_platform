@@ -67,7 +67,7 @@ public class TaskApiController {
         try {
             Task task = taskManager.getTask(taskId);
             if (task == null) {
-                return ResponseEntity.status(404).body(error("Task not found: " + taskId));
+                return ResponseEntity.status(404).build();
             }
 
             List<TaskMsg> msgs = taskManager.getTaskMessages(taskId);
