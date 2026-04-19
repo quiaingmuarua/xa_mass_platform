@@ -158,7 +158,7 @@ public class TaskApiController {
                 )));
             }
 
-            return ResponseEntity.status(409).body(error("Task cannot be audited from the current state"));
+            return ResponseEntity.badRequest().body(error("Task cannot be audited from the current state"));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(error("Task audit failed: " + e.getMessage()));
         }
@@ -239,7 +239,7 @@ public class TaskApiController {
                 return ResponseEntity.ok(success(Map.of("message", "Task deleted")));
             }
 
-            return ResponseEntity.status(409).body(error(
+            return ResponseEntity.badRequest().body(error(
                     "Task delete failed: current status " + task.getStatus().name() + " cannot be deleted"));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(error("Task delete failed: " + e.getMessage()));
@@ -255,7 +255,7 @@ public class TaskApiController {
                 return ResponseEntity.status(404).body(error("Task not found: " + taskId));
             }
             if (!EDITABLE_TASK_STATUSES.contains(task.getStatus())) {
-                return ResponseEntity.badRequest().body(error("Only NEW or BLOCKED tasks can be updated"));
+                return ResponseEntity.badRequest().body(error("Task update failed: Only NEW or BLOCKED tasks can be updated"));
             }
 
             TaskCreateRequestDto request = parseTaskRequest(requestBody, SUPPORTED_TASK_UPDATE_FIELDS, "task update");
