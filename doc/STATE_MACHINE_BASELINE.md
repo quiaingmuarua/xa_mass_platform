@@ -1,6 +1,6 @@
 # State Machine Baseline
 
-Last updated: 2026-04-19 (state machine convergence: retry transitions, REVOKED semantics, derived counter guard)
+Last updated: 2026-04-19 (production readiness: lease watchdog, max runtime, errorCode, expireTaskMessage release fix)
 
 This is the short normative baseline for the active mainline.
 If lifecycle semantics change, update this file, trace expectations, and E2E coverage together.
@@ -115,6 +115,7 @@ Must hold:
 - duplicate final callbacks do not mutate final state
 - final `TaskMsg` must carry a compatible `finalReason`
 - `notifyTaskMessageFinal` must only be called when `TaskMsg` is in a terminal status; retry-reset messages (status `INIT`) must not be passed to final listeners
+- `errorCode` is an optional short symbolic code set by the worker alongside `errorMessage`; it is cleared on `resetForRetry()` and must not carry over between attempts
 - richer transport phases must not be silently backfilled into `TaskMsgStatus` without a baseline redesign
 
 ## 5. TaskMsgAttempt
@@ -200,7 +201,24 @@ Must hold:
 - non-terminal task -> null `terminalReason`
 - message-driven closure must match persisted message aggregates
 
-## 8. Core Invariants
+## 8. Time-Based Policy Enforcement
+
+Both policies are enforced by `LeaseExpireWatchdog` (runs every `leaseWatchdogIntervalSeconds`, default 30 s):
+
+- **Lease expiry**: any active `TaskMsgAttempt` whose `leaseExpireTime` has passed is expired via
+  `TaskManager.expireTaskMessage()`. This marks the message `EXPIRED`, fires `notifyTaskMessageFinal`
+  to release the worker context, and (if retries remain) triggers re-dispatch.
+- **Max task runtime**: any non-terminal `Task` with `maxRuntimeSeconds > 0` that has been running
+  longer than that limit is terminated with `MAX_RUNTIME_REACHED` via `TaskManager.terminateTask()`.
+  Set `maxRuntimeSeconds = 0` (default) to disable the limit.
+
+Must hold:
+- `expireTaskMessage` must fire `notifyTaskMessageFinal` after expiry so `TaskResourceReleaseListener`
+  can release the worker context; skipping this call leaves the context permanently `OCCUPIED`
+- `terminateTask(reason)` follows the same drain-and-notify path as `cancelTask`; the only
+  difference is the `TaskTerminalReason` recorded
+
+## 9. Core Invariants
 
 1. `taskNonSuccessNumber == taskEligibleNumber - taskSuccessNumber` (derived; `setTaskNonSuccessNumber` ignores its argument and recomputes to prevent silent invariant breaks)
 2. late callbacks after manual terminal closure do not mutate task/message state

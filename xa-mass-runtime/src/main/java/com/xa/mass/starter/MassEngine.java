@@ -19,6 +19,7 @@ import com.xa.mass.engine.monkey.MonkeyGenerator;
 import com.xa.mass.engine.strategy.TaskWorkerMatchingStrategy;
 import com.xa.mass.engine.service.AssignmentRecordService;
 import com.xa.mass.engine.util.LogUtils;
+import com.xa.mass.engine.watchdog.LeaseExpireWatchdog;
 import com.xa.mass.starter.config.EngineConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -36,6 +37,7 @@ public class MassEngine {
     private WorkerManager workerManager;
     private AssignmentRecordService recordService;
     private TaskAssignWorker assignWorker;
+    private LeaseExpireWatchdog leaseWatchdog;
     private EventBusFacade<?> eventBus;
     private WorkerManager.WorkerStatusEventListener workerStatusEventListener;
 
@@ -87,6 +89,9 @@ public class MassEngine {
             taskManager.addTaskTerminalListener(resourceReleaseListener::onTaskTerminal);
             taskManager.getTasksByStatus(TaskStatus.READY).forEach(assignWorker::submit);
 
+            leaseWatchdog = new LeaseExpireWatchdog(taskManager, config.getLeaseWatchdogIntervalSeconds());
+            leaseWatchdog.start();
+
             eventBus = EventBusFactory.get("guava");
             workerStatusEventListener = EventListenerRegistry.registerWorkerStatusListeners(eventBus, workerManager);
             running = true;
@@ -114,6 +119,10 @@ public class MassEngine {
                 } finally {
                     workerStatusEventListener = null;
                 }
+            }
+            if (leaseWatchdog != null) {
+                leaseWatchdog.stop();
+                leaseWatchdog = null;
             }
             if (assignWorker != null) {
                 assignWorker.stop();

@@ -28,6 +28,7 @@ public class TaskMsg {
     private int retryCount;
     private int maxRetryCount;
     private String errorMessage;
+    private String errorCode;
     private TaskMsgFinalReason finalReason;
     private Map<String, Object> input;
     private Map<String, Object> output;
@@ -193,6 +194,18 @@ public class TaskMsg {
         this.errorMessage = errorMessage;
     }
 
+    public String getErrorCode() {
+        return errorCode;
+    }
+
+    /**
+     * Short symbolic error code set by the worker (e.g. "RATE_LIMITED", "CAPTCHA").
+     * Lets the orchestrator and callers branch on error type without parsing errorMessage.
+     */
+    public void setErrorCode(String errorCode) {
+        this.errorCode = errorCode;
+    }
+
     public TaskMsgFinalReason getFinalReason() {
         return finalReason;
     }
@@ -270,6 +283,7 @@ public class TaskMsg {
         this.startTime = null;
         this.completeTime = null;
         this.errorMessage = null;
+        this.errorCode = null;
         this.result = null;
         // finalReason is already cleared by setStatus(INIT) side-effect
     }
