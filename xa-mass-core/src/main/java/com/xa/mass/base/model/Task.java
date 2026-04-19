@@ -142,8 +142,14 @@ public class Task {
         return taskNonSuccessNumber;
     }
 
+    /**
+     * taskNonSuccessNumber is always derived as (taskEligibleNumber - taskSuccessNumber).
+     * This setter is kept for framework deserialization compatibility but ignores the supplied
+     * value and recomputes instead, so it cannot break the invariant.
+     * To change the value, update taskEligibleNumber or taskSuccessNumber.
+     */
     public void setTaskNonSuccessNumber(int taskNonSuccessNumber) {
-        this.taskNonSuccessNumber = taskNonSuccessNumber;
+        recomputeNonSuccessNumber();
         this.updateTime = LocalDateTime.now();
     }
 

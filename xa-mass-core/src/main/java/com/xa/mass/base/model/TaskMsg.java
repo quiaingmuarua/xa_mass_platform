@@ -95,9 +95,9 @@ public class TaskMsg {
     }
 
     /**
-     * Direct status setter — for framework deserialization only.
-     * All business state changes must go through {@link #transitionTo(TaskMsgStatus)},
-     * which enforces the state machine guard and fires lifecycle hooks.
+     * Direct status setter — for framework deserialization and internal lifecycle hooks only.
+     * All external state changes must go through {@link #transitionTo(TaskMsgStatus)},
+     * which enforces the state machine guard before delegating here.
      */
     public void setStatus(TaskMsgStatus status) {
         this.status = status;
@@ -256,13 +256,22 @@ public class TaskMsg {
     }
 
     public synchronized void resetForRetry() {
-        this.status = TaskMsgStatus.INIT;
+        if (!transitionTo(TaskMsgStatus.INIT)) {
+            throw new IllegalStateException(
+                    "Cannot reset msg " + msgId + " for retry from status " + status
+                    + "; only FAILED or EXPIRED messages may be retried");
+        }
+        // Clear the stale binding left by the previous attempt so the next
+        // assignment does not inherit a dead worker reference.
+        this.workerId = null;
+        this.workerContextId = null;
+        this.batchId = null;
+        this.assignedTime = null;
         this.startTime = null;
         this.completeTime = null;
         this.errorMessage = null;
         this.result = null;
-        this.finalReason = null;
-        this.updateTime = LocalDateTime.now();
+        // finalReason is already cleared by setStatus(INIT) side-effect
     }
 
     public long getExecutionDuration() {
