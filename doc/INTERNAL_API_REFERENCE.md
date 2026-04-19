@@ -1,6 +1,6 @@
 # XA Mass Platform Internal API Reference
 
-Last updated: 2026-04-15
+Last updated: 2026-04-19
 
 This document tracks the current active HTTP/API surface in the mainline runtime.
 
@@ -108,6 +108,7 @@ Response notes:
 - returns `task`
 - returns materialized `targetList`
 - returns `stateValidation`
+- returns HTTP 404 with no body when the task does not exist
 
 Example response shape:
 
@@ -156,8 +157,8 @@ Supported request fields:
 Contract rules:
 
 - metadata-only update path
-- only `NEW` and `BLOCKED` tasks may be updated
-- `targetList` and unknown fields are rejected
+- only `NEW` and `BLOCKED` tasks may be updated; returns HTTP 400 otherwise
+- `targetList` and unknown fields are rejected with HTTP 400
 
 ### 2.4 Delete Task
 
@@ -168,6 +169,7 @@ Contract rules:
 Contract rules:
 
 - only `NEW` and `TERMINAL` tasks can be deleted
+- returns HTTP 400 with `{"success": false, ...}` if the task is in a non-deletable state
 
 ### 2.5 Audit Task
 
@@ -184,6 +186,17 @@ Behavior:
 
 - `approved=true`: `NEW` or `BLOCKED` -> `READY`
 - `approved=false`: `NEW` -> `BLOCKED`
+- returns HTTP 400 with `{"success": false, ...}` if the transition is not allowed from the current state
+
+Example success response:
+
+```json
+{
+  "success": true,
+  "message": "Task approved",
+  "newStatus": "READY"
+}
+```
 
 ### 2.6 Pause Task
 
@@ -548,13 +561,19 @@ Current purpose:
 
 ## 9. Response Shape Notes
 
-Current active API surface uses more than one response wrapper style:
+The active API surface uses two response styles:
 
-- many internal APIs use `ApiResponse<T>` with `success`, `message`, and `data`
-- task APIs often return ad hoc `Map<String,Object>` responses
-- the message passthrough API returns legacy `code/msg/data`
+**Task API (`/status/api/tasks/**`)** — flat `Map<String,Object>`:
+
+- all success responses: `{"success": true, <data fields at top level>}`
+- all error responses: `{"success": false, "message": "<reason>"}`
+- HTTP 404 on task-not-found from `GET /status/api/tasks/{taskId}` returns no body
+- HTTP 400 for validation failures and out-of-state transitions
+- `ApiResponse` wrapper is not used on this path
+
+**Other APIs (queue, session, config, message passthrough)** — use `ApiResponse<T>` or `{"code", "msg", "data"}` shapes as documented per-endpoint above.
 
 Implication:
 
-- consumers should treat task endpoints and internal diagnostic endpoints as separate response families
-- this inconsistency is current runtime reality and should not be hidden by docs
+- consumers should treat task endpoints and other diagnostic endpoints as separate response families
+- do not assume `code/msg/data` wrapping on task endpoints
