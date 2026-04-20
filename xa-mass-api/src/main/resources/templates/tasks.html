@@ -1,1126 +1,791 @@
 <!DOCTYPE html>
-<html xmlns:th="http://www.thymeleaf.org">
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
 <head>
     <meta charset="UTF-8">
     <meta content="width=device-width, initial-scale=1.0" name="viewport">
-    <title>任务详情 - Mass Platform</title>
+    <title>任务管理 - XA Mass Platform</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css" rel="stylesheet">
     <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 20px;
-            background-color: #f5f5f5;
-        }
-
-        .container {
-            max-width: 1400px;
-            margin: 0 auto;
-        }
-
-        .header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 20px;
-            border-radius: 10px;
-            margin-bottom: 20px;
-            text-align: center;
-        }
-
-        .nav-links {
-            text-align: center;
-            margin: 20px 0;
-        }
-
-        .nav-links a {
-            display: inline-block;
-            margin: 0 10px;
-            padding: 10px 20px;
-            background-color: #667eea;
-            color: white;
-            text-decoration: none;
-            border-radius: 5px;
-            transition: background-color 0.3s;
-        }
-
-        .nav-links a:hover {
-            background-color: #5a6fd8;
-        }
-
-        .action-buttons {
-            margin: 20px 0;
-            text-align: center;
-        }
-
-        .btn {
-            padding: 10px 20px;
-            margin: 0 5px;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 14px;
-            transition: background-color 0.3s;
-        }
-
-        .btn-primary {
-            background-color: #007bff;
-            color: white;
-        }
-
-        .btn-success {
-            background-color: #28a745;
-            color: white;
-        }
-
-        .btn-warning {
-            background-color: #ffc107;
-            color: black;
-        }
-
-        .btn-danger {
-            background-color: #dc3545;
-            color: white;
-        }
-
-        .btn-info {
-            background-color: #17a2b8;
-            color: white;
-        }
-
-        .btn:hover {
-            opacity: 0.8;
-        }
-
-        .refresh-btn {
-            background-color: #4caf50;
-            color: white;
-            border: none;
-            padding: 10px 20px;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 14px;
-        }
-
-        .refresh-btn:hover {
-            background-color: #45a049;
-        }
-
-        .task-table {
-            background: white;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-            overflow: hidden;
-        }
-
-        .task-table table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-
-        .task-table th {
-            background-color: #f8f9fa;
-            padding: 15px 10px;
-            text-align: left;
-            border-bottom: 2px solid #dee2e6;
-            font-weight: bold;
-            color: #333;
-        }
-
-        .task-table td {
-            padding: 12px 10px;
-            border-bottom: 1px solid #eee;
-            vertical-align: top;
-        }
-
-        .task-table tr:hover {
-            background-color: #f8f9fa;
-        }
-
-        .status-badge {
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-size: 12px;
-            font-weight: bold;
-        }
-
-        .status-new {
-            background-color: #e3f2fd;
-            color: #1976d2;
-        }
-
-        .status-blocked {
-            background-color: #fff3e0;
-            color: #f57c00;
-        }
-
-        .status-ready {
-            background-color: #e8f5e8;
-            color: #388e3c;
-        }
-
-        .status-running {
-            background-color: #e1f5fe;
-            color: #0277bd;
-        }
-
-        .status-paused {
-            background-color: #fce4ec;
-            color: #c2185b;
-        }
-
-        .status-terminal {
-            background-color: #ffebee;
-            color: #d32f2f;
-        }
-
-        .progress-bar {
-            width: 100px;
-            height: 8px;
-            background-color: #e0e0e0;
-            border-radius: 4px;
-            overflow: hidden;
-        }
-
-        .progress-fill {
-            height: 100%;
-            background-color: #4caf50;
-            transition: width 0.3s ease;
-        }
-
-        .empty-message {
-            text-align: center;
-            padding: 40px;
-            color: #666;
-            font-style: italic;
-        }
-
-        .task-id {
-            font-family: monospace;
-            font-size: 12px;
-            color: #666;
-        }
-
-        .timestamp {
-            font-size: 12px;
-            color: #999;
-        }
-
-        .task-actions {
-            display: flex;
-            gap: 5px;
-            flex-wrap: wrap;
-        }
-
-        .task-actions .btn {
-            padding: 4px 8px;
-            font-size: 12px;
-            margin: 0;
-        }
-
-        .modal {
-            display: none;
-            position: fixed;
-            z-index: 1000;
-            left: 0;
-            top: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0, 0, 0, 0.5);
-        }
-
-        .modal-content {
-            background-color: white;
-            margin: 5% auto;
-            padding: 20px;
-            border-radius: 10px;
-            width: 80%;
-            max-width: 600px;
-        }
-
-        .modal-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 20px;
-        }
-
-        .close {
-            color: #aaa;
-            font-size: 28px;
-            font-weight: bold;
-            cursor: pointer;
-        }
-
-        .close:hover {
-            color: #000;
-        }
-
-        .form-group {
-            margin-bottom: 15px;
-        }
-
-        .form-group label {
-            display: block;
-            margin-bottom: 5px;
-            font-weight: bold;
-        }
-
-        .form-group input, .form-group select, .form-group textarea {
-            width: 100%;
-            padding: 8px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            box-sizing: border-box;
-        }
-
-        .form-group textarea {
-            height: 100px;
-            resize: vertical;
-        }
-
-        .alert {
-            padding: 10px;
-            margin: 10px 0;
-            border-radius: 4px;
-        }
-
-        .alert-success {
-            background-color: #d4edda;
-            color: #155724;
-            border: 1px solid #c3e6cb;
-        }
-
-        .alert-danger {
-            background-color: #f8d7da;
-            color: #721c24;
-            border: 1px solid #f5c6cb;
-        }
+        body { background: #f5f7fb; }
+        .topbar { background: linear-gradient(120deg, #0d6efd 0%, #0b5ed7 55%, #0a58ca 100%); }
+        .panel-card { border: 0; border-radius: 16px; box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08); }
+        .hero-card { background: linear-gradient(135deg, #0f172a 0%, #1d4ed8 55%, #2563eb 100%); color: #fff; }
+        .summary-card { border: 0; border-radius: 16px; color: #fff; min-height: 118px; box-shadow: 0 10px 24px rgba(15, 23, 42, 0.10); }
+        .summary-card.total { background: linear-gradient(135deg, #0d6efd 0%, #3d8bfd 100%); }
+        .summary-card.ready { background: linear-gradient(135deg, #198754 0%, #20c997 100%); }
+        .summary-card.running { background: linear-gradient(135deg, #0ea5e9 0%, #3b82f6 100%); }
+        .summary-card.terminal { background: linear-gradient(135deg, #6b7280 0%, #374151 100%); }
+        .summary-value { font-size: 2rem; font-weight: 700; line-height: 1; }
+        .task-table th { font-size: 13px; color: #667085; white-space: nowrap; }
+        .task-table td { vertical-align: top; }
+        .task-id { font-family: Consolas, Monaco, monospace; font-size: 12px; color: #6b7280; }
+        .meta-label { color: #6b7280; font-size: 12px; margin-bottom: 2px; }
+        .meta-value { color: #111827; font-size: 14px; }
+        .meta-stack { display: flex; flex-direction: column; gap: 10px; }
+        .status-pill { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+        .status-pill.new { background: #dbeafe; color: #1d4ed8; }
+        .status-pill.blocked { background: #ffedd5; color: #9a3412; }
+        .status-pill.ready { background: #dcfce7; color: #166534; }
+        .status-pill.running { background: #e0f2fe; color: #0369a1; }
+        .status-pill.paused { background: #f3e8ff; color: #7e22ce; }
+        .status-pill.terminal { background: #e5e7eb; color: #374151; }
+        .tag { display: inline-flex; align-items: center; padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; background: #eff6ff; color: #1d4ed8; border: 1px solid #dbeafe; }
+        .tag-muted { background: #f8fafc; color: #64748b; border-color: #e2e8f0; }
+        .progress { height: 8px; background: #e5e7eb; }
+        .action-cell { min-width: 240px; }
+        .json-box { background: #0f172a; color: #e2e8f0; border-radius: 12px; padding: 12px; font-family: Consolas, Monaco, monospace; font-size: 12px; white-space: pre-wrap; word-break: break-word; min-height: 120px; }
+        .modal-lg-2 { max-width: 920px; }
+        .alert-box { display: none; }
+        .alert-box.show { display: block; }
     </style>
 </head>
 <body>
-<div class="container">
-    <div class="header">
-        <h1>📋 任务详情</h1>
-        <p>查看所有任务的详细信息和状态</p>
-        <div class="action-buttons">
-            <button class="btn btn-primary" onclick="showCreateTaskModal()">➕ 新建任务</button>
-            <button class="refresh-btn" onclick="location.reload()">🔄 刷新数据</button>
+<div class="container-fluid px-3 px-lg-4 py-3 py-lg-4">
+    <nav class="navbar navbar-expand-lg navbar-dark topbar rounded-4 px-3 px-lg-4 mb-4 panel-card">
+        <div class="container-fluid px-0">
+            <a class="navbar-brand fw-semibold" href="/status">
+                <i class="bi bi-gear-fill me-2"></i>XA Mass Platform
+            </a>
+            <div class="navbar-nav">
+                <a class="nav-link" href="/status">状态概览</a>
+                <a class="nav-link active" href="/status/tasks">任务管理</a>
+                <a class="nav-link" href="/status/workers">Worker 管理</a>
+                <a class="nav-link" href="/status/rules">规则管理</a>
+                <a class="nav-link" href="/config">配置面板</a>
+            </div>
         </div>
-    </div>
+    </nav>
 
-    <div class="nav-links">
-        <a href="/status">📊 总览</a>
-        <a href="/status/tasks">📋 任务详情</a>
-        <a href="/status/workers">👷 Worker 详情</a>
-        <a href="/status/rules">📏 规则管理</a>
-        <a href="/config">⚙️ 全局配置</a>
-    </div>
+    <section class="panel-card hero-card p-4 mb-4">
+        <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
+            <div>
+                <h1 class="h3 mb-2">任务管理</h1>
+                <p class="mb-0 opacity-75">当前页面只保留与现有 `/status/api/tasks` 契约严格一致的操作。创建、审核、编辑、暂停、恢复、阻断、终止、删除、消息查看都走真实接口。</p>
+            </div>
+            <div class="d-flex gap-2 flex-wrap">
+                <button class="btn btn-light" id="openCreateTaskBtn" type="button">
+                    <i class="bi bi-plus-circle me-1"></i>新建任务
+                </button>
+                <button class="btn btn-outline-light" onclick="location.reload()" type="button">
+                    <i class="bi bi-arrow-clockwise me-1"></i>刷新页面
+                </button>
+            </div>
+        </div>
+    </section>
 
-    <div id="alert-container"></div>
+    <section class="mb-4">
+        <div class="row g-3">
+            <div class="col-12 col-md-6 col-xl-3">
+                <div class="summary-card total p-3">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <div class="summary-value" th:text="${#lists.size(tasks)}">0</div>
+                            <p class="mb-0 opacity-75">任务总数</p>
+                        </div>
+                        <i class="bi bi-list-task fs-2"></i>
+                    </div>
+                </div>
+            </div>
+            <div class="col-12 col-md-6 col-xl-3">
+                <div class="summary-card ready p-3">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <div class="summary-value" th:text="${taskStatusCount[T(com.xa.mass.base.enums.task.TaskStatus).READY] ?: 0}">0</div>
+                            <p class="mb-0 opacity-75">READY</p>
+                        </div>
+                        <i class="bi bi-check2-circle fs-2"></i>
+                    </div>
+                </div>
+            </div>
+            <div class="col-12 col-md-6 col-xl-3">
+                <div class="summary-card running p-3">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <div class="summary-value" th:text="${taskStatusCount[T(com.xa.mass.base.enums.task.TaskStatus).RUNNING] ?: 0}">0</div>
+                            <p class="mb-0 opacity-75">RUNNING</p>
+                        </div>
+                        <i class="bi bi-lightning-charge fs-2"></i>
+                    </div>
+                </div>
+            </div>
+            <div class="col-12 col-md-6 col-xl-3">
+                <div class="summary-card terminal p-3">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <div class="summary-value" th:text="${taskStatusCount[T(com.xa.mass.base.enums.task.TaskStatus).TERMINAL] ?: 0}">0</div>
+                            <p class="mb-0 opacity-75">TERMINAL</p>
+                        </div>
+                        <i class="bi bi-flag fs-2"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
 
-    <div class="task-table">
-        <div class="empty-message" th:if="${#lists.isEmpty(tasks)}">
-            <h3>暂无任务数据</h3>
-            <p>当前系统中没有任务，请先创建一些任务。</p>
+    <div class="alert alert-success panel-card alert-box mb-4" id="pageAlert"></div>
+
+    <section class="panel-card bg-white">
+        <div class="p-4 border-bottom d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <div>
+                <h2 class="h5 mb-1">任务列表</h2>
+                <p class="text-muted mb-0">展示核心字段、聚合进度、终态原因和当前可用操作。</p>
+            </div>
+            <span class="text-muted small">仅 `NEW/BLOCKED` 可编辑，仅 `NEW` 可审核，删除只允许 `NEW/TERMINAL`。</span>
         </div>
 
-        <div th:if="${!#lists.isEmpty(tasks)}">
-            <table>
-                <thead>
+        <div class="table-responsive">
+            <table class="table table-hover task-table align-middle mb-0">
+                <thead class="table-light">
                 <tr>
-                    <th>任务ID</th>
-                    <th>任务名称</th>
-                    <th>项目</th>
-                    <th>国家</th>
+                    <th>任务</th>
+                    <th>项目 / 路由</th>
                     <th>状态</th>
                     <th>进度</th>
-                    <th>创建时间</th>
-                    <th>更新时间</th>
-                    <th>操作</th>
+                    <th>统计</th>
+                    <th>时间</th>
+                    <th class="action-cell">操作</th>
                 </tr>
                 </thead>
                 <tbody>
+                <tr th:if="${#lists.isEmpty(tasks)}">
+                    <td colspan="7" class="text-center py-5 text-muted">
+                        <div class="mb-2">暂无任务数据</div>
+                        <button class="btn btn-primary btn-sm" id="emptyCreateTaskBtn" type="button">创建第一个任务</button>
+                    </td>
+                </tr>
                 <tr th:each="task : ${tasks}">
                     <td>
-                        <div class="task-id" th:text="${task.tid}">-</div>
-                    </td>
-                    <td th:text="${task.taskName}">-</td>
-                    <td th:text="${task.project != null ? task.project : '-'}">-</td>
-                    <td th:text="${task.taskRoutingCode}">-</td>
-                    <td>
-                                <span class="status-badge"
-                                      th:classappend="'status-' + ${#strings.toLowerCase(task.status.name())}"
-                                      th:text="${task.displayStatusLabel}">状态</span>
+                        <div class="fw-semibold" th:text="${task.taskName}">Task Name</div>
+                        <div class="task-id" th:text="${task.tid}">task-id</div>
+                        <div class="mt-2">
+                            <span class="tag tag-muted" th:text="${task.user != null ? ('user=' + task.user.name) : 'user=-'}">user=demo</span>
+                        </div>
                     </td>
                     <td>
-                        <div style="display: flex; align-items: center; gap: 10px;">
-                            <div class="progress-bar">
-                                <div class="progress-fill"
-                                     th:style="'width: ' + ${task.taskTargetNumber > 0 ? (task.taskSuccessNumber * 100 / task.taskTargetNumber) : 0} + '%'"></div>
+                        <div class="meta-stack">
+                            <div>
+                                <div class="meta-label">Project</div>
+                                <div class="meta-value" th:text="${task.project ?: '-'}">demoApp</div>
                             </div>
-                            <span th:text="${task.taskTargetNumber > 0 ? task.taskSuccessNumber + '/' + task.taskTargetNumber : '0/0'}">0/0</span>
+                            <div>
+                                <div class="meta-label">Routing</div>
+                                <div class="meta-value" th:text="${task.taskRoutingCode ?: '-'}">pool-a</div>
+                            </div>
+                            <div>
+                                <span class="tag tag-muted" th:text="${task.openEnded ? 'openEnded=true' : 'openEnded=false'}">openEnded=false</span>
+                            </div>
                         </div>
                     </td>
                     <td>
-                        <div class="timestamp"
-                             th:text="${task.createTime != null ? #temporals.format(task.createTime, 'yyyy-MM-dd HH:mm:ss') : '-'}">
-                            -
+                        <div class="mb-2">
+                            <span class="status-pill"
+                                  th:classappend="${#strings.toLowerCase(task.status.name())}"
+                                  th:text="${task.status.name()}">READY</span>
+                        </div>
+                        <div class="small text-muted" th:text="${task.terminalReason != null ? task.terminalReason.name() : 'terminalReason=-'}">terminalReason=-</div>
+                    </td>
+                    <td style="min-width: 220px;">
+                        <div class="d-flex justify-content-between small text-muted mb-1">
+                            <span th:text="${task.taskSuccessNumber + ' / ' + task.taskEligibleNumber}">0 / 0</span>
+                            <span th:text="${#numbers.formatDecimal(task.progressPercentage, 1, 1)} + '%'">0.0%</span>
+                        </div>
+                        <div class="progress mb-2">
+                            <div class="progress-bar bg-success" th:style="'width:' + ${task.progressPercentage} + '%'"></div>
+                        </div>
+                        <div class="small text-muted" th:text="${'batchSize=' + task.batchSize + ', minWorkers=' + task.minRequiredWorkerCount}">batchSize=1, minWorkers=0</div>
+                    </td>
+                    <td>
+                        <div class="meta-stack">
+                            <div>
+                                <div class="meta-label">Target / Eligible</div>
+                                <div class="meta-value" th:text="${task.taskTargetNumber + ' / ' + task.taskEligibleNumber}">10 / 10</div>
+                            </div>
+                            <div>
+                                <div class="meta-label">Success / NonSuccess</div>
+                                <div class="meta-value" th:text="${task.taskSuccessNumber + ' / ' + task.taskNonSuccessNumber}">0 / 10</div>
+                            </div>
+                            <div>
+                                <div class="meta-label">PeakAssignedWorkerCount</div>
+                                <div class="meta-value" th:text="${task.peakAssignedWorkerCount}">0</div>
+                            </div>
                         </div>
                     </td>
                     <td>
-                        <div class="timestamp"
-                             th:text="${task.updateTime != null ? #temporals.format(task.updateTime, 'yyyy-MM-dd HH:mm:ss') : '-'}">
-                            -
+                        <div class="meta-stack">
+                            <div>
+                                <div class="meta-label">创建时间</div>
+                                <div class="meta-value" th:text="${task.createTime != null ? #temporals.format(task.createTime, 'yyyy-MM-dd HH:mm:ss') : '-'}">-</div>
+                            </div>
+                            <div>
+                                <div class="meta-label">更新时间</div>
+                                <div class="meta-value" th:text="${task.updateTime != null ? #temporals.format(task.updateTime, 'yyyy-MM-dd HH:mm:ss') : '-'}">-</div>
+                            </div>
                         </div>
                     </td>
-                    <td>
-                        <div class="task-actions">
-                            <button class="btn btn-info view-btn" th:attr="data-task-id=${task.tid}" title="查看详情">
-                                👁️
-                            </button>
-                            <button class="btn btn-warning audit-btn" th:attr="data-task-id=${task.tid}"
-                                    th:if="${task.status.name() == 'NEW'}" title="审核任务">✅
-                            </button>
-                            <button class="btn btn-warning pause-btn" th:attr="data-task-id=${task.tid}"
-                                    th:if="${task.status.name() == 'READY' || task.status.name() == 'RUNNING'}"
-                                    title="暂停任务">⏸️
-                            </button>
-                            <button class="btn btn-success resume-btn" th:attr="data-task-id=${task.tid}"
-                                    th:if="${task.status.name() == 'PAUSED'}" title="恢复任务">▶️
-                            </button>
-                            <button class="btn btn-danger terminate-btn" th:attr="data-task-id=${task.tid}"
-                                    th:if="${task.status.name() != 'TERMINAL'}" title="中止任务">⏹️
-                            </button>
-                            <button class="btn btn-primary edit-btn" th:attr="data-task-id=${task.tid}"
-                                    title="编辑任务">✏️
-                            </button>
-                            <button class="btn btn-danger delete-btn" th:attr="data-task-id=${task.tid}"
-                                    title="删除任务">🗑️
-                            </button>
-                            <button class="btn btn-secondary msg-btn" th:attr="data-task-id=${task.tid}"
-                                    title="消息详情">📨
-                            </button>
+                    <td class="action-cell">
+                        <div class="d-flex flex-wrap gap-2">
+                            <button class="btn btn-sm btn-outline-primary" data-action="view" th:attr="data-task-id=${task.tid}" type="button"><i class="bi bi-eye me-1"></i>详情</button>
+                            <button class="btn btn-sm btn-outline-secondary" data-action="messages" th:attr="data-task-id=${task.tid}" type="button"><i class="bi bi-envelope me-1"></i>消息</button>
+                            <button class="btn btn-sm btn-outline-success" data-action="audit" th:attr="data-task-id=${task.tid}" th:if="${task.status.name() == 'NEW'}" type="button"><i class="bi bi-check2-square me-1"></i>审核</button>
+                            <button class="btn btn-sm btn-outline-primary" data-action="edit" th:attr="data-task-id=${task.tid}" th:if="${task.status.name() == 'NEW' || task.status.name() == 'BLOCKED'}" type="button"><i class="bi bi-pencil-square me-1"></i>编辑</button>
+                            <button class="btn btn-sm btn-outline-warning" data-action="pause" th:attr="data-task-id=${task.tid}" th:if="${task.status.name() == 'READY' || task.status.name() == 'RUNNING'}" type="button"><i class="bi bi-pause-circle me-1"></i>暂停</button>
+                            <button class="btn btn-sm btn-outline-warning" data-action="block" th:attr="data-task-id=${task.tid}" th:if="${task.status.name() == 'READY' || task.status.name() == 'RUNNING'}" type="button"><i class="bi bi-slash-circle me-1"></i>阻断</button>
+                            <button class="btn btn-sm btn-outline-success" data-action="resume" th:attr="data-task-id=${task.tid}" th:if="${task.status.name() == 'PAUSED'}" type="button"><i class="bi bi-play-circle me-1"></i>恢复</button>
+                            <button class="btn btn-sm btn-outline-danger" data-action="terminate" th:attr="data-task-id=${task.tid}" th:if="${task.status.name() != 'TERMINAL'}" type="button"><i class="bi bi-x-octagon me-1"></i>终止</button>
+                            <button class="btn btn-sm btn-outline-danger" data-action="delete" th:attr="data-task-id=${task.tid}" th:if="${task.status.name() == 'NEW' || task.status.name() == 'TERMINAL'}" type="button"><i class="bi bi-trash me-1"></i>删除</button>
                         </div>
                     </td>
                 </tr>
                 </tbody>
             </table>
         </div>
-    </div>
+    </section>
+</div>
 
-    <!-- 状态统计 -->
-    <div style="margin-top: 20px; display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
-        <div style="background: white; padding: 15px; border-radius: 8px; text-align: center; box-shadow: 0 2px 5px rgba(0,0,0,0.1);"
-             th:each="status : ${taskStatuses}">
-            <div style="font-size: 24px; font-weight: bold; color: #333;"
-                 th:text="${taskStatusCount[status] ?: 0}">0
+<div aria-hidden="true" aria-labelledby="createTaskModalLabel" class="modal fade" id="createTaskModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-lg-2">
+        <div class="modal-content border-0 rounded-4">
+            <div class="modal-header">
+                <h5 class="modal-title" id="createTaskModalLabel">新建任务</h5>
+                <button aria-label="Close" class="btn-close" data-bs-dismiss="modal" type="button"></button>
             </div>
-            <div style="color: #666; margin-top: 5px;" th:text="${status.name() == 'TERMINAL' ? '终态' : status.description}">状态</div>
+            <div class="modal-body">
+                <form id="createTaskForm">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label" for="createTaskName">任务名称</label>
+                            <input class="form-control" id="createTaskName" required type="text">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label" for="createUserId">用户 ID</label>
+                            <input class="form-control" id="createUserId" required type="text">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label" for="createProject">Project</label>
+                            <select class="form-select" id="createProject" required></select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label" for="createRoutingCode">Routing Code</label>
+                            <input class="form-control" id="createRoutingCode" placeholder="例如 pool-a / us / route-x" required type="text">
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label" for="createBatchSize">Batch Size</label>
+                            <input class="form-control" id="createBatchSize" min="1" type="number" value="5">
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label" for="createRetryCount">Msg Retry</label>
+                            <input class="form-control" id="createRetryCount" min="0" type="number" value="3">
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label" for="createTargetList">Target List</label>
+                            <textarea class="form-control" id="createTargetList" rows="6" placeholder="每行一个 target"></textarea>
+                            <div class="form-text">当前 create contract 要求 `targetList` 至少有一个元素。</div>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label" for="createTextContent">sharedConfig.textContent</label>
+                            <textarea class="form-control" id="createTextContent" rows="5" placeholder="任务共享配置中的 textContent"></textarea>
+                        </div>
+                        <div class="col-12">
+                            <div class="form-check">
+                                <input class="form-check-input" id="createOpenEnded" type="checkbox">
+                                <label class="form-check-label" for="createOpenEnded">openEnded</label>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-outline-secondary" data-bs-dismiss="modal" type="button">取消</button>
+                <button class="btn btn-primary" id="submitCreateTaskBtn" type="button">创建任务</button>
+            </div>
         </div>
     </div>
 </div>
 
-<!-- 新建任务模态框 -->
-<div class="modal" id="createTaskModal">
-    <div class="modal-content">
-        <div class="modal-header">
-            <h2>新建任务</h2>
-            <span class="close" onclick="closeModal('createTaskModal')">&times;</span>
+<div aria-hidden="true" aria-labelledby="editTaskModalLabel" class="modal fade" id="editTaskModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content border-0 rounded-4">
+            <div class="modal-header">
+                <h5 class="modal-title" id="editTaskModalLabel">编辑任务</h5>
+                <button aria-label="Close" class="btn-close" data-bs-dismiss="modal" type="button"></button>
+            </div>
+            <div class="modal-body">
+                <form id="editTaskForm">
+                    <input id="editTaskId" type="hidden">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label" for="editTaskName">任务名称</label>
+                            <input class="form-control" id="editTaskName" required type="text">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label" for="editUserId">用户 ID</label>
+                            <input class="form-control" id="editUserId" required type="text">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label" for="editProject">Project</label>
+                            <select class="form-select" id="editProject" required></select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label" for="editRoutingCode">Routing Code</label>
+                            <input class="form-control" id="editRoutingCode" required type="text">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label" for="editBatchSize">Batch Size</label>
+                            <input class="form-control" id="editBatchSize" min="1" type="number" value="5">
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label" for="editTextContent">sharedConfig.textContent</label>
+                            <textarea class="form-control" id="editTextContent" rows="5"></textarea>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-outline-secondary" data-bs-dismiss="modal" type="button">取消</button>
+                <button class="btn btn-primary" id="submitEditTaskBtn" type="button">保存修改</button>
+            </div>
         </div>
-        <form id="createTaskForm">
-            <div class="form-group">
-                <label for="taskName">任务名称 *</label>
-                <input id="taskName" name="taskName" required type="text">
+    </div>
+</div>
+
+<div aria-hidden="true" aria-labelledby="auditTaskModalLabel" class="modal fade" id="auditTaskModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content border-0 rounded-4">
+            <div class="modal-header">
+                <h5 class="modal-title" id="auditTaskModalLabel">审核任务</h5>
+                <button aria-label="Close" class="btn-close" data-bs-dismiss="modal" type="button"></button>
             </div>
-            <div class="form-group">
-                <label for="project">项目 *</label>
-                <select id="project" name="project" required>
-                    <option value="">请选择项目</option>
-                    <option value="demoApp">演示应用 (demoApp)</option>
-                </select>
-            </div>
-            <div class="form-group">
-                <label for="routingCode">路由代码 *</label>
-                <select id="routingCode" name="routingCode" required>
-                    <option value="">请选择国家</option>
-                    <option value="us">美国 (US)</option>
-                    <option value="gb">英国 (GB)</option>
-                    <option value="cn">中国 (CN)</option>
-                    <option value="jp">日本 (JP)</option>
-                    <option value="kr">韩国 (KR)</option>
-                </select>
-            </div>
-            <div class="form-group">
-                <label for="targetFile">上传号码txt文件</label>
-                <input accept=".txt" id="targetFile" type="file"/>
-                <small>每行一个号码，自动识别并填充到下方号码列表</small>
-            </div>
-            <div class="form-group">
-                <label for="targetList">目标列表 (每行一个)</label>
-                <textarea id="targetList" name="targetList" placeholder="phone1&#10;phone2&#10;phone3"></textarea>
-                <div style="margin-top:5px;color:#888;">
-                    号码数量：<span id="targetCount">0</span>
+            <div class="modal-body">
+                <input id="auditTaskId" type="hidden">
+                <div class="mb-3">
+                    <div class="meta-label">任务名称</div>
+                    <div class="meta-value" id="auditTaskName">-</div>
                 </div>
-            </div>
-            <div class="form-group">
-                <label for="textContent">任务内容 *</label>
-                <textarea id="textContent" name="textContent" required></textarea>
-            </div>
-            <div class="form-group">
-                <label for="userId">用户ID *</label>
-                <input id="userId" name="userId" required type="text">
-            </div>
-            <div class="form-group">
-                <label for="batchSize">批次大小</label>
-                <input id="batchSize" min="1" name="batchSize" type="number" value="5">
-            </div>
-            <div style="text-align: right;">
-                <button class="btn btn-warning" onclick="closeModal('createTaskModal')" type="button">取消</button>
-                <button class="btn btn-primary" type="submit">创建任务</button>
-            </div>
-        </form>
-    </div>
-</div>
-
-<!-- 审核任务模态框 -->
-<div class="modal" id="auditTaskModal">
-    <div class="modal-content">
-        <div class="modal-header">
-            <h2>审核任务</h2>
-            <span class="close" onclick="closeModal('auditTaskModal')">&times;</span>
-        </div>
-        <form id="auditTaskForm">
-            <input id="auditTaskId" name="taskId" type="hidden">
-            <div class="form-group">
-                <label>任务名称</label>
-                <input id="auditTaskName" readonly style="background:#f5f5f5;" type="text">
-            </div>
-            <div class="form-group">
-                <label>项目</label>
-                <input id="auditProject" readonly style="background:#f5f5f5;" type="text">
-            </div>
-            <div class="form-group">
-                <label>国家</label>
-                <input id="auditRoutingCode" readonly style="background:#f5f5f5;" type="text">
-            </div>
-            <div class="form-group">
-                <label>用户ID</label>
-                <input id="auditUserId" readonly style="background:#f5f5f5;" type="text">
-            </div>
-            <div class="form-group">
-                <label>号码数量</label>
-                <input id="auditTargetCount" readonly style="background:#f5f5f5;" type="text">
-            </div>
-            <div class="form-group">
-                <label>任务内容</label>
-                <textarea id="auditTextContent" readonly style="background:#f5f5f5;"></textarea>
-            </div>
-            <div class="form-group">
-                <label>审核结果</label>
+                <div class="mb-3">
+                    <div class="meta-label">Project / Routing</div>
+                    <div class="meta-value" id="auditTaskMeta">-</div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label d-block">审核结果</label>
+                    <div class="form-check form-check-inline">
+                        <input checked class="form-check-input" id="auditApprove" name="auditDecision" type="radio" value="true">
+                        <label class="form-check-label" for="auditApprove">通过</label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" id="auditReject" name="auditDecision" type="radio" value="false">
+                        <label class="form-check-label" for="auditReject">拒绝</label>
+                    </div>
+                </div>
                 <div>
-                    <label><input checked name="approved" type="radio" value="true"> 通过</label>
-                    <label><input name="approved" type="radio" value="false"> 拒绝</label>
+                    <label class="form-label" for="auditComment">备注</label>
+                    <textarea class="form-control" id="auditComment" rows="4" placeholder="当前后端不会持久化 comment，这里仅保留操作输入体验。"></textarea>
                 </div>
             </div>
-            <div class="form-group">
-                <label for="auditComment">审核意见</label>
-                <textarea id="auditComment" name="comment" placeholder="请输入审核意见..."></textarea>
+            <div class="modal-footer">
+                <button class="btn btn-outline-secondary" data-bs-dismiss="modal" type="button">取消</button>
+                <button class="btn btn-primary" id="submitAuditTaskBtn" type="button">提交审核</button>
             </div>
-            <div style="text-align: right;">
-                <button class="btn btn-warning" onclick="closeModal('auditTaskModal')" type="button">取消</button>
-                <button class="btn btn-primary" type="submit">提交审核</button>
-            </div>
-        </form>
+        </div>
     </div>
 </div>
 
-<!-- 编辑任务模态框 -->
-<div class="modal" id="editTaskModal">
-    <div class="modal-content">
-        <div class="modal-header">
-            <h2>编辑任务</h2>
-            <span class="close" onclick="closeModal('editTaskModal')">&times;</span>
-        </div>
-        <form id="editTaskForm">
-            <input id="editTaskId" name="taskId" type="hidden">
-            <div class="form-group">
-                <label for="editTaskName">任务名称 *</label>
-                <input id="editTaskName" name="taskName" required type="text">
+<div aria-hidden="true" aria-labelledby="taskDetailModalLabel" class="modal fade" id="taskDetailModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-lg-2">
+        <div class="modal-content border-0 rounded-4">
+            <div class="modal-header">
+                <h5 class="modal-title" id="taskDetailModalLabel">任务详情</h5>
+                <button aria-label="Close" class="btn-close" data-bs-dismiss="modal" type="button"></button>
             </div>
-            <div class="form-group">
-                <label for="editProject">项目 *</label>
-                <select id="editProject" name="project" required>
-                    <option value="">请选择项目</option>
-                    <option value="demoApp">演示应用 (demoApp)</option>
-                </select>
-            </div>
-            <div class="form-group">
-                <label for="editRoutingCode">国家代码 *</label>
-                <select id="editRoutingCode" name="routingCode" required>
-                    <option value="">请选择国家</option>
-                    <option value="us">美国 (US)</option>
-                    <option value="gb">英国 (GB)</option>
-                    <option value="cn">中国 (CN)</option>
-                    <option value="jp">日本 (JP)</option>
-                    <option value="kr">韩国 (KR)</option>
-                </select>
-            </div>
-            <div class="form-group">
-                <label for="editTargetFile">上传号码txt文件</label>
-                <input accept=".txt" disabled id="editTargetFile" type="file"/>
-                <small>每行一个号码，自动识别并填充到下方号码列表</small>
-            </div>
-            <div class="form-group">
-                <label for="editTargetList">目标列表 (每行一个)</label>
-                <textarea id="editTargetList" name="targetList" readonly></textarea>
-                <div style="margin-top:5px;color:#888;">
-                    号码数量：<span id="editTargetCount">0</span>
+            <div class="modal-body">
+                <div class="row g-4">
+                    <div class="col-12 col-lg-6">
+                        <div class="meta-stack">
+                            <div><div class="meta-label">任务 ID</div><div class="meta-value" id="detailTaskId">-</div></div>
+                            <div><div class="meta-label">任务名称</div><div class="meta-value" id="detailTaskName">-</div></div>
+                            <div><div class="meta-label">状态 / 终态原因</div><div class="meta-value" id="detailStatus">-</div></div>
+                            <div><div class="meta-label">Project / Routing / User</div><div class="meta-value" id="detailMeta">-</div></div>
+                            <div><div class="meta-label">计数聚合</div><div class="meta-value" id="detailCounters">-</div></div>
+                        </div>
+                    </div>
+                    <div class="col-12 col-lg-6">
+                        <div class="meta-stack">
+                            <div><div class="meta-label">状态校验</div><div class="meta-value" id="detailValidationSummary">-</div></div>
+                            <div><div class="meta-label">State Validation Violations</div><div class="meta-value" id="detailValidationViolations">-</div></div>
+                            <div><div class="meta-label">Target 数量</div><div class="meta-value" id="detailTargetCount">-</div></div>
+                        </div>
+                    </div>
+                    <div class="col-12">
+                        <div class="meta-label mb-2">sharedConfig</div>
+                        <div class="json-box" id="detailSharedConfig">{}</div>
+                    </div>
+                    <div class="col-12">
+                        <div class="meta-label mb-2">Target List</div>
+                        <div class="json-box" id="detailTargetList">[]</div>
+                    </div>
                 </div>
             </div>
-            <div class="form-group">
-                <label for="editTextContent">任务内容 *</label>
-                <textarea id="editTextContent" name="textContent" required></textarea>
-            </div>
-            <div class="form-group">
-                <label for="editUserId">用户ID *</label>
-                <input id="editUserId" name="userId" required type="text">
-            </div>
-            <div class="form-group">
-                <label for="editBatchSize">批次大小</label>
-                <input id="editBatchSize" min="1" name="batchSize" type="number" value="5">
-            </div>
-            <div style="text-align: right;">
-                <button class="btn btn-warning" onclick="closeModal('editTaskModal')" type="button">取消</button>
-                <button class="btn btn-primary" type="submit">保存修改</button>
-            </div>
-        </form>
-    </div>
-</div>
-
-<!-- 消息详情模态框 -->
-<div class="modal" id="taskMsgModal">
-    <div class="modal-content" style="max-width:900px;">
-        <div class="modal-header">
-            <h2>消息详情</h2>
-            <span class="close" onclick="closeModal('taskMsgModal')">&times;</span>
-        </div>
-        <div id="taskMsgTableContainer"></div>
-        <div style="text-align:right;margin-top:10px;">
-            <button class="btn btn-info" id="msgPrevPage">上一页</button>
-            <span id="msgPageInfo"></span>
-            <button class="btn btn-info" id="msgNextPage">下一页</button>
         </div>
     </div>
 </div>
 
+<div aria-hidden="true" aria-labelledby="taskMessagesModalLabel" class="modal fade" id="taskMessagesModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content border-0 rounded-4">
+            <div class="modal-header">
+                <h5 class="modal-title" id="taskMessagesModalLabel">任务消息</h5>
+                <button aria-label="Close" class="btn-close" data-bs-dismiss="modal" type="button"></button>
+            </div>
+            <div class="modal-body">
+                <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+                    <div class="text-muted" id="taskMessagesSummary">-</div>
+                    <div class="d-flex gap-2">
+                        <button class="btn btn-outline-secondary btn-sm" id="messagesPrevBtn" type="button">上一页</button>
+                        <button class="btn btn-outline-secondary btn-sm" id="messagesNextBtn" type="button">下一页</button>
+                    </div>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle mb-0">
+                        <thead class="table-light">
+                        <tr>
+                            <th>msgId</th>
+                            <th>status</th>
+                            <th>worker</th>
+                            <th>target</th>
+                            <th>batch</th>
+                            <th>retry</th>
+                            <th>result / error</th>
+                        </tr>
+                        </thead>
+                        <tbody id="taskMessagesTableBody">
+                        <tr><td colspan="7" class="text-center text-muted py-4">加载中...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-    console.log('tasks.html script loaded');
-    const DEFAULT_BATCH_SIZE = 5;
-    const DEFAULT_MAX_RETRY_COUNT = 3;
-    const PROJECT_PLACEHOLDER = '<option value="">请选择项目</option>';
+    const projectCodes = [];
+    const taskMessagesState = { taskId: null, page: 1, size: 20, total: 0 };
 
-    // 页面加载时获取项目列表
-    document.addEventListener('DOMContentLoaded', function () {
-        loadProjects();
-        bindTargetCounter('targetList', 'targetCount');
-        bindTextFileInput('targetFile', 'targetList', 'targetCount');
-        bindTargetCounter('editTargetList', 'editTargetCount');
-    });
-
-    // 加载项目列表
-    async function loadProjects() {
-        try {
-            const response = await fetch('/api/config/projects');
-            if (!response.ok) {
-                throw new Error('HTTP ' + response.status);
-            }
-            const result = await response.json();
-
-            if (result.code === 0) {
-                populateProjectSelects(normalizeProjects(result.data));
-            } else {
-                console.error('加载项目列表失败:', result.msg);
-            }
-        } catch (error) {
-            console.error('加载项目列表失败:', error.message);
-        }
-    }
-
-    // 填充项目下拉框
-    function normalizeProjects(projects) {
-        if (!Array.isArray(projects)) {
-            return [];
-        }
-        return projects.map(project => {
-            if (typeof project === 'string') {
-                return {code: project, name: project};
-            }
-            return {
-                code: project.code,
-                name: project.name || project.code
-            };
-        }).filter(project => project.code);
-    }
-
-    function populateProjectSelects(projects) {
-        const projectSelect = document.getElementById('project');
-        const editProjectSelect = document.getElementById('editProject');
-
-        // 清空现有选项（保留第一个"请选择项目"选项）
-        projectSelect.innerHTML = '<option value="">请选择项目</option>';
-        editProjectSelect.innerHTML = '<option value="">请选择项目</option>';
-
-        // 添加项目选项
-        projects.forEach(project => {
-            const option = document.createElement('option');
-            option.value = project.code;
-            option.textContent = `${project.name} (${project.code})`;
-
-            projectSelect.appendChild(option.cloneNode(true));
-            editProjectSelect.appendChild(option);
-        });
-    }
-
-    // ========== 全局JS函数，确保全局作用域 ==========
-    function showAlert(message, type = 'success') {
-        const container = document.getElementById('alert-container');
-        const alert = document.createElement('div');
-        alert.className = `alert alert-${type}`;
-        alert.textContent = message;
-        container.appendChild(alert);
-        setTimeout(() => {
-            alert.remove();
-        }, 5000);
-    }
-
-    function showModal(modalId) {
-        document.getElementById(modalId).style.display = 'block';
+    function showPageAlert(message, type = 'success') {
+        const box = document.getElementById('pageAlert');
+        box.className = 'alert panel-card alert-box show';
+        box.classList.add(type === 'danger' ? 'alert-danger' : 'alert-success');
+        box.textContent = message;
+        window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 
     function closeModal(modalId) {
-        document.getElementById(modalId).style.display = 'none';
-    }
-
-    function showCreateTaskModal() {
-        showModal('createTaskModal');
-    }
-
-    function bindTargetCounter(textareaId, countId) {
-        const textarea = document.getElementById(textareaId);
-        if (!textarea) {
-            return;
+        const element = document.getElementById(modalId);
+        const modal = bootstrap.Modal.getInstance(element);
+        if (modal) {
+            modal.hide();
         }
-        const update = () => {
-            const count = textarea.value.split('\n').filter(item => item.trim()).length;
-            document.getElementById(countId).innerText = count;
-        };
-        textarea.addEventListener('input', update);
-        update();
     }
 
-    function bindTextFileInput(fileId, textareaId, countId) {
-        const input = document.getElementById(fileId);
-        const textarea = document.getElementById(textareaId);
-        if (!input || !textarea || input.disabled) {
-            return;
+    function openModal(modalId) {
+        bootstrap.Modal.getOrCreateInstance(document.getElementById(modalId)).show();
+    }
+
+    function parseTargets(text) {
+        return (text || '').split('\n').map(item => item.trim()).filter(Boolean);
+    }
+
+    function prettyJson(value) {
+        return JSON.stringify(value ?? {}, null, 2);
+    }
+
+    async function requestJson(url, options = {}) {
+        const response = await fetch(url, options);
+        let data = {};
+        try {
+            data = await response.json();
+        } catch (error) {
+            data = {};
         }
-        input.addEventListener('change', event => {
-            const file = event.target.files[0];
-            if (!file) {
-                return;
+        if (!response.ok || data.success === false) {
+            throw new Error(data.message || data.msg || ('Request failed: ' + response.status));
+        }
+        return data;
+    }
+
+    function fillProjectSelect(selectId, selectedValue) {
+        const select = document.getElementById(selectId);
+        select.innerHTML = '';
+        projectCodes.forEach(function (code) {
+            const option = document.createElement('option');
+            option.value = code;
+            option.textContent = code;
+            if (code === selectedValue) {
+                option.selected = true;
             }
-            const reader = new FileReader();
-            reader.onload = loadEvent => {
-                textarea.value = loadEvent.target.result.replace(/\r/g, '');
-                const count = textarea.value.split('\n').filter(item => item.trim()).length;
-                document.getElementById(countId).innerText = count;
-            };
-            reader.readAsText(file, 'utf-8');
+            select.appendChild(option);
         });
+        if (!select.value && projectCodes.length > 0) {
+            select.value = projectCodes[0];
+        }
     }
 
-    // 号码数量统计
-    function updateTargetCount() {
-        const val = document.getElementById('targetList').value;
-        const count = val.split('\n').filter(x => x.trim()).length;
-        document.getElementById('targetCount').innerText = count;
+    async function loadProjects() {
+        if (projectCodes.length > 0) {
+            return projectCodes;
+        }
+        const response = await fetch('/status/workers/allProjects');
+        const data = await response.json();
+        if (Array.isArray(data)) {
+            data.forEach(code => projectCodes.push(code));
+        }
+        if (projectCodes.length === 0) {
+            projectCodes.push('demoApp');
+        }
+        fillProjectSelect('createProject', projectCodes[0]);
+        fillProjectSelect('editProject', projectCodes[0]);
+        return projectCodes;
     }
 
-    document.getElementById('targetList').addEventListener('input', updateTargetCount);
-    document.getElementById('targetFile').addEventListener('change', function (e) {
-        const file = e.target.files[0];
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = function (evt) {
-            document.getElementById('targetList').value = evt.target.result.replace(/\r/g, '');
-            updateTargetCount();
-        };
-        reader.readAsText(file, 'utf-8');
-    });
-    updateTargetCount();
-
-    // 编辑任务弹窗逻辑
-    function showEditTaskModal(taskId) {
-        fetch(`/status/api/tasks/${taskId}`)
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error('接口返回错误: ' + response.status);
-                }
-                return response.json();
-            })
-            .then(data => {
-                if (data.success) {
-                    const t = data.task;
-                    document.getElementById('editTaskId').value = t.tid;
-                    document.getElementById('editTaskName').value = t.taskName;
-                    document.getElementById('editProject').value = t.project || '';
-                    document.getElementById('editRoutingCode').value = t.taskRoutingCode;
-                    // 只展示前100个号码
-                    const targets = (data.targetList || []).slice(0, 100);
-                    document.getElementById('editTargetList').value = targets.join('\n');
-                    document.getElementById('editTextContent').value = (t.sharedConfig && t.sharedConfig.textContent) ? t.sharedConfig.textContent : '';
-                    document.getElementById('editUserId').value = t.user ? t.user.name : '';
-                    document.getElementById('editBatchSize').value = t.batchSize || 5;
-                    updateEditTargetCount();
-                    showModal('editTaskModal');
-                } else {
-                    showAlert(data.message, 'danger');
-                }
-            })
-            .catch(error => {
-                showAlert('获取任务详情失败: ' + error.message, 'danger');
-            });
+    async function openCreateTaskModal() {
+        await loadProjects();
+        document.getElementById('createTaskForm').reset();
+        fillProjectSelect('createProject', projectCodes[0]);
+        document.getElementById('createBatchSize').value = 5;
+        document.getElementById('createRetryCount').value = 3;
+        openModal('createTaskModal');
     }
 
-    function updateEditTargetCount() {
-        const val = document.getElementById('editTargetList').value;
-        const count = val.split('\n').filter(x => x.trim()).length;
-        document.getElementById('editTargetCount').innerText = count;
-    }
-
-    document.getElementById('editTargetList').addEventListener('input', updateEditTargetCount);
-    document.getElementById('editTargetFile').addEventListener('change', function (e) {
-        const file = e.target.files[0];
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = function (evt) {
-            document.getElementById('editTargetList').value = evt.target.result.replace(/\r/g, '');
-            updateEditTargetCount();
-        };
-        reader.readAsText(file, 'utf-8');
-    });
-    document.getElementById('editTaskForm').addEventListener('submit', function (e) {
-        e.preventDefault();
-        const formData = new FormData(this);
+    async function createTask() {
         const requestData = {
-            userId: formData.get('userId'),
-            project: formData.get('project'),
-            taskName: formData.get('taskName'),
-            routingCode: formData.get('routingCode'),
+            userId: document.getElementById('createUserId').value.trim(),
+            project: document.getElementById('createProject').value,
+            taskName: document.getElementById('createTaskName').value.trim(),
             sharedConfig: {
-                textContent: formData.get('textContent')
+                textContent: document.getElementById('createTextContent').value
             },
-            batchSize: parseInt(formData.get('batchSize'), 10) || DEFAULT_BATCH_SIZE
+            targetList: parseTargets(document.getElementById('createTargetList').value),
+            routingCode: document.getElementById('createRoutingCode').value.trim(),
+            batchSize: parseInt(document.getElementById('createBatchSize').value, 10) || 1,
+            defaultMsgMaxRetryCount: parseInt(document.getElementById('createRetryCount').value, 10) || 0,
+            openEnded: document.getElementById('createOpenEnded').checked
         };
-        const taskId = formData.get('taskId');
-        fetch(`/status/api/tasks/${taskId}`, {
-            method: 'PUT',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(requestData)
-        })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    showAlert('任务修改成功');
-                    closeModal('editTaskModal');
-                    setTimeout(() => location.reload(), 1000);
-                } else {
-                    showAlert(data.message, 'danger');
-                }
-            })
-            .catch(error => {
-                showAlert('修改任务失败: ' + error.message, 'danger');
-            });
-    });
 
-    // 审核任务弹窗增强
-    function showAuditModal(taskId) {
-        fetch(`/status/api/tasks/${taskId}`)
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error('接口返回错误: ' + response.status);
-                }
-                return response.json();
-            })
-            .then(data => {
-                if (data.success) {
-                    const t = data.task;
-                    document.getElementById('auditTaskId').value = t.tid;
-                    document.getElementById('auditTaskName').value = t.taskName;
-                    document.getElementById('auditProject').value = t.project || '';
-                    document.getElementById('auditRoutingCode').value = t.taskRoutingCode;
-                    document.getElementById('auditUserId').value = t.user ? t.user.name : '';
-                    document.getElementById('auditTargetCount').value = (data.targetList ? data.targetList.length : 0);
-                    document.getElementById('auditTextContent').value = (t.sharedConfig && t.sharedConfig.textContent) ? t.sharedConfig.textContent : '';
-                    document.getElementById('auditComment').value = '';
-                    document.querySelectorAll('input[name="approved"]').forEach(r => r.checked = r.value === 'true');
-                    showModal('auditTaskModal');
-                } else {
-                    showAlert(data.message, 'danger');
-                }
-            })
-            .catch(error => {
-                showAlert('获取任务详情失败: ' + error.message, 'danger');
-            });
-    }
-
-    // 消息详情弹窗逻辑
-    let msgCurrentPage = 1;
-    let msgPageSize = 20;
-    let msgTotal = 0;
-    let msgTaskId = null;
-
-    function showTaskMsgModal(taskId, page = 1) {
-        msgTaskId = taskId;
-        msgCurrentPage = page;
-        fetch(`/status/api/tasks/${taskId}/messages?page=${page}&size=${msgPageSize}`)
-            .then(res => res.json())
-            .then(data => {
-                if (data.success) {
-                    msgTotal = data.total;
-                    renderTaskMsgTable(data.messages);
-                    document.getElementById('msgPageInfo').innerText = `第 ${data.page} 页 / 共 ${Math.ceil(data.total / data.size)} 页`;
-                    showModal('taskMsgModal');
-                } else {
-                    showAlert('获取消息详情失败', 'danger');
-                }
-            });
-    }
-
-    function renderTaskMsgTable(msgs) {
-        let html = '<table style="width:100%;border-collapse:collapse;">';
-        html += '<thead><tr>' +
-            '<th>msgId</th><th>workerId</th><th>target</th><th>状态</th><th>发送时间</th><th>回执</th><th>错误</th>' +
-            '</tr></thead><tbody>';
-        msgs.forEach(m => {
-            const timestamp = m.assignedTime || m.startTime || m.completeTime || m.createTime || '';
-            html += `<tr><td>${m.msgId || ''}</td><td>${m.workerId || ''}</td><td>${m.target || ''}</td><td>${m.status || ''}</td><td>${timestamp}</td><td>${m.result || ''}</td><td>${m.errorMessage || ''}</td></tr>`;
-        });
-        html += '</tbody></table>';
-        document.getElementById('taskMsgTableContainer').innerHTML = html;
-    }
-
-    document.getElementById('msgPrevPage').onclick = function () {
-        if (msgCurrentPage > 1) showTaskMsgModal(msgTaskId, msgCurrentPage - 1);
-    };
-    document.getElementById('msgNextPage').onclick = function () {
-        if (msgCurrentPage < Math.ceil(msgTotal / msgPageSize)) showTaskMsgModal(msgTaskId, msgCurrentPage + 1);
-    };
-    // 事件委托统一处理所有操作按钮
-    document.addEventListener('click', function (e) {
-        if (e.target.classList.contains('edit-btn')) {
-            showEditTaskModal(e.target.getAttribute('data-task-id'));
-        }
-        if (e.target.classList.contains('audit-btn')) {
-            showAuditModal(e.target.getAttribute('data-task-id'));
-        }
-        if (e.target.classList.contains('pause-btn')) {
-            pauseTask(e.target.getAttribute('data-task-id'));
-        }
-        if (e.target.classList.contains('resume-btn')) {
-            resumeTask(e.target.getAttribute('data-task-id'));
-        }
-        if (e.target.classList.contains('terminate-btn')) {
-            terminateTask(e.target.getAttribute('data-task-id'));
-        }
-        if (e.target.classList.contains('delete-btn')) {
-            deleteTask(e.target.getAttribute('data-task-id'));
-        }
-        if (e.target.classList.contains('view-btn')) {
-            viewTask(e.target.getAttribute('data-task-id'));
-        }
-        if (e.target.classList.contains('msg-btn')) {
-            showTaskMsgModal(e.target.getAttribute('data-task-id'));
-        }
-    });
-    // 新建任务表单提交逻辑，防止表单直接提交到URL
-    document.getElementById('createTaskForm').addEventListener('submit', function (e) {
-        e.preventDefault(); // 阻止表单默认提交
-        const formData = new FormData(this);
-        const requestData = {
-            userId: formData.get('userId'),
-            project: formData.get('project'),
-            taskName: formData.get('taskName'),
-            routingCode: formData.get('routingCode'),
-            sharedConfig: {
-                textContent: formData.get('textContent')
-            },
-            targetList: (formData.get('targetList') || '').split('\n').filter(item => item.trim()),
-            batchSize: parseInt(formData.get('batchSize'), 10) || DEFAULT_BATCH_SIZE,
-            defaultMsgMaxRetryCount: DEFAULT_MAX_RETRY_COUNT,
-            openEnded: false
-        };
-        fetch('/status/api/tasks', {
+        await requestJson('/status/api/tasks', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(requestData)
-        })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    showAlert('任务创建成功');
-                    closeModal('createTaskModal');
-                    setTimeout(() => location.reload(), 1000);
-                } else {
-                    showAlert(data.message, 'danger');
-                }
-            })
-            .catch(error => {
-                showAlert('创建任务失败: ' + error.message, 'danger');
-            });
-    });
+        });
 
-    function pauseTask(taskId) {
-        fetch(`/status/api/tasks/${taskId}/pause`, {method: 'POST'})
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error('接口返回错误: ' + response.status);
-                }
-                return response.json();
-            })
-            .then(data => {
-                if (data.success) {
-                    showAlert('任务已暂停');
-                    setTimeout(() => location.reload(), 1000);
-                } else {
-                    showAlert(data.message, 'danger');
-                }
-            })
-            .catch(error => {
-                showAlert('暂停任务失败: ' + error.message, 'danger');
-            });
+        closeModal('createTaskModal');
+        showPageAlert('任务创建成功');
+        setTimeout(function () { location.reload(); }, 800);
     }
 
-    function resumeTask(taskId) {
-        fetch(`/status/api/tasks/${taskId}/resume`, {method: 'POST'})
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error('接口返回错误: ' + response.status);
-                }
-                return response.json();
-            })
-            .then(data => {
-                if (data.success) {
-                    showAlert('任务已恢复');
-                    setTimeout(() => location.reload(), 1000);
-                } else {
-                    showAlert(data.message, 'danger');
-                }
-            })
-            .catch(error => {
-                showAlert('恢复任务失败: ' + error.message, 'danger');
-            });
+    async function openEditTaskModal(taskId) {
+        await loadProjects();
+        const data = await requestJson('/status/api/tasks/' + taskId);
+        const task = data.task || {};
+        document.getElementById('editTaskId').value = task.tid || '';
+        document.getElementById('editTaskName').value = task.taskName || '';
+        document.getElementById('editUserId').value = task.user && task.user.name ? task.user.name : '';
+        fillProjectSelect('editProject', task.project || projectCodes[0]);
+        document.getElementById('editRoutingCode').value = task.taskRoutingCode || '';
+        document.getElementById('editBatchSize').value = task.batchSize || 1;
+        document.getElementById('editTextContent').value = task.sharedConfig && task.sharedConfig.textContent ? task.sharedConfig.textContent : '';
+        openModal('editTaskModal');
     }
 
-    function terminateTask(taskId) {
-        fetch(`/status/api/tasks/${taskId}/terminate`, {method: 'POST'})
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error('接口返回错误: ' + response.status);
-                }
-                return response.json();
-            })
-            .then(data => {
-                if (data.success) {
-                    showAlert('任务已中止');
-                    setTimeout(() => location.reload(), 1000);
-                } else {
-                    showAlert(data.message, 'danger');
-                }
-            })
-            .catch(error => {
-                showAlert('中止任务失败: ' + error.message, 'danger');
-            });
+    async function saveTaskEdit() {
+        const taskId = document.getElementById('editTaskId').value;
+        const requestData = {
+            userId: document.getElementById('editUserId').value.trim(),
+            project: document.getElementById('editProject').value,
+            taskName: document.getElementById('editTaskName').value.trim(),
+            sharedConfig: {
+                textContent: document.getElementById('editTextContent').value
+            },
+            routingCode: document.getElementById('editRoutingCode').value.trim(),
+            batchSize: parseInt(document.getElementById('editBatchSize').value, 10) || 1
+        };
+
+        await requestJson('/status/api/tasks/' + taskId, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(requestData)
+        });
+
+        closeModal('editTaskModal');
+        showPageAlert('任务修改成功');
+        setTimeout(function () { location.reload(); }, 800);
     }
 
-    function deleteTask(taskId) {
-        fetch(`/status/api/tasks/${taskId}`, {method: 'DELETE'})
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error('接口返回错误: ' + response.status);
-                }
-                return response.json();
-            })
-            .then(data => {
-                if (data.success) {
-                    showAlert('任务删除成功');
-                    setTimeout(() => location.reload(), 1000);
-                } else {
-                    showAlert(data.message, 'danger');
-                }
-            })
-            .catch(error => {
-                showAlert('删除任务失败: ' + error.message, 'danger');
-            });
+    async function openAuditTaskModal(taskId) {
+        const data = await requestJson('/status/api/tasks/' + taskId);
+        const task = data.task || {};
+        document.getElementById('auditTaskId').value = task.tid || '';
+        document.getElementById('auditTaskName').textContent = task.taskName || '-';
+        document.getElementById('auditTaskMeta').textContent = (task.project || '-') + ' / ' + (task.taskRoutingCode || '-');
+        document.getElementById('auditComment').value = '';
+        document.getElementById('auditApprove').checked = true;
+        openModal('auditTaskModal');
     }
 
-    function viewTask(taskId) {
-        fetch(`/status/api/tasks/${taskId}`)
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error('接口返回错误: ' + response.status);
-                }
-                return response.json();
-            })
-            .then(data => {
-                if (data.success) {
-                    // 这里可以弹窗或跳转详情页，按你需求实现
-                    showAlert('任务详情：' + JSON.stringify(data.task));
-                } else {
-                    showAlert(data.message, 'danger');
-                }
-            })
-            .catch(error => {
-                showAlert('获取任务详情失败: ' + error.message, 'danger');
-            });
-    }
-
-    document.getElementById('auditTaskForm').addEventListener('submit', function (e) {
-        e.preventDefault();
+    async function submitAuditTask() {
         const taskId = document.getElementById('auditTaskId').value;
-        const approved = document.querySelector('input[name="approved"]:checked').value;
-        const comment = document.getElementById('auditComment').value;
+        const approved = document.querySelector('input[name="auditDecision"]:checked').value;
         const params = new URLSearchParams();
         params.append('approved', approved);
-        params.append('comment', comment);
-        fetch(`/status/api/tasks/${taskId}/audit`, {
+        params.append('comment', document.getElementById('auditComment').value);
+
+        await requestJson('/status/api/tasks/' + taskId + '/audit', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded'
-            },
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
             body: params.toString()
-        })
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error('接口返回错误: ' + response.status);
-                }
-                return response.json();
-            })
-            .then(data => {
-                if (data.success) {
-                    showAlert('任务审核成功');
-                    closeModal('auditTaskModal');
-                    setTimeout(() => location.reload(), 1000);
-                } else {
-                    showAlert(data.message, 'danger');
-                }
-            })
-            .catch(error => {
-                showAlert('审核任务失败: ' + error.message, 'danger');
-            });
+        });
+
+        closeModal('auditTaskModal');
+        showPageAlert(approved === 'true' ? '任务审核通过' : '任务已拒绝');
+        setTimeout(function () { location.reload(); }, 800);
+    }
+
+    async function openTaskDetailModal(taskId) {
+        const data = await requestJson('/status/api/tasks/' + taskId);
+        const task = data.task || {};
+        const validation = data.stateValidation || {};
+        const targets = Array.isArray(data.targetList) ? data.targetList : [];
+
+        document.getElementById('detailTaskId').textContent = task.tid || '-';
+        document.getElementById('detailTaskName').textContent = task.taskName || '-';
+        document.getElementById('detailStatus').textContent = (task.status || '-') + ' / ' + (task.terminalReason || '-');
+        document.getElementById('detailMeta').textContent = [task.project || '-', task.taskRoutingCode || '-', task.user && task.user.name ? task.user.name : '-'].join(' / ');
+        document.getElementById('detailCounters').textContent =
+            'target=' + (task.taskTargetNumber ?? 0) +
+            ', eligible=' + (task.taskEligibleNumber ?? 0) +
+            ', success=' + (task.taskSuccessNumber ?? 0) +
+            ', nonSuccess=' + (task.taskNonSuccessNumber ?? 0);
+        document.getElementById('detailValidationSummary').textContent =
+            'valid=' + (validation.valid ?? '-') +
+            ', needsResolution=' + (validation.needsResolution ?? '-') +
+            ', total=' + (validation.totalMessages ?? 0) +
+            ', success=' + (validation.successMessages ?? 0) +
+            ', failed=' + (validation.failedMessages ?? 0) +
+            ', processing=' + (validation.processingMessages ?? 0);
+        document.getElementById('detailValidationViolations').textContent =
+            Array.isArray(validation.violations) && validation.violations.length > 0 ? validation.violations.join(', ') : '-';
+        document.getElementById('detailTargetCount').textContent = String(targets.length);
+        document.getElementById('detailSharedConfig').textContent = prettyJson(task.sharedConfig || {});
+        document.getElementById('detailTargetList').textContent = prettyJson(targets);
+        openModal('taskDetailModal');
+    }
+
+    async function loadTaskMessages(taskId, page) {
+        taskMessagesState.taskId = taskId;
+        taskMessagesState.page = page;
+        const data = await requestJson('/status/api/tasks/' + taskId + '/messages?page=' + page + '&size=' + taskMessagesState.size);
+        taskMessagesState.total = data.total || 0;
+        const totalPages = Math.max(1, Math.ceil(taskMessagesState.total / taskMessagesState.size));
+        document.getElementById('taskMessagesSummary').textContent = 'taskId=' + taskId + '，第 ' + page + ' / ' + totalPages + ' 页，total=' + taskMessagesState.total;
+
+        const tbody = document.getElementById('taskMessagesTableBody');
+        const messages = Array.isArray(data.messages) ? data.messages : [];
+        if (messages.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-4">暂无消息数据</td></tr>';
+        } else {
+            tbody.innerHTML = messages.map(function (msg) {
+                const target = msg.target || (msg.input && msg.input.target) || '-';
+                const resultText = msg.result || msg.errorMessage || '-';
+                return '<tr>' +
+                    '<td class="task-id">' + (msg.msgId || '-') + '</td>' +
+                    '<td>' + (msg.status || '-') + '</td>' +
+                    '<td>' + ((msg.workerId || '-') + (msg.workerContextId ? ' / ' + msg.workerContextId : '')) + '</td>' +
+                    '<td>' + target + '</td>' +
+                    '<td>' + (msg.batchId || '-') + '</td>' +
+                    '<td>' + ((msg.retryCount ?? 0) + ' / ' + (msg.maxRetryCount ?? 0)) + '</td>' +
+                    '<td>' + resultText + '</td>' +
+                    '</tr>';
+            }).join('');
+        }
+
+        document.getElementById('messagesPrevBtn').disabled = page <= 1;
+        document.getElementById('messagesNextBtn').disabled = page >= totalPages;
+        openModal('taskMessagesModal');
+    }
+
+    async function invokeTaskAction(taskId, action) {
+        const endpoints = {
+            pause: '/status/api/tasks/' + taskId + '/pause',
+            resume: '/status/api/tasks/' + taskId + '/resume',
+            block: '/status/api/tasks/' + taskId + '/block',
+            terminate: '/status/api/tasks/' + taskId + '/terminate',
+            delete: '/status/api/tasks/' + taskId
+        };
+        const method = action === 'delete' ? 'DELETE' : 'POST';
+        const successText = {
+            pause: '任务已暂停',
+            resume: '任务已恢复',
+            block: '任务已阻断',
+            terminate: '任务已终止',
+            delete: '任务已删除'
+        };
+
+        await requestJson(endpoints[action], { method: method });
+        showPageAlert(successText[action]);
+        setTimeout(function () { location.reload(); }, 800);
+    }
+
+    document.getElementById('openCreateTaskBtn').addEventListener('click', openCreateTaskModal);
+    const emptyCreateTaskBtn = document.getElementById('emptyCreateTaskBtn');
+    if (emptyCreateTaskBtn) {
+        emptyCreateTaskBtn.addEventListener('click', openCreateTaskModal);
+    }
+
+    document.getElementById('submitCreateTaskBtn').addEventListener('click', function () {
+        createTask().catch(error => showPageAlert(error.message, 'danger'));
     });
+    document.getElementById('submitEditTaskBtn').addEventListener('click', function () {
+        saveTaskEdit().catch(error => showPageAlert(error.message, 'danger'));
+    });
+    document.getElementById('submitAuditTaskBtn').addEventListener('click', function () {
+        submitAuditTask().catch(error => showPageAlert(error.message, 'danger'));
+    });
+    document.getElementById('messagesPrevBtn').addEventListener('click', function () {
+        if (taskMessagesState.page > 1) {
+            loadTaskMessages(taskMessagesState.taskId, taskMessagesState.page - 1).catch(error => showPageAlert(error.message, 'danger'));
+        }
+    });
+    document.getElementById('messagesNextBtn').addEventListener('click', function () {
+        const totalPages = Math.max(1, Math.ceil(taskMessagesState.total / taskMessagesState.size));
+        if (taskMessagesState.page < totalPages) {
+            loadTaskMessages(taskMessagesState.taskId, taskMessagesState.page + 1).catch(error => showPageAlert(error.message, 'danger'));
+        }
+    });
+
+    document.addEventListener('click', function (event) {
+        const button = event.target.closest('button[data-action]');
+        if (!button) {
+            return;
+        }
+        const taskId = button.getAttribute('data-task-id');
+        const action = button.getAttribute('data-action');
+
+        (async function () {
+            try {
+                if (action === 'view') { await openTaskDetailModal(taskId); return; }
+                if (action === 'messages') { await loadTaskMessages(taskId, 1); return; }
+                if (action === 'edit') { await openEditTaskModal(taskId); return; }
+                if (action === 'audit') { await openAuditTaskModal(taskId); return; }
+                if (action === 'delete' && !window.confirm('确认删除该任务？')) { return; }
+                if (action === 'terminate' && !window.confirm('确认终止该任务？')) { return; }
+                await invokeTaskAction(taskId, action);
+            } catch (error) {
+                showPageAlert(error.message, 'danger');
+            }
+        })();
+    });
+
+    loadProjects().catch(error => showPageAlert('加载项目列表失败: ' + error.message, 'danger'));
 </script>
 </body>
-</html> 
+</html>

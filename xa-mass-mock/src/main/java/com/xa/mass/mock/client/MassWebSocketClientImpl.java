@@ -2,6 +2,7 @@ package com.xa.mass.mock.client;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
+import com.xa.mass.base.debug.ManualDebugChatProtocol;
 import com.xa.mass.gateway.model.enums.MessageDirection;
 import com.xa.mass.gateway.model.enums.MessageType;
 import com.xa.mass.gateway.model.massMessage.MassMessage;
@@ -94,6 +95,9 @@ public class MassWebSocketClientImpl extends WebSocketClient implements MassWebS
                 case TASK:
                     handleTaskMessage(message);
                     break;
+                case CONTROL:
+                    handleControlMessage(message);
+                    break;
                 case PONG:
                     logger.debug("[{}] Pong received", workerId);
                     break;
@@ -146,6 +150,40 @@ public class MassWebSocketClientImpl extends WebSocketClient implements MassWebS
 
         send(gson.toJson(response));
         logger.debug("[{}] Sent mock task response for msgId: {}", workerId, response.getMsgId());
+    }
+
+    private void handleControlMessage(String message) {
+        MassMessage controlMessage = gson.fromJson(message, MassMessage.class);
+        logger.info("[{}] Received control message for debug chat. msgId={}, subMsgType={}",
+                workerId, controlMessage.getMsgId(), controlMessage.getSubMsgType());
+
+        MassMessage response = new MassMessage();
+        response.setMsgId("manual-chat-" + workerId + "-" + System.currentTimeMillis());
+        response.setResponse(true);
+        response.setMsgType(MessageType.EVENT);
+        response.setSubMsgType(ManualDebugChatProtocol.SUB_MSG_TYPE);
+        response.setFrom(MessageDirection.CLIENT);
+        response.setProject(controlMessage.getProject());
+
+        MessageContext originalContext = controlMessage.getContext();
+        MessageContext responseContext = new MessageContext();
+        responseContext.setConnRole(originalContext != null ? originalContext.getConnRole() : SessionRoles.TASK_MESSAGES);
+        responseContext.setWorkerId(workerId);
+        response.setContext(responseContext);
+
+        Map<String, Object> payloadMap = new HashMap<>();
+        payloadMap.put(ManualDebugChatProtocol.MESSAGE_KIND_FIELD, ManualDebugChatProtocol.MESSAGE_KIND_ACK);
+        payloadMap.put(ManualDebugChatProtocol.REPLY_TO_MESSAGE_ID_FIELD, controlMessage.getMsgId());
+        payloadMap.put(ManualDebugChatProtocol.ACK_STATUS_FIELD, ManualDebugChatProtocol.ACK_STATUS_RECEIVED);
+        payloadMap.put("message", "mock worker received manual debug message");
+        payloadMap.put(ManualDebugChatProtocol.WORKER_ID_FIELD, workerId);
+        payloadMap.put(ManualDebugChatProtocol.RECEIVED_AT_FIELD, System.currentTimeMillis());
+        payloadMap.put(ManualDebugChatProtocol.ECHO_PAYLOAD_FIELD, controlMessage.getPayload());
+        payloadMap.put(ManualDebugChatProtocol.ECHO_SUB_MSG_TYPE_FIELD, controlMessage.getSubMsgType());
+        response.setPayload(gson.toJsonTree(payloadMap));
+
+        send(gson.toJson(response));
+        logger.debug("[{}] Sent manual debug response for msgId: {}", workerId, controlMessage.getMsgId());
     }
 
     @Override

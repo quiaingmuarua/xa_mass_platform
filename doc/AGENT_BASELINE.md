@@ -76,6 +76,7 @@ Interpretation rules:
 - Routing truth such as country/account affinity should come from explicit rules and worker-context signals, not from `workerGroupId`.
 - `Worker.attributes` and `WorkerContext.attributes` are auxiliary rule labels for matching and diagnostics only. They are not lifecycle, lock, or online truth.
 - UI pages, mock runtime, and demo APIs must not redefine the platform kernel.
+- Manual worker debug chat is a debug/control side-channel. It is not `TaskMsg` lifecycle and must not mutate task state.
 
 ## 5. Mainline Reality
 
@@ -86,6 +87,7 @@ Interpretation rules:
 - historical `v2` / archive engine generations are no longer present in the current repository snapshot.
 - EventBus mainline has converged onto `com.xa.mass.base.channel.eventbus.core` and `com.xa.mass.base.channel.eventbus.event`.
 - Mainline acceptance is end-to-end integration-test-driven through `xa-mass-mock`; unit tests are support coverage, not the primary acceptance gate.
+- The worker page now includes a debug conversation surface backed by `POST /status/workers/send-message` and `GET /status/workers/message-history`.
 
 ## 6. Current Task And Payload Contract
 
@@ -176,7 +178,18 @@ Important current rules:
 - `Worker.status` is the single online truth
 - worker lock truth lives in `WorkerStorage` and `WorkerManager.isLocked(...)`
 
-## 9. Recommended Entry Files
+## 9. Worker Debug Chat Baseline
+
+- Verified outbound debug-chat path is `CONTROL/manual-chat`
+- Verified inbound acknowledgement path is `EVENT/manual-chat`
+- Current delivery visibility is stored in `WorkerDebugMessageStore`
+- Current page-visible states are:
+  - `QUEUED`: accepted and enqueued by the server
+  - `DELIVERED`: inbound acknowledgement matched the outbound message id
+  - `RECEIVED`: inbound acknowledgement event is stored in history
+- Treat this as a transport/debug surface for worker inspection, not as task execution or task audit state
+
+## 10. Recommended Entry Files
 
 For startup/runtime:
 
@@ -196,7 +209,7 @@ For payload and matching:
 - `xa-mass-core/src/main/java/com/xa/mass/base/model/TaskMsg.java`
 - `xa-mass-engine/src/main/java/com/xa/mass/engine/model/WorkerMatchContext.java`
 
-## 10. Guardrails For Future Agents
+## 11. Guardrails For Future Agents
 
 Do not assume, without re-verification:
 

@@ -1,6 +1,6 @@
 # Integration Test Guide
 
-Last updated: 2026-04-16
+Last updated: 2026-04-17
 
 This document is the active guide for integration tests in `xa-mass-mock`.
 It is intentionally concise: structure, coverage shape, test patterns, and current gaps.
@@ -103,7 +103,7 @@ Run the full repository regression:
 Run the currently focused regression subset:
 
 ```bash
-mvn -pl xa-mass-mock -am -Dtest=WorkerAttributesTest,WorkerContextAttributesTest,WorkerMatchContextTest,QLExpressRuleEvaluatorTest,RuleBasedTaskWorkerMatchingStrategyTest,TaskApiDelayedWorkerAvailabilityIntegrationTest,TaskApiWorkerContextAttributeRoutingIntegrationTest,TaskApiWorkerWithoutContextIntegrationTest,MassApplicationLoadMockDataTest -Dsurefire.failIfNoSpecifiedTests=false test
+mvn -pl xa-mass-mock -am -Dtest=WorkerAttributesTest,WorkerContextAttributesTest,WorkerMatchContextTest,QLExpressRuleEvaluatorTest,RuleBasedTaskWorkerMatchingStrategyTest,TaskApiDelayedWorkerAvailabilityIntegrationTest,TaskApiWorkerContextAttributeRoutingIntegrationTest,TaskApiWorkerWithoutContextIntegrationTest,WorkerManualDebugChatIntegrationTest,MassApplicationLoadMockDataTest -Dsurefire.failIfNoSpecifiedTests=false test
 ```
 
 Expected result:
@@ -142,6 +142,10 @@ Audit coverage:
 
 - `TaskApiStateValidationIntegrationTest`
 
+Support and worker-debug coverage:
+
+- `WorkerManualDebugChatIntegrationTest`
+
 Important support coverage outside the E2E package:
 
 - `TaskManagerLifecycleTest`
@@ -171,6 +175,7 @@ The active integration layer proves these mainline properties:
 - `minRequiredWorkerCount` acts as a real `READY -> RUNNING` gate
 - multi-round refill works when `batchSize` is lower than total target count
 - `READY` tasks without a current match are retried instead of silently orphaned
+- manual worker debug chat is visible end to end, including outbound queueing, inbound acknowledgement, and delivery-state promotion
 
 ## 7. State Machine Coverage Map
 
@@ -220,6 +225,12 @@ Pattern D: snapshot polling
 - use the shared task snapshot helpers instead of sleep-heavy assertions
 - poll task state and message state together
 - assert persisted runtime truth, not only intermediate listener calls
+
+Pattern E: debug-side-channel verification
+
+- use real `POST /status/workers/send-message`
+- poll `GET /status/workers/message-history` until both outbound and inbound records appear
+- assert the protocol boundary separately from `TaskMsg` lifecycle
 
 ## 9. Current Missing Or Weak Areas
 

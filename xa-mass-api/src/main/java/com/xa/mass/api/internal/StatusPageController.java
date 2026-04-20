@@ -2,7 +2,10 @@ package com.xa.mass.api.internal;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
 import com.google.gson.JsonSyntaxException;
+import com.xa.mass.base.debug.ManualDebugChatProtocol;
+import com.xa.mass.base.debug.WorkerDebugMessageStore;
 import com.xa.mass.base.enums.Project;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
@@ -183,6 +186,16 @@ public class StatusPageController {
         return Map.of("success", false, "msg", "Worker not found");
     }
 
+    @GetMapping("/workers/message-history")
+    @ResponseBody
+    public Map<String, Object> getWorkerMessageHistory(@org.springframework.web.bind.annotation.RequestParam String workerId) {
+        return Map.of(
+                "success", true,
+                "workerId", workerId,
+                "items", WorkerDebugMessageStore.getHistory(workerId)
+        );
+    }
+
     @PostMapping("/workers/send-message")
     @ResponseBody
     public Map<String, Object> sendWorkerMessage(@RequestBody Map<String, Object> req) {
@@ -233,7 +246,8 @@ public class StatusPageController {
         }
 
         String msgId = UUID.randomUUID().toString();
-        String subMsgType = defaultIfBlank(readTrimmed(req.get("subMsgType")), "manual");
+        String subMsgType = resolveSubMsgType(req.get("subMsgType"), messageType);
+        payload = normalizePayload(payload, workerId, msgId, messageType, subMsgType);
 
         MassMessage message = new MassMessage();
         message.setMsgId(msgId);
@@ -253,6 +267,16 @@ public class StatusPageController {
                 .receivedAt(System.currentTimeMillis())
                 .rawJson(rawJson)
                 .build();
+        WorkerDebugMessageStore.recordOutbound(
+                workerId,
+                project,
+                messageType.name(),
+                subMsgType,
+                msgId,
+                GSON.toJson(payload),
+                rawJson,
+                "message queued to dispatcher"
+        );
         transportContext.getMessageTransporter().sendOutput(envelope);
 
         return Map.of(
@@ -303,6 +327,55 @@ public class StatusPageController {
             return MessageType.valueOf(text.toUpperCase());
         } catch (IllegalArgumentException ex) {
             throw new IllegalArgumentException("Unsupported msgType: " + text);
+        }
+    }
+
+    private String resolveSubMsgType(Object subMsgTypeObj, MessageType messageType) {
+        String explicit = readTrimmed(subMsgTypeObj);
+        if (explicit != null) {
+            return explicit;
+        }
+        if (messageType == MessageType.CONTROL) {
+            return ManualDebugChatProtocol.SUB_MSG_TYPE;
+        }
+        return "manual";
+    }
+
+    private JsonElement normalizePayload(JsonElement payload,
+                                         String workerId,
+                                         String messageId,
+                                         MessageType messageType,
+                                         String subMsgType) {
+        if (messageType == MessageType.CONTROL && ManualDebugChatProtocol.SUB_MSG_TYPE.equals(subMsgType)) {
+            JsonObject normalized = payload != null && payload.isJsonObject()
+                    ? payload.getAsJsonObject().deepCopy()
+                    : new JsonObject();
+            putIfMissing(normalized, ManualDebugChatProtocol.MESSAGE_KIND_FIELD, ManualDebugChatProtocol.MESSAGE_KIND_REQUEST);
+            putIfMissing(normalized, ManualDebugChatProtocol.WORKER_ID_FIELD, workerId);
+            putIfMissing(normalized, ManualDebugChatProtocol.SENT_AT_FIELD, System.currentTimeMillis());
+            putIfMissing(normalized, ManualDebugChatProtocol.EXPECT_REPLY_FIELD, true);
+            putIfMissing(normalized, "clientMessageId", messageId);
+            putIfMissing(normalized, ManualDebugChatProtocol.TEXT_FIELD, "");
+            return normalized;
+        }
+        return payload;
+    }
+
+    private void putIfMissing(JsonObject payload, String field, String value) {
+        if (!payload.has(field) || payload.get(field).isJsonNull()) {
+            payload.addProperty(field, value);
+        }
+    }
+
+    private void putIfMissing(JsonObject payload, String field, Number value) {
+        if (!payload.has(field) || payload.get(field).isJsonNull()) {
+            payload.addProperty(field, value);
+        }
+    }
+
+    private void putIfMissing(JsonObject payload, String field, Boolean value) {
+        if (!payload.has(field) || payload.get(field).isJsonNull()) {
+            payload.addProperty(field, value);
         }
     }
 

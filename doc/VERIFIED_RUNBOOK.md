@@ -1,6 +1,6 @@
 # XA Mass Platform Verified Runbook
 
-Last updated: 2026-04-15
+Last updated: 2026-04-17
 
 This runbook records only facts that were verified by code, tests, or real runtime behavior. If older docs disagree, trust code and runtime.
 
@@ -42,6 +42,10 @@ For endpoint inventory, request contracts, and response shapes, use [INTERNAL_AP
   - `TaskMsg INIT -> ASSIGNED -> SUCCESS`
 - The pause/resume lifecycle regression is also verified:
   - `NEW -> READY -> PAUSED -> READY`
+- The worker debug-chat path is also verified:
+  - outbound `CONTROL/manual-chat`
+  - inbound `EVENT/manual-chat`
+  - history visibility `QUEUED -> DELIVERED -> RECEIVED`
 
 Create-time validation is verified:
 
@@ -91,6 +95,7 @@ HTTP:
 ```bash
 curl -i http://127.0.0.1:8088/status
 curl -i http://127.0.0.1:8088/status/tasks
+curl -i http://127.0.0.1:8088/status/workers
 curl -i http://127.0.0.1:8088/doc.html
 curl -i http://127.0.0.1:8088/actuator/health
 ```
@@ -231,12 +236,30 @@ Important guards:
 - a worker without any `WorkerContext` can still be matched for tasks that do not require worker-context-specific routing
 - normal terminal completion and manual `RUNNING -> TERMINAL` closure both release runtime occupancy so the same worker/worker-context can be reused
 
+### 5.5 Manual Worker Debug Chat
+
+Verified debug path:
+
+1. `POST /status/workers/send-message` accepts a manual worker message request.
+2. The verified default debug protocol is `CONTROL/manual-chat`.
+3. `StatusPageController` normalizes the outbound payload with debug-chat metadata such as `messageKind`, `workerId`, `sentAt`, and `expectReply`.
+4. The server records the outbound message into `WorkerDebugMessageStore` as `QUEUED`.
+5. Mock workers receive the message over the real WebSocket gateway path and send back `EVENT/manual-chat`.
+6. `ManualDebugMessageHandler` records the inbound acknowledgement and promotes the matched outbound record to `DELIVERED`.
+7. `GET /status/workers/message-history?workerId=...` exposes the worker conversation history for page polling and troubleshooting.
+
+Verified boundary:
+
+- this path is a worker debug/control side-channel
+- it does not create or mutate `TaskMsg`
+- it must not affect task lifecycle state
+
 ## 6. Verified Coverage Snapshot
 
-Focused verified regression command on 2026-04-14:
+Focused verified regression command on 2026-04-17:
 
 ```bash
-mvn -pl xa-mass-mock -am -Dtest=WorkerAttributesTest,WorkerContextAttributesTest,WorkerMatchContextTest,QLExpressRuleEvaluatorTest,RuleBasedTaskWorkerMatchingStrategyTest,TaskApiDelayedWorkerAvailabilityIntegrationTest,TaskApiWorkerContextAttributeRoutingIntegrationTest,TaskApiWorkerWithoutContextIntegrationTest,MassApplicationLoadMockDataTest -Dsurefire.failIfNoSpecifiedTests=false test
+mvn -pl xa-mass-mock -am -Dtest=WorkerAttributesTest,WorkerContextAttributesTest,WorkerMatchContextTest,QLExpressRuleEvaluatorTest,RuleBasedTaskWorkerMatchingStrategyTest,TaskApiDelayedWorkerAvailabilityIntegrationTest,TaskApiWorkerContextAttributeRoutingIntegrationTest,TaskApiWorkerWithoutContextIntegrationTest,WorkerManualDebugChatIntegrationTest,MassApplicationLoadMockDataTest -Dsurefire.failIfNoSpecifiedTests=false test
 ```
 
 Representative coverage proves:
@@ -248,6 +271,7 @@ Representative coverage proves:
 - paused tasks still close to `TERMINAL` when final callbacks arrive
 - `GET /status/api/tasks/{taskId}` exposes `stateValidation`
 - worker-context-attribute-based routing is covered end-to-end
+- manual worker debug chat is covered end-to-end through `POST /status/workers/send-message` and `GET /status/workers/message-history`
 - a single worker/worker-context can be reused after both normal completion and manual termination
 - `minRequiredWorkerCount` acts as a real start gate
 - multi-round refill works when `batchSize` is smaller than the total target count

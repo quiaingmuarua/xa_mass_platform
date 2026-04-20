@@ -1,6 +1,7 @@
 package com.xa.mass.starter;
 
 import com.xa.mass.base.channel.tranporter.MessageTransporter;
+import com.xa.mass.base.debug.ManualDebugChatProtocol;
 import com.xa.mass.base.enums.worker.WorkerContextStatus;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
@@ -154,6 +155,12 @@ public class MassApplication {
                         workerAdapter
                 );
             }
+            messageHandlerRegistry.register(
+                    null,
+                    MessageType.EVENT,
+                    ManualDebugChatProtocol.SUB_MSG_TYPE,
+                    new ManualDebugMessageHandler()
+            );
             dispatcherContext.setMessageHandlerRegistry(messageHandlerRegistry);
             logger.info("Message handler registry initialized");
 

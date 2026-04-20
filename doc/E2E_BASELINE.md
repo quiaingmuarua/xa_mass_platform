@@ -1,6 +1,6 @@
 # E2E Baseline
 
-Last updated: 2026-04-19
+Last updated: 2026-04-20
 
 This is the short release-gate baseline for active-mainline E2E coverage.
 Detailed inventory stays in [./INTEGRATION_TESTS.md](./INTEGRATION_TESTS.md).
@@ -49,6 +49,8 @@ Worker and context:
 
 - worker-context attribute routing selects the right context
 - stateless worker can execute tasks without routing-required context
+- manual worker debug chat records outbound and inbound history over the real gateway path
+- manual worker debug chat acknowledgement promotes delivery visibility from `QUEUED` to `DELIVERED`
 - same worker can own multiple contexts without overwrite
 - releasing one context does not release sibling contexts
 - worker/context is reusable after normal terminal completion

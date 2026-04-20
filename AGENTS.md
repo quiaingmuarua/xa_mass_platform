@@ -40,6 +40,7 @@ If you need fast orientation:
 - Treat `TaskMsgStatus` as the platform lifecycle contract, not as a full transport-event history
 - `Worker.status` is the single online truth; worker lock truth lives in `WorkerStorage` / `WorkerManager.isLocked(...)`
 - `Worker.attributes` and `WorkerContext.attributes` are read-only auxiliary rule labels only
+- Worker manual debug chat is a side-channel control flow, not part of `TaskMsg` lifecycle; current verified protocol is `CONTROL/manual-chat -> EVENT/manual-chat`
 - `WorkerContext` is optional; stateless workers are part of the verified mainline
 - The current runtime concurrency model is conservative: one worker is one active execution lane even if it owns multiple worker contexts
 - Regression focus is healthy: mock/runtime E2E covers lifecycle, pause completion, callback replay, worker-context routing, stateless workers, single-worker reuse, minimum-worker gate, and multi-round dispatch
@@ -66,6 +67,7 @@ Keep these constraints fixed unless the kernel itself is intentionally redesigne
 - `TaskMsgStatus` is the platform lifecycle contract, not a complete transport-event log. If transport-level phases such as queueing, downstream ack, broker retry, or delivery confirmation become first-class, model them in trace/event data or a separate transport layer instead of overloading `TaskMsgStatus`.
 - `Worker` is the current worker adapter name. It should be read as the current concrete worker implementation, not as the universal final name for all worker/resource forms.
 - `WorkerContext` is optional worker context such as credentials, account scope, or capability context. Not every worker model must require one.
+- Manual worker debug chat is a control/debug side-channel. Do not model it as `TaskMsg`, and do not let it mutate task lifecycle state.
 - The current runtime concurrency model is conservative: one `Worker` is treated as one active execution lane even if it owns multiple `WorkerContext` rows. Do not assume same-worker parallel execution by multiple contexts unless worker-level locking, assignment, release, and E2E coverage are redesigned together.
 - Active mainline no longer exposes compatibility single-context lookup by `workerId`; use `getWorkerContexts(workerId)` for ownership and `getWorkerContextById(workerContextId)` for precise mutation/read paths.
 - `WorkerContext.workerId` is now the single owner truth for context attachment. Do not reintroduce `addWorkerContext(workerId, workerContext)`-style APIs that duplicate owner identity across parameters.
@@ -162,6 +164,7 @@ Verified endpoints:
 
 - `http://localhost:8088/status`
 - `http://localhost:8088/status/tasks`
+- `http://localhost:8088/status/workers`
 - `http://localhost:8088/doc.html`
 - `http://localhost:8088/actuator/health`
 - `ws://localhost:18088/ws`
@@ -267,6 +270,7 @@ Open first:
 Notes:
 
 - Task lifecycle endpoints are aligned to `TaskManager`.
+- `StatusPageController` also exposes manual worker debug-chat endpoints: `POST /status/workers/send-message` and `GET /status/workers/message-history`.
 - API happy-path integration coverage now exists, but API edge coverage is still incomplete.
 
 ### `xa-mass-engine`
@@ -399,6 +403,8 @@ Important current implementation facts:
 - `TaskResourceReleaseListener` now releases a worker/worker-context slot as soon as that worker has no more in-flight `TaskMsg` rows for the current task, then re-submits the still-`RUNNING` task when pending `INIT` messages remain.
 - `GatewayTaskMsgPublisher` pushes task messages downstream as `TASK/step`.
 - `GatewayTaskResultHandler` handles inbound `TASK/step` results and writes them back through `TaskManager.handleTaskMessageResult(...)`.
+- `StatusPageController.sendWorkerMessage(...)` can send a manual worker debug message over the live gateway path; `CONTROL/manual-chat` is the verified debug-chat protocol default.
+- `ManualDebugMessageHandler` records inbound `EVENT/manual-chat` acknowledgements into `WorkerDebugMessageStore`, and matched replies promote the outbound record from `QUEUED` to `DELIVERED`.
 - `TaskManager.handleTaskMessageResult(...)` updates persisted `TaskMsg` state by `taskId + msgId`, recalculates progress, closes any non-final task to `TERMINAL` once all messages finish, and ignores late non-final callbacks after manual terminal closure.
 - `TaskManager.updateTaskProgress(...)` now closes any non-final task to `TERMINAL` once all persisted `TaskMsg` rows are final, including tasks that were paused while callbacks were still arriving.
 - `TaskManager` now delegates terminal-closure decisions through `TaskTerminalPolicy`; the current default remains `AllMessagesFinalTaskTerminalPolicy`.
@@ -505,7 +511,7 @@ Matching/runtime signal semantics:
 Focused verified regression command:
 
 ```bash
-mvn -pl xa-mass-mock -am -Dtest=WorkerAttributesTest,WorkerContextAttributesTest,WorkerMatchContextTest,QLExpressRuleEvaluatorTest,RuleBasedTaskWorkerMatchingStrategyTest,TaskApiDelayedWorkerAvailabilityIntegrationTest,TaskApiWorkerContextAttributeRoutingIntegrationTest,TaskApiWorkerWithoutContextIntegrationTest,MassApplicationLoadMockDataTest -Dsurefire.failIfNoSpecifiedTests=false test
+mvn -pl xa-mass-mock -am -Dtest=WorkerAttributesTest,WorkerContextAttributesTest,WorkerMatchContextTest,QLExpressRuleEvaluatorTest,RuleBasedTaskWorkerMatchingStrategyTest,TaskApiDelayedWorkerAvailabilityIntegrationTest,TaskApiWorkerContextAttributeRoutingIntegrationTest,TaskApiWorkerWithoutContextIntegrationTest,WorkerManualDebugChatIntegrationTest,MassApplicationLoadMockDataTest -Dsurefire.failIfNoSpecifiedTests=false test
 ```
 
 Current regression shape:
@@ -522,6 +528,7 @@ Current regression shape:
   - reject/approve, pause/resume, running terminate, and delete guard
   - callback replay, failed results, mixed results, and state validation
   - worker-context attribute routing and worker-without-context execution
+  - manual worker debug chat with explicit `QUEUED -> DELIVERED -> RECEIVED` visibility
   - single-worker reuse, minimum-worker gate, delayed worker availability, and multi-round dispatch
 - Shared E2E base: `xa-mass-mock/src/test/java/com/xa/mass/mock/e2e/support/AbstractMockE2eTest.java`
 - Important engine/runtime support coverage includes:
