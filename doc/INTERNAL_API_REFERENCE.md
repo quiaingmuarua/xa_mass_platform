@@ -111,7 +111,8 @@ Example response:
 Response notes:
 
 - returns `task`
-- returns materialized `targetList`
+- returns `items` derived from persisted `TaskMsg.input`
+- returns `compatTargetList` only as a backwards-compat projection of `input["target"]`
 - returns `stateValidation`
 - returns HTTP 404 with no body when the task does not exist
 
@@ -134,7 +135,15 @@ Example response shape:
     "batchSize": 1,
     "maxRuntimeSeconds": 0
   },
-  "targetList": [
+  "items": [
+    {
+      "target": "target-001"
+    },
+    {
+      "target": "target-002"
+    }
+  ],
+  "compatTargetList": [
     "target-001",
     "target-002"
   ],
@@ -303,6 +312,9 @@ Query params:
 - `size`: default `20`, hard-capped at `500`
 
 Response shape:
+
+- primary per-item payload truth is `messages[*].input` and `messages[*].output`
+- compatibility readers may still see `target` because `TaskMsg.getTarget()` projects `input["target"]`
 
 ```json
 {

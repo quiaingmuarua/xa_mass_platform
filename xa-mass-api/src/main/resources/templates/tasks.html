@@ -35,6 +35,7 @@
         .progress { height: 8px; background: #e5e7eb; }
         .action-cell { min-width: 240px; }
         .json-box { background: #0f172a; color: #e2e8f0; border-radius: 12px; padding: 12px; font-family: Consolas, Monaco, monospace; font-size: 12px; white-space: pre-wrap; word-break: break-word; min-height: 120px; }
+        .table-json { margin: 0; font-family: Consolas, Monaco, monospace; font-size: 12px; white-space: pre-wrap; word-break: break-word; max-width: 320px; }
         .modal-lg-2 { max-width: 920px; }
         .alert-box { display: none; }
         .alert-box.show { display: block; }
@@ -420,7 +421,7 @@
                         <div class="json-box" id="detailSharedConfig">{}</div>
                     </div>
                     <div class="col-12">
-                        <div class="meta-label mb-2">Target List</div>
+                        <div class="meta-label mb-2">Item Inputs</div>
                         <div class="json-box" id="detailTargetList">[]</div>
                     </div>
                 </div>
@@ -451,10 +452,10 @@
                             <th>msgId</th>
                             <th>status</th>
                             <th>worker</th>
-                            <th>target</th>
+                            <th>input</th>
                             <th>batch</th>
                             <th>retry</th>
-                            <th>result / error</th>
+                            <th>output / result / error</th>
                         </tr>
                         </thead>
                         <tbody id="taskMessagesTableBody">
@@ -498,6 +499,29 @@
 
     function prettyJson(value) {
         return JSON.stringify(value ?? {}, null, 2);
+    }
+
+    function escapeHtml(value) {
+        return String(value ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    function renderJsonCell(value, fallback = '-') {
+        if (value === null || value === undefined) {
+            return fallback;
+        }
+        if (typeof value === 'object') {
+            if (Array.isArray(value) ? value.length === 0 : Object.keys(value).length === 0) {
+                return fallback;
+            }
+            return '<pre class="table-json">' + escapeHtml(prettyJson(value)) + '</pre>';
+        }
+        const text = String(value);
+        return text ? escapeHtml(text) : fallback;
     }
 
     async function requestJson(url, options = {}) {
@@ -654,7 +678,9 @@
         const data = await requestJson('/status/api/tasks/' + taskId);
         const task = data.task || {};
         const validation = data.stateValidation || {};
-        const targets = Array.isArray(data.targetList) ? data.targetList : [];
+        const items = Array.isArray(data.items) ? data.items : [];
+        const compatTargets = Array.isArray(data.compatTargetList) ? data.compatTargetList : [];
+        const itemInputs = items.length > 0 ? items : compatTargets;
 
         document.getElementById('detailTaskId').textContent = task.tid || '-';
         document.getElementById('detailTaskName').textContent = task.taskName || '-';
@@ -674,9 +700,9 @@
             ', processing=' + (validation.processingMessages ?? 0);
         document.getElementById('detailValidationViolations').textContent =
             Array.isArray(validation.violations) && validation.violations.length > 0 ? validation.violations.join(', ') : '-';
-        document.getElementById('detailTargetCount').textContent = String(targets.length);
+        document.getElementById('detailTargetCount').textContent = String(itemInputs.length);
         document.getElementById('detailSharedConfig').textContent = prettyJson(task.sharedConfig || {});
-        document.getElementById('detailTargetList').textContent = prettyJson(targets);
+        document.getElementById('detailTargetList').textContent = prettyJson(itemInputs);
         openModal('taskDetailModal');
     }
 
@@ -694,16 +720,23 @@
             tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-4">暂无消息数据</td></tr>';
         } else {
             tbody.innerHTML = messages.map(function (msg) {
-                const target = msg.target || (msg.input && msg.input.target) || '-';
-                const resultText = msg.result || msg.errorMessage || '-';
+                const inputValue =
+                    msg.input && Object.keys(msg.input).length > 0
+                        ? msg.input
+                        : (msg.target ? { target: msg.target } : null);
+                const outputValue =
+                    msg.output && Object.keys(msg.output).length > 0
+                        ? msg.output
+                        : (msg.result || msg.errorMessage || null);
+                const workerText = (msg.workerId || '-') + (msg.workerContextId ? ' / ' + msg.workerContextId : '');
                 return '<tr>' +
-                    '<td class="task-id">' + (msg.msgId || '-') + '</td>' +
-                    '<td>' + (msg.status || '-') + '</td>' +
-                    '<td>' + ((msg.workerId || '-') + (msg.workerContextId ? ' / ' + msg.workerContextId : '')) + '</td>' +
-                    '<td>' + target + '</td>' +
-                    '<td>' + (msg.batchId || '-') + '</td>' +
-                    '<td>' + ((msg.retryCount ?? 0) + ' / ' + (msg.maxRetryCount ?? 0)) + '</td>' +
-                    '<td>' + resultText + '</td>' +
+                    '<td class="task-id">' + escapeHtml(msg.msgId || '-') + '</td>' +
+                    '<td>' + escapeHtml(msg.status || '-') + '</td>' +
+                    '<td>' + escapeHtml(workerText) + '</td>' +
+                    '<td>' + renderJsonCell(inputValue) + '</td>' +
+                    '<td>' + escapeHtml(msg.batchId || '-') + '</td>' +
+                    '<td>' + escapeHtml((msg.retryCount ?? 0) + ' / ' + (msg.maxRetryCount ?? 0)) + '</td>' +
+                    '<td>' + renderJsonCell(outputValue) + '</td>' +
                     '</tr>';
             }).join('');
         }

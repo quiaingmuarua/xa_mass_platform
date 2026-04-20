@@ -1,5 +1,6 @@
 package com.xa.mass.base.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.xa.mass.base.enums.task.TaskHoldReason;
 import com.xa.mass.base.enums.task.TaskIntakeStatus;
 import com.xa.mass.base.enums.task.TaskStatus;
@@ -284,6 +285,7 @@ public class Task {
         this.maxRuntimeSeconds = maxRuntimeSeconds;
     }
 
+    @JsonIgnore
     public String getDisplayStatusLabel() {
         if (status == null) {
             return "-";

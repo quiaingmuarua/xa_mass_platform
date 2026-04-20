@@ -273,7 +273,7 @@ Representative coverage proves:
 - failure-path result write-back also converges to terminal closure
 - reject/approve, pause/resume, delete guard, callback replay, and running-task terminate are covered through real HTTP/runtime flows
 - paused tasks still close to `TERMINAL` when final callbacks arrive
-- `GET /status/api/tasks/{taskId}` exposes `stateValidation`
+- `GET /status/api/tasks/{taskId}` exposes `items` derived from persisted `TaskMsg.input`, plus `stateValidation`
 - worker-context-attribute-based routing is covered end-to-end
 - manual worker debug chat is covered end-to-end through `POST /status/workers/send-message` and `GET /status/workers/message-history`
 - a single worker/worker-context can be reused after both normal completion and manual termination

@@ -305,7 +305,7 @@ class TaskApiControllerTest {
     }
 
     @Test
-    void getTaskReturnsTaskAndAggregatedTargetList() throws Exception {
+    void getTaskReturnsTaskAndMaterializedItems() throws Exception {
         Task task = taskWithStatus(TaskStatus.READY);
         TaskStateValidationResult validationResult = new TaskStateValidationResult(
                 true,
@@ -332,8 +332,10 @@ class TaskApiControllerTest {
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.task.tid").value(TASK_ID))
                 .andExpect(jsonPath("$.task.status").value("READY"))
-                .andExpect(jsonPath("$.targetList[0]").value("alpha"))
-                .andExpect(jsonPath("$.targetList[1]").value("beta"))
+                .andExpect(jsonPath("$.items[0].target").value("alpha"))
+                .andExpect(jsonPath("$.items[1].target").value("beta"))
+                .andExpect(jsonPath("$.compatTargetList[0]").value("alpha"))
+                .andExpect(jsonPath("$.compatTargetList[1]").value("beta"))
                 .andExpect(jsonPath("$.stateValidation.valid").value(true))
                 .andExpect(jsonPath("$.stateValidation.needsResolution").value(false))
                 .andExpect(jsonPath("$.stateValidation.status").value("READY"));
@@ -482,7 +484,7 @@ class TaskApiControllerTest {
                 .andExpect(jsonPath("$.size").value(2))
                 .andExpect(jsonPath("$.messages.length()").value(1))
                 .andExpect(jsonPath("$.messages[0].msgId").value("msg-3"))
-                .andExpect(jsonPath("$.messages[0].target").value("gamma"));
+                .andExpect(jsonPath("$.messages[0].input.target").value("gamma"));
     }
 
     private Task taskWithStatus(TaskStatus status) {

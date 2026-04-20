@@ -72,14 +72,19 @@ public class TaskApiController {
             }
 
             List<TaskMsg> msgs = taskManager.getTaskMessages(taskId);
-            List<String> targetList = msgs.stream()
+            List<Map<String, Object>> items = msgs.stream()
+                    .map(TaskMsg::getInput)
+                    .map(input -> input == null ? Map.<String, Object>of() : new LinkedHashMap<>(input))
+                    .collect(Collectors.toList());
+            List<String> compatTargetList = msgs.stream()
                     .map(TaskMsg::getTarget)
                     .collect(Collectors.toList());
-            return ResponseEntity.ok(success(Map.of(
-                    "task", task,
-                    "targetList", targetList,
-                    "stateValidation", taskManager.validateTaskState(taskId)
-            )));
+            Map<String, Object> response = new LinkedHashMap<>();
+            response.put("task", task);
+            response.put("items", items);
+            response.put("compatTargetList", compatTargetList);
+            response.put("stateValidation", taskManager.validateTaskState(taskId));
+            return ResponseEntity.ok(success(response));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(error("Task lookup failed: " + e.getMessage()));
         }
