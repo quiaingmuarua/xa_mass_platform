@@ -51,13 +51,13 @@ class WorkerMatchContextTest {
         assertEquals(0, context.getContext().get("taskTargetNumber"));
         assertEquals("us", context.getContext().get("taskRoutingCode"));
         assertEquals(true, context.getContext().get("taskHasRoutingRequirement"));
-        assertEquals(true, context.getContext().get("workerGroupIdEqualsRoutingCode"));
         assertEquals(true, context.getContext().get("workerContextChannelMatchesRoutingCode"));
         assertEquals(true, context.getContext().get("workerContextAttributeCountryMatchesRoutingCode"));
         assertEquals(true, context.getContext().get("isWorkerContextAvailable"));
         assertEquals(true, context.getContext().get("isWorkerContextUsable"));
         assertEquals(false, context.getContext().get("isWorkerContextReserved"));
         assertEquals(false, context.getContext().get("isWorkerContextOccupied"));
+        assertFalse(context.getContext().containsKey("workerGroupIdEqualsRoutingCode"));
     }
 
     @Test
@@ -137,5 +137,6 @@ class WorkerMatchContextTest {
         assertEquals(false, context.getContext().get("taskHasRoutingRequirement"));
         assertEquals(false, context.getContext().get("workerContextAttributeCountryMatchesRoutingCode"));
         assertEquals(false, context.getContext().get("workerContextChannelMatchesRoutingCode"));
+        assertFalse(context.getContext().containsKey("workerGroupIdEqualsRoutingCode"));
     }
 }

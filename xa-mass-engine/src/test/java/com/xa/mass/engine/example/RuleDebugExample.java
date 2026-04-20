@@ -122,7 +122,6 @@ public class RuleDebugExample {
         System.out.println("Computed context:");
         System.out.println("  - appCount: " + context.get("appCount"));
         System.out.println("  - supportsProject: " + context.get("supportsProject"));
-        System.out.println("  - workerGroupIdEqualsRoutingCode: " + context.get("workerGroupIdEqualsRoutingCode"));
         System.out.println("  - workerContextChannelMatchesRoutingCode: " + context.get("workerContextChannelMatchesRoutingCode"));
         System.out.println("  - workerContextAttributeCountryMatchesRoutingCode: " + context.get("workerContextAttributeCountryMatchesRoutingCode"));
 

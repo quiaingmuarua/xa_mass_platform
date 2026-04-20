@@ -104,7 +104,6 @@ appCount < 10
 
 - `appCount`
 - `supportsProject`
-- `workerGroupIdEqualsRoutingCode`
 - `workerContextChannelMatchesRoutingCode`
 - `workerContextAttributeCountryMatchesRoutingCode`
 

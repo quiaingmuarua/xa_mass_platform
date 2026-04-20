@@ -82,8 +82,6 @@ public class WorkerMatchContext {
 
         ctx.put("appCount", worker.getSupportedProjects() != null ? worker.getSupportedProjects().size() : 0);
         ctx.put("supportsProject", worker.supportsProject(task.getProject()));
-        ctx.put("workerGroupIdEqualsRoutingCode",
-                routingCode != null && routingCode.equals(worker.getWorkerGroupId()));
         ctx.put("workerContextChannelMatchesRoutingCode",
                 workerContext != null && routingCode != null && routingCode.equals(workerContext.getChannel()));
         ctx.put("workerContextAttributeCountryMatchesRoutingCode",
