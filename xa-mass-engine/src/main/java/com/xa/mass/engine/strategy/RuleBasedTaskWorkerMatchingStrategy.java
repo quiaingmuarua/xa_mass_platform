@@ -186,19 +186,19 @@ public class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatchingSt
                 result = String.valueOf(passed);
 
                 if (!passed) {
-                    log.info("[Debug] Rule: {} ({}), result: FAIL", rule.getId(), rule.getDesc());
+                    log.info("[Debug] Rule: {} ({}), result: FAIL", rule.getId(), rule.getDescription());
                 } else {
-                    log.debug("[Debug] Rule: {} ({}), result: PASS", rule.getId(), rule.getDesc());
+                    log.debug("[Debug] Rule: {} ({}), result: PASS", rule.getId(), rule.getDescription());
                 }
             } catch (Exception e) {
                 result = "Exception: " + e.getMessage();
                 log.info("[Debug] Rule: {} ({}), result: EXCEPTION - {}",
-                        rule.getId(), rule.getDesc(), e.getMessage());
+                        rule.getId(), rule.getDescription(), e.getMessage());
             }
 
             long evaluationTime = System.currentTimeMillis() - startTime;
             evaluations.add(new RuleEvaluationDetail(
-                    rule.getId(), rule.getContent(), rule.getDesc(),
+                    rule.getId(), rule.getContent(), rule.getDescription(),
                     passed, result, evaluationTime
             ));
         }

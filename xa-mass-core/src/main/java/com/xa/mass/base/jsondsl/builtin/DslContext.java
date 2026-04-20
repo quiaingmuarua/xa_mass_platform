@@ -13,6 +13,7 @@ public class DslContext {
     private final DslContext parent;
     private int depth = 0;
     private String scopeName;
+    private boolean strict;
 
     public DslContext() {
         this.parent = null;
@@ -55,4 +56,12 @@ public class DslContext {
     public DslContext getParent() {
         return parent;
     }
-} 
+
+    public boolean isStrict() {
+        return strict;
+    }
+
+    public void setStrict(boolean strict) {
+        this.strict = strict;
+    }
+}

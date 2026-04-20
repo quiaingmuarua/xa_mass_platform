@@ -1,26 +1,49 @@
 package com.xa.mass.base.jsondsl.processor;
 
+import com.xa.mass.base.jsondsl.builtin.DslContext;
 import com.xa.mass.base.jsondsl.model.JsonDslDefinition;
 
+import java.util.Map;
+
 /**
- * 默认转换处理器实现
- * <p>
- * 负责根据 DSL 定义转换单个对象
- * </p>
+ * Default transformer for the standardized JSON DSL.
  */
 class DefaultTransformProcessor implements TransformProcessor {
 
     @Override
     public <T> T transform(T input, JsonDslDefinition definition, ProcessingContext context) {
-        // 使用统一的参数校验
         ParameterValidator.validateTransformParams(input, definition, context);
+        ParameterValidator.validateDslFieldOrCombine(definition);
 
-        // 当前实现：简单返回原对象（可以扩展为实际的转换逻辑）
-        if (context.isDebug()) {
-            System.out.println("[DefaultTransformProcessor] 转换完成");
+        Map<String, Object> source = ProcessorDslSupport.toMap(input);
+        T target = ProcessorDslSupport.copyInput(input);
+        DslContext dslContext = ProcessorDslSupport.createDslContext(source, definition, context);
+
+        if (definition.getFieldDsl() != null) {
+            for (Map.Entry<String, Object> entry : definition.getFieldDsl().entrySet()) {
+                String fieldName = entry.getKey();
+                Object currentValue = source.get(fieldName);
+                Object transformedValue = ProcessorDslSupport.evaluateRule(fieldName, currentValue, entry.getValue(), dslContext);
+                ProcessorDslSupport.writeField(target, fieldName, transformedValue);
+                source.put(fieldName, transformedValue);
+                dslContext.setVariable(fieldName, transformedValue);
+            }
         }
 
-        return input;
+        if (definition.getCombineDsl() != null) {
+            for (Map.Entry<String, Object> entry : definition.getCombineDsl().entrySet()) {
+                Object result = ProcessorDslSupport.evaluateRule(entry.getKey(), null, entry.getValue(), dslContext);
+                if (!ProcessorDslSupport.isTruthy(result)) {
+                    throw new com.xa.mass.base.jsondsl.builtin.JsonDslException("组合条件转换失败: " + entry.getKey());
+                }
+            }
+        }
+
+        if (context.isDebug()) {
+            System.out.println("[DefaultTransformProcessor] Transformation completed");
+        }
+
+        return target;
     }
 
     @Override
@@ -30,6 +53,6 @@ class DefaultTransformProcessor implements TransformProcessor {
 
     @Override
     public int getPriority() {
-        return 300; // 转换处理器优先级
+        return 300;
     }
-} 
+}

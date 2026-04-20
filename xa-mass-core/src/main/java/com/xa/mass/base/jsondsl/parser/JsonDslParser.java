@@ -1,6 +1,7 @@
 package com.xa.mass.base.jsondsl.parser;
 
 import com.google.gson.Gson;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.xa.mass.base.jsondsl.builtin.GsonConfig;
@@ -11,168 +12,190 @@ import com.xa.mass.base.jsondsl.model.JsonDslDefinition;
 import java.util.Map;
 
 /**
- * JSON-DSL 解析器
- * <p>
- * 负责解析标准化的 DSL 结构，支持向后兼容和扩展
- * </p>
+ * Parser for the standardized JSON DSL.
+ *
+ * <p>This parser intentionally accepts a few agent-friendly aliases such as
+ * snake_case and camelCase variants, but it normalizes them into the canonical
+ * {@link JsonDslDefinition} model and validates conflicts early.
  */
 public class JsonDslParser {
 
     private static final Gson gson = GsonConfig.buildGson();
 
-    /**
-     * 解析 JSON 字符串为标准 DSL 定义
-     *
-     * @param jsonDsl JSON 字符串
-     * @return 标准化的 DSL 定义
-     */
     public static JsonDslDefinition parse(String jsonDsl) {
         try {
             JsonObject root = JsonParser.parseString(jsonDsl).getAsJsonObject();
-            // 只支持标准 DSL 结构
             return parseStandardDsl(root);
+        } catch (JsonDslException e) {
+            throw e;
         } catch (Exception e) {
-            throw new JsonDslException("解析 DSL 失败: " + e.getMessage(), e);
+            throw new JsonDslException("Failed to parse DSL: " + e.getMessage(), e);
         }
     }
 
-    /**
-     * 解析标准化 DSL 结构
-     */
     private static JsonDslDefinition parseStandardDsl(JsonObject root) {
         JsonDslDefinition definition = new JsonDslDefinition();
 
-        // 解析核心字段（支持下划线和驼峰命名）
-        definition.setUniqueId(getString(root, "unique_id", getString(root, "uniqueId")));
-        definition.setType(JsonDslDefinition.DslType.fromCode(getString(root, "type")));
-        definition.setPriority(getInteger(root, "priority", 1));
-        definition.setDescription(getString(root, "desc", getString(root, "description")));
-        definition.setVersion(getString(root, "version", "1.0"));
-
-        // 解析时间戳（支持下划线和驼峰命名）
-        Long createTime = getLong(root, "create_time");
-        if (createTime == null) {
-            createTime = getLong(root, "createTime");
+        definition.setUniqueId(readAliasedString(root, "uniqueId", "unique_id"));
+        definition.setType(JsonDslDefinition.DslType.fromCode(readAliasedString(root, "type")));
+        definition.setPriority(readAliasedInteger(root, 1, "priority"));
+        definition.setDescription(readAliasedString(root, "description", "desc"));
+        String version = readAliasedString(root, "version");
+        if (version != null) {
+            definition.setVersion(version);
         }
+
+        Long createTime = readAliasedLong(root, "createTime", "create_time");
         if (createTime != null) {
             definition.setCreateTime(createTime);
         }
 
-        Long updateTime = getLong(root, "update_time");
-        if (updateTime == null) {
-            updateTime = getLong(root, "updateTime");
-        }
+        Long updateTime = readAliasedLong(root, "updateTime", "update_time");
         if (updateTime != null) {
             definition.setUpdateTime(updateTime);
         }
 
-        // 解析上下文配置
-        if (root.has("context")) {
-            definition.setContext(parseContext(root.getAsJsonObject("context")));
+        JsonObject contextObject = readAliasedObject(root, "context");
+        if (contextObject != null) {
+            definition.setContext(parseContext(contextObject));
         }
 
-        // 解析字段 DSL
-        if (root.has("fieldDsl")) {
-            definition.setFieldDsl(gson.fromJson(root.get("fieldDsl"), Map.class));
+        Map<String, Object> fieldDsl = readAliasedMap(root, "fieldDsl", "field_dsl");
+        if (fieldDsl == null) {
+            fieldDsl = readAliasedMap(root, "fields");
+        }
+        definition.setFieldDsl(fieldDsl);
+
+        definition.setCombineDsl(readAliasedMap(root, "combineDsl", "combine_dsl"));
+        definition.setExtensions(readAliasedMap(root, "extensions"));
+
+        String[] tags = readAliasedArray(root, "tags");
+        if (tags != null) {
+            definition.setTags(tags);
         }
 
-        // 解析组合 DSL
-        if (root.has("combine_dsl")) {
-            definition.setCombineDsl(gson.fromJson(root.get("combine_dsl"), Map.class));
+        String author = readAliasedString(root, "author");
+        if (author != null) {
+            definition.setAuthor(author);
         }
 
-        // 解析扩展配置
-        if (root.has("extensions")) {
-            definition.setExtensions(gson.fromJson(root.get("extensions"), Map.class));
+        Boolean enabled = readAliasedBoolean(root, "enabled");
+        if (enabled != null) {
+            definition.setEnabled(enabled);
         }
 
-        // 解析元数据
-        if (root.has("tags")) {
-            definition.setTags(gson.fromJson(root.get("tags"), String[].class));
+        Boolean cacheable = readAliasedBoolean(root, "cacheable");
+        if (cacheable != null) {
+            definition.setCacheable(cacheable);
         }
-        definition.setAuthor(getString(root, "author"));
-        definition.setEnabled(getBoolean(root, "enabled", true));
-        definition.setCacheable(getBoolean(root, "cacheable", false));
-        definition.setCacheExpireSeconds(getInteger(root, "cache_expire_seconds", 300));
 
-        // 验证 DSL 定义
+        Integer cacheExpireSeconds = readAliasedInteger(root, null, "cacheExpireSeconds", "cache_expire_seconds");
+        if (cacheExpireSeconds != null) {
+            definition.setCacheExpireSeconds(cacheExpireSeconds);
+        }
+
         definition.validate();
-
         return definition;
     }
 
-    /**
-     * 解析上下文配置
-     */
     private static JsonDslContext parseContext(JsonObject contextObj) {
         JsonDslContext context = new JsonDslContext();
 
-        // 支持大写和小写
-        if (contextObj.has("MODEL")) {
-            context.setModel(contextObj.get("MODEL").getAsString());
-        } else if (contextObj.has("model")) {
-            context.setModel(contextObj.get("model").getAsString());
+        context.setModel(readAliasedString(contextObj, "MODEL", "model"));
+
+        Integer count = readAliasedInteger(contextObj, null, "COUNT", "count");
+        if (count != null) {
+            context.setCount(count);
         }
-        if (contextObj.has("COUNT")) {
-            context.setCount(contextObj.get("COUNT").getAsInt());
-        } else if (contextObj.has("count")) {
-            context.setCount(contextObj.get("count").getAsInt());
+
+        String type = readAliasedString(contextObj, "TYPE", "type");
+        if (type != null) {
+            context.setType(type);
         }
-        if (contextObj.has("TYPE")) {
-            context.setType(contextObj.get("TYPE").getAsString());
-        } else if (contextObj.has("type")) {
-            context.setType(contextObj.get("type").getAsString());
+
+        context.setScopeName(readAliasedString(contextObj, "scopeName", "scope_name"));
+        context.setParentScope(readAliasedString(contextObj, "parentScope", "parent_scope"));
+        context.setParameters(readAliasedMap(contextObj, "parameters"));
+
+        Boolean debug = readAliasedBoolean(contextObj, "debug");
+        if (debug != null) {
+            context.setDebug(debug);
         }
-        if (contextObj.has("scope_name")) {
-            context.setScopeName(contextObj.get("scope_name").getAsString());
-        } else if (contextObj.has("scopeName")) {
-            context.setScopeName(contextObj.get("scopeName").getAsString());
+
+        Boolean strict = readAliasedBoolean(contextObj, "strict");
+        if (strict != null) {
+            context.setStrict(strict);
         }
-        if (contextObj.has("parent_scope")) {
-            context.setParentScope(contextObj.get("parent_scope").getAsString());
-        } else if (contextObj.has("parentScope")) {
-            context.setParentScope(contextObj.get("parentScope").getAsString());
-        }
-        if (contextObj.has("parameters")) {
-            context.setParameters(gson.fromJson(contextObj.get("parameters"), Map.class));
-        }
-        context.setDebug(getBoolean(contextObj, "debug", false));
-        context.setStrict(getBoolean(contextObj, "strict", false));
 
         context.validate();
         return context;
     }
 
-    /**
-     * 将标准 DSL 定义转换为 JSON 字符串
-     */
     public static String toJson(JsonDslDefinition definition) {
         return gson.toJson(definition);
     }
 
-    // ==================== 工具方法 ====================
-
-    private static String getString(JsonObject obj, String key) {
-        return obj.has(key) ? obj.get(key).getAsString() : null;
+    private static String readAliasedString(JsonObject obj, String... keys) {
+        JsonElement element = readAliasedElement(obj, keys);
+        return element == null ? null : element.getAsString();
     }
 
-    private static String getString(JsonObject obj, String key, String defaultValue) {
-        return obj.has(key) ? obj.get(key).getAsString() : defaultValue;
+    private static Integer readAliasedInteger(JsonObject obj, Integer defaultValue, String... keys) {
+        JsonElement element = readAliasedElement(obj, keys);
+        if (element == null) {
+            return defaultValue;
+        }
+        return element.getAsInt();
     }
 
-    private static Integer getInteger(JsonObject obj, String key, Integer defaultValue) {
-        return obj.has(key) ? obj.get(key).getAsInt() : defaultValue;
+    private static Long readAliasedLong(JsonObject obj, String... keys) {
+        JsonElement element = readAliasedElement(obj, keys);
+        return element == null ? null : element.getAsLong();
     }
 
-    private static Long getLong(JsonObject obj, String key) {
-        return obj.has(key) ? obj.get(key).getAsLong() : null;
+    private static Boolean readAliasedBoolean(JsonObject obj, String... keys) {
+        JsonElement element = readAliasedElement(obj, keys);
+        return element == null ? null : element.getAsBoolean();
     }
 
-    private static Long getLong(JsonObject obj, String key, Long defaultValue) {
-        return obj.has(key) ? obj.get(key).getAsLong() : defaultValue;
+    private static JsonObject readAliasedObject(JsonObject obj, String... keys) {
+        JsonElement element = readAliasedElement(obj, keys);
+        return element == null ? null : element.getAsJsonObject();
     }
 
-    private static Boolean getBoolean(JsonObject obj, String key, Boolean defaultValue) {
-        return obj.has(key) ? obj.get(key).getAsBoolean() : defaultValue;
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> readAliasedMap(JsonObject obj, String... keys) {
+        JsonElement element = readAliasedElement(obj, keys);
+        return element == null ? null : gson.fromJson(element, Map.class);
     }
-} 
+
+    private static String[] readAliasedArray(JsonObject obj, String... keys) {
+        JsonElement element = readAliasedElement(obj, keys);
+        return element == null ? null : gson.fromJson(element, String[].class);
+    }
+
+    private static JsonElement readAliasedElement(JsonObject obj, String... keys) {
+        JsonElement chosen = null;
+        String chosenKey = null;
+        String chosenJson = null;
+
+        for (String key : keys) {
+            if (!obj.has(key) || obj.get(key).isJsonNull()) {
+                continue;
+            }
+            JsonElement current = obj.get(key);
+            String currentJson = gson.toJson(current);
+            if (chosen == null) {
+                chosen = current;
+                chosenKey = key;
+                chosenJson = currentJson;
+                continue;
+            }
+            if (!chosenJson.equals(currentJson)) {
+                throw new JsonDslException("Conflicting alias values for '" + chosenKey + "' and '" + key + "'");
+            }
+        }
+
+        return chosen;
+    }
+}

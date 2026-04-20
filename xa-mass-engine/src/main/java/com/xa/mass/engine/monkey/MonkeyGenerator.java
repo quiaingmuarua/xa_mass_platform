@@ -10,41 +10,35 @@ import com.xa.mass.engine.rules.RuleDefinition;
 import java.util.List;
 
 /**
- * 基于 JSON-DSL 的 mock Worker/WorkerContext 生成器。
+ * Dev/mock fixture generator backed by the legacy JSON-DSL object generator.
+ *
+ * <p>This class is for demo data and local runtime bootstrap only. Worker
+ * matching uses {@code RuleDefinition + QLExpressRuleEvaluator +
+ * WorkerMatchContext}; do not route assignment or binding decisions through
+ * this generator.
  */
+@SuppressWarnings("deprecation")
 public class MonkeyGenerator {
 
     static {
         TypeRegistry.register("Worker", Worker.class);
         TypeRegistry.register("WorkerContext", WorkerContext.class);
-        TypeRegistry.register("RuleDefinition", com.xa.mass.engine.rules.RuleDefinition.class);
+        TypeRegistry.register("RuleDefinition", RuleDefinition.class);
         TypeRegistry.register("TaskCreateRequestDto", TaskCreateRequestDto.class);
     }
 
-    /**
-     * 根据 JSON-DSL 生成 Worker 列表（支持递归嵌套 WorkerContext）。
-     */
     public static List<Worker> generateWorkers(String jsonDsl) {
         return JsonDslEngine.generateList(jsonDsl, Worker.class);
     }
 
-    /**
-     * 根据 JSON-DSL 生成 WorkerContext 列表。
-     */
     public static List<WorkerContext> generateWorkerContexts(String jsonDsl) {
         return JsonDslEngine.generateList(jsonDsl, WorkerContext.class);
     }
 
-    /**
-     * 根据 JSON-DSL 生成 TaskCreateRequestDto 列表。
-     */
     public static List<TaskCreateRequestDto> generateTasks(String jsonDsl) {
         return JsonDslEngine.generateList(jsonDsl, TaskCreateRequestDto.class);
     }
 
-    /**
-     * Generates rule definitions from JSON-DSL.
-     */
     public static List<RuleDefinition> generateRules(String jsonDsl) {
         return JsonDslEngine.generateList(jsonDsl, RuleDefinition.class);
     }

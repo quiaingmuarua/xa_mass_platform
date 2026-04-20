@@ -16,6 +16,7 @@ import org.junit.jupiter.api.function.Executable;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -36,7 +37,6 @@ class MassSdkTest {
                 .build();
 
         assertNotNull(app);
-        assertNotNull(app.unwrap());
         assertFalse(app.isRunning());
     }
 
@@ -48,9 +48,7 @@ class MassSdkTest {
         MassSdkApplication app = MassSdk.development(18080, inputQueue, outputQueue);
 
         assertNotNull(app);
-        assertNotNull(app.unwrap());
         assertFalse(app.isRunning());
-        assertNotNull(app.getEngine());
     }
 
     @Test
@@ -139,6 +137,24 @@ class MassSdkTest {
 
         verify(delegate).loadMockData();
         verify(delegate).publishTaskEvents();
+    }
+
+    @Test
+    void sdkEscapeHatchesStayDeprecated() throws NoSuchMethodException {
+        Set<java.lang.reflect.Method> escapeHatches = Set.of(
+                MassSdkApplication.class.getDeclaredMethod("unwrap"),
+                MassSdkApplication.class.getDeclaredMethod("getEngine"),
+                MassSdkApplication.class.getDeclaredMethod("getTaskManager"),
+                MassSdkApplication.class.getDeclaredMethod("getWorkerManager"),
+                MassSdk.Builder.class.getDeclaredMethod("unwrap"),
+                MassSdk.GatewayOptions.class.getDeclaredMethod("unwrap"),
+                MassSdk.EngineOptions.class.getDeclaredMethod("unwrap")
+        );
+
+        for (java.lang.reflect.Method method : escapeHatches) {
+            Assertions.assertTrue(method.isAnnotationPresent(Deprecated.class),
+                    method.getDeclaringClass().getSimpleName() + "." + method.getName() + " must remain deprecated");
+        }
     }
 
     private static void assertEngineOperationsFailFast(MassSdkApplication app) {

@@ -1,5 +1,6 @@
 package com.xa.mass.base.jsondsl.processor;
 
+import com.google.gson.JsonObject;
 import com.xa.mass.base.jsondsl.builtin.DslContext;
 import com.xa.mass.base.jsondsl.builtin.GsonConfig;
 import com.xa.mass.base.jsondsl.generate.DslObjectBuilder;
@@ -10,63 +11,64 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 默认生成处理器实现
- * <p>
- * 负责根据 DSL 定义生成指定类型的对象列表
- * </p>
+ * Default generator for the standardized JSON DSL.
  */
 class DefaultGenerateProcessor implements GenerateProcessor {
 
     @Override
     public <T> List<T> generate(JsonDslDefinition definition, ProcessingContext context, Class<T> targetType) {
-        // 使用统一的参数校验
         ParameterValidator.validateGenerateParams(definition, context, targetType);
 
-        // 获取生成数量
         int count = definition.getContext() != null && definition.getContext().getCount() != null
                 ? definition.getContext().getCount() : 1;
-
-        // 获取模型类名
         String modelName = definition.getContext().getModel();
+        Map<String, Object> fieldDsl = definition.getFieldDsl() == null ? Map.of() : definition.getFieldDsl();
 
-        // 直接使用 DslObjectBuilder 生成数据
         List<T> result = new java.util.ArrayList<>();
         for (int i = 0; i < count; i++) {
             DslContext dslContext = new DslContext();
             dslContext.setScopeName(modelName);
+            dslContext.setStrict(Boolean.TRUE.equals(definition.getContext().getStrict()));
+            dslContext.setVariable("&index", i);
             dslContext.setVariable("&" + modelName + ".index", i);
+            hydrateDslContext(dslContext, definition, context);
 
-            // 构造 JsonObject
-            com.google.gson.JsonObject dsl = new com.google.gson.JsonObject();
+            JsonObject dsl = new JsonObject();
             dsl.addProperty("MODEL", modelName);
-            if (definition.getFieldDsl() != null) {
-                dsl.add("FIELDS", GsonConfig.buildGson().toJsonTree(definition.getFieldDsl()));
+            if (!fieldDsl.isEmpty()) {
+                dsl.add("FIELDS", GsonConfig.buildGson().toJsonTree(fieldDsl));
             }
-            Map<String, Object> resultMap = new HashMap<String, Object>();
-            //处理targetType 为map
+
             if (Map.class.isAssignableFrom(targetType)) {
-                for (Map.Entry<String, Object> entry : definition.getFieldDsl().entrySet()) {
+                Map<String, Object> resultMap = new HashMap<>();
+                for (Map.Entry<String, Object> entry : fieldDsl.entrySet()) {
                     Object value = DslObjectBuilder.mockFieldValue(entry.getValue(), dslContext);
                     if (value != null) {
                         resultMap.put(entry.getKey(), value);
                     }
-
                 }
                 result.add((T) resultMap);
-
             } else {
                 T obj = DslObjectBuilder.mockFromDsl(dsl, dslContext, targetType);
                 result.add(obj);
             }
-
-
         }
 
         if (context.isDebug()) {
-            System.out.println("[DefaultGenerateProcessor] 生成完成，数量: " + result.size());
+            System.out.println("[DefaultGenerateProcessor] Generated objects: " + result.size());
         }
 
         return result;
+    }
+
+    private void hydrateDslContext(DslContext dslContext, JsonDslDefinition definition, ProcessingContext context) {
+        if (context != null) {
+            context.getParameters().forEach(dslContext::setVariable);
+            context.getVariables().forEach(dslContext::setVariable);
+        }
+        if (definition.getContext() != null && definition.getContext().getParameters() != null) {
+            definition.getContext().getParameters().forEach(dslContext::setVariable);
+        }
     }
 
     @Override
@@ -76,6 +78,6 @@ class DefaultGenerateProcessor implements GenerateProcessor {
 
     @Override
     public int getPriority() {
-        return 100; // 生成处理器优先级
+        return 100;
     }
-} 
+}

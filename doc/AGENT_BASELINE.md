@@ -75,6 +75,7 @@ Interpretation rules:
 - `WorkerContext.workerId` is the single owner truth; attachment APIs should accept the `WorkerContext` object itself rather than duplicating the owner `workerId` as a second parameter.
 - `Task.sharedConfig` and `TaskMsg.input/output` are the main payload boundaries. Do not regress back to single-purpose top-level fields such as `textContent`.
 - Routing truth such as country/account affinity should come from explicit rules and worker-context signals, not from `workerGroupId`.
+- Worker matching truth is `RuleDefinition.content` evaluated by QLExpress over `WorkerMatchContext`; the legacy JSON-DSL generator is mock/dev fixture support only.
 - `Worker.attributes` and `WorkerContext.attributes` are auxiliary rule labels for matching and diagnostics only. They are not lifecycle, lock, or online truth.
 - UI pages, mock runtime, and demo APIs must not redefine the platform kernel.
 - Manual worker debug chat is a debug/control side-channel. It is not `TaskMsg` lifecycle and must not mutate task state.
@@ -183,6 +184,7 @@ Important current rules:
 - `WorkerContextStatus` is domain-neutral: `IDLE`, `RESERVED`, `OCCUPIED`, `BLOCKED`, `INVALID`
 - `WorkerMatchContext` exposes `workerAttributes` and `workerContextAttributes` to rule evaluation
 - `WorkerMatchContext` also exposes `hasWorkerContext` and `taskHasRoutingRequirement`
+- `RuleDefinition.content` is the canonical rule expression; `expression` and `desc` remain compatibility aliases, not separate rule truths
 - `isWorkerContextAvailable` now means truly free for new assignment (`IDLE` and not expired)
 - `isWorkerContextUsable` is the broader diagnostic signal (`IDLE` / `RESERVED` / `OCCUPIED`, excluding expired, blocked, and invalid contexts)
 - `workerContextAttributes['country'] == taskRoutingCode` is the verified attribute-routing pattern

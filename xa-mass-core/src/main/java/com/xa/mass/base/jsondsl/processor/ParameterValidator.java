@@ -160,8 +160,8 @@ public final class ParameterValidator {
     }
 
     public static void validateDslFieldOrCombine(JsonDslDefinition def) {
-        if ((def.getFieldDsl() == null || def.getFieldDsl().isEmpty())
-                && (def.getCombineDsl() == null || def.getCombineDsl().isEmpty())) {
+        notNull(def, "definition");
+        if (!def.hasFieldOrCombineDsl()) {
             throw new JsonDslException("fieldDsl and combineDsl must not both be empty");
         }
     }
@@ -213,7 +213,7 @@ public final class ParameterValidator {
         notNull(data, "input data");
         validateProcessorParams(definition, context, "DefaultFilterProcessor");
         validateDslType(definition, JsonDslDefinition.DslType.FILTER);
-        validateDslField(definition, "fieldDsl");
+        validateDslFieldOrCombine(definition);
     }
 
     /**

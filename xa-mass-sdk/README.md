@@ -42,7 +42,7 @@ app.createTask(MassTaskCreateRequest.builder()
         .project("demoApp")
         .taskName("demo-task")
         .sharedConfig(java.util.Map.of("textContent", "hello"))
-.inputs(java.util.List.of(java.util.Map.of("target", "target-a")))
+        .inputs(java.util.List.of(java.util.Map.of("target", "target-a")))
         .routingCode("us")
         .batchSize(1)
         .build());
@@ -57,7 +57,7 @@ The returned `MassSdkApplication` exposes:
 - common worker operations after `start()`: `addWorker(...)`, `addWorkerContext(...)`, `getWorker(...)`, `getAllWorkers()`, `getAllWorkerContexts()`, `getWorkerContexts(...)`, `getWorkerContextById(...)`, `isWorkerLocked(...)`, `isWorkerOnline(...)`
 - runtime bootstrap helpers after `start()`: `loadMockData()`, `publishTaskEvents()`
 - deprecated compatibility seams for advanced embedding only: `getEngine()`, `getTaskManager()`, `getWorkerManager()`
-- deprecated escape hatch: `unwrap()` returns the underlying `MassApplication`
+- deprecated escape hatches: `MassSdkApplication.unwrap()` and SDK builder/option `unwrap()` methods expose lower-level runtime objects
 
 `MassTaskCreateRequest` is the primary SDK create contract. The engine DTO overload remains only as a compatibility seam for callers that still depend on engine packages. Direct engine, manager, and runtime exposure is intentionally deprecated so the default SDK path stays on `MassSdkApplication` methods instead of leaking callers back into engine/runtime internals. Common SDK operations intentionally fail fast if the SDK application was built without an engine or has not been started yet.
 

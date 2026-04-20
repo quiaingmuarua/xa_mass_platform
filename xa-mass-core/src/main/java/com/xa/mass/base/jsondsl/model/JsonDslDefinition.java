@@ -6,83 +6,25 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * 标准 JSON-DSL 定义结构体
- * <p>
- * 提供统一的 DSL 结构规范，支持生成、过滤等多种类型，
- * 便于扩展、调试和问题排查。
- * </p>
+ * Canonical model for the standardized JSON DSL.
  */
 public class JsonDslDefinition {
 
-    /**
-     * DSL 唯一标识符，用于调试、日志追踪和缓存
-     */
     private String uniqueId;
-
-    // ==================== 核心字段 ====================
-    /**
-     * DSL 类型：generate|filter|transform|validate
-     */
     private DslType type;
-    /**
-     * 执行优先级，数字越小优先级越高，默认为 1
-     */
     private Integer priority = 1;
-    /**
-     * DSL 描述信息，用于文档化和调试
-     */
     private String description;
-    /**
-     * 版本号，用于 DSL 兼容性控制
-     */
     private String version = "1.0";
-    /**
-     * 创建时间戳
-     */
     private Long createTime;
-    /**
-     * 最后修改时间戳
-     */
     private Long updateTime;
-    /**
-     * 上下文配置，包含 MODEL、COUNT 等核心参数
-     */
     private JsonDslContext context;
-
-    // ==================== 配置字段 ====================
-    /**
-     * 字段 DSL 配置，定义各字段的生成规则
-     */
     private Map<String, Object> fieldDsl;
-    /**
-     * 组合规则配置，支持多字段联合判断
-     */
     private Map<String, Object> combineDsl;
-    /**
-     * 扩展配置，用于未来功能扩展
-     */
     private Map<String, Object> extensions;
-    /**
-     * 标签列表，用于分类和筛选
-     */
     private String[] tags;
-
-    // ==================== 元数据字段 ====================
-    /**
-     * 作者信息
-     */
     private String author;
-    /**
-     * 是否启用，默认为 true
-     */
     private Boolean enabled = true;
-    /**
-     * 是否缓存结果，默认为 false
-     */
     private Boolean cacheable = false;
-    /**
-     * 缓存过期时间（秒），默认 300 秒
-     */
     private Integer cacheExpireSeconds = 300;
 
     public JsonDslDefinition() {
@@ -90,107 +32,68 @@ public class JsonDslDefinition {
         this.updateTime = this.createTime;
     }
 
-    // ==================== 构造函数 ====================
-
     public JsonDslDefinition(String uniqueId, DslType type) {
         this();
         this.uniqueId = uniqueId;
         this.type = type;
     }
 
-    /**
-     * 验证 DSL 定义的有效性
-     */
     public void validate() {
         if (uniqueId == null || uniqueId.trim().isEmpty()) {
-            throw new JsonDslException("uniqueId 不能为空");
+            throw new JsonDslException("uniqueId cannot be blank");
         }
-
         if (type == null) {
-            throw new JsonDslException("type 不能为空");
+            throw new JsonDslException("type cannot be null");
         }
-
         if (priority == null || priority < 0) {
-            throw new JsonDslException("priority 必须大于等于 0");
+            throw new JsonDslException("priority must be greater than or equal to 0");
         }
 
-        // 根据类型进行特定验证
         switch (type) {
-            case GENERATE:
-                validateGenerateDsl();
-                break;
-            case FILTER:
-                validateFilterDsl();
-                break;
-            case TRANSFORM:
-                validateTransformDsl();
-                break;
-            case VALIDATE:
-                validateValidateDsl();
-                break;
+            case GENERATE -> validateGenerateDsl();
+            case FILTER, TRANSFORM, VALIDATE -> validateFieldOrCombineDsl(type);
         }
     }
-
-    // ==================== 验证方法 ====================
 
     private void validateGenerateDsl() {
         if (context == null) {
-            throw new JsonDslException("GENERATE 类型必须包含 context 配置");
+            throw new JsonDslException("GENERATE DSL must include context");
         }
+        context.validate();
         if (context.getModel() == null || context.getModel().trim().isEmpty()) {
-            throw new JsonDslException("GENERATE 类型必须指定 MODEL");
+            throw new JsonDslException("GENERATE DSL must define context.model");
         }
     }
 
-    private void validateFilterDsl() {
-        if (fieldDsl == null || fieldDsl.isEmpty()) {
-            throw new JsonDslException("FILTER 类型必须包含 fieldDsl 配置");
+    private void validateFieldOrCombineDsl(DslType currentType) {
+        if (!hasFieldOrCombineDsl()) {
+            throw new JsonDslException(currentType.getCode() + " DSL must include fieldDsl or combineDsl");
         }
     }
 
-    private void validateTransformDsl() {
-        if (fieldDsl == null || fieldDsl.isEmpty()) {
-            throw new JsonDslException("TRANSFORM 类型必须包含 fieldDsl 配置");
-        }
+    public boolean hasFieldOrCombineDsl() {
+        return (fieldDsl != null && !fieldDsl.isEmpty())
+                || (combineDsl != null && !combineDsl.isEmpty());
     }
 
-    private void validateValidateDsl() {
-        if (fieldDsl == null || fieldDsl.isEmpty()) {
-            throw new JsonDslException("VALIDATE 类型必须包含 fieldDsl 配置");
-        }
-    }
-
-    /**
-     * 更新修改时间
-     */
     public void touch() {
         this.updateTime = System.currentTimeMillis();
     }
 
-    // ==================== 便捷方法 ====================
-
-    /**
-     * 检查是否过期（基于缓存时间）
-     */
     public boolean isExpired() {
-        if (!cacheable || cacheExpireSeconds == null) {
+        if (!Boolean.TRUE.equals(cacheable) || cacheExpireSeconds == null || updateTime == null) {
             return false;
         }
         return System.currentTimeMillis() - updateTime > cacheExpireSeconds * 1000L;
     }
 
-    /**
-     * 获取 DSL 的完整标识（包含类型）
-     */
     public String getFullId() {
-        return type.getCode() + ":" + uniqueId;
+        return (type != null ? type.getCode() : "unknown") + ":" + uniqueId;
     }
 
     public String getUniqueId() {
         return uniqueId;
     }
-
-    // ==================== Getter/Setter ====================
 
     public void setUniqueId(String uniqueId) {
         this.uniqueId = uniqueId;
@@ -318,13 +221,15 @@ public class JsonDslDefinition {
 
     @Override
     public boolean equals(Object o) {
-        if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
+        if (this == o) {
+            return true;
+        }
+        if (o == null || getClass() != o.getClass()) {
+            return false;
+        }
         JsonDslDefinition that = (JsonDslDefinition) o;
         return Objects.equals(uniqueId, that.uniqueId) && type == that.type;
     }
-
-    // ==================== equals/hashCode/toString ====================
 
     @Override
     public int hashCode() {
@@ -333,24 +238,21 @@ public class JsonDslDefinition {
 
     @Override
     public String toString() {
-        return "JsonDslDefinition{" +
-                "uniqueId='" + uniqueId + '\'' +
-                ", type=" + type +
-                ", priority=" + priority +
-                ", description='" + description + '\'' +
-                ", version='" + version + '\'' +
-                ", enabled=" + enabled +
-                '}';
+        return "JsonDslDefinition{"
+                + "uniqueId='" + uniqueId + '\''
+                + ", type=" + type
+                + ", priority=" + priority
+                + ", description='" + description + '\''
+                + ", version='" + version + '\''
+                + ", enabled=" + enabled
+                + '}';
     }
 
-    /**
-     * DSL 类型枚举
-     */
     public enum DslType {
-        GENERATE("generate", "对象生成"),
-        FILTER("filter", "对象过滤"),
-        TRANSFORM("transform", "对象转换"),
-        VALIDATE("validate", "对象验证");
+        GENERATE("generate", "Object generation"),
+        FILTER("filter", "Object filtering"),
+        TRANSFORM("transform", "Object transformation"),
+        VALIDATE("validate", "Object validation");
 
         private final String code;
         private final String description;
@@ -361,12 +263,15 @@ public class JsonDslDefinition {
         }
 
         public static DslType fromCode(String code) {
+            if (code == null || code.isBlank()) {
+                throw new JsonDslException("DSL type cannot be blank");
+            }
             for (DslType type : values()) {
-                if (type.code.equalsIgnoreCase(code)) {
+                if (type.code.equalsIgnoreCase(code) || type.name().equalsIgnoreCase(code)) {
                     return type;
                 }
             }
-            throw new JsonDslException("不支持的 DSL 类型: " + code);
+            throw new JsonDslException("Unsupported DSL type: " + code);
         }
 
         public String getCode() {
@@ -377,4 +282,4 @@ public class JsonDslDefinition {
             return description;
         }
     }
-} 
+}

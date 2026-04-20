@@ -194,6 +194,15 @@ public class ParameterValidatorTest {
     }
 
     @Test
+    void testValidateFilterParamsWithCombineDslOnly() {
+        List<String> data = Arrays.asList("a", "b", "c");
+        JsonDslDefinition combineOnlyFilterDsl = new JsonDslDefinition("combine-only", JsonDslDefinition.DslType.FILTER);
+        combineOnlyFilterDsl.setCombineDsl(Collections.singletonMap("logic", "age > 18"));
+
+        ParameterValidator.validateFilterParams(data, combineOnlyFilterDsl, context);
+    }
+
+    @Test
     void testValidateTransformParams() {
         // 正常情况
         ParameterValidator.validateTransformParams("test", transformDsl, context);

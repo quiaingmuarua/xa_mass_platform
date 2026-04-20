@@ -83,7 +83,7 @@ public class StrongTypedIntegrationTest {
         // 创建转换 DSL
         JsonDslDefinition transformDsl = new JsonDslDefinition("transform-user", JsonDslDefinition.DslType.TRANSFORM);
         Map<String, Object> fieldDsl = new HashMap<>();
-        fieldDsl.put("name", "$JOIN(['Mr. ', '&.name'])");
+        fieldDsl.put("name", Map.of("$EXPR", "'Mr. ' + name"));
         fieldDsl.put("age", Map.of("$EXPR", "age + 1"));
         transformDsl.setFieldDsl(fieldDsl);
 
@@ -92,8 +92,10 @@ public class StrongTypedIntegrationTest {
         assertNotNull(transformedUser);
 
         // 验证转换结果（由于没有注册 TransformProcessor，对象不会被转换）
-        assertEquals("John", transformedUser.getName());
-        assertEquals(25, transformedUser.getAge());
+        assertEquals("John", originalUser.getName());
+        assertEquals(25, originalUser.getAge());
+        assertEquals("Mr. John", transformedUser.getName());
+        assertEquals(26, transformedUser.getAge());
         assertEquals("active", transformedUser.getStatus()); // 未转换的字段保持不变
     }
 

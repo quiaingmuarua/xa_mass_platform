@@ -15,14 +15,14 @@ public class RuleConfig {
         basicRule.setId("basic_worker_check");
         basicRule.setType(RuleType.QL_EXPRESS);
         basicRule.setContent("isWorkerAvailable == true && isWorkerLocked == false");
-        basicRule.setDesc("Worker must be available and unlocked");
+        basicRule.setDescription("Worker must be available and unlocked");
         rules.add(basicRule);
 
         RuleDefinition workerContextRule = new RuleDefinition();
         workerContextRule.setId("worker_context_status_check");
         workerContextRule.setType(RuleType.QL_EXPRESS);
         workerContextRule.setContent("hasWorkerContext == false || isWorkerContextAllocatable == true");
-        workerContextRule.setDesc("Worker without context is allowed; otherwise worker context must be allocatable");
+        workerContextRule.setDescription("Worker without context is allowed; otherwise worker context must be allocatable");
         rules.add(workerContextRule);
 
         RuleDefinition routingRule = new RuleDefinition();
@@ -30,21 +30,21 @@ public class RuleConfig {
         routingRule.setType(RuleType.QL_EXPRESS);
         routingRule.setContent(
                 "taskHasRoutingRequirement == false || workerContextAttributeCountryMatchesRoutingCode == true || workerContextChannelMatchesRoutingCode == true");
-        routingRule.setDesc("Routing code, when required, must be satisfied by worker context attribute or worker context channel");
+        routingRule.setDescription("Routing code, when required, must be satisfied by worker context attribute or worker context channel");
         rules.add(routingRule);
 
         RuleDefinition appRule = new RuleDefinition();
         appRule.setId("app_support_check");
         appRule.setType(RuleType.QL_EXPRESS);
         appRule.setContent("supportsProject == true");
-        appRule.setDesc("Worker must support the task project");
+        appRule.setDescription("Worker must support the task project");
         rules.add(appRule);
 
         RuleDefinition loadRule = new RuleDefinition();
         loadRule.setId("worker_load_check");
         loadRule.setType(RuleType.QL_EXPRESS);
         loadRule.setContent("appCount < 10");
-        loadRule.setDesc("Worker-supported project count must stay below 10");
+        loadRule.setDescription("Worker-supported project count must stay below 10");
         rules.add(loadRule);
 
         return rules;
@@ -57,14 +57,14 @@ public class RuleConfig {
         versionRule.setId("agent_version_check");
         versionRule.setType(RuleType.QL_EXPRESS);
         versionRule.setContent("agentVersion != null && agentVersion.startsWith('1.')");
-        versionRule.setDesc("Agent version must be 1.x");
+        versionRule.setDescription("Agent version must be 1.x");
         rules.add(versionRule);
 
         RuleDefinition frequencyRule = new RuleDefinition();
         frequencyRule.setId("usage_frequency_check");
         frequencyRule.setType(RuleType.QL_EXPRESS);
         frequencyRule.setContent("lastUsedTime == null || (System.currentTimeMillis() - lastUsedTime.toEpochSecond(java.time.ZoneOffset.UTC) * 1000) > 300000");
-        frequencyRule.setDesc("Worker must not have been used within the last 5 minutes");
+        frequencyRule.setDescription("Worker must not have been used within the last 5 minutes");
         rules.add(frequencyRule);
 
         return rules;
@@ -78,7 +78,7 @@ public class RuleConfig {
             demoRule.setId("demo_app_specific");
             demoRule.setType(RuleType.QL_EXPRESS);
             demoRule.setContent("appCount <= 5 && agentVersion.startsWith('1.0')");
-            demoRule.setDesc("demoApp requires appCount <= 5 and agentVersion 1.0.x");
+            demoRule.setDescription("demoApp requires appCount <= 5 and agentVersion 1.0.x");
             rules.add(demoRule);
         }
 
@@ -92,7 +92,7 @@ public class RuleConfig {
         basicRule.setId("basic_worker_check");
         basicRule.setType(RuleType.QL_EXPRESS);
         basicRule.setContent("isWorkerAvailable == true");
-        basicRule.setDesc("Worker must be available");
+        basicRule.setDescription("Worker must be available");
         rules.add(basicRule);
 
         RuleDefinition routingRule = new RuleDefinition();
@@ -100,7 +100,7 @@ public class RuleConfig {
         routingRule.setType(RuleType.QL_EXPRESS);
         routingRule.setContent(
                 "taskHasRoutingRequirement == false || workerContextAttributeCountryMatchesRoutingCode == true || workerContextChannelMatchesRoutingCode == true");
-        routingRule.setDesc("Routing code, when required, must be satisfied by worker context attribute or worker context channel");
+        routingRule.setDescription("Routing code, when required, must be satisfied by worker context attribute or worker context channel");
         rules.add(routingRule);
 
         return rules;

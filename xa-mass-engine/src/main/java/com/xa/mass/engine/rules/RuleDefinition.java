@@ -1,17 +1,22 @@
 package com.xa.mass.engine.rules;
 
+/**
+ * Worker-matching rule definition.
+ *
+ * <p>{@code content} is the canonical expression consumed by the rule
+ * evaluator. {@code expression} and {@code desc} are legacy aliases kept for
+ * mock-data compatibility; do not treat them as independent truth.
+ */
 public class RuleDefinition {
     private String id;
     private String name;
     private String description;
     private RuleType type;
-    private String content; // 规则体（脚本字符串或Json）
-    private String expression; // 规则表达式（与content相同，用于模板显示）
+    private String content;
+    private String expression;
     private String desc;
     private int priority = 1;
     private boolean enabled = true;
-    // 可扩展优先级/生效范围/适用对象等
-    // ... getters/setters
 
     public String getId() {
         return id;
@@ -30,7 +35,7 @@ public class RuleDefinition {
     }
 
     public String getDescription() {
-        return description;
+        return description != null ? description : desc;
     }
 
     public void setDescription(String description) {
@@ -46,31 +51,46 @@ public class RuleDefinition {
     }
 
     public String getContent() {
-        return content;
+        return content != null ? content : expression;
     }
 
     public void setContent(String content) {
         this.content = content;
-        // 同时设置expression，保持一致性
         this.expression = content;
     }
 
+    /**
+     * @deprecated Use {@link #getContent()}.
+     */
+    @Deprecated(since = "2.0.0", forRemoval = false)
     public String getExpression() {
-        return expression != null ? expression : content;
+        return getContent();
     }
 
+    /**
+     * @deprecated Use {@link #setContent(String)}.
+     */
+    @Deprecated(since = "2.0.0", forRemoval = false)
     public void setExpression(String expression) {
         this.expression = expression;
-        // 同时设置content，保持一致性
         this.content = expression;
     }
 
+    /**
+     * @deprecated Use {@link #getDescription()}.
+     */
+    @Deprecated(since = "2.0.0", forRemoval = false)
     public String getDesc() {
-        return desc;
+        return getDescription();
     }
 
+    /**
+     * @deprecated Use {@link #setDescription(String)}.
+     */
+    @Deprecated(since = "2.0.0", forRemoval = false)
     public void setDesc(String desc) {
         this.desc = desc;
+        this.description = desc;
     }
 
     public int getPriority() {

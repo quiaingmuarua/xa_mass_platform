@@ -91,6 +91,11 @@ public final class MassSdk {
             return new MassSdkApplication(delegate.build());
         }
 
+        /**
+         * @deprecated Prefer the SDK builder methods. This remains only for
+         * advanced embedding paths that need lower-level runtime configuration.
+         */
+        @Deprecated(forRemoval = false)
         public MassApplicationBuilder unwrap() {
             return delegate;
         }
@@ -133,6 +138,11 @@ public final class MassSdk {
             return this;
         }
 
+        /**
+         * @deprecated Prefer the SDK gateway option methods. This remains only
+         * for advanced embedding paths that need lower-level runtime configuration.
+         */
+        @Deprecated(forRemoval = false)
         public MassApplicationBuilder.GatewayBuilder unwrap() {
             return delegate;
         }
@@ -188,6 +198,11 @@ public final class MassSdk {
             return this;
         }
 
+        /**
+         * @deprecated Prefer the SDK engine option methods. This remains only
+         * for advanced embedding paths that need lower-level runtime configuration.
+         */
+        @Deprecated(forRemoval = false)
         public MassApplicationBuilder.EngineBuilder unwrap() {
             return delegate;
         }

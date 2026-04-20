@@ -1,9 +1,8 @@
 package com.xa.mass.base.jsondsl.processor;
 
-import com.google.gson.Gson;
-import com.xa.mass.base.jsondsl.builtin.GsonConfig;
 import com.xa.mass.base.jsondsl.builtin.JsonDslException;
 import com.xa.mass.base.jsondsl.model.JsonDslDefinition;
+import com.xa.mass.base.jsondsl.parser.JsonDslParser;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -17,8 +16,6 @@ import java.util.List;
  * </p>
  */
 public class JsonDslProcessorEngine {
-
-    private static final Gson gson = GsonConfig.buildGson();
 
     /**
      * 处理单个 DSL 定义（使用强类型处理器）
@@ -186,7 +183,7 @@ public class JsonDslProcessorEngine {
      * @return 处理结果
      */
     public static <T> List<T> processFromJson(String jsonDsl, ProcessingContext context, Class<T> targetType) {
-        JsonDslDefinition definition = gson.fromJson(jsonDsl, JsonDslDefinition.class);
+        JsonDslDefinition definition = JsonDslParser.parse(jsonDsl);
         return process(definition, context, targetType);
     }
 
@@ -200,7 +197,7 @@ public class JsonDslProcessorEngine {
      */
     public static <T> List<T> processChainFromJson(List<String> jsonDslList, ProcessingContext context, Class<T> targetType) {
         List<JsonDslDefinition> definitions = jsonDslList.stream()
-                .map(json -> gson.fromJson(json, JsonDslDefinition.class))
+                .map(JsonDslParser::parse)
                 .toList();
         return processChain(definitions, context, targetType);
     }
@@ -269,8 +266,11 @@ public class JsonDslProcessorEngine {
             if (!itemResult.getPassed().isEmpty()) {
                 passed.add(item);
             } else {
-                // 这里可以扩展为获取具体的失败原因
-                failed.add(new FilterResult.FilterFailure<>(item, List.of("未通过过滤条件")));
+                List<String> reasons = List.of("未通过过滤条件");
+                if (itemResult.getFailed() != null && !itemResult.getFailed().isEmpty()) {
+                    reasons = itemResult.getFailed().get(0).getReasons();
+                }
+                failed.add(new FilterResult.FilterFailure<>(item, reasons));
             }
         }
 

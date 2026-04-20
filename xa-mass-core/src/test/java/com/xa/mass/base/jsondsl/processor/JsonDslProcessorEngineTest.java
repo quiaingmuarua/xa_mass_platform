@@ -169,6 +169,28 @@ public class JsonDslProcessorEngineTest {
     }
 
     @Test
+    void testProcessFromJsonWithSnakeCaseAliases() {
+        JsonDslProcessorEngine.registerProcessor(testProcessor);
+
+        String jsonDsl = """
+                {
+                    "unique_id": "json-snake-case-dsl",
+                    "type": "generate",
+                    "desc": "Test DSL from snake_case JSON",
+                    "context": {
+                        "MODEL": "java.util.HashMap",
+                        "COUNT": 1
+                    }
+                }
+                """;
+
+        List<Map> result = JsonDslProcessorEngine.processFromJson(jsonDsl, context, Map.class);
+        assertNotNull(result);
+        assertFalse(result.isEmpty());
+        assertEquals("TestGenerateProcessor processed: json-snake-case-dsl", result.get(0).get("message"));
+    }
+
+    @Test
     void testProcessChainFromJson() {
         // 注册测试处理器
         JsonDslProcessorEngine.registerProcessor(testProcessor);

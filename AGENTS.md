@@ -47,10 +47,12 @@ Trust order:
 - `Worker`, `WorkerContext`, and WebSocket are current adapter names, not final universal platform boundaries.
 - `WorkerContext` is optional; stateless workers are part of the verified mainline.
 - UI, mock data, and demo APIs must not redefine kernel semantics.
+- Third-party embedding should enter through `MassSdk` and `MassSdkApplication`; `unwrap()` and direct engine/manager access are deprecated escape hatches.
 - `Task.sharedConfig` and `TaskMsg.input/output` are the generic payload boundaries.
 - `target` is only a conventional key inside `TaskMsg.input`, not a model field.
 - Create contract uses `inputs: List<Map<String,Object>>`; do not reintroduce `targetList`.
 - Routing truth should come from explicit rules and worker-context signals, not from `workerGroupId`.
+- Worker matching truth is `RuleDefinition.content` evaluated by QLExpress over `WorkerMatchContext`; legacy JSON-DSL generation is mock/dev fixture support only.
 - `Worker.attributes` and `WorkerContext.attributes` are auxiliary rule labels only.
 - `Worker.status` is the online truth; lock truth lives in `WorkerStorage` / `WorkerManager.isLocked(...)`.
 - Current concurrency model is conservative: one `Worker` is one active execution lane.

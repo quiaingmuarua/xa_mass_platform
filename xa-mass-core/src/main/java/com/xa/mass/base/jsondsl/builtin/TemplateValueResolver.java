@@ -126,7 +126,11 @@ public class TemplateValueResolver {
             }
 
             if (param instanceof String) {
-                return context.getVariable((String) param);
+                Object value = context.getVariable((String) param);
+                if (value == null && context.isStrict()) {
+                    throw new JsonDslException("Unresolved context variable: " + param);
+                }
+                return value;
             } else if (param instanceof List<?>) {
                 List<?> keys = (List<?>) param;
                 for (Object key : keys) {
@@ -135,9 +139,16 @@ public class TemplateValueResolver {
                         if (v != null) return v;
                     }
                 }
+                if (context.isStrict()) {
+                    throw new JsonDslException("Unresolved context variable candidates: " + keys);
+                }
                 return null;
             } else if (param == null) {
-                return context.getVariable("&index");
+                Object value = context.getVariable("&index");
+                if (value == null && context.isStrict()) {
+                    throw new JsonDslException("Unresolved context variable: &index");
+                }
+                return value;
             }
 
             return null;
@@ -219,7 +230,13 @@ public class TemplateValueResolver {
 
         public static Object resolve(String str, DslContext context) {
             Object v = context.getVariable(str);
-            return v != null ? v : str;
+            if (v != null) {
+                return v;
+            }
+            if (context != null && context.isStrict()) {
+                throw new JsonDslException("Unresolved variable: " + str);
+            }
+            return str;
         }
     }
 
