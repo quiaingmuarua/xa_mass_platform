@@ -306,8 +306,8 @@ class TaskManagerLifecycleTest {
         assertEquals(TaskMsgStatus.INIT, retriedMessage.getStatus());
         assertEquals(1, retriedMessage.getRetryCount());
         assertNull(retriedMessage.getFinalReason());
-        assertEquals("worker-1", retriedMessage.getWorkerId());
-        assertEquals("worker-context-1", retriedMessage.getWorkerContextId());
+        assertNull(retriedMessage.getWorkerId());
+        assertNull(retriedMessage.getWorkerContextId());
         assertNull(retriedMessage.getErrorMessage());
         assertEquals(TaskStatus.RUNNING, taskManager.getTask(task.getTid()).getStatus());
         assertEquals(0, taskManager.getTask(task.getTid()).getTaskSuccessNumber());

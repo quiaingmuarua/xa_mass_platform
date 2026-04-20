@@ -1138,13 +1138,35 @@ public class TaskManager {
                 return true;
             }
 
-            if (!activeAttempt.markFailed(TaskMsgAttemptFinalReason.BUSINESS_FAILURE, detail)) {
-                logger.warn("Failed to mark attempt {} as FAILED", activeAttempt.getAttemptId());
-                return false;
-            }
-            updateTaskMessageAttempt(taskId, msgId, activeAttempt);
-
             if (taskMsg.getRetryCount() < taskMsg.getMaxRetryCount()) {
+                if (!activeAttempt.markRevokedForRetry()) {
+                    logger.warn("Failed to revoke attempt {} for retry", activeAttempt.getAttemptId());
+                    return false;
+                }
+                updateTaskMessageAttempt(taskId, msgId, activeAttempt);
+
+                TaskMsgStatus beforeRetryFailureStatus = taskMsg.getStatus();
+                if (!taskMsg.markAsFailed(detail, TaskMsgFinalReason.BUSINESS_FAILED)) {
+                    logger.warn("Failed to mark task message {} as FAILED before retry reset", msgId);
+                    return false;
+                }
+                TraceEventLogger.taskMsgStatusTransition(
+                        taskMsg,
+                        beforeRetryFailureStatus,
+                        taskMsg.getStatus(),
+                        "HANDLE_TASK_MESSAGE_RESULT",
+                        "TaskManager",
+                        "task message marked failed before retry reset"
+                );
+                boolean storedFailed = updateTaskMessage(taskId, taskMsg);
+                if (!storedFailed) {
+                    logger.warn("Failed to persist intermediate failed state for task message {} in task {}", msgId, taskId);
+                    return false;
+                }
+                Task updatedTask = getTask(taskId);
+                if (updatedTask != null && !updatedTask.getStatus().isFinal()) {
+                    notifyTaskMessageFinal(updatedTask, taskMsg);
+                }
                 taskMsg.incrementRetryCount();
                 taskMsg.resetForRetry();
                 TraceEventLogger.taskMsgRetryReset(taskMsg,
@@ -1156,14 +1178,20 @@ public class TaskManager {
                 }
                 updateTaskProgress(taskId);
                 // The message is back in INIT — it is not final. Fire the dispatch listener so the
-                // scheduler re-assigns it. notifyTaskMessageFinal must NOT be called here because
-                // listeners contract requires a terminal-status message.
-                Task updatedTask = getTask(taskId);
+                // scheduler re-assigns it. Resource release already ran against the intermediate
+                // FAILED snapshot above before the logical message was reset to INIT.
+                updatedTask = getTask(taskId);
                 if (updatedTask != null && !updatedTask.getStatus().isFinal()) {
                     notifyTaskDispatchRequested(updatedTask);
                 }
                 return true;
             }
+
+            if (!activeAttempt.markFailed(TaskMsgAttemptFinalReason.BUSINESS_FAILURE, detail)) {
+                logger.warn("Failed to mark attempt {} as FAILED", activeAttempt.getAttemptId());
+                return false;
+            }
+            updateTaskMessageAttempt(taskId, msgId, activeAttempt);
 
             if (taskMsg.getStatus() == TaskMsgStatus.INIT && !taskMsg.markAsAssigned()) {
                 logger.warn("Failed to mark task message {} as ASSIGNED before failure finalization", msgId);
