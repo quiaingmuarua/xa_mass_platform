@@ -221,18 +221,14 @@ For payload and matching:
 
 ## 11. Guardrails For Future Agents
 
-Do not assume, without re-verification:
-
-- embedded runtime classes are the main runnable app
-- removed `v2` / archive code is not locally available to inspect
-- older API docs still match implementation exactly
-- current `Worker / WorkerContext / WebSocket` names are the platform's only future resource model
-- a documented capability is live just because it is written down
-
-Better default behavior:
+Use these positive defaults:
 
 - start from the real entrypoint and current call sites
 - check the root `pom.xml` before treating a top-level directory as active mainline code
+- verify API docs against controller DTOs and integration tests before changing request or response contracts
+- treat `Worker / WorkerContext / WebSocket` as current adapter vocabulary, not as the platform's final universal resource model
+- re-check whether historical files exist locally before treating older notes as actionable code paths
+- treat documented capabilities as unverified until code, tests, or runtime behavior prove they are live
 - add or update regression coverage before changing behavior
 - update the short state-machine, trace, and E2E baselines when lifecycle semantics change
 - sync active docs after verified behavior changes

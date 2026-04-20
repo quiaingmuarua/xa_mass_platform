@@ -1,8 +1,6 @@
 # Storage Baseline
 
-This document replaces the older refactor note that had become both stale and encoding-corrupted.
-
-Its goal is narrow: describe the current storage abstraction used by the active engine mainline.
+This document describes the current storage abstraction used by the active engine mainline.
 
 ## Scope
 

@@ -46,6 +46,7 @@ Keep these rules:
 - Prefer one stable document per concern, not multiple near-duplicates.
 - Prefer summary + pointers over long changelog-style repetition.
 - Do not reintroduce archive-style history dumps into `doc/`.
+- Historical notes belong in a short changelog only when they explain a current operational constraint; otherwise delete them.
 - Keep document navigation shallow: headings should usually stop at two levels unless the topic is intrinsically reference-shaped.
 - If a fact already lives normatively in one document, other documents should reference it rather than restating it in full.
 

@@ -30,3 +30,4 @@
   - [`../doc/AGENT_BASELINE.md`](../doc/AGENT_BASELINE.md)
   - [`../doc/VERIFIED_RUNBOOK.md`](../doc/VERIFIED_RUNBOOK.md)
   - [`../doc/engine/TASK_EXECUTION_FLOW.md`](../doc/engine/TASK_EXECUTION_FLOW.md)
+  - [`STORAGE_BASELINE.md`](STORAGE_BASELINE.md)

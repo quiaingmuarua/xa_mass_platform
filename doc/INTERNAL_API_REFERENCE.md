@@ -346,7 +346,7 @@ Response shape:
 }
 ```
 
-### 2.11 Append Items To Open-Ended Task
+### 2.12 Append Items To Open-Ended Task
 
 - Method: `POST`
 - Path: `/status/api/tasks/{taskId}/items`
@@ -385,7 +385,7 @@ Example response:
 }
 ```
 
-### 2.12 Seal Open-Ended Task
+### 2.13 Seal Open-Ended Task
 
 - Method: `PUT`
 - Path: `/status/api/tasks/{taskId}/seal`
