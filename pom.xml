@@ -25,8 +25,8 @@
         <module>xa-mass-core</module>
         <module>xa-mass-engine</module>
         <module>xa-mass-gateway</module>
-        <module>xa-mass-runtime</module>
-        <module>xa-mass-mock</module>
+        <module>xa-mass-sdk</module>
+        <module>xa-mass-dev-app</module>
     </modules>
     <scm>
         <connection/>
@@ -45,7 +45,7 @@
             <version>2.10.1</version>
         </dependency>
 
-        <!-- 结构化JSON日志依赖 -->
+        <!-- Structured JSON logging dependency. -->
         <dependency>
             <groupId>net.logstash.logback</groupId>
             <artifactId>logstash-logback-encoder</artifactId>
@@ -76,9 +76,10 @@
 
     <build>
         <plugins>
-            <!-- Spring Boot plugin is configured only in xa-mass-mock (the runnable module). -->
+            <!-- Spring Boot plugin is configured only in xa-mass-dev-app (the runnable module). -->
         </plugins>
     </build>
 
 
 </project>
+

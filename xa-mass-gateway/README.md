@@ -8,7 +8,7 @@
 
 ## Current Status
 
-- verified as part of full startup through `xa-mass-mock`
+- verified as part of full startup through `xa-mass-dev-app`
 - not independently validated as a standalone runnable app
 - participates in the verified happy-path task publish/result write-back flow
 
@@ -25,3 +25,4 @@
   - [`../AGENTS.md`](../AGENTS.md)
   - [`../doc/AGENT_BASELINE.md`](../doc/AGENT_BASELINE.md)
   - [`../doc/VERIFIED_RUNBOOK.md`](../doc/VERIFIED_RUNBOOK.md)
+

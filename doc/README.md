@@ -33,7 +33,7 @@ Recommended order for a new maintainer or coding agent:
 - [INTERNAL_API_REFERENCE.md](./INTERNAL_API_REFERENCE.md)
   - Current HTTP/API inventory, request contract, response shape, and implementation status.
 - [INTEGRATION_TESTS.md](./INTEGRATION_TESTS.md)
-  - Practical guide to the grouped `xa-mass-mock` integration suites: structure, coverage map, patterns, and current gaps.
+  - Practical guide to the grouped `xa-mass-dev-app` integration suites: structure, coverage map, patterns, and current gaps.
 - [engine/TASK_EXECUTION_FLOW.md](./engine/TASK_EXECUTION_FLOW.md)
   - Task execution flow through matching, dispatch, callback write-back, and resource release.
 
@@ -48,3 +48,4 @@ Keep these rules:
 - Do not reintroduce archive-style history dumps into `doc/`.
 - Keep document navigation shallow: headings should usually stop at two levels unless the topic is intrinsically reference-shaped.
 - If a fact already lives normatively in one document, other documents should reference it rather than restating it in full.
+

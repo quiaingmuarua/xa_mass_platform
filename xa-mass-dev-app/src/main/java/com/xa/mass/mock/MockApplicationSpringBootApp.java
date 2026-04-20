@@ -6,7 +6,8 @@ import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.engine.util.LogUtils;
 import com.xa.mass.gateway.queue.Envelope;
-import com.xa.mass.starter.MassApplication;
+import com.xa.mass.sdk.MassSdk;
+import com.xa.mass.sdk.MassSdkApplication;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -87,10 +88,10 @@ public class MockApplicationSpringBootApp {
 
     @Bean(destroyMethod = "stop")
     @Profile("dev")
-    public MassApplication fullStackRuntimeApplication(
+    public MassSdkApplication fullStackRuntimeApplication(
             @Qualifier("outputQueue") MessageQueue<Envelope> outputQueue,
             @Qualifier("inputQueue") MessageQueue<Envelope> inputQueue) {
-        return com.xa.mass.starter.builder.MassApplicationBuilder.create()
+        return MassSdk.builder()
                 .server(massWebSocketPort)
                 .gateway(gateway -> gateway
                         .enabled(true)
@@ -110,7 +111,7 @@ public class MockApplicationSpringBootApp {
 
     @Bean
     @Profile("dev")
-    public CommandLineRunner fullStackStarter(MassApplication app) {
+    public CommandLineRunner fullStackStarter(MassSdkApplication app) {
         return args -> {
             log.info("Starting internal gateway + engine runtime");
             try {
@@ -122,7 +123,7 @@ public class MockApplicationSpringBootApp {
                 Thread.sleep(1000L);
 
                 try {
-                    app.loadMockData(app.getEngine(), app.getEngine().getConfig());
+                    app.unwrap().loadMockData(app.getEngine(), app.getEngine().getConfig());
                     LogUtils.clearMdc();
                     log.info("Mock data loaded");
                 } catch (Exception e) {

@@ -10,8 +10,8 @@
         <version>0.0.1-SNAPSHOT</version>
     </parent>
 
-    <artifactId>xa-mass-mock</artifactId>
-    <name>xa-mass-mock</name>
+    <artifactId>xa-mass-dev-app</artifactId>
+    <name>xa-mass-dev-app</name>
     <build>
         <plugins>
             <plugin>
@@ -29,27 +29,17 @@
         </dependency>
         <dependency>
             <groupId>com.xa.mass</groupId>
-            <artifactId>xa-mass-runtime</artifactId>
+            <artifactId>xa-mass-sdk</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.xa.mass</groupId>
+            <artifactId>xa-mass-api</artifactId>
             <version>${project.version}</version>
         </dependency>
         <dependency>
             <groupId>com.xa.mass</groupId>
             <artifactId>xa-mass-engine</artifactId>
-            <version>0.0.1-SNAPSHOT</version>
-        </dependency>
-        <dependency>
-            <groupId>com.xa.mass</groupId>
-            <artifactId>xa-mass-core</artifactId>
-            <version>0.0.1-SNAPSHOT</version>
-        </dependency>
-        <dependency>
-            <groupId>com.xa.mass</groupId>
-            <artifactId>xa-mass-gateway</artifactId>
-            <version>0.0.1-SNAPSHOT</version>
-        </dependency>
-        <dependency>
-            <groupId>com.xa.mass</groupId>
-            <artifactId>xa-mass-api</artifactId>
             <version>${project.version}</version>
         </dependency>
         <dependency>
@@ -75,4 +65,5 @@
         </dependency>
     </dependencies>
 </project> 
+
 

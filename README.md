@@ -34,9 +34,10 @@ XA Mass Platform is a general distributed task scheduling platform.
 
 ## Current Reality
 
-- Real Spring Boot entrypoint: `xa-mass-mock`
-- Do not start from `xa-mass-runtime`
-- Current root reactor modules are `xa-mass-api`, `xa-mass-core`, `xa-mass-engine`, `xa-mass-gateway`, `xa-mass-runtime`, and `xa-mass-mock`
+- Real Spring Boot entrypoint: `xa-mass-dev-app`
+- Do not treat the embedded runtime classes as a Spring Boot app
+- Current root reactor modules are `xa-mass-api`, `xa-mass-core`, `xa-mass-engine`, `xa-mass-gateway`, `xa-mass-sdk`, and `xa-mass-dev-app`
+- `xa-mass-sdk` is the real Java embedding module; it now carries both the SDK facade and the embedded runtime composition
 - historical reactor/module experiments such as `xa-mass-base`, `xa-mass-starter`, and engine archive generations are no longer present in the current repository snapshot
 - Verified HTTP port: `server.port=8088`
 - Verified WebSocket gateway port: `mass.websocket.port=18088`
@@ -55,7 +56,7 @@ Run from the repository root:
 
 ```bash
 ./mvnw -DskipTests compile
-java -cp "xa-mass-mock/target/classes:xa-mass-runtime/target/classes:xa-mass-api/target/classes:xa-mass-engine/target/classes:xa-mass-gateway/target/classes:xa-mass-core/target/classes:<runtime-classpath>" \
+java -cp "xa-mass-dev-app/target/classes:xa-mass-sdk/target/classes:xa-mass-api/target/classes:xa-mass-engine/target/classes:xa-mass-gateway/target/classes:xa-mass-core/target/classes:<runtime-classpath>" \
   com.xa.mass.mock.MockApplicationSpringBootApp
 ```
 
@@ -69,17 +70,45 @@ Primary endpoints:
 
 ## Module Map
 
-- `xa-mass-mock`: verified runnable entry and full-stack validation shell
-- `xa-mass-runtime`: lifecycle/composition layer, not the Boot entry
+- `xa-mass-dev-app`: verified runnable entry and full-stack validation shell; starts runtime through `xa-mass-sdk`, exposes the current HTTP/status shell through `xa-mass-api`, and still wires engine-side manager/rule beans directly for dev and E2E validation
+- `xa-mass-sdk`: consumer-facing dependency entry and embedded runtime composition for the platform
 - `xa-mass-api`: REST controllers and status pages for validation/demo
 - `xa-mass-engine`: task state machine, assignment, result handling, and strategy extension points
 - `xa-mass-gateway`: WebSocket server and dispatch
 - `xa-mass-core`: shared models and infrastructure
 
+## SDK Entry
+
+For third-party embedding, depend on `xa-mass-sdk`.
+
+```xml
+<dependency>
+  <groupId>com.xa.mass</groupId>
+  <artifactId>xa-mass-sdk</artifactId>
+  <version>${xa.mass.version}</version>
+</dependency>
+```
+
+Minimal Java usage:
+
+```java
+import com.xa.mass.sdk.MassSdk;
+import com.xa.mass.sdk.MassSdkApplication;
+
+MassSdkApplication app = MassSdk.builder()
+        .server(19090, "/ws")
+        .gateway(gateway -> gateway.enabled(false))
+        .engine(engine -> engine.enabled(false))
+        .build();
+```
+
 Module boundary note:
 
 - top-level directories are not automatically active modules
 - check the root `pom.xml` before treating a directory as current mainline
+- `xa-mass-dev-app` uses `xa-mass-sdk` as its runtime entry and keeps `xa-mass-api` explicit only because the current mock app also serves REST/status HTML pages
+- avoid making `xa-mass-sdk` depend on API/UI modules; that would make third-party SDK consumers pull demo web surfaces unnecessarily
+- embedded runtime composition now lives inside `xa-mass-sdk` under `com.xa.mass.starter.*`
 - if an older doc references removed modules or archive code, treat that as historical drift rather than something missing from the current repo
 
 ## Documentation Layout
@@ -87,3 +116,5 @@ Module boundary note:
 - Keep active operational docs under `doc/`
 - Historical archive docs have been removed from the current repository snapshot during convergence
 - If a document disagrees with code or runtime, prefer code and verified runtime
+
+

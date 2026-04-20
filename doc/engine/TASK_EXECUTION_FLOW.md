@@ -136,14 +136,16 @@ Verified runtime release behavior:
 - `xa-mass-engine/src/main/java/com/xa/mass/engine/listener/TaskWorkerAssignListener.java`
 - `xa-mass-engine/src/main/java/com/xa/mass/engine/listener/SimpleTaskMsgAssignListener.java`
 - `xa-mass-engine/src/main/java/com/xa/mass/engine/model/WorkerMatchContext.java`
-- `xa-mass-runtime/src/main/java/com/xa/mass/starter/MassEngine.java`
-- `xa-mass-runtime/src/main/java/com/xa/mass/starter/GatewayTaskMsgPublisher.java`
-- `xa-mass-runtime/src/main/java/com/xa/mass/starter/GatewayTaskResultHandler.java`
-- `xa-mass-mock/src/main/java/com/xa/mass/mock/starter/WebSocketClientStarter.java`
-- `xa-mass-mock/src/main/java/com/xa/mass/mock/client/MassWebSocketClientImpl.java`
+- `xa-mass-sdk/src/main/java/com/xa/mass/starter/MassEngine.java`
+- `xa-mass-sdk/src/main/java/com/xa/mass/starter/GatewayTaskMsgPublisher.java`
+- `xa-mass-sdk/src/main/java/com/xa/mass/starter/GatewayTaskResultHandler.java`
+- `xa-mass-dev-app/src/main/java/com/xa/mass/mock/starter/WebSocketClientStarter.java`
+- `xa-mass-dev-app/src/main/java/com/xa/mass/mock/client/MassWebSocketClientImpl.java`
 
 ## 8. Still Not Converged
 
 - `SimpleTaskScheduler.scheduleTasks()` is still a stub
 - Redis and Database storage remain fail-fast placeholders
 - broader API end-to-end coverage is still incomplete for some cancel follow-up variants
+
+

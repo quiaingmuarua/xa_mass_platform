@@ -314,7 +314,8 @@ Query params:
 Response shape:
 
 - primary per-item payload truth is `messages[*].input` and `messages[*].output`
-- compatibility readers may still see `target` because `TaskMsg.getTarget()` projects `input["target"]`
+- `messages[*].compatTarget` is the explicit backwards-compat projection of `input["target"]`
+- raw `target` is no longer part of the intended API read model
 
 ```json
 {
@@ -326,15 +327,21 @@ Response shape:
     {
       "msgId": "msg-1",
       "taskId": "task-uuid",
+      "status": "SUCCESS",
       "workerId": "worker-a",
       "workerContextId": "worker-context-a",
-      "status": "SUCCESS",
       "batchId": "batch-1",
+      "retryCount": 0,
+      "maxRetryCount": 3,
       "finalReason": "BUSINESS_SUCCESS",
+      "result": "ok",
+      "errorMessage": null,
+      "errorCode": null,
       "input": {
         "target": "target-001"
       },
-      "output": {}
+      "output": {},
+      "compatTarget": "target-001"
     }
   ]
 }

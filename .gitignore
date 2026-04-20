@@ -39,10 +39,8 @@ cursor.rules
 /.mvn/
 /log/
 /catalina.base_IS_UNDEFINED/
-/.mvn/
-/.mvn/
 /logs/
-/xa-mass-mock/logs/
+/xa-mass-dev-app/logs/
 .DS_Store
 **/.DS_Store
 /.claude/

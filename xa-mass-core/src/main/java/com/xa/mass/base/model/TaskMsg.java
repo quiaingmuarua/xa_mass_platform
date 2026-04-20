@@ -1,5 +1,6 @@
 package com.xa.mass.base.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.xa.mass.base.enums.taskmsg.TaskMsgFinalReason;
 import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 
@@ -233,6 +234,7 @@ public class TaskMsg {
     }
 
     /** Compatibility accessor: returns input.get("target") cast to String. */
+    @JsonIgnore
     public String getTarget() {
         return input != null ? (String) input.get("target") : null;
     }

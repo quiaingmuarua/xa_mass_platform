@@ -335,12 +335,40 @@ public class TaskApiController {
         int from = Math.max(0, (page - 1) * size);
         int to = Math.min(from + size, total);
         List<TaskMsg> pageList = from < to ? all.subList(from, to) : Collections.emptyList();
+        List<Map<String, Object>> messages = pageList.stream()
+                .map(this::toTaskMessageView)
+                .collect(Collectors.toList());
         return success(Map.of(
                 "total", total,
                 "page", page,
                 "size", size,
-                "messages", pageList
+                "messages", messages
         ));
+    }
+
+    private Map<String, Object> toTaskMessageView(TaskMsg taskMsg) {
+        Map<String, Object> view = new LinkedHashMap<>();
+        view.put("msgId", taskMsg.getMsgId());
+        view.put("taskId", taskMsg.getTaskId());
+        view.put("status", taskMsg.getStatus() != null ? taskMsg.getStatus().name() : null);
+        view.put("workerId", taskMsg.getWorkerId());
+        view.put("workerContextId", taskMsg.getWorkerContextId());
+        view.put("batchId", taskMsg.getBatchId());
+        view.put("retryCount", taskMsg.getRetryCount());
+        view.put("maxRetryCount", taskMsg.getMaxRetryCount());
+        view.put("result", taskMsg.getResult());
+        view.put("errorMessage", taskMsg.getErrorMessage());
+        view.put("errorCode", taskMsg.getErrorCode());
+        view.put("finalReason", taskMsg.getFinalReason() != null ? taskMsg.getFinalReason().name() : null);
+        view.put("assignedTime", taskMsg.getAssignedTime());
+        view.put("createTime", taskMsg.getCreateTime());
+        view.put("updateTime", taskMsg.getUpdateTime());
+        view.put("startTime", taskMsg.getStartTime());
+        view.put("completeTime", taskMsg.getCompleteTime());
+        view.put("input", taskMsg.getInput() == null ? Map.of() : new LinkedHashMap<>(taskMsg.getInput()));
+        view.put("output", taskMsg.getOutput() == null ? Map.of() : new LinkedHashMap<>(taskMsg.getOutput()));
+        view.put("compatTarget", taskMsg.getTarget());
+        return view;
     }
 
     private Map<String, Object> success(Map<String, ?> data) {

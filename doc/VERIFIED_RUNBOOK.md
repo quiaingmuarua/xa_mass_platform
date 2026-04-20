@@ -15,7 +15,7 @@ Testing stance:
 
 - the project treats end-to-end integration coverage as the primary acceptance gate
 - unit and slice tests still matter, but they are support coverage
-- the `xa-mass-mock` integration suites are organized by domain under `com.xa.mass.mock.e2e`
+- the `xa-mass-dev-app` integration suites are organized by domain under `com.xa.mass.mock.e2e`
 
 For endpoint inventory, request contracts, and response shapes, use [INTERNAL_API_REFERENCE.md](./INTERNAL_API_REFERENCE.md).
 
@@ -32,9 +32,12 @@ For endpoint inventory, request contracts, and response shapes, use [INTERNAL_AP
 
 ## 2. Current Conclusions
 
-- The real Spring Boot entrypoint is `xa-mass-mock`.
-- `xa-mass-runtime` is not the runnable Boot entry.
-- The current root reactor is `xa-mass-api`, `xa-mass-core`, `xa-mass-engine`, `xa-mass-gateway`, `xa-mass-runtime`, and `xa-mass-mock`.
+- The real Spring Boot entrypoint is `xa-mass-dev-app`.
+- `xa-mass-sdk` is the consumer-facing dependency entry for third-party embedding.
+- Embedded runtime composition now lives inside `xa-mass-sdk`; it is not a standalone Boot entry.
+- `xa-mass-dev-app` starts runtime through `xa-mass-sdk`, exposes the current status/demo pages through `xa-mass-api`, and still wires engine-side manager/rule beans directly for dev and E2E validation.
+- Keep API/UI out of `xa-mass-sdk` so third-party SDK consumers do not inherit demo HTTP surfaces by default.
+- The current root reactor is `xa-mass-api`, `xa-mass-core`, `xa-mass-engine`, `xa-mass-gateway`, `xa-mass-sdk`, and `xa-mass-dev-app`.
 - historical module experiments such as `xa-mass-base` and `xa-mass-starter` are not part of the current repository snapshot.
 - Default `dev` startup auto-starts mock WebSocket clients through `mock.client.auto-start=true`.
 - The currently verified API happy path is:
@@ -80,7 +83,7 @@ Run from repo root:
 
 ```bash
 ./mvnw -DskipTests compile
-java -cp "xa-mass-mock/target/classes:xa-mass-runtime/target/classes:xa-mass-api/target/classes:xa-mass-engine/target/classes:xa-mass-gateway/target/classes:xa-mass-core/target/classes:<runtime-classpath>" \
+java -cp "xa-mass-dev-app/target/classes:xa-mass-sdk/target/classes:xa-mass-api/target/classes:xa-mass-engine/target/classes:xa-mass-gateway/target/classes:xa-mass-core/target/classes:<runtime-classpath>" \
   com.xa.mass.mock.MockApplicationSpringBootApp
 ```
 
@@ -111,7 +114,7 @@ Default `dev` startup facts:
 
 - `MockApplicationSpringBootApp` is the verified entry path
 - `WebSocketClientStarter` starts on `ApplicationReadyEvent`
-- `xa-mass-mock/src/main/resources/application.yml` enables `mock.client.auto-start=true`
+- `xa-mass-dev-app/src/main/resources/application.yml` enables `mock.client.auto-start=true`
 - `server.port` is the HTTP port, currently `8088`
 - `mass.websocket.port` is the gateway WebSocket port, currently `18088`
 - in the verified default path, mock workers connect automatically to `ws://localhost:18088/ws`
@@ -263,7 +266,7 @@ Verified boundary:
 Focused verified regression command on 2026-04-17:
 
 ```bash
-mvn -pl xa-mass-mock -am -Dtest=WorkerAttributesTest,WorkerContextAttributesTest,WorkerMatchContextTest,QLExpressRuleEvaluatorTest,RuleBasedTaskWorkerMatchingStrategyTest,TaskApiDelayedWorkerAvailabilityIntegrationTest,TaskApiWorkerContextAttributeRoutingIntegrationTest,TaskApiWorkerWithoutContextIntegrationTest,WorkerManualDebugChatIntegrationTest,MassApplicationLoadMockDataTest -Dsurefire.failIfNoSpecifiedTests=false test
+mvn -pl xa-mass-dev-app -am -Dtest=WorkerAttributesTest,WorkerContextAttributesTest,WorkerMatchContextTest,QLExpressRuleEvaluatorTest,RuleBasedTaskWorkerMatchingStrategyTest,TaskApiDelayedWorkerAvailabilityIntegrationTest,TaskApiWorkerContextAttributeRoutingIntegrationTest,TaskApiWorkerWithoutContextIntegrationTest,WorkerManualDebugChatIntegrationTest,MassApplicationLoadMockDataTest -Dsurefire.failIfNoSpecifiedTests=false test
 ```
 
 Representative coverage proves:
@@ -286,3 +289,5 @@ Representative coverage proves:
 - Redis and Database storage remain fail-fast placeholders
 - the active EventBus implementation is Guava-backed; Redis-backed behavior is not part of the verified runtime path
 - API integration coverage is improved but still not exhaustive for all cancel follow-up variants
+
+

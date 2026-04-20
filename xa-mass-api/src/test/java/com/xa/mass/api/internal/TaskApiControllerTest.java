@@ -484,7 +484,9 @@ class TaskApiControllerTest {
                 .andExpect(jsonPath("$.size").value(2))
                 .andExpect(jsonPath("$.messages.length()").value(1))
                 .andExpect(jsonPath("$.messages[0].msgId").value("msg-3"))
-                .andExpect(jsonPath("$.messages[0].input.target").value("gamma"));
+                .andExpect(jsonPath("$.messages[0].input.target").value("gamma"))
+                .andExpect(jsonPath("$.messages[0].compatTarget").value("gamma"))
+                .andExpect(jsonPath("$.messages[0].target").doesNotExist());
     }
 
     private Task taskWithStatus(TaskStatus status) {

@@ -2,7 +2,7 @@
 
 Last updated: 2026-04-17
 
-This document is the active guide for integration tests in `xa-mass-mock`.
+This document is the active guide for integration tests in `xa-mass-dev-app`.
 It is intentionally concise: structure, coverage shape, test patterns, and current gaps.
 
 Use with:
@@ -37,7 +37,7 @@ For this repository, integration tests are the mainline acceptance layer.
 All active integration tests live under:
 
 ```text
-xa-mass-mock/src/test/java/com/xa/mass/mock/e2e/
+xa-mass-dev-app/src/test/java/com/xa/mass/mock/e2e/
 ```
 
 Current domain layout:
@@ -50,7 +50,7 @@ Current domain layout:
 
 Shared base:
 
-- `xa-mass-mock/src/test/java/com/xa/mass/mock/e2e/support/AbstractMockE2eTest.java`
+- `xa-mass-dev-app/src/test/java/com/xa/mass/mock/e2e/support/AbstractMockE2eTest.java`
 
 Common runtime shape:
 
@@ -91,7 +91,7 @@ Important request-contract note:
 Run the mock integration layer and supporting modules:
 
 ```bash
-./mvnw -pl xa-mass-mock -am clean test
+./mvnw -pl xa-mass-dev-app -am clean test
 ```
 
 Run the full repository regression:
@@ -103,7 +103,7 @@ Run the full repository regression:
 Run the currently focused regression subset:
 
 ```bash
-mvn -pl xa-mass-mock -am -Dtest=WorkerAttributesTest,WorkerContextAttributesTest,WorkerMatchContextTest,QLExpressRuleEvaluatorTest,RuleBasedTaskWorkerMatchingStrategyTest,TaskApiDelayedWorkerAvailabilityIntegrationTest,TaskApiWorkerContextAttributeRoutingIntegrationTest,TaskApiWorkerWithoutContextIntegrationTest,WorkerManualDebugChatIntegrationTest,MassApplicationLoadMockDataTest -Dsurefire.failIfNoSpecifiedTests=false test
+mvn -pl xa-mass-dev-app -am -Dtest=WorkerAttributesTest,WorkerContextAttributesTest,WorkerMatchContextTest,QLExpressRuleEvaluatorTest,RuleBasedTaskWorkerMatchingStrategyTest,TaskApiDelayedWorkerAvailabilityIntegrationTest,TaskApiWorkerContextAttributeRoutingIntegrationTest,TaskApiWorkerWithoutContextIntegrationTest,WorkerManualDebugChatIntegrationTest,MassApplicationLoadMockDataTest -Dsurefire.failIfNoSpecifiedTests=false test
 ```
 
 Expected result:
@@ -277,3 +277,4 @@ Keep it useful by:
 - recording what the suite proves, not every assertion line by line
 - moving normative lifecycle rules to `STATE_MACHINE_BASELINE.md`
 - moving release-gate minimums to `E2E_BASELINE.md`
+

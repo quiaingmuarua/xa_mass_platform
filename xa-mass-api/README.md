@@ -4,7 +4,7 @@
 
 - REST controller and status page layer
 - DTO / request-response boundary
-- loaded by `xa-mass-mock` Spring Boot scanning
+- loaded by `xa-mass-dev-app` Spring Boot scanning
 
 ## Current Status
 
@@ -27,3 +27,4 @@
   - [`../doc/AGENT_BASELINE.md`](../doc/AGENT_BASELINE.md)
   - [`../doc/VERIFIED_RUNBOOK.md`](../doc/VERIFIED_RUNBOOK.md)
   - [`../doc/INTERNAL_API_REFERENCE.md`](../doc/INTERNAL_API_REFERENCE.md)
+

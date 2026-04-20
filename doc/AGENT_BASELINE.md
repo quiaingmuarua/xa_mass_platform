@@ -80,13 +80,16 @@ Interpretation rules:
 
 ## 5. Mainline Reality
 
-- The real Spring Boot entry is `xa-mass-mock`.
-- `xa-mass-runtime` is a composition layer, not the primary Boot entry.
-- The current mainline reactor is defined by the root `pom.xml`: `xa-mass-api`, `xa-mass-core`, `xa-mass-engine`, `xa-mass-gateway`, `xa-mass-runtime`, `xa-mass-mock`.
+- The real Spring Boot entry is `xa-mass-dev-app`.
+- `xa-mass-sdk` is the consumer-facing dependency entry for third-party embedding.
+- Embedded runtime composition now lives inside `xa-mass-sdk` under `com.xa.mass.starter.*`; it is not the primary Boot entry.
+- `xa-mass-dev-app` should obtain runtime capability through `xa-mass-sdk`; its explicit `xa-mass-api` dependency is only for the current REST/status-page validation shell.
+- Do not make `xa-mass-sdk` depend on `xa-mass-api` just to make `xa-mass-dev-app` depend on one internal artifact; SDK consumers should not pull demo web surfaces by default.
+- The current mainline reactor is defined by the root `pom.xml`: `xa-mass-api`, `xa-mass-core`, `xa-mass-engine`, `xa-mass-gateway`, `xa-mass-sdk`, `xa-mass-dev-app`.
 - `com.xa.mass.engine` is the active engine path.
 - historical `v2` / archive engine generations are no longer present in the current repository snapshot.
 - EventBus mainline has converged onto `com.xa.mass.base.channel.eventbus.core` and `com.xa.mass.base.channel.eventbus.event`.
-- Mainline acceptance is end-to-end integration-test-driven through `xa-mass-mock`; unit tests are support coverage, not the primary acceptance gate.
+- Mainline acceptance is end-to-end integration-test-driven through `xa-mass-dev-app`; unit tests are support coverage, not the primary acceptance gate.
 - The worker page now includes a debug conversation surface backed by `POST /status/workers/send-message` and `GET /status/workers/message-history`.
 
 ## 6. Current Task And Payload Contract
@@ -198,9 +201,9 @@ Important current rules:
 
 For startup/runtime:
 
-- `xa-mass-mock/src/main/java/com/xa/mass/mock/MockApplicationSpringBootApp.java`
-- `xa-mass-runtime/src/main/java/com/xa/mass/starter/MassApplication.java`
-- `xa-mass-runtime/src/main/java/com/xa/mass/starter/MassEngine.java`
+- `xa-mass-dev-app/src/main/java/com/xa/mass/mock/MockApplicationSpringBootApp.java`
+- `xa-mass-sdk/src/main/java/com/xa/mass/starter/MassApplication.java`
+- `xa-mass-sdk/src/main/java/com/xa/mass/starter/MassEngine.java`
 
 For lifecycle/API:
 
@@ -218,7 +221,7 @@ For payload and matching:
 
 Do not assume, without re-verification:
 
-- `xa-mass-runtime` is the main runnable app
+- embedded runtime classes are the main runnable app
 - removed `v2` / archive code is not locally available to inspect
 - older API docs still match implementation exactly
 - current `Worker / WorkerContext / WebSocket` names are the platform's only future resource model
@@ -232,3 +235,5 @@ Better default behavior:
 - update the short state-machine, trace, and E2E baselines when lifecycle semantics change
 - sync active docs after verified behavior changes
 - keep archive material under archive paths instead of active source trees
+
+

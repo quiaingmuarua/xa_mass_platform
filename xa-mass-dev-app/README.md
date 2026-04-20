@@ -1,6 +1,6 @@
-# xa-mass-mock
+# xa-mass-dev-app
 
-`xa-mass-mock` is the verified runnable entry module for the current repository mainline.
+`xa-mass-dev-app` is the verified runnable entry module for the current repository mainline.
 
 Use this module for end-to-end validation of:
 
@@ -13,7 +13,8 @@ Repository-level startup instructions in [`../doc/VERIFIED_RUNBOOK.md`](../doc/V
 ## Current Role
 
 - real Spring Boot entrypoint: `com.xa.mass.mock.MockApplicationSpringBootApp`
-- wires `api + runtime + gateway + engine`
+- starts runtime through `xa-mass-sdk`, exposes the current HTTP/status shell through `xa-mass-api`, and still wires engine-side manager/rule beans directly for dev and E2E validation
+- starts platform runtime through `xa-mass-sdk`; runtime still composes gateway and engine internally
 - default `dev` startup auto-starts mock WebSocket clients
 
 ## Port Model
@@ -37,7 +38,7 @@ Start from the repository root:
 
 ```bash
 ./mvnw -DskipTests compile
-java -cp "xa-mass-mock/target/classes:xa-mass-runtime/target/classes:xa-mass-api/target/classes:xa-mass-engine/target/classes:xa-mass-gateway/target/classes:xa-mass-core/target/classes:<runtime-classpath>" \
+java -cp "xa-mass-dev-app/target/classes:xa-mass-sdk/target/classes:xa-mass-api/target/classes:xa-mass-engine/target/classes:xa-mass-gateway/target/classes:xa-mass-core/target/classes:<runtime-classpath>" \
   com.xa.mass.mock.MockApplicationSpringBootApp
 ```
 
@@ -52,7 +53,7 @@ After startup:
 
 For the verified default `dev` path, mock clients are started by:
 
-- `xa-mass-mock/src/main/java/com/xa/mass/mock/starter/WebSocketClientStarter.java`
+- `xa-mass-dev-app/src/main/java/com/xa/mass/mock/starter/WebSocketClientStarter.java`
 
 Startup behavior:
 
@@ -95,7 +96,7 @@ Mainline stance:
 Focused verified regression command:
 
 ```bash
-mvn --% -pl xa-mass-mock -am -Dtest=MassWebSocketClientImplTest,TaskApiIntegrationTest,TaskApiFailureResultIntegrationTest,TaskApiLifecycleGuardsIntegrationTest,WebSocketClientStarterTest -Dsurefire.failIfNoSpecifiedTests=false test
+mvn --% -pl xa-mass-dev-app -am -Dtest=MassWebSocketClientImplTest,TaskApiIntegrationTest,TaskApiFailureResultIntegrationTest,TaskApiLifecycleGuardsIntegrationTest,WebSocketClientStarterTest -Dsurefire.failIfNoSpecifiedTests=false test
 ```
 
 Covered areas:
@@ -106,3 +107,5 @@ Covered areas:
 - `e2e/audit`: `stateValidation` exposure and terminal metadata consistency through the real HTTP path
 - `WebSocketClientStarterTest`: auto-start and idempotent startup behavior
 - `MassWebSocketClientImplTest`: ignore `response=true` task frames, avoid echo loops, and allow configurable `SUCCESS` / `FAILED` result payloads
+
+

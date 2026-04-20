@@ -19,8 +19,8 @@ If you need fast orientation:
 ## 0. TL;DR
 
 - XA Mass Platform is a distributed task scheduling platform for large-scale work distribution, execution, result write-back, and lifecycle audit
-- Real boot entry: `xa-mass-mock`
-- Do not start from `xa-mass-runtime`
+- Real boot entry: `xa-mass-dev-app`
+- Do not treat embedded runtime classes as a Spring Boot app
 - Trust code and verified runtime over repository docs
 - Project direction is library/SDK-first; HTTP pages and backend endpoints are validation/demo surfaces
 - Mainline change discipline is now end-to-end integration-test-driven first; unit tests remain important, but they are support coverage rather than the primary acceptance gate
@@ -99,13 +99,13 @@ Keep these text-formatting rules fixed to reduce agent and Windows-tooling drift
   - `xa-mass-engine`
   - `xa-mass-gateway`
   - `xa-mass-api`
-  - `xa-mass-runtime`
-  - `xa-mass-mock`
+  - `xa-mass-sdk`
+  - `xa-mass-dev-app`
 
 Important boundary:
 
 - for active shared models/enums/eventbus code, prefer `xa-mass-core`
-- for active lifecycle/composition code, prefer `xa-mass-runtime`
+- for third-party embedding and embedded runtime composition, prefer `xa-mass-sdk`
 - older docs may still mention removed modules such as `xa-mass-base` or `xa-mass-starter`; treat those names as historical only
 
 ## 2. Read This First
@@ -138,14 +138,14 @@ Deleted historical material that should not be treated as missing:
 
 Current verified Spring Boot entrypoint:
 
-- `xa-mass-mock/src/main/java/com/xa/mass/mock/MockApplicationSpringBootApp.java`
+- `xa-mass-dev-app/src/main/java/com/xa/mass/mock/MockApplicationSpringBootApp.java`
 
 Do not assume:
 
-- `xa-mass-runtime` is the runnable Spring Boot app
+- embedded runtime classes are the runnable Spring Boot app
 - `MassApplication.java` is a Spring Boot entry
 
-`xa-mass-runtime` is a lifecycle/composition layer, not the verified Boot entry.
+Embedded runtime composition now lives inside `xa-mass-sdk`; it is not the verified Boot entry.
 
 ## 4. Verified Startup
 
@@ -153,7 +153,7 @@ Run from repo root:
 
 ```bash
 ./mvnw -DskipTests compile
-java -cp "xa-mass-mock/target/classes:xa-mass-runtime/target/classes:xa-mass-api/target/classes:xa-mass-engine/target/classes:xa-mass-gateway/target/classes:xa-mass-core/target/classes:<runtime-classpath>" \
+java -cp "xa-mass-dev-app/target/classes:xa-mass-sdk/target/classes:xa-mass-api/target/classes:xa-mass-engine/target/classes:xa-mass-gateway/target/classes:xa-mass-core/target/classes:<runtime-classpath>" \
   com.xa.mass.mock.MockApplicationSpringBootApp
 ```
 
@@ -173,7 +173,7 @@ Verified endpoints:
 
 Default startup facts:
 
-- `xa-mass-mock/src/main/resources/application.yml` activates the `local` Spring profile by default (`spring.profiles.active: local`).
+- `xa-mass-dev-app/src/main/resources/application.yml` activates the `local` Spring profile by default (`spring.profiles.active: local`).
 - `application-local.yml` is the active developer override (low connection limits, DEBUG logging). `application-dev.yml` targets CI/integration environments.
 - `server.port` is the Spring Boot HTTP port, currently `8088`
 - `mass.websocket.port` is the gateway WebSocket port, currently `18088`
@@ -190,7 +190,7 @@ Profile selection guide:
 ## 5. Current Reality, Not Marketing
 
 - The app can compile and run.
-- The current mainline is `core + engine + gateway + api + runtime + mock`, as defined by the root `pom.xml`.
+- The current mainline is `core + engine + gateway + api + sdk + dev-app`, as defined by the root `pom.xml`.
 - The active runtime path now uses the current `channel/eventbus/core` and `channel/eventbus/event` packages.
 - New EventBus docs describe target architecture, not fully verified runtime reality.
 - historical `v2` / archive code is no longer present in the current repository snapshot.
@@ -199,12 +199,13 @@ Profile selection guide:
 
 ## 5.1 Module Map
 
-### `xa-mass-mock`
+### `xa-mass-dev-app`
 
 Role:
 
 - Real Spring Boot entrypoint
-- Wires `api + runtime + gateway + engine`
+- Starts runtime through `xa-mass-sdk`, exposes the current HTTP/status shell through `xa-mass-api`, and still wires engine-side manager/rule beans directly for dev and E2E validation
+- Uses `xa-mass-sdk` as the runtime entry; `xa-mass-api` remains the demo/status-page surface
 - Loads mock data and starts mock clients for end-to-end validation
 
 Current status:
@@ -214,41 +215,46 @@ Current status:
 
 Open first:
 
-- `xa-mass-mock/src/main/java/com/xa/mass/mock/MockApplicationSpringBootApp.java`
-- `xa-mass-mock/src/main/resources/application.yml`
-- `xa-mass-mock/src/main/java/com/xa/mass/mock/starter/WebSocketClientStarter.java`
+- `xa-mass-dev-app/src/main/java/com/xa/mass/mock/MockApplicationSpringBootApp.java`
+- `xa-mass-dev-app/src/main/resources/application.yml`
+- `xa-mass-dev-app/src/main/java/com/xa/mass/mock/starter/WebSocketClientStarter.java`
 
 Notes:
 
 - This is the real operational entry, not just a demo shell.
+- `xa-mass-dev-app` currently keeps a deliberate direct `xa-mass-engine` dependency because the dev/E2E shell wires `TaskManager`, `WorkerManager`, `RuleManager`, and mock-data helpers directly. Treat that as an explicit test-surface exception. Platform runtime still enters through `xa-mass-sdk`, and new direct `xa-mass-gateway` / `xa-mass-core` dependencies should still be avoided unless there is another equally deliberate reason.
+- `xa-mass-api` is intentionally still explicit here because the current mock app serves REST/status HTML pages. Do not make `xa-mass-sdk` depend on the API/UI layer just to make mock's `pom` shorter.
 - Default `dev` startup now includes mock WebSocket clients when `mock.client.auto-start=true`.
 - `mock.client.task-result-status` can be used to simulate success or failure result write-back in tests.
 - Legacy client-only Spring Boot entry and client monitor endpoints have been removed.
 - New focused runtime regression tests live here.
 
-### `xa-mass-runtime`
+### `xa-mass-sdk`
 
 Role:
 
-- Lifecycle/composition layer
-- Builds and starts `MassApplication`, `MassEngine`, `MassGateway`
+- Consumer-facing dependency entry for third-party embedding
+- Carries the embedded runtime composition under `com.xa.mass.starter.*`
+- Provides `com.xa.mass.sdk.MassSdk` as the recommended starting point for library users
 
 Current status:
 
-- Important internally
-- Not the verified Spring Boot entrypoint
+- Active mainline module
+- Intended artifact for external embedding and advanced embedded-runtime usage
 
 Open first:
 
-- `xa-mass-runtime/src/main/java/com/xa/mass/starter/MassApplication.java`
-- `xa-mass-runtime/src/main/java/com/xa/mass/starter/builder/MassApplicationBuilder.java`
-- `xa-mass-runtime/src/main/java/com/xa/mass/starter/MassEngine.java`
+- `xa-mass-sdk/src/main/java/com/xa/mass/sdk/MassSdk.java`
+- `xa-mass-sdk/src/main/java/com/xa/mass/sdk/MassSdkApplication.java`
+- `xa-mass-sdk/src/main/java/com/xa/mass/starter/MassApplication.java`
+- `xa-mass-sdk/src/main/java/com/xa/mass/starter/builder/MassApplicationBuilder.java`
+- `xa-mass-sdk/src/main/java/com/xa/mass/starter/MassEngine.java`
 
 Notes:
 
-- Do not treat this as the current `spring-boot:run` target.
 - Runtime publishes and consumes events through the current `channel/eventbus/core` and `channel/eventbus/event` packages from this module.
-- `xa-mass-runtime/src/main/java/com/xa/mass/starter/worker/WebSocketWorkerAdapter.java` is the concrete `WorkerAdapter` for WebSocket-connected workers; wires `GatewayTaskMsgPublisher` as the dispatch side.
+- `xa-mass-sdk/src/main/java/com/xa/mass/starter/worker/WebSocketWorkerAdapter.java` is the concrete `WorkerAdapter` for WebSocket-connected workers; wires `GatewayTaskMsgPublisher` as the dispatch side.
+- Treat `com.xa.mass.sdk.*` as the recommended public entry surface and `com.xa.mass.starter.*` as the lower-level embedded runtime surface in the same artifact.
 
 ### `xa-mass-api`
 
@@ -260,7 +266,7 @@ Role:
 
 Current status:
 
-- Loaded via `xa-mass-mock` Spring Boot scanning
+- Loaded via `xa-mass-dev-app` Spring Boot scanning
 - Not an independently verified app
 
 Open first:
@@ -300,7 +306,7 @@ Notes:
 
 - Mainline engine tests are the active regression surface.
 - `TaskWorkerMatchingStrategy` is now the engine extension seam for pluggable task-to-worker matching policies.
-- `WorkerAdapter` interface (`xa-mass-engine/worker/WorkerAdapter.java`) is the transport adapter seam; concrete implementations live outside the engine (currently `xa-mass-runtime`).
+- `WorkerAdapter` interface (`xa-mass-engine/worker/WorkerAdapter.java`) is the transport adapter seam; concrete implementations live outside the engine (currently under `xa-mass-sdk/src/main/java/com/xa/mass/starter`).
 - If an older note references `xa-mass-engine/archive/v2/**`, treat it as historical drift rather than an active path.
 
 ### `xa-mass-core`
@@ -437,6 +443,7 @@ Important current implementation facts:
 - `TaskManager.handleTaskMessageResult(...)` treats duplicate final callbacks as idempotent: the first final result is kept, progress is recalculated, and scheduler callbacks are not triggered twice.
 - `TaskManager.cancelTask(...)` now drains in-flight `TaskMsg` rows during manual terminal closure: `INIT -> FAILED(MANUAL_CANCELLED)`, `ASSIGNED/RUNNING -> EXPIRED(MANUAL_CANCELLED)`.
 - `GET /status/api/tasks/{taskId}` now includes `items` derived from persisted `TaskMsg.input`, keeps only `compatTargetList` as the backwards-compat target projection, and includes `stateValidation` so API/demo surfaces can expose the same state-audit result used by SDK callers.
+- `GET /status/api/tasks/{taskId}/messages` now exposes an explicit read model centered on `input` / `output` and only keeps `compatTarget` as the backwards-compat projection of `input["target"]`; raw `TaskMsg.getTarget()` is not part of the intended API surface.
 - `MassApplication.loadMockData(...)` normalizes mock `supportedProjects`, lowercases `workerGroupId`, and loads explicit mock `workerContexts` only when they are provided; workers without mock `workerContexts` remain stateless.
 - `WorkerManager` now treats `Worker.status` as the single online truth for matching/runtime availability; gateway online/offline events update the worker model directly instead of maintaining a separate online-state registry.
 - `WorkerManager` / `WorkerStorage` now also own the single worker-lock truth; active mainline code should read lock state through `WorkerManager.isLocked(...)` instead of from `Worker`.
@@ -514,12 +521,12 @@ Matching/runtime signal semantics:
 Focused verified regression command:
 
 ```bash
-mvn -pl xa-mass-mock -am -Dtest=WorkerAttributesTest,WorkerContextAttributesTest,WorkerMatchContextTest,QLExpressRuleEvaluatorTest,RuleBasedTaskWorkerMatchingStrategyTest,TaskApiDelayedWorkerAvailabilityIntegrationTest,TaskApiWorkerContextAttributeRoutingIntegrationTest,TaskApiWorkerWithoutContextIntegrationTest,WorkerManualDebugChatIntegrationTest,MassApplicationLoadMockDataTest -Dsurefire.failIfNoSpecifiedTests=false test
+mvn -pl xa-mass-dev-app -am -Dtest=WorkerAttributesTest,WorkerContextAttributesTest,WorkerMatchContextTest,QLExpressRuleEvaluatorTest,RuleBasedTaskWorkerMatchingStrategyTest,TaskApiDelayedWorkerAvailabilityIntegrationTest,TaskApiWorkerContextAttributeRoutingIntegrationTest,TaskApiWorkerWithoutContextIntegrationTest,WorkerManualDebugChatIntegrationTest,MassApplicationLoadMockDataTest -Dsurefire.failIfNoSpecifiedTests=false test
 ```
 
 Current regression shape:
 
-- `xa-mass-mock` is the primary acceptance gate, with E2E suites grouped by domain under `com.xa.mass.mock.e2e`
+- `xa-mass-dev-app` is the primary acceptance gate, with E2E suites grouped by domain under `com.xa.mass.mock.e2e`
 - Domain groups are:
   - lifecycle
   - assignment
@@ -533,7 +540,7 @@ Current regression shape:
   - worker-context attribute routing and worker-without-context execution
   - manual worker debug chat with explicit `QUEUED -> DELIVERED -> RECEIVED` visibility
   - single-worker reuse, minimum-worker gate, delayed worker availability, and multi-round dispatch
-- Shared E2E base: `xa-mass-mock/src/test/java/com/xa/mass/mock/e2e/support/AbstractMockE2eTest.java`
+- Shared E2E base: `xa-mass-dev-app/src/test/java/com/xa/mass/mock/e2e/support/AbstractMockE2eTest.java`
 - Important engine/runtime support coverage includes:
   - `TaskManagerLifecycleTest`
   - `TaskAssignWorkerTest`
@@ -585,7 +592,7 @@ Reason:
 - `doc/TRACE_CONTRACT.md`
 - `doc/E2E_BASELINE.md`
 - `doc/VERIFIED_RUNBOOK.md`
-- `xa-mass-mock/src/main/java/com/xa/mass/mock/MockApplicationSpringBootApp.java`
+- `xa-mass-dev-app/src/main/java/com/xa/mass/mock/MockApplicationSpringBootApp.java`
 - `xa-mass-api/src/main/java/com/xa/mass/api/internal/TaskApiController.java`
 - `xa-mass-engine/src/main/java/com/xa/mass/engine/TaskManager.java`
 - `xa-mass-core/src/main/java/com/xa/mass/base/enums/task/TaskStatus.java`
@@ -594,8 +601,8 @@ Reason:
 
 For startup/runtime issues:
 
-- start in `xa-mass-mock`
-- then inspect `xa-mass-runtime`
+- start in `xa-mass-dev-app`
+- then inspect `xa-mass-sdk/src/main/java/com/xa/mass/starter`
 
 For task lifecycle/API issues:
 
@@ -612,7 +619,7 @@ For message/target data issues:
 For WebSocket/session issues:
 
 - inspect `xa-mass-gateway`
-- verify runtime through `xa-mass-mock`
+- verify runtime through `xa-mass-dev-app`
 
 For event bus questions:
 
@@ -629,3 +636,5 @@ If code, runtime behavior, and docs disagree:
 - keep `STATE_MACHINE_BASELINE`, `TRACE_CONTRACT`, and `E2E_BASELINE` aligned with the verified mainline
 - do not assume historical architecture docs describe the live path
 - check the root `pom.xml` before treating a top-level directory as an active module
+
+

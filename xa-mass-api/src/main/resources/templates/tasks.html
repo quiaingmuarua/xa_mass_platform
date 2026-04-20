@@ -723,7 +723,7 @@
                 const inputValue =
                     msg.input && Object.keys(msg.input).length > 0
                         ? msg.input
-                        : (msg.target ? { target: msg.target } : null);
+                        : (msg.compatTarget ? { target: msg.compatTarget } : null);
                 const outputValue =
                     msg.output && Object.keys(msg.output).length > 0
                         ? msg.output

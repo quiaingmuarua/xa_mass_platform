@@ -9,7 +9,7 @@ Detailed inventory stays in [./INTEGRATION_TESTS.md](./INTEGRATION_TESTS.md).
 
 An active-mainline E2E test must, unless explicitly scoped lower:
 
-1. start the real `xa-mass-mock` Spring Boot entry
+1. start the real `xa-mass-dev-app` Spring Boot entry
 2. use real HTTP for the lifecycle path under test
 3. use the real WebSocket gateway when runtime dispatch/result write-back is part of the risk
 4. assert real task/message state, not only mocks or listener calls
@@ -76,3 +76,4 @@ then acceptance requires both:
 
 1. E2E coverage for the changed path
 2. trace coverage for the critical transition
+
