@@ -33,7 +33,6 @@ build/
 ### VS Code ###
 .vscode/
 .cursor/
-.claude/
 cursor.rules
 /.mvn/
 /.mvn/
