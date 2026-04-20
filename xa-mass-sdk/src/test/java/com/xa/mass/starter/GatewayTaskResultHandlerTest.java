@@ -5,6 +5,7 @@ import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
+import com.xa.mass.base.model.TaskMsgAttempt;
 import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.model.TaskCreateRequestDto;
 import com.xa.mass.engine.storage.InMemoryTaskStorage;
@@ -16,6 +17,7 @@ import com.xa.mass.gateway.model.massMessage.MessageContext;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 
@@ -97,14 +99,24 @@ class GatewayTaskResultHandlerTest {
         dto.setSharedConfig(java.util.Map.of("textContent", "hello"));
         dto.setUserId("agent");
         dto.setBatchSize(1);
-        dto.setTargetList(List.of("alpha"));
+        dto.setInputs(List.of(Map.of("target", "alpha")));
         Task task = taskManager.createTask(dto);
         taskManager.approveTask(task.getTid());
         task.setStatus(TaskStatus.RUNNING);
 
         TaskMsg taskMsg = taskManager.getTaskMessages(task.getTid()).get(0);
+        taskMsg.applyLatestAttemptProjection("worker-1", "worker-context-1", "batch-0");
         taskMsg.markAsAssigned();
         taskManager.updateTaskMessage(task.getTid(), taskMsg);
+
+        TaskMsgAttempt attempt = new TaskMsgAttempt("attempt-" + taskMsg.getMsgId() + "-1",
+                task.getTid(), taskMsg.getMsgId(), 1);
+        attempt.setWorkerId("worker-1");
+        attempt.setWorkerContextId("worker-context-1");
+        attempt.setBatchId("batch-0");
+        assertTrue(attempt.markLeased(LocalDateTime.now().plusMinutes(5)));
+        assertTrue(attempt.markDispatched());
+        taskManager.addTaskMessageAttempt(task.getTid(), taskMsg.getMsgId(), attempt);
         return task;
     }
 

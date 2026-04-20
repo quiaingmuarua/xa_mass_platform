@@ -56,7 +56,7 @@ class TaskApiTerminateReuseIntegrationTest extends AbstractMockE2eTest {
         assertEquals(Boolean.TRUE, firstApprove.get("success"));
 
         TaskSnapshot firstRunning = waitForTaskSnapshot(firstTaskId, "RUNNING", 20, 500L);
-        assertEquals(workerId, firstRunning.messages().get(0).get("workerId"));
+        assertEquals(workerId, firstRunning.messages().get(0).get("latestAttemptWorkerId"));
 
         Map<String, Object> firstTerminate = exchange(
                 "/status/api/tasks/" + firstTaskId + "/terminate",
@@ -74,7 +74,7 @@ class TaskApiTerminateReuseIntegrationTest extends AbstractMockE2eTest {
         assertEquals(Boolean.TRUE, secondApprove.get("success"));
 
         TaskSnapshot secondRunning = waitForTaskSnapshot(secondTaskId, "RUNNING", 20, 500L);
-        assertEquals(workerId, secondRunning.messages().get(0).get("workerId"));
+        assertEquals(workerId, secondRunning.messages().get(0).get("latestAttemptWorkerId"));
 
         Map<String, Object> secondTerminate = exchange(
                 "/status/api/tasks/" + secondTaskId + "/terminate",

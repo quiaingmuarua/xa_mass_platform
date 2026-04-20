@@ -67,7 +67,7 @@ class TaskApiSingleWorkerReuseIntegrationTest extends AbstractMockE2eTest {
             );
             assertEquals(Boolean.TRUE, firstApprove.get("success"));
             TaskSnapshot firstTerminal = waitForTaskSnapshot(firstTaskId, "TERMINAL", 20, 500L);
-            assertEquals(workerId, firstTerminal.messages().get(0).get("workerId"));
+        assertEquals(workerId, firstTerminal.messages().get(0).get("latestAttemptWorkerId"));
 
             String secondTaskId = createTaskId("reuse-second", "single worker reuse second", "target-b");
             Map<String, Object> secondApprove = exchange(
@@ -77,7 +77,7 @@ class TaskApiSingleWorkerReuseIntegrationTest extends AbstractMockE2eTest {
             );
             assertEquals(Boolean.TRUE, secondApprove.get("success"));
             TaskSnapshot secondTerminal = waitForTaskSnapshot(secondTaskId, "TERMINAL", 20, 500L);
-            assertEquals(workerId, secondTerminal.messages().get(0).get("workerId"));
+        assertEquals(workerId, secondTerminal.messages().get(0).get("latestAttemptWorkerId"));
 
             WorkerContext workerContext = workerManager.getWorkerContexts(workerId).get(0);
             assertEquals(WorkerContextStatus.IDLE, workerContext.getStatus());

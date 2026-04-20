@@ -16,32 +16,6 @@ final class TaskMessageAttemptSupport {
     private TaskMessageAttemptSupport() {
     }
 
-    static TaskMsgAttempt ensureLegacyAttempt(TaskManager manager, TaskMsg taskMsg) {
-        if (taskMsg == null || taskMsg.getMsgId() == null || taskMsg.getTaskId() == null) {
-            return null;
-        }
-        TaskMsgAttempt existing = manager.getLatestActiveTaskMessageAttempt(taskMsg.getTaskId(), taskMsg.getMsgId());
-        if (existing != null) {
-            return existing;
-        }
-        TaskMsgAttempt attempt = new TaskMsgAttempt(
-                java.util.UUID.randomUUID().toString(),
-                taskMsg.getTaskId(),
-                taskMsg.getMsgId(),
-                manager.getTaskMessageAttempts(taskMsg.getTaskId(), taskMsg.getMsgId()).size() + 1
-        );
-        attempt.setWorkerId(taskMsg.getWorkerId());
-        attempt.setWorkerContextId(taskMsg.getWorkerContextId());
-        attempt.setBatchId(taskMsg.getBatchId());
-        attempt.markLeased(LocalDateTime.now().plusMinutes(5));
-        attempt.markDispatched();
-        if (taskMsg.getStatus() == TaskMsgStatus.RUNNING) {
-            attempt.markRunning();
-        }
-        manager.addTaskMessageAttempt(taskMsg.getTaskId(), taskMsg.getMsgId(), attempt);
-        return attempt;
-    }
-
     static boolean advanceAttemptForCallback(TaskMsgAttempt attempt) {
         if (attempt == null || attempt.getStatus() == null) {
             return false;

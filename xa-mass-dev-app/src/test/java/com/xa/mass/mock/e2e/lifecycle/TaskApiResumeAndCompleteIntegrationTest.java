@@ -126,9 +126,9 @@ class TaskApiResumeAndCompleteIntegrationTest extends AbstractMockE2eTest {
             assertEquals(1, terminalSnapshot.messages().size());
             Map<String, Object> msg = terminalSnapshot.messages().get(0);
             assertEquals("SUCCESS", msg.get("status"));
-            assertEquals(workerId, msg.get("workerId"));
-            assertNotNull(msg.get("workerContextId"));
-            assertNotNull(msg.get("batchId"));
+            assertEquals(workerId, msg.get("latestAttemptWorkerId"));
+            assertNotNull(msg.get("latestAttemptWorkerContextId"));
+            assertNotNull(msg.get("latestAttemptBatchId"));
         } finally {
             client.disconnect();
         }

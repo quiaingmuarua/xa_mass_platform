@@ -198,7 +198,7 @@ public class MassApplicationExample {
         app.start();
 
         // 加载Mock数据
-        app.loadMockData(app.getEngine(), app.getEngine().getConfig());
+        app.loadMockData();
 
         logger.info("✅ Mock模式应用启动成功");
 

@@ -83,9 +83,9 @@ class TaskApiDelayedWorkerAvailabilityIntegrationTest extends AbstractMockE2eTes
 
             Map<String, Object> message = terminalSnapshot.messages().get(0);
             assertEquals("SUCCESS", message.get("status"));
-            assertEquals(workerId, message.get("workerId"));
-            assertNotNull(message.get("workerContextId"));
-            assertNotNull(message.get("batchId"));
+        assertEquals(workerId, message.get("latestAttemptWorkerId"));
+        assertNotNull(message.get("latestAttemptWorkerContextId"));
+        assertNotNull(message.get("latestAttemptBatchId"));
         } finally {
             client.disconnect();
         }

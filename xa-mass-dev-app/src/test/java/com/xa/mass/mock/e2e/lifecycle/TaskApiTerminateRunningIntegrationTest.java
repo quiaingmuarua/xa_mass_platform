@@ -108,7 +108,10 @@ class TaskApiTerminateRunningIntegrationTest {
         createBody.put("routingCode", "us");
         createBody.put("sharedConfig", java.util.Map.of("textContent", "terminate running integration"));
         createBody.put("userId", "itest");
-        createBody.put("targetList", List.of("target-a", "target-b"));
+        createBody.put("inputs", List.of(
+                Map.of("target", "target-a"),
+                Map.of("target", "target-b")
+        ));
         createBody.put("batchSize", 1);
 
         Map<String, Object> createResponse = exchange("/status/api/tasks", HttpMethod.POST, createBody);

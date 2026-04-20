@@ -52,8 +52,8 @@ For endpoint inventory, request contracts, and response shapes, use [INTERNAL_AP
 
 Create-time validation is verified:
 
-- supported create fields are limited to `userId`, `project`, `taskName`, `sharedConfig`, `targetList`, `routingCode`, `batchSize`, `defaultMsgMaxRetryCount`, `openEnded`, and `maxRuntimeSeconds`
-- `targetList` must contain at least one materialized target
+- supported create fields are limited to `userId`, `project`, `taskName`, `sharedConfig`, `inputs`, `routingCode`, `batchSize`, `defaultMsgMaxRetryCount`, `openEnded`, and `maxRuntimeSeconds`
+- `inputs` must contain at least one materialized work item
 - unsupported `project` codes are rejected instead of silently falling back to `demoApp`
 - unknown JSON fields such as retired `targetJsonList`, `targetType`, and `extraParams` are rejected at the API boundary
 - request `batchSize` is preserved on the persisted task
@@ -65,7 +65,7 @@ Create-time validation is verified:
 Update-time validation is verified:
 
 - supported update fields are limited to `userId`, `project`, `taskName`, `sharedConfig`, `routingCode`, and `batchSize`
-- `targetList` and other unknown JSON fields are rejected at the API boundary
+- unsupported update fields such as `inputs` and other unknown JSON fields are rejected at the API boundary
 - task edits are only allowed while status is `NEW` or `BLOCKED`
 
 Additional verified rules:
@@ -127,7 +127,7 @@ Default `dev` startup facts:
 ```bash
 curl -s -X POST http://127.0.0.1:8088/status/api/tasks \
   -H 'Content-Type: application/json' \
-  -d '{"taskName":"smoke-lifecycle","project":"demoApp","routingCode":"us","sharedConfig":{"textContent":"smoke"},"userId":"agent","targetList":["smoke-target-001","smoke-target-002"],"batchSize":1,"defaultMsgMaxRetryCount":3,"openEnded":false,"maxRuntimeSeconds":0}'
+-d '{"taskName":"smoke-lifecycle","project":"demoApp","routingCode":"us","sharedConfig":{"textContent":"smoke"},"userId":"agent","inputs":[{"target":"smoke-target-001"},{"target":"smoke-target-002"}],"batchSize":1,"defaultMsgMaxRetryCount":3,"openEnded":false,"maxRuntimeSeconds":0}'
 curl -i -X POST "http://127.0.0.1:8088/status/api/tasks/{taskId}/audit?approved=true&comment=smoke"
 curl -i -X POST http://127.0.0.1:8088/status/api/tasks/{taskId}/pause
 curl -i -X POST http://127.0.0.1:8088/status/api/tasks/{taskId}/resume
@@ -136,8 +136,8 @@ curl -i -X POST http://127.0.0.1:8088/status/api/tasks/{taskId}/resume
 Verified state transitions:
 
 - create: initial task status is `NEW`
-- create: `targetList` is materialized into persisted `TaskMsg` rows
-- create: only `userId`, `project`, `taskName`, `sharedConfig`, `targetList`, `routingCode`, `batchSize`, `defaultMsgMaxRetryCount`, `openEnded`, and `maxRuntimeSeconds` are part of the supported request contract
+- create: `inputs` is materialized into persisted `TaskMsg.input` rows
+- create: only `userId`, `project`, `taskName`, `sharedConfig`, `inputs`, `routingCode`, `batchSize`, `defaultMsgMaxRetryCount`, `openEnded`, and `maxRuntimeSeconds` are part of the supported request contract
 - create: unsupported `project` codes are rejected
 - create: unknown JSON fields such as retired `targetJsonList`, `targetType`, and `extraParams` are rejected at the API boundary
 - create: request `batchSize` is persisted onto the task
@@ -145,7 +145,7 @@ Verified state transitions:
 - create: `openEnded=true` prevents automatic terminal closure until the append window is sealed
 - create: `maxRuntimeSeconds` is persisted onto the task and enforced only when greater than `0`
 - update: only `userId`, `project`, `taskName`, `sharedConfig`, `routingCode`, and `batchSize` are part of the supported request contract
-- update: `targetList` and other unknown JSON fields are rejected at the API boundary
+- update: `inputs` and other unknown JSON fields are rejected at the API boundary
 - update: only `NEW` and `BLOCKED` tasks may be edited
 - `approveTask`: `NEW`, `BLOCKED` -> `READY`
 - `rejectTask`: `NEW` -> `BLOCKED`
@@ -191,7 +191,7 @@ Verified runtime path:
 7. If no worker matches at that moment, `TaskAssignWorker` delayed-retries the task instead of letting it fall out of the assignment loop.
 8. `SimpleTaskMsgAssignListener` reuses the persisted `TaskMsg` records created during task creation.
 9. It round-robins pending `INIT` messages across matched workers and enforces `batchSize` as a per-worker cap for the current round.
-10. Each dispatched `TaskMsg` is filled with `workerId`, `workerContextId`, and `batchId`, then moved to `ASSIGNED`.
+10. Each dispatched `TaskMsg` gets a new `TaskMsgAttempt`; `latestAttemptWorkerId`, `latestAttemptWorkerContextId`, and `latestAttemptBatchId` are projected onto the message, then the logical message moves to `ASSIGNED`.
 11. Dispatch-time worker-context ownership is explicit: assignment binds allocatable worker contexts, advances them into `OCCUPIED`, and skips non-dispatchable worker-context states.
 12. `minRequiredWorkerCount` is enforced before `READY -> RUNNING`; insufficient matched workers leave the task in `READY`.
 13. Any workers matched only to satisfy the start gate, but not needed for current message dispatch, are unlocked immediately.
@@ -217,9 +217,10 @@ Verified runtime path:
 1. Mock clients receive `TASK/step`.
 2. Mock clients send back a `TASK/step` result frame.
 3. `GatewayTaskResultHandler` calls `TaskManager.handleTaskMessageResult(...)`.
-4. `TaskManager` updates the persisted `TaskMsg` by `taskId + msgId`.
-5. Each `TaskMsg` reaches `SUCCESS` or `FAILED`.
-6. When all persisted task messages are final, `TaskManager.updateTaskProgress(...)` closes any non-final task to `TERMINAL`.
+4. `TaskManager` resolves the unique active `TaskMsgAttempt` for `taskId + msgId`; callbacks without an active attempt are rejected instead of synthesizing legacy history.
+5. `TaskManager` closes the concrete attempt and updates the persisted logical `TaskMsg` by `taskId + msgId`.
+6. Each stable-final `TaskMsg` reaches `SUCCESS`, `FAILED`, or `EXPIRED`.
+7. When all persisted task messages are final, `TaskManager.updateTaskProgress(...)` closes any non-final task to `TERMINAL`.
 
 Important guards:
 
@@ -228,6 +229,8 @@ Important guards:
 - duplicate final callbacks are treated as idempotent no-ops after the first final result is stored
 - `TaskMsgStatus` stays as the logical lifecycle (`INIT -> ASSIGNED -> RUNNING -> final`)
 - assignment/lease/retry transport history is tracked in `TaskMsgAttempt`
+- retryable failure publishes `taskMessageAttemptClosed`, resets the logical message to `INIT`, and does not publish `taskMessageLogicallyFinal`
+- success, retry-exhausted failure, expiry, and manual terminal drain publish logically-final semantics because the logical message will not be retried
 
 ### 5.4 Worker And Worker-Context Truth Sources
 
@@ -241,7 +244,7 @@ Important guards:
 - a worker without any `WorkerContext` can still be matched for tasks that do not require worker-context-specific routing
 - normal terminal completion and manual `RUNNING -> TERMINAL` closure both release runtime occupancy so the same worker/worker-context can be reused
 - `Task.intakeStatus` is the active append-window lifecycle truth; `openEnded` is the compatibility request/response projection
-- `TaskMsg.workerId` / `workerContextId` / `batchId` are compatibility projections of the latest `TaskMsgAttempt`
+- `TaskMsg.latestAttemptWorkerId` / `latestAttemptWorkerContextId` / `latestAttemptBatchId` are compatibility projections of the latest `TaskMsgAttempt`
 
 ### 5.5 Manual Worker Debug Chat
 

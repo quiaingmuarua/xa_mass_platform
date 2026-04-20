@@ -88,10 +88,10 @@ class TaskApiWorkerContextAttributeRoutingIntegrationTest extends AbstractMockE2
             assertEquals(1, terminalSnapshot.messages().size());
 
             Map<String, Object> message = terminalSnapshot.messages().get(0);
-            assertEquals("matched-worker", message.get("workerId"));
-            assertEquals("worker-context-matched-worker", message.get("workerContextId"));
+            assertEquals("matched-worker", message.get("latestAttemptWorkerId"));
+            assertEquals("worker-context-matched-worker", message.get("latestAttemptWorkerContextId"));
             assertEquals("SUCCESS", message.get("status"));
-            assertNotNull(message.get("batchId"));
+            assertNotNull(message.get("latestAttemptBatchId"));
         } finally {
             matchedClient.disconnect();
         }

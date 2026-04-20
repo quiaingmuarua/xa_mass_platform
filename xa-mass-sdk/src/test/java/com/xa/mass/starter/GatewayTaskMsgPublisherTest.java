@@ -74,10 +74,8 @@ class GatewayTaskMsgPublisherTest {
     }
 
     private TaskMsg taskMsg() {
-        TaskMsg taskMsg = new TaskMsg("msg-1", "task-1", "target-1");
-        taskMsg.setWorkerId("worker-1");
-        taskMsg.setWorkerContextId("worker-context-1");
-        taskMsg.setBatchId("batch-0");
+        TaskMsg taskMsg = new TaskMsg("msg-1", "task-1", java.util.Map.of("target", "target-1"));
+        taskMsg.applyLatestAttemptProjection("worker-1", "worker-context-1", "batch-0");
         return taskMsg;
     }
 }

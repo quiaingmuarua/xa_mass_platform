@@ -108,14 +108,17 @@ Current entry points:
 - manual task terminate cleanup:
   - `INIT -> FAILED`
   - `ASSIGNED/RUNNING -> EXPIRED`
-- retry reset: `FAILED/EXPIRED -> INIT` via `TaskMsg.resetForRetry()` when retry budget remains; stale worker binding fields (`workerId`, `workerContextId`, `batchId`, `assignedTime`) are cleared on reset
+- retry reset: `FAILED/EXPIRED -> INIT` via `TaskMsg.resetForRetry()` when retry budget remains; stale latest-attempt projection fields (`latestAttemptWorkerId`, `latestAttemptWorkerContextId`, `latestAttemptBatchId`, `assignedTime`) are cleared on reset
 
 Must hold:
 
-- `workerId`, `workerContextId`, and `batchId` are projections of the latest attempt used for compatibility and UI; they are null between retry reset and next assignment
+- `latestAttemptWorkerId`, `latestAttemptWorkerContextId`, and `latestAttemptBatchId` are projections of the latest attempt used for compatibility and UI; they are null between retry reset and next assignment
 - duplicate final callbacks do not mutate final state
 - final `TaskMsg` must carry a compatible `finalReason`
-- `notifyTaskMessageFinal` must only be called when `TaskMsg` is in a terminal status; retry-reset messages (status `INIT`) must not be passed to final listeners
+- `taskMessageAttemptClosed` must fire whenever an execution attempt ends, including retryable failure
+- `taskMessageLogicallyFinal` must only fire when `TaskMsg` is stably final and will not be reset for retry
+- retryable failure must close the current attempt and reset the logical `TaskMsg` to `INIT`; it must not publish logically-final semantics
+- worker/gateway callbacks must resolve a unique active `TaskMsgAttempt`; missing active attempt is rejected and traced as `CALLBACK_REJECTED_NO_ACTIVE_ATTEMPT`
 - `errorCode` is an optional short symbolic code set by the worker alongside `errorMessage`; it is cleared on `resetForRetry()` and must not carry over between attempts
 - richer transport phases must not be silently backfilled into `TaskMsgStatus` without a baseline redesign
 
@@ -150,7 +153,9 @@ Must hold:
 
 - each dispatch round creates a new attempt with monotonically increasing `attemptNo`
 - retry never rewrites a final attempt back to active
-- active attempt truth outranks projected `workerId/workerContextId/batchId` on `TaskMsg`
+- active attempt truth outranks projected `latestAttemptWorkerId/latestAttemptWorkerContextId/latestAttemptBatchId` on `TaskMsg`
+- at most one active attempt may exist for a single `taskId + msgId`
+- a stable-final `TaskMsg` must not have any active attempt
 - `REVOKED` must not be used as an expiry shortcut; only `EXPIRED` carries expiry and cancellation final reasons
 
 ## 6. WorkerContextStatus
@@ -208,14 +213,14 @@ Must hold:
 Both policies are enforced by `LeaseExpireWatchdog` (runs every `leaseWatchdogIntervalSeconds`, default 30 s):
 
 - **Lease expiry**: any active `TaskMsgAttempt` whose `leaseExpireTime` has passed is expired via
-  `TaskManager.expireTaskMessage()`. This marks the message `EXPIRED`, fires `notifyTaskMessageFinal`
-  to release the worker context, and (if retries remain) triggers re-dispatch.
+  `TaskManager.expireTaskMessage()`. This marks the attempt `EXPIRED`, marks the logical message `EXPIRED`,
+  publishes `taskMessageAttemptClosed` for resource release, then publishes `taskMessageLogicallyFinal`.
 - **Max task runtime**: any non-terminal `Task` with `maxRuntimeSeconds > 0` that has been running
   longer than that limit is terminated with `MAX_RUNTIME_REACHED` via `TaskManager.terminateTask()`.
   Set `maxRuntimeSeconds = 0` (default) to disable the limit.
 
 Must hold:
-- `expireTaskMessage` must fire `notifyTaskMessageFinal` after expiry so `TaskResourceReleaseListener`
+- `expireTaskMessage` must fire `taskMessageAttemptClosed` after expiry so `TaskResourceReleaseListener`
   can release the worker context; skipping this call leaves the context permanently `OCCUPIED`
 - `terminateTask(reason)` follows the same drain-and-notify path as `cancelTask`; the only
   difference is the `TaskTerminalReason` recorded

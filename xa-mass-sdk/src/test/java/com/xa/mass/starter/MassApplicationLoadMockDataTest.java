@@ -234,7 +234,7 @@ class MassApplicationLoadMockDataTest {
                         "userId": "agent",
                         "sharedConfig": {"textContent": "smoke"},
                         "batchSize": 1,
-                        "targetList": ["target-1"]
+                        "inputs": [{"target": "target-1"}]
                       }
                     }
                   ]

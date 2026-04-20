@@ -123,7 +123,7 @@ public class MockApplicationSpringBootApp {
                 Thread.sleep(1000L);
 
                 try {
-                    app.unwrap().loadMockData(app.getEngine(), app.getEngine().getConfig());
+                    app.loadMockData();
                     LogUtils.clearMdc();
                     log.info("Mock data loaded");
                 } catch (Exception e) {
@@ -132,7 +132,7 @@ public class MockApplicationSpringBootApp {
                 }
 
                 try {
-                    app.getEngine().publishTaskEvents();
+                    app.publishTaskEvents();
                     LogUtils.clearMdc();
                     log.info("Initial task events published");
                 } catch (Exception e) {

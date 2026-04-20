@@ -46,8 +46,8 @@ XA Mass Platform is a general distributed task scheduling platform.
   - `NEW -> READY -> PAUSED -> READY`
   - `NEW -> BLOCKED -> READY`
 - `TERMINAL` is not self-describing anymore; inspect `task.terminalReason`
-- Active task-create contract now uses `sharedConfig`, `targetList`, `routingCode`, `batchSize`, `defaultMsgMaxRetryCount`, and `openEnded`
-- `PUT /status/api/tasks/{taskId}` is metadata-only and no longer accepts `targetList`
+- Active task-create contract now uses `sharedConfig`, `inputs`, `routingCode`, `batchSize`, `defaultMsgMaxRetryCount`, and `openEnded`
+- `PUT /status/api/tasks/{taskId}` is metadata-only and does not accept `inputs`
 - `Task.sharedConfig` is the task-level shared payload; `TaskMsg.input` and `TaskMsg.output` are the per-item payload boundary
 
 ## Quick Start
@@ -77,6 +77,11 @@ Primary endpoints:
 - `xa-mass-gateway`: WebSocket server and dispatch
 - `xa-mass-core`: shared models and infrastructure
 
+Build boundary note:
+
+- the root `pom.xml` is now parent/reactor and dependency-management only
+- do not rely on parent-level implicit compile dependencies; each module should declare its own runtime and test dependencies explicitly
+
 ## SDK Entry
 
 For third-party embedding, depend on `xa-mass-sdk`.
@@ -94,12 +99,24 @@ Minimal Java usage:
 ```java
 import com.xa.mass.sdk.MassSdk;
 import com.xa.mass.sdk.MassSdkApplication;
+import com.xa.mass.sdk.model.MassTaskCreateRequest;
 
 MassSdkApplication app = MassSdk.builder()
         .server(19090, "/ws")
         .gateway(gateway -> gateway.enabled(false))
-        .engine(engine -> engine.enabled(false))
+        .engine(engine -> engine.enabled(true))
         .build();
+
+app.start();
+app.createTask(MassTaskCreateRequest.builder()
+        .userId("agent")
+        .project("demoApp")
+        .taskName("demo-task")
+        .sharedConfig(java.util.Map.of("textContent", "hello"))
+        .inputs(java.util.List.of(java.util.Map.of("target", "target-a")))
+        .routingCode("us")
+        .batchSize(1)
+        .build());
 ```
 
 Module boundary note:

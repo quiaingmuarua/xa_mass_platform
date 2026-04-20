@@ -161,12 +161,12 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
         }
 
         int uniqueWorkerCount = (int) pushQueue.stream()
-                .map(TaskMsg::getWorkerId)
+                .map(TaskMsg::getLatestAttemptWorkerId)
                 .filter(workerId -> workerId != null && !workerId.isBlank())
                 .distinct()
                 .count();
         int uniqueWorkerContextCount = (int) pushQueue.stream()
-                .map(TaskMsg::getWorkerContextId)
+                .map(TaskMsg::getLatestAttemptWorkerContextId)
                 .filter(workerContextId -> workerContextId != null && !workerContextId.isBlank())
                 .distinct()
                 .count();
@@ -242,7 +242,7 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
     }
 
     private boolean bindTaskMessage(TaskMsg taskMsg, String workerId, String workerContextId, String batchId) {
-        taskMsg.applyAttemptProjection(workerId, workerContextId, batchId);
+        taskMsg.applyLatestAttemptProjection(workerId, workerContextId, batchId);
         TaskMsgAttempt attempt = new TaskMsgAttempt(
                 java.util.UUID.randomUUID().toString(),
                 taskMsg.getTaskId(),

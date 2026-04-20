@@ -102,7 +102,7 @@ Interpretation rules:
 - `project`
 - `taskName`
 - `sharedConfig`
-- `targetList`
+- `inputs`
 - `routingCode`
 - `batchSize`
 - `defaultMsgMaxRetryCount`
@@ -111,7 +111,7 @@ Interpretation rules:
 
 Behavior locked in the mainline:
 
-- `targetList` must contain at least one materialized target
+- `inputs` must contain at least one materialized work item
 - unsupported `project` codes are rejected
 - unknown JSON fields such as retired `targetJsonList`, `targetType`, and `extraParams` are rejected
 - `batchSize` is normalized to a minimum of `1` and enforced as a per-worker hard cap for each dispatch round
@@ -132,7 +132,7 @@ Behavior locked in the mainline:
 
 Update constraints:
 
-- `targetList` and other unknown fields are rejected
+- `inputs` and other unsupported update fields are rejected
 - only `NEW` and `BLOCKED` tasks may be edited
 - `BLOCKED` is not reject-only: `rejectTask` is `NEW -> BLOCKED`, while `blockTask` is the runtime path from `READY` or `RUNNING`
 
@@ -141,9 +141,11 @@ Update constraints:
 - `Task.sharedConfig` is the task-level generic payload/config map
 - `TaskMsg.input` is the per-item input payload
 - `TaskMsg.output` is the per-item output payload
-- `TaskMsg.getTarget()` is only a backwards-compat accessor over `input["target"]`
+- `target` is only a conventional key inside `TaskMsg.input`; no dedicated target compatibility accessor remains
 - `Task.intakeStatus` is the active append-window lifecycle truth; `openEnded` is only the compatibility request/response projection
-- `TaskMsg.workerId`, `workerContextId`, and `batchId` are compatibility projections of the latest `TaskMsgAttempt`, not the execution-history source of truth
+- `TaskMsg.latestAttemptWorkerId`, `latestAttemptWorkerContextId`, and `latestAttemptBatchId` are compatibility projections of the latest `TaskMsgAttempt`, not the execution-history source of truth
+- Worker/gateway callbacks must resolve a unique active `TaskMsgAttempt`; no-active-attempt callbacks are invalid and traced as `CALLBACK_REJECTED_NO_ACTIVE_ATTEMPT`
+- `taskMessageAttemptClosed` and `taskMessageLogicallyFinal` are separate events; retryable failure closes an attempt but does not make the logical message stably final
 - open-intake tasks must not close from normal message convergence; they may close while `intakeStatus=OPEN` only for `MANUAL_CANCELLED` or explicit policy stops such as `MAX_RUNTIME_REACHED`, `SUCCESS_RATE_REACHED`, and `RETRY_BUDGET_EXHAUSTED`
 - `POST /status/api/tasks/{taskId}/items` appends new `TaskMsg.input` records to an active open-ended task
 - `PUT /status/api/tasks/{taskId}/seal` closes the append window for an open-ended task

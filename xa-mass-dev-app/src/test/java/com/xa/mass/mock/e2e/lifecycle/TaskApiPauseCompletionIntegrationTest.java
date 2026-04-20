@@ -83,7 +83,7 @@ class TaskApiPauseCompletionIntegrationTest extends AbstractMockE2eTest {
 
         for (Map<String, Object> message : pausedSnapshot.messages()) {
             String msgId = String.valueOf(message.get("msgId"));
-            String workerId = String.valueOf(message.get("workerId"));
+        String workerId = String.valueOf(message.get("latestAttemptWorkerId"));
             AckSnapshot ack = submitTaskResult(taskId, msgId, workerId, "SUCCESS", "paused-complete-" + workerId);
             assertEquals(200, ack.code());
             assertEquals("task result processed", ack.message());
@@ -95,9 +95,9 @@ class TaskApiPauseCompletionIntegrationTest extends AbstractMockE2eTest {
         assertEquals(2, terminalSnapshot.messages().size());
         for (Map<String, Object> message : terminalSnapshot.messages()) {
             assertEquals("SUCCESS", message.get("status"));
-            assertNotNull(message.get("workerId"));
-            assertNotNull(message.get("workerContextId"));
-            assertNotNull(message.get("batchId"));
+        assertNotNull(message.get("latestAttemptWorkerId"));
+        assertNotNull(message.get("latestAttemptWorkerContextId"));
+        assertNotNull(message.get("latestAttemptBatchId"));
         }
     }
 

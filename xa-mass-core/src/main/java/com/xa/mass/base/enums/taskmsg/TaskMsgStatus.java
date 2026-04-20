@@ -10,12 +10,12 @@ package com.xa.mass.base.enums.taskmsg;
  * transport-layer data instead of being overloaded into this enum.
  */
 public enum TaskMsgStatus {
-    INIT("初始"),
-    ASSIGNED("已分配"),
-    RUNNING("执行中"),
-    SUCCESS("成功"),
-    FAILED("失败"),
-    EXPIRED("已过期");
+    INIT("Initial"),
+    ASSIGNED("Assigned"),
+    RUNNING("Running"),
+    SUCCESS("Success"),
+    FAILED("Failed"),
+    EXPIRED("Expired");
 
     private final String description;
 
@@ -60,7 +60,7 @@ public enum TaskMsgStatus {
             case FAILED:
             case EXPIRED:
                 // Retry path: exhausted/timed-out messages may be reset to INIT for re-dispatch.
-                // SUCCESS is intentionally excluded — a succeeded message is never re-run.
+                // SUCCESS is intentionally excluded: a succeeded message is never re-run.
                 return targetStatus == INIT;
             default:
                 return false;

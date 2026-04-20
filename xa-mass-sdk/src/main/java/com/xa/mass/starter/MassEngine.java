@@ -85,7 +85,7 @@ public class MassEngine {
                     new TaskResourceReleaseListener(taskManager, workerManager, assignWorker::submit);
             taskManager.addTaskReadyListener(assignWorker::submit);
             taskManager.addTaskDispatchListener(assignWorker::submit);
-            taskManager.addTaskMessageFinalListener(resourceReleaseListener::onTaskMessageFinal);
+            taskManager.addTaskMessageAttemptClosedListener(resourceReleaseListener::onTaskMessageAttemptClosed);
             taskManager.addTaskTerminalListener(resourceReleaseListener::onTaskTerminal);
             taskManager.getTasksByStatus(TaskStatus.READY).forEach(assignWorker::submit);
 

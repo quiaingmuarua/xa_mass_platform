@@ -82,9 +82,9 @@ public final class TraceEventLogger {
                 "entityId", taskMsg.getMsgId(),
                 "taskId", taskMsg.getTaskId(),
                 "msgId", taskMsg.getMsgId(),
-                "workerId", taskMsg.getWorkerId(),
-                "workerContextId", taskMsg.getWorkerContextId(),
-                "batchId", taskMsg.getBatchId(),
+                "latestAttemptWorkerId", taskMsg.getLatestAttemptWorkerId(),
+                "latestAttemptWorkerContextId", taskMsg.getLatestAttemptWorkerContextId(),
+                "latestAttemptBatchId", taskMsg.getLatestAttemptBatchId(),
                 "fromStatus", enumName(fromStatus),
                 "toStatus", enumName(toStatus),
                 "finalReason", enumName(taskMsg.getFinalReason()),
@@ -133,9 +133,9 @@ public final class TraceEventLogger {
                 "entityId", taskMsg.getMsgId(),
                 "taskId", taskMsg.getTaskId(),
                 "msgId", taskMsg.getMsgId(),
-                "workerId", taskMsg.getWorkerId(),
-                "workerContextId", taskMsg.getWorkerContextId(),
-                "batchId", taskMsg.getBatchId(),
+                "latestAttemptWorkerId", taskMsg.getLatestAttemptWorkerId(),
+                "latestAttemptWorkerContextId", taskMsg.getLatestAttemptWorkerContextId(),
+                "latestAttemptBatchId", taskMsg.getLatestAttemptBatchId(),
                 "fromStatus", "FAILED_OR_EXPIRED",
                 "toStatus", TaskMsgStatus.INIT.name(),
                 "retryCount", String.valueOf(taskMsg.getRetryCount()),
@@ -290,8 +290,8 @@ public final class TraceEventLogger {
                 "entityId", taskMsg.getMsgId(),
                 "taskId", taskMsg.getTaskId(),
                 "msgId", taskMsg.getMsgId(),
-                "workerId", taskMsg.getWorkerId(),
-                "workerContextId", taskMsg.getWorkerContextId(),
+                "latestAttemptWorkerId", taskMsg.getLatestAttemptWorkerId(),
+                "latestAttemptWorkerContextId", taskMsg.getLatestAttemptWorkerContextId(),
                 "source", "TaskManager",
                 "reason", reason,
                 "result", "SUCCESS"
@@ -307,8 +307,8 @@ public final class TraceEventLogger {
                 "entityId", taskMsg.getMsgId(),
                 "taskId", taskMsg.getTaskId(),
                 "msgId", taskMsg.getMsgId(),
-                "workerId", taskMsg.getWorkerId(),
-                "workerContextId", taskMsg.getWorkerContextId(),
+                "latestAttemptWorkerId", taskMsg.getLatestAttemptWorkerId(),
+                "latestAttemptWorkerContextId", taskMsg.getLatestAttemptWorkerContextId(),
                 "source", "TaskManager",
                 "reason", reason,
                 "result", "IGNORED"
@@ -324,11 +324,83 @@ public final class TraceEventLogger {
                 "entityId", taskMsg.getMsgId(),
                 "taskId", taskMsg.getTaskId(),
                 "msgId", taskMsg.getMsgId(),
-                "workerId", taskMsg.getWorkerId(),
-                "workerContextId", taskMsg.getWorkerContextId(),
+                "latestAttemptWorkerId", taskMsg.getLatestAttemptWorkerId(),
+                "latestAttemptWorkerContextId", taskMsg.getLatestAttemptWorkerContextId(),
                 "source", "TaskManager",
                 "reason", reason,
                 "result", "IGNORED"
+        ));
+    }
+
+    public static void callbackRejectedNoActiveAttempt(String taskId,
+                                                       String msgId,
+                                                       TaskMsgStatus taskMsgStatus,
+                                                       String reason) {
+        emit("CALLBACK_REJECTED_NO_ACTIVE_ATTEMPT", fields(
+                "entityType", "TaskMsg",
+                "entityId", msgId,
+                "taskId", taskId,
+                "msgId", msgId,
+                "taskMsgStatus", enumName(taskMsgStatus),
+                "source", "TaskManager",
+                "reason", reason,
+                "result", "REJECTED"
+        ));
+    }
+
+    public static void taskMessageAttemptClosed(Task task,
+                                                TaskMsg taskMsg,
+                                                TaskMsgAttempt attempt,
+                                                String trigger,
+                                                String source,
+                                                String reason) {
+        if (task == null || taskMsg == null || attempt == null) {
+            return;
+        }
+        emit("TASK_MSG_ATTEMPT_CLOSED", fields(
+                "entityType", "TaskMsgAttempt",
+                "entityId", attempt.getAttemptId(),
+                "taskId", task.getTid(),
+                "msgId", taskMsg.getMsgId(),
+                "attemptId", attempt.getAttemptId(),
+                "attemptNo", String.valueOf(attempt.getAttemptNo()),
+                "workerId", attempt.getWorkerId(),
+                "workerContextId", attempt.getWorkerContextId(),
+                "batchId", attempt.getBatchId(),
+                "attemptStatus", enumName(attempt.getStatus()),
+                "attemptFinalReason", enumName(attempt.getFinalReason()),
+                "taskMsgStatus", enumName(taskMsg.getStatus()),
+                "taskMsgFinalReason", enumName(taskMsg.getFinalReason()),
+                "trigger", trigger,
+                "source", source,
+                "reason", reason,
+                "result", "SUCCESS"
+        ));
+    }
+
+    public static void taskMessageLogicallyFinal(Task task,
+                                                 TaskMsg taskMsg,
+                                                 String trigger,
+                                                 String source,
+                                                 String reason) {
+        if (task == null || taskMsg == null) {
+            return;
+        }
+        emit("TASK_MSG_LOGICALLY_FINAL", fields(
+                "entityType", "TaskMsg",
+                "entityId", taskMsg.getMsgId(),
+                "taskId", task.getTid(),
+                "msgId", taskMsg.getMsgId(),
+                "latestAttemptWorkerId", taskMsg.getLatestAttemptWorkerId(),
+                "latestAttemptWorkerContextId", taskMsg.getLatestAttemptWorkerContextId(),
+                "latestAttemptBatchId", taskMsg.getLatestAttemptBatchId(),
+                "taskMsgStatus", enumName(taskMsg.getStatus()),
+                "taskMsgFinalReason", enumName(taskMsg.getFinalReason()),
+                "retryCount", String.valueOf(taskMsg.getRetryCount()),
+                "trigger", trigger,
+                "source", source,
+                "reason", reason,
+                "result", "SUCCESS"
         ));
     }
 

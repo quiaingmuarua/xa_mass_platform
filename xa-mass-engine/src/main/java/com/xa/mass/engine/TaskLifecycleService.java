@@ -353,9 +353,11 @@ class TaskLifecycleService {
             }
 
             TaskMsgAttempt activeAttempt = taskManager.getLatestActiveTaskMessageAttempt(taskId, msg.getMsgId());
+            boolean attemptClosed = false;
             if (activeAttempt != null) {
                 if (TaskMessageAttemptSupport.expireAttempt(activeAttempt, TaskMsgAttemptFinalReason.MANUAL_CANCELLED, "task cancelled")) {
                     taskManager.updateTaskMessageAttempt(taskId, msg.getMsgId(), activeAttempt);
+                    attemptClosed = true;
                 }
             }
 
@@ -387,6 +389,28 @@ class TaskLifecycleService {
             }
             if (updated) {
                 taskManager.updateTaskMessage(taskId, msg);
+                Task task = taskManager.getTask(taskId);
+                if (task != null && attemptClosed && activeAttempt != null) {
+                    TraceEventLogger.taskMessageAttemptClosed(
+                            task,
+                            msg,
+                            activeAttempt,
+                            "CANCEL_PENDING_MESSAGES",
+                            "TaskManager",
+                            "task termination closed the current attempt"
+                    );
+                    taskManager.getEventPublisher().publishTaskMessageAttemptClosed(task, msg, activeAttempt);
+                }
+                if (task != null) {
+                    TraceEventLogger.taskMessageLogicallyFinal(
+                            task,
+                            msg,
+                            "CANCEL_PENDING_MESSAGES",
+                            "TaskManager",
+                            "task termination finalized the logical message"
+                    );
+                    taskManager.getEventPublisher().publishTaskMessageLogicallyFinal(task, msg);
+                }
             }
         }
     }

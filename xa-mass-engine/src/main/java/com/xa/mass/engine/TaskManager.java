@@ -21,9 +21,8 @@ import com.xa.mass.engine.util.LogUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.Collections;
 import java.util.List;
-import java.util.function.BiConsumer;
+import java.util.Map;
 import java.util.function.Consumer;
 
 /**
@@ -62,7 +61,7 @@ public class TaskManager {
     }
 
     /**
-     * Creates a task plus one persisted {@link TaskMsg} per target input.
+     * Creates a task plus one persisted {@link TaskMsg} per work-item input.
      */
     public Task createTask(TaskCreateRequestDto dto) {
         long startTime = System.currentTimeMillis();
@@ -79,11 +78,11 @@ public class TaskManager {
             user.setName(dto.getUserId());
             LogUtils.setUserId(dto.getUserId());
 
-            List<String> targets = dto.getTargetList() == null ? Collections.emptyList() : dto.getTargetList();
-            if (targets.isEmpty()) {
-                throw new IllegalArgumentException("targetList must contain at least one target");
+            List<Map<String, Object>> inputs = dto.getInputs() == null ? List.of() : dto.getInputs();
+            if (inputs.isEmpty()) {
+                throw new IllegalArgumentException("inputs must contain at least one work item");
             }
-            int initNumber = targets.size();
+            int initNumber = inputs.size();
 
             Task task = new Task(
                     tid,
@@ -99,9 +98,9 @@ public class TaskManager {
             task.setIntakeStatus(dto.isOpenEnded() ? TaskIntakeStatus.OPEN : TaskIntakeStatus.SEALED);
             task.setMaxRuntimeSeconds(dto.getMaxRuntimeSeconds());
             taskStorage.saveTask(task);
-            for (String target : targets) {
+            for (Map<String, Object> input : inputs) {
                 String msgId = java.util.UUID.randomUUID().toString();
-                TaskMsg taskMsg = new TaskMsg(msgId, tid, target);
+                TaskMsg taskMsg = new TaskMsg(msgId, tid, input);
                 taskMsg.setMaxRetryCount(dto.getDefaultMsgMaxRetryCount());
                 addTaskMessage(tid, taskMsg);
             }
@@ -362,8 +361,12 @@ public class TaskManager {
         eventPublisher.addTaskTerminalListener(listener);
     }
 
-    public void addTaskMessageFinalListener(BiConsumer<Task, TaskMsg> listener) {
-        eventPublisher.addTaskMessageFinalListener(listener);
+    public void addTaskMessageAttemptClosedListener(TaskMessageAttemptClosedListener listener) {
+        eventPublisher.addTaskMessageAttemptClosedListener(listener);
+    }
+
+    public void addTaskMessageLogicallyFinalListener(TaskMessageLogicallyFinalListener listener) {
+        eventPublisher.addTaskMessageLogicallyFinalListener(listener);
     }
 
     public boolean handleTaskMessageResult(String taskId, String msgId, boolean success, String detail) {

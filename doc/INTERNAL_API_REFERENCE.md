@@ -32,9 +32,10 @@ For verified runtime behavior and recommended startup, use [VERIFIED_RUNBOOK.md]
 - Current reference scenario is a long-connection worker path with `Worker + WorkerContext + WebSocket gateway + mock clients`.
 - Workers can be phone apps, crawlers, LLM agents, IM bots, or other long-lived executors.
 - Stable payload boundaries are `Task.sharedConfig` and `TaskMsg.input/output`.
-- `TaskMsg.getTarget()` remains only as a backwards-compat accessor over `input["target"]`.
+- `target` is only a conventional key inside `TaskMsg.input`; no dedicated target compatibility accessor remains.
 - `Task.intakeStatus` is the active append-window lifecycle truth; `openEnded` remains a compatibility request/response projection.
-- `TaskMsg.workerId`, `workerContextId`, and `batchId` are compatibility projections of the latest `TaskMsgAttempt`.
+- `TaskMsg.latestAttemptWorkerId`, `latestAttemptWorkerContextId`, and `latestAttemptBatchId` are compatibility projections of the latest `TaskMsgAttempt`.
+- Worker/gateway callbacks must resolve a unique active `TaskMsgAttempt`; the runtime no longer synthesizes legacy attempts for result write-back.
 - `Worker` and `WorkerContext` are current reference adapters, not the permanent platform boundary.
 
 ## 2. Task API
@@ -53,7 +54,7 @@ Supported request fields:
 - `project`
 - `taskName`
 - `sharedConfig`
-- `targetList`
+- `inputs`
 - `routingCode`
 - `batchSize`
 - `defaultMsgMaxRetryCount`
@@ -62,7 +63,7 @@ Supported request fields:
 
 Contract rules:
 
-- `targetList` must be a non-empty list
+- `inputs` must be a non-empty list of work-item payload maps
 - unsupported `project` values are rejected
 - unknown JSON fields are rejected
 - retired fields such as `targetJsonList`, `targetType`, and `extraParams` are not supported
@@ -80,9 +81,13 @@ Example request:
   "sharedConfig": {
     "textContent": "hello"
   },
-  "targetList": [
-    "target-001",
-    "target-002"
+  "inputs": [
+    {
+      "target": "target-001"
+    },
+    {
+      "target": "target-002"
+    }
   ],
   "routingCode": "us",
   "batchSize": 1,
@@ -112,7 +117,6 @@ Response notes:
 
 - returns `task`
 - returns `items` derived from persisted `TaskMsg.input`
-- returns `compatTargetList` only as a backwards-compat projection of `input["target"]`
 - returns `stateValidation`
 - returns HTTP 404 with no body when the task does not exist
 
@@ -143,10 +147,6 @@ Example response shape:
       "target": "target-002"
     }
   ],
-  "compatTargetList": [
-    "target-001",
-    "target-002"
-  ],
   "stateValidation": {
     "valid": true,
     "needsResolution": false,
@@ -174,7 +174,7 @@ Contract rules:
 
 - metadata-only update path
 - only `NEW` and `BLOCKED` tasks may be updated; returns HTTP 400 otherwise
-- `targetList` and unknown fields are rejected with HTTP 400
+- `inputs` and unknown fields are rejected with HTTP 400
 
 ### 2.4 Delete Task
 
@@ -314,8 +314,8 @@ Query params:
 Response shape:
 
 - primary per-item payload truth is `messages[*].input` and `messages[*].output`
-- `messages[*].compatTarget` is the explicit backwards-compat projection of `input["target"]`
-- raw `target` is no longer part of the intended API read model
+- `target` is only a conventional key inside `messages[*].input`
+- raw top-level target projections are not part of the message read model
 
 ```json
 {
@@ -328,9 +328,9 @@ Response shape:
       "msgId": "msg-1",
       "taskId": "task-uuid",
       "status": "SUCCESS",
-      "workerId": "worker-a",
-      "workerContextId": "worker-context-a",
-      "batchId": "batch-1",
+      "latestAttemptWorkerId": "worker-a",
+      "latestAttemptWorkerContextId": "worker-context-a",
+      "latestAttemptBatchId": "batch-1",
       "retryCount": 0,
       "maxRetryCount": 3,
       "finalReason": "BUSINESS_SUCCESS",
@@ -340,8 +340,7 @@ Response shape:
       "input": {
         "target": "target-001"
       },
-      "output": {},
-      "compatTarget": "target-001"
+      "output": {}
     }
   ]
 }

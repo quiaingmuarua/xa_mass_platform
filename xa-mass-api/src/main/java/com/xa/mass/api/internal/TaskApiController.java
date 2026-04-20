@@ -26,7 +26,7 @@ public class TaskApiController {
             "project",
             "taskName",
             "sharedConfig",
-            "targetList",
+            "inputs",
             "routingCode",
             "batchSize",
             "defaultMsgMaxRetryCount",
@@ -76,13 +76,9 @@ public class TaskApiController {
                     .map(TaskMsg::getInput)
                     .map(input -> input == null ? Map.<String, Object>of() : new LinkedHashMap<>(input))
                     .collect(Collectors.toList());
-            List<String> compatTargetList = msgs.stream()
-                    .map(TaskMsg::getTarget)
-                    .collect(Collectors.toList());
             Map<String, Object> response = new LinkedHashMap<>();
             response.put("task", task);
             response.put("items", items);
-            response.put("compatTargetList", compatTargetList);
             response.put("stateValidation", taskManager.validateTaskState(taskId));
             return ResponseEntity.ok(success(response));
         } catch (Exception e) {
@@ -351,9 +347,9 @@ public class TaskApiController {
         view.put("msgId", taskMsg.getMsgId());
         view.put("taskId", taskMsg.getTaskId());
         view.put("status", taskMsg.getStatus() != null ? taskMsg.getStatus().name() : null);
-        view.put("workerId", taskMsg.getWorkerId());
-        view.put("workerContextId", taskMsg.getWorkerContextId());
-        view.put("batchId", taskMsg.getBatchId());
+        view.put("latestAttemptWorkerId", taskMsg.getLatestAttemptWorkerId());
+        view.put("latestAttemptWorkerContextId", taskMsg.getLatestAttemptWorkerContextId());
+        view.put("latestAttemptBatchId", taskMsg.getLatestAttemptBatchId());
         view.put("retryCount", taskMsg.getRetryCount());
         view.put("maxRetryCount", taskMsg.getMaxRetryCount());
         view.put("result", taskMsg.getResult());
@@ -367,7 +363,6 @@ public class TaskApiController {
         view.put("completeTime", taskMsg.getCompleteTime());
         view.put("input", taskMsg.getInput() == null ? Map.of() : new LinkedHashMap<>(taskMsg.getInput()));
         view.put("output", taskMsg.getOutput() == null ? Map.of() : new LinkedHashMap<>(taskMsg.getOutput()));
-        view.put("compatTarget", taskMsg.getTarget());
         return view;
     }
 

@@ -4,15 +4,26 @@ import com.xa.mass.base.channel.messaging.api.MessageQueue;
 import com.xa.mass.base.channel.messaging.memory.InMemoryMessageQueue;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
+import com.xa.mass.base.model.Task;
+import com.xa.mass.engine.model.TaskCreateRequestDto;
 import com.xa.mass.gateway.queue.Envelope;
+import com.xa.mass.sdk.model.MassTaskCreateRequest;
+import com.xa.mass.starter.MassApplication;
+import com.xa.mass.starter.MassEngine;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.function.Executable;
 
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 class MassSdkTest {
 
@@ -50,7 +61,8 @@ class MassSdkTest {
                 .engine(engine -> engine.enabled(false))
                 .build();
 
-        Assertions.assertThrows(IllegalStateException.class, () -> app.createTask(null));
+        Assertions.assertThrows(IllegalStateException.class,
+                () -> app.createTask(MassTaskCreateRequest.builder().build()));
         assertEngineOperationsFailFast(app);
     }
 
@@ -63,6 +75,70 @@ class MassSdkTest {
 
         Assertions.assertThrows(IllegalStateException.class, () -> app.addWorker(null));
         assertEngineOperationsFailFast(app);
+    }
+
+    @Test
+    void createTaskUsesSdkRequestAsPrimaryContract() {
+        MassApplication delegate = mock(MassApplication.class);
+        MassEngine engine = mock(MassEngine.class);
+        Task createdTask = new Task();
+
+        when(delegate.getEngine()).thenReturn(engine);
+        when(engine.isRunning()).thenReturn(true);
+        when(engine.createTask(any(TaskCreateRequestDto.class))).thenReturn(createdTask);
+
+        MassSdkApplication app = new MassSdkApplication(delegate);
+        MassTaskCreateRequest request = MassTaskCreateRequest.builder()
+                .userId("agent")
+                .project("demoApp")
+                .taskName("sdk-task")
+                .sharedConfig(Map.of("textContent", "hello"))
+                .inputs(List.of(
+                        Map.of("target", "target-a"),
+                        Map.of("target", "target-b")
+                ))
+                .routingCode("us")
+                .batchSize(2)
+                .defaultMsgMaxRetryCount(5)
+                .openEnded(true)
+                .maxRuntimeSeconds(600)
+                .build();
+
+        Task result = app.createTask(request);
+
+        assertSame(createdTask, result);
+        var captor = org.mockito.ArgumentCaptor.forClass(TaskCreateRequestDto.class);
+        verify(engine).createTask(captor.capture());
+        TaskCreateRequestDto dto = captor.getValue();
+        Assertions.assertEquals("agent", dto.getUserId());
+        Assertions.assertEquals("demoApp", dto.getProject());
+        Assertions.assertEquals("sdk-task", dto.getTaskName());
+        Assertions.assertEquals(Map.of("textContent", "hello"), dto.getSharedConfig());
+        Assertions.assertEquals(List.of(
+                Map.of("target", "target-a"),
+                Map.of("target", "target-b")
+        ), dto.getInputs());
+        Assertions.assertEquals("us", dto.getRoutingCode());
+        Assertions.assertEquals(2, dto.getBatchSize());
+        Assertions.assertEquals(5, dto.getDefaultMsgMaxRetryCount());
+        Assertions.assertTrue(dto.isOpenEnded());
+        Assertions.assertEquals(600, dto.getMaxRuntimeSeconds());
+    }
+
+    @Test
+    void runtimeConvenienceOperationsAvoidEscapeHatchCalls() {
+        MassApplication delegate = mock(MassApplication.class);
+        MassEngine engine = mock(MassEngine.class);
+
+        when(delegate.getEngine()).thenReturn(engine);
+        when(engine.isRunning()).thenReturn(true);
+
+        MassSdkApplication app = new MassSdkApplication(delegate);
+        app.loadMockData();
+        app.publishTaskEvents();
+
+        verify(delegate).loadMockData();
+        verify(delegate).publishTaskEvents();
     }
 
     private static void assertEngineOperationsFailFast(MassSdkApplication app) {
@@ -89,7 +165,9 @@ class MassSdkTest {
                 () -> app.getWorkerContexts("worker-1"),
                 () -> app.getWorkerContextById("context-1"),
                 () -> app.isWorkerLocked("worker-1"),
-                () -> app.isWorkerOnline("worker-1")
+                () -> app.isWorkerOnline("worker-1"),
+                app::loadMockData,
+                app::publishTaskEvents
         );
 
         for (Executable operation : operations) {

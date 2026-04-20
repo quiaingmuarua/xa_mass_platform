@@ -13,6 +13,10 @@
 
     <dependencies>
         <dependency>
+            <groupId>com.google.code.gson</groupId>
+            <artifactId>gson</artifactId>
+        </dependency>
+        <dependency>
             <groupId>com.xa.mass</groupId>
             <artifactId>xa-mass-engine</artifactId>
             <version>${project.version}</version>

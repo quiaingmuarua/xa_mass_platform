@@ -124,8 +124,13 @@ class TaskStateValidator {
                 violations.add(TaskStateValidationResult.ViolationCode.TASK_MSG_FINAL_REASON_STATUS_MISMATCH);
             }
             List<TaskMsgAttempt> attempts = taskManager.getTaskMessageAttempts(taskId, taskMsg.getMsgId());
-            boolean hasActiveAttempt = attempts.stream()
-                    .anyMatch(attempt -> attempt.getStatus() != null && attempt.getStatus().isActive());
+            long activeAttemptCount = attempts.stream()
+                    .filter(attempt -> attempt.getStatus() != null && attempt.getStatus().isActive())
+                    .count();
+            boolean hasActiveAttempt = activeAttemptCount > 0;
+            if (activeAttemptCount > 1) {
+                violations.add(TaskStateValidationResult.ViolationCode.MULTIPLE_ACTIVE_ATTEMPTS_FOR_MESSAGE);
+            }
             if (hasActiveAttempt && taskMsg.isCompleted()) {
                 violations.add(TaskStateValidationResult.ViolationCode.ACTIVE_ATTEMPT_WITH_FINAL_MESSAGE);
             }

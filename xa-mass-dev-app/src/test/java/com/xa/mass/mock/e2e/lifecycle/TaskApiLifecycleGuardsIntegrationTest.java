@@ -151,7 +151,7 @@ class TaskApiLifecycleGuardsIntegrationTest extends AbstractMockE2eTest {
         createBody.put("routingCode", "us");
         createBody.put("sharedConfig", java.util.Map.of("textContent", "guard lifecycle"));
         createBody.put("userId", "itest");
-        createBody.put("targetList", java.util.List.of("target-a"));
+        createBody.put("inputs", java.util.List.of(java.util.Map.of("target", "target-a")));
         createBody.put("batchSize", 1);
         createBody.put("targetJsonList", java.util.List.of("{\"phone\":\"123\"}"));
 
@@ -173,7 +173,7 @@ class TaskApiLifecycleGuardsIntegrationTest extends AbstractMockE2eTest {
         createBody.put("routingCode", "us");
         createBody.put("sharedConfig", java.util.Map.of("textContent", "guard max runtime"));
         createBody.put("userId", "itest");
-        createBody.put("targetList", java.util.List.of("target-a"));
+        createBody.put("inputs", java.util.List.of(java.util.Map.of("target", "target-a")));
         createBody.put("batchSize", 1);
         createBody.put("maxRuntimeSeconds", 120);
 
@@ -191,7 +191,7 @@ class TaskApiLifecycleGuardsIntegrationTest extends AbstractMockE2eTest {
 
         Map<String, Object> updateBody = new java.util.LinkedHashMap<>();
         updateBody.put("taskName", "guard-update-renamed");
-        updateBody.put("targetList", java.util.List.of("target-x"));
+        updateBody.put("inputs", java.util.List.of(java.util.Map.of("target", "target-x")));
 
         ResponseEntity<String> response = restTemplate.exchange(
                 "http://127.0.0.1:" + port + "/status/api/tasks/" + taskId,

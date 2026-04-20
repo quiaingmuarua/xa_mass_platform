@@ -27,25 +27,39 @@ Create an SDK application handle:
 ```java
 import com.xa.mass.sdk.MassSdk;
 import com.xa.mass.sdk.MassSdkApplication;
+import com.xa.mass.sdk.model.MassTaskCreateRequest;
 
 MassSdkApplication app = MassSdk.builder()
         .server(19090, "/ws")
         .gateway(gateway -> gateway.enabled(false))
         .engine(engine -> engine.enabled(true).workerThreads(4))
         .build();
+
+app.start();
+
+app.createTask(MassTaskCreateRequest.builder()
+        .userId("agent")
+        .project("demoApp")
+        .taskName("demo-task")
+        .sharedConfig(java.util.Map.of("textContent", "hello"))
+.inputs(java.util.List.of(java.util.Map.of("target", "target-a")))
+        .routingCode("us")
+        .batchSize(1)
+        .build());
 ```
 
 The returned `MassSdkApplication` exposes:
 
 - lifecycle: `start()`, `stop()`, `isRunning()`
-- common task operations after `start()`: `createTask(...)`, `getTask(...)`, `getAllTasks()`, `getTasksByStatus(...)`, `approveTask(...)`, `rejectTask(...)`, `blockTask(...)`, `pauseTask(...)`, `resumeTask(...)`, `resumeTaskDetailed(...)`, `cancelTask(...)`, `terminateTask(...)`
+- common task operations after `start()`: `createTask(MassTaskCreateRequest)`, `getTask(...)`, `getAllTasks()`, `getTasksByStatus(...)`, `approveTask(...)`, `rejectTask(...)`, `blockTask(...)`, `pauseTask(...)`, `resumeTask(...)`, `resumeTaskDetailed(...)`, `cancelTask(...)`, `terminateTask(...)`
 - open-ended task operations after `start()`: `appendTaskItems(...)`, `sealTask(...)`
 - audit and message operations after `start()`: `getTaskMessages(...)`, `resolveTaskStateFromMessages(...)`, `validateTaskState(...)`
 - common worker operations after `start()`: `addWorker(...)`, `addWorkerContext(...)`, `getWorker(...)`, `getAllWorkers()`, `getAllWorkerContexts()`, `getWorkerContexts(...)`, `getWorkerContextById(...)`, `isWorkerLocked(...)`, `isWorkerOnline(...)`
-- advanced engine access: `getEngine()`, `getTaskManager()`, `getWorkerManager()`
-- escape hatch: `unwrap()` returns the underlying `MassApplication`
+- runtime bootstrap helpers after `start()`: `loadMockData()`, `publishTaskEvents()`
+- deprecated compatibility seams for advanced embedding only: `getEngine()`, `getTaskManager()`, `getWorkerManager()`
+- deprecated escape hatch: `unwrap()` returns the underlying `MassApplication`
 
-`getTaskManager()` and `getWorkerManager()` reflect runtime state and become useful after the engine starts. Common SDK operations intentionally fail fast if the SDK application was built without an engine or has not been started yet.
+`MassTaskCreateRequest` is the primary SDK create contract. The engine DTO overload remains only as a compatibility seam for callers that still depend on engine packages. Direct engine, manager, and runtime exposure is intentionally deprecated so the default SDK path stays on `MassSdkApplication` methods instead of leaking callers back into engine/runtime internals. Common SDK operations intentionally fail fast if the SDK application was built without an engine or has not been started yet.
 
 ## Positioning
 

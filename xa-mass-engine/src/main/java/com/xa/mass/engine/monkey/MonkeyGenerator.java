@@ -61,11 +61,13 @@ public class MonkeyGenerator {
                     "userId": {"$JOIN": ["user-", "&.index"]},
                     "sharedConfig": {"textContent": {"$JOIN": ["content for ", "&.index"]}},
                     "batchSize": {"$RANGE": [1, 5]},
-                    "targetList": {
+                    "inputs": {
                       "TYPE": "LIST",
                       "COUNT": 3,
-                      "MODEL": "java.lang.String",
-                      "FIELDS": {}
+                      "MODEL": "java.util.LinkedHashMap",
+                      "FIELDS": {
+                        "target": {"$JOIN": ["target-", "&.index"]}
+                      }
                     }
                   }
                 }

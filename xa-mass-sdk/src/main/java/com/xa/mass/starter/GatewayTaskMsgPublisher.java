@@ -46,7 +46,7 @@ public class GatewayTaskMsgPublisher implements TaskMsgDispatchListener {
             MassMessage message = buildMessage(task, taskMsg);
             String json = dispatchRuntimeContext.getMessageCodec().encode(message);
             Envelope envelope = Envelope.builder()
-                    .workerId(taskMsg.getWorkerId())
+                    .workerId(taskMsg.getLatestAttemptWorkerId())
                     .connRole(DEFAULT_CONN_ROLE)
                     .project(task.getProject())
                     .traceId(taskMsg.getMsgId())
@@ -71,7 +71,7 @@ public class GatewayTaskMsgPublisher implements TaskMsgDispatchListener {
 
     private MessageContext buildContext(Task task, TaskMsg taskMsg) {
         MessageContext context = new MessageContext();
-        context.setWorkerId(taskMsg.getWorkerId());
+        context.setWorkerId(taskMsg.getLatestAttemptWorkerId());
         context.setConnRole(DEFAULT_CONN_ROLE);
         context.setTid(task.getTid());
         context.setRetryCount(taskMsg.getRetryCount());
@@ -80,7 +80,7 @@ public class GatewayTaskMsgPublisher implements TaskMsgDispatchListener {
 
     private TaskPayload buildPayload(Task task, TaskMsg taskMsg) {
         TaskStep step = new TaskStep();
-        step.setStepId(taskMsg.getBatchId() != null ? taskMsg.getBatchId() : taskMsg.getMsgId());
+        step.setStepId(taskMsg.getLatestAttemptBatchId() != null ? taskMsg.getLatestAttemptBatchId() : taskMsg.getMsgId());
         step.setAction("task-dispatch");
         Map<String, Object> params = new LinkedHashMap<>();
         params.put("taskId", task.getTid());
@@ -88,9 +88,9 @@ public class GatewayTaskMsgPublisher implements TaskMsgDispatchListener {
         if (taskMsg.getInput() != null) {
             params.putAll(taskMsg.getInput());
         }
-        params.put("workerId", taskMsg.getWorkerId());
-        params.put("workerContextId", taskMsg.getWorkerContextId());
-        params.put("batchId", taskMsg.getBatchId());
+        params.put("workerId", taskMsg.getLatestAttemptWorkerId());
+        params.put("workerContextId", taskMsg.getLatestAttemptWorkerContextId());
+        params.put("batchId", taskMsg.getLatestAttemptBatchId());
         if (task.getSharedConfig() != null) {
             params.putAll(task.getSharedConfig());
         }

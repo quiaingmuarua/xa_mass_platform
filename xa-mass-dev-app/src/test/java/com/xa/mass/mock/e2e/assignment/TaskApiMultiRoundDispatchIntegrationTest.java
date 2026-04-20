@@ -95,7 +95,7 @@ class TaskApiMultiRoundDispatchIntegrationTest extends AbstractMockE2eTest {
 
             for (Map<String, Object> message : terminal.messages()) {
                 assertEquals("SUCCESS", message.get("status"));
-                assertEquals(workerId, message.get("workerId"));
+                assertEquals(workerId, message.get("latestAttemptWorkerId"));
             }
 
             WorkerContext workerContext = workerManager.getWorkerContexts(workerId).get(0);
@@ -139,17 +139,17 @@ class TaskApiMultiRoundDispatchIntegrationTest extends AbstractMockE2eTest {
                     taskId,
                     snapshot -> "RUNNING".equals(snapshot.task().get("status"))
                             && snapshot.messages().size() == 3
-                            && snapshot.messages().stream().filter(msg -> workerId.equals(msg.get("workerId"))).count() == 2
-                            && snapshot.messages().stream().filter(msg -> msg.get("workerId") == null).count() == 1
+                            && snapshot.messages().stream().filter(msg -> workerId.equals(msg.get("latestAttemptWorkerId"))).count() == 2
+                            && snapshot.messages().stream().filter(msg -> msg.get("latestAttemptWorkerId") == null).count() == 1
                             && snapshot.messages().stream().noneMatch(msg -> isTerminalMessageStatus(msg.get("status"))),
                     "RUNNING with two in-flight messages bound to the worker and one pending INIT-style message",
                     20,
                     100L
             );
             assertEquals(2L,
-                    firstRound.messages().stream().filter(msg -> workerId.equals(msg.get("workerId"))).count());
+                    firstRound.messages().stream().filter(msg -> workerId.equals(msg.get("latestAttemptWorkerId"))).count());
             assertEquals(1L,
-                    firstRound.messages().stream().filter(msg -> msg.get("workerId") == null).count());
+                    firstRound.messages().stream().filter(msg -> msg.get("latestAttemptWorkerId") == null).count());
 
             AckSnapshot firstAck = client.sendSuccess(first, "round-1-a");
             assertNotNull(firstAck);
@@ -162,8 +162,8 @@ class TaskApiMultiRoundDispatchIntegrationTest extends AbstractMockE2eTest {
                     snapshot -> "RUNNING".equals(snapshot.task().get("status"))
                             && snapshot.messages().size() == 3
                             && snapshot.messages().stream().filter(msg -> "SUCCESS".equals(msg.get("status"))).count() == 1
-                            && snapshot.messages().stream().filter(msg -> workerId.equals(msg.get("workerId"))).count() == 2
-                            && snapshot.messages().stream().filter(msg -> msg.get("workerId") == null).count() == 1,
+                            && snapshot.messages().stream().filter(msg -> workerId.equals(msg.get("latestAttemptWorkerId"))).count() == 2
+                            && snapshot.messages().stream().filter(msg -> msg.get("latestAttemptWorkerId") == null).count() == 1,
                     "RUNNING with one finished message, one remaining in-flight message, and one pending message",
                     20,
                     100L
@@ -192,7 +192,7 @@ class TaskApiMultiRoundDispatchIntegrationTest extends AbstractMockE2eTest {
             assertEquals(List.of("SUCCESS", "SUCCESS", "SUCCESS"),
                     terminal.messages().stream().map(msg -> String.valueOf(msg.get("status"))).collect(Collectors.toList()));
             assertEquals(List.of(workerId, workerId, workerId),
-                    terminal.messages().stream().map(msg -> String.valueOf(msg.get("workerId"))).collect(Collectors.toList()));
+                    terminal.messages().stream().map(msg -> String.valueOf(msg.get("latestAttemptWorkerId"))).collect(Collectors.toList()));
         } finally {
             client.disconnect();
         }

@@ -1,6 +1,5 @@
 package com.xa.mass.base.model;
 
-import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.xa.mass.base.enums.taskmsg.TaskMsgFinalReason;
 import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 
@@ -18,11 +17,11 @@ public class TaskMsg {
     private String taskId;
     // Compatibility projection of the latest attempt binding for UI/API callers.
     // Runtime execution truth lives in TaskMsgAttempt history.
-    private String workerId;
-    private String workerContextId;
+    private String latestAttemptWorkerId;
+    private String latestAttemptWorkerContextId;
     private TaskMsgStatus status;
     // Compatibility projection of the latest attempt batch association.
-    private String batchId;
+    private String latestAttemptBatchId;
     private LocalDateTime assignedTime;
     private String result;
     private LocalDateTime createTime;
@@ -44,16 +43,6 @@ public class TaskMsg {
         this.retryCount = 0;
         this.maxRetryCount = 3;
         this.input = new HashMap<>();
-    }
-
-    public TaskMsg(String msgId, String taskId, String target) {
-        this();
-        this.msgId = msgId;
-        this.taskId = taskId;
-        this.input = new HashMap<>();
-        if (target != null) {
-            this.input.put("target", target);
-        }
     }
 
     public TaskMsg(String msgId, String taskId, Map<String, Object> input) {
@@ -79,8 +68,8 @@ public class TaskMsg {
         this.taskId = taskId;
     }
 
-    public String getWorkerId() {
-        return workerId;
+    public String getLatestAttemptWorkerId() {
+        return latestAttemptWorkerId;
     }
 
     /**
@@ -88,12 +77,12 @@ public class TaskMsg {
      *
      * <p>Authoritative execution history lives in TaskMsgAttempt rows.
      */
-    public void setWorkerId(String workerId) {
-        this.workerId = workerId;
+    public void setLatestAttemptWorkerId(String latestAttemptWorkerId) {
+        this.latestAttemptWorkerId = latestAttemptWorkerId;
     }
 
-    public String getWorkerContextId() {
-        return workerContextId;
+    public String getLatestAttemptWorkerContextId() {
+        return latestAttemptWorkerContextId;
     }
 
     /**
@@ -101,8 +90,8 @@ public class TaskMsg {
      *
      * <p>Authoritative execution history lives in TaskMsgAttempt rows.
      */
-    public void setWorkerContextId(String workerContextId) {
-        this.workerContextId = workerContextId;
+    public void setLatestAttemptWorkerContextId(String latestAttemptWorkerContextId) {
+        this.latestAttemptWorkerContextId = latestAttemptWorkerContextId;
     }
 
     public TaskMsgStatus getStatus() {
@@ -128,8 +117,8 @@ public class TaskMsg {
         }
     }
 
-    public String getBatchId() {
-        return batchId;
+    public String getLatestAttemptBatchId() {
+        return latestAttemptBatchId;
     }
 
     /**
@@ -137,8 +126,8 @@ public class TaskMsg {
      *
      * <p>Authoritative execution history lives in TaskMsgAttempt rows.
      */
-    public void setBatchId(String batchId) {
-        this.batchId = batchId;
+    public void setLatestAttemptBatchId(String latestAttemptBatchId) {
+        this.latestAttemptBatchId = latestAttemptBatchId;
     }
 
     public LocalDateTime getAssignedTime() {
@@ -233,20 +222,6 @@ public class TaskMsg {
         this.finalReason = finalReason;
     }
 
-    /** Compatibility accessor: returns input.get("target") cast to String. */
-    @JsonIgnore
-    public String getTarget() {
-        return input != null ? (String) input.get("target") : null;
-    }
-
-    /** Compatibility accessor: sets "target" key in input map. */
-    public void setTarget(String target) {
-        if (input == null) {
-            input = new HashMap<>();
-        }
-        input.put("target", target);
-    }
-
     public Map<String, Object> getInput() {
         return input;
     }
@@ -293,18 +268,18 @@ public class TaskMsg {
      * readers. This must not be treated as the execution-history source of
      * truth; callers should use TaskMsgAttempt for that.
      */
-    public void applyAttemptProjection(String workerId, String workerContextId, String batchId) {
-        this.workerId = workerId;
-        this.workerContextId = workerContextId;
-        this.batchId = batchId;
+    public void applyLatestAttemptProjection(String workerId, String workerContextId, String batchId) {
+        this.latestAttemptWorkerId = workerId;
+        this.latestAttemptWorkerContextId = workerContextId;
+        this.latestAttemptBatchId = batchId;
     }
 
     /**
      * Clears the latest-attempt projection after retry reset or when the
      * binding is no longer valid.
      */
-    public void clearAttemptProjection() {
-        applyAttemptProjection(null, null, null);
+    public void clearLatestAttemptProjection() {
+        applyLatestAttemptProjection(null, null, null);
         this.assignedTime = null;
     }
 
@@ -316,7 +291,7 @@ public class TaskMsg {
         }
         // Clear the stale latest-attempt projection so the next assignment does
         // not inherit a dead worker reference.
-        clearAttemptProjection();
+        clearLatestAttemptProjection();
         this.startTime = null;
         this.completeTime = null;
         this.errorMessage = null;
@@ -426,10 +401,10 @@ public class TaskMsg {
         return "TaskMsg{" +
                 "msgId='" + msgId + '\'' +
                 ", taskId='" + taskId + '\'' +
-                ", workerId='" + workerId + '\'' +
-                ", workerContextId='" + workerContextId + '\'' +
+                ", latestAttemptWorkerId='" + latestAttemptWorkerId + '\'' +
+                ", latestAttemptWorkerContextId='" + latestAttemptWorkerContextId + '\'' +
                 ", status=" + status +
-                ", batchId='" + batchId + '\'' +
+                ", latestAttemptBatchId='" + latestAttemptBatchId + '\'' +
                 ", retryCount=" + retryCount +
                 ", result='" + result + '\'' +
                 '}';

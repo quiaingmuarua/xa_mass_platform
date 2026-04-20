@@ -95,7 +95,9 @@ public abstract class AbstractMockE2eTest {
         createBody.put("routingCode", "us");
         createBody.put("sharedConfig", java.util.Map.of("textContent", textContent));
         createBody.put("userId", "itest");
-        createBody.put("targetList", targets);
+        createBody.put("inputs", targets.stream()
+                .map(target -> Map.<String, Object>of("target", target))
+                .toList());
         createBody.put("batchSize", batchSize);
 
         Map<String, Object> createResponse = exchange("/status/api/tasks", HttpMethod.POST, createBody);

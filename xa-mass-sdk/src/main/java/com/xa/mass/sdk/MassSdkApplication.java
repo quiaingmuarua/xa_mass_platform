@@ -12,6 +12,7 @@ import com.xa.mass.engine.model.TaskCreateRequestDto;
 import com.xa.mass.engine.model.TaskResumeResult;
 import com.xa.mass.engine.model.TaskStateResolutionResult;
 import com.xa.mass.engine.model.TaskStateValidationResult;
+import com.xa.mass.sdk.model.MassTaskCreateRequest;
 import com.xa.mass.starter.MassEngine;
 import com.xa.mass.starter.MassApplication;
 
@@ -47,18 +48,44 @@ public final class MassSdkApplication {
         return delegate.isRunning();
     }
 
+    /**
+     * @deprecated Prefer the SDK facade methods on this type. This runtime handle
+     * remains as an advanced compatibility seam for embedding paths that still
+     * need direct engine access.
+     */
+    @Deprecated(forRemoval = false)
     public MassEngine getEngine() {
         return delegate.getEngine();
     }
 
+    /**
+     * @deprecated Prefer the SDK facade methods on this type. This manager
+     * access remains as an advanced compatibility seam.
+     */
+    @Deprecated(forRemoval = false)
     public TaskManager getTaskManager() {
         return getEngine() != null ? getEngine().getTaskManager() : null;
     }
 
+    /**
+     * @deprecated Prefer the SDK facade methods on this type. This manager
+     * access remains as an advanced compatibility seam.
+     */
+    @Deprecated(forRemoval = false)
     public WorkerManager getWorkerManager() {
         return getEngine() != null ? getEngine().getWorkerManager() : null;
     }
 
+    public Task createTask(MassTaskCreateRequest request) {
+        MassEngine engine = requireStartedEngine();
+        return engine.createTask(toEngineRequest(request));
+    }
+
+    /**
+     * @deprecated Prefer {@link #createTask(MassTaskCreateRequest)} so SDK callers
+     * stay independent from engine DTO packages.
+     */
+    @Deprecated(forRemoval = false)
     public Task createTask(TaskCreateRequestDto request) {
         return requireStartedEngine().createTask(request);
     }
@@ -163,8 +190,39 @@ public final class MassSdkApplication {
         return requireStartedWorkerManager().isWorkerOnline(workerId);
     }
 
+    public void loadMockData() {
+        requireStartedEngine();
+        delegate.loadMockData();
+    }
+
+    public void publishTaskEvents() {
+        requireStartedEngine();
+        delegate.publishTaskEvents();
+    }
+
+    /**
+     * @deprecated Prefer the SDK facade methods on this type. The underlying
+     * runtime is exposed only as an escape hatch for advanced embedding.
+     */
+    @Deprecated(forRemoval = false)
     public MassApplication unwrap() {
         return delegate;
+    }
+
+    private TaskCreateRequestDto toEngineRequest(MassTaskCreateRequest request) {
+        Objects.requireNonNull(request, "request");
+        TaskCreateRequestDto dto = new TaskCreateRequestDto();
+        dto.setUserId(request.getUserId());
+        dto.setProject(request.getProject());
+        dto.setTaskName(request.getTaskName());
+        dto.setSharedConfig(request.getSharedConfig());
+        dto.setInputs(request.getInputs());
+        dto.setRoutingCode(request.getRoutingCode());
+        dto.setBatchSize(request.getBatchSize());
+        dto.setDefaultMsgMaxRetryCount(request.getDefaultMsgMaxRetryCount());
+        dto.setOpenEnded(request.isOpenEnded());
+        dto.setMaxRuntimeSeconds(request.getMaxRuntimeSeconds());
+        return dto;
     }
 
     private TaskManager requireStartedTaskManager() {

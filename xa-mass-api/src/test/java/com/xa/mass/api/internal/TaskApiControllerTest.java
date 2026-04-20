@@ -240,7 +240,7 @@ class TaskApiControllerTest {
                                   "routingCode":"us",
                                   "sharedConfig":{"textContent":"hello"},
                                   "userId":"agent",
-                                  "targetList":["alpha","beta"],
+                                  "inputs":[{"target":"alpha"},{"target":"beta"}],
                                   "batchSize":2
                                 }
                                 """))
@@ -256,7 +256,10 @@ class TaskApiControllerTest {
                         && "hello".equals(dto.getSharedConfig() != null ? dto.getSharedConfig().get("textContent") : null)
                         && "agent".equals(dto.getUserId())
                         && dto.getBatchSize() == 2
-                        && java.util.List.of("alpha", "beta").equals(dto.getTargetList())
+                        && java.util.List.of(
+                                java.util.Map.of("target", "alpha"),
+                                java.util.Map.of("target", "beta")
+                        ).equals(dto.getInputs())
         ));
     }
 
@@ -271,7 +274,7 @@ class TaskApiControllerTest {
                                   "routingCode":"us",
                                   "sharedConfig":{"textContent":"hello"},
                                   "userId":"agent",
-                                  "targetList":["alpha"],
+                                  "inputs":[{"target":"alpha"}],
                                   "targetJsonList":["{\\"phone\\":\\"1\\"}"]
                                 }
                                 """))
@@ -296,7 +299,7 @@ class TaskApiControllerTest {
                                   "routingCode":"us",
                                   "sharedConfig":{"textContent":"hello"},
                                   "userId":"agent",
-                                  "targetList":["alpha"]
+                                  "inputs":[{"target":"alpha"}]
                                 }
                                 """))
                 .andExpect(status().isBadRequest())
@@ -321,8 +324,8 @@ class TaskApiControllerTest {
 
         when(taskManager.getTask(TASK_ID)).thenReturn(task);
         when(taskManager.getTaskMessages(TASK_ID)).thenReturn(java.util.List.of(
-                new TaskMsg("msg-1", TASK_ID, "alpha"),
-                new TaskMsg("msg-2", TASK_ID, "beta")
+                new TaskMsg("msg-1", TASK_ID, java.util.Map.of("target", "alpha")),
+                new TaskMsg("msg-2", TASK_ID, java.util.Map.of("target", "beta"))
         ));
         when(taskManager.validateTaskState(TASK_ID)).thenReturn(validationResult);
 
@@ -334,8 +337,7 @@ class TaskApiControllerTest {
                 .andExpect(jsonPath("$.task.status").value("READY"))
                 .andExpect(jsonPath("$.items[0].target").value("alpha"))
                 .andExpect(jsonPath("$.items[1].target").value("beta"))
-                .andExpect(jsonPath("$.compatTargetList[0]").value("alpha"))
-                .andExpect(jsonPath("$.compatTargetList[1]").value("beta"))
+                .andExpect(jsonPath("$.compatTargetList").doesNotExist())
                 .andExpect(jsonPath("$.stateValidation.valid").value(true))
                 .andExpect(jsonPath("$.stateValidation.needsResolution").value(false))
                 .andExpect(jsonPath("$.stateValidation.status").value("READY"));
@@ -421,12 +423,12 @@ class TaskApiControllerTest {
                         .content("""
                                 {
                                   "taskName":"updated-name",
-                                  "targetList":["one","two"]
+                                  "inputs":[{"target":"one"},{"target":"two"}]
                                 }
                                 """))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.message").value("Task update failed: Unsupported task update fields: targetList"));
+                .andExpect(jsonPath("$.message").value("Task update failed: Unsupported task update fields: inputs"));
 
         verify(taskManager, never()).updateTask(any(Task.class));
     }
@@ -469,9 +471,9 @@ class TaskApiControllerTest {
     @Test
     void getTaskMessagesReturnsPagedMessages() throws Exception {
         when(taskManager.getTaskMessages(TASK_ID)).thenReturn(java.util.List.of(
-                new TaskMsg("msg-1", TASK_ID, "alpha"),
-                new TaskMsg("msg-2", TASK_ID, "beta"),
-                new TaskMsg("msg-3", TASK_ID, "gamma")
+                new TaskMsg("msg-1", TASK_ID, java.util.Map.of("target", "alpha")),
+                new TaskMsg("msg-2", TASK_ID, java.util.Map.of("target", "beta")),
+                new TaskMsg("msg-3", TASK_ID, java.util.Map.of("target", "gamma"))
         ));
 
         mockMvc.perform(get("/status/api/tasks/{taskId}/messages", TASK_ID)
@@ -485,7 +487,7 @@ class TaskApiControllerTest {
                 .andExpect(jsonPath("$.messages.length()").value(1))
                 .andExpect(jsonPath("$.messages[0].msgId").value("msg-3"))
                 .andExpect(jsonPath("$.messages[0].input.target").value("gamma"))
-                .andExpect(jsonPath("$.messages[0].compatTarget").value("gamma"))
+                .andExpect(jsonPath("$.messages[0].compatTarget").doesNotExist())
                 .andExpect(jsonPath("$.messages[0].target").doesNotExist());
     }
 

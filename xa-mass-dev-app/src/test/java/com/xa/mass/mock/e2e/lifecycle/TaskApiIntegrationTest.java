@@ -74,9 +74,9 @@ class TaskApiIntegrationTest extends AbstractMockE2eTest {
         for (Map<String, Object> message : snapshot.messages()) {
             assertEquals("SUCCESS", message.get("status"));
             assertEquals("BUSINESS_SUCCESS", message.get("finalReason"));
-            assertNotNull(message.get("workerId"));
-            assertNotNull(message.get("workerContextId"));
-            assertNotNull(message.get("batchId"));
+        assertNotNull(message.get("latestAttemptWorkerId"));
+        assertNotNull(message.get("latestAttemptWorkerContextId"));
+        assertNotNull(message.get("latestAttemptBatchId"));
         }
     }
 }

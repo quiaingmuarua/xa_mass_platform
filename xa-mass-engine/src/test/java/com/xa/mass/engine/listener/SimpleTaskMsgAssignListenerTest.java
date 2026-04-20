@@ -64,7 +64,7 @@ class SimpleTaskMsgAssignListenerTest {
         assertNotNull(pushed);
         assertEquals(storedMsgIds, pushed.stream().map(TaskMsg::getMsgId).collect(Collectors.toList()));
         assertEquals(List.of("target-0", "target-1", "target-2"),
-                pushed.stream().map(TaskMsg::getTarget).collect(Collectors.toList()));
+                pushed.stream().map(msg -> msg.getInput().get("target")).collect(Collectors.toList()));
     }
 
     @Test
@@ -83,9 +83,9 @@ class SimpleTaskMsgAssignListenerTest {
         assertEquals(List.of(TaskMsgStatus.ASSIGNED, TaskMsgStatus.ASSIGNED, TaskMsgStatus.ASSIGNED, TaskMsgStatus.ASSIGNED),
                 stored.stream().map(TaskMsg::getStatus).collect(Collectors.toList()));
         assertEquals(List.of("d1", "d2", "d1", "d2"),
-                stored.stream().map(TaskMsg::getWorkerId).collect(Collectors.toList()));
+                stored.stream().map(TaskMsg::getLatestAttemptWorkerId).collect(Collectors.toList()));
         assertEquals(List.of("batch-0", "batch-1", "batch-0", "batch-1"),
-                stored.stream().map(TaskMsg::getBatchId).collect(Collectors.toList()));
+                stored.stream().map(TaskMsg::getLatestAttemptBatchId).collect(Collectors.toList()));
         assertTrue(stored.stream().allMatch(msg -> msg.getAssignedTime() != null));
         assertEquals(WorkerContextStatus.OCCUPIED, wc1.getStatus());
         assertEquals(task.getTid(), wc1.getLastBindTaskId());
@@ -123,8 +123,8 @@ class SimpleTaskMsgAssignListenerTest {
                     task.getTid().equals(mdc.get("taskId"))
                             && "INIT".equals(mdc.get("fromStatus"))
                             && "ASSIGNED".equals(mdc.get("toStatus"))
-                            && "d1".equals(mdc.get("workerId"))
-                            && "tk1".equals(mdc.get("workerContextId")));
+                            && "d1".equals(mdc.get("latestAttemptWorkerId"))
+                            && "tk1".equals(mdc.get("latestAttemptWorkerContextId")));
             capture.assertHasEvent("TASK_MSG_ATTEMPT_STATUS_TRANSITION", mdc ->
                     task.getTid().equals(mdc.get("taskId"))
                             && "CREATED".equals(mdc.get("fromStatus"))
@@ -196,7 +196,7 @@ class SimpleTaskMsgAssignListenerTest {
                         TaskMsgStatus.INIT),
                 stored.stream().map(TaskMsg::getStatus).collect(Collectors.toList()));
         assertEquals(java.util.Arrays.asList("d1", "d2", "d1", "d2", null),
-                stored.stream().map(TaskMsg::getWorkerId).collect(Collectors.toList()));
+                stored.stream().map(TaskMsg::getLatestAttemptWorkerId).collect(Collectors.toList()));
     }
 
     @Test
@@ -218,7 +218,7 @@ class SimpleTaskMsgAssignListenerTest {
                         TaskMsgStatus.INIT),
                 stored.stream().map(TaskMsg::getStatus).collect(Collectors.toList()));
         assertEquals(java.util.Arrays.asList("d1", "d1", null, null),
-                stored.stream().map(TaskMsg::getWorkerId).collect(Collectors.toList()));
+                stored.stream().map(TaskMsg::getLatestAttemptWorkerId).collect(Collectors.toList()));
     }
 
     @Test
@@ -240,7 +240,7 @@ class SimpleTaskMsgAssignListenerTest {
                         TaskMsgStatus.ASSIGNED),
                 stored.stream().map(TaskMsg::getStatus).collect(Collectors.toList()));
         assertEquals(java.util.Arrays.asList("d1", "d2", "d1"),
-                stored.stream().map(TaskMsg::getWorkerId).collect(Collectors.toList()));
+                stored.stream().map(TaskMsg::getLatestAttemptWorkerId).collect(Collectors.toList()));
     }
 
     @Test
@@ -250,7 +250,7 @@ class SimpleTaskMsgAssignListenerTest {
         assertDoesNotThrow(() -> listener.onMsgAssign(task, List.of(new MatchedWorkerContext(worker("d1"), null))));
 
         List<TaskMsg> stored = taskManager.getTaskMessages(task.getTid());
-        assertTrue(stored.stream().allMatch(msg -> msg.getWorkerContextId() == null));
+        assertTrue(stored.stream().allMatch(msg -> msg.getLatestAttemptWorkerContextId() == null));
         verify(recordService, times(2)).recordMessageAssignment(
                 any(), any(), isNull(), anyString(), anyString(), any(), anyString(), anyBoolean()
         );
@@ -295,8 +295,8 @@ class SimpleTaskMsgAssignListenerTest {
         dto.setSharedConfig(java.util.Map.of("textContent", "hello"));
         dto.setUserId("agent");
         dto.setBatchSize(1);
-        dto.setTargetList(IntStream.range(0, messageCount)
-                .mapToObj(i -> "target-" + i)
+        dto.setInputs(IntStream.range(0, messageCount)
+                .mapToObj(i -> java.util.Map.<String, Object>of("target", "target-" + i))
                 .collect(Collectors.toCollection(ArrayList::new)));
         return taskManager.createTask(dto);
     }

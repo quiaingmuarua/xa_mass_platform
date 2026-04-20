@@ -92,8 +92,8 @@ class TaskApiMultiTaskAssignmentIntegrationTest extends AbstractMockE2eTest {
             assertRunningSingleDeviceTask(firstRunning);
             assertRunningSingleDeviceTask(secondRunning);
 
-            String firstWorkerId = String.valueOf(firstRunning.messages().get(0).get("workerId"));
-            String secondWorkerId = String.valueOf(secondRunning.messages().get(0).get("workerId"));
+        String firstWorkerId = String.valueOf(firstRunning.messages().get(0).get("latestAttemptWorkerId"));
+        String secondWorkerId = String.valueOf(secondRunning.messages().get(0).get("latestAttemptWorkerId"));
             assertEquals(Set.of("it-worker-0", "it-worker-1"), Set.of(firstWorkerId, secondWorkerId));
 
             AckSnapshot firstAck = firstClient.sendSuccess(firstDispatch, "multi-task-a-ok");
@@ -121,9 +121,9 @@ class TaskApiMultiTaskAssignmentIntegrationTest extends AbstractMockE2eTest {
         assertEquals(1, ((Number) snapshot.task().get("peakAssignedWorkerCount")).intValue());
         assertEquals(1, snapshot.messages().size());
         Map<String, Object> message = snapshot.messages().get(0);
-        assertNotNull(message.get("workerId"));
-        assertNotNull(message.get("workerContextId"));
-        assertNotNull(message.get("batchId"));
+            assertNotNull(message.get("latestAttemptWorkerId"));
+            assertNotNull(message.get("latestAttemptWorkerContextId"));
+            assertNotNull(message.get("latestAttemptBatchId"));
     }
 
     private void assertTerminalSingleDeviceTask(TaskSnapshot snapshot) {
@@ -134,9 +134,9 @@ class TaskApiMultiTaskAssignmentIntegrationTest extends AbstractMockE2eTest {
         assertEquals(1, snapshot.messages().size());
         Map<String, Object> message = snapshot.messages().get(0);
         assertEquals("SUCCESS", message.get("status"));
-        assertNotNull(message.get("workerId"));
-        assertNotNull(message.get("workerContextId"));
-        assertNotNull(message.get("batchId"));
+            assertNotNull(message.get("latestAttemptWorkerId"));
+            assertNotNull(message.get("latestAttemptWorkerContextId"));
+            assertNotNull(message.get("latestAttemptBatchId"));
     }
 
     private void registerWorker(String workerId) {

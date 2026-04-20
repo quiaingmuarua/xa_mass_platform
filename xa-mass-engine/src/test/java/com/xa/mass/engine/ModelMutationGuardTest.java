@@ -55,7 +55,7 @@ class ModelMutationGuardTest {
     }
 
     @Test
-    void latestAttemptProjectionMustNotUseLegacyTaskMsgBindingSettersDirectly() {
+    void latestAttemptProjectionMustNotUseIndividualTaskMsgProjectionSettersDirectly() {
         noClasses()
                 .that().doNotHaveFullyQualifiedName(TaskMsg.class.getName())
                 .should().callMethod(TaskMsg.class, "setStatus", TaskMsgStatus.class)
@@ -63,17 +63,17 @@ class ModelMutationGuardTest {
 
         noClasses()
                 .that().doNotHaveFullyQualifiedName(TaskMsg.class.getName())
-                .should().callMethod(TaskMsg.class, "setWorkerId", String.class)
+                .should().callMethod(TaskMsg.class, "setLatestAttemptWorkerId", String.class)
                 .check(MAIN_CLASSES);
 
         noClasses()
                 .that().doNotHaveFullyQualifiedName(TaskMsg.class.getName())
-                .should().callMethod(TaskMsg.class, "setWorkerContextId", String.class)
+                .should().callMethod(TaskMsg.class, "setLatestAttemptWorkerContextId", String.class)
                 .check(MAIN_CLASSES);
 
         noClasses()
                 .that().doNotHaveFullyQualifiedName(TaskMsg.class.getName())
-                .should().callMethod(TaskMsg.class, "setBatchId", String.class)
+                .should().callMethod(TaskMsg.class, "setLatestAttemptBatchId", String.class)
                 .check(MAIN_CLASSES);
     }
 }

@@ -303,8 +303,8 @@ class TaskWorkerAssignListenerTest {
     }
 
     private TaskMsg msg(String msgId, String workerId) {
-        TaskMsg taskMsg = new TaskMsg(msgId, "task-1", "target");
-        taskMsg.setWorkerId(workerId);
+        TaskMsg taskMsg = new TaskMsg(msgId, "task-1", java.util.Map.of("target", "target"));
+        taskMsg.setLatestAttemptWorkerId(workerId);
         return taskMsg;
     }
 

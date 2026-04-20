@@ -69,7 +69,7 @@ class TaskApiWorkerWithoutContextIntegrationTest extends AbstractMockE2eTest {
             createBody.put("project", "demoApp");
             createBody.put("sharedConfig", Map.of("textContent", "stateless dispatch integration"));
             createBody.put("userId", "itest");
-            createBody.put("targetList", List.of("target-a"));
+            createBody.put("inputs", List.of(Map.of("target", "target-a")));
             createBody.put("batchSize", 1);
 
             Map<String, Object> createResponse = exchange("/status/api/tasks", HttpMethod.POST, createBody);
@@ -89,10 +89,10 @@ class TaskApiWorkerWithoutContextIntegrationTest extends AbstractMockE2eTest {
             assertEquals(1, terminalSnapshot.messages().size());
 
             Map<String, Object> message = terminalSnapshot.messages().get(0);
-            assertEquals("stateless-worker", message.get("workerId"));
-            assertNull(message.get("workerContextId"));
+            assertEquals("stateless-worker", message.get("latestAttemptWorkerId"));
+            assertNull(message.get("latestAttemptWorkerContextId"));
             assertEquals("SUCCESS", message.get("status"));
-            assertNotNull(message.get("batchId"));
+            assertNotNull(message.get("latestAttemptBatchId"));
         } finally {
             client.disconnect();
         }

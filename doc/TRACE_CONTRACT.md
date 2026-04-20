@@ -35,6 +35,8 @@ Required event names:
 - `TASK_PROGRESS_SNAPSHOT`
 - `TASK_MSG_STATUS_TRANSITION`
 - `TASK_MSG_ATTEMPT_STATUS_TRANSITION`
+- `TASK_MSG_ATTEMPT_CLOSED`
+- `TASK_MSG_LOGICALLY_FINAL`
 - `TASK_MSG_RETRY_RESET`
 - `WORKER_CONTEXT_STATUS_TRANSITION`
 - `WORKER_LOCK_ACQUIRED`
@@ -51,6 +53,7 @@ Required event names:
 - `CALLBACK_ACCEPTED`
 - `CALLBACK_IGNORED_DUPLICATE`
 - `CALLBACK_IGNORED_LATE`
+- `CALLBACK_REJECTED_NO_ACTIVE_ATTEMPT`
 - `RESOURCE_RELEASED`
 - `RESOURCE_RELEASE_FAILED`
 
@@ -73,6 +76,9 @@ Common fields:
 - `workerId`
 - `workerContextId`
 - `batchId`
+- `latestAttemptWorkerId`
+- `latestAttemptWorkerContextId`
+- `latestAttemptBatchId`
 - `attemptId`
 - `attemptNo`
 
@@ -132,7 +138,9 @@ Must be traceable:
 - task-level funnel snapshot after progress reconciliation
 - `TaskMsg`: `INIT -> ASSIGNED -> RUNNING -> SUCCESS/FAILED/EXPIRED`
 - `TaskMsgAttempt`: `CREATED -> LEASED -> DISPATCHED -> ... -> final`
-- retry reset: final attempt closure plus logical `TaskMsg -> INIT`
+- attempt closure: `TASK_MSG_ATTEMPT_CLOSED` when a concrete attempt ends
+- logical item finality: `TASK_MSG_LOGICALLY_FINAL` only when the logical message will not be reset for retry
+- retry reset: final attempt closure plus logical `TaskMsg -> INIT`, without `TASK_MSG_LOGICALLY_FINAL`
 - `WorkerContext`: `IDLE -> RESERVED -> OCCUPIED -> IDLE`
 - worker lock acquire/release
 - worker match reject reason
@@ -143,6 +151,7 @@ Must be traceable:
 - assignment retry scheduling after a skipped dispatch when a `READY` or `RUNNING` task remains eligible
 - callback ignored because duplicate
 - callback ignored because task already terminal
+- callback rejected because no active attempt exists
 
 Rules:
 
@@ -158,6 +167,8 @@ Rules:
 10. task-state validation summary must include `valid`, `needsResolution`, and violation details when emitted
 11. assignment queue snapshot must include queue depth and scheduled retry count
 12. task-message-attempt transitions must include `attemptId`, `attemptNo`, and `finalReason` when the attempt closes
+13. task-message projection traces must use `latestAttemptWorkerId`, `latestAttemptWorkerContextId`, and `latestAttemptBatchId`
+14. attempt-history traces may still use `workerId`, `workerContextId`, and `batchId` because those fields belong to `TaskMsgAttempt`
 
 ## 5. Replayability Requirement
 
@@ -193,6 +204,10 @@ Minimum trace assertions:
 - `DISPATCH_BINDING_SUMMARY` for at least one successful binding round
 - `ASSIGNMENT_QUEUE_SNAPSHOT` for at least one submission and one retry path
 - `TASK_MSG_RETRY_RESET` when retry is exercised
+- `TASK_MSG_ATTEMPT_CLOSED` for success, retryable failure, retry-exhausted failure, expiry, and manual terminal drain
+- `TASK_MSG_LOGICALLY_FINAL` for success, retry-exhausted failure, expiry, and manual terminal drain
+- no `TASK_MSG_LOGICALLY_FINAL` for retryable failure reset
 - `ASSIGNMENT_RETRY_SCHEDULED` when delayed assignment retry is exercised
 - `CALLBACK_IGNORED_DUPLICATE` when replay is exercised
 - `CALLBACK_IGNORED_LATE` when late callback is exercised
+- `CALLBACK_REJECTED_NO_ACTIVE_ATTEMPT` when a callback arrives without a unique active attempt

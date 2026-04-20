@@ -4,6 +4,7 @@ import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.worker.WorkerContextStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
+import com.xa.mass.base.model.TaskMsgAttempt;
 import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.WorkerManager;
@@ -44,11 +45,17 @@ public class TaskResourceReleaseListener {
         Set<String> workerIds = new LinkedHashSet<>();
 
         for (TaskMsg message : messages) {
-            if (message == null || message.getWorkerId() == null || message.getWorkerId().isBlank()) {
+            if (message == null
+                    || message.getLatestAttemptWorkerId() == null
+                    || message.getLatestAttemptWorkerId().isBlank()) {
                 continue;
             }
-            workerIds.add(message.getWorkerId());
-            releaseWorkerContextIfOwnedByTask(task.getTid(), message.getWorkerId(), message.getWorkerContextId());
+            workerIds.add(message.getLatestAttemptWorkerId());
+            releaseWorkerContextIfOwnedByTask(
+                    task.getTid(),
+                    message.getLatestAttemptWorkerId(),
+                    message.getLatestAttemptWorkerContextId()
+            );
         }
 
         for (String workerId : workerIds) {
@@ -58,11 +65,11 @@ public class TaskResourceReleaseListener {
         }
     }
 
-    public void onTaskMessageFinal(Task task, TaskMsg taskMsg) {
-        if (task == null || taskMsg == null || task.getStatus().isFinal()) {
+    public void onTaskMessageAttemptClosed(Task task, TaskMsg taskMsg, TaskMsgAttempt attempt) {
+        if (task == null || taskMsg == null || attempt == null || task.getStatus().isFinal()) {
             return;
         }
-        String workerId = taskMsg.getWorkerId();
+        String workerId = attempt.getWorkerId();
         if (workerId == null || workerId.isBlank()) {
             return;
         }
@@ -73,16 +80,16 @@ public class TaskResourceReleaseListener {
                     if (activeAttempt != null) {
                         return workerId.equals(activeAttempt.getWorkerId());
                     }
-                    return workerId.equals(message.getWorkerId()) && message.isProcessing();
+                    return workerId.equals(message.getLatestAttemptWorkerId()) && message.isProcessing();
                 });
         if (workerStillBusy) {
             return;
         }
 
-        releaseWorkerContextIfOwnedByTask(task.getTid(), workerId, taskMsg.getWorkerContextId());
+        releaseWorkerContextIfOwnedByTask(task.getTid(), workerId, attempt.getWorkerContextId());
         workerManager.unlockWorker(workerId);
         TraceEventLogger.workerLockReleased(task.getTid(), workerId,
-                "ON_TASK_MESSAGE_FINAL", "TaskResourceReleaseListener", "worker has no in-flight messages");
+                "ON_TASK_MESSAGE_ATTEMPT_CLOSED", "TaskResourceReleaseListener", "worker has no in-flight messages");
 
         if (dispatchRequester != null
                 && task.getStatus() == TaskStatus.RUNNING

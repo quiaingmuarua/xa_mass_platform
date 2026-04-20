@@ -28,14 +28,14 @@ If you need fast orientation:
 - Port split is explicit: `server.port` for HTTP and `mass.websocket.port` for gateway WebSocket
 - The most important baseline docs are `doc/STATE_MACHINE_BASELINE.md`, `doc/TRACE_CONTRACT.md`, and `doc/E2E_BASELINE.md`
 - Verified mainline task lifecycle is `NEW -> READY -> RUNNING -> TERMINAL`, with pause/resume `NEW -> READY -> PAUSED -> READY`
-- Create contract is strict: `userId`, `project`, `taskName`, `sharedConfig`, `targetList`, `routingCode`, `batchSize`, `defaultMsgMaxRetryCount`, `openEnded`, and `maxRuntimeSeconds`; unknown retired fields fail fast
+- Create contract is strict: `userId`, `project`, `taskName`, `sharedConfig`, `inputs`, `routingCode`, `batchSize`, `defaultMsgMaxRetryCount`, `openEnded`, and `maxRuntimeSeconds`; unknown retired fields fail fast
 - Update contract is narrower than create and only allowed while the task is `NEW` or `BLOCKED`
 - `batchSize` is a per-worker hard cap for each dispatch round and is normalized to a minimum of `1` at the model boundary
 - Runtime blocking and review rejection are intentionally distinct: `rejectTask` is `NEW -> BLOCKED`, while `blockTask` is `READY/RUNNING -> BLOCKED`
 - Task aggregate counters now use their real meanings: `taskTargetNumber`, `taskEligibleNumber`, `taskSuccessNumber`, `taskNonSuccessNumber`
 - Read terminal tasks as `TaskStatus + terminalReason`; `TaskTerminalPolicy` is the seam for future stop policies
 - `TaskManager.validateTaskState()` is the SDK-facing audit for `Task + TaskMsg` consistency and pending resolution
-- `Task.sharedConfig` is the task-level payload boundary; `TaskMsg.input/output` is the work-item payload boundary; `getTarget()` is only a backwards-compat accessor
+- `Task.sharedConfig` is the task-level payload boundary; `TaskMsg.input/output` is the work-item payload boundary; `target` is only a conventional key inside `input`
 - `Task.intakeStatus` is the runtime truth for append-window lifecycle; `openEnded` is only the compatibility create/accessor projection
 - `OPEN` intake tasks must not auto-close from normal message convergence; only `MANUAL_CANCELLED` or explicit policy stops such as `MAX_RUNTIME_REACHED`, `SUCCESS_RATE_REACHED`, and `RETRY_BUDGET_EXHAUSTED` may close them before sealing
 - Keep task closure modeled as single final `TERMINAL` plus `terminalReason`; do not split task status into multiple terminal enums without an intentional kernel redesign
@@ -390,9 +390,9 @@ Important current implementation facts:
 
 - `TaskApiController` uses `TaskManager` lifecycle methods for all state changes.
 - `deleteTask()` enforces the state guard. `READY`, `RUNNING`, and `PAUSED` tasks cannot be deleted.
-- `TaskManager.createTask()` requires at least one materialized `targetList` entry, accepts only the supported create fields, and persists request `batchSize` onto the task.
+- `TaskManager.createTask()` requires at least one materialized `inputs` entry, accepts only the supported create fields, and persists request `batchSize` onto the task.
 - current mainline uses `batchSize` as the per-worker hard cap for each dispatch round, and remaining `INIT` messages are refilled in later rounds as worker/worker-context slots are released.
-- `TaskApiController.updateTask(...)` is metadata-only: it rejects unsupported fields such as `targetList` and refuses to mutate `READY`, `RUNNING`, `PAUSED`, or `TERMINAL` tasks.
+- `TaskApiController.updateTask(...)` is metadata-only: it rejects unsupported fields such as `inputs` and refuses to mutate `READY`, `RUNNING`, `PAUSED`, or `TERMINAL` tasks.
 - `TaskManager.createTask()` also rejects unsupported `project` codes instead of silently falling back to `demoApp`.
 - `TaskManager` persists one `TaskMsg` per target with the correct `taskId`, distinct `msgId`, and actual target value.
 - `MassEngine` starts `TaskAssignWorker` regardless of `mockMode`, submits existing `READY` tasks on startup, and subscribes to READY events from approve/resume.
@@ -406,7 +406,7 @@ Important current implementation facts:
 - `RuleBasedTaskWorkerMatchingStrategy` no longer prefilters candidates by worker `workerGroupId`; routing-code satisfaction should come from worker-context-facing signals and explicit rules.
 - `WorkerMatchContext` now exposes nested `workerAttributes` and `workerContextAttributes` maps to QLExpress rules.
 - `WorkerMatchContext` also exposes `hasWorkerContext` and `taskHasRoutingRequirement`, so rules can distinguish stateless workers from worker-context-routed tasks.
-- `SimpleTaskMsgAssignListener` reuses persisted `TaskMsg` records, fills `workerId` / `workerContextId` / `batchId`, moves them to `ASSIGNED`, and now round-robins messages across workers up to `batchSize` per worker per round.
+- `SimpleTaskMsgAssignListener` reuses persisted `TaskMsg` records, creates a `TaskMsgAttempt`, projects `latestAttemptWorkerId` / `latestAttemptWorkerContextId` / `latestAttemptBatchId` onto `TaskMsg`, moves messages to `ASSIGNED`, and now round-robins messages across workers up to `batchSize` per worker per round.
 - `SimpleTaskMsgAssignListener` now also binds dispatchable worker contexts to the current task and advances them into `OCCUPIED`; non-dispatchable worker-context states are skipped instead of being silently reused.
 - `TaskResourceReleaseListener` now releases a worker/worker-context slot as soon as that worker has no more in-flight `TaskMsg` rows for the current task, then re-submits the still-`RUNNING` task when pending `INIT` messages remain.
 - `GatewayTaskMsgPublisher` pushes task messages downstream as `TASK/step`.
@@ -442,8 +442,8 @@ Important current implementation facts:
     - `RETRY_BUDGET_EXHAUSTED`
 - `TaskManager.handleTaskMessageResult(...)` treats duplicate final callbacks as idempotent: the first final result is kept, progress is recalculated, and scheduler callbacks are not triggered twice.
 - `TaskManager.cancelTask(...)` now drains in-flight `TaskMsg` rows during manual terminal closure: `INIT -> FAILED(MANUAL_CANCELLED)`, `ASSIGNED/RUNNING -> EXPIRED(MANUAL_CANCELLED)`.
-- `GET /status/api/tasks/{taskId}` now includes `items` derived from persisted `TaskMsg.input`, keeps only `compatTargetList` as the backwards-compat target projection, and includes `stateValidation` so API/demo surfaces can expose the same state-audit result used by SDK callers.
-- `GET /status/api/tasks/{taskId}/messages` now exposes an explicit read model centered on `input` / `output` and only keeps `compatTarget` as the backwards-compat projection of `input["target"]`; raw `TaskMsg.getTarget()` is not part of the intended API surface.
+- `GET /status/api/tasks/{taskId}` includes `items` derived from persisted `TaskMsg.input` and `stateValidation` so API/demo surfaces can expose the same state-audit result used by SDK callers.
+- `GET /status/api/tasks/{taskId}/messages` exposes an explicit read model centered on `input` / `output`; top-level target projections are not part of the intended API surface.
 - `MassApplication.loadMockData(...)` normalizes mock `supportedProjects`, lowercases `workerGroupId`, and loads explicit mock `workerContexts` only when they are provided; workers without mock `workerContexts` remain stateless.
 - `WorkerManager` now treats `Worker.status` as the single online truth for matching/runtime availability; gateway online/offline events update the worker model directly instead of maintaining a separate online-state registry.
 - `WorkerManager` / `WorkerStorage` now also own the single worker-lock truth; active mainline code should read lock state through `WorkerManager.isLocked(...)` instead of from `Worker`.
@@ -452,7 +452,7 @@ Important current implementation facts:
 - `WebSocketClientStarter` now starts on `ApplicationReadyEvent` behind `mock.client.auto-start=true`, so default `dev` startup includes mock client result write-back.
 - `WebSocketClientStarter` passes `mock.client.task-result-status` into each mock client so result write-back can be forced to `SUCCESS` or `FAILED`.
 - `MassWebSocketClientImpl` now ignores `response=true` task frames to prevent mock client echo loops and duplicate result writes.
-- Verified on `2026-04-13`: API-created tasks move `NEW -> READY -> RUNNING -> TERMINAL`, and persisted `TaskMsg` rows move `INIT -> ASSIGNED -> SUCCESS` with `workerId` / `workerContextId` / `batchId`.
+- Verified on `2026-04-13`: API-created tasks move `NEW -> READY -> RUNNING -> TERMINAL`, and persisted `TaskMsg` rows move `INIT -> ASSIGNED -> SUCCESS` with `latestAttemptWorkerId` / `latestAttemptWorkerContextId` / `latestAttemptBatchId`.
 - Verified on `2026-04-13`: with `mock.client.task-result-status=FAILED`, API-created tasks still move `NEW -> READY -> RUNNING -> TERMINAL`, `taskSuccessNumber` stays `0`, and persisted `TaskMsg` rows move `INIT -> ASSIGNED -> FAILED`.
 - Verified on `2026-04-13`: after `RUNNING -> PAUSED`, real `TASK/step` callbacks can still finish the paused task to `TERMINAL` without requiring a manual resume.
 - Verified on `2026-04-14`: a single worker/worker-context can be reused after both normal terminal completion and manual running-task termination.
@@ -467,9 +467,11 @@ Important current implementation facts:
 - `MassApplication.stop()` is now idempotent, and the mock Spring Boot entry no longer adds an extra manual shutdown hook around the runtime.
 - `WebSocketServerImpl.stop()` now calls `shutdownGracefully().syncUninterruptibly()` on both EventLoopGroups so a single Ctrl-C is sufficient for clean exit.
 - `TaskMsgStatus` is now the logical item lifecycle (`INIT -> ASSIGNED -> RUNNING -> final`); transport-side assignment and retry details live in `TaskMsgAttempt`.
-- `TaskMsg.workerId` / `workerContextId` / `batchId` are compatibility projections of the latest attempt, not the authoritative execution history.
+- `TaskMsg.latestAttemptWorkerId` / `latestAttemptWorkerContextId` / `latestAttemptBatchId` are compatibility projections of the latest attempt, not the authoritative execution history.
 - `TaskMsg.finalReason` is now the item-level terminal explanation (`BUSINESS_SUCCESS`, `RETRY_EXHAUSTED`, `MANUAL_CANCELLED`, `LEASE_EXPIRED`, etc.).
 - `TaskMsgAttempt` is now the assignment/lease/retry model; each dispatch round creates a new attempt and retry does not mutate a final attempt back to active.
+- Worker/gateway callbacks must resolve a unique active `TaskMsgAttempt`; no-active-attempt callbacks are rejected and traced as `CALLBACK_REJECTED_NO_ACTIVE_ATTEMPT`.
+- Message result events are split: `taskMessageAttemptClosed` releases attempt-bound resources, while `taskMessageLogicallyFinal` means the logical `TaskMsg` is stably final and will not be reset for retry.
 
 ## 6.1 Platform Model
 

@@ -437,7 +437,22 @@ public class MassApplication {
         return List.of("demoApp", "testApp");
     }
 
+    public void loadMockData() {
+        loadMockData(requireConfiguredEngine(), engineConfig);
+    }
+
+    public void publishTaskEvents() {
+        requireConfiguredEngine().publishTaskEvents();
+    }
+
     public MassEngine getEngine() {
+        return engine;
+    }
+
+    private MassEngine requireConfiguredEngine() {
+        if (engine == null) {
+            throw new IllegalStateException("Mass engine is unavailable for this application");
+        }
         return engine;
     }
 }

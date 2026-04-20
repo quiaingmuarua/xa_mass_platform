@@ -128,7 +128,7 @@ public class TaskWorkerAssignListener {
 
         List<TaskMsg> dispatchedMessages = msgAssignListener.onMsgAssign(task, List.copyOf(dispatchCandidates));
         long usedWorkerCount = dispatchedMessages.stream()
-                .map(TaskMsg::getWorkerId)
+                .map(TaskMsg::getLatestAttemptWorkerId)
                 .filter(workerId -> workerId != null && !workerId.isBlank())
                 .distinct()
                 .count();

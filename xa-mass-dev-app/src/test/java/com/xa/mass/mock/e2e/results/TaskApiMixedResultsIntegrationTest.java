@@ -69,7 +69,10 @@ class TaskApiMixedResultsIntegrationTest extends AbstractMockE2eTest {
         createBody.put("routingCode", "us");
         createBody.put("sharedConfig", Map.of("textContent", "mixed results integration test"));
         createBody.put("userId", "itest");
-        createBody.put("targetList", List.of("target-a", "target-b"));
+        createBody.put("inputs", List.of(
+                Map.of("target", "target-a"),
+                Map.of("target", "target-b")
+        ));
         createBody.put("batchSize", 1);
         createBody.put("defaultMsgMaxRetryCount", 0);
         Map<String, Object> createResponse = exchange("/status/api/tasks", HttpMethod.POST, createBody);
@@ -97,7 +100,7 @@ class TaskApiMixedResultsIntegrationTest extends AbstractMockE2eTest {
         AckSnapshot ack1 = submitTaskResult(
                 taskId,
                 String.valueOf(firstMsg.get("msgId")),
-                String.valueOf(firstMsg.get("workerId")),
+                String.valueOf(firstMsg.get("latestAttemptWorkerId")),
                 "SUCCESS",
                 "mixed-ok"
         );
@@ -107,7 +110,7 @@ class TaskApiMixedResultsIntegrationTest extends AbstractMockE2eTest {
         AckSnapshot ack2 = submitTaskResult(
                 taskId,
                 String.valueOf(secondMsg.get("msgId")),
-                String.valueOf(secondMsg.get("workerId")),
+                String.valueOf(secondMsg.get("latestAttemptWorkerId")),
                 "FAILED",
                 "mixed-fail"
         );
@@ -132,9 +135,9 @@ class TaskApiMixedResultsIntegrationTest extends AbstractMockE2eTest {
 
         // Both messages must have worker/workerContext/batch binding.
         for (Map<String, Object> msg : terminalSnapshot.messages()) {
-            assertNotNull(msg.get("workerId"));
-            assertNotNull(msg.get("workerContextId"));
-            assertNotNull(msg.get("batchId"));
+            assertNotNull(msg.get("latestAttemptWorkerId"));
+            assertNotNull(msg.get("latestAttemptWorkerContextId"));
+            assertNotNull(msg.get("latestAttemptBatchId"));
         }
     }
 

@@ -67,10 +67,10 @@ class TaskApiFailureResultIntegrationTest extends AbstractMockE2eTest {
         for (Map<String, Object> message : snapshot.messages()) {
             assertEquals("FAILED", message.get("status"));
             assertEquals("RETRY_EXHAUSTED", message.get("finalReason"));
-            assertNotNull(message.get("workerId"));
-            assertNotNull(message.get("workerContextId"));
-            assertNotNull(message.get("batchId"));
-            assertEquals("Executed by mock client " + message.get("workerId"), message.get("errorMessage"));
+        assertNotNull(message.get("latestAttemptWorkerId"));
+        assertNotNull(message.get("latestAttemptWorkerContextId"));
+        assertNotNull(message.get("latestAttemptBatchId"));
+        assertEquals("Executed by mock client " + message.get("latestAttemptWorkerId"), message.get("errorMessage"));
         }
     }
 }
