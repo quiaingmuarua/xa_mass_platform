@@ -589,7 +589,7 @@ Current purpose:
 
 The active API surface uses two response styles:
 
-**Task API (`/status/api/tasks/**`)** — flat `Map<String,Object>`:
+**Task API (`/status/api/tasks/**`)** - flat `Map<String,Object>`:
 
 - all success responses: `{"success": true, <data fields at top level>}`
 - all error responses: `{"success": false, "message": "<reason>"}`
@@ -597,7 +597,7 @@ The active API surface uses two response styles:
 - HTTP 400 for validation failures and out-of-state transitions
 - `ApiResponse` wrapper is not used on this path
 
-**Other APIs (queue, session, config, message passthrough)** — use `ApiResponse<T>` or `{"code", "msg", "data"}` shapes as documented per-endpoint above.
+**Other APIs (queue, session, config, message passthrough)** - use `ApiResponse<T>` or `{"code", "msg", "data"}` shapes as documented per-endpoint above.
 
 Implication:
 

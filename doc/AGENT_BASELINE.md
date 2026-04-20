@@ -30,13 +30,13 @@ When code, runtime behavior, and docs disagree, use this order:
 6. [./E2E_BASELINE.md](./E2E_BASELINE.md)
 7. This file
 8. Module READMEs
-9. removed historical/archive material mentioned by older notes
+9. Older notes only after confirming the referenced files still exist locally
 
 Working rule:
 
-- do not assume old READMEs or architecture notes still describe the live path
+- verify old READMEs and architecture notes against current code before using them
 - update active docs after confirming runtime truth
-- keep historical explanation in archive paths instead of letting it leak back into mainline docs
+- keep mainline docs current; delete stale history unless it explains a live operational constraint
 
 ## 2. Platform Definition
 

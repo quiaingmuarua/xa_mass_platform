@@ -4,9 +4,9 @@ This package contains shared communication primitives used by the current reposi
 
 Treat this README as a local orientation note, not as the system-level source of truth. For platform semantics, start from:
 
-- [../../../../../../../../AGENTS.md](../../../../../../../../AGENTS.md)
-- [../../../../../../../../doc/AGENT_BASELINE.md](../../../../../../../../doc/AGENT_BASELINE.md)
-- [../../../../../../../../doc/TRACE_CONTRACT.md](../../../../../../../../doc/TRACE_CONTRACT.md)
+- [../../../../../../../../../AGENTS.md](../../../../../../../../../AGENTS.md)
+- [../../../../../../../../../doc/AGENT_BASELINE.md](../../../../../../../../../doc/AGENT_BASELINE.md)
+- [../../../../../../../../../doc/TRACE_CONTRACT.md](../../../../../../../../../doc/TRACE_CONTRACT.md)
 
 ## Scope
 
