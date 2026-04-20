@@ -17,6 +17,7 @@ For those, use:
 - [./E2E_BASELINE.md](./E2E_BASELINE.md)
 - [./VERIFIED_RUNBOOK.md](./VERIFIED_RUNBOOK.md)
 - [./INTERNAL_API_REFERENCE.md](./INTERNAL_API_REFERENCE.md)
+- [./engine/POLICY_INTERACTION_BASELINE.md](./engine/POLICY_INTERACTION_BASELINE.md)
 
 ## 1. Truth Order
 
@@ -77,6 +78,7 @@ Interpretation rules:
 - `Worker.attributes` and `WorkerContext.attributes` are auxiliary rule labels for matching and diagnostics only. They are not lifecycle, lock, or online truth.
 - UI pages, mock runtime, and demo APIs must not redefine the platform kernel.
 - Manual worker debug chat is a debug/control side-channel. It is not `TaskMsg` lifecycle and must not mutate task state.
+- new or changed policy seams must keep ownership explicit across matching, attempt, release, refill, intake, control, and terminal decisions; use [./engine/POLICY_INTERACTION_BASELINE.md](./engine/POLICY_INTERACTION_BASELINE.md) before extending those paths
 
 ## 5. Mainline Reality
 

@@ -1,6 +1,6 @@
 # Trace Contract
 
-Last updated: 2026-04-19
+Last updated: 2026-04-20
 
 This file defines the minimum structured trace required to debug lifecycle issues.
 Summary logs are useful, but they do not satisfy this contract by themselves.
@@ -25,6 +25,7 @@ The contract covers:
 - assignment-queue retry scheduling
 - callback accept/ignore
 - resource release
+- policy decision points when lifecycle, retry, release, refill, intake, or terminal behavior changes
 
 ## 2. Stable Event Names
 
@@ -58,6 +59,13 @@ Required event names:
 - `RESOURCE_RELEASE_FAILED`
 
 Do not introduce synonym drift for the same concept.
+
+Policy interaction rule:
+
+- use existing stable events when a policy decision maps directly to a lifecycle event
+- add a new stable event only when the decision would otherwise be hidden
+- any new policy event must include `policyName`, `decision`, and `reason`
+- update [./engine/POLICY_INTERACTION_BASELINE.md](./engine/POLICY_INTERACTION_BASELINE.md) and tests in the same change
 
 ## 3. Required Fields
 
@@ -129,6 +137,8 @@ Specialized fields when relevant:
 - `scheduledRetryCount`
 - `queueAction`
 - `leaseExpireTime`
+- `policyName`
+- `decision`
 
 ## 4. Minimum Required Paths
 

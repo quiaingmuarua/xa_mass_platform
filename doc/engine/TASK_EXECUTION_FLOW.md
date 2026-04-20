@@ -1,8 +1,10 @@
 # Task Execution Flow
 
-Last updated: 2026-04-15
+Last updated: 2026-04-20
 
 This document describes only the verified mainline runtime path. It does not describe historical `v2` design ideas.
+
+For policy ownership and interaction precedence, use [POLICY_INTERACTION_BASELINE.md](./POLICY_INTERACTION_BASELINE.md).
 
 Current reference scenario:
 

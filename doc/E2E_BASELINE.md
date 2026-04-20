@@ -71,9 +71,12 @@ If a change touches:
 - retry semantics
 - worker lock or context release
 - lifecycle API contracts
+- policy interaction precedence
 
 then acceptance requires both:
 
 1. E2E coverage for the changed path
 2. trace coverage for the critical transition
+
+For policy interaction changes, also cover the touched pairwise interaction from [./engine/POLICY_INTERACTION_BASELINE.md](./engine/POLICY_INTERACTION_BASELINE.md).
 
