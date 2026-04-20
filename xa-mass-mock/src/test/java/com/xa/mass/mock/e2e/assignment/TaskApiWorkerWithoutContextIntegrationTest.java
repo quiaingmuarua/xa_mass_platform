@@ -62,7 +62,7 @@ class TaskApiWorkerWithoutContextIntegrationTest extends AbstractMockE2eTest {
         URI uri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
         MassWebSocketClientImpl client = new MassWebSocketClientImpl(uri, "stateless-worker");
         try {
-            assertTrue(client.connectBlocking(), "stateless worker client failed to connect");
+            assertClientConnects(client, "stateless worker client failed to connect");
 
             Map<String, Object> createBody = new LinkedHashMap<>();
             createBody.put("taskName", "worker-without-context");

@@ -4,6 +4,8 @@ import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskHoldReason;
 import com.xa.mass.base.enums.task.TaskIntakeStatus;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
+import com.xa.mass.base.enums.taskmsg.TaskMsgAttemptFinalReason;
+import com.xa.mass.base.enums.taskmsg.TaskMsgAttemptStatus;
 import com.xa.mass.base.enums.taskmsg.TaskMsgFinalReason;
 import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.base.model.Task;
@@ -350,6 +352,70 @@ class TaskManagerLifecycleTest {
                             && "1".equals(mdc.get("retryCount"))
                             && "INIT".equals(mdc.get("toStatus")));
         }
+    }
+
+    @Test
+    void retryableFailurePublishesMessageFinalBeforeDispatchRequested() {
+        Task task = taskManager.createTask(buildRequest("task-result-retry-order", List.of("alpha")));
+        taskManager.approveTask(task.getTid());
+        task.setStatus(TaskStatus.RUNNING);
+        taskManager.updateTask(task);
+
+        TaskMsg message = taskManager.getTaskMessages(task.getTid()).get(0);
+        message.markAsAssigned();
+        message.setWorkerId("worker-1");
+        message.setWorkerContextId("worker-context-1");
+        taskManager.updateTaskMessage(task.getTid(), message);
+
+        List<String> events = new java.util.ArrayList<>();
+        taskManager.addTaskMessageFinalListener((currentTask, currentMessage) ->
+                events.add("message-final:" + currentMessage.getStatus()));
+        taskManager.addTaskDispatchListener(currentTask ->
+                events.add("dispatch:" + currentTask.getStatus()));
+
+        assertTrue(taskManager.handleTaskMessageResult(task.getTid(), message.getMsgId(), false, "boom-once"));
+
+        assertEquals(List.of("message-final:FAILED", "dispatch:RUNNING"), events);
+    }
+
+    @Test
+    void terminalCompletionSuppressesNonTerminalMessageFinalNotification() {
+        Task task = taskManager.createTask(buildRequest("task-terminal-event-order", List.of("alpha")));
+        taskManager.approveTask(task.getTid());
+        task.setStatus(TaskStatus.RUNNING);
+        taskManager.updateTask(task);
+
+        TaskMsg message = taskManager.getTaskMessages(task.getTid()).get(0);
+        message.markAsAssigned();
+        taskManager.updateTaskMessage(task.getTid(), message);
+
+        List<String> events = new java.util.ArrayList<>();
+        taskManager.addTaskMessageFinalListener((currentTask, currentMessage) -> events.add("message-final"));
+        taskManager.addTaskTerminalListener(currentTask -> events.add("terminal"));
+
+        assertTrue(taskManager.handleTaskMessageResult(task.getTid(), message.getMsgId(), true, "done"));
+
+        assertEquals(List.of("terminal"), events);
+    }
+
+    @Test
+    void retryExhaustedFailureMarksAttemptAsBusinessFailure() {
+        Task task = taskManager.createTask(buildRequest("task-result-retry-exhausted-attempt", List.of("alpha")));
+        taskManager.approveTask(task.getTid());
+        task.setStatus(TaskStatus.RUNNING);
+        taskManager.updateTask(task);
+
+        TaskMsg message = taskManager.getTaskMessages(task.getTid()).get(0);
+        message.markAsAssigned();
+        message.setMaxRetryCount(0);
+        taskManager.updateTaskMessage(task.getTid(), message);
+
+        assertTrue(taskManager.handleTaskMessageResult(task.getTid(), message.getMsgId(), false, "boom-final"));
+
+        TaskMsgAttempt attempt = taskManager.getLatestTaskMessageAttempt(task.getTid(), message.getMsgId());
+        assertNotNull(attempt);
+        assertEquals(TaskMsgAttemptStatus.FAILED, attempt.getStatus());
+        assertEquals(TaskMsgAttemptFinalReason.BUSINESS_FAILURE, attempt.getFinalReason());
     }
 
     @Test

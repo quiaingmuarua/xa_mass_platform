@@ -146,7 +146,7 @@ class TaskApiMixedResultsIntegrationTest extends AbstractMockE2eTest {
         URI uri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
         ReplayClient client = new ReplayClient(uri, workerId, msgId);
         try {
-            assertTrue(client.connectBlocking(), "ReplayClient failed to connect for worker " + workerId);
+            assertClientConnects(client, "ReplayClient failed to connect for worker " + workerId);
             client.sendMessage(buildResultPayload(taskId, msgId, workerId, status, detail));
             assertTrue(client.awaitAck(3, TimeUnit.SECONDS), "Timed out waiting for gateway ack on msg " + msgId);
             return client.ackSnapshot();

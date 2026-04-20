@@ -1,5 +1,6 @@
 package com.xa.mass.mock.e2e.support;
 
+import com.xa.mass.mock.client.MassWebSocketClient;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.boot.test.web.server.LocalServerPort;
@@ -13,12 +14,17 @@ import java.net.ServerSocket;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Predicate;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public abstract class AbstractMockE2eTest {
+
+    private static final AtomicInteger NEXT_WEBSOCKET_PORT = new AtomicInteger(initialPortSeed());
 
     @LocalServerPort
     protected int port;
@@ -36,10 +42,22 @@ public abstract class AbstractMockE2eTest {
     }
 
     protected static int findFreePort() {
+        while (true) {
+            int candidate = NEXT_WEBSOCKET_PORT.getAndIncrement();
+            try (ServerSocket socket = new ServerSocket(candidate)) {
+                return socket.getLocalPort();
+            } catch (IOException ignored) {
+                // Try the next candidate. Tests run in one JVM, so monotonic allocation
+                // avoids reusing a just-released WebSocket port in later contexts.
+            }
+        }
+    }
+
+    private static int initialPortSeed() {
         try (ServerSocket socket = new ServerSocket(0)) {
             return socket.getLocalPort();
         } catch (IOException e) {
-            throw new IllegalStateException("Failed to allocate free port", e);
+            throw new IllegalStateException("Failed to allocate initial free port seed", e);
         }
     }
 
@@ -158,6 +176,18 @@ public abstract class AbstractMockE2eTest {
                 null
         );
         return new TaskSnapshot(task(detailResponse), messages(messagesResponse));
+    }
+
+    protected void assertClientConnects(MassWebSocketClient client, String failureMessage) throws Exception {
+        boolean connected = false;
+        for (int i = 0; i < 3; i++) {
+            if (client.connectBlocking(3, TimeUnit.SECONDS)) {
+                connected = true;
+                break;
+            }
+            Thread.sleep(250L);
+        }
+        assertTrue(connected, failureMessage);
     }
 
     protected record TaskSnapshot(Map<String, Object> task, List<Map<String, Object>> messages) {

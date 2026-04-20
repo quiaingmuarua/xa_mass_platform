@@ -70,7 +70,7 @@ class TaskApiMultiRoundDispatchIntegrationTest extends AbstractMockE2eTest {
         URI wsUri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
         MassWebSocketClientImpl client = new MassWebSocketClientImpl(wsUri, workerId);
         try {
-            assertTrue(client.connectBlocking(), "Mock client failed to connect");
+            assertClientConnects(client, "Mock client failed to connect");
 
             String taskId = createTaskId(
                     "multi-round",
@@ -113,7 +113,7 @@ class TaskApiMultiRoundDispatchIntegrationTest extends AbstractMockE2eTest {
         URI wsUri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
         ManualAckWebSocketClient client = new ManualAckWebSocketClient(wsUri, workerId);
         try {
-            assertTrue(client.connectBlocking(), "Manual mock client failed to connect");
+            assertClientConnects(client, "Manual mock client failed to connect");
 
             String taskId = createTaskId(
                     "multi-round-batch-two",

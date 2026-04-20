@@ -78,8 +78,8 @@ class TaskApiMinimumWorkerGateIntegrationTest extends AbstractMockE2eTest {
         MassWebSocketClientImpl firstClient = new MassWebSocketClientImpl(uri, firstWorkerId);
         MassWebSocketClientImpl secondClient = new MassWebSocketClientImpl(uri, secondWorkerId);
         try {
-            assertTrue(firstClient.connectBlocking(), "first mock client failed to connect");
-            assertTrue(secondClient.connectBlocking(), "second mock client failed to connect");
+            assertClientConnects(firstClient, "first mock client failed to connect");
+            assertClientConnects(secondClient, "second mock client failed to connect");
 
             TaskSnapshot terminalSnapshot = waitForTaskSnapshot(taskId, "TERMINAL", 20, 500L);
             assertEquals("ALL_MESSAGES_SUCCEEDED", terminalSnapshot.task().get("terminalReason"));

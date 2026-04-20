@@ -72,7 +72,7 @@ class TaskApiDelayedWorkerAvailabilityIntegrationTest extends AbstractMockE2eTes
         URI uri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
         MassWebSocketClientImpl client = new MassWebSocketClientImpl(uri, workerId);
         try {
-            assertTrue(client.connectBlocking(), "late worker client failed to connect");
+            assertClientConnects(client, "late worker client failed to connect");
 
             TaskSnapshot terminalSnapshot = waitForTaskSnapshot(taskId, "TERMINAL", 20, 500L);
             assertEquals("TERMINAL", terminalSnapshot.task().get("status"));

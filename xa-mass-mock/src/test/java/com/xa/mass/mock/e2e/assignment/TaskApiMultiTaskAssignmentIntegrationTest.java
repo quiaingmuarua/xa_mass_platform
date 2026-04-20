@@ -71,8 +71,8 @@ class TaskApiMultiTaskAssignmentIntegrationTest extends AbstractMockE2eTest {
         ManualAckWebSocketClient secondClient = new ManualAckWebSocketClient(wsUri, "it-worker-1");
 
         try {
-            assertTrue(firstClient.connectBlocking(), "First manual mock client failed to connect");
-            assertTrue(secondClient.connectBlocking(), "Second manual mock client failed to connect");
+            assertClientConnects(firstClient, "First manual mock client failed to connect");
+            assertClientConnects(secondClient, "Second manual mock client failed to connect");
 
             String firstTaskId = createTaskId("multi-task-a", "multi task assignment integration", "target-a");
             String secondTaskId = createTaskId("multi-task-b", "multi task assignment integration", "target-b");

@@ -72,7 +72,7 @@ class TaskApiWorkerContextAttributeRoutingIntegrationTest extends AbstractMockE2
         URI uri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
         MassWebSocketClientImpl matchedClient = new MassWebSocketClientImpl(uri, "matched-worker");
         try {
-            assertTrue(matchedClient.connectBlocking(), "matched worker client failed to connect");
+            assertClientConnects(matchedClient, "matched worker client failed to connect");
 
             String taskId = createTaskId("worker-context-attribute-routing", "attribute routing integration", "target-a");
             Map<String, Object> auditResponse = exchange(

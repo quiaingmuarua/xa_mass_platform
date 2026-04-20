@@ -57,7 +57,7 @@ class TaskApiSingleWorkerReuseIntegrationTest extends AbstractMockE2eTest {
         URI wsUri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
         MassWebSocketClientImpl client = new MassWebSocketClientImpl(wsUri, workerId);
         try {
-            assertTrue(client.connectBlocking(), "Mock client failed to connect");
+            assertClientConnects(client, "Mock client failed to connect");
 
             String firstTaskId = createTaskId("reuse-first", "single worker reuse first", "target-a");
             Map<String, Object> firstApprove = exchange(

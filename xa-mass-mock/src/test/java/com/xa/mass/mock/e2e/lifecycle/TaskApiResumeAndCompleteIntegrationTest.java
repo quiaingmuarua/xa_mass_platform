@@ -106,7 +106,7 @@ class TaskApiResumeAndCompleteIntegrationTest extends AbstractMockE2eTest {
         URI wsUri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
         MassWebSocketClientImpl client = new MassWebSocketClientImpl(wsUri, workerId);
         try {
-            assertTrue(client.connectBlocking(), "Mock client failed to connect");
+            assertClientConnects(client, "Mock client failed to connect");
 
             // 5. Resume the task: PAUSED → READY → assign worker picks it up → RUNNING → TERMINAL.
             Map<String, Object> resumeResponse = exchange(

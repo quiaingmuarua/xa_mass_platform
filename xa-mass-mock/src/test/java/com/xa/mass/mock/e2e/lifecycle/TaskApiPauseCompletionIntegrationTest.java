@@ -105,7 +105,7 @@ class TaskApiPauseCompletionIntegrationTest extends AbstractMockE2eTest {
         URI uri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
         ReplayWebSocketClient client = new ReplayWebSocketClient(uri, workerId, msgId);
         try {
-            assertTrue(client.connectBlocking(), "Replay WebSocket client failed to connect");
+            assertClientConnects(client, "Replay WebSocket client failed to connect");
             client.sendMessage(buildTaskResultPayload(taskId, msgId, workerId, status, detail));
             assertTrue(client.awaitAck(3, TimeUnit.SECONDS), "Timed out waiting for gateway ack");
             return client.ackSnapshot();
