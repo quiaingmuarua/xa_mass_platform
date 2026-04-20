@@ -275,7 +275,6 @@ class TaskLifecycleService {
             return false;
         }
         task.setIntakeStatus(TaskIntakeStatus.SEALED);
-        task.setOpenEnded(false);
         taskManager.updateTask(task);
         stateResolver.updateTaskProgress(taskId);
         logger.info("[sealTask] Sealed task {}", taskId);

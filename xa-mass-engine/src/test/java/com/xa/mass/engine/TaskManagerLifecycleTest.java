@@ -946,6 +946,65 @@ class TaskManagerLifecycleTest {
 
     // ---- Bug1: READY/RUNNING → BLOCKED (blockTask) ----
 
+    // ---- Open intake terminal validation ----
+
+    @Test
+    void validateTaskStateAllowsRuntimeLimitClosureForOpenIntakeTask() {
+        TaskTerminalPolicy runtimeLimitPolicy = (task, stats) ->
+                TaskTerminalPolicyDecision.finalizeToTerminal(TaskTerminalReason.MAX_RUNTIME_REACHED);
+        TaskManager policyAwareManager = new TaskManager(
+                scheduler,
+                new InMemoryTaskStorage(),
+                runtimeLimitPolicy
+        );
+
+        TaskCreateRequestDto request = buildRequest("task-open-intake-runtime-limit", List.of("alpha"));
+        request.setOpenEnded(true);
+        Task task = policyAwareManager.createTask(request);
+        policyAwareManager.approveTask(task.getTid());
+        task.setStatus(TaskStatus.RUNNING);
+        policyAwareManager.updateTask(task);
+
+        TaskStateResolutionResult resolutionResult = policyAwareManager.resolveTaskStateFromMessages(task.getTid());
+        TaskStateValidationResult validationResult = policyAwareManager.validateTaskState(task.getTid());
+
+        assertEquals(TaskStateResolutionResult.Outcome.FINALIZED_TO_TERMINAL, resolutionResult.getOutcome());
+        assertEquals(TaskTerminalReason.MAX_RUNTIME_REACHED, resolutionResult.getTerminalReason());
+        assertTrue(validationResult.isValid());
+        assertFalse(validationResult.isNeedsResolution());
+        assertEquals(TaskStatus.TERMINAL, validationResult.getStatus());
+        assertEquals(TaskTerminalReason.MAX_RUNTIME_REACHED, validationResult.getTerminalReason());
+        assertFalse(validationResult.getViolations().contains(
+                TaskStateValidationResult.ViolationCode.OPEN_INTAKE_FINALIZED_NON_MANUALLY));
+    }
+
+    @Test
+    void validateTaskStateDoesNotFlagOpenIntakeViolationForPolicyDrivenTerminalReasons() {
+        List<TaskTerminalReason> policyDrivenReasons = List.of(
+                TaskTerminalReason.MAX_RUNTIME_REACHED,
+                TaskTerminalReason.SUCCESS_RATE_REACHED,
+                TaskTerminalReason.RETRY_BUDGET_EXHAUSTED
+        );
+
+        for (TaskTerminalReason terminalReason : policyDrivenReasons) {
+            TaskCreateRequestDto request = buildRequest("task-open-intake-" + terminalReason.name(), List.of("alpha"));
+            request.setOpenEnded(true);
+            Task task = taskManager.createTask(request);
+            task.setStatus(TaskStatus.TERMINAL);
+            task.setTerminalReason(terminalReason);
+            taskManager.updateTask(task);
+
+            TaskStateValidationResult result = taskManager.validateTaskState(task.getTid());
+
+            assertTrue(result.isValid(), terminalReason.name());
+            assertFalse(result.isNeedsResolution(), terminalReason.name());
+            assertEquals(TaskStatus.TERMINAL, result.getStatus(), terminalReason.name());
+            assertEquals(terminalReason, result.getTerminalReason(), terminalReason.name());
+            assertFalse(result.getViolations().contains(
+                    TaskStateValidationResult.ViolationCode.OPEN_INTAKE_FINALIZED_NON_MANUALLY), terminalReason.name());
+        }
+    }
+
     @Test
     void blockReadyTaskTransitionsToBlocked() {
         Task task = taskManager.createTask(buildRequest("block-ready"));

@@ -242,9 +242,7 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
     }
 
     private boolean bindTaskMessage(TaskMsg taskMsg, String workerId, String workerContextId, String batchId) {
-        taskMsg.setWorkerId(workerId);
-        taskMsg.setWorkerContextId(workerContextId);
-        taskMsg.setBatchId(batchId);
+        taskMsg.applyAttemptProjection(workerId, workerContextId, batchId);
         TaskMsgAttempt attempt = new TaskMsgAttempt(
                 java.util.UUID.randomUUID().toString(),
                 taskMsg.getTaskId(),

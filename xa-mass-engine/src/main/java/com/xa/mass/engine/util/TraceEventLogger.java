@@ -382,7 +382,6 @@ public final class TraceEventLogger {
                 "peakAssignedWorkerCount", String.valueOf(task.getPeakAssignedWorkerCount()),
                 "minRequiredWorkerCount", String.valueOf(task.getMinRequiredWorkerCount()),
                 "batchSize", String.valueOf(task.getBatchSize()),
-                "openEnded", String.valueOf(task.isOpenEnded()),
                 "intakeStatus", enumName(task.getIntakeStatus()),
                 "holdReason", enumName(task.getHoldReason()),
                 "schedulable", String.valueOf(task.isSchedulable()),

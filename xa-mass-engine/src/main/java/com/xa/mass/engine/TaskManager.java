@@ -95,7 +95,7 @@ public class TaskManager {
                     user
             );
             task.setBatchSize(dto.getBatchSize());
-            task.setOpenEnded(dto.isOpenEnded());
+            // intakeStatus is the runtime truth; openEnded remains a compatibility projection.
             task.setIntakeStatus(dto.isOpenEnded() ? TaskIntakeStatus.OPEN : TaskIntakeStatus.SEALED);
             task.setMaxRuntimeSeconds(dto.getMaxRuntimeSeconds());
             taskStorage.saveTask(task);

@@ -1,6 +1,6 @@
 # XA Mass Platform Verified Runbook
 
-Last updated: 2026-04-17
+Last updated: 2026-04-20
 
 This runbook records only facts that were verified by code, tests, or real runtime behavior. If older docs disagree, trust code and runtime.
 
@@ -49,7 +49,7 @@ For endpoint inventory, request contracts, and response shapes, use [INTERNAL_AP
 
 Create-time validation is verified:
 
-- supported create fields are limited to `userId`, `project`, `taskName`, `sharedConfig`, `targetList`, `routingCode`, `batchSize`, `defaultMsgMaxRetryCount`, and `openEnded`
+- supported create fields are limited to `userId`, `project`, `taskName`, `sharedConfig`, `targetList`, `routingCode`, `batchSize`, `defaultMsgMaxRetryCount`, `openEnded`, and `maxRuntimeSeconds`
 - `targetList` must contain at least one materialized target
 - unsupported `project` codes are rejected instead of silently falling back to `demoApp`
 - unknown JSON fields such as retired `targetJsonList`, `targetType`, and `extraParams` are rejected at the API boundary
@@ -57,6 +57,7 @@ Create-time validation is verified:
 - current mainline uses `batchSize` as the per-worker hard cap for each dispatch round
 - `defaultMsgMaxRetryCount` defaults to `3`
 - `openEnded=true` allows runtime append through `/items` until `/seal`
+- `maxRuntimeSeconds=0` disables runtime-limit termination; positive values are enforced by `LeaseExpireWatchdog`
 
 Update-time validation is verified:
 
@@ -123,7 +124,7 @@ Default `dev` startup facts:
 ```bash
 curl -s -X POST http://127.0.0.1:8088/status/api/tasks \
   -H 'Content-Type: application/json' \
-  -d '{"taskName":"smoke-lifecycle","project":"demoApp","routingCode":"us","sharedConfig":{"textContent":"smoke"},"userId":"agent","targetList":["smoke-target-001","smoke-target-002"],"batchSize":1,"defaultMsgMaxRetryCount":3,"openEnded":false}'
+  -d '{"taskName":"smoke-lifecycle","project":"demoApp","routingCode":"us","sharedConfig":{"textContent":"smoke"},"userId":"agent","targetList":["smoke-target-001","smoke-target-002"],"batchSize":1,"defaultMsgMaxRetryCount":3,"openEnded":false,"maxRuntimeSeconds":0}'
 curl -i -X POST "http://127.0.0.1:8088/status/api/tasks/{taskId}/audit?approved=true&comment=smoke"
 curl -i -X POST http://127.0.0.1:8088/status/api/tasks/{taskId}/pause
 curl -i -X POST http://127.0.0.1:8088/status/api/tasks/{taskId}/resume
@@ -133,12 +134,13 @@ Verified state transitions:
 
 - create: initial task status is `NEW`
 - create: `targetList` is materialized into persisted `TaskMsg` rows
-- create: only `userId`, `project`, `taskName`, `sharedConfig`, `targetList`, `routingCode`, `batchSize`, `defaultMsgMaxRetryCount`, and `openEnded` are part of the supported request contract
+- create: only `userId`, `project`, `taskName`, `sharedConfig`, `targetList`, `routingCode`, `batchSize`, `defaultMsgMaxRetryCount`, `openEnded`, and `maxRuntimeSeconds` are part of the supported request contract
 - create: unsupported `project` codes are rejected
 - create: unknown JSON fields such as retired `targetJsonList`, `targetType`, and `extraParams` are rejected at the API boundary
 - create: request `batchSize` is persisted onto the task
 - create: `defaultMsgMaxRetryCount` is copied into each created `TaskMsg.maxRetryCount`
 - create: `openEnded=true` prevents automatic terminal closure until the append window is sealed
+- create: `maxRuntimeSeconds` is persisted onto the task and enforced only when greater than `0`
 - update: only `userId`, `project`, `taskName`, `sharedConfig`, `routingCode`, and `batchSize` are part of the supported request contract
 - update: `targetList` and other unknown JSON fields are rejected at the API boundary
 - update: only `NEW` and `BLOCKED` tasks may be edited
@@ -235,6 +237,8 @@ Important guards:
 - `isWorkerContextAvailable` now has the same strict "free now" meaning; `isWorkerContextUsable` is the broader diagnostic signal for non-blocked, non-invalid runtime contexts
 - a worker without any `WorkerContext` can still be matched for tasks that do not require worker-context-specific routing
 - normal terminal completion and manual `RUNNING -> TERMINAL` closure both release runtime occupancy so the same worker/worker-context can be reused
+- `Task.intakeStatus` is the active append-window lifecycle truth; `openEnded` is the compatibility request/response projection
+- `TaskMsg.workerId` / `workerContextId` / `batchId` are compatibility projections of the latest `TaskMsgAttempt`
 
 ### 5.5 Manual Worker Debug Chat
 

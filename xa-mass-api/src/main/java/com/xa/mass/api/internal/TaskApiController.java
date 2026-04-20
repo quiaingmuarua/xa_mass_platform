@@ -30,7 +30,8 @@ public class TaskApiController {
             "routingCode",
             "batchSize",
             "defaultMsgMaxRetryCount",
-            "openEnded"
+            "openEnded",
+            "maxRuntimeSeconds"
     );
     private static final Set<String> SUPPORTED_TASK_UPDATE_FIELDS = Set.of(
             "userId",

@@ -1,8 +1,8 @@
 package com.xa.mass.base.model;
 
-import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskHoldReason;
 import com.xa.mass.base.enums.task.TaskIntakeStatus;
+import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
 
 import java.time.LocalDateTime;
@@ -32,7 +32,6 @@ public class Task {
     private int minRequiredWorkerCount;
     private int peakAssignedWorkerCount;
     private Map<String, Object> sharedConfig = new HashMap<>();
-    private boolean openEnded = false;
     private TaskHoldReason holdReason;
     private TaskIntakeStatus intakeStatus;
     private User user;
@@ -47,6 +46,7 @@ public class Task {
     public Task() {
         this.status = TaskStatus.NEW;
         this.intakeStatus = TaskIntakeStatus.SEALED;
+        this.batchSize = 1;
         this.createTime = LocalDateTime.now();
         this.updateTime = LocalDateTime.now();
     }
@@ -95,9 +95,9 @@ public class Task {
     }
 
     /**
-     * Direct status setter — for framework deserialization only.
+     * Direct status setter for framework deserialization only.
      * All business state changes must go through {@link #transitionTo(TaskStatus)},
-     * which enforces the state machine guard and fires lifecycle hooks.
+     * which enforces the state machine guard and lifecycle hooks.
      */
     public void setStatus(TaskStatus status) {
         this.status = status;
@@ -179,13 +179,26 @@ public class Task {
         this.sharedConfig = sharedConfig;
     }
 
+    /**
+     * Compatibility accessor for older API/demo payloads.
+     *
+     * <p>Runtime lifecycle truth lives in {@link #getIntakeStatus()}.
+     * Keep this accessor only so existing JSON/UI consumers can continue to
+     * read a boolean projection during the transition period.
+     */
     public boolean isOpenEnded() {
         return intakeStatus == TaskIntakeStatus.OPEN;
     }
 
+    /**
+     * Compatibility setter for create/update binding.
+     *
+     * <p>Do not treat this as an independent persisted truth. It only maps the
+     * boolean compatibility flag onto the real lifecycle field
+     * {@link #intakeStatus}.
+     */
     public void setOpenEnded(boolean openEnded) {
-        this.openEnded = openEnded;
-        this.intakeStatus = openEnded ? TaskIntakeStatus.OPEN : TaskIntakeStatus.SEALED;
+        setIntakeStatus(openEnded ? TaskIntakeStatus.OPEN : TaskIntakeStatus.SEALED);
     }
 
     public TaskHoldReason getHoldReason() {
@@ -203,7 +216,6 @@ public class Task {
 
     public void setIntakeStatus(TaskIntakeStatus intakeStatus) {
         this.intakeStatus = intakeStatus == null ? TaskIntakeStatus.SEALED : intakeStatus;
-        this.openEnded = this.intakeStatus == TaskIntakeStatus.OPEN;
         this.updateTime = LocalDateTime.now();
     }
 
@@ -248,11 +260,12 @@ public class Task {
     }
 
     public int getBatchSize() {
-        return Math.max(batchSize, 1);
+        return batchSize;
     }
 
     public void setBatchSize(int batchSize) {
-        this.batchSize = batchSize;
+        this.batchSize = Math.max(batchSize, 1);
+        this.updateTime = LocalDateTime.now();
     }
 
     public TaskTerminalReason getTerminalReason() {
@@ -281,24 +294,15 @@ public class Task {
         if (terminalReason == null) {
             return status.getDescription();
         }
-        switch (terminalReason) {
-            case MANUAL_CANCELLED:
-                return "已取消";
-            case ALL_MESSAGES_SUCCEEDED:
-                return "已完成";
-            case ALL_MESSAGES_FAILED:
-                return "已完成(失败)";
-            case MIXED_MESSAGE_RESULTS:
-                return "已完成(部分成功)";
-            case MAX_RUNTIME_REACHED:
-                return "已结束(超时)";
-            case SUCCESS_RATE_REACHED:
-                return "已完成(达标)";
-            case RETRY_BUDGET_EXHAUSTED:
-                return "已结束(重试耗尽)";
-            default:
-                return status.getDescription();
-        }
+        return switch (terminalReason) {
+            case MANUAL_CANCELLED -> "Cancelled";
+            case ALL_MESSAGES_SUCCEEDED -> "Completed";
+            case ALL_MESSAGES_FAILED -> "Completed (Failed)";
+            case MIXED_MESSAGE_RESULTS -> "Completed (Mixed)";
+            case MAX_RUNTIME_REACHED -> "Stopped (Max Runtime)";
+            case SUCCESS_RATE_REACHED -> "Completed (Target Reached)";
+            case RETRY_BUDGET_EXHAUSTED -> "Stopped (Retry Exhausted)";
+        };
     }
 
     public boolean isSchedulable() {

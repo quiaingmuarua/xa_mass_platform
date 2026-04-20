@@ -15,9 +15,12 @@ import java.util.Objects;
 public class TaskMsg {
     private String msgId;
     private String taskId;
+    // Compatibility projection of the latest attempt binding for UI/API callers.
+    // Runtime execution truth lives in TaskMsgAttempt history.
     private String workerId;
     private String workerContextId;
     private TaskMsgStatus status;
+    // Compatibility projection of the latest attempt batch association.
     private String batchId;
     private LocalDateTime assignedTime;
     private String result;
@@ -79,6 +82,11 @@ public class TaskMsg {
         return workerId;
     }
 
+    /**
+     * Compatibility setter for the latest-attempt projection.
+     *
+     * <p>Authoritative execution history lives in TaskMsgAttempt rows.
+     */
     public void setWorkerId(String workerId) {
         this.workerId = workerId;
     }
@@ -87,6 +95,11 @@ public class TaskMsg {
         return workerContextId;
     }
 
+    /**
+     * Compatibility setter for the latest-attempt projection.
+     *
+     * <p>Authoritative execution history lives in TaskMsgAttempt rows.
+     */
     public void setWorkerContextId(String workerContextId) {
         this.workerContextId = workerContextId;
     }
@@ -118,6 +131,11 @@ public class TaskMsg {
         return batchId;
     }
 
+    /**
+     * Compatibility setter for the latest-attempt projection.
+     *
+     * <p>Authoritative execution history lives in TaskMsgAttempt rows.
+     */
     public void setBatchId(String batchId) {
         this.batchId = batchId;
     }
@@ -268,18 +286,35 @@ public class TaskMsg {
         this.updateTime = LocalDateTime.now();
     }
 
+    /**
+     * Applies the latest-attempt projection used by compatibility UI/API
+     * readers. This must not be treated as the execution-history source of
+     * truth; callers should use TaskMsgAttempt for that.
+     */
+    public void applyAttemptProjection(String workerId, String workerContextId, String batchId) {
+        this.workerId = workerId;
+        this.workerContextId = workerContextId;
+        this.batchId = batchId;
+    }
+
+    /**
+     * Clears the latest-attempt projection after retry reset or when the
+     * binding is no longer valid.
+     */
+    public void clearAttemptProjection() {
+        applyAttemptProjection(null, null, null);
+        this.assignedTime = null;
+    }
+
     public synchronized void resetForRetry() {
         if (!transitionTo(TaskMsgStatus.INIT)) {
             throw new IllegalStateException(
                     "Cannot reset msg " + msgId + " for retry from status " + status
                     + "; only FAILED or EXPIRED messages may be retried");
         }
-        // Clear the stale binding left by the previous attempt so the next
-        // assignment does not inherit a dead worker reference.
-        this.workerId = null;
-        this.workerContextId = null;
-        this.batchId = null;
-        this.assignedTime = null;
+        // Clear the stale latest-attempt projection so the next assignment does
+        // not inherit a dead worker reference.
+        clearAttemptProjection();
         this.startTime = null;
         this.completeTime = null;
         this.errorMessage = null;

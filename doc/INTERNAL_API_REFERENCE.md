@@ -1,6 +1,6 @@
 # XA Mass Platform Internal API Reference
 
-Last updated: 2026-04-19
+Last updated: 2026-04-20
 
 This document tracks the current active HTTP/API surface in the mainline runtime.
 
@@ -33,6 +33,8 @@ For verified runtime behavior and recommended startup, use [VERIFIED_RUNBOOK.md]
 - Workers can be phone apps, crawlers, LLM agents, IM bots, or other long-lived executors.
 - Stable payload boundaries are `Task.sharedConfig` and `TaskMsg.input/output`.
 - `TaskMsg.getTarget()` remains only as a backwards-compat accessor over `input["target"]`.
+- `Task.intakeStatus` is the active append-window lifecycle truth; `openEnded` remains a compatibility request/response projection.
+- `TaskMsg.workerId`, `workerContextId`, and `batchId` are compatibility projections of the latest `TaskMsgAttempt`.
 - `Worker` and `WorkerContext` are current reference adapters, not the permanent platform boundary.
 
 ## 2. Task API
@@ -56,6 +58,7 @@ Supported request fields:
 - `batchSize`
 - `defaultMsgMaxRetryCount`
 - `openEnded`
+- `maxRuntimeSeconds`
 
 Contract rules:
 
@@ -65,6 +68,7 @@ Contract rules:
 - retired fields such as `targetJsonList`, `targetType`, and `extraParams` are not supported
 - `defaultMsgMaxRetryCount` defaults to `3`
 - `openEnded` defaults to `false`
+- `maxRuntimeSeconds` defaults to `0` and disables runtime-limit termination
 
 Example request:
 
@@ -83,7 +87,8 @@ Example request:
   "routingCode": "us",
   "batchSize": 1,
   "defaultMsgMaxRetryCount": 3,
-  "openEnded": false
+  "openEnded": false,
+  "maxRuntimeSeconds": 0
 }
 ```
 
@@ -124,8 +129,10 @@ Example response shape:
     "sharedConfig": {
       "textContent": "hello"
     },
+    "intakeStatus": "SEALED",
     "openEnded": false,
-    "batchSize": 1
+    "batchSize": 1,
+    "maxRuntimeSeconds": 0
   },
   "targetList": [
     "target-001",
@@ -311,6 +318,7 @@ Response shape:
       "workerContextId": "worker-context-a",
       "status": "SUCCESS",
       "batchId": "batch-1",
+      "finalReason": "BUSINESS_SUCCESS",
       "input": {
         "target": "target-001"
       },
@@ -346,7 +354,7 @@ Contract rules:
 
 - `inputs` must be a non-empty list
 - task must exist
-- task must be `openEnded=true`
+- task must have `intakeStatus=OPEN` (`openEnded=true` remains the compatibility create flag)
 - task must still be active
 
 Example response:

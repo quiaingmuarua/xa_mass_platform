@@ -166,6 +166,26 @@ class TaskApiLifecycleGuardsIntegrationTest extends AbstractMockE2eTest {
     }
 
     @Test
+    void createTaskAcceptsMaxRuntimeSecondsAsSupportedField() {
+        Map<String, Object> createBody = new java.util.LinkedHashMap<>();
+        createBody.put("taskName", "guard-max-runtime");
+        createBody.put("project", "demoApp");
+        createBody.put("routingCode", "us");
+        createBody.put("sharedConfig", java.util.Map.of("textContent", "guard max runtime"));
+        createBody.put("userId", "itest");
+        createBody.put("targetList", java.util.List.of("target-a"));
+        createBody.put("batchSize", 1);
+        createBody.put("maxRuntimeSeconds", 120);
+
+        Map<String, Object> createResponse = exchange("/status/api/tasks", HttpMethod.POST, createBody);
+        assertEquals(Boolean.TRUE, createResponse.get("success"));
+
+        String taskId = String.valueOf(createResponse.get("taskId"));
+        assertFalse(taskId.isBlank());
+        assertEquals(120, ((Number) task(taskId).get("maxRuntimeSeconds")).intValue());
+    }
+
+    @Test
     void updateTaskRejectsUnsupportedFieldsInRequestBody() {
         String taskId = createTask("guard-update-unknown-fields");
 

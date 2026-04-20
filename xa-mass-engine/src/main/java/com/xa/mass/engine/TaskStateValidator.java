@@ -70,7 +70,7 @@ class TaskStateValidator {
         boolean hasTerminalReason = task.getTerminalReason() != null;
         if (finalStatus
                 && task.getIntakeStatus() == TaskIntakeStatus.OPEN
-                && task.getTerminalReason() != TaskTerminalReason.MANUAL_CANCELLED) {
+                && (!hasTerminalReason || !task.getTerminalReason().allowsOpenIntakeClosure())) {
             violations.add(TaskStateValidationResult.ViolationCode.OPEN_INTAKE_FINALIZED_NON_MANUALLY);
         }
         if (finalStatus && !hasTerminalReason) {
@@ -104,6 +104,10 @@ class TaskStateValidator {
                 }
                 case MANUAL_CANCELLED -> {
                     // Manual cancel is allowed regardless of message finality snapshot.
+                }
+                case MAX_RUNTIME_REACHED, SUCCESS_RATE_REACHED, RETRY_BUDGET_EXHAUSTED -> {
+                    // Policy-driven terminal reasons are allowed to close the task
+                    // independently of the current TaskMsg aggregate shape.
                 }
             }
         }

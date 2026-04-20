@@ -77,7 +77,8 @@ Current entry points:
 
 Must hold:
 
-- automatic terminal closure only happens when `intakeStatus=SEALED`, unless a non-message policy forces terminal closure
+- automatic message-driven terminal closure only happens when `intakeStatus=SEALED`
+- `intakeStatus=OPEN` may still close only for explicit stop reasons that allow open-intake closure: `MANUAL_CANCELLED`, `MAX_RUNTIME_REACHED`, `SUCCESS_RATE_REACHED`, or `RETRY_BUDGET_EXHAUSTED`
 - `openEnded` is a compatibility field; `intakeStatus` is the active lifecycle truth
 
 ## 4. TaskMsgStatus
@@ -200,6 +201,7 @@ Must hold:
 - terminal task -> non-null `terminalReason`
 - non-terminal task -> null `terminalReason`
 - message-driven closure must match persisted message aggregates
+- open-intake task closure is only valid for `MANUAL_CANCELLED` or policy-driven stop reasons; normal message-convergence reasons must wait until `intakeStatus=SEALED`
 
 ## 8. Time-Based Policy Enforcement
 

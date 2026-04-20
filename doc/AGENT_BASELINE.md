@@ -104,15 +104,17 @@ Interpretation rules:
 - `batchSize`
 - `defaultMsgMaxRetryCount`
 - `openEnded`
+- `maxRuntimeSeconds`
 
 Behavior locked in the mainline:
 
 - `targetList` must contain at least one materialized target
 - unsupported `project` codes are rejected
 - unknown JSON fields such as retired `targetJsonList`, `targetType`, and `extraParams` are rejected
-- `batchSize` is preserved on the task and enforced as a per-worker hard cap for each dispatch round
+- `batchSize` is normalized to a minimum of `1` and enforced as a per-worker hard cap for each dispatch round
 - `defaultMsgMaxRetryCount` defaults to `3`
 - `openEnded=true` keeps the task open for runtime item append until sealed
+- `maxRuntimeSeconds=0` disables runtime-limit termination; positive values are enforced by the lease watchdog
 
 ### Task update contract
 
@@ -137,6 +139,9 @@ Update constraints:
 - `TaskMsg.input` is the per-item input payload
 - `TaskMsg.output` is the per-item output payload
 - `TaskMsg.getTarget()` is only a backwards-compat accessor over `input["target"]`
+- `Task.intakeStatus` is the active append-window lifecycle truth; `openEnded` is only the compatibility request/response projection
+- `TaskMsg.workerId`, `workerContextId`, and `batchId` are compatibility projections of the latest `TaskMsgAttempt`, not the execution-history source of truth
+- open-intake tasks must not close from normal message convergence; they may close while `intakeStatus=OPEN` only for `MANUAL_CANCELLED` or explicit policy stops such as `MAX_RUNTIME_REACHED`, `SUCCESS_RATE_REACHED`, and `RETRY_BUDGET_EXHAUSTED`
 - `POST /status/api/tasks/{taskId}/items` appends new `TaskMsg.input` records to an active open-ended task
 - `PUT /status/api/tasks/{taskId}/seal` closes the append window for an open-ended task
 

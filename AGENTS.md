@@ -28,14 +28,16 @@ If you need fast orientation:
 - Port split is explicit: `server.port` for HTTP and `mass.websocket.port` for gateway WebSocket
 - The most important baseline docs are `doc/STATE_MACHINE_BASELINE.md`, `doc/TRACE_CONTRACT.md`, and `doc/E2E_BASELINE.md`
 - Verified mainline task lifecycle is `NEW -> READY -> RUNNING -> TERMINAL`, with pause/resume `NEW -> READY -> PAUSED -> READY`
-- Create contract is strict: `userId`, `project`, `taskName`, `sharedConfig`, `targetList`, `routingCode`, `batchSize`, `defaultMsgMaxRetryCount`, and `openEnded`; unknown retired fields fail fast
+- Create contract is strict: `userId`, `project`, `taskName`, `sharedConfig`, `targetList`, `routingCode`, `batchSize`, `defaultMsgMaxRetryCount`, `openEnded`, and `maxRuntimeSeconds`; unknown retired fields fail fast
 - Update contract is narrower than create and only allowed while the task is `NEW` or `BLOCKED`
-- `batchSize` is a per-worker hard cap for each dispatch round
+- `batchSize` is a per-worker hard cap for each dispatch round and is normalized to a minimum of `1` at the model boundary
 - Runtime blocking and review rejection are intentionally distinct: `rejectTask` is `NEW -> BLOCKED`, while `blockTask` is `READY/RUNNING -> BLOCKED`
 - Task aggregate counters now use their real meanings: `taskTargetNumber`, `taskEligibleNumber`, `taskSuccessNumber`, `taskNonSuccessNumber`
 - Read terminal tasks as `TaskStatus + terminalReason`; `TaskTerminalPolicy` is the seam for future stop policies
 - `TaskManager.validateTaskState()` is the SDK-facing audit for `Task + TaskMsg` consistency and pending resolution
 - `Task.sharedConfig` is the task-level payload boundary; `TaskMsg.input/output` is the work-item payload boundary; `getTarget()` is only a backwards-compat accessor
+- `Task.intakeStatus` is the runtime truth for append-window lifecycle; `openEnded` is only the compatibility create/accessor projection
+- `OPEN` intake tasks must not auto-close from normal message convergence; only `MANUAL_CANCELLED` or explicit policy stops such as `MAX_RUNTIME_REACHED`, `SUCCESS_RATE_REACHED`, and `RETRY_BUDGET_EXHAUSTED` may close them before sealing
 - Keep task closure modeled as single final `TERMINAL` plus `terminalReason`; do not split task status into multiple terminal enums without an intentional kernel redesign
 - Treat `TaskMsgStatus` as the platform lifecycle contract, not as a full transport-event history
 - `Worker.status` is the single online truth; worker lock truth lives in `WorkerStorage` / `WorkerManager.isLocked(...)`
@@ -458,6 +460,7 @@ Important current implementation facts:
 - `MassApplication.stop()` is now idempotent, and the mock Spring Boot entry no longer adds an extra manual shutdown hook around the runtime.
 - `WebSocketServerImpl.stop()` now calls `shutdownGracefully().syncUninterruptibly()` on both EventLoopGroups so a single Ctrl-C is sufficient for clean exit.
 - `TaskMsgStatus` is now the logical item lifecycle (`INIT -> ASSIGNED -> RUNNING -> final`); transport-side assignment and retry details live in `TaskMsgAttempt`.
+- `TaskMsg.workerId` / `workerContextId` / `batchId` are compatibility projections of the latest attempt, not the authoritative execution history.
 - `TaskMsg.finalReason` is now the item-level terminal explanation (`BUSINESS_SUCCESS`, `RETRY_EXHAUSTED`, `MANUAL_CANCELLED`, `LEASE_EXPIRED`, etc.).
 - `TaskMsgAttempt` is now the assignment/lease/retry model; each dispatch round creates a new attempt and retry does not mutate a final attempt back to active.
 

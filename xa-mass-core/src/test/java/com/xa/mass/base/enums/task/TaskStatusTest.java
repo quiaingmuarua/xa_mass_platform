@@ -2,16 +2,14 @@ package com.xa.mass.base.enums.task;
 
 import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/**
- * TaskStatus 状态流转测试
- */
-public class TaskStatusTest {
+class TaskStatusTest {
 
     @Test
-    public void testNewStateTransitions() {
-        // NEW 状态可以转换为 READY、BLOCKED 或 TERMINAL
+    void newStateTransitions() {
         assertTrue(TaskStatus.NEW.canTransitionTo(TaskStatus.BLOCKED));
         assertTrue(TaskStatus.NEW.canTransitionTo(TaskStatus.READY));
         assertTrue(TaskStatus.NEW.canTransitionTo(TaskStatus.TERMINAL));
@@ -20,8 +18,7 @@ public class TaskStatusTest {
     }
 
     @Test
-    public void testBlockedStateTransitions() {
-        // BLOCKED 状态只能转换为 READY 或 TERMINAL
+    void blockedStateTransitions() {
         assertTrue(TaskStatus.BLOCKED.canTransitionTo(TaskStatus.READY));
         assertTrue(TaskStatus.BLOCKED.canTransitionTo(TaskStatus.TERMINAL));
         assertFalse(TaskStatus.BLOCKED.canTransitionTo(TaskStatus.NEW));
@@ -30,8 +27,7 @@ public class TaskStatusTest {
     }
 
     @Test
-    public void testReadyStateTransitions() {
-        // READY 状态可以转换为 RUNNING、PAUSED、BLOCKED 或 TERMINAL
+    void readyStateTransitions() {
         assertTrue(TaskStatus.READY.canTransitionTo(TaskStatus.RUNNING));
         assertTrue(TaskStatus.READY.canTransitionTo(TaskStatus.PAUSED));
         assertTrue(TaskStatus.READY.canTransitionTo(TaskStatus.BLOCKED));
@@ -40,8 +36,7 @@ public class TaskStatusTest {
     }
 
     @Test
-    public void testRunningStateTransitions() {
-        // RUNNING 状态可以转换为 BLOCKED、PAUSED 或 TERMINAL
+    void runningStateTransitions() {
         assertTrue(TaskStatus.RUNNING.canTransitionTo(TaskStatus.BLOCKED));
         assertTrue(TaskStatus.RUNNING.canTransitionTo(TaskStatus.PAUSED));
         assertTrue(TaskStatus.RUNNING.canTransitionTo(TaskStatus.TERMINAL));
@@ -50,8 +45,7 @@ public class TaskStatusTest {
     }
 
     @Test
-    public void testPausedStateTransitions() {
-        // PAUSED 状态只能转换为 READY 或 TERMINAL
+    void pausedStateTransitions() {
         assertTrue(TaskStatus.PAUSED.canTransitionTo(TaskStatus.READY));
         assertTrue(TaskStatus.PAUSED.canTransitionTo(TaskStatus.TERMINAL));
         assertFalse(TaskStatus.PAUSED.canTransitionTo(TaskStatus.NEW));
@@ -60,8 +54,7 @@ public class TaskStatusTest {
     }
 
     @Test
-    public void testTerminalStateTransitions() {
-        // TERMINAL 状态不能转换为任何其他状态
+    void terminalStateTransitions() {
         assertFalse(TaskStatus.TERMINAL.canTransitionTo(TaskStatus.NEW));
         assertFalse(TaskStatus.TERMINAL.canTransitionTo(TaskStatus.BLOCKED));
         assertFalse(TaskStatus.TERMINAL.canTransitionTo(TaskStatus.READY));
@@ -70,8 +63,7 @@ public class TaskStatusTest {
     }
 
     @Test
-    public void testStateProperties() {
-        // 测试状态属性
+    void stateProperties() {
         assertTrue(TaskStatus.TERMINAL.isFinal());
         assertFalse(TaskStatus.NEW.isFinal());
         assertFalse(TaskStatus.BLOCKED.isFinal());
@@ -106,15 +98,22 @@ public class TaskStatusTest {
         assertFalse(TaskStatus.READY.isPaused());
         assertFalse(TaskStatus.RUNNING.isPaused());
         assertFalse(TaskStatus.TERMINAL.isPaused());
+
+        assertTrue(TaskStatus.READY.isActive());
+        assertTrue(TaskStatus.RUNNING.isActive());
+        assertFalse(TaskStatus.NEW.isActive());
+        assertFalse(TaskStatus.BLOCKED.isActive());
+        assertFalse(TaskStatus.PAUSED.isActive());
+        assertFalse(TaskStatus.TERMINAL.isActive());
     }
 
     @Test
-    public void testStateDescriptions() {
-        assertEquals("新建", TaskStatus.NEW.getDescription());
-        assertEquals("已阻塞", TaskStatus.BLOCKED.getDescription());
-        assertEquals("待分配", TaskStatus.READY.getDescription());
-        assertEquals("运行中", TaskStatus.RUNNING.getDescription());
-        assertEquals("已暂停", TaskStatus.PAUSED.getDescription());
-        assertEquals("已终止", TaskStatus.TERMINAL.getDescription());
+    void stateDescriptionsAreReadable() {
+        assertEquals("New", TaskStatus.NEW.getDescription());
+        assertEquals("Blocked", TaskStatus.BLOCKED.getDescription());
+        assertEquals("Ready", TaskStatus.READY.getDescription());
+        assertEquals("Running", TaskStatus.RUNNING.getDescription());
+        assertEquals("Paused", TaskStatus.PAUSED.getDescription());
+        assertEquals("Terminal", TaskStatus.TERMINAL.getDescription());
     }
-} 
+}
