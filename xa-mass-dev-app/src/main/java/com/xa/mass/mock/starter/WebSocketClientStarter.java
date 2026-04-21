@@ -9,6 +9,8 @@ import com.xa.mass.gateway.model.massMessage.MessageContext;
 import com.xa.mass.gateway.session.SessionRoles;
 import com.xa.mass.mock.client.ClientSessionManager;
 import com.xa.mass.mock.client.MassWebSocketClientImpl;
+import com.xa.mass.mock.command.mock.MockClientStateRegistry;
+import com.xa.mass.mock.command.runtime.MockCommandRuntime;
 import com.xa.mass.mock.config.MockConfig;
 import com.xa.mass.sdk.MassSdkApplication;
 import jakarta.annotation.PreDestroy;
@@ -50,6 +52,9 @@ public class WebSocketClientStarter {
 
     @Autowired
     private ClientSessionManager clientSessionManager;
+
+    @Autowired
+    private MockClientStateRegistry mockClientStateRegistry;
 
     // Keep a runtime dependency so Spring destroys mock clients before the embedded runtime.
     @Autowired(required = false)
@@ -100,6 +105,9 @@ public class WebSocketClientStarter {
         log.info("Starting mock WebSocket clients");
 
         try {
+            MockCommandRuntime.registerService(ClientSessionManager.class, clientSessionManager);
+            MockCommandRuntime.registerService(MockClientStateRegistry.class, mockClientStateRegistry);
+
             String baseUri = mockConfig.getClient().getUri();
             log.info("Target server: {}", baseUri);
             log.info("Worker config: {}", workersConfigPath);

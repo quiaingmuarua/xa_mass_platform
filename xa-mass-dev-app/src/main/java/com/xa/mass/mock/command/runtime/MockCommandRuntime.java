@@ -3,8 +3,10 @@ package com.xa.mass.mock.command.runtime;
 import com.google.gson.JsonObject;
 import com.xa.mass.mock.command.core.CommandDispatcher;
 import com.xa.mass.mock.command.core.CoreCommandRoutes;
+import com.xa.mass.mock.command.mock.MockCommandRoutes;
 import com.xa.mass.mock.command.model.ApiResponse;
 import com.xa.mass.mock.command.model.CommandContext;
+import com.xa.mass.mock.command.tool.ToolCommandRoutes;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -49,10 +51,22 @@ public final class MockCommandRuntime {
                 }
         );
         CoreCommandRoutes.registerCommonRoutes();
+        MockCommandRoutes.registerMockRoutes();
+        ToolCommandRoutes.registerToolRoutes();
     }
 
     public static ApiResponse<?> dispatch(JsonObject request) {
         initialize();
         return CommandDispatcher.dispatch(request);
+    }
+
+    public static <T> void registerService(Class<T> type, T service) {
+        initialize();
+        CommandContext.getInstance().register(type, service);
+    }
+
+    public static <T> T getService(Class<T> type) {
+        initialize();
+        return CommandContext.getInstance().get(type);
     }
 }

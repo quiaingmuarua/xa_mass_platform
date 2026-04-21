@@ -62,6 +62,53 @@ Startup behavior:
 - idempotent startup protection through an internal `AtomicBoolean`
 - there is no longer a separate client-only Spring Boot application or `/mock/status` monitor surface
 
+## Mock Command Runtime
+
+`xa-mass-dev-app` now exposes a lightweight in-process command runtime for mock workers through the existing manual debug chat channel.
+
+Current command groups:
+
+- `mock.*`: mutate mock worker behavior without changing task-kernel semantics
+  - `mock.state.get`
+  - `mock.delay.response`
+  - `mock.drop.outbound`
+  - `mock.task.result.status`
+  - `mock.disconnect`
+  - `mock.reset`
+- `tool.*`: lightweight utility commands for debugging and demos
+  - `tool.time.now`
+  - `tool.geo.lookup`
+  - `tool.currency.quote`
+- `batch`: compose multiple command steps with shared flat context and scalar exports
+
+Transport facts:
+
+- request path: `POST /status/workers/send-message`
+- transport frame: `CONTROL/manual-chat`
+- acknowledgement frame: `EVENT/manual-chat`
+- command execution is only a debug/control side-channel and must not mutate task lifecycle state
+
+Example request body:
+
+```json
+{
+  "workerId": "it-worker-0",
+  "project": "demoApp",
+  "msgType": "CONTROL",
+  "subMsgType": "manual-chat",
+  "payload": {
+    "event": "mock.delay.response",
+    "millis": 500
+  }
+}
+```
+
+Observability:
+
+- command acknowledgements are recorded in `GET /status/workers/message-history?workerId=...`
+- `mock.disconnect` is designed to close the worker only after the acknowledgement is sent
+- `tool.geo.lookup` and `tool.currency.quote` are simulated helpers and must be treated as fake data sources
+
 ## Key Config
 
 | Property | Default | Meaning |
@@ -105,7 +152,8 @@ Covered areas:
 - `e2e/results`: failed-result terminal closure, mixed results, callback replay idempotency
 - `e2e/assignment`: delayed worker availability and multi-task assignment behavior
 - `e2e/audit`: `stateValidation` exposure and terminal metadata consistency through the real HTTP path
+- `e2e/support`: manual debug chat, command acknowledgements, and disconnect-after-ack behavior
 - `WebSocketClientStarterTest`: auto-start and idempotent startup behavior
-- `MassWebSocketClientImplTest`: ignore `response=true` task frames, avoid echo loops, and allow configurable `SUCCESS` / `FAILED` result payloads
+- `MassWebSocketClientImplTest`: ignore `response=true` task frames, avoid echo loops, support delay/drop fault injection, and support disconnect-after-ack command behavior
 
 

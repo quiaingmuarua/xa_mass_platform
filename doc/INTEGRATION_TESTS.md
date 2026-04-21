@@ -143,6 +143,8 @@ Audit:
 Worker debug side-channel:
 
 - `WorkerManualDebugChatIntegrationTest`
+- `WorkerManualDebugCommandIntegrationTest`
+- `WorkerManualDebugDisconnectIntegrationTest`
 
 Important support coverage outside the E2E package:
 
@@ -171,6 +173,8 @@ Important support coverage outside the E2E package:
 - multi-round refill works when `batchSize` is lower than total work-item count
 - `READY` tasks without a current match are retried instead of being orphaned
 - manual worker debug chat is visible end to end without touching `TaskMsg` lifecycle
+- manual worker debug chat can execute `mock.*` commands and returns structured command acknowledgements
+- `mock.disconnect` is verified to acknowledge first and then take the worker offline
 - task detail exposes `stateValidation` so runtime state audit is observable externally
 
 ## 7. Pinned Mainline Paths

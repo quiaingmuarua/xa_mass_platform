@@ -11,6 +11,9 @@ import com.xa.mass.gateway.model.massMessage.MassMessage;
 import com.xa.mass.gateway.model.massMessage.MessageContext;
 import com.xa.mass.gateway.model.payload.TaskPayload;
 import com.xa.mass.gateway.session.SessionRoles;
+import com.xa.mass.mock.client.ClientSessionManager;
+import com.xa.mass.mock.command.mock.MockClientState;
+import com.xa.mass.mock.command.mock.MockClientStateRegistry;
 import com.xa.mass.mock.command.model.ApiResponse;
 import com.xa.mass.mock.command.runtime.MockCommandRuntime;
 import org.java_websocket.client.WebSocketClient;
@@ -35,6 +38,7 @@ public class MassWebSocketClientImpl extends WebSocketClient implements MassWebS
 
     private final Gson gson = new Gson();
     private final ScheduledExecutorService reconnectScheduler;
+    private final ScheduledExecutorService taskResponseScheduler;
     private final AtomicInteger reconnectAttempts = new AtomicInteger(0);
     private final String workerId;
     private final String taskResultStatus;
@@ -52,6 +56,11 @@ public class MassWebSocketClientImpl extends WebSocketClient implements MassWebS
         this.taskResultStatus = normalizeTaskResultStatus(taskResultStatus);
         this.reconnectScheduler = Executors.newSingleThreadScheduledExecutor(r -> {
             Thread t = new Thread(r, "websocket-reconnect-scheduler-" + workerId);
+            t.setDaemon(true);
+            return t;
+        });
+        this.taskResponseScheduler = Executors.newSingleThreadScheduledExecutor(r -> {
+            Thread t = new Thread(r, "mock-task-response-scheduler-" + workerId);
             t.setDaemon(true);
             return t;
         });
@@ -149,12 +158,17 @@ public class MassWebSocketClientImpl extends WebSocketClient implements MassWebS
                 : "step-0-default";
         payloadMap.put("stepId", stepId);
         payloadMap.put("mockData", "Executed by mock client " + workerId);
-        payloadMap.put("status", taskResultStatus);
+        MockClientState state = getMockClientState();
+        payloadMap.put("status", resolveTaskResultStatus(state));
 
         response.setPayload(gson.toJsonTree(payloadMap));
+        if (state != null && state.shouldDropTaskResponse()) {
+            logger.info("[{}] Dropped mock task response for msgId={} due to mock state {}", workerId,
+                    response.getMsgId(), state.snapshot());
+            return;
+        }
 
-        send(gson.toJson(response));
-        logger.debug("[{}] Sent mock task response for msgId: {}", workerId, response.getMsgId());
+        sendTaskResponse(response, state == null ? 0L : state.getTaskResponseDelayMillis());
     }
 
     private void handleControlMessage(String message) {
@@ -202,6 +216,7 @@ public class MassWebSocketClientImpl extends WebSocketClient implements MassWebS
 
         send(gson.toJson(response));
         logger.debug("[{}] Sent manual debug response for msgId: {}", workerId, controlMessage.getMsgId());
+        disconnectAfterAckIfRequested(commandResult);
     }
 
     private JsonObject extractCommandRequest(MassMessage controlMessage) {
@@ -308,17 +323,102 @@ public class MassWebSocketClientImpl extends WebSocketClient implements MassWebS
     }
 
     private void shutdownScheduler() {
-        if (reconnectScheduler != null && !reconnectScheduler.isShutdown()) {
-            List<Runnable> cancelledTasks = reconnectScheduler.shutdownNow();
-            try {
-                if (!reconnectScheduler.awaitTermination(5, TimeUnit.SECONDS)) {
-                    logger.warn("[{}] Reconnect scheduler did not terminate cleanly within timeout.", workerId);
-                }
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
-            logger.info("[{}] Reconnect scheduler shut down. Cancelled {} queued tasks.", workerId, cancelledTasks.size());
+        shutdownExecutor(taskResponseScheduler, "task response scheduler");
+        shutdownExecutor(reconnectScheduler, "reconnect scheduler");
+    }
+
+    private void shutdownExecutor(ScheduledExecutorService executor, String name) {
+        if (executor == null || executor.isShutdown()) {
+            return;
         }
+        List<Runnable> cancelledTasks = executor.shutdownNow();
+        try {
+            if (!executor.awaitTermination(5, TimeUnit.SECONDS)) {
+                logger.warn("[{}] {} did not terminate cleanly within timeout.", workerId, name);
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+        logger.info("[{}] {} shut down. Cancelled {} queued tasks.", workerId, name, cancelledTasks.size());
+    }
+
+    private MockClientState getMockClientState() {
+        MockClientStateRegistry stateRegistry = MockCommandRuntime.getService(MockClientStateRegistry.class);
+        return stateRegistry == null ? null : stateRegistry.getOrCreate(workerId);
+    }
+
+    private String resolveTaskResultStatus(MockClientState state) {
+        if (state == null) {
+            return taskResultStatus;
+        }
+        return normalizeTaskResultStatus(state.resolveTaskResultStatus(taskResultStatus));
+    }
+
+    private void sendTaskResponse(MassMessage response, long delayMillis) {
+        if (delayMillis <= 0L) {
+            send(gson.toJson(response));
+            logger.debug("[{}] Sent mock task response for msgId: {}", workerId, response.getMsgId());
+            return;
+        }
+
+        logger.info("[{}] Scheduling mock task response for msgId={} after {} ms",
+                workerId, response.getMsgId(), delayMillis);
+        taskResponseScheduler.schedule(() -> {
+            if (!isOpen()) {
+                logger.warn("[{}] Skip delayed task response because client is disconnected. msgId={}",
+                        workerId, response.getMsgId());
+                return;
+            }
+            try {
+                send(gson.toJson(response));
+                logger.debug("[{}] Sent delayed mock task response for msgId: {}", workerId, response.getMsgId());
+            } catch (Exception e) {
+                logger.warn("[{}] Failed to send delayed mock task response for msgId={}: {}",
+                        workerId, response.getMsgId(), e.getMessage());
+            }
+        }, delayMillis, TimeUnit.MILLISECONDS);
+    }
+
+    private void disconnectAfterAckIfRequested(ApiResponse<?> commandResult) {
+        String targetWorkerId = resolveDisconnectWorkerId(commandResult);
+        if (targetWorkerId == null || targetWorkerId.isBlank()) {
+            return;
+        }
+        taskResponseScheduler.schedule(() -> closeTargetWorker(targetWorkerId), 100, TimeUnit.MILLISECONDS);
+    }
+
+    private String resolveDisconnectWorkerId(ApiResponse<?> commandResult) {
+        if (commandResult == null || !commandResult.isSuccess() || !(commandResult.getData() instanceof Map<?, ?> data)) {
+            return null;
+        }
+        Object disconnectAfterAck = data.get("disconnectAfterAck");
+        if (!Boolean.TRUE.equals(disconnectAfterAck)) {
+            return null;
+        }
+        Object disconnectWorkerId = data.get("disconnectWorkerId");
+        return disconnectWorkerId == null ? workerId : String.valueOf(disconnectWorkerId);
+    }
+
+    private void closeTargetWorker(String targetWorkerId) {
+        if (workerId.equals(targetWorkerId)) {
+            logger.info("[{}] Closing current worker connection after command acknowledgement", workerId);
+            closeConnection();
+            return;
+        }
+        ClientSessionManager clientSessionManager = MockCommandRuntime.getService(ClientSessionManager.class);
+        if (clientSessionManager == null) {
+            logger.warn("[{}] Cannot close target worker {} after ack because ClientSessionManager is not registered",
+                    workerId, targetWorkerId);
+            return;
+        }
+        MassWebSocketClientImpl targetClient = clientSessionManager.getClient(targetWorkerId);
+        if (targetClient == null) {
+            logger.warn("[{}] Cannot close target worker {} after ack because client is missing",
+                    workerId, targetWorkerId);
+            return;
+        }
+        logger.info("[{}] Closing target worker {} after command acknowledgement", workerId, targetWorkerId);
+        targetClient.closeConnection();
     }
 
     public String getWorkerId() {

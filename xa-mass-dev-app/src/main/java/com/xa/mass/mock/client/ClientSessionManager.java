@@ -82,6 +82,10 @@ public class ClientSessionManager {
         return clients.values();
     }
 
+    public MassWebSocketClientImpl getClient(String workerId) {
+        return clients.get(workerId);
+    }
+
     public int getClientCount() {
         return clients.size();
     }
