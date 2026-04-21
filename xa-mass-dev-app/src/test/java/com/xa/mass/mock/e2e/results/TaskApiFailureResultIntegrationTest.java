@@ -55,7 +55,7 @@ class TaskApiFailureResultIntegrationTest extends AbstractMockE2eTest {
                 HttpMethod.POST,
                 null
         );
-        assertEquals(Boolean.TRUE, auditResponse.get("success"));
+        assertApiOk(auditResponse);
 
         TaskSnapshot snapshot = waitForTerminalTask(taskId);
 

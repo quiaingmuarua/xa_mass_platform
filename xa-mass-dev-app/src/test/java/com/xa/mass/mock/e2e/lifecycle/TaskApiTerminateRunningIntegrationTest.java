@@ -63,7 +63,7 @@ class TaskApiTerminateRunningIntegrationTest {
                 HttpMethod.POST,
                 null
         );
-        assertEquals(Boolean.TRUE, approveResponse.get("success"));
+        assertApiOk(approveResponse);
 
         TaskSnapshot runningSnapshot = waitForTaskSnapshot(taskId, "RUNNING");
         assertEquals(2, ((Number) runningSnapshot.task().get("peakAssignedWorkerCount")).intValue());
@@ -76,7 +76,7 @@ class TaskApiTerminateRunningIntegrationTest {
                 HttpMethod.POST,
                 null
         );
-        assertEquals(Boolean.TRUE, terminateResponse.get("success"));
+        assertApiOk(terminateResponse);
 
         TaskSnapshot terminalSnapshot = waitForTaskSnapshot(taskId, "TERMINAL");
         assertEquals("TERMINAL", terminalSnapshot.task().get("status"));
@@ -89,7 +89,7 @@ class TaskApiTerminateRunningIntegrationTest {
                 HttpMethod.DELETE,
                 null
         );
-        assertEquals(Boolean.TRUE, deleteResponse.get("success"));
+        assertApiOk(deleteResponse);
 
         ResponseEntity<Map> deletedTaskResponse = restTemplate.exchange(
                 "http://127.0.0.1:" + port + "/status/api/tasks/" + taskId,
@@ -98,7 +98,7 @@ class TaskApiTerminateRunningIntegrationTest {
                 Map.class
         );
         assertEquals(404, deletedTaskResponse.getStatusCode().value());
-        assertNull(deletedTaskResponse.getBody());
+        assertEquals(404, ((Number) deletedTaskResponse.getBody().get("code")).intValue());
     }
 
     private String createTask(String taskName) {
@@ -115,9 +115,9 @@ class TaskApiTerminateRunningIntegrationTest {
         createBody.put("batchSize", 1);
 
         Map<String, Object> createResponse = exchange("/status/api/tasks", HttpMethod.POST, createBody);
-        assertEquals(Boolean.TRUE, createResponse.get("success"));
+        assertApiOk(createResponse);
 
-        String taskId = String.valueOf(createResponse.get("taskId"));
+        String taskId = String.valueOf(responseData(createResponse).get("taskId"));
         assertFalse(taskId.isBlank());
         assertEquals("NEW", task(taskId).get("status"));
         return taskId;
@@ -144,18 +144,18 @@ class TaskApiTerminateRunningIntegrationTest {
     @SuppressWarnings("unchecked")
     private Map<String, Object> task(String taskId) {
         Map<String, Object> detailResponse = exchange("/status/api/tasks/" + taskId, HttpMethod.GET, null);
-        assertEquals(Boolean.TRUE, detailResponse.get("success"));
-        return (Map<String, Object>) detailResponse.get("task");
+        assertApiOk(detailResponse);
+        return task(detailResponse);
     }
 
     @SuppressWarnings("unchecked")
     private Map<String, Object> task(Map<String, Object> response) {
-        return (Map<String, Object>) response.get("task");
+        return (Map<String, Object>) responseData(response).get("task");
     }
 
     @SuppressWarnings("unchecked")
     private List<Map<String, Object>> messages(Map<String, Object> response) {
-        return (List<Map<String, Object>>) response.get("messages");
+        return (List<Map<String, Object>>) responseData(response).get("messages");
     }
 
     @SuppressWarnings("unchecked")
@@ -163,6 +163,20 @@ class TaskApiTerminateRunningIntegrationTest {
         String url = "http://127.0.0.1:" + port + path;
         ResponseEntity<Map> response = restTemplate.exchange(url, method, new HttpEntity<>(body), Map.class);
         return response.getBody();
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> responseData(Map<String, Object> response) {
+        Object data = response == null ? null : response.get("data");
+        if (data instanceof Map<?, ?> map) {
+            return (Map<String, Object>) map;
+        }
+        return Map.of();
+    }
+
+    private void assertApiOk(Map<String, Object> response) {
+        Object code = response == null ? null : response.get("code");
+        assertEquals(0, code instanceof Number number ? number.intValue() : -1);
     }
 
     private static int findFreePort() {

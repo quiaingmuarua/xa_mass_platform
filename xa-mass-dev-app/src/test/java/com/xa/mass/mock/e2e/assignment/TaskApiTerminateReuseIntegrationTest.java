@@ -53,7 +53,7 @@ class TaskApiTerminateReuseIntegrationTest extends AbstractMockE2eTest {
 
         String firstTaskId = createTaskId("terminate-reuse-first", "terminate reuse first", "target-a");
         Map<String, Object> firstApprove = audit(firstTaskId, "terminate-reuse-1");
-        assertEquals(Boolean.TRUE, firstApprove.get("success"));
+        assertApiOk(firstApprove);
 
         TaskSnapshot firstRunning = waitForTaskSnapshot(firstTaskId, "RUNNING", 20, 500L);
         assertEquals(workerId, firstRunning.messages().get(0).get("latestAttemptWorkerId"));
@@ -63,7 +63,7 @@ class TaskApiTerminateReuseIntegrationTest extends AbstractMockE2eTest {
                 HttpMethod.POST,
                 null
         );
-        assertEquals(Boolean.TRUE, firstTerminate.get("success"));
+        assertApiOk(firstTerminate);
 
         TaskSnapshot firstTerminal = waitForTaskSnapshot(firstTaskId, "TERMINAL", 20, 500L);
         assertEquals("EXPIRED", firstTerminal.messages().get(0).get("status"));
@@ -71,7 +71,7 @@ class TaskApiTerminateReuseIntegrationTest extends AbstractMockE2eTest {
 
         String secondTaskId = createTaskId("terminate-reuse-second", "terminate reuse second", "target-b");
         Map<String, Object> secondApprove = audit(secondTaskId, "terminate-reuse-2");
-        assertEquals(Boolean.TRUE, secondApprove.get("success"));
+        assertApiOk(secondApprove);
 
         TaskSnapshot secondRunning = waitForTaskSnapshot(secondTaskId, "RUNNING", 20, 500L);
         assertEquals(workerId, secondRunning.messages().get(0).get("latestAttemptWorkerId"));
@@ -81,7 +81,7 @@ class TaskApiTerminateReuseIntegrationTest extends AbstractMockE2eTest {
                 HttpMethod.POST,
                 null
         );
-        assertEquals(Boolean.TRUE, secondTerminate.get("success"));
+        assertApiOk(secondTerminate);
         waitForTaskSnapshot(secondTaskId, "TERMINAL", 20, 500L);
         assertEquals(WorkerContextStatus.IDLE, workerManager.getWorkerContexts(workerId).get(0).getStatus());
     }

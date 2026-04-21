@@ -61,9 +61,10 @@ class TaskApiControllerTest {
                         .param("approved", "true")
                         .param("comment", "smoke"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.newStatus").value("READY"))
-                .andExpect(jsonPath("$.message").value("Task approved"));
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.msg").value("ok"))
+                .andExpect(jsonPath("$.data.newStatus").value("READY"))
+                .andExpect(jsonPath("$.data.message").value("Task approved"));
 
         verify(taskManager).approveTask(TASK_ID);
         verify(taskManager, never()).rejectTask(TASK_ID);
@@ -79,8 +80,8 @@ class TaskApiControllerTest {
         mockMvc.perform(post("/status/api/tasks/{taskId}/audit", TASK_ID)
                         .param("approved", "false"))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.message").value("Task cannot be audited from the current state"));
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.msg").value("Task cannot be audited from the current state"));
     }
 
     @Test
@@ -90,8 +91,8 @@ class TaskApiControllerTest {
 
         mockMvc.perform(post("/status/api/tasks/{taskId}/pause", TASK_ID))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.message").value("Task paused"));
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.message").value("Task paused"));
 
         verify(taskManager).pauseTask(TASK_ID);
     }
@@ -103,9 +104,9 @@ class TaskApiControllerTest {
 
         mockMvc.perform(post("/status/api/tasks/{taskId}/resume", TASK_ID))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.message").value("Task resumed"))
-                .andExpect(jsonPath("$.newStatus").value("READY"));
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.message").value("Task resumed"))
+                .andExpect(jsonPath("$.data.newStatus").value("READY"));
 
         verify(taskManager).resumeTaskDetailed(TASK_ID);
     }
@@ -117,8 +118,8 @@ class TaskApiControllerTest {
 
         mockMvc.perform(post("/status/api/tasks/{taskId}/terminate", TASK_ID))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.message").value("Task terminated"));
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.message").value("Task terminated"));
 
         verify(taskManager).cancelTask(TASK_ID);
     }
@@ -134,9 +135,9 @@ class TaskApiControllerTest {
         mockMvc.perform(put("/status/api/tasks/{taskId}/status", TASK_ID)
                         .param("status", "READY"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.newStatus").value("READY"))
-                .andExpect(jsonPath("$.message").value("Task status updated"));
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.newStatus").value("READY"))
+                .andExpect(jsonPath("$.data.message").value("Task status updated"));
 
         verify(taskManager).resumeTaskDetailed(TASK_ID);
         verify(taskManager, never()).approveTask(TASK_ID);
@@ -153,9 +154,9 @@ class TaskApiControllerTest {
         mockMvc.perform(put("/status/api/tasks/{taskId}/status", TASK_ID)
                         .param("status", "READY"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.newStatus").value("READY"))
-                .andExpect(jsonPath("$.message").value("Task status updated"));
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.newStatus").value("READY"))
+                .andExpect(jsonPath("$.data.message").value("Task status updated"));
 
         verify(taskManager).approveTask(TASK_ID);
         verify(taskManager, never()).resumeTaskDetailed(TASK_ID);
@@ -172,8 +173,8 @@ class TaskApiControllerTest {
         mockMvc.perform(put("/status/api/tasks/{taskId}/status", TASK_ID)
                         .param("status", "BLOCKED"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.newStatus").value("BLOCKED"));
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.newStatus").value("BLOCKED"));
 
         verify(taskManager).rejectTask(TASK_ID);
         verify(taskManager, never()).blockTask(TASK_ID);
@@ -190,8 +191,8 @@ class TaskApiControllerTest {
         mockMvc.perform(put("/status/api/tasks/{taskId}/status", TASK_ID)
                         .param("status", "BLOCKED"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.newStatus").value("BLOCKED"));
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.newStatus").value("BLOCKED"));
 
         verify(taskManager).blockTask(TASK_ID);
         verify(taskManager, never()).rejectTask(TASK_ID);
@@ -204,8 +205,8 @@ class TaskApiControllerTest {
 
         mockMvc.perform(post("/status/api/tasks/{taskId}/block", TASK_ID))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.message").value("Task blocked"));
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.message").value("Task blocked"));
 
         verify(taskManager).blockTask(TASK_ID);
         verify(taskManager, never()).rejectTask(TASK_ID);
@@ -219,10 +220,10 @@ class TaskApiControllerTest {
 
         mockMvc.perform(post("/status/api/tasks/{taskId}/resume", TASK_ID))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.message").value("Task already completed while paused and was closed to TERMINAL"))
-                .andExpect(jsonPath("$.newStatus").value("TERMINAL"))
-                .andExpect(jsonPath("$.terminalReason").value("ALL_MESSAGES_SUCCEEDED"));
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.message").value("Task already completed while paused and was closed to TERMINAL"))
+                .andExpect(jsonPath("$.data.newStatus").value("TERMINAL"))
+                .andExpect(jsonPath("$.data.terminalReason").value("ALL_MESSAGES_SUCCEEDED"));
     }
 
     @Test
@@ -245,9 +246,9 @@ class TaskApiControllerTest {
                                 }
                                 """))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.taskId").value(TASK_ID))
-                .andExpect(jsonPath("$.message").value("Task created"));
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.taskId").value(TASK_ID))
+                .andExpect(jsonPath("$.data.message").value("Task created"));
 
         verify(taskManager).createTask(argThat(dto ->
                 "smoke-create".equals(dto.getTaskName())
@@ -291,14 +292,14 @@ class TaskApiControllerTest {
                         .param("keyword", "warm")
                         .param("status", "RUNNING"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.total").value(1))
-                .andExpect(jsonPath("$.items[0].id").value(TASK_ID))
-                .andExpect(jsonPath("$.items[0].taskName").value("Warm worker pool"))
-                .andExpect(jsonPath("$.items[0].routingCode").value("us"))
-                .andExpect(jsonPath("$.items[0].successCount").value(6))
-                .andExpect(jsonPath("$.items[0].eligibleCount").value(10))
-                .andExpect(jsonPath("$.items[0].updatedAt").value("2026-04-21 09:30:00"));
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.total").value(1))
+                .andExpect(jsonPath("$.data.items[0].id").value(TASK_ID))
+                .andExpect(jsonPath("$.data.items[0].taskName").value("Warm worker pool"))
+                .andExpect(jsonPath("$.data.items[0].routingCode").value("us"))
+                .andExpect(jsonPath("$.data.items[0].successCount").value(6))
+                .andExpect(jsonPath("$.data.items[0].eligibleCount").value(10))
+                .andExpect(jsonPath("$.data.items[0].updatedAt").value("2026-04-21 09:30:00"));
     }
 
     @Test
@@ -317,8 +318,8 @@ class TaskApiControllerTest {
                                 }
                                 """))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.message").value("Task create failed: Unsupported task create fields: targetJsonList"));
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.msg").value("Task create failed: Unsupported task create fields: targetJsonList"));
 
         verify(taskManager, never()).createTask(any(TaskCreateRequestDto.class));
     }
@@ -341,8 +342,8 @@ class TaskApiControllerTest {
                                 }
                                 """))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.message").value("Task create failed: Unsupported project code: whatsapp"));
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.msg").value("Task create failed: Unsupported project code: whatsapp"));
     }
 
     @Test
@@ -370,15 +371,15 @@ class TaskApiControllerTest {
         mockMvc.perform(get("/status/api/tasks/{taskId}", TASK_ID))
                 .andExpect(status().isOk())
                 .andExpect(content().contentTypeCompatibleWith("application/json"))
-                .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.task.tid").value(TASK_ID))
-                .andExpect(jsonPath("$.task.status").value("READY"))
-                .andExpect(jsonPath("$.items[0].target").value("alpha"))
-                .andExpect(jsonPath("$.items[1].target").value("beta"))
-                .andExpect(jsonPath("$.compatTargetList").doesNotExist())
-                .andExpect(jsonPath("$.stateValidation.valid").value(true))
-                .andExpect(jsonPath("$.stateValidation.needsResolution").value(false))
-                .andExpect(jsonPath("$.stateValidation.status").value("READY"));
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.task.tid").value(TASK_ID))
+                .andExpect(jsonPath("$.data.task.status").value("READY"))
+                .andExpect(jsonPath("$.data.items[0].target").value("alpha"))
+                .andExpect(jsonPath("$.data.items[1].target").value("beta"))
+                .andExpect(jsonPath("$.data.compatTargetList").doesNotExist())
+                .andExpect(jsonPath("$.data.stateValidation.valid").value(true))
+                .andExpect(jsonPath("$.data.stateValidation.needsResolution").value(false))
+                .andExpect(jsonPath("$.data.stateValidation.status").value("READY"));
     }
 
     @Test
@@ -396,8 +397,8 @@ class TaskApiControllerTest {
 
         mockMvc.perform(delete("/status/api/tasks/{taskId}", TASK_ID))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.message").value("Task deleted"));
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.message").value("Task deleted"));
 
         verify(taskManager).deleteTask(TASK_ID);
     }
@@ -409,8 +410,8 @@ class TaskApiControllerTest {
 
         mockMvc.perform(delete("/status/api/tasks/{taskId}", TASK_ID))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.message").value("Task delete failed: current status READY cannot be deleted"));
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.msg").value("Task delete failed: current status READY cannot be deleted"));
     }
 
     @Test
@@ -435,8 +436,8 @@ class TaskApiControllerTest {
                                 }
                                 """))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.message").value("Task updated"));
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.message").value("Task updated"));
 
         verify(taskManager).updateTask(argThat(task ->
                 TASK_ID.equals(task.getTid())
@@ -465,8 +466,8 @@ class TaskApiControllerTest {
                                 }
                                 """))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.message").value("Task update failed: Unsupported task update fields: inputs"));
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.msg").value("Task update failed: Unsupported task update fields: inputs"));
 
         verify(taskManager, never()).updateTask(any(Task.class));
     }
@@ -483,8 +484,8 @@ class TaskApiControllerTest {
                                 }
                                 """))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.message").value("Task update failed: Only NEW or BLOCKED tasks can be updated"));
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.msg").value("Task update failed: Only NEW or BLOCKED tasks can be updated"));
 
         verify(taskManager, never()).updateTask(any(Task.class));
     }
@@ -518,15 +519,15 @@ class TaskApiControllerTest {
                         .param("page", "2")
                         .param("size", "2"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.total").value(3))
-                .andExpect(jsonPath("$.page").value(2))
-                .andExpect(jsonPath("$.size").value(2))
-                .andExpect(jsonPath("$.messages.length()").value(1))
-                .andExpect(jsonPath("$.messages[0].msgId").value("msg-3"))
-                .andExpect(jsonPath("$.messages[0].input.target").value("gamma"))
-                .andExpect(jsonPath("$.messages[0].compatTarget").doesNotExist())
-                .andExpect(jsonPath("$.messages[0].target").doesNotExist());
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.total").value(3))
+                .andExpect(jsonPath("$.data.page").value(2))
+                .andExpect(jsonPath("$.data.size").value(2))
+                .andExpect(jsonPath("$.data.messages.length()").value(1))
+                .andExpect(jsonPath("$.data.messages[0].msgId").value("msg-3"))
+                .andExpect(jsonPath("$.data.messages[0].input.target").value("gamma"))
+                .andExpect(jsonPath("$.data.messages[0].compatTarget").doesNotExist())
+                .andExpect(jsonPath("$.data.messages[0].target").doesNotExist());
     }
 
     private Task taskWithStatus(TaskStatus status) {

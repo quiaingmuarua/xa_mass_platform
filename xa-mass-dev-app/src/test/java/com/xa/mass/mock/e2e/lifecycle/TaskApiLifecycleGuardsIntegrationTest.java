@@ -49,8 +49,8 @@ class TaskApiLifecycleGuardsIntegrationTest extends AbstractMockE2eTest {
                 HttpMethod.POST,
                 null
         );
-        assertEquals(Boolean.TRUE, rejectResponse.get("success"));
-        assertEquals("BLOCKED", rejectResponse.get("newStatus"));
+        assertApiOk(rejectResponse);
+        assertEquals("BLOCKED", responseData(rejectResponse).get("newStatus"));
         assertEquals("BLOCKED", task(taskId).get("status"));
 
         Map<String, Object> approveResponse = exchange(
@@ -58,8 +58,8 @@ class TaskApiLifecycleGuardsIntegrationTest extends AbstractMockE2eTest {
                 HttpMethod.POST,
                 null
         );
-        assertEquals(Boolean.TRUE, approveResponse.get("success"));
-        assertEquals("READY", approveResponse.get("newStatus"));
+        assertApiOk(approveResponse);
+        assertEquals("READY", responseData(approveResponse).get("newStatus"));
         assertEquals("READY", task(taskId).get("status"));
     }
 
@@ -72,7 +72,7 @@ class TaskApiLifecycleGuardsIntegrationTest extends AbstractMockE2eTest {
                 HttpMethod.POST,
                 null
         );
-        assertEquals(Boolean.TRUE, approveResponse.get("success"));
+        assertApiOk(approveResponse);
         assertEquals("READY", task(taskId).get("status"));
 
         Map<String, Object> pauseResponse = exchange(
@@ -80,7 +80,7 @@ class TaskApiLifecycleGuardsIntegrationTest extends AbstractMockE2eTest {
                 HttpMethod.POST,
                 null
         );
-        assertEquals(Boolean.TRUE, pauseResponse.get("success"));
+        assertApiOk(pauseResponse);
         assertEquals("PAUSED", task(taskId).get("status"));
 
         Map<String, Object> resumeResponse = exchange(
@@ -88,7 +88,7 @@ class TaskApiLifecycleGuardsIntegrationTest extends AbstractMockE2eTest {
                 HttpMethod.POST,
                 null
         );
-        assertEquals(Boolean.TRUE, resumeResponse.get("success"));
+        assertApiOk(resumeResponse);
         assertEquals("READY", task(taskId).get("status"));
     }
 
@@ -101,7 +101,7 @@ class TaskApiLifecycleGuardsIntegrationTest extends AbstractMockE2eTest {
                 HttpMethod.POST,
                 null
         );
-        assertEquals(Boolean.TRUE, approveResponse.get("success"));
+        assertApiOk(approveResponse);
         assertEquals("READY", task(taskId).get("status"));
 
         Map<String, Object> blockResponse = exchange(
@@ -109,7 +109,7 @@ class TaskApiLifecycleGuardsIntegrationTest extends AbstractMockE2eTest {
                 HttpMethod.POST,
                 null
         );
-        assertEquals(Boolean.TRUE, blockResponse.get("success"));
+        assertApiOk(blockResponse);
         assertEquals("BLOCKED", task(taskId).get("status"));
 
         Map<String, Object> reapproveResponse = exchange(
@@ -117,7 +117,7 @@ class TaskApiLifecycleGuardsIntegrationTest extends AbstractMockE2eTest {
                 HttpMethod.POST,
                 null
         );
-        assertEquals(Boolean.TRUE, reapproveResponse.get("success"));
+        assertApiOk(reapproveResponse);
         assertEquals("READY", task(taskId).get("status"));
     }
 
@@ -130,7 +130,7 @@ class TaskApiLifecycleGuardsIntegrationTest extends AbstractMockE2eTest {
                 HttpMethod.POST,
                 null
         );
-        assertEquals(Boolean.TRUE, approveResponse.get("success"));
+        assertApiOk(approveResponse);
         assertEquals("READY", task(taskId).get("status"));
 
         Map<String, Object> blockResponse = exchange(
@@ -138,8 +138,8 @@ class TaskApiLifecycleGuardsIntegrationTest extends AbstractMockE2eTest {
                 HttpMethod.PUT,
                 null
         );
-        assertEquals(Boolean.TRUE, blockResponse.get("success"));
-        assertEquals("BLOCKED", blockResponse.get("newStatus"));
+        assertApiOk(blockResponse);
+        assertEquals("BLOCKED", responseData(blockResponse).get("newStatus"));
         assertEquals("BLOCKED", task(taskId).get("status"));
     }
 
@@ -178,9 +178,9 @@ class TaskApiLifecycleGuardsIntegrationTest extends AbstractMockE2eTest {
         createBody.put("maxRuntimeSeconds", 120);
 
         Map<String, Object> createResponse = exchange("/status/api/tasks", HttpMethod.POST, createBody);
-        assertEquals(Boolean.TRUE, createResponse.get("success"));
+        assertApiOk(createResponse);
 
-        String taskId = String.valueOf(createResponse.get("taskId"));
+        String taskId = String.valueOf(responseData(createResponse).get("taskId"));
         assertFalse(taskId.isBlank());
         assertEquals(120, ((Number) task(taskId).get("maxRuntimeSeconds")).intValue());
     }
@@ -213,7 +213,7 @@ class TaskApiLifecycleGuardsIntegrationTest extends AbstractMockE2eTest {
                 HttpMethod.POST,
                 null
         );
-        assertEquals(Boolean.TRUE, approveResponse.get("success"));
+        assertApiOk(approveResponse);
         assertEquals("READY", task(taskId).get("status"));
 
         Map<String, Object> updateBody = new java.util.LinkedHashMap<>();
@@ -239,7 +239,7 @@ class TaskApiLifecycleGuardsIntegrationTest extends AbstractMockE2eTest {
                 HttpMethod.POST,
                 null
         );
-        assertEquals(Boolean.TRUE, approveResponse.get("success"));
+        assertApiOk(approveResponse);
         assertEquals("READY", task(approvedTaskId).get("status"));
 
         Map<String, Object> rejectDeleteResponse = exchange(
@@ -247,7 +247,7 @@ class TaskApiLifecycleGuardsIntegrationTest extends AbstractMockE2eTest {
                 HttpMethod.DELETE,
                 null
         );
-        assertEquals(Boolean.FALSE, rejectDeleteResponse.get("success"));
+        assertApiError(rejectDeleteResponse, 400);
         assertEquals("READY", task(approvedTaskId).get("status"));
 
         String newTaskId = createTask("guard-delete-new");
@@ -256,7 +256,7 @@ class TaskApiLifecycleGuardsIntegrationTest extends AbstractMockE2eTest {
                 HttpMethod.DELETE,
                 null
         );
-        assertEquals(Boolean.TRUE, deleteNewResponse.get("success"));
+        assertApiOk(deleteNewResponse);
 
         ResponseEntity<Map> missingTaskResponse = restTemplate.exchange(
                 "http://127.0.0.1:" + port + "/status/api/tasks/" + newTaskId,
@@ -275,7 +275,7 @@ class TaskApiLifecycleGuardsIntegrationTest extends AbstractMockE2eTest {
                 HttpMethod.POST,
                 null
         );
-        assertEquals(Boolean.TRUE, approveReadyResponse.get("success"));
+        assertApiOk(approveReadyResponse);
         assertEquals("READY", task(readyTaskId).get("status"));
 
         Map<String, Object> terminateReadyResponse = exchange(
@@ -283,7 +283,7 @@ class TaskApiLifecycleGuardsIntegrationTest extends AbstractMockE2eTest {
                 HttpMethod.POST,
                 null
         );
-        assertEquals(Boolean.TRUE, terminateReadyResponse.get("success"));
+        assertApiOk(terminateReadyResponse);
         assertEquals("TERMINAL", task(readyTaskId).get("status"));
 
         String pausedTaskId = createTask("guard-terminate-paused");
@@ -292,13 +292,13 @@ class TaskApiLifecycleGuardsIntegrationTest extends AbstractMockE2eTest {
                 HttpMethod.POST,
                 null
         );
-        assertEquals(Boolean.TRUE, approvePausedResponse.get("success"));
+        assertApiOk(approvePausedResponse);
         Map<String, Object> pauseResponse = exchange(
                 "/status/api/tasks/" + pausedTaskId + "/pause",
                 HttpMethod.POST,
                 null
         );
-        assertEquals(Boolean.TRUE, pauseResponse.get("success"));
+        assertApiOk(pauseResponse);
         assertEquals("PAUSED", task(pausedTaskId).get("status"));
 
         Map<String, Object> terminatePausedResponse = exchange(
@@ -306,7 +306,7 @@ class TaskApiLifecycleGuardsIntegrationTest extends AbstractMockE2eTest {
                 HttpMethod.POST,
                 null
         );
-        assertEquals(Boolean.TRUE, terminatePausedResponse.get("success"));
+        assertApiOk(terminatePausedResponse);
         assertEquals("TERMINAL", task(pausedTaskId).get("status"));
     }
 
@@ -319,7 +319,7 @@ class TaskApiLifecycleGuardsIntegrationTest extends AbstractMockE2eTest {
     @SuppressWarnings("unchecked")
     private Map<String, Object> task(String taskId) {
         Map<String, Object> detailResponse = exchange("/status/api/tasks/" + taskId, HttpMethod.GET, null);
-        assertEquals(Boolean.TRUE, detailResponse.get("success"));
-        return (Map<String, Object>) detailResponse.get("task");
+        assertApiOk(detailResponse);
+        return task(detailResponse);
     }
 }

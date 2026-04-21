@@ -73,15 +73,15 @@ class TaskApiWorkerWithoutContextIntegrationTest extends AbstractMockE2eTest {
             createBody.put("batchSize", 1);
 
             Map<String, Object> createResponse = exchange("/status/api/tasks", HttpMethod.POST, createBody);
-            assertEquals(Boolean.TRUE, createResponse.get("success"));
-            String taskId = String.valueOf(createResponse.get("taskId"));
+            assertApiOk(createResponse);
+            String taskId = String.valueOf(responseData(createResponse).get("taskId"));
 
             Map<String, Object> auditResponse = exchange(
                     "/status/api/tasks/" + taskId + "/audit?approved=true&comment=worker-without-context",
                     HttpMethod.POST,
                     null
             );
-            assertEquals(Boolean.TRUE, auditResponse.get("success"));
+            assertApiOk(auditResponse);
 
             TaskSnapshot terminalSnapshot = waitForTaskSnapshot(taskId, "TERMINAL", 20, 500L);
             assertEquals("ALL_MESSAGES_SUCCEEDED", terminalSnapshot.task().get("terminalReason"));

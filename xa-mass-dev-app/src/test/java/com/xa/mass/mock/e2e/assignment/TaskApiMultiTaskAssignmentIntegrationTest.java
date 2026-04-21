@@ -77,8 +77,8 @@ class TaskApiMultiTaskAssignmentIntegrationTest extends AbstractMockE2eTest {
             String firstTaskId = createTaskId("multi-task-a", "multi task assignment integration", "target-a");
             String secondTaskId = createTaskId("multi-task-b", "multi task assignment integration", "target-b");
 
-            assertEquals(Boolean.TRUE, audit(firstTaskId, "multi-task-a").get("success"));
-            assertEquals(Boolean.TRUE, audit(secondTaskId, "multi-task-b").get("success"));
+            assertApiOk(audit(firstTaskId, "multi-task-a"));
+            assertApiOk(audit(secondTaskId, "multi-task-b"));
 
             MassMessage firstDispatch = firstClient.awaitTask(3, TimeUnit.SECONDS);
             MassMessage secondDispatch = secondClient.awaitTask(3, TimeUnit.SECONDS);

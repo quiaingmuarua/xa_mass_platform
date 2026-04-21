@@ -16,7 +16,7 @@ This file defines the current canonical model boundaries. Its purpose is to stop
 
 - Canonical response envelope: `com.xa.mass.api.model.ApiResponse<T>`
 - Intended canonical request contract: typed request models at controller boundaries
-- Legacy compatibility still exists in some endpoints that return raw `Map<String,Object>` with `success/message`
+- `/status/api/tasks/**` and `/status/api/workers/**` should expose this envelope directly
 
 ### SDK boundary
 
@@ -47,7 +47,7 @@ This file defines the current canonical model boundaries. Its purpose is to stop
 
 ## 3. Current Known Debt
 
-- `/status/api/**` still mixes canonical `ApiResponse<T>` and legacy raw `Map<String,Object>` response shapes
+- status/demo shell endpoints outside the canonical API boundary still use ad-hoc raw maps
 - controller request bodies still often use `Map<String,Object>` instead of typed request models
 - `Envelope`, `MassMessage`, and `MessageContext` still overlap on routing metadata such as worker and project context
 - `MassMessage.payload` remains `JsonElement`, so payload contracts are only partially typed

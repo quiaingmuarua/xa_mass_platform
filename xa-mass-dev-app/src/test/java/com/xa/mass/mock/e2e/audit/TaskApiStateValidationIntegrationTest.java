@@ -57,7 +57,7 @@ class TaskApiStateValidationIntegrationTest extends AbstractMockE2eTest {
         String taskId = createTask("state-validation-terminal");
 
         Map<String, Object> created = exchange("/status/api/tasks/" + taskId, HttpMethod.GET, null);
-        assertEquals(Boolean.TRUE, created.get("success"));
+        assertApiOk(created);
         assertEquals(Boolean.TRUE, stateValidation(created).get("valid"));
         assertEquals(Boolean.FALSE, stateValidation(created).get("needsResolution"));
         assertEquals("NEW", stateValidation(created).get("status"));
@@ -67,7 +67,7 @@ class TaskApiStateValidationIntegrationTest extends AbstractMockE2eTest {
                 HttpMethod.POST,
                 null
         );
-        assertEquals(Boolean.TRUE, auditResponse.get("success"));
+        assertApiOk(auditResponse);
 
         Map<String, Object> terminal = waitForTaskDetail(taskId, "TERMINAL");
         Map<String, Object> validation = stateValidation(terminal);
@@ -90,7 +90,7 @@ class TaskApiStateValidationIntegrationTest extends AbstractMockE2eTest {
                 HttpMethod.POST,
                 null
         );
-        assertEquals(Boolean.TRUE, auditResponse.get("success"));
+        assertApiOk(auditResponse);
 
         waitForTaskDetail(taskId, "TERMINAL");
 
@@ -102,7 +102,7 @@ class TaskApiStateValidationIntegrationTest extends AbstractMockE2eTest {
         Map<String, Object> reopened = exchange("/status/api/tasks/" + taskId, HttpMethod.GET, null);
         Map<String, Object> validation = stateValidation(reopened);
 
-        assertEquals(Boolean.TRUE, reopened.get("success"));
+        assertApiOk(reopened);
         assertEquals("RUNNING", task(reopened).get("status"));
         assertEquals(Boolean.TRUE, validation.get("valid"));
         assertEquals(Boolean.TRUE, validation.get("needsResolution"));
@@ -121,7 +121,7 @@ class TaskApiStateValidationIntegrationTest extends AbstractMockE2eTest {
                 HttpMethod.POST,
                 null
         );
-        assertEquals(Boolean.TRUE, auditResponse.get("success"));
+        assertApiOk(auditResponse);
 
         waitForTaskDetail(taskId, "TERMINAL");
 
@@ -132,7 +132,7 @@ class TaskApiStateValidationIntegrationTest extends AbstractMockE2eTest {
         Map<String, Object> response = exchange("/status/api/tasks/" + taskId, HttpMethod.GET, null);
         Map<String, Object> validation = stateValidation(response);
 
-        assertEquals(Boolean.TRUE, response.get("success"));
+        assertApiOk(response);
         assertEquals(Boolean.FALSE, validation.get("valid"));
         assertEquals(Boolean.FALSE, validation.get("needsResolution"));
         assertEquals("TERMINAL", validation.get("status"));
@@ -148,7 +148,7 @@ class TaskApiStateValidationIntegrationTest extends AbstractMockE2eTest {
                 HttpMethod.POST,
                 null
         );
-        assertEquals(Boolean.TRUE, auditResponse.get("success"));
+        assertApiOk(auditResponse);
 
         waitForTaskDetail(taskId, "TERMINAL");
 
@@ -159,7 +159,7 @@ class TaskApiStateValidationIntegrationTest extends AbstractMockE2eTest {
         Map<String, Object> response = exchange("/status/api/tasks/" + taskId, HttpMethod.GET, null);
         Map<String, Object> validation = stateValidation(response);
 
-        assertEquals(Boolean.TRUE, response.get("success"));
+        assertApiOk(response);
         assertEquals(Boolean.FALSE, validation.get("valid"));
         assertEquals(Boolean.FALSE, validation.get("needsResolution"));
         assertEquals("TERMINAL", validation.get("status"));

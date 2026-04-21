@@ -70,17 +70,17 @@ public abstract class AbstractMockE2eTest {
 
     @SuppressWarnings("unchecked")
     protected Map<String, Object> task(Map<String, Object> response) {
-        return (Map<String, Object>) response.get("task");
+        return (Map<String, Object>) responseData(response).get("task");
     }
 
     @SuppressWarnings("unchecked")
     protected List<Map<String, Object>> messages(Map<String, Object> response) {
-        return (List<Map<String, Object>>) response.get("messages");
+        return (List<Map<String, Object>>) responseData(response).get("messages");
     }
 
     @SuppressWarnings("unchecked")
     protected Map<String, Object> stateValidation(Map<String, Object> response) {
-        return (Map<String, Object>) response.get("stateValidation");
+        return (Map<String, Object>) responseData(response).get("stateValidation");
     }
 
     @SuppressWarnings("unchecked")
@@ -101,8 +101,8 @@ public abstract class AbstractMockE2eTest {
         createBody.put("batchSize", batchSize);
 
         Map<String, Object> createResponse = exchange("/status/api/tasks", HttpMethod.POST, createBody);
-        assertEquals(Boolean.TRUE, createResponse.get("success"));
-        String taskId = String.valueOf(createResponse.get("taskId"));
+        assertApiOk(createResponse);
+        String taskId = String.valueOf(responseData(createResponse).get("taskId"));
         assertFalse(taskId.isBlank());
         return taskId;
     }
@@ -117,6 +117,33 @@ public abstract class AbstractMockE2eTest {
 
     protected Map<String, Object> audit(String taskId, String comment) {
         return exchange("/status/api/tasks/" + taskId + "/audit?approved=true&comment=" + comment, HttpMethod.POST, null);
+    }
+
+    @SuppressWarnings("unchecked")
+    protected Map<String, Object> responseData(Map<String, Object> response) {
+        Object data = response == null ? null : response.get("data");
+        if (data instanceof Map<?, ?> map) {
+            return (Map<String, Object>) map;
+        }
+        return Map.of();
+    }
+
+    protected void assertApiOk(Map<String, Object> response) {
+        assertEquals(0, apiCode(response), apiMsg(response));
+    }
+
+    protected void assertApiError(Map<String, Object> response, int expectedCode) {
+        assertEquals(expectedCode, apiCode(response));
+    }
+
+    protected int apiCode(Map<String, Object> response) {
+        Object code = response == null ? null : response.get("code");
+        return code instanceof Number number ? number.intValue() : -1;
+    }
+
+    protected String apiMsg(Map<String, Object> response) {
+        Object msg = response == null ? null : response.get("msg");
+        return msg == null ? null : String.valueOf(msg);
     }
 
     protected TaskSnapshot waitForTaskSnapshot(String taskId, String expectedStatus) throws InterruptedException {

@@ -80,7 +80,7 @@ class TaskApiWorkerContextAttributeRoutingIntegrationTest extends AbstractMockE2
                     HttpMethod.POST,
                     null
             );
-            assertEquals(Boolean.TRUE, auditResponse.get("success"));
+            assertApiOk(auditResponse);
 
             TaskSnapshot terminalSnapshot = waitForTaskSnapshot(taskId, "TERMINAL", 20, 500L);
             assertEquals("ALL_MESSAGES_SUCCEEDED", terminalSnapshot.task().get("terminalReason"));

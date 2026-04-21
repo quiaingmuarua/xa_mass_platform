@@ -78,7 +78,7 @@ class TaskApiResumeAndCompleteIntegrationTest extends AbstractMockE2eTest {
                 HttpMethod.POST,
                 null
         );
-        assertEquals(Boolean.TRUE, approveResponse.get("success"));
+        assertApiOk(approveResponse);
 
         // 2. Task reaches READY but stays there (no matching worker).
         TaskSnapshot readySnapshot = waitForTaskSnapshot(taskId, "READY", 8, 500L);
@@ -92,7 +92,7 @@ class TaskApiResumeAndCompleteIntegrationTest extends AbstractMockE2eTest {
                 HttpMethod.POST,
                 null
         );
-        assertEquals(Boolean.TRUE, pauseResponse.get("success"));
+        assertApiOk(pauseResponse);
 
         TaskSnapshot pausedSnapshot = waitForTaskSnapshot(taskId, "PAUSED", 4, 500L);
         assertEquals("PAUSED", pausedSnapshot.task().get("status"));
@@ -114,7 +114,7 @@ class TaskApiResumeAndCompleteIntegrationTest extends AbstractMockE2eTest {
                     HttpMethod.POST,
                     null
             );
-            assertEquals(Boolean.TRUE, resumeResponse.get("success"));
+            assertApiOk(resumeResponse);
 
             // 6. Task should proceed all the way to TERMINAL via the new worker.
             TaskSnapshot terminalSnapshot = waitForTaskSnapshot(taskId, "TERMINAL", 20, 500L);

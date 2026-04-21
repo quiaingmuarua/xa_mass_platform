@@ -76,8 +76,8 @@ class TaskApiMixedResultsIntegrationTest extends AbstractMockE2eTest {
         createBody.put("batchSize", 1);
         createBody.put("defaultMsgMaxRetryCount", 0);
         Map<String, Object> createResponse = exchange("/status/api/tasks", HttpMethod.POST, createBody);
-        assertEquals(Boolean.TRUE, createResponse.get("success"));
-        String taskId = String.valueOf(createResponse.get("taskId"));
+        assertApiOk(createResponse);
+        String taskId = String.valueOf(responseData(createResponse).get("taskId"));
 
         // Act: approve triggers READY → RUNNING assignment.
         Map<String, Object> approveResponse = exchange(
@@ -85,7 +85,7 @@ class TaskApiMixedResultsIntegrationTest extends AbstractMockE2eTest {
                 HttpMethod.POST,
                 null
         );
-        assertEquals(Boolean.TRUE, approveResponse.get("success"));
+        assertApiOk(approveResponse);
 
         // Wait for RUNNING with 2 messages assigned to workers.
         TaskSnapshot runningSnapshot = waitForTaskSnapshot(taskId, "RUNNING");

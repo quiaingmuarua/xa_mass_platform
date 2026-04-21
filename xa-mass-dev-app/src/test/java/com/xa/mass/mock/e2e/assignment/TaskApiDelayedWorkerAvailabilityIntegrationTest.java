@@ -59,7 +59,7 @@ class TaskApiDelayedWorkerAvailabilityIntegrationTest extends AbstractMockE2eTes
                 HttpMethod.POST,
                 null
         );
-        assertEquals(Boolean.TRUE, auditResponse.get("success"));
+        assertApiOk(auditResponse);
 
         TaskSnapshot readySnapshot = waitForTaskSnapshot(taskId, "READY", 8, 500L);
         assertEquals(0, ((Number) readySnapshot.task().get("peakAssignedWorkerCount")).intValue());

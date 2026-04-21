@@ -65,7 +65,7 @@ class TaskApiSingleWorkerReuseIntegrationTest extends AbstractMockE2eTest {
                     HttpMethod.POST,
                     null
             );
-            assertEquals(Boolean.TRUE, firstApprove.get("success"));
+            assertApiOk(firstApprove);
             TaskSnapshot firstTerminal = waitForTaskSnapshot(firstTaskId, "TERMINAL", 20, 500L);
         assertEquals(workerId, firstTerminal.messages().get(0).get("latestAttemptWorkerId"));
 
@@ -75,7 +75,7 @@ class TaskApiSingleWorkerReuseIntegrationTest extends AbstractMockE2eTest {
                     HttpMethod.POST,
                     null
             );
-            assertEquals(Boolean.TRUE, secondApprove.get("success"));
+            assertApiOk(secondApprove);
             TaskSnapshot secondTerminal = waitForTaskSnapshot(secondTaskId, "TERMINAL", 20, 500L);
         assertEquals(workerId, secondTerminal.messages().get(0).get("latestAttemptWorkerId"));
 

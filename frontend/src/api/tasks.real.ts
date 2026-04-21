@@ -1,4 +1,4 @@
-import { requestJson } from '@/api/http'
+import { requestApiData } from '@/api/http'
 import type {
     TaskActionResult,
     TaskDetailResponse,
@@ -9,18 +9,13 @@ import type {
     TaskValidationSummary,
 } from '@/types/tasks'
 
-interface LegacySuccessEnvelope {
-    success: boolean
-    message?: string
-}
-
-interface TaskDetailEnvelope extends LegacySuccessEnvelope {
+interface TaskDetailEnvelope {
     task: TaskDetailRecord
     items: Array<Record<string, unknown>>
     stateValidation: TaskValidationSummary
 }
 
-interface TaskMessagesEnvelope extends LegacySuccessEnvelope {
+interface TaskMessagesEnvelope {
     messages: TaskMessageView[]
 }
 
@@ -38,31 +33,24 @@ export async function listTasksReal(
     }
 
     const suffix = searchParams.size > 0 ? `?${searchParams.toString()}` : ''
-    return unwrapLegacyResponse(
-        await requestJson<TaskListResponse & LegacySuccessEnvelope>(
-            `/status/api/tasks${suffix}`,
-        ),
-    )
+    return requestApiData<TaskListResponse>(`/status/api/tasks${suffix}`)
 }
 
 export async function getTaskDetailReal(
     taskId: string,
 ): Promise<TaskDetailResponse> {
     const [detail, messages] = await Promise.all([
-        requestJson<TaskDetailEnvelope>(`/status/api/tasks/${taskId}`),
-        requestJson<TaskMessagesEnvelope>(
+        requestApiData<TaskDetailEnvelope>(`/status/api/tasks/${taskId}`),
+        requestApiData<TaskMessagesEnvelope>(
             `/status/api/tasks/${taskId}/messages?page=1&size=200`,
         ),
     ])
 
-    const unwrappedDetail = unwrapLegacyResponse(detail)
-    const unwrappedMessages = unwrapLegacyResponse(messages)
-
     return {
-        task: normalizeTaskRecord(unwrappedDetail.task),
-        items: unwrappedDetail.items ?? [],
-        stateValidation: unwrappedDetail.stateValidation,
-        messages: unwrappedMessages.messages ?? [],
+        task: normalizeTaskRecord(detail.task),
+        items: detail.items ?? [],
+        stateValidation: detail.stateValidation,
+        messages: messages.messages ?? [],
     }
 }
 
@@ -78,13 +66,11 @@ export async function auditTaskReal(
         params.set('comment', comment.trim())
     }
 
-    return unwrapLegacyResponse(
-        await requestJson<TaskActionResult & LegacySuccessEnvelope>(
-            `/status/api/tasks/${taskId}/audit?${params.toString()}`,
-            {
-                method: 'POST',
-            },
-        ),
+    return requestApiData<TaskActionResult>(
+        `/status/api/tasks/${taskId}/audit?${params.toString()}`,
+        {
+            method: 'POST',
+        },
     )
 }
 
@@ -110,22 +96,9 @@ async function invokeTaskActionReal(
     taskId: string,
     action: 'pause' | 'resume' | 'block' | 'terminate',
 ): Promise<TaskActionResult> {
-    return unwrapLegacyResponse(
-        await requestJson<TaskActionResult & LegacySuccessEnvelope>(
-            `/status/api/tasks/${taskId}/${action}`,
-            {
-                method: 'POST',
-            },
-        ),
-    )
-}
-
-function unwrapLegacyResponse<T extends LegacySuccessEnvelope>(payload: T): T {
-    if (!payload.success) {
-        throw new Error(payload.message ?? 'Backend request failed.')
-    }
-
-    return payload
+    return requestApiData<TaskActionResult>(`/status/api/tasks/${taskId}/${action}`, {
+        method: 'POST',
+    })
 }
 
 function normalizeTaskRecord(task: TaskDetailRecord): TaskDetailRecord {

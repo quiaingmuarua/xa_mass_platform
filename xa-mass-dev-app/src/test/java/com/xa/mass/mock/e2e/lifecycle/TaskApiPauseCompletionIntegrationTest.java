@@ -62,7 +62,7 @@ class TaskApiPauseCompletionIntegrationTest extends AbstractMockE2eTest {
                 HttpMethod.POST,
                 null
         );
-        assertEquals(Boolean.TRUE, approveResponse.get("success"));
+        assertApiOk(approveResponse);
 
         TaskSnapshot runningSnapshot = waitForTaskSnapshot(taskId, "RUNNING");
         assertEquals(2, ((Number) runningSnapshot.task().get("peakAssignedWorkerCount")).intValue());
@@ -74,7 +74,7 @@ class TaskApiPauseCompletionIntegrationTest extends AbstractMockE2eTest {
                 HttpMethod.POST,
                 null
         );
-        assertEquals(Boolean.TRUE, pauseResponse.get("success"));
+        assertApiOk(pauseResponse);
 
         TaskSnapshot pausedSnapshot = waitForTaskSnapshot(taskId, "PAUSED");
         assertEquals("PAUSED", pausedSnapshot.task().get("status"));
@@ -138,8 +138,8 @@ class TaskApiPauseCompletionIntegrationTest extends AbstractMockE2eTest {
     @SuppressWarnings("unchecked")
     private Map<String, Object> task(String taskId) {
         Map<String, Object> detailResponse = exchange("/status/api/tasks/" + taskId, HttpMethod.GET, null);
-        assertEquals(Boolean.TRUE, detailResponse.get("success"));
-        return (Map<String, Object>) detailResponse.get("task");
+        assertApiOk(detailResponse);
+        return task(detailResponse);
     }
 
     private record AckSnapshot(int code, String message) {

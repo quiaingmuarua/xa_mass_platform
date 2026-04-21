@@ -84,7 +84,7 @@ class TaskApiMultiRoundDispatchIntegrationTest extends AbstractMockE2eTest {
                     HttpMethod.POST,
                     null
             );
-            assertEquals(Boolean.TRUE, approveResponse.get("success"));
+            assertApiOk(approveResponse);
 
             TaskSnapshot terminal = waitForTerminalTask(taskId);
             assertEquals("TERMINAL", terminal.task().get("status"));
@@ -127,7 +127,7 @@ class TaskApiMultiRoundDispatchIntegrationTest extends AbstractMockE2eTest {
                     HttpMethod.POST,
                     null
             );
-            assertEquals(Boolean.TRUE, approveResponse.get("success"));
+            assertApiOk(approveResponse);
 
             MassMessage first = client.awaitTask(3, TimeUnit.SECONDS);
             MassMessage second = client.awaitTask(3, TimeUnit.SECONDS);

@@ -64,7 +64,7 @@ class TaskApiMinimumWorkerGateIntegrationTest extends AbstractMockE2eTest {
         taskManager.updateTask(task);
 
         Map<String, Object> auditResponse = audit(taskId, "min-worker-gate");
-        assertEquals(Boolean.TRUE, auditResponse.get("success"));
+        assertApiOk(auditResponse);
 
         TaskSnapshot readySnapshot = waitForTaskSnapshot(taskId, "READY", 8, 500L);
         assertEquals(0, ((Number) readySnapshot.task().get("peakAssignedWorkerCount")).intValue());
