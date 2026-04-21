@@ -3,7 +3,7 @@ package com.xa.mass.mock.command.core;
 import com.google.gson.JsonObject;
 import com.xa.mass.mock.client.ClientSessionManager;
 import com.xa.mass.mock.command.mock.MockClientStateRegistry;
-import com.xa.mass.mock.command.model.ApiResponse;
+import com.xa.mass.mock.command.model.CommandResponse;
 import com.xa.mass.mock.command.runtime.MockCommandRuntime;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -28,7 +28,7 @@ class CommandRuntimeTest {
         request.addProperty("event", "mock.state.get");
         request.addProperty("workerId", "worker-001");
 
-        ApiResponse<?> response = MockCommandRuntime.dispatch(request);
+        CommandResponse<?> response = MockCommandRuntime.dispatch(request);
 
         assertTrue(response.isSuccess());
         assertTrue(response.getData() instanceof Map);
@@ -43,7 +43,7 @@ class CommandRuntimeTest {
         request.addProperty("event", "tool.time.now");
         request.addProperty("zoneId", "Asia/Shanghai");
 
-        ApiResponse<?> response = MockCommandRuntime.dispatch(request);
+        CommandResponse<?> response = MockCommandRuntime.dispatch(request);
 
         assertTrue(response.isSuccess());
         assertTrue(response.getData() instanceof Map);
@@ -60,7 +60,7 @@ class CommandRuntimeTest {
         updateRequest.addProperty("workerId", "worker-001");
         updateRequest.addProperty("millis", 250);
 
-        ApiResponse<?> updateResponse = MockCommandRuntime.dispatch(updateRequest);
+        CommandResponse<?> updateResponse = MockCommandRuntime.dispatch(updateRequest);
 
         assertTrue(updateResponse.isSuccess());
 
@@ -68,7 +68,7 @@ class CommandRuntimeTest {
         stateRequest.addProperty("event", "mock.state.get");
         stateRequest.addProperty("workerId", "worker-001");
 
-        ApiResponse<?> stateResponse = MockCommandRuntime.dispatch(stateRequest);
+        CommandResponse<?> stateResponse = MockCommandRuntime.dispatch(stateRequest);
 
         assertTrue(stateResponse.isSuccess());
         assertTrue(stateResponse.getData() instanceof Map);
@@ -112,7 +112,7 @@ class CommandRuntimeTest {
         events.add(quoteStep);
         request.add("events", events);
 
-        ApiResponse<?> response = MockCommandRuntime.dispatch(request);
+        CommandResponse<?> response = MockCommandRuntime.dispatch(request);
 
         assertTrue(response.isSuccess());
         assertTrue(response.getData() instanceof Map);

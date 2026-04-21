@@ -4,7 +4,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonPrimitive;
-import com.xa.mass.mock.command.model.ApiResponse;
+import com.xa.mass.mock.command.model.CommandResponse;
 import com.xa.mass.mock.command.model.CommandContext;
 import com.xa.mass.mock.command.model.CommandException;
 import com.xa.mass.mock.command.model.ErrorCode;
@@ -25,7 +25,7 @@ public final class BatchCommandExecutor {
 
         for (BatchCommandRequest.BatchStep step : request.getSteps()) {
             long startTime = System.currentTimeMillis();
-            ApiResponse<?> response;
+            CommandResponse<?> response;
             try {
                 JsonObject stepRequest = buildStepRequest(step, sharedContext);
                 response = CommandDispatcher.dispatch(stepRequest);
@@ -34,7 +34,7 @@ public final class BatchCommandExecutor {
                     sharedContext.putAll(exports);
                 }
             } catch (Exception e) {
-                response = ApiResponse.fromException(e);
+                response = CommandResponse.fromException(e);
             }
 
             Map<String, Object> stepResult = toStepResult(step, response, System.currentTimeMillis() - startTime);
@@ -102,7 +102,7 @@ public final class BatchCommandExecutor {
 
     private static Map<String, Object> toStepResult(
             BatchCommandRequest.BatchStep step,
-            ApiResponse<?> response,
+            CommandResponse<?> response,
             long duration
     ) {
         Map<String, Object> result = new LinkedHashMap<>();

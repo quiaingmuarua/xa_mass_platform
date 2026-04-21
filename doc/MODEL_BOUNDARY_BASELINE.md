@@ -1,0 +1,61 @@
+# Model Boundary Baseline
+
+This file defines the current canonical model boundaries. Its purpose is to stop future work from blending HTTP, SDK, command, and gateway transport contracts into one another.
+
+## 1. Boundary Rules
+
+- Each boundary layer may have its own models.
+- Each boundary layer should have one canonical truth.
+- Model names must expose the layer they belong to.
+- Avoid the same class name meaning different things in different modules.
+- Transport metadata, protocol frame metadata, and business payload should not silently share ownership of the same fields.
+
+## 2. Current Canonical Boundaries
+
+### HTTP API boundary
+
+- Canonical response envelope: `com.xa.mass.api.model.ApiResponse<T>`
+- Intended canonical request contract: typed request models at controller boundaries
+- Legacy compatibility still exists in some endpoints that return raw `Map<String,Object>` with `success/message`
+
+### SDK boundary
+
+- Canonical public task-create request: `com.xa.mass.sdk.model.MassTaskCreateRequest`
+- Engine DTOs are internal conversion targets, not public SDK surface
+
+### Mock command boundary
+
+- Canonical command response envelope: `com.xa.mass.mock.command.model.CommandResponse<T>`
+- This envelope is only for dev-app mock command execution
+- It must not be treated as HTTP API response contract
+
+### Gateway transport boundary
+
+- Canonical queue/transport wrapper: `com.xa.mass.gateway.queue.Envelope`
+- `Envelope` owns delivery metadata such as `rawJson`, queue target, and trace metadata
+
+### Gateway protocol boundary
+
+- Canonical protocol frame: `com.xa.mass.gateway.model.massMessage.MassMessage`
+- Canonical protocol header companion: `com.xa.mass.gateway.model.massMessage.MessageContext`
+- `MassMessage` is the message frame, not an HTTP response and not a task business entity
+
+### Protocol payload helpers
+
+- `com.xa.mass.gateway.model.massMessage.MessageAckPayload` is only for lightweight transport/protocol acknowledgements
+- It must not be treated as a general response model
+
+## 3. Current Known Debt
+
+- `/status/api/**` still mixes canonical `ApiResponse<T>` and legacy raw `Map<String,Object>` response shapes
+- controller request bodies still often use `Map<String,Object>` instead of typed request models
+- `Envelope`, `MassMessage`, and `MessageContext` still overlap on routing metadata such as worker and project context
+- `MassMessage.payload` remains `JsonElement`, so payload contracts are only partially typed
+
+## 4. First-Stage Convergence Order
+
+1. Remove same-name/different-meaning collisions such as command `ApiResponse`
+2. Remove overly broad names such as `MessageResult` when they only represent ack payloads
+3. Converge HTTP APIs on one external envelope
+4. Freeze gateway protocol header fields before further payload expansion
+5. Replace controller-edge raw maps with typed requests on canonical APIs

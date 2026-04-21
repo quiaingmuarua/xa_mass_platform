@@ -12,6 +12,7 @@ It intentionally does not duplicate run commands, verification logs, or detailed
 For those, use:
 
 - [../AGENTS.md](../AGENTS.md)
+- [./MODEL_BOUNDARY_BASELINE.md](./MODEL_BOUNDARY_BASELINE.md)
 - [./STATE_MACHINE_BASELINE.md](./STATE_MACHINE_BASELINE.md)
 - [./TRACE_CONTRACT.md](./TRACE_CONTRACT.md)
 - [./E2E_BASELINE.md](./E2E_BASELINE.md)
@@ -232,6 +233,7 @@ Use these positive defaults:
 - start from the real entrypoint and current call sites
 - check the root `pom.xml` before treating a top-level directory as active mainline code
 - verify API docs against controller DTOs and integration tests before changing request or response contracts
+- verify [./MODEL_BOUNDARY_BASELINE.md](./MODEL_BOUNDARY_BASELINE.md) before adding a new boundary model or response envelope
 - treat `Worker / WorkerContext / WebSocket` as current adapter vocabulary, not as the platform's final universal resource model
 - re-check whether historical files exist locally before treating older notes as actionable code paths
 - treat documented capabilities as unverified until code, tests, or runtime behavior prove they are live

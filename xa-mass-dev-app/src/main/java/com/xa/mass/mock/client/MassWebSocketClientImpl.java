@@ -14,7 +14,7 @@ import com.xa.mass.gateway.session.SessionRoles;
 import com.xa.mass.mock.client.ClientSessionManager;
 import com.xa.mass.mock.command.mock.MockClientState;
 import com.xa.mass.mock.command.mock.MockClientStateRegistry;
-import com.xa.mass.mock.command.model.ApiResponse;
+import com.xa.mass.mock.command.model.CommandResponse;
 import com.xa.mass.mock.command.runtime.MockCommandRuntime;
 import org.java_websocket.client.WebSocketClient;
 import org.java_websocket.handshake.ServerHandshake;
@@ -192,7 +192,7 @@ public class MassWebSocketClientImpl extends WebSocketClient implements MassWebS
 
         Map<String, Object> payloadMap = new HashMap<>();
         JsonObject commandRequest = extractCommandRequest(controlMessage);
-        ApiResponse<?> commandResult = null;
+        CommandResponse<?> commandResult = null;
         if (commandRequest != null) {
             commandResult = MockCommandRuntime.dispatch(commandRequest);
         }
@@ -379,7 +379,7 @@ public class MassWebSocketClientImpl extends WebSocketClient implements MassWebS
         }, delayMillis, TimeUnit.MILLISECONDS);
     }
 
-    private void disconnectAfterAckIfRequested(ApiResponse<?> commandResult) {
+    private void disconnectAfterAckIfRequested(CommandResponse<?> commandResult) {
         String targetWorkerId = resolveDisconnectWorkerId(commandResult);
         if (targetWorkerId == null || targetWorkerId.isBlank()) {
             return;
@@ -387,7 +387,7 @@ public class MassWebSocketClientImpl extends WebSocketClient implements MassWebS
         taskResponseScheduler.schedule(() -> closeTargetWorker(targetWorkerId), 100, TimeUnit.MILLISECONDS);
     }
 
-    private String resolveDisconnectWorkerId(ApiResponse<?> commandResult) {
+    private String resolveDisconnectWorkerId(CommandResponse<?> commandResult) {
         if (commandResult == null || !commandResult.isSuccess() || !(commandResult.getData() instanceof Map<?, ?> data)) {
             return null;
         }

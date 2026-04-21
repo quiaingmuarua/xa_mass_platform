@@ -7,7 +7,7 @@ import com.xa.mass.gateway.dispatcher.handler.ResolutionResult;
 import com.xa.mass.gateway.model.enums.MessageDirection;
 import com.xa.mass.gateway.model.enums.MessageType;
 import com.xa.mass.gateway.model.massMessage.MassMessage;
-import com.xa.mass.gateway.model.massMessage.MessageResult;
+import com.xa.mass.gateway.model.massMessage.MessageAckPayload;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -87,7 +87,7 @@ public class MessageHandlerRegistry {
         pong.setSubMsgType("");
         pong.setFrom(MessageDirection.SERVER);
         pong.setContext(msg.getContext());
-        pong.setPayload(gson.toJsonTree(new MessageResult(200, "pong")));
+        pong.setPayload(gson.toJsonTree(new MessageAckPayload(200, "pong")));
         return Collections.singletonList(pong);
     }
 
@@ -104,7 +104,7 @@ public class MessageHandlerRegistry {
         ack.setSubMsgType("");
         ack.setFrom(MessageDirection.SERVER);
         ack.setContext(msg.getContext());
-        ack.setPayload(gson.toJsonTree(new MessageResult(200, "task received")));
+        ack.setPayload(gson.toJsonTree(new MessageAckPayload(200, "task received")));
         return Collections.singletonList(ack);
     }
 }

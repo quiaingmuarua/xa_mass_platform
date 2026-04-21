@@ -13,7 +13,7 @@ import com.xa.mass.gateway.model.enums.MessageDirection;
 import com.xa.mass.gateway.model.enums.MessageType;
 import com.xa.mass.gateway.model.massMessage.MassMessage;
 import com.xa.mass.gateway.model.massMessage.MessageContext;
-import com.xa.mass.gateway.model.massMessage.MessageResult;
+import com.xa.mass.gateway.model.massMessage.MessageAckPayload;
 import com.xa.mass.gateway.model.massMessage.TaskStep;
 import com.xa.mass.gateway.model.payload.TaskPayload;
 import com.xa.mass.gateway.queue.Envelope;
@@ -200,7 +200,7 @@ public class WebSocketWorkerAdapter implements WorkerAdapter, MassMessageHandler
         ack.setFrom(MessageDirection.SERVER);
         ack.setProject(request.getProject());
         ack.setContext(request.getContext());
-        ack.setPayload(gson.toJsonTree(new MessageResult(code, message)));
+        ack.setPayload(gson.toJsonTree(new MessageAckPayload(code, message)));
         return ack;
     }
 

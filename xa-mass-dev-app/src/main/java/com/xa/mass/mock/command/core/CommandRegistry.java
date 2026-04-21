@@ -1,7 +1,7 @@
 package com.xa.mass.mock.command.core;
 
 import com.google.gson.JsonObject;
-import com.xa.mass.mock.command.model.ApiResponse;
+import com.xa.mass.mock.command.model.CommandResponse;
 import com.xa.mass.mock.command.model.CommandContext;
 
 import java.util.Collections;
@@ -59,7 +59,7 @@ public class CommandRegistry {
             T request = resolver.apply(json);
             CommandContext ctx = CommandContext.getInstance();
             V result = handler.handle(request, ctx);
-            return ApiResponse.success(result);
+            return CommandResponse.success(result);
         };
 
         CommandInvoker old = HANDLERS.putIfAbsent(event, invoker);

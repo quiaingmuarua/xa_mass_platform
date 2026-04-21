@@ -5,7 +5,7 @@ import com.xa.mass.gateway.model.enums.MessageDirection;
 import com.xa.mass.gateway.model.enums.MessageType;
 import com.xa.mass.gateway.model.massMessage.MassMessage;
 import com.xa.mass.gateway.model.massMessage.MessageContext;
-import com.xa.mass.gateway.model.massMessage.MessageResult;
+import com.xa.mass.gateway.model.massMessage.MessageAckPayload;
 import com.xa.mass.gateway.session.SessionRoles;
 import com.xa.mass.mock.MockApplicationSpringBootApp;
 import com.xa.mass.mock.client.MassWebSocketClientImpl;
@@ -161,7 +161,7 @@ class TaskApiCallbackReplayIntegrationTest extends AbstractMockE2eTest {
                         && massMessage.isResponse()
                         && massMessage.getMsgType() == MessageType.TASK
                         && expectedMsgId.equals(massMessage.getMsgId())) {
-                    MessageResult result = GSON.fromJson(massMessage.getPayload(), MessageResult.class);
+            MessageAckPayload result = GSON.fromJson(massMessage.getPayload(), MessageAckPayload.class);
                     ackSnapshot = new AckSnapshot(result.getCode(), result.getMessage());
                     ackLatch.countDown();
                 }

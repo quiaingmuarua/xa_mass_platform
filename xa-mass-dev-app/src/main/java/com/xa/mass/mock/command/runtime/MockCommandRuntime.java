@@ -4,7 +4,7 @@ import com.google.gson.JsonObject;
 import com.xa.mass.mock.command.core.CommandDispatcher;
 import com.xa.mass.mock.command.core.CoreCommandRoutes;
 import com.xa.mass.mock.command.mock.MockCommandRoutes;
-import com.xa.mass.mock.command.model.ApiResponse;
+import com.xa.mass.mock.command.model.CommandResponse;
 import com.xa.mass.mock.command.model.CommandContext;
 import com.xa.mass.mock.command.tool.ToolCommandRoutes;
 import org.slf4j.Logger;
@@ -55,7 +55,7 @@ public final class MockCommandRuntime {
         ToolCommandRoutes.registerToolRoutes();
     }
 
-    public static ApiResponse<?> dispatch(JsonObject request) {
+    public static CommandResponse<?> dispatch(JsonObject request) {
         initialize();
         return CommandDispatcher.dispatch(request);
     }

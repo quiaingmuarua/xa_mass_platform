@@ -13,6 +13,7 @@ import com.xa.mass.engine.strategy.TaskScheduler;
 import com.xa.mass.gateway.model.enums.MessageDirection;
 import com.xa.mass.gateway.model.enums.MessageType;
 import com.xa.mass.gateway.model.massMessage.MassMessage;
+import com.xa.mass.gateway.model.massMessage.MessageAckPayload;
 import com.xa.mass.gateway.model.massMessage.MessageContext;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -50,7 +51,7 @@ class GatewayTaskResultHandlerTest {
         assertEquals(1, responses.size());
         assertEquals(MessageType.TASK, responses.get(0).getMsgType());
         assertTrue(responses.get(0).isResponse());
-        assertEquals(200, gson.fromJson(responses.get(0).getPayload(), com.xa.mass.gateway.model.massMessage.MessageResult.class).getCode());
+        assertEquals(200, gson.fromJson(responses.get(0).getPayload(), MessageAckPayload.class).getCode());
 
         TaskMsg updated = taskManager.getTaskMessage(task.getTid(), taskMsg.getMsgId());
         assertEquals(TaskMsgStatus.SUCCESS, updated.getStatus());
@@ -80,8 +81,8 @@ class GatewayTaskResultHandlerTest {
         List<MassMessage> firstResponses = handler.handle(message(task, taskMsg, "SUCCESS", "ok"));
         List<MassMessage> secondResponses = handler.handle(message(task, taskMsg, "FAILED", "boom"));
 
-        assertEquals(200, gson.fromJson(firstResponses.get(0).getPayload(), com.xa.mass.gateway.model.massMessage.MessageResult.class).getCode());
-        assertEquals(200, gson.fromJson(secondResponses.get(0).getPayload(), com.xa.mass.gateway.model.massMessage.MessageResult.class).getCode());
+        assertEquals(200, gson.fromJson(firstResponses.get(0).getPayload(), MessageAckPayload.class).getCode());
+        assertEquals(200, gson.fromJson(secondResponses.get(0).getPayload(), MessageAckPayload.class).getCode());
 
         TaskMsg updated = taskManager.getTaskMessage(task.getTid(), taskMsg.getMsgId());
         assertEquals(TaskMsgStatus.SUCCESS, updated.getStatus());

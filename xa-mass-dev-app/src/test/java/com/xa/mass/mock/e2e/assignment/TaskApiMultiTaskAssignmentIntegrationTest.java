@@ -10,7 +10,7 @@ import com.xa.mass.gateway.model.enums.MessageDirection;
 import com.xa.mass.gateway.model.enums.MessageType;
 import com.xa.mass.gateway.model.massMessage.MassMessage;
 import com.xa.mass.gateway.model.massMessage.MessageContext;
-import com.xa.mass.gateway.model.massMessage.MessageResult;
+import com.xa.mass.gateway.model.massMessage.MessageAckPayload;
 import com.xa.mass.mock.MockApplicationSpringBootApp;
 import com.xa.mass.mock.client.MassWebSocketClientImpl;
 import com.xa.mass.mock.e2e.support.AbstractMockE2eTest;
@@ -172,7 +172,7 @@ class TaskApiMultiTaskAssignmentIntegrationTest extends AbstractMockE2eTest {
                 MassMessage massMessage = GSON.fromJson(message, MassMessage.class);
                 if (massMessage != null && massMessage.getMsgType() == MessageType.TASK) {
                     if (massMessage.isResponse()) {
-                        MessageResult result = GSON.fromJson(massMessage.getPayload(), MessageResult.class);
+            MessageAckPayload result = GSON.fromJson(massMessage.getPayload(), MessageAckPayload.class);
                         ackQueue.offer(new AckSnapshot(massMessage.getMsgId(), result.getCode(), result.getMessage()));
                     } else {
                         taskQueue.offer(massMessage);

@@ -8,7 +8,7 @@ import com.xa.mass.gateway.dispatcher.handler.MassMessageHandler;
 import com.xa.mass.gateway.model.enums.MessageDirection;
 import com.xa.mass.gateway.model.enums.MessageType;
 import com.xa.mass.gateway.model.massMessage.MassMessage;
-import com.xa.mass.gateway.model.massMessage.MessageResult;
+import com.xa.mass.gateway.model.massMessage.MessageAckPayload;
 
 import java.util.List;
 
@@ -94,7 +94,7 @@ public class GatewayTaskResultHandler implements MassMessageHandler {
         ack.setFrom(MessageDirection.SERVER);
         ack.setProject(request.getProject());
         ack.setContext(request.getContext());
-        ack.setPayload(gson.toJsonTree(new MessageResult(code, message)));
+        ack.setPayload(gson.toJsonTree(new MessageAckPayload(code, message)));
         return ack;
     }
 

@@ -6,7 +6,12 @@ import com.google.gson.JsonObject;
 import java.util.HashMap;
 import java.util.Map;
 
-public class ApiResponse<T> {
+/**
+ * Command-runtime response envelope for the dev-app mock command channel.
+ *
+ * <p>This is intentionally separate from HTTP API responses.
+ */
+public class CommandResponse<T> {
     public String status;
     public int code;
     public String message;
@@ -15,30 +20,30 @@ public class ApiResponse<T> {
     public Map<String, String> env = new HashMap<>();
     public Map<String, Object> forward = new HashMap<>();
 
-    public ApiResponse(String status, T data) {
+    public CommandResponse(String status, T data) {
         this.status = status;
         this.code = 200;
         this.data = data;
     }
 
-    public ApiResponse(int code, String message) {
+    public CommandResponse(int code, String message) {
         this.status = "error";
         this.code = code;
         this.message = message;
     }
 
-    public ApiResponse() {
+    public CommandResponse() {
     }
 
-    public static ApiResponse<?> fromException(CommandException e) {
-        return new ApiResponse<>(e.getErrorCode().code, e.getMessage());
+    public static CommandResponse<?> fromException(CommandException e) {
+        return new CommandResponse<>(e.getErrorCode().code, e.getMessage());
     }
 
-    public static ApiResponse<?> fromException(Exception e) {
+    public static CommandResponse<?> fromException(Exception e) {
         if (e instanceof CommandException exception) {
-            return new ApiResponse<>(exception.getErrorCode().code, e.getMessage());
+            return new CommandResponse<>(exception.getErrorCode().code, e.getMessage());
         }
-        return new ApiResponse<>(ErrorCode.UNKNOWN_ERROR.code, e.getMessage());
+        return new CommandResponse<>(ErrorCode.UNKNOWN_ERROR.code, e.getMessage());
     }
 
     public void setDuration(long duration) {
@@ -59,8 +64,8 @@ public class ApiResponse<T> {
         this.env.put(key, value);
     }
 
-    public static <T> ApiResponse<T> success(T data) {
-        ApiResponse<T> resp = new ApiResponse<>();
+    public static <T> CommandResponse<T> success(T data) {
+        CommandResponse<T> resp = new CommandResponse<>();
         resp.code = 200;
         resp.status = "ok";
         resp.data = data;

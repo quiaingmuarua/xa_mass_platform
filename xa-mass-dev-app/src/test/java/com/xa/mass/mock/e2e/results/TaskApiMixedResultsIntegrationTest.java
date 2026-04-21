@@ -5,7 +5,7 @@ import com.xa.mass.gateway.model.enums.MessageDirection;
 import com.xa.mass.gateway.model.enums.MessageType;
 import com.xa.mass.gateway.model.massMessage.MassMessage;
 import com.xa.mass.gateway.model.massMessage.MessageContext;
-import com.xa.mass.gateway.model.massMessage.MessageResult;
+import com.xa.mass.gateway.model.massMessage.MessageAckPayload;
 import com.xa.mass.gateway.session.SessionRoles;
 import com.xa.mass.mock.MockApplicationSpringBootApp;
 import com.xa.mass.mock.client.MassWebSocketClientImpl;
@@ -198,7 +198,7 @@ class TaskApiMixedResultsIntegrationTest extends AbstractMockE2eTest {
                 if (m != null && m.isResponse()
                         && m.getMsgType() == MessageType.TASK
                         && expectedMsgId.equals(m.getMsgId())) {
-                    MessageResult r = GSON.fromJson(m.getPayload(), MessageResult.class);
+            MessageAckPayload r = GSON.fromJson(m.getPayload(), MessageAckPayload.class);
                     ack = new AckSnapshot(r.getCode(), r.getMessage());
                     ackLatch.countDown();
                 }

@@ -1,7 +1,7 @@
 package com.xa.mass.mock.command.core;
 
 import com.google.gson.JsonObject;
-import com.xa.mass.mock.command.model.ApiResponse;
+import com.xa.mass.mock.command.model.CommandResponse;
 import com.xa.mass.mock.command.model.CommandContext;
 import com.xa.mass.mock.command.model.ErrorCode;
 
@@ -14,20 +14,20 @@ public class CommandDispatcher {
     private CommandDispatcher() {
     }
 
-    public static ApiResponse<?> dispatch(JsonObject json) {
+    public static CommandResponse<?> dispatch(JsonObject json) {
         String event = stringValue(json, "event");
         long startTime = System.currentTimeMillis();
 
-        ApiResponse<?> result;
+        CommandResponse<?> result;
         try {
             if (event.isEmpty()) {
                 log("event is empty");
-                result = new ApiResponse<>(ErrorCode.UNKNOWN_EVENT.code, "missing event");
+                result = new CommandResponse<>(ErrorCode.UNKNOWN_EVENT.code, "missing event");
             } else {
                 CommandInvoker invoker = CommandRegistry.get(event);
                 if (invoker == null) {
                     log("supported events=" + CommandRegistry.getRegisteredEvents());
-                    result = new ApiResponse<>(
+                    result = new CommandResponse<>(
                             ErrorCode.UNKNOWN_EVENT.code,
                             buildUnknownEventMessage(event)
                     );
@@ -37,7 +37,7 @@ public class CommandDispatcher {
             }
         } catch (Exception e) {
             log("dispatch error: " + e.getMessage());
-            result = ApiResponse.fromException(e);
+            result = CommandResponse.fromException(e);
         }
 
         result.copyForwardFromRequest(json);
@@ -58,7 +58,7 @@ public class CommandDispatcher {
         return CommandRegistry.getDescriptor(event);
     }
 
-    private static String resultToLogString(String event, ApiResponse<?> result) {
+    private static String resultToLogString(String event, CommandResponse<?> result) {
         return "event=" + event
                 + ", status=" + result.status
                 + ", code=" + result.code
