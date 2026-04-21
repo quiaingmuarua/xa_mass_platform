@@ -8,25 +8,19 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
- * 模板值解析器 - 主入口类
+ * Central rule resolver for JSON DSL values.
  *
- * 新标准提供更好的类型安全、验证和扩展性，支持更丰富的表达式引擎和内置函数。
- * 按规则类型拆分为多个专门的解析器，提高代码的可维护性和扩展性。
+ * <p>The canonical typed path prefers structured forms such as
+ * {@code {"$EXPR": "age > 30"}}. String shorthand such as
+ * {@code "$EXPR(age > 30)"} remains compatibility-only.
  */
 public class TemplateValueResolver {
 
-    /**
-     * 主解析入口 - 根据规则类型分发到对应的解析器
-     * @param rule 字段值
-     * @param context DslContext 上下文变量（支持多级作用域）
-     * @return 解析后的值
-     */
     public static Object resolve(Object rule, DslContext context) {
         if (rule == null) {
             return null;
         }
 
-        // 根据规则类型分发到对应的解析器
         if (rule instanceof Map<?, ?> map) {
             return MapRuleResolver.resolve(map, context);
         }
@@ -39,85 +33,62 @@ public class TemplateValueResolver {
             return StringRuleResolver.resolve(str, context);
         }
 
-        // 其他类型直接返回
         return rule;
     }
 
-    /**
-     * Map 规则解析器 - 处理内置函数和普通 Map
-     */
     static class MapRuleResolver {
 
         public static Object resolve(Map<?, ?> map, DslContext context) {
-            // 处理内置函数
             if (isBuiltinFunction(map)) {
                 return BuiltinFunctionResolver.resolve(map, context);
             }
 
-            // 普通 Map，递归解析每个字段
             return map.entrySet().stream()
                     .collect(Collectors.toMap(
-                            e -> e.getKey(),
-                            e -> TemplateValueResolver.resolve(e.getValue(), context)
+                            Map.Entry::getKey,
+                            entry -> TemplateValueResolver.resolve(entry.getValue(), context)
                     ));
         }
 
         private static boolean isBuiltinFunction(Map<?, ?> map) {
-            if (map.size() != 1) return false;
+            if (map.size() != 1) {
+                return false;
+            }
             Object key = map.keySet().iterator().next();
-            return key instanceof String && ((String) key).startsWith("$");
+            return key instanceof String stringKey && stringKey.startsWith("$");
         }
     }
 
-    /**
-     * 内置函数解析器 - 专门处理 $ 开头的内置函数
-     */
     static class BuiltinFunctionResolver {
 
         public static Object resolve(Map<?, ?> map, DslContext context) {
             String funcKey = (String) map.keySet().iterator().next();
             Object param = map.get(funcKey);
 
-            // $EXPR 表达式支持
             if ("$EXPR".equalsIgnoreCase(funcKey)) {
                 return ExprRuleResolver.resolve(param, context);
             }
 
-            // 特殊处理 $CONTEXT 函数
             if ("$CONTEXT".equals(funcKey)) {
                 return ContextRuleResolver.resolve(param, context);
             }
 
-            // 其他函数直接使用 BuiltinFunctions.eval
             return StandardFunctionResolver.resolve(funcKey, param, context);
         }
     }
 
-    /**
-     * 表达式规则解析器 - 专门处理 $EXPR 表达式
-     */
     static class ExprRuleResolver {
 
         public static Object resolve(Object exprObj, DslContext context) {
-            // 合并当前作用域和父作用域的所有变量
-            Map<String, Object> qlContext = new HashMap<>();
-            DslContext ctx = context;
-            while (ctx != null) {
-                qlContext.putAll(ctx.getVariables());
-                ctx = ctx.getParent();
-            }
-
+            Map<String, Object> exprContext = flattenContext(context);
             try {
-                return DslExprExecutor.execute(exprObj, qlContext);
+                return DslExprExecutor.execute(exprObj, exprContext);
             } catch (Exception e) {
-                throw new JsonDslException("$EXPR 执行失败: " + exprObj, e);
+                throw new JsonDslException("$EXPR execution failed: " + exprObj, e);
             }
         }
     }
 
-    /**
-     * 上下文规则解析器 - 专门处理 $CONTEXT 函数
-     */
     static class ContextRuleResolver {
 
         public static Object resolve(Object param, DslContext context) {
@@ -125,25 +96,30 @@ public class TemplateValueResolver {
                 return null;
             }
 
-            if (param instanceof String) {
-                Object value = context.getVariable((String) param);
+            if (param instanceof String key) {
+                Object value = context.getVariable(key);
                 if (value == null && context.isStrict()) {
-                    throw new JsonDslException("Unresolved context variable: " + param);
+                    throw new JsonDslException("Unresolved context variable: " + key);
                 }
                 return value;
-            } else if (param instanceof List<?>) {
-                List<?> keys = (List<?>) param;
+            }
+
+            if (param instanceof List<?> keys) {
                 for (Object key : keys) {
-                    if (key instanceof String) {
-                        Object v = context.getVariable((String) key);
-                        if (v != null) return v;
+                    if (key instanceof String stringKey) {
+                        Object value = context.getVariable(stringKey);
+                        if (value != null) {
+                            return value;
+                        }
                     }
                 }
                 if (context.isStrict()) {
                     throw new JsonDslException("Unresolved context variable candidates: " + keys);
                 }
                 return null;
-            } else if (param == null) {
+            }
+
+            if (param == null) {
                 Object value = context.getVariable("&index");
                 if (value == null && context.isStrict()) {
                     throw new JsonDslException("Unresolved context variable: &index");
@@ -155,9 +131,6 @@ public class TemplateValueResolver {
         }
     }
 
-    /**
-     * 标准函数解析器 - 处理其他内置函数
-     */
     static class StandardFunctionResolver {
 
         public static Object resolve(String funcKey, Object param, DslContext context) {
@@ -168,70 +141,55 @@ public class TemplateValueResolver {
         }
     }
 
-    /**
-     * List 规则解析器 - 处理列表类型规则
-     */
     static class ListRuleResolver {
 
         public static Object resolve(List<?> list, DslContext context) {
             return list.stream()
-                    .map(v -> TemplateValueResolver.resolve(v, context))
+                    .map(item -> TemplateValueResolver.resolve(item, context))
                     .toList();
         }
     }
 
-    /**
-     * 字符串规则解析器 - 处理字符串类型规则
-     */
     static class StringRuleResolver {
 
         public static Object resolve(String str, DslContext context) {
-            // 处理作用域变量 &Worker.index
             if (str.startsWith("&.")) {
                 return ScopeVariableResolver.resolve(str, context);
             }
 
-            // 处理普通变量 &
             if (str.startsWith("&")) {
                 return VariableResolver.resolve(str, context);
             }
 
-            // 处理函数调用 $
             if (str.startsWith("$")) {
                 return FunctionCallResolver.resolve(str, context);
             }
 
-            // 普通字符串直接返回
             return str;
         }
     }
 
-    /**
-     * 作用域变量解析器 - 处理 &Worker.index 格式的变量
-     */
     static class ScopeVariableResolver {
 
         public static Object resolve(String str, DslContext context) {
             String scopeName = context.getScopeName();
             if (scopeName != null) {
-                String realKey = "&" + scopeName + str.substring(1); // 变成 &Worker.index
-                Object v = context.getVariable(realKey);
-                if (v != null) return v;
+                String realKey = "&" + scopeName + str.substring(1);
+                Object value = context.getVariable(realKey);
+                if (value != null) {
+                    return value;
+                }
             }
-            // fallback: 继续递归查找父作用域
             return VariableResolver.resolve(str, context);
         }
     }
 
-    /**
-     * 变量解析器 - 处理 & 开头的变量
-     */
     static class VariableResolver {
 
         public static Object resolve(String str, DslContext context) {
-            Object v = context.getVariable(str);
-            if (v != null) {
-                return v;
+            Object value = context.getVariable(str);
+            if (value != null) {
+                return value;
             }
             if (context != null && context.isStrict()) {
                 throw new JsonDslException("Unresolved variable: " + str);
@@ -240,30 +198,44 @@ public class TemplateValueResolver {
         }
     }
 
-    /**
-     * 函数调用解析器 - 处理 $ 开头的函数调用
-     */
     static class FunctionCallResolver {
 
         public static Object resolve(String str, DslContext context) {
             try {
-                // 合并当前作用域和父作用域的所有变量
-                Map<String, Object> vars = new HashMap<>();
-                DslContext ctx = context;
-                while (ctx != null) {
-                    vars.putAll(ctx.getVariables());
-                    ctx = ctx.getParent();
+                if (isExprShorthand(str)) {
+                    return ExprRuleResolver.resolve(extractExprBody(str), context);
                 }
 
-                // 处理无参函数
-                if (!str.contains("(") && !str.contains(")")) {
-                    str = str + "()";
+                Map<String, Object> vars = flattenContext(context);
+                String expression = str;
+                if (!expression.contains("(") && !expression.contains(")")) {
+                    expression = expression + "()";
                 }
 
-                return DslExprExecutor.execute(str, vars);
+                return DslExprExecutor.execute(expression, vars);
             } catch (Exception e) {
-                throw new JsonDslException("函数调用执行失败: " + str, e);
+                throw new JsonDslException("Function call execution failed: " + str, e);
             }
         }
+
+        private static boolean isExprShorthand(String str) {
+            return str != null
+                    && str.regionMatches(true, 0, "$EXPR(", 0, 6)
+                    && str.endsWith(")");
+        }
+
+        private static String extractExprBody(String str) {
+            return str.substring(6, str.length() - 1).trim();
+        }
     }
-} 
+
+    private static Map<String, Object> flattenContext(DslContext context) {
+        Map<String, Object> vars = new HashMap<>();
+        DslContext current = context;
+        while (current != null) {
+            vars.putAll(current.getVariables());
+            current = current.getParent();
+        }
+        return vars;
+    }
+}

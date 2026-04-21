@@ -40,6 +40,22 @@ class DefaultTransformProcessorTest {
     }
 
     @Test
+    void shouldPreferFieldTypedSetterWhenBeanHasOverloadedSetters() {
+        OverloadedSetterBean original = new OverloadedSetterBean();
+        original.setAge(25);
+
+        JsonDslDefinition definition = new JsonDslDefinition("transform-overloaded", JsonDslDefinition.DslType.TRANSFORM);
+        definition.setFieldDsl(Map.of("age", Map.of("$EXPR", "age + 1")));
+
+        OverloadedSetterBean transformed = processor.transform(original, definition, new ProcessingContext("test"));
+
+        assertEquals(25, original.getAge());
+        assertEquals(26, transformed.getAge());
+        assertEquals("25", original.getAgeText());
+        assertEquals("26", transformed.getAgeText());
+    }
+
+    @Test
     void shouldTransformMapAndExposeContextVariables() {
         JsonDslDefinition definition = new JsonDslDefinition("transform-map", JsonDslDefinition.DslType.TRANSFORM);
         definition.setFieldDsl(Map.of(
@@ -107,6 +123,29 @@ class DefaultTransformProcessorTest {
 
         public void setStatus(String status) {
             this.status = status;
+        }
+    }
+
+    static class OverloadedSetterBean {
+        private Integer age;
+        private String ageText;
+
+        public Integer getAge() {
+            return age;
+        }
+
+        public String getAgeText() {
+            return ageText;
+        }
+
+        public void setAge(Integer age) {
+            this.age = age;
+            this.ageText = age == null ? null : String.valueOf(age);
+        }
+
+        public void setAge(String age) {
+            this.age = age == null ? null : Integer.parseInt(age);
+            this.ageText = age;
         }
     }
 }

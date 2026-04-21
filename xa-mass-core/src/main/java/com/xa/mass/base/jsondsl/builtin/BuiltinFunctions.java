@@ -1,6 +1,6 @@
 package com.xa.mass.base.jsondsl.builtin;
 
-import com.ql.util.express.ExpressRunner;
+import com.alibaba.qlexpress4.Express4Runner;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -375,14 +375,14 @@ public class BuiltinFunctions {
      * 批量注册所有常用内置函数到 QLExpress
      * 包含冲突检测和防御拦截机制
      */
-    public static void registerToQLExpress(ExpressRunner runner) {
+    public static void registerToQLExpress(Express4Runner runner) {
         if (runner == null) {
-            throw new IllegalArgumentException("ExpressRunner 不能为空");
+            throw new IllegalArgumentException("Express4Runner must not be null");
         }
 
         try {
             // 注册 parseInt(String) 函数
-            runner.addFunctionOfClassMethod("parseInt", Integer.class.getName(), "parseInt", new String[]{"String"}, null);
+            runner.addFunction("parseInt", (String value) -> Integer.parseInt(value));
 
             // 注册所有内置函数
             for (Map.Entry<String, BuiltinFunction> entry : FUNCTION_MAP.entrySet()) {
@@ -396,15 +396,15 @@ public class BuiltinFunctions {
                 }
 
                 try {
-                    runner.addFunction(funcName, new com.ql.util.express.Operator() {
-                        @Override
-                        public Object executeInner(Object[] list) throws Exception {
-                            // 兼容单参数和多参数
-                            if (list == null || list.length == 0) return function.apply(null);
-                            if (list.length == 1) return function.apply(list[0]);
-                            return function.apply(java.util.Arrays.asList(list));
-                        }
+                    String actualFunctionName = funcName.startsWith("$") ? funcName.substring(1) : funcName;
+                    runner.addVarArgsFunction(actualFunctionName, list -> {
+                        if (list == null || list.length == 0) return function.apply(null);
+                        if (list.length == 1) return function.apply(list[0]);
+                        return function.apply(java.util.Arrays.asList(list));
                     });
+                    if (funcName.startsWith("$")) {
+                        runner.addAlias(funcName, actualFunctionName);
+                    }
 //                    System.out.println("[BuiltinFunctions] 成功注册函数 " + funcName + " 到 QLExpress");
                 } catch (Exception e) {
                     System.err.println("[BuiltinFunctions] 注册函数 " + funcName + " 到 QLExpress 失败: " + e.getMessage());

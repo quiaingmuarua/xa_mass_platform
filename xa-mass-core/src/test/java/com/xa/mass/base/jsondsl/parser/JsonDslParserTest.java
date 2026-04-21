@@ -11,34 +11,32 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class JsonDslParserTest {
 
     @Test
-    void shouldParseAgentFriendlyAliasesIntoCanonicalModel() {
+    void shouldParseCanonicalCamelCaseTypedDsl() {
         JsonDslDefinition definition = JsonDslParser.parse("""
                 {
-                  "unique_id": "agent-friendly-filter",
+                  "uniqueId": "canonical-filter",
                   "type": "FILTER",
-                  "desc": "Filter active adults",
-                  "field_dsl": {
+                  "description": "Filter active adults",
+                  "fieldDsl": {
                     "status": {"$EXPR": "status == 'active'"}
                   },
                   "combineDsl": {
                     "adultCheck": {"$EXPR": "age >= 18"}
                   },
-                  "cache_expire_seconds": 60,
                   "context": {
-                    "MODEL": "java.util.HashMap",
-                    "COUNT": 2,
-                    "scope_name": "workerScope",
+                    "model": "java.util.HashMap",
+                    "count": 2,
+                    "scopeName": "workerScope",
                     "strict": true
                   }
                 }
                 """);
 
-        assertEquals("agent-friendly-filter", definition.getUniqueId());
+        assertEquals("canonical-filter", definition.getUniqueId());
         assertEquals(JsonDslDefinition.DslType.FILTER, definition.getType());
         assertEquals("Filter active adults", definition.getDescription());
         assertEquals(1, definition.getFieldDsl().size());
         assertEquals(1, definition.getCombineDsl().size());
-        assertEquals(60, definition.getCacheExpireSeconds());
         assertEquals("java.util.HashMap", definition.getContext().getModel());
         assertEquals(2, definition.getContext().getCount());
         assertEquals("workerScope", definition.getContext().getScopeName());
@@ -46,20 +44,29 @@ class JsonDslParserTest {
     }
 
     @Test
-    void shouldAllowCombineOnlyFilterDslFromJson() {
+    void shouldParseSupportedSnakeCaseAliases() {
         JsonDslDefinition definition = JsonDslParser.parse("""
                 {
-                  "uniqueId": "combine-only-filter",
+                  "unique_id": "agent-friendly-filter",
                   "type": "filter",
+                  "field_dsl": {
+                    "status": {"$EXPR": "status == 'active'"}
+                  },
                   "combine_dsl": {
-                    "routeCheck": {"$EXPR": "country == 'us' || channel == 'us'"}
+                    "adultCheck": {"$EXPR": "age >= 18"}
+                  },
+                  "context": {
+                    "model": "java.util.HashMap",
+                    "count": 2,
+                    "scope_name": "workerScope",
+                    "strict": true
                   }
                 }
                 """);
 
-        assertEquals("combine-only-filter", definition.getUniqueId());
+        assertEquals("agent-friendly-filter", definition.getUniqueId());
         assertTrue(definition.hasFieldOrCombineDsl());
-        assertEquals(1, definition.getCombineDsl().size());
+        assertEquals("workerScope", definition.getContext().getScopeName());
     }
 
     @Test
@@ -76,5 +83,72 @@ class JsonDslParserTest {
                 """));
 
         assertTrue(exception.getMessage().contains("Conflicting alias values"));
+    }
+
+    @Test
+    void shouldRejectRetiredTypedFields() {
+        JsonDslException exception = assertThrows(JsonDslException.class, () -> JsonDslParser.parse("""
+                {
+                  "uniqueId": "legacy-cache",
+                  "type": "filter",
+                  "cacheable": true,
+                  "fieldDsl": {
+                    "status": {"$EXPR": "status == 'active'"}
+                  }
+                }
+                """));
+
+        assertTrue(exception.getMessage().contains("cacheable"));
+    }
+
+    @Test
+    void shouldRejectStoppedLegacyAliases() {
+        JsonDslException exception = assertThrows(JsonDslException.class, () -> JsonDslParser.parse("""
+                {
+                  "uniqueId": "legacy-desc",
+                  "type": "filter",
+                  "desc": "legacy description",
+                  "fieldDsl": {
+                    "status": {"$EXPR": "status == 'active'"}
+                  }
+                }
+                """));
+
+        assertTrue(exception.getMessage().contains("desc"));
+    }
+
+    @Test
+    void shouldRejectLegacyMockShapeInTypedParser() {
+        JsonDslException exception = assertThrows(JsonDslException.class, () -> JsonDslParser.parse("""
+                {
+                  "MODEL": "java.util.HashMap",
+                  "COUNT": 1,
+                  "FIELDS": {
+                    "name": "legacy"
+                  }
+                }
+                """));
+
+        assertTrue(exception.getMessage().contains("legacy/mock"));
+    }
+
+    @Test
+    void shouldRejectUnsupportedContextFields() {
+        JsonDslException exception = assertThrows(JsonDslException.class, () -> JsonDslParser.parse("""
+                {
+                  "uniqueId": "legacy-context",
+                  "type": "generate",
+                  "context": {
+                    "model": "java.util.HashMap",
+                    "count": 1,
+                    "debug": true
+                  },
+                  "fieldDsl": {
+                    "name": "legacy"
+                  }
+                }
+                """));
+
+        assertTrue(exception.getMessage().contains("debug"));
     }
 }

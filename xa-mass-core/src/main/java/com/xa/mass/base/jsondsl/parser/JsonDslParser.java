@@ -10,17 +10,44 @@ import com.xa.mass.base.jsondsl.model.JsonDslContext;
 import com.xa.mass.base.jsondsl.model.JsonDslDefinition;
 
 import java.util.Map;
+import java.util.Set;
 
 /**
- * Parser for the standardized JSON DSL.
+ * Parser for the canonical typed JSON DSL.
  *
- * <p>This parser intentionally accepts a few agent-friendly aliases such as
- * snake_case and camelCase variants, but it normalizes them into the canonical
- * {@link JsonDslDefinition} model and validates conflicts early.
+ * <p>This parser keeps the typed processor contract intentionally narrow. It
+ * accepts the canonical camelCase shape and a small snake_case compatibility
+ * surface, while rejecting legacy/mock fields that belong to the compatibility
+ * path instead of the typed runtime path.
  */
 public class JsonDslParser {
 
-    private static final Gson gson = GsonConfig.buildGson();
+    private static final Gson GSON = GsonConfig.buildGson();
+
+    private static final Set<String> ALLOWED_ROOT_KEYS = Set.of(
+            "uniqueId", "unique_id",
+            "type",
+            "priority",
+            "description",
+            "version",
+            "createTime", "create_time",
+            "updateTime", "update_time",
+            "context",
+            "fieldDsl", "field_dsl",
+            "combineDsl", "combine_dsl",
+            "extensions",
+            "tags",
+            "author",
+            "enabled"
+    );
+
+    private static final Set<String> ALLOWED_CONTEXT_KEYS = Set.of(
+            "model",
+            "count",
+            "scopeName", "scope_name",
+            "parameters",
+            "strict"
+    );
 
     public static JsonDslDefinition parse(String jsonDsl) {
         try {
@@ -34,12 +61,15 @@ public class JsonDslParser {
     }
 
     private static JsonDslDefinition parseStandardDsl(JsonObject root) {
-        JsonDslDefinition definition = new JsonDslDefinition();
+        rejectUnsupportedRootFields(root);
+        rejectUnknownFields(root, ALLOWED_ROOT_KEYS, "root");
 
+        JsonDslDefinition definition = new JsonDslDefinition();
         definition.setUniqueId(readAliasedString(root, "uniqueId", "unique_id"));
         definition.setType(JsonDslDefinition.DslType.fromCode(readAliasedString(root, "type")));
         definition.setPriority(readAliasedInteger(root, 1, "priority"));
-        definition.setDescription(readAliasedString(root, "description", "desc"));
+        definition.setDescription(readAliasedString(root, "description"));
+
         String version = readAliasedString(root, "version");
         if (version != null) {
             definition.setVersion(version);
@@ -60,12 +90,7 @@ public class JsonDslParser {
             definition.setContext(parseContext(contextObject));
         }
 
-        Map<String, Object> fieldDsl = readAliasedMap(root, "fieldDsl", "field_dsl");
-        if (fieldDsl == null) {
-            fieldDsl = readAliasedMap(root, "fields");
-        }
-        definition.setFieldDsl(fieldDsl);
-
+        definition.setFieldDsl(readAliasedMap(root, "fieldDsl", "field_dsl"));
         definition.setCombineDsl(readAliasedMap(root, "combineDsl", "combine_dsl"));
         definition.setExtensions(readAliasedMap(root, "extensions"));
 
@@ -84,43 +109,24 @@ public class JsonDslParser {
             definition.setEnabled(enabled);
         }
 
-        Boolean cacheable = readAliasedBoolean(root, "cacheable");
-        if (cacheable != null) {
-            definition.setCacheable(cacheable);
-        }
-
-        Integer cacheExpireSeconds = readAliasedInteger(root, null, "cacheExpireSeconds", "cache_expire_seconds");
-        if (cacheExpireSeconds != null) {
-            definition.setCacheExpireSeconds(cacheExpireSeconds);
-        }
-
         definition.validate();
         return definition;
     }
 
     private static JsonDslContext parseContext(JsonObject contextObj) {
+        rejectUnsupportedContextFields(contextObj);
+        rejectUnknownFields(contextObj, ALLOWED_CONTEXT_KEYS, "context");
+
         JsonDslContext context = new JsonDslContext();
+        context.setModel(readAliasedString(contextObj, "model"));
 
-        context.setModel(readAliasedString(contextObj, "MODEL", "model"));
-
-        Integer count = readAliasedInteger(contextObj, null, "COUNT", "count");
+        Integer count = readAliasedInteger(contextObj, null, "count");
         if (count != null) {
             context.setCount(count);
         }
 
-        String type = readAliasedString(contextObj, "TYPE", "type");
-        if (type != null) {
-            context.setType(type);
-        }
-
         context.setScopeName(readAliasedString(contextObj, "scopeName", "scope_name"));
-        context.setParentScope(readAliasedString(contextObj, "parentScope", "parent_scope"));
         context.setParameters(readAliasedMap(contextObj, "parameters"));
-
-        Boolean debug = readAliasedBoolean(contextObj, "debug");
-        if (debug != null) {
-            context.setDebug(debug);
-        }
 
         Boolean strict = readAliasedBoolean(contextObj, "strict");
         if (strict != null) {
@@ -132,7 +138,43 @@ public class JsonDslParser {
     }
 
     public static String toJson(JsonDslDefinition definition) {
-        return gson.toJson(definition);
+        return GSON.toJson(definition);
+    }
+
+    private static void rejectUnsupportedRootFields(JsonObject root) {
+        rejectIfPresent(root, "desc", "unsupported legacy alias 'desc'; use 'description'");
+        rejectIfPresent(root, "fields", "unsupported legacy field 'fields'; use 'fieldDsl'");
+        rejectIfPresent(root, "cacheable", "unsupported typed field 'cacheable'; expression/runtime caching is not a typed DSL contract");
+        rejectIfPresent(root, "cacheExpireSeconds", "unsupported typed field 'cacheExpireSeconds'; expression/runtime caching is not a typed DSL contract");
+        rejectIfPresent(root, "cache_expire_seconds", "unsupported legacy alias 'cache_expire_seconds'; expression/runtime caching is not a typed DSL contract");
+        rejectIfPresent(root, "FIELDS", "legacy/mock field 'FIELDS' is not supported by the typed parser; use JsonDslEngine or legacy/mock generation path");
+        rejectIfPresent(root, "MODEL", "legacy/mock field 'MODEL' is not supported by the typed parser; use context.model or the legacy/mock path");
+        rejectIfPresent(root, "COUNT", "legacy/mock field 'COUNT' is not supported by the typed parser; use context.count or the legacy/mock path");
+    }
+
+    private static void rejectUnsupportedContextFields(JsonObject contextObj) {
+        rejectIfPresent(contextObj, "MODEL", "unsupported legacy context field 'MODEL'; use 'model'");
+        rejectIfPresent(contextObj, "COUNT", "unsupported legacy context field 'COUNT'; use 'count'");
+        rejectIfPresent(contextObj, "TYPE", "unsupported legacy context field 'TYPE'; typed context.type is not part of the canonical contract");
+        rejectIfPresent(contextObj, "type", "unsupported typed context field 'type'; it is not consumed by the typed runtime");
+        rejectIfPresent(contextObj, "parentScope", "unsupported typed context field 'parentScope'; it is not consumed by the typed runtime");
+        rejectIfPresent(contextObj, "parent_scope", "unsupported legacy alias 'parent_scope'; parent scope is not part of the canonical typed contract");
+        rejectIfPresent(contextObj, "debug", "unsupported typed context field 'debug'; use ProcessingContext.debug instead");
+        rejectIfPresent(contextObj, "DEBUG", "unsupported legacy context field 'DEBUG'; use ProcessingContext.debug instead");
+    }
+
+    private static void rejectUnknownFields(JsonObject obj, Set<String> allowedKeys, String path) {
+        for (String key : obj.keySet()) {
+            if (!allowedKeys.contains(key)) {
+                throw new JsonDslException("Unknown " + path + " field: " + key);
+            }
+        }
+    }
+
+    private static void rejectIfPresent(JsonObject obj, String key, String message) {
+        if (obj.has(key) && !obj.get(key).isJsonNull()) {
+            throw new JsonDslException(message);
+        }
     }
 
     private static String readAliasedString(JsonObject obj, String... keys) {
@@ -142,10 +184,7 @@ public class JsonDslParser {
 
     private static Integer readAliasedInteger(JsonObject obj, Integer defaultValue, String... keys) {
         JsonElement element = readAliasedElement(obj, keys);
-        if (element == null) {
-            return defaultValue;
-        }
-        return element.getAsInt();
+        return element == null ? defaultValue : element.getAsInt();
     }
 
     private static Long readAliasedLong(JsonObject obj, String... keys) {
@@ -166,12 +205,12 @@ public class JsonDslParser {
     @SuppressWarnings("unchecked")
     private static Map<String, Object> readAliasedMap(JsonObject obj, String... keys) {
         JsonElement element = readAliasedElement(obj, keys);
-        return element == null ? null : gson.fromJson(element, Map.class);
+        return element == null ? null : GSON.fromJson(element, Map.class);
     }
 
     private static String[] readAliasedArray(JsonObject obj, String... keys) {
         JsonElement element = readAliasedElement(obj, keys);
-        return element == null ? null : gson.fromJson(element, String[].class);
+        return element == null ? null : GSON.fromJson(element, String[].class);
     }
 
     private static JsonElement readAliasedElement(JsonObject obj, String... keys) {
@@ -184,7 +223,7 @@ public class JsonDslParser {
                 continue;
             }
             JsonElement current = obj.get(key);
-            String currentJson = gson.toJson(current);
+            String currentJson = GSON.toJson(current);
             if (chosen == null) {
                 chosen = current;
                 chosenKey = key;

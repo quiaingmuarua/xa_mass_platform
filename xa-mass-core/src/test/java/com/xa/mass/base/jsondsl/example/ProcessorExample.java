@@ -97,7 +97,7 @@ public class ProcessorExample {
         filterDsl.setPriority(2);
 
         Map<String, Object> filterFieldDsl = new HashMap<>();
-        filterFieldDsl.put("age", "$EXPR(age > 30)");
+        filterFieldDsl.put("age", Map.of("$EXPR", "age > 30"));
         filterDsl.setFieldDsl(filterFieldDsl);
 
         // 创建处理上下文
@@ -136,8 +136,8 @@ public class ProcessorExample {
 
         Map<String, Object> fieldDsl = new HashMap<>();
         fieldDsl.put("name", "$JOIN(['Mr. ', '&.name'])");
-        fieldDsl.put("age", "$EXPR(age + 1)");
-        fieldDsl.put("status", "$EXPR(status == 'active' ? 'ACTIVE' : 'INACTIVE')");
+        fieldDsl.put("age", Map.of("$EXPR", "age + 1"));
+        fieldDsl.put("status", Map.of("$EXPR", "status == 'active' ? 'ACTIVE' : 'INACTIVE'"));
         transformDsl.setFieldDsl(fieldDsl);
 
         // 创建处理上下文
@@ -171,10 +171,10 @@ public class ProcessorExample {
         validateDsl.setDescription("校验用户数据");
 
         Map<String, Object> fieldDsl = new HashMap<>();
-        fieldDsl.put("name", "$EXPR(name != null && name.length() > 0)");
-        fieldDsl.put("age", "$EXPR(age >= 0 && age <= 150)");
-        fieldDsl.put("email", "$EXPR(email != null && email.contains('@'))");
-        fieldDsl.put("status", "$EXPR(status != null && (status == 'active' || status == 'inactive'))");
+        fieldDsl.put("name", Map.of("$EXPR", "name != null && name.length() > 0"));
+        fieldDsl.put("age", Map.of("$EXPR", "age >= 0 && age <= 150"));
+        fieldDsl.put("email", Map.of("$EXPR", "email != null && email.contains('@')"));
+        fieldDsl.put("status", Map.of("$EXPR", "status != null && (status == 'active' || status == 'inactive')"));
         validateDsl.setFieldDsl(fieldDsl);
 
         // 创建处理上下文

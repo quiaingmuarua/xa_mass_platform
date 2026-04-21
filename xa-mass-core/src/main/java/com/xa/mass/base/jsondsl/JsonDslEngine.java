@@ -23,7 +23,8 @@ import java.util.List;
  * <p>The active worker matching path does not use this class. Matching rules
  * are evaluated through engine {@code RuleDefinition} and QLExpress over
  * {@code WorkerMatchContext}. Keep this class isolated to mock/dev fixtures
- * and legacy JSON-DSL compatibility.
+ * and legacy JSON-DSL compatibility. Do not route canonical typed DSL parsing
+ * through this class.
  *
  * @deprecated Prefer the typed {@link com.xa.mass.base.jsondsl.model.JsonDslDefinition}
  * model and {@link com.xa.mass.base.jsondsl.processor.JsonDslProcessorEngine}

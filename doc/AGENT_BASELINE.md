@@ -76,6 +76,8 @@ Interpretation rules:
 - `Task.sharedConfig` and `TaskMsg.input/output` are the main payload boundaries. Do not regress back to single-purpose top-level fields such as `textContent`.
 - Routing truth such as country/account affinity should come from explicit rules and worker-context signals, not from `workerGroupId`.
 - Worker matching truth is `RuleDefinition.content` evaluated by QLExpress over `WorkerMatchContext`; the legacy JSON-DSL generator is mock/dev fixture support only.
+- typed JSON DSL mainline goes through `JsonDslParser -> JsonDslDefinition -> JsonDslProcessorEngine` using canonical fields like `uniqueId`, `description`, `context.model`, `fieldDsl`, and `combineDsl`
+- legacy/mock JSON DSL such as root `MODEL` / `COUNT` / `FIELDS` belongs to `JsonDslEngine` compatibility usage only and should not be mixed into typed parser examples or contracts
 - `Worker.attributes` and `WorkerContext.attributes` are auxiliary rule labels for matching and diagnostics only. They are not lifecycle, lock, or online truth.
 - UI pages, mock runtime, and demo APIs must not redefine the platform kernel.
 - Manual worker debug chat is a debug/control side-channel. It is not `TaskMsg` lifecycle and must not mutate task state.

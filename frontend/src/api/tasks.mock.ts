@@ -1,0 +1,226 @@
+import type {
+    TaskDetailResponse,
+    TaskListItem,
+    TaskListQuery,
+    TaskListResponse,
+} from '@/types/tasks'
+
+const mockTaskList: TaskListItem[] = [
+    {
+        id: 'task-001',
+        taskName: 'Warm worker pool for us-routing',
+        project: 'demoApp',
+        routingCode: 'us',
+        status: 'RUNNING',
+        terminalReason: null,
+        successCount: 6,
+        eligibleCount: 10,
+        batchSize: 2,
+        updatedAt: '2026-04-20 11:24:00',
+    },
+    {
+        id: 'task-002',
+        taskName: 'Review failed delivery backlog',
+        project: 'demoApp',
+        routingCode: 'sg',
+        status: 'PAUSED',
+        terminalReason: null,
+        successCount: 2,
+        eligibleCount: 8,
+        batchSize: 1,
+        updatedAt: '2026-04-20 10:51:00',
+    },
+    {
+        id: 'task-003',
+        taskName: 'Daily worker session refresh',
+        project: 'testApp',
+        routingCode: 'eu',
+        status: 'TERMINAL',
+        terminalReason: 'ALL_MESSAGES_SUCCEEDED',
+        successCount: 12,
+        eligibleCount: 12,
+        batchSize: 3,
+        updatedAt: '2026-04-20 09:18:00',
+    },
+]
+
+const mockTaskDetails: Record<string, TaskDetailResponse> = {
+    'task-001': {
+        task: {
+            tid: 'task-001',
+            taskName: 'Warm worker pool for us-routing',
+            project: 'demoApp',
+            taskRoutingCode: 'us',
+            status: 'RUNNING',
+            terminalReason: null,
+            batchSize: 2,
+            sharedConfig: {
+                objective: 'stabilize dispatch throughput',
+                targetConcurrency: 4,
+            },
+            user: {
+                name: 'ops-admin',
+            },
+            taskTargetNumber: 10,
+            taskEligibleNumber: 10,
+            taskSuccessNumber: 6,
+            taskNonSuccessNumber: 4,
+            peakAssignedWorkerCount: 4,
+            createTime: '2026-04-20 08:30:00',
+            updateTime: '2026-04-20 11:24:00',
+        },
+        items: [
+            { target: 'worker-us-01' },
+            { target: 'worker-us-02' },
+            { target: 'worker-us-03' },
+            { target: 'worker-us-04' },
+        ],
+        stateValidation: {
+            valid: true,
+            needsResolution: false,
+            totalMessages: 10,
+            successMessages: 6,
+            failedMessages: 0,
+            processingMessages: 4,
+            violations: [],
+        },
+        messages: [
+            {
+                msgId: 'msg-001',
+                status: 'SUCCESS',
+                latestAttemptWorkerId: 'worker-us-01',
+                latestAttemptWorkerContextId: 'ctx-us-01',
+                latestAttemptBatchId: 'batch-01',
+                retryCount: 0,
+                maxRetryCount: 3,
+                finalReason: 'BUSINESS_SUCCESS',
+                input: { target: 'worker-us-01' },
+                output: { result: 'ready' },
+                errorMessage: null,
+            },
+            {
+                msgId: 'msg-004',
+                status: 'RUNNING',
+                latestAttemptWorkerId: 'worker-us-04',
+                latestAttemptWorkerContextId: 'ctx-us-04',
+                latestAttemptBatchId: 'batch-02',
+                retryCount: 1,
+                maxRetryCount: 3,
+                finalReason: null,
+                input: { target: 'worker-us-04' },
+                output: {},
+                errorMessage: null,
+            },
+        ],
+    },
+    'task-002': {
+        task: {
+            tid: 'task-002',
+            taskName: 'Review failed delivery backlog',
+            project: 'demoApp',
+            taskRoutingCode: 'sg',
+            status: 'PAUSED',
+            terminalReason: null,
+            batchSize: 1,
+            sharedConfig: {
+                objective: 'manual review of retry-heavy messages',
+            },
+            user: {
+                name: 'ops-admin',
+            },
+            taskTargetNumber: 8,
+            taskEligibleNumber: 8,
+            taskSuccessNumber: 2,
+            taskNonSuccessNumber: 6,
+            peakAssignedWorkerCount: 2,
+            createTime: '2026-04-19 23:10:00',
+            updateTime: '2026-04-20 10:51:00',
+        },
+        items: [{ target: 'delivery-01' }, { target: 'delivery-02' }],
+        stateValidation: {
+            valid: true,
+            needsResolution: false,
+            totalMessages: 8,
+            successMessages: 2,
+            failedMessages: 2,
+            processingMessages: 0,
+            violations: [],
+        },
+        messages: [],
+    },
+    'task-003': {
+        task: {
+            tid: 'task-003',
+            taskName: 'Daily worker session refresh',
+            project: 'testApp',
+            taskRoutingCode: 'eu',
+            status: 'TERMINAL',
+            terminalReason: 'ALL_MESSAGES_SUCCEEDED',
+            batchSize: 3,
+            sharedConfig: {
+                objective: 'session rotation',
+            },
+            user: {
+                name: 'ops-admin',
+            },
+            taskTargetNumber: 12,
+            taskEligibleNumber: 12,
+            taskSuccessNumber: 12,
+            taskNonSuccessNumber: 0,
+            peakAssignedWorkerCount: 3,
+            createTime: '2026-04-20 05:00:00',
+            updateTime: '2026-04-20 09:18:00',
+        },
+        items: [{ target: 'session-01' }],
+        stateValidation: {
+            valid: true,
+            needsResolution: false,
+            totalMessages: 12,
+            successMessages: 12,
+            failedMessages: 0,
+            processingMessages: 0,
+            violations: [],
+        },
+        messages: [],
+    },
+}
+
+function delay<T>(value: T): Promise<T> {
+    return new Promise((resolve) => {
+        window.setTimeout(() => resolve(value), 80)
+    })
+}
+
+export async function listTasksMock(
+    query: TaskListQuery = {},
+): Promise<TaskListResponse> {
+    const normalizedKeyword = query.keyword?.trim().toLowerCase() ?? ''
+
+    const filtered = mockTaskList.filter((task) => {
+        const matchesKeyword =
+            normalizedKeyword.length === 0 ||
+            task.taskName.toLowerCase().includes(normalizedKeyword) ||
+            task.id.toLowerCase().includes(normalizedKeyword)
+
+        const matchesStatus = !query.status || task.status === query.status
+
+        return matchesKeyword && matchesStatus
+    })
+
+    return delay({
+        items: filtered,
+        total: filtered.length,
+    })
+}
+
+export async function getTaskDetailMock(
+    taskId: string,
+): Promise<TaskDetailResponse> {
+    const detail = mockTaskDetails[taskId]
+
+    if (!detail) {
+        throw new Error(`Task detail not found for ${taskId}`)
+    }
+
+    return delay(detail)
+}

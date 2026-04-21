@@ -69,7 +69,6 @@ public class NewIntegrationExample {
 
         JsonDslContext context = new JsonDslContext("com.xa.mass.base.model.Worker", 300);
         context.setScopeName("Worker");
-        context.setDebug(false);
         definition.setContext(context);
 
         Map<String, Object> fieldDsl = new HashMap<>();

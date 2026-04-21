@@ -6,7 +6,10 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * Canonical model for the standardized JSON DSL.
+ * Canonical typed model for the standardized JSON DSL.
+ *
+ * <p>This model is the recommended mainline contract for typed processor
+ * execution. It intentionally excludes legacy/mock-only compatibility knobs.
  */
 public class JsonDslDefinition {
 
@@ -24,8 +27,6 @@ public class JsonDslDefinition {
     private String[] tags;
     private String author;
     private Boolean enabled = true;
-    private Boolean cacheable = false;
-    private Integer cacheExpireSeconds = 300;
 
     public JsonDslDefinition() {
         this.createTime = System.currentTimeMillis();
@@ -78,13 +79,6 @@ public class JsonDslDefinition {
 
     public void touch() {
         this.updateTime = System.currentTimeMillis();
-    }
-
-    public boolean isExpired() {
-        if (!Boolean.TRUE.equals(cacheable) || cacheExpireSeconds == null || updateTime == null) {
-            return false;
-        }
-        return System.currentTimeMillis() - updateTime > cacheExpireSeconds * 1000L;
     }
 
     public String getFullId() {
@@ -201,22 +195,6 @@ public class JsonDslDefinition {
 
     public void setEnabled(Boolean enabled) {
         this.enabled = enabled;
-    }
-
-    public Boolean getCacheable() {
-        return cacheable;
-    }
-
-    public void setCacheable(Boolean cacheable) {
-        this.cacheable = cacheable;
-    }
-
-    public Integer getCacheExpireSeconds() {
-        return cacheExpireSeconds;
-    }
-
-    public void setCacheExpireSeconds(Integer cacheExpireSeconds) {
-        this.cacheExpireSeconds = cacheExpireSeconds;
     }
 
     @Override

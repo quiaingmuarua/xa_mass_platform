@@ -1,9 +1,10 @@
 package com.xa.mass.base.example;
 
-import com.xa.mass.base.jsondsl.JsonDslEngine;
 import com.xa.mass.base.jsondsl.model.JsonDslContext;
 import com.xa.mass.base.jsondsl.model.JsonDslDefinition;
 import com.xa.mass.base.jsondsl.parser.JsonDslParser;
+import com.xa.mass.base.jsondsl.processor.JsonDslProcessorEngine;
+import com.xa.mass.base.jsondsl.processor.ProcessingContext;
 import com.xa.mass.base.model.Worker;
 
 import java.util.Arrays;
@@ -12,12 +13,12 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Example usage for the new standard DSL without manual type registration.
+ * Example usage for the canonical typed DSL without legacy parser aliases.
  */
 public class NewStandardDslExample {
 
     public static void main(String[] args) {
-        System.out.println("=== New Standard DSL Example ===\n");
+        System.out.println("=== Canonical Typed DSL Example ===\n");
 
         example1BasicGenerateDsl();
         example2ComplexGenerateDsl();
@@ -36,9 +37,8 @@ public class NewStandardDslExample {
         definition.setTags(new String[]{"worker", "basic"});
         definition.setPriority(1);
 
-        JsonDslContext context = new JsonDslContext("com.xa.mass.base.model.Worker", 3);
+        JsonDslContext context = new JsonDslContext(Worker.class.getName(), 3);
         context.setScopeName("Worker");
-        context.setDebug(true);
         definition.setContext(context);
 
         Map<String, Object> fieldDsl = new HashMap<>();
@@ -48,9 +48,11 @@ public class NewStandardDslExample {
         definition.setFieldDsl(fieldDsl);
 
         definition.validate();
-
-        String legacyFormat = JsonDslParser.toJson(definition);
-        List<Worker> workers = JsonDslEngine.generateList(legacyFormat, Worker.class);
+        List<Worker> workers = JsonDslProcessorEngine.process(
+                definition,
+                new ProcessingContext("new-standard-basic-generate"),
+                Worker.class
+        );
 
         System.out.println("Generated workers: " + workers.size());
         workers.forEach(worker ->
@@ -67,9 +69,8 @@ public class NewStandardDslExample {
         definition.setTags(new String[]{"worker", "complex", "nested"});
         definition.setPriority(2);
 
-        JsonDslContext context = new JsonDslContext("com.xa.mass.base.model.Worker", 2);
+        JsonDslContext context = new JsonDslContext(Worker.class.getName(), 2);
         context.setScopeName("Worker");
-        context.setDebug(true);
         context.setStrict(true);
         definition.setContext(context);
 
@@ -79,37 +80,25 @@ public class NewStandardDslExample {
         fieldDsl.put("workerGroupId", Map.of("$CHOICE", Arrays.asList("us", "gb", "cn")));
         fieldDsl.put("agentVersion", Map.of("$JOIN", Arrays.asList("2.0.", "&.index")));
 
-        Map<String, Object> tasksField = new HashMap<>();
-        tasksField.put("TYPE", "LIST");
-        tasksField.put("COUNT", 2);
-        tasksField.put("MODEL", "com.xa.mass.base.model.Task");
-
-        Map<String, Object> taskFields = new HashMap<>();
-        taskFields.put("tid", Map.of("$UUID", true));
-        taskFields.put("taskName", Map.of("$JOIN", Arrays.asList("ComplexTask-", "&.index", "-of-Worker-", "&Worker.index")));
-        taskFields.put("taskRoutingCode", "&Worker.workerGroupId");
-        taskFields.put("taskTargetNumber", Map.of("$RANGE", Arrays.asList(50, 200)));
-        taskFields.put("batchSize", Map.of("$RANGE", Arrays.asList(2, 8)));
-        tasksField.put("FIELDS", taskFields);
-        fieldDsl.put("tasks", tasksField);
-
-        Map<String, Object> onlineStrategy = new HashMap<>();
-        onlineStrategy.put("$EXPR", Map.of(
+        fieldDsl.put("onlineStrategy", Map.of("$EXPR", Map.of(
                 "lang", "ql",
                 "expr", "status == 'OFFLINE' ? 0 : range(10, 100)"
-        ));
-        fieldDsl.put("onlineStrategy", onlineStrategy);
+        )));
+        fieldDsl.put("supportedProjects", List.of("demoApp", "otherApp"));
         definition.setFieldDsl(fieldDsl);
 
         Map<String, Object> combineDsl = new HashMap<>();
-        combineDsl.put("worker_task_balance", "tasks.size() <= 3 ? 'balanced' : 'overloaded'");
-        combineDsl.put("status_performance", "status == 'ONLINE' && agentVersion.startsWith('2.0') ? 'high_performance' : 'standard'");
-        combineDsl.put("group_capacity", "workerGroupId == 'us' ? 100 : workerGroupId == 'gb' ? 50 : 30");
+        combineDsl.put("workerTier", "status == 'ONLINE' && onlineStrategy >= 80 ? 'premium' : 'standard'");
+        combineDsl.put("statusPerformance", "status == 'ONLINE' && agentVersion.startsWith('2.0') ? 'high_performance' : 'standard'");
+        combineDsl.put("groupCapacity", "workerGroupId == 'us' ? 100 : workerGroupId == 'gb' ? 50 : 30");
         definition.setCombineDsl(combineDsl);
 
         definition.validate();
-        String legacyFormat = JsonDslParser.toJson(definition);
-        List<Worker> workers = JsonDslEngine.generateList(legacyFormat, Worker.class);
+        List<Worker> workers = JsonDslProcessorEngine.process(
+                definition,
+                new ProcessingContext("new-standard-complex-generate"),
+                Worker.class
+        );
 
         System.out.println("Generated complex workers: " + workers.size());
         workers.forEach(worker -> {
@@ -133,8 +122,8 @@ public class NewStandardDslExample {
         filterDef.setFieldDsl(fieldDsl);
 
         Map<String, Object> combineDsl = new HashMap<>();
-        combineDsl.put("battery_check", "batteryLevel >= 20");
-        combineDsl.put("signal_check", "signalStrength >= 50");
+        combineDsl.put("batteryCheck", "batteryLevel >= 20");
+        combineDsl.put("signalCheck", "signalStrength >= 50");
         filterDef.setCombineDsl(combineDsl);
 
         filterDef.validate();
@@ -157,8 +146,8 @@ public class NewStandardDslExample {
         transformDef.setFieldDsl(fieldDsl);
 
         Map<String, Object> combineDsl = new HashMap<>();
-        combineDsl.put("full_name", "workerId + '_' + workerGroupId");
-        combineDsl.put("status_code", "status == 'active' ? 1 : 0");
+        combineDsl.put("fullName", "workerId + '_' + workerGroupId");
+        combineDsl.put("statusCode", "status == 'active' ? 1 : 0");
         transformDef.setCombineDsl(combineDsl);
 
         transformDef.validate();
@@ -181,8 +170,8 @@ public class NewStandardDslExample {
         validateDef.setFieldDsl(fieldDsl);
 
         Map<String, Object> combineDsl = new HashMap<>();
-        combineDsl.put("status_consistency", "status == 'ONLINE' ? batteryLevel > 0 : true");
-        combineDsl.put("group_validity", "workerGroupId in ['us', 'gb', 'cn', 'eu']");
+        combineDsl.put("statusConsistency", "status == 'ONLINE' ? batteryLevel > 0 : true");
+        combineDsl.put("groupValidity", "workerGroupId in ['us', 'gb', 'cn', 'eu']");
         validateDef.setCombineDsl(combineDsl);
 
         validateDef.validate();
@@ -195,26 +184,25 @@ public class NewStandardDslExample {
 
         String jsonDsl = """
                 {
-                  "unique_id": "json_worker_generator",
+                  "uniqueId": "json_worker_generator",
                   "type": "generate",
                   "priority": 1,
-                  "desc": "Generate workers from JSON",
+                  "description": "Generate workers from canonical JSON",
                   "version": "1.0",
                   "author": "json_user",
                   "tags": ["json", "worker"],
                   "context": {
-                    "MODEL": "com.xa.mass.base.model.Worker",
-                    "COUNT": 2,
-                    "scope_name": "Worker",
-                    "debug": true
+                    "model": "com.xa.mass.base.model.Worker",
+                    "count": 2,
+                    "scopeName": "Worker"
                   },
                   "fieldDsl": {
                     "workerId": {"$JOIN": ["json-worker-", "&.index"]},
                     "status": {"$CHOICE": ["ONLINE", "OFFLINE"]},
                     "workerGroupId": {"$CHOICE": ["us", "gb"]}
                   },
-                  "combine_dsl": {
-                    "status_group": "status == 'ONLINE' ? workerGroupId : 'unknown'"
+                  "combineDsl": {
+                    "statusGroup": "status == 'ONLINE' ? workerGroupId : 'unknown'"
                   },
                   "extensions": {
                     "source": "json_parser"
@@ -223,12 +211,15 @@ public class NewStandardDslExample {
                 """;
 
         JsonDslDefinition definition = JsonDslParser.parse(jsonDsl);
+        List<Worker> workers = JsonDslProcessorEngine.process(
+                definition,
+                new ProcessingContext("new-standard-parse-json"),
+                Worker.class
+        );
+
         System.out.println("DSL ID: " + definition.getUniqueId());
         System.out.println("DSL type: " + definition.getType());
         System.out.println("Description: " + definition.getDescription());
-
-        String legacyFormat = JsonDslParser.toJson(definition);
-        List<Worker> workers = JsonDslEngine.generateList(legacyFormat, Worker.class);
         workers.forEach(worker ->
                 System.out.println("  - " + worker.getWorkerId() + " (" + worker.getStatus() + ", " + worker.getWorkerGroupId() + ")"));
         System.out.println();

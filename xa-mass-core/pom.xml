@@ -19,8 +19,8 @@
 
         <dependency>
             <groupId>com.alibaba</groupId>
-            <artifactId>QLExpress</artifactId>
-            <version>3.3.2</version>
+            <artifactId>qlexpress4</artifactId>
+            <version>4.1.0</version>
         </dependency>
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
@@ -47,7 +47,7 @@
         <!--            <artifactId>xa-mass-gateway</artifactId>-->
         <!--            <version>0.0.1-SNAPSHOT</version>-->
         <!--        </dependency>-->
-        
+
         <!-- 保留 JUnit 4 以支持其他现有测试 -->
         <dependency>
             <groupId>junit</groupId>

@@ -104,10 +104,10 @@ public class GenerateFilterIntegrationTest {
         // 创建多条件过滤 DSL
         JsonDslDefinition filterDsl = new JsonDslDefinition("multi-filter", JsonDslDefinition.DslType.FILTER);
         Map<String, Object> filterFieldDsl = new HashMap<>();
-        filterFieldDsl.put("age", "$EXPR(age >= 25)");
-        filterFieldDsl.put("score", "$EXPR(score >= 80)");
-        filterFieldDsl.put("status", "$EXPR(status == 'active')");
-        filterFieldDsl.put("department", "$EXPR(department == 'IT' || department == 'Finance')");
+        filterFieldDsl.put("age", Map.of("$EXPR", "age >= 25"));
+        filterFieldDsl.put("score", Map.of("$EXPR", "score >= 80"));
+        filterFieldDsl.put("status", Map.of("$EXPR", "status == 'active'"));
+        filterFieldDsl.put("department", Map.of("$EXPR", "department == 'IT' || department == 'Finance'"));
         filterDsl.setFieldDsl(filterFieldDsl);
 
         // 执行过滤
@@ -151,7 +151,7 @@ public class GenerateFilterIntegrationTest {
         JsonDslDefinition filterDsl = new JsonDslDefinition("expression-filter", JsonDslDefinition.DslType.FILTER);
         Map<String, Object> filterFieldDsl = new HashMap<>();
         // 复杂条件：年龄在25-50之间，且经验>=5年，且薪资>=5000
-        filterFieldDsl.put("$EXPR", "age >= 25 && age <= 50 && experience >= 5 && salary >= 5000");
+        filterFieldDsl.put("match", Map.of("$EXPR", "age >= 25 && age <= 50 && experience >= 5 && salary >= 5000"));
         filterDsl.setFieldDsl(filterFieldDsl);
 
         FilterResult<TestUser> filterResult = filterProcessor.filterList(employees, filterDsl, context);
@@ -190,7 +190,7 @@ public class GenerateFilterIntegrationTest {
         // 第一步过滤：年龄 >= 25
         JsonDslDefinition filter1 = new JsonDslDefinition("age-filter", JsonDslDefinition.DslType.FILTER);
         Map<String, Object> filter1Dsl = new HashMap<>();
-        filter1Dsl.put("age", "$EXPR(age >= 25)");
+        filter1Dsl.put("age", Map.of("$EXPR", "age >= 25"));
         filter1.setFieldDsl(filter1Dsl);
 
         FilterResult<TestUser> result1 = filterProcessor.filterList(allUsers, filter1, context);
@@ -201,7 +201,7 @@ public class GenerateFilterIntegrationTest {
         // 第二步过滤：分数 >= 80
         JsonDslDefinition filter2 = new JsonDslDefinition("score-filter", JsonDslDefinition.DslType.FILTER);
         Map<String, Object> filter2Dsl = new HashMap<>();
-        filter2Dsl.put("score", "$EXPR(score >= 80)");
+        filter2Dsl.put("score", Map.of("$EXPR", "score >= 80"));
         filter2.setFieldDsl(filter2Dsl);
 
         FilterResult<TestUser> result2 = filterProcessor.filterList(step1, filter2, context);
@@ -212,7 +212,7 @@ public class GenerateFilterIntegrationTest {
         // 第三步过滤：状态为 active
         JsonDslDefinition filter3 = new JsonDslDefinition("status-filter", JsonDslDefinition.DslType.FILTER);
         Map<String, Object> filter3Dsl = new HashMap<>();
-        filter3Dsl.put("status", "$EXPR(status == 'active')");
+        filter3Dsl.put("status", Map.of("$EXPR", "status == 'active'"));
         filter3.setFieldDsl(filter3Dsl);
 
         FilterResult<TestUser> result3 = filterProcessor.filterList(step2, filter3, context);
@@ -256,7 +256,7 @@ public class GenerateFilterIntegrationTest {
         // 3. 测试空数据过滤
         JsonDslDefinition validFilterDsl = new JsonDslDefinition("valid", JsonDslDefinition.DslType.FILTER);
         Map<String, Object> filterFieldDsl = new HashMap<>();
-        filterFieldDsl.put("age", "$EXPR(age > 0)");
+        filterFieldDsl.put("age", Map.of("$EXPR", "age > 0"));
         validFilterDsl.setFieldDsl(filterFieldDsl);
 
         List<TestUser> emptyData = List.of();
@@ -288,7 +288,7 @@ public class GenerateFilterIntegrationTest {
         // 测试过滤的调试模式
         JsonDslDefinition filterDsl = new JsonDslDefinition("debug-filter", JsonDslDefinition.DslType.FILTER);
         Map<String, Object> filterFieldDsl = new HashMap<>();
-        filterFieldDsl.put("id", "$EXPR(id > 5)");
+        filterFieldDsl.put("id", Map.of("$EXPR", "id > 5"));
         filterDsl.setFieldDsl(filterFieldDsl);
 
         FilterResult<TestUser> filterResult = filterProcessor.filterList(users, filterDsl, context);

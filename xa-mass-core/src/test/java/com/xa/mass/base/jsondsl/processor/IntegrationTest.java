@@ -100,6 +100,50 @@ public class IntegrationTest {
         }
     }
 
+    @Test
+    void testRealLifecycleChainWithDefaultProcessors() {
+        JsonDslDefinition generateDsl = new JsonDslDefinition("generate-lifecycle-users", JsonDslDefinition.DslType.GENERATE);
+        JsonDslContext generateContext = new JsonDslContext();
+        generateContext.setModel("java.util.HashMap");
+        generateContext.setCount(3);
+        generateDsl.setContext(generateContext);
+        Map<String, Object> generateFieldDsl = new HashMap<>();
+        Map<String, Object> ageRule = new HashMap<>();
+        ageRule.put("$CONTEXT", null);
+        generateFieldDsl.put("age", ageRule);
+        generateFieldDsl.put("name", "user");
+        generateFieldDsl.put("status", "raw");
+        generateDsl.setFieldDsl(generateFieldDsl);
+
+        JsonDslDefinition filterDsl = new JsonDslDefinition("filter-lifecycle-users", JsonDslDefinition.DslType.FILTER);
+        filterDsl.setFieldDsl(Map.of("age", Map.of("$EXPR", "age >= 1")));
+
+        JsonDslDefinition transformDsl = new JsonDslDefinition("transform-lifecycle-users", JsonDslDefinition.DslType.TRANSFORM);
+        transformDsl.setFieldDsl(Map.of(
+                "name", Map.of("$EXPR", "'user-' + age"),
+                "status", "READY"
+        ));
+
+        JsonDslDefinition validateDsl = new JsonDslDefinition("validate-lifecycle-users", JsonDslDefinition.DslType.VALIDATE);
+        validateDsl.setFieldDsl(Map.of(
+                "name", Map.of("$EXPR", "name != null && name.length() > 0"),
+                "status", Map.of("$EXPR", "'READY'.equals(status)")
+        ));
+
+        List<Map> result = JsonDslProcessorEngine.processChain(
+                List.of(generateDsl, filterDsl, transformDsl, validateDsl),
+                context,
+                Map.class
+        );
+
+        assertNotNull(result);
+        assertEquals(2, result.size());
+        assertEquals("user-1", result.get(0).get("name"));
+        assertEquals("READY", result.get(0).get("status"));
+        assertEquals("user-2", result.get(1).get("name"));
+        assertEquals("READY", result.get(1).get("status"));
+    }
+
 
     @Test
     void testRealPerformance() {

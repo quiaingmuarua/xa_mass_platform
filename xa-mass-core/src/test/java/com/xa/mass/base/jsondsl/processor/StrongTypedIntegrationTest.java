@@ -112,7 +112,7 @@ public class StrongTypedIntegrationTest {
         Map<String, Object> fieldDsl = new HashMap<>();
         fieldDsl.put("name", Map.of("$EXPR", "name != null && name.length() > 0"));
         fieldDsl.put("age", Map.of("$EXPR", "age >= 0 && age <= 150"));
-        fieldDsl.put("email", Map.of("$EXPR", "email != null && email.contains('@')"));
+        fieldDsl.put("email", Map.of("$EXPR", "email != null && email.contains(\"@\")"));
         validateDsl.setFieldDsl(fieldDsl);
 
         // 校验用户数据

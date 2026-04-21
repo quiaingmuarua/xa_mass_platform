@@ -5,13 +5,16 @@ import com.xa.mass.base.jsondsl.generate.TypeRegistry;
 import com.xa.mass.base.jsondsl.model.JsonDslContext;
 import com.xa.mass.base.jsondsl.model.JsonDslDefinition;
 import com.xa.mass.base.jsondsl.parser.JsonDslParser;
-import com.xa.mass.base.model.Worker;
+import com.xa.mass.base.jsondsl.processor.JsonDslProcessorEngine;
+import com.xa.mass.base.jsondsl.processor.ProcessingContext;
 import com.xa.mass.base.model.Task;
+import com.xa.mass.base.model.Worker;
 
 import java.util.List;
+import java.util.Map;
 
 /**
- * Example usage for the standard JSON-DSL format.
+ * Examples that separate the canonical typed path from the legacy/mock path.
  */
 public class StandardDslExample {
 
@@ -19,34 +22,30 @@ public class StandardDslExample {
         TypeRegistry.register("Worker", Worker.class);
         TypeRegistry.register("Task", Task.class);
 
-        System.out.println("=== Standard JSON-DSL Examples ===\n");
+        System.out.println("=== JSON DSL Path Examples ===\n");
 
-        useStandardDslFormat();
-        useLegacyDslFormat();
-        useComplexCombinedDsl();
-        demonstrateCompatibility();
+        useCanonicalTypedDsl();
+        useLegacyMockDsl();
+        useCanonicalTypedJsonRoundTrip();
     }
 
-    private static void useStandardDslFormat() {
-        System.out.println("--- Example 1: Standard DSL format ---");
+    private static void useCanonicalTypedDsl() {
+        System.out.println("--- Example 1: Canonical typed DSL ---");
 
-        String standardDsl = """
+        String typedDsl = """
                 {
-                  "unique_id": "worker_generator_001",
+                  "uniqueId": "worker-generator-001",
                   "type": "generate",
                   "priority": 1,
-                  "desc": "Generate mock workers",
+                  "description": "Generate mock workers through the typed processor path",
                   "version": "1.0",
                   "author": "test_user",
-                  "tags": ["worker", "test", "mock"],
+                  "tags": ["worker", "test", "typed"],
                   "enabled": true,
-                  "cacheable": true,
-                  "cache_expire_seconds": 600,
                   "context": {
-                    "MODEL": "Worker",
-                    "COUNT": 3,
-                    "scope_name": "Worker",
-                    "debug": false,
+                    "model": "com.xa.mass.base.model.Worker",
+                    "count": 3,
+                    "scopeName": "Worker",
                     "strict": true
                   },
                   "fieldDsl": {
@@ -61,32 +60,26 @@ public class StandardDslExample {
                     },
                     "agentVersion": {
                       "$JOIN": ["1.0.", "&.index"]
-                    },
-                    "supportedProjects": ["demoApp", "otherApp", "testApp"]
-                  },
-                  "combine_dsl": {
-                    "status_group_rule": "status == 'ONLINE' ? workerGroupId : 'unknown'",
-                    "version_check_rule": "agentVersion.startsWith('1.0') ? 'stable' : 'beta'"
-                  },
-                  "extensions": {
-                    "metadata": {
-                      "source": "test_data",
-                      "environment": "dev"
                     }
+                  },
+                  "combineDsl": {
+                    "statusGroupLabel": "status == 'ONLINE' ? workerGroupId : 'unknown'"
                   }
                 }
                 """;
 
-        JsonDslDefinition definition = JsonDslParser.parse(standardDsl);
-        System.out.println("Parsed DSL definition:");
+        JsonDslDefinition definition = JsonDslParser.parse(typedDsl);
+        List<Worker> workers = JsonDslProcessorEngine.process(
+                definition,
+                new ProcessingContext("standard-typed-example"),
+                Worker.class
+        );
+
+        System.out.println("Parsed typed DSL:");
         System.out.println("  ID: " + definition.getUniqueId());
         System.out.println("  Type: " + definition.getType());
         System.out.println("  Description: " + definition.getDescription());
-        System.out.println("  Author: " + definition.getAuthor());
-
-        String legacyFormat = JsonDslParser.toJson(definition);
-        List<Worker> workers = JsonDslEngine.generateList(legacyFormat, Worker.class);
-
+        System.out.println("  Scope: " + definition.getContext().getScopeName());
         System.out.println("Generated workers:");
         workers.forEach(worker ->
                 System.out.println("  - " + worker.getWorkerId() + " (" + worker.getStatus() + ", " + worker.getWorkerGroupId() + ")")
@@ -94,8 +87,8 @@ public class StandardDslExample {
         System.out.println();
     }
 
-    private static void useLegacyDslFormat() {
-        System.out.println("--- Example 2: Legacy DSL format ---");
+    private static void useLegacyMockDsl() {
+        System.out.println("--- Example 2: Legacy/mock compatibility DSL ---");
 
         String legacyDsl = """
                 {
@@ -111,123 +104,46 @@ public class StandardDslExample {
                 }
                 """;
 
-        JsonDslDefinition definition = JsonDslParser.parse(legacyDsl);
-        System.out.println("Parsed legacy DSL:");
-        System.out.println("  ID: " + definition.getUniqueId());
-        System.out.println("  Type: " + definition.getType());
-        System.out.println("  Description: " + definition.getDescription());
-
         List<Task> tasks = JsonDslEngine.generateList(legacyDsl, Task.class);
-        System.out.println("Generated tasks:");
+        System.out.println("Legacy/mock generation still works through JsonDslEngine:");
         tasks.forEach(task ->
-                System.out.println("  - " + task.getTaskName() + " (" +
-                        task.getTaskRoutingCode() + ", batch: " + task.getBatchSize() + ")")
+                System.out.println("  - " + task.getTaskName() + " (" + task.getTaskRoutingCode() + ", batch: " + task.getBatchSize() + ")")
         );
         System.out.println();
     }
 
-    private static void useComplexCombinedDsl() {
-        System.out.println("--- Example 3: Complex combined DSL ---");
+    private static void useCanonicalTypedJsonRoundTrip() {
+        System.out.println("--- Example 3: Typed model round-trip ---");
 
-        String complexDsl = """
-                {
-                  "unique_id": "complex_worker_task_001",
-                  "type": "generate",
-                  "priority": 2,
-                  "desc": "Generate workers with nested tasks",
-                  "author": "advanced_user",
-                  "tags": ["complex", "nested", "advanced"],
-                  "context": {
-                    "MODEL": "Worker",
-                    "COUNT": 2,
-                    "scope_name": "Worker",
-                    "debug": true
-                  },
-                  "fieldDsl": {
-                    "workerId": {"$JOIN": ["complex-worker-", "&.index"]},
-                    "status": {"$CHOICE": ["ONLINE", "OFFLINE"]},
-                    "workerGroupId": {"$CHOICE": ["us", "gb", "cn"]},
-                    "agentVersion": {"$JOIN": ["2.0.", "&.index"]},
-                    "tasks": {
-                      "TYPE": "LIST",
-                      "COUNT": 2,
-                      "MODEL": "Task",
-                      "FIELDS": {
-                        "tid": {"$UUID": true},
-                        "taskName": {"$JOIN": ["ComplexTask-", "&.index", "-of-Worker-", "&Worker.index"]},
-                        "taskRoutingCode": "&Worker.workerGroupId",
-                        "taskTargetNumber": {"$RANGE": [50, 200]},
-                        "batchSize": {"$RANGE": [2, 8]}
-                      }
-                    }
-                  },
-                  "combine_dsl": {
-                    "worker_task_balance": "tasks.size() <= 3 ? 'balanced' : 'overloaded'",
-                    "status_performance": "status == 'ONLINE' && agentVersion.startsWith('2.0') ? 'high_performance' : 'standard'",
-                    "group_capacity": "workerGroupId == 'us' ? 100 : workerGroupId == 'gb' ? 50 : 30"
-                  },
-                  "extensions": {
-                    "business_rules": {
-                      "max_tasks_per_worker": 5,
-                      "preferred_groups": ["us", "gb"],
-                      "performance_threshold": 0.8
-                    }
-                  }
-                }
-                """;
-
-        JsonDslDefinition definition = JsonDslParser.parse(complexDsl);
-        System.out.println("Complex DSL definition:");
-        System.out.println("  ID: " + definition.getUniqueId());
-        System.out.println("  Priority: " + definition.getPriority());
-        System.out.println("  Debug: " + definition.getContext().getDebug());
-        System.out.println("  Combine rules: " + definition.getCombineDsl().size());
-
-        String legacyFormat = JsonDslParser.toJson(definition);
-        List<Worker> workers = JsonDslEngine.generateList(legacyFormat, Worker.class);
-
-        System.out.println("Generated complex workers:");
-        workers.forEach(worker -> {
-            System.out.println("  - Worker: " + worker.getWorkerId() + " (" + worker.getStatus() + ", " + worker.getWorkerGroupId() + ")");
-            System.out.println("    Agent version: " + worker.getAgentVersion());
-        });
-        System.out.println();
-    }
-
-    private static void demonstrateCompatibility() {
-        System.out.println("--- Example 4: Compatibility ---");
-
-        JsonDslDefinition definition = new JsonDslDefinition("compatibility_test_001", JsonDslDefinition.DslType.GENERATE);
-        definition.setDescription("Compatibility test DSL");
+        JsonDslDefinition definition = new JsonDslDefinition("compatibility-test-001", JsonDslDefinition.DslType.GENERATE);
+        definition.setDescription("Round-trip typed DSL");
         definition.setAuthor("compatibility_tester");
-        definition.setTags(new String[]{"test", "compatibility"});
+        definition.setTags(new String[]{"typed", "round-trip"});
         definition.setEnabled(true);
 
-        JsonDslContext context = new JsonDslContext("Worker", 1);
+        JsonDslContext context = new JsonDslContext(Worker.class.getName(), 1);
         context.setScopeName("Worker");
         definition.setContext(context);
-
-        definition.setFieldDsl(java.util.Map.of(
+        definition.setFieldDsl(Map.of(
                 "workerId", "test-worker-001",
                 "status", "ONLINE",
                 "workerGroupId", "test"
         ));
 
-        String json = JsonDslParser.toJson(definition);
-        String legacyJson = JsonDslParser.toJson(definition);
+        String typedJson = JsonDslParser.toJson(definition);
+        JsonDslDefinition parsedDefinition = JsonDslParser.parse(typedJson);
+        List<Worker> workers = JsonDslProcessorEngine.process(
+                parsedDefinition,
+                new ProcessingContext("standard-round-trip-example"),
+                Worker.class
+        );
 
-        System.out.println("Standard DSL JSON:");
-        System.out.println(json);
-        System.out.println("Legacy JSON:");
-        System.out.println(legacyJson);
-
-        JsonDslDefinition parsedDefinition = JsonDslParser.parse(json);
+        System.out.println("Typed JSON:");
+        System.out.println(typedJson);
         System.out.println("Parsed again:");
         System.out.println("  ID: " + parsedDefinition.getUniqueId());
         System.out.println("  Type: " + parsedDefinition.getType());
         System.out.println("  Description: " + parsedDefinition.getDescription());
-
-        List<Worker> workers = JsonDslEngine.generateList(legacyJson, Worker.class);
         System.out.println("Generated verification data:");
         workers.forEach(worker ->
                 System.out.println("  - " + worker.getWorkerId() + " (" + worker.getStatus() + ")")

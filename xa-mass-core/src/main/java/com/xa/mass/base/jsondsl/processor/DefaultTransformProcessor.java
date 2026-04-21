@@ -1,6 +1,7 @@
 package com.xa.mass.base.jsondsl.processor;
 
 import com.xa.mass.base.jsondsl.builtin.DslContext;
+import com.xa.mass.base.jsondsl.builtin.JsonDslException;
 import com.xa.mass.base.jsondsl.model.JsonDslDefinition;
 
 import java.util.Map;
@@ -34,7 +35,7 @@ class DefaultTransformProcessor implements TransformProcessor {
             for (Map.Entry<String, Object> entry : definition.getCombineDsl().entrySet()) {
                 Object result = ProcessorDslSupport.evaluateRule(entry.getKey(), null, entry.getValue(), dslContext);
                 if (!ProcessorDslSupport.isTruthy(result)) {
-                    throw new com.xa.mass.base.jsondsl.builtin.JsonDslException("组合条件转换失败: " + entry.getKey());
+                    throw new JsonDslException("combine transform guard failed: " + entry.getKey());
                 }
             }
         }

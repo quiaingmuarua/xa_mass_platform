@@ -84,18 +84,17 @@ class NewStandardDslTypeRegistrationTest {
     void parsesAndProcessesJsonDslWithoutRegistration() {
         String jsonDsl = """
                 {
-                  "unique_id": "json_test_generator",
+                  "uniqueId": "json_test_generator",
                   "type": "generate",
                   "priority": 1,
-                  "desc": "JSON generate example",
+                  "description": "JSON generate example",
                   "version": "1.0",
                   "author": "test",
                   "tags": ["json", "test"],
                   "context": {
-                    "MODEL": "com.xa.mass.base.model.Worker",
-                    "COUNT": 1,
-                    "scope_name": "Worker",
-                    "debug": true
+                    "model": "com.xa.mass.base.model.Worker",
+                    "count": 1,
+                    "scopeName": "Worker"
                   },
                   "fieldDsl": {
                     "workerId": "json-worker-001",

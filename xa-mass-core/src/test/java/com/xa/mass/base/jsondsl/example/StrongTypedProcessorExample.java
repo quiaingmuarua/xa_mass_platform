@@ -104,7 +104,7 @@ public class StrongTypedProcessorExample {
         JsonDslDefinition dsl = new JsonDslDefinition("worker-transform", JsonDslDefinition.DslType.TRANSFORM);
         dsl.setFieldDsl(Map.of(
                 "workerId", "$JOIN(['transformed-', '&.workerId'])",
-                "status", "$EXPR(status == 'ONLINE' ? 'ACTIVE' : 'INACTIVE')"
+                "status", Map.of("$EXPR", "status == 'ONLINE' ? 'ACTIVE' : 'INACTIVE'")
         ));
 
         ProcessingContext context = new ProcessingContext("transform-example");
@@ -126,8 +126,8 @@ public class StrongTypedProcessorExample {
 
         JsonDslDefinition dsl = new JsonDslDefinition("worker-validate", JsonDslDefinition.DslType.VALIDATE);
         dsl.setFieldDsl(Map.of(
-                "workerId", "$EXPR(workerId != null && workerId.length() > 0)",
-                "batteryLevel", "$EXPR(batteryLevel >= 0 && batteryLevel <= 100)"
+                "workerId", Map.of("$EXPR", "workerId != null && workerId.length() > 0"),
+                "batteryLevel", Map.of("$EXPR", "batteryLevel >= 0 && batteryLevel <= 100")
         ));
 
         ProcessingContext context = new ProcessingContext("validate-example");
