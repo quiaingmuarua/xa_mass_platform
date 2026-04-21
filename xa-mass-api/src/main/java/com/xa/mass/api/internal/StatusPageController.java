@@ -30,6 +30,7 @@ import com.xa.mass.gateway.queue.Envelope;
 import com.xa.mass.gateway.queue.MessageCodec;
 import com.xa.mass.gateway.session.ServerSessionManager;
 import com.xa.mass.gateway.session.SessionRoles;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
@@ -38,6 +39,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseBody;
+import org.springframework.web.bind.annotation.ModelAttribute;
 
 import java.util.Arrays;
 import java.util.HashSet;
@@ -52,12 +54,20 @@ import java.util.stream.Collectors;
 public class StatusPageController {
     private static final Gson GSON = new Gson();
 
+    @Value("${mass.frontend.console-url:http://localhost:4173/}")
+    private String frontendConsoleUrl;
+
     @Autowired
     private TaskManager taskManager;
     @Autowired
     private WorkerManager workerManager;
     @Autowired
     private RuleManager ruleManager;
+
+    @ModelAttribute
+    public void addConsoleEntry(Model model) {
+        model.addAttribute("frontendConsoleUrl", frontendConsoleUrl);
+    }
 
     @GetMapping("")
     public String statusPage(Model model) {

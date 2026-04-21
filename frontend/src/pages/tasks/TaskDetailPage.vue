@@ -10,9 +10,66 @@
       </div>
       <div class="actions">
         <el-button @click="goBack">Back</el-button>
-        <el-button v-permission="'task:terminate'" type="danger" plain
-          >Terminate</el-button
+        <el-button
+          v-if="detail && detail.task.status === 'NEW'"
+          v-permission="'task:approve'"
+          :loading="actionLoading === 'approve'"
+          type="success"
+          plain
+          @click="handleAudit(true)"
         >
+          Approve
+        </el-button>
+        <el-button
+          v-if="detail && detail.task.status === 'NEW'"
+          v-permission="'task:approve'"
+          :loading="actionLoading === 'reject'"
+          type="warning"
+          plain
+          @click="handleAudit(false)"
+        >
+          Reject
+        </el-button>
+        <el-button
+          v-if="detail && canPause(detail.task.status)"
+          v-permission="'task:pause'"
+          :loading="actionLoading === 'pause'"
+          type="warning"
+          plain
+          @click="handlePause"
+        >
+          Pause
+        </el-button>
+        <el-button
+          v-if="detail && canBlock(detail.task.status)"
+          v-permission="'task:edit'"
+          :loading="actionLoading === 'block'"
+          type="warning"
+          plain
+          @click="handleBlock"
+        >
+          Block
+        </el-button>
+        <el-button
+          v-if="detail && detail.task.status === 'PAUSED'"
+          v-permission="'task:resume'"
+          :loading="actionLoading === 'resume'"
+          type="success"
+          plain
+          @click="handleResume"
+        >
+          Resume
+        </el-button>
+        <el-button
+          v-if="detail && detail.task.status !== 'TERMINAL'"
+          v-permission="'task:terminate'"
+          :loading="actionLoading === 'terminate'"
+          type="danger"
+          plain
+          @click="handleTerminate"
+        >
+          Terminate
+        </el-button>
       </div>
     </header>
 
@@ -165,9 +222,17 @@
 </template>
 
 <script setup lang="ts">
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { getTaskDetail } from '@/api/tasks'
+import {
+  auditTask,
+  blockTask,
+  getTaskDetail,
+  pauseTask,
+  resumeTask,
+  terminateTask,
+} from '@/api/tasks'
 import PageEmptyState from '@/components/PageEmptyState.vue'
 import PageErrorState from '@/components/PageErrorState.vue'
 import PageSectionSkeleton from '@/components/PageSectionSkeleton.vue'
@@ -179,6 +244,7 @@ const router = useRouter()
 const loading = ref(false)
 const detail = ref<TaskDetailResponse | null>(null)
 const errorMessage = ref('')
+const actionLoading = ref('')
 
 function formatJson(value: unknown): string {
   return JSON.stringify(value, null, 2)
@@ -199,6 +265,105 @@ async function loadTaskDetail(): Promise<void> {
     errorMessage.value = toErrorMessage(error, 'Failed to load task detail.')
   } finally {
     loading.value = false
+  }
+}
+
+function canPause(status: TaskDetailResponse['task']['status']): boolean {
+  return status === 'READY' || status === 'RUNNING'
+}
+
+function canBlock(status: TaskDetailResponse['task']['status']): boolean {
+  return status === 'READY' || status === 'RUNNING'
+}
+
+async function handleAudit(approved: boolean): Promise<void> {
+  if (!detail.value) {
+    return
+  }
+
+  await ElMessageBox.confirm(
+    approved
+      ? 'Approve this task and move it to READY?'
+      : 'Reject this task and move it to BLOCKED?',
+    approved ? 'Approve Task' : 'Reject Task',
+    {
+      type: approved ? 'success' : 'warning',
+    },
+  )
+
+  actionLoading.value = approved ? 'approve' : 'reject'
+  try {
+    const result = await auditTask(detail.value.task.tid, approved)
+    ElMessage.success(result.message)
+    await loadTaskDetail()
+  } catch (error) {
+    if (error !== 'cancel') {
+      ElMessage.error(toErrorMessage(error, 'Task audit failed.'))
+    }
+  } finally {
+    actionLoading.value = ''
+  }
+}
+
+async function handlePause(): Promise<void> {
+  await runTaskAction(
+    'pause',
+    'Pause Task',
+    'Pause this task and stop new dispatching?',
+    () => pauseTask(String(route.params.taskId)),
+  )
+}
+
+async function handleBlock(): Promise<void> {
+  await runTaskAction(
+    'block',
+    'Block Task',
+    'Block this task and hold further processing?',
+    () => blockTask(String(route.params.taskId)),
+  )
+}
+
+async function handleResume(): Promise<void> {
+  await runTaskAction(
+    'resume',
+    'Resume Task',
+    'Resume this paused task?',
+    () => resumeTask(String(route.params.taskId)),
+  )
+}
+
+async function handleTerminate(): Promise<void> {
+  await runTaskAction(
+    'terminate',
+    'Terminate Task',
+    'Terminate this task? This action moves the task to TERMINAL.',
+    () => terminateTask(String(route.params.taskId)),
+    'warning',
+  )
+}
+
+async function runTaskAction(
+  action: string,
+  title: string,
+  message: string,
+  request: () => Promise<{ message: string }>,
+  confirmType: 'success' | 'warning' | 'info' | 'error' = 'warning',
+): Promise<void> {
+  await ElMessageBox.confirm(message, title, {
+    type: confirmType,
+  })
+
+  actionLoading.value = action
+  try {
+    const result = await request()
+    ElMessage.success(result.message)
+    await loadTaskDetail()
+  } catch (error) {
+    if (error !== 'cancel') {
+      ElMessage.error(toErrorMessage(error, `${title} failed.`))
+    }
+  } finally {
+    actionLoading.value = ''
   }
 }
 

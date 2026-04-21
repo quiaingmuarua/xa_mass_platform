@@ -72,3 +72,9 @@ export interface TaskListQuery {
     keyword?: string
     status?: TaskListItem['status'] | ''
 }
+
+export interface TaskActionResult {
+    message: string
+    newStatus?: TaskListItem['status']
+    terminalReason?: string
+}

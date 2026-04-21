@@ -1,5 +1,9 @@
 import { setRuntimeConfigOverrides } from '@/app/config'
-import { getTaskDetailReal, listTasksReal } from '@/api/tasks.real'
+import {
+    getTaskDetailReal,
+    listTasksReal,
+    terminateTaskReal,
+} from '@/api/tasks.real'
 
 function jsonResponse(body: unknown): Response {
     return new Response(JSON.stringify(body), {
@@ -120,5 +124,28 @@ describe('tasks.real', () => {
         expect(detail.task.user.name).toBe('-')
         expect(detail.task.createTime).toBe('2026-04-21 09:00:00')
         expect(detail.messages[0].finalReason).toBe('BUSINESS_SUCCESS')
+    })
+
+    it('posts task terminate to the backend action endpoint', async () => {
+        setRuntimeConfigOverrides({
+            apiBaseUrl: '/backend',
+        })
+        const fetchMock = vi.fn().mockResolvedValue(
+            jsonResponse({
+                success: true,
+                message: 'Task terminated',
+            }),
+        )
+        vi.stubGlobal('fetch', fetchMock)
+
+        const response = await terminateTaskReal('task-001')
+
+        expect(fetchMock).toHaveBeenCalledWith(
+            '/backend/status/api/tasks/task-001/terminate',
+            expect.objectContaining({
+                method: 'POST',
+            }),
+        )
+        expect(response.message).toBe('Task terminated')
     })
 })

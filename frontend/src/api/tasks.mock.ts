@@ -1,4 +1,5 @@
 import type {
+    TaskActionResult,
     TaskDetailResponse,
     TaskListItem,
     TaskListQuery,
@@ -223,4 +224,59 @@ export async function getTaskDetailMock(
     }
 
     return delay(detail)
+}
+
+export async function auditTaskMock(
+    taskId: string,
+    approved: boolean,
+): Promise<TaskActionResult> {
+    return updateTaskStatusMock(
+        taskId,
+        approved ? 'READY' : 'BLOCKED',
+        approved ? 'Task approved' : 'Task rejected',
+    )
+}
+
+export async function pauseTaskMock(taskId: string): Promise<TaskActionResult> {
+    return updateTaskStatusMock(taskId, 'PAUSED', 'Task paused')
+}
+
+export async function resumeTaskMock(taskId: string): Promise<TaskActionResult> {
+    return updateTaskStatusMock(taskId, 'READY', 'Task resumed')
+}
+
+export async function blockTaskMock(taskId: string): Promise<TaskActionResult> {
+    return updateTaskStatusMock(taskId, 'BLOCKED', 'Task blocked')
+}
+
+export async function terminateTaskMock(
+    taskId: string,
+): Promise<TaskActionResult> {
+    return updateTaskStatusMock(taskId, 'TERMINAL', 'Task terminated')
+}
+
+async function updateTaskStatusMock(
+    taskId: string,
+    status: TaskListItem['status'],
+    message: string,
+): Promise<TaskActionResult> {
+    const listItem = mockTaskList.find((task) => task.id === taskId)
+    const detail = mockTaskDetails[taskId]
+
+    if (!listItem || !detail) {
+        throw new Error(`Task not found for ${taskId}`)
+    }
+
+    listItem.status = status
+    detail.task.status = status
+    if (status === 'TERMINAL') {
+        listItem.terminalReason = 'MANUAL_CANCELLED'
+        detail.task.terminalReason = 'MANUAL_CANCELLED'
+    }
+
+    return delay({
+        message,
+        newStatus: status,
+        terminalReason: detail.task.terminalReason ?? undefined,
+    })
 }

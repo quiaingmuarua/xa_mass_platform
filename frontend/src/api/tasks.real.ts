@@ -1,5 +1,6 @@
 import { requestJson } from '@/api/http'
 import type {
+    TaskActionResult,
     TaskDetailResponse,
     TaskDetailRecord,
     TaskListQuery,
@@ -63,6 +64,60 @@ export async function getTaskDetailReal(
         stateValidation: unwrappedDetail.stateValidation,
         messages: unwrappedMessages.messages ?? [],
     }
+}
+
+export async function auditTaskReal(
+    taskId: string,
+    approved: boolean,
+    comment = '',
+): Promise<TaskActionResult> {
+    const params = new URLSearchParams({
+        approved: String(approved),
+    })
+    if (comment.trim().length > 0) {
+        params.set('comment', comment.trim())
+    }
+
+    return unwrapLegacyResponse(
+        await requestJson<TaskActionResult & LegacySuccessEnvelope>(
+            `/status/api/tasks/${taskId}/audit?${params.toString()}`,
+            {
+                method: 'POST',
+            },
+        ),
+    )
+}
+
+export async function pauseTaskReal(taskId: string): Promise<TaskActionResult> {
+    return invokeTaskActionReal(taskId, 'pause')
+}
+
+export async function resumeTaskReal(taskId: string): Promise<TaskActionResult> {
+    return invokeTaskActionReal(taskId, 'resume')
+}
+
+export async function blockTaskReal(taskId: string): Promise<TaskActionResult> {
+    return invokeTaskActionReal(taskId, 'block')
+}
+
+export async function terminateTaskReal(
+    taskId: string,
+): Promise<TaskActionResult> {
+    return invokeTaskActionReal(taskId, 'terminate')
+}
+
+async function invokeTaskActionReal(
+    taskId: string,
+    action: 'pause' | 'resume' | 'block' | 'terminate',
+): Promise<TaskActionResult> {
+    return unwrapLegacyResponse(
+        await requestJson<TaskActionResult & LegacySuccessEnvelope>(
+            `/status/api/tasks/${taskId}/${action}`,
+            {
+                method: 'POST',
+            },
+        ),
+    )
 }
 
 function unwrapLegacyResponse<T extends LegacySuccessEnvelope>(payload: T): T {
