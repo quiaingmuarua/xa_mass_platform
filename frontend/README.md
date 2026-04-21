@@ -20,6 +20,21 @@ Lightweight Vue 3 + Vite frontend for the XA Mass worker orchestration platform.
 - `corepack pnpm test:run`
 - `corepack pnpm build`
 
+## Real Backend Mode
+
+Use mock mode for independent frontend CI. For local backend integration, set:
+
+- `VITE_API_BASE_URL=""`
+- `VITE_DEV_PROXY_TARGET="http://localhost:8088"`
+- `VITE_USE_MOCK_API="false"`
+- `VITE_USE_MOCK_AUTH="false"`
+
+The backend currently exposes first-slice JSON APIs under both `/api/*` and
+`/status/api/*`. For local `vite dev`, prefer the proxy target above so browser
+CORS does not block backend integration. For deployed environments, leave
+`VITE_DEV_PROXY_TARGET` unset and configure `VITE_API_BASE_URL` for the served
+origin as needed.
+
 ## Important Paths
 
 - `src/router/routes.ts`: route tree and typed meta

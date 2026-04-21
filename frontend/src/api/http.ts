@@ -1,4 +1,10 @@
-import { appConfig } from '@/app/config'
+import { getAppConfig } from '@/app/config'
+
+interface ApiResponseEnvelope<T> {
+    code: number
+    msg: string
+    data: T
+}
 
 export class ApiError extends Error {
     public readonly status: number
@@ -15,7 +21,7 @@ export async function requestJson<T>(
     input: string,
     init?: RequestInit,
 ): Promise<T> {
-    const response = await fetch(`${appConfig.apiBaseUrl}${input}`, {
+    const response = await fetch(`${getAppConfig().apiBaseUrl}${input}`, {
         ...init,
         headers: {
             'Content-Type': 'application/json',
@@ -34,4 +40,17 @@ export async function requestJson<T>(
     }
 
     return payload as T
+}
+
+export async function requestApiData<T>(
+    input: string,
+    init?: RequestInit,
+): Promise<T> {
+    const payload = await requestJson<ApiResponseEnvelope<T>>(input, init)
+
+    if (payload.code !== 0) {
+        throw new ApiError(payload.msg, payload.code, payload)
+    }
+
+    return payload.data
 }

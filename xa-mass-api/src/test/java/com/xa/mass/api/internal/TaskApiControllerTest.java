@@ -264,6 +264,44 @@ class TaskApiControllerTest {
     }
 
     @Test
+    void listTasksFiltersByKeywordAndStatus() throws Exception {
+        Task runningTask = taskWithStatus(TaskStatus.RUNNING);
+        runningTask.setTaskName("Warm worker pool");
+        runningTask.setProject("demoApp");
+        runningTask.setTaskRoutingCode("us");
+        runningTask.setTaskEligibleNumber(10);
+        runningTask.setTaskSuccessNumber(6);
+        runningTask.setBatchSize(2);
+        runningTask.setUpdateTime(java.time.LocalDateTime.of(2026, 4, 21, 9, 30));
+
+        Task pausedTask = new Task();
+        pausedTask.setTid("task-002");
+        pausedTask.setStatus(TaskStatus.PAUSED);
+        pausedTask.setTaskName("Review backlog");
+        pausedTask.setProject("demoApp");
+        pausedTask.setTaskRoutingCode("sg");
+        pausedTask.setTaskEligibleNumber(8);
+        pausedTask.setTaskSuccessNumber(2);
+        pausedTask.setBatchSize(1);
+        pausedTask.setUpdateTime(java.time.LocalDateTime.of(2026, 4, 21, 8, 0));
+
+        when(taskManager.getAllTasks()).thenReturn(java.util.List.of(runningTask, pausedTask));
+
+        mockMvc.perform(get("/status/api/tasks")
+                        .param("keyword", "warm")
+                        .param("status", "RUNNING"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.total").value(1))
+                .andExpect(jsonPath("$.items[0].id").value(TASK_ID))
+                .andExpect(jsonPath("$.items[0].taskName").value("Warm worker pool"))
+                .andExpect(jsonPath("$.items[0].routingCode").value("us"))
+                .andExpect(jsonPath("$.items[0].successCount").value(6))
+                .andExpect(jsonPath("$.items[0].eligibleCount").value(10))
+                .andExpect(jsonPath("$.items[0].updatedAt").value("2026-04-21 09:30:00"));
+    }
+
+    @Test
     void createTaskRejectsUnknownFields() throws Exception {
         mockMvc.perform(post("/status/api/tasks")
                         .contentType("application/json")

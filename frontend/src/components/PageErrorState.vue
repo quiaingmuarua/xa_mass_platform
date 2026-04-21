@@ -1,7 +1,7 @@
 <template>
   <el-card class="page-card">
     <el-result icon="error" title="Load failed" :sub-title="message">
-      <template #extra>
+      <template v-if="showRetry" #extra>
         <el-button type="primary" @click="$emit('retry')">Retry</el-button>
       </template>
     </el-result>
@@ -9,9 +9,15 @@
 </template>
 
 <script setup lang="ts">
-defineProps<{
+withDefaults(
+  defineProps<{
   message: string
-}>()
+  showRetry?: boolean
+}>(),
+  {
+    showRetry: true,
+  },
+)
 
 defineEmits<{
   retry: []

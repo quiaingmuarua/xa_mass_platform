@@ -1,4 +1,5 @@
-import { appConfig } from '@/app/config'
+import { getAppConfig } from '@/app/config'
+import { backendAuthProvider } from '@/auth/provider.backend'
 import { mockAuthProvider } from '@/auth/provider.mock'
 import type { AuthUser } from '@/types/auth'
 
@@ -8,22 +9,10 @@ export interface AuthProvider {
     logout(): Promise<void>
 }
 
-const unimplementedAuthProvider: AuthProvider = {
-    async loadCurrentUser() {
-        return null
-    },
-    async login() {
-        throw new Error('Backend auth provider is not implemented yet.')
-    },
-    async logout() {
-        return Promise.resolve()
-    },
-}
-
 export function getAuthProvider(): AuthProvider {
-    if (appConfig.useMockAuth) {
+    if (getAppConfig().useMockAuth) {
         return mockAuthProvider
     }
 
-    return unimplementedAuthProvider
+    return backendAuthProvider
 }

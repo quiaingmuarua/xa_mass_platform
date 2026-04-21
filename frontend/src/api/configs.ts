@@ -1,6 +1,15 @@
+import { getAppConfig } from '@/app/config'
+import { requestApiData } from '@/api/http'
+
 export interface ConfigSummary {
     key: string
     value: string
 }
 
-// Placeholder module. Replace with real backend integration when JSON APIs are available.
+export async function listProjectCodes(): Promise<string[]> {
+    if (getAppConfig().useMockApi) {
+        return ['demoApp', 'telegramApp', 'testApp']
+    }
+
+    return requestApiData<string[]>('/api/config/projects')
+}

@@ -11,6 +11,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.Comparator;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -21,6 +24,8 @@ import java.util.stream.Collectors;
 @RestController
 @RequestMapping("/status/api/tasks")
 public class TaskApiController {
+    private static final DateTimeFormatter DATE_TIME_FORMATTER =
+            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private static final Set<String> SUPPORTED_TASK_CREATE_FIELDS = Set.of(
             "userId",
             "project",
@@ -48,6 +53,28 @@ public class TaskApiController {
 
     @Autowired
     private ObjectMapper objectMapper;
+
+    @GetMapping("")
+    public ResponseEntity<Map<String, Object>> listTasks(@RequestParam(required = false) String keyword,
+                                                         @RequestParam(required = false) TaskStatus status) {
+        try {
+            String normalizedKeyword = keyword == null ? "" : keyword.trim().toLowerCase();
+            List<Map<String, Object>> items = taskManager.getAllTasks().stream()
+                    .filter(task -> matchesKeyword(task, normalizedKeyword))
+                    .filter(task -> status == null || task.getStatus() == status)
+                    .sorted(Comparator
+                            .comparing(Task::getUpdateTime, Comparator.nullsLast(Comparator.reverseOrder()))
+                            .thenComparing(Task::getCreateTime, Comparator.nullsLast(Comparator.reverseOrder())))
+                    .map(this::toTaskListItem)
+                    .collect(Collectors.toList());
+            return ResponseEntity.ok(success(Map.of(
+                    "items", items,
+                    "total", items.size()
+            )));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(error("Task list failed: " + e.getMessage()));
+        }
+    }
 
     @PostMapping("")
     public ResponseEntity<Map<String, Object>> createTask(@RequestBody Map<String, Object> requestBody) {
@@ -366,6 +393,21 @@ public class TaskApiController {
         return view;
     }
 
+    private Map<String, Object> toTaskListItem(Task task) {
+        Map<String, Object> item = new LinkedHashMap<>();
+        item.put("id", task.getTid());
+        item.put("taskName", task.getTaskName());
+        item.put("project", task.getProject());
+        item.put("routingCode", task.getTaskRoutingCode());
+        item.put("status", task.getStatus() != null ? task.getStatus().name() : null);
+        item.put("terminalReason", task.getTerminalReason() != null ? task.getTerminalReason().name() : null);
+        item.put("successCount", task.getTaskSuccessNumber());
+        item.put("eligibleCount", task.getTaskEligibleNumber());
+        item.put("batchSize", task.getBatchSize());
+        item.put("updatedAt", formatDateTime(task.getUpdateTime()));
+        return item;
+    }
+
     private Map<String, Object> success(Map<String, ?> data) {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("success", Boolean.TRUE);
@@ -406,5 +448,23 @@ public class TaskApiController {
             return taskManager.rejectTask(task.getTid());
         }
         return taskManager.blockTask(task.getTid());
+    }
+
+    private boolean matchesKeyword(Task task, String normalizedKeyword) {
+        if (normalizedKeyword == null || normalizedKeyword.isBlank()) {
+            return true;
+        }
+        return containsIgnoreCase(task.getTid(), normalizedKeyword)
+                || containsIgnoreCase(task.getTaskName(), normalizedKeyword)
+                || containsIgnoreCase(task.getProject(), normalizedKeyword)
+                || containsIgnoreCase(task.getTaskRoutingCode(), normalizedKeyword);
+    }
+
+    private boolean containsIgnoreCase(String value, String normalizedKeyword) {
+        return value != null && value.toLowerCase().contains(normalizedKeyword);
+    }
+
+    private String formatDateTime(LocalDateTime value) {
+        return value == null ? "" : value.format(DATE_TIME_FORMATTER);
     }
 }

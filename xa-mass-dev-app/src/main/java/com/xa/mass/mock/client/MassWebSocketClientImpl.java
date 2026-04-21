@@ -1,7 +1,9 @@
 package com.xa.mass.mock.client;
 
 import com.google.gson.Gson;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import com.xa.mass.base.debug.ManualDebugChatProtocol;
 import com.xa.mass.gateway.model.enums.MessageDirection;
 import com.xa.mass.gateway.model.enums.MessageType;
@@ -9,6 +11,8 @@ import com.xa.mass.gateway.model.massMessage.MassMessage;
 import com.xa.mass.gateway.model.massMessage.MessageContext;
 import com.xa.mass.gateway.model.payload.TaskPayload;
 import com.xa.mass.gateway.session.SessionRoles;
+import com.xa.mass.mock.command.model.ApiResponse;
+import com.xa.mass.mock.command.runtime.MockCommandRuntime;
 import org.java_websocket.client.WebSocketClient;
 import org.java_websocket.handshake.ServerHandshake;
 import org.slf4j.Logger;
@@ -52,6 +56,7 @@ public class MassWebSocketClientImpl extends WebSocketClient implements MassWebS
             return t;
         });
         this.uri = serverUri;
+        MockCommandRuntime.initialize();
     }
 
     public MassWebSocketClientImpl(String workerId) {
@@ -172,18 +177,83 @@ public class MassWebSocketClientImpl extends WebSocketClient implements MassWebS
         response.setContext(responseContext);
 
         Map<String, Object> payloadMap = new HashMap<>();
+        JsonObject commandRequest = extractCommandRequest(controlMessage);
+        ApiResponse<?> commandResult = null;
+        if (commandRequest != null) {
+            commandResult = MockCommandRuntime.dispatch(commandRequest);
+        }
+
         payloadMap.put(ManualDebugChatProtocol.MESSAGE_KIND_FIELD, ManualDebugChatProtocol.MESSAGE_KIND_ACK);
         payloadMap.put(ManualDebugChatProtocol.REPLY_TO_MESSAGE_ID_FIELD, controlMessage.getMsgId());
         payloadMap.put(ManualDebugChatProtocol.ACK_STATUS_FIELD, ManualDebugChatProtocol.ACK_STATUS_RECEIVED);
-        payloadMap.put("message", "mock worker received manual debug message");
+        payloadMap.put("message", commandResult == null
+                ? "mock worker received manual debug message"
+                : "mock worker executed command: " + commandRequest.get("event").getAsString());
         payloadMap.put(ManualDebugChatProtocol.WORKER_ID_FIELD, workerId);
         payloadMap.put(ManualDebugChatProtocol.RECEIVED_AT_FIELD, System.currentTimeMillis());
         payloadMap.put(ManualDebugChatProtocol.ECHO_PAYLOAD_FIELD, controlMessage.getPayload());
         payloadMap.put(ManualDebugChatProtocol.ECHO_SUB_MSG_TYPE_FIELD, controlMessage.getSubMsgType());
+        payloadMap.put("commandExecuted", commandResult != null);
+        if (commandResult != null) {
+            payloadMap.put("commandEvent", commandRequest.get("event").getAsString());
+            payloadMap.put("commandResult", commandResult);
+        }
         response.setPayload(gson.toJsonTree(payloadMap));
 
         send(gson.toJson(response));
         logger.debug("[{}] Sent manual debug response for msgId: {}", workerId, controlMessage.getMsgId());
+    }
+
+    private JsonObject extractCommandRequest(MassMessage controlMessage) {
+        JsonElement payload = controlMessage.getPayload();
+        JsonObject commandRequest = null;
+        if (payload == null || payload.isJsonNull()) {
+            return null;
+        }
+        if (payload.isJsonObject()) {
+            JsonObject payloadObject = payload.getAsJsonObject();
+            if (payloadObject.has("event") && !payloadObject.get("event").isJsonNull()) {
+                commandRequest = payloadObject.deepCopy();
+            } else if (payloadObject.has("command") && payloadObject.get("command").isJsonObject()) {
+                commandRequest = payloadObject.getAsJsonObject("command").deepCopy();
+            } else if (payloadObject.has(ManualDebugChatProtocol.TEXT_FIELD)
+                    && payloadObject.get(ManualDebugChatProtocol.TEXT_FIELD).isJsonPrimitive()) {
+                commandRequest = parseCommandText(payloadObject.get(ManualDebugChatProtocol.TEXT_FIELD).getAsString());
+            }
+        } else if (payload.isJsonPrimitive() && payload.getAsJsonPrimitive().isString()) {
+            commandRequest = parseCommandText(payload.getAsString());
+        }
+
+        if (commandRequest == null || !commandRequest.has("event") || commandRequest.get("event").isJsonNull()) {
+            return null;
+        }
+        if (!commandRequest.has("workerId")) {
+            commandRequest.addProperty("workerId", workerId);
+        }
+        if (!commandRequest.has("requestMsgId") && controlMessage.getMsgId() != null) {
+            commandRequest.addProperty("requestMsgId", controlMessage.getMsgId());
+        }
+        if (!commandRequest.has("project") && controlMessage.getProject() != null) {
+            commandRequest.addProperty("project", controlMessage.getProject());
+        }
+        return commandRequest;
+    }
+
+    private JsonObject parseCommandText(String text) {
+        if (text == null || text.isBlank()) {
+            return null;
+        }
+        String trimmed = text.trim();
+        if (!trimmed.startsWith("{")) {
+            return null;
+        }
+        try {
+            JsonElement parsed = JsonParser.parseString(trimmed);
+            return parsed.isJsonObject() ? parsed.getAsJsonObject() : null;
+        } catch (Exception e) {
+            logger.warn("[{}] Ignoring invalid command JSON text: {}", workerId, e.getMessage());
+            return null;
+        }
     }
 
     @Override
