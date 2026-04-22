@@ -17,6 +17,7 @@ public final class EventMetadata {
     private final List<PayloadType> payloadTypes;
     private final List<TaskMode> taskModes;
     private final boolean enabled;
+    private final String defaultRoutingCode;
 
     private EventMetadata(Builder builder) {
         this.code = Objects.requireNonNull(builder.code, "code");
@@ -25,6 +26,7 @@ public final class EventMetadata {
         this.payloadTypes = immutableEnumList(builder.payloadTypes, PayloadType.class);
         this.taskModes = immutableEnumList(builder.taskModes, TaskMode.class);
         this.enabled = builder.enabled;
+        this.defaultRoutingCode = builder.defaultRoutingCode;
     }
 
     public static Builder builder() {
@@ -55,6 +57,10 @@ public final class EventMetadata {
         return enabled;
     }
 
+    public String getDefaultRoutingCode() {
+        return defaultRoutingCode;
+    }
+
     private static <E extends Enum<E>> List<E> immutableEnumList(Iterable<E> values, Class<E> type) {
         EnumSet<E> set = EnumSet.noneOf(type);
         if (values != null) {
@@ -77,6 +83,7 @@ public final class EventMetadata {
         private List<PayloadType> payloadTypes = Collections.emptyList();
         private List<TaskMode> taskModes = Collections.emptyList();
         private boolean enabled = true;
+        private String defaultRoutingCode;
 
         private Builder() {
         }
@@ -108,6 +115,11 @@ public final class EventMetadata {
 
         public Builder enabled(boolean enabled) {
             this.enabled = enabled;
+            return this;
+        }
+
+        public Builder defaultRoutingCode(String defaultRoutingCode) {
+            this.defaultRoutingCode = defaultRoutingCode;
             return this;
         }
 

@@ -223,6 +223,38 @@ public abstract class AbstractMockE2eTest {
         assertTrue(connected, failureMessage);
     }
 
+    /**
+     * Asserts that at least {@code minExpected} ONLINE workers are registered with the runtime.
+     *
+     * <p>Call this before dispatching tasks that depend on mock WebSocket workers being ready.
+     * A failure here means bootstrap data (JSON config or WebSocket client startup) did not
+     * produce the expected workers — surfacing the problem early rather than waiting for a
+     * task to time out in READY state.
+     */
+    @SuppressWarnings("unchecked")
+    protected void assertMinOnlineWorkers(int minExpected) throws InterruptedException {
+        int online = 0;
+        for (int i = 0; i < 20; i++) {
+            Map<String, Object> response = exchange("/status/api/workers", HttpMethod.GET, null);
+            if (isApiOk(response)) {
+                Object data = response.get("data");
+                if (data instanceof Map<?, ?> dataMap) {
+                    Object items = dataMap.get("items");
+                    if (items instanceof List<?> list) {
+                        online = (int) list.stream()
+                                .filter(item -> item instanceof Map<?, ?> m && "ONLINE".equals(m.get("status")))
+                                .count();
+                        if (online >= minExpected) return;
+                    }
+                }
+            }
+            Thread.sleep(250L);
+        }
+        throw new AssertionError(
+                "Expected at least " + minExpected + " ONLINE worker(s) but found " + online
+                + " after waiting. Check bootstrap config JSON format and WebSocket client startup logs.");
+    }
+
     protected record TaskSnapshot(Map<String, Object> task, List<Map<String, Object>> messages) {
     }
 }

@@ -48,6 +48,7 @@ class TaskApiFailureResultIntegrationTest extends AbstractMockE2eTest {
 
     @Test
     void createApproveAndFailTaskOverRealMockRuntime() throws Exception {
+        assertMinOnlineWorkers(2);
         String taskId = createTaskId("integration-task-failure", "integration failure smoke", List.of("target-a", "target-b"), 1);
 
         Map<String, Object> auditResponse = exchange(

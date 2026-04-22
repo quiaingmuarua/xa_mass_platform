@@ -9,6 +9,7 @@ import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.model.TaskCreateRequestDto;
 import com.xa.mass.sdk.auth.AuthProvider;
 import com.xa.mass.sdk.auth.TaskSubmitterContext;
+import com.xa.mass.sdk.catalog.EventMetadata;
 import com.xa.mass.sdk.catalog.PayloadType;
 import com.xa.mass.sdk.catalog.ProjectEventCatalog;
 import com.xa.mass.sdk.catalog.ProjectMetadata;
@@ -156,7 +157,7 @@ public class SdkTaskController {
                 .payloadType(requestBody.getPayloadType() != null ? requestBody.getPayloadType() : PayloadType.JSON)
                 .sharedConfig(requestBody.getSharedConfig())
                 .inputs(toMassInputs(requestBody.getInputs(), requestBody.getPayloadType()))
-                .routingCode(requestBody.getRoutingCode())
+                .routingCode(resolveRoutingCode(requestBody.getRoutingCode(), requestBody.getEventCode()))
                 .batchSize(requestBody.getBatchSize())
                 .defaultMsgMaxRetryCount(requestBody.getDefaultMsgMaxRetryCount())
                 .maxRuntimeSeconds(requestBody.getMaxRuntimeSeconds())
@@ -258,6 +259,25 @@ public class SdkTaskController {
             return null;
         }
         return PayloadType.valueOf(payloadTypeName);
+    }
+
+    /**
+     * Resolves the effective routing code for a task request.
+     * Falls back to the event's {@code defaultRoutingCode} when the request does not
+     * specify one, so event metadata actually drives dispatch defaults.
+     */
+    private String resolveRoutingCode(String requestedRoutingCode, String eventCode) {
+        if (requestedRoutingCode != null && !requestedRoutingCode.isBlank()) {
+            return requestedRoutingCode;
+        }
+        if (eventCode != null && !eventCode.isBlank()) {
+            EventMetadata eventMeta = projectEventCatalog.getEvent(eventCode);
+            if (eventMeta != null && eventMeta.getDefaultRoutingCode() != null
+                    && !eventMeta.getDefaultRoutingCode().isBlank()) {
+                return eventMeta.getDefaultRoutingCode();
+            }
+        }
+        return requestedRoutingCode;
     }
 
     private void validateProjectAndEvent(String projectCode, String eventCode) {

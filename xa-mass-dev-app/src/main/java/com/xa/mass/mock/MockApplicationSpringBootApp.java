@@ -6,6 +6,12 @@ import com.xa.mass.gateway.queue.Envelope;
 import com.xa.mass.mock.bootstrap.MockRuntimeDataLoader;
 import com.xa.mass.sdk.MassSdk;
 import com.xa.mass.sdk.MassSdkApplication;
+import com.xa.mass.sdk.catalog.EventMetadata;
+import com.xa.mass.sdk.catalog.PayloadType;
+import com.xa.mass.sdk.catalog.ProjectEventCatalog;
+import com.xa.mass.sdk.catalog.ProjectEventCatalogRegistry;
+import com.xa.mass.sdk.catalog.ProjectMetadata;
+import com.xa.mass.sdk.catalog.TaskMode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -16,6 +22,8 @@ import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Profile;
 import org.springframework.core.env.Environment;
+
+import java.util.List;
 
 /**
  * Verified mainline Spring Boot entry for the full mock runtime.
@@ -147,5 +155,65 @@ public class MockApplicationSpringBootApp {
                 throw new RuntimeException("Failed to start full-stack services", e);
             }
         };
+    }
+
+    /**
+     * Registers the dev-app's real project/event catalog, reflecting the actual workers
+     * and routing codes configured in mock_workers.json and mock_worker_contexts.json.
+     *
+     * <p>Overrides the generic default catalog from xa-mass-web ({@code @ConditionalOnMissingBean}).
+     * Each event carries a {@code defaultRoutingCode} so that SDK task submissions can route
+     * without requiring callers to specify it explicitly.
+     *
+     * <p>Worker routing:
+     * <ul>
+     *   <li>pool-a workers — channel/country "us", supports demoApp / testApp / otherApp</li>
+     *   <li>pool-b workers — channel/country "gb", supports demoApp / testApp / otherApp</li>
+     * </ul>
+     */
+    @Bean
+    public ProjectEventCatalog devAppProjectEventCatalog() {
+        ProjectEventCatalogRegistry registry = new ProjectEventCatalogRegistry();
+
+        registry.registerEvent(EventMetadata.builder()
+                .code("demo.dispatch")
+                .name("Demo Dispatch")
+                .description("Dispatch a generic demo work item to a US-region online worker.")
+                .defaultRoutingCode("us")
+                .payloadTypes(List.of(PayloadType.JSON))
+                .taskModes(List.of(TaskMode.SINGLE_RUN, TaskMode.STREAMING))
+                .build());
+
+        registry.registerEvent(EventMetadata.builder()
+                .code("demo.dispatch.gb")
+                .name("Demo Dispatch (GB)")
+                .description("Dispatch a generic demo work item to a GB-region online worker.")
+                .defaultRoutingCode("gb")
+                .payloadTypes(List.of(PayloadType.JSON))
+                .taskModes(List.of(TaskMode.SINGLE_RUN, TaskMode.STREAMING))
+                .build());
+
+        registry.registerProject(ProjectMetadata.builder()
+                .code("demoApp")
+                .name("Demo App")
+                .description("Default demo project. Served by pool-a (US) and pool-b (GB) workers.")
+                .eventCodes(List.of("demo.dispatch", "demo.dispatch.gb"))
+                .build());
+
+        registry.registerProject(ProjectMetadata.builder()
+                .code("testApp")
+                .name("Test App")
+                .description("Test project used by regression and E2E fixtures. Served by pool-a (US) workers.")
+                .eventCodes(List.of("demo.dispatch"))
+                .build());
+
+        registry.registerProject(ProjectMetadata.builder()
+                .code("otherApp")
+                .name("Other App")
+                .description("Secondary demo project served by pool-a (US) and pool-b (GB) workers.")
+                .eventCodes(List.of("demo.dispatch", "demo.dispatch.gb"))
+                .build());
+
+        return registry;
     }
 }

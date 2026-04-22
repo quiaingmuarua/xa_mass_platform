@@ -56,6 +56,8 @@ public class MockRuntimeDataLoader implements MassBootstrapDataProvider {
     @Override
     public void loadInto(MassRuntimeControl runtime) {
         Objects.requireNonNull(runtime, "runtime");
+        logger.info("Loading bootstrap data [workers={}, contexts={}, rules={}, tasks={}]",
+                workerConfigPath, workerContextConfigPath, ruleConfigPath, taskConfigPath);
         loadWorkers(runtime);
         loadWorkerContexts(runtime);
         loadRules(runtime);
@@ -66,16 +68,24 @@ public class MockRuntimeDataLoader implements MassBootstrapDataProvider {
     private void loadWorkers(MassRuntimeControl runtime) {
         Worker[] workers = readConfig(workerConfigPath, Worker[].class);
         if (workers == null) return;
+        if (workers.length == 0) {
+            logger.warn("Worker config loaded but produced 0 entries [path={}]", workerConfigPath);
+            return;
+        }
         for (Worker worker : workers) {
             normalizeWorker(worker);
             runtime.addWorker(worker);
         }
-        logger.info("Loaded {} workers", workers.length);
+        logger.info("Loaded {} workers [path={}]", workers.length, workerConfigPath);
     }
 
     private void loadWorkerContexts(MassRuntimeControl runtime) {
         WorkerContext[] contexts = readConfig(workerContextConfigPath, WorkerContext[].class);
         if (contexts == null) return;
+        if (contexts.length == 0) {
+            logger.info("Worker context config is empty, workers will run stateless [path={}]", workerContextConfigPath);
+            return;
+        }
         int accepted = 0;
         for (WorkerContext ctx : contexts) {
             normalizeWorkerContext(ctx);
@@ -86,38 +96,47 @@ public class MockRuntimeDataLoader implements MassBootstrapDataProvider {
             runtime.addWorkerContext(ctx);
             accepted++;
         }
-        logger.info("Loaded {} worker contexts", accepted);
+        logger.info("Loaded {} worker contexts [path={}]", accepted, workerContextConfigPath);
     }
 
     private void loadRules(MassRuntimeControl runtime) {
         RuleDefinition[] rules = readConfig(ruleConfigPath, RuleDefinition[].class);
         if (rules == null || rules.length == 0) {
-            logger.info("No rules config found; keeping existing runtime rules");
+            logger.info("No rules config found; keeping existing runtime rules [path={}]", ruleConfigPath);
             return;
         }
         runtime.replaceDefaultRules(List.of(rules));
-        logger.info("Loaded {} rules", rules.length);
+        logger.info("Loaded {} rules [path={}]", rules.length, ruleConfigPath);
     }
 
     private void loadTasks(MassRuntimeControl runtime) {
         TaskCreateRequestDto[] dtos = readConfig(taskConfigPath, TaskCreateRequestDto[].class);
         if (dtos == null) return;
+        if (dtos.length == 0) {
+            logger.info("Task config is empty, no bootstrap tasks [path={}]", taskConfigPath);
+            return;
+        }
         for (TaskCreateRequestDto dto : dtos) {
             runtime.createTask(toSdkRequest(dto));
         }
-        logger.info("Loaded {} task requests", dtos.length);
+        logger.info("Loaded {} task requests [path={}]", dtos.length, taskConfigPath);
     }
 
     private <T> T readConfig(String configPath, Class<T> type) {
         if (configPath == null || configPath.isBlank()) return null;
         try {
             String json = readConfigFile(configPath);
-            return MAPPER.readValue(json, type);
+            T result = MAPPER.readValue(json, type);
+            if (result == null) {
+                logger.warn("Config parsed to null [path={}, type={}]", configPath, type.getSimpleName());
+            }
+            return result;
         } catch (IOException e) {
             logger.debug("Optional config not found, skipping [path={}]", configPath);
             return null;
         } catch (Exception e) {
-            logger.warn("Failed to load config [path={}]: {}", configPath, e.getMessage());
+            logger.warn("Failed to parse config - check JSON format matches plain object array, not DSL [path={}, error={}]",
+                    configPath, e.getMessage());
             return null;
         }
     }
