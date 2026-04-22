@@ -12,40 +12,65 @@ import java.util.Objects;
  */
 public final class PollingWorkerSession {
 
-    private final String workerId;
-    private final PollingWorkerAdapter adapter;
+    private final PullWorkerSession delegate;
 
     public PollingWorkerSession(String workerId, PollingWorkerAdapter adapter) {
-        if (workerId == null || workerId.isBlank()) {
-            throw new IllegalArgumentException("workerId must not be blank");
-        }
-        this.workerId = workerId;
-        this.adapter = Objects.requireNonNull(adapter, "adapter");
+        this(createDelegate(workerId, adapter));
+    }
+
+    public PollingWorkerSession(PullWorkerSession delegate) {
+        this.delegate = Objects.requireNonNull(delegate, "delegate");
+    }
+
+    private static PullWorkerSession createDelegate(String workerId, PollingWorkerAdapter adapter) {
+        Objects.requireNonNull(adapter, "adapter");
+        return new PullWorkerSession(
+                workerId,
+                adapter,
+                adapter,
+                new com.xa.mass.transport.channel.WorkerSystemEventChannel() {
+                    @Override
+                    public void publishWorkerOnline(String workerId, String reason, String traceId) {
+                        adapter.announceWorkerOnline(workerId, reason);
+                    }
+
+                    @Override
+                    public void publishWorkerOffline(String workerId, String reason, String traceId) {
+                        adapter.announceWorkerOffline(workerId, reason);
+                    }
+
+                    @Override
+                    public void publishWorkerHeartbeat(String workerId, String reason, String traceId) {
+                        adapter.publishWorkerHeartbeat(workerId, reason);
+                    }
+                },
+                PollingWorkerAdapter.PROTOCOL
+        );
     }
 
     public String workerId() {
-        return workerId;
+        return delegate.workerId();
     }
 
     public void connect() {
-        adapter.announceWorkerOnline(workerId, "polling-session-connect");
+        delegate.connect();
     }
 
     public void disconnect() {
-        adapter.announceWorkerOffline(workerId, "polling-session-disconnect");
+        delegate.disconnect();
     }
 
     public void heartbeat() {
-        adapter.publishWorkerHeartbeat(workerId, "polling-session-heartbeat");
+        delegate.heartbeat();
     }
 
     public List<TaskDispatchItem> poll(int maxMessages) {
-        return adapter.pollTaskMessages(workerId, maxMessages);
+        return delegate.poll(maxMessages);
     }
 
     public boolean submitResult(TaskDispatchItem dispatchItem, boolean success, String detail) {
         Objects.requireNonNull(dispatchItem, "dispatchItem");
-        return submitResult(dispatchItem.getTaskId(), dispatchItem.getMsgId(), success, detail, null, Map.of());
+        return delegate.submitResult(dispatchItem, success, detail);
     }
 
     public boolean submitResult(TaskDispatchItem dispatchItem,
@@ -53,7 +78,7 @@ public final class PollingWorkerSession {
                                 String detail,
                                 Map<String, Object> output) {
         Objects.requireNonNull(dispatchItem, "dispatchItem");
-        return submitResult(dispatchItem.getTaskId(), dispatchItem.getMsgId(), success, detail, null, output);
+        return delegate.submitResult(dispatchItem, success, detail, output);
     }
 
     public boolean submitResult(String taskId,
@@ -62,6 +87,6 @@ public final class PollingWorkerSession {
                                 String detail,
                                 String errorCode,
                                 Map<String, Object> output) {
-        return adapter.ingestTaskResult(taskId, msgId, success, detail, errorCode, output);
+        return delegate.submitResult(taskId, msgId, success, detail, errorCode, output);
     }
 }

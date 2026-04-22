@@ -11,6 +11,8 @@ import com.xa.mass.gateway.queue.MessageCodecFactory;
 import com.xa.mass.gateway.session.EventBusWorkerSystemEventChannel;
 import com.xa.mass.gateway.session.ServerSessionManager;
 import com.xa.mass.starter.transport.TransportServerFactoryContext;
+import com.xa.mass.starter.transport.DefaultWorkerTransportRuntimeFactory;
+import com.xa.mass.starter.transport.WorkerTransportRuntimeFactory;
 import com.xa.mass.transport.TransportServer;
 import com.xa.mass.transport.TransportServerFactory;
 import com.xa.mass.transport.WorkerEndpointRegistry;
@@ -44,6 +46,7 @@ public class GatewayConfig {
     private WorkerSystemEventChannel customSystemEventChannel;
     private WorkerEndpointRegistry workerEndpointRegistry;
     private TransportServerFactory<TransportServerFactoryContext> transportServerFactory;
+    private WorkerTransportRuntimeFactory workerTransportRuntimeFactory;
 
     public GatewayConfig() {
     }
@@ -64,6 +67,7 @@ public class GatewayConfig {
         this.customSystemEventChannel = source.customSystemEventChannel;
         this.workerEndpointRegistry = source.workerEndpointRegistry;
         this.transportServerFactory = source.transportServerFactory;
+        this.workerTransportRuntimeFactory = source.workerTransportRuntimeFactory;
     }
 
     public boolean isEnabled() {
@@ -244,6 +248,14 @@ public class GatewayConfig {
         this.transportServerFactory = transportServerFactory;
     }
 
+    public WorkerTransportRuntimeFactory getWorkerTransportRuntimeFactory() {
+        return workerTransportRuntimeFactory;
+    }
+
+    public void setWorkerTransportRuntimeFactory(WorkerTransportRuntimeFactory workerTransportRuntimeFactory) {
+        this.workerTransportRuntimeFactory = workerTransportRuntimeFactory;
+    }
+
     public WorkerEndpointRegistry resolveWorkerEndpointRegistry() {
         return workerEndpointRegistry != null ? workerEndpointRegistry : ServerSessionManager.INSTANCE;
     }
@@ -256,6 +268,12 @@ public class GatewayConfig {
             return sessionManager.getSystemEventChannel();
         }
         return new EventBusWorkerSystemEventChannel();
+    }
+
+    public WorkerTransportRuntimeFactory resolveWorkerTransportRuntimeFactory() {
+        return workerTransportRuntimeFactory != null
+                ? workerTransportRuntimeFactory
+                : new DefaultWorkerTransportRuntimeFactory();
     }
 
     public TransportServer createTransportServer(DispatchRuntimeContext dispatcherContext, int port) {

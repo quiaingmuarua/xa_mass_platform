@@ -9,6 +9,7 @@ import com.xa.mass.gateway.queue.Envelope;
 import com.xa.mass.starter.builder.MassApplicationBuilder;
 import com.xa.mass.starter.builder.MassApplicationBuilder.GatewayBuilder;
 import com.xa.mass.starter.transport.TransportServerFactoryContext;
+import com.xa.mass.starter.transport.WorkerTransportRuntimeFactory;
 import com.xa.mass.transport.TransportServerFactory;
 
 import java.util.Map;
@@ -174,6 +175,15 @@ public final class MassSdk {
         public GatewayOptions transportServerFactory(
                 TransportServerFactory<TransportServerFactoryContext> transportServerFactory) {
             delegate.transportServerFactory(transportServerFactory);
+            return this;
+        }
+
+        /**
+         * Advanced embedding seam for replacing the assembled set of worker
+         * transport bindings used by the runtime.
+         */
+        public GatewayOptions workerTransportRuntimeFactory(WorkerTransportRuntimeFactory workerTransportRuntimeFactory) {
+            delegate.workerTransportRuntimeFactory(workerTransportRuntimeFactory);
             return this;
         }
 

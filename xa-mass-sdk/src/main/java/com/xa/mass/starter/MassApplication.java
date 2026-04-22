@@ -11,15 +11,14 @@ import com.xa.mass.gateway.model.enums.MessageType;
 import com.xa.mass.gateway.queue.MessageCodec;
 import com.xa.mass.starter.config.EngineConfig;
 import com.xa.mass.starter.config.GatewayConfig;
-import com.xa.mass.starter.worker.PollingWorkerAdapter;
-import com.xa.mass.starter.worker.TransportRoutingTaskMsgDispatchListener;
-import com.xa.mass.starter.worker.WebSocketWorkerAdapter;
+import com.xa.mass.starter.transport.TransportRuntimeRegistry;
+import com.xa.mass.starter.transport.WorkerTransportRuntimeFactoryContext;
 import com.xa.mass.engine.util.LogUtils;
 import com.xa.mass.engine.listener.TaskMsgDispatchListener;
-import com.xa.mass.engine.worker.WorkerAdapter;
 import com.xa.mass.engine.rules.RuleDefinition;
 import com.xa.mass.sdk.MassBootstrapDataProvider;
 import com.xa.mass.sdk.MassRuntimeControl;
+import com.xa.mass.sdk.worker.PullWorkerSession;
 import com.xa.mass.sdk.worker.PollingWorkerSession;
 import com.xa.mass.sdk.model.MassTaskCreateRequest;
 import com.xa.mass.transport.TransportServer;
@@ -29,7 +28,6 @@ import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -49,7 +47,7 @@ public class MassApplication {
     private MassGateway massGateway;
     private DispatchRuntimeContext dispatcherContext;
     private TransportServer transportServer;
-    private PollingWorkerAdapter pollingWorkerAdapter;
+    private TransportRuntimeRegistry transportRuntimeRegistry;
 
     public MassApplication(MassEngine engine, int serverPort, String transportEndpointPath,
                            GatewayConfig gatewayConfig, EngineConfig engineConfig) {
@@ -152,32 +150,17 @@ public class MassApplication {
             messageHandlerRegistry.autoRegister();
             TaskMsgDispatchListener taskMsgDispatchListener = null;
             if (engineConfig.isEnabled() && engineConfig.getTaskManager() != null) {
-                List<WorkerAdapter> workerAdapters = new ArrayList<>();
-                pollingWorkerAdapter = new PollingWorkerAdapter(
-                        engineConfig.getTaskManager(),
-                        systemEventChannel
-                );
-                workerAdapters.add(pollingWorkerAdapter);
-
-                if (gatewayConfig.isEnabled()) {
-                    WebSocketWorkerAdapter workerAdapter = new WebSocketWorkerAdapter(
-                            dispatcherContext, engineConfig.getTaskManager());
-                    workerAdapters.add(workerAdapter);
-                    messageHandlerRegistry.register(
-                            null,
-                            MessageType.TASK,
-                            "step",
-                            workerAdapter
-                    );
-                }
-
-                taskMsgDispatchListener = workerAdapters.size() == 1
-                        ? workerAdapters.get(0)
-                        : new TransportRoutingTaskMsgDispatchListener(
+                transportRuntimeRegistry = gatewayConfig.resolveWorkerTransportRuntimeFactory().create(
+                        new WorkerTransportRuntimeFactoryContext(
+                                engineConfig.getTaskManager(),
                                 engineConfig.getWorkerManager(),
-                                workerAdapters,
-                                gatewayConfig.isEnabled() ? WebSocketWorkerAdapter.PROTOCOL : PollingWorkerAdapter.PROTOCOL
-                        );
+                                dispatcherContext,
+                                systemEventChannel,
+                                gatewayConfig.isEnabled()
+                        )
+                );
+                transportRuntimeRegistry.registerInboundHandlers(messageHandlerRegistry);
+                taskMsgDispatchListener = transportRuntimeRegistry.createDispatchListener();
             }
             messageHandlerRegistry.register(
                     null,
@@ -261,10 +244,14 @@ public class MassApplication {
     }
 
     public PollingWorkerSession openPollingWorkerSession(String workerId) {
-        if (pollingWorkerAdapter == null) {
-            throw new IllegalStateException("Polling worker adapter is unavailable for this runtime");
+        return new PollingWorkerSession(openPullWorkerSession(workerId));
+    }
+
+    public PullWorkerSession openPullWorkerSession(String workerId) {
+        if (transportRuntimeRegistry == null) {
+            throw new IllegalStateException("Pull worker transport is unavailable for this runtime");
         }
-        return new PollingWorkerSession(workerId, pollingWorkerAdapter);
+        return transportRuntimeRegistry.openPullWorkerSession(workerId);
     }
 
     public void publishTaskEvents() {

@@ -18,6 +18,7 @@ import com.xa.mass.sdk.catalog.PayloadType;
 import com.xa.mass.sdk.catalog.TaskMode;
 import com.xa.mass.sdk.model.MassTaskCreateRequest;
 import com.xa.mass.sdk.model.MassTaskRequest;
+import com.xa.mass.sdk.worker.PullWorkerSession;
 import com.xa.mass.starter.MassApplication;
 import com.xa.mass.starter.MassEngine;
 import com.xa.mass.starter.transport.TransportServerFactoryContext;
@@ -322,7 +323,7 @@ class MassSdkTest {
             worker.setOnlineStrategy("polling");
             app.addWorker(worker);
 
-            PollingWorkerSession session = app.pollingWorker("polling-worker-1");
+            PullWorkerSession session = app.pullWorker("polling-worker-1");
             session.connect();
 
             Task task = app.createTask(MassTaskCreateRequest.builder()
@@ -402,6 +403,25 @@ class MassSdkTest {
     }
 
     @Test
+    void pollingWorkerCompatibilityEntryRemainsAvailable() throws Exception {
+        MessageQueue<Envelope> inputQueue = new InMemoryMessageQueue<>("Envelope", Envelope.class);
+        MessageQueue<Envelope> outputQueue = new InMemoryMessageQueue<>("Envelope", Envelope.class);
+        MassSdkApplication app = MassSdk.builder()
+                .transportServer(0, "/sdk-transport")
+                .gateway(gateway -> gateway.enabled(false).transportServerEnabled(false).inputQueue(inputQueue).outputQueue(outputQueue))
+                .engine(engine -> engine.enabled(true).workerThreads(1))
+                .build();
+
+        try {
+            app.start();
+            PollingWorkerSession session = app.pollingWorker("compat-worker");
+            Assertions.assertEquals("compat-worker", session.workerId());
+        } finally {
+            app.stop();
+        }
+    }
+
+    @Test
     void sdkEscapeHatchesStayDeprecated() throws NoSuchMethodException {
         Set<java.lang.reflect.Method> escapeHatches = Set.of(
                 MassSdkApplication.class.getDeclaredMethod("unwrap"),
@@ -447,6 +467,7 @@ class MassSdkTest {
                 () -> app.getWorkerContextById("context-1"),
                 () -> app.isWorkerLocked("worker-1"),
                 () -> app.isWorkerOnline("worker-1"),
+                () -> app.pullWorker("worker-1"),
                 () -> app.pollingWorker("worker-1"),
                 app::loadMockData,
                 () -> app.replaceDefaultRules(List.of()),

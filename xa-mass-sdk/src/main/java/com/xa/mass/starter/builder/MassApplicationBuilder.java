@@ -13,6 +13,7 @@ import com.xa.mass.starter.MassApplication;
 import com.xa.mass.starter.MassEngine;
 import com.xa.mass.starter.config.EngineConfig;
 import com.xa.mass.starter.config.GatewayConfig;
+import com.xa.mass.starter.transport.WorkerTransportRuntimeFactory;
 import com.xa.mass.starter.transport.TransportServerFactoryContext;
 import com.xa.mass.starter.transport.WebSocketTransportServerFactory;
 import com.xa.mass.transport.TransportServerFactory;
@@ -224,6 +225,11 @@ public class MassApplicationBuilder {
         public GatewayBuilder transportServerFactory(
                 TransportServerFactory<TransportServerFactoryContext> transportServerFactory) {
             config.setTransportServerFactory(transportServerFactory);
+            return this;
+        }
+
+        public GatewayBuilder workerTransportRuntimeFactory(WorkerTransportRuntimeFactory workerTransportRuntimeFactory) {
+            config.setWorkerTransportRuntimeFactory(workerTransportRuntimeFactory);
             return this;
         }
 
