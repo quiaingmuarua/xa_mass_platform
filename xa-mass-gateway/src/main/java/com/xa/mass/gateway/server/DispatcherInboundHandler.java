@@ -6,6 +6,7 @@ import com.xa.mass.gateway.model.enums.MessageType;
 import com.xa.mass.gateway.model.massMessage.MassMessage;
 import com.xa.mass.gateway.queue.Envelope;
 import com.xa.mass.gateway.queue.MessageParser;
+import com.xa.mass.gateway.session.ServerSessionManager;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;
@@ -80,7 +81,9 @@ public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWe
             }
 
             dispatcherContext.getMessageTransporter().sendInput(envelope);
-            dispatcherContext.getSessionManager().addSession(workerId, connRole, ctx.channel(), ctx);
+            if (dispatcherContext.getSessionManager() instanceof ServerSessionManager sessionManager) {
+                sessionManager.addSession(workerId, connRole, ctx.channel(), ctx);
+            }
             logger.debug("Input queue size={}", dispatcherContext.getMessageTransporter().inputQueueSize());
 
         } catch (Exception e) {

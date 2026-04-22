@@ -1,6 +1,6 @@
 package com.xa.mass.gateway.dispatcher.context;
 
-import com.xa.mass.gateway.session.ServerSessionManager;
+import com.xa.mass.transport.WorkerEndpointRegistry;
 
 /**
  * 会话上下文接口
@@ -11,5 +11,5 @@ public interface SessionContext {
      * 获取会话管理器
      * @return 会话管理器
      */
-    ServerSessionManager getSessionManager();
+    WorkerEndpointRegistry getSessionManager();
 } 

@@ -2,8 +2,8 @@ package com.xa.mass.starter;
 
 import com.xa.mass.gateway.dispatcher.ServerMessageDispatcher;
 import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
-import com.xa.mass.gateway.session.ServerSessionManager;
 import com.xa.mass.starter.config.GatewayConfig;
+import com.xa.mass.transport.WorkerEndpointRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
@@ -104,7 +104,10 @@ public class MassGateway {
     private void shutdownConnectionManagement() {
         logger.info("Shutting down connection management...");
         try {
-            ServerSessionManager.INSTANCE.shutdown();
+            WorkerEndpointRegistry endpointRegistry = dispatcherContext.getSessionManager();
+            if (endpointRegistry != null) {
+                endpointRegistry.shutdown();
+            }
             logger.info("Connection management shut down");
         } catch (Exception e) {
             logger.error("Error shutting down connection management", e);

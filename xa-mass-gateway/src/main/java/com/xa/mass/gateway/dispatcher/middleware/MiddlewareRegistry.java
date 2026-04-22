@@ -7,8 +7,6 @@ import com.xa.mass.gateway.dispatcher.handler.ResolutionResult;
 import com.xa.mass.gateway.model.massMessage.MassMessage;
 import com.xa.mass.gateway.model.massMessage.MessageContext;
 import com.xa.mass.gateway.queue.Envelope;
-import io.netty.channel.ChannelHandlerContext;
-import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -95,13 +93,12 @@ public class MiddlewareRegistry {
         return (envelope, context) -> {
             try {
                 logger.debug("sendEnvelopeMiddleware {}", envelope);
-                ChannelHandlerContext ctx = context.getSessionManager().getChannelContext(envelope.getWorkerId(), envelope.getConnRole());
-                if (ctx != null && ctx.channel().isActive()) {
-                    logger.debug("sendEnvelopeMiddleware channelContext {}", ctx);
-                    ctx.writeAndFlush(new TextWebSocketFrame(envelope.getRawJson()));
+                boolean sent = context.getSessionManager()
+                        .sendMessage(envelope.getWorkerId(), envelope.getConnRole(), envelope.getRawJson());
+                if (sent) {
                     return true;
                 }
-                logger.debug("sendEnvelopeMiddleware skipped because channelContext is null");
+                logger.debug("sendEnvelopeMiddleware skipped because endpoint is unavailable");
             } catch (Exception e) {
                 logger.error("Error in sendEnvelopeMiddleware", e);
                 return false;

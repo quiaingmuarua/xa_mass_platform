@@ -94,8 +94,9 @@ TaskMsg and attempt rules:
 Root reactor modules are defined by `pom.xml`:
 
 - `xa-mass-core`: shared models, enums, JSON DSL, EventBus, messaging primitives.
+- `xa-mass-transport-api`: transport-neutral runtime SPI for transport servers and worker endpoint registries.
 - `xa-mass-engine`: task lifecycle, assignment, matching, result handling, validation.
-- `xa-mass-gateway`: WebSocket server, sessions, dispatch, inbound result routing.
+- `xa-mass-gateway`: current WebSocket transport adapter, sessions, dispatch, inbound result routing.
 - `xa-mass-sdk-api`: stable SDK-facing catalog, auth, and request-model contracts.
 - `xa-mass-web`: REST controllers and the backend-hosted control console shell.
 - `xa-mass-sdk`: consumer-facing SDK plus embedded runtime composition.

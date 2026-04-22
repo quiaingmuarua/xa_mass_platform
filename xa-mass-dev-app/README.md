@@ -39,7 +39,7 @@ Start from the repository root:
 
 ```bash
 ./mvnw -DskipTests compile
-java -cp "xa-mass-dev-app/target/classes:xa-mass-sdk/target/classes:xa-mass-sdk-api/target/classes:xa-mass-web/target/classes:xa-mass-engine/target/classes:xa-mass-gateway/target/classes:xa-mass-core/target/classes:<runtime-classpath>" \
+java -cp "xa-mass-dev-app/target/classes:xa-mass-sdk/target/classes:xa-mass-sdk-api/target/classes:xa-mass-web/target/classes:xa-mass-engine/target/classes:xa-mass-gateway/target/classes:xa-mass-transport-api/target/classes:xa-mass-core/target/classes:<runtime-classpath>" \
   com.xa.mass.mock.MockApplicationSpringBootApp
 ```
 
@@ -162,4 +162,3 @@ Covered areas:
 - `e2e/support`: manual debug chat, command acknowledgements, and disconnect-after-ack behavior
 - `WebSocketClientStarterTest`: auto-start and idempotent startup behavior
 - `MassWebSocketClientImplTest`: ignore `response=true` task frames, avoid echo loops, support delay/drop fault injection, and support disconnect-after-ack command behavior
-

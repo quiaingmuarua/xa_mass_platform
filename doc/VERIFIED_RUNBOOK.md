@@ -17,6 +17,7 @@ Current runtime entry:
 Current module set from the root reactor:
 
 - `xa-mass-core`
+- `xa-mass-transport-api`
 - `xa-mass-engine`
 - `xa-mass-gateway`
 - `xa-mass-sdk-api`
@@ -33,7 +34,7 @@ Run from repo root:
 ```bash
 ./mvnw -DskipTests compile
 cd frontend && corepack pnpm build && cd ..
-java -cp "xa-mass-dev-app/target/classes:xa-mass-sdk/target/classes:xa-mass-sdk-api/target/classes:xa-mass-web/target/classes:xa-mass-engine/target/classes:xa-mass-gateway/target/classes:xa-mass-core/target/classes:<runtime-classpath>" \
+java -cp "xa-mass-dev-app/target/classes:xa-mass-sdk/target/classes:xa-mass-sdk-api/target/classes:xa-mass-web/target/classes:xa-mass-engine/target/classes:xa-mass-gateway/target/classes:xa-mass-transport-api/target/classes:xa-mass-core/target/classes:<runtime-classpath>" \
   com.xa.mass.mock.MockApplicationSpringBootApp
 ```
 
@@ -45,7 +46,7 @@ Windows guidance:
 Default runtime facts:
 
 - `server.port=8088` serves the backend-hosted control console and JSON APIs.
-- `mass.websocket.port=18088` serves the gateway WebSocket endpoint.
+- `mass.websocket.port=18088` serves the current WebSocket transport endpoint.
 - Default local/dev startup auto-starts mock worker clients when `mock.client.auto-start=true`.
 - Mock clients connect to `ws://localhost:18088/ws`.
 - `mock.client.task-result-status=FAILED` forces failed task result write-back for regression tests.

@@ -4,7 +4,7 @@ import com.google.gson.Gson;
 import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
 import com.xa.mass.gateway.queue.MessageCodec;
 import com.xa.mass.base.channel.tranporter.MessageTransporter;
-import com.xa.mass.gateway.session.ServerSessionManager;
+import com.xa.mass.transport.WorkerEndpointRegistry;
 
 /**
  * 分发器上下文
@@ -12,7 +12,7 @@ import com.xa.mass.gateway.session.ServerSessionManager;
  */
 public class DispatcherContext implements DispatchRuntimeContext {
     private final MessageTransporter messageTransporter;
-    private final ServerSessionManager sessionManager;
+    private final WorkerEndpointRegistry sessionManager;
     private final MessageCodec messageCodec;
     private MessageHandlerRegistry messageHandlerRegistry;
     private MiddlewareDirection direction;
@@ -23,7 +23,7 @@ public class DispatcherContext implements DispatchRuntimeContext {
      */
     public DispatcherContext(
             MessageTransporter messageTransporter,
-            ServerSessionManager sessionManager,
+            WorkerEndpointRegistry sessionManager,
             MessageCodec messageCodec
     ) {
         this.messageTransporter = messageTransporter;
@@ -36,7 +36,7 @@ public class DispatcherContext implements DispatchRuntimeContext {
      */
     public DispatcherContext(
             MessageTransporter messageTransporter,
-            ServerSessionManager sessionManager,
+            WorkerEndpointRegistry sessionManager,
             Gson gson
     ) {
         this.messageTransporter = messageTransporter;
@@ -46,7 +46,7 @@ public class DispatcherContext implements DispatchRuntimeContext {
 
     // SessionContext 实现
     @Override
-    public ServerSessionManager getSessionManager() {
+    public WorkerEndpointRegistry getSessionManager() {
         return sessionManager;
     }
 

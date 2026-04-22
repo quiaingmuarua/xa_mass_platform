@@ -23,6 +23,7 @@
     <modules>
         <module>xa-mass-web</module>
         <module>xa-mass-core</module>
+        <module>xa-mass-transport-api</module>
         <module>xa-mass-engine</module>
         <module>xa-mass-gateway</module>
         <module>xa-mass-sdk-api</module>

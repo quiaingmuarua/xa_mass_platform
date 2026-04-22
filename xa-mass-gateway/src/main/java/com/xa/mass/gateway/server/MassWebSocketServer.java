@@ -1,34 +1,21 @@
 package com.xa.mass.gateway.server;
 
+import com.xa.mass.transport.TransportServer;
 import io.netty.channel.Channel;
 
 /**
  * Interface for WebSocket server functionality
  */
-public interface MassWebSocketServer {
+public interface MassWebSocketServer extends TransportServer {
     /**
      * Start the WebSocket server
      * @param port The port to start the server on
      * @throws Exception if server fails to start
      */
-    void start(int port) throws Exception;
-
     /**
-     * Stop the WebSocket server
-     * @throws Exception if server fails to stop
-     */
-    void stop() throws Exception;
-
-    /**
-     * Check if the server is running
-     * @return true if server is running, false otherwise
-     */
-    boolean isRunning();
-
-    /**
-     * Get the channel for a specific client
-     * @param clientId The client identifier
-     * @return The channel for the client, or null if not found
+     * WebSocket-only escape hatch retained for current adapter-specific tests and diagnostics.
+     *
+     * <p>Runtime composition should prefer the transport-neutral {@link TransportServer} contract.
      */
     Channel getClientChannel(String clientId);
-} 
+}

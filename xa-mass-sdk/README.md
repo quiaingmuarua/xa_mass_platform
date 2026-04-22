@@ -11,6 +11,8 @@ The runtime composition has been folded into this artifact so library callers
 can depend on one SDK module without pulling the HTTP/demo control surface.
 Stable SDK-facing catalog/auth/model contracts now live in the internal
 `xa-mass-sdk-api` module and are pulled transitively through this artifact.
+Transport-neutral runtime contracts now live in `xa-mass-transport-api`; the
+current bundled transport implementation is still WebSocket-backed.
 
 ## Dependency
 

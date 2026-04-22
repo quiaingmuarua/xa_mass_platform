@@ -21,6 +21,7 @@ import com.xa.mass.engine.rules.RuleDefinition;
 import com.xa.mass.sdk.MassBootstrapDataProvider;
 import com.xa.mass.sdk.MassRuntimeControl;
 import com.xa.mass.sdk.model.MassTaskCreateRequest;
+import com.xa.mass.transport.WorkerEndpointRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -73,7 +74,7 @@ public class MassApplication {
             }
 
             startMessageDispatcher();
-            startWebSocketServer();
+            startTransportServer();
 
             LogUtils.clearMdc();
             logger.info("Mass Application started successfully");
@@ -119,8 +120,8 @@ public class MassApplication {
         logger.info("Initializing core components");
 
         try {
-            ServerSessionManager sessionManager = ServerSessionManager.INSTANCE;
-            logger.info("Session manager initialized");
+            WorkerEndpointRegistry sessionManager = ServerSessionManager.INSTANCE;
+            logger.info("Worker endpoint registry initialized");
 
             MessageTransporter messageTransporter = gatewayConfig.createMessageTransporter();
             logger.info("Message transporter created");
@@ -205,8 +206,8 @@ public class MassApplication {
         logger.info("Message Dispatcher is managed by MassGateway");
     }
 
-    private void startWebSocketServer() {
-        logger.info("Starting WebSocket Server");
+    private void startTransportServer() {
+        logger.info("Starting transport server");
 
         MassServerConfig serverConfig = MassServerBuilder.create()
                 .withPort(serverPort)
@@ -217,7 +218,7 @@ public class MassApplication {
         serverStater = new MassServerStater(serverConfig);
         serverStater.start();
 
-        logger.info("WebSocket Server started on port {}", serverPort);
+        logger.info("Transport server started on port {} (current adapter path={})", serverPort, webSocketPath);
     }
 
     public DispatchRuntimeContext getDispatcherContext() {

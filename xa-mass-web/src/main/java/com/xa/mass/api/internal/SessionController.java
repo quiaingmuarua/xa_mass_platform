@@ -61,6 +61,9 @@ public class SessionController {
 
     private ServerSessionManager resolveSessionManager() {
         SessionContext ctx = DispatcherContextRegistry.getSessionContext();
-        return ctx != null ? ctx.getSessionManager() : null;
+        if (ctx == null || ctx.getSessionManager() == null) {
+            return null;
+        }
+        return ctx.getSessionManager() instanceof ServerSessionManager sessionManager ? sessionManager : null;
     }
 }

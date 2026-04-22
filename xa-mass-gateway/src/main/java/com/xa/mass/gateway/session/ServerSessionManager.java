@@ -3,6 +3,7 @@ package com.xa.mass.gateway.session;
 import com.xa.mass.base.channel.eventbus.core.EventPublisher;
 import com.xa.mass.base.channel.eventbus.event.worker.WorkerOfflineEvent;
 import com.xa.mass.base.channel.eventbus.event.worker.WorkerOnlineEvent;
+import com.xa.mass.transport.WorkerEndpointRegistry;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;
@@ -14,7 +15,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-public class ServerSessionManager {
+public class ServerSessionManager implements WorkerEndpointRegistry {
 
     public static final ServerSessionManager INSTANCE = new ServerSessionManager();
 
@@ -90,6 +91,7 @@ public class ServerSessionManager {
         }
     }
 
+    @Override
     public boolean sendMessage(String workerId, String connRole, String message) {
         Map<String, Channel> roleMap = workerChannelMap.get(workerId);
         if (roleMap != null) {
@@ -117,6 +119,7 @@ public class ServerSessionManager {
         logger.debug("Broadcast message sent to {} active channels.", sentCount);
     }
 
+    @Override
     public boolean isWorkerOnline(String workerId, String connRole) {
         Map<String, Channel> roleMap = workerChannelMap.get(workerId);
         if (roleMap == null) {
@@ -128,6 +131,11 @@ public class ServerSessionManager {
 
     public int getWorkerConnectionCount() {
         return (int) channelIndex.keySet().stream().filter(Channel::isActive).count();
+    }
+
+    @Override
+    public int getActiveConnectionCount() {
+        return getWorkerConnectionCount();
     }
 
     public WorkerConnKey getWorkerConnKey(Channel channel) {
@@ -144,6 +152,7 @@ public class ServerSessionManager {
         return roleCtxMap != null ? roleCtxMap.get(connRole) : null;
     }
 
+    @Override
     public synchronized void shutdown() {
         logger.info("Shutting down session manager, closing {} worker connections...", workerChannelMap.size());
         for (Map<String, Channel> roleMap : workerChannelMap.values()) {

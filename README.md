@@ -36,7 +36,7 @@ XA Mass Platform is a general distributed task scheduling platform.
 
 - Real Spring Boot entrypoint: `xa-mass-dev-app`
 - Do not treat the embedded runtime classes as a Spring Boot app
-- Current root reactor modules are `xa-mass-web`, `xa-mass-core`, `xa-mass-engine`, `xa-mass-gateway`, `xa-mass-sdk-api`, `xa-mass-sdk`, and `xa-mass-dev-app`
+- Current root reactor modules are `xa-mass-web`, `xa-mass-core`, `xa-mass-transport-api`, `xa-mass-engine`, `xa-mass-gateway`, `xa-mass-sdk-api`, `xa-mass-sdk`, and `xa-mass-dev-app`
 - `xa-mass-sdk` is the real Java embedding module; it now carries both the SDK facade and the embedded runtime composition
 - historical reactor/module experiments such as `xa-mass-base`, `xa-mass-starter`, and engine archive generations are no longer present in the current repository snapshot
 - Verified HTTP port: `server.port=8088`
@@ -57,7 +57,7 @@ Run from the repository root:
 
 ```bash
 ./mvnw -DskipTests compile
-java -cp "xa-mass-dev-app/target/classes:xa-mass-sdk/target/classes:xa-mass-sdk-api/target/classes:xa-mass-web/target/classes:xa-mass-engine/target/classes:xa-mass-gateway/target/classes:xa-mass-core/target/classes:<runtime-classpath>" \
+java -cp "xa-mass-dev-app/target/classes:xa-mass-sdk/target/classes:xa-mass-sdk-api/target/classes:xa-mass-web/target/classes:xa-mass-engine/target/classes:xa-mass-gateway/target/classes:xa-mass-transport-api/target/classes:xa-mass-core/target/classes:<runtime-classpath>" \
   com.xa.mass.mock.MockApplicationSpringBootApp
 ```
 
@@ -75,9 +75,10 @@ Primary endpoints:
 - `xa-mass-dev-app`: verified runnable entry and full-stack validation shell; starts runtime through `xa-mass-sdk` and exposes the current HTTP control console and JSON APIs through `xa-mass-web`
 - `xa-mass-sdk`: consumer-facing dependency entry and embedded runtime composition for the platform
 - `xa-mass-sdk-api`: stable SDK-facing catalog/auth/model contract shared by `xa-mass-sdk` and `xa-mass-web`
+- `xa-mass-transport-api`: transport-neutral runtime SPI for transport servers and worker endpoint registries
 - `xa-mass-web`: REST controllers and the backend-hosted control console shell
 - `xa-mass-engine`: task state machine, assignment, result handling, and strategy extension points
-- `xa-mass-gateway`: WebSocket server and dispatch
+- `xa-mass-gateway`: current WebSocket transport adapter plus dispatch runtime
 - `xa-mass-core`: shared models and infrastructure
 
 Build boundary note:
@@ -137,4 +138,3 @@ Module boundary note:
 - Keep active operational docs under `doc/`
 - Historical archive docs have been removed from the current repository snapshot during convergence
 - If a document disagrees with code or runtime, prefer code and verified runtime
-

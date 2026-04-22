@@ -20,8 +20,8 @@ import com.xa.mass.gateway.model.massMessage.MassMessage;
 import com.xa.mass.gateway.model.massMessage.MessageContext;
 import com.xa.mass.gateway.queue.Envelope;
 import com.xa.mass.gateway.queue.MessageCodec;
-import com.xa.mass.gateway.session.ServerSessionManager;
 import com.xa.mass.gateway.session.SessionRoles;
+import com.xa.mass.transport.WorkerEndpointRegistry;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
@@ -80,7 +80,7 @@ public class WorkerDebugController {
             return conflict("Session manager is not initialized");
         }
 
-        ServerSessionManager sessionManager = sessionContext.getSessionManager();
+        WorkerEndpointRegistry sessionManager = sessionContext.getSessionManager();
         if (!sessionManager.isWorkerOnline(workerId, SessionRoles.TASK_MESSAGES)) {
             return conflict("Target worker is offline or task_messages session is unavailable");
         }

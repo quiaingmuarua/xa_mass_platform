@@ -93,7 +93,8 @@ Interpretation rules:
 - Embedded runtime composition now lives inside `xa-mass-sdk` under `com.xa.mass.starter.*`; it is not the primary Boot entry.
 - `xa-mass-dev-app` should obtain runtime capability through `xa-mass-sdk`; its explicit `xa-mass-web` dependency is only for the current REST/control-console validation shell.
 - Do not make `xa-mass-sdk` depend on `xa-mass-web` just to make `xa-mass-dev-app` depend on one internal artifact; SDK consumers should not pull demo web surfaces by default.
-- The current mainline reactor is defined by the root `pom.xml`: `xa-mass-web`, `xa-mass-core`, `xa-mass-engine`, `xa-mass-gateway`, `xa-mass-sdk-api`, `xa-mass-sdk`, `xa-mass-dev-app`.
+- The current mainline reactor is defined by the root `pom.xml`: `xa-mass-web`, `xa-mass-core`, `xa-mass-transport-api`, `xa-mass-engine`, `xa-mass-gateway`, `xa-mass-sdk-api`, `xa-mass-sdk`, `xa-mass-dev-app`.
+- `xa-mass-transport-api` now holds the transport-neutral SPI. WebSocket is the current mainline adapter, not the platform boundary.
 - `com.xa.mass.engine` is the active engine path.
 - historical `v2` / archive engine generations are no longer present in the current repository snapshot.
 - EventBus mainline has converged onto `com.xa.mass.base.channel.eventbus.core` and `com.xa.mass.base.channel.eventbus.event`.
@@ -250,4 +251,3 @@ Use these positive defaults:
 - update the short state-machine, trace, and E2E baselines when lifecycle semantics change
 - sync active docs after verified behavior changes
 - keep archive material under archive paths instead of active source trees
-
