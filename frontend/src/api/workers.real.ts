@@ -38,8 +38,11 @@ export async function getWorkerDebugHistoryReal(
 export async function sendWorkerDebugMessageReal(
     request: WorkerDebugSendRequest,
 ): Promise<WorkerDebugSendResult> {
-    return requestApiData<WorkerDebugSendResult>('/status/workers/send-message', {
-        method: 'POST',
-        body: JSON.stringify(request),
-    })
+    return requestApiData<WorkerDebugSendResult>(
+        '/status/workers/send-message',
+        {
+            method: 'POST',
+            body: JSON.stringify(request),
+        },
+    )
 }

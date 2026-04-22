@@ -118,7 +118,9 @@ export async function sendWorkerDebugMessageMock(
         throw new Error(`Worker not found: ${request.workerId}`)
     }
     if (worker.status !== 'ONLINE') {
-        throw new Error('Target worker is offline or task_messages session is unavailable')
+        throw new Error(
+            'Target worker is offline or task_messages session is unavailable',
+        )
     }
 
     const project = request.project || worker.supportedProjects[0] || 'demoApp'
