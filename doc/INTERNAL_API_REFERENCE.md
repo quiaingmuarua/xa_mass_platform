@@ -562,6 +562,7 @@ Behavior:
 
 - returns the SPA shell from the built `frontend/dist`
 - browser-side routing handles the page view after the shell loads
+- `/status`, `/status/tasks`, `/status/workers`, `/status/rules`, and `/config` are redirect aliases only and are not the primary console entrypoints
 
 ## 6. Message API
 

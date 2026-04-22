@@ -96,7 +96,7 @@ Interpretation rules:
 - historical `v2` / archive engine generations are no longer present in the current repository snapshot.
 - EventBus mainline has converged onto `com.xa.mass.base.channel.eventbus.core` and `com.xa.mass.base.channel.eventbus.event`.
 - Mainline acceptance is end-to-end integration-test-driven through `xa-mass-dev-app`; unit tests are support coverage, not the primary acceptance gate.
-- The worker page now includes a debug conversation surface backed by `POST /status/workers/send-message` and `GET /status/workers/message-history`.
+- The current worker debug side-channel is exposed through `POST /status/workers/send-message` and `GET /status/workers/message-history`.
 
 ## 6. Current Task And Payload Contract
 

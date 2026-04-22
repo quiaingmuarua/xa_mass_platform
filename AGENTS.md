@@ -117,6 +117,11 @@ Verified endpoints:
 - `http://localhost:8088/actuator/health`
 - `ws://localhost:18088/ws`
 
+Control-console routing note:
+
+- the backend-hosted SPA routes above are the primary operator entrypoints
+- `/status`, `/status/tasks`, `/status/workers`, `/status/rules`, and `/config` are redirect aliases only; do not treat them as the product surface
+
 Default startup facts:
 
 - HTTP port is `server.port`, currently `8088`.

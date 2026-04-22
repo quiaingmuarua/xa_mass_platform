@@ -13,7 +13,7 @@ Repository-level startup instructions in [`../doc/VERIFIED_RUNBOOK.md`](../doc/V
 ## Current Role
 
 - real Spring Boot entrypoint: `com.xa.mass.mock.MockApplicationSpringBootApp`
-- starts runtime through `xa-mass-sdk`, exposes the current HTTP/status shell through `xa-mass-api`, and still wires engine-side manager/rule beans directly for dev and E2E validation
+- starts runtime through `xa-mass-sdk`, exposes the current backend-hosted control console and JSON APIs through `xa-mass-api`, and still wires engine-side manager/rule beans directly for dev and E2E validation
 - starts platform runtime through `xa-mass-sdk`; runtime still composes gateway and engine internally
 - default `dev` startup auto-starts mock WebSocket clients
 
@@ -23,7 +23,7 @@ Two ports are used on purpose:
 
 | Property | Default | Purpose |
 | --- | --- | --- |
-| `server.port` | `8088` | Spring Boot HTTP port for `/status`, `/doc.html`, and task APIs |
+| `server.port` | `8088` | Spring Boot HTTP port for the backend-hosted control console, `/doc.html`, and JSON APIs |
 | `mass.websocket.port` | `18088` | internal gateway WebSocket server port |
 
 Mock clients connect through:
@@ -44,10 +44,16 @@ java -cp "xa-mass-dev-app/target/classes:xa-mass-sdk/target/classes:xa-mass-api/
 
 After startup:
 
-- HTTP: `http://localhost:8088/status`
-- HTTP: `http://localhost:8088/status/tasks`
-- HTTP: `http://localhost:8088/doc.html`
+- HTTP control console: `http://localhost:8088/`
+- HTTP tasks view: `http://localhost:8088/tasks`
+- HTTP workers view: `http://localhost:8088/resources/workers`
+- HTTP API docs: `http://localhost:8088/doc.html`
 - WebSocket: `ws://localhost:18088/ws`
+
+Control-console routing note:
+
+- `/status`, `/status/tasks`, `/status/workers`, and `/status/rules` are redirect aliases only
+- the backend-hosted SPA routes above are the primary operator entrypoints
 
 ## Effective Mock Client Startup
 

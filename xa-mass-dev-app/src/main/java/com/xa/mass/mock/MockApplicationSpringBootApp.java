@@ -78,10 +78,6 @@ public class MockApplicationSpringBootApp {
         log.info("Mock full-stack application started");
         log.info("==============================");
         log.info("HTTP control console: http://localhost:{}/", httpPort);
-        log.info("Legacy status redirect: http://localhost:{}/status", httpPort);
-        log.info("Legacy task redirect: http://localhost:{}/status/tasks", httpPort);
-        log.info("Legacy worker redirect: http://localhost:{}/status/workers", httpPort);
-        log.info("Legacy rule redirect: http://localhost:{}/status/rules", httpPort);
         log.info("HTTP API docs: http://localhost:{}/doc.html", httpPort);
         log.info("Gateway WebSocket: ws://localhost:{}/ws", webSocketPort);
         log.info("==============================");

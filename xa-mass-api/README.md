@@ -11,6 +11,7 @@
 - not an independently verified runnable app
 - API lifecycle endpoints are aligned to `TaskManager`
 - the backend-hosted console shell is a validation surface, not the source of truth
+- this module no longer carries Thymeleaf templates or an MVC page-model layer; the control console is served from built `frontend/dist`
 
 ## Start Here
 
