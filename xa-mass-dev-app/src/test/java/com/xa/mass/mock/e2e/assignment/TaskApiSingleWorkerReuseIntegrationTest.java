@@ -1,6 +1,7 @@
 package com.xa.mass.mock.e2e.assignment;
 
 import com.xa.mass.base.enums.worker.WorkerContextStatus;
+import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.mock.MockApplicationSpringBootApp;
 import com.xa.mass.mock.client.MassWebSocketClientImpl;
