@@ -5,15 +5,15 @@ import com.xa.mass.base.channel.tranporter.MessageTransporterFactory;
 import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.rules.RuleManager;
-import com.xa.mass.engine.strategy.SimpleTaskScheduler;
+import com.xa.mass.engine.strategy.TaskScheduler;
 import com.xa.mass.gateway.queue.Envelope;
+import com.xa.mass.sdk.MassBootstrapDataProvider;
 import com.xa.mass.starter.MassApplication;
 import com.xa.mass.starter.MassEngine;
 import com.xa.mass.starter.config.EngineConfig;
 import com.xa.mass.starter.config.GatewayConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
 import java.util.Map;
 import java.util.function.Consumer;
 
@@ -112,20 +112,22 @@ public class MassApplicationBuilder {
     }
 
     public MassApplication build() {
+        GatewayConfig gatewaySnapshot = new GatewayConfig(gatewayConfig);
+        EngineConfig engineSnapshot = new EngineConfig(engineConfig);
         logger.info("Building MassApplication with configuration: port={}, gateway={}, engine={}",
                 serverPort,
-                gatewayConfig.isEnabled(),
-                engineConfig.isEnabled());
+                gatewaySnapshot.isEnabled(),
+                engineSnapshot.isEnabled());
 
         MassEngine engine = null;
-        if (engineConfig.isEnabled()) {
-            engine = new MassEngine(engineConfig);
+        if (engineSnapshot.isEnabled()) {
+            engine = new MassEngine(engineSnapshot);
             logger.info("MassEngine built");
         } else {
             logger.info("MassEngine is disabled, skipping build");
         }
 
-        return new MassApplication(engine, serverPort, webSocketPath, gatewayConfig, engineConfig);
+        return new MassApplication(engine, serverPort, webSocketPath, gatewaySnapshot, engineSnapshot);
     }
 
     public static class GatewayBuilder {
@@ -186,20 +188,12 @@ public class MassApplicationBuilder {
             return this;
         }
 
-        public EngineBuilder mockData(String workerConfigPath, String workerContextConfigPath, String taskConfigPath, String ruleConfigPath) {
-            config.setWorkerConfigPath(workerConfigPath);
-            config.setWorkerContextConfigPath(workerContextConfigPath);
-            config.setTaskConfigPath(taskConfigPath);
-            config.setRuleConfigPath(ruleConfigPath);
+        public EngineBuilder bootstrapDataProvider(MassBootstrapDataProvider bootstrapDataProvider) {
+            config.setBootstrapDataProvider(bootstrapDataProvider);
             return this;
         }
 
-        public EngineBuilder mockData(String mockConfigPath) {
-            config.setMockConfigPath(mockConfigPath);
-            return this;
-        }
-
-        public EngineBuilder scheduler(SimpleTaskScheduler scheduler) {
+        public EngineBuilder scheduler(TaskScheduler scheduler) {
             config.setScheduler(scheduler);
             return this;
         }
@@ -216,6 +210,24 @@ public class MassApplicationBuilder {
 
         public EngineBuilder ruleManager(RuleManager<Map<String, Object>> ruleManager) {
             config.setRuleManager(ruleManager);
+            return this;
+        }
+
+        /**
+         * @deprecated Mock/bootstrap data should be wired through
+         * {@link #bootstrapDataProvider(MassBootstrapDataProvider)}.
+         */
+        @Deprecated(forRemoval = false)
+        public EngineBuilder mockData(String workerConfigPath, String workerContextConfigPath, String taskConfigPath, String ruleConfigPath) {
+            return this;
+        }
+
+        /**
+         * @deprecated Mock/bootstrap data should be wired through
+         * {@link #bootstrapDataProvider(MassBootstrapDataProvider)}.
+         */
+        @Deprecated(forRemoval = false)
+        public EngineBuilder mockData(String mockConfigPath) {
             return this;
         }
     }

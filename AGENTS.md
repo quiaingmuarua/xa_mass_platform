@@ -96,6 +96,7 @@ Root reactor modules are defined by `pom.xml`:
 - `xa-mass-core`: shared models, enums, JSON DSL, EventBus, messaging primitives.
 - `xa-mass-engine`: task lifecycle, assignment, matching, result handling, validation.
 - `xa-mass-gateway`: WebSocket server, sessions, dispatch, inbound result routing.
+- `xa-mass-sdk-contract`: stable SDK-facing catalog, auth, and request-model contracts.
 - `xa-mass-api`: REST controllers and the backend-hosted control console shell.
 - `xa-mass-sdk`: consumer-facing SDK plus embedded runtime composition.
 - `xa-mass-dev-app`: verified Spring Boot entry and E2E validation shell.
@@ -185,9 +186,10 @@ Common fast checks:
 Targeted API/engine/SDK examples:
 
 ```bash
+./mvnw --% -q -pl xa-mass-sdk-contract -am -Dtest=ProjectEventCatalogRegistryTest -Dsurefire.failIfNoSpecifiedTests=false test
 ./mvnw --% -q -pl xa-mass-api -am -Dtest=TaskApiControllerTest -Dsurefire.failIfNoSpecifiedTests=false test
 ./mvnw --% -q -pl xa-mass-engine -am -Dtest=TaskManagerLifecycleTest,SimpleTaskMsgAssignListenerTest,TaskResourceReleaseListenerTest,TaskWorkerAssignListenerTest -Dsurefire.failIfNoSpecifiedTests=false test
-./mvnw --% -q -pl xa-mass-sdk -am -Dtest=MassSdkTest,GatewayTaskMsgPublisherTest,GatewayTaskResultHandlerTest,MassApplicationLoadMockDataTest -Dsurefire.failIfNoSpecifiedTests=false test
+./mvnw --% -q -pl xa-mass-sdk -am -Dtest=MassSdkTest,GatewayTaskMsgPublisherTest,GatewayTaskResultHandlerTest,MassApplicationBootstrapCompatibilityTest -Dsurefire.failIfNoSpecifiedTests=false test
 ```
 
 Representative E2E subset:

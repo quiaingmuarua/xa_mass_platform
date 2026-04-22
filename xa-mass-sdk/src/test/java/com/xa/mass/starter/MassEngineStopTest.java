@@ -50,12 +50,11 @@ class MassEngineStopTest {
     }
 
     @Test
-    void startInitializesAssignWorkerEvenWhenMockModeDisabled() {
+    void startInitializesAssignWorkerWithDefaultConfig() {
         EngineConfig config = new EngineConfig();
-        config.setMockMode(false);
         MassEngine engine = new MassEngine(config);
 
-        assertDoesNotThrow(engine::start);
+        assertDoesNotThrow(() -> engine.start());
         assertTrue(engine.isRunning());
         assertNotNull(engine.getAssignWorker());
         assertSame(config.getTaskManager(), engine.getTaskManager());

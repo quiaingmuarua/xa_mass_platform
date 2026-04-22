@@ -3,59 +3,44 @@ package com.xa.mass.mock.config;
 import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.rules.RuleManager;
-import com.xa.mass.engine.rules.RuleManagerFactory;
-import com.xa.mass.engine.storage.RuleStorage;
-import com.xa.mass.engine.storage.TaskStorage;
-import com.xa.mass.engine.storage.TaskStorageFactory;
-import com.xa.mass.engine.storage.WorkerStorage;
-import com.xa.mass.engine.strategy.SimpleTaskScheduler;
 import com.xa.mass.engine.strategy.TaskScheduler;
+import com.xa.mass.sdk.MassSdkApplication;
+import com.xa.mass.starter.MassEngine;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Profile;
 
 import java.util.Map;
+import java.util.Objects;
 
 /**
- * Core manager wiring used by the mock Spring Boot shell.
+ * Exposes runtime-backed manager beans for the dev shell and API controllers.
  */
 @Configuration
+@Profile("dev")
 public class ManagerConfig {
 
     @Bean
-    public TaskStorage taskStorage() {
-        return TaskStorageFactory.createDefaultTaskStorage();
+    public TaskManager taskManager(MassSdkApplication app) {
+        return requireRuntimeEngine(app).getConfig().getTaskManager();
     }
 
     @Bean
-    public WorkerStorage workerStorage() {
-        return TaskStorageFactory.createDefaultWorkerStorage();
+    public WorkerManager workerManager(MassSdkApplication app) {
+        return requireRuntimeEngine(app).getConfig().getWorkerManager();
     }
 
     @Bean
-    public RuleStorage ruleStorage() {
-        return TaskStorageFactory.createDefaultRuleStorage();
+    public RuleManager<Map<String, Object>> ruleManager(MassSdkApplication app) {
+        return requireRuntimeEngine(app).getConfig().getRuleManager();
     }
 
     @Bean
-    public TaskScheduler taskScheduler() {
-        return new SimpleTaskScheduler();
+    public TaskScheduler taskScheduler(MassSdkApplication app) {
+        return requireRuntimeEngine(app).getConfig().getScheduler();
     }
 
-    @Bean
-    public TaskManager taskManager(TaskScheduler taskScheduler, TaskStorage taskStorage) {
-        return new TaskManager(taskScheduler, taskStorage);
-    }
-
-    @Bean
-    public WorkerManager workerManager(WorkerStorage workerStorage) {
-        return new WorkerManager(workerStorage);
-    }
-
-    @Bean
-    public RuleManager<Map<String, Object>> ruleManager(RuleStorage ruleStorage) {
-        RuleManager<Map<String, Object>> manager = new RuleManager<>(ruleStorage);
-        // Keep the default baseline rules available in the mock runtime.
-        manager.addDefaultRules(RuleManagerFactory.getDefaultRuleManager().getDefaultRules());
-        return manager;
+    private MassEngine requireRuntimeEngine(MassSdkApplication app) {
+        return Objects.requireNonNull(app.getEngine(), "SDK application engine must be available in dev profile");
     }
 }

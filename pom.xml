@@ -25,6 +25,7 @@
         <module>xa-mass-core</module>
         <module>xa-mass-engine</module>
         <module>xa-mass-gateway</module>
+        <module>xa-mass-sdk-contract</module>
         <module>xa-mass-sdk</module>
         <module>xa-mass-dev-app</module>
     </modules>
@@ -68,4 +69,3 @@
 
 
 </project>
-

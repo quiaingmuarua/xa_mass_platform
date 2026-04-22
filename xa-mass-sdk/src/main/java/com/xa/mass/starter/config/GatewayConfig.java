@@ -30,6 +30,22 @@ public class GatewayConfig {
     private MessageCodecFactory.CodecType codecType = MessageCodecFactory.CodecType.GSON;
     private MessageCodec messageCodec;
 
+    public GatewayConfig() {
+    }
+
+    public GatewayConfig(GatewayConfig source) {
+        this.enabled = source.enabled;
+        this.maxConnections = source.maxConnections;
+        this.transporterType = source.transporterType;
+        this.inputQueue = source.inputQueue;
+        this.outputQueue = source.outputQueue;
+        this.inputApiUrl = source.inputApiUrl;
+        this.outputApiUrl = source.outputApiUrl;
+        this.apiKey = source.apiKey;
+        this.codecType = source.codecType;
+        this.messageCodec = source.messageCodec;
+    }
+
     public boolean isEnabled() {
         return enabled;
     }

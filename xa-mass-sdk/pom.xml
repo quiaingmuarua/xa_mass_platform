@@ -11,10 +11,19 @@
     <packaging>jar</packaging>
     <name>xa-mass-sdk</name>
 
+    <properties>
+        <japicmp.version>0.18.5</japicmp.version>
+    </properties>
+
     <dependencies>
         <dependency>
             <groupId>com.google.code.gson</groupId>
             <artifactId>gson</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.xa.mass</groupId>
+            <artifactId>xa-mass-sdk-contract</artifactId>
+            <version>${project.version}</version>
         </dependency>
         <dependency>
             <groupId>com.xa.mass</groupId>
@@ -33,4 +42,89 @@
             <scope>test</scope>
         </dependency>
     </dependencies>
+
+    <profiles>
+        <profile>
+            <id>sdk-api-compat-check</id>
+            <activation>
+                <property>
+                    <name>mass.sdk.api.baselineVersion</name>
+                </property>
+            </activation>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>com.github.siom79.japicmp</groupId>
+                        <artifactId>japicmp-maven-plugin</artifactId>
+                        <version>${japicmp.version}</version>
+                        <executions>
+                            <execution>
+                                <id>check-sdk-public-api-compatibility</id>
+                                <phase>verify</phase>
+                                <goals>
+                                    <goal>cmp</goal>
+                                </goals>
+                                <configuration>
+                                    <oldVersion>
+                                        <dependency>
+                                            <groupId>${project.groupId}</groupId>
+                                            <artifactId>${project.artifactId}</artifactId>
+                                            <version>${mass.sdk.api.baselineVersion}</version>
+                                        </dependency>
+                                    </oldVersion>
+                                    <newVersion>
+                                        <file>
+                                            <path>${project.build.directory}/${project.build.finalName}.jar</path>
+                                        </file>
+                                    </newVersion>
+                                    <parameter>
+                                        <includes>
+                                            <include>com.xa.mass.sdk.*</include>
+                                            <include>com.xa.mass.sdk.**</include>
+                                        </includes>
+                                        <onlyModified>true</onlyModified>
+                                        <accessModifier>public</accessModifier>
+                                        <breakBuildOnBinaryIncompatibleModifications>true</breakBuildOnBinaryIncompatibleModifications>
+                                        <breakBuildOnSourceIncompatibleModifications>true</breakBuildOnSourceIncompatibleModifications>
+                                        <ignoreMissingClasses>true</ignoreMissingClasses>
+                                        <includeSynthetic>false</includeSynthetic>
+                                    </parameter>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-enforcer-plugin</artifactId>
+                <version>3.5.0</version>
+                <executions>
+                    <execution>
+                        <id>require-sdk-boundary</id>
+                        <phase>validate</phase>
+                        <goals>
+                            <goal>enforce</goal>
+                        </goals>
+                        <configuration>
+                            <rules>
+                                <bannedDependencies>
+                                    <searchTransitive>false</searchTransitive>
+                                    <excludes>
+                                        <exclude>com.xa.mass:xa-mass-api</exclude>
+                                        <exclude>com.xa.mass:xa-mass-dev-app</exclude>
+                                    </excludes>
+                                </bannedDependencies>
+                            </rules>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
 </project>

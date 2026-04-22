@@ -15,7 +15,6 @@ import com.xa.mass.engine.listener.TaskAssignWorker;
 import com.xa.mass.engine.listener.TaskMsgDispatchListener;
 import com.xa.mass.engine.listener.TaskResourceReleaseListener;
 import com.xa.mass.engine.listener.TaskWorkerAssignListener;
-import com.xa.mass.engine.monkey.MonkeyGenerator;
 import com.xa.mass.engine.strategy.TaskWorkerMatchingStrategy;
 import com.xa.mass.engine.service.AssignmentRecordService;
 import com.xa.mass.engine.util.LogUtils;
@@ -45,14 +44,11 @@ public class MassEngine {
         this.config = config;
     }
 
-    private static String getDefaultMockConfig() {
-        return "{\n" +
-                "  \"workers\": " + MonkeyGenerator.exampleJsonDsl() + ",\n" +
-                "  \"tasks\": " + MonkeyGenerator.exampleTasksJsonDsl() + "\n" +
-                "}";
+    public void start() {
+        start(null);
     }
 
-    public void start() {
+    public void start(TaskMsgDispatchListener taskMsgDispatchListener) {
         LogUtils.clearMdc();
         if (!config.isEnabled()) {
             logger.info("MassEngine is disabled, skipping start");
@@ -67,7 +63,6 @@ public class MassEngine {
             taskManager = config.getTaskManager();
             workerManager = config.getWorkerManager();
             recordService = config.getRecordService();
-            TaskMsgDispatchListener taskMsgDispatchListener = config.getTaskMsgDispatchListener();
             var ruleManager = config.getRuleManager();
             var msgAssignListener = new SimpleTaskMsgAssignListener(
                     taskManager,

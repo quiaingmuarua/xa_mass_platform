@@ -1,0 +1,332 @@
+package com.xa.mass.mock.bootstrap;
+
+import com.xa.mass.base.enums.worker.WorkerContextStatus;
+import com.xa.mass.base.model.Task;
+import com.xa.mass.base.model.Worker;
+import com.xa.mass.base.model.WorkerContext;
+import com.xa.mass.engine.rules.RuleDefinition;
+import com.xa.mass.sdk.MassRuntimeControl;
+import com.xa.mass.sdk.model.MassTaskCreateRequest;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+class MockRuntimeDataLoaderTest {
+
+    @TempDir
+    Path tempDir;
+
+    @Test
+    void loadIntoUsesExplicitWorkerContextsWithoutDerivingRoutingSignalsFromWorkerGroup() throws IOException {
+        FakeRuntime runtime = new FakeRuntime();
+        MockRuntimeDataLoader loader = loader(
+                workersJson(),
+                explicitWorkerContextsJson(),
+                tasksJson(),
+                explicitRulesJson()
+        );
+
+        loader.loadInto(runtime);
+
+        assertEquals(2, runtime.workers.size());
+        assertEquals(2, runtime.workerContexts.size());
+        assertEquals(1, runtime.createdTasks.size());
+        assertEquals(2, runtime.rules.size());
+        assertTrue(runtime.workers.stream().allMatch(worker -> worker.supportsProject("demoApp")));
+        assertTrue(runtime.workers.stream().allMatch(worker -> worker.supportsProject("testApp")));
+
+        WorkerContext us = runtime.workerContextById("wc-us-1");
+        WorkerContext gb = runtime.workerContextById("wc-gb-1");
+        assertNotNull(us);
+        assertNotNull(gb);
+        assertEquals("route-us", us.getChannel());
+        assertEquals("route-gb", gb.getChannel());
+        assertEquals("us", us.getAttributes().get("country"));
+        assertEquals("gb", gb.getAttributes().get("country"));
+        assertEquals(WorkerContextStatus.IDLE, us.getStatus());
+        assertEquals(WorkerContextStatus.IDLE, gb.getStatus());
+    }
+
+    @Test
+    void loadIntoKeepsWorkersStatelessWhenExplicitContextsAreMissing() throws IOException {
+        FakeRuntime runtime = new FakeRuntime();
+        MockRuntimeDataLoader loader = loader(
+                workersJson(),
+                null,
+                null,
+                null
+        );
+
+        loader.loadInto(runtime);
+
+        assertEquals(2, runtime.workers.size());
+        assertEquals(0, runtime.workerContexts.size());
+        assertEquals(0, runtime.createdTasks.size());
+    }
+
+    @Test
+    void loadIntoKeepsMultipleContextsForSameWorker() throws IOException {
+        FakeRuntime runtime = new FakeRuntime();
+        MockRuntimeDataLoader loader = loader(
+                workersJson(),
+                multiContextJson(),
+                null,
+                null
+        );
+
+        loader.loadInto(runtime);
+
+        assertEquals(2, runtime.workerContextsFor("worker-us-1").size());
+        assertNotNull(runtime.workerContextById("wc-us-1-a"));
+        assertNotNull(runtime.workerContextById("wc-us-1-b"));
+    }
+
+    @Test
+    void loadIntoKeepsExistingRulesWhenExplicitRuleConfigIsEmpty() throws IOException {
+        FakeRuntime runtime = new FakeRuntime();
+        RuleDefinition baseline = new RuleDefinition();
+        baseline.setId("basic_worker_check");
+        runtime.rules.add(baseline);
+        MockRuntimeDataLoader loader = loader(
+                null,
+                null,
+                null,
+                "[]"
+        );
+
+        loader.loadInto(runtime);
+
+        assertEquals(List.of("basic_worker_check"), runtime.ruleIds());
+    }
+
+    private MockRuntimeDataLoader loader(String workersJson,
+                                         String workerContextsJson,
+                                         String tasksJson,
+                                         String rulesJson) throws IOException {
+        return new MockRuntimeDataLoader(
+                writeOptional("workers.json", workersJson),
+                writeOptional("workerContexts.json", workerContextsJson),
+                writeOptional("tasks.json", tasksJson),
+                writeOptional("rules.json", rulesJson)
+        );
+    }
+
+    private String writeOptional(String filename, String content) throws IOException {
+        if (content == null) {
+            return tempDir.resolve(filename).toString();
+        }
+        Path path = tempDir.resolve(filename);
+        Files.writeString(path, content);
+        return path.toString();
+    }
+
+    private String workersJson() {
+        return """
+                [
+                  {
+                    "MODEL": "Worker",
+                    "COUNT": 1,
+                    "FIELDS": {
+                      "workerId": "worker-us-1",
+                      "workerGroupId": "POOL-US",
+                      "agentVersion": "1.0.0",
+                      "status": "ONLINE"
+                    }
+                  },
+                  {
+                    "MODEL": "Worker",
+                    "COUNT": 1,
+                    "FIELDS": {
+                      "workerId": "worker-gb-1",
+                      "workerGroupId": "POOL-GB",
+                      "agentVersion": "1.0.1",
+                      "status": "ONLINE"
+                    }
+                  }
+                ]
+                """;
+    }
+
+    private String explicitWorkerContextsJson() {
+        return """
+                [
+                  {
+                    "MODEL": "WorkerContext",
+                    "COUNT": 1,
+                    "FIELDS": {
+                      "workerContextId": "wc-us-1",
+                      "workerId": "worker-us-1",
+                      "channel": "route-us",
+                      "status": "IDLE",
+                      "attributes": {
+                        "country": "US",
+                        "carrier": "tmobile"
+                      }
+                    }
+                  },
+                  {
+                    "MODEL": "WorkerContext",
+                    "COUNT": 1,
+                    "FIELDS": {
+                      "workerContextId": "wc-gb-1",
+                      "workerId": "worker-gb-1",
+                      "channel": "route-gb",
+                      "status": "IDLE",
+                      "attributes": {
+                        "country": "GB",
+                        "carrier": "vodafone"
+                      }
+                    }
+                  }
+                ]
+                """;
+    }
+
+    private String multiContextJson() {
+        return """
+                [
+                  {
+                    "MODEL": "WorkerContext",
+                    "COUNT": 1,
+                    "FIELDS": {
+                      "workerContextId": "wc-us-1-a",
+                      "workerId": "worker-us-1",
+                      "channel": "route-us",
+                      "status": "IDLE",
+                      "attributes": {
+                        "country": "US"
+                      }
+                    }
+                  },
+                  {
+                    "MODEL": "WorkerContext",
+                    "COUNT": 1,
+                    "FIELDS": {
+                      "workerContextId": "wc-us-1-b",
+                      "workerId": "worker-us-1",
+                      "channel": "route-us",
+                      "status": "IDLE",
+                      "attributes": {
+                        "country": "US"
+                      }
+                    }
+                  }
+                ]
+                """;
+    }
+
+    private String tasksJson() {
+        return """
+                [
+                  {
+                    "MODEL": "TaskCreateRequestDto",
+                    "COUNT": 1,
+                    "FIELDS": {
+                      "userId": "agent",
+                      "project": "demoApp",
+                      "taskName": "mock-task",
+                      "sharedConfig": {
+                        "textContent": "hello"
+                      },
+                      "inputs": [
+                        {
+                          "target": "target-a"
+                        }
+                      ],
+                      "routingCode": "us",
+                      "batchSize": 1,
+                      "defaultMsgMaxRetryCount": 3
+                    }
+                  }
+                ]
+                """;
+    }
+
+    private String explicitRulesJson() {
+        return """
+                [
+                  {
+                    "MODEL": "RuleDefinition",
+                    "COUNT": 1,
+                    "FIELDS": {
+                      "id": "explicit_app_support",
+                      "name": "explicit_app_support",
+                      "type": "QL_EXPRESS",
+                      "content": "worker.supportedProjects != null"
+                    }
+                  },
+                  {
+                    "MODEL": "RuleDefinition",
+                    "COUNT": 1,
+                    "FIELDS": {
+                      "id": "explicit_routing_code",
+                      "name": "explicit_routing_code",
+                      "type": "QL_EXPRESS",
+                      "content": "task.routingCode != null"
+                    }
+                  }
+                ]
+                """;
+    }
+
+    private static final class FakeRuntime implements MassRuntimeControl {
+        private final List<Worker> workers = new ArrayList<>();
+        private final List<WorkerContext> workerContexts = new ArrayList<>();
+        private final List<MassTaskCreateRequest> createdTasks = new ArrayList<>();
+        private final List<RuleDefinition> rules = new ArrayList<>();
+
+        @Override
+        public Task createTask(MassTaskCreateRequest request) {
+            createdTasks.add(request);
+            return new Task();
+        }
+
+        @Override
+        public void addWorker(Worker worker) {
+            workers.add(worker);
+        }
+
+        @Override
+        public void addWorkerContext(WorkerContext workerContext) {
+            workerContexts.add(workerContext);
+        }
+
+        @Override
+        public void replaceDefaultRules(java.util.Collection<RuleDefinition> rules) {
+            this.rules.clear();
+            this.rules.addAll(rules);
+        }
+
+        @Override
+        public void publishTaskEvents() {
+        }
+
+        private WorkerContext workerContextById(String workerContextId) {
+            return workerContexts.stream()
+                    .filter(workerContext -> workerContextId.equals(workerContext.getWorkerContextId()))
+                    .findFirst()
+                    .orElse(null);
+        }
+
+        private List<WorkerContext> workerContextsFor(String workerId) {
+            return workerContexts.stream()
+                    .filter(workerContext -> workerId.equals(workerContext.getWorkerId()))
+                    .toList();
+        }
+
+        private List<String> ruleIds() {
+            return rules.stream().map(RuleDefinition::getId).toList();
+        }
+    }
+}

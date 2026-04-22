@@ -1,4 +1,5 @@
-<project xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://maven.apache.org/POM/4.0.0"
+<project xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xmlns="http://maven.apache.org/POM/4.0.0"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
     <parent>
@@ -6,44 +7,11 @@
         <artifactId>xa_mass_platform</artifactId>
         <version>0.0.1-SNAPSHOT</version>
     </parent>
-    <artifactId>xa-mass-api</artifactId>
+    <artifactId>xa-mass-sdk-contract</artifactId>
     <packaging>jar</packaging>
-    <name>xa-mass-api</name>
-    <dependencies>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-web</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.google.code.gson</groupId>
-            <artifactId>gson</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.github.xiaoymin</groupId>
-            <artifactId>knife4j-openapi3-jakarta-spring-boot-starter</artifactId>
-            <version>4.4.0</version>
-        </dependency>
+    <name>xa-mass-sdk-contract</name>
 
-        <dependency>
-            <groupId>com.xa.mass</groupId>
-            <artifactId>xa-mass-gateway</artifactId>
-            <version>0.0.1-SNAPSHOT</version>
-        </dependency>
-        <dependency>
-            <groupId>com.xa.mass</groupId>
-            <artifactId>xa-mass-engine</artifactId>
-            <version>0.0.1-SNAPSHOT</version>
-        </dependency>
-        <dependency>
-            <groupId>com.xa.mass</groupId>
-            <artifactId>xa-mass-core</artifactId>
-            <version>0.0.1-SNAPSHOT</version>
-        </dependency>
-        <dependency>
-            <groupId>com.xa.mass</groupId>
-            <artifactId>xa-mass-sdk-contract</artifactId>
-            <version>0.0.1-SNAPSHOT</version>
-        </dependency>
+    <dependencies>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
@@ -59,7 +27,7 @@
                 <version>3.5.0</version>
                 <executions>
                     <execution>
-                        <id>ban-direct-sdk-runtime-dependency</id>
+                        <id>ban-runtime-module-dependencies</id>
                         <phase>validate</phase>
                         <goals>
                             <goal>enforce</goal>
@@ -69,7 +37,11 @@
                                 <bannedDependencies>
                                     <searchTransitive>false</searchTransitive>
                                     <excludes>
+                                        <exclude>com.xa.mass:xa-mass-engine</exclude>
+                                        <exclude>com.xa.mass:xa-mass-gateway</exclude>
                                         <exclude>com.xa.mass:xa-mass-sdk</exclude>
+                                        <exclude>com.xa.mass:xa-mass-api</exclude>
+                                        <exclude>com.xa.mass:xa-mass-dev-app</exclude>
                                     </excludes>
                                 </bannedDependencies>
                             </rules>
@@ -79,4 +51,4 @@
             </plugin>
         </plugins>
     </build>
-</project> 
+</project>

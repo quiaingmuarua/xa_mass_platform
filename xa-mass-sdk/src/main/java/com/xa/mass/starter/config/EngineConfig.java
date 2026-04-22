@@ -1,25 +1,15 @@
 package com.xa.mass.starter.config;
 
-import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.TaskManager;
-import com.xa.mass.engine.listener.TaskMsgDispatchListener;
 import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.engine.rules.RuleManagerFactory;
 import com.xa.mass.engine.service.AssignmentRecordService;
 import com.xa.mass.engine.strategy.SimpleTaskScheduler;
 import com.xa.mass.engine.strategy.TaskScheduler;
 import com.xa.mass.engine.strategy.TaskWorkerMatchingStrategy;
+import com.xa.mass.sdk.MassBootstrapDataProvider;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import java.io.IOException;
-import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.Map;
 
 /**
@@ -27,26 +17,35 @@ import java.util.Map;
  */
 public class EngineConfig {
 
-    private static final Logger logger = LoggerFactory.getLogger(EngineConfig.class);
     private boolean enabled = true;
     private int workerThreads = 8;
-    private String mockConfigPath = "mock_config.json";
-    private boolean mockMode = false;
-    private JsonObject mockConfigRoot;
-    private String workerConfigPath = "mock/mock_workers.json";
-    private String workerContextConfigPath = "mock/mock_worker_contexts.json";
-    private String taskConfigPath = "mock/mock_tasks.json";
-    private String ruleConfigPath = "mock/mock_rules.json";
 
     private TaskScheduler scheduler = new SimpleTaskScheduler();
-    private TaskManager taskManager = new TaskManager(scheduler);
+    private TaskManager taskManager;
     private TaskWorkerMatchingStrategy matchingStrategy;
     private WorkerManager workerManager = new WorkerManager();
     private AssignmentRecordService recordService = new AssignmentRecordService();
     private RuleManager<Map<String, Object>> ruleManager;
-    private TaskMsgDispatchListener taskMsgDispatchListener;
+    private MassBootstrapDataProvider bootstrapDataProvider;
     private long assignmentRetryDelayMillis = 1000L;
     private long leaseWatchdogIntervalSeconds = 30L;
+
+    public EngineConfig() {
+    }
+
+    public EngineConfig(EngineConfig source) {
+        this.enabled = source.enabled;
+        this.workerThreads = source.workerThreads;
+        this.scheduler = source.scheduler;
+        this.taskManager = source.taskManager;
+        this.matchingStrategy = source.matchingStrategy;
+        this.workerManager = source.workerManager;
+        this.recordService = source.recordService;
+        this.ruleManager = source.ruleManager;
+        this.bootstrapDataProvider = source.bootstrapDataProvider;
+        this.assignmentRetryDelayMillis = source.assignmentRetryDelayMillis;
+        this.leaseWatchdogIntervalSeconds = source.leaseWatchdogIntervalSeconds;
+    }
 
     public boolean isEnabled() {
         return enabled;
@@ -64,116 +63,18 @@ public class EngineConfig {
         this.workerThreads = workerThreads;
     }
 
-    public String getMockConfigPath() {
-        return mockConfigPath;
-    }
-
-    public void setMockConfigPath(String mockConfigPath) {
-        this.mockConfigPath = mockConfigPath;
-    }
-
-    public boolean isMockMode() {
-        return mockMode;
-    }
-
-    public void setMockMode(boolean mockMode) {
-        this.mockMode = mockMode;
-    }
-
-    public String getWorkerConfigPath() {
-        return workerConfigPath;
-    }
-
-    public void setWorkerConfigPath(String workerConfigPath) {
-        this.workerConfigPath = workerConfigPath;
-    }
-
-    public String getWorkerContextConfigPath() {
-        return workerContextConfigPath;
-    }
-
-    public void setWorkerContextConfigPath(String workerContextConfigPath) {
-        this.workerContextConfigPath = workerContextConfigPath;
-    }
-
-    public String getTaskConfigPath() {
-        return taskConfigPath;
-    }
-
-    public void setTaskConfigPath(String taskConfigPath) {
-        this.taskConfigPath = taskConfigPath;
-    }
-
-    public String getRuleConfigPath() {
-        return ruleConfigPath;
-    }
-
-    public void setRuleConfigPath(String ruleConfigPath) {
-        this.ruleConfigPath = ruleConfigPath;
-    }
-
-    public JsonObject getMockConfigRoot() {
-        if (mockConfigRoot != null) {
-            return mockConfigRoot.deepCopy();
-        }
-
-        JsonObject root = new JsonObject();
-        addArrayConfig(root, "workers", workerConfigPath);
-        addArrayConfig(root, "workerContexts", workerContextConfigPath);
-        addArrayConfig(root, "tasks", taskConfigPath);
-        addArrayConfig(root, "rules", ruleConfigPath);
-        return root;
-    }
-
-    public void setMockConfigRoot(JsonObject mockConfigRoot) {
-        this.mockConfigRoot = mockConfigRoot;
-    }
-
-    private void addArrayConfig(JsonObject root, String fieldName, String configPath) {
-        try {
-            String json = readConfigFile(configPath);
-            root.add(fieldName, JsonParser.parseString(json).getAsJsonArray());
-        } catch (IOException e) {
-            // Config file is optional; absence is expected in test/minimal environments.
-            logger.debug("Optional config file not found, skipping [field={}, path={}]", fieldName, configPath);
-        } catch (Exception e) {
-            logger.warn("Failed to parse config file [field={}, path={}]: {}", fieldName, configPath, e.getMessage());
-        }
-    }
-
-    private String readConfigFile(String configPath) throws IOException {
-        if (configPath.startsWith("classpath:")) {
-            String classpathPath = configPath.substring("classpath:".length());
-            try (InputStream is = getClass().getClassLoader().getResourceAsStream(classpathPath)) {
-                if (is != null) {
-                    return new String(is.readAllBytes(), StandardCharsets.UTF_8);
-                }
-            }
-            throw new IOException("Config file not found in classpath: " + classpathPath);
-        }
-
-        try (InputStream is = getClass().getClassLoader().getResourceAsStream(configPath)) {
-            if (is != null) {
-                return new String(is.readAllBytes(), StandardCharsets.UTF_8);
-            }
-        }
-
-        try {
-            return Files.readString(Path.of(configPath));
-        } catch (IOException e) {
-            throw new IOException("Config file not found in classpath or file system: " + configPath, e);
-        }
-    }
-
     public TaskScheduler getScheduler() {
         return scheduler;
     }
 
     public void setScheduler(TaskScheduler scheduler) {
-        this.scheduler = scheduler;
-        if (this.taskManager == null || this.taskManager.getScheduler() != scheduler) {
-            this.taskManager = new TaskManager(scheduler);
+        if (scheduler == null) {
+            throw new IllegalArgumentException("scheduler must not be null");
         }
+        if (this.taskManager != null && this.taskManager.getScheduler() != scheduler) {
+            throw new IllegalStateException("Cannot replace scheduler after taskManager has been configured");
+        }
+        this.scheduler = scheduler;
     }
 
     public TaskWorkerMatchingStrategy getMatchingStrategy() {
@@ -185,10 +86,20 @@ public class EngineConfig {
     }
 
     public TaskManager getTaskManager() {
+        if (taskManager == null) {
+            taskManager = new TaskManager(scheduler);
+        }
         return taskManager;
     }
 
     public void setTaskManager(TaskManager taskManager) {
+        if (taskManager == null) {
+            this.taskManager = null;
+            return;
+        }
+        if (taskManager.getScheduler() != scheduler) {
+            throw new IllegalArgumentException("Configured taskManager must use the same scheduler as EngineConfig");
+        }
         this.taskManager = taskManager;
     }
 
@@ -219,12 +130,12 @@ public class EngineConfig {
         this.ruleManager = ruleManager;
     }
 
-    public TaskMsgDispatchListener getTaskMsgDispatchListener() {
-        return taskMsgDispatchListener;
+    public MassBootstrapDataProvider getBootstrapDataProvider() {
+        return bootstrapDataProvider;
     }
 
-    public void setTaskMsgDispatchListener(TaskMsgDispatchListener taskMsgDispatchListener) {
-        this.taskMsgDispatchListener = taskMsgDispatchListener;
+    public void setBootstrapDataProvider(MassBootstrapDataProvider bootstrapDataProvider) {
+        this.bootstrapDataProvider = bootstrapDataProvider;
     }
 
     public long getAssignmentRetryDelayMillis() {

@@ -33,13 +33,10 @@ public class MassApplicationExample {
         // 示例5: 自定义配置应用
         exampleCustomConfiguration();
 
-        // 示例6: Mock模式应用
-        exampleMockMode();
-
-        // 示例7: 只启动网关
+        // 示例6: 只启动网关
         exampleGatewayOnly();
 
-        // 示例8: 只启动引擎
+        // 示例7: 只启动引擎
         exampleEngineOnly();
     }
 
@@ -151,8 +148,7 @@ public class MassApplicationExample {
                         .queueMode())
                 .engine(engine -> engine
                         .enabled(true)
-                        .workerThreads(12)
-                        .mockData("custom_mock_config.json"))
+                        .workerThreads(12))
                 .build();
 
         // 启动应用
@@ -165,49 +161,7 @@ public class MassApplicationExample {
     }
 
     /**
-     * 示例6: Mock模式
-     * 展示与Spring Boot集成的简化方式
-     */
-    private static void exampleMockMode() {
-        logger.info("📝 示例6: Mock模式");
-
-        // 创建内存队列
-        MessageQueue<Envelope> inputQueue = new InMemoryMessageQueue<>("Envelope",Envelope.class);
-        MessageQueue<Envelope> outputQueue = new InMemoryMessageQueue<>("Envelope",Envelope.class);
-
-        // 使用流式API配置Mock模式
-        MassApplication app = MassApplicationBuilder.create()
-                .server(8080)
-                .gateway(gateway -> gateway
-                        .enabled(true)
-                        .maxConnections(100)
-                        .inputQueue(inputQueue)
-                        .outputQueue(outputQueue))
-                .engine(engine -> engine
-                        .enabled(true)
-                        .workerThreads(4)
-                        .mockData(
-                                "mock/mock_workers.json",
-                                "mock/mock_worker_contexts.json",
-                                "mock/mock_tasks.json",
-                                "mock/mock_rules.json"
-                        ))
-                .build();
-
-        // 启动应用
-        app.start();
-
-        // 加载Mock数据
-        app.loadMockData();
-
-        logger.info("✅ Mock模式应用启动成功");
-
-        // 停止应用
-        app.stop();
-    }
-
-    /**
-     * 示例7: 只启动网关
+     * 示例6: 只启动网关
      * 展示组件选择启动功能
      */
     private static void exampleGatewayOnly() {
@@ -239,7 +193,7 @@ public class MassApplicationExample {
     }
 
     /**
-     * 示例8: 只启动引擎
+     * 示例7: 只启动引擎
      * 展示组件选择启动功能
      */
     private static void exampleEngineOnly() {
@@ -252,8 +206,7 @@ public class MassApplicationExample {
                         .enabled(false)) // 禁用网关
                 .engine(engine -> engine
                         .enabled(true)
-                        .workerThreads(4)
-                        .mockData("mock/mock_config.json"))
+                        .workerThreads(4))
                 .build();
 
         // 启动应用（只会启动引擎）

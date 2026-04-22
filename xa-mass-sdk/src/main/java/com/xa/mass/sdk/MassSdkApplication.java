@@ -12,12 +12,15 @@ import com.xa.mass.engine.model.TaskCreateRequestDto;
 import com.xa.mass.engine.model.TaskResumeResult;
 import com.xa.mass.engine.model.TaskStateResolutionResult;
 import com.xa.mass.engine.model.TaskStateValidationResult;
+import com.xa.mass.engine.rules.RuleDefinition;
+import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.sdk.model.MassTaskCreateRequest;
 import com.xa.mass.sdk.model.MassTaskRequest;
 import com.xa.mass.sdk.model.MassTaskRequestMapper;
 import com.xa.mass.starter.MassEngine;
 import com.xa.mass.starter.MassApplication;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -28,9 +31,10 @@ import java.util.Objects;
  * <p>The SDK artifact also carries the lower-level {@link MassApplication}
  * runtime. This wrapper keeps the common lifecycle surface explicit while
  * still allowing an escape hatch through {@link #unwrap()} for advanced
- * embedding paths.
+ * embedding paths. {@code com.xa.mass.sdk.*} is the stable public surface;
+ * lower-level starter/runtime types remain advanced integration seams.
  */
-public final class MassSdkApplication {
+public final class MassSdkApplication implements MassRuntimeControl {
 
     private final MassApplication delegate;
 
@@ -78,6 +82,7 @@ public final class MassSdkApplication {
         return getEngine() != null ? getEngine().getWorkerManager() : null;
     }
 
+    @Override
     public Task createTask(MassTaskCreateRequest request) {
         MassEngine engine = requireStartedEngine();
         return engine.createTask(toEngineRequest(request));
@@ -161,10 +166,12 @@ public final class MassSdkApplication {
         return requireStartedTaskManager().validateTaskState(taskId);
     }
 
+    @Override
     public void addWorker(Worker worker) {
         requireStartedEngine().addWorker(worker);
     }
 
+    @Override
     public void addWorkerContext(WorkerContext workerContext) {
         requireStartedEngine().addWorkerContext(workerContext);
     }
@@ -197,14 +204,29 @@ public final class MassSdkApplication {
         return requireStartedWorkerManager().isWorkerOnline(workerId);
     }
 
-    public void loadMockData() {
-        requireStartedEngine();
-        delegate.loadMockData();
+    @Override
+    public void replaceDefaultRules(Collection<RuleDefinition> rules) {
+        Objects.requireNonNull(rules, "rules");
+        RuleManager<Map<String, Object>> ruleManager = requireStartedRuleManager();
+        ruleManager.clear();
+        ruleManager.addDefaultRules(List.copyOf(rules));
     }
 
+    @Override
     public void publishTaskEvents() {
         requireStartedEngine();
         delegate.publishTaskEvents();
+    }
+
+    /**
+     * @deprecated Mock/bootstrap loaders should be wired explicitly outside the SDK
+     * core via {@link MassBootstrapDataProvider} and {@link MassRuntimeControl}.
+     * This compatibility shim delegates to a configured provider when present.
+     */
+    @Deprecated(forRemoval = false)
+    public void loadMockData() {
+        requireStartedEngine();
+        delegate.loadMockData();
     }
 
     /**
@@ -246,6 +268,14 @@ public final class MassSdkApplication {
             throw new IllegalStateException("Worker manager is unavailable for this SDK application");
         }
         return workerManager;
+    }
+
+    private RuleManager<Map<String, Object>> requireStartedRuleManager() {
+        RuleManager<Map<String, Object>> ruleManager = requireStartedEngine().getConfig().getRuleManager();
+        if (ruleManager == null) {
+            throw new IllegalStateException("Rule manager is unavailable for this SDK application");
+        }
+        return ruleManager;
     }
 
     private MassEngine requireStartedEngine() {

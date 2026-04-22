@@ -29,6 +29,13 @@ jobs:
           cache: maven
       - name: Build and run module tests
         run: mvn -B test --file pom.xml
+      - name: Check xa-mass-sdk public API compatibility
+        if: ${{ vars.XA_MASS_SDK_API_BASELINE_VERSION != '' }}
+        run: >-
+          mvn -B -pl xa-mass-sdk -am
+          -DskipTests
+          -Dmass.sdk.api.baselineVersion=${{ vars.XA_MASS_SDK_API_BASELINE_VERSION }}
+          verify
 
   lifecycle-integration:
     runs-on: ubuntu-latest
@@ -56,4 +63,3 @@ jobs:
           -Dtest=TaskApiIntegrationTest,TaskApiFailureResultIntegrationTest,TaskApiLifecycleGuardsIntegrationTest,MassWebSocketClientImplTest,WebSocketClientStarterTest
           -Dsurefire.failIfNoSpecifiedTests=false
           test
-

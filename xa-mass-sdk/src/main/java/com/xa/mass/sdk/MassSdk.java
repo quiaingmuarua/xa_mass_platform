@@ -4,7 +4,7 @@ import com.xa.mass.base.channel.messaging.api.MessageQueue;
 import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.rules.RuleManager;
-import com.xa.mass.engine.strategy.SimpleTaskScheduler;
+import com.xa.mass.engine.strategy.TaskScheduler;
 import com.xa.mass.gateway.queue.Envelope;
 import com.xa.mass.starter.builder.MassApplicationBuilder;
 
@@ -18,7 +18,9 @@ import java.util.function.Consumer;
  * <p>The same {@code xa-mass-sdk} artifact also carries the embedded runtime
  * composition under {@code com.xa.mass.starter}. This facade keeps a clearer
  * entry surface for library callers while still allowing advanced access to
- * the lower-level runtime builder when needed.
+ * the lower-level runtime builder when needed. Treat {@code com.xa.mass.sdk.*}
+ * as the stable public API and {@code com.xa.mass.starter.*} as advanced
+ * embedded runtime wiring.
  */
 public final class MassSdk {
 
@@ -165,20 +167,12 @@ public final class MassSdk {
             return this;
         }
 
-        public EngineOptions mockData(String workerConfigPath,
-                                      String workerContextConfigPath,
-                                      String taskConfigPath,
-                                      String ruleConfigPath) {
-            delegate.mockData(workerConfigPath, workerContextConfigPath, taskConfigPath, ruleConfigPath);
+        public EngineOptions bootstrapDataProvider(MassBootstrapDataProvider bootstrapDataProvider) {
+            delegate.bootstrapDataProvider(bootstrapDataProvider);
             return this;
         }
 
-        public EngineOptions mockData(String mockConfigPath) {
-            delegate.mockData(mockConfigPath);
-            return this;
-        }
-
-        public EngineOptions scheduler(SimpleTaskScheduler scheduler) {
+        public EngineOptions scheduler(TaskScheduler scheduler) {
             delegate.scheduler(scheduler);
             return this;
         }
@@ -195,6 +189,29 @@ public final class MassSdk {
 
         public EngineOptions ruleManager(RuleManager<Map<String, Object>> ruleManager) {
             delegate.ruleManager(ruleManager);
+            return this;
+        }
+
+        /**
+         * @deprecated Mock/bootstrap data should be wired through
+         * {@link #bootstrapDataProvider(MassBootstrapDataProvider)}.
+         */
+        @Deprecated(forRemoval = false)
+        public EngineOptions mockData(String workerConfigPath,
+                                      String workerContextConfigPath,
+                                      String taskConfigPath,
+                                      String ruleConfigPath) {
+            delegate.mockData(workerConfigPath, workerContextConfigPath, taskConfigPath, ruleConfigPath);
+            return this;
+        }
+
+        /**
+         * @deprecated Mock/bootstrap data should be wired through
+         * {@link #bootstrapDataProvider(MassBootstrapDataProvider)}.
+         */
+        @Deprecated(forRemoval = false)
+        public EngineOptions mockData(String mockConfigPath) {
+            delegate.mockData(mockConfigPath);
             return this;
         }
 

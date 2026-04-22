@@ -2,10 +2,6 @@ package com.xa.mass.starter;
 
 import com.xa.mass.base.channel.tranporter.MessageTransporter;
 import com.xa.mass.base.debug.ManualDebugChatProtocol;
-import com.xa.mass.base.enums.worker.WorkerContextStatus;
-import com.xa.mass.base.model.Worker;
-import com.xa.mass.base.model.WorkerContext;
-import com.xa.mass.engine.rules.RuleDefinition;
 import com.xa.mass.gateway.dispatcher.DispatcherContext;
 import com.xa.mass.gateway.dispatcher.DispatcherContextRegistry;
 import com.xa.mass.gateway.dispatcher.MessageHandlerRegistry;
@@ -20,12 +16,15 @@ import com.xa.mass.gateway.session.ServerSessionManager;
 import com.xa.mass.starter.config.EngineConfig;
 import com.xa.mass.starter.config.GatewayConfig;
 import com.xa.mass.engine.util.LogUtils;
+import com.xa.mass.engine.listener.TaskMsgDispatchListener;
+import com.xa.mass.engine.rules.RuleDefinition;
+import com.xa.mass.sdk.MassBootstrapDataProvider;
+import com.xa.mass.sdk.MassRuntimeControl;
+import com.xa.mass.sdk.model.MassTaskCreateRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Objects;
+import java.util.Collection;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -71,12 +70,6 @@ public class MassApplication {
                 startGateway();
             } else {
                 logger.info("MassGateway is disabled, skipping start");
-            }
-
-            if (engineConfig.isEnabled()) {
-                startEngine();
-            } else {
-                logger.info("MassEngine is disabled, skipping start");
             }
 
             startMessageDispatcher();
@@ -143,11 +136,12 @@ public class MassApplication {
 
             MessageHandlerRegistry messageHandlerRegistry = new MessageHandlerRegistry();
             messageHandlerRegistry.autoRegister();
+            TaskMsgDispatchListener taskMsgDispatchListener = null;
             if (engineConfig.isEnabled() && engineConfig.getTaskManager() != null) {
                 com.xa.mass.starter.worker.WebSocketWorkerAdapter workerAdapter =
                         new com.xa.mass.starter.worker.WebSocketWorkerAdapter(
                                 dispatcherContext, engineConfig.getTaskManager());
-                engineConfig.setTaskMsgDispatchListener(workerAdapter);
+                taskMsgDispatchListener = workerAdapter;
                 messageHandlerRegistry.register(
                         null,
                         MessageType.TASK,
@@ -173,6 +167,12 @@ public class MassApplication {
             } else {
                 logger.info("MassGateway is disabled, skipping build");
             }
+
+            if (engineConfig.isEnabled()) {
+                startEngine(taskMsgDispatchListener);
+            } else {
+                logger.info("MassEngine is disabled, skipping start");
+            }
         } catch (Exception e) {
             logger.error("Failed to initialize core components", e);
             throw new RuntimeException("Failed to initialize core components", e);
@@ -191,10 +191,10 @@ public class MassApplication {
         }
     }
 
-    private void startEngine() {
+    private void startEngine(TaskMsgDispatchListener taskMsgDispatchListener) {
         logger.info("Starting MassEngine");
         if (engine != null) {
-            engine.start();
+            engine.start(taskMsgDispatchListener);
             logger.info("MassEngine started");
         } else {
             logger.error("MassEngine is null - check if engine is enabled in config");
@@ -228,221 +228,24 @@ public class MassApplication {
         return running.get() && serverStater != null && serverStater.isRunning();
     }
 
-    private void registerMockMessageHandlers(DispatchRuntimeContext dispatcherContext) {
-        logger.info("Registering mock gateway message handlers");
-
-        com.xa.mass.gateway.dispatcher.handler.MassMessageHandler taskHandler = msg -> {
-            logger.info("[Gateway Handler] Received mock task message: {}", msg);
-            return new ArrayList<>();
-        };
-        com.xa.mass.gateway.dispatcher.handler.MassMessageHandler workerHandler = msg -> {
-            logger.info("[Gateway Handler] Received mock worker status message: {}", msg);
-            return new ArrayList<>();
-        };
-
-        dispatcherContext.getMessageHandlerRegistry().register(
-                "mock-task", MessageType.TASK, "", taskHandler
-        );
-        dispatcherContext.getMessageHandlerRegistry().register(
-                "mock-worker", MessageType.STATUS, "", workerHandler
-        );
-        logger.info("Mock gateway message handlers registered");
-    }
-
-    public void loadMockData(MassEngine engine, EngineConfig config) {
-        logger.info("Loading mock data");
-
-        try {
-            com.google.gson.JsonObject root = config.getMockConfigRoot();
-            logger.info("Mock config loaded successfully");
-
-            if (root.has("workers")) {
-                List<Worker> workers = new ArrayList<>();
-                com.google.gson.JsonElement workerElem = root.get("workers");
-                if (workerElem.isJsonArray()) {
-                    for (com.google.gson.JsonElement dsl : workerElem.getAsJsonArray()) {
-                        workers.addAll(com.xa.mass.engine.monkey.MonkeyGenerator.generateWorkers(dsl.toString()));
-                    }
-                } else {
-                    workers.addAll(com.xa.mass.engine.monkey.MonkeyGenerator.generateWorkers(workerElem.toString()));
-                }
-
-                logger.info("Generated {} mock workers", workers.size());
-                for (Worker worker : workers) {
-                    normalizeMockWorker(worker);
-                    engine.addWorker(worker);
-                    logger.debug("Loaded mock worker: {} (workerGroupId: {}, status: {})",
-                            worker.getWorkerId(), worker.getWorkerGroupId(), worker.getStatus());
-                }
-            }
-
-            if (root.has("workerContexts")) {
-                List<WorkerContext> workerContexts = new ArrayList<>();
-                com.google.gson.JsonElement wcElem = root.get("workerContexts");
-                if (wcElem.isJsonArray()) {
-                    for (com.google.gson.JsonElement dsl : wcElem.getAsJsonArray()) {
-                        workerContexts.addAll(com.xa.mass.engine.monkey.MonkeyGenerator.generateWorkerContexts(dsl.toString()));
-                    }
-                } else {
-                    workerContexts.addAll(com.xa.mass.engine.monkey.MonkeyGenerator.generateWorkerContexts(wcElem.toString()));
-                }
-
-                logger.info("Generated {} mock workerContexts", workerContexts.size());
-                for (WorkerContext wc : workerContexts) {
-                    normalizeMockWorkerContext(wc);
-                    if (wc.getWorkerId() == null || wc.getWorkerId().isBlank()) {
-                        logger.warn("Skipping mock workerContext {} because workerId is missing", wc.getWorkerContextId());
-                        continue;
-                    }
-                    engine.addWorkerContext(wc);
-                    logger.debug("Loaded mock workerContext: {} (workerId: {}, channel: {}, attributes: {})",
-                            wc.getWorkerContextId(), wc.getWorkerId(), wc.getChannel(), wc.getAttributes());
-                }
-            }
-
-            verifyWorkerData(engine);
-            loadMockRules(config);
-
-            if (root.has("tasks")) {
-                List<com.xa.mass.engine.model.TaskCreateRequestDto> taskDtos = new ArrayList<>();
-                com.google.gson.JsonElement taskElem = root.get("tasks");
-                if (taskElem.isJsonArray()) {
-                    for (com.google.gson.JsonElement dsl : taskElem.getAsJsonArray()) {
-                        taskDtos.addAll(com.xa.mass.engine.monkey.MonkeyGenerator.generateTasks(dsl.toString()));
-                    }
-                } else {
-                    taskDtos.addAll(com.xa.mass.engine.monkey.MonkeyGenerator.generateTasks(taskElem.toString()));
-                }
-
-                logger.info("Generated {} mock task requests", taskDtos.size());
-                for (com.xa.mass.engine.model.TaskCreateRequestDto dto : taskDtos) {
-                    engine.createTask(dto);
-                    logger.debug("Loaded mock task request: {} (routingCode: {}, project: {}, batchSize: {})",
-                            dto.getTaskName(), dto.getRoutingCode(), dto.getProject(), dto.getBatchSize());
-                }
-            }
-
-            logger.info("Mock data load completed");
-        } catch (Exception e) {
-            logger.error("Mock data load failed", e);
-            throw new RuntimeException(e);
-        }
-    }
-
-    public void verifyWorkerData(MassEngine engine) {
-        com.xa.mass.engine.WorkerManager workerManager = engine.getWorkerManager();
-        if (workerManager != null) {
-            List<Worker> allWorkers = workerManager.getAllWorkers();
-            java.util.Map<String, Long> workerGroupCounts = allWorkers.stream()
-                    .collect(java.util.stream.Collectors.groupingBy(
-                            worker -> worker.getWorkerGroupId() == null || worker.getWorkerGroupId().isBlank()
-                                    ? "(blank)"
-                                    : worker.getWorkerGroupId(),
-                            java.util.LinkedHashMap::new,
-                            java.util.stream.Collectors.counting()
-                    ));
-
-            logger.info("Verified mock workers: total={}, groups={}",
-                    allWorkers.size(), workerGroupCounts);
-
-            for (int i = 0; i < Math.min(3, allWorkers.size()); i++) {
-                Worker worker = allWorkers.get(i);
-                List<WorkerContext> workerContexts = workerManager.getWorkerContexts(worker.getWorkerId());
-                WorkerContext wc = workerContexts.isEmpty() ? null : workerContexts.get(0);
-                logger.info("Worker {}: id={}, workerGroupId={}, status={}, workerContextCount={}, sampleWorkerContextId={}, sampleWorkerContextStatus={}",
-                        i + 1,
-                        worker.getWorkerId(),
-                        worker.getWorkerGroupId(),
-                        worker.getStatus(),
-                        workerContexts.size(),
-                        wc != null ? wc.getWorkerContextId() : "null",
-                        wc != null ? wc.getStatus() : "null");
-            }
-        }
-    }
-
-    void normalizeMockWorker(Worker worker) {
-        if (worker == null) {
-            return;
-        }
-        if (worker.getWorkerGroupId() != null) {
-            worker.setWorkerGroupId(worker.getWorkerGroupId().toLowerCase());
-        }
-        List<String> supportedProjects = normalizeSupportedProjects(worker);
-        if (!supportedProjects.isEmpty()) {
-            worker.setSupportedProjects(supportedProjects);
-        }
-    }
-
-    void normalizeMockWorkerContext(WorkerContext wc) {
-        if (wc == null) {
-            return;
-        }
-        if (wc.getChannel() != null) {
-            wc.setChannel(wc.getChannel().toLowerCase());
-        }
-        if (wc.getStatus() == null) {
-            wc.setStatus(WorkerContextStatus.IDLE);
-        }
-        if (!wc.getAttributes().isEmpty()) {
-            java.util.Map<String, String> normalizedAttributes = new java.util.LinkedHashMap<>(wc.getAttributes());
-            String country = normalizedAttributes.get("country");
-            if (country != null) {
-                normalizedAttributes.put("country", country.toLowerCase());
-            }
-            wc.setAttributes(normalizedAttributes);
-        }
-    }
-
-    void loadMockRules(EngineConfig config) {
-        if (config == null || config.getRuleManager() == null) {
-            return;
-        }
-
-        com.google.gson.JsonObject root = config.getMockConfigRoot();
-        if (!root.has("rules")) {
-            return;
-        }
-
-        List<RuleDefinition> rules = new ArrayList<>();
-        com.google.gson.JsonElement ruleElem = root.get("rules");
-        if (ruleElem.isJsonArray()) {
-            for (com.google.gson.JsonElement dsl : ruleElem.getAsJsonArray()) {
-                rules.addAll(com.xa.mass.engine.monkey.MonkeyGenerator.generateRules(dsl.toString()));
-            }
-        } else {
-            rules.addAll(com.xa.mass.engine.monkey.MonkeyGenerator.generateRules(ruleElem.toString()));
-        }
-
-        if (rules.isEmpty()) {
-            logger.info("Mock rules config is empty; keeping existing default rules ({})",
-                    config.getRuleManager().getDefaultRules().size());
-            return;
-        }
-
-        config.getRuleManager().clear();
-        config.getRuleManager().addDefaultRules(rules);
-        logger.info("Loaded {} explicit mock rules", rules.size());
-    }
-
-    private List<String> normalizeSupportedProjects(Worker worker) {
-        List<String> projects = worker.getSupportedProjects();
-        if (projects == null || projects.isEmpty()) {
-            return defaultSupportedProjects();
-        }
-        return projects.stream().filter(Objects::nonNull).distinct().toList();
-    }
-
-    private List<String> defaultSupportedProjects() {
-        return List.of("demoApp", "testApp");
-    }
-
-    public void loadMockData() {
-        loadMockData(requireConfiguredEngine(), engineConfig);
-    }
-
     public void publishTaskEvents() {
         requireConfiguredEngine().publishTaskEvents();
+    }
+
+    /**
+     * @deprecated Mock/bootstrap loaders should be configured explicitly through
+     * {@link MassBootstrapDataProvider} and operate on {@link MassRuntimeControl}.
+     */
+    @Deprecated(forRemoval = false)
+    public void loadMockData() {
+        MassBootstrapDataProvider bootstrapDataProvider = engineConfig.getBootstrapDataProvider();
+        if (bootstrapDataProvider == null) {
+            throw new IllegalStateException(
+                    "No bootstrap data provider is configured for this runtime. "
+                            + "Configure bootstrapDataProvider(...) or call your loader directly with MassRuntimeControl."
+            );
+        }
+        bootstrapDataProvider.loadInto(runtimeControl());
     }
 
     public MassEngine getEngine() {
@@ -454,5 +257,51 @@ public class MassApplication {
             throw new IllegalStateException("Mass engine is unavailable for this application");
         }
         return engine;
+    }
+
+    private MassRuntimeControl runtimeControl() {
+        return new MassRuntimeControl() {
+            @Override
+            public com.xa.mass.base.model.Task createTask(MassTaskCreateRequest request) {
+                return requireConfiguredEngine().createTask(toEngineRequest(request));
+            }
+
+            @Override
+            public void addWorker(com.xa.mass.base.model.Worker worker) {
+                requireConfiguredEngine().addWorker(worker);
+            }
+
+            @Override
+            public void addWorkerContext(com.xa.mass.base.model.WorkerContext workerContext) {
+                requireConfiguredEngine().addWorkerContext(workerContext);
+            }
+
+            @Override
+            public void replaceDefaultRules(Collection<RuleDefinition> rules) {
+                var ruleManager = requireConfiguredEngine().getConfig().getRuleManager();
+                ruleManager.clear();
+                ruleManager.addDefaultRules(java.util.List.copyOf(rules));
+            }
+
+            @Override
+            public void publishTaskEvents() {
+                MassApplication.this.publishTaskEvents();
+            }
+        };
+    }
+
+    private com.xa.mass.engine.model.TaskCreateRequestDto toEngineRequest(MassTaskCreateRequest request) {
+        com.xa.mass.engine.model.TaskCreateRequestDto dto = new com.xa.mass.engine.model.TaskCreateRequestDto();
+        dto.setUserId(request.getUserId());
+        dto.setProject(request.getProject());
+        dto.setTaskName(request.getTaskName());
+        dto.setSharedConfig(request.getSharedConfig());
+        dto.setInputs(request.getInputs());
+        dto.setRoutingCode(request.getRoutingCode());
+        dto.setBatchSize(request.getBatchSize());
+        dto.setDefaultMsgMaxRetryCount(request.getDefaultMsgMaxRetryCount());
+        dto.setOpenEnded(request.isOpenEnded());
+        dto.setMaxRuntimeSeconds(request.getMaxRuntimeSeconds());
+        return dto;
     }
 }

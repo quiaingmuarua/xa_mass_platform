@@ -1,16 +1,13 @@
 package com.xa.mass.mock;
 
 import com.xa.mass.base.channel.messaging.api.MessageQueue;
-import com.xa.mass.engine.WorkerManager;
-import com.xa.mass.engine.TaskManager;
-import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.engine.util.LogUtils;
 import com.xa.mass.gateway.queue.Envelope;
+import com.xa.mass.mock.bootstrap.MockRuntimeDataLoader;
 import com.xa.mass.sdk.MassSdk;
 import com.xa.mass.sdk.MassSdkApplication;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
@@ -28,15 +25,6 @@ import org.springframework.core.env.Environment;
 public class MockApplicationSpringBootApp {
 
     private static final Logger log = LoggerFactory.getLogger(MockApplicationSpringBootApp.class);
-
-    @Autowired
-    private TaskManager taskManager;
-
-    @Autowired
-    private WorkerManager workerManager;
-
-    @Autowired
-    private RuleManager ruleManager;
 
     @Value("${mass.websocket.port:18088}")
     private int massWebSocketPort;
@@ -99,16 +87,24 @@ public class MockApplicationSpringBootApp {
                 .engine(engine -> engine
                         .enabled(true)
                         .workerThreads(workerThreads)
-                        .taskManager(taskManager)
-                        .workerManager(workerManager)
-                        .ruleManager(ruleManager)
-                        .mockData(workersConfigPath, workerContextsConfigPath, tasksConfigPath, rulesConfigPath))
+                        .bootstrapDataProvider(mockRuntimeDataLoader()))
                 .build();
     }
 
     @Bean
     @Profile("dev")
-    public CommandLineRunner fullStackStarter(MassSdkApplication app) {
+    public MockRuntimeDataLoader mockRuntimeDataLoader() {
+        return new MockRuntimeDataLoader(
+                workersConfigPath,
+                workerContextsConfigPath,
+                tasksConfigPath,
+                rulesConfigPath
+        );
+    }
+
+    @Bean
+    @Profile("dev")
+    public CommandLineRunner fullStackStarter(MassSdkApplication app, MockRuntimeDataLoader mockRuntimeDataLoader) {
         return args -> {
             log.info("Starting internal gateway + engine runtime");
             try {
@@ -120,7 +116,7 @@ public class MockApplicationSpringBootApp {
                 Thread.sleep(1000L);
 
                 try {
-                    app.loadMockData();
+                    mockRuntimeDataLoader.loadInto(app);
                     LogUtils.clearMdc();
                     log.info("Mock data loaded");
                 } catch (Exception e) {

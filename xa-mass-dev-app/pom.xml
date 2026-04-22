@@ -18,6 +18,30 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
             </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-enforcer-plugin</artifactId>
+                <version>3.5.0</version>
+                <executions>
+                    <execution>
+                        <id>ban-direct-engine-dependency</id>
+                        <phase>validate</phase>
+                        <goals>
+                            <goal>enforce</goal>
+                        </goals>
+                        <configuration>
+                            <rules>
+                                <bannedDependencies>
+                                    <searchTransitive>false</searchTransitive>
+                                    <excludes>
+                                        <exclude>com.xa.mass:xa-mass-engine</exclude>
+                                    </excludes>
+                                </bannedDependencies>
+                            </rules>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
         </plugins>
     </build>
     <packaging>jar</packaging>
@@ -31,11 +55,6 @@
         <dependency>
             <groupId>com.xa.mass</groupId>
             <artifactId>xa-mass-api</artifactId>
-            <version>${project.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>com.xa.mass</groupId>
-            <artifactId>xa-mass-engine</artifactId>
             <version>${project.version}</version>
         </dependency>
         <dependency>
@@ -61,5 +80,3 @@
         </dependency>
     </dependencies>
 </project> 
-
-

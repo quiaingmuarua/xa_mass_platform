@@ -6,6 +6,10 @@ import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.engine.model.TaskCreateRequestDto;
+import com.xa.mass.engine.rules.RuleDefinition;
+import com.xa.mass.engine.rules.RuleManager;
+import com.xa.mass.engine.rules.RuleType;
+import com.xa.mass.engine.strategy.SimpleTaskScheduler;
 import com.xa.mass.gateway.queue.Envelope;
 import com.xa.mass.sdk.catalog.PayloadType;
 import com.xa.mass.sdk.catalog.TaskMode;
@@ -13,6 +17,7 @@ import com.xa.mass.sdk.model.MassTaskCreateRequest;
 import com.xa.mass.sdk.model.MassTaskRequest;
 import com.xa.mass.starter.MassApplication;
 import com.xa.mass.starter.MassEngine;
+import com.xa.mass.starter.config.EngineConfig;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.function.Executable;
@@ -24,6 +29,7 @@ import java.util.Set;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -143,6 +149,48 @@ class MassSdkTest {
     }
 
     @Test
+    void replaceDefaultRulesUsesOpenRuntimeCapability() {
+        MassApplication delegate = mock(MassApplication.class);
+        MassEngine engine = mock(MassEngine.class);
+        EngineConfig config = new EngineConfig();
+        RuleManager<Map<String, Object>> ruleManager = config.getRuleManager();
+        RuleDefinition replacement = new RuleDefinition();
+        replacement.setId("sdk_rule");
+        replacement.setName("sdk_rule");
+        replacement.setType(RuleType.QL_EXPRESS);
+        replacement.setContent("true");
+
+        when(delegate.getEngine()).thenReturn(engine);
+        when(engine.isRunning()).thenReturn(true);
+        when(engine.getConfig()).thenReturn(config);
+
+        MassSdkApplication app = new MassSdkApplication(delegate);
+        app.replaceDefaultRules(List.of(replacement));
+
+        Assertions.assertEquals(List.of(replacement), ruleManager.getDefaultRules());
+    }
+
+    @Test
+    void engineConfigRejectsSchedulerMismatchAfterTaskManagerIsConfigured() {
+        EngineConfig config = new EngineConfig();
+        SimpleTaskScheduler scheduler = new SimpleTaskScheduler();
+        config.setScheduler(scheduler);
+        config.setTaskManager(new com.xa.mass.engine.TaskManager(scheduler));
+
+        assertThrows(IllegalStateException.class,
+                () -> config.setScheduler(new SimpleTaskScheduler()));
+    }
+
+    @Test
+    void engineConfigRejectsTaskManagerSchedulerMismatchAfterSchedulerIsConfigured() {
+        EngineConfig config = new EngineConfig();
+        config.setScheduler(new SimpleTaskScheduler());
+
+        assertThrows(IllegalArgumentException.class,
+                () -> config.setTaskManager(new com.xa.mass.engine.TaskManager(new SimpleTaskScheduler())));
+    }
+
+    @Test
     void createTaskSupportsModeAwareSdkRequest() {
         MassApplication delegate = mock(MassApplication.class);
         MassEngine engine = mock(MassEngine.class);
@@ -224,9 +272,12 @@ class MassSdkTest {
                 MassSdkApplication.class.getDeclaredMethod("getEngine"),
                 MassSdkApplication.class.getDeclaredMethod("getTaskManager"),
                 MassSdkApplication.class.getDeclaredMethod("getWorkerManager"),
+                MassSdkApplication.class.getDeclaredMethod("loadMockData"),
                 MassSdk.Builder.class.getDeclaredMethod("unwrap"),
                 MassSdk.GatewayOptions.class.getDeclaredMethod("unwrap"),
-                MassSdk.EngineOptions.class.getDeclaredMethod("unwrap")
+                MassSdk.EngineOptions.class.getDeclaredMethod("unwrap"),
+                MassSdk.EngineOptions.class.getDeclaredMethod("mockData", String.class),
+                MassSdk.EngineOptions.class.getDeclaredMethod("mockData", String.class, String.class, String.class, String.class)
         );
 
         for (java.lang.reflect.Method method : escapeHatches) {
@@ -261,6 +312,7 @@ class MassSdkTest {
                 () -> app.isWorkerLocked("worker-1"),
                 () -> app.isWorkerOnline("worker-1"),
                 app::loadMockData,
+                () -> app.replaceDefaultRules(List.of()),
                 app::publishTaskEvents
         );
 

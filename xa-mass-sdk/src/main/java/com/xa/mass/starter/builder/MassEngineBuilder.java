@@ -6,6 +6,7 @@ import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.engine.service.AssignmentRecordService;
 import com.xa.mass.engine.strategy.TaskScheduler;
 import com.xa.mass.engine.strategy.TaskWorkerMatchingStrategy;
+import com.xa.mass.sdk.MassBootstrapDataProvider;
 import com.xa.mass.starter.MassEngine;
 import com.xa.mass.starter.config.EngineConfig;
 
@@ -23,14 +24,9 @@ public class MassEngineBuilder {
     private TaskScheduler scheduler;
     private TaskWorkerMatchingStrategy matchingStrategy;
     private AssignmentRecordService recordService;
+    private MassBootstrapDataProvider bootstrapDataProvider;
 
-    private Boolean mockMode;
     private Integer workerThreads;
-    private String workerConfigPath;
-    private String workerContextConfigPath;
-    private String taskConfigPath;
-    private String ruleConfigPath;
-    private String mockConfigPath;
 
     private MassEngineBuilder() {
     }
@@ -74,8 +70,8 @@ public class MassEngineBuilder {
         return this;
     }
 
-    public MassEngineBuilder mockMode(boolean mockMode) {
-        this.mockMode = mockMode;
+    public MassEngineBuilder bootstrapDataProvider(MassBootstrapDataProvider bootstrapDataProvider) {
+        this.bootstrapDataProvider = bootstrapDataProvider;
         return this;
     }
 
@@ -84,34 +80,34 @@ public class MassEngineBuilder {
         return this;
     }
 
+    /**
+     * @deprecated Mock/bootstrap data should be wired through
+     * {@link #bootstrapDataProvider(MassBootstrapDataProvider)}.
+     */
+    @Deprecated(forRemoval = false)
     public MassEngineBuilder mockData(String workerConfigPath, String workerContextConfigPath,
                                       String taskConfigPath, String ruleConfigPath) {
-        this.workerConfigPath = workerConfigPath;
-        this.workerContextConfigPath = workerContextConfigPath;
-        this.taskConfigPath = taskConfigPath;
-        this.ruleConfigPath = ruleConfigPath;
         return this;
     }
 
+    /**
+     * @deprecated Mock/bootstrap data should be wired through
+     * {@link #bootstrapDataProvider(MassBootstrapDataProvider)}.
+     */
+    @Deprecated(forRemoval = false)
     public MassEngineBuilder mockData(String mockConfigPath) {
-        this.mockConfigPath = mockConfigPath;
         return this;
     }
 
     public MassEngine build() {
         if (workerThreads != null) config.setWorkerThreads(workerThreads);
-        if (mockMode != null) config.setMockMode(mockMode);
-        if (workerConfigPath != null) config.setWorkerConfigPath(workerConfigPath);
-        if (workerContextConfigPath != null) config.setWorkerContextConfigPath(workerContextConfigPath);
-        if (taskConfigPath != null) config.setTaskConfigPath(taskConfigPath);
-        if (ruleConfigPath != null) config.setRuleConfigPath(ruleConfigPath);
-        if (mockConfigPath != null) config.setMockConfigPath(mockConfigPath);
         if (scheduler != null) config.setScheduler(scheduler);
         if (matchingStrategy != null) config.setMatchingStrategy(matchingStrategy);
         if (taskManager != null) config.setTaskManager(taskManager);
         if (workerManager != null) config.setWorkerManager(workerManager);
         if (recordService != null) config.setRecordService(recordService);
         if (ruleManager != null) config.setRuleManager(ruleManager);
+        if (bootstrapDataProvider != null) config.setBootstrapDataProvider(bootstrapDataProvider);
         return new MassEngine(config);
     }
 }

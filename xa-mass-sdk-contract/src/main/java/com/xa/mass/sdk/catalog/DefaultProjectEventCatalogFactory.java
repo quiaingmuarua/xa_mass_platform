@@ -1,7 +1,5 @@
 package com.xa.mass.sdk.catalog;
 
-import com.xa.mass.base.enums.Project;
-
 import java.util.List;
 
 /**
@@ -67,18 +65,18 @@ public final class DefaultProjectEventCatalogFactory {
                 .taskModes(List.of(TaskMode.STREAMING))
                 .build());
 
-        registry.registerProject(project(Project.DEMO_APP.getCode(), Project.DEMO_APP.getName(),
+        registry.registerProject(project("demoApp", "演示应用",
                 "Default demo project used by the validation shell.", ALL_DEFAULT_EVENT_CODES));
-        registry.registerProject(project(Project.TEST_APP.getCode(), Project.TEST_APP.getName(),
+        registry.registerProject(project("testApp", "testApp",
                 "Test project used by fixtures and local regression coverage.", ALL_DEFAULT_EVENT_CODES));
-        registry.registerProject(project(Project.RCS_APP.getCode(), Project.RCS_APP.getName(),
+        registry.registerProject(project("rcsApp", "GoogleRcs",
                 "RCS-oriented messaging project defaults.", List.of(
                         "sms.acquire-number",
                         "sms.wait-code",
                         "chatbot.reply",
                         "chatbot.session-message"
                 )));
-        registry.registerProject(project(Project.TELEGRAM_APP.getCode(), Project.TELEGRAM_APP.getName(),
+        registry.registerProject(project("telegramApp", "Telegram",
                 "Telegram-oriented messaging project defaults.", List.of(
                         "sms.wait-code",
                         "chatbot.reply",
