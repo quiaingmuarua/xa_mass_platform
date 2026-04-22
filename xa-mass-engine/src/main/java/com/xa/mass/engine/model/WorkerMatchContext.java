@@ -7,6 +7,7 @@ import com.xa.mass.engine.WorkerManager;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * Rule-evaluation context for worker matching.
@@ -45,6 +46,7 @@ public class WorkerMatchContext {
         if (workerContext != null) {
             ctx.put("hasWorkerContext", true);
             ctx.put("workerContextId", workerContext.getWorkerContextId());
+            ctx.put("workerContextProject", workerContext.getProject());
             ctx.put("workerContextStatus", workerContext.getStatus().name());
             ctx.put("workerContextChannel", workerContext.getChannel());
             ctx.put("workerContextAttributes", workerContext.getAttributes());
@@ -56,6 +58,7 @@ public class WorkerMatchContext {
         } else {
             ctx.put("hasWorkerContext", false);
             ctx.put("workerContextId", null);
+            ctx.put("workerContextProject", null);
             ctx.put("workerContextStatus", null);
             ctx.put("workerContextChannel", null);
             ctx.put("workerContextAttributes", Map.of());
@@ -82,6 +85,8 @@ public class WorkerMatchContext {
 
         ctx.put("appCount", worker.getSupportedProjects() != null ? worker.getSupportedProjects().size() : 0);
         ctx.put("supportsProject", worker.supportsProject(task.getProject()));
+        ctx.put("workerContextProjectMatchesTaskProject",
+                workerContext != null && Objects.equals(workerContext.getProject(), task.getProject()));
         ctx.put("workerContextChannelMatchesRoutingCode",
                 workerContext != null && routingCode != null && routingCode.equals(workerContext.getChannel()));
         ctx.put("workerContextAttributeCountryMatchesRoutingCode",

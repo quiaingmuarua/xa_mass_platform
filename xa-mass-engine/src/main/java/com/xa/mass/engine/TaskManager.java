@@ -378,6 +378,15 @@ public class TaskManager {
         return resultService.handleTaskMessageResult(taskId, msgId, success, detail, errorCode);
     }
 
+    public boolean handleTaskMessageResult(String taskId,
+                                           String msgId,
+                                           boolean success,
+                                           String detail,
+                                           String errorCode,
+                                           Map<String, Object> output) {
+        return resultService.handleTaskMessageResult(taskId, msgId, success, detail, errorCode, output);
+    }
+
     private void validateCreateRequest(TaskCreateRequestDto dto) {
         if (dto == null) {
             throw new IllegalArgumentException("task request body is required");

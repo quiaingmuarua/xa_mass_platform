@@ -1,5 +1,6 @@
 package com.xa.mass.base.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.xa.mass.base.enums.worker.WorkerContextStatus;
 
 import java.time.LocalDateTime;
@@ -16,6 +17,7 @@ import java.util.Objects;
 public class WorkerContext {
     private String workerContextId;
     private String workerId;
+    private ProjectRef project;
     private WorkerContextStatus status;
     private String channel;
     private String lastBindTaskId;
@@ -52,6 +54,23 @@ public class WorkerContext {
 
     public void setWorkerId(String workerId) {
         this.workerId = workerId;
+    }
+
+    public String getProject() {
+        return project == null ? null : project.getCode();
+    }
+
+    public void setProject(String project) {
+        this.project = project == null ? null : ProjectRef.require(project);
+    }
+
+    @JsonIgnore
+    public ProjectRef getProjectRef() {
+        return project;
+    }
+
+    public void setProjectRef(ProjectRef project) {
+        this.project = project == null ? null : ProjectRef.require(project.getCode());
     }
 
     public WorkerContextStatus getStatus() {
@@ -233,6 +252,7 @@ public class WorkerContext {
         return "WorkerContext{" +
                 "workerContextId='" + workerContextId + '\'' +
                 ", workerId='" + workerId + '\'' +
+                ", project='" + project + '\'' +
                 ", status=" + status +
                 ", channel='" + channel + '\'' +
                 ", attributes=" + attributes +

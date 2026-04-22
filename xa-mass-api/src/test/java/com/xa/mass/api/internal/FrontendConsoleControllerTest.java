@@ -55,6 +55,19 @@ class FrontendConsoleControllerTest {
     }
 
     @Test
+    void nestedWorkerConsoleRouteServesLocalIndexWhenBuildExists() throws Exception {
+        Path distDir = Files.createDirectories(tempDir.resolve("frontend-dist-worker"));
+        Files.writeString(distDir.resolve("index.html"), "<!doctype html><html><body>worker-console-shell</body></html>");
+        configureRoutingService(distDir);
+        mockMvc = MockMvcBuilders.standaloneSetup(new FrontendConsoleController(routingService)).build();
+
+        mockMvc.perform(get("/resources/workers/worker-001"))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_HTML))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("worker-console-shell")));
+    }
+
+    @Test
     void legacyConfigPageRedirectsToConfigsRouteWhenLocalBuildExists() throws Exception {
         Path distDir = createLocalDist();
         configureRoutingService(distDir);

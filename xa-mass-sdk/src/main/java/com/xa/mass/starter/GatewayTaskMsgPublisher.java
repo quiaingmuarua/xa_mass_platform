@@ -73,7 +73,7 @@ public class GatewayTaskMsgPublisher implements TaskMsgDispatchListener {
         MessageContext context = new MessageContext();
         context.setWorkerId(taskMsg.getLatestAttemptWorkerId());
         context.setConnRole(DEFAULT_CONN_ROLE);
-        context.setTid(task.getTid());
+        context.setTaskId(task.getTid());
         context.setRetryCount(taskMsg.getRetryCount());
         return context;
     }
@@ -85,6 +85,8 @@ public class GatewayTaskMsgPublisher implements TaskMsgDispatchListener {
         Map<String, Object> params = new LinkedHashMap<>();
         params.put("taskId", task.getTid());
         params.put("taskName", task.getTaskName());
+        params.put("project", task.getProject());
+        params.put("userId", task.getUser() != null ? task.getUser().getUserId() : null);
         if (taskMsg.getInput() != null) {
             params.putAll(taskMsg.getInput());
         }

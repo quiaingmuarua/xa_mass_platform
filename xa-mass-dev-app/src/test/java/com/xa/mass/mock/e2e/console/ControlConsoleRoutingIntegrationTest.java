@@ -49,13 +49,16 @@ class ControlConsoleRoutingIntegrationTest extends AbstractMockE2eTest {
         HttpResponse<String> root = get("/");
         HttpResponse<String> tasks = get("/tasks");
         HttpResponse<String> workers = get("/resources/workers");
+        HttpResponse<String> workerDetail = get("/resources/workers/worker-001");
 
         assertEquals(200, root.statusCode());
         assertEquals(200, tasks.statusCode());
         assertEquals(200, workers.statusCode());
+        assertEquals(200, workerDetail.statusCode());
         assertTrue(root.body().contains("integration-console-shell"));
         assertTrue(tasks.body().contains("<div id=\"app\"></div>"));
         assertTrue(workers.body().contains("<div id=\"app\"></div>"));
+        assertTrue(workerDetail.body().contains("<div id=\"app\"></div>"));
     }
 
     @Test

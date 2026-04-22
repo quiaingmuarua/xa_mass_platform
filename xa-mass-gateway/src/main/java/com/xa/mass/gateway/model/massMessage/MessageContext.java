@@ -37,8 +37,20 @@ public class MessageContext {
         return tid;
     }
 
+    /**
+     * Canonical accessor for the task binding carried over the transport
+     * boundary. {@link #getTid()} remains as the legacy alias.
+     */
+    public String getTaskId() {
+        return tid;
+    }
+
     public void setTid(String tid) {
         this.tid = tid;
+    }
+
+    public void setTaskId(String taskId) {
+        this.tid = taskId;
     }
 
     public Integer getRetryCount() {
@@ -53,16 +65,32 @@ public class MessageContext {
         return lastAckMsgId;
     }
 
+    public String getLastAckMessageId() {
+        return lastAckMsgId;
+    }
+
     public void setLastAckMsgId(String lastAckMsgId) {
         this.lastAckMsgId = lastAckMsgId;
+    }
+
+    public void setLastAckMessageId(String lastAckMessageId) {
+        this.lastAckMsgId = lastAckMessageId;
     }
 
     public String getCurStepId() {
         return curStepId;
     }
 
+    public String getStepId() {
+        return curStepId;
+    }
+
     public void setCurStepId(String curStepId) {
         this.curStepId = curStepId;
+    }
+
+    public void setStepId(String stepId) {
+        this.curStepId = stepId;
     }
 
     @Override

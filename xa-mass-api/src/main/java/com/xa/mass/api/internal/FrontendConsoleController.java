@@ -46,6 +46,7 @@ public class FrontendConsoleController {
             "/tasks",
             "/tasks/{taskId}",
             "/resources/workers",
+            "/resources/workers/{workerId}",
             "/resources/worker-contexts",
             "/resources/rules",
             "/resources/configs",

@@ -119,6 +119,7 @@ public class WorkerApiController {
         Map<String, Object> item = new LinkedHashMap<>();
         item.put("workerContextId", workerContext.getWorkerContextId());
         item.put("workerId", workerContext.getWorkerId());
+        item.put("project", workerContext.getProject());
         item.put("status", workerContext.getStatus() != null ? workerContext.getStatus().name() : null);
         item.put("channel", workerContext.getChannel());
         item.put("attributes", workerContext.getAttributes());

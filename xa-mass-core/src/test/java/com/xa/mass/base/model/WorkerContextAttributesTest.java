@@ -6,6 +6,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -34,5 +35,16 @@ class WorkerContextAttributesTest {
         assertTrue(wc.getAttributes().isEmpty());
         assertThrows(UnsupportedOperationException.class,
                 () -> wc.getAttributes().put("country", "us"));
+    }
+
+    @Test
+    void projectBindingIsCanonicalizedOnWorkerContext() {
+        WorkerContext workerContext = new WorkerContext();
+
+        workerContext.setProject("demoApp");
+
+        assertEquals("demoApp", workerContext.getProject());
+        assertNotNull(workerContext.getProjectRef());
+        assertEquals("demoApp", workerContext.getProjectRef().getCode());
     }
 }

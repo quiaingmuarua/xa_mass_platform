@@ -151,7 +151,8 @@ Update constraints:
 - `Task.user` is the canonical task-level business-user binding; create/update requests still use `userId` as the edge input shape
 - `Task.sharedConfig` is the task-level generic payload/config map
 - `TaskMsg.input` is the per-item input payload
-- `TaskMsg.output` is the per-item output payload
+- `TaskMsg.output` is the canonical logical success payload for a work item; legacy `result` remains only as a compatibility summary/string projection
+- `TaskMsgAttempt.output` is the concrete callback/output snapshot for one execution attempt; use it for audit/troubleshooting rather than overloading `TaskMsg`
 - `target` is only a conventional key inside `TaskMsg.input`; no dedicated target compatibility accessor remains
 - `Task.intakeStatus` is the active append-window lifecycle truth; `openEnded` is only the compatibility request/response projection
 - `TaskMsg.latestAttemptWorkerId`, `latestAttemptWorkerContextId`, and `latestAttemptBatchId` are compatibility projections of the latest `TaskMsgAttempt`, not the execution-history source of truth
@@ -190,7 +191,9 @@ Important current rules:
 ## 8. WorkerContext And Matching Baseline
 
 - `WorkerContextStatus` is domain-neutral: `IDLE`, `RESERVED`, `OCCUPIED`, `BLOCKED`, `INVALID`
+- `WorkerContext.project` is the first-class project/resource binding for account-like contexts; do not hide project ownership only inside attributes
 - `WorkerMatchContext` exposes `workerAttributes` and `workerContextAttributes` to rule evaluation
+- `WorkerMatchContext` also exposes `workerContextProject` and `workerContextProjectMatchesTaskProject`
 - `WorkerMatchContext` also exposes `hasWorkerContext` and `taskHasRoutingRequirement`
 - `RuleDefinition.content` is the canonical rule expression; `expression` and `desc` remain compatibility aliases, not separate rule truths
 - `isWorkerContextAvailable` now means truly free for new assignment (`IDLE` and not expired)

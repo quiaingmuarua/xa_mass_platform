@@ -11,6 +11,8 @@ import com.xa.mass.engine.util.TraceEventLogger;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.Map;
+
 /**
  * Owns task-message callback handling, retry sequencing, and result-side event ordering.
  */
@@ -85,10 +87,19 @@ class TaskResultService {
     }
 
     boolean handleTaskMessageResult(String taskId, String msgId, boolean success, String detail) {
-        return handleTaskMessageResult(taskId, msgId, success, detail, null);
+        return handleTaskMessageResult(taskId, msgId, success, detail, null, null);
     }
 
     boolean handleTaskMessageResult(String taskId, String msgId, boolean success, String detail, String errorCode) {
+        return handleTaskMessageResult(taskId, msgId, success, detail, errorCode, null);
+    }
+
+    boolean handleTaskMessageResult(String taskId,
+                                    String msgId,
+                                    boolean success,
+                                    String detail,
+                                    String errorCode,
+                                    Map<String, Object> output) {
         Task task = taskManager.getTask(taskId);
         if (task == null) {
             logger.warn("Cannot handle task message result because task {} was not found", taskId);
@@ -144,16 +155,20 @@ class TaskResultService {
             }
 
             if (success) {
-                return handleSuccess(taskId, taskMsg, activeAttempt, detail);
+                return handleSuccess(taskId, taskMsg, activeAttempt, detail, output);
             }
             if (taskMsg.getRetryCount() < taskMsg.getMaxRetryCount()) {
-                return handleRetryableFailure(taskId, taskMsg, activeAttempt, detail);
+                return handleRetryableFailure(taskId, taskMsg, activeAttempt, detail, errorCode, output);
             }
-            return handleRetryExhaustedFailure(taskId, taskMsg, activeAttempt, detail, errorCode);
+            return handleRetryExhaustedFailure(taskId, taskMsg, activeAttempt, detail, errorCode, output);
         }
     }
 
-    private boolean handleSuccess(String taskId, TaskMsg taskMsg, TaskMsgAttempt activeAttempt, String detail) {
+    private boolean handleSuccess(String taskId,
+                                  TaskMsg taskMsg,
+                                  TaskMsgAttempt activeAttempt,
+                                  String detail,
+                                  Map<String, Object> output) {
         String msgId = taskMsg.getMsgId();
         if (taskMsg.getStatus() == TaskMsgStatus.INIT && !taskMsg.markAsAssigned()) {
             logger.warn("Failed to mark task message {} as ASSIGNED before success completion", msgId);
@@ -179,10 +194,12 @@ class TaskResultService {
             logger.warn("Failed to mark task message {} as SUCCESS", msgId);
             return false;
         }
+        taskMsg.setOutput(output);
         if (!activeAttempt.markSucceeded()) {
             logger.warn("Failed to mark attempt {} as SUCCEEDED", activeAttempt.getAttemptId());
             return false;
         }
+        activeAttempt.setOutput(output);
         TraceEventLogger.taskMsgStatusTransition(
                 taskMsg,
                 beforeFinalStatus,
@@ -208,12 +225,19 @@ class TaskResultService {
         return true;
     }
 
-    private boolean handleRetryableFailure(String taskId, TaskMsg taskMsg, TaskMsgAttempt activeAttempt, String detail) {
+    private boolean handleRetryableFailure(String taskId,
+                                           TaskMsg taskMsg,
+                                           TaskMsgAttempt activeAttempt,
+                                           String detail,
+                                           String errorCode,
+                                           Map<String, Object> output) {
         String msgId = taskMsg.getMsgId();
         if (!activeAttempt.markRevokedForRetry()) {
             logger.warn("Failed to revoke attempt {} for retry", activeAttempt.getAttemptId());
             return false;
         }
+        activeAttempt.setErrorCode(errorCode);
+        activeAttempt.setOutput(output);
         taskManager.updateTaskMessageAttempt(taskId, msgId, activeAttempt);
 
         TaskMsgStatus beforeRetryFailureStatus = taskMsg.getStatus();
@@ -259,12 +283,14 @@ class TaskResultService {
                                                 TaskMsg taskMsg,
                                                 TaskMsgAttempt activeAttempt,
                                                 String detail,
-                                                String errorCode) {
+                                                String errorCode,
+                                                Map<String, Object> output) {
         String msgId = taskMsg.getMsgId();
-        if (!activeAttempt.markFailed(TaskMsgAttemptFinalReason.BUSINESS_FAILURE, detail)) {
+        if (!activeAttempt.markFailed(TaskMsgAttemptFinalReason.BUSINESS_FAILURE, detail, errorCode)) {
             logger.warn("Failed to mark attempt {} as FAILED", activeAttempt.getAttemptId());
             return false;
         }
+        activeAttempt.setOutput(output);
         taskManager.updateTaskMessageAttempt(taskId, msgId, activeAttempt);
 
         if (taskMsg.getStatus() == TaskMsgStatus.INIT && !taskMsg.markAsAssigned()) {

@@ -55,13 +55,15 @@ class GatewayTaskMsgPublisherTest {
         assertEquals(MessageDirection.SERVER, message.getFrom());
         assertEquals("worker-1", message.getContext().getWorkerId());
         assertEquals(GatewayTaskMsgPublisher.DEFAULT_CONN_ROLE, message.getContext().getConnRole());
-        assertEquals("task-1", message.getContext().getTid());
+        assertEquals("task-1", message.getContext().getTaskId());
 
         TaskPayload payload = new com.google.gson.Gson().fromJson(message.getPayload(), TaskPayload.class);
         assertNotNull(payload);
         assertEquals(1, payload.getSteps().size());
         assertEquals("batch-0", payload.getSteps().get(0).getStepId());
         assertEquals("task-dispatch", payload.getSteps().get(0).getAction());
+        assertEquals("demoApp", payload.getSteps().get(0).getParams().get("project"));
+        assertEquals("agent-1", payload.getSteps().get(0).getParams().get("userId"));
     }
 
     private Task task() {
@@ -69,6 +71,7 @@ class GatewayTaskMsgPublisherTest {
         task.setTid("task-1");
         task.setTaskName("task-name");
         task.setProject("demoApp");
+        task.setUser(com.xa.mass.base.model.UserRef.of("agent-1"));
         task.setSharedConfig(java.util.Map.of("textContent", "hello"));
         return task;
     }

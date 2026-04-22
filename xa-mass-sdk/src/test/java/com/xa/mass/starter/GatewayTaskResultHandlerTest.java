@@ -23,6 +23,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -56,6 +57,11 @@ class GatewayTaskResultHandlerTest {
         TaskMsg updated = taskManager.getTaskMessage(task.getTid(), taskMsg.getMsgId());
         assertEquals(TaskMsgStatus.SUCCESS, updated.getStatus());
         assertEquals("ok", updated.getResult());
+        assertEquals("SUCCESS", updated.getOutput().get("status"));
+        assertEquals("ok", updated.getOutput().get("mockData"));
+        TaskMsgAttempt attempt = taskManager.getLatestTaskMessageAttempt(task.getTid(), taskMsg.getMsgId());
+        assertNotNull(attempt);
+        assertEquals("SUCCESS", attempt.getOutput().get("status"));
         assertEquals(TaskStatus.TERMINAL, taskManager.getTask(task.getTid()).getStatus());
     }
 
@@ -66,11 +72,16 @@ class GatewayTaskResultHandlerTest {
         taskMsg.setMaxRetryCount(0);
         taskManager.updateTaskMessage(task.getTid(), taskMsg);
 
-        handler.handle(message(task, taskMsg, "FAILED", "boom"));
+        handler.handle(message(task, taskMsg, "FAILED", "boom", "RATE_LIMITED"));
 
         TaskMsg updated = taskManager.getTaskMessage(task.getTid(), taskMsg.getMsgId());
         assertEquals(TaskMsgStatus.FAILED, updated.getStatus());
         assertEquals("boom", updated.getErrorMessage());
+        assertEquals("RATE_LIMITED", updated.getErrorCode());
+        TaskMsgAttempt attempt = taskManager.getLatestTaskMessageAttempt(task.getTid(), taskMsg.getMsgId());
+        assertNotNull(attempt);
+        assertEquals("RATE_LIMITED", attempt.getErrorCode());
+        assertEquals("FAILED", attempt.getOutput().get("status"));
     }
 
     @Test
@@ -122,6 +133,10 @@ class GatewayTaskResultHandlerTest {
     }
 
     private MassMessage message(Task task, TaskMsg taskMsg, String status, String detail) {
+        return message(task, taskMsg, status, detail, null);
+    }
+
+    private MassMessage message(Task task, TaskMsg taskMsg, String status, String detail, String errorCode) {
         MassMessage msg = new MassMessage();
         msg.setMsgId(taskMsg.getMsgId());
         msg.setMsgType(MessageType.TASK);
@@ -129,11 +144,17 @@ class GatewayTaskResultHandlerTest {
         msg.setFrom(MessageDirection.CLIENT);
         msg.setProject(task.getProject());
         MessageContext context = new MessageContext();
-        context.setTid(task.getTid());
+        context.setTaskId(task.getTid());
         context.setWorkerId("worker-1");
         context.setConnRole(GatewayTaskMsgPublisher.DEFAULT_CONN_ROLE);
         msg.setContext(context);
-        msg.setPayload(gson.toJsonTree(Map.of("status", status, "mockData", detail)));
+        java.util.LinkedHashMap<String, Object> payload = new java.util.LinkedHashMap<>();
+        payload.put("status", status);
+        payload.put("mockData", detail);
+        if (errorCode != null) {
+            payload.put("errorCode", errorCode);
+        }
+        msg.setPayload(gson.toJsonTree(payload));
         return msg;
     }
 

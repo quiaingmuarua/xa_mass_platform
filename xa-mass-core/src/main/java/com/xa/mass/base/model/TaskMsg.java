@@ -4,6 +4,7 @@ import com.xa.mass.base.enums.taskmsg.TaskMsgFinalReason;
 import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 
 import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -227,7 +228,7 @@ public class TaskMsg {
     }
 
     public void setInput(Map<String, Object> input) {
-        this.input = input;
+        this.input = input == null ? new HashMap<>() : new HashMap<>(input);
     }
 
     public Map<String, Object> getOutput() {
@@ -235,7 +236,7 @@ public class TaskMsg {
     }
 
     public void setOutput(Map<String, Object> output) {
-        this.output = output;
+        this.output = copyNullableMap(output);
     }
 
     public boolean isCompleted() {
@@ -297,6 +298,7 @@ public class TaskMsg {
         this.errorMessage = null;
         this.errorCode = null;
         this.result = null;
+        this.output = null;
         // finalReason is already cleared by setStatus(INIT) side-effect
     }
 
@@ -335,6 +337,8 @@ public class TaskMsg {
     public boolean markAsSuccess(String result, TaskMsgFinalReason finalReason) {
         if (transitionTo(TaskMsgStatus.SUCCESS)) {
             setResult(result);
+            this.errorMessage = null;
+            this.errorCode = null;
             setFinalReason(finalReason);
             return true;
         }
@@ -348,6 +352,8 @@ public class TaskMsg {
     public boolean markAsFailed(String errorMessage, TaskMsgFinalReason finalReason) {
         if (transitionTo(TaskMsgStatus.FAILED)) {
             setErrorMessage(errorMessage);
+            this.result = null;
+            this.output = null;
             setFinalReason(finalReason);
             return true;
         }
@@ -360,6 +366,8 @@ public class TaskMsg {
 
     public boolean markAsExpired(TaskMsgFinalReason finalReason) {
         if (transitionTo(TaskMsgStatus.EXPIRED)) {
+            this.result = null;
+            this.output = null;
             setFinalReason(finalReason);
             return true;
         }
@@ -377,6 +385,13 @@ public class TaskMsg {
         } else {
             setErrorMessage(detail);
         }
+    }
+
+    private Map<String, Object> copyNullableMap(Map<String, Object> source) {
+        if (source == null || source.isEmpty()) {
+            return source == null ? null : new LinkedHashMap<>();
+        }
+        return new LinkedHashMap<>(source);
     }
 
     @Override

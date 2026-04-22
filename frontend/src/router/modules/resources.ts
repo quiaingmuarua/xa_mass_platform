@@ -32,6 +32,22 @@ export const resourceRoutes: AppRouteRecordRaw[] = [
                 },
             },
             {
+                path: 'workers/:workerId',
+                name: 'worker-detail',
+                component: () =>
+                    import('@/pages/resources/workers/WorkerDetailPage.vue'),
+                meta: {
+                    title: 'Worker Detail',
+                    icon: 'Cpu',
+                    order: 21,
+                    hidden: true,
+                    keepAlive: false,
+                    requiresAuth: true,
+                    permissions: ['worker:view'],
+                    menuVisible: false,
+                },
+            },
+            {
                 path: 'worker-contexts',
                 name: 'worker-contexts',
                 component: () =>

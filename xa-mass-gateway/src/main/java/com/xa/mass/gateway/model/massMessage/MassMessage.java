@@ -11,7 +11,7 @@ public class MassMessage {
     private String subMsgType;          // 子类型，如 step、all、ack、configType 等
     private MessageDirection from;      // CLIENT / SERVER
     private MessageContext context;     // 通信上下文（设备ID、角色、连接信息等）
-    private String project = "RCS";    // 所属项目名，如 WhatsApp、Telegram
+    private String project;            // canonical task/project code carried across the transport boundary
     private JsonElement payload;        // 实际消息体，统一为 JsonElement
 
     public String getMsgId() {
@@ -67,7 +67,7 @@ public class MassMessage {
     }
 
     public void setProject(String project) {
-        this.project = project;
+        this.project = project == null || project.isBlank() ? null : project.trim();
     }
 
     public JsonElement getPayload() {

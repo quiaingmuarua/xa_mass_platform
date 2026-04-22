@@ -62,6 +62,7 @@ class WorkerApiControllerTest {
         WorkerContext workerContext = new WorkerContext();
         workerContext.setWorkerContextId("ctx-001");
         workerContext.setWorkerId("worker-001");
+        workerContext.setProject("demoApp");
         workerContext.setStatus(WorkerContextStatus.OCCUPIED);
         workerContext.setChannel("telegram");
         workerContext.setAttributes(Map.of("account", "acc-01"));
@@ -75,6 +76,7 @@ class WorkerApiControllerTest {
                 .andExpect(jsonPath("$.code").value(0))
                 .andExpect(jsonPath("$.data.total").value(1))
                 .andExpect(jsonPath("$.data.items[0].workerContextId").value("ctx-001"))
+                .andExpect(jsonPath("$.data.items[0].project").value("demoApp"))
                 .andExpect(jsonPath("$.data.items[0].status").value("OCCUPIED"))
                 .andExpect(jsonPath("$.data.items[0].lastBindTaskId").value("task-123"));
     }

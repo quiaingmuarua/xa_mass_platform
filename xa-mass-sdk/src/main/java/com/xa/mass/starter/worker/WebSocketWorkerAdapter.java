@@ -3,6 +3,7 @@ package com.xa.mass.starter.worker;
 import com.google.gson.Gson;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import com.google.gson.reflect.TypeToken;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.engine.TaskManager;
@@ -97,7 +98,7 @@ public class WebSocketWorkerAdapter implements WorkerAdapter, MassMessageHandler
         MessageContext context = new MessageContext();
         context.setWorkerId(taskMsg.getLatestAttemptWorkerId());
         context.setConnRole(DEFAULT_CONN_ROLE);
-        context.setTid(task.getTid());
+        context.setTaskId(task.getTid());
         context.setRetryCount(taskMsg.getRetryCount());
         return context;
     }
@@ -109,6 +110,8 @@ public class WebSocketWorkerAdapter implements WorkerAdapter, MassMessageHandler
         Map<String, Object> params = new LinkedHashMap<>();
         params.put("taskId", task.getTid());
         params.put("taskName", task.getTaskName());
+        params.put("project", task.getProject());
+        params.put("userId", task.getUser() != null ? task.getUser().getUserId() : null);
         if (taskMsg.getInput() != null) {
             params.putAll(taskMsg.getInput());
         }
@@ -129,14 +132,21 @@ public class WebSocketWorkerAdapter implements WorkerAdapter, MassMessageHandler
 
     @Override
     public List<MassMessage> handle(MassMessage msg) {
-        String taskId = msg.getContext() != null ? msg.getContext().getTid() : null;
+        String taskId = msg.getContext() != null ? msg.getContext().getTaskId() : null;
         String msgId = msg.getMsgId();
         if (taskId == null || msgId == null) {
             return List.of(buildAck(msg, 400, "taskId/msgId are required"));
         }
 
         TaskResultPayload payload = parsePayload(msg.getPayload());
-        boolean handled = taskManager.handleTaskMessageResult(taskId, msgId, payload.success, payload.detail);
+        boolean handled = taskManager.handleTaskMessageResult(
+                taskId,
+                msgId,
+                payload.success,
+                payload.detail,
+                payload.errorCode,
+                payload.output
+        );
         int code = handled ? 200 : 404;
         String message = handled ? "task result processed" : "task result ignored";
         return List.of(buildAck(msg, code, message));
@@ -144,14 +154,16 @@ public class WebSocketWorkerAdapter implements WorkerAdapter, MassMessageHandler
 
     private TaskResultPayload parsePayload(JsonElement payload) {
         if (payload == null || !payload.isJsonObject()) {
-            return new TaskResultPayload(false, "empty payload");
+            return new TaskResultPayload(false, "empty payload", null, null);
         }
 
         JsonObject payloadObj = payload.getAsJsonObject();
         String status = readString(payloadObj, "status");
+        String errorCode = readString(payloadObj, "errorCode");
         String detail = firstNonBlank(
                 readString(payloadObj, "mockData"),
                 readString(payloadObj, "message"),
+                readString(payloadObj, "errorMessage"),
                 payloadObj.toString()
         );
 
@@ -165,7 +177,7 @@ public class WebSocketWorkerAdapter implements WorkerAdapter, MassMessageHandler
             }
         }
 
-        return new TaskResultPayload(success, detail);
+        return new TaskResultPayload(success, detail, errorCode, parseObjectPayload(payload));
     }
 
     private String readString(JsonObject payload, String field) {
@@ -191,6 +203,14 @@ public class WebSocketWorkerAdapter implements WorkerAdapter, MassMessageHandler
         return null;
     }
 
+    private Map<String, Object> parseObjectPayload(JsonElement payload) {
+        if (payload == null || !payload.isJsonObject()) {
+            return null;
+        }
+        return gson.fromJson(payload, new TypeToken<Map<String, Object>>() {
+        }.getType());
+    }
+
     private MassMessage buildAck(MassMessage request, int code, String message) {
         MassMessage ack = new MassMessage();
         ack.setMsgId(request.getMsgId());
@@ -207,10 +227,14 @@ public class WebSocketWorkerAdapter implements WorkerAdapter, MassMessageHandler
     private static class TaskResultPayload {
         private final boolean success;
         private final String detail;
+        private final String errorCode;
+        private final Map<String, Object> output;
 
-        private TaskResultPayload(boolean success, String detail) {
+        private TaskResultPayload(boolean success, String detail, String errorCode, Map<String, Object> output) {
             this.success = success;
             this.detail = detail;
+            this.errorCode = errorCode;
+            this.output = output;
         }
     }
 }

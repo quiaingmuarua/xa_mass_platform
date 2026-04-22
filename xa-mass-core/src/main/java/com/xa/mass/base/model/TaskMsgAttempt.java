@@ -4,6 +4,8 @@ import com.xa.mass.base.enums.taskmsg.TaskMsgAttemptFinalReason;
 import com.xa.mass.base.enums.taskmsg.TaskMsgAttemptStatus;
 
 import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Objects;
 
 /**
@@ -25,6 +27,8 @@ public class TaskMsgAttempt {
     private LocalDateTime finishTime;
     private TaskMsgAttemptFinalReason finalReason;
     private String errorMessage;
+    private String errorCode;
+    private Map<String, Object> output;
     private LocalDateTime createTime;
     private LocalDateTime updateTime;
 
@@ -172,6 +176,32 @@ public class TaskMsgAttempt {
         this.errorMessage = errorMessage;
     }
 
+    public String getErrorCode() {
+        return errorCode;
+    }
+
+    public void setErrorCode(String errorCode) {
+        this.errorCode = errorCode;
+    }
+
+    public Map<String, Object> getOutput() {
+        return output;
+    }
+
+    /**
+     * Snapshot of the callback payload observed by this concrete attempt.
+     *
+     * <p>The logical task-message output remains on {@link TaskMsg}; this
+     * field preserves attempt-level history for audit and troubleshooting.
+     */
+    public void setOutput(Map<String, Object> output) {
+        if (output == null || output.isEmpty()) {
+            this.output = output == null ? null : new LinkedHashMap<>();
+            return;
+        }
+        this.output = new LinkedHashMap<>(output);
+    }
+
     public LocalDateTime getCreateTime() {
         return createTime;
     }
@@ -235,6 +265,14 @@ public class TaskMsgAttempt {
         setStatus(TaskMsgAttemptStatus.FAILED);
         this.finalReason = finalReason;
         this.errorMessage = errorMessage;
+        return true;
+    }
+
+    public boolean markFailed(TaskMsgAttemptFinalReason finalReason, String errorMessage, String errorCode) {
+        if (!markFailed(finalReason, errorMessage)) {
+            return false;
+        }
+        this.errorCode = errorCode;
         return true;
     }
 

@@ -1,5 +1,6 @@
 import ElementPlus from 'element-plus'
 import { flushPromises, mount } from '@vue/test-utils'
+import { createMemoryHistory, createRouter } from 'vue-router'
 import { setRuntimeConfigOverrides } from '@/app/config'
 import { mockAdminUser, mockViewerUser } from '@/auth/mock-user'
 import { permissionDirective } from '@/auth/permission-directive'
@@ -75,9 +76,17 @@ describe('WorkersPage', () => {
         setMockCurrentUser(mockAdminUser)
         stubWorkersApi()
 
+        const router = createRouter({
+            history: createMemoryHistory(),
+            routes: [{ path: '/', component: WorkersPage }],
+        })
+
+        await router.push('/')
+        await router.isReady()
+
         const wrapper = mount(WorkersPage, {
             global: {
-                plugins: [ElementPlus],
+                plugins: [router, ElementPlus],
                 directives: {
                     permission: permissionDirective,
                 },
@@ -96,9 +105,17 @@ describe('WorkersPage', () => {
         setMockCurrentUser(mockViewerUser)
         stubWorkersApi()
 
+        const router = createRouter({
+            history: createMemoryHistory(),
+            routes: [{ path: '/', component: WorkersPage }],
+        })
+
+        await router.push('/')
+        await router.isReady()
+
         const wrapper = mount(WorkersPage, {
             global: {
-                plugins: [ElementPlus],
+                plugins: [router, ElementPlus],
                 directives: {
                     permission: permissionDirective,
                 },

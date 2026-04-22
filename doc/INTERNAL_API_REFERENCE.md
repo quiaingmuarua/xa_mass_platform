@@ -33,6 +33,8 @@ For verified runtime behavior and recommended startup, use [VERIFIED_RUNBOOK.md]
 - Workers can be phone apps, crawlers, LLM agents, IM bots, or other long-lived executors.
 - `Task.project` and `Task.user` are first-class business bindings in the core task aggregate. Frontend/API edge shapes still use `project` and `userId` strings for create/update.
 - Stable payload boundaries are `Task.sharedConfig` and `TaskMsg.input/output`.
+- `TaskMsg.output` is the canonical logical success payload for one work item; legacy `result` is only a summary/string compatibility field.
+- `TaskMsgAttempt` keeps the concrete attempt-level callback snapshot, including per-attempt output/error details.
 - `target` is only a conventional key inside `TaskMsg.input`; no dedicated target compatibility accessor remains.
 - `Task.intakeStatus` is the active append-window lifecycle truth; `openEnded` is only the create/request projection.
 - `TaskMsg.latestAttemptWorkerId`, `latestAttemptWorkerContextId`, and `latestAttemptBatchId` are latest-attempt projections of `TaskMsgAttempt`.
@@ -571,6 +573,7 @@ Behavior:
 - returns the SPA shell from the built `frontend/dist`
 - browser-side routing handles the page view after the shell loads
 - `/status`, `/status/tasks`, `/status/workers`, `/status/rules`, and `/config` are redirect aliases only and are not the primary console entrypoints
+- worker-context read models now include first-class `project` when the context is bound to a specific project/account domain
 
 ## 6. Message API
 

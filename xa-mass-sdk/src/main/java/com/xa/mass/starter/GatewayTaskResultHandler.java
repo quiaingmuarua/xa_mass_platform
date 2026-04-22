@@ -3,6 +3,7 @@ package com.xa.mass.starter;
 import com.google.gson.Gson;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import com.google.gson.reflect.TypeToken;
 import com.xa.mass.engine.TaskManager;
 import com.xa.mass.gateway.dispatcher.handler.MassMessageHandler;
 import com.xa.mass.gateway.model.enums.MessageDirection;
@@ -11,6 +12,7 @@ import com.xa.mass.gateway.model.massMessage.MassMessage;
 import com.xa.mass.gateway.model.massMessage.MessageAckPayload;
 
 import java.util.List;
+import java.util.Map;
 
 public class GatewayTaskResultHandler implements MassMessageHandler {
 
@@ -23,14 +25,21 @@ public class GatewayTaskResultHandler implements MassMessageHandler {
 
     @Override
     public List<MassMessage> handle(MassMessage msg) {
-        String taskId = msg.getContext() != null ? msg.getContext().getTid() : null;
+        String taskId = msg.getContext() != null ? msg.getContext().getTaskId() : null;
         String msgId = msg.getMsgId();
         if (taskId == null || msgId == null) {
             return List.of(buildAck(msg, 400, "taskId/msgId are required"));
         }
 
         TaskResultPayload payload = parsePayload(msg.getPayload());
-        boolean handled = taskManager.handleTaskMessageResult(taskId, msgId, payload.success, payload.detail);
+        boolean handled = taskManager.handleTaskMessageResult(
+                taskId,
+                msgId,
+                payload.success,
+                payload.detail,
+                payload.errorCode,
+                payload.output
+        );
         int code = handled ? 200 : 404;
         String message = handled ? "task result processed" : "task result ignored";
         return List.of(buildAck(msg, code, message));
@@ -38,14 +47,16 @@ public class GatewayTaskResultHandler implements MassMessageHandler {
 
     private TaskResultPayload parsePayload(JsonElement payload) {
         if (payload == null || !payload.isJsonObject()) {
-            return new TaskResultPayload(false, "empty payload");
+            return new TaskResultPayload(false, "empty payload", null, null);
         }
 
         JsonObject payloadObj = payload.getAsJsonObject();
         String status = readString(payloadObj, "status");
+        String errorCode = readString(payloadObj, "errorCode");
         String detail = firstNonBlank(
                 readString(payloadObj, "mockData"),
                 readString(payloadObj, "message"),
+                readString(payloadObj, "errorMessage"),
                 payloadObj.toString()
         );
 
@@ -59,7 +70,7 @@ public class GatewayTaskResultHandler implements MassMessageHandler {
             }
         }
 
-        return new TaskResultPayload(success, detail);
+        return new TaskResultPayload(success, detail, errorCode, parseObjectPayload(payload));
     }
 
     private String readString(JsonObject payload, String field) {
@@ -85,6 +96,14 @@ public class GatewayTaskResultHandler implements MassMessageHandler {
         return null;
     }
 
+    private Map<String, Object> parseObjectPayload(JsonElement payload) {
+        if (payload == null || !payload.isJsonObject()) {
+            return null;
+        }
+        return gson.fromJson(payload, new TypeToken<Map<String, Object>>() {
+        }.getType());
+    }
+
     private MassMessage buildAck(MassMessage request, int code, String message) {
         MassMessage ack = new MassMessage();
         ack.setMsgId(request.getMsgId());
@@ -101,10 +120,14 @@ public class GatewayTaskResultHandler implements MassMessageHandler {
     private static class TaskResultPayload {
         private final boolean success;
         private final String detail;
+        private final String errorCode;
+        private final Map<String, Object> output;
 
-        private TaskResultPayload(boolean success, String detail) {
+        private TaskResultPayload(boolean success, String detail, String errorCode, Map<String, Object> output) {
             this.success = success;
             this.detail = detail;
+            this.errorCode = errorCode;
+            this.output = output;
         }
     }
 }

@@ -31,6 +31,7 @@ class WorkerMatchContextTest {
         WorkerContext workerContext = new WorkerContext();
         workerContext.setWorkerContextId("ctx-1");
         workerContext.setWorkerId("worker-1");
+        workerContext.setProject("demoApp");
         workerContext.setStatus(WorkerContextStatus.IDLE);
         workerContext.setChannel("us");
         workerContext.setAttributes(Map.of("country", "us"));
@@ -48,9 +49,11 @@ class WorkerMatchContextTest {
         assertEquals(Map.of("pool", "warmup"), context.getContext().get("workerAttributes"));
         assertEquals(Map.of("country", "us"), context.getContext().get("workerContextAttributes"));
         assertEquals(true, context.getContext().get("hasWorkerContext"));
+        assertEquals("demoApp", context.getContext().get("workerContextProject"));
         assertEquals(0, context.getContext().get("taskTargetNumber"));
         assertEquals("us", context.getContext().get("taskRoutingCode"));
         assertEquals(true, context.getContext().get("taskHasRoutingRequirement"));
+        assertEquals(true, context.getContext().get("workerContextProjectMatchesTaskProject"));
         assertEquals(true, context.getContext().get("workerContextChannelMatchesRoutingCode"));
         assertEquals(true, context.getContext().get("workerContextAttributeCountryMatchesRoutingCode"));
         assertEquals(true, context.getContext().get("isWorkerContextAvailable"));
@@ -80,6 +83,8 @@ class WorkerMatchContextTest {
 
         assertEquals(Map.of(), context.getContext().get("workerContextAttributes"));
         assertFalse((Boolean) context.getContext().get("hasWorkerContext"));
+        assertEquals(null, context.getContext().get("workerContextProject"));
+        assertFalse((Boolean) context.getContext().get("workerContextProjectMatchesTaskProject"));
         assertFalse((Boolean) context.getContext().get("isWorkerContextAllocatable"));
         assertFalse((Boolean) context.getContext().get("isWorkerContextAvailable"));
         assertFalse((Boolean) context.getContext().get("isWorkerContextUsable"));
