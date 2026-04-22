@@ -28,22 +28,25 @@ describe('DashboardPage', () => {
                 if (input.includes('/status/api/tasks')) {
                     return Promise.resolve(
                         jsonResponse({
-                            success: true,
-                            items: [
-                                {
-                                    id: 'task-001',
-                                    taskName: 'Warm worker pool',
-                                    project: 'demoApp',
-                                    routingCode: 'us',
-                                    status: 'RUNNING',
-                                    terminalReason: null,
-                                    successCount: 6,
-                                    eligibleCount: 10,
-                                    batchSize: 2,
-                                    updatedAt: '2026-04-21 09:30:00',
-                                },
-                            ],
-                            total: 1,
+                            code: 0,
+                            msg: 'ok',
+                            data: {
+                                items: [
+                                    {
+                                        id: 'task-001',
+                                        taskName: 'Warm worker pool',
+                                        project: 'demoApp',
+                                        routingCode: 'us',
+                                        status: 'RUNNING',
+                                        terminalReason: null,
+                                        successCount: 6,
+                                        eligibleCount: 10,
+                                        batchSize: 2,
+                                        updatedAt: '2026-04-21 09:30:00',
+                                    },
+                                ],
+                                total: 1,
+                            },
                         }),
                     )
                 }

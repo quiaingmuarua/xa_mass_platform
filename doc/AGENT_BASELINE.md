@@ -48,7 +48,7 @@ Working rule:
 - The long-term stable kernel is `Task / TaskMsg / assignment / result / audit / terminal policy`.
 - The current mainline validates that kernel through a long-connection worker scenario using `Worker + WorkerContext + WebSocket gateway + mock clients`.
 - Workers can be phone apps, crawlers, LLM agents, IM bots, or other long-lived executors.
-- `Worker`, `WorkerContext`, WebSocket sessions, status pages, and demo REST APIs are current reference adapters and verification shells. They are not the permanent product boundary.
+- `Worker`, `WorkerContext`, WebSocket sessions, the control console shell, and demo REST APIs are current reference adapters and verification shells. They are not the permanent product boundary.
 - The project direction is library/SDK-first. Demo runtime surfaces exist to validate the kernel, not to redefine it.
 
 ## 3. Platform Model
@@ -89,7 +89,7 @@ Interpretation rules:
 - The real Spring Boot entry is `xa-mass-dev-app`.
 - `xa-mass-sdk` is the consumer-facing dependency entry for third-party embedding.
 - Embedded runtime composition now lives inside `xa-mass-sdk` under `com.xa.mass.starter.*`; it is not the primary Boot entry.
-- `xa-mass-dev-app` should obtain runtime capability through `xa-mass-sdk`; its explicit `xa-mass-api` dependency is only for the current REST/status-page validation shell.
+- `xa-mass-dev-app` should obtain runtime capability through `xa-mass-sdk`; its explicit `xa-mass-api` dependency is only for the current REST/control-console validation shell.
 - Do not make `xa-mass-sdk` depend on `xa-mass-api` just to make `xa-mass-dev-app` depend on one internal artifact; SDK consumers should not pull demo web surfaces by default.
 - The current mainline reactor is defined by the root `pom.xml`: `xa-mass-api`, `xa-mass-core`, `xa-mass-engine`, `xa-mass-gateway`, `xa-mass-sdk`, `xa-mass-dev-app`.
 - `com.xa.mass.engine` is the active engine path.

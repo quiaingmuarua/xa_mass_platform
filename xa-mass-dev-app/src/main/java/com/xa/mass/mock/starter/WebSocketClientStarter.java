@@ -8,6 +8,7 @@ import com.xa.mass.gateway.model.massMessage.MassMessage;
 import com.xa.mass.gateway.model.massMessage.MessageContext;
 import com.xa.mass.gateway.session.SessionRoles;
 import com.xa.mass.mock.client.ClientSessionManager;
+import com.xa.mass.mock.client.MassWebSocketClient;
 import com.xa.mass.mock.client.MassWebSocketClientImpl;
 import com.xa.mass.mock.command.mock.MockClientStateRegistry;
 import com.xa.mass.mock.command.runtime.MockCommandRuntime;
@@ -53,7 +54,7 @@ public class WebSocketClientStarter {
     @Autowired
     private ClientSessionManager clientSessionManager;
 
-    @Autowired
+    @Autowired(required = false)
     private MockClientStateRegistry mockClientStateRegistry;
 
     // Keep a runtime dependency so Spring destroys mock clients before the embedded runtime.
@@ -106,7 +107,9 @@ public class WebSocketClientStarter {
 
         try {
             MockCommandRuntime.registerService(ClientSessionManager.class, clientSessionManager);
-            MockCommandRuntime.registerService(MockClientStateRegistry.class, mockClientStateRegistry);
+            if (mockClientStateRegistry != null) {
+                MockCommandRuntime.registerService(MockClientStateRegistry.class, mockClientStateRegistry);
+            }
 
             String baseUri = mockConfig.getClient().getUri();
             log.info("Target server: {}", baseUri);
@@ -253,14 +256,14 @@ public class WebSocketClientStarter {
             return;
         }
 
-        Collection<MassWebSocketClientImpl> clients = clientSessionManager.getAllClients();
+        Collection<MassWebSocketClient> clients = clientSessionManager.getAllClients();
         if (clients.isEmpty()) {
             log.debug("No active mock client connections");
             return;
         }
 
-        List<MassWebSocketClientImpl> clientList = new ArrayList<>(clients);
-        MassWebSocketClientImpl client = clientList.get(new Random().nextInt(clientList.size()));
+        List<MassWebSocketClient> clientList = new ArrayList<>(clients);
+        MassWebSocketClient client = clientList.get(new Random().nextInt(clientList.size()));
 
         try {
             MassMessage ping = new MassMessage();
@@ -274,7 +277,7 @@ public class WebSocketClientStarter {
             ctx.setConnRole(SessionRoles.TASK_MESSAGES);
             ping.setContext(ctx);
 
-            client.send(new com.google.gson.Gson().toJson(ping));
+            client.sendMessage(new com.google.gson.Gson().toJson(ping));
             log.debug("[{}] heartbeat sent", client.getWorkerId());
         } catch (Exception e) {
             log.warn("[{}] heartbeat failed: {}", client.getWorkerId(), e.getMessage());
@@ -294,10 +297,10 @@ public class WebSocketClientStarter {
         isShuttingDown = true;
         started.set(false);
 
-        Collection<MassWebSocketClientImpl> clients = clientSessionManager.getAllClients();
+        Collection<MassWebSocketClient> clients = clientSessionManager.getAllClients();
         log.info("Disconnecting {} mock clients", clients.size());
 
-        for (MassWebSocketClientImpl client : clients) {
+        for (MassWebSocketClient client : clients) {
             try {
                 client.disconnect();
                 log.debug("Client {} disconnected", client.getWorkerId());

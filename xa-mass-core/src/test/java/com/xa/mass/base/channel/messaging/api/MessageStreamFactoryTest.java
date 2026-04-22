@@ -2,27 +2,45 @@ package com.xa.mass.base.channel.messaging.api;
 
 import com.xa.mass.base.channel.messaging.memory.InMemoryMessageStream;
 import com.xa.mass.base.channel.messaging.redis.LettuceRedisStream;
-import com.xa.mass.base.channel.messaging.redis.RedisConnectionManager;
+import com.xa.mass.base.test.RedisTestSupport;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.HashMap;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class TestPayload {
     public String name;
     public int value;
-    public TestPayload() {}
-    public TestPayload(String name, int value) { this.name = name; this.value = value; }
-    @Override public boolean equals(Object o) {
-        if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
+
+    public TestPayload() {
+    }
+
+    public TestPayload(String name, int value) {
+        this.name = name;
+        this.value = value;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (o == null || getClass() != o.getClass()) {
+            return false;
+        }
         TestPayload that = (TestPayload) o;
         return value == that.value && java.util.Objects.equals(name, that.name);
     }
-    @Override public int hashCode() { return java.util.Objects.hash(name, value); }
+
+    @Override
+    public int hashCode() {
+        return java.util.Objects.hash(name, value);
+    }
 }
 
 public class MessageStreamFactoryTest {
@@ -30,7 +48,7 @@ public class MessageStreamFactoryTest {
 
     @BeforeEach
     public void setUp() {
-        RedisConnectionManager.init("localhost", 6379, null, 0);
+        RedisTestSupport.initLocalRedisOrSkip();
     }
 
     @Test
@@ -38,7 +56,7 @@ public class MessageStreamFactoryTest {
         MessageStream<String> stream = MessageStreamFactory.create("memory", QUEUE_KEY, String.class);
         assertNotNull(stream);
         assertInstanceOf(InMemoryMessageStream.class, stream);
-        assertEquals(QUEUE_KEY, stream.getName());
+        org.junit.jupiter.api.Assertions.assertEquals(QUEUE_KEY, stream.getName());
     }
 
     @Test

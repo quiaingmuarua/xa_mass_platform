@@ -1,6 +1,6 @@
 # Manual Debug Chat Protocol
 
-This document defines the lightweight worker debug-chat protocol used by the status page.
+This document defines the lightweight worker debug-chat protocol used by the control console worker-debug surface.
 
 ## Purpose
 

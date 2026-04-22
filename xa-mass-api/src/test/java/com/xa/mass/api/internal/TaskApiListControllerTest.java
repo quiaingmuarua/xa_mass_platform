@@ -1,6 +1,5 @@
 package com.xa.mass.api.internal;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.engine.TaskManager;
@@ -27,7 +26,6 @@ class TaskApiListControllerTest {
     void setUp() {
         TaskApiController controller = new TaskApiController();
         ReflectionTestUtils.setField(controller, "taskManager", new StaticTaskManager());
-        ReflectionTestUtils.setField(controller, "objectMapper", new ObjectMapper());
         mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
     }
 
@@ -37,14 +35,14 @@ class TaskApiListControllerTest {
                         .param("keyword", "warm")
                         .param("status", "RUNNING"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.total").value(1))
-                .andExpect(jsonPath("$.items[0].id").value("task-001"))
-                .andExpect(jsonPath("$.items[0].taskName").value("Warm worker pool"))
-                .andExpect(jsonPath("$.items[0].routingCode").value("us"))
-                .andExpect(jsonPath("$.items[0].successCount").value(6))
-                .andExpect(jsonPath("$.items[0].eligibleCount").value(10))
-                .andExpect(jsonPath("$.items[0].updatedAt").value("2026-04-21 09:30:00"));
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.total").value(1))
+                .andExpect(jsonPath("$.data.items[0].id").value("task-001"))
+                .andExpect(jsonPath("$.data.items[0].taskName").value("Warm worker pool"))
+                .andExpect(jsonPath("$.data.items[0].routingCode").value("us"))
+                .andExpect(jsonPath("$.data.items[0].successCount").value(6))
+                .andExpect(jsonPath("$.data.items[0].eligibleCount").value(10))
+                .andExpect(jsonPath("$.data.items[0].updatedAt").value("2026-04-21 09:30:00"));
     }
 
     static class StaticTaskManager extends TaskManager {

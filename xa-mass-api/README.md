@@ -2,7 +2,7 @@
 
 ## Role
 
-- REST controller and status page layer
+- REST controller and backend-hosted control console layer
 - DTO / request-response boundary
 - loaded by `xa-mass-dev-app` Spring Boot scanning
 
@@ -10,13 +10,13 @@
 
 - not an independently verified runnable app
 - API lifecycle endpoints are aligned to `TaskManager`
-- UI pages are a secondary validation surface, not the source of truth
+- the backend-hosted console shell is a validation surface, not the source of truth
 
 ## Start Here
 
 - `src/main/java/com/xa/mass/api/internal/TaskApiController.java`
-- `src/main/java/com/xa/mass/api/internal/StatusPageController.java`
-- `src/main/resources/templates/tasks.html`
+- `src/main/java/com/xa/mass/api/internal/FrontendConsoleController.java`
+- `src/main/java/com/xa/mass/api/internal/WorkerDebugController.java`
 
 ## Boundaries
 

@@ -1,7 +1,7 @@
 package com.xa.mass.base.channel.messaging;
 
 import com.xa.mass.base.channel.messaging.redis.LettuceRedisStream;
-import com.xa.mass.base.channel.messaging.redis.RedisConnectionManager;
+import com.xa.mass.base.test.RedisTestSupport;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -10,25 +10,31 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class LettuceRedisStreamTest {
-    private LettuceRedisStream<String> stream;
     private static final String STREAM_KEY = "test-redis-stream";
+
+    private LettuceRedisStream<String> stream;
 
     @BeforeEach
     public void setUp() {
-        RedisConnectionManager.init("localhost", 6379, null, 0);
-        // 先清空，避免 group 创建副作用
+        RedisTestSupport.initLocalRedisOrSkip();
         LettuceRedisStream<String> tmp = new LettuceRedisStream<>(STREAM_KEY, String.class);
         tmp.clear();
-        // 再 new stream，确保 group 创建在 offer 之前
         stream = new LettuceRedisStream<>(STREAM_KEY, String.class);
         stream.ensureConsumerGroup();
     }
 
     @AfterEach
     public void tearDown() {
+        if (stream == null) {
+            return;
+        }
         stream.clear();
     }
 
@@ -46,7 +52,7 @@ public class LettuceRedisStreamTest {
         stream.offer("a");
         stream.offer("b");
         assertFalse(stream.isEmpty());
-        assertEquals(0, stream.processingSize()); // 刚 offer，pending=0
+        assertEquals(0, stream.processingSize());
 
         var m1 = stream.poll(1, TimeUnit.SECONDS);
         assertEquals(1, stream.processingSize());
@@ -59,14 +65,12 @@ public class LettuceRedisStreamTest {
 
         stream.ack(m2.getMessageId());
         assertEquals(0, stream.processingSize());
-
-        // assertTrue(stream.isEmpty()); // 只关心未消费消息为0
     }
 
     @Test
     public void testAck() throws Exception {
         String msg = "ack-test";
-        String id = stream.offer(msg);
+        stream.offer(msg);
         var polled = stream.poll(2, TimeUnit.SECONDS);
         assertNotNull(polled);
         assertEquals(msg, polled.getMessage());
@@ -92,4 +96,4 @@ public class LettuceRedisStreamTest {
         var result = stream.poll(1, TimeUnit.SECONDS);
         assertNull(result);
     }
-} 
+}

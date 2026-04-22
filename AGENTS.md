@@ -96,7 +96,7 @@ Root reactor modules are defined by `pom.xml`:
 - `xa-mass-core`: shared models, enums, JSON DSL, EventBus, messaging primitives.
 - `xa-mass-engine`: task lifecycle, assignment, matching, result handling, validation.
 - `xa-mass-gateway`: WebSocket server, sessions, dispatch, inbound result routing.
-- `xa-mass-api`: REST controllers and status/demo pages.
+- `xa-mass-api`: REST controllers and the backend-hosted control console shell.
 - `xa-mass-sdk`: consumer-facing SDK plus embedded runtime composition.
 - `xa-mass-dev-app`: verified Spring Boot entry and E2E validation shell.
 
@@ -110,9 +110,9 @@ Verified Boot entry:
 
 Verified endpoints:
 
-- `http://localhost:8088/status`
-- `http://localhost:8088/status/tasks`
-- `http://localhost:8088/status/workers`
+- `http://localhost:8088/`
+- `http://localhost:8088/tasks`
+- `http://localhost:8088/resources/workers`
 - `http://localhost:8088/doc.html`
 - `http://localhost:8088/actuator/health`
 - `ws://localhost:18088/ws`
@@ -238,10 +238,11 @@ Runtime and gateway:
 - `xa-mass-gateway/src/main/java/com/xa/mass/gateway/server/WebSocketServerImpl.java`
 - `xa-mass-gateway/src/main/java/com/xa/mass/gateway/dispatcher/ServerMessageDispatcher.java`
 
-Public/demo API:
+Public/control-console API:
 
 - `xa-mass-api/src/main/java/com/xa/mass/api/internal/TaskApiController.java`
-- `xa-mass-api/src/main/java/com/xa/mass/api/internal/StatusPageController.java`
+- `xa-mass-api/src/main/java/com/xa/mass/api/internal/FrontendConsoleController.java`
+- `xa-mass-api/src/main/java/com/xa/mass/api/internal/WorkerDebugController.java`
 
 Models:
 

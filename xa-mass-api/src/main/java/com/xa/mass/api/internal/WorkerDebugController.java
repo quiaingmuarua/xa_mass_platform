@@ -6,8 +6,6 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonSyntaxException;
 import com.xa.mass.api.model.ApiResponse;
 import com.xa.mass.api.model.worker.WorkerSendMessageRequest;
-import com.xa.mass.api.model.worker.WorkerSupportedProjectsPageRequest;
-import com.xa.mass.base.debug.ManualDebugChatProtocol;
 import com.xa.mass.base.debug.WorkerDebugMessageStore;
 import com.xa.mass.base.enums.Project;
 import com.xa.mass.base.model.Worker;
@@ -36,49 +34,18 @@ import org.springframework.web.bind.annotation.ResponseBody;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.UUID;
 
 @Controller
-@RequestMapping("/status")
-public class StatusPageController {
+@RequestMapping("/status/workers")
+public class WorkerDebugController {
     private static final Gson GSON = new Gson();
+    private static final String MANUAL_DEBUG_SUB_MSG_TYPE = "manual-chat";
 
     @Autowired
     private WorkerManager workerManager;
 
-    /**
-     * Return all supported project codes for worker-edit forms.
-     */
-    @GetMapping("/workers/allProjects")
-    @ResponseBody
-    public List<String> getAllProjects() {
-        return com.xa.mass.base.enums.Project.getAllCodes();
-    }
-
-    /**
-     * Replace the supported project list for a worker.
-     */
-    @PostMapping("/workers/updateSupportedProjects")
-    @ResponseBody
-    public ResponseEntity<ApiResponse<Map<String, Object>>> updateSupportedProjects(
-            @RequestBody WorkerSupportedProjectsPageRequest requestBody) {
-        validateKnownFields(requestBody);
-        String workerId = readTrimmed(requestBody.getWorkerId());
-        List<String> supportedProjects = normalizeSupportedProjects(requestBody.getSupportedProjects());
-        Worker worker = workerManager.getWorker(workerId);
-        if (worker != null) {
-            worker.setSupportedProjects(supportedProjects);
-            workerManager.updateWorker(worker);
-            return ok(Map.of(
-                    "workerId", workerId,
-                    "supportedProjects", worker.getSupportedProjects()
-            ));
-        }
-        return notFound("Worker not found");
-    }
-
-    @GetMapping("/workers/message-history")
+    @GetMapping("/message-history")
     @ResponseBody
     public ApiResponse<Map<String, Object>> getWorkerMessageHistory(
             @org.springframework.web.bind.annotation.RequestParam String workerId) {
@@ -88,7 +55,7 @@ public class StatusPageController {
         ));
     }
 
-    @PostMapping("/workers/send-message")
+    @PostMapping("/send-message")
     @ResponseBody
     public ResponseEntity<ApiResponse<Map<String, Object>>> sendWorkerMessage(
             @RequestBody WorkerSendMessageRequest requestBody) {
@@ -182,22 +149,6 @@ public class StatusPageController {
         ));
     }
 
-    private void validateKnownFields(WorkerSupportedProjectsPageRequest requestBody) {
-        if (requestBody == null) {
-            throw new IllegalArgumentException("worker request body is required");
-        }
-        if (requestBody.hasUnknownFields()) {
-            throw new IllegalArgumentException("Unsupported worker page update fields: "
-                    + String.join(", ", requestBody.getUnknownFieldNames()));
-        }
-        if (readTrimmed(requestBody.getWorkerId()) == null) {
-            throw new IllegalArgumentException("workerId is required");
-        }
-        if (requestBody.getSupportedProjects() == null) {
-            throw new IllegalArgumentException("supportedProjects is required");
-        }
-    }
-
     private void validateKnownFields(WorkerSendMessageRequest requestBody) {
         if (requestBody == null) {
             throw new IllegalArgumentException("worker message request body is required");
@@ -206,16 +157,6 @@ public class StatusPageController {
             throw new IllegalArgumentException("Unsupported worker message fields: "
                     + String.join(", ", requestBody.getUnknownFieldNames()));
         }
-    }
-
-    private List<String> normalizeSupportedProjects(List<String> supportedProjects) {
-        return supportedProjects.stream()
-                .filter(Objects::nonNull)
-                .map(String::trim)
-                .filter(value -> !value.isEmpty())
-                .map(value -> Project.requireCode(value).getCode())
-                .distinct()
-                .toList();
     }
 
     private MessageContext buildMessageContext(String workerId) {
@@ -264,7 +205,7 @@ public class StatusPageController {
             return explicit;
         }
         if (messageType == MessageType.CONTROL) {
-            return ManualDebugChatProtocol.SUB_MSG_TYPE;
+            return MANUAL_DEBUG_SUB_MSG_TYPE;
         }
         return "manual";
     }
@@ -274,16 +215,16 @@ public class StatusPageController {
                                          String messageId,
                                          MessageType messageType,
                                          String subMsgType) {
-        if (messageType == MessageType.CONTROL && ManualDebugChatProtocol.SUB_MSG_TYPE.equals(subMsgType)) {
+        if (messageType == MessageType.CONTROL && MANUAL_DEBUG_SUB_MSG_TYPE.equals(subMsgType)) {
             JsonObject normalized = payload != null && payload.isJsonObject()
                     ? payload.getAsJsonObject().deepCopy()
                     : new JsonObject();
-            putIfMissing(normalized, ManualDebugChatProtocol.MESSAGE_KIND_FIELD, ManualDebugChatProtocol.MESSAGE_KIND_REQUEST);
-            putIfMissing(normalized, ManualDebugChatProtocol.WORKER_ID_FIELD, workerId);
-            putIfMissing(normalized, ManualDebugChatProtocol.SENT_AT_FIELD, System.currentTimeMillis());
-            putIfMissing(normalized, ManualDebugChatProtocol.EXPECT_REPLY_FIELD, true);
+            putIfMissing(normalized, "messageKind", "debug_chat");
+            putIfMissing(normalized, "workerId", workerId);
+            putIfMissing(normalized, "sentAt", System.currentTimeMillis());
+            putIfMissing(normalized, "expectReply", true);
             putIfMissing(normalized, "clientMessageId", messageId);
-            putIfMissing(normalized, ManualDebugChatProtocol.TEXT_FIELD, "");
+            putIfMissing(normalized, "text", "");
             return normalized;
         }
         return payload;

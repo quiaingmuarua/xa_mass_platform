@@ -32,20 +32,20 @@ class FrontendConsoleControllerTest {
     }
 
     @Test
-    void legacyStatusPageRedirectsToConfiguredExternalConsoleWhenLocalBuildMissing() throws Exception {
-        configureRoutingService(tempDir.resolve("missing-dist"), "http://localhost:4173/");
+    void legacyStatusPageRedirectsToBackendConsoleRouteWhenLocalBuildMissing() throws Exception {
+        configureRoutingService(tempDir.resolve("missing-dist"));
         mockMvc = MockMvcBuilders.standaloneSetup(new FrontendConsoleController(routingService)).build();
 
         mockMvc.perform(get("/status/workers"))
                 .andExpect(status().isFound())
-                .andExpect(header().string("Location", "http://localhost:4173/resources/workers"));
+                .andExpect(header().string("Location", "/resources/workers"));
     }
 
     @Test
     void consoleRouteServesLocalIndexWhenBuildExists() throws Exception {
         Path distDir = Files.createDirectories(tempDir.resolve("frontend-dist"));
         Files.writeString(distDir.resolve("index.html"), "<!doctype html><html><body>console-shell</body></html>");
-        configureRoutingService(distDir, "");
+        configureRoutingService(distDir);
         mockMvc = MockMvcBuilders.standaloneSetup(new FrontendConsoleController(routingService)).build();
 
         mockMvc.perform(get("/tasks/task-001"))
@@ -57,12 +57,22 @@ class FrontendConsoleControllerTest {
     @Test
     void legacyConfigPageRedirectsToConfigsRouteWhenLocalBuildExists() throws Exception {
         Path distDir = createLocalDist();
-        configureRoutingService(distDir, "http://localhost:4173/");
+        configureRoutingService(distDir);
         mockMvc = MockMvcBuilders.standaloneSetup(new FrontendConsoleController(routingService)).build();
 
         mockMvc.perform(get("/config"))
                 .andExpect(status().isFound())
                 .andExpect(header().string("Location", "/resources/configs"));
+    }
+
+    @Test
+    void backendConsoleReturnsServiceUnavailableWhenLocalBuildMissing() throws Exception {
+        configureRoutingService(tempDir.resolve("missing-dist"));
+        mockMvc = MockMvcBuilders.standaloneSetup(new FrontendConsoleController(routingService)).build();
+
+        mockMvc.perform(get("/"))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Build frontend/dist")));
     }
 
     private Path createLocalDist() throws IOException {
@@ -71,8 +81,7 @@ class FrontendConsoleControllerTest {
         return distDir;
     }
 
-    private void configureRoutingService(Path distDir, String consoleUrl) {
+    private void configureRoutingService(Path distDir) {
         ReflectionTestUtils.setField(routingService, "frontendDistPath", distDir.toString());
-        ReflectionTestUtils.setField(routingService, "frontendConsoleUrl", consoleUrl);
     }
 }

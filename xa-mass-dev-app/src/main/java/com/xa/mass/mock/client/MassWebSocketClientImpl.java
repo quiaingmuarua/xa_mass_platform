@@ -411,16 +411,22 @@ public class MassWebSocketClientImpl extends WebSocketClient implements MassWebS
                     workerId, targetWorkerId);
             return;
         }
-        MassWebSocketClientImpl targetClient = clientSessionManager.getClient(targetWorkerId);
+        MassWebSocketClient targetClient = clientSessionManager.getClient(targetWorkerId);
         if (targetClient == null) {
             logger.warn("[{}] Cannot close target worker {} after ack because client is missing",
                     workerId, targetWorkerId);
             return;
         }
         logger.info("[{}] Closing target worker {} after command acknowledgement", workerId, targetWorkerId);
-        targetClient.closeConnection();
+        try {
+            targetClient.disconnect();
+        } catch (Exception e) {
+            logger.warn("[{}] Failed to close target worker {} after ack: {}",
+                    workerId, targetWorkerId, e.getMessage());
+        }
     }
 
+    @Override
     public String getWorkerId() {
         return workerId;
     }

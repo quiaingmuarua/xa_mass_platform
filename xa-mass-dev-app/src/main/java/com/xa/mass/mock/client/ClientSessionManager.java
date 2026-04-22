@@ -24,10 +24,10 @@ import java.util.concurrent.ConcurrentHashMap;
 public class ClientSessionManager {
     private static final Logger log = LoggerFactory.getLogger(ClientSessionManager.class);
 
-    private final Map<String, MassWebSocketClientImpl> clients = new ConcurrentHashMap<>();
+    private final Map<String, MassWebSocketClient> clients = new ConcurrentHashMap<>();
     private final Random random = new Random();
 
-    public void addClient(MassWebSocketClientImpl client) {
+    public void addClient(MassWebSocketClient client) {
         clients.put(client.getWorkerId(), client);
         log.info("Added mock client: {}", client.getWorkerId());
     }
@@ -45,12 +45,16 @@ public class ClientSessionManager {
 
         // Pick one connected client at random.
         String workerId = new ArrayList<>(clients.keySet()).get(random.nextInt(clients.size()));
-        MassWebSocketClientImpl client = clients.get(workerId);
+        MassWebSocketClient client = clients.get(workerId);
 
-        if (client != null && client.isOpen()) {
+        if (client != null && client.isConnected()) {
             MassMessage taskMessage = createMockTaskMessage(workerId);
-            client.send(new Gson().toJson(taskMessage));
-            log.info("Sent mock task to client: {}", workerId);
+            try {
+                client.sendMessage(new Gson().toJson(taskMessage));
+                log.info("Sent mock task to client: {}", workerId);
+            } catch (Exception e) {
+                log.warn("Failed to send mock task to client {}", workerId, e);
+            }
         }
     }
 
@@ -78,11 +82,11 @@ public class ClientSessionManager {
         return message;
     }
 
-    public Collection<MassWebSocketClientImpl> getAllClients() {
+    public Collection<MassWebSocketClient> getAllClients() {
         return clients.values();
     }
 
-    public MassWebSocketClientImpl getClient(String workerId) {
+    public MassWebSocketClient getClient(String workerId) {
         return clients.get(workerId);
     }
 

@@ -62,17 +62,18 @@ java -cp "xa-mass-dev-app/target/classes:xa-mass-sdk/target/classes:xa-mass-api/
 
 Primary endpoints:
 
-- `http://localhost:8088/status`
-- `http://localhost:8088/status/tasks`
+- `http://localhost:8088/`
+- `http://localhost:8088/tasks`
+- `http://localhost:8088/resources/workers`
 - `http://localhost:8088/doc.html`
 - `http://localhost:8088/actuator/health`
 - `ws://localhost:18088/ws`
 
 ## Module Map
 
-- `xa-mass-dev-app`: verified runnable entry and full-stack validation shell; starts runtime through `xa-mass-sdk`, exposes the current HTTP/status shell through `xa-mass-api`, and still wires engine-side manager/rule beans directly for dev and E2E validation
+- `xa-mass-dev-app`: verified runnable entry and full-stack validation shell; starts runtime through `xa-mass-sdk`, exposes the current HTTP control console and JSON APIs through `xa-mass-api`, and still wires engine-side manager/rule beans directly for dev and E2E validation
 - `xa-mass-sdk`: consumer-facing dependency entry and embedded runtime composition for the platform
-- `xa-mass-api`: REST controllers and status pages for validation/demo
+- `xa-mass-api`: REST controllers and the backend-hosted control console shell
 - `xa-mass-engine`: task state machine, assignment, result handling, and strategy extension points
 - `xa-mass-gateway`: WebSocket server and dispatch
 - `xa-mass-core`: shared models and infrastructure
@@ -123,7 +124,7 @@ Module boundary note:
 
 - top-level directories are not automatically active modules
 - check the root `pom.xml` before treating a directory as current mainline
-- `xa-mass-dev-app` uses `xa-mass-sdk` as its runtime entry and keeps `xa-mass-api` explicit only because the current mock app also serves REST/status HTML pages
+- `xa-mass-dev-app` uses `xa-mass-sdk` as its runtime entry and keeps `xa-mass-api` explicit because the current mock app also serves REST APIs and the backend-hosted control console shell
 - avoid making `xa-mass-sdk` depend on API/UI modules; that would make third-party SDK consumers pull demo web surfaces unnecessarily
 - embedded runtime composition now lives inside `xa-mass-sdk` under `com.xa.mass.starter.*`
 - if an older doc references removed modules or archive code, treat that as historical drift rather than something missing from the current repo

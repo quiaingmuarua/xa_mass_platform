@@ -1,6 +1,6 @@
 # XA Mass Platform Internal API Reference
 
-Last updated: 2026-04-20
+Last updated: 2026-04-22
 
 This document tracks the current active HTTP/API surface in the mainline runtime.
 
@@ -8,7 +8,7 @@ Status labels used below:
 
 - `Implemented`: endpoint exists and is wired into the current runtime
 - `Partial`: endpoint exists but is mainly diagnostic, placeholder, or thin passthrough
-- `Demo`: endpoint exists for status/demo pages rather than as a stable SDK surface
+- `Console`: backend-served SPA shell or route handled by the control console
 
 Scope:
 
@@ -33,8 +33,8 @@ For verified runtime behavior and recommended startup, use [VERIFIED_RUNBOOK.md]
 - Workers can be phone apps, crawlers, LLM agents, IM bots, or other long-lived executors.
 - Stable payload boundaries are `Task.sharedConfig` and `TaskMsg.input/output`.
 - `target` is only a conventional key inside `TaskMsg.input`; no dedicated target compatibility accessor remains.
-- `Task.intakeStatus` is the active append-window lifecycle truth; `openEnded` remains a compatibility request/response projection.
-- `TaskMsg.latestAttemptWorkerId`, `latestAttemptWorkerContextId`, and `latestAttemptBatchId` are compatibility projections of the latest `TaskMsgAttempt`.
+- `Task.intakeStatus` is the active append-window lifecycle truth; `openEnded` is only the create/request projection.
+- `TaskMsg.latestAttemptWorkerId`, `latestAttemptWorkerContextId`, and `latestAttemptBatchId` are latest-attempt projections of `TaskMsgAttempt`.
 - Worker/gateway callbacks must resolve a unique active `TaskMsgAttempt`; the runtime no longer synthesizes legacy attempts for result write-back.
 - `Worker` and `WorkerContext` are current reference adapters, not the permanent platform boundary.
 
@@ -101,9 +101,12 @@ Example response:
 
 ```json
 {
-  "success": true,
-  "message": "Task created",
-  "taskId": "task-uuid"
+  "code": 0,
+  "msg": "ok",
+  "data": {
+    "taskId": "task-uuid",
+    "message": "Task created"
+  }
 }
 ```
 
@@ -118,39 +121,42 @@ Response notes:
 - returns `task`
 - returns `items` derived from persisted `TaskMsg.input`
 - returns `stateValidation`
-- returns HTTP 404 with no body when the task does not exist
+- returns HTTP 404 with `ApiResponse.error(404, ...)` when the task does not exist
 
 Example response shape:
 
 ```json
 {
-  "success": true,
-  "task": {
-    "tid": "task-uuid",
-    "taskName": "smoke-lifecycle",
-    "project": "demoApp",
-    "status": "NEW",
-    "taskRoutingCode": "us",
-    "sharedConfig": {
-      "textContent": "hello"
+  "code": 0,
+  "msg": "ok",
+  "data": {
+    "task": {
+      "tid": "task-uuid",
+      "taskName": "smoke-lifecycle",
+      "project": "demoApp",
+      "status": "NEW",
+      "taskRoutingCode": "us",
+      "sharedConfig": {
+        "textContent": "hello"
+      },
+      "intakeStatus": "SEALED",
+      "openEnded": false,
+      "batchSize": 1,
+      "maxRuntimeSeconds": 0
     },
-    "intakeStatus": "SEALED",
-    "openEnded": false,
-    "batchSize": 1,
-    "maxRuntimeSeconds": 0
-  },
-  "items": [
-    {
-      "target": "target-001"
-    },
-    {
-      "target": "target-002"
+    "items": [
+      {
+        "target": "target-001"
+      },
+      {
+        "target": "target-002"
+      }
+    ],
+    "stateValidation": {
+      "valid": true,
+      "needsResolution": false,
+      "violations": []
     }
-  ],
-  "stateValidation": {
-    "valid": true,
-    "needsResolution": false,
-    "violations": []
   }
 }
 ```
@@ -185,7 +191,7 @@ Contract rules:
 Contract rules:
 
 - only `NEW` and `TERMINAL` tasks can be deleted
-- returns HTTP 400 with `{"success": false, ...}` if the task is in a non-deletable state
+- returns `ApiResponse.error(...)` when the task is in a non-deletable state
 
 ### 2.5 Audit Task
 
@@ -202,15 +208,18 @@ Behavior:
 
 - `approved=true`: `NEW` or `BLOCKED` -> `READY`
 - `approved=false`: `NEW` -> `BLOCKED`
-- returns HTTP 400 with `{"success": false, ...}` if the transition is not allowed from the current state
+- returns `ApiResponse.error(...)` if the transition is not allowed from the current state
 
 Example success response:
 
 ```json
 {
-  "success": true,
-  "message": "Task approved",
-  "newStatus": "READY"
+  "code": 0,
+  "msg": "ok",
+  "data": {
+    "message": "Task approved",
+    "newStatus": "READY"
+  }
 }
 ```
 
@@ -239,10 +248,13 @@ Example success response:
 
 ```json
 {
-  "success": true,
-  "message": "Task resumed",
-  "newStatus": "READY",
-  "terminalReason": ""
+  "code": 0,
+  "msg": "ok",
+  "data": {
+    "message": "Task resumed",
+    "newStatus": "READY",
+    "terminalReason": ""
+  }
 }
 ```
 
@@ -250,10 +262,13 @@ Alternate success response when it already completed:
 
 ```json
 {
-  "success": true,
-  "message": "Task already completed while paused and was closed to TERMINAL",
-  "newStatus": "TERMINAL",
-  "terminalReason": "ALL_MESSAGES_SUCCEEDED"
+  "code": 0,
+  "msg": "ok",
+  "data": {
+    "message": "Task already completed while paused and was closed to TERMINAL",
+    "newStatus": "TERMINAL",
+    "terminalReason": "ALL_MESSAGES_SUCCEEDED"
+  }
 }
 ```
 
@@ -319,30 +334,33 @@ Response shape:
 
 ```json
 {
-  "success": true,
-  "total": 2,
-  "page": 1,
-  "size": 20,
-  "messages": [
-    {
-      "msgId": "msg-1",
-      "taskId": "task-uuid",
-      "status": "SUCCESS",
-      "latestAttemptWorkerId": "worker-a",
-      "latestAttemptWorkerContextId": "worker-context-a",
-      "latestAttemptBatchId": "batch-1",
-      "retryCount": 0,
-      "maxRetryCount": 3,
-      "finalReason": "BUSINESS_SUCCESS",
-      "result": "ok",
-      "errorMessage": null,
-      "errorCode": null,
-      "input": {
-        "target": "target-001"
-      },
-      "output": {}
-    }
-  ]
+  "code": 0,
+  "msg": "ok",
+  "data": {
+    "total": 2,
+    "page": 1,
+    "size": 20,
+    "messages": [
+      {
+        "msgId": "msg-1",
+        "taskId": "task-uuid",
+        "status": "SUCCESS",
+        "latestAttemptWorkerId": "worker-a",
+        "latestAttemptWorkerContextId": "worker-context-a",
+        "latestAttemptBatchId": "batch-1",
+        "retryCount": 0,
+        "maxRetryCount": 3,
+        "finalReason": "BUSINESS_SUCCESS",
+        "result": "ok",
+        "errorMessage": null,
+        "errorCode": null,
+        "input": {
+          "target": "target-001"
+        },
+        "output": {}
+      }
+    ]
+  }
 }
 ```
 
@@ -372,16 +390,19 @@ Contract rules:
 
 - `inputs` must be a non-empty list
 - task must exist
-- task must have `intakeStatus=OPEN` (`openEnded=true` remains the compatibility create flag)
+- task must have `intakeStatus=OPEN`
 - task must still be active
 
 Example response:
 
 ```json
 {
-  "success": true,
-  "message": "Items appended",
-  "added": 2
+  "code": 0,
+  "msg": "ok",
+  "data": {
+    "message": "Items appended",
+    "added": 2
+  }
 }
 ```
 
@@ -400,9 +421,12 @@ Example response:
 
 ```json
 {
-  "success": true,
-  "message": "Task sealed",
-  "status": "RUNNING"
+  "code": 0,
+  "msg": "ok",
+  "data": {
+    "message": "Task sealed",
+    "status": "RUNNING"
+  }
 }
 ```
 
@@ -518,15 +542,26 @@ Behavior:
 
 - returns the configured project code list from `GlobalConfig`
 
-### 5.2 Config Page
+### 5.2 Backend-Served Control Console
 
 - Method: `GET`
-- Path: `/config`
-- Status: `Demo`
+- Paths:
+  - `/`
+  - `/tasks`
+  - `/resources/workers`
+  - `/resources/worker-contexts`
+  - `/resources/rules`
+  - `/resources/configs`
+  - `/runtime/diagnostics`
+  - `/system/users`
+  - `/system/roles`
+  - `/system/audit`
+- Status: `Console`
 
 Behavior:
 
-- returns the config HTML page
+- returns the SPA shell from the built `frontend/dist`
+- browser-side routing handles the page view after the shell loads
 
 ## 6. Message API
 
@@ -555,30 +590,30 @@ Response shape:
 }
 ```
 
-## 7. Status And Demo Pages
+## 7. Worker Debug APIs
 
-Base path: `/status`
+Base path: `/status/workers`
 
-### 7.1 Summary Pages
+### 7.1 Message History
 
-- `GET /status` - `Demo`
-- `GET /status/tasks` - `Demo`
-- `GET /status/workers` - `Demo`
-- `GET /status/rules` - `Demo`
+- Method: `GET`
+- Path: `/status/workers/message-history`
+- Status: `Partial`
 
 Behavior:
 
-- return Thymeleaf status/demo pages for runtime inspection
+- returns the current outbound/inbound debug message history for one worker
 
-### 7.2 Worker Project Helpers
+### 7.2 Send Debug Message
 
-- `GET /status/workers/allProjects` - `Demo`
-- `POST /status/workers/updateSupportedProjects` - `Demo`
+- Method: `POST`
+- Path: `/status/workers/send-message`
+- Status: `Partial`
 
-Current purpose:
+Behavior:
 
-- support status/demo-page editing of mock worker project bindings
-- should not be treated as a stable SDK contract
+- sends a debug/control payload to a worker over the task-messages session
+- does not create or mutate `TaskMsg`
 
 ## 8. Health And Docs
 
@@ -587,19 +622,12 @@ Current purpose:
 
 ## 9. Response Shape Notes
 
-The active API surface uses two response styles:
+The active JSON API surface uses one response family:
 
-**Task API (`/status/api/tasks/**`)** - flat `Map<String,Object>`:
-
-- all success responses: `{"success": true, <data fields at top level>}`
-- all error responses: `{"success": false, "message": "<reason>"}`
-- HTTP 404 on task-not-found from `GET /status/api/tasks/{taskId}` returns no body
-- HTTP 400 for validation failures and out-of-state transitions
-- `ApiResponse` wrapper is not used on this path
-
-**Other APIs (queue, session, config, message passthrough)** - use `ApiResponse<T>` or `{"code", "msg", "data"}` shapes as documented per-endpoint above.
+- success: `{"code":0,"msg":"ok","data":...}`
+- error: `{"code":<http-ish code>,"msg":"<reason>","data":null}`
 
 Implication:
 
-- consumers should treat task endpoints and other diagnostic endpoints as separate response families
-- do not assume `code/msg/data` wrapping on task endpoints
+- consumers should read payloads from `data`
+- task endpoints follow the same `ApiResponse<T>` envelope as the other JSON endpoints

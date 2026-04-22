@@ -35,21 +35,8 @@ public class FrontendConsoleController {
     })
     public ResponseEntity<Void> redirectLegacyPage(HttpServletRequest request) {
         String localSpaPath = routingService.resolveSpaPath(request.getRequestURI());
-        if (routingService.hasLocalBuild()) {
-            return ResponseEntity.status(HttpStatus.FOUND)
-                    .location(URI.create(localSpaPath))
-                    .build();
-        }
-
-        URI location = routingService.resolveExternalConsoleUri(localSpaPath);
-        if (location == null) {
-            return ResponseEntity.status(HttpStatus.FOUND)
-                    .location(URI.create(localSpaPath))
-                    .build();
-        }
-
         return ResponseEntity.status(HttpStatus.FOUND)
-                .location(location)
+                .location(URI.create(localSpaPath))
                 .build();
     }
 
@@ -77,18 +64,11 @@ public class FrontendConsoleController {
                     .body(localIndex.get());
         }
 
-        URI externalLocation = routingService.resolveExternalConsoleUri(request.getRequestURI());
-        if (externalLocation != null) {
-            return ResponseEntity.status(HttpStatus.FOUND)
-                    .location(externalLocation)
-                    .build();
-        }
-
         return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
                 .header(HttpHeaders.CONTENT_TYPE, MediaType.TEXT_PLAIN_VALUE + ";charset=UTF-8")
                 .body("""
                         Frontend console is unavailable.
-                        Build frontend/dist or configure mass.frontend.console-url.
+                        Build frontend/dist before starting the backend-hosted console.
                         """.stripIndent().getBytes(StandardCharsets.UTF_8));
     }
 }

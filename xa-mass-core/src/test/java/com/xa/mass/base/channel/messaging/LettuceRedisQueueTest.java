@@ -1,52 +1,36 @@
 package com.xa.mass.base.channel.messaging;
 
 import com.xa.mass.base.channel.messaging.redis.LettuceRedisQueue;
-import com.xa.mass.base.channel.messaging.redis.RedisConnectionManager;
+import com.xa.mass.base.test.RedisTestSupport;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.concurrent.TimeUnit;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class LettuceRedisQueueTest {
-    private LettuceRedisQueue<String> queue;
     private static final String QUEUE_KEY = "test-redis-queue";
+
+    private LettuceRedisQueue<String> queue;
 
     @BeforeEach
     public void setUp() {
-        // 确保Redis连接初始化
-        RedisConnectionManager.init("localhost", 6379, null, 0);
+        RedisTestSupport.initLocalRedisOrSkip();
         queue = new LettuceRedisQueue<>(QUEUE_KEY, String.class);
-        // 清空队列，避免脏数据
-        try {
-            queue.poll(1, TimeUnit.SECONDS);
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        }
-        try {
-            queue.poll(1, TimeUnit.SECONDS);
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        }
-        try {
-            queue.poll(1, TimeUnit.SECONDS);
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        }
+        drainQueue();
     }
 
     @AfterEach
     public void tearDown() {
-        // 清空队列
-        while (!queue.isEmpty()) {
-            try {
-                queue.poll(1, TimeUnit.SECONDS);
-            } catch (InterruptedException e) {
-                throw new RuntimeException(e);
-            }
+        if (queue == null) {
+            return;
         }
+        drainQueue();
     }
 
     @Test
@@ -75,4 +59,14 @@ public class LettuceRedisQueueTest {
         String result = queue.poll(1, TimeUnit.SECONDS);
         assertNull(result);
     }
-} 
+
+    private void drainQueue() {
+        while (!queue.isEmpty()) {
+            try {
+                queue.poll(1, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
+        }
+    }
+}

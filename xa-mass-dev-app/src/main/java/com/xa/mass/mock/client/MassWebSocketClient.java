@@ -7,6 +7,8 @@ import java.util.concurrent.TimeUnit;
  * Interface for WebSocket client functionality
  */
 public interface MassWebSocketClient {
+    String getWorkerId();
+
     /**
      * Connect to a WebSocket server
      * @param serverUri The URI of the WebSocket server

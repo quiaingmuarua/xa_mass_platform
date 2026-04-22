@@ -1,6 +1,6 @@
 # XA Mass Platform Verified Runbook
 
-Last updated: 2026-04-20
+Last updated: 2026-04-22
 
 This runbook records verified runtime facts only. It is not an architecture essay, API reference, or changelog.
 
@@ -31,6 +31,7 @@ Run from repo root:
 
 ```bash
 ./mvnw -DskipTests compile
+cd frontend && corepack pnpm build && cd ..
 java -cp "xa-mass-dev-app/target/classes:xa-mass-sdk/target/classes:xa-mass-api/target/classes:xa-mass-engine/target/classes:xa-mass-gateway/target/classes:xa-mass-core/target/classes:<runtime-classpath>" \
   com.xa.mass.mock.MockApplicationSpringBootApp
 ```
@@ -42,7 +43,7 @@ Windows guidance:
 
 Default runtime facts:
 
-- `server.port=8088` serves HTTP/status pages.
+- `server.port=8088` serves the backend-hosted control console and JSON APIs.
 - `mass.websocket.port=18088` serves the gateway WebSocket endpoint.
 - Default local/dev startup auto-starts mock worker clients when `mock.client.auto-start=true`.
 - Mock clients connect to `ws://localhost:18088/ws`.
@@ -53,9 +54,9 @@ Default runtime facts:
 HTTP:
 
 ```bash
-curl -i http://127.0.0.1:8088/status
-curl -i http://127.0.0.1:8088/status/tasks
-curl -i http://127.0.0.1:8088/status/workers
+curl -i http://127.0.0.1:8088/
+curl -i http://127.0.0.1:8088/tasks
+curl -i http://127.0.0.1:8088/resources/workers
 curl -i http://127.0.0.1:8088/doc.html
 curl -i http://127.0.0.1:8088/actuator/health
 ```
@@ -68,7 +69,7 @@ nc -zv 127.0.0.1 18088
 
 Expected result:
 
-- HTTP status/demo pages return successfully.
+- Backend-hosted control console routes return successfully.
 - Gateway port is open.
 - Mock workers appear online when auto-start is enabled.
 

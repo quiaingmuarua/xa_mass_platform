@@ -2,7 +2,7 @@ package com.xa.mass.mock.command.mock;
 
 import com.google.gson.JsonObject;
 import com.xa.mass.mock.client.ClientSessionManager;
-import com.xa.mass.mock.client.MassWebSocketClientImpl;
+import com.xa.mass.mock.client.MassWebSocketClient;
 import com.xa.mass.mock.command.core.CommandDefinition;
 import com.xa.mass.mock.command.core.CommandRegistry;
 import com.xa.mass.mock.command.model.CommandContext;
@@ -111,7 +111,7 @@ public final class MockCommandRoutes {
 
     private static Map<String, Object> mockDisconnect(JsonObject request, CommandContext context) {
         String workerId = requireWorkerId(request);
-        MassWebSocketClientImpl client = clientManager(context).getClient(workerId);
+        MassWebSocketClient client = clientManager(context).getClient(workerId);
         if (client == null) {
             throw new CommandException(ErrorCode.INIT_ERROR, "mock client not found: " + workerId);
         }

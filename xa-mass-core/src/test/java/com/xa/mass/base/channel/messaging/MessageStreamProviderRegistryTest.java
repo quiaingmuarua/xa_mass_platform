@@ -3,7 +3,7 @@ package com.xa.mass.base.channel.messaging;
 import com.xa.mass.base.channel.messaging.api.MessageStream;
 import com.xa.mass.base.channel.messaging.memory.InMemoryMessageStream;
 import com.xa.mass.base.channel.messaging.redis.LettuceRedisStream;
-import com.xa.mass.base.channel.messaging.redis.RedisConnectionManager;
+import com.xa.mass.base.test.RedisTestSupport;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -11,21 +11,40 @@ import org.junit.jupiter.api.Test;
 import java.util.HashMap;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
-// 负载对象
 class TestPayload {
     public String name;
     public int value;
-    public TestPayload() {}
-    public TestPayload(String name, int value) { this.name = name; this.value = value; }
-    @Override public boolean equals(Object o) {
-        if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
+
+    public TestPayload() {
+    }
+
+    public TestPayload(String name, int value) {
+        this.name = name;
+        this.value = value;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (o == null || getClass() != o.getClass()) {
+            return false;
+        }
         TestPayload that = (TestPayload) o;
         return value == that.value && java.util.Objects.equals(name, that.name);
     }
-    @Override public int hashCode() { return java.util.Objects.hash(name, value); }
+
+    @Override
+    public int hashCode() {
+        return java.util.Objects.hash(name, value);
+    }
 }
 
 public class MessageStreamProviderRegistryTest {
@@ -35,7 +54,7 @@ public class MessageStreamProviderRegistryTest {
 
     @BeforeEach
     public void setUp() {
-        RedisConnectionManager.init("localhost", 6379, null, 0);
+        RedisTestSupport.initLocalRedisOrSkip();
         MessageStreamProviderRegistry.clearCache();
     }
 
@@ -93,7 +112,8 @@ public class MessageStreamProviderRegistryTest {
 
     @Test
     public void testRegisterCustomProvider() {
-        MessageStreamProviderRegistry.register(MessageProviderType.valueOf("CUSTOM"),
+        MessageStreamProviderRegistry.register(
+                MessageProviderType.valueOf("CUSTOM"),
                 (queueKey, messageType, extraParams) -> new InMemoryMessageStream<>(queueKey, messageType));
         MessageStream<String> stream = MessageStreamProviderRegistry.createStream(
                 MessageProviderType.valueOf("CUSTOM"), QUEUE_KEY, String.class, null);
@@ -133,7 +153,8 @@ public class MessageStreamProviderRegistryTest {
 
     @Test
     public void testCustomProviderWithObject() throws Exception {
-        MessageStreamProviderRegistry.register(MessageProviderType.CUSTOM,
+        MessageStreamProviderRegistry.register(
+                MessageProviderType.CUSTOM,
                 (queueKey, messageType, extraParams) -> new InMemoryMessageStream<>(queueKey, messageType));
         MessageStream<TestPayload> stream = MessageStreamProviderRegistry.createStream(
                 MessageProviderType.CUSTOM, QUEUE_KEY, TestPayload.class, null);
@@ -144,4 +165,4 @@ public class MessageStreamProviderRegistryTest {
         TestPayload polled = stream.poll(1, java.util.concurrent.TimeUnit.SECONDS).getMessage();
         assertEquals(payload, polled);
     }
-} 
+}
