@@ -107,9 +107,9 @@ class WorkerManualDebugCommandIntegrationTest extends AbstractMockE2eTest {
         request.put("payload", payload);
 
         Map<String, Object> sendResponse = waitForSuccessfulSend(request);
-        assertEquals(Boolean.TRUE, sendResponse.get("success"));
-        assertEquals(workerId, sendResponse.get("workerId"));
-        String messageId = String.valueOf(sendResponse.get("messageId"));
+        Map<String, Object> sendData = responseData(sendResponse);
+        assertEquals(workerId, sendData.get("workerId"));
+        String messageId = String.valueOf(sendData.get("messageId"));
         assertFalse(messageId.isBlank());
         return messageId;
     }
@@ -118,7 +118,7 @@ class WorkerManualDebugCommandIntegrationTest extends AbstractMockE2eTest {
         Map<String, Object> latest = null;
         for (int i = 0; i < 40; i++) {
             latest = exchange("/status/workers/send-message", HttpMethod.POST, request);
-            if (Boolean.TRUE.equals(latest.get("success"))) {
+            if (isApiOk(latest)) {
                 return latest;
             }
             Thread.sleep(250L);
@@ -142,7 +142,7 @@ class WorkerManualDebugCommandIntegrationTest extends AbstractMockE2eTest {
 
     @SuppressWarnings("unchecked")
     private List<Map<String, Object>> historyItems(Map<String, Object> response) {
-        return (List<Map<String, Object>>) response.get("items");
+        return (List<Map<String, Object>>) responseData(response).get("items");
     }
 
     private Map<String, Object> findInboundReply(List<Map<String, Object>> items, String replyToMessageId) {

@@ -82,8 +82,8 @@ class WorkerManualDebugDisconnectIntegrationTest extends AbstractMockE2eTest {
         assertEquals(WORKER_ID, resultData.get("disconnectWorkerId"));
 
         Map<String, Object> offlineResponse = waitForOffline();
-        assertEquals(Boolean.FALSE, offlineResponse.get("success"));
-        assertTrue(String.valueOf(offlineResponse.get("msg")).contains("offline"));
+        assertEquals(409, apiCode(offlineResponse));
+        assertTrue(apiMsg(offlineResponse).contains("offline"));
     }
 
     private String sendManualCommand(Map<String, Object> payload) throws InterruptedException {
@@ -95,8 +95,7 @@ class WorkerManualDebugDisconnectIntegrationTest extends AbstractMockE2eTest {
         request.put("payload", payload);
 
         Map<String, Object> sendResponse = waitForSuccessfulSend(request);
-        assertEquals(Boolean.TRUE, sendResponse.get("success"));
-        String messageId = String.valueOf(sendResponse.get("messageId"));
+        String messageId = String.valueOf(responseData(sendResponse).get("messageId"));
         assertFalse(messageId.isBlank());
         return messageId;
     }
@@ -105,7 +104,7 @@ class WorkerManualDebugDisconnectIntegrationTest extends AbstractMockE2eTest {
         Map<String, Object> latest = null;
         for (int i = 0; i < 40; i++) {
             latest = exchange("/status/workers/send-message", HttpMethod.POST, request);
-            if (Boolean.TRUE.equals(latest.get("success"))) {
+            if (isApiOk(latest)) {
                 return latest;
             }
             Thread.sleep(250L);
@@ -138,8 +137,9 @@ class WorkerManualDebugDisconnectIntegrationTest extends AbstractMockE2eTest {
 
         for (int i = 0; i < 40; i++) {
             latest = exchange("/status/workers/send-message", HttpMethod.POST, probeRequest);
-            if (Boolean.FALSE.equals(latest.get("success"))
-                    && String.valueOf(latest.get("msg")).contains("offline")) {
+            if (apiCode(latest) == 409
+                    && apiMsg(latest) != null
+                    && apiMsg(latest).contains("offline")) {
                 return latest;
             }
             Thread.sleep(250L);
@@ -149,7 +149,7 @@ class WorkerManualDebugDisconnectIntegrationTest extends AbstractMockE2eTest {
 
     @SuppressWarnings("unchecked")
     private List<Map<String, Object>> historyItems(Map<String, Object> response) {
-        return (List<Map<String, Object>>) response.get("items");
+        return (List<Map<String, Object>>) responseData(response).get("items");
     }
 
     private Map<String, Object> findInboundReply(List<Map<String, Object>> items, String replyToMessageId) {

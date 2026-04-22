@@ -102,4 +102,40 @@ class WorkerApiControllerTest {
                 workerManager.getWorker("worker-001").getSupportedProjects()
         );
     }
+
+    @Test
+    void updateSupportedProjectsRejectsUnknownFields() throws Exception {
+        Worker worker = new Worker();
+        worker.setWorkerId("worker-001");
+        workerManager.addWorker(worker);
+
+        mockMvc.perform(put("/status/api/workers/{workerId}/supported-projects", "worker-001")
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "supportedProjects": ["demoApp"],
+                                  "workerGroupId": "legacy"
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.msg").value("Unsupported worker update fields: workerGroupId"));
+    }
+
+    @Test
+    void updateSupportedProjectsRequiresSupportedProjectsField() throws Exception {
+        Worker worker = new Worker();
+        worker.setWorkerId("worker-001");
+        workerManager.addWorker(worker);
+
+        mockMvc.perform(put("/status/api/workers/{workerId}/supported-projects", "worker-001")
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.msg").value("supportedProjects is required"));
+    }
 }

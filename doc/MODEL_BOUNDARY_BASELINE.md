@@ -15,8 +15,12 @@ This file defines the current canonical model boundaries. Its purpose is to stop
 ### HTTP API boundary
 
 - Canonical response envelope: `com.xa.mass.api.model.ApiResponse<T>`
-- Intended canonical request contract: typed request models at controller boundaries
+- Canonical request contract: typed request models at controller boundaries
+- shared unknown-field capture base: `com.xa.mass.api.model.AbstractUnknownFieldRequest`
+- task API request models live under `com.xa.mass.api.model.task.*`
+- worker API request models live under `com.xa.mass.api.model.worker.*`
 - `/status/api/tasks/**` and `/status/api/workers/**` should expose this envelope directly
+- worker debug/status shell JSON endpoints should prefer this envelope too, even though they are not the main public API boundary
 
 ### SDK boundary
 
@@ -47,8 +51,8 @@ This file defines the current canonical model boundaries. Its purpose is to stop
 
 ## 3. Current Known Debt
 
-- status/demo shell endpoints outside the canonical API boundary still use ad-hoc raw maps
-- controller request bodies still often use `Map<String,Object>` instead of typed request models
+- some status/demo shell endpoints outside the canonical API boundary still use ad-hoc raw maps
+- some non-task API controllers still use `Map<String,Object>` request bodies instead of typed request models
 - `Envelope`, `MassMessage`, and `MessageContext` still overlap on routing metadata such as worker and project context
 - `MassMessage.payload` remains `JsonElement`, so payload contracts are only partially typed
 

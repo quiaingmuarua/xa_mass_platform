@@ -74,12 +74,12 @@ class WorkerManualDebugChatIntegrationTest extends AbstractMockE2eTest {
         ));
 
         Map<String, Object> sendResponse = waitForSuccessfulSend(request);
-        assertEquals(Boolean.TRUE, sendResponse.get("success"));
-        assertEquals(WORKER_ID, sendResponse.get("workerId"));
-        assertEquals("CONTROL", sendResponse.get("msgType"));
-        assertEquals("manual-chat", sendResponse.get("subMsgType"));
+        Map<String, Object> sendData = responseData(sendResponse);
+        assertEquals(WORKER_ID, sendData.get("workerId"));
+        assertEquals("CONTROL", sendData.get("msgType"));
+        assertEquals("manual-chat", sendData.get("subMsgType"));
 
-        String messageId = String.valueOf(sendResponse.get("messageId"));
+        String messageId = String.valueOf(sendData.get("messageId"));
         assertFalse(messageId.isBlank());
 
         Map<String, Object> historyResponse = waitForHistory(
@@ -115,7 +115,7 @@ class WorkerManualDebugChatIntegrationTest extends AbstractMockE2eTest {
         Map<String, Object> latest = null;
         for (int i = 0; i < 40; i++) {
             latest = exchange("/status/workers/send-message", HttpMethod.POST, request);
-            if (Boolean.TRUE.equals(latest.get("success"))) {
+            if (isApiOk(latest)) {
                 return latest;
             }
             Thread.sleep(250L);
@@ -139,7 +139,7 @@ class WorkerManualDebugChatIntegrationTest extends AbstractMockE2eTest {
 
     @SuppressWarnings("unchecked")
     private List<Map<String, Object>> historyItems(Map<String, Object> response) {
-        return (List<Map<String, Object>>) response.get("items");
+        return (List<Map<String, Object>>) responseData(response).get("items");
     }
 
     private Map<String, Object> findOutbound(List<Map<String, Object>> items, String messageId) {

@@ -20,6 +20,28 @@ Lightweight Vue 3 + Vite frontend for the XA Mass worker orchestration platform.
 - `corepack pnpm test:run`
 - `corepack pnpm build`
 
+## Backend-Hosted Shell
+
+The backend can now replace the legacy template pages and serve the built SPA
+shell directly when `frontend/dist` exists.
+
+Recommended local loop:
+
+- terminal 1: start backend on `http://localhost:8088`
+- terminal 2: run `corepack pnpm build` inside `frontend/`
+- open [http://localhost:8088/](http://localhost:8088/)
+
+Legacy template URLs now redirect into the new console routes:
+
+- `/status` -> `/`
+- `/status/tasks` -> `/tasks`
+- `/status/workers` -> `/resources/workers`
+- `/status/rules` -> `/resources/rules`
+- `/config` -> `/resources/configs`
+
+If `frontend/dist` is missing, the backend falls back to `mass.frontend.console-url`
+so local Vite development remains decoupled.
+
 ## Real Backend Mode
 
 Use mock mode for independent frontend CI. For local backend integration, set:

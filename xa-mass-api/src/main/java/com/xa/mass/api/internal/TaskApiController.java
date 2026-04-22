@@ -1,7 +1,9 @@
 package com.xa.mass.api.internal;
 
 import com.xa.mass.api.model.ApiResponse;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.xa.mass.api.model.task.TaskAppendItemsApiRequest;
+import com.xa.mass.api.model.task.TaskCreateApiRequest;
+import com.xa.mass.api.model.task.TaskUpdateApiRequest;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
@@ -27,33 +29,10 @@ import java.util.stream.Collectors;
 public class TaskApiController {
     private static final DateTimeFormatter DATE_TIME_FORMATTER =
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
-    private static final Set<String> SUPPORTED_TASK_CREATE_FIELDS = Set.of(
-            "userId",
-            "project",
-            "taskName",
-            "sharedConfig",
-            "inputs",
-            "routingCode",
-            "batchSize",
-            "defaultMsgMaxRetryCount",
-            "openEnded",
-            "maxRuntimeSeconds"
-    );
-    private static final Set<String> SUPPORTED_TASK_UPDATE_FIELDS = Set.of(
-            "userId",
-            "project",
-            "taskName",
-            "sharedConfig",
-            "routingCode",
-            "batchSize"
-    );
     private static final Set<TaskStatus> EDITABLE_TASK_STATUSES = Set.of(TaskStatus.NEW, TaskStatus.BLOCKED);
 
     @Autowired
     private TaskManager taskManager;
-
-    @Autowired
-    private ObjectMapper objectMapper;
 
     @GetMapping("")
     public ResponseEntity<ApiResponse<Map<String, Object>>> listTasks(@RequestParam(required = false) String keyword,
@@ -78,9 +57,10 @@ public class TaskApiController {
     }
 
     @PostMapping("")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> createTask(@RequestBody Map<String, Object> requestBody) {
+    public ResponseEntity<ApiResponse<Map<String, Object>>> createTask(@RequestBody TaskCreateApiRequest requestBody) {
         try {
-            TaskCreateRequestDto request = parseTaskRequest(requestBody, SUPPORTED_TASK_CREATE_FIELDS, "task create");
+            validateKnownFields(requestBody, "task create");
+            TaskCreateRequestDto request = toTaskCreateRequest(requestBody);
             Task task = taskManager.createTask(request);
             return ok(Map.of(
                     "taskId", task.getTid(),
@@ -277,7 +257,7 @@ public class TaskApiController {
 
     @PutMapping("/{taskId}")
     public ResponseEntity<ApiResponse<Map<String, Object>>> updateTask(@PathVariable String taskId,
-                                                                       @RequestBody Map<String, Object> requestBody) {
+                                                                       @RequestBody TaskUpdateApiRequest requestBody) {
         try {
             Task task = taskManager.getTask(taskId);
             if (task == null) {
@@ -287,7 +267,8 @@ public class TaskApiController {
                 return badRequest("Task update failed: Only NEW or BLOCKED tasks can be updated");
             }
 
-            TaskCreateRequestDto request = parseTaskRequest(requestBody, SUPPORTED_TASK_UPDATE_FIELDS, "task update");
+            validateKnownFields(requestBody, "task update");
+            TaskCreateRequestDto request = toTaskUpdateRequest(requestBody);
             task.setTaskName(request.getTaskName());
             task.setProject(request.getProject());
             task.setTaskRoutingCode(request.getRoutingCode());
@@ -307,11 +288,10 @@ public class TaskApiController {
 
     @PostMapping("/{taskId}/items")
     public ResponseEntity<ApiResponse<Map<String, Object>>> appendTaskItems(@PathVariable String taskId,
-                                                                            @RequestBody Map<String, Object> requestBody) {
+                                                                            @RequestBody TaskAppendItemsApiRequest requestBody) {
         try {
-            @SuppressWarnings("unchecked")
-            List<Map<String, Object>> inputs =
-                    (List<Map<String, Object>>) requestBody.get("inputs");
+            validateKnownFields(requestBody, "task append items");
+            List<Map<String, Object>> inputs = requestBody.getInputs();
             if (inputs == null || inputs.isEmpty()) {
                 return badRequest("inputs must be a non-empty list");
             }
@@ -424,22 +404,82 @@ public class TaskApiController {
         return ResponseEntity.status(404).body(ApiResponse.error(404, message));
     }
 
-    private TaskCreateRequestDto parseTaskRequest(Map<String, Object> requestBody,
-                                                  Set<String> supportedFields,
-                                                  String operationName) {
-        if (requestBody == null || requestBody.isEmpty()) {
+    private void validateKnownFields(TaskCreateApiRequest requestBody, String operationName) {
+        if (requestBody == null || isEmptyCreateRequest(requestBody)) {
             throw new IllegalArgumentException("task request body is required");
         }
-
-        List<String> unknownFields = requestBody.keySet().stream()
-                .filter(field -> !supportedFields.contains(field))
-                .sorted()
-                .collect(Collectors.toList());
-        if (!unknownFields.isEmpty()) {
-            throw new IllegalArgumentException("Unsupported " + operationName + " fields: " + String.join(", ", unknownFields));
+        if (requestBody.hasUnknownFields()) {
+            throw new IllegalArgumentException("Unsupported " + operationName + " fields: "
+                    + String.join(", ", requestBody.getUnknownFieldNames()));
         }
+    }
 
-        return objectMapper.convertValue(requestBody, TaskCreateRequestDto.class);
+    private void validateKnownFields(TaskUpdateApiRequest requestBody, String operationName) {
+        if (requestBody == null || isEmptyUpdateRequest(requestBody)) {
+            throw new IllegalArgumentException("task request body is required");
+        }
+        if (requestBody.hasUnknownFields()) {
+            throw new IllegalArgumentException("Unsupported " + operationName + " fields: "
+                    + String.join(", ", requestBody.getUnknownFieldNames()));
+        }
+    }
+
+    private void validateKnownFields(TaskAppendItemsApiRequest requestBody, String operationName) {
+        if (requestBody == null) {
+            throw new IllegalArgumentException("task request body is required");
+        }
+        if (requestBody.hasUnknownFields()) {
+            throw new IllegalArgumentException("Unsupported " + operationName + " fields: "
+                    + String.join(", ", requestBody.getUnknownFieldNames()));
+        }
+    }
+
+    private TaskCreateRequestDto toTaskCreateRequest(TaskCreateApiRequest requestBody) {
+        TaskCreateRequestDto request = new TaskCreateRequestDto();
+        request.setUserId(requestBody.getUserId());
+        request.setProject(requestBody.getProject());
+        request.setTaskName(requestBody.getTaskName());
+        request.setSharedConfig(requestBody.getSharedConfig());
+        request.setInputs(requestBody.getInputs());
+        request.setRoutingCode(requestBody.getRoutingCode());
+        request.setBatchSize(requestBody.getBatchSize());
+        request.setDefaultMsgMaxRetryCount(requestBody.getDefaultMsgMaxRetryCount());
+        request.setOpenEnded(requestBody.isOpenEnded());
+        request.setMaxRuntimeSeconds(requestBody.getMaxRuntimeSeconds());
+        return request;
+    }
+
+    private TaskCreateRequestDto toTaskUpdateRequest(TaskUpdateApiRequest requestBody) {
+        TaskCreateRequestDto request = new TaskCreateRequestDto();
+        request.setUserId(requestBody.getUserId());
+        request.setProject(requestBody.getProject());
+        request.setTaskName(requestBody.getTaskName());
+        request.setSharedConfig(requestBody.getSharedConfig());
+        request.setRoutingCode(requestBody.getRoutingCode());
+        request.setBatchSize(requestBody.getBatchSize());
+        return request;
+    }
+
+    private boolean isEmptyCreateRequest(TaskCreateApiRequest requestBody) {
+        return requestBody.getUserId() == null
+                && requestBody.getProject() == null
+                && requestBody.getTaskName() == null
+                && requestBody.getSharedConfig() == null
+                && requestBody.getInputs() == null
+                && requestBody.getRoutingCode() == null
+                && requestBody.getBatchSize() == 0
+                && requestBody.getDefaultMsgMaxRetryCount() == 3
+                && !requestBody.isOpenEnded()
+                && requestBody.getMaxRuntimeSeconds() == 0;
+    }
+
+    private boolean isEmptyUpdateRequest(TaskUpdateApiRequest requestBody) {
+        return requestBody.getUserId() == null
+                && requestBody.getProject() == null
+                && requestBody.getTaskName() == null
+                && requestBody.getSharedConfig() == null
+                && requestBody.getRoutingCode() == null
+                && requestBody.getBatchSize() == 0;
     }
 
     private boolean blockTask(Task task) {

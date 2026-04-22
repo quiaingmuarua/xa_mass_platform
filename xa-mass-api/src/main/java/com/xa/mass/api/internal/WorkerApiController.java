@@ -1,6 +1,7 @@
 package com.xa.mass.api.internal;
 
 import com.xa.mass.api.model.ApiResponse;
+import com.xa.mass.api.model.worker.WorkerSupportedProjectsApiRequest;
 import com.xa.mass.base.enums.Project;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
@@ -19,6 +20,7 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 @RestController
 @RequestMapping("/status/api")
@@ -59,13 +61,14 @@ public class WorkerApiController {
 
     @PutMapping("/workers/{workerId}/supported-projects")
     public ResponseEntity<ApiResponse<Map<String, Object>>> updateSupportedProjects(@PathVariable String workerId,
-                                                                                    @RequestBody Map<String, Object> body) {
+                                                                                    @RequestBody WorkerSupportedProjectsApiRequest requestBody) {
+        validateKnownFields(requestBody);
         Worker worker = workerManager.getWorker(workerId);
         if (worker == null) {
             return ResponseEntity.status(404).body(ApiResponse.error(404, "Worker not found: " + workerId));
         }
 
-        List<String> supportedProjects = normalizeSupportedProjects(body == null ? null : body.get("supportedProjects"));
+        List<String> supportedProjects = normalizeSupportedProjects(requestBody.getSupportedProjects());
         worker.setSupportedProjects(supportedProjects);
         workerManager.updateWorker(worker);
 
@@ -75,21 +78,22 @@ public class WorkerApiController {
         )));
     }
 
-    private List<String> normalizeSupportedProjects(Object rawValue) {
-        if (rawValue == null) {
-            return List.of();
+    private void validateKnownFields(WorkerSupportedProjectsApiRequest requestBody) {
+        if (requestBody == null) {
+            throw new IllegalArgumentException("worker request body is required");
         }
-
-        List<String> values;
-        if (rawValue instanceof List<?> listValue) {
-            values = listValue.stream().map(String::valueOf).toList();
-        } else if (rawValue instanceof String textValue) {
-            values = List.of(textValue.split(","));
-        } else {
-            throw new IllegalArgumentException("supportedProjects must be a list or comma-separated string");
+        if (requestBody.hasUnknownFields()) {
+            throw new IllegalArgumentException("Unsupported worker update fields: "
+                    + String.join(", ", requestBody.getUnknownFieldNames()));
         }
+        if (requestBody.getSupportedProjects() == null) {
+            throw new IllegalArgumentException("supportedProjects is required");
+        }
+    }
 
-        return values.stream()
+    private List<String> normalizeSupportedProjects(List<String> supportedProjects) {
+        return supportedProjects.stream()
+                .filter(Objects::nonNull)
                 .map(String::trim)
                 .filter(value -> !value.isEmpty())
                 .map(value -> Project.requireCode(value).getCode())

@@ -21,22 +21,25 @@ describe('tasks.real', () => {
         })
         const fetchMock = vi.fn().mockResolvedValue(
             jsonResponse({
-                success: true,
-                items: [
-                    {
-                        id: 'task-001',
-                        taskName: 'Warm worker pool',
-                        project: 'demoApp',
-                        routingCode: 'us',
-                        status: 'RUNNING',
-                        terminalReason: null,
-                        successCount: 6,
-                        eligibleCount: 10,
-                        batchSize: 2,
-                        updatedAt: '2026-04-21 09:30:00',
-                    },
-                ],
-                total: 1,
+                code: 0,
+                msg: 'ok',
+                data: {
+                    items: [
+                        {
+                            id: 'task-001',
+                            taskName: 'Warm worker pool',
+                            project: 'demoApp',
+                            routingCode: 'us',
+                            status: 'RUNNING',
+                            terminalReason: null,
+                            successCount: 6,
+                            eligibleCount: 10,
+                            batchSize: 2,
+                            updatedAt: '2026-04-21 09:30:00',
+                        },
+                    ],
+                    total: 1,
+                },
             }),
         )
         vi.stubGlobal('fetch', fetchMock)
@@ -59,59 +62,65 @@ describe('tasks.real', () => {
             if (input.includes('/messages')) {
                 return Promise.resolve(
                     jsonResponse({
-                        success: true,
-                        total: 1,
-                        page: 1,
-                        size: 200,
-                        messages: [
-                            {
-                                msgId: 'msg-001',
-                                status: 'SUCCESS',
-                                latestAttemptWorkerId: 'worker-us-01',
-                                latestAttemptWorkerContextId: 'ctx-us-01',
-                                latestAttemptBatchId: 'batch-001',
-                                retryCount: 0,
-                                maxRetryCount: 3,
-                                finalReason: 'BUSINESS_SUCCESS',
-                                input: { target: 'alpha' },
-                                output: { result: 'ok' },
-                                errorMessage: null,
-                            },
-                        ],
+                        code: 0,
+                        msg: 'ok',
+                        data: {
+                            total: 1,
+                            page: 1,
+                            size: 200,
+                            messages: [
+                                {
+                                    msgId: 'msg-001',
+                                    status: 'SUCCESS',
+                                    latestAttemptWorkerId: 'worker-us-01',
+                                    latestAttemptWorkerContextId: 'ctx-us-01',
+                                    latestAttemptBatchId: 'batch-001',
+                                    retryCount: 0,
+                                    maxRetryCount: 3,
+                                    finalReason: 'BUSINESS_SUCCESS',
+                                    input: { target: 'alpha' },
+                                    output: { result: 'ok' },
+                                    errorMessage: null,
+                                },
+                            ],
+                        },
                     }),
                 )
             }
 
             return Promise.resolve(
                 jsonResponse({
-                    success: true,
-                    task: {
-                        tid: 'task-001',
-                        taskName: 'Warm worker pool',
-                        project: 'demoApp',
-                        taskRoutingCode: 'us',
-                        status: 'RUNNING',
-                        terminalReason: null,
-                        batchSize: 2,
-                        sharedConfig: {},
-                        user: null,
-                        taskTargetNumber: 10,
-                        taskEligibleNumber: 10,
-                        taskSuccessNumber: 6,
-                        taskNonSuccessNumber: 4,
-                        peakAssignedWorkerCount: 4,
-                        createTime: [2026, 4, 21, 9, 0, 0],
-                        updateTime: [2026, 4, 21, 9, 30, 0],
-                    },
-                    items: [{ target: 'alpha' }],
-                    stateValidation: {
-                        valid: true,
-                        needsResolution: false,
-                        totalMessages: 10,
-                        successMessages: 6,
-                        failedMessages: 0,
-                        processingMessages: 4,
-                        violations: [],
+                    code: 0,
+                    msg: 'ok',
+                    data: {
+                        task: {
+                            tid: 'task-001',
+                            taskName: 'Warm worker pool',
+                            project: 'demoApp',
+                            taskRoutingCode: 'us',
+                            status: 'RUNNING',
+                            terminalReason: null,
+                            batchSize: 2,
+                            sharedConfig: {},
+                            user: null,
+                            taskTargetNumber: 10,
+                            taskEligibleNumber: 10,
+                            taskSuccessNumber: 6,
+                            taskNonSuccessNumber: 4,
+                            peakAssignedWorkerCount: 4,
+                            createTime: [2026, 4, 21, 9, 0, 0],
+                            updateTime: [2026, 4, 21, 9, 30, 0],
+                        },
+                        items: [{ target: 'alpha' }],
+                        stateValidation: {
+                            valid: true,
+                            needsResolution: false,
+                            totalMessages: 10,
+                            successMessages: 6,
+                            failedMessages: 0,
+                            processingMessages: 4,
+                            violations: [],
+                        },
                     },
                 }),
             )
@@ -132,8 +141,11 @@ describe('tasks.real', () => {
         })
         const fetchMock = vi.fn().mockResolvedValue(
             jsonResponse({
-                success: true,
-                message: 'Task terminated',
+                code: 0,
+                msg: 'ok',
+                data: {
+                    message: 'Task terminated',
+                },
             }),
         )
         vi.stubGlobal('fetch', fetchMock)

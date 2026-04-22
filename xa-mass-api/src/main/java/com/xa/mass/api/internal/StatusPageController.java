@@ -4,20 +4,14 @@ import com.google.gson.Gson;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonSyntaxException;
+import com.xa.mass.api.model.ApiResponse;
+import com.xa.mass.api.model.worker.WorkerSendMessageRequest;
+import com.xa.mass.api.model.worker.WorkerSupportedProjectsPageRequest;
 import com.xa.mass.base.debug.ManualDebugChatProtocol;
 import com.xa.mass.base.debug.WorkerDebugMessageStore;
 import com.xa.mass.base.enums.Project;
-import com.xa.mass.base.enums.task.TaskStatus;
-import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
-import com.xa.mass.base.enums.worker.WorkerStatus;
-import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.Worker;
-import com.xa.mass.base.model.WorkerContext;
-import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.WorkerManager;
-import com.xa.mass.engine.rules.RuleDefinition;
-import com.xa.mass.engine.rules.RuleManager;
-import com.xa.mass.engine.rules.RuleType;
 import com.xa.mass.gateway.dispatcher.DispatcherContextRegistry;
 import com.xa.mass.gateway.dispatcher.context.CodecContext;
 import com.xa.mass.gateway.dispatcher.context.SessionContext;
@@ -30,136 +24,28 @@ import com.xa.mass.gateway.queue.Envelope;
 import com.xa.mass.gateway.queue.MessageCodec;
 import com.xa.mass.gateway.session.ServerSessionManager;
 import com.xa.mass.gateway.session.SessionRoles;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
-import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseBody;
-import org.springframework.web.bind.annotation.ModelAttribute;
 
-import java.util.Arrays;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
-import java.util.stream.Collectors;
 
 @Controller
 @RequestMapping("/status")
 public class StatusPageController {
     private static final Gson GSON = new Gson();
 
-    @Value("${mass.frontend.console-url:http://localhost:4173/}")
-    private String frontendConsoleUrl;
-
-    @Autowired
-    private TaskManager taskManager;
     @Autowired
     private WorkerManager workerManager;
-    @Autowired
-    private RuleManager ruleManager;
-
-    @ModelAttribute
-    public void addConsoleEntry(Model model) {
-        model.addAttribute("frontendConsoleUrl", frontendConsoleUrl);
-    }
-
-    @GetMapping("")
-    public String statusPage(Model model) {
-        List<Task> allTasks = taskManager.getAllTasks();
-        Map<TaskStatus, Long> taskStatusCount = allTasks.stream()
-                .collect(Collectors.groupingBy(Task::getStatus, Collectors.counting()));
-        List<Worker> allWorkers = workerManager.getAllWorkers();
-        Map<WorkerStatus, Long> workerStatusCount = allWorkers.stream()
-                .collect(Collectors.groupingBy(Worker::getStatus, Collectors.counting()));
-        List<WorkerContext> allWorkerContexts = workerManager.getAllWorkerContexts();
-        Map<String, Long> workerContextStatusCount = allWorkerContexts.stream()
-                .collect(Collectors.groupingBy(wc -> wc.getStatus().name(), Collectors.counting()));
-        List<RuleDefinition> allRules = ruleManager.getDefaultRules();
-        Map<RuleType, Long> ruleTypeCount = allRules.stream()
-                .collect(Collectors.groupingBy(RuleDefinition::getType, Collectors.counting()));
-        Map<String, Long> messageStats = new LinkedHashMap<>();
-        Map<TaskMsgStatus, Long> messageStatusCount = allTasks.stream()
-                .flatMap(task -> taskManager.getTaskMessages(task.getTid()).stream())
-                .filter(taskMsg -> taskMsg.getStatus() != null)
-                .collect(Collectors.groupingBy(taskMsg -> taskMsg.getStatus(), Collectors.counting()));
-        for (TaskMsgStatus status : TaskMsgStatus.values()) {
-            messageStats.put(status.name(), messageStatusCount.getOrDefault(status, 0L));
-        }
-        model.addAttribute("tasks", allTasks);
-        model.addAttribute("taskStatusCount", taskStatusCount);
-        model.addAttribute("workers", allWorkers);
-        model.addAttribute("workerStatusCount", workerStatusCount);
-        model.addAttribute("workerContexts", allWorkerContexts);
-        model.addAttribute("workerContextStatusCount", workerContextStatusCount);
-        model.addAttribute("rules", allRules);
-        model.addAttribute("ruleTypeCount", ruleTypeCount);
-        model.addAttribute("taskStatuses", TaskStatus.values());
-        model.addAttribute("workerStatuses", WorkerStatus.values());
-        model.addAttribute("ruleTypes", RuleType.values());
-        model.addAttribute("messageStats", messageStats);
-        return "status";
-    }
-
-    @GetMapping("/tasks")
-    public String tasksPage(Model model) {
-        List<Task> allTasks = taskManager.getAllTasks();
-        model.addAttribute("tasks", allTasks);
-        model.addAttribute("taskStatuses", TaskStatus.values());
-        Map<TaskStatus, Long> taskStatusCount = allTasks.stream()
-                .collect(Collectors.groupingBy(Task::getStatus, Collectors.counting()));
-        model.addAttribute("taskStatusCount", taskStatusCount);
-        return "tasks";
-    }
-
-    @GetMapping("/workers")
-    public String workersPage(Model model) {
-        List<Worker> allWorkers = workerManager.getAllWorkers();
-        List<WorkerContext> allWorkerContexts = workerManager.getAllWorkerContexts();
-        HashSet<String> lockedWorkerIds = new HashSet<>(workerManager.getLockedWorkers());
-        model.addAttribute("workers", allWorkers);
-        model.addAttribute("workerContexts", allWorkerContexts);
-        model.addAttribute("lockedWorkerIds", lockedWorkerIds);
-        model.addAttribute("workerStatuses", WorkerStatus.values());
-        Map<WorkerStatus, Long> workerStatusCount = allWorkers.stream()
-                .collect(Collectors.groupingBy(Worker::getStatus, Collectors.counting()));
-        model.addAttribute("workerStatusCount", workerStatusCount);
-        return "workers";
-    }
-
-    @GetMapping("/rules")
-    public String rulesPage(Model model) {
-        List<RuleDefinition> allRules = ruleManager.getDefaultRules();
-        List<RuleType> registeredEvaluatorTypes = ruleManager.getRegisteredEvaluatorTypes();
-        Map<RuleType, List<RuleDefinition>> rulesByType = new java.util.LinkedHashMap<>();
-        for (RuleType type : RuleType.values()) {
-            rulesByType.put(type, new java.util.ArrayList<>());
-        }
-        for (RuleDefinition rule : allRules) {
-            rulesByType.get(rule.getType()).add(rule);
-        }
-        int total = allRules.size();
-        Map<RuleType, String> ruleTypePercent = new java.util.LinkedHashMap<>();
-        Map<RuleType, String> ruleTypePercentStyle = new java.util.LinkedHashMap<>();
-        for (RuleType type : RuleType.values()) {
-            int count = rulesByType.get(type).size();
-            String percent = (total > 0) ? (count * 100 / total) + "%" : "0%";
-            ruleTypePercent.put(type, percent);
-            ruleTypePercentStyle.put(type, "width: " + percent);
-        }
-        model.addAttribute("rules", allRules);
-        model.addAttribute("rulesByType", rulesByType);
-        model.addAttribute("ruleTypes", RuleType.values());
-        model.addAttribute("registeredEvaluatorTypes", registeredEvaluatorTypes);
-        model.addAttribute("ruleTypePercent", ruleTypePercent);
-        model.addAttribute("ruleTypePercentStyle", ruleTypePercentStyle);
-        return "rules";
-    }
 
     /**
      * Return all supported project codes for worker-edit forms.
@@ -175,88 +61,86 @@ public class StatusPageController {
      */
     @PostMapping("/workers/updateSupportedProjects")
     @ResponseBody
-    @SuppressWarnings("unchecked")
-    public Map<String, Object> updateSupportedProjects(@RequestBody Map<String, Object> req) {
-        String workerId = (String) req.get("workerId");
-        Object supportedProjectsObj = req.get("supportedProjects");
-        List<String> supportedProjects;
-        if (supportedProjectsObj instanceof List) {
-            supportedProjects = (List<String>) supportedProjectsObj;
-        } else if (supportedProjectsObj instanceof String) {
-            supportedProjects = Arrays.asList(((String) supportedProjectsObj).split(","));
-        } else {
-            supportedProjects = List.of();
-        }
+    public ResponseEntity<ApiResponse<Map<String, Object>>> updateSupportedProjects(
+            @RequestBody WorkerSupportedProjectsPageRequest requestBody) {
+        validateKnownFields(requestBody);
+        String workerId = readTrimmed(requestBody.getWorkerId());
+        List<String> supportedProjects = normalizeSupportedProjects(requestBody.getSupportedProjects());
         Worker worker = workerManager.getWorker(workerId);
         if (worker != null) {
             worker.setSupportedProjects(supportedProjects);
             workerManager.updateWorker(worker);
-            return Map.of("success", true, "msg", "Updated successfully");
+            return ok(Map.of(
+                    "workerId", workerId,
+                    "supportedProjects", worker.getSupportedProjects()
+            ));
         }
-        return Map.of("success", false, "msg", "Worker not found");
+        return notFound("Worker not found");
     }
 
     @GetMapping("/workers/message-history")
     @ResponseBody
-    public Map<String, Object> getWorkerMessageHistory(@org.springframework.web.bind.annotation.RequestParam String workerId) {
-        return Map.of(
-                "success", true,
+    public ApiResponse<Map<String, Object>> getWorkerMessageHistory(
+            @org.springframework.web.bind.annotation.RequestParam String workerId) {
+        return ApiResponse.success(Map.of(
                 "workerId", workerId,
                 "items", WorkerDebugMessageStore.getHistory(workerId)
-        );
+        ));
     }
 
     @PostMapping("/workers/send-message")
     @ResponseBody
-    public Map<String, Object> sendWorkerMessage(@RequestBody Map<String, Object> req) {
-        String workerId = readTrimmed(req.get("workerId"));
+    public ResponseEntity<ApiResponse<Map<String, Object>>> sendWorkerMessage(
+            @RequestBody WorkerSendMessageRequest requestBody) {
+        validateKnownFields(requestBody);
+        String workerId = readTrimmed(requestBody.getWorkerId());
         if (workerId == null) {
-            return Map.of("success", false, "msg", "workerId is required");
+            return badRequest("workerId is required");
         }
 
         Worker worker = workerManager.getWorker(workerId);
         if (worker == null) {
-            return Map.of("success", false, "msg", "Worker not found");
+            return notFound("Worker not found");
         }
 
         TransportContext transportContext = DispatcherContextRegistry.getTransportContext();
         if (transportContext == null || transportContext.getMessageTransporter() == null) {
-            return Map.of("success", false, "msg", "Message transporter is not initialized");
+            return conflict("Message transporter is not initialized");
         }
 
         SessionContext sessionContext = DispatcherContextRegistry.getSessionContext();
         if (sessionContext == null || sessionContext.getSessionManager() == null) {
-            return Map.of("success", false, "msg", "Session manager is not initialized");
+            return conflict("Session manager is not initialized");
         }
 
         ServerSessionManager sessionManager = sessionContext.getSessionManager();
         if (!sessionManager.isWorkerOnline(workerId, SessionRoles.TASK_MESSAGES)) {
-            return Map.of("success", false, "msg", "Target worker is offline or task_messages session is unavailable");
+            return conflict("Target worker is offline or task_messages session is unavailable");
         }
 
         String project;
         try {
-            project = resolveProjectCode(req.get("project"), worker);
+            project = resolveProjectCode(requestBody.getProject(), worker);
         } catch (IllegalArgumentException ex) {
-            return Map.of("success", false, "msg", ex.getMessage());
+            return badRequest(ex.getMessage());
         }
 
         MessageType messageType;
         try {
-            messageType = parseMessageType(req.get("msgType"));
+            messageType = parseMessageType(requestBody.getMsgType());
         } catch (IllegalArgumentException ex) {
-            return Map.of("success", false, "msg", ex.getMessage());
+            return badRequest(ex.getMessage());
         }
 
         JsonElement payload;
         try {
-            payload = toPayloadJson(req.get("payload"));
+            payload = toPayloadJson(requestBody.getPayload());
         } catch (IllegalArgumentException ex) {
-            return Map.of("success", false, "msg", ex.getMessage());
+            return badRequest(ex.getMessage());
         }
 
         String msgId = UUID.randomUUID().toString();
-        String subMsgType = resolveSubMsgType(req.get("subMsgType"), messageType);
+        String subMsgType = resolveSubMsgType(requestBody.getSubMsgType(), messageType);
         payload = normalizePayload(payload, workerId, msgId, messageType, subMsgType);
 
         MassMessage message = new MassMessage();
@@ -289,15 +173,49 @@ public class StatusPageController {
         );
         transportContext.getMessageTransporter().sendOutput(envelope);
 
-        return Map.of(
-                "success", true,
-                "msg", "Message queued",
+        return ok(Map.of(
                 "messageId", msgId,
                 "workerId", workerId,
                 "project", project,
                 "msgType", messageType.name(),
                 "subMsgType", subMsgType
-        );
+        ));
+    }
+
+    private void validateKnownFields(WorkerSupportedProjectsPageRequest requestBody) {
+        if (requestBody == null) {
+            throw new IllegalArgumentException("worker request body is required");
+        }
+        if (requestBody.hasUnknownFields()) {
+            throw new IllegalArgumentException("Unsupported worker page update fields: "
+                    + String.join(", ", requestBody.getUnknownFieldNames()));
+        }
+        if (readTrimmed(requestBody.getWorkerId()) == null) {
+            throw new IllegalArgumentException("workerId is required");
+        }
+        if (requestBody.getSupportedProjects() == null) {
+            throw new IllegalArgumentException("supportedProjects is required");
+        }
+    }
+
+    private void validateKnownFields(WorkerSendMessageRequest requestBody) {
+        if (requestBody == null) {
+            throw new IllegalArgumentException("worker message request body is required");
+        }
+        if (requestBody.hasUnknownFields()) {
+            throw new IllegalArgumentException("Unsupported worker message fields: "
+                    + String.join(", ", requestBody.getUnknownFieldNames()));
+        }
+    }
+
+    private List<String> normalizeSupportedProjects(List<String> supportedProjects) {
+        return supportedProjects.stream()
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(value -> !value.isEmpty())
+                .map(value -> Project.requireCode(value).getCode())
+                .distinct()
+                .toList();
     }
 
     private MessageContext buildMessageContext(String workerId) {
@@ -411,5 +329,21 @@ public class StatusPageController {
 
     private String defaultIfBlank(String value, String defaultValue) {
         return value == null || value.isBlank() ? defaultValue : value;
+    }
+
+    private ResponseEntity<ApiResponse<Map<String, Object>>> ok(Map<String, ?> data) {
+        return ResponseEntity.ok(ApiResponse.success(new LinkedHashMap<>(data)));
+    }
+
+    private ResponseEntity<ApiResponse<Map<String, Object>>> badRequest(String message) {
+        return ResponseEntity.badRequest().body(ApiResponse.error(400, message));
+    }
+
+    private ResponseEntity<ApiResponse<Map<String, Object>>> conflict(String message) {
+        return ResponseEntity.status(409).body(ApiResponse.error(409, message));
+    }
+
+    private ResponseEntity<ApiResponse<Map<String, Object>>> notFound(String message) {
+        return ResponseEntity.status(404).body(ApiResponse.error(404, message));
     }
 }

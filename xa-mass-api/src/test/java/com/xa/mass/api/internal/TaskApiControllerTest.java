@@ -1,6 +1,4 @@
 package com.xa.mass.api.internal;
-
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.model.Task;
@@ -45,7 +43,6 @@ class TaskApiControllerTest {
     void setUp() {
         TaskApiController controller = new TaskApiController();
         ReflectionTestUtils.setField(controller, "taskManager", taskManager);
-        ReflectionTestUtils.setField(controller, "objectMapper", new ObjectMapper());
         mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
     }
 

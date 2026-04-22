@@ -132,6 +132,10 @@ public abstract class AbstractMockE2eTest {
         assertEquals(0, apiCode(response), apiMsg(response));
     }
 
+    protected boolean isApiOk(Map<String, Object> response) {
+        return apiCode(response) == 0;
+    }
+
     protected void assertApiError(Map<String, Object> response, int expectedCode) {
         assertEquals(expectedCode, apiCode(response));
     }

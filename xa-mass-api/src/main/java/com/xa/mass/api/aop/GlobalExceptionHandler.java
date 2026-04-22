@@ -4,6 +4,7 @@ import com.xa.mass.api.model.ApiResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
@@ -20,6 +21,15 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(IllegalStateException.class)
     public ResponseEntity<ApiResponse<?>> handleConflict(IllegalStateException ex) {
         return ResponseEntity.status(409).body(ApiResponse.error(409, ex.getMessage()));
+    }
+
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ApiResponse<?>> handleBadJson(HttpMessageNotReadableException ex) {
+        Throwable mostSpecificCause = ex.getMostSpecificCause();
+        String msg = mostSpecificCause != null && mostSpecificCause.getMessage() != null
+                ? mostSpecificCause.getMessage()
+                : "Request body is invalid";
+        return ResponseEntity.badRequest().body(ApiResponse.error(400, msg));
     }
 
     @ExceptionHandler(Exception.class)
