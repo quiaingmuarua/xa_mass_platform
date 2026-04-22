@@ -89,11 +89,11 @@ Interpretation rules:
 
 - The real Spring Boot entry is `xa-mass-dev-app`.
 - `xa-mass-sdk` is the consumer-facing dependency entry for third-party embedding.
-- `xa-mass-sdk-contract` holds the stable SDK-facing catalog, auth, and request-model types shared with HTTP surfaces.
+- `xa-mass-sdk-api` holds the stable SDK-facing catalog, auth, and request-model types shared with HTTP surfaces.
 - Embedded runtime composition now lives inside `xa-mass-sdk` under `com.xa.mass.starter.*`; it is not the primary Boot entry.
-- `xa-mass-dev-app` should obtain runtime capability through `xa-mass-sdk`; its explicit `xa-mass-api` dependency is only for the current REST/control-console validation shell.
-- Do not make `xa-mass-sdk` depend on `xa-mass-api` just to make `xa-mass-dev-app` depend on one internal artifact; SDK consumers should not pull demo web surfaces by default.
-- The current mainline reactor is defined by the root `pom.xml`: `xa-mass-api`, `xa-mass-core`, `xa-mass-engine`, `xa-mass-gateway`, `xa-mass-sdk-contract`, `xa-mass-sdk`, `xa-mass-dev-app`.
+- `xa-mass-dev-app` should obtain runtime capability through `xa-mass-sdk`; its explicit `xa-mass-web` dependency is only for the current REST/control-console validation shell.
+- Do not make `xa-mass-sdk` depend on `xa-mass-web` just to make `xa-mass-dev-app` depend on one internal artifact; SDK consumers should not pull demo web surfaces by default.
+- The current mainline reactor is defined by the root `pom.xml`: `xa-mass-web`, `xa-mass-core`, `xa-mass-engine`, `xa-mass-gateway`, `xa-mass-sdk-api`, `xa-mass-sdk`, `xa-mass-dev-app`.
 - `com.xa.mass.engine` is the active engine path.
 - historical `v2` / archive engine generations are no longer present in the current repository snapshot.
 - EventBus mainline has converged onto `com.xa.mass.base.channel.eventbus.core` and `com.xa.mass.base.channel.eventbus.event`.
@@ -225,7 +225,7 @@ For startup/runtime:
 
 For lifecycle/API:
 
-- `xa-mass-api/src/main/java/com/xa/mass/api/internal/TaskApiController.java`
+- `xa-mass-web/src/main/java/com/xa/mass/api/internal/TaskApiController.java`
 - `xa-mass-engine/src/main/java/com/xa/mass/engine/TaskManager.java`
 - `xa-mass-core/src/main/java/com/xa/mass/base/enums/task/TaskStatus.java`
 

@@ -7,9 +7,9 @@
         <artifactId>xa_mass_platform</artifactId>
         <version>0.0.1-SNAPSHOT</version>
     </parent>
-    <artifactId>xa-mass-sdk-contract</artifactId>
+    <artifactId>xa-mass-sdk-api</artifactId>
     <packaging>jar</packaging>
-    <name>xa-mass-sdk-contract</name>
+    <name>xa-mass-sdk-api</name>
 
     <dependencies>
         <dependency>
@@ -40,7 +40,7 @@
                                         <exclude>com.xa.mass:xa-mass-engine</exclude>
                                         <exclude>com.xa.mass:xa-mass-gateway</exclude>
                                         <exclude>com.xa.mass:xa-mass-sdk</exclude>
-                                        <exclude>com.xa.mass:xa-mass-api</exclude>
+                                        <exclude>com.xa.mass:xa-mass-web</exclude>
                                         <exclude>com.xa.mass:xa-mass-dev-app</exclude>
                                     </excludes>
                                 </bannedDependencies>

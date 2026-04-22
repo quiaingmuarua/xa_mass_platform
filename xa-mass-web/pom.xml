@@ -6,9 +6,9 @@
         <artifactId>xa_mass_platform</artifactId>
         <version>0.0.1-SNAPSHOT</version>
     </parent>
-    <artifactId>xa-mass-api</artifactId>
+    <artifactId>xa-mass-web</artifactId>
     <packaging>jar</packaging>
-    <name>xa-mass-api</name>
+    <name>xa-mass-web</name>
     <dependencies>
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -41,7 +41,7 @@
         </dependency>
         <dependency>
             <groupId>com.xa.mass</groupId>
-            <artifactId>xa-mass-sdk-contract</artifactId>
+            <artifactId>xa-mass-sdk-api</artifactId>
             <version>0.0.1-SNAPSHOT</version>
         </dependency>
         <dependency>

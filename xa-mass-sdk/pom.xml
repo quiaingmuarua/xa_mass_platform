@@ -22,7 +22,7 @@
         </dependency>
         <dependency>
             <groupId>com.xa.mass</groupId>
-            <artifactId>xa-mass-sdk-contract</artifactId>
+            <artifactId>xa-mass-sdk-api</artifactId>
             <version>${project.version}</version>
         </dependency>
         <dependency>
@@ -116,7 +116,7 @@
                                 <bannedDependencies>
                                     <searchTransitive>false</searchTransitive>
                                     <excludes>
-                                        <exclude>com.xa.mass:xa-mass-api</exclude>
+                                        <exclude>com.xa.mass:xa-mass-web</exclude>
                                         <exclude>com.xa.mass:xa-mass-dev-app</exclude>
                                     </excludes>
                                 </bannedDependencies>

@@ -13,8 +13,9 @@ Repository-level startup instructions in [`../doc/VERIFIED_RUNBOOK.md`](../doc/V
 ## Current Role
 
 - real Spring Boot entrypoint: `com.xa.mass.mock.MockApplicationSpringBootApp`
-- starts runtime through `xa-mass-sdk`, exposes the current backend-hosted control console and JSON APIs through `xa-mass-api`, and still wires engine-side manager/rule beans directly for dev and E2E validation
-- starts platform runtime through `xa-mass-sdk`; runtime still composes gateway and engine internally
+- starts runtime through `xa-mass-sdk` and exposes the current backend-hosted control console and JSON APIs through `xa-mass-web`
+- obtains task, worker, and rule management capability from the embedded SDK runtime instead of constructing a parallel engine assembly path in the app module
+- runtime still composes gateway and engine internally
 - default `dev` startup auto-starts mock WebSocket clients
 
 ## Port Model
@@ -38,7 +39,7 @@ Start from the repository root:
 
 ```bash
 ./mvnw -DskipTests compile
-java -cp "xa-mass-dev-app/target/classes:xa-mass-sdk/target/classes:xa-mass-api/target/classes:xa-mass-engine/target/classes:xa-mass-gateway/target/classes:xa-mass-core/target/classes:<runtime-classpath>" \
+java -cp "xa-mass-dev-app/target/classes:xa-mass-sdk/target/classes:xa-mass-sdk-api/target/classes:xa-mass-web/target/classes:xa-mass-engine/target/classes:xa-mass-gateway/target/classes:xa-mass-core/target/classes:<runtime-classpath>" \
   com.xa.mass.mock.MockApplicationSpringBootApp
 ```
 
@@ -161,5 +162,4 @@ Covered areas:
 - `e2e/support`: manual debug chat, command acknowledgements, and disconnect-after-ack behavior
 - `WebSocketClientStarterTest`: auto-start and idempotent startup behavior
 - `MassWebSocketClientImplTest`: ignore `response=true` task frames, avoid echo loops, support delay/drop fault injection, and support disconnect-after-ack command behavior
-
 

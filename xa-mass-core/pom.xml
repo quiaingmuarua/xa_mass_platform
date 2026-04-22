@@ -90,9 +90,9 @@
                                     <excludes>
                                         <exclude>com.xa.mass:xa-mass-engine</exclude>
                                         <exclude>com.xa.mass:xa-mass-gateway</exclude>
-                                        <exclude>com.xa.mass:xa-mass-api</exclude>
+                                        <exclude>com.xa.mass:xa-mass-web</exclude>
                                         <exclude>com.xa.mass:xa-mass-sdk</exclude>
-                                        <exclude>com.xa.mass:xa-mass-sdk-contract</exclude>
+                                        <exclude>com.xa.mass:xa-mass-sdk-api</exclude>
                                         <exclude>com.xa.mass:xa-mass-dev-app</exclude>
                                         <exclude>org.springframework.boot:spring-boot-starter-web</exclude>
                                         <exclude>io.netty:netty-all</exclude>

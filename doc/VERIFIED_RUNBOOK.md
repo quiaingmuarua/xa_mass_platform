@@ -19,8 +19,8 @@ Current module set from the root reactor:
 - `xa-mass-core`
 - `xa-mass-engine`
 - `xa-mass-gateway`
-- `xa-mass-sdk-contract`
-- `xa-mass-api`
+- `xa-mass-sdk-api`
+- `xa-mass-web`
 - `xa-mass-sdk`
 - `xa-mass-dev-app`
 
@@ -33,7 +33,7 @@ Run from repo root:
 ```bash
 ./mvnw -DskipTests compile
 cd frontend && corepack pnpm build && cd ..
-java -cp "xa-mass-dev-app/target/classes:xa-mass-sdk/target/classes:xa-mass-sdk-contract/target/classes:xa-mass-api/target/classes:xa-mass-engine/target/classes:xa-mass-gateway/target/classes:xa-mass-core/target/classes:<runtime-classpath>" \
+java -cp "xa-mass-dev-app/target/classes:xa-mass-sdk/target/classes:xa-mass-sdk-api/target/classes:xa-mass-web/target/classes:xa-mass-engine/target/classes:xa-mass-gateway/target/classes:xa-mass-core/target/classes:<runtime-classpath>" \
   com.xa.mass.mock.MockApplicationSpringBootApp
 ```
 

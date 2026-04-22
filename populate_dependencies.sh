@@ -3,7 +3,7 @@
 # 预下载所有模块依赖，便于离线环境构建
 set -e
 
-MODULES=("." "xa-mass-api" "xa-mass-eventbus" "xa-mass-engine" \ 
+MODULES=("." "xa-mass-web" "xa-mass-eventbus" "xa-mass-engine" \ 
   "xa-mass-gateway" "xa-mass-runtime" "xa-mass-mock")
 
 for module in "${MODULES[@]}"; do
