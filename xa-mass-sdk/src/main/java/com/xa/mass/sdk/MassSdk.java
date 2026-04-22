@@ -7,6 +7,7 @@ import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.engine.strategy.TaskScheduler;
 import com.xa.mass.gateway.queue.Envelope;
 import com.xa.mass.starter.builder.MassApplicationBuilder;
+import com.xa.mass.starter.builder.MassApplicationBuilder.GatewayBuilder;
 
 import java.util.Map;
 import java.util.Objects;
@@ -31,6 +32,19 @@ public final class MassSdk {
         return new Builder(MassApplicationBuilder.create());
     }
 
+    /**
+     * Creates a development runtime with auto-provisioned in-memory queues.
+     */
+    public static MassSdkApplication development(int port) {
+        return new MassSdkApplication(MassApplicationBuilder.createDevelopment(port));
+    }
+
+    /**
+     * @deprecated Use {@link #development(int)} — queues are now provisioned internally.
+     * Use {@link #builder()} with a custom {@code gateway()} configuration if you need
+     * to provide your own queue instances.
+     */
+    @Deprecated(forRemoval = false)
     public static MassSdkApplication development(int port,
                                                  MessageQueue<Envelope> inputQueue,
                                                  MessageQueue<Envelope> outputQueue) {
@@ -39,6 +53,17 @@ public final class MassSdk {
         );
     }
 
+    /**
+     * Creates a production runtime with auto-provisioned in-memory queues.
+     */
+    public static MassSdkApplication production(int port) {
+        return new MassSdkApplication(MassApplicationBuilder.createProduction(port));
+    }
+
+    /**
+     * @deprecated Use {@link #production(int)} — queues are now provisioned internally.
+     */
+    @Deprecated(forRemoval = false)
     public static MassSdkApplication production(int port,
                                                 MessageQueue<Envelope> inputQueue,
                                                 MessageQueue<Envelope> outputQueue) {

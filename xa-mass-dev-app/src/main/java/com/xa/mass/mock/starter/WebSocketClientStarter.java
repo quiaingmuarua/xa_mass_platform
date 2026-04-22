@@ -1,7 +1,9 @@
 package com.xa.mass.mock.starter;
 
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.xa.mass.base.model.Worker;
-import com.xa.mass.engine.monkey.MonkeyGenerator;
 import com.xa.mass.gateway.model.enums.MessageDirection;
 import com.xa.mass.gateway.model.enums.MessageType;
 import com.xa.mass.gateway.model.massMessage.MassMessage;
@@ -26,7 +28,6 @@ import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 
 import java.net.URI;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -148,20 +149,18 @@ public class WebSocketClientStarter {
                 log.error("Worker config was not found: {}", workersConfigPath);
                 return null;
             }
-
-            String workerJson = new String(is.readAllBytes(), StandardCharsets.UTF_8);
-            com.google.gson.JsonElement elem = com.google.gson.JsonParser.parseString(workerJson);
-            List<Worker> workers = new ArrayList<>();
-            if (elem.isJsonArray()) {
-                for (com.google.gson.JsonElement dsl : elem.getAsJsonArray()) {
-                    workers.addAll(MonkeyGenerator.generateWorkers(dsl.toString()));
-                }
-            } else {
-                workers.addAll(MonkeyGenerator.generateWorkers(workerJson));
+            ObjectMapper mapper = new ObjectMapper()
+                    .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
+                    .registerModule(new JavaTimeModule());
+            Worker[] workers = mapper.readValue(is, Worker[].class);
+            if (workers == null || workers.length == 0) {
+                return List.of();
             }
-            return workers;
+            List<Worker> result = new ArrayList<>(workers.length);
+            for (Worker w : workers) result.add(w);
+            return result;
         } catch (Exception e) {
-            log.error("Failed to load mock workers", e);
+            log.error("Failed to load worker config", e);
             return null;
         }
     }

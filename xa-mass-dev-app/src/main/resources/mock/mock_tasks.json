@@ -1,89 +1,43 @@
 [
   {
-    "MODEL": "TaskCreateRequestDto",
-    "COUNT": 3,
-    "FIELDS": {
-      "taskName": {
-        "$JOIN": [
-          "Task-us-",
-          "&.index"
-        ]
-      },
-      "project": "demoApp",
-      "routingCode": "us",
-      "userId": {
-        "$JOIN": [
-          "user-us-",
-          "&.index"
-        ]
-      },
-      "sharedConfig": {
-        "textContent": {
-          "$JOIN": [
-            "content for us-",
-            "&.index"
-          ]
-        }
-      },
-      "batchSize": {
-        "$RANGE": [
-          1,
-          5
-        ]
-      },
-      "inputs": [
-        {"target": "target-us-000"},
-        {"target": "target-us-001"},
-        {"target": "target-us-002"},
-        {"target": "target-us-003"},
-        {"target": "target-us-004"},
-        {"target": "target-us-005"},
-        {"target": "target-us-006"},
-        {"target": "target-us-007"},
-        {"target": "target-us-008"},
-        {"target": "target-us-009"}
-      ]
-    }
+    "taskName": "Task-us-1",
+    "project": "demoApp",
+    "routingCode": "us",
+    "userId": "user-us-1",
+    "sharedConfig": { "textContent": "Demo content for US task 1" },
+    "batchSize": 2,
+    "inputs": [
+      { "target": "target-us-001" },
+      { "target": "target-us-002" },
+      { "target": "target-us-003" },
+      { "target": "target-us-004" },
+      { "target": "target-us-005" }
+    ]
   },
   {
-    "MODEL": "TaskCreateRequestDto",
-    "COUNT": 2,
-    "FIELDS": {
-      "taskName": {
-        "$JOIN": [
-          "Task-gb-",
-          "&.index"
-        ]
-      },
-      "project": "testApp",
-      "routingCode": "gb",
-      "userId": {
-        "$JOIN": [
-          "user-gb-",
-          "&.index"
-        ]
-      },
-      "sharedConfig": {
-        "textContent": {
-          "$JOIN": [
-            "content for gb-",
-            "&.index"
-          ]
-        }
-      },
-      "batchSize": {
-        "$RANGE": [
-          1,
-          5
-        ]
-      },
-      "inputs": [
-        {"target": "target-gb-000"},
-        {"target": "target-gb-001"},
-        {"target": "target-gb-002"},
-        {"target": "target-gb-003"},
-        {"target": "target-gb-004"}
-      ]
-    }
+    "taskName": "Task-us-2",
+    "project": "demoApp",
+    "routingCode": "us",
+    "userId": "user-us-2",
+    "sharedConfig": { "textContent": "Demo content for US task 2" },
+    "batchSize": 2,
+    "inputs": [
+      { "target": "target-us-006" },
+      { "target": "target-us-007" },
+      { "target": "target-us-008" }
+    ]
+  },
+  {
+    "taskName": "Task-gb-1",
+    "project": "testApp",
+    "routingCode": "gb",
+    "userId": "user-gb-1",
+    "sharedConfig": { "textContent": "Demo content for GB task 1" },
+    "batchSize": 2,
+    "inputs": [
+      { "target": "target-gb-001" },
+      { "target": "target-gb-002" },
+      { "target": "target-gb-003" }
+    ]
   }
-] 
+]

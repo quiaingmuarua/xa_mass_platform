@@ -57,10 +57,7 @@ class MassSdkTest {
 
     @Test
     void developmentFactoryWrapsRuntimeApplication() {
-        MessageQueue<Envelope> inputQueue = new InMemoryMessageQueue<>("Envelope", Envelope.class);
-        MessageQueue<Envelope> outputQueue = new InMemoryMessageQueue<>("Envelope", Envelope.class);
-
-        MassSdkApplication app = MassSdk.development(18080, inputQueue, outputQueue);
+        MassSdkApplication app = MassSdk.development(18080);
 
         assertNotNull(app);
         assertFalse(app.isRunning());
@@ -81,10 +78,7 @@ class MassSdkTest {
 
     @Test
     void engineDependentHelpersFailFastBeforeStart() {
-        MessageQueue<Envelope> inputQueue = new InMemoryMessageQueue<>("Envelope", Envelope.class);
-        MessageQueue<Envelope> outputQueue = new InMemoryMessageQueue<>("Envelope", Envelope.class);
-
-        MassSdkApplication app = MassSdk.development(18081, inputQueue, outputQueue);
+        MassSdkApplication app = MassSdk.development(18081);
 
         Assertions.assertThrows(IllegalStateException.class, () -> app.addWorker(null));
         assertEngineOperationsFailFast(app);

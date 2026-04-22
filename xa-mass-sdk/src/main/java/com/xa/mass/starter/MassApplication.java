@@ -305,6 +305,66 @@ public class MassApplication {
             }
 
             @Override
+            public com.xa.mass.base.model.Task getTask(String taskId) {
+                return requireConfiguredEngine().getTaskManager().getTask(taskId);
+            }
+
+            @Override
+            public java.util.List<com.xa.mass.base.model.Task> getAllTasks() {
+                return requireConfiguredEngine().getTaskManager().getAllTasks();
+            }
+
+            @Override
+            public boolean approveTask(String taskId) {
+                return requireConfiguredEngine().getTaskManager().approveTask(taskId);
+            }
+
+            @Override
+            public boolean rejectTask(String taskId) {
+                return requireConfiguredEngine().getTaskManager().rejectTask(taskId);
+            }
+
+            @Override
+            public boolean blockTask(String taskId) {
+                return requireConfiguredEngine().getTaskManager().blockTask(taskId);
+            }
+
+            @Override
+            public boolean pauseTask(String taskId) {
+                return requireConfiguredEngine().getTaskManager().pauseTask(taskId);
+            }
+
+            @Override
+            public boolean resumeTask(String taskId) {
+                return requireConfiguredEngine().getTaskManager().resumeTask(taskId);
+            }
+
+            @Override
+            public boolean cancelTask(String taskId) {
+                return requireConfiguredEngine().getTaskManager().cancelTask(taskId);
+            }
+
+            @Override
+            public boolean terminateTask(String taskId, com.xa.mass.base.enums.task.TaskTerminalReason reason) {
+                return requireConfiguredEngine().getTaskManager().terminateTask(taskId, reason);
+            }
+
+            @Override
+            public int appendTaskItems(String taskId, java.util.List<java.util.Map<String, Object>> inputs) {
+                return requireConfiguredEngine().getTaskManager().appendTaskItems(taskId, inputs);
+            }
+
+            @Override
+            public boolean sealTask(String taskId) {
+                return requireConfiguredEngine().getTaskManager().sealTask(taskId);
+            }
+
+            @Override
+            public java.util.List<com.xa.mass.base.model.TaskMsg> getTaskMessages(String taskId) {
+                return requireConfiguredEngine().getTaskManager().getTaskMessages(taskId);
+            }
+
+            @Override
             public void addWorker(com.xa.mass.base.model.Worker worker) {
                 requireConfiguredEngine().addWorker(worker);
             }

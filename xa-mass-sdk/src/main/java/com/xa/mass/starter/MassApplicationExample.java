@@ -47,19 +47,13 @@ public class MassApplicationExample {
     private static void exampleDevelopmentMode() {
         logger.info("📝 示例1: 开发环境模式");
 
-        // 创建内存队列
-        MessageQueue<Envelope> inputQueue = new InMemoryMessageQueue<>("Envelope",Envelope.class);
-        MessageQueue<Envelope> outputQueue = new InMemoryMessageQueue<>("Envelope",Envelope.class);
+        // 使用新简化工厂 —— 队列由内部自动创建
+        MassApplication app = MassApplicationBuilder.createDevelopment(8080);
 
-        // MassApplicationBuilder 负责配置聚合
-        MassApplication app = MassApplicationBuilder.createDevelopment(8080, inputQueue, outputQueue);
-
-        // MassApplication 负责生命周期管理
         app.start();
 
         logger.info("✅ 开发环境应用启动成功");
 
-        // 停止应用
         app.stop();
     }
 
@@ -69,19 +63,13 @@ public class MassApplicationExample {
     private static void exampleProductionMode() {
         logger.info("📝 示例2: 生产环境模式");
 
-        // 创建内存队列
-        MessageQueue<Envelope> inputQueue = new InMemoryMessageQueue<>("Envelope",Envelope.class);
-        MessageQueue<Envelope> outputQueue = new InMemoryMessageQueue<>("Envelope",Envelope.class);
+        // 使用新简化工厂 —— 队列由内部自动创建
+        MassApplication app = MassApplicationBuilder.createProduction(8080);
 
-        // 快速创建生产环境应用
-        MassApplication app = MassApplicationBuilder.createProduction(8080, inputQueue, outputQueue);
-
-        // 启动应用
         app.start();
 
         logger.info("✅ 生产环境应用启动成功");
 
-        // 停止应用
         app.stop();
     }
 

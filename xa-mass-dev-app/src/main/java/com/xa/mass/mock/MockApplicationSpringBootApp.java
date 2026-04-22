@@ -1,6 +1,6 @@
 package com.xa.mass.mock;
 
-import com.xa.mass.base.channel.messaging.api.MessageQueue;
+import com.xa.mass.base.channel.messaging.memory.InMemoryMessageQueue;
 import com.xa.mass.engine.util.LogUtils;
 import com.xa.mass.gateway.queue.Envelope;
 import com.xa.mass.mock.bootstrap.MockRuntimeDataLoader;
@@ -8,7 +8,6 @@ import com.xa.mass.sdk.MassSdk;
 import com.xa.mass.sdk.MassSdkApplication;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
@@ -73,17 +72,14 @@ public class MockApplicationSpringBootApp {
 
     @Bean(destroyMethod = "stop")
     @Profile("dev")
-    public MassSdkApplication fullStackRuntimeApplication(
-            @Qualifier("outputQueue") MessageQueue<Envelope> outputQueue,
-            @Qualifier("inputQueue") MessageQueue<Envelope> inputQueue) {
+    public MassSdkApplication fullStackRuntimeApplication() {
         return MassSdk.builder()
                 .server(massWebSocketPort)
                 .gateway(gateway -> gateway
                         .enabled(true)
                         .maxConnections(maxConnections)
-                        .inputQueue(inputQueue)
-                        .outputQueue(outputQueue)
-                        .queueMode())
+                        .inputQueue(new InMemoryMessageQueue<>("input", Envelope.class))
+                        .outputQueue(new InMemoryMessageQueue<>("output", Envelope.class)))
                 .engine(engine -> engine
                         .enabled(true)
                         .workerThreads(workerThreads)

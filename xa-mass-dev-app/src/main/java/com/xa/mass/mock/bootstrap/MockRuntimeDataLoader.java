@@ -1,13 +1,12 @@
 package com.xa.mass.mock.bootstrap;
 
-import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.xa.mass.base.enums.worker.WorkerContextStatus;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.model.TaskCreateRequestDto;
-import com.xa.mass.engine.monkey.MonkeyGenerator;
 import com.xa.mass.engine.rules.RuleDefinition;
 import com.xa.mass.sdk.MassBootstrapDataProvider;
 import com.xa.mass.sdk.MassRuntimeControl;
@@ -20,21 +19,24 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
 /**
- * Dev-app owned mock bootstrap loader.
+ * Dev-app bootstrap data loader.
  *
- * <p>The SDK only exposes open runtime registration capabilities. Mock
- * generation and config loading stay outside the SDK module.
+ * <p>Reads plain JSON config files and registers workers, contexts, rules, and
+ * tasks into the SDK runtime. No mock data generation — all definitions are
+ * explicit in the config files.
  */
 public class MockRuntimeDataLoader implements MassBootstrapDataProvider {
 
     private static final Logger logger = LoggerFactory.getLogger(MockRuntimeDataLoader.class);
+    private static final ObjectMapper MAPPER = new ObjectMapper()
+            .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
+            .registerModule(new JavaTimeModule());
 
     private final String workerConfigPath;
     private final String workerContextConfigPath;
@@ -54,108 +56,70 @@ public class MockRuntimeDataLoader implements MassBootstrapDataProvider {
     @Override
     public void loadInto(MassRuntimeControl runtime) {
         Objects.requireNonNull(runtime, "runtime");
-        JsonObject root = loadConfigRoot();
-        loadWorkers(runtime, root);
-        loadWorkerContexts(runtime, root);
-        loadRules(runtime, root);
-        loadTasks(runtime, root);
-        logger.info("Mock runtime data load completed");
+        loadWorkers(runtime);
+        loadWorkerContexts(runtime);
+        loadRules(runtime);
+        loadTasks(runtime);
+        logger.info("Runtime data load completed");
     }
 
-    private JsonObject loadConfigRoot() {
-        JsonObject root = new JsonObject();
-        addArrayConfig(root, "workers", workerConfigPath);
-        addArrayConfig(root, "workerContexts", workerContextConfigPath);
-        addArrayConfig(root, "tasks", taskConfigPath);
-        addArrayConfig(root, "rules", ruleConfigPath);
-        return root;
-    }
-
-    private void loadWorkers(MassRuntimeControl runtime, JsonObject root) {
-        if (!root.has("workers")) {
-            return;
-        }
-        List<Worker> workers = new ArrayList<>();
-        JsonElement workerElem = root.get("workers");
-        if (workerElem.isJsonArray()) {
-            for (JsonElement dsl : workerElem.getAsJsonArray()) {
-                workers.addAll(MonkeyGenerator.generateWorkers(dsl.toString()));
-            }
-        } else {
-            workers.addAll(MonkeyGenerator.generateWorkers(workerElem.toString()));
-        }
+    private void loadWorkers(MassRuntimeControl runtime) {
+        Worker[] workers = readConfig(workerConfigPath, Worker[].class);
+        if (workers == null) return;
         for (Worker worker : workers) {
             normalizeWorker(worker);
             runtime.addWorker(worker);
         }
-        logger.info("Loaded {} mock workers", workers.size());
+        logger.info("Loaded {} workers", workers.length);
     }
 
-    private void loadWorkerContexts(MassRuntimeControl runtime, JsonObject root) {
-        if (!root.has("workerContexts")) {
-            return;
-        }
-        List<WorkerContext> workerContexts = new ArrayList<>();
-        JsonElement workerContextElem = root.get("workerContexts");
-        if (workerContextElem.isJsonArray()) {
-            for (JsonElement dsl : workerContextElem.getAsJsonArray()) {
-                workerContexts.addAll(MonkeyGenerator.generateWorkerContexts(dsl.toString()));
-            }
-        } else {
-            workerContexts.addAll(MonkeyGenerator.generateWorkerContexts(workerContextElem.toString()));
-        }
+    private void loadWorkerContexts(MassRuntimeControl runtime) {
+        WorkerContext[] contexts = readConfig(workerContextConfigPath, WorkerContext[].class);
+        if (contexts == null) return;
         int accepted = 0;
-        for (WorkerContext workerContext : workerContexts) {
-            normalizeWorkerContext(workerContext);
-            if (workerContext.getWorkerId() == null || workerContext.getWorkerId().isBlank()) {
-                logger.warn("Skipping mock workerContext {} because workerId is missing",
-                        workerContext.getWorkerContextId());
+        for (WorkerContext ctx : contexts) {
+            normalizeWorkerContext(ctx);
+            if (ctx.getWorkerId() == null || ctx.getWorkerId().isBlank()) {
+                logger.warn("Skipping worker context {} - workerId missing", ctx.getWorkerContextId());
                 continue;
             }
-            runtime.addWorkerContext(workerContext);
+            runtime.addWorkerContext(ctx);
             accepted++;
         }
-        logger.info("Loaded {} mock worker contexts", accepted);
+        logger.info("Loaded {} worker contexts", accepted);
     }
 
-    private void loadRules(MassRuntimeControl runtime, JsonObject root) {
-        if (!root.has("rules")) {
+    private void loadRules(MassRuntimeControl runtime) {
+        RuleDefinition[] rules = readConfig(ruleConfigPath, RuleDefinition[].class);
+        if (rules == null || rules.length == 0) {
+            logger.info("No rules config found; keeping existing runtime rules");
             return;
         }
-        List<RuleDefinition> rules = new ArrayList<>();
-        JsonElement ruleElem = root.get("rules");
-        if (ruleElem.isJsonArray()) {
-            for (JsonElement dsl : ruleElem.getAsJsonArray()) {
-                rules.addAll(MonkeyGenerator.generateRules(dsl.toString()));
-            }
-        } else {
-            rules.addAll(MonkeyGenerator.generateRules(ruleElem.toString()));
-        }
-        if (rules.isEmpty()) {
-            logger.info("Mock rules config is empty; keeping existing runtime rules");
-            return;
-        }
-        runtime.replaceDefaultRules(rules);
-        logger.info("Loaded {} explicit mock rules", rules.size());
+        runtime.replaceDefaultRules(List.of(rules));
+        logger.info("Loaded {} rules", rules.length);
     }
 
-    private void loadTasks(MassRuntimeControl runtime, JsonObject root) {
-        if (!root.has("tasks")) {
-            return;
-        }
-        List<TaskCreateRequestDto> taskDtos = new ArrayList<>();
-        JsonElement taskElem = root.get("tasks");
-        if (taskElem.isJsonArray()) {
-            for (JsonElement dsl : taskElem.getAsJsonArray()) {
-                taskDtos.addAll(MonkeyGenerator.generateTasks(dsl.toString()));
-            }
-        } else {
-            taskDtos.addAll(MonkeyGenerator.generateTasks(taskElem.toString()));
-        }
-        for (TaskCreateRequestDto dto : taskDtos) {
+    private void loadTasks(MassRuntimeControl runtime) {
+        TaskCreateRequestDto[] dtos = readConfig(taskConfigPath, TaskCreateRequestDto[].class);
+        if (dtos == null) return;
+        for (TaskCreateRequestDto dto : dtos) {
             runtime.createTask(toSdkRequest(dto));
         }
-        logger.info("Loaded {} mock task requests", taskDtos.size());
+        logger.info("Loaded {} task requests", dtos.length);
+    }
+
+    private <T> T readConfig(String configPath, Class<T> type) {
+        if (configPath == null || configPath.isBlank()) return null;
+        try {
+            String json = readConfigFile(configPath);
+            return MAPPER.readValue(json, type);
+        } catch (IOException e) {
+            logger.debug("Optional config not found, skipping [path={}]", configPath);
+            return null;
+        } catch (Exception e) {
+            logger.warn("Failed to load config [path={}]: {}", configPath, e.getMessage());
+            return null;
+        }
     }
 
     private void normalizeWorker(Worker worker) {
@@ -196,17 +160,6 @@ public class MockRuntimeDataLoader implements MassBootstrapDataProvider {
         }
     }
 
-    private void addArrayConfig(JsonObject root, String fieldName, String configPath) {
-        try {
-            String json = readConfigFile(configPath);
-            root.add(fieldName, JsonParser.parseString(json).getAsJsonArray());
-        } catch (IOException e) {
-            logger.debug("Optional config file not found, skipping [field={}, path={}]", fieldName, configPath);
-        } catch (Exception e) {
-            logger.warn("Failed to parse config file [field={}, path={}]: {}", fieldName, configPath, e.getMessage());
-        }
-    }
-
     private String readConfigFile(String configPath) throws IOException {
         if (configPath == null || configPath.isBlank()) {
             throw new IOException("Config path is blank");
@@ -228,7 +181,7 @@ public class MockRuntimeDataLoader implements MassBootstrapDataProvider {
         try {
             return Files.readString(Path.of(configPath));
         } catch (IOException e) {
-            throw new IOException("Config file not found in classpath or file system: " + configPath, e);
+            throw new IOException("Config file not found: " + configPath, e);
         }
     }
 

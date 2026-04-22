@@ -1,20 +1,16 @@
 [
   {
-    "MODEL": "Worker",
-    "COUNT": 2,
-    "FIELDS": {
-      "workerId": {
-        "$JOIN": [
-          "it-worker-",
-          "&.index"
-        ]
-      },
-      "workerGroupId": "us",
-      "agentVersion": "1.0.0",
-      "status": "ONLINE",
-      "supportedProjects": [
-        "demoApp"
-      ]
-    }
+    "workerId": "it-worker-0",
+    "workerGroupId": "us",
+    "agentVersion": "1.0.0",
+    "status": "ONLINE",
+    "supportedProjects": ["demoApp"]
+  },
+  {
+    "workerId": "it-worker-1",
+    "workerGroupId": "us",
+    "agentVersion": "1.0.0",
+    "status": "ONLINE",
+    "supportedProjects": ["demoApp"]
   }
 ]

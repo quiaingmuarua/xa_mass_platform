@@ -1,25 +1,16 @@
 [
   {
-    "MODEL": "WorkerContext",
-    "COUNT": 2,
-    "FIELDS": {
-      "workerContextId": {
-        "$JOIN": [
-          "it-worker-context-",
-          "&.index"
-        ]
-      },
-      "workerId": {
-        "$JOIN": [
-          "it-worker-",
-          "&.index"
-        ]
-      },
-      "channel": "us",
-      "status": "IDLE",
-      "attributes": {
-        "country": "us"
-      }
-    }
+    "workerContextId": "it-worker-context-0",
+    "workerId": "it-worker-0",
+    "channel": "us",
+    "status": "IDLE",
+    "attributes": { "country": "us" }
+  },
+  {
+    "workerContextId": "it-worker-context-1",
+    "workerId": "it-worker-1",
+    "channel": "us",
+    "status": "IDLE",
+    "attributes": { "country": "us" }
   }
 ]

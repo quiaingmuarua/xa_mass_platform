@@ -14,7 +14,6 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -135,24 +134,16 @@ class MockRuntimeDataLoaderTest {
         return """
                 [
                   {
-                    "MODEL": "Worker",
-                    "COUNT": 1,
-                    "FIELDS": {
-                      "workerId": "worker-us-1",
-                      "workerGroupId": "POOL-US",
-                      "agentVersion": "1.0.0",
-                      "status": "ONLINE"
-                    }
+                    "workerId": "worker-us-1",
+                    "workerGroupId": "POOL-US",
+                    "agentVersion": "1.0.0",
+                    "status": "ONLINE"
                   },
                   {
-                    "MODEL": "Worker",
-                    "COUNT": 1,
-                    "FIELDS": {
-                      "workerId": "worker-gb-1",
-                      "workerGroupId": "POOL-GB",
-                      "agentVersion": "1.0.1",
-                      "status": "ONLINE"
-                    }
+                    "workerId": "worker-gb-1",
+                    "workerGroupId": "POOL-GB",
+                    "agentVersion": "1.0.1",
+                    "status": "ONLINE"
                   }
                 ]
                 """;
@@ -162,31 +153,23 @@ class MockRuntimeDataLoaderTest {
         return """
                 [
                   {
-                    "MODEL": "WorkerContext",
-                    "COUNT": 1,
-                    "FIELDS": {
-                      "workerContextId": "wc-us-1",
-                      "workerId": "worker-us-1",
-                      "channel": "route-us",
-                      "status": "IDLE",
-                      "attributes": {
-                        "country": "US",
-                        "carrier": "tmobile"
-                      }
+                    "workerContextId": "wc-us-1",
+                    "workerId": "worker-us-1",
+                    "channel": "route-us",
+                    "status": "IDLE",
+                    "attributes": {
+                      "country": "US",
+                      "carrier": "tmobile"
                     }
                   },
                   {
-                    "MODEL": "WorkerContext",
-                    "COUNT": 1,
-                    "FIELDS": {
-                      "workerContextId": "wc-gb-1",
-                      "workerId": "worker-gb-1",
-                      "channel": "route-gb",
-                      "status": "IDLE",
-                      "attributes": {
-                        "country": "GB",
-                        "carrier": "vodafone"
-                      }
+                    "workerContextId": "wc-gb-1",
+                    "workerId": "worker-gb-1",
+                    "channel": "route-gb",
+                    "status": "IDLE",
+                    "attributes": {
+                      "country": "GB",
+                      "carrier": "vodafone"
                     }
                   }
                 ]
@@ -197,29 +180,21 @@ class MockRuntimeDataLoaderTest {
         return """
                 [
                   {
-                    "MODEL": "WorkerContext",
-                    "COUNT": 1,
-                    "FIELDS": {
-                      "workerContextId": "wc-us-1-a",
-                      "workerId": "worker-us-1",
-                      "channel": "route-us",
-                      "status": "IDLE",
-                      "attributes": {
-                        "country": "US"
-                      }
+                    "workerContextId": "wc-us-1-a",
+                    "workerId": "worker-us-1",
+                    "channel": "route-us",
+                    "status": "IDLE",
+                    "attributes": {
+                      "country": "US"
                     }
                   },
                   {
-                    "MODEL": "WorkerContext",
-                    "COUNT": 1,
-                    "FIELDS": {
-                      "workerContextId": "wc-us-1-b",
-                      "workerId": "worker-us-1",
-                      "channel": "route-us",
-                      "status": "IDLE",
-                      "attributes": {
-                        "country": "US"
-                      }
+                    "workerContextId": "wc-us-1-b",
+                    "workerId": "worker-us-1",
+                    "channel": "route-us",
+                    "status": "IDLE",
+                    "attributes": {
+                      "country": "US"
                     }
                   }
                 ]
@@ -230,24 +205,20 @@ class MockRuntimeDataLoaderTest {
         return """
                 [
                   {
-                    "MODEL": "TaskCreateRequestDto",
-                    "COUNT": 1,
-                    "FIELDS": {
-                      "userId": "agent",
-                      "project": "demoApp",
-                      "taskName": "mock-task",
-                      "sharedConfig": {
-                        "textContent": "hello"
-                      },
-                      "inputs": [
-                        {
-                          "target": "target-a"
-                        }
-                      ],
-                      "routingCode": "us",
-                      "batchSize": 1,
-                      "defaultMsgMaxRetryCount": 3
-                    }
+                    "userId": "agent",
+                    "project": "demoApp",
+                    "taskName": "mock-task",
+                    "sharedConfig": {
+                      "textContent": "hello"
+                    },
+                    "inputs": [
+                      {
+                        "target": "target-a"
+                      }
+                    ],
+                    "routingCode": "us",
+                    "batchSize": 1,
+                    "defaultMsgMaxRetryCount": 3
                   }
                 ]
                 """;
@@ -257,24 +228,16 @@ class MockRuntimeDataLoaderTest {
         return """
                 [
                   {
-                    "MODEL": "RuleDefinition",
-                    "COUNT": 1,
-                    "FIELDS": {
-                      "id": "explicit_app_support",
-                      "name": "explicit_app_support",
-                      "type": "QL_EXPRESS",
-                      "content": "worker.supportedProjects != null"
-                    }
+                    "id": "explicit_app_support",
+                    "name": "explicit_app_support",
+                    "type": "QL_EXPRESS",
+                    "content": "worker.supportedProjects != null"
                   },
                   {
-                    "MODEL": "RuleDefinition",
-                    "COUNT": 1,
-                    "FIELDS": {
-                      "id": "explicit_routing_code",
-                      "name": "explicit_routing_code",
-                      "type": "QL_EXPRESS",
-                      "content": "task.routingCode != null"
-                    }
+                    "id": "explicit_routing_code",
+                    "name": "explicit_routing_code",
+                    "type": "QL_EXPRESS",
+                    "content": "task.routingCode != null"
                   }
                 ]
                 """;
@@ -311,6 +274,42 @@ class MockRuntimeDataLoaderTest {
         @Override
         public void publishTaskEvents() {
         }
+
+        @Override
+        public Task getTask(String taskId) { return null; }
+
+        @Override
+        public List<Task> getAllTasks() { return List.of(); }
+
+        @Override
+        public boolean approveTask(String taskId) { return false; }
+
+        @Override
+        public boolean rejectTask(String taskId) { return false; }
+
+        @Override
+        public boolean blockTask(String taskId) { return false; }
+
+        @Override
+        public boolean pauseTask(String taskId) { return false; }
+
+        @Override
+        public boolean resumeTask(String taskId) { return false; }
+
+        @Override
+        public boolean cancelTask(String taskId) { return false; }
+
+        @Override
+        public boolean terminateTask(String taskId, com.xa.mass.base.enums.task.TaskTerminalReason reason) { return false; }
+
+        @Override
+        public int appendTaskItems(String taskId, List<Map<String, Object>> inputs) { return 0; }
+
+        @Override
+        public boolean sealTask(String taskId) { return false; }
+
+        @Override
+        public List<com.xa.mass.base.model.TaskMsg> getTaskMessages(String taskId) { return List.of(); }
 
         private WorkerContext workerContextById(String workerContextId) {
             return workerContexts.stream()
