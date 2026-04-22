@@ -13,6 +13,7 @@ This frontend is a lightweight control console for the orchestration platform. K
 - When an API needs mock support, split it into `*.mock.ts`, `*.real.ts`, and a thin public module that selects the implementation.
 - SDK/platform discovery metadata must go through `src/api/metadata.ts`; do not duplicate project/event catalogs in pages.
 - Worker event support in the UI is derived from `Worker.supportedProjects` plus `/sdk/meta/projects` event mappings. Do not invent a separate frontend capability model.
+- Task-create starter examples live in `src/utils/task-starters.ts`. Extend them with explicit project/event cases; do not replace them with a schema-driven form engine.
 - Keep page-level view logic inside page SFCs. Do not introduce schema-driven page DSLs or generic CRUD wrappers.
 - Extract reusable UI into `src/components` only after repetition is clear.
 - Frontend permission checks are UX only. Backend authorization remains the real enforcement boundary.

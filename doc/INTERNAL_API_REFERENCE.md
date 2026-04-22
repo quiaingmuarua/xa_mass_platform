@@ -48,11 +48,198 @@ For verified runtime behavior and recommended startup, use [VERIFIED_RUNBOOK.md]
 - Catalog entries are not the runtime scheduling truth yet; they are a public capability directory for SDK and UI callers.
 - Current metadata covers representative task-event scenarios for crawler, SMS, and chatbot flows.
 
-## 2. Task API
+## 1.2 SDK Task Contract Notes
+
+- SDK v1 keeps `/status/api/tasks/**` as the existing mainline contract and adds a parallel `/sdk/tasks/**` surface.
+- `/sdk/tasks` is the SDK-oriented create/read/append/seal entry and currently still maps into the existing engine task DTOs.
+- `MassTaskRequest.mode=SINGLE_RUN` maps to `openEnded=false`; `STREAMING` maps to `openEnded=true`.
+- `MassTaskRequest` payloads are normalized into `TaskMsg.input` as:
+  - text: `{"type":"text","text":"..."}`
+  - json: `{"type":"json","data":{...}}`
+- SDK task metadata is persisted in `Task.sharedConfig._sdk` with `eventCode`, `payloadType`, and `taskMode`.
+- `/sdk/tasks` create does not auto-approve tasks; the current lifecycle still starts at `NEW`.
+
+## 2. SDK API
+
+### 2.1 List SDK Projects
+
+- Method: `GET`
+- Path: `/sdk/meta/projects`
+- Status: `Implemented`
+
+Response notes:
+
+- returns the registered `ProjectMetadata` list
+- each project includes `code`, `name`, `description`, `enabled`, and `eventCodes`
+
+### 2.2 Get SDK Project
+
+- Method: `GET`
+- Path: `/sdk/meta/projects/{projectCode}`
+- Status: `Implemented`
+
+Behavior:
+
+- returns the registered `ProjectMetadata`
+- returns HTTP 404 when `projectCode` does not exist in the catalog
+
+### 2.3 List Events For One SDK Project
+
+- Method: `GET`
+- Path: `/sdk/meta/projects/{projectCode}/events`
+- Status: `Implemented`
+
+Behavior:
+
+- returns the full `EventMetadata` list for the project's declared `eventCodes`
+- returns HTTP 404 when `projectCode` does not exist in the catalog
+
+### 2.4 List SDK Events
+
+- Method: `GET`
+- Path: `/sdk/meta/events`
+- Status: `Implemented`
+
+Response notes:
+
+- returns the registered `EventMetadata` list
+- each event includes `code`, `name`, `description`, `payloadTypes`, `taskModes`, and `enabled`
+
+### 2.5 Get SDK Event
+
+- Method: `GET`
+- Path: `/sdk/meta/events/{eventCode}`
+- Status: `Implemented`
+
+Behavior:
+
+- returns the registered `EventMetadata`
+- returns HTTP 404 when `eventCode` does not exist in the catalog
+
+### 2.6 Create SDK Task
+
+- Method: `POST`
+- Path: `/sdk/tasks`
+- Status: `Implemented`
+
+Supported request fields:
+
+- `userId`
+- `project`
+- `taskName`
+- `eventCode`
+- `mode`
+- `payloadType`
+- `sharedConfig`
+- `inputs`
+- `routingCode`
+- `batchSize`
+- `defaultMsgMaxRetryCount`
+- `maxRuntimeSeconds`
+
+Contract rules:
+
+- `project`, `taskName`, and `eventCode` are required
+- `mode` defaults to `SINGLE_RUN`
+- `payloadType` defaults to `JSON`
+- `inputs` must be a non-empty list
+- request `project` must exist in the SDK catalog
+- request `eventCode` must exist in the SDK catalog
+- the chosen project must explicitly declare support for the chosen event
+- `X-Mass-Api-Key` is reserved for future submitter resolution; current mainline allows requests without it
+- create returns only `taskId` and does not auto-transition the task out of `NEW`
+
+Example request:
+
+```json
+{
+  "project": "demoApp",
+  "taskName": "sdk-crawler",
+  "eventCode": "crawler.fetch-page",
+  "mode": "STREAMING",
+  "payloadType": "JSON",
+  "sharedConfig": {
+    "site": "example"
+  },
+  "inputs": [
+    {
+      "url": "https://example.test"
+    }
+  ],
+  "routingCode": "us",
+  "batchSize": 1,
+  "defaultMsgMaxRetryCount": 2,
+  "maxRuntimeSeconds": 60
+}
+```
+
+Example response:
+
+```json
+{
+  "code": 0,
+  "msg": "ok",
+  "data": {
+    "taskId": "task-sdk-001",
+    "message": "SDK task created"
+  }
+}
+```
+
+### 2.7 Get SDK Task
+
+- Method: `GET`
+- Path: `/sdk/tasks/{taskId}`
+- Status: `Implemented`
+
+Response notes:
+
+- returns `task`
+- returns `items` derived from persisted `TaskMsg.input`
+- returns `stateValidation`
+- returns HTTP 404 when the task does not exist
+
+### 2.8 Append Items To SDK Streaming Task
+
+- Method: `POST`
+- Path: `/sdk/tasks/{taskId}/items`
+- Status: `Implemented`
+
+Contract rules:
+
+- `inputs` must be a non-empty list
+- the task must exist
+- the task must still have open intake
+- when the task carries `_sdk.payloadType`, appended items must match that payload type
+- when no SDK payload metadata exists, string inputs map to text and object inputs map to json
+
+Example request:
+
+```json
+{
+  "inputs": [
+    "hello",
+    "world"
+  ]
+}
+```
+
+### 2.9 Seal SDK Streaming Task
+
+- Method: `PUT`
+- Path: `/sdk/tasks/{taskId}/seal`
+- Status: `Implemented`
+
+Behavior:
+
+- seals the append window for an open-ended SDK task
+- returns HTTP 400 when the task is not open-ended
+
+## 3. Task API
 
 Base path: `/status/api/tasks`
 
-### 2.1 Create Task
+### 3.1 Create Task
 
 - Method: `POST`
 - Path: `/status/api/tasks`
@@ -121,7 +308,7 @@ Example response:
 }
 ```
 
-### 2.2 Get Task
+### 3.2 Get Task
 
 - Method: `GET`
 - Path: `/status/api/tasks/{taskId}`
@@ -177,7 +364,7 @@ Example response shape:
 }
 ```
 
-### 2.3 Update Task Metadata
+### 3.3 Update Task Metadata
 
 - Method: `PUT`
 - Path: `/status/api/tasks/{taskId}`
@@ -199,7 +386,7 @@ Contract rules:
 - omitted fields keep the currently persisted metadata/binding values
 - `inputs` and unknown fields are rejected with HTTP 400
 
-### 2.4 Delete Task
+### 3.4 Delete Task
 
 - Method: `DELETE`
 - Path: `/status/api/tasks/{taskId}`
@@ -210,7 +397,7 @@ Contract rules:
 - only `NEW` and `TERMINAL` tasks can be deleted
 - returns `ApiResponse.error(...)` when the task is in a non-deletable state
 
-### 2.5 Audit Task
+### 3.5 Audit Task
 
 - Method: `POST`
 - Path: `/status/api/tasks/{taskId}/audit`
@@ -240,7 +427,7 @@ Example success response:
 }
 ```
 
-### 2.6 Pause Task
+### 3.6 Pause Task
 
 - Method: `POST`
 - Path: `/status/api/tasks/{taskId}/pause`
@@ -250,7 +437,7 @@ Behavior:
 
 - `READY` or `RUNNING` -> `PAUSED`
 
-### 2.7 Resume Task
+### 3.7 Resume Task
 
 - Method: `POST`
 - Path: `/status/api/tasks/{taskId}/resume`
@@ -289,7 +476,7 @@ Alternate success response when it already completed:
 }
 ```
 
-### 2.8 Terminate Task
+### 3.8 Terminate Task
 
 - Method: `POST`
 - Path: `/status/api/tasks/{taskId}/terminate`
@@ -299,7 +486,7 @@ Behavior:
 
 - any non-`TERMINAL` task may be closed to `TERMINAL`
 
-### 2.9 Status Routing Helper
+### 3.9 Status Routing Helper
 
 - Method: `PUT`
 - Path: `/status/api/tasks/{taskId}/status`
@@ -319,7 +506,7 @@ Behavior:
 - `TERMINAL` routes to cancel
 - no direct route exists for `RUNNING` through this helper
 
-### 2.10 Runtime Block Task
+### 3.10 Runtime Block Task
 
 - Method: `POST`
 - Path: `/status/api/tasks/{taskId}/block`
@@ -332,7 +519,7 @@ Behavior:
 - moves the task to `BLOCKED`
 - unlike audit reject, this is not limited to `NEW`
 
-### 2.11 List Task Messages
+### 3.11 List Task Messages
 
 - Method: `GET`
 - Path: `/status/api/tasks/{taskId}/messages`
@@ -381,7 +568,7 @@ Response shape:
 }
 ```
 
-### 2.12 Append Items To Open-Ended Task
+### 3.12 Append Items To Open-Ended Task
 
 - Method: `POST`
 - Path: `/status/api/tasks/{taskId}/items`
@@ -423,7 +610,7 @@ Example response:
 }
 ```
 
-### 2.13 Seal Open-Ended Task
+### 3.13 Seal Open-Ended Task
 
 - Method: `PUT`
 - Path: `/status/api/tasks/{taskId}/seal`
@@ -447,11 +634,11 @@ Example response:
 }
 ```
 
-## 3. Queue APIs
+## 4. Queue APIs
 
 Base path: `/api/queue`
 
-### 3.1 Queue Status
+### 4.1 Queue Status
 
 - Method: `GET`
 - Path: `/api/queue/status`
@@ -469,7 +656,7 @@ Response shape:
 }
 ```
 
-### 3.2 Queue Detail
+### 4.2 Queue Detail
 
 - Method: `GET`
 - Path: `/api/queue/detail`
@@ -488,7 +675,7 @@ Response shape:
 }
 ```
 
-### 3.3 Queue Metrics
+### 4.3 Queue Metrics
 
 - Method: `GET`
 - Path: `/api/queue/metrics`
@@ -499,11 +686,11 @@ Current behavior:
 - endpoint exists
 - currently returns static zero values rather than real throughput metrics
 
-## 4. Session APIs
+## 5. Session APIs
 
 Base path: `/api/session`
 
-### 4.1 List Sessions
+### 5.1 List Sessions
 
 - Method: `GET`
 - Path: `/api/session/list`
@@ -529,7 +716,7 @@ Response shape:
 }
 ```
 
-### 4.2 Session Stats
+### 5.2 Session Stats
 
 - Method: `GET`
 - Path: `/api/session/stats`
@@ -547,9 +734,9 @@ Response shape:
 }
 ```
 
-## 5. Config APIs
+## 6. Config APIs
 
-### 5.1 Global Project List
+### 6.1 Global Project List
 
 - Method: `GET`
 - Path: `/api/config/projects`
@@ -559,7 +746,7 @@ Behavior:
 
 - returns the configured project code list from `GlobalConfig`
 
-### 5.2 Backend-Served Control Console
+### 6.2 Backend-Served Control Console
 
 - Method: `GET`
 - Paths:
@@ -582,9 +769,9 @@ Behavior:
 - `/status`, `/status/tasks`, `/status/workers`, `/status/rules`, and `/config` are redirect aliases only and are not the primary console entrypoints
 - worker-context read models now include first-class `project` when the context is bound to a specific project/account domain
 
-## 6. Message API
+## 7. Message API
 
-### 6.1 Send Message
+### 7.1 Send Message
 
 - Method: `POST`
 - Path: `/api/message/send`
@@ -609,11 +796,11 @@ Response shape:
 }
 ```
 
-## 7. Worker Debug APIs
+## 8. Worker Debug APIs
 
 Base path: `/status/workers`
 
-### 7.1 Message History
+### 8.1 Message History
 
 - Method: `GET`
 - Path: `/status/workers/message-history`
@@ -623,7 +810,7 @@ Behavior:
 
 - returns the current outbound/inbound debug message history for one worker
 
-### 7.2 Send Debug Message
+### 8.2 Send Debug Message
 
 - Method: `POST`
 - Path: `/status/workers/send-message`
@@ -634,12 +821,12 @@ Behavior:
 - sends a debug/control payload to a worker over the task-messages session
 - does not create or mutate `TaskMsg`
 
-## 8. Health And Docs
+## 9. Health And Docs
 
 - `GET /actuator/health` - `Implemented`
 - `GET /doc.html` - `Demo`
 
-## 9. Response Shape Notes
+## 10. Response Shape Notes
 
 The active JSON API surface uses one response family:
 

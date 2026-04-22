@@ -14,11 +14,11 @@ import com.xa.mass.engine.model.TaskStateResolutionResult;
 import com.xa.mass.engine.model.TaskStateValidationResult;
 import com.xa.mass.sdk.model.MassTaskCreateRequest;
 import com.xa.mass.sdk.model.MassTaskRequest;
+import com.xa.mass.sdk.model.MassTaskRequestMapper;
 import com.xa.mass.starter.MassEngine;
 import com.xa.mass.starter.MassApplication;
 
 import java.util.List;
-import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 
@@ -85,7 +85,7 @@ public final class MassSdkApplication {
 
     public Task createTask(MassTaskRequest request) {
         MassEngine engine = requireStartedEngine();
-        return engine.createTask(toEngineRequest(request));
+        return engine.createTask(MassTaskRequestMapper.toEngineRequest(request));
     }
 
     /**
@@ -230,36 +230,6 @@ public final class MassSdkApplication {
         dto.setOpenEnded(request.isOpenEnded());
         dto.setMaxRuntimeSeconds(request.getMaxRuntimeSeconds());
         return dto;
-    }
-
-    private TaskCreateRequestDto toEngineRequest(MassTaskRequest request) {
-        Objects.requireNonNull(request, "request");
-        TaskCreateRequestDto dto = new TaskCreateRequestDto();
-        dto.setUserId(request.getUserId());
-        dto.setProject(request.getProject());
-        dto.setTaskName(request.getTaskName());
-        dto.setSharedConfig(withSdkMetadata(request));
-        dto.setInputs(request.toEngineInputs());
-        dto.setRoutingCode(request.getRoutingCode());
-        dto.setBatchSize(request.getBatchSize());
-        dto.setDefaultMsgMaxRetryCount(request.getDefaultMsgMaxRetryCount());
-        dto.setOpenEnded(request.isStreaming());
-        dto.setMaxRuntimeSeconds(request.getMaxRuntimeSeconds());
-        return dto;
-    }
-
-    private Map<String, Object> withSdkMetadata(MassTaskRequest request) {
-        Map<String, Object> merged = new LinkedHashMap<>(request.getSharedConfig());
-        Map<String, Object> sdkMetadata = new LinkedHashMap<>();
-        if (request.getEventCode() != null && !request.getEventCode().isBlank()) {
-            sdkMetadata.put("eventCode", request.getEventCode());
-        }
-        sdkMetadata.put("payloadType", request.getPayloadType().name());
-        sdkMetadata.put("taskMode", request.getMode().name());
-        if (!sdkMetadata.isEmpty()) {
-            merged.put("_sdk", Map.copyOf(sdkMetadata));
-        }
-        return Map.copyOf(merged);
     }
 
     private TaskManager requireStartedTaskManager() {

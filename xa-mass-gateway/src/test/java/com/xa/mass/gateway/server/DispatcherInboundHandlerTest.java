@@ -31,6 +31,8 @@ class DispatcherInboundHandlerTest {
     private ChannelHandlerContext ctx;
     private Channel channel;
     private AtomicReference<String> sentFrame;
+    private MessageTransporter<Envelope> transporter;
+    private ServerSessionManager sessionManager;
 
     @SuppressWarnings("unchecked")
     @BeforeEach
@@ -54,10 +56,10 @@ class DispatcherInboundHandlerTest {
             return null;
         }).when(ctx).writeAndFlush(any());
 
-        MessageTransporter<Envelope> transporter = mock(MessageTransporter.class);
+        transporter = mock(MessageTransporter.class);
         when(transporter.inputQueueSize()).thenReturn(0);
 
-        ServerSessionManager sessionManager = new ServerSessionManager();
+        sessionManager = new ServerSessionManager();
         GsonMessageCodec codec = new GsonMessageCodec();
         MessageHandlerRegistry registry = new MessageHandlerRegistry();
         registry.autoRegister();
@@ -106,6 +108,28 @@ class DispatcherInboundHandlerTest {
 
         // No error frame should be sent for a valid message
         assertNull(sentFrame.get(), "Valid message should not trigger an error frame");
+    }
+
+    @Test
+    void heartbeatWithoutProjectStillRegistersSession() throws Exception {
+        String heartbeatJson = """
+                {
+                  "msgId": "ping-001",
+                  "msgType": "PING",
+                  "subMsgType": "heartbeat",
+                  "context": {
+                    "workerId": "worker-1",
+                    "connRole": "%s"
+                  }
+                }
+                """.formatted(SessionRoles.TASK_MESSAGES);
+
+        handler.channelRead0(ctx, frame(heartbeatJson));
+
+        assertNull(sentFrame.get(), "Heartbeat bootstrap should not be rejected when project is missing");
+        verify(transporter).sendInput(any(Envelope.class));
+        assertEquals(1, sessionManager.getWorkerConnectionCount(), "Heartbeat should register the worker session");
+        assertNotNull(sessionManager.getChannelContext("worker-1", SessionRoles.TASK_MESSAGES));
     }
 
     @Test

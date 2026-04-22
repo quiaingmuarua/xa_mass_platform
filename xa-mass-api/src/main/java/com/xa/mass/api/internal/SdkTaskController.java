@@ -16,6 +16,7 @@ import com.xa.mass.sdk.catalog.TaskMode;
 import com.xa.mass.sdk.model.JsonInput;
 import com.xa.mass.sdk.model.MassInput;
 import com.xa.mass.sdk.model.MassTaskRequest;
+import com.xa.mass.sdk.model.MassTaskRequestMapper;
 import com.xa.mass.sdk.model.TextInput;
 import org.springframework.http.ResponseEntity;
 import org.springframework.lang.Nullable;
@@ -64,7 +65,7 @@ public class SdkTaskController {
             TaskSubmitterContext submitterContext = resolveSubmitterContext(apiKey);
             MassTaskRequest request = toMassTaskRequest(requestBody, submitterContext);
             validateProjectAndEvent(request.getProject(), request.getEventCode());
-            Task task = taskManager.createTask(toEngineRequest(request));
+            Task task = taskManager.createTask(MassTaskRequestMapper.toEngineRequest(request));
             return ResponseEntity.ok(ApiResponse.success(Map.of(
                     "taskId", task.getTid(),
                     "message", "SDK task created"
@@ -124,36 +125,6 @@ public class SdkTaskController {
                 "taskId", taskId,
                 "message", "SDK task intake sealed"
         )));
-    }
-
-    private TaskCreateRequestDto toEngineRequest(MassTaskRequest request) {
-        TaskCreateRequestDto dto = new TaskCreateRequestDto();
-        dto.setUserId(request.getUserId());
-        dto.setProject(request.getProject());
-        dto.setTaskName(request.getTaskName());
-        dto.setSharedConfig(withSdkMetadata(request));
-        dto.setInputs(request.toEngineInputs());
-        dto.setRoutingCode(request.getRoutingCode());
-        dto.setBatchSize(request.getBatchSize());
-        dto.setDefaultMsgMaxRetryCount(request.getDefaultMsgMaxRetryCount());
-        dto.setOpenEnded(request.isStreaming());
-        dto.setMaxRuntimeSeconds(request.getMaxRuntimeSeconds());
-        return dto;
-    }
-
-    private Map<String, Object> withSdkMetadata(MassTaskRequest request) {
-        Map<String, Object> merged = new LinkedHashMap<>();
-        if (request.getSharedConfig() != null) {
-            merged.putAll(request.getSharedConfig());
-        }
-        Map<String, Object> sdkMetadata = new LinkedHashMap<>();
-        if (request.getEventCode() != null && !request.getEventCode().isBlank()) {
-            sdkMetadata.put("eventCode", request.getEventCode());
-        }
-        sdkMetadata.put("payloadType", request.getPayloadType().name());
-        sdkMetadata.put("taskMode", request.getMode().name());
-        merged.put("_sdk", Map.copyOf(sdkMetadata));
-        return Map.copyOf(merged);
     }
 
     private MassTaskRequest toMassTaskRequest(SdkTaskCreateApiRequest requestBody, TaskSubmitterContext submitterContext) {

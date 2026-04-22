@@ -2,6 +2,7 @@ package com.xa.mass.gateway.server;
 
 import com.xa.mass.base.exception.ValidationException;
 import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
+import com.xa.mass.gateway.model.enums.MessageType;
 import com.xa.mass.gateway.model.massMessage.MassMessage;
 import com.xa.mass.gateway.queue.Envelope;
 import com.xa.mass.gateway.queue.MessageParser;
@@ -45,10 +46,16 @@ public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWe
             String connRole = massMessage.getContext().getConnRole();
             String project = massMessage.getProject();
             String msgId = massMessage.getMsgId();
-            if (workerId == null || connRole == null || project == null || msgId == null) {
-                logger.error("workerId/connRole/project/msgId is null: workerId={}, connRole={}, project={}, msgId={}",
-                        workerId, connRole, project, msgId);
-                sendError(ctx, "MISSING_FIELDS", "workerId/connRole/project/msgId are required");
+            if (workerId == null || connRole == null || msgId == null) {
+                logger.error("workerId/connRole/msgId is null: workerId={}, connRole={}, msgId={}",
+                        workerId, connRole, msgId);
+                sendError(ctx, "MISSING_FIELDS", "workerId/connRole/msgId are required");
+                return;
+            }
+            if (project == null && !allowsMissingProject(massMessage)) {
+                logger.error("project is null for non-heartbeat message: workerId={}, connRole={}, msgId={}, msgType={}",
+                        workerId, connRole, msgId, massMessage.getMsgType());
+                sendError(ctx, "MISSING_FIELDS", "project is required for non-heartbeat messages");
                 return;
             }
 
@@ -96,5 +103,9 @@ public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWe
                     Map.of("code", code, "message", message, "type", "ERROR"));
             ctx.writeAndFlush(new TextWebSocketFrame(errorJson));
         }
+    }
+
+    private boolean allowsMissingProject(MassMessage message) {
+        return message.getMsgType() == MessageType.PING || message.getMsgType() == MessageType.PONG;
     }
 } 

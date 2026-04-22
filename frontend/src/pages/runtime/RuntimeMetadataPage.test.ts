@@ -116,6 +116,11 @@ describe('RuntimeMetadataPage', () => {
             routes: [
                 { path: '/', component: RuntimeMetadataPage },
                 {
+                    path: '/tasks',
+                    name: 'tasks',
+                    component: { template: '<div>tasks page</div>' },
+                },
+                {
                     path: '/resources/workers/:workerId',
                     name: 'worker-detail',
                     component: { template: '<div />' },
@@ -139,5 +144,24 @@ describe('RuntimeMetadataPage', () => {
         expect(wrapper.text()).toContain('demo.message.send')
         expect(wrapper.text()).toContain('1 / 2')
         expect(wrapper.text()).not.toContain('worker-sg-01')
+        expect(wrapper.text()).toContain('Start event draft')
+        expect(wrapper.text()).toContain('hello from demo.message.send')
+        expect(wrapper.text()).toContain('"recipient":"alpha"')
+
+        const startDraftButton = wrapper
+            .findAll('button')
+            .find((button) => button.text().includes('Start event draft'))
+        expect(startDraftButton).toBeDefined()
+
+        await startDraftButton!.trigger('click')
+        await flushPromises()
+
+        expect(router.currentRoute.value.name).toBe('tasks')
+        expect(router.currentRoute.value.query.create).toBe('1')
+        expect(router.currentRoute.value.query.project).toBe('demoApp')
+        expect(router.currentRoute.value.query.eventCode).toBe(
+            'demo.message.send',
+        )
+        expect(router.currentRoute.value.query.taskName).toBeUndefined()
     })
 })

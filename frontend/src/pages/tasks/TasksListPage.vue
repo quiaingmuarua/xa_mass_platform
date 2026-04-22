@@ -111,6 +111,29 @@
       />
 
       <el-alert
+        v-if="starterEventCode"
+        class="dialog-alert"
+        type="info"
+        :closable="false"
+        :title="`Metadata starter context: ${starterEventCode}`"
+        description="Task create API does not have a first-class event field. Keep project as the business binding and map any event-specific contract through sharedConfig or inputs only when your backend/runtime expects it."
+      />
+
+      <el-alert
+        v-if="starterGuidance.length > 0"
+        class="dialog-alert"
+        type="info"
+        :closable="false"
+        title="Starter guidance"
+      >
+        <ul class="starter-guidance-list">
+          <li v-for="item in starterGuidance" :key="item">
+            {{ item }}
+          </li>
+        </ul>
+      </el-alert>
+
+      <el-alert
         v-if="createErrorMessage"
         class="dialog-alert"
         type="error"
@@ -243,8 +266,8 @@
 
 <script setup lang="ts">
 import { ElMessage } from 'element-plus'
-import { computed, onMounted, reactive, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, onActivated, onMounted, reactive, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { listProjectCodes } from '@/api/configs'
 import { createTask, listTasks } from '@/api/tasks'
 import { useAuth } from '@/auth/use-auth'
@@ -253,8 +276,14 @@ import PageErrorState from '@/components/PageErrorState.vue'
 import PageSectionSkeleton from '@/components/PageSectionSkeleton.vue'
 import type { TaskCreateRequest, TaskListItem } from '@/types/tasks'
 import { toErrorMessage } from '@/utils/errors'
+import {
+  resolveTaskStarterDraft,
+  stringifyStarterInputs,
+  stringifyStarterSharedConfig,
+} from '@/utils/task-starters'
 
 const router = useRouter()
+const route = useRoute()
 const { user } = useAuth()
 
 const loading = ref(false)
@@ -266,6 +295,8 @@ const createErrorMessage = ref('')
 const projectOptionsError = ref('')
 const projectOptionsLoading = ref(false)
 const projectOptions = ref<string[]>([])
+const handledDraftSignature = ref('')
+const starterGuidance = ref<string[]>([])
 const filters = reactive({
   keyword: '',
   status: '' as TaskListItem['status'] | '',
@@ -285,6 +316,10 @@ const createForm = reactive({
 const currentOperatorId = computed(
   () => user.value?.id || user.value?.name || 'unknown',
 )
+const starterEventCode = computed(() => {
+  const value = route.query.eventCode
+  return typeof value === 'string' ? value : ''
+})
 
 const statuses: TaskListItem['status'][] = [
   'NEW',
@@ -349,6 +384,7 @@ async function loadProjectOptions(): Promise<void> {
 
 function openCreateDialog(): void {
   resetCreateForm()
+  applyCreateDraftFromQuery()
   createErrorMessage.value = ''
   createDialogVisible.value = true
 
@@ -367,6 +403,66 @@ function resetCreateForm(): void {
   createForm.maxRuntimeSeconds = 0
   createForm.inputsText = '{"target":"alpha"}\n{"target":"beta"}'
   createForm.sharedConfigText = '{}'
+  starterGuidance.value = []
+}
+
+function maybeOpenCreateDialogFromQuery(): void {
+  if (route.query.create !== '1') {
+    return
+  }
+
+  const signature = JSON.stringify({
+    create: route.query.create,
+    project: route.query.project,
+    taskName: route.query.taskName,
+    routingCode: route.query.routingCode,
+    eventCode: route.query.eventCode,
+  })
+
+  if (handledDraftSignature.value === signature) {
+    return
+  }
+
+  handledDraftSignature.value = signature
+  openCreateDialog()
+}
+
+function applyCreateDraftFromQuery(): void {
+  const projectCode =
+    typeof route.query.project === 'string' ? route.query.project : ''
+  const eventCode =
+    typeof route.query.eventCode === 'string' ? route.query.eventCode : undefined
+
+  if (!projectCode && !eventCode) {
+    starterGuidance.value = []
+    return
+  }
+
+  const starter = resolveTaskStarterDraft({
+    projectCode,
+    eventCode,
+  })
+
+  createForm.project = starter.projectCode
+  createForm.taskName = starter.taskName
+  createForm.routingCode = starter.routingCode
+  createForm.batchSize = starter.batchSize
+  createForm.defaultMsgMaxRetryCount = starter.defaultMsgMaxRetryCount
+  createForm.openEnded = starter.openEnded
+  createForm.maxRuntimeSeconds = starter.maxRuntimeSeconds
+  createForm.inputsText = stringifyStarterInputs(starter.inputs)
+  createForm.sharedConfigText = stringifyStarterSharedConfig(
+    starter.sharedConfig,
+  )
+  starterGuidance.value = starter.guidance
+
+  if (typeof route.query.taskName === 'string') {
+    createForm.taskName = route.query.taskName
+  }
+
+  if (typeof route.query.routingCode === 'string') {
+    createForm.routingCode = route.query.routingCode
+  }
 }
 
 async function handleCreate(): Promise<void> {
@@ -488,7 +584,19 @@ function goToTask(taskId: string): void {
 
 onMounted(() => {
   void loadTasks()
+  maybeOpenCreateDialogFromQuery()
 })
+
+onActivated(() => {
+  maybeOpenCreateDialogFromQuery()
+})
+
+watch(
+  () => route.query,
+  () => {
+    maybeOpenCreateDialogFromQuery()
+  },
+)
 </script>
 
 <style scoped>
@@ -540,5 +648,14 @@ onMounted(() => {
   margin-top: 8px;
   font-size: 12px;
   color: #6b7a90;
+}
+
+.starter-guidance-list {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.starter-guidance-list li + li {
+  margin-top: 6px;
 }
 </style>

@@ -104,6 +104,9 @@
                 <el-descriptions-item label="Project">
                   {{ selectedScopeTitle }}
                 </el-descriptions-item>
+                <el-descriptions-item label="Focused event">
+                  {{ selectedEventTitle }}
+                </el-descriptions-item>
                 <el-descriptions-item label="Events">
                   {{ selectedEventRows.length }}
                 </el-descriptions-item>
@@ -114,6 +117,113 @@
                   {{ selectedOnlineWorkerSummary }}
                 </el-descriptions-item>
               </el-descriptions>
+            </el-card>
+          </el-col>
+        </el-row>
+
+        <el-row :gutter="20">
+          <el-col :span="12">
+            <el-card class="page-card detail-card">
+              <template #header>
+                <strong>Selected project</strong>
+              </template>
+              <PageEmptyState
+                v-if="!selectedProject"
+                description="Select a project to inspect metadata and start from a task draft."
+              />
+              <template v-else>
+                <el-descriptions :column="1" border>
+                  <el-descriptions-item label="Project">
+                    {{ selectedProject.name }} ({{ selectedProject.code }})
+                  </el-descriptions-item>
+                  <el-descriptions-item label="State">
+                    {{ selectedProject.enabled ? 'ENABLED' : 'DISABLED' }}
+                  </el-descriptions-item>
+                  <el-descriptions-item label="Events">
+                    {{ selectedProject.eventCodes.join(', ') || '-' }}
+                  </el-descriptions-item>
+                  <el-descriptions-item label="Online workers">
+                    {{ selectedProjectCoverageSummary }}
+                  </el-descriptions-item>
+                  <el-descriptions-item label="Description">
+                    {{ selectedProject.description || '-' }}
+                  </el-descriptions-item>
+                </el-descriptions>
+                <div class="starter-preview">
+                  <div class="starter-preview-title">Starter sharedConfig</div>
+                  <pre class="json-block">{{
+                    selectedProjectStarterSharedConfigText
+                  }}</pre>
+                </div>
+                <div class="starter-preview">
+                  <div class="starter-preview-title">Starter inputs</div>
+                  <pre class="json-block">{{ selectedProjectStarterInputsText }}</pre>
+                </div>
+                <div class="detail-actions">
+                  <el-button type="primary" @click="openTaskDraftForProject()">
+                    Start task draft
+                  </el-button>
+                  <el-button @click="openTaskListForProject()">Open tasks</el-button>
+                </div>
+              </template>
+            </el-card>
+          </el-col>
+          <el-col :span="12">
+            <el-card class="page-card detail-card">
+              <template #header>
+                <strong>Selected event</strong>
+              </template>
+              <PageEmptyState
+                v-if="!selectedEventRow"
+                description="Select an event to inspect task modes, payload shape, and jump into a starter task draft."
+              />
+              <template v-else>
+                <el-descriptions :column="1" border>
+                  <el-descriptions-item label="Event">
+                    {{ selectedEventRow.name }} ({{ selectedEventRow.code }})
+                  </el-descriptions-item>
+                  <el-descriptions-item label="Task modes">
+                    {{ selectedEventRow.taskModes.join(', ') || '-' }}
+                  </el-descriptions-item>
+                  <el-descriptions-item label="Payload types">
+                    {{ selectedEventRow.payloadTypes.join(', ') || '-' }}
+                  </el-descriptions-item>
+                  <el-descriptions-item label="Projects">
+                    {{ selectedEventRow.projectCodes.join(', ') || '-' }}
+                  </el-descriptions-item>
+                  <el-descriptions-item label="Online workers">
+                    {{ selectedEventWorkerSummary }}
+                  </el-descriptions-item>
+                  <el-descriptions-item label="Description">
+                    {{ selectedEventRow.description || '-' }}
+                  </el-descriptions-item>
+                </el-descriptions>
+                <div class="starter-preview">
+                  <div class="starter-preview-title">Starter sharedConfig</div>
+                  <pre class="json-block">{{
+                    selectedEventStarterSharedConfigText
+                  }}</pre>
+                </div>
+                <div class="starter-preview">
+                  <div class="starter-preview-title">Starter inputs</div>
+                  <pre class="json-block">{{ selectedEventStarterInputsText }}</pre>
+                </div>
+                <div class="detail-actions">
+                  <el-button
+                    type="primary"
+                    :disabled="!draftProjectCodeForSelectedEvent"
+                    @click="openTaskDraftForSelectedEvent()"
+                  >
+                    Start event draft
+                  </el-button>
+                  <el-button
+                    :disabled="!draftProjectCodeForSelectedEvent"
+                    @click="focusDraftProjectForSelectedEvent()"
+                  >
+                    Focus project
+                  </el-button>
+                </div>
+              </template>
             </el-card>
           </el-col>
         </el-row>
@@ -155,6 +265,24 @@
               label="Description"
               min-width="320"
             />
+            <el-table-column label="Actions" min-width="220" fixed="right">
+              <template #default="{ row }">
+                <el-button
+                  link
+                  type="primary"
+                  @click="selectProject(row.code)"
+                >
+                  Inspect
+                </el-button>
+                <el-button
+                  link
+                  type="primary"
+                  @click="openTaskDraftForProject(row.code)"
+                >
+                  Draft task
+                </el-button>
+              </template>
+            </el-table-column>
           </el-table>
         </el-card>
 
@@ -311,6 +439,25 @@
               label="Description"
               min-width="320"
             />
+            <el-table-column label="Actions" min-width="240" fixed="right">
+              <template #default="{ row }">
+                <el-button
+                  link
+                  type="primary"
+                  @click="selectEvent(row.code)"
+                >
+                  Inspect
+                </el-button>
+                <el-button
+                  link
+                  type="primary"
+                  :disabled="row.projectCodes.length === 0"
+                  @click="openTaskDraftForEvent(row)"
+                >
+                  Draft task
+                </el-button>
+              </template>
+            </el-table-column>
           </el-table>
         </el-card>
       </template>
@@ -319,7 +466,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { listEventMetadata, listProjectMetadata } from '@/api/metadata'
 import { listWorkers } from '@/api/workers'
@@ -329,6 +476,11 @@ import PageSectionSkeleton from '@/components/PageSectionSkeleton.vue'
 import type { EventMetadata, ProjectMetadata } from '@/types/metadata'
 import type { WorkerListItem } from '@/types/workers'
 import { toErrorMessage } from '@/utils/errors'
+import {
+  resolveTaskStarterDraft,
+  stringifyStarterInputs,
+  stringifyStarterSharedConfig,
+} from '@/utils/task-starters'
 
 const ALL_PROJECTS = 'ALL'
 const TAG_LIMIT = 4
@@ -356,6 +508,7 @@ const projects = ref<ProjectMetadata[]>([])
 const events = ref<EventMetadata[]>([])
 const workers = ref<WorkerListItem[]>([])
 const selectedProjectCode = ref(ALL_PROJECTS)
+const selectedEventCode = ref('')
 const showOnlineOnly = ref(true)
 
 const sortedProjects = computed(() =>
@@ -393,6 +546,16 @@ const selectedProject = computed(() => {
   }
 
   return projectByCode.value[selectedProjectCode.value] ?? null
+})
+const selectedEventRow = computed<EventRow | null>(() => {
+  if (!selectedEventCode.value) {
+    return null
+  }
+
+  return (
+    selectedEventRows.value.find((event) => event.code === selectedEventCode.value) ??
+    null
+  )
 })
 const displayedProjects = computed(() => {
   if (selectedProject.value) {
@@ -512,6 +675,13 @@ const selectedScopeTitle = computed(() => {
 
   return `${selectedProject.value.name} (${selectedProject.value.code})`
 })
+const selectedEventTitle = computed(() => {
+  if (!selectedEventRow.value) {
+    return 'All events'
+  }
+
+  return `${selectedEventRow.value.name} (${selectedEventRow.value.code})`
+})
 const selectedOnlineWorkerSummary = computed(() => {
   const ids = uniqueStrings(
     projectRows.value.flatMap((project) => project.onlineWorkerIds),
@@ -522,6 +692,83 @@ const selectedOnlineWorkerSummary = computed(() => {
   }
 
   return ids.join(', ')
+})
+const selectedProjectCoverageSummary = computed(() => {
+  if (!selectedProject.value) {
+    return '-'
+  }
+
+  const ids = workers.value
+    .filter(
+      (worker) =>
+        worker.status === 'ONLINE' &&
+        worker.supportedProjects.includes(selectedProject.value!.code),
+    )
+    .map((worker) => worker.workerId)
+
+  return ids.length > 0 ? ids.join(', ') : 'No online workers'
+})
+const selectedEventWorkerSummary = computed(() => {
+  if (!selectedEventRow.value) {
+    return '-'
+  }
+
+  return selectedEventRow.value.onlineWorkerIds.length > 0
+    ? selectedEventRow.value.onlineWorkerIds.join(', ')
+    : 'No online workers'
+})
+const selectedProjectStarter = computed(() => {
+  if (!selectedProject.value) {
+    return null
+  }
+
+  return resolveTaskStarterDraft({
+    projectCode: selectedProject.value.code,
+  })
+})
+const selectedEventStarter = computed(() => {
+  if (!selectedEventRow.value) {
+    return null
+  }
+
+  return resolveTaskStarterDraft({
+    projectCode: draftProjectCodeForSelectedEvent.value,
+    eventCode: selectedEventRow.value.code,
+  })
+})
+const selectedProjectStarterSharedConfigText = computed(() =>
+  selectedProjectStarter.value
+    ? stringifyStarterSharedConfig(selectedProjectStarter.value.sharedConfig)
+    : '{}',
+)
+const selectedProjectStarterInputsText = computed(() =>
+  selectedProjectStarter.value
+    ? stringifyStarterInputs(selectedProjectStarter.value.inputs)
+    : '',
+)
+const selectedEventStarterSharedConfigText = computed(() =>
+  selectedEventStarter.value
+    ? stringifyStarterSharedConfig(selectedEventStarter.value.sharedConfig)
+    : '{}',
+)
+const selectedEventStarterInputsText = computed(() =>
+  selectedEventStarter.value
+    ? stringifyStarterInputs(selectedEventStarter.value.inputs)
+    : '',
+)
+const draftProjectCodeForSelectedEvent = computed(() => {
+  if (!selectedEventRow.value) {
+    return ''
+  }
+
+  if (
+    selectedProject.value &&
+    selectedEventRow.value.projectCodes.includes(selectedProject.value.code)
+  ) {
+    return selectedProject.value.code
+  }
+
+  return selectedEventRow.value.projectCodes[0] ?? ''
 })
 
 async function loadDiscovery(): Promise<void> {
@@ -554,6 +801,76 @@ function openWorkerDetail(workerId: string): void {
   void router.push({ name: 'worker-detail', params: { workerId } })
 }
 
+function selectProject(projectCode: string): void {
+  selectedProjectCode.value = projectCode
+}
+
+function selectEvent(eventCode: string): void {
+  selectedEventCode.value = eventCode
+}
+
+function openTaskListForProject(projectCode?: string): void {
+  const resolvedProjectCode = projectCode ?? selectedProject.value?.code ?? ''
+  void router.push({
+    name: 'tasks',
+    query: resolvedProjectCode ? { project: resolvedProjectCode } : undefined,
+  })
+}
+
+function openTaskDraftForProject(projectCode?: string): void {
+  const resolvedProjectCode = projectCode ?? selectedProject.value?.code ?? ''
+  if (!resolvedProjectCode) {
+    return
+  }
+
+  const starter = resolveTaskStarterDraft({
+    projectCode: resolvedProjectCode,
+  })
+  void router.push({
+    name: 'tasks',
+    query: {
+      create: '1',
+      project: starter.projectCode,
+    },
+  })
+}
+
+function openTaskDraftForSelectedEvent(): void {
+  if (!selectedEventRow.value) {
+    return
+  }
+
+  openTaskDraftForEvent(selectedEventRow.value)
+}
+
+function openTaskDraftForEvent(event: EventRow): void {
+  const projectCode = resolveDraftProjectCodeForEvent(event)
+  if (!projectCode) {
+    return
+  }
+  const starter = resolveTaskStarterDraft({
+    projectCode,
+    eventCode: event.code,
+  })
+
+  void router.push({
+    name: 'tasks',
+    query: {
+      create: '1',
+      project: starter.projectCode,
+      eventCode: starter.eventCode ?? event.code,
+    },
+  })
+}
+
+function focusDraftProjectForSelectedEvent(): void {
+  if (!draftProjectCodeForSelectedEvent.value) {
+    return
+  }
+
+  selectedProjectCode.value = draftProjectCodeForSelectedEvent.value
+}
+
 function tagForWorkerStatus(status: string): 'success' | 'info' | 'warning' {
   if (status === 'ONLINE') {
     return 'success'
@@ -576,6 +893,17 @@ function remainingCount(items: string[]): number {
   return Math.max(0, items.length - TAG_LIMIT)
 }
 
+function resolveDraftProjectCodeForEvent(event: EventRow): string {
+  if (
+    selectedProject.value &&
+    event.projectCodes.includes(selectedProject.value.code)
+  ) {
+    return selectedProject.value.code
+  }
+
+  return event.projectCodes[0] ?? ''
+}
+
 function uniqueStrings(values: string[]): string[] {
   return Array.from(new Set(values.filter((value) => value.length > 0)))
 }
@@ -583,6 +911,21 @@ function uniqueStrings(values: string[]): string[] {
 onMounted(() => {
   void loadDiscovery()
 })
+
+watch(
+  () => selectedEventRows.value,
+  (rows) => {
+    if (rows.length === 0) {
+      selectedEventCode.value = ''
+      return
+    }
+
+    if (!rows.some((row) => row.code === selectedEventCode.value)) {
+      selectedEventCode.value = rows[0].code
+    }
+  },
+  { immediate: true },
+)
 </script>
 
 <style scoped>
@@ -604,6 +947,10 @@ onMounted(() => {
   height: 100%;
 }
 
+.detail-card {
+  height: 100%;
+}
+
 .quickstart-list {
   margin: 0;
   padding-left: 20px;
@@ -619,5 +966,40 @@ onMounted(() => {
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
+}
+
+.detail-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.starter-preview {
+  margin-top: 16px;
+}
+
+.starter-preview-title {
+  margin-bottom: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #6b7a90;
+}
+
+.json-block {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: #f5f8fc;
+  border: 1px solid rgba(18, 32, 51, 0.08);
+  font-family:
+    'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo,
+    monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: #334155;
 }
 </style>
