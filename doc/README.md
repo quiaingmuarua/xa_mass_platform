@@ -21,14 +21,16 @@ Recommended order for a new maintainer or coding agent:
 
 ## 2. What Each File Is For
 
+- [../README.md](../README.md)
+  - The shortest product-positioning summary: what the platform is now and what direction the current mainline is converging toward.
 - [AGENT_BASELINE.md](./AGENT_BASELINE.md)
-  - Stable project baseline for agents: platform definition, guardrails, active module truth, payload contract, and lifecycle baseline.
+  - Stable project baseline for agents: platform definition, mainline goals, guardrails, active module truth, payload contract, and lifecycle baseline.
 - [STATE_MACHINE_BASELINE.md](./STATE_MACHINE_BASELINE.md)
   - Normative state vocabulary and invariants for `Task`, `TaskMsg`, `WorkerContext`, and `TaskTerminalReason`.
 - [TRACE_CONTRACT.md](./TRACE_CONTRACT.md)
   - Minimum required structured trace surface for lifecycle debugging and replayability.
 - [E2E_BASELINE.md](./E2E_BASELINE.md)
-  - Short release-gate baseline for what must be covered by active-mainline E2E tests.
+  - Short release-gate baseline for what must be covered by active-mainline E2E tests and which transport paths are validated through SDK integration versus Boot-shell E2E.
 - [VERIFIED_RUNBOOK.md](./VERIFIED_RUNBOOK.md)
   - Verified startup path, runtime checks, and current execution conclusions.
 - [INTERNAL_API_REFERENCE.md](./INTERNAL_API_REFERENCE.md)
@@ -52,4 +54,3 @@ Keep these rules:
 - Historical notes belong in a short changelog only when they explain a current operational constraint; otherwise delete them.
 - Keep document navigation shallow: headings should usually stop at two levels unless the topic is intrinsically reference-shaped.
 - If a fact already lives normatively in one document, other documents should reference it rather than restating it in full.
-

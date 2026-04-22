@@ -7,7 +7,9 @@ This is the fastest entry point for coding agents. Keep it short. Use linked bas
 - XA Mass Platform is a general distributed task scheduling platform.
 - Core abstraction: assign work-item inputs to online workers, track each result, and converge task state.
 - The stable kernel is `Task / TaskMsg / TaskMsgAttempt / assignment / result / audit / terminal policy`.
-- Current reference runtime is `Worker + WorkerContext + WebSocket gateway + mock clients`.
+- Transport should be read as three channels: task dispatch, result ingest, and system events.
+- Current reference runtime is `Worker + WorkerContext + WebSocket gateway + mock clients`, but WebSocket is an adapter path, not the product definition.
+- Polling/pull workers are part of the intended mainline direction, not a side feature.
 - Workers may be phone apps, crawlers, LLM agents, IM bots, or other long-lived executors.
 - Project direction is library/SDK-first; HTTP pages and demo APIs are validation shells.
 - Real Spring Boot entrypoint is `xa-mass-dev-app`.
@@ -45,6 +47,7 @@ Trust order:
 
 - Do not shrink the product definition back into a phone/group-control system.
 - `Worker`, `WorkerContext`, and WebSocket are current adapter names, not final universal platform boundaries.
+- Do not define a worker as "a WebSocket client"; define it as an executor that can receive tasks, return results, and emit system events through some transport.
 - `WorkerContext` is optional; stateless workers are part of the verified mainline.
 - UI, mock data, and demo APIs must not redefine kernel semantics.
 - Third-party embedding should enter through `MassSdk` and `MassSdkApplication`; `unwrap()` and direct engine/manager access are deprecated escape hatches.
@@ -56,6 +59,7 @@ Trust order:
 - `Worker.attributes` and `WorkerContext.attributes` are auxiliary rule labels only.
 - `Worker.status` is the online truth; lock truth lives in `WorkerStorage` / `WorkerManager.isLocked(...)`.
 - Current concurrency model is conservative: one `Worker` is one active execution lane.
+- Keep transport-specific shapes behind `xa-mass-transport-api`; WebSocket payloads must not become kernel truth.
 - Manual worker debug chat is a side-channel and must not mutate task lifecycle state.
 - Policy layers must not silently change another layer's source of truth; use [doc/engine/POLICY_INTERACTION_BASELINE.md](doc/engine/POLICY_INTERACTION_BASELINE.md) before adding matching, retry, release, refill, intake, or terminal-policy behavior.
 
@@ -94,7 +98,7 @@ TaskMsg and attempt rules:
 Root reactor modules are defined by `pom.xml`:
 
 - `xa-mass-core`: shared models, enums, JSON DSL, EventBus, messaging primitives.
-- `xa-mass-transport-api`: transport-neutral runtime SPI for transport servers and worker endpoint registries.
+- `xa-mass-transport-api`: transport-neutral runtime SPI for task dispatch, result ingest, system events, transport servers, and worker endpoint registries.
 - `xa-mass-engine`: task lifecycle, assignment, matching, result handling, validation.
 - `xa-mass-gateway`: current WebSocket transport adapter, sessions, dispatch, inbound result routing.
 - `xa-mass-sdk-api`: stable SDK-facing catalog, auth, and request-model contracts.
@@ -176,6 +180,11 @@ Task message read model:
 ## 7. Regression Gate
 
 Mainline acceptance should include integration/E2E coverage through `xa-mass-dev-app`.
+
+Kernel and transport rule:
+
+- use `xa-mass-dev-app` E2E coverage for shell + HTTP + current WebSocket adapter behavior
+- use `xa-mass-sdk` integration coverage for transport-neutral or pull/poll worker paths until they become Boot-shell mainline
 
 Common fast checks:
 

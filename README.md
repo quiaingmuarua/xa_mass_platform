@@ -26,11 +26,27 @@ XA Mass Platform is a general distributed task scheduling platform.
 
 - Its core abstraction is simple: assign a batch of work items to a batch of online workers, track each execution result, and converge task-level completion state.
 - The platform is scenario-agnostic. It does not define the business itself; it defines who is online, who can accept work, how work is dispatched, how results are collected, and how task state converges.
-- The stable kernel is `Task`, `TaskMsg`, assignment, result write-back, audit, and terminal policy.
+- The stable kernel is `Task`, `TaskMsg`, `TaskMsgAttempt`, assignment, result write-back, audit, and terminal policy.
 - The project is library/SDK-first. HTTP pages, demo APIs, and mock runtime surfaces exist to validate the kernel.
-- The current reference scenario is a long-connection worker scheduling path built from `Worker + WorkerContext + WebSocket gateway + mock clients`.
+- The current verified adapter path is still `Worker + WorkerContext + WebSocket gateway + mock clients`, but that is now treated as the reference transport adapter rather than the product boundary.
 - Workers can be phone apps, crawlers, LLM agents, IM bots, or other long-lived executors.
 - `Worker` and `WorkerContext` are the current reference adapters, not the permanent product boundary.
+
+## Current Mainline Goal
+
+The repository is no longer converging toward a "WebSocket worker system". The current mainline goal is:
+
+- keep the platform core focused on scheduling, state-machine transitions, matching, retry, release, audit, and terminal policy
+- keep transport concerns behind explicit seams so worker delivery is not defined by WebSocket
+- support both push-style and pull-style worker runtimes
+- let future adapters such as WebSocket, gRPC, custom socket, and queue/polling workers coexist without redefining kernel semantics
+- keep `xa-mass-sdk` positioned like a library/runtime entry, with richer client implementations allowed to grow around it
+
+The transport-neutral runtime model is now framed around three channels:
+
+- task dispatch channel
+- result ingest channel
+- system-event channel for online/offline/heartbeat and related control-plane signals
 
 ## Current Reality
 
@@ -38,6 +54,7 @@ XA Mass Platform is a general distributed task scheduling platform.
 - Do not treat the embedded runtime classes as a Spring Boot app
 - Current root reactor modules are `xa-mass-web`, `xa-mass-core`, `xa-mass-transport-api`, `xa-mass-engine`, `xa-mass-gateway`, `xa-mass-sdk-api`, `xa-mass-sdk`, and `xa-mass-dev-app`
 - `xa-mass-sdk` is the real Java embedding module; it now carries both the SDK facade and the embedded runtime composition
+- `xa-mass-transport-api` is the transport-neutral seam for task dispatch, result ingest, system events, transport servers, and worker endpoint registries
 - historical reactor/module experiments such as `xa-mass-base`, `xa-mass-starter`, and engine archive generations are no longer present in the current repository snapshot
 - Verified HTTP port: `server.port=8088`
 - Verified WebSocket gateway port: `mass.websocket.port=18088`
@@ -75,7 +92,7 @@ Primary endpoints:
 - `xa-mass-dev-app`: verified runnable entry and full-stack validation shell; starts runtime through `xa-mass-sdk` and exposes the current HTTP control console and JSON APIs through `xa-mass-web`
 - `xa-mass-sdk`: consumer-facing dependency entry and embedded runtime composition for the platform
 - `xa-mass-sdk-api`: stable SDK-facing catalog/auth/model contract shared by `xa-mass-sdk` and `xa-mass-web`
-- `xa-mass-transport-api`: transport-neutral runtime SPI for transport servers and worker endpoint registries
+- `xa-mass-transport-api`: transport-neutral runtime SPI for task dispatch, result ingest, system events, transport servers, and worker endpoint registries
 - `xa-mass-web`: REST controllers and the backend-hosted control console shell
 - `xa-mass-engine`: task state machine, assignment, result handling, and strategy extension points
 - `xa-mass-gateway`: current WebSocket transport adapter plus dispatch runtime

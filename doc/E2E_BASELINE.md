@@ -11,10 +11,15 @@ An active-mainline E2E test must, unless explicitly scoped lower:
 
 1. start the real `xa-mass-dev-app` Spring Boot entry
 2. use real HTTP for the lifecycle path under test
-3. use the real WebSocket gateway when runtime dispatch/result write-back is part of the risk
+3. use the real active transport adapter when runtime dispatch/result write-back is part of the risk
 4. assert real task/message state, not only mocks or listener calls
 
 White-box fixtures are allowed for setup and fault injection, but not as a replacement for the path under test.
+
+Current mainline note:
+
+- today the Boot-shell E2E path still validates the WebSocket adapter
+- transport-neutral or pull/poll worker paths are currently accepted through `xa-mass-sdk` integration coverage until a dedicated shell path exists
 
 ## 2. Mandatory Release-Gate Scenarios
 
@@ -49,6 +54,7 @@ Worker and context:
 
 - worker-context attribute routing selects the right context
 - stateless worker can execute tasks without routing-required context
+- polling/pull worker path can execute `create -> approve -> dispatch -> result -> terminal` without WebSocket push
 - manual worker debug chat records outbound and inbound history over the real gateway path
 - manual worker debug chat acknowledgement promotes delivery visibility from `QUEUED` to `DELIVERED`
 - same worker can own multiple contexts without overwrite
@@ -84,4 +90,3 @@ then acceptance requires both:
 2. trace coverage for the critical transition
 
 For policy interaction changes, also cover the touched pairwise interaction from [./engine/POLICY_INTERACTION_BASELINE.md](./engine/POLICY_INTERACTION_BASELINE.md).
-

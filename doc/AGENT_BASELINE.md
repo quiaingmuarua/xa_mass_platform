@@ -45,8 +45,9 @@ Working rule:
 - The project is a general distributed task scheduling platform.
 - Its core abstraction is: assign a batch of work items to a batch of online workers, track each execution result, and converge task-level completion state.
 - The platform is scenario-agnostic. It does not care what the business payload means; it cares about who is online, who can accept work, dispatch, result write-back, and task convergence.
-- The long-term stable kernel is `Task / TaskMsg / assignment / result / audit / terminal policy`.
-- The current mainline validates that kernel through a long-connection worker scenario using `Worker + WorkerContext + WebSocket gateway + mock clients`.
+- The long-term stable kernel is `Task / TaskMsg / TaskMsgAttempt / assignment / result / audit / terminal policy`.
+- The current mainline still validates that kernel through a WebSocket adapter path using `Worker + WorkerContext + WebSocket gateway + mock clients`, but WebSocket is no longer the intended universal worker definition.
+- The platform direction is transport-agnostic: task dispatch, result ingest, and worker system events should remain explicit seams rather than being encoded into one transport shape.
 - Workers can be phone apps, crawlers, LLM agents, IM bots, or other long-lived executors.
 - `Worker`, `WorkerContext`, WebSocket sessions, the control console shell, and demo REST APIs are current reference adapters and verification shells. They are not the permanent product boundary.
 - The project direction is library/SDK-first. Demo runtime surfaces exist to validate the kernel, not to redefine it.
@@ -94,7 +95,8 @@ Interpretation rules:
 - `xa-mass-dev-app` should obtain runtime capability through `xa-mass-sdk`; its explicit `xa-mass-web` dependency is only for the current REST/control-console validation shell.
 - Do not make `xa-mass-sdk` depend on `xa-mass-web` just to make `xa-mass-dev-app` depend on one internal artifact; SDK consumers should not pull demo web surfaces by default.
 - The current mainline reactor is defined by the root `pom.xml`: `xa-mass-web`, `xa-mass-core`, `xa-mass-transport-api`, `xa-mass-engine`, `xa-mass-gateway`, `xa-mass-sdk-api`, `xa-mass-sdk`, `xa-mass-dev-app`.
-- `xa-mass-transport-api` now holds the transport-neutral SPI. WebSocket is the current mainline adapter, not the platform boundary.
+- `xa-mass-transport-api` now holds the transport-neutral SPI for task dispatch, result ingest, system events, transport servers, and worker endpoint registries.
+- `xa-mass-gateway` should be read as the current WebSocket transport adapter, not as the only valid worker runtime path.
 - `com.xa.mass.engine` is the active engine path.
 - historical `v2` / archive engine generations are no longer present in the current repository snapshot.
 - EventBus mainline has converged onto `com.xa.mass.base.channel.eventbus.core` and `com.xa.mass.base.channel.eventbus.event`.
@@ -223,6 +225,9 @@ For startup/runtime:
 - `xa-mass-dev-app/src/main/java/com/xa/mass/mock/MockApplicationSpringBootApp.java`
 - `xa-mass-sdk/src/main/java/com/xa/mass/starter/MassApplication.java`
 - `xa-mass-sdk/src/main/java/com/xa/mass/starter/MassEngine.java`
+- `xa-mass-transport-api/src/main/java/com/xa/mass/transport/channel/TaskDispatchChannel.java`
+- `xa-mass-transport-api/src/main/java/com/xa/mass/transport/channel/TaskResultIngestChannel.java`
+- `xa-mass-transport-api/src/main/java/com/xa/mass/transport/channel/WorkerSystemEventChannel.java`
 
 For lifecycle/API:
 

@@ -8,6 +8,8 @@ import com.xa.mass.gateway.model.enums.MessageDirection;
 import com.xa.mass.gateway.model.enums.MessageType;
 import com.xa.mass.gateway.model.massMessage.MassMessage;
 import com.xa.mass.gateway.model.massMessage.MessageAckPayload;
+import com.xa.mass.transport.channel.NoopWorkerSystemEventChannel;
+import com.xa.mass.transport.channel.WorkerSystemEventChannel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -21,9 +23,20 @@ public class MessageHandlerRegistry {
     private static final String GLOBAL = "GLOBAL";
 
     private final Gson gson = new Gson();
+    private final WorkerSystemEventChannel systemEventChannel;
     // project -> (key -> handler)
     private final Map<String, Map<String, MassMessageHandler>> handlerMap = new ConcurrentHashMap<>();
     private boolean enableFallback = true;
+
+    public MessageHandlerRegistry() {
+        this(NoopWorkerSystemEventChannel.INSTANCE);
+    }
+
+    public MessageHandlerRegistry(WorkerSystemEventChannel systemEventChannel) {
+        this.systemEventChannel = systemEventChannel != null
+                ? systemEventChannel
+                : NoopWorkerSystemEventChannel.INSTANCE;
+    }
 
     public void autoRegister() {
         this.register(GLOBAL, MessageType.PING, "heartbeat", this::handlePing);
@@ -80,6 +93,11 @@ public class MessageHandlerRegistry {
 
     private List<MassMessage> handlePing(MassMessage msg) {
         log.debug("Received ping from {}/{}", msg.getContext().getWorkerId(), msg.getContext().getConnRole());
+        systemEventChannel.publishWorkerHeartbeat(
+                msg.getContext().getWorkerId(),
+                "heartbeat",
+                msg.getMsgId()
+        );
         MassMessage pong = new MassMessage();
         pong.setMsgId(msg.getMsgId());
         pong.setResponse(true);

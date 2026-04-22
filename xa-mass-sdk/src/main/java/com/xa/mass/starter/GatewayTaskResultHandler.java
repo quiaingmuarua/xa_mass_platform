@@ -10,11 +10,12 @@ import com.xa.mass.gateway.model.enums.MessageDirection;
 import com.xa.mass.gateway.model.enums.MessageType;
 import com.xa.mass.gateway.model.massMessage.MassMessage;
 import com.xa.mass.gateway.model.massMessage.MessageAckPayload;
+import com.xa.mass.transport.channel.TaskResultIngestChannel;
 
 import java.util.List;
 import java.util.Map;
 
-public class GatewayTaskResultHandler implements MassMessageHandler {
+public class GatewayTaskResultHandler implements MassMessageHandler, TaskResultIngestChannel {
 
     private final TaskManager taskManager;
     private final Gson gson = new Gson();
@@ -32,7 +33,7 @@ public class GatewayTaskResultHandler implements MassMessageHandler {
         }
 
         TaskResultPayload payload = parsePayload(msg.getPayload());
-        boolean handled = taskManager.handleTaskMessageResult(
+        boolean handled = ingestTaskResult(
                 taskId,
                 msgId,
                 payload.success,
@@ -43,6 +44,25 @@ public class GatewayTaskResultHandler implements MassMessageHandler {
         int code = handled ? 200 : 404;
         String message = handled ? "task result processed" : "task result ignored";
         return List.of(buildAck(msg, code, message));
+    }
+
+    @Override
+    public boolean ingestTaskResult(
+            String taskId,
+            String msgId,
+            boolean success,
+            String detail,
+            String errorCode,
+            Map<String, Object> output
+    ) {
+        return taskManager.handleTaskMessageResult(
+                taskId,
+                msgId,
+                success,
+                detail,
+                errorCode,
+                output
+        );
     }
 
     private TaskResultPayload parsePayload(JsonElement payload) {

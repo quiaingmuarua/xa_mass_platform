@@ -13,6 +13,7 @@ import com.xa.mass.gateway.model.massMessage.TaskStep;
 import com.xa.mass.gateway.model.payload.TaskPayload;
 import com.xa.mass.gateway.queue.Envelope;
 import com.xa.mass.gateway.session.SessionRoles;
+import com.xa.mass.transport.channel.TaskDispatchChannel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -20,7 +21,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-public class GatewayTaskMsgPublisher implements TaskMsgDispatchListener {
+public class GatewayTaskMsgPublisher implements TaskMsgDispatchListener, TaskDispatchChannel {
 
     public static final String DEFAULT_CONN_ROLE = SessionRoles.TASK_MESSAGES;
 
@@ -35,6 +36,11 @@ public class GatewayTaskMsgPublisher implements TaskMsgDispatchListener {
 
     @Override
     public void onTaskMsgsReady(Task task, List<TaskMsg> taskMsgs) {
+        dispatchTaskMessages(task, taskMsgs);
+    }
+
+    @Override
+    public void dispatchTaskMessages(Task task, List<TaskMsg> taskMsgs) {
         if (dispatchRuntimeContext == null
                 || dispatchRuntimeContext.getMessageTransporter() == null
                 || dispatchRuntimeContext.getMessageCodec() == null) {

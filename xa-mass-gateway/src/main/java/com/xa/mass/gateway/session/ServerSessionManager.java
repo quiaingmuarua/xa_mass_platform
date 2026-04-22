@@ -1,9 +1,7 @@
 package com.xa.mass.gateway.session;
 
-import com.xa.mass.base.channel.eventbus.core.EventPublisher;
-import com.xa.mass.base.channel.eventbus.event.worker.WorkerOfflineEvent;
-import com.xa.mass.base.channel.eventbus.event.worker.WorkerOnlineEvent;
 import com.xa.mass.transport.WorkerEndpointRegistry;
+import com.xa.mass.transport.channel.WorkerSystemEventChannel;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;
@@ -29,6 +27,7 @@ public class ServerSessionManager implements WorkerEndpointRegistry {
 
     // Reverse index: Channel -> [workerId, connRole]
     private final Map<Channel, WorkerConnKey> channelIndex = new ConcurrentHashMap<>();
+    private volatile WorkerSystemEventChannel systemEventChannel = new EventBusWorkerSystemEventChannel();
 
     public synchronized void addSession(String workerId, String connRole, Channel channel, ChannelHandlerContext ctx) {
         Map<String, Channel> existingRoleMap = workerChannelMap.get(workerId);
@@ -56,7 +55,7 @@ public class ServerSessionManager implements WorkerEndpointRegistry {
 
         logger.info("Connected: workerId={} role={} channelId={} totalWorkers={}",
                 workerId, connRole, channel.id().asShortText(), workerChannelMap.size());
-        EventPublisher.post(new WorkerOnlineEvent(workerId, "websocket connected", null));
+        systemEventChannel.publishWorkerOnline(workerId, "websocket connected", null);
     }
 
     public synchronized void removeSession(Channel channel) {
@@ -85,7 +84,7 @@ public class ServerSessionManager implements WorkerEndpointRegistry {
 
             logger.info("Disconnected: workerId={} role={} channelId={}",
                     key.getWorkerId(), key.getConnRole(), channel.id().asShortText());
-            EventPublisher.post(new WorkerOfflineEvent(key.getWorkerId(), "websocket disconnected", null));
+            systemEventChannel.publishWorkerOffline(key.getWorkerId(), "websocket disconnected", null);
         } else {
             logger.warn("Attempted to remove session for a channel not in index: {}", channel.id().asShortText());
         }
@@ -184,5 +183,13 @@ public class ServerSessionManager implements WorkerEndpointRegistry {
             unmodifiableOuterMap.put(entry.getKey(), unmodifiableInnerMap);
         }
         return Collections.unmodifiableMap(unmodifiableOuterMap);
+    }
+
+    public WorkerSystemEventChannel getSystemEventChannel() {
+        return systemEventChannel;
+    }
+
+    public void setSystemEventChannel(WorkerSystemEventChannel systemEventChannel) {
+        this.systemEventChannel = systemEventChannel != null ? systemEventChannel : new EventBusWorkerSystemEventChannel();
     }
 }

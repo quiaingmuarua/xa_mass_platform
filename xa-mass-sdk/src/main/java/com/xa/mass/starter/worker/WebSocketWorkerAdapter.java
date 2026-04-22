@@ -19,6 +19,8 @@ import com.xa.mass.gateway.model.massMessage.TaskStep;
 import com.xa.mass.gateway.model.payload.TaskPayload;
 import com.xa.mass.gateway.queue.Envelope;
 import com.xa.mass.gateway.session.SessionRoles;
+import com.xa.mass.transport.channel.TaskDispatchChannel;
+import com.xa.mass.transport.channel.TaskResultIngestChannel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -36,8 +38,9 @@ import java.util.Map;
  * <p>To add an HTTP or gRPC adapter, create a parallel class implementing
  * {@link WorkerAdapter} and {@link MassMessageHandler} for that transport.
  */
-public class WebSocketWorkerAdapter implements WorkerAdapter, MassMessageHandler {
+public class WebSocketWorkerAdapter implements WorkerAdapter, MassMessageHandler, TaskDispatchChannel, TaskResultIngestChannel {
 
+    public static final String PROTOCOL = "websocket";
     public static final String DEFAULT_CONN_ROLE = SessionRoles.TASK_MESSAGES;
 
     private static final Logger logger = LoggerFactory.getLogger(WebSocketWorkerAdapter.class);
@@ -53,13 +56,18 @@ public class WebSocketWorkerAdapter implements WorkerAdapter, MassMessageHandler
 
     @Override
     public String protocol() {
-        return "websocket";
+        return PROTOCOL;
     }
 
     // Dispatch side.
 
     @Override
     public void onTaskMsgsReady(Task task, List<TaskMsg> taskMsgs) {
+        dispatchTaskMessages(task, taskMsgs);
+    }
+
+    @Override
+    public void dispatchTaskMessages(Task task, List<TaskMsg> taskMsgs) {
         if (dispatchRuntimeContext == null
                 || dispatchRuntimeContext.getMessageTransporter() == null
                 || dispatchRuntimeContext.getMessageCodec() == null) {
@@ -139,7 +147,7 @@ public class WebSocketWorkerAdapter implements WorkerAdapter, MassMessageHandler
         }
 
         TaskResultPayload payload = parsePayload(msg.getPayload());
-        boolean handled = taskManager.handleTaskMessageResult(
+        boolean handled = ingestTaskResult(
                 taskId,
                 msgId,
                 payload.success,
@@ -150,6 +158,25 @@ public class WebSocketWorkerAdapter implements WorkerAdapter, MassMessageHandler
         int code = handled ? 200 : 404;
         String message = handled ? "task result processed" : "task result ignored";
         return List.of(buildAck(msg, code, message));
+    }
+
+    @Override
+    public boolean ingestTaskResult(
+            String taskId,
+            String msgId,
+            boolean success,
+            String detail,
+            String errorCode,
+            Map<String, Object> output
+    ) {
+        return taskManager.handleTaskMessageResult(
+                taskId,
+                msgId,
+                success,
+                detail,
+                errorCode,
+                output
+        );
     }
 
     private TaskResultPayload parsePayload(JsonElement payload) {

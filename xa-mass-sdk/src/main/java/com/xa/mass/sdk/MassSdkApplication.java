@@ -17,6 +17,7 @@ import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.sdk.model.MassTaskCreateRequest;
 import com.xa.mass.sdk.model.MassTaskRequest;
 import com.xa.mass.sdk.model.MassTaskRequestMapper;
+import com.xa.mass.sdk.worker.PollingWorkerSession;
 import com.xa.mass.starter.MassEngine;
 import com.xa.mass.starter.MassApplication;
 
@@ -190,6 +191,11 @@ public final class MassSdkApplication implements MassRuntimeControl {
 
     public List<WorkerContext> getWorkerContexts(String workerId) {
         return requireStartedWorkerManager().getWorkerContexts(workerId);
+    }
+
+    public PollingWorkerSession pollingWorker(String workerId) {
+        requireStartedEngine();
+        return delegate.openPollingWorkerSession(workerId);
     }
 
     public WorkerContext getWorkerContextById(String workerContextId) {

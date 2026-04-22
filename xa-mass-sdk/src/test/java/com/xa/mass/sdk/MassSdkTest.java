@@ -5,10 +5,13 @@ import com.xa.mass.base.channel.messaging.memory.InMemoryMessageQueue;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.model.Task;
+import com.xa.mass.base.model.TaskMsg;
+import com.xa.mass.base.model.Worker;
 import com.xa.mass.engine.model.TaskCreateRequestDto;
 import com.xa.mass.engine.rules.RuleDefinition;
 import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.engine.rules.RuleType;
+import com.xa.mass.sdk.worker.PollingWorkerSession;
 import com.xa.mass.engine.strategy.SimpleTaskScheduler;
 import com.xa.mass.gateway.queue.Envelope;
 import com.xa.mass.sdk.catalog.PayloadType;
@@ -18,10 +21,12 @@ import com.xa.mass.sdk.model.MassTaskRequest;
 import com.xa.mass.starter.MassApplication;
 import com.xa.mass.starter.MassEngine;
 import com.xa.mass.starter.config.EngineConfig;
+import com.xa.mass.transport.model.TaskDispatchItem;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.function.Executable;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -30,6 +35,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -239,6 +245,84 @@ class MassSdkTest {
     }
 
     @Test
+    void pollingWorkerSessionCompletesTaskWithoutWebsocketPush() throws Exception {
+        MessageQueue<Envelope> inputQueue = new InMemoryMessageQueue<>("Envelope", Envelope.class);
+        MessageQueue<Envelope> outputQueue = new InMemoryMessageQueue<>("Envelope", Envelope.class);
+        MassSdkApplication app = MassSdk.builder()
+                .server(0, "/sdk-ws")
+                .gateway(gateway -> gateway.enabled(false).inputQueue(inputQueue).outputQueue(outputQueue))
+                .engine(engine -> engine.enabled(true).workerThreads(2))
+                .build();
+
+        try {
+            app.start();
+
+            RuleDefinition rule = new RuleDefinition();
+            rule.setId("polling-online-project");
+            rule.setName("polling-online-project");
+            rule.setType(RuleType.QL_EXPRESS);
+            rule.setContent("isWorkerAvailable && supportsProject");
+            app.replaceDefaultRules(List.of(rule));
+
+            Worker worker = new Worker();
+            worker.setWorkerId("polling-worker-1");
+            worker.setSupportedProjects(List.of("demoApp"));
+            worker.setOnlineStrategy("polling");
+            app.addWorker(worker);
+
+            PollingWorkerSession session = app.pollingWorker("polling-worker-1");
+            session.connect();
+
+            Task task = app.createTask(MassTaskCreateRequest.builder()
+                    .userId("crawler-agent")
+                    .project("demoApp")
+                    .taskName("fetch-page")
+                    .sharedConfig(Map.of("mode", "pull"))
+                    .inputs(List.of(Map.of("url", "https://example.test/page-1")))
+                    .batchSize(1)
+                    .build());
+
+            assertTrue(app.approveTask(task.getTid()));
+
+            TaskDispatchItem dispatchItem = waitFor(
+                    Duration.ofSeconds(5),
+                    () -> {
+                        List<TaskDispatchItem> polled = session.poll(1);
+                        return polled.isEmpty() ? null : polled.get(0);
+                    }
+            );
+            assertNotNull(dispatchItem);
+            Assertions.assertEquals(task.getTid(), dispatchItem.getTaskId());
+            Assertions.assertEquals("https://example.test/page-1", dispatchItem.getInput().get("url"));
+            Assertions.assertEquals("pull", dispatchItem.getSharedConfig().get("mode"));
+
+            assertTrue(session.submitResult(
+                    dispatchItem,
+                    true,
+                    "fetched",
+                    Map.of("httpStatus", 200, "bodyLength", 42)
+            ));
+
+            Task terminalTask = waitFor(
+                    Duration.ofSeconds(5),
+                    () -> {
+                        Task current = app.getTask(task.getTid());
+                        return current != null && current.getStatus() == TaskStatus.TERMINAL ? current : null;
+                    }
+            );
+
+            assertNotNull(terminalTask);
+            Assertions.assertEquals(TaskTerminalReason.ALL_MESSAGES_SUCCEEDED, terminalTask.getTerminalReason());
+
+            TaskMsg finalMessage = app.getTaskMessages(task.getTid()).get(0);
+            Assertions.assertEquals("SUCCESS", finalMessage.getStatus().name());
+            Assertions.assertEquals(200.0, finalMessage.getOutput().get("httpStatus"));
+        } finally {
+            app.stop();
+        }
+    }
+
+    @Test
     void massTaskRequestConvenienceBuildersExposeExpectedModeAndInputShape() {
         MassTaskRequest textRequest = MassTaskRequest.singleRun("demoApp", "chatbot")
                 .userId("agent")
@@ -311,6 +395,7 @@ class MassSdkTest {
                 () -> app.getWorkerContextById("context-1"),
                 () -> app.isWorkerLocked("worker-1"),
                 () -> app.isWorkerOnline("worker-1"),
+                () -> app.pollingWorker("worker-1"),
                 app::loadMockData,
                 () -> app.replaceDefaultRules(List.of()),
                 app::publishTaskEvents
@@ -319,5 +404,22 @@ class MassSdkTest {
         for (Executable operation : operations) {
             Assertions.assertThrows(IllegalStateException.class, operation);
         }
+    }
+
+    private static <T> T waitFor(Duration timeout, ThrowingSupplier<T> supplier) throws Exception {
+        long deadline = System.nanoTime() + timeout.toNanos();
+        while (System.nanoTime() < deadline) {
+            T value = supplier.get();
+            if (value != null) {
+                return value;
+            }
+            Thread.sleep(50L);
+        }
+        return supplier.get();
+    }
+
+    @FunctionalInterface
+    private interface ThrowingSupplier<T> {
+        T get() throws Exception;
     }
 }

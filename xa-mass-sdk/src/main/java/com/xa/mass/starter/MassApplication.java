@@ -15,17 +15,24 @@ import com.xa.mass.gateway.server.MassServerStater;
 import com.xa.mass.gateway.session.ServerSessionManager;
 import com.xa.mass.starter.config.EngineConfig;
 import com.xa.mass.starter.config.GatewayConfig;
+import com.xa.mass.starter.worker.PollingWorkerAdapter;
+import com.xa.mass.starter.worker.TransportRoutingTaskMsgDispatchListener;
+import com.xa.mass.starter.worker.WebSocketWorkerAdapter;
 import com.xa.mass.engine.util.LogUtils;
 import com.xa.mass.engine.listener.TaskMsgDispatchListener;
+import com.xa.mass.engine.worker.WorkerAdapter;
 import com.xa.mass.engine.rules.RuleDefinition;
 import com.xa.mass.sdk.MassBootstrapDataProvider;
 import com.xa.mass.sdk.MassRuntimeControl;
+import com.xa.mass.sdk.worker.PollingWorkerSession;
 import com.xa.mass.sdk.model.MassTaskCreateRequest;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -45,6 +52,7 @@ public class MassApplication {
     private MassGateway massGateway;
     private DispatchRuntimeContext dispatcherContext;
     private MassServerStater serverStater;
+    private PollingWorkerAdapter pollingWorkerAdapter;
 
     public MassApplication(MassEngine engine, int serverPort, String webSocketPath,
                            GatewayConfig gatewayConfig, EngineConfig engineConfig) {
@@ -120,7 +128,7 @@ public class MassApplication {
         logger.info("Initializing core components");
 
         try {
-            WorkerEndpointRegistry sessionManager = ServerSessionManager.INSTANCE;
+            ServerSessionManager sessionManager = ServerSessionManager.INSTANCE;
             logger.info("Worker endpoint registry initialized");
 
             MessageTransporter messageTransporter = gatewayConfig.createMessageTransporter();
@@ -135,20 +143,37 @@ public class MassApplication {
             DispatcherContextRegistry.register(dispatcherContext);
             logger.info("Dispatcher context registered");
 
-            MessageHandlerRegistry messageHandlerRegistry = new MessageHandlerRegistry();
+            MessageHandlerRegistry messageHandlerRegistry =
+                    new MessageHandlerRegistry(sessionManager.getSystemEventChannel());
             messageHandlerRegistry.autoRegister();
             TaskMsgDispatchListener taskMsgDispatchListener = null;
             if (engineConfig.isEnabled() && engineConfig.getTaskManager() != null) {
-                com.xa.mass.starter.worker.WebSocketWorkerAdapter workerAdapter =
-                        new com.xa.mass.starter.worker.WebSocketWorkerAdapter(
-                                dispatcherContext, engineConfig.getTaskManager());
-                taskMsgDispatchListener = workerAdapter;
-                messageHandlerRegistry.register(
-                        null,
-                        MessageType.TASK,
-                        "step",
-                        workerAdapter
+                List<WorkerAdapter> workerAdapters = new ArrayList<>();
+                pollingWorkerAdapter = new PollingWorkerAdapter(
+                        engineConfig.getTaskManager(),
+                        sessionManager.getSystemEventChannel()
                 );
+                workerAdapters.add(pollingWorkerAdapter);
+
+                if (gatewayConfig.isEnabled()) {
+                    WebSocketWorkerAdapter workerAdapter = new WebSocketWorkerAdapter(
+                            dispatcherContext, engineConfig.getTaskManager());
+                    workerAdapters.add(workerAdapter);
+                    messageHandlerRegistry.register(
+                            null,
+                            MessageType.TASK,
+                            "step",
+                            workerAdapter
+                    );
+                }
+
+                taskMsgDispatchListener = workerAdapters.size() == 1
+                        ? workerAdapters.get(0)
+                        : new TransportRoutingTaskMsgDispatchListener(
+                                engineConfig.getWorkerManager(),
+                                workerAdapters,
+                                gatewayConfig.isEnabled() ? WebSocketWorkerAdapter.PROTOCOL : PollingWorkerAdapter.PROTOCOL
+                        );
             }
             messageHandlerRegistry.register(
                     null,
@@ -227,6 +252,13 @@ public class MassApplication {
 
     public boolean isRunning() {
         return running.get() && serverStater != null && serverStater.isRunning();
+    }
+
+    public PollingWorkerSession openPollingWorkerSession(String workerId) {
+        if (pollingWorkerAdapter == null) {
+            throw new IllegalStateException("Polling worker adapter is unavailable for this runtime");
+        }
+        return new PollingWorkerSession(workerId, pollingWorkerAdapter);
     }
 
     public void publishTaskEvents() {
