@@ -12,6 +12,7 @@ import com.xa.mass.starter.MassApplication;
 import com.xa.mass.starter.MassEngine;
 import com.xa.mass.starter.config.EngineConfig;
 import com.xa.mass.starter.config.GatewayConfig;
+import com.xa.mass.transport.channel.WorkerSystemEventChannel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import java.util.Map;
@@ -167,6 +168,16 @@ public class MassApplicationBuilder {
 
         public GatewayBuilder queueMode() {
             config.setTransporterType(MessageTransporterFactory.TransporterType.QUEUE_BASED);
+            return this;
+        }
+
+        /**
+         * Overrides the default {@link WorkerSystemEventChannel} obtained from
+         * {@code ServerSessionManager}. Useful for custom transport adapters or
+         * testing with a mock channel.
+         */
+        public GatewayBuilder systemEventChannel(WorkerSystemEventChannel channel) {
+            config.setCustomSystemEventChannel(channel);
             return this;
         }
     }

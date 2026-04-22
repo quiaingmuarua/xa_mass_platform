@@ -10,6 +10,9 @@ import com.xa.mass.transport.channel.TaskResultIngestChannel;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
 import com.xa.mass.transport.model.TaskDispatchItem;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
@@ -24,6 +27,11 @@ import java.util.concurrent.ConcurrentMap;
  * that do not maintain a server-push transport.
  */
 public class PollingWorkerAdapter implements WorkerAdapter, TaskDispatchChannel, TaskPullChannel, TaskResultIngestChannel {
+
+    private static final Logger logger = LoggerFactory.getLogger(PollingWorkerAdapter.class);
+
+    /** Maximum items held per worker inbox before new dispatches are dropped. */
+    static final int MAX_INBOX_SIZE = 10_000;
 
     public static final String PROTOCOL = "polling";
 
@@ -55,8 +63,14 @@ public class PollingWorkerAdapter implements WorkerAdapter, TaskDispatchChannel,
             if (taskMsg == null || taskMsg.getLatestAttemptWorkerId() == null || taskMsg.getLatestAttemptWorkerId().isBlank()) {
                 continue;
             }
-            Deque<TaskDispatchItem> inbox = inbox(taskMsg.getLatestAttemptWorkerId());
+            String workerId = taskMsg.getLatestAttemptWorkerId();
+            Deque<TaskDispatchItem> inbox = inbox(workerId);
             synchronized (inbox) {
+                if (inbox.size() >= MAX_INBOX_SIZE) {
+                    logger.warn("Polling inbox for worker {} is full ({} items); dropping dispatch for msg {}",
+                            workerId, inbox.size(), taskMsg.getMsgId());
+                    continue;
+                }
                 inbox.addLast(toDispatchItem(task, taskMsg));
             }
         }
@@ -79,6 +93,10 @@ public class PollingWorkerAdapter implements WorkerAdapter, TaskDispatchChannel,
                     break;
                 }
                 polled.add(item);
+            }
+            // Remove empty inboxes to prevent memory accumulation from offline workers.
+            if (inbox.isEmpty()) {
+                inboxByWorkerId.remove(workerId, inbox);
             }
         }
         return List.copyOf(polled);

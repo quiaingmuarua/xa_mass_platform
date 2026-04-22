@@ -6,11 +6,16 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Supported task-create contract for the current runtime.
+ * Engine-internal task-create contract.
  *
- * <p>This DTO intentionally exposes only fields that are implemented by the
- * active mainline. Unknown JSON properties are rejected so outdated clients and
- * agents fail fast instead of assuming unsupported behavior exists.
+ * <p>This DTO is the authoritative input type for {@link com.xa.mass.engine.TaskManager#createTask}.
+ * It lives in {@code xa-mass-engine} so the engine module has no dependency on
+ * {@code xa-mass-sdk-api}. The SDK-facing equivalent is
+ * {@code com.xa.mass.sdk.model.MassTaskCreateRequest}; {@code MassApplication} maps
+ * between the two at the composition boundary.
+ *
+ * <p>Unknown JSON properties are rejected ({@code ignoreUnknown = false}) so
+ * outdated REST clients fail fast instead of silently ignoring unsupported fields.
  */
 @JsonIgnoreProperties(ignoreUnknown = false)
 public class TaskCreateRequestDto {

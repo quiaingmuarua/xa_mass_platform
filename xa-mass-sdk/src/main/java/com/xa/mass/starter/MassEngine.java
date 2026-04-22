@@ -2,6 +2,7 @@ package com.xa.mass.starter;
 
 import com.xa.mass.base.channel.eventbus.core.EventBusFacade;
 import com.xa.mass.base.channel.eventbus.core.EventBusFactory;
+import com.xa.mass.base.channel.eventbus.event.task.TaskAssignedEvent;
 import com.xa.mass.base.channel.eventbus.event.task.TaskCreatedEvent;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
@@ -25,6 +26,23 @@ import org.slf4j.LoggerFactory;
 
 import java.util.List;
 
+/**
+ * Assembles and starts the task-scheduling engine for an embedded runtime.
+ *
+ * <h3>Two-tier event model</h3>
+ * <ul>
+ *   <li><b>In-process (synchronous):</b> {@link com.xa.mass.engine.TaskManager} exposes
+ *       {@code addTask*Listener()} methods backed by
+ *       {@link com.xa.mass.engine.TaskEventPublisher}. These fire inline on the calling
+ *       thread and are used by the engine internals (assignment, resource release, etc.).</li>
+ *   <li><b>EventBus (async-capable):</b> {@code MassEngine.start()} wires a Guava
+ *       {@link com.xa.mass.base.channel.eventbus.core.EventBusFacade} that bridges selected
+ *       in-process events ({@code TaskCreated}, {@code TaskAssigned}, worker status changes)
+ *       to external subscribers. Subscribe to the EventBus when loose coupling or
+ *       async delivery is needed; use the in-process listeners when reactions must be
+ *       synchronous with the engine operation.</li>
+ * </ul>
+ */
 public class MassEngine {
 
     private static final Logger logger = LoggerFactory.getLogger(MassEngine.class);
@@ -88,6 +106,10 @@ public class MassEngine {
             leaseWatchdog.start();
 
             eventBus = EventBusFactory.get("guava");
+            @SuppressWarnings("unchecked")
+            EventBusFacade<Object> bus = (EventBusFacade<Object>) eventBus;
+            taskManager.addTaskCreatedListener(task -> bus.post(new TaskCreatedEvent(task, null, null)));
+            taskManager.addTaskAssignedListener(task -> bus.post(new TaskAssignedEvent(task, null, null)));
             workerStatusEventListener = EventListenerRegistry.registerWorkerStatusListeners(eventBus, workerManager);
             running = true;
             logger.info("MassEngine started successfully");
@@ -151,6 +173,14 @@ public class MassEngine {
         }
     }
 
+    /**
+     * Replays a {@link TaskCreatedEvent} for every existing task to the Guava EventBus.
+     *
+     * <p>Useful for bootstrapping: newly registered EventBus subscribers can receive
+     * a synthetic "created" signal for tasks that were created before they subscribed.
+     * Tasks created after engine start already fire this event in real time via
+     * {@link com.xa.mass.engine.TaskManager#createTask}.
+     */
     @SuppressWarnings("unchecked")
     public void publishTaskEvents() {
         if (taskManager != null && eventBus != null) {

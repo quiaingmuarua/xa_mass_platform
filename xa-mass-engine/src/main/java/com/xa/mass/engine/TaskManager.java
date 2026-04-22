@@ -106,6 +106,7 @@ public class TaskManager {
                 addTaskMessage(tid, taskMsg);
             }
 
+            eventPublisher.publishTaskCreated(task);
             long duration = System.currentTimeMillis() - startTime;
             LogUtils.logOperationSuccess("task created: taskId=" + tid + ", initialMessageCount=" + initNumber, duration);
             return task;
@@ -348,6 +349,19 @@ public class TaskManager {
 
     public TaskScheduler getScheduler() {
         return this.taskScheduler;
+    }
+
+    public void addTaskCreatedListener(Consumer<Task> listener) {
+        eventPublisher.addTaskCreatedListener(listener);
+    }
+
+    public void addTaskAssignedListener(Consumer<Task> listener) {
+        eventPublisher.addTaskAssignedListener(listener);
+    }
+
+    /** Called by assignment listeners when a task transitions READY → RUNNING. */
+    public void publishTaskAssigned(Task task) {
+        eventPublisher.publishTaskAssigned(task);
     }
 
     public void addTaskReadyListener(Consumer<Task> listener) {

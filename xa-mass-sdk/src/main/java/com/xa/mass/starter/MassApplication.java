@@ -143,15 +143,20 @@ public class MassApplication {
             DispatcherContextRegistry.register(dispatcherContext);
             logger.info("Dispatcher context registered");
 
+            com.xa.mass.transport.channel.WorkerSystemEventChannel systemEventChannel =
+                    gatewayConfig.getCustomSystemEventChannel() != null
+                            ? gatewayConfig.getCustomSystemEventChannel()
+                            : sessionManager.getSystemEventChannel();
+
             MessageHandlerRegistry messageHandlerRegistry =
-                    new MessageHandlerRegistry(sessionManager.getSystemEventChannel());
+                    new MessageHandlerRegistry(systemEventChannel);
             messageHandlerRegistry.autoRegister();
             TaskMsgDispatchListener taskMsgDispatchListener = null;
             if (engineConfig.isEnabled() && engineConfig.getTaskManager() != null) {
                 List<WorkerAdapter> workerAdapters = new ArrayList<>();
                 pollingWorkerAdapter = new PollingWorkerAdapter(
                         engineConfig.getTaskManager(),
-                        sessionManager.getSystemEventChannel()
+                        systemEventChannel
                 );
                 workerAdapters.add(pollingWorkerAdapter);
 
