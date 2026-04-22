@@ -7,6 +7,7 @@ import com.xa.mass.gateway.queue.Envelope;
 import com.xa.mass.gateway.queue.EnvelopeMessageTransporter;
 import com.xa.mass.gateway.queue.MessageCodec;
 import com.xa.mass.gateway.queue.MessageCodecFactory;
+import com.xa.mass.transport.channel.WorkerSystemEventChannel;
 
 /**
  * Gateway runtime configuration.
@@ -30,6 +31,9 @@ public class GatewayConfig {
     private MessageCodecFactory.CodecType codecType = MessageCodecFactory.CodecType.GSON;
     private MessageCodec messageCodec;
 
+    // Optional custom WorkerSystemEventChannel; null means use the default from ServerSessionManager.
+    private WorkerSystemEventChannel customSystemEventChannel;
+
     public GatewayConfig() {
     }
 
@@ -44,6 +48,7 @@ public class GatewayConfig {
         this.apiKey = source.apiKey;
         this.codecType = source.codecType;
         this.messageCodec = source.messageCodec;
+        this.customSystemEventChannel = source.customSystemEventChannel;
     }
 
     public boolean isEnabled() {
@@ -182,5 +187,13 @@ public class GatewayConfig {
 
     public void setMessageCodec(MessageCodec messageCodec) {
         this.messageCodec = messageCodec;
+    }
+
+    public WorkerSystemEventChannel getCustomSystemEventChannel() {
+        return customSystemEventChannel;
+    }
+
+    public void setCustomSystemEventChannel(WorkerSystemEventChannel customSystemEventChannel) {
+        this.customSystemEventChannel = customSystemEventChannel;
     }
 }

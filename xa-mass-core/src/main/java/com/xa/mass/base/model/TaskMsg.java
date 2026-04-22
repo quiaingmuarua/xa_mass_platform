@@ -139,10 +139,20 @@ public class TaskMsg {
         this.assignedTime = assignedTime;
     }
 
+    /**
+     * @deprecated Use {@link #getOutput()} for structured worker results.
+     *             This field is a legacy plain-text summary; it will be removed
+     *             in a future release once all callers migrate to {@code output}.
+     */
+    @Deprecated(forRemoval = true)
     public String getResult() {
         return result;
     }
 
+    /**
+     * @deprecated Use {@link #setOutput(Map)} for structured worker results.
+     */
+    @Deprecated(forRemoval = true)
     public void setResult(String result) {
         this.result = result;
     }
@@ -284,6 +294,7 @@ public class TaskMsg {
         this.assignedTime = null;
     }
 
+    @SuppressWarnings("deprecation")
     public synchronized void resetForRetry() {
         if (!transitionTo(TaskMsgStatus.INIT)) {
             throw new IllegalStateException(
@@ -330,10 +341,12 @@ public class TaskMsg {
         return transitionTo(TaskMsgStatus.RUNNING);
     }
 
+    @SuppressWarnings("deprecation")
     public boolean markAsSuccess(String result) {
         return markAsSuccess(result, TaskMsgFinalReason.BUSINESS_SUCCESS);
     }
 
+    @SuppressWarnings("deprecation")
     public boolean markAsSuccess(String result, TaskMsgFinalReason finalReason) {
         if (transitionTo(TaskMsgStatus.SUCCESS)) {
             setResult(result);
@@ -374,6 +387,7 @@ public class TaskMsg {
         return false;
     }
 
+    @SuppressWarnings("deprecation")
     public void forceFinalize(TaskMsgStatus finalStatus, TaskMsgFinalReason finalReason, String detail) {
         if (finalStatus == null || !finalStatus.isFinal()) {
             throw new IllegalArgumentException("finalStatus must be terminal");

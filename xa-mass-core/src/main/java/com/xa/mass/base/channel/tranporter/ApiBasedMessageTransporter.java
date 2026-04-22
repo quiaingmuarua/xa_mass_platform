@@ -6,11 +6,16 @@ import org.slf4j.LoggerFactory;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Example transporter backed by external HTTP APIs.
+ * Template/stub transporter backed by external HTTP APIs.
  *
- * <p>This class is intentionally minimal. It documents how input/output queues
- * can be proxied to an external transport instead of an in-process queue
- * implementation.
+ * <p><b>This class is NOT a working implementation.</b> All HTTP call sites are
+ * marked with TODO comments as placeholder scaffolding. The class exists to show
+ * how to implement {@link MessageTransporter} for an HTTP-based transport; it
+ * must not be used in production until those TODOs are completed.
+ *
+ * <p>To enable {@code apiMode()} in the SDK builder, replace this stub with a
+ * real HTTP client (e.g. Java {@code HttpClient} or OkHttp) that calls the
+ * configured {@code inputApiUrl}/{@code outputApiUrl} endpoints.
  *
  * @param <T> message type
  */

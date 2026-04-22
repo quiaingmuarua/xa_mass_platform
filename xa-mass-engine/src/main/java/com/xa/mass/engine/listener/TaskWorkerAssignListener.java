@@ -170,6 +170,7 @@ public class TaskWorkerAssignListener {
                 matched.size(), dispatchCandidates.size(), dispatchedMessages.size(), (int) usedWorkerCount,
                 "matched workers dispatched", "SUCCESS");
         taskManager.updateTask(task);
+        taskManager.publishTaskAssigned(task);
         return true;
     }
 
