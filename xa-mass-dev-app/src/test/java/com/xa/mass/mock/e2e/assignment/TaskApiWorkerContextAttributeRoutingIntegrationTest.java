@@ -105,7 +105,7 @@ class TaskApiWorkerContextAttributeRoutingIntegrationTest extends AbstractMockE2
         return rule;
     }
 
-    private void addCandidate(String workerId, String workerGroupId, String workerContextChannel, String countryAttribute) {
+    private void addCandidate(String workerId, String workerGroupId, String routingTag, String countryAttribute) {
         Worker worker = new Worker();
         worker.setWorkerId(workerId);
         worker.setWorkerGroupId(workerGroupId);
@@ -116,7 +116,7 @@ class TaskApiWorkerContextAttributeRoutingIntegrationTest extends AbstractMockE2
         WorkerContext workerContext = new WorkerContext();
         workerContext.setWorkerContextId("worker-context-" + workerId);
         workerContext.setWorkerId(workerId);
-        workerContext.setChannel(workerContextChannel);
+        workerContext.setRoutingTags(java.util.Set.of(routingTag));
         workerContext.setStatus(WorkerContextStatus.IDLE);
         workerContext.setAttributes(Map.of("country", countryAttribute));
         workerManager.addWorkerContext(workerContext);

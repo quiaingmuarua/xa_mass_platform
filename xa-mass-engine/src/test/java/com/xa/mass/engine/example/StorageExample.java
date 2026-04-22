@@ -65,13 +65,13 @@ public class StorageExample {
         WorkerContext ctx1 = new WorkerContext();
         ctx1.setWorkerContextId("ctx-001");
         ctx1.setWorkerId("worker-001");
-        ctx1.setChannel("us");
+        ctx1.setRoutingTags(java.util.Set.of("us"));
         ctx1.setStatus(WorkerContextStatus.IDLE);
 
         WorkerContext ctx2 = new WorkerContext();
         ctx2.setWorkerContextId("ctx-002");
         ctx2.setWorkerId("worker-002");
-        ctx2.setChannel("gb");
+        ctx2.setRoutingTags(java.util.Set.of("gb"));
         ctx2.setStatus(WorkerContextStatus.IDLE);
 
         workerManager.addWorker(worker1);

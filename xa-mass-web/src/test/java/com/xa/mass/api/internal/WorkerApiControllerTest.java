@@ -64,7 +64,7 @@ class WorkerApiControllerTest {
         workerContext.setWorkerId("worker-001");
         workerContext.setProject("demoApp");
         workerContext.setStatus(WorkerContextStatus.OCCUPIED);
-        workerContext.setChannel("telegram");
+        workerContext.setRoutingTags(java.util.Set.of("telegram", "sms"));
         workerContext.setAttributes(Map.of("account", "acc-01"));
         workerContext.setLastBindTaskId("task-123");
         workerContext.setLastUsedTime(LocalDateTime.of(2026, 4, 21, 9, 50));

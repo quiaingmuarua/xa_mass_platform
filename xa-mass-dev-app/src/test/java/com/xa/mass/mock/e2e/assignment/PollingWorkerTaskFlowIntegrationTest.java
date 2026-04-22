@@ -146,7 +146,7 @@ class PollingWorkerTaskFlowIntegrationTest extends AbstractMockE2eTest {
         WorkerContext workerContext = new WorkerContext();
         workerContext.setWorkerContextId("ctx-" + workerId);
         workerContext.setWorkerId(workerId);
-        workerContext.setChannel("us");
+        workerContext.setRoutingTags(java.util.Set.of("us"));
         workerContext.setStatus(WorkerContextStatus.IDLE);
         workerManager.addWorkerContext(workerContext);
     }

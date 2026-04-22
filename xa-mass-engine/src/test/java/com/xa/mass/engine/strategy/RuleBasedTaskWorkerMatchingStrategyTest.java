@@ -187,7 +187,7 @@ class RuleBasedTaskWorkerMatchingStrategyTest {
         ruleManager.addDefaultRules(List.of(
                 rule("basic_worker_check", "isWorkerAvailable == true && isWorkerLocked == false"),
                 rule("workerContext_status_check", "hasWorkerContext == false || isWorkerContextAllocatable == true"),
-                rule("routing_code_match", "taskHasRoutingRequirement == false || workerContextAttributeCountryMatchesRoutingCode == true || workerContextChannelMatchesRoutingCode == true"),
+                rule("routing_code_match", "taskHasRoutingRequirement == false || workerContextMatchesRoutingCode == true"),
                 rule("app_support_check", "supportsProject == true")
         ));
 
@@ -218,7 +218,7 @@ class RuleBasedTaskWorkerMatchingStrategyTest {
         ruleManager.addDefaultRules(List.of(
                 rule("basic_worker_check", "isWorkerAvailable == true && isWorkerLocked == false"),
                 rule("workerContext_status_check", "hasWorkerContext == false || isWorkerContextAllocatable == true"),
-                rule("routing_code_match", "taskHasRoutingRequirement == false || workerContextAttributeCountryMatchesRoutingCode == true || workerContextChannelMatchesRoutingCode == true"),
+                rule("routing_code_match", "taskHasRoutingRequirement == false || workerContextMatchesRoutingCode == true"),
                 rule("app_support_check", "supportsProject == true")
         ));
 
@@ -253,11 +253,11 @@ class RuleBasedTaskWorkerMatchingStrategyTest {
         return worker;
     }
 
-    private WorkerContext workerContext(String workerId, String workerContextId, String channel, String country) {
+    private WorkerContext workerContext(String workerId, String workerContextId, String routingTag, String country) {
         WorkerContext wc = new WorkerContext();
         wc.setWorkerId(workerId);
         wc.setWorkerContextId(workerContextId);
-        wc.setChannel(channel);
+        wc.setRoutingTags(java.util.Set.of(routingTag, country));
         wc.setStatus(WorkerContextStatus.IDLE);
         wc.setAttributes(Map.of("country", country));
         return wc;

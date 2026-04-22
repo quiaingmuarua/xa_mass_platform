@@ -29,8 +29,8 @@ public class RuleConfig {
         routingRule.setId("routing_code_match");
         routingRule.setType(RuleType.QL_EXPRESS);
         routingRule.setContent(
-                "taskHasRoutingRequirement == false || workerContextAttributeCountryMatchesRoutingCode == true || workerContextChannelMatchesRoutingCode == true");
-        routingRule.setDescription("Routing code, when required, must be satisfied by worker context attribute or worker context channel");
+                "taskHasRoutingRequirement == false || workerContextMatchesRoutingCode == true");
+        routingRule.setDescription("Routing code, when required, must match one of the worker context routing tags");
         rules.add(routingRule);
 
         RuleDefinition appRule = new RuleDefinition();
@@ -99,8 +99,8 @@ public class RuleConfig {
         routingRule.setId("routing_code_match");
         routingRule.setType(RuleType.QL_EXPRESS);
         routingRule.setContent(
-                "taskHasRoutingRequirement == false || workerContextAttributeCountryMatchesRoutingCode == true || workerContextChannelMatchesRoutingCode == true");
-        routingRule.setDescription("Routing code, when required, must be satisfied by worker context attribute or worker context channel");
+                "taskHasRoutingRequirement == false || workerContextMatchesRoutingCode == true");
+        routingRule.setDescription("Routing code, when required, must match one of the worker context routing tags");
         rules.add(routingRule);
 
         return rules;

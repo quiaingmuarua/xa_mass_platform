@@ -2,36 +2,31 @@
   {
     "workerContextId": "ctx-pool-a-1",
     "workerId": "worker-pool-a-1",
-    "channel": "us",
-    "status": "IDLE",
-    "attributes": { "country": "us" }
+    "routingTags": ["us"],
+    "status": "IDLE"
   },
   {
     "workerContextId": "ctx-pool-a-2",
     "workerId": "worker-pool-a-2",
-    "channel": "us",
-    "status": "IDLE",
-    "attributes": { "country": "us" }
+    "routingTags": ["us"],
+    "status": "IDLE"
   },
   {
     "workerContextId": "ctx-pool-a-3",
     "workerId": "worker-pool-a-3",
-    "channel": "us",
-    "status": "IDLE",
-    "attributes": { "country": "us" }
+    "routingTags": ["us"],
+    "status": "IDLE"
   },
   {
     "workerContextId": "ctx-pool-b-1",
     "workerId": "worker-pool-b-1",
-    "channel": "gb",
-    "status": "IDLE",
-    "attributes": { "country": "gb" }
+    "routingTags": ["gb"],
+    "status": "IDLE"
   },
   {
     "workerContextId": "ctx-pool-b-2",
     "workerId": "worker-pool-b-2",
-    "channel": "gb",
-    "status": "IDLE",
-    "attributes": { "country": "gb" }
+    "routingTags": ["gb"],
+    "status": "IDLE"
   }
 ]

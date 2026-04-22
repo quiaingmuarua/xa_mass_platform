@@ -150,7 +150,7 @@ class TaskApiMultiTaskAssignmentIntegrationTest extends AbstractMockE2eTest {
         WorkerContext workerContext = new WorkerContext();
         workerContext.setWorkerContextId("worker-context-" + workerId);
         workerContext.setWorkerId(workerId);
-        workerContext.setChannel("us");
+        workerContext.setRoutingTags(java.util.Set.of("us"));
         workerContext.setStatus(WorkerContextStatus.IDLE);
         workerManager.addWorkerContext(workerContext);
     }

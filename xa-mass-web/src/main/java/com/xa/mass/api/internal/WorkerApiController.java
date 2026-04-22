@@ -121,7 +121,7 @@ public class WorkerApiController {
         item.put("workerId", workerContext.getWorkerId());
         item.put("project", workerContext.getProject());
         item.put("status", workerContext.getStatus() != null ? workerContext.getStatus().name() : null);
-        item.put("channel", workerContext.getChannel());
+        item.put("routingTags", workerContext.getRoutingTags());
         item.put("attributes", workerContext.getAttributes());
         item.put("lastBindTaskId", workerContext.getLastBindTaskId());
         item.put("lastUsedTime", formatDateTime(workerContext.getLastUsedTime()));

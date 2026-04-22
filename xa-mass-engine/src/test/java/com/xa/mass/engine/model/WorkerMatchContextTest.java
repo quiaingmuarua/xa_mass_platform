@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -33,8 +34,8 @@ class WorkerMatchContextTest {
         workerContext.setWorkerId("worker-1");
         workerContext.setProject("demoApp");
         workerContext.setStatus(WorkerContextStatus.IDLE);
-        workerContext.setChannel("us");
-        workerContext.setAttributes(Map.of("country", "us"));
+        workerContext.setRoutingTags(Set.of("us"));
+        workerContext.setAttributes(Map.of("pool", "primary"));
 
         Task task = new Task();
         task.setTid("task-1");
@@ -47,20 +48,21 @@ class WorkerMatchContextTest {
         WorkerMatchContext context = new WorkerMatchContext(worker, workerContext, task, workerManager);
 
         assertEquals(Map.of("pool", "warmup"), context.getContext().get("workerAttributes"));
-        assertEquals(Map.of("country", "us"), context.getContext().get("workerContextAttributes"));
+        assertEquals(Map.of("pool", "primary"), context.getContext().get("workerContextAttributes"));
         assertEquals(true, context.getContext().get("hasWorkerContext"));
         assertEquals("demoApp", context.getContext().get("workerContextProject"));
         assertEquals(0, context.getContext().get("taskTargetNumber"));
         assertEquals("us", context.getContext().get("taskRoutingCode"));
         assertEquals(true, context.getContext().get("taskHasRoutingRequirement"));
         assertEquals(true, context.getContext().get("workerContextProjectMatchesTaskProject"));
-        assertEquals(true, context.getContext().get("workerContextChannelMatchesRoutingCode"));
-        assertEquals(true, context.getContext().get("workerContextAttributeCountryMatchesRoutingCode"));
+        assertEquals(true, context.getContext().get("workerContextMatchesRoutingCode"));
         assertEquals(true, context.getContext().get("isWorkerContextAvailable"));
         assertEquals(true, context.getContext().get("isWorkerContextUsable"));
         assertEquals(false, context.getContext().get("isWorkerContextReserved"));
         assertEquals(false, context.getContext().get("isWorkerContextOccupied"));
         assertFalse(context.getContext().containsKey("workerGroupIdEqualsRoutingCode"));
+        assertFalse(context.getContext().containsKey("workerContextChannelMatchesRoutingCode"));
+        assertFalse(context.getContext().containsKey("workerContextAttributeCountryMatchesRoutingCode"));
     }
 
     @Test
@@ -102,7 +104,7 @@ class WorkerMatchContextTest {
         workerContext.setWorkerContextId("ctx-3");
         workerContext.setWorkerId("worker-3");
         workerContext.setStatus(WorkerContextStatus.RESERVED);
-        workerContext.setChannel("us");
+        workerContext.setRoutingTags(Set.of("us"));
 
         Task task = new Task();
         task.setTid("task-3");
@@ -140,8 +142,9 @@ class WorkerMatchContextTest {
         WorkerMatchContext context = new WorkerMatchContext(worker, null, task, workerManager);
 
         assertEquals(false, context.getContext().get("taskHasRoutingRequirement"));
-        assertEquals(false, context.getContext().get("workerContextAttributeCountryMatchesRoutingCode"));
-        assertEquals(false, context.getContext().get("workerContextChannelMatchesRoutingCode"));
+        assertEquals(false, context.getContext().get("workerContextMatchesRoutingCode"));
         assertFalse(context.getContext().containsKey("workerGroupIdEqualsRoutingCode"));
+        assertFalse(context.getContext().containsKey("workerContextChannelMatchesRoutingCode"));
+        assertFalse(context.getContext().containsKey("workerContextAttributeCountryMatchesRoutingCode"));
     }
 }

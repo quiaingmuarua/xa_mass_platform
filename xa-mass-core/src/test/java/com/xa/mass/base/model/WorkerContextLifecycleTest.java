@@ -14,7 +14,7 @@ class WorkerContextLifecycleTest {
 
     @Test
     void bindSendReleaseFollowsMainlineLifecycle() {
-        WorkerContext wc = new WorkerContext("wc-1", "worker-1", "us");
+        WorkerContext wc = new WorkerContext("wc-1", "worker-1", java.util.Set.of("us"));
         assertTrue(wc.isAllocatable());
         assertTrue(wc.isAvailable());
         assertTrue(wc.isUsable());
@@ -43,7 +43,7 @@ class WorkerContextLifecycleTest {
 
     @Test
     void bindRejectsBlankTaskId() {
-        WorkerContext wc = new WorkerContext("wc-2", "worker-2", "us");
+        WorkerContext wc = new WorkerContext("wc-2", "worker-2", java.util.Set.of("us"));
 
         assertFalse(wc.bindToTask(" "));
         assertEquals(WorkerContextStatus.IDLE, wc.getStatus());
@@ -51,7 +51,7 @@ class WorkerContextLifecycleTest {
 
     @Test
     void releaseDoesNotActAsBlockedRecovery() {
-        WorkerContext wc = new WorkerContext("wc-3", "worker-3", "us");
+        WorkerContext wc = new WorkerContext("wc-3", "worker-3", java.util.Set.of("us"));
 
         assertTrue(wc.block());
         assertFalse(wc.release());
@@ -63,7 +63,7 @@ class WorkerContextLifecycleTest {
 
     @Test
     void invalidateIsTerminalForWorkerContextStateMachine() {
-        WorkerContext wc = new WorkerContext("wc-4", "worker-4", "us");
+        WorkerContext wc = new WorkerContext("wc-4", "worker-4", java.util.Set.of("us"));
 
         assertTrue(wc.invalidate());
         assertEquals(WorkerContextStatus.INVALID, wc.getStatus());
@@ -80,7 +80,7 @@ class WorkerContextLifecycleTest {
 
     @Test
     void expiredWorkerContextIsNotAvailableOrUsable() {
-        WorkerContext wc = new WorkerContext("wc-5", "worker-5", "us");
+        WorkerContext wc = new WorkerContext("wc-5", "worker-5", java.util.Set.of("us"));
         wc.setExpireTime(java.time.LocalDateTime.now().minusMinutes(1));
 
         assertFalse(wc.isAllocatable());

@@ -48,7 +48,7 @@ public class WorkerMatchContext {
             ctx.put("workerContextId", workerContext.getWorkerContextId());
             ctx.put("workerContextProject", workerContext.getProject());
             ctx.put("workerContextStatus", workerContext.getStatus().name());
-            ctx.put("workerContextChannel", workerContext.getChannel());
+            ctx.put("workerContextRoutingTags", workerContext.getRoutingTags());
             ctx.put("workerContextAttributes", workerContext.getAttributes());
             ctx.put("isWorkerContextAllocatable", workerContext.isAllocatable());
             ctx.put("isWorkerContextAvailable", workerContext.isAvailable());
@@ -60,7 +60,7 @@ public class WorkerMatchContext {
             ctx.put("workerContextId", null);
             ctx.put("workerContextProject", null);
             ctx.put("workerContextStatus", null);
-            ctx.put("workerContextChannel", null);
+            ctx.put("workerContextRoutingTags", java.util.Set.of());
             ctx.put("workerContextAttributes", Map.of());
             ctx.put("isWorkerContextAllocatable", false);
             ctx.put("isWorkerContextAvailable", false);
@@ -71,7 +71,7 @@ public class WorkerMatchContext {
 
         String routingCode = task.getTaskRoutingCode();
         boolean taskHasRoutingRequirement = routingCode != null && !routingCode.isBlank();
-        String workerContextAttributeCountry = workerContext != null ? workerContext.getAttributes().get("country") : null;
+        java.util.Set<String> routingTags = workerContext != null ? workerContext.getRoutingTags() : java.util.Set.of();
 
         ctx.put("taskId", task.getTid());
         ctx.put("taskName", task.getTaskName());
@@ -87,10 +87,8 @@ public class WorkerMatchContext {
         ctx.put("supportsProject", worker.supportsProject(task.getProject()));
         ctx.put("workerContextProjectMatchesTaskProject",
                 workerContext != null && Objects.equals(workerContext.getProject(), task.getProject()));
-        ctx.put("workerContextChannelMatchesRoutingCode",
-                workerContext != null && routingCode != null && routingCode.equals(workerContext.getChannel()));
-        ctx.put("workerContextAttributeCountryMatchesRoutingCode",
-                routingCode != null && routingCode.equals(workerContextAttributeCountry));
+        ctx.put("workerContextMatchesRoutingCode",
+                taskHasRoutingRequirement && !routingTags.isEmpty() && routingTags.contains(routingCode));
 
         return ctx;
     }
@@ -121,7 +119,7 @@ public class WorkerMatchContext {
                 "workerId='" + worker.getWorkerId() + '\'' +
                 ", taskId='" + task.getTid() + '\'' +
                 ", supportsProject=" + context.get("supportsProject") +
-                ", workerContextChannelMatchesRoutingCode=" + context.get("workerContextChannelMatchesRoutingCode") +
+                ", workerContextMatchesRoutingCode=" + context.get("workerContextMatchesRoutingCode") +
                 '}';
     }
 }

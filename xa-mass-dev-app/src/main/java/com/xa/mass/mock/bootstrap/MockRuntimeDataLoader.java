@@ -163,19 +163,16 @@ public class MockRuntimeDataLoader implements MassBootstrapDataProvider {
         if (workerContext == null) {
             return;
         }
-        if (workerContext.getChannel() != null) {
-            workerContext.setChannel(workerContext.getChannel().toLowerCase());
+        if (workerContext.getRoutingTags() != null && !workerContext.getRoutingTags().isEmpty()) {
+            workerContext.setRoutingTags(
+                    workerContext.getRoutingTags().stream()
+                            .filter(Objects::nonNull)
+                            .map(String::toLowerCase)
+                            .collect(java.util.stream.Collectors.toCollection(java.util.LinkedHashSet::new))
+            );
         }
         if (workerContext.getStatus() == null) {
             workerContext.setStatus(WorkerContextStatus.IDLE);
-        }
-        if (!workerContext.getAttributes().isEmpty()) {
-            Map<String, String> normalized = new LinkedHashMap<>(workerContext.getAttributes());
-            String country = normalized.get("country");
-            if (country != null) {
-                normalized.put("country", country.toLowerCase());
-            }
-            workerContext.setAttributes(normalized);
         }
     }
 

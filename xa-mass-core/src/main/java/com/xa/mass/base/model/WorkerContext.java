@@ -6,8 +6,10 @@ import com.xa.mass.base.enums.worker.WorkerContextStatus;
 import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 /**
  * WorkerContext 实体（凭据/授权资源）
@@ -19,7 +21,7 @@ public class WorkerContext {
     private String workerId;
     private ProjectRef project;
     private WorkerContextStatus status;
-    private String channel;
+    private Set<String> routingTags = Collections.emptySet();
     private String lastBindTaskId;
     private LocalDateTime expireTime;
     private LocalDateTime createTime;
@@ -33,11 +35,11 @@ public class WorkerContext {
         this.updateTime = LocalDateTime.now();
     }
 
-    public WorkerContext(String workerContextId, String workerId, String channel) {
+    public WorkerContext(String workerContextId, String workerId, Set<String> routingTags) {
         this();
         this.workerContextId = workerContextId;
         this.workerId = workerId;
-        this.channel = channel;
+        this.routingTags = routingTags != null ? Collections.unmodifiableSet(new LinkedHashSet<>(routingTags)) : Collections.emptySet();
     }
 
     public String getWorkerContextId() {
@@ -85,12 +87,16 @@ public class WorkerContext {
         }
     }
 
-    public String getChannel() {
-        return channel;
+    public Set<String> getRoutingTags() {
+        return routingTags;
     }
 
-    public void setChannel(String channel) {
-        this.channel = channel;
+    public void setRoutingTags(Set<String> routingTags) {
+        if (routingTags == null || routingTags.isEmpty()) {
+            this.routingTags = Collections.emptySet();
+            return;
+        }
+        this.routingTags = Collections.unmodifiableSet(new LinkedHashSet<>(routingTags));
     }
 
     public String getLastBindTaskId() {
@@ -254,7 +260,7 @@ public class WorkerContext {
                 ", workerId='" + workerId + '\'' +
                 ", project='" + project + '\'' +
                 ", status=" + status +
-                ", channel='" + channel + '\'' +
+                ", routingTags=" + routingTags +
                 ", attributes=" + attributes +
                 ", lastBindTaskId='" + lastBindTaskId + '\'' +
                 ", isExpired=" + isExpired() +

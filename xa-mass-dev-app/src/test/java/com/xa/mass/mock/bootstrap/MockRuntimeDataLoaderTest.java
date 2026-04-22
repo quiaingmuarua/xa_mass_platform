@@ -49,10 +49,8 @@ class MockRuntimeDataLoaderTest {
         WorkerContext gb = runtime.workerContextById("wc-gb-1");
         assertNotNull(us);
         assertNotNull(gb);
-        assertEquals("route-us", us.getChannel());
-        assertEquals("route-gb", gb.getChannel());
-        assertEquals("us", us.getAttributes().get("country"));
-        assertEquals("gb", gb.getAttributes().get("country"));
+        assertTrue(us.getRoutingTags().contains("route-us"));
+        assertTrue(gb.getRoutingTags().contains("route-gb"));
         assertEquals(WorkerContextStatus.IDLE, us.getStatus());
         assertEquals(WorkerContextStatus.IDLE, gb.getStatus());
     }
@@ -155,20 +153,18 @@ class MockRuntimeDataLoaderTest {
                   {
                     "workerContextId": "wc-us-1",
                     "workerId": "worker-us-1",
-                    "channel": "route-us",
+                    "routingTags": ["route-us"],
                     "status": "IDLE",
                     "attributes": {
-                      "country": "US",
                       "carrier": "tmobile"
                     }
                   },
                   {
                     "workerContextId": "wc-gb-1",
                     "workerId": "worker-gb-1",
-                    "channel": "route-gb",
+                    "routingTags": ["route-gb"],
                     "status": "IDLE",
                     "attributes": {
-                      "country": "GB",
                       "carrier": "vodafone"
                     }
                   }
@@ -182,19 +178,19 @@ class MockRuntimeDataLoaderTest {
                   {
                     "workerContextId": "wc-us-1-a",
                     "workerId": "worker-us-1",
-                    "channel": "route-us",
+                    "routingTags": ["route-us"],
                     "status": "IDLE",
                     "attributes": {
-                      "country": "US"
+                      "pool": "primary"
                     }
                   },
                   {
                     "workerContextId": "wc-us-1-b",
                     "workerId": "worker-us-1",
-                    "channel": "route-us",
+                    "routingTags": ["route-us"],
                     "status": "IDLE",
                     "attributes": {
-                      "country": "US"
+                      "pool": "secondary"
                     }
                   }
                 ]

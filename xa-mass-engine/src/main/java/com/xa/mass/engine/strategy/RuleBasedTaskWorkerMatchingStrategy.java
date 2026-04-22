@@ -79,7 +79,7 @@ public class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatchingSt
                             String.join(", ", worker.getSupportedProjects()),
                             workerContext != null ? workerContext.getWorkerContextId() : "null",
                             workerContext != null ? workerContext.getStatus() : "null",
-                            workerContext != null ? workerContext.getChannel() : "null"
+                            workerContext != null ? workerContext.getRoutingTags() : "null"
                     );
                     log.debug("[Debug] WorkerMatchContext: {}", matchContext.getContext());
                 }

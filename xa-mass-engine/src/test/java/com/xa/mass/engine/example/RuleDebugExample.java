@@ -63,8 +63,7 @@ public class RuleDebugExample {
             workerContext.setWorkerContextId("ctx-" + i);
             workerContext.setWorkerId(worker.getWorkerId());
             workerContext.setStatus(WorkerContextStatus.IDLE);
-            workerContext.setChannel(country);
-            workerContext.setAttributes(Map.of("country", country));
+            workerContext.setRoutingTags(java.util.Set.of(country));
 
             workerManager.addWorker(worker);
             workerManager.addWorkerContext(workerContext);
@@ -107,7 +106,7 @@ public class RuleDebugExample {
             System.out.println("WorkerContext:");
             System.out.println("  - id: " + workerContext.getWorkerContextId());
             System.out.println("  - status: " + workerContext.getStatus());
-            System.out.println("  - channel: " + workerContext.getChannel());
+            System.out.println("  - routingTags: " + workerContext.getRoutingTags());
             System.out.println("  - attributes: " + workerContext.getAttributes());
         } else {
             System.out.println("WorkerContext: null");
@@ -122,8 +121,7 @@ public class RuleDebugExample {
         System.out.println("Computed context:");
         System.out.println("  - appCount: " + context.get("appCount"));
         System.out.println("  - supportsProject: " + context.get("supportsProject"));
-        System.out.println("  - workerContextChannelMatchesRoutingCode: " + context.get("workerContextChannelMatchesRoutingCode"));
-        System.out.println("  - workerContextAttributeCountryMatchesRoutingCode: " + context.get("workerContextAttributeCountryMatchesRoutingCode"));
+        System.out.println("  - workerContextMatchesRoutingCode: " + context.get("workerContextMatchesRoutingCode"));
 
         List<RuleDefinition> rules = ruleManager.getDefaultRules();
         System.out.println("\nRule evaluation:");

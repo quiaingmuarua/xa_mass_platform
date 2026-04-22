@@ -45,7 +45,7 @@ public class StorageFactoryExample {
         WorkerContext workerContext = new WorkerContext();
         workerContext.setWorkerContextId("ctx-001");
         workerContext.setWorkerId("worker-001");
-        workerContext.setChannel("us");
+        workerContext.setRoutingTags(java.util.Set.of("us"));
         workerContext.setStatus(WorkerContextStatus.IDLE);
 
         User user = new User();
@@ -87,7 +87,7 @@ public class StorageFactoryExample {
             WorkerContext workerContext = new WorkerContext();
             workerContext.setWorkerContextId("ctx-002");
             workerContext.setWorkerId("worker-002");
-            workerContext.setChannel("gb");
+            workerContext.setRoutingTags(java.util.Set.of("gb"));
             workerContext.setStatus(WorkerContextStatus.IDLE);
 
             User user = new User();

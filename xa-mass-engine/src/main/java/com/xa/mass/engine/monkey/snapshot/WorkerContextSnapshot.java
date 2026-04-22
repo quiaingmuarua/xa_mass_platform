@@ -2,6 +2,7 @@ package com.xa.mass.engine.monkey.snapshot;
 
 import java.time.LocalDateTime;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * WorkerContext 属性快照
@@ -10,7 +11,7 @@ public class WorkerContextSnapshot {
     private String workerContextId;
     private String workerId;
     private String workerContextStatus;
-    private String channel;
+    private Set<String> routingTags;
     private Map<String, String> attributes;
     private String lastBindTaskId;
     private LocalDateTime expireTime;
@@ -31,8 +32,8 @@ public class WorkerContextSnapshot {
     public void setWorkerId(String workerId) { this.workerId = workerId; }
     public String getWorkerContextStatus() { return workerContextStatus; }
     public void setWorkerContextStatus(String workerContextStatus) { this.workerContextStatus = workerContextStatus; }
-    public String getChannel() { return channel; }
-    public void setChannel(String channel) { this.channel = channel; }
+    public Set<String> getRoutingTags() { return routingTags; }
+    public void setRoutingTags(Set<String> routingTags) { this.routingTags = routingTags; }
     public Map<String, String> getAttributes() { return attributes; }
     public void setAttributes(Map<String, String> attributes) { this.attributes = attributes; }
     public String getLastBindTaskId() { return lastBindTaskId; }

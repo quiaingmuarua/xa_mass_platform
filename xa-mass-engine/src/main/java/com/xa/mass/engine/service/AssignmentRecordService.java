@@ -162,7 +162,7 @@ public class AssignmentRecordService {
         snapshot.setWorkerContextId(workerContext.getWorkerContextId());
         snapshot.setWorkerId(workerContext.getWorkerId());
         snapshot.setWorkerContextStatus(workerContext.getStatus().name());
-        snapshot.setChannel(workerContext.getChannel());
+        snapshot.setRoutingTags(workerContext.getRoutingTags());
         snapshot.setAttributes(workerContext.getAttributes());
         snapshot.setLastBindTaskId(workerContext.getLastBindTaskId());
         snapshot.setExpireTime(workerContext.getExpireTime());

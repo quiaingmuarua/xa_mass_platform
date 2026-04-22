@@ -22,7 +22,7 @@
     "name": "Routing country match",
     "description": "Routing country, when required, must come from worker context",
     "type": "QL_EXPRESS",
-    "content": "taskHasRoutingRequirement == false || workerContextAttributeCountryMatchesRoutingCode == true || workerContextChannelMatchesRoutingCode == true",
+    "content": "taskHasRoutingRequirement == false || workerContextMatchesRoutingCode == true",
     "priority": 3,
     "enabled": true
   },

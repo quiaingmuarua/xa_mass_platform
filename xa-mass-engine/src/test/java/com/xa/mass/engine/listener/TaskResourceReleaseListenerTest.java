@@ -50,7 +50,7 @@ class TaskResourceReleaseListenerTest {
         msg.setLatestAttemptWorkerId("worker-1");
         msg.setLatestAttemptWorkerContextId("wctx-1");
 
-        WorkerContext wctx = new WorkerContext("wctx-1", "worker-1", "us");
+        WorkerContext wctx = new WorkerContext("wctx-1", "worker-1", java.util.Set.of("us"));
         wctx.bindToTask("task-1");
         wctx.startOccupying();
 
@@ -73,7 +73,7 @@ class TaskResourceReleaseListenerTest {
         msg.setLatestAttemptWorkerId("worker-1");
         msg.setLatestAttemptWorkerContextId("wctx-1");
 
-        WorkerContext wctx = new WorkerContext("wctx-1", "worker-1", "us");
+        WorkerContext wctx = new WorkerContext("wctx-1", "worker-1", java.util.Set.of("us"));
         wctx.bindToTask("task-1");
         wctx.startOccupying();
 
@@ -104,7 +104,7 @@ class TaskResourceReleaseListenerTest {
         msg.setLatestAttemptWorkerId("worker-1");
         msg.setLatestAttemptWorkerContextId("wctx-1");
 
-        WorkerContext wctx = new WorkerContext("wctx-1", "worker-1", "us");
+        WorkerContext wctx = new WorkerContext("wctx-1", "worker-1", java.util.Set.of("us"));
         wctx.bindToTask("other-task");
         wctx.startOccupying();
 
@@ -129,7 +129,7 @@ class TaskResourceReleaseListenerTest {
         finalMsg.setStatus(TaskMsgStatus.SUCCESS);
         TaskMsgAttempt closedAttempt = closedAttempt("task-1", "msg-1", "attempt-1", "worker-1", "wctx-1");
 
-        WorkerContext wctx = new WorkerContext("wctx-1", "worker-1", "us");
+        WorkerContext wctx = new WorkerContext("wctx-1", "worker-1", java.util.Set.of("us"));
         wctx.bindToTask("task-1");
         wctx.startOccupying();
 
@@ -163,7 +163,7 @@ class TaskResourceReleaseListenerTest {
         retriedMsg.setLatestAttemptWorkerContextId("wctx-1");
         retriedMsg.setStatus(TaskMsgStatus.INIT);
 
-        WorkerContext wctx = new WorkerContext("wctx-1", "worker-1", "us");
+        WorkerContext wctx = new WorkerContext("wctx-1", "worker-1", java.util.Set.of("us"));
         wctx.bindToTask("task-1");
         wctx.startOccupying();
 
@@ -218,7 +218,7 @@ class TaskResourceReleaseListenerTest {
         msg.setLatestAttemptWorkerId("worker-1");
         msg.setLatestAttemptWorkerContextId("wctx-1");
 
-        WorkerContext wctx = new WorkerContext("wctx-1", "worker-1", "us");
+        WorkerContext wctx = new WorkerContext("wctx-1", "worker-1", java.util.Set.of("us"));
         wctx.bindToTask("task-1");
         wctx.startOccupying();
         wctx.block();
