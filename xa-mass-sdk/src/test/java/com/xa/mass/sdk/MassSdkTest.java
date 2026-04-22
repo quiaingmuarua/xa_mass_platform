@@ -316,7 +316,7 @@ class MassSdkTest {
 
             TaskMsg finalMessage = app.getTaskMessages(task.getTid()).get(0);
             Assertions.assertEquals("SUCCESS", finalMessage.getStatus().name());
-            Assertions.assertEquals(200.0, finalMessage.getOutput().get("httpStatus"));
+            Assertions.assertEquals(200, finalMessage.getOutput().get("httpStatus"));
         } finally {
             app.stop();
         }
