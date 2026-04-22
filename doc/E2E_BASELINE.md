@@ -1,6 +1,6 @@
 # E2E Baseline
 
-Last updated: 2026-04-20
+Last updated: 2026-04-22
 
 This is the short release-gate baseline for active-mainline E2E coverage.
 Detailed inventory stays in [./INTEGRATION_TESTS.md](./INTEGRATION_TESTS.md).
@@ -55,6 +55,11 @@ Worker and context:
 - releasing one context does not release sibling contexts
 - worker/context is reusable after normal terminal completion
 - worker/context is reusable after manual terminate
+
+Control console:
+
+- `/`, `/tasks`, and `/resources/workers` return the backend-hosted SPA shell through the real Boot entry
+- `/status`, `/status/tasks`, `/status/workers`, `/status/rules`, and `/config` remain redirect aliases only
 
 Audit:
 

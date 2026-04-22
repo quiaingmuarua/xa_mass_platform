@@ -8,9 +8,13 @@
           state, routing, and progress instead of generic CRUD boilerplate.
         </p>
       </div>
-      <el-button v-permission="'task:create'" type="primary"
-        >Create task</el-button
+      <el-button
+        v-permission="'task:create'"
+        type="primary"
+        @click="openCreateDialog"
       >
+        Create task
+      </el-button>
     </header>
 
     <PageErrorState
@@ -73,35 +77,214 @@
         <el-table-column prop="updatedAt" label="Updated" min-width="180" />
         <el-table-column label="Actions" min-width="160" fixed="right">
           <template #default="{ row }">
-            <el-button link type="primary" @click="goToTask(row.id)"
-              >View detail</el-button
-            >
+            <el-button link type="primary" @click="goToTask(row.id)">
+              View detail
+            </el-button>
           </template>
         </el-table-column>
       </el-table>
     </el-card>
+
+    <el-dialog
+      v-model="createDialogVisible"
+      title="Create task"
+      width="760px"
+      destroy-on-close
+    >
+      <div class="dialog-intro">
+        <p class="dialog-subtitle">
+          Minimal real create flow for the orchestration control plane. The task
+          will be created in `NEW` state and can be approved from detail view.
+        </p>
+        <div class="dialog-meta">
+          Operator:
+          <span class="mono">{{ currentOperatorId }}</span>
+        </div>
+      </div>
+
+      <el-alert
+        v-if="projectOptionsError"
+        class="dialog-alert"
+        type="warning"
+        :closable="false"
+        :title="projectOptionsError"
+      />
+
+      <el-alert
+        v-if="createErrorMessage"
+        class="dialog-alert"
+        type="error"
+        :closable="false"
+        :title="createErrorMessage"
+      />
+
+      <el-form label-position="top">
+        <el-row :gutter="16">
+          <el-col :span="12">
+            <el-form-item label="Task name" required>
+              <el-input
+                v-model="createForm.taskName"
+                placeholder="Warm worker pool for us-routing"
+              />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="Project" required>
+              <el-select
+                v-model="createForm.project"
+                filterable
+                allow-create
+                default-first-option
+                clearable
+                placeholder="Select or type a project"
+                :loading="projectOptionsLoading"
+              >
+                <el-option
+                  v-for="project in projectOptions"
+                  :key="project"
+                  :label="project"
+                  :value="project"
+                />
+              </el-select>
+            </el-form-item>
+          </el-col>
+        </el-row>
+
+        <el-row :gutter="16">
+          <el-col :span="8">
+            <el-form-item label="Routing code">
+              <el-input v-model="createForm.routingCode" placeholder="us" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="8">
+            <el-form-item label="Batch size">
+              <el-input-number
+                v-model="createForm.batchSize"
+                :min="1"
+                :step="1"
+                controls-position="right"
+              />
+            </el-form-item>
+          </el-col>
+          <el-col :span="8">
+            <el-form-item label="Max retry count">
+              <el-input-number
+                v-model="createForm.defaultMsgMaxRetryCount"
+                :min="0"
+                :step="1"
+                controls-position="right"
+              />
+            </el-form-item>
+          </el-col>
+        </el-row>
+
+        <el-row :gutter="16">
+          <el-col :span="12">
+            <el-form-item label="Max runtime seconds">
+              <el-input-number
+                v-model="createForm.maxRuntimeSeconds"
+                :min="0"
+                :step="60"
+                controls-position="right"
+              />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="Intake mode">
+              <el-switch
+                v-model="createForm.openEnded"
+                inline-prompt
+                active-text="Open"
+                inactive-text="Sealed"
+              />
+            </el-form-item>
+          </el-col>
+        </el-row>
+
+        <el-form-item label="Inputs" required>
+          <el-input
+            v-model="createForm.inputsText"
+            type="textarea"
+            :rows="8"
+            placeholder='One JSON object per line, for example:
+{"target":"alpha"}
+{"target":"beta"}'
+          />
+          <div class="field-hint">
+            One work item per line. Each line must be a JSON object and will be
+            sent as `inputs`.
+          </div>
+        </el-form-item>
+
+        <el-form-item label="Shared config">
+          <el-input
+            v-model="createForm.sharedConfigText"
+            type="textarea"
+            :rows="6"
+            placeholder='Optional JSON object, for example:
+{"textContent":"hello","channel":"telegram"}'
+          />
+          <div class="field-hint">
+            Optional task-level config object. Leave `{}` for no extra shared
+            config.
+          </div>
+        </el-form-item>
+      </el-form>
+
+      <template #footer>
+        <el-button @click="createDialogVisible = false">Cancel</el-button>
+        <el-button type="primary" :loading="creatingTask" @click="handleCreate">
+          Create
+        </el-button>
+      </template>
+    </el-dialog>
   </section>
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { ElMessage } from 'element-plus'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { listTasks } from '@/api/tasks'
+import { listProjectCodes } from '@/api/configs'
+import { createTask, listTasks } from '@/api/tasks'
+import { useAuth } from '@/auth/use-auth'
 import PageEmptyState from '@/components/PageEmptyState.vue'
 import PageErrorState from '@/components/PageErrorState.vue'
 import PageSectionSkeleton from '@/components/PageSectionSkeleton.vue'
-import type { TaskListItem } from '@/types/tasks'
+import type { TaskCreateRequest, TaskListItem } from '@/types/tasks'
 import { toErrorMessage } from '@/utils/errors'
 
 const router = useRouter()
+const { user } = useAuth()
 
 const loading = ref(false)
+const creatingTask = ref(false)
+const createDialogVisible = ref(false)
 const rows = ref<TaskListItem[]>([])
 const errorMessage = ref('')
+const createErrorMessage = ref('')
+const projectOptionsError = ref('')
+const projectOptionsLoading = ref(false)
+const projectOptions = ref<string[]>([])
 const filters = reactive({
   keyword: '',
   status: '' as TaskListItem['status'] | '',
 })
+const createForm = reactive({
+  taskName: '',
+  project: '',
+  routingCode: '',
+  batchSize: 1,
+  defaultMsgMaxRetryCount: 3,
+  openEnded: false,
+  maxRuntimeSeconds: 0,
+  inputsText: '{"target":"alpha"}\n{"target":"beta"}',
+  sharedConfigText: '{}',
+})
+
+const currentOperatorId = computed(
+  () => user.value?.id || user.value?.name || 'unknown',
+)
 
 const statuses: TaskListItem['status'][] = [
   'NEW',
@@ -145,6 +328,160 @@ async function loadTasks(): Promise<void> {
   }
 }
 
+async function loadProjectOptions(): Promise<void> {
+  projectOptionsLoading.value = true
+  projectOptionsError.value = ''
+
+  try {
+    projectOptions.value = await listProjectCodes()
+    if (!createForm.project && projectOptions.value.length > 0) {
+      createForm.project = projectOptions.value[0]
+    }
+  } catch (error) {
+    projectOptionsError.value = toErrorMessage(
+      error,
+      'Failed to load project options. You can still type a project code manually.',
+    )
+  } finally {
+    projectOptionsLoading.value = false
+  }
+}
+
+function openCreateDialog(): void {
+  resetCreateForm()
+  createErrorMessage.value = ''
+  createDialogVisible.value = true
+
+  if (projectOptions.value.length === 0 && !projectOptionsLoading.value) {
+    void loadProjectOptions()
+  }
+}
+
+function resetCreateForm(): void {
+  createForm.taskName = ''
+  createForm.project = projectOptions.value[0] ?? ''
+  createForm.routingCode = ''
+  createForm.batchSize = 1
+  createForm.defaultMsgMaxRetryCount = 3
+  createForm.openEnded = false
+  createForm.maxRuntimeSeconds = 0
+  createForm.inputsText = '{"target":"alpha"}\n{"target":"beta"}'
+  createForm.sharedConfigText = '{}'
+}
+
+async function handleCreate(): Promise<void> {
+  createErrorMessage.value = ''
+
+  let payload: TaskCreateRequest
+  try {
+    payload = buildCreateRequest()
+  } catch (error) {
+    createErrorMessage.value = toErrorMessage(error, 'Task request is invalid.')
+    return
+  }
+
+  creatingTask.value = true
+  try {
+    const result = await createTask(payload)
+    ElMessage.success(result.message)
+    createDialogVisible.value = false
+    await loadTasks()
+    await router.push({
+      name: 'task-detail',
+      params: { taskId: result.taskId },
+    })
+  } catch (error) {
+    createErrorMessage.value = toErrorMessage(error, 'Failed to create task.')
+  } finally {
+    creatingTask.value = false
+  }
+}
+
+function buildCreateRequest(): TaskCreateRequest {
+  const taskName = createForm.taskName.trim()
+  const project = createForm.project.trim()
+  const routingCode = createForm.routingCode.trim()
+
+  if (!taskName) {
+    throw new Error('Task name is required.')
+  }
+  if (!project) {
+    throw new Error('Project is required.')
+  }
+
+  const inputs = parseInputLines(createForm.inputsText)
+  const sharedConfig = parseJsonObject(
+    createForm.sharedConfigText,
+    'Shared config',
+  )
+
+  return {
+    userId: currentOperatorId.value,
+    project,
+    taskName,
+    sharedConfig,
+    inputs,
+    routingCode,
+    batchSize: Math.max(1, Number(createForm.batchSize) || 1),
+    defaultMsgMaxRetryCount: Math.max(
+      0,
+      Number(createForm.defaultMsgMaxRetryCount) || 0,
+    ),
+    openEnded: createForm.openEnded,
+    maxRuntimeSeconds: Math.max(0, Number(createForm.maxRuntimeSeconds) || 0),
+  }
+}
+
+function parseInputLines(value: string): Array<Record<string, unknown>> {
+  const lines = value
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+
+  if (lines.length === 0) {
+    throw new Error('Inputs must contain at least one JSON object line.')
+  }
+
+  return lines.map((line, index) => {
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(line)
+    } catch {
+      throw new Error(`Input line ${index + 1} is not valid JSON.`)
+    }
+
+    if (!isPlainRecord(parsed)) {
+      throw new Error(`Input line ${index + 1} must be a JSON object.`)
+    }
+
+    return parsed
+  })
+}
+
+function parseJsonObject(
+  value: string,
+  fieldLabel: string,
+): Record<string, unknown> {
+  const source = value.trim() || '{}'
+
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(source)
+  } catch {
+    throw new Error(`${fieldLabel} must be a valid JSON object.`)
+  }
+
+  if (!isPlainRecord(parsed)) {
+    throw new Error(`${fieldLabel} must be a JSON object.`)
+  }
+
+  return parsed
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
 function goToTask(taskId: string): void {
   void router.push({ name: 'task-detail', params: { taskId } })
 }
@@ -178,5 +515,30 @@ onMounted(() => {
   margin-top: 4px;
   color: #6b7a90;
   font-size: 12px;
+}
+
+.dialog-intro {
+  margin-bottom: 16px;
+}
+
+.dialog-subtitle {
+  margin: 0;
+  color: #56647a;
+}
+
+.dialog-meta {
+  margin-top: 8px;
+  color: #6b7a90;
+  font-size: 13px;
+}
+
+.dialog-alert {
+  margin-bottom: 16px;
+}
+
+.field-hint {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #6b7a90;
 }
 </style>

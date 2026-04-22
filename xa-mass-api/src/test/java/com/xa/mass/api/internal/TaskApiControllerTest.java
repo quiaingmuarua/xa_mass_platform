@@ -266,6 +266,7 @@ class TaskApiControllerTest {
         Task runningTask = taskWithStatus(TaskStatus.RUNNING);
         runningTask.setTaskName("Warm worker pool");
         runningTask.setProject("demoApp");
+        runningTask.setUser(com.xa.mass.base.model.UserRef.of("agent-1"));
         runningTask.setTaskRoutingCode("us");
         runningTask.setTaskEligibleNumber(10);
         runningTask.setTaskSuccessNumber(6);
@@ -293,6 +294,7 @@ class TaskApiControllerTest {
                 .andExpect(jsonPath("$.data.total").value(1))
                 .andExpect(jsonPath("$.data.items[0].id").value(TASK_ID))
                 .andExpect(jsonPath("$.data.items[0].taskName").value("Warm worker pool"))
+                .andExpect(jsonPath("$.data.items[0].userId").value("agent-1"))
                 .andExpect(jsonPath("$.data.items[0].routingCode").value("us"))
                 .andExpect(jsonPath("$.data.items[0].successCount").value(6))
                 .andExpect(jsonPath("$.data.items[0].eligibleCount").value(10))
@@ -323,9 +325,6 @@ class TaskApiControllerTest {
 
     @Test
     void createTaskReturnsBadRequestWhenProjectIsUnsupported() throws Exception {
-        when(taskManager.createTask(any(TaskCreateRequestDto.class)))
-                .thenThrow(new IllegalArgumentException("Unsupported project code: whatsapp"));
-
         mockMvc.perform(post("/status/api/tasks")
                         .contentType("application/json")
                         .content("""
@@ -341,11 +340,35 @@ class TaskApiControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(400))
                 .andExpect(jsonPath("$.msg").value("Task create failed: Unsupported project code: whatsapp"));
+
+        verify(taskManager, never()).createTask(any(TaskCreateRequestDto.class));
+    }
+
+    @Test
+    void createTaskReturnsBadRequestWhenUserIdIsMissing() throws Exception {
+        mockMvc.perform(post("/status/api/tasks")
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "taskName":"missing-user",
+                                  "project":"demoApp",
+                                  "routingCode":"us",
+                                  "sharedConfig":{"textContent":"hello"},
+                                  "inputs":[{"target":"alpha"}]
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.msg").value("Task create failed: userId is required"));
+
+        verify(taskManager, never()).createTask(any(TaskCreateRequestDto.class));
     }
 
     @Test
     void getTaskReturnsTaskAndMaterializedItems() throws Exception {
         Task task = taskWithStatus(TaskStatus.READY);
+        task.setProject("demoApp");
+        task.setUser(com.xa.mass.base.model.UserRef.of("agent-1"));
         TaskStateValidationResult validationResult = new TaskStateValidationResult(
                 true,
                 false,
@@ -371,6 +394,8 @@ class TaskApiControllerTest {
                 .andExpect(jsonPath("$.code").value(0))
                 .andExpect(jsonPath("$.data.task.tid").value(TASK_ID))
                 .andExpect(jsonPath("$.data.task.status").value("READY"))
+                .andExpect(jsonPath("$.data.task.project").value("demoApp"))
+                .andExpect(jsonPath("$.data.task.user.userId").value("agent-1"))
                 .andExpect(jsonPath("$.data.items[0].target").value("alpha"))
                 .andExpect(jsonPath("$.data.items[1].target").value("beta"))
                 .andExpect(jsonPath("$.data.compatTargetList").doesNotExist())
@@ -414,8 +439,7 @@ class TaskApiControllerTest {
     @Test
     void updateTaskMutatesExistingTaskAndDelegatesToTaskManager() throws Exception {
         Task existingTask = taskWithStatus(TaskStatus.NEW);
-        com.xa.mass.base.model.User user = new com.xa.mass.base.model.User();
-        user.setName("before");
+        com.xa.mass.base.model.UserRef user = com.xa.mass.base.model.UserRef.of("before");
         existingTask.setUser(user);
 
         when(taskManager.getTask(TASK_ID)).thenReturn(existingTask);
@@ -443,15 +467,43 @@ class TaskApiControllerTest {
                         && "sg".equals(task.getTaskRoutingCode())
                         && "updated-content".equals(task.getSharedConfig() != null ? task.getSharedConfig().get("textContent") : null)
                         && task.getUser() != null
-                        && "updated-user".equals(task.getUser().getName())
+                        && "updated-user".equals(task.getUser().getUserId())
                         && task.getBatchSize() == 5
+        ));
+    }
+
+    @Test
+    void updateTaskPreservesExistingBusinessBindingsWhenFieldsAreOmitted() throws Exception {
+        Task existingTask = taskWithStatus(TaskStatus.NEW);
+        existingTask.setProject("demoApp");
+        existingTask.setUser(com.xa.mass.base.model.UserRef.of("owner-1"));
+
+        when(taskManager.getTask(TASK_ID)).thenReturn(existingTask);
+
+        mockMvc.perform(put("/status/api/tasks/{taskId}", TASK_ID)
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "taskName":"updated-name"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.message").value("Task updated"));
+
+        verify(taskManager).updateTask(argThat(task ->
+                TASK_ID.equals(task.getTid())
+                        && "updated-name".equals(task.getTaskName())
+                        && "demoApp".equals(task.getProject())
+                        && task.getUser() != null
+                        && "owner-1".equals(task.getUser().getUserId())
         ));
     }
 
     @Test
     void updateTaskRejectsUnsupportedFields() throws Exception {
         Task existingTask = taskWithStatus(TaskStatus.NEW);
-        existingTask.setUser(new com.xa.mass.base.model.User());
+        existingTask.setUser(com.xa.mass.base.model.UserRef.of("owner"));
         when(taskManager.getTask(TASK_ID)).thenReturn(existingTask);
 
         mockMvc.perform(put("/status/api/tasks/{taskId}", TASK_ID)

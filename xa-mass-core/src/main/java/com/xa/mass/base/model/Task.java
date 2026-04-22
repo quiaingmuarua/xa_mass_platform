@@ -23,7 +23,7 @@ import java.util.Objects;
 public class Task {
     private String tid;
     private String taskName;
-    private String project;
+    private ProjectRef project;
     private TaskStatus status;
     private String taskRoutingCode;
     private int taskTargetNumber;
@@ -35,7 +35,7 @@ public class Task {
     private Map<String, Object> sharedConfig = new HashMap<>();
     private TaskHoldReason holdReason;
     private TaskIntakeStatus intakeStatus;
-    private User user;
+    private UserRef user;
     private LocalDateTime createTime;
     private LocalDateTime updateTime;
     private LocalDateTime startTime;
@@ -53,11 +53,11 @@ public class Task {
     }
 
     public Task(String tid, String taskName, String project, String taskRoutingCode,
-                int taskTargetNumber, Map<String, Object> sharedConfig, User user) {
+                int taskTargetNumber, Map<String, Object> sharedConfig, UserRef user) {
         this();
         this.tid = tid;
         this.taskName = taskName;
-        this.project = project;
+        setProject(project);
         this.taskRoutingCode = taskRoutingCode;
         this.taskTargetNumber = taskTargetNumber;
         this.taskEligibleNumber = taskTargetNumber;
@@ -84,11 +84,20 @@ public class Task {
     }
 
     public String getProject() {
-        return project;
+        return project == null ? null : project.getCode();
     }
 
     public void setProject(String project) {
-        this.project = project;
+        this.project = project == null ? null : ProjectRef.require(project);
+    }
+
+    @JsonIgnore
+    public ProjectRef getProjectRef() {
+        return project;
+    }
+
+    public void setProjectRef(ProjectRef project) {
+        this.project = project == null ? null : ProjectRef.require(project.getCode());
     }
 
     public TaskStatus getStatus() {
@@ -220,11 +229,11 @@ public class Task {
         this.updateTime = LocalDateTime.now();
     }
 
-    public User getUser() {
+    public UserRef getUser() {
         return user;
     }
 
-    public void setUser(User user) {
+    public void setUser(UserRef user) {
         this.user = user;
     }
 

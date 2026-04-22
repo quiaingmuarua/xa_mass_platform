@@ -4,13 +4,14 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class TaskAggregateFieldsTest {
 
     @Test
     void successCountIsTheCanonicalAggregateField() {
-        Task task = new Task("task-1", "aggregate", "demoApp", "us", 3, java.util.Map.of("textContent", "hello"), new User());
+        Task task = new Task("task-1", "aggregate", "demoApp", "us", 3, java.util.Map.of("textContent", "hello"), UserRef.of("user-1"));
 
         task.setTaskSuccessNumber(1);
 
@@ -20,7 +21,7 @@ class TaskAggregateFieldsTest {
 
     @Test
     void updatingEligibleCountRecomputesNonSuccessCount() {
-        Task task = new Task("task-2", "aggregate", "demoApp", "us", 2, java.util.Map.of("textContent", "hello"), new User());
+        Task task = new Task("task-2", "aggregate", "demoApp", "us", 2, java.util.Map.of("textContent", "hello"), UserRef.of("user-2"));
         task.setTaskSuccessNumber(1);
 
         task.setTaskEligibleNumber(4);
@@ -31,7 +32,7 @@ class TaskAggregateFieldsTest {
 
     @Test
     void nonSuccessCountSetterRecomputesDerivedValueInsteadOfOverridingIt() {
-        Task task = new Task("task-3", "aggregate", "demoApp", "us", 2, java.util.Map.of("textContent", "hello"), new User());
+        Task task = new Task("task-3", "aggregate", "demoApp", "us", 2, java.util.Map.of("textContent", "hello"), UserRef.of("user-3"));
 
         task.setTaskSuccessNumber(2);
         task.setTaskNonSuccessNumber(99);
@@ -42,7 +43,7 @@ class TaskAggregateFieldsTest {
 
     @Test
     void openEndedCompatibilityProjectionTracksIntakeStatus() {
-        Task task = new Task("task-4", "aggregate", "demoApp", "us", 1, java.util.Map.of("textContent", "hello"), new User());
+        Task task = new Task("task-4", "aggregate", "demoApp", "us", 1, java.util.Map.of("textContent", "hello"), UserRef.of("user-4"));
 
         assertEquals(com.xa.mass.base.enums.task.TaskIntakeStatus.SEALED, task.getIntakeStatus());
         assertFalse(task.isOpenEnded());
@@ -60,12 +61,22 @@ class TaskAggregateFieldsTest {
 
     @Test
     void batchSizeIsNormalizedAtTheSetterBoundary() {
-        Task task = new Task("task-5", "aggregate", "demoApp", "us", 1, java.util.Map.of("textContent", "hello"), new User());
+        Task task = new Task("task-5", "aggregate", "demoApp", "us", 1, java.util.Map.of("textContent", "hello"), UserRef.of("user-5"));
 
         task.setBatchSize(0);
         assertEquals(1, task.getBatchSize());
 
         task.setBatchSize(3);
         assertEquals(3, task.getBatchSize());
+    }
+
+    @Test
+    void projectAndUserBindingsAreCanonicalizedOnTask() {
+        Task task = new Task("task-6", "aggregate", "demoApp", "us", 1, java.util.Map.of(), UserRef.of("agent-1"));
+
+        assertEquals("demoApp", task.getProject());
+        assertNotNull(task.getProjectRef());
+        assertEquals("demoApp", task.getProjectRef().getCode());
+        assertEquals("agent-1", task.getUser().getUserId());
     }
 }

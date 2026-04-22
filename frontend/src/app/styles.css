@@ -125,3 +125,46 @@ select {
     font-size: 12px;
     font-weight: 600;
 }
+
+.startup-error {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    padding: 24px;
+}
+
+.startup-error-card {
+    width: min(680px, 100%);
+    padding: 28px 32px;
+    border: 1px solid rgba(18, 32, 51, 0.1);
+    border-radius: 24px;
+    background: rgba(255, 255, 255, 0.96);
+    box-shadow: 0 24px 56px rgba(15, 23, 42, 0.1);
+}
+
+.startup-error-eyebrow {
+    margin: 0 0 8px;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: #6e7b8f;
+}
+
+.startup-error-card h1 {
+    margin: 0;
+    font-size: 30px;
+    color: #122033;
+}
+
+.startup-error-message {
+    margin: 16px 0 0;
+    color: #9f1239;
+    font-weight: 600;
+}
+
+.startup-error-hint {
+    margin: 12px 0 0;
+    color: #56647a;
+}

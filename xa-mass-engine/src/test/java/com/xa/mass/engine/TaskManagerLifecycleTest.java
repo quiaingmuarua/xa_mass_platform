@@ -48,6 +48,10 @@ class TaskManagerLifecycleTest {
         Task task = taskManager.createTask(buildRequest("task-create"));
 
         assertEquals(TaskStatus.NEW, task.getStatus());
+        assertNotNull(task.getProjectRef());
+        assertEquals("demoApp", task.getProjectRef().getCode());
+        assertNotNull(task.getUser());
+        assertEquals("agent", task.getUser().getUserId());
 
         List<TaskMsg> messages = taskManager.getTaskMessages(task.getTid());
         assertEquals(2, messages.size());
@@ -148,6 +152,26 @@ class TaskManagerLifecycleTest {
 
         IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> taskManager.createTask(dto));
         assertTrue(error.getMessage().contains("inputs"));
+    }
+
+    @Test
+    void createTaskRejectsWhenProjectIsMissing() {
+        TaskCreateRequestDto dto = buildRequest("missing-project");
+        dto.setProject(null);
+
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> taskManager.createTask(dto));
+
+        assertEquals("project is required", error.getMessage());
+    }
+
+    @Test
+    void createTaskRejectsWhenUserIdIsMissing() {
+        TaskCreateRequestDto dto = buildRequest("missing-user");
+        dto.setUserId("  ");
+
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> taskManager.createTask(dto));
+
+        assertEquals("userId is required", error.getMessage());
     }
 
     @Test

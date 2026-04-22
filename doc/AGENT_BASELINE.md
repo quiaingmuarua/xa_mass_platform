@@ -75,6 +75,7 @@ Interpretation rules:
 - The active API is explicitly `0..n`: do not reintroduce single-context helper APIs keyed only by `workerId`; use `getWorkerContexts(...)` or `getWorkerContextById(...)`.
 - `WorkerContext.workerId` is the single owner truth; attachment APIs should accept the `WorkerContext` object itself rather than duplicating the owner `workerId` as a second parameter.
 - `Task.sharedConfig` and `TaskMsg.input/output` are the main payload boundaries. Do not regress back to single-purpose top-level fields such as `textContent`.
+- `Task.project` and `Task.user` are first-class business bindings on the task aggregate. Do not push project/user identity back into `sharedConfig`, `TaskMsg.input`, or attribute bags.
 - Routing truth such as country/account affinity should come from explicit rules and worker-context signals, not from `workerGroupId`.
 - Worker matching truth is `RuleDefinition.content` evaluated by QLExpress over `WorkerMatchContext`; the legacy JSON-DSL generator is mock/dev fixture support only.
 - typed JSON DSL mainline goes through `JsonDslParser -> JsonDslDefinition -> JsonDslProcessorEngine` using canonical fields like `uniqueId`, `description`, `context.model`, `fieldDsl`, and `combineDsl`
@@ -117,6 +118,7 @@ Interpretation rules:
 
 Behavior locked in the mainline:
 
+- `project` and `userId` are required business bindings
 - `inputs` must contain at least one materialized work item
 - unsupported `project` codes are rejected
 - unknown JSON fields such as retired `targetJsonList`, `targetType`, and `extraParams` are rejected
@@ -140,10 +142,13 @@ Update constraints:
 
 - `inputs` and other unsupported update fields are rejected
 - only `NEW` and `BLOCKED` tasks may be edited
+- omitted metadata fields keep the persisted binding/value; update does not clear existing `project` or `user`
 - `BLOCKED` is not reject-only: `rejectTask` is `NEW -> BLOCKED`, while `blockTask` is the runtime path from `READY` or `RUNNING`
 
 ### Task and TaskMsg payload model
 
+- `Task.project` is the canonical task-level project binding and validates against the current project registry
+- `Task.user` is the canonical task-level business-user binding; create/update requests still use `userId` as the edge input shape
 - `Task.sharedConfig` is the task-level generic payload/config map
 - `TaskMsg.input` is the per-item input payload
 - `TaskMsg.output` is the per-item output payload

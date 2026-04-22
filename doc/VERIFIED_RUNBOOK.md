@@ -70,6 +70,7 @@ nc -zv 127.0.0.1 18088
 Expected result:
 
 - Backend-hosted control console routes return successfully.
+- Legacy `/status*` and `/config` console aliases redirect locally to the primary SPA routes.
 - Gateway port is open.
 - Mock workers appear online when auto-start is enabled.
 
@@ -155,7 +156,7 @@ Open-ended and debug side-channel:
 Focused command used for current high-signal runtime coverage:
 
 ```bash
-mvn -pl xa-mass-dev-app -am -Dtest=WorkerAttributesTest,WorkerContextAttributesTest,WorkerMatchContextTest,QLExpressRuleEvaluatorTest,RuleBasedTaskWorkerMatchingStrategyTest,TaskApiDelayedWorkerAvailabilityIntegrationTest,TaskApiWorkerContextAttributeRoutingIntegrationTest,TaskApiWorkerWithoutContextIntegrationTest,WorkerManualDebugChatIntegrationTest,MassApplicationLoadMockDataTest -Dsurefire.failIfNoSpecifiedTests=false test
+mvn -pl xa-mass-dev-app -am -Dtest=WorkerAttributesTest,WorkerContextAttributesTest,WorkerMatchContextTest,QLExpressRuleEvaluatorTest,RuleBasedTaskWorkerMatchingStrategyTest,TaskApiDelayedWorkerAvailabilityIntegrationTest,TaskApiWorkerContextAttributeRoutingIntegrationTest,TaskApiWorkerWithoutContextIntegrationTest,WorkerManualDebugChatIntegrationTest,ControlConsoleRoutingIntegrationTest,MassApplicationLoadMockDataTest -Dsurefire.failIfNoSpecifiedTests=false test
 ```
 
 Representative coverage:
@@ -170,6 +171,7 @@ Representative coverage:
 - minimum-worker gate
 - multi-round refill
 - manual worker debug chat through the real gateway path
+- backend-hosted control console routing through the real Boot entry
 
 For the broader test map, use [INTEGRATION_TESTS.md](./INTEGRATION_TESTS.md).
 

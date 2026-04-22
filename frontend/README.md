@@ -30,6 +30,17 @@ Recommended local loop:
 - terminal 2: run `corepack pnpm build` inside `frontend/`
 - open [http://localhost:8088/](http://localhost:8088/)
 
+Entry-point meaning:
+
+- `http://localhost:8088` is the real backend-hosted console and should be treated as the primary local integration URL
+- `http://localhost:5174` is only the Vite dev server when you explicitly run `corepack pnpm dev`
+- both URLs serve the same Vue app shell, so similar layout is expected; the meaningful difference is whether the app is running in mock mode or backend mode
+
+Default mode behavior:
+
+- `corepack pnpm dev` defaults to mock API + mock auth unless you override `VITE_USE_MOCK_*`
+- `corepack pnpm build` defaults to real backend API + backend auth so the backend-hosted shell on `http://localhost:8088/` uses live server data
+
 ## Real Backend Mode
 
 Use mock mode for independent frontend CI. For local backend integration, set:

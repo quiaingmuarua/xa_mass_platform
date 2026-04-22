@@ -20,8 +20,9 @@ export interface AppConfig {
 const envConfig: AppConfig = {
     appTitle: import.meta.env.VITE_APP_TITLE ?? 'XA Mass Control Console',
     apiBaseUrl: import.meta.env.VITE_API_BASE_URL ?? '',
-    useMockApi: readBooleanEnv(import.meta.env.VITE_USE_MOCK_API, true),
-    useMockAuth: readBooleanEnv(import.meta.env.VITE_USE_MOCK_AUTH, true),
+    // Default to mock mode in `vite dev`, but use the real backend when serving a production build.
+    useMockApi: readBooleanEnv(import.meta.env.VITE_USE_MOCK_API, import.meta.env.DEV),
+    useMockAuth: readBooleanEnv(import.meta.env.VITE_USE_MOCK_AUTH, import.meta.env.DEV),
     wsBaseUrl: import.meta.env.VITE_WS_BASE_URL ?? 'ws://localhost:18088/ws',
 }
 

@@ -1,6 +1,6 @@
 # Integration Test Guide
 
-Last updated: 2026-04-20
+Last updated: 2026-04-22
 
 This file is the active map of the integration-test layer in `xa-mass-dev-app`. It exists to answer four questions quickly:
 
@@ -43,6 +43,7 @@ Current domain packages:
 - `assignment/`
 - `results/`
 - `audit/`
+- `console/`
 - `support/`
 
 Shared base:
@@ -101,7 +102,7 @@ Run the full repository regression:
 Run the focused high-signal subset:
 
 ```bash
-mvn -pl xa-mass-dev-app -am -Dtest=WorkerAttributesTest,WorkerContextAttributesTest,WorkerMatchContextTest,QLExpressRuleEvaluatorTest,RuleBasedTaskWorkerMatchingStrategyTest,TaskApiDelayedWorkerAvailabilityIntegrationTest,TaskApiWorkerContextAttributeRoutingIntegrationTest,TaskApiWorkerWithoutContextIntegrationTest,WorkerManualDebugChatIntegrationTest,MassApplicationLoadMockDataTest -Dsurefire.failIfNoSpecifiedTests=false test
+mvn -pl xa-mass-dev-app -am -Dtest=WorkerAttributesTest,WorkerContextAttributesTest,WorkerMatchContextTest,QLExpressRuleEvaluatorTest,RuleBasedTaskWorkerMatchingStrategyTest,TaskApiDelayedWorkerAvailabilityIntegrationTest,TaskApiWorkerContextAttributeRoutingIntegrationTest,TaskApiWorkerWithoutContextIntegrationTest,WorkerManualDebugChatIntegrationTest,ControlConsoleRoutingIntegrationTest,MassApplicationLoadMockDataTest -Dsurefire.failIfNoSpecifiedTests=false test
 ```
 
 Expected result:
@@ -140,6 +141,10 @@ Audit:
 
 - `TaskApiStateValidationIntegrationTest`
 
+Control-console shell:
+
+- `ControlConsoleRoutingIntegrationTest`
+
 Worker debug side-channel:
 
 - `WorkerManualDebugChatIntegrationTest`
@@ -176,6 +181,8 @@ Important support coverage outside the E2E package:
 - manual worker debug chat can execute `mock.*` commands and returns structured command acknowledgements
 - `mock.disconnect` is verified to acknowledge first and then take the worker offline
 - task detail exposes `stateValidation` so runtime state audit is observable externally
+- backend-hosted SPA shell routes return the built console shell through the real Spring Boot entry
+- legacy `/status*` and `/config` console aliases redirect to the primary SPA routes instead of serving a separate page system
 
 ## 7. Pinned Mainline Paths
 
@@ -228,6 +235,12 @@ Debug-side-channel verification:
 - use `POST /status/workers/send-message`
 - poll `GET /status/workers/message-history`
 - keep debug protocol assertions separate from `TaskMsg` lifecycle assertions
+
+Control-console routing verification:
+
+- point `mass.frontend.dist-path` at a test fixture build directory
+- assert `/`, `/tasks`, and `/resources/workers` return the SPA shell through real HTTP
+- assert `/status`, `/status/tasks`, `/status/workers`, `/status/rules`, and `/config` remain redirect aliases only
 
 ## 9. Weak Or Missing Areas
 

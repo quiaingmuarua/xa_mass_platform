@@ -31,6 +31,7 @@ For verified runtime behavior and recommended startup, use [VERIFIED_RUNBOOK.md]
 - The current HTTP/API surface validates the kernel; it is not the kernel definition itself.
 - Current reference scenario is a long-connection worker path with `Worker + WorkerContext + WebSocket gateway + mock clients`.
 - Workers can be phone apps, crawlers, LLM agents, IM bots, or other long-lived executors.
+- `Task.project` and `Task.user` are first-class business bindings in the core task aggregate. Frontend/API edge shapes still use `project` and `userId` strings for create/update.
 - Stable payload boundaries are `Task.sharedConfig` and `TaskMsg.input/output`.
 - `target` is only a conventional key inside `TaskMsg.input`; no dedicated target compatibility accessor remains.
 - `Task.intakeStatus` is the active append-window lifecycle truth; `openEnded` is only the create/request projection.
@@ -63,6 +64,7 @@ Supported request fields:
 
 Contract rules:
 
+- `project` and `userId` are required
 - `inputs` must be a non-empty list of work-item payload maps
 - unsupported `project` values are rejected
 - unknown JSON fields are rejected
@@ -121,6 +123,8 @@ Response notes:
 - returns `task`
 - returns `items` derived from persisted `TaskMsg.input`
 - returns `stateValidation`
+- `task.project` is serialized as the canonical project code
+- `task.user` is serialized as the current business-user binding object
 - returns HTTP 404 with `ApiResponse.error(404, ...)` when the task does not exist
 
 Example response shape:
@@ -134,6 +138,9 @@ Example response shape:
       "tid": "task-uuid",
       "taskName": "smoke-lifecycle",
       "project": "demoApp",
+      "user": {
+        "userId": "agent"
+      },
       "status": "NEW",
       "taskRoutingCode": "us",
       "sharedConfig": {
@@ -180,6 +187,7 @@ Contract rules:
 
 - metadata-only update path
 - only `NEW` and `BLOCKED` tasks may be updated; returns HTTP 400 otherwise
+- omitted fields keep the currently persisted metadata/binding values
 - `inputs` and unknown fields are rejected with HTTP 400
 
 ### 2.4 Delete Task

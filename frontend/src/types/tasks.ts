@@ -78,3 +78,21 @@ export interface TaskActionResult {
     newStatus?: TaskListItem['status']
     terminalReason?: string
 }
+
+export interface TaskCreateRequest {
+    userId: string
+    project: string
+    taskName: string
+    sharedConfig: Record<string, unknown>
+    inputs: Array<Record<string, unknown>>
+    routingCode: string
+    batchSize: number
+    defaultMsgMaxRetryCount: number
+    openEnded: boolean
+    maxRuntimeSeconds: number
+}
+
+export interface TaskCreateResult {
+    taskId: string
+    message: string
+}

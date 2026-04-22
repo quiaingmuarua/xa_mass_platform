@@ -46,8 +46,9 @@ XA Mass Platform is a general distributed task scheduling platform.
   - `NEW -> READY -> PAUSED -> READY`
   - `NEW -> BLOCKED -> READY`
 - `TERMINAL` is not self-describing anymore; inspect `task.terminalReason`
-- Active task-create contract now uses `sharedConfig`, `inputs`, `routingCode`, `batchSize`, `defaultMsgMaxRetryCount`, and `openEnded`
+- Active task-create contract now uses `userId`, `project`, `sharedConfig`, `inputs`, `routingCode`, `batchSize`, `defaultMsgMaxRetryCount`, and `openEnded`
 - `PUT /status/api/tasks/{taskId}` is metadata-only and does not accept `inputs`
+- `Task.project` and `Task.user` are first-class business bindings on the task aggregate; do not hide them inside `sharedConfig` or attribute maps
 - `Task.sharedConfig` is the task-level shared payload; `TaskMsg.input` and `TaskMsg.output` are the per-item payload boundary
 
 ## Quick Start

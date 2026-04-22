@@ -1,6 +1,8 @@
 import { requestApiData } from '@/api/http'
 import type {
     TaskActionResult,
+    TaskCreateRequest,
+    TaskCreateResult,
     TaskDetailResponse,
     TaskDetailRecord,
     TaskListQuery,
@@ -34,6 +36,15 @@ export async function listTasksReal(
 
     const suffix = searchParams.size > 0 ? `?${searchParams.toString()}` : ''
     return requestApiData<TaskListResponse>(`/status/api/tasks${suffix}`)
+}
+
+export async function createTaskReal(
+    request: TaskCreateRequest,
+): Promise<TaskCreateResult> {
+    return requestApiData<TaskCreateResult>('/status/api/tasks', {
+        method: 'POST',
+        body: JSON.stringify(request),
+    })
 }
 
 export async function getTaskDetailReal(
@@ -78,7 +89,9 @@ export async function pauseTaskReal(taskId: string): Promise<TaskActionResult> {
     return invokeTaskActionReal(taskId, 'pause')
 }
 
-export async function resumeTaskReal(taskId: string): Promise<TaskActionResult> {
+export async function resumeTaskReal(
+    taskId: string,
+): Promise<TaskActionResult> {
     return invokeTaskActionReal(taskId, 'resume')
 }
 
@@ -96,9 +109,12 @@ async function invokeTaskActionReal(
     taskId: string,
     action: 'pause' | 'resume' | 'block' | 'terminate',
 ): Promise<TaskActionResult> {
-    return requestApiData<TaskActionResult>(`/status/api/tasks/${taskId}/${action}`, {
-        method: 'POST',
-    })
+    return requestApiData<TaskActionResult>(
+        `/status/api/tasks/${taskId}/${action}`,
+        {
+            method: 'POST',
+        },
+    )
 }
 
 function normalizeTaskRecord(task: TaskDetailRecord): TaskDetailRecord {

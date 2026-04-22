@@ -4,10 +4,11 @@ import com.xa.mass.base.enums.task.TaskIntakeStatus;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
+import com.xa.mass.base.model.ProjectRef;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.TaskMsgAttempt;
-import com.xa.mass.base.model.User;
+import com.xa.mass.base.model.UserRef;
 import com.xa.mass.engine.model.TaskCreateRequestDto;
 import com.xa.mass.engine.model.TaskResumeResult;
 import com.xa.mass.engine.model.TaskStateResolutionResult;
@@ -64,6 +65,7 @@ public class TaskManager {
      * Creates a task plus one persisted {@link TaskMsg} per work-item input.
      */
     public Task createTask(TaskCreateRequestDto dto) {
+        validateCreateRequest(dto);
         long startTime = System.currentTimeMillis();
         LogUtils.logOperationStart("CREATE_TASK", "TaskManager",
                 "taskName", dto.getTaskName(),
@@ -74,8 +76,7 @@ public class TaskManager {
             String tid = java.util.UUID.randomUUID().toString();
             LogUtils.setTaskId(tid);
 
-            User user = new User();
-            user.setName(dto.getUserId());
+            UserRef user = UserRef.of(dto.getUserId());
             LogUtils.setUserId(dto.getUserId());
 
             List<Map<String, Object>> inputs = dto.getInputs() == null ? List.of() : dto.getInputs();
@@ -375,6 +376,14 @@ public class TaskManager {
 
     public boolean handleTaskMessageResult(String taskId, String msgId, boolean success, String detail, String errorCode) {
         return resultService.handleTaskMessageResult(taskId, msgId, success, detail, errorCode);
+    }
+
+    private void validateCreateRequest(TaskCreateRequestDto dto) {
+        if (dto == null) {
+            throw new IllegalArgumentException("task request body is required");
+        }
+        ProjectRef.require(dto.getProject());
+        UserRef.requireUserId(dto.getUserId());
     }
 
     TaskStorage getTaskStorage() {

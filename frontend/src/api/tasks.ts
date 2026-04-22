@@ -2,13 +2,18 @@ import { getAppConfig } from '@/app/config'
 import {
     auditTaskMock,
     blockTaskMock,
+    createTaskMock,
     getTaskDetailMock,
     listTasksMock,
     pauseTaskMock,
     resumeTaskMock,
     terminateTaskMock,
 } from '@/api/tasks.mock'
-import { getTaskDetailReal, listTasksReal } from '@/api/tasks.real'
+import {
+    createTaskReal,
+    getTaskDetailReal,
+    listTasksReal,
+} from '@/api/tasks.real'
 import {
     auditTaskReal,
     blockTaskReal,
@@ -18,6 +23,8 @@ import {
 } from '@/api/tasks.real'
 import type {
     TaskActionResult,
+    TaskCreateRequest,
+    TaskCreateResult,
     TaskDetailResponse,
     TaskListQuery,
     TaskListResponse,
@@ -41,6 +48,16 @@ export async function getTaskDetail(
     }
 
     return getTaskDetailReal(taskId)
+}
+
+export async function createTask(
+    request: TaskCreateRequest,
+): Promise<TaskCreateResult> {
+    if (getAppConfig().useMockApi) {
+        return createTaskMock(request)
+    }
+
+    return createTaskReal(request)
 }
 
 export async function auditTask(
@@ -79,9 +96,7 @@ export async function blockTask(taskId: string): Promise<TaskActionResult> {
     return blockTaskReal(taskId)
 }
 
-export async function terminateTask(
-    taskId: string,
-): Promise<TaskActionResult> {
+export async function terminateTask(taskId: string): Promise<TaskActionResult> {
     if (getAppConfig().useMockApi) {
         return terminateTaskMock(taskId)
     }

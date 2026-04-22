@@ -4,6 +4,8 @@ import com.xa.mass.api.model.ApiResponse;
 import com.xa.mass.api.model.task.TaskAppendItemsApiRequest;
 import com.xa.mass.api.model.task.TaskCreateApiRequest;
 import com.xa.mass.api.model.task.TaskUpdateApiRequest;
+import com.xa.mass.base.model.ProjectRef;
+import com.xa.mass.base.model.UserRef;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
@@ -269,12 +271,20 @@ public class TaskApiController {
 
             validateKnownFields(requestBody, "task update");
             TaskCreateRequestDto request = toTaskUpdateRequest(requestBody);
-            task.setTaskName(request.getTaskName());
-            task.setProject(request.getProject());
-            task.setTaskRoutingCode(request.getRoutingCode());
-            task.setSharedConfig(request.getSharedConfig());
-            if (task.getUser() != null) {
-                task.getUser().setName(request.getUserId());
+            if (request.getTaskName() != null) {
+                task.setTaskName(request.getTaskName());
+            }
+            if (request.getProject() != null) {
+                task.setProject(request.getProject());
+            }
+            if (request.getRoutingCode() != null) {
+                task.setTaskRoutingCode(request.getRoutingCode());
+            }
+            if (request.getSharedConfig() != null) {
+                task.setSharedConfig(request.getSharedConfig());
+            }
+            if (request.getUserId() != null) {
+                task.setUser(UserRef.of(request.getUserId()));
             }
             if (request.getBatchSize() > 0) {
                 task.setBatchSize(request.getBatchSize());
@@ -378,6 +388,7 @@ public class TaskApiController {
         item.put("id", task.getTid());
         item.put("taskName", task.getTaskName());
         item.put("project", task.getProject());
+        item.put("userId", task.getUser() != null ? task.getUser().getUserId() : null);
         item.put("routingCode", task.getTaskRoutingCode());
         item.put("status", task.getStatus() != null ? task.getStatus().name() : null);
         item.put("terminalReason", task.getTerminalReason() != null ? task.getTerminalReason().name() : null);
@@ -435,6 +446,7 @@ public class TaskApiController {
     }
 
     private TaskCreateRequestDto toTaskCreateRequest(TaskCreateApiRequest requestBody) {
+        requireBusinessBindings(requestBody.getProject(), requestBody.getUserId());
         TaskCreateRequestDto request = new TaskCreateRequestDto();
         request.setUserId(requestBody.getUserId());
         request.setProject(requestBody.getProject());
@@ -450,6 +462,12 @@ public class TaskApiController {
     }
 
     private TaskCreateRequestDto toTaskUpdateRequest(TaskUpdateApiRequest requestBody) {
+        if (requestBody.getProject() != null) {
+            ProjectRef.require(requestBody.getProject());
+        }
+        if (requestBody.getUserId() != null) {
+            UserRef.requireUserId(requestBody.getUserId());
+        }
         TaskCreateRequestDto request = new TaskCreateRequestDto();
         request.setUserId(requestBody.getUserId());
         request.setProject(requestBody.getProject());
@@ -504,6 +522,11 @@ public class TaskApiController {
 
     private boolean containsIgnoreCase(String value, String normalizedKeyword) {
         return value != null && value.toLowerCase().contains(normalizedKeyword);
+    }
+
+    private void requireBusinessBindings(String project, String userId) {
+        ProjectRef.require(project);
+        UserRef.requireUserId(userId);
     }
 
     private String formatDateTime(LocalDateTime value) {

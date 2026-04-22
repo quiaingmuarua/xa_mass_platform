@@ -1,5 +1,7 @@
 import type {
     TaskActionResult,
+    TaskCreateRequest,
+    TaskCreateResult,
     TaskDetailResponse,
     TaskListItem,
     TaskListQuery,
@@ -226,6 +228,84 @@ export async function getTaskDetailMock(
     return delay(detail)
 }
 
+export async function createTaskMock(
+    request: TaskCreateRequest,
+): Promise<TaskCreateResult> {
+    const taskId = `task-${String(mockTaskList.length + 1).padStart(3, '0')}`
+    const createdAt = new Date().toISOString().slice(0, 19).replace('T', ' ')
+    const normalizedSharedConfig = request.sharedConfig ?? {}
+    const normalizedInputs = request.inputs ?? []
+
+    if (normalizedInputs.length === 0) {
+        throw new Error('inputs must contain at least one work item')
+    }
+
+    const listItem: TaskListItem = {
+        id: taskId,
+        taskName: request.taskName,
+        project: request.project,
+        routingCode: request.routingCode,
+        status: 'NEW',
+        terminalReason: null,
+        successCount: 0,
+        eligibleCount: normalizedInputs.length,
+        batchSize: request.batchSize,
+        updatedAt: createdAt,
+    }
+
+    mockTaskList.unshift(listItem)
+    mockTaskDetails[taskId] = {
+        task: {
+            tid: taskId,
+            taskName: request.taskName,
+            project: request.project,
+            taskRoutingCode: request.routingCode,
+            status: 'NEW',
+            terminalReason: null,
+            batchSize: request.batchSize,
+            sharedConfig: normalizedSharedConfig,
+            user: {
+                name: request.userId,
+            },
+            taskTargetNumber: normalizedInputs.length,
+            taskEligibleNumber: normalizedInputs.length,
+            taskSuccessNumber: 0,
+            taskNonSuccessNumber: normalizedInputs.length,
+            peakAssignedWorkerCount: 0,
+            createTime: createdAt,
+            updateTime: createdAt,
+        },
+        items: normalizedInputs,
+        stateValidation: {
+            valid: true,
+            needsResolution: false,
+            totalMessages: normalizedInputs.length,
+            successMessages: 0,
+            failedMessages: 0,
+            processingMessages: 0,
+            violations: [],
+        },
+        messages: normalizedInputs.map((input, index) => ({
+            msgId: `${taskId}-msg-${index + 1}`,
+            status: 'INIT',
+            latestAttemptWorkerId: null,
+            latestAttemptWorkerContextId: null,
+            latestAttemptBatchId: null,
+            retryCount: 0,
+            maxRetryCount: request.defaultMsgMaxRetryCount,
+            finalReason: null,
+            input,
+            output: {},
+            errorMessage: null,
+        })),
+    }
+
+    return delay({
+        taskId,
+        message: 'Task created',
+    })
+}
+
 export async function auditTaskMock(
     taskId: string,
     approved: boolean,
@@ -241,7 +321,9 @@ export async function pauseTaskMock(taskId: string): Promise<TaskActionResult> {
     return updateTaskStatusMock(taskId, 'PAUSED', 'Task paused')
 }
 
-export async function resumeTaskMock(taskId: string): Promise<TaskActionResult> {
+export async function resumeTaskMock(
+    taskId: string,
+): Promise<TaskActionResult> {
     return updateTaskStatusMock(taskId, 'READY', 'Task resumed')
 }
 

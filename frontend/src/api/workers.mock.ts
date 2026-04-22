@@ -1,4 +1,8 @@
 import type {
+    WorkerDebugHistoryResponse,
+    WorkerDebugMessageRecord,
+    WorkerDebugSendRequest,
+    WorkerDebugSendResult,
     WorkerContextListResponse,
     WorkerListResponse,
 } from '@/types/workers'
@@ -66,6 +70,8 @@ const mockWorkerContexts: WorkerContextListResponse = {
     total: 2,
 }
 
+const mockDebugHistoryByWorker = new Map<string, WorkerDebugMessageRecord[]>()
+
 function delay<T>(value: T): Promise<T> {
     return new Promise((resolve) => {
         window.setTimeout(() => resolve(value), 80)
@@ -91,4 +97,106 @@ export async function updateWorkerSupportedProjectsMock(
 
     worker.supportedProjects = supportedProjects
     await delay(undefined)
+}
+
+export async function getWorkerDebugHistoryMock(
+    workerId: string,
+): Promise<WorkerDebugHistoryResponse> {
+    return delay({
+        workerId,
+        items: [...(mockDebugHistoryByWorker.get(workerId) ?? [])],
+    })
+}
+
+export async function sendWorkerDebugMessageMock(
+    request: WorkerDebugSendRequest,
+): Promise<WorkerDebugSendResult> {
+    const worker = mockWorkers.items.find(
+        (item) => item.workerId === request.workerId,
+    )
+    if (!worker) {
+        throw new Error(`Worker not found: ${request.workerId}`)
+    }
+    if (worker.status !== 'ONLINE') {
+        throw new Error('Target worker is offline or task_messages session is unavailable')
+    }
+
+    const project = request.project || worker.supportedProjects[0] || 'demoApp'
+    const msgType = request.msgType || 'CONTROL'
+    const subMsgType = request.subMsgType || 'manual-chat'
+    const messageId = `mock-debug-${Date.now()}`
+    const now = Date.now()
+
+    appendDebugRecord(request.workerId, {
+        messageId,
+        replyToMessageId: null,
+        workerId: request.workerId,
+        direction: 'OUTBOUND',
+        project,
+        msgType,
+        subMsgType,
+        status: 'DELIVERED',
+        payloadJson: prettyJson(request.payload),
+        rawJson: prettyJson({
+            workerId: request.workerId,
+            project,
+            msgType,
+            subMsgType,
+            payload: request.payload,
+        }),
+        detail: 'mock worker received manual debug message',
+        createdAt: now,
+        updatedAt: now,
+    })
+
+    appendDebugRecord(request.workerId, {
+        messageId: `${messageId}-ack`,
+        replyToMessageId: messageId,
+        workerId: request.workerId,
+        direction: 'INBOUND',
+        project,
+        msgType: 'EVENT',
+        subMsgType,
+        status: 'RECEIVED',
+        payloadJson: prettyJson({
+            messageKind: 'debug_chat_ack',
+            replyToMessageId: messageId,
+            ackStatus: 'RECEIVED',
+            text:
+                typeof request.payload.text === 'string'
+                    ? request.payload.text
+                    : 'mock worker received manual debug message',
+            workerId: request.workerId,
+        }),
+        rawJson: prettyJson({
+            workerId: request.workerId,
+            project,
+            msgType: 'EVENT',
+            subMsgType,
+        }),
+        detail: 'mock worker acked manual debug message',
+        createdAt: now + 1,
+        updatedAt: now + 1,
+    })
+
+    return delay({
+        messageId,
+        workerId: request.workerId,
+        project,
+        msgType,
+        subMsgType,
+    })
+}
+
+function appendDebugRecord(
+    workerId: string,
+    record: WorkerDebugMessageRecord,
+): void {
+    const items = mockDebugHistoryByWorker.get(workerId) ?? []
+    items.push(record)
+    mockDebugHistoryByWorker.set(workerId, items.slice(-120))
+}
+
+function prettyJson(value: unknown): string {
+    return JSON.stringify(value ?? {}, null, 2)
 }
