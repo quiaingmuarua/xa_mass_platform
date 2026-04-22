@@ -194,14 +194,19 @@ public final class MassSdkApplication implements MassRuntimeControl {
         return requireStartedWorkerManager().getWorkerContexts(workerId);
     }
 
-    public PollingWorkerSession pollingWorker(String workerId) {
-        requireStartedEngine();
-        return delegate.openPollingWorkerSession(workerId);
-    }
-
     public PullWorkerSession pullWorker(String workerId) {
         requireStartedEngine();
         return delegate.openPullWorkerSession(workerId);
+    }
+
+    /**
+     * @deprecated Prefer {@link #pullWorker(String)}. This wrapper remains as a
+     * compatibility surface for existing polling-style worker callers.
+     */
+    @Deprecated(forRemoval = false)
+    public PollingWorkerSession pollingWorker(String workerId) {
+        requireStartedEngine();
+        return delegate.openPollingWorkerSession(workerId);
     }
 
     public WorkerContext getWorkerContextById(String workerContextId) {

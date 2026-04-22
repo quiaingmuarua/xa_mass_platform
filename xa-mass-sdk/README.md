@@ -12,7 +12,9 @@ can depend on one SDK module without pulling the HTTP/demo control surface.
 Stable SDK-facing catalog/auth/model contracts now live in the internal
 `xa-mass-sdk-api` module and are pulled transitively through this artifact.
 Transport-neutral runtime contracts now live in `xa-mass-transport-api`; the
-current bundled transport implementation is still WebSocket-backed.
+current bundled transport implementation still includes a WebSocket adapter,
+but `xa-mass-sdk` now assembles worker transports through a transport runtime
+registry/factory seam and also supports pull-style workers without server push.
 
 ## Dependency
 
@@ -34,7 +36,7 @@ import com.xa.mass.sdk.MassSdkApplication;
 import com.xa.mass.sdk.model.MassTaskCreateRequest;
 
 MassSdkApplication app = MassSdk.builder()
-        .server(19090, "/ws")
+        .transportServer(19090, "/ws")
         .gateway(gateway -> gateway.enabled(false))
         .engine(engine -> engine.enabled(true).workerThreads(4))
         .build();
@@ -50,6 +52,8 @@ app.createTask(MassTaskCreateRequest.builder()
         .routingCode("us")
         .batchSize(1)
         .build());
+
+app.pullWorker("crawler-worker-1").connect();
 ```
 
 The returned `MassSdkApplication` exposes:
@@ -59,6 +63,7 @@ The returned `MassSdkApplication` exposes:
 - open-ended task operations after `start()`: `appendTaskItems(...)`, `sealTask(...)`
 - audit and message operations after `start()`: `getTaskMessages(...)`, `resolveTaskStateFromMessages(...)`, `validateTaskState(...)`
 - common worker operations after `start()`: `addWorker(...)`, `addWorkerContext(...)`, `getWorker(...)`, `getAllWorkers()`, `getAllWorkerContexts()`, `getWorkerContexts(...)`, `getWorkerContextById(...)`, `isWorkerLocked(...)`, `isWorkerOnline(...)`
+- pull-style worker entry after `start()`: `pullWorker(...)`; `pollingWorker(...)` remains as a deprecated compatibility alias
 - stable runtime bootstrap surface after `start()`: `publishTaskEvents()`, plus open registration methods such as `addWorker(...)`, `addWorkerContext(...)`, `createTask(...)`, `replaceDefaultRules(...)`
 - new bootstrap integration seam: `EngineOptions.bootstrapDataProvider(...)` accepts a pluggable `MassBootstrapDataProvider`
 - deprecated compatibility shims: `MassSdkApplication.loadMockData()` and `EngineOptions.mockData(...)` remain callable but no longer embed mock logic

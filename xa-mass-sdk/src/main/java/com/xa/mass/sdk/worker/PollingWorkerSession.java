@@ -8,8 +8,10 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * SDK-facing pull worker session for crawlers and other polling executors.
+ * @deprecated Prefer {@link PullWorkerSession}. This class remains as a
+ * compatibility wrapper for older polling-specific SDK code.
  */
+@Deprecated(forRemoval = false)
 public final class PollingWorkerSession {
 
     private final PullWorkerSession delegate;

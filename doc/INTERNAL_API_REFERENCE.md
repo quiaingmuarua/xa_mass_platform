@@ -1,6 +1,6 @@
 # XA Mass Platform Internal API Reference
 
-Last updated: 2026-04-22
+Last updated: 2026-04-23
 
 This document tracks the current active HTTP/API surface in the mainline runtime.
 
@@ -29,7 +29,8 @@ For verified runtime behavior and recommended startup, use [VERIFIED_RUNBOOK.md]
 
 - The project is a general distributed task scheduling platform. Its core abstraction is: assign work items to online workers, collect execution results, and converge task state.
 - The current HTTP/API surface validates the kernel; it is not the kernel definition itself.
-- Current reference scenario is a long-connection worker path with `Worker + WorkerContext + WebSocket gateway + mock clients`.
+- Current reference scenario still includes a long-connection adapter path with `Worker + WorkerContext + WebSocket gateway + mock clients`, but pull-style workers now also run through the transport-neutral SDK/runtime seam.
+- `xa-mass-sdk` now assembles worker delivery through a transport runtime registry/factory seam, so HTTP/API surfaces should not assume WebSocket is the only runtime transport.
 - Workers can be phone apps, crawlers, LLM agents, IM bots, or other long-lived executors.
 - `Task.project` and `Task.user` are first-class business bindings in the core task aggregate. Frontend/API edge shapes still use `project` and `userId` strings for create/update.
 - Stable payload boundaries are `Task.sharedConfig` and `TaskMsg.input/output`.

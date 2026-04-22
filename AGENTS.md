@@ -124,7 +124,7 @@ Verified endpoints:
 - `http://localhost:8088/doc.html`
 - `http://localhost:8088/actuator/health`
 - `ws://localhost:18088/ws`
-- Pull-style workers can run without any transport server through `MassSdkApplication.pollingWorker(...)`.
+- Pull-style workers can run without any transport server through `MassSdkApplication.pullWorker(...)`; `pollingWorker(...)` remains as a compatibility alias.
 
 Control-console routing note:
 

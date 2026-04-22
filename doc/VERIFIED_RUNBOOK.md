@@ -49,7 +49,7 @@ Default runtime facts:
 - `mass.websocket.port=18088` serves the current WebSocket transport adapter endpoint when the transport server is enabled.
 - Default local/dev startup auto-starts mock worker clients when `mock.client.auto-start=true`.
 - Mock WebSocket clients connect to `ws://localhost:18088/ws`.
-- Pull-style workers can also run without the WebSocket transport server through `MassSdkApplication.pollingWorker(...)`.
+- Pull-style workers can also run without the WebSocket transport server through `MassSdkApplication.pullWorker(...)`; `pollingWorker(...)` remains as a compatibility alias.
 - Worker routing may use neutral strategy hints like `realtime` and `polling`; the current WebSocket adapter still accepts `websocket/ws` as compatibility aliases.
 - `mock.client.task-result-status=FAILED` forces failed task result write-back for regression tests.
 

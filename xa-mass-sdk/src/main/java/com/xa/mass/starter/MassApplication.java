@@ -243,15 +243,20 @@ public class MassApplication {
                 || (transportServer != null && transportServer.isRunning()));
     }
 
-    public PollingWorkerSession openPollingWorkerSession(String workerId) {
-        return new PollingWorkerSession(openPullWorkerSession(workerId));
-    }
-
     public PullWorkerSession openPullWorkerSession(String workerId) {
         if (transportRuntimeRegistry == null) {
             throw new IllegalStateException("Pull worker transport is unavailable for this runtime");
         }
         return transportRuntimeRegistry.openPullWorkerSession(workerId);
+    }
+
+    /**
+     * @deprecated Prefer {@link #openPullWorkerSession(String)}. This wrapper
+     * remains for compatibility with older polling-specific SDK entrypoints.
+     */
+    @Deprecated(forRemoval = false)
+    public PollingWorkerSession openPollingWorkerSession(String workerId) {
+        return new PollingWorkerSession(openPullWorkerSession(workerId));
     }
 
     public void publishTaskEvents() {
