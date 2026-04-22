@@ -41,6 +41,13 @@ For verified runtime behavior and recommended startup, use [VERIFIED_RUNBOOK.md]
 - Worker/gateway callbacks must resolve a unique active `TaskMsgAttempt`; the runtime no longer synthesizes legacy attempts for result write-back.
 - `Worker` and `WorkerContext` are current reference adapters, not the permanent platform boundary.
 
+## 1.1 SDK Metadata Catalog
+
+- SDK v1 adds a code-registered project/event metadata catalog for platform self-description.
+- Metadata is exposed through read-only `/sdk/meta/**` endpoints.
+- Catalog entries are not the runtime scheduling truth yet; they are a public capability directory for SDK and UI callers.
+- Current metadata covers representative task-event scenarios for crawler, SMS, and chatbot flows.
+
 ## 2. Task API
 
 Base path: `/status/api/tasks`

@@ -1,0 +1,89 @@
+package com.xa.mass.mock.e2e.lifecycle;
+
+import com.xa.mass.mock.MockApplicationSpringBootApp;
+import com.xa.mass.mock.e2e.support.AbstractMockE2eTest;
+import org.junit.jupiter.api.Test;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.HttpMethod;
+import org.springframework.test.annotation.DirtiesContext;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
+
+import java.util.Map;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+@SpringBootTest(
+        classes = MockApplicationSpringBootApp.class,
+        webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+        properties = {
+                "mock.client.auto-start=true",
+                "mock.client.workers-config=mock/test_mock_workers.json",
+                "mass.mock.data.workers=mock/test_mock_workers.json",
+                "mass.mock.data.worker-contexts=mock/test_mock_worker_contexts.json",
+                "mass.mock.data.tasks=mock/test_mock_tasks.json",
+                "mass.mock.data.rules=mock/test_mock_rules.json",
+                "mock.client.retry-attempts=1",
+                "mock.client.retry-delay=1",
+                "mock.client.connection-timeout=5",
+                "mock.client.ping-delay=60",
+                "mock.client.ping-interval=60"
+        }
+)
+@ActiveProfiles("dev")
+@DirtiesContext
+class SdkTaskApiIntegrationTest extends AbstractMockE2eTest {
+
+    private static final int WEBSOCKET_PORT = findFreePort();
+
+    @DynamicPropertySource
+    static void registerProperties(DynamicPropertyRegistry registry) {
+        registerWebSocketPropertiesWithClientUri(registry, WEBSOCKET_PORT);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void createTaskThroughSdkApiCompletesOverRealRuntime() throws Exception {
+        Map<String, Object> createResponse = exchange("/sdk/tasks", HttpMethod.POST, Map.of(
+                "project", "demoApp",
+                "taskName", "sdk-runtime-task",
+                "eventCode", "crawler.fetch-page",
+                "mode", "SINGLE_RUN",
+                "payloadType", "JSON",
+                "sharedConfig", Map.of("channel", "sdk"),
+                "inputs", java.util.List.of(Map.of("target", "sdk-target-001")),
+                "routingCode", "us",
+                "batchSize", 1,
+                "defaultMsgMaxRetryCount", 2
+        ));
+
+        assertApiOk(createResponse);
+        String taskId = String.valueOf(responseData(createResponse).get("taskId"));
+
+        Map<String, Object> approveResponse = exchange(
+                "/status/api/tasks/" + taskId + "/audit?approved=true&comment=sdk",
+                HttpMethod.POST,
+                null
+        );
+        assertApiOk(approveResponse);
+
+        TaskSnapshot snapshot = waitForTerminalTask(taskId);
+        assertEquals("TERMINAL", snapshot.task().get("status"));
+        assertEquals("ALL_MESSAGES_SUCCEEDED", snapshot.task().get("terminalReason"));
+        assertEquals(1, snapshot.messages().size());
+        assertEquals("SUCCESS", snapshot.messages().get(0).get("status"));
+
+        Map<String, Object> detailResponse = exchange("/sdk/tasks/" + taskId, HttpMethod.GET, null);
+        assertApiOk(detailResponse);
+        Map<String, Object> task = task(detailResponse);
+        Map<String, Object> sharedConfig = (Map<String, Object>) task.get("sharedConfig");
+        Map<String, Object> sdkMetadata = (Map<String, Object>) sharedConfig.get("_sdk");
+
+        assertEquals("crawler.fetch-page", sdkMetadata.get("eventCode"));
+        assertEquals("JSON", sdkMetadata.get("payloadType"));
+        assertEquals("SINGLE_RUN", sdkMetadata.get("taskMode"));
+        assertTrue(sharedConfig.containsKey("channel"));
+    }
+}

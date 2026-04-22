@@ -16,18 +16,18 @@ export const runtimeRoutes: AppRouteRecordRaw[] = [
         },
         children: [
             {
-                path: 'diagnostics',
-                name: 'runtime-diagnostics',
+                path: 'metadata',
+                name: 'runtime-metadata',
                 component: () =>
-                    import('@/pages/runtime/RuntimeDiagnosticsPage.vue'),
+                    import('@/pages/runtime/RuntimeMetadataPage.vue'),
                 meta: {
-                    title: 'Diagnostics',
-                    icon: 'Opportunity',
+                    title: 'Metadata',
+                    icon: 'Tickets',
                     order: 41,
                     hidden: false,
                     keepAlive: true,
                     requiresAuth: true,
-                    permissions: ['task:view'],
+                    permissions: ['worker:view'],
                     menuVisible: true,
                 },
             },

@@ -1,0 +1,99 @@
+package com.xa.mass.sdk.catalog;
+
+import com.xa.mass.base.enums.Project;
+
+import java.util.List;
+
+/**
+ * Builds the default SDK v1 catalog used by the metadata APIs.
+ */
+public final class DefaultProjectEventCatalogFactory {
+
+    private static final List<String> ALL_DEFAULT_EVENT_CODES = List.of(
+            "crawler.fetch-page",
+            "crawler.parse-result",
+            "sms.acquire-number",
+            "sms.wait-code",
+            "chatbot.reply",
+            "chatbot.session-message"
+    );
+
+    private DefaultProjectEventCatalogFactory() {
+    }
+
+    public static ProjectEventCatalogRegistry createDefaultRegistry() {
+        ProjectEventCatalogRegistry registry = new ProjectEventCatalogRegistry();
+
+        registry.registerEvent(EventMetadata.builder()
+                .code("crawler.fetch-page")
+                .name("Crawler Fetch Page")
+                .description("Fetch a single page or URL seed for downstream crawling.")
+                .payloadTypes(List.of(PayloadType.JSON))
+                .taskModes(List.of(TaskMode.SINGLE_RUN, TaskMode.STREAMING))
+                .build());
+        registry.registerEvent(EventMetadata.builder()
+                .code("crawler.parse-result")
+                .name("Crawler Parse Result")
+                .description("Parse crawler output into structured downstream records.")
+                .payloadTypes(List.of(PayloadType.JSON))
+                .taskModes(List.of(TaskMode.SINGLE_RUN, TaskMode.STREAMING))
+                .build());
+        registry.registerEvent(EventMetadata.builder()
+                .code("sms.acquire-number")
+                .name("SMS Acquire Number")
+                .description("Acquire a phone number or resource slot before waiting for a code.")
+                .payloadTypes(List.of(PayloadType.JSON))
+                .taskModes(List.of(TaskMode.SINGLE_RUN))
+                .build());
+        registry.registerEvent(EventMetadata.builder()
+                .code("sms.wait-code")
+                .name("SMS Wait Code")
+                .description("Wait for and collect an SMS verification code.")
+                .payloadTypes(List.of(PayloadType.JSON))
+                .taskModes(List.of(TaskMode.SINGLE_RUN, TaskMode.STREAMING))
+                .build());
+        registry.registerEvent(EventMetadata.builder()
+                .code("chatbot.reply")
+                .name("Chatbot Reply")
+                .description("Generate a chatbot response for a prompt or message bundle.")
+                .payloadTypes(List.of(PayloadType.TEXT, PayloadType.JSON))
+                .taskModes(List.of(TaskMode.SINGLE_RUN, TaskMode.STREAMING))
+                .build());
+        registry.registerEvent(EventMetadata.builder()
+                .code("chatbot.session-message")
+                .name("Chatbot Session Message")
+                .description("Handle a session-scoped chatbot message inside a streaming conversation.")
+                .payloadTypes(List.of(PayloadType.TEXT, PayloadType.JSON))
+                .taskModes(List.of(TaskMode.STREAMING))
+                .build());
+
+        registry.registerProject(project(Project.DEMO_APP.getCode(), Project.DEMO_APP.getName(),
+                "Default demo project used by the validation shell.", ALL_DEFAULT_EVENT_CODES));
+        registry.registerProject(project(Project.TEST_APP.getCode(), Project.TEST_APP.getName(),
+                "Test project used by fixtures and local regression coverage.", ALL_DEFAULT_EVENT_CODES));
+        registry.registerProject(project(Project.RCS_APP.getCode(), Project.RCS_APP.getName(),
+                "RCS-oriented messaging project defaults.", List.of(
+                        "sms.acquire-number",
+                        "sms.wait-code",
+                        "chatbot.reply",
+                        "chatbot.session-message"
+                )));
+        registry.registerProject(project(Project.TELEGRAM_APP.getCode(), Project.TELEGRAM_APP.getName(),
+                "Telegram-oriented messaging project defaults.", List.of(
+                        "sms.wait-code",
+                        "chatbot.reply",
+                        "chatbot.session-message"
+                )));
+
+        return registry;
+    }
+
+    private static ProjectMetadata project(String code, String name, String description, List<String> eventCodes) {
+        return ProjectMetadata.builder()
+                .code(code)
+                .name(name)
+                .description(description)
+                .eventCodes(eventCodes)
+                .build();
+    }
+}

@@ -7,7 +7,10 @@ import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.engine.model.TaskCreateRequestDto;
 import com.xa.mass.gateway.queue.Envelope;
+import com.xa.mass.sdk.catalog.PayloadType;
+import com.xa.mass.sdk.catalog.TaskMode;
 import com.xa.mass.sdk.model.MassTaskCreateRequest;
+import com.xa.mass.sdk.model.MassTaskRequest;
 import com.xa.mass.starter.MassApplication;
 import com.xa.mass.starter.MassEngine;
 import org.junit.jupiter.api.Assertions;
@@ -137,6 +140,81 @@ class MassSdkTest {
 
         verify(delegate).loadMockData();
         verify(delegate).publishTaskEvents();
+    }
+
+    @Test
+    void createTaskSupportsModeAwareSdkRequest() {
+        MassApplication delegate = mock(MassApplication.class);
+        MassEngine engine = mock(MassEngine.class);
+        Task createdTask = new Task();
+
+        when(delegate.getEngine()).thenReturn(engine);
+        when(engine.isRunning()).thenReturn(true);
+        when(engine.createTask(any(TaskCreateRequestDto.class))).thenReturn(createdTask);
+
+        MassSdkApplication app = new MassSdkApplication(delegate);
+        MassTaskRequest request = MassTaskRequest.streaming("demoApp", "crawler-stream")
+                .userId("agent")
+                .eventCode("crawler.fetch-page")
+                .payloadType(PayloadType.JSON)
+                .jsonInputs(List.of(
+                        Map.of("url", "https://example.test/page-1"),
+                        Map.of("url", "https://example.test/page-2")
+                ))
+                .routingCode("us")
+                .batchSize(1)
+                .defaultMsgMaxRetryCount(2)
+                .maxRuntimeSeconds(60)
+                .build();
+
+        Task result = app.createTask(request);
+
+        assertSame(createdTask, result);
+        var captor = org.mockito.ArgumentCaptor.forClass(TaskCreateRequestDto.class);
+        verify(engine).createTask(captor.capture());
+        TaskCreateRequestDto dto = captor.getValue();
+        Assertions.assertEquals("agent", dto.getUserId());
+        Assertions.assertEquals("demoApp", dto.getProject());
+        Assertions.assertEquals("crawler-stream", dto.getTaskName());
+        Assertions.assertTrue(dto.isOpenEnded());
+        Assertions.assertEquals(Map.of(
+                "_sdk", Map.of(
+                        "eventCode", "crawler.fetch-page",
+                        "payloadType", "JSON",
+                        "taskMode", "STREAMING"
+                )
+        ), dto.getSharedConfig());
+        Assertions.assertEquals(List.of(
+                Map.of("type", "json", "data", Map.of("url", "https://example.test/page-1")),
+                Map.of("type", "json", "data", Map.of("url", "https://example.test/page-2"))
+        ), dto.getInputs());
+    }
+
+    @Test
+    void massTaskRequestConvenienceBuildersExposeExpectedModeAndInputShape() {
+        MassTaskRequest textRequest = MassTaskRequest.singleRun("demoApp", "chatbot")
+                .userId("agent")
+                .payloadType(PayloadType.TEXT)
+                .textInputs(List.of("hello", "world"))
+                .build();
+        MassTaskRequest jsonRequest = MassTaskRequest.streaming("demoApp", "crawler")
+                .userId("agent")
+                .payloadType(PayloadType.JSON)
+                .jsonInputs(List.of(Map.of("target", "https://example.test")))
+                .build();
+
+        Assertions.assertEquals(TaskMode.SINGLE_RUN, textRequest.getMode());
+        Assertions.assertFalse(textRequest.isStreaming());
+        Assertions.assertEquals(List.of(
+                Map.of("type", "text", "text", "hello"),
+                Map.of("type", "text", "text", "world")
+        ), textRequest.toEngineInputs());
+
+        Assertions.assertEquals(TaskMode.STREAMING, jsonRequest.getMode());
+        Assertions.assertTrue(jsonRequest.isStreaming());
+        Assertions.assertEquals(List.of(
+                Map.of("type", "json", "data", Map.of("target", "https://example.test"))
+        ), jsonRequest.toEngineInputs());
     }
 
     @Test
