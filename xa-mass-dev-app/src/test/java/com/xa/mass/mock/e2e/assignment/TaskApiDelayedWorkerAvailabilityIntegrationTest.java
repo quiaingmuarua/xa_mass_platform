@@ -1,10 +1,5 @@
 package com.xa.mass.mock.e2e.assignment;
 
-import com.xa.mass.base.enums.worker.WorkerStatus;
-import com.xa.mass.base.enums.worker.WorkerContextStatus;
-import com.xa.mass.base.model.Worker;
-import com.xa.mass.base.model.WorkerContext;
-import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.mock.MockApplicationSpringBootApp;
 import com.xa.mass.mock.client.MassWebSocketClientImpl;
 import com.xa.mass.mock.e2e.support.AbstractMockE2eTest;
@@ -46,9 +41,6 @@ class TaskApiDelayedWorkerAvailabilityIntegrationTest extends AbstractMockE2eTes
     static void registerProperties(DynamicPropertyRegistry registry) {
         registerWebSocketProperties(registry, WEBSOCKET_PORT);
     }
-
-    @Autowired
-    private WorkerManager workerManager;
 
     @Test
     void readyTaskAdvancesAfterNewMatchingWorkerBecomesAvailable() throws Exception {
@@ -92,19 +84,7 @@ class TaskApiDelayedWorkerAvailabilityIntegrationTest extends AbstractMockE2eTes
     }
 
     private void addMatchingWorker(String workerId) {
-        Worker worker = new Worker();
-        worker.setWorkerId(workerId);
-        worker.setWorkerGroupId("us");
-        worker.setStatus(WorkerStatus.ONLINE);
-        worker.setSupportedProjects(java.util.List.of("demoApp"));
-        workerManager.addWorker(worker);
-
-        WorkerContext workerContext = new WorkerContext();
-        workerContext.setWorkerContextId("worker-context-" + workerId);
-        workerContext.setWorkerId(workerId);
-        workerContext.setRoutingTags(java.util.Set.of("us"));
-        workerContext.setStatus(WorkerContextStatus.IDLE);
-        workerManager.addWorkerContext(workerContext);
+        registerSdkWorkerWithContext(workerId, "us");
     }
 
 }

@@ -4,11 +4,10 @@ import com.xa.mass.base.enums.worker.WorkerContextStatus;
 import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
-import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.mock.MockApplicationSpringBootApp;
 import com.xa.mass.mock.e2e.support.AbstractMockE2eTest;
 import com.xa.mass.sdk.MassSdkApplication;
-import com.xa.mass.sdk.worker.PollingWorkerSession;
+import com.xa.mass.sdk.worker.PullWorkerSession;
 import com.xa.mass.starter.worker.PollingWorkerAdapter;
 import com.xa.mass.transport.model.TaskDispatchItem;
 import org.junit.jupiter.api.Test;
@@ -55,9 +54,6 @@ class PollingWorkerTaskFlowIntegrationTest extends AbstractMockE2eTest {
     }
 
     @Autowired
-    private WorkerManager workerManager;
-
-    @Autowired
     private MassSdkApplication app;
 
     @Test
@@ -65,7 +61,7 @@ class PollingWorkerTaskFlowIntegrationTest extends AbstractMockE2eTest {
         String workerId = "poll-worker-e2e-001";
         registerPollingWorker(workerId);
 
-        PollingWorkerSession session = app.pollingWorker(workerId);
+        PullWorkerSession session = app.pullWorker(workerId);
         session.connect();
         try {
             String taskId = createTaskId("polling-e2e-task", "poll integration", "target-poll-001");
@@ -112,7 +108,7 @@ class PollingWorkerTaskFlowIntegrationTest extends AbstractMockE2eTest {
         String workerId = "poll-worker-drain-001";
         registerPollingWorker(workerId);
 
-        PollingWorkerSession session = app.pollingWorker(workerId);
+        PullWorkerSession session = app.pullWorker(workerId);
         session.connect();
         try {
             String taskId = createTaskId("polling-drain-task", "drain test", "target-drain-001");
@@ -147,13 +143,13 @@ class PollingWorkerTaskFlowIntegrationTest extends AbstractMockE2eTest {
         worker.setStatus(WorkerStatus.ONLINE);
         worker.setSupportedProjects(List.of("demoApp"));
         worker.setOnlineStrategy(PollingWorkerAdapter.PROTOCOL);
-        workerManager.addWorker(worker);
+        app.addWorker(worker);
 
         WorkerContext workerContext = new WorkerContext();
         workerContext.setWorkerContextId("ctx-" + workerId);
         workerContext.setWorkerId(workerId);
         workerContext.setRoutingTags(java.util.Set.of("us"));
         workerContext.setStatus(WorkerContextStatus.IDLE);
-        workerManager.addWorkerContext(workerContext);
+        app.addWorkerContext(workerContext);
     }
 }

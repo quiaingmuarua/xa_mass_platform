@@ -1,9 +1,6 @@
 package com.xa.mass.mock.e2e.assignment;
 
-import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.enums.worker.WorkerContextStatus;
-import com.xa.mass.base.model.Worker;
-import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.mock.MockApplicationSpringBootApp;
 import com.xa.mass.mock.client.MassWebSocketClientImpl;
@@ -87,18 +84,6 @@ class TaskApiSingleWorkerReuseIntegrationTest extends AbstractMockE2eTest {
     }
 
     private void registerWorker(String workerId) {
-        Worker worker = new Worker();
-        worker.setWorkerId(workerId);
-        worker.setWorkerGroupId("us");
-        worker.setStatus(WorkerStatus.ONLINE);
-        worker.setSupportedProjects(List.of("demoApp"));
-        workerManager.addWorker(worker);
-
-        WorkerContext workerContext = new WorkerContext();
-        workerContext.setWorkerContextId("worker-context-" + workerId);
-        workerContext.setWorkerId(workerId);
-        workerContext.setRoutingTags(java.util.Set.of("us"));
-        workerContext.setStatus(WorkerContextStatus.IDLE);
-        workerManager.addWorkerContext(workerContext);
+        registerSdkWorkerWithContext(workerId, "us");
     }
 }

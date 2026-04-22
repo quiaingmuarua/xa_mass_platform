@@ -1,8 +1,5 @@
 package com.xa.mass.mock.e2e.assignment;
 
-import com.xa.mass.base.enums.worker.WorkerStatus;
-import com.xa.mass.base.model.Worker;
-import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.mock.MockApplicationSpringBootApp;
 import com.xa.mass.mock.client.MassWebSocketClientImpl;
 import com.xa.mass.mock.e2e.support.AbstractMockE2eTest;
@@ -47,17 +44,9 @@ class TaskApiWorkerWithoutContextIntegrationTest extends AbstractMockE2eTest {
         registerWebSocketProperties(registry, WEBSOCKET_PORT);
     }
 
-    @Autowired
-    private WorkerManager workerManager;
-
     @Test
     void workerWithoutContextCanExecuteTaskWhenTaskHasNoRoutingRequirement() throws Exception {
-        Worker worker = new Worker();
-        worker.setWorkerId("stateless-worker");
-        worker.setWorkerGroupId("pool-a");
-        worker.setStatus(WorkerStatus.ONLINE);
-        worker.setSupportedProjects(List.of("demoApp"));
-        workerManager.addWorker(worker);
+        registerSdkStatelessWorker("stateless-worker", "demoApp");
 
         URI uri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
         MassWebSocketClientImpl client = new MassWebSocketClientImpl(uri, "stateless-worker");

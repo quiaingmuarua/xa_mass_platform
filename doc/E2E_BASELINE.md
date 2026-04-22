@@ -1,6 +1,6 @@
 # E2E Baseline
 
-Last updated: 2026-04-22
+Last updated: 2026-04-23
 
 This is the short release-gate baseline for active-mainline E2E coverage.
 Detailed inventory stays in [./INTEGRATION_TESTS.md](./INTEGRATION_TESTS.md).
@@ -18,8 +18,15 @@ White-box fixtures are allowed for setup and fault injection, but not as a repla
 
 Current mainline note:
 
-- today the Boot-shell E2E path still validates the WebSocket adapter
-- transport-neutral or pull/poll worker paths are currently accepted through `xa-mass-sdk` integration coverage until a dedicated shell path exists
+- today the Boot-shell E2E path validates both the current WebSocket adapter and the pull-style worker path
+- pull-style shell coverage is currently represented by `PollingWorkerTaskFlowIntegrationTest` and `TransportChannelWiringIntegrationTest`
+- WebSocket is still the mainline adapter for real push/callback gateway risks, but it is no longer the only accepted shell path
+
+Fixture note:
+
+- E2E tests may still use white-box fixtures for setup and fault injection
+- prefer SDK capability entrypoints such as `MassSdkApplication.addWorker(...)`, `addWorkerContext(...)`, `replaceDefaultRules(...)`, and `createTask(...)` for new setup code
+- direct `TaskManager` / `WorkerManager` / `RuleManager` writes should stay limited to cases that are intentionally testing engine-side invariants or fault injection
 
 ## 2. Mandatory Release-Gate Scenarios
 

@@ -1,6 +1,11 @@
 package com.xa.mass.mock.e2e.support;
 
+import com.xa.mass.base.enums.worker.WorkerContextStatus;
+import com.xa.mass.base.enums.worker.WorkerStatus;
+import com.xa.mass.base.model.Worker;
+import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.mock.client.MassWebSocketClient;
+import com.xa.mass.sdk.MassSdkApplication;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.boot.test.web.server.LocalServerPort;
@@ -31,6 +36,9 @@ public abstract class AbstractMockE2eTest {
 
     @Autowired
     protected TestRestTemplate restTemplate;
+
+    @Autowired(required = false)
+    protected MassSdkApplication app;
 
     protected static void registerWebSocketProperties(DynamicPropertyRegistry registry, int websocketPort) {
         registry.add("mass.websocket.port", () -> websocketPort);
@@ -253,6 +261,44 @@ public abstract class AbstractMockE2eTest {
         throw new AssertionError(
                 "Expected at least " + minExpected + " ONLINE worker(s) but found " + online
                 + " after waiting. Check bootstrap config JSON format and WebSocket client startup logs.");
+    }
+
+    protected void registerSdkWorkerWithContext(String workerId, String routingTag) {
+        registerSdkWorkerWithContext(workerId, routingTag, "demoApp");
+    }
+
+    protected void registerSdkWorkerWithContext(String workerId, String routingTag, String project) {
+        requireSdkApp().addWorker(createWorker(workerId, project));
+        requireSdkApp().addWorkerContext(createWorkerContext(workerId, routingTag));
+    }
+
+    protected void registerSdkStatelessWorker(String workerId, String project) {
+        requireSdkApp().addWorker(createWorker(workerId, project));
+    }
+
+    private Worker createWorker(String workerId, String project) {
+        Worker worker = new Worker();
+        worker.setWorkerId(workerId);
+        worker.setWorkerGroupId("us");
+        worker.setStatus(WorkerStatus.ONLINE);
+        worker.setSupportedProjects(List.of(project));
+        return worker;
+    }
+
+    private WorkerContext createWorkerContext(String workerId, String routingTag) {
+        WorkerContext workerContext = new WorkerContext();
+        workerContext.setWorkerContextId("worker-context-" + workerId);
+        workerContext.setWorkerId(workerId);
+        workerContext.setRoutingTags(java.util.Set.of(routingTag));
+        workerContext.setStatus(WorkerContextStatus.IDLE);
+        return workerContext;
+    }
+
+    private MassSdkApplication requireSdkApp() {
+        if (app == null) {
+            throw new IllegalStateException("MassSdkApplication is not available for this E2E fixture");
+        }
+        return app;
     }
 
     protected record TaskSnapshot(Map<String, Object> task, List<Map<String, Object>> messages) {

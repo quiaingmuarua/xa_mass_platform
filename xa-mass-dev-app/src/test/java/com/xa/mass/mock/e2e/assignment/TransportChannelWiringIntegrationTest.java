@@ -2,15 +2,12 @@ package com.xa.mass.mock.e2e.assignment;
 
 import com.xa.mass.base.enums.worker.WorkerContextStatus;
 import com.xa.mass.base.enums.worker.WorkerStatus;
-import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
-import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.mock.MockApplicationSpringBootApp;
 import com.xa.mass.mock.e2e.support.AbstractMockE2eTest;
 import com.xa.mass.sdk.MassSdkApplication;
-import com.xa.mass.starter.worker.PollingWorkerAdapter;
+import com.xa.mass.sdk.worker.PullWorkerSession;
 import com.xa.mass.transport.channel.TaskDispatchChannel;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
@@ -23,7 +20,6 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -65,23 +61,19 @@ class TransportChannelWiringIntegrationTest extends AbstractMockE2eTest {
     }
 
     @Autowired
-    private WorkerManager workerManager;
-
-    @Autowired
     private MassSdkApplication app;
 
     @Test
     void allThreeTransportChannelsAreInvokedForPollingWorker() throws Exception {
         List<String> channelCallOrder = new CopyOnWriteArrayList<>();
 
-        // Wrap the real polling adapter to observe channel calls.
         String workerId = "channel-wire-worker-001";
         registerPollingWorker(workerId);
+        PullWorkerSession session = app.pullWorker(workerId);
 
-        // Intercept WorkerSystemEventChannel via builder overridepoint.
-        // Since we can't swap the channel post-construction in this test context,
-        // we verify indirectly: after connect(), the worker must be ONLINE.
-        app.pollingWorker(workerId).connect();
+        // We verify system events indirectly: connect() marks the worker online through
+        // the runtime system-event channel.
+        session.connect();
         assertTrue(app.isWorkerOnline(workerId),
                 "WorkerSystemEventChannel.publishWorkerOnline must have been invoked");
         channelCallOrder.add("WorkerSystemEventChannel.publishWorkerOnline");
@@ -93,14 +85,14 @@ class TransportChannelWiringIntegrationTest extends AbstractMockE2eTest {
         // Poll confirms TaskDispatchChannel.dispatchTaskMessages was called.
         var items = List.<com.xa.mass.transport.model.TaskDispatchItem>of();
         for (int i = 0; i < 20 && items.isEmpty(); i++) {
-            items = app.pollingWorker(workerId).poll(10);
+            items = session.poll(10);
             if (items.isEmpty()) Thread.sleep(250L);
         }
         assertFalse(items.isEmpty(), "TaskDispatchChannel must have dispatched at least one message");
         channelCallOrder.add("TaskDispatchChannel.dispatchTaskMessages");
 
         // Submit result confirms TaskResultIngestChannel.ingestTaskResult was called.
-        boolean submitted = app.pollingWorker(workerId).submitResult(items.get(0), true, "ok", Map.of());
+        boolean submitted = session.submitResult(items.get(0), true, "ok", Map.of());
         assertTrue(submitted, "TaskResultIngestChannel.ingestTaskResult must accept the result");
         channelCallOrder.add("TaskResultIngestChannel.ingestTaskResult");
 
@@ -119,14 +111,14 @@ class TransportChannelWiringIntegrationTest extends AbstractMockE2eTest {
         worker.setWorkerGroupId("us");
         worker.setStatus(WorkerStatus.ONLINE);
         worker.setSupportedProjects(List.of("demoApp"));
-        worker.setOnlineStrategy(PollingWorkerAdapter.PROTOCOL);
-        workerManager.addWorker(worker);
+        worker.setOnlineStrategy("polling");
+        app.addWorker(worker);
 
         WorkerContext workerContext = new WorkerContext();
         workerContext.setWorkerContextId("ctx-" + workerId);
         workerContext.setWorkerId(workerId);
         workerContext.setRoutingTags(java.util.Set.of("us"));
         workerContext.setStatus(WorkerContextStatus.IDLE);
-        workerManager.addWorkerContext(workerContext);
+        app.addWorkerContext(workerContext);
     }
 }

@@ -1,6 +1,6 @@
 # Integration Test Guide
 
-Last updated: 2026-04-22
+Last updated: 2026-04-23
 
 This file is the active map of the integration-test layer in `xa-mass-dev-app`. It exists to answer four questions quickly:
 
@@ -55,7 +55,8 @@ Common runtime shape:
 - `@SpringBootTest(webEnvironment = RANDOM_PORT)`
 - real `MockApplicationSpringBootApp`
 - real HTTP paths through Spring test infrastructure
-- real WebSocket gateway when dispatch/callback behavior matters
+- real WebSocket gateway when push/callback behavior matters
+- real pull-style worker path through `MassSdkApplication.pullWorker(...)` when server push is not the behavior under test
 - isolated contexts via `@DirtiesContext`
 - dynamic WebSocket port injection via `@DynamicPropertySource`
 
@@ -77,6 +78,12 @@ Frequently used runtime switches:
 - `mock.client.auto-start=false`: tests control worker connect timing manually
 - `mock.client.task-result-status=FAILED`: mock workers send failed results
 - `mock.client.retry-attempts=1`: keeps retry noise low
+
+Fixture guidance:
+
+- startup/bootstrap data in `xa-mass-dev-app` is loaded through `MassRuntimeControl` / `MassSdkApplication`
+- prefer SDK capability methods such as `addWorker(...)`, `addWorkerContext(...)`, `replaceDefaultRules(...)`, and `createTask(...)` for new E2E setup code
+- keep direct `TaskManager`, `WorkerManager`, and `RuleManager` fixture access only for focused white-box assertions or fault injection
 
 Contract reminders:
 
@@ -130,6 +137,8 @@ Assignment and capacity:
 - `TaskApiTerminateReuseIntegrationTest`
 - `TaskApiWorkerContextAttributeRoutingIntegrationTest`
 - `TaskApiWorkerWithoutContextIntegrationTest`
+- `PollingWorkerTaskFlowIntegrationTest`
+- `TransportChannelWiringIntegrationTest`
 
 Results and callbacks:
 
