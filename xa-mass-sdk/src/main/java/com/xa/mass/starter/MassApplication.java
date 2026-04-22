@@ -9,10 +9,6 @@ import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
 import com.xa.mass.gateway.dispatcher.middleware.MiddlewareRegistry;
 import com.xa.mass.gateway.model.enums.MessageType;
 import com.xa.mass.gateway.queue.MessageCodec;
-import com.xa.mass.gateway.server.MassServerBuilder;
-import com.xa.mass.gateway.server.MassServerConfig;
-import com.xa.mass.gateway.server.MassServerStater;
-import com.xa.mass.gateway.session.ServerSessionManager;
 import com.xa.mass.starter.config.EngineConfig;
 import com.xa.mass.starter.config.GatewayConfig;
 import com.xa.mass.starter.worker.PollingWorkerAdapter;
@@ -26,6 +22,7 @@ import com.xa.mass.sdk.MassBootstrapDataProvider;
 import com.xa.mass.sdk.MassRuntimeControl;
 import com.xa.mass.sdk.worker.PollingWorkerSession;
 import com.xa.mass.sdk.model.MassTaskCreateRequest;
+import com.xa.mass.transport.TransportServer;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -43,7 +40,7 @@ public class MassApplication {
     private static final Logger logger = LoggerFactory.getLogger(MassApplication.class);
 
     private final int serverPort;
-    private final String webSocketPath;
+    private final String transportEndpointPath;
     private final GatewayConfig gatewayConfig;
     private final EngineConfig engineConfig;
     private final AtomicBoolean running = new AtomicBoolean(false);
@@ -51,14 +48,14 @@ public class MassApplication {
     private final MassEngine engine;
     private MassGateway massGateway;
     private DispatchRuntimeContext dispatcherContext;
-    private MassServerStater serverStater;
+    private TransportServer transportServer;
     private PollingWorkerAdapter pollingWorkerAdapter;
 
-    public MassApplication(MassEngine engine, int serverPort, String webSocketPath,
+    public MassApplication(MassEngine engine, int serverPort, String transportEndpointPath,
                            GatewayConfig gatewayConfig, EngineConfig engineConfig) {
         this.engine = engine;
         this.serverPort = serverPort;
-        this.webSocketPath = webSocketPath;
+        this.transportEndpointPath = transportEndpointPath;
         this.gatewayConfig = gatewayConfig;
         this.engineConfig = engineConfig;
     }
@@ -82,7 +79,11 @@ public class MassApplication {
             }
 
             startMessageDispatcher();
-            startTransportServer();
+            if (gatewayConfig.isTransportServerEnabled()) {
+                startTransportServer();
+            } else {
+                logger.info("Transport server is disabled, skipping start");
+            }
 
             LogUtils.clearMdc();
             logger.info("Mass Application started successfully");
@@ -112,8 +113,8 @@ public class MassApplication {
                 engine.stop();
             }
 
-            if (serverStater != null) {
-                serverStater.stop();
+            if (transportServer != null) {
+                transportServer.stop();
             }
 
             LogUtils.clearMdc();
@@ -128,7 +129,7 @@ public class MassApplication {
         logger.info("Initializing core components");
 
         try {
-            ServerSessionManager sessionManager = ServerSessionManager.INSTANCE;
+            WorkerEndpointRegistry endpointRegistry = gatewayConfig.resolveWorkerEndpointRegistry();
             logger.info("Worker endpoint registry initialized");
 
             MessageTransporter messageTransporter = gatewayConfig.createMessageTransporter();
@@ -137,16 +138,14 @@ public class MassApplication {
             MessageCodec messageCodec = gatewayConfig.createMessageCodec();
             logger.info("Message codec created");
 
-            dispatcherContext = new DispatcherContext(messageTransporter, sessionManager, messageCodec);
+            dispatcherContext = new DispatcherContext(messageTransporter, endpointRegistry, messageCodec);
             logger.info("Dispatcher context created");
 
             DispatcherContextRegistry.register(dispatcherContext);
             logger.info("Dispatcher context registered");
 
             com.xa.mass.transport.channel.WorkerSystemEventChannel systemEventChannel =
-                    gatewayConfig.getCustomSystemEventChannel() != null
-                            ? gatewayConfig.getCustomSystemEventChannel()
-                            : sessionManager.getSystemEventChannel();
+                    gatewayConfig.resolveSystemEventChannel(endpointRegistry);
 
             MessageHandlerRegistry messageHandlerRegistry =
                     new MessageHandlerRegistry(systemEventChannel);
@@ -238,17 +237,17 @@ public class MassApplication {
 
     private void startTransportServer() {
         logger.info("Starting transport server");
-
-        MassServerConfig serverConfig = MassServerBuilder.create()
-                .withPort(serverPort)
-                .withWebSocketPath(webSocketPath)
-                .withDispatcherContext(dispatcherContext)
-                .build();
-
-        serverStater = new MassServerStater(serverConfig);
-        serverStater.start();
-
-        logger.info("Transport server started on port {} (current adapter path={})", serverPort, webSocketPath);
+        transportServer = gatewayConfig.createTransportServer(dispatcherContext, serverPort);
+        if (transportServer == null) {
+            logger.info("No transport server configured for current runtime");
+            return;
+        }
+        try {
+            transportServer.start(serverPort);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to start transport server", e);
+        }
+        logger.info("Transport server started on port {} (current adapter path={})", serverPort, transportEndpointPath);
     }
 
     public DispatchRuntimeContext getDispatcherContext() {
@@ -256,7 +255,9 @@ public class MassApplication {
     }
 
     public boolean isRunning() {
-        return running.get() && serverStater != null && serverStater.isRunning();
+        return running.get()
+                && (!gatewayConfig.isTransportServerEnabled()
+                || (transportServer != null && transportServer.isRunning()));
     }
 
     public PollingWorkerSession openPollingWorkerSession(String workerId) {

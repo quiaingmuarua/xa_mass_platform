@@ -1,6 +1,8 @@
 package com.xa.mass.gateway.session;
 
+import com.xa.mass.transport.WorkerEndpointInspector;
 import com.xa.mass.transport.WorkerEndpointRegistry;
+import com.xa.mass.transport.WorkerEndpointSnapshot;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
@@ -8,12 +10,14 @@ import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-public class ServerSessionManager implements WorkerEndpointRegistry {
+public class ServerSessionManager implements WorkerEndpointRegistry, WorkerEndpointInspector {
 
     public static final ServerSessionManager INSTANCE = new ServerSessionManager();
 
@@ -191,5 +195,20 @@ public class ServerSessionManager implements WorkerEndpointRegistry {
 
     public void setSystemEventChannel(WorkerSystemEventChannel systemEventChannel) {
         this.systemEventChannel = systemEventChannel != null ? systemEventChannel : new EventBusWorkerSystemEventChannel();
+    }
+
+    @Override
+    public List<WorkerEndpointSnapshot> listWorkerEndpoints() {
+        List<WorkerEndpointSnapshot> snapshots = new ArrayList<>();
+        workerChannelMap.forEach((workerId, roleMap) -> roleMap.forEach((role, channel) -> snapshots.add(
+                new WorkerEndpointSnapshot(
+                        workerId,
+                        role,
+                        channel != null && channel.isActive(),
+                        channel != null ? channel.id().asShortText() : null,
+                        "websocket"
+                )
+        )));
+        return snapshots;
     }
 }

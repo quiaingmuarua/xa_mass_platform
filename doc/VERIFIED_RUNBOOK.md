@@ -46,9 +46,11 @@ Windows guidance:
 Default runtime facts:
 
 - `server.port=8088` serves the backend-hosted control console and JSON APIs.
-- `mass.websocket.port=18088` serves the current WebSocket transport endpoint.
+- `mass.websocket.port=18088` serves the current WebSocket transport adapter endpoint when the transport server is enabled.
 - Default local/dev startup auto-starts mock worker clients when `mock.client.auto-start=true`.
-- Mock clients connect to `ws://localhost:18088/ws`.
+- Mock WebSocket clients connect to `ws://localhost:18088/ws`.
+- Pull-style workers can also run without the WebSocket transport server through `MassSdkApplication.pollingWorker(...)`.
+- Worker routing may use neutral strategy hints like `realtime` and `polling`; the current WebSocket adapter still accepts `websocket/ws` as compatibility aliases.
 - `mock.client.task-result-status=FAILED` forces failed task result write-back for regression tests.
 
 ## 3. Boot Checks
@@ -63,7 +65,7 @@ curl -i http://127.0.0.1:8088/doc.html
 curl -i http://127.0.0.1:8088/actuator/health
 ```
 
-WebSocket port:
+Current WebSocket adapter port:
 
 ```bash
 nc -zv 127.0.0.1 18088
@@ -73,7 +75,7 @@ Expected result:
 
 - Backend-hosted control console routes return successfully.
 - Legacy `/status*` and `/config` console aliases redirect locally to the primary SPA routes.
-- Gateway port is open.
+- If the transport server is enabled, the current WebSocket adapter port is open.
 - Mock workers appear online when auto-start is enabled.
 
 ## 4. Minimal Task Smoke
@@ -129,7 +131,8 @@ Assignment and dispatch:
 
 Result write-back and closure:
 
-- Workers receive `TASK/step` and return `TASK/step` result frames.
+- Current WebSocket workers receive `TASK/step` and return `TASK/step` result frames.
+- Pull-style workers can fetch `TaskDispatchItem` work from the polling channel and submit the same logical result semantics without server push.
 - `GatewayTaskResultHandler` writes results through `TaskManager.handleTaskMessageResult(...)`.
 - callbacks must resolve a unique active `TaskMsgAttempt`; legacy attempt synthesis is not part of the current path.
 - retryable failure closes the attempt, resets the logical message to `INIT`, and does not publish logical-final semantics.

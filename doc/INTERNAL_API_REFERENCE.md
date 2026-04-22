@@ -696,6 +696,11 @@ Base path: `/api/session`
 - Path: `/api/session/list`
 - Status: `Implemented`
 
+Current meaning:
+
+- this endpoint returns transport endpoint snapshots, not a kernel-level worker truth source
+- current mainline data is backed by the WebSocket adapter, but the response shape is transport-neutral
+
 Response shape:
 
 ```json
@@ -708,7 +713,8 @@ Response shape:
         {
           "role": "task",
           "active": true,
-          "channelId": "abc123"
+          "endpointId": "abc123",
+          "transport": "websocket"
         }
       ]
     }
@@ -721,6 +727,11 @@ Response shape:
 - Method: `GET`
 - Path: `/api/session/stats`
 - Status: `Implemented`
+
+Current meaning:
+
+- `activeConnections` counts currently addressable transport endpoints
+- `workerCount` counts distinct workers represented in the endpoint snapshot set
 
 Response shape:
 

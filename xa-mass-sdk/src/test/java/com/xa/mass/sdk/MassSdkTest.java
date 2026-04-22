@@ -20,8 +20,11 @@ import com.xa.mass.sdk.model.MassTaskCreateRequest;
 import com.xa.mass.sdk.model.MassTaskRequest;
 import com.xa.mass.starter.MassApplication;
 import com.xa.mass.starter.MassEngine;
+import com.xa.mass.starter.transport.TransportServerFactoryContext;
 import com.xa.mass.starter.config.EngineConfig;
+import com.xa.mass.transport.TransportServer;
 import com.xa.mass.transport.model.TaskDispatchItem;
+import com.xa.mass.transport.TransportServerFactory;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.function.Executable;
@@ -30,6 +33,8 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -46,13 +51,66 @@ class MassSdkTest {
     @Test
     void builderCreatesConsumerFacingApplicationHandle() {
         MassSdkApplication app = MassSdk.builder()
-                .server(19090, "/sdk-ws")
-                .gateway(gateway -> gateway.enabled(false))
+                .transportServer(19090, "/sdk-transport")
+                .gateway(gateway -> gateway.enabled(false).transportServerEnabled(false))
                 .engine(engine -> engine.enabled(false))
                 .build();
 
         assertNotNull(app);
         assertFalse(app.isRunning());
+    }
+
+    @Test
+    void customTransportServerFactoryOverridesDefaultWebSocketAdapter() {
+        AtomicReference<TransportServerFactoryContext> capturedContext = new AtomicReference<>();
+        AtomicBoolean started = new AtomicBoolean(false);
+        AtomicBoolean stopped = new AtomicBoolean(false);
+        MessageQueue<Envelope> inputQueue = new InMemoryMessageQueue<>("transport-input", Envelope.class);
+        MessageQueue<Envelope> outputQueue = new InMemoryMessageQueue<>("transport-output", Envelope.class);
+
+        TransportServerFactory<TransportServerFactoryContext> factory = context -> {
+            capturedContext.set(context);
+            return new TransportServer() {
+                @Override
+                public void start(int port) {
+                    started.set(true);
+                }
+
+                @Override
+                public void stop() {
+                    stopped.set(true);
+                }
+
+                @Override
+                public boolean isRunning() {
+                    return started.get() && !stopped.get();
+                }
+            };
+        };
+
+        MassSdkApplication app = MassSdk.builder()
+                .transportServer(19092, "/custom-transport")
+                .gateway(gateway -> gateway
+                        .enabled(false)
+                        .transportServerEnabled(true)
+                        .inputQueue(inputQueue)
+                        .outputQueue(outputQueue)
+                        .transportServerFactory(factory))
+                .engine(engine -> engine.enabled(false))
+                .build();
+
+        try {
+            app.start();
+            assertTrue(app.isRunning());
+            assertNotNull(capturedContext.get());
+            Assertions.assertEquals(19092, capturedContext.get().getPort());
+            Assertions.assertEquals("/custom-transport", capturedContext.get().getEndpointPath());
+        } finally {
+            app.stop();
+        }
+
+        assertTrue(started.get());
+        assertTrue(stopped.get());
     }
 
     @Test
@@ -66,8 +124,8 @@ class MassSdkTest {
     @Test
     void engineDependentHelpersFailFastWhenEngineIsUnavailable() {
         MassSdkApplication app = MassSdk.builder()
-                .server(19091, "/sdk-ws")
-                .gateway(gateway -> gateway.enabled(false))
+                .transportServer(19091, "/sdk-transport")
+                .gateway(gateway -> gateway.enabled(false).transportServerEnabled(false))
                 .engine(engine -> engine.enabled(false))
                 .build();
 
@@ -243,8 +301,8 @@ class MassSdkTest {
         MessageQueue<Envelope> inputQueue = new InMemoryMessageQueue<>("Envelope", Envelope.class);
         MessageQueue<Envelope> outputQueue = new InMemoryMessageQueue<>("Envelope", Envelope.class);
         MassSdkApplication app = MassSdk.builder()
-                .server(0, "/sdk-ws")
-                .gateway(gateway -> gateway.enabled(false).inputQueue(inputQueue).outputQueue(outputQueue))
+                .transportServer(0, "/sdk-transport")
+                .gateway(gateway -> gateway.enabled(false).transportServerEnabled(false).inputQueue(inputQueue).outputQueue(outputQueue))
                 .engine(engine -> engine.enabled(true).workerThreads(2))
                 .build();
 

@@ -97,7 +97,6 @@ public class MassGateway {
 
     private void initializeConnectionManagement() {
         logger.info("Initializing connection management...");
-        // ServerSessionManager.INSTANCE is a self-initializing singleton; no explicit setup needed.
         logger.info("Connection management ready (max={} connections)", config.getMaxConnections());
     }
 

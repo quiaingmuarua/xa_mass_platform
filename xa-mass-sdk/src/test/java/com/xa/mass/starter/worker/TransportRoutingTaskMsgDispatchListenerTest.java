@@ -5,10 +5,12 @@ import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.worker.WorkerAdapter;
+import com.xa.mass.transport.WorkerTransportHints;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
@@ -20,12 +22,12 @@ class TransportRoutingTaskMsgDispatchListenerTest {
 
         Worker webSocketWorker = new Worker();
         webSocketWorker.setWorkerId("ws-worker");
-        webSocketWorker.setOnlineStrategy("websocket");
+        webSocketWorker.setOnlineStrategy(WorkerTransportHints.REALTIME);
         workerManager.addWorker(webSocketWorker);
 
         Worker pollingWorker = new Worker();
         pollingWorker.setWorkerId("poll-worker");
-        pollingWorker.setOnlineStrategy("polling");
+        pollingWorker.setOnlineStrategy("pull");
         workerManager.addWorker(pollingWorker);
 
         RecordingAdapter webSocketAdapter = new RecordingAdapter(WebSocketWorkerAdapter.PROTOCOL);
@@ -66,6 +68,17 @@ class TransportRoutingTaskMsgDispatchListenerTest {
         @Override
         public String protocol() {
             return protocol;
+        }
+
+        @Override
+        public Set<String> aliases() {
+            if ("websocket".equals(protocol)) {
+                return Set.of("ws", WorkerTransportHints.REALTIME, "push");
+            }
+            if ("polling".equals(protocol)) {
+                return Set.of("pull", "queue", WorkerTransportHints.POLLING);
+            }
+            return Set.of();
         }
 
         @Override

@@ -57,7 +57,9 @@ The transport-neutral runtime model is now framed around three channels:
 - `xa-mass-transport-api` is the transport-neutral seam for task dispatch, result ingest, system events, transport servers, and worker endpoint registries
 - historical reactor/module experiments such as `xa-mass-base`, `xa-mass-starter`, and engine archive generations are no longer present in the current repository snapshot
 - Verified HTTP port: `server.port=8088`
-- Verified WebSocket gateway port: `mass.websocket.port=18088`
+- Verified current WebSocket adapter port: `mass.websocket.port=18088`
+- Pull-style workers are also part of the runtime surface through `MassSdkApplication.pollingWorker(...)`
+- Worker transport selection should prefer neutral hints such as `realtime` and `polling`; concrete adapter names remain compatibility aliases.
 - Verified task lifecycle coverage includes:
   - `NEW -> READY -> RUNNING -> TERMINAL`
   - `NEW -> READY -> PAUSED -> READY`
@@ -85,7 +87,7 @@ Primary endpoints:
 - `http://localhost:8088/resources/workers`
 - `http://localhost:8088/doc.html`
 - `http://localhost:8088/actuator/health`
-- `ws://localhost:18088/ws`
+- `ws://localhost:18088/ws` for the current WebSocket adapter path
 
 ## Module Map
 

@@ -2,6 +2,8 @@ package com.xa.mass.engine.worker;
 
 import com.xa.mass.engine.listener.TaskMsgDispatchListener;
 
+import java.util.Set;
+
 /**
  * Extension seam for worker transport adapters (WebSocket, HTTP, gRPC, etc.).
  *
@@ -19,4 +21,15 @@ public interface WorkerAdapter extends TaskMsgDispatchListener {
      * Examples: {@code "websocket"}, {@code "http"}, {@code "grpc"}.
      */
     String protocol();
+
+    /**
+     * Returns additional strategy aliases that should resolve to this adapter.
+     *
+     * <p>Aliases should describe transport capability or delivery style, for
+     * example {@code "realtime"}, {@code "ws"}, {@code "pull"}, or
+     * {@code "queue"}.
+     */
+    default Set<String> aliases() {
+        return Set.of();
+    }
 }

@@ -9,6 +9,7 @@ import com.xa.mass.transport.channel.TaskPullChannel;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
 import com.xa.mass.transport.model.TaskDispatchItem;
+import com.xa.mass.transport.WorkerTransportHints;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -19,6 +20,7 @@ import java.util.Deque;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
@@ -47,6 +49,11 @@ public class PollingWorkerAdapter implements WorkerAdapter, TaskDispatchChannel,
     @Override
     public String protocol() {
         return PROTOCOL;
+    }
+
+    @Override
+    public Set<String> aliases() {
+        return Set.of("pull", "queue", WorkerTransportHints.POLLING);
     }
 
     @Override

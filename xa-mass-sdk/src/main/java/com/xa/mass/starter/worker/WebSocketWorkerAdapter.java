@@ -18,7 +18,8 @@ import com.xa.mass.gateway.model.massMessage.MessageAckPayload;
 import com.xa.mass.gateway.model.massMessage.TaskStep;
 import com.xa.mass.gateway.model.payload.TaskPayload;
 import com.xa.mass.gateway.queue.Envelope;
-import com.xa.mass.gateway.session.SessionRoles;
+import com.xa.mass.transport.WorkerEndpointRoles;
+import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.channel.TaskDispatchChannel;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
 import org.slf4j.Logger;
@@ -27,6 +28,7 @@ import org.slf4j.LoggerFactory;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * WebSocket-backed worker adapter.
@@ -41,7 +43,7 @@ import java.util.Map;
 public class WebSocketWorkerAdapter implements WorkerAdapter, MassMessageHandler, TaskDispatchChannel, TaskResultIngestChannel {
 
     public static final String PROTOCOL = "websocket";
-    public static final String DEFAULT_CONN_ROLE = SessionRoles.TASK_MESSAGES;
+    public static final String DEFAULT_CONN_ROLE = WorkerEndpointRoles.TASK_DISPATCH;
 
     private static final Logger logger = LoggerFactory.getLogger(WebSocketWorkerAdapter.class);
 
@@ -57,6 +59,11 @@ public class WebSocketWorkerAdapter implements WorkerAdapter, MassMessageHandler
     @Override
     public String protocol() {
         return PROTOCOL;
+    }
+
+    @Override
+    public Set<String> aliases() {
+        return Set.of("ws", WorkerTransportHints.REALTIME, "push");
     }
 
     // Dispatch side.

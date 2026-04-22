@@ -13,6 +13,9 @@ import com.xa.mass.starter.MassApplication;
 import com.xa.mass.starter.MassEngine;
 import com.xa.mass.starter.config.EngineConfig;
 import com.xa.mass.starter.config.GatewayConfig;
+import com.xa.mass.starter.transport.TransportServerFactoryContext;
+import com.xa.mass.starter.transport.WebSocketTransportServerFactory;
+import com.xa.mass.transport.TransportServerFactory;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -27,11 +30,11 @@ public class MassApplicationBuilder {
     private static final Logger logger = LoggerFactory.getLogger(MassApplicationBuilder.class);
 
     private int serverPort = 8080;
-    private String webSocketPath = "/ws";
     private GatewayConfig gatewayConfig = new GatewayConfig();
     private EngineConfig engineConfig = new EngineConfig();
 
     private MassApplicationBuilder() {
+        this.gatewayConfig.setTransportServerFactory(new WebSocketTransportServerFactory());
     }
 
     public static MassApplicationBuilder create() {
@@ -137,12 +140,25 @@ public class MassApplicationBuilder {
     }
 
     public MassApplicationBuilder server(int port) {
-        return server(port, "/ws");
+        return transportServer(port, "/ws");
     }
 
-    public MassApplicationBuilder server(int port, String webSocketPath) {
+    /**
+     * @deprecated Prefer {@link #transportServer(int, String)} so callers do not
+     * encode WebSocket vocabulary into stable SDK/server boot code.
+     */
+    @Deprecated(forRemoval = false)
+    public MassApplicationBuilder server(int port, String transportEndpointPath) {
+        return transportServer(port, transportEndpointPath);
+    }
+
+    public MassApplicationBuilder transportServer(int port) {
+        return transportServer(port, "/ws");
+    }
+
+    public MassApplicationBuilder transportServer(int port, String transportEndpointPath) {
         this.serverPort = port;
-        this.webSocketPath = webSocketPath;
+        this.gatewayConfig.setTransportEndpointPath(transportEndpointPath);
         return this;
     }
 
@@ -174,7 +190,13 @@ public class MassApplicationBuilder {
             logger.info("MassEngine is disabled, skipping build");
         }
 
-        return new MassApplication(engine, serverPort, webSocketPath, gatewaySnapshot, engineSnapshot);
+        return new MassApplication(
+                engine,
+                serverPort,
+                gatewaySnapshot.getTransportEndpointPath(),
+                gatewaySnapshot,
+                engineSnapshot
+        );
     }
 
     public static class GatewayBuilder {
@@ -186,6 +208,22 @@ public class MassApplicationBuilder {
 
         public GatewayBuilder enabled(boolean enabled) {
             config.setEnabled(enabled);
+            return this;
+        }
+
+        public GatewayBuilder transportServerEnabled(boolean enabled) {
+            config.setTransportServerEnabled(enabled);
+            return this;
+        }
+
+        public GatewayBuilder transportEndpointPath(String transportEndpointPath) {
+            config.setTransportEndpointPath(transportEndpointPath);
+            return this;
+        }
+
+        public GatewayBuilder transportServerFactory(
+                TransportServerFactory<TransportServerFactoryContext> transportServerFactory) {
+            config.setTransportServerFactory(transportServerFactory);
             return this;
         }
 
@@ -218,9 +256,8 @@ public class MassApplicationBuilder {
         }
 
         /**
-         * Overrides the default {@link WorkerSystemEventChannel} obtained from
-         * {@code ServerSessionManager}. Useful for custom transport adapters or
-         * testing with a mock channel.
+         * Overrides the default worker system-event channel. Useful for custom
+         * transport adapters or testing with a mock channel.
          */
         public GatewayBuilder systemEventChannel(WorkerSystemEventChannel channel) {
             config.setCustomSystemEventChannel(channel);

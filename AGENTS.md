@@ -48,6 +48,7 @@ Trust order:
 - Do not shrink the product definition back into a phone/group-control system.
 - `Worker`, `WorkerContext`, and WebSocket are current adapter names, not final universal platform boundaries.
 - Do not define a worker as "a WebSocket client"; define it as an executor that can receive tasks, return results, and emit system events through some transport.
+- Prefer transport-neutral worker hints such as `realtime` and `polling` in `Worker.onlineStrategy`; concrete protocol names like `websocket` are adapter-specific compatibility values.
 - `WorkerContext` is optional; stateless workers are part of the verified mainline.
 - UI, mock data, and demo APIs must not redefine kernel semantics.
 - Third-party embedding should enter through `MassSdk` and `MassSdkApplication`; `unwrap()` and direct engine/manager access are deprecated escape hatches.
@@ -60,6 +61,7 @@ Trust order:
 - `Worker.status` is the online truth; lock truth lives in `WorkerStorage` / `WorkerManager.isLocked(...)`.
 - Current concurrency model is conservative: one `Worker` is one active execution lane.
 - Keep transport-specific shapes behind `xa-mass-transport-api`; WebSocket payloads must not become kernel truth.
+- Treat the embedded transport server as an adapter selected by runtime composition; do not hardcode WebSocket server construction into new kernel paths.
 - Manual worker debug chat is a side-channel and must not mutate task lifecycle state.
 - Policy layers must not silently change another layer's source of truth; use [doc/engine/POLICY_INTERACTION_BASELINE.md](doc/engine/POLICY_INTERACTION_BASELINE.md) before adding matching, retry, release, refill, intake, or terminal-policy behavior.
 
@@ -122,6 +124,7 @@ Verified endpoints:
 - `http://localhost:8088/doc.html`
 - `http://localhost:8088/actuator/health`
 - `ws://localhost:18088/ws`
+- Pull-style workers can run without any transport server through `MassSdkApplication.pollingWorker(...)`.
 
 Control-console routing note:
 

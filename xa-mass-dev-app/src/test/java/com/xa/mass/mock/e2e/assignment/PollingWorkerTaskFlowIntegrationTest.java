@@ -67,41 +67,44 @@ class PollingWorkerTaskFlowIntegrationTest extends AbstractMockE2eTest {
 
         PollingWorkerSession session = app.pollingWorker(workerId);
         session.connect();
+        try {
+            String taskId = createTaskId("polling-e2e-task", "poll integration", "target-poll-001");
 
-        String taskId = createTaskId("polling-e2e-task", "poll integration", "target-poll-001");
+            Map<String, Object> auditResponse = exchange(
+                    "/status/api/tasks/" + taskId + "/audit?approved=true&comment=polling-e2e",
+                    HttpMethod.POST,
+                    null
+            );
+            assertApiOk(auditResponse);
 
-        Map<String, Object> auditResponse = exchange(
-                "/status/api/tasks/" + taskId + "/audit?approved=true&comment=polling-e2e",
-                HttpMethod.POST,
-                null
-        );
-        assertApiOk(auditResponse);
-
-        // Poll until at least one message appears.
-        List<TaskDispatchItem> items = List.of();
-        for (int attempt = 0; attempt < 20 && items.isEmpty(); attempt++) {
-            items = session.poll(10);
-            if (items.isEmpty()) {
-                Thread.sleep(250L);
+            // Poll until at least one message appears.
+            List<TaskDispatchItem> items = List.of();
+            for (int attempt = 0; attempt < 20 && items.isEmpty(); attempt++) {
+                items = session.poll(10);
+                if (items.isEmpty()) {
+                    Thread.sleep(250L);
+                }
             }
+            assertFalse(items.isEmpty(), "Expected at least one dispatched item via polling");
+
+            TaskDispatchItem item = items.get(0);
+            assertEquals(taskId, item.getTaskId());
+            assertNotNull(item.getMsgId());
+            assertEquals(workerId, item.getWorkerId());
+
+            boolean submitted = session.submitResult(item, true, "poll-success",
+                    Map.of("pollResult", "ok"));
+            assertTrue(submitted, "Result submission must succeed");
+
+            TaskSnapshot terminal = waitForTerminalTask(taskId);
+            assertEquals("TERMINAL", terminal.task().get("status"));
+            assertEquals("ALL_MESSAGES_SUCCEEDED", terminal.task().get("terminalReason"));
+            assertEquals(1, terminal.messages().size());
+            assertEquals("SUCCESS", terminal.messages().get(0).get("status"));
+            assertEquals(workerId, terminal.messages().get(0).get("latestAttemptWorkerId"));
+        } finally {
+            session.disconnect();
         }
-        assertFalse(items.isEmpty(), "Expected at least one dispatched item via polling");
-
-        TaskDispatchItem item = items.get(0);
-        assertEquals(taskId, item.getTaskId());
-        assertNotNull(item.getMsgId());
-        assertEquals(workerId, item.getWorkerId());
-
-        boolean submitted = session.submitResult(item, true, "poll-success",
-                Map.of("pollResult", "ok"));
-        assertTrue(submitted, "Result submission must succeed");
-
-        TaskSnapshot terminal = waitForTerminalTask(taskId);
-        assertEquals("TERMINAL", terminal.task().get("status"));
-        assertEquals("ALL_MESSAGES_SUCCEEDED", terminal.task().get("terminalReason"));
-        assertEquals(1, terminal.messages().size());
-        assertEquals("SUCCESS", terminal.messages().get(0).get("status"));
-        assertEquals(workerId, terminal.messages().get(0).get("latestAttemptWorkerId"));
     }
 
     @Test
@@ -111,27 +114,30 @@ class PollingWorkerTaskFlowIntegrationTest extends AbstractMockE2eTest {
 
         PollingWorkerSession session = app.pollingWorker(workerId);
         session.connect();
+        try {
+            String taskId = createTaskId("polling-drain-task", "drain test", "target-drain-001");
+            exchange("/status/api/tasks/" + taskId + "/audit?approved=true&comment=drain", HttpMethod.POST, null);
 
-        String taskId = createTaskId("polling-drain-task", "drain test", "target-drain-001");
-        exchange("/status/api/tasks/" + taskId + "/audit?approved=true&comment=drain", HttpMethod.POST, null);
-
-        // Drain until we receive the message.
-        List<TaskDispatchItem> items = List.of();
-        for (int attempt = 0; attempt < 20 && items.isEmpty(); attempt++) {
-            items = session.poll(10);
-            if (items.isEmpty()) {
-                Thread.sleep(250L);
+            // Drain until we receive the message.
+            List<TaskDispatchItem> items = List.of();
+            for (int attempt = 0; attempt < 20 && items.isEmpty(); attempt++) {
+                items = session.poll(10);
+                if (items.isEmpty()) {
+                    Thread.sleep(250L);
+                }
             }
+            assertFalse(items.isEmpty(), "Expected a dispatched item");
+
+            // After draining, subsequent poll must return empty (inbox cleaned up).
+            List<TaskDispatchItem> afterDrain = session.poll(10);
+            assertTrue(afterDrain.isEmpty(), "Inbox should be empty after draining all items");
+
+            // Submit result to let task complete cleanly.
+            session.submitResult(items.get(0), true, "drain-ok", Map.of());
+            waitForTerminalTask(taskId);
+        } finally {
+            session.disconnect();
         }
-        assertFalse(items.isEmpty(), "Expected a dispatched item");
-
-        // After draining, subsequent poll must return empty (inbox cleaned up).
-        List<TaskDispatchItem> afterDrain = session.poll(10);
-        assertTrue(afterDrain.isEmpty(), "Inbox should be empty after draining all items");
-
-        // Submit result to let task complete cleanly.
-        session.submitResult(items.get(0), true, "drain-ok", Map.of());
-        waitForTerminalTask(taskId);
     }
 
     private void registerPollingWorker(String workerId) {

@@ -3,10 +3,17 @@ package com.xa.mass.starter.config;
 import com.xa.mass.base.channel.messaging.api.MessageQueue;
 import com.xa.mass.base.channel.tranporter.MessageTransporter;
 import com.xa.mass.base.channel.tranporter.MessageTransporterFactory;
+import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
 import com.xa.mass.gateway.queue.Envelope;
 import com.xa.mass.gateway.queue.EnvelopeMessageTransporter;
 import com.xa.mass.gateway.queue.MessageCodec;
 import com.xa.mass.gateway.queue.MessageCodecFactory;
+import com.xa.mass.gateway.session.EventBusWorkerSystemEventChannel;
+import com.xa.mass.gateway.session.ServerSessionManager;
+import com.xa.mass.starter.transport.TransportServerFactoryContext;
+import com.xa.mass.transport.TransportServer;
+import com.xa.mass.transport.TransportServerFactory;
+import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
 
 /**
@@ -14,7 +21,9 @@ import com.xa.mass.transport.channel.WorkerSystemEventChannel;
  */
 public class GatewayConfig {
     private boolean enabled = true;
+    private boolean transportServerEnabled = true;
     private int maxConnections = 1000;
+    private String transportEndpointPath = "/ws";
 
     // Transport configuration.
     private MessageTransporterFactory.TransporterType transporterType =
@@ -33,13 +42,17 @@ public class GatewayConfig {
 
     // Optional custom WorkerSystemEventChannel; null means use the default from ServerSessionManager.
     private WorkerSystemEventChannel customSystemEventChannel;
+    private WorkerEndpointRegistry workerEndpointRegistry;
+    private TransportServerFactory<TransportServerFactoryContext> transportServerFactory;
 
     public GatewayConfig() {
     }
 
     public GatewayConfig(GatewayConfig source) {
         this.enabled = source.enabled;
+        this.transportServerEnabled = source.transportServerEnabled;
         this.maxConnections = source.maxConnections;
+        this.transportEndpointPath = source.transportEndpointPath;
         this.transporterType = source.transporterType;
         this.inputQueue = source.inputQueue;
         this.outputQueue = source.outputQueue;
@@ -49,6 +62,8 @@ public class GatewayConfig {
         this.codecType = source.codecType;
         this.messageCodec = source.messageCodec;
         this.customSystemEventChannel = source.customSystemEventChannel;
+        this.workerEndpointRegistry = source.workerEndpointRegistry;
+        this.transportServerFactory = source.transportServerFactory;
     }
 
     public boolean isEnabled() {
@@ -59,12 +74,28 @@ public class GatewayConfig {
         this.enabled = enabled;
     }
 
+    public boolean isTransportServerEnabled() {
+        return transportServerEnabled;
+    }
+
+    public void setTransportServerEnabled(boolean transportServerEnabled) {
+        this.transportServerEnabled = transportServerEnabled;
+    }
+
     public int getMaxConnections() {
         return maxConnections;
     }
 
     public void setMaxConnections(int maxConnections) {
         this.maxConnections = maxConnections;
+    }
+
+    public String getTransportEndpointPath() {
+        return transportEndpointPath;
+    }
+
+    public void setTransportEndpointPath(String transportEndpointPath) {
+        this.transportEndpointPath = transportEndpointPath;
     }
 
     /**
@@ -195,5 +226,50 @@ public class GatewayConfig {
 
     public void setCustomSystemEventChannel(WorkerSystemEventChannel customSystemEventChannel) {
         this.customSystemEventChannel = customSystemEventChannel;
+    }
+
+    public WorkerEndpointRegistry getWorkerEndpointRegistry() {
+        return workerEndpointRegistry;
+    }
+
+    public void setWorkerEndpointRegistry(WorkerEndpointRegistry workerEndpointRegistry) {
+        this.workerEndpointRegistry = workerEndpointRegistry;
+    }
+
+    public TransportServerFactory<TransportServerFactoryContext> getTransportServerFactory() {
+        return transportServerFactory;
+    }
+
+    public void setTransportServerFactory(TransportServerFactory<TransportServerFactoryContext> transportServerFactory) {
+        this.transportServerFactory = transportServerFactory;
+    }
+
+    public WorkerEndpointRegistry resolveWorkerEndpointRegistry() {
+        return workerEndpointRegistry != null ? workerEndpointRegistry : ServerSessionManager.INSTANCE;
+    }
+
+    public WorkerSystemEventChannel resolveSystemEventChannel(WorkerEndpointRegistry endpointRegistry) {
+        if (customSystemEventChannel != null) {
+            return customSystemEventChannel;
+        }
+        if (endpointRegistry instanceof ServerSessionManager sessionManager) {
+            return sessionManager.getSystemEventChannel();
+        }
+        return new EventBusWorkerSystemEventChannel();
+    }
+
+    public TransportServer createTransportServer(DispatchRuntimeContext dispatcherContext, int port) {
+        if (!transportServerEnabled) {
+            return null;
+        }
+        if (transportServerFactory == null) {
+            return null;
+        }
+        return transportServerFactory.create(new TransportServerFactoryContext(
+                dispatcherContext,
+                resolveWorkerEndpointRegistry(),
+                port,
+                transportEndpointPath
+        ));
     }
 }

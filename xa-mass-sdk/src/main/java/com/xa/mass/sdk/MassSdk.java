@@ -8,6 +8,8 @@ import com.xa.mass.engine.strategy.TaskScheduler;
 import com.xa.mass.gateway.queue.Envelope;
 import com.xa.mass.starter.builder.MassApplicationBuilder;
 import com.xa.mass.starter.builder.MassApplicationBuilder.GatewayBuilder;
+import com.xa.mass.starter.transport.TransportServerFactoryContext;
+import com.xa.mass.transport.TransportServerFactory;
 
 import java.util.Map;
 import java.util.Objects;
@@ -97,8 +99,23 @@ public final class MassSdk {
             return this;
         }
 
-        public Builder server(int port, String webSocketPath) {
-            delegate.server(port, webSocketPath);
+        /**
+         * @deprecated Prefer {@link #transportServer(int, String)} so callers do not
+         * expose WebSocket-only wording in stable SDK code.
+         */
+        @Deprecated(forRemoval = false)
+        public Builder server(int port, String transportEndpointPath) {
+            delegate.server(port, transportEndpointPath);
+            return this;
+        }
+
+        public Builder transportServer(int port) {
+            delegate.transportServer(port);
+            return this;
+        }
+
+        public Builder transportServer(int port, String transportEndpointPath) {
+            delegate.transportServer(port, transportEndpointPath);
             return this;
         }
 
@@ -137,6 +154,26 @@ public final class MassSdk {
 
         public GatewayOptions enabled(boolean enabled) {
             delegate.enabled(enabled);
+            return this;
+        }
+
+        public GatewayOptions transportServerEnabled(boolean enabled) {
+            delegate.transportServerEnabled(enabled);
+            return this;
+        }
+
+        public GatewayOptions transportEndpointPath(String transportEndpointPath) {
+            delegate.transportEndpointPath(transportEndpointPath);
+            return this;
+        }
+
+        /**
+         * Advanced embedding seam for replacing the default inbound transport
+         * server adapter.
+         */
+        public GatewayOptions transportServerFactory(
+                TransportServerFactory<TransportServerFactoryContext> transportServerFactory) {
+            delegate.transportServerFactory(transportServerFactory);
             return this;
         }
 

@@ -20,8 +20,8 @@ import com.xa.mass.gateway.model.massMessage.MassMessage;
 import com.xa.mass.gateway.model.massMessage.MessageContext;
 import com.xa.mass.gateway.queue.Envelope;
 import com.xa.mass.gateway.queue.MessageCodec;
-import com.xa.mass.gateway.session.SessionRoles;
 import com.xa.mass.transport.WorkerEndpointRegistry;
+import com.xa.mass.transport.WorkerEndpointRoles;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
@@ -81,8 +81,8 @@ public class WorkerDebugController {
         }
 
         WorkerEndpointRegistry sessionManager = sessionContext.getSessionManager();
-        if (!sessionManager.isWorkerOnline(workerId, SessionRoles.TASK_MESSAGES)) {
-            return conflict("Target worker is offline or task_messages session is unavailable");
+        if (!sessionManager.isWorkerOnline(workerId, WorkerEndpointRoles.TASK_DISPATCH)) {
+            return conflict("Target worker is offline or task dispatch endpoint is unavailable");
         }
 
         String project;
@@ -122,7 +122,7 @@ public class WorkerDebugController {
         String rawJson = encodeMessage(message);
         Envelope envelope = Envelope.builder()
                 .workerId(workerId)
-                .connRole(SessionRoles.TASK_MESSAGES)
+                .connRole(WorkerEndpointRoles.TASK_DISPATCH)
                 .project(project)
                 .traceId(msgId)
                 .receivedAt(System.currentTimeMillis())
@@ -162,7 +162,7 @@ public class WorkerDebugController {
     private MessageContext buildMessageContext(String workerId) {
         MessageContext context = new MessageContext();
         context.setWorkerId(workerId);
-        context.setConnRole(SessionRoles.TASK_MESSAGES);
+        context.setConnRole(WorkerEndpointRoles.TASK_DISPATCH);
         return context;
     }
 

@@ -1,8 +1,8 @@
 package com.xa.mass.starter;
 
-import com.xa.mass.gateway.server.MassServerStater;
 import com.xa.mass.starter.config.EngineConfig;
 import com.xa.mass.starter.config.GatewayConfig;
+import com.xa.mass.transport.TransportServer;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -12,13 +12,12 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.Mockito.*;
 
 /**
- * Verifies shutdown order: Gateway → Engine → Netty (serverStater).
- * Pre-fix the order was: Netty → Engine → Gateway.
+ * Verifies shutdown order: Gateway → Engine → transport server.
  */
 class MassApplicationStopOrderTest {
 
     @Test
-    void gatewayStopsBeforeNetty() {
+    void gatewayStopsBeforeTransportServer() throws Exception {
         List<String> order = new ArrayList<>();
 
         MassGateway gateway = spy(new MassGateway(enabledGateway(), null) {
@@ -26,23 +25,23 @@ class MassApplicationStopOrderTest {
             @Override public boolean isRunning() { return false; }
         });
 
-        MassServerStater serverStater = mock(MassServerStater.class);
-        doAnswer(inv -> { order.add("netty"); return null; }).when(serverStater).stop();
-        when(serverStater.isRunning()).thenReturn(false);
+        TransportServer transportServer = mock(TransportServer.class);
+        doAnswer(inv -> { order.add("transport"); return null; }).when(transportServer).stop();
+        when(transportServer.isRunning()).thenReturn(false);
 
         MassApplication app = new MassApplication(null, 0, "/", enabledGateway(), disabledEngine());
         inject(app, "massGateway", gateway);
-        inject(app, "serverStater", serverStater);
+        inject(app, "transportServer", transportServer);
         setApplicationRunning(app, true);
 
         app.stop();
 
-        assertEquals(List.of("gateway", "netty"), order,
-                "Gateway must stop before Netty to let the dispatcher drain in-flight messages");
+        assertEquals(List.of("gateway", "transport"), order,
+                "Gateway must stop before the transport server to let the dispatcher drain in-flight messages");
     }
 
     @Test
-    void engineStopsBetweenGatewayAndNetty() {
+    void engineStopsBetweenGatewayAndTransportServer() throws Exception {
         List<String> order = new ArrayList<>();
 
         MassGateway gateway = new MassGateway(enabledGateway(), null) {
@@ -55,33 +54,33 @@ class MassApplicationStopOrderTest {
         };
         inject(engine, "running", true);
 
-        MassServerStater serverStater = mock(MassServerStater.class);
-        doAnswer(inv -> { order.add("netty"); return null; }).when(serverStater).stop();
+        TransportServer transportServer = mock(TransportServer.class);
+        doAnswer(inv -> { order.add("transport"); return null; }).when(transportServer).stop();
 
         MassApplication app = new MassApplication(engine, 0, "/", enabledGateway(), enabledEngine());
         inject(app, "massGateway", gateway);
-        inject(app, "serverStater", serverStater);
+        inject(app, "transportServer", transportServer);
         setApplicationRunning(app, true);
 
         app.stop();
 
-        assertEquals(List.of("gateway", "engine", "netty"), order,
-                "Stop order must be: gateway → engine → netty");
+        assertEquals(List.of("gateway", "engine", "transport"), order,
+                "Stop order must be: gateway → engine → transport server");
     }
 
     @Test
-    void stopIsIdempotentWhenTriggeredTwice() {
+    void stopIsIdempotentWhenTriggeredTwice() throws Exception {
         MassGateway gateway = spy(new MassGateway(enabledGateway(), null) {
             @Override public boolean isRunning() { return false; }
         });
         MassEngine engine = spy(new MassEngine(enabledEngine()) {
             @Override public boolean isRunning() { return true; }
         });
-        MassServerStater serverStater = mock(MassServerStater.class);
+        TransportServer transportServer = mock(TransportServer.class);
 
         MassApplication app = new MassApplication(engine, 0, "/", enabledGateway(), enabledEngine());
         inject(app, "massGateway", gateway);
-        inject(app, "serverStater", serverStater);
+        inject(app, "transportServer", transportServer);
         setApplicationRunning(app, true);
 
         app.stop();
@@ -89,7 +88,7 @@ class MassApplicationStopOrderTest {
 
         verify(gateway, times(1)).stop();
         verify(engine, times(1)).stop();
-        verify(serverStater, times(1)).stop();
+        verify(transportServer, times(1)).stop();
     }
 
     // ---- helpers ----

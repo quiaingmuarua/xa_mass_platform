@@ -6,13 +6,13 @@ import com.xa.mass.base.model.Worker;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.listener.TaskMsgDispatchListener;
 import com.xa.mass.engine.worker.WorkerAdapter;
+import com.xa.mass.transport.WorkerTransportHints;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 
@@ -41,7 +41,10 @@ public class TransportRoutingTaskMsgDispatchListener implements TaskMsgDispatchL
             if (adapter == null) {
                 continue;
             }
-            adaptersByProtocol.put(normalizeProtocol(adapter.protocol()), adapter);
+            registerAdapter(adapter.protocol(), adapter);
+            for (String alias : adapter.aliases()) {
+                registerAdapter(alias, adapter);
+            }
         }
         if (adaptersByProtocol.isEmpty()) {
             throw new IllegalArgumentException("At least one non-null worker adapter is required");
@@ -68,6 +71,14 @@ public class TransportRoutingTaskMsgDispatchListener implements TaskMsgDispatchL
         }
     }
 
+    private void registerAdapter(String protocol, WorkerAdapter adapter) {
+        String normalized = normalizeProtocol(protocol);
+        if (normalized == null) {
+            return;
+        }
+        adaptersByProtocol.put(normalized, adapter);
+    }
+
     private WorkerAdapter resolveAdapter(TaskMsg taskMsg) {
         String workerId = taskMsg != null ? taskMsg.getLatestAttemptWorkerId() : null;
         Worker worker = workerId != null ? workerManager.getWorker(workerId) : null;
@@ -90,14 +101,6 @@ public class TransportRoutingTaskMsgDispatchListener implements TaskMsgDispatchL
     }
 
     private static String normalizeProtocol(String protocol) {
-        if (protocol == null || protocol.isBlank()) {
-            return WebSocketWorkerAdapter.PROTOCOL;
-        }
-        String normalized = protocol.trim().toLowerCase(Locale.ROOT);
-        return switch (normalized) {
-            case "ws" -> WebSocketWorkerAdapter.PROTOCOL;
-            case "pull", "queue" -> PollingWorkerAdapter.PROTOCOL;
-            default -> normalized;
-        };
+        return WorkerTransportHints.normalize(protocol);
     }
 }
