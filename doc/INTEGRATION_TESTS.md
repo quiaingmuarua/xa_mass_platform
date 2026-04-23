@@ -83,7 +83,8 @@ Fixture guidance:
 
 - startup/bootstrap data in `xa-mass-dev-app` is loaded through `MassRuntimeControl` / `MassSdkApplication`
 - prefer SDK capability methods such as `addWorker(...)`, `addWorkerContext(...)`, `replaceDefaultRules(...)`, and `createTask(...)` for new E2E setup code
-- keep direct `TaskManager`, `WorkerManager`, and `RuleManager` fixture access only for focused white-box assertions or fault injection
+- current mainline E2E fixtures no longer use direct `WorkerManager` or `RuleManager` setup writes
+- keep direct `TaskManager` fixture access only for focused white-box assertions or fault injection where public SDK/HTTP surfaces do not express the scenario
 
 Contract reminders:
 

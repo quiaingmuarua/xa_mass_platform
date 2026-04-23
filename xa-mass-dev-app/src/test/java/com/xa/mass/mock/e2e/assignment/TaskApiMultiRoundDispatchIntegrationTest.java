@@ -2,10 +2,7 @@ package com.xa.mass.mock.e2e.assignment;
 
 import com.google.gson.Gson;
 import com.xa.mass.base.enums.worker.WorkerContextStatus;
-import com.xa.mass.base.enums.worker.WorkerStatus;
-import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
-import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.gateway.model.enums.MessageDirection;
 import com.xa.mass.gateway.model.enums.MessageType;
 import com.xa.mass.gateway.model.massMessage.MassMessage;
@@ -59,19 +56,17 @@ class TaskApiMultiRoundDispatchIntegrationTest extends AbstractMockE2eTest {
         registerWebSocketProperties(registry, WEBSOCKET_PORT);
     }
 
-    @Autowired
-    private WorkerManager workerManager;
-
     @Test
     void singleWorkerWithBatchSizeOneCompletesTaskAcrossMultipleRounds() throws Exception {
         String workerId = "round-worker-0";
         registerWorker(workerId);
 
         URI wsUri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
-        MassWebSocketClientImpl client = new MassWebSocketClientImpl(wsUri, workerId);
+        MassWebSocketClientImpl client = connectClientWithRetries(
+                () -> new MassWebSocketClientImpl(wsUri, workerId),
+                "Mock client failed to connect"
+        );
         try {
-            assertClientConnects(client, "Mock client failed to connect");
-
             String taskId = createTaskId(
                     "multi-round",
                     "single worker multi round dispatch",
@@ -98,7 +93,7 @@ class TaskApiMultiRoundDispatchIntegrationTest extends AbstractMockE2eTest {
                 assertEquals(workerId, message.get("latestAttemptWorkerId"));
             }
 
-            WorkerContext workerContext = workerManager.getWorkerContexts(workerId).get(0);
+            WorkerContext workerContext = app.getWorkerContexts(workerId).get(0);
             assertEquals(WorkerContextStatus.IDLE, workerContext.getStatus());
         } finally {
             client.disconnect();
@@ -111,10 +106,11 @@ class TaskApiMultiRoundDispatchIntegrationTest extends AbstractMockE2eTest {
         registerWorker(workerId);
 
         URI wsUri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
-        ManualAckWebSocketClient client = new ManualAckWebSocketClient(wsUri, workerId);
+        ManualAckWebSocketClient client = connectClientWithRetries(
+                () -> new ManualAckWebSocketClient(wsUri, workerId),
+                "Manual mock client failed to connect"
+        );
         try {
-            assertClientConnects(client, "Manual mock client failed to connect");
-
             String taskId = createTaskId(
                     "multi-round-batch-two",
                     "single worker waits for current round to finish",
@@ -199,19 +195,7 @@ class TaskApiMultiRoundDispatchIntegrationTest extends AbstractMockE2eTest {
     }
 
     private void registerWorker(String workerId) {
-        Worker worker = new Worker();
-        worker.setWorkerId(workerId);
-        worker.setWorkerGroupId("us");
-        worker.setStatus(WorkerStatus.ONLINE);
-        worker.setSupportedProjects(List.of("demoApp"));
-        workerManager.addWorker(worker);
-
-        WorkerContext workerContext = new WorkerContext();
-        workerContext.setWorkerContextId("worker-context-" + workerId);
-        workerContext.setWorkerId(workerId);
-        workerContext.setRoutingTags(java.util.Set.of("us"));
-        workerContext.setStatus(WorkerContextStatus.IDLE);
-        workerManager.addWorkerContext(workerContext);
+        registerSdkWorkerWithContext(workerId, "us");
     }
 
     private boolean isTerminalMessageStatus(Object status) {

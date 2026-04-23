@@ -1,12 +1,6 @@
 package com.xa.mass.mock.e2e.assignment;
 
-import com.xa.mass.base.enums.worker.WorkerStatus;
-import com.xa.mass.base.enums.worker.WorkerContextStatus;
-import com.xa.mass.base.model.Worker;
-import com.xa.mass.base.model.WorkerContext;
-import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.rules.RuleDefinition;
-import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.engine.rules.RuleType;
 import com.xa.mass.mock.MockApplicationSpringBootApp;
 import com.xa.mass.mock.client.MassWebSocketClientImpl;
@@ -50,16 +44,9 @@ class TaskApiWorkerContextAttributeRoutingIntegrationTest extends AbstractMockE2
         registerWebSocketProperties(registry, WEBSOCKET_PORT);
     }
 
-    @Autowired
-    private WorkerManager workerManager;
-
-    @Autowired
-    private RuleManager<Map<String, Object>> ruleManager;
-
     @Test
     void routesTaskUsingWorkerContextAttributesCountryLabel() throws Exception {
-        ruleManager.clear();
-        ruleManager.addDefaultRules(List.of(
+        app.replaceDefaultRules(List.of(
                 rule("basic_worker_check", "isWorkerAvailable == true && isWorkerLocked == false"),
                 rule("worker_context_status_check", "isWorkerContextAllocatable == true"),
                 rule("app_support_check", "supportsProject == true"),
@@ -106,19 +93,12 @@ class TaskApiWorkerContextAttributeRoutingIntegrationTest extends AbstractMockE2
     }
 
     private void addCandidate(String workerId, String workerGroupId, String routingTag, String countryAttribute) {
-        Worker worker = new Worker();
-        worker.setWorkerId(workerId);
-        worker.setWorkerGroupId(workerGroupId);
-        worker.setStatus(WorkerStatus.ONLINE);
-        worker.setSupportedProjects(List.of("demoApp"));
-        workerManager.addWorker(worker);
-
-        WorkerContext workerContext = new WorkerContext();
-        workerContext.setWorkerContextId("worker-context-" + workerId);
-        workerContext.setWorkerId(workerId);
-        workerContext.setRoutingTags(java.util.Set.of(routingTag));
-        workerContext.setStatus(WorkerContextStatus.IDLE);
-        workerContext.setAttributes(Map.of("country", countryAttribute));
-        workerManager.addWorkerContext(workerContext);
+        registerSdkWorkerWithContext(
+                workerId,
+                workerGroupId,
+                routingTag,
+                "demoApp",
+                Map.of("country", countryAttribute)
+        );
     }
 }

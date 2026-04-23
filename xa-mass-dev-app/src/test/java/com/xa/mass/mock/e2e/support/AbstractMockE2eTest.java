@@ -22,6 +22,7 @@ import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Predicate;
+import java.util.function.Supplier;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -231,6 +232,32 @@ public abstract class AbstractMockE2eTest {
         assertTrue(connected, failureMessage);
     }
 
+    protected <T extends MassWebSocketClient> T connectClientWithRetries(Supplier<T> clientSupplier,
+                                                                         String failureMessage) throws Exception {
+        Exception lastError = null;
+        for (int i = 0; i < 3; i++) {
+            T client = clientSupplier.get();
+            try {
+                if (client.connectBlocking(3, TimeUnit.SECONDS)) {
+                    return client;
+                }
+                client.disconnect();
+            } catch (Exception e) {
+                lastError = e;
+                try {
+                    client.disconnect();
+                } catch (Exception ignored) {
+                    // Best-effort cleanup for failed connection attempts.
+                }
+            }
+            Thread.sleep(250L);
+        }
+        if (lastError != null) {
+            throw new AssertionError(failureMessage, lastError);
+        }
+        throw new AssertionError(failureMessage);
+    }
+
     /**
      * Asserts that at least {@code minExpected} ONLINE workers are registered with the runtime.
      *
@@ -270,6 +297,28 @@ public abstract class AbstractMockE2eTest {
     protected void registerSdkWorkerWithContext(String workerId, String routingTag, String project) {
         requireSdkApp().addWorker(createWorker(workerId, project));
         requireSdkApp().addWorkerContext(createWorkerContext(workerId, routingTag));
+    }
+
+    protected void registerSdkWorkerWithContext(String workerId,
+                                                String workerGroupId,
+                                                String routingTag,
+                                                String project,
+                                                Map<String, Object> contextAttributes) {
+        Worker worker = createWorker(workerId, project);
+        worker.setWorkerGroupId(workerGroupId);
+        requireSdkApp().addWorker(worker);
+
+        WorkerContext workerContext = createWorkerContext(workerId, routingTag);
+        if (contextAttributes != null && !contextAttributes.isEmpty()) {
+            workerContext.setAttributes(contextAttributes.entrySet().stream()
+                    .collect(java.util.stream.Collectors.toMap(
+                            Map.Entry::getKey,
+                            entry -> String.valueOf(entry.getValue()),
+                            (left, right) -> right,
+                            java.util.LinkedHashMap::new
+                    )));
+        }
+        requireSdkApp().addWorkerContext(workerContext);
     }
 
     protected void registerSdkStatelessWorker(String workerId, String project) {

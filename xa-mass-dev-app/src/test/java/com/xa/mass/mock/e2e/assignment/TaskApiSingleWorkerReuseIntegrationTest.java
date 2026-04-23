@@ -2,7 +2,6 @@ package com.xa.mass.mock.e2e.assignment;
 
 import com.xa.mass.base.enums.worker.WorkerContextStatus;
 import com.xa.mass.base.model.WorkerContext;
-import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.mock.MockApplicationSpringBootApp;
 import com.xa.mass.mock.client.MassWebSocketClientImpl;
 import com.xa.mass.mock.e2e.support.AbstractMockE2eTest;
@@ -44,9 +43,6 @@ class TaskApiSingleWorkerReuseIntegrationTest extends AbstractMockE2eTest {
         registerWebSocketProperties(registry, WEBSOCKET_PORT);
     }
 
-    @Autowired
-    private WorkerManager workerManager;
-
     @Test
     void singleWorkerCanBeReusedAfterPreviousTaskCompletes() throws Exception {
         String workerId = "reuse-worker-0";
@@ -77,7 +73,7 @@ class TaskApiSingleWorkerReuseIntegrationTest extends AbstractMockE2eTest {
             TaskSnapshot secondTerminal = waitForTaskSnapshot(secondTaskId, "TERMINAL", 20, 500L);
         assertEquals(workerId, secondTerminal.messages().get(0).get("latestAttemptWorkerId"));
 
-            WorkerContext workerContext = workerManager.getWorkerContexts(workerId).get(0);
+            WorkerContext workerContext = app.getWorkerContexts(workerId).get(0);
             assertEquals(WorkerContextStatus.IDLE, workerContext.getStatus());
         } finally {
             client.disconnect();

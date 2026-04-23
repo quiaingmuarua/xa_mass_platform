@@ -2,7 +2,6 @@ package com.xa.mass.mock.e2e.assignment;
 
 import com.xa.mass.base.enums.worker.WorkerContextStatus;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.TaskManager;
 import com.xa.mass.mock.MockApplicationSpringBootApp;
 import com.xa.mass.mock.client.MassWebSocketClientImpl;
@@ -45,9 +44,6 @@ class TaskApiMinimumWorkerGateIntegrationTest extends AbstractMockE2eTest {
     }
 
     @Autowired
-    private WorkerManager workerManager;
-
-    @Autowired
     private TaskManager taskManager;
 
     @Test
@@ -66,7 +62,7 @@ class TaskApiMinimumWorkerGateIntegrationTest extends AbstractMockE2eTest {
         TaskSnapshot readySnapshot = waitForTaskSnapshot(taskId, "READY", 8, 500L);
         assertEquals(0, ((Number) readySnapshot.task().get("peakAssignedWorkerCount")).intValue());
         assertEquals("INIT", readySnapshot.messages().get(0).get("status"));
-        assertEquals(WorkerContextStatus.IDLE, workerManager.getWorkerContexts(firstWorkerId).get(0).getStatus());
+        assertEquals(WorkerContextStatus.IDLE, app.getWorkerContexts(firstWorkerId).get(0).getStatus());
 
         String secondWorkerId = "min-gate-worker-1";
         registerWorker(secondWorkerId);

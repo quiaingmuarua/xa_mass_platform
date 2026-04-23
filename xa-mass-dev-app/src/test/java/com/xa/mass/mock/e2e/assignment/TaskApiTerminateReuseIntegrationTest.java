@@ -1,7 +1,6 @@
 package com.xa.mass.mock.e2e.assignment;
 
 import com.xa.mass.base.enums.worker.WorkerContextStatus;
-import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.mock.MockApplicationSpringBootApp;
 import com.xa.mass.mock.e2e.support.AbstractMockE2eTest;
 import org.junit.jupiter.api.Test;
@@ -40,9 +39,6 @@ class TaskApiTerminateReuseIntegrationTest extends AbstractMockE2eTest {
         registerWebSocketProperties(registry, WEBSOCKET_PORT);
     }
 
-    @Autowired
-    private WorkerManager workerManager;
-
     @Test
     void terminatedTaskReleasesSingleDeviceForNextTask() throws Exception {
         String workerId = "terminate-reuse-worker-0";
@@ -64,7 +60,7 @@ class TaskApiTerminateReuseIntegrationTest extends AbstractMockE2eTest {
 
         TaskSnapshot firstTerminal = waitForTaskSnapshot(firstTaskId, "TERMINAL", 20, 500L);
         assertEquals("EXPIRED", firstTerminal.messages().get(0).get("status"));
-        assertEquals(WorkerContextStatus.IDLE, workerManager.getWorkerContexts(workerId).get(0).getStatus());
+        assertEquals(WorkerContextStatus.IDLE, app.getWorkerContexts(workerId).get(0).getStatus());
 
         String secondTaskId = createTaskId("terminate-reuse-second", "terminate reuse second", "target-b");
         Map<String, Object> secondApprove = audit(secondTaskId, "terminate-reuse-2");
@@ -80,7 +76,7 @@ class TaskApiTerminateReuseIntegrationTest extends AbstractMockE2eTest {
         );
         assertApiOk(secondTerminate);
         waitForTaskSnapshot(secondTaskId, "TERMINAL", 20, 500L);
-        assertEquals(WorkerContextStatus.IDLE, workerManager.getWorkerContexts(workerId).get(0).getStatus());
+        assertEquals(WorkerContextStatus.IDLE, app.getWorkerContexts(workerId).get(0).getStatus());
     }
 
     private void registerWorker(String workerId) {
