@@ -155,7 +155,8 @@ Open-ended and debug side-channel:
 - `Task.intakeStatus` is the append-window truth; `openEnded` is the create/response projection.
 - `POST /status/api/tasks/{taskId}/items` appends inputs only while intake is open.
 - `PUT /status/api/tasks/{taskId}/seal` closes intake and resumes normal terminal convergence.
-- manual worker debug chat uses `CONTROL/manual-chat -> EVENT/manual-chat`.
+- manual worker debug uses the event-first path `POST /status/workers/send-event`, which currently bridges to `CONTROL/event -> EVENT/event` on the WebSocket adapter.
+- `POST /status/workers/send-message` with `CONTROL/manual-chat -> EVENT/manual-chat` remains a compatibility path only.
 - debug chat is a control side-channel and must not create or mutate `TaskMsg`.
 
 ## 6. Focused Regression Gate
@@ -177,7 +178,7 @@ Representative coverage:
 - worker/worker-context reuse after normal completion and manual termination
 - minimum-worker gate
 - multi-round refill
-- manual worker debug chat through the real gateway path
+- worker debug event dispatch through the real gateway path
 - backend-hosted control console routing through the real Boot entry
 
 For the broader test map, use [INTEGRATION_TESTS.md](./INTEGRATION_TESTS.md).

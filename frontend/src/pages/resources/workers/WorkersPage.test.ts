@@ -57,6 +57,7 @@ function stubWorkersApi(): void {
                                 workerGroupId: 'us-routing',
                                 agentVersion: '1.4.0',
                                 supportedProjects: ['demoApp'],
+                                supportedEventCodes: ['demo.dispatch'],
                                 attributes: { region: 'us' },
                                 lastHeartbeat: '2026-04-21 09:45:00',
                                 locked: true,
@@ -98,6 +99,7 @@ describe('WorkersPage', () => {
 
         expect(wrapper.text()).toContain('worker-us-01')
         expect(wrapper.text()).toContain('ONLINE')
+        expect(wrapper.text()).toContain('demo.dispatch')
         expect(wrapper.text()).toContain('Edit projects')
     })
 
@@ -126,6 +128,7 @@ describe('WorkersPage', () => {
         await flushPromises()
 
         expect(wrapper.text()).toContain('worker-us-01')
+        expect(wrapper.text()).toContain('demo.dispatch')
         expect(wrapper.text()).not.toContain('Edit projects')
     })
 })

@@ -314,8 +314,18 @@ public abstract class AbstractMockE2eTest {
                 .workerId(workerId)
                 .workerGroupId(workerGroupId)
                 .supportedProjects(List.of(project))
+                .supportedEventCodes(defaultSupportedEvents(project))
                 .transportHint("realtime")
                 .build();
+    }
+
+    private List<String> defaultSupportedEvents(String project) {
+        return switch (project) {
+            case "crawlerApp" -> List.of("crawler.fetch-page");
+            case "testApp" -> List.of("demo.dispatch");
+            case "otherApp", "demoApp" -> List.of("demo.dispatch", "demo.dispatch.gb");
+            default -> List.of();
+        };
     }
 
     private WorkerContextRegistration createWorkerContextRegistration(String workerId, String routingTag) {

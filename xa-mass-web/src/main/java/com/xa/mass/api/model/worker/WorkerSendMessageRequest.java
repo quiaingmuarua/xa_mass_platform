@@ -1,32 +1,12 @@
 package com.xa.mass.api.model.worker;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-import com.xa.mass.api.model.AbstractUnknownFieldRequest;
 
 @JsonIgnoreProperties(ignoreUnknown = false)
-public class WorkerSendMessageRequest extends AbstractUnknownFieldRequest {
-
-    private String workerId;
-    private String project;
+public class WorkerSendMessageRequest extends AbstractWorkerRequest {
     private String msgType;
     private String subMsgType;
     private Object payload;
-
-    public String getWorkerId() {
-        return workerId;
-    }
-
-    public void setWorkerId(String workerId) {
-        this.workerId = workerId;
-    }
-
-    public String getProject() {
-        return project;
-    }
-
-    public void setProject(String project) {
-        this.project = project;
-    }
 
     public String getMsgType() {
         return msgType;

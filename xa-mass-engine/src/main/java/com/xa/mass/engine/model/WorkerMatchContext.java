@@ -41,6 +41,7 @@ public class WorkerMatchContext {
         ctx.put("workerAttributes", worker.getAttributes());
         ctx.put("agentVersion", worker.getAgentVersion());
         ctx.put("supportedProjects", worker.getSupportedProjects());
+        ctx.put("supportedEventCodes", worker.getSupportedEventCodes());
         ctx.put("isWorkerAvailable", worker.isAvailable());
         ctx.put("isWorkerLocked", workerManager.isLocked(worker.getWorkerId()));
 
@@ -71,12 +72,14 @@ public class WorkerMatchContext {
         }
 
         String routingCode = TaskSharedConfig.routingCode(task);
+        String taskEventCode = TaskSharedConfig.sdkEventCode(task);
         boolean taskHasRoutingRequirement = routingCode != null && !routingCode.isBlank();
         java.util.Set<String> routingTags = workerContext != null ? workerContext.getRoutingTags() : java.util.Set.of();
 
         ctx.put("taskId", task.getTid());
         ctx.put("taskName", task.getTaskName());
         ctx.put("taskProject", task.getProject());
+        ctx.put("taskEventCode", taskEventCode);
         ctx.put("taskSharedConfig", task.getSharedConfig());
         ctx.put("routingCode", routingCode);
         ctx.put("taskHasRoutingRequirement", taskHasRoutingRequirement);
@@ -87,6 +90,7 @@ public class WorkerMatchContext {
 
         ctx.put("appCount", worker.getSupportedProjects() != null ? worker.getSupportedProjects().size() : 0);
         ctx.put("supportsProject", worker.supportsProject(task.getProject()));
+        ctx.put("supportsEvent", taskEventCode == null || worker.supportsEvent(taskEventCode));
         ctx.put("workerContextProjectMatchesTaskProject",
                 workerContext != null && Objects.equals(workerContext.getProject(), task.getProject()));
         ctx.put("workerContextMatchesRoutingCode",
@@ -121,6 +125,7 @@ public class WorkerMatchContext {
                 "workerId='" + worker.getWorkerId() + '\'' +
                 ", taskId='" + task.getTid() + '\'' +
                 ", supportsProject=" + context.get("supportsProject") +
+                ", supportsEvent=" + context.get("supportsEvent") +
                 ", workerContextMatchesRoutingCode=" + context.get("workerContextMatchesRoutingCode") +
                 '}';
     }

@@ -21,6 +21,7 @@ public class Worker {
     private String agentVersion;
     private LocalDateTime lastHeartbeat;
     private List<String> supportedProjects;
+    private List<String> supportedEventCodes;
     private String workerGroupId;
     private String onlineStrategy;
     private Map<String, String> attributes = Collections.emptyMap();
@@ -30,6 +31,7 @@ public class Worker {
     public Worker() {
         this.status = WorkerStatus.OFFLINE;
         this.supportedProjects = Collections.emptyList();
+        this.supportedEventCodes = Collections.emptyList();
         this.createTime = LocalDateTime.now();
         this.updateTime = LocalDateTime.now();
     }
@@ -87,6 +89,18 @@ public class Worker {
         this.supportedProjects = List.copyOf(supportedProjects);
     }
 
+    public List<String> getSupportedEventCodes() {
+        return supportedEventCodes;
+    }
+
+    public void setSupportedEventCodes(List<String> supportedEventCodes) {
+        if (supportedEventCodes == null || supportedEventCodes.isEmpty()) {
+            this.supportedEventCodes = Collections.emptyList();
+            return;
+        }
+        this.supportedEventCodes = List.copyOf(supportedEventCodes);
+    }
+
     public String getWorkerGroupId() {
         return workerGroupId;
     }
@@ -139,6 +153,10 @@ public class Worker {
         return supportedProjects != null && supportedProjects.contains(projectCode);
     }
 
+    public boolean supportsEvent(String eventCode) {
+        return supportedEventCodes != null && supportedEventCodes.contains(eventCode);
+    }
+
     public void updateHeartbeat() {
         this.lastHeartbeat = LocalDateTime.now();
         this.updateTime = LocalDateTime.now();
@@ -184,6 +202,7 @@ public class Worker {
                 ", agentVersion='" + agentVersion + '\'' +
                 ", lastHeartbeat=" + lastHeartbeat +
                 ", supportedProjects=" + supportedProjects +
+                ", supportedEventCodes=" + supportedEventCodes +
                 ", workerGroupId='" + workerGroupId + '\'' +
                 ", onlineStrategy='" + onlineStrategy + '\'' +
                 ", attributes=" + attributes +

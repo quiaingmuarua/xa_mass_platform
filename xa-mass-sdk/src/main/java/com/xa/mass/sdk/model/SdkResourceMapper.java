@@ -44,6 +44,7 @@ public final class SdkResourceMapper {
         worker.setWorkerId(workerId);
         worker.setWorkerGroupId(blankToNull(request.getWorkerGroupId()));
         worker.setSupportedProjects(normalizedList(request.getSupportedProjects()));
+        worker.setSupportedEventCodes(normalizedList(request.getSupportedEventCodes()));
         worker.setOnlineStrategy(WorkerTransportHints.normalize(request.getTransportHint()));
         worker.setAttributes(normalizedAttributes(request.getAttributes()));
         return worker;

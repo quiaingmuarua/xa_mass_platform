@@ -17,6 +17,7 @@ public final class WorkerRegistration {
     private final String workerId;
     private final String workerGroupId;
     private final List<String> supportedProjects;
+    private final List<String> supportedEventCodes;
     private final String transportHint;
     private final Map<String, String> attributes;
 
@@ -24,6 +25,7 @@ public final class WorkerRegistration {
         this.workerId = builder.workerId;
         this.workerGroupId = builder.workerGroupId;
         this.supportedProjects = immutableListCopy(builder.supportedProjects);
+        this.supportedEventCodes = immutableListCopy(builder.supportedEventCodes);
         this.transportHint = builder.transportHint;
         this.attributes = immutableMapCopy(builder.attributes);
     }
@@ -44,6 +46,10 @@ public final class WorkerRegistration {
         return supportedProjects;
     }
 
+    public List<String> getSupportedEventCodes() {
+        return supportedEventCodes;
+    }
+
     public String getTransportHint() {
         return transportHint;
     }
@@ -59,13 +65,21 @@ public final class WorkerRegistration {
         return Objects.equals(workerId, that.workerId)
                 && Objects.equals(workerGroupId, that.workerGroupId)
                 && Objects.equals(supportedProjects, that.supportedProjects)
+                && Objects.equals(supportedEventCodes, that.supportedEventCodes)
                 && Objects.equals(transportHint, that.transportHint)
                 && Objects.equals(attributes, that.attributes);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(workerId, workerGroupId, supportedProjects, transportHint, attributes);
+        return Objects.hash(
+                workerId,
+                workerGroupId,
+                supportedProjects,
+                supportedEventCodes,
+                transportHint,
+                attributes
+        );
     }
 
     @Override
@@ -74,6 +88,7 @@ public final class WorkerRegistration {
                 "workerId='" + workerId + '\'' +
                 ", workerGroupId='" + workerGroupId + '\'' +
                 ", supportedProjects=" + supportedProjects +
+                ", supportedEventCodes=" + supportedEventCodes +
                 ", transportHint='" + transportHint + '\'' +
                 ", attributes=" + attributes +
                 '}';
@@ -97,6 +112,7 @@ public final class WorkerRegistration {
         private String workerId;
         private String workerGroupId;
         private List<String> supportedProjects = Collections.emptyList();
+        private List<String> supportedEventCodes = Collections.emptyList();
         private String transportHint;
         private Map<String, String> attributes = Collections.emptyMap();
 
@@ -115,6 +131,13 @@ public final class WorkerRegistration {
 
         public Builder supportedProjects(List<String> supportedProjects) {
             this.supportedProjects = supportedProjects != null ? supportedProjects : Collections.emptyList();
+            return this;
+        }
+
+        public Builder supportedEventCodes(List<String> supportedEventCodes) {
+            this.supportedEventCodes = supportedEventCodes != null
+                    ? supportedEventCodes
+                    : Collections.emptyList();
             return this;
         }
 

@@ -108,6 +108,7 @@ public class WorkerApiController {
         item.put("workerGroupId", worker.getWorkerGroupId());
         item.put("agentVersion", worker.getAgentVersion());
         item.put("supportedProjects", worker.getSupportedProjects());
+        item.put("supportedEventCodes", worker.getSupportedEventCodes());
         item.put("attributes", worker.getAttributes());
         item.put("lastHeartbeat", formatDateTime(worker.getLastHeartbeat()));
         item.put("locked", workerOperations.isWorkerLocked(worker.getWorkerId()));

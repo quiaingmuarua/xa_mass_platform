@@ -49,6 +49,7 @@ class WorkerApiControllerTest {
         worker.setWorkerGroupId("group-a");
         worker.setAgentVersion("1.2.3");
         worker.setSupportedProjects(List.of("demoApp"));
+        worker.setSupportedEventCodes(List.of("demo.dispatch"));
         worker.setAttributes(Map.of("region", "us"));
         worker.setLastHeartbeat(LocalDateTime.of(2026, 4, 21, 10, 15));
         worker.setUpdateTime(LocalDateTime.of(2026, 4, 21, 10, 16));
@@ -61,6 +62,7 @@ class WorkerApiControllerTest {
                 .andExpect(jsonPath("$.code").value(0))
                 .andExpect(jsonPath("$.data.total").value(1))
                 .andExpect(jsonPath("$.data.items[0].workerId").value("worker-001"))
+                .andExpect(jsonPath("$.data.items[0].supportedEventCodes[0]").value("demo.dispatch"))
                 .andExpect(jsonPath("$.data.items[0].locked").value(true))
                 .andExpect(jsonPath("$.data.items[0].lastHeartbeat").value("2026-04-21 10:15:00"));
     }

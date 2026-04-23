@@ -76,6 +76,14 @@ class MessageHandlerRegistryTest {
     }
 
     @Test
+    void defaultNoHandlerResultIsNotFound() {
+        ResolutionResult result = registry.resolve("x", MessageType.STATUS, "unknownSub");
+
+        assertTrue(result.isNotFound());
+        assertFalse(result.isFallback());
+    }
+
+    @Test
     void notFoundResultWhenNoHandlerAndFallbackDisabled() {
         registry.setEnableFallback(false);
 

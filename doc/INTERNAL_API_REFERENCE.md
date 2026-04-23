@@ -72,6 +72,8 @@ For verified runtime behavior and recommended startup, use [VERIFIED_RUNBOOK.md]
 - Runtime control events such as `platform.worker.register` and `platform.meta.events.list` are handled through the embedded event runtime.
 - Legacy WebSocket `MassMessage` remains the transport envelope for the current gateway adapter, but new control capability must route through event dispatch instead of adding new `subMsgType` branches.
 - Current gateway bridge only changes the control plane. Task dispatch/result data-plane contracts remain unchanged.
+- Worker debug/control now has an event-first API shape. `/status/workers/send-event` accepts `workerId`, `project`, `event`, `requestId`, `headers`, `payload`, and `principal`.
+- `/status/workers/send-message` remains a legacy compatibility endpoint for transport-shaped debug calls and should not be used for new control capabilities.
 
 ## 2. SDK Metadata API
 
@@ -769,8 +771,26 @@ Base path: `/status/workers`
 Behavior:
 
 - returns the current outbound/inbound debug message history for one worker
+- outbound debug records may move through `QUEUED`, `DELIVERED`, or `FAILED`
+- `FAILED` means the gateway queued the outbound debug record but could not send it to an addressable worker endpoint
 
 ### 8.2 Send Debug Message
+
+- Method: `POST`
+- Path: `/status/workers/send-event`
+- Status: `Partial`
+
+Behavior:
+
+- sends an event-first debug/control payload to a worker over the task-messages session
+- does not create or mutate `TaskMsg`
+
+Request notes:
+
+- accepts `workerId`, `project`, `event`, `requestId`, `headers`, `payload`, and optional `principal`
+- current WebSocket adapter bridges this to `CONTROL/event` and records acknowledgements from `EVENT/event`
+
+### 8.3 Legacy Send Debug Message
 
 - Method: `POST`
 - Path: `/status/workers/send-message`
@@ -778,8 +798,8 @@ Behavior:
 
 Behavior:
 
-- sends a debug/control payload to a worker over the task-messages session
-- does not create or mutate `TaskMsg`
+- legacy compatibility endpoint for transport-shaped debug calls
+- should not be used for new control-plane features
 
 ## 9. Health And Docs
 

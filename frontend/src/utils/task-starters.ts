@@ -47,10 +47,10 @@ const taskStarterDefinitions: Record<string, TaskStarterDefinition> = {
             'Keep per-work-item identity and execution hints inside inputs.',
         ],
         eventOverrides: {
-            'demo.dispatch.run': {
-                taskName: 'Run demo dispatch',
+            'demo.dispatch': {
+                taskName: 'Demo dispatch',
                 sharedConfig: {
-                    textContent: 'hello from demo.dispatch.run',
+                    textContent: 'hello from demo.dispatch',
                     objective: 'run generic dispatch payload',
                 },
                 inputs: [
@@ -58,17 +58,17 @@ const taskStarterDefinitions: Record<string, TaskStarterDefinition> = {
                     { target: 'demo-target-002', recipient: 'beta' },
                 ],
             },
-            'demo.dispatch.audit': {
-                taskName: 'Audit demo dispatch',
+            'demo.dispatch.gb': {
+                taskName: 'Demo dispatch (GB)',
                 sharedConfig: {
-                    auditMode: 'summary',
-                    expectedEvent: 'demo.dispatch.run',
+                    textContent: 'hello from demo.dispatch.gb',
+                    objective: 'run gb demo dispatch payload',
                 },
                 inputs: [
                     {
                         target: 'demo-target-001',
-                        previousMessageId: 'msg-001',
-                        expectedStatus: 'SUCCESS',
+                        recipient: 'gamma',
+                        region: 'gb',
                     },
                 ],
             },

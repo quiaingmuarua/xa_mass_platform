@@ -12,6 +12,8 @@ import java.util.Map;
 public final class TaskSharedConfig {
 
     public static final String ROUTING_CODE = "routingCode";
+    public static final String SDK_METADATA = "_sdk";
+    public static final String SDK_EVENT_CODE = "eventCode";
 
     private TaskSharedConfig() {
     }
@@ -21,6 +23,13 @@ public final class TaskSharedConfig {
             return null;
         }
         return stringValue(task.getSharedConfig(), ROUTING_CODE);
+    }
+
+    public static String sdkEventCode(Task task) {
+        if (task == null) {
+            return null;
+        }
+        return sdkStringValue(task.getSharedConfig(), SDK_EVENT_CODE);
     }
 
     public static String stringValue(Map<String, Object> sharedConfig, String key) {
@@ -44,5 +53,22 @@ public final class TaskSharedConfig {
             copy.putIfAbsent(ROUTING_CODE, routingCode.trim());
         }
         return copy;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static String sdkStringValue(Map<String, Object> sharedConfig, String key) {
+        if (sharedConfig == null || key == null) {
+            return null;
+        }
+        Object sdk = sharedConfig.get(SDK_METADATA);
+        if (!(sdk instanceof Map<?, ?> sdkMetadata)) {
+            return null;
+        }
+        Object value = ((Map<String, Object>) sdkMetadata).get(key);
+        if (value == null) {
+            return null;
+        }
+        String text = String.valueOf(value).trim();
+        return text.isEmpty() ? null : text;
     }
 }

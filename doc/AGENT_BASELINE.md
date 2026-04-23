@@ -107,7 +107,8 @@ Interpretation rules:
 - historical `v2` / archive engine generations are no longer present in the current repository snapshot.
 - EventBus mainline has converged onto `com.xa.mass.base.channel.eventbus.core` and `com.xa.mass.base.channel.eventbus.event`.
 - Mainline acceptance is end-to-end integration-test-driven through `xa-mass-dev-app`; unit tests are support coverage, not the primary acceptance gate.
-- The current worker debug side-channel is exposed through `POST /status/workers/send-message` and `GET /status/workers/message-history`.
+- The current worker debug side-channel is exposed through `POST /status/workers/send-event` and `GET /status/workers/message-history`.
+- `POST /status/workers/send-message` remains a legacy compatibility endpoint only.
 
 ## 6. Current Task And Payload Contract
 
@@ -219,15 +220,18 @@ Important current rules:
 - `Worker.status` is the single online truth
 - worker lock truth lives in `WorkerStorage` and `WorkerManager.isLocked(...)`
 
-## 9. Worker Debug Chat Baseline
+## 9. Worker Debug Baseline
 
-- Verified outbound debug-chat path is `CONTROL/manual-chat`
-- Verified inbound acknowledgement path is `EVENT/manual-chat`
+- Primary control-plane debug path is `POST /status/workers/send-event`
+- Event-first transport frame is `CONTROL/event`
+- Event-first acknowledgement path is `EVENT/event`
+- `CONTROL/manual-chat -> EVENT/manual-chat` remains only as a compatibility debug-chat path
 - Current delivery visibility is stored in `WorkerDebugMessageStore`
 - Current page-visible states are:
   - `QUEUED`: accepted and enqueued by the server
   - `DELIVERED`: inbound acknowledgement matched the outbound message id
   - `RECEIVED`: inbound acknowledgement event is stored in history
+  - `FAILED`: gateway accepted the outbound debug message record but could not send it to an addressable worker endpoint
 - Treat this as a transport/debug surface for worker inspection, not as task execution or task audit state
 
 ## 10. Recommended Entry Files

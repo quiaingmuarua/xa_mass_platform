@@ -4,6 +4,7 @@ export interface WorkerListItem {
     workerGroupId: string | null
     agentVersion: string | null
     supportedProjects: string[]
+    supportedEventCodes: string[]
     attributes: Record<string, string>
     lastHeartbeat: string
     locked: boolean
@@ -56,8 +57,13 @@ export interface WorkerDebugHistoryResponse {
 export interface WorkerDebugSendRequest {
     workerId: string
     project?: string
-    msgType?: string
-    subMsgType?: string
+    event: string
+    requestId?: string
+    headers?: Record<string, string>
+    principal?: {
+        clientId?: string
+        userId?: string
+    }
     payload: Record<string, unknown>
 }
 
@@ -65,6 +71,6 @@ export interface WorkerDebugSendResult {
     messageId: string
     workerId: string
     project: string
-    msgType: string
-    subMsgType: string
+    event: string
+    requestId: string
 }

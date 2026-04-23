@@ -1,8 +1,11 @@
 package com.xa.mass.api.internal;
 
 import com.xa.mass.api.model.ApiResponse;
+import com.xa.mass.api.model.worker.WorkerSendEventRequest;
 import com.xa.mass.api.model.worker.WorkerSendMessageRequest;
 import com.xa.mass.sdk.DebugOperations;
+import com.xa.mass.sdk.event.EventPrincipal;
+import com.xa.mass.sdk.event.EventRequest;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -63,7 +66,44 @@ public class WorkerDebugController {
         }
     }
 
-    private void validateKnownFields(WorkerSendMessageRequest requestBody) {
+    @PostMapping("/send-event")
+    @ResponseBody
+    public ResponseEntity<ApiResponse<Map<String, Object>>> sendWorkerEvent(
+            @RequestBody WorkerSendEventRequest requestBody) {
+        try {
+            validateKnownFields(requestBody);
+            String workerId = readTrimmed(requestBody.getWorkerId());
+            if (workerId == null) {
+                return badRequest("workerId is required");
+            }
+            String event = readTrimmed(requestBody.getEvent());
+            if (event == null) {
+                return badRequest("event is required");
+            }
+            Map<String, Object> result = debugOperations.sendWorkerEvent(
+                    workerId,
+                    EventRequest.builder()
+                            .event(event)
+                            .project(readTrimmed(requestBody.getProject()))
+                            .requestId(readTrimmed(requestBody.getRequestId()))
+                            .headers(requestBody.getHeaders())
+                            .payload(requestBody.getPayload())
+                            .build(),
+                    toPrincipal(requestBody.getPrincipal())
+            );
+            return ok(result);
+        } catch (IllegalArgumentException ex) {
+            String message = ex.getMessage() == null ? "Invalid request" : ex.getMessage();
+            if ("Worker not found".equals(message)) {
+                return notFound(message);
+            }
+            return badRequest(message);
+        } catch (IllegalStateException ex) {
+            return conflict(ex.getMessage());
+        }
+    }
+
+    private void validateKnownFields(com.xa.mass.api.model.AbstractUnknownFieldRequest requestBody) {
         if (requestBody == null) {
             throw new IllegalArgumentException("worker message request body is required");
         }
@@ -79,6 +119,16 @@ public class WorkerDebugController {
         }
         String text = String.valueOf(value).trim();
         return text.isEmpty() ? null : text;
+    }
+
+    private EventPrincipal toPrincipal(WorkerSendEventRequest.PrincipalBody principalBody) {
+        if (principalBody == null) {
+            return EventPrincipal.builder().build();
+        }
+        return EventPrincipal.builder()
+                .clientId(readTrimmed(principalBody.getClientId()))
+                .userId(readTrimmed(principalBody.getUserId()))
+                .build();
     }
 
     private ResponseEntity<ApiResponse<Map<String, Object>>> ok(Map<String, ?> data) {

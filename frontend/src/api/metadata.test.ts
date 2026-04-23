@@ -29,12 +29,10 @@ describe('metadata API facade', () => {
         const demoEvents = await listProjectEventMetadata('demoApp')
 
         expect(projects.some((project) => project.code === 'demoApp')).toBe(true)
-        expect(events.some((event) => event.code === 'demo.dispatch.run')).toBe(
+        expect(events.some((event) => event.code === 'demo.dispatch')).toBe(
             true,
         )
-        expect(demoEvents.map((event) => event.code)).toContain(
-            'demo.dispatch.run',
-        )
+        expect(demoEvents.map((event) => event.code)).toContain('demo.dispatch')
     })
 })
 
@@ -54,8 +52,8 @@ describe('metadata.real', () => {
                         msg: 'ok',
                         data: [
                             {
-                                code: 'demo.dispatch.run',
-                                name: 'Run demo dispatch',
+                                code: 'demo.dispatch',
+                                name: 'Demo dispatch',
                                 description: 'Run a demo dispatch.',
                                 payloadTypes: ['JSON'],
                                 taskModes: ['SINGLE_RUN'],
@@ -76,7 +74,7 @@ describe('metadata.real', () => {
                             name: 'Demo App',
                             description: 'Demo project.',
                             enabled: true,
-                            eventCodes: ['demo.dispatch.run'],
+                            eventCodes: ['demo.dispatch'],
                         },
                     ],
                 }),
@@ -96,6 +94,6 @@ describe('metadata.real', () => {
             expect.any(Object),
         )
         expect(projects[0].code).toBe('demoApp')
-        expect(events[0].code).toBe('demo.dispatch.run')
+        expect(events[0].code).toBe('demo.dispatch')
     })
 })

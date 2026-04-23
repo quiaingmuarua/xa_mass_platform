@@ -80,6 +80,25 @@
             </span>
           </template>
         </el-table-column>
+        <el-table-column label="Events" min-width="240">
+          <template #default="{ row }">
+            <el-tag
+              v-for="eventCode in row.supportedEventCodes"
+              :key="eventCode"
+              class="project-tag"
+              type="primary"
+              round
+            >
+              {{ eventCode }}
+            </el-tag>
+            <span
+              v-if="row.supportedEventCodes.length === 0"
+              class="row-secondary"
+            >
+              none
+            </span>
+          </template>
+        </el-table-column>
         <el-table-column label="Contexts" min-width="120">
           <template #default="{ row }">
             {{ contextCountByWorkerId[row.workerId] ?? 0 }}

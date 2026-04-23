@@ -38,14 +38,14 @@ function discoveryFetch(submitterResponse: Response): (input: string) => Promise
                             name: 'Demo App',
                             description: 'Demo project.',
                             enabled: true,
-                            eventCodes: ['demo.dispatch.run'],
+                            eventCodes: ['demo.dispatch'],
                         },
                         {
                             code: 'crawlerApp',
                             name: 'Crawler App',
                             description: 'Crawler project.',
                             enabled: true,
-                            eventCodes: ['worker.fetch-page'],
+                            eventCodes: ['crawler.fetch-page'],
                         },
                     ],
                 }),
@@ -58,15 +58,15 @@ function discoveryFetch(submitterResponse: Response): (input: string) => Promise
                     msg: 'ok',
                     data: [
                         {
-                            code: 'demo.dispatch.run',
-                            name: 'Run demo dispatch',
+                            code: 'demo.dispatch',
+                            name: 'Demo dispatch',
                             description: 'Run a demo dispatch.',
                             payloadTypes: ['JSON'],
                             taskModes: ['SINGLE_RUN'],
                             enabled: true,
                         },
                         {
-                            code: 'worker.fetch-page',
+                            code: 'crawler.fetch-page',
                             name: 'Fetch crawler page',
                             description: 'Fetch through a crawler worker.',
                             payloadTypes: ['JSON'],
@@ -90,6 +90,7 @@ function discoveryFetch(submitterResponse: Response): (input: string) => Promise
                             workerGroupId: 'us-routing',
                             agentVersion: '1.4.0',
                             supportedProjects: ['demoApp'],
+                            supportedEventCodes: ['demo.dispatch'],
                             attributes: {},
                             lastHeartbeat: '2026-04-21 09:45:00',
                             locked: false,
@@ -101,6 +102,7 @@ function discoveryFetch(submitterResponse: Response): (input: string) => Promise
                             workerGroupId: 'sg-routing',
                             agentVersion: '1.3.7',
                             supportedProjects: ['crawlerApp'],
+                            supportedEventCodes: ['crawler.fetch-page'],
                             attributes: {},
                             lastHeartbeat: '2026-04-21 08:45:00',
                             locked: false,
@@ -180,11 +182,11 @@ describe('RuntimeMetadataPage', () => {
         )
         expect(wrapper.text()).toContain('Demo App')
         expect(wrapper.text()).toContain('worker-us-01')
-        expect(wrapper.text()).toContain('demo.dispatch.run')
+        expect(wrapper.text()).toContain('demo.dispatch')
         expect(wrapper.text()).toContain('1 / 2')
         expect(wrapper.text()).not.toContain('worker-sg-01')
         expect(wrapper.text()).toContain('Start event draft')
-        expect(wrapper.text()).toContain('hello from demo.dispatch.run')
+        expect(wrapper.text()).toContain('hello from demo.dispatch')
         expect(wrapper.text()).toContain('"recipient":"alpha"')
         expect(wrapper.text()).toContain('SDK submitter access')
         expect(wrapper.text()).toContain('Credential resolved')
@@ -202,9 +204,7 @@ describe('RuntimeMetadataPage', () => {
         expect(router.currentRoute.value.name).toBe('tasks')
         expect(router.currentRoute.value.query.create).toBe('1')
         expect(router.currentRoute.value.query.project).toBe('demoApp')
-        expect(router.currentRoute.value.query.eventCode).toBe(
-            'demo.dispatch.run',
-        )
+        expect(router.currentRoute.value.query.eventCode).toBe('demo.dispatch')
         expect(router.currentRoute.value.query.taskName).toBeUndefined()
     })
 

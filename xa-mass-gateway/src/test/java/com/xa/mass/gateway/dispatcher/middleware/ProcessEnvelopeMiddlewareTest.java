@@ -1,5 +1,6 @@
 package com.xa.mass.gateway.dispatcher.middleware;
 
+import com.xa.mass.base.debug.WorkerDebugMessageStore;
 import com.xa.mass.gateway.dispatcher.MessageHandlerRegistry;
 import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
 import com.xa.mass.gateway.model.enums.MessageType;
@@ -34,6 +35,7 @@ class ProcessEnvelopeMiddlewareTest {
         handlerRegistry = new MessageHandlerRegistry();
         context = mockContext(codec, handlerRegistry);
         middleware = MiddlewareRegistry.processEnvelopeMiddleware();
+        WorkerDebugMessageStore.clearAll();
     }
 
     @Test
@@ -77,6 +79,17 @@ class ProcessEnvelopeMiddlewareTest {
     }
 
     @Test
+    void noHandlerDefaultsToNotFoundWithoutFallback() {
+        MassMessage msg = message("proj", MessageType.STATUS, "unknown");
+        Envelope envelope = envelope(codec.encode(msg));
+
+        boolean result = middleware.handle(envelope, context);
+
+        assertTrue(result);
+        verify(context.getMessageTransporter(), never()).sendOutput(any());
+    }
+
+    @Test
     void handlerReturningEmptyResponseDoesNotSendOutput() {
         handlerRegistry.register("p", MessageType.PONG, "hb", msg -> Collections.emptyList());
         MassMessage msg = message("p", MessageType.PONG, "hb");
@@ -85,6 +98,37 @@ class ProcessEnvelopeMiddlewareTest {
         middleware.handle(envelope, context);
 
         verify(context.getMessageTransporter(), never()).sendOutput(any());
+    }
+
+    @Test
+    void sendEnvelopeMiddlewareMarksDebugRecordFailedWhenEndpointUnavailable() {
+        EnvelopeMiddleware sendMiddleware = MiddlewareRegistry.sendEnvelopeMiddleware();
+        DispatchRuntimeContext sendContext = mockContext(codec, handlerRegistry);
+        when(sendContext.getSessionManager().sendMessage("worker-1", SessionRoles.TASK_MESSAGES, "{\"hello\":\"world\"}"))
+                .thenReturn(false);
+        WorkerDebugMessageStore.recordOutbound(
+                "worker-1",
+                "demoApp",
+                "CONTROL",
+                "event",
+                "trace-1",
+                "{\"event\":\"mock.state.get\"}",
+                "{\"msgId\":\"trace-1\"}",
+                "queued"
+        );
+
+        boolean result = sendMiddleware.handle(
+                Envelope.builder()
+                        .workerId("worker-1")
+                        .connRole(SessionRoles.TASK_MESSAGES)
+                        .traceId("trace-1")
+                        .rawJson("{\"hello\":\"world\"}")
+                        .build(),
+                sendContext
+        );
+
+        assertFalse(result);
+        assertEquals("FAILED", WorkerDebugMessageStore.getHistory("worker-1").get(0).getStatus());
     }
 
     // ---- helpers ----
@@ -113,6 +157,7 @@ class ProcessEnvelopeMiddlewareTest {
         com.xa.mass.base.channel.tranporter.MessageTransporter<Envelope> transporter =
                 mock(com.xa.mass.base.channel.tranporter.MessageTransporter.class);
         when(ctx.getMessageTransporter()).thenReturn(transporter);
+        when(ctx.getSessionManager()).thenReturn(mock(com.xa.mass.transport.WorkerEndpointRegistry.class));
         return ctx;
     }
 }

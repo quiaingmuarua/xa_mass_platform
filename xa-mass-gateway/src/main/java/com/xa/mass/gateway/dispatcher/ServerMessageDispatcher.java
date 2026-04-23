@@ -9,6 +9,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -17,10 +18,13 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class ServerMessageDispatcher {
 
     private static final Logger logger = LoggerFactory.getLogger(ServerMessageDispatcher.class);
+    private static final int INPUT_LOOP_THREADS = 8;
+    private static final int OUTPUT_LANE_THREADS = 8;
     private final DispatchRuntimeContext context;
     private final AtomicBoolean running = new AtomicBoolean(false);
     private ExecutorService inputExecutor;
-    private ExecutorService outputExecutor;
+    private ExecutorService outputPollerExecutor;
+    private ExecutorService[] outputLaneExecutors;
 
     public ServerMessageDispatcher(DispatchRuntimeContext context) {
         logger.debug("ServerMessageDispatcher context={}", context);
@@ -31,13 +35,17 @@ public class ServerMessageDispatcher {
         if (running.compareAndSet(false, true)) {
             logger.info("Starting ServerMessageDispatcher...");
 
-            inputExecutor = Executors.newFixedThreadPool(8);
-            outputExecutor = Executors.newFixedThreadPool(8);
+            inputExecutor = Executors.newFixedThreadPool(INPUT_LOOP_THREADS);
+            outputPollerExecutor = Executors.newSingleThreadExecutor();
+            outputLaneExecutors = new ExecutorService[OUTPUT_LANE_THREADS];
 
-            for (int i = 0; i < 8; i++) {
+            for (int i = 0; i < INPUT_LOOP_THREADS; i++) {
                 inputExecutor.submit(this::processInputQueueLoop);
-                outputExecutor.submit(this::processOutputQueueLoop);
             }
+            for (int i = 0; i < OUTPUT_LANE_THREADS; i++) {
+                outputLaneExecutors[i] = Executors.newSingleThreadExecutor();
+            }
+            outputPollerExecutor.submit(this::processOutputQueueLoop);
 
             logger.info("ServerMessageDispatcher started successfully");
         }
@@ -49,15 +57,23 @@ public class ServerMessageDispatcher {
 
             try {
                 shutdownExecutor(inputExecutor, "input");
-                shutdownExecutor(outputExecutor, "output");
+                shutdownExecutor(outputPollerExecutor, "output-poller");
+                shutdownExecutors(outputLaneExecutors, "output-lane");
                 logger.info("ServerMessageDispatcher stopped successfully");
             } catch (InterruptedException e) {
                 logger.warn("Stopping ServerMessageDispatcher was interrupted");
                 if (inputExecutor != null) {
                     inputExecutor.shutdownNow();
                 }
-                if (outputExecutor != null) {
-                    outputExecutor.shutdownNow();
+                if (outputPollerExecutor != null) {
+                    outputPollerExecutor.shutdownNow();
+                }
+                if (outputLaneExecutors != null) {
+                    for (ExecutorService executor : outputLaneExecutors) {
+                        if (executor != null) {
+                            executor.shutdownNow();
+                        }
+                    }
                 }
                 Thread.currentThread().interrupt();
             }
@@ -100,8 +116,7 @@ public class ServerMessageDispatcher {
                 envelope = context.getMessageTransporter().receiveOutput(15, TimeUnit.SECONDS);
                 if (envelope != null) {
                     logger.debug("processOutputQueueLoop receive envelope {}", envelope);
-                    context.setDirection(DispatcherContext.MiddlewareDirection.OUTPUT);
-                    runMiddlewareChain(MiddlewareRegistry.instance.getActiveOutputMiddlewares(), envelope);
+                    submitOutputEnvelope(envelope);
                 }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
@@ -114,6 +129,33 @@ public class ServerMessageDispatcher {
             }
         }
         logger.debug("processOutputQueueLoop stopped");
+    }
+
+    private void submitOutputEnvelope(Envelope envelope) {
+        ExecutorService laneExecutor = resolveOutputLaneExecutor(envelope);
+        laneExecutor.submit(() -> {
+            try {
+                context.setDirection(DispatcherContext.MiddlewareDirection.OUTPUT);
+                runMiddlewareChain(MiddlewareRegistry.instance.getActiveOutputMiddlewares(), envelope);
+            } catch (Exception e) {
+                runExceptionMiddlewareChain(envelope, e);
+            }
+        });
+    }
+
+    private ExecutorService resolveOutputLaneExecutor(Envelope envelope) {
+        ExecutorService[] laneExecutors = outputLaneExecutors;
+        if (laneExecutors == null || laneExecutors.length == 0) {
+            throw new IllegalStateException("Output lane executors are not initialized");
+        }
+        int index = Math.floorMod(outputLaneKey(envelope).hashCode(), laneExecutors.length);
+        return laneExecutors[index];
+    }
+
+    private String outputLaneKey(Envelope envelope) {
+        String workerId = envelope != null ? envelope.getWorkerId() : null;
+        String connRole = envelope != null ? envelope.getConnRole() : null;
+        return Objects.toString(workerId, "_") + "::" + Objects.toString(connRole, "_");
     }
 
     private void runMiddlewareChain(List<EnvelopeMiddleware> chain, Envelope envelope) {
@@ -140,6 +182,15 @@ public class ServerMessageDispatcher {
         logger.info("Requested {} dispatcher executor shutdown, cancelled {} queued tasks", name, queuedTasks.size());
         if (!executor.awaitTermination(10, TimeUnit.SECONDS)) {
             logger.warn("{} dispatcher executor did not terminate within timeout", name);
+        }
+    }
+
+    private void shutdownExecutors(ExecutorService[] executors, String namePrefix) throws InterruptedException {
+        if (executors == null) {
+            return;
+        }
+        for (int i = 0; i < executors.length; i++) {
+            shutdownExecutor(executors[i], namePrefix + "-" + i);
         }
     }
 }

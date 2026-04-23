@@ -12,8 +12,8 @@
           </el-tag>
         </div>
         <div class="row-secondary">
-          Manual debug messaging uses the backend worker transport and only
-          targets the selected worker.
+          Manual debug events use the backend worker transport and only target
+          the selected worker.
         </div>
       </div>
       <div class="summary-actions">
@@ -56,7 +56,7 @@
     <el-card class="page-card debug-form-card">
       <template #header>
         <div class="card-header">
-          <strong>Send message</strong>
+          <strong>Send event</strong>
           <span class="row-secondary">
             Current worker project defaults are preloaded, but you can override
             them.
@@ -104,26 +104,29 @@
             </el-form-item>
           </el-col>
           <el-col :span="8">
-            <el-form-item label="Message mode">
+            <el-form-item label="Payload mode">
               <el-select v-model="debugForm.mode">
-                <el-option label="Text chat" value="text" />
+                <el-option label="Text payload" value="text" />
                 <el-option label="Raw JSON payload" value="raw-json" />
               </el-select>
             </el-form-item>
           </el-col>
           <el-col :span="8">
-            <el-form-item label="Sub message type">
-              <el-input v-model="debugForm.subMsgType" />
+            <el-form-item label="Event">
+              <el-input
+                v-model="debugForm.event"
+                placeholder="mock.state.get"
+              />
             </el-form-item>
           </el-col>
         </el-row>
 
-        <el-form-item v-if="debugForm.mode === 'text'" label="Message text">
+        <el-form-item v-if="debugForm.mode === 'text'" label="Text payload">
           <el-input
             v-model="debugForm.text"
             type="textarea"
             :rows="4"
-            placeholder="Type a manual debug message for this worker"
+            placeholder="Type a text payload for the selected event"
           />
         </el-form-item>
 
@@ -135,8 +138,7 @@
             placeholder='{"event":"mock.state.get"}'
           />
           <div class="field-hint">
-            Use raw JSON if you want to trigger a structured manual debug
-            command instead of sending plain text.
+            Use raw JSON when the target event expects structured payload data.
           </div>
         </el-form-item>
 
@@ -238,9 +240,9 @@ const refreshTimer = ref<number | null>(null)
 const debugForm = ref({
   project: '',
   mode: 'text',
-  subMsgType: 'manual-chat',
+  event: 'mock.state.get',
   text: '',
-  rawPayload: '{\n  "event": "mock.state.get"\n}',
+  rawPayload: '{\n  "includeRuntime": true\n}',
 })
 
 const canSendWorkerMessages = computed(() => hasPermission('worker:edit'))
@@ -318,6 +320,10 @@ async function handleSendDebugMessage(): Promise<void> {
 
   let payload: Record<string, unknown>
   try {
+    const event = debugForm.value.event.trim()
+    if (!event) {
+      throw new Error('Event is required.')
+    }
     payload =
       debugForm.value.mode === 'text'
         ? buildTextPayload(debugForm.value.text)
@@ -335,11 +341,10 @@ async function handleSendDebugMessage(): Promise<void> {
     const result = await sendWorkerDebugMessage({
       workerId: props.worker.workerId,
       project: debugForm.value.project.trim() || undefined,
-      msgType: 'CONTROL',
-      subMsgType: debugForm.value.subMsgType.trim() || 'manual-chat',
+      event: debugForm.value.event.trim(),
       payload,
     })
-    ElMessage.success(`Debug message queued: ${result.messageId}`)
+    ElMessage.success(`Debug event queued: ${result.messageId}`)
     if (debugForm.value.mode === 'text') {
       debugForm.value.text = ''
     }
@@ -356,23 +361,17 @@ async function handleSendDebugMessage(): Promise<void> {
 
 function applyPreset(preset: PresetKey): void {
   debugForm.value.mode = 'raw-json'
-  debugForm.value.subMsgType = 'manual-chat'
 
   if (preset === 'state') {
-    debugForm.value.rawPayload = JSON.stringify(
-      {
-        event: 'mock.state.get',
-      },
-      null,
-      2,
-    )
+    debugForm.value.event = 'mock.state.get'
+    debugForm.value.rawPayload = JSON.stringify({}, null, 2)
     return
   }
 
   if (preset === 'delay') {
+    debugForm.value.event = 'mock.delay.response'
     debugForm.value.rawPayload = JSON.stringify(
       {
-        event: 'mock.delay.response',
         millis: 400,
       },
       null,
@@ -381,10 +380,9 @@ function applyPreset(preset: PresetKey): void {
     return
   }
 
+  debugForm.value.event = 'mock.disconnect'
   debugForm.value.rawPayload = JSON.stringify(
-    {
-      event: 'mock.disconnect',
-    },
+    {},
     null,
     2,
   )
@@ -395,9 +393,9 @@ function resetDebugForm(): void {
     project:
       props.worker.supportedProjects[0] ?? props.projectOptions?.[0] ?? '',
     mode: 'text',
-    subMsgType: 'manual-chat',
+    event: 'mock.state.get',
     text: '',
-    rawPayload: '{\n  "event": "mock.state.get"\n}',
+    rawPayload: '{\n  "includeRuntime": true\n}',
   }
 }
 

@@ -84,11 +84,19 @@ public final class WorkerDebugMessageStore {
     }
 
     public static void markDelivered(String messageId, String detail) {
+        updateStatus(messageId, "DELIVERED", detail);
+    }
+
+    public static void markFailed(String messageId, String detail) {
+        updateStatus(messageId, "FAILED", detail);
+    }
+
+    private static void updateStatus(String messageId, String status, String detail) {
         WorkerDebugMessageRecord record = RECORD_BY_MESSAGE_ID.get(messageId);
         if (record == null) {
             return;
         }
-        record.setStatus("DELIVERED");
+        record.setStatus(status);
         if (detail != null && !detail.isBlank()) {
             record.setDetail(detail);
         }

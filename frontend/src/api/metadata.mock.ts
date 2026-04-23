@@ -7,7 +7,7 @@ const mockProjects: ProjectMetadata[] = [
         description:
             'General demo project used for orchestration smoke tests and worker readiness checks.',
         enabled: true,
-        eventCodes: ['demo.dispatch.run', 'demo.dispatch.audit'],
+        eventCodes: ['demo.dispatch', 'demo.dispatch.gb'],
     },
     {
         code: 'crawlerApp',
@@ -29,8 +29,8 @@ const mockProjects: ProjectMetadata[] = [
 
 const mockEvents: EventMetadata[] = [
     {
-        code: 'demo.dispatch.run',
-        name: 'Run demo dispatch',
+        code: 'demo.dispatch',
+        name: 'Demo dispatch',
         description:
             'Dispatch a generic demo payload to an online worker.',
         payloadTypes: ['JSON', 'TEXT'],
@@ -38,10 +38,10 @@ const mockEvents: EventMetadata[] = [
         enabled: true,
     },
     {
-        code: 'demo.dispatch.audit',
-        name: 'Audit demo dispatch',
+        code: 'demo.dispatch.gb',
+        name: 'Demo dispatch (GB)',
         description:
-            'Validate previous demo dispatch output and return an audit result.',
+            'Dispatch a generic demo payload to the GB demo lane.',
         payloadTypes: ['JSON'],
         taskModes: ['SINGLE_RUN'],
         enabled: true,

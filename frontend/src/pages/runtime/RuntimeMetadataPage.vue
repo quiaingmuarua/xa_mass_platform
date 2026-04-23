@@ -365,11 +365,11 @@
                 </div>
               </template>
             </el-table-column>
-            <el-table-column label="Derived events" min-width="280">
+            <el-table-column label="Supported events" min-width="280">
               <template #default="{ row }">
                 <div class="tag-row">
                   <el-tag
-                    v-for="eventCode in visibleItems(row.derivedEventCodes)"
+                    v-for="eventCode in visibleItems(row.visibleSupportedEventCodes)"
                     :key="eventCode"
                     type="primary"
                     round
@@ -377,16 +377,16 @@
                     {{ eventCode }}
                   </el-tag>
                   <span
-                    v-if="row.derivedEventCodes.length === 0"
+                    v-if="row.visibleSupportedEventCodes.length === 0"
                     class="row-secondary"
                   >
-                    no metadata match
+                    no supported events in scope
                   </span>
                   <span
-                    v-if="remainingCount(row.derivedEventCodes) > 0"
+                    v-if="remainingCount(row.visibleSupportedEventCodes) > 0"
                     class="row-secondary"
                   >
-                    +{{ remainingCount(row.derivedEventCodes) }} more
+                    +{{ remainingCount(row.visibleSupportedEventCodes) }} more
                   </span>
                 </div>
               </template>
@@ -529,7 +529,7 @@ interface ProjectRow extends ProjectMetadata {
 
 interface WorkerDiscoveryRow extends WorkerListItem {
   matchedProjects: string[]
-  derivedEventCodes: string[]
+  visibleSupportedEventCodes: string[]
 }
 
 interface EventRow extends EventMetadata {
@@ -633,16 +633,21 @@ const workerRows = computed<WorkerDiscoveryRow[]>(() =>
         : worker.supportedProjects.filter(
             (projectCode) => projectCode === selectedProjectCode.value,
           )
-    const derivedEventCodes = uniqueStrings(
-      matchedProjects.flatMap(
-        (projectCode) => eventCodesByProject.value[projectCode] ?? [],
-      ),
-    )
+    const visibleSupportedEventCodes =
+      selectedProjectCode.value === ALL_PROJECTS
+        ? uniqueStrings(worker.supportedEventCodes)
+        : uniqueStrings(
+            worker.supportedEventCodes.filter((eventCode) =>
+              (eventCodesByProject.value[selectedProjectCode.value] ?? []).includes(
+                eventCode,
+              ),
+            ),
+          )
 
     return {
       ...worker,
       matchedProjects,
-      derivedEventCodes,
+      visibleSupportedEventCodes,
     }
   }),
 )
@@ -675,9 +680,11 @@ const selectedEventRows = computed<EventRow[]>(() =>
         .filter(
           (worker) =>
             worker.status === 'ONLINE' &&
-            worker.supportedProjects.some((projectCode) =>
-              projectCodes.includes(projectCode),
-            ),
+            worker.supportedEventCodes.includes(event.code) &&
+            (projectCodes.length === 0 ||
+              worker.supportedProjects.some((projectCode) =>
+                projectCodes.includes(projectCode),
+              )),
         )
         .map((worker) => worker.workerId)
 

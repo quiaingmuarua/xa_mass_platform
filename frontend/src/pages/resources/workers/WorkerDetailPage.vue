@@ -45,6 +45,10 @@
           <div class="metric-label">Projects</div>
           <div class="metric-value">{{ worker.supportedProjects.length }}</div>
         </div>
+        <div class="metric-tile">
+          <div class="metric-label">Events</div>
+          <div class="metric-value">{{ worker.supportedEventCodes.length }}</div>
+        </div>
       </section>
 
       <el-row :gutter="20">
@@ -100,6 +104,29 @@
           </el-tag>
           <span
             v-if="worker.supportedProjects.length === 0"
+            class="row-secondary"
+          >
+            none
+          </span>
+        </div>
+      </el-card>
+
+      <el-card class="page-card">
+        <template #header>
+          <strong>Supported events</strong>
+        </template>
+        <div class="project-row">
+          <el-tag
+            v-for="eventCode in worker.supportedEventCodes"
+            :key="eventCode"
+            round
+            class="project-tag"
+            type="primary"
+          >
+            {{ eventCode }}
+          </el-tag>
+          <span
+            v-if="worker.supportedEventCodes.length === 0"
             class="row-secondary"
           >
             none

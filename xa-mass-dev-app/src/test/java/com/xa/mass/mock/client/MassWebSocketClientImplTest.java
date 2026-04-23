@@ -3,7 +3,6 @@ package com.xa.mass.mock.client;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import com.xa.mass.base.debug.ManualDebugChatProtocol;
 import com.xa.mass.gateway.model.enums.MessageDirection;
 import com.xa.mass.gateway.model.enums.MessageType;
 import com.xa.mass.gateway.model.massMessage.MassMessage;
@@ -109,12 +108,12 @@ class MassWebSocketClientImplTest {
         CapturingMassWebSocketClient client = new CapturingMassWebSocketClient("worker-test");
         clientSessionManager.addClient(client);
 
-        client.onMessage(gson.toJson(controlCommandMessage("worker-test", "mock.disconnect")));
+        client.onMessage(gson.toJson(eventControlMessage("worker-test", "mock.disconnect")));
 
         assertTrue(client.awaitSentCount(1, 1000L));
         MassMessage response = gson.fromJson(client.sentMessages.get(0), MassMessage.class);
         assertEquals(MessageType.EVENT, response.getMsgType());
-        assertEquals(ManualDebugChatProtocol.SUB_MSG_TYPE, response.getSubMsgType());
+        assertEquals("event", response.getSubMsgType());
         assertTrue(client.awaitClosed(1000L));
         assertFalse(client.isOpen());
     }
@@ -144,12 +143,12 @@ class MassWebSocketClientImplTest {
         return message;
     }
 
-    private MassMessage controlCommandMessage(String workerId, String event) {
+    private MassMessage eventControlMessage(String workerId, String event) {
         MassMessage message = new MassMessage();
         message.setMsgId("control-1");
         message.setResponse(false);
         message.setMsgType(MessageType.CONTROL);
-        message.setSubMsgType(ManualDebugChatProtocol.SUB_MSG_TYPE);
+        message.setSubMsgType("event");
         message.setFrom(MessageDirection.SERVER);
         message.setProject("demoApp");
 
@@ -160,7 +159,10 @@ class MassWebSocketClientImplTest {
 
         JsonObject payload = new JsonObject();
         payload.addProperty("event", event);
-        payload.addProperty("workerId", workerId);
+        payload.addProperty("requestId", "debug-request-1");
+        JsonObject eventPayload = new JsonObject();
+        eventPayload.addProperty("workerId", workerId);
+        payload.add("payload", eventPayload);
         message.setPayload(payload);
         return message;
     }

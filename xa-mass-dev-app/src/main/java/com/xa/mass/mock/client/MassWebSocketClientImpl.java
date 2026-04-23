@@ -35,6 +35,7 @@ public class MassWebSocketClientImpl extends WebSocketClient implements MassWebS
     private static final int MAX_RECONNECT_ATTEMPTS = 10;
     private static final long INITIAL_RECONNECT_DELAY_MS = 1000;
     private static final long MAX_RECONNECT_DELAY_MS = 60000;
+    private static final String EVENT_CONTROL_SUB_MSG_TYPE = "event";
 
     private final Gson gson = new Gson();
     private final ScheduledExecutorService reconnectScheduler;
@@ -173,14 +174,14 @@ public class MassWebSocketClientImpl extends WebSocketClient implements MassWebS
 
     private void handleControlMessage(String message) {
         MassMessage controlMessage = gson.fromJson(message, MassMessage.class);
-        logger.info("[{}] Received control message for debug chat. msgId={}, subMsgType={}",
+        logger.info("[{}] Received control message. msgId={}, subMsgType={}",
                 workerId, controlMessage.getMsgId(), controlMessage.getSubMsgType());
 
         MassMessage response = new MassMessage();
         response.setMsgId("manual-chat-" + workerId + "-" + System.currentTimeMillis());
         response.setResponse(true);
         response.setMsgType(MessageType.EVENT);
-        response.setSubMsgType(ManualDebugChatProtocol.SUB_MSG_TYPE);
+        response.setSubMsgType(resolveReplySubMsgType(controlMessage));
         response.setFrom(MessageDirection.CLIENT);
         response.setProject(controlMessage.getProject());
 
@@ -200,14 +201,16 @@ public class MassWebSocketClientImpl extends WebSocketClient implements MassWebS
         payloadMap.put(ManualDebugChatProtocol.MESSAGE_KIND_FIELD, ManualDebugChatProtocol.MESSAGE_KIND_ACK);
         payloadMap.put(ManualDebugChatProtocol.REPLY_TO_MESSAGE_ID_FIELD, controlMessage.getMsgId());
         payloadMap.put(ManualDebugChatProtocol.ACK_STATUS_FIELD, ManualDebugChatProtocol.ACK_STATUS_RECEIVED);
-        payloadMap.put("message", commandResult == null
-                ? "mock worker received manual debug message"
-                : "mock worker executed command: " + commandRequest.get("event").getAsString());
+        payloadMap.put("message", resolveAckMessage(controlMessage, commandRequest, commandResult));
         payloadMap.put(ManualDebugChatProtocol.WORKER_ID_FIELD, workerId);
         payloadMap.put(ManualDebugChatProtocol.RECEIVED_AT_FIELD, System.currentTimeMillis());
         payloadMap.put(ManualDebugChatProtocol.ECHO_PAYLOAD_FIELD, controlMessage.getPayload());
         payloadMap.put(ManualDebugChatProtocol.ECHO_SUB_MSG_TYPE_FIELD, controlMessage.getSubMsgType());
         payloadMap.put("commandExecuted", commandResult != null);
+        JsonObject eventEnvelope = extractEventEnvelope(controlMessage);
+        if (eventEnvelope != null && eventEnvelope.has("requestId") && !eventEnvelope.get("requestId").isJsonNull()) {
+            payloadMap.put("requestId", eventEnvelope.get("requestId").getAsString());
+        }
         if (commandResult != null) {
             payloadMap.put("commandEvent", commandRequest.get("event").getAsString());
             payloadMap.put("commandResult", commandResult);
@@ -227,7 +230,10 @@ public class MassWebSocketClientImpl extends WebSocketClient implements MassWebS
         }
         if (payload.isJsonObject()) {
             JsonObject payloadObject = payload.getAsJsonObject();
-            if (payloadObject.has("event") && !payloadObject.get("event").isJsonNull()) {
+            JsonObject eventEnvelope = extractEventEnvelope(controlMessage);
+            if (eventEnvelope != null) {
+                commandRequest = buildCommandRequestFromEventEnvelope(eventEnvelope);
+            } else if (payloadObject.has("event") && !payloadObject.get("event").isJsonNull()) {
                 commandRequest = payloadObject.deepCopy();
             } else if (payloadObject.has("command") && payloadObject.get("command").isJsonObject()) {
                 commandRequest = payloadObject.getAsJsonObject("command").deepCopy();
@@ -252,6 +258,69 @@ public class MassWebSocketClientImpl extends WebSocketClient implements MassWebS
             commandRequest.addProperty("project", controlMessage.getProject());
         }
         return commandRequest;
+    }
+
+    private JsonObject extractEventEnvelope(MassMessage controlMessage) {
+        JsonElement payload = controlMessage.getPayload();
+        if (payload == null || !payload.isJsonObject()) {
+            return null;
+        }
+        JsonObject payloadObject = payload.getAsJsonObject();
+        if (!EVENT_CONTROL_SUB_MSG_TYPE.equals(controlMessage.getSubMsgType())) {
+            return null;
+        }
+        if (!payloadObject.has("event") || payloadObject.get("event").isJsonNull()) {
+            return null;
+        }
+        return payloadObject;
+    }
+
+    private JsonObject buildCommandRequestFromEventEnvelope(JsonObject eventEnvelope) {
+        JsonObject commandRequest = new JsonObject();
+        commandRequest.add("event", eventEnvelope.get("event").deepCopy());
+        if (eventEnvelope.has("payload") && eventEnvelope.get("payload").isJsonObject()) {
+            JsonObject payloadObject = eventEnvelope.getAsJsonObject("payload");
+            for (Map.Entry<String, JsonElement> entry : payloadObject.entrySet()) {
+                if ("event".equals(entry.getKey())) {
+                    continue;
+                }
+                commandRequest.add(entry.getKey(), entry.getValue().deepCopy());
+            }
+        }
+        if (eventEnvelope.has("requestId") && !eventEnvelope.get("requestId").isJsonNull()) {
+            commandRequest.add("requestId", eventEnvelope.get("requestId").deepCopy());
+        }
+        if (eventEnvelope.has("principal") && eventEnvelope.get("principal").isJsonObject()) {
+            JsonObject principal = eventEnvelope.getAsJsonObject("principal");
+            if (principal.has("clientId") && !principal.get("clientId").isJsonNull()) {
+                commandRequest.add("clientId", principal.get("clientId").deepCopy());
+            }
+            if (principal.has("userId") && !principal.get("userId").isJsonNull()) {
+                commandRequest.add("userId", principal.get("userId").deepCopy());
+            }
+        }
+        return commandRequest;
+    }
+
+    private String resolveReplySubMsgType(MassMessage controlMessage) {
+        String subMsgType = controlMessage.getSubMsgType();
+        if (subMsgType == null || subMsgType.isBlank()) {
+            return ManualDebugChatProtocol.SUB_MSG_TYPE;
+        }
+        return subMsgType;
+    }
+
+    private String resolveAckMessage(MassMessage controlMessage,
+                                     JsonObject commandRequest,
+                                     CommandResponse<?> commandResult) {
+        if (commandResult != null) {
+            return "mock worker executed command: " + commandRequest.get("event").getAsString();
+        }
+        JsonObject eventEnvelope = extractEventEnvelope(controlMessage);
+        if (eventEnvelope != null && eventEnvelope.has("event") && !eventEnvelope.get("event").isJsonNull()) {
+            return "mock worker received event: " + eventEnvelope.get("event").getAsString();
+        }
+        return "mock worker received manual debug message";
     }
 
     private JsonObject parseCommandText(String text) {

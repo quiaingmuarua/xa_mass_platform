@@ -104,6 +104,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
 
     private static final Gson GSON = new Gson();
     private static final String MANUAL_DEBUG_SUB_MSG_TYPE = "manual-chat";
+    private static final String EVENT_CONTROL_SUB_MSG_TYPE = "event";
     private static final String EVENT_TASK_APPROVE = "platform.task.approve";
     private static final String EVENT_TASK_REJECT = "platform.task.reject";
     private static final String EVENT_TASK_BLOCK = "platform.task.block";
@@ -742,6 +743,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
                 .workerId(readRequiredString(payload, "workerId"))
                 .workerGroupId(readString(payload, "workerGroupId", null))
                 .supportedProjects(readStringList(payload.get("supportedProjects")))
+                .supportedEventCodes(readStringList(payload.get("supportedEventCodes")))
                 .transportHint(readString(payload, "transportHint", null))
                 .attributes(readStringMap(payload.get("attributes")))
                 .build();
@@ -1066,6 +1068,44 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
         return WorkerDebugMessageStore.getHistory(workerId);
     }
 
+    @Override
+    public Map<String, Object> sendWorkerEvent(String workerId,
+                                               EventRequest request,
+                                               EventPrincipal principal) {
+        Objects.requireNonNull(request, "request");
+        String eventRequestId = firstNonBlank(request.getRequestId(), UUID.randomUUID().toString());
+        Map<String, Object> eventPayload = new LinkedHashMap<>();
+        eventPayload.put("event", request.getEvent().value());
+        eventPayload.put("requestId", eventRequestId);
+        eventPayload.put("headers", request.getHeaders());
+        eventPayload.put("payload", request.getPayload());
+        Map<String, Object> principalPayload = new LinkedHashMap<>();
+        if (principal != null) {
+            principalPayload.put("clientId", principal.getClientId());
+            principalPayload.put("userId", principal.getUserId());
+        }
+        eventPayload.put("principal", principalPayload);
+        Map<String, Object> legacyResult = sendWorkerMessage(
+                workerId,
+                firstNonBlank(request.getProject(), null),
+                MessageType.CONTROL.name(),
+                EVENT_CONTROL_SUB_MSG_TYPE,
+                eventPayload
+        );
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("messageId", legacyResult.get("messageId"));
+        result.put("workerId", legacyResult.get("workerId"));
+        result.put("project", legacyResult.get("project"));
+        result.put("event", request.getEvent().value());
+        result.put("requestId", eventRequestId);
+        return result;
+    }
+
+    /**
+     * @deprecated Prefer {@link #sendWorkerEvent(String, EventRequest, EventPrincipal)}.
+     * This remains as a compatibility entry for transport-shaped debug calls.
+     */
+    @Deprecated(forRemoval = false)
     @Override
     public Map<String, Object> sendWorkerMessage(String workerId,
                                                  String project,

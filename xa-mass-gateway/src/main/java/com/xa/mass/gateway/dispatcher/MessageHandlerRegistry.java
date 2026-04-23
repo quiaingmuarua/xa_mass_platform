@@ -27,7 +27,7 @@ public class MessageHandlerRegistry {
     // project -> (key -> handler)
     private final Map<String, Map<String, MassMessageHandler>> handlerMap = new ConcurrentHashMap<>();
     private MassMessageHandler legacyControlEventBridgeHandler;
-    private boolean enableFallback = true;
+    private boolean enableFallback = false;
 
     public MessageHandlerRegistry() {
         this(NoopWorkerSystemEventChannel.INSTANCE);

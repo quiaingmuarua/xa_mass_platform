@@ -15,6 +15,7 @@ const mockWorkers: WorkerListResponse = {
             workerGroupId: 'us-routing',
             agentVersion: '1.4.0',
             supportedProjects: ['demoApp'],
+            supportedEventCodes: ['demo.dispatch', 'demo.dispatch.gb'],
             attributes: {
                 region: 'us',
                 lane: 'primary',
@@ -29,6 +30,7 @@ const mockWorkers: WorkerListResponse = {
             workerGroupId: 'sg-routing',
             agentVersion: '1.3.7',
             supportedProjects: ['demoApp', 'crawlerApp'],
+            supportedEventCodes: ['demo.dispatch', 'crawler.fetch-page'],
             attributes: {
                 region: 'sg',
             },
@@ -126,8 +128,11 @@ export async function sendWorkerDebugMessageMock(
     }
 
     const project = request.project || worker.supportedProjects[0] || 'demoApp'
-    const msgType = request.msgType || 'CONTROL'
-    const subMsgType = request.subMsgType || 'manual-chat'
+    const event = request.event.trim()
+    if (!event) {
+        throw new Error('Event is required.')
+    }
+    const requestId = request.requestId?.trim() || `mock-request-${Date.now()}`
     const messageId = `mock-debug-${Date.now()}`
     const now = Date.now()
 
@@ -137,18 +142,30 @@ export async function sendWorkerDebugMessageMock(
         workerId: request.workerId,
         direction: 'OUTBOUND',
         project,
-        msgType,
-        subMsgType,
+        msgType: 'CONTROL',
+        subMsgType: 'event',
         status: 'DELIVERED',
-        payloadJson: prettyJson(request.payload),
+        payloadJson: prettyJson({
+            event,
+            requestId,
+            headers: request.headers ?? {},
+            payload: request.payload,
+            principal: request.principal ?? {},
+        }),
         rawJson: prettyJson({
             workerId: request.workerId,
             project,
-            msgType,
-            subMsgType,
-            payload: request.payload,
+            msgType: 'CONTROL',
+            subMsgType: 'event',
+            payload: {
+                event,
+                requestId,
+                headers: request.headers ?? {},
+                payload: request.payload,
+                principal: request.principal ?? {},
+            },
         }),
-        detail: 'mock worker received manual debug message',
+        detail: `mock worker received event ${event}`,
         createdAt: now,
         updatedAt: now,
     })
@@ -160,25 +177,28 @@ export async function sendWorkerDebugMessageMock(
         direction: 'INBOUND',
         project,
         msgType: 'EVENT',
-        subMsgType,
+        subMsgType: 'event',
         status: 'RECEIVED',
         payloadJson: prettyJson({
             messageKind: 'debug_chat_ack',
             replyToMessageId: messageId,
             ackStatus: 'RECEIVED',
+            commandExecuted: true,
+            commandEvent: event,
+            requestId,
             text:
                 typeof request.payload.text === 'string'
                     ? request.payload.text
-                    : 'mock worker received manual debug message',
+                    : `mock worker received event ${event}`,
             workerId: request.workerId,
         }),
         rawJson: prettyJson({
             workerId: request.workerId,
             project,
             msgType: 'EVENT',
-            subMsgType,
+            subMsgType: 'event',
         }),
-        detail: 'mock worker acked manual debug message',
+        detail: `mock worker acked event ${event}`,
         createdAt: now + 1,
         updatedAt: now + 1,
     })
@@ -187,8 +207,8 @@ export async function sendWorkerDebugMessageMock(
         messageId,
         workerId: request.workerId,
         project,
-        msgType,
-        subMsgType,
+        event,
+        requestId,
     })
 }
 

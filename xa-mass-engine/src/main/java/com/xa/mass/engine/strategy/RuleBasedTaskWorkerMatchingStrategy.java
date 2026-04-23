@@ -208,6 +208,11 @@ public class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatchingSt
             return PrefilterDecision.reject(AssignmentResult.RULE_NOT_MATCH,
                     "project not supported", contextSnapshot, false);
         }
+        String eventCode = TaskSharedConfig.sdkEventCode(task);
+        if (eventCode != null && !eventCode.isBlank() && !worker.supportsEvent(eventCode)) {
+            return PrefilterDecision.reject(AssignmentResult.RULE_NOT_MATCH,
+                    "event not supported", contextSnapshot, false);
+        }
 
         String routingCode = TaskSharedConfig.routingCode(task);
         boolean taskHasRoutingRequirement = routingCode != null && !routingCode.isBlank();

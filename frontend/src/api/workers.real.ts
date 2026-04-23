@@ -39,7 +39,7 @@ export async function sendWorkerDebugMessageReal(
     request: WorkerDebugSendRequest,
 ): Promise<WorkerDebugSendResult> {
     return requestApiData<WorkerDebugSendResult>(
-        '/status/workers/send-message',
+        '/status/workers/send-event',
         {
             method: 'POST',
             body: JSON.stringify(request),

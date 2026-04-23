@@ -1,7 +1,6 @@
 package com.xa.mass.mock.e2e.support;
 
 import com.google.gson.Gson;
-import com.xa.mass.base.debug.ManualDebugChatProtocol;
 import com.xa.mass.base.debug.WorkerDebugMessageStore;
 import com.xa.mass.mock.MockApplicationSpringBootApp;
 import org.junit.jupiter.api.AfterEach;
@@ -65,9 +64,7 @@ class WorkerManualDebugDisconnectIntegrationTest extends AbstractMockE2eTest {
 
     @Test
     void disconnectCommandDisconnectsWorkerAfterAck() throws Exception {
-        String messageId = sendManualCommand(Map.of(
-                "event", "mock.disconnect"
-        ));
+        String messageId = sendEventCommand("mock.disconnect", Map.of());
 
         Map<String, Object> ack = waitForInboundReply(messageId);
         Map<String, Object> payload = parsePayload(ack);
@@ -86,30 +83,30 @@ class WorkerManualDebugDisconnectIntegrationTest extends AbstractMockE2eTest {
         assertTrue(apiMsg(offlineResponse).contains("offline"));
     }
 
-    private String sendManualCommand(Map<String, Object> payload) throws InterruptedException {
+    private String sendEventCommand(String event, Map<String, Object> payload) throws InterruptedException {
         Map<String, Object> request = new LinkedHashMap<>();
         request.put("workerId", WORKER_ID);
         request.put("project", "demoApp");
-        request.put("msgType", "CONTROL");
-        request.put("subMsgType", ManualDebugChatProtocol.SUB_MSG_TYPE);
+        request.put("event", event);
         request.put("payload", payload);
+        request.put("requestId", "integration-" + event.replace('.', '-'));
 
-        Map<String, Object> sendResponse = waitForSuccessfulSend(request);
+        Map<String, Object> sendResponse = waitForSuccessfulEventSend(request);
         String messageId = String.valueOf(responseData(sendResponse).get("messageId"));
         assertFalse(messageId.isBlank());
         return messageId;
     }
 
-    private Map<String, Object> waitForSuccessfulSend(Map<String, Object> request) throws InterruptedException {
+    private Map<String, Object> waitForSuccessfulEventSend(Map<String, Object> request) throws InterruptedException {
         Map<String, Object> latest = null;
         for (int i = 0; i < 40; i++) {
-            latest = exchange("/status/workers/send-message", HttpMethod.POST, request);
+            latest = exchange("/status/workers/send-event", HttpMethod.POST, request);
             if (isApiOk(latest)) {
                 return latest;
             }
             Thread.sleep(250L);
         }
-        throw new AssertionError("Disconnect command was not accepted in time. Last response=" + latest);
+        throw new AssertionError("Disconnect event was not accepted in time. Last response=" + latest);
     }
 
     private Map<String, Object> waitForInboundReply(String replyToMessageId) throws InterruptedException {
@@ -131,12 +128,12 @@ class WorkerManualDebugDisconnectIntegrationTest extends AbstractMockE2eTest {
         Map<String, Object> probeRequest = new LinkedHashMap<>();
         probeRequest.put("workerId", WORKER_ID);
         probeRequest.put("project", "demoApp");
-        probeRequest.put("msgType", "CONTROL");
-        probeRequest.put("subMsgType", ManualDebugChatProtocol.SUB_MSG_TYPE);
-        probeRequest.put("payload", Map.of("text", "post-disconnect probe"));
+        probeRequest.put("event", "mock.state.get");
+        probeRequest.put("requestId", "post-disconnect-probe");
+        probeRequest.put("payload", Map.of());
 
         for (int i = 0; i < 40; i++) {
-            latest = exchange("/status/workers/send-message", HttpMethod.POST, probeRequest);
+            latest = exchange("/status/workers/send-event", HttpMethod.POST, probeRequest);
             if (apiCode(latest) == 409
                     && apiMsg(latest) != null
                     && apiMsg(latest).contains("offline")) {

@@ -183,6 +183,12 @@ public class MassApplication {
                     ManualDebugChatProtocol.SUB_MSG_TYPE,
                     new ManualDebugMessageHandler()
             );
+            messageHandlerRegistry.register(
+                    null,
+                    MessageType.EVENT,
+                    "event",
+                    new ManualDebugMessageHandler()
+            );
             if (legacyControlBridgeHandler != null) {
                 messageHandlerRegistry.registerLegacyControlEventBridge(legacyControlBridgeHandler);
             }

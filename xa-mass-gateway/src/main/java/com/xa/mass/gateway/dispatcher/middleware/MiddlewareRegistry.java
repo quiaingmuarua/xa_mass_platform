@@ -1,5 +1,6 @@
 package com.xa.mass.gateway.dispatcher.middleware;
 
+import com.xa.mass.base.debug.WorkerDebugMessageStore;
 import com.xa.mass.base.exception.CommandException;
 import com.xa.mass.base.exception.ErrorCode;
 import com.xa.mass.base.exception.ValidationException;
@@ -98,12 +99,17 @@ public class MiddlewareRegistry {
                 if (sent) {
                     return true;
                 }
-                logger.debug("sendEnvelopeMiddleware skipped because endpoint is unavailable");
+                String detail = "endpoint unavailable for workerId="
+                        + envelope.getWorkerId() + ", role=" + envelope.getConnRole();
+                WorkerDebugMessageStore.markFailed(envelope.getTraceId(), detail);
+                logger.warn("sendEnvelopeMiddleware skipped because endpoint is unavailable: workerId={}, role={}, traceId={}",
+                        envelope.getWorkerId(), envelope.getConnRole(), envelope.getTraceId());
+                return false;
             } catch (Exception e) {
+                WorkerDebugMessageStore.markFailed(envelope != null ? envelope.getTraceId() : null, e.getMessage());
                 logger.error("Error in sendEnvelopeMiddleware", e);
                 return false;
             }
-            return true;
         };
     }
 

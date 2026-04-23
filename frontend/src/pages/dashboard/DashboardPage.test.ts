@@ -86,6 +86,7 @@ describe('DashboardPage', () => {
                                         workerGroupId: 'us-routing',
                                         agentVersion: '1.4.0',
                                         supportedProjects: ['demoApp'],
+                                        supportedEventCodes: ['demo.dispatch'],
                                         attributes: {},
                                         lastHeartbeat: '2026-04-21 09:45:00',
                                         locked: true,

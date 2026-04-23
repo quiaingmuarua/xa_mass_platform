@@ -162,12 +162,21 @@ public class MockRuntimeDataLoader implements MassBootstrapDataProvider {
         List<String> supportedProjects = worker.getSupportedProjects();
         if (supportedProjects == null || supportedProjects.isEmpty()) {
             worker.setSupportedProjects(List.of("demoApp", "testApp"));
-            return;
+        } else {
+            worker.setSupportedProjects(supportedProjects.stream()
+                    .filter(Objects::nonNull)
+                    .distinct()
+                    .toList());
         }
-        worker.setSupportedProjects(supportedProjects.stream()
-                .filter(Objects::nonNull)
-                .distinct()
-                .toList());
+        List<String> supportedEventCodes = worker.getSupportedEventCodes();
+        if (supportedEventCodes == null || supportedEventCodes.isEmpty()) {
+            worker.setSupportedEventCodes(List.of());
+        } else {
+            worker.setSupportedEventCodes(supportedEventCodes.stream()
+                    .filter(Objects::nonNull)
+                    .distinct()
+                    .toList());
+        }
     }
 
     private void normalizeWorkerContext(WorkerContext workerContext) {
@@ -192,6 +201,7 @@ public class MockRuntimeDataLoader implements MassBootstrapDataProvider {
                 .workerId(worker.getWorkerId())
                 .workerGroupId(worker.getWorkerGroupId())
                 .supportedProjects(worker.getSupportedProjects())
+                .supportedEventCodes(worker.getSupportedEventCodes())
                 .transportHint(worker.getOnlineStrategy())
                 .attributes(worker.getAttributes())
                 .build();

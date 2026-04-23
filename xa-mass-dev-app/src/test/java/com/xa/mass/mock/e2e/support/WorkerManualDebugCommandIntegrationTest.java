@@ -66,8 +66,7 @@ class WorkerManualDebugCommandIntegrationTest extends AbstractMockE2eTest {
 
     @Test
     void executesMockCommandAndReturnsStructuredAck() throws Exception {
-        String delayMessageId = sendManualCommand(WORKER_ID, Map.of(
-                "event", "mock.delay.response",
+        String delayMessageId = sendEventCommand(WORKER_ID, "mock.delay.response", Map.of(
                 "millis", 400
         ));
 
@@ -84,9 +83,7 @@ class WorkerManualDebugCommandIntegrationTest extends AbstractMockE2eTest {
         Map<String, Object> delayState = map(delayResultData.get("state"));
         assertEquals(400.0d, delayState.get("taskResponseDelayMillis"));
 
-        String stateMessageId = sendManualCommand(WORKER_ID, Map.of(
-                "event", "mock.state.get"
-        ));
+        String stateMessageId = sendEventCommand(WORKER_ID, "mock.state.get", Map.of());
 
         Map<String, Object> stateAck = waitForInboundReply(WORKER_ID, stateMessageId);
         Map<String, Object> statePayload = parsePayload(stateAck);
@@ -98,32 +95,61 @@ class WorkerManualDebugCommandIntegrationTest extends AbstractMockE2eTest {
         assertEquals(400.0d, stateSnapshot.get("taskResponseDelayMillis"));
     }
 
-    private String sendManualCommand(String workerId, Map<String, Object> payload) throws InterruptedException {
+    @Test
+    void eventFirstEndpointExecutesMockCommandWithoutLegacyMessageShape() throws Exception {
+        Map<String, Object> request = new LinkedHashMap<>();
+        request.put("workerId", WORKER_ID);
+        request.put("project", "demoApp");
+        request.put("event", "mock.state.get");
+        request.put("requestId", "event-first-debug-1");
+        request.put("principal", Map.of(
+                "clientId", "debug-client",
+                "userId", "debug-user"
+        ));
+        request.put("payload", Map.of());
+
+        Map<String, Object> sendResponse = waitForSuccessfulEventSend(request);
+        Map<String, Object> sendData = responseData(sendResponse);
+        assertEquals(WORKER_ID, sendData.get("workerId"));
+        assertEquals("mock.state.get", sendData.get("event"));
+        assertEquals("event-first-debug-1", sendData.get("requestId"));
+        assertFalse(sendData.containsKey("msgType"));
+        assertFalse(sendData.containsKey("subMsgType"));
+
+        String messageId = String.valueOf(sendData.get("messageId"));
+        Map<String, Object> stateAck = waitForInboundReply(WORKER_ID, messageId);
+        Map<String, Object> statePayload = parsePayload(stateAck);
+        assertEquals("mock.state.get", statePayload.get("commandEvent"));
+        assertEquals(Boolean.TRUE, statePayload.get("commandExecuted"));
+    }
+
+    private String sendEventCommand(String workerId, String event, Map<String, Object> payload) throws InterruptedException {
         Map<String, Object> request = new LinkedHashMap<>();
         request.put("workerId", workerId);
         request.put("project", "demoApp");
-        request.put("msgType", "CONTROL");
-        request.put("subMsgType", ManualDebugChatProtocol.SUB_MSG_TYPE);
+        request.put("event", event);
         request.put("payload", payload);
+        request.put("requestId", "integration-" + event.replace('.', '-'));
 
-        Map<String, Object> sendResponse = waitForSuccessfulSend(request);
+        Map<String, Object> sendResponse = waitForSuccessfulEventSend(request);
         Map<String, Object> sendData = responseData(sendResponse);
         assertEquals(workerId, sendData.get("workerId"));
+        assertEquals(event, sendData.get("event"));
         String messageId = String.valueOf(sendData.get("messageId"));
         assertFalse(messageId.isBlank());
         return messageId;
     }
 
-    private Map<String, Object> waitForSuccessfulSend(Map<String, Object> request) throws InterruptedException {
+    private Map<String, Object> waitForSuccessfulEventSend(Map<String, Object> request) throws InterruptedException {
         Map<String, Object> latest = null;
         for (int i = 0; i < 40; i++) {
-            latest = exchange("/status/workers/send-message", HttpMethod.POST, request);
+            latest = exchange("/status/workers/send-event", HttpMethod.POST, request);
             if (isApiOk(latest)) {
                 return latest;
             }
             Thread.sleep(250L);
         }
-        throw new AssertionError("Manual debug command was not accepted in time. Last response=" + latest);
+        throw new AssertionError("Event-first debug command was not accepted in time. Last response=" + latest);
     }
 
     private Map<String, Object> waitForInboundReply(String workerId, String replyToMessageId) throws InterruptedException {

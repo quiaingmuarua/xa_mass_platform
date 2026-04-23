@@ -8,10 +8,10 @@ describe('task starter drafts', () => {
     it('resolves an explicit event starter for known projects', () => {
         const draft = resolveTaskStarterDraft({
             projectCode: 'demoApp',
-            eventCode: 'demo.dispatch.run',
+            eventCode: 'demo.dispatch',
         })
 
-        expect(draft.taskName).toBe('Run demo dispatch')
+        expect(draft.taskName).toBe('Demo dispatch')
         expect(draft.sharedConfig.objective).toBe('run generic dispatch payload')
         expect(draft.inputs[0].recipient).toBe('alpha')
     })
@@ -29,7 +29,7 @@ describe('task starter drafts', () => {
     it('formats starter JSON for the task create form', () => {
         const draft = resolveTaskStarterDraft({
             projectCode: 'demoApp',
-            eventCode: 'demo.dispatch.run',
+            eventCode: 'demo.dispatch',
         })
 
         expect(stringifyStarterSharedConfig(draft.sharedConfig)).toContain(
