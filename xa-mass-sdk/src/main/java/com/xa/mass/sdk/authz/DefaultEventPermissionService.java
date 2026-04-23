@@ -1,12 +1,12 @@
 package com.xa.mass.sdk.authz;
 
-import com.xa.mass.command.event.CoreEventDescriptor;
-import com.xa.mass.command.event.MassEventRuntime;
 import com.xa.mass.sdk.catalog.EventMetadata;
 import com.xa.mass.sdk.catalog.ProjectEventCatalog;
 import com.xa.mass.sdk.catalog.ProjectMetadata;
 import com.xa.mass.sdk.event.EventPrincipal;
 import com.xa.mass.sdk.event.EventRequest;
+import com.xa.mass.sdk.event.SdkEventDefinition;
+import com.xa.mass.sdk.event.SdkEventDefinitionRegistry;
 
 import java.util.HashSet;
 import java.util.Objects;
@@ -20,16 +20,16 @@ public class DefaultEventPermissionService implements EventPermissionService {
     private final ClientPermissionProvider clientPermissionProvider;
     private final UserPermissionProvider userPermissionProvider;
     private final ProjectEventCatalog projectEventCatalog;
-    private final MassEventRuntime eventRuntime;
+    private final SdkEventDefinitionRegistry eventDefinitionRegistry;
 
     public DefaultEventPermissionService(ClientPermissionProvider clientPermissionProvider,
                                          UserPermissionProvider userPermissionProvider,
                                          ProjectEventCatalog projectEventCatalog,
-                                         MassEventRuntime eventRuntime) {
+                                         SdkEventDefinitionRegistry eventDefinitionRegistry) {
         this.clientPermissionProvider = Objects.requireNonNull(clientPermissionProvider, "clientPermissionProvider");
         this.userPermissionProvider = Objects.requireNonNull(userPermissionProvider, "userPermissionProvider");
         this.projectEventCatalog = Objects.requireNonNull(projectEventCatalog, "projectEventCatalog");
-        this.eventRuntime = Objects.requireNonNull(eventRuntime, "eventRuntime");
+        this.eventDefinitionRegistry = Objects.requireNonNull(eventDefinitionRegistry, "eventDefinitionRegistry");
     }
 
     @Override
@@ -59,15 +59,23 @@ public class DefaultEventPermissionService implements EventPermissionService {
     }
 
     private AuthorizationDecision validateCatalogAndDescriptor(String eventCode, String projectCode) {
-        CoreEventDescriptor descriptor = eventRuntime.getDescriptor(eventCode);
-        if (descriptor != null) {
-            if (!descriptor.isEnabled()) {
+        SdkEventDefinition definition = eventDefinitionRegistry.get(eventCode);
+        if (definition != null) {
+            if (!definition.getMetadata().isEnabled()) {
                 return AuthorizationDecision.deny("event disabled: " + eventCode);
             }
-            if (!descriptor.getProjectCodes().isEmpty()) {
-                if (projectCode == null || projectCode.isBlank() || !descriptor.getProjectCodes().contains(projectCode)) {
+            if (definition.hasHandler()) {
+                if (!definition.getProjectCodes().isEmpty()
+                        && (projectCode == null || projectCode.isBlank() || !definition.getProjectCodes().contains(projectCode))) {
                     return AuthorizationDecision.deny("project does not support event: " + eventCode);
                 }
+                return AuthorizationDecision.allow();
+            }
+            if (projectCode == null || projectCode.isBlank()) {
+                return AuthorizationDecision.deny("project is required for catalog event: " + eventCode);
+            }
+            if (definition.getProjectCodes().isEmpty() || !definition.getProjectCodes().contains(projectCode)) {
+                return AuthorizationDecision.deny("project does not support event: " + eventCode);
             }
             return AuthorizationDecision.allow();
         }

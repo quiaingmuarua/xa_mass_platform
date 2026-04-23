@@ -28,6 +28,7 @@ import com.xa.mass.sdk.event.EventPrincipal;
 import com.xa.mass.sdk.event.EventRequest;
 import com.xa.mass.sdk.event.EventResponse;
 import com.xa.mass.sdk.event.PlatformEventCodes;
+import com.xa.mass.sdk.event.SdkEventDefinition;
 import com.xa.mass.sdk.model.MassTaskCreateRequest;
 import com.xa.mass.sdk.model.MassTaskRequest;
 import com.xa.mass.sdk.model.WorkerContextRegistration;
@@ -374,6 +375,55 @@ class MassSdkTest {
         Assertions.assertTrue(app.listProjects().stream().anyMatch(project -> "demoApp".equals(project.getCode())));
         Assertions.assertTrue(app.listEvents().stream().anyMatch(event -> PlatformEventCodes.META_EVENTS_LIST.equals(event.getCode())));
         Assertions.assertEquals(List.of(eventMetadata), app.getEventsForProject("botApp"));
+    }
+
+    @Test
+    void sdkEventDefinitionBecomesSingleSourceForMetadataScopeAndHandler() {
+        MassSdkApplication app = new MassSdkApplication(mock(MassApplication.class));
+        app.registerProject(ProjectMetadata.builder()
+                .code("botApp")
+                .name("Bot App")
+                .description("bot project")
+                .eventCodes(List.of("bot.command"))
+                .build());
+        app.registerEventDefinition(SdkEventDefinition.builder()
+                .metadata(EventMetadata.builder()
+                        .code("bot.command")
+                        .name("Bot Command")
+                        .description("handle a bot command directly")
+                        .payloadTypes(List.of(PayloadType.JSON))
+                        .taskModes(List.of(TaskMode.SINGLE_RUN))
+                        .build())
+                .projectCodes(List.of("botApp"))
+                .handler((request, principal) -> EventResponse.success(
+                        Map.of(
+                                "event", request.getEvent().value(),
+                                "project", request.getProject(),
+                                "userId", principal == null ? null : principal.getUserId()
+                        ),
+                        request.getRequestId()
+                ))
+                .build());
+
+        app.grantClientEventPermissions("client-a", List.of("bot.command"));
+        app.grantUserEventPermissions("user-a", List.of("bot.command"));
+
+        EventResponse response = app.dispatchEvent(
+                EventRequest.builder()
+                        .event("bot.command")
+                        .project("botApp")
+                        .requestId("req-bot-command")
+                        .payload(Map.of("text", "/start"))
+                        .build(),
+                EventPrincipal.of("client-a", "user-a")
+        );
+
+        assertTrue(response.isSuccess());
+        assertEquals("req-bot-command", response.getRequestId());
+        assertEquals("bot.command", ((Map<?, ?>) response.getData()).get("event"));
+        assertTrue(app.listEvents().stream().anyMatch(event -> "bot.command".equals(event.getCode())));
+        assertEquals(List.of("bot.command"),
+                app.getEventsForProject("botApp").stream().map(EventMetadata::getCode).toList());
     }
 
     @Test

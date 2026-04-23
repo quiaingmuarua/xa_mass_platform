@@ -44,6 +44,7 @@ class WebSocketClientStarterTest {
         starter.onApplicationReady(null);
         starter.onApplicationReady(null);
 
+        assertEquals(1, starter.autoRegisterInvocations);
         assertEquals(1, starter.establishInvocations);
         assertEquals(1, starter.pingInvocations);
         assertEquals("ws://localhost:18088/ws", starter.baseUriUsed);
@@ -61,6 +62,7 @@ class WebSocketClientStarterTest {
 
         starter.onApplicationReady(null);
 
+        assertEquals(0, starter.autoRegisterInvocations);
         assertEquals(0, starter.establishInvocations);
         assertEquals(0, starter.pingInvocations);
         assertNull(starter.baseUriUsed);
@@ -85,6 +87,7 @@ class WebSocketClientStarterTest {
 
     private static class TestWebSocketClientStarter extends WebSocketClientStarter {
         private final List<Worker> workers;
+        private int autoRegisterInvocations;
         private int establishInvocations;
         private int pingInvocations;
         private String baseUriUsed;
@@ -96,6 +99,11 @@ class WebSocketClientStarterTest {
         @Override
         protected List<Worker> loadWorkers() {
             return workers;
+        }
+
+        @Override
+        protected void autoRegisterWorkers(List<Worker> workers) {
+            autoRegisterInvocations++;
         }
 
         @Override

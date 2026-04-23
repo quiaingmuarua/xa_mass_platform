@@ -16,6 +16,7 @@ import com.xa.mass.mock.command.mock.MockClientStateRegistry;
 import com.xa.mass.mock.command.runtime.MockCommandRuntime;
 import com.xa.mass.mock.config.MockConfig;
 import com.xa.mass.sdk.MassSdkApplication;
+import com.xa.mass.sdk.model.WorkerRegistration;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -119,6 +120,7 @@ public class WebSocketClientStarter {
             }
 
             log.info("Found {} mock workers, establishing connections", workers.size());
+            autoRegisterWorkers(workers);
 
             clientExecutor = Executors.newFixedThreadPool(Math.min(workers.size(), maxPoolSize));
             establishConnections(workers, baseUri);
@@ -157,6 +159,35 @@ public class WebSocketClientStarter {
         } catch (Exception e) {
             log.error("Failed to load worker config", e);
             return null;
+        }
+    }
+
+    /**
+     * Registers worker resources into the SDK runtime before transport connect when possible.
+     *
+     * <p>This keeps mock/dev workers aligned with the SDK-first resource model while still
+     * tolerating preloaded fixture workers.
+     */
+    protected void autoRegisterWorkers(List<Worker> workers) {
+        if (runtimeApplication == null || workers == null || workers.isEmpty()) {
+            return;
+        }
+        for (Worker worker : workers) {
+            if (worker == null || worker.getWorkerId() == null || worker.getWorkerId().isBlank()) {
+                continue;
+            }
+            if (runtimeApplication.getWorker(worker.getWorkerId()) != null) {
+                continue;
+            }
+            runtimeApplication.registerWorker(WorkerRegistration.builder()
+                    .workerId(worker.getWorkerId())
+                    .workerGroupId(worker.getWorkerGroupId())
+                    .supportedProjects(worker.getSupportedProjects())
+                    .supportedEventCodes(worker.getSupportedEventCodes())
+                    .transportHint(worker.getOnlineStrategy())
+                    .attributes(worker.getAttributes())
+                    .build());
+            log.info("Auto-registered mock worker resource via SDK: {}", worker.getWorkerId());
         }
     }
 
