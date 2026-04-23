@@ -1,8 +1,8 @@
 package com.xa.mass.command.core;
 
 import com.google.gson.*;
-import com.xa.mass.command.model.CommandException;
-import com.xa.mass.command.model.ErrorCode;
+import com.xa.mass.base.exception.CommandException;
+import com.xa.mass.base.exception.ErrorCode;
 
 import java.lang.reflect.Array;
 import java.util.ArrayList;

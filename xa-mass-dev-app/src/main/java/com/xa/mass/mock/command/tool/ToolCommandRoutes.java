@@ -1,11 +1,11 @@
 package com.xa.mass.mock.command.tool;
 
 import com.google.gson.JsonObject;
+import com.xa.mass.base.exception.CommandException;
+import com.xa.mass.base.exception.ErrorCode;
 import com.xa.mass.command.core.CommandDefinition;
 import com.xa.mass.command.core.CommandRegistry;
 import com.xa.mass.command.model.CommandContext;
-import com.xa.mass.command.model.CommandException;
-import com.xa.mass.command.model.ErrorCode;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;

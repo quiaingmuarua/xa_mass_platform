@@ -4,10 +4,10 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonPrimitive;
+import com.xa.mass.base.exception.CommandException;
+import com.xa.mass.base.exception.ErrorCode;
 import com.xa.mass.command.model.CommandContext;
-import com.xa.mass.command.model.CommandException;
 import com.xa.mass.command.model.CommandResponse;
-import com.xa.mass.command.model.ErrorCode;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;

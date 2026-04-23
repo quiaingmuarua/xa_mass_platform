@@ -2,6 +2,8 @@ package com.xa.mass.command.model;
 
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import com.xa.mass.base.exception.CommandException;
+import com.xa.mass.base.exception.ErrorCode;
 
 import java.util.HashMap;
 import java.util.Map;

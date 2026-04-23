@@ -21,6 +21,7 @@ import com.xa.mass.sdk.auth.SubmitterMetadata;
 import com.xa.mass.sdk.auth.SubmitterRegistration;
 import com.xa.mass.sdk.auth.TaskSubmitterContext;
 import com.xa.mass.sdk.catalog.EventMetadata;
+import com.xa.mass.sdk.catalog.ProjectEventCatalog;
 import com.xa.mass.sdk.catalog.PayloadType;
 import com.xa.mass.sdk.catalog.ProjectMetadata;
 import com.xa.mass.sdk.catalog.TaskMode;
@@ -424,6 +425,11 @@ class MassSdkTest {
         assertTrue(app.listEvents().stream().anyMatch(event -> "bot.command".equals(event.getCode())));
         assertEquals(List.of("bot.command"),
                 app.getEventsForProject("botApp").stream().map(EventMetadata::getCode).toList());
+
+        ProjectEventCatalog catalog = app.projectEventCatalog();
+        assertTrue(catalog.listEvents().stream().anyMatch(event -> "bot.command".equals(event.getCode())));
+        assertEquals(List.of("bot.command"),
+                catalog.getEventsForProject("botApp").stream().map(EventMetadata::getCode).toList());
     }
 
     @Test

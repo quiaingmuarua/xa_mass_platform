@@ -1,9 +1,9 @@
 package com.xa.mass.command.core;
 
 import com.google.gson.JsonObject;
+import com.xa.mass.base.exception.ErrorCode;
 import com.xa.mass.command.model.CommandContext;
 import com.xa.mass.command.model.CommandResponse;
-import com.xa.mass.command.model.ErrorCode;
 
 import java.util.List;
 import java.util.Set;

@@ -80,6 +80,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
     private final EventPermissionService eventPermissionService;
     private final MassEventRuntime eventRuntime;
     private final SdkEventDefinitionRegistry eventDefinitionRegistry;
+    private final ProjectEventCatalog projectEventCatalogView;
 
     MassSdkApplication(MassApplication delegate) {
         this(delegate, DefaultProjectEventCatalogFactory.createDefaultRegistry());
@@ -96,6 +97,10 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
         this.eventPermissionService = new DefaultEventPermissionService(
                 clientPermissionProvider,
                 userPermissionProvider,
+                projectEventCatalogRegistry,
+                eventDefinitionRegistry
+        );
+        this.projectEventCatalogView = new DefinitionBackedProjectEventCatalog(
                 projectEventCatalogRegistry,
                 eventDefinitionRegistry
         );
@@ -445,7 +450,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
 
     @Override
     public ProjectEventCatalog projectEventCatalog() {
-        return projectEventCatalogRegistry;
+        return projectEventCatalogView;
     }
 
     @Override
