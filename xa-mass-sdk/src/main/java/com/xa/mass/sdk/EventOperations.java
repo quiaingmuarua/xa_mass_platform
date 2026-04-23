@@ -1,5 +1,8 @@
 package com.xa.mass.sdk;
 
+import com.xa.mass.sdk.event.EventPrincipal;
+import com.xa.mass.sdk.event.EventRequest;
+import com.xa.mass.sdk.event.EventResponse;
 import com.xa.mass.sdk.catalog.EventMetadata;
 
 import java.util.List;
@@ -8,6 +11,11 @@ import java.util.List;
  * SDK task-event resource operations.
  */
 public interface EventOperations {
+
+    /**
+     * Dispatch an event through the SDK control-plane runtime.
+     */
+    EventResponse dispatchEvent(EventRequest request, EventPrincipal principal);
 
     /**
      * Register or replace event metadata.

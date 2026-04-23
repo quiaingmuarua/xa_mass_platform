@@ -64,6 +64,15 @@ For verified runtime behavior and recommended startup, use [VERIFIED_RUNBOOK.md]
 - SDK task metadata is persisted in `Task.sharedConfig._sdk` with `eventCode`, `payloadType`, and `taskMode`.
 - Task create does not auto-approve tasks; the current lifecycle still starts at `NEW`.
 
+## 1.3 SDK Event Control Plane Notes
+
+- SDK Phase 1 now has a stable event invocation contract: `EventRequest`, `EventResponse`, and `EventPrincipal`.
+- Control-plane authorization is event-centric and currently uses `clientId ∩ userId` allow-list intersection.
+- Catalog task events such as `crawler.fetch-page` can be invoked through the SDK event entry and are mapped to task creation.
+- Runtime control events such as `platform.worker.register` and `platform.meta.events.list` are handled through the embedded event runtime.
+- Legacy WebSocket `MassMessage` remains the transport envelope for the current gateway adapter, but new control capability must route through event dispatch instead of adding new `subMsgType` branches.
+- Current gateway bridge only changes the control plane. Task dispatch/result data-plane contracts remain unchanged.
+
 ## 2. SDK Metadata API
 
 ### 2.1 List SDK Projects

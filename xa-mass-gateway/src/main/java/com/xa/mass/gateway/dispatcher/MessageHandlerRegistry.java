@@ -26,6 +26,7 @@ public class MessageHandlerRegistry {
     private final WorkerSystemEventChannel systemEventChannel;
     // project -> (key -> handler)
     private final Map<String, Map<String, MassMessageHandler>> handlerMap = new ConcurrentHashMap<>();
+    private MassMessageHandler legacyControlEventBridgeHandler;
     private boolean enableFallback = true;
 
     public MessageHandlerRegistry() {
@@ -80,7 +81,27 @@ public class MessageHandlerRegistry {
     }
 
     public ResolutionResult resolve(MassMessage msg) {
-        return resolve(msg.getProject(), msg.getMsgType(), msg.getSubMsgType());
+        ResolutionResult result = resolveWithoutFallback(msg.getProject(), msg.getMsgType(), msg.getSubMsgType());
+        if (result.isFound()) {
+            return result;
+        }
+        if (shouldRouteToLegacyControlBridge(msg)) {
+            return ResolutionResult.found(
+                    legacyControlEventBridgeHandler,
+                    msg.getProject(),
+                    msg.getMsgType().name(),
+                    msg.getSubMsgType(),
+                    "legacy-control-event-bridge"
+            );
+        }
+        if (enableFallback) {
+            return ResolutionResult.fallback(msg.getProject(), msg.getMsgType().name(), msg.getSubMsgType());
+        }
+        return result;
+    }
+
+    public void registerLegacyControlEventBridge(MassMessageHandler handler) {
+        this.legacyControlEventBridgeHandler = handler;
     }
 
     public boolean isEnableFallback() {
@@ -124,5 +145,33 @@ public class MessageHandlerRegistry {
         ack.setContext(msg.getContext());
         ack.setPayload(gson.toJsonTree(new MessageAckPayload(200, "task received")));
         return Collections.singletonList(ack);
+    }
+
+    private ResolutionResult resolveWithoutFallback(String project, MessageType type, String subMsgType) {
+        String key = MessageRouterKeys.of(type, subMsgType);
+        String proj = (project == null || project.trim().isEmpty()) ? GLOBAL : project;
+
+        MassMessageHandler handler = handlerMap.getOrDefault(proj, Collections.emptyMap()).get(key);
+        if (handler != null) {
+            return ResolutionResult.found(handler, proj, type.name(), subMsgType, "project");
+        }
+        if (!GLOBAL.equals(proj)) {
+            handler = handlerMap.getOrDefault(GLOBAL, Collections.emptyMap()).get(key);
+            if (handler != null) {
+                return ResolutionResult.found(handler, proj, type.name(), subMsgType, "global");
+            }
+        }
+        return ResolutionResult.notFound(proj, type.name(), subMsgType);
+    }
+
+    private boolean shouldRouteToLegacyControlBridge(MassMessage msg) {
+        if (legacyControlEventBridgeHandler == null || msg == null || msg.getMsgType() != MessageType.CONTROL) {
+            return false;
+        }
+        return msg.getPayload() != null
+                && msg.getPayload().isJsonObject()
+                && msg.getPayload().getAsJsonObject().has("event")
+                && !msg.getPayload().getAsJsonObject().get("event").isJsonNull()
+                && !msg.getPayload().getAsJsonObject().get("event").getAsString().isBlank();
     }
 }

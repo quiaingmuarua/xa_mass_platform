@@ -2,10 +2,13 @@ package com.xa.mass.starter;
 
 import com.xa.mass.base.channel.tranporter.MessageTransporter;
 import com.xa.mass.base.debug.ManualDebugChatProtocol;
+import com.xa.mass.command.event.InMemoryMassEventRuntime;
+import com.xa.mass.command.event.MassEventRuntime;
 import com.xa.mass.gateway.dispatcher.DispatcherContext;
 import com.xa.mass.gateway.dispatcher.DispatcherContextRegistry;
 import com.xa.mass.gateway.dispatcher.MessageHandlerRegistry;
 import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
+import com.xa.mass.gateway.dispatcher.handler.MassMessageHandler;
 import com.xa.mass.gateway.dispatcher.middleware.MiddlewareRegistry;
 import com.xa.mass.gateway.model.enums.MessageType;
 import com.xa.mass.gateway.queue.MessageCodec;
@@ -18,6 +21,9 @@ import com.xa.mass.engine.listener.TaskMsgDispatchListener;
 import com.xa.mass.engine.rules.RuleDefinition;
 import com.xa.mass.sdk.MassBootstrapDataProvider;
 import com.xa.mass.sdk.MassRuntimeControl;
+import com.xa.mass.sdk.event.EventPrincipal;
+import com.xa.mass.sdk.event.EventRequest;
+import com.xa.mass.sdk.event.EventResponse;
 import com.xa.mass.sdk.worker.PullWorkerSession;
 import com.xa.mass.sdk.worker.PollingWorkerSession;
 import com.xa.mass.sdk.model.MassTaskCreateRequest;
@@ -34,6 +40,7 @@ import org.slf4j.LoggerFactory;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.BiFunction;
 
 /**
  * Main runtime composition entry for engine, gateway, dispatcher, and server startup.
@@ -47,12 +54,15 @@ public class MassApplication {
     private final GatewayConfig gatewayConfig;
     private final EngineConfig engineConfig;
     private final AtomicBoolean running = new AtomicBoolean(false);
+    private final MassEventRuntime eventRuntime = new InMemoryMassEventRuntime();
 
     private final MassEngine engine;
     private MassGateway massGateway;
     private DispatchRuntimeContext dispatcherContext;
     private TransportServer transportServer;
     private TransportRuntimeRegistry transportRuntimeRegistry;
+    private MassMessageHandler legacyControlBridgeHandler;
+    private BiFunction<EventRequest, EventPrincipal, EventResponse> sdkEventDispatcher;
 
     public MassApplication(MassEngine engine, int serverPort, String transportEndpointPath,
                            GatewayConfig gatewayConfig, EngineConfig engineConfig) {
@@ -173,6 +183,9 @@ public class MassApplication {
                     ManualDebugChatProtocol.SUB_MSG_TYPE,
                     new ManualDebugMessageHandler()
             );
+            if (legacyControlBridgeHandler != null) {
+                messageHandlerRegistry.registerLegacyControlEventBridge(legacyControlBridgeHandler);
+            }
             dispatcherContext.setMessageHandlerRegistry(messageHandlerRegistry);
             logger.info("Message handler registry initialized");
 
@@ -288,6 +301,18 @@ public class MassApplication {
         return engine;
     }
 
+    public MassEventRuntime getEventRuntime() {
+        return eventRuntime;
+    }
+
+    public void setLegacyControlBridgeHandler(MassMessageHandler legacyControlBridgeHandler) {
+        this.legacyControlBridgeHandler = legacyControlBridgeHandler;
+    }
+
+    public void setSdkEventDispatcher(BiFunction<EventRequest, EventPrincipal, EventResponse> sdkEventDispatcher) {
+        this.sdkEventDispatcher = sdkEventDispatcher;
+    }
+
     private MassEngine requireConfiguredEngine() {
         if (engine == null) {
             throw new IllegalStateException("Mass engine is unavailable for this application");
@@ -295,8 +320,20 @@ public class MassApplication {
         return engine;
     }
 
+    private BiFunction<EventRequest, EventPrincipal, EventResponse> requireSdkEventDispatcher() {
+        if (sdkEventDispatcher == null) {
+            throw new IllegalStateException("SDK event dispatcher is unavailable for this application");
+        }
+        return sdkEventDispatcher;
+    }
+
     private MassRuntimeControl runtimeControl() {
         return new MassRuntimeControl() {
+            @Override
+            public EventResponse dispatchEvent(EventRequest request, EventPrincipal principal) {
+                return requireSdkEventDispatcher().apply(request, principal);
+            }
+
             @Override
             public com.xa.mass.base.model.Task createTask(MassTaskCreateRequest request) {
                 return requireConfiguredEngine().createTask(SdkResourceMapper.toEngineRequest(request));

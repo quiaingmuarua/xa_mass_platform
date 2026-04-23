@@ -1,11 +1,16 @@
 package com.xa.mass.gateway.dispatcher;
 
+import com.google.gson.Gson;
+import com.google.gson.JsonObject;
+import com.xa.mass.gateway.dispatcher.event.EventGatewayBridge;
+import com.xa.mass.gateway.dispatcher.handler.LegacyControlEventMessageHandler;
 import com.xa.mass.gateway.dispatcher.handler.MassMessageHandler;
 import com.xa.mass.gateway.dispatcher.handler.ResolutionResult;
 import com.xa.mass.gateway.model.enums.MessageType;
 import com.xa.mass.gateway.model.massMessage.MassMessage;
 import com.xa.mass.gateway.model.massMessage.MessageContext;
 import com.xa.mass.gateway.session.SessionRoles;
+import com.xa.mass.sdk.event.EventResponse;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -14,6 +19,8 @@ import java.util.Collections;
 import static org.junit.jupiter.api.Assertions.*;
 
 class MessageHandlerRegistryTest {
+
+    private static final Gson GSON = new Gson();
 
     private MessageHandlerRegistry registry;
 
@@ -112,6 +119,35 @@ class MessageHandlerRegistryTest {
 
         ResolutionResult result = registry.resolve(msg);
         assertTrue(result.isFound());
+    }
+
+    @Test
+    void legacyControlBridgeTakesPriorityOverFallbackWhenPayloadCarriesEvent() {
+        registry.setEnableFallback(true);
+        registry.registerLegacyControlEventBridge(new LegacyControlEventMessageHandler(
+                new EventGatewayBridge((request, principal) -> EventResponse.success(
+                        java.util.Map.of("echoEvent", request.getEvent().value()),
+                        request.getRequestId()))
+        ));
+
+        MassMessage msg = massMessage("demoApp", MessageType.CONTROL, "legacy");
+        JsonObject payload = new JsonObject();
+        payload.addProperty("event", "crawler.fetch-page");
+        payload.addProperty("requestId", "req-bridge");
+        JsonObject requestPayload = new JsonObject();
+        requestPayload.addProperty("url", "https://example.test");
+        payload.add("payload", requestPayload);
+        msg.setPayload(payload);
+
+        ResolutionResult result = registry.resolve(msg);
+        assertTrue(result.isFound());
+        assertEquals("legacy-control-event-bridge", result.getResolutionPath());
+
+        var responses = result.getHandler().handle(msg);
+        assertEquals(1, responses.size());
+        JsonObject responsePayload = GSON.fromJson(responses.get(0).getPayload(), JsonObject.class);
+        assertTrue(responsePayload.get("success").getAsBoolean());
+        assertEquals("req-bridge", responsePayload.get("requestId").getAsString());
     }
 
     // ---- helpers ----

@@ -6,6 +6,9 @@ import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.rules.RuleDefinition;
+import com.xa.mass.sdk.event.EventPrincipal;
+import com.xa.mass.sdk.event.EventRequest;
+import com.xa.mass.sdk.event.EventResponse;
 import com.xa.mass.sdk.model.MassTaskCreateRequest;
 import com.xa.mass.sdk.model.MassTaskRequest;
 import com.xa.mass.sdk.model.WorkerContextRegistration;
@@ -24,6 +27,13 @@ import java.util.Map;
  * for managing workers, contexts, rules, and task lifecycle after startup.
  */
 public interface MassRuntimeControl {
+
+    // --- Event dispatch ---
+
+    /**
+     * Dispatch a control-plane event through the stable SDK event contract.
+     */
+    EventResponse dispatchEvent(EventRequest request, EventPrincipal principal);
 
     // --- Task creation ---
 

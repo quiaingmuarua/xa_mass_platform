@@ -6,6 +6,12 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonSyntaxException;
 import com.xa.mass.base.channel.tranporter.MessageTransporter;
 import com.xa.mass.base.debug.WorkerDebugMessageStore;
+import com.xa.mass.command.event.CoreEventDescriptor;
+import com.xa.mass.command.event.CoreEventPrincipal;
+import com.xa.mass.command.event.CoreEventRequest;
+import com.xa.mass.command.event.CoreEventResponse;
+import com.xa.mass.command.event.InMemoryMassEventRuntime;
+import com.xa.mass.command.event.MassEventRuntime;
 import com.xa.mass.base.enums.Project;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
@@ -23,6 +29,8 @@ import com.xa.mass.engine.model.TaskStateValidationResult;
 import com.xa.mass.engine.rules.RuleDefinition;
 import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.engine.rules.RuleType;
+import com.xa.mass.gateway.dispatcher.event.EventGatewayBridge;
+import com.xa.mass.gateway.dispatcher.handler.LegacyControlEventMessageHandler;
 import com.xa.mass.gateway.dispatcher.DispatcherContextRegistry;
 import com.xa.mass.gateway.dispatcher.context.CodecContext;
 import com.xa.mass.gateway.dispatcher.context.SessionContext;
@@ -43,9 +51,21 @@ import com.xa.mass.sdk.auth.InMemorySubmitterRegistry;
 import com.xa.mass.sdk.auth.SubmitterMetadata;
 import com.xa.mass.sdk.auth.SubmitterRegistration;
 import com.xa.mass.sdk.auth.TaskSubmitterContext;
+import com.xa.mass.sdk.authz.AuthorizationDecision;
+import com.xa.mass.sdk.authz.DefaultEventPermissionService;
+import com.xa.mass.sdk.authz.EventPermissionService;
+import com.xa.mass.sdk.authz.InMemoryClientPermissionProvider;
+import com.xa.mass.sdk.authz.InMemoryUserPermissionProvider;
+import com.xa.mass.sdk.catalog.PayloadType;
+import com.xa.mass.sdk.catalog.TaskMode;
+import com.xa.mass.sdk.event.EventPrincipal;
+import com.xa.mass.sdk.event.EventRequest;
+import com.xa.mass.sdk.event.EventResponse;
 import com.xa.mass.sdk.model.MassTaskCreateRequest;
+import com.xa.mass.sdk.model.JsonInput;
 import com.xa.mass.sdk.model.MassTaskRequest;
 import com.xa.mass.sdk.model.MassTaskRequestMapper;
+import com.xa.mass.sdk.model.TextInput;
 import com.xa.mass.sdk.model.SdkResourceMapper;
 import com.xa.mass.sdk.model.WorkerContextRegistration;
 import com.xa.mass.sdk.model.WorkerRegistration;
@@ -66,6 +86,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -83,10 +104,30 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
 
     private static final Gson GSON = new Gson();
     private static final String MANUAL_DEBUG_SUB_MSG_TYPE = "manual-chat";
+    private static final String EVENT_TASK_APPROVE = "platform.task.approve";
+    private static final String EVENT_TASK_REJECT = "platform.task.reject";
+    private static final String EVENT_TASK_BLOCK = "platform.task.block";
+    private static final String EVENT_TASK_PAUSE = "platform.task.pause";
+    private static final String EVENT_TASK_RESUME = "platform.task.resume";
+    private static final String EVENT_TASK_CANCEL = "platform.task.cancel";
+    private static final String EVENT_TASK_TERMINATE = "platform.task.terminate";
+    private static final String EVENT_TASK_APPEND_ITEMS = "platform.task.append-items";
+    private static final String EVENT_TASK_SEAL = "platform.task.seal";
+    private static final String EVENT_WORKER_REGISTER = "platform.worker.register";
+    private static final String EVENT_WORKER_CONTEXT_REGISTER = "platform.worker-context.register";
+    private static final String EVENT_META_PROJECTS = "platform.meta.projects.list";
+    private static final String EVENT_META_PROJECT = "platform.meta.project.get";
+    private static final String EVENT_META_PROJECT_EVENTS = "platform.meta.project-events.list";
+    private static final String EVENT_META_EVENTS = "platform.meta.events.list";
+    private static final String EVENT_META_EVENT = "platform.meta.event.get";
 
     private final MassApplication delegate;
     private final ProjectEventCatalogRegistry projectEventCatalogRegistry;
     private final InMemorySubmitterRegistry submitterRegistry;
+    private final InMemoryClientPermissionProvider clientPermissionProvider;
+    private final InMemoryUserPermissionProvider userPermissionProvider;
+    private final EventPermissionService eventPermissionService;
+    private final MassEventRuntime eventRuntime;
 
     MassSdkApplication(MassApplication delegate) {
         this(delegate, DefaultProjectEventCatalogFactory.createDefaultRegistry());
@@ -96,7 +137,21 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
         this.delegate = Objects.requireNonNull(delegate, "delegate");
         this.projectEventCatalogRegistry = Objects.requireNonNull(projectEventCatalogRegistry, "projectEventCatalogRegistry");
         this.submitterRegistry = new InMemorySubmitterRegistry();
+        this.clientPermissionProvider = new InMemoryClientPermissionProvider();
+        this.userPermissionProvider = new InMemoryUserPermissionProvider();
+        this.eventRuntime = delegate.getEventRuntime() != null ? delegate.getEventRuntime() : new InMemoryMassEventRuntime();
+        this.eventPermissionService = new DefaultEventPermissionService(
+                clientPermissionProvider,
+                userPermissionProvider,
+                projectEventCatalogRegistry,
+                eventRuntime
+        );
         registerEnabledCatalogProjectsIntoCore();
+        registerControlPlaneEventHandlers();
+        delegate.setSdkEventDispatcher(this::dispatchEvent);
+        delegate.setLegacyControlBridgeHandler(
+                new LegacyControlEventMessageHandler(new EventGatewayBridge(this::dispatchEvent))
+        );
     }
 
     public void start() {
@@ -109,6 +164,24 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
 
     public boolean isRunning() {
         return delegate.isRunning();
+    }
+
+    @Override
+    public EventResponse dispatchEvent(EventRequest request, EventPrincipal principal) {
+        Objects.requireNonNull(request, "request");
+        AuthorizationDecision decision = eventPermissionService.authorize(principal, request);
+        if (!decision.isAllowed()) {
+            return EventResponse.failure("FORBIDDEN", decision.getReason(), request.getRequestId());
+        }
+        return dispatchEventInternal(request, principal);
+    }
+
+    public void grantClientEventPermissions(String clientId, Collection<String> eventCodes) {
+        clientPermissionProvider.grant(clientId, eventCodes);
+    }
+
+    public void grantUserEventPermissions(String userId, Collection<String> eventCodes) {
+        userPermissionProvider.grant(userId, eventCodes);
     }
 
     /**
@@ -147,9 +220,23 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
 
     @Override
     public Task createTask(MassTaskRequest request) {
-        MassEngine engine = requireStartedEngine();
         validateTaskCatalogContract(request);
-        return engine.createTask(MassTaskRequestMapper.toEngineRequest(request));
+        if (request.getEventCode() == null || request.getEventCode().isBlank()) {
+            return requireStartedEngine().createTask(MassTaskRequestMapper.toEngineRequest(request));
+        }
+        EventResponse response = dispatchEventInternal(
+                EventRequest.builder()
+                        .event(request.getEventCode())
+                        .project(request.getProject())
+                        .requestId(UUID.randomUUID().toString())
+                        .payload(Map.of("request", request))
+                        .build(),
+                internalPrincipal(request.getUserId())
+        );
+        if (!response.isSuccess()) {
+            throw new IllegalStateException(response.getMessage());
+        }
+        return (Task) response.getData();
     }
 
     /**
@@ -174,19 +261,19 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
     }
 
     public boolean approveTask(String taskId) {
-        return requireStartedTaskManager().approveTask(taskId);
+        return booleanEvent(EVENT_TASK_APPROVE, Map.of("taskId", taskId));
     }
 
     public boolean rejectTask(String taskId) {
-        return requireStartedTaskManager().rejectTask(taskId);
+        return booleanEvent(EVENT_TASK_REJECT, Map.of("taskId", taskId));
     }
 
     public boolean blockTask(String taskId) {
-        return requireStartedTaskManager().blockTask(taskId);
+        return booleanEvent(EVENT_TASK_BLOCK, Map.of("taskId", taskId));
     }
 
     public boolean pauseTask(String taskId) {
-        return requireStartedTaskManager().pauseTask(taskId);
+        return booleanEvent(EVENT_TASK_PAUSE, Map.of("taskId", taskId));
     }
 
     public SdkTaskResumeResult resumeTaskDetailed(String taskId) {
@@ -200,23 +287,34 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
     }
 
     public boolean resumeTask(String taskId) {
-        return requireStartedTaskManager().resumeTask(taskId);
+        return booleanEvent(EVENT_TASK_RESUME, Map.of("taskId", taskId));
     }
 
     public boolean cancelTask(String taskId) {
-        return requireStartedTaskManager().cancelTask(taskId);
+        return booleanEvent(EVENT_TASK_CANCEL, Map.of("taskId", taskId));
     }
 
     public boolean terminateTask(String taskId, TaskTerminalReason reason) {
-        return requireStartedTaskManager().terminateTask(taskId, reason);
+        return booleanEvent(EVENT_TASK_TERMINATE, Map.of(
+                "taskId", taskId,
+                "reason", reason == null ? TaskTerminalReason.MANUAL_CANCELLED.name() : reason.name()
+        ));
     }
 
     public int appendTaskItems(String taskId, List<Map<String, Object>> inputs) {
-        return requireStartedTaskManager().appendTaskItems(taskId, inputs);
+        EventResponse response = dispatchEventInternal(EventRequest.builder()
+                .event(EVENT_TASK_APPEND_ITEMS)
+                .payload(Map.of("taskId", taskId, "inputs", inputs == null ? List.of() : inputs))
+                .requestId(UUID.randomUUID().toString())
+                .build(), internalPrincipal(null));
+        if (!response.isSuccess()) {
+            throw new IllegalStateException(response.getMessage());
+        }
+        return ((Number) response.getData()).intValue();
     }
 
     public boolean sealTask(String taskId) {
-        return requireStartedTaskManager().sealTask(taskId);
+        return booleanEvent(EVENT_TASK_SEAL, Map.of("taskId", taskId));
     }
 
     public List<TaskMsg> getTaskMessages(String taskId) {
@@ -243,12 +341,26 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
 
     @Override
     public void registerWorker(WorkerRegistration request) {
-        requireStartedEngine().addWorker(SdkResourceMapper.toWorker(request));
+        EventResponse response = dispatchEventInternal(EventRequest.builder()
+                .event(EVENT_WORKER_REGISTER)
+                .payload(Map.of("request", request))
+                .requestId(UUID.randomUUID().toString())
+                .build(), internalPrincipal(null));
+        if (!response.isSuccess()) {
+            throw new IllegalStateException(response.getMessage());
+        }
     }
 
     @Override
     public void registerWorkerContext(WorkerContextRegistration request) {
-        requireStartedEngine().addWorkerContext(SdkResourceMapper.toWorkerContext(request));
+        EventResponse response = dispatchEventInternal(EventRequest.builder()
+                .event(EVENT_WORKER_CONTEXT_REGISTER)
+                .payload(Map.of("request", request))
+                .requestId(UUID.randomUUID().toString())
+                .build(), internalPrincipal(null));
+        if (!response.isSuccess()) {
+            throw new IllegalStateException(response.getMessage());
+        }
     }
 
     /**
@@ -342,17 +454,37 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
 
     @Override
     public List<EventMetadata> listEvents() {
-        return projectEventCatalogRegistry.listEvents();
+        Map<String, EventMetadata> merged = new LinkedHashMap<>();
+        for (EventMetadata eventMetadata : projectEventCatalogRegistry.listEvents()) {
+            merged.put(eventMetadata.getCode(), eventMetadata);
+        }
+        for (CoreEventDescriptor descriptor : eventRuntime.listDescriptors()) {
+            merged.putIfAbsent(descriptor.getEvent(), toEventMetadata(descriptor));
+        }
+        return merged.values().stream()
+                .sorted(Comparator.comparing(EventMetadata::getCode, Comparator.nullsLast(String::compareTo)))
+                .toList();
     }
 
     @Override
     public EventMetadata getEvent(String eventCode) {
-        return projectEventCatalogRegistry.getEvent(eventCode);
+        EventMetadata catalogEvent = projectEventCatalogRegistry.getEvent(eventCode);
+        if (catalogEvent != null) {
+            return catalogEvent;
+        }
+        CoreEventDescriptor descriptor = eventRuntime.getDescriptor(eventCode);
+        return descriptor == null ? null : toEventMetadata(descriptor);
     }
 
     @Override
     public List<EventMetadata> getEventsForProject(String projectCode) {
-        return projectEventCatalogRegistry.getEventsForProject(projectCode);
+        List<EventMetadata> events = new ArrayList<>(projectEventCatalogRegistry.getEventsForProject(projectCode));
+        for (CoreEventDescriptor descriptor : eventRuntime.listDescriptors()) {
+            if (descriptor.getProjectCodes().contains(projectCode)) {
+                events.add(toEventMetadata(descriptor));
+            }
+        }
+        return List.copyOf(events);
     }
 
     @Override
@@ -383,6 +515,418 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
     @Override
     public TaskSubmitterContext authenticate(String credential) {
         return authenticateSubmitter(credential);
+    }
+
+    private void registerControlPlaneEventHandlers() {
+        eventRuntime.register(
+                CoreEventDescriptor.builder().event(EVENT_WORKER_REGISTER).summary("Register worker").build(),
+                (request, principal) -> {
+                    WorkerRegistration registration = resolveWorkerRegistration(request);
+                    requireStartedEngine().addWorker(SdkResourceMapper.toWorker(registration));
+                    return CoreEventResponse.success(Boolean.TRUE, request.getRequestId());
+                }
+        );
+        eventRuntime.register(
+                CoreEventDescriptor.builder().event(EVENT_WORKER_CONTEXT_REGISTER).summary("Register worker context").build(),
+                (request, principal) -> {
+                    WorkerContextRegistration registration = resolveWorkerContextRegistration(request);
+                    requireStartedEngine().addWorkerContext(SdkResourceMapper.toWorkerContext(registration));
+                    return CoreEventResponse.success(Boolean.TRUE, request.getRequestId());
+                }
+        );
+        eventRuntime.register(
+                CoreEventDescriptor.builder().event(EVENT_TASK_APPROVE).summary("Approve task").build(),
+                (request, principal) -> CoreEventResponse.success(
+                        requireStartedTaskManager().approveTask(readRequiredString(request.getPayload(), "taskId")),
+                        request.getRequestId())
+        );
+        eventRuntime.register(
+                CoreEventDescriptor.builder().event(EVENT_TASK_REJECT).summary("Reject task").build(),
+                (request, principal) -> CoreEventResponse.success(
+                        requireStartedTaskManager().rejectTask(readRequiredString(request.getPayload(), "taskId")),
+                        request.getRequestId())
+        );
+        eventRuntime.register(
+                CoreEventDescriptor.builder().event(EVENT_TASK_BLOCK).summary("Block task").build(),
+                (request, principal) -> CoreEventResponse.success(
+                        requireStartedTaskManager().blockTask(readRequiredString(request.getPayload(), "taskId")),
+                        request.getRequestId())
+        );
+        eventRuntime.register(
+                CoreEventDescriptor.builder().event(EVENT_TASK_PAUSE).summary("Pause task").build(),
+                (request, principal) -> CoreEventResponse.success(
+                        requireStartedTaskManager().pauseTask(readRequiredString(request.getPayload(), "taskId")),
+                        request.getRequestId())
+        );
+        eventRuntime.register(
+                CoreEventDescriptor.builder().event(EVENT_TASK_RESUME).summary("Resume task").build(),
+                (request, principal) -> CoreEventResponse.success(
+                        requireStartedTaskManager().resumeTask(readRequiredString(request.getPayload(), "taskId")),
+                        request.getRequestId())
+        );
+        eventRuntime.register(
+                CoreEventDescriptor.builder().event(EVENT_TASK_CANCEL).summary("Cancel task").build(),
+                (request, principal) -> CoreEventResponse.success(
+                        requireStartedTaskManager().cancelTask(readRequiredString(request.getPayload(), "taskId")),
+                        request.getRequestId())
+        );
+        eventRuntime.register(
+                CoreEventDescriptor.builder().event(EVENT_TASK_TERMINATE).summary("Terminate task").build(),
+                (request, principal) -> CoreEventResponse.success(
+                                requireStartedTaskManager().terminateTask(
+                                        readRequiredString(request.getPayload(), "taskId"),
+                                TaskTerminalReason.valueOf(readString(request.getPayload(), "reason", TaskTerminalReason.MANUAL_CANCELLED.name()))
+                        ),
+                        request.getRequestId())
+        );
+        eventRuntime.register(
+                CoreEventDescriptor.builder().event(EVENT_TASK_APPEND_ITEMS).summary("Append task inputs").build(),
+                (request, principal) -> CoreEventResponse.success(
+                        requireStartedTaskManager().appendTaskItems(
+                                readRequiredString(request.getPayload(), "taskId"),
+                                readInputMaps(request.getPayload().get("inputs"))
+                        ),
+                        request.getRequestId())
+        );
+        eventRuntime.register(
+                CoreEventDescriptor.builder().event(EVENT_TASK_SEAL).summary("Seal task").build(),
+                (request, principal) -> CoreEventResponse.success(
+                        requireStartedTaskManager().sealTask(readRequiredString(request.getPayload(), "taskId")),
+                        request.getRequestId())
+        );
+        eventRuntime.register(
+                CoreEventDescriptor.builder().event(EVENT_META_PROJECTS).summary("List SDK projects").build(),
+                (request, principal) -> CoreEventResponse.success(listProjects(), request.getRequestId())
+        );
+        eventRuntime.register(
+                CoreEventDescriptor.builder().event(EVENT_META_PROJECT).summary("Get SDK project").build(),
+                (request, principal) -> CoreEventResponse.success(
+                        getProject(resolveProjectCodeForMeta(request)),
+                        request.getRequestId())
+        );
+        eventRuntime.register(
+                CoreEventDescriptor.builder().event(EVENT_META_PROJECT_EVENTS).summary("List project events").build(),
+                (request, principal) -> CoreEventResponse.success(
+                        getEventsForProject(resolveProjectCodeForMeta(request)),
+                        request.getRequestId())
+        );
+        eventRuntime.register(
+                CoreEventDescriptor.builder().event(EVENT_META_EVENTS).summary("List SDK events").build(),
+                (request, principal) -> CoreEventResponse.success(listEvents(), request.getRequestId())
+        );
+        eventRuntime.register(
+                CoreEventDescriptor.builder().event(EVENT_META_EVENT).summary("Get SDK event").build(),
+                (request, principal) -> CoreEventResponse.success(
+                        getEvent(resolveEventCodeForMeta(request)),
+                        request.getRequestId())
+        );
+    }
+
+    private EventResponse dispatchEventInternal(EventRequest request, EventPrincipal principal) {
+        try {
+            String eventCode = request.getEvent().value();
+            if (eventRuntime.contains(eventCode)) {
+                return toSdkResponse(eventRuntime.dispatch(toCoreRequest(request), toCorePrincipal(principal)));
+            }
+            EventMetadata eventMetadata = projectEventCatalogRegistry.getEvent(eventCode);
+            if (eventMetadata != null) {
+                return dispatchCatalogTaskEvent(request, principal, eventMetadata);
+            }
+            return EventResponse.failure("UNKNOWN_EVENT", "unknown event: " + eventCode, request.getRequestId());
+        } catch (IllegalArgumentException e) {
+            return EventResponse.failure("BAD_REQUEST", e.getMessage(), request.getRequestId());
+        } catch (IllegalStateException e) {
+            return EventResponse.failure("ILLEGAL_STATE", e.getMessage(), request.getRequestId());
+        } catch (Exception e) {
+            return EventResponse.failure("ERROR", e.getMessage(), request.getRequestId());
+        }
+    }
+
+    private EventResponse dispatchCatalogTaskEvent(EventRequest request,
+                                                   EventPrincipal principal,
+                                                   EventMetadata eventMetadata) {
+        MassTaskRequest taskRequest = resolveTaskRequest(request, principal, eventMetadata);
+        validateTaskCatalogContract(taskRequest);
+        Task task = requireStartedEngine().createTask(MassTaskRequestMapper.toEngineRequest(taskRequest));
+        return EventResponse.success(task, request.getRequestId());
+    }
+
+    private MassTaskRequest resolveTaskRequest(EventRequest request,
+                                               EventPrincipal principal,
+                                               EventMetadata eventMetadata) {
+        Object embeddedRequest = request.getPayload().get("request");
+        if (embeddedRequest instanceof MassTaskRequest massTaskRequest) {
+            return massTaskRequest;
+        }
+
+        Map<String, Object> payload = request.getPayload();
+        Map<String, String> headers = request.getHeaders();
+        TaskMode mode = parseTaskMode(headers.get("taskMode"), eventMetadata);
+        PayloadType payloadType = parsePayloadType(headers.get("payloadType"), eventMetadata);
+        MassTaskRequest.Builder builder = MassTaskRequest.builder()
+                .userId(firstNonBlank(headers.get("userId"), principal == null ? null : principal.getUserId()))
+                .project(request.getProject())
+                .taskName(firstNonBlank(headers.get("taskName"), request.getEvent().value()))
+                .eventCode(request.getEvent().value())
+                .mode(mode)
+                .payloadType(payloadType)
+                .sharedConfig(resolveSharedConfig(payload, headers))
+                .batchSize(readInt(headers.get("batchSize"), 1))
+                .defaultMsgMaxRetryCount(readInt(headers.get("defaultMsgMaxRetryCount"), 3))
+                .maxRuntimeSeconds(readInt(headers.get("maxRuntimeSeconds"), 0));
+
+        if (payloadType == PayloadType.TEXT) {
+            builder.inputs(resolveTextInputs(payload));
+        } else {
+            builder.inputs(resolveJsonInputs(payload));
+        }
+        return builder.build();
+    }
+
+    private Map<String, Object> resolveSharedConfig(Map<String, Object> payload, Map<String, String> headers) {
+        Map<String, Object> sharedConfig = readMap(payload.get("sharedConfig"));
+        if (sharedConfig.isEmpty()) {
+            sharedConfig = new LinkedHashMap<>();
+        } else {
+            sharedConfig = new LinkedHashMap<>(sharedConfig);
+        }
+        String routingCode = headers.get("routingCode");
+        if (routingCode != null && !routingCode.isBlank()) {
+            sharedConfig.put("routingCode", routingCode.trim());
+        }
+        return sharedConfig;
+    }
+
+    private List<com.xa.mass.sdk.model.MassInput> resolveTextInputs(Map<String, Object> payload) {
+        Object texts = payload.get("texts");
+        if (texts instanceof List<?> values && !values.isEmpty()) {
+            List<com.xa.mass.sdk.model.MassInput> inputs = new ArrayList<>(values.size());
+            for (Object value : values) {
+                inputs.add(new TextInput(value == null ? "" : String.valueOf(value)));
+            }
+            return inputs;
+        }
+        Object text = payload.get("text");
+        if (text != null) {
+            return List.of(new TextInput(String.valueOf(text)));
+        }
+        return List.of(new TextInput(""));
+    }
+
+    private List<com.xa.mass.sdk.model.MassInput> resolveJsonInputs(Map<String, Object> payload) {
+        Object rawInputs = payload.get("inputs");
+        if (rawInputs instanceof List<?> values && !values.isEmpty()) {
+            List<com.xa.mass.sdk.model.MassInput> inputs = new ArrayList<>(values.size());
+            for (Object value : values) {
+                inputs.add(new JsonInput(readMap(value)));
+            }
+            return inputs;
+        }
+        Map<String, Object> input = new LinkedHashMap<>(payload);
+        input.remove("sharedConfig");
+        input.remove("inputs");
+        input.remove("request");
+        if (input.isEmpty()) {
+            input = Map.of();
+        }
+        return List.of(new JsonInput(input));
+    }
+
+    private WorkerRegistration resolveWorkerRegistration(CoreEventRequest request) {
+        Object embedded = request.getPayload().get("request");
+        if (embedded instanceof WorkerRegistration registration) {
+            return registration;
+        }
+        Map<String, Object> payload = request.getPayload();
+        return WorkerRegistration.builder()
+                .workerId(readRequiredString(payload, "workerId"))
+                .workerGroupId(readString(payload, "workerGroupId", null))
+                .supportedProjects(readStringList(payload.get("supportedProjects")))
+                .transportHint(readString(payload, "transportHint", null))
+                .attributes(readStringMap(payload.get("attributes")))
+                .build();
+    }
+
+    private WorkerContextRegistration resolveWorkerContextRegistration(CoreEventRequest request) {
+        Object embedded = request.getPayload().get("request");
+        if (embedded instanceof WorkerContextRegistration registration) {
+            return registration;
+        }
+        Map<String, Object> payload = request.getPayload();
+        return WorkerContextRegistration.builder()
+                .workerContextId(readRequiredString(payload, "workerContextId"))
+                .workerId(readRequiredString(payload, "workerId"))
+                .project(readString(payload, "project", null))
+                .routingTags(Set.copyOf(readStringList(payload.get("routingTags"))))
+                .attributes(readStringMap(payload.get("attributes")))
+                .build();
+    }
+
+    private String resolveProjectCodeForMeta(CoreEventRequest request) {
+        return firstNonBlank(readString(request.getPayload(), "projectCode", null), request.getProject());
+    }
+
+    private String resolveEventCodeForMeta(CoreEventRequest request) {
+        return readString(request.getPayload(), "eventCode", null);
+    }
+
+    private EventResponse toSdkResponse(CoreEventResponse response) {
+        return EventResponse.builder()
+                .success(response.isSuccess())
+                .code(response.getCode())
+                .message(response.getMessage())
+                .data(response.getData())
+                .requestId(response.getRequestId())
+                .build();
+    }
+
+    private CoreEventRequest toCoreRequest(EventRequest request) {
+        return CoreEventRequest.builder()
+                .event(request.getEvent().value())
+                .project(request.getProject())
+                .payload(request.getPayload())
+                .headers(request.getHeaders())
+                .requestId(request.getRequestId())
+                .build();
+    }
+
+    private CoreEventPrincipal toCorePrincipal(EventPrincipal principal) {
+        return new CoreEventPrincipal(
+                principal == null ? null : principal.getClientId(),
+                principal == null ? null : principal.getUserId()
+        );
+    }
+
+    private boolean booleanEvent(String eventCode, Map<String, Object> payload) {
+        EventResponse response = dispatchEventInternal(EventRequest.builder()
+                .event(eventCode)
+                .payload(payload)
+                .requestId(UUID.randomUUID().toString())
+                .build(), internalPrincipal(null));
+        if (!response.isSuccess()) {
+            throw new IllegalStateException(response.getMessage());
+        }
+        return Boolean.TRUE.equals(response.getData());
+    }
+
+    private EventPrincipal internalPrincipal(String userId) {
+        return EventPrincipal.builder()
+                .clientId("sdk-internal")
+                .userId(userId)
+                .build();
+    }
+
+    private TaskMode parseTaskMode(String rawValue, EventMetadata eventMetadata) {
+        if (rawValue != null && !rawValue.isBlank()) {
+            return TaskMode.valueOf(rawValue.trim().toUpperCase());
+        }
+        if (eventMetadata != null && !eventMetadata.getTaskModes().isEmpty()) {
+            return eventMetadata.getTaskModes().get(0);
+        }
+        return TaskMode.SINGLE_RUN;
+    }
+
+    private PayloadType parsePayloadType(String rawValue, EventMetadata eventMetadata) {
+        if (rawValue != null && !rawValue.isBlank()) {
+            return PayloadType.valueOf(rawValue.trim().toUpperCase());
+        }
+        if (eventMetadata != null && !eventMetadata.getPayloadTypes().isEmpty()) {
+            return eventMetadata.getPayloadTypes().get(0);
+        }
+        return PayloadType.JSON;
+    }
+
+    private String readRequiredString(Map<String, Object> payload, String field) {
+        String value = readString(payload, field, null);
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException(field + " must not be blank");
+        }
+        return value;
+    }
+
+    private String readString(Map<String, Object> payload, String field, String defaultValue) {
+        Object value = payload.get(field);
+        if (value == null) {
+            return defaultValue;
+        }
+        String text = String.valueOf(value).trim();
+        return text.isEmpty() ? defaultValue : text;
+    }
+
+    private int readInt(String value, int defaultValue) {
+        if (value == null || value.isBlank()) {
+            return defaultValue;
+        }
+        return Integer.parseInt(value.trim());
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> readMap(Object value) {
+        if (value instanceof Map<?, ?> map) {
+            Map<String, Object> normalized = new LinkedHashMap<>();
+            map.forEach((key, innerValue) -> normalized.put(String.valueOf(key), innerValue));
+            return normalized;
+        }
+        return new LinkedHashMap<>();
+    }
+
+    private Map<String, String> readStringMap(Object value) {
+        if (!(value instanceof Map<?, ?> map) || map.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, String> normalized = new LinkedHashMap<>();
+        map.forEach((key, innerValue) -> {
+            if (key != null && innerValue != null) {
+                normalized.put(String.valueOf(key).trim(), String.valueOf(innerValue).trim());
+            }
+        });
+        return normalized;
+    }
+
+    private List<String> readStringList(Object value) {
+        if (!(value instanceof List<?> list) || list.isEmpty()) {
+            return List.of();
+        }
+        List<String> values = new ArrayList<>();
+        for (Object item : list) {
+            if (item != null) {
+                String text = String.valueOf(item).trim();
+                if (!text.isEmpty()) {
+                    values.add(text);
+                }
+            }
+        }
+        return List.copyOf(values);
+    }
+
+    private List<Map<String, Object>> readInputMaps(Object value) {
+        if (!(value instanceof List<?> list) || list.isEmpty()) {
+            return List.of();
+        }
+        List<Map<String, Object>> inputs = new ArrayList<>(list.size());
+        for (Object item : list) {
+            inputs.add(readMap(item));
+        }
+        return List.copyOf(inputs);
+    }
+
+    private String firstNonBlank(String left, String right) {
+        if (left != null && !left.isBlank()) {
+            return left.trim();
+        }
+        if (right != null && !right.isBlank()) {
+            return right.trim();
+        }
+        return null;
+    }
+
+    private EventMetadata toEventMetadata(CoreEventDescriptor descriptor) {
+        return EventMetadata.builder()
+                .code(descriptor.getEvent())
+                .name(descriptor.getEvent())
+                .description(descriptor.getSummary())
+                .enabled(descriptor.isEnabled())
+                .build();
     }
 
     private void registerEnabledCatalogProjectsIntoCore() {

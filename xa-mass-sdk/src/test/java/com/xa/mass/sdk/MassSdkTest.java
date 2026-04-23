@@ -25,6 +25,9 @@ import com.xa.mass.sdk.catalog.ProjectMetadata;
 import com.xa.mass.sdk.catalog.TaskMode;
 import com.xa.mass.sdk.auth.SubmitterRegistration;
 import com.xa.mass.sdk.auth.TaskSubmitterContext;
+import com.xa.mass.sdk.event.EventPrincipal;
+import com.xa.mass.sdk.event.EventRequest;
+import com.xa.mass.sdk.event.EventResponse;
 import com.xa.mass.sdk.model.MassTaskCreateRequest;
 import com.xa.mass.sdk.model.MassTaskRequest;
 import com.xa.mass.sdk.model.WorkerContextRegistration;
@@ -438,6 +441,95 @@ class MassSdkTest {
         Assertions.assertNotNull(metadata);
         Assertions.assertEquals("telegram-bot", metadata.getPrincipalId());
         Assertions.assertFalse(metadata.toString().contains("test-api-key"));
+    }
+
+    @Test
+    void dispatchEventRequiresClientAndUserIntersection() {
+        MassSdkApplication app = new MassSdkApplication(mock(MassApplication.class));
+        app.grantClientEventPermissions("client-a", List.of("platform.meta.events.list"));
+        app.grantUserEventPermissions("user-a", List.of("platform.meta.events.list"));
+
+        EventResponse allowed = app.dispatchEvent(
+                EventRequest.builder()
+                        .event("platform.meta.events.list")
+                        .requestId("req-1")
+                        .build(),
+                EventPrincipal.of("client-a", "user-a")
+        );
+
+        assertTrue(allowed.isSuccess());
+        Assertions.assertEquals("req-1", allowed.getRequestId());
+        Assertions.assertTrue(allowed.getData() instanceof List<?>);
+
+        EventResponse denied = app.dispatchEvent(
+                EventRequest.builder()
+                        .event("platform.meta.events.list")
+                        .requestId("req-2")
+                        .build(),
+                EventPrincipal.of("client-a", "missing-user")
+        );
+
+        assertFalse(denied.isSuccess());
+        Assertions.assertEquals("FORBIDDEN", denied.getCode());
+    }
+
+    @Test
+    void dispatchEventRejectsCatalogEventWhenProjectDoesNotSupportIt() {
+        MassSdkApplication app = new MassSdkApplication(mock(MassApplication.class));
+        app.grantClientEventPermissions("client-a", List.of("crawler.fetch-page"));
+        app.grantUserEventPermissions("user-a", List.of("crawler.fetch-page"));
+
+        EventResponse response = app.dispatchEvent(
+                EventRequest.builder()
+                        .event("crawler.fetch-page")
+                        .project("telegramApp")
+                        .payload(Map.of("url", "https://example.test"))
+                        .requestId("req-catalog-deny")
+                        .build(),
+                EventPrincipal.of("client-a", "user-a")
+        );
+
+        assertFalse(response.isSuccess());
+        Assertions.assertEquals("FORBIDDEN", response.getCode());
+    }
+
+    @Test
+    void dispatchEventCanCreateCatalogTaskThroughEventEntry() {
+        MessageQueue<Envelope> inputQueue = new InMemoryMessageQueue<>("Envelope", Envelope.class);
+        MessageQueue<Envelope> outputQueue = new InMemoryMessageQueue<>("Envelope", Envelope.class);
+        MassSdkApplication app = MassSdk.builder()
+                .transportServer(0, "/sdk-transport")
+                .gateway(gateway -> gateway.enabled(false).transportServerEnabled(false).inputQueue(inputQueue).outputQueue(outputQueue))
+                .engine(engine -> engine.enabled(true).workerThreads(1))
+                .build();
+
+        try {
+            app.start();
+            app.grantClientEventPermissions("client-a", List.of("crawler.fetch-page"));
+            app.grantUserEventPermissions("user-a", List.of("crawler.fetch-page"));
+
+            EventResponse response = app.dispatchEvent(
+                    EventRequest.builder()
+                            .event("crawler.fetch-page")
+                            .project("crawlerApp")
+                            .headers(Map.of("taskName", "crawler-fetch-via-event"))
+                            .payload(Map.of("url", "https://example.test/page-1"))
+                            .requestId("req-catalog-create")
+                            .build(),
+                    EventPrincipal.of("client-a", "user-a")
+            );
+
+            assertTrue(response.isSuccess());
+            Assertions.assertEquals("req-catalog-create", response.getRequestId());
+            Assertions.assertInstanceOf(Task.class, response.getData());
+            Task task = (Task) response.getData();
+            Assertions.assertEquals("crawlerApp", task.getProject());
+            Assertions.assertEquals("crawler-fetch-via-event", task.getTaskName());
+            Assertions.assertEquals(1, app.getTaskMessages(task.getTid()).size());
+            Assertions.assertEquals("json", app.getTaskMessages(task.getTid()).get(0).getInput().get("type"));
+        } finally {
+            app.stop();
+        }
     }
 
     @Test
