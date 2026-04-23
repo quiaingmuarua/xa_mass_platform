@@ -2,10 +2,10 @@ package com.xa.mass.api.internal;
 
 import com.xa.mass.base.enums.task.TaskIntakeStatus;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.engine.TaskManager;
-import com.xa.mass.engine.model.TaskCreateRequestDto;
+import com.xa.mass.sdk.TaskOperations;
 import com.xa.mass.sdk.catalog.DefaultProjectEventCatalogFactory;
 import com.xa.mass.sdk.catalog.ProjectEventCatalog;
+import com.xa.mass.sdk.model.MassTaskRequest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -32,21 +32,21 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class SdkTaskControllerTest {
 
     @Mock
-    private TaskManager taskManager;
+    private TaskOperations taskOperations;
 
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
         ProjectEventCatalog catalog = DefaultProjectEventCatalogFactory.createDefaultRegistry();
-        mockMvc = MockMvcBuilders.standaloneSetup(new SdkTaskController(taskManager, catalog, null)).build();
+        mockMvc = MockMvcBuilders.standaloneSetup(new SdkTaskController(taskOperations, catalog, null)).build();
     }
 
     @Test
     void createSdkTaskMapsJsonPayloadAndSdkMetadata() throws Exception {
         Task createdTask = new Task();
         createdTask.setTid("task-sdk-001");
-        when(taskManager.createTask(any(TaskCreateRequestDto.class))).thenReturn(createdTask);
+        when(taskOperations.createTask(any(MassTaskRequest.class))).thenReturn(createdTask);
 
         mockMvc.perform(post("/sdk/tasks")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -69,22 +69,19 @@ class SdkTaskControllerTest {
                 .andExpect(jsonPath("$.code").value(0))
                 .andExpect(jsonPath("$.data.taskId").value("task-sdk-001"));
 
-        ArgumentCaptor<TaskCreateRequestDto> captor = ArgumentCaptor.forClass(TaskCreateRequestDto.class);
-        verify(taskManager).createTask(captor.capture());
-        TaskCreateRequestDto dto = captor.getValue();
+        ArgumentCaptor<MassTaskRequest> captor = ArgumentCaptor.forClass(MassTaskRequest.class);
+        verify(taskOperations).createTask(captor.capture());
+        MassTaskRequest request = captor.getValue();
 
-        org.junit.jupiter.api.Assertions.assertEquals("sdk-client", dto.getUserId());
-        org.junit.jupiter.api.Assertions.assertEquals("demoApp", dto.getProject());
-        org.junit.jupiter.api.Assertions.assertTrue(dto.isOpenEnded());
+        org.junit.jupiter.api.Assertions.assertEquals("sdk-client", request.getUserId());
+        org.junit.jupiter.api.Assertions.assertEquals("demoApp", request.getProject());
+        org.junit.jupiter.api.Assertions.assertTrue(request.isStreaming());
         org.junit.jupiter.api.Assertions.assertEquals(List.of(
                 Map.of("type", "json", "data", Map.of("url", "https://example.test"))
-        ), dto.getInputs());
-        org.junit.jupiter.api.Assertions.assertEquals("crawler.fetch-page",
-                ((Map<?, ?>) dto.getSharedConfig().get("_sdk")).get("eventCode"));
-        org.junit.jupiter.api.Assertions.assertEquals("JSON",
-                ((Map<?, ?>) dto.getSharedConfig().get("_sdk")).get("payloadType"));
-        org.junit.jupiter.api.Assertions.assertEquals("STREAMING",
-                ((Map<?, ?>) dto.getSharedConfig().get("_sdk")).get("taskMode"));
+        ), request.toEngineInputs());
+        org.junit.jupiter.api.Assertions.assertEquals("crawler.fetch-page", request.getEventCode());
+        org.junit.jupiter.api.Assertions.assertEquals(com.xa.mass.sdk.catalog.PayloadType.JSON, request.getPayloadType());
+        org.junit.jupiter.api.Assertions.assertEquals(com.xa.mass.sdk.catalog.TaskMode.STREAMING, request.getMode());
     }
 
     @Test
@@ -104,7 +101,7 @@ class SdkTaskControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(400));
 
-        verify(taskManager, never()).createTask(any(TaskCreateRequestDto.class));
+        verify(taskOperations, never()).createTask(any(MassTaskRequest.class));
     }
 
     @Test
@@ -117,8 +114,8 @@ class SdkTaskControllerTest {
                 "payloadType", "TEXT",
                 "taskMode", "STREAMING"
         )));
-        when(taskManager.getTask("task-sdk-001")).thenReturn(task);
-        when(taskManager.appendTaskItems(any(), any())).thenReturn(2);
+        when(taskOperations.getTask("task-sdk-001")).thenReturn(task);
+        when(taskOperations.appendTaskItems(any(), any())).thenReturn(2);
 
         mockMvc.perform(post("/sdk/tasks/task-sdk-001/items")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -131,23 +128,23 @@ class SdkTaskControllerTest {
                 .andExpect(jsonPath("$.code").value(0))
                 .andExpect(jsonPath("$.data.added").value(2));
 
-        verify(taskManager).appendTaskItems("task-sdk-001", List.of(
+        verify(taskOperations).appendTaskItems("task-sdk-001", List.of(
                 Map.of("type", "text", "text", "hello"),
                 Map.of("type", "text", "text", "world")
         ));
     }
 
     @Test
-    void sealSdkTaskDelegatesToTaskManager() throws Exception {
+    void sealSdkTaskDelegatesToSdkFacade() throws Exception {
         Task task = new Task();
         task.setTid("task-sdk-001");
-        when(taskManager.getTask("task-sdk-001")).thenReturn(task);
-        when(taskManager.sealTask("task-sdk-001")).thenReturn(true);
+        when(taskOperations.getTask("task-sdk-001")).thenReturn(task);
+        when(taskOperations.sealTask("task-sdk-001")).thenReturn(true);
 
         mockMvc.perform(put("/sdk/tasks/task-sdk-001/seal"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0));
 
-        verify(taskManager).sealTask("task-sdk-001");
+        verify(taskOperations).sealTask("task-sdk-001");
     }
 }

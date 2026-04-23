@@ -1,6 +1,5 @@
 package com.xa.mass.api.filter;
 
-import com.xa.mass.engine.util.LogUtils;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -10,6 +9,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.util.UUID;
 
 /**
  * Resets MDC around each HTTP request so task/runtime context from earlier work
@@ -25,7 +25,7 @@ public class RequestMdcCleanupFilter extends OncePerRequestFilter {
         MDC.clear();
         MDC.put("httpMethod", request.getMethod());
         MDC.put("httpPath", request.getRequestURI());
-        LogUtils.setTraceId(LogUtils.generateTraceId());
+        MDC.put("traceId", UUID.randomUUID().toString().replace("-", ""));
         try {
             filterChain.doFilter(request, response);
         } finally {

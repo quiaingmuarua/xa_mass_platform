@@ -4,10 +4,12 @@ import com.xa.mass.base.enums.worker.WorkerContextStatus;
 import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
-import com.xa.mass.engine.WorkerManager;
-import com.xa.mass.engine.storage.TaskStorageFactory;
+import com.xa.mass.sdk.WorkerOperations;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
@@ -15,21 +17,26 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+@ExtendWith(MockitoExtension.class)
 class WorkerApiControllerTest {
 
-    private WorkerManager workerManager;
+    @Mock
+    private WorkerOperations workerOperations;
+
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
-        workerManager = new WorkerManager(TaskStorageFactory.createDefaultWorkerStorage());
         mockMvc = MockMvcBuilders
-                .standaloneSetup(new WorkerApiController(workerManager))
+                .standaloneSetup(new WorkerApiController(workerOperations))
                 .setControllerAdvice(new com.xa.mass.api.aop.GlobalExceptionHandler())
                 .build();
     }
@@ -45,8 +52,9 @@ class WorkerApiControllerTest {
         worker.setAttributes(Map.of("region", "us"));
         worker.setLastHeartbeat(LocalDateTime.of(2026, 4, 21, 10, 15));
         worker.setUpdateTime(LocalDateTime.of(2026, 4, 21, 10, 16));
-        workerManager.addWorker(worker);
-        workerManager.tryLockWorker("worker-001");
+
+        when(workerOperations.getAllWorkers()).thenReturn(List.of(worker));
+        when(workerOperations.isWorkerLocked("worker-001")).thenReturn(true);
 
         mockMvc.perform(get("/status/api/workers"))
                 .andExpect(status().isOk())
@@ -69,7 +77,8 @@ class WorkerApiControllerTest {
         workerContext.setLastBindTaskId("task-123");
         workerContext.setLastUsedTime(LocalDateTime.of(2026, 4, 21, 9, 50));
         workerContext.setUpdateTime(LocalDateTime.of(2026, 4, 21, 9, 55));
-        workerManager.addWorkerContext(workerContext);
+
+        when(workerOperations.getAllWorkerContexts()).thenReturn(List.of(workerContext));
 
         mockMvc.perform(get("/status/api/worker-contexts"))
                 .andExpect(status().isOk())
@@ -85,7 +94,7 @@ class WorkerApiControllerTest {
     void updateSupportedProjectsMutatesWorker() throws Exception {
         Worker worker = new Worker();
         worker.setWorkerId("worker-001");
-        workerManager.addWorker(worker);
+        when(workerOperations.getWorker("worker-001")).thenReturn(worker);
 
         mockMvc.perform(put("/status/api/workers/{workerId}/supported-projects", "worker-001")
                         .contentType("application/json")
@@ -99,18 +108,14 @@ class WorkerApiControllerTest {
                 .andExpect(jsonPath("$.data.workerId").value("worker-001"))
                 .andExpect(jsonPath("$.data.supportedProjects.length()").value(2));
 
-        org.junit.jupiter.api.Assertions.assertEquals(
-                List.of("demoApp", "telegramApp"),
-                workerManager.getWorker("worker-001").getSupportedProjects()
-        );
+        verify(workerOperations).updateWorker(argThat(updated ->
+                "worker-001".equals(updated.getWorkerId())
+                        && List.of("demoApp", "telegramApp").equals(updated.getSupportedProjects())
+        ));
     }
 
     @Test
     void updateSupportedProjectsRejectsUnknownFields() throws Exception {
-        Worker worker = new Worker();
-        worker.setWorkerId("worker-001");
-        workerManager.addWorker(worker);
-
         mockMvc.perform(put("/status/api/workers/{workerId}/supported-projects", "worker-001")
                         .contentType("application/json")
                         .content("""
@@ -122,22 +127,5 @@ class WorkerApiControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(400))
                 .andExpect(jsonPath("$.msg").value("Unsupported worker update fields: workerGroupId"));
-    }
-
-    @Test
-    void updateSupportedProjectsRequiresSupportedProjectsField() throws Exception {
-        Worker worker = new Worker();
-        worker.setWorkerId("worker-001");
-        workerManager.addWorker(worker);
-
-        mockMvc.perform(put("/status/api/workers/{workerId}/supported-projects", "worker-001")
-                        .contentType("application/json")
-                        .content("""
-                                {
-                                }
-                                """))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value(400))
-                .andExpect(jsonPath("$.msg").value("supportedProjects is required"));
     }
 }

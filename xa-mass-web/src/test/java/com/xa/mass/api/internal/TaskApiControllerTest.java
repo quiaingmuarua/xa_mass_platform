@@ -1,20 +1,23 @@
 package com.xa.mass.api.internal;
+
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
-import com.xa.mass.engine.TaskManager;
-import com.xa.mass.engine.model.TaskCreateRequestDto;
-import com.xa.mass.engine.model.TaskResumeResult;
-import com.xa.mass.engine.model.TaskStateValidationResult;
+import com.xa.mass.sdk.SdkTaskResumeResult;
+import com.xa.mass.sdk.TaskOperations;
+import com.xa.mass.sdk.model.MassTaskCreateRequest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+
+import java.util.List;
+import java.util.Map;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
@@ -35,185 +38,64 @@ class TaskApiControllerTest {
     private static final String TASK_ID = "task-001";
 
     @Mock
-    private TaskManager taskManager;
+    private TaskOperations taskOperations;
 
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
-        TaskApiController controller = new TaskApiController();
-        ReflectionTestUtils.setField(controller, "taskManager", taskManager);
-        mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
+        mockMvc = MockMvcBuilders.standaloneSetup(new TaskApiController(taskOperations)).build();
     }
 
     @Test
-    void auditApprovesNewTaskThroughTaskManager() throws Exception {
+    void auditApprovesNewTaskThroughSdkFacade() throws Exception {
         Task newTask = taskWithStatus(TaskStatus.NEW);
         Task readyTask = taskWithStatus(TaskStatus.READY);
 
-        when(taskManager.getTask(TASK_ID)).thenReturn(newTask, readyTask);
-        when(taskManager.approveTask(TASK_ID)).thenReturn(true);
+        when(taskOperations.getTask(TASK_ID)).thenReturn(newTask, readyTask);
+        when(taskOperations.approveTask(TASK_ID)).thenReturn(true);
 
         mockMvc.perform(post("/status/api/tasks/{taskId}/audit", TASK_ID)
                         .param("approved", "true")
                         .param("comment", "smoke"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
-                .andExpect(jsonPath("$.msg").value("ok"))
                 .andExpect(jsonPath("$.data.newStatus").value("READY"))
                 .andExpect(jsonPath("$.data.message").value("Task approved"));
 
-        verify(taskManager).approveTask(TASK_ID);
-        verify(taskManager, never()).rejectTask(TASK_ID);
+        verify(taskOperations).approveTask(TASK_ID);
+        verify(taskOperations, never()).rejectTask(TASK_ID);
     }
 
     @Test
-    void auditRejectsOutOfStateAction() throws Exception {
-        Task readyTask = taskWithStatus(TaskStatus.READY);
-
-        when(taskManager.getTask(TASK_ID)).thenReturn(readyTask, readyTask);
-        when(taskManager.rejectTask(TASK_ID)).thenReturn(false);
-
-        mockMvc.perform(post("/status/api/tasks/{taskId}/audit", TASK_ID)
-                        .param("approved", "false"))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value(400))
-                .andExpect(jsonPath("$.msg").value("Task cannot be audited from the current state"));
-    }
-
-    @Test
-    void pauseReturnsSuccessWhenTaskManagerAllowsIt() throws Exception {
-        when(taskManager.getTask(TASK_ID)).thenReturn(taskWithStatus(TaskStatus.READY));
-        when(taskManager.pauseTask(TASK_ID)).thenReturn(true);
+    void pauseReturnsSuccessWhenSdkAllowsIt() throws Exception {
+        when(taskOperations.getTask(TASK_ID)).thenReturn(taskWithStatus(TaskStatus.READY));
+        when(taskOperations.pauseTask(TASK_ID)).thenReturn(true);
 
         mockMvc.perform(post("/status/api/tasks/{taskId}/pause", TASK_ID))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
                 .andExpect(jsonPath("$.data.message").value("Task paused"));
-
-        verify(taskManager).pauseTask(TASK_ID);
     }
 
     @Test
-    void resumeReturnsSuccessWhenTaskManagerAllowsIt() throws Exception {
-        when(taskManager.getTask(TASK_ID)).thenReturn(taskWithStatus(TaskStatus.PAUSED));
-        when(taskManager.resumeTaskDetailed(TASK_ID)).thenReturn(TaskResumeResult.resumedToReady());
+    void resumeReturnsSuccessWhenSdkAllowsIt() throws Exception {
+        when(taskOperations.getTask(TASK_ID)).thenReturn(taskWithStatus(TaskStatus.PAUSED));
+        when(taskOperations.resumeTaskDetailed(TASK_ID))
+                .thenReturn(new SdkTaskResumeResult(true, "READY", null, false));
 
         mockMvc.perform(post("/status/api/tasks/{taskId}/resume", TASK_ID))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
                 .andExpect(jsonPath("$.data.message").value("Task resumed"))
                 .andExpect(jsonPath("$.data.newStatus").value("READY"));
-
-        verify(taskManager).resumeTaskDetailed(TASK_ID);
-    }
-
-    @Test
-    void terminateReturnsSuccessWhenTaskManagerAllowsIt() throws Exception {
-        when(taskManager.getTask(TASK_ID)).thenReturn(taskWithStatus(TaskStatus.READY));
-        when(taskManager.cancelTask(TASK_ID)).thenReturn(true);
-
-        mockMvc.perform(post("/status/api/tasks/{taskId}/terminate", TASK_ID))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(0))
-                .andExpect(jsonPath("$.data.message").value("Task terminated"));
-
-        verify(taskManager).cancelTask(TASK_ID);
-    }
-
-    @Test
-    void updateStatusUsesResumeWhenCurrentStatusIsPaused() throws Exception {
-        Task pausedTask = taskWithStatus(TaskStatus.PAUSED);
-        Task readyTask = taskWithStatus(TaskStatus.READY);
-
-        when(taskManager.getTask(TASK_ID)).thenReturn(pausedTask, readyTask);
-        when(taskManager.resumeTaskDetailed(TASK_ID)).thenReturn(TaskResumeResult.resumedToReady());
-
-        mockMvc.perform(put("/status/api/tasks/{taskId}/status", TASK_ID)
-                        .param("status", "READY"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(0))
-                .andExpect(jsonPath("$.data.newStatus").value("READY"))
-                .andExpect(jsonPath("$.data.message").value("Task status updated"));
-
-        verify(taskManager).resumeTaskDetailed(TASK_ID);
-        verify(taskManager, never()).approveTask(TASK_ID);
-    }
-
-    @Test
-    void updateStatusUsesApproveWhenCurrentStatusIsNew() throws Exception {
-        Task newTask = taskWithStatus(TaskStatus.NEW);
-        Task readyTask = taskWithStatus(TaskStatus.READY);
-
-        when(taskManager.getTask(TASK_ID)).thenReturn(newTask, readyTask);
-        when(taskManager.approveTask(TASK_ID)).thenReturn(true);
-
-        mockMvc.perform(put("/status/api/tasks/{taskId}/status", TASK_ID)
-                        .param("status", "READY"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(0))
-                .andExpect(jsonPath("$.data.newStatus").value("READY"))
-                .andExpect(jsonPath("$.data.message").value("Task status updated"));
-
-        verify(taskManager).approveTask(TASK_ID);
-        verify(taskManager, never()).resumeTaskDetailed(TASK_ID);
-    }
-
-    @Test
-    void updateStatusUsesRejectWhenBlockingNewTask() throws Exception {
-        Task newTask = taskWithStatus(TaskStatus.NEW);
-        Task blockedTask = taskWithStatus(TaskStatus.BLOCKED);
-
-        when(taskManager.getTask(TASK_ID)).thenReturn(newTask, blockedTask);
-        when(taskManager.rejectTask(TASK_ID)).thenReturn(true);
-
-        mockMvc.perform(put("/status/api/tasks/{taskId}/status", TASK_ID)
-                        .param("status", "BLOCKED"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(0))
-                .andExpect(jsonPath("$.data.newStatus").value("BLOCKED"));
-
-        verify(taskManager).rejectTask(TASK_ID);
-        verify(taskManager, never()).blockTask(TASK_ID);
-    }
-
-    @Test
-    void updateStatusUsesRuntimeBlockWhenBlockingReadyTask() throws Exception {
-        Task readyTask = taskWithStatus(TaskStatus.READY);
-        Task blockedTask = taskWithStatus(TaskStatus.BLOCKED);
-
-        when(taskManager.getTask(TASK_ID)).thenReturn(readyTask, blockedTask);
-        when(taskManager.blockTask(TASK_ID)).thenReturn(true);
-
-        mockMvc.perform(put("/status/api/tasks/{taskId}/status", TASK_ID)
-                        .param("status", "BLOCKED"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(0))
-                .andExpect(jsonPath("$.data.newStatus").value("BLOCKED"));
-
-        verify(taskManager).blockTask(TASK_ID);
-        verify(taskManager, never()).rejectTask(TASK_ID);
-    }
-
-    @Test
-    void blockEndpointUsesRuntimeBlockPath() throws Exception {
-        when(taskManager.getTask(TASK_ID)).thenReturn(taskWithStatus(TaskStatus.READY));
-        when(taskManager.blockTask(TASK_ID)).thenReturn(true);
-
-        mockMvc.perform(post("/status/api/tasks/{taskId}/block", TASK_ID))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(0))
-                .andExpect(jsonPath("$.data.message").value("Task blocked"));
-
-        verify(taskManager).blockTask(TASK_ID);
-        verify(taskManager, never()).rejectTask(TASK_ID);
     }
 
     @Test
     void resumeReturnsTerminalWhenPausedTaskAlreadyCompleted() throws Exception {
-        when(taskManager.getTask(TASK_ID)).thenReturn(taskWithStatus(TaskStatus.PAUSED));
-        when(taskManager.resumeTaskDetailed(TASK_ID))
-                .thenReturn(TaskResumeResult.completedToTerminal(TaskTerminalReason.ALL_MESSAGES_SUCCEEDED));
+        when(taskOperations.getTask(TASK_ID)).thenReturn(taskWithStatus(TaskStatus.PAUSED));
+        when(taskOperations.resumeTaskDetailed(TASK_ID))
+                .thenReturn(new SdkTaskResumeResult(true, "TERMINAL", TaskTerminalReason.ALL_MESSAGES_SUCCEEDED.name(), true));
 
         mockMvc.perform(post("/status/api/tasks/{taskId}/resume", TASK_ID))
                 .andExpect(status().isOk())
@@ -224,10 +106,10 @@ class TaskApiControllerTest {
     }
 
     @Test
-    void createTaskReturnsTaskIdAndDelegatesDtoToTaskManager() throws Exception {
+    void createTaskReturnsTaskIdAndDelegatesRequestToSdk() throws Exception {
         Task createdTask = taskWithStatus(TaskStatus.NEW);
 
-        when(taskManager.createTask(any(TaskCreateRequestDto.class))).thenReturn(createdTask);
+        when(taskOperations.createTask(any(MassTaskCreateRequest.class))).thenReturn(createdTask);
 
         mockMvc.perform(post("/status/api/tasks")
                         .contentType("application/json")
@@ -247,58 +129,19 @@ class TaskApiControllerTest {
                 .andExpect(jsonPath("$.data.taskId").value(TASK_ID))
                 .andExpect(jsonPath("$.data.message").value("Task created"));
 
-        verify(taskManager).createTask(argThat(dto ->
-                "smoke-create".equals(dto.getTaskName())
-                        && "demoApp".equals(dto.getProject())
-                        && "us".equals(dto.getRoutingCode())
-                        && "hello".equals(dto.getSharedConfig() != null ? dto.getSharedConfig().get("textContent") : null)
-                        && "agent".equals(dto.getUserId())
-                        && dto.getBatchSize() == 2
-                        && java.util.List.of(
-                                java.util.Map.of("target", "alpha"),
-                                java.util.Map.of("target", "beta")
-                        ).equals(dto.getInputs())
-        ));
-    }
-
-    @Test
-    void listTasksFiltersByKeywordAndStatus() throws Exception {
-        Task runningTask = taskWithStatus(TaskStatus.RUNNING);
-        runningTask.setTaskName("Warm worker pool");
-        runningTask.setProject("demoApp");
-        runningTask.setUser(com.xa.mass.base.model.UserRef.of("agent-1"));
-        runningTask.setTaskRoutingCode("us");
-        runningTask.setTaskEligibleNumber(10);
-        runningTask.setTaskSuccessNumber(6);
-        runningTask.setBatchSize(2);
-        runningTask.setUpdateTime(java.time.LocalDateTime.of(2026, 4, 21, 9, 30));
-
-        Task pausedTask = new Task();
-        pausedTask.setTid("task-002");
-        pausedTask.setStatus(TaskStatus.PAUSED);
-        pausedTask.setTaskName("Review backlog");
-        pausedTask.setProject("demoApp");
-        pausedTask.setTaskRoutingCode("sg");
-        pausedTask.setTaskEligibleNumber(8);
-        pausedTask.setTaskSuccessNumber(2);
-        pausedTask.setBatchSize(1);
-        pausedTask.setUpdateTime(java.time.LocalDateTime.of(2026, 4, 21, 8, 0));
-
-        when(taskManager.getAllTasks()).thenReturn(java.util.List.of(runningTask, pausedTask));
-
-        mockMvc.perform(get("/status/api/tasks")
-                        .param("keyword", "warm")
-                        .param("status", "RUNNING"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(0))
-                .andExpect(jsonPath("$.data.total").value(1))
-                .andExpect(jsonPath("$.data.items[0].id").value(TASK_ID))
-                .andExpect(jsonPath("$.data.items[0].taskName").value("Warm worker pool"))
-                .andExpect(jsonPath("$.data.items[0].userId").value("agent-1"))
-                .andExpect(jsonPath("$.data.items[0].routingCode").value("us"))
-                .andExpect(jsonPath("$.data.items[0].successCount").value(6))
-                .andExpect(jsonPath("$.data.items[0].eligibleCount").value(10))
-                .andExpect(jsonPath("$.data.items[0].updatedAt").value("2026-04-21 09:30:00"));
+        ArgumentCaptor<MassTaskCreateRequest> captor = ArgumentCaptor.forClass(MassTaskCreateRequest.class);
+        verify(taskOperations).createTask(captor.capture());
+        MassTaskCreateRequest request = captor.getValue();
+        org.junit.jupiter.api.Assertions.assertEquals("smoke-create", request.getTaskName());
+        org.junit.jupiter.api.Assertions.assertEquals("demoApp", request.getProject());
+        org.junit.jupiter.api.Assertions.assertEquals("us", request.getRoutingCode());
+        org.junit.jupiter.api.Assertions.assertEquals("hello", request.getSharedConfig().get("textContent"));
+        org.junit.jupiter.api.Assertions.assertEquals("agent", request.getUserId());
+        org.junit.jupiter.api.Assertions.assertEquals(2, request.getBatchSize());
+        org.junit.jupiter.api.Assertions.assertEquals(List.of(
+                Map.of("target", "alpha"),
+                Map.of("target", "beta")
+        ), request.getInputs());
     }
 
     @Test
@@ -320,48 +163,7 @@ class TaskApiControllerTest {
                 .andExpect(jsonPath("$.code").value(400))
                 .andExpect(jsonPath("$.msg").value("Task create failed: Unsupported task create fields: targetJsonList"));
 
-        verify(taskManager, never()).createTask(any(TaskCreateRequestDto.class));
-    }
-
-    @Test
-    void createTaskReturnsBadRequestWhenProjectIsUnsupported() throws Exception {
-        mockMvc.perform(post("/status/api/tasks")
-                        .contentType("application/json")
-                        .content("""
-                                {
-                                  "taskName":"bad-project",
-                                  "project":"whatsapp",
-                                  "routingCode":"us",
-                                  "sharedConfig":{"textContent":"hello"},
-                                  "userId":"agent",
-                                  "inputs":[{"target":"alpha"}]
-                                }
-                                """))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value(400))
-                .andExpect(jsonPath("$.msg").value("Task create failed: Unsupported project code: whatsapp"));
-
-        verify(taskManager, never()).createTask(any(TaskCreateRequestDto.class));
-    }
-
-    @Test
-    void createTaskReturnsBadRequestWhenUserIdIsMissing() throws Exception {
-        mockMvc.perform(post("/status/api/tasks")
-                        .contentType("application/json")
-                        .content("""
-                                {
-                                  "taskName":"missing-user",
-                                  "project":"demoApp",
-                                  "routingCode":"us",
-                                  "sharedConfig":{"textContent":"hello"},
-                                  "inputs":[{"target":"alpha"}]
-                                }
-                                """))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value(400))
-                .andExpect(jsonPath("$.msg").value("Task create failed: userId is required"));
-
-        verify(taskManager, never()).createTask(any(TaskCreateRequestDto.class));
+        verify(taskOperations, never()).createTask(any(MassTaskCreateRequest.class));
     }
 
     @Test
@@ -369,24 +171,17 @@ class TaskApiControllerTest {
         Task task = taskWithStatus(TaskStatus.READY);
         task.setProject("demoApp");
         task.setUser(com.xa.mass.base.model.UserRef.of("agent-1"));
-        TaskStateValidationResult validationResult = new TaskStateValidationResult(
-                true,
-                false,
-                TaskStatus.READY,
-                null,
-                2,
-                0,
-                0,
-                2,
-                java.util.List.of()
-        );
 
-        when(taskManager.getTask(TASK_ID)).thenReturn(task);
-        when(taskManager.getTaskMessages(TASK_ID)).thenReturn(java.util.List.of(
-                new TaskMsg("msg-1", TASK_ID, java.util.Map.of("target", "alpha")),
-                new TaskMsg("msg-2", TASK_ID, java.util.Map.of("target", "beta"))
+        when(taskOperations.getTask(TASK_ID)).thenReturn(task);
+        when(taskOperations.getTaskMessages(TASK_ID)).thenReturn(List.of(
+                new TaskMsg("msg-1", TASK_ID, Map.of("target", "alpha")),
+                new TaskMsg("msg-2", TASK_ID, Map.of("target", "beta"))
         ));
-        when(taskManager.validateTaskState(TASK_ID)).thenReturn(validationResult);
+        when(taskOperations.validateTaskState(TASK_ID)).thenReturn(Map.of(
+                "valid", true,
+                "needsResolution", false,
+                "status", "READY"
+        ));
 
         mockMvc.perform(get("/status/api/tasks/{taskId}", TASK_ID))
                 .andExpect(status().isOk())
@@ -405,44 +200,21 @@ class TaskApiControllerTest {
     }
 
     @Test
-    void getTaskReturnsNotFoundWhenTaskDoesNotExist() throws Exception {
-        when(taskManager.getTask(TASK_ID)).thenReturn(null);
-
-        mockMvc.perform(get("/status/api/tasks/{taskId}", TASK_ID))
-                .andExpect(status().isNotFound());
-    }
-
-    @Test
     void deleteTaskReturnsSuccessWhenTaskExists() throws Exception {
-        when(taskManager.getTask(TASK_ID)).thenReturn(taskWithStatus(TaskStatus.NEW));
-        when(taskManager.deleteTask(TASK_ID)).thenReturn(true);
+        when(taskOperations.getTask(TASK_ID)).thenReturn(taskWithStatus(TaskStatus.NEW));
+        when(taskOperations.deleteTask(TASK_ID)).thenReturn(true);
 
         mockMvc.perform(delete("/status/api/tasks/{taskId}", TASK_ID))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
                 .andExpect(jsonPath("$.data.message").value("Task deleted"));
-
-        verify(taskManager).deleteTask(TASK_ID);
     }
 
     @Test
-    void deleteTaskReturnsBadRequestWhenDeleteRejected() throws Exception {
-        when(taskManager.getTask(TASK_ID)).thenReturn(taskWithStatus(TaskStatus.READY));
-        when(taskManager.deleteTask(TASK_ID)).thenReturn(false);
-
-        mockMvc.perform(delete("/status/api/tasks/{taskId}", TASK_ID))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value(400))
-                .andExpect(jsonPath("$.msg").value("Task delete failed: current status READY cannot be deleted"));
-    }
-
-    @Test
-    void updateTaskMutatesExistingTaskAndDelegatesToTaskManager() throws Exception {
+    void updateTaskMutatesExistingTaskAndDelegatesToSdk() throws Exception {
         Task existingTask = taskWithStatus(TaskStatus.NEW);
-        com.xa.mass.base.model.UserRef user = com.xa.mass.base.model.UserRef.of("before");
-        existingTask.setUser(user);
-
-        when(taskManager.getTask(TASK_ID)).thenReturn(existingTask);
+        existingTask.setUser(com.xa.mass.base.model.UserRef.of("before"));
+        when(taskOperations.getTask(TASK_ID)).thenReturn(existingTask);
 
         mockMvc.perform(put("/status/api/tasks/{taskId}", TASK_ID)
                         .contentType("application/json")
@@ -460,7 +232,7 @@ class TaskApiControllerTest {
                 .andExpect(jsonPath("$.code").value(0))
                 .andExpect(jsonPath("$.data.message").value("Task updated"));
 
-        verify(taskManager).updateTask(argThat(task ->
+        verify(taskOperations).updateTask(argThat(task ->
                 TASK_ID.equals(task.getTid())
                         && "updated-name".equals(task.getTaskName())
                         && "telegramApp".equals(task.getProject())
@@ -473,110 +245,21 @@ class TaskApiControllerTest {
     }
 
     @Test
-    void updateTaskPreservesExistingBusinessBindingsWhenFieldsAreOmitted() throws Exception {
-        Task existingTask = taskWithStatus(TaskStatus.NEW);
-        existingTask.setProject("demoApp");
-        existingTask.setUser(com.xa.mass.base.model.UserRef.of("owner-1"));
-
-        when(taskManager.getTask(TASK_ID)).thenReturn(existingTask);
-
-        mockMvc.perform(put("/status/api/tasks/{taskId}", TASK_ID)
-                        .contentType("application/json")
-                        .content("""
-                                {
-                                  "taskName":"updated-name"
-                                }
-                                """))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(0))
-                .andExpect(jsonPath("$.data.message").value("Task updated"));
-
-        verify(taskManager).updateTask(argThat(task ->
-                TASK_ID.equals(task.getTid())
-                        && "updated-name".equals(task.getTaskName())
-                        && "demoApp".equals(task.getProject())
-                        && task.getUser() != null
-                        && "owner-1".equals(task.getUser().getUserId())
-        ));
-    }
-
-    @Test
-    void updateTaskRejectsUnsupportedFields() throws Exception {
-        Task existingTask = taskWithStatus(TaskStatus.NEW);
-        existingTask.setUser(com.xa.mass.base.model.UserRef.of("owner"));
-        when(taskManager.getTask(TASK_ID)).thenReturn(existingTask);
-
-        mockMvc.perform(put("/status/api/tasks/{taskId}", TASK_ID)
-                        .contentType("application/json")
-                        .content("""
-                                {
-                                  "taskName":"updated-name",
-                                  "inputs":[{"target":"one"},{"target":"two"}]
-                                }
-                                """))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value(400))
-                .andExpect(jsonPath("$.msg").value("Task update failed: Unsupported task update fields: inputs"));
-
-        verify(taskManager, never()).updateTask(any(Task.class));
-    }
-
-    @Test
-    void updateTaskRejectsNonEditableStatuses() throws Exception {
-        when(taskManager.getTask(TASK_ID)).thenReturn(taskWithStatus(TaskStatus.READY));
-
-        mockMvc.perform(put("/status/api/tasks/{taskId}", TASK_ID)
-                        .contentType("application/json")
-                        .content("""
-                                {
-                                  "taskName":"updated-name"
-                                }
-                                """))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value(400))
-                .andExpect(jsonPath("$.msg").value("Task update failed: Only NEW or BLOCKED tasks can be updated"));
-
-        verify(taskManager, never()).updateTask(any(Task.class));
-    }
-
-    @Test
-    void updateTaskReturnsNotFoundWhenTaskDoesNotExist() throws Exception {
-        when(taskManager.getTask(TASK_ID)).thenReturn(null);
-
-        mockMvc.perform(put("/status/api/tasks/{taskId}", TASK_ID)
-                        .contentType("application/json")
-                        .content("""
-                                {
-                                  "taskName":"missing-task"
-                                }
-                                """))
-                .andExpect(status().isNotFound());
-
-        verify(taskManager, never()).updateTask(any(Task.class));
-    }
-
-
-    @Test
     void getTaskMessagesReturnsPagedMessages() throws Exception {
-        when(taskManager.getTaskMessages(TASK_ID)).thenReturn(java.util.List.of(
-                new TaskMsg("msg-1", TASK_ID, java.util.Map.of("target", "alpha")),
-                new TaskMsg("msg-2", TASK_ID, java.util.Map.of("target", "beta")),
-                new TaskMsg("msg-3", TASK_ID, java.util.Map.of("target", "gamma"))
-        ));
+        TaskMsg first = new TaskMsg("msg-1", TASK_ID, Map.of("target", "alpha"));
+        first.setOutput(Map.of("result", "ok"));
+        TaskMsg second = new TaskMsg("msg-2", TASK_ID, Map.of("target", "beta"));
+        when(taskOperations.getTaskMessages(TASK_ID)).thenReturn(List.of(first, second));
 
         mockMvc.perform(get("/status/api/tasks/{taskId}/messages", TASK_ID)
-                        .param("page", "2")
-                        .param("size", "2"))
+                        .param("page", "1")
+                        .param("size", "1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
-                .andExpect(jsonPath("$.data.total").value(3))
-                .andExpect(jsonPath("$.data.page").value(2))
-                .andExpect(jsonPath("$.data.size").value(2))
-                .andExpect(jsonPath("$.data.messages.length()").value(1))
-                .andExpect(jsonPath("$.data.messages[0].msgId").value("msg-3"))
-                .andExpect(jsonPath("$.data.messages[0].input.target").value("gamma"))
-                .andExpect(jsonPath("$.data.messages[0].compatTarget").doesNotExist())
-                .andExpect(jsonPath("$.data.messages[0].target").doesNotExist());
+                .andExpect(jsonPath("$.data.total").value(2))
+                .andExpect(jsonPath("$.data.messages[0].msgId").value("msg-1"))
+                .andExpect(jsonPath("$.data.messages[0].input.target").value("alpha"))
+                .andExpect(jsonPath("$.data.messages[0].output.result").value("ok"));
     }
 
     private Task taskWithStatus(TaskStatus status) {

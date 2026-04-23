@@ -1,10 +1,6 @@
 package com.xa.mass.api.internal;
 
-import com.google.gson.Gson;
-import com.xa.mass.base.channel.tranporter.MessageTransporter;
-import com.xa.mass.gateway.dispatcher.DispatcherContextRegistry;
-import com.xa.mass.gateway.dispatcher.context.TransportContext;
-import com.xa.mass.gateway.queue.Envelope;
+import com.xa.mass.sdk.TransportOperations;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -20,37 +16,16 @@ import java.util.Map;
 @Tag(name = "Message Dispatch")
 public class MessageController {
 
-    private static final Gson GSON = new Gson();
+    private final TransportOperations transportOperations;
+
+    public MessageController(TransportOperations transportOperations) {
+        this.transportOperations = transportOperations;
+    }
 
     @PostMapping("/send")
     @Operation(summary = "Push a raw message envelope into the outbound transporter")
     public Map<String, Object> sendMessage(@RequestBody Map<String, Object> req) {
-        boolean successFlag = false;
-        String msg;
-
-        TransportContext transportContext = DispatcherContextRegistry.getTransportContext();
-        if (transportContext != null) {
-            MessageTransporter messageTransporter = transportContext.getMessageTransporter();
-            if (messageTransporter != null) {
-                String rawJson = GSON.toJson(req);
-                Envelope env = Envelope.builder()
-                        .rawJson(rawJson)
-                        .receivedAt(System.currentTimeMillis())
-                        .build();
-                messageTransporter.sendOutput(env);
-                successFlag = true;
-                msg = "message enqueued";
-            } else {
-                msg = "message transporter is not initialized";
-            }
-        } else {
-            msg = "transport context is not initialized";
-        }
-
-        Map<String, Object> result = new HashMap<>();
-        result.put("success", successFlag);
-        result.put("msg", msg);
-        return success(result);
+        return success(new HashMap<>(transportOperations.enqueueRawMessage(req)));
     }
 
     private Map<String, Object> success(Object data) {

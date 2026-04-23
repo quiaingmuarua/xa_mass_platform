@@ -26,12 +26,7 @@
 
         <dependency>
             <groupId>com.xa.mass</groupId>
-            <artifactId>xa-mass-gateway</artifactId>
-            <version>0.0.1-SNAPSHOT</version>
-        </dependency>
-        <dependency>
-            <groupId>com.xa.mass</groupId>
-            <artifactId>xa-mass-engine</artifactId>
+            <artifactId>xa-mass-sdk</artifactId>
             <version>0.0.1-SNAPSHOT</version>
         </dependency>
         <dependency>
@@ -54,7 +49,7 @@
                 <version>3.5.0</version>
                 <executions>
                     <execution>
-                        <id>ban-direct-sdk-runtime-dependency</id>
+                        <id>ban-direct-engine-and-gateway-dependency</id>
                         <phase>validate</phase>
                         <goals>
                             <goal>enforce</goal>
@@ -64,7 +59,8 @@
                                 <bannedDependencies>
                                     <searchTransitive>false</searchTransitive>
                                     <excludes>
-                                        <exclude>com.xa.mass:xa-mass-sdk</exclude>
+                                        <exclude>com.xa.mass:xa-mass-engine</exclude>
+                                        <exclude>com.xa.mass:xa-mass-gateway</exclude>
                                     </excludes>
                                 </bannedDependencies>
                             </rules>

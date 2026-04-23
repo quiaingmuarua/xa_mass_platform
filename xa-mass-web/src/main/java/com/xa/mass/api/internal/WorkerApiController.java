@@ -5,7 +5,7 @@ import com.xa.mass.api.model.worker.WorkerSupportedProjectsApiRequest;
 import com.xa.mass.base.enums.Project;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
-import com.xa.mass.engine.WorkerManager;
+import com.xa.mass.sdk.WorkerOperations;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -29,15 +29,15 @@ public class WorkerApiController {
     private static final DateTimeFormatter DATE_TIME_FORMATTER =
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
-    private final WorkerManager workerManager;
+    private final WorkerOperations workerOperations;
 
-    public WorkerApiController(WorkerManager workerManager) {
-        this.workerManager = workerManager;
+    public WorkerApiController(WorkerOperations workerOperations) {
+        this.workerOperations = workerOperations;
     }
 
     @GetMapping("/workers")
     public ApiResponse<Map<String, Object>> listWorkers() {
-        List<Map<String, Object>> items = workerManager.getAllWorkers().stream()
+        List<Map<String, Object>> items = workerOperations.getAllWorkers().stream()
                 .sorted(Comparator.comparing(Worker::getWorkerId, Comparator.nullsLast(String::compareTo)))
                 .map(this::toWorkerItem)
                 .toList();
@@ -49,7 +49,7 @@ public class WorkerApiController {
 
     @GetMapping("/worker-contexts")
     public ApiResponse<Map<String, Object>> listWorkerContexts() {
-        List<Map<String, Object>> items = workerManager.getAllWorkerContexts().stream()
+        List<Map<String, Object>> items = workerOperations.getAllWorkerContexts().stream()
                 .sorted(Comparator.comparing(WorkerContext::getWorkerContextId, Comparator.nullsLast(String::compareTo)))
                 .map(this::toWorkerContextItem)
                 .toList();
@@ -63,14 +63,14 @@ public class WorkerApiController {
     public ResponseEntity<ApiResponse<Map<String, Object>>> updateSupportedProjects(@PathVariable String workerId,
                                                                                     @RequestBody WorkerSupportedProjectsApiRequest requestBody) {
         validateKnownFields(requestBody);
-        Worker worker = workerManager.getWorker(workerId);
+        Worker worker = workerOperations.getWorker(workerId);
         if (worker == null) {
             return ResponseEntity.status(404).body(ApiResponse.error(404, "Worker not found: " + workerId));
         }
 
         List<String> supportedProjects = normalizeSupportedProjects(requestBody.getSupportedProjects());
         worker.setSupportedProjects(supportedProjects);
-        workerManager.updateWorker(worker);
+        workerOperations.updateWorker(worker);
 
         return ResponseEntity.ok(ApiResponse.success(Map.of(
                 "workerId", workerId,
@@ -110,7 +110,7 @@ public class WorkerApiController {
         item.put("supportedProjects", worker.getSupportedProjects());
         item.put("attributes", worker.getAttributes());
         item.put("lastHeartbeat", formatDateTime(worker.getLastHeartbeat()));
-        item.put("locked", workerManager.isLocked(worker.getWorkerId()));
+        item.put("locked", workerOperations.isWorkerLocked(worker.getWorkerId()));
         item.put("updateTime", formatDateTime(worker.getUpdateTime()));
         return item;
     }

@@ -5,8 +5,7 @@ import com.xa.mass.api.model.sdk.SdkTaskAppendItemsApiRequest;
 import com.xa.mass.api.model.sdk.SdkTaskCreateApiRequest;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
-import com.xa.mass.engine.TaskManager;
-import com.xa.mass.engine.model.TaskCreateRequestDto;
+import com.xa.mass.sdk.TaskOperations;
 import com.xa.mass.sdk.auth.AuthProvider;
 import com.xa.mass.sdk.auth.TaskSubmitterContext;
 import com.xa.mass.sdk.catalog.EventMetadata;
@@ -33,9 +32,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-/**
- * SDK-facing task APIs that do not depend on the control-console endpoints.
- */
 @RestController
 @RequestMapping("/sdk/tasks")
 public class SdkTaskController {
@@ -43,15 +39,15 @@ public class SdkTaskController {
     static final String API_KEY_HEADER = "X-Mass-Api-Key";
     private static final String DEFAULT_SUBMITTER_USER_ID = "sdk-client";
 
-    private final TaskManager taskManager;
+    private final TaskOperations taskOperations;
     private final ProjectEventCatalog projectEventCatalog;
     @Nullable
     private final AuthProvider authProvider;
 
-    public SdkTaskController(TaskManager taskManager,
+    public SdkTaskController(TaskOperations taskOperations,
                              ProjectEventCatalog projectEventCatalog,
                              @Nullable AuthProvider authProvider) {
-        this.taskManager = taskManager;
+        this.taskOperations = taskOperations;
         this.projectEventCatalog = projectEventCatalog;
         this.authProvider = authProvider;
     }
@@ -65,7 +61,7 @@ public class SdkTaskController {
             TaskSubmitterContext submitterContext = resolveSubmitterContext(apiKey);
             MassTaskRequest request = toMassTaskRequest(requestBody, submitterContext);
             validateProjectAndEvent(request.getProject(), request.getEventCode());
-            Task task = taskManager.createTask(toEngineRequest(request));
+            Task task = taskOperations.createTask(request);
             return ResponseEntity.ok(ApiResponse.success(Map.of(
                     "taskId", task.getTid(),
                     "message", "SDK task created"
@@ -77,18 +73,18 @@ public class SdkTaskController {
 
     @GetMapping("/{taskId}")
     public ResponseEntity<ApiResponse<Map<String, Object>>> getTask(@PathVariable String taskId) {
-        Task task = taskManager.getTask(taskId);
+        Task task = taskOperations.getTask(taskId);
         if (task == null) {
             return ResponseEntity.status(404).body(ApiResponse.error(404, "Task not found: " + taskId));
         }
-        List<Map<String, Object>> items = taskManager.getTaskMessages(taskId).stream()
+        List<Map<String, Object>> items = taskOperations.getTaskMessages(taskId).stream()
                 .map(TaskMsg::getInput)
                 .map(input -> input == null ? Map.<String, Object>of() : new LinkedHashMap<>(input))
                 .toList();
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("task", task);
         response.put("items", items);
-        response.put("stateValidation", taskManager.validateTaskState(taskId));
+        response.put("stateValidation", taskOperations.validateTaskState(taskId));
         return ResponseEntity.ok(ApiResponse.success(response));
     }
 
@@ -97,11 +93,11 @@ public class SdkTaskController {
                                                                         @RequestBody SdkTaskAppendItemsApiRequest requestBody) {
         try {
             validateKnownFields(requestBody, "sdk task append");
-            Task task = taskManager.getTask(taskId);
+            Task task = taskOperations.getTask(taskId);
             if (task == null) {
                 return ResponseEntity.status(404).body(ApiResponse.error(404, "Task not found: " + taskId));
             }
-            int added = taskManager.appendTaskItems(taskId, toAppendInputs(requestBody, task));
+            int added = taskOperations.appendTaskItems(taskId, toAppendInputs(requestBody, task));
             return ResponseEntity.ok(ApiResponse.success(Map.of(
                     "taskId", taskId,
                     "added", added,
@@ -114,11 +110,11 @@ public class SdkTaskController {
 
     @PutMapping("/{taskId}/seal")
     public ResponseEntity<ApiResponse<Map<String, Object>>> sealTask(@PathVariable String taskId) {
-        Task task = taskManager.getTask(taskId);
+        Task task = taskOperations.getTask(taskId);
         if (task == null) {
             return ResponseEntity.status(404).body(ApiResponse.error(404, "Task not found: " + taskId));
         }
-        if (!taskManager.sealTask(taskId)) {
+        if (!taskOperations.sealTask(taskId)) {
             return ResponseEntity.badRequest().body(ApiResponse.error(400, "Task is not open-ended: " + taskId));
         }
         return ResponseEntity.ok(ApiResponse.success(Map.of(
@@ -164,35 +160,6 @@ public class SdkTaskController {
                 .build();
     }
 
-    private TaskCreateRequestDto toEngineRequest(MassTaskRequest request) {
-        TaskCreateRequestDto dto = new TaskCreateRequestDto();
-        dto.setUserId(request.getUserId());
-        dto.setProject(request.getProject());
-        dto.setTaskName(request.getTaskName());
-        dto.setSharedConfig(withSdkMetadata(request));
-        dto.setInputs(request.toEngineInputs());
-        dto.setRoutingCode(request.getRoutingCode());
-        dto.setBatchSize(request.getBatchSize());
-        dto.setDefaultMsgMaxRetryCount(request.getDefaultMsgMaxRetryCount());
-        dto.setOpenEnded(request.isStreaming());
-        dto.setMaxRuntimeSeconds(request.getMaxRuntimeSeconds());
-        return dto;
-    }
-
-    private Map<String, Object> withSdkMetadata(MassTaskRequest request) {
-        Map<String, Object> merged = new LinkedHashMap<>(request.getSharedConfig());
-        Map<String, Object> sdkMetadata = new LinkedHashMap<>();
-        if (request.getEventCode() != null && !request.getEventCode().isBlank()) {
-            sdkMetadata.put("eventCode", request.getEventCode());
-        }
-        sdkMetadata.put("payloadType", request.getPayloadType().name());
-        sdkMetadata.put("taskMode", request.getMode().name());
-        if (!sdkMetadata.isEmpty()) {
-            merged.put("_sdk", Map.copyOf(sdkMetadata));
-        }
-        return Map.copyOf(merged);
-    }
-
     private List<Map<String, Object>> toAppendInputs(SdkTaskAppendItemsApiRequest requestBody, Task task) {
         List<Object> rawInputs = requestBody.getInputs();
         if (rawInputs == null || rawInputs.isEmpty()) {
@@ -200,13 +167,9 @@ public class SdkTaskController {
         }
         PayloadType payloadType = resolvePayloadType(task);
         if (payloadType == null) {
-            return rawInputs.stream()
-                    .map(this::mapInputWithoutDeclaredPayloadType)
-                    .toList();
+            return rawInputs.stream().map(this::mapInputWithoutDeclaredPayloadType).toList();
         }
-        return toMassInputs(rawInputs, payloadType).stream()
-                .map(MassInput::toTaskMsgInput)
-                .toList();
+        return toMassInputs(rawInputs, payloadType).stream().map(MassInput::toTaskMsgInput).toList();
     }
 
     private Map<String, Object> mapInputWithoutDeclaredPayloadType(Object rawInput) {
@@ -224,9 +187,7 @@ public class SdkTaskController {
             throw new IllegalArgumentException("inputs must contain at least one work item");
         }
         PayloadType resolvedPayloadType = payloadType != null ? payloadType : PayloadType.JSON;
-        return rawInputs.stream()
-                .map(rawInput -> toMassInput(rawInput, resolvedPayloadType))
-                .toList();
+        return rawInputs.stream().map(rawInput -> toMassInput(rawInput, resolvedPayloadType)).toList();
     }
 
     private MassInput toMassInput(Object rawInput, PayloadType payloadType) {
@@ -261,11 +222,6 @@ public class SdkTaskController {
         return PayloadType.valueOf(payloadTypeName);
     }
 
-    /**
-     * Resolves the effective routing code for a task request.
-     * Falls back to the event's {@code defaultRoutingCode} when the request does not
-     * specify one, so event metadata actually drives dispatch defaults.
-     */
     private String resolveRoutingCode(String requestedRoutingCode, String eventCode) {
         if (requestedRoutingCode != null && !requestedRoutingCode.isBlank()) {
             return requestedRoutingCode;
@@ -311,7 +267,6 @@ public class SdkTaskController {
         }
     }
 
-    @SuppressWarnings("unchecked")
     private Map<String, Object> stringObjectMap(Map<?, ?> rawMap) {
         Map<String, Object> copy = new LinkedHashMap<>();
         for (Map.Entry<?, ?> entry : rawMap.entrySet()) {
