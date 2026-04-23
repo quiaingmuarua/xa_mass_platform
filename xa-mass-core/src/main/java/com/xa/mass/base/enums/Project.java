@@ -1,6 +1,7 @@
 package com.xa.mass.base.enums;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
+import com.xa.mass.base.project.ProjectRegistry;
 
 import java.util.Arrays;
 import java.util.List;
@@ -49,26 +50,21 @@ public enum Project {
      * 获取所有项目代码
      */
     public static List<String> getAllCodes() {
-        return Arrays.stream(values())
-                .map(Project::getCode)
-                .collect(Collectors.toList());
+        return ProjectRegistry.listProjectCodes();
     }
 
     /**
      * 获取所有项目名称
      */
     public static List<String> getAllNames() {
-        return Arrays.stream(values())
-                .map(Project::getName)
-                .collect(Collectors.toList());
+        return ProjectRegistry.listProjectNames();
     }
 
     /**
      * 检查项目代码是否存在
      */
     public static boolean isValidCode(String code) {
-        return Arrays.stream(values())
-                .anyMatch(project -> project.code.equals(code));
+        return ProjectRegistry.isValidCode(code);
     }
 
     public String getCode() {

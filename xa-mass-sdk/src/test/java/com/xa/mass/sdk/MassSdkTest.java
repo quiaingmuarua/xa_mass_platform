@@ -418,6 +418,78 @@ class MassSdkTest {
     }
 
     @Test
+    void registerProjectMakesCustomProjectExecutableForEngineTaskCreation() {
+        MessageQueue<Envelope> inputQueue = new InMemoryMessageQueue<>("Envelope", Envelope.class);
+        MessageQueue<Envelope> outputQueue = new InMemoryMessageQueue<>("Envelope", Envelope.class);
+        MassSdkApplication app = MassSdk.builder()
+                .transportServer(0, "/sdk-transport")
+                .gateway(gateway -> gateway.enabled(false).transportServerEnabled(false).inputQueue(inputQueue).outputQueue(outputQueue))
+                .engine(engine -> engine.enabled(true).workerThreads(1))
+                .build();
+
+        try {
+            app.start();
+            app.registerProject(ProjectMetadata.builder()
+                    .code("botAppExecutableTest")
+                    .name("Bot App Executable Test")
+                    .description("custom runtime project")
+                    .eventCodes(List.of("chatbot.reply"))
+                    .build());
+
+            Task task = app.createTask(MassTaskCreateRequest.builder()
+                    .userId("bot-agent")
+                    .project("botAppExecutableTest")
+                    .taskName("custom-project-task")
+                    .inputs(List.of(Map.of("target", "chat-1")))
+                    .batchSize(1)
+                    .build());
+
+            assertNotNull(task);
+            Assertions.assertEquals("botAppExecutableTest", task.getProject());
+        } finally {
+            app.stop();
+        }
+    }
+
+    @Test
+    void createTaskSupportsCustomRegisteredProjectAndEventCatalog() {
+        MessageQueue<Envelope> inputQueue = new InMemoryMessageQueue<>("Envelope", Envelope.class);
+        MessageQueue<Envelope> outputQueue = new InMemoryMessageQueue<>("Envelope", Envelope.class);
+        MassSdkApplication app = MassSdk.builder()
+                .transportServer(0, "/sdk-transport")
+                .gateway(gateway -> gateway.enabled(false).transportServerEnabled(false).inputQueue(inputQueue).outputQueue(outputQueue))
+                .engine(engine -> engine.enabled(true).workerThreads(1))
+                .build();
+
+        try {
+            app.start();
+            app.registerEvent(EventMetadata.builder()
+                    .code("bot.command")
+                    .name("Bot Command")
+                    .description("custom bot command")
+                    .payloadTypes(List.of(PayloadType.TEXT))
+                    .taskModes(List.of(TaskMode.SINGLE_RUN))
+                    .build());
+            app.registerProject(ProjectMetadata.builder()
+                    .code("botAppCatalogTest")
+                    .name("Bot App Catalog Test")
+                    .description("custom runtime project")
+                    .eventCodes(List.of("bot.command"))
+                    .build());
+
+            Task task = app.createTask(MassTaskRequest.singleRun("botAppCatalogTest", "bot-command-task")
+                    .eventCode("bot.command")
+                    .textInputs(List.of("/start"))
+                    .build());
+
+            assertNotNull(task);
+            Assertions.assertEquals("botAppCatalogTest", task.getProject());
+        } finally {
+            app.stop();
+        }
+    }
+
+    @Test
     void sdkRegistrationNormalizesWorkerAndContextContracts() {
         MassApplication delegate = mock(MassApplication.class);
         MassEngine engine = mock(MassEngine.class);

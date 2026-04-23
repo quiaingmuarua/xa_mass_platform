@@ -1,6 +1,7 @@
 package com.xa.mass.base.model;
 
-import com.xa.mass.base.enums.Project;
+import com.xa.mass.base.project.ProjectDescriptor;
+import com.xa.mass.base.project.ProjectRegistry;
 
 import java.util.Objects;
 
@@ -8,8 +9,9 @@ import java.util.Objects;
  * Stable project binding carried by core aggregates.
  *
  * <p>The runtime persists the canonical project code while keeping a display
- * label available for logs and API views. Validation currently delegates to
- * the built-in project registry.
+ * label available for logs and API views. Validation delegates to the runtime
+ * project registry, which is seeded from built-in defaults and can be extended
+ * by SDK resource registration.
  */
 public class ProjectRef {
 
@@ -25,7 +27,7 @@ public class ProjectRef {
     }
 
     public static ProjectRef require(String code) {
-        Project project = Project.requireCode(requireCode(code));
+        ProjectDescriptor project = ProjectRegistry.require(requireCode(code));
         return new ProjectRef(project.getCode(), project.getName());
     }
 
@@ -37,7 +39,7 @@ public class ProjectRef {
     }
 
     public static boolean isValid(String code) {
-        return code != null && !code.isBlank() && Project.isValidCode(code.trim());
+        return code != null && !code.isBlank() && ProjectRegistry.isValidCode(code.trim());
     }
 
     public String getCode() {

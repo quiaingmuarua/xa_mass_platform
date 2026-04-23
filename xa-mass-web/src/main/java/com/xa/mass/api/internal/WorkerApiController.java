@@ -2,9 +2,9 @@ package com.xa.mass.api.internal;
 
 import com.xa.mass.api.model.ApiResponse;
 import com.xa.mass.api.model.worker.WorkerSupportedProjectsApiRequest;
-import com.xa.mass.base.enums.Project;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
+import com.xa.mass.base.project.ProjectRegistry;
 import com.xa.mass.sdk.WorkerOperations;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -96,7 +96,7 @@ public class WorkerApiController {
                 .filter(Objects::nonNull)
                 .map(String::trim)
                 .filter(value -> !value.isEmpty())
-                .map(value -> Project.requireCode(value).getCode())
+                .map(value -> ProjectRegistry.require(value).getCode())
                 .distinct()
                 .toList();
     }

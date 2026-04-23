@@ -13,6 +13,7 @@ import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
+import com.xa.mass.base.project.ProjectRegistry;
 import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.model.TaskCreateRequestDto;
@@ -88,6 +89,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
     MassSdkApplication(MassApplication delegate, ProjectEventCatalogRegistry projectEventCatalogRegistry) {
         this.delegate = Objects.requireNonNull(delegate, "delegate");
         this.projectEventCatalogRegistry = Objects.requireNonNull(projectEventCatalogRegistry, "projectEventCatalogRegistry");
+        registerEnabledCatalogProjectsIntoCore();
     }
 
     public void start() {
@@ -313,6 +315,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
     @Override
     public void registerProject(ProjectMetadata projectMetadata) {
         projectEventCatalogRegistry.registerProject(projectMetadata);
+        registerProjectIntoCore(projectMetadata);
     }
 
     @Override
@@ -348,6 +351,17 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
     @Override
     public ProjectEventCatalog projectEventCatalog() {
         return projectEventCatalogRegistry;
+    }
+
+    private void registerEnabledCatalogProjectsIntoCore() {
+        for (ProjectMetadata projectMetadata : projectEventCatalogRegistry.listProjects()) {
+            registerProjectIntoCore(projectMetadata);
+        }
+    }
+
+    private void registerProjectIntoCore(ProjectMetadata projectMetadata) {
+        Objects.requireNonNull(projectMetadata, "projectMetadata");
+        ProjectRegistry.register(projectMetadata.getCode(), projectMetadata.getName(), projectMetadata.isEnabled());
     }
 
     @Override
@@ -758,11 +772,11 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
 
     private String resolveProjectCode(String project, Worker worker) {
         if (project != null && !project.isBlank()) {
-            return Project.requireCode(project).getCode();
+            return ProjectRegistry.require(project).getCode();
         }
         List<String> supportedProjects = worker.getSupportedProjects();
         if (supportedProjects != null && !supportedProjects.isEmpty()) {
-            return Project.requireCode(supportedProjects.get(0)).getCode();
+            return ProjectRegistry.require(supportedProjects.get(0)).getCode();
         }
         return Project.DEMO_APP.getCode();
     }
