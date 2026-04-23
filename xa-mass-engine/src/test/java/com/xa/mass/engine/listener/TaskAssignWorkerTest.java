@@ -15,6 +15,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.doAnswer;
@@ -179,6 +180,39 @@ class TaskAssignWorkerTest {
         assertTrue(processedLatch.await(3, TimeUnit.SECONDS));
         assertEquals(1, assigned.size());
         assertEquals("processed", assigned.get(0).getTid());
+    }
+
+    @Test
+    void duplicateSubmitForSameTaskIsSkippedWhileAlreadyTracked() throws InterruptedException {
+        worker.stop();
+
+        AtomicInteger attempts = new AtomicInteger();
+        CountDownLatch assignedLatch = new CountDownLatch(1);
+        TaskWorkerAssignListener slowListener = mock(TaskWorkerAssignListener.class);
+        doAnswer(invocation -> {
+            Task task = invocation.getArgument(0);
+            attempts.incrementAndGet();
+            Thread.sleep(150);
+            task.transitionTo(TaskStatus.RUNNING);
+            assignedLatch.countDown();
+            return true;
+        }).when(slowListener).onTaskAssign(any());
+
+        worker = new TaskAssignWorker(slowListener, 50L);
+        worker.start();
+
+        Task task = readyTask("dedup");
+        try (TraceEventLogCapture capture = new TraceEventLogCapture()) {
+            assertTrue(worker.submit(task));
+            assertFalse(worker.submit(task));
+
+            assertTrue(assignedLatch.await(3, TimeUnit.SECONDS), "Task should still be processed once");
+            assertEquals(1, attempts.get());
+            capture.assertHasEvent("ASSIGNMENT_QUEUE_SNAPSHOT", mdc ->
+                    "dedup".equals(mdc.get("taskId"))
+                            && "DEDUP_SKIPPED".equals(mdc.get("queueAction"))
+                            && "SKIPPED".equals(mdc.get("result")));
+        }
     }
 
     @Test

@@ -7,27 +7,27 @@ import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.TaskMsgAttempt;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.stream.Collectors;
 
 /**
- * 内存任务存储实现
- * 使用ConcurrentHashMap和CopyOnWriteArrayList保证线程安全
+ * In-memory task storage optimized for frequent task-message writes.
  */
 public class InMemoryTaskStorage implements TaskStorage {
 
     private final Map<String, Task> tasks = new ConcurrentHashMap<>();
-    private final Map<String, List<TaskMsg>> taskMessages = new ConcurrentHashMap<>();
-    private final Map<String, Map<String, List<TaskMsgAttempt>>> taskMessageAttempts = new ConcurrentHashMap<>();
+    private final Map<String, MessageBucket> taskMessages = new ConcurrentHashMap<>();
+    private final Map<String, Map<String, AttemptBucket>> taskMessageAttempts = new ConcurrentHashMap<>();
 
     @Override
     public void saveTask(Task task) {
         tasks.put(task.getTid(), task);
-        taskMessages.put(task.getTid(), new CopyOnWriteArrayList<>());
+        taskMessages.put(task.getTid(), new MessageBucket());
         taskMessageAttempts.put(task.getTid(), new ConcurrentHashMap<>());
     }
 
@@ -38,7 +38,7 @@ public class InMemoryTaskStorage implements TaskStorage {
 
     @Override
     public boolean updateTask(Task task) {
-        if (task.getTid() == null || !tasks.containsKey(task.getTid())) {
+        if (task == null || task.getTid() == null || !tasks.containsKey(task.getTid())) {
             return false;
         }
         tasks.put(task.getTid(), task);
@@ -55,7 +55,7 @@ public class InMemoryTaskStorage implements TaskStorage {
 
     @Override
     public List<Task> getAllTasks() {
-        return new CopyOnWriteArrayList<>(tasks.values());
+        return new ArrayList<>(tasks.values());
     }
 
     @Override
@@ -74,121 +74,236 @@ public class InMemoryTaskStorage implements TaskStorage {
 
     @Override
     public void addTaskMessage(String taskId, TaskMsg taskMsg) {
-        List<TaskMsg> messages = taskMessages.get(taskId);
-        if (messages != null) {
-            messages.add(taskMsg);
+        MessageBucket bucket = taskMessages.get(taskId);
+        if (bucket != null && taskMsg != null && taskMsg.getMsgId() != null) {
+            bucket.add(taskMsg);
             taskMessageAttempts.computeIfAbsent(taskId, ignored -> new ConcurrentHashMap<>())
-                    .putIfAbsent(taskMsg.getMsgId(), new CopyOnWriteArrayList<>());
+                    .putIfAbsent(taskMsg.getMsgId(), new AttemptBucket());
         }
     }
 
     @Override
     public List<TaskMsg> getTaskMessages(String taskId) {
-        List<TaskMsg> messages = taskMessages.get(taskId);
-        return messages != null ? new CopyOnWriteArrayList<>(messages) : new CopyOnWriteArrayList<>();
+        MessageBucket bucket = taskMessages.get(taskId);
+        return bucket != null ? bucket.snapshot() : List.of();
+    }
+
+    @Override
+    public int countPendingDispatchableMessages(String taskId) {
+        MessageBucket bucket = taskMessages.get(taskId);
+        return bucket != null ? (int) bucket.countByStatus(TaskMsgStatus.INIT) : 0;
     }
 
     @Override
     public Optional<TaskMsg> getTaskMessage(String taskId, String msgId) {
-        List<TaskMsg> messages = taskMessages.get(taskId);
-        if (messages == null) {
-            return Optional.empty();
-        }
-        return messages.stream()
-                .filter(message -> msgId != null && msgId.equals(message.getMsgId()))
-                .findFirst();
+        MessageBucket bucket = taskMessages.get(taskId);
+        return bucket != null ? bucket.get(msgId) : Optional.empty();
     }
 
     @Override
     public boolean updateTaskMessage(String taskId, TaskMsg taskMsg) {
-        List<TaskMsg> messages = taskMessages.get(taskId);
-        if (messages == null || taskMsg == null || taskMsg.getMsgId() == null) {
-            return false;
-        }
-        for (int i = 0; i < messages.size(); i++) {
-            TaskMsg existing = messages.get(i);
-            if (taskMsg.getMsgId().equals(existing.getMsgId())) {
-                messages.set(i, taskMsg);
-                return true;
-            }
-        }
-        return false;
+        MessageBucket bucket = taskMessages.get(taskId);
+        return bucket != null && taskMsg != null && taskMsg.getMsgId() != null && bucket.update(taskMsg);
     }
 
     @Override
     public void addTaskMessageAttempt(String taskId, String msgId, TaskMsgAttempt attempt) {
         taskMessageAttempts
                 .computeIfAbsent(taskId, ignored -> new ConcurrentHashMap<>())
-                .computeIfAbsent(msgId, ignored -> new CopyOnWriteArrayList<>())
+                .computeIfAbsent(msgId, ignored -> new AttemptBucket())
                 .add(attempt);
     }
 
     @Override
     public List<TaskMsgAttempt> getTaskMessageAttempts(String taskId, String msgId) {
-        Map<String, List<TaskMsgAttempt>> attemptsByMsg = taskMessageAttempts.get(taskId);
-        if (attemptsByMsg == null) {
-            return new CopyOnWriteArrayList<>();
-        }
-        List<TaskMsgAttempt> attempts = attemptsByMsg.get(msgId);
-        return attempts != null ? new CopyOnWriteArrayList<>(attempts) : new CopyOnWriteArrayList<>();
+        AttemptBucket bucket = getAttemptBucket(taskId, msgId);
+        return bucket != null ? bucket.snapshot() : List.of();
     }
 
     @Override
     public Optional<TaskMsgAttempt> getLatestTaskMessageAttempt(String taskId, String msgId) {
-        List<TaskMsgAttempt> attempts = getTaskMessageAttempts(taskId, msgId);
-        if (attempts.isEmpty()) {
-            return Optional.empty();
-        }
-        return Optional.of(attempts.get(attempts.size() - 1));
+        AttemptBucket bucket = getAttemptBucket(taskId, msgId);
+        return bucket != null ? bucket.latest() : Optional.empty();
+    }
+
+    @Override
+    public Optional<TaskMsgAttempt> getLatestActiveTaskMessageAttempt(String taskId, String msgId) {
+        AttemptBucket bucket = getAttemptBucket(taskId, msgId);
+        return bucket != null ? bucket.latestActive() : Optional.empty();
     }
 
     @Override
     public boolean updateTaskMessageAttempt(String taskId, String msgId, TaskMsgAttempt attempt) {
-        Map<String, List<TaskMsgAttempt>> attemptsByMsg = taskMessageAttempts.get(taskId);
-        if (attemptsByMsg == null || attempt == null || attempt.getAttemptId() == null) {
-            return false;
-        }
-        List<TaskMsgAttempt> attempts = attemptsByMsg.get(msgId);
-        if (attempts == null) {
-            return false;
-        }
-        for (int i = 0; i < attempts.size(); i++) {
-            TaskMsgAttempt existing = attempts.get(i);
-            if (attempt.getAttemptId().equals(existing.getAttemptId())) {
-                attempts.set(i, attempt);
-                return true;
-            }
-        }
-        return false;
+        AttemptBucket bucket = getAttemptBucket(taskId, msgId);
+        return bucket != null && attempt != null && attempt.getAttemptId() != null && bucket.update(attempt);
     }
 
     @Override
     public TaskMessageStats getTaskMessageStats(String taskId) {
-        List<TaskMsg> messages = getTaskMessages(taskId);
+        MessageBucket bucket = taskMessages.get(taskId);
+        if (bucket == null) {
+            return new TaskMessageStats(0, 0, 0, 0, 0);
+        }
 
-        long total = messages.size();
-        long success = messages.stream().filter(TaskMsg::isSuccess).count();
-        long failed = messages.stream().filter(m -> m.getStatus() == TaskMsgStatus.FAILED).count();
-        long expired = messages.stream().filter(m -> m.getStatus() == TaskMsgStatus.EXPIRED).count();
-        long processing = messages.stream().filter(TaskMsg::isProcessing).count();
+        long total = bucket.size();
+        long success = bucket.countByStatus(TaskMsgStatus.SUCCESS);
+        long failed = bucket.countByStatus(TaskMsgStatus.FAILED);
+        long expired = bucket.countByStatus(TaskMsgStatus.EXPIRED);
+        long processing = bucket.countProcessing();
 
         return new TaskMessageStats(total, success, failed, expired, processing);
     }
 
     @Override
     public TaskMessageAttemptStats getTaskMessageAttemptStats(String taskId) {
-        Map<String, List<TaskMsgAttempt>> attemptsByMsg = taskMessageAttempts.get(taskId);
+        Map<String, AttemptBucket> attemptsByMsg = taskMessageAttempts.get(taskId);
         if (attemptsByMsg == null) {
             return new TaskMessageAttemptStats(0, 0, 0, 0, 0);
         }
-        List<TaskMsgAttempt> attempts = attemptsByMsg.values().stream()
-                .flatMap(List::stream)
-                .collect(Collectors.toList());
-        long totalAttempts = attempts.size();
-        long activeAttempts = attempts.stream().filter(attempt -> attempt.getStatus() != null && attempt.getStatus().isActive()).count();
-        long runningAttempts = attempts.stream().filter(attempt -> attempt.getStatus() == TaskMsgAttemptStatus.RUNNING).count();
-        long failedAttempts = attempts.stream().filter(attempt -> attempt.getStatus() == TaskMsgAttemptStatus.FAILED).count();
-        long expiredAttempts = attempts.stream().filter(attempt -> attempt.getStatus() == TaskMsgAttemptStatus.EXPIRED).count();
+
+        long totalAttempts = 0;
+        long activeAttempts = 0;
+        long runningAttempts = 0;
+        long failedAttempts = 0;
+        long expiredAttempts = 0;
+
+        for (AttemptBucket bucket : attemptsByMsg.values()) {
+            for (TaskMsgAttempt attempt : bucket.snapshot()) {
+                totalAttempts++;
+                if (attempt.getStatus() != null && attempt.getStatus().isActive()) {
+                    activeAttempts++;
+                }
+                if (attempt.getStatus() == TaskMsgAttemptStatus.RUNNING) {
+                    runningAttempts++;
+                }
+                if (attempt.getStatus() == TaskMsgAttemptStatus.FAILED) {
+                    failedAttempts++;
+                }
+                if (attempt.getStatus() == TaskMsgAttemptStatus.EXPIRED) {
+                    expiredAttempts++;
+                }
+            }
+        }
+
         return new TaskMessageAttemptStats(totalAttempts, activeAttempts, runningAttempts, failedAttempts, expiredAttempts);
+    }
+
+    private AttemptBucket getAttemptBucket(String taskId, String msgId) {
+        Map<String, AttemptBucket> attemptsByMsg = taskMessageAttempts.get(taskId);
+        if (attemptsByMsg == null) {
+            return null;
+        }
+        return attemptsByMsg.get(msgId);
+    }
+
+    private static final class MessageBucket {
+        private final Map<String, TaskMsg> messagesById = new ConcurrentHashMap<>();
+        private final ConcurrentLinkedDeque<String> orderedMsgIds = new ConcurrentLinkedDeque<>();
+
+        private void add(TaskMsg taskMsg) {
+            TaskMsg previous = messagesById.putIfAbsent(taskMsg.getMsgId(), taskMsg);
+            if (previous == null) {
+                orderedMsgIds.addLast(taskMsg.getMsgId());
+                return;
+            }
+            messagesById.put(taskMsg.getMsgId(), taskMsg);
+        }
+
+        private Optional<TaskMsg> get(String msgId) {
+            return Optional.ofNullable(messagesById.get(msgId));
+        }
+
+        private boolean update(TaskMsg taskMsg) {
+            return messagesById.replace(taskMsg.getMsgId(), taskMsg) != null;
+        }
+
+        private List<TaskMsg> snapshot() {
+            List<TaskMsg> snapshot = new ArrayList<>(messagesById.size());
+            for (String msgId : orderedMsgIds) {
+                TaskMsg message = messagesById.get(msgId);
+                if (message != null) {
+                    snapshot.add(message);
+                }
+            }
+            return snapshot;
+        }
+
+        private int size() {
+            return messagesById.size();
+        }
+
+        private long countByStatus(TaskMsgStatus status) {
+            long count = 0;
+            for (String msgId : orderedMsgIds) {
+                TaskMsg message = messagesById.get(msgId);
+                if (message != null && message.getStatus() == status) {
+                    count++;
+                }
+            }
+            return count;
+        }
+
+        private long countProcessing() {
+            long count = 0;
+            for (String msgId : orderedMsgIds) {
+                TaskMsg message = messagesById.get(msgId);
+                if (message != null && message.isProcessing()) {
+                    count++;
+                }
+            }
+            return count;
+        }
+    }
+
+    private static final class AttemptBucket {
+        private final Map<String, TaskMsgAttempt> attemptsById = new ConcurrentHashMap<>();
+        private final ConcurrentLinkedDeque<String> orderedAttemptIds = new ConcurrentLinkedDeque<>();
+
+        private void add(TaskMsgAttempt attempt) {
+            if (attempt == null || attempt.getAttemptId() == null) {
+                return;
+            }
+            TaskMsgAttempt previous = attemptsById.putIfAbsent(attempt.getAttemptId(), attempt);
+            if (previous == null) {
+                orderedAttemptIds.addLast(attempt.getAttemptId());
+                return;
+            }
+            attemptsById.put(attempt.getAttemptId(), attempt);
+        }
+
+        private boolean update(TaskMsgAttempt attempt) {
+            return attemptsById.replace(attempt.getAttemptId(), attempt) != null;
+        }
+
+        private List<TaskMsgAttempt> snapshot() {
+            List<TaskMsgAttempt> snapshot = new ArrayList<>(attemptsById.size());
+            for (String attemptId : orderedAttemptIds) {
+                TaskMsgAttempt attempt = attemptsById.get(attemptId);
+                if (attempt != null) {
+                    snapshot.add(attempt);
+                }
+            }
+            return snapshot;
+        }
+
+        private Optional<TaskMsgAttempt> latest() {
+            String latestAttemptId = orderedAttemptIds.peekLast();
+            if (latestAttemptId == null) {
+                return Optional.empty();
+            }
+            return Optional.ofNullable(attemptsById.get(latestAttemptId));
+        }
+
+        private Optional<TaskMsgAttempt> latestActive() {
+            java.util.Iterator<String> iterator = orderedAttemptIds.descendingIterator();
+            while (iterator.hasNext()) {
+                String attemptId = iterator.next();
+                TaskMsgAttempt attempt = attemptsById.get(attemptId);
+                if (attempt != null && attempt.getStatus() != null && attempt.getStatus().isActive()) {
+                    return Optional.of(attempt);
+                }
+            }
+            return Optional.empty();
+        }
     }
 }

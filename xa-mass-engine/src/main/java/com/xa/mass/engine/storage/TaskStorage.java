@@ -1,6 +1,7 @@
 package com.xa.mass.engine.storage;
 
 import com.xa.mass.base.enums.task.TaskStatus;
+import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.TaskMsgAttempt;
@@ -41,6 +42,12 @@ public interface TaskStorage {
 
     List<TaskMsg> getTaskMessages(String taskId);
 
+    default int countPendingDispatchableMessages(String taskId) {
+        return (int) getTaskMessages(taskId).stream()
+                .filter(taskMsg -> taskMsg != null && taskMsg.getStatus() == TaskMsgStatus.INIT)
+                .count();
+    }
+
     Optional<TaskMsg> getTaskMessage(String taskId, String msgId);
 
     boolean updateTaskMessage(String taskId, TaskMsg taskMsg);
@@ -50,6 +57,17 @@ public interface TaskStorage {
     List<TaskMsgAttempt> getTaskMessageAttempts(String taskId, String msgId);
 
     Optional<TaskMsgAttempt> getLatestTaskMessageAttempt(String taskId, String msgId);
+
+    default Optional<TaskMsgAttempt> getLatestActiveTaskMessageAttempt(String taskId, String msgId) {
+        List<TaskMsgAttempt> attempts = getTaskMessageAttempts(taskId, msgId);
+        for (int i = attempts.size() - 1; i >= 0; i--) {
+            TaskMsgAttempt attempt = attempts.get(i);
+            if (attempt != null && attempt.getStatus() != null && attempt.getStatus().isActive()) {
+                return Optional.of(attempt);
+            }
+        }
+        return Optional.empty();
+    }
 
     boolean updateTaskMessageAttempt(String taskId, String msgId, TaskMsgAttempt attempt);
 

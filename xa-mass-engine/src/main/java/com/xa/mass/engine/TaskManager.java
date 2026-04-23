@@ -3,7 +3,6 @@ package com.xa.mass.engine;
 import com.xa.mass.base.enums.task.TaskIntakeStatus;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
-import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.base.model.ProjectRef;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
@@ -25,7 +24,10 @@ import org.slf4j.LoggerFactory;
 
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 /**
  * Facade over task CRUD, task-message persistence, lifecycle convergence, and result handling.
@@ -42,6 +44,7 @@ public class TaskManager {
     private final TaskStateValidator stateValidator;
     private final TaskLifecycleService lifecycleService;
     private final TaskResultService resultService;
+    private final Map<String, ReentrantLock> taskLocks = new ConcurrentHashMap<>();
 
     public TaskManager(TaskScheduler taskScheduler) {
         this(taskScheduler, TaskStorageFactory.createDefaultTaskStorage(), new AllMessagesFinalTaskTerminalPolicy());
@@ -158,7 +161,7 @@ public class TaskManager {
      * Deletes a task if it is still safe to remove.
      */
     public boolean deleteTask(String taskId) {
-        return lifecycleService.deleteTask(taskId);
+        return withTaskLock(taskId, () -> lifecycleService.deleteTask(taskId));
     }
 
     /**
@@ -198,23 +201,23 @@ public class TaskManager {
     }
 
     public boolean approveTask(String taskId) {
-        return lifecycleService.approveTask(taskId);
+        return withTaskLock(taskId, () -> lifecycleService.approveTask(taskId));
     }
 
     public boolean rejectTask(String taskId) {
-        return lifecycleService.rejectTask(taskId);
+        return withTaskLock(taskId, () -> lifecycleService.rejectTask(taskId));
     }
 
     public boolean blockTask(String taskId) {
-        return lifecycleService.blockTask(taskId);
+        return withTaskLock(taskId, () -> lifecycleService.blockTask(taskId));
     }
 
     public boolean pauseTask(String taskId) {
-        return lifecycleService.pauseTask(taskId);
+        return withTaskLock(taskId, () -> lifecycleService.pauseTask(taskId));
     }
 
     public TaskResumeResult resumeTaskDetailed(String taskId) {
-        return lifecycleService.resumeTaskDetailed(taskId);
+        return withTaskLock(taskId, () -> lifecycleService.resumeTaskDetailed(taskId));
     }
 
     public boolean resumeTask(String taskId) {
@@ -225,28 +228,28 @@ public class TaskManager {
      * Manually terminates a non-final task (operator/user-initiated cancellation).
      */
     public boolean cancelTask(String taskId) {
-        return lifecycleService.cancelTask(taskId);
+        return withTaskLock(taskId, () -> lifecycleService.cancelTask(taskId));
     }
 
     /**
      * Policy-driven task termination (e.g. max-runtime exceeded, success-rate reached).
      */
     public boolean terminateTask(String taskId, TaskTerminalReason reason) {
-        return lifecycleService.terminateTask(taskId, reason);
+        return withTaskLock(taskId, () -> lifecycleService.terminateTask(taskId, reason));
     }
 
     /**
      * Appends new work items to a READY or RUNNING open-ended task.
      */
     public int appendTaskItems(String taskId, List<java.util.Map<String, Object>> inputs) {
-        return lifecycleService.appendTaskItems(taskId, inputs);
+        return withTaskLock(taskId, () -> lifecycleService.appendTaskItems(taskId, inputs));
     }
 
     /**
      * Seals an open-ended task.
      */
     public boolean sealTask(String taskId) {
-        return lifecycleService.sealTask(taskId);
+        return withTaskLock(taskId, () -> lifecycleService.sealTask(taskId));
     }
 
     /**
@@ -291,14 +294,7 @@ public class TaskManager {
     }
 
     public TaskMsgAttempt getLatestActiveTaskMessageAttempt(String taskId, String msgId) {
-        List<TaskMsgAttempt> attempts = taskStorage.getTaskMessageAttempts(taskId, msgId);
-        for (int i = attempts.size() - 1; i >= 0; i--) {
-            TaskMsgAttempt attempt = attempts.get(i);
-            if (attempt.getStatus() != null && attempt.getStatus().isActive()) {
-                return attempt;
-            }
-        }
-        return null;
+        return taskStorage.getLatestActiveTaskMessageAttempt(taskId, msgId).orElse(null);
     }
 
     public boolean updateTaskMessageAttempt(String taskId, String msgId, TaskMsgAttempt attempt) {
@@ -309,7 +305,7 @@ public class TaskManager {
      * Expires a single in-flight task message and recalculates task convergence.
      */
     public boolean expireTaskMessage(String taskId, String msgId) {
-        return resultService.expireTaskMessage(taskId, msgId);
+        return withTaskLock(taskId, () -> resultService.expireTaskMessage(taskId, msgId));
     }
 
     /**
@@ -320,9 +316,7 @@ public class TaskManager {
     }
 
     public int countPendingDispatchableMessages(String taskId) {
-        return (int) getTaskMessages(taskId).stream()
-                .filter(taskMsg -> taskMsg != null && taskMsg.getStatus() == TaskMsgStatus.INIT)
-                .count();
+        return taskStorage.countPendingDispatchableMessages(taskId);
     }
 
     public boolean hasPendingDispatchableMessages(String taskId) {
@@ -333,18 +327,18 @@ public class TaskManager {
      * Recomputes task-level convergence from persisted task messages.
      */
     public void updateTaskProgress(String taskId) {
-        stateResolver.updateTaskProgress(taskId);
+        withTaskLock(taskId, () -> stateResolver.updateTaskProgress(taskId));
     }
 
     /**
      * Resolves task state explicitly from the persisted task-message aggregate.
      */
     public TaskStateResolutionResult resolveTaskStateFromMessages(String taskId) {
-        return stateResolver.resolveTaskStateFromMessages(taskId);
+        return withTaskLock(taskId, () -> stateResolver.resolveTaskStateFromMessages(taskId));
     }
 
     public TaskStateValidationResult validateTaskState(String taskId) {
-        return stateValidator.validateTaskState(taskId);
+        return withTaskLock(taskId, () -> stateValidator.validateTaskState(taskId));
     }
 
     public TaskScheduler getScheduler() {
@@ -385,11 +379,11 @@ public class TaskManager {
     }
 
     public boolean handleTaskMessageResult(String taskId, String msgId, boolean success, String detail) {
-        return resultService.handleTaskMessageResult(taskId, msgId, success, detail);
+        return withTaskLock(taskId, () -> resultService.handleTaskMessageResult(taskId, msgId, success, detail));
     }
 
     public boolean handleTaskMessageResult(String taskId, String msgId, boolean success, String detail, String errorCode) {
-        return resultService.handleTaskMessageResult(taskId, msgId, success, detail, errorCode);
+        return withTaskLock(taskId, () -> resultService.handleTaskMessageResult(taskId, msgId, success, detail, errorCode));
     }
 
     public boolean handleTaskMessageResult(String taskId,
@@ -398,7 +392,30 @@ public class TaskManager {
                                            String detail,
                                            String errorCode,
                                            Map<String, Object> output) {
-        return resultService.handleTaskMessageResult(taskId, msgId, success, detail, errorCode, output);
+        return withTaskLock(taskId, () -> resultService.handleTaskMessageResult(taskId, msgId, success, detail, errorCode, output));
+    }
+
+    <T> T withTaskLock(String taskId, Supplier<T> action) {
+        if (taskId == null || taskId.isBlank()) {
+            return action.get();
+        }
+        ReentrantLock lock = taskLocks.computeIfAbsent(taskId, ignored -> new ReentrantLock());
+        lock.lock();
+        try {
+            return action.get();
+        } finally {
+            lock.unlock();
+            if (!lock.isLocked() && !lock.hasQueuedThreads()) {
+                taskLocks.remove(taskId, lock);
+            }
+        }
+    }
+
+    void withTaskLock(String taskId, Runnable action) {
+        withTaskLock(taskId, () -> {
+            action.run();
+            return null;
+        });
     }
 
     private void validateCreateRequest(TaskCreateRequestDto dto) {

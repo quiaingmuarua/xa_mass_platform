@@ -175,6 +175,9 @@ describe('RuntimeMetadataPage', () => {
         const { wrapper, router } = await mountRuntimeMetadataPage()
 
         expect(wrapper.text()).toContain('Metadata & Discovery')
+        expect(wrapper.text()).toContain(
+            'SDK registration catalog plus live worker inventory',
+        )
         expect(wrapper.text()).toContain('Demo App')
         expect(wrapper.text()).toContain('worker-us-01')
         expect(wrapper.text()).toContain('demo.dispatch.run')

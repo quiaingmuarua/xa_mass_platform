@@ -20,6 +20,7 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Primary;
 import org.springframework.context.annotation.Profile;
 import org.springframework.core.env.Environment;
 
@@ -82,6 +83,7 @@ public class MockApplicationSpringBootApp {
     @Profile("dev")
     public MassSdkApplication fullStackRuntimeApplication() {
         return MassSdk.builder()
+                .projectEventCatalog(new ProjectEventCatalogRegistry())
                 .server(massWebSocketPort)
                 .gateway(gateway -> gateway
                         .enabled(true)
@@ -112,6 +114,7 @@ public class MockApplicationSpringBootApp {
         return args -> {
             log.info("Starting internal gateway + engine runtime");
             try {
+                registerDevAppCatalog(app);
                 app.start();
                 if (!app.isRunning()) {
                     throw new IllegalStateException("MassApplication failed to start properly");
@@ -158,76 +161,64 @@ public class MockApplicationSpringBootApp {
     }
 
     /**
-     * Registers the dev-app's real project/event catalog, reflecting the actual workers
-     * and routing codes configured in mock_workers.json and mock_worker_contexts.json.
-     *
-     * <p>Overrides the generic default catalog from xa-mass-web ({@code @ConditionalOnMissingBean}).
-     * Each event carries a {@code defaultRoutingCode} so that SDK task submissions can route
-     * without requiring callers to specify it explicitly.
-     *
-     * <p>Worker routing:
-     * <ul>
-     *   <li>pool-a workers — channel/country "us", supports demoApp / testApp / otherApp</li>
-     *   <li>pool-b workers — channel/country "gb", supports demoApp / testApp / otherApp</li>
-     * </ul>
+     * Exposes the live SDK registry that the dev runtime actually registers into.
      */
     @Bean
-    public ProjectEventCatalog devAppProjectEventCatalog() {
-        ProjectEventCatalogRegistry registry = new ProjectEventCatalogRegistry();
+    @Primary
+    @Profile("dev")
+    public ProjectEventCatalog devAppProjectEventCatalog(MassSdkApplication app) {
+        return app.projectEventCatalog();
+    }
 
-        registry.registerEvent(EventMetadata.builder()
+    private void registerDevAppCatalog(MassSdkApplication app) {
+        app.registerEvent(EventMetadata.builder()
                 .code("demo.dispatch")
                 .name("Demo Dispatch")
-                .description("Dispatch a generic demo work item to a US-region online worker.")
-                .defaultRoutingCode("us")
+                .description("Dispatch a generic demo work item to an online demo worker.")
                 .payloadTypes(List.of(PayloadType.JSON))
                 .taskModes(List.of(TaskMode.SINGLE_RUN, TaskMode.STREAMING))
                 .build());
 
-        registry.registerEvent(EventMetadata.builder()
+        app.registerEvent(EventMetadata.builder()
                 .code("demo.dispatch.gb")
                 .name("Demo Dispatch (GB)")
-                .description("Dispatch a generic demo work item to a GB-region online worker.")
-                .defaultRoutingCode("gb")
+                .description("Dispatch a generic demo work item to the GB demo lane.")
                 .payloadTypes(List.of(PayloadType.JSON))
                 .taskModes(List.of(TaskMode.SINGLE_RUN, TaskMode.STREAMING))
                 .build());
-        registry.registerEvent(EventMetadata.builder()
+        app.registerEvent(EventMetadata.builder()
                 .code("crawler.fetch-page")
                 .name("Crawler Fetch Page")
                 .description("Dispatch a crawler fetch request to an SDK-created pull worker.")
-                .defaultRoutingCode("us")
                 .payloadTypes(List.of(PayloadType.JSON))
                 .taskModes(List.of(TaskMode.SINGLE_RUN, TaskMode.STREAMING))
                 .build());
 
-        registry.registerProject(ProjectMetadata.builder()
+        app.registerProject(ProjectMetadata.builder()
                 .code("demoApp")
                 .name("Demo App")
-                .description("Default demo project. Served by pool-a (US) and pool-b (GB) workers.")
+                .description("Default demo project. Event catalog is registered through the SDK runtime.")
                 .eventCodes(List.of("demo.dispatch", "demo.dispatch.gb"))
                 .build());
 
-        registry.registerProject(ProjectMetadata.builder()
+        app.registerProject(ProjectMetadata.builder()
                 .code("testApp")
                 .name("Test App")
-                .description("Test project used by regression and E2E fixtures. Served by pool-a (US) workers.")
+                .description("Test project used by regression and E2E fixtures.")
                 .eventCodes(List.of("demo.dispatch"))
                 .build());
 
-        registry.registerProject(ProjectMetadata.builder()
+        app.registerProject(ProjectMetadata.builder()
                 .code("otherApp")
                 .name("Other App")
-                .description("Secondary demo project served by pool-a (US) and pool-b (GB) workers.")
+                .description("Secondary demo project used by the dev validation shell.")
                 .eventCodes(List.of("demo.dispatch", "demo.dispatch.gb"))
                 .build());
-        registry.registerProject(ProjectMetadata.builder()
+        app.registerProject(ProjectMetadata.builder()
                 .code("crawlerApp")
                 .name("Crawler")
                 .description("Crawler worker lab project for SDK-created pull worker scenarios.")
                 .eventCodes(List.of("crawler.fetch-page"))
                 .build());
-
-        return registry;
     }
 }

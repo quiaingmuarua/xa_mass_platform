@@ -39,10 +39,10 @@ class SdkMetadataApiIntegrationTest extends AbstractMockE2eTest {
 
     @Test
     @SuppressWarnings("unchecked")
-    void sdkMetadataApisExposeDefaultProjectsAndEvents() {
+    void sdkMetadataApisExposeSdkRegisteredProjectsAndEvents() {
         Map<String, Object> projectResponse = exchange("/sdk/meta/projects", HttpMethod.GET, null);
         Map<String, Object> projectEventsResponse = exchange("/sdk/meta/projects/demoApp/events", HttpMethod.GET, null);
-        Map<String, Object> eventResponse = exchange("/sdk/meta/events/chatbot.reply", HttpMethod.GET, null);
+        Map<String, Object> eventResponse = exchange("/sdk/meta/events/crawler.fetch-page", HttpMethod.GET, null);
 
         assertApiOk(projectResponse);
         assertApiOk(projectEventsResponse);
@@ -53,9 +53,10 @@ class SdkMetadataApiIntegrationTest extends AbstractMockE2eTest {
         Map<String, Object> event = (Map<String, Object>) eventResponse.get("data");
 
         assertTrue(projects.stream().anyMatch(project -> "demoApp".equals(project.get("code"))));
-        assertTrue(projectEvents.stream().anyMatch(item -> "crawler.fetch-page".equals(item.get("code"))));
-        assertEquals("chatbot.reply", event.get("code"));
-        assertEquals(List.of("TEXT", "JSON"), event.get("payloadTypes"));
+        assertTrue(projectEvents.stream().anyMatch(item -> "demo.dispatch".equals(item.get("code"))));
+        assertTrue(projectEvents.stream().anyMatch(item -> "demo.dispatch.gb".equals(item.get("code"))));
+        assertEquals("crawler.fetch-page", event.get("code"));
+        assertEquals(List.of("JSON"), event.get("payloadTypes"));
         assertEquals(List.of("SINGLE_RUN", "STREAMING"), event.get("taskModes"));
     }
 }

@@ -17,8 +17,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -69,6 +71,23 @@ public class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatchingSt
             }
 
             for (WorkerContext workerContext : workerContexts) {
+                PrefilterDecision prefilterDecision = prefilterCandidate(task, worker, workerContext);
+                if (!prefilterDecision.passed()) {
+                    TraceEventLogger.workerMatchRejected(task.getTid(), worker, workerContext,
+                            prefilterDecision.reason());
+                    recordService.recordWorkerAssignment(
+                            task, worker, workerContext, prefilterDecision.result(),
+                            prefilterDecision.reason(),
+                            new ArrayList<>(), prefilterDecision.contextSnapshot(),
+                            prefilterDecision.workerLocked()
+                    );
+                    log.info("Worker candidate rejected before rule evaluation: {} context {} ({})",
+                            worker.getWorkerId(),
+                            workerContext != null ? workerContext.getWorkerContextId() : "null",
+                            prefilterDecision.reason());
+                    continue;
+                }
+
                 WorkerMatchContext matchContext = new WorkerMatchContext(worker, workerContext, task, workerManager);
 
                 if (log.isDebugEnabled()) {
@@ -173,6 +192,113 @@ public class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatchingSt
         return matchedWorkers;
     }
 
+    private PrefilterDecision prefilterCandidate(Task task, Worker worker, WorkerContext workerContext) {
+        boolean workerLocked = workerManager.isLocked(worker.getWorkerId());
+        Map<String, Object> contextSnapshot = buildPrefilterContextSnapshot(task, worker, workerContext, workerLocked);
+
+        if (!worker.isAvailable()) {
+            return PrefilterDecision.reject(AssignmentResult.RESOURCE_UNAVAILABLE,
+                    "worker unavailable", contextSnapshot, workerLocked);
+        }
+        if (workerLocked) {
+            return PrefilterDecision.reject(AssignmentResult.CONFLICT,
+                    "worker locked", contextSnapshot, true);
+        }
+        if (!worker.supportsProject(task.getProject())) {
+            return PrefilterDecision.reject(AssignmentResult.RULE_NOT_MATCH,
+                    "project not supported", contextSnapshot, false);
+        }
+
+        String routingCode = TaskSharedConfig.routingCode(task);
+        boolean taskHasRoutingRequirement = routingCode != null && !routingCode.isBlank();
+        if (workerContext == null) {
+            if (taskHasRoutingRequirement) {
+                return PrefilterDecision.reject(AssignmentResult.RULE_NOT_MATCH,
+                        "routing code mismatch", contextSnapshot, false);
+            }
+            return PrefilterDecision.allow();
+        }
+        if (!workerContext.isAllocatable()) {
+            return PrefilterDecision.reject(AssignmentResult.RESOURCE_UNAVAILABLE,
+                    "workerContext not allocatable", contextSnapshot, false);
+        }
+        if (workerContext.getProject() != null && !workerContext.getProject().equals(task.getProject())) {
+            return PrefilterDecision.reject(AssignmentResult.RULE_NOT_MATCH,
+                    "workerContext project mismatch", contextSnapshot, false);
+        }
+        if (taskHasRoutingRequirement && !workerContext.getRoutingTags().contains(routingCode)) {
+            return PrefilterDecision.reject(AssignmentResult.RULE_NOT_MATCH,
+                    "routing code mismatch", contextSnapshot, false);
+        }
+        return PrefilterDecision.allow();
+    }
+
+    private Map<String, Object> buildPrefilterContextSnapshot(Task task,
+                                                              Worker worker,
+                                                              WorkerContext workerContext,
+                                                              boolean workerLocked) {
+        Map<String, Object> context = new LinkedHashMap<>();
+        String routingCode = TaskSharedConfig.routingCode(task);
+        boolean taskHasRoutingRequirement = routingCode != null && !routingCode.isBlank();
+        Set<String> routingTags = workerContext != null ? workerContext.getRoutingTags() : Set.of();
+
+        context.put("workerId", worker.getWorkerId());
+        context.put("workerStatus", worker.getStatus().name());
+        context.put("workerGroupId", worker.getWorkerGroupId());
+        context.put("workerAttributes", worker.getAttributes());
+        context.put("agentVersion", worker.getAgentVersion());
+        context.put("supportedProjects", worker.getSupportedProjects());
+        context.put("isWorkerAvailable", worker.isAvailable());
+        context.put("isWorkerLocked", workerLocked);
+
+        context.put("taskId", task.getTid());
+        context.put("taskName", task.getTaskName());
+        context.put("taskProject", task.getProject());
+        context.put("taskSharedConfig", task.getSharedConfig());
+        context.put("routingCode", routingCode);
+        context.put("taskHasRoutingRequirement", taskHasRoutingRequirement);
+        context.put("taskStatus", task.getStatus().name());
+        context.put("taskTargetNumber", task.getTaskTargetNumber());
+        context.put("batchSize", task.getBatchSize());
+        context.put("minRequiredWorkerCount", task.getMinRequiredWorkerCount());
+        context.put("appCount", worker.getSupportedProjects() != null ? worker.getSupportedProjects().size() : 0);
+        context.put("supportsProject", worker.supportsProject(task.getProject()));
+
+        if (workerContext == null) {
+            context.put("hasWorkerContext", false);
+            context.put("workerContextId", null);
+            context.put("workerContextProject", null);
+            context.put("workerContextStatus", null);
+            context.put("workerContextRoutingTags", Set.of());
+            context.put("workerContextAttributes", Map.of());
+            context.put("isWorkerContextAllocatable", false);
+            context.put("isWorkerContextAvailable", false);
+            context.put("isWorkerContextUsable", false);
+            context.put("isWorkerContextReserved", false);
+            context.put("isWorkerContextOccupied", false);
+            context.put("workerContextProjectMatchesTaskProject", false);
+            context.put("workerContextMatchesRoutingCode", false);
+            return context;
+        }
+
+        context.put("hasWorkerContext", true);
+        context.put("workerContextId", workerContext.getWorkerContextId());
+        context.put("workerContextProject", workerContext.getProject());
+        context.put("workerContextStatus", workerContext.getStatus().name());
+        context.put("workerContextRoutingTags", routingTags);
+        context.put("workerContextAttributes", workerContext.getAttributes());
+        context.put("isWorkerContextAllocatable", workerContext.isAllocatable());
+        context.put("isWorkerContextAvailable", workerContext.isAvailable());
+        context.put("isWorkerContextUsable", workerContext.isUsable());
+        context.put("isWorkerContextReserved", workerContext.isReserved());
+        context.put("isWorkerContextOccupied", workerContext.isOccupied());
+        context.put("workerContextProjectMatchesTaskProject",
+                workerContext.getProject() != null && workerContext.getProject().equals(task.getProject()));
+        context.put("workerContextMatchesRoutingCode",
+                taskHasRoutingRequirement && routingTags.contains(routingCode));
+        return context;
+    }
+
     private List<RuleEvaluationDetail> evaluateRulesWithDetails(WorkerMatchContext matchContext) {
         List<RuleEvaluationDetail> evaluations = new ArrayList<>();
         List<RuleDefinition> rules = ruleManager.getDefaultRules();
@@ -205,5 +331,56 @@ public class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatchingSt
         }
 
         return evaluations;
+    }
+
+    private static final class PrefilterDecision {
+        private final boolean passed;
+        private final AssignmentResult result;
+        private final String reason;
+        private final Map<String, Object> contextSnapshot;
+        private final boolean workerLocked;
+
+        private PrefilterDecision(boolean passed,
+                                  AssignmentResult result,
+                                  String reason,
+                                  Map<String, Object> contextSnapshot,
+                                  boolean workerLocked) {
+            this.passed = passed;
+            this.result = result;
+            this.reason = reason;
+            this.contextSnapshot = contextSnapshot;
+            this.workerLocked = workerLocked;
+        }
+
+        private static PrefilterDecision allow() {
+            return new PrefilterDecision(true, null, null, Map.of(), false);
+        }
+
+        private static PrefilterDecision reject(AssignmentResult result,
+                                                String reason,
+                                                Map<String, Object> contextSnapshot,
+                                                boolean workerLocked) {
+            return new PrefilterDecision(false, result, reason, contextSnapshot, workerLocked);
+        }
+
+        private boolean passed() {
+            return passed;
+        }
+
+        private AssignmentResult result() {
+            return result;
+        }
+
+        private String reason() {
+            return reason;
+        }
+
+        private Map<String, Object> contextSnapshot() {
+            return contextSnapshot;
+        }
+
+        private boolean workerLocked() {
+            return workerLocked;
+        }
     }
 }

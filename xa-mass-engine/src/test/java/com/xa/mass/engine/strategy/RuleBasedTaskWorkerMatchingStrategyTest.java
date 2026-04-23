@@ -1,5 +1,6 @@
 package com.xa.mass.engine.strategy;
 
+import com.xa.mass.base.enums.assignment.AssignmentResult;
 import com.xa.mass.base.enums.worker.WorkerContextStatus;
 import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.enums.task.TaskStatus;
@@ -22,6 +23,8 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class RuleBasedTaskWorkerMatchingStrategyTest {
@@ -106,7 +109,7 @@ class RuleBasedTaskWorkerMatchingStrategyTest {
                     "task-trace".equals(mdc.get("taskId"))
                             && "worker-gb".equals(mdc.get("workerId"))
                             && "ctx-gb".equals(mdc.get("workerContextId"))
-                            && mdc.get("reason").contains("rule evaluation failed"));
+                            && "routing code mismatch".equals(mdc.get("reason")));
         }
     }
 
@@ -142,6 +145,71 @@ class RuleBasedTaskWorkerMatchingStrategyTest {
                 .findFirst()
                 .orElseThrow();
         assertTrue(record.getWorkerSnapshot().isWorkerLocked());
+        assertEquals("worker locked", record.getReason());
+        assertEquals(0, record.getRuleEvaluations().size());
+    }
+
+    @Test
+    void prefilterRejectsOfflineUnsupportedAndRoutingMismatchCandidatesBeforeRuleEvaluation() {
+        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
+        RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(new InMemoryRuleStorage());
+        AssignmentRecordService recordService = new AssignmentRecordService();
+        RuleBasedTaskWorkerMatchingStrategy strategy =
+                new RuleBasedTaskWorkerMatchingStrategy(ruleManager, workerManager, recordService);
+
+        ruleManager.addDefaultRules(List.of(
+                rule("basic_worker_check", "isWorkerAvailable == true && isWorkerLocked == false"),
+                rule("workerContext_status_check", "hasWorkerContext == false || isWorkerContextAllocatable == true"),
+                rule("routing_code_match", "taskHasRoutingRequirement == false || workerContextMatchesRoutingCode == true"),
+                rule("app_support_check", "supportsProject == true")
+        ));
+
+        Task task = new Task();
+        task.setTid("task-prefilter");
+        task.setProject("demoApp");
+        task.setSharedConfig(Map.of("routingCode", "us"));
+        task.setStatus(TaskStatus.READY);
+
+        Worker offlineWorker = worker("worker-offline", "pool-a");
+        offlineWorker.setStatus(WorkerStatus.OFFLINE);
+        workerManager.addWorker(offlineWorker);
+        workerManager.addWorkerContext(workerContext("worker-offline", "ctx-offline", "shared", "us"));
+
+        Worker unsupportedProjectWorker = worker("worker-unsupported", "pool-b");
+        unsupportedProjectWorker.setSupportedProjects(List.of("otherApp"));
+        workerManager.addWorker(unsupportedProjectWorker);
+        workerManager.addWorkerContext(workerContext("worker-unsupported", "ctx-unsupported", "shared", "us"));
+
+        Worker routingMismatchWorker = worker("worker-routing-mismatch", "pool-c");
+        workerManager.addWorker(routingMismatchWorker);
+        workerManager.addWorkerContext(workerContext("worker-routing-mismatch", "ctx-routing-mismatch", "shared", "gb"));
+
+        Worker acceptedWorker = worker("worker-us", "pool-d");
+        workerManager.addWorker(acceptedWorker);
+        workerManager.addWorkerContext(workerContext("worker-us", "ctx-us", "shared", "us"));
+
+        List<MatchedWorkerContext> matched = strategy.matchWorkers(task, 1);
+
+        assertEquals(1, matched.size());
+        assertEquals("worker-us", matched.get(0).getWorkerId());
+
+        AssignmentRecord offlineRecord = findRecord(recordService, "task-prefilter", "worker-offline");
+        assertEquals("worker unavailable", offlineRecord.getReason());
+        assertEquals(AssignmentResult.RESOURCE_UNAVAILABLE, offlineRecord.getResult());
+        assertEquals(0, offlineRecord.getRuleEvaluations().size());
+
+        AssignmentRecord unsupportedRecord = findRecord(recordService, "task-prefilter", "worker-unsupported");
+        assertEquals("project not supported", unsupportedRecord.getReason());
+        assertEquals(AssignmentResult.RULE_NOT_MATCH, unsupportedRecord.getResult());
+        assertEquals(0, unsupportedRecord.getRuleEvaluations().size());
+
+        AssignmentRecord routingMismatchRecord = findRecord(recordService, "task-prefilter", "worker-routing-mismatch");
+        assertEquals("routing code mismatch", routingMismatchRecord.getReason());
+        assertEquals(AssignmentResult.RULE_NOT_MATCH, routingMismatchRecord.getResult());
+        assertEquals(0, routingMismatchRecord.getRuleEvaluations().size());
+
+        AssignmentRecord acceptedRecord = findRecord(recordService, "task-prefilter", "worker-us");
+        assertFalse(acceptedRecord.getRuleEvaluations().isEmpty());
     }
 
     @Test
@@ -234,6 +302,45 @@ class RuleBasedTaskWorkerMatchingStrategyTest {
         List<MatchedWorkerContext> matched = strategy.matchWorkers(task, 1);
 
         assertTrue(matched.isEmpty());
+        AssignmentRecord record = findRecord(recordService, "task-no-context-routing", "worker-stateless");
+        assertEquals("routing code mismatch", record.getReason());
+        assertEquals(AssignmentResult.RULE_NOT_MATCH, record.getResult());
+        assertEquals(0, record.getRuleEvaluations().size());
+    }
+
+    @Test
+    void workerContextProjectMismatchIsRejectedBeforeRuleEvaluation() {
+        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
+        RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(new InMemoryRuleStorage());
+        AssignmentRecordService recordService = new AssignmentRecordService();
+        RuleBasedTaskWorkerMatchingStrategy strategy =
+                new RuleBasedTaskWorkerMatchingStrategy(ruleManager, workerManager, recordService);
+
+        ruleManager.addDefaultRules(List.of(
+                rule("basic_worker_check", "isWorkerAvailable == true && isWorkerLocked == false"),
+                rule("workerContext_status_check", "hasWorkerContext == false || isWorkerContextAllocatable == true"),
+                rule("app_support_check", "supportsProject == true")
+        ));
+
+        Task task = new Task();
+        task.setTid("task-context-project-mismatch");
+        task.setProject("demoApp");
+        task.setStatus(TaskStatus.READY);
+
+        Worker worker = worker("worker-mismatch", "pool-east");
+        workerManager.addWorker(worker);
+        WorkerContext workerContext = workerContext("worker-mismatch", "ctx-mismatch", "shared", "us");
+        workerContext.setProject("testApp");
+        workerManager.addWorkerContext(workerContext);
+
+        List<MatchedWorkerContext> matched = strategy.matchWorkers(task, 1);
+
+        assertTrue(matched.isEmpty());
+        AssignmentRecord record = findRecord(recordService, "task-context-project-mismatch", "worker-mismatch");
+        assertEquals("workerContext project mismatch", record.getReason());
+        assertEquals(AssignmentResult.RULE_NOT_MATCH, record.getResult());
+        assertEquals(0, record.getRuleEvaluations().size());
+        assertNotNull(record.getContextSnapshot());
     }
 
     private RuleDefinition rule(String id, String content) {
@@ -261,5 +368,12 @@ class RuleBasedTaskWorkerMatchingStrategyTest {
         wc.setStatus(WorkerContextStatus.IDLE);
         wc.setAttributes(Map.of("country", country));
         return wc;
+    }
+
+    private AssignmentRecord findRecord(AssignmentRecordService recordService, String taskId, String workerId) {
+        return recordService.getRecordsByTaskId(taskId).stream()
+                .filter(item -> workerId.equals(item.getWorkerId()))
+                .findFirst()
+                .orElseThrow();
     }
 }

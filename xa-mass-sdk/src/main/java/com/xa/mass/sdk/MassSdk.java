@@ -6,6 +6,7 @@ import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.engine.strategy.TaskScheduler;
 import com.xa.mass.gateway.queue.Envelope;
+import com.xa.mass.sdk.catalog.ProjectEventCatalogRegistry;
 import com.xa.mass.starter.builder.MassApplicationBuilder;
 import com.xa.mass.starter.builder.MassApplicationBuilder.GatewayBuilder;
 import com.xa.mass.starter.transport.TransportServerFactoryContext;
@@ -90,6 +91,7 @@ public final class MassSdk {
 
     public static final class Builder {
         private final MassApplicationBuilder delegate;
+        private ProjectEventCatalogRegistry projectEventCatalogRegistry;
 
         private Builder(MassApplicationBuilder delegate) {
             this.delegate = Objects.requireNonNull(delegate, "delegate");
@@ -132,7 +134,16 @@ public final class MassSdk {
             return this;
         }
 
+        public Builder projectEventCatalog(ProjectEventCatalogRegistry projectEventCatalogRegistry) {
+            this.projectEventCatalogRegistry =
+                    Objects.requireNonNull(projectEventCatalogRegistry, "projectEventCatalogRegistry");
+            return this;
+        }
+
         public MassSdkApplication build() {
+            if (projectEventCatalogRegistry != null) {
+                return new MassSdkApplication(delegate.build(), projectEventCatalogRegistry);
+            }
             return new MassSdkApplication(delegate.build());
         }
 

@@ -6,9 +6,12 @@ import com.xa.mass.engine.util.TraceEventLogger;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -34,6 +37,7 @@ public class TaskAssignWorker {
     private final List<TaskAssignmentQueueListener> listeners = new CopyOnWriteArrayList<>();
     private final AtomicInteger pendingTasks = new AtomicInteger(0);
     private final AtomicInteger scheduledRetryCount = new AtomicInteger(0);
+    private final Set<String> trackedTaskIds = ConcurrentHashMap.newKeySet();
 
     private volatile boolean running = true;
     private ExecutorService executor;
@@ -68,17 +72,21 @@ public class TaskAssignWorker {
 
         executor.submit(() -> {
             while (running) {
+                Task task = null;
                 try {
-                    Task task = queue.take();
+                    task = queue.take();
+                    String taskId = task != null ? task.getTid() : null;
                     TaskStatus initialStatus = task.getStatus();
                     if (initialStatus == TaskStatus.READY || initialStatus == TaskStatus.RUNNING) {
                         boolean assigned = workerAssignListener.onTaskAssign(task);
                         if (running && !assigned && task.getStatus() == initialStatus) {
                             scheduleRetry(task, initialStatus);
                         } else {
+                            releaseTrackedTask(taskId);
                             notifyAssignmentProcessed(task);
                         }
                     } else {
+                        releaseTrackedTask(taskId);
                         emitQueueSnapshot(task, initialStatus, "SKIPPED_NON_DISPATCHABLE", null,
                                 "task skipped because status is not READY or RUNNING", "SKIPPED");
                         notifyAssignmentProcessed(task);
@@ -87,6 +95,7 @@ public class TaskAssignWorker {
                     Thread.currentThread().interrupt();
                     break;
                 } catch (Exception e) {
+                    releaseTrackedTask(task != null ? task.getTid() : null);
                     log.error("TaskAssignWorker error: {}", e.getMessage(), e);
                 }
             }
@@ -94,8 +103,24 @@ public class TaskAssignWorker {
     }
 
     public CompletableFuture<Void> submitAll(List<Task> tasks) {
-        pendingTasks.set(tasks.size());
-        tasks.forEach(this::submit);
+        List<Task> acceptedTasks = new ArrayList<>();
+        for (Task task : tasks) {
+            if (!trackTask(task)) {
+                emitQueueSnapshot(task, task != null ? task.getStatus() : null, "DEDUP_SKIPPED", null,
+                        "task is already queued, processing, or waiting retry", "SKIPPED");
+                continue;
+            }
+            acceptedTasks.add(task);
+        }
+
+        if (!acceptedTasks.isEmpty()) {
+            pendingTasks.addAndGet(acceptedTasks.size());
+            for (Task task : acceptedTasks) {
+                queue.offer(task);
+                emitQueueSnapshot(task, task != null ? task.getStatus() : null, "SUBMITTED", null,
+                        "task submitted to assignment queue", "SUCCESS");
+            }
+        }
 
         // Use the common pool instead of `executor`: the task-processing loop already occupies
         // the single thread in `executor`, so submitting this polling future to the same
@@ -112,10 +137,23 @@ public class TaskAssignWorker {
         });
     }
 
-    public void submit(Task task) {
+    public boolean submit(Task task) {
+        return submit(task, false);
+    }
+
+    private boolean submit(Task task, boolean trackedBatchSubmission) {
+        if (!trackTask(task)) {
+            emitQueueSnapshot(task, task != null ? task.getStatus() : null, "DEDUP_SKIPPED", null,
+                    "task is already queued, processing, or waiting retry", "SKIPPED");
+            return false;
+        }
+        if (trackedBatchSubmission) {
+            pendingTasks.incrementAndGet();
+        }
         queue.offer(task);
         emitQueueSnapshot(task, task != null ? task.getStatus() : null, "SUBMITTED", null,
                 "task submitted to assignment queue", "SUCCESS");
+        return true;
     }
 
     private void scheduleRetry(Task task, TaskStatus expectedStatus) {
@@ -141,6 +179,7 @@ public class TaskAssignWorker {
                         "delayed retry enqueued task back into assignment queue", "SUCCESS");
                 return;
             }
+            releaseTrackedTask(task.getTid());
             emitQueueSnapshot(task, task.getStatus(), "RETRY_DROPPED", retryDelayMillis,
                     "delayed retry was dropped because task is no longer eligible", "SKIPPED");
         }, retryDelayMillis, TimeUnit.MILLISECONDS);
@@ -162,6 +201,7 @@ public class TaskAssignWorker {
 
     public void stop() {
         running = false;
+        trackedTaskIds.clear();
         emitQueueSnapshot(null, null, "STOPPING", null,
                 "assignment queue worker is stopping", "SUCCESS");
         if (retryExecutor != null) {
@@ -207,5 +247,18 @@ public class TaskAssignWorker {
                 reason,
                 result
         );
+    }
+
+    private boolean trackTask(Task task) {
+        if (task == null || task.getTid() == null || task.getTid().isBlank()) {
+            return true;
+        }
+        return trackedTaskIds.add(task.getTid());
+    }
+
+    private void releaseTrackedTask(String taskId) {
+        if (taskId != null && !taskId.isBlank()) {
+            trackedTaskIds.remove(taskId);
+        }
     }
 }

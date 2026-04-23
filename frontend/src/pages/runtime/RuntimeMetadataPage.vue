@@ -4,9 +4,9 @@
       <div>
         <h2 class="page-title">Metadata & Discovery</h2>
         <p class="page-subtitle">
-          Runtime onboarding view built from backend SDK metadata and live
-          worker inventory. Use it to understand which projects, events, and
-          currently available workers can participate in dispatch.
+          SDK registration catalog plus live worker inventory. Use it to
+          inspect which projects and events were explicitly registered in the
+          backend runtime, then compare them with currently available workers.
         </p>
       </div>
       <div class="header-actions">
@@ -44,7 +44,7 @@
         class="metadata-note"
         type="info"
         :closable="false"
-        title="Event support is derived from Worker.supportedProjects plus /sdk/meta project event mappings. Backend APIs remain the source of truth."
+        title="Project/event entries come from SDK registration. Worker coverage comes from live runtime inventory. Event handling truth still depends on backend validation and actual worker capability."
       />
 
       <section class="metric-grid">
