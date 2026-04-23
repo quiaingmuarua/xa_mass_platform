@@ -65,9 +65,9 @@ public final class DefaultProjectEventCatalogFactory {
                 .taskModes(List.of(TaskMode.STREAMING))
                 .build());
 
-        registry.registerProject(project("demoApp", "演示应用",
+        registry.registerProject(project("demoApp", "Demo App",
                 "Default demo project used by the validation shell.", ALL_DEFAULT_EVENT_CODES));
-        registry.registerProject(project("testApp", "testApp",
+        registry.registerProject(project("testApp", "Test App",
                 "Test project used by fixtures and local regression coverage.", ALL_DEFAULT_EVENT_CODES));
         registry.registerProject(project("crawlerApp", "Crawler",
                 "Crawler-oriented project defaults for pull and streaming worker scenarios.", List.of(

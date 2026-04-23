@@ -7,6 +7,7 @@ import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.rules.RuleDefinition;
 import com.xa.mass.sdk.model.MassTaskCreateRequest;
+import com.xa.mass.sdk.model.MassTaskRequest;
 import com.xa.mass.sdk.model.WorkerContextRegistration;
 import com.xa.mass.sdk.model.WorkerRegistration;
 
@@ -30,6 +31,11 @@ public interface MassRuntimeControl {
      * Create a task through the stable SDK request contract.
      */
     Task createTask(MassTaskCreateRequest request);
+
+    /**
+     * Create a task through the mode/payload-aware SDK task contract.
+     */
+    Task createTask(MassTaskRequest request);
 
     // --- Task lifecycle ---
 

@@ -8,6 +8,7 @@ import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.rules.RuleDefinition;
 import com.xa.mass.sdk.MassRuntimeControl;
 import com.xa.mass.sdk.model.MassTaskCreateRequest;
+import com.xa.mass.sdk.model.MassTaskRequest;
 import com.xa.mass.sdk.model.WorkerContextRegistration;
 import com.xa.mass.sdk.model.WorkerRegistration;
 import org.junit.jupiter.api.Test;
@@ -335,6 +336,11 @@ class MockRuntimeDataLoaderTest {
         @Override
         public Task createTask(MassTaskCreateRequest request) {
             createdTasks.add(request);
+            return new Task();
+        }
+
+        @Override
+        public Task createTask(MassTaskRequest request) {
             return new Task();
         }
 

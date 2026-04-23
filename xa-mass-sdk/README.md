@@ -34,6 +34,7 @@ Create an SDK application handle:
 import com.xa.mass.sdk.MassSdk;
 import com.xa.mass.sdk.MassSdkApplication;
 import com.xa.mass.sdk.model.MassTaskCreateRequest;
+import com.xa.mass.sdk.model.MassTaskRequest;
 import com.xa.mass.sdk.model.WorkerContextRegistration;
 import com.xa.mass.sdk.model.WorkerRegistration;
 
@@ -71,13 +72,44 @@ app.createTask(MassTaskCreateRequest.builder()
 app.pullWorker("crawler-worker-1").connect();
 ```
 
+Register SDK catalog metadata when the embedding side wants to expose its own
+project/event directory:
+
+```java
+import com.xa.mass.sdk.catalog.EventMetadata;
+import com.xa.mass.sdk.catalog.PayloadType;
+import com.xa.mass.sdk.catalog.ProjectMetadata;
+import com.xa.mass.sdk.catalog.TaskMode;
+
+app.registerEvent(EventMetadata.builder()
+        .code("bot.command")
+        .name("Bot Command")
+        .description("Handle a bot command")
+        .payloadTypes(java.util.List.of(PayloadType.TEXT, PayloadType.JSON))
+        .taskModes(java.util.List.of(TaskMode.SINGLE_RUN, TaskMode.STREAMING))
+        .build());
+
+app.registerProject(ProjectMetadata.builder()
+        .code("botApp")
+        .name("Bot App")
+        .description("Telegram-style bot project")
+        .eventCodes(java.util.List.of("bot.command"))
+        .build());
+
+app.createTask(MassTaskRequest.singleRun("demoApp", "chatbot-reply")
+        .eventCode("chatbot.reply")
+        .textInputs(java.util.List.of("hello"))
+        .build());
+```
+
 The returned `MassSdkApplication` exposes:
 
 - lifecycle: `start()`, `stop()`, `isRunning()`
-- common task operations after `start()`: `createTask(MassTaskCreateRequest)`, `getTask(...)`, `getAllTasks()`, `getTasksByStatus(...)`, `approveTask(...)`, `rejectTask(...)`, `blockTask(...)`, `pauseTask(...)`, `resumeTask(...)`, `resumeTaskDetailed(...)`, `cancelTask(...)`, `terminateTask(...)`
+- common task operations after `start()`: `createTask(MassTaskCreateRequest)`, `createTask(MassTaskRequest)`, `getTask(...)`, `getAllTasks()`, `getTasksByStatus(...)`, `approveTask(...)`, `rejectTask(...)`, `blockTask(...)`, `pauseTask(...)`, `resumeTask(...)`, `resumeTaskDetailed(...)`, `cancelTask(...)`, `terminateTask(...)`
 - open-ended task operations after `start()`: `appendTaskItems(...)`, `sealTask(...)`
 - audit and message operations after `start()`: `getTaskMessages(...)`, `resolveTaskStateFromMessages(...)`, `validateTaskState(...)`
 - common worker operations after `start()`: `registerWorker(...)`, `registerWorkerContext(...)`, `getWorker(...)`, `getAllWorkers()`, `getAllWorkerContexts()`, `getWorkerContexts(...)`, `getWorkerContextById(...)`, `isWorkerLocked(...)`, `isWorkerOnline(...)`
+- catalog/control-plane operations: `registerProject(...)`, `registerEvent(...)`, `listProjects()`, `getProject(...)`, `listEvents()`, `getEvent(...)`, `getEventsForProject(...)`
 - compatibility/high-control worker operations after `start()`: `addWorker(...)` and `addWorkerContext(...)` remain available for callers that intentionally construct core runtime models
 - pull-style worker entry after `start()`: `pullWorker(...)`; `pollingWorker(...)` remains as a deprecated compatibility alias
 - stable runtime bootstrap surface after `start()`: `publishTaskEvents()`, plus open registration methods such as `addWorker(...)`, `addWorkerContext(...)`, `createTask(...)`, `replaceDefaultRules(...)`
@@ -86,7 +118,7 @@ The returned `MassSdkApplication` exposes:
 - deprecated compatibility seams for advanced embedding only: `getEngine()`, `getTaskManager()`, `getWorkerManager()`
 - deprecated escape hatches: `MassSdkApplication.unwrap()` and SDK builder/option `unwrap()` methods expose lower-level runtime objects
 
-`MassTaskCreateRequest` is the primary SDK create contract. `WorkerRegistration` and `WorkerContextRegistration` are the preferred worker resource contracts: registration declares identity/capability only, workers start `OFFLINE`, contexts start `IDLE`, and transport connect/heartbeat events own online state. The engine DTO overload remains only as a compatibility seam for callers that still depend on engine packages. Direct engine, manager, and runtime exposure is intentionally deprecated so the default SDK path stays on `MassSdkApplication` methods instead of leaking callers back into engine/runtime internals. Common SDK operations intentionally fail fast if the SDK application was built without an engine or has not been started yet. Mock/demo bootstrap data should be loaded outside the SDK module through `MassBootstrapDataProvider` and `MassRuntimeControl` instead of SDK-internal mock generators.
+`MassTaskCreateRequest` remains the generic compatibility create contract. `MassTaskRequest` is the richer SDK v1 contract for `single-run` / `streaming`, `text` / `json`, and event-aware task creation. `WorkerRegistration` and `WorkerContextRegistration` are the preferred worker resource contracts: registration declares identity/capability only, workers start `OFFLINE`, contexts start `IDLE`, and transport connect/heartbeat events own online state. Project/event metadata registration is SDK control-plane truth for discovery and validation, but current engine execution still validates runtime `project` codes against the existing core registry. That means dynamically registered SDK catalog projects are discoverable immediately, while fully dynamic task execution remains a later phase. The engine DTO overload remains only as a compatibility seam for callers that still depend on engine packages. Direct engine, manager, and runtime exposure is intentionally deprecated so the default SDK path stays on `MassSdkApplication` methods instead of leaking callers back into engine/runtime internals. Common SDK operations intentionally fail fast if the SDK application was built without an engine or has not been started yet. Mock/demo bootstrap data should be loaded outside the SDK module through `MassBootstrapDataProvider` and `MassRuntimeControl` instead of SDK-internal mock generators.
 
 ## Compatibility Policy
 

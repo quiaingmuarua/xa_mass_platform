@@ -56,6 +56,7 @@ The transport-neutral runtime model is now framed around three channels:
 - `xa-mass-sdk` is the real Java embedding module; it now carries both the SDK facade and the embedded runtime composition
 - `xa-mass-transport-api` is the transport-neutral seam for task dispatch, result ingest, system events, transport servers, and worker endpoint registries
 - `xa-mass-sdk` now assembles concrete worker transports through a transport runtime registry/factory seam instead of treating WebSocket as the runtime definition
+- `xa-mass-sdk` is also the SDK-first resource entry for project/event metadata, task creation, and worker registration; fully dynamic engine execution for newly registered project codes is still a later phase
 - historical reactor/module experiments such as `xa-mass-base`, `xa-mass-starter`, and engine archive generations are no longer present in the current repository snapshot
 - Verified HTTP port: `server.port=8088`
 - Verified current WebSocket adapter port: `mass.websocket.port=18088`

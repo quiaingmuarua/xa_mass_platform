@@ -32,9 +32,15 @@ import com.xa.mass.gateway.model.massMessage.MassMessage;
 import com.xa.mass.gateway.model.massMessage.MessageContext;
 import com.xa.mass.gateway.queue.Envelope;
 import com.xa.mass.gateway.queue.MessageCodec;
+import com.xa.mass.sdk.catalog.DefaultProjectEventCatalogFactory;
+import com.xa.mass.sdk.catalog.EventMetadata;
+import com.xa.mass.sdk.catalog.ProjectEventCatalog;
+import com.xa.mass.sdk.catalog.ProjectEventCatalogRegistry;
+import com.xa.mass.sdk.catalog.ProjectMetadata;
 import com.xa.mass.sdk.model.MassTaskCreateRequest;
 import com.xa.mass.sdk.model.MassTaskRequest;
 import com.xa.mass.sdk.model.MassTaskRequestMapper;
+import com.xa.mass.sdk.model.SdkResourceMapper;
 import com.xa.mass.sdk.model.WorkerContextRegistration;
 import com.xa.mass.sdk.model.WorkerRegistration;
 import com.xa.mass.sdk.worker.PullWorkerSession;
@@ -66,15 +72,22 @@ import java.util.UUID;
  * lower-level starter/runtime types remain advanced integration seams.
  */
 public final class MassSdkApplication implements MassRuntimeControl, TaskOperations, WorkerOperations,
+        CatalogOperations,
         RuleOperations, TransportOperations, DebugOperations {
 
     private static final Gson GSON = new Gson();
     private static final String MANUAL_DEBUG_SUB_MSG_TYPE = "manual-chat";
 
     private final MassApplication delegate;
+    private final ProjectEventCatalogRegistry projectEventCatalogRegistry;
 
     MassSdkApplication(MassApplication delegate) {
+        this(delegate, DefaultProjectEventCatalogFactory.createDefaultRegistry());
+    }
+
+    MassSdkApplication(MassApplication delegate, ProjectEventCatalogRegistry projectEventCatalogRegistry) {
         this.delegate = Objects.requireNonNull(delegate, "delegate");
+        this.projectEventCatalogRegistry = Objects.requireNonNull(projectEventCatalogRegistry, "projectEventCatalogRegistry");
     }
 
     public void start() {
@@ -120,11 +133,13 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
     @Override
     public Task createTask(MassTaskCreateRequest request) {
         MassEngine engine = requireStartedEngine();
-        return engine.createTask(toEngineRequest(request));
+        return engine.createTask(SdkResourceMapper.toEngineRequest(request));
     }
 
+    @Override
     public Task createTask(MassTaskRequest request) {
         MassEngine engine = requireStartedEngine();
+        validateTaskCatalogContract(request);
         return engine.createTask(MassTaskRequestMapper.toEngineRequest(request));
     }
 
@@ -219,12 +234,12 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
 
     @Override
     public void registerWorker(WorkerRegistration request) {
-        requireStartedEngine().addWorker(toWorker(request));
+        requireStartedEngine().addWorker(SdkResourceMapper.toWorker(request));
     }
 
     @Override
     public void registerWorkerContext(WorkerContextRegistration request) {
-        requireStartedEngine().addWorkerContext(toWorkerContext(request));
+        requireStartedEngine().addWorkerContext(SdkResourceMapper.toWorkerContext(request));
     }
 
     /**
@@ -293,6 +308,46 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
     @Override
     public boolean updateWorker(Worker worker) {
         return requireStartedWorkerManager().updateWorker(worker);
+    }
+
+    @Override
+    public void registerProject(ProjectMetadata projectMetadata) {
+        projectEventCatalogRegistry.registerProject(projectMetadata);
+    }
+
+    @Override
+    public void registerEvent(EventMetadata eventMetadata) {
+        projectEventCatalogRegistry.registerEvent(eventMetadata);
+    }
+
+    @Override
+    public List<ProjectMetadata> listProjects() {
+        return projectEventCatalogRegistry.listProjects();
+    }
+
+    @Override
+    public ProjectMetadata getProject(String projectCode) {
+        return projectEventCatalogRegistry.getProject(projectCode);
+    }
+
+    @Override
+    public List<EventMetadata> listEvents() {
+        return projectEventCatalogRegistry.listEvents();
+    }
+
+    @Override
+    public EventMetadata getEvent(String eventCode) {
+        return projectEventCatalogRegistry.getEvent(eventCode);
+    }
+
+    @Override
+    public List<EventMetadata> getEventsForProject(String projectCode) {
+        return projectEventCatalogRegistry.getEventsForProject(projectCode);
+    }
+
+    @Override
+    public ProjectEventCatalog projectEventCatalog() {
+        return projectEventCatalogRegistry;
     }
 
     @Override
@@ -512,52 +567,40 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
         return delegate;
     }
 
-    private TaskCreateRequestDto toEngineRequest(MassTaskCreateRequest request) {
+    private void validateTaskCatalogContract(MassTaskRequest request) {
         Objects.requireNonNull(request, "request");
-        TaskCreateRequestDto dto = new TaskCreateRequestDto();
-        dto.setUserId(request.getUserId());
-        dto.setProject(request.getProject());
-        dto.setTaskName(request.getTaskName());
-        dto.setSharedConfig(request.getSharedConfig());
-        dto.setInputs(request.getInputs());
-        dto.setBatchSize(request.getBatchSize());
-        dto.setDefaultMsgMaxRetryCount(request.getDefaultMsgMaxRetryCount());
-        dto.setOpenEnded(request.isOpenEnded());
-        dto.setMaxRuntimeSeconds(request.getMaxRuntimeSeconds());
-        return dto;
-    }
-
-    private Worker toWorker(WorkerRegistration request) {
-        Objects.requireNonNull(request, "request");
-        if (request.getWorkerId() == null || request.getWorkerId().isBlank()) {
-            throw new IllegalArgumentException("workerId must not be blank");
+        ProjectMetadata projectMetadata = projectEventCatalogRegistry.getProject(request.getProject());
+        if (projectMetadata == null) {
+            throw new IllegalArgumentException("Unsupported SDK project: " + request.getProject());
         }
-        Worker worker = new Worker();
-        worker.setWorkerId(request.getWorkerId());
-        worker.setWorkerGroupId(request.getWorkerGroupId());
-        worker.setSupportedProjects(request.getSupportedProjects());
-        worker.setOnlineStrategy(request.getTransportHint());
-        worker.setAttributes(request.getAttributes());
-        return worker;
-    }
-
-    private WorkerContext toWorkerContext(WorkerContextRegistration request) {
-        Objects.requireNonNull(request, "request");
-        if (request.getWorkerContextId() == null || request.getWorkerContextId().isBlank()) {
-            throw new IllegalArgumentException("workerContextId must not be blank");
+        if (!projectMetadata.isEnabled()) {
+            throw new IllegalArgumentException("SDK project is disabled: " + request.getProject());
         }
-        if (request.getWorkerId() == null || request.getWorkerId().isBlank()) {
-            throw new IllegalArgumentException("workerId must not be blank");
+        String eventCode = request.getEventCode();
+        if (eventCode == null || eventCode.isBlank()) {
+            return;
         }
-        WorkerContext workerContext = new WorkerContext();
-        workerContext.setWorkerContextId(request.getWorkerContextId());
-        workerContext.setWorkerId(request.getWorkerId());
-        if (request.getProject() != null && !request.getProject().isBlank()) {
-            workerContext.setProject(request.getProject());
+        EventMetadata eventMetadata = projectEventCatalogRegistry.getEvent(eventCode);
+        if (eventMetadata == null) {
+            throw new IllegalArgumentException("Unsupported SDK event: " + eventCode);
         }
-        workerContext.setRoutingTags(request.getRoutingTags());
-        workerContext.setAttributes(request.getAttributes());
-        return workerContext;
+        if (!eventMetadata.isEnabled()) {
+            throw new IllegalArgumentException("SDK event is disabled: " + eventCode);
+        }
+        if (!projectMetadata.getEventCodes().contains(eventCode)) {
+            throw new IllegalArgumentException("SDK project " + request.getProject()
+                    + " does not support event: " + eventCode);
+        }
+        if (!eventMetadata.getPayloadTypes().isEmpty()
+                && !eventMetadata.getPayloadTypes().contains(request.getPayloadType())) {
+            throw new IllegalArgumentException("SDK event " + eventCode
+                    + " does not support payload type: " + request.getPayloadType());
+        }
+        if (!eventMetadata.getTaskModes().isEmpty()
+                && !eventMetadata.getTaskModes().contains(request.getMode())) {
+            throw new IllegalArgumentException("SDK event " + eventCode
+                    + " does not support task mode: " + request.getMode());
+        }
     }
 
     private TaskManager requireStartedTaskManager() {

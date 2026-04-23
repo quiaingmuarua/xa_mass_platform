@@ -20,13 +20,13 @@ public final class EventMetadata {
     private final String defaultRoutingCode;
 
     private EventMetadata(Builder builder) {
-        this.code = Objects.requireNonNull(builder.code, "code");
-        this.name = Objects.requireNonNull(builder.name, "name");
+        this.code = requireNonBlank(builder.code, "code");
+        this.name = requireNonBlank(builder.name, "name");
         this.description = builder.description != null ? builder.description : "";
         this.payloadTypes = immutableEnumList(builder.payloadTypes, PayloadType.class);
         this.taskModes = immutableEnumList(builder.taskModes, TaskMode.class);
         this.enabled = builder.enabled;
-        this.defaultRoutingCode = builder.defaultRoutingCode;
+        this.defaultRoutingCode = blankToNull(builder.defaultRoutingCode);
     }
 
     public static Builder builder() {
@@ -59,6 +59,51 @@ public final class EventMetadata {
 
     public String getDefaultRoutingCode() {
         return defaultRoutingCode;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof EventMetadata that)) return false;
+        return enabled == that.enabled
+                && Objects.equals(code, that.code)
+                && Objects.equals(name, that.name)
+                && Objects.equals(description, that.description)
+                && Objects.equals(payloadTypes, that.payloadTypes)
+                && Objects.equals(taskModes, that.taskModes)
+                && Objects.equals(defaultRoutingCode, that.defaultRoutingCode);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(code, name, description, payloadTypes, taskModes, enabled, defaultRoutingCode);
+    }
+
+    @Override
+    public String toString() {
+        return "EventMetadata{" +
+                "code='" + code + '\'' +
+                ", name='" + name + '\'' +
+                ", description='" + description + '\'' +
+                ", payloadTypes=" + payloadTypes +
+                ", taskModes=" + taskModes +
+                ", enabled=" + enabled +
+                ", defaultRoutingCode='" + defaultRoutingCode + '\'' +
+                '}';
+    }
+
+    private static String requireNonBlank(String value, String fieldName) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException(fieldName + " must not be blank");
+        }
+        return value.trim();
+    }
+
+    private static String blankToNull(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        return value.trim();
     }
 
     private static <E extends Enum<E>> List<E> immutableEnumList(Iterable<E> values, Class<E> type) {

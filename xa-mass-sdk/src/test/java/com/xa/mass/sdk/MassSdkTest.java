@@ -17,7 +17,9 @@ import com.xa.mass.engine.rules.RuleType;
 import com.xa.mass.sdk.worker.PollingWorkerSession;
 import com.xa.mass.engine.strategy.SimpleTaskScheduler;
 import com.xa.mass.gateway.queue.Envelope;
+import com.xa.mass.sdk.catalog.EventMetadata;
 import com.xa.mass.sdk.catalog.PayloadType;
+import com.xa.mass.sdk.catalog.ProjectMetadata;
 import com.xa.mass.sdk.catalog.TaskMode;
 import com.xa.mass.sdk.model.MassTaskCreateRequest;
 import com.xa.mass.sdk.model.MassTaskRequest;
@@ -36,6 +38,9 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.function.Executable;
 
 import java.time.Duration;
+import java.util.Arrays;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -353,6 +358,113 @@ class MassSdkTest {
                 Map.of("type", "json", "data", Map.of("url", "https://example.test/page-1")),
                 Map.of("type", "json", "data", Map.of("url", "https://example.test/page-2"))
         ), dto.getInputs());
+    }
+
+    @Test
+    void catalogOperationsAllowSdkLevelProjectAndEventRegistrationWithoutRuntimeStart() {
+        MassSdkApplication app = new MassSdkApplication(mock(MassApplication.class));
+        EventMetadata eventMetadata = EventMetadata.builder()
+                .code("bot.command")
+                .name("Bot Command")
+                .description("Handle a telegram-style bot command")
+                .payloadTypes(List.of(PayloadType.TEXT, PayloadType.JSON))
+                .taskModes(List.of(TaskMode.SINGLE_RUN, TaskMode.STREAMING))
+                .defaultRoutingCode("bot")
+                .build();
+        ProjectMetadata projectMetadata = ProjectMetadata.builder()
+                .code("botApp")
+                .name("Bot App")
+                .description("Bot-oriented sdk catalog entry")
+                .eventCodes(List.of("bot.command"))
+                .build();
+
+        app.registerEvent(eventMetadata);
+        app.registerProject(projectMetadata);
+
+        Assertions.assertEquals(eventMetadata, app.getEvent("bot.command"));
+        Assertions.assertEquals(projectMetadata, app.getProject("botApp"));
+        Assertions.assertTrue(app.listProjects().stream().anyMatch(project -> "demoApp".equals(project.getCode())));
+        Assertions.assertTrue(app.listEvents().stream().anyMatch(event -> "crawler.fetch-page".equals(event.getCode())));
+        Assertions.assertEquals(List.of(eventMetadata), app.getEventsForProject("botApp"));
+    }
+
+    @Test
+    void createTaskRejectsUnsupportedSdkProjectAndEventContract() {
+        MassApplication delegate = mock(MassApplication.class);
+        MassEngine engine = mock(MassEngine.class);
+
+        when(delegate.getEngine()).thenReturn(engine);
+        when(engine.isRunning()).thenReturn(true);
+
+        MassSdkApplication app = new MassSdkApplication(delegate);
+
+        Assertions.assertThrows(IllegalArgumentException.class,
+                () -> app.createTask(MassTaskRequest.singleRun("missingApp", "unknown-task")
+                        .jsonInputs(List.of(Map.of("target", "value")))
+                        .build()));
+
+        Assertions.assertThrows(IllegalArgumentException.class,
+                () -> app.createTask(MassTaskRequest.singleRun("telegramApp", "crawler-task")
+                        .eventCode("crawler.fetch-page")
+                        .jsonInputs(List.of(Map.of("url", "https://example.test")))
+                        .build()));
+
+        Assertions.assertThrows(IllegalArgumentException.class,
+                () -> app.createTask(MassTaskRequest.singleRun("rcsApp", "sms-task")
+                        .eventCode("sms.acquire-number")
+                        .payloadType(PayloadType.TEXT)
+                        .textInputs(List.of("hello"))
+                        .build()));
+    }
+
+    @Test
+    void sdkRegistrationNormalizesWorkerAndContextContracts() {
+        MassApplication delegate = mock(MassApplication.class);
+        MassEngine engine = mock(MassEngine.class);
+
+        when(delegate.getEngine()).thenReturn(engine);
+        when(engine.isRunning()).thenReturn(true);
+
+        MassSdkApplication app = new MassSdkApplication(delegate);
+        Map<String, String> workerAttributes = new LinkedHashMap<>();
+        workerAttributes.put(" type ", "crawler");
+        workerAttributes.put(" ", "ignored");
+        workerAttributes.put("null-value", null);
+        app.registerWorker(WorkerRegistration.builder()
+                .workerId(" crawler-worker-001 ")
+                .workerGroupId(" crawler ")
+                .supportedProjects(Arrays.asList(" crawlerApp ", "crawlerApp", " "))
+                .transportHint(" POLLING ")
+                .attributes(workerAttributes)
+                .build());
+
+        Map<String, String> contextAttributes = new LinkedHashMap<>();
+        contextAttributes.put(" region ", "us");
+        contextAttributes.put("", "ignored");
+        LinkedHashSet<String> routingTags = new LinkedHashSet<>(Arrays.asList(" ROUTE-US ", "route-us", " "));
+        app.registerWorkerContext(WorkerContextRegistration.builder()
+                .workerContextId(" ctx-crawler-worker-001 ")
+                .workerId(" crawler-worker-001 ")
+                .routingTags(routingTags)
+                .attributes(contextAttributes)
+                .build());
+
+        var workerCaptor = org.mockito.ArgumentCaptor.forClass(Worker.class);
+        verify(engine).addWorker(workerCaptor.capture());
+        Worker worker = workerCaptor.getValue();
+        Assertions.assertEquals("crawler-worker-001", worker.getWorkerId());
+        Assertions.assertEquals("crawler", worker.getWorkerGroupId());
+        Assertions.assertEquals(List.of("crawlerApp"), worker.getSupportedProjects());
+        Assertions.assertEquals("polling", worker.getOnlineStrategy());
+        Assertions.assertEquals(Map.of("type", "crawler"), worker.getAttributes());
+
+        var contextCaptor = org.mockito.ArgumentCaptor.forClass(WorkerContext.class);
+        verify(engine).addWorkerContext(contextCaptor.capture());
+        WorkerContext workerContext = contextCaptor.getValue();
+        Assertions.assertEquals("ctx-crawler-worker-001", workerContext.getWorkerContextId());
+        Assertions.assertEquals("crawler-worker-001", workerContext.getWorkerId());
+        Assertions.assertEquals(Set.of("route-us"), workerContext.getRoutingTags());
+        Assertions.assertEquals(Map.of("region", "us"), workerContext.getAttributes());
     }
 
     @Test

@@ -21,6 +21,9 @@ import com.xa.mass.sdk.MassRuntimeControl;
 import com.xa.mass.sdk.worker.PullWorkerSession;
 import com.xa.mass.sdk.worker.PollingWorkerSession;
 import com.xa.mass.sdk.model.MassTaskCreateRequest;
+import com.xa.mass.sdk.model.MassTaskRequest;
+import com.xa.mass.sdk.model.MassTaskRequestMapper;
+import com.xa.mass.sdk.model.SdkResourceMapper;
 import com.xa.mass.sdk.model.WorkerContextRegistration;
 import com.xa.mass.sdk.model.WorkerRegistration;
 import com.xa.mass.transport.TransportServer;
@@ -296,7 +299,12 @@ public class MassApplication {
         return new MassRuntimeControl() {
             @Override
             public com.xa.mass.base.model.Task createTask(MassTaskCreateRequest request) {
-                return requireConfiguredEngine().createTask(toEngineRequest(request));
+                return requireConfiguredEngine().createTask(SdkResourceMapper.toEngineRequest(request));
+            }
+
+            @Override
+            public com.xa.mass.base.model.Task createTask(MassTaskRequest request) {
+                return requireConfiguredEngine().createTask(MassTaskRequestMapper.toEngineRequest(request));
             }
 
             @Override
@@ -361,12 +369,12 @@ public class MassApplication {
 
             @Override
             public void registerWorker(WorkerRegistration request) {
-                requireConfiguredEngine().addWorker(toWorker(request));
+                requireConfiguredEngine().addWorker(SdkResourceMapper.toWorker(request));
             }
 
             @Override
             public void registerWorkerContext(WorkerContextRegistration request) {
-                requireConfiguredEngine().addWorkerContext(toWorkerContext(request));
+                requireConfiguredEngine().addWorkerContext(SdkResourceMapper.toWorkerContext(request));
             }
 
             @Override
@@ -391,52 +399,5 @@ public class MassApplication {
                 MassApplication.this.publishTaskEvents();
             }
         };
-    }
-
-    private com.xa.mass.base.model.Worker toWorker(WorkerRegistration request) {
-        java.util.Objects.requireNonNull(request, "request");
-        if (request.getWorkerId() == null || request.getWorkerId().isBlank()) {
-            throw new IllegalArgumentException("workerId must not be blank");
-        }
-        com.xa.mass.base.model.Worker worker = new com.xa.mass.base.model.Worker();
-        worker.setWorkerId(request.getWorkerId());
-        worker.setWorkerGroupId(request.getWorkerGroupId());
-        worker.setSupportedProjects(request.getSupportedProjects());
-        worker.setOnlineStrategy(request.getTransportHint());
-        worker.setAttributes(request.getAttributes());
-        return worker;
-    }
-
-    private com.xa.mass.base.model.WorkerContext toWorkerContext(WorkerContextRegistration request) {
-        java.util.Objects.requireNonNull(request, "request");
-        if (request.getWorkerContextId() == null || request.getWorkerContextId().isBlank()) {
-            throw new IllegalArgumentException("workerContextId must not be blank");
-        }
-        if (request.getWorkerId() == null || request.getWorkerId().isBlank()) {
-            throw new IllegalArgumentException("workerId must not be blank");
-        }
-        com.xa.mass.base.model.WorkerContext workerContext = new com.xa.mass.base.model.WorkerContext();
-        workerContext.setWorkerContextId(request.getWorkerContextId());
-        workerContext.setWorkerId(request.getWorkerId());
-        if (request.getProject() != null && !request.getProject().isBlank()) {
-            workerContext.setProject(request.getProject());
-        }
-        workerContext.setRoutingTags(request.getRoutingTags());
-        workerContext.setAttributes(request.getAttributes());
-        return workerContext;
-    }
-
-    private com.xa.mass.engine.model.TaskCreateRequestDto toEngineRequest(MassTaskCreateRequest request) {
-        com.xa.mass.engine.model.TaskCreateRequestDto dto = new com.xa.mass.engine.model.TaskCreateRequestDto();
-        dto.setUserId(request.getUserId());
-        dto.setProject(request.getProject());
-        dto.setTaskName(request.getTaskName());
-        dto.setSharedConfig(request.getSharedConfig());
-        dto.setInputs(request.getInputs());
-        dto.setBatchSize(request.getBatchSize());
-        dto.setDefaultMsgMaxRetryCount(request.getDefaultMsgMaxRetryCount());
-        dto.setOpenEnded(request.isOpenEnded());
-        dto.setMaxRuntimeSeconds(request.getMaxRuntimeSeconds());
-        return dto;
     }
 }

@@ -18,8 +18,8 @@ public final class ProjectMetadata {
     private final List<String> eventCodes;
 
     private ProjectMetadata(Builder builder) {
-        this.code = Objects.requireNonNull(builder.code, "code");
-        this.name = Objects.requireNonNull(builder.name, "name");
+        this.code = requireNonBlank(builder.code, "code");
+        this.name = requireNonBlank(builder.name, "name");
         this.description = builder.description != null ? builder.description : "";
         this.enabled = builder.enabled;
         this.eventCodes = immutableEventCodes(builder.eventCodes);
@@ -49,12 +49,46 @@ public final class ProjectMetadata {
         return eventCodes;
     }
 
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof ProjectMetadata that)) return false;
+        return enabled == that.enabled
+                && Objects.equals(code, that.code)
+                && Objects.equals(name, that.name)
+                && Objects.equals(description, that.description)
+                && Objects.equals(eventCodes, that.eventCodes);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(code, name, description, enabled, eventCodes);
+    }
+
+    @Override
+    public String toString() {
+        return "ProjectMetadata{" +
+                "code='" + code + '\'' +
+                ", name='" + name + '\'' +
+                ", description='" + description + '\'' +
+                ", enabled=" + enabled +
+                ", eventCodes=" + eventCodes +
+                '}';
+    }
+
+    private static String requireNonBlank(String value, String fieldName) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException(fieldName + " must not be blank");
+        }
+        return value.trim();
+    }
+
     private static List<String> immutableEventCodes(Iterable<String> eventCodes) {
         LinkedHashSet<String> ordered = new LinkedHashSet<>();
         if (eventCodes != null) {
             for (String eventCode : eventCodes) {
                 if (eventCode != null && !eventCode.isBlank()) {
-                    ordered.add(eventCode);
+                    ordered.add(eventCode.trim());
                 }
             }
         }
