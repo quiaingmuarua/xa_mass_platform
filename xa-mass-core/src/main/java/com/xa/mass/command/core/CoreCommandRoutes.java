@@ -1,4 +1,4 @@
-package com.xa.mass.mock.command.core;
+package com.xa.mass.command.core;
 
 import com.google.gson.JsonObject;
 
@@ -25,7 +25,7 @@ public final class CoreCommandRoutes {
                         "count", CommandDispatcher.getRegisteredDescriptors().size()
                 ))
                 .resolver(json -> json)
-                .summary("List supported mock client commands and their discovery metadata.")
+                .summary("List supported registered commands and their discovery metadata.")
                 .suggestedPhases("prepare", "verify")
                 .safeForScenario(true)
                 .build());

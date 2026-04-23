@@ -19,7 +19,6 @@ public class SdkTaskCreateApiRequest extends AbstractUnknownFieldRequest {
     private PayloadType payloadType = PayloadType.JSON;
     private Map<String, Object> sharedConfig;
     private List<Object> inputs;
-    private String routingCode;
     private int batchSize;
     private int defaultMsgMaxRetryCount = 3;
     private int maxRuntimeSeconds;
@@ -86,14 +85,6 @@ public class SdkTaskCreateApiRequest extends AbstractUnknownFieldRequest {
 
     public void setInputs(List<Object> inputs) {
         this.inputs = inputs;
-    }
-
-    public String getRoutingCode() {
-        return routingCode;
-    }
-
-    public void setRoutingCode(String routingCode) {
-        this.routingCode = routingCode;
     }
 
     public int getBatchSize() {

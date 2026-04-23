@@ -97,7 +97,6 @@ public class StandardDslExample {
                   "FIELDS": {
                     "tid": {"$UUID": true},
                     "taskName": {"$JOIN": ["Task-", "&.index"]},
-                    "taskRoutingCode": {"$CHOICE": ["us", "gb"]},
                     "taskTargetNumber": {"$RANGE": [10, 100]},
                     "batchSize": {"$RANGE": [1, 5]}
                   }
@@ -107,7 +106,7 @@ public class StandardDslExample {
         List<Task> tasks = JsonDslEngine.generateList(legacyDsl, Task.class);
         System.out.println("Legacy/mock generation still works through JsonDslEngine:");
         tasks.forEach(task ->
-                System.out.println("  - " + task.getTaskName() + " (" + task.getTaskRoutingCode() + ", batch: " + task.getBatchSize() + ")")
+                System.out.println("  - " + task.getTaskName() + " (batch: " + task.getBatchSize() + ")")
         );
         System.out.println();
     }

@@ -35,10 +35,9 @@ public class JsonDslExample {
                 {
                   "MODEL": "Task",
                   "COUNT": 10,
-                  "FIELDS": {
+                    "FIELDS": {
                     "tid": {"$UUID": true},
                     "taskName": {"$JOIN": ["Task-", "&.index"]},
-                    "taskRoutingCode": {"$CHOICE": ["us", "gb"]},
         "taskTargetNumber": {"$RANGE": [10, 100]},
                     "batchSize": {"$RANGE": [1, 5]}
                   }

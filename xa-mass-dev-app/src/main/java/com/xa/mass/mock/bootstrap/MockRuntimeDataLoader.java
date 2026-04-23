@@ -208,7 +208,6 @@ public class MockRuntimeDataLoader implements MassBootstrapDataProvider {
                 .taskName(dto.getTaskName())
                 .sharedConfig(dto.getSharedConfig())
                 .inputs(dto.getInputs())
-                .routingCode(dto.getRoutingCode())
                 .batchSize(dto.getBatchSize())
                 .defaultMsgMaxRetryCount(dto.getDefaultMsgMaxRetryCount())
                 .openEnded(dto.isOpenEnded())

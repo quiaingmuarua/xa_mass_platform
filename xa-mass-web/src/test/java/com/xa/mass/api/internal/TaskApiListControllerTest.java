@@ -39,7 +39,7 @@ class TaskApiListControllerTest {
         runningTask.setStatus(TaskStatus.RUNNING);
         runningTask.setTaskName("Warm worker pool");
         runningTask.setProject("demoApp");
-        runningTask.setTaskRoutingCode("us");
+        runningTask.setSharedConfig(java.util.Map.of("routingCode", "us"));
         runningTask.setTaskEligibleNumber(10);
         runningTask.setTaskSuccessNumber(6);
         runningTask.setBatchSize(2);
@@ -50,7 +50,7 @@ class TaskApiListControllerTest {
         pausedTask.setStatus(TaskStatus.PAUSED);
         pausedTask.setTaskName("Review backlog");
         pausedTask.setProject("demoApp");
-        pausedTask.setTaskRoutingCode("sg");
+        pausedTask.setSharedConfig(java.util.Map.of("routingCode", "sg"));
         pausedTask.setTaskEligibleNumber(8);
         pausedTask.setTaskSuccessNumber(2);
         pausedTask.setBatchSize(1);

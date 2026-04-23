@@ -1,7 +1,7 @@
-package com.xa.mass.mock.command.core;
+package com.xa.mass.command.core;
 
 import com.google.gson.JsonObject;
-import com.xa.mass.mock.command.model.CommandResponse;
+import com.xa.mass.command.model.CommandResponse;
 
 @FunctionalInterface
 public interface CommandInvoker {

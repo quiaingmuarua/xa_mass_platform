@@ -80,7 +80,7 @@ public class RuleDebugExample {
         task.setTid("test-task-001");
         task.setTaskName("routing-code-debug");
         task.setProject("demoApp");
-        task.setTaskRoutingCode("us");
+        task.setSharedConfig(Map.of("routingCode", "us"));
         task.setStatus(TaskStatus.READY);
         task.setTaskTargetNumber(100);
         task.setBatchSize(10);
@@ -115,7 +115,7 @@ public class RuleDebugExample {
         System.out.println("Task:");
         System.out.println("  - id: " + task.getTid());
         System.out.println("  - project: " + task.getProject());
-        System.out.println("  - routingCode: " + task.getTaskRoutingCode());
+        System.out.println("  - routingCode: " + matchContext.getContext().get("routingCode"));
 
         Map<String, Object> context = matchContext.getContext();
         System.out.println("Computed context:");

@@ -75,7 +75,7 @@ Key implementation facts:
 
 Mainline matching facts:
 
-- `Task.taskRoutingCode` is the active task-owned routing input
+- optional routing hints are read from `Task.sharedConfig["routingCode"]`; `Task` has no first-class routing field
 - `workerGroupId` is not the routing-country source of truth
 - routing-country satisfaction should come from explicit rules and worker-context-facing signals
 - `WorkerMatchContext` exposes `workerAttributes` and `workerContextAttributes` for rule evaluation

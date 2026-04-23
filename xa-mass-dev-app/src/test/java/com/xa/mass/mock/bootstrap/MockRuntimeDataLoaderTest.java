@@ -205,14 +205,14 @@ class MockRuntimeDataLoaderTest {
                     "project": "demoApp",
                     "taskName": "mock-task",
                     "sharedConfig": {
-                      "textContent": "hello"
+                      "textContent": "hello",
+                      "routingCode": "us"
                     },
                     "inputs": [
                       {
                         "target": "target-a"
                       }
                     ],
-                    "routingCode": "us",
                     "batchSize": 1,
                     "defaultMsgMaxRetryCount": 3
                   }
@@ -233,7 +233,7 @@ class MockRuntimeDataLoaderTest {
                     "id": "explicit_routing_code",
                     "name": "explicit_routing_code",
                     "type": "QL_EXPRESS",
-                    "content": "task.routingCode != null"
+                    "content": "routingCode != null"
                   }
                 ]
                 """;

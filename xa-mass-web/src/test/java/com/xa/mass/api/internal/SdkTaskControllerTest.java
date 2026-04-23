@@ -57,9 +57,8 @@ class SdkTaskControllerTest {
                                   "eventCode": "crawler.fetch-page",
                                   "mode": "STREAMING",
                                   "payloadType": "JSON",
-                                  "sharedConfig": {"site": "example"},
+                                  "sharedConfig": {"site": "example", "routingCode": "us"},
                                   "inputs": [{"url": "https://example.test"}],
-                                  "routingCode": "us",
                                   "batchSize": 1,
                                   "defaultMsgMaxRetryCount": 2,
                                   "maxRuntimeSeconds": 60
@@ -80,6 +79,7 @@ class SdkTaskControllerTest {
                 Map.of("type", "json", "data", Map.of("url", "https://example.test"))
         ), request.toEngineInputs());
         org.junit.jupiter.api.Assertions.assertEquals("crawler.fetch-page", request.getEventCode());
+        org.junit.jupiter.api.Assertions.assertEquals("us", request.getSharedConfig().get("routingCode"));
         org.junit.jupiter.api.Assertions.assertEquals(com.xa.mass.sdk.catalog.PayloadType.JSON, request.getPayloadType());
         org.junit.jupiter.api.Assertions.assertEquals(com.xa.mass.sdk.catalog.TaskMode.STREAMING, request.getMode());
     }

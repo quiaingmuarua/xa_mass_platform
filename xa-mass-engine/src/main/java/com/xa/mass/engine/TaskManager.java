@@ -8,6 +8,7 @@ import com.xa.mass.base.model.ProjectRef;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.TaskMsgAttempt;
+import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.base.model.UserRef;
 import com.xa.mass.engine.model.TaskCreateRequestDto;
 import com.xa.mass.engine.model.TaskResumeResult;
@@ -70,7 +71,7 @@ public class TaskManager {
         LogUtils.logOperationStart("CREATE_TASK", "TaskManager",
                 "taskName", dto.getTaskName(),
                 "project", dto.getProject(),
-                "routingCode", dto.getRoutingCode());
+                "routingCode", TaskSharedConfig.stringValue(dto.getSharedConfig(), TaskSharedConfig.ROUTING_CODE));
 
         try {
             String tid = java.util.UUID.randomUUID().toString();
@@ -89,7 +90,6 @@ public class TaskManager {
                     tid,
                     dto.getTaskName(),
                     dto.getProject(),
-                    dto.getRoutingCode(),
                     initNumber,
                     dto.getSharedConfig() != null ? dto.getSharedConfig() : new java.util.HashMap<>(),
                     user

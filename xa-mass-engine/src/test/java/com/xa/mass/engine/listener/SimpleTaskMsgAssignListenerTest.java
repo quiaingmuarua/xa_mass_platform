@@ -291,8 +291,7 @@ class SimpleTaskMsgAssignListenerTest {
         TaskCreateRequestDto dto = new TaskCreateRequestDto();
         dto.setTaskName("task");
         dto.setProject("demoApp");
-        dto.setRoutingCode("us");
-        dto.setSharedConfig(java.util.Map.of("textContent", "hello"));
+        dto.setSharedConfig(java.util.Map.of("textContent", "hello", "routingCode", "us"));
         dto.setUserId("agent");
         dto.setBatchSize(1);
         dto.setInputs(IntStream.range(0, messageCount)

@@ -1,4 +1,4 @@
-package com.xa.mass.mock.command.runtime;
+package com.xa.mass.command.runtime;
 
 public interface CommandHost {
 

@@ -144,8 +144,7 @@ class TaskManagerLifecycleTest {
         TaskCreateRequestDto dto = new TaskCreateRequestDto();
         dto.setTaskName("no-targets");
         dto.setProject("demoApp");
-        dto.setRoutingCode("us");
-        dto.setSharedConfig(java.util.Map.of("textContent", "smoke"));
+        dto.setSharedConfig(java.util.Map.of("textContent", "smoke", "routingCode", "us"));
         dto.setUserId("agent");
         dto.setInputs(null);
         dto.setBatchSize(0);
@@ -1188,8 +1187,7 @@ class TaskManagerLifecycleTest {
         TaskCreateRequestDto dto = new TaskCreateRequestDto();
         dto.setTaskName(taskName);
         dto.setProject("demoApp");
-        dto.setRoutingCode("us");
-        dto.setSharedConfig(java.util.Map.of("textContent", "smoke"));
+        dto.setSharedConfig(java.util.Map.of("textContent", "smoke", "routingCode", "us"));
         dto.setUserId("agent");
         dto.setInputs(targets.stream()
                 .map(target -> java.util.Map.<String, Object>of("target", target))

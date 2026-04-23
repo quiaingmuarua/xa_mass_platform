@@ -14,7 +14,6 @@ public class TaskCreateApiRequest extends AbstractUnknownFieldRequest {
     private String taskName;
     private Map<String, Object> sharedConfig;
     private List<Map<String, Object>> inputs;
-    private String routingCode;
     private int batchSize;
     private int defaultMsgMaxRetryCount = 3;
     private boolean openEnded;
@@ -58,14 +57,6 @@ public class TaskCreateApiRequest extends AbstractUnknownFieldRequest {
 
     public void setInputs(List<Map<String, Object>> inputs) {
         this.inputs = inputs;
-    }
-
-    public String getRoutingCode() {
-        return routingCode;
-    }
-
-    public void setRoutingCode(String routingCode) {
-        this.routingCode = routingCode;
     }
 
     public int getBatchSize() {

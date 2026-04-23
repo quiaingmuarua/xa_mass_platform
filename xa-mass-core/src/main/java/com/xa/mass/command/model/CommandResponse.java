@@ -1,4 +1,4 @@
-package com.xa.mass.mock.command.model;
+package com.xa.mass.command.model;
 
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -7,7 +7,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Command-runtime response envelope for the dev-app mock command channel.
+ * Process-local command response envelope.
  *
  * <p>This is intentionally separate from HTTP API responses.
  */

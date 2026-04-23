@@ -51,9 +51,11 @@ public class MonkeyGenerator {
                   "FIELDS": {
                     "taskName": {"$JOIN": ["Task-", "&.index"]},
                     "project": {"$CHOICE": ["demoApp", "testApp"]},
-                    "routingCode": {"$CHOICE": ["us", "gb"]},
                     "userId": {"$JOIN": ["user-", "&.index"]},
-                    "sharedConfig": {"textContent": {"$JOIN": ["content for ", "&.index"]}},
+                    "sharedConfig": {
+                      "textContent": {"$JOIN": ["content for ", "&.index"]},
+                      "routingCode": {"$CHOICE": ["us", "gb"]}
+                    },
                     "batchSize": {"$RANGE": [1, 5]},
                     "inputs": {
                       "TYPE": "LIST",

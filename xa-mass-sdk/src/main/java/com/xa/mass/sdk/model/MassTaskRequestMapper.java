@@ -22,7 +22,6 @@ public final class MassTaskRequestMapper {
         dto.setTaskName(request.getTaskName());
         dto.setSharedConfig(withSdkMetadata(request));
         dto.setInputs(request.toEngineInputs());
-        dto.setRoutingCode(request.getRoutingCode());
         dto.setBatchSize(request.getBatchSize());
         dto.setDefaultMsgMaxRetryCount(request.getDefaultMsgMaxRetryCount());
         dto.setOpenEnded(request.isStreaming());

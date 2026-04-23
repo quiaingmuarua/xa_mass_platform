@@ -4,6 +4,7 @@ import com.xa.mass.base.enums.worker.WorkerContextStatus;
 import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
+import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.listener.SimpleTaskMsgAssignListener;
@@ -21,6 +22,7 @@ import org.slf4j.LoggerFactory;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 
 /**
  * StorageExample — demonstrates in-memory worker/workerContext storage and task assignment.
@@ -127,9 +129,10 @@ public class StorageExample {
         var workerAssignListener = new TaskWorkerAssignListener(ruleManager, workerManager, msgAssignListener, recordService, taskManager);
 
         for (TaskCreateRequestDto dto : taskDtos) {
-            log.info("Testing task: {} (routingCode: {}, project: {})", dto.getTaskName(), dto.getRoutingCode(), dto.getProject());
+            String routingCode = routingCode(dto);
+            log.info("Testing task: {} (routingCode: {}, project: {})", dto.getTaskName(), routingCode, dto.getProject());
 
-            List<Worker> candidates = workerManager.getWorkersByGroupId(dto.getRoutingCode());
+            List<Worker> candidates = workerManager.getWorkersByGroupId(routingCode);
             log.info("Candidates: {}", candidates.size());
 
             List<Worker> matchedWorkers = new ArrayList<>();
@@ -194,9 +197,10 @@ public class StorageExample {
         log.info("Generated {} mock tasks", taskDtos.size());
 
         for (TaskCreateRequestDto dto : taskDtos) {
-            log.info("Task: {} (routingCode: {}, project: {})", dto.getTaskName(), dto.getRoutingCode(), dto.getProject());
+            String routingCode = routingCode(dto);
+            log.info("Task: {} (routingCode: {}, project: {})", dto.getTaskName(), routingCode, dto.getProject());
 
-            List<Worker> candidates = workerManager.getWorkersByGroupId(dto.getRoutingCode());
+            List<Worker> candidates = workerManager.getWorkersByGroupId(routingCode);
             log.info("Candidates: {}", candidates.size());
 
             List<Worker> matchedWorkers = new ArrayList<>();
@@ -262,9 +266,10 @@ public class StorageExample {
         log.info("Generated {} mock tasks", taskDtos.size());
 
         for (TaskCreateRequestDto dto : taskDtos) {
-            log.info("Task: {} (routingCode: {}, project: {})", dto.getTaskName(), dto.getRoutingCode(), dto.getProject());
+            String routingCode = routingCode(dto);
+            log.info("Task: {} (routingCode: {}, project: {})", dto.getTaskName(), routingCode, dto.getProject());
 
-            List<Worker> candidates = workerManager.getWorkersByGroupId(dto.getRoutingCode());
+            List<Worker> candidates = workerManager.getWorkersByGroupId(routingCode);
             log.info("Candidates: {}", candidates.size());
 
             List<Worker> matchedWorkers = new ArrayList<>();
@@ -302,5 +307,12 @@ public class StorageExample {
         }
 
         log.info("=== testMockAppActualRun complete ===");
+    }
+
+    private static String routingCode(TaskCreateRequestDto dto) {
+        return TaskSharedConfig.stringValue(
+                dto != null ? dto.getSharedConfig() : Map.of(),
+                TaskSharedConfig.ROUTING_CODE
+        );
     }
 }

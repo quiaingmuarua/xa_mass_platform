@@ -12,7 +12,6 @@ public class TaskUpdateApiRequest extends AbstractUnknownFieldRequest {
     private String project;
     private String taskName;
     private Map<String, Object> sharedConfig;
-    private String routingCode;
     private int batchSize;
 
     public String getUserId() {
@@ -45,14 +44,6 @@ public class TaskUpdateApiRequest extends AbstractUnknownFieldRequest {
 
     public void setSharedConfig(Map<String, Object> sharedConfig) {
         this.sharedConfig = sharedConfig;
-    }
-
-    public String getRoutingCode() {
-        return routingCode;
-    }
-
-    public void setRoutingCode(String routingCode) {
-        this.routingCode = routingCode;
     }
 
     public int getBatchSize() {

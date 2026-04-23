@@ -66,7 +66,7 @@ The transport-neutral runtime model is now framed around three channels:
   - `NEW -> READY -> PAUSED -> READY`
   - `NEW -> BLOCKED -> READY`
 - `TERMINAL` is not self-describing anymore; inspect `task.terminalReason`
-- Active task-create contract now uses `userId`, `project`, `sharedConfig`, `inputs`, `routingCode`, `batchSize`, `defaultMsgMaxRetryCount`, and `openEnded`
+- Active task-create contract now uses `userId`, `project`, `sharedConfig`, `inputs`, `batchSize`, `defaultMsgMaxRetryCount`, and `openEnded`; optional routing hints belong in `sharedConfig.routingCode`
 - `PUT /status/api/tasks/{taskId}` is metadata-only and does not accept `inputs`
 - `Task.project` and `Task.user` are first-class business bindings on the task aggregate; do not hide them inside `sharedConfig` or attribute maps
 - `Task.sharedConfig` is the task-level shared payload; `TaskMsg.input` and `TaskMsg.output` are the per-item payload boundary
@@ -136,9 +136,8 @@ app.createTask(MassTaskCreateRequest.builder()
         .userId("agent")
         .project("demoApp")
         .taskName("demo-task")
-        .sharedConfig(java.util.Map.of("textContent", "hello"))
+        .sharedConfig(java.util.Map.of("textContent", "hello", "routingCode", "us"))
         .inputs(java.util.List.of(java.util.Map.of("target", "target-a")))
-        .routingCode("us")
         .batchSize(1)
         .build());
 ```

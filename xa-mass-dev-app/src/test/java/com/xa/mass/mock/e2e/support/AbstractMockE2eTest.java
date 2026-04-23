@@ -101,8 +101,7 @@ public abstract class AbstractMockE2eTest {
         Map<String, Object> createBody = new LinkedHashMap<>();
         createBody.put("taskName", taskName);
         createBody.put("project", "demoApp");
-        createBody.put("routingCode", "us");
-        createBody.put("sharedConfig", java.util.Map.of("textContent", textContent));
+        createBody.put("sharedConfig", java.util.Map.of("textContent", textContent, "routingCode", "us"));
         createBody.put("userId", "itest");
         createBody.put("inputs", targets.stream()
                 .map(target -> Map.<String, Object>of("target", target))

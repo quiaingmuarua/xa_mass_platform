@@ -7,6 +7,7 @@ import com.xa.mass.api.model.task.TaskUpdateApiRequest;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.ProjectRef;
 import com.xa.mass.base.model.Task;
+import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.UserRef;
 import com.xa.mass.sdk.SdkTaskResumeResult;
@@ -260,9 +261,6 @@ public class TaskApiController {
             if (request.getProject() != null) {
                 task.setProject(request.getProject());
             }
-            if (request.getRoutingCode() != null) {
-                task.setTaskRoutingCode(request.getRoutingCode());
-            }
             if (request.getSharedConfig() != null) {
                 task.setSharedConfig(request.getSharedConfig());
             }
@@ -361,7 +359,7 @@ public class TaskApiController {
         item.put("taskName", task.getTaskName());
         item.put("project", task.getProject());
         item.put("userId", task.getUser() != null ? task.getUser().getUserId() : null);
-        item.put("routingCode", task.getTaskRoutingCode());
+        item.put("routingCode", TaskSharedConfig.routingCode(task));
         item.put("status", task.getStatus() != null ? task.getStatus().name() : null);
         item.put("terminalReason", task.getTerminalReason() != null ? task.getTerminalReason().name() : null);
         item.put("successCount", task.getTaskSuccessNumber());
@@ -425,7 +423,6 @@ public class TaskApiController {
                 .taskName(requestBody.getTaskName())
                 .sharedConfig(requestBody.getSharedConfig())
                 .inputs(requestBody.getInputs())
-                .routingCode(requestBody.getRoutingCode())
                 .batchSize(requestBody.getBatchSize())
                 .defaultMsgMaxRetryCount(requestBody.getDefaultMsgMaxRetryCount())
                 .openEnded(requestBody.isOpenEnded())
@@ -445,7 +442,6 @@ public class TaskApiController {
                 .project(requestBody.getProject())
                 .taskName(requestBody.getTaskName())
                 .sharedConfig(requestBody.getSharedConfig())
-                .routingCode(requestBody.getRoutingCode())
                 .batchSize(requestBody.getBatchSize())
                 .build();
     }
@@ -456,7 +452,6 @@ public class TaskApiController {
                 && requestBody.getTaskName() == null
                 && requestBody.getSharedConfig() == null
                 && requestBody.getInputs() == null
-                && requestBody.getRoutingCode() == null
                 && requestBody.getBatchSize() == 0
                 && requestBody.getDefaultMsgMaxRetryCount() == 3
                 && !requestBody.isOpenEnded()
@@ -468,7 +463,6 @@ public class TaskApiController {
                 && requestBody.getProject() == null
                 && requestBody.getTaskName() == null
                 && requestBody.getSharedConfig() == null
-                && requestBody.getRoutingCode() == null
                 && requestBody.getBatchSize() == 0;
     }
 
@@ -489,7 +483,7 @@ public class TaskApiController {
         return containsIgnoreCase(task.getTid(), normalizedKeyword)
                 || containsIgnoreCase(task.getTaskName(), normalizedKeyword)
                 || containsIgnoreCase(task.getProject(), normalizedKeyword)
-                || containsIgnoreCase(task.getTaskRoutingCode(), normalizedKeyword);
+                || containsIgnoreCase(TaskSharedConfig.routingCode(task), normalizedKeyword);
     }
 
     private boolean containsIgnoreCase(String source, String normalizedKeyword) {

@@ -39,7 +39,6 @@ export interface TaskDetailRecord {
     tid: string
     taskName: string
     project: string
-    taskRoutingCode: string
     status: TaskListItem['status']
     terminalReason: string | null
     batchSize: number
@@ -85,7 +84,6 @@ export interface TaskCreateRequest {
     taskName: string
     sharedConfig: Record<string, unknown>
     inputs: Array<Record<string, unknown>>
-    routingCode: string
     batchSize: number
     defaultMsgMaxRetryCount: number
     openEnded: boolean

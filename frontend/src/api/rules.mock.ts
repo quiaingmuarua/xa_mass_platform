@@ -15,7 +15,7 @@ const mockRules: RuleListResponse = {
             ruleId: 'rule-region-routing',
             name: 'Region routing',
             type: 'QL_EXPRESS',
-            content: 'worker.attributes.region == task.routingCode',
+    content: "workerContextAttributes['country'] == routingCode",
             description: 'Keep routing based on explicit worker attributes.',
             enabled: true,
             priority: 20,

@@ -14,7 +14,7 @@ import com.xa.mass.gateway.session.SessionRoles;
 import com.xa.mass.mock.client.ClientSessionManager;
 import com.xa.mass.mock.command.mock.MockClientState;
 import com.xa.mass.mock.command.mock.MockClientStateRegistry;
-import com.xa.mass.mock.command.model.CommandResponse;
+import com.xa.mass.command.model.CommandResponse;
 import com.xa.mass.mock.command.runtime.MockCommandRuntime;
 import org.java_websocket.client.WebSocketClient;
 import org.java_websocket.handshake.ServerHandshake;

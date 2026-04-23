@@ -50,7 +50,7 @@ class TaskApiWorkerContextAttributeRoutingIntegrationTest extends AbstractMockE2
                 rule("basic_worker_check", "isWorkerAvailable == true && isWorkerLocked == false"),
                 rule("worker_context_status_check", "isWorkerContextAllocatable == true"),
                 rule("app_support_check", "supportsProject == true"),
-                rule("worker_context_attribute_country", "workerContextAttributes['country'] == taskRoutingCode")
+                rule("worker_context_attribute_country", "workerContextAttributes['country'] == routingCode")
         ));
 
         addCandidate("matched-worker", "pool-east", "shared", "us");

@@ -148,8 +148,7 @@ class TaskApiLifecycleGuardsIntegrationTest extends AbstractMockE2eTest {
         Map<String, Object> createBody = new java.util.LinkedHashMap<>();
         createBody.put("taskName", "guard-unknown-fields");
         createBody.put("project", "demoApp");
-        createBody.put("routingCode", "us");
-        createBody.put("sharedConfig", java.util.Map.of("textContent", "guard lifecycle"));
+        createBody.put("sharedConfig", java.util.Map.of("textContent", "guard lifecycle", "routingCode", "us"));
         createBody.put("userId", "itest");
         createBody.put("inputs", java.util.List.of(java.util.Map.of("target", "target-a")));
         createBody.put("batchSize", 1);
@@ -170,8 +169,7 @@ class TaskApiLifecycleGuardsIntegrationTest extends AbstractMockE2eTest {
         Map<String, Object> createBody = new java.util.LinkedHashMap<>();
         createBody.put("taskName", "guard-max-runtime");
         createBody.put("project", "demoApp");
-        createBody.put("routingCode", "us");
-        createBody.put("sharedConfig", java.util.Map.of("textContent", "guard max runtime"));
+        createBody.put("sharedConfig", java.util.Map.of("textContent", "guard max runtime", "routingCode", "us"));
         createBody.put("userId", "itest");
         createBody.put("inputs", java.util.List.of(java.util.Map.of("target", "target-a")));
         createBody.put("batchSize", 1);

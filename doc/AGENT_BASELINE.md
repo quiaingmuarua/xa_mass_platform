@@ -114,7 +114,6 @@ Interpretation rules:
 - `taskName`
 - `sharedConfig`
 - `inputs`
-- `routingCode`
 - `batchSize`
 - `defaultMsgMaxRetryCount`
 - `openEnded`
@@ -139,7 +138,6 @@ Behavior locked in the mainline:
 - `project`
 - `taskName`
 - `sharedConfig`
-- `routingCode`
 - `batchSize`
 
 Update constraints:
@@ -154,6 +152,7 @@ Update constraints:
 - `Task.project` is the canonical task-level project binding and validates against the current project registry
 - `Task.user` is the canonical task-level business-user binding; create/update requests still use `userId` as the edge input shape
 - `Task.sharedConfig` is the task-level generic payload/config map
+- optional routing hints belong in `Task.sharedConfig["routingCode"]`; `Task` has no first-class routing field
 - `TaskMsg.input` is the per-item input payload
 - `TaskMsg.output` is the canonical logical success payload for a work item; legacy `result` remains only as a compatibility summary/string projection
 - `TaskMsgAttempt.output` is the concrete callback/output snapshot for one execution attempt; use it for audit/troubleshooting rather than overloading `TaskMsg`
@@ -202,7 +201,7 @@ Important current rules:
 - `RuleDefinition.content` is the canonical rule expression; `expression` and `desc` remain compatibility aliases, not separate rule truths
 - `isWorkerContextAvailable` now means truly free for new assignment (`IDLE` and not expired)
 - `isWorkerContextUsable` is the broader diagnostic signal (`IDLE` / `RESERVED` / `OCCUPIED`, excluding expired, blocked, and invalid contexts)
-- `workerContextAttributes['country'] == taskRoutingCode` is the verified attribute-routing pattern
+- `workerContextAttributes['country'] == routingCode` is the verified attribute-routing pattern, where `routingCode` is resolved from `Task.sharedConfig["routingCode"]`
 - a `WorkerContext` is optional in the active platform model: workers without one can still run tasks that do not require worker-context-specific routing
 - `Worker.status` is the single online truth
 - worker lock truth lives in `WorkerStorage` and `WorkerManager.isLocked(...)`

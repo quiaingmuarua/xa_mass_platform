@@ -52,9 +52,8 @@ class SdkTaskApiIntegrationTest extends AbstractMockE2eTest {
                 "eventCode", "crawler.fetch-page",
                 "mode", "SINGLE_RUN",
                 "payloadType", "JSON",
-                "sharedConfig", Map.of("channel", "sdk"),
+                "sharedConfig", Map.of("channel", "sdk", "routingCode", "us"),
                 "inputs", java.util.List.of(Map.of("target", "sdk-target-001")),
-                "routingCode", "us",
                 "batchSize", 1,
                 "defaultMsgMaxRetryCount", 2
         ));

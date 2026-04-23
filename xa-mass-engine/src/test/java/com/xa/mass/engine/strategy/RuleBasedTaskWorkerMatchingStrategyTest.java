@@ -38,13 +38,13 @@ class RuleBasedTaskWorkerMatchingStrategyTest {
                 rule("basic_worker_check", "isWorkerAvailable == true && isWorkerLocked == false"),
                 rule("workerContext_status_check", "hasWorkerContext == false || isWorkerContextAllocatable == true"),
                 rule("app_support_check", "supportsProject == true"),
-                rule("workerContext_attribute_country", "workerContextAttributes['country'] == taskRoutingCode")
+                rule("workerContext_attribute_country", "workerContextAttributes['country'] == routingCode")
         ));
 
         Task task = new Task();
         task.setTid("task-1");
         task.setProject("demoApp");
-        task.setTaskRoutingCode("us");
+        task.setSharedConfig(Map.of("routingCode", "us"));
         task.setStatus(TaskStatus.READY);
 
         Worker matchingWorker = worker("worker-us", "pool-east");
@@ -78,13 +78,13 @@ class RuleBasedTaskWorkerMatchingStrategyTest {
         ruleManager.addDefaultRules(List.of(
                 rule("basic_worker_check", "isWorkerAvailable == true && isWorkerLocked == false"),
                 rule("workerContext_status_check", "hasWorkerContext == false || isWorkerContextAllocatable == true"),
-                rule("workerContext_attribute_country", "workerContextAttributes['country'] == taskRoutingCode")
+                rule("workerContext_attribute_country", "workerContextAttributes['country'] == routingCode")
         ));
 
         Task task = new Task();
         task.setTid("task-trace");
         task.setProject("demoApp");
-        task.setTaskRoutingCode("us");
+        task.setSharedConfig(Map.of("routingCode", "us"));
         task.setStatus(TaskStatus.READY);
 
         Worker acceptedWorker = worker("worker-us", "pool-east");
@@ -155,13 +155,13 @@ class RuleBasedTaskWorkerMatchingStrategyTest {
         ruleManager.addDefaultRules(List.of(
                 rule("basic_worker_check", "isWorkerAvailable == true && isWorkerLocked == false"),
                 rule("workerContext_status_check", "hasWorkerContext == false || isWorkerContextAllocatable == true"),
-                rule("workerContext_attribute_country", "workerContextAttributes['country'] == taskRoutingCode")
+                rule("workerContext_attribute_country", "workerContextAttributes['country'] == routingCode")
         ));
 
         Task task = new Task();
         task.setTid("task-multi");
         task.setProject("demoApp");
-        task.setTaskRoutingCode("us");
+        task.setSharedConfig(Map.of("routingCode", "us"));
         task.setStatus(TaskStatus.READY);
 
         Worker worker = worker("worker-multi", "pool-east");
@@ -194,7 +194,7 @@ class RuleBasedTaskWorkerMatchingStrategyTest {
         Task task = new Task();
         task.setTid("task-no-context");
         task.setProject("demoApp");
-        task.setTaskRoutingCode(null);
+        task.setSharedConfig(Map.of());
         task.setStatus(TaskStatus.READY);
 
         Worker worker = worker("worker-stateless", "pool-east");
@@ -225,7 +225,7 @@ class RuleBasedTaskWorkerMatchingStrategyTest {
         Task task = new Task();
         task.setTid("task-no-context-routing");
         task.setProject("demoApp");
-        task.setTaskRoutingCode("us");
+        task.setSharedConfig(Map.of("routingCode", "us"));
         task.setStatus(TaskStatus.READY);
 
         Worker worker = worker("worker-stateless", "pool-east");

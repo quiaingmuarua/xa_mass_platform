@@ -19,7 +19,6 @@ public final class MassTaskCreateRequest {
     private final String taskName;
     private final Map<String, Object> sharedConfig;
     private final List<Map<String, Object>> inputs;
-    private final String routingCode;
     private final int batchSize;
     private final int defaultMsgMaxRetryCount;
     private final boolean openEnded;
@@ -31,7 +30,6 @@ public final class MassTaskCreateRequest {
         this.taskName = builder.taskName;
         this.sharedConfig = unmodifiableMapCopy(builder.sharedConfig);
         this.inputs = unmodifiableInputListCopy(builder.inputs);
-        this.routingCode = builder.routingCode;
         this.batchSize = builder.batchSize;
         this.defaultMsgMaxRetryCount = builder.defaultMsgMaxRetryCount;
         this.openEnded = builder.openEnded;
@@ -60,10 +58,6 @@ public final class MassTaskCreateRequest {
 
     public List<Map<String, Object>> getInputs() {
         return inputs;
-    }
-
-    public String getRoutingCode() {
-        return routingCode;
     }
 
     public int getBatchSize() {
@@ -106,7 +100,6 @@ public final class MassTaskCreateRequest {
         private String taskName;
         private Map<String, Object> sharedConfig = Collections.emptyMap();
         private List<Map<String, Object>> inputs = Collections.emptyList();
-        private String routingCode;
         private int batchSize;
         private int defaultMsgMaxRetryCount = 3;
         private boolean openEnded;
@@ -150,11 +143,6 @@ public final class MassTaskCreateRequest {
                 converted.add(Map.of("target", target));
             }
             this.inputs = converted;
-            return this;
-        }
-
-        public Builder routingCode(String routingCode) {
-            this.routingCode = routingCode;
             return this;
         }
 

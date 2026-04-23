@@ -1,12 +1,12 @@
-package com.xa.mass.mock.command.core;
+package com.xa.mass.command.core;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonPrimitive;
-import com.xa.mass.mock.command.model.CommandException;
-import com.xa.mass.mock.command.model.ErrorCode;
+import com.xa.mass.command.model.CommandException;
+import com.xa.mass.command.model.ErrorCode;
 
 import java.lang.reflect.Array;
 import java.util.ArrayList;

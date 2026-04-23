@@ -117,8 +117,7 @@ class TaskApiControllerTest {
                                 {
                                   "taskName":"smoke-create",
                                   "project":"demoApp",
-                                  "routingCode":"us",
-                                  "sharedConfig":{"textContent":"hello"},
+                                  "sharedConfig":{"textContent":"hello","routingCode":"us"},
                                   "userId":"agent",
                                   "inputs":[{"target":"alpha"},{"target":"beta"}],
                                   "batchSize":2
@@ -134,7 +133,7 @@ class TaskApiControllerTest {
         MassTaskCreateRequest request = captor.getValue();
         org.junit.jupiter.api.Assertions.assertEquals("smoke-create", request.getTaskName());
         org.junit.jupiter.api.Assertions.assertEquals("demoApp", request.getProject());
-        org.junit.jupiter.api.Assertions.assertEquals("us", request.getRoutingCode());
+        org.junit.jupiter.api.Assertions.assertEquals("us", request.getSharedConfig().get("routingCode"));
         org.junit.jupiter.api.Assertions.assertEquals("hello", request.getSharedConfig().get("textContent"));
         org.junit.jupiter.api.Assertions.assertEquals("agent", request.getUserId());
         org.junit.jupiter.api.Assertions.assertEquals(2, request.getBatchSize());
@@ -152,8 +151,7 @@ class TaskApiControllerTest {
                                 {
                                   "taskName":"smoke-create",
                                   "project":"demoApp",
-                                  "routingCode":"us",
-                                  "sharedConfig":{"textContent":"hello"},
+                                  "sharedConfig":{"textContent":"hello","routingCode":"us"},
                                   "userId":"agent",
                                   "inputs":[{"target":"alpha"}],
                                   "targetJsonList":["{\\"phone\\":\\"1\\"}"]
@@ -222,8 +220,7 @@ class TaskApiControllerTest {
                                 {
                                   "taskName":"updated-name",
                                   "project":"telegramApp",
-                                  "routingCode":"sg",
-                                  "sharedConfig":{"textContent":"updated-content"},
+                                  "sharedConfig":{"textContent":"updated-content","routingCode":"sg"},
                                   "userId":"updated-user",
                                   "batchSize":5
                                 }
@@ -236,7 +233,7 @@ class TaskApiControllerTest {
                 TASK_ID.equals(task.getTid())
                         && "updated-name".equals(task.getTaskName())
                         && "telegramApp".equals(task.getProject())
-                        && "sg".equals(task.getTaskRoutingCode())
+                        && "sg".equals(task.getSharedConfig() != null ? task.getSharedConfig().get("routingCode") : null)
                         && "updated-content".equals(task.getSharedConfig() != null ? task.getSharedConfig().get("textContent") : null)
                         && task.getUser() != null
                         && "updated-user".equals(task.getUser().getUserId())

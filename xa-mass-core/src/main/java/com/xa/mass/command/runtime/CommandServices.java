@@ -1,4 +1,4 @@
-package com.xa.mass.mock.command.runtime;
+package com.xa.mass.command.runtime;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -7,7 +7,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * Process-local service registry for command runtime dependencies.
  *
  * <p>This keeps app service wiring separate from {@code CommandContext}'s
- * Android context and class-loading responsibilities.
+ * compatibility context and class-loading responsibilities.
  */
 public class CommandServices {
 

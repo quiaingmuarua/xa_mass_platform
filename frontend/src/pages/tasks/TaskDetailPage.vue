@@ -130,7 +130,7 @@
                 detail.task.project
               }}</el-descriptions-item>
               <el-descriptions-item label="Routing">{{
-                detail.task.taskRoutingCode
+                detail.task.sharedConfig.routingCode ?? '-'
               }}</el-descriptions-item>
               <el-descriptions-item label="Operator">{{
                 detail.task.user.name

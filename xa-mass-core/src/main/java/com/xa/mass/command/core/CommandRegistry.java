@@ -1,8 +1,8 @@
-package com.xa.mass.mock.command.core;
+package com.xa.mass.command.core;
 
 import com.google.gson.JsonObject;
-import com.xa.mass.mock.command.model.CommandResponse;
-import com.xa.mass.mock.command.model.CommandContext;
+import com.xa.mass.command.model.CommandResponse;
+import com.xa.mass.command.model.CommandContext;
 
 import java.util.Collections;
 import java.util.List;
@@ -13,7 +13,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 /**
- * Process-local command registration and lookup center for the dev mock client.
+ * Process-local command registration and lookup center.
  */
 public class CommandRegistry {
 

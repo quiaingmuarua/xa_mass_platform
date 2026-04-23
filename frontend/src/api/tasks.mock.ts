@@ -53,13 +53,13 @@ const mockTaskDetails: Record<string, TaskDetailResponse> = {
             tid: 'task-001',
             taskName: 'Warm worker pool for us-routing',
             project: 'demoApp',
-            taskRoutingCode: 'us',
             status: 'RUNNING',
             terminalReason: null,
             batchSize: 2,
             sharedConfig: {
                 objective: 'stabilize dispatch throughput',
                 targetConcurrency: 4,
+                routingCode: 'us',
             },
             user: {
                 name: 'ops-admin',
@@ -121,12 +121,12 @@ const mockTaskDetails: Record<string, TaskDetailResponse> = {
             tid: 'task-002',
             taskName: 'Review failed delivery backlog',
             project: 'demoApp',
-            taskRoutingCode: 'sg',
             status: 'PAUSED',
             terminalReason: null,
             batchSize: 1,
             sharedConfig: {
                 objective: 'manual review of retry-heavy messages',
+                routingCode: 'sg',
             },
             user: {
                 name: 'ops-admin',
@@ -156,12 +156,12 @@ const mockTaskDetails: Record<string, TaskDetailResponse> = {
             tid: 'task-003',
             taskName: 'Daily worker session refresh',
             project: 'testApp',
-            taskRoutingCode: 'eu',
             status: 'TERMINAL',
             terminalReason: 'ALL_MESSAGES_SUCCEEDED',
             batchSize: 3,
             sharedConfig: {
                 objective: 'session rotation',
+                routingCode: 'eu',
             },
             user: {
                 name: 'ops-admin',
@@ -235,6 +235,10 @@ export async function createTaskMock(
     const createdAt = new Date().toISOString().slice(0, 19).replace('T', ' ')
     const normalizedSharedConfig = request.sharedConfig ?? {}
     const normalizedInputs = request.inputs ?? []
+    const routingCode =
+        typeof normalizedSharedConfig.routingCode === 'string'
+            ? normalizedSharedConfig.routingCode
+            : ''
 
     if (normalizedInputs.length === 0) {
         throw new Error('inputs must contain at least one work item')
@@ -244,7 +248,7 @@ export async function createTaskMock(
         id: taskId,
         taskName: request.taskName,
         project: request.project,
-        routingCode: request.routingCode,
+        routingCode,
         status: 'NEW',
         terminalReason: null,
         successCount: 0,
@@ -259,7 +263,6 @@ export async function createTaskMock(
             tid: taskId,
             taskName: request.taskName,
             project: request.project,
-            taskRoutingCode: request.routingCode,
             status: 'NEW',
             terminalReason: null,
             batchSize: request.batchSize,

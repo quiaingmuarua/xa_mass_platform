@@ -3,6 +3,7 @@ package com.xa.mass.engine.service;
 import com.xa.mass.base.enums.assignment.AssignmentResult;
 import com.xa.mass.base.enums.assignment.AssignmentType;
 import com.xa.mass.base.model.Task;
+import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.model.AssignmentRecord;
@@ -125,7 +126,7 @@ public class AssignmentRecordService {
         snapshot.setTaskId(task.getTid());
         snapshot.setTaskName(task.getTaskName());
         snapshot.setProject(task.getProject());
-        snapshot.setTaskRoutingCode(task.getTaskRoutingCode());
+        snapshot.setRoutingCode(TaskSharedConfig.routingCode(task));
         snapshot.setTaskStatus(task.getStatus().name());
         snapshot.setTaskTargetNumber(task.getTaskTargetNumber());
         snapshot.setTaskEligibleNumber(task.getTaskEligibleNumber());

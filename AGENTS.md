@@ -154,11 +154,12 @@ Supported task create fields:
 - `taskName`
 - `sharedConfig`
 - `inputs`
-- `routingCode`
 - `batchSize`
 - `defaultMsgMaxRetryCount`
 - `openEnded`
 - `maxRuntimeSeconds`
+
+Optional routing hints belong in `sharedConfig.routingCode`; `Task` does not have a first-class routing field.
 
 Task update is metadata-only and allowed only for `NEW` or `BLOCKED`.
 
@@ -168,7 +169,6 @@ Update supports:
 - `project`
 - `taskName`
 - `sharedConfig`
-- `routingCode`
 - `batchSize`
 
 Unsupported retired fields must fail fast.

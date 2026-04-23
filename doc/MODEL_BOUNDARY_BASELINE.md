@@ -29,8 +29,10 @@ This file defines the current canonical model boundaries. Its purpose is to stop
 
 ### Mock command boundary
 
-- Canonical command response envelope: `com.xa.mass.mock.command.model.CommandResponse<T>`
-- This envelope is only for dev-app mock command execution
+- Canonical command router kernel now lives in `xa-mass-core` under `com.xa.mass.command.*`
+- Canonical command response envelope: `com.xa.mass.command.model.CommandResponse<T>`
+- dev-app mock/tool routes remain under `com.xa.mass.mock.command.*`
+- This envelope is only for process-local command execution and the current dev-app mock command channel
 - It must not be treated as HTTP API response contract
 
 ### Gateway transport boundary

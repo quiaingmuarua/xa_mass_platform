@@ -133,7 +133,6 @@ Supported request fields:
 - `payloadType`
 - `sharedConfig`
 - `inputs`
-- `routingCode`
 - `batchSize`
 - `defaultMsgMaxRetryCount`
 - `maxRuntimeSeconds`
@@ -149,6 +148,7 @@ Contract rules:
 - the chosen project must explicitly declare support for the chosen event
 - `X-Mass-Api-Key` is reserved for future submitter resolution; current mainline allows requests without it
 - create returns only `taskId` and does not auto-transition the task out of `NEW`
+- optional routing hints belong in `sharedConfig.routingCode`; SDK event default routing is folded into sharedConfig when not supplied
 
 Example request:
 
@@ -160,14 +160,14 @@ Example request:
   "mode": "STREAMING",
   "payloadType": "JSON",
   "sharedConfig": {
-    "site": "example"
+    "site": "example",
+    "routingCode": "us"
   },
   "inputs": [
     {
       "url": "https://example.test"
     }
   ],
-  "routingCode": "us",
   "batchSize": 1,
   "defaultMsgMaxRetryCount": 2,
   "maxRuntimeSeconds": 60
@@ -253,7 +253,6 @@ Supported request fields:
 - `taskName`
 - `sharedConfig`
 - `inputs`
-- `routingCode`
 - `batchSize`
 - `defaultMsgMaxRetryCount`
 - `openEnded`
@@ -269,6 +268,7 @@ Contract rules:
 - `defaultMsgMaxRetryCount` defaults to `3`
 - `openEnded` defaults to `false`
 - `maxRuntimeSeconds` defaults to `0` and disables runtime-limit termination
+- optional routing hints belong in `sharedConfig.routingCode`; they are consumed by matching rules through `WorkerMatchContext.routingCode`
 
 Example request:
 
@@ -278,7 +278,8 @@ Example request:
   "project": "demoApp",
   "taskName": "smoke-lifecycle",
   "sharedConfig": {
-    "textContent": "hello"
+    "textContent": "hello",
+    "routingCode": "us"
   },
   "inputs": [
     {
@@ -288,7 +289,6 @@ Example request:
       "target": "target-002"
     }
   ],
-  "routingCode": "us",
   "batchSize": 1,
   "defaultMsgMaxRetryCount": 3,
   "openEnded": false,
@@ -339,9 +339,9 @@ Example response shape:
         "userId": "agent"
       },
       "status": "NEW",
-      "taskRoutingCode": "us",
       "sharedConfig": {
-        "textContent": "hello"
+        "textContent": "hello",
+        "routingCode": "us"
       },
       "intakeStatus": "SEALED",
       "openEnded": false,
@@ -377,7 +377,6 @@ Supported request fields:
 - `project`
 - `taskName`
 - `sharedConfig`
-- `routingCode`
 - `batchSize`
 
 Contract rules:

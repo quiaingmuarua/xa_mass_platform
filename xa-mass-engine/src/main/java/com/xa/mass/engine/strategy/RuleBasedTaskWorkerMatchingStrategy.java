@@ -2,6 +2,7 @@ package com.xa.mass.engine.strategy;
 
 import com.xa.mass.base.enums.assignment.AssignmentResult;
 import com.xa.mass.base.model.Task;
+import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.WorkerManager;
@@ -46,7 +47,7 @@ public class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatchingSt
         List<RuleDefinition> rules = ruleManager.getDefaultRules();
 
         log.info("[WorkerAssign] Matching workers for task {} (routingCode: {}, candidates: {}, rules: {})",
-                task.getTid(), task.getTaskRoutingCode(), candidates.size(), rules.size());
+                task.getTid(), TaskSharedConfig.routingCode(task), candidates.size(), rules.size());
 
         if (log.isDebugEnabled()) {
             for (RuleDefinition rule : rules) {

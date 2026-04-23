@@ -1,4 +1,4 @@
-package com.xa.mass.mock.command.core;
+package com.xa.mass.command.core;
 
 import com.google.gson.JsonObject;
 

@@ -3,6 +3,7 @@ package com.xa.mass.engine.example;
 import com.xa.mass.base.enums.worker.WorkerContextStatus;
 import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Task;
+import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.base.model.User;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
@@ -51,7 +52,7 @@ public class StorageFactoryExample {
         User user = new User();
         user.setName("testUser");
 
-        Task task = new Task("task-001", "Test Task", "demoApp", "us", 100, java.util.Map.of("textContent", "Test content"), user);
+        Task task = new Task("task-001", "Test Task", "demoApp", 100, java.util.Map.of("textContent", "Test content", "routingCode", "us"), user);
 
         workerStorage.addWorker(worker);
         workerStorage.addWorkerContext(workerContext);
@@ -93,7 +94,7 @@ public class StorageFactoryExample {
             User user = new User();
             user.setName("testUser2");
 
-            Task task = new Task("task-002", "Test Task 2", "demoApp", "gb", 50, java.util.Map.of("textContent", "Test content 2"), user);
+            Task task = new Task("task-002", "Test Task 2", "demoApp", 50, java.util.Map.of("textContent", "Test content 2", "routingCode", "gb"), user);
 
             workerStorage.addWorker(worker);
             workerStorage.addWorkerContext(workerContext);
@@ -138,8 +139,8 @@ public class StorageFactoryExample {
         User user2 = new User();
         user2.setName("factoryUser2");
 
-        Task task1 = new Task("task-factory-001", "Factory Task 1", "demoApp", "us", 100, java.util.Map.of("textContent", "Factory content 1"), user1);
-        Task task2 = new Task("task-factory-002", "Factory Task 2", "demoApp", "gb", 50, java.util.Map.of("textContent", "Factory content 2"), user2);
+        Task task1 = new Task("task-factory-001", "Factory Task 1", "demoApp", 100, java.util.Map.of("textContent", "Factory content 1", "routingCode", "us"), user1);
+        Task task2 = new Task("task-factory-002", "Factory Task 2", "demoApp", 50, java.util.Map.of("textContent", "Factory content 2", "routingCode", "gb"), user2);
 
         inMemoryStorage.saveTask(task1);
         inMemoryStorage.saveTask(task2);
@@ -148,7 +149,7 @@ public class StorageFactoryExample {
         log.info("Tasks in storage: {}", allTasks.size());
 
         for (Task task : allTasks) {
-            log.info("Task: {} (routingCode: {}, project: {})", task.getTid(), task.getTaskRoutingCode(), task.getProject());
+            log.info("Task: {} (routingCode: {}, project: {})", task.getTid(), TaskSharedConfig.routingCode(task), task.getProject());
         }
 
         log.info("=== testStorageFactory complete ===");

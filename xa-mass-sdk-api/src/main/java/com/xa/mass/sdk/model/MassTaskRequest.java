@@ -22,7 +22,6 @@ public final class MassTaskRequest {
     private final PayloadType payloadType;
     private final Map<String, Object> sharedConfig;
     private final List<MassInput> inputs;
-    private final String routingCode;
     private final int batchSize;
     private final int defaultMsgMaxRetryCount;
     private final int maxRuntimeSeconds;
@@ -36,7 +35,6 @@ public final class MassTaskRequest {
         this.payloadType = builder.payloadType;
         this.sharedConfig = unmodifiableMapCopy(builder.sharedConfig);
         this.inputs = unmodifiableInputs(builder.inputs);
-        this.routingCode = builder.routingCode;
         this.batchSize = builder.batchSize;
         this.defaultMsgMaxRetryCount = builder.defaultMsgMaxRetryCount;
         this.maxRuntimeSeconds = builder.maxRuntimeSeconds;
@@ -92,10 +90,6 @@ public final class MassTaskRequest {
         return inputs;
     }
 
-    public String getRoutingCode() {
-        return routingCode;
-    }
-
     public int getBatchSize() {
         return batchSize;
     }
@@ -143,7 +137,6 @@ public final class MassTaskRequest {
         private PayloadType payloadType = PayloadType.JSON;
         private Map<String, Object> sharedConfig = Collections.emptyMap();
         private List<MassInput> inputs = Collections.emptyList();
-        private String routingCode;
         private int batchSize;
         private int defaultMsgMaxRetryCount = 3;
         private int maxRuntimeSeconds;
@@ -216,11 +209,6 @@ public final class MassTaskRequest {
             }
             this.inputs = converted;
             this.payloadType = PayloadType.JSON;
-            return this;
-        }
-
-        public Builder routingCode(String routingCode) {
-            this.routingCode = routingCode;
             return this;
         }
 

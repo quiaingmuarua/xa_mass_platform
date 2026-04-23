@@ -47,9 +47,8 @@ app.createTask(MassTaskCreateRequest.builder()
         .userId("agent")
         .project("demoApp")
         .taskName("demo-task")
-        .sharedConfig(java.util.Map.of("textContent", "hello"))
+        .sharedConfig(java.util.Map.of("textContent", "hello", "routingCode", "us"))
         .inputs(java.util.List.of(java.util.Map.of("target", "target-a")))
-        .routingCode("us")
         .batchSize(1)
         .build());
 

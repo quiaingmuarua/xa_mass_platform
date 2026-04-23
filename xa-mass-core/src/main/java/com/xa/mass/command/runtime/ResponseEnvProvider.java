@@ -1,7 +1,7 @@
-package com.xa.mass.mock.command.runtime;
+package com.xa.mass.command.runtime;
 
 import com.google.gson.JsonObject;
-import com.xa.mass.mock.command.model.CommandResponse;
+import com.xa.mass.command.model.CommandResponse;
 
 public interface ResponseEnvProvider {
 

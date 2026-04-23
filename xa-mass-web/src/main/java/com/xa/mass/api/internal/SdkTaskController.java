@@ -4,6 +4,7 @@ import com.xa.mass.api.model.ApiResponse;
 import com.xa.mass.api.model.sdk.SdkTaskAppendItemsApiRequest;
 import com.xa.mass.api.model.sdk.SdkTaskCreateApiRequest;
 import com.xa.mass.base.model.Task;
+import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.sdk.TaskOperations;
 import com.xa.mass.sdk.auth.AuthProvider;
@@ -151,9 +152,8 @@ public class SdkTaskController {
                 .eventCode(requestBody.getEventCode())
                 .mode(requestBody.getMode() != null ? requestBody.getMode() : TaskMode.SINGLE_RUN)
                 .payloadType(requestBody.getPayloadType() != null ? requestBody.getPayloadType() : PayloadType.JSON)
-                .sharedConfig(requestBody.getSharedConfig())
+                .sharedConfig(withResolvedRoutingCode(requestBody.getSharedConfig(), requestBody.getEventCode()))
                 .inputs(toMassInputs(requestBody.getInputs(), requestBody.getPayloadType()))
-                .routingCode(resolveRoutingCode(requestBody.getRoutingCode(), requestBody.getEventCode()))
                 .batchSize(requestBody.getBatchSize())
                 .defaultMsgMaxRetryCount(requestBody.getDefaultMsgMaxRetryCount())
                 .maxRuntimeSeconds(requestBody.getMaxRuntimeSeconds())
@@ -222,18 +222,19 @@ public class SdkTaskController {
         return PayloadType.valueOf(payloadTypeName);
     }
 
-    private String resolveRoutingCode(String requestedRoutingCode, String eventCode) {
-        if (requestedRoutingCode != null && !requestedRoutingCode.isBlank()) {
-            return requestedRoutingCode;
+    private Map<String, Object> withResolvedRoutingCode(Map<String, Object> sharedConfig, String eventCode) {
+        String routingCode = TaskSharedConfig.stringValue(sharedConfig, TaskSharedConfig.ROUTING_CODE);
+        if (routingCode != null) {
+            return sharedConfig;
         }
         if (eventCode != null && !eventCode.isBlank()) {
             EventMetadata eventMeta = projectEventCatalog.getEvent(eventCode);
             if (eventMeta != null && eventMeta.getDefaultRoutingCode() != null
                     && !eventMeta.getDefaultRoutingCode().isBlank()) {
-                return eventMeta.getDefaultRoutingCode();
+                return TaskSharedConfig.withRoutingCode(sharedConfig, eventMeta.getDefaultRoutingCode());
             }
         }
-        return requestedRoutingCode;
+        return sharedConfig;
     }
 
     private void validateProjectAndEvent(String projectCode, String eventCode) {

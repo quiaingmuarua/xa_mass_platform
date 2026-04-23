@@ -158,12 +158,11 @@ class MassSdkTest {
                 .userId("agent")
                 .project("demoApp")
                 .taskName("sdk-task")
-                .sharedConfig(Map.of("textContent", "hello"))
+                .sharedConfig(Map.of("textContent", "hello", "routingCode", "us"))
                 .inputs(List.of(
                         Map.of("target", "target-a"),
                         Map.of("target", "target-b")
                 ))
-                .routingCode("us")
                 .batchSize(2)
                 .defaultMsgMaxRetryCount(5)
                 .openEnded(true)
@@ -179,12 +178,11 @@ class MassSdkTest {
         Assertions.assertEquals("agent", dto.getUserId());
         Assertions.assertEquals("demoApp", dto.getProject());
         Assertions.assertEquals("sdk-task", dto.getTaskName());
-        Assertions.assertEquals(Map.of("textContent", "hello"), dto.getSharedConfig());
+        Assertions.assertEquals(Map.of("textContent", "hello", "routingCode", "us"), dto.getSharedConfig());
         Assertions.assertEquals(List.of(
                 Map.of("target", "target-a"),
                 Map.of("target", "target-b")
         ), dto.getInputs());
-        Assertions.assertEquals("us", dto.getRoutingCode());
         Assertions.assertEquals(2, dto.getBatchSize());
         Assertions.assertEquals(5, dto.getDefaultMsgMaxRetryCount());
         Assertions.assertTrue(dto.isOpenEnded());
@@ -264,11 +262,11 @@ class MassSdkTest {
                 .userId("agent")
                 .eventCode("crawler.fetch-page")
                 .payloadType(PayloadType.JSON)
+                .sharedConfig(Map.of("routingCode", "us"))
                 .jsonInputs(List.of(
                         Map.of("url", "https://example.test/page-1"),
                         Map.of("url", "https://example.test/page-2")
                 ))
-                .routingCode("us")
                 .batchSize(1)
                 .defaultMsgMaxRetryCount(2)
                 .maxRuntimeSeconds(60)
@@ -285,6 +283,7 @@ class MassSdkTest {
         Assertions.assertEquals("crawler-stream", dto.getTaskName());
         Assertions.assertTrue(dto.isOpenEnded());
         Assertions.assertEquals(Map.of(
+                "routingCode", "us",
                 "_sdk", Map.of(
                         "eventCode", "crawler.fetch-page",
                         "payloadType", "JSON",

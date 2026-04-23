@@ -388,7 +388,6 @@ public class MassApplication {
         dto.setTaskName(request.getTaskName());
         dto.setSharedConfig(request.getSharedConfig());
         dto.setInputs(request.getInputs());
-        dto.setRoutingCode(request.getRoutingCode());
         dto.setBatchSize(request.getBatchSize());
         dto.setDefaultMsgMaxRetryCount(request.getDefaultMsgMaxRetryCount());
         dto.setOpenEnded(request.isOpenEnded());

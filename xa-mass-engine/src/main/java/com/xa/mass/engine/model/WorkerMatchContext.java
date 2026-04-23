@@ -1,6 +1,7 @@
 package com.xa.mass.engine.model;
 
 import com.xa.mass.base.model.Task;
+import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.WorkerManager;
@@ -69,14 +70,15 @@ public class WorkerMatchContext {
             ctx.put("isWorkerContextOccupied", false);
         }
 
-        String routingCode = task.getTaskRoutingCode();
+        String routingCode = TaskSharedConfig.routingCode(task);
         boolean taskHasRoutingRequirement = routingCode != null && !routingCode.isBlank();
         java.util.Set<String> routingTags = workerContext != null ? workerContext.getRoutingTags() : java.util.Set.of();
 
         ctx.put("taskId", task.getTid());
         ctx.put("taskName", task.getTaskName());
         ctx.put("taskProject", task.getProject());
-        ctx.put("taskRoutingCode", routingCode);
+        ctx.put("taskSharedConfig", task.getSharedConfig());
+        ctx.put("routingCode", routingCode);
         ctx.put("taskHasRoutingRequirement", taskHasRoutingRequirement);
         ctx.put("taskStatus", task.getStatus().name());
         ctx.put("taskTargetNumber", task.getTaskTargetNumber());

@@ -40,7 +40,7 @@ class WorkerMatchContextTest {
         Task task = new Task();
         task.setTid("task-1");
         task.setProject("demoApp");
-        task.setTaskRoutingCode("us");
+        task.setSharedConfig(Map.of("routingCode", "us"));
         task.setStatus(TaskStatus.READY);
 
         WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
@@ -52,7 +52,7 @@ class WorkerMatchContextTest {
         assertEquals(true, context.getContext().get("hasWorkerContext"));
         assertEquals("demoApp", context.getContext().get("workerContextProject"));
         assertEquals(0, context.getContext().get("taskTargetNumber"));
-        assertEquals("us", context.getContext().get("taskRoutingCode"));
+        assertEquals("us", context.getContext().get("routingCode"));
         assertEquals(true, context.getContext().get("taskHasRoutingRequirement"));
         assertEquals(true, context.getContext().get("workerContextProjectMatchesTaskProject"));
         assertEquals(true, context.getContext().get("workerContextMatchesRoutingCode"));
@@ -76,7 +76,7 @@ class WorkerMatchContextTest {
         Task task = new Task();
         task.setTid("task-2");
         task.setProject("demoApp");
-        task.setTaskRoutingCode("us");
+        task.setSharedConfig(Map.of("routingCode", "us"));
         task.setStatus(TaskStatus.READY);
 
         WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
@@ -109,7 +109,7 @@ class WorkerMatchContextTest {
         Task task = new Task();
         task.setTid("task-3");
         task.setProject("demoApp");
-        task.setTaskRoutingCode("us");
+        task.setSharedConfig(Map.of("routingCode", "us"));
         task.setStatus(TaskStatus.READY);
 
         WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
@@ -134,7 +134,7 @@ class WorkerMatchContextTest {
         Task task = new Task();
         task.setTid("task-4");
         task.setProject("demoApp");
-        task.setTaskRoutingCode(null);
+        task.setSharedConfig(Map.of());
         task.setStatus(TaskStatus.READY);
 
         WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());

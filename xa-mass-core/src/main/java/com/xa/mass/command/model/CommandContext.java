@@ -1,10 +1,10 @@
-package com.xa.mass.mock.command.model;
+package com.xa.mass.command.model;
 
-import com.xa.mass.mock.command.runtime.CommandHost;
-import com.xa.mass.mock.command.runtime.CommandLogger;
-import com.xa.mass.mock.command.runtime.CommandRuntimeContext;
-import com.xa.mass.mock.command.runtime.CommandServices;
-import com.xa.mass.mock.command.runtime.ResponseEnvProvider;
+import com.xa.mass.command.runtime.CommandHost;
+import com.xa.mass.command.runtime.CommandLogger;
+import com.xa.mass.command.runtime.CommandRuntimeContext;
+import com.xa.mass.command.runtime.CommandServices;
+import com.xa.mass.command.runtime.ResponseEnvProvider;
 
 public class CommandContext {
 

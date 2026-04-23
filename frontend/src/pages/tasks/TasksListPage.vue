@@ -248,8 +248,8 @@
 {"textContent":"hello","channel":"telegram"}'
           />
           <div class="field-hint">
-            Optional task-level config object. Leave `{}` for no extra shared
-            config.
+            Optional task-level config object. The routing field above is
+            submitted as `sharedConfig.routingCode`.
           </div>
         </el-form-item>
       </el-form>
@@ -510,14 +510,17 @@ function buildCreateRequest(): TaskCreateRequest {
     createForm.sharedConfigText,
     'Shared config',
   )
+  const requestSharedConfig =
+    routingCode.length > 0
+      ? { ...sharedConfig, routingCode }
+      : sharedConfig
 
   return {
     userId: currentOperatorId.value,
     project,
     taskName,
-    sharedConfig,
+    sharedConfig: requestSharedConfig,
     inputs,
-    routingCode,
     batchSize: Math.max(1, Number(createForm.batchSize) || 1),
     defaultMsgMaxRetryCount: Math.max(
       0,

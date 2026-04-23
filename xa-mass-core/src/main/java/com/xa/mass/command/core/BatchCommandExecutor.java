@@ -1,13 +1,13 @@
-package com.xa.mass.mock.command.core;
+package com.xa.mass.command.core;
 
 import com.google.gson.JsonElement;
 import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonPrimitive;
-import com.xa.mass.mock.command.model.CommandResponse;
-import com.xa.mass.mock.command.model.CommandContext;
-import com.xa.mass.mock.command.model.CommandException;
-import com.xa.mass.mock.command.model.ErrorCode;
+import com.xa.mass.command.model.CommandResponse;
+import com.xa.mass.command.model.CommandContext;
+import com.xa.mass.command.model.CommandException;
+import com.xa.mass.command.model.ErrorCode;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;

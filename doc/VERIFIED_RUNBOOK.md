@@ -85,7 +85,7 @@ Create a sealed task:
 ```bash
 curl -s -X POST http://127.0.0.1:8088/status/api/tasks \
   -H 'Content-Type: application/json' \
-  -d '{"taskName":"smoke-lifecycle","project":"demoApp","routingCode":"us","sharedConfig":{"textContent":"smoke"},"userId":"agent","inputs":[{"target":"smoke-target-001"},{"target":"smoke-target-002"}],"batchSize":1,"defaultMsgMaxRetryCount":3,"openEnded":false,"maxRuntimeSeconds":0}'
+  -d '{"taskName":"smoke-lifecycle","project":"demoApp","sharedConfig":{"textContent":"smoke","routingCode":"us"},"userId":"agent","inputs":[{"target":"smoke-target-001"},{"target":"smoke-target-002"}],"batchSize":1,"defaultMsgMaxRetryCount":3,"openEnded":false,"maxRuntimeSeconds":0}'
 ```
 
 Approve it:
@@ -114,10 +114,11 @@ Expected mainline convergence:
 
 Task create/update:
 
-- Create supports `userId`, `project`, `taskName`, `sharedConfig`, `inputs`, `routingCode`, `batchSize`, `defaultMsgMaxRetryCount`, `openEnded`, and `maxRuntimeSeconds`.
+- Create supports `userId`, `project`, `taskName`, `sharedConfig`, `inputs`, `batchSize`, `defaultMsgMaxRetryCount`, `openEnded`, and `maxRuntimeSeconds`.
+- Optional routing hints belong in `sharedConfig.routingCode`; `Task` has no first-class routing field.
 - `inputs` must be non-empty and materializes persisted `TaskMsg.input` rows.
 - Unknown or retired create fields fail fast.
-- Update is metadata-only and supports `userId`, `project`, `taskName`, `sharedConfig`, `routingCode`, and `batchSize`.
+- Update is metadata-only and supports `userId`, `project`, `taskName`, `sharedConfig`, and `batchSize`.
 - Updates are allowed only while the task is `NEW` or `BLOCKED`.
 
 Assignment and dispatch:

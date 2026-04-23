@@ -25,7 +25,6 @@ public class Task {
     private String taskName;
     private ProjectRef project;
     private TaskStatus status;
-    private String taskRoutingCode;
     private int taskTargetNumber;
     private int taskEligibleNumber;
     private int taskSuccessNumber;
@@ -52,18 +51,17 @@ public class Task {
         this.updateTime = LocalDateTime.now();
     }
 
-    public Task(String tid, String taskName, String project, String taskRoutingCode,
+    public Task(String tid, String taskName, String project,
                 int taskTargetNumber, Map<String, Object> sharedConfig, UserRef user) {
         this();
         this.tid = tid;
         this.taskName = taskName;
         setProject(project);
-        this.taskRoutingCode = taskRoutingCode;
         this.taskTargetNumber = taskTargetNumber;
         this.taskEligibleNumber = taskTargetNumber;
         this.taskSuccessNumber = 0;
         this.taskNonSuccessNumber = taskTargetNumber;
-        this.sharedConfig = sharedConfig;
+        setSharedConfig(sharedConfig);
         this.user = user;
     }
 
@@ -112,14 +110,6 @@ public class Task {
     public void setStatus(TaskStatus status) {
         this.status = status;
         this.updateTime = LocalDateTime.now();
-    }
-
-    public String getTaskRoutingCode() {
-        return taskRoutingCode;
-    }
-
-    public void setTaskRoutingCode(String taskRoutingCode) {
-        this.taskRoutingCode = taskRoutingCode;
     }
 
     public int getTaskTargetNumber() {
@@ -186,7 +176,7 @@ public class Task {
     }
 
     public void setSharedConfig(Map<String, Object> sharedConfig) {
-        this.sharedConfig = sharedConfig;
+        this.sharedConfig = sharedConfig == null ? new HashMap<>() : new HashMap<>(sharedConfig);
     }
 
     /**
@@ -382,7 +372,6 @@ public class Task {
                 ", taskName='" + taskName + '\'' +
                 ", project='" + project + '\'' +
                 ", status=" + status +
-                ", taskRoutingCode='" + taskRoutingCode + '\'' +
                 ", taskTargetNumber=" + taskTargetNumber +
                 ", taskEligibleNumber=" + taskEligibleNumber +
                 ", taskSuccessNumber=" + taskSuccessNumber +

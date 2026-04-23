@@ -1,4 +1,4 @@
-package com.xa.mass.mock.command.model;
+package com.xa.mass.command.model;
 
 
 public class CommandException extends RuntimeException {

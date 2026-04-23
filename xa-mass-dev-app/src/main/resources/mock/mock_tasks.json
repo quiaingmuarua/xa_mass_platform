@@ -2,9 +2,8 @@
   {
     "taskName": "Task-us-1",
     "project": "demoApp",
-    "routingCode": "us",
     "userId": "user-us-1",
-    "sharedConfig": { "textContent": "Demo content for US task 1" },
+    "sharedConfig": { "textContent": "Demo content for US task 1", "routingCode": "us" },
     "batchSize": 2,
     "inputs": [
       { "target": "target-us-001" },
@@ -17,9 +16,8 @@
   {
     "taskName": "Task-us-2",
     "project": "demoApp",
-    "routingCode": "us",
     "userId": "user-us-2",
-    "sharedConfig": { "textContent": "Demo content for US task 2" },
+    "sharedConfig": { "textContent": "Demo content for US task 2", "routingCode": "us" },
     "batchSize": 2,
     "inputs": [
       { "target": "target-us-006" },
@@ -30,9 +28,8 @@
   {
     "taskName": "Task-gb-1",
     "project": "testApp",
-    "routingCode": "gb",
     "userId": "user-gb-1",
-    "sharedConfig": { "textContent": "Demo content for GB task 1" },
+    "sharedConfig": { "textContent": "Demo content for GB task 1", "routingCode": "gb" },
     "batchSize": 2,
     "inputs": [
       { "target": "target-gb-001" },
