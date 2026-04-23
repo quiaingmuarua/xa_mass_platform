@@ -51,13 +51,15 @@ class TaskApiWorkerContextAttributeRoutingIntegrationTest extends AbstractMockE2
                 rule("worker_context_attribute_country", "workerContextAttributes['country'] == routingCode")
         ));
 
-        addCandidate("matched-worker", "pool-east", "shared", "us");
-        addCandidate("other-worker", "pool-west", "shared", "gb");
+        addCandidate("matched-worker", "pool-east", "us", "us");
+        addCandidate("other-worker", "pool-west", "us", "gb");
 
         URI uri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
         MassWebSocketClientImpl matchedClient = new MassWebSocketClientImpl(uri, "matched-worker");
+        MassWebSocketClientImpl otherClient = new MassWebSocketClientImpl(uri, "other-worker");
         try {
             assertClientConnects(matchedClient, "matched worker client failed to connect");
+            assertClientConnects(otherClient, "other worker client failed to connect");
 
             String taskId = createTaskId("worker-context-attribute-routing", "attribute routing integration", "target-a");
             Map<String, Object> auditResponse = exchange(
@@ -78,6 +80,7 @@ class TaskApiWorkerContextAttributeRoutingIntegrationTest extends AbstractMockE2
             assertEquals("SUCCESS", message.get("status"));
             assertNotNull(message.get("latestAttemptBatchId"));
         } finally {
+            otherClient.disconnect();
             matchedClient.disconnect();
         }
     }
