@@ -131,6 +131,22 @@ class MassSdkTest {
     }
 
     @Test
+    void apiModeFailsFastBecauseTransportIsNotImplemented() {
+        UnsupportedOperationException staticError = assertThrows(
+                UnsupportedOperationException.class,
+                () -> MassSdk.apiMode(18082, "http://input", "http://output", "test-key")
+        );
+        assertTrue(staticError.getMessage().contains("not implemented"));
+
+        UnsupportedOperationException builderError = assertThrows(
+                UnsupportedOperationException.class,
+                () -> MassSdk.builder()
+                        .gateway(gateway -> gateway.apiMode("http://input", "http://output", "test-key"))
+        );
+        assertTrue(builderError.getMessage().contains("not implemented"));
+    }
+
+    @Test
     void engineDependentHelpersFailFastWhenEngineIsUnavailable() {
         MassSdkApplication app = MassSdk.builder()
                 .transportServer(19091, "/sdk-transport")

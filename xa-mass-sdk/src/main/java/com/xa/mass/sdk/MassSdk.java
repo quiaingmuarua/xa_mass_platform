@@ -28,6 +28,9 @@ import java.util.function.Consumer;
  */
 public final class MassSdk {
 
+    private static final String API_MODE_UNSUPPORTED_MESSAGE =
+            "API-based transport is not implemented yet. Use queue/polling transport or provide a real transport adapter.";
+
     private MassSdk() {
     }
 
@@ -75,13 +78,15 @@ public final class MassSdk {
         );
     }
 
+    /**
+     * @deprecated API-based transport is not implemented and now fails fast.
+     */
+    @Deprecated(since = "2.0.0", forRemoval = false)
     public static MassSdkApplication apiMode(int port,
                                              String inputApiUrl,
                                              String outputApiUrl,
                                              String apiKey) {
-        return new MassSdkApplication(
-                MassApplicationBuilder.createApiMode(port, inputApiUrl, outputApiUrl, apiKey)
-        );
+        throw new UnsupportedOperationException(API_MODE_UNSUPPORTED_MESSAGE);
     }
 
     public static MassSdkApplication testMode(int port) {
@@ -212,9 +217,12 @@ public final class MassSdk {
             return this;
         }
 
+        /**
+         * @deprecated API-based transport is not implemented and now fails fast.
+         */
+        @Deprecated(since = "2.0.0", forRemoval = false)
         public GatewayOptions apiMode(String inputApiUrl, String outputApiUrl, String apiKey) {
-            delegate.apiMode(inputApiUrl, outputApiUrl, apiKey);
-            return this;
+            throw new UnsupportedOperationException(API_MODE_UNSUPPORTED_MESSAGE);
         }
 
         public GatewayOptions queueMode() {

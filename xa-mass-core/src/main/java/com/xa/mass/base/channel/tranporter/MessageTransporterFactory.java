@@ -11,6 +11,9 @@ import com.xa.mass.base.channel.messaging.api.MessageQueue;
  */
 public class MessageTransporterFactory<T> {
 
+    private static final String API_MODE_UNSUPPORTED_MESSAGE =
+            "API-based transport is not implemented yet. Use queue/polling transport or provide a real transport adapter.";
+
     /**
      * 创建基于队列的消息传输器
      */
@@ -29,7 +32,7 @@ public class MessageTransporterFactory<T> {
      * 创建基于外部API的消息传输器
      */
     public static <T> MessageTransporter<T> createApiBased(String inputApiUrl, String outputApiUrl, String apiKey) {
-        return new ApiBasedMessageTransporter<>(inputApiUrl, outputApiUrl, apiKey);
+        throw new UnsupportedOperationException(API_MODE_UNSUPPORTED_MESSAGE);
     }
 
     /**

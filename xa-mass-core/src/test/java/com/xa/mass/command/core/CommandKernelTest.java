@@ -2,6 +2,7 @@ package com.xa.mass.command.core;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
+import com.xa.mass.base.exception.ErrorCode;
 import com.xa.mass.command.model.CommandContext;
 import com.xa.mass.command.model.CommandResponse;
 import com.xa.mass.command.runtime.CommandLogger;
@@ -107,5 +108,19 @@ class CommandKernelTest {
         Map<?, ?> secondData = assertInstanceOf(Map.class, secondStep.get("data"));
         assertEquals("alpha", secondData.get("echo"));
         assertNotNull(secondStep.get("duration"));
+    }
+
+    @Test
+    void batchParseErrorStillUsesCanonicalCommandExceptionModel() {
+        JsonObject request = new JsonObject();
+        request.addProperty("event", "batch");
+        request.addProperty("onError", "invalid");
+        request.add("events", new JsonArray());
+
+        CommandResponse<?> response = CommandDispatcher.dispatch(request);
+
+        assertFalse(response.isSuccess());
+        assertEquals(ErrorCode.PARSE_ERROR.code, response.getCode());
+        assertEquals("batch onError must be stop or continue", response.getMessage());
     }
 }

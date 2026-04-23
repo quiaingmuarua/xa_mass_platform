@@ -8,124 +8,49 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Mass 应用使用示例
- * 展示简化后的架构：MassApplicationBuilder负责配置聚合，MassApplication负责生命周期管理
+ * Small bootstrap examples for the embedded runtime builder.
  */
 public class MassApplicationExample {
 
     private static final Logger logger = LoggerFactory.getLogger(MassApplicationExample.class);
 
     public static void main(String[] args) {
-        logger.info("🚀 Mass Application 简化架构示例");
+        logger.info("Mass Application example bootstrap");
 
-        // 示例1: 快速创建开发环境应用
         exampleDevelopmentMode();
-
-        // 示例2: 快速创建生产环境应用
         exampleProductionMode();
-
-        // 示例3: 快速创建API模式应用
-        exampleApiMode();
-
-        // 示例4: 快速创建测试环境应用
         exampleTestMode();
-
-        // 示例5: 自定义配置应用
         exampleCustomConfiguration();
-
-        // 示例6: 只启动网关
         exampleGatewayOnly();
-
-        // 示例7: 只启动引擎
         exampleEngineOnly();
     }
 
-    /**
-     * 示例1: 开发环境模式
-     * 架构：MassApplicationBuilder(配置) → MassApplication(生命周期)
-     */
     private static void exampleDevelopmentMode() {
-        logger.info("📝 示例1: 开发环境模式");
-
-        // 使用新简化工厂 —— 队列由内部自动创建
+        logger.info("Example 1: development mode");
         MassApplication app = MassApplicationBuilder.createDevelopment(8080);
-
         app.start();
-
-        logger.info("✅ 开发环境应用启动成功");
-
         app.stop();
     }
 
-    /**
-     * 示例2: 生产环境模式
-     */
     private static void exampleProductionMode() {
-        logger.info("📝 示例2: 生产环境模式");
-
-        // 使用新简化工厂 —— 队列由内部自动创建
+        logger.info("Example 2: production mode");
         MassApplication app = MassApplicationBuilder.createProduction(8080);
-
         app.start();
-
-        logger.info("✅ 生产环境应用启动成功");
-
         app.stop();
     }
 
-    /**
-     * 示例3: API模式
-     */
-    private static void exampleApiMode() {
-        logger.info("📝 示例3: API模式");
-
-        // 快速创建API模式应用
-        MassApplication app = MassApplicationBuilder.createApiMode(
-                8080,
-                "http://api.example.com/input",
-                "http://api.example.com/output",
-                "your-api-key"
-        );
-
-        // 启动应用
-        app.start();
-
-        logger.info("✅ API模式应用启动成功");
-
-        // 停止应用
-        app.stop();
-    }
-
-    /**
-     * 示例4: 测试环境模式
-     */
     private static void exampleTestMode() {
-        logger.info("📝 示例4: 测试环境模式");
-
-        // 快速创建测试环境应用
+        logger.info("Example 3: test mode");
         MassApplication app = MassApplicationBuilder.createTest(8080);
-
-        // 启动应用
         app.start();
-
-        logger.info("✅ 测试环境应用启动成功");
-
-        // 停止应用
         app.stop();
     }
 
-    /**
-     * 示例5: 自定义配置
-     * 展示流式API的灵活性
-     */
     private static void exampleCustomConfiguration() {
-        logger.info("📝 示例5: 自定义配置");
+        logger.info("Example 4: custom configuration");
+        MessageQueue<Envelope> inputQueue = new InMemoryMessageQueue<>("Envelope", Envelope.class);
+        MessageQueue<Envelope> outputQueue = new InMemoryMessageQueue<>("Envelope", Envelope.class);
 
-        // 创建内存队列
-        MessageQueue<Envelope> inputQueue = new InMemoryMessageQueue<>("Envelope",Envelope.class);
-        MessageQueue<Envelope> outputQueue = new InMemoryMessageQueue<>("Envelope",Envelope.class);
-
-        // 使用流式API自定义配置
         MassApplication app = MassApplicationBuilder.create()
                 .server(9090, "/custom-ws")
                 .gateway(gateway -> gateway
@@ -139,27 +64,15 @@ public class MassApplicationExample {
                         .workerThreads(12))
                 .build();
 
-        // 启动应用
         app.start();
-
-        logger.info("✅ 自定义配置应用启动成功");
-
-        // 停止应用
         app.stop();
     }
 
-    /**
-     * 示例6: 只启动网关
-     * 展示组件选择启动功能
-     */
     private static void exampleGatewayOnly() {
-        logger.info("📝 示例7: 只启动网关");
+        logger.info("Example 5: gateway only");
+        MessageQueue<Envelope> inputQueue = new InMemoryMessageQueue<>("Envelope", Envelope.class);
+        MessageQueue<Envelope> outputQueue = new InMemoryMessageQueue<>("Envelope", Envelope.class);
 
-        // 创建内存队列
-        MessageQueue<Envelope> inputQueue = new InMemoryMessageQueue<>("Envelope",Envelope.class);
-        MessageQueue<Envelope> outputQueue = new InMemoryMessageQueue<>("Envelope",Envelope.class);
-
-        // 只启用网关，禁用引擎
         MassApplication app = MassApplicationBuilder.create()
                 .server(8080)
                 .gateway(gateway -> gateway
@@ -167,42 +80,24 @@ public class MassApplicationExample {
                         .maxConnections(100)
                         .inputQueue(inputQueue)
                         .outputQueue(outputQueue))
-                .engine(engine -> engine
-                        .enabled(false)) // 禁用引擎
+                .engine(engine -> engine.enabled(false))
                 .build();
 
-        // 启动应用（只会启动网关）
         app.start();
-
-        logger.info("✅ 网关模式应用启动成功");
-
-        // 停止应用
         app.stop();
     }
 
-    /**
-     * 示例7: 只启动引擎
-     * 展示组件选择启动功能
-     */
     private static void exampleEngineOnly() {
-        logger.info("📝 示例8: 只启动引擎");
-
-        // 只启用引擎，禁用网关
+        logger.info("Example 6: engine only");
         MassApplication app = MassApplicationBuilder.create()
                 .server(8080)
-                .gateway(gateway -> gateway
-                        .enabled(false)) // 禁用网关
+                .gateway(gateway -> gateway.enabled(false))
                 .engine(engine -> engine
                         .enabled(true)
                         .workerThreads(4))
                 .build();
 
-        // 启动应用（只会启动引擎）
         app.start();
-
-        logger.info("✅ 引擎模式应用启动成功");
-
-        // 停止应用
         app.stop();
     }
 }

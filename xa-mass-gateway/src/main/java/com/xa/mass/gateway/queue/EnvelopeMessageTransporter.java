@@ -1,7 +1,6 @@
 package com.xa.mass.gateway.queue;
 
 import com.xa.mass.base.channel.messaging.api.MessageQueue;
-import com.xa.mass.base.channel.tranporter.ApiBasedMessageTransporter;
 import com.xa.mass.base.channel.tranporter.MessageTransporter;
 import com.xa.mass.base.channel.tranporter.MultiLevelMessageTransporter;
 import com.xa.mass.base.channel.tranporter.QueueBasedMessageTransporter;
@@ -14,6 +13,9 @@ import java.util.concurrent.TimeUnit;
  * 包装泛型的 MessageTransporter 实现，提供类型安全的 Envelope 消息处理
  */
 public class EnvelopeMessageTransporter implements MessageTransporter<Envelope> {
+
+    private static final String API_MODE_UNSUPPORTED_MESSAGE =
+            "API-based transport is not implemented yet. Use queue/polling transport or provide a real transport adapter.";
 
     private final MessageTransporter<Envelope> delegate;
 
@@ -35,7 +37,7 @@ public class EnvelopeMessageTransporter implements MessageTransporter<Envelope> 
      * 创建基于外部API的 Envelope 消息传输器
      */
     public static EnvelopeMessageTransporter createApiBased(String inputApiUrl, String outputApiUrl, String apiKey) {
-        return new EnvelopeMessageTransporter(new ApiBasedMessageTransporter<>(inputApiUrl, outputApiUrl, apiKey));
+        throw new UnsupportedOperationException(API_MODE_UNSUPPORTED_MESSAGE);
     }
 
     /**

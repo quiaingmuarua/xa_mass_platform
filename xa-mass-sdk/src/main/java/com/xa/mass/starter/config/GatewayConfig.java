@@ -22,6 +22,9 @@ import com.xa.mass.transport.channel.WorkerSystemEventChannel;
  * Gateway runtime configuration.
  */
 public class GatewayConfig {
+    private static final String API_MODE_UNSUPPORTED_MESSAGE =
+            "API-based transport is not implemented yet. Use queue/polling transport or provide a real transport adapter.";
+
     private boolean enabled = true;
     private boolean transportServerEnabled = true;
     private int maxConnections = 1000;
@@ -116,11 +119,7 @@ public class GatewayConfig {
             case MULTI_LEVEL:
                 return MessageTransporterFactory.createMultiLevel();
             case API_BASED:
-                if (inputApiUrl == null || outputApiUrl == null || apiKey == null) {
-                    throw new IllegalStateException(
-                            "API_BASED transporter requires inputApiUrl, outputApiUrl, and apiKey");
-                }
-                return MessageTransporterFactory.createApiBased(inputApiUrl, outputApiUrl, apiKey);
+                throw new UnsupportedOperationException(API_MODE_UNSUPPORTED_MESSAGE);
             default:
                 throw new IllegalArgumentException("Unsupported transporter type: " + transporterType);
         }
@@ -140,11 +139,7 @@ public class GatewayConfig {
             case MULTI_LEVEL:
                 return EnvelopeMessageTransporter.createMultiLevel();
             case API_BASED:
-                if (inputApiUrl == null || outputApiUrl == null || apiKey == null) {
-                    throw new IllegalStateException(
-                            "API_BASED transporter requires inputApiUrl, outputApiUrl, and apiKey");
-                }
-                return EnvelopeMessageTransporter.createApiBased(inputApiUrl, outputApiUrl, apiKey);
+                throw new UnsupportedOperationException(API_MODE_UNSUPPORTED_MESSAGE);
             default:
                 throw new IllegalArgumentException("Unsupported transporter type: " + transporterType);
         }

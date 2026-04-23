@@ -30,6 +30,8 @@ import java.util.function.Consumer;
 public class MassApplicationBuilder {
 
     private static final Logger logger = LoggerFactory.getLogger(MassApplicationBuilder.class);
+    private static final String API_MODE_UNSUPPORTED_MESSAGE =
+            "API-based transport is not implemented yet. Use queue/polling transport or provide a real transport adapter.";
 
     private int serverPort = 8080;
     private GatewayConfig gatewayConfig = new GatewayConfig();
@@ -116,17 +118,12 @@ public class MassApplicationBuilder {
                 .build();
     }
 
+    /**
+     * @deprecated API-based transport is not implemented and now fails fast.
+     */
+    @Deprecated(since = "2.0.0", forRemoval = false)
     public static MassApplication createApiMode(int port, String inputApiUrl, String outputApiUrl, String apiKey) {
-        return create()
-                .server(port)
-                .gateway(gateway -> gateway
-                        .enabled(true)
-                        .maxConnections(1000)
-                        .apiMode(inputApiUrl, outputApiUrl, apiKey))
-                .engine(engine -> engine
-                        .enabled(true)
-                        .workerThreads(8))
-                .build();
+        throw new UnsupportedOperationException(API_MODE_UNSUPPORTED_MESSAGE);
     }
 
     public static MassApplication createTest(int port) {
@@ -249,12 +246,12 @@ public class MassApplicationBuilder {
             return this;
         }
 
+        /**
+         * @deprecated API-based transport is not implemented and now fails fast.
+         */
+        @Deprecated(since = "2.0.0", forRemoval = false)
         public GatewayBuilder apiMode(String inputApiUrl, String outputApiUrl, String apiKey) {
-            config.setTransporterType(MessageTransporterFactory.TransporterType.API_BASED);
-            config.setInputApiUrl(inputApiUrl);
-            config.setOutputApiUrl(outputApiUrl);
-            config.setApiKey(apiKey);
-            return this;
+            throw new UnsupportedOperationException(API_MODE_UNSUPPORTED_MESSAGE);
         }
 
         public GatewayBuilder queueMode() {
