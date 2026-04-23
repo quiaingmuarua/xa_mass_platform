@@ -1,11 +1,9 @@
 package com.xa.mass.mock.e2e.support;
 
-import com.xa.mass.base.enums.worker.WorkerContextStatus;
-import com.xa.mass.base.enums.worker.WorkerStatus;
-import com.xa.mass.base.model.Worker;
-import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.mock.client.MassWebSocketClient;
 import com.xa.mass.sdk.MassSdkApplication;
+import com.xa.mass.sdk.model.WorkerContextRegistration;
+import com.xa.mass.sdk.model.WorkerRegistration;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.boot.test.web.server.LocalServerPort;
@@ -294,8 +292,8 @@ public abstract class AbstractMockE2eTest {
     }
 
     protected void registerSdkWorkerWithContext(String workerId, String routingTag, String project) {
-        requireSdkApp().addWorker(createWorker(workerId, project));
-        requireSdkApp().addWorkerContext(createWorkerContext(workerId, routingTag));
+        requireSdkApp().registerWorker(createWorkerRegistration(workerId, "us", project));
+        requireSdkApp().registerWorkerContext(createWorkerContextRegistration(workerId, routingTag));
     }
 
     protected void registerSdkWorkerWithContext(String workerId,
@@ -303,43 +301,45 @@ public abstract class AbstractMockE2eTest {
                                                 String routingTag,
                                                 String project,
                                                 Map<String, Object> contextAttributes) {
-        Worker worker = createWorker(workerId, project);
-        worker.setWorkerGroupId(workerGroupId);
-        requireSdkApp().addWorker(worker);
-
-        WorkerContext workerContext = createWorkerContext(workerId, routingTag);
-        if (contextAttributes != null && !contextAttributes.isEmpty()) {
-            workerContext.setAttributes(contextAttributes.entrySet().stream()
-                    .collect(java.util.stream.Collectors.toMap(
-                            Map.Entry::getKey,
-                            entry -> String.valueOf(entry.getValue()),
-                            (left, right) -> right,
-                            java.util.LinkedHashMap::new
-                    )));
-        }
-        requireSdkApp().addWorkerContext(workerContext);
+        requireSdkApp().registerWorker(createWorkerRegistration(workerId, workerGroupId, project));
+        requireSdkApp().registerWorkerContext(createWorkerContextRegistration(workerId, routingTag, contextAttributes));
     }
 
     protected void registerSdkStatelessWorker(String workerId, String project) {
-        requireSdkApp().addWorker(createWorker(workerId, project));
+        requireSdkApp().registerWorker(createWorkerRegistration(workerId, "us", project));
     }
 
-    private Worker createWorker(String workerId, String project) {
-        Worker worker = new Worker();
-        worker.setWorkerId(workerId);
-        worker.setWorkerGroupId("us");
-        worker.setStatus(WorkerStatus.ONLINE);
-        worker.setSupportedProjects(List.of(project));
-        return worker;
+    private WorkerRegistration createWorkerRegistration(String workerId, String workerGroupId, String project) {
+        return WorkerRegistration.builder()
+                .workerId(workerId)
+                .workerGroupId(workerGroupId)
+                .supportedProjects(List.of(project))
+                .transportHint("realtime")
+                .build();
     }
 
-    private WorkerContext createWorkerContext(String workerId, String routingTag) {
-        WorkerContext workerContext = new WorkerContext();
-        workerContext.setWorkerContextId("worker-context-" + workerId);
-        workerContext.setWorkerId(workerId);
-        workerContext.setRoutingTags(java.util.Set.of(routingTag));
-        workerContext.setStatus(WorkerContextStatus.IDLE);
-        return workerContext;
+    private WorkerContextRegistration createWorkerContextRegistration(String workerId, String routingTag) {
+        return createWorkerContextRegistration(workerId, routingTag, Map.of());
+    }
+
+    private WorkerContextRegistration createWorkerContextRegistration(String workerId,
+                                                                     String routingTag,
+                                                                     Map<String, Object> contextAttributes) {
+        Map<String, String> normalizedAttributes = contextAttributes == null || contextAttributes.isEmpty()
+                ? Map.of()
+                : contextAttributes.entrySet().stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        Map.Entry::getKey,
+                        entry -> String.valueOf(entry.getValue()),
+                        (left, right) -> right,
+                        java.util.LinkedHashMap::new
+                ));
+        return WorkerContextRegistration.builder()
+                .workerContextId("worker-context-" + workerId)
+                .workerId(workerId)
+                .routingTags(java.util.Set.of(routingTag))
+                .attributes(normalizedAttributes)
+                .build();
     }
 
     private MassSdkApplication requireSdkApp() {

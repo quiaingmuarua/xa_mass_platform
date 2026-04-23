@@ -1,12 +1,10 @@
 package com.xa.mass.mock.e2e.assignment;
 
-import com.xa.mass.base.enums.worker.WorkerContextStatus;
-import com.xa.mass.base.enums.worker.WorkerStatus;
-import com.xa.mass.base.model.Worker;
-import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.mock.MockApplicationSpringBootApp;
 import com.xa.mass.mock.e2e.support.AbstractMockE2eTest;
 import com.xa.mass.sdk.MassSdkApplication;
+import com.xa.mass.sdk.model.WorkerContextRegistration;
+import com.xa.mass.sdk.model.WorkerRegistration;
 import com.xa.mass.sdk.worker.PullWorkerSession;
 import com.xa.mass.starter.worker.PollingWorkerAdapter;
 import com.xa.mass.transport.model.TaskDispatchItem;
@@ -137,19 +135,17 @@ class PollingWorkerTaskFlowIntegrationTest extends AbstractMockE2eTest {
     }
 
     private void registerPollingWorker(String workerId) {
-        Worker worker = new Worker();
-        worker.setWorkerId(workerId);
-        worker.setWorkerGroupId("us");
-        worker.setStatus(WorkerStatus.ONLINE);
-        worker.setSupportedProjects(List.of("demoApp"));
-        worker.setOnlineStrategy(PollingWorkerAdapter.PROTOCOL);
-        app.addWorker(worker);
+        app.registerWorker(WorkerRegistration.builder()
+                .workerId(workerId)
+                .workerGroupId("us")
+                .supportedProjects(List.of("demoApp"))
+                .transportHint(PollingWorkerAdapter.PROTOCOL)
+                .build());
 
-        WorkerContext workerContext = new WorkerContext();
-        workerContext.setWorkerContextId("ctx-" + workerId);
-        workerContext.setWorkerId(workerId);
-        workerContext.setRoutingTags(java.util.Set.of("us"));
-        workerContext.setStatus(WorkerContextStatus.IDLE);
-        app.addWorkerContext(workerContext);
+        app.registerWorkerContext(WorkerContextRegistration.builder()
+                .workerContextId("ctx-" + workerId)
+                .workerId(workerId)
+                .routingTags(java.util.Set.of("us"))
+                .build());
     }
 }

@@ -68,7 +68,7 @@ The transport-neutral runtime model is now framed around three channels:
   - `NEW -> READY -> PAUSED -> READY`
   - `NEW -> BLOCKED -> READY`
 - `TERMINAL` is not self-describing anymore; inspect `task.terminalReason`
-- Active task-create contract uses `/status/api/tasks` as the single HTTP create route. It accepts core fields such as `userId`, `project`, `sharedConfig`, `inputs`, `batchSize`, `defaultMsgMaxRetryCount`, and `openEnded`, and can also accept SDK-aware fields such as `eventCode`, `mode`, and `payloadType`. There is no dedicated `routingCode` field in the public control-console contract.
+- Active HTTP task-create contracts now have two lanes: `/status/api/tasks` for control-console and generic backend use, and `/sdk/tasks` for credential-backed SDK-style submission. SDK credential introspection is available through `GET /sdk/submitters/me`. There is still no dedicated `routingCode` field in the public contract.
 - `PUT /status/api/tasks/{taskId}` is metadata-only and does not accept `inputs`
 - `Task.project` and `Task.user` are first-class business bindings on the task aggregate; do not hide them inside `sharedConfig` or attribute maps
 - `Task.sharedConfig` is the task-level shared payload; `TaskMsg.input` and `TaskMsg.output` are the per-item payload boundary
@@ -164,7 +164,7 @@ Module boundary note:
 - top-level directories are not automatically active modules
 - check the root `pom.xml` before treating a directory as current mainline
 - `xa-mass-dev-app` uses `xa-mass-sdk` as its runtime entry and keeps `xa-mass-web` explicit because the current mock app also serves REST APIs and the backend-hosted control console shell
-- `xa-mass-web` depends on `xa-mass-sdk-api` for SDK-facing metadata and request shapes, not on the embedded runtime module
+- `xa-mass-web` currently depends on both `xa-mass-sdk` and `xa-mass-sdk-api`: SDK runtime/auth/task operations come from `xa-mass-sdk`, while shared SDK-facing metadata and request shapes also live in `xa-mass-sdk-api`
 - avoid making `xa-mass-sdk` depend on API/UI modules; that would make third-party SDK consumers pull demo web surfaces unnecessarily
 - embedded runtime composition now lives inside `xa-mass-sdk` under `com.xa.mass.starter.*`
 - if an older doc references removed modules or archive code, treat that as historical drift rather than something missing from the current repo

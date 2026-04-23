@@ -51,8 +51,9 @@ For verified runtime behavior and recommended startup, use [VERIFIED_RUNBOOK.md]
 
 ## 1.2 SDK Task Contract Notes
 
-- SDK-aware task creation is exposed through `/status/api/tasks`; there is no separate SDK task route.
-- `/status/api/tasks` accepts both plain task creation fields and SDK task metadata fields.
+- SDK-aware task creation is exposed through both `/status/api/tasks` and `/sdk/tasks`.
+- `/status/api/tasks` remains the control-console and generic backend route; it accepts both plain task creation fields and SDK task metadata fields.
+- `/sdk/tasks` is the minimal credential-backed SDK submission route built on `AuthProvider` and `MassTaskRequest`.
 - `MassTaskRequest.mode=SINGLE_RUN` maps to `openEnded=false`; `STREAMING` maps to `openEnded=true`.
 - `MassTaskRequest` payloads are normalized into `TaskMsg.input` as:
   - text: `{"type":"text","text":"..."}`
@@ -116,6 +117,66 @@ Behavior:
 
 - returns the registered `EventMetadata`
 - returns HTTP 404 when `eventCode` does not exist in the catalog
+
+## 2.6 SDK Task Submit API
+
+Base path: `/sdk/tasks`
+
+### 2.6.1 Create SDK Task
+
+- Method: `POST`
+- Path: `/sdk/tasks`
+- Status: `Implemented`
+
+Headers:
+
+- `X-Mass-Api-Key: <credential>` or `Authorization: Bearer <credential>`
+
+Contract notes:
+
+- uses `AuthProvider.authenticate(...)` to resolve a `TaskSubmitterContext`
+- accepts only SDK-style task fields: `userId`, `project`, `taskName`, `eventCode`, `mode`, `payloadType`, `sharedConfig`, `inputs`, `batchSize`, `defaultMsgMaxRetryCount`, `maxRuntimeSeconds`
+- `taskName` and `eventCode` are required
+- `project` may be omitted when the authenticated submitter has `projectScope`
+- `userId` may be omitted; resolution order is submitter `userId`, request `userId`, then submitter `principalId`
+- if submitter `projectScope` exists, request `project` must match it exactly or the call returns HTTP 403
+- if submitter `userId` exists, request `userId` must match it exactly or the call returns HTTP 403
+- `payloadType` defaults to `JSON`
+- `mode` defaults to `SINGLE_RUN`
+- `TEXT` payloads require string items; `JSON` payloads require object items
+- on success returns `taskId`, resolved `project`, resolved `userId`, and authenticated `principalId`
+
+Example:
+
+```json
+{
+  "taskName": "bot-reply",
+  "eventCode": "chatbot.reply",
+  "mode": "STREAMING",
+  "payloadType": "TEXT",
+  "inputs": ["hello"],
+  "sharedConfig": {
+    "channel": "telegram"
+  }
+}
+```
+
+### 2.6.2 Get Current SDK Submitter
+
+- Method: `GET`
+- Path: `/sdk/submitters/me`
+- Status: `Implemented`
+
+Headers:
+
+- `X-Mass-Api-Key: <credential>` or `Authorization: Bearer <credential>`
+
+Contract notes:
+
+- resolves the current credential through `AuthProvider.authenticate(...)`
+- returns the authenticated submitter view with `principalId`, `userId`, `projectScope`, and `attributes`
+- does not expose raw credential material
+- returns HTTP 401 when the credential is missing or invalid
 
 ## 3. Task API
 
