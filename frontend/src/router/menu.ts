@@ -1,6 +1,5 @@
-import { canAccessRoute } from '@/utils/permissions'
-import type { MenuItem } from '@/router/types'
-import type { AppRouteRecordRaw } from '@/router/types'
+import {canAccessRoute} from '@/utils/permissions'
+import type {AppRouteRecordRaw, MenuItem} from '@/router/types'
 
 function joinPaths(parentPath: string, routePath: string): string {
     if (routePath.startsWith('/')) {

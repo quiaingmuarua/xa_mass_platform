@@ -1,5 +1,5 @@
-import { getAppConfig } from '@/app/config'
-import { requestApiData } from '@/api/http'
+import {getAppConfig} from '@/app/config'
+import {requestApiData} from '@/api/http'
 
 export interface ConfigSummary {
     key: string

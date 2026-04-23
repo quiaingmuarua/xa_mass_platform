@@ -1,6 +1,5 @@
 package com.xa.mass.gateway.server;
 
-import com.xa.mass.base.exception.ValidationException;
 import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
 import com.xa.mass.gateway.model.enums.MessageType;
 import com.xa.mass.gateway.model.massMessage.MassMessage;
@@ -111,4 +110,4 @@ public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWe
     private boolean allowsMissingProject(MassMessage message) {
         return message.getMsgType() == MessageType.PING || message.getMsgType() == MessageType.PONG;
     }
-} 
+}

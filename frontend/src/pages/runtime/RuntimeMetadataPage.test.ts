@@ -1,7 +1,7 @@
 import ElementPlus from 'element-plus'
-import { flushPromises, mount } from '@vue/test-utils'
-import { createMemoryHistory, createRouter } from 'vue-router'
-import { resetRuntimeConfigOverrides, setRuntimeConfigOverrides } from '@/app/config'
+import {flushPromises, mount} from '@vue/test-utils'
+import {createMemoryHistory, createRouter} from 'vue-router'
+import {resetRuntimeConfigOverrides, setRuntimeConfigOverrides} from '@/app/config'
 import RuntimeMetadataPage from '@/pages/runtime/RuntimeMetadataPage.vue'
 
 function jsonResponse(body: unknown): Response {

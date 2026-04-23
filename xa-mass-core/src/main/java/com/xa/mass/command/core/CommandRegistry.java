@@ -1,8 +1,8 @@
 package com.xa.mass.command.core;
 
 import com.google.gson.JsonObject;
-import com.xa.mass.command.model.CommandResponse;
 import com.xa.mass.command.model.CommandContext;
+import com.xa.mass.command.model.CommandResponse;
 
 import java.util.Collections;
 import java.util.List;

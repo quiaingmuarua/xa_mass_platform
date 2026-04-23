@@ -5,11 +5,7 @@ import com.google.gson.JsonObject;
 import com.xa.mass.command.model.CommandException;
 import com.xa.mass.command.model.ErrorCode;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 public final class BatchCommandRequest {
 

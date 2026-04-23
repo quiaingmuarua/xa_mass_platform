@@ -1,4 +1,4 @@
-import { appRoutes } from '@/router/routes'
+import {appRoutes} from '@/router/routes'
 
 function walkRoutes(
     routes: typeof appRoutes,

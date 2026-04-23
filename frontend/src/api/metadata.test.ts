@@ -1,10 +1,6 @@
-import { resetRuntimeConfigOverrides, setRuntimeConfigOverrides } from '@/app/config'
-import {
-    listEventMetadata,
-    listProjectEventMetadata,
-    listProjectMetadata,
-} from '@/api/metadata'
-import { listEventMetadataReal, listProjectMetadataReal } from '@/api/metadata.real'
+import {resetRuntimeConfigOverrides, setRuntimeConfigOverrides} from '@/app/config'
+import {listEventMetadata, listProjectEventMetadata, listProjectMetadata,} from '@/api/metadata'
+import {listEventMetadataReal, listProjectMetadataReal} from '@/api/metadata.real'
 
 function jsonResponse(body: unknown): Response {
     return new Response(JSON.stringify(body), {

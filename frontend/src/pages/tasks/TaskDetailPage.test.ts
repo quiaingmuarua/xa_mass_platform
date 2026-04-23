@@ -1,9 +1,9 @@
 import ElementPlus from 'element-plus'
-import { flushPromises, mount } from '@vue/test-utils'
-import { createMemoryHistory, createRouter } from 'vue-router'
-import { mockAdminUser } from '@/auth/mock-user'
-import { setMockCurrentUser } from '@/auth/use-auth'
-import { permissionDirective } from '@/auth/permission-directive'
+import {flushPromises, mount} from '@vue/test-utils'
+import {createMemoryHistory, createRouter} from 'vue-router'
+import {mockAdminUser} from '@/auth/mock-user'
+import {setMockCurrentUser} from '@/auth/use-auth'
+import {permissionDirective} from '@/auth/permission-directive'
 import TaskDetailPage from '@/pages/tasks/TaskDetailPage.vue'
 
 describe('TaskDetailPage', () => {

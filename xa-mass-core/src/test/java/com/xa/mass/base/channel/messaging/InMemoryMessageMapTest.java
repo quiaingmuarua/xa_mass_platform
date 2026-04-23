@@ -3,6 +3,7 @@ package com.xa.mass.base.channel.messaging;
 import com.xa.mass.base.channel.messaging.memory.InMemoryMessageMap;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
@@ -120,4 +121,4 @@ public class InMemoryMessageMapTest {
         // 测试 null value 的处理 - 应该抛出异常
         assertThrows(NullPointerException.class, () -> messageMap.put("key1", null));
     }
-} 
+}

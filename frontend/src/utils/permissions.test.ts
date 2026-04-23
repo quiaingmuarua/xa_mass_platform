@@ -1,11 +1,7 @@
-import type { AppRouteMeta } from '@/types/routes'
-import { mockViewerUser } from '@/auth/mock-user'
-import { resetMockAuth, setMockCurrentUser } from '@/auth/use-auth'
-import {
-    canAccessRoute,
-    hasAnyPermission,
-    hasPermission,
-} from '@/utils/permissions'
+import type {AppRouteMeta} from '@/types/routes'
+import {mockViewerUser} from '@/auth/mock-user'
+import {resetMockAuth, setMockCurrentUser} from '@/auth/use-auth'
+import {canAccessRoute, hasAnyPermission, hasPermission,} from '@/utils/permissions'
 
 const baseMeta: AppRouteMeta = {
     title: 'Tasks',

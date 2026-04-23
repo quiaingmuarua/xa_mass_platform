@@ -1,6 +1,5 @@
 package com.xa.mass.base.jsondsl.processor;
 
-import com.xa.mass.base.jsondsl.eval.DslExprExecutor;
 import com.xa.mass.base.jsondsl.eval.ExpressionEngineRegistry;
 import com.xa.mass.base.jsondsl.eval.QLExpressEngine;
 import com.xa.mass.base.jsondsl.model.JsonDslDefinition;
@@ -11,10 +10,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 class ProcessorHotPathRegressionTest {
 

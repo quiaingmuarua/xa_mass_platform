@@ -1,8 +1,8 @@
 import ElementPlus from 'element-plus'
-import { flushPromises, mount } from '@vue/test-utils'
-import { setRuntimeConfigOverrides } from '@/app/config'
-import { mockAdminUser } from '@/auth/mock-user'
-import { setMockCurrentUser } from '@/auth/use-auth'
+import {flushPromises, mount} from '@vue/test-utils'
+import {setRuntimeConfigOverrides} from '@/app/config'
+import {mockAdminUser} from '@/auth/mock-user'
+import {setMockCurrentUser} from '@/auth/use-auth'
 import DashboardPage from '@/pages/dashboard/DashboardPage.vue'
 
 function jsonResponse(body: unknown): Response {

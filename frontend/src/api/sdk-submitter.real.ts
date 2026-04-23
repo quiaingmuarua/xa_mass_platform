@@ -1,8 +1,5 @@
-import { ApiError, requestApiData } from '@/api/http'
-import type {
-    SdkSubmitterProfile,
-    SdkSubmitterSnapshot,
-} from '@/types/sdk-submitter'
+import {ApiError, requestApiData} from '@/api/http'
+import type {SdkSubmitterProfile, SdkSubmitterSnapshot,} from '@/types/sdk-submitter'
 
 export async function getCurrentSdkSubmitterReal(): Promise<SdkSubmitterSnapshot> {
     try {

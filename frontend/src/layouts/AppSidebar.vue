@@ -39,11 +39,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
-import { useRoute } from 'vue-router'
-import { resolveMenuIcon } from '@/layouts/icons'
-import { buildMenuTree } from '@/router/menu'
-import { appRoutes } from '@/router/routes'
+import {computed} from 'vue'
+import {useRoute} from 'vue-router'
+import {resolveMenuIcon} from '@/layouts/icons'
+import {buildMenuTree} from '@/router/menu'
+import {appRoutes} from '@/router/routes'
 
 const route = useRoute()
 

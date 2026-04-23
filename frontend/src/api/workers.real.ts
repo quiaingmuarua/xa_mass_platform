@@ -1,9 +1,9 @@
-import { requestApiData } from '@/api/http'
+import {requestApiData} from '@/api/http'
 import type {
+    WorkerContextListResponse,
     WorkerDebugHistoryResponse,
     WorkerDebugSendRequest,
     WorkerDebugSendResult,
-    WorkerContextListResponse,
     WorkerListResponse,
 } from '@/types/workers'
 

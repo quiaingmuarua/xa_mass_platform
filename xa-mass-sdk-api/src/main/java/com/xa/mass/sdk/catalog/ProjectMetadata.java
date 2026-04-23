@@ -1,10 +1,6 @@
 package com.xa.mass.sdk.catalog;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Objects;
+import java.util.*;
 
 /**
  * Public project metadata exposed through the SDK catalog APIs.

@@ -1,9 +1,9 @@
 package com.xa.mass.gateway.dispatcher;
 
 import com.google.gson.Gson;
+import com.xa.mass.base.channel.tranporter.MessageTransporter;
 import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
 import com.xa.mass.gateway.queue.MessageCodec;
-import com.xa.mass.base.channel.tranporter.MessageTransporter;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 
 /**
@@ -84,4 +84,4 @@ public class DispatcherContext implements DispatchRuntimeContext {
     }
 
     public enum MiddlewareDirection {INPUT, OUTPUT}
-} 
+}

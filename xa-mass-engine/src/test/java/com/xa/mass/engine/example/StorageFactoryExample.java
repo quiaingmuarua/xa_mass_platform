@@ -2,11 +2,7 @@ package com.xa.mass.engine.example;
 
 import com.xa.mass.base.enums.worker.WorkerContextStatus;
 import com.xa.mass.base.enums.worker.WorkerStatus;
-import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.TaskSharedConfig;
-import com.xa.mass.base.model.UserRef;
-import com.xa.mass.base.model.Worker;
-import com.xa.mass.base.model.WorkerContext;
+import com.xa.mass.base.model.*;
 import com.xa.mass.engine.storage.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

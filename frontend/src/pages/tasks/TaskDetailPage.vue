@@ -219,22 +219,15 @@
 </template>
 
 <script setup lang="ts">
-import { ElMessage, ElMessageBox } from 'element-plus'
-import { onMounted, ref, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
-import {
-  auditTask,
-  blockTask,
-  getTaskDetail,
-  pauseTask,
-  resumeTask,
-  terminateTask,
-} from '@/api/tasks'
+import {ElMessage, ElMessageBox} from 'element-plus'
+import {onMounted, ref, watch} from 'vue'
+import {useRoute, useRouter} from 'vue-router'
+import {auditTask, blockTask, getTaskDetail, pauseTask, resumeTask, terminateTask,} from '@/api/tasks'
 import PageEmptyState from '@/components/PageEmptyState.vue'
 import PageErrorState from '@/components/PageErrorState.vue'
 import PageSectionSkeleton from '@/components/PageSectionSkeleton.vue'
-import type { TaskDetailResponse } from '@/types/tasks'
-import { toErrorMessage } from '@/utils/errors'
+import type {TaskDetailResponse} from '@/types/tasks'
+import {toErrorMessage} from '@/utils/errors'
 
 const route = useRoute()
 const router = useRouter()

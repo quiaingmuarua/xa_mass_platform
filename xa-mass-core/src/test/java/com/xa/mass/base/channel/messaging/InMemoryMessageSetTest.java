@@ -3,11 +3,12 @@ package com.xa.mass.base.channel.messaging;
 import com.xa.mass.base.channel.messaging.memory.InMemoryMessageSet;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import static org.junit.jupiter.api.Assertions.*;
 
 import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * InMemoryMessageSet 测试类
@@ -121,4 +122,4 @@ public class InMemoryMessageSetTest {
         latch.await();
         assertEquals(0, messageSet.size());
     }
-} 
+}

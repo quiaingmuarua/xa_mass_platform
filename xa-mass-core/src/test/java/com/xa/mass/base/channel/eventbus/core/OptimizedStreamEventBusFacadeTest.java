@@ -2,10 +2,10 @@ package com.xa.mass.base.channel.eventbus.core;
 
 import com.xa.mass.base.channel.messaging.api.MessageStream;
 import com.xa.mass.base.channel.messaging.memory.InMemoryMessageStream;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
 import java.util.concurrent.CountDownLatch;
@@ -71,7 +71,7 @@ class OptimizedStreamEventBusFacadeTest {
         }
 
         public int getProcessedCount() { return processedCount.get(); }
-        
+
         public boolean awaitCompletion(long timeout, TimeUnit unit) throws InterruptedException {
             return latch.await(timeout, unit);
         }
@@ -100,7 +100,7 @@ class OptimizedStreamEventBusFacadeTest {
         }
 
         public int getProcessedCount() { return processedCount.get(); }
-        
+
         public boolean awaitCompletion(long timeout, TimeUnit unit) throws InterruptedException {
             return latch.await(timeout, unit);
         }
@@ -177,14 +177,14 @@ class OptimizedStreamEventBusFacadeTest {
     void testListenerRegistrationAndUnregistration() throws InterruptedException {
         // Arrange
         TestListener listener = new TestListener(1);
-        
+
         // Act - 注册监听器
         eventBus.register(listener);
         assertEquals(2, eventBus.getListenerCount(), "Should have 2 handlers (TestEvent + String)");
-        
+
         eventBus.post(new TestEvent("1", "Test"));
         assertTrue(listener.awaitCompletion(1, TimeUnit.SECONDS), "Event should be processed");
-        
+
         // Act - 注销监听器
         eventBus.unregister(listener);
         assertEquals(0, eventBus.getListenerCount(), "Should have no handlers after unregistration");
@@ -196,7 +196,7 @@ class OptimizedStreamEventBusFacadeTest {
         // Arrange
         ErrorListener errorListener = new ErrorListener();
         TestListener normalListener = new TestListener(2);
-        
+
         eventBus.register(errorListener);
         eventBus.register(normalListener);
 
@@ -208,7 +208,7 @@ class OptimizedStreamEventBusFacadeTest {
         assertTrue(normalListener.awaitCompletion(2, TimeUnit.SECONDS), "Normal events should be processed");
         assertEquals(2, normalListener.getProcessedCount(), "Normal listener should process events");
         assertEquals(2, errorListener.getErrorCount(), "Error listener should process and fail");
-        
+
         // 检查错误统计 - 等待异步处理完成
         Thread.sleep(1000); // 等待统计更新
         StreamEventBusFacade.EventBusStatistics stats = eventBus.getStatistics();
@@ -223,10 +223,10 @@ class OptimizedStreamEventBusFacadeTest {
             .setBatchSize(2)
             .setBatchTimeoutMs(100L)
             .setHandlerTimeoutSeconds(1L); // 1秒超时
-        
+
         eventBus.shutdown();
         eventBus = new StreamEventBusFacade<>(stream, shortTimeoutConfig);
-        
+
         SlowListener slowListener = new SlowListener(2, 2000L); // 2秒处理时间
         eventBus.register(slowListener);
 
@@ -286,15 +286,15 @@ class OptimizedStreamEventBusFacadeTest {
     void testDefaultConfigConstruction() {
         // Arrange
         MessageStream<Object> newStream = new InMemoryMessageStream<>("test-stream-2", Object.class);
-        
+
         // Act
         StreamEventBusFacade<Object> defaultEventBus = new StreamEventBusFacade<>(newStream);
-        
+
         // Assert
         assertNotNull(defaultEventBus.getConfig(), "Should have default config");
-        assertEquals(EventBusConfig.defaultConfig().getCorePoolSize(), 
+        assertEquals(EventBusConfig.defaultConfig().getCorePoolSize(),
                     defaultEventBus.getConfig().getCorePoolSize(), "Should use default core pool size");
-        
+
         // Cleanup
         defaultEventBus.shutdown();
     }
@@ -351,4 +351,4 @@ class OptimizedStreamEventBusFacadeTest {
             eventBus.unregister(TestEvent.class, event -> {});
         }, "Should throw exception for unsupported unregister method");
     }
-} 
+}

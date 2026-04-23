@@ -1,4 +1,4 @@
-import type { RuleListResponse, RuleMetaResponse } from '@/types/rules'
+import type {RuleListResponse, RuleMetaResponse} from '@/types/rules'
 
 const mockRules: RuleListResponse = {
     items: [

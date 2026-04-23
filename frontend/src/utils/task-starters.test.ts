@@ -1,8 +1,4 @@
-import {
-    resolveTaskStarterDraft,
-    stringifyStarterInputs,
-    stringifyStarterSharedConfig,
-} from '@/utils/task-starters'
+import {resolveTaskStarterDraft, stringifyStarterInputs, stringifyStarterSharedConfig,} from '@/utils/task-starters'
 
 describe('task starter drafts', () => {
     it('resolves an explicit event starter for known projects', () => {

@@ -1,12 +1,6 @@
 package com.xa.mass.sdk.authz;
 
-import com.xa.mass.sdk.authz.ClientPermissionProvider;
-
-import java.util.Collection;
-import java.util.Collections;
-import java.util.LinkedHashSet;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class InMemoryClientPermissionProvider implements ClientPermissionProvider {

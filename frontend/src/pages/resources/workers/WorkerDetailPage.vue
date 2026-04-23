@@ -193,16 +193,16 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
-import { listProjectCodes } from '@/api/configs'
-import { listWorkerContexts, listWorkers } from '@/api/workers'
+import {computed, onMounted, ref, watch} from 'vue'
+import {useRoute, useRouter} from 'vue-router'
+import {listProjectCodes} from '@/api/configs'
+import {listWorkerContexts, listWorkers} from '@/api/workers'
 import PageEmptyState from '@/components/PageEmptyState.vue'
 import PageErrorState from '@/components/PageErrorState.vue'
 import PageSectionSkeleton from '@/components/PageSectionSkeleton.vue'
 import WorkerDebugPanel from '@/components/WorkerDebugPanel.vue'
-import type { WorkerContextListItem, WorkerListItem } from '@/types/workers'
-import { toErrorMessage } from '@/utils/errors'
+import type {WorkerContextListItem, WorkerListItem} from '@/types/workers'
+import {toErrorMessage} from '@/utils/errors'
 
 const route = useRoute()
 const router = useRouter()

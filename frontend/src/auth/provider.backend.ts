@@ -1,6 +1,6 @@
-import { ApiError, requestApiData } from '@/api/http'
-import type { AuthProvider } from '@/auth/provider'
-import type { AuthUser } from '@/types/auth'
+import {ApiError, requestApiData} from '@/api/http'
+import type {AuthProvider} from '@/auth/provider'
+import type {AuthUser} from '@/types/auth'
 
 export const backendAuthProvider: AuthProvider = {
     async loadCurrentUser() {

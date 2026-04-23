@@ -1,12 +1,12 @@
-import { createApp } from 'vue'
+import {createApp} from 'vue'
 import ElementPlus from 'element-plus'
 import 'element-plus/dist/index.css'
-import { getAppConfig } from '@/app/config'
+import {getAppConfig} from '@/app/config'
 import '@/app/styles.css'
 import AppRoot from '@/app/AppRoot.vue'
-import { registerPermissionDirective } from '@/auth/permission-directive'
-import { initializeAuth } from '@/auth/use-auth'
-import { router } from '@/router'
+import {registerPermissionDirective} from '@/auth/permission-directive'
+import {initializeAuth} from '@/auth/use-auth'
+import {router} from '@/router'
 
 export async function bootstrapApp(): Promise<void> {
     try {

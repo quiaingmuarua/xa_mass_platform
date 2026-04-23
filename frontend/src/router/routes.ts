@@ -1,10 +1,10 @@
-import { utilityRoutes } from '@/router/modules/app'
-import { dashboardRoutes } from '@/router/modules/dashboard'
-import { resourceRoutes } from '@/router/modules/resources'
-import { runtimeRoutes } from '@/router/modules/runtime'
-import { systemRoutes } from '@/router/modules/system'
-import { taskRoutes } from '@/router/modules/tasks'
-import type { AppRouteRecordRaw } from '@/router/types'
+import {utilityRoutes} from '@/router/modules/app'
+import {dashboardRoutes} from '@/router/modules/dashboard'
+import {resourceRoutes} from '@/router/modules/resources'
+import {runtimeRoutes} from '@/router/modules/runtime'
+import {systemRoutes} from '@/router/modules/system'
+import {taskRoutes} from '@/router/modules/tasks'
+import type {AppRouteRecordRaw} from '@/router/types'
 
 export const appRoutes: AppRouteRecordRaw[] = [
     {

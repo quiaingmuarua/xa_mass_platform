@@ -1,5 +1,5 @@
-import type { Component } from 'vue'
-import type { AppRouteMeta } from '@/types/routes'
+import type {Component} from 'vue'
+import type {AppRouteMeta} from '@/types/routes'
 
 export type AppRouteComponent =
     | Component

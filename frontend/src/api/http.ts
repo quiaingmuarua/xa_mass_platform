@@ -1,4 +1,4 @@
-import { getAppConfig } from '@/app/config'
+import {getAppConfig} from '@/app/config'
 
 interface ApiResponseEnvelope<T> {
     code: number

@@ -1,7 +1,7 @@
 package com.xa.mass.sdk;
 
-import com.xa.mass.sdk.auth.SubmitterRegistration;
 import com.xa.mass.sdk.auth.SubmitterMetadata;
+import com.xa.mass.sdk.auth.SubmitterRegistration;
 import com.xa.mass.sdk.auth.TaskSubmitterContext;
 
 import java.util.List;

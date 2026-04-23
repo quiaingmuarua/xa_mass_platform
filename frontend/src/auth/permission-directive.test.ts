@@ -1,7 +1,7 @@
-import { mount } from '@vue/test-utils'
-import { mockViewerUser } from '@/auth/mock-user'
-import { permissionDirective } from '@/auth/permission-directive'
-import { resetMockAuth, setMockCurrentUser } from '@/auth/use-auth'
+import {mount} from '@vue/test-utils'
+import {mockViewerUser} from '@/auth/mock-user'
+import {permissionDirective} from '@/auth/permission-directive'
+import {resetMockAuth, setMockCurrentUser} from '@/auth/use-auth'
 
 describe('permission directive', () => {
     afterEach(() => {

@@ -214,14 +214,14 @@
 </template>
 
 <script setup lang="ts">
-import { ElMessage } from 'element-plus'
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { getWorkerDebugHistory, sendWorkerDebugMessage } from '@/api/workers'
+import {ElMessage} from 'element-plus'
+import {computed, onBeforeUnmount, ref, watch} from 'vue'
+import {getWorkerDebugHistory, sendWorkerDebugMessage} from '@/api/workers'
 import PageEmptyState from '@/components/PageEmptyState.vue'
 import PageSectionSkeleton from '@/components/PageSectionSkeleton.vue'
-import type { WorkerDebugMessageRecord, WorkerListItem } from '@/types/workers'
-import { toErrorMessage } from '@/utils/errors'
-import { hasPermission } from '@/utils/permissions'
+import type {WorkerDebugMessageRecord, WorkerListItem} from '@/types/workers'
+import {toErrorMessage} from '@/utils/errors'
+import {hasPermission} from '@/utils/permissions'
 
 type PresetKey = 'state' | 'delay' | 'disconnect'
 

@@ -260,22 +260,18 @@
 </template>
 
 <script setup lang="ts">
-import { ElMessage } from 'element-plus'
-import { computed, onActivated, onMounted, reactive, ref, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
-import { listProjectCodes } from '@/api/configs'
-import { createTask, listTasks } from '@/api/tasks'
-import { useAuth } from '@/auth/use-auth'
+import {ElMessage} from 'element-plus'
+import {computed, onActivated, onMounted, reactive, ref, watch} from 'vue'
+import {useRoute, useRouter} from 'vue-router'
+import {listProjectCodes} from '@/api/configs'
+import {createTask, listTasks} from '@/api/tasks'
+import {useAuth} from '@/auth/use-auth'
 import PageEmptyState from '@/components/PageEmptyState.vue'
 import PageErrorState from '@/components/PageErrorState.vue'
 import PageSectionSkeleton from '@/components/PageSectionSkeleton.vue'
-import type { TaskCreateRequest, TaskListItem } from '@/types/tasks'
-import { toErrorMessage } from '@/utils/errors'
-import {
-  resolveTaskStarterDraft,
-  stringifyStarterInputs,
-  stringifyStarterSharedConfig,
-} from '@/utils/task-starters'
+import type {TaskCreateRequest, TaskListItem} from '@/types/tasks'
+import {toErrorMessage} from '@/utils/errors'
+import {resolveTaskStarterDraft, stringifyStarterInputs, stringifyStarterSharedConfig,} from '@/utils/task-starters'
 
 const router = useRouter()
 const route = useRoute()

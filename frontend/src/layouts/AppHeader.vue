@@ -23,10 +23,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
-import { useRoute } from 'vue-router'
-import { getAppConfig } from '@/app/config'
-import { useAuth } from '@/auth/use-auth'
+import {computed} from 'vue'
+import {useRoute} from 'vue-router'
+import {getAppConfig} from '@/app/config'
+import {useAuth} from '@/auth/use-auth'
 
 const route = useRoute()
 const { user } = useAuth()

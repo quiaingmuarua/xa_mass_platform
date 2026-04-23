@@ -1,10 +1,10 @@
 import ElementPlus from 'element-plus'
-import { flushPromises, mount } from '@vue/test-utils'
-import { createMemoryHistory, createRouter } from 'vue-router'
-import { setRuntimeConfigOverrides } from '@/app/config'
-import { mockAdminUser, mockViewerUser } from '@/auth/mock-user'
-import { permissionDirective } from '@/auth/permission-directive'
-import { setMockCurrentUser } from '@/auth/use-auth'
+import {flushPromises, mount} from '@vue/test-utils'
+import {createMemoryHistory, createRouter} from 'vue-router'
+import {setRuntimeConfigOverrides} from '@/app/config'
+import {mockAdminUser, mockViewerUser} from '@/auth/mock-user'
+import {permissionDirective} from '@/auth/permission-directive'
+import {setMockCurrentUser} from '@/auth/use-auth'
 import WorkersPage from '@/pages/resources/workers/WorkersPage.vue'
 
 function jsonResponse(body: unknown): Response {

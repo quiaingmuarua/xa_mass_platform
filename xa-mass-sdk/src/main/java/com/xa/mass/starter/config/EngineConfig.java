@@ -1,7 +1,7 @@
 package com.xa.mass.starter.config;
 
-import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.TaskManager;
+import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.engine.rules.RuleManagerFactory;
 import com.xa.mass.engine.service.AssignmentRecordService;

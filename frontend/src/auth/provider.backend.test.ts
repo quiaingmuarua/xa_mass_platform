@@ -1,5 +1,5 @@
-import { backendAuthProvider } from '@/auth/provider.backend'
-import { setRuntimeConfigOverrides } from '@/app/config'
+import {backendAuthProvider} from '@/auth/provider.backend'
+import {setRuntimeConfigOverrides} from '@/app/config'
 
 function jsonResponse(body: unknown, status = 200): Response {
     return new Response(JSON.stringify(body), {

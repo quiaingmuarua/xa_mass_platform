@@ -1,6 +1,6 @@
-import { resetRuntimeConfigOverrides, setRuntimeConfigOverrides } from '@/app/config'
-import { getCurrentSdkSubmitter } from '@/api/sdk-submitter'
-import { getCurrentSdkSubmitterReal } from '@/api/sdk-submitter.real'
+import {resetRuntimeConfigOverrides, setRuntimeConfigOverrides} from '@/app/config'
+import {getCurrentSdkSubmitter} from '@/api/sdk-submitter'
+import {getCurrentSdkSubmitterReal} from '@/api/sdk-submitter.real'
 
 function jsonResponse(body: unknown, status = 200): Response {
     return new Response(JSON.stringify(body), {

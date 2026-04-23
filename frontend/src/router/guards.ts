@@ -1,6 +1,6 @@
-import type { Router } from 'vue-router'
-import { useAuth } from '@/auth/use-auth'
-import { canAccessRoute } from '@/utils/permissions'
+import type {Router} from 'vue-router'
+import {useAuth} from '@/auth/use-auth'
+import {canAccessRoute} from '@/utils/permissions'
 
 export function installRouterGuards(router: Router): void {
     router.beforeEach((to) => {

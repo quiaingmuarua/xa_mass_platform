@@ -1,8 +1,8 @@
 package com.xa.mass.engine.example;
 
-import com.xa.mass.base.enums.worker.WorkerStatus;
-import com.xa.mass.base.enums.worker.WorkerContextStatus;
 import com.xa.mass.base.enums.task.TaskStatus;
+import com.xa.mass.base.enums.worker.WorkerContextStatus;
+import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
@@ -11,15 +11,14 @@ import com.xa.mass.engine.model.WorkerMatchContext;
 import com.xa.mass.engine.rules.RuleDefinition;
 import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.engine.rules.RuleManagerFactory;
-import com.xa.mass.engine.storage.WorkerStorage;
 import com.xa.mass.engine.storage.TaskStorageFactory;
+import com.xa.mass.engine.storage.WorkerStorage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 
 /**
  * Simple debugging entry for rule-based worker matching.

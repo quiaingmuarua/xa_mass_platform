@@ -2,6 +2,7 @@ package com.xa.mass.base.channel.messaging.api;
 
 import com.xa.mass.base.channel.messaging.memory.InMemoryMessageStream;
 import com.xa.mass.base.channel.messaging.redis.LettuceRedisStream;
+
 import java.util.Map;
 
 public class MessageStreamFactory {
@@ -18,4 +19,4 @@ public class MessageStreamFactory {
     public static <T> MessageStream<T> create(String type, String queueKey, Class<T> messageType) {
         return create(type, queueKey, messageType, null);
     }
-} 
+}

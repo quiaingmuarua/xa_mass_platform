@@ -1,7 +1,7 @@
-import { computed, unref } from 'vue'
-import { getAuthProvider } from '@/auth/provider'
-import { useAuthState } from '@/stores/auth'
-import type { AuthUser } from '@/types/auth'
+import {computed, unref} from 'vue'
+import {getAuthProvider} from '@/auth/provider'
+import {useAuthState} from '@/stores/auth'
+import type {AuthUser} from '@/types/auth'
 
 export async function initializeAuth(): Promise<void> {
     const { setCurrentUser, markInitialized } = useAuthState()

@@ -1,4 +1,4 @@
-import { getWorkerDebugHistory, sendWorkerDebugMessage } from '@/api/workers'
+import {getWorkerDebugHistory, sendWorkerDebugMessage} from '@/api/workers'
 
 describe('workers API facade', () => {
     it('records manual debug messages through the mock adapter', async () => {

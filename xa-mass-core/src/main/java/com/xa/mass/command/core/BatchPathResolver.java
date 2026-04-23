@@ -1,10 +1,6 @@
 package com.xa.mass.command.core;
 
-import com.google.gson.JsonArray;
-import com.google.gson.JsonElement;
-import com.google.gson.JsonNull;
-import com.google.gson.JsonObject;
-import com.google.gson.JsonPrimitive;
+import com.google.gson.*;
 import com.xa.mass.command.model.CommandException;
 import com.xa.mass.command.model.ErrorCode;
 

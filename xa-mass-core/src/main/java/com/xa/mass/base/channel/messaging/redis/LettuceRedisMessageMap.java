@@ -8,10 +8,10 @@ import io.lettuce.core.api.sync.RedisHashCommands;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.Objects;
-import java.util.Collection;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * 基于Lettuce的Redis消息映射实现，底层用Redis hash存储，支持泛型和Gson序列化
@@ -37,12 +37,12 @@ public class LettuceRedisMessageMap< V> implements MessageMap<String, V> {
         this.name = queueKey + "::hash";
         this.redisKey = queueKey + "::hash";
         this.gson = new GsonBuilder().create();
-        
+
         // 对于Map，key类型默认为String，value类型为传入的messageType
         Class keyType = String.class;
         this.valueType = messageType;
-        
-        log.debug("Created LettuceRedisMessageMap: queueKey={}, keyType={}, valueType={}", 
+
+        log.debug("Created LettuceRedisMessageMap: queueKey={}, keyType={}, valueType={}",
                  queueKey, keyType.getSimpleName(), valueType.getSimpleName());
     }
 
@@ -111,4 +111,4 @@ public class LettuceRedisMessageMap< V> implements MessageMap<String, V> {
     public String getName() {
         return name;
     }
-} 
+}

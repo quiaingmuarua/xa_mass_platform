@@ -1,7 +1,7 @@
-import type { RouteRecordRaw } from 'vue-router'
-import { createRouter, createWebHistory } from 'vue-router'
-import { installRouterGuards } from '@/router/guards'
-import { appRoutes } from '@/router/routes'
+import type {RouteRecordRaw} from 'vue-router'
+import {createRouter, createWebHistory} from 'vue-router'
+import {installRouterGuards} from '@/router/guards'
+import {appRoutes} from '@/router/routes'
 
 export const router = createRouter({
     history: createWebHistory(),

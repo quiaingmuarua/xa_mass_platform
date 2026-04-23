@@ -1,7 +1,5 @@
 package com.xa.mass.mock.e2e.lifecycle;
 
-import com.xa.mass.base.enums.worker.WorkerStatus;
-import com.xa.mass.base.enums.worker.WorkerContextStatus;
 import com.xa.mass.mock.MockApplicationSpringBootApp;
 import com.xa.mass.mock.client.MassWebSocketClientImpl;
 import com.xa.mass.mock.e2e.support.AbstractMockE2eTest;
@@ -14,13 +12,10 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 
 import java.net.URI;
-import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Verifies the PAUSED → READY → RUNNING → TERMINAL path via a real resume call

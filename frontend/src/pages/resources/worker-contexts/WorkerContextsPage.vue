@@ -132,16 +132,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
-import { listWorkerContexts, listWorkers } from '@/api/workers'
+import {computed, onMounted, reactive, ref} from 'vue'
+import {listWorkerContexts, listWorkers} from '@/api/workers'
 import PageEmptyState from '@/components/PageEmptyState.vue'
 import PageErrorState from '@/components/PageErrorState.vue'
 import PageSectionSkeleton from '@/components/PageSectionSkeleton.vue'
-import type {
-  WorkerContextListItem,
-  WorkerListItem,
-} from '@/types/workers'
-import { toErrorMessage } from '@/utils/errors'
+import type {WorkerContextListItem, WorkerListItem,} from '@/types/workers'
+import {toErrorMessage} from '@/utils/errors'
 
 const loading = ref(false)
 const errorMessage = ref('')

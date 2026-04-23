@@ -138,22 +138,19 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
-import { listRules } from '@/api/rules'
-import { listTasks } from '@/api/tasks'
-import { listWorkerContexts, listWorkers } from '@/api/workers'
-import { getAppConfig } from '@/app/config'
-import { useAuth } from '@/auth/use-auth'
+import {computed, onMounted, ref} from 'vue'
+import {listRules} from '@/api/rules'
+import {listTasks} from '@/api/tasks'
+import {listWorkerContexts, listWorkers} from '@/api/workers'
+import {getAppConfig} from '@/app/config'
+import {useAuth} from '@/auth/use-auth'
 import PageEmptyState from '@/components/PageEmptyState.vue'
 import PageErrorState from '@/components/PageErrorState.vue'
 import PageSectionSkeleton from '@/components/PageSectionSkeleton.vue'
-import type { RuleListItem } from '@/types/rules'
-import type { TaskListItem } from '@/types/tasks'
-import type {
-  WorkerContextListItem,
-  WorkerListItem,
-} from '@/types/workers'
-import { toErrorMessage } from '@/utils/errors'
+import type {RuleListItem} from '@/types/rules'
+import type {TaskListItem} from '@/types/tasks'
+import type {WorkerContextListItem, WorkerListItem,} from '@/types/workers'
+import {toErrorMessage} from '@/utils/errors'
 
 const { user } = useAuth()
 

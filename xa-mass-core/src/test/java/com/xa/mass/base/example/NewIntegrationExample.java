@@ -3,11 +3,7 @@ package com.xa.mass.base.example;
 import com.xa.mass.base.jsondsl.model.JsonDslContext;
 import com.xa.mass.base.jsondsl.model.JsonDslDefinition;
 import com.xa.mass.base.jsondsl.parser.JsonDslParser;
-import com.xa.mass.base.jsondsl.processor.FilterProcessor;
-import com.xa.mass.base.jsondsl.processor.FilterResult;
-import com.xa.mass.base.jsondsl.processor.GenerateProcessor;
-import com.xa.mass.base.jsondsl.processor.ProcessingContext;
-import com.xa.mass.base.jsondsl.processor.ProcessorRegistry;
+import com.xa.mass.base.jsondsl.processor.*;
 import com.xa.mass.base.model.Worker;
 
 import java.util.Arrays;

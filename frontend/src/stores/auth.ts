@@ -1,5 +1,5 @@
-import { computed, readonly, ref } from 'vue'
-import type { AuthState, AuthUser } from '@/types/auth'
+import {computed, readonly, ref} from 'vue'
+import type {AuthState, AuthUser} from '@/types/auth'
 
 const currentUser = ref<AuthUser | null>(null)
 const initialized = ref(false)

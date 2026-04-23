@@ -1,10 +1,10 @@
-import { requestApiData } from '@/api/http'
+import {requestApiData} from '@/api/http'
 import type {
     TaskActionResult,
     TaskCreateRequest,
     TaskCreateResult,
-    TaskDetailResponse,
     TaskDetailRecord,
+    TaskDetailResponse,
     TaskListQuery,
     TaskListResponse,
     TaskMessageView,

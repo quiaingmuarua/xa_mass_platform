@@ -1,10 +1,10 @@
 import ElementPlus from 'element-plus'
-import { flushPromises, mount } from '@vue/test-utils'
-import { createMemoryHistory, createRouter } from 'vue-router'
-import { mockAdminUser } from '@/auth/mock-user'
-import { setMockCurrentUser } from '@/auth/use-auth'
+import {flushPromises, mount} from '@vue/test-utils'
+import {createMemoryHistory, createRouter} from 'vue-router'
+import {mockAdminUser} from '@/auth/mock-user'
+import {setMockCurrentUser} from '@/auth/use-auth'
 import TasksListPage from '@/pages/tasks/TasksListPage.vue'
-import { permissionDirective } from '@/auth/permission-directive'
+import {permissionDirective} from '@/auth/permission-directive'
 
 describe('TasksListPage', () => {
     it('loads mock tasks and renders the list', async () => {

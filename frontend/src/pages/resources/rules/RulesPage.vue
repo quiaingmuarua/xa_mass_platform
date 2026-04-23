@@ -80,13 +80,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
-import { getRuleMeta, listRules } from '@/api/rules'
+import {computed, onMounted, ref} from 'vue'
+import {getRuleMeta, listRules} from '@/api/rules'
 import PageEmptyState from '@/components/PageEmptyState.vue'
 import PageErrorState from '@/components/PageErrorState.vue'
 import PageSectionSkeleton from '@/components/PageSectionSkeleton.vue'
-import type { RuleListItem, RuleMetaResponse } from '@/types/rules'
-import { toErrorMessage } from '@/utils/errors'
+import type {RuleListItem, RuleMetaResponse} from '@/types/rules'
+import {toErrorMessage} from '@/utils/errors'
 
 const loading = ref(false)
 const rules = ref<RuleListItem[]>([])

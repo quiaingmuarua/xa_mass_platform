@@ -1,5 +1,5 @@
-import type { App, Directive } from 'vue'
-import { hasAnyPermission, hasPermission } from '@/utils/permissions'
+import type {App, Directive} from 'vue'
+import {hasAnyPermission, hasPermission} from '@/utils/permissions'
 
 type PermissionBinding = string | string[]
 

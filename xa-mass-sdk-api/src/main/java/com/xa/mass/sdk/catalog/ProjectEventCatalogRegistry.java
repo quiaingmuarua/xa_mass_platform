@@ -1,11 +1,6 @@
 package com.xa.mass.sdk.catalog;
 
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
+import java.util.*;
 
 /**
  * In-memory registry for SDK v1 project and event metadata.

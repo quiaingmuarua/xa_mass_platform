@@ -3,9 +3,10 @@ package com.xa.mass.base.channel.messaging;
 import com.xa.mass.base.channel.messaging.memory.InMemoryMessageQueueWithMap;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import static org.junit.jupiter.api.Assertions.*;
 
 import java.util.concurrent.TimeUnit;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * InMemoryMessageQueueWithMap 测试类
@@ -187,7 +188,7 @@ public class InMemoryMessageQueueWithMapTest {
         // 测试 getName 操作
         assertEquals("InMemoryMessageQueueWithMap", queueWithMap.getName());
 
-        InMemoryMessageQueueWithMap<String, Integer> customQueue = 
+        InMemoryMessageQueueWithMap<String, Integer> customQueue =
             new InMemoryMessageQueueWithMap<>("CustomQueueWithMap");
         assertEquals("CustomQueueWithMap", customQueue.getName());
     }
@@ -227,4 +228,4 @@ public class InMemoryMessageQueueWithMapTest {
         assertEquals(300, queueWithMap.poll(1, TimeUnit.SECONDS));
         assertEquals(400, queueWithMap.get("key2"));
     }
-} 
+}

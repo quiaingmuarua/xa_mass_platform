@@ -1,6 +1,6 @@
 import ElementPlus from 'element-plus'
-import { flushPromises, mount } from '@vue/test-utils'
-import { setRuntimeConfigOverrides } from '@/app/config'
+import {flushPromises, mount} from '@vue/test-utils'
+import {setRuntimeConfigOverrides} from '@/app/config'
 import WorkerContextsPage from '@/pages/resources/worker-contexts/WorkerContextsPage.vue'
 
 function jsonResponse(body: unknown): Response {

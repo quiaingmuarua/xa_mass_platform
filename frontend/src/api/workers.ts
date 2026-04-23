@@ -1,4 +1,4 @@
-import { getAppConfig } from '@/app/config'
+import {getAppConfig} from '@/app/config'
 import {
     getWorkerDebugHistoryMock,
     listWorkerContextsMock,
@@ -14,10 +14,10 @@ import {
     updateWorkerSupportedProjectsReal,
 } from '@/api/workers.real'
 import type {
+    WorkerContextListResponse,
     WorkerDebugHistoryResponse,
     WorkerDebugSendRequest,
     WorkerDebugSendResult,
-    WorkerContextListResponse,
     WorkerListResponse,
 } from '@/types/workers'
 

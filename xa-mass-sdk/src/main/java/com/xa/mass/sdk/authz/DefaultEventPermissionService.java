@@ -2,10 +2,6 @@ package com.xa.mass.sdk.authz;
 
 import com.xa.mass.command.event.CoreEventDescriptor;
 import com.xa.mass.command.event.MassEventRuntime;
-import com.xa.mass.sdk.authz.AuthorizationDecision;
-import com.xa.mass.sdk.authz.ClientPermissionProvider;
-import com.xa.mass.sdk.authz.EventPermissionService;
-import com.xa.mass.sdk.authz.UserPermissionProvider;
 import com.xa.mass.sdk.catalog.EventMetadata;
 import com.xa.mass.sdk.catalog.ProjectEventCatalog;
 import com.xa.mass.sdk.catalog.ProjectMetadata;

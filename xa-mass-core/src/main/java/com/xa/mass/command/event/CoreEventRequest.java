@@ -3,7 +3,6 @@ package com.xa.mass.command.event;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.Objects;
 
 /**
  * Core runtime event request.

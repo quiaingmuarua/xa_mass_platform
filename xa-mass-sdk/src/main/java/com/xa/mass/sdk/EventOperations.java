@@ -1,9 +1,9 @@
 package com.xa.mass.sdk;
 
+import com.xa.mass.sdk.catalog.EventMetadata;
 import com.xa.mass.sdk.event.EventPrincipal;
 import com.xa.mass.sdk.event.EventRequest;
 import com.xa.mass.sdk.event.EventResponse;
-import com.xa.mass.sdk.catalog.EventMetadata;
 
 import java.util.List;
 

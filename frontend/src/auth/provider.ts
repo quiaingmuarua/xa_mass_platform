@@ -1,7 +1,7 @@
-import { getAppConfig } from '@/app/config'
-import { backendAuthProvider } from '@/auth/provider.backend'
-import { mockAuthProvider } from '@/auth/provider.mock'
-import type { AuthUser } from '@/types/auth'
+import {getAppConfig} from '@/app/config'
+import {backendAuthProvider} from '@/auth/provider.backend'
+import {mockAuthProvider} from '@/auth/provider.mock'
+import type {AuthUser} from '@/types/auth'
 
 export interface AuthProvider {
     loadCurrentUser(): Promise<AuthUser | null>

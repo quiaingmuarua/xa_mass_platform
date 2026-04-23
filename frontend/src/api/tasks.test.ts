@@ -1,4 +1,4 @@
-import { createTask, getTaskDetail, listTasks } from '@/api/tasks'
+import {createTask, getTaskDetail, listTasks} from '@/api/tasks'
 
 describe('tasks API facade', () => {
     it('creates a task through the mock adapter and exposes it in list and detail reads', async () => {

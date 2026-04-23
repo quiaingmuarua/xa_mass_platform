@@ -1,9 +1,9 @@
-import type { RouteRecordRaw } from 'vue-router'
-import { createMemoryHistory, createRouter } from 'vue-router'
-import { mockViewerUser } from '@/auth/mock-user'
-import { resetMockAuth, setMockCurrentUser } from '@/auth/use-auth'
-import { installRouterGuards } from '@/router/guards'
-import { appRoutes } from '@/router/routes'
+import type {RouteRecordRaw} from 'vue-router'
+import {createMemoryHistory, createRouter} from 'vue-router'
+import {mockViewerUser} from '@/auth/mock-user'
+import {resetMockAuth, setMockCurrentUser} from '@/auth/use-auth'
+import {installRouterGuards} from '@/router/guards'
+import {appRoutes} from '@/router/routes'
 
 describe('router guards', () => {
     afterEach(() => {

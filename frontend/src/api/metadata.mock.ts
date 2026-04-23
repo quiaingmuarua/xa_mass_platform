@@ -1,4 +1,4 @@
-import type { EventMetadata, ProjectMetadata } from '@/types/metadata'
+import type {EventMetadata, ProjectMetadata} from '@/types/metadata'
 
 const mockProjects: ProjectMetadata[] = [
     {

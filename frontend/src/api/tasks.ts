@@ -1,4 +1,4 @@
-import { getAppConfig } from '@/app/config'
+import {getAppConfig} from '@/app/config'
 import {
     auditTaskMock,
     blockTaskMock,
@@ -10,13 +10,11 @@ import {
     terminateTaskMock,
 } from '@/api/tasks.mock'
 import {
+    auditTaskReal,
+    blockTaskReal,
     createTaskReal,
     getTaskDetailReal,
     listTasksReal,
-} from '@/api/tasks.real'
-import {
-    auditTaskReal,
-    blockTaskReal,
     pauseTaskReal,
     resumeTaskReal,
     terminateTaskReal,

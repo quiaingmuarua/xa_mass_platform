@@ -1,4 +1,4 @@
-import { getAppConfig } from '@/app/config'
+import {getAppConfig} from '@/app/config'
 import {
     getEventMetadataMock,
     getProjectMetadataMock,
@@ -13,7 +13,7 @@ import {
     listProjectEventMetadataReal,
     listProjectMetadataReal,
 } from '@/api/metadata.real'
-import type { EventMetadata, ProjectMetadata } from '@/types/metadata'
+import type {EventMetadata, ProjectMetadata} from '@/types/metadata'
 
 export async function listProjectMetadata(): Promise<ProjectMetadata[]> {
     if (getAppConfig().useMockApi) {

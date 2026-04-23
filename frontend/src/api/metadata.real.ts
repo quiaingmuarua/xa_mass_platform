@@ -1,5 +1,5 @@
-import { requestApiData } from '@/api/http'
-import type { EventMetadata, ProjectMetadata } from '@/types/metadata'
+import {requestApiData} from '@/api/http'
+import type {EventMetadata, ProjectMetadata} from '@/types/metadata'
 
 export async function listProjectMetadataReal(): Promise<ProjectMetadata[]> {
     return requestApiData<ProjectMetadata[]>('/sdk/meta/projects')

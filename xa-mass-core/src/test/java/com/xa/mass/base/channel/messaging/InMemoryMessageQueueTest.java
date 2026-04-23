@@ -3,9 +3,10 @@ package com.xa.mass.base.channel.messaging;
 import com.xa.mass.base.channel.messaging.memory.InMemoryMessageQueue;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import static org.junit.jupiter.api.Assertions.*;
 
 import java.util.concurrent.TimeUnit;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * InMemoryMessageQueue 测试类
@@ -167,20 +168,20 @@ public class InMemoryMessageQueueTest {
     void testLargeNumberOfMessages() throws InterruptedException {
         // 测试大量消息
         int messageCount = 10000;
-        
+
         // 生产消息
         for (int i = 0; i < messageCount; i++) {
             messageQueue.offer("message_" + i);
         }
-        
+
         assertEquals(messageCount, messageQueue.size());
-        
+
         // 消费消息
         for (int i = 0; i < messageCount; i++) {
             String message = messageQueue.poll(1, TimeUnit.SECONDS);
             assertEquals("message_" + i, message);
         }
-        
+
         assertEquals(0, messageQueue.size());
         assertTrue(messageQueue.isEmpty());
     }
@@ -222,4 +223,4 @@ public class InMemoryMessageQueueTest {
         testThread.interrupt();
         testThread.join();
     }
-} 
+}

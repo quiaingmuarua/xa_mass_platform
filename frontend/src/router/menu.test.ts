@@ -1,7 +1,7 @@
-import { mockAdminUser, mockViewerUser } from '@/auth/mock-user'
-import { resetMockAuth, setMockCurrentUser } from '@/auth/use-auth'
-import { buildMenuTree } from '@/router/menu'
-import { appRoutes } from '@/router/routes'
+import {mockAdminUser, mockViewerUser} from '@/auth/mock-user'
+import {resetMockAuth, setMockCurrentUser} from '@/auth/use-auth'
+import {buildMenuTree} from '@/router/menu'
+import {appRoutes} from '@/router/routes'
 
 describe('menu filtering', () => {
     afterEach(() => {

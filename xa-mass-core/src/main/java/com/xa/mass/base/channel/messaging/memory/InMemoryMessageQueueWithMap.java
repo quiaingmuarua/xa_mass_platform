@@ -3,11 +3,7 @@ package com.xa.mass.base.channel.messaging.memory;
 import com.xa.mass.base.channel.messaging.api.MessageQueueWithMap;
 
 import java.util.Objects;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 
 /**
  * 内存实现的双队列（队列+映射）消息存储
@@ -93,4 +89,4 @@ public class InMemoryMessageQueueWithMap<K, V> implements MessageQueueWithMap<K,
     public int getMapSize() {
         return map.size();
     }
-} 
+}

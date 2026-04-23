@@ -510,23 +510,19 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
-import { listEventMetadata, listProjectMetadata } from '@/api/metadata'
-import { getCurrentSdkSubmitter } from '@/api/sdk-submitter'
-import { listWorkers } from '@/api/workers'
+import {computed, onMounted, ref, watch} from 'vue'
+import {useRouter} from 'vue-router'
+import {listEventMetadata, listProjectMetadata} from '@/api/metadata'
+import {getCurrentSdkSubmitter} from '@/api/sdk-submitter'
+import {listWorkers} from '@/api/workers'
 import PageEmptyState from '@/components/PageEmptyState.vue'
 import PageErrorState from '@/components/PageErrorState.vue'
 import PageSectionSkeleton from '@/components/PageSectionSkeleton.vue'
-import type { EventMetadata, ProjectMetadata } from '@/types/metadata'
-import type { SdkSubmitterSnapshot } from '@/types/sdk-submitter'
-import type { WorkerListItem } from '@/types/workers'
-import { toErrorMessage } from '@/utils/errors'
-import {
-  resolveTaskStarterDraft,
-  stringifyStarterInputs,
-  stringifyStarterSharedConfig,
-} from '@/utils/task-starters'
+import type {EventMetadata, ProjectMetadata} from '@/types/metadata'
+import type {SdkSubmitterSnapshot} from '@/types/sdk-submitter'
+import type {WorkerListItem} from '@/types/workers'
+import {toErrorMessage} from '@/utils/errors'
+import {resolveTaskStarterDraft, stringifyStarterInputs, stringifyStarterSharedConfig,} from '@/utils/task-starters'
 
 const ALL_PROJECTS = 'ALL'
 const TAG_LIMIT = 4

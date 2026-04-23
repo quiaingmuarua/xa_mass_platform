@@ -1,5 +1,5 @@
-import type { AppRouteMeta } from '@/types/routes'
-import { useAuth } from '@/auth/use-auth'
+import type {AppRouteMeta} from '@/types/routes'
+import {useAuth} from '@/auth/use-auth'
 
 export function hasPermission(permission: string): boolean {
     const { user } = useAuth()

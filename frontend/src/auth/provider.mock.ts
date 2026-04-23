@@ -1,5 +1,5 @@
-import { mockAdminUser } from '@/auth/mock-user'
-import type { AuthProvider } from '@/auth/provider'
+import {mockAdminUser} from '@/auth/mock-user'
+import type {AuthProvider} from '@/auth/provider'
 
 export const mockAuthProvider: AuthProvider = {
     async loadCurrentUser() {
