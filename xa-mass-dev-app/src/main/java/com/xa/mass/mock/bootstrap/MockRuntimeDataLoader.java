@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.xa.mass.base.enums.worker.WorkerContextStatus;
+import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.model.TaskCreateRequestDto;
@@ -11,6 +12,8 @@ import com.xa.mass.engine.rules.RuleDefinition;
 import com.xa.mass.sdk.MassBootstrapDataProvider;
 import com.xa.mass.sdk.MassRuntimeControl;
 import com.xa.mass.sdk.model.MassTaskCreateRequest;
+import com.xa.mass.sdk.model.WorkerContextRegistration;
+import com.xa.mass.sdk.model.WorkerRegistration;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -25,7 +28,7 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * Dev-app bootstrap data loader.
+ * Dev-app fixture data loader.
  *
  * <p>Reads plain JSON config files and registers workers, contexts, rules, and
  * tasks into the SDK runtime. No mock data generation — all definitions are
@@ -74,7 +77,11 @@ public class MockRuntimeDataLoader implements MassBootstrapDataProvider {
         }
         for (Worker worker : workers) {
             normalizeWorker(worker);
-            runtime.addWorker(worker);
+            if (worker.getStatus() != WorkerStatus.OFFLINE) {
+                runtime.addWorker(worker);
+            } else {
+                runtime.registerWorker(toRegistration(worker));
+            }
         }
         logger.info("Loaded {} workers [path={}]", workers.length, workerConfigPath);
     }
@@ -93,7 +100,11 @@ public class MockRuntimeDataLoader implements MassBootstrapDataProvider {
                 logger.warn("Skipping worker context {} - workerId missing", ctx.getWorkerContextId());
                 continue;
             }
-            runtime.addWorkerContext(ctx);
+            if (ctx.getStatus() != WorkerContextStatus.IDLE) {
+                runtime.addWorkerContext(ctx);
+            } else {
+                runtime.registerWorkerContext(toRegistration(ctx));
+            }
             accepted++;
         }
         logger.info("Loaded {} worker contexts [path={}]", accepted, workerContextConfigPath);
@@ -174,6 +185,28 @@ public class MockRuntimeDataLoader implements MassBootstrapDataProvider {
         if (workerContext.getStatus() == null) {
             workerContext.setStatus(WorkerContextStatus.IDLE);
         }
+    }
+
+    private WorkerRegistration toRegistration(Worker worker) {
+        return WorkerRegistration.builder()
+                .workerId(worker.getWorkerId())
+                .workerGroupId(worker.getWorkerGroupId())
+                .supportedProjects(worker.getSupportedProjects())
+                .transportHint(worker.getOnlineStrategy())
+                .attributes(worker.getAttributes())
+                .build();
+    }
+
+    private WorkerContextRegistration toRegistration(WorkerContext workerContext) {
+        WorkerContextRegistration.Builder builder = WorkerContextRegistration.builder()
+                .workerContextId(workerContext.getWorkerContextId())
+                .workerId(workerContext.getWorkerId())
+                .routingTags(workerContext.getRoutingTags())
+                .attributes(workerContext.getAttributes());
+        if (workerContext.getProject() != null && !workerContext.getProject().isBlank()) {
+            builder.project(workerContext.getProject());
+        }
+        return builder.build();
     }
 
     private String readConfigFile(String configPath) throws IOException {

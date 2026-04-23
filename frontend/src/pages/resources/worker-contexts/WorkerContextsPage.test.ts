@@ -28,8 +28,9 @@ describe('WorkerContextsPage', () => {
                                     {
                                         workerContextId: 'ctx-us-01',
                                         workerId: 'worker-us-01',
+                                        project: 'demoApp',
                                         status: 'OCCUPIED',
-                                        channel: 'telegram',
+                                        routingTags: ['primary'],
                                         attributes: { account: 'ops-us-a' },
                                         lastBindTaskId: 'task-001',
                                         lastUsedTime: '2026-04-21 09:44:00',

@@ -29,7 +29,6 @@ describe('tasks.real', () => {
                             id: 'task-001',
                             taskName: 'Warm worker pool',
                             project: 'demoApp',
-                            routingCode: 'us',
                             status: 'RUNNING',
                             terminalReason: null,
                             successCount: 6,
@@ -100,9 +99,7 @@ describe('tasks.real', () => {
                             status: 'RUNNING',
                             terminalReason: null,
                             batchSize: 2,
-                            sharedConfig: {
-                                routingCode: 'us',
-                            },
+                            sharedConfig: {},
                             user: null,
                             taskTargetNumber: 10,
                             taskEligibleNumber: 10,

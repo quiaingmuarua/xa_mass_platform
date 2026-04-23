@@ -125,7 +125,6 @@
               </el-tag>
             </template>
           </el-table-column>
-          <el-table-column prop="routingCode" label="Routing" min-width="120" />
           <el-table-column label="Progress" min-width="160">
             <template #default="{ row }">
               {{ row.successCount }} / {{ row.eligibleCount }}

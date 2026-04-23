@@ -5,7 +5,8 @@
         <h2 class="page-title">Task List</h2>
         <p class="page-subtitle">
           Core orchestration list view. This page intentionally centers task
-          state, routing, and progress instead of generic CRUD boilerplate.
+          state, project binding, and progress instead of generic CRUD
+          boilerplate.
         </p>
       </div>
       <el-button
@@ -62,7 +63,6 @@
           </template>
         </el-table-column>
         <el-table-column prop="project" label="Project" min-width="130" />
-        <el-table-column prop="routingCode" label="Routing" min-width="120" />
         <el-table-column prop="status" label="Status" min-width="120">
           <template #default="{ row }">
             <el-tag :type="tagForStatus(row.status)">{{ row.status }}</el-tag>
@@ -147,7 +147,7 @@
             <el-form-item label="Task name" required>
               <el-input
                 v-model="createForm.taskName"
-                placeholder="Warm worker pool for us-routing"
+                placeholder="Warm worker pool"
               />
             </el-form-item>
           </el-col>
@@ -174,12 +174,7 @@
         </el-row>
 
         <el-row :gutter="16">
-          <el-col :span="8">
-            <el-form-item label="Routing code">
-              <el-input v-model="createForm.routingCode" placeholder="us" />
-            </el-form-item>
-          </el-col>
-          <el-col :span="8">
+          <el-col :span="12">
             <el-form-item label="Batch size">
               <el-input-number
                 v-model="createForm.batchSize"
@@ -189,7 +184,7 @@
               />
             </el-form-item>
           </el-col>
-          <el-col :span="8">
+          <el-col :span="12">
             <el-form-item label="Max retry count">
               <el-input-number
                 v-model="createForm.defaultMsgMaxRetryCount"
@@ -245,11 +240,11 @@
             type="textarea"
             :rows="6"
             placeholder='Optional JSON object, for example:
-{"textContent":"hello","channel":"telegram"}'
+{"textContent":"hello","objective":"smoke"}'
           />
           <div class="field-hint">
-            Optional task-level config object. The routing field above is
-            submitted as `sharedConfig.routingCode`.
+            Optional task-level config object. Keep scenario-specific labels
+            here only when the backend/runtime contract requires them.
           </div>
         </el-form-item>
       </el-form>
@@ -304,7 +299,6 @@ const filters = reactive({
 const createForm = reactive({
   taskName: '',
   project: '',
-  routingCode: '',
   batchSize: 1,
   defaultMsgMaxRetryCount: 3,
   openEnded: false,
@@ -396,7 +390,6 @@ function openCreateDialog(): void {
 function resetCreateForm(): void {
   createForm.taskName = ''
   createForm.project = projectOptions.value[0] ?? ''
-  createForm.routingCode = ''
   createForm.batchSize = 1
   createForm.defaultMsgMaxRetryCount = 3
   createForm.openEnded = false
@@ -415,7 +408,6 @@ function maybeOpenCreateDialogFromQuery(): void {
     create: route.query.create,
     project: route.query.project,
     taskName: route.query.taskName,
-    routingCode: route.query.routingCode,
     eventCode: route.query.eventCode,
   })
 
@@ -445,7 +437,6 @@ function applyCreateDraftFromQuery(): void {
 
   createForm.project = starter.projectCode
   createForm.taskName = starter.taskName
-  createForm.routingCode = starter.routingCode
   createForm.batchSize = starter.batchSize
   createForm.defaultMsgMaxRetryCount = starter.defaultMsgMaxRetryCount
   createForm.openEnded = starter.openEnded
@@ -458,10 +449,6 @@ function applyCreateDraftFromQuery(): void {
 
   if (typeof route.query.taskName === 'string') {
     createForm.taskName = route.query.taskName
-  }
-
-  if (typeof route.query.routingCode === 'string') {
-    createForm.routingCode = route.query.routingCode
   }
 }
 
@@ -496,7 +483,6 @@ async function handleCreate(): Promise<void> {
 function buildCreateRequest(): TaskCreateRequest {
   const taskName = createForm.taskName.trim()
   const project = createForm.project.trim()
-  const routingCode = createForm.routingCode.trim()
 
   if (!taskName) {
     throw new Error('Task name is required.')
@@ -510,16 +496,11 @@ function buildCreateRequest(): TaskCreateRequest {
     createForm.sharedConfigText,
     'Shared config',
   )
-  const requestSharedConfig =
-    routingCode.length > 0
-      ? { ...sharedConfig, routingCode }
-      : sharedConfig
-
   return {
     userId: currentOperatorId.value,
     project,
     taskName,
-    sharedConfig: requestSharedConfig,
+    sharedConfig,
     inputs,
     batchSize: Math.max(1, Number(createForm.batchSize) || 1),
     defaultMsgMaxRetryCount: Math.max(

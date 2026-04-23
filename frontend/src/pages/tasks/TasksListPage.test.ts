@@ -31,7 +31,7 @@ describe('TasksListPage', () => {
         await new Promise((resolve) => window.setTimeout(resolve, 100))
         await flushPromises()
 
-        expect(wrapper.text()).toContain('Warm worker pool for us-routing')
+        expect(wrapper.text()).toContain('Warm worker pool')
         expect(wrapper.text()).toContain('Review failed delivery backlog')
     })
 
@@ -44,7 +44,7 @@ describe('TasksListPage', () => {
         })
 
         await router.push(
-            '/?create=1&project=demoApp&taskName=Send%20demo%20message&eventCode=demo.message.send',
+            '/?create=1&project=demoApp&taskName=Run%20demo%20dispatch&eventCode=demo.dispatch.run',
         )
         await router.isReady()
 
@@ -72,7 +72,6 @@ describe('TasksListPage', () => {
                     createForm: {
                         taskName: string
                         project: string
-                        routingCode: string
                         batchSize: number
                         sharedConfigText: string
                         inputsText: string
@@ -83,13 +82,12 @@ describe('TasksListPage', () => {
         ).setupState
 
         expect(setupState.createDialogVisible).toBe(true)
-        expect(setupState.starterEventCode).toBe('demo.message.send')
-        expect(setupState.createForm.taskName).toBe('Send demo message')
+        expect(setupState.starterEventCode).toBe('demo.dispatch.run')
+        expect(setupState.createForm.taskName).toBe('Run demo dispatch')
         expect(setupState.createForm.project).toBe('demoApp')
-        expect(setupState.createForm.routingCode).toBe('us')
         expect(setupState.createForm.batchSize).toBe(1)
         expect(setupState.createForm.sharedConfigText).toContain(
-            'hello from demo.message.send',
+            'hello from demo.dispatch.run',
         )
         expect(setupState.createForm.inputsText).toContain('"recipient":"alpha"')
         expect(setupState.starterGuidance.length).toBeGreaterThan(0)

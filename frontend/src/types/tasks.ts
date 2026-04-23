@@ -2,7 +2,6 @@ export interface TaskListItem {
     id: string
     taskName: string
     project: string
-    routingCode: string
     status: 'NEW' | 'READY' | 'RUNNING' | 'PAUSED' | 'BLOCKED' | 'TERMINAL'
     terminalReason: string | null
     successCount: number

@@ -192,6 +192,14 @@ public class MockApplicationSpringBootApp {
                 .payloadTypes(List.of(PayloadType.JSON))
                 .taskModes(List.of(TaskMode.SINGLE_RUN, TaskMode.STREAMING))
                 .build());
+        registry.registerEvent(EventMetadata.builder()
+                .code("crawler.fetch-page")
+                .name("Crawler Fetch Page")
+                .description("Dispatch a crawler fetch request to an SDK-created pull worker.")
+                .defaultRoutingCode("us")
+                .payloadTypes(List.of(PayloadType.JSON))
+                .taskModes(List.of(TaskMode.SINGLE_RUN, TaskMode.STREAMING))
+                .build());
 
         registry.registerProject(ProjectMetadata.builder()
                 .code("demoApp")
@@ -212,6 +220,12 @@ public class MockApplicationSpringBootApp {
                 .name("Other App")
                 .description("Secondary demo project served by pool-a (US) and pool-b (GB) workers.")
                 .eventCodes(List.of("demo.dispatch", "demo.dispatch.gb"))
+                .build());
+        registry.registerProject(ProjectMetadata.builder()
+                .code("crawlerApp")
+                .name("Crawler")
+                .description("Crawler worker lab project for SDK-created pull worker scenarios.")
+                .eventCodes(List.of("crawler.fetch-page"))
                 .build());
 
         return registry;

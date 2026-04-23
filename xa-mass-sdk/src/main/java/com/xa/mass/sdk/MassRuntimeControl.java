@@ -7,6 +7,8 @@ import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.rules.RuleDefinition;
 import com.xa.mass.sdk.model.MassTaskCreateRequest;
+import com.xa.mass.sdk.model.WorkerContextRegistration;
+import com.xa.mass.sdk.model.WorkerRegistration;
 
 import java.util.Collection;
 import java.util.List;
@@ -73,13 +75,26 @@ public interface MassRuntimeControl {
     // --- Worker management ---
 
     /**
-     * Register an online worker with the embedded runtime.
+     * Register worker identity and capabilities. The worker remains OFFLINE
+     * until a transport connect/heartbeat event marks it online.
      */
+    void registerWorker(WorkerRegistration request);
+
+    /**
+     * Register an allocatable worker context. The context starts IDLE.
+     */
+    void registerWorkerContext(WorkerContextRegistration request);
+
+    /**
+     * @deprecated Prefer {@link #registerWorker(WorkerRegistration)} for SDK callers.
+     */
+    @Deprecated(forRemoval = false)
     void addWorker(Worker worker);
 
     /**
-     * Register a worker context when the runtime uses contextual lanes.
+     * @deprecated Prefer {@link #registerWorkerContext(WorkerContextRegistration)} for SDK callers.
      */
+    @Deprecated(forRemoval = false)
     void addWorkerContext(WorkerContext workerContext);
 
     // --- Rule management ---

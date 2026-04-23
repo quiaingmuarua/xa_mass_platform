@@ -35,6 +35,8 @@ import com.xa.mass.gateway.queue.MessageCodec;
 import com.xa.mass.sdk.model.MassTaskCreateRequest;
 import com.xa.mass.sdk.model.MassTaskRequest;
 import com.xa.mass.sdk.model.MassTaskRequestMapper;
+import com.xa.mass.sdk.model.WorkerContextRegistration;
+import com.xa.mass.sdk.model.WorkerRegistration;
 import com.xa.mass.sdk.worker.PullWorkerSession;
 import com.xa.mass.sdk.worker.PollingWorkerSession;
 import com.xa.mass.starter.MassEngine;
@@ -216,10 +218,30 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
     }
 
     @Override
+    public void registerWorker(WorkerRegistration request) {
+        requireStartedEngine().addWorker(toWorker(request));
+    }
+
+    @Override
+    public void registerWorkerContext(WorkerContextRegistration request) {
+        requireStartedEngine().addWorkerContext(toWorkerContext(request));
+    }
+
+    /**
+     * @deprecated Prefer {@link #registerWorker(WorkerRegistration)} so SDK callers
+     * do not need to construct core runtime models directly.
+     */
+    @Deprecated(forRemoval = false)
+    @Override
     public void addWorker(Worker worker) {
         requireStartedEngine().addWorker(worker);
     }
 
+    /**
+     * @deprecated Prefer {@link #registerWorkerContext(WorkerContextRegistration)} so
+     * SDK callers do not need to construct core runtime models directly.
+     */
+    @Deprecated(forRemoval = false)
     @Override
     public void addWorkerContext(WorkerContext workerContext) {
         requireStartedEngine().addWorkerContext(workerContext);
@@ -503,6 +525,39 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
         dto.setOpenEnded(request.isOpenEnded());
         dto.setMaxRuntimeSeconds(request.getMaxRuntimeSeconds());
         return dto;
+    }
+
+    private Worker toWorker(WorkerRegistration request) {
+        Objects.requireNonNull(request, "request");
+        if (request.getWorkerId() == null || request.getWorkerId().isBlank()) {
+            throw new IllegalArgumentException("workerId must not be blank");
+        }
+        Worker worker = new Worker();
+        worker.setWorkerId(request.getWorkerId());
+        worker.setWorkerGroupId(request.getWorkerGroupId());
+        worker.setSupportedProjects(request.getSupportedProjects());
+        worker.setOnlineStrategy(request.getTransportHint());
+        worker.setAttributes(request.getAttributes());
+        return worker;
+    }
+
+    private WorkerContext toWorkerContext(WorkerContextRegistration request) {
+        Objects.requireNonNull(request, "request");
+        if (request.getWorkerContextId() == null || request.getWorkerContextId().isBlank()) {
+            throw new IllegalArgumentException("workerContextId must not be blank");
+        }
+        if (request.getWorkerId() == null || request.getWorkerId().isBlank()) {
+            throw new IllegalArgumentException("workerId must not be blank");
+        }
+        WorkerContext workerContext = new WorkerContext();
+        workerContext.setWorkerContextId(request.getWorkerContextId());
+        workerContext.setWorkerId(request.getWorkerId());
+        if (request.getProject() != null && !request.getProject().isBlank()) {
+            workerContext.setProject(request.getProject());
+        }
+        workerContext.setRoutingTags(request.getRoutingTags());
+        workerContext.setAttributes(request.getAttributes());
+        return workerContext;
     }
 
     private TaskManager requireStartedTaskManager() {

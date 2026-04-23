@@ -11,9 +11,8 @@ import type {
 const mockTaskList: TaskListItem[] = [
     {
         id: 'task-001',
-        taskName: 'Warm worker pool for us-routing',
+        taskName: 'Warm worker pool',
         project: 'demoApp',
-        routingCode: 'us',
         status: 'RUNNING',
         terminalReason: null,
         successCount: 6,
@@ -25,7 +24,6 @@ const mockTaskList: TaskListItem[] = [
         id: 'task-002',
         taskName: 'Review failed delivery backlog',
         project: 'demoApp',
-        routingCode: 'sg',
         status: 'PAUSED',
         terminalReason: null,
         successCount: 2,
@@ -37,7 +35,6 @@ const mockTaskList: TaskListItem[] = [
         id: 'task-003',
         taskName: 'Daily worker session refresh',
         project: 'testApp',
-        routingCode: 'eu',
         status: 'TERMINAL',
         terminalReason: 'ALL_MESSAGES_SUCCEEDED',
         successCount: 12,
@@ -51,7 +48,7 @@ const mockTaskDetails: Record<string, TaskDetailResponse> = {
     'task-001': {
         task: {
             tid: 'task-001',
-            taskName: 'Warm worker pool for us-routing',
+            taskName: 'Warm worker pool',
             project: 'demoApp',
             status: 'RUNNING',
             terminalReason: null,
@@ -59,7 +56,6 @@ const mockTaskDetails: Record<string, TaskDetailResponse> = {
             sharedConfig: {
                 objective: 'stabilize dispatch throughput',
                 targetConcurrency: 4,
-                routingCode: 'us',
             },
             user: {
                 name: 'ops-admin',
@@ -126,7 +122,6 @@ const mockTaskDetails: Record<string, TaskDetailResponse> = {
             batchSize: 1,
             sharedConfig: {
                 objective: 'manual review of retry-heavy messages',
-                routingCode: 'sg',
             },
             user: {
                 name: 'ops-admin',
@@ -161,7 +156,6 @@ const mockTaskDetails: Record<string, TaskDetailResponse> = {
             batchSize: 3,
             sharedConfig: {
                 objective: 'session rotation',
-                routingCode: 'eu',
             },
             user: {
                 name: 'ops-admin',
@@ -235,10 +229,6 @@ export async function createTaskMock(
     const createdAt = new Date().toISOString().slice(0, 19).replace('T', ' ')
     const normalizedSharedConfig = request.sharedConfig ?? {}
     const normalizedInputs = request.inputs ?? []
-    const routingCode =
-        typeof normalizedSharedConfig.routingCode === 'string'
-            ? normalizedSharedConfig.routingCode
-            : ''
 
     if (normalizedInputs.length === 0) {
         throw new Error('inputs must contain at least one work item')
@@ -248,7 +238,6 @@ export async function createTaskMock(
         id: taskId,
         taskName: request.taskName,
         project: request.project,
-        routingCode,
         status: 'NEW',
         terminalReason: null,
         successCount: 0,

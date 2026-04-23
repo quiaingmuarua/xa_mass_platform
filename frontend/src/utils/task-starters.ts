@@ -2,7 +2,6 @@ export interface TaskStarterDraft {
     projectCode: string
     eventCode?: string
     taskName: string
-    routingCode: string
     batchSize: number
     defaultMsgMaxRetryCount: number
     openEnded: boolean
@@ -14,7 +13,6 @@ export interface TaskStarterDraft {
 
 interface TaskStarterOverride {
     taskName?: string
-    routingCode?: string
     batchSize?: number
     defaultMsgMaxRetryCount?: number
     openEnded?: boolean
@@ -31,44 +29,40 @@ interface TaskStarterDefinition extends TaskStarterDraft {
 const taskStarterDefinitions: Record<string, TaskStarterDefinition> = {
     demoApp: {
         projectCode: 'demoApp',
-        taskName: 'Warm demo dispatch lane',
-        routingCode: 'us',
+        taskName: 'Run demo dispatch task',
         batchSize: 1,
         defaultMsgMaxRetryCount: 3,
         openEnded: false,
         maxRuntimeSeconds: 0,
         sharedConfig: {
             textContent: 'hello from control console',
-            channel: 'demo',
+            objective: 'verify dispatch path',
         },
         inputs: [
             { target: 'demo-target-001' },
             { target: 'demo-target-002' },
         ],
         guidance: [
-            'Use Task.sharedConfig for common dispatch payload such as text or channel.',
-            'Keep per-work-item identifiers inside inputs; do not reintroduce targetList.',
+            'Use Task.sharedConfig only for task-level shared payload or options.',
+            'Keep per-work-item identity and execution hints inside inputs.',
         ],
         eventOverrides: {
-            'demo.message.send': {
-                taskName: 'Send demo message',
+            'demo.dispatch.run': {
+                taskName: 'Run demo dispatch',
                 sharedConfig: {
-                    textContent: 'hello from demo.message.send',
-                    channel: 'demo',
+                    textContent: 'hello from demo.dispatch.run',
+                    objective: 'run generic dispatch payload',
                 },
                 inputs: [
                     { target: 'demo-target-001', recipient: 'alpha' },
                     { target: 'demo-target-002', recipient: 'beta' },
                 ],
-                guidance: [
-                    'This starter assumes a send-style event; keep recipient identity in each input.',
-                ],
             },
-            'demo.message.audit': {
-                taskName: 'Audit demo message',
+            'demo.dispatch.audit': {
+                taskName: 'Audit demo dispatch',
                 sharedConfig: {
                     auditMode: 'summary',
-                    expectedEvent: 'demo.message.send',
+                    expectedEvent: 'demo.dispatch.run',
                 },
                 inputs: [
                     {
@@ -77,74 +71,19 @@ const taskStarterDefinitions: Record<string, TaskStarterDefinition> = {
                         expectedStatus: 'SUCCESS',
                     },
                 ],
-                guidance: [
-                    'Audit-style tasks should point at prior execution artifacts through input fields.',
-                ],
-            },
-        },
-    },
-    telegramApp: {
-        projectCode: 'telegramApp',
-        taskName: 'Send Telegram message',
-        routingCode: 'sg',
-        batchSize: 1,
-        defaultMsgMaxRetryCount: 3,
-        openEnded: false,
-        maxRuntimeSeconds: 300,
-        sharedConfig: {
-            channel: 'telegram',
-            textContent: 'hello from telegram starter',
-        },
-        inputs: [
-            { target: 'chat-001', chatId: 'chat-001' },
-        ],
-        guidance: [
-            'Telegram tasks usually carry channel metadata in sharedConfig and chat/session identifiers in inputs.',
-        ],
-        eventOverrides: {
-            'telegram.message.send': {
-                taskName: 'Send Telegram message',
-                sharedConfig: {
-                    channel: 'telegram',
-                    textContent: 'hello from telegram.message.send',
-                },
-                inputs: [
-                    {
-                        target: 'chat-001',
-                        chatId: 'chat-001',
-                        parseMode: 'Markdown',
-                    },
-                ],
-            },
-            'telegram.session.refresh': {
-                taskName: 'Refresh Telegram session',
-                sharedConfig: {
-                    channel: 'telegram',
-                    operation: 'session-refresh',
-                },
-                inputs: [
-                    {
-                        target: 'session-001',
-                        sessionId: 'session-001',
-                        account: 'ops-sg-a',
-                    },
-                ],
-                guidance: [
-                    'Session refresh tasks are usually single-item operational tasks tied to one context or account.',
-                ],
             },
         },
     },
     testApp: {
         projectCode: 'testApp',
         taskName: 'Run smoke validation',
-        routingCode: 'local',
         batchSize: 1,
         defaultMsgMaxRetryCount: 1,
         openEnded: false,
         maxRuntimeSeconds: 60,
         sharedConfig: {
             textContent: 'smoke',
+            objective: 'local validation',
         },
         inputs: [
             { target: 'smoke-target-001' },
@@ -159,6 +98,21 @@ const taskStarterDefinitions: Record<string, TaskStarterDefinition> = {
                 inputs: [{ target: 'smoke-target-001' }],
             },
         },
+    },
+    otherApp: {
+        projectCode: 'otherApp',
+        taskName: 'Run other app dispatch task',
+        batchSize: 1,
+        defaultMsgMaxRetryCount: 3,
+        openEnded: false,
+        maxRuntimeSeconds: 0,
+        sharedConfig: {
+            objective: 'validate secondary project flow',
+        },
+        inputs: [{ target: 'other-target-001' }],
+        guidance: [
+            'Keep this starter generic unless the backend defines a stronger project contract.',
+        ],
     },
 }
 
@@ -182,7 +136,6 @@ export function resolveTaskStarterDraft(
         projectCode: definition.projectCode,
         eventCode,
         taskName: override?.taskName ?? definition.taskName,
-        routingCode: override?.routingCode ?? definition.routingCode,
         batchSize: override?.batchSize ?? definition.batchSize,
         defaultMsgMaxRetryCount:
             override?.defaultMsgMaxRetryCount ??
@@ -220,7 +173,6 @@ function buildFallbackStarter(projectCode: string): TaskStarterDefinition {
     return {
         projectCode: resolvedProjectCode,
         taskName: `New ${resolvedProjectCode} task`,
-        routingCode: '',
         batchSize: 1,
         defaultMsgMaxRetryCount: 3,
         openEnded: false,

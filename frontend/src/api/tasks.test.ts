@@ -8,7 +8,6 @@ describe('tasks API facade', () => {
             taskName: 'Create from console test',
             sharedConfig: {
                 textContent: 'hello',
-                routingCode: 'us',
             },
             inputs: [{ target: 'alpha' }, { target: 'beta' }],
             batchSize: 2,

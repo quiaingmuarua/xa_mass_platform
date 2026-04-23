@@ -35,14 +35,14 @@ describe('RuntimeMetadataPage', () => {
                                     name: 'Demo App',
                                     description: 'Demo project.',
                                     enabled: true,
-                                    eventCodes: ['demo.message.send'],
+                                    eventCodes: ['demo.dispatch.run'],
                                 },
                                 {
-                                    code: 'telegramApp',
-                                    name: 'Telegram App',
-                                    description: 'Telegram project.',
+                                    code: 'crawlerApp',
+                                    name: 'Crawler App',
+                                    description: 'Crawler project.',
                                     enabled: true,
-                                    eventCodes: ['telegram.message.send'],
+                                    eventCodes: ['crawler.fetch-page'],
                                 },
                             ],
                         }),
@@ -55,18 +55,18 @@ describe('RuntimeMetadataPage', () => {
                             msg: 'ok',
                             data: [
                                 {
-                                    code: 'demo.message.send',
-                                    name: 'Send demo message',
-                                    description: 'Send a demo message.',
+                                    code: 'demo.dispatch.run',
+                                    name: 'Run demo dispatch',
+                                    description: 'Run a demo dispatch.',
                                     payloadTypes: ['JSON'],
                                     taskModes: ['SINGLE_RUN'],
                                     enabled: true,
                                 },
                                 {
-                                    code: 'telegram.message.send',
-                                    name: 'Send Telegram message',
-                                    description: 'Send through Telegram.',
-                                    payloadTypes: ['TEXT'],
+                                    code: 'crawler.fetch-page',
+                                    name: 'Fetch crawler page',
+                                    description: 'Fetch through a crawler worker.',
+                                    payloadTypes: ['JSON'],
                                     taskModes: ['SINGLE_RUN'],
                                     enabled: true,
                                 },
@@ -97,7 +97,7 @@ describe('RuntimeMetadataPage', () => {
                                     status: 'OFFLINE',
                                     workerGroupId: 'sg-routing',
                                     agentVersion: '1.3.7',
-                                    supportedProjects: ['telegramApp'],
+                                    supportedProjects: ['crawlerApp'],
                                     attributes: {},
                                     lastHeartbeat: '2026-04-21 08:45:00',
                                     locked: false,
@@ -141,11 +141,11 @@ describe('RuntimeMetadataPage', () => {
         expect(wrapper.text()).toContain('Metadata & Discovery')
         expect(wrapper.text()).toContain('Demo App')
         expect(wrapper.text()).toContain('worker-us-01')
-        expect(wrapper.text()).toContain('demo.message.send')
+        expect(wrapper.text()).toContain('demo.dispatch.run')
         expect(wrapper.text()).toContain('1 / 2')
         expect(wrapper.text()).not.toContain('worker-sg-01')
         expect(wrapper.text()).toContain('Start event draft')
-        expect(wrapper.text()).toContain('hello from demo.message.send')
+        expect(wrapper.text()).toContain('hello from demo.dispatch.run')
         expect(wrapper.text()).toContain('"recipient":"alpha"')
 
         const startDraftButton = wrapper
@@ -160,7 +160,7 @@ describe('RuntimeMetadataPage', () => {
         expect(router.currentRoute.value.query.create).toBe('1')
         expect(router.currentRoute.value.query.project).toBe('demoApp')
         expect(router.currentRoute.value.query.eventCode).toBe(
-            'demo.message.send',
+            'demo.dispatch.run',
         )
         expect(router.currentRoute.value.query.taskName).toBeUndefined()
     })

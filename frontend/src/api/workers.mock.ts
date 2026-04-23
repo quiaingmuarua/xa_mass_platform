@@ -28,7 +28,7 @@ const mockWorkers: WorkerListResponse = {
             status: 'OFFLINE',
             workerGroupId: 'sg-routing',
             agentVersion: '1.3.7',
-            supportedProjects: ['demoApp', 'telegramApp'],
+            supportedProjects: ['demoApp', 'crawlerApp'],
             attributes: {
                 region: 'sg',
             },
@@ -45,8 +45,9 @@ const mockWorkerContexts: WorkerContextListResponse = {
         {
             workerContextId: 'ctx-us-01',
             workerId: 'worker-us-01',
+            project: 'demoApp',
             status: 'OCCUPIED',
-            channel: 'telegram',
+            routingTags: ['us', 'primary'],
             attributes: {
                 account: 'ops-us-a',
             },
@@ -57,8 +58,9 @@ const mockWorkerContexts: WorkerContextListResponse = {
         {
             workerContextId: 'ctx-sg-01',
             workerId: 'worker-sg-01',
+            project: 'demoApp',
             status: 'IDLE',
-            channel: 'telegram',
+            routingTags: ['sg'],
             attributes: {
                 account: 'ops-sg-a',
             },

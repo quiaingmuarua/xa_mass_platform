@@ -31,7 +31,7 @@ describe('TaskDetailPage', () => {
         await new Promise((resolve) => window.setTimeout(resolve, 100))
         await flushPromises()
 
-        expect(wrapper.text()).toContain('Warm worker pool for us-routing')
+        expect(wrapper.text()).toContain('Warm worker pool')
         expect(wrapper.text()).toContain('BUSINESS_SUCCESS')
     })
 })

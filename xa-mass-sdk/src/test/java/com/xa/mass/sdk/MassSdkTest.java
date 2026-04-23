@@ -4,9 +4,12 @@ import com.xa.mass.base.channel.messaging.api.MessageQueue;
 import com.xa.mass.base.channel.messaging.memory.InMemoryMessageQueue;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
+import com.xa.mass.base.enums.worker.WorkerContextStatus;
+import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.Worker;
+import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.model.TaskCreateRequestDto;
 import com.xa.mass.engine.rules.RuleDefinition;
 import com.xa.mass.engine.rules.RuleManager;
@@ -18,6 +21,8 @@ import com.xa.mass.sdk.catalog.PayloadType;
 import com.xa.mass.sdk.catalog.TaskMode;
 import com.xa.mass.sdk.model.MassTaskCreateRequest;
 import com.xa.mass.sdk.model.MassTaskRequest;
+import com.xa.mass.sdk.model.WorkerContextRegistration;
+import com.xa.mass.sdk.model.WorkerRegistration;
 import com.xa.mass.sdk.worker.PullWorkerSession;
 import com.xa.mass.starter.MassApplication;
 import com.xa.mass.starter.MassEngine;
@@ -190,6 +195,60 @@ class MassSdkTest {
     }
 
     @Test
+    void registerWorkerUsesSdkContractAndStartsOffline() {
+        MassApplication delegate = mock(MassApplication.class);
+        MassEngine engine = mock(MassEngine.class);
+
+        when(delegate.getEngine()).thenReturn(engine);
+        when(engine.isRunning()).thenReturn(true);
+
+        MassSdkApplication app = new MassSdkApplication(delegate);
+        app.registerWorker(WorkerRegistration.builder()
+                .workerId("crawler-worker-001")
+                .workerGroupId("crawler")
+                .supportedProjects(List.of("crawlerApp"))
+                .transportHint("polling")
+                .attributes(Map.of("type", "crawler"))
+                .build());
+
+        var captor = org.mockito.ArgumentCaptor.forClass(Worker.class);
+        verify(engine).addWorker(captor.capture());
+        Worker worker = captor.getValue();
+        Assertions.assertEquals("crawler-worker-001", worker.getWorkerId());
+        Assertions.assertEquals("crawler", worker.getWorkerGroupId());
+        Assertions.assertEquals(List.of("crawlerApp"), worker.getSupportedProjects());
+        Assertions.assertEquals("polling", worker.getOnlineStrategy());
+        Assertions.assertEquals(Map.of("type", "crawler"), worker.getAttributes());
+        Assertions.assertEquals(WorkerStatus.OFFLINE, worker.getStatus());
+    }
+
+    @Test
+    void registerWorkerContextUsesSdkContractAndStartsIdle() {
+        MassApplication delegate = mock(MassApplication.class);
+        MassEngine engine = mock(MassEngine.class);
+
+        when(delegate.getEngine()).thenReturn(engine);
+        when(engine.isRunning()).thenReturn(true);
+
+        MassSdkApplication app = new MassSdkApplication(delegate);
+        app.registerWorkerContext(WorkerContextRegistration.builder()
+                .workerContextId("ctx-crawler-worker-001")
+                .workerId("crawler-worker-001")
+                .routingTags(Set.of("web", "us"))
+                .attributes(Map.of("region", "us"))
+                .build());
+
+        var captor = org.mockito.ArgumentCaptor.forClass(WorkerContext.class);
+        verify(engine).addWorkerContext(captor.capture());
+        WorkerContext workerContext = captor.getValue();
+        Assertions.assertEquals("ctx-crawler-worker-001", workerContext.getWorkerContextId());
+        Assertions.assertEquals("crawler-worker-001", workerContext.getWorkerId());
+        Assertions.assertEquals(Set.of("web", "us"), workerContext.getRoutingTags());
+        Assertions.assertEquals(Map.of("region", "us"), workerContext.getAttributes());
+        Assertions.assertEquals(WorkerContextStatus.IDLE, workerContext.getStatus());
+    }
+
+    @Test
     void runtimeConvenienceOperationsAvoidEscapeHatchCalls() {
         MassApplication delegate = mock(MassApplication.class);
         MassEngine engine = mock(MassEngine.class);
@@ -316,11 +375,11 @@ class MassSdkTest {
             rule.setContent("isWorkerAvailable && supportsProject");
             app.replaceDefaultRules(List.of(rule));
 
-            Worker worker = new Worker();
-            worker.setWorkerId("polling-worker-1");
-            worker.setSupportedProjects(List.of("demoApp"));
-            worker.setOnlineStrategy("polling");
-            app.addWorker(worker);
+            app.registerWorker(WorkerRegistration.builder()
+                    .workerId("polling-worker-1")
+                    .supportedProjects(List.of("demoApp"))
+                    .transportHint("polling")
+                    .build());
 
             PullWorkerSession session = app.pullWorker("polling-worker-1");
             session.connect();
@@ -466,6 +525,11 @@ class MassSdkTest {
                 () -> app.getWorkerContextById("context-1"),
                 () -> app.isWorkerLocked("worker-1"),
                 () -> app.isWorkerOnline("worker-1"),
+                () -> app.registerWorker(WorkerRegistration.builder().workerId("worker-1").build()),
+                () -> app.registerWorkerContext(WorkerContextRegistration.builder()
+                        .workerContextId("context-1")
+                        .workerId("worker-1")
+                        .build()),
                 () -> app.pullWorker("worker-1"),
                 () -> app.pollingWorker("worker-1"),
                 app::loadMockData,

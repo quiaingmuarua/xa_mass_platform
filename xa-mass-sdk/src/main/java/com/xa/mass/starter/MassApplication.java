@@ -21,6 +21,8 @@ import com.xa.mass.sdk.MassRuntimeControl;
 import com.xa.mass.sdk.worker.PullWorkerSession;
 import com.xa.mass.sdk.worker.PollingWorkerSession;
 import com.xa.mass.sdk.model.MassTaskCreateRequest;
+import com.xa.mass.sdk.model.WorkerContextRegistration;
+import com.xa.mass.sdk.model.WorkerRegistration;
 import com.xa.mass.transport.TransportServer;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import org.slf4j.Logger;
@@ -358,6 +360,16 @@ public class MassApplication {
             }
 
             @Override
+            public void registerWorker(WorkerRegistration request) {
+                requireConfiguredEngine().addWorker(toWorker(request));
+            }
+
+            @Override
+            public void registerWorkerContext(WorkerContextRegistration request) {
+                requireConfiguredEngine().addWorkerContext(toWorkerContext(request));
+            }
+
+            @Override
             public void addWorker(com.xa.mass.base.model.Worker worker) {
                 requireConfiguredEngine().addWorker(worker);
             }
@@ -379,6 +391,39 @@ public class MassApplication {
                 MassApplication.this.publishTaskEvents();
             }
         };
+    }
+
+    private com.xa.mass.base.model.Worker toWorker(WorkerRegistration request) {
+        java.util.Objects.requireNonNull(request, "request");
+        if (request.getWorkerId() == null || request.getWorkerId().isBlank()) {
+            throw new IllegalArgumentException("workerId must not be blank");
+        }
+        com.xa.mass.base.model.Worker worker = new com.xa.mass.base.model.Worker();
+        worker.setWorkerId(request.getWorkerId());
+        worker.setWorkerGroupId(request.getWorkerGroupId());
+        worker.setSupportedProjects(request.getSupportedProjects());
+        worker.setOnlineStrategy(request.getTransportHint());
+        worker.setAttributes(request.getAttributes());
+        return worker;
+    }
+
+    private com.xa.mass.base.model.WorkerContext toWorkerContext(WorkerContextRegistration request) {
+        java.util.Objects.requireNonNull(request, "request");
+        if (request.getWorkerContextId() == null || request.getWorkerContextId().isBlank()) {
+            throw new IllegalArgumentException("workerContextId must not be blank");
+        }
+        if (request.getWorkerId() == null || request.getWorkerId().isBlank()) {
+            throw new IllegalArgumentException("workerId must not be blank");
+        }
+        com.xa.mass.base.model.WorkerContext workerContext = new com.xa.mass.base.model.WorkerContext();
+        workerContext.setWorkerContextId(request.getWorkerContextId());
+        workerContext.setWorkerId(request.getWorkerId());
+        if (request.getProject() != null && !request.getProject().isBlank()) {
+            workerContext.setProject(request.getProject());
+        }
+        workerContext.setRoutingTags(request.getRoutingTags());
+        workerContext.setAttributes(request.getAttributes());
+        return workerContext;
     }
 
     private com.xa.mass.engine.model.TaskCreateRequestDto toEngineRequest(MassTaskCreateRequest request) {

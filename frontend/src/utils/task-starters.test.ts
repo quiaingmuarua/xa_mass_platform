@@ -7,14 +7,13 @@ import {
 describe('task starter drafts', () => {
     it('resolves an explicit event starter for known projects', () => {
         const draft = resolveTaskStarterDraft({
-            projectCode: 'telegramApp',
-            eventCode: 'telegram.session.refresh',
+            projectCode: 'demoApp',
+            eventCode: 'demo.dispatch.run',
         })
 
-        expect(draft.taskName).toBe('Refresh Telegram session')
-        expect(draft.routingCode).toBe('sg')
-        expect(draft.sharedConfig.operation).toBe('session-refresh')
-        expect(draft.inputs[0].sessionId).toBe('session-001')
+        expect(draft.taskName).toBe('Run demo dispatch')
+        expect(draft.sharedConfig.objective).toBe('run generic dispatch payload')
+        expect(draft.inputs[0].recipient).toBe('alpha')
     })
 
     it('falls back to a generic starter for unknown projects', () => {
@@ -30,7 +29,7 @@ describe('task starter drafts', () => {
     it('formats starter JSON for the task create form', () => {
         const draft = resolveTaskStarterDraft({
             projectCode: 'demoApp',
-            eventCode: 'demo.message.send',
+            eventCode: 'demo.dispatch.run',
         })
 
         expect(stringifyStarterSharedConfig(draft.sharedConfig)).toContain(

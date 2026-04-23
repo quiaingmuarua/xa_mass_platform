@@ -7,6 +7,8 @@ import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.rules.RuleDefinition;
 import com.xa.mass.sdk.MassRuntimeControl;
 import com.xa.mass.sdk.model.MassTaskCreateRequest;
+import com.xa.mass.sdk.model.WorkerContextRegistration;
+import com.xa.mass.sdk.model.WorkerRegistration;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -244,6 +246,30 @@ class MockRuntimeDataLoaderTest {
         private final List<WorkerContext> workerContexts = new ArrayList<>();
         private final List<MassTaskCreateRequest> createdTasks = new ArrayList<>();
         private final List<RuleDefinition> rules = new ArrayList<>();
+
+        @Override
+        public void registerWorker(WorkerRegistration request) {
+            Worker worker = new Worker();
+            worker.setWorkerId(request.getWorkerId());
+            worker.setWorkerGroupId(request.getWorkerGroupId());
+            worker.setSupportedProjects(request.getSupportedProjects());
+            worker.setOnlineStrategy(request.getTransportHint());
+            worker.setAttributes(request.getAttributes());
+            workers.add(worker);
+        }
+
+        @Override
+        public void registerWorkerContext(WorkerContextRegistration request) {
+            WorkerContext workerContext = new WorkerContext();
+            workerContext.setWorkerContextId(request.getWorkerContextId());
+            workerContext.setWorkerId(request.getWorkerId());
+            if (request.getProject() != null && !request.getProject().isBlank()) {
+                workerContext.setProject(request.getProject());
+            }
+            workerContext.setRoutingTags(request.getRoutingTags());
+            workerContext.setAttributes(request.getAttributes());
+            workerContexts.add(workerContext);
+        }
 
         @Override
         public Task createTask(MassTaskCreateRequest request) {

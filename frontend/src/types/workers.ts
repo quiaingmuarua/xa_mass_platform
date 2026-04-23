@@ -13,8 +13,9 @@ export interface WorkerListItem {
 export interface WorkerContextListItem {
     workerContextId: string
     workerId: string
+    project: string | null
     status: string
-    channel: string | null
+    routingTags: string[]
     attributes: Record<string, string>
     lastBindTaskId: string | null
     lastUsedTime: string

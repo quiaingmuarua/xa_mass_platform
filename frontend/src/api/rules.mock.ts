@@ -13,10 +13,10 @@ const mockRules: RuleListResponse = {
         },
         {
             ruleId: 'rule-region-routing',
-            name: 'Region routing',
+            name: 'Routing tag match',
             type: 'QL_EXPRESS',
-    content: "workerContextAttributes['country'] == routingCode",
-            description: 'Keep routing based on explicit worker attributes.',
+            content: "workerContext.routingTags.contains('primary')",
+            description: 'Use explicit context routing tags instead of task-level ad hoc fields.',
             enabled: true,
             priority: 20,
         },

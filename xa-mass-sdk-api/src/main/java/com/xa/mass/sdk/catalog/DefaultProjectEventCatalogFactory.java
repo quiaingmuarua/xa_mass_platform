@@ -69,6 +69,11 @@ public final class DefaultProjectEventCatalogFactory {
                 "Default demo project used by the validation shell.", ALL_DEFAULT_EVENT_CODES));
         registry.registerProject(project("testApp", "testApp",
                 "Test project used by fixtures and local regression coverage.", ALL_DEFAULT_EVENT_CODES));
+        registry.registerProject(project("crawlerApp", "Crawler",
+                "Crawler-oriented project defaults for pull and streaming worker scenarios.", List.of(
+                        "crawler.fetch-page",
+                        "crawler.parse-result"
+                )));
         registry.registerProject(project("rcsApp", "GoogleRcs",
                 "RCS-oriented messaging project defaults.", List.of(
                         "sms.acquire-number",

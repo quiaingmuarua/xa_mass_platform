@@ -47,7 +47,7 @@ hasWorkerContext == false || isWorkerContextAllocatable == true
 3. `routing_code_match`
 
 ```ql
-taskHasRoutingRequirement == false || workerContextAttributeCountryMatchesRoutingCode == true || workerContextChannelMatchesRoutingCode == true
+taskHasRoutingRequirement == false || workerContextMatchesRoutingCode == true
 ```
 
 4. `app_support_check`
@@ -93,7 +93,8 @@ appCount < 10
 - `taskId`
 - `taskName`
 - `taskProject`
-- `taskRoutingCode`
+- `taskSharedConfig`
+- `routingCode`
 - `taskHasRoutingRequirement`
 - `taskStatus`
 - `taskTargetNumber`
@@ -104,21 +105,21 @@ appCount < 10
 
 - `appCount`
 - `supportsProject`
-- `workerContextChannelMatchesRoutingCode`
-- `workerContextAttributeCountryMatchesRoutingCode`
+- `workerContextProjectMatchesTaskProject`
+- `workerContextMatchesRoutingCode`
 
 ## Example Rules
 
 Worker-context attribute routing:
 
 ```ql
-workerContextAttributes['country'] == taskRoutingCode
+workerContextAttributes['country'] == routingCode
 ```
 
-Fallback to worker-context channel:
+Match the task routing hint against worker-context routing tags:
 
 ```ql
-workerContextChannelMatchesRoutingCode == true
+workerContextMatchesRoutingCode == true
 ```
 
 Allow a stateless worker when the task has no routing requirement:
@@ -133,14 +134,14 @@ Project-specific example:
 supportsProject == true &&
 appCount <= 5 &&
 agentVersion.startsWith('1.0') &&
-(workerContextAttributeCountryMatchesRoutingCode == true || workerContextChannelMatchesRoutingCode == true)
+(taskHasRoutingRequirement == false || workerContextMatchesRoutingCode == true)
 ```
 
 ## Boundaries
 
 - `workerAttributes` and `workerContextAttributes` are auxiliary labels only
 - Lifecycle, lock, and online truth must continue to come from strong-typed fields and managers
-- `taskRoutingCode` is a routing hint, not a claim that the task itself owns country truth
+- `routingCode` is an optional convention resolved from `Task.sharedConfig["routingCode"]`, not first-class task aggregate truth
 - Worker `workerGroupId` can still appear in diagnostics, but it is no longer the mainline country truth source
 - `isWorkerContextAvailable` means truly free for new assignment (`IDLE` and not expired)
 - `isWorkerContextUsable` is the broader runtime-health signal used for diagnostics (`IDLE` / `RESERVED` / `OCCUPIED`, excluding expired, blocked, and invalid contexts)

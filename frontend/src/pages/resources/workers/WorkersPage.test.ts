@@ -30,8 +30,9 @@ function stubWorkersApi(): void {
                                 {
                                     workerContextId: 'ctx-us-01',
                                     workerId: 'worker-us-01',
+                                    project: 'demoApp',
                                     status: 'OCCUPIED',
-                                    channel: 'telegram',
+                                    routingTags: ['primary'],
                                     attributes: {},
                                     lastBindTaskId: 'task-001',
                                     lastUsedTime: '2026-04-21 09:44:00',

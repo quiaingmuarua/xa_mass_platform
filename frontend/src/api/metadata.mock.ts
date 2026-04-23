@@ -7,15 +7,15 @@ const mockProjects: ProjectMetadata[] = [
         description:
             'General demo project used for orchestration smoke tests and worker readiness checks.',
         enabled: true,
-        eventCodes: ['demo.message.send', 'demo.message.audit'],
+        eventCodes: ['demo.dispatch.run', 'demo.dispatch.audit'],
     },
     {
-        code: 'telegramApp',
-        name: 'Telegram App',
+        code: 'crawlerApp',
+        name: 'Crawler App',
         description:
-            'Telegram-oriented runtime project for message delivery and session-oriented work.',
+            'Crawler-oriented project used to validate generic fetch and parse workloads.',
         enabled: true,
-        eventCodes: ['telegram.message.send', 'telegram.session.refresh'],
+        eventCodes: ['crawler.fetch-page', 'crawler.parse-result'],
     },
     {
         code: 'testApp',
@@ -29,39 +29,39 @@ const mockProjects: ProjectMetadata[] = [
 
 const mockEvents: EventMetadata[] = [
     {
-        code: 'demo.message.send',
-        name: 'Send demo message',
+        code: 'demo.dispatch.run',
+        name: 'Run demo dispatch',
         description:
-            'Dispatch a demo message payload to an online worker.',
+            'Dispatch a generic demo payload to an online worker.',
         payloadTypes: ['JSON', 'TEXT'],
         taskModes: ['SINGLE_RUN'],
         enabled: true,
     },
     {
-        code: 'demo.message.audit',
-        name: 'Audit demo message',
+        code: 'demo.dispatch.audit',
+        name: 'Audit demo dispatch',
         description:
-            'Validate previous demo message output and return an audit result.',
+            'Validate previous demo dispatch output and return an audit result.',
         payloadTypes: ['JSON'],
         taskModes: ['SINGLE_RUN'],
         enabled: true,
     },
     {
-        code: 'telegram.message.send',
-        name: 'Send Telegram message',
+        code: 'crawler.fetch-page',
+        name: 'Fetch crawler page',
         description:
-            'Send a Telegram-style message through a worker-owned channel.',
-        payloadTypes: ['JSON', 'TEXT'],
+            'Fetch a page or URL seed for downstream processing.',
+        payloadTypes: ['JSON'],
         taskModes: ['SINGLE_RUN'],
         enabled: true,
     },
     {
-        code: 'telegram.session.refresh',
-        name: 'Refresh Telegram session',
+        code: 'crawler.parse-result',
+        name: 'Parse crawler result',
         description:
-            'Refresh or validate a long-lived Telegram worker context.',
+            'Parse crawler output into structured downstream records.',
         payloadTypes: ['JSON'],
-        taskModes: ['SINGLE_RUN', 'STREAMING'],
+        taskModes: ['SINGLE_RUN'],
         enabled: true,
     },
     {

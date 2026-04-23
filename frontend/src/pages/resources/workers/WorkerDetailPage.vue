@@ -126,7 +126,22 @@
             min-width="200"
           />
           <el-table-column prop="status" label="Status" min-width="120" />
-          <el-table-column prop="channel" label="Channel" min-width="120" />
+          <el-table-column prop="project" label="Project" min-width="140" />
+          <el-table-column label="Routing tags" min-width="220">
+            <template #default="{ row }">
+              <el-tag
+                v-for="tag in row.routingTags"
+                :key="tag"
+                class="project-tag"
+                round
+              >
+                {{ tag }}
+              </el-tag>
+              <span v-if="row.routingTags.length === 0" class="row-secondary">
+                none
+              </span>
+            </template>
+          </el-table-column>
           <el-table-column label="Last bind task" min-width="180">
             <template #default="{ row }">
               <span class="mono">{{ row.lastBindTaskId || '-' }}</span>

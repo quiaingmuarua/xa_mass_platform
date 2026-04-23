@@ -41,7 +41,7 @@
         <el-input
           v-model="filters.keyword"
           clearable
-          placeholder="Search context, worker, channel, task"
+          placeholder="Search context, worker, project, tag, task"
         />
         <el-select v-model="filters.status" clearable placeholder="Status">
           <el-option
@@ -65,7 +65,7 @@
           <template #default="{ row }">
             <div class="row-primary mono">{{ row.workerContextId }}</div>
             <div class="row-secondary">
-              {{ row.channel || 'no channel' }}
+              {{ row.project || 'no project' }}
             </div>
           </template>
         </el-table-column>
@@ -82,6 +82,21 @@
             <el-tag :type="tagForContextStatus(row.status)">
               {{ row.status }}
             </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="Routing tags" min-width="220">
+          <template #default="{ row }">
+            <el-tag
+              v-for="tag in row.routingTags"
+              :key="tag"
+              class="routing-tag"
+              round
+            >
+              {{ tag }}
+            </el-tag>
+            <span v-if="row.routingTags.length === 0" class="row-secondary">
+              none
+            </span>
           </template>
         </el-table-column>
         <el-table-column
@@ -172,7 +187,8 @@ const filteredContexts = computed(() => {
       [
         context.workerContextId,
         context.workerId,
-        context.channel,
+        context.project,
+        ...context.routingTags,
         context.lastBindTaskId,
       ].some((value) => value?.toLowerCase().includes(keyword))
 
@@ -244,5 +260,9 @@ onMounted(() => {
 
 .toolbar :deep(.el-select) {
   width: 180px;
+}
+
+.routing-tag {
+  margin: 0 6px 6px 0;
 }
 </style>
