@@ -73,7 +73,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
     private static final Gson GSON = new Gson();
 
     private final MassApplication delegate;
-    private final ProjectEventCatalogRegistry projectEventCatalogRegistry;
+    private final ProjectEventCatalogRegistry bootstrapProjectCatalogRegistry;
     private final InMemorySubmitterRegistry submitterRegistry;
     private final InMemoryClientPermissionProvider clientPermissionProvider;
     private final InMemoryUserPermissionProvider userPermissionProvider;
@@ -84,12 +84,15 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
     private final ProjectEventCatalog projectEventCatalogView;
 
     MassSdkApplication(MassApplication delegate) {
-        this(delegate, DefaultProjectEventCatalogFactory.createDefaultRegistry());
+        this(delegate, DefaultProjectEventCatalogFactory.createDefaultProjectRegistry());
     }
 
-    MassSdkApplication(MassApplication delegate, ProjectEventCatalogRegistry projectEventCatalogRegistry) {
+    MassSdkApplication(MassApplication delegate, ProjectEventCatalogRegistry bootstrapProjectCatalogRegistry) {
         this.delegate = Objects.requireNonNull(delegate, "delegate");
-        this.projectEventCatalogRegistry = Objects.requireNonNull(projectEventCatalogRegistry, "projectEventCatalogRegistry");
+        this.bootstrapProjectCatalogRegistry = Objects.requireNonNull(
+                bootstrapProjectCatalogRegistry,
+                "bootstrapProjectCatalogRegistry"
+        );
         this.submitterRegistry = new InMemorySubmitterRegistry();
         this.clientPermissionProvider = new InMemoryClientPermissionProvider();
         this.userPermissionProvider = new InMemoryUserPermissionProvider();
@@ -387,7 +390,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
     @Override
     public void registerProject(ProjectMetadata projectMetadata) {
         ProjectMetadata normalized = Objects.requireNonNull(projectMetadata, "projectMetadata");
-        projectEventCatalogRegistry.registerProject(normalized);
+        bootstrapProjectCatalogRegistry.registerProject(normalized);
         registerProjectIntoCore(normalized);
         syncProjectScopeIntoDefinitions(normalized);
     }
@@ -399,12 +402,12 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
 
     @Override
     public List<ProjectMetadata> listProjects() {
-        return projectEventCatalogRegistry.listProjects();
+        return bootstrapProjectCatalogRegistry.listProjects();
     }
 
     @Override
     public ProjectMetadata getProject(String projectCode) {
-        return projectEventCatalogRegistry.getProject(projectCode);
+        return bootstrapProjectCatalogRegistry.getProject(projectCode);
     }
 
     @Override
@@ -730,7 +733,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
         if (existing != null) {
             projectCodes.addAll(existing.getProjectCodes());
         }
-        for (ProjectMetadata projectMetadata : projectEventCatalogRegistry.listProjects()) {
+        for (ProjectMetadata projectMetadata : bootstrapProjectCatalogRegistry.listProjects()) {
             if (projectMetadata.getEventCodes().contains(eventCode)) {
                 projectCodes.add(projectMetadata.getCode());
             }
@@ -1036,13 +1039,13 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
     }
 
     private void registerEnabledCatalogProjectsIntoCore() {
-        for (ProjectMetadata projectMetadata : projectEventCatalogRegistry.listProjects()) {
+        for (ProjectMetadata projectMetadata : bootstrapProjectCatalogRegistry.listProjects()) {
             registerProjectIntoCore(projectMetadata);
         }
     }
 
     private void registerCatalogEventDefinitions() {
-        for (SdkEventDefinition definition : projectEventCatalogRegistry.listEvents()) {
+        for (SdkEventDefinition definition : bootstrapProjectCatalogRegistry.listEvents()) {
             registerEventDefinitionInternal(definition);
         }
     }
@@ -1097,7 +1100,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
         if (seedProjectCodes != null) {
             projectCodes.addAll(seedProjectCodes);
         }
-        for (ProjectMetadata projectMetadata : projectEventCatalogRegistry.listProjects()) {
+        for (ProjectMetadata projectMetadata : bootstrapProjectCatalogRegistry.listProjects()) {
             if (projectMetadata.getEventCodes().contains(eventCode)) {
                 projectCodes.add(projectMetadata.getCode());
             }
@@ -1394,7 +1397,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
 
     private void validateTaskCatalogContract(MassTaskRequest request) {
         Objects.requireNonNull(request, "request");
-        ProjectMetadata projectMetadata = projectEventCatalogRegistry.getProject(request.getProject());
+        ProjectMetadata projectMetadata = bootstrapProjectCatalogRegistry.getProject(request.getProject());
         if (projectMetadata == null) {
             throw new IllegalArgumentException("Unsupported SDK project: " + request.getProject());
         }

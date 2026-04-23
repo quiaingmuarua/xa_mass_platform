@@ -98,8 +98,8 @@ public class MiddlewareRegistry {
                 String detail = "endpoint unavailable for workerId="
                         + envelope.getWorkerId() + ", role=" + envelope.getConnRole();
                 WorkerDebugMessageStore.markFailed(envelope.getTraceId(), detail);
-                logger.warn("sendEnvelopeMiddleware skipped because endpoint is unavailable: workerId={}, role={}, traceId={}",
-                        envelope.getWorkerId(), envelope.getConnRole(), envelope.getTraceId());
+                logger.warn("sendEnvelopeMiddleware skipped because endpoint is unavailable: workerId={}, role={}, eventCode={}, traceId={}",
+                        envelope.getWorkerId(), envelope.getConnRole(), envelope.getEventCode(), envelope.getTraceId());
                 return false;
             } catch (Exception e) {
                 WorkerDebugMessageStore.markFailed(envelope != null ? envelope.getTraceId() : null, e.getMessage());

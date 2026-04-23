@@ -11,7 +11,7 @@ class ProjectEventCatalogRegistryTest {
 
     @Test
     void defaultRegistryLoadsBaselineProjectsWithoutExampleEvents() {
-        ProjectEventCatalogRegistry registry = DefaultProjectEventCatalogFactory.createDefaultRegistry();
+        ProjectEventCatalogRegistry registry = DefaultProjectEventCatalogFactory.createDefaultProjectRegistry();
 
         List<ProjectMetadata> projects = registry.listProjects();
         List<SdkEventDefinition> events = registry.listEvents();
@@ -81,7 +81,7 @@ class ProjectEventCatalogRegistryTest {
 
     @Test
     void unknownProjectOrEventReturnsNullOrEmpty() {
-        ProjectEventCatalogRegistry registry = DefaultProjectEventCatalogFactory.createDefaultRegistry();
+        ProjectEventCatalogRegistry registry = DefaultProjectEventCatalogFactory.createDefaultProjectRegistry();
 
         assertNull(registry.getProject("missing-project"));
         assertNull(registry.getEvent("missing-event"));

@@ -25,6 +25,7 @@ import com.xa.mass.sdk.auth.SubmitterRegistration;
 import com.xa.mass.sdk.auth.TaskSubmitterContext;
 import com.xa.mass.sdk.catalog.ProjectEventCatalog;
 import com.xa.mass.sdk.catalog.PayloadType;
+import com.xa.mass.sdk.catalog.ProjectEventCatalogRegistry;
 import com.xa.mass.sdk.catalog.ProjectMetadata;
 import com.xa.mass.sdk.catalog.TaskMode;
 import com.xa.mass.sdk.event.EventPrincipal;
@@ -69,6 +70,25 @@ class MassSdkTest {
 
         assertNotNull(app);
         assertFalse(app.isRunning());
+    }
+
+    @Test
+    void builderProjectCatalogBootstrapSeedsProjects() {
+        ProjectEventCatalogRegistry bootstrapRegistry = new ProjectEventCatalogRegistry();
+        bootstrapRegistry.registerProject(ProjectMetadata.builder()
+                .code("seedApp")
+                .name("Seed App")
+                .description("builder bootstrap project")
+                .build());
+
+        MassSdkApplication app = MassSdk.builder()
+                .projectCatalogBootstrap(bootstrapRegistry)
+                .gateway(gateway -> gateway.enabled(false).transportServerEnabled(false))
+                .engine(engine -> engine.enabled(false))
+                .build();
+
+        assertNotNull(app.getProject("seedApp"));
+        assertEquals("Seed App", app.getProject("seedApp").getName());
     }
 
     @Test

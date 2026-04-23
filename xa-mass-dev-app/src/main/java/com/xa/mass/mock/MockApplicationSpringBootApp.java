@@ -89,7 +89,7 @@ public class MockApplicationSpringBootApp {
     @Profile("dev")
     public MassSdkApplication fullStackRuntimeApplication() {
         return MassSdk.builder()
-                .projectEventCatalog(new ProjectEventCatalogRegistry())
+                .projectCatalogBootstrap(new ProjectEventCatalogRegistry())
                 .server(massWebSocketPort)
                 .gateway(gateway -> gateway
                         .enabled(true)

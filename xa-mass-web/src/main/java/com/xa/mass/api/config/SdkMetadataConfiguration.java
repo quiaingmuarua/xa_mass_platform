@@ -15,6 +15,6 @@ public class SdkMetadataConfiguration {
     @Bean
     @ConditionalOnMissingBean(ProjectEventCatalog.class)
     public ProjectEventCatalog projectEventCatalog() {
-        return DefaultProjectEventCatalogFactory.createDefaultRegistry();
+        return DefaultProjectEventCatalogFactory.createDefaultProjectRegistry();
     }
 }

@@ -71,6 +71,9 @@ public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWe
             org.slf4j.MDC.put("event", "channelRead0");
             org.slf4j.MDC.put("workerId", envelope.getWorkerId());
             org.slf4j.MDC.put("connRole", envelope.getConnRole());
+            if (envelope.getEventCode() != null) {
+                org.slf4j.MDC.put("eventCode", envelope.getEventCode());
+            }
             org.slf4j.MDC.put("traceId", envelope.getTraceId());
             org.slf4j.MDC.put("project", envelope.getProject());
             org.slf4j.MDC.put("receivedAt", String.valueOf(envelope.getReceivedAt()));

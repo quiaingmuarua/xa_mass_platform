@@ -15,7 +15,7 @@ public final class DefaultProjectEventCatalogFactory {
     private DefaultProjectEventCatalogFactory() {
     }
 
-    public static ProjectEventCatalogRegistry createDefaultRegistry() {
+    public static ProjectEventCatalogRegistry createDefaultProjectRegistry() {
         ProjectEventCatalogRegistry registry = new ProjectEventCatalogRegistry();
 
         registry.registerProject(project("demoApp", "Demo App",
@@ -28,6 +28,16 @@ public final class DefaultProjectEventCatalogFactory {
                 "Telegram-oriented project identity placeholder.", List.of()));
 
         return registry;
+    }
+
+    /**
+     * @deprecated Prefer {@link #createDefaultProjectRegistry()} to make it
+     * explicit that this factory seeds the bootstrap project registry rather
+     * than a canonical runtime event catalog.
+     */
+    @Deprecated(forRemoval = false)
+    public static ProjectEventCatalogRegistry createDefaultRegistry() {
+        return createDefaultProjectRegistry();
     }
 
     private static ProjectMetadata project(String code, String name, String description, List<String> eventCodes) {

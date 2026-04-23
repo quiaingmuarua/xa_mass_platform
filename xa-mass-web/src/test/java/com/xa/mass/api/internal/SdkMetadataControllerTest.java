@@ -25,7 +25,7 @@ class SdkMetadataControllerTest {
 
     @BeforeEach
     void setUp() {
-        ProjectEventCatalogRegistry catalog = DefaultProjectEventCatalogFactory.createDefaultRegistry();
+        ProjectEventCatalogRegistry catalog = DefaultProjectEventCatalogFactory.createDefaultProjectRegistry();
         catalog.registerEventDefinition(SdkEventDefinition.builder()
                 .code("crawler.fetch-page")
                 .name("Crawler Fetch Page")

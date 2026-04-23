@@ -37,7 +37,7 @@ public class TaskApiController {
     private final AuthProvider authProvider;
 
     public TaskApiController(TaskOperations taskOperations) {
-        this(taskOperations, DefaultProjectEventCatalogFactory.createDefaultRegistry(), null);
+        this(taskOperations, DefaultProjectEventCatalogFactory.createDefaultProjectRegistry(), null);
     }
 
     public TaskApiController(TaskOperations taskOperations, ProjectEventCatalog projectEventCatalog) {

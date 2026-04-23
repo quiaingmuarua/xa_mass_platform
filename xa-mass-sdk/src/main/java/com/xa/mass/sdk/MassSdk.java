@@ -95,7 +95,7 @@ public final class MassSdk {
 
     public static final class Builder {
         private final MassApplicationBuilder delegate;
-        private ProjectEventCatalogRegistry projectEventCatalogRegistry;
+        private ProjectEventCatalogRegistry projectCatalogBootstrapRegistry;
 
         private Builder(MassApplicationBuilder delegate) {
             this.delegate = Objects.requireNonNull(delegate, "delegate");
@@ -138,15 +138,29 @@ public final class MassSdk {
             return this;
         }
 
-        public Builder projectEventCatalog(ProjectEventCatalogRegistry projectEventCatalogRegistry) {
-            this.projectEventCatalogRegistry =
-                    Objects.requireNonNull(projectEventCatalogRegistry, "projectEventCatalogRegistry");
+        /**
+         * Seeds the SDK application's bootstrap project registry before runtime
+         * event definitions are projected from the underlying event runtime.
+         */
+        public Builder projectCatalogBootstrap(ProjectEventCatalogRegistry projectCatalogBootstrapRegistry) {
+            this.projectCatalogBootstrapRegistry =
+                    Objects.requireNonNull(projectCatalogBootstrapRegistry, "projectCatalogBootstrapRegistry");
             return this;
         }
 
+        /**
+         * @deprecated Prefer {@link #projectCatalogBootstrap(ProjectEventCatalogRegistry)}
+         * to avoid implying that the provided registry remains the canonical
+         * runtime event catalog after startup.
+         */
+        @Deprecated(forRemoval = false)
+        public Builder projectEventCatalog(ProjectEventCatalogRegistry projectEventCatalogRegistry) {
+            return projectCatalogBootstrap(projectEventCatalogRegistry);
+        }
+
         public MassSdkApplication build() {
-            if (projectEventCatalogRegistry != null) {
-                return new MassSdkApplication(delegate.build(), projectEventCatalogRegistry);
+            if (projectCatalogBootstrapRegistry != null) {
+                return new MassSdkApplication(delegate.build(), projectCatalogBootstrapRegistry);
             }
             return new MassSdkApplication(delegate.build());
         }
