@@ -94,10 +94,11 @@ public abstract class AbstractMockE2eTest {
     }
 
     protected String createTaskId(String taskName, String textContent, List<String> targets, int batchSize) {
+        String defaultRoutingCode = "us";
         Map<String, Object> createBody = new LinkedHashMap<>();
         createBody.put("taskName", taskName);
         createBody.put("project", "demoApp");
-        createBody.put("sharedConfig", java.util.Map.of("textContent", textContent, "routingCode", "us"));
+        createBody.put("sharedConfig", java.util.Map.of("textContent", textContent, "routingCode", defaultRoutingCode));
         createBody.put("userId", "itest");
         createBody.put("inputs", targets.stream()
                 .map(target -> Map.<String, Object>of("target", target))
