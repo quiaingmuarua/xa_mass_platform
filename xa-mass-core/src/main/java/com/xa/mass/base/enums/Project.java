@@ -5,21 +5,20 @@ import com.xa.mass.base.project.ProjectRegistry;
 
 import java.util.Arrays;
 import java.util.List;
-import java.util.stream.Collectors;
 
 /**
- * 项目枚举
- * 支持动态添加新项目
+ * Built-in project seeds kept for compatibility.
+ *
+ * <p>Runtime project validation is handled by {@link ProjectRegistry}; this
+ * enum is no longer the extensibility boundary.
  */
 @JsonFormat(shape = JsonFormat.Shape.OBJECT)
 public enum Project {
-    DEMO_APP("demoApp", "演示应用"),
-    TEST_APP("testApp", "testApp"),
+    DEMO_APP("demoApp", "Demo App"),
+    TEST_APP("testApp", "Test App"),
     CRAWLER_APP("crawlerApp", "Crawler"),
     RCS_APP("rcsApp", "GoogleRcs"),
-    TELEGRAM_APP("telegramApp", "Telegram"),
-    // 可以在这里添加更多默认项目
-    ;
+    TELEGRAM_APP("telegramApp", "Telegram");
 
     private final String code;
     private final String name;
@@ -30,13 +29,13 @@ public enum Project {
     }
 
     /**
-     * 根据代码获取项目
+     * Resolve a built-in enum value by code.
      */
     public static Project fromCode(String code) {
         return Arrays.stream(values())
                 .filter(project -> project.code.equals(code))
                 .findFirst()
-                .orElse(DEMO_APP); // 默认返回 DEMO_APP
+                .orElse(DEMO_APP);
     }
 
     public static Project requireCode(String code) {
@@ -47,21 +46,21 @@ public enum Project {
     }
 
     /**
-     * 获取所有项目代码
+     * Return all enabled runtime project codes.
      */
     public static List<String> getAllCodes() {
         return ProjectRegistry.listProjectCodes();
     }
 
     /**
-     * 获取所有项目名称
+     * Return all enabled runtime project names.
      */
     public static List<String> getAllNames() {
         return ProjectRegistry.listProjectNames();
     }
 
     /**
-     * 检查项目代码是否存在
+     * Check whether a runtime project code is enabled.
      */
     public static boolean isValidCode(String code) {
         return ProjectRegistry.isValidCode(code);
@@ -79,4 +78,4 @@ public enum Project {
     public String toString() {
         return code;
     }
-} 
+}

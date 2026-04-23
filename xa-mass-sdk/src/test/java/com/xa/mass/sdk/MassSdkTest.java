@@ -21,6 +21,8 @@ import com.xa.mass.sdk.catalog.EventMetadata;
 import com.xa.mass.sdk.catalog.PayloadType;
 import com.xa.mass.sdk.catalog.ProjectMetadata;
 import com.xa.mass.sdk.catalog.TaskMode;
+import com.xa.mass.sdk.auth.SubmitterRegistration;
+import com.xa.mass.sdk.auth.TaskSubmitterContext;
 import com.xa.mass.sdk.model.MassTaskCreateRequest;
 import com.xa.mass.sdk.model.MassTaskRequest;
 import com.xa.mass.sdk.model.WorkerContextRegistration;
@@ -361,7 +363,7 @@ class MassSdkTest {
     }
 
     @Test
-    void catalogOperationsAllowSdkLevelProjectAndEventRegistrationWithoutRuntimeStart() {
+    void resourceOperationsAllowSdkLevelProjectAndEventRegistrationWithoutRuntimeStart() {
         MassSdkApplication app = new MassSdkApplication(mock(MassApplication.class));
         EventMetadata eventMetadata = EventMetadata.builder()
                 .code("bot.command")
@@ -381,11 +383,53 @@ class MassSdkTest {
         app.registerEvent(eventMetadata);
         app.registerProject(projectMetadata);
 
+        Assertions.assertTrue(app instanceof ResourceOperations);
         Assertions.assertEquals(eventMetadata, app.getEvent("bot.command"));
         Assertions.assertEquals(projectMetadata, app.getProject("botApp"));
+        Assertions.assertTrue(app.hasEvent("bot.command"));
+        Assertions.assertTrue(app.hasProject("botApp"));
+        Assertions.assertTrue(app.projectSupportsEvent("botApp", "bot.command"));
+        Assertions.assertFalse(app.projectSupportsEvent("botApp", "crawler.fetch-page"));
         Assertions.assertTrue(app.listProjects().stream().anyMatch(project -> "demoApp".equals(project.getCode())));
         Assertions.assertTrue(app.listEvents().stream().anyMatch(event -> "crawler.fetch-page".equals(event.getCode())));
         Assertions.assertEquals(List.of(eventMetadata), app.getEventsForProject("botApp"));
+    }
+
+    @Test
+    void submitterOperationsAllowCredentialBasedSubmitterRegistration() {
+        MassSdkApplication app = new MassSdkApplication(mock(MassApplication.class));
+        SubmitterRegistration submitterRegistration = SubmitterRegistration.builder()
+                .principalId("telegram-bot")
+                .credential("test-api-key")
+                .userId("bot-user")
+                .projectScope("telegramApp")
+                .attributes(Map.of("channel", "telegram"))
+                .build();
+
+        app.registerSubmitter(submitterRegistration);
+
+        Assertions.assertTrue(app.hasSubmitter("telegram-bot"));
+        Assertions.assertEquals(List.of(submitterRegistration), app.listSubmitters());
+        Assertions.assertEquals(submitterRegistration, app.getSubmitter("telegram-bot"));
+        TaskSubmitterContext submitterContext = app.authenticateSubmitter("test-api-key");
+        Assertions.assertNotNull(submitterContext);
+        Assertions.assertEquals("telegram-bot", submitterContext.getPrincipalId());
+        Assertions.assertEquals("bot-user", submitterContext.getUserId());
+        Assertions.assertEquals("telegramApp", submitterContext.getProjectScope());
+        Assertions.assertEquals(Map.of("channel", "telegram"), submitterContext.getAttributes());
+    }
+
+    @Test
+    void disabledSubmitterCannotAuthenticate() {
+        MassSdkApplication app = new MassSdkApplication(mock(MassApplication.class));
+        app.registerSubmitter(SubmitterRegistration.builder()
+                .principalId("disabled-bot")
+                .credential("disabled-key")
+                .projectScope("telegramApp")
+                .enabled(false)
+                .build());
+
+        Assertions.assertNull(app.authenticateSubmitter("disabled-key"));
     }
 
     @Test
@@ -478,6 +522,7 @@ class MassSdkTest {
                     .build());
 
             Task task = app.createTask(MassTaskRequest.singleRun("botAppCatalogTest", "bot-command-task")
+                    .userId("bot-agent")
                     .eventCode("bot.command")
                     .textInputs(List.of("/start"))
                     .build());

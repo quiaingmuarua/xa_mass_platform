@@ -12,6 +12,8 @@ This is the fastest entry point for coding agents. Keep it short. Use linked bas
 - Polling/pull workers are part of the intended mainline direction, not a side feature.
 - Workers may be phone apps, crawlers, LLM agents, IM bots, or other long-lived executors.
 - Project direction is library/SDK-first; HTTP pages and demo APIs are validation shells.
+- Runtime project validation uses a core project registry seeded by built-in defaults; SDK project registration can extend it without changing the legacy enum.
+- `ResourceOperations` is the preferred SDK project/event control-plane interface; `CatalogOperations` is a compatibility alias.
 - Real Spring Boot entrypoint is `xa-mass-dev-app`.
 - Embedded runtime composition lives in `xa-mass-sdk` under `com.xa.mass.starter.*`.
 - Do not treat `MassApplication` or other embedded runtime classes as Spring Boot apps.
@@ -52,6 +54,7 @@ Trust order:
 - `WorkerContext` is optional; stateless workers are part of the verified mainline.
 - UI, mock data, and demo APIs must not redefine kernel semantics.
 - Third-party embedding should enter through `MassSdk` and `MassSdkApplication`; `unwrap()` and direct engine/manager access are deprecated escape hatches.
+- Treat the legacy `Project` enum as a built-in seed and compatibility surface, not the runtime project truth.
 - `Task.sharedConfig` and `TaskMsg.input/output` are the generic payload boundaries.
 - `target` is only a conventional key inside `TaskMsg.input`, not a model field.
 - Create contract uses `inputs: List<Map<String,Object>>`; do not reintroduce `targetList`.
@@ -152,6 +155,9 @@ Supported task create fields:
 - `userId`
 - `project`
 - `taskName`
+- `eventCode`
+- `mode`
+- `payloadType`
 - `sharedConfig`
 - `inputs`
 - `batchSize`
@@ -160,6 +166,8 @@ Supported task create fields:
 - `maxRuntimeSeconds`
 
 The public task create/update and control-console read models do not define a dedicated `routingCode` field. Keep task-level payload or hints inside `sharedConfig` only when a concrete backend/runtime contract requires them.
+
+When `eventCode` is present, `/status/api/tasks` uses the SDK mode/payload-aware create path and persists `_sdk` task metadata inside `sharedConfig`.
 
 Task update is metadata-only and allowed only for `NEW` or `BLOCKED`.
 

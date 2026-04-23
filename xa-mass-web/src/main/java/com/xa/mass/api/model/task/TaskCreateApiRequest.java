@@ -2,6 +2,8 @@ package com.xa.mass.api.model.task;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.xa.mass.api.model.AbstractUnknownFieldRequest;
+import com.xa.mass.sdk.catalog.PayloadType;
+import com.xa.mass.sdk.catalog.TaskMode;
 
 import java.util.List;
 import java.util.Map;
@@ -12,8 +14,11 @@ public class TaskCreateApiRequest extends AbstractUnknownFieldRequest {
     private String userId;
     private String project;
     private String taskName;
+    private String eventCode;
+    private TaskMode mode;
+    private PayloadType payloadType;
     private Map<String, Object> sharedConfig;
-    private List<Map<String, Object>> inputs;
+    private List<Object> inputs;
     private int batchSize;
     private int defaultMsgMaxRetryCount = 3;
     private boolean openEnded;
@@ -43,6 +48,30 @@ public class TaskCreateApiRequest extends AbstractUnknownFieldRequest {
         this.taskName = taskName;
     }
 
+    public String getEventCode() {
+        return eventCode;
+    }
+
+    public void setEventCode(String eventCode) {
+        this.eventCode = eventCode;
+    }
+
+    public TaskMode getMode() {
+        return mode;
+    }
+
+    public void setMode(TaskMode mode) {
+        this.mode = mode;
+    }
+
+    public PayloadType getPayloadType() {
+        return payloadType;
+    }
+
+    public void setPayloadType(PayloadType payloadType) {
+        this.payloadType = payloadType;
+    }
+
     public Map<String, Object> getSharedConfig() {
         return sharedConfig;
     }
@@ -51,11 +80,11 @@ public class TaskCreateApiRequest extends AbstractUnknownFieldRequest {
         this.sharedConfig = sharedConfig;
     }
 
-    public List<Map<String, Object>> getInputs() {
+    public List<Object> getInputs() {
         return inputs;
     }
 
-    public void setInputs(List<Map<String, Object>> inputs) {
+    public void setInputs(List<Object> inputs) {
         this.inputs = inputs;
     }
 

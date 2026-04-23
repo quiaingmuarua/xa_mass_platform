@@ -11,7 +11,16 @@ import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.UserRef;
 import com.xa.mass.sdk.SdkTaskResumeResult;
 import com.xa.mass.sdk.TaskOperations;
+import com.xa.mass.sdk.catalog.DefaultProjectEventCatalogFactory;
+import com.xa.mass.sdk.catalog.PayloadType;
+import com.xa.mass.sdk.catalog.ProjectEventCatalog;
+import com.xa.mass.sdk.catalog.ProjectMetadata;
+import com.xa.mass.sdk.catalog.TaskMode;
+import com.xa.mass.sdk.model.JsonInput;
+import com.xa.mass.sdk.model.MassInput;
 import com.xa.mass.sdk.model.MassTaskCreateRequest;
+import com.xa.mass.sdk.model.MassTaskRequest;
+import com.xa.mass.sdk.model.TextInput;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -42,9 +51,15 @@ public class TaskApiController {
     private static final Set<TaskStatus> EDITABLE_TASK_STATUSES = Set.of(TaskStatus.NEW, TaskStatus.BLOCKED);
 
     private final TaskOperations taskOperations;
+    private final ProjectEventCatalog projectEventCatalog;
 
     public TaskApiController(TaskOperations taskOperations) {
+        this(taskOperations, DefaultProjectEventCatalogFactory.createDefaultRegistry());
+    }
+
+    public TaskApiController(TaskOperations taskOperations, ProjectEventCatalog projectEventCatalog) {
         this.taskOperations = taskOperations;
+        this.projectEventCatalog = projectEventCatalog;
     }
 
     @GetMapping("")
@@ -70,7 +85,9 @@ public class TaskApiController {
     public ResponseEntity<ApiResponse<Map<String, Object>>> createTask(@RequestBody TaskCreateApiRequest requestBody) {
         try {
             validateKnownFields(requestBody, "task create");
-            Task task = taskOperations.createTask(toTaskCreateRequest(requestBody));
+            Task task = hasEventCode(requestBody)
+                    ? taskOperations.createTask(toMassTaskRequest(requestBody))
+                    : taskOperations.createTask(toTaskCreateRequest(requestBody));
             return ok(Map.of("taskId", task.getTid(), "message", "Task created"));
         } catch (Exception e) {
             return badRequest("Task create failed: " + e.getMessage());
@@ -281,14 +298,18 @@ public class TaskApiController {
                                                                             @RequestBody TaskAppendItemsApiRequest requestBody) {
         try {
             validateKnownFields(requestBody, "task append items");
-            List<Map<String, Object>> inputs = requestBody.getInputs();
+            Task task = taskOperations.getTask(taskId);
+            if (task == null) {
+                return notFound("Task not found: " + taskId);
+            }
+            List<Object> inputs = requestBody.getInputs();
             if (inputs == null || inputs.isEmpty()) {
                 return badRequest("inputs must be a non-empty list");
             }
-            int added = taskOperations.appendTaskItems(taskId, inputs);
+            int added = taskOperations.appendTaskItems(taskId, toAppendInputs(inputs, task));
             return ok(Map.of("message", "Items appended", "added", added));
         } catch (IllegalArgumentException e) {
-            return notFound("Task not found: " + taskId);
+            return badRequest(e.getMessage());
         } catch (IllegalStateException e) {
             return conflict(e.getMessage());
         } catch (Exception e) {
@@ -420,10 +441,42 @@ public class TaskApiController {
                 .project(requestBody.getProject())
                 .taskName(requestBody.getTaskName())
                 .sharedConfig(requestBody.getSharedConfig())
-                .inputs(requestBody.getInputs())
+                .inputs(toPlainJsonInputs(requestBody.getInputs()))
                 .batchSize(requestBody.getBatchSize())
                 .defaultMsgMaxRetryCount(requestBody.getDefaultMsgMaxRetryCount())
                 .openEnded(requestBody.isOpenEnded())
+                .maxRuntimeSeconds(requestBody.getMaxRuntimeSeconds())
+                .build();
+    }
+
+    private MassTaskRequest toMassTaskRequest(TaskCreateApiRequest requestBody) {
+        requireBusinessBindings(requestBody.getProject(), requestBody.getUserId());
+        if (requestBody.getTaskName() == null || requestBody.getTaskName().isBlank()) {
+            throw new IllegalArgumentException("taskName is required");
+        }
+        if (requestBody.getEventCode() == null || requestBody.getEventCode().isBlank()) {
+            throw new IllegalArgumentException("eventCode is required");
+        }
+        validateProjectAndEvent(requestBody.getProject(), requestBody.getEventCode());
+
+        TaskMode mode = requestBody.getMode() != null
+                ? requestBody.getMode()
+                : (requestBody.isOpenEnded() ? TaskMode.STREAMING : TaskMode.SINGLE_RUN);
+        PayloadType payloadType = requestBody.getPayloadType() != null
+                ? requestBody.getPayloadType()
+                : PayloadType.JSON;
+
+        return MassTaskRequest.builder()
+                .userId(requestBody.getUserId())
+                .project(requestBody.getProject())
+                .taskName(requestBody.getTaskName())
+                .eventCode(requestBody.getEventCode())
+                .mode(mode)
+                .payloadType(payloadType)
+                .sharedConfig(requestBody.getSharedConfig())
+                .inputs(toMassInputs(requestBody.getInputs(), payloadType))
+                .batchSize(requestBody.getBatchSize())
+                .defaultMsgMaxRetryCount(requestBody.getDefaultMsgMaxRetryCount())
                 .maxRuntimeSeconds(requestBody.getMaxRuntimeSeconds())
                 .build();
     }
@@ -448,6 +501,9 @@ public class TaskApiController {
         return requestBody.getUserId() == null
                 && requestBody.getProject() == null
                 && requestBody.getTaskName() == null
+                && requestBody.getEventCode() == null
+                && requestBody.getMode() == null
+                && requestBody.getPayloadType() == null
                 && requestBody.getSharedConfig() == null
                 && requestBody.getInputs() == null
                 && requestBody.getBatchSize() == 0
@@ -490,6 +546,104 @@ public class TaskApiController {
     private void requireBusinessBindings(String project, String userId) {
         ProjectRef.require(project);
         UserRef.requireUserId(userId);
+    }
+
+    private boolean hasEventCode(TaskCreateApiRequest requestBody) {
+        return requestBody.getEventCode() != null && !requestBody.getEventCode().isBlank();
+    }
+
+    private void validateProjectAndEvent(String projectCode, String eventCode) {
+        ProjectMetadata projectMetadata = projectEventCatalog.getProject(projectCode);
+        if (projectMetadata == null) {
+            throw new IllegalArgumentException("Unsupported project metadata code: " + projectCode);
+        }
+        if (projectEventCatalog.getEvent(eventCode) == null) {
+            throw new IllegalArgumentException("Unsupported event code: " + eventCode);
+        }
+        if (!projectMetadata.getEventCodes().contains(eventCode)) {
+            throw new IllegalArgumentException("Project " + projectCode + " does not support event " + eventCode);
+        }
+    }
+
+    private List<Map<String, Object>> toPlainJsonInputs(List<Object> rawInputs) {
+        if (rawInputs == null) {
+            return null;
+        }
+        return rawInputs.stream()
+                .map(this::mapInputWithoutDeclaredPayloadType)
+                .collect(Collectors.toList());
+    }
+
+    private List<Map<String, Object>> toAppendInputs(List<Object> rawInputs, Task task) {
+        PayloadType payloadType = resolvePayloadType(task);
+        if (payloadType == null) {
+            return rawInputs.stream()
+                    .map(this::mapInputWithoutDeclaredPayloadType)
+                    .collect(Collectors.toList());
+        }
+        return toMassInputs(rawInputs, payloadType).stream()
+                .map(MassInput::toTaskMsgInput)
+                .collect(Collectors.toList());
+    }
+
+    private Map<String, Object> mapInputWithoutDeclaredPayloadType(Object rawInput) {
+        if (rawInput instanceof String text) {
+            return new TextInput(text).toTaskMsgInput();
+        }
+        if (rawInput instanceof Map<?, ?> map) {
+            return new JsonInput(stringObjectMap(map)).toTaskMsgInput();
+        }
+        throw new IllegalArgumentException("Unsupported input item type: " + rawInput);
+    }
+
+    private List<MassInput> toMassInputs(List<Object> rawInputs, PayloadType payloadType) {
+        if (rawInputs == null || rawInputs.isEmpty()) {
+            throw new IllegalArgumentException("inputs must contain at least one work item");
+        }
+        PayloadType resolvedPayloadType = payloadType != null ? payloadType : PayloadType.JSON;
+        return rawInputs.stream()
+                .map(rawInput -> toMassInput(rawInput, resolvedPayloadType))
+                .collect(Collectors.toList());
+    }
+
+    private MassInput toMassInput(Object rawInput, PayloadType payloadType) {
+        return switch (payloadType) {
+            case TEXT -> {
+                if (!(rawInput instanceof String text)) {
+                    throw new IllegalArgumentException("TEXT payloadType requires string inputs");
+                }
+                yield new TextInput(text);
+            }
+            case JSON -> {
+                if (!(rawInput instanceof Map<?, ?> map)) {
+                    throw new IllegalArgumentException("JSON payloadType requires object inputs");
+                }
+                yield new JsonInput(stringObjectMap(map));
+            }
+        };
+    }
+
+    private PayloadType resolvePayloadType(Task task) {
+        if (task == null || task.getSharedConfig() == null) {
+            return null;
+        }
+        Object sdk = task.getSharedConfig().get("_sdk");
+        if (!(sdk instanceof Map<?, ?> sdkMetadata)) {
+            return null;
+        }
+        Object payloadType = sdkMetadata.get("payloadType");
+        if (!(payloadType instanceof String payloadTypeName) || payloadTypeName.isBlank()) {
+            return null;
+        }
+        return PayloadType.valueOf(payloadTypeName);
+    }
+
+    private Map<String, Object> stringObjectMap(Map<?, ?> rawMap) {
+        Map<String, Object> copy = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> entry : rawMap.entrySet()) {
+            copy.put(String.valueOf(entry.getKey()), entry.getValue());
+        }
+        return Map.copyOf(copy);
     }
 
     private String formatDateTime(LocalDateTime value) {

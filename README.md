@@ -56,7 +56,7 @@ The transport-neutral runtime model is now framed around three channels:
 - `xa-mass-sdk` is the real Java embedding module; it now carries both the SDK facade and the embedded runtime composition
 - `xa-mass-transport-api` is the transport-neutral seam for task dispatch, result ingest, system events, transport servers, and worker endpoint registries
 - `xa-mass-sdk` now assembles concrete worker transports through a transport runtime registry/factory seam instead of treating WebSocket as the runtime definition
-- `xa-mass-sdk` is also the SDK-first resource entry for project/event metadata, task creation, and worker registration; fully dynamic engine execution for newly registered project codes is still a later phase
+- `xa-mass-sdk` is also the SDK-first resource entry for project/event metadata, task creation, and worker registration; runtime project validation now flows through a core project registry seeded by defaults and extended by SDK registration
 - historical reactor/module experiments such as `xa-mass-base`, `xa-mass-starter`, and engine archive generations are no longer present in the current repository snapshot
 - Verified HTTP port: `server.port=8088`
 - Verified current WebSocket adapter port: `mass.websocket.port=18088`
@@ -68,7 +68,7 @@ The transport-neutral runtime model is now framed around three channels:
   - `NEW -> READY -> PAUSED -> READY`
   - `NEW -> BLOCKED -> READY`
 - `TERMINAL` is not self-describing anymore; inspect `task.terminalReason`
-- Active task-create contract now uses `userId`, `project`, `sharedConfig`, `inputs`, `batchSize`, `defaultMsgMaxRetryCount`, and `openEnded`; there is no dedicated `routingCode` field in the public control-console contract.
+- Active task-create contract uses `/status/api/tasks` as the single HTTP create route. It accepts core fields such as `userId`, `project`, `sharedConfig`, `inputs`, `batchSize`, `defaultMsgMaxRetryCount`, and `openEnded`, and can also accept SDK-aware fields such as `eventCode`, `mode`, and `payloadType`. There is no dedicated `routingCode` field in the public control-console contract.
 - `PUT /status/api/tasks/{taskId}` is metadata-only and does not accept `inputs`
 - `Task.project` and `Task.user` are first-class business bindings on the task aggregate; do not hide them inside `sharedConfig` or attribute maps
 - `Task.sharedConfig` is the task-level shared payload; `TaskMsg.input` and `TaskMsg.output` are the per-item payload boundary

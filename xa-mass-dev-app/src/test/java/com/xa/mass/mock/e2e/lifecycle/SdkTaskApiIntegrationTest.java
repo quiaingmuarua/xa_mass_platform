@@ -45,14 +45,15 @@ class SdkTaskApiIntegrationTest extends AbstractMockE2eTest {
 
     @Test
     @SuppressWarnings("unchecked")
-    void createTaskThroughSdkApiCompletesOverRealRuntime() throws Exception {
-        Map<String, Object> createResponse = exchange("/sdk/tasks", HttpMethod.POST, Map.of(
+    void createTaskThroughUnifiedTaskApiCompletesOverRealRuntime() throws Exception {
+        Map<String, Object> createResponse = exchange("/status/api/tasks", HttpMethod.POST, Map.of(
+                "userId", "sdk-client",
                 "project", "demoApp",
                 "taskName", "sdk-runtime-task",
                 "eventCode", "crawler.fetch-page",
                 "mode", "SINGLE_RUN",
                 "payloadType", "JSON",
-                "sharedConfig", Map.of("channel", "sdk", "routingCode", "us"),
+                "sharedConfig", Map.of("source", "sdk"),
                 "inputs", java.util.List.of(Map.of("target", "sdk-target-001")),
                 "batchSize", 1,
                 "defaultMsgMaxRetryCount", 2
@@ -74,7 +75,7 @@ class SdkTaskApiIntegrationTest extends AbstractMockE2eTest {
         assertEquals(1, snapshot.messages().size());
         assertEquals("SUCCESS", snapshot.messages().get(0).get("status"));
 
-        Map<String, Object> detailResponse = exchange("/sdk/tasks/" + taskId, HttpMethod.GET, null);
+        Map<String, Object> detailResponse = exchange("/status/api/tasks/" + taskId, HttpMethod.GET, null);
         assertApiOk(detailResponse);
         Map<String, Object> task = task(detailResponse);
         Map<String, Object> sharedConfig = (Map<String, Object>) task.get("sharedConfig");
@@ -83,6 +84,6 @@ class SdkTaskApiIntegrationTest extends AbstractMockE2eTest {
         assertEquals("crawler.fetch-page", sdkMetadata.get("eventCode"));
         assertEquals("JSON", sdkMetadata.get("payloadType"));
         assertEquals("SINGLE_RUN", sdkMetadata.get("taskMode"));
-        assertTrue(sharedConfig.containsKey("channel"));
+        assertTrue(sharedConfig.containsKey("source"));
     }
 }

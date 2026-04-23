@@ -500,6 +500,13 @@ function buildCreateRequest(): TaskCreateRequest {
     userId: currentOperatorId.value,
     project,
     taskName,
+    eventCode: starterEventCode.value || undefined,
+    mode: starterEventCode.value
+      ? createForm.openEnded
+        ? 'STREAMING'
+        : 'SINGLE_RUN'
+      : undefined,
+    payloadType: starterEventCode.value ? 'JSON' : undefined,
     sharedConfig,
     inputs,
     batchSize: Math.max(1, Number(createForm.batchSize) || 1),

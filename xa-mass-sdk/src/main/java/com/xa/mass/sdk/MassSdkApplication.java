@@ -38,6 +38,9 @@ import com.xa.mass.sdk.catalog.EventMetadata;
 import com.xa.mass.sdk.catalog.ProjectEventCatalog;
 import com.xa.mass.sdk.catalog.ProjectEventCatalogRegistry;
 import com.xa.mass.sdk.catalog.ProjectMetadata;
+import com.xa.mass.sdk.auth.InMemorySubmitterRegistry;
+import com.xa.mass.sdk.auth.SubmitterRegistration;
+import com.xa.mass.sdk.auth.TaskSubmitterContext;
 import com.xa.mass.sdk.model.MassTaskCreateRequest;
 import com.xa.mass.sdk.model.MassTaskRequest;
 import com.xa.mass.sdk.model.MassTaskRequestMapper;
@@ -73,7 +76,7 @@ import java.util.UUID;
  * lower-level starter/runtime types remain advanced integration seams.
  */
 public final class MassSdkApplication implements MassRuntimeControl, TaskOperations, WorkerOperations,
-        CatalogOperations,
+        ResourceOperations, CatalogOperations,
         RuleOperations, TransportOperations, DebugOperations {
 
     private static final Gson GSON = new Gson();
@@ -81,6 +84,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
 
     private final MassApplication delegate;
     private final ProjectEventCatalogRegistry projectEventCatalogRegistry;
+    private final InMemorySubmitterRegistry submitterRegistry;
 
     MassSdkApplication(MassApplication delegate) {
         this(delegate, DefaultProjectEventCatalogFactory.createDefaultRegistry());
@@ -89,6 +93,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
     MassSdkApplication(MassApplication delegate, ProjectEventCatalogRegistry projectEventCatalogRegistry) {
         this.delegate = Objects.requireNonNull(delegate, "delegate");
         this.projectEventCatalogRegistry = Objects.requireNonNull(projectEventCatalogRegistry, "projectEventCatalogRegistry");
+        this.submitterRegistry = new InMemorySubmitterRegistry();
         registerEnabledCatalogProjectsIntoCore();
     }
 
@@ -351,6 +356,26 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
     @Override
     public ProjectEventCatalog projectEventCatalog() {
         return projectEventCatalogRegistry;
+    }
+
+    @Override
+    public void registerSubmitter(SubmitterRegistration submitterRegistration) {
+        submitterRegistry.register(submitterRegistration);
+    }
+
+    @Override
+    public List<SubmitterRegistration> listSubmitters() {
+        return submitterRegistry.listSubmitters();
+    }
+
+    @Override
+    public SubmitterRegistration getSubmitter(String principalId) {
+        return submitterRegistry.getSubmitter(principalId);
+    }
+
+    @Override
+    public TaskSubmitterContext authenticateSubmitter(String credential) {
+        return submitterRegistry.authenticate(credential);
     }
 
     private void registerEnabledCatalogProjectsIntoCore() {

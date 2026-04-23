@@ -114,7 +114,8 @@ Expected mainline convergence:
 
 Task create/update:
 
-- Create supports `userId`, `project`, `taskName`, `sharedConfig`, `inputs`, `batchSize`, `defaultMsgMaxRetryCount`, `openEnded`, and `maxRuntimeSeconds`.
+- Create supports `userId`, `project`, `taskName`, `eventCode`, `mode`, `payloadType`, `sharedConfig`, `inputs`, `batchSize`, `defaultMsgMaxRetryCount`, `openEnded`, and `maxRuntimeSeconds`.
+- `/status/api/tasks` is the single HTTP task-create route; when `eventCode` is present it uses the SDK mode/payload-aware create path.
 - The public task API and control-console read models do not define a dedicated routing-code field.
 - `inputs` must be non-empty and materializes persisted `TaskMsg.input` rows.
 - Unknown or retired create fields fail fast.

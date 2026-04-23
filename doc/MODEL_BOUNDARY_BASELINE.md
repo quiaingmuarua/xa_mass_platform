@@ -24,7 +24,7 @@ This file defines the current canonical model boundaries. Its purpose is to stop
 
 ### SDK boundary
 
-- Canonical public task-create request: `com.xa.mass.sdk.model.MassTaskCreateRequest`
+- Canonical public task-create requests: `com.xa.mass.sdk.model.MassTaskCreateRequest` for plain creates and `com.xa.mass.sdk.model.MassTaskRequest` for mode/payload-aware creates
 - Engine DTOs are internal conversion targets, not public SDK surface
 
 ### Mock command boundary

@@ -51,16 +51,16 @@ For verified runtime behavior and recommended startup, use [VERIFIED_RUNBOOK.md]
 
 ## 1.2 SDK Task Contract Notes
 
-- SDK v1 keeps `/status/api/tasks/**` as the existing mainline contract and adds a parallel `/sdk/tasks/**` surface.
-- `/sdk/tasks` is the SDK-oriented create/read/append/seal entry and currently still maps into the existing engine task DTOs.
+- SDK-aware task creation is exposed through `/status/api/tasks`; there is no separate SDK task route.
+- `/status/api/tasks` accepts both plain task creation fields and SDK task metadata fields.
 - `MassTaskRequest.mode=SINGLE_RUN` maps to `openEnded=false`; `STREAMING` maps to `openEnded=true`.
 - `MassTaskRequest` payloads are normalized into `TaskMsg.input` as:
   - text: `{"type":"text","text":"..."}`
   - json: `{"type":"json","data":{...}}`
 - SDK task metadata is persisted in `Task.sharedConfig._sdk` with `eventCode`, `payloadType`, and `taskMode`.
-- `/sdk/tasks` create does not auto-approve tasks; the current lifecycle still starts at `NEW`.
+- Task create does not auto-approve tasks; the current lifecycle still starts at `NEW`.
 
-## 2. SDK API
+## 2. SDK Metadata API
 
 ### 2.1 List SDK Projects
 
@@ -117,124 +117,6 @@ Behavior:
 - returns the registered `EventMetadata`
 - returns HTTP 404 when `eventCode` does not exist in the catalog
 
-### 2.6 Create SDK Task
-
-- Method: `POST`
-- Path: `/sdk/tasks`
-- Status: `Implemented`
-
-Supported request fields:
-
-- `userId`
-- `project`
-- `taskName`
-- `eventCode`
-- `mode`
-- `payloadType`
-- `sharedConfig`
-- `inputs`
-- `batchSize`
-- `defaultMsgMaxRetryCount`
-- `maxRuntimeSeconds`
-
-Contract rules:
-
-- `project`, `taskName`, and `eventCode` are required
-- `mode` defaults to `SINGLE_RUN`
-- `payloadType` defaults to `JSON`
-- `inputs` must be a non-empty list
-- request `project` must exist in the SDK catalog
-- request `eventCode` must exist in the SDK catalog
-- the chosen project must explicitly declare support for the chosen event
-- `X-Mass-Api-Key` is reserved for future submitter resolution; current mainline allows requests without it
-- create returns only `taskId` and does not auto-transition the task out of `NEW`
-- SDK task creation forwards `sharedConfig` as supplied; SDK event metadata does not inject routing hints into the task payload.
-
-Example request:
-
-```json
-{
-  "project": "demoApp",
-  "taskName": "sdk-crawler",
-  "eventCode": "crawler.fetch-page",
-  "mode": "STREAMING",
-  "payloadType": "JSON",
-  "sharedConfig": {
-    "site": "example"
-  },
-  "inputs": [
-    {
-      "url": "https://example.test"
-    }
-  ],
-  "batchSize": 1,
-  "defaultMsgMaxRetryCount": 2,
-  "maxRuntimeSeconds": 60
-}
-```
-
-Example response:
-
-```json
-{
-  "code": 0,
-  "msg": "ok",
-  "data": {
-    "taskId": "task-sdk-001",
-    "message": "SDK task created"
-  }
-}
-```
-
-### 2.7 Get SDK Task
-
-- Method: `GET`
-- Path: `/sdk/tasks/{taskId}`
-- Status: `Implemented`
-
-Response notes:
-
-- returns `task`
-- returns `items` derived from persisted `TaskMsg.input`
-- returns `stateValidation`
-- returns HTTP 404 when the task does not exist
-
-### 2.8 Append Items To SDK Streaming Task
-
-- Method: `POST`
-- Path: `/sdk/tasks/{taskId}/items`
-- Status: `Implemented`
-
-Contract rules:
-
-- `inputs` must be a non-empty list
-- the task must exist
-- the task must still have open intake
-- when the task carries `_sdk.payloadType`, appended items must match that payload type
-- when no SDK payload metadata exists, string inputs map to text and object inputs map to json
-
-Example request:
-
-```json
-{
-  "inputs": [
-    "hello",
-    "world"
-  ]
-}
-```
-
-### 2.9 Seal SDK Streaming Task
-
-- Method: `PUT`
-- Path: `/sdk/tasks/{taskId}/seal`
-- Status: `Implemented`
-
-Behavior:
-
-- seals the append window for an open-ended SDK task
-- returns HTTP 400 when the task is not open-ended
-
 ## 3. Task API
 
 Base path: `/status/api/tasks`
@@ -250,6 +132,9 @@ Supported request fields:
 - `userId`
 - `project`
 - `taskName`
+- `eventCode`
+- `mode`
+- `payloadType`
 - `sharedConfig`
 - `inputs`
 - `batchSize`
@@ -260,10 +145,14 @@ Supported request fields:
 Contract rules:
 
 - `project` and `userId` are required
-- `inputs` must be a non-empty list of work-item payload maps
+- `inputs` must be a non-empty list
 - unsupported `project` values are rejected
 - unknown JSON fields are rejected
 - retired fields such as `targetJsonList`, `targetType`, and `extraParams` are not supported
+- when `eventCode` is present, create uses the SDK mode/payload-aware path
+- when `eventCode` is present, `project` and `eventCode` must exist in the SDK metadata catalog and the project must declare support for that event
+- `mode` defaults to `SINGLE_RUN`, or `STREAMING` when `openEnded=true` and `mode` is omitted
+- `payloadType` defaults to `JSON`
 - `defaultMsgMaxRetryCount` defaults to `3`
 - `openEnded` defaults to `false`
 - `maxRuntimeSeconds` defaults to `0` and disables runtime-limit termination
@@ -291,6 +180,30 @@ Example request:
   "defaultMsgMaxRetryCount": 3,
   "openEnded": false,
   "maxRuntimeSeconds": 0
+}
+```
+
+SDK-style example:
+
+```json
+{
+  "userId": "agent",
+  "project": "demoApp",
+  "taskName": "sdk-crawler",
+  "eventCode": "crawler.fetch-page",
+  "mode": "STREAMING",
+  "payloadType": "JSON",
+  "sharedConfig": {
+    "site": "example"
+  },
+  "inputs": [
+    {
+      "url": "https://example.test"
+    }
+  ],
+  "batchSize": 1,
+  "defaultMsgMaxRetryCount": 2,
+  "maxRuntimeSeconds": 60
 }
 ```
 

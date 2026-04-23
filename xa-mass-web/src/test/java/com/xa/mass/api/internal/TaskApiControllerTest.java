@@ -6,7 +6,10 @@ import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.sdk.SdkTaskResumeResult;
 import com.xa.mass.sdk.TaskOperations;
+import com.xa.mass.sdk.catalog.DefaultProjectEventCatalogFactory;
+import com.xa.mass.sdk.catalog.ProjectEventCatalog;
 import com.xa.mass.sdk.model.MassTaskCreateRequest;
+import com.xa.mass.sdk.model.MassTaskRequest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -44,7 +47,8 @@ class TaskApiControllerTest {
 
     @BeforeEach
     void setUp() {
-        mockMvc = MockMvcBuilders.standaloneSetup(new TaskApiController(taskOperations)).build();
+        ProjectEventCatalog catalog = DefaultProjectEventCatalogFactory.createDefaultRegistry();
+        mockMvc = MockMvcBuilders.standaloneSetup(new TaskApiController(taskOperations, catalog)).build();
     }
 
     @Test
@@ -140,6 +144,69 @@ class TaskApiControllerTest {
                 Map.of("target", "alpha"),
                 Map.of("target", "beta")
         ), request.getInputs());
+    }
+
+    @Test
+    void createTaskWithSdkFieldsDelegatesToSdkModeRequest() throws Exception {
+        Task createdTask = taskWithStatus(TaskStatus.NEW);
+        createdTask.setTid("task-sdk-001");
+
+        when(taskOperations.createTask(any(MassTaskRequest.class))).thenReturn(createdTask);
+
+        mockMvc.perform(post("/status/api/tasks")
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "taskName":"sdk-crawler",
+                                  "project":"demoApp",
+                                  "eventCode":"crawler.fetch-page",
+                                  "mode":"STREAMING",
+                                  "payloadType":"JSON",
+                                  "sharedConfig":{"site":"example"},
+                                  "userId":"agent",
+                                  "inputs":[{"url":"https://example.test"}],
+                                  "batchSize":1,
+                                  "defaultMsgMaxRetryCount":2,
+                                  "maxRuntimeSeconds":60
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.taskId").value("task-sdk-001"))
+                .andExpect(jsonPath("$.data.message").value("Task created"));
+
+        ArgumentCaptor<MassTaskRequest> captor = ArgumentCaptor.forClass(MassTaskRequest.class);
+        verify(taskOperations).createTask(captor.capture());
+        MassTaskRequest request = captor.getValue();
+        org.junit.jupiter.api.Assertions.assertEquals("sdk-crawler", request.getTaskName());
+        org.junit.jupiter.api.Assertions.assertEquals("demoApp", request.getProject());
+        org.junit.jupiter.api.Assertions.assertEquals("crawler.fetch-page", request.getEventCode());
+        org.junit.jupiter.api.Assertions.assertEquals("example", request.getSharedConfig().get("site"));
+        org.junit.jupiter.api.Assertions.assertTrue(request.isStreaming());
+        org.junit.jupiter.api.Assertions.assertEquals(List.of(
+                Map.of("type", "json", "data", Map.of("url", "https://example.test"))
+        ), request.toEngineInputs());
+    }
+
+    @Test
+    void createTaskRejectsUnsupportedProjectEventBinding() throws Exception {
+        mockMvc.perform(post("/status/api/tasks")
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "project":"rcsApp",
+                                  "taskName":"bad-event",
+                                  "eventCode":"crawler.fetch-page",
+                                  "mode":"SINGLE_RUN",
+                                  "payloadType":"JSON",
+                                  "userId":"agent",
+                                  "inputs":[{"target":"x"}]
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400));
+
+        verify(taskOperations, never()).createTask(any(MassTaskRequest.class));
     }
 
     @Test
@@ -255,6 +322,50 @@ class TaskApiControllerTest {
                 .andExpect(jsonPath("$.data.messages[0].msgId").value("msg-1"))
                 .andExpect(jsonPath("$.data.messages[0].input.target").value("alpha"))
                 .andExpect(jsonPath("$.data.messages[0].output.result").value("ok"));
+    }
+
+    @Test
+    void appendTaskItemsUsesStoredTextPayloadType() throws Exception {
+        Task task = new Task();
+        task.setTid(TASK_ID);
+        task.setSharedConfig(Map.of("_sdk", Map.of(
+                "eventCode", "chatbot.reply",
+                "payloadType", "TEXT",
+                "taskMode", "STREAMING"
+        )));
+
+        when(taskOperations.getTask(TASK_ID)).thenReturn(task);
+        when(taskOperations.appendTaskItems(any(), any())).thenReturn(2);
+
+        mockMvc.perform(post("/status/api/tasks/{taskId}/items", TASK_ID)
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "inputs":["hello","world"]
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.added").value(2));
+
+        verify(taskOperations).appendTaskItems(TASK_ID, List.of(
+                Map.of("type", "text", "text", "hello"),
+                Map.of("type", "text", "text", "world")
+        ));
+    }
+
+    @Test
+    void sealTaskDelegatesToSdkFacade() throws Exception {
+        Task task = taskWithStatus(TaskStatus.RUNNING);
+        when(taskOperations.getTask(TASK_ID)).thenReturn(task);
+        when(taskOperations.sealTask(TASK_ID)).thenReturn(true);
+
+        mockMvc.perform(put("/status/api/tasks/{taskId}/seal", TASK_ID))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.message").value("Task sealed"));
+
+        verify(taskOperations).sealTask(TASK_ID);
     }
 
     private Task taskWithStatus(TaskStatus status) {

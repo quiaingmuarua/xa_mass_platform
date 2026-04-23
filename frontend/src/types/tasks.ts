@@ -81,6 +81,9 @@ export interface TaskCreateRequest {
     userId: string
     project: string
     taskName: string
+    eventCode?: string
+    mode?: 'SINGLE_RUN' | 'STREAMING'
+    payloadType?: 'TEXT' | 'JSON'
     sharedConfig: Record<string, unknown>
     inputs: Array<Record<string, unknown>>
     batchSize: number

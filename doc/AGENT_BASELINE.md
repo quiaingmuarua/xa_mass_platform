@@ -68,7 +68,8 @@ Interpretation rules:
 - future worker forms should extend these abstract slots instead of shrinking the platform back into `worker/workerContext` vocabulary
 - mock/runtime loading does not auto-create fallback worker contexts; a worker with no explicit `workerContexts` stays stateless
 - SDK-first worker resource creation is the preferred path: use `WorkerRegistration` / `WorkerContextRegistration` through `MassSdkApplication.registerWorker(...)` and `registerWorkerContext(...)`; registration does not imply online state
-- SDK project/event metadata is registered through `MassSdkApplication.registerProject(...)` and `registerEvent(...)`; this is the SDK discovery/control-plane catalog, not yet a replacement for engine project-code validation
+- SDK project/event metadata is registered through `MassSdkApplication.registerProject(...)` and `registerEvent(...)`; enabled project registration also extends the core runtime project registry used by task and worker-context validation
+- `ResourceOperations` is the preferred SDK project/event control-plane interface; `CatalogOperations` is only a compatibility alias
 
 ## 4. Architectural Guardrails
 
