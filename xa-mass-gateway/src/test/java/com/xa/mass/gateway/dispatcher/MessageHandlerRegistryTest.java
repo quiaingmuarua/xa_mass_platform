@@ -94,6 +94,15 @@ class MessageHandlerRegistryTest {
         assertFalse(result.isFallback());
     }
 
+    @Test
+    void rejectsDirectControlEventTupleRegistration() {
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+                () -> registry.register("demoApp", MessageType.CONTROL,
+                        WorkerControlEventProtocol.SUB_MSG_TYPE, msg -> Collections.emptyList()));
+
+        assertTrue(error.getMessage().contains("CONTROL/event"));
+    }
+
     // ---- autoRegister built-in handlers ----
 
     @Test

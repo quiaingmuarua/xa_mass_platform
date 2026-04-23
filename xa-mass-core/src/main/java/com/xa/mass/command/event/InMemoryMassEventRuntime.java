@@ -27,6 +27,16 @@ public class InMemoryMassEventRuntime implements MassEventRuntime {
     }
 
     @Override
+    public void registerOrReplace(CoreEventDescriptor descriptor, MassEventHandler handler) {
+        CoreEventDescriptor normalizedDescriptor = Objects.requireNonNull(descriptor, "descriptor");
+        MassEventHandler normalizedHandler = Objects.requireNonNull(handler, "handler");
+        handlers.put(
+                normalizedDescriptor.getEvent(),
+                new RegisteredHandler(normalizedDescriptor, normalizedHandler)
+        );
+    }
+
+    @Override
     public CoreEventResponse dispatch(CoreEventRequest request, CoreEventPrincipal principal) {
         CoreEventRequest normalizedRequest = Objects.requireNonNull(request, "request");
         RegisteredHandler registeredHandler = handlers.get(normalizedRequest.getEvent());

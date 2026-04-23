@@ -46,7 +46,25 @@ public class MessageHandlerRegistry {
         this.register(GLOBAL, MessageType.TASK, "", this::handleTask);
     }
 
+    /**
+     * Registers a transport-protocol handler for one frame classification tuple.
+     *
+     * <p>This registry is a wire/protocol compatibility seam. Do not register
+     * new business or control capabilities here; those belong on globally
+     * unique SDK event definitions. The only supported control-plane tuple on
+     * the current WebSocket adapter is the legacy compatibility bridge
+     * {@code CONTROL/event}, which must be routed through
+     * {@link #registerWorkerControlEventBridge(MassMessageHandler)} instead of a
+     * normal tuple registration.
+     */
     public void register(String project, MessageType type, String subMsgType, MassMessageHandler handler) {
+        if (type == MessageType.CONTROL
+                && WorkerControlEventProtocol.SUB_MSG_TYPE.equals(subMsgType)) {
+            throw new IllegalArgumentException(
+                    "CONTROL/event is reserved for the worker-control compatibility bridge; "
+                            + "register a global SDK event handler instead of a tuple handler"
+            );
+        }
         String key = MessageRouterKeys.of(type, subMsgType);
         String proj = (project == null || project.trim().isEmpty()) ? GLOBAL : project;
         handlerMap.computeIfAbsent(proj, ignored -> new ConcurrentHashMap<>()).put(key, handler);

@@ -4,7 +4,11 @@ import com.xa.mass.gateway.dispatcher.handler.MassMessageHandler;
 import com.xa.mass.gateway.model.enums.MessageType;
 
 /**
- * Inbound handler registration metadata contributed by a transport binding.
+ * Inbound protocol-frame registration metadata contributed by a transport binding.
+ *
+ * <p>The tuple {@code messageType + subMsgType} is a transport compatibility
+ * classification only. Business and control capabilities must be modeled by
+ * globally unique SDK event codes instead of adding new tuple identities here.
  */
 public record TransportInboundRoute(
         String project,

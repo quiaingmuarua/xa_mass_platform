@@ -67,6 +67,7 @@ public class MiddlewareRegistry {
                             context.getMessageTransporter().sendOutput(Envelope.builder()
                                     .workerId(ctx.getWorkerId())
                                     .connRole(ctx.getConnRole())
+                                    .eventCode(envelope.getEventCode())
                                     .rawJson(json)
                                     .build());
                         }

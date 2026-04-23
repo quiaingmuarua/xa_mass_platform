@@ -78,11 +78,10 @@ public class SdkMetadataController {
 
     @GetMapping("/event-capabilities")
     public ResponseEntity<ApiResponse<List<Map<String, Object>>>> listEventCapabilities() {
-        Map<String, List<String>> projectCodesByEvent = projectCodesByEvent();
         List<Worker> workers = workerOperations == null ? List.of() : workerOperations.getAllWorkers();
         List<Map<String, Object>> items = projectEventCatalog.listEvents().stream()
                 .sorted(Comparator.comparing(SdkEventDefinition::getCode, String::compareToIgnoreCase))
-                .map(event -> toEventCapabilityItem(event, projectCodesByEvent.getOrDefault(event.getCode(), List.of()), workers))
+                .map(event -> toEventCapabilityItem(event, workers))
                 .toList();
         return ResponseEntity.ok(ApiResponse.success(items));
     }
@@ -97,28 +96,12 @@ public class SdkMetadataController {
         return ResponseEntity.ok(ApiResponse.success(definition));
     }
 
-    private Map<String, List<String>> projectCodesByEvent() {
-        Map<String, List<String>> index = new LinkedHashMap<>();
-        for (ProjectMetadata project : projectEventCatalog.listProjects()) {
-            for (String eventCode : project.getEventCodes()) {
-                index.compute(eventCode, (ignored, existing) -> {
-                    if (existing == null) {
-                        return List.of(project.getCode());
-                    }
-                    return java.util.stream.Stream.concat(existing.stream(), java.util.stream.Stream.of(project.getCode()))
-                            .distinct()
-                            .sorted(String::compareToIgnoreCase)
-                            .toList();
-                });
-            }
-        }
-        return index;
-    }
-
     private Map<String, Object> toEventCapabilityItem(SdkEventDefinition event,
-                                                      List<String> projectCodes,
                                                       List<Worker> workers) {
         boolean directRuntime = event.getTaskModes().isEmpty();
+        // Event capabilities are keyed by globally unique event codes. Worker
+        // support is therefore derived from supportedEventCodes, while
+        // projectCodes remains scope metadata from the SDK event definition.
         List<String> onlineWorkerIds = workers.stream()
                 .filter(worker -> worker.getStatus() != null && "ONLINE".equals(worker.getStatus().name()))
                 .filter(worker -> worker.getSupportedEventCodes() != null
@@ -142,12 +125,25 @@ public class SdkMetadataController {
         item.put("eventName", event.getName());
         item.put("enabled", event.isEnabled());
         item.put("invocationModel", directRuntime ? "DIRECT_RUNTIME" : "TASK_BACKED");
-        item.put("projectCodes", projectCodes);
+        item.put("projectCodes", normalizeProjectCodes(event.getProjectCodes()));
         item.put("workerIds", workerIds);
         item.put("onlineWorkerIds", onlineWorkerIds);
         item.put("hasDirectRuntimeHandler", directRuntime);
         item.put("hasOnlineWorkerCoverage", !onlineWorkerIds.isEmpty());
         item.put("ready", directRuntime || !onlineWorkerIds.isEmpty());
         return item;
+    }
+
+    private List<String> normalizeProjectCodes(List<String> projectCodes) {
+        if (projectCodes == null || projectCodes.isEmpty()) {
+            return List.of();
+        }
+        return projectCodes.stream()
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(code -> !code.isEmpty())
+                .distinct()
+                .sorted(String::compareToIgnoreCase)
+                .toList();
     }
 }

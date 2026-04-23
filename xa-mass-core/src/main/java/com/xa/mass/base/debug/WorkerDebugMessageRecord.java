@@ -9,6 +9,7 @@ public class WorkerDebugMessageRecord {
     private String workerId;
     private String direction;
     private String project;
+    private String event;
     private String msgType;
     private String subMsgType;
     private String status;
@@ -56,6 +57,14 @@ public class WorkerDebugMessageRecord {
 
     public void setProject(String project) {
         this.project = project;
+    }
+
+    public String getEvent() {
+        return event;
+    }
+
+    public void setEvent(String event) {
+        this.event = event;
     }
 
     public String getMsgType() {

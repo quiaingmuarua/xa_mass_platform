@@ -63,6 +63,7 @@ public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWe
                     .rawJson(raw)
                     .workerId(workerId)
                     .connRole(connRole)
+                    .eventCode(MessageParser.extractEventCode(massMessage))
                     .project(project)
                     .receivedAt(System.currentTimeMillis())
                     .traceId(massMessage.getMsgId())

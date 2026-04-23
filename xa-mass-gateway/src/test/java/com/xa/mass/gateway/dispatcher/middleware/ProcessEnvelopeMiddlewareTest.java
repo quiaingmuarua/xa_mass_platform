@@ -12,6 +12,7 @@ import com.xa.mass.gateway.queue.MessageCodec;
 import com.xa.mass.gateway.session.SessionRoles;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 import java.util.Collections;
 import java.util.List;
@@ -62,7 +63,9 @@ class ProcessEnvelopeMiddlewareTest {
         middleware.handle(envelope, context);
 
         assertNotNull(captured.get(), "Handler should have been called");
-        verify(context.getMessageTransporter()).sendOutput(any(Envelope.class));
+        ArgumentCaptor<Envelope> outputCaptor = ArgumentCaptor.forClass(Envelope.class);
+        verify(context.getMessageTransporter()).sendOutput(outputCaptor.capture());
+        assertNull(outputCaptor.getValue().getEventCode());
     }
 
     @Test
@@ -97,6 +100,31 @@ class ProcessEnvelopeMiddlewareTest {
         middleware.handle(envelope, context);
 
         verify(context.getMessageTransporter(), never()).sendOutput(any());
+    }
+
+    @Test
+    void responseEnvelopePropagatesCanonicalEventCodeMetadata() {
+        handlerRegistry.register("proj", MessageType.CONTROL, "manual-chat", msg -> {
+            MassMessage resp = new MassMessage();
+            resp.setMsgType(MessageType.CONTROL);
+            resp.setSubMsgType("manual-chat");
+            resp.setContext(msg.getContext());
+            return List.of(resp);
+        });
+
+        MassMessage msg = message("proj", MessageType.CONTROL, "manual-chat");
+        Envelope envelope = Envelope.builder()
+                .rawJson(codec.encode(msg))
+                .workerId("worker-1")
+                .connRole(SessionRoles.TASK_MESSAGES)
+                .eventCode("mock.state.get")
+                .build();
+
+        middleware.handle(envelope, context);
+
+        ArgumentCaptor<Envelope> outputCaptor = ArgumentCaptor.forClass(Envelope.class);
+        verify(context.getMessageTransporter()).sendOutput(outputCaptor.capture());
+        assertEquals("mock.state.get", outputCaptor.getValue().getEventCode());
     }
 
     @Test

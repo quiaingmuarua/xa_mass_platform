@@ -17,6 +17,10 @@ import java.util.Objects;
 /**
  * Runtime registry of worker transport bindings assembled for an embedded
  * XA Mass runtime.
+ *
+ * <p>Inbound route registration in this registry remains protocol-oriented.
+ * Route tuples classify wire frames for a specific adapter and must not be
+ * treated as the identity of a business or control capability.
  */
 public final class TransportRuntimeRegistry {
 

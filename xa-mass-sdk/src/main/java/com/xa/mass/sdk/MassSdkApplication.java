@@ -80,6 +80,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
     private final EventPermissionService eventPermissionService;
     private final MassEventRuntime eventRuntime;
     private final SdkEventDefinitionRegistry eventDefinitionRegistry;
+    private final Map<String, SdkEventHandler> eventHandlerCache;
     private final ProjectEventCatalog projectEventCatalogView;
 
     MassSdkApplication(MassApplication delegate) {
@@ -94,15 +95,18 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
         this.userPermissionProvider = new InMemoryUserPermissionProvider();
         this.eventRuntime = delegate.getEventRuntime() != null ? delegate.getEventRuntime() : new InMemoryMassEventRuntime();
         this.eventDefinitionRegistry = new SdkEventDefinitionRegistry();
+        this.eventHandlerCache = new LinkedHashMap<>();
+        this.projectEventCatalogView = new DefinitionBackedProjectEventCatalog(
+                this::listProjects,
+                this::getProject,
+                this::listEvents,
+                this::getEvent,
+                this::getEventsForProject
+        );
         this.eventPermissionService = new DefaultEventPermissionService(
                 clientPermissionProvider,
                 userPermissionProvider,
-                projectEventCatalogRegistry,
-                eventDefinitionRegistry
-        );
-        this.projectEventCatalogView = new DefinitionBackedProjectEventCatalog(
-                projectEventCatalogRegistry,
-                eventDefinitionRegistry
+                projectEventCatalogView
         );
         registerEnabledCatalogProjectsIntoCore();
         registerCatalogEventDefinitions();
@@ -405,17 +409,30 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
 
     @Override
     public List<SdkEventDefinition> listEvents() {
-        return eventDefinitionRegistry.list();
+        return projectEventDefinitionsFromRuntime();
     }
 
     @Override
     public SdkEventDefinition getEvent(String eventCode) {
-        return eventDefinitionRegistry.get(eventCode);
+        if (eventCode == null || eventCode.isBlank()) {
+            return null;
+        }
+        CoreEventDescriptor descriptor = eventRuntime.getDescriptor(eventCode.trim());
+        return descriptor == null ? null : toSdkEventDefinition(descriptor);
     }
 
     @Override
     public List<SdkEventDefinition> getEventsForProject(String projectCode) {
-        return eventDefinitionRegistry.listForProject(projectCode);
+        if (projectCode == null || projectCode.isBlank()) {
+            return List.of();
+        }
+        String normalizedProjectCode = projectCode.trim();
+        if (getProject(normalizedProjectCode) == null) {
+            return List.of();
+        }
+        return projectEventDefinitionsFromRuntime().stream()
+                .filter(definition -> definition.getProjectCodes().contains(normalizedProjectCode))
+                .toList();
     }
 
     @Override
@@ -589,7 +606,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
                                        String name,
                                        String description,
                                        com.xa.mass.command.event.MassEventHandler handler) {
-        SdkEventDefinition existing = projectEventCatalogRegistry.getEvent(eventCode);
+        SdkEventDefinition existing = getEvent(eventCode);
         registerEventDefinitionInternal(SdkEventDefinition.builder()
                 .code(eventCode)
                 .name(existing != null ? existing.getName() : name)
@@ -598,31 +615,16 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
                 .taskModes(existing != null ? existing.getTaskModes() : List.of())
                 .enabled(existing == null || existing.isEnabled())
                 .defaultRoutingCode(existing != null ? existing.getDefaultRoutingCode() : null)
-                .projectCodes(resolveProjectCodesForEvent(eventCode))
+                .projectCodes(existing != null ? existing.getProjectCodes() : List.of())
                 .handler((request, principal) -> toSdkResponse(
                         handler.handle(toCoreRequest(request), toCorePrincipal(principal))
                 ))
                 .build());
-        if (eventRuntime.contains(eventCode)) {
-            return;
-        }
-        eventRuntime.register(
-                CoreEventDescriptor.builder()
-                        .event(eventCode)
-                        .summary(description)
-                        .build(),
-                handler
-        );
     }
 
     private EventResponse dispatchEventInternal(EventRequest request, EventPrincipal principal) {
         try {
-            String eventCode = request.getEvent().value();
-            SdkEventDefinition definition = eventDefinitionRegistry.get(eventCode);
-            if (definition != null) {
-                return definition.getHandler().handle(request, principal);
-            }
-            return EventResponse.failure("UNKNOWN_EVENT", "unknown event: " + eventCode, request.getRequestId());
+            return toSdkResponse(eventRuntime.dispatch(toCoreRequest(request), toCorePrincipal(principal)));
         } catch (IllegalArgumentException e) {
             return EventResponse.failure("BAD_REQUEST", e.getMessage(), request.getRequestId());
         } catch (IllegalStateException e) {
@@ -682,13 +684,13 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
                 .projectCodes(mergeProjectCodes(resolveProjectCodesForEvent(normalized.getCode()), normalized.getProjectCodes()))
                 .handler(resolveDefinitionHandler(normalized))
                 .build();
-        projectEventCatalogRegistry.registerEventDefinition(merged);
-        eventDefinitionRegistry.register(merged);
+        eventHandlerCache.put(merged.getCode(), merged.getHandler());
+        eventRuntime.registerOrReplace(toCoreDescriptor(merged), toCoreHandler(merged.getHandler()));
+        refreshDerivedEventDefinitionCache();
     }
 
     private SdkEventHandler existingHandler(String eventCode) {
-        SdkEventDefinition existing = eventDefinitionRegistry.get(eventCode);
-        return existing == null ? null : existing.getHandler();
+        return eventHandlerCache.get(eventCode);
     }
 
     private void syncProjectScopeIntoDefinitions(ProjectMetadata projectMetadata) {
@@ -696,27 +698,35 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
             return;
         }
         for (String eventCode : projectMetadata.getEventCodes()) {
-            SdkEventDefinition existing = eventDefinitionRegistry.get(eventCode);
+            SdkEventDefinition existing = getEvent(eventCode);
             if (existing == null) {
                 continue;
             }
-            eventDefinitionRegistry.register(SdkEventDefinition.builder()
-                    .code(existing.getCode())
-                    .name(existing.getName())
-                    .description(existing.getDescription())
-                    .payloadTypes(existing.getPayloadTypes())
-                    .taskModes(existing.getTaskModes())
-                    .enabled(existing.isEnabled())
-                    .defaultRoutingCode(existing.getDefaultRoutingCode())
-                    .projectCodes(mergeProjectCodes(existing.getProjectCodes(), List.of(projectMetadata.getCode())))
-                    .handler(existing.getHandler())
-                    .build());
+            SdkEventHandler existingHandler = existingHandler(existing.getCode());
+            if (existingHandler == null) {
+                continue;
+            }
+            eventRuntime.registerOrReplace(
+                    toCoreDescriptor(SdkEventDefinition.builder()
+                            .code(existing.getCode())
+                            .name(existing.getName())
+                            .description(existing.getDescription())
+                            .payloadTypes(existing.getPayloadTypes())
+                            .taskModes(existing.getTaskModes())
+                            .enabled(existing.isEnabled())
+                            .defaultRoutingCode(existing.getDefaultRoutingCode())
+                            .projectCodes(mergeProjectCodes(existing.getProjectCodes(), List.of(projectMetadata.getCode())))
+                            .handler(existingHandler)
+                            .build()),
+                    toCoreHandler(existingHandler)
+            );
         }
+        refreshDerivedEventDefinitionCache();
     }
 
     private List<String> resolveProjectCodesForEvent(String eventCode) {
         LinkedHashSet<String> projectCodes = new LinkedHashSet<>();
-        SdkEventDefinition existing = eventDefinitionRegistry.get(eventCode);
+        CoreEventDescriptor existing = eventRuntime.getDescriptor(eventCode);
         if (existing != null) {
             projectCodes.addAll(existing.getProjectCodes());
         }
@@ -1037,6 +1047,106 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
         }
     }
 
+    private CoreEventDescriptor toCoreDescriptor(SdkEventDefinition definition) {
+        return CoreEventDescriptor.builder()
+                .event(definition.getCode())
+                .name(definition.getName())
+                .summary(definition.getDescription())
+                .description(definition.getDescription())
+                .payloadTypes(definition.getPayloadTypes().stream().map(Enum::name).toList())
+                .taskModes(definition.getTaskModes().stream().map(Enum::name).toList())
+                .defaultRoutingCode(definition.getDefaultRoutingCode())
+                .projectCodes(definition.getProjectCodes())
+                .enabled(definition.isEnabled())
+                .build();
+    }
+
+    private MassEventHandler toCoreHandler(SdkEventHandler handler) {
+        if (handler == null) {
+            return null;
+        }
+        return (request, principal) -> {
+            try {
+                return toCoreResponse(handler.handle(toSdkRequest(request), toSdkPrincipal(principal)));
+            } catch (Exception e) {
+                return CoreEventResponse.failure("ERROR", e.getMessage(), request.getRequestId());
+            }
+        };
+    }
+
+    private void refreshDerivedEventDefinitionCache() {
+        eventDefinitionRegistry.replaceAll(projectEventDefinitionsFromRuntime());
+    }
+
+    private SdkEventDefinition toSdkEventDefinition(CoreEventDescriptor descriptor) {
+        return SdkEventDefinition.builder()
+                .code(descriptor.getEvent())
+                .name(firstNonBlank(descriptor.getName(), descriptor.getEvent()))
+                .description(firstNonBlank(descriptor.getDescription(), descriptor.getSummary()))
+                .payloadTypes(parsePayloadTypes(descriptor.getPayloadTypes()))
+                .taskModes(parseTaskModes(descriptor.getTaskModes()))
+                .enabled(descriptor.isEnabled())
+                .defaultRoutingCode(descriptor.getDefaultRoutingCode())
+                .projectCodes(resolveProjectCodesForEvent(descriptor.getEvent(), descriptor.getProjectCodes()))
+                .handler(eventHandlerCache.get(descriptor.getEvent()))
+                .build();
+    }
+
+    private List<String> resolveProjectCodesForEvent(String eventCode, Collection<String> seedProjectCodes) {
+        LinkedHashSet<String> projectCodes = new LinkedHashSet<>();
+        if (seedProjectCodes != null) {
+            projectCodes.addAll(seedProjectCodes);
+        }
+        for (ProjectMetadata projectMetadata : projectEventCatalogRegistry.listProjects()) {
+            if (projectMetadata.getEventCodes().contains(eventCode)) {
+                projectCodes.add(projectMetadata.getCode());
+            }
+        }
+        return List.copyOf(projectCodes);
+    }
+
+    private List<PayloadType> parsePayloadTypes(List<String> values) {
+        if (values == null || values.isEmpty()) {
+            return List.of();
+        }
+        List<PayloadType> payloadTypes = new ArrayList<>();
+        for (String value : values) {
+            if (value == null || value.isBlank()) {
+                continue;
+            }
+            try {
+                payloadTypes.add(PayloadType.valueOf(value.trim().toUpperCase(Locale.ROOT)));
+            } catch (IllegalArgumentException ignored) {
+                // Keep derived SDK metadata tolerant of unknown internal descriptor values.
+            }
+        }
+        return List.copyOf(payloadTypes);
+    }
+
+    private List<TaskMode> parseTaskModes(List<String> values) {
+        if (values == null || values.isEmpty()) {
+            return List.of();
+        }
+        List<TaskMode> taskModes = new ArrayList<>();
+        for (String value : values) {
+            if (value == null || value.isBlank()) {
+                continue;
+            }
+            try {
+                taskModes.add(TaskMode.valueOf(value.trim().toUpperCase(Locale.ROOT)));
+            } catch (IllegalArgumentException ignored) {
+                // Keep derived SDK metadata tolerant of unknown internal descriptor values.
+            }
+        }
+        return List.copyOf(taskModes);
+    }
+
+    private List<SdkEventDefinition> projectEventDefinitionsFromRuntime() {
+        return eventRuntime.listDescriptors().stream()
+                .map(this::toSdkEventDefinition)
+                .toList();
+    }
+
     private void registerProjectIntoCore(ProjectMetadata projectMetadata) {
         Objects.requireNonNull(projectMetadata, "projectMetadata");
         ProjectRegistry.register(projectMetadata.getCode(), projectMetadata.getName(), projectMetadata.isEnabled());
@@ -1188,6 +1298,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
         Map<String, Object> dispatchResult = enqueueWorkerControlEvent(
                 workerId,
                 firstNonBlank(request.getProject(), null),
+                request.getEvent().value(),
                 eventPayload
         );
         Map<String, Object> result = new LinkedHashMap<>();
@@ -1196,11 +1307,16 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
         result.put("project", dispatchResult.get("project"));
         result.put(WorkerControlEventProtocol.EVENT_FIELD, request.getEvent().value());
         result.put(WorkerControlEventProtocol.REQUEST_ID_FIELD, eventRequestId);
+        // msgType/subMsgType remain useful for transport diagnostics, but the
+        // control capability identity lives on the global event code above.
+        result.put("msgType", dispatchResult.get("msgType"));
+        result.put("subMsgType", dispatchResult.get("subMsgType"));
         return result;
     }
 
     private Map<String, Object> enqueueWorkerControlEvent(String workerId,
                                                           String project,
+                                                          String eventCode,
                                                           Object payload) {
         Worker worker = requireStartedWorkerManager().getWorker(workerId);
         if (worker == null) {
@@ -1240,6 +1356,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
         Envelope envelope = Envelope.builder()
                 .workerId(workerId)
                 .connRole(WorkerEndpointRoles.TASK_DISPATCH)
+                .eventCode(eventCode)
                 .project(resolvedProject)
                 .traceId(messageId)
                 .receivedAt(System.currentTimeMillis())
@@ -1248,6 +1365,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
         WorkerDebugMessageStore.recordOutbound(
                 workerId,
                 resolvedProject,
+                eventCode,
                 MessageType.CONTROL.name(),
                 resolvedSubMsgType,
                 messageId,
@@ -1287,7 +1405,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
         if (eventCode == null || eventCode.isBlank()) {
             return;
         }
-        SdkEventDefinition definition = eventDefinitionRegistry.get(eventCode);
+        SdkEventDefinition definition = getEvent(eventCode);
         if (definition == null) {
             throw new IllegalArgumentException("Unsupported SDK event: " + eventCode);
         }

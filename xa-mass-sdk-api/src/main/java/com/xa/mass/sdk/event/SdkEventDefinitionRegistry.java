@@ -7,7 +7,11 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * Process-local registry for SDK event definitions.
+ * Process-local projection cache for SDK event definitions.
+ *
+ * <p>The SDK facade reads from this registry, but the canonical event metadata
+ * may be derived from a lower-level runtime source such as
+ * {@code com.xa.mass.command.event.MassEventRuntime}.
  */
 public final class SdkEventDefinitionRegistry {
 
@@ -16,6 +20,18 @@ public final class SdkEventDefinitionRegistry {
     public synchronized void register(SdkEventDefinition definition) {
         SdkEventDefinition normalized = Objects.requireNonNull(definition, "definition");
         definitions.put(normalized.getEventCode(), normalized);
+    }
+
+    public synchronized void replaceAll(Iterable<SdkEventDefinition> definitions) {
+        this.definitions.clear();
+        if (definitions == null) {
+            return;
+        }
+        for (SdkEventDefinition definition : definitions) {
+            if (definition != null) {
+                register(definition);
+            }
+        }
     }
 
     public synchronized boolean contains(String eventCode) {

@@ -15,6 +15,7 @@ import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 import java.lang.reflect.Constructor;
 import java.util.Arrays;
@@ -129,6 +130,35 @@ class DispatcherInboundHandlerTest {
         verify(transporter).sendInput(any(Envelope.class));
         assertEquals(1, sessionManager.getWorkerConnectionCount(), "Heartbeat should register the worker session");
         assertNotNull(sessionManager.getChannelContext("worker-1", SessionRoles.TASK_MESSAGES));
+    }
+
+    @Test
+    void controlEventInboundStoresCanonicalEventCodeOnEnvelope() throws Exception {
+        String controlJson = """
+                {
+                  "msgId": "ctrl-001",
+                  "msgType": "CONTROL",
+                  "subMsgType": "event",
+                  "project": "demoApp",
+                  "context": {
+                    "workerId": "worker-1",
+                    "connRole": "%s"
+                  },
+                  "payload": {
+                    "event": "mock.state.get",
+                    "requestId": "req-1",
+                    "payload": {
+                      "verbose": true
+                    }
+                  }
+                }
+                """.formatted(SessionRoles.TASK_MESSAGES);
+
+        handler.channelRead0(ctx, frame(controlJson));
+
+        ArgumentCaptor<Envelope> envelopeCaptor = ArgumentCaptor.forClass(Envelope.class);
+        verify(transporter).sendInput(envelopeCaptor.capture());
+        assertEquals("mock.state.get", envelopeCaptor.getValue().getEventCode());
     }
 
     @Test

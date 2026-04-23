@@ -2,6 +2,7 @@ package com.xa.mass.starter;
 
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
+import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.engine.listener.TaskMsgDispatchListener;
 import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
 import com.xa.mass.gateway.model.massMessage.MassMessage;
@@ -44,6 +45,7 @@ public class GatewayTaskMsgPublisher implements TaskMsgDispatchListener, TaskDis
             return;
         }
 
+        String eventCode = TaskSharedConfig.sdkEventCode(task);
         for (TaskMsg taskMsg : taskMsgs) {
             TaskDispatchItem dispatchItem = TaskDispatchItem.from(task, taskMsg);
             MassMessage message = messageMapper.toDispatchMessage(dispatchItem, DEFAULT_CONN_ROLE);
@@ -51,6 +53,7 @@ public class GatewayTaskMsgPublisher implements TaskMsgDispatchListener, TaskDis
             Envelope envelope = Envelope.builder()
                     .workerId(taskMsg.getLatestAttemptWorkerId())
                     .connRole(DEFAULT_CONN_ROLE)
+                    .eventCode(eventCode)
                     .project(task.getProject())
                     .traceId(taskMsg.getMsgId())
                     .receivedAt(System.currentTimeMillis())

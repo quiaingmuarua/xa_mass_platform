@@ -42,6 +42,7 @@ class GatewayTaskMsgPublisherTest {
         Envelope envelope = captor.getValue();
         assertEquals("worker-1", envelope.getWorkerId());
         assertEquals(GatewayTaskMsgPublisher.DEFAULT_CONN_ROLE, envelope.getConnRole());
+        assertEquals("crawler.fetch-page", envelope.getEventCode());
         assertEquals("demoApp", envelope.getProject());
         assertEquals("msg-1", envelope.getTraceId());
 
@@ -70,7 +71,10 @@ class GatewayTaskMsgPublisherTest {
         task.setTaskName("task-name");
         task.setProject("demoApp");
         task.setUser(com.xa.mass.base.model.UserRef.of("agent-1"));
-        task.setSharedConfig(java.util.Map.of("textContent", "hello"));
+        task.setSharedConfig(java.util.Map.of(
+                "textContent", "hello",
+                "_sdk", java.util.Map.of("eventCode", "crawler.fetch-page")
+        ));
         return task;
     }
 

@@ -1,11 +1,9 @@
 package com.xa.mass.sdk.authz;
 
 import com.xa.mass.sdk.catalog.ProjectEventCatalog;
-import com.xa.mass.sdk.catalog.ProjectMetadata;
 import com.xa.mass.sdk.event.EventPrincipal;
 import com.xa.mass.sdk.event.EventRequest;
 import com.xa.mass.sdk.event.SdkEventDefinition;
-import com.xa.mass.sdk.event.SdkEventDefinitionRegistry;
 
 import java.util.HashSet;
 import java.util.Objects;
@@ -18,16 +16,14 @@ public class DefaultEventPermissionService implements EventPermissionService {
 
     private final ClientPermissionProvider clientPermissionProvider;
     private final UserPermissionProvider userPermissionProvider;
-    private final SdkEventDefinitionRegistry eventDefinitionRegistry;
+    private final ProjectEventCatalog projectEventCatalog;
 
     public DefaultEventPermissionService(ClientPermissionProvider clientPermissionProvider,
                                          UserPermissionProvider userPermissionProvider,
-                                         ProjectEventCatalog projectEventCatalog,
-                                         SdkEventDefinitionRegistry eventDefinitionRegistry) {
+                                         ProjectEventCatalog projectEventCatalog) {
         this.clientPermissionProvider = Objects.requireNonNull(clientPermissionProvider, "clientPermissionProvider");
         this.userPermissionProvider = Objects.requireNonNull(userPermissionProvider, "userPermissionProvider");
-        Objects.requireNonNull(projectEventCatalog, "projectEventCatalog");
-        this.eventDefinitionRegistry = Objects.requireNonNull(eventDefinitionRegistry, "eventDefinitionRegistry");
+        this.projectEventCatalog = Objects.requireNonNull(projectEventCatalog, "projectEventCatalog");
     }
 
     @Override
@@ -57,7 +53,7 @@ public class DefaultEventPermissionService implements EventPermissionService {
     }
 
     private AuthorizationDecision validateCatalogAndDescriptor(String eventCode, String projectCode) {
-        SdkEventDefinition definition = eventDefinitionRegistry.get(eventCode);
+        SdkEventDefinition definition = projectEventCatalog.getEvent(eventCode);
         if (definition != null) {
             if (!definition.isEnabled()) {
                 return AuthorizationDecision.deny("event disabled: " + eventCode);

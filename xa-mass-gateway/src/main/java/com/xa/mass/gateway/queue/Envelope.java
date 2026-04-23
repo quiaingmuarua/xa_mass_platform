@@ -4,6 +4,7 @@ public class Envelope {
     private String rawJson;     // 原始 JSON 消息
     private String workerId;
     private String connRole;
+    private String eventCode;
     private String traceId;     // 可选，用于日志追踪
     private long receivedAt;
     private String project;     // 所属项目名，如 WhatsApp、Telegram
@@ -17,6 +18,7 @@ public class Envelope {
         this.rawJson = builder.rawJson;
         this.workerId = builder.workerId;
         this.connRole = builder.connRole;
+        this.eventCode = builder.eventCode;
         this.traceId = builder.traceId;
         this.receivedAt = builder.receivedAt;
         this.project = builder.project != null ? builder.project : "RCS";
@@ -51,6 +53,14 @@ public class Envelope {
         this.connRole = connRole;
     }
 
+    public String getEventCode() {
+        return eventCode;
+    }
+
+    public void setEventCode(String eventCode) {
+        this.eventCode = eventCode;
+    }
+
     public String getTraceId() {
         return traceId;
     }
@@ -80,6 +90,7 @@ public class Envelope {
         return "Envelope{" +
                 "workerId='" + workerId + '\'' +
                 ", connRole='" + connRole + '\'' +
+                ", eventCode='" + eventCode + '\'' +
                 ", traceId='" + traceId + '\'' +
                 ", receivedAt=" + receivedAt +
                 ", project='" + getProject() + '\'' +
@@ -92,6 +103,7 @@ public class Envelope {
         private String rawJson;
         private String workerId;
         private String connRole;
+        private String eventCode;
         private String traceId;
         private long receivedAt;
         private String project;
@@ -108,6 +120,11 @@ public class Envelope {
 
         public Builder connRole(String connRole) {
             this.connRole = connRole;
+            return this;
+        }
+
+        public Builder eventCode(String eventCode) {
+            this.eventCode = eventCode;
             return this;
         }
 

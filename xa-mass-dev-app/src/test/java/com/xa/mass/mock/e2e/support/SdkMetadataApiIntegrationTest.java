@@ -73,9 +73,13 @@ class SdkMetadataApiIntegrationTest extends AbstractMockE2eTest {
                 "crawler.fetch-page".equals(item.get("eventCode"))
                         && "TASK_BACKED".equals(item.get("invocationModel"))));
         assertTrue(capabilities.stream().anyMatch(item ->
+                "demo.dispatch".equals(item.get("eventCode"))
+                        && List.of("demoApp", "otherApp", "testApp").equals(item.get("projectCodes"))));
+        assertTrue(capabilities.stream().anyMatch(item ->
                 "tool.country.capital.lookup".equals(item.get("eventCode"))
                         && "DIRECT_RUNTIME".equals(item.get("invocationModel"))
-                        && Boolean.TRUE.equals(item.get("ready"))));
+                        && Boolean.TRUE.equals(item.get("ready"))
+                        && List.of().equals(item.get("projectCodes"))));
     }
 
     @Test

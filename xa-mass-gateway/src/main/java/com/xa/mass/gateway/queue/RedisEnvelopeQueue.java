@@ -63,6 +63,9 @@ public class RedisEnvelopeQueue implements MessageQueue<Envelope> {
             fields.put("rawJson", envelope.getRawJson());
             fields.put("workerId", envelope.getWorkerId());
             fields.put("connRole", envelope.getConnRole());
+            if (envelope.getEventCode() != null) {
+                fields.put("eventCode", envelope.getEventCode());
+            }
             fields.put("receivedAt", String.valueOf(envelope.getReceivedAt()));
             if (envelope.getTraceId() != null) {
                 fields.put("traceId", envelope.getTraceId());
@@ -105,6 +108,7 @@ public class RedisEnvelopeQueue implements MessageQueue<Envelope> {
                 .rawJson(map.get("rawJson"))
                 .workerId(map.get("workerId"))
                 .connRole(map.get("connRole"))
+                .eventCode(map.get("eventCode"))
                 .traceId(map.get("traceId"))
                 .receivedAt(Long.parseLong(map.getOrDefault("receivedAt", String.valueOf(System.currentTimeMillis()))))
                 .build();

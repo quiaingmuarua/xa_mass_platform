@@ -25,6 +25,9 @@ This file defines the current canonical model boundaries. Its purpose is to stop
 ### SDK boundary
 
 - Canonical public task-create requests: `com.xa.mass.sdk.model.MassTaskCreateRequest` for plain creates and `com.xa.mass.sdk.model.MassTaskRequest` for mode/payload-aware creates
+- Canonical public capability definition: `com.xa.mass.sdk.event.SdkEventDefinition`
+- `SdkEventDefinition.code` is the globally unique capability identity
+- `SdkEventDefinition.projectCodes` is scope metadata, not part of the identity key
 - Engine DTOs are internal conversion targets, not public SDK surface
 
 ### Mock command boundary
@@ -45,6 +48,7 @@ This file defines the current canonical model boundaries. Its purpose is to stop
 - Canonical protocol frame: `com.xa.mass.gateway.model.massMessage.MassMessage`
 - Canonical protocol header companion: `com.xa.mass.gateway.model.massMessage.MessageContext`
 - `MassMessage` is the message frame, not an HTTP response and not a task business entity
+- `msgType + subMsgType` classifies a wire frame only; it must not be promoted into the business/control capability identity model
 
 ### Protocol payload helpers
 
@@ -57,6 +61,7 @@ This file defines the current canonical model boundaries. Its purpose is to stop
 - some non-task API controllers still use `Map<String,Object>` request bodies instead of typed request models
 - `Envelope`, `MassMessage`, and `MessageContext` still overlap on routing metadata such as worker and project context
 - `MassMessage.payload` remains `JsonElement`, so payload contracts are only partially typed
+- some gateway/runtime names still reflect historical tuple routing even though global SDK event codes are now the mainline capability model
 
 ## 4. First-Stage Convergence Order
 

@@ -4,8 +4,9 @@ package com.xa.mass.base.debug;
  * Shared transport-compatibility constants for worker control events.
  *
  * <p>This protocol exists only as the current gateway/debug adapter envelope
- * for SDK event-first worker control. It should not become the long-term
- * business routing model.
+ * for SDK event-first worker control. The capability identity remains on the
+ * global SDK event code carried in {@link #EVENT_FIELD}; this protocol must
+ * not become the long-term business routing model.
  */
 public final class WorkerControlEventProtocol {
 

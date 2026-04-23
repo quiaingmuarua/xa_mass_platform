@@ -7,8 +7,8 @@ import com.xa.mass.gateway.model.enums.MessageType;
 public class MassMessage {
     private String msgId;               // 全局唯一消息 ID
     private boolean response = false;   // 是否为响应消息（response消息可复用 MessageType）
-    private MessageType msgType;        // 消息主类型，如 TASK、PING、RESPONSE 等
-    private String subMsgType;          // 子类型，如 step、all、ack、configType 等
+    private MessageType msgType;        // 协议帧主类型，如 TASK、PING、RESPONSE 等
+    private String subMsgType;          // 协议帧子类型，如 step、all、ack、configType 等；不是全局能力标识
     private MessageDirection from;      // CLIENT / SERVER
     private MessageContext context;     // 通信上下文（设备ID、角色、连接信息等）
     private String project;            // canonical task/project code carried across the transport boundary

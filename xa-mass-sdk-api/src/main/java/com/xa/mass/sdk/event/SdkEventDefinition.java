@@ -13,8 +13,13 @@ import java.util.Objects;
 /**
  * Single SDK event registration unit.
  *
- * <p>The definition is the single source of truth for SDK-visible event
- * metadata, project scope, and the runtime handler.
+ * <p>{@link #getCode()} is the globally unique platform capability identifier.
+ * It is the mainline key for SDK-visible metadata, permission checks, worker
+ * capability declarations, and runtime dispatch.
+ *
+ * <p>{@link #getProjectCodes()} is scope metadata only. Project membership may
+ * constrain where an event can be invoked, but it is not part of the event's
+ * identity and must not be treated as a composite routing key.
  */
 public final class SdkEventDefinition {
 

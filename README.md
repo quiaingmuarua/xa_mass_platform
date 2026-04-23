@@ -57,6 +57,7 @@ The transport-neutral runtime model is now framed around three channels:
 - `xa-mass-transport-api` is the transport-neutral seam for task dispatch, result ingest, system events, transport servers, and worker endpoint registries
 - `xa-mass-sdk` now assembles concrete worker transports through a transport runtime registry/factory seam instead of treating WebSocket as the runtime definition
 - `xa-mass-sdk` is also the SDK-first resource entry for project/event metadata, task creation, and worker registration; runtime project validation now flows through a core project registry seeded by defaults and extended by SDK registration
+- global SDK event codes are the mainline capability identity for dispatch, permissions, and worker capability declarations; project membership remains scope metadata rather than part of the identity key
 - historical reactor/module experiments such as `xa-mass-base`, `xa-mass-starter`, and engine archive generations are no longer present in the current repository snapshot
 - Verified HTTP port: `server.port=8088`
 - Verified current WebSocket adapter port: `mass.websocket.port=18088`
@@ -101,6 +102,7 @@ Primary endpoints:
 - `xa-mass-web`: REST controllers and the backend-hosted control console shell
 - `xa-mass-engine`: task state machine, assignment, result handling, and strategy extension points
 - `xa-mass-gateway`: current WebSocket transport adapter plus dispatch runtime
+- gateway tuple routing such as `msgType + subMsgType` is a protocol compatibility seam only; do not treat it as the capability model
 - `xa-mass-core`: shared models and infrastructure
 
 Build boundary note:

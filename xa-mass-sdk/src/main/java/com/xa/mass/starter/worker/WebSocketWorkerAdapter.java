@@ -2,6 +2,7 @@ package com.xa.mass.starter.worker;
 
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
+import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.worker.WorkerAdapter;
 import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
@@ -73,6 +74,7 @@ public class WebSocketWorkerAdapter implements WorkerAdapter, MassMessageHandler
             return;
         }
 
+        String eventCode = TaskSharedConfig.sdkEventCode(task);
         for (TaskMsg taskMsg : taskMsgs) {
             TaskDispatchItem dispatchItem = TaskDispatchItem.from(task, taskMsg);
             MassMessage message = messageMapper.toDispatchMessage(dispatchItem, DEFAULT_CONN_ROLE);
@@ -80,6 +82,7 @@ public class WebSocketWorkerAdapter implements WorkerAdapter, MassMessageHandler
             Envelope envelope = Envelope.builder()
                     .workerId(taskMsg.getLatestAttemptWorkerId())
                     .connRole(DEFAULT_CONN_ROLE)
+                    .eventCode(eventCode)
                     .project(task.getProject())
                     .traceId(taskMsg.getMsgId())
                     .receivedAt(System.currentTimeMillis())

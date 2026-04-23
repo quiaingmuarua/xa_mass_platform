@@ -1,5 +1,6 @@
 package com.xa.mass.gateway.server;
 
+import com.xa.mass.base.debug.WorkerControlEventProtocol;
 import com.xa.mass.gateway.dispatcher.MessageHandlerRegistry;
 import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
 import com.xa.mass.gateway.dispatcher.handler.MassMessageHandler;
@@ -41,7 +42,21 @@ public class MassServerBuilder {
         return this;
     }
 
+    /**
+     * Registers a protocol-frame handler for the current gateway adapter.
+     *
+     * <p>This builder only configures wire-frame handlers. New business or
+     * control capabilities must be added through global SDK event definitions,
+     * not by introducing new tuple identities here.
+     */
     public MassServerBuilder registerHandler(String project, MessageType type, String subMsgType, MassMessageHandler handler) {
+        if (type == MessageType.CONTROL
+                && WorkerControlEventProtocol.SUB_MSG_TYPE.equals(subMsgType)) {
+            throw new IllegalArgumentException(
+                    "CONTROL/event is reserved for the worker-control compatibility bridge; "
+                            + "register a global SDK event handler instead of a tuple handler"
+            );
+        }
         String proj = (project == null || project.trim().isEmpty()) ? "GLOBAL" : project;
         String key = MessageRouterKeys.of(type, subMsgType);
         handlerMap.computeIfAbsent(proj, k -> new HashMap<>()).put(key, handler);

@@ -5,7 +5,13 @@ import com.xa.mass.sdk.event.SdkEventDefinition;
 import java.util.*;
 
 /**
- * In-memory registry for project metadata and SDK event definitions.
+ * In-memory bootstrap registry for project metadata and optional SDK event
+ * definition seeds.
+ *
+ * <p>Projects remain a scope catalog, while any seeded SDK event definitions
+ * are keyed by globally unique event code. Runtime callers should not treat
+ * this bootstrap registry as the canonical event capability source once the
+ * application has projected definitions from the underlying event runtime.
  */
 public class ProjectEventCatalogRegistry implements ProjectEventCatalog {
 

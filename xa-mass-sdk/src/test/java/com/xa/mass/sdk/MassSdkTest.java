@@ -10,6 +10,9 @@ import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
+import com.xa.mass.command.event.CoreEventDescriptor;
+import com.xa.mass.command.event.CoreEventResponse;
+import com.xa.mass.command.event.InMemoryMassEventRuntime;
 import com.xa.mass.engine.model.TaskCreateRequestDto;
 import com.xa.mass.engine.rules.RuleDefinition;
 import com.xa.mass.engine.rules.RuleManager;
@@ -398,6 +401,77 @@ class MassSdkTest {
         Assertions.assertEquals("bot.command", projectEvents.get(0).getCode());
         Assertions.assertEquals("Bot Command", projectEvents.get(0).getName());
         Assertions.assertEquals(List.of("botApp"), projectEvents.get(0).getProjectCodes());
+    }
+
+    @Test
+    void registeredSdkEventsProjectFromCommandRuntimeDescriptorTruth() {
+        MassApplication delegate = mock(MassApplication.class);
+        when(delegate.getEventRuntime()).thenReturn(new InMemoryMassEventRuntime());
+        MassSdkApplication app = new MassSdkApplication(delegate);
+        app.registerEventDefinition(SdkEventDefinition.builder()
+                .code("bot.command")
+                .name("Bot Command")
+                .description("Handle a bot command")
+                .payloadTypes(List.of(PayloadType.TEXT, PayloadType.JSON))
+                .taskModes(List.of(TaskMode.SINGLE_RUN, TaskMode.STREAMING))
+                .defaultRoutingCode("bot")
+                .handler((request, principal) -> EventResponse.success(Map.of("accepted", true), request.getRequestId()))
+                .build());
+        app.registerProject(ProjectMetadata.builder()
+                .code("botApp")
+                .name("Bot App")
+                .description("bot project")
+                .eventCodes(List.of("bot.command"))
+                .build());
+
+        CoreEventDescriptor descriptor = app.unwrap().getEventRuntime().getDescriptor("bot.command");
+
+        assertNotNull(descriptor);
+        assertEquals("bot.command", descriptor.getEvent());
+        assertEquals("Bot Command", descriptor.getName());
+        assertEquals("Handle a bot command", descriptor.getDescription());
+        assertEquals(List.of("TEXT", "JSON"), descriptor.getPayloadTypes());
+        assertEquals(List.of("SINGLE_RUN", "STREAMING"), descriptor.getTaskModes());
+        assertEquals("bot", descriptor.getDefaultRoutingCode());
+        assertEquals(List.of("botApp"), app.getEvent("bot.command").getProjectCodes());
+        assertEquals(descriptor.getDescription(), app.getEvent("bot.command").getDescription());
+    }
+
+    @Test
+    void sdkCatalogQueriesReadDirectlyFromRuntimeTruth() {
+        InMemoryMassEventRuntime runtime = new InMemoryMassEventRuntime();
+        MassApplication delegate = mock(MassApplication.class);
+        when(delegate.getEventRuntime()).thenReturn(runtime);
+        MassSdkApplication app = new MassSdkApplication(delegate);
+        app.registerProject(ProjectMetadata.builder()
+                .code("runtimeApp")
+                .name("Runtime App")
+                .description("runtime-backed project")
+                .eventCodes(List.of("runtime.only"))
+                .build());
+
+        runtime.registerOrReplace(
+                CoreEventDescriptor.builder()
+                        .event("runtime.only")
+                        .name("Runtime Only")
+                        .description("Projected directly from event runtime")
+                        .payloadTypes(List.of("JSON"))
+                        .taskModes(List.of("SINGLE_RUN"))
+                        .projectCodes(List.of("runtimeApp"))
+                        .enabled(true)
+                        .build(),
+                (request, principal) -> CoreEventResponse.success(Map.of("ok", true), request.getRequestId())
+        );
+
+        assertNotNull(app.getEvent("runtime.only"));
+        assertEquals("Runtime Only", app.getEvent("runtime.only").getName());
+        assertTrue(app.listEvents().stream().anyMatch(event -> "runtime.only".equals(event.getCode())));
+        assertEquals(List.of("runtime.only"),
+                app.getEventsForProject("runtimeApp").stream().map(SdkEventDefinition::getCode).toList());
+        assertEquals(List.of("runtime.only"),
+                app.projectEventCatalog().getEventsForProject("runtimeApp").stream()
+                        .map(SdkEventDefinition::getCode)
+                        .toList());
     }
 
     @Test

@@ -70,6 +70,8 @@ Interpretation rules:
 - SDK-first worker resource creation is the preferred path: use `WorkerRegistration` / `WorkerContextRegistration` through `MassSdkApplication.registerWorker(...)` and `registerWorkerContext(...)`; registration does not imply online state
 - SDK project/event metadata is registered through `MassSdkApplication.registerProject(...)` and `registerEvent(...)`; enabled project registration also extends the core runtime project registry used by task and worker-context validation
 - `ResourceOperations` is the SDK project/event control-plane interface
+- `SdkEventDefinition.code` is the globally unique capability identity for SDK/runtime dispatch, worker capability declarations, and permission checks
+- `SdkEventDefinition.projectCodes` is scope metadata only; it constrains where an event may be invoked but is not part of the event identity
 - SDK submitter registration is currently a minimal in-memory credential binding for task submission identity; do not treat it as a complete user/security subsystem
 - SDK submitter list/get operations expose submitter metadata only; raw credentials are accepted on registration and consumed by authentication, not returned as resource read models
 
@@ -103,6 +105,7 @@ Interpretation rules:
 - The current mainline reactor is defined by the root `pom.xml`: `xa-mass-web`, `xa-mass-core`, `xa-mass-transport-api`, `xa-mass-engine`, `xa-mass-gateway`, `xa-mass-sdk-api`, `xa-mass-sdk`, `xa-mass-dev-app`.
 - `xa-mass-transport-api` now holds the transport-neutral SPI for task dispatch, result ingest, system events, transport servers, and worker endpoint registries.
 - `xa-mass-gateway` should be read as the current WebSocket transport adapter, not as the only valid worker runtime path.
+- Gateway tuple routing such as `MessageType + subMsgType` is a protocol-frame compatibility seam only; do not treat it as the identity of a business or control capability.
 - `com.xa.mass.engine` is the active engine path.
 - historical `v2` / archive engine generations are no longer present in the current repository snapshot.
 - EventBus mainline has converged onto `com.xa.mass.base.channel.eventbus.core` and `com.xa.mass.base.channel.eventbus.event`.
@@ -140,6 +143,7 @@ Behavior locked in the mainline:
 - `eventCode` switches create into the SDK mode/payload-aware path and persists `_sdk` metadata in `Task.sharedConfig`
 - `eventCode` should be treated as globally unique across the runtime catalog
 - worker runtime event capability truth comes from explicit `supportedEventCodes`; `supportedProjects` is only a coarse grouping/filter hint
+- new business or control capabilities must be registered as global SDK events rather than as new gateway tuple branches
 - `batchSize` is normalized to a minimum of `1` and enforced as a per-worker hard cap for each dispatch round
 - `defaultMsgMaxRetryCount` defaults to `3`
 - `openEnded=true` keeps the task open for runtime item append until sealed
@@ -226,6 +230,7 @@ Important current rules:
 - Primary control-plane debug path is `POST /status/workers/send-event`
 - Event-first transport frame is `CONTROL/event`
 - Event-first acknowledgement path is `EVENT/event`
+- `CONTROL/event` is a compatibility bridge for the current worker debug/control adapter; it is not the platform capability model
 - `CONTROL/manual-chat -> EVENT/manual-chat` remains only as a compatibility debug-chat path
 - Current delivery visibility is stored in `WorkerDebugMessageStore`
 - Current page-visible states are:

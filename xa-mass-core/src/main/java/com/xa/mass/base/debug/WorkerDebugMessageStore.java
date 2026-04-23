@@ -28,12 +28,25 @@ public final class WorkerDebugMessageStore {
                                                           String payloadJson,
                                                           String rawJson,
                                                           String detail) {
+        return recordOutbound(workerId, project, null, msgType, subMsgType, messageId, payloadJson, rawJson, detail);
+    }
+
+    public static WorkerDebugMessageRecord recordOutbound(String workerId,
+                                                          String project,
+                                                          String event,
+                                                          String msgType,
+                                                          String subMsgType,
+                                                          String messageId,
+                                                          String payloadJson,
+                                                          String rawJson,
+                                                          String detail) {
         WorkerDebugMessageRecord record = new WorkerDebugMessageRecord();
         long now = System.currentTimeMillis();
         record.setMessageId(messageId);
         record.setWorkerId(workerId);
         record.setDirection("OUTBOUND");
         record.setProject(project);
+        record.setEvent(normalize(event));
         record.setMsgType(msgType);
         record.setSubMsgType(subMsgType);
         record.setStatus("QUEUED");
@@ -56,6 +69,19 @@ public final class WorkerDebugMessageStore {
                                                          String payloadJson,
                                                          String rawJson,
                                                          String detail) {
+        return recordInbound(workerId, project, null, msgType, subMsgType, messageId, replyToMessageId, payloadJson, rawJson, detail);
+    }
+
+    public static WorkerDebugMessageRecord recordInbound(String workerId,
+                                                         String project,
+                                                         String event,
+                                                         String msgType,
+                                                         String subMsgType,
+                                                         String messageId,
+                                                         String replyToMessageId,
+                                                         String payloadJson,
+                                                         String rawJson,
+                                                         String detail) {
         WorkerDebugMessageRecord record = new WorkerDebugMessageRecord();
         long now = System.currentTimeMillis();
         record.setMessageId(messageId);
@@ -63,6 +89,7 @@ public final class WorkerDebugMessageStore {
         record.setWorkerId(workerId);
         record.setDirection("INBOUND");
         record.setProject(project);
+        record.setEvent(resolveInboundEvent(event, replyToMessageId));
         record.setMsgType(msgType);
         record.setSubMsgType(subMsgType);
         record.setStatus("RECEIVED");
@@ -151,5 +178,24 @@ public final class WorkerDebugMessageStore {
         } catch (Exception ignored) {
             return rawJson;
         }
+    }
+
+    private static String resolveInboundEvent(String explicitEvent, String replyToMessageId) {
+        String normalizedExplicit = normalize(explicitEvent);
+        if (normalizedExplicit != null) {
+            return normalizedExplicit;
+        }
+        if (replyToMessageId == null || replyToMessageId.isBlank()) {
+            return null;
+        }
+        WorkerDebugMessageRecord outbound = RECORD_BY_MESSAGE_ID.get(replyToMessageId);
+        return outbound == null ? null : normalize(outbound.getEvent());
+    }
+
+    private static String normalize(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        return value.trim();
     }
 }

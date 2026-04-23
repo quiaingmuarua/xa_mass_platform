@@ -14,7 +14,13 @@ class InMemoryMassEventRuntimeTest {
         runtime.register(
                 CoreEventDescriptor.builder()
                         .event("platform.test.echo")
+                        .name("Platform Test Echo")
                         .summary("Echo payload")
+                        .description("Echo payload")
+                        .payloadTypes(java.util.List.of("JSON"))
+                        .taskModes(java.util.List.of("SINGLE_RUN"))
+                        .defaultRoutingCode("echo")
+                        .projectCodes(java.util.List.of("testProject"))
                         .build(),
                 (request, principal) -> CoreEventResponse.success(
                         Map.of("event", request.getEvent(), "clientId", principal.clientId()),
@@ -33,6 +39,12 @@ class InMemoryMassEventRuntimeTest {
         assertTrue(response.isSuccess());
         assertEquals("req-1", response.getRequestId());
         assertEquals("platform.test.echo", runtime.getDescriptor("platform.test.echo").getEvent());
+        assertEquals("Platform Test Echo", runtime.getDescriptor("platform.test.echo").getName());
+        assertEquals("Echo payload", runtime.getDescriptor("platform.test.echo").getDescription());
+        assertEquals(java.util.List.of("JSON"), runtime.getDescriptor("platform.test.echo").getPayloadTypes());
+        assertEquals(java.util.List.of("SINGLE_RUN"), runtime.getDescriptor("platform.test.echo").getTaskModes());
+        assertEquals("echo", runtime.getDescriptor("platform.test.echo").getDefaultRoutingCode());
+        assertEquals(java.util.List.of("testProject"), runtime.getDescriptor("platform.test.echo").getProjectCodes());
         assertEquals(1, runtime.listDescriptors().size());
     }
 

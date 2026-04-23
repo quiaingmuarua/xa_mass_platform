@@ -18,7 +18,12 @@ import java.lang.reflect.Type;
 import java.util.*;
 
 /**
- * Compatibility bridge from worker control CONTROL frames into the event runtime.
+ * Compatibility bridge from worker-control transport frames into the global
+ * event runtime.
+ *
+ * <p>The incoming {@code CONTROL/event} tuple remains a protocol shim for the
+ * current adapter. The canonical capability identity is the payload {@code event}
+ * field that is forwarded into the SDK event runtime.
  */
 public class WorkerControlEventBridgeHandler implements MassMessageHandler {
 

@@ -32,6 +32,7 @@ class SdkMetadataControllerTest {
                 .description("Example crawler fetch task event.")
                 .payloadTypes(java.util.List.of(PayloadType.JSON))
                 .taskModes(java.util.List.of(TaskMode.SINGLE_RUN, TaskMode.STREAMING))
+                .projectCodes(java.util.List.of("crawlerApp", "demoApp", "demoApp"))
                 .build());
         catalog.registerEventDefinition(SdkEventDefinition.builder()
                 .code("chatbot.reply")
@@ -54,10 +55,14 @@ class SdkMetadataControllerTest {
                 .description("Test demo app")
                 .eventCodes(java.util.List.of("crawler.fetch-page", "chatbot.reply"))
                 .build());
-        Worker crawlerWorker = worker("crawler-worker-1", WorkerStatus.ONLINE, List.of("crawler.fetch-page"));
-        Worker offlineChatWorker = worker("chat-worker-1", WorkerStatus.OFFLINE, List.of("chatbot.reply"));
+        Worker crawlerWorker = worker("crawler-worker-1", WorkerStatus.ONLINE,
+                List.of("otherApp"), List.of("crawler.fetch-page"));
+        Worker offlineChatWorker = worker("chat-worker-1", WorkerStatus.OFFLINE,
+                List.of("demoApp"), List.of("chatbot.reply"));
+        Worker scopeOnlyWorker = worker("scope-only-worker", WorkerStatus.ONLINE,
+                List.of("demoApp"), List.of());
         WorkerOperations workerOperations = mock(WorkerOperations.class);
-        when(workerOperations.getAllWorkers()).thenReturn(List.of(crawlerWorker, offlineChatWorker));
+        when(workerOperations.getAllWorkers()).thenReturn(List.of(crawlerWorker, offlineChatWorker, scopeOnlyWorker));
         mockMvc = MockMvcBuilders.standaloneSetup(new SdkMetadataController(catalog, workerOperations)).build();
     }
 
@@ -93,10 +98,13 @@ class SdkMetadataControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
                 .andExpect(jsonPath("$.data[?(@.eventCode=='crawler.fetch-page' && @.invocationModel=='TASK_BACKED')]").exists())
+                .andExpect(jsonPath("$.data[?(@.eventCode=='crawler.fetch-page' && @.projectCodes[0]=='crawlerApp' && @.projectCodes[1]=='demoApp')]").exists())
+                .andExpect(jsonPath("$.data[?(@.eventCode=='crawler.fetch-page' && @.workerIds[0]=='crawler-worker-1')]").exists())
                 .andExpect(jsonPath("$.data[?(@.eventCode=='crawler.fetch-page' && @.onlineWorkerIds[0]=='crawler-worker-1')]").exists())
                 .andExpect(jsonPath("$.data[?(@.eventCode=='sms.wait-code' && @.invocationModel=='DIRECT_RUNTIME')]").exists())
                 .andExpect(jsonPath("$.data[?(@.eventCode=='sms.wait-code' && @.hasDirectRuntimeHandler==true)]").exists())
-                .andExpect(jsonPath("$.data[?(@.eventCode=='chatbot.reply' && @.hasOnlineWorkerCoverage==false)]").exists());
+                .andExpect(jsonPath("$.data[?(@.eventCode=='chatbot.reply' && @.hasOnlineWorkerCoverage==false)]").exists())
+                .andExpect(jsonPath("$.data[?(@.eventCode=='crawler.fetch-page' && @.workerIds.length()==1)]").exists());
     }
 
     @Test
@@ -110,10 +118,14 @@ class SdkMetadataControllerTest {
                 .andExpect(jsonPath("$.code").value(404));
     }
 
-    private Worker worker(String workerId, WorkerStatus status, List<String> supportedEventCodes) {
+    private Worker worker(String workerId,
+                          WorkerStatus status,
+                          List<String> supportedProjects,
+                          List<String> supportedEventCodes) {
         Worker worker = new Worker();
         worker.setWorkerId(workerId);
         worker.setStatus(status);
+        worker.setSupportedProjects(supportedProjects);
         worker.setSupportedEventCodes(supportedEventCodes);
         return worker;
     }

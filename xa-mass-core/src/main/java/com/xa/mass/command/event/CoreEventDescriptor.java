@@ -11,13 +11,23 @@ import java.util.List;
 public final class CoreEventDescriptor {
 
     private final String event;
+    private final String name;
     private final String summary;
+    private final String description;
+    private final List<String> payloadTypes;
+    private final List<String> taskModes;
+    private final String defaultRoutingCode;
     private final List<String> projectCodes;
     private final boolean enabled;
 
     private CoreEventDescriptor(Builder builder) {
         this.event = requireNonBlank(builder.event, "event");
+        this.name = blankToNull(builder.name);
         this.summary = builder.summary == null ? "" : builder.summary;
+        this.description = builder.description == null ? "" : builder.description;
+        this.payloadTypes = immutableList(builder.payloadTypes);
+        this.taskModes = immutableList(builder.taskModes);
+        this.defaultRoutingCode = blankToNull(builder.defaultRoutingCode);
         this.projectCodes = immutableList(builder.projectCodes);
         this.enabled = builder.enabled;
     }
@@ -30,8 +40,28 @@ public final class CoreEventDescriptor {
         return event;
     }
 
+    public String getName() {
+        return name;
+    }
+
     public String getSummary() {
         return summary;
+    }
+
+    public String getDescription() {
+        return description;
+    }
+
+    public List<String> getPayloadTypes() {
+        return payloadTypes;
+    }
+
+    public List<String> getTaskModes() {
+        return taskModes;
+    }
+
+    public String getDefaultRoutingCode() {
+        return defaultRoutingCode;
     }
 
     public List<String> getProjectCodes() {
@@ -64,9 +94,21 @@ public final class CoreEventDescriptor {
         return value.trim();
     }
 
+    private static String blankToNull(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        return value.trim();
+    }
+
     public static final class Builder {
         private String event;
+        private String name;
         private String summary = "";
+        private String description = "";
+        private List<String> payloadTypes = Collections.emptyList();
+        private List<String> taskModes = Collections.emptyList();
+        private String defaultRoutingCode;
         private List<String> projectCodes = Collections.emptyList();
         private boolean enabled = true;
 
@@ -78,8 +120,41 @@ public final class CoreEventDescriptor {
             return this;
         }
 
+        public Builder name(String name) {
+            this.name = name;
+            return this;
+        }
+
         public Builder summary(String summary) {
             this.summary = summary;
+            if ((this.description == null || this.description.isBlank())
+                    && summary != null && !summary.isBlank()) {
+                this.description = summary;
+            }
+            return this;
+        }
+
+        public Builder description(String description) {
+            this.description = description;
+            if ((this.summary == null || this.summary.isBlank())
+                    && description != null && !description.isBlank()) {
+                this.summary = description;
+            }
+            return this;
+        }
+
+        public Builder payloadTypes(List<String> payloadTypes) {
+            this.payloadTypes = payloadTypes != null ? payloadTypes : Collections.emptyList();
+            return this;
+        }
+
+        public Builder taskModes(List<String> taskModes) {
+            this.taskModes = taskModes != null ? taskModes : Collections.emptyList();
+            return this;
+        }
+
+        public Builder defaultRoutingCode(String defaultRoutingCode) {
+            this.defaultRoutingCode = defaultRoutingCode;
             return this;
         }
 

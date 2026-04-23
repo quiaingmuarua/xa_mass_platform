@@ -238,24 +238,29 @@ public class MockApplicationSpringBootApp {
 
     private void registerRuntimeToolDefinitions(MassSdkApplication app) {
         for (CommandDefinition<JsonObject, Map<String, Object>> definition : ToolCommandRoutes.definitions()) {
-            app.registerEventDefinition(SdkEventDefinition.builder()
-                    .code(definition.getEvent())
-                    .name(humanizeEventName(definition.getEvent()))
-                    .description(definition.getDescriptor().getSummary())
-                    .payloadTypes(List.of(PayloadType.JSON))
-                    .taskModes(List.of())
-                    .projectCodes(List.of())
-                    .handler((request, principal) -> {
-                        MockCommandRuntime.initialize();
-                        JsonObject payloadJson = toJsonObject(request.getPayload());
-                        Map<String, Object> result = definition.getHandler().handle(
-                                definition.getResolver().apply(payloadJson),
-                                CommandContext.getInstance()
-                        );
-                        return EventResponse.success(result, request.getRequestId());
-                    })
-                    .build());
+            app.registerEventDefinition(toRuntimeToolEventDefinition(definition));
         }
+    }
+
+    private SdkEventDefinition toRuntimeToolEventDefinition(CommandDefinition<JsonObject, Map<String, Object>> definition) {
+        CommandDefinition.Descriptor descriptor = definition.getDescriptor();
+        return SdkEventDefinition.builder()
+                .code(definition.getEvent())
+                .name(humanizeEventName(descriptor.getEvent()))
+                .description(descriptor.getSummary())
+                .payloadTypes(List.of(PayloadType.JSON))
+                .taskModes(List.of())
+                .projectCodes(List.of())
+                .handler((request, principal) -> {
+                    MockCommandRuntime.initialize();
+                    JsonObject payloadJson = toJsonObject(request.getPayload());
+                    Map<String, Object> result = definition.getHandler().handle(
+                            definition.getResolver().apply(payloadJson),
+                            CommandContext.getInstance()
+                    );
+                    return EventResponse.success(result, request.getRequestId());
+                })
+                .build();
     }
 
     private JsonObject toJsonObject(Map<String, Object> payload) {

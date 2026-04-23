@@ -11,6 +11,11 @@ import java.util.List;
 /**
  * Default embedded-runtime transport assembly: pull/polling plus the current
  * WebSocket adapter when the gateway is enabled.
+ *
+ * <p>The WebSocket adapter still contributes the legacy {@code TASK/step}
+ * protocol-frame route for task data-plane compatibility. New control or
+ * business capabilities must be added as global SDK events instead of new
+ * tuple branches here.
  */
 public class DefaultWorkerTransportRuntimeFactory implements WorkerTransportRuntimeFactory {
 

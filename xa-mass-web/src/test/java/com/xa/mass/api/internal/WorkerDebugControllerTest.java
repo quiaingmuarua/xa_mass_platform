@@ -4,6 +4,7 @@ import com.xa.mass.sdk.DebugOperations;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.web.servlet.MockMvc;
@@ -15,7 +16,9 @@ import java.util.Map;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -61,5 +64,51 @@ class WorkerDebugControllerTest {
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value(404))
                 .andExpect(jsonPath("$.msg").value("Worker not found"));
+    }
+
+    @Test
+    void sendEventPassesCanonicalEventRequestAndReturnsTransportDiagnostics() throws Exception {
+        when(debugOperations.sendWorkerEvent(eq("worker-1"), any(), any()))
+                .thenReturn(Map.of(
+                        "messageId", "msg-1",
+                        "workerId", "worker-1",
+                        "event", "mock.state.get",
+                        "requestId", "req-1",
+                        "msgType", "CONTROL",
+                        "subMsgType", "event"
+                ));
+
+        mockMvc.perform(post("/status/workers/send-event")
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "workerId":"worker-1",
+                                  "project":"demoApp",
+                                  "event":"mock.state.get",
+                                  "requestId":"req-1",
+                                  "headers":{"mode":"probe"},
+                                  "payload":{"verbose":true},
+                                  "principal":{"clientId":"ops-console","userId":"operator-1"}
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.event").value("mock.state.get"))
+                .andExpect(jsonPath("$.data.msgType").value("CONTROL"))
+                .andExpect(jsonPath("$.data.subMsgType").value("event"));
+
+        ArgumentCaptor<com.xa.mass.sdk.event.EventRequest> requestCaptor =
+                ArgumentCaptor.forClass(com.xa.mass.sdk.event.EventRequest.class);
+        ArgumentCaptor<com.xa.mass.sdk.event.EventPrincipal> principalCaptor =
+                ArgumentCaptor.forClass(com.xa.mass.sdk.event.EventPrincipal.class);
+        verify(debugOperations).sendWorkerEvent(eq("worker-1"), requestCaptor.capture(), principalCaptor.capture());
+
+        assertEquals("mock.state.get", requestCaptor.getValue().getEvent().value());
+        assertEquals("demoApp", requestCaptor.getValue().getProject());
+        assertEquals("req-1", requestCaptor.getValue().getRequestId());
+        assertEquals(Map.of("mode", "probe"), requestCaptor.getValue().getHeaders());
+        assertEquals(Map.of("verbose", true), requestCaptor.getValue().getPayload());
+        assertEquals("ops-console", principalCaptor.getValue().getClientId());
+        assertEquals("operator-1", principalCaptor.getValue().getUserId());
     }
 }

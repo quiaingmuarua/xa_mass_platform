@@ -96,6 +96,7 @@ The event-first worker control path is separate from the free-form manual chat p
 - outbound transport frame: `CONTROL/event`
 - inbound acknowledgement frame: `EVENT/event`
 - compatibility field names are centralized in `WorkerControlEventProtocol`
+- `event` is the canonical control capability identifier; transport `msgType/subMsgType` remain adapter-level diagnostics only
 
 Envelope fields:
 

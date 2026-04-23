@@ -77,6 +77,12 @@ public class Worker {
         return supportedProjects;
     }
 
+    /**
+     * Coarse worker grouping/filter hint only.
+     *
+     * <p>Capability truth for task-backed and direct-runtime events now lives
+     * on {@link #getSupportedEventCodes()}.
+     */
     public void setSupportedProjects(List<String> supportedProjects) {
         if (supportedProjects == null || supportedProjects.isEmpty()) {
             this.supportedProjects = Collections.emptyList();
@@ -89,6 +95,9 @@ public class Worker {
         return supportedEventCodes;
     }
 
+    /**
+     * Canonical runtime capability declarations keyed by global event code.
+     */
     public void setSupportedEventCodes(List<String> supportedEventCodes) {
         if (supportedEventCodes == null || supportedEventCodes.isEmpty()) {
             this.supportedEventCodes = Collections.emptyList();
