@@ -1,5 +1,13 @@
 package com.xa.mass.gateway.model.enums;
 
+/**
+ * WebSocket protocol-frame categories used by the current gateway adapter.
+ *
+ * <p>These values classify wire frames only. They are not the identity of a
+ * runtime capability. Business and control abilities must be modeled by global
+ * SDK event codes, while task execution semantics should use transport-neutral
+ * task dispatch/result models.
+ */
 public enum MessageType {
     TASK,         // 下发任务
     PING,         // 心跳

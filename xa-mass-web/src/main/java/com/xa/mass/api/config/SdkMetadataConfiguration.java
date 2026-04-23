@@ -1,7 +1,7 @@
 package com.xa.mass.api.config;
 
 import com.xa.mass.sdk.catalog.DefaultProjectEventCatalogFactory;
-import com.xa.mass.sdk.catalog.ProjectEventCatalog;
+import com.xa.mass.sdk.catalog.SdkMetadataCatalog;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -13,8 +13,8 @@ import org.springframework.context.annotation.Configuration;
 public class SdkMetadataConfiguration {
 
     @Bean
-    @ConditionalOnMissingBean(ProjectEventCatalog.class)
-    public ProjectEventCatalog projectEventCatalog() {
+    @ConditionalOnMissingBean(SdkMetadataCatalog.class)
+    public SdkMetadataCatalog sdkMetadataCatalog() {
         return DefaultProjectEventCatalogFactory.createDefaultProjectRegistry();
     }
 }

@@ -23,10 +23,11 @@ import com.xa.mass.sdk.auth.AuthProvider;
 import com.xa.mass.sdk.auth.SubmitterMetadata;
 import com.xa.mass.sdk.auth.SubmitterRegistration;
 import com.xa.mass.sdk.auth.TaskSubmitterContext;
-import com.xa.mass.sdk.catalog.ProjectEventCatalog;
 import com.xa.mass.sdk.catalog.PayloadType;
+import com.xa.mass.sdk.catalog.ProjectEventCatalog;
 import com.xa.mass.sdk.catalog.ProjectEventCatalogRegistry;
 import com.xa.mass.sdk.catalog.ProjectMetadata;
+import com.xa.mass.sdk.catalog.SdkMetadataCatalog;
 import com.xa.mass.sdk.catalog.TaskMode;
 import com.xa.mass.sdk.event.EventPrincipal;
 import com.xa.mass.sdk.event.EventRequest;
@@ -489,6 +490,10 @@ class MassSdkTest {
         assertEquals(List.of("runtime.only"),
                 app.getEventsForProject("runtimeApp").stream().map(SdkEventDefinition::getCode).toList());
         assertEquals(List.of("runtime.only"),
+                app.metadataCatalog().getEventsForProject("runtimeApp").stream()
+                        .map(SdkEventDefinition::getCode)
+                        .toList());
+        assertEquals(List.of("runtime.only"),
                 app.projectEventCatalog().getEventsForProject("runtimeApp").stream()
                         .map(SdkEventDefinition::getCode)
                         .toList());
@@ -539,6 +544,11 @@ class MassSdkTest {
         assertTrue(app.listEvents().stream().anyMatch(event -> "bot.command".equals(event.getCode())));
         assertEquals(List.of("bot.command"),
                 app.getEventsForProject("botApp").stream().map(SdkEventDefinition::getCode).toList());
+
+        SdkMetadataCatalog metadataCatalog = app.metadataCatalog();
+        assertTrue(metadataCatalog.listEvents().stream().anyMatch(event -> "bot.command".equals(event.getCode())));
+        assertEquals(List.of("bot.command"),
+                metadataCatalog.getEventsForProject("botApp").stream().map(SdkEventDefinition::getCode).toList());
 
         ProjectEventCatalog catalog = app.projectEventCatalog();
         assertTrue(catalog.listEvents().stream().anyMatch(event -> "bot.command".equals(event.getCode())));

@@ -4,7 +4,7 @@ public class Envelope {
     private String rawJson;     // 原始 JSON 消息
     private String workerId;
     private String connRole;
-    private String eventCode;
+    private String eventCode;   // 可选的全局能力标识元数据；不是连接路由键
     private String traceId;     // 可选，用于日志追踪
     private long receivedAt;
     private String project;     // 所属项目名，如 WhatsApp、Telegram

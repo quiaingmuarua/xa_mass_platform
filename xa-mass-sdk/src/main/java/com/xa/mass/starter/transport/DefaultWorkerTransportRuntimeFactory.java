@@ -1,6 +1,7 @@
 package com.xa.mass.starter.transport;
 
 import com.xa.mass.gateway.model.enums.MessageType;
+import com.xa.mass.starter.GatewayTaskResultHandler;
 import com.xa.mass.starter.worker.PollingWorkerAdapter;
 import com.xa.mass.starter.worker.WebSocketWorkerAdapter;
 import com.xa.mass.transport.WorkerTransportHints;
@@ -35,13 +36,15 @@ public class DefaultWorkerTransportRuntimeFactory implements WorkerTransportRunt
         String defaultDispatchProtocol = pollingAdapter.protocol();
         if (context.isGatewayEnabled()) {
             WebSocketWorkerAdapter webSocketAdapter = new WebSocketWorkerAdapter(
-                    context.getDispatchRuntimeContext(),
+                    context.getDispatchRuntimeContext()
+            );
+            GatewayTaskResultHandler taskResultHandler = new GatewayTaskResultHandler(
                     context.getTaskManager()
             );
             bindings.add(TransportBinding.builder(webSocketAdapter)
-                    .taskResultIngestChannel(webSocketAdapter)
+                    .taskResultIngestChannel(taskResultHandler)
                     .inboundRoutes(List.of(
-                            new TransportInboundRoute(null, MessageType.TASK, "step", webSocketAdapter)
+                            new TransportInboundRoute(null, MessageType.TASK, "step", taskResultHandler)
                     ))
                     .build());
             defaultDispatchProtocol = webSocketAdapter.protocol();

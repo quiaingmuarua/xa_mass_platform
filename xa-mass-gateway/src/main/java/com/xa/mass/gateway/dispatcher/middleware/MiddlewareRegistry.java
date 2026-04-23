@@ -4,6 +4,7 @@ import com.xa.mass.base.debug.WorkerDebugMessageStore;
 import com.xa.mass.base.exception.CommandException;
 import com.xa.mass.base.exception.ErrorCode;
 import com.xa.mass.base.exception.ValidationException;
+import com.xa.mass.gateway.dispatcher.handler.MassMessageEventCodeResolver;
 import com.xa.mass.gateway.dispatcher.handler.ResolutionResult;
 import com.xa.mass.gateway.model.massMessage.MassMessage;
 import com.xa.mass.gateway.model.massMessage.MessageContext;
@@ -60,6 +61,7 @@ public class MiddlewareRegistry {
 
                 if (result.isFound()) {
                     logger.debug("Found handler for message: {}", result);
+                    String responseEventCode = resolveResponseEventCode(envelope, result, msg);
                     List<MassMessage> responses = result.getHandler().handle(msg);
                     if (responses != null) {
                         for (MassMessage resp : responses) {
@@ -67,7 +69,7 @@ public class MiddlewareRegistry {
                             context.getMessageTransporter().sendOutput(Envelope.builder()
                                     .workerId(ctx.getWorkerId())
                                     .connRole(ctx.getConnRole())
-                                    .eventCode(envelope.getEventCode())
+                                    .eventCode(responseEventCode)
                                     .rawJson(json)
                                     .build());
                         }
@@ -107,6 +109,19 @@ public class MiddlewareRegistry {
                 return false;
             }
         };
+    }
+
+    private static String resolveResponseEventCode(Envelope envelope, ResolutionResult result, MassMessage msg) {
+        if (envelope != null && envelope.getEventCode() != null && !envelope.getEventCode().isBlank()) {
+            return envelope.getEventCode();
+        }
+        if (result == null || result.getHandler() == null) {
+            return null;
+        }
+        if (result.getHandler() instanceof MassMessageEventCodeResolver resolver) {
+            return resolver.resolveEventCode(msg);
+        }
+        return null;
     }
 
     public void registerInput(int priority, EnvelopeMiddleware mw) {

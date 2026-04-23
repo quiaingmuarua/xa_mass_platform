@@ -153,6 +153,9 @@ public class ServerMessageDispatcher {
     }
 
     private String outputLaneKey(Envelope envelope) {
+        // Preserve per-endpoint ordering on the current adapter. eventCode may be
+        // present on the envelope as capability metadata, but connection routing
+        // and lane partitioning still key off workerId + connRole.
         String workerId = envelope != null ? envelope.getWorkerId() : null;
         String connRole = envelope != null ? envelope.getConnRole() : null;
         return Objects.toString(workerId, "_") + "::" + Objects.toString(connRole, "_");

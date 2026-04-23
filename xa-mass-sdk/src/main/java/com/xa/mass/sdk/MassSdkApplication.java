@@ -81,7 +81,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
     private final MassEventRuntime eventRuntime;
     private final SdkEventDefinitionRegistry eventDefinitionRegistry;
     private final Map<String, SdkEventHandler> eventHandlerCache;
-    private final ProjectEventCatalog projectEventCatalogView;
+    private final ProjectEventCatalog sdkMetadataCatalogView;
 
     MassSdkApplication(MassApplication delegate) {
         this(delegate, DefaultProjectEventCatalogFactory.createDefaultProjectRegistry());
@@ -99,7 +99,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
         this.eventRuntime = delegate.getEventRuntime() != null ? delegate.getEventRuntime() : new InMemoryMassEventRuntime();
         this.eventDefinitionRegistry = new SdkEventDefinitionRegistry();
         this.eventHandlerCache = new LinkedHashMap<>();
-        this.projectEventCatalogView = new DefinitionBackedProjectEventCatalog(
+        this.sdkMetadataCatalogView = new DefinitionBackedProjectEventCatalog(
                 this::listProjects,
                 this::getProject,
                 this::listEvents,
@@ -109,7 +109,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
         this.eventPermissionService = new DefaultEventPermissionService(
                 clientPermissionProvider,
                 userPermissionProvider,
-                projectEventCatalogView
+                sdkMetadataCatalogView
         );
         registerEnabledCatalogProjectsIntoCore();
         registerCatalogEventDefinitions();
@@ -439,8 +439,13 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
     }
 
     @Override
+    public SdkMetadataCatalog metadataCatalog() {
+        return sdkMetadataCatalogView;
+    }
+
+    @Override
     public ProjectEventCatalog projectEventCatalog() {
-        return projectEventCatalogView;
+        return sdkMetadataCatalogView;
     }
 
     @Override

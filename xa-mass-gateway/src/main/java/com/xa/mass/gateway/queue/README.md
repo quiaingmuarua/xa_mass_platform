@@ -14,6 +14,8 @@ This package contains gateway-side message codec and transport helpers.
 - The verified runtime path is still the in-memory/embedded path.
 - This package helps bridge WebSocket gateway traffic with internal envelope-based processing.
 - It does not define task lifecycle, assignment, or result semantics.
+- `Envelope.eventCode` is optional capability metadata derived from the frame payload when available.
+- `Envelope.eventCode` is not a connection/session routing key; connection dispatch still keys off `workerId + connRole`.
 
 ## Working Rule
 

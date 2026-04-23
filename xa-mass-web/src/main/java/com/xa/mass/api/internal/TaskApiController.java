@@ -33,23 +33,23 @@ public class TaskApiController {
     private static final Set<TaskStatus> EDITABLE_TASK_STATUSES = Set.of(TaskStatus.NEW, TaskStatus.BLOCKED);
 
     private final TaskOperations taskOperations;
-    private final ProjectEventCatalog projectEventCatalog;
+    private final SdkMetadataCatalog metadataCatalog;
     private final AuthProvider authProvider;
 
     public TaskApiController(TaskOperations taskOperations) {
         this(taskOperations, DefaultProjectEventCatalogFactory.createDefaultProjectRegistry(), null);
     }
 
-    public TaskApiController(TaskOperations taskOperations, ProjectEventCatalog projectEventCatalog) {
-        this(taskOperations, projectEventCatalog, null);
+    public TaskApiController(TaskOperations taskOperations, SdkMetadataCatalog metadataCatalog) {
+        this(taskOperations, metadataCatalog, null);
     }
 
     @Autowired
     public TaskApiController(TaskOperations taskOperations,
-                             ProjectEventCatalog projectEventCatalog,
+                             SdkMetadataCatalog metadataCatalog,
                              AuthProvider authProvider) {
         this.taskOperations = taskOperations;
-        this.projectEventCatalog = projectEventCatalog;
+        this.metadataCatalog = metadataCatalog;
         this.authProvider = authProvider;
     }
 
@@ -641,11 +641,11 @@ public class TaskApiController {
     }
 
     private void validateProjectAndEvent(String projectCode, String eventCode) {
-        ProjectMetadata projectMetadata = projectEventCatalog.getProject(projectCode);
+        ProjectMetadata projectMetadata = metadataCatalog.getProject(projectCode);
         if (projectMetadata == null) {
             throw new IllegalArgumentException("Unsupported project metadata code: " + projectCode);
         }
-        if (projectEventCatalog.getEvent(eventCode) == null) {
+        if (metadataCatalog.getEvent(eventCode) == null) {
             throw new IllegalArgumentException("Unsupported event code: " + eventCode);
         }
         if (!projectMetadata.getEventCodes().contains(eventCode)) {

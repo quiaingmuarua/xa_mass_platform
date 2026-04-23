@@ -3,6 +3,8 @@ package com.xa.mass.gateway.dispatcher.middleware;
 import com.xa.mass.base.debug.WorkerDebugMessageStore;
 import com.xa.mass.gateway.dispatcher.MessageHandlerRegistry;
 import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
+import com.xa.mass.gateway.dispatcher.handler.MassMessageEventCodeResolver;
+import com.xa.mass.gateway.dispatcher.handler.MassMessageHandler;
 import com.xa.mass.gateway.model.enums.MessageType;
 import com.xa.mass.gateway.model.massMessage.MassMessage;
 import com.xa.mass.gateway.model.massMessage.MessageContext;
@@ -128,6 +130,24 @@ class ProcessEnvelopeMiddlewareTest {
     }
 
     @Test
+    void responseEnvelopeCanDeriveCanonicalEventCodeFromHandlerWhenInboundEnvelopeHasNone() {
+        handlerRegistry.register("proj", MessageType.TASK, "step", new DerivedEventHandler());
+
+        MassMessage msg = message("proj", MessageType.TASK, "step");
+        Envelope envelope = Envelope.builder()
+                .rawJson(codec.encode(msg))
+                .workerId("worker-1")
+                .connRole(SessionRoles.TASK_MESSAGES)
+                .build();
+
+        middleware.handle(envelope, context);
+
+        ArgumentCaptor<Envelope> outputCaptor = ArgumentCaptor.forClass(Envelope.class);
+        verify(context.getMessageTransporter()).sendOutput(outputCaptor.capture());
+        assertEquals("crawler.fetch-page", outputCaptor.getValue().getEventCode());
+    }
+
+    @Test
     void sendEnvelopeMiddlewareMarksDebugRecordFailedWhenEndpointUnavailable() {
         EnvelopeMiddleware sendMiddleware = MiddlewareRegistry.sendEnvelopeMiddleware();
         DispatchRuntimeContext sendContext = mockContext(codec, handlerRegistry);
@@ -186,5 +206,22 @@ class ProcessEnvelopeMiddlewareTest {
         when(ctx.getMessageTransporter()).thenReturn(transporter);
         when(ctx.getSessionManager()).thenReturn(mock(com.xa.mass.transport.WorkerEndpointRegistry.class));
         return ctx;
+    }
+
+    private static final class DerivedEventHandler implements MassMessageHandler, MassMessageEventCodeResolver {
+
+        @Override
+        public List<MassMessage> handle(MassMessage msg) {
+            MassMessage resp = new MassMessage();
+            resp.setMsgType(MessageType.TASK);
+            resp.setSubMsgType("step");
+            resp.setContext(msg.getContext());
+            return List.of(resp);
+        }
+
+        @Override
+        public String resolveEventCode(MassMessage message) {
+            return "crawler.fetch-page";
+        }
     }
 }

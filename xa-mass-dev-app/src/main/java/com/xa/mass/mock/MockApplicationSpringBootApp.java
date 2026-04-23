@@ -172,8 +172,8 @@ public class MockApplicationSpringBootApp {
     @Bean
     @Primary
     @Profile("dev")
-    public ProjectEventCatalog devAppProjectEventCatalog(MassSdkApplication app) {
-        return app.projectEventCatalog();
+    public SdkMetadataCatalog devAppMetadataCatalog(MassSdkApplication app) {
+        return app.metadataCatalog();
     }
 
     private void registerDevAppCatalog(MassSdkApplication app) {

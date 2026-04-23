@@ -4,6 +4,19 @@ import com.google.gson.JsonElement;
 import com.xa.mass.gateway.model.enums.MessageDirection;
 import com.xa.mass.gateway.model.enums.MessageType;
 
+/**
+ * WebSocket compatibility frame DTO.
+ *
+ * <p>This type exists to encode/decode the current gateway wire payload and to
+ * bridge legacy tuple-routed frames into the runtime. It is not the canonical
+ * model for platform capabilities. Global SDK event identity lives in
+ * {@code eventCode} / {@code EventRequest}, while task data-plane semantics live
+ * in transport-neutral models such as task dispatch/result DTOs.
+ *
+ * <p>When adding new business or control capabilities, do not extend
+ * {@code MassMessage} with new semantic identity fields or tuple branches unless
+ * the WebSocket wire protocol itself requires a compatibility shim.
+ */
 public class MassMessage {
     private String msgId;               // 全局唯一消息 ID
     private boolean response = false;   // 是否为响应消息（response消息可复用 MessageType）

@@ -15,6 +15,7 @@ import com.xa.mass.gateway.model.enums.MessageType;
 import com.xa.mass.gateway.model.massMessage.MassMessage;
 import com.xa.mass.gateway.model.massMessage.MessageAckPayload;
 import com.xa.mass.gateway.model.massMessage.MessageContext;
+import com.xa.mass.transport.model.TaskResultReport;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -98,11 +99,46 @@ class GatewayTaskResultHandlerTest {
         assertEquals(0, scheduler.failedTaskMsgCount);
     }
 
+    @Test
+    void transportNeutralResultReportCanBeIngestedWithoutMassMessage() {
+        Task task = createRunningTask("task-transport-neutral");
+        TaskMsg taskMsg = taskManager.getTaskMessages(task.getTid()).get(0);
+
+        boolean handled = handler.ingest(new TaskResultReport(
+                task.getTid(),
+                taskMsg.getMsgId(),
+                true,
+                "ok-from-report",
+                null,
+                Map.of("status", "SUCCESS", "mockData", "ok-from-report")
+        ));
+
+        assertTrue(handled);
+        TaskMsg updated = taskManager.getTaskMessage(task.getTid(), taskMsg.getMsgId());
+        assertEquals(TaskMsgStatus.SUCCESS, updated.getStatus());
+        assertEquals("SUCCESS", updated.getOutput().get("status"));
+        assertEquals("ok-from-report", updated.getOutput().get("mockData"));
+    }
+
+    @Test
+    void resolveEventCodeUsesTaskSharedConfigInsteadOfTupleIdentity() {
+        Task task = createRunningTask("task-event-code");
+        TaskMsg taskMsg = taskManager.getTaskMessages(task.getTid()).get(0);
+
+        String eventCode = handler.resolveEventCode(message(task, taskMsg, "SUCCESS", "ok"));
+
+        assertEquals("crawler.fetch-page", eventCode);
+    }
+
     private Task createRunningTask(String taskName) {
         TaskCreateRequestDto dto = new TaskCreateRequestDto();
         dto.setTaskName(taskName);
         dto.setProject("demoApp");
-        dto.setSharedConfig(java.util.Map.of("textContent", "hello", "routingCode", "us"));
+        dto.setSharedConfig(java.util.Map.of(
+                "textContent", "hello",
+                "routingCode", "us",
+                "_sdk", java.util.Map.of("eventCode", "crawler.fetch-page")
+        ));
         dto.setUserId("agent");
         dto.setBatchSize(1);
         dto.setInputs(List.of(Map.of("target", "alpha")));

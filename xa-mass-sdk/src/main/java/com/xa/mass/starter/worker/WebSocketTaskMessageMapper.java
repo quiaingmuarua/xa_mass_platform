@@ -19,7 +19,8 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * WebSocket-only mapper between transport-neutral task models and MassMessage.
+ * WebSocket-only mapper between transport-neutral task models and
+ * {@link MassMessage} compatibility frames.
  */
 public final class WebSocketTaskMessageMapper {
 

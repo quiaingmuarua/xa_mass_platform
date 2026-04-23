@@ -5,10 +5,19 @@ import com.xa.mass.gateway.model.massMessage.MassMessage;
 
 import java.util.List;
 
+/**
+ * Handler for WebSocket compatibility frames.
+ *
+ * <p>This interface sits at the gateway codec boundary. Implementations should
+ * translate {@link MassMessage} into transport-neutral runtime models as early
+ * as possible instead of carrying tuple semantics deeper into engine or SDK
+ * logic.
+ */
 @FunctionalInterface
 public interface MassMessageHandler {
     /**
-     * 处理指定消息类型，返回需要发送的响应消息（可为 null 或空）
+     * Handles a decoded compatibility frame and returns zero or more response
+     * frames to emit back through the same transport.
      */
     List<MassMessage> handle(MassMessage msg);
 }
