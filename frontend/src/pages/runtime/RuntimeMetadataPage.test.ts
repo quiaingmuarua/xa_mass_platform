@@ -231,6 +231,9 @@ describe('RuntimeMetadataPage', () => {
                             principalId: 'crawler-agent',
                             userId: 'crawler-user',
                             projectScope: 'crawlerApp',
+                            permissions: ['task:create', 'metadata:view'],
+                            projectScopes: ['crawlerApp'],
+                            eventScopes: ['crawler.fetch-page'],
                             attributes: {
                                 transport: 'polling',
                             },
@@ -257,6 +260,8 @@ describe('RuntimeMetadataPage', () => {
         expect(wrapper.text()).toContain('SDK submitter access')
         expect(wrapper.text()).toContain('Credential resolved')
         expect(wrapper.text()).toContain('crawler-agent')
+        expect(wrapper.text()).toContain('task:create')
+        expect(wrapper.text()).toContain('crawler.fetch-page')
         expect(wrapper.text()).toContain('POST /status/api/tasks')
 
         const inspectButtons = wrapper

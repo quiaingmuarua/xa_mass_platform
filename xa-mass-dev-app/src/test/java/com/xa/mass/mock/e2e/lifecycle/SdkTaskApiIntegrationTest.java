@@ -118,7 +118,29 @@ class SdkTaskApiIntegrationTest extends AbstractMockE2eTest {
         ), Map.of("Authorization", "Bearer telegram-key"));
 
         assertApiError(createResponse, 403);
-        assertEquals("Submitter project scope does not allow project: crawlerApp", apiMsg(createResponse));
+        assertEquals("SDK credential project scope denied: crawlerApp", apiMsg(createResponse));
+    }
+
+    @Test
+    void createTaskThroughUnifiedTaskApiRejectsSdkSubmitterEventScopeViolation() {
+        app.registerSubmitter(SubmitterRegistration.builder()
+                .principalId("crawler-reader")
+                .credential("crawler-reader-key")
+                .userId("crawler-user")
+                .projectScopes(java.util.List.of("crawlerApp"))
+                .eventScopes(java.util.List.of("crawler.parse-result"))
+                .build());
+
+        Map<String, Object> createResponse = exchangeWithHeaders("/status/api/tasks", HttpMethod.POST, Map.of(
+                "project", "crawlerApp",
+                "taskName", "event-scope-violation",
+                "eventCode", "crawler.fetch-page",
+                "payloadType", "JSON",
+                "inputs", java.util.List.of(Map.of("url", "https://example.test"))
+        ), Map.of("X-Mass-Api-Key", "crawler-reader-key"));
+
+        assertApiError(createResponse, 403);
+        assertEquals("SDK credential event scope denied: crawler.fetch-page", apiMsg(createResponse));
     }
 
     @SuppressWarnings("unchecked")

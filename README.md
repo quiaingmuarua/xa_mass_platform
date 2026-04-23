@@ -68,7 +68,7 @@ The transport-neutral runtime model is now framed around three channels:
   - `NEW -> READY -> PAUSED -> READY`
   - `NEW -> BLOCKED -> READY`
 - `TERMINAL` is not self-describing anymore; inspect `task.terminalReason`
-- Active HTTP task creation has one route: `POST /status/api/tasks`. Console/operator callers use the normal control-plane auth boundary; SDK credential callers use the same route with `X-Mass-Api-Key` or `Authorization: Bearer ...`, where submitter project/user scope is enforced before task creation. SDK credential introspection is read-only through `GET /sdk/submitters/me`. There is still no dedicated `routingCode` field in the public contract.
+- Active HTTP task creation has one route: `POST /status/api/tasks`. Console/operator callers use the normal control-plane auth boundary; SDK credential callers use the same route with `X-Mass-Api-Key` or `Authorization: Bearer ...`, where submitter `task:create`, project scope, event scope, and user scope are enforced before task creation. SDK credential introspection is read-only through `GET /sdk/submitters/me`. One user may own multiple API-key style credentials with different permissions/scopes. There is still no dedicated `routingCode` field in the public contract.
 - `PUT /status/api/tasks/{taskId}` is metadata-only and does not accept `inputs`
 - `Task.project` and `Task.user` are first-class business bindings on the task aggregate; do not hide them inside `sharedConfig` or attribute maps
 - `Task.sharedConfig` is the task-level shared payload; `TaskMsg.input` and `TaskMsg.output` are the per-item payload boundary

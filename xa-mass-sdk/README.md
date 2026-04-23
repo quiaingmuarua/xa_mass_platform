@@ -117,6 +117,9 @@ app.registerSubmitter(SubmitterRegistration.builder()
         .credential("dev-api-key")
         .userId("bot-user")
         .projectScope("telegramApp")
+        .permissions(java.util.List.of("task:create"))
+        .projectScopes(java.util.List.of("telegramApp"))
+        .eventScopes(java.util.List.of("bot.command"))
         .attributes(java.util.Map.of("channel", "telegram"))
         .build());
 
@@ -127,7 +130,8 @@ SubmitterMetadata metadata = app.getSubmitter("telegram-bot");
 `registerSubmitter(...)` accepts the raw credential. `listSubmitters()` and
 `getSubmitter(...)` return `SubmitterMetadata` and intentionally do not expose
 the credential back to callers. Registering the same credential for a different
-principal is rejected.
+principal is rejected. A single `userId` can own multiple credentials; each
+credential keeps its own permissions, project scopes, and event scopes.
 
 The returned `MassSdkApplication` exposes:
 

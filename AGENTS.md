@@ -15,6 +15,7 @@ This is the fastest entry point for coding agents. Keep it short. Use linked bas
 - Runtime project validation uses a core project registry seeded by built-in defaults; SDK project registration can extend it without changing the legacy enum.
 - `ResourceOperations` is the SDK project/event control-plane interface.
 - SDK submitter registration is a minimal credential-to-submitter-context resource, not a full user or security subsystem.
+- A single `userId` may own multiple SDK/API-key credentials. Keep credential permissions and project/event scopes per key; do not merge them into control-console RBAC.
 - Submitter resource queries must expose metadata only; raw credentials belong to registration/authentication paths, not list/get read models.
 - Real Spring Boot entrypoint is `xa-mass-dev-app`.
 - Embedded runtime composition lives in `xa-mass-sdk` under `com.xa.mass.starter.*`.

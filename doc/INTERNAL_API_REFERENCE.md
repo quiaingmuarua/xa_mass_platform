@@ -165,7 +165,8 @@ Headers:
 Contract notes:
 
 - resolves the current credential through `AuthProvider.authenticate(...)`
-- returns the authenticated submitter view with `principalId`, `userId`, `projectScope`, and `attributes`
+- returns the authenticated submitter view with `principalId`, `userId`, `projectScope`, `permissions`, `projectScopes`, `eventScopes`, and `attributes`
+- submitter credentials are API-key style credentials; multiple credentials may resolve to the same `userId` while keeping independent permissions and scopes
 - does not expose raw credential material
 - returns HTTP 401 when the credential is missing or invalid
 - this endpoint is not a control-console login/session API and does not participate in operator RBAC
@@ -208,6 +209,9 @@ Contract rules:
 - `supportedProjects` remains only a coarse worker grouping/filter hint; it is not the runtime event-capability source of truth
 - SDK credential callers use this same route with `X-Mass-Api-Key` or `Authorization: Bearer ...`
 - when an SDK credential is present, `AuthProvider.authenticate(...)` resolves a `TaskSubmitterContext`
+- SDK credentials must include `task:create` to create tasks
+- when an SDK credential has `projectScopes`, the request `project` must be allowed by that scope; `projectScope` remains a single-project compatibility projection
+- when an SDK credential has `eventScopes`, the request `eventCode` must be allowed by that scope
 - when an SDK submitter has `projectScope`, the request `project` may be omitted or must match that scope; mismatches return HTTP 403
 - when an SDK submitter has `userId`, the request `userId` may be omitted or must match that scope; mismatches return HTTP 403
 - when an SDK submitter has no scoped `userId`, user resolution order is request `userId`, then submitter `principalId`

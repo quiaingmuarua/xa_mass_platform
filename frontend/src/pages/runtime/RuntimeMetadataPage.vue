@@ -155,6 +155,15 @@
             <el-descriptions-item label="Project scope">
               {{ sdkSubmitterProfile?.projectScope ?? '-' }}
             </el-descriptions-item>
+            <el-descriptions-item label="Permissions">
+              {{ sdkSubmitterProfile?.permissions?.join(', ') || '-' }}
+            </el-descriptions-item>
+            <el-descriptions-item label="Project scopes">
+              {{ sdkSubmitterProfile?.projectScopes?.join(', ') || '-' }}
+            </el-descriptions-item>
+            <el-descriptions-item label="Event scopes">
+              {{ sdkSubmitterProfile?.eventScopes?.join(', ') || '-' }}
+            </el-descriptions-item>
             <el-descriptions-item label="Attributes">
               <pre class="inline-json-block">{{ sdkSubmitterAttributesText }}</pre>
             </el-descriptions-item>
