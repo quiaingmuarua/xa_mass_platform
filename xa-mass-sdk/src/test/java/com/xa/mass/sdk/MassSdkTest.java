@@ -219,6 +219,7 @@ class MassSdkTest {
                 .workerId("crawler-worker-001")
                 .workerGroupId("crawler")
                 .supportedProjects(List.of("crawlerApp"))
+                .supportedEventCodes(List.of("crawler.fetch-page"))
                 .transportHint("polling")
                 .attributes(Map.of("type", "crawler"))
                 .build());
@@ -229,6 +230,7 @@ class MassSdkTest {
         Assertions.assertEquals("crawler-worker-001", worker.getWorkerId());
         Assertions.assertEquals("crawler", worker.getWorkerGroupId());
         Assertions.assertEquals(List.of("crawlerApp"), worker.getSupportedProjects());
+        Assertions.assertEquals(List.of("crawler.fetch-page"), worker.getSupportedEventCodes());
         Assertions.assertEquals("polling", worker.getOnlineStrategy());
         Assertions.assertEquals(Map.of("type", "crawler"), worker.getAttributes());
         Assertions.assertEquals(WorkerStatus.OFFLINE, worker.getStatus());
@@ -329,6 +331,7 @@ class MassSdkTest {
         when(engine.createTask(any(TaskCreateRequestDto.class))).thenReturn(createdTask);
 
         MassSdkApplication app = new MassSdkApplication(delegate);
+        registerExampleTaskCatalog(app);
         MassTaskRequest request = MassTaskRequest.streaming("demoApp", "crawler-stream")
                 .userId("agent")
                 .eventCode("crawler.fetch-page")
@@ -396,7 +399,7 @@ class MassSdkTest {
         Assertions.assertTrue(app.projectSupportsEvent("botApp", "bot.command"));
         Assertions.assertFalse(app.projectSupportsEvent("botApp", "crawler.fetch-page"));
         Assertions.assertTrue(app.listProjects().stream().anyMatch(project -> "demoApp".equals(project.getCode())));
-        Assertions.assertTrue(app.listEvents().stream().anyMatch(event -> "crawler.fetch-page".equals(event.getCode())));
+        Assertions.assertTrue(app.listEvents().stream().anyMatch(event -> "platform.meta.events.list".equals(event.getCode())));
         Assertions.assertEquals(List.of(eventMetadata), app.getEventsForProject("botApp"));
     }
 
@@ -476,6 +479,7 @@ class MassSdkTest {
     @Test
     void dispatchEventRejectsCatalogEventWhenProjectDoesNotSupportIt() {
         MassSdkApplication app = new MassSdkApplication(mock(MassApplication.class));
+        registerExampleTaskCatalog(app);
         app.grantClientEventPermissions("client-a", List.of("crawler.fetch-page"));
         app.grantUserEventPermissions("user-a", List.of("crawler.fetch-page"));
 
@@ -504,6 +508,7 @@ class MassSdkTest {
                 .build();
 
         try {
+            registerExampleTaskCatalog(app);
             app.start();
             app.grantClientEventPermissions("client-a", List.of("crawler.fetch-page"));
             app.grantUserEventPermissions("user-a", List.of("crawler.fetch-page"));
@@ -569,6 +574,7 @@ class MassSdkTest {
         when(engine.isRunning()).thenReturn(true);
 
         MassSdkApplication app = new MassSdkApplication(delegate);
+        registerExampleTaskCatalog(app);
 
         Assertions.assertThrows(IllegalArgumentException.class,
                 () -> app.createTask(MassTaskRequest.singleRun("missingApp", "unknown-task")
@@ -662,6 +668,55 @@ class MassSdkTest {
         }
     }
 
+    private static void registerExampleTaskCatalog(MassSdkApplication app) {
+        app.registerEvent(EventMetadata.builder()
+                .code("crawler.fetch-page")
+                .name("Crawler Fetch Page")
+                .description("Example crawler fetch task event.")
+                .payloadTypes(List.of(PayloadType.JSON))
+                .taskModes(List.of(TaskMode.SINGLE_RUN, TaskMode.STREAMING))
+                .build());
+        app.registerEvent(EventMetadata.builder()
+                .code("sms.acquire-number")
+                .name("SMS Acquire Number")
+                .description("Example SMS acquire number task event.")
+                .payloadTypes(List.of(PayloadType.JSON))
+                .taskModes(List.of(TaskMode.SINGLE_RUN))
+                .build());
+        app.registerEvent(EventMetadata.builder()
+                .code("chatbot.reply")
+                .name("Chatbot Reply")
+                .description("Example chatbot reply task event.")
+                .payloadTypes(List.of(PayloadType.TEXT, PayloadType.JSON))
+                .taskModes(List.of(TaskMode.SINGLE_RUN, TaskMode.STREAMING))
+                .build());
+
+        app.registerProject(ProjectMetadata.builder()
+                .code("crawlerApp")
+                .name("Crawler App")
+                .description("Example crawler project.")
+                .eventCodes(List.of("crawler.fetch-page"))
+                .build());
+        app.registerProject(ProjectMetadata.builder()
+                .code("demoApp")
+                .name("Demo App")
+                .description("Example demo project.")
+                .eventCodes(List.of("crawler.fetch-page"))
+                .build());
+        app.registerProject(ProjectMetadata.builder()
+                .code("telegramApp")
+                .name("Telegram App")
+                .description("Example telegram project.")
+                .eventCodes(List.of("chatbot.reply"))
+                .build());
+        app.registerProject(ProjectMetadata.builder()
+                .code("rcsApp")
+                .name("RCS App")
+                .description("Example RCS project.")
+                .eventCodes(List.of("sms.acquire-number", "chatbot.reply"))
+                .build());
+    }
+
     @Test
     void sdkRegistrationNormalizesWorkerAndContextContracts() {
         MassApplication delegate = mock(MassApplication.class);
@@ -679,6 +734,7 @@ class MassSdkTest {
                 .workerId(" crawler-worker-001 ")
                 .workerGroupId(" crawler ")
                 .supportedProjects(Arrays.asList(" crawlerApp ", "crawlerApp", " "))
+                .supportedEventCodes(Arrays.asList(" crawler.fetch-page ", "crawler.fetch-page", " "))
                 .transportHint(" POLLING ")
                 .attributes(workerAttributes)
                 .build());
@@ -700,6 +756,7 @@ class MassSdkTest {
         Assertions.assertEquals("crawler-worker-001", worker.getWorkerId());
         Assertions.assertEquals("crawler", worker.getWorkerGroupId());
         Assertions.assertEquals(List.of("crawlerApp"), worker.getSupportedProjects());
+        Assertions.assertEquals(List.of("crawler.fetch-page"), worker.getSupportedEventCodes());
         Assertions.assertEquals("polling", worker.getOnlineStrategy());
         Assertions.assertEquals(Map.of("type", "crawler"), worker.getAttributes());
 

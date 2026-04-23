@@ -13,16 +13,16 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class ProjectEventCatalogRegistryTest {
 
     @Test
-    void defaultRegistryLoadsDefaultProjectsAndEvents() {
+    void defaultRegistryLoadsBaselineProjectsWithoutExampleEvents() {
         ProjectEventCatalogRegistry registry = DefaultProjectEventCatalogFactory.createDefaultRegistry();
 
         List<ProjectMetadata> projects = registry.listProjects();
         List<EventMetadata> events = registry.listEvents();
 
         assertFalse(projects.isEmpty());
-        assertFalse(events.isEmpty());
+        assertTrue(events.isEmpty());
         assertTrue(projects.stream().anyMatch(project -> "demoApp".equals(project.getCode())));
-        assertTrue(events.stream().anyMatch(event -> "crawler.fetch-page".equals(event.getCode())));
+        assertTrue(projects.stream().allMatch(project -> project.getEventCodes().isEmpty()));
     }
 
     @Test

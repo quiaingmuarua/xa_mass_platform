@@ -455,37 +455,17 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
 
     @Override
     public List<EventMetadata> listEvents() {
-        Map<String, EventMetadata> merged = new LinkedHashMap<>();
-        for (EventMetadata eventMetadata : projectEventCatalogRegistry.listEvents()) {
-            merged.put(eventMetadata.getCode(), eventMetadata);
-        }
-        for (CoreEventDescriptor descriptor : eventRuntime.listDescriptors()) {
-            merged.putIfAbsent(descriptor.getEvent(), toEventMetadata(descriptor));
-        }
-        return merged.values().stream()
-                .sorted(Comparator.comparing(EventMetadata::getCode, Comparator.nullsLast(String::compareTo)))
-                .toList();
+        return projectEventCatalogRegistry.listEvents();
     }
 
     @Override
     public EventMetadata getEvent(String eventCode) {
-        EventMetadata catalogEvent = projectEventCatalogRegistry.getEvent(eventCode);
-        if (catalogEvent != null) {
-            return catalogEvent;
-        }
-        CoreEventDescriptor descriptor = eventRuntime.getDescriptor(eventCode);
-        return descriptor == null ? null : toEventMetadata(descriptor);
+        return projectEventCatalogRegistry.getEvent(eventCode);
     }
 
     @Override
     public List<EventMetadata> getEventsForProject(String projectCode) {
-        List<EventMetadata> events = new ArrayList<>(projectEventCatalogRegistry.getEventsForProject(projectCode));
-        for (CoreEventDescriptor descriptor : eventRuntime.listDescriptors()) {
-            if (descriptor.getProjectCodes().contains(projectCode)) {
-                events.add(toEventMetadata(descriptor));
-            }
-        }
-        return List.copyOf(events);
+        return projectEventCatalogRegistry.getEventsForProject(projectCode);
     }
 
     @Override
@@ -519,60 +499,78 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
     }
 
     private void registerControlPlaneEventHandlers() {
-        eventRuntime.register(
-                CoreEventDescriptor.builder().event(EVENT_WORKER_REGISTER).summary("Register worker").build(),
+        registerPlatformEvent(
+                EVENT_WORKER_REGISTER,
+                "Platform Worker Register",
+                "Register a worker identity and capability record.",
                 (request, principal) -> {
                     WorkerRegistration registration = resolveWorkerRegistration(request);
                     requireStartedEngine().addWorker(SdkResourceMapper.toWorker(registration));
                     return CoreEventResponse.success(Boolean.TRUE, request.getRequestId());
                 }
         );
-        eventRuntime.register(
-                CoreEventDescriptor.builder().event(EVENT_WORKER_CONTEXT_REGISTER).summary("Register worker context").build(),
+        registerPlatformEvent(
+                EVENT_WORKER_CONTEXT_REGISTER,
+                "Platform Worker Context Register",
+                "Register a worker execution context.",
                 (request, principal) -> {
                     WorkerContextRegistration registration = resolveWorkerContextRegistration(request);
                     requireStartedEngine().addWorkerContext(SdkResourceMapper.toWorkerContext(registration));
                     return CoreEventResponse.success(Boolean.TRUE, request.getRequestId());
                 }
         );
-        eventRuntime.register(
-                CoreEventDescriptor.builder().event(EVENT_TASK_APPROVE).summary("Approve task").build(),
+        registerPlatformEvent(
+                EVENT_TASK_APPROVE,
+                "Platform Task Approve",
+                "Approve a task and move it into scheduling.",
                 (request, principal) -> CoreEventResponse.success(
                         requireStartedTaskManager().approveTask(readRequiredString(request.getPayload(), "taskId")),
                         request.getRequestId())
         );
-        eventRuntime.register(
-                CoreEventDescriptor.builder().event(EVENT_TASK_REJECT).summary("Reject task").build(),
+        registerPlatformEvent(
+                EVENT_TASK_REJECT,
+                "Platform Task Reject",
+                "Reject a task and block it before scheduling.",
                 (request, principal) -> CoreEventResponse.success(
                         requireStartedTaskManager().rejectTask(readRequiredString(request.getPayload(), "taskId")),
                         request.getRequestId())
         );
-        eventRuntime.register(
-                CoreEventDescriptor.builder().event(EVENT_TASK_BLOCK).summary("Block task").build(),
+        registerPlatformEvent(
+                EVENT_TASK_BLOCK,
+                "Platform Task Block",
+                "Block an active or ready task.",
                 (request, principal) -> CoreEventResponse.success(
                         requireStartedTaskManager().blockTask(readRequiredString(request.getPayload(), "taskId")),
                         request.getRequestId())
         );
-        eventRuntime.register(
-                CoreEventDescriptor.builder().event(EVENT_TASK_PAUSE).summary("Pause task").build(),
+        registerPlatformEvent(
+                EVENT_TASK_PAUSE,
+                "Platform Task Pause",
+                "Pause a running or ready task.",
                 (request, principal) -> CoreEventResponse.success(
                         requireStartedTaskManager().pauseTask(readRequiredString(request.getPayload(), "taskId")),
                         request.getRequestId())
         );
-        eventRuntime.register(
-                CoreEventDescriptor.builder().event(EVENT_TASK_RESUME).summary("Resume task").build(),
+        registerPlatformEvent(
+                EVENT_TASK_RESUME,
+                "Platform Task Resume",
+                "Resume a paused task.",
                 (request, principal) -> CoreEventResponse.success(
                         requireStartedTaskManager().resumeTask(readRequiredString(request.getPayload(), "taskId")),
                         request.getRequestId())
         );
-        eventRuntime.register(
-                CoreEventDescriptor.builder().event(EVENT_TASK_CANCEL).summary("Cancel task").build(),
+        registerPlatformEvent(
+                EVENT_TASK_CANCEL,
+                "Platform Task Cancel",
+                "Cancel a task and close it to terminal.",
                 (request, principal) -> CoreEventResponse.success(
                         requireStartedTaskManager().cancelTask(readRequiredString(request.getPayload(), "taskId")),
                         request.getRequestId())
         );
-        eventRuntime.register(
-                CoreEventDescriptor.builder().event(EVENT_TASK_TERMINATE).summary("Terminate task").build(),
+        registerPlatformEvent(
+                EVENT_TASK_TERMINATE,
+                "Platform Task Terminate",
+                "Terminate a task with an explicit terminal reason.",
                 (request, principal) -> CoreEventResponse.success(
                                 requireStartedTaskManager().terminateTask(
                                         readRequiredString(request.getPayload(), "taskId"),
@@ -580,8 +578,10 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
                         ),
                         request.getRequestId())
         );
-        eventRuntime.register(
-                CoreEventDescriptor.builder().event(EVENT_TASK_APPEND_ITEMS).summary("Append task inputs").build(),
+        registerPlatformEvent(
+                EVENT_TASK_APPEND_ITEMS,
+                "Platform Task Append Items",
+                "Append more inputs to an open-intake task.",
                 (request, principal) -> CoreEventResponse.success(
                         requireStartedTaskManager().appendTaskItems(
                                 readRequiredString(request.getPayload(), "taskId"),
@@ -589,37 +589,71 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
                         ),
                         request.getRequestId())
         );
-        eventRuntime.register(
-                CoreEventDescriptor.builder().event(EVENT_TASK_SEAL).summary("Seal task").build(),
+        registerPlatformEvent(
+                EVENT_TASK_SEAL,
+                "Platform Task Seal",
+                "Seal an open-intake task against further appends.",
                 (request, principal) -> CoreEventResponse.success(
                         requireStartedTaskManager().sealTask(readRequiredString(request.getPayload(), "taskId")),
                         request.getRequestId())
         );
-        eventRuntime.register(
-                CoreEventDescriptor.builder().event(EVENT_META_PROJECTS).summary("List SDK projects").build(),
+        registerPlatformEvent(
+                EVENT_META_PROJECTS,
+                "Platform Meta Projects List",
+                "List registered SDK projects.",
                 (request, principal) -> CoreEventResponse.success(listProjects(), request.getRequestId())
         );
-        eventRuntime.register(
-                CoreEventDescriptor.builder().event(EVENT_META_PROJECT).summary("Get SDK project").build(),
+        registerPlatformEvent(
+                EVENT_META_PROJECT,
+                "Platform Meta Project Get",
+                "Get a single registered SDK project.",
                 (request, principal) -> CoreEventResponse.success(
                         getProject(resolveProjectCodeForMeta(request)),
                         request.getRequestId())
         );
-        eventRuntime.register(
-                CoreEventDescriptor.builder().event(EVENT_META_PROJECT_EVENTS).summary("List project events").build(),
+        registerPlatformEvent(
+                EVENT_META_PROJECT_EVENTS,
+                "Platform Meta Project Events List",
+                "List task events supported by a project.",
                 (request, principal) -> CoreEventResponse.success(
                         getEventsForProject(resolveProjectCodeForMeta(request)),
                         request.getRequestId())
         );
-        eventRuntime.register(
-                CoreEventDescriptor.builder().event(EVENT_META_EVENTS).summary("List SDK events").build(),
+        registerPlatformEvent(
+                EVENT_META_EVENTS,
+                "Platform Meta Events List",
+                "List registered SDK events.",
                 (request, principal) -> CoreEventResponse.success(listEvents(), request.getRequestId())
         );
-        eventRuntime.register(
-                CoreEventDescriptor.builder().event(EVENT_META_EVENT).summary("Get SDK event").build(),
+        registerPlatformEvent(
+                EVENT_META_EVENT,
+                "Platform Meta Event Get",
+                "Get a single registered SDK event.",
                 (request, principal) -> CoreEventResponse.success(
                         getEvent(resolveEventCodeForMeta(request)),
                         request.getRequestId())
+        );
+    }
+
+    private void registerPlatformEvent(String eventCode,
+                                       String name,
+                                       String description,
+                                       com.xa.mass.command.event.MassEventHandler handler) {
+        if (projectEventCatalogRegistry.getEvent(eventCode) == null) {
+            projectEventCatalogRegistry.registerEvent(EventMetadata.builder()
+                    .code(eventCode)
+                    .name(name)
+                    .description(description)
+                    .payloadTypes(List.of(PayloadType.JSON))
+                    .taskModes(List.of())
+                    .build());
+        }
+        eventRuntime.register(
+                CoreEventDescriptor.builder()
+                        .event(eventCode)
+                        .summary(description)
+                        .build(),
+                handler
         );
     }
 

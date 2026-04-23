@@ -1,7 +1,12 @@
 package com.xa.mass.api.internal;
 
 import com.xa.mass.sdk.catalog.DefaultProjectEventCatalogFactory;
+import com.xa.mass.sdk.catalog.EventMetadata;
+import com.xa.mass.sdk.catalog.PayloadType;
 import com.xa.mass.sdk.catalog.ProjectEventCatalog;
+import com.xa.mass.sdk.catalog.ProjectEventCatalogRegistry;
+import com.xa.mass.sdk.catalog.ProjectMetadata;
+import com.xa.mass.sdk.catalog.TaskMode;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.web.servlet.MockMvc;
@@ -17,7 +22,34 @@ class SdkMetadataControllerTest {
 
     @BeforeEach
     void setUp() {
-        ProjectEventCatalog catalog = DefaultProjectEventCatalogFactory.createDefaultRegistry();
+        ProjectEventCatalogRegistry catalog = DefaultProjectEventCatalogFactory.createDefaultRegistry();
+        catalog.registerEvent(EventMetadata.builder()
+                .code("crawler.fetch-page")
+                .name("Crawler Fetch Page")
+                .description("Example crawler fetch task event.")
+                .payloadTypes(java.util.List.of(PayloadType.JSON))
+                .taskModes(java.util.List.of(TaskMode.SINGLE_RUN, TaskMode.STREAMING))
+                .build());
+        catalog.registerEvent(EventMetadata.builder()
+                .code("chatbot.reply")
+                .name("Chatbot Reply")
+                .description("Example chatbot reply task event.")
+                .payloadTypes(java.util.List.of(PayloadType.TEXT, PayloadType.JSON))
+                .taskModes(java.util.List.of(TaskMode.SINGLE_RUN, TaskMode.STREAMING))
+                .build());
+        catalog.registerEvent(EventMetadata.builder()
+                .code("sms.wait-code")
+                .name("SMS Wait Code")
+                .description("Example sms wait-code task event.")
+                .payloadTypes(java.util.List.of(PayloadType.JSON))
+                .taskModes(java.util.List.of(TaskMode.SINGLE_RUN, TaskMode.STREAMING))
+                .build());
+        catalog.registerProject(ProjectMetadata.builder()
+                .code("demoApp")
+                .name("Demo App")
+                .description("Test demo app")
+                .eventCodes(java.util.List.of("crawler.fetch-page", "chatbot.reply"))
+                .build());
         mockMvc = MockMvcBuilders.standaloneSetup(new SdkMetadataController(catalog)).build();
     }
 

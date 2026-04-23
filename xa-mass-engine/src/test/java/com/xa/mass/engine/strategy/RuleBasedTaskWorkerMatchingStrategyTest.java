@@ -343,6 +343,48 @@ class RuleBasedTaskWorkerMatchingStrategyTest {
         assertNotNull(record.getContextSnapshot());
     }
 
+    @Test
+    void sdkEventTaskMatchesWorkerByExplicitEventCapabilityWithoutProjectHint() {
+        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
+        RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(new InMemoryRuleStorage());
+        AssignmentRecordService recordService = new AssignmentRecordService();
+        RuleBasedTaskWorkerMatchingStrategy strategy =
+                new RuleBasedTaskWorkerMatchingStrategy(ruleManager, workerManager, recordService);
+
+        ruleManager.addDefaultRules(List.of(
+                rule("basic_worker_check", "isWorkerAvailable == true && isWorkerLocked == false"),
+                rule("worker_capability_check",
+                        "((taskEventCode == null || taskEventCode == '') && supportsProject == true) "
+                                + "|| ((taskEventCode != null && taskEventCode != '') && supportsEvent == true)")
+        ));
+
+        Task task = new Task();
+        task.setTid("task-sdk-event");
+        task.setProject("demoApp");
+        task.setSharedConfig(Map.of("_sdk", Map.of("eventCode", "demo.dispatch")));
+        task.setStatus(TaskStatus.READY);
+
+        Worker eventCapableWorker = worker("worker-event-capable", "pool-east");
+        eventCapableWorker.setSupportedProjects(List.of());
+        eventCapableWorker.setSupportedEventCodes(List.of("demo.dispatch"));
+        workerManager.addWorker(eventCapableWorker);
+
+        Worker projectOnlyWorker = worker("worker-project-only", "pool-west");
+        projectOnlyWorker.setSupportedProjects(List.of("demoApp"));
+        projectOnlyWorker.setSupportedEventCodes(List.of("crawler.fetch-page"));
+        workerManager.addWorker(projectOnlyWorker);
+
+        List<MatchedWorkerContext> matched = strategy.matchWorkers(task, 1);
+
+        assertEquals(1, matched.size());
+        assertEquals("worker-event-capable", matched.get(0).getWorkerId());
+
+        AssignmentRecord rejectedRecord = findRecord(recordService, "task-sdk-event", "worker-project-only");
+        assertEquals("event not supported", rejectedRecord.getReason());
+        assertEquals(AssignmentResult.RULE_NOT_MATCH, rejectedRecord.getResult());
+        assertEquals(0, rejectedRecord.getRuleEvaluations().size());
+    }
+
     private RuleDefinition rule(String id, String content) {
         RuleDefinition rule = new RuleDefinition();
         rule.setId(id);
@@ -357,6 +399,7 @@ class RuleBasedTaskWorkerMatchingStrategyTest {
         worker.setWorkerGroupId(workerGroupId);
         worker.setStatus(WorkerStatus.ONLINE);
         worker.setSupportedProjects(List.of("demoApp"));
+        worker.setSupportedEventCodes(List.of("demo.dispatch"));
         return worker;
     }
 

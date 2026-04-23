@@ -97,6 +97,18 @@ function discoveryFetch(submitterResponse: Response): (input: string) => Promise
                             updateTime: '2026-04-21 09:45:00',
                         },
                         {
+                            workerId: 'worker-event-only',
+                            status: 'ONLINE',
+                            workerGroupId: 'shared-pool',
+                            agentVersion: '1.4.1',
+                            supportedProjects: [],
+                            supportedEventCodes: ['demo.dispatch'],
+                            attributes: {},
+                            lastHeartbeat: '2026-04-21 09:47:00',
+                            locked: false,
+                            updateTime: '2026-04-21 09:47:00',
+                        },
+                        {
                             workerId: 'worker-sg-01',
                             status: 'OFFLINE',
                             workerGroupId: 'sg-routing',
@@ -180,8 +192,10 @@ describe('RuntimeMetadataPage', () => {
         expect(wrapper.text()).toContain(
             'SDK registration catalog plus live worker inventory',
         )
+        expect(wrapper.text()).toContain('supportedEventCodes')
         expect(wrapper.text()).toContain('Demo App')
         expect(wrapper.text()).toContain('worker-us-01')
+        expect(wrapper.text()).toContain('worker-event-only')
         expect(wrapper.text()).toContain('demo.dispatch')
         expect(wrapper.text()).toContain('1 / 2')
         expect(wrapper.text()).not.toContain('worker-sg-01')
@@ -197,6 +211,19 @@ describe('RuntimeMetadataPage', () => {
             .findAll('button')
             .find((button) => button.text().includes('Start event draft'))
         expect(startDraftButton).toBeDefined()
+
+        const firstInspectButton = wrapper
+            .findAll('button')
+            .find((button) => button.text().trim() === 'Inspect')
+        expect(firstInspectButton).toBeDefined()
+
+        await firstInspectButton!.trigger('click')
+        await flushPromises()
+
+        expect(wrapper.text()).toContain(
+            'Scoped by selected project events plus optional project hints',
+        )
+        expect(wrapper.text()).toContain('worker-event-only')
 
         await startDraftButton!.trigger('click')
         await flushPromises()

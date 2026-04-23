@@ -3,18 +3,14 @@ package com.xa.mass.sdk.catalog;
 import java.util.List;
 
 /**
- * Builds the default SDK v1 catalog used by the metadata APIs.
+ * Builds the default SDK catalog.
+ *
+ * <p>This factory only registers baseline project identities. Business-facing
+ * task events are expected to be registered explicitly by the embedding
+ * runtime. Example/dev scenario events belong in dev fixtures, not in the
+ * library defaults.
  */
 public final class DefaultProjectEventCatalogFactory {
-
-    private static final List<String> ALL_DEFAULT_EVENT_CODES = List.of(
-            "crawler.fetch-page",
-            "crawler.parse-result",
-            "sms.acquire-number",
-            "sms.wait-code",
-            "chatbot.reply",
-            "chatbot.session-message"
-    );
 
     private DefaultProjectEventCatalogFactory() {
     }
@@ -22,71 +18,14 @@ public final class DefaultProjectEventCatalogFactory {
     public static ProjectEventCatalogRegistry createDefaultRegistry() {
         ProjectEventCatalogRegistry registry = new ProjectEventCatalogRegistry();
 
-        registry.registerEvent(EventMetadata.builder()
-                .code("crawler.fetch-page")
-                .name("Crawler Fetch Page")
-                .description("Fetch a single page or URL seed for downstream crawling.")
-                .payloadTypes(List.of(PayloadType.JSON))
-                .taskModes(List.of(TaskMode.SINGLE_RUN, TaskMode.STREAMING))
-                .build());
-        registry.registerEvent(EventMetadata.builder()
-                .code("crawler.parse-result")
-                .name("Crawler Parse Result")
-                .description("Parse crawler output into structured downstream records.")
-                .payloadTypes(List.of(PayloadType.JSON))
-                .taskModes(List.of(TaskMode.SINGLE_RUN, TaskMode.STREAMING))
-                .build());
-        registry.registerEvent(EventMetadata.builder()
-                .code("sms.acquire-number")
-                .name("SMS Acquire Number")
-                .description("Acquire a phone number or resource slot before waiting for a code.")
-                .payloadTypes(List.of(PayloadType.JSON))
-                .taskModes(List.of(TaskMode.SINGLE_RUN))
-                .build());
-        registry.registerEvent(EventMetadata.builder()
-                .code("sms.wait-code")
-                .name("SMS Wait Code")
-                .description("Wait for and collect an SMS verification code.")
-                .payloadTypes(List.of(PayloadType.JSON))
-                .taskModes(List.of(TaskMode.SINGLE_RUN, TaskMode.STREAMING))
-                .build());
-        registry.registerEvent(EventMetadata.builder()
-                .code("chatbot.reply")
-                .name("Chatbot Reply")
-                .description("Generate a chatbot response for a prompt or message bundle.")
-                .payloadTypes(List.of(PayloadType.TEXT, PayloadType.JSON))
-                .taskModes(List.of(TaskMode.SINGLE_RUN, TaskMode.STREAMING))
-                .build());
-        registry.registerEvent(EventMetadata.builder()
-                .code("chatbot.session-message")
-                .name("Chatbot Session Message")
-                .description("Handle a session-scoped chatbot message inside a streaming conversation.")
-                .payloadTypes(List.of(PayloadType.TEXT, PayloadType.JSON))
-                .taskModes(List.of(TaskMode.STREAMING))
-                .build());
-
         registry.registerProject(project("demoApp", "Demo App",
-                "Default demo project used by the validation shell.", ALL_DEFAULT_EVENT_CODES));
+                "Default demo project identity used by the validation shell.", List.of()));
         registry.registerProject(project("testApp", "Test App",
-                "Test project used by fixtures and local regression coverage.", ALL_DEFAULT_EVENT_CODES));
-        registry.registerProject(project("crawlerApp", "Crawler",
-                "Crawler-oriented project defaults for pull and streaming worker scenarios.", List.of(
-                        "crawler.fetch-page",
-                        "crawler.parse-result"
-                )));
+                "Test project identity used by fixtures and regression coverage.", List.of()));
         registry.registerProject(project("rcsApp", "GoogleRcs",
-                "RCS-oriented messaging project defaults.", List.of(
-                        "sms.acquire-number",
-                        "sms.wait-code",
-                        "chatbot.reply",
-                        "chatbot.session-message"
-                )));
+                "RCS-oriented project identity placeholder.", List.of()));
         registry.registerProject(project("telegramApp", "Telegram",
-                "Telegram-oriented messaging project defaults.", List.of(
-                        "sms.wait-code",
-                        "chatbot.reply",
-                        "chatbot.session-message"
-                )));
+                "Telegram-oriented project identity placeholder.", List.of()));
 
         return registry;
     }

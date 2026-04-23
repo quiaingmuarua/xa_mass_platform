@@ -165,13 +165,15 @@ class MockRuntimeDataLoaderTest {
                     "workerId": "worker-us-1",
                     "workerGroupId": "POOL-US",
                     "agentVersion": "1.0.0",
-                    "status": "ONLINE"
+                    "status": "ONLINE",
+                    "supportedEventCodes": ["demo.dispatch"]
                   },
                   {
                     "workerId": "worker-gb-1",
                     "workerGroupId": "POOL-GB",
                     "agentVersion": "1.0.1",
-                    "status": "ONLINE"
+                    "status": "ONLINE",
+                    "supportedEventCodes": ["demo.dispatch.gb"]
                   }
                 ]
                 """;
@@ -235,6 +237,7 @@ class MockRuntimeDataLoaderTest {
                     "workerGroupId": "CRAWLER",
                     "onlineStrategy": "polling",
                     "supportedProjects": ["crawlerApp"],
+                    "supportedEventCodes": ["crawler.fetch-page"],
                     "attributes": {
                       "type": "crawler"
                     }
@@ -322,6 +325,7 @@ class MockRuntimeDataLoaderTest {
             worker.setWorkerId(request.getWorkerId());
             worker.setWorkerGroupId(request.getWorkerGroupId());
             worker.setSupportedProjects(request.getSupportedProjects());
+            worker.setSupportedEventCodes(request.getSupportedEventCodes());
             worker.setOnlineStrategy(request.getTransportHint());
             worker.setAttributes(request.getAttributes());
             workers.add(worker);

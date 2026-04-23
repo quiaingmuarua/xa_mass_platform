@@ -33,12 +33,15 @@ public class RuleConfig {
         routingRule.setDescription("Routing code, when required, must match one of the worker context routing tags");
         rules.add(routingRule);
 
-        RuleDefinition appRule = new RuleDefinition();
-        appRule.setId("app_support_check");
-        appRule.setType(RuleType.QL_EXPRESS);
-        appRule.setContent("supportsProject == true");
-        appRule.setDescription("Worker must support the task project");
-        rules.add(appRule);
+        RuleDefinition capabilityRule = new RuleDefinition();
+        capabilityRule.setId("worker_capability_check");
+        capabilityRule.setType(RuleType.QL_EXPRESS);
+        capabilityRule.setContent(
+                "((taskEventCode == null || taskEventCode == '') && supportsProject == true) "
+                        + "|| ((taskEventCode != null && taskEventCode != '') && supportsEvent == true)");
+        capabilityRule.setDescription(
+                "Project support gates non-SDK tasks; SDK event tasks are matched by explicit worker event capability");
+        rules.add(capabilityRule);
 
         RuleDefinition loadRule = new RuleDefinition();
         loadRule.setId("worker_load_check");

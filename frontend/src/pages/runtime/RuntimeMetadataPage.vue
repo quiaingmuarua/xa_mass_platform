@@ -44,7 +44,7 @@
         class="metadata-note"
         type="info"
         :closable="false"
-        title="Project/event entries come from SDK registration. Worker coverage comes from live runtime inventory. Event handling truth still depends on backend validation and actual worker capability."
+        title="Project and event entries come from SDK registration. Live event-handling capability comes from worker-declared supportedEventCodes. supportedProjects stays only as a coarse grouping/filter hint."
       />
 
       <section class="metric-grid">
@@ -61,7 +61,7 @@
           <div class="metric-value">{{ onlineWorkerCount }}</div>
         </div>
         <div class="metric-tile">
-          <div class="metric-label">Covered projects</div>
+          <div class="metric-label">Projects with worker coverage</div>
           <div class="metric-value">
             {{ coveredProjectCount }} / {{ enabledProjectCount }}
           </div>
@@ -86,11 +86,13 @@
                   modes.
                 </li>
                 <li>
-                  Confirm at least one online worker advertises that project.
+                  Confirm at least one online worker declares the target event in
+                  its supported event list.
                 </li>
                 <li>
-                  Create or inspect tasks using the project code and
-                  domain-specific input payloads.
+                  Use project selection as a coarse scope filter only; runtime
+                  dispatch truth comes from explicit event capability plus backend
+                  validation.
                 </li>
               </ol>
             </el-card>
@@ -115,6 +117,13 @@
                 </el-descriptions-item>
                 <el-descriptions-item label="Online coverage">
                   {{ selectedOnlineWorkerSummary }}
+                </el-descriptions-item>
+                <el-descriptions-item label="Project filter">
+                  {{
+                    selectedProject
+                      ? 'Scoped by selected project events plus optional project hints'
+                      : 'All projects'
+                  }}
                 </el-descriptions-item>
               </el-descriptions>
             </el-card>
@@ -177,7 +186,7 @@
                   <el-descriptions-item label="Events">
                     {{ selectedProject.eventCodes.join(', ') || '-' }}
                   </el-descriptions-item>
-                  <el-descriptions-item label="Online workers">
+                  <el-descriptions-item label="Workers for project events">
                     {{ selectedProjectCoverageSummary }}
                   </el-descriptions-item>
                   <el-descriptions-item label="Description">
@@ -290,7 +299,7 @@
                 {{ row.resolvedEvents.length }}
               </template>
             </el-table-column>
-            <el-table-column label="Online workers" min-width="150">
+            <el-table-column label="Workers for events" min-width="150">
               <template #default="{ row }">
                 {{ row.onlineWorkerIds.length }}
               </template>
@@ -327,7 +336,7 @@
           </template>
           <PageEmptyState
             v-if="visibleWorkerRows.length === 0"
-            description="No workers match the selected project and availability filter."
+            description="No workers match the selected scope and availability filter."
           />
           <el-table v-else :data="visibleWorkerRows" row-key="workerId">
             <el-table-column prop="workerId" label="Worker" min-width="220">
@@ -345,7 +354,7 @@
                 </el-tag>
               </template>
             </el-table-column>
-            <el-table-column label="Projects" min-width="220">
+            <el-table-column label="Project hints" min-width="220">
               <template #default="{ row }">
                 <div class="tag-row">
                   <el-tag
@@ -614,7 +623,9 @@ const projectRows = computed<ProjectRow[]>(() =>
       .filter(
         (worker) =>
           worker.status === 'ONLINE' &&
-          worker.supportedProjects.includes(project.code),
+          project.eventCodes.some((eventCode) =>
+            worker.supportedEventCodes.includes(eventCode),
+          ),
       )
       .map((worker) => worker.workerId)
 
@@ -655,6 +666,7 @@ const visibleWorkerRows = computed(() =>
   workerRows.value.filter((worker) => {
     const matchesProject =
       selectedProjectCode.value === ALL_PROJECTS ||
+      worker.visibleSupportedEventCodes.length > 0 ||
       worker.matchedProjects.length > 0
     const matchesAvailability =
       !showOnlineOnly.value || worker.status === 'ONLINE'
@@ -680,11 +692,7 @@ const selectedEventRows = computed<EventRow[]>(() =>
         .filter(
           (worker) =>
             worker.status === 'ONLINE' &&
-            worker.supportedEventCodes.includes(event.code) &&
-            (projectCodes.length === 0 ||
-              worker.supportedProjects.some((projectCode) =>
-                projectCodes.includes(projectCode),
-              )),
+            worker.supportedEventCodes.includes(event.code),
         )
         .map((worker) => worker.workerId)
 
@@ -706,14 +714,8 @@ const onlineWorkerCount = computed(
 )
 const coveredProjectCount = computed(
   () =>
-    projects.value.filter(
-      (project) =>
-        project.enabled &&
-        workers.value.some(
-          (worker) =>
-            worker.status === 'ONLINE' &&
-            worker.supportedProjects.includes(project.code),
-        ),
+    projectRows.value.filter(
+      (project) => project.enabled && project.onlineWorkerIds.length > 0,
     ).length,
 )
 const sdkSubmitterProfile = computed(() => sdkSubmitterSnapshot.value.profile)
@@ -770,13 +772,9 @@ const selectedProjectCoverageSummary = computed(() => {
     return '-'
   }
 
-  const ids = workers.value
-    .filter(
-      (worker) =>
-        worker.status === 'ONLINE' &&
-        worker.supportedProjects.includes(selectedProject.value!.code),
-    )
-    .map((worker) => worker.workerId)
+  const ids =
+    projectRows.value.find((project) => project.code === selectedProject.value?.code)
+      ?.onlineWorkerIds ?? []
 
   return ids.length > 0 ? ids.join(', ') : 'No online workers'
 })

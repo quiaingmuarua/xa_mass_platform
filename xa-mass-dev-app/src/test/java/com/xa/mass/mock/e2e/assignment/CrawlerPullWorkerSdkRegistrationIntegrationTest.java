@@ -68,12 +68,14 @@ class CrawlerPullWorkerSdkRegistrationIntegrationTest extends AbstractMockE2eTes
                 .workerId(workerId)
                 .workerGroupId("crawler")
                 .supportedProjects(List.of("crawlerApp"))
+                .supportedEventCodes(List.of("crawler.fetch-page"))
                 .transportHint(PollingWorkerAdapter.PROTOCOL)
                 .attributes(Map.of("type", "crawler"))
                 .build());
         app.registerWorkerContext(WorkerContextRegistration.builder()
                 .workerContextId("ctx-" + workerId)
                 .workerId(workerId)
+                .project("crawlerApp")
                 .routingTags(Set.of("web", "us"))
                 .attributes(Map.of("region", "us"))
                 .build());

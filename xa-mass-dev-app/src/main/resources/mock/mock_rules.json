@@ -27,11 +27,11 @@
     "enabled": true
   },
   {
-    "id": "app_support_check",
-    "name": "App support check",
-    "description": "Worker must support the task project",
+    "id": "worker_capability_check",
+    "name": "Worker capability check",
+    "description": "Project support gates generic tasks; SDK event tasks use explicit worker event capability",
     "type": "QL_EXPRESS",
-    "content": "supportsProject == true",
+    "content": "((taskEventCode == null || taskEventCode == '') && supportsProject == true) || ((taskEventCode != null && taskEventCode != '') && supportsEvent == true)",
     "priority": 4,
     "enabled": true
   },

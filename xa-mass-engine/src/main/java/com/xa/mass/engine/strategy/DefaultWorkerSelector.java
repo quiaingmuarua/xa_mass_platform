@@ -1,6 +1,7 @@
 package com.xa.mass.engine.strategy;
 
 import com.xa.mass.base.model.Task;
+import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.base.model.Worker;
 
 import java.util.Comparator;
@@ -34,7 +35,12 @@ public class DefaultWorkerSelector implements WorkerSelector {
         if (!worker.isAvailable()) {
             return false;
         }
-        if (!worker.supportsProject(task.getProject())) {
+        String eventCode = TaskSharedConfig.sdkEventCode(task);
+        boolean sdkEventTask = eventCode != null && !eventCode.isBlank();
+        if (sdkEventTask && !worker.supportsEvent(eventCode)) {
+            return false;
+        }
+        if (!sdkEventTask && !worker.supportsProject(task.getProject())) {
             return false;
         }
         return !worker.isHeartbeatExpired(30);

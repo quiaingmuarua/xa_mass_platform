@@ -195,6 +195,8 @@ public class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatchingSt
     private PrefilterDecision prefilterCandidate(Task task, Worker worker, WorkerContext workerContext) {
         boolean workerLocked = workerManager.isLocked(worker.getWorkerId());
         Map<String, Object> contextSnapshot = buildPrefilterContextSnapshot(task, worker, workerContext, workerLocked);
+        String eventCode = TaskSharedConfig.sdkEventCode(task);
+        boolean sdkEventTask = eventCode != null && !eventCode.isBlank();
 
         if (!worker.isAvailable()) {
             return PrefilterDecision.reject(AssignmentResult.RESOURCE_UNAVAILABLE,
@@ -204,12 +206,11 @@ public class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatchingSt
             return PrefilterDecision.reject(AssignmentResult.CONFLICT,
                     "worker locked", contextSnapshot, true);
         }
-        if (!worker.supportsProject(task.getProject())) {
+        if (!sdkEventTask && !worker.supportsProject(task.getProject())) {
             return PrefilterDecision.reject(AssignmentResult.RULE_NOT_MATCH,
                     "project not supported", contextSnapshot, false);
         }
-        String eventCode = TaskSharedConfig.sdkEventCode(task);
-        if (eventCode != null && !eventCode.isBlank() && !worker.supportsEvent(eventCode)) {
+        if (sdkEventTask && !worker.supportsEvent(eventCode)) {
             return PrefilterDecision.reject(AssignmentResult.RULE_NOT_MATCH,
                     "event not supported", contextSnapshot, false);
         }
@@ -244,6 +245,8 @@ public class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatchingSt
                                                               boolean workerLocked) {
         Map<String, Object> context = new LinkedHashMap<>();
         String routingCode = TaskSharedConfig.routingCode(task);
+        String eventCode = TaskSharedConfig.sdkEventCode(task);
+        boolean sdkEventTask = eventCode != null && !eventCode.isBlank();
         boolean taskHasRoutingRequirement = routingCode != null && !routingCode.isBlank();
         Set<String> routingTags = workerContext != null ? workerContext.getRoutingTags() : Set.of();
 
@@ -253,12 +256,15 @@ public class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatchingSt
         context.put("workerAttributes", worker.getAttributes());
         context.put("agentVersion", worker.getAgentVersion());
         context.put("supportedProjects", worker.getSupportedProjects());
+        context.put("supportedEventCodes", worker.getSupportedEventCodes());
         context.put("isWorkerAvailable", worker.isAvailable());
         context.put("isWorkerLocked", workerLocked);
 
         context.put("taskId", task.getTid());
         context.put("taskName", task.getTaskName());
         context.put("taskProject", task.getProject());
+        context.put("taskEventCode", eventCode);
+        context.put("taskUsesEventCapability", sdkEventTask);
         context.put("taskSharedConfig", task.getSharedConfig());
         context.put("routingCode", routingCode);
         context.put("taskHasRoutingRequirement", taskHasRoutingRequirement);
@@ -268,6 +274,7 @@ public class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatchingSt
         context.put("minRequiredWorkerCount", task.getMinRequiredWorkerCount());
         context.put("appCount", worker.getSupportedProjects() != null ? worker.getSupportedProjects().size() : 0);
         context.put("supportsProject", worker.supportsProject(task.getProject()));
+        context.put("supportsEvent", !sdkEventTask || worker.supportsEvent(eventCode));
 
         if (workerContext == null) {
             context.put("hasWorkerContext", false);

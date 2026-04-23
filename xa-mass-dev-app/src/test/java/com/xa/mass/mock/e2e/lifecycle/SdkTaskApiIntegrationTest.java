@@ -61,7 +61,7 @@ class SdkTaskApiIntegrationTest extends AbstractMockE2eTest {
         Map<String, Object> createResponse = exchangeWithHeaders("/status/api/tasks", HttpMethod.POST, Map.of(
                 "project", "demoApp",
                 "taskName", "sdk-runtime-task",
-                "eventCode", "crawler.fetch-page",
+                "eventCode", "demo.dispatch",
                 "mode", "SINGLE_RUN",
                 "payloadType", "JSON",
                 "sharedConfig", Map.of("source", "sdk"),
@@ -95,7 +95,7 @@ class SdkTaskApiIntegrationTest extends AbstractMockE2eTest {
         Map<String, Object> sharedConfig = (Map<String, Object>) task.get("sharedConfig");
         Map<String, Object> sdkMetadata = (Map<String, Object>) sharedConfig.get("_sdk");
 
-        assertEquals("crawler.fetch-page", sdkMetadata.get("eventCode"));
+        assertEquals("demo.dispatch", sdkMetadata.get("eventCode"));
         assertEquals("JSON", sdkMetadata.get("payloadType"));
         assertEquals("SINGLE_RUN", sdkMetadata.get("taskMode"));
         assertTrue(sharedConfig.containsKey("source"));
