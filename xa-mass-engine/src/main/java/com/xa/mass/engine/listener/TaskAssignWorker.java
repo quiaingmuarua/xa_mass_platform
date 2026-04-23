@@ -30,6 +30,7 @@ public class TaskAssignWorker {
     private final AtomicInteger pendingTasks = new AtomicInteger(0);
     private final AtomicInteger scheduledRetryCount = new AtomicInteger(0);
     private final Set<String> trackedTaskIds = ConcurrentHashMap.newKeySet();
+    private final Set<String> deferredRequeueTaskIds = ConcurrentHashMap.newKeySet();
 
     private volatile boolean running = true;
     private ExecutorService executor;
@@ -73,11 +74,15 @@ public class TaskAssignWorker {
                         boolean assigned = workerAssignListener.onTaskAssign(task);
                         if (running && !assigned && task.getStatus() == initialStatus) {
                             scheduleRetry(task, initialStatus);
-                        } else {
+                        } else if (!enqueueDeferredRequeueIfRequested(task)) {
                             releaseTrackedTask(taskId);
                             notifyAssignmentProcessed(task);
+                        } else {
+                            emitQueueSnapshot(task, task.getStatus(), "REQUEUE_ENQUEUED", null,
+                                    "deferred requeue requested while assignment was still processing", "SUCCESS");
                         }
                     } else {
+                        clearDeferredRequeue(taskId);
                         releaseTrackedTask(taskId);
                         emitQueueSnapshot(task, initialStatus, "SKIPPED_NON_DISPATCHABLE", null,
                                 "task skipped because status is not READY or RUNNING", "SKIPPED");
@@ -87,6 +92,7 @@ public class TaskAssignWorker {
                     Thread.currentThread().interrupt();
                     break;
                 } catch (Exception e) {
+                    clearDeferredRequeue(task != null ? task.getTid() : null);
                     releaseTrackedTask(task != null ? task.getTid() : null);
                     log.error("TaskAssignWorker error: {}", e.getMessage(), e);
                 }
@@ -135,8 +141,13 @@ public class TaskAssignWorker {
 
     private boolean submit(Task task, boolean trackedBatchSubmission) {
         if (!trackTask(task)) {
-            emitQueueSnapshot(task, task != null ? task.getStatus() : null, "DEDUP_SKIPPED", null,
-                    "task is already queued, processing, or waiting retry", "SKIPPED");
+            if (markDeferredRequeue(task)) {
+                emitQueueSnapshot(task, task != null ? task.getStatus() : null, "REQUEUE_MARKED", null,
+                        "task requested another dispatch while an assignment cycle is still in progress", "DEFERRED");
+            } else {
+                emitQueueSnapshot(task, task != null ? task.getStatus() : null, "DEDUP_SKIPPED", null,
+                        "task is already queued, processing, or waiting retry", "SKIPPED");
+            }
             return false;
         }
         if (trackedBatchSubmission) {
@@ -194,6 +205,7 @@ public class TaskAssignWorker {
     public void stop() {
         running = false;
         trackedTaskIds.clear();
+        deferredRequeueTaskIds.clear();
         emitQueueSnapshot(null, null, "STOPPING", null,
                 "assignment queue worker is stopping", "SUCCESS");
         if (retryExecutor != null) {
@@ -246,6 +258,43 @@ public class TaskAssignWorker {
             return true;
         }
         return trackedTaskIds.add(task.getTid());
+    }
+
+    private boolean markDeferredRequeue(Task task) {
+        if (task == null || task.getTid() == null || task.getTid().isBlank()) {
+            return false;
+        }
+        TaskStatus status = task.getStatus();
+        if (status != TaskStatus.READY && status != TaskStatus.RUNNING) {
+            return false;
+        }
+        return deferredRequeueTaskIds.add(task.getTid());
+    }
+
+    private boolean enqueueDeferredRequeueIfRequested(Task task) {
+        if (task == null || task.getTid() == null || task.getTid().isBlank()) {
+            return false;
+        }
+        String taskId = task.getTid();
+        if (!deferredRequeueTaskIds.remove(taskId)) {
+            return false;
+        }
+        TaskStatus status = task.getStatus();
+        if (!running || (status != TaskStatus.READY && status != TaskStatus.RUNNING)) {
+            releaseTrackedTask(taskId);
+            emitQueueSnapshot(task, status, "REQUEUE_DROPPED", null,
+                    "deferred requeue was dropped because task is no longer dispatchable", "SKIPPED");
+            notifyAssignmentProcessed(task);
+            return false;
+        }
+        queue.offer(task);
+        return true;
+    }
+
+    private void clearDeferredRequeue(String taskId) {
+        if (taskId != null && !taskId.isBlank()) {
+            deferredRequeueTaskIds.remove(taskId);
+        }
     }
 
     private void releaseTrackedTask(String taskId) {

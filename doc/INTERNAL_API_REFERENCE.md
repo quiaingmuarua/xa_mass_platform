@@ -122,6 +122,7 @@ Response notes:
 
 - returns the registered `EventMetadata` list
 - each event includes `code`, `name`, `description`, `payloadTypes`, `taskModes`, and `enabled`
+- `taskModes=[]` means the event is a direct runtime definition, not a task-create event
 
 ### 2.5 Get SDK Event
 
@@ -132,6 +133,7 @@ Response notes:
 Behavior:
 
 - returns the registered `EventMetadata`
+- `taskModes=[]` means the event is direct runtime discovery/dispatch only
 - returns HTTP 404 when `eventCode` does not exist in the catalog
 
 ## 2.6 SDK Submitter Introspection API

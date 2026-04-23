@@ -15,6 +15,7 @@ import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
@@ -38,33 +39,59 @@ public final class ToolCommandRoutes {
             "SGD", new BigDecimal("1.35")
     );
 
+    private static final Map<String, CountryPreset> COUNTRY_PRESETS = Map.of(
+            "CN", new CountryPreset("CN", "China", "Beijing", "+86", "Asia/Shanghai"),
+            "GB", new CountryPreset("GB", "United Kingdom", "London", "+44", "Europe/London"),
+            "US", new CountryPreset("US", "United States", "Washington, D.C.", "+1", "America/New_York"),
+            "JP", new CountryPreset("JP", "Japan", "Tokyo", "+81", "Asia/Tokyo"),
+            "SG", new CountryPreset("SG", "Singapore", "Singapore", "+65", "Asia/Singapore")
+    );
+
     private ToolCommandRoutes() {
     }
 
+    public static List<CommandDefinition<JsonObject, Map<String, Object>>> definitions() {
+        return List.of(
+                CommandDefinition.<JsonObject, Map<String, Object>>builder("tool.time.now")
+                        .handler(ToolCommandRoutes::toolTimeNow)
+                        .resolver(json -> json)
+                        .summary("Return current time in the requested zone or UTC offset.")
+                        .suggestedPhases("prepare", "verify")
+                        .safeForScenario(true)
+                        .build(),
+                CommandDefinition.<JsonObject, Map<String, Object>>builder("tool.geo.lookup")
+                        .handler(ToolCommandRoutes::toolGeoLookup)
+                        .resolver(json -> json)
+                        .summary("Return a lightweight simulated geo profile for a city/query.")
+                        .suggestedPhases("prepare", "verify")
+                        .safeForScenario(true)
+                        .build(),
+                CommandDefinition.<JsonObject, Map<String, Object>>builder("tool.currency.quote")
+                        .handler(ToolCommandRoutes::toolCurrencyQuote)
+                        .resolver(json -> json)
+                        .summary("Return a simulated currency conversion quote derived from stable fake rates.")
+                        .suggestedPhases("prepare", "verify")
+                        .safeForScenario(true)
+                        .build(),
+                CommandDefinition.<JsonObject, Map<String, Object>>builder("tool.country.capital.lookup")
+                        .handler(ToolCommandRoutes::toolCountryCapitalLookup)
+                        .resolver(json -> json)
+                        .summary("Resolve a country code to a stable country/capital reference profile.")
+                        .suggestedPhases("prepare", "verify")
+                        .safeForScenario(true)
+                        .build(),
+                CommandDefinition.<JsonObject, Map<String, Object>>builder("tool.phone.country.detect")
+                        .handler(ToolCommandRoutes::toolPhoneCountryDetect)
+                        .resolver(json -> json)
+                        .summary("Detect a phone number country from common international dial-code prefixes.")
+                        .suggestedPhases("prepare", "verify")
+                        .safeForScenario(true)
+                        .build()
+        );
+    }
+
     public static void registerToolRoutes() {
-        registerIfAbsent(CommandDefinition.<JsonObject, Map<String, Object>>builder("tool.time.now")
-                .handler(ToolCommandRoutes::toolTimeNow)
-                .resolver(json -> json)
-                .summary("Return current time in the requested zone or UTC offset.")
-                .suggestedPhases("prepare", "verify")
-                .safeForScenario(true)
-                .build());
-
-        registerIfAbsent(CommandDefinition.<JsonObject, Map<String, Object>>builder("tool.geo.lookup")
-                .handler(ToolCommandRoutes::toolGeoLookup)
-                .resolver(json -> json)
-                .summary("Return a lightweight simulated geo profile for a city/query.")
-                .suggestedPhases("prepare", "verify")
-                .safeForScenario(true)
-                .build());
-
-        registerIfAbsent(CommandDefinition.<JsonObject, Map<String, Object>>builder("tool.currency.quote")
-                .handler(ToolCommandRoutes::toolCurrencyQuote)
-                .resolver(json -> json)
-                .summary("Return a simulated currency conversion quote derived from stable fake rates.")
-                .suggestedPhases("prepare", "verify")
-                .safeForScenario(true)
-                .build());
+        definitions().forEach(ToolCommandRoutes::registerIfAbsent);
     }
 
     private static Map<String, Object> toolTimeNow(JsonObject request, CommandContext context) {
@@ -138,6 +165,79 @@ public final class ToolCommandRoutes {
         return data;
     }
 
+    private static Map<String, Object> toolCountryCapitalLookup(JsonObject request, CommandContext context) {
+        String countryCode = stringValue(request, "countryCode", "").trim().toUpperCase(Locale.ROOT);
+        if (countryCode.isBlank()) {
+            throw new CommandException(ErrorCode.PARSE_ERROR, "countryCode is required");
+        }
+
+        CountryPreset preset = COUNTRY_PRESETS.get(countryCode);
+        if (preset == null) {
+            throw new CommandException(ErrorCode.PARSE_ERROR, "unsupported countryCode: " + countryCode);
+        }
+
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("countryCode", countryCode);
+        data.put("countryName", preset.countryName());
+        data.put("capital", preset.capital());
+        data.put("dialCode", preset.dialCode());
+        data.put("timeZone", preset.timeZone());
+        data.put("provider", "mock-dev-app");
+        data.put("simulated", false);
+        return data;
+    }
+
+    private static Map<String, Object> toolPhoneCountryDetect(JsonObject request, CommandContext context) {
+        String phoneNumber = stringValue(request, "phoneNumber", "").trim();
+        if (phoneNumber.isBlank()) {
+            throw new CommandException(ErrorCode.PARSE_ERROR, "phoneNumber is required");
+        }
+
+        String normalized = phoneNumber.replaceAll("[^+\\d]", "");
+        CountryPreset preset = detectCountryByPhone(normalized);
+        if (preset == null) {
+            throw new CommandException(ErrorCode.PARSE_ERROR, "unsupported phoneNumber prefix");
+        }
+
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("phoneNumber", phoneNumber);
+        data.put("normalizedPhoneNumber", normalized);
+        data.put("countryCode", preset.countryCode());
+        data.put("countryName", preset.countryName());
+        data.put("dialCode", preset.dialCode());
+        data.put("timeZone", preset.timeZone());
+        data.put("provider", "mock-dev-app");
+        data.put("simulated", false);
+        return data;
+    }
+
+    private static CountryPreset detectCountryByPhone(String normalizedPhoneNumber) {
+        if (normalizedPhoneNumber.startsWith("+86")) {
+            return presetWithCode("CN");
+        }
+        if (normalizedPhoneNumber.startsWith("+44")) {
+            return presetWithCode("GB");
+        }
+        if (normalizedPhoneNumber.startsWith("+1")) {
+            return presetWithCode("US");
+        }
+        if (normalizedPhoneNumber.startsWith("+81")) {
+            return presetWithCode("JP");
+        }
+        if (normalizedPhoneNumber.startsWith("+65")) {
+            return presetWithCode("SG");
+        }
+        return null;
+    }
+
+    private static CountryPreset presetWithCode(String countryCode) {
+        CountryPreset preset = COUNTRY_PRESETS.get(countryCode);
+        if (preset == null) {
+            throw new IllegalStateException("missing country preset: " + countryCode);
+        }
+        return preset;
+    }
+
     private static ZoneId resolveZone(JsonObject request) {
         String zoneId = stringValue(request, "zoneId", "").trim();
         if (!zoneId.isBlank()) {
@@ -199,6 +299,15 @@ public final class ToolCommandRoutes {
             String currency,
             double latitude,
             double longitude
+    ) {
+    }
+
+    private record CountryPreset(
+            String countryCode,
+            String countryName,
+            String capital,
+            String dialCode,
+            String timeZone
     ) {
     }
 }

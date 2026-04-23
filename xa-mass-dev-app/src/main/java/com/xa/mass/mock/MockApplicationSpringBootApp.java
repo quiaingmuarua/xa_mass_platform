@@ -1,12 +1,20 @@
 package com.xa.mass.mock;
 
+import com.google.gson.Gson;
+import com.google.gson.JsonObject;
 import com.xa.mass.base.channel.messaging.memory.InMemoryMessageQueue;
+import com.xa.mass.command.core.CommandDefinition;
+import com.xa.mass.command.model.CommandContext;
 import com.xa.mass.engine.util.LogUtils;
 import com.xa.mass.gateway.queue.Envelope;
 import com.xa.mass.mock.bootstrap.MockRuntimeDataLoader;
+import com.xa.mass.mock.command.runtime.MockCommandRuntime;
+import com.xa.mass.mock.command.tool.ToolCommandRoutes;
 import com.xa.mass.sdk.MassSdk;
 import com.xa.mass.sdk.MassSdkApplication;
 import com.xa.mass.sdk.catalog.*;
+import com.xa.mass.sdk.event.EventResponse;
+import com.xa.mass.sdk.event.SdkEventDefinition;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -19,7 +27,9 @@ import org.springframework.context.annotation.Primary;
 import org.springframework.context.annotation.Profile;
 import org.springframework.core.env.Environment;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Verified mainline Spring Boot entry for the full mock runtime.
@@ -28,6 +38,7 @@ import java.util.List;
 public class MockApplicationSpringBootApp {
 
     private static final Logger log = LoggerFactory.getLogger(MockApplicationSpringBootApp.class);
+    private static final Gson GSON = new Gson();
 
     @Value("${mass.websocket.port:18088}")
     private int massWebSocketPort;
@@ -166,28 +177,40 @@ public class MockApplicationSpringBootApp {
     }
 
     private void registerDevAppCatalog(MassSdkApplication app) {
-        app.registerEvent(EventMetadata.builder()
-                .code("demo.dispatch")
-                .name("Demo Dispatch")
-                .description("Dispatch a generic demo work item to an online demo worker.")
-                .payloadTypes(List.of(PayloadType.JSON))
-                .taskModes(List.of(TaskMode.SINGLE_RUN, TaskMode.STREAMING))
-                .build());
-
-        app.registerEvent(EventMetadata.builder()
-                .code("demo.dispatch.gb")
-                .name("Demo Dispatch (GB)")
-                .description("Dispatch a generic demo work item to the GB demo lane.")
-                .payloadTypes(List.of(PayloadType.JSON))
-                .taskModes(List.of(TaskMode.SINGLE_RUN, TaskMode.STREAMING))
-                .build());
-        app.registerEvent(EventMetadata.builder()
-                .code("crawler.fetch-page")
-                .name("Crawler Fetch Page")
-                .description("Dispatch a crawler fetch request to an SDK-created pull worker.")
-                .payloadTypes(List.of(PayloadType.JSON))
-                .taskModes(List.of(TaskMode.SINGLE_RUN, TaskMode.STREAMING))
-                .build());
+        registerCatalogTaskDefinition(
+                app,
+                EventMetadata.builder()
+                        .code("demo.dispatch")
+                        .name("Demo Dispatch")
+                        .description("Dispatch a generic demo work item to an online demo worker.")
+                        .payloadTypes(List.of(PayloadType.JSON))
+                        .taskModes(List.of(TaskMode.SINGLE_RUN, TaskMode.STREAMING))
+                        .build(),
+                List.of("demoApp", "testApp", "otherApp")
+        );
+        registerCatalogTaskDefinition(
+                app,
+                EventMetadata.builder()
+                        .code("demo.dispatch.gb")
+                        .name("Demo Dispatch (GB)")
+                        .description("Dispatch a generic demo work item to the GB demo lane.")
+                        .payloadTypes(List.of(PayloadType.JSON))
+                        .taskModes(List.of(TaskMode.SINGLE_RUN, TaskMode.STREAMING))
+                        .build(),
+                List.of("demoApp", "otherApp")
+        );
+        registerCatalogTaskDefinition(
+                app,
+                EventMetadata.builder()
+                        .code("crawler.fetch-page")
+                        .name("Crawler Fetch Page")
+                        .description("Dispatch a crawler fetch request to an SDK-created pull worker.")
+                        .payloadTypes(List.of(PayloadType.JSON))
+                        .taskModes(List.of(TaskMode.SINGLE_RUN, TaskMode.STREAMING))
+                        .build(),
+                List.of("crawlerApp")
+        );
+        registerRuntimeToolDefinitions(app);
 
         app.registerProject(ProjectMetadata.builder()
                 .code("demoApp")
@@ -215,5 +238,53 @@ public class MockApplicationSpringBootApp {
                 .description("Crawler worker lab project for SDK-created pull worker scenarios.")
                 .eventCodes(List.of("crawler.fetch-page"))
                 .build());
+    }
+
+    private void registerCatalogTaskDefinition(MassSdkApplication app,
+                                               EventMetadata eventMetadata,
+                                               List<String> projectCodes) {
+        app.registerEventDefinition(SdkEventDefinition.builder()
+                .metadata(eventMetadata)
+                .projectCodes(projectCodes)
+                .build());
+    }
+
+    private void registerRuntimeToolDefinitions(MassSdkApplication app) {
+        for (CommandDefinition<JsonObject, Map<String, Object>> definition : ToolCommandRoutes.definitions()) {
+            app.registerEventDefinition(SdkEventDefinition.builder()
+                    .metadata(EventMetadata.builder()
+                            .code(definition.getEvent())
+                            .name(humanizeEventName(definition.getEvent()))
+                            .description(definition.getDescriptor().getSummary())
+                            .payloadTypes(List.of(PayloadType.JSON))
+                            .taskModes(List.of())
+                            .build())
+                    .projectCodes(List.of())
+                    .handler((request, principal) -> {
+                        MockCommandRuntime.initialize();
+                        JsonObject payloadJson = toJsonObject(request.getPayload());
+                        Map<String, Object> result = definition.getHandler().handle(
+                                definition.getResolver().apply(payloadJson),
+                                CommandContext.getInstance()
+                        );
+                        return EventResponse.success(result, request.getRequestId());
+                    })
+                    .build());
+        }
+    }
+
+    private JsonObject toJsonObject(Map<String, Object> payload) {
+        return GSON.toJsonTree(payload == null ? Map.of() : payload).getAsJsonObject();
+    }
+
+    private String humanizeEventName(String eventCode) {
+        String[] segments = eventCode.split("\\.");
+        List<String> words = new ArrayList<>();
+        for (String segment : segments) {
+            if (!segment.isBlank()) {
+                words.add(Character.toUpperCase(segment.charAt(0)) + segment.substring(1));
+            }
+        }
+        return String.join(" ", words);
     }
 }

@@ -210,6 +210,46 @@ class TaskAssignWorkerTest {
     }
 
     @Test
+    void runningTaskDeferredRequeueIsEnqueuedAfterCurrentAssignmentCycleFinishes() throws InterruptedException {
+        worker.stop();
+
+        AtomicInteger attempts = new AtomicInteger();
+        CountDownLatch secondAttemptLatch = new CountDownLatch(1);
+        TaskWorkerAssignListener listener = mock(TaskWorkerAssignListener.class);
+        doAnswer(invocation -> {
+            Task task = invocation.getArgument(0);
+            int currentAttempt = attempts.incrementAndGet();
+            if (currentAttempt == 1) {
+                assertFalse(worker.submit(task), "second submit while tracked should be deferred");
+                Thread.sleep(100);
+            } else if (currentAttempt == 2) {
+                secondAttemptLatch.countDown();
+            }
+            return true;
+        }).when(listener).onTaskAssign(any());
+
+        worker = new TaskAssignWorker(listener, 50L);
+        worker.start();
+
+        Task task = runningTask("deferred-requeue");
+        try (TraceEventLogCapture capture = new TraceEventLogCapture()) {
+            assertTrue(worker.submit(task));
+
+            assertTrue(secondAttemptLatch.await(3, TimeUnit.SECONDS),
+                    "deferred requeue should trigger a second assignment cycle");
+            assertEquals(2, attempts.get());
+            capture.assertHasEvent("ASSIGNMENT_QUEUE_SNAPSHOT", mdc ->
+                    "deferred-requeue".equals(mdc.get("taskId"))
+                            && "REQUEUE_MARKED".equals(mdc.get("queueAction"))
+                            && "DEFERRED".equals(mdc.get("result")));
+            capture.assertHasEvent("ASSIGNMENT_QUEUE_SNAPSHOT", mdc ->
+                    "deferred-requeue".equals(mdc.get("taskId"))
+                            && "REQUEUE_ENQUEUED".equals(mdc.get("queueAction"))
+                            && "SUCCESS".equals(mdc.get("result")));
+        }
+    }
+
+    @Test
     void submitAllDrainsEvenWhenOneTaskIsSkippedAsNonDispatchable() throws InterruptedException {
         CountDownLatch allDoneLatch = new CountDownLatch(1);
         worker.addAssignmentQueueListener(new TaskAssignmentQueueListener() {

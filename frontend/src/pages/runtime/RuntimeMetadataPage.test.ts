@@ -73,6 +73,14 @@ function discoveryFetch(submitterResponse: Response): (input: string) => Promise
                             taskModes: ['SINGLE_RUN'],
                             enabled: true,
                         },
+                        {
+                            code: 'tool.country.capital.lookup',
+                            name: 'Tool Country Capital Lookup',
+                            description: 'Resolve a country code to a capital city.',
+                            payloadTypes: ['JSON'],
+                            taskModes: [],
+                            enabled: true,
+                        },
                     ],
                 }),
             )
@@ -280,5 +288,79 @@ describe('RuntimeMetadataPage', () => {
         const { wrapper } = await mountRuntimeMetadataPage()
 
         expect(wrapper.text()).toContain('Endpoint unavailable or mock mode')
+    })
+
+    it('treats direct runtime events as discovery-only and does not offer task drafting', async () => {
+        setRuntimeConfigOverrides({ useMockApi: false })
+        vi.stubGlobal(
+            'fetch',
+            vi.fn((input: string) => {
+                if (input.includes('/sdk/submitters/me')) {
+                    return Promise.resolve(
+                        jsonResponseWithStatus(
+                            {
+                                code: 404,
+                                msg: 'Not found',
+                                data: null,
+                            },
+                            404,
+                        ),
+                    )
+                }
+                if (input.includes('/sdk/meta/projects')) {
+                    return Promise.resolve(
+                        jsonResponse({
+                            code: 0,
+                            msg: 'ok',
+                            data: [],
+                        }),
+                    )
+                }
+                if (input.includes('/sdk/meta/events')) {
+                    return Promise.resolve(
+                        jsonResponse({
+                            code: 0,
+                            msg: 'ok',
+                            data: [
+                                {
+                                    code: 'tool.phone.country.detect',
+                                    name: 'Tool Phone Country Detect',
+                                    description: 'Detect a phone number country by dial code.',
+                                    payloadTypes: ['JSON'],
+                                    taskModes: [],
+                                    enabled: true,
+                                },
+                            ],
+                        }),
+                    )
+                }
+
+                return Promise.resolve(
+                    jsonResponse({
+                        code: 0,
+                        msg: 'ok',
+                        data: {
+                            items: [],
+                            total: 0,
+                        },
+                    }),
+                )
+            }),
+        )
+
+        const { wrapper, router } = await mountRuntimeMetadataPage()
+
+        expect(wrapper.text()).toContain('Direct runtime event')
+
+        const startDraftButton = wrapper
+            .findAll('button')
+            .find((button) => button.text().includes('Start event draft'))
+        expect(startDraftButton).toBeDefined()
+        expect(startDraftButton!.attributes('disabled')).toBeDefined()
+
+        await startDraftButton!.trigger('click')
+        await flushPromises()
+
+        expect(router.currentRoute.value.path).toBe('/')
     })
 })

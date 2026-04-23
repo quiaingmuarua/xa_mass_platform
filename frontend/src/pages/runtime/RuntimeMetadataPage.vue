@@ -226,8 +226,15 @@
                   <el-descriptions-item label="Event">
                     {{ selectedEventRow.name }} ({{ selectedEventRow.code }})
                   </el-descriptions-item>
-                  <el-descriptions-item label="Task modes">
+                <el-descriptions-item label="Task modes">
                     {{ selectedEventRow.taskModes.join(', ') || '-' }}
+                  </el-descriptions-item>
+                  <el-descriptions-item label="Invocation model">
+                    {{
+                      supportsTaskDraft(selectedEventRow)
+                        ? 'Task-backed event'
+                        : 'Direct runtime event'
+                    }}
                   </el-descriptions-item>
                   <el-descriptions-item label="Payload types">
                     {{ selectedEventRow.payloadTypes.join(', ') || '-' }}
@@ -255,7 +262,7 @@
                 <div class="detail-actions">
                   <el-button
                     type="primary"
-                    :disabled="!draftProjectCodeForSelectedEvent"
+                    :disabled="!supportsTaskDraft(selectedEventRow)"
                     @click="openTaskDraftForSelectedEvent()"
                   >
                     Start event draft
@@ -495,7 +502,7 @@
                 <el-button
                   link
                   type="primary"
-                  :disabled="row.projectCodes.length === 0"
+                  :disabled="!supportsTaskDraft(row)"
                   @click="openTaskDraftForEvent(row)"
                 >
                   Draft task
@@ -793,7 +800,7 @@ const selectedProjectStarter = computed(() => {
   })
 })
 const selectedEventStarter = computed(() => {
-  if (!selectedEventRow.value) {
+  if (!selectedEventRow.value || !supportsTaskDraft(selectedEventRow.value)) {
     return null
   }
 
@@ -823,7 +830,7 @@ const selectedEventStarterInputsText = computed(() =>
     : '',
 )
 const draftProjectCodeForSelectedEvent = computed(() => {
-  if (!selectedEventRow.value) {
+  if (!selectedEventRow.value || !supportsTaskDraft(selectedEventRow.value)) {
     return ''
   }
 
@@ -909,7 +916,7 @@ function openTaskDraftForProject(projectCode?: string): void {
 }
 
 function openTaskDraftForSelectedEvent(): void {
-  if (!selectedEventRow.value) {
+  if (!selectedEventRow.value || !supportsTaskDraft(selectedEventRow.value)) {
     return
   }
 
@@ -917,6 +924,9 @@ function openTaskDraftForSelectedEvent(): void {
 }
 
 function openTaskDraftForEvent(event: EventRow): void {
+  if (!supportsTaskDraft(event)) {
+    return
+  }
   const projectCode = resolveDraftProjectCodeForEvent(event)
   if (!projectCode) {
     return
@@ -967,6 +977,9 @@ function remainingCount(items: string[]): number {
 }
 
 function resolveDraftProjectCodeForEvent(event: EventRow): string {
+  if (!supportsTaskDraft(event)) {
+    return ''
+  }
   if (
     selectedProject.value &&
     event.projectCodes.includes(selectedProject.value.code)
@@ -979,6 +992,10 @@ function resolveDraftProjectCodeForEvent(event: EventRow): string {
 
 function uniqueStrings(values: string[]): string[] {
   return Array.from(new Set(values.filter((value) => value.length > 0)))
+}
+
+function supportsTaskDraft(event: Pick<EventRow, 'taskModes' | 'projectCodes'>): boolean {
+  return event.taskModes.length > 0 && event.projectCodes.length > 0
 }
 
 onMounted(() => {
