@@ -265,7 +265,7 @@ public class TaskAssignWorker {
             return false;
         }
         TaskStatus status = task.getStatus();
-        if (status != TaskStatus.READY && status != TaskStatus.RUNNING) {
+        if (status != TaskStatus.RUNNING) {
             return false;
         }
         return deferredRequeueTaskIds.add(task.getTid());
