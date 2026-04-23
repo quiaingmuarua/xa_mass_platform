@@ -136,6 +136,20 @@ Behavior:
 - `taskModes=[]` means the event is direct runtime discovery/dispatch only
 - returns HTTP 404 when `eventCode` does not exist in the catalog
 
+### 2.6 List SDK Event Capabilities
+
+- Method: `GET`
+- Path: `/sdk/meta/event-capabilities`
+- Status: `Implemented`
+
+Response notes:
+
+- returns one row per registered global event
+- `invocationModel=TASK_BACKED` means the event creates/dispatches task work items through `POST /status/api/tasks`
+- `invocationModel=DIRECT_RUNTIME` means the event is handled directly by the SDK runtime definition
+- `onlineWorkerIds` is derived from live workers declaring `supportedEventCodes`; `supportedProjects` is not treated as capability truth
+- `ready=true` means either a direct runtime handler exists or at least one online worker currently declares the event
+
 ## 2.6 SDK Submitter Introspection API
 
 ### 2.6.1 Get Current SDK Submitter

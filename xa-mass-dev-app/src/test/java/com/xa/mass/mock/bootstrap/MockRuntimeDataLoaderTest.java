@@ -45,8 +45,11 @@ class MockRuntimeDataLoaderTest {
 
         assertEquals(2, runtime.workers.size());
         assertEquals(2, runtime.workerContexts.size());
+        assertEquals(2, runtime.registeredWorkers.size());
+        assertEquals(2, runtime.registeredWorkerContexts.size());
         assertEquals(1, runtime.createdTasks.size());
         assertEquals(2, runtime.rules.size());
+        assertTrue(runtime.workers.stream().allMatch(worker -> worker.getStatus() == WorkerStatus.OFFLINE));
         assertTrue(runtime.workers.stream().allMatch(worker -> worker.supportsProject("demoApp")));
         assertTrue(runtime.workers.stream().allMatch(worker -> worker.supportsProject("testApp")));
 
@@ -95,7 +98,7 @@ class MockRuntimeDataLoaderTest {
     }
 
     @Test
-    void loadIntoPrefersSdkRegistrationForDefaultStateResources() throws IOException {
+    void loadIntoUsesSdkRegistrationForAllWorkerResources() throws IOException {
         FakeRuntime runtime = new FakeRuntime();
         MockRuntimeDataLoader loader = loader(
                 defaultStateWorkersJson(),
@@ -107,12 +110,10 @@ class MockRuntimeDataLoaderTest {
         loader.loadInto(runtime);
 
         assertEquals(1, runtime.registeredWorkers.size());
-        assertEquals(0, runtime.legacyWorkers.size());
         assertEquals(WorkerStatus.OFFLINE, runtime.workers.get(0).getStatus());
         assertEquals("polling", runtime.registeredWorkers.get(0).getTransportHint());
 
         assertEquals(1, runtime.registeredWorkerContexts.size());
-        assertEquals(0, runtime.legacyWorkerContexts.size());
         assertEquals(WorkerContextStatus.IDLE, runtime.workerContexts.get(0).getStatus());
         assertTrue(runtime.registeredWorkerContexts.get(0).getRoutingTags().contains("route-us"));
     }
@@ -306,8 +307,6 @@ class MockRuntimeDataLoaderTest {
         private final List<WorkerContext> workerContexts = new ArrayList<>();
         private final List<WorkerRegistration> registeredWorkers = new ArrayList<>();
         private final List<WorkerContextRegistration> registeredWorkerContexts = new ArrayList<>();
-        private final List<Worker> legacyWorkers = new ArrayList<>();
-        private final List<WorkerContext> legacyWorkerContexts = new ArrayList<>();
         private final List<MassTaskCreateRequest> createdTasks = new ArrayList<>();
         private final List<RuleDefinition> rules = new ArrayList<>();
 
@@ -356,14 +355,12 @@ class MockRuntimeDataLoaderTest {
 
         @Override
         public void addWorker(Worker worker) {
-            legacyWorkers.add(worker);
-            workers.add(worker);
+            throw new AssertionError("MockRuntimeDataLoader must create workers through SDK registration");
         }
 
         @Override
         public void addWorkerContext(WorkerContext workerContext) {
-            legacyWorkerContexts.add(workerContext);
-            workerContexts.add(workerContext);
+            throw new AssertionError("MockRuntimeDataLoader must create worker contexts through SDK registration");
         }
 
         @Override

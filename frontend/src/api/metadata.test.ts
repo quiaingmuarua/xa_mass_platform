@@ -1,6 +1,6 @@
 import {resetRuntimeConfigOverrides, setRuntimeConfigOverrides} from '@/app/config'
-import {listEventMetadata, listProjectEventMetadata, listProjectMetadata,} from '@/api/metadata'
-import {listEventMetadataReal, listProjectMetadataReal} from '@/api/metadata.real'
+import {listEventCapabilities, listEventMetadata, listProjectEventMetadata, listProjectMetadata,} from '@/api/metadata'
+import {listEventCapabilitiesReal, listEventMetadataReal, listProjectMetadataReal} from '@/api/metadata.real'
 
 function jsonResponse(body: unknown): Response {
     return new Response(JSON.stringify(body), {
@@ -22,12 +22,14 @@ describe('metadata API facade', () => {
 
         const projects = await listProjectMetadata()
         const events = await listEventMetadata()
+        const capabilities = await listEventCapabilities()
         const demoEvents = await listProjectEventMetadata('demoApp')
 
         expect(projects.some((project) => project.code === 'demoApp')).toBe(true)
         expect(events.some((event) => event.code === 'demo.dispatch')).toBe(
             true,
         )
+        expect(capabilities.some((item) => item.eventCode === 'tool.country.capital.lookup')).toBe(true)
         expect(demoEvents.map((event) => event.code)).toContain('demo.dispatch')
     })
 })
@@ -41,6 +43,28 @@ describe('metadata.real', () => {
     it('calls backend SDK metadata endpoints', async () => {
         setRuntimeConfigOverrides({ apiBaseUrl: '/backend' })
         const fetchMock = vi.fn((input: string) => {
+            if (input.endsWith('/sdk/meta/event-capabilities')) {
+                return Promise.resolve(
+                    jsonResponse({
+                        code: 0,
+                        msg: 'ok',
+                        data: [
+                            {
+                                eventCode: 'demo.dispatch',
+                                eventName: 'Demo dispatch',
+                                enabled: true,
+                                invocationModel: 'TASK_BACKED',
+                                projectCodes: ['demoApp'],
+                                workerIds: ['worker-1'],
+                                onlineWorkerIds: ['worker-1'],
+                                hasDirectRuntimeHandler: false,
+                                hasOnlineWorkerCoverage: true,
+                                ready: true,
+                            },
+                        ],
+                    }),
+                )
+            }
             if (input.endsWith('/sdk/meta/events')) {
                 return Promise.resolve(
                     jsonResponse({
@@ -80,6 +104,7 @@ describe('metadata.real', () => {
 
         const projects = await listProjectMetadataReal()
         const events = await listEventMetadataReal()
+        const capabilities = await listEventCapabilitiesReal()
 
         expect(fetchMock).toHaveBeenCalledWith(
             '/backend/sdk/meta/projects',
@@ -89,7 +114,12 @@ describe('metadata.real', () => {
             '/backend/sdk/meta/events',
             expect.any(Object),
         )
+        expect(fetchMock).toHaveBeenCalledWith(
+            '/backend/sdk/meta/event-capabilities',
+            expect.any(Object),
+        )
         expect(projects[0].code).toBe('demoApp')
         expect(events[0].code).toBe('demo.dispatch')
+        expect(capabilities[0].eventCode).toBe('demo.dispatch')
     })
 })

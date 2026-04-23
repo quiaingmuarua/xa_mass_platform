@@ -82,8 +82,10 @@ public class TaskApiController {
 
             TaskSubmitterContext submitter = resolveSdkSubmitter(apiKeyHeader, authorizationHeader);
             if (submitter != null) {
+                requireSubmitterPermission(submitter, TaskSubmitterContext.TASK_CREATE_PERMISSION);
                 String resolvedProject = resolveSubmitterProject(requestBody, submitter);
                 String resolvedUserId = resolveSubmitterUserId(requestBody, submitter);
+                requireSubmitterEventScope(requestBody, submitter);
                 Task task = taskOperations.createTask(toMassTaskRequest(requestBody, resolvedProject, resolvedUserId));
                 return ok(Map.of(
                         "taskId", task.getTid(),
@@ -589,11 +591,18 @@ public class TaskApiController {
         String scopedProject = SdkCredentialAuthSupport.firstNonBlank(submitter.getProjectScope());
         if (scopedProject != null) {
             if (requestedProject != null && !scopedProject.equals(requestedProject)) {
-                throw new SecurityException("Submitter project scope does not allow project: " + requestedProject);
+                throw new SecurityException("SDK credential project scope denied: " + requestedProject);
             }
             return scopedProject;
         }
+        if (requestedProject == null && submitter.getProjectScopes().size() == 1
+                && !TaskSubmitterContext.WILDCARD_SCOPE.equals(submitter.getProjectScopes().get(0))) {
+            return submitter.getProjectScopes().get(0);
+        }
         if (requestedProject != null) {
+            if (!submitter.allowsProject(requestedProject)) {
+                throw new SecurityException("SDK credential project scope denied: " + requestedProject);
+            }
             return requestedProject;
         }
         throw new IllegalArgumentException("project is required when submitter has no project scope");
@@ -604,7 +613,7 @@ public class TaskApiController {
         String scopedUserId = SdkCredentialAuthSupport.firstNonBlank(submitter.getUserId());
         if (scopedUserId != null) {
             if (requestedUserId != null && !scopedUserId.equals(requestedUserId)) {
-                throw new SecurityException("Submitter user scope does not allow userId: " + requestedUserId);
+                throw new SecurityException("SDK credential user scope denied: " + requestedUserId);
             }
             return UserRef.requireUserId(scopedUserId);
         }
@@ -612,6 +621,19 @@ public class TaskApiController {
             return UserRef.requireUserId(requestedUserId);
         }
         return UserRef.requireUserId(submitter.getPrincipalId());
+    }
+
+    private void requireSubmitterPermission(TaskSubmitterContext submitter, String permission) {
+        if (!submitter.hasPermission(permission)) {
+            throw new SecurityException("SDK credential permission denied: " + permission);
+        }
+    }
+
+    private void requireSubmitterEventScope(TaskCreateApiRequest requestBody, TaskSubmitterContext submitter) {
+        String eventCode = SdkCredentialAuthSupport.firstNonBlank(requestBody.getEventCode());
+        if (eventCode != null && !submitter.allowsEvent(eventCode)) {
+            throw new SecurityException("SDK credential event scope denied: " + eventCode);
+        }
     }
 
     private boolean hasEventCode(TaskCreateApiRequest requestBody) {

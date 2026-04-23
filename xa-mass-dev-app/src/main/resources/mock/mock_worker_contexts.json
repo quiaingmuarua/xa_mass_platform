@@ -3,30 +3,45 @@
     "workerContextId": "ctx-pool-a-1",
     "workerId": "worker-pool-a-1",
     "routingTags": ["us"],
-    "status": "IDLE"
+    "attributes": {
+      "country": "us",
+      "network": "residential"
+    }
   },
   {
     "workerContextId": "ctx-pool-a-2",
     "workerId": "worker-pool-a-2",
     "routingTags": ["us"],
-    "status": "IDLE"
+    "attributes": {
+      "country": "us",
+      "network": "datacenter"
+    }
   },
   {
     "workerContextId": "ctx-pool-a-3",
     "workerId": "worker-pool-a-3",
     "routingTags": ["us"],
-    "status": "IDLE"
+    "attributes": {
+      "country": "us",
+      "network": "mobile"
+    }
   },
   {
     "workerContextId": "ctx-pool-b-1",
     "workerId": "worker-pool-b-1",
     "routingTags": ["gb"],
-    "status": "IDLE"
+    "attributes": {
+      "country": "gb",
+      "network": "residential"
+    }
   },
   {
     "workerContextId": "ctx-pool-b-2",
     "workerId": "worker-pool-b-2",
     "routingTags": ["gb"],
-    "status": "IDLE"
+    "attributes": {
+      "country": "gb",
+      "network": "mobile"
+    }
   }
 ]

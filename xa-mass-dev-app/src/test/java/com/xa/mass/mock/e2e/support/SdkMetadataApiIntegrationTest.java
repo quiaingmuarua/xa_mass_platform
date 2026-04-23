@@ -51,14 +51,17 @@ class SdkMetadataApiIntegrationTest extends AbstractMockE2eTest {
         Map<String, Object> projectResponse = exchange("/sdk/meta/projects", HttpMethod.GET, null);
         Map<String, Object> projectEventsResponse = exchange("/sdk/meta/projects/demoApp/events", HttpMethod.GET, null);
         Map<String, Object> eventResponse = exchange("/sdk/meta/events/crawler.fetch-page", HttpMethod.GET, null);
+        Map<String, Object> capabilityResponse = exchange("/sdk/meta/event-capabilities", HttpMethod.GET, null);
 
         assertApiOk(projectResponse);
         assertApiOk(projectEventsResponse);
         assertApiOk(eventResponse);
+        assertApiOk(capabilityResponse);
 
         List<Map<String, Object>> projects = (List<Map<String, Object>>) projectResponse.get("data");
         List<Map<String, Object>> projectEvents = (List<Map<String, Object>>) projectEventsResponse.get("data");
         Map<String, Object> event = (Map<String, Object>) eventResponse.get("data");
+        List<Map<String, Object>> capabilities = (List<Map<String, Object>>) capabilityResponse.get("data");
 
         assertTrue(projects.stream().anyMatch(project -> "demoApp".equals(project.get("code"))));
         assertTrue(projectEvents.stream().anyMatch(item -> "demo.dispatch".equals(item.get("code"))));
@@ -66,6 +69,13 @@ class SdkMetadataApiIntegrationTest extends AbstractMockE2eTest {
         assertEquals("crawler.fetch-page", event.get("code"));
         assertEquals(List.of("JSON"), event.get("payloadTypes"));
         assertEquals(List.of("SINGLE_RUN", "STREAMING"), event.get("taskModes"));
+        assertTrue(capabilities.stream().anyMatch(item ->
+                "crawler.fetch-page".equals(item.get("eventCode"))
+                        && "TASK_BACKED".equals(item.get("invocationModel"))));
+        assertTrue(capabilities.stream().anyMatch(item ->
+                "tool.country.capital.lookup".equals(item.get("eventCode"))
+                        && "DIRECT_RUNTIME".equals(item.get("invocationModel"))
+                        && Boolean.TRUE.equals(item.get("ready"))));
     }
 
     @Test

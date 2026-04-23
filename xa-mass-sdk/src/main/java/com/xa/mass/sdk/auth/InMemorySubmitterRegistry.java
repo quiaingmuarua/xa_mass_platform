@@ -1,5 +1,8 @@
 package com.xa.mass.sdk.auth;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.*;
 
 /**
@@ -8,19 +11,20 @@ import java.util.*;
 public final class InMemorySubmitterRegistry implements AuthProvider {
 
     private final Map<String, SubmitterRegistration> byPrincipalId = new LinkedHashMap<>();
-    private final Map<String, SubmitterRegistration> byCredential = new LinkedHashMap<>();
+    private final Map<String, SubmitterRegistration> byCredentialHash = new LinkedHashMap<>();
 
     public synchronized void register(SubmitterRegistration submitterRegistration) {
         SubmitterRegistration registration = Objects.requireNonNull(submitterRegistration, "submitterRegistration");
-        SubmitterRegistration credentialOwner = byCredential.get(registration.getCredential());
+        String credentialHash = hashCredential(registration.getCredential());
+        SubmitterRegistration credentialOwner = byCredentialHash.get(credentialHash);
         if (credentialOwner != null && !credentialOwner.getPrincipalId().equals(registration.getPrincipalId())) {
             throw new IllegalArgumentException("credential is already assigned to another submitter");
         }
         SubmitterRegistration previous = byPrincipalId.put(registration.getPrincipalId(), registration);
         if (previous != null) {
-            byCredential.remove(previous.getCredential());
+            byCredentialHash.remove(hashCredential(previous.getCredential()));
         }
-        byCredential.put(registration.getCredential(), registration);
+        byCredentialHash.put(credentialHash, registration);
     }
 
     public synchronized List<SubmitterMetadata> listSubmitters() {
@@ -40,10 +44,24 @@ public final class InMemorySubmitterRegistry implements AuthProvider {
         if (credential == null || credential.isBlank()) {
             return null;
         }
-        SubmitterRegistration registration = byCredential.get(credential.trim());
+        SubmitterRegistration registration = byCredentialHash.get(hashCredential(credential.trim()));
         if (registration == null || !registration.isEnabled()) {
             return null;
         }
         return registration.toSubmitterContext();
+    }
+
+    private static String hashCredential(String credential) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] bytes = digest.digest(credential.getBytes(StandardCharsets.UTF_8));
+            StringBuilder builder = new StringBuilder(bytes.length * 2);
+            for (byte value : bytes) {
+                builder.append(String.format("%02x", value));
+            }
+            return builder.toString();
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 is unavailable", e);
+        }
     }
 }

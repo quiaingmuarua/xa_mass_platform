@@ -27,6 +27,52 @@ function discoveryFetch(submitterResponse: Response): (input: string) => Promise
         if (input.includes('/sdk/submitters/me')) {
             return Promise.resolve(submitterResponse)
         }
+        if (input.includes('/sdk/meta/event-capabilities')) {
+            return Promise.resolve(
+                jsonResponse({
+                    code: 0,
+                    msg: 'ok',
+                    data: [
+                        {
+                            eventCode: 'demo.dispatch',
+                            eventName: 'Demo dispatch',
+                            enabled: true,
+                            invocationModel: 'TASK_BACKED',
+                            projectCodes: ['demoApp'],
+                            workerIds: ['worker-us-01', 'worker-event-only'],
+                            onlineWorkerIds: ['worker-us-01', 'worker-event-only'],
+                            hasDirectRuntimeHandler: false,
+                            hasOnlineWorkerCoverage: true,
+                            ready: true,
+                        },
+                        {
+                            eventCode: 'crawler.fetch-page',
+                            eventName: 'Fetch crawler page',
+                            enabled: true,
+                            invocationModel: 'TASK_BACKED',
+                            projectCodes: ['crawlerApp'],
+                            workerIds: ['worker-sg-01'],
+                            onlineWorkerIds: [],
+                            hasDirectRuntimeHandler: false,
+                            hasOnlineWorkerCoverage: false,
+                            ready: false,
+                        },
+                        {
+                            eventCode: 'tool.country.capital.lookup',
+                            eventName: 'Tool Country Capital Lookup',
+                            enabled: true,
+                            invocationModel: 'DIRECT_RUNTIME',
+                            projectCodes: [],
+                            workerIds: [],
+                            onlineWorkerIds: [],
+                            hasDirectRuntimeHandler: true,
+                            hasOnlineWorkerCoverage: false,
+                            ready: true,
+                        },
+                    ],
+                }),
+            )
+        }
         if (input.includes('/sdk/meta/projects')) {
             return Promise.resolve(
                 jsonResponse({
@@ -313,6 +359,28 @@ describe('RuntimeMetadataPage', () => {
                             code: 0,
                             msg: 'ok',
                             data: [],
+                        }),
+                    )
+                }
+                if (input.includes('/sdk/meta/event-capabilities')) {
+                    return Promise.resolve(
+                        jsonResponse({
+                            code: 0,
+                            msg: 'ok',
+                            data: [
+                                {
+                                    eventCode: 'tool.phone.country.detect',
+                                    eventName: 'Tool Phone Country Detect',
+                                    enabled: true,
+                                    invocationModel: 'DIRECT_RUNTIME',
+                                    projectCodes: [],
+                                    workerIds: [],
+                                    onlineWorkerIds: [],
+                                    hasDirectRuntimeHandler: true,
+                                    hasOnlineWorkerCoverage: false,
+                                    ready: true,
+                                },
+                            ],
                         }),
                     )
                 }

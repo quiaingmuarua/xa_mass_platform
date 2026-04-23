@@ -471,8 +471,44 @@ class MassSdkTest {
         Assertions.assertEquals("telegram-bot", submitterContext.getPrincipalId());
         Assertions.assertEquals("bot-user", submitterContext.getUserId());
         Assertions.assertEquals("telegramApp", submitterContext.getProjectScope());
+        Assertions.assertEquals(List.of("task:create"), submitterContext.getPermissions());
+        Assertions.assertEquals(List.of("telegramApp"), submitterContext.getProjectScopes());
+        Assertions.assertEquals(List.of(), submitterContext.getEventScopes());
         Assertions.assertEquals(Map.of("channel", "telegram"), submitterContext.getAttributes());
         Assertions.assertEquals(submitterContext.getPrincipalId(), app.authenticate("test-api-key").getPrincipalId());
+    }
+
+    @Test
+    void submitterOperationsAllowMultipleApiKeysForSameUserWithDifferentScopes() {
+        MassSdkApplication app = new MassSdkApplication(mock(MassApplication.class));
+        app.registerSubmitter(SubmitterRegistration.builder()
+                .principalId("crawler-read-key")
+                .credential("crawler-read-secret")
+                .userId("crawler-user")
+                .permissions(List.of("metadata:view"))
+                .projectScopes(List.of("crawlerApp"))
+                .eventScopes(List.of("crawler.fetch-page"))
+                .build());
+        app.registerSubmitter(SubmitterRegistration.builder()
+                .principalId("crawler-create-key")
+                .credential("crawler-create-secret")
+                .userId("crawler-user")
+                .permissions(List.of("task:create"))
+                .projectScopes(List.of("crawlerApp"))
+                .eventScopes(List.of("crawler.fetch-page"))
+                .build());
+
+        TaskSubmitterContext readKey = app.authenticateSubmitter("crawler-read-secret");
+        TaskSubmitterContext createKey = app.authenticateSubmitter("crawler-create-secret");
+
+        Assertions.assertNotNull(readKey);
+        Assertions.assertNotNull(createKey);
+        Assertions.assertEquals("crawler-user", readKey.getUserId());
+        Assertions.assertEquals("crawler-user", createKey.getUserId());
+        Assertions.assertFalse(readKey.hasPermission("task:create"));
+        Assertions.assertTrue(createKey.hasPermission("task:create"));
+        Assertions.assertEquals("crawler-read-key", readKey.getPrincipalId());
+        Assertions.assertEquals("crawler-create-key", createKey.getPrincipalId());
     }
 
     @Test

@@ -2,13 +2,11 @@
   {
     "workerContextId": "it-worker-context-0",
     "workerId": "it-worker-0",
-    "routingTags": ["us"],
-    "status": "IDLE"
+    "routingTags": ["us"]
   },
   {
     "workerContextId": "it-worker-context-1",
     "workerId": "it-worker-1",
-    "routingTags": ["us"],
-    "status": "IDLE"
+    "routingTags": ["us"]
   }
 ]

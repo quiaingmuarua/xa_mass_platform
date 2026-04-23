@@ -22,9 +22,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.net.URI;
+import java.time.Instant;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -35,6 +38,8 @@ public class MassWebSocketClientImpl extends WebSocketClient implements MassWebS
     private static final int MAX_RECONNECT_ATTEMPTS = 10;
     private static final long INITIAL_RECONNECT_DELAY_MS = 1000;
     private static final long MAX_RECONNECT_DELAY_MS = 60000;
+    private static final long DEFAULT_TASK_RESPONSE_BASE_DELAY_MS = 15L;
+    private static final long DEFAULT_TASK_RESPONSE_JITTER_MS = 35L;
 
     private final Gson gson = new Gson();
     private final ScheduledExecutorService reconnectScheduler;
@@ -156,10 +161,25 @@ public class MassWebSocketClientImpl extends WebSocketClient implements MassWebS
         String stepId = (taskPayload != null && taskPayload.getSteps() != null && !taskPayload.getSteps().isEmpty())
                 ? taskPayload.getSteps().get(0).getStepId()
                 : "step-0-default";
+        int stepCount = taskPayload != null && taskPayload.getSteps() != null ? taskPayload.getSteps().size() : 0;
+        MockClientState state = getMockClientState();
+        String resolvedStatus = resolveTaskResultStatus(state);
+        long delayMillis = resolveTaskResponseDelayMillis(taskMessage, taskPayload, state, resolvedStatus);
+        long startedAtEpochMillis = System.currentTimeMillis();
+        long finishedAtEpochMillis = startedAtEpochMillis + delayMillis;
         payloadMap.put("stepId", stepId);
         payloadMap.put("mockData", "Executed by mock client " + workerId);
-        MockClientState state = getMockClientState();
-        payloadMap.put("status", resolveTaskResultStatus(state));
+        payloadMap.put("status", resolvedStatus);
+        payloadMap.put("execution", buildExecutionSnapshot(
+                originalContext,
+                taskMessage,
+                stepCount,
+                delayMillis,
+                startedAtEpochMillis,
+                finishedAtEpochMillis,
+                resolvedStatus
+        ));
+        payloadMap.put("workerProfile", buildWorkerProfile());
 
         response.setPayload(gson.toJsonTree(payloadMap));
         if (state != null && state.shouldDropTaskResponse()) {
@@ -168,7 +188,7 @@ public class MassWebSocketClientImpl extends WebSocketClient implements MassWebS
             return;
         }
 
-        sendTaskResponse(response, state == null ? 0L : state.getTaskResponseDelayMillis());
+        sendTaskResponse(response, delayMillis);
     }
 
     private void handleControlMessage(String message) {
@@ -450,6 +470,55 @@ public class MassWebSocketClientImpl extends WebSocketClient implements MassWebS
             return taskResultStatus;
         }
         return normalizeTaskResultStatus(state.resolveTaskResultStatus(taskResultStatus));
+    }
+
+    private long resolveTaskResponseDelayMillis(MassMessage taskMessage,
+                                                TaskPayload taskPayload,
+                                                MockClientState state,
+                                                String taskStatus) {
+        if (state != null && state.getTaskResponseDelayMillis() > 0L) {
+            return state.getTaskResponseDelayMillis();
+        }
+        int stepCount = taskPayload != null && taskPayload.getSteps() != null ? taskPayload.getSteps().size() : 0;
+        int stableHash = Objects.hash(workerId, taskMessage.getMsgId(), taskMessage.getProject(), stepCount);
+        long jitter = Math.floorMod(stableHash, (int) DEFAULT_TASK_RESPONSE_JITTER_MS + 1);
+        long failurePenalty = "FAILED".equals(taskStatus) ? 10L : 0L;
+        return DEFAULT_TASK_RESPONSE_BASE_DELAY_MS + jitter + Math.max(0, stepCount - 1) * 5L + failurePenalty;
+    }
+
+    private Map<String, Object> buildExecutionSnapshot(MessageContext originalContext,
+                                                       MassMessage taskMessage,
+                                                       int stepCount,
+                                                       long delayMillis,
+                                                       long startedAtEpochMillis,
+                                                       long finishedAtEpochMillis,
+                                                       String taskStatus) {
+        Map<String, Object> execution = new LinkedHashMap<>();
+        execution.put("transport", "websocket");
+        execution.put("startedAtEpochMs", startedAtEpochMillis);
+        execution.put("finishedAtEpochMs", finishedAtEpochMillis);
+        execution.put("startedAt", Instant.ofEpochMilli(startedAtEpochMillis).toString());
+        execution.put("finishedAt", Instant.ofEpochMilli(finishedAtEpochMillis).toString());
+        execution.put("durationMs", delayMillis);
+        execution.put("stepCount", stepCount);
+        execution.put("taskStatus", taskStatus);
+        Integer retryCount = originalContext != null ? originalContext.getRetryCount() : null;
+        execution.put("retryCount", retryCount == null ? 0 : retryCount);
+        execution.put("project", taskMessage.getProject());
+        execution.put("messageId", taskMessage.getMsgId());
+        execution.put("taskId", originalContext != null ? originalContext.getTid() : null);
+        return execution;
+    }
+
+    private Map<String, Object> buildWorkerProfile() {
+        Map<String, Object> workerProfile = new LinkedHashMap<>();
+        workerProfile.put("workerId", workerId);
+        workerProfile.put("runtime", "mock-websocket-client");
+        workerProfile.put("host", "mock-host-" + workerId);
+        workerProfile.put("os", System.getProperty("os.name"));
+        workerProfile.put("javaVersion", System.getProperty("java.version"));
+        workerProfile.put("processId", ProcessHandle.current().pid());
+        return workerProfile;
     }
 
     private void sendTaskResponse(MassMessage response, long delayMillis) {

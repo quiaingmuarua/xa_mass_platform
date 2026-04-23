@@ -44,7 +44,7 @@
         class="metadata-note"
         type="info"
         :closable="false"
-        title="Project and event entries come from SDK registration. Live event-handling capability comes from worker-declared supportedEventCodes. supportedProjects stays only as a coarse grouping/filter hint."
+        title="Project and event entries come from SDK registration. Event capability comes from /sdk/meta/event-capabilities: direct runtime handlers are explicit, and task-backed worker coverage comes from supportedEventCodes."
       />
 
       <section class="metric-grid">
@@ -230,11 +230,7 @@
                     {{ selectedEventRow.taskModes.join(', ') || '-' }}
                   </el-descriptions-item>
                   <el-descriptions-item label="Invocation model">
-                    {{
-                      supportsTaskDraft(selectedEventRow)
-                        ? 'Task-backed event'
-                        : 'Direct runtime event'
-                    }}
+                    {{ invocationModelLabel(selectedEventRow.invocationModel) }}
                   </el-descriptions-item>
                   <el-descriptions-item label="Payload types">
                     {{ selectedEventRow.payloadTypes.join(', ') || '-' }}
@@ -244,6 +240,9 @@
                   </el-descriptions-item>
                   <el-descriptions-item label="Online workers">
                     {{ selectedEventWorkerSummary }}
+                  </el-descriptions-item>
+                  <el-descriptions-item label="Runtime readiness">
+                    {{ selectedEventRow.ready ? 'Ready' : 'No active capability' }}
                   </el-descriptions-item>
                   <el-descriptions-item label="Description">
                     {{ selectedEventRow.description || '-' }}
@@ -475,6 +474,13 @@
                 </div>
               </template>
             </el-table-column>
+            <el-table-column label="Capability" min-width="170">
+              <template #default="{ row }">
+                <el-tag :type="row.ready ? 'success' : 'info'" round>
+                  {{ invocationModelLabel(row.invocationModel) }}
+                </el-tag>
+              </template>
+            </el-table-column>
             <el-table-column label="Projects" min-width="180">
               <template #default="{ row }">
                 {{ row.projectCodes.join(', ') || '-' }}
@@ -519,13 +525,13 @@
 <script setup lang="ts">
 import {computed, onMounted, ref, watch} from 'vue'
 import {useRouter} from 'vue-router'
-import {listEventMetadata, listProjectMetadata} from '@/api/metadata'
+import {listEventCapabilities, listEventMetadata, listProjectMetadata} from '@/api/metadata'
 import {getCurrentSdkSubmitter} from '@/api/sdk-submitter'
 import {listWorkers} from '@/api/workers'
 import PageEmptyState from '@/components/PageEmptyState.vue'
 import PageErrorState from '@/components/PageErrorState.vue'
 import PageSectionSkeleton from '@/components/PageSectionSkeleton.vue'
-import type {EventMetadata, ProjectMetadata} from '@/types/metadata'
+import type {EventCapability, EventInvocationModel, EventMetadata, ProjectMetadata} from '@/types/metadata'
 import type {SdkSubmitterSnapshot} from '@/types/sdk-submitter'
 import type {WorkerListItem} from '@/types/workers'
 import {toErrorMessage} from '@/utils/errors'
@@ -545,8 +551,13 @@ interface WorkerDiscoveryRow extends WorkerListItem {
 }
 
 interface EventRow extends EventMetadata {
+  invocationModel: EventInvocationModel
   projectCodes: string[]
+  workerIds: string[]
   onlineWorkerIds: string[]
+  hasDirectRuntimeHandler: boolean
+  hasOnlineWorkerCoverage: boolean
+  ready: boolean
 }
 
 const router = useRouter()
@@ -555,6 +566,7 @@ const loading = ref(false)
 const errorMessage = ref('')
 const projects = ref<ProjectMetadata[]>([])
 const events = ref<EventMetadata[]>([])
+const eventCapabilities = ref<EventCapability[]>([])
 const workers = ref<WorkerListItem[]>([])
 const sdkSubmitterSnapshot = ref<SdkSubmitterSnapshot>({
   state: 'unavailable',
@@ -593,6 +605,12 @@ const projectCodesByEvent = computed<Record<string, string[]>>(() => {
     return acc
   }, {})
 })
+const capabilityByEvent = computed<Record<string, EventCapability>>(() =>
+  eventCapabilities.value.reduce<Record<string, EventCapability>>((acc, capability) => {
+    acc[capability.eventCode] = capability
+    return acc
+  }, {}),
+)
 const selectedProject = computed(() => {
   if (selectedProjectCode.value === ALL_PROJECTS) {
     return null
@@ -622,15 +640,11 @@ const projectRows = computed<ProjectRow[]>(() =>
     const resolvedEvents = project.eventCodes
       .map((eventCode) => eventByCode.value[eventCode])
       .filter((event): event is EventMetadata => Boolean(event))
-    const onlineWorkerIds = workers.value
-      .filter(
-        (worker) =>
-          worker.status === 'ONLINE' &&
-          project.eventCodes.some((eventCode) =>
-            worker.supportedEventCodes.includes(eventCode),
-          ),
-      )
-      .map((worker) => worker.workerId)
+    const onlineWorkerIds = uniqueStrings(
+      project.eventCodes.flatMap(
+        (eventCode) => capabilityByEvent.value[eventCode]?.onlineWorkerIds ?? [],
+      ),
+    )
 
     return {
       ...project,
@@ -690,19 +704,28 @@ const selectedEventRows = computed<EventRow[]>(() =>
     })
     .sort((left, right) => left.code.localeCompare(right.code))
     .map((event) => {
-      const projectCodes = projectCodesByEvent.value[event.code] ?? []
-      const onlineWorkerIds = workers.value
-        .filter(
-          (worker) =>
-            worker.status === 'ONLINE' &&
-            worker.supportedEventCodes.includes(event.code),
-        )
-        .map((worker) => worker.workerId)
+      const capability = capabilityByEvent.value[event.code]
+      const directRuntime = event.taskModes.length === 0
+      const projectCodes =
+        capability?.projectCodes ?? projectCodesByEvent.value[event.code] ?? []
+      const onlineWorkerIds = capability?.onlineWorkerIds ?? workers.value
+          .filter(
+            (worker) =>
+              worker.status === 'ONLINE' &&
+              worker.supportedEventCodes.includes(event.code),
+          )
+          .map((worker) => worker.workerId)
 
       return {
         ...event,
+        invocationModel:
+          capability?.invocationModel ?? (directRuntime ? 'DIRECT_RUNTIME' : 'TASK_BACKED'),
         projectCodes,
+        workerIds: capability?.workerIds ?? onlineWorkerIds,
         onlineWorkerIds,
+        hasDirectRuntimeHandler: capability?.hasDirectRuntimeHandler ?? directRuntime,
+        hasOnlineWorkerCoverage: capability?.hasOnlineWorkerCoverage ?? onlineWorkerIds.length > 0,
+        ready: capability?.ready ?? (directRuntime || onlineWorkerIds.length > 0),
       }
     }),
 )
@@ -786,6 +809,12 @@ const selectedEventWorkerSummary = computed(() => {
     return '-'
   }
 
+  if (selectedEventRow.value.invocationModel === 'DIRECT_RUNTIME') {
+    return selectedEventRow.value.hasDirectRuntimeHandler
+      ? 'Handled by SDK runtime'
+      : 'No direct runtime handler'
+  }
+
   return selectedEventRow.value.onlineWorkerIds.length > 0
     ? selectedEventRow.value.onlineWorkerIds.join(', ')
     : 'No online workers'
@@ -849,20 +878,29 @@ async function loadDiscovery(): Promise<void> {
   errorMessage.value = ''
 
   try {
-    const [projectMetadata, eventMetadata, workerResponse, submitterSnapshot] =
+    const [
+      projectMetadata,
+      eventMetadata,
+      eventCapabilityRows,
+      workerResponse,
+      submitterSnapshot,
+    ] =
       await Promise.all([
         listProjectMetadata(),
         listEventMetadata(),
+        listEventCapabilities(),
         listWorkers(),
         getCurrentSdkSubmitter(),
       ])
     projects.value = projectMetadata
     events.value = eventMetadata
+    eventCapabilities.value = eventCapabilityRows
     workers.value = workerResponse.items
     sdkSubmitterSnapshot.value = submitterSnapshot
   } catch (error) {
     projects.value = []
     events.value = []
+    eventCapabilities.value = []
     workers.value = []
     sdkSubmitterSnapshot.value = {
       state: 'unavailable',
@@ -994,8 +1032,14 @@ function uniqueStrings(values: string[]): string[] {
   return Array.from(new Set(values.filter((value) => value.length > 0)))
 }
 
-function supportsTaskDraft(event: Pick<EventRow, 'taskModes' | 'projectCodes'>): boolean {
-  return event.taskModes.length > 0 && event.projectCodes.length > 0
+function supportsTaskDraft(event: Pick<EventRow, 'invocationModel' | 'projectCodes'>): boolean {
+  return event.invocationModel === 'TASK_BACKED' && event.projectCodes.length > 0
+}
+
+function invocationModelLabel(invocationModel: EventInvocationModel): string {
+  return invocationModel === 'DIRECT_RUNTIME'
+    ? 'Direct runtime event'
+    : 'Task-backed event'
 }
 
 onMounted(() => {

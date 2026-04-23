@@ -2,8 +2,11 @@ package com.xa.mass.sdk.auth;
 
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 /**
  * Public read model for a registered submitter.
@@ -15,15 +18,23 @@ import java.util.Objects;
 public final class SubmitterMetadata {
 
     private final String principalId;
+    private final String keyPrefix;
     private final String userId;
     private final String projectScope;
+    private final List<String> permissions;
+    private final List<String> projectScopes;
+    private final List<String> eventScopes;
     private final boolean enabled;
     private final Map<String, String> attributes;
 
     private SubmitterMetadata(Builder builder) {
         this.principalId = requireNonBlank(builder.principalId, "principalId");
+        this.keyPrefix = blankToNull(builder.keyPrefix);
         this.userId = blankToNull(builder.userId);
         this.projectScope = blankToNull(builder.projectScope);
+        this.permissions = immutableStringList(builder.permissions);
+        this.projectScopes = immutableStringList(builder.projectScopes);
+        this.eventScopes = immutableStringList(builder.eventScopes);
         this.enabled = builder.enabled;
         this.attributes = immutableAttributes(builder.attributes);
     }
@@ -36,8 +47,12 @@ public final class SubmitterMetadata {
         Objects.requireNonNull(registration, "registration");
         return builder()
                 .principalId(registration.getPrincipalId())
+                .keyPrefix(registration.getKeyPrefix())
                 .userId(registration.getUserId())
                 .projectScope(registration.getProjectScope())
+                .permissions(registration.getPermissions())
+                .projectScopes(registration.getProjectScopes())
+                .eventScopes(registration.getEventScopes())
                 .enabled(registration.isEnabled())
                 .attributes(registration.getAttributes())
                 .build();
@@ -47,12 +62,28 @@ public final class SubmitterMetadata {
         return principalId;
     }
 
+    public String getKeyPrefix() {
+        return keyPrefix;
+    }
+
     public String getUserId() {
         return userId;
     }
 
     public String getProjectScope() {
         return projectScope;
+    }
+
+    public List<String> getPermissions() {
+        return permissions;
+    }
+
+    public List<String> getProjectScopes() {
+        return projectScopes;
+    }
+
+    public List<String> getEventScopes() {
+        return eventScopes;
     }
 
     public boolean isEnabled() {
@@ -69,22 +100,30 @@ public final class SubmitterMetadata {
         if (!(o instanceof SubmitterMetadata that)) return false;
         return enabled == that.enabled
                 && Objects.equals(principalId, that.principalId)
+                && Objects.equals(keyPrefix, that.keyPrefix)
                 && Objects.equals(userId, that.userId)
                 && Objects.equals(projectScope, that.projectScope)
+                && Objects.equals(permissions, that.permissions)
+                && Objects.equals(projectScopes, that.projectScopes)
+                && Objects.equals(eventScopes, that.eventScopes)
                 && Objects.equals(attributes, that.attributes);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(principalId, userId, projectScope, enabled, attributes);
+        return Objects.hash(principalId, keyPrefix, userId, projectScope, permissions, projectScopes, eventScopes, enabled, attributes);
     }
 
     @Override
     public String toString() {
         return "SubmitterMetadata{" +
                 "principalId='" + principalId + '\'' +
+                ", keyPrefix='" + keyPrefix + '\'' +
                 ", userId='" + userId + '\'' +
                 ", projectScope='" + projectScope + '\'' +
+                ", permissions=" + permissions +
+                ", projectScopes=" + projectScopes +
+                ", eventScopes=" + eventScopes +
                 ", enabled=" + enabled +
                 ", attributes=" + attributes +
                 '}';
@@ -119,10 +158,30 @@ public final class SubmitterMetadata {
         return normalized.isEmpty() ? Collections.emptyMap() : Collections.unmodifiableMap(normalized);
     }
 
+    private static List<String> immutableStringList(List<String> values) {
+        if (values == null || values.isEmpty()) {
+            return Collections.emptyList();
+        }
+        Set<String> normalized = new LinkedHashSet<>();
+        for (String value : values) {
+            String normalizedValue = blankToNull(value);
+            if (normalizedValue != null) {
+                normalized.add(normalizedValue);
+            }
+        }
+        return normalized.isEmpty()
+                ? Collections.emptyList()
+                : Collections.unmodifiableList(List.copyOf(normalized));
+    }
+
     public static final class Builder {
         private String principalId;
+        private String keyPrefix;
         private String userId;
         private String projectScope;
+        private List<String> permissions = List.of();
+        private List<String> projectScopes = List.of();
+        private List<String> eventScopes = List.of();
         private boolean enabled = true;
         private Map<String, String> attributes = Collections.emptyMap();
 
@@ -134,6 +193,11 @@ public final class SubmitterMetadata {
             return this;
         }
 
+        public Builder keyPrefix(String keyPrefix) {
+            this.keyPrefix = keyPrefix;
+            return this;
+        }
+
         public Builder userId(String userId) {
             this.userId = userId;
             return this;
@@ -141,6 +205,21 @@ public final class SubmitterMetadata {
 
         public Builder projectScope(String projectScope) {
             this.projectScope = projectScope;
+            return this;
+        }
+
+        public Builder permissions(List<String> permissions) {
+            this.permissions = permissions != null ? permissions : List.of();
+            return this;
+        }
+
+        public Builder projectScopes(List<String> projectScopes) {
+            this.projectScopes = projectScopes != null ? projectScopes : List.of();
+            return this;
+        }
+
+        public Builder eventScopes(List<String> eventScopes) {
+            this.eventScopes = eventScopes != null ? eventScopes : List.of();
             return this;
         }
 

@@ -6,7 +6,7 @@ Use this module for end-to-end validation of:
 
 - Spring Boot HTTP APIs
 - the internal gateway WebSocket server
-- SDK-created worker resources, fixture bootstrap compatibility, and result write-back
+- SDK-created worker resources, fixture bootstrap inputs, and result write-back
 
 Repository-level startup instructions in [`../doc/VERIFIED_RUNBOOK.md`](../doc/VERIFIED_RUNBOOK.md) are the source of truth.
 
@@ -67,20 +67,43 @@ Startup behavior:
 
 - gated by `mock.client.auto-start=true`
 - triggered by `ApplicationReadyEvent`
+- discovers mock clients from SDK-registered `Worker` resources
+- only opens WebSocket clients for workers with `onlineStrategy` compatible with `realtime` / `websocket`
+- does not read a separate worker JSON client list
 - idempotent startup protection through an internal `AtomicBoolean`
 - there is no longer a separate client-only Spring Boot application or `/mock/status` monitor surface
 
 ## Worker Resource Fixtures
 
-`MockRuntimeDataLoader` is a fixture loader for local and E2E startup data. It is retained for compatibility with existing JSON files, but new worker scenarios should create resources through `MassSdkApplication.registerWorker(...)` and `registerWorkerContext(...)`.
+`MockRuntimeDataLoader` is a fixture loader for local and E2E startup data. JSON is only a fixture input format; resource creation still goes through `MassSdkApplication.registerWorker(...)` and `registerWorkerContext(...)`.
 
-Current compatibility behavior:
+Current fixture behavior:
 
-- worker JSON entries with default `OFFLINE` state are mapped to `WorkerRegistration`
-- worker-context JSON entries with default `IDLE` state are mapped to `WorkerContextRegistration`
-- historical fixture entries that explicitly set non-default runtime state, such as `Worker.status=ONLINE`, still use the compatibility `addWorker(...)` path
+- worker JSON entries are mapped to `WorkerRegistration`
+- worker-context JSON entries are mapped to `WorkerContextRegistration`
+- runtime state fields in historical JSON, such as `Worker.status=ONLINE`, are ignored; worker online state comes from transport connect/heartbeat
 - task JSON continues to map to `MassTaskCreateRequest`
 - rule JSON continues to replace default rules when non-empty
+
+Default worker fixtures now carry a small executor profile:
+
+- `onlineStrategy=realtime` for WebSocket-backed dev workers
+- worker attributes such as `runtime`, `workerType`, `region`, and `lane`
+- worker-context attributes such as `country` and `network`
+
+These labels are only dev/E2E signals for routing and observability. They must not become kernel truth; production-style resources should still be created through the SDK resource APIs.
+
+## Mock Worker Execution Behavior
+
+Auto-started mock WebSocket clients intentionally behave like lightweight executors rather than instant echo clients:
+
+- task responses use a deterministic small delay with stable jitter, so local runs exercise asynchronous result handling without random flakiness
+- `mock.delay.response` remains the explicit override for fault-injection tests
+- result payloads keep the legacy `status` and `mockData` fields for compatibility
+- result payloads also include `execution` metadata with timing, retry count, task id, message id, project, and transport
+- result payloads include `workerProfile` metadata with worker id and local mock runtime details
+
+The extra payload fields are observability data for dev-app realism. Existing lifecycle decisions still come from the task kernel, attempts, and result status.
 
 ## Mock Command Runtime
 

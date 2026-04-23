@@ -22,7 +22,6 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
         properties = {
                 "mock.client.auto-start=true",
                 "mock.client.task-result-status=FAILED",
-                "mock.client.workers-config=mock/test_mock_workers.json",
                 "mass.mock.data.workers=mock/test_mock_workers.json",
                 "mass.mock.data.worker-contexts=mock/test_mock_worker_contexts.json",
                 "mass.mock.data.tasks=mock/test_mock_tasks.json",

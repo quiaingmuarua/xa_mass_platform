@@ -196,6 +196,9 @@ class TaskApiControllerTest {
                 "crawler-agent",
                 null,
                 "crawlerApp",
+                List.of("task:create"),
+                List.of("crawlerApp"),
+                List.of("crawler.fetch-page"),
                 Map.of("transport", "polling")
         ));
         when(taskOperations.createTask(any(MassTaskRequest.class))).thenReturn(createdTask);
@@ -256,6 +259,9 @@ class TaskApiControllerTest {
                 "telegram-bot",
                 "bot-user",
                 "telegramApp",
+                List.of("task:create"),
+                List.of("telegramApp"),
+                List.of("chatbot.reply"),
                 Map.of()
         ));
 
@@ -273,7 +279,7 @@ class TaskApiControllerTest {
                                 """))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value(403))
-                .andExpect(jsonPath("$.msg").value("Submitter project scope does not allow project: crawlerApp"));
+                .andExpect(jsonPath("$.msg").value("SDK credential project scope denied: crawlerApp"));
 
         verify(taskOperations, never()).createTask(any(MassTaskRequest.class));
     }
@@ -284,6 +290,9 @@ class TaskApiControllerTest {
                 "telegram-bot",
                 "bot-user",
                 "telegramApp",
+                List.of("task:create"),
+                List.of("telegramApp"),
+                List.of("chatbot.reply"),
                 Map.of()
         ));
 
@@ -301,7 +310,67 @@ class TaskApiControllerTest {
                                 """))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value(403))
-                .andExpect(jsonPath("$.msg").value("Submitter user scope does not allow userId: another-user"));
+                .andExpect(jsonPath("$.msg").value("SDK credential user scope denied: another-user"));
+
+        verify(taskOperations, never()).createTask(any(MassTaskRequest.class));
+    }
+
+    @Test
+    void createTaskWithSdkCredentialRejectsMissingCreatePermission() throws Exception {
+        when(authProvider.authenticate("sdk-key")).thenReturn(new TaskSubmitterContext(
+                "crawler-key",
+                "crawler-agent",
+                "crawlerApp",
+                List.of("metadata:view"),
+                List.of("crawlerApp"),
+                List.of("crawler.fetch-page"),
+                Map.of()
+        ));
+
+        mockMvc.perform(post("/status/api/tasks")
+                        .header("X-Mass-Api-Key", "sdk-key")
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "taskName":"sdk-crawler",
+                                  "eventCode":"crawler.fetch-page",
+                                  "payloadType":"JSON",
+                                  "inputs":[{"url":"https://example.test"}]
+                                }
+                                """))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value(403))
+                .andExpect(jsonPath("$.msg").value("SDK credential permission denied: task:create"));
+
+        verify(taskOperations, never()).createTask(any(MassTaskRequest.class));
+    }
+
+    @Test
+    void createTaskWithSdkCredentialRejectsEventScopeViolation() throws Exception {
+        when(authProvider.authenticate("sdk-key")).thenReturn(new TaskSubmitterContext(
+                "crawler-key",
+                "crawler-agent",
+                "crawlerApp",
+                List.of("task:create"),
+                List.of("crawlerApp"),
+                List.of("crawler.parse-result"),
+                Map.of()
+        ));
+
+        mockMvc.perform(post("/status/api/tasks")
+                        .header("X-Mass-Api-Key", "sdk-key")
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "taskName":"sdk-crawler",
+                                  "eventCode":"crawler.fetch-page",
+                                  "payloadType":"JSON",
+                                  "inputs":[{"url":"https://example.test"}]
+                                }
+                                """))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value(403))
+                .andExpect(jsonPath("$.msg").value("SDK credential event scope denied: crawler.fetch-page"));
 
         verify(taskOperations, never()).createTask(any(MassTaskRequest.class));
     }

@@ -3,8 +3,6 @@ package com.xa.mass.mock.bootstrap;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
-import com.xa.mass.base.enums.worker.WorkerContextStatus;
-import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.model.TaskCreateRequestDto;
@@ -29,8 +27,12 @@ import java.util.Objects;
  * Dev-app fixture data loader.
  *
  * <p>Reads plain JSON config files and registers workers, contexts, rules, and
- * tasks into the SDK runtime. No mock data generation — all definitions are
+ * tasks into the SDK runtime. No mock data generation - all definitions are
  * explicit in the config files.
+ *
+ * <p>JSON is only a fixture input format here. Worker and worker-context
+ * resources are always created through SDK registration APIs; runtime state
+ * fields in old fixture JSON are ignored.
  */
 public class MockRuntimeDataLoader implements MassBootstrapDataProvider {
 
@@ -73,15 +75,17 @@ public class MockRuntimeDataLoader implements MassBootstrapDataProvider {
             logger.warn("Worker config loaded but produced 0 entries [path={}]", workerConfigPath);
             return;
         }
+        int accepted = 0;
         for (Worker worker : workers) {
-            normalizeWorker(worker);
-            if (worker.getStatus() != WorkerStatus.OFFLINE) {
-                runtime.addWorker(worker);
-            } else {
-                runtime.registerWorker(toRegistration(worker));
+            if (worker == null || worker.getWorkerId() == null || worker.getWorkerId().isBlank()) {
+                logger.warn("Skipping worker fixture because workerId is missing");
+                continue;
             }
+            normalizeWorker(worker);
+            runtime.registerWorker(toRegistration(worker));
+            accepted++;
         }
-        logger.info("Loaded {} workers [path={}]", workers.length, workerConfigPath);
+        logger.info("Loaded {} workers via SDK registration [path={}]", accepted, workerConfigPath);
     }
 
     private void loadWorkerContexts(MassRuntimeControl runtime) {
@@ -98,14 +102,10 @@ public class MockRuntimeDataLoader implements MassBootstrapDataProvider {
                 logger.warn("Skipping worker context {} - workerId missing", ctx.getWorkerContextId());
                 continue;
             }
-            if (ctx.getStatus() != WorkerContextStatus.IDLE) {
-                runtime.addWorkerContext(ctx);
-            } else {
-                runtime.registerWorkerContext(toRegistration(ctx));
-            }
+            runtime.registerWorkerContext(toRegistration(ctx));
             accepted++;
         }
-        logger.info("Loaded {} worker contexts [path={}]", accepted, workerContextConfigPath);
+        logger.info("Loaded {} worker contexts via SDK registration [path={}]", accepted, workerContextConfigPath);
     }
 
     private void loadRules(MassRuntimeControl runtime) {
@@ -188,9 +188,6 @@ public class MockRuntimeDataLoader implements MassBootstrapDataProvider {
                             .map(String::toLowerCase)
                             .collect(java.util.stream.Collectors.toCollection(java.util.LinkedHashSet::new))
             );
-        }
-        if (workerContext.getStatus() == null) {
-            workerContext.setStatus(WorkerContextStatus.IDLE);
         }
     }
 

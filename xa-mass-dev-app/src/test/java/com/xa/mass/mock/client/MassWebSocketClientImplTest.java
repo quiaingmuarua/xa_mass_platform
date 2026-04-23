@@ -39,17 +39,36 @@ class MassWebSocketClientImplTest {
     }
 
     @Test
-    void taskRequestProducesSingleMockResponse() {
+    void taskRequestProducesSingleMockResponse() throws Exception {
         CapturingMassWebSocketClient client = new CapturingMassWebSocketClient("worker-test");
 
         client.onMessage(gson.toJson(taskMessage(false)));
 
+        assertTrue(client.awaitSentCount(1, 1000L));
         assertEquals(1, client.sentMessages.size());
         MassMessage response = gson.fromJson(client.sentMessages.get(0), MassMessage.class);
         assertTrue(response.isResponse());
         assertEquals("msg-1", response.getMsgId());
         assertEquals(MessageType.TASK, response.getMsgType());
         assertEquals("step", response.getSubMsgType());
+        JsonObject payload = response.getPayload().getAsJsonObject();
+        assertEquals("SUCCESS", payload.get("status").getAsString());
+        assertEquals("Executed by mock client worker-test", payload.get("mockData").getAsString());
+        assertTrue(payload.has("execution"));
+        assertTrue(payload.has("workerProfile"));
+        JsonObject execution = payload.getAsJsonObject("execution");
+        assertEquals("websocket", execution.get("transport").getAsString());
+        assertEquals("task-1", execution.get("taskId").getAsString());
+        assertEquals("msg-1", execution.get("messageId").getAsString());
+        assertEquals("demoApp", execution.get("project").getAsString());
+        assertEquals(1, execution.get("stepCount").getAsInt());
+        assertEquals(0, execution.get("retryCount").getAsInt());
+        long startedAt = execution.get("startedAtEpochMs").getAsLong();
+        long finishedAt = execution.get("finishedAtEpochMs").getAsLong();
+        long durationMs = execution.get("durationMs").getAsLong();
+        assertTrue(durationMs >= 0);
+        assertEquals(durationMs, finishedAt - startedAt);
+        assertEquals("worker-test", payload.getAsJsonObject("workerProfile").get("workerId").getAsString());
     }
 
     @Test
@@ -69,11 +88,12 @@ class MassWebSocketClientImplTest {
     }
 
     @Test
-    void taskRequestCanProduceFailedMockResponseWhenConfigured() {
+    void taskRequestCanProduceFailedMockResponseWhenConfigured() throws Exception {
         CapturingMassWebSocketClient client = new CapturingMassWebSocketClient("worker-test", "FAILED");
 
         client.onMessage(gson.toJson(taskMessage(false)));
 
+        assertTrue(client.awaitSentCount(1, 1000L));
         assertEquals(1, client.sentMessages.size());
         MassMessage response = gson.fromJson(client.sentMessages.get(0), MassMessage.class);
         assertEquals("FAILED", response.getPayload().getAsJsonObject().get("status").getAsString());

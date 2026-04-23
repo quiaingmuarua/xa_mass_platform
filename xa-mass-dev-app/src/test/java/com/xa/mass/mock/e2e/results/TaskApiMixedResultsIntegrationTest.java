@@ -38,7 +38,6 @@ import static org.junit.jupiter.api.Assertions.*;
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = {
                 "mock.client.auto-start=false",
-                "mock.client.workers-config=mock/test_mock_workers.json",
                 "mass.mock.data.workers=mock/test_mock_workers.json",
                 "mass.mock.data.worker-contexts=mock/test_mock_worker_contexts.json",
                 "mass.mock.data.tasks=mock/test_mock_tasks.json",
@@ -59,7 +58,7 @@ class TaskApiMixedResultsIntegrationTest extends AbstractMockE2eTest {
 
     @Test
     void taskWithOneSuccessAndOneFailureClosesToTerminalWithMixedReason() throws Exception {
-        // Arrange: create a task with 2 targets — disable retries so the first FAILED is final.
+        // Arrange: create a task with 2 targets and disable retries so the first FAILED is final.
         java.util.Map<String, Object> createBody = new java.util.LinkedHashMap<>();
         createBody.put("taskName", "mixed-results");
         createBody.put("project", "demoApp");
@@ -75,7 +74,7 @@ class TaskApiMixedResultsIntegrationTest extends AbstractMockE2eTest {
         assertApiOk(createResponse);
         String taskId = String.valueOf(responseData(createResponse).get("taskId"));
 
-        // Act: approve triggers READY → RUNNING assignment.
+        // Act: approve triggers READY to RUNNING assignment.
         Map<String, Object> approveResponse = exchange(
                 "/status/api/tasks/" + taskId + "/audit?approved=true&comment=mixed-results",
                 HttpMethod.POST,
@@ -137,7 +136,7 @@ class TaskApiMixedResultsIntegrationTest extends AbstractMockE2eTest {
         }
     }
 
-    // ─── helpers ────────────────────────────────────────────────────────────
+    // helpers
 
     private AckSnapshot submitTaskResult(
             String taskId, String msgId, String workerId, String status, String detail

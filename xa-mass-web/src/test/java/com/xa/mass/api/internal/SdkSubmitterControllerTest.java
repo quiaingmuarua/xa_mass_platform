@@ -11,6 +11,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import java.util.Map;
+import java.util.List;
 
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -36,6 +37,9 @@ class SdkSubmitterControllerTest {
                 "telegram-bot",
                 "bot-user",
                 "telegramApp",
+                List.of("task:create", "metadata:view"),
+                List.of("telegramApp"),
+                List.of("chatbot.reply"),
                 Map.of("channel", "telegram")
         ));
 
@@ -46,6 +50,9 @@ class SdkSubmitterControllerTest {
                 .andExpect(jsonPath("$.data.principalId").value("telegram-bot"))
                 .andExpect(jsonPath("$.data.userId").value("bot-user"))
                 .andExpect(jsonPath("$.data.projectScope").value("telegramApp"))
+                .andExpect(jsonPath("$.data.permissions[0]").value("task:create"))
+                .andExpect(jsonPath("$.data.projectScopes[0]").value("telegramApp"))
+                .andExpect(jsonPath("$.data.eventScopes[0]").value("chatbot.reply"))
                 .andExpect(jsonPath("$.data.attributes.channel").value("telegram"));
     }
 

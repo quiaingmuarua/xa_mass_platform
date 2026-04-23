@@ -3,7 +3,6 @@
     "workerId": "it-worker-0",
     "workerGroupId": "us",
     "agentVersion": "1.0.0",
-    "status": "ONLINE",
     "supportedProjects": ["demoApp"],
     "supportedEventCodes": ["demo.dispatch"]
   },
@@ -11,7 +10,6 @@
     "workerId": "it-worker-1",
     "workerGroupId": "us",
     "agentVersion": "1.0.0",
-    "status": "ONLINE",
     "supportedProjects": ["demoApp"],
     "supportedEventCodes": ["demo.dispatch"]
   }

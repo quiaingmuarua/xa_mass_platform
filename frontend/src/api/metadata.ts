@@ -2,6 +2,7 @@ import {getAppConfig} from '@/app/config'
 import {
     getEventMetadataMock,
     getProjectMetadataMock,
+    listEventCapabilitiesMock,
     listEventMetadataMock,
     listProjectEventMetadataMock,
     listProjectMetadataMock,
@@ -9,11 +10,12 @@ import {
 import {
     getEventMetadataReal,
     getProjectMetadataReal,
+    listEventCapabilitiesReal,
     listEventMetadataReal,
     listProjectEventMetadataReal,
     listProjectMetadataReal,
 } from '@/api/metadata.real'
-import type {EventMetadata, ProjectMetadata} from '@/types/metadata'
+import type {EventCapability, EventMetadata, ProjectMetadata} from '@/types/metadata'
 
 export async function listProjectMetadata(): Promise<ProjectMetadata[]> {
     if (getAppConfig().useMockApi) {
@@ -49,6 +51,14 @@ export async function listEventMetadata(): Promise<EventMetadata[]> {
     }
 
     return listEventMetadataReal()
+}
+
+export async function listEventCapabilities(): Promise<EventCapability[]> {
+    if (getAppConfig().useMockApi) {
+        return listEventCapabilitiesMock()
+    }
+
+    return listEventCapabilitiesReal()
 }
 
 export async function getEventMetadata(

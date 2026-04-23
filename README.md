@@ -160,7 +160,7 @@ app.createTask(MassTaskCreateRequest.builder()
         .build());
 ```
 
-`supportedProjects` is only a coarse worker grouping/filter hint. Runtime event capability truth should be declared explicitly through `supportedEventCodes`.
+`supportedProjects` is only a coarse worker grouping/filter hint. Runtime event capability truth should be declared explicitly through `supportedEventCodes`. SDK metadata exposes this as `GET /sdk/meta/event-capabilities`: task-backed events report live worker coverage, while direct runtime events report the SDK runtime handler path.
 
 Module boundary note:
 

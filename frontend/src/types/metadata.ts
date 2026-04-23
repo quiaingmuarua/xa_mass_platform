@@ -18,3 +18,18 @@ export interface EventMetadata {
     taskModes: MetadataTaskMode[]
     enabled: boolean
 }
+
+export type EventInvocationModel = 'TASK_BACKED' | 'DIRECT_RUNTIME'
+
+export interface EventCapability {
+    eventCode: string
+    eventName: string
+    enabled: boolean
+    invocationModel: EventInvocationModel
+    projectCodes: string[]
+    workerIds: string[]
+    onlineWorkerIds: string[]
+    hasDirectRuntimeHandler: boolean
+    hasOnlineWorkerCoverage: boolean
+    ready: boolean
+}

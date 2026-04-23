@@ -1,4 +1,4 @@
-import type {EventMetadata, ProjectMetadata} from '@/types/metadata'
+import type {EventCapability, EventMetadata, ProjectMetadata} from '@/types/metadata'
 
 const mockProjects: ProjectMetadata[] = [
     {
@@ -73,6 +73,15 @@ const mockEvents: EventMetadata[] = [
         taskModes: ['SINGLE_RUN'],
         enabled: true,
     },
+    {
+        code: 'tool.country.capital.lookup',
+        name: 'Tool Country Capital Lookup',
+        description:
+            'Resolve a country code to a stable country and capital reference profile.',
+        payloadTypes: ['JSON'],
+        taskModes: [],
+        enabled: true,
+    },
 ]
 
 function delay<T>(value: T): Promise<T> {
@@ -112,6 +121,30 @@ export async function listProjectEventMetadataMock(
 
 export async function listEventMetadataMock(): Promise<EventMetadata[]> {
     return delay(mockEvents)
+}
+
+export async function listEventCapabilitiesMock(): Promise<EventCapability[]> {
+    return delay(
+        mockEvents.map((event) => {
+            const projectCodes = mockProjects
+                .filter((project) => project.eventCodes.includes(event.code))
+                .map((project) => project.code)
+            const directRuntime = event.taskModes.length === 0
+
+            return {
+                eventCode: event.code,
+                eventName: event.name,
+                enabled: event.enabled,
+                invocationModel: directRuntime ? 'DIRECT_RUNTIME' : 'TASK_BACKED',
+                projectCodes,
+                workerIds: directRuntime ? [] : ['mock-worker-1'],
+                onlineWorkerIds: directRuntime ? [] : ['mock-worker-1'],
+                hasDirectRuntimeHandler: directRuntime,
+                hasOnlineWorkerCoverage: !directRuntime,
+                ready: true,
+            }
+        }),
+    )
 }
 
 export async function getEventMetadataMock(

@@ -1,8 +1,5 @@
 package com.xa.mass.mock.starter;
 
-import com.fasterxml.jackson.databind.DeserializationFeature;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.gateway.model.enums.MessageDirection;
 import com.xa.mass.gateway.model.enums.MessageType;
@@ -16,7 +13,6 @@ import com.xa.mass.mock.command.mock.MockClientStateRegistry;
 import com.xa.mass.mock.command.runtime.MockCommandRuntime;
 import com.xa.mass.mock.config.MockConfig;
 import com.xa.mass.sdk.MassSdkApplication;
-import com.xa.mass.sdk.model.WorkerRegistration;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -32,6 +28,7 @@ import java.net.URI;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Locale;
 import java.util.Random;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -54,13 +51,8 @@ public class WebSocketClientStarter {
     @Autowired(required = false)
     private MockClientStateRegistry mockClientStateRegistry;
 
-    // Keep a runtime dependency so Spring destroys mock clients before the embedded runtime.
     @Autowired(required = false)
-    @SuppressWarnings("unused")
     private MassSdkApplication runtimeApplication;
-
-    @Value("${mock.client.workers-config:mock/mock_workers.json}")
-    private String workersConfigPath;
 
     @Value("${mock.client.connection-timeout:10}")
     private int connectionTimeout;
@@ -110,17 +102,15 @@ public class WebSocketClientStarter {
 
             String baseUri = mockConfig.getClient().getUri();
             log.info("Target server: {}", baseUri);
-            log.info("Worker config: {}", workersConfigPath);
 
             List<Worker> workers = loadWorkers();
             if (workers == null || workers.isEmpty()) {
-                log.warn("No mock workers found, skipping client startup");
+                log.warn("No SDK-registered realtime mock workers found, skipping client startup");
                 started.set(false);
                 return;
             }
 
-            log.info("Found {} mock workers, establishing connections", workers.size());
-            autoRegisterWorkers(workers);
+            log.info("Found {} SDK-registered realtime mock workers, establishing connections", workers.size());
 
             clientExecutor = Executors.newFixedThreadPool(Math.min(workers.size(), maxPoolSize));
             establishConnections(workers, baseUri);
@@ -138,57 +128,34 @@ public class WebSocketClientStarter {
     }
 
     /**
-     * Loads worker definitions from the configured classpath resource.
+     * Discovers dev mock clients from SDK-registered worker resources.
+     *
+     * <p>The starter intentionally does not read worker JSON. Resource creation
+     * belongs to the SDK runtime; this class only opens WebSocket adapter clients
+     * for workers that declare a realtime/WebSocket-compatible transport hint.
      */
     protected List<Worker> loadWorkers() {
-        try (var is = getClass().getClassLoader().getResourceAsStream(workersConfigPath)) {
-            if (is == null) {
-                log.error("Worker config was not found: {}", workersConfigPath);
-                return null;
-            }
-            ObjectMapper mapper = new ObjectMapper()
-                    .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
-                    .registerModule(new JavaTimeModule());
-            Worker[] workers = mapper.readValue(is, Worker[].class);
-            if (workers == null || workers.length == 0) {
-                return List.of();
-            }
-            List<Worker> result = new ArrayList<>(workers.length);
-            for (Worker w : workers) result.add(w);
-            return result;
-        } catch (Exception e) {
-            log.error("Failed to load worker config", e);
-            return null;
+        if (runtimeApplication == null) {
+            log.warn("MassSdkApplication is not available; cannot discover mock clients");
+            return List.of();
         }
+        return runtimeApplication.getAllWorkers().stream()
+                .filter(this::isRealtimeClientWorker)
+                .toList();
     }
 
-    /**
-     * Registers worker resources into the SDK runtime before transport connect when possible.
-     *
-     * <p>This keeps mock/dev workers aligned with the SDK-first resource model while still
-     * tolerating preloaded fixture workers.
-     */
-    protected void autoRegisterWorkers(List<Worker> workers) {
-        if (runtimeApplication == null || workers == null || workers.isEmpty()) {
-            return;
+    private boolean isRealtimeClientWorker(Worker worker) {
+        if (worker == null || worker.getWorkerId() == null || worker.getWorkerId().isBlank()) {
+            return false;
         }
-        for (Worker worker : workers) {
-            if (worker == null || worker.getWorkerId() == null || worker.getWorkerId().isBlank()) {
-                continue;
-            }
-            if (runtimeApplication.getWorker(worker.getWorkerId()) != null) {
-                continue;
-            }
-            runtimeApplication.registerWorker(WorkerRegistration.builder()
-                    .workerId(worker.getWorkerId())
-                    .workerGroupId(worker.getWorkerGroupId())
-                    .supportedProjects(worker.getSupportedProjects())
-                    .supportedEventCodes(worker.getSupportedEventCodes())
-                    .transportHint(worker.getOnlineStrategy())
-                    .attributes(worker.getAttributes())
-                    .build());
-            log.info("Auto-registered mock worker resource via SDK: {}", worker.getWorkerId());
+        String strategy = worker.getOnlineStrategy();
+        if (strategy == null || strategy.isBlank()) {
+            return true;
         }
+        String normalized = strategy.toLowerCase(Locale.ROOT);
+        return "realtime".equals(normalized)
+                || "websocket".equals(normalized)
+                || "websocket_push".equals(normalized);
     }
 
     /**

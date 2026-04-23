@@ -2,40 +2,70 @@
   {
     "workerId": "worker-pool-a-1",
     "workerGroupId": "pool-a",
-    "status": "ONLINE",
     "agentVersion": "1.2.0",
+    "onlineStrategy": "realtime",
+    "attributes": {
+      "runtime": "mock-websocket-client",
+      "workerType": "crawler",
+      "region": "us",
+      "lane": "realtime"
+    },
     "supportedProjects": ["demoApp", "otherApp", "testApp"],
     "supportedEventCodes": ["demo.dispatch", "demo.dispatch.gb"]
   },
   {
     "workerId": "worker-pool-a-2",
     "workerGroupId": "pool-a",
-    "status": "ONLINE",
     "agentVersion": "1.2.0",
+    "onlineStrategy": "realtime",
+    "attributes": {
+      "runtime": "mock-websocket-client",
+      "workerType": "crawler",
+      "region": "us",
+      "lane": "realtime"
+    },
     "supportedProjects": ["demoApp", "otherApp", "testApp"],
     "supportedEventCodes": ["demo.dispatch", "demo.dispatch.gb"]
   },
   {
     "workerId": "worker-pool-a-3",
     "workerGroupId": "pool-a",
-    "status": "ONLINE",
     "agentVersion": "1.2.0",
+    "onlineStrategy": "realtime",
+    "attributes": {
+      "runtime": "mock-websocket-client",
+      "workerType": "crawler",
+      "region": "us",
+      "lane": "realtime"
+    },
     "supportedProjects": ["demoApp", "otherApp", "testApp"],
     "supportedEventCodes": ["demo.dispatch", "demo.dispatch.gb"]
   },
   {
     "workerId": "worker-pool-b-1",
     "workerGroupId": "pool-b",
-    "status": "ONLINE",
     "agentVersion": "1.2.1",
+    "onlineStrategy": "realtime",
+    "attributes": {
+      "runtime": "mock-websocket-client",
+      "workerType": "crawler",
+      "region": "gb",
+      "lane": "realtime"
+    },
     "supportedProjects": ["demoApp", "testApp"],
     "supportedEventCodes": ["demo.dispatch"]
   },
   {
     "workerId": "worker-pool-b-2",
     "workerGroupId": "pool-b",
-    "status": "ONLINE",
     "agentVersion": "1.2.1",
+    "onlineStrategy": "realtime",
+    "attributes": {
+      "runtime": "mock-websocket-client",
+      "workerType": "crawler",
+      "region": "gb",
+      "lane": "realtime"
+    },
     "supportedProjects": ["demoApp", "testApp"],
     "supportedEventCodes": ["demo.dispatch"]
   }

@@ -35,6 +35,9 @@ public class SdkSubmitterController {
         data.put("principalId", submitter.getPrincipalId());
         data.put("userId", submitter.getUserId());
         data.put("projectScope", submitter.getProjectScope());
+        data.put("permissions", submitter.getPermissions());
+        data.put("projectScopes", submitter.getProjectScopes());
+        data.put("eventScopes", submitter.getEventScopes());
         data.put("attributes", submitter.getAttributes());
         return ResponseEntity.ok(ApiResponse.success(data));
     }

@@ -258,8 +258,8 @@ public abstract class AbstractMockE2eTest {
      * Asserts that at least {@code minExpected} ONLINE workers are registered with the runtime.
      *
      * <p>Call this before dispatching tasks that depend on mock WebSocket workers being ready.
-     * A failure here means bootstrap data (JSON config or WebSocket client startup) did not
-     * produce the expected workers — surfacing the problem early rather than waiting for a
+     * A failure here means SDK resource registration or WebSocket client startup did not
+     * produce the expected workers - surfacing the problem early rather than waiting for a
      * task to time out in READY state.
      */
     @SuppressWarnings("unchecked")
