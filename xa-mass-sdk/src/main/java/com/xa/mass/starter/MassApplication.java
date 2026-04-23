@@ -2,6 +2,7 @@ package com.xa.mass.starter;
 
 import com.xa.mass.base.channel.tranporter.MessageTransporter;
 import com.xa.mass.base.debug.ManualDebugChatProtocol;
+import com.xa.mass.base.debug.WorkerControlEventProtocol;
 import com.xa.mass.command.event.InMemoryMassEventRuntime;
 import com.xa.mass.command.event.MassEventRuntime;
 import com.xa.mass.gateway.dispatcher.DispatcherContext;
@@ -19,13 +20,11 @@ import com.xa.mass.starter.transport.WorkerTransportRuntimeFactoryContext;
 import com.xa.mass.engine.util.LogUtils;
 import com.xa.mass.engine.listener.TaskMsgDispatchListener;
 import com.xa.mass.engine.rules.RuleDefinition;
-import com.xa.mass.sdk.MassBootstrapDataProvider;
 import com.xa.mass.sdk.MassRuntimeControl;
 import com.xa.mass.sdk.event.EventPrincipal;
 import com.xa.mass.sdk.event.EventRequest;
 import com.xa.mass.sdk.event.EventResponse;
 import com.xa.mass.sdk.worker.PullWorkerSession;
-import com.xa.mass.sdk.worker.PollingWorkerSession;
 import com.xa.mass.sdk.model.MassTaskCreateRequest;
 import com.xa.mass.sdk.model.MassTaskRequest;
 import com.xa.mass.sdk.model.MassTaskRequestMapper;
@@ -61,7 +60,7 @@ public class MassApplication {
     private DispatchRuntimeContext dispatcherContext;
     private TransportServer transportServer;
     private TransportRuntimeRegistry transportRuntimeRegistry;
-    private MassMessageHandler legacyControlBridgeHandler;
+    private MassMessageHandler workerControlEventBridgeHandler;
     private BiFunction<EventRequest, EventPrincipal, EventResponse> sdkEventDispatcher;
 
     public MassApplication(MassEngine engine, int serverPort, String transportEndpointPath,
@@ -186,11 +185,11 @@ public class MassApplication {
             messageHandlerRegistry.register(
                     null,
                     MessageType.EVENT,
-                    "event",
+                    WorkerControlEventProtocol.SUB_MSG_TYPE,
                     new ManualDebugMessageHandler()
             );
-            if (legacyControlBridgeHandler != null) {
-                messageHandlerRegistry.registerLegacyControlEventBridge(legacyControlBridgeHandler);
+            if (workerControlEventBridgeHandler != null) {
+                messageHandlerRegistry.registerWorkerControlEventBridge(workerControlEventBridgeHandler);
             }
             dispatcherContext.setMessageHandlerRegistry(messageHandlerRegistry);
             logger.info("Message handler registry initialized");
@@ -274,33 +273,8 @@ public class MassApplication {
         return transportRuntimeRegistry.openPullWorkerSession(workerId);
     }
 
-    /**
-     * @deprecated Prefer {@link #openPullWorkerSession(String)}. This wrapper
-     * remains for compatibility with older polling-specific SDK entrypoints.
-     */
-    @Deprecated(forRemoval = false)
-    public PollingWorkerSession openPollingWorkerSession(String workerId) {
-        return new PollingWorkerSession(openPullWorkerSession(workerId));
-    }
-
     public void publishTaskEvents() {
         requireConfiguredEngine().publishTaskEvents();
-    }
-
-    /**
-     * @deprecated Mock/bootstrap loaders should be configured explicitly through
-     * {@link MassBootstrapDataProvider} and operate on {@link MassRuntimeControl}.
-     */
-    @Deprecated(forRemoval = false)
-    public void loadMockData() {
-        MassBootstrapDataProvider bootstrapDataProvider = engineConfig.getBootstrapDataProvider();
-        if (bootstrapDataProvider == null) {
-            throw new IllegalStateException(
-                    "No bootstrap data provider is configured for this runtime. "
-                            + "Configure bootstrapDataProvider(...) or call your loader directly with MassRuntimeControl."
-            );
-        }
-        bootstrapDataProvider.loadInto(runtimeControl());
     }
 
     public MassEngine getEngine() {
@@ -311,8 +285,8 @@ public class MassApplication {
         return eventRuntime;
     }
 
-    public void setLegacyControlBridgeHandler(MassMessageHandler legacyControlBridgeHandler) {
-        this.legacyControlBridgeHandler = legacyControlBridgeHandler;
+    public void setWorkerControlEventBridgeHandler(MassMessageHandler workerControlEventBridgeHandler) {
+        this.workerControlEventBridgeHandler = workerControlEventBridgeHandler;
     }
 
     public void setSdkEventDispatcher(BiFunction<EventRequest, EventPrincipal, EventResponse> sdkEventDispatcher) {

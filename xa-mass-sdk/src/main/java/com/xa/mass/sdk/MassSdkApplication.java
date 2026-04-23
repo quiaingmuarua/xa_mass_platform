@@ -2,9 +2,9 @@ package com.xa.mass.sdk;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
 import com.google.gson.JsonSyntaxException;
 import com.xa.mass.base.channel.tranporter.MessageTransporter;
+import com.xa.mass.base.debug.WorkerControlEventProtocol;
 import com.xa.mass.base.debug.WorkerDebugMessageStore;
 import com.xa.mass.command.event.CoreEventDescriptor;
 import com.xa.mass.command.event.CoreEventPrincipal;
@@ -30,11 +30,11 @@ import com.xa.mass.engine.rules.RuleDefinition;
 import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.engine.rules.RuleType;
 import com.xa.mass.gateway.dispatcher.event.EventGatewayBridge;
-import com.xa.mass.gateway.dispatcher.handler.LegacyControlEventMessageHandler;
 import com.xa.mass.gateway.dispatcher.DispatcherContextRegistry;
 import com.xa.mass.gateway.dispatcher.context.CodecContext;
 import com.xa.mass.gateway.dispatcher.context.SessionContext;
 import com.xa.mass.gateway.dispatcher.context.TransportContext;
+import com.xa.mass.gateway.dispatcher.handler.WorkerControlEventBridgeHandler;
 import com.xa.mass.gateway.model.enums.MessageDirection;
 import com.xa.mass.gateway.model.enums.MessageType;
 import com.xa.mass.gateway.model.massMessage.MassMessage;
@@ -61,6 +61,7 @@ import com.xa.mass.sdk.catalog.TaskMode;
 import com.xa.mass.sdk.event.EventPrincipal;
 import com.xa.mass.sdk.event.EventRequest;
 import com.xa.mass.sdk.event.EventResponse;
+import com.xa.mass.sdk.event.PlatformEventCodes;
 import com.xa.mass.sdk.model.MassTaskCreateRequest;
 import com.xa.mass.sdk.model.JsonInput;
 import com.xa.mass.sdk.model.MassTaskRequest;
@@ -70,7 +71,6 @@ import com.xa.mass.sdk.model.SdkResourceMapper;
 import com.xa.mass.sdk.model.WorkerContextRegistration;
 import com.xa.mass.sdk.model.WorkerRegistration;
 import com.xa.mass.sdk.worker.PullWorkerSession;
-import com.xa.mass.sdk.worker.PollingWorkerSession;
 import com.xa.mass.starter.MassEngine;
 import com.xa.mass.starter.MassApplication;
 import com.xa.mass.transport.WorkerEndpointInspector;
@@ -99,28 +99,10 @@ import java.util.UUID;
  * lower-level starter/runtime types remain advanced integration seams.
  */
 public final class MassSdkApplication implements MassRuntimeControl, TaskOperations, WorkerOperations,
-        ResourceOperations, CatalogOperations, AuthProvider,
+        ResourceOperations, AuthProvider,
         RuleOperations, TransportOperations, DebugOperations {
 
     private static final Gson GSON = new Gson();
-    private static final String MANUAL_DEBUG_SUB_MSG_TYPE = "manual-chat";
-    private static final String EVENT_CONTROL_SUB_MSG_TYPE = "event";
-    private static final String EVENT_TASK_APPROVE = "platform.task.approve";
-    private static final String EVENT_TASK_REJECT = "platform.task.reject";
-    private static final String EVENT_TASK_BLOCK = "platform.task.block";
-    private static final String EVENT_TASK_PAUSE = "platform.task.pause";
-    private static final String EVENT_TASK_RESUME = "platform.task.resume";
-    private static final String EVENT_TASK_CANCEL = "platform.task.cancel";
-    private static final String EVENT_TASK_TERMINATE = "platform.task.terminate";
-    private static final String EVENT_TASK_APPEND_ITEMS = "platform.task.append-items";
-    private static final String EVENT_TASK_SEAL = "platform.task.seal";
-    private static final String EVENT_WORKER_REGISTER = "platform.worker.register";
-    private static final String EVENT_WORKER_CONTEXT_REGISTER = "platform.worker-context.register";
-    private static final String EVENT_META_PROJECTS = "platform.meta.projects.list";
-    private static final String EVENT_META_PROJECT = "platform.meta.project.get";
-    private static final String EVENT_META_PROJECT_EVENTS = "platform.meta.project-events.list";
-    private static final String EVENT_META_EVENTS = "platform.meta.events.list";
-    private static final String EVENT_META_EVENT = "platform.meta.event.get";
 
     private final MassApplication delegate;
     private final ProjectEventCatalogRegistry projectEventCatalogRegistry;
@@ -150,8 +132,8 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
         registerEnabledCatalogProjectsIntoCore();
         registerControlPlaneEventHandlers();
         delegate.setSdkEventDispatcher(this::dispatchEvent);
-        delegate.setLegacyControlBridgeHandler(
-                new LegacyControlEventMessageHandler(new EventGatewayBridge(this::dispatchEvent))
+        delegate.setWorkerControlEventBridgeHandler(
+                new WorkerControlEventBridgeHandler(new EventGatewayBridge(this::dispatchEvent))
         );
     }
 
@@ -262,19 +244,19 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
     }
 
     public boolean approveTask(String taskId) {
-        return booleanEvent(EVENT_TASK_APPROVE, Map.of("taskId", taskId));
+        return booleanEvent(PlatformEventCodes.TASK_APPROVE, Map.of("taskId", taskId));
     }
 
     public boolean rejectTask(String taskId) {
-        return booleanEvent(EVENT_TASK_REJECT, Map.of("taskId", taskId));
+        return booleanEvent(PlatformEventCodes.TASK_REJECT, Map.of("taskId", taskId));
     }
 
     public boolean blockTask(String taskId) {
-        return booleanEvent(EVENT_TASK_BLOCK, Map.of("taskId", taskId));
+        return booleanEvent(PlatformEventCodes.TASK_BLOCK, Map.of("taskId", taskId));
     }
 
     public boolean pauseTask(String taskId) {
-        return booleanEvent(EVENT_TASK_PAUSE, Map.of("taskId", taskId));
+        return booleanEvent(PlatformEventCodes.TASK_PAUSE, Map.of("taskId", taskId));
     }
 
     public SdkTaskResumeResult resumeTaskDetailed(String taskId) {
@@ -288,15 +270,15 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
     }
 
     public boolean resumeTask(String taskId) {
-        return booleanEvent(EVENT_TASK_RESUME, Map.of("taskId", taskId));
+        return booleanEvent(PlatformEventCodes.TASK_RESUME, Map.of("taskId", taskId));
     }
 
     public boolean cancelTask(String taskId) {
-        return booleanEvent(EVENT_TASK_CANCEL, Map.of("taskId", taskId));
+        return booleanEvent(PlatformEventCodes.TASK_CANCEL, Map.of("taskId", taskId));
     }
 
     public boolean terminateTask(String taskId, TaskTerminalReason reason) {
-        return booleanEvent(EVENT_TASK_TERMINATE, Map.of(
+        return booleanEvent(PlatformEventCodes.TASK_TERMINATE, Map.of(
                 "taskId", taskId,
                 "reason", reason == null ? TaskTerminalReason.MANUAL_CANCELLED.name() : reason.name()
         ));
@@ -304,7 +286,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
 
     public int appendTaskItems(String taskId, List<Map<String, Object>> inputs) {
         EventResponse response = dispatchEventInternal(EventRequest.builder()
-                .event(EVENT_TASK_APPEND_ITEMS)
+                .event(PlatformEventCodes.TASK_APPEND_ITEMS)
                 .payload(Map.of("taskId", taskId, "inputs", inputs == null ? List.of() : inputs))
                 .requestId(UUID.randomUUID().toString())
                 .build(), internalPrincipal(null));
@@ -315,7 +297,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
     }
 
     public boolean sealTask(String taskId) {
-        return booleanEvent(EVENT_TASK_SEAL, Map.of("taskId", taskId));
+        return booleanEvent(PlatformEventCodes.TASK_SEAL, Map.of("taskId", taskId));
     }
 
     public List<TaskMsg> getTaskMessages(String taskId) {
@@ -343,7 +325,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
     @Override
     public void registerWorker(WorkerRegistration request) {
         EventResponse response = dispatchEventInternal(EventRequest.builder()
-                .event(EVENT_WORKER_REGISTER)
+                .event(PlatformEventCodes.WORKER_REGISTER)
                 .payload(Map.of("request", request))
                 .requestId(UUID.randomUUID().toString())
                 .build(), internalPrincipal(null));
@@ -355,7 +337,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
     @Override
     public void registerWorkerContext(WorkerContextRegistration request) {
         EventResponse response = dispatchEventInternal(EventRequest.builder()
-                .event(EVENT_WORKER_CONTEXT_REGISTER)
+                .event(PlatformEventCodes.WORKER_CONTEXT_REGISTER)
                 .payload(Map.of("request", request))
                 .requestId(UUID.randomUUID().toString())
                 .build(), internalPrincipal(null));
@@ -403,16 +385,6 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
     public PullWorkerSession pullWorker(String workerId) {
         requireStartedEngine();
         return delegate.openPullWorkerSession(workerId);
-    }
-
-    /**
-     * @deprecated Prefer {@link #pullWorker(String)}. This wrapper remains as a
-     * compatibility surface for existing polling-style worker callers.
-     */
-    @Deprecated(forRemoval = false)
-    public PollingWorkerSession pollingWorker(String workerId) {
-        requireStartedEngine();
-        return delegate.openPollingWorkerSession(workerId);
     }
 
     public WorkerContext getWorkerContextById(String workerContextId) {
@@ -500,7 +472,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
 
     private void registerControlPlaneEventHandlers() {
         registerPlatformEvent(
-                EVENT_WORKER_REGISTER,
+                PlatformEventCodes.WORKER_REGISTER,
                 "Platform Worker Register",
                 "Register a worker identity and capability record.",
                 (request, principal) -> {
@@ -510,7 +482,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
                 }
         );
         registerPlatformEvent(
-                EVENT_WORKER_CONTEXT_REGISTER,
+                PlatformEventCodes.WORKER_CONTEXT_REGISTER,
                 "Platform Worker Context Register",
                 "Register a worker execution context.",
                 (request, principal) -> {
@@ -520,7 +492,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
                 }
         );
         registerPlatformEvent(
-                EVENT_TASK_APPROVE,
+                PlatformEventCodes.TASK_APPROVE,
                 "Platform Task Approve",
                 "Approve a task and move it into scheduling.",
                 (request, principal) -> CoreEventResponse.success(
@@ -528,7 +500,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
                         request.getRequestId())
         );
         registerPlatformEvent(
-                EVENT_TASK_REJECT,
+                PlatformEventCodes.TASK_REJECT,
                 "Platform Task Reject",
                 "Reject a task and block it before scheduling.",
                 (request, principal) -> CoreEventResponse.success(
@@ -536,7 +508,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
                         request.getRequestId())
         );
         registerPlatformEvent(
-                EVENT_TASK_BLOCK,
+                PlatformEventCodes.TASK_BLOCK,
                 "Platform Task Block",
                 "Block an active or ready task.",
                 (request, principal) -> CoreEventResponse.success(
@@ -544,7 +516,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
                         request.getRequestId())
         );
         registerPlatformEvent(
-                EVENT_TASK_PAUSE,
+                PlatformEventCodes.TASK_PAUSE,
                 "Platform Task Pause",
                 "Pause a running or ready task.",
                 (request, principal) -> CoreEventResponse.success(
@@ -552,7 +524,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
                         request.getRequestId())
         );
         registerPlatformEvent(
-                EVENT_TASK_RESUME,
+                PlatformEventCodes.TASK_RESUME,
                 "Platform Task Resume",
                 "Resume a paused task.",
                 (request, principal) -> CoreEventResponse.success(
@@ -560,7 +532,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
                         request.getRequestId())
         );
         registerPlatformEvent(
-                EVENT_TASK_CANCEL,
+                PlatformEventCodes.TASK_CANCEL,
                 "Platform Task Cancel",
                 "Cancel a task and close it to terminal.",
                 (request, principal) -> CoreEventResponse.success(
@@ -568,7 +540,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
                         request.getRequestId())
         );
         registerPlatformEvent(
-                EVENT_TASK_TERMINATE,
+                PlatformEventCodes.TASK_TERMINATE,
                 "Platform Task Terminate",
                 "Terminate a task with an explicit terminal reason.",
                 (request, principal) -> CoreEventResponse.success(
@@ -579,7 +551,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
                         request.getRequestId())
         );
         registerPlatformEvent(
-                EVENT_TASK_APPEND_ITEMS,
+                PlatformEventCodes.TASK_APPEND_ITEMS,
                 "Platform Task Append Items",
                 "Append more inputs to an open-intake task.",
                 (request, principal) -> CoreEventResponse.success(
@@ -590,7 +562,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
                         request.getRequestId())
         );
         registerPlatformEvent(
-                EVENT_TASK_SEAL,
+                PlatformEventCodes.TASK_SEAL,
                 "Platform Task Seal",
                 "Seal an open-intake task against further appends.",
                 (request, principal) -> CoreEventResponse.success(
@@ -598,13 +570,13 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
                         request.getRequestId())
         );
         registerPlatformEvent(
-                EVENT_META_PROJECTS,
+                PlatformEventCodes.META_PROJECTS_LIST,
                 "Platform Meta Projects List",
                 "List registered SDK projects.",
                 (request, principal) -> CoreEventResponse.success(listProjects(), request.getRequestId())
         );
         registerPlatformEvent(
-                EVENT_META_PROJECT,
+                PlatformEventCodes.META_PROJECT_GET,
                 "Platform Meta Project Get",
                 "Get a single registered SDK project.",
                 (request, principal) -> CoreEventResponse.success(
@@ -612,7 +584,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
                         request.getRequestId())
         );
         registerPlatformEvent(
-                EVENT_META_PROJECT_EVENTS,
+                PlatformEventCodes.META_PROJECT_EVENTS_LIST,
                 "Platform Meta Project Events List",
                 "List task events supported by a project.",
                 (request, principal) -> CoreEventResponse.success(
@@ -620,13 +592,13 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
                         request.getRequestId())
         );
         registerPlatformEvent(
-                EVENT_META_EVENTS,
+                PlatformEventCodes.META_EVENTS_LIST,
                 "Platform Meta Events List",
                 "List registered SDK events.",
                 (request, principal) -> CoreEventResponse.success(listEvents(), request.getRequestId())
         );
         registerPlatformEvent(
-                EVENT_META_EVENT,
+                PlatformEventCodes.META_EVENT_GET,
                 "Platform Meta Event Get",
                 "Get a single registered SDK event.",
                 (request, principal) -> CoreEventResponse.success(
@@ -956,15 +928,6 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
         return null;
     }
 
-    private EventMetadata toEventMetadata(CoreEventDescriptor descriptor) {
-        return EventMetadata.builder()
-                .code(descriptor.getEvent())
-                .name(descriptor.getEvent())
-                .description(descriptor.getSummary())
-                .enabled(descriptor.isEnabled())
-                .build();
-    }
-
     private void registerEnabledCatalogProjectsIntoCore() {
         for (ProjectMetadata projectMetadata : projectEventCatalogRegistry.listProjects()) {
             registerProjectIntoCore(projectMetadata);
@@ -1109,43 +1072,33 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
         Objects.requireNonNull(request, "request");
         String eventRequestId = firstNonBlank(request.getRequestId(), UUID.randomUUID().toString());
         Map<String, Object> eventPayload = new LinkedHashMap<>();
-        eventPayload.put("event", request.getEvent().value());
-        eventPayload.put("requestId", eventRequestId);
-        eventPayload.put("headers", request.getHeaders());
-        eventPayload.put("payload", request.getPayload());
+        eventPayload.put(WorkerControlEventProtocol.EVENT_FIELD, request.getEvent().value());
+        eventPayload.put(WorkerControlEventProtocol.REQUEST_ID_FIELD, eventRequestId);
+        eventPayload.put(WorkerControlEventProtocol.HEADERS_FIELD, request.getHeaders());
+        eventPayload.put(WorkerControlEventProtocol.PAYLOAD_FIELD, request.getPayload());
         Map<String, Object> principalPayload = new LinkedHashMap<>();
         if (principal != null) {
-            principalPayload.put("clientId", principal.getClientId());
-            principalPayload.put("userId", principal.getUserId());
+            principalPayload.put(WorkerControlEventProtocol.CLIENT_ID_FIELD, principal.getClientId());
+            principalPayload.put(WorkerControlEventProtocol.USER_ID_FIELD, principal.getUserId());
         }
-        eventPayload.put("principal", principalPayload);
-        Map<String, Object> legacyResult = sendWorkerMessage(
+        eventPayload.put(WorkerControlEventProtocol.PRINCIPAL_FIELD, principalPayload);
+        Map<String, Object> dispatchResult = enqueueWorkerControlEvent(
                 workerId,
                 firstNonBlank(request.getProject(), null),
-                MessageType.CONTROL.name(),
-                EVENT_CONTROL_SUB_MSG_TYPE,
                 eventPayload
         );
         Map<String, Object> result = new LinkedHashMap<>();
-        result.put("messageId", legacyResult.get("messageId"));
-        result.put("workerId", legacyResult.get("workerId"));
-        result.put("project", legacyResult.get("project"));
-        result.put("event", request.getEvent().value());
-        result.put("requestId", eventRequestId);
+        result.put("messageId", dispatchResult.get("messageId"));
+        result.put("workerId", dispatchResult.get("workerId"));
+        result.put("project", dispatchResult.get("project"));
+        result.put(WorkerControlEventProtocol.EVENT_FIELD, request.getEvent().value());
+        result.put(WorkerControlEventProtocol.REQUEST_ID_FIELD, eventRequestId);
         return result;
     }
 
-    /**
-     * @deprecated Prefer {@link #sendWorkerEvent(String, EventRequest, EventPrincipal)}.
-     * This remains as a compatibility entry for transport-shaped debug calls.
-     */
-    @Deprecated(forRemoval = false)
-    @Override
-    public Map<String, Object> sendWorkerMessage(String workerId,
-                                                 String project,
-                                                 String msgType,
-                                                 String subMsgType,
-                                                 Object payload) {
+    private Map<String, Object> enqueueWorkerControlEvent(String workerId,
+                                                          String project,
+                                                          Object payload) {
         Worker worker = requireStartedWorkerManager().getWorker(workerId);
         if (worker == null) {
             throw new IllegalArgumentException("Worker not found");
@@ -1167,20 +1120,18 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
         }
 
         String resolvedProject = resolveProjectCode(project, worker);
-        MessageType messageType = parseMessageType(msgType);
         JsonElement payloadJson = toPayloadJson(payload);
         String messageId = UUID.randomUUID().toString();
-        String resolvedSubMsgType = resolveSubMsgType(subMsgType, messageType);
-        JsonElement normalizedPayload = normalizePayload(payloadJson, workerId, messageId, messageType, resolvedSubMsgType);
+        String resolvedSubMsgType = WorkerControlEventProtocol.SUB_MSG_TYPE;
 
         MassMessage message = new MassMessage();
         message.setMsgId(messageId);
-        message.setMsgType(messageType);
+        message.setMsgType(MessageType.CONTROL);
         message.setSubMsgType(resolvedSubMsgType);
         message.setFrom(MessageDirection.SERVER);
         message.setProject(resolvedProject);
         message.setContext(buildMessageContext(workerId));
-        message.setPayload(normalizedPayload);
+        message.setPayload(payloadJson);
 
         String rawJson = encodeMessage(message);
         Envelope envelope = Envelope.builder()
@@ -1194,10 +1145,10 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
         WorkerDebugMessageStore.recordOutbound(
                 workerId,
                 resolvedProject,
-                messageType.name(),
+                MessageType.CONTROL.name(),
                 resolvedSubMsgType,
                 messageId,
-                GSON.toJson(normalizedPayload),
+                GSON.toJson(payloadJson),
                 rawJson,
                 "message queued to dispatcher"
         );
@@ -1206,20 +1157,9 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
                 "messageId", messageId,
                 "workerId", workerId,
                 "project", resolvedProject,
-                "msgType", messageType.name(),
+                "msgType", MessageType.CONTROL.name(),
                 "subMsgType", resolvedSubMsgType
         );
-    }
-
-    /**
-     * @deprecated Mock/bootstrap loaders should be wired explicitly outside the SDK
-     * core via {@link MassBootstrapDataProvider} and {@link MassRuntimeControl}.
-     * This compatibility shim delegates to a configured provider when present.
-     */
-    @Deprecated(forRemoval = false)
-    public void loadMockData() {
-        requireStartedEngine();
-        delegate.loadMockData();
     }
 
     /**
@@ -1363,63 +1303,6 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
         return GSON.toJsonTree(payloadObj);
     }
 
-    private MessageType parseMessageType(String messageTypeText) {
-        String text = defaultIfBlank(messageTypeText, MessageType.TASK.name());
-        try {
-            return MessageType.valueOf(text.toUpperCase());
-        } catch (IllegalArgumentException ex) {
-            throw new IllegalArgumentException("Unsupported msgType: " + text);
-        }
-    }
-
-    private String resolveSubMsgType(String subMsgType, MessageType messageType) {
-        if (subMsgType != null && !subMsgType.isBlank()) {
-            return subMsgType.trim();
-        }
-        if (messageType == MessageType.CONTROL) {
-            return MANUAL_DEBUG_SUB_MSG_TYPE;
-        }
-        return "manual";
-    }
-
-    private JsonElement normalizePayload(JsonElement payload,
-                                         String workerId,
-                                         String messageId,
-                                         MessageType messageType,
-                                         String subMsgType) {
-        if (messageType == MessageType.CONTROL && MANUAL_DEBUG_SUB_MSG_TYPE.equals(subMsgType)) {
-            JsonObject normalized = payload != null && payload.isJsonObject()
-                    ? payload.getAsJsonObject().deepCopy()
-                    : new JsonObject();
-            putIfMissing(normalized, "messageKind", "debug_chat");
-            putIfMissing(normalized, "workerId", workerId);
-            putIfMissing(normalized, "sentAt", System.currentTimeMillis());
-            putIfMissing(normalized, "expectReply", true);
-            putIfMissing(normalized, "clientMessageId", messageId);
-            putIfMissing(normalized, "text", "");
-            return normalized;
-        }
-        return payload;
-    }
-
-    private void putIfMissing(JsonObject payload, String field, String value) {
-        if (!payload.has(field) || payload.get(field).isJsonNull()) {
-            payload.addProperty(field, value);
-        }
-    }
-
-    private void putIfMissing(JsonObject payload, String field, Number value) {
-        if (!payload.has(field) || payload.get(field).isJsonNull()) {
-            payload.addProperty(field, value);
-        }
-    }
-
-    private void putIfMissing(JsonObject payload, String field, Boolean value) {
-        if (!payload.has(field) || payload.get(field).isJsonNull()) {
-            payload.addProperty(field, value);
-        }
-    }
-
     private String resolveProjectCode(String project, Worker worker) {
         if (project != null && !project.isBlank()) {
             return ProjectRegistry.require(project).getCode();
@@ -1429,10 +1312,6 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
             return ProjectRegistry.require(supportedProjects.get(0)).getCode();
         }
         return Project.DEMO_APP.getCode();
-    }
-
-    private String defaultIfBlank(String value, String defaultValue) {
-        return value == null || value.isBlank() ? defaultValue : value;
     }
 
     private MassEngine requireStartedEngine() {

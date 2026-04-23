@@ -2,9 +2,10 @@ package com.xa.mass.gateway.dispatcher;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
+import com.xa.mass.base.debug.WorkerControlEventProtocol;
 import com.xa.mass.gateway.dispatcher.event.EventGatewayBridge;
-import com.xa.mass.gateway.dispatcher.handler.LegacyControlEventMessageHandler;
 import com.xa.mass.gateway.dispatcher.handler.MassMessageHandler;
+import com.xa.mass.gateway.dispatcher.handler.WorkerControlEventBridgeHandler;
 import com.xa.mass.gateway.dispatcher.handler.ResolutionResult;
 import com.xa.mass.gateway.model.enums.MessageType;
 import com.xa.mass.gateway.model.massMessage.MassMessage;
@@ -130,9 +131,39 @@ class MessageHandlerRegistryTest {
     }
 
     @Test
-    void legacyControlBridgeTakesPriorityOverFallbackWhenPayloadCarriesEvent() {
+    void legacyControlBridgeTakesPriorityOverFallbackForControlEventSubtype() {
         registry.setEnableFallback(true);
-        registry.registerLegacyControlEventBridge(new LegacyControlEventMessageHandler(
+        registry.registerWorkerControlEventBridge(new WorkerControlEventBridgeHandler(
+                new EventGatewayBridge((request, principal) -> EventResponse.success(
+                        java.util.Map.of("echoEvent", request.getEvent().value()),
+                        request.getRequestId()))
+        ));
+
+        MassMessage msg = massMessage("demoApp", MessageType.CONTROL,
+                WorkerControlEventProtocol.SUB_MSG_TYPE);
+        JsonObject payload = new JsonObject();
+        payload.addProperty(WorkerControlEventProtocol.EVENT_FIELD, "crawler.fetch-page");
+        payload.addProperty(WorkerControlEventProtocol.REQUEST_ID_FIELD, "req-bridge");
+        JsonObject requestPayload = new JsonObject();
+        requestPayload.addProperty("url", "https://example.test");
+        payload.add(WorkerControlEventProtocol.PAYLOAD_FIELD, requestPayload);
+        msg.setPayload(payload);
+
+        ResolutionResult result = registry.resolve(msg);
+        assertTrue(result.isFound());
+        assertEquals("worker-control-event-bridge", result.getResolutionPath());
+
+        var responses = result.getHandler().handle(msg);
+        assertEquals(1, responses.size());
+        JsonObject responsePayload = GSON.fromJson(responses.get(0).getPayload(), JsonObject.class);
+        assertTrue(responsePayload.get("success").getAsBoolean());
+        assertEquals("req-bridge", responsePayload.get(WorkerControlEventProtocol.REQUEST_ID_FIELD).getAsString());
+    }
+
+    @Test
+    void legacyControlBridgeDoesNotCaptureNonEventSubtype() {
+        registry.setEnableFallback(true);
+        registry.registerWorkerControlEventBridge(new WorkerControlEventBridgeHandler(
                 new EventGatewayBridge((request, principal) -> EventResponse.success(
                         java.util.Map.of("echoEvent", request.getEvent().value()),
                         request.getRequestId()))
@@ -140,22 +171,12 @@ class MessageHandlerRegistryTest {
 
         MassMessage msg = massMessage("demoApp", MessageType.CONTROL, "legacy");
         JsonObject payload = new JsonObject();
-        payload.addProperty("event", "crawler.fetch-page");
-        payload.addProperty("requestId", "req-bridge");
-        JsonObject requestPayload = new JsonObject();
-        requestPayload.addProperty("url", "https://example.test");
-        payload.add("payload", requestPayload);
+        payload.addProperty(WorkerControlEventProtocol.EVENT_FIELD, "crawler.fetch-page");
         msg.setPayload(payload);
 
         ResolutionResult result = registry.resolve(msg);
-        assertTrue(result.isFound());
-        assertEquals("legacy-control-event-bridge", result.getResolutionPath());
-
-        var responses = result.getHandler().handle(msg);
-        assertEquals(1, responses.size());
-        JsonObject responsePayload = GSON.fromJson(responses.get(0).getPayload(), JsonObject.class);
-        assertTrue(responsePayload.get("success").getAsBoolean());
-        assertEquals("req-bridge", responsePayload.get("requestId").getAsString());
+        assertTrue(result.isFallback());
+        assertFalse(result.isFound());
     }
 
     // ---- helpers ----

@@ -69,7 +69,7 @@ Interpretation rules:
 - mock/runtime loading does not auto-create fallback worker contexts; a worker with no explicit `workerContexts` stays stateless
 - SDK-first worker resource creation is the preferred path: use `WorkerRegistration` / `WorkerContextRegistration` through `MassSdkApplication.registerWorker(...)` and `registerWorkerContext(...)`; registration does not imply online state
 - SDK project/event metadata is registered through `MassSdkApplication.registerProject(...)` and `registerEvent(...)`; enabled project registration also extends the core runtime project registry used by task and worker-context validation
-- `ResourceOperations` is the preferred SDK project/event control-plane interface; `CatalogOperations` is only a compatibility alias
+- `ResourceOperations` is the SDK project/event control-plane interface
 - SDK submitter registration is currently a minimal in-memory credential binding for task submission identity; do not treat it as a complete user/security subsystem
 - SDK submitter list/get operations expose submitter metadata only; raw credentials are accepted on registration and consumed by authentication, not returned as resource read models
 
@@ -108,7 +108,6 @@ Interpretation rules:
 - EventBus mainline has converged onto `com.xa.mass.base.channel.eventbus.core` and `com.xa.mass.base.channel.eventbus.event`.
 - Mainline acceptance is end-to-end integration-test-driven through `xa-mass-dev-app`; unit tests are support coverage, not the primary acceptance gate.
 - The current worker debug side-channel is exposed through `POST /status/workers/send-event` and `GET /status/workers/message-history`.
-- `POST /status/workers/send-message` remains a legacy compatibility endpoint only.
 
 ## 6. Current Task And Payload Contract
 
@@ -139,6 +138,8 @@ Behavior locked in the mainline:
 - SDK credential callers use the same route with `X-Mass-Api-Key` or `Authorization: Bearer ...`
 - SDK submitter credentials resolve a minimal `TaskSubmitterContext`; they are not control-console users and must not be merged into operator RBAC
 - `eventCode` switches create into the SDK mode/payload-aware path and persists `_sdk` metadata in `Task.sharedConfig`
+- `eventCode` should be treated as globally unique across the runtime catalog
+- worker runtime event capability truth comes from explicit `supportedEventCodes`; `supportedProjects` is only a coarse grouping/filter hint
 - `batchSize` is normalized to a minimum of `1` and enforced as a per-worker hard cap for each dispatch round
 - `defaultMsgMaxRetryCount` defaults to `3`
 - `openEnded=true` keeps the task open for runtime item append until sealed

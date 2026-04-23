@@ -112,7 +112,7 @@ Run the full repository regression:
 Run the focused high-signal subset:
 
 ```bash
-mvn -pl xa-mass-dev-app -am -Dtest=WorkerAttributesTest,WorkerContextAttributesTest,WorkerMatchContextTest,QLExpressRuleEvaluatorTest,RuleBasedTaskWorkerMatchingStrategyTest,TaskApiDelayedWorkerAvailabilityIntegrationTest,TaskApiWorkerContextAttributeRoutingIntegrationTest,TaskApiWorkerWithoutContextIntegrationTest,WorkerManualDebugChatIntegrationTest,ControlConsoleRoutingIntegrationTest,MockRuntimeDataLoaderTest -Dsurefire.failIfNoSpecifiedTests=false test
+mvn -pl xa-mass-dev-app -am -Dtest=WorkerAttributesTest,WorkerContextAttributesTest,WorkerMatchContextTest,QLExpressRuleEvaluatorTest,RuleBasedTaskWorkerMatchingStrategyTest,TaskApiDelayedWorkerAvailabilityIntegrationTest,TaskApiWorkerContextAttributeRoutingIntegrationTest,TaskApiWorkerWithoutContextIntegrationTest,WorkerManualDebugCommandIntegrationTest,WorkerManualDebugDisconnectIntegrationTest,ControlConsoleRoutingIntegrationTest,MockRuntimeDataLoaderTest -Dsurefire.failIfNoSpecifiedTests=false test
 ```
 
 Expected result:
@@ -160,7 +160,6 @@ Control-console shell:
 
 Worker debug side-channel:
 
-- `WorkerManualDebugChatIntegrationTest`
 - `WorkerManualDebugCommandIntegrationTest`
 - `WorkerManualDebugDisconnectIntegrationTest`
 
@@ -246,7 +245,7 @@ Snapshot polling:
 
 Debug-side-channel verification:
 
-- use `POST /status/workers/send-message`
+- use `POST /status/workers/send-event`
 - poll `GET /status/workers/message-history`
 - keep debug protocol assertions separate from `TaskMsg` lifecycle assertions
 

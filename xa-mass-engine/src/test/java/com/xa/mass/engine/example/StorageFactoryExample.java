@@ -4,7 +4,7 @@ import com.xa.mass.base.enums.worker.WorkerContextStatus;
 import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskSharedConfig;
-import com.xa.mass.base.model.User;
+import com.xa.mass.base.model.UserRef;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.storage.*;
@@ -49,8 +49,7 @@ public class StorageFactoryExample {
         workerContext.setRoutingTags(java.util.Set.of("us"));
         workerContext.setStatus(WorkerContextStatus.IDLE);
 
-        User user = new User();
-        user.setName("testUser");
+        UserRef user = UserRef.of("testUser");
 
         Task task = new Task("task-001", "Test Task", "demoApp", 100, java.util.Map.of("textContent", "Test content", "routingCode", "us"), user);
 
@@ -91,8 +90,7 @@ public class StorageFactoryExample {
             workerContext.setRoutingTags(java.util.Set.of("gb"));
             workerContext.setStatus(WorkerContextStatus.IDLE);
 
-            User user = new User();
-            user.setName("testUser2");
+            UserRef user = UserRef.of("testUser2");
 
             Task task = new Task("task-002", "Test Task 2", "demoApp", 50, java.util.Map.of("textContent", "Test content 2", "routingCode", "gb"), user);
 
@@ -134,10 +132,8 @@ public class StorageFactoryExample {
             log.info("Unknown storage type correctly rejected: {}", e.getMessage());
         }
 
-        User user1 = new User();
-        user1.setName("factoryUser1");
-        User user2 = new User();
-        user2.setName("factoryUser2");
+        UserRef user1 = UserRef.of("factoryUser1");
+        UserRef user2 = UserRef.of("factoryUser2");
 
         Task task1 = new Task("task-factory-001", "Factory Task 1", "demoApp", 100, java.util.Map.of("textContent", "Factory content 1", "routingCode", "us"), user1);
         Task task2 = new Task("task-factory-002", "Factory Task 2", "demoApp", 50, java.util.Map.of("textContent", "Factory content 2", "routingCode", "gb"), user2);

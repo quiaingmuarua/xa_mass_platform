@@ -276,29 +276,6 @@ public final class MassSdk {
         }
 
         /**
-         * @deprecated Mock/bootstrap data should be wired through
-         * {@link #bootstrapDataProvider(MassBootstrapDataProvider)}.
-         */
-        @Deprecated(forRemoval = false)
-        public EngineOptions mockData(String workerConfigPath,
-                                      String workerContextConfigPath,
-                                      String taskConfigPath,
-                                      String ruleConfigPath) {
-            delegate.mockData(workerConfigPath, workerContextConfigPath, taskConfigPath, ruleConfigPath);
-            return this;
-        }
-
-        /**
-         * @deprecated Mock/bootstrap data should be wired through
-         * {@link #bootstrapDataProvider(MassBootstrapDataProvider)}.
-         */
-        @Deprecated(forRemoval = false)
-        public EngineOptions mockData(String mockConfigPath) {
-            delegate.mockData(mockConfigPath);
-            return this;
-        }
-
-        /**
          * @deprecated Prefer the SDK engine option methods. This remains only
          * for advanced embedding paths that need lower-level runtime configuration.
          */

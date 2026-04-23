@@ -60,7 +60,7 @@ The transport-neutral runtime model is now framed around three channels:
 - historical reactor/module experiments such as `xa-mass-base`, `xa-mass-starter`, and engine archive generations are no longer present in the current repository snapshot
 - Verified HTTP port: `server.port=8088`
 - Verified current WebSocket adapter port: `mass.websocket.port=18088`
-- Pull-style workers are also part of the runtime surface through `MassSdkApplication.pullWorker(...)`; `pollingWorker(...)` remains as a compatibility alias
+- Pull-style workers are also part of the runtime surface through `MassSdkApplication.pullWorker(...)`
 - Worker transport selection should prefer neutral hints such as `realtime` and `polling`; concrete adapter names remain compatibility aliases.
 - New worker resources should enter through SDK registration (`registerWorker(...)` and `registerWorkerContext(...)`); dev-app mock JSON remains a local/E2E fixture path, not the product resource entry.
 - Verified task lifecycle coverage includes:
@@ -140,6 +140,7 @@ app.registerWorker(WorkerRegistration.builder()
         .workerId("crawler-worker-1")
         .workerGroupId("crawler")
         .supportedProjects(java.util.List.of("demoApp"))
+        .supportedEventCodes(java.util.List.of("crawler.fetch-page"))
         .transportHint("polling")
         .attributes(java.util.Map.of("type", "crawler"))
         .build());
@@ -158,6 +159,8 @@ app.createTask(MassTaskCreateRequest.builder()
         .batchSize(1)
         .build());
 ```
+
+`supportedProjects` is only a coarse worker grouping/filter hint. Runtime event capability truth should be declared explicitly through `supportedEventCodes`.
 
 Module boundary note:
 

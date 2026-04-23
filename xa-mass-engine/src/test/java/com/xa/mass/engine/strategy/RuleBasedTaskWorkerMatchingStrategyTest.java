@@ -188,7 +188,7 @@ class RuleBasedTaskWorkerMatchingStrategyTest {
         workerManager.addWorker(acceptedWorker);
         workerManager.addWorkerContext(workerContext("worker-us", "ctx-us", "shared", "us"));
 
-        List<MatchedWorkerContext> matched = strategy.matchWorkers(task, 1);
+        List<MatchedWorkerContext> matched = strategy.matchWorkers(task, 2);
 
         assertEquals(1, matched.size());
         assertEquals("worker-us", matched.get(0).getWorkerId());
@@ -299,7 +299,7 @@ class RuleBasedTaskWorkerMatchingStrategyTest {
         Worker worker = worker("worker-stateless", "pool-east");
         workerManager.addWorker(worker);
 
-        List<MatchedWorkerContext> matched = strategy.matchWorkers(task, 1);
+        List<MatchedWorkerContext> matched = strategy.matchWorkers(task, 2);
 
         assertTrue(matched.isEmpty());
         AssignmentRecord record = findRecord(recordService, "task-no-context-routing", "worker-stateless");
@@ -333,7 +333,7 @@ class RuleBasedTaskWorkerMatchingStrategyTest {
         workerContext.setProject("testApp");
         workerManager.addWorkerContext(workerContext);
 
-        List<MatchedWorkerContext> matched = strategy.matchWorkers(task, 1);
+        List<MatchedWorkerContext> matched = strategy.matchWorkers(task, 2);
 
         assertTrue(matched.isEmpty());
         AssignmentRecord record = findRecord(recordService, "task-context-project-mismatch", "worker-mismatch");
@@ -374,7 +374,7 @@ class RuleBasedTaskWorkerMatchingStrategyTest {
         projectOnlyWorker.setSupportedEventCodes(List.of("crawler.fetch-page"));
         workerManager.addWorker(projectOnlyWorker);
 
-        List<MatchedWorkerContext> matched = strategy.matchWorkers(task, 1);
+        List<MatchedWorkerContext> matched = strategy.matchWorkers(task, 2);
 
         assertEquals(1, matched.size());
         assertEquals("worker-event-capable", matched.get(0).getWorkerId());

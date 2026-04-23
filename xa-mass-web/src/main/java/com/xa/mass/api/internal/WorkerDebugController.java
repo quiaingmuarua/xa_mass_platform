@@ -2,7 +2,6 @@ package com.xa.mass.api.internal;
 
 import com.xa.mass.api.model.ApiResponse;
 import com.xa.mass.api.model.worker.WorkerSendEventRequest;
-import com.xa.mass.api.model.worker.WorkerSendMessageRequest;
 import com.xa.mass.sdk.DebugOperations;
 import com.xa.mass.sdk.event.EventPrincipal;
 import com.xa.mass.sdk.event.EventRequest;
@@ -35,35 +34,6 @@ public class WorkerDebugController {
                 "workerId", workerId,
                 "items", debugOperations.getWorkerMessageHistory(workerId)
         ));
-    }
-
-    @PostMapping("/send-message")
-    @ResponseBody
-    public ResponseEntity<ApiResponse<Map<String, Object>>> sendWorkerMessage(
-            @RequestBody WorkerSendMessageRequest requestBody) {
-        try {
-            validateKnownFields(requestBody);
-            String workerId = readTrimmed(requestBody.getWorkerId());
-            if (workerId == null) {
-                return badRequest("workerId is required");
-            }
-            Map<String, Object> result = debugOperations.sendWorkerMessage(
-                    workerId,
-                    readTrimmed(requestBody.getProject()),
-                    readTrimmed(requestBody.getMsgType()),
-                    readTrimmed(requestBody.getSubMsgType()),
-                    requestBody.getPayload()
-            );
-            return ok(result);
-        } catch (IllegalArgumentException ex) {
-            String message = ex.getMessage() == null ? "Invalid request" : ex.getMessage();
-            if ("Worker not found".equals(message)) {
-                return notFound(message);
-            }
-            return badRequest(message);
-        } catch (IllegalStateException ex) {
-            return conflict(ex.getMessage());
-        }
     }
 
     @PostMapping("/send-event")
@@ -105,10 +75,10 @@ public class WorkerDebugController {
 
     private void validateKnownFields(com.xa.mass.api.model.AbstractUnknownFieldRequest requestBody) {
         if (requestBody == null) {
-            throw new IllegalArgumentException("worker message request body is required");
+            throw new IllegalArgumentException("worker debug request body is required");
         }
         if (requestBody.hasUnknownFields()) {
-            throw new IllegalArgumentException("Unsupported worker message fields: "
+            throw new IllegalArgumentException("Unsupported worker debug fields: "
                     + String.join(", ", requestBody.getUnknownFieldNames()));
         }
     }

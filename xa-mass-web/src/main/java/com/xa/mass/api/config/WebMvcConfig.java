@@ -25,12 +25,10 @@ public class WebMvcConfig implements WebMvcConfigurer {
         registry.addInterceptor(apiAuthInterceptor)
                 .addPathPatterns("/api/**", "/status/api/**",
                         "/status/workers/message-history",
-                        "/status/workers/send-message",
                         "/status/workers/send-event");
         registry.addInterceptor(apiLogInterceptor)
                 .addPathPatterns("/api/**", "/status/api/**",
                         "/status/workers/message-history",
-                        "/status/workers/send-message",
                         "/status/workers/send-event");
     }
 

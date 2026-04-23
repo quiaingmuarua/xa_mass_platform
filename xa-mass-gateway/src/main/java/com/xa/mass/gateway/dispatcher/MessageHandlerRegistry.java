@@ -1,6 +1,7 @@
 package com.xa.mass.gateway.dispatcher;
 
 import com.google.gson.Gson;
+import com.xa.mass.base.debug.WorkerControlEventProtocol;
 import com.xa.mass.gateway.dispatcher.handler.MassMessageHandler;
 import com.xa.mass.gateway.dispatcher.handler.MessageRouterKeys;
 import com.xa.mass.gateway.dispatcher.handler.ResolutionResult;
@@ -26,7 +27,7 @@ public class MessageHandlerRegistry {
     private final WorkerSystemEventChannel systemEventChannel;
     // project -> (key -> handler)
     private final Map<String, Map<String, MassMessageHandler>> handlerMap = new ConcurrentHashMap<>();
-    private MassMessageHandler legacyControlEventBridgeHandler;
+    private MassMessageHandler workerControlEventBridgeHandler;
     private boolean enableFallback = false;
 
     public MessageHandlerRegistry() {
@@ -85,13 +86,13 @@ public class MessageHandlerRegistry {
         if (result.isFound()) {
             return result;
         }
-        if (shouldRouteToLegacyControlBridge(msg)) {
+        if (shouldRouteToWorkerControlEventBridge(msg)) {
             return ResolutionResult.found(
-                    legacyControlEventBridgeHandler,
+                    workerControlEventBridgeHandler,
                     msg.getProject(),
                     msg.getMsgType().name(),
                     msg.getSubMsgType(),
-                    "legacy-control-event-bridge"
+                    "worker-control-event-bridge"
             );
         }
         if (enableFallback) {
@@ -100,8 +101,8 @@ public class MessageHandlerRegistry {
         return result;
     }
 
-    public void registerLegacyControlEventBridge(MassMessageHandler handler) {
-        this.legacyControlEventBridgeHandler = handler;
+    public void registerWorkerControlEventBridge(MassMessageHandler handler) {
+        this.workerControlEventBridgeHandler = handler;
     }
 
     public boolean isEnableFallback() {
@@ -164,14 +165,17 @@ public class MessageHandlerRegistry {
         return ResolutionResult.notFound(proj, type.name(), subMsgType);
     }
 
-    private boolean shouldRouteToLegacyControlBridge(MassMessage msg) {
-        if (legacyControlEventBridgeHandler == null || msg == null || msg.getMsgType() != MessageType.CONTROL) {
+    private boolean shouldRouteToWorkerControlEventBridge(MassMessage msg) {
+        if (workerControlEventBridgeHandler == null || msg == null || msg.getMsgType() != MessageType.CONTROL) {
+            return false;
+        }
+        if (!WorkerControlEventProtocol.SUB_MSG_TYPE.equals(msg.getSubMsgType())) {
             return false;
         }
         return msg.getPayload() != null
                 && msg.getPayload().isJsonObject()
-                && msg.getPayload().getAsJsonObject().has("event")
-                && !msg.getPayload().getAsJsonObject().get("event").isJsonNull()
-                && !msg.getPayload().getAsJsonObject().get("event").getAsString().isBlank();
+                && msg.getPayload().getAsJsonObject().has(WorkerControlEventProtocol.EVENT_FIELD)
+                && !msg.getPayload().getAsJsonObject().get(WorkerControlEventProtocol.EVENT_FIELD).isJsonNull()
+                && !msg.getPayload().getAsJsonObject().get(WorkerControlEventProtocol.EVENT_FIELD).getAsString().isBlank();
     }
 }

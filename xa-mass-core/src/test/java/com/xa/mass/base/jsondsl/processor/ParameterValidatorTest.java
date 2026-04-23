@@ -29,7 +29,7 @@ public class ParameterValidatorTest {
 
         // 创建生成 DSL
         generateDsl = new JsonDslDefinition("test-generate", JsonDslDefinition.DslType.GENERATE);
-        generateDsl.setContext(new JsonDslContext("com.xa.mass.base.model.User", 1));
+        generateDsl.setContext(new JsonDslContext("com.xa.mass.base.model.UserRef", 1));
         generateDsl.setFieldDsl(Collections.singletonMap("name", "test"));
 
         // 创建过滤 DSL

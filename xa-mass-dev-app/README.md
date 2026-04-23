@@ -103,9 +103,9 @@ Current command groups:
 
 Transport facts:
 
-- request path: `POST /status/workers/send-message`
-- transport frame: `CONTROL/manual-chat`
-- acknowledgement frame: `EVENT/manual-chat`
+- request path: `POST /status/workers/send-event`
+- transport frame: `CONTROL/event`
+- acknowledgement frame: `EVENT/event`
 - command execution is only a debug/control side-channel and must not mutate task lifecycle state
 
 Example request body:

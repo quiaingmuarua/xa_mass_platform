@@ -313,22 +313,5 @@ public class MassApplicationBuilder {
             return this;
         }
 
-        /**
-         * @deprecated Mock/bootstrap data should be wired through
-         * {@link #bootstrapDataProvider(MassBootstrapDataProvider)}.
-         */
-        @Deprecated(forRemoval = false)
-        public EngineBuilder mockData(String workerConfigPath, String workerContextConfigPath, String taskConfigPath, String ruleConfigPath) {
-            return this;
-        }
-
-        /**
-         * @deprecated Mock/bootstrap data should be wired through
-         * {@link #bootstrapDataProvider(MassBootstrapDataProvider)}.
-         */
-        @Deprecated(forRemoval = false)
-        public EngineBuilder mockData(String mockConfigPath) {
-            return this;
-        }
     }
 }

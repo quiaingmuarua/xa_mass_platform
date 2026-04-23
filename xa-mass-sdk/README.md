@@ -52,12 +52,14 @@ app.registerWorker(WorkerRegistration.builder()
         .workerId("crawler-worker-1")
         .workerGroupId("crawler")
         .supportedProjects(java.util.List.of("demoApp"))
+        .supportedEventCodes(java.util.List.of("demo.dispatch"))
         .transportHint("polling")
         .attributes(java.util.Map.of("type", "crawler"))
         .build());
 app.registerWorkerContext(WorkerContextRegistration.builder()
         .workerContextId("ctx-crawler-worker-1")
         .workerId("crawler-worker-1")
+        .project("demoApp")
         .routingTags(java.util.Set.of("us"))
         .attributes(java.util.Map.of("region", "us"))
         .build());
@@ -73,6 +75,8 @@ app.createTask(MassTaskCreateRequest.builder()
 
 app.pullWorker("crawler-worker-1").connect();
 ```
+
+`supportedProjects` is only a coarse worker grouping/filter hint. Explicit worker event capability should be declared through `supportedEventCodes`.
 
 Register SDK catalog metadata when the embedding side wants to expose its own
 project/event directory:
@@ -98,9 +102,9 @@ app.registerProject(ProjectMetadata.builder()
         .eventCodes(java.util.List.of("bot.command"))
         .build());
 
-app.createTask(MassTaskRequest.singleRun("demoApp", "chatbot-reply")
-        .eventCode("chatbot.reply")
-        .textInputs(java.util.List.of("hello"))
+app.createTask(MassTaskRequest.singleRun("botApp", "bot-command")
+        .eventCode("bot.command")
+        .textInputs(java.util.List.of("/start"))
         .build());
 ```
 
@@ -134,14 +138,13 @@ The returned `MassSdkApplication` exposes:
 - common worker operations after `start()`: `registerWorker(...)`, `registerWorkerContext(...)`, `getWorker(...)`, `getAllWorkers()`, `getAllWorkerContexts()`, `getWorkerContexts(...)`, `getWorkerContextById(...)`, `isWorkerLocked(...)`, `isWorkerOnline(...)`
 - resource/control-plane operations through `ResourceOperations`: `registerProject(...)`, `registerEvent(...)`, `registerSubmitter(...)`, `listProjects()`, `getProject(...)`, `listEvents()`, `getEvent(...)`, `getEventsForProject(...)`, `listSubmitters()`, `getSubmitter(...)`, `authenticateSubmitter(...)`, `hasProject(...)`, `hasEvent(...)`, `hasSubmitter(...)`, `projectSupportsEvent(...)`; submitter list/get return `SubmitterMetadata` without credentials
 - compatibility/high-control worker operations after `start()`: `addWorker(...)` and `addWorkerContext(...)` remain available for callers that intentionally construct core runtime models
-- pull-style worker entry after `start()`: `pullWorker(...)`; `pollingWorker(...)` remains as a deprecated compatibility alias
+- pull-style worker entry after `start()`: `pullWorker(...)`
 - stable runtime bootstrap surface after `start()`: `publishTaskEvents()`, plus open registration methods such as `addWorker(...)`, `addWorkerContext(...)`, `createTask(...)`, `replaceDefaultRules(...)`
 - new bootstrap integration seam: `EngineOptions.bootstrapDataProvider(...)` accepts a pluggable `MassBootstrapDataProvider`
-- deprecated compatibility shims: `MassSdkApplication.loadMockData()` and `EngineOptions.mockData(...)` remain callable but no longer embed mock logic
 - deprecated compatibility seams for advanced embedding only: `getEngine()`, `getTaskManager()`, `getWorkerManager()`
 - deprecated escape hatches: `MassSdkApplication.unwrap()` and SDK builder/option `unwrap()` methods expose lower-level runtime objects
 
-`MassTaskCreateRequest` remains the generic compatibility create contract. `MassTaskRequest` is the richer SDK v1 contract for `single-run` / `streaming`, `text` / `json`, and event-aware task creation. `WorkerRegistration` and `WorkerContextRegistration` are the preferred worker resource contracts: registration declares identity/capability only, workers start `OFFLINE`, contexts start `IDLE`, and transport connect/heartbeat events own online state. `ResourceOperations` is the preferred SDK control-plane interface for project/event/submitter resources; `CatalogOperations` remains as a deprecated compatibility alias for existing callers. Project/event metadata registration remains the SDK discovery and control-plane catalog, and enabled project registration now also extends the core runtime project registry used by engine task creation and worker-context project binding. Submitter registration is a minimal in-memory credential binding for API-key or service-account style task submission; it is not a complete user/security subsystem. Submitter queries return `SubmitterMetadata` so credentials stay on write/auth paths only. The engine DTO overload remains only as a compatibility seam for callers that still depend on engine packages. Direct engine, manager, and runtime exposure is intentionally deprecated so the default SDK path stays on `MassSdkApplication` methods instead of leaking callers back into engine/runtime internals. Common SDK operations intentionally fail fast if the SDK application was built without an engine or has not been started yet. Mock/demo bootstrap data should be loaded outside the SDK module through `MassBootstrapDataProvider` and `MassRuntimeControl` instead of SDK-internal mock generators.
+`MassTaskCreateRequest` remains the generic compatibility create contract. `MassTaskRequest` is the richer SDK v1 contract for `single-run` / `streaming`, `text` / `json`, and event-aware task creation. `WorkerRegistration` and `WorkerContextRegistration` are the preferred worker resource contracts: registration declares identity/capability only, workers start `OFFLINE`, contexts start `IDLE`, and transport connect/heartbeat events own online state. `ResourceOperations` is the SDK control-plane interface for project/event/submitter resources. Project/event metadata registration remains the SDK discovery and control-plane catalog, and enabled project registration now also extends the core runtime project registry used by engine task creation and worker-context project binding. The library default catalog does not ship business task events; embedding applications or dev fixtures should register their own business event codes explicitly. Submitter registration is a minimal in-memory credential binding for API-key or service-account style task submission; it is not a complete user/security subsystem. Submitter queries return `SubmitterMetadata` so credentials stay on write/auth paths only. The engine DTO overload remains only as a compatibility seam for callers that still depend on engine packages. Direct engine, manager, and runtime exposure is intentionally deprecated so the default SDK path stays on `MassSdkApplication` methods instead of leaking callers back into engine/runtime internals. Common SDK operations intentionally fail fast if the SDK application was built without an engine or has not been started yet. Mock/demo bootstrap data should be loaded outside the SDK module through `MassBootstrapDataProvider` and `MassRuntimeControl` instead of SDK-internal mock generators.
 
 ## Compatibility Policy
 
@@ -152,8 +155,7 @@ lower-level runtime composition layer and does not carry the same compatibility
 commitment as the SDK facade.
 
 Mock/demo bootstrap behavior is intentionally outside the SDK core. Keep custom
-bootstrap code on `MassRuntimeControl`, and treat `loadMockData()` /
-`mockData(...)` as deprecated compatibility shims only.
+bootstrap code on `MassRuntimeControl`.
 
 The repository CI can enforce binary/source compatibility for `com.xa.mass.sdk.*`
 by setting `XA_MASS_SDK_API_BASELINE_VERSION` in GitHub Actions, which wires

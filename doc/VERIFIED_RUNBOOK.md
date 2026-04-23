@@ -49,7 +49,7 @@ Default runtime facts:
 - `mass.websocket.port=18088` serves the current WebSocket transport adapter endpoint when the transport server is enabled.
 - Default local/dev startup auto-starts mock worker clients when `mock.client.auto-start=true`.
 - Mock WebSocket clients connect to `ws://localhost:18088/ws`.
-- Pull-style workers can also run without the WebSocket transport server through `MassSdkApplication.pullWorker(...)`; `pollingWorker(...)` remains as a compatibility alias.
+- Pull-style workers can also run without the WebSocket transport server through `MassSdkApplication.pullWorker(...)`.
 - Worker routing may use neutral strategy hints like `realtime` and `polling`; the current WebSocket adapter still accepts `websocket/ws` as compatibility aliases.
 - `mock.client.task-result-status=FAILED` forces failed task result write-back for regression tests.
 
@@ -156,7 +156,6 @@ Open-ended and debug side-channel:
 - `POST /status/api/tasks/{taskId}/items` appends inputs only while intake is open.
 - `PUT /status/api/tasks/{taskId}/seal` closes intake and resumes normal terminal convergence.
 - manual worker debug uses the event-first path `POST /status/workers/send-event`, which currently bridges to `CONTROL/event -> EVENT/event` on the WebSocket adapter.
-- `POST /status/workers/send-message` with `CONTROL/manual-chat -> EVENT/manual-chat` remains a compatibility path only.
 - debug chat is a control side-channel and must not create or mutate `TaskMsg`.
 
 ## 6. Focused Regression Gate
@@ -164,7 +163,7 @@ Open-ended and debug side-channel:
 Focused command used for current high-signal runtime coverage:
 
 ```bash
-mvn -pl xa-mass-dev-app -am -Dtest=WorkerAttributesTest,WorkerContextAttributesTest,WorkerMatchContextTest,QLExpressRuleEvaluatorTest,RuleBasedTaskWorkerMatchingStrategyTest,TaskApiDelayedWorkerAvailabilityIntegrationTest,TaskApiWorkerContextAttributeRoutingIntegrationTest,TaskApiWorkerWithoutContextIntegrationTest,WorkerManualDebugChatIntegrationTest,ControlConsoleRoutingIntegrationTest,MockRuntimeDataLoaderTest -Dsurefire.failIfNoSpecifiedTests=false test
+mvn -pl xa-mass-dev-app -am -Dtest=WorkerAttributesTest,WorkerContextAttributesTest,WorkerMatchContextTest,QLExpressRuleEvaluatorTest,RuleBasedTaskWorkerMatchingStrategyTest,TaskApiDelayedWorkerAvailabilityIntegrationTest,TaskApiWorkerContextAttributeRoutingIntegrationTest,TaskApiWorkerWithoutContextIntegrationTest,WorkerManualDebugCommandIntegrationTest,WorkerManualDebugDisconnectIntegrationTest,ControlConsoleRoutingIntegrationTest,MockRuntimeDataLoaderTest -Dsurefire.failIfNoSpecifiedTests=false test
 ```
 
 Representative coverage:

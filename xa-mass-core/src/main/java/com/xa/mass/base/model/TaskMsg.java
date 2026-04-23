@@ -24,7 +24,6 @@ public class TaskMsg {
     // Compatibility projection of the latest attempt batch association.
     private String latestAttemptBatchId;
     private LocalDateTime assignedTime;
-    private String result;
     private LocalDateTime createTime;
     private LocalDateTime updateTime;
     private LocalDateTime startTime;
@@ -137,24 +136,6 @@ public class TaskMsg {
 
     public void setAssignedTime(LocalDateTime assignedTime) {
         this.assignedTime = assignedTime;
-    }
-
-    /**
-     * @deprecated Use {@link #getOutput()} for structured worker results.
-     *             This field is a legacy plain-text summary; it will be removed
-     *             in a future release once all callers migrate to {@code output}.
-     */
-    @Deprecated(forRemoval = true)
-    public String getResult() {
-        return result;
-    }
-
-    /**
-     * @deprecated Use {@link #setOutput(Map)} for structured worker results.
-     */
-    @Deprecated(forRemoval = true)
-    public void setResult(String result) {
-        this.result = result;
     }
 
     public LocalDateTime getCreateTime() {
@@ -294,7 +275,6 @@ public class TaskMsg {
         this.assignedTime = null;
     }
 
-    @SuppressWarnings("deprecation")
     public synchronized void resetForRetry() {
         if (!transitionTo(TaskMsgStatus.INIT)) {
             throw new IllegalStateException(
@@ -308,7 +288,6 @@ public class TaskMsg {
         this.completeTime = null;
         this.errorMessage = null;
         this.errorCode = null;
-        this.result = null;
         this.output = null;
         // finalReason is already cleared by setStatus(INIT) side-effect
     }
@@ -341,15 +320,12 @@ public class TaskMsg {
         return transitionTo(TaskMsgStatus.RUNNING);
     }
 
-    @SuppressWarnings("deprecation")
     public boolean markAsSuccess(String result) {
         return markAsSuccess(result, TaskMsgFinalReason.BUSINESS_SUCCESS);
     }
 
-    @SuppressWarnings("deprecation")
     public boolean markAsSuccess(String result, TaskMsgFinalReason finalReason) {
         if (transitionTo(TaskMsgStatus.SUCCESS)) {
-            setResult(result);
             this.errorMessage = null;
             this.errorCode = null;
             setFinalReason(finalReason);
@@ -365,7 +341,6 @@ public class TaskMsg {
     public boolean markAsFailed(String errorMessage, TaskMsgFinalReason finalReason) {
         if (transitionTo(TaskMsgStatus.FAILED)) {
             setErrorMessage(errorMessage);
-            this.result = null;
             this.output = null;
             setFinalReason(finalReason);
             return true;
@@ -379,7 +354,6 @@ public class TaskMsg {
 
     public boolean markAsExpired(TaskMsgFinalReason finalReason) {
         if (transitionTo(TaskMsgStatus.EXPIRED)) {
-            this.result = null;
             this.output = null;
             setFinalReason(finalReason);
             return true;
@@ -387,7 +361,6 @@ public class TaskMsg {
         return false;
     }
 
-    @SuppressWarnings("deprecation")
     public synchronized boolean cancelBeforeDispatch(String detail) {
         if (status != TaskMsgStatus.INIT) {
             return false;
@@ -395,12 +368,10 @@ public class TaskMsg {
         setStatus(TaskMsgStatus.FAILED);
         setFinalReason(TaskMsgFinalReason.MANUAL_CANCELLED);
         setErrorMessage(detail);
-        this.result = null;
         this.output = null;
         return true;
     }
 
-    @SuppressWarnings("deprecation")
     public void forceFinalize(TaskMsgStatus finalStatus, TaskMsgFinalReason finalReason, String detail) {
         if (finalStatus == null || !finalStatus.isFinal()) {
             throw new IllegalArgumentException("finalStatus must be terminal");
@@ -408,7 +379,7 @@ public class TaskMsg {
         setStatus(finalStatus);
         setFinalReason(finalReason);
         if (finalStatus == TaskMsgStatus.SUCCESS) {
-            setResult(detail);
+            this.errorMessage = null;
         } else {
             setErrorMessage(detail);
         }
@@ -448,7 +419,6 @@ public class TaskMsg {
                 ", status=" + status +
                 ", latestAttemptBatchId='" + latestAttemptBatchId + '\'' +
                 ", retryCount=" + retryCount +
-                ", result='" + result + '\'' +
                 '}';
     }
 }

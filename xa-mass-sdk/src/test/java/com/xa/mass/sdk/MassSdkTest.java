@@ -14,7 +14,6 @@ import com.xa.mass.engine.model.TaskCreateRequestDto;
 import com.xa.mass.engine.rules.RuleDefinition;
 import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.engine.rules.RuleType;
-import com.xa.mass.sdk.worker.PollingWorkerSession;
 import com.xa.mass.engine.strategy.SimpleTaskScheduler;
 import com.xa.mass.gateway.queue.Envelope;
 import com.xa.mass.sdk.auth.AuthProvider;
@@ -28,6 +27,7 @@ import com.xa.mass.sdk.auth.TaskSubmitterContext;
 import com.xa.mass.sdk.event.EventPrincipal;
 import com.xa.mass.sdk.event.EventRequest;
 import com.xa.mass.sdk.event.EventResponse;
+import com.xa.mass.sdk.event.PlatformEventCodes;
 import com.xa.mass.sdk.model.MassTaskCreateRequest;
 import com.xa.mass.sdk.model.MassTaskRequest;
 import com.xa.mass.sdk.model.WorkerContextRegistration;
@@ -263,22 +263,6 @@ class MassSdkTest {
     }
 
     @Test
-    void runtimeConvenienceOperationsAvoidEscapeHatchCalls() {
-        MassApplication delegate = mock(MassApplication.class);
-        MassEngine engine = mock(MassEngine.class);
-
-        when(delegate.getEngine()).thenReturn(engine);
-        when(engine.isRunning()).thenReturn(true);
-
-        MassSdkApplication app = new MassSdkApplication(delegate);
-        app.loadMockData();
-        app.publishTaskEvents();
-
-        verify(delegate).loadMockData();
-        verify(delegate).publishTaskEvents();
-    }
-
-    @Test
     void replaceDefaultRulesUsesOpenRuntimeCapability() {
         MassApplication delegate = mock(MassApplication.class);
         MassEngine engine = mock(MassEngine.class);
@@ -399,7 +383,7 @@ class MassSdkTest {
         Assertions.assertTrue(app.projectSupportsEvent("botApp", "bot.command"));
         Assertions.assertFalse(app.projectSupportsEvent("botApp", "crawler.fetch-page"));
         Assertions.assertTrue(app.listProjects().stream().anyMatch(project -> "demoApp".equals(project.getCode())));
-        Assertions.assertTrue(app.listEvents().stream().anyMatch(event -> "platform.meta.events.list".equals(event.getCode())));
+        Assertions.assertTrue(app.listEvents().stream().anyMatch(event -> PlatformEventCodes.META_EVENTS_LIST.equals(event.getCode())));
         Assertions.assertEquals(List.of(eventMetadata), app.getEventsForProject("botApp"));
     }
 
@@ -449,12 +433,12 @@ class MassSdkTest {
     @Test
     void dispatchEventRequiresClientAndUserIntersection() {
         MassSdkApplication app = new MassSdkApplication(mock(MassApplication.class));
-        app.grantClientEventPermissions("client-a", List.of("platform.meta.events.list"));
-        app.grantUserEventPermissions("user-a", List.of("platform.meta.events.list"));
+        app.grantClientEventPermissions("client-a", List.of(PlatformEventCodes.META_EVENTS_LIST));
+        app.grantUserEventPermissions("user-a", List.of(PlatformEventCodes.META_EVENTS_LIST));
 
         EventResponse allowed = app.dispatchEvent(
                 EventRequest.builder()
-                        .event("platform.meta.events.list")
+                        .event(PlatformEventCodes.META_EVENTS_LIST)
                         .requestId("req-1")
                         .build(),
                 EventPrincipal.of("client-a", "user-a")
@@ -466,7 +450,7 @@ class MassSdkTest {
 
         EventResponse denied = app.dispatchEvent(
                 EventRequest.builder()
-                        .event("platform.meta.events.list")
+                        .event(PlatformEventCodes.META_EVENTS_LIST)
                         .requestId("req-2")
                         .build(),
                 EventPrincipal.of("client-a", "missing-user")
@@ -770,7 +754,7 @@ class MassSdkTest {
     }
 
     @Test
-    void pollingWorkerSessionCompletesTaskWithoutWebsocketPush() throws Exception {
+    void pullWorkerSessionCompletesTaskWithoutWebsocketPush() throws Exception {
         MessageQueue<Envelope> inputQueue = new InMemoryMessageQueue<>("Envelope", Envelope.class);
         MessageQueue<Envelope> outputQueue = new InMemoryMessageQueue<>("Envelope", Envelope.class);
         MassSdkApplication app = MassSdk.builder()
@@ -875,37 +859,15 @@ class MassSdkTest {
     }
 
     @Test
-    void pollingWorkerCompatibilityEntryRemainsAvailable() throws Exception {
-        MessageQueue<Envelope> inputQueue = new InMemoryMessageQueue<>("Envelope", Envelope.class);
-        MessageQueue<Envelope> outputQueue = new InMemoryMessageQueue<>("Envelope", Envelope.class);
-        MassSdkApplication app = MassSdk.builder()
-                .transportServer(0, "/sdk-transport")
-                .gateway(gateway -> gateway.enabled(false).transportServerEnabled(false).inputQueue(inputQueue).outputQueue(outputQueue))
-                .engine(engine -> engine.enabled(true).workerThreads(1))
-                .build();
-
-        try {
-            app.start();
-            PollingWorkerSession session = app.pollingWorker("compat-worker");
-            Assertions.assertEquals("compat-worker", session.workerId());
-        } finally {
-            app.stop();
-        }
-    }
-
-    @Test
     void sdkEscapeHatchesStayDeprecated() throws NoSuchMethodException {
         Set<java.lang.reflect.Method> escapeHatches = Set.of(
                 MassSdkApplication.class.getDeclaredMethod("unwrap"),
                 MassSdkApplication.class.getDeclaredMethod("getEngine"),
                 MassSdkApplication.class.getDeclaredMethod("getTaskManager"),
                 MassSdkApplication.class.getDeclaredMethod("getWorkerManager"),
-                MassSdkApplication.class.getDeclaredMethod("loadMockData"),
                 MassSdk.Builder.class.getDeclaredMethod("unwrap"),
                 MassSdk.GatewayOptions.class.getDeclaredMethod("unwrap"),
-                MassSdk.EngineOptions.class.getDeclaredMethod("unwrap"),
-                MassSdk.EngineOptions.class.getDeclaredMethod("mockData", String.class),
-                MassSdk.EngineOptions.class.getDeclaredMethod("mockData", String.class, String.class, String.class, String.class)
+                MassSdk.EngineOptions.class.getDeclaredMethod("unwrap")
         );
 
         for (java.lang.reflect.Method method : escapeHatches) {
@@ -945,8 +907,6 @@ class MassSdkTest {
                         .workerId("worker-1")
                         .build()),
                 () -> app.pullWorker("worker-1"),
-                () -> app.pollingWorker("worker-1"),
-                app::loadMockData,
                 () -> app.replaceDefaultRules(List.of()),
                 app::publishTaskEvents
         );

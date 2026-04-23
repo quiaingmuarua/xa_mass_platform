@@ -3,6 +3,7 @@ package com.xa.mass.mock.client;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.xa.mass.base.debug.WorkerControlEventProtocol;
 import com.xa.mass.gateway.model.enums.MessageDirection;
 import com.xa.mass.gateway.model.enums.MessageType;
 import com.xa.mass.gateway.model.massMessage.MassMessage;
@@ -113,7 +114,7 @@ class MassWebSocketClientImplTest {
         assertTrue(client.awaitSentCount(1, 1000L));
         MassMessage response = gson.fromJson(client.sentMessages.get(0), MassMessage.class);
         assertEquals(MessageType.EVENT, response.getMsgType());
-        assertEquals("event", response.getSubMsgType());
+        assertEquals(WorkerControlEventProtocol.SUB_MSG_TYPE, response.getSubMsgType());
         assertTrue(client.awaitClosed(1000L));
         assertFalse(client.isOpen());
     }
@@ -148,7 +149,7 @@ class MassWebSocketClientImplTest {
         message.setMsgId("control-1");
         message.setResponse(false);
         message.setMsgType(MessageType.CONTROL);
-        message.setSubMsgType("event");
+        message.setSubMsgType(WorkerControlEventProtocol.SUB_MSG_TYPE);
         message.setFrom(MessageDirection.SERVER);
         message.setProject("demoApp");
 
@@ -158,11 +159,11 @@ class MassWebSocketClientImplTest {
         message.setContext(context);
 
         JsonObject payload = new JsonObject();
-        payload.addProperty("event", event);
-        payload.addProperty("requestId", "debug-request-1");
+        payload.addProperty(WorkerControlEventProtocol.EVENT_FIELD, event);
+        payload.addProperty(WorkerControlEventProtocol.REQUEST_ID_FIELD, "debug-request-1");
         JsonObject eventPayload = new JsonObject();
         eventPayload.addProperty("workerId", workerId);
-        payload.add("payload", eventPayload);
+        payload.add(WorkerControlEventProtocol.PAYLOAD_FIELD, eventPayload);
         message.setPayload(payload);
         return message;
     }

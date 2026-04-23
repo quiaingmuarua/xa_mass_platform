@@ -200,30 +200,30 @@ describe('RuntimeMetadataPage', () => {
         expect(wrapper.text()).toContain('1 / 2')
         expect(wrapper.text()).not.toContain('worker-sg-01')
         expect(wrapper.text()).toContain('Start event draft')
-        expect(wrapper.text()).toContain('hello from demo.dispatch')
-        expect(wrapper.text()).toContain('"recipient":"alpha"')
         expect(wrapper.text()).toContain('SDK submitter access')
         expect(wrapper.text()).toContain('Credential resolved')
         expect(wrapper.text()).toContain('crawler-agent')
         expect(wrapper.text()).toContain('POST /status/api/tasks')
 
-        const startDraftButton = wrapper
+        const inspectButtons = wrapper
             .findAll('button')
-            .find((button) => button.text().includes('Start event draft'))
-        expect(startDraftButton).toBeDefined()
+            .filter((button) => button.text().trim() === 'Inspect')
+        expect(inspectButtons.length).toBeGreaterThan(1)
 
-        const firstInspectButton = wrapper
-            .findAll('button')
-            .find((button) => button.text().trim() === 'Inspect')
-        expect(firstInspectButton).toBeDefined()
-
-        await firstInspectButton!.trigger('click')
+        await inspectButtons[1]!.trigger('click')
         await flushPromises()
 
         expect(wrapper.text()).toContain(
             'Scoped by selected project events plus optional project hints',
         )
         expect(wrapper.text()).toContain('worker-event-only')
+        expect(wrapper.text()).toContain('hello from demo.dispatch')
+        expect(wrapper.text()).toContain('"recipient":"alpha"')
+
+        const startDraftButton = wrapper
+            .findAll('button')
+            .find((button) => button.text().includes('Start event draft'))
+        expect(startDraftButton).toBeDefined()
 
         await startDraftButton!.trigger('click')
         await flushPromises()

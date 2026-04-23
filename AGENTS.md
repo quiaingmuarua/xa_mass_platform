@@ -13,7 +13,7 @@ This is the fastest entry point for coding agents. Keep it short. Use linked bas
 - Workers may be phone apps, crawlers, LLM agents, IM bots, or other long-lived executors.
 - Project direction is library/SDK-first; HTTP pages and demo APIs are validation shells.
 - Runtime project validation uses a core project registry seeded by built-in defaults; SDK project registration can extend it without changing the legacy enum.
-- `ResourceOperations` is the preferred SDK project/event control-plane interface; `CatalogOperations` is a compatibility alias.
+- `ResourceOperations` is the SDK project/event control-plane interface.
 - SDK submitter registration is a minimal credential-to-submitter-context resource, not a full user or security subsystem.
 - Submitter resource queries must expose metadata only; raw credentials belong to registration/authentication paths, not list/get read models.
 - Real Spring Boot entrypoint is `xa-mass-dev-app`.
@@ -63,6 +63,8 @@ Trust order:
 - `POST /status/api/tasks` is the only task create HTTP route; do not add a separate SDK task-create route.
 - SDK credential submission uses the same create route with `X-Mass-Api-Key` or `Authorization: Bearer ...`.
 - `/sdk/submitters/me` is credential introspection only; submitter auth is not the control-console user/RBAC system.
+- `eventCode` should be treated as globally unique across the runtime catalog.
+- Worker runtime event capability truth is `Worker.supportedEventCodes`; `supportedProjects` is only a coarse grouping/filter hint and must not be promoted into permission or event-capability truth.
 - Routing truth should come from explicit rules and worker-context signals, not from `workerGroupId`.
 - Worker matching truth is `RuleDefinition.content` evaluated by QLExpress over `WorkerMatchContext`; legacy JSON-DSL generation is mock/dev fixture support only.
 - `Worker.attributes` and `WorkerContext.attributes` are auxiliary rule labels only.
@@ -132,7 +134,7 @@ Verified endpoints:
 - `http://localhost:8088/doc.html`
 - `http://localhost:8088/actuator/health`
 - `ws://localhost:18088/ws`
-- Pull-style workers can run without any transport server through `MassSdkApplication.pullWorker(...)`; `pollingWorker(...)` remains as a compatibility alias.
+- Pull-style workers can run without any transport server through `MassSdkApplication.pullWorker(...)`.
 
 Control-console routing note:
 
@@ -173,6 +175,8 @@ Supported task create fields:
 The public task create/update and control-console read models do not define a dedicated `routingCode` field. Keep task-level payload or hints inside `sharedConfig` only when a concrete backend/runtime contract requires them.
 
 When `eventCode` is present, `/status/api/tasks` uses the SDK mode/payload-aware create path and persists `_sdk` task metadata inside `sharedConfig`.
+
+When `eventCode` is present, worker matching and runtime discovery should key off explicit worker event capability (`supportedEventCodes`). `supportedProjects` remains an auxiliary filter only.
 
 Task update is metadata-only and allowed only for `NEW` or `BLOCKED`.
 

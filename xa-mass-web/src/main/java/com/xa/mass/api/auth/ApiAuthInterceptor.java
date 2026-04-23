@@ -119,9 +119,6 @@ public class ApiAuthInterceptor implements HandlerInterceptor {
         if (uri.equals("/status/workers/message-history") && "GET".equals(method)) {
             return ApiPermissionNames.WORKER_VIEW;
         }
-        if (uri.equals("/status/workers/send-message") && "POST".equals(method)) {
-            return ApiPermissionNames.WORKER_EDIT;
-        }
         if (uri.equals("/status/workers/send-event") && "POST".equals(method)) {
             return ApiPermissionNames.WORKER_EDIT;
         }

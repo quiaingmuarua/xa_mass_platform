@@ -4,6 +4,7 @@ import com.google.gson.Gson;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.reflect.TypeToken;
+import com.xa.mass.base.debug.WorkerControlEventProtocol;
 import com.xa.mass.gateway.dispatcher.event.EventEnvelope;
 import com.xa.mass.gateway.dispatcher.event.EventGatewayBridge;
 import com.xa.mass.gateway.model.enums.MessageDirection;
@@ -21,9 +22,9 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * Compatibility bridge from legacy CONTROL MassMessage frames into the event runtime.
+ * Compatibility bridge from worker control CONTROL frames into the event runtime.
  */
-public class LegacyControlEventMessageHandler implements MassMessageHandler {
+public class WorkerControlEventBridgeHandler implements MassMessageHandler {
 
     private static final Gson GSON = new Gson();
     private static final Type MAP_TYPE = new TypeToken<Map<String, Object>>() {
@@ -31,7 +32,7 @@ public class LegacyControlEventMessageHandler implements MassMessageHandler {
 
     private final EventGatewayBridge bridge;
 
-    public LegacyControlEventMessageHandler(EventGatewayBridge bridge) {
+    public WorkerControlEventBridgeHandler(EventGatewayBridge bridge) {
         this.bridge = Objects.requireNonNull(bridge, "bridge");
     }
 
@@ -40,18 +41,22 @@ public class LegacyControlEventMessageHandler implements MassMessageHandler {
         JsonObject payloadObject = msg.getPayload() != null && msg.getPayload().isJsonObject()
                 ? msg.getPayload().getAsJsonObject()
                 : new JsonObject();
-        String event = readString(payloadObject, "event");
-        JsonObject headersObject = payloadObject.has("headers") && payloadObject.get("headers").isJsonObject()
-                ? payloadObject.getAsJsonObject("headers")
+        String event = readString(payloadObject, WorkerControlEventProtocol.EVENT_FIELD);
+        JsonObject headersObject = payloadObject.has(WorkerControlEventProtocol.HEADERS_FIELD)
+                && payloadObject.get(WorkerControlEventProtocol.HEADERS_FIELD).isJsonObject()
+                ? payloadObject.getAsJsonObject(WorkerControlEventProtocol.HEADERS_FIELD)
                 : new JsonObject();
-        JsonObject requestPayload = payloadObject.has("payload") && payloadObject.get("payload").isJsonObject()
-                ? payloadObject.getAsJsonObject("payload")
+        JsonObject requestPayload = payloadObject.has(WorkerControlEventProtocol.PAYLOAD_FIELD)
+                && payloadObject.get(WorkerControlEventProtocol.PAYLOAD_FIELD).isJsonObject()
+                ? payloadObject.getAsJsonObject(WorkerControlEventProtocol.PAYLOAD_FIELD)
                 : payloadObject;
 
         EventEnvelope envelope = EventEnvelope.builder()
                 .event(event)
                 .project(msg.getProject())
-                .requestId(firstNonBlank(readString(payloadObject, "requestId"), msg.getMsgId()))
+                .requestId(firstNonBlank(
+                        readString(payloadObject, WorkerControlEventProtocol.REQUEST_ID_FIELD),
+                        msg.getMsgId()))
                 .headers(toStringMap(headersObject))
                 .payload(toObjectMap(requestPayload))
                 .principal(resolvePrincipal(payloadObject))
@@ -62,12 +67,13 @@ public class LegacyControlEventMessageHandler implements MassMessageHandler {
     }
 
     private EventPrincipal resolvePrincipal(JsonObject payloadObject) {
-        JsonObject principalObject = payloadObject.has("principal") && payloadObject.get("principal").isJsonObject()
-                ? payloadObject.getAsJsonObject("principal")
+        JsonObject principalObject = payloadObject.has(WorkerControlEventProtocol.PRINCIPAL_FIELD)
+                && payloadObject.get(WorkerControlEventProtocol.PRINCIPAL_FIELD).isJsonObject()
+                ? payloadObject.getAsJsonObject(WorkerControlEventProtocol.PRINCIPAL_FIELD)
                 : new JsonObject();
         return EventPrincipal.builder()
-                .clientId(readString(principalObject, "clientId"))
-                .userId(readString(principalObject, "userId"))
+                .clientId(readString(principalObject, WorkerControlEventProtocol.CLIENT_ID_FIELD))
+                .userId(readString(principalObject, WorkerControlEventProtocol.USER_ID_FIELD))
                 .build();
     }
 
@@ -94,7 +100,7 @@ public class LegacyControlEventMessageHandler implements MassMessageHandler {
         responsePayload.put("code", response.getCode());
         responsePayload.put("message", response.getMessage());
         responsePayload.put("data", response.getData());
-        responsePayload.put("requestId", response.getRequestId());
+        responsePayload.put(WorkerControlEventProtocol.REQUEST_ID_FIELD, response.getRequestId());
         reply.setPayload(GSON.toJsonTree(responsePayload));
         return reply;
     }

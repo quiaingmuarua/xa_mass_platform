@@ -5,6 +5,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.xa.mass.base.debug.ManualDebugChatProtocol;
+import com.xa.mass.base.debug.WorkerControlEventProtocol;
 import com.xa.mass.gateway.model.enums.MessageDirection;
 import com.xa.mass.gateway.model.enums.MessageType;
 import com.xa.mass.gateway.model.massMessage.MassMessage;
@@ -35,7 +36,6 @@ public class MassWebSocketClientImpl extends WebSocketClient implements MassWebS
     private static final int MAX_RECONNECT_ATTEMPTS = 10;
     private static final long INITIAL_RECONNECT_DELAY_MS = 1000;
     private static final long MAX_RECONNECT_DELAY_MS = 60000;
-    private static final String EVENT_CONTROL_SUB_MSG_TYPE = "event";
 
     private final Gson gson = new Gson();
     private final ScheduledExecutorService reconnectScheduler;
@@ -208,11 +208,16 @@ public class MassWebSocketClientImpl extends WebSocketClient implements MassWebS
         payloadMap.put(ManualDebugChatProtocol.ECHO_SUB_MSG_TYPE_FIELD, controlMessage.getSubMsgType());
         payloadMap.put("commandExecuted", commandResult != null);
         JsonObject eventEnvelope = extractEventEnvelope(controlMessage);
-        if (eventEnvelope != null && eventEnvelope.has("requestId") && !eventEnvelope.get("requestId").isJsonNull()) {
-            payloadMap.put("requestId", eventEnvelope.get("requestId").getAsString());
+        if (eventEnvelope != null
+                && eventEnvelope.has(WorkerControlEventProtocol.REQUEST_ID_FIELD)
+                && !eventEnvelope.get(WorkerControlEventProtocol.REQUEST_ID_FIELD).isJsonNull()) {
+            payloadMap.put(
+                    WorkerControlEventProtocol.REQUEST_ID_FIELD,
+                    eventEnvelope.get(WorkerControlEventProtocol.REQUEST_ID_FIELD).getAsString()
+            );
         }
         if (commandResult != null) {
-            payloadMap.put("commandEvent", commandRequest.get("event").getAsString());
+            payloadMap.put("commandEvent", commandRequest.get(WorkerControlEventProtocol.EVENT_FIELD).getAsString());
             payloadMap.put("commandResult", commandResult);
         }
         response.setPayload(gson.toJsonTree(payloadMap));
@@ -233,7 +238,8 @@ public class MassWebSocketClientImpl extends WebSocketClient implements MassWebS
             JsonObject eventEnvelope = extractEventEnvelope(controlMessage);
             if (eventEnvelope != null) {
                 commandRequest = buildCommandRequestFromEventEnvelope(eventEnvelope);
-            } else if (payloadObject.has("event") && !payloadObject.get("event").isJsonNull()) {
+            } else if (payloadObject.has(WorkerControlEventProtocol.EVENT_FIELD)
+                    && !payloadObject.get(WorkerControlEventProtocol.EVENT_FIELD).isJsonNull()) {
                 commandRequest = payloadObject.deepCopy();
             } else if (payloadObject.has("command") && payloadObject.get("command").isJsonObject()) {
                 commandRequest = payloadObject.getAsJsonObject("command").deepCopy();
@@ -245,7 +251,9 @@ public class MassWebSocketClientImpl extends WebSocketClient implements MassWebS
             commandRequest = parseCommandText(payload.getAsString());
         }
 
-        if (commandRequest == null || !commandRequest.has("event") || commandRequest.get("event").isJsonNull()) {
+        if (commandRequest == null
+                || !commandRequest.has(WorkerControlEventProtocol.EVENT_FIELD)
+                || commandRequest.get(WorkerControlEventProtocol.EVENT_FIELD).isJsonNull()) {
             return null;
         }
         if (!commandRequest.has("workerId")) {
@@ -266,10 +274,11 @@ public class MassWebSocketClientImpl extends WebSocketClient implements MassWebS
             return null;
         }
         JsonObject payloadObject = payload.getAsJsonObject();
-        if (!EVENT_CONTROL_SUB_MSG_TYPE.equals(controlMessage.getSubMsgType())) {
+        if (!WorkerControlEventProtocol.SUB_MSG_TYPE.equals(controlMessage.getSubMsgType())) {
             return null;
         }
-        if (!payloadObject.has("event") || payloadObject.get("event").isJsonNull()) {
+        if (!payloadObject.has(WorkerControlEventProtocol.EVENT_FIELD)
+                || payloadObject.get(WorkerControlEventProtocol.EVENT_FIELD).isJsonNull()) {
             return null;
         }
         return payloadObject;
@@ -277,26 +286,43 @@ public class MassWebSocketClientImpl extends WebSocketClient implements MassWebS
 
     private JsonObject buildCommandRequestFromEventEnvelope(JsonObject eventEnvelope) {
         JsonObject commandRequest = new JsonObject();
-        commandRequest.add("event", eventEnvelope.get("event").deepCopy());
-        if (eventEnvelope.has("payload") && eventEnvelope.get("payload").isJsonObject()) {
-            JsonObject payloadObject = eventEnvelope.getAsJsonObject("payload");
+        commandRequest.add(
+                WorkerControlEventProtocol.EVENT_FIELD,
+                eventEnvelope.get(WorkerControlEventProtocol.EVENT_FIELD).deepCopy()
+        );
+        if (eventEnvelope.has(WorkerControlEventProtocol.PAYLOAD_FIELD)
+                && eventEnvelope.get(WorkerControlEventProtocol.PAYLOAD_FIELD).isJsonObject()) {
+            JsonObject payloadObject = eventEnvelope.getAsJsonObject(WorkerControlEventProtocol.PAYLOAD_FIELD);
             for (Map.Entry<String, JsonElement> entry : payloadObject.entrySet()) {
-                if ("event".equals(entry.getKey())) {
+                if (WorkerControlEventProtocol.EVENT_FIELD.equals(entry.getKey())) {
                     continue;
                 }
                 commandRequest.add(entry.getKey(), entry.getValue().deepCopy());
             }
         }
-        if (eventEnvelope.has("requestId") && !eventEnvelope.get("requestId").isJsonNull()) {
-            commandRequest.add("requestId", eventEnvelope.get("requestId").deepCopy());
+        if (eventEnvelope.has(WorkerControlEventProtocol.REQUEST_ID_FIELD)
+                && !eventEnvelope.get(WorkerControlEventProtocol.REQUEST_ID_FIELD).isJsonNull()) {
+            commandRequest.add(
+                    WorkerControlEventProtocol.REQUEST_ID_FIELD,
+                    eventEnvelope.get(WorkerControlEventProtocol.REQUEST_ID_FIELD).deepCopy()
+            );
         }
-        if (eventEnvelope.has("principal") && eventEnvelope.get("principal").isJsonObject()) {
-            JsonObject principal = eventEnvelope.getAsJsonObject("principal");
-            if (principal.has("clientId") && !principal.get("clientId").isJsonNull()) {
-                commandRequest.add("clientId", principal.get("clientId").deepCopy());
+        if (eventEnvelope.has(WorkerControlEventProtocol.PRINCIPAL_FIELD)
+                && eventEnvelope.get(WorkerControlEventProtocol.PRINCIPAL_FIELD).isJsonObject()) {
+            JsonObject principal = eventEnvelope.getAsJsonObject(WorkerControlEventProtocol.PRINCIPAL_FIELD);
+            if (principal.has(WorkerControlEventProtocol.CLIENT_ID_FIELD)
+                    && !principal.get(WorkerControlEventProtocol.CLIENT_ID_FIELD).isJsonNull()) {
+                commandRequest.add(
+                        WorkerControlEventProtocol.CLIENT_ID_FIELD,
+                        principal.get(WorkerControlEventProtocol.CLIENT_ID_FIELD).deepCopy()
+                );
             }
-            if (principal.has("userId") && !principal.get("userId").isJsonNull()) {
-                commandRequest.add("userId", principal.get("userId").deepCopy());
+            if (principal.has(WorkerControlEventProtocol.USER_ID_FIELD)
+                    && !principal.get(WorkerControlEventProtocol.USER_ID_FIELD).isJsonNull()) {
+                commandRequest.add(
+                        WorkerControlEventProtocol.USER_ID_FIELD,
+                        principal.get(WorkerControlEventProtocol.USER_ID_FIELD).deepCopy()
+                );
             }
         }
         return commandRequest;
@@ -314,11 +340,15 @@ public class MassWebSocketClientImpl extends WebSocketClient implements MassWebS
                                      JsonObject commandRequest,
                                      CommandResponse<?> commandResult) {
         if (commandResult != null) {
-            return "mock worker executed command: " + commandRequest.get("event").getAsString();
+            return "mock worker executed command: "
+                    + commandRequest.get(WorkerControlEventProtocol.EVENT_FIELD).getAsString();
         }
         JsonObject eventEnvelope = extractEventEnvelope(controlMessage);
-        if (eventEnvelope != null && eventEnvelope.has("event") && !eventEnvelope.get("event").isJsonNull()) {
-            return "mock worker received event: " + eventEnvelope.get("event").getAsString();
+        if (eventEnvelope != null
+                && eventEnvelope.has(WorkerControlEventProtocol.EVENT_FIELD)
+                && !eventEnvelope.get(WorkerControlEventProtocol.EVENT_FIELD).isJsonNull()) {
+            return "mock worker received event: "
+                    + eventEnvelope.get(WorkerControlEventProtocol.EVENT_FIELD).getAsString();
         }
         return "mock worker received manual debug message";
     }

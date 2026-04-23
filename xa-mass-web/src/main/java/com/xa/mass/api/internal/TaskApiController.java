@@ -394,7 +394,6 @@ public class TaskApiController {
         view.put("latestAttemptBatchId", taskMsg.getLatestAttemptBatchId());
         view.put("retryCount", taskMsg.getRetryCount());
         view.put("maxRetryCount", taskMsg.getMaxRetryCount());
-        view.put("result", taskMsg.getResult());
         view.put("errorMessage", taskMsg.getErrorMessage());
         view.put("errorCode", taskMsg.getErrorCode());
         view.put("finalReason", taskMsg.getFinalReason() != null ? taskMsg.getFinalReason().name() : null);

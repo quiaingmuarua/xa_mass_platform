@@ -89,6 +89,26 @@ Example command acknowledgement payload shape:
 }
 ```
 
+## Worker control event bridge
+
+The event-first worker control path is separate from the free-form manual chat path above.
+
+- outbound transport frame: `CONTROL/event`
+- inbound acknowledgement frame: `EVENT/event`
+- compatibility field names are centralized in `WorkerControlEventProtocol`
+
+Envelope fields:
+
+- `event`: event code routed through the SDK/runtime event model
+- `requestId`: stable request identifier echoed in the acknowledgement
+- `headers`: optional string headers
+- `payload`: structured request payload
+- `principal`: optional caller context
+  - `clientId`
+  - `userId`
+
+This bridge exists for the current worker debug/control adapter only. It is not the kernel task-dispatch protocol and must not be treated as the long-term business routing model.
+
 ## Page state mapping
 
 - `QUEUED`: server accepted and enqueued outbound message

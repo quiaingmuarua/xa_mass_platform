@@ -340,7 +340,7 @@ class TaskManagerLifecycleTest {
         assertEquals(TaskMsgStatus.SUCCESS, finalMessage.getStatus());
         assertEquals(TaskMsgFinalReason.BUSINESS_SUCCESS, finalMessage.getFinalReason());
         assertEquals(1, finalMessage.getRetryCount());
-        assertEquals("done-after-retry", finalMessage.getResult());
+        assertNull(finalMessage.getOutput());
         assertEquals(TaskStatus.TERMINAL, updatedTask.getStatus());
         assertEquals(TaskTerminalReason.ALL_MESSAGES_SUCCEEDED, updatedTask.getTerminalReason());
         assertEquals(1, updatedTask.getTaskSuccessNumber());
@@ -704,7 +704,7 @@ class TaskManagerLifecycleTest {
         TaskMsg updatedMessage = taskManager.getTaskMessage(task.getTid(), message.getMsgId());
         Task updatedTask = taskManager.getTask(task.getTid());
         assertEquals(TaskMsgStatus.SUCCESS, updatedMessage.getStatus());
-        assertEquals("done-once", updatedMessage.getResult());
+        assertNull(updatedMessage.getOutput());
         assertNull(updatedMessage.getErrorMessage());
         assertEquals(TaskStatus.TERMINAL, updatedTask.getStatus());
         assertEquals(TaskTerminalReason.ALL_MESSAGES_SUCCEEDED, updatedTask.getTerminalReason());

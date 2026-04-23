@@ -56,7 +56,6 @@ class GatewayTaskResultHandlerTest {
 
         TaskMsg updated = taskManager.getTaskMessage(task.getTid(), taskMsg.getMsgId());
         assertEquals(TaskMsgStatus.SUCCESS, updated.getStatus());
-        assertEquals("ok", updated.getResult());
         assertEquals("SUCCESS", updated.getOutput().get("status"));
         assertEquals("ok", updated.getOutput().get("mockData"));
         TaskMsgAttempt attempt = taskManager.getLatestTaskMessageAttempt(task.getTid(), taskMsg.getMsgId());
@@ -97,7 +96,6 @@ class GatewayTaskResultHandlerTest {
 
         TaskMsg updated = taskManager.getTaskMessage(task.getTid(), taskMsg.getMsgId());
         assertEquals(TaskMsgStatus.SUCCESS, updated.getStatus());
-        assertEquals("ok", updated.getResult());
         assertNull(updated.getErrorMessage());
         assertEquals(1, scheduler.completedTaskMsgCount);
         assertEquals(0, scheduler.failedTaskMsgCount);

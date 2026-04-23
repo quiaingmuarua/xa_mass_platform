@@ -46,8 +46,9 @@ For verified runtime behavior and recommended startup, use [VERIFIED_RUNBOOK.md]
 
 - SDK v1 adds a code-registered project/event metadata catalog for platform self-description.
 - Metadata is exposed through read-only `/sdk/meta/**` endpoints.
-- Catalog entries are not the runtime scheduling truth yet; they are a public capability directory for SDK and UI callers.
-- Current metadata covers representative task-event scenarios for crawler, SMS, and chatbot flows.
+- Catalog entries are the public event directory used by SDK and UI callers.
+- The library default catalog only seeds baseline project identities plus built-in `platform.*` control events.
+- Business task events such as crawler/chatbot flows must be registered explicitly by the embedding runtime or dev fixtures.
 
 ## 1.2 SDK Task Contract Notes
 
@@ -68,12 +69,12 @@ For verified runtime behavior and recommended startup, use [VERIFIED_RUNBOOK.md]
 
 - SDK Phase 1 now has a stable event invocation contract: `EventRequest`, `EventResponse`, and `EventPrincipal`.
 - Control-plane authorization is event-centric and currently uses `clientId ∩ userId` allow-list intersection.
-- Catalog task events such as `crawler.fetch-page` can be invoked through the SDK event entry and are mapped to task creation.
+- Catalog task events such as `demo.dispatch`, `bot.command`, or other embedding-defined business events can be invoked through the SDK event entry and are mapped to task creation.
 - Runtime control events such as `platform.worker.register` and `platform.meta.events.list` are handled through the embedded event runtime.
+- Built-in runtime control events are also registered into the SDK metadata catalog so metadata and dispatch do not diverge.
 - Legacy WebSocket `MassMessage` remains the transport envelope for the current gateway adapter, but new control capability must route through event dispatch instead of adding new `subMsgType` branches.
 - Current gateway bridge only changes the control plane. Task dispatch/result data-plane contracts remain unchanged.
 - Worker debug/control now has an event-first API shape. `/status/workers/send-event` accepts `workerId`, `project`, `event`, `requestId`, `headers`, `payload`, and `principal`.
-- `/status/workers/send-message` remains a legacy compatibility endpoint for transport-shaped debug calls and should not be used for new control capabilities.
 
 ## 2. SDK Metadata API
 
@@ -87,6 +88,7 @@ Response notes:
 
 - returns the registered `ProjectMetadata` list
 - each project includes `code`, `name`, `description`, `enabled`, and `eventCodes`
+- `eventCodes` reference globally unique catalog event codes; they are not per-project-local names
 
 ### 2.2 Get SDK Project
 
@@ -186,6 +188,8 @@ Contract rules:
 - retired fields such as `targetJsonList`, `targetType`, and `extraParams` are not supported
 - when `eventCode` is present, create uses the SDK mode/payload-aware path
 - when `eventCode` is present, `project` and `eventCode` must exist in the SDK metadata catalog and the project must declare support for that event
+- when `eventCode` is present, runtime worker capability is matched by worker-declared `supportedEventCodes`
+- `supportedProjects` remains only a coarse worker grouping/filter hint; it is not the runtime event-capability source of truth
 - SDK credential callers use this same route with `X-Mass-Api-Key` or `Authorization: Bearer ...`
 - when an SDK credential is present, `AuthProvider.authenticate(...)` resolves a `TaskSubmitterContext`
 - when an SDK submitter has `projectScope`, the request `project` may be omitted or must match that scope; mismatches return HTTP 403
@@ -231,7 +235,7 @@ SDK-style example:
   "userId": "agent",
   "project": "demoApp",
   "taskName": "sdk-crawler",
-  "eventCode": "crawler.fetch-page",
+  "eventCode": "demo.dispatch",
   "mode": "STREAMING",
   "payloadType": "JSON",
   "sharedConfig": {
@@ -789,17 +793,6 @@ Request notes:
 
 - accepts `workerId`, `project`, `event`, `requestId`, `headers`, `payload`, and optional `principal`
 - current WebSocket adapter bridges this to `CONTROL/event` and records acknowledgements from `EVENT/event`
-
-### 8.3 Legacy Send Debug Message
-
-- Method: `POST`
-- Path: `/status/workers/send-message`
-- Status: `Partial`
-
-Behavior:
-
-- legacy compatibility endpoint for transport-shaped debug calls
-- should not be used for new control-plane features
 
 ## 9. Health And Docs
 

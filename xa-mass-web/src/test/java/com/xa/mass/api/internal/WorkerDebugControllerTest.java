@@ -12,8 +12,8 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import java.util.List;
 import java.util.Map;
 
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -49,14 +49,14 @@ class WorkerDebugControllerTest {
     }
 
     @Test
-    void sendMessageMapsWorkerNotFoundTo404() throws Exception {
-        when(debugOperations.sendWorkerMessage(eq("worker-1"), isNull(), isNull(), isNull(), isNull()))
+    void sendEventMapsWorkerNotFoundTo404() throws Exception {
+        when(debugOperations.sendWorkerEvent(eq("worker-1"), any(), any()))
                 .thenThrow(new IllegalArgumentException("Worker not found"));
 
-        mockMvc.perform(post("/status/workers/send-message")
+        mockMvc.perform(post("/status/workers/send-event")
                         .contentType("application/json")
                         .content("""
-                                {"workerId":"worker-1"}
+                                {"workerId":"worker-1","event":"mock.state.get","payload":{}}
                                 """))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value(404))

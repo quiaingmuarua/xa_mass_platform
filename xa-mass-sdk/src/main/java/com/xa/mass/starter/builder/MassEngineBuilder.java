@@ -80,25 +80,6 @@ public class MassEngineBuilder {
         return this;
     }
 
-    /**
-     * @deprecated Mock/bootstrap data should be wired through
-     * {@link #bootstrapDataProvider(MassBootstrapDataProvider)}.
-     */
-    @Deprecated(forRemoval = false)
-    public MassEngineBuilder mockData(String workerConfigPath, String workerContextConfigPath,
-                                      String taskConfigPath, String ruleConfigPath) {
-        return this;
-    }
-
-    /**
-     * @deprecated Mock/bootstrap data should be wired through
-     * {@link #bootstrapDataProvider(MassBootstrapDataProvider)}.
-     */
-    @Deprecated(forRemoval = false)
-    public MassEngineBuilder mockData(String mockConfigPath) {
-        return this;
-    }
-
     public MassEngine build() {
         if (workerThreads != null) config.setWorkerThreads(workerThreads);
         if (scheduler != null) config.setScheduler(scheduler);
