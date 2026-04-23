@@ -6,6 +6,8 @@ import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.sdk.SdkTaskResumeResult;
 import com.xa.mass.sdk.TaskOperations;
+import com.xa.mass.sdk.auth.AuthProvider;
+import com.xa.mass.sdk.auth.TaskSubmitterContext;
 import com.xa.mass.sdk.catalog.DefaultProjectEventCatalogFactory;
 import com.xa.mass.sdk.catalog.ProjectEventCatalog;
 import com.xa.mass.sdk.model.MassTaskCreateRequest;
@@ -43,12 +45,15 @@ class TaskApiControllerTest {
     @Mock
     private TaskOperations taskOperations;
 
+    @Mock
+    private AuthProvider authProvider;
+
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
         ProjectEventCatalog catalog = DefaultProjectEventCatalogFactory.createDefaultRegistry();
-        mockMvc = MockMvcBuilders.standaloneSetup(new TaskApiController(taskOperations, catalog)).build();
+        mockMvc = MockMvcBuilders.standaloneSetup(new TaskApiController(taskOperations, catalog, authProvider)).build();
     }
 
     @Test
@@ -186,6 +191,127 @@ class TaskApiControllerTest {
         org.junit.jupiter.api.Assertions.assertEquals(List.of(
                 Map.of("type", "json", "data", Map.of("url", "https://example.test"))
         ), request.toEngineInputs());
+    }
+
+    @Test
+    void createTaskWithSdkCredentialUsesSubmitterScopeAndDelegatesToSdkModeRequest() throws Exception {
+        Task createdTask = taskWithStatus(TaskStatus.NEW);
+        createdTask.setTid("task-sdk-002");
+        createdTask.setProject("crawlerApp");
+        createdTask.setUser(com.xa.mass.base.model.UserRef.of("crawler-agent"));
+
+        when(authProvider.authenticate("sdk-key")).thenReturn(new TaskSubmitterContext(
+                "crawler-agent",
+                null,
+                "crawlerApp",
+                Map.of("transport", "polling")
+        ));
+        when(taskOperations.createTask(any(MassTaskRequest.class))).thenReturn(createdTask);
+
+        mockMvc.perform(post("/status/api/tasks")
+                        .header("X-Mass-Api-Key", "sdk-key")
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "taskName":"sdk-crawler",
+                                  "eventCode":"crawler.fetch-page",
+                                  "payloadType":"JSON",
+                                  "sharedConfig":{"source":"sdk"},
+                                  "inputs":[{"url":"https://example.test"}],
+                                  "batchSize":1
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.taskId").value("task-sdk-002"))
+                .andExpect(jsonPath("$.data.project").value("crawlerApp"))
+                .andExpect(jsonPath("$.data.userId").value("crawler-agent"))
+                .andExpect(jsonPath("$.data.principalId").value("crawler-agent"));
+
+        ArgumentCaptor<MassTaskRequest> captor = ArgumentCaptor.forClass(MassTaskRequest.class);
+        verify(taskOperations).createTask(captor.capture());
+        MassTaskRequest request = captor.getValue();
+        org.junit.jupiter.api.Assertions.assertEquals("crawlerApp", request.getProject());
+        org.junit.jupiter.api.Assertions.assertEquals("crawler-agent", request.getUserId());
+        org.junit.jupiter.api.Assertions.assertEquals("crawler.fetch-page", request.getEventCode());
+    }
+
+    @Test
+    void createTaskWithSdkCredentialRejectsInvalidCredential() throws Exception {
+        when(authProvider.authenticate("bad-key")).thenReturn(null);
+
+        mockMvc.perform(post("/status/api/tasks")
+                        .header("X-Mass-Api-Key", "bad-key")
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "taskName":"sdk-crawler",
+                                  "eventCode":"crawler.fetch-page",
+                                  "inputs":[{"url":"https://example.test"}]
+                                }
+                                """))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value(401))
+                .andExpect(jsonPath("$.msg").value("Invalid or missing SDK credential"));
+
+        verify(taskOperations, never()).createTask(any(MassTaskRequest.class));
+        verify(taskOperations, never()).createTask(any(MassTaskCreateRequest.class));
+    }
+
+    @Test
+    void createTaskWithSdkCredentialRejectsProjectScopeViolation() throws Exception {
+        when(authProvider.authenticate("sdk-key")).thenReturn(new TaskSubmitterContext(
+                "telegram-bot",
+                "bot-user",
+                "telegramApp",
+                Map.of()
+        ));
+
+        mockMvc.perform(post("/status/api/tasks")
+                        .header("X-Mass-Api-Key", "sdk-key")
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "taskName":"bot-reply",
+                                  "project":"crawlerApp",
+                                  "eventCode":"chatbot.reply",
+                                  "payloadType":"TEXT",
+                                  "inputs":["hello"]
+                                }
+                                """))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value(403))
+                .andExpect(jsonPath("$.msg").value("Submitter project scope does not allow project: crawlerApp"));
+
+        verify(taskOperations, never()).createTask(any(MassTaskRequest.class));
+    }
+
+    @Test
+    void createTaskWithSdkCredentialRejectsUserScopeViolation() throws Exception {
+        when(authProvider.authenticate("sdk-key")).thenReturn(new TaskSubmitterContext(
+                "telegram-bot",
+                "bot-user",
+                "telegramApp",
+                Map.of()
+        ));
+
+        mockMvc.perform(post("/status/api/tasks")
+                        .header("Authorization", "Bearer sdk-key")
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "taskName":"bot-reply",
+                                  "eventCode":"chatbot.reply",
+                                  "payloadType":"TEXT",
+                                  "userId":"another-user",
+                                  "inputs":["hello"]
+                                }
+                                """))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value(403))
+                .andExpect(jsonPath("$.msg").value("Submitter user scope does not allow userId: another-user"));
+
+        verify(taskOperations, never()).createTask(any(MassTaskRequest.class));
     }
 
     @Test

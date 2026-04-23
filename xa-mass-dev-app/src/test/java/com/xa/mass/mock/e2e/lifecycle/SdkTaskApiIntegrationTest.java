@@ -2,9 +2,13 @@ package com.xa.mass.mock.e2e.lifecycle;
 
 import com.xa.mass.mock.MockApplicationSpringBootApp;
 import com.xa.mass.mock.e2e.support.AbstractMockE2eTest;
+import com.xa.mass.sdk.auth.SubmitterRegistration;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.ResponseEntity;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -45,9 +49,16 @@ class SdkTaskApiIntegrationTest extends AbstractMockE2eTest {
 
     @Test
     @SuppressWarnings("unchecked")
-    void createTaskThroughUnifiedTaskApiCompletesOverRealRuntime() throws Exception {
-        Map<String, Object> createResponse = exchange("/status/api/tasks", HttpMethod.POST, Map.of(
-                "userId", "sdk-client",
+    void createTaskThroughUnifiedTaskApiWithSdkCredentialCompletesOverRealRuntime() throws Exception {
+        app.registerSubmitter(SubmitterRegistration.builder()
+                .principalId("crawler-agent")
+                .credential("sdk-test-key")
+                .userId("sdk-client")
+                .projectScope("demoApp")
+                .attributes(Map.of("transport", "websocket"))
+                .build());
+
+        Map<String, Object> createResponse = exchangeWithHeaders("/status/api/tasks", HttpMethod.POST, Map.of(
                 "project", "demoApp",
                 "taskName", "sdk-runtime-task",
                 "eventCode", "crawler.fetch-page",
@@ -57,10 +68,13 @@ class SdkTaskApiIntegrationTest extends AbstractMockE2eTest {
                 "inputs", java.util.List.of(Map.of("target", "sdk-target-001")),
                 "batchSize", 1,
                 "defaultMsgMaxRetryCount", 2
-        ));
+        ), Map.of("X-Mass-Api-Key", "sdk-test-key"));
 
         assertApiOk(createResponse);
         String taskId = String.valueOf(responseData(createResponse).get("taskId"));
+        assertEquals("demoApp", responseData(createResponse).get("project"));
+        assertEquals("sdk-client", responseData(createResponse).get("userId"));
+        assertEquals("crawler-agent", responseData(createResponse).get("principalId"));
 
         Map<String, Object> approveResponse = exchange(
                 "/status/api/tasks/" + taskId + "/audit?approved=true&comment=sdk",
@@ -85,5 +99,39 @@ class SdkTaskApiIntegrationTest extends AbstractMockE2eTest {
         assertEquals("JSON", sdkMetadata.get("payloadType"));
         assertEquals("SINGLE_RUN", sdkMetadata.get("taskMode"));
         assertTrue(sharedConfig.containsKey("source"));
+    }
+
+    @Test
+    void createTaskThroughUnifiedTaskApiRejectsSdkSubmitterScopeViolation() {
+        app.registerSubmitter(SubmitterRegistration.builder()
+                .principalId("telegram-bot")
+                .credential("telegram-key")
+                .userId("bot-user")
+                .projectScope("demoApp")
+                .build());
+
+        Map<String, Object> createResponse = exchangeWithHeaders("/status/api/tasks", HttpMethod.POST, Map.of(
+                "project", "crawlerApp",
+                "taskName", "scope-violation",
+                "eventCode", "crawler.fetch-page",
+                "payloadType", "JSON",
+                "inputs", java.util.List.of(Map.of("url", "https://example.test"))
+        ), Map.of("Authorization", "Bearer telegram-key"));
+
+        assertApiError(createResponse, 403);
+        assertEquals("Submitter project scope does not allow project: crawlerApp", apiMsg(createResponse));
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> exchangeWithHeaders(String path,
+                                                    HttpMethod method,
+                                                    Object body,
+                                                    Map<String, String> headers) {
+        String url = "http://127.0.0.1:" + port + path;
+        HttpHeaders httpHeaders = new HttpHeaders();
+        httpHeaders.set("Content-Type", "application/json");
+        headers.forEach(httpHeaders::set);
+        ResponseEntity<Map> response = restTemplate.exchange(url, method, new HttpEntity<>(body, httpHeaders), Map.class);
+        return response.getBody();
     }
 }

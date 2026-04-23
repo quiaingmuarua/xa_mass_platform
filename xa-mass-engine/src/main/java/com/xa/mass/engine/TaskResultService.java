@@ -141,6 +141,13 @@ class TaskResultService {
                 logger.error("Cannot handle task message result because msg {} in task {} has no active attempt", msgId, taskId);
                 return false;
             }
+            if (!isCallbackAcceptableMessageState(taskMsg)) {
+                TraceEventLogger.callbackRejectedInvalidState(taskMsg,
+                        "callback arrived while message status is " + taskMsg.getStatus());
+                logger.error("Cannot handle task message result because msg {} in task {} is in invalid callback state {}",
+                        msgId, taskId, taskMsg.getStatus());
+                return false;
+            }
 
             TraceEventLogger.callbackAccepted(taskMsg, success ? "success callback received" : "failure callback received");
 
@@ -170,10 +177,6 @@ class TaskResultService {
                                   String detail,
                                   Map<String, Object> output) {
         String msgId = taskMsg.getMsgId();
-        if (taskMsg.getStatus() == TaskMsgStatus.INIT && !taskMsg.markAsAssigned()) {
-            logger.warn("Failed to mark task message {} as ASSIGNED before success completion", msgId);
-            return false;
-        }
         if (taskMsg.getStatus() == TaskMsgStatus.ASSIGNED) {
             TaskMsgStatus beforeRunningStatus = taskMsg.getStatus();
             if (!taskMsg.markAsRunning()) {
@@ -293,10 +296,6 @@ class TaskResultService {
         activeAttempt.setOutput(output);
         taskManager.updateTaskMessageAttempt(taskId, msgId, activeAttempt);
 
-        if (taskMsg.getStatus() == TaskMsgStatus.INIT && !taskMsg.markAsAssigned()) {
-            logger.warn("Failed to mark task message {} as ASSIGNED before failure finalization", msgId);
-            return false;
-        }
         TaskMsgStatus beforeFinalStatus = taskMsg.getStatus();
         if (!taskMsg.markAsFailed(detail, TaskMsgFinalReason.RETRY_EXHAUSTED)) {
             logger.warn("Failed to mark task message {} as FAILED", msgId);
@@ -327,6 +326,11 @@ class TaskResultService {
         taskManager.getScheduler().handleTaskMsgFailure(taskMsg, detail);
         stateResolver.updateTaskProgress(taskId);
         return true;
+    }
+
+    private boolean isCallbackAcceptableMessageState(TaskMsg taskMsg) {
+        return taskMsg.getStatus() == TaskMsgStatus.ASSIGNED
+                || taskMsg.getStatus() == TaskMsgStatus.RUNNING;
     }
 
     private void publishAttemptClosed(Task task,

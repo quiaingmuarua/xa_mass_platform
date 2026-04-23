@@ -121,6 +121,41 @@
           </el-col>
         </el-row>
 
+        <el-card class="page-card sdk-submit-card">
+          <template #header>
+            <strong>SDK submitter access</strong>
+          </template>
+          <el-alert
+            class="sdk-submit-note"
+            type="info"
+            :closable="false"
+            title="SDK submitter identity is only for credential-backed task submission through POST /status/api/tasks. It is not the control-console login state and does not affect menu permissions."
+          />
+          <el-descriptions :column="1" border>
+            <el-descriptions-item label="Introspection">
+              <el-tag :type="sdkSubmitterStatusType">
+                {{ sdkSubmitterStatusLabel }}
+              </el-tag>
+            </el-descriptions-item>
+            <el-descriptions-item label="Principal">
+              {{ sdkSubmitterProfile?.principalId ?? '-' }}
+            </el-descriptions-item>
+            <el-descriptions-item label="Resolved user">
+              {{ sdkSubmitterProfile?.userId ?? '-' }}
+            </el-descriptions-item>
+            <el-descriptions-item label="Project scope">
+              {{ sdkSubmitterProfile?.projectScope ?? '-' }}
+            </el-descriptions-item>
+            <el-descriptions-item label="Attributes">
+              <pre class="inline-json-block">{{ sdkSubmitterAttributesText }}</pre>
+            </el-descriptions-item>
+            <el-descriptions-item label="Create route">
+              Use the same task create route:
+              <span class="mono">POST /status/api/tasks</span>
+            </el-descriptions-item>
+          </el-descriptions>
+        </el-card>
+
         <el-row :gutter="20">
           <el-col :span="12">
             <el-card class="page-card detail-card">
@@ -469,11 +504,13 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { listEventMetadata, listProjectMetadata } from '@/api/metadata'
+import { getCurrentSdkSubmitter } from '@/api/sdk-submitter'
 import { listWorkers } from '@/api/workers'
 import PageEmptyState from '@/components/PageEmptyState.vue'
 import PageErrorState from '@/components/PageErrorState.vue'
 import PageSectionSkeleton from '@/components/PageSectionSkeleton.vue'
 import type { EventMetadata, ProjectMetadata } from '@/types/metadata'
+import type { SdkSubmitterSnapshot } from '@/types/sdk-submitter'
 import type { WorkerListItem } from '@/types/workers'
 import { toErrorMessage } from '@/utils/errors'
 import {
@@ -507,6 +544,10 @@ const errorMessage = ref('')
 const projects = ref<ProjectMetadata[]>([])
 const events = ref<EventMetadata[]>([])
 const workers = ref<WorkerListItem[]>([])
+const sdkSubmitterSnapshot = ref<SdkSubmitterSnapshot>({
+  state: 'unavailable',
+  profile: null,
+})
 const selectedProjectCode = ref(ALL_PROJECTS)
 const selectedEventCode = ref('')
 const showOnlineOnly = ref(true)
@@ -668,6 +709,30 @@ const coveredProjectCount = computed(
         ),
     ).length,
 )
+const sdkSubmitterProfile = computed(() => sdkSubmitterSnapshot.value.profile)
+const sdkSubmitterStatusLabel = computed(() => {
+  if (sdkSubmitterSnapshot.value.state === 'available') {
+    return 'Credential resolved'
+  }
+  if (sdkSubmitterSnapshot.value.state === 'unauthorized') {
+    return 'No SDK credential in this browser session'
+  }
+  return 'Endpoint unavailable or mock mode'
+})
+const sdkSubmitterStatusType = computed(() => {
+  if (sdkSubmitterSnapshot.value.state === 'available') {
+    return 'success'
+  }
+  if (sdkSubmitterSnapshot.value.state === 'unauthorized') {
+    return 'warning'
+  }
+  return 'info'
+})
+const sdkSubmitterAttributesText = computed(() =>
+  sdkSubmitterProfile.value
+    ? JSON.stringify(sdkSubmitterProfile.value.attributes ?? {}, null, 2)
+    : '{}',
+)
 const selectedScopeTitle = computed(() => {
   if (!selectedProject.value) {
     return 'All projects'
@@ -776,18 +841,25 @@ async function loadDiscovery(): Promise<void> {
   errorMessage.value = ''
 
   try {
-    const [projectMetadata, eventMetadata, workerResponse] = await Promise.all([
-      listProjectMetadata(),
-      listEventMetadata(),
-      listWorkers(),
-    ])
+    const [projectMetadata, eventMetadata, workerResponse, submitterSnapshot] =
+      await Promise.all([
+        listProjectMetadata(),
+        listEventMetadata(),
+        listWorkers(),
+        getCurrentSdkSubmitter(),
+      ])
     projects.value = projectMetadata
     events.value = eventMetadata
     workers.value = workerResponse.items
+    sdkSubmitterSnapshot.value = submitterSnapshot
   } catch (error) {
     projects.value = []
     events.value = []
     workers.value = []
+    sdkSubmitterSnapshot.value = {
+      state: 'unavailable',
+      profile: null,
+    }
     errorMessage.value = toErrorMessage(
       error,
       'Failed to load runtime metadata discovery data.',
@@ -947,6 +1019,15 @@ watch(
   height: 100%;
 }
 
+.sdk-submit-card {
+  margin-top: 20px;
+}
+
+.sdk-submit-note {
+  margin-bottom: 16px;
+  border-radius: 12px;
+}
+
 .detail-card {
   height: 100%;
 }
@@ -1001,5 +1082,11 @@ watch(
   white-space: pre-wrap;
   word-break: break-word;
   color: #334155;
+}
+
+.inline-json-block {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 </style>

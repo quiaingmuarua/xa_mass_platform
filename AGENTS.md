@@ -60,6 +60,9 @@ Trust order:
 - `Task.sharedConfig` and `TaskMsg.input/output` are the generic payload boundaries.
 - `target` is only a conventional key inside `TaskMsg.input`, not a model field.
 - Create contract uses `inputs: List<Map<String,Object>>`; do not reintroduce `targetList`.
+- `POST /status/api/tasks` is the only task create HTTP route; do not add a separate SDK task-create route.
+- SDK credential submission uses the same create route with `X-Mass-Api-Key` or `Authorization: Bearer ...`.
+- `/sdk/submitters/me` is credential introspection only; submitter auth is not the control-console user/RBAC system.
 - Routing truth should come from explicit rules and worker-context signals, not from `workerGroupId`.
 - Worker matching truth is `RuleDefinition.content` evaluated by QLExpress over `WorkerMatchContext`; legacy JSON-DSL generation is mock/dev fixture support only.
 - `Worker.attributes` and `WorkerContext.attributes` are auxiliary rule labels only.

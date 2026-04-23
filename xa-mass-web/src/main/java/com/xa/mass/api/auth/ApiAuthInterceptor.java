@@ -1,6 +1,7 @@
 package com.xa.mass.api.auth;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.xa.mass.api.internal.SdkCredentialAuthSupport;
 import com.xa.mass.api.model.ApiResponse;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -61,7 +62,7 @@ public class ApiAuthInterceptor implements HandlerInterceptor {
         if (uri.equals("/status/api/tasks")) {
             return switch (method) {
                 case "GET" -> ApiPermissionNames.TASK_VIEW;
-                case "POST" -> ApiPermissionNames.TASK_CREATE;
+                case "POST" -> hasSdkCredentialAttempt(request) ? null : ApiPermissionNames.TASK_CREATE;
                 default -> null;
             };
         }
@@ -122,6 +123,13 @@ public class ApiAuthInterceptor implements HandlerInterceptor {
             return ApiPermissionNames.WORKER_EDIT;
         }
         return null;
+    }
+
+    private boolean hasSdkCredentialAttempt(HttpServletRequest request) {
+        return SdkCredentialAuthSupport.hasCredentialAttempt(
+                request.getHeader(SdkCredentialAuthSupport.API_KEY_HEADER),
+                request.getHeader("Authorization")
+        );
     }
 
     private void writeError(HttpServletResponse response, int statusCode, String message) throws IOException {

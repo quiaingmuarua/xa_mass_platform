@@ -389,6 +389,36 @@ class TaskManagerLifecycleTest {
     }
 
     @Test
+    void callbackForInitMessageWithActiveAttemptIsRejectedAndTraced() {
+        Task task = taskManager.createTask(buildRequest("task-result-init-callback", List.of("alpha")));
+        taskManager.approveTask(task.getTid());
+        task.setStatus(TaskStatus.RUNNING);
+        taskManager.updateTask(task);
+
+        TaskMsg message = taskManager.getTaskMessages(task.getTid()).get(0);
+        TaskMsgAttempt attempt = new TaskMsgAttempt("attempt-init", task.getTid(), message.getMsgId(), 1);
+        attempt.setWorkerId("worker-init");
+        attempt.setWorkerContextId("worker-context-init");
+        attempt.setBatchId("batch-init");
+        assertTrue(attempt.markLeased(LocalDateTime.now().plusMinutes(5)));
+        assertTrue(attempt.markDispatched());
+        taskManager.addTaskMessageAttempt(task.getTid(), message.getMsgId(), attempt);
+
+        try (TraceEventLogCapture capture = new TraceEventLogCapture()) {
+            assertFalse(taskManager.handleTaskMessageResult(task.getTid(), message.getMsgId(), true, "done"));
+            capture.assertHasEvent("CALLBACK_REJECTED_INVALID_STATE", mdc ->
+                    task.getTid().equals(mdc.get("taskId"))
+                            && message.getMsgId().equals(mdc.get("msgId"))
+                            && "INIT".equals(mdc.get("taskMsgStatus")));
+        }
+
+        TaskMsg persistedMessage = taskManager.getTaskMessage(task.getTid(), message.getMsgId());
+        assertEquals(TaskMsgStatus.INIT, persistedMessage.getStatus());
+        assertEquals(TaskMsgAttemptStatus.DISPATCHED,
+                taskManager.getLatestTaskMessageAttempt(task.getTid(), message.getMsgId()).getStatus());
+    }
+
+    @Test
     void retryableFailurePublishesAttemptClosedBeforeDispatchRequested() {
         Task task = taskManager.createTask(buildRequest("task-result-retry-order", List.of("alpha")));
         taskManager.approveTask(task.getTid());
@@ -584,6 +614,32 @@ class TaskManagerLifecycleTest {
         assertEquals(TaskStatus.TERMINAL, sealed.getStatus());
         assertEquals(TaskTerminalReason.ALL_MESSAGES_SUCCEEDED, sealed.getTerminalReason());
         assertEquals(TaskIntakeStatus.SEALED, sealed.getIntakeStatus());
+    }
+
+    @Test
+    void pausedOpenEndedTaskCanAppendWithoutImmediateDispatch() {
+        TaskCreateRequestDto request = buildRequest("task-open-ended-paused-append", List.of("alpha"));
+        request.setOpenEnded(true);
+        Task task = taskManager.createTask(request);
+        taskManager.approveTask(task.getTid());
+        assertTrue(taskManager.pauseTask(task.getTid()));
+
+        AtomicInteger dispatchRequests = new AtomicInteger();
+        taskManager.addTaskDispatchListener(ignored -> dispatchRequests.incrementAndGet());
+
+        int added = taskManager.appendTaskItems(task.getTid(), List.of(
+                java.util.Map.<String, Object>of("target", "beta"),
+                java.util.Map.<String, Object>of("target", "gamma")
+        ));
+
+        Task updatedTask = taskManager.getTask(task.getTid());
+        List<TaskMsg> messages = taskManager.getTaskMessages(task.getTid());
+
+        assertEquals(2, added);
+        assertEquals(TaskStatus.PAUSED, updatedTask.getStatus());
+        assertEquals(TaskIntakeStatus.OPEN, updatedTask.getIntakeStatus());
+        assertEquals(3, messages.size());
+        assertEquals(0, dispatchRequests.get());
     }
 
     @Test

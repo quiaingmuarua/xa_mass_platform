@@ -80,9 +80,8 @@ class TaskLifecycleService {
             Task task = taskManager.getTask(taskId);
             if (task != null && task.getStatus() == TaskStatus.NEW) {
                 TaskStatus fromStatus = task.getStatus();
-                boolean result = task.transitionTo(TaskStatus.BLOCKED);
+                boolean result = task.transitionToBlocked(TaskHoldReason.REVIEW_REJECTED);
                 if (result) {
-                    task.setHoldReason(TaskHoldReason.REVIEW_REJECTED);
                     TraceEventLogger.taskStatusTransition(taskId, fromStatus, task.getStatus(),
                             "REJECT_TASK", "TaskManager", "task rejected");
                     taskManager.updateTask(task);
@@ -115,9 +114,8 @@ class TaskLifecycleService {
             if (task != null
                     && (task.getStatus() == TaskStatus.READY || task.getStatus() == TaskStatus.RUNNING)) {
                 TaskStatus fromStatus = task.getStatus();
-                boolean result = task.transitionTo(TaskStatus.BLOCKED);
+                boolean result = task.transitionToBlocked(TaskHoldReason.MANUAL_BLOCKED);
                 if (result) {
-                    task.setHoldReason(TaskHoldReason.MANUAL_BLOCKED);
                     TraceEventLogger.taskStatusTransition(taskId, fromStatus, task.getStatus(),
                             "BLOCK_TASK", "TaskManager", "task blocked");
                     taskManager.updateTask(task);
@@ -250,7 +248,7 @@ class TaskLifecycleService {
         if (task.getIntakeStatus() != TaskIntakeStatus.OPEN) {
             throw new IllegalStateException("Task is not open-ended: " + taskId);
         }
-        if (!task.getStatus().isActive()) {
+        if (!task.getStatus().isActive() && task.getStatus() != TaskStatus.PAUSED) {
             throw new IllegalStateException("Task not active: " + task.getStatus());
         }
 
@@ -264,7 +262,9 @@ class TaskLifecycleService {
         task.setTaskTargetNumber(task.getTaskTargetNumber() + added);
         task.setTaskEligibleNumber(task.getTaskEligibleNumber() + added);
         taskManager.updateTask(task);
-        taskManager.getEventPublisher().publishTaskDispatchRequested(task);
+        if (task.getStatus().isActive()) {
+            taskManager.getEventPublisher().publishTaskDispatchRequested(task);
+        }
         logger.info("[appendTaskItems] Added {} items to open-ended task {}", added, taskId);
         return added;
     }
@@ -364,8 +364,10 @@ class TaskLifecycleService {
             TaskMsgStatus status = msg.getStatus();
             boolean updated = false;
             if (status == TaskMsgStatus.INIT) {
-                msg.forceFinalize(TaskMsgStatus.FAILED, TaskMsgFinalReason.MANUAL_CANCELLED, "task cancelled");
-                updated = true;
+                updated = msg.cancelBeforeDispatch("task cancelled");
+                if (!updated) {
+                    continue;
+                }
                 TraceEventLogger.taskMsgStatusTransition(
                         msg,
                         TaskMsgStatus.INIT,

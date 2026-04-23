@@ -388,6 +388,19 @@ public class TaskMsg {
     }
 
     @SuppressWarnings("deprecation")
+    public synchronized boolean cancelBeforeDispatch(String detail) {
+        if (status != TaskMsgStatus.INIT) {
+            return false;
+        }
+        setStatus(TaskMsgStatus.FAILED);
+        setFinalReason(TaskMsgFinalReason.MANUAL_CANCELLED);
+        setErrorMessage(detail);
+        this.result = null;
+        this.output = null;
+        return true;
+    }
+
+    @SuppressWarnings("deprecation")
     public void forceFinalize(TaskMsgStatus finalStatus, TaskMsgFinalReason finalReason, String detail) {
         if (finalStatus == null || !finalStatus.isFinal()) {
             throw new IllegalArgumentException("finalStatus must be terminal");

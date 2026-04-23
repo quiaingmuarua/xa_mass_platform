@@ -51,9 +51,12 @@ For verified runtime behavior and recommended startup, use [VERIFIED_RUNBOOK.md]
 
 ## 1.2 SDK Task Contract Notes
 
-- SDK-aware task creation is exposed through both `/status/api/tasks` and `/sdk/tasks`.
-- `/status/api/tasks` remains the control-console and generic backend route; it accepts both plain task creation fields and SDK task metadata fields.
-- `/sdk/tasks` is the minimal credential-backed SDK submission route built on `AuthProvider` and `MassTaskRequest`.
+- Task creation has one HTTP route: `POST /status/api/tasks`.
+- Console/operator callers use `/status/api/tasks` through the control-plane auth/RBAC boundary.
+- SDK credential callers also use `/status/api/tasks`; `X-Mass-Api-Key` or `Authorization: Bearer ...` resolves a `TaskSubmitterContext` before task creation.
+- SDK submitter auth is a task-submission boundary, not the control-console user/RBAC system.
+- `/sdk/meta/**` remains read-only capability discovery, not a second task domain.
+- `/sdk/submitters/me` remains read-only credential introspection.
 - `MassTaskRequest.mode=SINGLE_RUN` maps to `openEnded=false`; `STREAMING` maps to `openEnded=true`.
 - `MassTaskRequest` payloads are normalized into `TaskMsg.input` as:
   - text: `{"type":"text","text":"..."}`
@@ -118,50 +121,9 @@ Behavior:
 - returns the registered `EventMetadata`
 - returns HTTP 404 when `eventCode` does not exist in the catalog
 
-## 2.6 SDK Task Submit API
+## 2.6 SDK Submitter Introspection API
 
-Base path: `/sdk/tasks`
-
-### 2.6.1 Create SDK Task
-
-- Method: `POST`
-- Path: `/sdk/tasks`
-- Status: `Implemented`
-
-Headers:
-
-- `X-Mass-Api-Key: <credential>` or `Authorization: Bearer <credential>`
-
-Contract notes:
-
-- uses `AuthProvider.authenticate(...)` to resolve a `TaskSubmitterContext`
-- accepts only SDK-style task fields: `userId`, `project`, `taskName`, `eventCode`, `mode`, `payloadType`, `sharedConfig`, `inputs`, `batchSize`, `defaultMsgMaxRetryCount`, `maxRuntimeSeconds`
-- `taskName` and `eventCode` are required
-- `project` may be omitted when the authenticated submitter has `projectScope`
-- `userId` may be omitted; resolution order is submitter `userId`, request `userId`, then submitter `principalId`
-- if submitter `projectScope` exists, request `project` must match it exactly or the call returns HTTP 403
-- if submitter `userId` exists, request `userId` must match it exactly or the call returns HTTP 403
-- `payloadType` defaults to `JSON`
-- `mode` defaults to `SINGLE_RUN`
-- `TEXT` payloads require string items; `JSON` payloads require object items
-- on success returns `taskId`, resolved `project`, resolved `userId`, and authenticated `principalId`
-
-Example:
-
-```json
-{
-  "taskName": "bot-reply",
-  "eventCode": "chatbot.reply",
-  "mode": "STREAMING",
-  "payloadType": "TEXT",
-  "inputs": ["hello"],
-  "sharedConfig": {
-    "channel": "telegram"
-  }
-}
-```
-
-### 2.6.2 Get Current SDK Submitter
+### 2.6.1 Get Current SDK Submitter
 
 - Method: `GET`
 - Path: `/sdk/submitters/me`
@@ -177,6 +139,7 @@ Contract notes:
 - returns the authenticated submitter view with `principalId`, `userId`, `projectScope`, and `attributes`
 - does not expose raw credential material
 - returns HTTP 401 when the credential is missing or invalid
+- this endpoint is not a control-console login/session API and does not participate in operator RBAC
 
 ## 3. Task API
 
@@ -212,6 +175,12 @@ Contract rules:
 - retired fields such as `targetJsonList`, `targetType`, and `extraParams` are not supported
 - when `eventCode` is present, create uses the SDK mode/payload-aware path
 - when `eventCode` is present, `project` and `eventCode` must exist in the SDK metadata catalog and the project must declare support for that event
+- SDK credential callers use this same route with `X-Mass-Api-Key` or `Authorization: Bearer ...`
+- when an SDK credential is present, `AuthProvider.authenticate(...)` resolves a `TaskSubmitterContext`
+- when an SDK submitter has `projectScope`, the request `project` may be omitted or must match that scope; mismatches return HTTP 403
+- when an SDK submitter has `userId`, the request `userId` may be omitted or must match that scope; mismatches return HTTP 403
+- when an SDK submitter has no scoped `userId`, user resolution order is request `userId`, then submitter `principalId`
+- invalid or missing SDK credentials return HTTP 401
 - `mode` defaults to `SINGLE_RUN`, or `STREAMING` when `openEnded=true` and `mode` is omitted
 - `payloadType` defaults to `JSON`
 - `defaultMsgMaxRetryCount` defaults to `3`

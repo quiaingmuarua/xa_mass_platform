@@ -11,6 +11,8 @@ import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.UserRef;
 import com.xa.mass.sdk.SdkTaskResumeResult;
 import com.xa.mass.sdk.TaskOperations;
+import com.xa.mass.sdk.auth.AuthProvider;
+import com.xa.mass.sdk.auth.TaskSubmitterContext;
 import com.xa.mass.sdk.catalog.DefaultProjectEventCatalogFactory;
 import com.xa.mass.sdk.catalog.PayloadType;
 import com.xa.mass.sdk.catalog.ProjectEventCatalog;
@@ -29,6 +31,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -53,15 +56,23 @@ public class TaskApiController {
 
     private final TaskOperations taskOperations;
     private final ProjectEventCatalog projectEventCatalog;
+    private final AuthProvider authProvider;
 
     public TaskApiController(TaskOperations taskOperations) {
-        this(taskOperations, DefaultProjectEventCatalogFactory.createDefaultRegistry());
+        this(taskOperations, DefaultProjectEventCatalogFactory.createDefaultRegistry(), null);
+    }
+
+    public TaskApiController(TaskOperations taskOperations, ProjectEventCatalog projectEventCatalog) {
+        this(taskOperations, projectEventCatalog, null);
     }
 
     @Autowired
-    public TaskApiController(TaskOperations taskOperations, ProjectEventCatalog projectEventCatalog) {
+    public TaskApiController(TaskOperations taskOperations,
+                             ProjectEventCatalog projectEventCatalog,
+                             AuthProvider authProvider) {
         this.taskOperations = taskOperations;
         this.projectEventCatalog = projectEventCatalog;
+        this.authProvider = authProvider;
     }
 
     @GetMapping("")
@@ -84,13 +95,35 @@ public class TaskApiController {
     }
 
     @PostMapping("")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> createTask(@RequestBody TaskCreateApiRequest requestBody) {
+    public ResponseEntity<ApiResponse<Map<String, Object>>> createTask(
+            @RequestHeader(value = SdkCredentialAuthSupport.API_KEY_HEADER, required = false) String apiKeyHeader,
+            @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
+            @RequestBody TaskCreateApiRequest requestBody) {
         try {
             validateKnownFields(requestBody, "task create");
+
+            TaskSubmitterContext submitter = resolveSdkSubmitter(apiKeyHeader, authorizationHeader);
+            if (submitter != null) {
+                String resolvedProject = resolveSubmitterProject(requestBody, submitter);
+                String resolvedUserId = resolveSubmitterUserId(requestBody, submitter);
+                Task task = taskOperations.createTask(toMassTaskRequest(requestBody, resolvedProject, resolvedUserId));
+                return ok(Map.of(
+                        "taskId", task.getTid(),
+                        "project", task.getProject(),
+                        "userId", task.getUser() != null ? task.getUser().getUserId() : resolvedUserId,
+                        "principalId", submitter.getPrincipalId(),
+                        "message", "Task created"
+                ));
+            }
+
             Task task = hasEventCode(requestBody)
                     ? taskOperations.createTask(toMassTaskRequest(requestBody))
                     : taskOperations.createTask(toTaskCreateRequest(requestBody));
             return ok(Map.of("taskId", task.getTid(), "message", "Task created"));
+        } catch (SdkUnauthenticatedException e) {
+            return unauthorized(e.getMessage());
+        } catch (SecurityException e) {
+            return forbidden(e.getMessage());
         } catch (Exception e) {
             return badRequest("Task create failed: " + e.getMessage());
         }
@@ -402,6 +435,14 @@ public class TaskApiController {
         return ResponseEntity.status(409).body(ApiResponse.error(409, message));
     }
 
+    private ResponseEntity<ApiResponse<Map<String, Object>>> unauthorized(String message) {
+        return ResponseEntity.status(401).body(ApiResponse.error(401, message));
+    }
+
+    private ResponseEntity<ApiResponse<Map<String, Object>>> forbidden(String message) {
+        return ResponseEntity.status(403).body(ApiResponse.error(403, message));
+    }
+
     private ResponseEntity<ApiResponse<Map<String, Object>>> notFound(String message) {
         return ResponseEntity.status(404).body(ApiResponse.error(404, message));
     }
@@ -452,14 +493,18 @@ public class TaskApiController {
     }
 
     private MassTaskRequest toMassTaskRequest(TaskCreateApiRequest requestBody) {
-        requireBusinessBindings(requestBody.getProject(), requestBody.getUserId());
+        return toMassTaskRequest(requestBody, requestBody.getProject(), requestBody.getUserId());
+    }
+
+    private MassTaskRequest toMassTaskRequest(TaskCreateApiRequest requestBody, String resolvedProject, String resolvedUserId) {
+        requireBusinessBindings(resolvedProject, resolvedUserId);
         if (requestBody.getTaskName() == null || requestBody.getTaskName().isBlank()) {
             throw new IllegalArgumentException("taskName is required");
         }
         if (requestBody.getEventCode() == null || requestBody.getEventCode().isBlank()) {
             throw new IllegalArgumentException("eventCode is required");
         }
-        validateProjectAndEvent(requestBody.getProject(), requestBody.getEventCode());
+        validateProjectAndEvent(resolvedProject, requestBody.getEventCode());
 
         TaskMode mode = requestBody.getMode() != null
                 ? requestBody.getMode()
@@ -469,8 +514,8 @@ public class TaskApiController {
                 : PayloadType.JSON;
 
         return MassTaskRequest.builder()
-                .userId(requestBody.getUserId())
-                .project(requestBody.getProject())
+                .userId(resolvedUserId)
+                .project(resolvedProject)
                 .taskName(requestBody.getTaskName())
                 .eventCode(requestBody.getEventCode())
                 .mode(mode)
@@ -548,6 +593,48 @@ public class TaskApiController {
     private void requireBusinessBindings(String project, String userId) {
         ProjectRef.require(project);
         UserRef.requireUserId(userId);
+    }
+
+    private TaskSubmitterContext resolveSdkSubmitter(String apiKeyHeader, String authorizationHeader) {
+        if (!SdkCredentialAuthSupport.hasCredentialAttempt(apiKeyHeader, authorizationHeader)) {
+            return null;
+        }
+        TaskSubmitterContext submitter =
+                SdkCredentialAuthSupport.authenticate(authProvider, apiKeyHeader, authorizationHeader);
+        if (submitter == null) {
+            throw new SdkUnauthenticatedException("Invalid or missing SDK credential");
+        }
+        return submitter;
+    }
+
+    private String resolveSubmitterProject(TaskCreateApiRequest requestBody, TaskSubmitterContext submitter) {
+        String requestedProject = SdkCredentialAuthSupport.firstNonBlank(requestBody.getProject());
+        String scopedProject = SdkCredentialAuthSupport.firstNonBlank(submitter.getProjectScope());
+        if (scopedProject != null) {
+            if (requestedProject != null && !scopedProject.equals(requestedProject)) {
+                throw new SecurityException("Submitter project scope does not allow project: " + requestedProject);
+            }
+            return scopedProject;
+        }
+        if (requestedProject != null) {
+            return requestedProject;
+        }
+        throw new IllegalArgumentException("project is required when submitter has no project scope");
+    }
+
+    private String resolveSubmitterUserId(TaskCreateApiRequest requestBody, TaskSubmitterContext submitter) {
+        String requestedUserId = SdkCredentialAuthSupport.firstNonBlank(requestBody.getUserId());
+        String scopedUserId = SdkCredentialAuthSupport.firstNonBlank(submitter.getUserId());
+        if (scopedUserId != null) {
+            if (requestedUserId != null && !scopedUserId.equals(requestedUserId)) {
+                throw new SecurityException("Submitter user scope does not allow userId: " + requestedUserId);
+            }
+            return UserRef.requireUserId(scopedUserId);
+        }
+        if (requestedUserId != null) {
+            return UserRef.requireUserId(requestedUserId);
+        }
+        return UserRef.requireUserId(submitter.getPrincipalId());
     }
 
     private boolean hasEventCode(TaskCreateApiRequest requestBody) {
@@ -650,5 +737,11 @@ public class TaskApiController {
 
     private String formatDateTime(LocalDateTime value) {
         return value == null ? "" : value.format(DATE_TIME_FORMATTER);
+    }
+
+    private static final class SdkUnauthenticatedException extends RuntimeException {
+        private SdkUnauthenticatedException(String message) {
+            super(message);
+        }
     }
 }

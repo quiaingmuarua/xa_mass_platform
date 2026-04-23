@@ -9,6 +9,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.ResponseBody;
@@ -16,6 +17,7 @@ import org.springframework.web.bind.annotation.ResponseBody;
 import java.util.Map;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -62,12 +64,35 @@ class ApiAuthInterceptorTest {
                 .andExpect(jsonPath("$.ok").value(true));
     }
 
+    @Test
+    void sdkCredentialAttemptCanReachUnifiedTaskCreateWithoutOperatorPermission() throws Exception {
+        mockMvc.perform(post("/status/api/tasks")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header(ApiAuthService.USER_MODE_HEADER, "anonymous")
+                        .header("X-Mass-Api-Key", "sdk-key")
+                        .content("""
+                                {
+                                  "taskName":"sdk-task",
+                                  "eventCode":"crawler.fetch-page",
+                                  "inputs":[{"url":"https://example.test"}]
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.ok").value(true));
+    }
+
     @Controller
     static class ProtectedApiController {
         @GetMapping("/status/api/tasks")
         @ResponseBody
         public Map<String, Object> tasks() {
             return Map.of("ok", true);
+        }
+
+        @PostMapping("/status/api/tasks")
+        @ResponseBody
+        public Map<String, Object> createTask(@RequestBody Map<String, Object> body) {
+            return Map.of("ok", true, "body", body);
         }
 
         @PutMapping("/status/api/workers/{workerId}/supported-projects")

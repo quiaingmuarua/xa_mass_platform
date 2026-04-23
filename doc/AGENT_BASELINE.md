@@ -118,6 +118,9 @@ Interpretation rules:
 - `userId`
 - `project`
 - `taskName`
+- `eventCode`
+- `mode`
+- `payloadType`
 - `sharedConfig`
 - `inputs`
 - `batchSize`
@@ -131,6 +134,10 @@ Behavior locked in the mainline:
 - `inputs` must contain at least one materialized work item
 - unsupported `project` codes are rejected
 - unknown JSON fields such as retired `targetJsonList`, `targetType`, and `extraParams` are rejected
+- `POST /status/api/tasks` is the only task create HTTP route; do not add a separate SDK task-create route
+- SDK credential callers use the same route with `X-Mass-Api-Key` or `Authorization: Bearer ...`
+- SDK submitter credentials resolve a minimal `TaskSubmitterContext`; they are not control-console users and must not be merged into operator RBAC
+- `eventCode` switches create into the SDK mode/payload-aware path and persists `_sdk` metadata in `Task.sharedConfig`
 - `batchSize` is normalized to a minimum of `1` and enforced as a per-worker hard cap for each dispatch round
 - `defaultMsgMaxRetryCount` defaults to `3`
 - `openEnded=true` keeps the task open for runtime item append until sealed

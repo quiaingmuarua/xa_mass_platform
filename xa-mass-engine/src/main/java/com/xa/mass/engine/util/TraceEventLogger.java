@@ -348,6 +348,24 @@ public final class TraceEventLogger {
         ));
     }
 
+    public static void callbackRejectedInvalidState(TaskMsg taskMsg, String reason) {
+        if (taskMsg == null) {
+            return;
+        }
+        emit("CALLBACK_REJECTED_INVALID_STATE", fields(
+                "entityType", "TaskMsg",
+                "entityId", taskMsg.getMsgId(),
+                "taskId", taskMsg.getTaskId(),
+                "msgId", taskMsg.getMsgId(),
+                "taskMsgStatus", enumName(taskMsg.getStatus()),
+                "latestAttemptWorkerId", taskMsg.getLatestAttemptWorkerId(),
+                "latestAttemptWorkerContextId", taskMsg.getLatestAttemptWorkerContextId(),
+                "source", "TaskManager",
+                "reason", reason,
+                "result", "REJECTED"
+        ));
+    }
+
     public static void taskMessageAttemptClosed(Task task,
                                                 TaskMsg taskMsg,
                                                 TaskMsgAttempt attempt,

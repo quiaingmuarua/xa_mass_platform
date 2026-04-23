@@ -3,17 +3,20 @@ package com.xa.mass.api.internal;
 import com.xa.mass.sdk.auth.AuthProvider;
 import com.xa.mass.sdk.auth.TaskSubmitterContext;
 
-final class SdkCredentialAuthSupport {
+public final class SdkCredentialAuthSupport {
 
-    static final String API_KEY_HEADER = "X-Mass-Api-Key";
+    public static final String API_KEY_HEADER = "X-Mass-Api-Key";
     private static final String BEARER_PREFIX = "Bearer ";
 
     private SdkCredentialAuthSupport() {
     }
 
-    static TaskSubmitterContext authenticate(AuthProvider authProvider,
-                                             String apiKeyHeader,
-                                             String authorizationHeader) {
+    public static TaskSubmitterContext authenticate(AuthProvider authProvider,
+                                                    String apiKeyHeader,
+                                                    String authorizationHeader) {
+        if (authProvider == null) {
+            return null;
+        }
         String credential = firstNonBlank(apiKeyHeader);
         if (credential == null && authorizationHeader != null && authorizationHeader.startsWith(BEARER_PREFIX)) {
             credential = firstNonBlank(authorizationHeader.substring(BEARER_PREFIX.length()));
@@ -24,7 +27,12 @@ final class SdkCredentialAuthSupport {
         return authProvider.authenticate(credential);
     }
 
-    static String firstNonBlank(String value) {
+    public static boolean hasCredentialAttempt(String apiKeyHeader, String authorizationHeader) {
+        return firstNonBlank(apiKeyHeader) != null
+                || (authorizationHeader != null && authorizationHeader.startsWith(BEARER_PREFIX));
+    }
+
+    public static String firstNonBlank(String value) {
         if (value == null || value.isBlank()) {
             return null;
         }

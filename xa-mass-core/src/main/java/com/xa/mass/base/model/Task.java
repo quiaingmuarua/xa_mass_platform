@@ -337,6 +337,18 @@ public class Task {
         return false;
     }
 
+    public synchronized boolean transitionToBlocked(TaskHoldReason holdReason) {
+        if (holdReason == null) {
+            throw new IllegalArgumentException("holdReason is required for BLOCKED task state");
+        }
+        if (status.canTransitionTo(TaskStatus.BLOCKED)) {
+            setStatus(TaskStatus.BLOCKED);
+            this.holdReason = holdReason;
+            return true;
+        }
+        return false;
+    }
+
     public synchronized boolean transitionTo(TaskStatus targetStatus, TaskTerminalReason terminalReason) {
         if (!targetStatus.isFinal()) {
             throw new IllegalArgumentException("Terminal reason is only valid for final task states");
