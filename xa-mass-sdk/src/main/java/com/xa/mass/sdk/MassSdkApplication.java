@@ -38,7 +38,9 @@ import com.xa.mass.sdk.catalog.EventMetadata;
 import com.xa.mass.sdk.catalog.ProjectEventCatalog;
 import com.xa.mass.sdk.catalog.ProjectEventCatalogRegistry;
 import com.xa.mass.sdk.catalog.ProjectMetadata;
+import com.xa.mass.sdk.auth.AuthProvider;
 import com.xa.mass.sdk.auth.InMemorySubmitterRegistry;
+import com.xa.mass.sdk.auth.SubmitterMetadata;
 import com.xa.mass.sdk.auth.SubmitterRegistration;
 import com.xa.mass.sdk.auth.TaskSubmitterContext;
 import com.xa.mass.sdk.model.MassTaskCreateRequest;
@@ -76,7 +78,7 @@ import java.util.UUID;
  * lower-level starter/runtime types remain advanced integration seams.
  */
 public final class MassSdkApplication implements MassRuntimeControl, TaskOperations, WorkerOperations,
-        ResourceOperations, CatalogOperations,
+        ResourceOperations, CatalogOperations, AuthProvider,
         RuleOperations, TransportOperations, DebugOperations {
 
     private static final Gson GSON = new Gson();
@@ -364,18 +366,23 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
     }
 
     @Override
-    public List<SubmitterRegistration> listSubmitters() {
+    public List<SubmitterMetadata> listSubmitters() {
         return submitterRegistry.listSubmitters();
     }
 
     @Override
-    public SubmitterRegistration getSubmitter(String principalId) {
+    public SubmitterMetadata getSubmitter(String principalId) {
         return submitterRegistry.getSubmitter(principalId);
     }
 
     @Override
     public TaskSubmitterContext authenticateSubmitter(String credential) {
         return submitterRegistry.authenticate(credential);
+    }
+
+    @Override
+    public TaskSubmitterContext authenticate(String credential) {
+        return authenticateSubmitter(credential);
     }
 
     private void registerEnabledCatalogProjectsIntoCore() {

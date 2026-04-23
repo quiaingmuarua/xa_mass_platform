@@ -6,24 +6,22 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * SDK-facing submitter registration contract.
+ * Public read model for a registered submitter.
  *
- * <p>This is the minimal control-plane resource for API-key or service-account
- * style task submission. It is intentionally lightweight so security policies
- * can evolve without changing the SDK-facing task model.
+ * <p>Credentials are accepted only on {@link SubmitterRegistration}. Query
+ * operations should expose this metadata shape so SDK callers do not
+ * accidentally leak API keys or service-account tokens.
  */
-public final class SubmitterRegistration {
+public final class SubmitterMetadata {
 
     private final String principalId;
-    private final String credential;
     private final String userId;
     private final String projectScope;
     private final boolean enabled;
     private final Map<String, String> attributes;
 
-    private SubmitterRegistration(Builder builder) {
+    private SubmitterMetadata(Builder builder) {
         this.principalId = requireNonBlank(builder.principalId, "principalId");
-        this.credential = requireNonBlank(builder.credential, "credential");
         this.userId = blankToNull(builder.userId);
         this.projectScope = blankToNull(builder.projectScope);
         this.enabled = builder.enabled;
@@ -34,12 +32,19 @@ public final class SubmitterRegistration {
         return new Builder();
     }
 
-    public String getPrincipalId() {
-        return principalId;
+    public static SubmitterMetadata from(SubmitterRegistration registration) {
+        Objects.requireNonNull(registration, "registration");
+        return builder()
+                .principalId(registration.getPrincipalId())
+                .userId(registration.getUserId())
+                .projectScope(registration.getProjectScope())
+                .enabled(registration.isEnabled())
+                .attributes(registration.getAttributes())
+                .build();
     }
 
-    public String getCredential() {
-        return credential;
+    public String getPrincipalId() {
+        return principalId;
     }
 
     public String getUserId() {
@@ -58,21 +63,12 @@ public final class SubmitterRegistration {
         return attributes;
     }
 
-    public TaskSubmitterContext toSubmitterContext() {
-        return new TaskSubmitterContext(principalId, userId, projectScope, attributes);
-    }
-
-    public SubmitterMetadata toMetadata() {
-        return SubmitterMetadata.from(this);
-    }
-
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
-        if (!(o instanceof SubmitterRegistration that)) return false;
+        if (!(o instanceof SubmitterMetadata that)) return false;
         return enabled == that.enabled
                 && Objects.equals(principalId, that.principalId)
-                && Objects.equals(credential, that.credential)
                 && Objects.equals(userId, that.userId)
                 && Objects.equals(projectScope, that.projectScope)
                 && Objects.equals(attributes, that.attributes);
@@ -80,12 +76,12 @@ public final class SubmitterRegistration {
 
     @Override
     public int hashCode() {
-        return Objects.hash(principalId, credential, userId, projectScope, enabled, attributes);
+        return Objects.hash(principalId, userId, projectScope, enabled, attributes);
     }
 
     @Override
     public String toString() {
-        return "SubmitterRegistration{" +
+        return "SubmitterMetadata{" +
                 "principalId='" + principalId + '\'' +
                 ", userId='" + userId + '\'' +
                 ", projectScope='" + projectScope + '\'' +
@@ -125,7 +121,6 @@ public final class SubmitterRegistration {
 
     public static final class Builder {
         private String principalId;
-        private String credential;
         private String userId;
         private String projectScope;
         private boolean enabled = true;
@@ -136,11 +131,6 @@ public final class SubmitterRegistration {
 
         public Builder principalId(String principalId) {
             this.principalId = principalId;
-            return this;
-        }
-
-        public Builder credential(String credential) {
-            this.credential = credential;
             return this;
         }
 
@@ -164,8 +154,8 @@ public final class SubmitterRegistration {
             return this;
         }
 
-        public SubmitterRegistration build() {
-            return new SubmitterRegistration(this);
+        public SubmitterMetadata build() {
+            return new SubmitterMetadata(this);
         }
     }
 }

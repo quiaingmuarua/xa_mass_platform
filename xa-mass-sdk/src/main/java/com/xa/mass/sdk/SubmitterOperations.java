@@ -1,6 +1,7 @@
 package com.xa.mass.sdk;
 
 import com.xa.mass.sdk.auth.SubmitterRegistration;
+import com.xa.mass.sdk.auth.SubmitterMetadata;
 import com.xa.mass.sdk.auth.TaskSubmitterContext;
 
 import java.util.List;
@@ -25,9 +26,9 @@ public interface SubmitterOperations {
         submitterRegistrations.forEach(this::registerSubmitter);
     }
 
-    List<SubmitterRegistration> listSubmitters();
+    List<SubmitterMetadata> listSubmitters();
 
-    SubmitterRegistration getSubmitter(String principalId);
+    SubmitterMetadata getSubmitter(String principalId);
 
     default boolean hasSubmitter(String principalId) {
         return getSubmitter(principalId) != null;

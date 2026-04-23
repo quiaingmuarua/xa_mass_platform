@@ -70,6 +70,8 @@ Interpretation rules:
 - SDK-first worker resource creation is the preferred path: use `WorkerRegistration` / `WorkerContextRegistration` through `MassSdkApplication.registerWorker(...)` and `registerWorkerContext(...)`; registration does not imply online state
 - SDK project/event metadata is registered through `MassSdkApplication.registerProject(...)` and `registerEvent(...)`; enabled project registration also extends the core runtime project registry used by task and worker-context validation
 - `ResourceOperations` is the preferred SDK project/event control-plane interface; `CatalogOperations` is only a compatibility alias
+- SDK submitter registration is currently a minimal in-memory credential binding for task submission identity; do not treat it as a complete user/security subsystem
+- SDK submitter list/get operations expose submitter metadata only; raw credentials are accepted on registration and consumed by authentication, not returned as resource read models
 
 ## 4. Architectural Guardrails
 

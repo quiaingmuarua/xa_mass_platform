@@ -17,6 +17,8 @@ import com.xa.mass.engine.rules.RuleType;
 import com.xa.mass.sdk.worker.PollingWorkerSession;
 import com.xa.mass.engine.strategy.SimpleTaskScheduler;
 import com.xa.mass.gateway.queue.Envelope;
+import com.xa.mass.sdk.auth.AuthProvider;
+import com.xa.mass.sdk.auth.SubmitterMetadata;
 import com.xa.mass.sdk.catalog.EventMetadata;
 import com.xa.mass.sdk.catalog.PayloadType;
 import com.xa.mass.sdk.catalog.ProjectMetadata;
@@ -408,15 +410,34 @@ class MassSdkTest {
 
         app.registerSubmitter(submitterRegistration);
 
+        Assertions.assertTrue(app instanceof AuthProvider);
         Assertions.assertTrue(app.hasSubmitter("telegram-bot"));
-        Assertions.assertEquals(List.of(submitterRegistration), app.listSubmitters());
-        Assertions.assertEquals(submitterRegistration, app.getSubmitter("telegram-bot"));
+        SubmitterMetadata submitterMetadata = SubmitterMetadata.from(submitterRegistration);
+        Assertions.assertEquals(List.of(submitterMetadata), app.listSubmitters());
+        Assertions.assertEquals(submitterMetadata, app.getSubmitter("telegram-bot"));
         TaskSubmitterContext submitterContext = app.authenticateSubmitter("test-api-key");
         Assertions.assertNotNull(submitterContext);
         Assertions.assertEquals("telegram-bot", submitterContext.getPrincipalId());
         Assertions.assertEquals("bot-user", submitterContext.getUserId());
         Assertions.assertEquals("telegramApp", submitterContext.getProjectScope());
         Assertions.assertEquals(Map.of("channel", "telegram"), submitterContext.getAttributes());
+        Assertions.assertEquals(submitterContext.getPrincipalId(), app.authenticate("test-api-key").getPrincipalId());
+    }
+
+    @Test
+    void submitterQueryApisDoNotExposeCredential() {
+        MassSdkApplication app = new MassSdkApplication(mock(MassApplication.class));
+        app.registerSubmitter(SubmitterRegistration.builder()
+                .principalId("telegram-bot")
+                .credential("test-api-key")
+                .projectScope("telegramApp")
+                .build());
+
+        SubmitterMetadata metadata = app.getSubmitter("telegram-bot");
+
+        Assertions.assertNotNull(metadata);
+        Assertions.assertEquals("telegram-bot", metadata.getPrincipalId());
+        Assertions.assertFalse(metadata.toString().contains("test-api-key"));
     }
 
     @Test
@@ -430,6 +451,21 @@ class MassSdkTest {
                 .build());
 
         Assertions.assertNull(app.authenticateSubmitter("disabled-key"));
+    }
+
+    @Test
+    void duplicateCredentialAcrossDifferentSubmittersIsRejected() {
+        MassSdkApplication app = new MassSdkApplication(mock(MassApplication.class));
+        app.registerSubmitter(SubmitterRegistration.builder()
+                .principalId("telegram-bot")
+                .credential("shared-key")
+                .build());
+
+        Assertions.assertThrows(IllegalArgumentException.class,
+                () -> app.registerSubmitter(SubmitterRegistration.builder()
+                        .principalId("sms-bot")
+                        .credential("shared-key")
+                        .build()));
     }
 
     @Test

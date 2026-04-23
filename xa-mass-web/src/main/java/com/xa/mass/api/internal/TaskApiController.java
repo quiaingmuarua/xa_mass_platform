@@ -21,6 +21,7 @@ import com.xa.mass.sdk.model.MassInput;
 import com.xa.mass.sdk.model.MassTaskCreateRequest;
 import com.xa.mass.sdk.model.MassTaskRequest;
 import com.xa.mass.sdk.model.TextInput;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -57,6 +58,7 @@ public class TaskApiController {
         this(taskOperations, DefaultProjectEventCatalogFactory.createDefaultRegistry());
     }
 
+    @Autowired
     public TaskApiController(TaskOperations taskOperations, ProjectEventCatalog projectEventCatalog) {
         this.taskOperations = taskOperations;
         this.projectEventCatalog = projectEventCatalog;
@@ -591,7 +593,7 @@ public class TaskApiController {
             return new TextInput(text).toTaskMsgInput();
         }
         if (rawInput instanceof Map<?, ?> map) {
-            return new JsonInput(stringObjectMap(map)).toTaskMsgInput();
+            return stringObjectMap(map);
         }
         throw new IllegalArgumentException("Unsupported input item type: " + rawInput);
     }

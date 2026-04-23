@@ -16,6 +16,10 @@ public final class InMemorySubmitterRegistry implements AuthProvider {
 
     public synchronized void register(SubmitterRegistration submitterRegistration) {
         SubmitterRegistration registration = Objects.requireNonNull(submitterRegistration, "submitterRegistration");
+        SubmitterRegistration credentialOwner = byCredential.get(registration.getCredential());
+        if (credentialOwner != null && !credentialOwner.getPrincipalId().equals(registration.getPrincipalId())) {
+            throw new IllegalArgumentException("credential is already assigned to another submitter");
+        }
         SubmitterRegistration previous = byPrincipalId.put(registration.getPrincipalId(), registration);
         if (previous != null) {
             byCredential.remove(previous.getCredential());
@@ -23,14 +27,16 @@ public final class InMemorySubmitterRegistry implements AuthProvider {
         byCredential.put(registration.getCredential(), registration);
     }
 
-    public synchronized List<SubmitterRegistration> listSubmitters() {
+    public synchronized List<SubmitterMetadata> listSubmitters() {
         return byPrincipalId.values().stream()
                 .sorted(Comparator.comparing(SubmitterRegistration::getPrincipalId, Comparator.nullsLast(String::compareTo)))
+                .map(SubmitterRegistration::toMetadata)
                 .toList();
     }
 
-    public synchronized SubmitterRegistration getSubmitter(String principalId) {
-        return byPrincipalId.get(principalId);
+    public synchronized SubmitterMetadata getSubmitter(String principalId) {
+        SubmitterRegistration registration = byPrincipalId.get(principalId);
+        return registration != null ? registration.toMetadata() : null;
     }
 
     @Override
