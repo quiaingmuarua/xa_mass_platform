@@ -109,7 +109,7 @@ Behavior:
 
 Behavior:
 
-- returns the full `EventMetadata` list for the project's declared `eventCodes`
+- returns the full `SdkEventDefinition` list for the project's declared `eventCodes`
 - returns HTTP 404 when `projectCode` does not exist in the catalog
 
 ### 2.4 List SDK Events
@@ -120,7 +120,7 @@ Behavior:
 
 Response notes:
 
-- returns the registered `EventMetadata` list
+- returns the registered `SdkEventDefinition` list
 - each event includes `code`, `name`, `description`, `payloadTypes`, `taskModes`, and `enabled`
 - `taskModes=[]` means the event is a direct runtime definition, not a task-create event
 
@@ -132,7 +132,7 @@ Response notes:
 
 Behavior:
 
-- returns the registered `EventMetadata`
+- returns the registered `SdkEventDefinition`
 - `taskModes=[]` means the event is direct runtime discovery/dispatch only
 - returns HTTP 404 when `eventCode` does not exist in the catalog
 

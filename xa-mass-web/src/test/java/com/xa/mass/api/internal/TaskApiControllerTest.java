@@ -9,6 +9,7 @@ import com.xa.mass.sdk.TaskOperations;
 import com.xa.mass.sdk.auth.AuthProvider;
 import com.xa.mass.sdk.auth.TaskSubmitterContext;
 import com.xa.mass.sdk.catalog.*;
+import com.xa.mass.sdk.event.SdkEventDefinition;
 import com.xa.mass.sdk.model.MassTaskCreateRequest;
 import com.xa.mass.sdk.model.MassTaskRequest;
 import org.junit.jupiter.api.BeforeEach;
@@ -564,14 +565,14 @@ class TaskApiControllerTest {
 
     private ProjectEventCatalog createTaskCatalog() {
         ProjectEventCatalogRegistry catalog = DefaultProjectEventCatalogFactory.createDefaultRegistry();
-        catalog.registerEvent(EventMetadata.builder()
+        catalog.registerEventDefinition(SdkEventDefinition.builder()
                 .code("crawler.fetch-page")
                 .name("Crawler Fetch Page")
                 .description("Example crawler fetch task event.")
                 .payloadTypes(List.of(PayloadType.JSON))
                 .taskModes(List.of(TaskMode.SINGLE_RUN, TaskMode.STREAMING))
                 .build());
-        catalog.registerEvent(EventMetadata.builder()
+        catalog.registerEventDefinition(SdkEventDefinition.builder()
                 .code("chatbot.reply")
                 .name("Chatbot Reply")
                 .description("Example chatbot reply task event.")

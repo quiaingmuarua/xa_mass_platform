@@ -20,7 +20,6 @@ import com.xa.mass.sdk.auth.AuthProvider;
 import com.xa.mass.sdk.auth.SubmitterMetadata;
 import com.xa.mass.sdk.auth.SubmitterRegistration;
 import com.xa.mass.sdk.auth.TaskSubmitterContext;
-import com.xa.mass.sdk.catalog.EventMetadata;
 import com.xa.mass.sdk.catalog.ProjectEventCatalog;
 import com.xa.mass.sdk.catalog.PayloadType;
 import com.xa.mass.sdk.catalog.ProjectMetadata;
@@ -364,13 +363,14 @@ class MassSdkTest {
     @Test
     void resourceOperationsAllowSdkLevelProjectAndEventRegistrationWithoutRuntimeStart() {
         MassSdkApplication app = new MassSdkApplication(mock(MassApplication.class));
-        EventMetadata eventMetadata = EventMetadata.builder()
+        SdkEventDefinition eventDefinition = SdkEventDefinition.builder()
                 .code("bot.command")
                 .name("Bot Command")
                 .description("Handle a telegram-style bot command")
                 .payloadTypes(List.of(PayloadType.TEXT, PayloadType.JSON))
                 .taskModes(List.of(TaskMode.SINGLE_RUN, TaskMode.STREAMING))
                 .defaultRoutingCode("bot")
+                .handler((request, principal) -> EventResponse.success(Map.of("accepted", true), request.getRequestId()))
                 .build();
         ProjectMetadata projectMetadata = ProjectMetadata.builder()
                 .code("botApp")
@@ -379,11 +379,13 @@ class MassSdkTest {
                 .eventCodes(List.of("bot.command"))
                 .build();
 
-        app.registerEvent(eventMetadata);
+        app.registerEventDefinition(eventDefinition);
         app.registerProject(projectMetadata);
 
         Assertions.assertTrue(app instanceof ResourceOperations);
-        Assertions.assertEquals(eventMetadata, app.getEvent("bot.command"));
+        Assertions.assertNotNull(app.getEvent("bot.command"));
+        Assertions.assertEquals("bot.command", app.getEvent("bot.command").getCode());
+        Assertions.assertEquals("Bot Command", app.getEvent("bot.command").getName());
         Assertions.assertEquals(projectMetadata, app.getProject("botApp"));
         Assertions.assertTrue(app.hasEvent("bot.command"));
         Assertions.assertTrue(app.hasProject("botApp"));
@@ -391,7 +393,11 @@ class MassSdkTest {
         Assertions.assertFalse(app.projectSupportsEvent("botApp", "crawler.fetch-page"));
         Assertions.assertTrue(app.listProjects().stream().anyMatch(project -> "demoApp".equals(project.getCode())));
         Assertions.assertTrue(app.listEvents().stream().anyMatch(event -> PlatformEventCodes.META_EVENTS_LIST.equals(event.getCode())));
-        Assertions.assertEquals(List.of(eventMetadata), app.getEventsForProject("botApp"));
+        List<SdkEventDefinition> projectEvents = app.getEventsForProject("botApp");
+        Assertions.assertEquals(1, projectEvents.size());
+        Assertions.assertEquals("bot.command", projectEvents.get(0).getCode());
+        Assertions.assertEquals("Bot Command", projectEvents.get(0).getName());
+        Assertions.assertEquals(List.of("botApp"), projectEvents.get(0).getProjectCodes());
     }
 
     @Test
@@ -404,13 +410,11 @@ class MassSdkTest {
                 .eventCodes(List.of("bot.command"))
                 .build());
         app.registerEventDefinition(SdkEventDefinition.builder()
-                .metadata(EventMetadata.builder()
-                        .code("bot.command")
-                        .name("Bot Command")
-                        .description("handle a bot command directly")
-                        .payloadTypes(List.of(PayloadType.JSON))
-                        .taskModes(List.of(TaskMode.SINGLE_RUN))
-                        .build())
+                .code("bot.command")
+                .name("Bot Command")
+                .description("handle a bot command directly")
+                .payloadTypes(List.of(PayloadType.JSON))
+                .taskModes(List.of(TaskMode.SINGLE_RUN))
                 .projectCodes(List.of("botApp"))
                 .handler((request, principal) -> EventResponse.success(
                         Map.of(
@@ -440,12 +444,12 @@ class MassSdkTest {
         assertEquals("bot.command", ((Map<?, ?>) response.getData()).get("event"));
         assertTrue(app.listEvents().stream().anyMatch(event -> "bot.command".equals(event.getCode())));
         assertEquals(List.of("bot.command"),
-                app.getEventsForProject("botApp").stream().map(EventMetadata::getCode).toList());
+                app.getEventsForProject("botApp").stream().map(SdkEventDefinition::getCode).toList());
 
         ProjectEventCatalog catalog = app.projectEventCatalog();
         assertTrue(catalog.listEvents().stream().anyMatch(event -> "bot.command".equals(event.getCode())));
         assertEquals(List.of("bot.command"),
-                catalog.getEventsForProject("botApp").stream().map(EventMetadata::getCode).toList());
+                catalog.getEventsForProject("botApp").stream().map(SdkEventDefinition::getCode).toList());
     }
 
     @Test
@@ -722,7 +726,7 @@ class MassSdkTest {
 
         try {
             app.start();
-            app.registerEvent(EventMetadata.builder()
+            app.registerEventDefinition(SdkEventDefinition.builder()
                     .code("bot.command")
                     .name("Bot Command")
                     .description("custom bot command")
@@ -750,21 +754,21 @@ class MassSdkTest {
     }
 
     private static void registerExampleTaskCatalog(MassSdkApplication app) {
-        app.registerEvent(EventMetadata.builder()
+        app.registerEventDefinition(SdkEventDefinition.builder()
                 .code("crawler.fetch-page")
                 .name("Crawler Fetch Page")
                 .description("Example crawler fetch task event.")
                 .payloadTypes(List.of(PayloadType.JSON))
                 .taskModes(List.of(TaskMode.SINGLE_RUN, TaskMode.STREAMING))
                 .build());
-        app.registerEvent(EventMetadata.builder()
+        app.registerEventDefinition(SdkEventDefinition.builder()
                 .code("sms.acquire-number")
                 .name("SMS Acquire Number")
                 .description("Example SMS acquire number task event.")
                 .payloadTypes(List.of(PayloadType.JSON))
                 .taskModes(List.of(TaskMode.SINGLE_RUN))
                 .build());
-        app.registerEvent(EventMetadata.builder()
+        app.registerEventDefinition(SdkEventDefinition.builder()
                 .code("chatbot.reply")
                 .name("Chatbot Reply")
                 .description("Example chatbot reply task event.")

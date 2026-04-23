@@ -1,5 +1,8 @@
 package com.xa.mass.transport.model;
 
+import com.xa.mass.base.model.Task;
+import com.xa.mass.base.model.TaskMsg;
+
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -51,6 +54,22 @@ public final class TaskDispatchItem {
 
     public String getMsgId() {
         return msgId;
+    }
+
+    public static TaskDispatchItem from(Task task, TaskMsg taskMsg) {
+        return new TaskDispatchItem(
+                task.getTid(),
+                taskMsg.getMsgId(),
+                task.getTaskName(),
+                task.getProject(),
+                task.getUser() != null ? task.getUser().getUserId() : null,
+                taskMsg.getRetryCount(),
+                taskMsg.getLatestAttemptWorkerId(),
+                taskMsg.getLatestAttemptWorkerContextId(),
+                taskMsg.getLatestAttemptBatchId(),
+                taskMsg.getInput(),
+                task.getSharedConfig()
+        );
     }
 
     public String getTaskName() {

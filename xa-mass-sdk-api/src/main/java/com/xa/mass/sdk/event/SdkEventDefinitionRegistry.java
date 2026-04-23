@@ -1,7 +1,5 @@
 package com.xa.mass.sdk.event;
 
-import com.xa.mass.sdk.catalog.EventMetadata;
-
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -34,18 +32,13 @@ public final class SdkEventDefinitionRegistry {
                 .toList();
     }
 
-    public synchronized List<EventMetadata> listMetadata() {
-        return list().stream().map(SdkEventDefinition::getMetadata).toList();
-    }
-
-    public synchronized List<EventMetadata> listMetadataForProject(String projectCode) {
+    public synchronized List<SdkEventDefinition> listForProject(String projectCode) {
         if (projectCode == null || projectCode.isBlank()) {
             return List.of();
         }
         String normalizedProjectCode = projectCode.trim();
         return list().stream()
                 .filter(definition -> definition.getProjectCodes().contains(normalizedProjectCode))
-                .map(SdkEventDefinition::getMetadata)
                 .toList();
     }
 }

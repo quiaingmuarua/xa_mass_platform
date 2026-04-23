@@ -534,13 +534,13 @@
 <script setup lang="ts">
 import {computed, onMounted, ref, watch} from 'vue'
 import {useRouter} from 'vue-router'
-import {listEventCapabilities, listEventMetadata, listProjectMetadata} from '@/api/metadata'
+import {listEventCapabilities, listEventDefinitions, listProjectMetadata} from '@/api/metadata'
 import {getCurrentSdkSubmitter} from '@/api/sdk-submitter'
 import {listWorkers} from '@/api/workers'
 import PageEmptyState from '@/components/PageEmptyState.vue'
 import PageErrorState from '@/components/PageErrorState.vue'
 import PageSectionSkeleton from '@/components/PageSectionSkeleton.vue'
-import type {EventCapability, EventInvocationModel, EventMetadata, ProjectMetadata} from '@/types/metadata'
+import type {EventCapability, EventInvocationModel, ProjectMetadata, SdkEventDefinition} from '@/types/metadata'
 import type {SdkSubmitterSnapshot} from '@/types/sdk-submitter'
 import type {WorkerListItem} from '@/types/workers'
 import {toErrorMessage} from '@/utils/errors'
@@ -550,7 +550,7 @@ const ALL_PROJECTS = 'ALL'
 const TAG_LIMIT = 4
 
 interface ProjectRow extends ProjectMetadata {
-  resolvedEvents: EventMetadata[]
+  resolvedEvents: SdkEventDefinition[]
   onlineWorkerIds: string[]
 }
 
@@ -559,7 +559,7 @@ interface WorkerDiscoveryRow extends WorkerListItem {
   visibleSupportedEventCodes: string[]
 }
 
-interface EventRow extends EventMetadata {
+interface EventRow extends SdkEventDefinition {
   invocationModel: EventInvocationModel
   projectCodes: string[]
   workerIds: string[]
@@ -574,7 +574,7 @@ const router = useRouter()
 const loading = ref(false)
 const errorMessage = ref('')
 const projects = ref<ProjectMetadata[]>([])
-const events = ref<EventMetadata[]>([])
+const events = ref<SdkEventDefinition[]>([])
 const eventCapabilities = ref<EventCapability[]>([])
 const workers = ref<WorkerListItem[]>([])
 const sdkSubmitterSnapshot = ref<SdkSubmitterSnapshot>({
@@ -594,8 +594,8 @@ const projectByCode = computed<Record<string, ProjectMetadata>>(() =>
     return acc
   }, {}),
 )
-const eventByCode = computed<Record<string, EventMetadata>>(() =>
-  events.value.reduce<Record<string, EventMetadata>>((acc, event) => {
+const eventByCode = computed<Record<string, SdkEventDefinition>>(() =>
+  events.value.reduce<Record<string, SdkEventDefinition>>((acc, event) => {
     acc[event.code] = event
     return acc
   }, {}),
@@ -648,7 +648,7 @@ const projectRows = computed<ProjectRow[]>(() =>
   displayedProjects.value.map((project) => {
     const resolvedEvents = project.eventCodes
       .map((eventCode) => eventByCode.value[eventCode])
-      .filter((event): event is EventMetadata => Boolean(event))
+      .filter((event): event is SdkEventDefinition => Boolean(event))
     const onlineWorkerIds = uniqueStrings(
       project.eventCodes.flatMap(
         (eventCode) => capabilityByEvent.value[eventCode]?.onlineWorkerIds ?? [],
@@ -896,7 +896,7 @@ async function loadDiscovery(): Promise<void> {
     ] =
       await Promise.all([
         listProjectMetadata(),
-        listEventMetadata(),
+        listEventDefinitions(),
         listEventCapabilities(),
         listWorkers(),
         getCurrentSdkSubmitter(),

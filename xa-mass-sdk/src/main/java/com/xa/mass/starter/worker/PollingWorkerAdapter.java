@@ -129,18 +129,6 @@ public class PollingWorkerAdapter implements WorkerAdapter, TaskDispatchChannel,
     }
 
     private TaskDispatchItem toDispatchItem(Task task, TaskMsg taskMsg) {
-        return new TaskDispatchItem(
-                task.getTid(),
-                taskMsg.getMsgId(),
-                task.getTaskName(),
-                task.getProject(),
-                task.getUser() != null ? task.getUser().getUserId() : null,
-                taskMsg.getRetryCount(),
-                taskMsg.getLatestAttemptWorkerId(),
-                taskMsg.getLatestAttemptWorkerContextId(),
-                taskMsg.getLatestAttemptBatchId(),
-                taskMsg.getInput(),
-                task.getSharedConfig()
-        );
+        return TaskDispatchItem.from(task, taskMsg);
     }
 }

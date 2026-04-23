@@ -4,6 +4,8 @@ import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.sdk.WorkerOperations;
 import com.xa.mass.sdk.catalog.*;
+import com.xa.mass.sdk.event.EventResponse;
+import com.xa.mass.sdk.event.SdkEventDefinition;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.web.servlet.MockMvc;
@@ -24,26 +26,27 @@ class SdkMetadataControllerTest {
     @BeforeEach
     void setUp() {
         ProjectEventCatalogRegistry catalog = DefaultProjectEventCatalogFactory.createDefaultRegistry();
-        catalog.registerEvent(EventMetadata.builder()
+        catalog.registerEventDefinition(SdkEventDefinition.builder()
                 .code("crawler.fetch-page")
                 .name("Crawler Fetch Page")
                 .description("Example crawler fetch task event.")
                 .payloadTypes(java.util.List.of(PayloadType.JSON))
                 .taskModes(java.util.List.of(TaskMode.SINGLE_RUN, TaskMode.STREAMING))
                 .build());
-        catalog.registerEvent(EventMetadata.builder()
+        catalog.registerEventDefinition(SdkEventDefinition.builder()
                 .code("chatbot.reply")
                 .name("Chatbot Reply")
                 .description("Example chatbot reply task event.")
                 .payloadTypes(java.util.List.of(PayloadType.TEXT, PayloadType.JSON))
                 .taskModes(java.util.List.of(TaskMode.SINGLE_RUN, TaskMode.STREAMING))
                 .build());
-        catalog.registerEvent(EventMetadata.builder()
+        catalog.registerEventDefinition(SdkEventDefinition.builder()
                 .code("sms.wait-code")
                 .name("SMS Wait Code")
                 .description("Example sms wait-code task event.")
                 .payloadTypes(java.util.List.of(PayloadType.JSON))
                 .taskModes(java.util.List.of())
+                .handler((request, principal) -> EventResponse.success(java.util.Map.of(), request.getRequestId()))
                 .build());
         catalog.registerProject(ProjectMetadata.builder()
                 .code("demoApp")
@@ -68,7 +71,7 @@ class SdkMetadataControllerTest {
     }
 
     @Test
-    void projectEventsReturnResolvedEventMetadata() throws Exception {
+    void projectEventsReturnResolvedSdkEventDefinitions() throws Exception {
         mockMvc.perform(get("/sdk/meta/projects/demoApp/events"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
@@ -77,7 +80,7 @@ class SdkMetadataControllerTest {
     }
 
     @Test
-    void listEventsReturnsEventMetadata() throws Exception {
+    void listEventsReturnsSdkEventDefinitions() throws Exception {
         mockMvc.perform(get("/sdk/meta/events"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))

@@ -1,11 +1,9 @@
 package com.xa.mass.sdk;
 
-import com.xa.mass.sdk.catalog.EventMetadata;
 import com.xa.mass.sdk.event.EventPrincipal;
 import com.xa.mass.sdk.event.EventRequest;
 import com.xa.mass.sdk.event.EventResponse;
 import com.xa.mass.sdk.event.SdkEventDefinition;
-import com.xa.mass.sdk.event.SdkEventHandler;
 
 import java.util.List;
 
@@ -25,36 +23,18 @@ public interface EventOperations {
     EventResponse dispatchEvent(EventRequest request, EventPrincipal principal);
 
     /**
-     * Register or replace event metadata.
+     * Register or replace multiple event definitions.
      */
-    void registerEvent(EventMetadata eventMetadata);
-
-    /**
-     * Register a runtime-handled event that returns data directly.
-     *
-     * <p>The event metadata stays visible through the normal SDK metadata APIs,
-     * while dispatch is handled by the provided runtime handler instead of task
-     * creation.
-     */
-    void registerRuntimeEvent(EventMetadata eventMetadata, List<String> projectCodes, SdkEventHandler handler);
-
-    default void registerRuntimeEvent(EventMetadata eventMetadata, SdkEventHandler handler) {
-        registerRuntimeEvent(eventMetadata, List.of(), handler);
-    }
-
-    /**
-     * Register or replace multiple event metadata entries.
-     */
-    default void registerEvents(List<EventMetadata> eventMetadataList) {
-        if (eventMetadataList == null) {
+    default void registerEventDefinitions(List<SdkEventDefinition> definitions) {
+        if (definitions == null) {
             return;
         }
-        eventMetadataList.forEach(this::registerEvent);
+        definitions.forEach(this::registerEventDefinition);
     }
 
-    List<EventMetadata> listEvents();
+    List<SdkEventDefinition> listEvents();
 
-    EventMetadata getEvent(String eventCode);
+    SdkEventDefinition getEvent(String eventCode);
 
     default boolean hasEvent(String eventCode) {
         return getEvent(eventCode) != null;

@@ -82,12 +82,12 @@ Register SDK catalog metadata when the embedding side wants to expose its own
 project/event directory:
 
 ```java
-import com.xa.mass.sdk.catalog.EventMetadata;
 import com.xa.mass.sdk.catalog.PayloadType;
 import com.xa.mass.sdk.catalog.ProjectMetadata;
 import com.xa.mass.sdk.catalog.TaskMode;
+import com.xa.mass.sdk.event.SdkEventDefinition;
 
-app.registerEvent(EventMetadata.builder()
+app.registerEventDefinition(SdkEventDefinition.builder()
         .code("bot.command")
         .name("Bot Command")
         .description("Handle a bot command")

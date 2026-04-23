@@ -1,6 +1,6 @@
 import {resetRuntimeConfigOverrides, setRuntimeConfigOverrides} from '@/app/config'
-import {listEventCapabilities, listEventMetadata, listProjectEventMetadata, listProjectMetadata,} from '@/api/metadata'
-import {listEventCapabilitiesReal, listEventMetadataReal, listProjectMetadataReal} from '@/api/metadata.real'
+import {listEventCapabilities, listEventDefinitions, listProjectEventDefinitions, listProjectMetadata,} from '@/api/metadata'
+import {listEventCapabilitiesReal, listEventDefinitionsReal, listProjectMetadataReal} from '@/api/metadata.real'
 
 function jsonResponse(body: unknown): Response {
     return new Response(JSON.stringify(body), {
@@ -21,9 +21,9 @@ describe('metadata API facade', () => {
         setRuntimeConfigOverrides({ useMockApi: true })
 
         const projects = await listProjectMetadata()
-        const events = await listEventMetadata()
+        const events = await listEventDefinitions()
         const capabilities = await listEventCapabilities()
-        const demoEvents = await listProjectEventMetadata('demoApp')
+        const demoEvents = await listProjectEventDefinitions('demoApp')
 
         expect(projects.some((project) => project.code === 'demoApp')).toBe(true)
         expect(events.some((event) => event.code === 'demo.dispatch')).toBe(
@@ -103,7 +103,7 @@ describe('metadata.real', () => {
         vi.stubGlobal('fetch', fetchMock)
 
         const projects = await listProjectMetadataReal()
-        const events = await listEventMetadataReal()
+        const events = await listEventDefinitionsReal()
         const capabilities = await listEventCapabilitiesReal()
 
         expect(fetchMock).toHaveBeenCalledWith(

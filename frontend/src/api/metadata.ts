@@ -1,21 +1,21 @@
 import {getAppConfig} from '@/app/config'
 import {
-    getEventMetadataMock,
+    getEventDefinitionMock,
     getProjectMetadataMock,
     listEventCapabilitiesMock,
-    listEventMetadataMock,
-    listProjectEventMetadataMock,
+    listEventDefinitionsMock,
+    listProjectEventDefinitionsMock,
     listProjectMetadataMock,
 } from '@/api/metadata.mock'
 import {
-    getEventMetadataReal,
+    getEventDefinitionReal,
     getProjectMetadataReal,
     listEventCapabilitiesReal,
-    listEventMetadataReal,
-    listProjectEventMetadataReal,
+    listEventDefinitionsReal,
+    listProjectEventDefinitionsReal,
     listProjectMetadataReal,
 } from '@/api/metadata.real'
-import type {EventCapability, EventMetadata, ProjectMetadata} from '@/types/metadata'
+import type {EventCapability, ProjectMetadata, SdkEventDefinition} from '@/types/metadata'
 
 export async function listProjectMetadata(): Promise<ProjectMetadata[]> {
     if (getAppConfig().useMockApi) {
@@ -35,22 +35,22 @@ export async function getProjectMetadata(
     return getProjectMetadataReal(projectCode)
 }
 
-export async function listProjectEventMetadata(
+export async function listProjectEventDefinitions(
     projectCode: string,
-): Promise<EventMetadata[]> {
+): Promise<SdkEventDefinition[]> {
     if (getAppConfig().useMockApi) {
-        return listProjectEventMetadataMock(projectCode)
+        return listProjectEventDefinitionsMock(projectCode)
     }
 
-    return listProjectEventMetadataReal(projectCode)
+    return listProjectEventDefinitionsReal(projectCode)
 }
 
-export async function listEventMetadata(): Promise<EventMetadata[]> {
+export async function listEventDefinitions(): Promise<SdkEventDefinition[]> {
     if (getAppConfig().useMockApi) {
-        return listEventMetadataMock()
+        return listEventDefinitionsMock()
     }
 
-    return listEventMetadataReal()
+    return listEventDefinitionsReal()
 }
 
 export async function listEventCapabilities(): Promise<EventCapability[]> {
@@ -61,12 +61,12 @@ export async function listEventCapabilities(): Promise<EventCapability[]> {
     return listEventCapabilitiesReal()
 }
 
-export async function getEventMetadata(
+export async function getEventDefinition(
     eventCode: string,
-): Promise<EventMetadata> {
+): Promise<SdkEventDefinition> {
     if (getAppConfig().useMockApi) {
-        return getEventMetadataMock(eventCode)
+        return getEventDefinitionMock(eventCode)
     }
 
-    return getEventMetadataReal(eventCode)
+    return getEventDefinitionReal(eventCode)
 }

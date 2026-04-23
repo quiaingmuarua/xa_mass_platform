@@ -10,7 +10,7 @@ export interface ProjectMetadata {
     eventCodes: string[]
 }
 
-export interface EventMetadata {
+export interface SdkEventDefinition {
     code: string
     name: string
     description: string

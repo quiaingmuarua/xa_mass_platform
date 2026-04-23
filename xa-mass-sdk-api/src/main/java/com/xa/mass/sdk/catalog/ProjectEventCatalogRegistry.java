@@ -1,14 +1,16 @@
 package com.xa.mass.sdk.catalog;
 
+import com.xa.mass.sdk.event.SdkEventDefinition;
+
 import java.util.*;
 
 /**
- * In-memory registry for SDK v1 project and event metadata.
+ * In-memory registry for project metadata and SDK event definitions.
  */
 public class ProjectEventCatalogRegistry implements ProjectEventCatalog {
 
     private final Map<String, ProjectMetadata> projects = new LinkedHashMap<>();
-    private final Map<String, EventMetadata> events = new LinkedHashMap<>();
+    private final Map<String, SdkEventDefinition> events = new LinkedHashMap<>();
 
     public synchronized ProjectEventCatalogRegistry registerProject(ProjectMetadata projectMetadata) {
         ProjectMetadata project = Objects.requireNonNull(projectMetadata, "projectMetadata");
@@ -16,8 +18,8 @@ public class ProjectEventCatalogRegistry implements ProjectEventCatalog {
         return this;
     }
 
-    public synchronized ProjectEventCatalogRegistry registerEvent(EventMetadata eventMetadata) {
-        EventMetadata event = Objects.requireNonNull(eventMetadata, "eventMetadata");
+    public synchronized ProjectEventCatalogRegistry registerEventDefinition(SdkEventDefinition definition) {
+        SdkEventDefinition event = Objects.requireNonNull(definition, "definition");
         events.put(event.getCode(), event);
         return this;
     }
@@ -35,29 +37,29 @@ public class ProjectEventCatalogRegistry implements ProjectEventCatalog {
     }
 
     @Override
-    public synchronized List<EventMetadata> listEvents() {
+    public synchronized List<SdkEventDefinition> listEvents() {
         return events.values().stream()
-                .sorted(Comparator.comparing(EventMetadata::getCode, Comparator.nullsLast(String::compareTo)))
+                .sorted(Comparator.comparing(SdkEventDefinition::getCode, Comparator.nullsLast(String::compareTo)))
                 .toList();
     }
 
     @Override
-    public synchronized EventMetadata getEvent(String eventCode) {
+    public synchronized SdkEventDefinition getEvent(String eventCode) {
         return events.get(eventCode);
     }
 
     @Override
-    public synchronized List<EventMetadata> getEventsForProject(String projectCode) {
+    public synchronized List<SdkEventDefinition> getEventsForProject(String projectCode) {
         ProjectMetadata project = projects.get(projectCode);
         if (project == null) {
             return List.of();
         }
 
-        List<EventMetadata> resolved = new ArrayList<>();
+        List<SdkEventDefinition> resolved = new ArrayList<>();
         for (String eventCode : project.getEventCodes()) {
-            EventMetadata eventMetadata = events.get(eventCode);
-            if (eventMetadata != null) {
-                resolved.add(eventMetadata);
+            SdkEventDefinition definition = events.get(eventCode);
+            if (definition != null) {
+                resolved.add(definition);
             }
         }
         return List.copyOf(resolved);

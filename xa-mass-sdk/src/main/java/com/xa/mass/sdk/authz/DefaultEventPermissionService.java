@@ -1,6 +1,5 @@
 package com.xa.mass.sdk.authz;
 
-import com.xa.mass.sdk.catalog.EventMetadata;
 import com.xa.mass.sdk.catalog.ProjectEventCatalog;
 import com.xa.mass.sdk.catalog.ProjectMetadata;
 import com.xa.mass.sdk.event.EventPrincipal;
@@ -19,7 +18,6 @@ public class DefaultEventPermissionService implements EventPermissionService {
 
     private final ClientPermissionProvider clientPermissionProvider;
     private final UserPermissionProvider userPermissionProvider;
-    private final ProjectEventCatalog projectEventCatalog;
     private final SdkEventDefinitionRegistry eventDefinitionRegistry;
 
     public DefaultEventPermissionService(ClientPermissionProvider clientPermissionProvider,
@@ -28,7 +26,7 @@ public class DefaultEventPermissionService implements EventPermissionService {
                                          SdkEventDefinitionRegistry eventDefinitionRegistry) {
         this.clientPermissionProvider = Objects.requireNonNull(clientPermissionProvider, "clientPermissionProvider");
         this.userPermissionProvider = Objects.requireNonNull(userPermissionProvider, "userPermissionProvider");
-        this.projectEventCatalog = Objects.requireNonNull(projectEventCatalog, "projectEventCatalog");
+        Objects.requireNonNull(projectEventCatalog, "projectEventCatalog");
         this.eventDefinitionRegistry = Objects.requireNonNull(eventDefinitionRegistry, "eventDefinitionRegistry");
     }
 
@@ -61,45 +59,21 @@ public class DefaultEventPermissionService implements EventPermissionService {
     private AuthorizationDecision validateCatalogAndDescriptor(String eventCode, String projectCode) {
         SdkEventDefinition definition = eventDefinitionRegistry.get(eventCode);
         if (definition != null) {
-            if (!definition.getMetadata().isEnabled()) {
+            if (!definition.isEnabled()) {
                 return AuthorizationDecision.deny("event disabled: " + eventCode);
             }
-            if (definition.hasHandler()) {
-                if (!definition.getProjectCodes().isEmpty()
-                        && (projectCode == null || projectCode.isBlank() || !definition.getProjectCodes().contains(projectCode))) {
-                    return AuthorizationDecision.deny("project does not support event: " + eventCode);
-                }
+            if (definition.getProjectCodes().isEmpty() && definition.getTaskModes().isEmpty()) {
                 return AuthorizationDecision.allow();
             }
-            if (projectCode == null || projectCode.isBlank()) {
-                return AuthorizationDecision.deny("project is required for catalog event: " + eventCode);
-            }
-            if (definition.getProjectCodes().isEmpty() || !definition.getProjectCodes().contains(projectCode)) {
+            if (!definition.getProjectCodes().isEmpty()
+                    && (projectCode == null || projectCode.isBlank() || !definition.getProjectCodes().contains(projectCode))) {
                 return AuthorizationDecision.deny("project does not support event: " + eventCode);
+            }
+            if (projectCode == null || projectCode.isBlank()) {
+                return AuthorizationDecision.deny("project is required for event: " + eventCode);
             }
             return AuthorizationDecision.allow();
         }
-
-        EventMetadata eventMetadata = projectEventCatalog.getEvent(eventCode);
-        if (eventMetadata == null) {
-            return AuthorizationDecision.deny("unknown event: " + eventCode);
-        }
-        if (!eventMetadata.isEnabled()) {
-            return AuthorizationDecision.deny("event disabled: " + eventCode);
-        }
-        if (projectCode == null || projectCode.isBlank()) {
-            return AuthorizationDecision.deny("project is required for catalog event: " + eventCode);
-        }
-        ProjectMetadata projectMetadata = projectEventCatalog.getProject(projectCode);
-        if (projectMetadata == null) {
-            return AuthorizationDecision.deny("unknown project: " + projectCode);
-        }
-        if (!projectMetadata.isEnabled()) {
-            return AuthorizationDecision.deny("project disabled: " + projectCode);
-        }
-        if (!projectMetadata.getEventCodes().contains(eventCode)) {
-            return AuthorizationDecision.deny("project does not support event: " + eventCode);
-        }
-        return AuthorizationDecision.allow();
+        return AuthorizationDecision.deny("unknown event: " + eventCode);
     }
 }

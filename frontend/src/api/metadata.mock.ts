@@ -1,4 +1,4 @@
-import type {EventCapability, EventMetadata, ProjectMetadata} from '@/types/metadata'
+import type {EventCapability, ProjectMetadata, SdkEventDefinition} from '@/types/metadata'
 
 const mockProjects: ProjectMetadata[] = [
     {
@@ -27,7 +27,7 @@ const mockProjects: ProjectMetadata[] = [
     },
 ]
 
-const mockEvents: EventMetadata[] = [
+const mockEvents: SdkEventDefinition[] = [
     {
         code: 'demo.dispatch',
         name: 'Demo dispatch',
@@ -105,9 +105,9 @@ export async function getProjectMetadataMock(
     return delay(project)
 }
 
-export async function listProjectEventMetadataMock(
+export async function listProjectEventDefinitionsMock(
     projectCode: string,
-): Promise<EventMetadata[]> {
+): Promise<SdkEventDefinition[]> {
     const project = mockProjects.find((item) => item.code === projectCode)
     if (!project) {
         throw new Error(`Project metadata not found: ${projectCode}`)
@@ -119,7 +119,7 @@ export async function listProjectEventMetadataMock(
     return delay(projectEvents)
 }
 
-export async function listEventMetadataMock(): Promise<EventMetadata[]> {
+export async function listEventDefinitionsMock(): Promise<SdkEventDefinition[]> {
     return delay(mockEvents)
 }
 
@@ -147,12 +147,12 @@ export async function listEventCapabilitiesMock(): Promise<EventCapability[]> {
     )
 }
 
-export async function getEventMetadataMock(
+export async function getEventDefinitionMock(
     eventCode: string,
-): Promise<EventMetadata> {
+): Promise<SdkEventDefinition> {
     const event = mockEvents.find((item) => item.code === eventCode)
     if (!event) {
-        throw new Error(`Event metadata not found: ${eventCode}`)
+        throw new Error(`SDK event definition not found: ${eventCode}`)
     }
 
     return delay(event)

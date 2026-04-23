@@ -177,39 +177,30 @@ public class MockApplicationSpringBootApp {
     }
 
     private void registerDevAppCatalog(MassSdkApplication app) {
-        registerCatalogTaskDefinition(
-                app,
-                EventMetadata.builder()
-                        .code("demo.dispatch")
-                        .name("Demo Dispatch")
-                        .description("Dispatch a generic demo work item to an online demo worker.")
-                        .payloadTypes(List.of(PayloadType.JSON))
-                        .taskModes(List.of(TaskMode.SINGLE_RUN, TaskMode.STREAMING))
-                        .build(),
-                List.of("demoApp", "testApp", "otherApp")
-        );
-        registerCatalogTaskDefinition(
-                app,
-                EventMetadata.builder()
-                        .code("demo.dispatch.gb")
-                        .name("Demo Dispatch (GB)")
-                        .description("Dispatch a generic demo work item to the GB demo lane.")
-                        .payloadTypes(List.of(PayloadType.JSON))
-                        .taskModes(List.of(TaskMode.SINGLE_RUN, TaskMode.STREAMING))
-                        .build(),
-                List.of("demoApp", "otherApp")
-        );
-        registerCatalogTaskDefinition(
-                app,
-                EventMetadata.builder()
-                        .code("crawler.fetch-page")
-                        .name("Crawler Fetch Page")
-                        .description("Dispatch a crawler fetch request to an SDK-created pull worker.")
-                        .payloadTypes(List.of(PayloadType.JSON))
-                        .taskModes(List.of(TaskMode.SINGLE_RUN, TaskMode.STREAMING))
-                        .build(),
-                List.of("crawlerApp")
-        );
+        registerCatalogTaskDefinition(app, SdkEventDefinition.builder()
+                .code("demo.dispatch")
+                .name("Demo Dispatch")
+                .description("Dispatch a generic demo work item to an online demo worker.")
+                .payloadTypes(List.of(PayloadType.JSON))
+                .taskModes(List.of(TaskMode.SINGLE_RUN, TaskMode.STREAMING))
+                .projectCodes(List.of("demoApp", "testApp", "otherApp"))
+                .build());
+        registerCatalogTaskDefinition(app, SdkEventDefinition.builder()
+                .code("demo.dispatch.gb")
+                .name("Demo Dispatch (GB)")
+                .description("Dispatch a generic demo work item to the GB demo lane.")
+                .payloadTypes(List.of(PayloadType.JSON))
+                .taskModes(List.of(TaskMode.SINGLE_RUN, TaskMode.STREAMING))
+                .projectCodes(List.of("demoApp", "otherApp"))
+                .build());
+        registerCatalogTaskDefinition(app, SdkEventDefinition.builder()
+                .code("crawler.fetch-page")
+                .name("Crawler Fetch Page")
+                .description("Dispatch a crawler fetch request to an SDK-created pull worker.")
+                .payloadTypes(List.of(PayloadType.JSON))
+                .taskModes(List.of(TaskMode.SINGLE_RUN, TaskMode.STREAMING))
+                .projectCodes(List.of("crawlerApp"))
+                .build());
         registerRuntimeToolDefinitions(app);
 
         app.registerProject(ProjectMetadata.builder()
@@ -241,24 +232,18 @@ public class MockApplicationSpringBootApp {
     }
 
     private void registerCatalogTaskDefinition(MassSdkApplication app,
-                                               EventMetadata eventMetadata,
-                                               List<String> projectCodes) {
-        app.registerEventDefinition(SdkEventDefinition.builder()
-                .metadata(eventMetadata)
-                .projectCodes(projectCodes)
-                .build());
+                                               SdkEventDefinition definition) {
+        app.registerEventDefinition(definition);
     }
 
     private void registerRuntimeToolDefinitions(MassSdkApplication app) {
         for (CommandDefinition<JsonObject, Map<String, Object>> definition : ToolCommandRoutes.definitions()) {
             app.registerEventDefinition(SdkEventDefinition.builder()
-                    .metadata(EventMetadata.builder()
-                            .code(definition.getEvent())
-                            .name(humanizeEventName(definition.getEvent()))
-                            .description(definition.getDescriptor().getSummary())
-                            .payloadTypes(List.of(PayloadType.JSON))
-                            .taskModes(List.of())
-                            .build())
+                    .code(definition.getEvent())
+                    .name(humanizeEventName(definition.getEvent()))
+                    .description(definition.getDescriptor().getSummary())
+                    .payloadTypes(List.of(PayloadType.JSON))
+                    .taskModes(List.of())
                     .projectCodes(List.of())
                     .handler((request, principal) -> {
                         MockCommandRuntime.initialize();

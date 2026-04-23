@@ -1,7 +1,7 @@
 package com.xa.mass.sdk;
 
-import com.xa.mass.sdk.catalog.EventMetadata;
 import com.xa.mass.sdk.catalog.ProjectMetadata;
+import com.xa.mass.sdk.event.SdkEventDefinition;
 
 import java.util.List;
 
@@ -33,7 +33,7 @@ public interface ProjectOperations {
         return getProject(projectCode) != null;
     }
 
-    List<EventMetadata> getEventsForProject(String projectCode);
+    List<SdkEventDefinition> getEventsForProject(String projectCode);
 
     default boolean projectSupportsEvent(String projectCode, String eventCode) {
         ProjectMetadata projectMetadata = getProject(projectCode);

@@ -1,5 +1,6 @@
 package com.xa.mass.sdk.catalog;
 
+import com.xa.mass.sdk.event.SdkEventDefinition;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -13,7 +14,7 @@ class ProjectEventCatalogRegistryTest {
         ProjectEventCatalogRegistry registry = DefaultProjectEventCatalogFactory.createDefaultRegistry();
 
         List<ProjectMetadata> projects = registry.listProjects();
-        List<EventMetadata> events = registry.listEvents();
+        List<SdkEventDefinition> events = registry.listEvents();
 
         assertFalse(projects.isEmpty());
         assertTrue(events.isEmpty());
@@ -24,14 +25,14 @@ class ProjectEventCatalogRegistryTest {
     @Test
     void registrySupportsManyToManyProjectEventBinding() {
         ProjectEventCatalogRegistry registry = new ProjectEventCatalogRegistry();
-        EventMetadata sharedEvent = EventMetadata.builder()
+        SdkEventDefinition sharedEvent = SdkEventDefinition.builder()
                 .code("chatbot.reply")
                 .name("Chatbot Reply")
                 .description("Shared chatbot event")
                 .payloadTypes(List.of(PayloadType.TEXT, PayloadType.JSON))
                 .taskModes(List.of(TaskMode.SINGLE_RUN, TaskMode.STREAMING))
                 .build();
-        registry.registerEvent(sharedEvent);
+        registry.registerEventDefinition(sharedEvent);
         registry.registerProject(ProjectMetadata.builder()
                 .code("alpha")
                 .name("Alpha")
@@ -53,7 +54,7 @@ class ProjectEventCatalogRegistryTest {
     @Test
     void disabledMetadataRemainsVisible() {
         ProjectEventCatalogRegistry registry = new ProjectEventCatalogRegistry();
-        registry.registerEvent(EventMetadata.builder()
+        registry.registerEventDefinition(SdkEventDefinition.builder()
                 .code("crawler.fetch-page")
                 .name("Crawler Fetch Page")
                 .description("disabled event")
@@ -70,7 +71,7 @@ class ProjectEventCatalogRegistryTest {
                 .build());
 
         ProjectMetadata project = registry.getProject("crawlerApp");
-        EventMetadata event = registry.getEvent("crawler.fetch-page");
+        SdkEventDefinition event = registry.getEvent("crawler.fetch-page");
 
         assertNotNull(project);
         assertNotNull(event);
