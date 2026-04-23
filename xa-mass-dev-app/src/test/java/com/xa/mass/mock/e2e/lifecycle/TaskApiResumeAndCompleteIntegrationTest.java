@@ -2,12 +2,10 @@ package com.xa.mass.mock.e2e.lifecycle;
 
 import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.enums.worker.WorkerContextStatus;
-import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.mock.MockApplicationSpringBootApp;
 import com.xa.mass.mock.client.MassWebSocketClientImpl;
 import com.xa.mass.mock.e2e.support.AbstractMockE2eTest;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpMethod;
 import org.springframework.test.annotation.DirtiesContext;
@@ -62,9 +60,6 @@ class TaskApiResumeAndCompleteIntegrationTest extends AbstractMockE2eTest {
     static void registerProperties(DynamicPropertyRegistry registry) {
         registerWebSocketProperties(registry, WEBSOCKET_PORT);
     }
-
-    @Autowired
-    private WorkerManager workerManager;
 
     @Test
     void resumedPausedTaskCompletesAfterWorkerConnectsAndSendsCallback() throws Exception {
