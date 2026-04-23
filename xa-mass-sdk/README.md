@@ -34,6 +34,8 @@ Create an SDK application handle:
 import com.xa.mass.sdk.MassSdk;
 import com.xa.mass.sdk.MassSdkApplication;
 import com.xa.mass.sdk.model.MassTaskCreateRequest;
+import com.xa.mass.sdk.model.WorkerContextRegistration;
+import com.xa.mass.sdk.model.WorkerRegistration;
 
 MassSdkApplication app = MassSdk.builder()
         .transportServer(19090, "/ws")
@@ -42,6 +44,20 @@ MassSdkApplication app = MassSdk.builder()
         .build();
 
 app.start();
+
+app.registerWorker(WorkerRegistration.builder()
+        .workerId("crawler-worker-1")
+        .workerGroupId("crawler")
+        .supportedProjects(java.util.List.of("demoApp"))
+        .transportHint("polling")
+        .attributes(java.util.Map.of("type", "crawler"))
+        .build());
+app.registerWorkerContext(WorkerContextRegistration.builder()
+        .workerContextId("ctx-crawler-worker-1")
+        .workerId("crawler-worker-1")
+        .routingTags(java.util.Set.of("us"))
+        .attributes(java.util.Map.of("region", "us"))
+        .build());
 
 app.createTask(MassTaskCreateRequest.builder()
         .userId("agent")
@@ -61,7 +77,8 @@ The returned `MassSdkApplication` exposes:
 - common task operations after `start()`: `createTask(MassTaskCreateRequest)`, `getTask(...)`, `getAllTasks()`, `getTasksByStatus(...)`, `approveTask(...)`, `rejectTask(...)`, `blockTask(...)`, `pauseTask(...)`, `resumeTask(...)`, `resumeTaskDetailed(...)`, `cancelTask(...)`, `terminateTask(...)`
 - open-ended task operations after `start()`: `appendTaskItems(...)`, `sealTask(...)`
 - audit and message operations after `start()`: `getTaskMessages(...)`, `resolveTaskStateFromMessages(...)`, `validateTaskState(...)`
-- common worker operations after `start()`: `addWorker(...)`, `addWorkerContext(...)`, `getWorker(...)`, `getAllWorkers()`, `getAllWorkerContexts()`, `getWorkerContexts(...)`, `getWorkerContextById(...)`, `isWorkerLocked(...)`, `isWorkerOnline(...)`
+- common worker operations after `start()`: `registerWorker(...)`, `registerWorkerContext(...)`, `getWorker(...)`, `getAllWorkers()`, `getAllWorkerContexts()`, `getWorkerContexts(...)`, `getWorkerContextById(...)`, `isWorkerLocked(...)`, `isWorkerOnline(...)`
+- compatibility/high-control worker operations after `start()`: `addWorker(...)` and `addWorkerContext(...)` remain available for callers that intentionally construct core runtime models
 - pull-style worker entry after `start()`: `pullWorker(...)`; `pollingWorker(...)` remains as a deprecated compatibility alias
 - stable runtime bootstrap surface after `start()`: `publishTaskEvents()`, plus open registration methods such as `addWorker(...)`, `addWorkerContext(...)`, `createTask(...)`, `replaceDefaultRules(...)`
 - new bootstrap integration seam: `EngineOptions.bootstrapDataProvider(...)` accepts a pluggable `MassBootstrapDataProvider`
@@ -69,7 +86,7 @@ The returned `MassSdkApplication` exposes:
 - deprecated compatibility seams for advanced embedding only: `getEngine()`, `getTaskManager()`, `getWorkerManager()`
 - deprecated escape hatches: `MassSdkApplication.unwrap()` and SDK builder/option `unwrap()` methods expose lower-level runtime objects
 
-`MassTaskCreateRequest` is the primary SDK create contract. The engine DTO overload remains only as a compatibility seam for callers that still depend on engine packages. Direct engine, manager, and runtime exposure is intentionally deprecated so the default SDK path stays on `MassSdkApplication` methods instead of leaking callers back into engine/runtime internals. Common SDK operations intentionally fail fast if the SDK application was built without an engine or has not been started yet. Mock/demo bootstrap data should be loaded outside the SDK module through `MassBootstrapDataProvider` and `MassRuntimeControl` instead of SDK-internal mock generators.
+`MassTaskCreateRequest` is the primary SDK create contract. `WorkerRegistration` and `WorkerContextRegistration` are the preferred worker resource contracts: registration declares identity/capability only, workers start `OFFLINE`, contexts start `IDLE`, and transport connect/heartbeat events own online state. The engine DTO overload remains only as a compatibility seam for callers that still depend on engine packages. Direct engine, manager, and runtime exposure is intentionally deprecated so the default SDK path stays on `MassSdkApplication` methods instead of leaking callers back into engine/runtime internals. Common SDK operations intentionally fail fast if the SDK application was built without an engine or has not been started yet. Mock/demo bootstrap data should be loaded outside the SDK module through `MassBootstrapDataProvider` and `MassRuntimeControl` instead of SDK-internal mock generators.
 
 ## Compatibility Policy
 

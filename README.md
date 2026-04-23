@@ -61,12 +61,13 @@ The transport-neutral runtime model is now framed around three channels:
 - Verified current WebSocket adapter port: `mass.websocket.port=18088`
 - Pull-style workers are also part of the runtime surface through `MassSdkApplication.pullWorker(...)`; `pollingWorker(...)` remains as a compatibility alias
 - Worker transport selection should prefer neutral hints such as `realtime` and `polling`; concrete adapter names remain compatibility aliases.
+- New worker resources should enter through SDK registration (`registerWorker(...)` and `registerWorkerContext(...)`); dev-app mock JSON remains a local/E2E fixture path, not the product resource entry.
 - Verified task lifecycle coverage includes:
   - `NEW -> READY -> RUNNING -> TERMINAL`
   - `NEW -> READY -> PAUSED -> READY`
   - `NEW -> BLOCKED -> READY`
 - `TERMINAL` is not self-describing anymore; inspect `task.terminalReason`
-- Active task-create contract now uses `userId`, `project`, `sharedConfig`, `inputs`, `batchSize`, `defaultMsgMaxRetryCount`, and `openEnded`; optional routing hints belong in `sharedConfig.routingCode`
+- Active task-create contract now uses `userId`, `project`, `sharedConfig`, `inputs`, `batchSize`, `defaultMsgMaxRetryCount`, and `openEnded`; there is no dedicated `routingCode` field in the public control-console contract.
 - `PUT /status/api/tasks/{taskId}` is metadata-only and does not accept `inputs`
 - `Task.project` and `Task.user` are first-class business bindings on the task aggregate; do not hide them inside `sharedConfig` or attribute maps
 - `Task.sharedConfig` is the task-level shared payload; `TaskMsg.input` and `TaskMsg.output` are the per-item payload boundary
@@ -124,6 +125,8 @@ Minimal Java usage:
 import com.xa.mass.sdk.MassSdk;
 import com.xa.mass.sdk.MassSdkApplication;
 import com.xa.mass.sdk.model.MassTaskCreateRequest;
+import com.xa.mass.sdk.model.WorkerContextRegistration;
+import com.xa.mass.sdk.model.WorkerRegistration;
 
 MassSdkApplication app = MassSdk.builder()
         .server(19090, "/ws")
@@ -132,11 +135,24 @@ MassSdkApplication app = MassSdk.builder()
         .build();
 
 app.start();
+app.registerWorker(WorkerRegistration.builder()
+        .workerId("crawler-worker-1")
+        .workerGroupId("crawler")
+        .supportedProjects(java.util.List.of("demoApp"))
+        .transportHint("polling")
+        .attributes(java.util.Map.of("type", "crawler"))
+        .build());
+app.registerWorkerContext(WorkerContextRegistration.builder()
+        .workerContextId("ctx-crawler-worker-1")
+        .workerId("crawler-worker-1")
+        .routingTags(java.util.Set.of("us"))
+        .attributes(java.util.Map.of("region", "us"))
+        .build());
 app.createTask(MassTaskCreateRequest.builder()
         .userId("agent")
         .project("demoApp")
         .taskName("demo-task")
-        .sharedConfig(java.util.Map.of("textContent", "hello", "routingCode", "us"))
+        .sharedConfig(java.util.Map.of("textContent", "hello"))
         .inputs(java.util.List.of(java.util.Map.of("target", "target-a")))
         .batchSize(1)
         .build());

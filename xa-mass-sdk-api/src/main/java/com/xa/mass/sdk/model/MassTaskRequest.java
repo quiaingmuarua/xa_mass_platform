@@ -8,6 +8,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * SDK-native task request with explicit mode and payload semantics.
@@ -112,6 +113,46 @@ public final class MassTaskRequest {
             converted.add(input.toTaskMsgInput());
         }
         return Collections.unmodifiableList(converted);
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof MassTaskRequest that)) return false;
+        return batchSize == that.batchSize
+                && defaultMsgMaxRetryCount == that.defaultMsgMaxRetryCount
+                && maxRuntimeSeconds == that.maxRuntimeSeconds
+                && Objects.equals(userId, that.userId)
+                && Objects.equals(project, that.project)
+                && Objects.equals(taskName, that.taskName)
+                && Objects.equals(eventCode, that.eventCode)
+                && mode == that.mode
+                && payloadType == that.payloadType
+                && Objects.equals(sharedConfig, that.sharedConfig)
+                && Objects.equals(inputs, that.inputs);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(userId, project, taskName, eventCode, mode, payloadType,
+                sharedConfig, inputs, batchSize, defaultMsgMaxRetryCount, maxRuntimeSeconds);
+    }
+
+    @Override
+    public String toString() {
+        return "MassTaskRequest{" +
+                "userId='" + userId + '\'' +
+                ", project='" + project + '\'' +
+                ", taskName='" + taskName + '\'' +
+                ", eventCode='" + eventCode + '\'' +
+                ", mode=" + mode +
+                ", payloadType=" + payloadType +
+                ", sharedConfig=" + sharedConfig +
+                ", inputs=" + inputs +
+                ", batchSize=" + batchSize +
+                ", defaultMsgMaxRetryCount=" + defaultMsgMaxRetryCount +
+                ", maxRuntimeSeconds=" + maxRuntimeSeconds +
+                '}';
     }
 
     private static Map<String, Object> unmodifiableMapCopy(Map<String, Object> source) {

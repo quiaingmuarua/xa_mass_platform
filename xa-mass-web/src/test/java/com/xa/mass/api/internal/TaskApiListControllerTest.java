@@ -39,7 +39,6 @@ class TaskApiListControllerTest {
         runningTask.setStatus(TaskStatus.RUNNING);
         runningTask.setTaskName("Warm worker pool");
         runningTask.setProject("demoApp");
-        runningTask.setSharedConfig(java.util.Map.of("routingCode", "us"));
         runningTask.setTaskEligibleNumber(10);
         runningTask.setTaskSuccessNumber(6);
         runningTask.setBatchSize(2);
@@ -50,7 +49,6 @@ class TaskApiListControllerTest {
         pausedTask.setStatus(TaskStatus.PAUSED);
         pausedTask.setTaskName("Review backlog");
         pausedTask.setProject("demoApp");
-        pausedTask.setSharedConfig(java.util.Map.of("routingCode", "sg"));
         pausedTask.setTaskEligibleNumber(8);
         pausedTask.setTaskSuccessNumber(2);
         pausedTask.setBatchSize(1);
@@ -66,7 +64,6 @@ class TaskApiListControllerTest {
                 .andExpect(jsonPath("$.data.total").value(1))
                 .andExpect(jsonPath("$.data.items[0].id").value("task-001"))
                 .andExpect(jsonPath("$.data.items[0].taskName").value("Warm worker pool"))
-                .andExpect(jsonPath("$.data.items[0].routingCode").value("us"))
                 .andExpect(jsonPath("$.data.items[0].successCount").value(6))
                 .andExpect(jsonPath("$.data.items[0].eligibleCount").value(10))
                 .andExpect(jsonPath("$.data.items[0].updatedAt").value("2026-04-21 09:30:00"));

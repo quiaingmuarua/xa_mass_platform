@@ -148,7 +148,7 @@ Contract rules:
 - the chosen project must explicitly declare support for the chosen event
 - `X-Mass-Api-Key` is reserved for future submitter resolution; current mainline allows requests without it
 - create returns only `taskId` and does not auto-transition the task out of `NEW`
-- optional routing hints belong in `sharedConfig.routingCode`; SDK event default routing is folded into sharedConfig when not supplied
+- SDK task creation forwards `sharedConfig` as supplied; SDK event metadata does not inject routing hints into the task payload.
 
 Example request:
 
@@ -160,8 +160,7 @@ Example request:
   "mode": "STREAMING",
   "payloadType": "JSON",
   "sharedConfig": {
-    "site": "example",
-    "routingCode": "us"
+    "site": "example"
   },
   "inputs": [
     {
@@ -268,7 +267,7 @@ Contract rules:
 - `defaultMsgMaxRetryCount` defaults to `3`
 - `openEnded` defaults to `false`
 - `maxRuntimeSeconds` defaults to `0` and disables runtime-limit termination
-- optional routing hints belong in `sharedConfig.routingCode`; they are consumed by matching rules through `WorkerMatchContext.routingCode`
+- the public task API has no dedicated routing-code field; keep task-level payload or hints inside `sharedConfig` only when a concrete runtime contract requires them
 
 Example request:
 
@@ -278,8 +277,7 @@ Example request:
   "project": "demoApp",
   "taskName": "smoke-lifecycle",
   "sharedConfig": {
-    "textContent": "hello",
-    "routingCode": "us"
+    "textContent": "hello"
   },
   "inputs": [
     {
@@ -340,8 +338,7 @@ Example response shape:
       },
       "status": "NEW",
       "sharedConfig": {
-        "textContent": "hello",
-        "routingCode": "us"
+        "textContent": "hello"
       },
       "intakeStatus": "SEALED",
       "openEnded": false,

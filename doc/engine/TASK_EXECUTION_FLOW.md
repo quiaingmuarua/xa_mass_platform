@@ -75,7 +75,7 @@ Key implementation facts:
 
 Mainline matching facts:
 
-- optional routing hints are read from `Task.sharedConfig["routingCode"]`; `Task` has no first-class routing field
+- public task APIs do not define a dedicated routing-code field; matching rules should use explicit task, worker, and worker-context signals
 - `workerGroupId` is not the routing-country source of truth
 - routing-country satisfaction should come from explicit rules and worker-context-facing signals
 - `WorkerMatchContext` exposes `workerAttributes` and `workerContextAttributes` for rule evaluation

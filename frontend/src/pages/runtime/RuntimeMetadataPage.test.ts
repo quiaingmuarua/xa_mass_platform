@@ -42,7 +42,7 @@ describe('RuntimeMetadataPage', () => {
                                     name: 'Crawler App',
                                     description: 'Crawler project.',
                                     enabled: true,
-                                    eventCodes: ['crawler.fetch-page'],
+                                    eventCodes: ['worker.fetch-page'],
                                 },
                             ],
                         }),
@@ -63,7 +63,7 @@ describe('RuntimeMetadataPage', () => {
                                     enabled: true,
                                 },
                                 {
-                                    code: 'crawler.fetch-page',
+                                    code: 'worker.fetch-page',
                                     name: 'Fetch crawler page',
                                     description: 'Fetch through a crawler worker.',
                                     payloadTypes: ['JSON'],

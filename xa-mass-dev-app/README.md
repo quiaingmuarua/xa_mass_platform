@@ -6,7 +6,7 @@ Use this module for end-to-end validation of:
 
 - Spring Boot HTTP APIs
 - the internal gateway WebSocket server
-- mock worker bootstrap and result write-back
+- SDK-created worker resources, fixture bootstrap compatibility, and result write-back
 
 Repository-level startup instructions in [`../doc/VERIFIED_RUNBOOK.md`](../doc/VERIFIED_RUNBOOK.md) are the source of truth.
 
@@ -15,6 +15,7 @@ Repository-level startup instructions in [`../doc/VERIFIED_RUNBOOK.md`](../doc/V
 - real Spring Boot entrypoint: `com.xa.mass.mock.MockApplicationSpringBootApp`
 - starts runtime through `xa-mass-sdk` and exposes the current backend-hosted control console and JSON APIs through `xa-mass-web`
 - obtains task, worker, and rule management capability from the embedded SDK runtime instead of constructing a parallel engine assembly path in the app module
+- treats worker resource creation as SDK-first; mock JSON is a local/E2E fixture path, not the product resource entry
 - runtime still composes gateway and engine internally
 - default `dev` startup auto-starts mock WebSocket clients
 
@@ -68,6 +69,18 @@ Startup behavior:
 - triggered by `ApplicationReadyEvent`
 - idempotent startup protection through an internal `AtomicBoolean`
 - there is no longer a separate client-only Spring Boot application or `/mock/status` monitor surface
+
+## Worker Resource Fixtures
+
+`MockRuntimeDataLoader` is a fixture loader for local and E2E startup data. It is retained for compatibility with existing JSON files, but new worker scenarios should create resources through `MassSdkApplication.registerWorker(...)` and `registerWorkerContext(...)`.
+
+Current compatibility behavior:
+
+- worker JSON entries with default `OFFLINE` state are mapped to `WorkerRegistration`
+- worker-context JSON entries with default `IDLE` state are mapped to `WorkerContextRegistration`
+- historical fixture entries that explicitly set non-default runtime state, such as `Worker.status=ONLINE`, still use the compatibility `addWorker(...)` path
+- task JSON continues to map to `MassTaskCreateRequest`
+- rule JSON continues to replace default rules when non-empty
 
 ## Mock Command Runtime
 
@@ -134,7 +147,6 @@ Mock-data loading order:
 
 - workers
 - explicit worker contexts
-- fallback worker-context seeding only for workers that still have no worker context
 - rules: non-empty config replaces the current default rules; empty config is treated as no override
 - tasks
 
@@ -158,6 +170,7 @@ Covered areas:
 - `e2e/lifecycle`: create -> approve -> assign -> run -> complete, pause/resume guards, pause-completion, terminate-running, resume-and-complete
 - `e2e/results`: failed-result terminal closure, mixed results, callback replay idempotency
 - `e2e/assignment`: delayed worker availability and multi-task assignment behavior
+- `CrawlerPullWorkerSdkRegistrationIntegrationTest`: SDK-created crawler worker resource, pull connect/poll/result, and terminal read-model verification without mock worker JSON
 - `e2e/audit`: `stateValidation` exposure and terminal metadata consistency through the real HTTP path
 - `e2e/support`: manual debug chat, command acknowledgements, and disconnect-after-ack behavior
 - `WebSocketClientStarterTest`: auto-start and idempotent startup behavior

@@ -7,7 +7,6 @@ import com.xa.mass.api.model.task.TaskUpdateApiRequest;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.ProjectRef;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.UserRef;
 import com.xa.mass.sdk.SdkTaskResumeResult;
@@ -359,7 +358,6 @@ public class TaskApiController {
         item.put("taskName", task.getTaskName());
         item.put("project", task.getProject());
         item.put("userId", task.getUser() != null ? task.getUser().getUserId() : null);
-        item.put("routingCode", TaskSharedConfig.routingCode(task));
         item.put("status", task.getStatus() != null ? task.getStatus().name() : null);
         item.put("terminalReason", task.getTerminalReason() != null ? task.getTerminalReason().name() : null);
         item.put("successCount", task.getTaskSuccessNumber());
@@ -482,8 +480,7 @@ public class TaskApiController {
         }
         return containsIgnoreCase(task.getTid(), normalizedKeyword)
                 || containsIgnoreCase(task.getTaskName(), normalizedKeyword)
-                || containsIgnoreCase(task.getProject(), normalizedKeyword)
-                || containsIgnoreCase(TaskSharedConfig.routingCode(task), normalizedKeyword);
+                || containsIgnoreCase(task.getProject(), normalizedKeyword);
     }
 
     private boolean containsIgnoreCase(String source, String normalizedKeyword) {

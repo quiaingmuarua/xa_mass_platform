@@ -19,13 +19,14 @@ White-box fixtures are allowed for setup and fault injection, but not as a repla
 Current mainline note:
 
 - today the Boot-shell E2E path validates both the current WebSocket adapter and the pull-style worker path
-- pull-style shell coverage is currently represented by `PollingWorkerTaskFlowIntegrationTest` and `TransportChannelWiringIntegrationTest`
+- pull-style shell coverage is currently represented by `PollingWorkerTaskFlowIntegrationTest`, `CrawlerPullWorkerSdkRegistrationIntegrationTest`, and `TransportChannelWiringIntegrationTest`
 - WebSocket is still the mainline adapter for real push/callback gateway risks, but it is no longer the only accepted shell path
 
 Fixture note:
 
 - E2E tests may still use white-box fixtures for setup and fault injection
-- prefer SDK capability entrypoints such as `MassSdkApplication.addWorker(...)`, `addWorkerContext(...)`, `replaceDefaultRules(...)`, and `createTask(...)` for new setup code
+- prefer SDK capability entrypoints such as `MassSdkApplication.registerWorker(...)`, `registerWorkerContext(...)`, `replaceDefaultRules(...)`, and `createTask(...)` for new setup code
+- use `addWorker(...)` and `addWorkerContext(...)` only when a test intentionally needs compatibility with core runtime models or historical fixture state
 - current active E2E fixtures have eliminated direct `WorkerManager` and `RuleManager` setup writes; remaining direct manager mutation is limited to intentional `TaskManager` invariant/fault-injection scenarios
 
 ## 2. Mandatory Release-Gate Scenarios
@@ -62,6 +63,7 @@ Worker and context:
 - worker-context attribute routing selects the right context
 - stateless worker can execute tasks without routing-required context
 - polling/pull worker path can execute `create -> approve -> dispatch -> result -> terminal` without WebSocket push
+- SDK-created worker resources can register as `OFFLINE`, connect through pull transport, poll work, submit result output, and disconnect back to offline
 - manual worker debug chat records outbound and inbound history over the real gateway path
 - manual worker debug chat acknowledgement promotes delivery visibility from `QUEUED` to `DELIVERED`
 - same worker can own multiple contexts without overwrite

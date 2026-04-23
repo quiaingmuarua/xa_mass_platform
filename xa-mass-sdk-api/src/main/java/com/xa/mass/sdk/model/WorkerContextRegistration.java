@@ -3,6 +3,7 @@ package com.xa.mass.sdk.model;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 /**
@@ -49,6 +50,33 @@ public final class WorkerContextRegistration {
 
     public Map<String, String> getAttributes() {
         return attributes;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof WorkerContextRegistration that)) return false;
+        return Objects.equals(workerContextId, that.workerContextId)
+                && Objects.equals(workerId, that.workerId)
+                && Objects.equals(project, that.project)
+                && Objects.equals(routingTags, that.routingTags)
+                && Objects.equals(attributes, that.attributes);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(workerContextId, workerId, project, routingTags, attributes);
+    }
+
+    @Override
+    public String toString() {
+        return "WorkerContextRegistration{" +
+                "workerContextId='" + workerContextId + '\'' +
+                ", workerId='" + workerId + '\'' +
+                ", project='" + project + '\'' +
+                ", routingTags=" + routingTags +
+                ", attributes=" + attributes +
+                '}';
     }
 
     private static Set<String> immutableSetCopy(Set<String> source) {

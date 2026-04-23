@@ -5,6 +5,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * SDK-native task creation contract.
@@ -74,6 +75,42 @@ public final class MassTaskCreateRequest {
 
     public int getMaxRuntimeSeconds() {
         return maxRuntimeSeconds;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof MassTaskCreateRequest that)) return false;
+        return batchSize == that.batchSize
+                && defaultMsgMaxRetryCount == that.defaultMsgMaxRetryCount
+                && openEnded == that.openEnded
+                && maxRuntimeSeconds == that.maxRuntimeSeconds
+                && Objects.equals(userId, that.userId)
+                && Objects.equals(project, that.project)
+                && Objects.equals(taskName, that.taskName)
+                && Objects.equals(sharedConfig, that.sharedConfig)
+                && Objects.equals(inputs, that.inputs);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(userId, project, taskName, sharedConfig, inputs,
+                batchSize, defaultMsgMaxRetryCount, openEnded, maxRuntimeSeconds);
+    }
+
+    @Override
+    public String toString() {
+        return "MassTaskCreateRequest{" +
+                "userId='" + userId + '\'' +
+                ", project='" + project + '\'' +
+                ", taskName='" + taskName + '\'' +
+                ", sharedConfig=" + sharedConfig +
+                ", inputs=" + inputs +
+                ", batchSize=" + batchSize +
+                ", defaultMsgMaxRetryCount=" + defaultMsgMaxRetryCount +
+                ", openEnded=" + openEnded +
+                ", maxRuntimeSeconds=" + maxRuntimeSeconds +
+                '}';
     }
 
     private static Map<String, Object> unmodifiableMapCopy(Map<String, Object> source) {

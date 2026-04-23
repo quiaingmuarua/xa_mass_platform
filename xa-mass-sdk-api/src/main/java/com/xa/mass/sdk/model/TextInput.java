@@ -26,4 +26,23 @@ public final class TextInput implements MassInput {
         input.put("text", text);
         return Map.copyOf(input);
     }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof TextInput textInput)) return false;
+        return Objects.equals(text, textInput.text);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(text);
+    }
+
+    @Override
+    public String toString() {
+        return "TextInput{" +
+                "text='" + text + '\'' +
+                '}';
+    }
 }

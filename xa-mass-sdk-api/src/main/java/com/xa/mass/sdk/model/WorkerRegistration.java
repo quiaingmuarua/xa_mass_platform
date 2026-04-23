@@ -4,6 +4,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * SDK-native worker registration contract.
@@ -49,6 +50,33 @@ public final class WorkerRegistration {
 
     public Map<String, String> getAttributes() {
         return attributes;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof WorkerRegistration that)) return false;
+        return Objects.equals(workerId, that.workerId)
+                && Objects.equals(workerGroupId, that.workerGroupId)
+                && Objects.equals(supportedProjects, that.supportedProjects)
+                && Objects.equals(transportHint, that.transportHint)
+                && Objects.equals(attributes, that.attributes);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(workerId, workerGroupId, supportedProjects, transportHint, attributes);
+    }
+
+    @Override
+    public String toString() {
+        return "WorkerRegistration{" +
+                "workerId='" + workerId + '\'' +
+                ", workerGroupId='" + workerGroupId + '\'' +
+                ", supportedProjects=" + supportedProjects +
+                ", transportHint='" + transportHint + '\'' +
+                ", attributes=" + attributes +
+                '}';
     }
 
     private static List<String> immutableListCopy(List<String> source) {

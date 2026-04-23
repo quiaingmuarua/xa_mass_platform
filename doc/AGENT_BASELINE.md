@@ -67,6 +67,7 @@ Interpretation rules:
 - the concrete types are the current reference scenario and default adapters
 - future worker forms should extend these abstract slots instead of shrinking the platform back into `worker/workerContext` vocabulary
 - mock/runtime loading does not auto-create fallback worker contexts; a worker with no explicit `workerContexts` stays stateless
+- SDK-first worker resource creation is the preferred path: use `WorkerRegistration` / `WorkerContextRegistration` through `MassSdkApplication.registerWorker(...)` and `registerWorkerContext(...)`; registration does not imply online state
 
 ## 4. Architectural Guardrails
 
@@ -82,6 +83,7 @@ Interpretation rules:
 - typed JSON DSL mainline goes through `JsonDslParser -> JsonDslDefinition -> JsonDslProcessorEngine` using canonical fields like `uniqueId`, `description`, `context.model`, `fieldDsl`, and `combineDsl`
 - legacy/mock JSON DSL such as root `MODEL` / `COUNT` / `FIELDS` belongs to `JsonDslEngine` compatibility usage only and should not be mixed into typed parser examples or contracts
 - `Worker.attributes` and `WorkerContext.attributes` are auxiliary rule labels for matching and diagnostics only. They are not lifecycle, lock, or online truth.
+- `addWorker(...)` and `addWorkerContext(...)` remain compatibility/high-control SDK seams for core-model callers; new resource scenarios should use SDK registration models instead.
 - UI pages, mock runtime, and demo APIs must not redefine the platform kernel.
 - Manual worker debug chat is a debug/control side-channel. It is not `TaskMsg` lifecycle and must not mutate task state.
 - new or changed policy seams must keep ownership explicit across matching, attempt, release, refill, intake, control, and terminal decisions; use [./engine/POLICY_INTERACTION_BASELINE.md](./engine/POLICY_INTERACTION_BASELINE.md) before extending those paths
@@ -152,7 +154,7 @@ Update constraints:
 - `Task.project` is the canonical task-level project binding and validates against the current project registry
 - `Task.user` is the canonical task-level business-user binding; create/update requests still use `userId` as the edge input shape
 - `Task.sharedConfig` is the task-level generic payload/config map
-- optional routing hints belong in `Task.sharedConfig["routingCode"]`; `Task` has no first-class routing field
+- public task create/update and control-console read models do not define a dedicated routing-code field; task-level payload or hints belong in `Task.sharedConfig` only when a concrete runtime contract requires them
 - `TaskMsg.input` is the per-item input payload
 - `TaskMsg.output` is the canonical logical success payload for a work item; legacy `result` remains only as a compatibility summary/string projection
 - `TaskMsgAttempt.output` is the concrete callback/output snapshot for one execution attempt; use it for audit/troubleshooting rather than overloading `TaskMsg`
@@ -201,7 +203,7 @@ Important current rules:
 - `RuleDefinition.content` is the canonical rule expression; `expression` and `desc` remain compatibility aliases, not separate rule truths
 - `isWorkerContextAvailable` now means truly free for new assignment (`IDLE` and not expired)
 - `isWorkerContextUsable` is the broader diagnostic signal (`IDLE` / `RESERVED` / `OCCUPIED`, excluding expired, blocked, and invalid contexts)
-- `workerContextAttributes['country'] == routingCode` is the verified attribute-routing pattern, where `routingCode` is resolved from `Task.sharedConfig["routingCode"]`
+- new matching rules should prefer explicit worker-context signals such as `workerContextProject`, `workerContextRoutingTags`, and `workerContextAttributes`; do not reintroduce a frontend or API-level routing-code model field
 - a `WorkerContext` is optional in the active platform model: workers without one can still run tasks that do not require worker-context-specific routing
 - `Worker.status` is the single online truth
 - worker lock truth lives in `WorkerStorage` and `WorkerManager.isLocked(...)`

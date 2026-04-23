@@ -1,6 +1,7 @@
 package com.xa.mass.mock.bootstrap;
 
 import com.xa.mass.base.enums.worker.WorkerContextStatus;
+import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
@@ -89,6 +90,29 @@ class MockRuntimeDataLoaderTest {
         assertEquals(2, runtime.workerContextsFor("worker-us-1").size());
         assertNotNull(runtime.workerContextById("wc-us-1-a"));
         assertNotNull(runtime.workerContextById("wc-us-1-b"));
+    }
+
+    @Test
+    void loadIntoPrefersSdkRegistrationForDefaultStateResources() throws IOException {
+        FakeRuntime runtime = new FakeRuntime();
+        MockRuntimeDataLoader loader = loader(
+                defaultStateWorkersJson(),
+                defaultStateWorkerContextsJson(),
+                null,
+                null
+        );
+
+        loader.loadInto(runtime);
+
+        assertEquals(1, runtime.registeredWorkers.size());
+        assertEquals(0, runtime.legacyWorkers.size());
+        assertEquals(WorkerStatus.OFFLINE, runtime.workers.get(0).getStatus());
+        assertEquals("polling", runtime.registeredWorkers.get(0).getTransportHint());
+
+        assertEquals(1, runtime.registeredWorkerContexts.size());
+        assertEquals(0, runtime.legacyWorkerContexts.size());
+        assertEquals(WorkerContextStatus.IDLE, runtime.workerContexts.get(0).getStatus());
+        assertTrue(runtime.registeredWorkerContexts.get(0).getRoutingTags().contains("route-us"));
     }
 
     @Test
@@ -199,6 +223,37 @@ class MockRuntimeDataLoaderTest {
                 """;
     }
 
+    private String defaultStateWorkersJson() {
+        return """
+                [
+                  {
+                    "workerId": "crawler-worker-001",
+                    "workerGroupId": "CRAWLER",
+                    "onlineStrategy": "polling",
+                    "supportedProjects": ["crawlerApp"],
+                    "attributes": {
+                      "type": "crawler"
+                    }
+                  }
+                ]
+                """;
+    }
+
+    private String defaultStateWorkerContextsJson() {
+        return """
+                [
+                  {
+                    "workerContextId": "ctx-crawler-worker-001",
+                    "workerId": "crawler-worker-001",
+                    "routingTags": ["ROUTE-US"],
+                    "attributes": {
+                      "region": "us"
+                    }
+                  }
+                ]
+                """;
+    }
+
     private String tasksJson() {
         return """
                 [
@@ -244,11 +299,16 @@ class MockRuntimeDataLoaderTest {
     private static final class FakeRuntime implements MassRuntimeControl {
         private final List<Worker> workers = new ArrayList<>();
         private final List<WorkerContext> workerContexts = new ArrayList<>();
+        private final List<WorkerRegistration> registeredWorkers = new ArrayList<>();
+        private final List<WorkerContextRegistration> registeredWorkerContexts = new ArrayList<>();
+        private final List<Worker> legacyWorkers = new ArrayList<>();
+        private final List<WorkerContext> legacyWorkerContexts = new ArrayList<>();
         private final List<MassTaskCreateRequest> createdTasks = new ArrayList<>();
         private final List<RuleDefinition> rules = new ArrayList<>();
 
         @Override
         public void registerWorker(WorkerRegistration request) {
+            registeredWorkers.add(request);
             Worker worker = new Worker();
             worker.setWorkerId(request.getWorkerId());
             worker.setWorkerGroupId(request.getWorkerGroupId());
@@ -260,6 +320,7 @@ class MockRuntimeDataLoaderTest {
 
         @Override
         public void registerWorkerContext(WorkerContextRegistration request) {
+            registeredWorkerContexts.add(request);
             WorkerContext workerContext = new WorkerContext();
             workerContext.setWorkerContextId(request.getWorkerContextId());
             workerContext.setWorkerId(request.getWorkerId());
@@ -279,11 +340,13 @@ class MockRuntimeDataLoaderTest {
 
         @Override
         public void addWorker(Worker worker) {
+            legacyWorkers.add(worker);
             workers.add(worker);
         }
 
         @Override
         public void addWorkerContext(WorkerContext workerContext) {
+            legacyWorkerContexts.add(workerContext);
             workerContexts.add(workerContext);
         }
 

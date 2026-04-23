@@ -57,7 +57,7 @@ class SdkTaskControllerTest {
                                   "eventCode": "crawler.fetch-page",
                                   "mode": "STREAMING",
                                   "payloadType": "JSON",
-                                  "sharedConfig": {"site": "example", "routingCode": "us"},
+                                  "sharedConfig": {"site": "example"},
                                   "inputs": [{"url": "https://example.test"}],
                                   "batchSize": 1,
                                   "defaultMsgMaxRetryCount": 2,
@@ -79,7 +79,7 @@ class SdkTaskControllerTest {
                 Map.of("type", "json", "data", Map.of("url", "https://example.test"))
         ), request.toEngineInputs());
         org.junit.jupiter.api.Assertions.assertEquals("crawler.fetch-page", request.getEventCode());
-        org.junit.jupiter.api.Assertions.assertEquals("us", request.getSharedConfig().get("routingCode"));
+        org.junit.jupiter.api.Assertions.assertEquals("example", request.getSharedConfig().get("site"));
         org.junit.jupiter.api.Assertions.assertEquals(com.xa.mass.sdk.catalog.PayloadType.JSON, request.getPayloadType());
         org.junit.jupiter.api.Assertions.assertEquals(com.xa.mass.sdk.catalog.TaskMode.STREAMING, request.getMode());
     }
@@ -90,7 +90,7 @@ class SdkTaskControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
-                                  "project": "telegramApp",
+                                  "project": "rcsApp",
                                   "taskName": "bad-event",
                                   "eventCode": "crawler.fetch-page",
                                   "mode": "SINGLE_RUN",

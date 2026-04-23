@@ -100,7 +100,7 @@ class WorkerApiControllerTest {
                         .contentType("application/json")
                         .content("""
                                 {
-                                  "supportedProjects": ["demoApp", "telegramApp"]
+                                  "supportedProjects": ["demoApp", "testApp"]
                                 }
                                 """))
                 .andExpect(status().isOk())
@@ -110,7 +110,7 @@ class WorkerApiControllerTest {
 
         verify(workerOperations).updateWorker(argThat(updated ->
                 "worker-001".equals(updated.getWorkerId())
-                        && List.of("demoApp", "telegramApp").equals(updated.getSupportedProjects())
+                        && List.of("demoApp", "testApp").equals(updated.getSupportedProjects())
         ));
     }
 

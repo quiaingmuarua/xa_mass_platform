@@ -159,7 +159,7 @@ Supported task create fields:
 - `openEnded`
 - `maxRuntimeSeconds`
 
-Optional routing hints belong in `sharedConfig.routingCode`; `Task` does not have a first-class routing field.
+The public task create/update and control-console read models do not define a dedicated `routingCode` field. Keep task-level payload or hints inside `sharedConfig` only when a concrete backend/runtime contract requires them.
 
 Task update is metadata-only and allowed only for `NEW` or `BLOCKED`.
 
