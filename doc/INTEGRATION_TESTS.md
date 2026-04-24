@@ -190,7 +190,7 @@ Important support coverage outside the E2E package:
 - stateless workers can run tasks that do not require worker-context routing
 - SDK-created pull workers start offline, become online through `pullWorker(...).connect()`, poll work, submit output, and disconnect back offline
 - an external non-JVM WebSocket worker can come online through handshake identity and complete task work through the public HTTP + WebSocket boundaries without using the in-JVM mock worker client
-- that external worker can write results back through the canonical task-result frame even though current WebSocket dispatch still arrives as the adapter-local `TASK/step` compatibility shell
+- that external worker can receive canonical root-level task-dispatch frames and write results back through the canonical task-result frame
 - the same worker slot can be reused after normal completion and manual termination
 - `minRequiredWorkerCount` is a real `READY -> RUNNING` gate
 - multi-round refill works when `batchSize` is lower than total work-item count

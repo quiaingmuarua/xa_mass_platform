@@ -134,8 +134,8 @@ Assignment and dispatch:
 Result write-back and closure:
 
 - Current WebSocket workers establish identity at handshake time.
-- Current WebSocket dispatch still uses the adapter-local `TASK/step` compatibility shell.
-- Result write-back can arrive either through the historical `TASK/step` response shell or through the canonical task-result frame; the external Node black-box acceptance gate uses the canonical result path.
+- Current WebSocket dispatch uses a canonical root-level task-dispatch frame.
+- Result write-back uses the canonical root-level task-result frame.
 - Pull-style workers can fetch `TaskDispatchItem` work from the polling channel and submit the same logical result semantics without server push.
 - `RuntimeTaskResultIngestChannel` writes results through `TaskManager.handleTaskMessageResult(...)`.
 - callbacks must resolve a unique active `TaskMsgAttempt`; legacy attempt synthesis is not part of the current path.

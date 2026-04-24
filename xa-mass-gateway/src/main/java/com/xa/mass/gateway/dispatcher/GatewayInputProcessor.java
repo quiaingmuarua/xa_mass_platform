@@ -17,8 +17,7 @@ import org.slf4j.LoggerFactory;
 import java.util.Objects;
 
 /**
- * Inbound processor for current WebSocket task shells plus event-first control
- * frames.
+ * Inbound processor for canonical WebSocket task/control frames.
  */
 public final class GatewayInputProcessor {
     private static final Logger logger = LoggerFactory.getLogger(GatewayInputProcessor.class);
@@ -46,43 +45,11 @@ public final class GatewayInputProcessor {
             if (context.getFrameCodec().isCanonicalTaskResult(frame)) {
                 return processCanonicalTaskResult(frame);
             }
-            if (context.getFrameCodec().isTaskStep(frame)) {
-                return processTaskStep(frame, workerId, traceId);
-            }
             return processUnknownFrame();
         } catch (Exception ex) {
             logProcessingException(ex);
             return false;
         }
-    }
-
-    private boolean processTaskStep(JsonObject frame, String workerId, String traceId) {
-        if (context.getTaskResultIngestChannel() == null) {
-            context.getMessageTransporter().sendOutput(new OutboundDelivery(
-                    workerId,
-                    context.getFrameCodec().encodeTaskAck(frame, 503, "task result ingest unavailable"),
-                    traceId
-            ));
-            return true;
-        }
-        try {
-            TaskResultReport report = context.getFrameCodec().decodeTaskResult(frame);
-            boolean handled = context.getTaskResultIngestChannel().ingest(report);
-            int code = handled ? 200 : 404;
-            String message = handled ? "task result processed" : "task result ignored";
-            context.getMessageTransporter().sendOutput(new OutboundDelivery(
-                    workerId,
-                    context.getFrameCodec().encodeTaskAck(frame, code, message),
-                    traceId
-            ));
-        } catch (IllegalArgumentException ex) {
-            context.getMessageTransporter().sendOutput(new OutboundDelivery(
-                    workerId,
-                    context.getFrameCodec().encodeTaskAck(frame, 400, ex.getMessage()),
-                    traceId
-            ));
-        }
-        return true;
     }
 
     private boolean processCanonicalTaskResult(JsonObject frame) {
@@ -135,7 +102,7 @@ public final class GatewayInputProcessor {
     }
 
     private boolean processUnknownFrame() {
-        logger.warn("No task-shell or control handler found for inbound adapter frame");
+        logger.warn("No canonical task/control handler found for inbound adapter frame");
         return true;
     }
 

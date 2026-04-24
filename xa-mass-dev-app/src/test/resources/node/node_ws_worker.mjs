@@ -19,8 +19,8 @@ function log(message) {
 
 function buildTaskResult(taskFrame) {
   return JSON.stringify({
-    messageId: taskFrame?.msgId ?? taskFrame?.messageId,
-    taskId: taskFrame?.context?.taskId,
+    messageId: taskFrame?.messageId,
+    taskId: taskFrame?.taskId,
     success: true,
     detail: "completed by external node worker",
     output: {
@@ -34,7 +34,7 @@ function buildTaskResult(taskFrame) {
       },
       execution: {
         transport: "websocket",
-        dispatchShape: "task-step-compat-shell",
+        dispatchShape: "canonical-task-dispatch",
         resultShape: "canonical-task-result",
         respondedAt: new Date().toISOString(),
       },
@@ -50,13 +50,13 @@ function handleFrame(rawFrame) {
     return;
   }
 
-  if (frame?.msgType === "TASK" && frame?.response !== true) {
-    log(`received task frame taskId=${frame?.context?.taskId ?? "unknown"} msgId=${frame?.msgId ?? "unknown"}`);
+  if (frame?.taskId && frame?.messageId && frame?.success === undefined) {
+    log(`received task frame taskId=${frame.taskId} messageId=${frame.messageId}`);
     socket.send(buildTaskResult(frame));
     return;
   }
 
-  log(`ignoring frame msgType=${frame?.msgType ?? "unknown"}`);
+  log("ignoring unsupported frame");
 }
 
 function shutdown(exitCode) {

@@ -27,14 +27,37 @@ class WebSocketGatewayFrameCodecTest {
     }
 
     @Test
-    void detectsTaskStepTransportShell() {
-        assertTrue(codec.isTaskStep(taskFrame("TASK", "step", false, "demoApp", null)));
+    void encodesCanonicalTaskDispatch() {
+        com.xa.mass.transport.model.TaskDispatchItem item = new com.xa.mass.transport.model.TaskDispatchItem(
+                "task-1",
+                "msg-1",
+                "crawler.fetch-page",
+                "task-name",
+                "demoApp",
+                "user-a",
+                2,
+                "worker-1",
+                "worker-context-1",
+                "batch-1",
+                Map.of("target", "https://example.test"),
+                Map.of("textContent", "hello")
+        );
+
+        JsonObject frame = codec.parseObject(codec.encodeCanonicalTaskDispatch(item));
+
+        assertNotNull(frame);
+        assertTrue(codec.isCanonicalTaskDispatch(frame));
+        assertEquals("msg-1", frame.get("messageId").getAsString());
+        assertEquals("worker-1", frame.get("workerId").getAsString());
+        assertEquals("task-1", frame.get("taskId").getAsString());
+        assertEquals("crawler.fetch-page", frame.get("eventCode").getAsString());
+        assertEquals("https://example.test", frame.getAsJsonObject("input").get("target").getAsString());
     }
 
     @Test
-    void controlFramesStayOutsideTaskShellDetection() {
-        assertTrue(!codec.isTaskStep(controlRequestFrame("demoApp", "crawler.fetch-page")));
-        assertTrue(!codec.isTaskStep(controlResponseFrame("demoApp", "crawler.fetch-page")));
+    void controlFramesStayOutsideCanonicalTaskDispatchDetection() {
+        assertTrue(!codec.isCanonicalTaskDispatch(controlRequestFrame("demoApp", "crawler.fetch-page")));
+        assertTrue(!codec.isCanonicalTaskDispatch(controlResponseFrame("demoApp", "crawler.fetch-page")));
     }
 
     @Test
@@ -67,14 +90,6 @@ class WebSocketGatewayFrameCodecTest {
     }
 
     @Test
-    void taskAckDoesNotBackfillEventCode() {
-        JsonObject request = taskFrame("TASK", "step", false, "demoApp", null);
-        JsonObject ack = codec.parseObject(codec.encodeTaskAck(request, 200, "ok"));
-
-        assertNull(codec.extractEventCode(ack));
-    }
-
-    @Test
     void canonicalTaskResultDecodesIntoTaskResultReport() {
         JsonObject frame = new JsonObject();
         frame.addProperty("messageId", "msg-1");
@@ -92,23 +107,6 @@ class WebSocketGatewayFrameCodecTest {
         assertTrue(report.isSuccess());
         assertEquals("completed", report.getDetail());
         assertEquals("SUCCESS", report.getOutput().get("status"));
-    }
-
-    private JsonObject taskFrame(String msgType, String subMsgType, boolean response, String project, JsonObject payload) {
-        JsonObject frame = new JsonObject();
-        frame.addProperty("msgId", "msg-1");
-        frame.addProperty("msgType", msgType);
-        frame.addProperty("subMsgType", subMsgType);
-        frame.addProperty("response", response);
-        frame.addProperty("from", "CLIENT");
-        if (project != null) {
-            frame.addProperty("project", project);
-        }
-        JsonObject context = new JsonObject();
-        context.addProperty("workerId", "worker-1");
-        frame.add("context", context);
-        frame.add("payload", payload != null ? payload : new JsonObject());
-        return frame;
     }
 
     private JsonObject controlRequestFrame(String project, String eventCode) {

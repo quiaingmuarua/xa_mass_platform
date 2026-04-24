@@ -60,7 +60,7 @@ Verified runtime path:
    - `workerContextId`
    - `batchId`
    - status `ASSIGNED`
-9. `GatewayTaskMsgPublisher` pushes the task downstream as `TASK/step`.
+9. `GatewayTaskMsgPublisher` pushes the task downstream as a canonical root-level task-dispatch frame.
 
 Key implementation facts:
 
@@ -109,8 +109,8 @@ Verified open-ended behavior:
 Verified runtime path:
 
 1. Default `dev` startup automatically launches mock WebSocket clients after `ApplicationReadyEvent`.
-2. A mock client receives `TASK/step`.
-3. The mock client sends back a `TASK/step` result frame.
+2. A mock client receives a canonical root-level task-dispatch frame.
+3. The mock client sends back a canonical root-level task-result frame.
 4. The runtime `TaskResultIngestChannel` calls `TaskManager.handleTaskMessageResult(...)`.
 5. `TaskManager` updates the persisted `TaskMsg` using `taskId + msgId`.
 6. Each `TaskMsg` reaches `SUCCESS` or `FAILED`.
@@ -118,7 +118,7 @@ Verified runtime path:
 
 Important guards:
 
-- `MassWebSocketClientImpl` ignores `response=true` `TASK/step` frames so the mock side does not generate echo loops
+- the mock worker only reacts to canonical task-dispatch frames and ignores task-result/control frames, so task results do not echo back into the task runtime
 - duplicate final callbacks are accepted only as idempotent replays
 - `TaskMsgStatus` stays as the logical lifecycle (`INIT -> ASSIGNED -> RUNNING -> final`)
 - per-dispatch lease and retry history now lives in `TaskMsgAttempt`
@@ -149,5 +149,3 @@ Verified runtime release behavior:
 - `SimpleTaskScheduler.scheduleTasks()` is still a stub
 - Redis and Database storage remain fail-fast placeholders
 - broader API end-to-end coverage is still incomplete for some cancel follow-up variants
-
-

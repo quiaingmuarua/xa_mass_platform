@@ -196,4 +196,4 @@ Covered areas:
 - `e2e/audit`: `stateValidation` exposure and terminal metadata consistency through the real HTTP path
 - `e2e/support`: worker control-event acknowledgements and disconnect-after-ack behavior
 - `WebSocketClientStarterTest`: auto-start and idempotent startup behavior
-- `MassWebSocketClientImplTest`: ignore `response=true` task frames, avoid echo loops, support delay/drop fault injection, and support disconnect-after-ack command behavior
+- `MockWorkerWebSocketClientTest`: task dispatch handling, canonical task-result write-back, delay/drop fault injection, and disconnect-after-ack command behavior

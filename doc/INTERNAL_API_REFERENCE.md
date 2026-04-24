@@ -40,7 +40,7 @@ For verified runtime behavior and recommended startup, use [VERIFIED_RUNBOOK.md]
 - `Task.intakeStatus` is the active append-window lifecycle truth; `openEnded` is only the create/request projection.
 - `TaskMsg.latestAttemptWorkerId`, `latestAttemptWorkerContextId`, and `latestAttemptBatchId` are latest-attempt projections of `TaskMsgAttempt`.
 - Worker/gateway callbacks must resolve a unique active `TaskMsgAttempt`; the runtime no longer synthesizes legacy attempts for result write-back.
-- The current WebSocket-adapter compatibility surface keeps `TASK/step` as the remaining task protocol shell, while control/debug traffic uses a root-level event-first JSON frame and worker identity is established at handshake time; these adapter semantics are not API capability truth.
+- The current WebSocket-adapter surface uses canonical root-level task-dispatch/task-result frames plus root-level event-first control frames, while worker identity is established at handshake time; these adapter semantics are not API capability truth.
 
 ## 1.1 Event Control Plane Notes
 

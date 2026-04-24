@@ -25,8 +25,8 @@ import java.util.UUID;
  * Current WebSocket adapter frame codec.
  *
  * <p>This type owns the remaining WebSocket wire shapes for the current
- * gateway adapter: task transport shells plus root-level event-first control
- * frames. It is adapter-local and must not be treated as a platform
+ * gateway adapter: canonical task/control frames for the current WebSocket
+ * runtime. It is adapter-local and must not be treated as a platform
  * capability contract.
  */
 public final class WebSocketGatewayFrameCodec {
@@ -107,76 +107,49 @@ public final class WebSocketGatewayFrameCodec {
                 && readString(frame, WorkerControlEventProtocol.EVENT_CODE_FIELD) != null;
     }
 
-    public boolean isTaskStep(JsonObject frame) {
-        return "TASK".equals(readString(frame, "msgType"))
-                && "step".equals(normalizeSubType(readString(frame, "subMsgType")));
-    }
-
     public boolean isCanonicalTaskResult(JsonObject frame) {
         return frame != null
-                && readString(frame, "msgType") == null
                 && readString(frame, WorkerControlEventProtocol.EVENT_CODE_FIELD) == null
                 && firstNonBlank(readString(frame, "taskId"), readNestedString(frame, "context", "taskId")) != null
                 && extractMessageId(frame) != null
                 && hasBoolean(frame, "success");
     }
 
-    public String encodeTaskDispatch(TaskDispatchItem item) {
-        JsonObject frame = new JsonObject();
-        frame.addProperty("msgId", item.getMsgId());
-        frame.addProperty("response", false);
-        frame.addProperty("msgType", "TASK");
-        frame.addProperty("subMsgType", "step");
-        frame.addProperty("from", "SERVER");
-        if (item.getProject() != null) {
-            frame.addProperty("project", item.getProject());
-        }
-
-        JsonObject context = new JsonObject();
-        context.addProperty("workerId", item.getWorkerId());
-        context.addProperty("taskId", item.getTaskId());
-        context.addProperty("retryCount", item.getRetryCount());
-        frame.add("context", context);
-
-        JsonObject payload = new JsonObject();
-        JsonArray steps = new JsonArray();
-        JsonObject step = new JsonObject();
-        step.addProperty("stepId", item.getBatchId() != null ? item.getBatchId() : item.getMsgId());
-        step.addProperty("action", "task-dispatch");
-        step.add("params", gson.toJsonTree(new LinkedHashMap<>(item.mergedPayload())));
-        steps.add(step);
-        payload.add("steps", steps);
-        payload.addProperty(WorkerControlEventProtocol.EVENT_CODE_FIELD, item.getEventCode());
-        frame.add("payload", payload);
-        return gson.toJson(frame);
+    public boolean isCanonicalTaskDispatch(JsonObject frame) {
+        return frame != null
+                && !isResponse(frame)
+                && firstNonBlank(readString(frame, "taskId"), readNestedString(frame, "context", "taskId")) != null
+                && extractMessageId(frame) != null
+                && !hasBoolean(frame, "success");
     }
 
-    public TaskResultReport decodeTaskResult(JsonObject frame) {
-        String taskId = readNestedString(frame, "context", "taskId");
-        String msgId = extractMessageId(frame);
-        if (taskId == null || msgId == null) {
-            throw new IllegalArgumentException("taskId/msgId are required");
+    public String encodeCanonicalTaskDispatch(TaskDispatchItem item) {
+        JsonObject frame = new JsonObject();
+        frame.addProperty(WorkerControlEventProtocol.MESSAGE_ID_FIELD, item.getMsgId());
+        frame.addProperty(WorkerControlEventProtocol.WORKER_ID_FIELD, item.getWorkerId());
+        if (item.getProject() != null) {
+            frame.addProperty(WorkerControlEventProtocol.PROJECT_FIELD, item.getProject());
         }
-
-        JsonObject payloadObj = extractPayload(frame);
-        String status = readString(payloadObj, "status");
-        String errorCode = readString(payloadObj, "errorCode");
-        String detail = firstNonBlank(
-                readString(payloadObj, "mockData"),
-                readString(payloadObj, "message"),
-                readString(payloadObj, "errorMessage"),
-                payloadObj.toString()
-        );
-
-        boolean success = "SUCCESS".equalsIgnoreCase(status);
-        if (!success && status == null && payloadObj.has("code") && payloadObj.get("code").isJsonPrimitive()) {
-            try {
-                int code = payloadObj.get("code").getAsInt();
-                success = code >= 200 && code < 300;
-            } catch (Exception ignored) {
-            }
+        if (item.getEventCode() != null) {
+            frame.addProperty(WorkerControlEventProtocol.EVENT_CODE_FIELD, item.getEventCode());
         }
-        return new TaskResultReport(taskId, msgId, success, detail, errorCode, gson.fromJson(payloadObj, MAP_TYPE));
+        frame.addProperty("taskId", item.getTaskId());
+        if (item.getTaskName() != null) {
+            frame.addProperty("taskName", item.getTaskName());
+        }
+        if (item.getUserId() != null) {
+            frame.addProperty("userId", item.getUserId());
+        }
+        frame.addProperty("retryCount", item.getRetryCount());
+        if (item.getWorkerContextId() != null) {
+            frame.addProperty("workerContextId", item.getWorkerContextId());
+        }
+        if (item.getBatchId() != null) {
+            frame.addProperty("batchId", item.getBatchId());
+        }
+        frame.add("input", gson.toJsonTree(item.getInput() != null ? item.getInput() : Map.of()));
+        frame.add("sharedConfig", gson.toJsonTree(item.getSharedConfig() != null ? item.getSharedConfig() : Map.of()));
+        return gson.toJson(frame);
     }
 
     public TaskResultReport decodeCanonicalTaskResult(JsonObject frame) {
@@ -204,28 +177,6 @@ public final class WebSocketGatewayFrameCodec {
                 errorCode,
                 gson.fromJson(outputObject, MAP_TYPE)
         );
-    }
-
-    public String encodeTaskAck(JsonObject requestFrame, int code, String message) {
-        JsonObject response = new JsonObject();
-        response.addProperty("msgId", extractMessageId(requestFrame));
-        response.addProperty("response", true);
-        response.addProperty("msgType", "TASK");
-        response.addProperty("subMsgType", readString(requestFrame, "subMsgType"));
-        response.addProperty("from", "SERVER");
-        String project = extractProject(requestFrame);
-        if (project != null) {
-            response.addProperty(WorkerControlEventProtocol.PROJECT_FIELD, project);
-        }
-        JsonObject context = readJsonObject(requestFrame, "context");
-        if (!context.entrySet().isEmpty()) {
-            response.add("context", context.deepCopy());
-        }
-        JsonObject payload = new JsonObject();
-        payload.addProperty("code", code);
-        payload.addProperty("message", message);
-        response.add("payload", payload);
-        return gson.toJson(response);
     }
 
     public EventRequest decodeControlEventRequest(JsonObject frame) {
@@ -336,13 +287,6 @@ public final class WebSocketGatewayFrameCodec {
             return null;
         }
         return readString(object.getAsJsonObject(nestedField), field);
-    }
-
-    private String normalizeSubType(String subMsgType) {
-        if (subMsgType == null || subMsgType.isBlank()) {
-            return null;
-        }
-        return subMsgType.trim();
     }
 
     private String firstNonBlank(String... values) {

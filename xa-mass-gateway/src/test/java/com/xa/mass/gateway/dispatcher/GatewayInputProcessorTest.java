@@ -83,50 +83,28 @@ class GatewayInputProcessorTest {
 
     @Test
     void noHandlerDefaultsToUnknownAndNoOutput() {
-        boolean result = inputProcessor.process(codec.getGson().toJson(taskFrame("CONTROL", "unknown", false, "proj", new JsonObject())));
+        JsonObject frame = new JsonObject();
+        frame.addProperty("messageId", "msg-unknown");
+        frame.addProperty("workerId", "worker-1");
+        frame.addProperty("taskId", "task-1");
+        boolean result = inputProcessor.process(codec.getGson().toJson(frame));
 
         assertTrue(result);
         verify(transporter, never()).sendOutput(any());
     }
 
     @Test
-    void taskStepBridgeProducesAckWithoutEventBackfill() {
-        context = createContext(report -> true, null, null);
-        inputProcessor = new GatewayInputProcessor(context);
+    void unsupportedFrameShapeIsIgnoredWithoutAckOutput() {
+        JsonObject unsupportedFrame = new JsonObject();
+        unsupportedFrame.addProperty("messageId", "msg-1");
+        unsupportedFrame.addProperty("workerId", "worker-1");
+        unsupportedFrame.addProperty("project", "proj");
+        unsupportedFrame.add("payload", payload("status", "SUCCESS"));
 
-        inputProcessor.process(taskStepFrame("task-1", "msg-1", "SUCCESS", "ok"));
+        boolean result = inputProcessor.process(codec.getGson().toJson(unsupportedFrame));
 
-        org.mockito.ArgumentCaptor<OutboundDelivery> outputCaptor = org.mockito.ArgumentCaptor.forClass(OutboundDelivery.class);
-        verify(transporter).sendOutput(outputCaptor.capture());
-        JsonObject ack = codec.parseObject(outputCaptor.getValue().getRawJson());
-        assertEquals("worker-1", outputCaptor.getValue().getWorkerId());
-        assertEquals("msg-1", outputCaptor.getValue().getTraceId());
-        assertEquals(200, ack.getAsJsonObject("payload").get("code").getAsInt());
-        assertNull(codec.extractEventCode(ack));
-    }
-
-    @Test
-    void taskStepWithoutBridgeReturnsExplicitUnavailableAck() {
-        inputProcessor.process(taskStepFrame("task-1", "msg-1", "SUCCESS", "ok"));
-
-        org.mockito.ArgumentCaptor<OutboundDelivery> outputCaptor = org.mockito.ArgumentCaptor.forClass(OutboundDelivery.class);
-        verify(transporter).sendOutput(outputCaptor.capture());
-        JsonObject ack = codec.parseObject(outputCaptor.getValue().getRawJson());
-        assertEquals(503, ack.getAsJsonObject("payload").get("code").getAsInt());
-        assertEquals("task result ingest unavailable", ack.getAsJsonObject("payload").get("message").getAsString());
-    }
-
-    @Test
-    void taskStepBridgeRejectsMalformedTaskReportWithBadRequestAck() {
-        context = createContext(report -> true, null, null);
-        inputProcessor = new GatewayInputProcessor(context);
-
-        inputProcessor.process(codec.getGson().toJson(taskFrame("TASK", "step", false, "proj", payload("status", "SUCCESS"))));
-
-        org.mockito.ArgumentCaptor<OutboundDelivery> outputCaptor = org.mockito.ArgumentCaptor.forClass(OutboundDelivery.class);
-        verify(transporter).sendOutput(outputCaptor.capture());
-        JsonObject ack = codec.parseObject(outputCaptor.getValue().getRawJson());
-        assertEquals(400, ack.getAsJsonObject("payload").get("code").getAsInt());
+        assertTrue(result);
+        verify(transporter, never()).sendOutput(any());
     }
 
     @Test
@@ -203,14 +181,6 @@ class GatewayInputProcessorTest {
         );
     }
 
-    private String taskStepFrame(String taskId, String msgId, String status, String detail) {
-        JsonObject payload = payload("status", status, "mockData", detail);
-        JsonObject frame = taskFrame("TASK", "step", false, "proj", payload);
-        frame.getAsJsonObject("context").addProperty("taskId", taskId);
-        frame.addProperty("msgId", msgId);
-        return codec.getGson().toJson(frame);
-    }
-
     private String canonicalTaskResultFrame(String taskId, String messageId, boolean success, String detail) {
         JsonObject frame = new JsonObject();
         frame.addProperty("messageId", messageId);
@@ -256,23 +226,6 @@ class GatewayInputProcessorTest {
                 WorkerControlEventProtocol.EVENT_CODE_FIELD, eventCode
         ));
         return codec.getGson().toJson(frame);
-    }
-
-    private JsonObject taskFrame(String msgType, String subMsgType, boolean response, String project, JsonObject payload) {
-        JsonObject frame = new JsonObject();
-        frame.addProperty("msgId", "msg-1");
-        frame.addProperty("msgType", msgType);
-        frame.addProperty("subMsgType", subMsgType);
-        frame.addProperty("response", response);
-        frame.addProperty("from", response ? "CLIENT" : "SERVER");
-        if (project != null) {
-            frame.addProperty("project", project);
-        }
-        JsonObject context = new JsonObject();
-        context.addProperty("workerId", "worker-1");
-        frame.add("context", context);
-        frame.add("payload", payload != null ? payload : new JsonObject());
-        return frame;
     }
 
     private JsonObject payload(Object... keyValues) {

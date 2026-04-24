@@ -44,22 +44,22 @@ class GatewayTaskMsgPublisherTest {
 
         JsonObject message = codec.parseObject(delivery.getRawJson());
         assertNotNull(message);
-        assertEquals("msg-1", message.get("msgId").getAsString());
-        assertEquals("TASK", message.get("msgType").getAsString());
-        assertEquals("step", message.get("subMsgType").getAsString());
-        assertEquals("SERVER", message.get("from").getAsString());
-        assertEquals("worker-1", message.getAsJsonObject("context").get("workerId").getAsString());
-        assertEquals("task-1", message.getAsJsonObject("context").get("taskId").getAsString());
+        assertEquals("msg-1", message.get("messageId").getAsString());
+        assertEquals("worker-1", message.get("workerId").getAsString());
+        assertEquals("task-1", message.get("taskId").getAsString());
+        assertEquals("crawler.fetch-page", message.get("eventCode").getAsString());
+        assertEquals("worker-context-1", message.get("workerContextId").getAsString());
+        assertEquals("batch-0", message.get("batchId").getAsString());
+        assertEquals(0, message.get("retryCount").getAsInt());
 
-        JsonObject payload = message.getAsJsonObject("payload");
-        assertNotNull(payload);
-        assertEquals("crawler.fetch-page", payload.get("eventCode").getAsString());
-        assertEquals(1, payload.getAsJsonArray("steps").size());
-        JsonObject firstStep = payload.getAsJsonArray("steps").get(0).getAsJsonObject();
-        assertEquals("batch-0", firstStep.get("stepId").getAsString());
-        assertEquals("task-dispatch", firstStep.get("action").getAsString());
-        assertEquals("demoApp", firstStep.getAsJsonObject("params").get("project").getAsString());
-        assertEquals("agent-1", firstStep.getAsJsonObject("params").get("userId").getAsString());
+        JsonObject input = message.getAsJsonObject("input");
+        JsonObject sharedConfig = message.getAsJsonObject("sharedConfig");
+        assertNotNull(input);
+        assertNotNull(sharedConfig);
+        assertEquals("target-1", input.get("target").getAsString());
+        assertEquals("demoApp", message.get("project").getAsString());
+        assertEquals("agent-1", message.get("userId").getAsString());
+        assertEquals("hello", sharedConfig.get("textContent").getAsString());
     }
 
     private Task task() {

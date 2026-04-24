@@ -83,19 +83,19 @@ public class MockWorkerWebSocketClient extends WebSocketClient implements MockWo
                 logger.warn("[{}] Ignoring non-object frame", workerId);
                 return;
             }
+            if (taskFrameHandler.isTaskDispatchFrame(frame)) {
+                handleTaskMessage(frame);
+                return;
+            }
+            if (taskFrameHandler.isTaskResultFrame(frame)) {
+                logger.debug("[{}] Ignoring inbound canonical task result frame {}", workerId, readString(frame, "messageId"));
+                return;
+            }
             if (isControlFrame(frame)) {
                 handleControlMessage(frame);
                 return;
             }
-            String msgType = readString(frame, "msgType");
-            if (msgType == null) {
-                logger.warn("[{}] Ignoring frame without msgType/eventCode", workerId);
-                return;
-            }
-            switch (msgType) {
-                case "TASK" -> handleTaskMessage(frame);
-                default -> logger.warn("[{}] Unhandled msgType: {}", workerId, msgType);
-            }
+            logger.warn("[{}] Ignoring unsupported worker frame shape", workerId);
         } catch (Exception e) {
             logger.error("[{}] Failed to parse or handle message: {}", workerId, e.getMessage(), e);
         }
@@ -299,7 +299,9 @@ public class MockWorkerWebSocketClient extends WebSocketClient implements MockWo
     }
 
     private boolean isControlFrame(JsonObject frame) {
-        return readString(frame, WorkerControlEventProtocol.EVENT_CODE_FIELD) != null;
+        return readString(frame, WorkerControlEventProtocol.EVENT_CODE_FIELD) != null
+                && !taskFrameHandler.isTaskDispatchFrame(frame)
+                && !taskFrameHandler.isTaskResultFrame(frame);
     }
 
     private String readString(JsonObject object, String field) {

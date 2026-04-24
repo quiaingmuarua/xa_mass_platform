@@ -30,34 +30,35 @@ final class MockWorkerTaskFrameHandler {
         if (taskMessage == null) {
             return null;
         }
-        if (readBoolean(taskMessage, "response")) {
-            logger.debug("[{}] Ignoring task response frame for msgId: {}", workerId, readString(taskMessage, "msgId"));
+        if (isTaskResultFrame(taskMessage)) {
+            logger.debug("[{}] Ignoring canonical task result frame for messageId: {}", workerId, extractMessageId(taskMessage));
             return null;
         }
-        JsonObject originalContext = getContext(taskMessage);
-        String taskId = readString(originalContext, "taskId");
+        if (!isTaskDispatchFrame(taskMessage)) {
+            return null;
+        }
+        String taskId = readString(taskMessage, "taskId");
         if (taskId == null || taskId.isBlank()) {
-            logger.info("[{}] Received TASK frame without taskId, skipping task-result callback. msgId={}",
-                    workerId, readString(taskMessage, "msgId"));
+            logger.info("[{}] Received task dispatch without taskId, skipping task-result callback. messageId={}",
+                    workerId, extractMessageId(taskMessage));
             return null;
         }
 
-        JsonObject taskPayload = getPayload(taskMessage);
         String resolvedStatus = resolveTaskResultStatus(taskResultStatus, state);
-        int stepCount = countSteps(taskPayload);
+        int stepCount = 1;
         long delayMillis = resolveTaskResponseDelayMillis(taskMessage, workerId, stepCount, state, resolvedStatus);
         long startedAtEpochMillis = System.currentTimeMillis();
         long finishedAtEpochMillis = startedAtEpochMillis + delayMillis;
 
         JsonObject response = new JsonObject();
-        response.addProperty("messageId", readString(taskMessage, "msgId"));
+        response.addProperty("messageId", extractMessageId(taskMessage));
         response.addProperty("workerId", workerId);
         response.addProperty("taskId", taskId);
         String project = readString(taskMessage, "project");
         if (project != null) {
             response.addProperty("project", project);
         }
-        Integer retryCount = readInt(originalContext, "retryCount");
+        Integer retryCount = readInt(taskMessage, "retryCount");
         if (retryCount != null) {
             response.addProperty("retryCount", retryCount);
         }
@@ -68,12 +69,11 @@ final class MockWorkerTaskFrameHandler {
         }
 
         Map<String, Object> outputMap = new LinkedHashMap<>();
-        outputMap.put("stepId", extractFirstStepId(taskPayload));
+        outputMap.put("stepId", resolveStepId(taskMessage));
         outputMap.put("mockData", "Executed by mock client " + workerId);
         outputMap.put("status", resolvedStatus);
         outputMap.put("execution", buildExecutionSnapshot(
                 taskMessage,
-                originalContext,
                 stepCount,
                 delayMillis,
                 startedAtEpochMillis,
@@ -85,10 +85,10 @@ final class MockWorkerTaskFrameHandler {
 
         if (state != null && state.shouldDropTaskResponse()) {
             logger.info("[{}] Dropped mock task response for msgId={} due to mock state {}",
-                    workerId, readString(taskMessage, "msgId"), state.snapshot());
+                    workerId, extractMessageId(taskMessage), state.snapshot());
             return null;
         }
-        return new TaskResponsePlan(GSON.toJson(response), readString(taskMessage, "msgId"), delayMillis);
+        return new TaskResponsePlan(GSON.toJson(response), extractMessageId(taskMessage), delayMillis);
     }
 
     private String resolveTaskResultStatus(String taskResultStatus, MockClientState state) {
@@ -106,32 +106,32 @@ final class MockWorkerTaskFrameHandler {
         if (state != null && state.getTaskResponseDelayMillis() > 0L) {
             return state.getTaskResponseDelayMillis();
         }
-        int stableHash = Objects.hash(workerId, readString(taskMessage, "msgId"), readString(taskMessage, "project"), stepCount);
+        int stableHash = Objects.hash(workerId, extractMessageId(taskMessage), readString(taskMessage, "project"), stepCount);
         long jitter = Math.floorMod(stableHash, (int) DEFAULT_TASK_RESPONSE_JITTER_MS + 1);
         long failurePenalty = "FAILED".equals(taskStatus) ? 10L : 0L;
         return DEFAULT_TASK_RESPONSE_BASE_DELAY_MS + jitter + Math.max(0, stepCount - 1) * 5L + failurePenalty;
     }
 
-    private String extractFirstStepId(JsonObject taskPayload) {
-        JsonArray steps = taskPayload != null && taskPayload.has("steps") && taskPayload.get("steps").isJsonArray()
-                ? taskPayload.getAsJsonArray("steps")
-                : null;
-        if (steps == null || steps.isEmpty() || !steps.get(0).isJsonObject()) {
-            return "step-0-default";
-        }
-        return readString(steps.get(0).getAsJsonObject(), "stepId") != null
-                ? readString(steps.get(0).getAsJsonObject(), "stepId")
-                : "step-0-default";
+    boolean isTaskDispatchFrame(JsonObject taskMessage) {
+        return taskMessage != null
+                && !isTaskResultFrame(taskMessage)
+                && readString(taskMessage, "taskId") != null
+                && extractMessageId(taskMessage) != null;
     }
 
-    private int countSteps(JsonObject taskPayload) {
-        return taskPayload != null && taskPayload.has("steps") && taskPayload.get("steps").isJsonArray()
-                ? taskPayload.getAsJsonArray("steps").size()
-                : 0;
+    boolean isTaskResultFrame(JsonObject taskMessage) {
+        return taskMessage != null
+                && readString(taskMessage, "taskId") != null
+                && extractMessageId(taskMessage) != null
+                && readBoolean(taskMessage, "success");
+    }
+
+    private String resolveStepId(JsonObject taskMessage) {
+        String batchId = readString(taskMessage, "batchId");
+        return batchId != null ? batchId : firstNonBlank(extractMessageId(taskMessage), "step-0-default");
     }
 
     private Map<String, Object> buildExecutionSnapshot(JsonObject taskMessage,
-                                                       JsonObject originalContext,
                                                        int stepCount,
                                                        long delayMillis,
                                                        long startedAtEpochMillis,
@@ -146,10 +146,11 @@ final class MockWorkerTaskFrameHandler {
         execution.put("durationMs", delayMillis);
         execution.put("stepCount", stepCount);
         execution.put("taskStatus", taskStatus);
-        execution.put("retryCount", readInt(originalContext, "retryCount") == null ? 0 : readInt(originalContext, "retryCount"));
+        execution.put("retryCount", readInt(taskMessage, "retryCount") == null ? 0 : readInt(taskMessage, "retryCount"));
         execution.put("project", readString(taskMessage, "project"));
-        execution.put("messageId", readString(taskMessage, "msgId"));
-        execution.put("taskId", readString(originalContext, "taskId"));
+        execution.put("eventCode", readString(taskMessage, "eventCode"));
+        execution.put("messageId", extractMessageId(taskMessage));
+        execution.put("taskId", readString(taskMessage, "taskId"));
         return execution;
     }
 
@@ -162,18 +163,6 @@ final class MockWorkerTaskFrameHandler {
         workerProfile.put("javaVersion", System.getProperty("java.version"));
         workerProfile.put("processId", ProcessHandle.current().pid());
         return workerProfile;
-    }
-
-    private JsonObject getContext(JsonObject message) {
-        return message != null && message.has("context") && message.get("context").isJsonObject()
-                ? message.getAsJsonObject("context")
-                : new JsonObject();
-    }
-
-    private JsonObject getPayload(JsonObject message) {
-        return message != null && message.has("payload") && message.get("payload").isJsonObject()
-                ? message.getAsJsonObject("payload")
-                : new JsonObject();
     }
 
     private boolean readBoolean(JsonObject object, String field) {
@@ -200,6 +189,22 @@ final class MockWorkerTaskFrameHandler {
         } catch (Exception ignored) {
             return null;
         }
+    }
+
+    private String extractMessageId(JsonObject object) {
+        return firstNonBlank(readString(object, "messageId"), readString(object, "msgId"));
+    }
+
+    private String firstNonBlank(String... values) {
+        if (values == null) {
+            return null;
+        }
+        for (String value : values) {
+            if (value != null && !value.isBlank()) {
+                return value;
+            }
+        }
+        return null;
     }
 
     private String normalizeTaskResultStatus(String taskResultStatus) {

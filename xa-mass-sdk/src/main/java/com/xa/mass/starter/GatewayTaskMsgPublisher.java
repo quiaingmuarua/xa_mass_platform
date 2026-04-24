@@ -31,7 +31,7 @@ public class GatewayTaskMsgPublisher implements TaskDispatchChannel {
             return;
         }
         for (TaskDispatchItem dispatchItem : items) {
-            String rawJson = dispatchRuntimeContext.getFrameCodec().encodeTaskDispatch(dispatchItem);
+            String rawJson = dispatchRuntimeContext.getFrameCodec().encodeCanonicalTaskDispatch(dispatchItem);
             dispatchRuntimeContext.getMessageTransporter().sendOutput(new OutboundDelivery(
                     dispatchItem.getWorkerId(),
                     rawJson,

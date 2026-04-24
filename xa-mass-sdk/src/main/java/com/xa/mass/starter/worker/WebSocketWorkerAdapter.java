@@ -50,7 +50,7 @@ public class WebSocketWorkerAdapter implements WorkerAdapter {
             return;
         }
         for (TaskDispatchItem dispatchItem : items) {
-            String json = frameCodec.encodeTaskDispatch(dispatchItem);
+            String json = frameCodec.encodeCanonicalTaskDispatch(dispatchItem);
             messageTransporter.sendOutput(new OutboundDelivery(
                     dispatchItem.getWorkerId(),
                     json,
