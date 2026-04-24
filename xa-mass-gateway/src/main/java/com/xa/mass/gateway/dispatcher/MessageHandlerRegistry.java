@@ -79,9 +79,6 @@ public class MessageHandlerRegistry {
         if (isHeartbeatPong(msg)) {
             return ResolutionResult.found(this::handlePong, msg.getProject(), MessageType.PONG.name(), SUBTYPE_HEARTBEAT, "builtin-pong");
         }
-        if (isGenericTask(msg)) {
-            return ResolutionResult.found(this::handleTask, msg.getProject(), MessageType.TASK.name(), null, "builtin-task");
-        }
         if (isTaskStep(msg) && taskStepHandler != null) {
             return ResolutionResult.found(taskStepHandler, msg.getProject(), MessageType.TASK.name(), "step", "task-step");
         }
@@ -145,18 +142,6 @@ public class MessageHandlerRegistry {
         return Collections.emptyList();
     }
 
-    private List<MassMessage> handleTask(MassMessage msg) {
-        MassMessage ack = new MassMessage();
-        ack.setMsgId(msg.getMsgId());
-        ack.setResponse(true);
-        ack.setMsgType(MessageType.TASK);
-        ack.setSubMsgType("");
-        ack.setFrom(MessageDirection.SERVER);
-        ack.setContext(msg.getContext());
-        ack.setPayload(gson.toJsonTree(new MessageAckPayload(200, "task received")));
-        return Collections.singletonList(ack);
-    }
-
     private boolean shouldRouteToWorkerControlEventBridge(MassMessage msg) {
         if (workerControlEventBridgeHandler == null
                 || msg == null
@@ -190,11 +175,6 @@ public class MessageHandlerRegistry {
     private boolean isHeartbeatPong(MassMessage msg) {
         return msg.getMsgType() == MessageType.PONG
                 && SUBTYPE_HEARTBEAT.equals(normalizeSubType(msg.getSubMsgType()));
-    }
-
-    private boolean isGenericTask(MassMessage msg) {
-        return msg.getMsgType() == MessageType.TASK
-                && normalizeSubType(msg.getSubMsgType()) == null;
     }
 
     private boolean isTaskStep(MassMessage msg) {

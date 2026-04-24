@@ -14,7 +14,6 @@ public class DispatcherContext implements DispatchRuntimeContext {
     private final WorkerEndpointRegistry sessionManager;
     private final MessageCodec messageCodec;
     private MessageHandlerRegistry messageHandlerRegistry;
-    private MiddlewareDirection direction;
     // ... 可扩展其它只读配置
 
     /**
@@ -67,15 +66,4 @@ public class DispatcherContext implements DispatchRuntimeContext {
         this.messageHandlerRegistry = messageHandlerRegistry;
     }
 
-    @Override
-    public MiddlewareDirection getDirection() {
-        return direction;
-    }
-
-    @Override
-    public void setDirection(MiddlewareDirection direction) {
-        this.direction = direction;
-    }
-
-    public enum MiddlewareDirection {INPUT, OUTPUT}
 }

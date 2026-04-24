@@ -1,7 +1,6 @@
 package com.xa.mass.gateway.dispatcher.context;
 
 import com.xa.mass.base.channel.tranporter.MessageTransporter;
-import com.xa.mass.gateway.dispatcher.DispatcherContext;
 import com.xa.mass.gateway.dispatcher.MessageHandlerRegistry;
 import com.xa.mass.gateway.queue.Envelope;
 import com.xa.mass.gateway.queue.MessageCodec;
@@ -25,8 +24,4 @@ public interface DispatchRuntimeContext {
     MessageHandlerRegistry getMessageHandlerRegistry();
 
     void setMessageHandlerRegistry(MessageHandlerRegistry messageHandlerRegistry);
-
-    DispatcherContext.MiddlewareDirection getDirection();
-
-    void setDirection(DispatcherContext.MiddlewareDirection direction);
 }

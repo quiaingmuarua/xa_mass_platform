@@ -92,7 +92,6 @@ public class ServerMessageDispatcher {
                 envelope = context.getMessageTransporter().receiveInput(15, TimeUnit.SECONDS);
                 if (envelope != null) {
                     logger.debug("processInputQueueLoop receive envelope {}", envelope);
-                    context.setDirection(DispatcherContext.MiddlewareDirection.INPUT);
                     runMiddlewareChain(MiddlewareRegistry.instance.getInputMiddlewares(), envelope);
                 }
             } catch (InterruptedException e) {
@@ -135,7 +134,6 @@ public class ServerMessageDispatcher {
         ExecutorService laneExecutor = resolveOutputLaneExecutor(envelope);
         laneExecutor.submit(() -> {
             try {
-                context.setDirection(DispatcherContext.MiddlewareDirection.OUTPUT);
                 runMiddlewareChain(MiddlewareRegistry.instance.getOutputMiddlewares(), envelope);
             } catch (Exception e) {
                 runExceptionMiddlewareChain(envelope, e);
