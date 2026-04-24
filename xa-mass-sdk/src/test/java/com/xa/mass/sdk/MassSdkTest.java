@@ -21,7 +21,7 @@ import com.xa.mass.engine.rules.RuleType;
 import com.xa.mass.engine.strategy.SimpleTaskScheduler;
 import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
 import com.xa.mass.gateway.queue.OutboundDelivery;
-import com.xa.mass.gateway.session.ServerSessionManager;
+import com.xa.mass.gateway.runtime.WebSocketGatewayRuntimeSupport;
 import com.xa.mass.sdk.auth.AuthProvider;
 import com.xa.mass.sdk.auth.SubmitterMetadata;
 import com.xa.mass.sdk.auth.SubmitterRegistration;
@@ -50,7 +50,6 @@ import com.xa.mass.starter.config.EngineConfig;
 import com.xa.mass.starter.transport.TransportBinding;
 import com.xa.mass.starter.transport.TransportRuntimeRegistry;
 import com.xa.mass.starter.transport.TransportServerFactoryContext;
-import com.xa.mass.starter.transport.WebSocketTransportServerFactory;
 import com.xa.mass.starter.transport.WorkerControlEventDispatch;
 import com.xa.mass.starter.transport.WorkerControlEventPublishResult;
 import com.xa.mass.starter.transport.WorkerControlEventPublisher;
@@ -174,8 +173,8 @@ class MassSdkTest {
         WorkerEndpointRegistry snapshotRegistry = snapshot.resolveWorkerEndpointRegistry();
 
         assertSame(first, second);
-        assertInstanceOf(ServerSessionManager.class, first);
-        assertInstanceOf(ServerSessionManager.class, snapshotRegistry);
+        assertNotNull(WebSocketGatewayRuntimeSupport.requireSessionManager(first));
+        assertNotNull(WebSocketGatewayRuntimeSupport.requireSessionManager(snapshotRegistry));
         assertNotSame(first, snapshotRegistry);
     }
 
@@ -186,27 +185,21 @@ class MassSdkTest {
         WorkerEndpointRegistry endpointRegistry = config.resolveWorkerEndpointRegistry();
         WorkerSystemEventChannel systemEventChannel = config.resolveSystemEventChannel();
 
-        assertInstanceOf(ServerSessionManager.class, endpointRegistry);
-        assertSame(((ServerSessionManager) endpointRegistry).getSystemEventChannel(), systemEventChannel);
+        assertSame(WebSocketGatewayRuntimeSupport.requireSessionManager(endpointRegistry).getSystemEventChannel(), systemEventChannel);
     }
 
     @Test
-    void webSocketTransportFactoryRejectsNonSessionRegistry() {
-        WebSocketTransportServerFactory factory = new WebSocketTransportServerFactory();
+    void defaultGatewayTransportBootstrapRejectsNonSessionRegistry() {
+        GatewayConfig config = new GatewayConfig();
         DispatchRuntimeContext dispatcherContext = mock(DispatchRuntimeContext.class);
         WorkerEndpointRegistry endpointRegistry = mock(WorkerEndpointRegistry.class);
 
         IllegalStateException error = assertThrows(
                 IllegalStateException.class,
-                () -> factory.create(new TransportServerFactoryContext(
-                        dispatcherContext,
-                        endpointRegistry,
-                        19093,
-                        "/ws"
-                ))
+                () -> config.createTransportServer(dispatcherContext, endpointRegistry, 19093)
         );
 
-        assertTrue(error.getMessage().contains("ServerSessionManager"));
+        assertTrue(error.getMessage().contains("WebSocket endpoint registry"));
     }
 
     @Test

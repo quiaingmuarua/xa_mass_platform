@@ -262,8 +262,15 @@ public class GatewayConfig {
     public TransportServer createTransportServer(DispatchRuntimeContext dispatcherContext,
                                                  WorkerEndpointRegistry endpointRegistry,
                                                  int port) {
-        if (!transportServerEnabled || transportServerFactory == null) {
+        if (!transportServerEnabled) {
             return null;
+        }
+        if (transportServerFactory == null) {
+            return WebSocketGatewayRuntimeSupport.createTransportServer(
+                    transportEndpointPath,
+                    dispatcherContext,
+                    endpointRegistry
+            );
         }
         return transportServerFactory.create(new TransportServerFactoryContext(
                 dispatcherContext,

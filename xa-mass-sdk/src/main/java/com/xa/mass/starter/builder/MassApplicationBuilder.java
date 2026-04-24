@@ -14,7 +14,6 @@ import com.xa.mass.starter.MassEngine;
 import com.xa.mass.starter.config.EngineConfig;
 import com.xa.mass.starter.config.GatewayConfig;
 import com.xa.mass.starter.transport.TransportServerFactoryContext;
-import com.xa.mass.starter.transport.WebSocketTransportServerFactory;
 import com.xa.mass.starter.transport.WorkerTransportRuntimeFactory;
 import com.xa.mass.transport.TransportServerFactory;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
@@ -38,7 +37,6 @@ public class MassApplicationBuilder {
     private EngineConfig engineConfig = new EngineConfig();
 
     private MassApplicationBuilder() {
-        this.gatewayConfig.setTransportServerFactory(new WebSocketTransportServerFactory());
     }
 
     public static MassApplicationBuilder create() {

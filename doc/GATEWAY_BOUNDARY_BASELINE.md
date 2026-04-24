@@ -9,6 +9,7 @@ Purpose:
 - keep `xa-mass-transport-api` transport-neutral
 - keep business execution in worker runtime
 - prevent "transport-neutral" changes from becoming renamed WebSocket compatibility layers
+- keep default WebSocket bootstrap inside the gateway adapter instead of teaching SDK mainline about gateway runtime internals
 
 Use the canonical trust order in [../AGENTS.md](../AGENTS.md).
 For active gateway-local compatibility debt, also use [../DEPRECATION_LEDGER.md](../DEPRECATION_LEDGER.md) and [./refactor/GATEWAY_CURRENT_INVENTORY.md](./refactor/GATEWAY_CURRENT_INVENTORY.md).
@@ -204,6 +205,7 @@ Rules:
 - keep `TaskResultIngestChannel` as a runtime-level seam; do not model it as worker transport binding ownership
 - resolve `WorkerSystemEventChannel` from gateway runtime assembly, not from transport binding ownership
 - keep adapter-specific endpoint bootstrap inside the gateway adapter module; SDK runtime config must not hardcode session-manager implementation branching
+- keep default transport-server bootstrap inside the gateway adapter module; SDK `transportServerFactory(...)` is an advanced override seam, not the mainline startup path
 - `MassApplication.configureGatewayRuntime(...)` is the pre-start wiring seam for gateway-local bridge ports; deprecated late setters are compatibility only
 - resolve transport-contributed bridge ports during runtime assembly, then inject them once
 - do not grow post-construction `setHandler(...)` or `registerRoute(...)` seams on gateway runtime context

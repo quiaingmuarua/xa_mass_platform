@@ -1,7 +1,10 @@
 package com.xa.mass.gateway.runtime;
 
+import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
+import com.xa.mass.gateway.server.WebSocketServerImpl;
 import com.xa.mass.gateway.session.EventBusWorkerSystemEventChannel;
 import com.xa.mass.gateway.session.ServerSessionManager;
+import com.xa.mass.transport.TransportServer;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
 
@@ -26,5 +29,22 @@ public final class WebSocketGatewayRuntimeSupport {
             return sessionManager.getSystemEventChannel();
         }
         return new EventBusWorkerSystemEventChannel();
+    }
+
+    public static ServerSessionManager requireSessionManager(WorkerEndpointRegistry endpointRegistry) {
+        if (endpointRegistry instanceof ServerSessionManager sessionManager) {
+            return sessionManager;
+        }
+        throw new IllegalStateException("WebSocket transport requires gateway-managed WebSocket endpoint registry");
+    }
+
+    public static TransportServer createTransportServer(String endpointPath,
+                                                        DispatchRuntimeContext dispatcherContext,
+                                                        WorkerEndpointRegistry endpointRegistry) {
+        return new WebSocketServerImpl(
+                endpointPath,
+                dispatcherContext,
+                requireSessionManager(endpointRegistry)
+        );
     }
 }
