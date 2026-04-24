@@ -1,6 +1,7 @@
 package com.xa.mass.starter.worker;
 
 import com.google.gson.Gson;
+import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.reflect.TypeToken;
@@ -9,8 +10,6 @@ import com.xa.mass.gateway.model.enums.MessageType;
 import com.xa.mass.gateway.model.massMessage.MassMessage;
 import com.xa.mass.gateway.model.massMessage.MessageAckPayload;
 import com.xa.mass.gateway.model.massMessage.MessageContext;
-import com.xa.mass.gateway.model.massMessage.TaskStep;
-import com.xa.mass.gateway.model.payload.TaskPayload;
 import com.xa.mass.transport.model.TaskDispatchItem;
 import com.xa.mass.transport.model.TaskResultReport;
 
@@ -101,15 +100,17 @@ public final class WebSocketTaskMessageMapper {
         return context;
     }
 
-    private TaskPayload buildPayload(TaskDispatchItem item) {
-        TaskStep step = new TaskStep();
-        step.setStepId(item.getBatchId() != null ? item.getBatchId() : item.getMsgId());
-        step.setAction("task-dispatch");
+    private JsonObject buildPayload(TaskDispatchItem item) {
         Map<String, Object> params = new LinkedHashMap<>(item.mergedPayload());
-        step.setParams(params);
+        JsonObject step = new JsonObject();
+        step.addProperty("stepId", item.getBatchId() != null ? item.getBatchId() : item.getMsgId());
+        step.addProperty("action", "task-dispatch");
+        step.add("params", gson.toJsonTree(params));
 
-        TaskPayload payload = new TaskPayload();
-        payload.setSteps(List.of(step));
+        JsonArray steps = new JsonArray();
+        steps.add(step);
+        JsonObject payload = new JsonObject();
+        payload.add("steps", steps);
         return payload;
     }
 

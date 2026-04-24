@@ -1,12 +1,12 @@
 package com.xa.mass.mock.client;
 
 import com.google.gson.Gson;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
 import com.xa.mass.gateway.model.enums.MessageDirection;
 import com.xa.mass.gateway.model.enums.MessageType;
 import com.xa.mass.gateway.model.massMessage.MassMessage;
 import com.xa.mass.gateway.model.massMessage.MessageContext;
-import com.xa.mass.gateway.model.massMessage.TaskStep;
-import com.xa.mass.gateway.model.payload.TaskPayload;
 import com.xa.mass.gateway.session.SessionRoles;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -19,10 +19,10 @@ import java.util.concurrent.ConcurrentHashMap;
 public class ClientSessionManager {
     private static final Logger log = LoggerFactory.getLogger(ClientSessionManager.class);
 
-    private final Map<String, MassWebSocketClient> clients = new ConcurrentHashMap<>();
+    private final Map<String, MockWorkerClient> clients = new ConcurrentHashMap<>();
     private final Random random = new Random();
 
-    public void addClient(MassWebSocketClient client) {
+    public void addClient(MockWorkerClient client) {
         clients.put(client.getWorkerId(), client);
         log.info("Added mock client: {}", client.getWorkerId());
     }
@@ -40,7 +40,7 @@ public class ClientSessionManager {
 
         // Pick one connected client at random.
         String workerId = new ArrayList<>(clients.keySet()).get(random.nextInt(clients.size()));
-        MassWebSocketClient client = clients.get(workerId);
+        MockWorkerClient client = clients.get(workerId);
 
         if (client != null && client.isConnected()) {
             MassMessage taskMessage = createMockTaskMessage(workerId);
@@ -66,22 +66,22 @@ public class ClientSessionManager {
         ctx.setTid("mock_task_" + System.currentTimeMillis());
         message.setContext(ctx);
 
-        TaskPayload payload = new TaskPayload();
-        List<TaskStep> steps = new ArrayList<>();
-        TaskStep step = new TaskStep();
-        step.setStepId("step_" + System.currentTimeMillis());
+        JsonObject payload = new JsonObject();
+        JsonArray steps = new JsonArray();
+        JsonObject step = new JsonObject();
+        step.addProperty("stepId", "step_" + System.currentTimeMillis());
         steps.add(step);
-        payload.setSteps(steps);
+        payload.add("steps", steps);
         message.setPayload(new Gson().toJsonTree(payload));
 
         return message;
     }
 
-    public Collection<MassWebSocketClient> getAllClients() {
+    public Collection<MockWorkerClient> getAllClients() {
         return clients.values();
     }
 
-    public MassWebSocketClient getClient(String workerId) {
+    public MockWorkerClient getClient(String workerId) {
         return clients.get(workerId);
     }
 

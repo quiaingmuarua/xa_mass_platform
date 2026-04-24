@@ -5,7 +5,7 @@ import com.xa.mass.base.enums.worker.WorkerContextStatus;
 import com.xa.mass.gateway.model.enums.MessageType;
 import com.xa.mass.gateway.model.massMessage.MassMessage;
 import com.xa.mass.mock.MockApplicationSpringBootApp;
-import com.xa.mass.mock.client.MassWebSocketClientImpl;
+import com.xa.mass.mock.client.MockWorkerWebSocketClient;
 import com.xa.mass.mock.e2e.support.AbstractMockE2eTest;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -102,7 +102,7 @@ class TaskApiTerminateReuseIntegrationTest extends AbstractMockE2eTest {
         registerSdkWorkerWithContext(workerId, "us");
     }
 
-    private static final class ManualHoldWebSocketClient extends MassWebSocketClientImpl {
+    private static final class ManualHoldWebSocketClient extends MockWorkerWebSocketClient {
         private final BlockingQueue<MassMessage> taskQueue = new LinkedBlockingQueue<>();
 
         private ManualHoldWebSocketClient(URI serverUri, String workerId) {

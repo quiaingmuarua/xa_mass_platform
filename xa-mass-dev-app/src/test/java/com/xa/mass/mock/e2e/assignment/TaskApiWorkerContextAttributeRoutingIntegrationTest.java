@@ -3,7 +3,7 @@ package com.xa.mass.mock.e2e.assignment;
 import com.xa.mass.engine.rules.RuleDefinition;
 import com.xa.mass.engine.rules.RuleType;
 import com.xa.mass.mock.MockApplicationSpringBootApp;
-import com.xa.mass.mock.client.MassWebSocketClientImpl;
+import com.xa.mass.mock.client.MockWorkerWebSocketClient;
 import com.xa.mass.mock.e2e.support.AbstractMockE2eTest;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -55,8 +55,8 @@ class TaskApiWorkerContextAttributeRoutingIntegrationTest extends AbstractMockE2
         addCandidate("other-worker", "pool-west", "us", "gb");
 
         URI uri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
-        MassWebSocketClientImpl matchedClient = new MassWebSocketClientImpl(uri, "matched-worker");
-        MassWebSocketClientImpl otherClient = new MassWebSocketClientImpl(uri, "other-worker");
+        MockWorkerWebSocketClient matchedClient = new MockWorkerWebSocketClient(uri, "matched-worker");
+        MockWorkerWebSocketClient otherClient = new MockWorkerWebSocketClient(uri, "other-worker");
         try {
             assertClientConnects(matchedClient, "matched worker client failed to connect");
             assertClientConnects(otherClient, "other worker client failed to connect");

@@ -8,8 +8,6 @@ import com.xa.mass.gateway.model.enums.MessageDirection;
 import com.xa.mass.gateway.model.enums.MessageType;
 import com.xa.mass.gateway.model.massMessage.MassMessage;
 import com.xa.mass.gateway.model.massMessage.MessageContext;
-import com.xa.mass.gateway.model.massMessage.TaskStep;
-import com.xa.mass.gateway.model.payload.TaskPayload;
 import com.xa.mass.gateway.session.SessionRoles;
 import com.xa.mass.mock.command.mock.MockClientState;
 import com.xa.mass.mock.command.mock.MockClientStateRegistry;
@@ -24,7 +22,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-class MassWebSocketClientImplTest {
+class MockWorkerWebSocketClientTest {
 
     private final Gson gson = new Gson();
     private MockClientStateRegistry stateRegistry;
@@ -40,7 +38,7 @@ class MassWebSocketClientImplTest {
 
     @Test
     void taskRequestProducesSingleMockResponse() throws Exception {
-        CapturingMassWebSocketClient client = new CapturingMassWebSocketClient("worker-test");
+        CapturingMockWorkerClient client = new CapturingMockWorkerClient("worker-test");
 
         client.onMessage(gson.toJson(taskMessage(false)));
 
@@ -73,14 +71,14 @@ class MassWebSocketClientImplTest {
 
     @Test
     void defaultConstructorUsesGatewayPort() {
-        MassWebSocketClientImpl client = new MassWebSocketClientImpl("worker-test");
+        MockWorkerWebSocketClient client = new MockWorkerWebSocketClient("worker-test");
 
         assertEquals("ws://localhost:18088/ws", client.getURI().toString());
     }
 
     @Test
     void taskResponseDoesNotTriggerAnotherMockResponse() {
-        CapturingMassWebSocketClient client = new CapturingMassWebSocketClient("worker-test");
+        CapturingMockWorkerClient client = new CapturingMockWorkerClient("worker-test");
 
         client.onMessage(gson.toJson(taskMessage(true)));
 
@@ -89,7 +87,7 @@ class MassWebSocketClientImplTest {
 
     @Test
     void taskRequestCanProduceFailedMockResponseWhenConfigured() throws Exception {
-        CapturingMassWebSocketClient client = new CapturingMassWebSocketClient("worker-test", "FAILED");
+        CapturingMockWorkerClient client = new CapturingMockWorkerClient("worker-test", "FAILED");
 
         client.onMessage(gson.toJson(taskMessage(false)));
 
@@ -101,7 +99,7 @@ class MassWebSocketClientImplTest {
 
     @Test
     void taskRequestCanBeDroppedByMockState() {
-        CapturingMassWebSocketClient client = new CapturingMassWebSocketClient("worker-test");
+        CapturingMockWorkerClient client = new CapturingMockWorkerClient("worker-test");
         stateRegistry.getOrCreate("worker-test").setTaskResponseDropMode(MockClientState.DropMode.ALWAYS);
 
         client.onMessage(gson.toJson(taskMessage(false)));
@@ -111,7 +109,7 @@ class MassWebSocketClientImplTest {
 
     @Test
     void taskRequestCanBeDelayedByMockState() throws Exception {
-        CapturingMassWebSocketClient client = new CapturingMassWebSocketClient("worker-test");
+        CapturingMockWorkerClient client = new CapturingMockWorkerClient("worker-test");
         stateRegistry.getOrCreate("worker-test").setTaskResponseDelayMillis(150L);
 
         client.onMessage(gson.toJson(taskMessage(false)));
@@ -124,7 +122,7 @@ class MassWebSocketClientImplTest {
 
     @Test
     void mockDisconnectClosesClientAfterAck() throws Exception {
-        CapturingMassWebSocketClient client = new CapturingMassWebSocketClient("worker-test");
+        CapturingMockWorkerClient client = new CapturingMockWorkerClient("worker-test");
         clientSessionManager.addClient(client);
 
         client.onMessage(gson.toJson(eventControlMessage("worker-test", "mock.disconnect")));
@@ -153,12 +151,12 @@ class MassWebSocketClientImplTest {
         context.setTid("task-1");
         message.setContext(context);
 
-        TaskPayload payload = new TaskPayload();
-        List<TaskStep> steps = new ArrayList<>();
-        TaskStep step = new TaskStep();
-        step.setStepId("step-1");
+        JsonObject payload = new JsonObject();
+        com.google.gson.JsonArray steps = new com.google.gson.JsonArray();
+        JsonObject step = new JsonObject();
+        step.addProperty("stepId", "step-1");
         steps.add(step);
-        payload.setSteps(steps);
+        payload.add("steps", steps);
         message.setPayload(JsonParser.parseString(gson.toJson(payload)));
         return message;
     }
@@ -187,16 +185,16 @@ class MassWebSocketClientImplTest {
         return message;
     }
 
-    private static class CapturingMassWebSocketClient extends MassWebSocketClientImpl {
+    private static class CapturingMockWorkerClient extends MockWorkerWebSocketClient {
         private final List<String> sentMessages = new ArrayList<>();
         private final AtomicBoolean open = new AtomicBoolean(true);
         private final AtomicBoolean closeInvoked = new AtomicBoolean(false);
 
-        private CapturingMassWebSocketClient(String workerId) {
+        private CapturingMockWorkerClient(String workerId) {
             this(workerId, "SUCCESS");
         }
 
-        private CapturingMassWebSocketClient(String workerId, String taskResultStatus) {
+        private CapturingMockWorkerClient(String workerId, String taskResultStatus) {
             super(URI.create("ws://127.0.0.1:65535/ws"), workerId, taskResultStatus);
         }
 

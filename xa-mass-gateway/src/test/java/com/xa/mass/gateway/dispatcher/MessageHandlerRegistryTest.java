@@ -5,7 +5,6 @@ import com.google.gson.JsonObject;
 import com.xa.mass.base.debug.WorkerControlEventProtocol;
 import com.xa.mass.gateway.dispatcher.event.EventGatewayBridge;
 import com.xa.mass.gateway.dispatcher.handler.MassMessageHandler;
-import com.xa.mass.gateway.dispatcher.handler.ResolutionResult;
 import com.xa.mass.gateway.dispatcher.handler.WorkerControlEventBridgeHandler;
 import com.xa.mass.gateway.model.enums.MessageType;
 import com.xa.mass.gateway.model.massMessage.MassMessage;
@@ -23,70 +22,53 @@ class MessageHandlerRegistryTest {
 
     private static final Gson GSON = new Gson();
 
-    private MessageHandlerRegistry registry;
+    private GatewayFrameRouter frameRouter;
 
     @BeforeEach
     void setUp() {
-        registry = new MessageHandlerRegistry();
+        frameRouter = new GatewayFrameRouter();
     }
 
     @Test
     void resolveRegisteredTaskStepHandler() {
         MassMessageHandler handler = msg -> Collections.emptyList();
-        registry.register(MessageType.TASK, "step", handler);
+        frameRouter.registerTaskDispatchHandler(handler);
 
-        ResolutionResult result = registry.resolve(MessageType.TASK, "step");
+        FrameRouteResolution result = frameRouter.route(massMessage("demoApp", MessageType.TASK, "step"));
 
-        assertTrue(result.isFound());
+        assertTrue(result.isMatched());
         assertSame(handler, result.getHandler());
     }
 
     @Test
     void resolveRegisteredWorkerControlEventResponseHandler() {
         MassMessageHandler handler = msg -> Collections.emptyList();
-        registry.registerWorkerControlEventResponseHandler(handler);
+        frameRouter.registerWorkerControlEventResponseHandler(handler);
 
         MassMessage response = massMessage("demoApp", MessageType.CONTROL, WorkerControlEventProtocol.SUB_MSG_TYPE);
         response.setResponse(true);
 
-        ResolutionResult result = registry.resolve(response);
+        FrameRouteResolution result = frameRouter.route(response);
 
-        assertTrue(result.isFound());
+        assertTrue(result.isMatched());
         assertSame(handler, result.getHandler());
-        assertEquals("worker-control-event-response", result.getResolutionPath());
-    }
-
-    @Test
-    void rejectsUnsupportedTupleRegistration() {
-        IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
-                () -> registry.register(MessageType.CONTROL, "unknown", msg -> Collections.emptyList()));
-
-        assertTrue(error.getMessage().contains("TASK/step"));
+        assertEquals("worker-control-event-response", result.getRouteKey());
     }
 
     @Test
     void defaultNoHandlerResultIsNotFound() {
-        ResolutionResult result = registry.resolve(MessageType.CONTROL, "unknownSub");
+        FrameRouteResolution result = frameRouter.route(massMessage("demoApp", MessageType.CONTROL, "unknownSub"));
 
         assertTrue(result.isNotFound());
-        assertFalse(result.isFound());
-    }
-
-    @Test
-    void rejectsDirectControlEventTupleRegistration() {
-        IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
-                () -> registry.register(MessageType.CONTROL,
-                        WorkerControlEventProtocol.SUB_MSG_TYPE, msg -> Collections.emptyList()));
-
-        assertTrue(error.getMessage().contains("CONTROL/event"));
+        assertFalse(result.isMatched());
     }
 
     @Test
     void builtinPingHandlerReturnsPong() {
         MassMessage ping = massMessage("GLOBAL", MessageType.PING, "heartbeat");
 
-        ResolutionResult result = registry.resolve(ping);
-        assertTrue(result.isFound());
+        FrameRouteResolution result = frameRouter.route(ping);
+        assertTrue(result.isMatched());
 
         var responses = result.getHandler().handle(ping);
         assertEquals(1, responses.size());
@@ -97,23 +79,23 @@ class MessageHandlerRegistryTest {
     void builtinPongHandlerReturnsEmpty() {
         MassMessage pong = massMessage("GLOBAL", MessageType.PONG, "heartbeat");
 
-        ResolutionResult result = registry.resolve(pong);
-        assertTrue(result.isFound());
+        FrameRouteResolution result = frameRouter.route(pong);
+        assertTrue(result.isMatched());
         assertTrue(result.getHandler().handle(pong).isEmpty());
     }
 
     @Test
     void resolveViaMassMessageDelegates() {
-        registry.registerTaskStepHandler(msg -> Collections.emptyList());
+        frameRouter.registerTaskDispatchHandler(msg -> Collections.emptyList());
         MassMessage msg = massMessage("GLOBAL", MessageType.TASK, "step");
 
-        ResolutionResult result = registry.resolve(msg);
-        assertTrue(result.isFound());
+        FrameRouteResolution result = frameRouter.route(msg);
+        assertTrue(result.isMatched());
     }
 
     @Test
     void controlEventBridgeCapturesRequestFrames() {
-        registry.registerWorkerControlEventBridge(new WorkerControlEventBridgeHandler(
+        frameRouter.registerWorkerControlEventBridge(new WorkerControlEventBridgeHandler(
                 new EventGatewayBridge((request, principal) -> EventResponse.success(
                         java.util.Map.of("echoEvent", request.getEvent().value()),
                         request.getRequestId()))
@@ -128,9 +110,9 @@ class MessageHandlerRegistryTest {
         payload.add(WorkerControlEventProtocol.PAYLOAD_FIELD, requestPayload);
         msg.setPayload(payload);
 
-        ResolutionResult result = registry.resolve(msg);
-        assertTrue(result.isFound());
-        assertEquals("worker-control-event-bridge", result.getResolutionPath());
+        FrameRouteResolution result = frameRouter.route(msg);
+        assertTrue(result.isMatched());
+        assertEquals("worker-control-event-bridge", result.getRouteKey());
 
         var responses = result.getHandler().handle(msg);
         assertEquals(1, responses.size());
@@ -141,7 +123,7 @@ class MessageHandlerRegistryTest {
 
     @Test
     void controlEventBridgeDoesNotCaptureResponseFrames() {
-        registry.registerWorkerControlEventBridge(new WorkerControlEventBridgeHandler(
+        frameRouter.registerWorkerControlEventBridge(new WorkerControlEventBridgeHandler(
                 new EventGatewayBridge((request, principal) -> EventResponse.success(
                         java.util.Map.of("echoEvent", request.getEvent().value()),
                         request.getRequestId()))
@@ -153,13 +135,13 @@ class MessageHandlerRegistryTest {
         payload.addProperty(WorkerControlEventProtocol.EVENT_FIELD, "crawler.fetch-page");
         msg.setPayload(payload);
 
-        ResolutionResult result = registry.resolve(msg);
+        FrameRouteResolution result = frameRouter.route(msg);
         assertTrue(result.isNotFound());
     }
 
     @Test
     void controlEventBridgeDoesNotCaptureNonEventSubtype() {
-        registry.registerWorkerControlEventBridge(new WorkerControlEventBridgeHandler(
+        frameRouter.registerWorkerControlEventBridge(new WorkerControlEventBridgeHandler(
                 new EventGatewayBridge((request, principal) -> EventResponse.success(
                         java.util.Map.of("echoEvent", request.getEvent().value()),
                         request.getRequestId()))
@@ -170,13 +152,13 @@ class MessageHandlerRegistryTest {
         payload.addProperty(WorkerControlEventProtocol.EVENT_FIELD, "crawler.fetch-page");
         msg.setPayload(payload);
 
-        ResolutionResult result = registry.resolve(msg);
+        FrameRouteResolution result = frameRouter.route(msg);
         assertTrue(result.isNotFound());
     }
 
     @Test
     void controlEventBridgeDoesNotCaptureControlEventWithoutGlobalEventCode() {
-        registry.registerWorkerControlEventBridge(new WorkerControlEventBridgeHandler(
+        frameRouter.registerWorkerControlEventBridge(new WorkerControlEventBridgeHandler(
                 new EventGatewayBridge((request, principal) -> EventResponse.success(
                         java.util.Map.of("echoEvent", request.getEvent().value()),
                         request.getRequestId()))
@@ -185,7 +167,7 @@ class MessageHandlerRegistryTest {
         MassMessage msg = massMessage("demoApp", MessageType.CONTROL, WorkerControlEventProtocol.SUB_MSG_TYPE);
         msg.setPayload(new JsonObject());
 
-        ResolutionResult result = registry.resolve(msg);
+        FrameRouteResolution result = frameRouter.route(msg);
         assertTrue(result.isNotFound());
     }
 

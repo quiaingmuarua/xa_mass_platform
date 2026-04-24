@@ -7,7 +7,7 @@ import com.xa.mass.engine.listener.TaskMsgDispatchListener;
 import com.xa.mass.engine.rules.RuleDefinition;
 import com.xa.mass.engine.util.LogUtils;
 import com.xa.mass.gateway.dispatcher.DispatcherContext;
-import com.xa.mass.gateway.dispatcher.MessageHandlerRegistry;
+import com.xa.mass.gateway.dispatcher.GatewayFrameRouter;
 import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
 import com.xa.mass.gateway.dispatcher.handler.MassMessageHandler;
 import com.xa.mass.gateway.dispatcher.middleware.MiddlewareRegistry;
@@ -147,8 +147,8 @@ public class MassApplication {
             com.xa.mass.transport.channel.WorkerSystemEventChannel systemEventChannel =
                     gatewayConfig.resolveSystemEventChannel(endpointRegistry);
 
-            MessageHandlerRegistry messageHandlerRegistry =
-                    new MessageHandlerRegistry(systemEventChannel);
+            GatewayFrameRouter frameRouter =
+                    new GatewayFrameRouter(systemEventChannel);
             TaskMsgDispatchListener taskMsgDispatchListener = null;
             if (engineConfig.isEnabled() && engineConfig.getTaskManager() != null) {
                 transportRuntimeRegistry = gatewayConfig.resolveWorkerTransportRuntimeFactory().create(
@@ -160,15 +160,15 @@ public class MassApplication {
                                 gatewayConfig.isEnabled()
                         )
                 );
-                transportRuntimeRegistry.registerInboundHandlers(messageHandlerRegistry);
+                transportRuntimeRegistry.registerInboundHandlers(frameRouter);
                 taskMsgDispatchListener = transportRuntimeRegistry.createDispatchListener();
             }
-            messageHandlerRegistry.registerWorkerControlEventResponseHandler(new WorkerControlEventResponseHandler());
+            frameRouter.registerWorkerControlEventResponseHandler(new WorkerControlEventResponseHandler());
             if (workerControlEventBridgeHandler != null) {
-                messageHandlerRegistry.registerWorkerControlEventBridge(workerControlEventBridgeHandler);
+                frameRouter.registerWorkerControlEventBridge(workerControlEventBridgeHandler);
             }
-            dispatcherContext.setMessageHandlerRegistry(messageHandlerRegistry);
-            logger.info("Message handler registry initialized");
+            dispatcherContext.setFrameRouter(frameRouter);
+            logger.info("Gateway frame router initialized");
 
             logger.info("Middleware registry initialized");
 

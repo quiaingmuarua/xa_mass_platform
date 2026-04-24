@@ -18,14 +18,14 @@ import com.xa.mass.gateway.model.enums.MessageType;
  * the WebSocket wire protocol itself requires a compatibility shim.
  */
 public class MassMessage {
-    private String msgId;               // 全局唯一消息 ID
-    private boolean response = false;   // 是否为响应消息（response消息可复用 MessageType）
-    private MessageType msgType;        // 协议帧主类型，如 TASK、PING、RESPONSE 等
-    private String subMsgType;          // 协议帧子类型，如 step、all、ack、configType 等；不是全局能力标识
-    private MessageDirection from;      // CLIENT / SERVER
-    private MessageContext context;     // 通信上下文（设备ID、角色、连接信息等）
-    private String project;            // canonical task/project code carried across the transport boundary
-    private JsonElement payload;        // 实际消息体，统一为 JsonElement
+    private String msgId;
+    private boolean response = false;
+    private MessageType msgType;
+    private String subMsgType;
+    private MessageDirection from;
+    private MessageContext context;
+    private String project;
+    private JsonElement payload;
 
     public String getMsgId() {
         return msgId;
@@ -93,16 +93,16 @@ public class MassMessage {
 
     @Override
     public String toString() {
-        return "MassMessage{" +
-                "msgId='" + msgId + '\'' +
-                ", response=" + response +
-                ", msgType=" + msgType +
-                ", subMsgType='" + subMsgType + '\'' +
-                ", from=" + from +
-                ", context=" + context +
-                ", project='" + project + '\'' +
-                ", payload=" + payload +
-                '}';
+        return "MassMessage{"
+                + "msgId='" + msgId + '\''
+                + ", response=" + response
+                + ", msgType=" + msgType
+                + ", subMsgType='" + subMsgType + '\''
+                + ", from=" + from
+                + ", context=" + context
+                + ", project='" + project + '\''
+                + ", payload=" + payload
+                + '}';
     }
 
     @Override
@@ -110,14 +110,14 @@ public class MassMessage {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
         MassMessage that = (MassMessage) o;
-        return response == that.response &&
-                (msgId != null ? msgId.equals(that.msgId) : that.msgId == null) &&
-                msgType == that.msgType &&
-                (subMsgType != null ? subMsgType.equals(that.subMsgType) : that.subMsgType == null) &&
-                from == that.from &&
-                (context != null ? context.equals(that.context) : that.context == null) &&
-                (project != null ? project.equals(that.project) : that.project == null) &&
-                (payload != null ? payload.equals(that.payload) : that.payload == null);
+        return response == that.response
+                && (msgId != null ? msgId.equals(that.msgId) : that.msgId == null)
+                && msgType == that.msgType
+                && (subMsgType != null ? subMsgType.equals(that.subMsgType) : that.subMsgType == null)
+                && from == that.from
+                && (context != null ? context.equals(that.context) : that.context == null)
+                && (project != null ? project.equals(that.project) : that.project == null)
+                && (payload != null ? payload.equals(that.payload) : that.payload == null);
     }
 
     @Override

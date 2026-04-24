@@ -1,7 +1,7 @@
 package com.xa.mass.gateway.dispatcher.context;
 
 import com.xa.mass.base.channel.tranporter.MessageTransporter;
-import com.xa.mass.gateway.dispatcher.MessageHandlerRegistry;
+import com.xa.mass.gateway.dispatcher.GatewayFrameRouter;
 import com.xa.mass.gateway.dispatcher.middleware.MiddlewareRegistry;
 import com.xa.mass.gateway.queue.Envelope;
 import com.xa.mass.gateway.queue.MessageCodec;
@@ -27,7 +27,7 @@ public interface DispatchRuntimeContext {
 
     MiddlewareRegistry getMiddlewareRegistry();
 
-    MessageHandlerRegistry getMessageHandlerRegistry();
+    GatewayFrameRouter getFrameRouter();
 
-    void setMessageHandlerRegistry(MessageHandlerRegistry messageHandlerRegistry);
+    void setFrameRouter(GatewayFrameRouter frameRouter);
 }

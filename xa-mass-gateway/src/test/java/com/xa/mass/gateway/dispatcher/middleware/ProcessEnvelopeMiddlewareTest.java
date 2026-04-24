@@ -2,7 +2,7 @@ package com.xa.mass.gateway.dispatcher.middleware;
 
 import com.xa.mass.base.debug.WorkerControlEventProtocol;
 import com.xa.mass.base.debug.WorkerDebugMessageStore;
-import com.xa.mass.gateway.dispatcher.MessageHandlerRegistry;
+import com.xa.mass.gateway.dispatcher.GatewayFrameRouter;
 import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
 import com.xa.mass.gateway.dispatcher.handler.MassMessageEventCodeResolver;
 import com.xa.mass.gateway.dispatcher.handler.MassMessageHandler;
@@ -27,7 +27,7 @@ import static org.mockito.Mockito.*;
 
 class ProcessEnvelopeMiddlewareTest {
 
-    private MessageHandlerRegistry handlerRegistry;
+    private GatewayFrameRouter frameRouter;
     private MessageCodec codec;
     private DispatchRuntimeContext context;
     private EnvelopeMiddleware middleware;
@@ -35,8 +35,8 @@ class ProcessEnvelopeMiddlewareTest {
     @BeforeEach
     void setUp() {
         codec = new GsonMessageCodec();
-        handlerRegistry = new MessageHandlerRegistry();
-        context = mockContext(codec, handlerRegistry);
+        frameRouter = new GatewayFrameRouter();
+        context = mockContext(codec, frameRouter);
         middleware = new MiddlewareRegistry().getInputMiddlewares().get(0);
         WorkerDebugMessageStore.clearAll();
     }
@@ -51,7 +51,7 @@ class ProcessEnvelopeMiddlewareTest {
     @Test
     void knownHandlerIsInvokedAndResponseEnqueued() {
         AtomicReference<MassMessage> captured = new AtomicReference<>();
-        handlerRegistry.registerWorkerControlEventResponseHandler(msg -> {
+        frameRouter.registerWorkerControlEventResponseHandler(msg -> {
             captured.set(msg);
             MassMessage resp = new MassMessage();
             resp.setMsgType(MessageType.CONTROL);
@@ -85,7 +85,7 @@ class ProcessEnvelopeMiddlewareTest {
 
     @Test
     void handlerReturningEmptyResponseDoesNotSendOutput() {
-        handlerRegistry.registerWorkerControlEventResponseHandler(msg -> Collections.emptyList());
+        frameRouter.registerWorkerControlEventResponseHandler(msg -> Collections.emptyList());
         MassMessage msg = message("p", MessageType.CONTROL, WorkerControlEventProtocol.SUB_MSG_TYPE);
         msg.setResponse(true);
         Envelope envelope = envelope(codec.encode(msg));
@@ -97,7 +97,7 @@ class ProcessEnvelopeMiddlewareTest {
 
     @Test
     void responseEnvelopePropagatesCanonicalEventCodeMetadata() {
-        handlerRegistry.registerWorkerControlEventResponseHandler(msg -> {
+        frameRouter.registerWorkerControlEventResponseHandler(msg -> {
             MassMessage resp = new MassMessage();
             resp.setMsgType(MessageType.CONTROL);
             resp.setSubMsgType(WorkerControlEventProtocol.SUB_MSG_TYPE);
@@ -123,7 +123,7 @@ class ProcessEnvelopeMiddlewareTest {
 
     @Test
     void responseEnvelopeCanDeriveCanonicalEventCodeFromHandlerWhenInboundEnvelopeHasNone() {
-        handlerRegistry.register(MessageType.TASK, "step", new DerivedEventHandler());
+        frameRouter.registerTaskDispatchHandler(new DerivedEventHandler());
 
         MassMessage msg = message("proj", MessageType.TASK, "step");
         Envelope envelope = Envelope.builder()
@@ -142,7 +142,7 @@ class ProcessEnvelopeMiddlewareTest {
     @Test
     void sendEnvelopeMiddlewareMarksDebugRecordFailedWhenEndpointUnavailable() {
         EnvelopeMiddleware sendMiddleware = new MiddlewareRegistry().getOutputMiddlewares().get(0);
-        DispatchRuntimeContext sendContext = mockContext(codec, handlerRegistry);
+        DispatchRuntimeContext sendContext = mockContext(codec, frameRouter);
         when(sendContext.getSessionManager().sendMessage("worker-1", SessionRoles.TASK_MESSAGES, "{\"hello\":\"world\"}"))
                 .thenReturn(false);
         WorkerDebugMessageStore.recordOutbound(
@@ -188,10 +188,10 @@ class ProcessEnvelopeMiddlewareTest {
     }
 
     @SuppressWarnings("unchecked")
-    private DispatchRuntimeContext mockContext(MessageCodec codec, MessageHandlerRegistry registry) {
+    private DispatchRuntimeContext mockContext(MessageCodec codec, GatewayFrameRouter frameRouter) {
         DispatchRuntimeContext ctx = mock(DispatchRuntimeContext.class);
         when(ctx.getMessageCodec()).thenReturn(codec);
-        when(ctx.getMessageHandlerRegistry()).thenReturn(registry);
+        when(ctx.getFrameRouter()).thenReturn(frameRouter);
         com.xa.mass.base.channel.tranporter.MessageTransporter<Envelope> transporter =
                 mock(com.xa.mass.base.channel.tranporter.MessageTransporter.class);
         when(ctx.getMessageTransporter()).thenReturn(transporter);

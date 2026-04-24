@@ -3,7 +3,6 @@ package com.xa.mass.gateway.dispatcher;
 import com.google.gson.Gson;
 import com.xa.mass.base.debug.WorkerControlEventProtocol;
 import com.xa.mass.gateway.dispatcher.handler.MassMessageHandler;
-import com.xa.mass.gateway.dispatcher.handler.ResolutionResult;
 import com.xa.mass.gateway.model.enums.MessageDirection;
 import com.xa.mass.gateway.model.enums.MessageType;
 import com.xa.mass.gateway.model.massMessage.MassMessage;
@@ -16,107 +15,65 @@ import org.slf4j.LoggerFactory;
 import java.util.Collections;
 import java.util.List;
 
-public class MessageHandlerRegistry {
-    private static final Logger log = LoggerFactory.getLogger(MessageHandlerRegistry.class);
+/**
+ * Router for current WebSocket compatibility frames.
+ *
+ * <p>This type is adapter-facing only. New business/control capabilities must
+ * not be registered here by tuple; they should flow through SDK event
+ * definitions and use explicit compatibility bridges where needed.
+ */
+public class GatewayFrameRouter {
+    private static final Logger log = LoggerFactory.getLogger(GatewayFrameRouter.class);
     private static final String SUBTYPE_HEARTBEAT = "heartbeat";
 
     private final Gson gson = new Gson();
     private final WorkerSystemEventChannel systemEventChannel;
-    private MassMessageHandler taskStepHandler;
-    private MassMessageHandler workerControlEventBridgeHandler;
+    private MassMessageHandler taskDispatchHandler;
+    private MassMessageHandler workerControlEventRequestBridge;
     private MassMessageHandler workerControlEventResponseHandler;
 
-    public MessageHandlerRegistry() {
+    public GatewayFrameRouter() {
         this(NoopWorkerSystemEventChannel.INSTANCE);
     }
 
-    public MessageHandlerRegistry(WorkerSystemEventChannel systemEventChannel) {
+    public GatewayFrameRouter(WorkerSystemEventChannel systemEventChannel) {
         this.systemEventChannel = systemEventChannel != null
                 ? systemEventChannel
                 : NoopWorkerSystemEventChannel.INSTANCE;
     }
 
-    /**
-     * Registers a transport-protocol handler for one frame classification tuple.
-     *
-     * <p>This registry is a wire/protocol compatibility seam. Do not register
-     * new business or control capabilities here; those belong on globally
-     * unique SDK event definitions. The only supported control-plane tuple on
-     * the current WebSocket adapter is {@code CONTROL/event}, which is managed
-     * through explicit bridge/response registration methods instead of generic
-     * tuple registration.
-     */
-    public void register(MessageType type, String subMsgType, MassMessageHandler handler) {
-        if (type == MessageType.CONTROL
-                && WorkerControlEventProtocol.SUB_MSG_TYPE.equals(subMsgType)) {
-            throw new IllegalArgumentException(
-                    "CONTROL/event is reserved for worker-control request/response routing"
-            );
+    public FrameRouteResolution route(MassMessage frame) {
+        if (frame == null || frame.getMsgType() == null) {
+            return FrameRouteResolution.notFound();
         }
-        if (type == MessageType.TASK && "step".equals(normalizeSubType(subMsgType))) {
-            registerTaskStepHandler(handler);
-            return;
+        if (isHeartbeatPing(frame)) {
+            return FrameRouteResolution.matched(this::handlePing, "builtin-ping");
         }
-        throw new IllegalArgumentException(
-                "Only TASK/step tuple registration is supported in the current gateway"
-        );
+        if (isHeartbeatPong(frame)) {
+            return FrameRouteResolution.matched(this::handlePong, "builtin-pong");
+        }
+        if (isTaskDispatchFrame(frame) && taskDispatchHandler != null) {
+            return FrameRouteResolution.matched(taskDispatchHandler, "task-dispatch");
+        }
+        if (shouldRouteToWorkerControlEventResponse(frame)) {
+            return FrameRouteResolution.matched(workerControlEventResponseHandler, "worker-control-event-response");
+        }
+        if (shouldRouteToWorkerControlEventBridge(frame)) {
+            return FrameRouteResolution.matched(workerControlEventRequestBridge, "worker-control-event-bridge");
+        }
+        return FrameRouteResolution.notFound();
     }
 
-    public ResolutionResult resolve(MessageType type, String subMsgType) {
-        MassMessage msg = new MassMessage();
-        msg.setMsgType(type);
-        msg.setSubMsgType(subMsgType);
-        return resolve(msg);
-    }
-
-    public ResolutionResult resolve(MassMessage msg) {
-        if (msg == null || msg.getMsgType() == null) {
-            return ResolutionResult.notFound(null, null, null);
-        }
-        if (isHeartbeatPing(msg)) {
-            return ResolutionResult.found(this::handlePing, msg.getProject(), MessageType.PING.name(), SUBTYPE_HEARTBEAT, "builtin-ping");
-        }
-        if (isHeartbeatPong(msg)) {
-            return ResolutionResult.found(this::handlePong, msg.getProject(), MessageType.PONG.name(), SUBTYPE_HEARTBEAT, "builtin-pong");
-        }
-        if (isTaskStep(msg) && taskStepHandler != null) {
-            return ResolutionResult.found(taskStepHandler, msg.getProject(), MessageType.TASK.name(), "step", "task-step");
-        }
-        if (shouldRouteToWorkerControlEventResponse(msg)) {
-            return ResolutionResult.found(
-                    workerControlEventResponseHandler,
-                    msg.getProject(),
-                    msg.getMsgType().name(),
-                    msg.getSubMsgType(),
-                    "worker-control-event-response"
-            );
-        }
-        if (shouldRouteToWorkerControlEventBridge(msg)) {
-            return ResolutionResult.found(
-                    workerControlEventBridgeHandler,
-                    msg.getProject(),
-                    msg.getMsgType().name(),
-                    msg.getSubMsgType(),
-                    "worker-control-event-bridge"
-            );
-        }
-        return ResolutionResult.notFound(
-                msg.getProject(),
-                msg.getMsgType().name(),
-                normalizeSubType(msg.getSubMsgType())
-        );
+    public void registerTaskDispatchHandler(MassMessageHandler handler) {
+        this.taskDispatchHandler = handler;
     }
 
     public void registerWorkerControlEventBridge(MassMessageHandler handler) {
-        this.workerControlEventBridgeHandler = handler;
+        this.workerControlEventRequestBridge = handler;
     }
 
     public void registerWorkerControlEventResponseHandler(MassMessageHandler handler) {
         this.workerControlEventResponseHandler = handler;
-    }
-
-    public void registerTaskStepHandler(MassMessageHandler handler) {
-        this.taskStepHandler = handler;
     }
 
     private List<MassMessage> handlePing(MassMessage msg) {
@@ -143,7 +100,7 @@ public class MessageHandlerRegistry {
     }
 
     private boolean shouldRouteToWorkerControlEventBridge(MassMessage msg) {
-        if (workerControlEventBridgeHandler == null
+        if (workerControlEventRequestBridge == null
                 || msg == null
                 || msg.isResponse()
                 || msg.getMsgType() != MessageType.CONTROL) {
@@ -177,7 +134,7 @@ public class MessageHandlerRegistry {
                 && SUBTYPE_HEARTBEAT.equals(normalizeSubType(msg.getSubMsgType()));
     }
 
-    private boolean isTaskStep(MassMessage msg) {
+    private boolean isTaskDispatchFrame(MassMessage msg) {
         return msg.getMsgType() == MessageType.TASK
                 && "step".equals(normalizeSubType(msg.getSubMsgType()));
     }

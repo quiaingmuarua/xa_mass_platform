@@ -4,8 +4,8 @@ import com.xa.mass.base.debug.WorkerDebugMessageStore;
 import com.xa.mass.base.exception.CommandException;
 import com.xa.mass.base.exception.ErrorCode;
 import com.xa.mass.base.exception.ValidationException;
+import com.xa.mass.gateway.dispatcher.FrameRouteResolution;
 import com.xa.mass.gateway.dispatcher.handler.MassMessageEventCodeResolver;
-import com.xa.mass.gateway.dispatcher.handler.ResolutionResult;
 import com.xa.mass.gateway.model.massMessage.MassMessage;
 import com.xa.mass.gateway.model.massMessage.MessageContext;
 import com.xa.mass.gateway.queue.Envelope;
@@ -35,9 +35,9 @@ public class MiddlewareRegistry {
                 }
                 MessageContext ctx = msg.getContext();
 
-                ResolutionResult result = context.getMessageHandlerRegistry().resolve(msg);
+                FrameRouteResolution result = context.getFrameRouter().route(msg);
 
-                if (result.isFound()) {
+                if (result.isMatched()) {
                     logger.debug("Found handler for message: {}", result);
                     String responseEventCode = resolveResponseEventCode(envelope, result, msg);
                     List<MassMessage> responses = result.getHandler().handle(msg);
@@ -86,7 +86,7 @@ public class MiddlewareRegistry {
         };
     }
 
-    private static String resolveResponseEventCode(Envelope envelope, ResolutionResult result, MassMessage msg) {
+    private static String resolveResponseEventCode(Envelope envelope, FrameRouteResolution result, MassMessage msg) {
         if (envelope != null && envelope.getEventCode() != null && !envelope.getEventCode().isBlank()) {
             return envelope.getEventCode();
         }

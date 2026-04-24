@@ -7,7 +7,7 @@ import com.xa.mass.gateway.model.massMessage.MassMessage;
 import com.xa.mass.gateway.model.massMessage.MessageAckPayload;
 import com.xa.mass.gateway.model.massMessage.MessageContext;
 import com.xa.mass.mock.MockApplicationSpringBootApp;
-import com.xa.mass.mock.client.MassWebSocketClientImpl;
+import com.xa.mass.mock.client.MockWorkerWebSocketClient;
 import com.xa.mass.mock.e2e.support.AbstractMockE2eTest;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -134,7 +134,7 @@ class TaskApiMultiTaskAssignmentIntegrationTest extends AbstractMockE2eTest {
     private record AckSnapshot(String msgId, int code, String message) {
     }
 
-    private static final class ManualAckWebSocketClient extends MassWebSocketClientImpl {
+    private static final class ManualAckWebSocketClient extends MockWorkerWebSocketClient {
         private final BlockingQueue<MassMessage> taskQueue = new LinkedBlockingQueue<>();
         private final BlockingQueue<AckSnapshot> ackQueue = new LinkedBlockingQueue<>();
 

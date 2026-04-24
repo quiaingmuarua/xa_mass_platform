@@ -3,7 +3,7 @@ package com.xa.mass.starter.transport;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.listener.TaskMsgDispatchListener;
 import com.xa.mass.engine.worker.WorkerAdapter;
-import com.xa.mass.gateway.dispatcher.MessageHandlerRegistry;
+import com.xa.mass.gateway.dispatcher.GatewayFrameRouter;
 import com.xa.mass.sdk.worker.PullWorkerSession;
 import com.xa.mass.starter.worker.TransportRoutingTaskMsgDispatchListener;
 import com.xa.mass.transport.WorkerTransportHints;
@@ -53,10 +53,18 @@ public final class TransportRuntimeRegistry {
         this.defaultPullProtocol = WorkerTransportHints.normalize(defaultPullProtocol);
     }
 
-    public void registerInboundHandlers(MessageHandlerRegistry registry) {
+    public void registerInboundHandlers(GatewayFrameRouter frameRouter) {
         for (TransportBinding binding : bindings) {
             for (TransportInboundRoute route : binding.getInboundRoutes()) {
-                registry.register(route.messageType(), route.subMsgType(), route.handler());
+                if (route.messageType() == com.xa.mass.gateway.model.enums.MessageType.TASK
+                        && "step".equals(route.subMsgType())) {
+                    frameRouter.registerTaskDispatchHandler(route.handler());
+                    continue;
+                }
+                throw new IllegalStateException(
+                        "Unsupported transport inbound route for current gateway: "
+                                + route.messageType() + "/" + route.subMsgType()
+                );
             }
         }
     }

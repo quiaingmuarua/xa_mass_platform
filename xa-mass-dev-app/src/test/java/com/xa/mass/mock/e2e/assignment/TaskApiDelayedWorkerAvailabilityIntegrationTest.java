@@ -1,7 +1,7 @@
 package com.xa.mass.mock.e2e.assignment;
 
 import com.xa.mass.mock.MockApplicationSpringBootApp;
-import com.xa.mass.mock.client.MassWebSocketClientImpl;
+import com.xa.mass.mock.client.MockWorkerWebSocketClient;
 import com.xa.mass.mock.e2e.support.AbstractMockE2eTest;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -59,7 +59,7 @@ class TaskApiDelayedWorkerAvailabilityIntegrationTest extends AbstractMockE2eTes
         addMatchingWorker(workerId);
 
         URI uri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
-        MassWebSocketClientImpl client = new MassWebSocketClientImpl(uri, workerId);
+        MockWorkerWebSocketClient client = new MockWorkerWebSocketClient(uri, workerId);
         try {
             assertClientConnects(client, "late worker client failed to connect");
 

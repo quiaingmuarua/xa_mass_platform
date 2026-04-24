@@ -8,7 +8,7 @@ import com.xa.mass.gateway.model.massMessage.MessageAckPayload;
 import com.xa.mass.gateway.model.massMessage.MessageContext;
 import com.xa.mass.gateway.session.SessionRoles;
 import com.xa.mass.mock.MockApplicationSpringBootApp;
-import com.xa.mass.mock.client.MassWebSocketClientImpl;
+import com.xa.mass.mock.client.MockWorkerWebSocketClient;
 import com.xa.mass.mock.e2e.support.AbstractMockE2eTest;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -176,7 +176,7 @@ class TaskApiMixedResultsIntegrationTest extends AbstractMockE2eTest {
     private record AckSnapshot(int code, String message) {}
 
     /** Connects as a worker, sends a pre-built result payload, and captures the gateway ACK. */
-    private static final class ReplayClient extends MassWebSocketClientImpl {
+    private static final class ReplayClient extends MockWorkerWebSocketClient {
         private final String expectedMsgId;
         private final CountDownLatch ackLatch = new CountDownLatch(1);
         private volatile AckSnapshot ack;

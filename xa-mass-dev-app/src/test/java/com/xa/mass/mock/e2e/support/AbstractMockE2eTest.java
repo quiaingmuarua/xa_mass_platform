@@ -1,6 +1,6 @@
 package com.xa.mass.mock.e2e.support;
 
-import com.xa.mass.mock.client.MassWebSocketClient;
+import com.xa.mass.mock.client.MockWorkerClient;
 import com.xa.mass.sdk.MassSdkApplication;
 import com.xa.mass.sdk.model.WorkerContextRegistration;
 import com.xa.mass.sdk.model.WorkerRegistration;
@@ -216,7 +216,7 @@ public abstract class AbstractMockE2eTest {
         return new TaskSnapshot(task(detailResponse), messages(messagesResponse));
     }
 
-    protected void assertClientConnects(MassWebSocketClient client, String failureMessage) throws Exception {
+    protected void assertClientConnects(MockWorkerClient client, String failureMessage) throws Exception {
         boolean connected = false;
         for (int i = 0; i < 3; i++) {
             if (client.connectBlocking(3, TimeUnit.SECONDS)) {
@@ -228,7 +228,7 @@ public abstract class AbstractMockE2eTest {
         assertTrue(connected, failureMessage);
     }
 
-    protected <T extends MassWebSocketClient> T connectClientWithRetries(Supplier<T> clientSupplier,
+    protected <T extends MockWorkerClient> T connectClientWithRetries(Supplier<T> clientSupplier,
                                                                          String failureMessage) throws Exception {
         Exception lastError = null;
         for (int i = 0; i < 3; i++) {

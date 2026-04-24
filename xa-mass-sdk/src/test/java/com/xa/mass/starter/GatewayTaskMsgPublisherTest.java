@@ -1,12 +1,12 @@
 package com.xa.mass.starter;
 
+import com.google.gson.JsonObject;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
 import com.xa.mass.gateway.model.enums.MessageDirection;
 import com.xa.mass.gateway.model.enums.MessageType;
 import com.xa.mass.gateway.model.massMessage.MassMessage;
-import com.xa.mass.gateway.model.payload.TaskPayload;
 import com.xa.mass.gateway.queue.Envelope;
 import com.xa.mass.gateway.queue.GsonMessageCodec;
 import com.xa.mass.transport.WorkerEndpointRoles;
@@ -57,13 +57,14 @@ class GatewayTaskMsgPublisherTest {
         assertEquals(WorkerEndpointRoles.TASK_DISPATCH, message.getContext().getConnRole());
         assertEquals("task-1", message.getContext().getTaskId());
 
-        TaskPayload payload = new com.google.gson.Gson().fromJson(message.getPayload(), TaskPayload.class);
+        JsonObject payload = new com.google.gson.Gson().fromJson(message.getPayload(), JsonObject.class);
         assertNotNull(payload);
-        assertEquals(1, payload.getSteps().size());
-        assertEquals("batch-0", payload.getSteps().get(0).getStepId());
-        assertEquals("task-dispatch", payload.getSteps().get(0).getAction());
-        assertEquals("demoApp", payload.getSteps().get(0).getParams().get("project"));
-        assertEquals("agent-1", payload.getSteps().get(0).getParams().get("userId"));
+        assertEquals(1, payload.getAsJsonArray("steps").size());
+        JsonObject firstStep = payload.getAsJsonArray("steps").get(0).getAsJsonObject();
+        assertEquals("batch-0", firstStep.get("stepId").getAsString());
+        assertEquals("task-dispatch", firstStep.get("action").getAsString());
+        assertEquals("demoApp", firstStep.getAsJsonObject("params").get("project").getAsString());
+        assertEquals("agent-1", firstStep.getAsJsonObject("params").get("userId").getAsString());
     }
 
     private Task task() {

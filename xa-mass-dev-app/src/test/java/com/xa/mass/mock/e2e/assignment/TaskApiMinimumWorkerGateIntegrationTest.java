@@ -4,7 +4,7 @@ import com.xa.mass.base.enums.worker.WorkerContextStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.engine.TaskManager;
 import com.xa.mass.mock.MockApplicationSpringBootApp;
-import com.xa.mass.mock.client.MassWebSocketClientImpl;
+import com.xa.mass.mock.client.MockWorkerWebSocketClient;
 import com.xa.mass.mock.e2e.support.AbstractMockE2eTest;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -66,8 +66,8 @@ class TaskApiMinimumWorkerGateIntegrationTest extends AbstractMockE2eTest {
         registerWorker(secondWorkerId);
 
         URI uri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
-        MassWebSocketClientImpl firstClient = new MassWebSocketClientImpl(uri, firstWorkerId);
-        MassWebSocketClientImpl secondClient = new MassWebSocketClientImpl(uri, secondWorkerId);
+        MockWorkerWebSocketClient firstClient = new MockWorkerWebSocketClient(uri, firstWorkerId);
+        MockWorkerWebSocketClient secondClient = new MockWorkerWebSocketClient(uri, secondWorkerId);
         try {
             assertClientConnects(firstClient, "first mock client failed to connect");
             assertClientConnects(secondClient, "second mock client failed to connect");

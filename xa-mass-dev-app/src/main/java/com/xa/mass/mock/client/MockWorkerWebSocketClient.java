@@ -11,7 +11,6 @@ import com.xa.mass.gateway.model.enums.MessageDirection;
 import com.xa.mass.gateway.model.enums.MessageType;
 import com.xa.mass.gateway.model.massMessage.MassMessage;
 import com.xa.mass.gateway.model.massMessage.MessageContext;
-import com.xa.mass.gateway.model.payload.TaskPayload;
 import com.xa.mass.gateway.session.SessionRoles;
 import com.xa.mass.mock.command.mock.MockClientState;
 import com.xa.mass.mock.command.mock.MockClientStateRegistry;
@@ -33,8 +32,8 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
-public class MassWebSocketClientImpl extends WebSocketClient implements MassWebSocketClient {
-    private static final Logger logger = LoggerFactory.getLogger(MassWebSocketClientImpl.class);
+public class MockWorkerWebSocketClient extends WebSocketClient implements MockWorkerClient {
+    private static final Logger logger = LoggerFactory.getLogger(MockWorkerWebSocketClient.class);
     private static final int MAX_RECONNECT_ATTEMPTS = 10;
     private static final long INITIAL_RECONNECT_DELAY_MS = 1000;
     private static final long MAX_RECONNECT_DELAY_MS = 60000;
@@ -51,11 +50,11 @@ public class MassWebSocketClientImpl extends WebSocketClient implements MassWebS
     private boolean intentionalClose = false;
     private URI uri;
 
-    public MassWebSocketClientImpl(URI serverUri, String workerId) {
+    public MockWorkerWebSocketClient(URI serverUri, String workerId) {
         this(serverUri, workerId, "SUCCESS");
     }
 
-    public MassWebSocketClientImpl(URI serverUri, String workerId, String taskResultStatus) {
+    public MockWorkerWebSocketClient(URI serverUri, String workerId, String taskResultStatus) {
         super(serverUri);
         this.workerId = workerId;
         this.taskResultStatus = normalizeTaskResultStatus(taskResultStatus);
@@ -73,7 +72,7 @@ public class MassWebSocketClientImpl extends WebSocketClient implements MassWebS
         MockCommandRuntime.initialize();
     }
 
-    public MassWebSocketClientImpl(String workerId) {
+    public MockWorkerWebSocketClient(String workerId) {
         this(URI.create("ws://localhost:18088/ws"), workerId, "SUCCESS");
     }
 
@@ -140,7 +139,9 @@ public class MassWebSocketClientImpl extends WebSocketClient implements MassWebS
                     workerId, taskMessage.getMsgId());
             return;
         }
-        TaskPayload taskPayload = gson.fromJson(taskMessage.getPayload(), TaskPayload.class);
+        JsonObject taskPayload = taskMessage.getPayload() != null && taskMessage.getPayload().isJsonObject()
+                ? taskMessage.getPayload().getAsJsonObject()
+                : null;
 
         MassMessage response = new MassMessage();
         response.setMsgId(taskMessage.getMsgId());
@@ -158,13 +159,11 @@ public class MassWebSocketClientImpl extends WebSocketClient implements MassWebS
         response.setContext(responseContext);
 
         Map<String, Object> payloadMap = new HashMap<>();
-        String stepId = (taskPayload != null && taskPayload.getSteps() != null && !taskPayload.getSteps().isEmpty())
-                ? taskPayload.getSteps().get(0).getStepId()
-                : "step-0-default";
-        int stepCount = taskPayload != null && taskPayload.getSteps() != null ? taskPayload.getSteps().size() : 0;
+        String stepId = extractFirstStepId(taskPayload);
+        int stepCount = countSteps(taskPayload);
         MockClientState state = getMockClientState();
         String resolvedStatus = resolveTaskResultStatus(state);
-        long delayMillis = resolveTaskResponseDelayMillis(taskMessage, taskPayload, state, resolvedStatus);
+        long delayMillis = resolveTaskResponseDelayMillis(taskMessage, stepCount, state, resolvedStatus);
         long startedAtEpochMillis = System.currentTimeMillis();
         long finishedAtEpochMillis = startedAtEpochMillis + delayMillis;
         payloadMap.put("stepId", stepId);
@@ -485,17 +484,38 @@ public class MassWebSocketClientImpl extends WebSocketClient implements MassWebS
     }
 
     private long resolveTaskResponseDelayMillis(MassMessage taskMessage,
-                                                TaskPayload taskPayload,
+                                                int stepCount,
                                                 MockClientState state,
                                                 String taskStatus) {
         if (state != null && state.getTaskResponseDelayMillis() > 0L) {
             return state.getTaskResponseDelayMillis();
         }
-        int stepCount = taskPayload != null && taskPayload.getSteps() != null ? taskPayload.getSteps().size() : 0;
         int stableHash = Objects.hash(workerId, taskMessage.getMsgId(), taskMessage.getProject(), stepCount);
         long jitter = Math.floorMod(stableHash, (int) DEFAULT_TASK_RESPONSE_JITTER_MS + 1);
         long failurePenalty = "FAILED".equals(taskStatus) ? 10L : 0L;
         return DEFAULT_TASK_RESPONSE_BASE_DELAY_MS + jitter + Math.max(0, stepCount - 1) * 5L + failurePenalty;
+    }
+
+    private String extractFirstStepId(JsonObject taskPayload) {
+        if (taskPayload == null || !taskPayload.has("steps") || !taskPayload.get("steps").isJsonArray()) {
+            return "step-0-default";
+        }
+        var steps = taskPayload.getAsJsonArray("steps");
+        if (steps.isEmpty() || !steps.get(0).isJsonObject()) {
+            return "step-0-default";
+        }
+        JsonObject firstStep = steps.get(0).getAsJsonObject();
+        if (!firstStep.has("stepId") || firstStep.get("stepId").isJsonNull()) {
+            return "step-0-default";
+        }
+        return firstStep.get("stepId").getAsString();
+    }
+
+    private int countSteps(JsonObject taskPayload) {
+        if (taskPayload == null || !taskPayload.has("steps") || !taskPayload.get("steps").isJsonArray()) {
+            return 0;
+        }
+        return taskPayload.getAsJsonArray("steps").size();
     }
 
     private Map<String, Object> buildExecutionSnapshot(MessageContext originalContext,
@@ -590,7 +610,7 @@ public class MassWebSocketClientImpl extends WebSocketClient implements MassWebS
                     workerId, targetWorkerId);
             return;
         }
-        MassWebSocketClient targetClient = clientSessionManager.getClient(targetWorkerId);
+        MockWorkerClient targetClient = clientSessionManager.getClient(targetWorkerId);
         if (targetClient == null) {
             logger.warn("[{}] Cannot close target worker {} after ack because client is missing",
                     workerId, targetWorkerId);

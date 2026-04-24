@@ -7,8 +7,8 @@ import com.xa.mass.gateway.model.massMessage.MassMessage;
 import com.xa.mass.gateway.model.massMessage.MessageContext;
 import com.xa.mass.gateway.session.SessionRoles;
 import com.xa.mass.mock.client.ClientSessionManager;
-import com.xa.mass.mock.client.MassWebSocketClient;
-import com.xa.mass.mock.client.MassWebSocketClientImpl;
+import com.xa.mass.mock.client.MockWorkerClient;
+import com.xa.mass.mock.client.MockWorkerWebSocketClient;
 import com.xa.mass.mock.command.mock.MockClientStateRegistry;
 import com.xa.mass.mock.command.runtime.MockCommandRuntime;
 import com.xa.mass.mock.config.MockConfig;
@@ -196,7 +196,7 @@ public class WebSocketClientStarter {
         for (int attempt = 1; attempt <= retryAttempts; attempt++) {
             try {
                 URI uri = new URI(baseUri);
-                MassWebSocketClientImpl client = new MassWebSocketClientImpl(uri, workerId, taskResultStatus);
+                MockWorkerWebSocketClient client = new MockWorkerWebSocketClient(uri, workerId, taskResultStatus);
                 clientSessionManager.addClient(client);
 
                 if (client.connectBlocking(connectionTimeout, TimeUnit.SECONDS)) {
@@ -248,14 +248,14 @@ public class WebSocketClientStarter {
             return;
         }
 
-        Collection<MassWebSocketClient> clients = clientSessionManager.getAllClients();
+        Collection<MockWorkerClient> clients = clientSessionManager.getAllClients();
         if (clients.isEmpty()) {
             log.debug("No active mock client connections");
             return;
         }
 
-        List<MassWebSocketClient> clientList = new ArrayList<>(clients);
-        MassWebSocketClient client = clientList.get(new Random().nextInt(clientList.size()));
+        List<MockWorkerClient> clientList = new ArrayList<>(clients);
+        MockWorkerClient client = clientList.get(new Random().nextInt(clientList.size()));
 
         try {
             MassMessage ping = new MassMessage();
@@ -289,10 +289,10 @@ public class WebSocketClientStarter {
         isShuttingDown = true;
         started.set(false);
 
-        Collection<MassWebSocketClient> clients = clientSessionManager.getAllClients();
+        Collection<MockWorkerClient> clients = clientSessionManager.getAllClients();
         log.info("Disconnecting {} mock clients", clients.size());
 
-        for (MassWebSocketClient client : clients) {
+        for (MockWorkerClient client : clients) {
             try {
                 client.disconnect();
                 log.debug("Client {} disconnected", client.getWorkerId());

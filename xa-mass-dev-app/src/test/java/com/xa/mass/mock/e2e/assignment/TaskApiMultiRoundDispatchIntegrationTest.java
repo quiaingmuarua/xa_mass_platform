@@ -9,7 +9,7 @@ import com.xa.mass.gateway.model.massMessage.MassMessage;
 import com.xa.mass.gateway.model.massMessage.MessageAckPayload;
 import com.xa.mass.gateway.model.massMessage.MessageContext;
 import com.xa.mass.mock.MockApplicationSpringBootApp;
-import com.xa.mass.mock.client.MassWebSocketClientImpl;
+import com.xa.mass.mock.client.MockWorkerWebSocketClient;
 import com.xa.mass.mock.e2e.support.AbstractMockE2eTest;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -58,8 +58,8 @@ class TaskApiMultiRoundDispatchIntegrationTest extends AbstractMockE2eTest {
         registerWorker(workerId);
 
         URI wsUri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
-        MassWebSocketClientImpl client = connectClientWithRetries(
-                () -> new MassWebSocketClientImpl(wsUri, workerId),
+        MockWorkerWebSocketClient client = connectClientWithRetries(
+                () -> new MockWorkerWebSocketClient(wsUri, workerId),
                 "Mock client failed to connect"
         );
         try {
@@ -201,7 +201,7 @@ class TaskApiMultiRoundDispatchIntegrationTest extends AbstractMockE2eTest {
     private record AckSnapshot(String msgId, int code, String message) {
     }
 
-    private static final class ManualAckWebSocketClient extends MassWebSocketClientImpl {
+    private static final class ManualAckWebSocketClient extends MockWorkerWebSocketClient {
         private final BlockingQueue<MassMessage> taskQueue = new LinkedBlockingQueue<>();
         private final BlockingQueue<AckSnapshot> ackQueue = new LinkedBlockingQueue<>();
 
