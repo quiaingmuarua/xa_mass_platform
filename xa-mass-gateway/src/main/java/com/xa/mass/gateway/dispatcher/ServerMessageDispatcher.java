@@ -1,14 +1,10 @@
 package com.xa.mass.gateway.dispatcher;
 
 import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
-import com.xa.mass.gateway.dispatcher.middleware.ExceptionMiddleware;
-import com.xa.mass.gateway.dispatcher.middleware.MessageInboundMiddleware;
-import com.xa.mass.gateway.dispatcher.middleware.MessageOutboundMiddleware;
 import com.xa.mass.gateway.queue.OutboundDelivery;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -21,6 +17,8 @@ public class ServerMessageDispatcher {
     private static final int INPUT_LOOP_THREADS = 8;
     private static final int OUTPUT_LANE_THREADS = 8;
     private final DispatchRuntimeContext context;
+    private final GatewayInputProcessor inputProcessor;
+    private final GatewayOutputProcessor outputProcessor;
     private final AtomicBoolean running = new AtomicBoolean(false);
     private ExecutorService inputExecutor;
     private ExecutorService outputPollerExecutor;
@@ -28,6 +26,8 @@ public class ServerMessageDispatcher {
 
     public ServerMessageDispatcher(DispatchRuntimeContext context) {
         this.context = context;
+        this.inputProcessor = new GatewayInputProcessor(context);
+        this.outputProcessor = new GatewayOutputProcessor(context);
     }
 
     public void start() {
@@ -71,13 +71,13 @@ public class ServerMessageDispatcher {
             try {
                 rawJson = context.getMessageTransporter().receiveInput(15, TimeUnit.SECONDS);
                 if (rawJson != null) {
-                    runInboundMiddlewareChain(context.getMiddlewareRegistry().getInputMiddlewares(), rawJson);
+                    inputProcessor.process(rawJson);
                 }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 break;
             } catch (Exception e) {
-                runExceptionMiddlewareChain(rawJson, null, e);
+                logLoopFailure("input", rawJson, null, e);
             }
         }
     }
@@ -94,7 +94,7 @@ public class ServerMessageDispatcher {
                 Thread.currentThread().interrupt();
                 break;
             } catch (Exception e) {
-                runExceptionMiddlewareChain(null, delivery, e);
+                logLoopFailure("output", null, delivery, e);
             }
         }
     }
@@ -103,9 +103,9 @@ public class ServerMessageDispatcher {
         ExecutorService laneExecutor = resolveOutputLaneExecutor(delivery);
         laneExecutor.submit(() -> {
             try {
-                runOutboundMiddlewareChain(context.getMiddlewareRegistry().getOutputMiddlewares(), delivery);
+                outputProcessor.process(delivery);
             } catch (Exception e) {
-                runExceptionMiddlewareChain(null, delivery, e);
+                logLoopFailure("output-lane", null, delivery, e);
             }
         });
     }
@@ -125,28 +125,13 @@ public class ServerMessageDispatcher {
         return Objects.toString(workerId, "_") + "::" + Objects.toString(connRole, "_");
     }
 
-    private void runInboundMiddlewareChain(List<MessageInboundMiddleware> chain, String rawJson) {
-        for (MessageInboundMiddleware middleware : chain) {
-            if (!middleware.handle(rawJson, context)) {
-                break;
-            }
-        }
-    }
-
-    private void runOutboundMiddlewareChain(List<MessageOutboundMiddleware> chain, OutboundDelivery delivery) {
-        for (MessageOutboundMiddleware middleware : chain) {
-            if (!middleware.handle(delivery, context)) {
-                break;
-            }
-        }
-    }
-
-    private void runExceptionMiddlewareChain(String rawJson, OutboundDelivery delivery, Exception e) {
-        for (ExceptionMiddleware middleware : context.getMiddlewareRegistry().getExceptionMiddlewareList()) {
-            if (!middleware.handleException(rawJson, delivery, context, e)) {
-                break;
-            }
-        }
+    private void logLoopFailure(String loopName, String rawJson, OutboundDelivery delivery, Exception e) {
+        logger.error("Gateway dispatcher {} loop failed: rawJsonPresent={}, workerId={}, connRole={}",
+                loopName,
+                rawJson != null,
+                delivery != null ? delivery.getWorkerId() : null,
+                delivery != null ? delivery.getConnRole() : null,
+                e);
     }
 
     private void shutdownExecutor(ExecutorService executor) throws InterruptedException {

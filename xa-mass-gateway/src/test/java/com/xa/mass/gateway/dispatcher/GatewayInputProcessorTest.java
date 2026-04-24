@@ -1,25 +1,19 @@
-package com.xa.mass.gateway.dispatcher.middleware;
+package com.xa.mass.gateway.dispatcher;
 
 import com.google.gson.JsonObject;
-import com.xa.mass.base.debug.WorkerControlEventProtocol;
-import com.xa.mass.base.debug.WorkerDebugMessageStore;
 import com.xa.mass.base.channel.tranporter.MessageTransporter;
-import com.xa.mass.gateway.dispatcher.DispatcherContext;
-import com.xa.mass.gateway.dispatcher.GatewayFrameRouter;
-import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
+import com.xa.mass.base.debug.WorkerControlEventProtocol;
 import com.xa.mass.gateway.dispatcher.port.ControlEventRequestFrameBridge;
 import com.xa.mass.gateway.dispatcher.port.ControlEventResponseFrameSink;
-import com.xa.mass.gateway.dispatcher.port.TaskStepFrameBridge;
 import com.xa.mass.gateway.queue.GsonMessageCodec;
 import com.xa.mass.gateway.queue.OutboundDelivery;
 import com.xa.mass.sdk.event.EventPrincipal;
 import com.xa.mass.sdk.event.EventRequest;
 import com.xa.mass.sdk.event.EventResponse;
 import com.xa.mass.transport.WorkerEndpointRegistry;
-import com.xa.mass.transport.model.TaskResultReport;
+import com.xa.mass.transport.channel.TaskResultIngestChannel;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentCaptor;
 
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
@@ -33,16 +27,15 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 
-class ProcessEnvelopeMiddlewareTest {
+class GatewayInputProcessorTest {
 
     private GatewayFrameRouter frameRouter;
     private GsonMessageCodec codec;
-    private DispatchRuntimeContext context;
+    private DispatcherContext context;
     private MessageTransporter<String, OutboundDelivery> transporter;
     private WorkerEndpointRegistry endpointRegistry;
-    private MessageInboundMiddleware inboundMiddleware;
+    private GatewayInputProcessor inputProcessor;
 
     @BeforeEach
     @SuppressWarnings("unchecked")
@@ -52,13 +45,12 @@ class ProcessEnvelopeMiddlewareTest {
         transporter = mock(MessageTransporter.class);
         endpointRegistry = mock(WorkerEndpointRegistry.class);
         context = createContext(null, null, null);
-        inboundMiddleware = new MiddlewareRegistry().getInputMiddlewares().get(0);
-        WorkerDebugMessageStore.clearAll();
+        inputProcessor = new GatewayInputProcessor(context);
     }
 
     @Test
     void nullDecodeSkipsHandlingAndReturnsTrue() {
-        boolean result = inboundMiddleware.handle("not-valid-json-at-all-{{{}}}", context);
+        boolean result = inputProcessor.process("not-valid-json-at-all-{{{}}}");
         assertTrue(result);
     }
 
@@ -71,14 +63,15 @@ class ProcessEnvelopeMiddlewareTest {
             capturedPrincipal.set(principal);
             return EventResponse.success(Map.of("ack", true), request.getRequestId());
         }, null);
+        inputProcessor = new GatewayInputProcessor(context);
 
-        inboundMiddleware.handle(controlEventRequest("proj", "mock.state.get"), context);
+        inputProcessor.process(controlEventRequest("proj", "mock.state.get"));
 
         assertNotNull(capturedRequest.get());
         assertEquals("mock.state.get", capturedRequest.get().getEvent().value());
         assertEquals("req-1", capturedRequest.get().getRequestId());
         assertEquals("client-1", capturedPrincipal.get().getClientId());
-        ArgumentCaptor<OutboundDelivery> outputCaptor = ArgumentCaptor.forClass(OutboundDelivery.class);
+        org.mockito.ArgumentCaptor<OutboundDelivery> outputCaptor = org.mockito.ArgumentCaptor.forClass(OutboundDelivery.class);
         verify(transporter).sendOutput(outputCaptor.capture());
         JsonObject response = codec.parseObject(outputCaptor.getValue().getRawJson());
         assertEquals("worker-1", outputCaptor.getValue().getWorkerId());
@@ -89,9 +82,8 @@ class ProcessEnvelopeMiddlewareTest {
 
     @Test
     void noHandlerDefaultsToUnknownAndNoOutput() {
-        boolean result = inboundMiddleware.handle(
-                codec.getGson().toJson(frame("CONTROL", "unknown", false, "proj", new JsonObject())),
-                context
+        boolean result = inputProcessor.process(
+                codec.getGson().toJson(frame("CONTROL", "unknown", false, "proj", new JsonObject()))
         );
 
         assertTrue(result);
@@ -101,10 +93,11 @@ class ProcessEnvelopeMiddlewareTest {
     @Test
     void taskStepBridgeProducesAckWithoutEventBackfill() {
         context = createContext(report -> true, null, null);
+        inputProcessor = new GatewayInputProcessor(context);
 
-        inboundMiddleware.handle(taskStepFrame("task-1", "msg-1", "SUCCESS", "ok"), context);
+        inputProcessor.process(taskStepFrame("task-1", "msg-1", "SUCCESS", "ok"));
 
-        ArgumentCaptor<OutboundDelivery> outputCaptor = ArgumentCaptor.forClass(OutboundDelivery.class);
+        org.mockito.ArgumentCaptor<OutboundDelivery> outputCaptor = org.mockito.ArgumentCaptor.forClass(OutboundDelivery.class);
         verify(transporter).sendOutput(outputCaptor.capture());
         JsonObject ack = codec.parseObject(outputCaptor.getValue().getRawJson());
         assertEquals("worker-1", outputCaptor.getValue().getWorkerId());
@@ -115,9 +108,9 @@ class ProcessEnvelopeMiddlewareTest {
 
     @Test
     void taskStepWithoutBridgeReturnsExplicitUnavailableAck() {
-        inboundMiddleware.handle(taskStepFrame("task-1", "msg-1", "SUCCESS", "ok"), context);
+        inputProcessor.process(taskStepFrame("task-1", "msg-1", "SUCCESS", "ok"));
 
-        ArgumentCaptor<OutboundDelivery> outputCaptor = ArgumentCaptor.forClass(OutboundDelivery.class);
+        org.mockito.ArgumentCaptor<OutboundDelivery> outputCaptor = org.mockito.ArgumentCaptor.forClass(OutboundDelivery.class);
         verify(transporter).sendOutput(outputCaptor.capture());
         JsonObject ack = codec.parseObject(outputCaptor.getValue().getRawJson());
         assertEquals(503, ack.getAsJsonObject("payload").get("code").getAsInt());
@@ -127,13 +120,13 @@ class ProcessEnvelopeMiddlewareTest {
     @Test
     void taskStepBridgeRejectsMalformedTaskReportWithBadRequestAck() {
         context = createContext(report -> true, null, null);
+        inputProcessor = new GatewayInputProcessor(context);
 
-        inboundMiddleware.handle(
-                codec.getGson().toJson(frame("TASK", "step", false, "proj", payload("status", "SUCCESS"))),
-                context
+        inputProcessor.process(
+                codec.getGson().toJson(frame("TASK", "step", false, "proj", payload("status", "SUCCESS")))
         );
 
-        ArgumentCaptor<OutboundDelivery> outputCaptor = ArgumentCaptor.forClass(OutboundDelivery.class);
+        org.mockito.ArgumentCaptor<OutboundDelivery> outputCaptor = org.mockito.ArgumentCaptor.forClass(OutboundDelivery.class);
         verify(transporter).sendOutput(outputCaptor.capture());
         JsonObject ack = codec.parseObject(outputCaptor.getValue().getRawJson());
         assertEquals(400, ack.getAsJsonObject("payload").get("code").getAsInt());
@@ -153,8 +146,9 @@ class ProcessEnvelopeMiddlewareTest {
             messageId.set(responseMessageId);
             payload.set(responsePayload);
         });
+        inputProcessor = new GatewayInputProcessor(context);
 
-        boolean result = inboundMiddleware.handle(controlEventResponse("proj", "mock.state.get"), context);
+        boolean result = inputProcessor.process(controlEventResponse("proj", "mock.state.get"));
 
         assertTrue(result);
         assertNotNull(raw.get());
@@ -167,9 +161,9 @@ class ProcessEnvelopeMiddlewareTest {
 
     @Test
     void controlEventRequestWithoutBridgeReturnsExplicitUnavailableResponse() {
-        inboundMiddleware.handle(controlEventRequest("proj", "mock.state.get"), context);
+        inputProcessor.process(controlEventRequest("proj", "mock.state.get"));
 
-        ArgumentCaptor<OutboundDelivery> outputCaptor = ArgumentCaptor.forClass(OutboundDelivery.class);
+        org.mockito.ArgumentCaptor<OutboundDelivery> outputCaptor = org.mockito.ArgumentCaptor.forClass(OutboundDelivery.class);
         verify(transporter).sendOutput(outputCaptor.capture());
         JsonObject response = codec.parseObject(outputCaptor.getValue().getRawJson());
         assertEquals("CONTROL", response.get("msgType").getAsString());
@@ -178,41 +172,15 @@ class ProcessEnvelopeMiddlewareTest {
         assertEquals("req-1", response.getAsJsonObject("payload").get("requestId").getAsString());
     }
 
-    @Test
-    void sendEnvelopeMiddlewareMarksDebugRecordFailedWhenEndpointUnavailable() {
-        MessageOutboundMiddleware sendMiddleware = new MiddlewareRegistry().getOutputMiddlewares().get(0);
-        when(endpointRegistry.sendMessage("worker-1", "task_messages", "{\"hello\":\"world\"}"))
-                .thenReturn(false);
-        WorkerDebugMessageStore.recordOutbound(
-                "worker-1",
-                "demoApp",
-                "mock.state.get",
-                "CONTROL",
-                "event",
-                "trace-1",
-                "{\"event\":\"mock.state.get\"}",
-                "{\"msgId\":\"trace-1\"}",
-                "queued"
-        );
-
-        boolean result = sendMiddleware.handle(
-                new OutboundDelivery("worker-1", "task_messages", "{\"hello\":\"world\"}", "trace-1"),
-                context
-        );
-
-        assertFalse(result);
-        assertEquals("FAILED", WorkerDebugMessageStore.getHistory("worker-1").get(0).getStatus());
-    }
-
-    private DispatchRuntimeContext createContext(TaskStepFrameBridge taskStepFrameBridge,
-                                                 ControlEventRequestFrameBridge controlEventRequestFrameBridge,
-                                                 ControlEventResponseFrameSink controlEventResponseFrameSink) {
+    private DispatcherContext createContext(TaskResultIngestChannel taskResultIngestChannel,
+                                            ControlEventRequestFrameBridge controlEventRequestFrameBridge,
+                                            ControlEventResponseFrameSink controlEventResponseFrameSink) {
         return new DispatcherContext(
                 transporter,
                 endpointRegistry,
                 codec,
                 frameRouter,
-                taskStepFrameBridge,
+                taskResultIngestChannel,
                 controlEventRequestFrameBridge,
                 controlEventResponseFrameSink
         );

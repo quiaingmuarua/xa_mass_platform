@@ -111,7 +111,7 @@ Verified runtime path:
 1. Default `dev` startup automatically launches mock WebSocket clients after `ApplicationReadyEvent`.
 2. A mock client receives `TASK/step`.
 3. The mock client sends back a `TASK/step` result frame.
-4. `GatewayTaskResultHandler` calls `TaskManager.handleTaskMessageResult(...)`.
+4. The runtime `TaskResultIngestChannel` calls `TaskManager.handleTaskMessageResult(...)`.
 5. `TaskManager` updates the persisted `TaskMsg` using `taskId + msgId`.
 6. Each `TaskMsg` reaches `SUCCESS` or `FAILED`.
 7. When all persisted `TaskMsg` rows are final, the task automatically converges to `TERMINAL`.
@@ -140,7 +140,7 @@ Verified runtime release behavior:
 - `xa-mass-engine/src/main/java/com/xa/mass/engine/model/WorkerMatchContext.java`
 - `xa-mass-sdk/src/main/java/com/xa/mass/starter/MassEngine.java`
 - `xa-mass-sdk/src/main/java/com/xa/mass/starter/GatewayTaskMsgPublisher.java`
-- `xa-mass-sdk/src/main/java/com/xa/mass/starter/GatewayTaskResultHandler.java`
+- `xa-mass-sdk/src/main/java/com/xa/mass/starter/transport/RuntimeTaskResultIngestChannel.java`
 - `xa-mass-dev-app/src/main/java/com/xa/mass/mock/starter/WebSocketClientStarter.java`
 - `xa-mass-dev-app/src/main/java/com/xa/mass/mock/client/MassWebSocketClientImpl.java`
 

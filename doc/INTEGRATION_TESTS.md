@@ -173,7 +173,7 @@ Important support coverage outside the E2E package:
 - `WorkerMatchContextTest`
 - `QLExpressRuleEvaluatorTest`
 - `RuleBasedTaskWorkerMatchingStrategyTest`
-- `GatewayTaskResultHandlerTest`
+- `RuntimeTaskResultIngestChannelTest`
 - `MassWebSocketClientImplTest`
 - `WebSocketClientStarterTest`
 

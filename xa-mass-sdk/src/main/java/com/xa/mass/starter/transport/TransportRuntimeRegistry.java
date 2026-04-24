@@ -7,6 +7,7 @@ import com.xa.mass.base.model.Worker;
 import com.xa.mass.sdk.worker.PullWorkerSession;
 import com.xa.mass.starter.worker.TransportRoutingTaskMsgDispatchListener;
 import com.xa.mass.transport.WorkerTransportHints;
+import com.xa.mass.transport.channel.TaskResultIngestChannel;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
 
 import java.util.LinkedHashMap;
@@ -25,14 +26,17 @@ import java.util.Objects;
 public final class TransportRuntimeRegistry {
 
     private final WorkerManager workerManager;
+    private final TaskResultIngestChannel taskResultIngestChannel;
     private final WorkerSystemEventChannel systemEventChannel;
     private final List<TransportBinding> bindings;
     private final Map<String, TransportBinding> bindingByHint;
 
     public TransportRuntimeRegistry(WorkerManager workerManager,
+                                    TaskResultIngestChannel taskResultIngestChannel,
                                     WorkerSystemEventChannel systemEventChannel,
                                     List<TransportBinding> bindings) {
         this.workerManager = Objects.requireNonNull(workerManager, "workerManager");
+        this.taskResultIngestChannel = Objects.requireNonNull(taskResultIngestChannel, "taskResultIngestChannel");
         this.systemEventChannel = Objects.requireNonNull(systemEventChannel, "systemEventChannel");
         this.bindings = List.copyOf(bindings);
         if (this.bindings.isEmpty()) {
@@ -73,14 +77,14 @@ public final class TransportRuntimeRegistry {
             throw new IllegalStateException("No transport binding is registered for worker transport '"
                     + transportHint + "' on worker " + normalizedWorkerId);
         }
-        if (binding.getTaskPullChannel() == null || binding.getTaskResultIngestChannel() == null) {
+        if (binding.getTaskPullChannel() == null) {
             throw new IllegalStateException("Worker transport '" + transportHint
                     + "' is not pull-capable for worker " + normalizedWorkerId);
         }
         return new PullWorkerSession(
                 normalizedWorkerId,
                 binding.getTaskPullChannel(),
-                binding.getTaskResultIngestChannel(),
+                taskResultIngestChannel,
                 systemEventChannel,
                 transportHint
         );

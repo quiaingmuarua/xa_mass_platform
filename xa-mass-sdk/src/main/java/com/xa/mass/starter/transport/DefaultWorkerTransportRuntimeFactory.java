@@ -22,13 +22,9 @@ public class DefaultWorkerTransportRuntimeFactory implements WorkerTransportRunt
     public TransportRuntimeRegistry create(WorkerTransportRuntimeFactoryContext context) {
         List<TransportBinding> bindings = new ArrayList<>();
 
-        PollingWorkerAdapter pollingAdapter = new PollingWorkerAdapter(
-                context.getTaskManager(),
-                context.getSystemEventChannel()
-        );
+        PollingWorkerAdapter pollingAdapter = new PollingWorkerAdapter(context.getSystemEventChannel());
         bindings.add(TransportBinding.builder(pollingAdapter)
                 .taskPullChannel(pollingAdapter)
-                .taskResultIngestChannel(pollingAdapter)
                 .build());
 
         if (context.isGatewayEnabled()) {
@@ -47,6 +43,7 @@ public class DefaultWorkerTransportRuntimeFactory implements WorkerTransportRunt
 
         return new TransportRuntimeRegistry(
                 context.getWorkerManager(),
+                context.getTaskResultIngestChannel(),
                 context.getSystemEventChannel(),
                 bindings
         );

@@ -1,4 +1,4 @@
-package com.xa.mass.starter;
+package com.xa.mass.starter.transport;
 
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
@@ -22,17 +22,17 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class GatewayTaskResultHandlerTest {
+class RuntimeTaskResultIngestChannelTest {
 
     private RecordingTaskScheduler scheduler;
     private TaskManager taskManager;
-    private GatewayTaskResultHandler handler;
+    private RuntimeTaskResultIngestChannel channel;
 
     @BeforeEach
     void setUp() {
         scheduler = new RecordingTaskScheduler();
         taskManager = new TaskManager(scheduler, new InMemoryTaskStorage());
-        handler = new GatewayTaskResultHandler(taskManager);
+        channel = new RuntimeTaskResultIngestChannel(taskManager);
     }
 
     @Test
@@ -40,7 +40,7 @@ class GatewayTaskResultHandlerTest {
         Task task = createRunningTask("task-success");
         TaskMsg taskMsg = taskManager.getTaskMessages(task.getTid()).get(0);
 
-        boolean handled = handler.handleTaskStep(report(task, taskMsg, "SUCCESS", "ok", null));
+        boolean handled = channel.ingest(report(task, taskMsg, "SUCCESS", "ok", null));
 
         assertTrue(handled);
         TaskMsg updated = taskManager.getTaskMessage(task.getTid(), taskMsg.getMsgId());
@@ -60,7 +60,7 @@ class GatewayTaskResultHandlerTest {
         taskMsg.setMaxRetryCount(0);
         taskManager.updateTaskMessage(task.getTid(), taskMsg);
 
-        boolean handled = handler.handleTaskStep(report(task, taskMsg, "FAILED", "boom", "RATE_LIMITED"));
+        boolean handled = channel.ingest(report(task, taskMsg, "FAILED", "boom", "RATE_LIMITED"));
 
         assertTrue(handled);
         TaskMsg updated = taskManager.getTaskMessage(task.getTid(), taskMsg.getMsgId());
@@ -78,8 +78,8 @@ class GatewayTaskResultHandlerTest {
         Task task = createRunningTask("task-duplicate");
         TaskMsg taskMsg = taskManager.getTaskMessages(task.getTid()).get(0);
 
-        boolean firstHandled = handler.handleTaskStep(report(task, taskMsg, "SUCCESS", "ok", null));
-        boolean secondHandled = handler.handleTaskStep(report(task, taskMsg, "FAILED", "boom", null));
+        boolean firstHandled = channel.ingest(report(task, taskMsg, "SUCCESS", "ok", null));
+        boolean secondHandled = channel.ingest(report(task, taskMsg, "FAILED", "boom", null));
 
         assertTrue(firstHandled);
         assertTrue(secondHandled);
@@ -95,7 +95,7 @@ class GatewayTaskResultHandlerTest {
         Task task = createRunningTask("task-transport-neutral");
         TaskMsg taskMsg = taskManager.getTaskMessages(task.getTid()).get(0);
 
-        boolean handled = handler.ingest(new TaskResultReport(
+        boolean handled = channel.ingest(new TaskResultReport(
                 task.getTid(),
                 taskMsg.getMsgId(),
                 true,

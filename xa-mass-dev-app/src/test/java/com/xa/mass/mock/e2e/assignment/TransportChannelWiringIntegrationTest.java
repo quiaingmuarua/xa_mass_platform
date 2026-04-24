@@ -90,10 +90,10 @@ class TransportChannelWiringIntegrationTest extends AbstractMockE2eTest {
         assertFalse(items.isEmpty(), "TaskDispatchChannel must have dispatched at least one task item");
         channelCallOrder.add("TaskDispatchChannel.dispatchTaskItems");
 
-        // Submit result confirms TaskResultIngestChannel.ingestTaskResult was called.
+        // Submit result confirms TaskResultIngestChannel.ingest was called.
         boolean submitted = session.submitResult(items.get(0), true, "ok", Map.of());
-        assertTrue(submitted, "TaskResultIngestChannel.ingestTaskResult must accept the result");
-        channelCallOrder.add("TaskResultIngestChannel.ingestTaskResult");
+        assertTrue(submitted, "TaskResultIngestChannel.ingest must accept the result");
+        channelCallOrder.add("TaskResultIngestChannel.ingest");
 
         // All three channels confirmed.
         assertEquals(3, channelCallOrder.size(), "All three transport channels must be invoked");

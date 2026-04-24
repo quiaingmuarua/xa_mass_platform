@@ -1227,6 +1227,7 @@ class MassSdkTest {
         MessageQueue<OutboundDelivery> outputQueue = new InMemoryMessageQueue<>("output", OutboundDelivery.class);
         WorkerTransportRuntimeFactory transportFactory = context -> new TransportRuntimeRegistry(
                 context.getWorkerManager(),
+                context.getTaskResultIngestChannel(),
                 context.getSystemEventChannel(),
                 List.of(TransportBinding.builder(new StubPushOnlyAdapter("websocket", Set.of("realtime", "ws", "push"))).build())
         );
@@ -1265,10 +1266,10 @@ class MassSdkTest {
         MessageQueue<OutboundDelivery> outputQueue = new InMemoryMessageQueue<>("output", OutboundDelivery.class);
         WorkerTransportRuntimeFactory transportFactory = context -> new TransportRuntimeRegistry(
                 context.getWorkerManager(),
+                context.getTaskResultIngestChannel(),
                 context.getSystemEventChannel(),
                 List.of(TransportBinding.builder(new StubPullCapableAdapter("queue-consumer", Set.of("queue-consumer-v2")))
                         .taskPullChannel(new StubPullCapableAdapter("queue-consumer", Set.of("queue-consumer-v2")))
-                        .taskResultIngestChannel(new StubPullCapableAdapter("queue-consumer", Set.of("queue-consumer-v2")))
                         .build())
         );
 
@@ -1311,10 +1312,10 @@ class MassSdkTest {
         );
         WorkerTransportRuntimeFactory transportFactory = context -> new TransportRuntimeRegistry(
                 context.getWorkerManager(),
+                context.getTaskResultIngestChannel(),
                 context.getSystemEventChannel(),
                 List.of(TransportBinding.builder(pollingAdapter)
                         .taskPullChannel(pollingAdapter)
-                        .taskResultIngestChannel(pollingAdapter)
                         .build())
         );
 
@@ -1348,6 +1349,7 @@ class MassSdkTest {
         MessageQueue<OutboundDelivery> outputQueue = new InMemoryMessageQueue<>("output", OutboundDelivery.class);
         WorkerTransportRuntimeFactory transportFactory = context -> new TransportRuntimeRegistry(
                 context.getWorkerManager(),
+                context.getTaskResultIngestChannel(),
                 context.getSystemEventChannel(),
                 List.of(TransportBinding.builder(new StubPushOnlyAdapter("polling-http-v2", WorkerTransportHints.POLLING, Set.of("polling-http-v2")))
                         .build())
@@ -1395,6 +1397,7 @@ class MassSdkTest {
         RecordingControlEventPublisher publisher = new RecordingControlEventPublisher();
         WorkerTransportRuntimeFactory transportFactory = context -> new TransportRuntimeRegistry(
                 context.getWorkerManager(),
+                context.getTaskResultIngestChannel(),
                 context.getSystemEventChannel(),
                 List.of(TransportBinding.builder(new StubPushOnlyAdapter("ws-v2", WorkerTransportHints.REALTIME, Set.of("ws-v2")))
                         .workerControlEventPublisher(publisher)
@@ -1658,7 +1661,7 @@ class MassSdkTest {
         }
     }
 
-    private static final class StubPullCapableAdapter implements WorkerAdapter, TaskPullChannel, TaskResultIngestChannel {
+    private static final class StubPullCapableAdapter implements WorkerAdapter, TaskPullChannel {
         private final String protocol;
         private final String transportHint;
         private final Set<String> aliases;
@@ -1696,16 +1699,6 @@ class MassSdkTest {
         @Override
         public List<TaskDispatchItem> pollTaskMessages(String workerId, int maxMessages) {
             return List.of();
-        }
-
-        @Override
-        public boolean ingestTaskResult(String taskId,
-                                        String msgId,
-                                        boolean success,
-                                        String detail,
-                                        String errorCode,
-                                        Map<String, Object> output) {
-            return true;
         }
     }
 

@@ -9,7 +9,6 @@ import com.xa.mass.engine.util.LogUtils;
 import com.xa.mass.gateway.dispatcher.DispatcherContext;
 import com.xa.mass.gateway.dispatcher.GatewayFrameRouter;
 import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
-import com.xa.mass.gateway.dispatcher.port.TaskStepFrameBridge;
 import com.xa.mass.gateway.dispatcher.port.ControlEventRequestFrameBridge;
 import com.xa.mass.gateway.queue.MessageCodec;
 import com.xa.mass.gateway.queue.OutboundDelivery;
@@ -19,12 +18,14 @@ import com.xa.mass.sdk.event.EventResponse;
 import com.xa.mass.sdk.worker.PullWorkerSession;
 import com.xa.mass.starter.config.EngineConfig;
 import com.xa.mass.starter.config.GatewayConfig;
+import com.xa.mass.starter.transport.RuntimeTaskResultIngestChannel;
 import com.xa.mass.starter.transport.TransportRuntimeRegistry;
 import com.xa.mass.starter.transport.WorkerControlEventDispatch;
 import com.xa.mass.starter.transport.WorkerControlEventPublishResult;
 import com.xa.mass.starter.transport.WorkerTransportRuntimeFactoryContext;
 import com.xa.mass.transport.TransportServer;
 import com.xa.mass.transport.WorkerEndpointRegistry;
+import com.xa.mass.transport.channel.TaskResultIngestChannel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -144,11 +145,9 @@ public class MassApplication {
 
             GatewayFrameRouter frameRouter = new GatewayFrameRouter(messageCodec, systemEventChannel);
             TaskMsgDispatchListener taskMsgDispatchListener = null;
-            TaskStepFrameBridge taskStepFrameBridge = null;
+            TaskResultIngestChannel taskResultIngestChannel = null;
             if (engineConfig.isEnabled() && engineConfig.getTaskManager() != null) {
-                taskStepFrameBridge = gatewayConfig.isEnabled()
-                        ? new GatewayTaskResultHandler(engineConfig.getTaskManager())
-                        : null;
+                taskResultIngestChannel = new RuntimeTaskResultIngestChannel(engineConfig.getTaskManager());
                 transportRuntimeRegistry = gatewayConfig.resolveWorkerTransportRuntimeFactory().create(
                         new WorkerTransportRuntimeFactoryContext(
                                 engineConfig.getTaskManager(),
@@ -156,6 +155,7 @@ public class MassApplication {
                                 messageTransporter,
                                 endpointRegistry,
                                 messageCodec,
+                                taskResultIngestChannel,
                                 systemEventChannel,
                                 gatewayConfig.isEnabled()
                         )
@@ -168,14 +168,12 @@ public class MassApplication {
                     endpointRegistry,
                     messageCodec,
                     frameRouter,
-                    taskStepFrameBridge,
+                    taskResultIngestChannel,
                     ports.controlEventRequestFrameBridge(),
                     ports.controlEventResponseFrameSink()
             );
             logger.info("Dispatcher context created");
             logger.info("Gateway frame router initialized");
-
-            logger.info("Middleware registry initialized");
 
             if (gatewayConfig.isEnabled()) {
                 massGateway = new MassGateway(gatewayConfig, dispatcherContext);

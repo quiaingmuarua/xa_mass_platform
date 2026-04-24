@@ -72,7 +72,7 @@ It is a migration aid, not a compatibility promise.
 - `Should stay in gateway?`: yes
 - `Target owner`: `xa-mass-gateway`
 - `Migration phase`: keep without expanding platform semantics
-- `Related tests`: `MessageParserTest`, `GatewayTaskMsgPublisherTest`, `GatewayTaskResultHandlerTest`
+- `Related tests`: `MessageParserTest`, `GatewayTaskMsgPublisherTest`, `RuntimeTaskResultIngestChannelTest`
 
 ## 7. Adapter Frame Classification
 
@@ -82,27 +82,27 @@ It is a migration aid, not a compatibility promise.
 - `Should stay in gateway?`: yes
 - `Target owner`: `xa-mass-gateway`
 - `Migration phase`: keep, but do not add new platform capability identities here
-- `Related tests`: `GatewayFrameRouterTest`, `ProcessEnvelopeMiddlewareTest`
+- `Related tests`: `GatewayFrameRouterTest`, `GatewayInputProcessorTest`
 
 ## 8. Inbound / Outbound Adapter Orchestration
 
-- `Class`: `com.xa.mass.gateway.dispatcher.middleware.MiddlewareRegistry`
-- `Method`: `processEnvelopeMiddleware()`, `sendEnvelopeMiddleware()`
-- `Current responsibility`: turns raw JSON into canonical seam calls, invokes fixed bridge ports, encodes replies, and reports transport delivery failure
+- `Class`: `com.xa.mass.gateway.dispatcher.GatewayInputProcessor`, `com.xa.mass.gateway.dispatcher.GatewayOutputProcessor`
+- `Method`: `process(...)`
+- `Current responsibility`: turns raw JSON into canonical seam calls, routes task results through `TaskResultReport -> TaskResultIngestChannel`, invokes control bridges, encodes replies, and reports transport delivery failure
 - `Should stay in gateway?`: yes
 - `Target owner`: `xa-mass-gateway`
-- `Migration phase`: keep as adapter-only orchestration
-- `Related tests`: `ProcessEnvelopeMiddlewareTest`, `TaskApiDelayedWorkerAvailabilityIntegrationTest`
+- `Migration phase`: keep as explicit adapter processors, not as a generic middleware framework; runtime result-ingest ownership stays above transport binding
+- `Related tests`: `GatewayInputProcessorTest`, `GatewayOutputProcessorTest`, `TaskApiDelayedWorkerAvailabilityIntegrationTest`
 
 ## 9. Queue-Based Adapter Dispatch Loop
 
 - `Class`: `com.xa.mass.gateway.dispatcher.ServerMessageDispatcher`
 - `Method`: `processInputQueueLoop()`, `processOutputQueueLoop()`, `submitOutputDelivery(...)`
-- `Current responsibility`: consumes raw inbound JSON and `OutboundDelivery`, runs middleware chains, preserves outbound ordering per `workerId + connRole`
+- `Current responsibility`: consumes raw inbound JSON and `OutboundDelivery`, calls explicit adapter processors, preserves outbound ordering per `workerId + connRole`
 - `Should stay in gateway?`: yes
 - `Target owner`: `xa-mass-gateway`
 - `Migration phase`: keep
-- `Related tests`: `ProcessEnvelopeMiddlewareTest`, `ServerMessageDispatcherShutdownTest`
+- `Related tests`: `GatewayInputProcessorTest`, `GatewayOutputProcessorTest`, `ServerMessageDispatcherShutdownTest`
 
 ## 10. Fixed Gateway Wiring Snapshot
 

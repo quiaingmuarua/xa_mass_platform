@@ -199,6 +199,8 @@ Engine/runtime decides eligibility.
 Rules:
 
 - construct gateway frame router and explicit bridge ports before starting the adapter
+- route inbound task result compatibility frames into the canonical `TaskResultReport -> TaskResultIngestChannel` seam
+- keep `TaskResultIngestChannel` as a runtime-level seam; do not model it as worker transport binding ownership
 - `MassApplication.configureGatewayRuntime(...)` is the pre-start wiring seam for gateway-local bridge ports; deprecated late setters are compatibility only
 - resolve transport-contributed bridge ports during runtime assembly, then inject them once
 - do not grow post-construction `setHandler(...)` or `registerRoute(...)` seams on gateway runtime context
@@ -231,7 +233,7 @@ These seams are adapter-local, not platform truth:
 - raw outbound JSON plus explicit transport addressability
 - `OutboundDelivery` as the current minimal outbound delivery record
 - tuple routing such as `TASK/step` and `CONTROL/event`
-- gateway/result bridge code that converts frames into transport-neutral reports
+- explicit gateway input/output processors that convert frames into canonical bridge calls and transport sends
 - adapter-level metadata extraction such as canonical `eventCode` diagnostics from explicit fields
 
 Rules:

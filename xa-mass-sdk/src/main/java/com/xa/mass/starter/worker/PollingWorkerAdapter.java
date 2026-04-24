@@ -1,16 +1,19 @@
 package com.xa.mass.starter.worker;
 
-import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.worker.WorkerAdapter;
 import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.channel.TaskPullChannel;
-import com.xa.mass.transport.channel.TaskResultIngestChannel;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
 import com.xa.mass.transport.model.TaskDispatchItem;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.*;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Deque;
+import java.util.List;
+import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
@@ -18,7 +21,7 @@ import java.util.concurrent.ConcurrentMap;
  * Pull-based worker adapter for crawlers, queue consumers, and other workers
  * that do not maintain a server-push transport.
  */
-public class PollingWorkerAdapter implements WorkerAdapter, TaskPullChannel, TaskResultIngestChannel {
+public class PollingWorkerAdapter implements WorkerAdapter, TaskPullChannel {
 
     private static final Logger logger = LoggerFactory.getLogger(PollingWorkerAdapter.class);
 
@@ -27,12 +30,10 @@ public class PollingWorkerAdapter implements WorkerAdapter, TaskPullChannel, Tas
 
     public static final String PROTOCOL = "polling";
 
-    private final TaskManager taskManager;
     private final WorkerSystemEventChannel systemEventChannel;
     private final ConcurrentMap<String, Deque<TaskDispatchItem>> inboxByWorkerId = new ConcurrentHashMap<>();
 
-    public PollingWorkerAdapter(TaskManager taskManager, WorkerSystemEventChannel systemEventChannel) {
-        this.taskManager = Objects.requireNonNull(taskManager, "taskManager");
+    public PollingWorkerAdapter(WorkerSystemEventChannel systemEventChannel) {
         this.systemEventChannel = Objects.requireNonNull(systemEventChannel, "systemEventChannel");
     }
 
@@ -92,16 +93,6 @@ public class PollingWorkerAdapter implements WorkerAdapter, TaskPullChannel, Tas
             }
         }
         return List.copyOf(polled);
-    }
-
-    @Override
-    public boolean ingestTaskResult(String taskId,
-                                    String msgId,
-                                    boolean success,
-                                    String detail,
-                                    String errorCode,
-                                    Map<String, Object> output) {
-        return taskManager.handleTaskMessageResult(taskId, msgId, success, detail, errorCode, output);
     }
 
     public void announceWorkerOnline(String workerId, String reason) {
