@@ -7,8 +7,7 @@ import com.xa.mass.gateway.queue.MessageCodec;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 
 /**
- * 分发器上下文
- * 实现 DispatchRuntimeContext 接口，提供完整的分发运行时环境
+ * Concrete gateway dispatch runtime context.
  */
 public class DispatcherContext implements DispatchRuntimeContext {
     private final MessageTransporter messageTransporter;
@@ -44,25 +43,21 @@ public class DispatcherContext implements DispatchRuntimeContext {
         this.messageCodec = new com.xa.mass.gateway.queue.GsonMessageCodec(gson);
     }
 
-    // SessionContext 实现
     @Override
     public WorkerEndpointRegistry getSessionManager() {
         return sessionManager;
     }
 
-    // CodecContext 实现
     @Override
     public MessageCodec getMessageCodec() {
         return messageCodec;
     }
 
-    // TransportContext 实现
     @Override
     public MessageTransporter getMessageTransporter() {
         return messageTransporter;
     }
 
-    // HandlerRegistryContext 实现
     @Override
     public MessageHandlerRegistry getMessageHandlerRegistry() {
         return messageHandlerRegistry;
@@ -72,7 +67,6 @@ public class DispatcherContext implements DispatchRuntimeContext {
         this.messageHandlerRegistry = messageHandlerRegistry;
     }
 
-    // MiddlewareContext 实现
     @Override
     public MiddlewareDirection getDirection() {
         return direction;

@@ -123,6 +123,8 @@ public class MassApplication {
                 transportServer.stop();
             }
 
+            DispatcherContextRegistry.clear();
+
             LogUtils.clearMdc();
             logger.info("Mass Application stopped successfully");
         } catch (Exception e) {

@@ -1,26 +1,17 @@
-# Dispatcher Context Package Baseline
+# Dispatcher Context Baseline
 
-This package contains small context interfaces used by gateway dispatch code.
+This package keeps the single internal runtime context used by gateway dispatch code:
 
-## Current Interfaces
-
-- `SessionContext`
-- `TransportContext`
-- `CodecContext`
-- `HandlerRegistryContext`
-- `MiddlewareContext`
 - `DispatchRuntimeContext`
 
-These interfaces separate dispatcher concerns without redefining platform architecture.
+Current role:
 
-## Current Role
+- it is a local adapter/runtime seam for gateway internals
+- it is not a platform-wide abstraction model
+- it should stay as one explicit runtime view rather than being fragmented into many tiny context interfaces
 
-- They exist to keep gateway dispatch code modular and testable.
-- `DispatchRuntimeContext` is the combined view used by internal dispatcher components.
-- These interfaces are local gateway abstractions, not platform-wide extension points.
+Boundaries:
 
-## Boundaries
-
-- Do not turn this package into a second architecture spec.
-- Keep semantics of task execution, assignment, and lifecycle outside this package.
-- If a context interface stops being useful, remove it rather than preserving historical restructuring notes.
+- do not turn this package into a second architecture spec
+- keep task lifecycle and capability semantics outside this package
+- if a field stops being useful, remove it instead of rebuilding interface fragmentation
