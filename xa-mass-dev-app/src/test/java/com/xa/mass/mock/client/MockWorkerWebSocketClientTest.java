@@ -41,7 +41,7 @@ class MockWorkerWebSocketClientTest {
         assertTrue(client.awaitSentCount(1, 1000L));
         assertEquals(1, client.sentMessages.size());
         JsonObject response = WsFrameTestSupport.parse(client.sentMessages.get(0));
-        assertEquals("msg-1", WsFrameTestSupport.msgId(response));
+        assertEquals("msg-1", WsFrameTestSupport.messageId(response));
         assertEquals("worker-test", WsFrameTestSupport.workerId(response));
         assertEquals("task-1", WsFrameTestSupport.taskId(response));
         assertTrue(response.get("success").getAsBoolean());
@@ -117,6 +117,21 @@ class MockWorkerWebSocketClientTest {
         assertTrue(client.sentMessages.isEmpty());
 
         assertTrue(client.awaitSentCount(1, 1000L));
+    }
+
+    @Test
+    void legacyTaskFrameWithoutCanonicalMessageIdIsIgnored() {
+        CapturingMockWorkerClient client = new CapturingMockWorkerClient("worker-test");
+        JsonObject frame = new JsonObject();
+        frame.addProperty("msgId", "legacy-1");
+        frame.addProperty("workerId", "worker-test");
+        frame.addProperty("project", "demoApp");
+        frame.addProperty("taskId", "task-1");
+        frame.add("input", new JsonObject());
+
+        client.onMessage(frame.toString());
+
+        assertTrue(client.sentMessages.isEmpty());
     }
 
     @Test

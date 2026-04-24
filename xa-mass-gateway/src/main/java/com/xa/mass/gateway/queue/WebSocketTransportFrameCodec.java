@@ -58,10 +58,7 @@ public final class WebSocketTransportFrameCodec {
     }
 
     public String extractWorkerId(JsonObject frame) {
-        return firstNonBlank(
-                readString(frame, WorkerControlEventProtocol.WORKER_ID_FIELD),
-                readNestedString(frame, "context", "workerId")
-        );
+        return readString(frame, WorkerControlEventProtocol.WORKER_ID_FIELD);
     }
 
     public String extractProject(JsonObject frame) {
@@ -69,10 +66,7 @@ public final class WebSocketTransportFrameCodec {
     }
 
     public String extractMessageId(JsonObject frame) {
-        return firstNonBlank(
-                readString(frame, WorkerControlEventProtocol.MESSAGE_ID_FIELD),
-                readString(frame, "msgId")
-        );
+        return readString(frame, WorkerControlEventProtocol.MESSAGE_ID_FIELD);
     }
 
     public String extractEventCode(JsonObject frame) {
@@ -110,7 +104,7 @@ public final class WebSocketTransportFrameCodec {
     public boolean isCanonicalTaskResult(JsonObject frame) {
         return frame != null
                 && readString(frame, WorkerControlEventProtocol.EVENT_CODE_FIELD) == null
-                && firstNonBlank(readString(frame, "taskId"), readNestedString(frame, "context", "taskId")) != null
+                && readString(frame, "taskId") != null
                 && extractMessageId(frame) != null
                 && hasBoolean(frame, "success");
     }
@@ -118,7 +112,7 @@ public final class WebSocketTransportFrameCodec {
     public boolean isCanonicalTaskDispatch(JsonObject frame) {
         return frame != null
                 && !isResponse(frame)
-                && firstNonBlank(readString(frame, "taskId"), readNestedString(frame, "context", "taskId")) != null
+                && readString(frame, "taskId") != null
                 && extractMessageId(frame) != null
                 && !hasBoolean(frame, "success");
     }
@@ -153,9 +147,9 @@ public final class WebSocketTransportFrameCodec {
     }
 
     public TaskResultReport decodeCanonicalTaskResult(JsonObject frame) {
-        String taskId = firstNonBlank(readString(frame, "taskId"), readNestedString(frame, "context", "taskId"));
-        String msgId = extractMessageId(frame);
-        if (taskId == null || msgId == null) {
+        String taskId = readString(frame, "taskId");
+        String messageId = extractMessageId(frame);
+        if (taskId == null || messageId == null) {
             throw new IllegalArgumentException("taskId/messageId are required");
         }
 
@@ -171,7 +165,7 @@ public final class WebSocketTransportFrameCodec {
         JsonObject outputObject = readJsonObject(frame, "output");
         return new TaskResultReport(
                 taskId,
-                msgId,
+                messageId,
                 success,
                 detail,
                 errorCode,
@@ -280,13 +274,6 @@ public final class WebSocketTransportFrameCodec {
         } catch (Exception ignored) {
             return null;
         }
-    }
-
-    private String readNestedString(JsonObject object, String nestedField, String field) {
-        if (object == null || nestedField == null || !object.has(nestedField) || !object.get(nestedField).isJsonObject()) {
-            return null;
-        }
-        return readString(object.getAsJsonObject(nestedField), field);
     }
 
     private String firstNonBlank(String... values) {

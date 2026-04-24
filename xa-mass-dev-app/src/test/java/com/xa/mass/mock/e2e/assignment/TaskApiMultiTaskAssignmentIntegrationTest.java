@@ -149,7 +149,7 @@ class TaskApiMultiTaskAssignmentIntegrationTest extends AbstractMockE2eTest {
 
         private void sendSuccess(JsonObject taskMessage, String detail) throws Exception {
             sendMessage(WsFrameTestSupport.buildTaskResult(
-                    WsFrameTestSupport.msgId(taskMessage),
+                    WsFrameTestSupport.messageId(taskMessage),
                     WsFrameTestSupport.project(taskMessage),
                     getWorkerId(),
                     WsFrameTestSupport.taskId(taskMessage),

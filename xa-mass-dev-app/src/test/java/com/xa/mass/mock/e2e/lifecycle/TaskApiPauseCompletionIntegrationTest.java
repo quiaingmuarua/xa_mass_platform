@@ -95,8 +95,8 @@ class TaskApiPauseCompletionIntegrationTest extends AbstractMockE2eTest {
                     secondClient.getWorkerId(), secondClient
             );
             Map<String, JsonObject> dispatchByMsgId = new HashMap<>();
-            dispatchByMsgId.put(WsFrameTestSupport.msgId(firstDispatch), firstDispatch);
-            dispatchByMsgId.put(WsFrameTestSupport.msgId(secondDispatch), secondDispatch);
+            dispatchByMsgId.put(WsFrameTestSupport.messageId(firstDispatch), firstDispatch);
+            dispatchByMsgId.put(WsFrameTestSupport.messageId(secondDispatch), secondDispatch);
 
             for (Map<String, Object> message : pausedSnapshot.messages()) {
                 String msgId = String.valueOf(message.get("msgId"));
@@ -152,7 +152,7 @@ class TaskApiPauseCompletionIntegrationTest extends AbstractMockE2eTest {
 
         private void sendResult(JsonObject dispatchFrame, String status, String detail) throws Exception {
             sendMessage(WsFrameTestSupport.buildTaskResult(
-                    WsFrameTestSupport.msgId(dispatchFrame),
+                    WsFrameTestSupport.messageId(dispatchFrame),
                     WsFrameTestSupport.project(dispatchFrame),
                     getWorkerId(),
                     WsFrameTestSupport.taskId(dispatchFrame),

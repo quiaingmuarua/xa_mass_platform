@@ -17,13 +17,13 @@ public final class WsFrameTestSupport {
         return GSON.fromJson(rawJson, JsonObject.class);
     }
 
-    public static String buildTaskDispatch(String msgId,
+    public static String buildTaskDispatch(String messageId,
                                            String project,
                                            String workerId,
                                            String taskId,
                                            JsonObject input) {
         JsonObject frame = new JsonObject();
-        frame.addProperty(WorkerControlEventProtocol.MESSAGE_ID_FIELD, msgId);
+        frame.addProperty(WorkerControlEventProtocol.MESSAGE_ID_FIELD, messageId);
         frame.addProperty(WorkerControlEventProtocol.WORKER_ID_FIELD, workerId);
         frame.addProperty(WorkerControlEventProtocol.PROJECT_FIELD, project);
         frame.addProperty(WorkerControlEventProtocol.EVENT_CODE_FIELD, "mock.task.dispatch");
@@ -35,16 +35,16 @@ public final class WsFrameTestSupport {
         return GSON.toJson(frame);
     }
 
-    public static String buildTaskResult(String msgId,
+    public static String buildTaskResult(String messageId,
                                          String project,
                                          String workerId,
                                          String taskId,
                                          String status,
                                          String detail) {
-        return buildTaskResult(msgId, project, workerId, taskId, status, detail, null);
+        return buildTaskResult(messageId, project, workerId, taskId, status, detail, null);
     }
 
-    public static String buildTaskResult(String msgId,
+    public static String buildTaskResult(String messageId,
                                          String project,
                                          String workerId,
                                          String taskId,
@@ -58,7 +58,7 @@ public final class WsFrameTestSupport {
             output.addProperty("errorCode", errorCode);
         }
         JsonObject frame = new JsonObject();
-        frame.addProperty("messageId", msgId);
+        frame.addProperty("messageId", messageId);
         frame.addProperty("workerId", workerId);
         frame.addProperty("taskId", taskId);
         frame.addProperty("project", project);
@@ -71,14 +71,14 @@ public final class WsFrameTestSupport {
         return GSON.toJson(frame);
     }
 
-    public static String buildControlEventRequest(String msgId,
+    public static String buildControlEventRequest(String messageId,
                                                   String project,
                                                   String workerId,
                                                   String eventCode,
                                                   String requestId,
                                                   JsonObject eventPayload) {
         JsonObject frame = new JsonObject();
-        frame.addProperty(WorkerControlEventProtocol.MESSAGE_ID_FIELD, msgId);
+        frame.addProperty(WorkerControlEventProtocol.MESSAGE_ID_FIELD, messageId);
         frame.addProperty(WorkerControlEventProtocol.RESPONSE_FIELD, false);
         frame.addProperty(WorkerControlEventProtocol.WORKER_ID_FIELD, workerId);
         frame.addProperty(WorkerControlEventProtocol.PROJECT_FIELD, project);
@@ -112,9 +112,8 @@ public final class WsFrameTestSupport {
                 && frame.get("response").getAsBoolean();
     }
 
-    public static String msgId(JsonObject frame) {
-        String messageId = readString(frame, WorkerControlEventProtocol.MESSAGE_ID_FIELD);
-        return messageId != null ? messageId : readString(frame, "msgId");
+    public static String messageId(JsonObject frame) {
+        return readString(frame, WorkerControlEventProtocol.MESSAGE_ID_FIELD);
     }
 
     public static String project(JsonObject frame) {
@@ -135,13 +134,11 @@ public final class WsFrameTestSupport {
     }
 
     public static String workerId(JsonObject frame) {
-        String workerId = readString(frame, WorkerControlEventProtocol.WORKER_ID_FIELD);
-        return workerId != null ? workerId : readNestedString(frame, "context", "workerId");
+        return readString(frame, WorkerControlEventProtocol.WORKER_ID_FIELD);
     }
 
     public static String taskId(JsonObject frame) {
-        String rootTaskId = readString(frame, "taskId");
-        return rootTaskId != null ? rootTaskId : readNestedString(frame, "context", "taskId");
+        return readString(frame, "taskId");
     }
 
     public static JsonObject payloadFromMap(Map<String, ?> map) {
@@ -157,13 +154,6 @@ public final class WsFrameTestSupport {
         } catch (Exception ignored) {
             return null;
         }
-    }
-
-    private static String readNestedString(JsonObject object, String nestedField, String field) {
-        if (object == null || nestedField == null || !object.has(nestedField) || !object.get(nestedField).isJsonObject()) {
-            return null;
-        }
-        return readString(object.getAsJsonObject(nestedField), field);
     }
 
     private static boolean hasBoolean(JsonObject object, String field) {

@@ -11,8 +11,10 @@ import org.junit.jupiter.api.Test;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class WebSocketTransportFrameCodecTest {
@@ -107,6 +109,30 @@ class WebSocketTransportFrameCodecTest {
         assertTrue(report.isSuccess());
         assertEquals("completed", report.getDetail());
         assertEquals("SUCCESS", report.getOutput().get("status"));
+    }
+
+    @Test
+    void legacyMsgIdOnlyFrameIsRejected() {
+        JsonObject frame = new JsonObject();
+        frame.addProperty("msgId", "legacy-1");
+        frame.addProperty("workerId", "worker-1");
+        frame.addProperty("taskId", "task-1");
+
+        assertNull(codec.extractMessageId(frame));
+        assertFalse(codec.isCanonicalTaskDispatch(frame));
+    }
+
+    @Test
+    void legacyContextTaskRoutingIsRejected() {
+        JsonObject frame = new JsonObject();
+        frame.addProperty("messageId", "msg-1");
+        frame.addProperty("workerId", "worker-1");
+        JsonObject context = new JsonObject();
+        context.addProperty("taskId", "task-1");
+        frame.add("context", context);
+
+        assertFalse(codec.isCanonicalTaskDispatch(frame));
+        assertThrows(IllegalArgumentException.class, () -> codec.decodeCanonicalTaskResult(frame));
     }
 
     private JsonObject controlRequestFrame(String project, String eventCode) {

@@ -157,7 +157,7 @@ class DispatcherInboundHandlerTest {
 
     @Test
     void malformedJsonObjectSendsParseFailedError() throws Exception {
-        handler.channelRead0(ctx, frame("{\"msgId\":\"broken\""));
+        handler.channelRead0(ctx, frame("{\"messageId\":\"broken\""));
 
         String sent = sentFrame.get();
         assertNotNull(sent);

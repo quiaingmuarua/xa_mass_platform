@@ -84,7 +84,7 @@ final class MockWorkerTaskFrameHandler {
         response.add("output", GSON.toJsonTree(outputMap));
 
         if (state != null && state.shouldDropTaskResponse()) {
-            logger.info("[{}] Dropped mock task response for msgId={} due to mock state {}",
+            logger.info("[{}] Dropped mock task response for messageId={} due to mock state {}",
                     workerId, extractMessageId(taskMessage), state.snapshot());
             return null;
         }
@@ -192,7 +192,7 @@ final class MockWorkerTaskFrameHandler {
     }
 
     private String extractMessageId(JsonObject object) {
-        return firstNonBlank(readString(object, "messageId"), readString(object, "msgId"));
+        return readString(object, "messageId");
     }
 
     private String firstNonBlank(String... values) {

@@ -158,7 +158,7 @@ class TaskApiMixedResultsIntegrationTest extends AbstractMockE2eTest {
 
         void sendResult(JsonObject taskFrame, String status, String detail) throws Exception {
             sendMessage(WsFrameTestSupport.buildTaskResult(
-                    WsFrameTestSupport.msgId(taskFrame),
+                    WsFrameTestSupport.messageId(taskFrame),
                     WsFrameTestSupport.project(taskFrame),
                     getWorkerId(),
                     WsFrameTestSupport.taskId(taskFrame),
