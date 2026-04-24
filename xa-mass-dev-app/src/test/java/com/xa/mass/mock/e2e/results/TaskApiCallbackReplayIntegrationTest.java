@@ -117,7 +117,7 @@ class TaskApiCallbackReplayIntegrationTest extends AbstractMockE2eTest {
         replay.setProject("demoApp");
 
         MessageContext context = new MessageContext();
-        context.setTid(taskId);
+        context.setTaskId(taskId);
         context.setWorkerId("replay-worker");
         context.setConnRole(SessionRoles.TASK_MESSAGES);
         replay.setContext(context);

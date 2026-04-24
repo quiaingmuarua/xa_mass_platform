@@ -36,8 +36,9 @@ Read in this order when you need more detail:
 7. [doc/VERIFIED_RUNBOOK.md](doc/VERIFIED_RUNBOOK.md)
 8. [doc/INTERNAL_API_REFERENCE.md](doc/INTERNAL_API_REFERENCE.md)
 9. [doc/INTEGRATION_TESTS.md](doc/INTEGRATION_TESTS.md)
-10. [doc/engine/POLICY_INTERACTION_BASELINE.md](doc/engine/POLICY_INTERACTION_BASELINE.md)
-11. [doc/engine/TASK_EXECUTION_FLOW.md](doc/engine/TASK_EXECUTION_FLOW.md)
+10. [doc/GATEWAY_BOUNDARY_BASELINE.md](doc/GATEWAY_BOUNDARY_BASELINE.md)
+11. [doc/engine/POLICY_INTERACTION_BASELINE.md](doc/engine/POLICY_INTERACTION_BASELINE.md)
+12. [doc/engine/TASK_EXECUTION_FLOW.md](doc/engine/TASK_EXECUTION_FLOW.md)
 
 Trust order:
 
@@ -115,6 +116,7 @@ Deprecation and pushback rules:
 - `Worker.status` is the online truth; lock truth lives in `WorkerStorage` / `WorkerManager.isLocked(...)`.
 - Current concurrency model is conservative: one `Worker` is one active execution lane.
 - Keep transport-specific shapes behind `xa-mass-transport-api`; WebSocket payloads must not become kernel truth.
+- Read [doc/GATEWAY_BOUNDARY_BASELINE.md](doc/GATEWAY_BOUNDARY_BASELINE.md) before changing `xa-mass-gateway` or `xa-mass-transport-api`.
 - Treat the embedded transport server as an adapter selected by runtime composition; do not hardcode WebSocket server construction into new kernel paths.
 - Manual worker debug chat is a side-channel and must not mutate task lifecycle state.
 - Policy layers must not silently change another layer's source of truth; use [doc/engine/POLICY_INTERACTION_BASELINE.md](doc/engine/POLICY_INTERACTION_BASELINE.md) before adding matching, retry, release, refill, intake, or terminal-policy behavior.

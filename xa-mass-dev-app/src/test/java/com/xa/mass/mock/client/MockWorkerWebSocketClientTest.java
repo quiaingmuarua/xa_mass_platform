@@ -148,7 +148,7 @@ class MockWorkerWebSocketClientTest {
         MessageContext context = new MessageContext();
         context.setWorkerId("worker-test");
         context.setConnRole(SessionRoles.TASK_MESSAGES);
-        context.setTid("task-1");
+        context.setTaskId("task-1");
         message.setContext(context);
 
         JsonObject payload = new JsonObject();

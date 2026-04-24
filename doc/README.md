@@ -16,8 +16,9 @@ Recommended order for a new maintainer or coding agent:
 6. [VERIFIED_RUNBOOK.md](./VERIFIED_RUNBOOK.md)
 7. [INTERNAL_API_REFERENCE.md](./INTERNAL_API_REFERENCE.md)
 8. [INTEGRATION_TESTS.md](./INTEGRATION_TESTS.md)
-9. [engine/POLICY_INTERACTION_BASELINE.md](./engine/POLICY_INTERACTION_BASELINE.md)
-10. [engine/TASK_EXECUTION_FLOW.md](./engine/TASK_EXECUTION_FLOW.md)
+9. [GATEWAY_BOUNDARY_BASELINE.md](./GATEWAY_BOUNDARY_BASELINE.md)
+10. [engine/POLICY_INTERACTION_BASELINE.md](./engine/POLICY_INTERACTION_BASELINE.md)
+11. [engine/TASK_EXECUTION_FLOW.md](./engine/TASK_EXECUTION_FLOW.md)
 
 ## 2. What Each File Is For
 
@@ -37,6 +38,8 @@ Recommended order for a new maintainer or coding agent:
   - Current HTTP/API inventory, request contract, response shape, and implementation status.
 - [INTEGRATION_TESTS.md](./INTEGRATION_TESTS.md)
   - Practical guide to the grouped `xa-mass-dev-app` integration suites: structure, coverage map, patterns, and current gaps.
+- [GATEWAY_BOUNDARY_BASELINE.md](./GATEWAY_BOUNDARY_BASELINE.md)
+  - Hard boundary for `xa-mass-gateway` and `xa-mass-transport-api`: what belongs to the WebSocket adapter, what must stay in engine/sdk/transport-api, and which couplings are forbidden.
 - [engine/POLICY_INTERACTION_BASELINE.md](./engine/POLICY_INTERACTION_BASELINE.md)
   - Guardrails for preventing combinatorial policy interactions across matching, retry, release, refill, intake, control, and terminal decisions.
 - [engine/TASK_EXECUTION_FLOW.md](./engine/TASK_EXECUTION_FLOW.md)

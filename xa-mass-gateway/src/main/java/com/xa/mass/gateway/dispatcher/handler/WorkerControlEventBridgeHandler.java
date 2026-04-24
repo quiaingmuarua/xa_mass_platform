@@ -92,7 +92,7 @@ public class WorkerControlEventBridgeHandler implements MassMessageHandler {
         if (originalContext != null) {
             replyContext.setWorkerId(originalContext.getWorkerId());
             replyContext.setConnRole(originalContext.getConnRole());
-            replyContext.setTid(originalContext.getTid());
+            replyContext.setTaskId(originalContext.getTaskId());
             replyContext.setRetryCount(originalContext.getRetryCount());
         }
         reply.setContext(replyContext);

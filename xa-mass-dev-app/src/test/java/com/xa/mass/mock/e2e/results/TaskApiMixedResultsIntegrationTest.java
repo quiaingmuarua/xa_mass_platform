@@ -165,7 +165,7 @@ class TaskApiMixedResultsIntegrationTest extends AbstractMockE2eTest {
         msg.setProject("demoApp");
 
         MessageContext ctx = new MessageContext();
-        ctx.setTid(taskId);
+        ctx.setTaskId(taskId);
         ctx.setWorkerId(workerId);
         ctx.setConnRole(SessionRoles.TASK_MESSAGES);
         msg.setContext(ctx);

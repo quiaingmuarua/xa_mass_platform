@@ -134,8 +134,8 @@ public class MockWorkerWebSocketClient extends WebSocketClient implements MockWo
             return;
         }
         MessageContext originalContext = taskMessage.getContext();
-        if (originalContext == null || originalContext.getTid() == null || originalContext.getTid().isBlank()) {
-            logger.info("[{}] Received manual TASK message without tid, skipping task-result callback. msgId={}",
+        if (originalContext == null || originalContext.getTaskId() == null || originalContext.getTaskId().isBlank()) {
+            logger.info("[{}] Received TASK frame without taskId, skipping task-result callback. msgId={}",
                     workerId, taskMessage.getMsgId());
             return;
         }
@@ -153,7 +153,7 @@ public class MockWorkerWebSocketClient extends WebSocketClient implements MockWo
 
         MessageContext responseContext = new MessageContext();
         responseContext.setConnRole(originalContext.getConnRole());
-        responseContext.setTid(originalContext.getTid());
+        responseContext.setTaskId(originalContext.getTaskId());
         responseContext.setRetryCount(originalContext.getRetryCount());
         responseContext.setWorkerId(workerId);
         response.setContext(responseContext);
@@ -538,7 +538,7 @@ public class MockWorkerWebSocketClient extends WebSocketClient implements MockWo
         execution.put("retryCount", retryCount == null ? 0 : retryCount);
         execution.put("project", taskMessage.getProject());
         execution.put("messageId", taskMessage.getMsgId());
-        execution.put("taskId", originalContext != null ? originalContext.getTid() : null);
+        execution.put("taskId", originalContext != null ? originalContext.getTaskId() : null);
         return execution;
     }
 

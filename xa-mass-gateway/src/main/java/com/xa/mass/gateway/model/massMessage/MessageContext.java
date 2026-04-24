@@ -1,15 +1,19 @@
 package com.xa.mass.gateway.model.massMessage;
 
+import com.google.gson.annotations.SerializedName;
 import com.xa.mass.transport.WorkerEndpointRoles;
 
 public class MessageContext {
     private String workerId;     // Worker ID
     private String connRole;     // transport lane name; defaults to task_messages on the current adapter
-    private String sessionId;    // 当前连接唯一标识（用于重连判断）
-    private String tid;
+    private String sessionId;    // current transport session identity
+    @SerializedName(value = "taskId", alternate = {"tid"})
+    private String taskId;
     private Integer retryCount;
-    private String lastAckMsgId;
-    private String curStepId;
+    @SerializedName(value = "lastAckMessageId", alternate = {"lastAckMsgId"})
+    private String lastAckMessageId;
+    @SerializedName(value = "stepId", alternate = {"curStepId"})
+    private String stepId;
 
     public String getWorkerId() {
         return workerId;
@@ -35,24 +39,30 @@ public class MessageContext {
         this.sessionId = sessionId;
     }
 
+    /**
+     * Legacy alias kept only for inbound compatibility while transport
+     * producers move to {@link #getTaskId()}.
+     */
+    @Deprecated
     public String getTid() {
-        return tid;
+        return taskId;
+    }
+
+    public String getTaskId() {
+        return taskId;
     }
 
     /**
-     * Canonical accessor for the task binding carried over the transport
-     * boundary. {@link #getTid()} remains as the legacy alias.
+     * Legacy alias kept only for inbound compatibility while transport
+     * producers move to {@link #setTaskId(String)}.
      */
-    public String getTaskId() {
-        return tid;
-    }
-
+    @Deprecated
     public void setTid(String tid) {
-        this.tid = tid;
+        this.taskId = tid;
     }
 
     public void setTaskId(String taskId) {
-        this.tid = taskId;
+        this.taskId = taskId;
     }
 
     public Integer getRetryCount() {
@@ -63,49 +73,69 @@ public class MessageContext {
         this.retryCount = retryCount;
     }
 
+    /**
+     * Legacy alias kept only for inbound compatibility while transport
+     * producers move to {@link #getLastAckMessageId()}.
+     */
+    @Deprecated
     public String getLastAckMsgId() {
-        return lastAckMsgId;
+        return lastAckMessageId;
     }
 
     public String getLastAckMessageId() {
-        return lastAckMsgId;
+        return lastAckMessageId;
     }
 
+    /**
+     * Legacy alias kept only for inbound compatibility while transport
+     * producers move to {@link #setLastAckMessageId(String)}.
+     */
+    @Deprecated
     public void setLastAckMsgId(String lastAckMsgId) {
-        this.lastAckMsgId = lastAckMsgId;
+        this.lastAckMessageId = lastAckMsgId;
     }
 
     public void setLastAckMessageId(String lastAckMessageId) {
-        this.lastAckMsgId = lastAckMessageId;
+        this.lastAckMessageId = lastAckMessageId;
     }
 
+    /**
+     * Legacy alias kept only for inbound compatibility while transport
+     * producers move to {@link #getStepId()}.
+     */
+    @Deprecated
     public String getCurStepId() {
-        return curStepId;
+        return stepId;
     }
 
     public String getStepId() {
-        return curStepId;
+        return stepId;
     }
 
+    /**
+     * Legacy alias kept only for inbound compatibility while transport
+     * producers move to {@link #setStepId(String)}.
+     */
+    @Deprecated
     public void setCurStepId(String curStepId) {
-        this.curStepId = curStepId;
+        this.stepId = curStepId;
     }
 
     public void setStepId(String stepId) {
-        this.curStepId = stepId;
+        this.stepId = stepId;
     }
 
     @Override
     public String toString() {
-        return "MessageContext{" +
-                "workerId='" + workerId + '\'' +
-                ", connRole='" + getConnRole() + '\'' +
-                ", sessionId='" + sessionId + '\'' +
-                ", tid='" + tid + '\'' +
-                ", retryCount=" + retryCount +
-                ", lastAckMsgId='" + lastAckMsgId + '\'' +
-                ", curStepId='" + curStepId + '\'' +
-                '}';
+        return "MessageContext{"
+                + "workerId='" + workerId + '\''
+                + ", connRole='" + getConnRole() + '\''
+                + ", sessionId='" + sessionId + '\''
+                + ", taskId='" + taskId + '\''
+                + ", retryCount=" + retryCount
+                + ", lastAckMessageId='" + lastAckMessageId + '\''
+                + ", stepId='" + stepId + '\''
+                + '}';
     }
 
     @Override
@@ -113,13 +143,13 @@ public class MessageContext {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
         MessageContext that = (MessageContext) o;
-        return (workerId != null ? workerId.equals(that.workerId) : that.workerId == null) &&
-                getConnRole().equals(that.getConnRole()) &&
-                (sessionId != null ? sessionId.equals(that.sessionId) : that.sessionId == null) &&
-                (tid != null ? tid.equals(that.tid) : that.tid == null) &&
-                (retryCount != null ? retryCount.equals(that.retryCount) : that.retryCount == null) &&
-                (lastAckMsgId != null ? lastAckMsgId.equals(that.lastAckMsgId) : that.lastAckMsgId == null) &&
-                (curStepId != null ? curStepId.equals(that.curStepId) : that.curStepId == null);
+        return (workerId != null ? workerId.equals(that.workerId) : that.workerId == null)
+                && getConnRole().equals(that.getConnRole())
+                && (sessionId != null ? sessionId.equals(that.sessionId) : that.sessionId == null)
+                && (taskId != null ? taskId.equals(that.taskId) : that.taskId == null)
+                && (retryCount != null ? retryCount.equals(that.retryCount) : that.retryCount == null)
+                && (lastAckMessageId != null ? lastAckMessageId.equals(that.lastAckMessageId) : that.lastAckMessageId == null)
+                && (stepId != null ? stepId.equals(that.stepId) : that.stepId == null);
     }
 
     @Override
@@ -127,10 +157,10 @@ public class MessageContext {
         int result = workerId != null ? workerId.hashCode() : 0;
         result = 31 * result + getConnRole().hashCode();
         result = 31 * result + (sessionId != null ? sessionId.hashCode() : 0);
-        result = 31 * result + (tid != null ? tid.hashCode() : 0);
+        result = 31 * result + (taskId != null ? taskId.hashCode() : 0);
         result = 31 * result + (retryCount != null ? retryCount.hashCode() : 0);
-        result = 31 * result + (lastAckMsgId != null ? lastAckMsgId.hashCode() : 0);
-        result = 31 * result + (curStepId != null ? curStepId.hashCode() : 0);
+        result = 31 * result + (lastAckMessageId != null ? lastAckMessageId.hashCode() : 0);
+        result = 31 * result + (stepId != null ? stepId.hashCode() : 0);
         return result;
     }
 

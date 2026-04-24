@@ -120,7 +120,7 @@ class TaskApiPauseCompletionIntegrationTest extends AbstractMockE2eTest {
         result.setProject("demoApp");
 
         MessageContext context = new MessageContext();
-        context.setTid(taskId);
+        context.setTaskId(taskId);
         context.setWorkerId(workerId);
         context.setConnRole(SessionRoles.TASK_MESSAGES);
         result.setContext(context);

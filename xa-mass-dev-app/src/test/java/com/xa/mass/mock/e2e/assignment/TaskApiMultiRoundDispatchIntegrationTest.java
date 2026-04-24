@@ -245,7 +245,7 @@ class TaskApiMultiRoundDispatchIntegrationTest extends AbstractMockE2eTest {
             if (originalContext != null) {
                 MessageContext responseContext = new MessageContext();
                 responseContext.setConnRole(originalContext.getConnRole());
-                responseContext.setTid(originalContext.getTid());
+                    responseContext.setTaskId(originalContext.getTaskId());
                 responseContext.setRetryCount(originalContext.getRetryCount());
                 responseContext.setWorkerId(getWorkerId());
                 response.setContext(responseContext);

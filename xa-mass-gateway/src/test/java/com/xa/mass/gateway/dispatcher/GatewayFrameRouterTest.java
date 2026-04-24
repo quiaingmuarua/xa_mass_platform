@@ -18,7 +18,7 @@ import java.util.Collections;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-class MessageHandlerRegistryTest {
+class GatewayFrameRouterTest {
 
     private static final Gson GSON = new Gson();
 

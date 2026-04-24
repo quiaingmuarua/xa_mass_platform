@@ -13,6 +13,7 @@ For those, use:
 
 - [../AGENTS.md](../AGENTS.md)
 - [./MODEL_BOUNDARY_BASELINE.md](./MODEL_BOUNDARY_BASELINE.md)
+- [./GATEWAY_BOUNDARY_BASELINE.md](./GATEWAY_BOUNDARY_BASELINE.md)
 - [./STATE_MACHINE_BASELINE.md](./STATE_MACHINE_BASELINE.md)
 - [./TRACE_CONTRACT.md](./TRACE_CONTRACT.md)
 - [./E2E_BASELINE.md](./E2E_BASELINE.md)
@@ -105,6 +106,7 @@ Interpretation rules:
 - The current mainline reactor is defined by the root `pom.xml`: `xa-mass-web`, `xa-mass-core`, `xa-mass-transport-api`, `xa-mass-engine`, `xa-mass-gateway`, `xa-mass-sdk-api`, `xa-mass-sdk`, `xa-mass-dev-app`.
 - `xa-mass-transport-api` now holds the transport-neutral SPI for task dispatch, result ingest, system events, transport servers, and worker endpoint registries.
 - `xa-mass-gateway` should be read as the current WebSocket transport adapter, not as the only valid worker runtime path.
+- Read [./GATEWAY_BOUNDARY_BASELINE.md](./GATEWAY_BOUNDARY_BASELINE.md) before changing `xa-mass-gateway` or `xa-mass-transport-api`.
 - Gateway tuple routing such as `MessageType + subMsgType` is a protocol-frame compatibility seam only; do not treat it as the identity of a business or control capability.
 - `com.xa.mass.engine` is the active engine path.
 - historical `v2` / archive engine generations are no longer present in the current repository snapshot.
