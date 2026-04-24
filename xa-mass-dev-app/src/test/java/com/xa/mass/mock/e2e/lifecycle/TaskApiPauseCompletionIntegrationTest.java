@@ -1,6 +1,5 @@
 package com.xa.mass.mock.e2e.lifecycle;
 
-import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.xa.mass.mock.MockApplicationSpringBootApp;
 import com.xa.mass.mock.client.MockWorkerWebSocketClient;
@@ -15,9 +14,11 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 
 import java.net.URI;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -40,7 +41,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class TaskApiPauseCompletionIntegrationTest extends AbstractMockE2eTest {
 
     private static final int WEBSOCKET_PORT = findFreePort();
-    private static final Gson GSON = new Gson();
 
     @DynamicPropertySource
     static void registerProperties(DynamicPropertyRegistry registry) {
@@ -49,111 +49,132 @@ class TaskApiPauseCompletionIntegrationTest extends AbstractMockE2eTest {
 
     @Test
     void pausedRunningTaskClosesToTerminalWhenRealCallbacksArrive() throws Exception {
-        String taskId = createTaskId("pause-completion", "pause completion integration", List.of("target-a", "target-b"), 1);
-
-        Map<String, Object> approveResponse = exchange(
-                "/status/api/tasks/" + taskId + "/audit?approved=true&comment=approve",
-                HttpMethod.POST,
-                null
+        URI wsUri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
+        ManualAckWebSocketClient firstClient = connectClientWithRetries(
+                () -> new ManualAckWebSocketClient(wsUri, "it-worker-0"),
+                "First mock worker failed to connect"
         );
-        assertApiOk(approveResponse);
-
-        TaskSnapshot runningSnapshot = waitForTaskSnapshot(taskId, "RUNNING");
-        assertEquals(2, ((Number) runningSnapshot.task().get("peakAssignedWorkerCount")).intValue());
-        assertEquals(2, runningSnapshot.messages().size());
-        assertTrue(runningSnapshot.messages().stream().allMatch(message -> "ASSIGNED".equals(message.get("status"))));
-
-        Map<String, Object> pauseResponse = exchange(
-                "/status/api/tasks/" + taskId + "/pause",
-                HttpMethod.POST,
-                null
+        ManualAckWebSocketClient secondClient = connectClientWithRetries(
+                () -> new ManualAckWebSocketClient(wsUri, "it-worker-1"),
+                "Second mock worker failed to connect"
         );
-        assertApiOk(pauseResponse);
-
-        TaskSnapshot pausedSnapshot = waitForTaskSnapshot(taskId, "PAUSED");
-        assertEquals("PAUSED", pausedSnapshot.task().get("status"));
-        assertEquals(2, pausedSnapshot.messages().size());
-        assertTrue(pausedSnapshot.messages().stream().allMatch(message -> "ASSIGNED".equals(message.get("status"))));
-
-        for (Map<String, Object> message : pausedSnapshot.messages()) {
-            String msgId = String.valueOf(message.get("msgId"));
-            String workerId = String.valueOf(message.get("latestAttemptWorkerId"));
-            AckSnapshot ack = submitTaskResult(taskId, msgId, workerId, "SUCCESS", "paused-complete-" + workerId);
-            assertEquals(200, ack.code());
-            assertEquals("task result processed", ack.message());
-        }
-
-        TaskSnapshot terminalSnapshot = waitForTaskSnapshot(taskId, "TERMINAL");
-        assertEquals("TERMINAL", terminalSnapshot.task().get("status"));
-        assertEquals(2, ((Number) terminalSnapshot.task().get("taskSuccessNumber")).intValue());
-        assertEquals(2, terminalSnapshot.messages().size());
-        for (Map<String, Object> message : terminalSnapshot.messages()) {
-            assertEquals("SUCCESS", message.get("status"));
-            assertNotNull(message.get("latestAttemptWorkerId"));
-            assertNotNull(message.get("latestAttemptWorkerContextId"));
-            assertNotNull(message.get("latestAttemptBatchId"));
-        }
-    }
-
-    private AckSnapshot submitTaskResult(String taskId, String msgId, String workerId, String status, String detail) throws Exception {
-        URI uri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
-        ReplayWebSocketClient client = new ReplayWebSocketClient(uri, workerId, msgId);
         try {
-            assertClientConnects(client, "Replay WebSocket client failed to connect");
-            client.sendMessage(WsFrameTestSupport.buildTaskResult(msgId, "demoApp", workerId, taskId, status, detail));
-            assertTrue(client.awaitAck(3, TimeUnit.SECONDS), "Timed out waiting for gateway ack");
-            return client.ackSnapshot();
-        } finally {
-            client.disconnect();
-        }
-    }
+            String taskId = createTaskId("pause-completion", "pause completion integration", List.of("target-a", "target-b"), 1);
 
-    @SuppressWarnings("unchecked")
-    private Map<String, Object> task(String taskId) {
-        Map<String, Object> detailResponse = exchange("/status/api/tasks/" + taskId, HttpMethod.GET, null);
-        assertApiOk(detailResponse);
-        return task(detailResponse);
+            Map<String, Object> approveResponse = exchange(
+                    "/status/api/tasks/" + taskId + "/audit?approved=true&comment=approve",
+                    HttpMethod.POST,
+                    null
+            );
+            assertApiOk(approveResponse);
+
+            TaskSnapshot runningSnapshot = waitForTaskSnapshot(taskId, "RUNNING");
+            assertEquals(2, ((Number) runningSnapshot.task().get("peakAssignedWorkerCount")).intValue());
+            assertEquals(2, runningSnapshot.messages().size());
+            assertTrue(runningSnapshot.messages().stream().allMatch(message -> "ASSIGNED".equals(message.get("status"))));
+
+            JsonObject firstDispatch = firstClient.awaitTask(3, TimeUnit.SECONDS);
+            JsonObject secondDispatch = secondClient.awaitTask(3, TimeUnit.SECONDS);
+            assertNotNull(firstDispatch);
+            assertNotNull(secondDispatch);
+
+            Map<String, Object> pauseResponse = exchange(
+                    "/status/api/tasks/" + taskId + "/pause",
+                    HttpMethod.POST,
+                    null
+            );
+            assertApiOk(pauseResponse);
+
+            TaskSnapshot pausedSnapshot = waitForTaskSnapshot(taskId, "PAUSED");
+            assertEquals("PAUSED", pausedSnapshot.task().get("status"));
+            assertEquals(2, pausedSnapshot.messages().size());
+            assertTrue(pausedSnapshot.messages().stream().allMatch(message -> "ASSIGNED".equals(message.get("status"))));
+
+            Map<String, ManualAckWebSocketClient> clientByWorkerId = Map.of(
+                    firstClient.getWorkerId(), firstClient,
+                    secondClient.getWorkerId(), secondClient
+            );
+            Map<String, JsonObject> dispatchByMsgId = new HashMap<>();
+            dispatchByMsgId.put(WsFrameTestSupport.msgId(firstDispatch), firstDispatch);
+            dispatchByMsgId.put(WsFrameTestSupport.msgId(secondDispatch), secondDispatch);
+
+            for (Map<String, Object> message : pausedSnapshot.messages()) {
+                String msgId = String.valueOf(message.get("msgId"));
+                String workerId = String.valueOf(message.get("latestAttemptWorkerId"));
+                ManualAckWebSocketClient client = clientByWorkerId.get(workerId);
+                JsonObject dispatch = dispatchByMsgId.get(msgId);
+                assertNotNull(client, "No connected worker client for " + workerId);
+                assertNotNull(dispatch, "No captured dispatch frame for msg " + msgId);
+
+                AckSnapshot ack = client.sendResult(dispatch, "SUCCESS", "paused-complete-" + workerId);
+                assertEquals(200, ack.code());
+                assertEquals("task result processed", ack.message());
+            }
+
+            TaskSnapshot terminalSnapshot = waitForTaskSnapshot(taskId, "TERMINAL");
+            assertEquals("TERMINAL", terminalSnapshot.task().get("status"));
+            assertEquals(2, ((Number) terminalSnapshot.task().get("taskSuccessNumber")).intValue());
+            assertEquals(2, terminalSnapshot.messages().size());
+            for (Map<String, Object> message : terminalSnapshot.messages()) {
+                assertEquals("SUCCESS", message.get("status"));
+                assertNotNull(message.get("latestAttemptWorkerId"));
+                assertNotNull(message.get("latestAttemptWorkerContextId"));
+                assertNotNull(message.get("latestAttemptBatchId"));
+            }
+        } finally {
+            firstClient.disconnect();
+            secondClient.disconnect();
+        }
     }
 
     private record AckSnapshot(int code, String message) {
     }
 
-    private static final class ReplayWebSocketClient extends MockWorkerWebSocketClient {
-        private final String expectedMsgId;
-        private final CountDownLatch ackLatch = new CountDownLatch(1);
-        private volatile AckSnapshot ackSnapshot;
+    private static final class ManualAckWebSocketClient extends MockWorkerWebSocketClient {
+        private final BlockingQueue<JsonObject> taskQueue = new LinkedBlockingQueue<>();
+        private final BlockingQueue<AckSnapshot> ackQueue = new LinkedBlockingQueue<>();
 
-        private ReplayWebSocketClient(URI serverUri, String workerId, String expectedMsgId) {
+        private ManualAckWebSocketClient(URI serverUri, String workerId) {
             super(serverUri, workerId);
-            this.expectedMsgId = expectedMsgId;
         }
 
         @Override
         public void onMessage(String message) {
             try {
                 JsonObject frame = WsFrameTestSupport.parse(message);
-                if (frame != null
-                        && WsFrameTestSupport.isResponse(frame)
-                        && WsFrameTestSupport.isTask(frame)
-                        && expectedMsgId.equals(WsFrameTestSupport.msgId(frame))) {
-                    ackSnapshot = new AckSnapshot(
-                            WsFrameTestSupport.ackCode(frame),
-                            WsFrameTestSupport.ackMessage(frame)
-                    );
-                    ackLatch.countDown();
+                if (frame != null && WsFrameTestSupport.isTask(frame)) {
+                    if (WsFrameTestSupport.isResponse(frame)) {
+                        ackQueue.offer(new AckSnapshot(
+                                WsFrameTestSupport.ackCode(frame),
+                                WsFrameTestSupport.ackMessage(frame)
+                        ));
+                    } else {
+                        taskQueue.offer(frame);
+                    }
+                    return;
                 }
             } catch (Exception ignored) {
-                // Keep waiting for the expected task ack frame.
+                // Fall through to the base client for non-task frames.
             }
             super.onMessage(message);
         }
 
-        private boolean awaitAck(long timeout, TimeUnit unit) throws InterruptedException {
-            return ackLatch.await(timeout, unit);
+        private JsonObject awaitTask(long timeout, TimeUnit unit) throws InterruptedException {
+            return taskQueue.poll(timeout, unit);
         }
 
-        private AckSnapshot ackSnapshot() {
-            return ackSnapshot;
+        private AckSnapshot sendResult(JsonObject dispatchFrame, String status, String detail) throws Exception {
+            sendMessage(WsFrameTestSupport.buildTaskResult(
+                    WsFrameTestSupport.msgId(dispatchFrame),
+                    WsFrameTestSupport.project(dispatchFrame),
+                    getWorkerId(),
+                    WsFrameTestSupport.taskId(dispatchFrame),
+                    status,
+                    detail
+            ));
+            AckSnapshot ack = ackQueue.poll(3, TimeUnit.SECONDS);
+            assertNotNull(ack, "Timed out waiting for gateway ack on msg " + WsFrameTestSupport.msgId(dispatchFrame));
+            return ack;
         }
     }
 }

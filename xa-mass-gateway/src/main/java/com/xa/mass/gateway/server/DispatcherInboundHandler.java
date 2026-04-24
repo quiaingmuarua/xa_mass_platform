@@ -58,10 +58,10 @@ public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWe
                 org.slf4j.MDC.clear();
             }
 
-            dispatcherContext.getMessageTransporter().sendInput(raw);
             if (dispatcherContext.getSessionManager() instanceof ServerSessionManager sessionManager) {
                 sessionManager.addSession(workerId, connRole, ctx.channel(), ctx);
             }
+            dispatcherContext.getMessageTransporter().sendInput(raw);
             logger.debug("Input queue size={}", dispatcherContext.getMessageTransporter().inputQueueSize());
         } catch (Exception e) {
             logger.error("Unexpected error in channelRead0", e);
