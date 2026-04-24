@@ -28,13 +28,13 @@ public class SimpleTaskScheduler implements TaskScheduler {
 
     @Override
     public boolean handleTaskMsgCompletion(TaskMsg taskMsg) {
-        log.info("Task message completed: msgId={}", taskMsg.getMsgId());
+        log.info("Task message completed: messageId={}", taskMsg.getMsgId());
         return true;
     }
 
     @Override
     public boolean handleTaskMsgFailure(TaskMsg taskMsg, String errorMessage) {
-        log.info("Task message failed: msgId={}, errorMessage={}", taskMsg.getMsgId(), errorMessage);
+        log.info("Task message failed: messageId={}, errorMessage={}", taskMsg.getMsgId(), errorMessage);
         return true;
     }
 

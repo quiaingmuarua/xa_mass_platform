@@ -10,20 +10,20 @@ import java.util.Map;
 public final class TaskResultReport {
 
     private final String taskId;
-    private final String msgId;
+    private final String messageId;
     private final boolean success;
     private final String detail;
     private final String errorCode;
     private final Map<String, Object> output;
 
     public TaskResultReport(String taskId,
-                            String msgId,
+                            String messageId,
                             boolean success,
                             String detail,
                             String errorCode,
                             Map<String, Object> output) {
         this.taskId = taskId;
-        this.msgId = msgId;
+        this.messageId = messageId;
         this.success = success;
         this.detail = detail;
         this.errorCode = errorCode;
@@ -34,8 +34,8 @@ public final class TaskResultReport {
         return taskId;
     }
 
-    public String getMsgId() {
-        return msgId;
+    public String getMessageId() {
+        return messageId;
     }
 
     public boolean isSuccess() {

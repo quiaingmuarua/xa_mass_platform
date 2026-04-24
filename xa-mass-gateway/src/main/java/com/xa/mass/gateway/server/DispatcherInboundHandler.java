@@ -47,8 +47,8 @@ public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWe
                     frameCodec.extractWorkerId(frame),
                     sessionManager.getWorkerId(ctx.channel())
             );
-            String msgId = frameCodec.extractMessageId(frame);
-            if (workerId == null || msgId == null) {
+            String messageId = frameCodec.extractMessageId(frame);
+            if (workerId == null || messageId == null) {
                 sendError(ctx, "MISSING_FIELDS", "workerId/messageId are required");
                 return;
             }
@@ -58,7 +58,7 @@ public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWe
             if (eventCode != null) {
                 org.slf4j.MDC.put("eventCode", eventCode);
             }
-            org.slf4j.MDC.put("traceId", msgId);
+            org.slf4j.MDC.put("traceId", messageId);
             String project = frameCodec.extractProject(frame);
             if (project != null) {
                 org.slf4j.MDC.put("project", project);

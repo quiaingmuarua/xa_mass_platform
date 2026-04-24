@@ -31,7 +31,7 @@ class TaskResultService {
     boolean expireTaskMessage(String taskId, String msgId) {
         LogUtils.setTaskId(taskId);
         LogUtils.logOperationStart("EXPIRE_TASK_MESSAGE", "TaskManager",
-                "taskId", taskId, "msgId", msgId);
+                "taskId", taskId, "messageId", msgId);
 
         TaskMsg taskMsg = taskManager.getTaskMessage(taskId, msgId);
         if (taskMsg == null) {

@@ -30,11 +30,11 @@ public final class RuntimeTaskResultIngestChannel implements TaskResultIngestCha
             return false;
         }
         String eventCode = resolveEventCode(report.getTaskId());
-        logger.debug("Ingest task result via runtime channel: taskId={}, msgId={}, eventCode={}, success={}",
-                report.getTaskId(), report.getMsgId(), eventCode, report.isSuccess());
+        logger.debug("Ingest task result via runtime channel: taskId={}, messageId={}, eventCode={}, success={}",
+                report.getTaskId(), report.getMessageId(), eventCode, report.isSuccess());
         return taskManager.handleTaskMessageResult(
                 report.getTaskId(),
-                report.getMsgId(),
+                report.getMessageId(),
                 report.isSuccess(),
                 report.getDetail(),
                 report.getErrorCode(),

@@ -105,7 +105,7 @@ class WebSocketTransportFrameCodecTest {
         assertTrue(codec.isCanonicalTaskResult(frame));
         var report = codec.decodeCanonicalTaskResult(frame);
         assertEquals("task-1", report.getTaskId());
-        assertEquals("msg-1", report.getMsgId());
+        assertEquals("msg-1", report.getMessageId());
         assertTrue(report.isSuccess());
         assertEquals("completed", report.getDetail());
         assertEquals("SUCCESS", report.getOutput().get("status"));

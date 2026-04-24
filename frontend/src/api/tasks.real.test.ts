@@ -65,7 +65,7 @@ describe('tasks.real', () => {
                             size: 200,
                             messages: [
                                 {
-                                    msgId: 'msg-001',
+                                    messageId: 'msg-001',
                                     status: 'SUCCESS',
                                     latestAttemptWorkerId: 'worker-us-01',
                                     latestAttemptWorkerContextId: 'ctx-us-01',

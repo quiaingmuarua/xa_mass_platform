@@ -121,7 +121,7 @@ class GatewayInputProcessorTest {
         assertTrue(result);
         assertNotNull(capturedReport.get());
         assertEquals("task-1", capturedReport.get().getTaskId());
-        assertEquals("msg-1", capturedReport.get().getMsgId());
+        assertEquals("msg-1", capturedReport.get().getMessageId());
         assertTrue(capturedReport.get().isSuccess());
         assertEquals("ok", capturedReport.get().getDetail());
         assertEquals("SUCCESS", capturedReport.get().getOutput().get("status"));

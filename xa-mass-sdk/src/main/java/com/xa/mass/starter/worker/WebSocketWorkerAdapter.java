@@ -54,7 +54,7 @@ public class WebSocketWorkerAdapter implements WorkerAdapter {
             messageTransporter.sendOutput(new OutboundDelivery(
                     dispatchItem.getWorkerId(),
                     json,
-                    dispatchItem.getMsgId()
+                    dispatchItem.getMessageId()
             ));
         }
     }

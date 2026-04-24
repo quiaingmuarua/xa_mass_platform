@@ -80,7 +80,7 @@ Common fields:
 - `reason`
 - `traceId`
 - `taskId`
-- `msgId`
+- `messageId`
 - `workerId`
 - `workerContextId`
 - `batchId`
@@ -166,7 +166,7 @@ Must be traceable:
 Rules:
 
 1. task transitions must always include `taskId`
-2. task-message transitions must always include `taskId + msgId`
+2. task-message transitions must always include `taskId + messageId`
 3. worker-context transitions must always include `workerId + workerContextId`
 4. terminal closure must include `terminalReason`
 5. retry reset must include `retryCount`

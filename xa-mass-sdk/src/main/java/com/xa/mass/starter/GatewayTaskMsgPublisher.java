@@ -35,7 +35,7 @@ public class GatewayTaskMsgPublisher implements TaskDispatchChannel {
             dispatchRuntimeContext.getMessageTransporter().sendOutput(new OutboundDelivery(
                     dispatchItem.getWorkerId(),
                     rawJson,
-                    dispatchItem.getMsgId()
+                    dispatchItem.getMessageId()
             ));
         }
     }

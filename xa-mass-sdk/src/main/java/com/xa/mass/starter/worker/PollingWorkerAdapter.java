@@ -60,8 +60,8 @@ public class PollingWorkerAdapter implements WorkerAdapter, TaskPullChannel {
             Deque<TaskDispatchItem> inbox = inbox(workerId);
             synchronized (inbox) {
                 if (inbox.size() >= MAX_INBOX_SIZE) {
-                    logger.warn("Polling inbox for worker {} is full ({} items); dropping dispatch for msg {}",
-                            workerId, inbox.size(), item.getMsgId());
+                    logger.warn("Polling inbox for worker {} is full ({} items); dropping dispatch for messageId {}",
+                            workerId, inbox.size(), item.getMessageId());
                     continue;
                 }
                 inbox.addLast(item);

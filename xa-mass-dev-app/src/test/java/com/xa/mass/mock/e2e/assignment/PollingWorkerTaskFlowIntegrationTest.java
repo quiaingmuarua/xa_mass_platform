@@ -80,7 +80,7 @@ class PollingWorkerTaskFlowIntegrationTest extends AbstractMockE2eTest {
 
             TaskDispatchItem item = items.get(0);
             assertEquals(taskId, item.getTaskId());
-            assertNotNull(item.getMsgId());
+            assertNotNull(item.getMessageId());
             assertEquals(workerId, item.getWorkerId());
 
             boolean submitted = session.submitResult(item, true, "poll-success",

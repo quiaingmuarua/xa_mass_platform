@@ -14,7 +14,7 @@ import java.util.Map;
 public final class TaskDispatchItem {
 
     private final String taskId;
-    private final String msgId;
+    private final String messageId;
     private final String eventCode;
     private final String taskName;
     private final String project;
@@ -27,7 +27,7 @@ public final class TaskDispatchItem {
     private final Map<String, Object> sharedConfig;
 
     public TaskDispatchItem(String taskId,
-                            String msgId,
+                            String messageId,
                             String eventCode,
                             String taskName,
                             String project,
@@ -39,7 +39,7 @@ public final class TaskDispatchItem {
                             Map<String, Object> input,
                             Map<String, Object> sharedConfig) {
         this.taskId = taskId;
-        this.msgId = msgId;
+        this.messageId = messageId;
         this.eventCode = eventCode;
         this.taskName = taskName;
         this.project = project;
@@ -56,8 +56,8 @@ public final class TaskDispatchItem {
         return taskId;
     }
 
-    public String getMsgId() {
-        return msgId;
+    public String getMessageId() {
+        return messageId;
     }
 
     public String getEventCode() {

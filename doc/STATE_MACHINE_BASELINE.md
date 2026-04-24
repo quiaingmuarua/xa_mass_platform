@@ -158,7 +158,7 @@ Must hold:
 - each dispatch round creates a new attempt with monotonically increasing `attemptNo`
 - retry never rewrites a final attempt back to active
 - active attempt truth outranks projected `latestAttemptWorkerId/latestAttemptWorkerContextId/latestAttemptBatchId` on `TaskMsg`
-- at most one active attempt may exist for a single `taskId + msgId`
+- at most one active attempt may exist for a single `taskId + messageId`
 - a stable-final `TaskMsg` must not have any active attempt
 - `REVOKED` must not be used as an expiry shortcut; only `EXPIRED` carries expiry and cancellation final reasons
 

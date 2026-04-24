@@ -119,7 +119,7 @@ public final class WebSocketTransportFrameCodec {
 
     public String encodeCanonicalTaskDispatch(TaskDispatchItem item) {
         JsonObject frame = new JsonObject();
-        frame.addProperty(WorkerControlEventProtocol.MESSAGE_ID_FIELD, item.getMsgId());
+        frame.addProperty(WorkerControlEventProtocol.MESSAGE_ID_FIELD, item.getMessageId());
         frame.addProperty(WorkerControlEventProtocol.WORKER_ID_FIELD, item.getWorkerId());
         if (item.getProject() != null) {
             frame.addProperty(WorkerControlEventProtocol.PROJECT_FIELD, item.getProject());

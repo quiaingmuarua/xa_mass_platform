@@ -107,7 +107,7 @@ New or changed policy paths must make the decision reconstructable from logs or 
 Minimum decision fields:
 
 - `taskId`
-- `msgId` when message-specific
+- `messageId` when message-specific
 - `attemptId` when attempt-specific
 - `workerId` when worker-specific
 - `workerContextId` when context-specific

@@ -54,8 +54,8 @@ class TransportRoutingTaskMsgDispatchListenerTest {
 
         listener.onTaskMsgsReady(task, List.of(wsMsg, pollMsg));
 
-        assertEquals(List.of("msg-ws"), webSocketAdapter.dispatchedMsgIds);
-        assertEquals(List.of("msg-poll"), pollingAdapter.dispatchedMsgIds);
+        assertEquals(List.of("msg-ws"), webSocketAdapter.dispatchedMessageIds);
+        assertEquals(List.of("msg-poll"), pollingAdapter.dispatchedMessageIds);
     }
 
     @Test
@@ -83,7 +83,7 @@ class TransportRoutingTaskMsgDispatchListenerTest {
 
         listener.onTaskMsgsReady(task, List.of(taskMsg));
 
-        assertEquals(List.of("msg-rt"), realtimeAdapter.dispatchedMsgIds);
+        assertEquals(List.of("msg-rt"), realtimeAdapter.dispatchedMessageIds);
     }
 
     @Test
@@ -150,7 +150,7 @@ class TransportRoutingTaskMsgDispatchListenerTest {
     private static final class RecordingAdapter implements WorkerAdapter {
         private final String protocol;
         private final String transportHint;
-        private final List<String> dispatchedMsgIds = new ArrayList<>();
+        private final List<String> dispatchedMessageIds = new ArrayList<>();
 
         private RecordingAdapter(String protocol) {
             this(protocol, WorkerTransportHints.normalize(protocol));
@@ -185,7 +185,7 @@ class TransportRoutingTaskMsgDispatchListenerTest {
         @Override
         public void dispatchTaskItems(List<TaskDispatchItem> items) {
             for (TaskDispatchItem item : items) {
-                dispatchedMsgIds.add(item.getMsgId());
+                dispatchedMessageIds.add(item.getMessageId());
             }
         }
     }

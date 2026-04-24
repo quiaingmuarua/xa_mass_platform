@@ -243,12 +243,12 @@ class TaskManagerLifecycleTest {
             assertTrue(taskManager.handleTaskMessageResult(task.getTid(), message.getMsgId(), true, "done"));
             capture.assertHasEvent("TASK_MSG_STATUS_TRANSITION", mdc ->
                     task.getTid().equals(mdc.get("taskId"))
-                            && message.getMsgId().equals(mdc.get("msgId"))
+                            && message.getMsgId().equals(mdc.get("messageId"))
                             && "ASSIGNED".equals(mdc.get("fromStatus"))
                             && "RUNNING".equals(mdc.get("toStatus")));
             capture.assertHasEvent("TASK_MSG_STATUS_TRANSITION", mdc ->
                     task.getTid().equals(mdc.get("taskId"))
-                            && message.getMsgId().equals(mdc.get("msgId"))
+                            && message.getMsgId().equals(mdc.get("messageId"))
                             && "RUNNING".equals(mdc.get("fromStatus"))
                             && "SUCCESS".equals(mdc.get("toStatus")));
             capture.assertHasEvent("TASK_TERMINAL_CLOSED", mdc ->
@@ -358,7 +358,7 @@ class TaskManagerLifecycleTest {
             assertTrue(taskManager.handleTaskMessageResult(task.getTid(), message.getMsgId(), false, "boom-once"));
             capture.assertHasEvent("TASK_MSG_RETRY_RESET", mdc ->
                     task.getTid().equals(mdc.get("taskId"))
-                            && message.getMsgId().equals(mdc.get("msgId"))
+                            && message.getMsgId().equals(mdc.get("messageId"))
                             && "1".equals(mdc.get("retryCount"))
                             && "INIT".equals(mdc.get("toStatus")));
         }
@@ -379,7 +379,7 @@ class TaskManagerLifecycleTest {
             assertFalse(taskManager.handleTaskMessageResult(task.getTid(), message.getMsgId(), true, "done"));
             capture.assertHasEvent("CALLBACK_REJECTED_NO_ACTIVE_ATTEMPT", mdc ->
                     task.getTid().equals(mdc.get("taskId"))
-                            && message.getMsgId().equals(mdc.get("msgId"))
+                            && message.getMsgId().equals(mdc.get("messageId"))
                             && "ASSIGNED".equals(mdc.get("taskMsgStatus")));
         }
     }
@@ -404,7 +404,7 @@ class TaskManagerLifecycleTest {
             assertFalse(taskManager.handleTaskMessageResult(task.getTid(), message.getMsgId(), true, "done"));
             capture.assertHasEvent("CALLBACK_REJECTED_INVALID_STATE", mdc ->
                     task.getTid().equals(mdc.get("taskId"))
-                            && message.getMsgId().equals(mdc.get("msgId"))
+                            && message.getMsgId().equals(mdc.get("messageId"))
                             && "INIT".equals(mdc.get("taskMsgStatus")));
         }
 
@@ -681,7 +681,7 @@ class TaskManagerLifecycleTest {
             assertTrue(taskManager.handleTaskMessageResult(task.getTid(), message.getMsgId(), true, "late-success"));
             capture.assertHasEvent("CALLBACK_IGNORED_LATE", mdc ->
                     task.getTid().equals(mdc.get("taskId"))
-                            && message.getMsgId().equals(mdc.get("msgId")));
+                            && message.getMsgId().equals(mdc.get("messageId")));
         }
     }
 
@@ -724,7 +724,7 @@ class TaskManagerLifecycleTest {
             assertTrue(taskManager.handleTaskMessageResult(task.getTid(), message.getMsgId(), true, "done-twice"));
             capture.assertHasEvent("CALLBACK_IGNORED_DUPLICATE", mdc ->
                     task.getTid().equals(mdc.get("taskId"))
-                            && message.getMsgId().equals(mdc.get("msgId")));
+                            && message.getMsgId().equals(mdc.get("messageId")));
         }
     }
 

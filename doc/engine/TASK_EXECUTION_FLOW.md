@@ -112,7 +112,7 @@ Verified runtime path:
 2. A mock client receives a canonical root-level task-dispatch frame.
 3. The mock client sends back a canonical root-level task-result frame.
 4. The runtime `TaskResultIngestChannel` calls `TaskManager.handleTaskMessageResult(...)`.
-5. `TaskManager` updates the persisted `TaskMsg` using `taskId + msgId`.
+5. `TaskManager` updates the persisted `TaskMsg` using `taskId + messageId`.
 6. Each `TaskMsg` reaches `SUCCESS` or `FAILED`.
 7. When all persisted `TaskMsg` rows are final, the task automatically converges to `TERMINAL`.
 

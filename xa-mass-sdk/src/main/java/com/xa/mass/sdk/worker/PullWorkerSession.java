@@ -63,7 +63,7 @@ public class PullWorkerSession {
 
     public boolean submitResult(TaskDispatchItem dispatchItem, boolean success, String detail) {
         Objects.requireNonNull(dispatchItem, "dispatchItem");
-        return submitResult(dispatchItem.getTaskId(), dispatchItem.getMsgId(), success, detail, null, Map.of());
+        return submitResult(dispatchItem.getTaskId(), dispatchItem.getMessageId(), success, detail, null, Map.of());
     }
 
     public boolean submitResult(TaskDispatchItem dispatchItem,
@@ -71,18 +71,18 @@ public class PullWorkerSession {
                                 String detail,
                                 Map<String, Object> output) {
         Objects.requireNonNull(dispatchItem, "dispatchItem");
-        return submitResult(dispatchItem.getTaskId(), dispatchItem.getMsgId(), success, detail, null, output);
+        return submitResult(dispatchItem.getTaskId(), dispatchItem.getMessageId(), success, detail, null, output);
     }
 
     public boolean submitResult(String taskId,
-                                String msgId,
+                                String messageId,
                                 boolean success,
                                 String detail,
                                 String errorCode,
                                 Map<String, Object> output) {
         return taskResultIngestChannel.ingest(new TaskResultReport(
                 taskId,
-                msgId,
+                messageId,
                 success,
                 detail,
                 errorCode,

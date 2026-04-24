@@ -85,7 +85,7 @@ const mockTaskDetails: Record<string, TaskDetailResponse> = {
         },
         messages: [
             {
-                msgId: 'msg-001',
+                messageId: 'msg-001',
                 status: 'SUCCESS',
                 latestAttemptWorkerId: 'worker-us-01',
                 latestAttemptWorkerContextId: 'ctx-us-01',
@@ -98,7 +98,7 @@ const mockTaskDetails: Record<string, TaskDetailResponse> = {
                 errorMessage: null,
             },
             {
-                msgId: 'msg-004',
+                messageId: 'msg-004',
                 status: 'RUNNING',
                 latestAttemptWorkerId: 'worker-us-04',
                 latestAttemptWorkerContextId: 'ctx-us-04',
@@ -278,7 +278,7 @@ export async function createTaskMock(
             violations: [],
         },
         messages: normalizedInputs.map((input, index) => ({
-            msgId: `${taskId}-msg-${index + 1}`,
+            messageId: `${taskId}-msg-${index + 1}`,
             status: 'INIT',
             latestAttemptWorkerId: null,
             latestAttemptWorkerContextId: null,

@@ -184,8 +184,8 @@
           description="This task does not currently have message records to display."
         />
 
-        <el-table v-else :data="detail.messages" row-key="msgId">
-          <el-table-column prop="msgId" label="Message" min-width="160" />
+        <el-table v-else :data="detail.messages" row-key="messageId">
+          <el-table-column prop="messageId" label="Message" min-width="160" />
           <el-table-column prop="status" label="Status" min-width="120" />
           <el-table-column
             prop="latestAttemptWorkerId"
