@@ -108,7 +108,7 @@ It is a migration aid, not a compatibility promise.
 
 - `Class`: `com.xa.mass.gateway.dispatcher.DispatcherContext`
 - `Method`: constructor + getters
-- `Current responsibility`: exposes the fixed gateway-local wiring snapshot used by the adapter runtime
+- `Current responsibility`: exposes the fixed gateway-local wiring snapshot used by the adapter runtime; runtime assembly resolves the concrete endpoint registry once and injects the same instance into dispatcher wiring and transport-server creation
 - `Should stay in gateway?`: yes
 - `Target owner`: `xa-mass-gateway`
 - `Migration phase`: keep as immutable adapter runtime wiring

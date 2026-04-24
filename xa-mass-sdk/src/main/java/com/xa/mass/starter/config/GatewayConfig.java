@@ -43,7 +43,7 @@ public class GatewayConfig {
 
     private WorkerSystemEventChannel customSystemEventChannel;
     private WorkerEndpointRegistry workerEndpointRegistry;
-    private transient ServerSessionManager runtimeOwnedWorkerEndpointRegistry;
+    private transient ServerSessionManager runtimeOwnedEndpointRegistry;
     private TransportServerFactory<TransportServerFactoryContext> transportServerFactory;
     private WorkerTransportRuntimeFactory workerTransportRuntimeFactory;
 
@@ -65,7 +65,7 @@ public class GatewayConfig {
         this.messageCodec = source.messageCodec;
         this.customSystemEventChannel = source.customSystemEventChannel;
         this.workerEndpointRegistry = source.workerEndpointRegistry;
-        this.runtimeOwnedWorkerEndpointRegistry = null;
+        this.runtimeOwnedEndpointRegistry = null;
         this.transportServerFactory = source.transportServerFactory;
         this.workerTransportRuntimeFactory = source.workerTransportRuntimeFactory;
     }
@@ -222,15 +222,19 @@ public class GatewayConfig {
         if (workerEndpointRegistry != null) {
             return workerEndpointRegistry;
         }
-        if (runtimeOwnedWorkerEndpointRegistry == null) {
-            runtimeOwnedWorkerEndpointRegistry = new ServerSessionManager();
+        if (runtimeOwnedEndpointRegistry == null) {
+            runtimeOwnedEndpointRegistry = new ServerSessionManager();
         }
-        return runtimeOwnedWorkerEndpointRegistry;
+        return runtimeOwnedEndpointRegistry;
     }
 
-    public WorkerSystemEventChannel resolveSystemEventChannel(WorkerEndpointRegistry endpointRegistry) {
+    public WorkerSystemEventChannel resolveSystemEventChannel() {
         if (customSystemEventChannel != null) {
             return customSystemEventChannel;
+        }
+        WorkerEndpointRegistry endpointRegistry = workerEndpointRegistry;
+        if (endpointRegistry == null) {
+            endpointRegistry = resolveWorkerEndpointRegistry();
         }
         if (endpointRegistry instanceof ServerSessionManager sessionManager) {
             return sessionManager.getSystemEventChannel();
@@ -244,13 +248,15 @@ public class GatewayConfig {
                 : new DefaultWorkerTransportRuntimeFactory();
     }
 
-    public TransportServer createTransportServer(DispatchRuntimeContext dispatcherContext, int port) {
+    public TransportServer createTransportServer(DispatchRuntimeContext dispatcherContext,
+                                                 WorkerEndpointRegistry endpointRegistry,
+                                                 int port) {
         if (!transportServerEnabled || transportServerFactory == null) {
             return null;
         }
         return transportServerFactory.create(new TransportServerFactoryContext(
                 dispatcherContext,
-                resolveWorkerEndpointRegistry(),
+                endpointRegistry,
                 port,
                 transportEndpointPath
         ));

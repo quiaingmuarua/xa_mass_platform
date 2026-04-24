@@ -26,6 +26,7 @@ import com.xa.mass.starter.transport.WorkerTransportRuntimeFactoryContext;
 import com.xa.mass.transport.TransportServer;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
+import com.xa.mass.transport.channel.WorkerSystemEventChannel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -48,6 +49,7 @@ public class MassApplication {
 
     private final MassEngine engine;
     private GatewayRuntimePorts gatewayRuntimePorts = GatewayRuntimePorts.defaults();
+    private WorkerEndpointRegistry endpointRegistry;
     private MassGateway massGateway;
     private DispatchRuntimeContext dispatcherContext;
     private TransportServer transportServer;
@@ -131,7 +133,7 @@ public class MassApplication {
         logger.info("Initializing core components");
 
         try {
-            WorkerEndpointRegistry endpointRegistry = gatewayConfig.resolveWorkerEndpointRegistry();
+            endpointRegistry = gatewayConfig.resolveWorkerEndpointRegistry();
             logger.info("Worker endpoint registry initialized");
 
             MessageTransporter<String, OutboundDelivery> messageTransporter = gatewayConfig.createMessageTransporter();
@@ -140,8 +142,7 @@ public class MassApplication {
             MessageCodec messageCodec = gatewayConfig.createMessageCodec();
             logger.info("Message codec created");
 
-            com.xa.mass.transport.channel.WorkerSystemEventChannel systemEventChannel =
-                    gatewayConfig.resolveSystemEventChannel(endpointRegistry);
+            WorkerSystemEventChannel systemEventChannel = gatewayConfig.resolveSystemEventChannel();
 
             GatewayFrameRouter frameRouter = new GatewayFrameRouter(messageCodec, systemEventChannel);
             TaskMsgDispatchListener taskMsgDispatchListener = null;
@@ -221,7 +222,7 @@ public class MassApplication {
 
     private void startTransportServer() {
         logger.info("Starting transport server");
-        transportServer = gatewayConfig.createTransportServer(dispatcherContext, serverPort);
+        transportServer = gatewayConfig.createTransportServer(dispatcherContext, endpointRegistry, serverPort);
         if (transportServer == null) {
             logger.info("No transport server configured for current runtime");
             return;

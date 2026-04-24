@@ -10,16 +10,16 @@ import com.xa.mass.transport.WorkerEndpointRegistry;
 public final class TransportServerFactoryContext {
 
     private final DispatchRuntimeContext dispatcherContext;
-    private final WorkerEndpointRegistry workerEndpointRegistry;
+    private final WorkerEndpointRegistry endpointRegistry;
     private final int port;
     private final String endpointPath;
 
     public TransportServerFactoryContext(DispatchRuntimeContext dispatcherContext,
-                                         WorkerEndpointRegistry workerEndpointRegistry,
+                                         WorkerEndpointRegistry endpointRegistry,
                                          int port,
                                          String endpointPath) {
         this.dispatcherContext = dispatcherContext;
-        this.workerEndpointRegistry = workerEndpointRegistry;
+        this.endpointRegistry = endpointRegistry;
         this.port = port;
         this.endpointPath = endpointPath;
     }
@@ -28,8 +28,8 @@ public final class TransportServerFactoryContext {
         return dispatcherContext;
     }
 
-    public WorkerEndpointRegistry getWorkerEndpointRegistry() {
-        return workerEndpointRegistry;
+    public WorkerEndpointRegistry getEndpointRegistry() {
+        return endpointRegistry;
     }
 
     public int getPort() {

@@ -62,6 +62,7 @@ import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.channel.TaskPullChannel;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
+import com.xa.mass.transport.channel.WorkerSystemEventChannel;
 import com.xa.mass.transport.model.TaskDispatchItem;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
@@ -154,6 +155,7 @@ class MassSdkTest {
             assertNotNull(capturedContext.get());
             Assertions.assertEquals(19092, capturedContext.get().getPort());
             Assertions.assertEquals("/custom-transport", capturedContext.get().getEndpointPath());
+            assertNotNull(capturedContext.get().getEndpointRegistry());
         } finally {
             app.stop();
         }
@@ -175,6 +177,17 @@ class MassSdkTest {
         assertInstanceOf(ServerSessionManager.class, first);
         assertInstanceOf(ServerSessionManager.class, snapshotRegistry);
         assertNotSame(first, snapshotRegistry);
+    }
+
+    @Test
+    void defaultGatewaySystemEventChannelSharesRuntimeOwnedEndpointRegistry() {
+        GatewayConfig config = new GatewayConfig();
+
+        WorkerEndpointRegistry endpointRegistry = config.resolveWorkerEndpointRegistry();
+        WorkerSystemEventChannel systemEventChannel = config.resolveSystemEventChannel();
+
+        assertInstanceOf(ServerSessionManager.class, endpointRegistry);
+        assertSame(((ServerSessionManager) endpointRegistry).getSystemEventChannel(), systemEventChannel);
     }
 
     @Test
