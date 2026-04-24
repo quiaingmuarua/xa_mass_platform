@@ -1276,13 +1276,13 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
     @Override
     public List<Map<String, Object>> listSessions() {
         List<Map<String, Object>> data = new ArrayList<>();
-        WorkerEndpointInspector sessionInspector = resolveSessionInspector();
-        if (sessionInspector == null) {
+        WorkerEndpointInspector endpointInspector = resolveEndpointInspector();
+        if (endpointInspector == null) {
             return data;
         }
 
         Map<String, List<WorkerEndpointSnapshot>> grouped = new HashMap<>();
-        for (WorkerEndpointSnapshot snapshot : sessionInspector.listWorkerEndpoints()) {
+        for (WorkerEndpointSnapshot snapshot : endpointInspector.listWorkerEndpoints()) {
             grouped.computeIfAbsent(snapshot.getWorkerId(), ignored -> new ArrayList<>()).add(snapshot);
         }
         grouped.forEach((workerId, endpoints) -> {
@@ -1306,12 +1306,12 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
     @Override
     public Map<String, Object> getSessionStats() {
         Map<String, Object> data = new LinkedHashMap<>();
-        WorkerEndpointRegistry sessionManager = resolveSessionManager();
-        WorkerEndpointInspector sessionInspector = resolveSessionInspector();
-        if (sessionManager != null) {
-            data.put("activeConnections", sessionManager.getActiveConnectionCount());
-            data.put("workerCount", sessionInspector != null
-                    ? sessionInspector.listWorkerEndpoints().stream().map(WorkerEndpointSnapshot::getWorkerId).distinct().count()
+        WorkerEndpointRegistry endpointRegistry = resolveEndpointRegistry();
+        WorkerEndpointInspector endpointInspector = resolveEndpointInspector();
+        if (endpointRegistry != null) {
+            data.put("activeConnections", endpointRegistry.getActiveConnectionCount());
+            data.put("workerCount", endpointInspector != null
+                    ? endpointInspector.listWorkerEndpoints().stream().map(WorkerEndpointSnapshot::getWorkerId).distinct().count()
                     : 0L);
         } else {
             data.put("activeConnections", 0);
@@ -1483,21 +1483,21 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
         return ruleManager;
     }
 
-    private WorkerEndpointRegistry resolveSessionManager() {
+    private WorkerEndpointRegistry resolveEndpointRegistry() {
         DispatchRuntimeContext ctx = transportContext();
-        if (ctx == null || ctx.getSessionManager() == null) {
+        if (ctx == null || ctx.getEndpointRegistry() == null) {
             return null;
         }
-        return ctx.getSessionManager();
+        return ctx.getEndpointRegistry();
     }
 
     private DispatchRuntimeContext transportContext() {
         return delegate.getDispatcherContext();
     }
 
-    private WorkerEndpointInspector resolveSessionInspector() {
-        WorkerEndpointRegistry sessionManager = resolveSessionManager();
-        return sessionManager instanceof WorkerEndpointInspector inspector ? inspector : null;
+    private WorkerEndpointInspector resolveEndpointInspector() {
+        WorkerEndpointRegistry endpointRegistry = resolveEndpointRegistry();
+        return endpointRegistry instanceof WorkerEndpointInspector inspector ? inspector : null;
     }
 
     private int safeInputQueueSize(MessageTransporter<?, ?> messageTransporter) {

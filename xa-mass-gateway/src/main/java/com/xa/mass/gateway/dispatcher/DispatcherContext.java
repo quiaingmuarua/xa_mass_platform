@@ -16,7 +16,7 @@ import com.xa.mass.transport.channel.TaskResultIngestChannel;
  */
 public class DispatcherContext implements DispatchRuntimeContext {
     private final MessageTransporter<String, OutboundDelivery> messageTransporter;
-    private final WorkerEndpointRegistry sessionManager;
+    private final WorkerEndpointRegistry endpointRegistry;
     private final MessageCodec messageCodec;
     private final GatewayFrameRouter frameRouter;
     private final TaskResultIngestChannel taskResultIngestChannel;
@@ -24,14 +24,14 @@ public class DispatcherContext implements DispatchRuntimeContext {
     private final ControlEventResponseFrameSink controlEventResponseFrameSink;
 
     public DispatcherContext(MessageTransporter<String, OutboundDelivery> messageTransporter,
-                             WorkerEndpointRegistry sessionManager,
+                             WorkerEndpointRegistry endpointRegistry,
                              MessageCodec messageCodec,
                              GatewayFrameRouter frameRouter,
                              TaskResultIngestChannel taskResultIngestChannel,
                              ControlEventRequestFrameBridge controlEventRequestFrameBridge,
                              ControlEventResponseFrameSink controlEventResponseFrameSink) {
         this.messageTransporter = messageTransporter;
-        this.sessionManager = sessionManager;
+        this.endpointRegistry = endpointRegistry;
         this.messageCodec = messageCodec;
         this.frameRouter = frameRouter;
         this.taskResultIngestChannel = taskResultIngestChannel;
@@ -40,7 +40,7 @@ public class DispatcherContext implements DispatchRuntimeContext {
     }
 
     public DispatcherContext(MessageTransporter<String, OutboundDelivery> messageTransporter,
-                             WorkerEndpointRegistry sessionManager,
+                             WorkerEndpointRegistry endpointRegistry,
                              Gson gson,
                              GatewayFrameRouter frameRouter,
                              TaskResultIngestChannel taskResultIngestChannel,
@@ -48,7 +48,7 @@ public class DispatcherContext implements DispatchRuntimeContext {
                              ControlEventResponseFrameSink controlEventResponseFrameSink) {
         this(
                 messageTransporter,
-                sessionManager,
+                endpointRegistry,
                 new GsonMessageCodec(gson),
                 frameRouter,
                 taskResultIngestChannel,
@@ -58,8 +58,8 @@ public class DispatcherContext implements DispatchRuntimeContext {
     }
 
     @Override
-    public WorkerEndpointRegistry getSessionManager() {
-        return sessionManager;
+    public WorkerEndpointRegistry getEndpointRegistry() {
+        return endpointRegistry;
     }
 
     @Override

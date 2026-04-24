@@ -14,7 +14,7 @@ import com.xa.mass.transport.channel.TaskResultIngestChannel;
  */
 public interface DispatchRuntimeContext {
 
-    WorkerEndpointRegistry getSessionManager();
+    WorkerEndpointRegistry getEndpointRegistry();
 
     MessageCodec getMessageCodec();
 

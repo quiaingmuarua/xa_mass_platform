@@ -22,7 +22,7 @@ public final class GatewayOutputProcessor {
 
     public boolean process(OutboundDelivery delivery) {
         try {
-            boolean sent = context.getSessionManager().sendMessage(
+            boolean sent = context.getEndpointRegistry().sendMessage(
                     delivery.getWorkerId(),
                     delivery.getConnRole(),
                     delivery.getRawJson()

@@ -103,7 +103,7 @@ public class MassGateway {
     private void shutdownConnectionManagement() {
         logger.info("Shutting down connection management...");
         try {
-            WorkerEndpointRegistry endpointRegistry = dispatcherContext.getSessionManager();
+            WorkerEndpointRegistry endpointRegistry = dispatcherContext.getEndpointRegistry();
             if (endpointRegistry != null) {
                 endpointRegistry.shutdown();
             }
