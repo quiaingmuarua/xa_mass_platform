@@ -2,8 +2,8 @@ package com.xa.mass.starter.worker;
 
 import com.xa.mass.base.channel.tranporter.MessageTransporter;
 import com.xa.mass.engine.worker.WorkerAdapter;
-import com.xa.mass.gateway.queue.MessageCodec;
 import com.xa.mass.gateway.queue.OutboundDelivery;
+import com.xa.mass.gateway.queue.WebSocketGatewayFrameCodec;
 import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.model.TaskDispatchItem;
 import org.slf4j.Logger;
@@ -22,12 +22,12 @@ public class WebSocketWorkerAdapter implements WorkerAdapter {
     private static final Logger logger = LoggerFactory.getLogger(WebSocketWorkerAdapter.class);
 
     private final MessageTransporter<String, OutboundDelivery> messageTransporter;
-    private final MessageCodec messageCodec;
+    private final WebSocketGatewayFrameCodec frameCodec;
 
     public WebSocketWorkerAdapter(MessageTransporter<String, OutboundDelivery> messageTransporter,
-                                  MessageCodec messageCodec) {
+                                  WebSocketGatewayFrameCodec frameCodec) {
         this.messageTransporter = messageTransporter;
-        this.messageCodec = messageCodec;
+        this.frameCodec = frameCodec;
     }
 
     @Override
@@ -42,7 +42,7 @@ public class WebSocketWorkerAdapter implements WorkerAdapter {
 
     @Override
     public void dispatchTaskItems(List<TaskDispatchItem> items) {
-        if (messageTransporter == null || messageCodec == null) {
+        if (messageTransporter == null || frameCodec == null) {
             logger.warn("Skip task message publishing because WebSocket adapter dependencies are unavailable");
             return;
         }
@@ -50,7 +50,7 @@ public class WebSocketWorkerAdapter implements WorkerAdapter {
             return;
         }
         for (TaskDispatchItem dispatchItem : items) {
-            String json = messageCodec.encodeTaskDispatch(dispatchItem);
+            String json = frameCodec.encodeTaskDispatch(dispatchItem);
             messageTransporter.sendOutput(new OutboundDelivery(
                     dispatchItem.getWorkerId(),
                     json,

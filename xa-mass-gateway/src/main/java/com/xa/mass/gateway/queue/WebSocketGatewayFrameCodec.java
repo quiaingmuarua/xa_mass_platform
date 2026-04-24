@@ -22,14 +22,16 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Gson-based codec for the current WebSocket adapter.
+ * Current WebSocket adapter frame codec.
  *
- * <p>Task transport keeps the legacy task shell, while control/debug traffic is
- * now event-first and uses root-level {@code eventCode}.
+ * <p>This type owns the remaining WebSocket wire shapes for the current
+ * gateway adapter: task/heartbeat transport shells plus root-level event-first
+ * control frames. It is adapter-local and must not be treated as a platform
+ * capability contract.
  */
-public class GsonMessageCodec implements MessageCodec {
+public final class WebSocketGatewayFrameCodec {
 
-    private static final Logger logger = LoggerFactory.getLogger(GsonMessageCodec.class);
+    private static final Logger logger = LoggerFactory.getLogger(WebSocketGatewayFrameCodec.class);
     private static final String SUBTYPE_HEARTBEAT = "heartbeat";
     private static final Type MAP_TYPE = new TypeToken<Map<String, Object>>() {
     }.getType();
@@ -38,15 +40,14 @@ public class GsonMessageCodec implements MessageCodec {
 
     private final Gson gson;
 
-    public GsonMessageCodec() {
+    public WebSocketGatewayFrameCodec() {
         this(new GsonBuilder().setPrettyPrinting().create());
     }
 
-    public GsonMessageCodec(Gson gson) {
+    public WebSocketGatewayFrameCodec(Gson gson) {
         this.gson = gson;
     }
 
-    @Override
     public JsonObject parseObject(String json) {
         try {
             JsonElement element = gson.fromJson(json, JsonElement.class);
@@ -57,7 +58,6 @@ public class GsonMessageCodec implements MessageCodec {
         }
     }
 
-    @Override
     public String extractWorkerId(JsonObject frame) {
         return firstNonBlank(
                 readString(frame, WorkerControlEventProtocol.WORKER_ID_FIELD),
@@ -65,12 +65,10 @@ public class GsonMessageCodec implements MessageCodec {
         );
     }
 
-    @Override
     public String extractProject(JsonObject frame) {
         return readString(frame, WorkerControlEventProtocol.PROJECT_FIELD);
     }
 
-    @Override
     public String extractMessageId(JsonObject frame) {
         return firstNonBlank(
                 readString(frame, WorkerControlEventProtocol.MESSAGE_ID_FIELD),
@@ -78,7 +76,6 @@ public class GsonMessageCodec implements MessageCodec {
         );
     }
 
-    @Override
     public String extractEventCode(JsonObject frame) {
         if (frame == null) {
             return null;
@@ -91,49 +88,41 @@ public class GsonMessageCodec implements MessageCodec {
         return readString(payload, WorkerControlEventProtocol.EVENT_CODE_FIELD);
     }
 
-    @Override
     public JsonObject extractPayload(JsonObject frame) {
         return readJsonObject(frame, WorkerControlEventProtocol.PAYLOAD_FIELD);
     }
 
-    @Override
     public JsonObject extractControlResponseData(JsonObject frame) {
         return readJsonObject(frame, WorkerControlEventProtocol.DATA_FIELD);
     }
 
-    @Override
     public boolean isEventFirstControlRequest(JsonObject frame) {
         return frame != null
                 && !isResponse(frame)
                 && readString(frame, WorkerControlEventProtocol.EVENT_CODE_FIELD) != null;
     }
 
-    @Override
     public boolean isEventFirstControlResponse(JsonObject frame) {
         return frame != null
                 && isResponse(frame)
                 && readString(frame, WorkerControlEventProtocol.EVENT_CODE_FIELD) != null;
     }
 
-    @Override
     public boolean isHeartbeatPing(JsonObject frame) {
         return "PING".equals(readString(frame, "msgType"))
                 && SUBTYPE_HEARTBEAT.equals(normalizeSubType(readString(frame, "subMsgType")));
     }
 
-    @Override
     public boolean isHeartbeatPong(JsonObject frame) {
         return "PONG".equals(readString(frame, "msgType"))
                 && SUBTYPE_HEARTBEAT.equals(normalizeSubType(readString(frame, "subMsgType")));
     }
 
-    @Override
     public boolean isTaskStep(JsonObject frame) {
         return "TASK".equals(readString(frame, "msgType"))
                 && "step".equals(normalizeSubType(readString(frame, "subMsgType")));
     }
 
-    @Override
     public String encodeHeartbeatPong(JsonObject requestFrame) {
         JsonObject response = new JsonObject();
         response.addProperty("msgId", extractMessageId(requestFrame));
@@ -156,7 +145,6 @@ public class GsonMessageCodec implements MessageCodec {
         return gson.toJson(response);
     }
 
-    @Override
     public String encodeTaskDispatch(TaskDispatchItem item) {
         JsonObject frame = new JsonObject();
         frame.addProperty("msgId", item.getMsgId());
@@ -187,7 +175,6 @@ public class GsonMessageCodec implements MessageCodec {
         return gson.toJson(frame);
     }
 
-    @Override
     public TaskResultReport decodeTaskResult(JsonObject frame) {
         String taskId = readNestedString(frame, "context", "taskId");
         String msgId = extractMessageId(frame);
@@ -216,7 +203,6 @@ public class GsonMessageCodec implements MessageCodec {
         return new TaskResultReport(taskId, msgId, success, detail, errorCode, gson.fromJson(payloadObj, MAP_TYPE));
     }
 
-    @Override
     public String encodeTaskAck(JsonObject requestFrame, int code, String message) {
         JsonObject response = new JsonObject();
         response.addProperty("msgId", extractMessageId(requestFrame));
@@ -239,7 +225,6 @@ public class GsonMessageCodec implements MessageCodec {
         return gson.toJson(response);
     }
 
-    @Override
     public EventRequest decodeControlEventRequest(JsonObject frame) {
         JsonObject headersObject = readJsonObject(frame, WorkerControlEventProtocol.HEADERS_FIELD);
         JsonObject payloadObject = readJsonObject(frame, WorkerControlEventProtocol.PAYLOAD_FIELD);
@@ -255,7 +240,6 @@ public class GsonMessageCodec implements MessageCodec {
                 .build();
     }
 
-    @Override
     public EventPrincipal decodeControlEventPrincipal(JsonObject frame) {
         JsonObject principalObject = readJsonObject(frame, WorkerControlEventProtocol.PRINCIPAL_FIELD);
         return EventPrincipal.builder()
@@ -264,7 +248,6 @@ public class GsonMessageCodec implements MessageCodec {
                 .build();
     }
 
-    @Override
     public String encodeControlEventResponse(JsonObject requestFrame, EventResponse response) {
         JsonObject reply = new JsonObject();
         reply.addProperty(WorkerControlEventProtocol.MESSAGE_ID_FIELD, UUID.randomUUID().toString());

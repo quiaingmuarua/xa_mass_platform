@@ -199,9 +199,9 @@ Engine/runtime decides eligibility.
 
 Rules:
 
-- construct gateway compatibility frame classifier and explicit bridge ports before starting the adapter
+- construct the gateway message codec and explicit bridge ports before starting the adapter
 - resolve the gateway `endpointRegistry` once during runtime assembly and pass that exact instance into both dispatcher wiring and transport-server creation
-- route inbound task result compatibility frames into the canonical `TaskResultReport -> TaskResultIngestChannel` seam
+- route inbound task-result transport shells into the canonical `TaskResultReport -> TaskResultIngestChannel` seam
 - keep `TaskResultIngestChannel` as a runtime-level seam; do not model it as worker transport binding ownership
 - resolve `WorkerSystemEventChannel` from gateway runtime assembly, not from transport binding ownership
 - keep adapter-specific endpoint bootstrap inside the gateway adapter module; SDK runtime config must not hardcode session-manager implementation branching

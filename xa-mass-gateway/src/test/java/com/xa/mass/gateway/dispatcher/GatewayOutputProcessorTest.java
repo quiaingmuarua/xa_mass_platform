@@ -2,8 +2,8 @@ package com.xa.mass.gateway.dispatcher;
 
 import com.xa.mass.base.channel.tranporter.MessageTransporter;
 import com.xa.mass.base.debug.WorkerDebugMessageStore;
-import com.xa.mass.gateway.queue.GsonMessageCodec;
 import com.xa.mass.gateway.queue.OutboundDelivery;
+import com.xa.mass.gateway.queue.WebSocketGatewayFrameCodec;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.channel.NoopWorkerSystemEventChannel;
 import org.junit.jupiter.api.BeforeEach;
@@ -28,7 +28,7 @@ class GatewayOutputProcessorTest {
         DispatcherContext context = new DispatcherContext(
                 transporter,
                 endpointRegistry,
-                new GsonMessageCodec(),
+                new WebSocketGatewayFrameCodec(),
                 null,
                 NoopWorkerSystemEventChannel.INSTANCE,
                 null,

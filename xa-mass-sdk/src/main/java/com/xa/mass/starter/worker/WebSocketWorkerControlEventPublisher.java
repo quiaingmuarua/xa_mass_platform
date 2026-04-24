@@ -6,7 +6,6 @@ import com.google.gson.JsonObject;
 import com.xa.mass.base.channel.tranporter.MessageTransporter;
 import com.xa.mass.base.debug.WorkerControlEventProtocol;
 import com.xa.mass.base.debug.WorkerDebugMessageStore;
-import com.xa.mass.gateway.queue.MessageCodec;
 import com.xa.mass.gateway.queue.OutboundDelivery;
 import com.xa.mass.starter.transport.WorkerControlEventDispatch;
 import com.xa.mass.starter.transport.WorkerControlEventPublishResult;
@@ -24,15 +23,11 @@ public final class WebSocketWorkerControlEventPublisher implements WorkerControl
 
     private final MessageTransporter<String, OutboundDelivery> messageTransporter;
     private final WorkerEndpointRegistry endpointRegistry;
-    @SuppressWarnings("unused")
-    private final MessageCodec messageCodec;
 
     public WebSocketWorkerControlEventPublisher(MessageTransporter<String, OutboundDelivery> messageTransporter,
-                                                WorkerEndpointRegistry endpointRegistry,
-                                                MessageCodec messageCodec) {
+                                                WorkerEndpointRegistry endpointRegistry) {
         this.messageTransporter = messageTransporter;
         this.endpointRegistry = endpointRegistry;
-        this.messageCodec = messageCodec;
     }
 
     @Override

@@ -4,9 +4,8 @@ import com.xa.mass.base.channel.messaging.api.MessageQueue;
 import com.xa.mass.base.channel.tranporter.MessageTransporter;
 import com.xa.mass.base.channel.tranporter.MessageTransporterFactory;
 import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
-import com.xa.mass.gateway.queue.MessageCodec;
-import com.xa.mass.gateway.queue.MessageCodecFactory;
 import com.xa.mass.gateway.queue.OutboundDelivery;
+import com.xa.mass.gateway.queue.WebSocketGatewayFrameCodec;
 import com.xa.mass.gateway.runtime.WebSocketGatewayRuntimeSupport;
 import com.xa.mass.starter.transport.DefaultWorkerTransportRuntimeFactory;
 import com.xa.mass.starter.transport.TransportServerFactoryContext;
@@ -41,8 +40,7 @@ public class GatewayConfig {
     private String outputApiUrl;
     private String apiKey;
 
-    private MessageCodecFactory.CodecType codecType = MessageCodecFactory.CodecType.GSON;
-    private MessageCodec messageCodec;
+    private WebSocketGatewayFrameCodec frameCodec;
 
     private WorkerSystemEventChannel customSystemEventChannel;
     private WorkerEndpointRegistry workerEndpointRegistry;
@@ -68,8 +66,7 @@ public class GatewayConfig {
         this.inputApiUrl = source.inputApiUrl;
         this.outputApiUrl = source.outputApiUrl;
         this.apiKey = source.apiKey;
-        this.codecType = source.codecType;
-        this.messageCodec = source.messageCodec;
+        this.frameCodec = source.frameCodec;
         this.customSystemEventChannel = source.customSystemEventChannel;
         this.workerEndpointRegistry = source.workerEndpointRegistry;
         this.runtimeOwnedEndpointRegistry = null;
@@ -124,11 +121,8 @@ public class GatewayConfig {
         };
     }
 
-    public MessageCodec createMessageCodec() {
-        if (messageCodec != null) {
-            return messageCodec;
-        }
-        return MessageCodecFactory.create(codecType);
+    public WebSocketGatewayFrameCodec resolveFrameCodec() {
+        return frameCodec != null ? frameCodec : new WebSocketGatewayFrameCodec();
     }
 
     public MessageTransporterFactory.TransporterType getTransporterType() {
@@ -179,20 +173,12 @@ public class GatewayConfig {
         this.apiKey = apiKey;
     }
 
-    public MessageCodecFactory.CodecType getCodecType() {
-        return codecType;
+    public WebSocketGatewayFrameCodec getFrameCodec() {
+        return frameCodec;
     }
 
-    public void setCodecType(MessageCodecFactory.CodecType codecType) {
-        this.codecType = codecType;
-    }
-
-    public MessageCodec getMessageCodec() {
-        return messageCodec;
-    }
-
-    public void setMessageCodec(MessageCodec messageCodec) {
-        this.messageCodec = messageCodec;
+    public void setFrameCodec(WebSocketGatewayFrameCodec frameCodec) {
+        this.frameCodec = frameCodec;
     }
 
     public WorkerSystemEventChannel getCustomSystemEventChannel() {
@@ -260,7 +246,7 @@ public class GatewayConfig {
                 : new DefaultWorkerTransportRuntimeFactory();
     }
 
-    public TransportServer createTransportServer(MessageCodec messageCodec,
+    public TransportServer createTransportServer(WebSocketGatewayFrameCodec frameCodec,
                                                  Consumer<String> inboundMessageSink,
                                                  WorkerEndpointRegistry endpointRegistry,
                                                  int port) {
@@ -270,14 +256,14 @@ public class GatewayConfig {
         if (transportServerFactory == null) {
             return WebSocketGatewayRuntimeSupport.createTransportServer(
                     transportEndpointPath,
-                    messageCodec,
+                    frameCodec,
                     inboundMessageSink,
                     endpointRegistry
             );
         }
         return transportServerFactory.create(new TransportServerFactoryContext(
                 endpointRegistry,
-                messageCodec,
+                frameCodec,
                 inboundMessageSink,
                 port,
                 transportEndpointPath

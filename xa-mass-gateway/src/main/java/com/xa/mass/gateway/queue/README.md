@@ -4,7 +4,7 @@ This package contains gateway-side message codec and transport helpers.
 
 ## Current Files
 
-- `MessageCodec`, `GsonMessageCodec`, `MessageCodecFactory`: payload serialization and parsing helpers.
+- `WebSocketGatewayFrameCodec`: payload serialization and parsing helper for the current WebSocket adapter.
 - `RedisEnvelopeQueue`: placeholder for non-memory queue work; not part of the verified mainline.
 
 ## Current Mainline Reality

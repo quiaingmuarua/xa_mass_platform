@@ -1,7 +1,7 @@
 package com.xa.mass.gateway.server;
 
 import com.google.gson.JsonObject;
-import com.xa.mass.gateway.queue.MessageCodec;
+import com.xa.mass.gateway.queue.WebSocketGatewayFrameCodec;
 import com.xa.mass.gateway.session.ServerSessionManager;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
@@ -16,14 +16,14 @@ import java.util.function.Consumer;
 public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWebSocketFrame> {
     private static final Logger logger = LoggerFactory.getLogger(DispatcherInboundHandler.class);
     private final ServerSessionManager sessionManager;
-    private final MessageCodec messageCodec;
+    private final WebSocketGatewayFrameCodec frameCodec;
     private final Consumer<String> inboundMessageSink;
 
-    public DispatcherInboundHandler(MessageCodec messageCodec,
+    public DispatcherInboundHandler(WebSocketGatewayFrameCodec frameCodec,
                                     Consumer<String> inboundMessageSink,
                                     ServerSessionManager sessionManager) {
         this.sessionManager = Objects.requireNonNull(sessionManager, "sessionManager");
-        this.messageCodec = Objects.requireNonNull(messageCodec, "messageCodec");
+        this.frameCodec = Objects.requireNonNull(frameCodec, "frameCodec");
         this.inboundMessageSink = Objects.requireNonNull(inboundMessageSink, "inboundMessageSink");
     }
 
@@ -35,26 +35,26 @@ public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWe
                 sendError(ctx, "INVALID_FORMAT", "Message must be a JSON object");
                 return;
             }
-            JsonObject frame = messageCodec.parseObject(raw);
+            JsonObject frame = frameCodec.parseObject(raw);
             if (frame == null) {
                 sendError(ctx, "PARSE_FAILED", "Message must be a valid JSON object");
                 return;
             }
 
-            String workerId = messageCodec.extractWorkerId(frame);
-            String msgId = messageCodec.extractMessageId(frame);
+            String workerId = frameCodec.extractWorkerId(frame);
+            String msgId = frameCodec.extractMessageId(frame);
             if (workerId == null || msgId == null) {
                 sendError(ctx, "MISSING_FIELDS", "workerId/messageId are required");
                 return;
             }
             org.slf4j.MDC.put("event", "channelRead0");
             org.slf4j.MDC.put("workerId", workerId);
-            String eventCode = messageCodec.extractEventCode(frame);
+            String eventCode = frameCodec.extractEventCode(frame);
             if (eventCode != null) {
                 org.slf4j.MDC.put("eventCode", eventCode);
             }
             org.slf4j.MDC.put("traceId", msgId);
-            String project = messageCodec.extractProject(frame);
+            String project = frameCodec.extractProject(frame);
             if (project != null) {
                 org.slf4j.MDC.put("project", project);
             }

@@ -4,8 +4,8 @@ import com.google.gson.JsonObject;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
-import com.xa.mass.gateway.queue.GsonMessageCodec;
 import com.xa.mass.gateway.queue.OutboundDelivery;
+import com.xa.mass.gateway.queue.WebSocketGatewayFrameCodec;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
@@ -25,9 +25,9 @@ class GatewayTaskMsgPublisherTest {
         @SuppressWarnings("unchecked")
         com.xa.mass.base.channel.tranporter.MessageTransporter<String, OutboundDelivery> transporter =
                 mock(com.xa.mass.base.channel.tranporter.MessageTransporter.class);
-        GsonMessageCodec codec = new GsonMessageCodec();
+        WebSocketGatewayFrameCodec codec = new WebSocketGatewayFrameCodec();
         when(context.getMessageTransporter()).thenReturn(transporter);
-        when(context.getMessageCodec()).thenReturn(codec);
+        when(context.getFrameCodec()).thenReturn(codec);
 
         GatewayTaskMsgPublisher publisher = new GatewayTaskMsgPublisher(context);
         Task task = task();

@@ -30,13 +30,12 @@ public class DefaultWorkerTransportRuntimeFactory implements WorkerTransportRunt
         if (context.isGatewayEnabled()) {
             WebSocketWorkerAdapter webSocketAdapter = new WebSocketWorkerAdapter(
                     context.getMessageTransporter(),
-                    context.getMessageCodec()
+                    context.getFrameCodec()
             );
             bindings.add(TransportBinding.builder(webSocketAdapter)
                     .workerControlEventPublisher(new WebSocketWorkerControlEventPublisher(
                             context.getMessageTransporter(),
-                            context.getEndpointRegistry(),
-                            context.getMessageCodec()
+                            context.getEndpointRegistry()
                     ))
                     .build());
         }

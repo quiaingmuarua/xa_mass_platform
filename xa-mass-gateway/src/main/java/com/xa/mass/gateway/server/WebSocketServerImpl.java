@@ -1,6 +1,6 @@
 package com.xa.mass.gateway.server;
 
-import com.xa.mass.gateway.queue.MessageCodec;
+import com.xa.mass.gateway.queue.WebSocketGatewayFrameCodec;
 import com.xa.mass.gateway.session.ServerSessionManager;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.*;
@@ -43,18 +43,18 @@ public class WebSocketServerImpl implements MassWebSocketServer {
     private EventLoopGroup workerGroup;
     private volatile boolean running = false;
     private ServerSessionManager sessionManager;
-    private MessageCodec messageCodec;
+    private WebSocketGatewayFrameCodec frameCodec;
     private Consumer<String> inboundMessageSink;
 
     public WebSocketServerImpl() {
     }
 
     public WebSocketServerImpl(String websocketPath,
-                               MessageCodec messageCodec,
+                               WebSocketGatewayFrameCodec frameCodec,
                                Consumer<String> inboundMessageSink,
                                ServerSessionManager sessionManager) {
         this.websocketPath = websocketPath;
-        this.messageCodec = messageCodec;
+        this.frameCodec = frameCodec;
         this.inboundMessageSink = inboundMessageSink;
         this.sessionManager = sessionManager;
     }
@@ -106,7 +106,7 @@ public class WebSocketServerImpl implements MassWebSocketServer {
                             true,
                             10000L));
                     pipeline.addLast(new ConnectionStatsHandler());
-                    pipeline.addLast(new DispatcherInboundHandler(messageCodec, inboundMessageSink, sessionManager));
+                    pipeline.addLast(new DispatcherInboundHandler(frameCodec, inboundMessageSink, sessionManager));
                 }
             });
 
@@ -169,8 +169,8 @@ public class WebSocketServerImpl implements MassWebSocketServer {
         this.websocketPath = websocketPath;
     }
 
-    public void setMessageCodec(MessageCodec messageCodec) {
-        this.messageCodec = messageCodec;
+    public void setFrameCodec(WebSocketGatewayFrameCodec frameCodec) {
+        this.frameCodec = frameCodec;
     }
 
     public void setInboundMessageSink(Consumer<String> inboundMessageSink) {
@@ -185,7 +185,7 @@ public class WebSocketServerImpl implements MassWebSocketServer {
         if (websocketPath == null || websocketPath.isBlank()) {
             throw new IllegalStateException("WebSocket server requires a non-blank websocketPath");
         }
-        Objects.requireNonNull(messageCodec, "WebSocket server requires messageCodec");
+        Objects.requireNonNull(frameCodec, "WebSocket server requires frameCodec");
         Objects.requireNonNull(inboundMessageSink, "WebSocket server requires inboundMessageSink");
         Objects.requireNonNull(sessionManager, "WebSocket server requires sessionManager");
     }

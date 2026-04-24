@@ -6,8 +6,8 @@ import com.xa.mass.base.debug.WorkerControlEventProtocol;
 import com.xa.mass.base.debug.WorkerControlMessageProtocol;
 import com.xa.mass.gateway.dispatcher.port.ControlEventRequestFrameBridge;
 import com.xa.mass.gateway.dispatcher.port.ControlEventResponseFrameSink;
-import com.xa.mass.gateway.queue.GsonMessageCodec;
 import com.xa.mass.gateway.queue.OutboundDelivery;
+import com.xa.mass.gateway.queue.WebSocketGatewayFrameCodec;
 import com.xa.mass.sdk.event.EventPrincipal;
 import com.xa.mass.sdk.event.EventRequest;
 import com.xa.mass.sdk.event.EventResponse;
@@ -32,7 +32,7 @@ import static org.mockito.Mockito.verify;
 
 class GatewayInputProcessorTest {
 
-    private GsonMessageCodec codec;
+    private WebSocketGatewayFrameCodec codec;
     private DispatcherContext context;
     private MessageTransporter<String, OutboundDelivery> transporter;
     private WorkerEndpointRegistry endpointRegistry;
@@ -41,7 +41,7 @@ class GatewayInputProcessorTest {
     @BeforeEach
     @SuppressWarnings("unchecked")
     void setUp() {
-        codec = new GsonMessageCodec();
+        codec = new WebSocketGatewayFrameCodec();
         transporter = mock(MessageTransporter.class);
         endpointRegistry = mock(WorkerEndpointRegistry.class);
         context = createContext(null, null, null);

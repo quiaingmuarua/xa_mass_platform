@@ -23,7 +23,7 @@ public class GatewayTaskMsgPublisher implements TaskDispatchChannel {
     public void dispatchTaskItems(List<TaskDispatchItem> items) {
         if (dispatchRuntimeContext == null
                 || dispatchRuntimeContext.getMessageTransporter() == null
-                || dispatchRuntimeContext.getMessageCodec() == null) {
+                || dispatchRuntimeContext.getFrameCodec() == null) {
             logger.warn("Skip task message publishing because dispatcher context or transporter is unavailable");
             return;
         }
@@ -31,7 +31,7 @@ public class GatewayTaskMsgPublisher implements TaskDispatchChannel {
             return;
         }
         for (TaskDispatchItem dispatchItem : items) {
-            String rawJson = dispatchRuntimeContext.getMessageCodec().encodeTaskDispatch(dispatchItem);
+            String rawJson = dispatchRuntimeContext.getFrameCodec().encodeTaskDispatch(dispatchItem);
             dispatchRuntimeContext.getMessageTransporter().sendOutput(new OutboundDelivery(
                     dispatchItem.getWorkerId(),
                     rawJson,

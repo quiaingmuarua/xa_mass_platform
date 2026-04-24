@@ -98,7 +98,7 @@ Current canonical boundaries:
   - `TASK/step`, `PING/heartbeat`, and `PONG/heartbeat` are WebSocket compatibility tuple shells only
   - control/debug traffic now uses a root-level event-first frame keyed by `eventCode`
   - `msgType + subMsgType` classifies a wire frame only; it is not business/control capability identity
-  - `com.xa.mass.gateway.queue.MessageCodec` and `GatewayCompatibilityFrameClassifier` remain adapter-local compatibility helpers, not platform contracts
+  - `com.xa.mass.gateway.queue.WebSocketGatewayFrameCodec` remains the adapter-local WebSocket shell codec; it is not a platform contract
 
 ## 5. Architectural Guardrails
 

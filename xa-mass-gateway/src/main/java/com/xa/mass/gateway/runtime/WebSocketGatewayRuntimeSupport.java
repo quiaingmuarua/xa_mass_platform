@@ -1,6 +1,6 @@
 package com.xa.mass.gateway.runtime;
 
-import com.xa.mass.gateway.queue.MessageCodec;
+import com.xa.mass.gateway.queue.WebSocketGatewayFrameCodec;
 import com.xa.mass.gateway.server.WebSocketServerImpl;
 import com.xa.mass.gateway.session.EventBusWorkerSystemEventChannel;
 import com.xa.mass.gateway.session.ServerSessionManager;
@@ -41,12 +41,12 @@ public final class WebSocketGatewayRuntimeSupport {
     }
 
     public static TransportServer createTransportServer(String endpointPath,
-                                                        MessageCodec messageCodec,
+                                                        WebSocketGatewayFrameCodec frameCodec,
                                                         Consumer<String> inboundMessageSink,
                                                         WorkerEndpointRegistry endpointRegistry) {
         return new WebSocketServerImpl(
                 endpointPath,
-                messageCodec,
+                frameCodec,
                 inboundMessageSink,
                 requireSessionManager(endpointRegistry)
         );

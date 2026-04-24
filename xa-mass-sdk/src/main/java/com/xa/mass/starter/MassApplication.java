@@ -9,7 +9,7 @@ import com.xa.mass.engine.util.LogUtils;
 import com.xa.mass.gateway.dispatcher.DispatcherContext;
 import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
 import com.xa.mass.gateway.dispatcher.port.ControlEventRequestFrameBridge;
-import com.xa.mass.gateway.queue.MessageCodec;
+import com.xa.mass.gateway.queue.WebSocketGatewayFrameCodec;
 import com.xa.mass.gateway.queue.OutboundDelivery;
 import com.xa.mass.sdk.event.EventPrincipal;
 import com.xa.mass.sdk.event.EventRequest;
@@ -138,8 +138,8 @@ public class MassApplication {
             MessageTransporter<String, OutboundDelivery> messageTransporter = gatewayConfig.createMessageTransporter();
             logger.info("Message transporter created");
 
-            MessageCodec messageCodec = gatewayConfig.createMessageCodec();
-            logger.info("Message codec created");
+            WebSocketGatewayFrameCodec frameCodec = gatewayConfig.resolveFrameCodec();
+            logger.info("WebSocket gateway frame codec created");
 
             WorkerSystemEventChannel systemEventChannel = gatewayConfig.resolveSystemEventChannel();
             TaskMsgDispatchListener taskMsgDispatchListener = null;
@@ -152,7 +152,7 @@ public class MassApplication {
                                 engineConfig.getWorkerManager(),
                                 messageTransporter,
                                 endpointRegistry,
-                                messageCodec,
+                                frameCodec,
                                 taskResultIngestChannel,
                                 systemEventChannel,
                                 gatewayConfig.isEnabled()
@@ -164,7 +164,7 @@ public class MassApplication {
             dispatcherContext = new DispatcherContext(
                     messageTransporter,
                     endpointRegistry,
-                    messageCodec,
+                    frameCodec,
                     taskResultIngestChannel,
                     systemEventChannel,
                     ports.controlEventRequestFrameBridge(),
@@ -219,7 +219,7 @@ public class MassApplication {
     private void startTransportServer() {
         logger.info("Starting transport server");
         transportServer = gatewayConfig.createTransportServer(
-                dispatcherContext.getMessageCodec(),
+                dispatcherContext.getFrameCodec(),
                 dispatcherContext.getMessageTransporter()::sendInput,
                 endpointRegistry,
                 serverPort
@@ -297,7 +297,7 @@ public class MassApplication {
     public void setSdkEventDispatcher(BiFunction<EventRequest, EventPrincipal, EventResponse> sdkEventDispatcher) {
         ControlEventRequestFrameBridge controlEventRequestFrameBridge = sdkEventDispatcher == null
                 ? null
-                : new com.xa.mass.gateway.dispatcher.bridge.WorkerControlEventRequestBridge(sdkEventDispatcher);
+                : sdkEventDispatcher::apply;
         configureGatewayRuntime((gatewayRuntimePorts != null ? gatewayRuntimePorts : GatewayRuntimePorts.defaults())
                 .withControlEventRequestFrameBridge(controlEventRequestFrameBridge));
     }

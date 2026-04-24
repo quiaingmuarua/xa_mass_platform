@@ -9,8 +9,10 @@ import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
 
 /**
- * Gateway runtime component.
- * Handles external connections, message routing, and message processing.
+ * Gateway adapter runtime.
+ *
+ * <p>Owns dispatcher lifecycle plus transport endpoint shutdown for the
+ * current gateway adapter. It is not a business-event router.
  */
 public class MassGateway {
 
@@ -36,8 +38,8 @@ public class MassGateway {
         logger.info("Starting MassGateway with max connections: {}", config.getMaxConnections());
 
         try {
-            startMessageEngine();
-            initializeConnectionManagement();
+            startDispatcher();
+            initializeEndpointRuntime();
 
             running = true;
             logger.info("MassGateway started successfully");
@@ -58,8 +60,8 @@ public class MassGateway {
         logger.info("Stopping MassGateway...");
 
         try {
-            stopMessageEngine();
-            shutdownConnectionManagement();
+            stopDispatcher();
+            shutdownEndpointRuntime();
 
             running = false;
             logger.info("MassGateway stopped successfully");
@@ -69,47 +71,47 @@ public class MassGateway {
         }
     }
 
-    private void startMessageEngine() {
-        logger.info("Starting message processing engine...");
+    private void startDispatcher() {
+        logger.info("Starting gateway dispatcher...");
 
         try {
             messageDispatcher = new ServerMessageDispatcher(dispatcherContext);
             messageDispatcher.start();
-            logger.info("Message processing engine started successfully");
+            logger.info("Gateway dispatcher started successfully");
         } catch (Exception e) {
-            logger.error("Failed to start message processing engine", e);
-            throw new RuntimeException("Failed to start message processing engine", e);
+            logger.error("Failed to start gateway dispatcher", e);
+            throw new RuntimeException("Failed to start gateway dispatcher", e);
         }
     }
 
-    private void stopMessageEngine() {
-        logger.info("Stopping message processing engine...");
+    private void stopDispatcher() {
+        logger.info("Stopping gateway dispatcher...");
 
         try {
             if (messageDispatcher != null) {
                 messageDispatcher.stop();
-                logger.info("Message processing engine stopped successfully");
+                logger.info("Gateway dispatcher stopped successfully");
             }
         } catch (Exception e) {
-            logger.error("Error stopping message processing engine", e);
+            logger.error("Error stopping gateway dispatcher", e);
         }
     }
 
-    private void initializeConnectionManagement() {
-        logger.info("Initializing connection management...");
-        logger.info("Connection management ready (max={} connections)", config.getMaxConnections());
+    private void initializeEndpointRuntime() {
+        logger.info("Initializing endpoint runtime...");
+        logger.info("Endpoint runtime ready (max={} connections)", config.getMaxConnections());
     }
 
-    private void shutdownConnectionManagement() {
-        logger.info("Shutting down connection management...");
+    private void shutdownEndpointRuntime() {
+        logger.info("Shutting down endpoint runtime...");
         try {
             WorkerEndpointRegistry endpointRegistry = dispatcherContext.getEndpointRegistry();
             if (endpointRegistry != null) {
                 endpointRegistry.shutdown();
             }
-            logger.info("Connection management shut down");
+            logger.info("Endpoint runtime shut down");
         } catch (Exception e) {
-            logger.error("Error shutting down connection management", e);
+            logger.error("Error shutting down endpoint runtime", e);
         }
     }
 

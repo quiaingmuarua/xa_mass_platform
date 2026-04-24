@@ -3,8 +3,8 @@ package com.xa.mass.starter.transport;
 import com.xa.mass.base.channel.tranporter.MessageTransporter;
 import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.WorkerManager;
-import com.xa.mass.gateway.queue.MessageCodec;
 import com.xa.mass.gateway.queue.OutboundDelivery;
+import com.xa.mass.gateway.queue.WebSocketGatewayFrameCodec;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
@@ -19,7 +19,7 @@ public final class WorkerTransportRuntimeFactoryContext {
     private final WorkerManager workerManager;
     private final MessageTransporter<String, OutboundDelivery> messageTransporter;
     private final WorkerEndpointRegistry endpointRegistry;
-    private final MessageCodec messageCodec;
+    private final WebSocketGatewayFrameCodec frameCodec;
     private final TaskResultIngestChannel taskResultIngestChannel;
     private final WorkerSystemEventChannel systemEventChannel;
     private final boolean gatewayEnabled;
@@ -28,7 +28,7 @@ public final class WorkerTransportRuntimeFactoryContext {
                                                 WorkerManager workerManager,
                                                 MessageTransporter<String, OutboundDelivery> messageTransporter,
                                                 WorkerEndpointRegistry endpointRegistry,
-                                                MessageCodec messageCodec,
+                                                WebSocketGatewayFrameCodec frameCodec,
                                                 TaskResultIngestChannel taskResultIngestChannel,
                                                 WorkerSystemEventChannel systemEventChannel,
                                                 boolean gatewayEnabled) {
@@ -36,7 +36,7 @@ public final class WorkerTransportRuntimeFactoryContext {
         this.workerManager = workerManager;
         this.messageTransporter = messageTransporter;
         this.endpointRegistry = endpointRegistry;
-        this.messageCodec = messageCodec;
+        this.frameCodec = frameCodec;
         this.taskResultIngestChannel = taskResultIngestChannel;
         this.systemEventChannel = systemEventChannel;
         this.gatewayEnabled = gatewayEnabled;
@@ -58,8 +58,8 @@ public final class WorkerTransportRuntimeFactoryContext {
         return endpointRegistry;
     }
 
-    public MessageCodec getMessageCodec() {
-        return messageCodec;
+    public WebSocketGatewayFrameCodec getFrameCodec() {
+        return frameCodec;
     }
 
     public TaskResultIngestChannel getTaskResultIngestChannel() {

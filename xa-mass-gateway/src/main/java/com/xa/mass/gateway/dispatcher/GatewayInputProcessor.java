@@ -31,25 +31,25 @@ public final class GatewayInputProcessor {
 
     public boolean process(String rawJson) {
         try {
-            JsonObject frame = context.getMessageCodec().parseObject(rawJson);
+            JsonObject frame = context.getFrameCodec().parseObject(rawJson);
             if (frame == null) {
                 return true;
             }
-            String workerId = context.getMessageCodec().extractWorkerId(frame);
-            String traceId = context.getMessageCodec().extractMessageId(frame);
-            if (context.getMessageCodec().isEventFirstControlResponse(frame)) {
+            String workerId = context.getFrameCodec().extractWorkerId(frame);
+            String traceId = context.getFrameCodec().extractMessageId(frame);
+            if (context.getFrameCodec().isEventFirstControlResponse(frame)) {
                 return processControlEventResponse(rawJson, frame);
             }
-            if (context.getMessageCodec().isEventFirstControlRequest(frame)) {
+            if (context.getFrameCodec().isEventFirstControlRequest(frame)) {
                 return processControlEventRequest(frame, workerId, traceId);
             }
-            if (context.getMessageCodec().isHeartbeatPing(frame)) {
+            if (context.getFrameCodec().isHeartbeatPing(frame)) {
                 return processHeartbeatPing(frame, workerId, traceId);
             }
-            if (context.getMessageCodec().isHeartbeatPong(frame)) {
+            if (context.getFrameCodec().isHeartbeatPong(frame)) {
                 return processHeartbeatPong(frame);
             }
-            if (context.getMessageCodec().isTaskStep(frame)) {
+            if (context.getFrameCodec().isTaskStep(frame)) {
                 return processTaskStep(frame, workerId, traceId);
             }
             return processUnknownFrame();
@@ -62,18 +62,18 @@ public final class GatewayInputProcessor {
     private boolean processHeartbeatPing(JsonObject frame, String workerId, String traceId) {
         if (context.getSystemEventChannel() != null) {
             context.getSystemEventChannel().publishWorkerHeartbeat(workerId, "heartbeat",
-                    context.getMessageCodec().extractMessageId(frame));
+                    context.getFrameCodec().extractMessageId(frame));
         }
         context.getMessageTransporter().sendOutput(new OutboundDelivery(
                 workerId,
-                context.getMessageCodec().encodeHeartbeatPong(frame),
+                context.getFrameCodec().encodeHeartbeatPong(frame),
                 traceId
         ));
         return true;
     }
 
     private boolean processHeartbeatPong(JsonObject frame) {
-        logger.debug("Received pong from {}", context.getMessageCodec().extractWorkerId(frame));
+        logger.debug("Received pong from {}", context.getFrameCodec().extractWorkerId(frame));
         return true;
     }
 
@@ -81,25 +81,25 @@ public final class GatewayInputProcessor {
         if (context.getTaskResultIngestChannel() == null) {
             context.getMessageTransporter().sendOutput(new OutboundDelivery(
                     workerId,
-                    context.getMessageCodec().encodeTaskAck(frame, 503, "task step bridge unavailable"),
+                    context.getFrameCodec().encodeTaskAck(frame, 503, "task step bridge unavailable"),
                     traceId
             ));
             return true;
         }
         try {
-            TaskResultReport report = context.getMessageCodec().decodeTaskResult(frame);
+            TaskResultReport report = context.getFrameCodec().decodeTaskResult(frame);
             boolean handled = context.getTaskResultIngestChannel().ingest(report);
             int code = handled ? 200 : 404;
             String message = handled ? "task result processed" : "task result ignored";
             context.getMessageTransporter().sendOutput(new OutboundDelivery(
                     workerId,
-                    context.getMessageCodec().encodeTaskAck(frame, code, message),
+                    context.getFrameCodec().encodeTaskAck(frame, code, message),
                     traceId
             ));
         } catch (IllegalArgumentException ex) {
             context.getMessageTransporter().sendOutput(new OutboundDelivery(
                     workerId,
-                    context.getMessageCodec().encodeTaskAck(frame, 400, ex.getMessage()),
+                    context.getFrameCodec().encodeTaskAck(frame, 400, ex.getMessage()),
                     traceId
             ));
         }
@@ -107,7 +107,7 @@ public final class GatewayInputProcessor {
     }
 
     private boolean processControlEventRequest(JsonObject frame, String workerId, String traceId) {
-        EventRequest request = context.getMessageCodec().decodeControlEventRequest(frame);
+        EventRequest request = context.getFrameCodec().decodeControlEventRequest(frame);
         EventResponse response;
         if (context.getControlEventRequestFrameBridge() == null) {
             response = EventResponse.failure(
@@ -116,13 +116,13 @@ public final class GatewayInputProcessor {
                     request.getRequestId()
             );
         } else {
-            EventPrincipal principal = context.getMessageCodec().decodeControlEventPrincipal(frame);
+            EventPrincipal principal = context.getFrameCodec().decodeControlEventPrincipal(frame);
             response = context.getControlEventRequestFrameBridge()
                     .handleControlEventRequest(request, principal);
         }
         context.getMessageTransporter().sendOutput(new OutboundDelivery(
                 workerId,
-                context.getMessageCodec().encodeControlEventResponse(frame, response),
+                context.getFrameCodec().encodeControlEventResponse(frame, response),
                 traceId
         ));
         return true;
@@ -132,10 +132,10 @@ public final class GatewayInputProcessor {
         if (context.getControlEventResponseFrameSink() != null) {
             context.getControlEventResponseFrameSink().handleControlEventResponse(
                     rawJson,
-                    context.getMessageCodec().extractWorkerId(frame),
-                    context.getMessageCodec().extractProject(frame),
-                    context.getMessageCodec().extractMessageId(frame),
-                    context.getMessageCodec().extractControlResponseData(frame)
+                    context.getFrameCodec().extractWorkerId(frame),
+                    context.getFrameCodec().extractProject(frame),
+                    context.getFrameCodec().extractMessageId(frame),
+                    context.getFrameCodec().extractControlResponseData(frame)
             );
         }
         return true;
