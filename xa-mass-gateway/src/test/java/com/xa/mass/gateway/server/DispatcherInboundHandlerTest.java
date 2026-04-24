@@ -133,6 +133,34 @@ class DispatcherInboundHandlerTest {
     }
 
     @Test
+    void taskStepWithoutProjectStillEnqueuesForDownstreamHandlerValidation() throws Exception {
+        String taskJson = """
+                {
+                  "msgId": "task-001",
+                  "msgType": "TASK",
+                  "subMsgType": "step",
+                  "context": {
+                    "workerId": "worker-1",
+                    "connRole": "%s",
+                    "taskId": "task-123"
+                  },
+                  "payload": {
+                    "status": "SUCCESS"
+                  }
+                }
+                """.formatted(SessionRoles.TASK_MESSAGES);
+
+        handler.channelRead0(ctx, frame(taskJson));
+
+        assertNull(sentFrame.get(), "Transport ingress should not reject missing project at this layer");
+        ArgumentCaptor<Envelope> envelopeCaptor = ArgumentCaptor.forClass(Envelope.class);
+        verify(transporter).sendInput(envelopeCaptor.capture());
+        assertNull(envelopeCaptor.getValue().getProject(),
+                "Missing project should stay null at ingress and be handled by downstream compatibility/business layers");
+        assertEquals("task-001", envelopeCaptor.getValue().getTraceId());
+    }
+
+    @Test
     void controlEventInboundStoresCanonicalEventCodeOnEnvelope() throws Exception {
         String controlJson = """
                 {

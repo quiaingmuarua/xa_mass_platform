@@ -11,7 +11,6 @@ import com.xa.mass.gateway.model.enums.MessageType;
  * globally unique SDK event codes instead of adding new tuple identities here.
  */
 public record TransportInboundRoute(
-        String project,
         MessageType messageType,
         String subMsgType,
         MassMessageHandler handler

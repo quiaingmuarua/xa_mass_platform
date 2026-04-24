@@ -170,15 +170,11 @@ public class MassApplication {
                 transportRuntimeRegistry.registerInboundHandlers(messageHandlerRegistry);
                 taskMsgDispatchListener = transportRuntimeRegistry.createDispatchListener();
             }
-            messageHandlerRegistry.register(
-                    null,
-                    MessageType.EVENT,
+            messageHandlerRegistry.registerEventCompatHandler(
                     ManualDebugChatProtocol.SUB_MSG_TYPE,
                     new ManualDebugMessageHandler()
             );
-            messageHandlerRegistry.register(
-                    null,
-                    MessageType.EVENT,
+            messageHandlerRegistry.registerEventCompatHandler(
                     WorkerControlEventProtocol.SUB_MSG_TYPE,
                     new ManualDebugMessageHandler()
             );

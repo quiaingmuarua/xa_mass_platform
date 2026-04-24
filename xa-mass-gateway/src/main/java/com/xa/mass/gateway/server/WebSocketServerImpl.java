@@ -24,8 +24,12 @@ import org.slf4j.MDC;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * Netty WebSocket server implementation.
- * Starts, stops, and tracks worker connections.
+ * Netty WebSocket transport ingress for the current gateway adapter.
+ *
+ * <p>This server should behave like a transport router: accept connections,
+ * frame inbound text messages, and hand them to the dispatcher/runtime
+ * pipeline. It must not grow into the place where business/control payloads
+ * are interpreted.
  */
 public class WebSocketServerImpl implements MassWebSocketServer {
 

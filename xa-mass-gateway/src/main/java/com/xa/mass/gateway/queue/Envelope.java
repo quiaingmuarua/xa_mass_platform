@@ -7,11 +7,9 @@ public class Envelope {
     private String eventCode;   // 可选的全局能力标识元数据；不是连接路由键
     private String traceId;     // 可选，用于日志追踪
     private long receivedAt;
-    private String project;     // 所属项目名，如 WhatsApp、Telegram
+    private String project;     // 可选 scope 元数据；不再提供默认项目值
 
-    // 默认 project 可直接在构造器或 builder 设置
     public Envelope() {
-        this.project = "RCS";
     }
 
     private Envelope(Builder builder) {
@@ -21,7 +19,7 @@ public class Envelope {
         this.eventCode = builder.eventCode;
         this.traceId = builder.traceId;
         this.receivedAt = builder.receivedAt;
-        this.project = builder.project != null ? builder.project : "RCS";
+        this.project = normalize(builder.project);
     }
 
     public static Builder builder() {
@@ -78,11 +76,11 @@ public class Envelope {
     }
 
     public String getProject() {
-        return project != null ? project : "RCS";
+        return project;
     }
 
     public void setProject(String project) {
-        this.project = project;
+        this.project = normalize(project);
     }
 
     @Override
@@ -93,9 +91,16 @@ public class Envelope {
                 ", eventCode='" + eventCode + '\'' +
                 ", traceId='" + traceId + '\'' +
                 ", receivedAt=" + receivedAt +
-                ", project='" + getProject() + '\'' +
+                ", project='" + project + '\'' +
                 ", rawJson=" + (rawJson != null ? rawJson.substring(0, Math.min(100, rawJson.length())) + "..." : null) +
                 '}';
+    }
+
+    private static String normalize(String project) {
+        if (project == null || project.isBlank()) {
+            return null;
+        }
+        return project.trim();
     }
 
     // ----------- Builder -----------

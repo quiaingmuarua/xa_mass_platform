@@ -70,6 +70,9 @@ public class RedisEnvelopeQueue implements MessageQueue<Envelope> {
             if (envelope.getTraceId() != null) {
                 fields.put("traceId", envelope.getTraceId());
             }
+            if (envelope.getProject() != null) {
+                fields.put("project", envelope.getProject());
+            }
 
             // 加入 maxlen 避免堆积
             writeCommands.xadd(streamKey, XAddArgs.Builder.maxlen(10000), fields);
@@ -110,6 +113,7 @@ public class RedisEnvelopeQueue implements MessageQueue<Envelope> {
                 .connRole(map.get("connRole"))
                 .eventCode(map.get("eventCode"))
                 .traceId(map.get("traceId"))
+                .project(map.get("project"))
                 .receivedAt(Long.parseLong(map.getOrDefault("receivedAt", String.valueOf(System.currentTimeMillis()))))
                 .build();
     }

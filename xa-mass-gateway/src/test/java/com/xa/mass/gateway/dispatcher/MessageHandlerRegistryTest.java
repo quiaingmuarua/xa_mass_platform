@@ -2,6 +2,7 @@ package com.xa.mass.gateway.dispatcher;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
+import com.xa.mass.base.debug.ManualDebugChatProtocol;
 import com.xa.mass.base.debug.WorkerControlEventProtocol;
 import com.xa.mass.gateway.dispatcher.event.EventGatewayBridge;
 import com.xa.mass.gateway.dispatcher.handler.MassMessageHandler;
@@ -33,44 +34,40 @@ class MessageHandlerRegistryTest {
     // ---- register + resolve ----
 
     @Test
-    void resolveRegisteredProjectHandler() {
+    void resolveRegisteredTaskStepHandler() {
         MassMessageHandler handler = msg -> Collections.emptyList();
-        registry.register("myApp", MessageType.TASK, "sub1", handler);
+        registry.register(MessageType.TASK, "step", handler);
 
-        ResolutionResult result = registry.resolve("myApp", MessageType.TASK, "sub1");
+        ResolutionResult result = registry.resolve(MessageType.TASK, "step");
 
         assertTrue(result.isFound());
         assertSame(handler, result.getHandler());
     }
 
     @Test
-    void projectHandlerTakesPriorityOverGlobal() {
-        MassMessageHandler globalHandler = msg -> Collections.emptyList();
-        MassMessageHandler projectHandler = msg -> Collections.emptyList();
-        registry.register(null, MessageType.TASK, "", globalHandler);      // global
-        registry.register("proj", MessageType.TASK, "", projectHandler);   // project
+    void resolveRegisteredEventCompatHandler() {
+        MassMessageHandler handler = msg -> Collections.emptyList();
+        registry.register(MessageType.EVENT, ManualDebugChatProtocol.SUB_MSG_TYPE, handler);
 
-        ResolutionResult result = registry.resolve("proj", MessageType.TASK, "");
+        ResolutionResult result = registry.resolve(MessageType.EVENT, ManualDebugChatProtocol.SUB_MSG_TYPE);
+
         assertTrue(result.isFound());
-        assertSame(projectHandler, result.getHandler());
+        assertSame(handler, result.getHandler());
     }
 
     @Test
-    void fallsBackToGlobalHandlerWhenNoProjectMatch() {
-        MassMessageHandler globalHandler = msg -> Collections.emptyList();
-        registry.register(null, MessageType.PING, "heartbeat", globalHandler);
+    void rejectsUnsupportedTupleRegistration() {
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+                () -> registry.register(MessageType.STATUS, "unknown", msg -> Collections.emptyList()));
 
-        ResolutionResult result = registry.resolve("anyProject", MessageType.PING, "heartbeat");
-
-        assertTrue(result.isFound());
-        assertSame(globalHandler, result.getHandler());
+        assertTrue(error.getMessage().contains("TASK/step"));
     }
 
     @Test
     void fallbackResultWhenNoHandlerAndFallbackEnabled() {
         registry.setEnableFallback(true);
 
-        ResolutionResult result = registry.resolve("x", MessageType.STATUS, "unknownSub");
+        ResolutionResult result = registry.resolve(MessageType.STATUS, "unknownSub");
 
         assertTrue(result.isFallback());
         assertFalse(result.isFound());
@@ -78,7 +75,7 @@ class MessageHandlerRegistryTest {
 
     @Test
     void defaultNoHandlerResultIsNotFound() {
-        ResolutionResult result = registry.resolve("x", MessageType.STATUS, "unknownSub");
+        ResolutionResult result = registry.resolve(MessageType.STATUS, "unknownSub");
 
         assertTrue(result.isNotFound());
         assertFalse(result.isFallback());
@@ -88,7 +85,7 @@ class MessageHandlerRegistryTest {
     void notFoundResultWhenNoHandlerAndFallbackDisabled() {
         registry.setEnableFallback(false);
 
-        ResolutionResult result = registry.resolve("x", MessageType.STATUS, "unknownSub");
+        ResolutionResult result = registry.resolve(MessageType.STATUS, "unknownSub");
 
         assertFalse(result.isFound());
         assertFalse(result.isFallback());
@@ -97,7 +94,7 @@ class MessageHandlerRegistryTest {
     @Test
     void rejectsDirectControlEventTupleRegistration() {
         IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
-                () -> registry.register("demoApp", MessageType.CONTROL,
+                () -> registry.register(MessageType.CONTROL,
                         WorkerControlEventProtocol.SUB_MSG_TYPE, msg -> Collections.emptyList()));
 
         assertTrue(error.getMessage().contains("CONTROL/event"));
@@ -132,8 +129,8 @@ class MessageHandlerRegistryTest {
 
     @Test
     void resolveViaMassMessageDelegates() {
-        registry.autoRegister();
-        MassMessage msg = massMessage("GLOBAL", MessageType.TASK, "");
+        registry.registerTaskStepHandler(msg -> Collections.emptyList());
+        MassMessage msg = massMessage("GLOBAL", MessageType.TASK, "step");
 
         ResolutionResult result = registry.resolve(msg);
         assertTrue(result.isFound());

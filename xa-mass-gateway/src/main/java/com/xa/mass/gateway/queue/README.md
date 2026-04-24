@@ -16,6 +16,7 @@ This package contains gateway-side message codec and transport helpers.
 - It does not define task lifecycle, assignment, or result semantics.
 - `Envelope.eventCode` is optional capability metadata derived from the frame payload when available.
 - `Envelope.eventCode` is not a connection/session routing key; connection dispatch still keys off `workerId + connRole`.
+- `Envelope.project` is optional scope metadata only; do not inject a synthetic default project in transport helpers.
 
 ## Working Rule
 

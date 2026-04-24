@@ -1,6 +1,7 @@
 package com.xa.mass.gateway.dispatcher.middleware;
 
 import com.xa.mass.base.debug.WorkerDebugMessageStore;
+import com.xa.mass.base.debug.ManualDebugChatProtocol;
 import com.xa.mass.gateway.dispatcher.MessageHandlerRegistry;
 import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
 import com.xa.mass.gateway.dispatcher.handler.MassMessageEventCodeResolver;
@@ -51,15 +52,16 @@ class ProcessEnvelopeMiddlewareTest {
     @Test
     void knownHandlerIsInvokedAndResponseEnqueued() {
         AtomicReference<MassMessage> captured = new AtomicReference<>();
-        handlerRegistry.register("proj", MessageType.PING, "hb", msg -> {
+        handlerRegistry.register(MessageType.EVENT, ManualDebugChatProtocol.SUB_MSG_TYPE, msg -> {
             captured.set(msg);
             MassMessage resp = new MassMessage();
-            resp.setMsgType(MessageType.PONG);
+            resp.setMsgType(MessageType.EVENT);
+            resp.setSubMsgType(ManualDebugChatProtocol.SUB_MSG_TYPE);
             resp.setContext(msg.getContext());
             return List.of(resp);
         });
 
-        MassMessage msg = message("proj", MessageType.PING, "hb");
+        MassMessage msg = message("proj", MessageType.EVENT, ManualDebugChatProtocol.SUB_MSG_TYPE);
         Envelope envelope = envelope(codec.encode(msg));
 
         middleware.handle(envelope, context);
@@ -95,8 +97,8 @@ class ProcessEnvelopeMiddlewareTest {
 
     @Test
     void handlerReturningEmptyResponseDoesNotSendOutput() {
-        handlerRegistry.register("p", MessageType.PONG, "hb", msg -> Collections.emptyList());
-        MassMessage msg = message("p", MessageType.PONG, "hb");
+        handlerRegistry.register(MessageType.EVENT, ManualDebugChatProtocol.SUB_MSG_TYPE, msg -> Collections.emptyList());
+        MassMessage msg = message("p", MessageType.EVENT, ManualDebugChatProtocol.SUB_MSG_TYPE);
         Envelope envelope = envelope(codec.encode(msg));
 
         middleware.handle(envelope, context);
@@ -106,15 +108,15 @@ class ProcessEnvelopeMiddlewareTest {
 
     @Test
     void responseEnvelopePropagatesCanonicalEventCodeMetadata() {
-        handlerRegistry.register("proj", MessageType.CONTROL, "manual-chat", msg -> {
+        handlerRegistry.register(MessageType.EVENT, ManualDebugChatProtocol.SUB_MSG_TYPE, msg -> {
             MassMessage resp = new MassMessage();
-            resp.setMsgType(MessageType.CONTROL);
-            resp.setSubMsgType("manual-chat");
+            resp.setMsgType(MessageType.EVENT);
+            resp.setSubMsgType(ManualDebugChatProtocol.SUB_MSG_TYPE);
             resp.setContext(msg.getContext());
             return List.of(resp);
         });
 
-        MassMessage msg = message("proj", MessageType.CONTROL, "manual-chat");
+        MassMessage msg = message("proj", MessageType.EVENT, ManualDebugChatProtocol.SUB_MSG_TYPE);
         Envelope envelope = Envelope.builder()
                 .rawJson(codec.encode(msg))
                 .workerId("worker-1")
@@ -131,7 +133,7 @@ class ProcessEnvelopeMiddlewareTest {
 
     @Test
     void responseEnvelopeCanDeriveCanonicalEventCodeFromHandlerWhenInboundEnvelopeHasNone() {
-        handlerRegistry.register("proj", MessageType.TASK, "step", new DerivedEventHandler());
+        handlerRegistry.register(MessageType.TASK, "step", new DerivedEventHandler());
 
         MassMessage msg = message("proj", MessageType.TASK, "step");
         Envelope envelope = Envelope.builder()

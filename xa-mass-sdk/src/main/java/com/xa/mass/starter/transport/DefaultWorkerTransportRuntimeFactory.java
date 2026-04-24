@@ -44,7 +44,7 @@ public class DefaultWorkerTransportRuntimeFactory implements WorkerTransportRunt
             bindings.add(TransportBinding.builder(webSocketAdapter)
                     .taskResultIngestChannel(taskResultHandler)
                     .inboundRoutes(List.of(
-                            new TransportInboundRoute(null, MessageType.TASK, "step", taskResultHandler)
+                            new TransportInboundRoute(MessageType.TASK, "step", taskResultHandler)
                     ))
                     .build());
             defaultDispatchProtocol = webSocketAdapter.protocol();

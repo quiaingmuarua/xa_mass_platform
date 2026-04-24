@@ -10,8 +10,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * 消息解析器
- * 使用 MessageCodec 进行消息的解析和验证
+ * Transport-frame decoder and metadata extractor for the current gateway
+ * adapter.
+ *
+ * <p>This utility should stay limited to wire-shape decoding plus minimal
+ * routing/diagnostic metadata extraction. Business/control payload semantics
+ * belong in downstream handlers.
  */
 public class MessageParser {
 
@@ -41,6 +45,7 @@ public class MessageParser {
         return Envelope.builder().rawJson(rawJson).workerId(ctx.getWorkerId())
                 .connRole(ctx.getConnRole())
                 .eventCode(extractEventCode(msg))
+                .project(msg.getProject())
                 .traceId(msg.getMsgId())
                 .receivedAt(System.currentTimeMillis())
                 .build();

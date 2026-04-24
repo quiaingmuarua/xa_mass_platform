@@ -56,7 +56,7 @@ public final class TransportRuntimeRegistry {
     public void registerInboundHandlers(MessageHandlerRegistry registry) {
         for (TransportBinding binding : bindings) {
             for (TransportInboundRoute route : binding.getInboundRoutes()) {
-                registry.register(route.project(), route.messageType(), route.subMsgType(), route.handler());
+                registry.register(route.messageType(), route.subMsgType(), route.handler());
             }
         }
     }
