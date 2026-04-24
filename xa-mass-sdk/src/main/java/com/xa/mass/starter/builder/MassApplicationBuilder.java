@@ -7,7 +7,7 @@ import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.engine.strategy.TaskScheduler;
-import com.xa.mass.gateway.queue.Envelope;
+import com.xa.mass.gateway.queue.OutboundDelivery;
 import com.xa.mass.sdk.MassBootstrapDataProvider;
 import com.xa.mass.starter.MassApplication;
 import com.xa.mass.starter.MassEngine;
@@ -55,8 +55,8 @@ public class MassApplicationBuilder {
                 .gateway(gateway -> gateway
                         .enabled(true)
                         .maxConnections(1000)
-                        .inputQueue(new InMemoryMessageQueue<>("input", Envelope.class))
-                        .outputQueue(new InMemoryMessageQueue<>("output", Envelope.class)))
+                        .inputQueue(new InMemoryMessageQueue<>("input", String.class))
+                        .outputQueue(new InMemoryMessageQueue<>("output", OutboundDelivery.class)))
                 .engine(engine -> engine
                         .enabled(true)
                         .workerThreads(8))
@@ -69,7 +69,7 @@ public class MassApplicationBuilder {
      * if you need to share queue instances across components.
      */
     @Deprecated(forRemoval = false)
-    public static MassApplication createDevelopment(int port, MessageQueue<Envelope> inputQueue, MessageQueue<Envelope> outputQueue) {
+    public static MassApplication createDevelopment(int port, MessageQueue<String> inputQueue, MessageQueue<OutboundDelivery> outputQueue) {
         return create()
                 .server(port)
                 .gateway(gateway -> gateway
@@ -92,8 +92,8 @@ public class MassApplicationBuilder {
                 .gateway(gateway -> gateway
                         .enabled(true)
                         .maxConnections(5000)
-                        .inputQueue(new InMemoryMessageQueue<>("input", Envelope.class))
-                        .outputQueue(new InMemoryMessageQueue<>("output", Envelope.class)))
+                        .inputQueue(new InMemoryMessageQueue<>("input", String.class))
+                        .outputQueue(new InMemoryMessageQueue<>("output", OutboundDelivery.class)))
                 .engine(engine -> engine
                         .enabled(true)
                         .workerThreads(16))
@@ -104,7 +104,7 @@ public class MassApplicationBuilder {
      * @deprecated Use {@link #createProduction(int)} — queues are now provisioned internally.
      */
     @Deprecated(forRemoval = false)
-    public static MassApplication createProduction(int port, MessageQueue<Envelope> inputQueue, MessageQueue<Envelope> outputQueue) {
+    public static MassApplication createProduction(int port, MessageQueue<String> inputQueue, MessageQueue<OutboundDelivery> outputQueue) {
         return create()
                 .server(port)
                 .gateway(gateway -> gateway
@@ -236,12 +236,12 @@ public class MassApplicationBuilder {
             return this;
         }
 
-        public GatewayBuilder inputQueue(MessageQueue<Envelope> inputQueue) {
+        public GatewayBuilder inputQueue(MessageQueue<String> inputQueue) {
             config.setInputQueue(inputQueue);
             return this;
         }
 
-        public GatewayBuilder outputQueue(MessageQueue<Envelope> outputQueue) {
+        public GatewayBuilder outputQueue(MessageQueue<OutboundDelivery> outputQueue) {
             config.setOutputQueue(outputQueue);
             return this;
         }

@@ -1,8 +1,8 @@
 package com.xa.mass.gateway.dispatcher.port;
 
-import com.xa.mass.gateway.model.massMessage.MassMessage;
-
-import java.util.List;
+import com.xa.mass.sdk.event.EventPrincipal;
+import com.xa.mass.sdk.event.EventRequest;
+import com.xa.mass.sdk.event.EventResponse;
 
 /**
  * Explicit adapter port for inbound {@code CONTROL/event} request frames.
@@ -10,5 +10,5 @@ import java.util.List;
 @FunctionalInterface
 public interface ControlEventRequestFrameBridge {
 
-    List<MassMessage> handleControlEventRequest(MassMessage frame);
+    EventResponse handleControlEventRequest(EventRequest request, EventPrincipal principal);
 }

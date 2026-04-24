@@ -1,45 +1,34 @@
 package com.xa.mass.gateway.dispatcher;
 
-import com.google.gson.Gson;
+import com.google.gson.JsonObject;
 import com.xa.mass.base.debug.WorkerControlEventProtocol;
-import com.xa.mass.gateway.model.enums.MessageDirection;
-import com.xa.mass.gateway.model.enums.MessageType;
-import com.xa.mass.gateway.model.massMessage.MassMessage;
-import com.xa.mass.gateway.model.massMessage.MessageAckPayload;
+import com.xa.mass.gateway.queue.MessageCodec;
 import com.xa.mass.transport.channel.NoopWorkerSystemEventChannel;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.Collections;
-import java.util.List;
-
 /**
  * Router for current WebSocket compatibility frames.
- *
- * <p>This type is adapter-facing only. New business/control capabilities must
- * not be registered here by tuple; they should flow through SDK event
- * definitions and use explicit compatibility bridges where needed.
  */
 public class GatewayFrameRouter {
     private static final Logger log = LoggerFactory.getLogger(GatewayFrameRouter.class);
     private static final String SUBTYPE_HEARTBEAT = "heartbeat";
 
-    private final Gson gson = new Gson();
     private final WorkerSystemEventChannel systemEventChannel;
+    private final MessageCodec messageCodec;
 
-    public GatewayFrameRouter() {
-        this(NoopWorkerSystemEventChannel.INSTANCE);
+    public GatewayFrameRouter(MessageCodec messageCodec) {
+        this(messageCodec, NoopWorkerSystemEventChannel.INSTANCE);
     }
 
-    public GatewayFrameRouter(WorkerSystemEventChannel systemEventChannel) {
-        this.systemEventChannel = systemEventChannel != null
-                ? systemEventChannel
-                : NoopWorkerSystemEventChannel.INSTANCE;
+    public GatewayFrameRouter(MessageCodec messageCodec, WorkerSystemEventChannel systemEventChannel) {
+        this.messageCodec = messageCodec;
+        this.systemEventChannel = systemEventChannel != null ? systemEventChannel : NoopWorkerSystemEventChannel.INSTANCE;
     }
 
-    public GatewayFrameKind route(MassMessage frame) {
-        if (frame == null || frame.getMsgType() == null) {
+    public GatewayFrameKind route(JsonObject frame) {
+        if (frame == null) {
             return GatewayFrameKind.UNKNOWN;
         }
         if (isHeartbeatPing(frame)) {
@@ -48,77 +37,60 @@ public class GatewayFrameRouter {
         if (isHeartbeatPong(frame)) {
             return GatewayFrameKind.PONG_HEARTBEAT;
         }
-        if (isTaskDispatchFrame(frame)) {
+        if (isTaskStep(frame)) {
             return GatewayFrameKind.TASK_STEP;
         }
-        if (shouldRouteToWorkerControlEventResponse(frame)) {
+        if (isControlEventResponse(frame)) {
             return GatewayFrameKind.CONTROL_EVENT_RESPONSE;
         }
-        if (shouldRouteToWorkerControlEventBridge(frame)) {
+        if (isControlEventRequest(frame)) {
             return GatewayFrameKind.CONTROL_EVENT_REQUEST;
         }
         return GatewayFrameKind.UNKNOWN;
     }
 
-    public List<MassMessage> handlePing(MassMessage msg) {
-        log.debug("Received ping from {}/{}", msg.getContext().getWorkerId(), msg.getContext().getConnRole());
-        systemEventChannel.publishWorkerHeartbeat(
-                msg.getContext().getWorkerId(),
-                "heartbeat",
-                msg.getMsgId()
-        );
-        MassMessage pong = new MassMessage();
-        pong.setMsgId(msg.getMsgId());
-        pong.setResponse(true);
-        pong.setMsgType(MessageType.PONG);
-        pong.setSubMsgType("");
-        pong.setFrom(MessageDirection.SERVER);
-        pong.setContext(msg.getContext());
-        pong.setPayload(gson.toJsonTree(new MessageAckPayload(200, "pong")));
-        return Collections.singletonList(pong);
+    public String handlePing(JsonObject frame) {
+        String workerId = messageCodec.extractWorkerId(frame);
+        String msgId = messageCodec.extractMessageId(frame);
+        log.debug("Received ping from {}/{}", workerId, messageCodec.extractConnRole(frame));
+        systemEventChannel.publishWorkerHeartbeat(workerId, "heartbeat", msgId);
+        return messageCodec.encodeHeartbeatPong(frame);
     }
 
-    public List<MassMessage> handlePong(MassMessage msg) {
-        log.debug("Received pong from {}/{}", msg.getContext().getWorkerId(), msg.getContext().getConnRole());
-        return Collections.emptyList();
+    public void handlePong(JsonObject frame) {
+        log.debug("Received pong from {}/{}", messageCodec.extractWorkerId(frame), messageCodec.extractConnRole(frame));
     }
 
-    private boolean shouldRouteToWorkerControlEventBridge(MassMessage msg) {
-        if (msg == null
-                || msg.isResponse()
-                || msg.getMsgType() != MessageType.CONTROL) {
-            return false;
-        }
-        if (!WorkerControlEventProtocol.SUB_MSG_TYPE.equals(normalizeSubType(msg.getSubMsgType()))) {
-            return false;
-        }
-        return msg.getPayload() != null
-                && msg.getPayload().isJsonObject()
-                && msg.getPayload().getAsJsonObject().has(WorkerControlEventProtocol.EVENT_FIELD)
-                && !msg.getPayload().getAsJsonObject().get(WorkerControlEventProtocol.EVENT_FIELD).isJsonNull()
-                && !msg.getPayload().getAsJsonObject().get(WorkerControlEventProtocol.EVENT_FIELD).getAsString().isBlank();
+    private boolean isControlEventRequest(JsonObject frame) {
+        return !isResponse(frame)
+                && "CONTROL".equals(readString(frame, "msgType"))
+                && WorkerControlEventProtocol.SUB_MSG_TYPE.equals(normalizeSubType(readString(frame, "subMsgType")))
+                && messageCodec.extractEventCode(frame) != null;
     }
 
-    private boolean shouldRouteToWorkerControlEventResponse(MassMessage msg) {
-        return msg != null
-                && msg.isResponse()
-                && msg.getMsgType() == MessageType.CONTROL
-                && WorkerControlEventProtocol.SUB_MSG_TYPE.equals(normalizeSubType(msg.getSubMsgType()));
+    private boolean isControlEventResponse(JsonObject frame) {
+        return isResponse(frame)
+                && "CONTROL".equals(readString(frame, "msgType"))
+                && WorkerControlEventProtocol.SUB_MSG_TYPE.equals(normalizeSubType(readString(frame, "subMsgType")));
     }
 
-    private boolean isHeartbeatPing(MassMessage msg) {
-        return msg.getMsgType() == MessageType.PING
-                && SUBTYPE_HEARTBEAT.equals(normalizeSubType(msg.getSubMsgType()));
+    private boolean isHeartbeatPing(JsonObject frame) {
+        return "PING".equals(readString(frame, "msgType"))
+                && SUBTYPE_HEARTBEAT.equals(normalizeSubType(readString(frame, "subMsgType")));
     }
 
-    private boolean isHeartbeatPong(MassMessage msg) {
-        return msg.getMsgType() == MessageType.PONG
-                && SUBTYPE_HEARTBEAT.equals(normalizeSubType(msg.getSubMsgType()));
+    private boolean isHeartbeatPong(JsonObject frame) {
+        return "PONG".equals(readString(frame, "msgType"))
+                && SUBTYPE_HEARTBEAT.equals(normalizeSubType(readString(frame, "subMsgType")));
     }
 
-    private boolean isTaskDispatchFrame(MassMessage msg) {
-        return msg.getMsgType() == MessageType.TASK
-                && "step".equals(normalizeSubType(msg.getSubMsgType()));
+    private boolean isTaskStep(JsonObject frame) {
+        return "TASK".equals(readString(frame, "msgType"))
+                && "step".equals(normalizeSubType(readString(frame, "subMsgType")));
+    }
+
+    private boolean isResponse(JsonObject frame) {
+        return frame != null && frame.has("response") && !frame.get("response").isJsonNull() && frame.get("response").getAsBoolean();
     }
 
     private String normalizeSubType(String subMsgType) {
@@ -126,5 +98,16 @@ public class GatewayFrameRouter {
             return null;
         }
         return subMsgType.trim();
+    }
+
+    private String readString(JsonObject object, String field) {
+        if (object == null || field == null || !object.has(field) || object.get(field).isJsonNull()) {
+            return null;
+        }
+        try {
+            return object.get(field).getAsString();
+        } catch (Exception ignored) {
+            return null;
+        }
     }
 }

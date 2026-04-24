@@ -1,11 +1,8 @@
 package com.xa.mass.mock.client;
 
 import com.google.gson.Gson;
+import com.google.gson.JsonObject;
 import com.xa.mass.command.model.CommandResponse;
-import com.xa.mass.gateway.model.enums.MessageDirection;
-import com.xa.mass.gateway.model.enums.MessageType;
-import com.xa.mass.gateway.model.massMessage.MassMessage;
-import com.xa.mass.gateway.model.massMessage.MessageContext;
 import com.xa.mass.gateway.session.SessionRoles;
 import com.xa.mass.mock.command.mock.MockClientState;
 import com.xa.mass.mock.command.mock.MockClientStateRegistry;
@@ -75,19 +72,7 @@ public class MockWorkerWebSocketClient extends WebSocketClient implements MockWo
         logger.info("[{}] Connected to server: {}", workerId, handshakedata.getHttpStatusMessage());
         reconnectAttempts.set(0);
         intentionalClose = false;
-
-        MassMessage ping = new MassMessage();
-        ping.setMsgId("ping-" + workerId + "-" + System.currentTimeMillis());
-        ping.setMsgType(MessageType.PING);
-        ping.setFrom(MessageDirection.CLIENT);
-        ping.setSubMsgType("heartbeat");
-
-        MessageContext ctx = new MessageContext();
-        ctx.setWorkerId(workerId);
-        ctx.setConnRole(SessionRoles.TASK_MESSAGES);
-        ping.setContext(ctx);
-
-        send(gson.toJson(ping));
+        send(buildHeartbeatPingJson());
         logger.debug("[{}] Sent PING message", workerId);
     }
 
@@ -95,30 +80,28 @@ public class MockWorkerWebSocketClient extends WebSocketClient implements MockWo
     public void onMessage(String message) {
         logger.debug("[{}] Received frame: {}", workerId, message);
         try {
-            MassMessage frame = gson.fromJson(message, MassMessage.class);
-            if (frame == null || frame.getMsgType() == null) {
+            JsonObject frame = gson.fromJson(message, JsonObject.class);
+            if (frame == null) {
+                logger.warn("[{}] Ignoring non-object frame", workerId);
+                return;
+            }
+            String msgType = readString(frame, "msgType");
+            if (msgType == null) {
                 logger.warn("[{}] Ignoring frame without msgType", workerId);
                 return;
             }
-            switch (frame.getMsgType()) {
-                case TASK:
-                    handleTaskMessage(frame);
-                    break;
-                case CONTROL:
-                    handleControlMessage(frame);
-                    break;
-                case PONG:
-                    logger.debug("[{}] Pong received", workerId);
-                    break;
-                default:
-                    logger.warn("[{}] Unhandled msgType: {}", workerId, frame.getMsgType());
+            switch (msgType) {
+                case "TASK" -> handleTaskMessage(frame);
+                case "CONTROL" -> handleControlMessage(frame);
+                case "PONG" -> logger.debug("[{}] Pong received", workerId);
+                default -> logger.warn("[{}] Unhandled msgType: {}", workerId, msgType);
             }
         } catch (Exception e) {
             logger.error("[{}] Failed to parse or handle message: {}", workerId, e.getMessage(), e);
         }
     }
 
-    private void handleTaskMessage(MassMessage taskMessage) {
+    private void handleTaskMessage(JsonObject taskMessage) {
         MockClientState state = getMockClientState();
         MockWorkerTaskFrameHandler.TaskResponsePlan plan = taskFrameHandler.prepareResponse(
                 taskMessage,
@@ -129,16 +112,16 @@ public class MockWorkerWebSocketClient extends WebSocketClient implements MockWo
         if (plan == null) {
             return;
         }
-        sendTaskResponse(plan.response(), plan.delayMillis());
+        sendTaskResponse(plan.responseJson(), plan.messageId(), plan.delayMillis());
     }
 
-    private void handleControlMessage(MassMessage controlMessage) {
+    private void handleControlMessage(JsonObject controlMessage) {
         MockWorkerControlFrameHandler.ControlResponsePlan plan = controlFrameHandler.prepareResponse(controlMessage, workerId);
         if (plan == null) {
             return;
         }
-        send(gson.toJson(plan.response()));
-        logger.debug("[{}] Sent worker control response for msgId: {}", workerId, controlMessage.getMsgId());
+        send(plan.responseJson());
+        logger.debug("[{}] Sent worker control response for msgId: {}", workerId, readString(controlMessage, "msgId"));
         disconnectAfterAckIfRequested(plan.commandResult());
     }
 
@@ -218,27 +201,24 @@ public class MockWorkerWebSocketClient extends WebSocketClient implements MockWo
         return stateRegistry == null ? null : stateRegistry.getOrCreate(workerId);
     }
 
-    private void sendTaskResponse(MassMessage response, long delayMillis) {
+    private void sendTaskResponse(String responseJson, String messageId, long delayMillis) {
         if (delayMillis <= 0L) {
-            send(gson.toJson(response));
-            logger.debug("[{}] Sent mock task response for msgId: {}", workerId, response.getMsgId());
+            send(responseJson);
+            logger.debug("[{}] Sent mock task response for msgId: {}", workerId, messageId);
             return;
         }
 
-        logger.info("[{}] Scheduling mock task response for msgId={} after {} ms",
-                workerId, response.getMsgId(), delayMillis);
+        logger.info("[{}] Scheduling mock task response for msgId={} after {} ms", workerId, messageId, delayMillis);
         taskResponseScheduler.schedule(() -> {
             if (!isOpen()) {
-                logger.warn("[{}] Skip delayed task response because client is disconnected. msgId={}",
-                        workerId, response.getMsgId());
+                logger.warn("[{}] Skip delayed task response because client is disconnected. msgId={}", workerId, messageId);
                 return;
             }
             try {
-                send(gson.toJson(response));
-                logger.debug("[{}] Sent delayed mock task response for msgId: {}", workerId, response.getMsgId());
+                send(responseJson);
+                logger.debug("[{}] Sent delayed mock task response for msgId: {}", workerId, messageId);
             } catch (Exception e) {
-                logger.warn("[{}] Failed to send delayed mock task response for msgId={}: {}",
-                        workerId, response.getMsgId(), e.getMessage());
+                logger.warn("[{}] Failed to send delayed mock task response for msgId={}: {}", workerId, messageId, e.getMessage());
             }
         }, delayMillis, TimeUnit.MILLISECONDS);
     }
@@ -285,8 +265,7 @@ public class MockWorkerWebSocketClient extends WebSocketClient implements MockWo
         try {
             targetClient.disconnect();
         } catch (Exception e) {
-            logger.warn("[{}] Failed to close target worker {} after ack: {}",
-                    workerId, targetWorkerId, e.getMessage());
+            logger.warn("[{}] Failed to close target worker {} after ack: {}", workerId, targetWorkerId, e.getMessage());
         }
     }
 
@@ -316,6 +295,30 @@ public class MockWorkerWebSocketClient extends WebSocketClient implements MockWo
     @Override
     public void sendMessage(String message) throws Exception {
         send(message);
+    }
+
+    private String buildHeartbeatPingJson() {
+        JsonObject ping = new JsonObject();
+        ping.addProperty("msgId", "ping-" + workerId + "-" + System.currentTimeMillis());
+        ping.addProperty("msgType", "PING");
+        ping.addProperty("from", "CLIENT");
+        ping.addProperty("subMsgType", "heartbeat");
+        JsonObject ctx = new JsonObject();
+        ctx.addProperty("workerId", workerId);
+        ctx.addProperty("connRole", SessionRoles.TASK_MESSAGES);
+        ping.add("context", ctx);
+        return gson.toJson(ping);
+    }
+
+    private String readString(JsonObject object, String field) {
+        if (object == null || field == null || !object.has(field) || object.get(field).isJsonNull()) {
+            return null;
+        }
+        try {
+            return object.get(field).getAsString();
+        } catch (Exception ignored) {
+            return null;
+        }
     }
 
     private String normalizeConfiguredTaskResultStatus(String taskResultStatus) {

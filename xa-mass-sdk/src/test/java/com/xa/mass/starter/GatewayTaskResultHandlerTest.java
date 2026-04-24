@@ -1,6 +1,5 @@
 package com.xa.mass.starter;
 
-import com.google.gson.Gson;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.base.model.Task;
@@ -10,11 +9,6 @@ import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.model.TaskCreateRequestDto;
 import com.xa.mass.engine.storage.InMemoryTaskStorage;
 import com.xa.mass.engine.strategy.TaskScheduler;
-import com.xa.mass.gateway.model.enums.MessageDirection;
-import com.xa.mass.gateway.model.enums.MessageType;
-import com.xa.mass.gateway.model.massMessage.MassMessage;
-import com.xa.mass.gateway.model.massMessage.MessageAckPayload;
-import com.xa.mass.gateway.model.massMessage.MessageContext;
 import com.xa.mass.transport.model.TaskResultReport;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -23,35 +17,32 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class GatewayTaskResultHandlerTest {
 
     private RecordingTaskScheduler scheduler;
     private TaskManager taskManager;
     private GatewayTaskResultHandler handler;
-    private Gson gson;
 
     @BeforeEach
     void setUp() {
         scheduler = new RecordingTaskScheduler();
         taskManager = new TaskManager(scheduler, new InMemoryTaskStorage());
         handler = new GatewayTaskResultHandler(taskManager);
-        gson = new Gson();
     }
 
     @Test
-    void successResponseUpdatesStoredTaskMessageAndReturnsAck() {
+    void successResponseUpdatesStoredTaskMessage() {
         Task task = createRunningTask("task-success");
         TaskMsg taskMsg = taskManager.getTaskMessages(task.getTid()).get(0);
 
-        List<MassMessage> responses = handler.handleTaskStep(message(task, taskMsg, "SUCCESS", "ok"));
+        boolean handled = handler.handleTaskStep(report(task, taskMsg, "SUCCESS", "ok", null));
 
-        assertEquals(1, responses.size());
-        assertEquals(MessageType.TASK, responses.get(0).getMsgType());
-        assertTrue(responses.get(0).isResponse());
-        assertEquals(200, gson.fromJson(responses.get(0).getPayload(), MessageAckPayload.class).getCode());
-
+        assertTrue(handled);
         TaskMsg updated = taskManager.getTaskMessage(task.getTid(), taskMsg.getMsgId());
         assertEquals(TaskMsgStatus.SUCCESS, updated.getStatus());
         assertEquals("SUCCESS", updated.getOutput().get("status"));
@@ -69,8 +60,9 @@ class GatewayTaskResultHandlerTest {
         taskMsg.setMaxRetryCount(0);
         taskManager.updateTaskMessage(task.getTid(), taskMsg);
 
-        handler.handleTaskStep(message(task, taskMsg, "FAILED", "boom", "RATE_LIMITED"));
+        boolean handled = handler.handleTaskStep(report(task, taskMsg, "FAILED", "boom", "RATE_LIMITED"));
 
+        assertTrue(handled);
         TaskMsg updated = taskManager.getTaskMessage(task.getTid(), taskMsg.getMsgId());
         assertEquals(TaskMsgStatus.FAILED, updated.getStatus());
         assertEquals("boom", updated.getErrorMessage());
@@ -82,16 +74,15 @@ class GatewayTaskResultHandlerTest {
     }
 
     @Test
-    void duplicateResponseKeepsFirstFinalResultAndReturnsAck() {
+    void duplicateResponseKeepsFirstFinalResultAndStillReturnsHandled() {
         Task task = createRunningTask("task-duplicate");
         TaskMsg taskMsg = taskManager.getTaskMessages(task.getTid()).get(0);
 
-        List<MassMessage> firstResponses = handler.handleTaskStep(message(task, taskMsg, "SUCCESS", "ok"));
-        List<MassMessage> secondResponses = handler.handleTaskStep(message(task, taskMsg, "FAILED", "boom"));
+        boolean firstHandled = handler.handleTaskStep(report(task, taskMsg, "SUCCESS", "ok", null));
+        boolean secondHandled = handler.handleTaskStep(report(task, taskMsg, "FAILED", "boom", null));
 
-        assertEquals(200, gson.fromJson(firstResponses.get(0).getPayload(), MessageAckPayload.class).getCode());
-        assertEquals(200, gson.fromJson(secondResponses.get(0).getPayload(), MessageAckPayload.class).getCode());
-
+        assertTrue(firstHandled);
+        assertTrue(secondHandled);
         TaskMsg updated = taskManager.getTaskMessage(task.getTid(), taskMsg.getMsgId());
         assertEquals(TaskMsgStatus.SUCCESS, updated.getStatus());
         assertNull(updated.getErrorMessage());
@@ -100,7 +91,7 @@ class GatewayTaskResultHandlerTest {
     }
 
     @Test
-    void transportNeutralResultReportCanBeIngestedWithoutMassMessage() {
+    void transportNeutralResultReportCanBeIngestedWithoutGatewayMessageObject() {
         Task task = createRunningTask("task-transport-neutral");
         TaskMsg taskMsg = taskManager.getTaskMessages(task.getTid()).get(0);
 
@@ -118,16 +109,6 @@ class GatewayTaskResultHandlerTest {
         assertEquals(TaskMsgStatus.SUCCESS, updated.getStatus());
         assertEquals("SUCCESS", updated.getOutput().get("status"));
         assertEquals("ok-from-report", updated.getOutput().get("mockData"));
-    }
-
-    @Test
-    void resolveEventCodeUsesTaskSharedConfigInsteadOfTupleIdentity() {
-        Task task = createRunningTask("task-event-code");
-        TaskMsg taskMsg = taskManager.getTaskMessages(task.getTid()).get(0);
-
-        String eventCode = handler.resolveEventCode(message(task, taskMsg, "SUCCESS", "ok"));
-
-        assertEquals("crawler.fetch-page", eventCode);
     }
 
     private Task createRunningTask(String taskName) {
@@ -162,29 +143,21 @@ class GatewayTaskResultHandlerTest {
         return task;
     }
 
-    private MassMessage message(Task task, TaskMsg taskMsg, String status, String detail) {
-        return message(task, taskMsg, status, detail, null);
-    }
-
-    private MassMessage message(Task task, TaskMsg taskMsg, String status, String detail, String errorCode) {
-        MassMessage msg = new MassMessage();
-        msg.setMsgId(taskMsg.getMsgId());
-        msg.setMsgType(MessageType.TASK);
-        msg.setSubMsgType("step");
-        msg.setFrom(MessageDirection.CLIENT);
-        msg.setProject(task.getProject());
-        MessageContext context = new MessageContext();
-        context.setTaskId(task.getTid());
-        context.setWorkerId("worker-1");
-        msg.setContext(context);
+    private TaskResultReport report(Task task, TaskMsg taskMsg, String status, String detail, String errorCode) {
         java.util.LinkedHashMap<String, Object> payload = new java.util.LinkedHashMap<>();
         payload.put("status", status);
         payload.put("mockData", detail);
         if (errorCode != null) {
             payload.put("errorCode", errorCode);
         }
-        msg.setPayload(gson.toJsonTree(payload));
-        return msg;
+        return new TaskResultReport(
+                task.getTid(),
+                taskMsg.getMsgId(),
+                "SUCCESS".equalsIgnoreCase(status),
+                detail,
+                errorCode,
+                payload
+        );
     }
 
     private static class RecordingTaskScheduler implements TaskScheduler {

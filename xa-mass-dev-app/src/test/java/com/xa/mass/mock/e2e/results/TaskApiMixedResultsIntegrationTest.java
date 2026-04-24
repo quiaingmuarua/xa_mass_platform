@@ -1,15 +1,11 @@
 package com.xa.mass.mock.e2e.results;
 
 import com.google.gson.Gson;
-import com.xa.mass.gateway.model.enums.MessageDirection;
-import com.xa.mass.gateway.model.enums.MessageType;
-import com.xa.mass.gateway.model.massMessage.MassMessage;
-import com.xa.mass.gateway.model.massMessage.MessageAckPayload;
-import com.xa.mass.gateway.model.massMessage.MessageContext;
-import com.xa.mass.gateway.session.SessionRoles;
+import com.google.gson.JsonObject;
 import com.xa.mass.mock.MockApplicationSpringBootApp;
 import com.xa.mass.mock.client.MockWorkerWebSocketClient;
 import com.xa.mass.mock.e2e.support.AbstractMockE2eTest;
+import com.xa.mass.mock.testutil.WsFrameTestSupport;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpMethod;
@@ -24,7 +20,9 @@ import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Verifies that a task with one SUCCESS and one FAILED message closes to TERMINAL
@@ -58,7 +56,6 @@ class TaskApiMixedResultsIntegrationTest extends AbstractMockE2eTest {
 
     @Test
     void taskWithOneSuccessAndOneFailureClosesToTerminalWithMixedReason() throws Exception {
-        // Arrange: create a task with 2 targets and disable retries so the first FAILED is final.
         java.util.Map<String, Object> createBody = new java.util.LinkedHashMap<>();
         createBody.put("taskName", "mixed-results");
         createBody.put("project", "demoApp");
@@ -74,7 +71,6 @@ class TaskApiMixedResultsIntegrationTest extends AbstractMockE2eTest {
         assertApiOk(createResponse);
         String taskId = String.valueOf(responseData(createResponse).get("taskId"));
 
-        // Act: approve triggers READY to RUNNING assignment.
         Map<String, Object> approveResponse = exchange(
                 "/status/api/tasks/" + taskId + "/audit?approved=true&comment=mixed-results",
                 HttpMethod.POST,
@@ -82,13 +78,11 @@ class TaskApiMixedResultsIntegrationTest extends AbstractMockE2eTest {
         );
         assertApiOk(approveResponse);
 
-        // Wait for RUNNING with 2 messages assigned to workers.
         TaskSnapshot runningSnapshot = waitForTaskSnapshot(taskId, "RUNNING");
         assertEquals(2, ((Number) runningSnapshot.task().get("peakAssignedWorkerCount")).intValue());
         assertEquals(2, runningSnapshot.messages().size());
         assertTrue(runningSnapshot.messages().stream().allMatch(m -> "ASSIGNED".equals(m.get("status"))));
 
-        // Submit SUCCESS for the first message and FAILED for the second via the real gateway.
         Map<String, Object> firstMsg = runningSnapshot.messages().get(0);
         Map<String, Object> secondMsg = runningSnapshot.messages().get(1);
 
@@ -112,11 +106,9 @@ class TaskApiMixedResultsIntegrationTest extends AbstractMockE2eTest {
         assertEquals(200, ack2.code());
         assertEquals("task result processed", ack2.message());
 
-        // Assert: task closes to TERMINAL with MIXED_MESSAGE_RESULTS.
         TaskSnapshot terminalSnapshot = waitForTaskSnapshot(taskId, "TERMINAL");
         assertEquals("TERMINAL", terminalSnapshot.task().get("status"));
         assertEquals("MIXED_MESSAGE_RESULTS", terminalSnapshot.task().get("terminalReason"));
-        // taskSuccessNumber counts only successes.
         assertEquals(1, ((Number) terminalSnapshot.task().get("taskSuccessNumber")).intValue());
         assertEquals(2, ((Number) terminalSnapshot.task().get("peakAssignedWorkerCount")).intValue());
 
@@ -128,15 +120,12 @@ class TaskApiMixedResultsIntegrationTest extends AbstractMockE2eTest {
         assertEquals(1, successCount);
         assertEquals(1, failedCount);
 
-        // Both messages must have worker/workerContext/batch binding.
         for (Map<String, Object> msg : terminalSnapshot.messages()) {
             assertNotNull(msg.get("latestAttemptWorkerId"));
             assertNotNull(msg.get("latestAttemptWorkerContextId"));
             assertNotNull(msg.get("latestAttemptBatchId"));
         }
     }
-
-    // helpers
 
     private AckSnapshot submitTaskResult(
             String taskId, String msgId, String workerId, String status, String detail
@@ -145,7 +134,7 @@ class TaskApiMixedResultsIntegrationTest extends AbstractMockE2eTest {
         ReplayClient client = new ReplayClient(uri, workerId, msgId);
         try {
             assertClientConnects(client, "ReplayClient failed to connect for worker " + workerId);
-            client.sendMessage(buildResultPayload(taskId, msgId, workerId, status, detail));
+            client.sendMessage(WsFrameTestSupport.buildTaskResult(msgId, "demoApp", workerId, taskId, status, detail));
             assertTrue(client.awaitAck(3, TimeUnit.SECONDS), "Timed out waiting for gateway ack on msg " + msgId);
             return client.ackSnapshot();
         } finally {
@@ -153,29 +142,8 @@ class TaskApiMixedResultsIntegrationTest extends AbstractMockE2eTest {
         }
     }
 
-    private String buildResultPayload(
-            String taskId, String msgId, String workerId, String status, String detail
-    ) {
-        MassMessage msg = new MassMessage();
-        msg.setMsgId(msgId);
-        msg.setResponse(true);
-        msg.setMsgType(MessageType.TASK);
-        msg.setSubMsgType("step");
-        msg.setFrom(MessageDirection.CLIENT);
-        msg.setProject("demoApp");
-
-        MessageContext ctx = new MessageContext();
-        ctx.setTaskId(taskId);
-        ctx.setWorkerId(workerId);
-        ctx.setConnRole(SessionRoles.TASK_MESSAGES);
-        msg.setContext(ctx);
-        msg.setPayload(GSON.toJsonTree(Map.of("status", status, "mockData", detail)));
-        return GSON.toJson(msg);
-    }
-
     private record AckSnapshot(int code, String message) {}
 
-    /** Connects as a worker, sends a pre-built result payload, and captures the gateway ACK. */
     private static final class ReplayClient extends MockWorkerWebSocketClient {
         private final String expectedMsgId;
         private final CountDownLatch ackLatch = new CountDownLatch(1);
@@ -189,12 +157,15 @@ class TaskApiMixedResultsIntegrationTest extends AbstractMockE2eTest {
         @Override
         public void onMessage(String message) {
             try {
-                MassMessage m = GSON.fromJson(message, MassMessage.class);
-                if (m != null && m.isResponse()
-                        && m.getMsgType() == MessageType.TASK
-                        && expectedMsgId.equals(m.getMsgId())) {
-            MessageAckPayload r = GSON.fromJson(m.getPayload(), MessageAckPayload.class);
-                    ack = new AckSnapshot(r.getCode(), r.getMessage());
+                JsonObject frame = WsFrameTestSupport.parse(message);
+                if (frame != null
+                        && WsFrameTestSupport.isResponse(frame)
+                        && WsFrameTestSupport.isTask(frame)
+                        && expectedMsgId.equals(WsFrameTestSupport.msgId(frame))) {
+                    ack = new AckSnapshot(
+                            WsFrameTestSupport.ackCode(frame),
+                            WsFrameTestSupport.ackMessage(frame)
+                    );
                     ackLatch.countDown();
                 }
             } catch (Exception ignored) {
@@ -207,6 +178,8 @@ class TaskApiMixedResultsIntegrationTest extends AbstractMockE2eTest {
             return ackLatch.await(timeout, unit);
         }
 
-        AckSnapshot ackSnapshot() { return ack; }
+        AckSnapshot ackSnapshot() {
+            return ack;
+        }
     }
 }

@@ -4,9 +4,9 @@ import com.xa.mass.base.channel.messaging.api.MessageQueue;
 import com.xa.mass.base.channel.tranporter.MessageTransporter;
 import com.xa.mass.base.channel.tranporter.MessageTransporterFactory;
 import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
-import com.xa.mass.gateway.queue.Envelope;
 import com.xa.mass.gateway.queue.MessageCodec;
 import com.xa.mass.gateway.queue.MessageCodecFactory;
+import com.xa.mass.gateway.queue.OutboundDelivery;
 import com.xa.mass.gateway.session.EventBusWorkerSystemEventChannel;
 import com.xa.mass.gateway.session.ServerSessionManager;
 import com.xa.mass.starter.transport.DefaultWorkerTransportRuntimeFactory;
@@ -29,22 +29,18 @@ public class GatewayConfig {
     private int maxConnections = 1000;
     private String transportEndpointPath = "/ws";
 
-    // Transport configuration.
     private MessageTransporterFactory.TransporterType transporterType =
             MessageTransporterFactory.TransporterType.QUEUE_BASED;
-    private MessageQueue<Envelope> inputQueue;
-    private MessageQueue<Envelope> outputQueue;
+    private MessageQueue<String> inputQueue;
+    private MessageQueue<OutboundDelivery> outputQueue;
 
-    // External API configuration used by API_BASED transporters.
     private String inputApiUrl;
     private String outputApiUrl;
     private String apiKey;
 
-    // Codec configuration.
     private MessageCodecFactory.CodecType codecType = MessageCodecFactory.CodecType.GSON;
     private MessageCodec messageCodec;
 
-    // Optional custom WorkerSystemEventChannel; null means use the default from ServerSessionManager.
     private WorkerSystemEventChannel customSystemEventChannel;
     private WorkerEndpointRegistry workerEndpointRegistry;
     private TransportServerFactory<TransportServerFactoryContext> transportServerFactory;
@@ -104,29 +100,19 @@ public class GatewayConfig {
         this.transportEndpointPath = transportEndpointPath;
     }
 
-    /**
-     * Create the configured message transporter.
-     */
-    public MessageTransporter<Envelope> createMessageTransporter() {
-        switch (transporterType) {
-            case QUEUE_BASED:
+    public MessageTransporter<String, OutboundDelivery> createMessageTransporter() {
+        return switch (transporterType) {
+            case QUEUE_BASED -> {
                 if (inputQueue == null || outputQueue == null) {
-                    throw new IllegalStateException(
-                            "QUEUE_BASED transporter requires both inputQueue and outputQueue");
+                    throw new IllegalStateException("QUEUE_BASED transporter requires both inputQueue and outputQueue");
                 }
-                return MessageTransporterFactory.createQueueBased(inputQueue, outputQueue);
-            case MULTI_LEVEL:
-                return MessageTransporterFactory.createMultiLevel();
-            case API_BASED:
-                throw new UnsupportedOperationException(API_MODE_UNSUPPORTED_MESSAGE);
-            default:
-                throw new IllegalArgumentException("Unsupported transporter type: " + transporterType);
-        }
+                yield MessageTransporterFactory.createQueueBased(inputQueue, outputQueue);
+            }
+            case MULTI_LEVEL -> MessageTransporterFactory.createMultiLevel();
+            case API_BASED -> throw new UnsupportedOperationException(API_MODE_UNSUPPORTED_MESSAGE);
+        };
     }
 
-    /**
-     * Create the configured message codec.
-     */
     public MessageCodec createMessageCodec() {
         if (messageCodec != null) {
             return messageCodec;
@@ -142,19 +128,19 @@ public class GatewayConfig {
         this.transporterType = transporterType;
     }
 
-    public MessageQueue<Envelope> getInputQueue() {
+    public MessageQueue<String> getInputQueue() {
         return inputQueue;
     }
 
-    public void setInputQueue(MessageQueue<Envelope> inputQueue) {
+    public void setInputQueue(MessageQueue<String> inputQueue) {
         this.inputQueue = inputQueue;
     }
 
-    public MessageQueue<Envelope> getOutputQueue() {
+    public MessageQueue<OutboundDelivery> getOutputQueue() {
         return outputQueue;
     }
 
-    public void setOutputQueue(MessageQueue<Envelope> outputQueue) {
+    public void setOutputQueue(MessageQueue<OutboundDelivery> outputQueue) {
         this.outputQueue = outputQueue;
     }
 
@@ -251,10 +237,7 @@ public class GatewayConfig {
     }
 
     public TransportServer createTransportServer(DispatchRuntimeContext dispatcherContext, int port) {
-        if (!transportServerEnabled) {
-            return null;
-        }
-        if (transportServerFactory == null) {
+        if (!transportServerEnabled || transportServerFactory == null) {
             return null;
         }
         return transportServerFactory.create(new TransportServerFactoryContext(

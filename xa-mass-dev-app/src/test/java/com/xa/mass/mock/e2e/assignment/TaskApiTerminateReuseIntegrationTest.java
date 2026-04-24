@@ -1,12 +1,12 @@
 package com.xa.mass.mock.e2e.assignment;
 
 import com.google.gson.Gson;
+import com.google.gson.JsonObject;
 import com.xa.mass.base.enums.worker.WorkerContextStatus;
-import com.xa.mass.gateway.model.enums.MessageType;
-import com.xa.mass.gateway.model.massMessage.MassMessage;
 import com.xa.mass.mock.MockApplicationSpringBootApp;
 import com.xa.mass.mock.client.MockWorkerWebSocketClient;
 import com.xa.mass.mock.e2e.support.AbstractMockE2eTest;
+import com.xa.mass.mock.testutil.WsFrameTestSupport;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpMethod;
@@ -15,8 +15,8 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 
-import java.util.Map;
 import java.net.URI;
+import java.util.Map;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
@@ -60,7 +60,7 @@ class TaskApiTerminateReuseIntegrationTest extends AbstractMockE2eTest {
             Map<String, Object> firstApprove = audit(firstTaskId, "terminate-reuse-1");
             assertApiOk(firstApprove);
 
-            MassMessage firstDispatch = client.awaitTask(3, TimeUnit.SECONDS);
+            JsonObject firstDispatch = client.awaitTask(3, TimeUnit.SECONDS);
             assertNotNull(firstDispatch, "first task should be dispatched before termination");
             TaskSnapshot firstRunning = waitForTaskSnapshot(firstTaskId, "RUNNING", 20, 500L);
             assertEquals(workerId, firstRunning.messages().get(0).get("latestAttemptWorkerId"));
@@ -80,7 +80,7 @@ class TaskApiTerminateReuseIntegrationTest extends AbstractMockE2eTest {
             Map<String, Object> secondApprove = audit(secondTaskId, "terminate-reuse-2");
             assertApiOk(secondApprove);
 
-            MassMessage secondDispatch = client.awaitTask(3, TimeUnit.SECONDS);
+            JsonObject secondDispatch = client.awaitTask(3, TimeUnit.SECONDS);
             assertNotNull(secondDispatch, "second task should be dispatched after the first task is terminated");
             TaskSnapshot secondRunning = waitForTaskSnapshot(secondTaskId, "RUNNING", 20, 500L);
             assertEquals(workerId, secondRunning.messages().get(0).get("latestAttemptWorkerId"));
@@ -103,7 +103,7 @@ class TaskApiTerminateReuseIntegrationTest extends AbstractMockE2eTest {
     }
 
     private static final class ManualHoldWebSocketClient extends MockWorkerWebSocketClient {
-        private final BlockingQueue<MassMessage> taskQueue = new LinkedBlockingQueue<>();
+        private final BlockingQueue<JsonObject> taskQueue = new LinkedBlockingQueue<>();
 
         private ManualHoldWebSocketClient(URI serverUri, String workerId) {
             super(serverUri, workerId);
@@ -112,9 +112,9 @@ class TaskApiTerminateReuseIntegrationTest extends AbstractMockE2eTest {
         @Override
         public void onMessage(String message) {
             try {
-                MassMessage massMessage = GSON.fromJson(message, MassMessage.class);
-                if (massMessage != null && massMessage.getMsgType() == MessageType.TASK && !massMessage.isResponse()) {
-                    taskQueue.offer(massMessage);
+                JsonObject frame = WsFrameTestSupport.parse(message);
+                if (frame != null && WsFrameTestSupport.isTask(frame) && !WsFrameTestSupport.isResponse(frame)) {
+                    taskQueue.offer(frame);
                     return;
                 }
             } catch (Exception ignored) {
@@ -123,7 +123,7 @@ class TaskApiTerminateReuseIntegrationTest extends AbstractMockE2eTest {
             super.onMessage(message);
         }
 
-        private MassMessage awaitTask(long timeout, TimeUnit unit) throws InterruptedException {
+        private JsonObject awaitTask(long timeout, TimeUnit unit) throws InterruptedException {
             return taskQueue.poll(timeout, unit);
         }
     }

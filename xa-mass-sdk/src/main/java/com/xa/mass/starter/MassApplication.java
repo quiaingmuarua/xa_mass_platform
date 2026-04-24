@@ -11,9 +11,8 @@ import com.xa.mass.gateway.dispatcher.GatewayFrameRouter;
 import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
 import com.xa.mass.gateway.dispatcher.port.TaskStepFrameBridge;
 import com.xa.mass.gateway.dispatcher.port.ControlEventRequestFrameBridge;
-import com.xa.mass.gateway.dispatcher.middleware.MiddlewareRegistry;
-import com.xa.mass.gateway.model.enums.MessageType;
 import com.xa.mass.gateway.queue.MessageCodec;
+import com.xa.mass.gateway.queue.OutboundDelivery;
 import com.xa.mass.sdk.MassRuntimeControl;
 import com.xa.mass.sdk.event.EventPrincipal;
 import com.xa.mass.sdk.event.EventRequest;
@@ -138,7 +137,7 @@ public class MassApplication {
             WorkerEndpointRegistry endpointRegistry = gatewayConfig.resolveWorkerEndpointRegistry();
             logger.info("Worker endpoint registry initialized");
 
-            MessageTransporter messageTransporter = gatewayConfig.createMessageTransporter();
+            MessageTransporter<String, OutboundDelivery> messageTransporter = gatewayConfig.createMessageTransporter();
             logger.info("Message transporter created");
 
             MessageCodec messageCodec = gatewayConfig.createMessageCodec();
@@ -147,8 +146,7 @@ public class MassApplication {
             com.xa.mass.transport.channel.WorkerSystemEventChannel systemEventChannel =
                     gatewayConfig.resolveSystemEventChannel(endpointRegistry);
 
-            GatewayFrameRouter frameRouter =
-                    new GatewayFrameRouter(systemEventChannel);
+            GatewayFrameRouter frameRouter = new GatewayFrameRouter(messageCodec, systemEventChannel);
             TaskMsgDispatchListener taskMsgDispatchListener = null;
             TaskStepFrameBridge taskStepFrameBridge = null;
             if (engineConfig.isEnabled() && engineConfig.getTaskManager() != null) {

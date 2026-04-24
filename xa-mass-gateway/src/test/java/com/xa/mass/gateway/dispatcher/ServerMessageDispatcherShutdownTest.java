@@ -1,9 +1,9 @@
 package com.xa.mass.gateway.dispatcher;
 
 import com.xa.mass.base.channel.tranporter.MessageTransporter;
-import com.xa.mass.gateway.queue.GsonMessageCodec;
 import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
-import com.xa.mass.gateway.queue.Envelope;
+import com.xa.mass.gateway.queue.GsonMessageCodec;
+import com.xa.mass.gateway.queue.OutboundDelivery;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import org.junit.jupiter.api.Test;
 
@@ -14,7 +14,6 @@ import java.util.concurrent.TimeUnit;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 
 class ServerMessageDispatcherShutdownTest {
 
@@ -26,7 +25,7 @@ class ServerMessageDispatcherShutdownTest {
                 transporter,
                 endpointRegistry,
                 new GsonMessageCodec(),
-                new GatewayFrameRouter(),
+                new GatewayFrameRouter(new GsonMessageCodec()),
                 null,
                 null,
                 null
@@ -45,28 +44,28 @@ class ServerMessageDispatcherShutdownTest {
         );
     }
 
-    private static final class BlockingTransporter implements MessageTransporter<Envelope> {
+    private static final class BlockingTransporter implements MessageTransporter<String, OutboundDelivery> {
         private final CountDownLatch inputStarted = new CountDownLatch(1);
         private final CountDownLatch outputStarted = new CountDownLatch(1);
         private final CountDownLatch neverRelease = new CountDownLatch(1);
 
         @Override
-        public void sendInput(Envelope message) {
+        public void sendInput(String message) {
         }
 
         @Override
-        public Envelope receiveInput(long timeout, TimeUnit unit) throws InterruptedException {
+        public String receiveInput(long timeout, TimeUnit unit) throws InterruptedException {
             inputStarted.countDown();
             neverRelease.await();
             return null;
         }
 
         @Override
-        public void sendOutput(Envelope message) {
+        public void sendOutput(OutboundDelivery message) {
         }
 
         @Override
-        public Envelope receiveOutput(long timeout, TimeUnit unit) throws InterruptedException {
+        public OutboundDelivery receiveOutput(long timeout, TimeUnit unit) throws InterruptedException {
             outputStarted.countDown();
             neverRelease.await();
             return null;

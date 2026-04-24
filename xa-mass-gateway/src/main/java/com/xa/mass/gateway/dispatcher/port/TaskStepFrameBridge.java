@@ -1,8 +1,6 @@
 package com.xa.mass.gateway.dispatcher.port;
 
-import com.xa.mass.gateway.model.massMessage.MassMessage;
-
-import java.util.List;
+import com.xa.mass.transport.model.TaskResultReport;
 
 /**
  * Explicit adapter port for inbound {@code TASK/step} compatibility frames.
@@ -10,5 +8,5 @@ import java.util.List;
 @FunctionalInterface
 public interface TaskStepFrameBridge {
 
-    List<MassMessage> handleTaskStep(MassMessage frame);
+    boolean handleTaskStep(TaskResultReport report);
 }

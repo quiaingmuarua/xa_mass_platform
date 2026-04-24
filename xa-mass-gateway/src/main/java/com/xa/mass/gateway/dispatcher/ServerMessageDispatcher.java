@@ -1,9 +1,10 @@
 package com.xa.mass.gateway.dispatcher;
 
 import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
-import com.xa.mass.gateway.dispatcher.middleware.EnvelopeMiddleware;
 import com.xa.mass.gateway.dispatcher.middleware.ExceptionMiddleware;
-import com.xa.mass.gateway.queue.Envelope;
+import com.xa.mass.gateway.dispatcher.middleware.MessageInboundMiddleware;
+import com.xa.mass.gateway.dispatcher.middleware.MessageOutboundMiddleware;
+import com.xa.mass.gateway.queue.OutboundDelivery;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -26,18 +27,14 @@ public class ServerMessageDispatcher {
     private ExecutorService[] outputLaneExecutors;
 
     public ServerMessageDispatcher(DispatchRuntimeContext context) {
-        logger.debug("ServerMessageDispatcher context={}", context);
         this.context = context;
     }
 
     public void start() {
         if (running.compareAndSet(false, true)) {
-            logger.info("Starting ServerMessageDispatcher...");
-
             inputExecutor = Executors.newFixedThreadPool(INPUT_LOOP_THREADS);
             outputPollerExecutor = Executors.newSingleThreadExecutor();
             outputLaneExecutors = new ExecutorService[OUTPUT_LANE_THREADS];
-
             for (int i = 0; i < INPUT_LOOP_THREADS; i++) {
                 inputExecutor.submit(this::processInputQueueLoop);
             }
@@ -45,35 +42,20 @@ public class ServerMessageDispatcher {
                 outputLaneExecutors[i] = Executors.newSingleThreadExecutor();
             }
             outputPollerExecutor.submit(this::processOutputQueueLoop);
-
-            logger.info("ServerMessageDispatcher started successfully");
         }
     }
 
     public void stop() {
         if (running.compareAndSet(true, false)) {
-            logger.info("Stopping ServerMessageDispatcher...");
-
             try {
-                shutdownExecutor(inputExecutor, "input");
-                shutdownExecutor(outputPollerExecutor, "output-poller");
-                shutdownExecutors(outputLaneExecutors, "output-lane");
-                logger.info("ServerMessageDispatcher stopped successfully");
-            } catch (InterruptedException e) {
-                logger.warn("Stopping ServerMessageDispatcher was interrupted");
-                if (inputExecutor != null) {
-                    inputExecutor.shutdownNow();
-                }
-                if (outputPollerExecutor != null) {
-                    outputPollerExecutor.shutdownNow();
-                }
+                shutdownExecutor(inputExecutor);
+                shutdownExecutor(outputPollerExecutor);
                 if (outputLaneExecutors != null) {
                     for (ExecutorService executor : outputLaneExecutors) {
-                        if (executor != null) {
-                            executor.shutdownNow();
-                        }
+                        shutdownExecutor(executor);
                     }
                 }
+            } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
         }
@@ -84,113 +66,94 @@ public class ServerMessageDispatcher {
     }
 
     private void processInputQueueLoop() {
-        logger.debug("processInputQueueLoop start");
         while (running.get() && !Thread.currentThread().isInterrupted()) {
-            Envelope envelope = null;
+            String rawJson = null;
             try {
-                envelope = context.getMessageTransporter().receiveInput(15, TimeUnit.SECONDS);
-                if (envelope != null) {
-                    logger.debug("processInputQueueLoop receive envelope {}", envelope);
-                    runMiddlewareChain(context.getMiddlewareRegistry().getInputMiddlewares(), envelope);
+                rawJson = context.getMessageTransporter().receiveInput(15, TimeUnit.SECONDS);
+                if (rawJson != null) {
+                    runInboundMiddlewareChain(context.getMiddlewareRegistry().getInputMiddlewares(), rawJson);
                 }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                if (running.get()) {
-                    logger.warn("processInputQueueLoop interrupted while dispatcher is still marked running");
-                }
                 break;
             } catch (Exception e) {
-                runExceptionMiddlewareChain(envelope, e);
+                runExceptionMiddlewareChain(rawJson, null, e);
             }
         }
-        logger.debug("processInputQueueLoop stopped");
     }
 
     private void processOutputQueueLoop() {
-        logger.debug("processOutputQueueLoop start");
         while (running.get() && !Thread.currentThread().isInterrupted()) {
-            Envelope envelope = null;
+            OutboundDelivery delivery = null;
             try {
-                envelope = context.getMessageTransporter().receiveOutput(15, TimeUnit.SECONDS);
-                if (envelope != null) {
-                    logger.debug("processOutputQueueLoop receive envelope {}", envelope);
-                    submitOutputEnvelope(envelope);
+                delivery = context.getMessageTransporter().receiveOutput(15, TimeUnit.SECONDS);
+                if (delivery != null) {
+                    submitOutputDelivery(delivery);
                 }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                if (running.get()) {
-                    logger.warn("processOutputQueueLoop interrupted while dispatcher is still marked running");
-                }
                 break;
             } catch (Exception e) {
-                runExceptionMiddlewareChain(envelope, e);
+                runExceptionMiddlewareChain(null, delivery, e);
             }
         }
-        logger.debug("processOutputQueueLoop stopped");
     }
 
-    private void submitOutputEnvelope(Envelope envelope) {
-        ExecutorService laneExecutor = resolveOutputLaneExecutor(envelope);
+    private void submitOutputDelivery(OutboundDelivery delivery) {
+        ExecutorService laneExecutor = resolveOutputLaneExecutor(delivery);
         laneExecutor.submit(() -> {
             try {
-                runMiddlewareChain(context.getMiddlewareRegistry().getOutputMiddlewares(), envelope);
+                runOutboundMiddlewareChain(context.getMiddlewareRegistry().getOutputMiddlewares(), delivery);
             } catch (Exception e) {
-                runExceptionMiddlewareChain(envelope, e);
+                runExceptionMiddlewareChain(null, delivery, e);
             }
         });
     }
 
-    private ExecutorService resolveOutputLaneExecutor(Envelope envelope) {
+    private ExecutorService resolveOutputLaneExecutor(OutboundDelivery delivery) {
         ExecutorService[] laneExecutors = outputLaneExecutors;
         if (laneExecutors == null || laneExecutors.length == 0) {
             throw new IllegalStateException("Output lane executors are not initialized");
         }
-        int index = Math.floorMod(outputLaneKey(envelope).hashCode(), laneExecutors.length);
+        int index = Math.floorMod(outputLaneKey(delivery).hashCode(), laneExecutors.length);
         return laneExecutors[index];
     }
 
-    private String outputLaneKey(Envelope envelope) {
-        // Preserve per-endpoint ordering on the current adapter. eventCode may be
-        // present on the envelope as capability metadata, but connection routing
-        // and lane partitioning still key off workerId + connRole.
-        String workerId = envelope != null ? envelope.getWorkerId() : null;
-        String connRole = envelope != null ? envelope.getConnRole() : null;
+    private String outputLaneKey(OutboundDelivery delivery) {
+        String workerId = delivery != null ? delivery.getWorkerId() : null;
+        String connRole = delivery != null ? delivery.getConnRole() : null;
         return Objects.toString(workerId, "_") + "::" + Objects.toString(connRole, "_");
     }
 
-    private void runMiddlewareChain(List<EnvelopeMiddleware> chain, Envelope envelope) {
-        for (EnvelopeMiddleware middleware : chain) {
-            if (!middleware.handle(envelope, context)) {
+    private void runInboundMiddlewareChain(List<MessageInboundMiddleware> chain, String rawJson) {
+        for (MessageInboundMiddleware middleware : chain) {
+            if (!middleware.handle(rawJson, context)) {
                 break;
             }
         }
     }
 
-    private void runExceptionMiddlewareChain(Envelope envelope, Exception e) {
+    private void runOutboundMiddlewareChain(List<MessageOutboundMiddleware> chain, OutboundDelivery delivery) {
+        for (MessageOutboundMiddleware middleware : chain) {
+            if (!middleware.handle(delivery, context)) {
+                break;
+            }
+        }
+    }
+
+    private void runExceptionMiddlewareChain(String rawJson, OutboundDelivery delivery, Exception e) {
         for (ExceptionMiddleware middleware : context.getMiddlewareRegistry().getExceptionMiddlewareList()) {
-            if (!middleware.handleException(envelope, context, e)) {
+            if (!middleware.handleException(rawJson, delivery, context, e)) {
                 break;
             }
         }
     }
 
-    private void shutdownExecutor(ExecutorService executor, String name) throws InterruptedException {
+    private void shutdownExecutor(ExecutorService executor) throws InterruptedException {
         if (executor == null) {
             return;
         }
-        List<Runnable> queuedTasks = executor.shutdownNow();
-        logger.info("Requested {} dispatcher executor shutdown, cancelled {} queued tasks", name, queuedTasks.size());
-        if (!executor.awaitTermination(10, TimeUnit.SECONDS)) {
-            logger.warn("{} dispatcher executor did not terminate within timeout", name);
-        }
-    }
-
-    private void shutdownExecutors(ExecutorService[] executors, String namePrefix) throws InterruptedException {
-        if (executors == null) {
-            return;
-        }
-        for (int i = 0; i < executors.length; i++) {
-            shutdownExecutor(executors[i], namePrefix + "-" + i);
-        }
+        executor.shutdownNow();
+        executor.awaitTermination(10, TimeUnit.SECONDS);
     }
 }

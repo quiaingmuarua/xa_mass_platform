@@ -1,14 +1,11 @@
 package com.xa.mass.mock.e2e.assignment;
 
 import com.google.gson.Gson;
-import com.xa.mass.gateway.model.enums.MessageDirection;
-import com.xa.mass.gateway.model.enums.MessageType;
-import com.xa.mass.gateway.model.massMessage.MassMessage;
-import com.xa.mass.gateway.model.massMessage.MessageAckPayload;
-import com.xa.mass.gateway.model.massMessage.MessageContext;
+import com.google.gson.JsonObject;
 import com.xa.mass.mock.MockApplicationSpringBootApp;
 import com.xa.mass.mock.client.MockWorkerWebSocketClient;
 import com.xa.mass.mock.e2e.support.AbstractMockE2eTest;
+import com.xa.mass.mock.testutil.WsFrameTestSupport;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.annotation.DirtiesContext;
@@ -68,8 +65,8 @@ class TaskApiMultiTaskAssignmentIntegrationTest extends AbstractMockE2eTest {
             assertApiOk(audit(firstTaskId, "multi-task-a"));
             assertApiOk(audit(secondTaskId, "multi-task-b"));
 
-            MassMessage firstDispatch = firstClient.awaitTask(3, TimeUnit.SECONDS);
-            MassMessage secondDispatch = secondClient.awaitTask(3, TimeUnit.SECONDS);
+            JsonObject firstDispatch = firstClient.awaitTask(3, TimeUnit.SECONDS);
+            JsonObject secondDispatch = secondClient.awaitTask(3, TimeUnit.SECONDS);
 
             assertNotNull(firstDispatch, "First worker should receive one task while it remains in-flight");
             assertNotNull(secondDispatch, "Second worker should receive the other task while the first worker is locked");
@@ -80,8 +77,8 @@ class TaskApiMultiTaskAssignmentIntegrationTest extends AbstractMockE2eTest {
             assertRunningSingleDeviceTask(firstRunning);
             assertRunningSingleDeviceTask(secondRunning);
 
-        String firstWorkerId = String.valueOf(firstRunning.messages().get(0).get("latestAttemptWorkerId"));
-        String secondWorkerId = String.valueOf(secondRunning.messages().get(0).get("latestAttemptWorkerId"));
+            String firstWorkerId = String.valueOf(firstRunning.messages().get(0).get("latestAttemptWorkerId"));
+            String secondWorkerId = String.valueOf(secondRunning.messages().get(0).get("latestAttemptWorkerId"));
             assertEquals(Set.of("it-worker-0", "it-worker-1"), Set.of(firstWorkerId, secondWorkerId));
 
             AckSnapshot firstAck = firstClient.sendSuccess(firstDispatch, "multi-task-a-ok");
@@ -109,9 +106,9 @@ class TaskApiMultiTaskAssignmentIntegrationTest extends AbstractMockE2eTest {
         assertEquals(1, ((Number) snapshot.task().get("peakAssignedWorkerCount")).intValue());
         assertEquals(1, snapshot.messages().size());
         Map<String, Object> message = snapshot.messages().get(0);
-            assertNotNull(message.get("latestAttemptWorkerId"));
-            assertNotNull(message.get("latestAttemptWorkerContextId"));
-            assertNotNull(message.get("latestAttemptBatchId"));
+        assertNotNull(message.get("latestAttemptWorkerId"));
+        assertNotNull(message.get("latestAttemptWorkerContextId"));
+        assertNotNull(message.get("latestAttemptBatchId"));
     }
 
     private void assertTerminalSingleDeviceTask(TaskSnapshot snapshot) {
@@ -122,9 +119,9 @@ class TaskApiMultiTaskAssignmentIntegrationTest extends AbstractMockE2eTest {
         assertEquals(1, snapshot.messages().size());
         Map<String, Object> message = snapshot.messages().get(0);
         assertEquals("SUCCESS", message.get("status"));
-            assertNotNull(message.get("latestAttemptWorkerId"));
-            assertNotNull(message.get("latestAttemptWorkerContextId"));
-            assertNotNull(message.get("latestAttemptBatchId"));
+        assertNotNull(message.get("latestAttemptWorkerId"));
+        assertNotNull(message.get("latestAttemptWorkerContextId"));
+        assertNotNull(message.get("latestAttemptBatchId"));
     }
 
     private void registerWorker(String workerId) {
@@ -135,7 +132,7 @@ class TaskApiMultiTaskAssignmentIntegrationTest extends AbstractMockE2eTest {
     }
 
     private static final class ManualAckWebSocketClient extends MockWorkerWebSocketClient {
-        private final BlockingQueue<MassMessage> taskQueue = new LinkedBlockingQueue<>();
+        private final BlockingQueue<JsonObject> taskQueue = new LinkedBlockingQueue<>();
         private final BlockingQueue<AckSnapshot> ackQueue = new LinkedBlockingQueue<>();
 
         private ManualAckWebSocketClient(URI serverUri, String workerId) {
@@ -145,13 +142,16 @@ class TaskApiMultiTaskAssignmentIntegrationTest extends AbstractMockE2eTest {
         @Override
         public void onMessage(String message) {
             try {
-                MassMessage massMessage = GSON.fromJson(message, MassMessage.class);
-                if (massMessage != null && massMessage.getMsgType() == MessageType.TASK) {
-                    if (massMessage.isResponse()) {
-            MessageAckPayload result = GSON.fromJson(massMessage.getPayload(), MessageAckPayload.class);
-                        ackQueue.offer(new AckSnapshot(massMessage.getMsgId(), result.getCode(), result.getMessage()));
+                JsonObject frame = WsFrameTestSupport.parse(message);
+                if (frame != null && WsFrameTestSupport.isTask(frame)) {
+                    if (WsFrameTestSupport.isResponse(frame)) {
+                        ackQueue.offer(new AckSnapshot(
+                                WsFrameTestSupport.msgId(frame),
+                                WsFrameTestSupport.ackCode(frame),
+                                WsFrameTestSupport.ackMessage(frame)
+                        ));
                     } else {
-                        taskQueue.offer(massMessage);
+                        taskQueue.offer(frame);
                     }
                     return;
                 }
@@ -161,34 +161,19 @@ class TaskApiMultiTaskAssignmentIntegrationTest extends AbstractMockE2eTest {
             super.onMessage(message);
         }
 
-        private MassMessage awaitTask(long timeout, TimeUnit unit) throws InterruptedException {
+        private JsonObject awaitTask(long timeout, TimeUnit unit) throws InterruptedException {
             return taskQueue.poll(timeout, unit);
         }
 
-        private AckSnapshot sendSuccess(MassMessage taskMessage, String detail) throws Exception {
-            MassMessage response = new MassMessage();
-            response.setMsgId(taskMessage.getMsgId());
-            response.setResponse(true);
-            response.setMsgType(MessageType.TASK);
-            response.setSubMsgType(taskMessage.getSubMsgType());
-            response.setFrom(MessageDirection.CLIENT);
-            response.setProject(taskMessage.getProject());
-
-            MessageContext originalContext = taskMessage.getContext();
-            if (originalContext != null) {
-                MessageContext responseContext = new MessageContext();
-                responseContext.setConnRole(originalContext.getConnRole());
-                    responseContext.setTaskId(originalContext.getTaskId());
-                responseContext.setRetryCount(originalContext.getRetryCount());
-                responseContext.setWorkerId(getWorkerId());
-                response.setContext(responseContext);
-            }
-
-            response.setPayload(GSON.toJsonTree(Map.of(
-                    "status", "SUCCESS",
-                    "mockData", detail
-            )));
-            sendMessage(GSON.toJson(response));
+        private AckSnapshot sendSuccess(JsonObject taskMessage, String detail) throws Exception {
+            sendMessage(WsFrameTestSupport.buildTaskResult(
+                    WsFrameTestSupport.msgId(taskMessage),
+                    WsFrameTestSupport.project(taskMessage),
+                    getWorkerId(),
+                    WsFrameTestSupport.taskId(taskMessage),
+                    "SUCCESS",
+                    detail
+            ));
             return ackQueue.poll(3, TimeUnit.SECONDS);
         }
     }

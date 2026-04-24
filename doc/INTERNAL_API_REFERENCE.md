@@ -44,17 +44,12 @@ For verified runtime behavior and recommended startup, use [VERIFIED_RUNBOOK.md]
 
 ## 1.1 Event Control Plane Notes
 
-- SDK Phase 1 now has a stable event invocation contract: `EventRequest`, `EventResponse`, and `EventPrincipal`.
-- Control-plane authorization is event-centric and currently uses `clientId ∩ userId` allow-list intersection.
-- `EventDefinition.code` is the globally unique event/capability identity used by dispatch, catalog reads, and permission checks.
-- `project` remains scope metadata for task ownership and event eligibility; it is not part of the event identity key.
-- Catalog task events such as `demo.dispatch`, `bot.command`, or other embedding-defined business events can be invoked through the SDK event entry and are mapped to task creation.
-- Runtime control events such as `platform.worker.register` and `platform.meta.events.list` are handled through the embedded event runtime.
-- Built-in runtime control events are also registered into the SDK metadata catalog so metadata and dispatch do not diverge.
-- Legacy WebSocket `MassMessage` remains the transport envelope for the current gateway adapter, but new control capability must route through event dispatch instead of adding new `subMsgType` branches.
-- tuple routing like `msgType + subMsgType` is now a transport/protocol compatibility concern only, not the capability model.
-- Current gateway bridge only changes the control plane. Task dispatch/result data-plane contracts remain unchanged.
-- Worker debug/control now has an event-first API shape. `/status/workers/send-event` accepts `workerId`, `project`, `event`, `requestId`, `headers`, `payload`, and `principal`.
+- Stable event invocation contract: `EventRequest`, `EventResponse`, and `EventPrincipal`.
+- Control-plane authorization is event-centric and currently intersects client and user allow-list scope.
+- `EventDefinition.code` is the event/capability identity used by dispatch, catalog reads, and permission checks; `project` remains scope metadata only.
+- Task-backed business events enter through the SDK event path and normalize to task creation; runtime control events are handled directly by the embedded event runtime.
+- Built-in runtime control events are also registered into the SDK metadata catalog so metadata and dispatch stay aligned.
+- Worker debug/control uses the event-first API shape. `/status/workers/send-event` accepts `workerId`, `project`, `event`, `requestId`, `headers`, `payload`, and `principal`.
 
 ## 2. SDK Metadata API
 

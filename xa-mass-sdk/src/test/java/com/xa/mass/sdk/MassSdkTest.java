@@ -20,7 +20,7 @@ import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.engine.rules.RuleType;
 import com.xa.mass.engine.strategy.SimpleTaskScheduler;
 import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
-import com.xa.mass.gateway.queue.Envelope;
+import com.xa.mass.gateway.queue.OutboundDelivery;
 import com.xa.mass.sdk.auth.AuthProvider;
 import com.xa.mass.sdk.auth.SubmitterMetadata;
 import com.xa.mass.sdk.auth.SubmitterRegistration;
@@ -110,8 +110,8 @@ class MassSdkTest {
         AtomicReference<TransportServerFactoryContext> capturedContext = new AtomicReference<>();
         AtomicBoolean started = new AtomicBoolean(false);
         AtomicBoolean stopped = new AtomicBoolean(false);
-        MessageQueue<Envelope> inputQueue = new InMemoryMessageQueue<>("transport-input", Envelope.class);
-        MessageQueue<Envelope> outputQueue = new InMemoryMessageQueue<>("transport-output", Envelope.class);
+        MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("transport-input", String.class);
+        MessageQueue<OutboundDelivery> outputQueue = new InMemoryMessageQueue<>("transport-output", OutboundDelivery.class);
 
         TransportServerFactory<TransportServerFactoryContext> factory = context -> {
             capturedContext.set(context);
@@ -208,7 +208,7 @@ class MassSdkTest {
         MassApplication delegate = mock(MassApplication.class);
         DispatchRuntimeContext transportContext = mock(DispatchRuntimeContext.class);
         @SuppressWarnings("unchecked")
-        MessageTransporter<Envelope> transporter = mock(MessageTransporter.class);
+        MessageTransporter<String, OutboundDelivery> transporter = mock(MessageTransporter.class);
 
         when(delegate.getDispatcherContext()).thenReturn(transportContext);
         when(transportContext.getMessageTransporter()).thenReturn(transporter);
@@ -218,14 +218,14 @@ class MassSdkTest {
         MassSdkApplication app = new MassSdkApplication(delegate);
 
         Map<String, Object> queueDetail = app.getQueueDetail();
-        Map<String, Object> enqueueResult = app.enqueueRawMessage(Map.of("eventCode", "platform.test"));
+        Map<String, Object> enqueueResult = app.enqueueRawMessage(Map.of("workerId", "worker-debug-1", "rawJson", "{\"eventCode\":\"platform.test\"}"));
 
         assertEquals(2, queueDetail.get("inputQueue"));
         assertEquals(5, queueDetail.get("outputQueue"));
         assertEquals(true, queueDetail.get("transporterAvailable"));
         assertEquals(true, enqueueResult.get("success"));
         verify(delegate, atLeastOnce()).getDispatcherContext();
-        verify(transporter).sendOutput(any(Envelope.class));
+        verify(transporter).sendOutput(any(OutboundDelivery.class));
     }
 
     @Test
@@ -726,8 +726,8 @@ class MassSdkTest {
 
     @Test
     void dispatchEventCanCreateCatalogTaskThroughEventEntry() {
-        MessageQueue<Envelope> inputQueue = new InMemoryMessageQueue<>("Envelope", Envelope.class);
-        MessageQueue<Envelope> outputQueue = new InMemoryMessageQueue<>("Envelope", Envelope.class);
+        MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("input", String.class);
+        MessageQueue<OutboundDelivery> outputQueue = new InMemoryMessageQueue<>("output", OutboundDelivery.class);
         MassSdkApplication app = MassSdk.builder()
                 .transportServer(0, "/sdk-transport")
                 .gateway(gateway -> gateway.enabled(false).transportServerEnabled(false).inputQueue(inputQueue).outputQueue(outputQueue))
@@ -824,8 +824,8 @@ class MassSdkTest {
 
     @Test
     void registerProjectMakesCustomProjectExecutableForEngineTaskCreation() {
-        MessageQueue<Envelope> inputQueue = new InMemoryMessageQueue<>("Envelope", Envelope.class);
-        MessageQueue<Envelope> outputQueue = new InMemoryMessageQueue<>("Envelope", Envelope.class);
+        MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("input", String.class);
+        MessageQueue<OutboundDelivery> outputQueue = new InMemoryMessageQueue<>("output", OutboundDelivery.class);
         MassSdkApplication app = MassSdk.builder()
                 .transportServer(0, "/sdk-transport")
                 .gateway(gateway -> gateway.enabled(false).transportServerEnabled(false).inputQueue(inputQueue).outputQueue(outputQueue))
@@ -858,8 +858,8 @@ class MassSdkTest {
 
     @Test
     void createTaskSupportsCustomRegisteredProjectAndEventCatalog() {
-        MessageQueue<Envelope> inputQueue = new InMemoryMessageQueue<>("Envelope", Envelope.class);
-        MessageQueue<Envelope> outputQueue = new InMemoryMessageQueue<>("Envelope", Envelope.class);
+        MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("input", String.class);
+        MessageQueue<OutboundDelivery> outputQueue = new InMemoryMessageQueue<>("output", OutboundDelivery.class);
         MassSdkApplication app = MassSdk.builder()
                 .transportServer(0, "/sdk-transport")
                 .gateway(gateway -> gateway.enabled(false).transportServerEnabled(false).inputQueue(inputQueue).outputQueue(outputQueue))
@@ -1136,8 +1136,8 @@ class MassSdkTest {
 
     @Test
     void pullWorkerRejectsMissingWorker() {
-        MessageQueue<Envelope> inputQueue = new InMemoryMessageQueue<>("Envelope", Envelope.class);
-        MessageQueue<Envelope> outputQueue = new InMemoryMessageQueue<>("Envelope", Envelope.class);
+        MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("input", String.class);
+        MessageQueue<OutboundDelivery> outputQueue = new InMemoryMessageQueue<>("output", OutboundDelivery.class);
         MassSdkApplication app = MassSdk.builder()
                 .transportServer(0, "/sdk-transport")
                 .gateway(gateway -> gateway.enabled(false).transportServerEnabled(false).inputQueue(inputQueue).outputQueue(outputQueue))
@@ -1158,8 +1158,8 @@ class MassSdkTest {
 
     @Test
     void pullWorkerRejectsWorkerWithoutTransportIdentity() {
-        MessageQueue<Envelope> inputQueue = new InMemoryMessageQueue<>("Envelope", Envelope.class);
-        MessageQueue<Envelope> outputQueue = new InMemoryMessageQueue<>("Envelope", Envelope.class);
+        MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("input", String.class);
+        MessageQueue<OutboundDelivery> outputQueue = new InMemoryMessageQueue<>("output", OutboundDelivery.class);
         MassSdkApplication app = MassSdk.builder()
                 .transportServer(0, "/sdk-transport")
                 .gateway(gateway -> gateway.enabled(false).transportServerEnabled(false).inputQueue(inputQueue).outputQueue(outputQueue))
@@ -1185,8 +1185,8 @@ class MassSdkTest {
 
     @Test
     void pullWorkerRejectsRealtimeWorkerWhenTransportIsNotPullCapable() {
-        MessageQueue<Envelope> inputQueue = new InMemoryMessageQueue<>("Envelope", Envelope.class);
-        MessageQueue<Envelope> outputQueue = new InMemoryMessageQueue<>("Envelope", Envelope.class);
+        MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("input", String.class);
+        MessageQueue<OutboundDelivery> outputQueue = new InMemoryMessageQueue<>("output", OutboundDelivery.class);
         WorkerTransportRuntimeFactory transportFactory = context -> new TransportRuntimeRegistry(
                 context.getWorkerManager(),
                 context.getSystemEventChannel(),
@@ -1223,8 +1223,8 @@ class MassSdkTest {
 
     @Test
     void pullWorkerRejectsUnsupportedTransportEvenWhenAnotherPullCapableBindingExists() {
-        MessageQueue<Envelope> inputQueue = new InMemoryMessageQueue<>("Envelope", Envelope.class);
-        MessageQueue<Envelope> outputQueue = new InMemoryMessageQueue<>("Envelope", Envelope.class);
+        MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("input", String.class);
+        MessageQueue<OutboundDelivery> outputQueue = new InMemoryMessageQueue<>("output", OutboundDelivery.class);
         WorkerTransportRuntimeFactory transportFactory = context -> new TransportRuntimeRegistry(
                 context.getWorkerManager(),
                 context.getSystemEventChannel(),
@@ -1264,8 +1264,8 @@ class MassSdkTest {
 
     @Test
     void pullWorkerResolvesByCanonicalTransportHintInsteadOfAdapterProtocolLabel() {
-        MessageQueue<Envelope> inputQueue = new InMemoryMessageQueue<>("Envelope", Envelope.class);
-        MessageQueue<Envelope> outputQueue = new InMemoryMessageQueue<>("Envelope", Envelope.class);
+        MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("input", String.class);
+        MessageQueue<OutboundDelivery> outputQueue = new InMemoryMessageQueue<>("output", OutboundDelivery.class);
         StubPullCapableAdapter pollingAdapter = new StubPullCapableAdapter(
                 "polling-http-v2",
                 WorkerTransportHints.POLLING,
@@ -1306,8 +1306,8 @@ class MassSdkTest {
 
     @Test
     void sendWorkerEventRejectsTransportWithoutOutboundControlEventPublisher() {
-        MessageQueue<Envelope> inputQueue = new InMemoryMessageQueue<>("Envelope", Envelope.class);
-        MessageQueue<Envelope> outputQueue = new InMemoryMessageQueue<>("Envelope", Envelope.class);
+        MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("input", String.class);
+        MessageQueue<OutboundDelivery> outputQueue = new InMemoryMessageQueue<>("output", OutboundDelivery.class);
         WorkerTransportRuntimeFactory transportFactory = context -> new TransportRuntimeRegistry(
                 context.getWorkerManager(),
                 context.getSystemEventChannel(),
@@ -1352,8 +1352,8 @@ class MassSdkTest {
 
     @Test
     void sendWorkerEventResolvesOutboundPublisherByCanonicalTransportHint() {
-        MessageQueue<Envelope> inputQueue = new InMemoryMessageQueue<>("Envelope", Envelope.class);
-        MessageQueue<Envelope> outputQueue = new InMemoryMessageQueue<>("Envelope", Envelope.class);
+        MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("input", String.class);
+        MessageQueue<OutboundDelivery> outputQueue = new InMemoryMessageQueue<>("output", OutboundDelivery.class);
         RecordingControlEventPublisher publisher = new RecordingControlEventPublisher();
         WorkerTransportRuntimeFactory transportFactory = context -> new TransportRuntimeRegistry(
                 context.getWorkerManager(),
@@ -1406,8 +1406,8 @@ class MassSdkTest {
 
     @Test
     void pullWorkerSessionCompletesTaskWithoutWebsocketPush() throws Exception {
-        MessageQueue<Envelope> inputQueue = new InMemoryMessageQueue<>("Envelope", Envelope.class);
-        MessageQueue<Envelope> outputQueue = new InMemoryMessageQueue<>("Envelope", Envelope.class);
+        MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("input", String.class);
+        MessageQueue<OutboundDelivery> outputQueue = new InMemoryMessageQueue<>("output", OutboundDelivery.class);
         MassSdkApplication app = MassSdk.builder()
                 .transportServer(0, "/sdk-transport")
                 .gateway(gateway -> gateway.enabled(false).transportServerEnabled(false).inputQueue(inputQueue).outputQueue(outputQueue))
@@ -1687,3 +1687,4 @@ class MassSdkTest {
         }
     }
 }
+

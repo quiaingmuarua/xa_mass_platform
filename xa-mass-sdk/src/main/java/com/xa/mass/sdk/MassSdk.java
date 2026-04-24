@@ -5,7 +5,7 @@ import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.engine.strategy.TaskScheduler;
-import com.xa.mass.gateway.queue.Envelope;
+import com.xa.mass.gateway.queue.OutboundDelivery;
 import com.xa.mass.sdk.catalog.ProjectEventCatalogRegistry;
 import com.xa.mass.starter.builder.MassApplicationBuilder;
 import com.xa.mass.starter.transport.TransportServerFactoryContext;
@@ -52,8 +52,8 @@ public final class MassSdk {
      */
     @Deprecated(forRemoval = false)
     public static MassSdkApplication development(int port,
-                                                 MessageQueue<Envelope> inputQueue,
-                                                 MessageQueue<Envelope> outputQueue) {
+                                                 MessageQueue<String> inputQueue,
+                                                 MessageQueue<OutboundDelivery> outputQueue) {
         return new MassSdkApplication(
                 MassApplicationBuilder.createDevelopment(port, inputQueue, outputQueue)
         );
@@ -71,8 +71,8 @@ public final class MassSdk {
      */
     @Deprecated(forRemoval = false)
     public static MassSdkApplication production(int port,
-                                                MessageQueue<Envelope> inputQueue,
-                                                MessageQueue<Envelope> outputQueue) {
+                                                MessageQueue<String> inputQueue,
+                                                MessageQueue<OutboundDelivery> outputQueue) {
         return new MassSdkApplication(
                 MassApplicationBuilder.createProduction(port, inputQueue, outputQueue)
         );
@@ -221,12 +221,12 @@ public final class MassSdk {
             return this;
         }
 
-        public GatewayOptions inputQueue(MessageQueue<Envelope> inputQueue) {
+        public GatewayOptions inputQueue(MessageQueue<String> inputQueue) {
             delegate.inputQueue(inputQueue);
             return this;
         }
 
-        public GatewayOptions outputQueue(MessageQueue<Envelope> outputQueue) {
+        public GatewayOptions outputQueue(MessageQueue<OutboundDelivery> outputQueue) {
             delegate.outputQueue(outputQueue);
             return this;
         }

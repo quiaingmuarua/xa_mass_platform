@@ -25,7 +25,7 @@ import com.xa.mass.engine.rules.RuleType;
 import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
 import com.xa.mass.gateway.dispatcher.bridge.WorkerControlEventRequestBridge;
 import com.xa.mass.gateway.dispatcher.event.EventGatewayBridge;
-import com.xa.mass.gateway.queue.Envelope;
+import com.xa.mass.gateway.queue.OutboundDelivery;
 import com.xa.mass.sdk.auth.*;
 import com.xa.mass.sdk.authz.*;
 import com.xa.mass.sdk.catalog.*;
@@ -1324,23 +1324,29 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
         if (transportContext == null) {
             return Map.of("success", false, "msg", "transport context is not initialized");
         }
-        MessageTransporter<?> messageTransporter = transportContext.getMessageTransporter();
+        MessageTransporter<?, ?> messageTransporter = transportContext.getMessageTransporter();
         if (messageTransporter == null) {
             return Map.of("success", false, "msg", "message transporter is not initialized");
         }
-
-        Envelope env = Envelope.builder()
-                .rawJson(GSON.toJson(request))
-                .receivedAt(System.currentTimeMillis())
-                .build();
-        transportContext.getMessageTransporter().sendOutput(env);
+        Object workerId = request.get("workerId");
+        if (!(workerId instanceof String workerIdText) || workerIdText.isBlank()) {
+            return Map.of("success", false, "msg", "workerId is required");
+        }
+        Object rawJson = request.get("rawJson");
+        String payload = rawJson instanceof String rawText ? rawText : GSON.toJson(request);
+        transportContext.getMessageTransporter().sendOutput(new OutboundDelivery(
+                workerIdText.trim(),
+                null,
+                payload,
+                UUID.randomUUID().toString()
+        ));
         return Map.of("success", true, "msg", "message enqueued");
     }
 
     @Override
     public Map<String, Object> getQueueDetail() {
         DispatchRuntimeContext transportContext = transportContext();
-        MessageTransporter<?> messageTransporter = transportContext != null ? transportContext.getMessageTransporter() : null;
+        MessageTransporter<?, ?> messageTransporter = transportContext != null ? transportContext.getMessageTransporter() : null;
         int inputSize = safeInputQueueSize(messageTransporter);
         int outputSize = safeOutputQueueSize(messageTransporter);
         Map<String, Object> map = new LinkedHashMap<>();
@@ -1492,7 +1498,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
         return sessionManager instanceof WorkerEndpointInspector inspector ? inspector : null;
     }
 
-    private int safeInputQueueSize(MessageTransporter<?> messageTransporter) {
+    private int safeInputQueueSize(MessageTransporter<?, ?> messageTransporter) {
         try {
             return messageTransporter != null ? messageTransporter.inputQueueSize() : -1;
         } catch (Exception ignored) {
@@ -1500,7 +1506,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
         }
     }
 
-    private int safeOutputQueueSize(MessageTransporter<?> messageTransporter) {
+    private int safeOutputQueueSize(MessageTransporter<?, ?> messageTransporter) {
         try {
             return messageTransporter != null ? messageTransporter.outputQueueSize() : -1;
         } catch (Exception ignored) {

@@ -1,15 +1,11 @@
 package com.xa.mass.mock.e2e.results;
 
 import com.google.gson.Gson;
-import com.xa.mass.gateway.model.enums.MessageDirection;
-import com.xa.mass.gateway.model.enums.MessageType;
-import com.xa.mass.gateway.model.massMessage.MassMessage;
-import com.xa.mass.gateway.model.massMessage.MessageAckPayload;
-import com.xa.mass.gateway.model.massMessage.MessageContext;
-import com.xa.mass.gateway.session.SessionRoles;
+import com.google.gson.JsonObject;
 import com.xa.mass.mock.MockApplicationSpringBootApp;
 import com.xa.mass.mock.client.MockWorkerWebSocketClient;
 import com.xa.mass.mock.e2e.support.AbstractMockE2eTest;
+import com.xa.mass.mock.testutil.WsFrameTestSupport;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpMethod;
@@ -24,7 +20,10 @@ import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SpringBootTest(
         classes = MockApplicationSpringBootApp.class,
@@ -99,33 +98,12 @@ class TaskApiCallbackReplayIntegrationTest extends AbstractMockE2eTest {
         ReplayWebSocketClient client = new ReplayWebSocketClient(uri, "replay-worker", msgId);
         try {
             assertClientConnects(client, "Replay WebSocket client failed to connect");
-            client.sendMessage(buildReplayPayload(taskId, msgId, status, detail));
+            client.sendMessage(WsFrameTestSupport.buildTaskResult(msgId, "demoApp", "replay-worker", taskId, status, detail));
             assertTrue(client.awaitAck(3, TimeUnit.SECONDS), "Timed out waiting for gateway ack");
             return client.ackSnapshot();
         } finally {
             client.disconnect();
         }
-    }
-
-    private String buildReplayPayload(String taskId, String msgId, String status, String detail) {
-        MassMessage replay = new MassMessage();
-        replay.setMsgId(msgId);
-        replay.setResponse(true);
-        replay.setMsgType(MessageType.TASK);
-        replay.setSubMsgType("step");
-        replay.setFrom(MessageDirection.CLIENT);
-        replay.setProject("demoApp");
-
-        MessageContext context = new MessageContext();
-        context.setTaskId(taskId);
-        context.setWorkerId("replay-worker");
-        context.setConnRole(SessionRoles.TASK_MESSAGES);
-        replay.setContext(context);
-        replay.setPayload(GSON.toJsonTree(Map.of(
-                "status", status,
-                "mockData", detail
-        )));
-        return GSON.toJson(replay);
     }
 
     private Map<String, Object> findMessage(List<Map<String, Object>> messages, String msgId) {
@@ -151,13 +129,15 @@ class TaskApiCallbackReplayIntegrationTest extends AbstractMockE2eTest {
         @Override
         public void onMessage(String message) {
             try {
-                MassMessage massMessage = GSON.fromJson(message, MassMessage.class);
-                if (massMessage != null
-                        && massMessage.isResponse()
-                        && massMessage.getMsgType() == MessageType.TASK
-                        && expectedMsgId.equals(massMessage.getMsgId())) {
-            MessageAckPayload result = GSON.fromJson(massMessage.getPayload(), MessageAckPayload.class);
-                    ackSnapshot = new AckSnapshot(result.getCode(), result.getMessage());
+                JsonObject frame = WsFrameTestSupport.parse(message);
+                if (frame != null
+                        && WsFrameTestSupport.isResponse(frame)
+                        && WsFrameTestSupport.isTask(frame)
+                        && expectedMsgId.equals(WsFrameTestSupport.msgId(frame))) {
+                    ackSnapshot = new AckSnapshot(
+                            WsFrameTestSupport.ackCode(frame),
+                            WsFrameTestSupport.ackMessage(frame)
+                    );
                     ackLatch.countDown();
                 }
             } catch (Exception ignored) {

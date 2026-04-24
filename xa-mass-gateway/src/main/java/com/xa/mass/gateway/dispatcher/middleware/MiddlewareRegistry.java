@@ -1,13 +1,17 @@
 package com.xa.mass.gateway.dispatcher.middleware;
 
+import com.google.gson.JsonObject;
 import com.xa.mass.base.debug.WorkerDebugMessageStore;
 import com.xa.mass.base.exception.CommandException;
 import com.xa.mass.base.exception.ErrorCode;
 import com.xa.mass.base.exception.ValidationException;
 import com.xa.mass.gateway.dispatcher.GatewayFrameKind;
-import com.xa.mass.gateway.model.massMessage.MassMessage;
-import com.xa.mass.gateway.model.massMessage.MessageContext;
-import com.xa.mass.gateway.queue.Envelope;
+import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
+import com.xa.mass.gateway.queue.OutboundDelivery;
+import com.xa.mass.sdk.event.EventPrincipal;
+import com.xa.mass.sdk.event.EventRequest;
+import com.xa.mass.sdk.event.EventResponse;
+import com.xa.mass.transport.model.TaskResultReport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -16,112 +20,134 @@ import java.util.concurrent.CopyOnWriteArrayList;
 
 public class MiddlewareRegistry {
     private static final Logger logger = LoggerFactory.getLogger(MiddlewareRegistry.class);
-    private final EnvelopeMiddleware inputMiddleware = processEnvelopeMiddleware();
-    private final EnvelopeMiddleware outputMiddleware = sendEnvelopeMiddleware();
+    private final MessageInboundMiddleware inputMiddleware = processEnvelopeMiddleware();
+    private final MessageOutboundMiddleware outputMiddleware = sendEnvelopeMiddleware();
     private final CopyOnWriteArrayList<ExceptionMiddleware> exceptionMiddlewareList = new CopyOnWriteArrayList<>();
 
     public MiddlewareRegistry() {
         resetExceptionMiddlewares();
     }
 
-    // Final middleware for the input/output chain that decodes, routes, and emits downstream responses.
-    public static EnvelopeMiddleware processEnvelopeMiddleware() {
-        return (envelope, context) -> {
+    public static MessageInboundMiddleware processEnvelopeMiddleware() {
+        return (rawJson, context) -> {
             try {
-                MassMessage msg = context.getMessageCodec().decode(envelope.getRawJson());
-                if (msg == null || msg.getContext() == null) {
+                JsonObject frame = context.getMessageCodec().parseObject(rawJson);
+                if (frame == null) {
                     return true;
                 }
-                MessageContext ctx = msg.getContext();
-                GatewayFrameKind frameKind = context.getFrameRouter().route(msg);
-                List<MassMessage> responses = dispatchInboundFrame(frameKind, msg, context);
-                if (responses == null || responses.isEmpty()) {
-                    return true;
-                }
-                for (MassMessage resp : responses) {
-                    String json = context.getMessageCodec().encode(resp);
-                    context.getMessageTransporter().sendOutput(Envelope.builder()
-                            .workerId(ctx.getWorkerId())
-                            .connRole(ctx.getConnRole())
-                            .eventCode(envelope != null ? envelope.getEventCode() : null)
-                            .rawJson(json)
-                            .build());
-                }
+                String workerId = context.getMessageCodec().extractWorkerId(frame);
+                String connRole = context.getMessageCodec().extractConnRole(frame);
+                String traceId = context.getMessageCodec().extractMessageId(frame);
+                GatewayFrameKind frameKind = context.getFrameRouter().route(frame);
+                return switch (frameKind) {
+                    case PING_HEARTBEAT -> {
+                        context.getMessageTransporter().sendOutput(new OutboundDelivery(
+                                workerId,
+                                connRole,
+                                context.getFrameRouter().handlePing(frame),
+                                traceId
+                        ));
+                        yield true;
+                    }
+                    case PONG_HEARTBEAT -> {
+                        context.getFrameRouter().handlePong(frame);
+                        yield true;
+                    }
+                    case TASK_STEP -> {
+                        if (context.getTaskStepFrameBridge() == null) {
+                            yield true;
+                        }
+                        try {
+                            TaskResultReport report = context.getMessageCodec().decodeTaskResult(frame);
+                            boolean handled = context.getTaskStepFrameBridge().handleTaskStep(report);
+                            int code = handled ? 200 : 404;
+                            String message = handled ? "task result processed" : "task result ignored";
+                            context.getMessageTransporter().sendOutput(new OutboundDelivery(
+                                    workerId,
+                                    connRole,
+                                    context.getMessageCodec().encodeTaskAck(frame, code, message),
+                                    traceId
+                            ));
+                        } catch (IllegalArgumentException ex) {
+                            context.getMessageTransporter().sendOutput(new OutboundDelivery(
+                                    workerId,
+                                    connRole,
+                                    context.getMessageCodec().encodeTaskAck(frame, 400, ex.getMessage()),
+                                    traceId
+                            ));
+                        }
+                        yield true;
+                    }
+                    case CONTROL_EVENT_REQUEST -> {
+                        if (context.getControlEventRequestFrameBridge() == null) {
+                            yield true;
+                        }
+                        EventRequest request = context.getMessageCodec().decodeControlEventRequest(frame);
+                        EventPrincipal principal = context.getMessageCodec().decodeControlEventPrincipal(frame);
+                        EventResponse response = context.getControlEventRequestFrameBridge()
+                                .handleControlEventRequest(request, principal);
+                        context.getMessageTransporter().sendOutput(new OutboundDelivery(
+                                workerId,
+                                connRole,
+                                context.getMessageCodec().encodeControlEventResponse(frame, response),
+                                traceId
+                        ));
+                        yield true;
+                    }
+                    case CONTROL_EVENT_RESPONSE -> {
+                        if (context.getControlEventResponseFrameSink() != null) {
+                            context.getControlEventResponseFrameSink().handleControlEventResponse(
+                                    rawJson,
+                                    workerId,
+                                    context.getMessageCodec().extractProject(frame),
+                                    traceId,
+                                    context.getMessageCodec().extractPayload(frame)
+                            );
+                        }
+                        yield true;
+                    }
+                    case UNKNOWN -> {
+                        logger.warn("No adapter route found for inbound compatibility frame");
+                        yield true;
+                    }
+                };
             } catch (Exception e) {
                 logger.error("Error in processEnvelopeMiddleware", e);
                 return false;
             }
-            return true;
         };
     }
 
-    public static EnvelopeMiddleware sendEnvelopeMiddleware() {
-        return (envelope, context) -> {
+    public static MessageOutboundMiddleware sendEnvelopeMiddleware() {
+        return (delivery, context) -> {
             try {
-                logger.debug("sendEnvelopeMiddleware {}", envelope);
-                boolean sent = context.getSessionManager()
-                        .sendMessage(envelope.getWorkerId(), envelope.getConnRole(), envelope.getRawJson());
+                boolean sent = context.getSessionManager().sendMessage(
+                        delivery.getWorkerId(),
+                        delivery.getConnRole(),
+                        delivery.getRawJson()
+                );
                 if (sent) {
                     return true;
                 }
                 String detail = "endpoint unavailable for workerId="
-                        + envelope.getWorkerId() + ", role=" + envelope.getConnRole();
-                WorkerDebugMessageStore.markFailed(envelope.getTraceId(), detail);
-                logger.warn("sendEnvelopeMiddleware skipped because endpoint is unavailable: workerId={}, role={}, eventCode={}, traceId={}",
-                        envelope.getWorkerId(), envelope.getConnRole(), envelope.getEventCode(), envelope.getTraceId());
+                        + delivery.getWorkerId() + ", role=" + delivery.getConnRole();
+                WorkerDebugMessageStore.markFailed(delivery.getTraceId(), detail);
+                logger.warn("sendEnvelopeMiddleware skipped because endpoint is unavailable: workerId={}, role={}, traceId={}",
+                        delivery.getWorkerId(), delivery.getConnRole(), delivery.getTraceId());
                 return false;
             } catch (Exception e) {
-                WorkerDebugMessageStore.markFailed(envelope != null ? envelope.getTraceId() : null, e.getMessage());
+                WorkerDebugMessageStore.markFailed(delivery != null ? delivery.getTraceId() : null, e.getMessage());
                 logger.error("Error in sendEnvelopeMiddleware", e);
                 return false;
             }
         };
     }
 
-    private static List<MassMessage> dispatchInboundFrame(GatewayFrameKind frameKind,
-                                                          MassMessage msg,
-                                                          com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext context) {
-        if (frameKind == null) {
-            logger.warn("No frame kind resolved for message");
-            return List.of();
-        }
-        return switch (frameKind) {
-            case PING_HEARTBEAT -> context.getFrameRouter().handlePing(msg);
-            case PONG_HEARTBEAT -> context.getFrameRouter().handlePong(msg);
-            case TASK_STEP -> {
-                if (context.getTaskStepFrameBridge() == null) {
-                    logger.warn("No task-step bridge configured for inbound TASK/step frame");
-                    yield List.of();
-                }
-                yield context.getTaskStepFrameBridge().handleTaskStep(msg);
-            }
-            case CONTROL_EVENT_REQUEST -> {
-                if (context.getControlEventRequestFrameBridge() == null) {
-                    logger.warn("No control-event request bridge configured for inbound CONTROL/event frame");
-                    yield List.of();
-                }
-                yield context.getControlEventRequestFrameBridge().handleControlEventRequest(msg);
-            }
-            case CONTROL_EVENT_RESPONSE -> {
-                if (context.getControlEventResponseFrameSink() == null) {
-                    logger.warn("No control-event response sink configured for inbound CONTROL/event response");
-                    yield List.of();
-                }
-                context.getControlEventResponseFrameSink().handleControlEventResponse(msg);
-                yield List.of();
-            }
-            case UNKNOWN -> {
-                logger.warn("No adapter route found for inbound compatibility frame");
-                yield List.of();
-            }
-        };
-    }
-
-    public List<EnvelopeMiddleware> getInputMiddlewares() {
+    public List<MessageInboundMiddleware> getInputMiddlewares() {
         return List.of(inputMiddleware);
     }
 
-    public List<EnvelopeMiddleware> getOutputMiddlewares() {
+    public List<MessageOutboundMiddleware> getOutputMiddlewares() {
         return List.of(outputMiddleware);
     }
 
@@ -141,17 +167,16 @@ public class MiddlewareRegistry {
     }
 
     private ExceptionMiddleware defaultExceptionMiddleware() {
-        return (envelope, context, ex) -> {
+        return (rawJson, delivery, context, ex) -> {
             if (ex instanceof ValidationException) {
                 logger.warn("[ExceptionMiddleware] Validation failed: {}", ex.getMessage());
                 return false;
-            } else if (ex instanceof CommandException) {
-                CommandException ce = (CommandException) ex;
+            } else if (ex instanceof CommandException ce) {
                 ErrorCode code = ce.getErrorCode();
                 logger.warn("[CommandException] code={}, msg={}", code.code, ce.getMessage());
                 return false;
             } else {
-                logger.error("[ExceptionMiddleware] System error: ", ex);
+                logger.error("[ExceptionMiddleware] System error", ex);
                 return false;
             }
         };

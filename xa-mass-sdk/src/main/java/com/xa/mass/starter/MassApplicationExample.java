@@ -2,7 +2,7 @@ package com.xa.mass.starter;
 
 import com.xa.mass.base.channel.messaging.api.MessageQueue;
 import com.xa.mass.base.channel.messaging.memory.InMemoryMessageQueue;
-import com.xa.mass.gateway.queue.Envelope;
+import com.xa.mass.gateway.queue.OutboundDelivery;
 import com.xa.mass.starter.builder.MassApplicationBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -48,8 +48,8 @@ public class MassApplicationExample {
 
     private static void exampleCustomConfiguration() {
         logger.info("Example 4: custom configuration");
-        MessageQueue<Envelope> inputQueue = new InMemoryMessageQueue<>("Envelope", Envelope.class);
-        MessageQueue<Envelope> outputQueue = new InMemoryMessageQueue<>("Envelope", Envelope.class);
+        MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("WsInputRawJson", String.class);
+        MessageQueue<OutboundDelivery> outputQueue = new InMemoryMessageQueue<>("WsOutboundDelivery", OutboundDelivery.class);
 
         MassApplication app = MassApplicationBuilder.create()
                 .server(9090, "/custom-ws")
@@ -70,8 +70,8 @@ public class MassApplicationExample {
 
     private static void exampleGatewayOnly() {
         logger.info("Example 5: gateway only");
-        MessageQueue<Envelope> inputQueue = new InMemoryMessageQueue<>("Envelope", Envelope.class);
-        MessageQueue<Envelope> outputQueue = new InMemoryMessageQueue<>("Envelope", Envelope.class);
+        MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("WsInputRawJson", String.class);
+        MessageQueue<OutboundDelivery> outputQueue = new InMemoryMessageQueue<>("WsOutboundDelivery", OutboundDelivery.class);
 
         MassApplication app = MassApplicationBuilder.create()
                 .server(8080)

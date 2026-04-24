@@ -1,16 +1,13 @@
 package com.xa.mass.mock.e2e.assignment;
 
 import com.google.gson.Gson;
+import com.google.gson.JsonObject;
 import com.xa.mass.base.enums.worker.WorkerContextStatus;
 import com.xa.mass.base.model.WorkerContext;
-import com.xa.mass.gateway.model.enums.MessageDirection;
-import com.xa.mass.gateway.model.enums.MessageType;
-import com.xa.mass.gateway.model.massMessage.MassMessage;
-import com.xa.mass.gateway.model.massMessage.MessageAckPayload;
-import com.xa.mass.gateway.model.massMessage.MessageContext;
 import com.xa.mass.mock.MockApplicationSpringBootApp;
 import com.xa.mass.mock.client.MockWorkerWebSocketClient;
 import com.xa.mass.mock.e2e.support.AbstractMockE2eTest;
+import com.xa.mass.mock.testutil.WsFrameTestSupport;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpMethod;
@@ -27,7 +24,9 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 @SpringBootTest(
         classes = MockApplicationSpringBootApp.class,
@@ -121,8 +120,8 @@ class TaskApiMultiRoundDispatchIntegrationTest extends AbstractMockE2eTest {
             );
             assertApiOk(approveResponse);
 
-            MassMessage first = client.awaitTask(3, TimeUnit.SECONDS);
-            MassMessage second = client.awaitTask(3, TimeUnit.SECONDS);
+            JsonObject first = client.awaitTask(3, TimeUnit.SECONDS);
+            JsonObject second = client.awaitTask(3, TimeUnit.SECONDS);
             assertNotNull(first, "First round should dispatch the first message");
             assertNotNull(second, "First round should dispatch the second message");
             assertNull(client.awaitTask(750, TimeUnit.MILLISECONDS), "Third message should wait for the next dispatch round");
@@ -168,7 +167,7 @@ class TaskApiMultiRoundDispatchIntegrationTest extends AbstractMockE2eTest {
             assertEquals(200, secondAck.code());
             assertEquals("task result processed", secondAck.message());
 
-            MassMessage third = client.awaitTask(3, TimeUnit.SECONDS);
+            JsonObject third = client.awaitTask(3, TimeUnit.SECONDS);
             assertNotNull(third, "Next round should begin after the first round finishes");
 
             AckSnapshot thirdAck = client.sendSuccess(third, "round-2-c");
@@ -202,7 +201,7 @@ class TaskApiMultiRoundDispatchIntegrationTest extends AbstractMockE2eTest {
     }
 
     private static final class ManualAckWebSocketClient extends MockWorkerWebSocketClient {
-        private final BlockingQueue<MassMessage> taskQueue = new LinkedBlockingQueue<>();
+        private final BlockingQueue<JsonObject> taskQueue = new LinkedBlockingQueue<>();
         private final BlockingQueue<AckSnapshot> ackQueue = new LinkedBlockingQueue<>();
 
         private ManualAckWebSocketClient(URI serverUri, String workerId) {
@@ -212,13 +211,16 @@ class TaskApiMultiRoundDispatchIntegrationTest extends AbstractMockE2eTest {
         @Override
         public void onMessage(String message) {
             try {
-                MassMessage massMessage = GSON.fromJson(message, MassMessage.class);
-                if (massMessage != null && massMessage.getMsgType() == MessageType.TASK) {
-                    if (massMessage.isResponse()) {
-            MessageAckPayload result = GSON.fromJson(massMessage.getPayload(), MessageAckPayload.class);
-                        ackQueue.offer(new AckSnapshot(massMessage.getMsgId(), result.getCode(), result.getMessage()));
+                JsonObject frame = WsFrameTestSupport.parse(message);
+                if (frame != null && WsFrameTestSupport.isTask(frame)) {
+                    if (WsFrameTestSupport.isResponse(frame)) {
+                        ackQueue.offer(new AckSnapshot(
+                                WsFrameTestSupport.msgId(frame),
+                                WsFrameTestSupport.ackCode(frame),
+                                WsFrameTestSupport.ackMessage(frame)
+                        ));
                     } else {
-                        taskQueue.offer(massMessage);
+                        taskQueue.offer(frame);
                     }
                     return;
                 }
@@ -228,34 +230,19 @@ class TaskApiMultiRoundDispatchIntegrationTest extends AbstractMockE2eTest {
             super.onMessage(message);
         }
 
-        private MassMessage awaitTask(long timeout, TimeUnit unit) throws InterruptedException {
+        private JsonObject awaitTask(long timeout, TimeUnit unit) throws InterruptedException {
             return taskQueue.poll(timeout, unit);
         }
 
-        private AckSnapshot sendSuccess(MassMessage taskMessage, String detail) throws Exception {
-            MassMessage response = new MassMessage();
-            response.setMsgId(taskMessage.getMsgId());
-            response.setResponse(true);
-            response.setMsgType(MessageType.TASK);
-            response.setSubMsgType(taskMessage.getSubMsgType());
-            response.setFrom(MessageDirection.CLIENT);
-            response.setProject(taskMessage.getProject());
-
-            MessageContext originalContext = taskMessage.getContext();
-            if (originalContext != null) {
-                MessageContext responseContext = new MessageContext();
-                responseContext.setConnRole(originalContext.getConnRole());
-                    responseContext.setTaskId(originalContext.getTaskId());
-                responseContext.setRetryCount(originalContext.getRetryCount());
-                responseContext.setWorkerId(getWorkerId());
-                response.setContext(responseContext);
-            }
-
-            response.setPayload(GSON.toJsonTree(Map.of(
-                    "status", "SUCCESS",
-                    "mockData", detail
-            )));
-            sendMessage(GSON.toJson(response));
+        private AckSnapshot sendSuccess(JsonObject taskMessage, String detail) throws Exception {
+            sendMessage(WsFrameTestSupport.buildTaskResult(
+                    WsFrameTestSupport.msgId(taskMessage),
+                    WsFrameTestSupport.project(taskMessage),
+                    getWorkerId(),
+                    WsFrameTestSupport.taskId(taskMessage),
+                    "SUCCESS",
+                    detail
+            ));
             return ackQueue.poll(3, TimeUnit.SECONDS);
         }
     }

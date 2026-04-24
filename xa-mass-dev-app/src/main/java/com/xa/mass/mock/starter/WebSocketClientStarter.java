@@ -1,10 +1,8 @@
 package com.xa.mass.mock.starter;
 
 import com.xa.mass.base.model.Worker;
-import com.xa.mass.gateway.model.enums.MessageDirection;
-import com.xa.mass.gateway.model.enums.MessageType;
-import com.xa.mass.gateway.model.massMessage.MassMessage;
-import com.xa.mass.gateway.model.massMessage.MessageContext;
+import com.google.gson.Gson;
+import com.google.gson.JsonObject;
 import com.xa.mass.gateway.session.SessionRoles;
 import com.xa.mass.mock.client.ClientSessionManager;
 import com.xa.mass.mock.client.MockWorkerClient;
@@ -41,6 +39,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class WebSocketClientStarter {
 
     private static final Logger log = LoggerFactory.getLogger(WebSocketClientStarter.class);
+    private static final Gson GSON = new Gson();
 
     @Autowired
     private MockConfig mockConfig;
@@ -255,18 +254,16 @@ public class WebSocketClientStarter {
         MockWorkerClient client = clientList.get(new Random().nextInt(clientList.size()));
 
         try {
-            MassMessage ping = new MassMessage();
-            ping.setMsgId("ping-" + client.getWorkerId() + "-" + System.currentTimeMillis());
-            ping.setMsgType(MessageType.PING);
-            ping.setFrom(MessageDirection.CLIENT);
-            ping.setSubMsgType("heartbeat");
-
-            MessageContext ctx = new MessageContext();
-            ctx.setWorkerId(client.getWorkerId());
-            ctx.setConnRole(SessionRoles.TASK_MESSAGES);
-            ping.setContext(ctx);
-
-            client.sendMessage(new com.google.gson.Gson().toJson(ping));
+            JsonObject ping = new JsonObject();
+            ping.addProperty("msgId", "ping-" + client.getWorkerId() + "-" + System.currentTimeMillis());
+            ping.addProperty("msgType", "PING");
+            ping.addProperty("from", "CLIENT");
+            ping.addProperty("subMsgType", "heartbeat");
+            JsonObject ctx = new JsonObject();
+            ctx.addProperty("workerId", client.getWorkerId());
+            ctx.addProperty("connRole", SessionRoles.TASK_MESSAGES);
+            ping.add("context", ctx);
+            client.sendMessage(GSON.toJson(ping));
             log.debug("[{}] heartbeat sent", client.getWorkerId());
         } catch (Exception e) {
             log.warn("[{}] heartbeat failed: {}", client.getWorkerId(), e.getMessage());

@@ -1,17 +1,13 @@
 package com.xa.mass.mock.client;
 
 import com.google.gson.Gson;
+import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
-import com.xa.mass.gateway.model.enums.MessageDirection;
-import com.xa.mass.gateway.model.enums.MessageType;
-import com.xa.mass.gateway.model.massMessage.MassMessage;
-import com.xa.mass.gateway.model.massMessage.MessageContext;
 import com.xa.mass.mock.command.mock.MockClientState;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.Instant;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -27,55 +23,60 @@ final class MockWorkerTaskFrameHandler {
     private static final long DEFAULT_TASK_RESPONSE_BASE_DELAY_MS = 15L;
     private static final long DEFAULT_TASK_RESPONSE_JITTER_MS = 35L;
 
-    TaskResponsePlan prepareResponse(MassMessage taskMessage,
+    TaskResponsePlan prepareResponse(JsonObject taskMessage,
                                      String workerId,
                                      String taskResultStatus,
                                      MockClientState state) {
         if (taskMessage == null) {
             return null;
         }
-        if (taskMessage.isResponse()) {
-            logger.debug("[{}] Ignoring task response frame for msgId: {}", workerId, taskMessage.getMsgId());
+        if (readBoolean(taskMessage, "response")) {
+            logger.debug("[{}] Ignoring task response frame for msgId: {}", workerId, readString(taskMessage, "msgId"));
             return null;
         }
-        MessageContext originalContext = taskMessage.getContext();
-        if (originalContext == null || originalContext.getTaskId() == null || originalContext.getTaskId().isBlank()) {
+        JsonObject originalContext = getContext(taskMessage);
+        String taskId = readString(originalContext, "taskId");
+        if (taskId == null || taskId.isBlank()) {
             logger.info("[{}] Received TASK frame without taskId, skipping task-result callback. msgId={}",
-                    workerId, taskMessage.getMsgId());
+                    workerId, readString(taskMessage, "msgId"));
             return null;
         }
 
-        JsonObject taskPayload = taskMessage.getPayload() != null && taskMessage.getPayload().isJsonObject()
-                ? taskMessage.getPayload().getAsJsonObject()
-                : null;
+        JsonObject taskPayload = getPayload(taskMessage);
         String resolvedStatus = resolveTaskResultStatus(taskResultStatus, state);
         int stepCount = countSteps(taskPayload);
         long delayMillis = resolveTaskResponseDelayMillis(taskMessage, workerId, stepCount, state, resolvedStatus);
         long startedAtEpochMillis = System.currentTimeMillis();
         long finishedAtEpochMillis = startedAtEpochMillis + delayMillis;
 
-        MassMessage response = new MassMessage();
-        response.setMsgId(taskMessage.getMsgId());
-        response.setResponse(true);
-        response.setMsgType(MessageType.TASK);
-        response.setFrom(MessageDirection.CLIENT);
-        response.setSubMsgType("step");
-        response.setProject(taskMessage.getProject());
+        JsonObject response = new JsonObject();
+        response.addProperty("msgId", readString(taskMessage, "msgId"));
+        response.addProperty("response", true);
+        response.addProperty("msgType", "TASK");
+        response.addProperty("from", "CLIENT");
+        response.addProperty("subMsgType", "step");
+        String project = readString(taskMessage, "project");
+        if (project != null) {
+            response.addProperty("project", project);
+        }
 
-        MessageContext responseContext = new MessageContext();
-        responseContext.setConnRole(originalContext.getConnRole());
-        responseContext.setTaskId(originalContext.getTaskId());
-        responseContext.setRetryCount(originalContext.getRetryCount());
-        responseContext.setWorkerId(workerId);
-        response.setContext(responseContext);
+        JsonObject responseContext = new JsonObject();
+        responseContext.addProperty("connRole", readString(originalContext, "connRole"));
+        responseContext.addProperty("taskId", taskId);
+        Integer retryCount = readInt(originalContext, "retryCount");
+        if (retryCount != null) {
+            responseContext.addProperty("retryCount", retryCount);
+        }
+        responseContext.addProperty("workerId", workerId);
+        response.add("context", responseContext);
 
-        Map<String, Object> payloadMap = new HashMap<>();
+        Map<String, Object> payloadMap = new LinkedHashMap<>();
         payloadMap.put("stepId", extractFirstStepId(taskPayload));
         payloadMap.put("mockData", "Executed by mock client " + workerId);
         payloadMap.put("status", resolvedStatus);
         payloadMap.put("execution", buildExecutionSnapshot(
-                originalContext,
                 taskMessage,
+                originalContext,
                 stepCount,
                 delayMillis,
                 startedAtEpochMillis,
@@ -83,14 +84,14 @@ final class MockWorkerTaskFrameHandler {
                 resolvedStatus
         ));
         payloadMap.put("workerProfile", buildWorkerProfile(workerId));
-        response.setPayload(GSON.toJsonTree(payloadMap));
+        response.add("payload", GSON.toJsonTree(payloadMap));
 
         if (state != null && state.shouldDropTaskResponse()) {
             logger.info("[{}] Dropped mock task response for msgId={} due to mock state {}",
-                    workerId, response.getMsgId(), state.snapshot());
+                    workerId, readString(response, "msgId"), state.snapshot());
             return null;
         }
-        return new TaskResponsePlan(response, delayMillis);
+        return new TaskResponsePlan(GSON.toJson(response), readString(response, "msgId"), delayMillis);
     }
 
     private String resolveTaskResultStatus(String taskResultStatus, MockClientState state) {
@@ -100,7 +101,7 @@ final class MockWorkerTaskFrameHandler {
         return normalizeTaskResultStatus(state.resolveTaskResultStatus(taskResultStatus));
     }
 
-    private long resolveTaskResponseDelayMillis(MassMessage taskMessage,
+    private long resolveTaskResponseDelayMillis(JsonObject taskMessage,
                                                 String workerId,
                                                 int stepCount,
                                                 MockClientState state,
@@ -108,36 +109,32 @@ final class MockWorkerTaskFrameHandler {
         if (state != null && state.getTaskResponseDelayMillis() > 0L) {
             return state.getTaskResponseDelayMillis();
         }
-        int stableHash = Objects.hash(workerId, taskMessage.getMsgId(), taskMessage.getProject(), stepCount);
+        int stableHash = Objects.hash(workerId, readString(taskMessage, "msgId"), readString(taskMessage, "project"), stepCount);
         long jitter = Math.floorMod(stableHash, (int) DEFAULT_TASK_RESPONSE_JITTER_MS + 1);
         long failurePenalty = "FAILED".equals(taskStatus) ? 10L : 0L;
         return DEFAULT_TASK_RESPONSE_BASE_DELAY_MS + jitter + Math.max(0, stepCount - 1) * 5L + failurePenalty;
     }
 
     private String extractFirstStepId(JsonObject taskPayload) {
-        if (taskPayload == null || !taskPayload.has("steps") || !taskPayload.get("steps").isJsonArray()) {
+        JsonArray steps = taskPayload != null && taskPayload.has("steps") && taskPayload.get("steps").isJsonArray()
+                ? taskPayload.getAsJsonArray("steps")
+                : null;
+        if (steps == null || steps.isEmpty() || !steps.get(0).isJsonObject()) {
             return "step-0-default";
         }
-        var steps = taskPayload.getAsJsonArray("steps");
-        if (steps.isEmpty() || !steps.get(0).isJsonObject()) {
-            return "step-0-default";
-        }
-        JsonObject firstStep = steps.get(0).getAsJsonObject();
-        if (!firstStep.has("stepId") || firstStep.get("stepId").isJsonNull()) {
-            return "step-0-default";
-        }
-        return firstStep.get("stepId").getAsString();
+        return readString(steps.get(0).getAsJsonObject(), "stepId") != null
+                ? readString(steps.get(0).getAsJsonObject(), "stepId")
+                : "step-0-default";
     }
 
     private int countSteps(JsonObject taskPayload) {
-        if (taskPayload == null || !taskPayload.has("steps") || !taskPayload.get("steps").isJsonArray()) {
-            return 0;
-        }
-        return taskPayload.getAsJsonArray("steps").size();
+        return taskPayload != null && taskPayload.has("steps") && taskPayload.get("steps").isJsonArray()
+                ? taskPayload.getAsJsonArray("steps").size()
+                : 0;
     }
 
-    private Map<String, Object> buildExecutionSnapshot(MessageContext originalContext,
-                                                       MassMessage taskMessage,
+    private Map<String, Object> buildExecutionSnapshot(JsonObject taskMessage,
+                                                       JsonObject originalContext,
                                                        int stepCount,
                                                        long delayMillis,
                                                        long startedAtEpochMillis,
@@ -152,11 +149,10 @@ final class MockWorkerTaskFrameHandler {
         execution.put("durationMs", delayMillis);
         execution.put("stepCount", stepCount);
         execution.put("taskStatus", taskStatus);
-        Integer retryCount = originalContext != null ? originalContext.getRetryCount() : null;
-        execution.put("retryCount", retryCount == null ? 0 : retryCount);
-        execution.put("project", taskMessage.getProject());
-        execution.put("messageId", taskMessage.getMsgId());
-        execution.put("taskId", originalContext != null ? originalContext.getTaskId() : null);
+        execution.put("retryCount", readInt(originalContext, "retryCount") == null ? 0 : readInt(originalContext, "retryCount"));
+        execution.put("project", readString(taskMessage, "project"));
+        execution.put("messageId", readString(taskMessage, "msgId"));
+        execution.put("taskId", readString(originalContext, "taskId"));
         return execution;
     }
 
@@ -171,6 +167,44 @@ final class MockWorkerTaskFrameHandler {
         return workerProfile;
     }
 
+    private JsonObject getContext(JsonObject message) {
+        return message != null && message.has("context") && message.get("context").isJsonObject()
+                ? message.getAsJsonObject("context")
+                : new JsonObject();
+    }
+
+    private JsonObject getPayload(JsonObject message) {
+        return message != null && message.has("payload") && message.get("payload").isJsonObject()
+                ? message.getAsJsonObject("payload")
+                : new JsonObject();
+    }
+
+    private boolean readBoolean(JsonObject object, String field) {
+        return object != null && object.has(field) && !object.get(field).isJsonNull() && object.get(field).getAsBoolean();
+    }
+
+    private String readString(JsonObject object, String field) {
+        if (object == null || field == null || !object.has(field) || object.get(field).isJsonNull()) {
+            return null;
+        }
+        try {
+            return object.get(field).getAsString();
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private Integer readInt(JsonObject object, String field) {
+        if (object == null || field == null || !object.has(field) || object.get(field).isJsonNull()) {
+            return null;
+        }
+        try {
+            return object.get(field).getAsInt();
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
     private String normalizeTaskResultStatus(String taskResultStatus) {
         if (taskResultStatus == null || taskResultStatus.isBlank()) {
             return "SUCCESS";
@@ -179,6 +213,6 @@ final class MockWorkerTaskFrameHandler {
         return "FAILED".equals(normalized) ? "FAILED" : "SUCCESS";
     }
 
-    record TaskResponsePlan(MassMessage response, long delayMillis) {
+    record TaskResponsePlan(String responseJson, String messageId, long delayMillis) {
     }
 }

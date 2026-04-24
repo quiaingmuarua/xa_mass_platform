@@ -1,6 +1,6 @@
 package com.xa.mass.gateway.dispatcher.port;
 
-import com.xa.mass.gateway.model.massMessage.MassMessage;
+import com.google.gson.JsonObject;
 
 /**
  * Explicit adapter sink for inbound {@code CONTROL/event} response frames.
@@ -8,5 +8,9 @@ import com.xa.mass.gateway.model.massMessage.MassMessage;
 @FunctionalInterface
 public interface ControlEventResponseFrameSink {
 
-    void handleControlEventResponse(MassMessage frame);
+    void handleControlEventResponse(String rawJson,
+                                    String workerId,
+                                    String project,
+                                    String messageId,
+                                    JsonObject payload);
 }

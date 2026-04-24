@@ -1,10 +1,10 @@
 package com.xa.mass.starter.transport;
 
+import com.xa.mass.base.channel.tranporter.MessageTransporter;
 import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.WorkerManager;
-import com.xa.mass.base.channel.tranporter.MessageTransporter;
-import com.xa.mass.gateway.queue.Envelope;
 import com.xa.mass.gateway.queue.MessageCodec;
+import com.xa.mass.gateway.queue.OutboundDelivery;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
 
@@ -16,7 +16,7 @@ public final class WorkerTransportRuntimeFactoryContext {
 
     private final TaskManager taskManager;
     private final WorkerManager workerManager;
-    private final MessageTransporter<Envelope> messageTransporter;
+    private final MessageTransporter<String, OutboundDelivery> messageTransporter;
     private final WorkerEndpointRegistry endpointRegistry;
     private final MessageCodec messageCodec;
     private final WorkerSystemEventChannel systemEventChannel;
@@ -24,7 +24,7 @@ public final class WorkerTransportRuntimeFactoryContext {
 
     public WorkerTransportRuntimeFactoryContext(TaskManager taskManager,
                                                 WorkerManager workerManager,
-                                                MessageTransporter<Envelope> messageTransporter,
+                                                MessageTransporter<String, OutboundDelivery> messageTransporter,
                                                 WorkerEndpointRegistry endpointRegistry,
                                                 MessageCodec messageCodec,
                                                 WorkerSystemEventChannel systemEventChannel,
@@ -46,7 +46,7 @@ public final class WorkerTransportRuntimeFactoryContext {
         return workerManager;
     }
 
-    public MessageTransporter<Envelope> getMessageTransporter() {
+    public MessageTransporter<String, OutboundDelivery> getMessageTransporter() {
         return messageTransporter;
     }
 

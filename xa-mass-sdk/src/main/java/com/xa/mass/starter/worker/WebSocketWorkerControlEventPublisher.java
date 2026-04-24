@@ -1,24 +1,19 @@
 package com.xa.mass.starter.worker;
 
-import com.google.gson.Gson;
-import com.google.gson.JsonElement;
-import com.google.gson.JsonSyntaxException;
 import com.xa.mass.base.debug.WorkerControlEventProtocol;
 import com.xa.mass.base.debug.WorkerDebugMessageStore;
 import com.xa.mass.base.channel.tranporter.MessageTransporter;
-import com.xa.mass.gateway.model.enums.MessageDirection;
-import com.xa.mass.gateway.model.enums.MessageType;
-import com.xa.mass.gateway.model.massMessage.MassMessage;
-import com.xa.mass.gateway.model.massMessage.MessageContext;
-import com.xa.mass.gateway.queue.Envelope;
+import com.google.gson.Gson;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
 import com.xa.mass.gateway.queue.MessageCodec;
+import com.xa.mass.gateway.queue.OutboundDelivery;
 import com.xa.mass.starter.transport.WorkerControlEventDispatch;
 import com.xa.mass.starter.transport.WorkerControlEventPublishResult;
 import com.xa.mass.starter.transport.WorkerControlEventPublisher;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.WorkerEndpointRoles;
 
-import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -28,11 +23,11 @@ public final class WebSocketWorkerControlEventPublisher implements WorkerControl
 
     private static final Gson GSON = new Gson();
 
-    private final MessageTransporter<Envelope> messageTransporter;
+    private final MessageTransporter<String, OutboundDelivery> messageTransporter;
     private final WorkerEndpointRegistry endpointRegistry;
     private final MessageCodec messageCodec;
 
-    public WebSocketWorkerControlEventPublisher(MessageTransporter<Envelope> messageTransporter,
+    public WebSocketWorkerControlEventPublisher(MessageTransporter<String, OutboundDelivery> messageTransporter,
                                                 WorkerEndpointRegistry endpointRegistry,
                                                 MessageCodec messageCodec) {
         this.messageTransporter = messageTransporter;
@@ -48,45 +43,29 @@ public final class WebSocketWorkerControlEventPublisher implements WorkerControl
         if (endpointRegistry == null) {
             throw new IllegalStateException("Session manager is not initialized");
         }
-
         if (!endpointRegistry.isWorkerOnline(request.getWorkerId(), WorkerEndpointRoles.TASK_DISPATCH)) {
             throw new IllegalStateException("Target worker is offline or task dispatch endpoint is unavailable");
         }
 
-        JsonElement payloadJson = toPayloadJson(request.getPayload());
         String messageId = UUID.randomUUID().toString();
-
-        MassMessage message = new MassMessage();
-        message.setMsgId(messageId);
-        message.setMsgType(MessageType.CONTROL);
-        message.setSubMsgType(WorkerControlEventProtocol.SUB_MSG_TYPE);
-        message.setFrom(MessageDirection.SERVER);
-        message.setProject(request.getProject());
-        message.setContext(buildMessageContext(request.getWorkerId()));
-        message.setPayload(payloadJson);
-
-        String rawJson = encodeMessage(message);
-        Envelope envelope = Envelope.builder()
-                .workerId(request.getWorkerId())
-                .connRole(WorkerEndpointRoles.TASK_DISPATCH)
-                .eventCode(request.getEventCode())
-                .project(request.getProject())
-                .traceId(messageId)
-                .receivedAt(System.currentTimeMillis())
-                .rawJson(rawJson)
-                .build();
+        String rawJson = encodeWorkerControlEventDispatch(request, messageId);
         WorkerDebugMessageStore.recordOutbound(
                 request.getWorkerId(),
                 request.getProject(),
                 request.getEventCode(),
-                MessageType.CONTROL.name(),
+                "CONTROL",
                 WorkerControlEventProtocol.SUB_MSG_TYPE,
                 messageId,
-                GSON.toJson(payloadJson),
+                request.getPayload() == null ? "{}" : request.getPayload().toString(),
                 rawJson,
                 "message queued to dispatcher"
         );
-        messageTransporter.sendOutput(envelope);
+        messageTransporter.sendOutput(new OutboundDelivery(
+                request.getWorkerId(),
+                WorkerEndpointRoles.TASK_DISPATCH,
+                rawJson,
+                messageId
+        ));
         return new WorkerControlEventPublishResult(
                 messageId,
                 request.getWorkerId(),
@@ -96,32 +75,22 @@ public final class WebSocketWorkerControlEventPublisher implements WorkerControl
         );
     }
 
-    private MessageContext buildMessageContext(String workerId) {
-        MessageContext context = new MessageContext();
-        context.setWorkerId(workerId);
-        context.setConnRole(WorkerEndpointRoles.TASK_DISPATCH);
-        return context;
-    }
-
-    private String encodeMessage(MassMessage message) {
-        return messageCodec != null ? messageCodec.encode(message) : GSON.toJson(message);
-    }
-
-    private JsonElement toPayloadJson(Object payloadObj) {
-        if (payloadObj == null) {
-            return GSON.toJsonTree(Map.of());
+    private String encodeWorkerControlEventDispatch(WorkerControlEventDispatch request, String messageId) {
+        JsonObject frame = new JsonObject();
+        frame.addProperty("msgId", messageId);
+        frame.addProperty("response", false);
+        frame.addProperty("msgType", "CONTROL");
+        frame.addProperty("subMsgType", WorkerControlEventProtocol.SUB_MSG_TYPE);
+        frame.addProperty("from", "SERVER");
+        if (request.getProject() != null) {
+            frame.addProperty("project", request.getProject());
         }
-        if (payloadObj instanceof String payloadText) {
-            String trimmed = payloadText.trim();
-            if (trimmed.isEmpty()) {
-                return GSON.toJsonTree(Map.of());
-            }
-            try {
-                return GSON.fromJson(trimmed, JsonElement.class);
-            } catch (JsonSyntaxException ex) {
-                throw new IllegalArgumentException("payload must be valid JSON");
-            }
-        }
-        return GSON.toJsonTree(payloadObj);
+        JsonObject context = new JsonObject();
+        context.addProperty("workerId", request.getWorkerId());
+        context.addProperty("connRole", WorkerEndpointRoles.TASK_DISPATCH);
+        frame.add("context", context);
+        JsonElement payload = GSON.toJsonTree(request.getPayload());
+        frame.add("payload", payload != null ? payload : new JsonObject());
+        return GSON.toJson(frame);
     }
 }

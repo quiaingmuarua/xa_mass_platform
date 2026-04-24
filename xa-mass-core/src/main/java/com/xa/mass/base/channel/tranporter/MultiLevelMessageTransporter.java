@@ -11,24 +11,18 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Example transporter with priority-separated in-memory queues.
- *
- * <p>This implementation is mainly useful for experiments and demos where the
- * caller wants to model multiple priority lanes without bringing in an
- * external queueing system.
- *
- * @param <T> message type
  */
-public class MultiLevelMessageTransporter<T> implements MessageTransporter<T> {
+public class MultiLevelMessageTransporter<I, O> implements MessageTransporter<I, O> {
 
     private static final Logger logger = LoggerFactory.getLogger(MultiLevelMessageTransporter.class);
 
-    private final BlockingQueue<T> highPriorityInputQueue;
-    private final BlockingQueue<T> normalPriorityInputQueue;
-    private final BlockingQueue<T> lowPriorityInputQueue;
+    private final BlockingQueue<I> highPriorityInputQueue;
+    private final BlockingQueue<I> normalPriorityInputQueue;
+    private final BlockingQueue<I> lowPriorityInputQueue;
 
-    private final BlockingQueue<T> highPriorityOutputQueue;
-    private final BlockingQueue<T> normalPriorityOutputQueue;
-    private final BlockingQueue<T> lowPriorityOutputQueue;
+    private final BlockingQueue<O> highPriorityOutputQueue;
+    private final BlockingQueue<O> normalPriorityOutputQueue;
+    private final BlockingQueue<O> lowPriorityOutputQueue;
 
     private final AtomicInteger inputProcessed = new AtomicInteger(0);
     private final AtomicInteger outputProcessed = new AtomicInteger(0);
@@ -36,7 +30,6 @@ public class MultiLevelMessageTransporter<T> implements MessageTransporter<T> {
     public MultiLevelMessageTransporter() {
         this.highPriorityInputQueue = new PriorityBlockingQueue<>();
         this.highPriorityOutputQueue = new PriorityBlockingQueue<>();
-
         this.normalPriorityInputQueue = new LinkedBlockingQueue<>();
         this.lowPriorityInputQueue = new LinkedBlockingQueue<>();
         this.normalPriorityOutputQueue = new LinkedBlockingQueue<>();
@@ -44,108 +37,52 @@ public class MultiLevelMessageTransporter<T> implements MessageTransporter<T> {
     }
 
     @Override
-    public void sendInput(T message) {
-        MessagePriority priority = getMessagePriority(message);
+    public void sendInput(I message) {
+        MessagePriority priority = getInputPriority(message);
         switch (priority) {
-            case HIGH:
-                highPriorityInputQueue.offer(message);
-                logger.debug("Enqueued high-priority input message: {}", message);
-                break;
-            case NORMAL:
-                normalPriorityInputQueue.offer(message);
-                logger.debug("Enqueued normal-priority input message: {}", message);
-                break;
-            case LOW:
-                lowPriorityInputQueue.offer(message);
-                logger.debug("Enqueued low-priority input message: {}", message);
-                break;
-            default:
-                break;
+            case HIGH -> highPriorityInputQueue.offer(message);
+            case NORMAL -> normalPriorityInputQueue.offer(message);
+            case LOW -> lowPriorityInputQueue.offer(message);
         }
+        logger.debug("Enqueued input message with priority {}", priority);
     }
 
     @Override
-    public T receiveInput(long timeout, TimeUnit unit) throws InterruptedException {
+    public I receiveInput(long timeout, TimeUnit unit) throws InterruptedException {
         long endTime = System.currentTimeMillis() + unit.toMillis(timeout);
-
         while (System.currentTimeMillis() < endTime) {
-            T message = highPriorityInputQueue.poll();
+            I message = pollInput();
             if (message != null) {
                 inputProcessed.incrementAndGet();
-                logger.debug("Dequeued high-priority input message: {}", message);
                 return message;
             }
-
-            message = normalPriorityInputQueue.poll();
-            if (message != null) {
-                inputProcessed.incrementAndGet();
-                logger.debug("Dequeued normal-priority input message: {}", message);
-                return message;
-            }
-
-            message = lowPriorityInputQueue.poll();
-            if (message != null) {
-                inputProcessed.incrementAndGet();
-                logger.debug("Dequeued low-priority input message: {}", message);
-                return message;
-            }
-
             Thread.sleep(10);
         }
-
         return null;
     }
 
     @Override
-    public void sendOutput(T message) {
-        MessagePriority priority = getMessagePriority(message);
+    public void sendOutput(O message) {
+        MessagePriority priority = getOutputPriority(message);
         switch (priority) {
-            case HIGH:
-                highPriorityOutputQueue.offer(message);
-                logger.debug("Enqueued high-priority output message: {}", message);
-                break;
-            case NORMAL:
-                normalPriorityOutputQueue.offer(message);
-                logger.debug("Enqueued normal-priority output message: {}", message);
-                break;
-            case LOW:
-                lowPriorityOutputQueue.offer(message);
-                logger.debug("Enqueued low-priority output message: {}", message);
-                break;
-            default:
-                break;
+            case HIGH -> highPriorityOutputQueue.offer(message);
+            case NORMAL -> normalPriorityOutputQueue.offer(message);
+            case LOW -> lowPriorityOutputQueue.offer(message);
         }
+        logger.debug("Enqueued output message with priority {}", priority);
     }
 
     @Override
-    public T receiveOutput(long timeout, TimeUnit unit) throws InterruptedException {
+    public O receiveOutput(long timeout, TimeUnit unit) throws InterruptedException {
         long endTime = System.currentTimeMillis() + unit.toMillis(timeout);
-
         while (System.currentTimeMillis() < endTime) {
-            T message = highPriorityOutputQueue.poll();
+            O message = pollOutput();
             if (message != null) {
                 outputProcessed.incrementAndGet();
-                logger.debug("Dequeued high-priority output message: {}", message);
                 return message;
             }
-
-            message = normalPriorityOutputQueue.poll();
-            if (message != null) {
-                outputProcessed.incrementAndGet();
-                logger.debug("Dequeued normal-priority output message: {}", message);
-                return message;
-            }
-
-            message = lowPriorityOutputQueue.poll();
-            if (message != null) {
-                outputProcessed.incrementAndGet();
-                logger.debug("Dequeued low-priority output message: {}", message);
-                return message;
-            }
-
             Thread.sleep(10);
         }
-
         return null;
     }
 
@@ -159,32 +96,54 @@ public class MultiLevelMessageTransporter<T> implements MessageTransporter<T> {
         return highPriorityOutputQueue.size() + normalPriorityOutputQueue.size() + lowPriorityOutputQueue.size();
     }
 
-    /**
-     * Resolve the priority lane for a message.
-     */
-    private MessagePriority getMessagePriority(T message) {
-        // Placeholder strategy. Real callers can extend this transporter with
-        // domain-specific priority classification if needed.
-        return MessagePriority.NORMAL;
-    }
-
-    /**
-     * Return detailed queue statistics for diagnostics.
-     */
     public String getDetailedStats() {
         return String.format(
-                "MultiLevelQueue Stats - Input: High=%d, Normal=%d, Low=%d, Total=%d; " +
-                        "Output: High=%d, Normal=%d, Low=%d, Total=%d; " +
-                        "Processed: Input=%d, Output=%d",
-                highPriorityInputQueue.size(), normalPriorityInputQueue.size(), lowPriorityInputQueue.size(), inputQueueSize(),
-                highPriorityOutputQueue.size(), normalPriorityOutputQueue.size(), lowPriorityOutputQueue.size(), outputQueueSize(),
-                inputProcessed.get(), outputProcessed.get()
+                "MultiLevelQueue Stats - Input: High=%d, Normal=%d, Low=%d, Total=%d; Output: High=%d, Normal=%d, Low=%d, Total=%d; Processed: Input=%d, Output=%d",
+                highPriorityInputQueue.size(),
+                normalPriorityInputQueue.size(),
+                lowPriorityInputQueue.size(),
+                inputQueueSize(),
+                highPriorityOutputQueue.size(),
+                normalPriorityOutputQueue.size(),
+                lowPriorityOutputQueue.size(),
+                outputQueueSize(),
+                inputProcessed.get(),
+                outputProcessed.get()
         );
     }
 
-    /**
-     * Priority lanes used by the transporter.
-     */
+    private I pollInput() {
+        I message = highPriorityInputQueue.poll();
+        if (message != null) {
+            return message;
+        }
+        message = normalPriorityInputQueue.poll();
+        if (message != null) {
+            return message;
+        }
+        return lowPriorityInputQueue.poll();
+    }
+
+    private O pollOutput() {
+        O message = highPriorityOutputQueue.poll();
+        if (message != null) {
+            return message;
+        }
+        message = normalPriorityOutputQueue.poll();
+        if (message != null) {
+            return message;
+        }
+        return lowPriorityOutputQueue.poll();
+    }
+
+    private MessagePriority getInputPriority(I message) {
+        return MessagePriority.NORMAL;
+    }
+
+    private MessagePriority getOutputPriority(O message) {
+        return MessagePriority.NORMAL;
+    }
+
     public enum MessagePriority {
         HIGH, NORMAL, LOW
     }

@@ -1,13 +1,11 @@
 package com.xa.mass.starter;
 
 import com.google.gson.Gson;
-import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.xa.mass.base.debug.WorkerControlEventProtocol;
 import com.xa.mass.base.debug.WorkerControlMessageProtocol;
 import com.xa.mass.base.debug.WorkerDebugMessageStore;
 import com.xa.mass.gateway.dispatcher.port.ControlEventResponseFrameSink;
-import com.xa.mass.gateway.model.massMessage.MassMessage;
 
 /**
  * Records inbound worker control-event replies from workers.
@@ -16,20 +14,22 @@ public class WorkerControlEventResponseHandler implements ControlEventResponseFr
     private final Gson gson = new Gson();
 
     @Override
-    public void handleControlEventResponse(MassMessage msg) {
-        String workerId = msg.getContext() != null ? msg.getContext().getWorkerId() : null;
-        String replyToMessageId = extractReplyToMessageId(msg.getPayload());
-        String eventCode = extractCanonicalEventCode(msg.getPayload());
-        String detail = extractDetail(msg.getPayload());
-        String payloadJson = msg.getPayload() != null ? gson.toJson(msg.getPayload()) : "{}";
-        String rawJson = gson.toJson(msg);
+    public void handleControlEventResponse(String rawJson,
+                                           String workerId,
+                                           String project,
+                                           String messageId,
+                                           JsonObject payload) {
+        String replyToMessageId = extractReplyToMessageId(payload);
+        String eventCode = extractCanonicalEventCode(payload);
+        String detail = extractDetail(payload);
+        String payloadJson = payload != null ? gson.toJson(payload) : "{}";
         WorkerDebugMessageStore.recordInbound(
                 workerId,
-                msg.getProject(),
+                project,
                 eventCode,
-                msg.getMsgType() != null ? msg.getMsgType().name() : "",
-                msg.getSubMsgType(),
-                msg.getMsgId(),
+                "CONTROL",
+                WorkerControlEventProtocol.SUB_MSG_TYPE,
+                messageId,
                 replyToMessageId,
                 payloadJson,
                 rawJson,
@@ -37,28 +37,20 @@ public class WorkerControlEventResponseHandler implements ControlEventResponseFr
         );
     }
 
-    private String extractCanonicalEventCode(JsonElement payload) {
-        if (payload == null || !payload.isJsonObject()) {
+    private String extractCanonicalEventCode(JsonObject payloadObj) {
+        if (payloadObj == null || !payloadObj.has(WorkerControlEventProtocol.EVENT_FIELD)
+                || payloadObj.get(WorkerControlEventProtocol.EVENT_FIELD).isJsonNull()) {
             return null;
         }
-        JsonObject payloadObj = payload.getAsJsonObject();
-        if (payloadObj.has(WorkerControlEventProtocol.EVENT_FIELD)
-                && !payloadObj.get(WorkerControlEventProtocol.EVENT_FIELD).isJsonNull()) {
-            try {
-                return payloadObj.get(WorkerControlEventProtocol.EVENT_FIELD).getAsString();
-            } catch (Exception ex) {
-                return payloadObj.get(WorkerControlEventProtocol.EVENT_FIELD).toString();
-            }
+        try {
+            return payloadObj.get(WorkerControlEventProtocol.EVENT_FIELD).getAsString();
+        } catch (Exception ex) {
+            return payloadObj.get(WorkerControlEventProtocol.EVENT_FIELD).toString();
         }
-        return null;
     }
 
-    private String extractReplyToMessageId(JsonElement payload) {
-        if (payload == null || !payload.isJsonObject()) {
-            return null;
-        }
-        JsonObject payloadObj = payload.getAsJsonObject();
-        if (!payloadObj.has("replyToMessageId") || payloadObj.get("replyToMessageId").isJsonNull()) {
+    private String extractReplyToMessageId(JsonObject payloadObj) {
+        if (payloadObj == null || !payloadObj.has("replyToMessageId") || payloadObj.get("replyToMessageId").isJsonNull()) {
             return null;
         }
         try {
@@ -68,11 +60,10 @@ public class WorkerControlEventResponseHandler implements ControlEventResponseFr
         }
     }
 
-    private String extractDetail(JsonElement payload) {
-        if (payload == null || !payload.isJsonObject()) {
+    private String extractDetail(JsonObject payloadObj) {
+        if (payloadObj == null) {
             return "worker control response received";
         }
-        JsonObject payloadObj = payload.getAsJsonObject();
         if (payloadObj.has(WorkerControlMessageProtocol.ACK_STATUS_FIELD)
                 && !payloadObj.get(WorkerControlMessageProtocol.ACK_STATUS_FIELD).isJsonNull()) {
             try {

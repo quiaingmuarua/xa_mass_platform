@@ -1,5 +1,6 @@
 package com.xa.mass.gateway.dispatcher.middleware;
 
+import com.google.gson.JsonObject;
 import com.xa.mass.base.debug.WorkerControlEventProtocol;
 import com.xa.mass.base.debug.WorkerDebugMessageStore;
 import com.xa.mass.base.channel.tranporter.MessageTransporter;
@@ -9,161 +10,154 @@ import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
 import com.xa.mass.gateway.dispatcher.port.ControlEventRequestFrameBridge;
 import com.xa.mass.gateway.dispatcher.port.ControlEventResponseFrameSink;
 import com.xa.mass.gateway.dispatcher.port.TaskStepFrameBridge;
-import com.xa.mass.gateway.model.enums.MessageType;
-import com.xa.mass.gateway.model.massMessage.MassMessage;
-import com.xa.mass.gateway.model.massMessage.MessageContext;
-import com.xa.mass.gateway.queue.Envelope;
 import com.xa.mass.gateway.queue.GsonMessageCodec;
-import com.xa.mass.gateway.queue.MessageCodec;
-import com.xa.mass.gateway.session.SessionRoles;
+import com.xa.mass.gateway.queue.OutboundDelivery;
+import com.xa.mass.sdk.event.EventPrincipal;
+import com.xa.mass.sdk.event.EventRequest;
+import com.xa.mass.sdk.event.EventResponse;
 import com.xa.mass.transport.WorkerEndpointRegistry;
+import com.xa.mass.transport.model.TaskResultReport;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
-import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 class ProcessEnvelopeMiddlewareTest {
 
     private GatewayFrameRouter frameRouter;
-    private MessageCodec codec;
+    private GsonMessageCodec codec;
     private DispatchRuntimeContext context;
-    private MessageTransporter<Envelope> transporter;
+    private MessageTransporter<String, OutboundDelivery> transporter;
     private WorkerEndpointRegistry endpointRegistry;
-    private EnvelopeMiddleware middleware;
+    private MessageInboundMiddleware inboundMiddleware;
 
     @BeforeEach
     @SuppressWarnings("unchecked")
     void setUp() {
         codec = new GsonMessageCodec();
-        frameRouter = new GatewayFrameRouter();
+        frameRouter = new GatewayFrameRouter(codec);
         transporter = mock(MessageTransporter.class);
         endpointRegistry = mock(WorkerEndpointRegistry.class);
         context = createContext(null, null, null);
-        middleware = new MiddlewareRegistry().getInputMiddlewares().get(0);
+        inboundMiddleware = new MiddlewareRegistry().getInputMiddlewares().get(0);
         WorkerDebugMessageStore.clearAll();
     }
 
     @Test
     void nullDecodeSkipsHandlingAndReturnsTrue() {
-        Envelope envelope = envelope("not-valid-json-at-all-{{{}}}");
-        boolean result = middleware.handle(envelope, context);
+        boolean result = inboundMiddleware.handle("not-valid-json-at-all-{{{}}}", context);
         assertTrue(result);
     }
 
     @Test
     void controlEventRequestBridgeIsInvokedAndResponseEnqueued() {
-        AtomicReference<MassMessage> captured = new AtomicReference<>();
-        context = createContext(null, msg -> {
-            captured.set(msg);
-            MassMessage resp = new MassMessage();
-            resp.setMsgType(MessageType.CONTROL);
-            resp.setSubMsgType(WorkerControlEventProtocol.SUB_MSG_TYPE);
-            resp.setContext(msg.getContext());
-            return List.of(resp);
+        AtomicReference<EventRequest> capturedRequest = new AtomicReference<>();
+        AtomicReference<EventPrincipal> capturedPrincipal = new AtomicReference<>();
+        context = createContext(null, (request, principal) -> {
+            capturedRequest.set(request);
+            capturedPrincipal.set(principal);
+            return EventResponse.success(Map.of("ack", true), request.getRequestId());
         }, null);
 
-        MassMessage msg = controlEventRequest("proj", "mock.state.get");
-        Envelope envelope = envelope(codec.encode(msg));
+        inboundMiddleware.handle(controlEventRequest("proj", "mock.state.get"), context);
 
-        middleware.handle(envelope, context);
-
-        assertNotNull(captured.get());
-        ArgumentCaptor<Envelope> outputCaptor = ArgumentCaptor.forClass(Envelope.class);
+        assertNotNull(capturedRequest.get());
+        assertEquals("mock.state.get", capturedRequest.get().getEvent().value());
+        assertEquals("req-1", capturedRequest.get().getRequestId());
+        assertEquals("client-1", capturedPrincipal.get().getClientId());
+        ArgumentCaptor<OutboundDelivery> outputCaptor = ArgumentCaptor.forClass(OutboundDelivery.class);
         verify(transporter).sendOutput(outputCaptor.capture());
-        assertNull(outputCaptor.getValue().getEventCode());
+        JsonObject response = codec.parseObject(outputCaptor.getValue().getRawJson());
+        assertEquals("worker-1", outputCaptor.getValue().getWorkerId());
+        assertEquals("msg-1", outputCaptor.getValue().getTraceId());
+        assertTrue(response.get("response").getAsBoolean());
+        assertEquals("CONTROL", response.get("msgType").getAsString());
     }
 
     @Test
-    void noHandlerDefaultsToNotFound() {
-        MassMessage msg = message("proj", MessageType.CONTROL, "unknown");
-        Envelope envelope = envelope(codec.encode(msg));
-
-        boolean result = middleware.handle(envelope, context);
+    void noHandlerDefaultsToUnknownAndNoOutput() {
+        boolean result = inboundMiddleware.handle(
+                codec.getGson().toJson(frame("CONTROL", "unknown", false, "proj", new JsonObject())),
+                context
+        );
 
         assertTrue(result);
         verify(transporter, never()).sendOutput(any());
     }
 
     @Test
-    void controlEventRequestBridgeReturningEmptyResponseDoesNotSendOutput() {
-        context = createContext(null, msg -> List.of(), null);
-        MassMessage msg = controlEventRequest("p", "mock.state.get");
-        Envelope envelope = envelope(codec.encode(msg));
+    void taskStepBridgeProducesAckWithoutEventBackfill() {
+        context = createContext(report -> true, null, null);
 
-        middleware.handle(envelope, context);
+        inboundMiddleware.handle(taskStepFrame("task-1", "msg-1", "SUCCESS", "ok"), context);
 
-        verify(transporter, never()).sendOutput(any());
+        ArgumentCaptor<OutboundDelivery> outputCaptor = ArgumentCaptor.forClass(OutboundDelivery.class);
+        verify(transporter).sendOutput(outputCaptor.capture());
+        JsonObject ack = codec.parseObject(outputCaptor.getValue().getRawJson());
+        assertEquals("worker-1", outputCaptor.getValue().getWorkerId());
+        assertEquals("msg-1", outputCaptor.getValue().getTraceId());
+        assertEquals(200, ack.getAsJsonObject("payload").get("code").getAsInt());
+        assertNull(codec.extractEventCode(ack));
     }
 
     @Test
-    void responseEnvelopePropagatesCanonicalEventCodeMetadata() {
-        context = createContext(null, msg -> {
-            MassMessage resp = new MassMessage();
-            resp.setMsgType(MessageType.CONTROL);
-            resp.setSubMsgType(WorkerControlEventProtocol.SUB_MSG_TYPE);
-            resp.setContext(msg.getContext());
-            return List.of(resp);
-        }, null);
+    void taskStepBridgeRejectsMalformedTaskReportWithBadRequestAck() {
+        context = createContext(report -> true, null, null);
 
-        MassMessage msg = controlEventRequest("proj", "mock.state.get");
-        Envelope envelope = Envelope.builder()
-                .rawJson(codec.encode(msg))
-                .workerId("worker-1")
-                .connRole(SessionRoles.TASK_MESSAGES)
-                .eventCode("mock.state.get")
-                .build();
+        inboundMiddleware.handle(
+                codec.getGson().toJson(frame("TASK", "step", false, "proj", payload("status", "SUCCESS"))),
+                context
+        );
 
-        middleware.handle(envelope, context);
-
-        ArgumentCaptor<Envelope> outputCaptor = ArgumentCaptor.forClass(Envelope.class);
+        ArgumentCaptor<OutboundDelivery> outputCaptor = ArgumentCaptor.forClass(OutboundDelivery.class);
         verify(transporter).sendOutput(outputCaptor.capture());
-        assertEquals("mock.state.get", outputCaptor.getValue().getEventCode());
-    }
-
-    @Test
-    void taskStepResponsesDoNotBackfillCanonicalEventCodeWhenInboundEnvelopeHasNone() {
-        context = createContext(new DerivedTaskStepBridge(), null, null);
-
-        MassMessage msg = message("proj", MessageType.TASK, "step");
-        Envelope envelope = Envelope.builder()
-                .rawJson(codec.encode(msg))
-                .workerId("worker-1")
-                .connRole(SessionRoles.TASK_MESSAGES)
-                .build();
-
-        middleware.handle(envelope, context);
-
-        ArgumentCaptor<Envelope> outputCaptor = ArgumentCaptor.forClass(Envelope.class);
-        verify(transporter).sendOutput(outputCaptor.capture());
-        assertNull(outputCaptor.getValue().getEventCode());
+        JsonObject ack = codec.parseObject(outputCaptor.getValue().getRawJson());
+        assertEquals(400, ack.getAsJsonObject("payload").get("code").getAsInt());
     }
 
     @Test
     void controlEventResponseSinkConsumesWithoutOutput() {
-        AtomicReference<MassMessage> captured = new AtomicReference<>();
-        context = createContext(null, null, captured::set);
+        AtomicReference<String> raw = new AtomicReference<>();
+        AtomicReference<String> workerId = new AtomicReference<>();
+        AtomicReference<String> project = new AtomicReference<>();
+        AtomicReference<String> messageId = new AtomicReference<>();
+        AtomicReference<JsonObject> payload = new AtomicReference<>();
+        context = createContext(null, null, (responseRaw, responseWorkerId, responseProject, responseMessageId, responsePayload) -> {
+            raw.set(responseRaw);
+            workerId.set(responseWorkerId);
+            project.set(responseProject);
+            messageId.set(responseMessageId);
+            payload.set(responsePayload);
+        });
 
-        MassMessage msg = message("proj", MessageType.CONTROL, WorkerControlEventProtocol.SUB_MSG_TYPE);
-        msg.setResponse(true);
-        Envelope envelope = envelope(codec.encode(msg));
-
-        boolean result = middleware.handle(envelope, context);
+        boolean result = inboundMiddleware.handle(controlEventResponse("proj", "mock.state.get"), context);
 
         assertTrue(result);
-        assertNotNull(captured.get());
+        assertNotNull(raw.get());
+        assertEquals("worker-1", workerId.get());
+        assertEquals("proj", project.get());
+        assertEquals("msg-1", messageId.get());
+        assertEquals("mock.state.get", payload.get().get(WorkerControlEventProtocol.EVENT_FIELD).getAsString());
         verify(transporter, never()).sendOutput(any());
     }
 
     @Test
     void sendEnvelopeMiddlewareMarksDebugRecordFailedWhenEndpointUnavailable() {
-        EnvelopeMiddleware sendMiddleware = new MiddlewareRegistry().getOutputMiddlewares().get(0);
-        when(endpointRegistry.sendMessage("worker-1", SessionRoles.TASK_MESSAGES, "{\"hello\":\"world\"}"))
+        MessageOutboundMiddleware sendMiddleware = new MiddlewareRegistry().getOutputMiddlewares().get(0);
+        when(endpointRegistry.sendMessage("worker-1", "task_messages", "{\"hello\":\"world\"}"))
                 .thenReturn(false);
         WorkerDebugMessageStore.recordOutbound(
                 "worker-1",
@@ -178,33 +172,12 @@ class ProcessEnvelopeMiddlewareTest {
         );
 
         boolean result = sendMiddleware.handle(
-                Envelope.builder()
-                        .workerId("worker-1")
-                        .connRole(SessionRoles.TASK_MESSAGES)
-                        .traceId("trace-1")
-                        .rawJson("{\"hello\":\"world\"}")
-                        .build(),
+                new OutboundDelivery("worker-1", "task_messages", "{\"hello\":\"world\"}", "trace-1"),
                 context
         );
 
         assertFalse(result);
         assertEquals("FAILED", WorkerDebugMessageStore.getHistory("worker-1").get(0).getStatus());
-    }
-
-    private Envelope envelope(String rawJson) {
-        return Envelope.builder().rawJson(rawJson).workerId("worker-1").connRole(SessionRoles.TASK_MESSAGES).build();
-    }
-
-    private MassMessage message(String project, MessageType type, String subType) {
-        MassMessage msg = new MassMessage();
-        msg.setProject(project);
-        msg.setMsgType(type);
-        msg.setSubMsgType(subType);
-        MessageContext ctx = new MessageContext();
-        ctx.setWorkerId("worker-1");
-        ctx.setConnRole(SessionRoles.TASK_MESSAGES);
-        msg.setContext(ctx);
-        return msg;
     }
 
     private DispatchRuntimeContext createContext(TaskStepFrameBridge taskStepFrameBridge,
@@ -221,23 +194,66 @@ class ProcessEnvelopeMiddlewareTest {
         );
     }
 
-    private MassMessage controlEventRequest(String project, String eventCode) {
-        MassMessage msg = message(project, MessageType.CONTROL, WorkerControlEventProtocol.SUB_MSG_TYPE);
-        com.google.gson.JsonObject payload = new com.google.gson.JsonObject();
-        payload.addProperty(WorkerControlEventProtocol.EVENT_FIELD, eventCode);
-        msg.setPayload(payload);
-        return msg;
+    private String taskStepFrame(String taskId, String msgId, String status, String detail) {
+        JsonObject payload = payload("status", status, "mockData", detail);
+        JsonObject frame = frame("TASK", "step", false, "proj", payload);
+        frame.getAsJsonObject("context").addProperty("taskId", taskId);
+        frame.addProperty("msgId", msgId);
+        return codec.getGson().toJson(frame);
     }
 
-    private static final class DerivedTaskStepBridge implements TaskStepFrameBridge {
+    private String controlEventRequest(String project, String eventCode) {
+        return codec.getGson().toJson(frame("CONTROL", WorkerControlEventProtocol.SUB_MSG_TYPE, false, project, payload(
+                WorkerControlEventProtocol.EVENT_FIELD, eventCode,
+                WorkerControlEventProtocol.REQUEST_ID_FIELD, "req-1",
+                WorkerControlEventProtocol.PAYLOAD_FIELD, payload("verbose", true),
+                WorkerControlEventProtocol.PRINCIPAL_FIELD, payload(
+                        WorkerControlEventProtocol.CLIENT_ID_FIELD, "client-1",
+                        WorkerControlEventProtocol.USER_ID_FIELD, "user-1"
+                )
+        )));
+    }
 
-        @Override
-        public List<MassMessage> handleTaskStep(MassMessage msg) {
-            MassMessage resp = new MassMessage();
-            resp.setMsgType(MessageType.TASK);
-            resp.setSubMsgType("step");
-            resp.setContext(msg.getContext());
-            return List.of(resp);
+    private String controlEventResponse(String project, String eventCode) {
+        return codec.getGson().toJson(frame("CONTROL", WorkerControlEventProtocol.SUB_MSG_TYPE, true, project, payload(
+                WorkerControlEventProtocol.EVENT_FIELD, eventCode,
+                WorkerControlEventProtocol.REQUEST_ID_FIELD, "req-1"
+        )));
+    }
+
+    private JsonObject frame(String msgType, String subMsgType, boolean response, String project, JsonObject payload) {
+        JsonObject frame = new JsonObject();
+        frame.addProperty("msgId", "msg-1");
+        frame.addProperty("msgType", msgType);
+        frame.addProperty("subMsgType", subMsgType);
+        frame.addProperty("response", response);
+        frame.addProperty("from", response ? "CLIENT" : "SERVER");
+        if (project != null) {
+            frame.addProperty("project", project);
         }
+        JsonObject context = new JsonObject();
+        context.addProperty("workerId", "worker-1");
+        context.addProperty("connRole", "task_messages");
+        frame.add("context", context);
+        frame.add("payload", payload != null ? payload : new JsonObject());
+        return frame;
+    }
+
+    private JsonObject payload(Object... keyValues) {
+        JsonObject payload = new JsonObject();
+        for (int i = 0; i < keyValues.length; i += 2) {
+            String key = (String) keyValues[i];
+            Object value = keyValues[i + 1];
+            if (value instanceof String str) {
+                payload.addProperty(key, str);
+            } else if (value instanceof Boolean bool) {
+                payload.addProperty(key, bool);
+            } else if (value instanceof Number number) {
+                payload.addProperty(key, number);
+            } else if (value instanceof JsonObject object) {
+                payload.add(key, object);
+            }
+        }
+        return payload;
     }
 }

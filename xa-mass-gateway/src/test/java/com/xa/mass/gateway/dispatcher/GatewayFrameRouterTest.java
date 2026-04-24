@@ -3,147 +3,182 @@ package com.xa.mass.gateway.dispatcher;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.xa.mass.base.debug.WorkerControlEventProtocol;
-import com.xa.mass.gateway.dispatcher.bridge.WorkerControlEventRequestBridge;
-import com.xa.mass.gateway.dispatcher.event.EventGatewayBridge;
-import com.xa.mass.gateway.model.enums.MessageType;
-import com.xa.mass.gateway.model.massMessage.MassMessage;
-import com.xa.mass.gateway.model.massMessage.MessageContext;
-import com.xa.mass.gateway.session.SessionRoles;
+import com.xa.mass.gateway.queue.GsonMessageCodec;
 import com.xa.mass.sdk.event.EventResponse;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.*;
+import java.util.Map;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class GatewayFrameRouterTest {
 
     private static final Gson GSON = new Gson();
 
+    private GsonMessageCodec codec;
     private GatewayFrameRouter frameRouter;
 
     @BeforeEach
     void setUp() {
-        frameRouter = new GatewayFrameRouter();
+        codec = new GsonMessageCodec();
+        frameRouter = new GatewayFrameRouter(codec);
     }
 
     @Test
     void classifyTaskStepFrame() {
-        GatewayFrameKind result = frameRouter.route(massMessage("demoApp", MessageType.TASK, "step"));
+        GatewayFrameKind result = frameRouter.route(frame("TASK", "step", false, "demoApp", null));
         assertEquals(GatewayFrameKind.TASK_STEP, result);
     }
 
     @Test
     void classifyWorkerControlEventResponseFrame() {
-        MassMessage response = massMessage("demoApp", MessageType.CONTROL, WorkerControlEventProtocol.SUB_MSG_TYPE);
-        response.setResponse(true);
+        JsonObject response = frame("CONTROL", WorkerControlEventProtocol.SUB_MSG_TYPE, true, "demoApp", payload(
+                WorkerControlEventProtocol.EVENT_FIELD, "crawler.fetch-page"
+        ));
 
         GatewayFrameKind result = frameRouter.route(response);
         assertEquals(GatewayFrameKind.CONTROL_EVENT_RESPONSE, result);
     }
 
     @Test
-    void defaultNoHandlerResultIsNotFound() {
-        GatewayFrameKind result = frameRouter.route(massMessage("demoApp", MessageType.CONTROL, "unknownSub"));
+    void defaultNoHandlerResultIsUnknown() {
+        GatewayFrameKind result = frameRouter.route(frame("CONTROL", "unknownSub", false, "demoApp", null));
         assertEquals(GatewayFrameKind.UNKNOWN, result);
     }
 
     @Test
-    void builtinPingHandlerReturnsPong() {
-        MassMessage ping = massMessage("GLOBAL", MessageType.PING, "heartbeat");
+    void builtinPingHandlerReturnsPongJson() {
+        JsonObject ping = frame("PING", "heartbeat", false, null, null);
 
         GatewayFrameKind result = frameRouter.route(ping);
         assertEquals(GatewayFrameKind.PING_HEARTBEAT, result);
 
-        var responses = frameRouter.handlePing(ping);
-        assertEquals(1, responses.size());
-        assertEquals(MessageType.PONG, responses.get(0).getMsgType());
+        JsonObject pong = codec.parseObject(frameRouter.handlePing(ping));
+        assertNotNull(pong);
+        assertEquals("PONG", pong.get("msgType").getAsString());
+        assertEquals("heartbeat", pong.get("subMsgType").getAsString());
+        assertTrue(pong.get("response").getAsBoolean());
+        assertEquals("worker-1", pong.getAsJsonObject("context").get("workerId").getAsString());
     }
 
     @Test
-    void builtinPongHandlerReturnsEmpty() {
-        MassMessage pong = massMessage("GLOBAL", MessageType.PONG, "heartbeat");
+    void builtinPongHandlerReturnsWithoutSideEffects() {
+        JsonObject pong = frame("PONG", "heartbeat", false, null, null);
 
         GatewayFrameKind result = frameRouter.route(pong);
         assertEquals(GatewayFrameKind.PONG_HEARTBEAT, result);
-        assertTrue(frameRouter.handlePong(pong).isEmpty());
+        frameRouter.handlePong(pong);
     }
 
     @Test
-    void routeUsesMassMessageTupleClassification() {
-        MassMessage msg = massMessage("GLOBAL", MessageType.TASK, "step");
-
-        GatewayFrameKind result = frameRouter.route(msg);
+    void routeUsesTupleClassificationOnlyAsAdapterCompatibility() {
+        GatewayFrameKind result = frameRouter.route(frame("TASK", "step", false, null, null));
         assertEquals(GatewayFrameKind.TASK_STEP, result);
     }
 
     @Test
-    void controlEventBridgeCapturesRequestFrames() {
-        WorkerControlEventRequestBridge bridge = new WorkerControlEventRequestBridge(
-                new EventGatewayBridge((request, principal) -> EventResponse.success(
-                        java.util.Map.of("echoEvent", request.getEvent().value()),
-                        request.getRequestId()))
-        );
+    void controlEventRequestCanBeDecodedIntoCanonicalRequest() {
+        JsonObject frame = frame("CONTROL", WorkerControlEventProtocol.SUB_MSG_TYPE, false, "demoApp", payload(
+                WorkerControlEventProtocol.EVENT_FIELD, "crawler.fetch-page",
+                WorkerControlEventProtocol.REQUEST_ID_FIELD, "req-bridge",
+                WorkerControlEventProtocol.PAYLOAD_FIELD, payload("url", "https://example.test"),
+                WorkerControlEventProtocol.PRINCIPAL_FIELD, payload(
+                        WorkerControlEventProtocol.CLIENT_ID_FIELD, "client-a",
+                        WorkerControlEventProtocol.USER_ID_FIELD, "user-a"
+                )
+        ));
 
-        MassMessage msg = massMessage("demoApp", MessageType.CONTROL, WorkerControlEventProtocol.SUB_MSG_TYPE);
-        JsonObject payload = new JsonObject();
-        payload.addProperty(WorkerControlEventProtocol.EVENT_FIELD, "crawler.fetch-page");
-        payload.addProperty(WorkerControlEventProtocol.REQUEST_ID_FIELD, "req-bridge");
-        JsonObject requestPayload = new JsonObject();
-        requestPayload.addProperty("url", "https://example.test");
-        payload.add(WorkerControlEventProtocol.PAYLOAD_FIELD, requestPayload);
-        msg.setPayload(payload);
-
-        GatewayFrameKind result = frameRouter.route(msg);
+        GatewayFrameKind result = frameRouter.route(frame);
         assertEquals(GatewayFrameKind.CONTROL_EVENT_REQUEST, result);
 
-        var responses = bridge.handleControlEventRequest(msg);
-        assertEquals(1, responses.size());
-        JsonObject responsePayload = GSON.fromJson(responses.get(0).getPayload(), JsonObject.class);
-        assertTrue(responsePayload.get("success").getAsBoolean());
-        assertEquals("req-bridge", responsePayload.get(WorkerControlEventProtocol.REQUEST_ID_FIELD).getAsString());
+        var request = codec.decodeControlEventRequest(frame);
+        var principal = codec.decodeControlEventPrincipal(frame);
+        EventResponse response = EventResponse.success(
+                Map.of("echoEvent", request.getEvent().value()),
+                request.getRequestId()
+        );
+        JsonObject encodedResponse = codec.parseObject(codec.encodeControlEventResponse(frame, response));
+
+        assertEquals("crawler.fetch-page", request.getEvent().value());
+        assertEquals("req-bridge", request.getRequestId());
+        assertEquals("https://example.test", request.getPayload().get("url"));
+        assertEquals("client-a", principal.getClientId());
+        assertEquals("user-a", principal.getUserId());
+        assertTrue(encodedResponse.getAsJsonObject("payload").get("success").getAsBoolean());
+        assertEquals("req-bridge",
+                encodedResponse.getAsJsonObject("payload").get(WorkerControlEventProtocol.REQUEST_ID_FIELD).getAsString());
     }
 
     @Test
-    void controlEventBridgeDoesNotCaptureResponseFrames() {
-        MassMessage msg = massMessage("demoApp", MessageType.CONTROL, WorkerControlEventProtocol.SUB_MSG_TYPE);
-        msg.setResponse(true);
-        JsonObject payload = new JsonObject();
-        payload.addProperty(WorkerControlEventProtocol.EVENT_FIELD, "crawler.fetch-page");
-        msg.setPayload(payload);
+    void controlEventResponseFramesAreNotClassifiedAsRequests() {
+        JsonObject frame = frame("CONTROL", WorkerControlEventProtocol.SUB_MSG_TYPE, true, "demoApp", payload(
+                WorkerControlEventProtocol.EVENT_FIELD, "crawler.fetch-page"
+        ));
 
-        GatewayFrameKind result = frameRouter.route(msg);
+        GatewayFrameKind result = frameRouter.route(frame);
         assertEquals(GatewayFrameKind.CONTROL_EVENT_RESPONSE, result);
     }
 
     @Test
-    void controlEventBridgeDoesNotCaptureNonEventSubtype() {
-        MassMessage msg = massMessage("demoApp", MessageType.CONTROL, "legacy");
-        JsonObject payload = new JsonObject();
-        payload.addProperty(WorkerControlEventProtocol.EVENT_FIELD, "crawler.fetch-page");
-        msg.setPayload(payload);
+    void controlEventWithLegacySubtypeRemainsUnknown() {
+        JsonObject frame = frame("CONTROL", "legacy", false, "demoApp", payload(
+                WorkerControlEventProtocol.EVENT_FIELD, "crawler.fetch-page"
+        ));
 
-        GatewayFrameKind result = frameRouter.route(msg);
+        GatewayFrameKind result = frameRouter.route(frame);
         assertEquals(GatewayFrameKind.UNKNOWN, result);
     }
 
     @Test
-    void controlEventBridgeDoesNotCaptureControlEventWithoutGlobalEventCode() {
-        MassMessage msg = massMessage("demoApp", MessageType.CONTROL, WorkerControlEventProtocol.SUB_MSG_TYPE);
-        msg.setPayload(new JsonObject());
+    void controlEventWithoutExplicitEventCodeRemainsUnknown() {
+        JsonObject frame = frame("CONTROL", WorkerControlEventProtocol.SUB_MSG_TYPE, false, "demoApp", new JsonObject());
 
-        GatewayFrameKind result = frameRouter.route(msg);
+        GatewayFrameKind result = frameRouter.route(frame);
         assertEquals(GatewayFrameKind.UNKNOWN, result);
+        assertNull(codec.extractEventCode(frame));
     }
 
-    private MassMessage massMessage(String project, MessageType type, String subType) {
-        MassMessage msg = new MassMessage();
-        msg.setProject(project);
-        msg.setMsgType(type);
-        msg.setSubMsgType(subType);
-        MessageContext ctx = new MessageContext();
-        ctx.setWorkerId("worker-1");
-        ctx.setConnRole(SessionRoles.TASK_MESSAGES);
-        msg.setContext(ctx);
-        return msg;
+    private JsonObject frame(String msgType, String subMsgType, boolean response, String project, JsonObject payload) {
+        JsonObject frame = new JsonObject();
+        frame.addProperty("msgId", "msg-1");
+        frame.addProperty("msgType", msgType);
+        frame.addProperty("subMsgType", subMsgType);
+        frame.addProperty("response", response);
+        frame.addProperty("from", "CLIENT");
+        if (project != null) {
+            frame.addProperty("project", project);
+        }
+        JsonObject context = new JsonObject();
+        context.addProperty("workerId", "worker-1");
+        context.addProperty("connRole", "task_messages");
+        frame.add("context", context);
+        frame.add("payload", payload != null ? payload : new JsonObject());
+        return frame;
+    }
+
+    private JsonObject payload(Object... keyValues) {
+        JsonObject payload = new JsonObject();
+        for (int i = 0; i < keyValues.length; i += 2) {
+            String key = (String) keyValues[i];
+            Object value = keyValues[i + 1];
+            if (value == null) {
+                payload.add(key, null);
+            } else if (value instanceof String str) {
+                payload.addProperty(key, str);
+            } else if (value instanceof Boolean bool) {
+                payload.addProperty(key, bool);
+            } else if (value instanceof Number number) {
+                payload.addProperty(key, number);
+            } else if (value instanceof JsonObject object) {
+                payload.add(key, object);
+            } else {
+                payload.add(key, GSON.toJsonTree(value));
+            }
+        }
+        return payload;
     }
 }

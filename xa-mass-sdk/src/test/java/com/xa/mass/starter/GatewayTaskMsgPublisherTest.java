@@ -4,11 +4,8 @@ import com.google.gson.JsonObject;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
-import com.xa.mass.gateway.model.enums.MessageDirection;
-import com.xa.mass.gateway.model.enums.MessageType;
-import com.xa.mass.gateway.model.massMessage.MassMessage;
-import com.xa.mass.gateway.queue.Envelope;
 import com.xa.mass.gateway.queue.GsonMessageCodec;
+import com.xa.mass.gateway.queue.OutboundDelivery;
 import com.xa.mass.transport.WorkerEndpointRoles;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -17,7 +14,9 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 class GatewayTaskMsgPublisherTest {
 
@@ -25,7 +24,7 @@ class GatewayTaskMsgPublisherTest {
     void publishesDispatchItemsToOutputTransporter() {
         DispatchRuntimeContext context = mock(DispatchRuntimeContext.class);
         @SuppressWarnings("unchecked")
-        com.xa.mass.base.channel.tranporter.MessageTransporter<Envelope> transporter =
+        com.xa.mass.base.channel.tranporter.MessageTransporter<String, OutboundDelivery> transporter =
                 mock(com.xa.mass.base.channel.tranporter.MessageTransporter.class);
         GsonMessageCodec codec = new GsonMessageCodec();
         when(context.getMessageTransporter()).thenReturn(transporter);
@@ -37,28 +36,27 @@ class GatewayTaskMsgPublisherTest {
 
         publisher.dispatchTaskItems(List.of(com.xa.mass.transport.model.TaskDispatchItem.from(task, taskMsg)));
 
-        ArgumentCaptor<Envelope> captor = ArgumentCaptor.forClass(Envelope.class);
+        ArgumentCaptor<OutboundDelivery> captor = ArgumentCaptor.forClass(OutboundDelivery.class);
         verify(transporter).sendOutput(captor.capture());
 
-        Envelope envelope = captor.getValue();
-        assertEquals("worker-1", envelope.getWorkerId());
-        assertEquals(WorkerEndpointRoles.TASK_DISPATCH, envelope.getConnRole());
-        assertEquals("crawler.fetch-page", envelope.getEventCode());
-        assertEquals("demoApp", envelope.getProject());
-        assertEquals("msg-1", envelope.getTraceId());
+        OutboundDelivery delivery = captor.getValue();
+        assertEquals("worker-1", delivery.getWorkerId());
+        assertEquals(WorkerEndpointRoles.TASK_DISPATCH, delivery.getConnRole());
+        assertEquals("msg-1", delivery.getTraceId());
 
-        MassMessage message = codec.decode(envelope.getRawJson());
+        JsonObject message = codec.parseObject(delivery.getRawJson());
         assertNotNull(message);
-        assertEquals("msg-1", message.getMsgId());
-        assertEquals(MessageType.TASK, message.getMsgType());
-        assertEquals("step", message.getSubMsgType());
-        assertEquals(MessageDirection.SERVER, message.getFrom());
-        assertEquals("worker-1", message.getContext().getWorkerId());
-        assertEquals(WorkerEndpointRoles.TASK_DISPATCH, message.getContext().getConnRole());
-        assertEquals("task-1", message.getContext().getTaskId());
+        assertEquals("msg-1", message.get("msgId").getAsString());
+        assertEquals("TASK", message.get("msgType").getAsString());
+        assertEquals("step", message.get("subMsgType").getAsString());
+        assertEquals("SERVER", message.get("from").getAsString());
+        assertEquals("worker-1", message.getAsJsonObject("context").get("workerId").getAsString());
+        assertEquals(WorkerEndpointRoles.TASK_DISPATCH, message.getAsJsonObject("context").get("connRole").getAsString());
+        assertEquals("task-1", message.getAsJsonObject("context").get("taskId").getAsString());
 
-        JsonObject payload = new com.google.gson.Gson().fromJson(message.getPayload(), JsonObject.class);
+        JsonObject payload = message.getAsJsonObject("payload");
         assertNotNull(payload);
+        assertEquals("crawler.fetch-page", payload.get("eventCode").getAsString());
         assertEquals(1, payload.getAsJsonArray("steps").size());
         JsonObject firstStep = payload.getAsJsonArray("steps").get(0).getAsJsonObject();
         assertEquals("batch-0", firstStep.get("stepId").getAsString());

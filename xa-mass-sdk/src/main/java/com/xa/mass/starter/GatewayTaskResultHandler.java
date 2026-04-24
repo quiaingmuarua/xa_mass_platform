@@ -4,14 +4,11 @@ import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.engine.TaskManager;
 import com.xa.mass.gateway.dispatcher.port.TaskStepFrameBridge;
-import com.xa.mass.gateway.model.massMessage.MassMessage;
-import com.xa.mass.starter.worker.WebSocketTaskMessageMapper;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
 import com.xa.mass.transport.model.TaskResultReport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.List;
 import java.util.Map;
 
 /**
@@ -24,24 +21,14 @@ public class GatewayTaskResultHandler implements TaskStepFrameBridge, TaskResult
     private static final Logger logger = LoggerFactory.getLogger(GatewayTaskResultHandler.class);
 
     private final TaskManager taskManager;
-    private final WebSocketTaskMessageMapper messageMapper = new WebSocketTaskMessageMapper();
 
     public GatewayTaskResultHandler(TaskManager taskManager) {
         this.taskManager = taskManager;
     }
 
     @Override
-    public List<MassMessage> handleTaskStep(MassMessage msg) {
-        TaskResultReport report;
-        try {
-            report = messageMapper.toTaskResultReport(msg);
-        } catch (IllegalArgumentException ex) {
-            return List.of(messageMapper.buildAck(msg, 400, ex.getMessage()));
-        }
-        boolean handled = ingest(report);
-        int code = handled ? 200 : 404;
-        String message = handled ? "task result processed" : "task result ignored";
-        return List.of(messageMapper.buildAck(msg, code, message));
+    public boolean handleTaskStep(TaskResultReport report) {
+        return ingest(report);
     }
 
     public boolean ingest(TaskResultReport report) {
@@ -62,39 +49,17 @@ public class GatewayTaskResultHandler implements TaskStepFrameBridge, TaskResult
     }
 
     @Override
-    public boolean ingestTaskResult(
-            String taskId,
-            String msgId,
-            boolean success,
-            String detail,
-            String errorCode,
-            Map<String, Object> output
-    ) {
-        return taskManager.handleTaskMessageResult(
-                taskId,
-                msgId,
-                success,
-                detail,
-                errorCode,
-                output
-        );
-    }
-
-    public String resolveEventCode(MassMessage message) {
-        if (message == null) {
-            return null;
-        }
-        try {
-            TaskResultReport report = messageMapper.toTaskResultReport(message);
-            return resolveEventCode(report.getTaskId());
-        } catch (IllegalArgumentException ex) {
-            return null;
-        }
+    public boolean ingestTaskResult(String taskId,
+                                    String msgId,
+                                    boolean success,
+                                    String detail,
+                                    String errorCode,
+                                    Map<String, Object> output) {
+        return taskManager.handleTaskMessageResult(taskId, msgId, success, detail, errorCode, output);
     }
 
     private String resolveEventCode(String taskId) {
         Task task = taskManager.getTask(taskId);
         return TaskSharedConfig.sdkEventCode(task);
     }
-
 }

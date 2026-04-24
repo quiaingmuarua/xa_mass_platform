@@ -4,8 +4,8 @@ import com.xa.mass.base.channel.tranporter.MessageTransporter;
 import com.xa.mass.gateway.dispatcher.DispatcherContext;
 import com.xa.mass.gateway.dispatcher.GatewayFrameRouter;
 import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
-import com.xa.mass.gateway.queue.Envelope;
 import com.xa.mass.gateway.queue.GsonMessageCodec;
+import com.xa.mass.gateway.queue.OutboundDelivery;
 import com.xa.mass.gateway.session.ServerSessionManager;
 import com.xa.mass.gateway.session.SessionRoles;
 import io.netty.channel.Channel;
@@ -21,9 +21,15 @@ import java.lang.reflect.Constructor;
 import java.util.Arrays;
 import java.util.concurrent.atomic.AtomicReference;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 class DispatcherInboundHandlerTest {
 
@@ -31,12 +37,12 @@ class DispatcherInboundHandlerTest {
     private ChannelHandlerContext ctx;
     private Channel channel;
     private AtomicReference<String> sentFrame;
-    private MessageTransporter<Envelope> transporter;
+    private MessageTransporter<String, OutboundDelivery> transporter;
     private ServerSessionManager sessionManager;
 
     @SuppressWarnings("unchecked")
     @BeforeEach
-    void setUp() throws Exception {
+    void setUp() {
         sentFrame = new AtomicReference<>();
 
         channel = mock(Channel.class);
@@ -47,11 +53,10 @@ class DispatcherInboundHandlerTest {
 
         ctx = mock(ChannelHandlerContext.class);
         when(ctx.channel()).thenReturn(channel);
-        // sendError() calls ctx.writeAndFlush(), not channel.writeAndFlush()
         doAnswer(inv -> {
             Object arg = inv.getArgument(0);
-            if (arg instanceof TextWebSocketFrame) {
-                sentFrame.set(((TextWebSocketFrame) arg).text());
+            if (arg instanceof TextWebSocketFrame frame) {
+                sentFrame.set(frame.text());
             }
             return null;
         }).when(ctx).writeAndFlush(any());
@@ -61,7 +66,7 @@ class DispatcherInboundHandlerTest {
 
         sessionManager = new ServerSessionManager();
         GsonMessageCodec codec = new GsonMessageCodec();
-        GatewayFrameRouter frameRouter = new GatewayFrameRouter();
+        GatewayFrameRouter frameRouter = new GatewayFrameRouter(codec);
 
         DispatchRuntimeContext context = new DispatcherContext(
                 transporter,
@@ -81,19 +86,17 @@ class DispatcherInboundHandlerTest {
         handler.channelRead0(ctx, frame("not-json"));
 
         String sent = sentFrame.get();
-        assertNotNull(sent, "Should have sent an error frame");
-        assertTrue(sent.contains("INVALID_FORMAT"), "Error code should be INVALID_FORMAT, got: " + sent);
+        assertNotNull(sent);
+        assertTrue(sent.contains("INVALID_FORMAT"));
     }
 
     @Test
-    void missingContextFieldsSendsMissingFieldsError() throws Exception {
-        // Valid JSON but missing required fields (workerId etc.)
+    void missingContextFieldsSendsParseFailedError() throws Exception {
         handler.channelRead0(ctx, frame("{\"msgType\":\"PING\"}"));
 
         String sent = sentFrame.get();
-        assertNotNull(sent, "Should have sent an error frame");
-        assertTrue(sent.contains("PARSE_FAILED") || sent.contains("MISSING_FIELDS") || sent.contains("MISSING_CONTEXT"),
-                "Expected a validation error, got: " + sent);
+        assertNotNull(sent);
+        assertTrue(sent.contains("PARSE_FAILED") || sent.contains("MISSING_FIELDS") || sent.contains("MISSING_CONTEXT"));
     }
 
     @Test
@@ -112,8 +115,8 @@ class DispatcherInboundHandlerTest {
                 """.formatted(SessionRoles.TASK_MESSAGES);
         handler.channelRead0(ctx, frame(validJson));
 
-        // No error frame should be sent for a valid message
-        assertNull(sentFrame.get(), "Valid message should not trigger an error frame");
+        assertNull(sentFrame.get());
+        verify(transporter).sendInput(validJson);
     }
 
     @Test
@@ -132,9 +135,9 @@ class DispatcherInboundHandlerTest {
 
         handler.channelRead0(ctx, frame(heartbeatJson));
 
-        assertNull(sentFrame.get(), "Heartbeat bootstrap should not be rejected when project is missing");
-        verify(transporter).sendInput(any(Envelope.class));
-        assertEquals(1, sessionManager.getWorkerConnectionCount(), "Heartbeat should register the worker session");
+        assertNull(sentFrame.get());
+        verify(transporter).sendInput(heartbeatJson);
+        assertEquals(1, sessionManager.getWorkerConnectionCount());
         assertNotNull(sessionManager.getChannelContext("worker-1", SessionRoles.TASK_MESSAGES));
     }
 
@@ -153,14 +156,13 @@ class DispatcherInboundHandlerTest {
 
         handler.channelRead0(ctx, frame(heartbeatJson));
 
-        assertNull(sentFrame.get(), "Missing connRole should no longer be rejected at ingress");
-        verify(transporter).sendInput(any(Envelope.class));
-        assertNotNull(sessionManager.getChannelContext("worker-2", SessionRoles.TASK_MESSAGES),
-                "Ingress should register the worker on the default task-dispatch lane");
+        assertNull(sentFrame.get());
+        verify(transporter).sendInput(heartbeatJson);
+        assertNotNull(sessionManager.getChannelContext("worker-2", SessionRoles.TASK_MESSAGES));
     }
 
     @Test
-    void taskStepWithoutProjectStillEnqueuesForDownstreamHandlerValidation() throws Exception {
+    void taskStepWithoutProjectStillEnqueuesRawJsonForDownstreamValidation() throws Exception {
         String taskJson = """
                 {
                   "msgId": "task-001",
@@ -179,16 +181,14 @@ class DispatcherInboundHandlerTest {
 
         handler.channelRead0(ctx, frame(taskJson));
 
-        assertNull(sentFrame.get(), "Transport ingress should not reject missing project at this layer");
-        ArgumentCaptor<Envelope> envelopeCaptor = ArgumentCaptor.forClass(Envelope.class);
-        verify(transporter).sendInput(envelopeCaptor.capture());
-        assertNull(envelopeCaptor.getValue().getProject(),
-                "Missing project should stay null at ingress and be handled by downstream compatibility/business layers");
-        assertEquals("task-001", envelopeCaptor.getValue().getTraceId());
+        assertNull(sentFrame.get());
+        ArgumentCaptor<String> rawCaptor = ArgumentCaptor.forClass(String.class);
+        verify(transporter).sendInput(rawCaptor.capture());
+        assertTrue(rawCaptor.getValue().contains("\"msgId\": \"task-001\"") || rawCaptor.getValue().contains("\"msgId\":\"task-001\""));
     }
 
     @Test
-    void controlEventInboundStoresCanonicalEventCodeOnEnvelope() throws Exception {
+    void controlEventInboundEnqueuesRawJsonWithExplicitEventField() throws Exception {
         String controlJson = """
                 {
                   "msgId": "ctrl-001",
@@ -211,9 +211,10 @@ class DispatcherInboundHandlerTest {
 
         handler.channelRead0(ctx, frame(controlJson));
 
-        ArgumentCaptor<Envelope> envelopeCaptor = ArgumentCaptor.forClass(Envelope.class);
-        verify(transporter).sendInput(envelopeCaptor.capture());
-        assertEquals("mock.state.get", envelopeCaptor.getValue().getEventCode());
+        ArgumentCaptor<String> rawCaptor = ArgumentCaptor.forClass(String.class);
+        verify(transporter).sendInput(rawCaptor.capture());
+        assertTrue(rawCaptor.getValue().contains("\"event\": \"mock.state.get\"")
+                || rawCaptor.getValue().contains("\"event\":\"mock.state.get\""));
     }
 
     @Test
@@ -221,8 +222,8 @@ class DispatcherInboundHandlerTest {
         handler.exceptionCaught(ctx, new RuntimeException("test error"));
 
         String sent = sentFrame.get();
-        assertNotNull(sent, "exceptionCaught should send an error frame");
-        assertTrue(sent.contains("CHANNEL_ERROR"), "Error code should be CHANNEL_ERROR, got: " + sent);
+        assertNotNull(sent);
+        assertTrue(sent.contains("CHANNEL_ERROR"));
     }
 
     @Test
@@ -230,10 +231,8 @@ class DispatcherInboundHandlerTest {
         when(channel.isActive()).thenReturn(false);
         handler.exceptionCaught(ctx, new RuntimeException("test"));
 
-        assertNull(sentFrame.get(), "Should not send to inactive channel");
+        assertNull(sentFrame.get());
     }
-
-    // ---- helper ----
 
     private TextWebSocketFrame frame(String text) {
         return new TextWebSocketFrame(text);
@@ -245,7 +244,7 @@ class WebSocketServerImplDisconnectTest {
     @Test
     void channelInactiveRemovesDisconnectedSessionFromSessionManager() throws Exception {
         WebSocketServerImpl server = new WebSocketServerImpl();
-        ServerSessionManager sessionManager = spy(new ServerSessionManager());
+        ServerSessionManager sessionManager = org.mockito.Mockito.spy(new ServerSessionManager());
         server.setSessionManager(sessionManager);
 
         Channel channel = mock(Channel.class);
