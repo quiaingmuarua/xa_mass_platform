@@ -35,7 +35,7 @@ class WorkerDebugMessageStoreTest {
         assertEquals(1, history.size());
         assertEquals("FAILED", history.get(0).getStatus());
         assertEquals("endpoint unavailable", history.get(0).getDetail());
-        assertEquals("mock.state.get", history.get(0).getEvent());
+        assertEquals("mock.state.get", history.get(0).getEventCode());
     }
 
     @Test
@@ -67,8 +67,8 @@ class WorkerDebugMessageStoreTest {
 
         List<WorkerDebugMessageRecord> history = WorkerDebugMessageStore.getHistory("worker-1");
         assertEquals(2, history.size());
-        assertEquals("mock.state.get", history.get(0).getEvent());
-        assertEquals("mock.state.get", history.get(1).getEvent());
+        assertEquals("mock.state.get", history.get(0).getEventCode());
+        assertEquals("mock.state.get", history.get(1).getEventCode());
     }
 
     @Test
@@ -88,6 +88,6 @@ class WorkerDebugMessageStoreTest {
 
         List<WorkerDebugMessageRecord> history = WorkerDebugMessageStore.getHistory("worker-1");
         assertEquals(1, history.size());
-        assertNull(history.get(0).getEvent());
+        assertNull(history.get(0).getEventCode());
     }
 }

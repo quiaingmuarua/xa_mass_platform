@@ -147,6 +147,7 @@ Example request body:
 Observability:
 
 - command acknowledgements are recorded in `GET /status/workers/message-history?workerId=...`
+- debug send responses and history records surface capability identity as `eventCode`
 - `mock.disconnect` is designed to close the worker only after the acknowledgement is sent
 - `tool.geo.lookup` and `tool.currency.quote` are simulated helpers and must be treated as fake data sources
 

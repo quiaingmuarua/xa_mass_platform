@@ -813,7 +813,8 @@ Behavior:
 - sends an event-first debug/control payload to a worker over the task-messages session
 - does not create or mutate `TaskMsg`
 - `event` is the canonical control capability identifier
-- returned `msgType` and `subMsgType` are transport diagnostics for the current adapter path only
+- response data returns `eventCode` as the canonical capability identity
+- response does not expose `msgType` or `subMsgType`
 
 Request notes:
 

@@ -41,14 +41,14 @@ class WorkerDebugControllerTest {
 
     @Test
     void historyUsesSdkDebugFacade() throws Exception {
-        doReturn(List.of(Map.of("msgType", "CONTROL")))
+        doReturn(List.of(Map.of("eventCode", "mock.state.get")))
                 .when(debugOperations).getWorkerMessageHistory("worker-1");
 
         mockMvc.perform(get("/status/workers/message-history").param("workerId", "worker-1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
                 .andExpect(jsonPath("$.data.workerId").value("worker-1"))
-                .andExpect(jsonPath("$.data.items[0].msgType").value("CONTROL"));
+                .andExpect(jsonPath("$.data.items[0].eventCode").value("mock.state.get"));
     }
 
     @Test
@@ -67,12 +67,12 @@ class WorkerDebugControllerTest {
     }
 
     @Test
-    void sendEventPassesCanonicalEventRequestAndReturnsTransportDiagnostics() throws Exception {
+    void sendEventPassesCanonicalEventRequestAndReturnsEventFirstResult() throws Exception {
         when(debugOperations.sendWorkerEvent(eq("worker-1"), any(), any()))
                 .thenReturn(Map.of(
                         "messageId", "msg-1",
                         "workerId", "worker-1",
-                        "event", "mock.state.get",
+                        "eventCode", "mock.state.get",
                         "requestId", "req-1"
                 ));
 
@@ -91,7 +91,7 @@ class WorkerDebugControllerTest {
                                 """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
-                .andExpect(jsonPath("$.data.event").value("mock.state.get"));
+                .andExpect(jsonPath("$.data.eventCode").value("mock.state.get"));
 
         ArgumentCaptor<com.xa.mass.sdk.event.EventRequest> requestCaptor =
                 ArgumentCaptor.forClass(com.xa.mass.sdk.event.EventRequest.class);

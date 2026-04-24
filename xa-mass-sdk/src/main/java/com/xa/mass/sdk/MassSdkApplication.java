@@ -1377,7 +1377,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
                 "messageId", messageId,
                 "workerId", workerId,
                 "project", resolvedProject,
-                WorkerControlEventProtocol.EVENT_FIELD, eventCode,
+                "eventCode", eventCode,
                 WorkerControlEventProtocol.REQUEST_ID_FIELD, eventRequestId
         );
     }

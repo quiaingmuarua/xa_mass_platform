@@ -185,6 +185,24 @@ class MessageHandlerRegistryTest {
         assertFalse(result.isFound());
     }
 
+    @Test
+    void legacyControlBridgeDoesNotCaptureControlEventWithoutGlobalEventCode() {
+        registry.setEnableFallback(true);
+        registry.registerWorkerControlEventBridge(new WorkerControlEventBridgeHandler(
+                new EventGatewayBridge((request, principal) -> EventResponse.success(
+                        java.util.Map.of("echoEvent", request.getEvent().value()),
+                        request.getRequestId()))
+        ));
+
+        MassMessage msg = massMessage("demoApp", MessageType.CONTROL,
+                WorkerControlEventProtocol.SUB_MSG_TYPE);
+        msg.setPayload(new JsonObject());
+
+        ResolutionResult result = registry.resolve(msg);
+        assertTrue(result.isFallback());
+        assertFalse(result.isFound());
+    }
+
     // ---- helpers ----
 
     private MassMessage massMessage(String project, MessageType type, String subType) {

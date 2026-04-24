@@ -35,7 +35,7 @@ public final class WorkerDebugMessageStore {
         record.setWorkerId(workerId);
         record.setDirection("OUTBOUND");
         record.setProject(project);
-        record.setEvent(normalize(eventCode));
+        record.setEventCode(normalize(eventCode));
         record.setMsgType(msgType);
         record.setSubMsgType(subMsgType);
         record.setStatus("QUEUED");
@@ -66,7 +66,7 @@ public final class WorkerDebugMessageStore {
         record.setWorkerId(workerId);
         record.setDirection("INBOUND");
         record.setProject(project);
-        record.setEvent(resolveInboundEvent(eventCode, replyToMessageId));
+        record.setEventCode(resolveInboundEvent(eventCode, replyToMessageId));
         record.setMsgType(msgType);
         record.setSubMsgType(subMsgType);
         record.setStatus("RECEIVED");
@@ -166,7 +166,7 @@ public final class WorkerDebugMessageStore {
             return null;
         }
         WorkerDebugMessageRecord outbound = RECORD_BY_MESSAGE_ID.get(replyToMessageId);
-        return outbound == null ? null : normalize(outbound.getEvent());
+        return outbound == null ? null : normalize(outbound.getEventCode());
     }
 
     private static String normalize(String value) {

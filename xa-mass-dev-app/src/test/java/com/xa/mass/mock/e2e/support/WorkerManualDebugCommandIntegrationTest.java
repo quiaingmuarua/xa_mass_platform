@@ -2,6 +2,7 @@ package com.xa.mass.mock.e2e.support;
 
 import com.google.gson.Gson;
 import com.xa.mass.base.debug.ManualDebugChatProtocol;
+import com.xa.mass.base.debug.WorkerControlEventProtocol;
 import com.xa.mass.base.debug.WorkerDebugMessageStore;
 import com.xa.mass.mock.MockApplicationSpringBootApp;
 import org.junit.jupiter.api.AfterEach;
@@ -17,6 +18,7 @@ import org.springframework.test.context.DynamicPropertySource;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Predicate;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -106,7 +108,7 @@ class WorkerManualDebugCommandIntegrationTest extends AbstractMockE2eTest {
         Map<String, Object> sendResponse = waitForSuccessfulEventSend(request);
         Map<String, Object> sendData = responseData(sendResponse);
         assertEquals(WORKER_ID, sendData.get("workerId"));
-        assertEquals("mock.state.get", sendData.get("event"));
+        assertEquals("mock.state.get", sendData.get("eventCode"));
         assertEquals("event-first-debug-1", sendData.get("requestId"));
         assertFalse(sendData.containsKey("msgType"));
         assertFalse(sendData.containsKey("subMsgType"));
@@ -116,6 +118,39 @@ class WorkerManualDebugCommandIntegrationTest extends AbstractMockE2eTest {
         Map<String, Object> statePayload = parsePayload(stateAck);
         assertEquals("mock.state.get", statePayload.get("commandEvent"));
         assertEquals(Boolean.TRUE, statePayload.get("commandExecuted"));
+    }
+
+    @Test
+    void historyPreservesGlobalEventCodeAcrossTransportBridgeWhenProjectIsOmitted() throws Exception {
+        Map<String, Object> request = new LinkedHashMap<>();
+        request.put("workerId", WORKER_ID);
+        request.put("event", "mock.state.get");
+        request.put("requestId", "event-history-1");
+        request.put("payload", Map.of());
+
+        Map<String, Object> sendResponse = waitForSuccessfulEventSend(request);
+        Map<String, Object> sendData = responseData(sendResponse);
+        assertEquals(WORKER_ID, sendData.get("workerId"));
+        assertEquals("demoApp", sendData.get("project"));
+        assertEquals("mock.state.get", sendData.get("eventCode"));
+
+        String messageId = String.valueOf(sendData.get("messageId"));
+        assertFalse(messageId.isBlank());
+
+        Map<String, Object> outbound = waitForHistoryItem(WORKER_ID,
+                item -> "OUTBOUND".equals(item.get("direction"))
+                        && messageId.equals(String.valueOf(item.get("messageId"))));
+        Map<String, Object> inbound = waitForHistoryItem(WORKER_ID,
+                item -> "INBOUND".equals(item.get("direction"))
+                        && messageId.equals(String.valueOf(item.get("replyToMessageId"))));
+
+        assertEquals("mock.state.get", outbound.get("eventCode"));
+        assertEquals("CONTROL", outbound.get("msgType"));
+        assertEquals("event", outbound.get("subMsgType"));
+
+        assertEquals("mock.state.get", inbound.get("eventCode"));
+        assertEquals("EVENT", inbound.get("msgType"));
+        assertEquals(WorkerControlEventProtocol.SUB_MSG_TYPE, inbound.get("subMsgType"));
     }
 
     private String sendEventCommand(String workerId, String event, Map<String, Object> payload) throws InterruptedException {
@@ -129,7 +164,7 @@ class WorkerManualDebugCommandIntegrationTest extends AbstractMockE2eTest {
         Map<String, Object> sendResponse = waitForSuccessfulEventSend(request);
         Map<String, Object> sendData = responseData(sendResponse);
         assertEquals(workerId, sendData.get("workerId"));
-        assertEquals(event, sendData.get("event"));
+        assertEquals(event, sendData.get("eventCode"));
         String messageId = String.valueOf(sendData.get("messageId"));
         assertFalse(messageId.isBlank());
         return messageId;
@@ -148,17 +183,9 @@ class WorkerManualDebugCommandIntegrationTest extends AbstractMockE2eTest {
     }
 
     private Map<String, Object> waitForInboundReply(String workerId, String replyToMessageId) throws InterruptedException {
-        Map<String, Object> latest = null;
-        for (int i = 0; i < 40; i++) {
-            latest = exchange("/status/workers/message-history?workerId=" + workerId, HttpMethod.GET, null);
-            List<Map<String, Object>> items = historyItems(latest);
-            Map<String, Object> inbound = findInboundReply(items, replyToMessageId);
-            if (inbound != null) {
-                return inbound;
-            }
-            Thread.sleep(250L);
-        }
-        throw new AssertionError("Manual debug command reply did not arrive in time. Last response=" + latest);
+        return waitForHistoryItem(workerId,
+                item -> "INBOUND".equals(item.get("direction"))
+                        && replyToMessageId.equals(String.valueOf(item.get("replyToMessageId"))));
     }
 
     @SuppressWarnings("unchecked")
@@ -166,12 +193,22 @@ class WorkerManualDebugCommandIntegrationTest extends AbstractMockE2eTest {
         return (List<Map<String, Object>>) responseData(response).get("items");
     }
 
-    private Map<String, Object> findInboundReply(List<Map<String, Object>> items, String replyToMessageId) {
-        return items.stream()
-                .filter(item -> "INBOUND".equals(item.get("direction")))
-                .filter(item -> replyToMessageId.equals(String.valueOf(item.get("replyToMessageId"))))
-                .findFirst()
-                .orElse(null);
+    private Map<String, Object> waitForHistoryItem(String workerId,
+                                                   Predicate<Map<String, Object>> matcher) throws InterruptedException {
+        Map<String, Object> latest = null;
+        for (int i = 0; i < 40; i++) {
+            latest = exchange("/status/workers/message-history?workerId=" + workerId, HttpMethod.GET, null);
+            List<Map<String, Object>> items = historyItems(latest);
+            Map<String, Object> matched = items.stream()
+                    .filter(matcher)
+                    .findFirst()
+                    .orElse(null);
+            if (matched != null) {
+                return matched;
+            }
+            Thread.sleep(250L);
+        }
+        throw new AssertionError("Manual debug history item did not arrive in time. Last response=" + latest);
     }
 
     private Map<String, Object> parsePayload(Map<String, Object> historyItem) {
