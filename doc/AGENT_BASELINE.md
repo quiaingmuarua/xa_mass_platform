@@ -99,7 +99,7 @@ Current canonical boundaries:
   - WebSocket worker identity is established at handshake time; heartbeat is no longer an application JSON frame
   - control/debug traffic now uses a root-level event-first frame keyed by `eventCode`
   - any remaining legacy transport fields are diagnostics only; they are not business/control capability identity
-  - `com.xa.mass.gateway.queue.WebSocketGatewayFrameCodec` remains the adapter-local WebSocket shell codec; it is not a platform contract
+  - `com.xa.mass.gateway.queue.WebSocketTransportFrameCodec` remains the adapter-local WebSocket shell codec; it is not a platform contract
 
 ## 5. Architectural Guardrails
 

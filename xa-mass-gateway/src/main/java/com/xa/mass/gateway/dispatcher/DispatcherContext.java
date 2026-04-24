@@ -5,7 +5,7 @@ import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
 import com.xa.mass.gateway.dispatcher.port.ControlEventRequestHandler;
 import com.xa.mass.gateway.dispatcher.port.ControlEventResponseFrameSink;
 import com.xa.mass.gateway.queue.OutboundDelivery;
-import com.xa.mass.gateway.queue.WebSocketGatewayFrameCodec;
+import com.xa.mass.gateway.queue.WebSocketTransportFrameCodec;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
@@ -16,7 +16,7 @@ import com.xa.mass.transport.channel.WorkerSystemEventChannel;
 public class DispatcherContext implements DispatchRuntimeContext {
     private final MessageTransporter<String, OutboundDelivery> messageTransporter;
     private final WorkerEndpointRegistry endpointRegistry;
-    private final WebSocketGatewayFrameCodec frameCodec;
+    private final WebSocketTransportFrameCodec frameCodec;
     private final TaskResultIngestChannel taskResultIngestChannel;
     private final WorkerSystemEventChannel systemEventChannel;
     private final ControlEventRequestHandler controlEventRequestHandler;
@@ -24,7 +24,7 @@ public class DispatcherContext implements DispatchRuntimeContext {
 
     public DispatcherContext(MessageTransporter<String, OutboundDelivery> messageTransporter,
                              WorkerEndpointRegistry endpointRegistry,
-                             WebSocketGatewayFrameCodec frameCodec,
+                             WebSocketTransportFrameCodec frameCodec,
                              TaskResultIngestChannel taskResultIngestChannel,
                              WorkerSystemEventChannel systemEventChannel,
                              ControlEventRequestHandler controlEventRequestHandler,
@@ -44,7 +44,7 @@ public class DispatcherContext implements DispatchRuntimeContext {
     }
 
     @Override
-    public WebSocketGatewayFrameCodec getFrameCodec() {
+    public WebSocketTransportFrameCodec getFrameCodec() {
         return frameCodec;
     }
 

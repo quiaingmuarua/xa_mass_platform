@@ -5,7 +5,7 @@ import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
 import com.xa.mass.gateway.queue.OutboundDelivery;
-import com.xa.mass.gateway.queue.WebSocketGatewayFrameCodec;
+import com.xa.mass.gateway.queue.WebSocketTransportFrameCodec;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
@@ -25,7 +25,7 @@ class GatewayTaskMsgPublisherTest {
         @SuppressWarnings("unchecked")
         com.xa.mass.base.channel.tranporter.MessageTransporter<String, OutboundDelivery> transporter =
                 mock(com.xa.mass.base.channel.tranporter.MessageTransporter.class);
-        WebSocketGatewayFrameCodec codec = new WebSocketGatewayFrameCodec();
+        WebSocketTransportFrameCodec codec = new WebSocketTransportFrameCodec();
         when(context.getMessageTransporter()).thenReturn(transporter);
         when(context.getFrameCodec()).thenReturn(codec);
 

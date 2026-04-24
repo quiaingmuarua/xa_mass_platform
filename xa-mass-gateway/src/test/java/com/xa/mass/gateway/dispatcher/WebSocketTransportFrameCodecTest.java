@@ -3,7 +3,7 @@ package com.xa.mass.gateway.dispatcher;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.xa.mass.base.debug.WorkerControlEventProtocol;
-import com.xa.mass.gateway.queue.WebSocketGatewayFrameCodec;
+import com.xa.mass.gateway.queue.WebSocketTransportFrameCodec;
 import com.xa.mass.sdk.event.EventResponse;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -15,15 +15,15 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class WebSocketGatewayFrameCodecTest {
+class WebSocketTransportFrameCodecTest {
 
     private static final Gson GSON = new Gson();
 
-    private WebSocketGatewayFrameCodec codec;
+    private WebSocketTransportFrameCodec codec;
 
     @BeforeEach
     void setUp() {
-        codec = new WebSocketGatewayFrameCodec();
+        codec = new WebSocketTransportFrameCodec();
     }
 
     @Test

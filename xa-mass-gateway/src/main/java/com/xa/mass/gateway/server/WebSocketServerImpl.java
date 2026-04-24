@@ -1,6 +1,6 @@
 package com.xa.mass.gateway.server;
 
-import com.xa.mass.gateway.queue.WebSocketGatewayFrameCodec;
+import com.xa.mass.gateway.queue.WebSocketTransportFrameCodec;
 import com.xa.mass.gateway.session.ServerSessionManager;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.*;
@@ -43,14 +43,14 @@ public class WebSocketServerImpl implements MassWebSocketServer {
     private EventLoopGroup workerGroup;
     private volatile boolean running = false;
     private ServerSessionManager sessionManager;
-    private WebSocketGatewayFrameCodec frameCodec;
+    private WebSocketTransportFrameCodec frameCodec;
     private Consumer<String> inboundMessageSink;
 
     public WebSocketServerImpl() {
     }
 
     public WebSocketServerImpl(String websocketPath,
-                               WebSocketGatewayFrameCodec frameCodec,
+                               WebSocketTransportFrameCodec frameCodec,
                                Consumer<String> inboundMessageSink,
                                ServerSessionManager sessionManager) {
         this.websocketPath = websocketPath;
@@ -169,7 +169,7 @@ public class WebSocketServerImpl implements MassWebSocketServer {
         this.websocketPath = websocketPath;
     }
 
-    public void setFrameCodec(WebSocketGatewayFrameCodec frameCodec) {
+    public void setFrameCodec(WebSocketTransportFrameCodec frameCodec) {
         this.frameCodec = frameCodec;
     }
 

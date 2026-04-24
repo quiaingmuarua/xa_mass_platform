@@ -6,7 +6,7 @@ import com.xa.mass.sdk.MassSdkApplication;
 import com.xa.mass.sdk.model.WorkerContextRegistration;
 import com.xa.mass.sdk.model.WorkerRegistration;
 import com.xa.mass.sdk.worker.PullWorkerSession;
-import com.xa.mass.starter.worker.PollingWorkerAdapter;
+import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.model.TaskDispatchItem;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -136,7 +136,7 @@ class PollingWorkerTaskFlowIntegrationTest extends AbstractMockE2eTest {
                 .workerId(workerId)
                 .workerGroupId("us")
                 .supportedProjects(List.of("demoApp"))
-                .transportHint(PollingWorkerAdapter.PROTOCOL)
+                .transportHint(WorkerTransportHints.POLLING)
                 .build());
 
         app.registerWorkerContext(WorkerContextRegistration.builder()

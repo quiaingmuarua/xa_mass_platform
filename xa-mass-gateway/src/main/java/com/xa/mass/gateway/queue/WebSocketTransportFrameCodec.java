@@ -29,9 +29,9 @@ import java.util.UUID;
  * runtime. It is adapter-local and must not be treated as a platform
  * capability contract.
  */
-public final class WebSocketGatewayFrameCodec {
+public final class WebSocketTransportFrameCodec {
 
-    private static final Logger logger = LoggerFactory.getLogger(WebSocketGatewayFrameCodec.class);
+    private static final Logger logger = LoggerFactory.getLogger(WebSocketTransportFrameCodec.class);
     private static final Type MAP_TYPE = new TypeToken<Map<String, Object>>() {
     }.getType();
     private static final Type STRING_MAP_TYPE = new TypeToken<Map<String, String>>() {
@@ -39,11 +39,11 @@ public final class WebSocketGatewayFrameCodec {
 
     private final Gson gson;
 
-    public WebSocketGatewayFrameCodec() {
+    public WebSocketTransportFrameCodec() {
         this(new GsonBuilder().setPrettyPrinting().create());
     }
 
-    public WebSocketGatewayFrameCodec(Gson gson) {
+    public WebSocketTransportFrameCodec(Gson gson) {
         this.gson = gson;
     }
 

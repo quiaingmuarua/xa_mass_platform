@@ -3,7 +3,7 @@ package com.xa.mass.gateway.server;
 import com.xa.mass.base.channel.tranporter.MessageTransporter;
 import com.xa.mass.base.debug.WorkerControlEventProtocol;
 import com.xa.mass.gateway.queue.OutboundDelivery;
-import com.xa.mass.gateway.queue.WebSocketGatewayFrameCodec;
+import com.xa.mass.gateway.queue.WebSocketTransportFrameCodec;
 import com.xa.mass.gateway.session.ServerSessionManager;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
@@ -65,7 +65,7 @@ class DispatcherInboundHandlerTest {
         when(transporter.inputQueueSize()).thenReturn(0);
 
         sessionManager = new ServerSessionManager();
-        WebSocketGatewayFrameCodec codec = new WebSocketGatewayFrameCodec();
+        WebSocketTransportFrameCodec codec = new WebSocketTransportFrameCodec();
         handler = new DispatcherInboundHandler(codec, transporter::sendInput, sessionManager);
     }
 

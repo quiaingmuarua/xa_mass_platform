@@ -1,7 +1,7 @@
 package com.xa.mass.gateway.server;
 
 import com.google.gson.JsonObject;
-import com.xa.mass.gateway.queue.WebSocketGatewayFrameCodec;
+import com.xa.mass.gateway.queue.WebSocketTransportFrameCodec;
 import com.xa.mass.gateway.session.ServerSessionManager;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
@@ -18,10 +18,10 @@ import java.util.function.Consumer;
 public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWebSocketFrame> {
     private static final Logger logger = LoggerFactory.getLogger(DispatcherInboundHandler.class);
     private final ServerSessionManager sessionManager;
-    private final WebSocketGatewayFrameCodec frameCodec;
+    private final WebSocketTransportFrameCodec frameCodec;
     private final Consumer<String> inboundMessageSink;
 
-    public DispatcherInboundHandler(WebSocketGatewayFrameCodec frameCodec,
+    public DispatcherInboundHandler(WebSocketTransportFrameCodec frameCodec,
                                     Consumer<String> inboundMessageSink,
                                     ServerSessionManager sessionManager) {
         this.sessionManager = Objects.requireNonNull(sessionManager, "sessionManager");

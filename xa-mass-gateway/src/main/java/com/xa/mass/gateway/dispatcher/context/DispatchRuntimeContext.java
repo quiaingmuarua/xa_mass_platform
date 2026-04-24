@@ -4,7 +4,7 @@ import com.xa.mass.base.channel.tranporter.MessageTransporter;
 import com.xa.mass.gateway.dispatcher.port.ControlEventRequestHandler;
 import com.xa.mass.gateway.dispatcher.port.ControlEventResponseFrameSink;
 import com.xa.mass.gateway.queue.OutboundDelivery;
-import com.xa.mass.gateway.queue.WebSocketGatewayFrameCodec;
+import com.xa.mass.gateway.queue.WebSocketTransportFrameCodec;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
@@ -16,7 +16,7 @@ public interface DispatchRuntimeContext {
 
     WorkerEndpointRegistry getEndpointRegistry();
 
-    WebSocketGatewayFrameCodec getFrameCodec();
+    WebSocketTransportFrameCodec getFrameCodec();
 
     MessageTransporter<String, OutboundDelivery> getMessageTransporter();
 

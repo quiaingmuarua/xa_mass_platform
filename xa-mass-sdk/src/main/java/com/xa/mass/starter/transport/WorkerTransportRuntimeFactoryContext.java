@@ -4,7 +4,7 @@ import com.xa.mass.base.channel.tranporter.MessageTransporter;
 import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.gateway.queue.OutboundDelivery;
-import com.xa.mass.gateway.queue.WebSocketGatewayFrameCodec;
+import com.xa.mass.gateway.queue.WebSocketTransportFrameCodec;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
@@ -19,7 +19,7 @@ public final class WorkerTransportRuntimeFactoryContext {
     private final WorkerManager workerManager;
     private final MessageTransporter<String, OutboundDelivery> messageTransporter;
     private final WorkerEndpointRegistry endpointRegistry;
-    private final WebSocketGatewayFrameCodec frameCodec;
+    private final WebSocketTransportFrameCodec frameCodec;
     private final TaskResultIngestChannel taskResultIngestChannel;
     private final WorkerSystemEventChannel systemEventChannel;
     private final boolean gatewayEnabled;
@@ -28,7 +28,7 @@ public final class WorkerTransportRuntimeFactoryContext {
                                                 WorkerManager workerManager,
                                                 MessageTransporter<String, OutboundDelivery> messageTransporter,
                                                 WorkerEndpointRegistry endpointRegistry,
-                                                WebSocketGatewayFrameCodec frameCodec,
+                                                WebSocketTransportFrameCodec frameCodec,
                                                 TaskResultIngestChannel taskResultIngestChannel,
                                                 WorkerSystemEventChannel systemEventChannel,
                                                 boolean gatewayEnabled) {
@@ -58,7 +58,7 @@ public final class WorkerTransportRuntimeFactoryContext {
         return endpointRegistry;
     }
 
-    public WebSocketGatewayFrameCodec getFrameCodec() {
+    public WebSocketTransportFrameCodec getFrameCodec() {
         return frameCodec;
     }
 

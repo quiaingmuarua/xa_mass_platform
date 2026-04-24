@@ -9,7 +9,7 @@ import com.xa.mass.sdk.model.MassTaskRequest;
 import com.xa.mass.sdk.model.WorkerContextRegistration;
 import com.xa.mass.sdk.model.WorkerRegistration;
 import com.xa.mass.sdk.worker.PullWorkerSession;
-import com.xa.mass.starter.worker.PollingWorkerAdapter;
+import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.model.TaskDispatchItem;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -67,7 +67,7 @@ class CrawlerPullWorkerSdkRegistrationIntegrationTest extends AbstractMockE2eTes
                 .workerGroupId("crawler")
                 .supportedProjects(List.of("crawlerApp"))
                 .supportedEventCodes(List.of("crawler.fetch-page"))
-                .transportHint(PollingWorkerAdapter.PROTOCOL)
+                .transportHint(WorkerTransportHints.POLLING)
                 .attributes(Map.of("type", "crawler"))
                 .build());
         app.registerWorkerContext(WorkerContextRegistration.builder()

@@ -5,7 +5,7 @@ import com.xa.mass.base.channel.tranporter.MessageTransporter;
 import com.xa.mass.base.channel.tranporter.MessageTransporterFactory;
 import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
 import com.xa.mass.gateway.queue.OutboundDelivery;
-import com.xa.mass.gateway.queue.WebSocketGatewayFrameCodec;
+import com.xa.mass.gateway.queue.WebSocketTransportFrameCodec;
 import com.xa.mass.gateway.runtime.WebSocketGatewayRuntimeSupport;
 import com.xa.mass.starter.transport.DefaultWorkerTransportRuntimeFactory;
 import com.xa.mass.starter.transport.TransportServerFactoryContext;
@@ -40,7 +40,7 @@ public class GatewayConfig {
     private String outputApiUrl;
     private String apiKey;
 
-    private WebSocketGatewayFrameCodec frameCodec;
+    private WebSocketTransportFrameCodec frameCodec;
 
     private WorkerSystemEventChannel customSystemEventChannel;
     private WorkerEndpointRegistry workerEndpointRegistry;
@@ -121,8 +121,8 @@ public class GatewayConfig {
         };
     }
 
-    public WebSocketGatewayFrameCodec resolveFrameCodec() {
-        return frameCodec != null ? frameCodec : new WebSocketGatewayFrameCodec();
+    public WebSocketTransportFrameCodec resolveFrameCodec() {
+        return frameCodec != null ? frameCodec : new WebSocketTransportFrameCodec();
     }
 
     public MessageTransporterFactory.TransporterType getTransporterType() {
@@ -173,11 +173,11 @@ public class GatewayConfig {
         this.apiKey = apiKey;
     }
 
-    public WebSocketGatewayFrameCodec getFrameCodec() {
+    public WebSocketTransportFrameCodec getFrameCodec() {
         return frameCodec;
     }
 
-    public void setFrameCodec(WebSocketGatewayFrameCodec frameCodec) {
+    public void setFrameCodec(WebSocketTransportFrameCodec frameCodec) {
         this.frameCodec = frameCodec;
     }
 
@@ -246,7 +246,7 @@ public class GatewayConfig {
                 : new DefaultWorkerTransportRuntimeFactory();
     }
 
-    public TransportServer createTransportServer(WebSocketGatewayFrameCodec frameCodec,
+    public TransportServer createTransportServer(WebSocketTransportFrameCodec frameCodec,
                                                  Consumer<String> inboundMessageSink,
                                                  WorkerEndpointRegistry endpointRegistry,
                                                  int port) {

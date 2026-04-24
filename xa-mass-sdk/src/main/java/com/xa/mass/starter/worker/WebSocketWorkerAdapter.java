@@ -3,7 +3,7 @@ package com.xa.mass.starter.worker;
 import com.xa.mass.base.channel.tranporter.MessageTransporter;
 import com.xa.mass.engine.worker.WorkerAdapter;
 import com.xa.mass.gateway.queue.OutboundDelivery;
-import com.xa.mass.gateway.queue.WebSocketGatewayFrameCodec;
+import com.xa.mass.gateway.queue.WebSocketTransportFrameCodec;
 import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.model.TaskDispatchItem;
 import org.slf4j.Logger;
@@ -22,10 +22,10 @@ public class WebSocketWorkerAdapter implements WorkerAdapter {
     private static final Logger logger = LoggerFactory.getLogger(WebSocketWorkerAdapter.class);
 
     private final MessageTransporter<String, OutboundDelivery> messageTransporter;
-    private final WebSocketGatewayFrameCodec frameCodec;
+    private final WebSocketTransportFrameCodec frameCodec;
 
     public WebSocketWorkerAdapter(MessageTransporter<String, OutboundDelivery> messageTransporter,
-                                  WebSocketGatewayFrameCodec frameCodec) {
+                                  WebSocketTransportFrameCodec frameCodec) {
         this.messageTransporter = messageTransporter;
         this.frameCodec = frameCodec;
     }

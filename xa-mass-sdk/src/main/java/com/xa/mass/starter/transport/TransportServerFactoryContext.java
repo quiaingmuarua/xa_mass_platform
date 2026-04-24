@@ -1,6 +1,6 @@
 package com.xa.mass.starter.transport;
 
-import com.xa.mass.gateway.queue.WebSocketGatewayFrameCodec;
+import com.xa.mass.gateway.queue.WebSocketTransportFrameCodec;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 
 import java.util.Objects;
@@ -13,13 +13,13 @@ import java.util.function.Consumer;
 public final class TransportServerFactoryContext {
 
     private final WorkerEndpointRegistry endpointRegistry;
-    private final WebSocketGatewayFrameCodec frameCodec;
+    private final WebSocketTransportFrameCodec frameCodec;
     private final Consumer<String> inboundMessageSink;
     private final int port;
     private final String endpointPath;
 
     public TransportServerFactoryContext(WorkerEndpointRegistry endpointRegistry,
-                                         WebSocketGatewayFrameCodec frameCodec,
+                                         WebSocketTransportFrameCodec frameCodec,
                                          Consumer<String> inboundMessageSink,
                                          int port,
                                          String endpointPath) {
@@ -34,7 +34,7 @@ public final class TransportServerFactoryContext {
         return endpointRegistry;
     }
 
-    public WebSocketGatewayFrameCodec getFrameCodec() {
+    public WebSocketTransportFrameCodec getFrameCodec() {
         return frameCodec;
     }
 

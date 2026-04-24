@@ -66,7 +66,7 @@ It is a migration aid, not a compatibility promise.
 
 ## 6. WebSocket Compatibility Codec
 
-- `Class`: `com.xa.mass.gateway.queue.WebSocketGatewayFrameCodec`
+- `Class`: `com.xa.mass.gateway.queue.WebSocketTransportFrameCodec`
 - `Method`: `parseObject(...)`, `encodeCanonicalTaskDispatch(...)`, `decodeCanonicalTaskResult(...)`, `decodeControlEventRequest(...)`
 - `Current responsibility`: converts current WebSocket raw JSON into canonical task/control objects and back
 - `Should stay in gateway?`: yes
@@ -76,13 +76,13 @@ It is a migration aid, not a compatibility promise.
 
 ## 7. Canonical Task Frame Detection
 
-- `Class`: `com.xa.mass.gateway.queue.WebSocketGatewayFrameCodec`, `com.xa.mass.gateway.dispatcher.GatewayInputProcessor`
+- `Class`: `com.xa.mass.gateway.queue.WebSocketTransportFrameCodec`, `com.xa.mass.gateway.dispatcher.GatewayInputProcessor`
 - `Method`: `isCanonicalTaskDispatch(...)`, `isCanonicalTaskResult(...)`
 - `Current responsibility`: recognizes canonical task frames directly inside the codec and input processor without reintroducing an adapter-side route registry
 - `Should stay in gateway?`: yes
 - `Target owner`: `xa-mass-gateway`
 - `Migration phase`: keep narrow; do not add new platform capability identities here
-- `Related tests`: `WebSocketGatewayFrameCodecTest`, `GatewayInputProcessorTest`
+- `Related tests`: `WebSocketTransportFrameCodecTest`, `GatewayInputProcessorTest`
 
 ## 8. Inbound / Outbound Adapter Orchestration
 

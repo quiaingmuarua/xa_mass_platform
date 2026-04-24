@@ -8,7 +8,7 @@ import com.xa.mass.engine.rules.RuleDefinition;
 import com.xa.mass.engine.util.LogUtils;
 import com.xa.mass.gateway.dispatcher.DispatcherContext;
 import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
-import com.xa.mass.gateway.queue.WebSocketGatewayFrameCodec;
+import com.xa.mass.gateway.queue.WebSocketTransportFrameCodec;
 import com.xa.mass.gateway.queue.OutboundDelivery;
 import com.xa.mass.sdk.worker.PullWorkerSession;
 import com.xa.mass.starter.config.EngineConfig;
@@ -133,8 +133,8 @@ public class MassApplication {
             MessageTransporter<String, OutboundDelivery> messageTransporter = gatewayConfig.createMessageTransporter();
             logger.info("Message transporter created");
 
-            WebSocketGatewayFrameCodec frameCodec = gatewayConfig.resolveFrameCodec();
-            logger.info("WebSocket gateway frame codec created");
+            WebSocketTransportFrameCodec frameCodec = gatewayConfig.resolveFrameCodec();
+            logger.info("WebSocket transport frame codec created");
 
             WorkerSystemEventChannel systemEventChannel = gatewayConfig.resolveSystemEventChannel();
             TaskMsgDispatchListener taskMsgDispatchListener = null;
