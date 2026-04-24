@@ -366,7 +366,7 @@ public class TaskApiController {
 
     private Map<String, Object> toTaskMessageView(TaskMsg taskMsg) {
         Map<String, Object> view = new LinkedHashMap<>();
-        view.put("msgId", taskMsg.getMsgId());
+        view.put("messageId", taskMsg.getMsgId());
         view.put("taskId", taskMsg.getTaskId());
         view.put("status", taskMsg.getStatus() != null ? taskMsg.getStatus().name() : null);
         view.put("latestAttemptWorkerId", taskMsg.getLatestAttemptWorkerId());

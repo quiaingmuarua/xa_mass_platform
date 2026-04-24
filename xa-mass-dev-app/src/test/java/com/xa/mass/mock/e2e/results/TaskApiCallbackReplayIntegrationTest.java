@@ -68,17 +68,17 @@ class TaskApiCallbackReplayIntegrationTest extends AbstractMockE2eTest {
         assertEquals(2, terminalSnapshot.messages().size());
 
         Map<String, Object> firstMessage = terminalSnapshot.messages().get(0);
-        String msgId = String.valueOf(firstMessage.get("msgId"));
+        String messageId = String.valueOf(firstMessage.get("messageId"));
         String originalStatus = String.valueOf(firstMessage.get("status"));
         Object originalResult = firstMessage.get("result");
         Object originalErrorMessage = firstMessage.get("errorMessage");
         assertEquals("SUCCESS", originalStatus);
         assertNull(originalErrorMessage);
 
-        replayConflictingTaskResult(taskId, msgId, "FAILED", "replayed-conflict");
+        replayConflictingTaskResult(taskId, messageId, "FAILED", "replayed-conflict");
 
         TaskSnapshot afterReplay = waitForTaskSnapshot(taskId, "TERMINAL");
-        Map<String, Object> replayedMessage = findMessage(afterReplay.messages(), msgId);
+        Map<String, Object> replayedMessage = findMessage(afterReplay.messages(), messageId);
 
         assertEquals("TERMINAL", afterReplay.task().get("status"));
         assertEquals(2, ((Number) afterReplay.task().get("taskSuccessNumber")).intValue());
@@ -89,21 +89,21 @@ class TaskApiCallbackReplayIntegrationTest extends AbstractMockE2eTest {
         assertNull(replayedMessage.get("errorMessage"));
     }
 
-    private void replayConflictingTaskResult(String taskId, String msgId, String status, String detail) throws Exception {
+    private void replayConflictingTaskResult(String taskId, String messageId, String status, String detail) throws Exception {
         URI uri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
         ReplayWebSocketClient client = new ReplayWebSocketClient(uri, "replay-worker");
         try {
             assertClientConnects(client, "Replay WebSocket client failed to connect");
-            client.sendMessage(WsFrameTestSupport.buildTaskResult(msgId, "demoApp", "replay-worker", taskId, status, detail));
+            client.sendMessage(WsFrameTestSupport.buildTaskResult(messageId, "demoApp", "replay-worker", taskId, status, detail));
             client.awaitSilence(300, TimeUnit.MILLISECONDS);
         } finally {
             client.disconnect();
         }
     }
 
-    private Map<String, Object> findMessage(List<Map<String, Object>> messages, String msgId) {
+    private Map<String, Object> findMessage(List<Map<String, Object>> messages, String messageId) {
         return messages.stream()
-                .filter(message -> msgId.equals(String.valueOf(message.get("msgId"))))
+                .filter(message -> messageId.equals(String.valueOf(message.get("messageId"))))
                 .findFirst()
                 .orElse(null);
     }

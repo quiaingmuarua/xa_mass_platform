@@ -497,7 +497,7 @@ Response shape:
     "size": 20,
     "messages": [
       {
-        "msgId": "msg-1",
+        "messageId": "msg-1",
         "taskId": "task-uuid",
         "status": "SUCCESS",
         "latestAttemptWorkerId": "worker-a",

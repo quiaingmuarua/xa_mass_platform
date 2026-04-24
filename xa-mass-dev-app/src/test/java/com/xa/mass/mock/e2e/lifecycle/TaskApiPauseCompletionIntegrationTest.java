@@ -99,12 +99,12 @@ class TaskApiPauseCompletionIntegrationTest extends AbstractMockE2eTest {
             dispatchByMsgId.put(WsFrameTestSupport.messageId(secondDispatch), secondDispatch);
 
             for (Map<String, Object> message : pausedSnapshot.messages()) {
-                String msgId = String.valueOf(message.get("msgId"));
+                String messageId = String.valueOf(message.get("messageId"));
                 String workerId = String.valueOf(message.get("latestAttemptWorkerId"));
                 ManualAckWebSocketClient client = clientByWorkerId.get(workerId);
-                JsonObject dispatch = dispatchByMsgId.get(msgId);
+                JsonObject dispatch = dispatchByMsgId.get(messageId);
                 assertNotNull(client, "No connected worker client for " + workerId);
-                assertNotNull(dispatch, "No captured dispatch frame for msg " + msgId);
+                assertNotNull(dispatch, "No captured dispatch frame for message " + messageId);
 
                 client.sendResult(dispatch, "SUCCESS", "paused-complete-" + workerId);
             }

@@ -507,7 +507,7 @@ class TaskApiControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
                 .andExpect(jsonPath("$.data.total").value(2))
-                .andExpect(jsonPath("$.data.messages[0].msgId").value("msg-1"))
+                .andExpect(jsonPath("$.data.messages[0].messageId").value("msg-1"))
                 .andExpect(jsonPath("$.data.messages[0].input.target").value("alpha"))
                 .andExpect(jsonPath("$.data.messages[0].output.result").value("ok"));
     }
