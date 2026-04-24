@@ -74,12 +74,12 @@ class WorkerControlEventCommandIntegrationTest extends AbstractMockE2eTest {
                 WorkerControlMessageProtocol.MESSAGE_KIND_ACK,
                 delayPayload.get(WorkerControlMessageProtocol.MESSAGE_KIND_FIELD)
         );
-        assertEquals(Boolean.TRUE, delayPayload.get("commandExecuted"));
-        assertEquals("mock.delay.response", delayPayload.get("commandEvent"));
+        assertEquals(Boolean.TRUE, delayPayload.get(WorkerControlMessageProtocol.EVENT_HANDLED_FIELD));
+        assertEquals("mock.delay.response", delayPayload.get(WorkerControlEventProtocol.EVENT_FIELD));
 
-        Map<String, Object> delayCommandResult = map(delayPayload.get("commandResult"));
-        assertEquals("ok", delayCommandResult.get("status"));
-        Map<String, Object> delayResultData = map(delayCommandResult.get("data"));
+        Map<String, Object> delayEventResult = map(delayPayload.get(WorkerControlMessageProtocol.EVENT_RESULT_FIELD));
+        assertEquals("ok", delayEventResult.get("status"));
+        Map<String, Object> delayResultData = map(delayEventResult.get("data"));
         Map<String, Object> delayState = map(delayResultData.get("state"));
         assertEquals(400.0d, delayState.get("taskResponseDelayMillis"));
 
@@ -87,10 +87,10 @@ class WorkerControlEventCommandIntegrationTest extends AbstractMockE2eTest {
 
         Map<String, Object> stateAck = waitForInboundReply(WORKER_ID, stateMessageId);
         Map<String, Object> statePayload = parsePayload(stateAck);
-        assertEquals("mock.state.get", statePayload.get("commandEvent"));
+        assertEquals("mock.state.get", statePayload.get(WorkerControlEventProtocol.EVENT_FIELD));
 
-        Map<String, Object> stateCommandResult = map(statePayload.get("commandResult"));
-        Map<String, Object> stateResultData = map(stateCommandResult.get("data"));
+        Map<String, Object> stateEventResult = map(statePayload.get(WorkerControlMessageProtocol.EVENT_RESULT_FIELD));
+        Map<String, Object> stateResultData = map(stateEventResult.get("data"));
         Map<String, Object> stateSnapshot = map(stateResultData.get("state"));
         assertEquals(400.0d, stateSnapshot.get("taskResponseDelayMillis"));
     }
@@ -119,8 +119,8 @@ class WorkerControlEventCommandIntegrationTest extends AbstractMockE2eTest {
         String messageId = String.valueOf(sendData.get("messageId"));
         Map<String, Object> stateAck = waitForInboundReply(WORKER_ID, messageId);
         Map<String, Object> statePayload = parsePayload(stateAck);
-        assertEquals("mock.state.get", statePayload.get("commandEvent"));
-        assertEquals(Boolean.TRUE, statePayload.get("commandExecuted"));
+        assertEquals("mock.state.get", statePayload.get(WorkerControlEventProtocol.EVENT_FIELD));
+        assertEquals(Boolean.TRUE, statePayload.get(WorkerControlMessageProtocol.EVENT_HANDLED_FIELD));
     }
 
     @Test

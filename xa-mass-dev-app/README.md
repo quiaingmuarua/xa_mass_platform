@@ -107,7 +107,7 @@ The extra payload fields are observability data for dev-app realism. Existing li
 
 ## Mock Command Runtime
 
-`xa-mass-dev-app` now exposes a lightweight in-process command runtime for mock workers through the existing manual debug chat channel.
+`xa-mass-dev-app` now exposes a lightweight in-process mock command runtime for workers through the current `CONTROL/event` control bridge.
 
 Current command groups:
 
@@ -146,7 +146,7 @@ Example request body:
 
 Observability:
 
-- command acknowledgements are recorded in `GET /status/workers/message-history?workerId=...`
+- control-event acknowledgements are recorded in `GET /status/workers/message-history?workerId=...`
 - debug send responses and history records surface capability identity as `eventCode`
 - `mock.disconnect` is designed to close the worker only after the acknowledgement is sent
 - `tool.geo.lookup` and `tool.currency.quote` are simulated helpers and must be treated as fake data sources
@@ -194,6 +194,6 @@ Covered areas:
 - `e2e/assignment`: delayed worker availability and multi-task assignment behavior
 - `CrawlerPullWorkerSdkRegistrationIntegrationTest`: SDK-created crawler worker resource, pull connect/poll/result, and terminal read-model verification without mock worker JSON
 - `e2e/audit`: `stateValidation` exposure and terminal metadata consistency through the real HTTP path
-- `e2e/support`: manual debug chat, command acknowledgements, and disconnect-after-ack behavior
+- `e2e/support`: worker control-event acknowledgements and disconnect-after-ack behavior
 - `WebSocketClientStarterTest`: auto-start and idempotent startup behavior
 - `MassWebSocketClientImplTest`: ignore `response=true` task frames, avoid echo loops, support delay/drop fault injection, and support disconnect-after-ack command behavior

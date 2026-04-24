@@ -1,7 +1,7 @@
 package com.xa.mass.base.debug;
 
 /**
- * In-memory debug message record for worker manual messaging.
+ * In-memory debug message record for worker control-event history.
  */
 public class WorkerDebugMessageRecord {
     private String messageId;

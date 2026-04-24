@@ -62,7 +62,6 @@ final class MockWorkerControlFrameHandler {
         payloadMap.put(WorkerControlMessageProtocol.RECEIVED_AT_FIELD, System.currentTimeMillis());
         payloadMap.put(WorkerControlMessageProtocol.ECHO_PAYLOAD_FIELD, controlMessage.getPayload());
         payloadMap.put(WorkerControlMessageProtocol.ECHO_SUB_MSG_TYPE_FIELD, controlMessage.getSubMsgType());
-        payloadMap.put("commandExecuted", commandResult != null);
         if (eventEnvelope != null
                 && eventEnvelope.has(WorkerControlEventProtocol.REQUEST_ID_FIELD)
                 && !eventEnvelope.get(WorkerControlEventProtocol.REQUEST_ID_FIELD).isJsonNull()) {
@@ -71,9 +70,9 @@ final class MockWorkerControlFrameHandler {
                     eventEnvelope.get(WorkerControlEventProtocol.REQUEST_ID_FIELD).getAsString()
             );
         }
+        payloadMap.put(WorkerControlMessageProtocol.EVENT_HANDLED_FIELD, commandResult != null);
         if (commandResult != null) {
-            payloadMap.put("commandEvent", commandRequest.get(WorkerControlEventProtocol.EVENT_FIELD).getAsString());
-            payloadMap.put("commandResult", commandResult);
+            payloadMap.put(WorkerControlMessageProtocol.EVENT_RESULT_FIELD, commandResult);
         }
         String resolvedEventCode = resolveInboundEventCode(controlMessage, commandRequest, eventEnvelope);
         if (resolvedEventCode != null) {

@@ -25,6 +25,8 @@ public final class WorkerControlMessageProtocol {
     public static final String REPLY_TO_MESSAGE_ID_FIELD = "replyToMessageId";
     public static final String ACK_STATUS_FIELD = "ackStatus";
     public static final String ACK_STATUS_RECEIVED = "RECEIVED";
+    public static final String EVENT_HANDLED_FIELD = "eventHandled";
+    public static final String EVENT_RESULT_FIELD = "eventResult";
     public static final String ECHO_PAYLOAD_FIELD = "echoPayload";
     public static final String ECHO_SUB_MSG_TYPE_FIELD = "echoSubMsgType";
     public static final String SOURCE_FIELD = "source";

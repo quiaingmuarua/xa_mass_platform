@@ -41,7 +41,6 @@ XA Mass is aimed at the shared kernel behind those cases: `stateful worker + cap
 - The project is library/SDK-first. HTTP pages, demo APIs, and mock runtime surfaces exist to validate the kernel.
 - The current verified adapter path is still `Worker + WorkerContext + WebSocket gateway + mock clients`, but that is now treated as the reference transport adapter rather than the product boundary.
 - Workers can be phone apps, crawlers, LLM agents, IM bots, or other long-lived executors.
-- `Worker` and `WorkerContext` are the current reference adapters, not the permanent product boundary.
 
 ## Current Mainline Goal
 

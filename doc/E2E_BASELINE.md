@@ -64,8 +64,8 @@ Worker and context:
 - stateless worker can execute tasks without routing-required context
 - polling/pull worker path can execute `create -> approve -> dispatch -> result -> terminal` without WebSocket push
 - SDK-created worker resources can register as `OFFLINE`, connect through pull transport, poll work, submit result output, and disconnect back to offline
-- manual worker debug chat records outbound and inbound history over the real gateway path
-- manual worker debug chat acknowledgement promotes delivery visibility from `QUEUED` to `DELIVERED`
+- worker control-event history records outbound and inbound frames over the real gateway path
+- worker control-event acknowledgement promotes delivery visibility from `QUEUED` to `DELIVERED`
 - same worker can own multiple contexts without overwrite
 - releasing one context does not release sibling contexts
 - worker/context is reusable after normal terminal completion

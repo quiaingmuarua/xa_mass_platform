@@ -193,7 +193,7 @@ Important support coverage outside the E2E package:
 - multi-round refill works when `batchSize` is lower than total work-item count
 - `READY` tasks without a current match are retried instead of being orphaned
 - worker control messaging is visible end to end without touching `TaskMsg` lifecycle
-- worker control messaging can execute `mock.*` commands and returns structured command acknowledgements
+- worker control events can execute `mock.*` commands and return structured control acknowledgements
 - `mock.disconnect` is verified to acknowledge first and then take the worker offline
 - task detail exposes `stateValidation` so runtime state audit is observable externally
 - backend-hosted SPA shell routes return the built console shell through the real Spring Boot entry

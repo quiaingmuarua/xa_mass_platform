@@ -9,7 +9,7 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Process-local debug message store for manual worker messaging.
+ * Process-local debug message store for worker control-event history.
  */
 public final class WorkerDebugMessageStore {
     private static final int MAX_HISTORY_PER_WORKER = 120;

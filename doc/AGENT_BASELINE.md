@@ -12,6 +12,7 @@ It intentionally does not duplicate run commands, detailed endpoint inventories,
 For those, use:
 
 - [../AGENTS.md](../AGENTS.md)
+- [../DEPRECATION_LEDGER.md](../DEPRECATION_LEDGER.md)
 - [./GATEWAY_BOUNDARY_BASELINE.md](./GATEWAY_BOUNDARY_BASELINE.md)
 - [./STATE_MACHINE_BASELINE.md](./STATE_MACHINE_BASELINE.md)
 - [./TRACE_CONTRACT.md](./TRACE_CONTRACT.md)
@@ -20,19 +21,10 @@ For those, use:
 - [./INTERNAL_API_REFERENCE.md](./INTERNAL_API_REFERENCE.md)
 - [./engine/POLICY_INTERACTION_BASELINE.md](./engine/POLICY_INTERACTION_BASELINE.md)
 
-## 1. Truth Order
+## 1. Using This File
 
-When code, runtime behavior, and docs disagree, use this order:
-
-1. Actual code paths
-2. Verified runtime behavior
-3. [../AGENTS.md](../AGENTS.md)
-4. [./STATE_MACHINE_BASELINE.md](./STATE_MACHINE_BASELINE.md)
-5. [./TRACE_CONTRACT.md](./TRACE_CONTRACT.md)
-6. [./E2E_BASELINE.md](./E2E_BASELINE.md)
-7. This file
-8. Module READMEs
-9. Older notes only after confirming the referenced files still exist locally
+Use the canonical trust order in [../AGENTS.md](../AGENTS.md).
+This file is the stable project baseline, not a higher-priority source than code, verified runtime behavior, or narrower owner docs such as state machine, trace, E2E, and gateway boundary baselines.
 
 Working rule:
 
@@ -46,11 +38,11 @@ Working rule:
 - The core product problem is not "send work over one transport"; it is "match structured work items to heterogeneous, stateful executors, track each item result, and converge task-level state".
 - Its core abstraction is: assign a batch of work items to a batch of online workers, track each execution result, and converge task-level completion state.
 - The kernel value is the combination of `stateful worker + capability/routing match + per-item result tracking + task-level convergence`.
+- Adapter vocabulary note: current code still uses `Worker`, `WorkerContext`, and some WebSocket-named types for today's adapter surfaces. Read those names literally inside their current scope, but keep new cross-adapter boundaries transport-neutral.
 - The platform is scenario-agnostic. It owns dispatch, result write-back, and task convergence rather than business payload meaning.
 - The long-term stable kernel is `Task / TaskMsg / TaskMsgAttempt / assignment / result / audit / terminal policy`.
 - The platform direction is transport-agnostic: task dispatch, result ingest, and worker system events should remain explicit seams rather than being encoded into one transport shape.
 - Workers can be phone apps, crawlers, LLM agents, IM bots, or other long-lived executors.
-- `Worker` and `WorkerContext` are current adapter vocabulary, not permanent product boundaries.
 - The project direction is library/SDK-first. Demo runtime surfaces exist to validate the kernel, not to redefine it.
 
 ## 3. Platform Model
@@ -110,7 +102,7 @@ Current canonical boundaries:
 ## 5. Architectural Guardrails
 
 - Stable platform boundaries are `Task`, `TaskMsg`, assignment, result, audit, and terminal policy.
-- `Worker` is the current worker adapter name, not the permanent universal name for all worker/resource forms. Read it as the current concrete `Worker` implementation.
+- Prefer transport-neutral names and contracts for new cross-adapter boundaries.
 - `WorkerContext` is optional worker context. Not every future worker model must require one.
 - The active API is explicitly `0..n`: do not reintroduce single-context helper APIs keyed only by `workerId`; use `getWorkerContexts(...)` or `getWorkerContextById(...)`.
 - `WorkerContext.workerId` is the single owner truth; attachment APIs should accept the `WorkerContext` object itself rather than duplicating the owner `workerId` as a second parameter.
@@ -122,7 +114,7 @@ Current canonical boundaries:
 - `Worker.attributes` and `WorkerContext.attributes` are auxiliary rule labels for matching and diagnostics only. They are not lifecycle, lock, or online truth.
 - Prefer SDK registration models for new resource scenarios; low-level core-model mutation APIs are not the default path.
 - UI pages, mock runtime, and demo APIs must not redefine the platform kernel.
-- Manual worker debug chat is a debug/control side-channel. It is not `TaskMsg` lifecycle and must not mutate task state.
+- Worker control-event debug traffic is a debug/control side-channel. It is not `TaskMsg` lifecycle and must not mutate task state.
 - new or changed policy seams must keep ownership explicit across matching, attempt, release, refill, intake, control, and terminal decisions; use [./engine/POLICY_INTERACTION_BASELINE.md](./engine/POLICY_INTERACTION_BASELINE.md) before extending those paths
 
 ## 6. Mainline Reality
@@ -217,8 +209,9 @@ Use these positive defaults:
 - start from the real entrypoint and current call sites
 - check the root `pom.xml` before treating a top-level directory as active mainline code
 - verify API docs against controller DTOs and integration tests before changing request or response contracts
-- treat `Worker / WorkerContext / WebSocket` as current adapter vocabulary, not as the platform's final universal resource model
+- prefer transport-neutral contracts for new cross-adapter boundaries
 - treat documented capabilities as unverified until code, tests, or runtime behavior prove they are live
+- consult [../DEPRECATION_LEDGER.md](../DEPRECATION_LEDGER.md) before extending compatibility or legacy seams
 - add or update regression coverage before changing behavior
 - update the short state-machine, trace, and E2E baselines when lifecycle semantics change
 - sync active docs after verified behavior changes

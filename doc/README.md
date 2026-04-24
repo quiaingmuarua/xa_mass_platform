@@ -9,6 +9,8 @@ Use this page as the directory index and owner map once you are already inside `
 
 - [../README.md](../README.md)
   - The shortest product-positioning summary: what the platform is now and what direction the current mainline is converging toward.
+- [../DEPRECATION_LEDGER.md](../DEPRECATION_LEDGER.md)
+  - Single repo-level index of deprecated, compatibility, and legacy seams that still exist in active paths.
 - [AGENT_BASELINE.md](./AGENT_BASELINE.md)
   - Stable project baseline for agents: platform definition, mainline goals, guardrails, active module truth, payload contract, and lifecycle baseline.
 - [GATEWAY_BOUNDARY_BASELINE.md](./GATEWAY_BOUNDARY_BASELINE.md)
@@ -33,6 +35,7 @@ Use this page as the directory index and owner map once you are already inside `
 ## 2. Reading Shortcuts
 
 - entering from repo root: start at [../AGENTS.md](../AGENTS.md)
+- checking legacy/compatibility/deprecation work: go to [../DEPRECATION_LEDGER.md](../DEPRECATION_LEDGER.md)
 - changing gateway or transport code: go to [GATEWAY_BOUNDARY_BASELINE.md](./GATEWAY_BOUNDARY_BASELINE.md)
 - changing lifecycle semantics: go to [STATE_MACHINE_BASELINE.md](./STATE_MACHINE_BASELINE.md), [TRACE_CONTRACT.md](./TRACE_CONTRACT.md), and [E2E_BASELINE.md](./E2E_BASELINE.md)
 - changing HTTP/API contracts: go to [INTERNAL_API_REFERENCE.md](./INTERNAL_API_REFERENCE.md)

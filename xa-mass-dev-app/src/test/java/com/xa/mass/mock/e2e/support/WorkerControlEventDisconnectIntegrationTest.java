@@ -1,6 +1,8 @@
 package com.xa.mass.mock.e2e.support;
 
 import com.google.gson.Gson;
+import com.xa.mass.base.debug.WorkerControlEventProtocol;
+import com.xa.mass.base.debug.WorkerControlMessageProtocol;
 import com.xa.mass.base.debug.WorkerDebugMessageStore;
 import com.xa.mass.mock.MockApplicationSpringBootApp;
 import org.junit.jupiter.api.AfterEach;
@@ -65,12 +67,12 @@ class WorkerControlEventDisconnectIntegrationTest extends AbstractMockE2eTest {
         Map<String, Object> ack = waitForInboundReply(messageId);
         Map<String, Object> payload = parsePayload(ack);
 
-        assertEquals(Boolean.TRUE, payload.get("commandExecuted"));
-        assertEquals("mock.disconnect", payload.get("commandEvent"));
+        assertEquals(Boolean.TRUE, payload.get(WorkerControlMessageProtocol.EVENT_HANDLED_FIELD));
+        assertEquals("mock.disconnect", payload.get(WorkerControlEventProtocol.EVENT_FIELD));
 
-        Map<String, Object> commandResult = map(payload.get("commandResult"));
-        assertEquals("ok", commandResult.get("status"));
-        Map<String, Object> resultData = map(commandResult.get("data"));
+        Map<String, Object> eventResult = map(payload.get(WorkerControlMessageProtocol.EVENT_RESULT_FIELD));
+        assertEquals("ok", eventResult.get("status"));
+        Map<String, Object> resultData = map(eventResult.get("data"));
         assertEquals(Boolean.TRUE, resultData.get("disconnectAfterAck"));
         assertEquals(WORKER_ID, resultData.get("disconnectWorkerId"));
 

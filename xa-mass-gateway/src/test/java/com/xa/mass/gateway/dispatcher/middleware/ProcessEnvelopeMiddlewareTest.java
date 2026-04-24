@@ -2,6 +2,8 @@ package com.xa.mass.gateway.dispatcher.middleware;
 
 import com.xa.mass.base.debug.WorkerControlEventProtocol;
 import com.xa.mass.base.debug.WorkerDebugMessageStore;
+import com.xa.mass.base.channel.tranporter.MessageTransporter;
+import com.xa.mass.gateway.dispatcher.DispatcherContext;
 import com.xa.mass.gateway.dispatcher.GatewayFrameRouter;
 import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
 import com.xa.mass.gateway.dispatcher.port.ControlEventRequestFrameBridge;
@@ -14,6 +16,7 @@ import com.xa.mass.gateway.queue.Envelope;
 import com.xa.mass.gateway.queue.GsonMessageCodec;
 import com.xa.mass.gateway.queue.MessageCodec;
 import com.xa.mass.gateway.session.SessionRoles;
+import com.xa.mass.transport.WorkerEndpointRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -30,13 +33,18 @@ class ProcessEnvelopeMiddlewareTest {
     private GatewayFrameRouter frameRouter;
     private MessageCodec codec;
     private DispatchRuntimeContext context;
+    private MessageTransporter<Envelope> transporter;
+    private WorkerEndpointRegistry endpointRegistry;
     private EnvelopeMiddleware middleware;
 
     @BeforeEach
+    @SuppressWarnings("unchecked")
     void setUp() {
         codec = new GsonMessageCodec();
         frameRouter = new GatewayFrameRouter();
-        context = mockContext(codec, frameRouter);
+        transporter = mock(MessageTransporter.class);
+        endpointRegistry = mock(WorkerEndpointRegistry.class);
+        context = createContext(null, null, null);
         middleware = new MiddlewareRegistry().getInputMiddlewares().get(0);
         WorkerDebugMessageStore.clearAll();
     }
@@ -51,14 +59,14 @@ class ProcessEnvelopeMiddlewareTest {
     @Test
     void controlEventRequestBridgeIsInvokedAndResponseEnqueued() {
         AtomicReference<MassMessage> captured = new AtomicReference<>();
-        when(context.getControlEventRequestFrameBridge()).thenReturn(msg -> {
+        context = createContext(null, msg -> {
             captured.set(msg);
             MassMessage resp = new MassMessage();
             resp.setMsgType(MessageType.CONTROL);
             resp.setSubMsgType(WorkerControlEventProtocol.SUB_MSG_TYPE);
             resp.setContext(msg.getContext());
             return List.of(resp);
-        });
+        }, null);
 
         MassMessage msg = controlEventRequest("proj", "mock.state.get");
         Envelope envelope = envelope(codec.encode(msg));
@@ -67,7 +75,7 @@ class ProcessEnvelopeMiddlewareTest {
 
         assertNotNull(captured.get());
         ArgumentCaptor<Envelope> outputCaptor = ArgumentCaptor.forClass(Envelope.class);
-        verify(context.getMessageTransporter()).sendOutput(outputCaptor.capture());
+        verify(transporter).sendOutput(outputCaptor.capture());
         assertNull(outputCaptor.getValue().getEventCode());
     }
 
@@ -79,29 +87,29 @@ class ProcessEnvelopeMiddlewareTest {
         boolean result = middleware.handle(envelope, context);
 
         assertTrue(result);
-        verify(context.getMessageTransporter(), never()).sendOutput(any());
+        verify(transporter, never()).sendOutput(any());
     }
 
     @Test
     void controlEventRequestBridgeReturningEmptyResponseDoesNotSendOutput() {
-        when(context.getControlEventRequestFrameBridge()).thenReturn(msg -> List.of());
+        context = createContext(null, msg -> List.of(), null);
         MassMessage msg = controlEventRequest("p", "mock.state.get");
         Envelope envelope = envelope(codec.encode(msg));
 
         middleware.handle(envelope, context);
 
-        verify(context.getMessageTransporter(), never()).sendOutput(any());
+        verify(transporter, never()).sendOutput(any());
     }
 
     @Test
     void responseEnvelopePropagatesCanonicalEventCodeMetadata() {
-        when(context.getControlEventRequestFrameBridge()).thenReturn(msg -> {
+        context = createContext(null, msg -> {
             MassMessage resp = new MassMessage();
             resp.setMsgType(MessageType.CONTROL);
             resp.setSubMsgType(WorkerControlEventProtocol.SUB_MSG_TYPE);
             resp.setContext(msg.getContext());
             return List.of(resp);
-        });
+        }, null);
 
         MassMessage msg = controlEventRequest("proj", "mock.state.get");
         Envelope envelope = Envelope.builder()
@@ -114,13 +122,13 @@ class ProcessEnvelopeMiddlewareTest {
         middleware.handle(envelope, context);
 
         ArgumentCaptor<Envelope> outputCaptor = ArgumentCaptor.forClass(Envelope.class);
-        verify(context.getMessageTransporter()).sendOutput(outputCaptor.capture());
+        verify(transporter).sendOutput(outputCaptor.capture());
         assertEquals("mock.state.get", outputCaptor.getValue().getEventCode());
     }
 
     @Test
     void taskStepResponsesDoNotBackfillCanonicalEventCodeWhenInboundEnvelopeHasNone() {
-        when(context.getTaskStepFrameBridge()).thenReturn(new DerivedTaskStepBridge());
+        context = createContext(new DerivedTaskStepBridge(), null, null);
 
         MassMessage msg = message("proj", MessageType.TASK, "step");
         Envelope envelope = Envelope.builder()
@@ -132,14 +140,14 @@ class ProcessEnvelopeMiddlewareTest {
         middleware.handle(envelope, context);
 
         ArgumentCaptor<Envelope> outputCaptor = ArgumentCaptor.forClass(Envelope.class);
-        verify(context.getMessageTransporter()).sendOutput(outputCaptor.capture());
+        verify(transporter).sendOutput(outputCaptor.capture());
         assertNull(outputCaptor.getValue().getEventCode());
     }
 
     @Test
     void controlEventResponseSinkConsumesWithoutOutput() {
         AtomicReference<MassMessage> captured = new AtomicReference<>();
-        when(context.getControlEventResponseFrameSink()).thenReturn(captured::set);
+        context = createContext(null, null, captured::set);
 
         MassMessage msg = message("proj", MessageType.CONTROL, WorkerControlEventProtocol.SUB_MSG_TYPE);
         msg.setResponse(true);
@@ -149,14 +157,13 @@ class ProcessEnvelopeMiddlewareTest {
 
         assertTrue(result);
         assertNotNull(captured.get());
-        verify(context.getMessageTransporter(), never()).sendOutput(any());
+        verify(transporter, never()).sendOutput(any());
     }
 
     @Test
     void sendEnvelopeMiddlewareMarksDebugRecordFailedWhenEndpointUnavailable() {
         EnvelopeMiddleware sendMiddleware = new MiddlewareRegistry().getOutputMiddlewares().get(0);
-        DispatchRuntimeContext sendContext = mockContext(codec, frameRouter);
-        when(sendContext.getSessionManager().sendMessage("worker-1", SessionRoles.TASK_MESSAGES, "{\"hello\":\"world\"}"))
+        when(endpointRegistry.sendMessage("worker-1", SessionRoles.TASK_MESSAGES, "{\"hello\":\"world\"}"))
                 .thenReturn(false);
         WorkerDebugMessageStore.recordOutbound(
                 "worker-1",
@@ -177,7 +184,7 @@ class ProcessEnvelopeMiddlewareTest {
                         .traceId("trace-1")
                         .rawJson("{\"hello\":\"world\"}")
                         .build(),
-                sendContext
+                context
         );
 
         assertFalse(result);
@@ -200,16 +207,18 @@ class ProcessEnvelopeMiddlewareTest {
         return msg;
     }
 
-    @SuppressWarnings("unchecked")
-    private DispatchRuntimeContext mockContext(MessageCodec codec, GatewayFrameRouter frameRouter) {
-        DispatchRuntimeContext ctx = mock(DispatchRuntimeContext.class);
-        when(ctx.getMessageCodec()).thenReturn(codec);
-        when(ctx.getFrameRouter()).thenReturn(frameRouter);
-        com.xa.mass.base.channel.tranporter.MessageTransporter<Envelope> transporter =
-                mock(com.xa.mass.base.channel.tranporter.MessageTransporter.class);
-        when(ctx.getMessageTransporter()).thenReturn(transporter);
-        when(ctx.getSessionManager()).thenReturn(mock(com.xa.mass.transport.WorkerEndpointRegistry.class));
-        return ctx;
+    private DispatchRuntimeContext createContext(TaskStepFrameBridge taskStepFrameBridge,
+                                                 ControlEventRequestFrameBridge controlEventRequestFrameBridge,
+                                                 ControlEventResponseFrameSink controlEventResponseFrameSink) {
+        return new DispatcherContext(
+                transporter,
+                endpointRegistry,
+                codec,
+                frameRouter,
+                taskStepFrameBridge,
+                controlEventRequestFrameBridge,
+                controlEventResponseFrameSink
+        );
     }
 
     private MassMessage controlEventRequest(String project, String eventCode) {

@@ -1,6 +1,6 @@
 # XA Mass Platform Internal API Reference
 
-Last updated: 2026-04-23
+Last updated: 2026-04-24
 
 This document tracks the current active HTTP/API surface in the mainline runtime.
 
@@ -25,47 +25,24 @@ Out of scope:
 
 For verified runtime behavior and recommended startup, use [VERIFIED_RUNBOOK.md](./VERIFIED_RUNBOOK.md).
 
-## 1. Platform Contract Notes
+## 1. Scope Notes
 
-- The project is a general distributed task scheduling platform. Its core abstraction is: assign work items to online workers, collect execution results, and converge task state.
-- The current HTTP/API surface validates the kernel; it is not the kernel definition itself.
-- Current reference scenario still includes a long-connection adapter path with `Worker + WorkerContext + WebSocket gateway + mock clients`, but pull-style workers now also run through the transport-neutral SDK/runtime seam.
-- `xa-mass-sdk` now assembles worker delivery through a transport runtime registry/factory seam, so HTTP/API surfaces should not assume WebSocket is the only runtime transport.
-- Workers can be phone apps, crawlers, LLM agents, IM bots, or other long-lived executors.
-- `Task.project` and `Task.user` are first-class business bindings in the core task aggregate. Frontend/API edge shapes still use `project` and `userId` strings for create/update.
+- This file is an HTTP/API dictionary. For platform, module, and boundary truth, use [AGENT_BASELINE.md](./AGENT_BASELINE.md).
+- The current HTTP/API surface validates the kernel; it does not define the kernel.
+- `/sdk/meta/**` is read-only metadata discovery, not a second task domain.
+- SDK credential callers use the same `POST /status/api/tasks` route as console/operator callers; `/sdk/submitters/me` is credential introspection only.
+- `EventDefinition.code` is the global event/capability identity; `project` remains scope metadata for task ownership and event eligibility.
+- `Task.project` and `Task.user` are first-class core bindings even though API edge shapes still use `project` and `userId`.
 - Stable payload boundaries are `Task.sharedConfig` and `TaskMsg.input/output`.
 - `TaskMsg.output` is the canonical logical success payload for one work item; legacy `result` is only a summary/string compatibility field.
 - `TaskMsgAttempt` keeps the concrete attempt-level callback snapshot, including per-attempt output/error details.
-- `target` is only a conventional key inside `TaskMsg.input`; no dedicated target compatibility accessor remains.
+- `target` is only a conventional key inside `TaskMsg.input`.
 - `Task.intakeStatus` is the active append-window lifecycle truth; `openEnded` is only the create/request projection.
 - `TaskMsg.latestAttemptWorkerId`, `latestAttemptWorkerContextId`, and `latestAttemptBatchId` are latest-attempt projections of `TaskMsgAttempt`.
 - Worker/gateway callbacks must resolve a unique active `TaskMsgAttempt`; the runtime no longer synthesizes legacy attempts for result write-back.
-- `Worker` and `WorkerContext` are current reference adapters, not the permanent platform boundary.
+- `MassMessage` and `msgType + subMsgType` remain WebSocket-adapter compatibility only; they are not API capability truth.
 
-## 1.1 SDK Metadata Catalog
-
-- SDK v1 adds a code-registered project/event metadata catalog for platform self-description.
-- Metadata is exposed through read-only `/sdk/meta/**` endpoints.
-- Catalog entries are the public event directory used by SDK and UI callers.
-- The library default catalog only seeds baseline project identities plus built-in `platform.*` control events.
-- Business task events such as crawler/chatbot flows must be registered explicitly by the embedding runtime or dev fixtures.
-
-## 1.2 SDK Task Contract Notes
-
-- Task creation has one HTTP route: `POST /status/api/tasks`.
-- Console/operator callers use `/status/api/tasks` through the control-plane auth/RBAC boundary.
-- SDK credential callers also use `/status/api/tasks`; `X-Mass-Api-Key` or `Authorization: Bearer ...` resolves a `TaskSubmitterContext` before task creation.
-- SDK submitter auth is a task-submission boundary, not the control-console user/RBAC system.
-- `/sdk/meta/**` remains read-only capability discovery, not a second task domain.
-- `/sdk/submitters/me` remains read-only credential introspection.
-- `MassTaskRequest.mode=SINGLE_RUN` maps to `openEnded=false`; `STREAMING` maps to `openEnded=true`.
-- `MassTaskRequest` payloads are normalized into `TaskMsg.input` as:
-  - text: `{"type":"text","text":"..."}`
-  - json: `{"type":"json","data":{...}}`
-- SDK task metadata is persisted in `Task.sharedConfig._sdk` with `eventCode`, `payloadType`, and `taskMode`.
-- Task create does not auto-approve tasks; the current lifecycle still starts at `NEW`.
-
-## 1.3 SDK Event Control Plane Notes
+## 1.1 Event Control Plane Notes
 
 - SDK Phase 1 now has a stable event invocation contract: `EventRequest`, `EventResponse`, and `EventPrincipal`.
 - Control-plane authorization is event-centric and currently uses `clientId ∩ userId` allow-list intersection.

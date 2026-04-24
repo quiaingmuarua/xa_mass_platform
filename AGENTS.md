@@ -7,35 +7,30 @@ This is the fastest entry point for coding agents. Keep it short. Use the owner 
 - XA Mass Platform is a general distributed task scheduling platform.
 - Stable kernel: `Task / TaskMsg / TaskMsgAttempt / assignment / result / audit / terminal policy`.
 - Transport is three explicit channels: task dispatch, result ingest, and system events.
-- WebSocket is the current adapter path, not the product boundary.
+- WebSocket is one transport adapter, not the product boundary.
 - Polling/pull workers are mainline, not side features.
 - Project direction is library/SDK-first; HTTP pages and demo APIs are validation shells.
 - Real Boot entry is `xa-mass-dev-app`; embedded runtime composition lives in `xa-mass-sdk`.
 - Mainline acceptance is integration/E2E first.
 
-## 1. Read Order
+## 1. Required Reading
+
+For a new session, read these before changing behavior:
 
 1. [README.md](README.md)
-2. [doc/README.md](doc/README.md)
-3. [doc/AGENT_BASELINE.md](doc/AGENT_BASELINE.md)
-4. [doc/GATEWAY_BOUNDARY_BASELINE.md](doc/GATEWAY_BOUNDARY_BASELINE.md)
-5. [doc/STATE_MACHINE_BASELINE.md](doc/STATE_MACHINE_BASELINE.md)
-6. [doc/TRACE_CONTRACT.md](doc/TRACE_CONTRACT.md)
-7. [doc/E2E_BASELINE.md](doc/E2E_BASELINE.md)
-8. [doc/VERIFIED_RUNBOOK.md](doc/VERIFIED_RUNBOOK.md)
-9. [doc/INTERNAL_API_REFERENCE.md](doc/INTERNAL_API_REFERENCE.md)
-10. [doc/INTEGRATION_TESTS.md](doc/INTEGRATION_TESTS.md)
-11. [doc/engine/POLICY_INTERACTION_BASELINE.md](doc/engine/POLICY_INTERACTION_BASELINE.md)
-12. [doc/engine/TASK_EXECUTION_FLOW.md](doc/engine/TASK_EXECUTION_FLOW.md)
+2. [doc/AGENT_BASELINE.md](doc/AGENT_BASELINE.md)
+3. [doc/STATE_MACHINE_BASELINE.md](doc/STATE_MACHINE_BASELINE.md)
 
-Trust order:
+Everything else is on-demand through the task-type map below.
+
+Canonical trust order:
 
 1. code
 2. verified runtime behavior
 3. this handoff
-4. active docs under `doc/`
+4. active owner docs and ledgers (`doc/*`, `DEPRECATION_LEDGER.md`)
 5. module README files
-6. older refactor notes only after re-verification
+6. refactor inventories and older notes only after re-verification
 
 ## 2. Task-Type Reading Map
 
@@ -48,6 +43,7 @@ Start here based on the change:
 - integration/E2E coverage: [doc/INTEGRATION_TESTS.md](doc/INTEGRATION_TESTS.md), [doc/E2E_BASELINE.md](doc/E2E_BASELINE.md)
 - policy ownership or interactions: [doc/engine/POLICY_INTERACTION_BASELINE.md](doc/engine/POLICY_INTERACTION_BASELINE.md)
 - dispatch/result flow: [doc/engine/TASK_EXECUTION_FLOW.md](doc/engine/TASK_EXECUTION_FLOW.md)
+- legacy/compatibility/deprecation work: [DEPRECATION_LEDGER.md](DEPRECATION_LEDGER.md), [doc/refactor/GATEWAY_CURRENT_INVENTORY.md](doc/refactor/GATEWAY_CURRENT_INVENTORY.md)
 
 ## 3. Agent Behavior Contract
 
@@ -85,7 +81,7 @@ Deprecation and pushback:
 ## 4. Highest-Priority Guardrails
 
 - Do not shrink the product definition back into a phone/group-control system.
-- `Worker`, `WorkerContext`, and WebSocket are current adapter names, not final universal platform boundaries.
+- Do not let existing transport-specific names redefine the kernel; new cross-adapter boundaries should stay transport-neutral.
 - Do not define a worker as "a WebSocket client"; define it as an executor that can receive tasks, return results, and emit system events through some transport.
 - `Task.sharedConfig` and `TaskMsg.input/output` are the generic payload boundaries.
 - `target` is only a conventional key inside `TaskMsg.input`, not a model field.
@@ -102,5 +98,6 @@ Deprecation and pushback:
 - Verify the current code path before changing behavior.
 - Prefer E2E or integration coverage for lifecycle changes.
 - When lifecycle semantics change, update [doc/STATE_MACHINE_BASELINE.md](doc/STATE_MACHINE_BASELINE.md), [doc/TRACE_CONTRACT.md](doc/TRACE_CONTRACT.md), and [doc/E2E_BASELINE.md](doc/E2E_BASELINE.md) together.
+- Check [DEPRECATION_LEDGER.md](DEPRECATION_LEDGER.md) before extending any compatibility or legacy seam.
 - Keep docs concise and current; delete stale notes instead of preserving parallel narratives.
 - Do not recreate removed archive/v2 code.

@@ -19,7 +19,7 @@ public class WorkerControlEventResponseHandler implements ControlEventResponseFr
     public void handleControlEventResponse(MassMessage msg) {
         String workerId = msg.getContext() != null ? msg.getContext().getWorkerId() : null;
         String replyToMessageId = extractReplyToMessageId(msg.getPayload());
-        String eventCode = extractEventCode(msg.getPayload());
+        String eventCode = extractCanonicalEventCode(msg.getPayload());
         String detail = extractDetail(msg.getPayload());
         String payloadJson = msg.getPayload() != null ? gson.toJson(msg.getPayload()) : "{}";
         String rawJson = gson.toJson(msg);
@@ -37,18 +37,11 @@ public class WorkerControlEventResponseHandler implements ControlEventResponseFr
         );
     }
 
-    private String extractEventCode(JsonElement payload) {
+    private String extractCanonicalEventCode(JsonElement payload) {
         if (payload == null || !payload.isJsonObject()) {
             return null;
         }
         JsonObject payloadObj = payload.getAsJsonObject();
-        if (payloadObj.has("commandEvent") && !payloadObj.get("commandEvent").isJsonNull()) {
-            try {
-                return payloadObj.get("commandEvent").getAsString();
-            } catch (Exception ex) {
-                return payloadObj.get("commandEvent").toString();
-            }
-        }
         if (payloadObj.has(WorkerControlEventProtocol.EVENT_FIELD)
                 && !payloadObj.get(WorkerControlEventProtocol.EVENT_FIELD).isJsonNull()) {
             try {

@@ -10,12 +10,8 @@ Purpose:
 - keep business execution in worker runtime
 - prevent "transport-neutral" changes from becoming renamed WebSocket compatibility layers
 
-Trust order:
-
-1. code
-2. verified runtime behavior
-3. [../AGENTS.md](../AGENTS.md)
-4. this document
+Use the canonical trust order in [../AGENTS.md](../AGENTS.md).
+For active gateway-local compatibility debt, also use [../DEPRECATION_LEDGER.md](../DEPRECATION_LEDGER.md) and [./refactor/GATEWAY_CURRENT_INVENTORY.md](./refactor/GATEWAY_CURRENT_INVENTORY.md).
 
 ## 1. Mainline
 

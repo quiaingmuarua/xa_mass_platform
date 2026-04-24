@@ -1,8 +1,10 @@
 package com.xa.mass.gateway.dispatcher;
 
 import com.xa.mass.base.channel.tranporter.MessageTransporter;
+import com.xa.mass.gateway.queue.GsonMessageCodec;
 import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
 import com.xa.mass.gateway.queue.Envelope;
+import com.xa.mass.transport.WorkerEndpointRegistry;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
@@ -19,8 +21,16 @@ class ServerMessageDispatcherShutdownTest {
     @Test
     void stopInterruptsBlockedDispatcherLoopsWithoutWaitingForPollTimeout() throws Exception {
         BlockingTransporter transporter = new BlockingTransporter();
-        DispatchRuntimeContext context = mock(DispatchRuntimeContext.class);
-        when(context.getMessageTransporter()).thenReturn(transporter);
+        WorkerEndpointRegistry endpointRegistry = mock(WorkerEndpointRegistry.class);
+        DispatchRuntimeContext context = new DispatcherContext(
+                transporter,
+                endpointRegistry,
+                new GsonMessageCodec(),
+                new GatewayFrameRouter(),
+                null,
+                null,
+                null
+        );
 
         ServerMessageDispatcher dispatcher = new ServerMessageDispatcher(context);
         dispatcher.start();
