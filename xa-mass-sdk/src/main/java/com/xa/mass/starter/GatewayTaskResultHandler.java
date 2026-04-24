@@ -3,8 +3,7 @@ package com.xa.mass.starter;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.engine.TaskManager;
-import com.xa.mass.gateway.dispatcher.handler.MassMessageEventCodeResolver;
-import com.xa.mass.gateway.dispatcher.handler.MassMessageHandler;
+import com.xa.mass.gateway.dispatcher.port.TaskStepFrameBridge;
 import com.xa.mass.gateway.model.massMessage.MassMessage;
 import com.xa.mass.starter.worker.WebSocketTaskMessageMapper;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
@@ -20,7 +19,7 @@ import java.util.Map;
  * frames into transport-neutral {@link TaskResultReport} objects before
  * delegating to the task-result ingest channel.
  */
-public class GatewayTaskResultHandler implements MassMessageHandler, TaskResultIngestChannel, MassMessageEventCodeResolver {
+public class GatewayTaskResultHandler implements TaskStepFrameBridge, TaskResultIngestChannel {
 
     private static final Logger logger = LoggerFactory.getLogger(GatewayTaskResultHandler.class);
 
@@ -32,7 +31,7 @@ public class GatewayTaskResultHandler implements MassMessageHandler, TaskResultI
     }
 
     @Override
-    public List<MassMessage> handle(MassMessage msg) {
+    public List<MassMessage> handleTaskStep(MassMessage msg) {
         TaskResultReport report;
         try {
             report = messageMapper.toTaskResultReport(msg);
@@ -63,19 +62,6 @@ public class GatewayTaskResultHandler implements MassMessageHandler, TaskResultI
     }
 
     @Override
-    public String resolveEventCode(MassMessage message) {
-        if (message == null) {
-            return null;
-        }
-        try {
-            TaskResultReport report = messageMapper.toTaskResultReport(message);
-            return resolveEventCode(report.getTaskId());
-        } catch (IllegalArgumentException ex) {
-            return null;
-        }
-    }
-
-    @Override
     public boolean ingestTaskResult(
             String taskId,
             String msgId,
@@ -92,6 +78,18 @@ public class GatewayTaskResultHandler implements MassMessageHandler, TaskResultI
                 errorCode,
                 output
         );
+    }
+
+    public String resolveEventCode(MassMessage message) {
+        if (message == null) {
+            return null;
+        }
+        try {
+            TaskResultReport report = messageMapper.toTaskResultReport(message);
+            return resolveEventCode(report.getTaskId());
+        } catch (IllegalArgumentException ex) {
+            return null;
+        }
     }
 
     private String resolveEventCode(String taskId) {

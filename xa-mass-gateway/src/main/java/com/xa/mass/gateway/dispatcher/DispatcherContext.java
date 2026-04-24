@@ -4,6 +4,9 @@ import com.google.gson.Gson;
 import com.xa.mass.base.channel.tranporter.MessageTransporter;
 import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
 import com.xa.mass.gateway.dispatcher.middleware.MiddlewareRegistry;
+import com.xa.mass.gateway.dispatcher.port.ControlEventRequestFrameBridge;
+import com.xa.mass.gateway.dispatcher.port.ControlEventResponseFrameSink;
+import com.xa.mass.gateway.dispatcher.port.TaskStepFrameBridge;
 import com.xa.mass.gateway.queue.GsonMessageCodec;
 import com.xa.mass.gateway.queue.MessageCodec;
 import com.xa.mass.gateway.queue.MessageParser;
@@ -19,6 +22,9 @@ public class DispatcherContext implements DispatchRuntimeContext {
     private final MessageParser messageParser;
     private final MiddlewareRegistry middlewareRegistry;
     private GatewayFrameRouter frameRouter;
+    private TaskStepFrameBridge taskStepFrameBridge;
+    private ControlEventRequestFrameBridge controlEventRequestFrameBridge;
+    private ControlEventResponseFrameSink controlEventResponseFrameSink;
 
     // Keep gateway runtime dependencies explicit on the context instead of using globals.
     public DispatcherContext(
@@ -87,5 +93,35 @@ public class DispatcherContext implements DispatchRuntimeContext {
     @Override
     public void setFrameRouter(GatewayFrameRouter frameRouter) {
         this.frameRouter = frameRouter;
+    }
+
+    @Override
+    public TaskStepFrameBridge getTaskStepFrameBridge() {
+        return taskStepFrameBridge;
+    }
+
+    @Override
+    public void setTaskStepFrameBridge(TaskStepFrameBridge taskStepFrameBridge) {
+        this.taskStepFrameBridge = taskStepFrameBridge;
+    }
+
+    @Override
+    public ControlEventRequestFrameBridge getControlEventRequestFrameBridge() {
+        return controlEventRequestFrameBridge;
+    }
+
+    @Override
+    public void setControlEventRequestFrameBridge(ControlEventRequestFrameBridge controlEventRequestFrameBridge) {
+        this.controlEventRequestFrameBridge = controlEventRequestFrameBridge;
+    }
+
+    @Override
+    public ControlEventResponseFrameSink getControlEventResponseFrameSink() {
+        return controlEventResponseFrameSink;
+    }
+
+    @Override
+    public void setControlEventResponseFrameSink(ControlEventResponseFrameSink controlEventResponseFrameSink) {
+        this.controlEventResponseFrameSink = controlEventResponseFrameSink;
     }
 }

@@ -44,12 +44,11 @@ Working rule:
 
 - The project is a general distributed task scheduling platform.
 - Its core abstraction is: assign a batch of work items to a batch of online workers, track each execution result, and converge task-level completion state.
-- The platform is scenario-agnostic. It does not care what the business payload means; it cares about who is online, who can accept work, dispatch, result write-back, and task convergence.
+- The platform is scenario-agnostic. It owns dispatch, result write-back, and task convergence rather than business payload meaning.
 - The long-term stable kernel is `Task / TaskMsg / TaskMsgAttempt / assignment / result / audit / terminal policy`.
-- The current mainline still validates that kernel through a WebSocket adapter path using `Worker + WorkerContext + WebSocket gateway + mock clients`, but WebSocket is no longer the intended universal worker definition.
 - The platform direction is transport-agnostic: task dispatch, result ingest, and worker system events should remain explicit seams rather than being encoded into one transport shape.
 - Workers can be phone apps, crawlers, LLM agents, IM bots, or other long-lived executors.
-- `Worker`, `WorkerContext`, WebSocket sessions, the control console shell, and demo REST APIs are current reference adapters and verification shells. They are not the permanent product boundary.
+- `Worker` and `WorkerContext` are current adapter vocabulary, not permanent product boundaries.
 - The project direction is library/SDK-first. Demo runtime surfaces exist to validate the kernel, not to redefine it.
 
 ## 3. Platform Model
@@ -64,7 +63,6 @@ Working rule:
 Interpretation rules:
 
 - the abstract concepts are the stable architecture boundary
-- the concrete types are the current reference scenario and default adapters
 - future worker forms should extend these abstract slots instead of shrinking the platform back into `worker/workerContext` vocabulary
 - mock/runtime loading does not auto-create fallback worker contexts; a worker with no explicit `workerContexts` stays stateless
 - SDK-first worker resource creation is the preferred path: use `WorkerRegistration` / `WorkerContextRegistration` through `MassSdkApplication.registerWorker(...)` and `registerWorkerContext(...)`; registration does not imply online state
@@ -121,8 +119,7 @@ Current canonical boundaries:
 - `Task.project` and `Task.user` are first-class business bindings on the task aggregate. Do not push project/user identity back into `sharedConfig`, `TaskMsg.input`, or attribute bags.
 - Routing truth such as country/account affinity should come from explicit rules and worker-context signals, not from `workerGroupId`.
 - Worker matching truth is `RuleDefinition.content` evaluated by QLExpress over `WorkerMatchContext`; the legacy JSON-DSL generator is mock/dev fixture support only.
-- typed JSON DSL mainline goes through `JsonDslParser -> JsonDslDefinition -> JsonDslProcessorEngine` using canonical fields like `uniqueId`, `description`, `context.model`, `fieldDsl`, and `combineDsl`
-- legacy/mock JSON DSL such as root `MODEL` / `COUNT` / `FIELDS` belongs to `JsonDslEngine` compatibility usage only and should not be mixed into typed parser examples or contracts
+- typed JSON DSL mainline goes through `JsonDslParser -> JsonDslDefinition -> JsonDslProcessorEngine`
 - `Worker.attributes` and `WorkerContext.attributes` are auxiliary rule labels for matching and diagnostics only. They are not lifecycle, lock, or online truth.
 - `addWorker(...)` and `addWorkerContext(...)` remain compatibility/high-control SDK seams for core-model callers; new resource scenarios should use SDK registration models instead.
 - UI pages, mock runtime, and demo APIs must not redefine the platform kernel.
@@ -143,10 +140,9 @@ Current canonical boundaries:
 - Read [./GATEWAY_BOUNDARY_BASELINE.md](./GATEWAY_BOUNDARY_BASELINE.md) before changing `xa-mass-gateway` or `xa-mass-transport-api`.
 - Gateway tuple routing such as `MessageType + subMsgType` is a protocol-frame compatibility seam only; do not treat it as the identity of a business or control capability.
 - `com.xa.mass.engine` is the active engine path.
-- historical `v2` / archive engine generations are no longer present in the current repository snapshot.
 - EventBus mainline has converged onto `com.xa.mass.base.channel.eventbus.core` and `com.xa.mass.base.channel.eventbus.event`.
 - Mainline acceptance is end-to-end integration-test-driven through `xa-mass-dev-app`; unit tests are support coverage, not the primary acceptance gate.
-- The current worker debug side-channel is exposed through `POST /status/workers/send-event` and `GET /status/workers/message-history`.
+- worker debug/control details live in [./INTERNAL_API_REFERENCE.md](./INTERNAL_API_REFERENCE.md).
 
 ## 7. Current Contract Summary
 
@@ -164,6 +160,7 @@ Task and payload summary:
 - `Task.intakeStatus` is the append-window truth; `openEnded` is the projection
 - public create/update/read contracts do not define a dedicated routing-code field
 - worker runtime capability truth is explicit `supportedEventCodes`; `supportedProjects` is only a coarse filter hint
+- full HTTP field lists and examples live in [./INTERNAL_API_REFERENCE.md](./INTERNAL_API_REFERENCE.md)
 
 Current lifecycle summary:
 
@@ -208,34 +205,23 @@ Important current rules:
 
 ## 9. Worker Debug Summary
 
-- primary control-plane debug path is `POST /status/workers/send-event`
-- message history path is `GET /status/workers/message-history`
-- current adapter bridge is event-first `CONTROL/event -> CONTROL/event`
-- this is a debug/control side-channel, not task execution or task audit truth
-- detailed payload and acknowledgement notes live in [./INTERNAL_API_REFERENCE.md](./INTERNAL_API_REFERENCE.md)
+- worker debug/control is a side-channel, not task execution or task audit truth
+- endpoint and payload details live in [./INTERNAL_API_REFERENCE.md](./INTERNAL_API_REFERENCE.md)
 
 ## 10. Recommended Entry Files
 
-For startup/runtime:
-
-- `xa-mass-dev-app/src/main/java/com/xa/mass/mock/MockApplicationSpringBootApp.java`
-- `xa-mass-sdk/src/main/java/com/xa/mass/starter/MassApplication.java`
-- `xa-mass-sdk/src/main/java/com/xa/mass/starter/MassEngine.java`
-- `xa-mass-transport-api/src/main/java/com/xa/mass/transport/channel/TaskDispatchChannel.java`
-- `xa-mass-transport-api/src/main/java/com/xa/mass/transport/channel/TaskResultIngestChannel.java`
-- `xa-mass-transport-api/src/main/java/com/xa/mass/transport/channel/WorkerSystemEventChannel.java`
-
-For lifecycle/API:
-
-- `xa-mass-web/src/main/java/com/xa/mass/api/internal/TaskApiController.java`
-- `xa-mass-engine/src/main/java/com/xa/mass/engine/TaskManager.java`
-- `xa-mass-core/src/main/java/com/xa/mass/base/enums/task/TaskStatus.java`
-
-For payload and matching:
-
-- `xa-mass-core/src/main/java/com/xa/mass/base/model/Task.java`
-- `xa-mass-core/src/main/java/com/xa/mass/base/model/TaskMsg.java`
-- `xa-mass-engine/src/main/java/com/xa/mass/engine/model/WorkerMatchContext.java`
+- startup/runtime:
+  - `xa-mass-dev-app/src/main/java/com/xa/mass/mock/MockApplicationSpringBootApp.java`
+  - `xa-mass-sdk/src/main/java/com/xa/mass/starter/MassApplication.java`
+  - `xa-mass-sdk/src/main/java/com/xa/mass/starter/MassEngine.java`
+- lifecycle/API:
+  - `xa-mass-web/src/main/java/com/xa/mass/api/internal/TaskApiController.java`
+  - `xa-mass-engine/src/main/java/com/xa/mass/engine/TaskManager.java`
+  - `xa-mass-core/src/main/java/com/xa/mass/base/enums/task/TaskStatus.java`
+- payload/matching:
+  - `xa-mass-core/src/main/java/com/xa/mass/base/model/Task.java`
+  - `xa-mass-core/src/main/java/com/xa/mass/base/model/TaskMsg.java`
+  - `xa-mass-engine/src/main/java/com/xa/mass/engine/model/WorkerMatchContext.java`
 
 ## 11. Guardrails For Future Agents
 
@@ -245,9 +231,7 @@ Use these positive defaults:
 - check the root `pom.xml` before treating a top-level directory as active mainline code
 - verify API docs against controller DTOs and integration tests before changing request or response contracts
 - treat `Worker / WorkerContext / WebSocket` as current adapter vocabulary, not as the platform's final universal resource model
-- re-check whether historical files exist locally before treating older notes as actionable code paths
 - treat documented capabilities as unverified until code, tests, or runtime behavior prove they are live
 - add or update regression coverage before changing behavior
 - update the short state-machine, trace, and E2E baselines when lifecycle semantics change
 - sync active docs after verified behavior changes
-- keep archive material under archive paths instead of active source trees

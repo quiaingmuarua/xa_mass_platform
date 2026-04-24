@@ -4,8 +4,7 @@ import com.xa.mass.base.debug.WorkerDebugMessageStore;
 import com.xa.mass.base.exception.CommandException;
 import com.xa.mass.base.exception.ErrorCode;
 import com.xa.mass.base.exception.ValidationException;
-import com.xa.mass.gateway.dispatcher.FrameRouteResolution;
-import com.xa.mass.gateway.dispatcher.handler.MassMessageEventCodeResolver;
+import com.xa.mass.gateway.dispatcher.GatewayFrameKind;
 import com.xa.mass.gateway.model.massMessage.MassMessage;
 import com.xa.mass.gateway.model.massMessage.MessageContext;
 import com.xa.mass.gateway.queue.Envelope;
@@ -34,26 +33,19 @@ public class MiddlewareRegistry {
                     return true;
                 }
                 MessageContext ctx = msg.getContext();
-
-                FrameRouteResolution result = context.getFrameRouter().route(msg);
-
-                if (result.isMatched()) {
-                    logger.debug("Found handler for message: {}", result);
-                    String responseEventCode = resolveResponseEventCode(envelope, result, msg);
-                    List<MassMessage> responses = result.getHandler().handle(msg);
-                    if (responses != null) {
-                        for (MassMessage resp : responses) {
-                            String json = context.getMessageCodec().encode(resp);
-                            context.getMessageTransporter().sendOutput(Envelope.builder()
-                                    .workerId(ctx.getWorkerId())
-                                    .connRole(ctx.getConnRole())
-                                    .eventCode(responseEventCode)
-                                    .rawJson(json)
-                                    .build());
-                        }
-                    }
-                } else {
-                    logger.warn("No handler found for message: {}", result);
+                GatewayFrameKind frameKind = context.getFrameRouter().route(msg);
+                List<MassMessage> responses = dispatchInboundFrame(frameKind, msg, context);
+                if (responses == null || responses.isEmpty()) {
+                    return true;
+                }
+                for (MassMessage resp : responses) {
+                    String json = context.getMessageCodec().encode(resp);
+                    context.getMessageTransporter().sendOutput(Envelope.builder()
+                            .workerId(ctx.getWorkerId())
+                            .connRole(ctx.getConnRole())
+                            .eventCode(envelope != null ? envelope.getEventCode() : null)
+                            .rawJson(json)
+                            .build());
                 }
             } catch (Exception e) {
                 logger.error("Error in processEnvelopeMiddleware", e);
@@ -86,17 +78,43 @@ public class MiddlewareRegistry {
         };
     }
 
-    private static String resolveResponseEventCode(Envelope envelope, FrameRouteResolution result, MassMessage msg) {
-        if (envelope != null && envelope.getEventCode() != null && !envelope.getEventCode().isBlank()) {
-            return envelope.getEventCode();
+    private static List<MassMessage> dispatchInboundFrame(GatewayFrameKind frameKind,
+                                                          MassMessage msg,
+                                                          com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext context) {
+        if (frameKind == null) {
+            logger.warn("No frame kind resolved for message");
+            return List.of();
         }
-        if (result == null || result.getHandler() == null) {
-            return null;
-        }
-        if (result.getHandler() instanceof MassMessageEventCodeResolver resolver) {
-            return resolver.resolveEventCode(msg);
-        }
-        return null;
+        return switch (frameKind) {
+            case PING_HEARTBEAT -> context.getFrameRouter().handlePing(msg);
+            case PONG_HEARTBEAT -> context.getFrameRouter().handlePong(msg);
+            case TASK_STEP -> {
+                if (context.getTaskStepFrameBridge() == null) {
+                    logger.warn("No task-step bridge configured for inbound TASK/step frame");
+                    yield List.of();
+                }
+                yield context.getTaskStepFrameBridge().handleTaskStep(msg);
+            }
+            case CONTROL_EVENT_REQUEST -> {
+                if (context.getControlEventRequestFrameBridge() == null) {
+                    logger.warn("No control-event request bridge configured for inbound CONTROL/event frame");
+                    yield List.of();
+                }
+                yield context.getControlEventRequestFrameBridge().handleControlEventRequest(msg);
+            }
+            case CONTROL_EVENT_RESPONSE -> {
+                if (context.getControlEventResponseFrameSink() == null) {
+                    logger.warn("No control-event response sink configured for inbound CONTROL/event response");
+                    yield List.of();
+                }
+                context.getControlEventResponseFrameSink().handleControlEventResponse(msg);
+                yield List.of();
+            }
+            case UNKNOWN -> {
+                logger.warn("No adapter route found for inbound compatibility frame");
+                yield List.of();
+            }
+        };
     }
 
     public List<EnvelopeMiddleware> getInputMiddlewares() {

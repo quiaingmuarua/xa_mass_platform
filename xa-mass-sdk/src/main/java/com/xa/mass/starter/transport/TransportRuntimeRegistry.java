@@ -3,8 +3,8 @@ package com.xa.mass.starter.transport;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.listener.TaskMsgDispatchListener;
 import com.xa.mass.engine.worker.WorkerAdapter;
-import com.xa.mass.gateway.dispatcher.GatewayFrameRouter;
 import com.xa.mass.base.model.Worker;
+import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
 import com.xa.mass.sdk.worker.PullWorkerSession;
 import com.xa.mass.starter.worker.TransportRoutingTaskMsgDispatchListener;
 import com.xa.mass.transport.WorkerTransportHints;
@@ -48,18 +48,13 @@ public final class TransportRuntimeRegistry {
         }
     }
 
-    public void registerInboundHandlers(GatewayFrameRouter frameRouter) {
+    public void registerGatewayPorts(DispatchRuntimeContext dispatchRuntimeContext) {
         for (TransportBinding binding : bindings) {
-            for (TransportInboundRoute route : binding.getInboundRoutes()) {
-                if (route.messageType() == com.xa.mass.gateway.model.enums.MessageType.TASK
-                        && "step".equals(route.subMsgType())) {
-                    frameRouter.registerTaskDispatchHandler(route.handler());
-                    continue;
+            if (binding.getTaskStepFrameBridge() != null) {
+                if (dispatchRuntimeContext.getTaskStepFrameBridge() != null) {
+                    throw new IllegalStateException("Multiple task-step frame bridges are configured for the gateway runtime");
                 }
-                throw new IllegalStateException(
-                        "Unsupported transport inbound route for current gateway: "
-                                + route.messageType() + "/" + route.subMsgType()
-                );
+                dispatchRuntimeContext.setTaskStepFrameBridge(binding.getTaskStepFrameBridge());
             }
         }
     }

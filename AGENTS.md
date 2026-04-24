@@ -37,7 +37,19 @@ Trust order:
 5. module README files
 6. older refactor notes only after re-verification
 
-## 2. Agent Behavior Contract
+## 2. Task-Type Reading Map
+
+Start here based on the change:
+
+- gateway/transport: [doc/GATEWAY_BOUNDARY_BASELINE.md](doc/GATEWAY_BOUNDARY_BASELINE.md)
+- lifecycle/state transitions: [doc/STATE_MACHINE_BASELINE.md](doc/STATE_MACHINE_BASELINE.md), [doc/TRACE_CONTRACT.md](doc/TRACE_CONTRACT.md), [doc/E2E_BASELINE.md](doc/E2E_BASELINE.md)
+- HTTP/API contracts: [doc/INTERNAL_API_REFERENCE.md](doc/INTERNAL_API_REFERENCE.md)
+- startup/runtime verification: [doc/VERIFIED_RUNBOOK.md](doc/VERIFIED_RUNBOOK.md)
+- integration/E2E coverage: [doc/INTEGRATION_TESTS.md](doc/INTEGRATION_TESTS.md), [doc/E2E_BASELINE.md](doc/E2E_BASELINE.md)
+- policy ownership or interactions: [doc/engine/POLICY_INTERACTION_BASELINE.md](doc/engine/POLICY_INTERACTION_BASELINE.md)
+- dispatch/result flow: [doc/engine/TASK_EXECUTION_FLOW.md](doc/engine/TASK_EXECUTION_FLOW.md)
+
+## 3. Agent Behavior Contract
 
 These rules are hard constraints for coding agents. Violating them is a regression even if code compiles and tests pass.
 
@@ -70,7 +82,7 @@ Deprecation and pushback:
 - Deprecation is not complete until migration of in-repo callers has started in the same change.
 - If a request conflicts with these guardrails or knowingly creates structural debt, object once in plain terms, then proceed only if the user confirms.
 
-## 3. Highest-Priority Guardrails
+## 4. Highest-Priority Guardrails
 
 - Do not shrink the product definition back into a phone/group-control system.
 - `Worker`, `WorkerContext`, and WebSocket are current adapter names, not final universal platform boundaries.
@@ -85,7 +97,7 @@ Deprecation and pushback:
 - Read [doc/GATEWAY_BOUNDARY_BASELINE.md](doc/GATEWAY_BOUNDARY_BASELINE.md) before changing `xa-mass-gateway` or `xa-mass-transport-api`.
 - Manual worker debug/control is a side-channel and must not mutate task lifecycle state.
 
-## 4. Working Defaults
+## 5. Working Defaults
 
 - Verify the current code path before changing behavior.
 - Prefer E2E or integration coverage for lifecycle changes.

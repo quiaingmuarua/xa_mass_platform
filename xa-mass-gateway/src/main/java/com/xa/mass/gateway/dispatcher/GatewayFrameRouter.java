@@ -2,7 +2,6 @@ package com.xa.mass.gateway.dispatcher;
 
 import com.google.gson.Gson;
 import com.xa.mass.base.debug.WorkerControlEventProtocol;
-import com.xa.mass.gateway.dispatcher.handler.MassMessageHandler;
 import com.xa.mass.gateway.model.enums.MessageDirection;
 import com.xa.mass.gateway.model.enums.MessageType;
 import com.xa.mass.gateway.model.massMessage.MassMessage;
@@ -28,9 +27,6 @@ public class GatewayFrameRouter {
 
     private final Gson gson = new Gson();
     private final WorkerSystemEventChannel systemEventChannel;
-    private MassMessageHandler taskDispatchHandler;
-    private MassMessageHandler workerControlEventRequestBridge;
-    private MassMessageHandler workerControlEventResponseHandler;
 
     public GatewayFrameRouter() {
         this(NoopWorkerSystemEventChannel.INSTANCE);
@@ -42,41 +38,29 @@ public class GatewayFrameRouter {
                 : NoopWorkerSystemEventChannel.INSTANCE;
     }
 
-    public FrameRouteResolution route(MassMessage frame) {
+    public GatewayFrameKind route(MassMessage frame) {
         if (frame == null || frame.getMsgType() == null) {
-            return FrameRouteResolution.notFound();
+            return GatewayFrameKind.UNKNOWN;
         }
         if (isHeartbeatPing(frame)) {
-            return FrameRouteResolution.matched(this::handlePing, "builtin-ping");
+            return GatewayFrameKind.PING_HEARTBEAT;
         }
         if (isHeartbeatPong(frame)) {
-            return FrameRouteResolution.matched(this::handlePong, "builtin-pong");
+            return GatewayFrameKind.PONG_HEARTBEAT;
         }
-        if (isTaskDispatchFrame(frame) && taskDispatchHandler != null) {
-            return FrameRouteResolution.matched(taskDispatchHandler, "task-dispatch");
+        if (isTaskDispatchFrame(frame)) {
+            return GatewayFrameKind.TASK_STEP;
         }
         if (shouldRouteToWorkerControlEventResponse(frame)) {
-            return FrameRouteResolution.matched(workerControlEventResponseHandler, "worker-control-event-response");
+            return GatewayFrameKind.CONTROL_EVENT_RESPONSE;
         }
         if (shouldRouteToWorkerControlEventBridge(frame)) {
-            return FrameRouteResolution.matched(workerControlEventRequestBridge, "worker-control-event-bridge");
+            return GatewayFrameKind.CONTROL_EVENT_REQUEST;
         }
-        return FrameRouteResolution.notFound();
+        return GatewayFrameKind.UNKNOWN;
     }
 
-    public void registerTaskDispatchHandler(MassMessageHandler handler) {
-        this.taskDispatchHandler = handler;
-    }
-
-    public void registerWorkerControlEventBridge(MassMessageHandler handler) {
-        this.workerControlEventRequestBridge = handler;
-    }
-
-    public void registerWorkerControlEventResponseHandler(MassMessageHandler handler) {
-        this.workerControlEventResponseHandler = handler;
-    }
-
-    private List<MassMessage> handlePing(MassMessage msg) {
+    public List<MassMessage> handlePing(MassMessage msg) {
         log.debug("Received ping from {}/{}", msg.getContext().getWorkerId(), msg.getContext().getConnRole());
         systemEventChannel.publishWorkerHeartbeat(
                 msg.getContext().getWorkerId(),
@@ -94,14 +78,13 @@ public class GatewayFrameRouter {
         return Collections.singletonList(pong);
     }
 
-    private List<MassMessage> handlePong(MassMessage msg) {
+    public List<MassMessage> handlePong(MassMessage msg) {
         log.debug("Received pong from {}/{}", msg.getContext().getWorkerId(), msg.getContext().getConnRole());
         return Collections.emptyList();
     }
 
     private boolean shouldRouteToWorkerControlEventBridge(MassMessage msg) {
-        if (workerControlEventRequestBridge == null
-                || msg == null
+        if (msg == null
                 || msg.isResponse()
                 || msg.getMsgType() != MessageType.CONTROL) {
             return false;
@@ -117,8 +100,7 @@ public class GatewayFrameRouter {
     }
 
     private boolean shouldRouteToWorkerControlEventResponse(MassMessage msg) {
-        return workerControlEventResponseHandler != null
-                && msg != null
+        return msg != null
                 && msg.isResponse()
                 && msg.getMsgType() == MessageType.CONTROL
                 && WorkerControlEventProtocol.SUB_MSG_TYPE.equals(normalizeSubType(msg.getSubMsgType()));

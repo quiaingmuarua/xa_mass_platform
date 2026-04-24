@@ -12,6 +12,7 @@ import com.xa.mass.sdk.MassRuntimeControl;
 import com.xa.mass.sdk.model.MassTaskCreateRequest;
 import com.xa.mass.sdk.model.WorkerContextRegistration;
 import com.xa.mass.sdk.model.WorkerRegistration;
+import com.xa.mass.transport.WorkerTransportHints;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -156,6 +157,11 @@ public class MockRuntimeDataLoader implements MassBootstrapDataProvider {
         }
         if (worker.getWorkerGroupId() != null) {
             worker.setWorkerGroupId(worker.getWorkerGroupId().toLowerCase());
+        }
+        if (worker.getOnlineStrategy() == null || worker.getOnlineStrategy().isBlank()) {
+            worker.setOnlineStrategy(WorkerTransportHints.REALTIME);
+        } else {
+            worker.setOnlineStrategy(WorkerTransportHints.normalize(worker.getOnlineStrategy()));
         }
         List<String> supportedProjects = worker.getSupportedProjects();
         if (supportedProjects == null || supportedProjects.isEmpty()) {

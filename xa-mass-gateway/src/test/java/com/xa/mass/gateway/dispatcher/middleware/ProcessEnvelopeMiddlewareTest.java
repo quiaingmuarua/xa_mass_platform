@@ -4,8 +4,9 @@ import com.xa.mass.base.debug.WorkerControlEventProtocol;
 import com.xa.mass.base.debug.WorkerDebugMessageStore;
 import com.xa.mass.gateway.dispatcher.GatewayFrameRouter;
 import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
-import com.xa.mass.gateway.dispatcher.handler.MassMessageEventCodeResolver;
-import com.xa.mass.gateway.dispatcher.handler.MassMessageHandler;
+import com.xa.mass.gateway.dispatcher.port.ControlEventRequestFrameBridge;
+import com.xa.mass.gateway.dispatcher.port.ControlEventResponseFrameSink;
+import com.xa.mass.gateway.dispatcher.port.TaskStepFrameBridge;
 import com.xa.mass.gateway.model.enums.MessageType;
 import com.xa.mass.gateway.model.massMessage.MassMessage;
 import com.xa.mass.gateway.model.massMessage.MessageContext;
@@ -17,7 +18,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
-import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -49,9 +49,9 @@ class ProcessEnvelopeMiddlewareTest {
     }
 
     @Test
-    void knownHandlerIsInvokedAndResponseEnqueued() {
+    void controlEventRequestBridgeIsInvokedAndResponseEnqueued() {
         AtomicReference<MassMessage> captured = new AtomicReference<>();
-        frameRouter.registerWorkerControlEventResponseHandler(msg -> {
+        when(context.getControlEventRequestFrameBridge()).thenReturn(msg -> {
             captured.set(msg);
             MassMessage resp = new MassMessage();
             resp.setMsgType(MessageType.CONTROL);
@@ -60,8 +60,7 @@ class ProcessEnvelopeMiddlewareTest {
             return List.of(resp);
         });
 
-        MassMessage msg = message("proj", MessageType.CONTROL, WorkerControlEventProtocol.SUB_MSG_TYPE);
-        msg.setResponse(true);
+        MassMessage msg = controlEventRequest("proj", "mock.state.get");
         Envelope envelope = envelope(codec.encode(msg));
 
         middleware.handle(envelope, context);
@@ -84,10 +83,9 @@ class ProcessEnvelopeMiddlewareTest {
     }
 
     @Test
-    void handlerReturningEmptyResponseDoesNotSendOutput() {
-        frameRouter.registerWorkerControlEventResponseHandler(msg -> Collections.emptyList());
-        MassMessage msg = message("p", MessageType.CONTROL, WorkerControlEventProtocol.SUB_MSG_TYPE);
-        msg.setResponse(true);
+    void controlEventRequestBridgeReturningEmptyResponseDoesNotSendOutput() {
+        when(context.getControlEventRequestFrameBridge()).thenReturn(msg -> List.of());
+        MassMessage msg = controlEventRequest("p", "mock.state.get");
         Envelope envelope = envelope(codec.encode(msg));
 
         middleware.handle(envelope, context);
@@ -97,7 +95,7 @@ class ProcessEnvelopeMiddlewareTest {
 
     @Test
     void responseEnvelopePropagatesCanonicalEventCodeMetadata() {
-        frameRouter.registerWorkerControlEventResponseHandler(msg -> {
+        when(context.getControlEventRequestFrameBridge()).thenReturn(msg -> {
             MassMessage resp = new MassMessage();
             resp.setMsgType(MessageType.CONTROL);
             resp.setSubMsgType(WorkerControlEventProtocol.SUB_MSG_TYPE);
@@ -105,8 +103,7 @@ class ProcessEnvelopeMiddlewareTest {
             return List.of(resp);
         });
 
-        MassMessage msg = message("proj", MessageType.CONTROL, WorkerControlEventProtocol.SUB_MSG_TYPE);
-        msg.setResponse(true);
+        MassMessage msg = controlEventRequest("proj", "mock.state.get");
         Envelope envelope = Envelope.builder()
                 .rawJson(codec.encode(msg))
                 .workerId("worker-1")
@@ -122,8 +119,8 @@ class ProcessEnvelopeMiddlewareTest {
     }
 
     @Test
-    void responseEnvelopeCanDeriveCanonicalEventCodeFromHandlerWhenInboundEnvelopeHasNone() {
-        frameRouter.registerTaskDispatchHandler(new DerivedEventHandler());
+    void taskStepResponsesDoNotBackfillCanonicalEventCodeWhenInboundEnvelopeHasNone() {
+        when(context.getTaskStepFrameBridge()).thenReturn(new DerivedTaskStepBridge());
 
         MassMessage msg = message("proj", MessageType.TASK, "step");
         Envelope envelope = Envelope.builder()
@@ -136,7 +133,23 @@ class ProcessEnvelopeMiddlewareTest {
 
         ArgumentCaptor<Envelope> outputCaptor = ArgumentCaptor.forClass(Envelope.class);
         verify(context.getMessageTransporter()).sendOutput(outputCaptor.capture());
-        assertEquals("crawler.fetch-page", outputCaptor.getValue().getEventCode());
+        assertNull(outputCaptor.getValue().getEventCode());
+    }
+
+    @Test
+    void controlEventResponseSinkConsumesWithoutOutput() {
+        AtomicReference<MassMessage> captured = new AtomicReference<>();
+        when(context.getControlEventResponseFrameSink()).thenReturn(captured::set);
+
+        MassMessage msg = message("proj", MessageType.CONTROL, WorkerControlEventProtocol.SUB_MSG_TYPE);
+        msg.setResponse(true);
+        Envelope envelope = envelope(codec.encode(msg));
+
+        boolean result = middleware.handle(envelope, context);
+
+        assertTrue(result);
+        assertNotNull(captured.get());
+        verify(context.getMessageTransporter(), never()).sendOutput(any());
     }
 
     @Test
@@ -199,20 +212,23 @@ class ProcessEnvelopeMiddlewareTest {
         return ctx;
     }
 
-    private static final class DerivedEventHandler implements MassMessageHandler, MassMessageEventCodeResolver {
+    private MassMessage controlEventRequest(String project, String eventCode) {
+        MassMessage msg = message(project, MessageType.CONTROL, WorkerControlEventProtocol.SUB_MSG_TYPE);
+        com.google.gson.JsonObject payload = new com.google.gson.JsonObject();
+        payload.addProperty(WorkerControlEventProtocol.EVENT_FIELD, eventCode);
+        msg.setPayload(payload);
+        return msg;
+    }
+
+    private static final class DerivedTaskStepBridge implements TaskStepFrameBridge {
 
         @Override
-        public List<MassMessage> handle(MassMessage msg) {
+        public List<MassMessage> handleTaskStep(MassMessage msg) {
             MassMessage resp = new MassMessage();
             resp.setMsgType(MessageType.TASK);
             resp.setSubMsgType("step");
             resp.setContext(msg.getContext());
             return List.of(resp);
-        }
-
-        @Override
-        public String resolveEventCode(MassMessage msg) {
-            return "crawler.fetch-page";
         }
     }
 }

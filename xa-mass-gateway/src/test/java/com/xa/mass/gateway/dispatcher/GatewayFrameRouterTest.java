@@ -3,9 +3,8 @@ package com.xa.mass.gateway.dispatcher;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.xa.mass.base.debug.WorkerControlEventProtocol;
+import com.xa.mass.gateway.dispatcher.bridge.WorkerControlEventRequestBridge;
 import com.xa.mass.gateway.dispatcher.event.EventGatewayBridge;
-import com.xa.mass.gateway.dispatcher.handler.MassMessageHandler;
-import com.xa.mass.gateway.dispatcher.handler.WorkerControlEventBridgeHandler;
 import com.xa.mass.gateway.model.enums.MessageType;
 import com.xa.mass.gateway.model.massMessage.MassMessage;
 import com.xa.mass.gateway.model.massMessage.MessageContext;
@@ -13,8 +12,6 @@ import com.xa.mass.gateway.session.SessionRoles;
 import com.xa.mass.sdk.event.EventResponse;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-
-import java.util.Collections;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -30,47 +27,34 @@ class GatewayFrameRouterTest {
     }
 
     @Test
-    void resolveRegisteredTaskStepHandler() {
-        MassMessageHandler handler = msg -> Collections.emptyList();
-        frameRouter.registerTaskDispatchHandler(handler);
-
-        FrameRouteResolution result = frameRouter.route(massMessage("demoApp", MessageType.TASK, "step"));
-
-        assertTrue(result.isMatched());
-        assertSame(handler, result.getHandler());
+    void classifyTaskStepFrame() {
+        GatewayFrameKind result = frameRouter.route(massMessage("demoApp", MessageType.TASK, "step"));
+        assertEquals(GatewayFrameKind.TASK_STEP, result);
     }
 
     @Test
-    void resolveRegisteredWorkerControlEventResponseHandler() {
-        MassMessageHandler handler = msg -> Collections.emptyList();
-        frameRouter.registerWorkerControlEventResponseHandler(handler);
-
+    void classifyWorkerControlEventResponseFrame() {
         MassMessage response = massMessage("demoApp", MessageType.CONTROL, WorkerControlEventProtocol.SUB_MSG_TYPE);
         response.setResponse(true);
 
-        FrameRouteResolution result = frameRouter.route(response);
-
-        assertTrue(result.isMatched());
-        assertSame(handler, result.getHandler());
-        assertEquals("worker-control-event-response", result.getRouteKey());
+        GatewayFrameKind result = frameRouter.route(response);
+        assertEquals(GatewayFrameKind.CONTROL_EVENT_RESPONSE, result);
     }
 
     @Test
     void defaultNoHandlerResultIsNotFound() {
-        FrameRouteResolution result = frameRouter.route(massMessage("demoApp", MessageType.CONTROL, "unknownSub"));
-
-        assertTrue(result.isNotFound());
-        assertFalse(result.isMatched());
+        GatewayFrameKind result = frameRouter.route(massMessage("demoApp", MessageType.CONTROL, "unknownSub"));
+        assertEquals(GatewayFrameKind.UNKNOWN, result);
     }
 
     @Test
     void builtinPingHandlerReturnsPong() {
         MassMessage ping = massMessage("GLOBAL", MessageType.PING, "heartbeat");
 
-        FrameRouteResolution result = frameRouter.route(ping);
-        assertTrue(result.isMatched());
+        GatewayFrameKind result = frameRouter.route(ping);
+        assertEquals(GatewayFrameKind.PING_HEARTBEAT, result);
 
-        var responses = result.getHandler().handle(ping);
+        var responses = frameRouter.handlePing(ping);
         assertEquals(1, responses.size());
         assertEquals(MessageType.PONG, responses.get(0).getMsgType());
     }
@@ -79,27 +63,26 @@ class GatewayFrameRouterTest {
     void builtinPongHandlerReturnsEmpty() {
         MassMessage pong = massMessage("GLOBAL", MessageType.PONG, "heartbeat");
 
-        FrameRouteResolution result = frameRouter.route(pong);
-        assertTrue(result.isMatched());
-        assertTrue(result.getHandler().handle(pong).isEmpty());
+        GatewayFrameKind result = frameRouter.route(pong);
+        assertEquals(GatewayFrameKind.PONG_HEARTBEAT, result);
+        assertTrue(frameRouter.handlePong(pong).isEmpty());
     }
 
     @Test
-    void resolveViaMassMessageDelegates() {
-        frameRouter.registerTaskDispatchHandler(msg -> Collections.emptyList());
+    void routeUsesMassMessageTupleClassification() {
         MassMessage msg = massMessage("GLOBAL", MessageType.TASK, "step");
 
-        FrameRouteResolution result = frameRouter.route(msg);
-        assertTrue(result.isMatched());
+        GatewayFrameKind result = frameRouter.route(msg);
+        assertEquals(GatewayFrameKind.TASK_STEP, result);
     }
 
     @Test
     void controlEventBridgeCapturesRequestFrames() {
-        frameRouter.registerWorkerControlEventBridge(new WorkerControlEventBridgeHandler(
+        WorkerControlEventRequestBridge bridge = new WorkerControlEventRequestBridge(
                 new EventGatewayBridge((request, principal) -> EventResponse.success(
                         java.util.Map.of("echoEvent", request.getEvent().value()),
                         request.getRequestId()))
-        ));
+        );
 
         MassMessage msg = massMessage("demoApp", MessageType.CONTROL, WorkerControlEventProtocol.SUB_MSG_TYPE);
         JsonObject payload = new JsonObject();
@@ -110,11 +93,10 @@ class GatewayFrameRouterTest {
         payload.add(WorkerControlEventProtocol.PAYLOAD_FIELD, requestPayload);
         msg.setPayload(payload);
 
-        FrameRouteResolution result = frameRouter.route(msg);
-        assertTrue(result.isMatched());
-        assertEquals("worker-control-event-bridge", result.getRouteKey());
+        GatewayFrameKind result = frameRouter.route(msg);
+        assertEquals(GatewayFrameKind.CONTROL_EVENT_REQUEST, result);
 
-        var responses = result.getHandler().handle(msg);
+        var responses = bridge.handleControlEventRequest(msg);
         assertEquals(1, responses.size());
         JsonObject responsePayload = GSON.fromJson(responses.get(0).getPayload(), JsonObject.class);
         assertTrue(responsePayload.get("success").getAsBoolean());
@@ -123,52 +105,34 @@ class GatewayFrameRouterTest {
 
     @Test
     void controlEventBridgeDoesNotCaptureResponseFrames() {
-        frameRouter.registerWorkerControlEventBridge(new WorkerControlEventBridgeHandler(
-                new EventGatewayBridge((request, principal) -> EventResponse.success(
-                        java.util.Map.of("echoEvent", request.getEvent().value()),
-                        request.getRequestId()))
-        ));
-
         MassMessage msg = massMessage("demoApp", MessageType.CONTROL, WorkerControlEventProtocol.SUB_MSG_TYPE);
         msg.setResponse(true);
         JsonObject payload = new JsonObject();
         payload.addProperty(WorkerControlEventProtocol.EVENT_FIELD, "crawler.fetch-page");
         msg.setPayload(payload);
 
-        FrameRouteResolution result = frameRouter.route(msg);
-        assertTrue(result.isNotFound());
+        GatewayFrameKind result = frameRouter.route(msg);
+        assertEquals(GatewayFrameKind.CONTROL_EVENT_RESPONSE, result);
     }
 
     @Test
     void controlEventBridgeDoesNotCaptureNonEventSubtype() {
-        frameRouter.registerWorkerControlEventBridge(new WorkerControlEventBridgeHandler(
-                new EventGatewayBridge((request, principal) -> EventResponse.success(
-                        java.util.Map.of("echoEvent", request.getEvent().value()),
-                        request.getRequestId()))
-        ));
-
         MassMessage msg = massMessage("demoApp", MessageType.CONTROL, "legacy");
         JsonObject payload = new JsonObject();
         payload.addProperty(WorkerControlEventProtocol.EVENT_FIELD, "crawler.fetch-page");
         msg.setPayload(payload);
 
-        FrameRouteResolution result = frameRouter.route(msg);
-        assertTrue(result.isNotFound());
+        GatewayFrameKind result = frameRouter.route(msg);
+        assertEquals(GatewayFrameKind.UNKNOWN, result);
     }
 
     @Test
     void controlEventBridgeDoesNotCaptureControlEventWithoutGlobalEventCode() {
-        frameRouter.registerWorkerControlEventBridge(new WorkerControlEventBridgeHandler(
-                new EventGatewayBridge((request, principal) -> EventResponse.success(
-                        java.util.Map.of("echoEvent", request.getEvent().value()),
-                        request.getRequestId()))
-        ));
-
         MassMessage msg = massMessage("demoApp", MessageType.CONTROL, WorkerControlEventProtocol.SUB_MSG_TYPE);
         msg.setPayload(new JsonObject());
 
-        FrameRouteResolution result = frameRouter.route(msg);
-        assertTrue(result.isNotFound());
+        GatewayFrameKind result = frameRouter.route(msg);
+        assertEquals(GatewayFrameKind.UNKNOWN, result);
     }
 
     private MassMessage massMessage(String project, MessageType type, String subType) {

@@ -9,7 +9,7 @@ import com.xa.mass.engine.util.LogUtils;
 import com.xa.mass.gateway.dispatcher.DispatcherContext;
 import com.xa.mass.gateway.dispatcher.GatewayFrameRouter;
 import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
-import com.xa.mass.gateway.dispatcher.handler.MassMessageHandler;
+import com.xa.mass.gateway.dispatcher.port.ControlEventRequestFrameBridge;
 import com.xa.mass.gateway.dispatcher.middleware.MiddlewareRegistry;
 import com.xa.mass.gateway.model.enums.MessageType;
 import com.xa.mass.gateway.queue.MessageCodec;
@@ -51,7 +51,7 @@ public class MassApplication {
     private DispatchRuntimeContext dispatcherContext;
     private TransportServer transportServer;
     private TransportRuntimeRegistry transportRuntimeRegistry;
-    private MassMessageHandler workerControlEventBridgeHandler;
+    private ControlEventRequestFrameBridge workerControlEventRequestBridge;
     private BiFunction<EventRequest, EventPrincipal, EventResponse> sdkEventDispatcher;
 
     public MassApplication(MassEngine engine, int serverPort, String transportEndpointPath,
@@ -160,14 +160,14 @@ public class MassApplication {
                                 gatewayConfig.isEnabled()
                         )
                 );
-                transportRuntimeRegistry.registerInboundHandlers(frameRouter);
+                transportRuntimeRegistry.registerGatewayPorts(dispatcherContext);
                 taskMsgDispatchListener = transportRuntimeRegistry.createDispatchListener();
             }
-            frameRouter.registerWorkerControlEventResponseHandler(new WorkerControlEventResponseHandler());
-            if (workerControlEventBridgeHandler != null) {
-                frameRouter.registerWorkerControlEventBridge(workerControlEventBridgeHandler);
-            }
             dispatcherContext.setFrameRouter(frameRouter);
+            dispatcherContext.setControlEventResponseFrameSink(new WorkerControlEventResponseHandler());
+            if (workerControlEventRequestBridge != null) {
+                dispatcherContext.setControlEventRequestFrameBridge(workerControlEventRequestBridge);
+            }
             logger.info("Gateway frame router initialized");
 
             logger.info("Middleware registry initialized");
@@ -260,8 +260,20 @@ public class MassApplication {
         return eventRuntime;
     }
 
-    public void setWorkerControlEventBridgeHandler(MassMessageHandler workerControlEventBridgeHandler) {
-        this.workerControlEventBridgeHandler = workerControlEventBridgeHandler;
+    public void setWorkerControlEventRequestBridge(ControlEventRequestFrameBridge workerControlEventRequestBridge) {
+        this.workerControlEventRequestBridge = workerControlEventRequestBridge;
+    }
+
+    /**
+     * @deprecated Prefer {@link #setWorkerControlEventRequestBridge(ControlEventRequestFrameBridge)}.
+     */
+    @Deprecated(forRemoval = false)
+    public void setWorkerControlEventBridgeHandler(com.xa.mass.gateway.dispatcher.handler.MassMessageHandler workerControlEventBridgeHandler) {
+        if (workerControlEventBridgeHandler == null) {
+            this.workerControlEventRequestBridge = null;
+            return;
+        }
+        this.workerControlEventRequestBridge = workerControlEventBridgeHandler::handle;
     }
 
     public void setSdkEventDispatcher(BiFunction<EventRequest, EventPrincipal, EventResponse> sdkEventDispatcher) {

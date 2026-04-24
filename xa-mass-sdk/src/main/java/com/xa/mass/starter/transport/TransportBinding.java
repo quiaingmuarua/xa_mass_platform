@@ -1,28 +1,28 @@
 package com.xa.mass.starter.transport;
 
 import com.xa.mass.engine.worker.WorkerAdapter;
+import com.xa.mass.gateway.dispatcher.port.TaskStepFrameBridge;
 import com.xa.mass.transport.channel.TaskPullChannel;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
 
-import java.util.List;
 import java.util.Objects;
 
 /**
  * Runtime binding for a concrete worker transport adapter plus any optional
- * pull/result channels and inbound handler registrations it contributes.
+ * pull/result channels and any explicit gateway adapter bridges it contributes.
  */
 public final class TransportBinding {
 
     private final WorkerAdapter workerAdapter;
     private final TaskPullChannel taskPullChannel;
     private final TaskResultIngestChannel taskResultIngestChannel;
-    private final List<TransportInboundRoute> inboundRoutes;
+    private final TaskStepFrameBridge taskStepFrameBridge;
 
     private TransportBinding(Builder builder) {
         this.workerAdapter = Objects.requireNonNull(builder.workerAdapter, "workerAdapter");
         this.taskPullChannel = builder.taskPullChannel;
         this.taskResultIngestChannel = builder.taskResultIngestChannel;
-        this.inboundRoutes = List.copyOf(builder.inboundRoutes);
+        this.taskStepFrameBridge = builder.taskStepFrameBridge;
     }
 
     public static Builder builder(WorkerAdapter workerAdapter) {
@@ -45,15 +45,15 @@ public final class TransportBinding {
         return taskResultIngestChannel;
     }
 
-    public List<TransportInboundRoute> getInboundRoutes() {
-        return inboundRoutes;
+    public TaskStepFrameBridge getTaskStepFrameBridge() {
+        return taskStepFrameBridge;
     }
 
     public static final class Builder {
         private final WorkerAdapter workerAdapter;
         private TaskPullChannel taskPullChannel;
         private TaskResultIngestChannel taskResultIngestChannel;
-        private List<TransportInboundRoute> inboundRoutes = List.of();
+        private TaskStepFrameBridge taskStepFrameBridge;
 
         private Builder(WorkerAdapter workerAdapter) {
             this.workerAdapter = workerAdapter;
@@ -69,8 +69,8 @@ public final class TransportBinding {
             return this;
         }
 
-        public Builder inboundRoutes(List<TransportInboundRoute> inboundRoutes) {
-            this.inboundRoutes = inboundRoutes != null ? inboundRoutes : List.of();
+        public Builder taskStepFrameBridge(TaskStepFrameBridge taskStepFrameBridge) {
+            this.taskStepFrameBridge = taskStepFrameBridge;
             return this;
         }
 

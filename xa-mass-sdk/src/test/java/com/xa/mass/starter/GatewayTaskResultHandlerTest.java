@@ -45,7 +45,7 @@ class GatewayTaskResultHandlerTest {
         Task task = createRunningTask("task-success");
         TaskMsg taskMsg = taskManager.getTaskMessages(task.getTid()).get(0);
 
-        List<MassMessage> responses = handler.handle(message(task, taskMsg, "SUCCESS", "ok"));
+        List<MassMessage> responses = handler.handleTaskStep(message(task, taskMsg, "SUCCESS", "ok"));
 
         assertEquals(1, responses.size());
         assertEquals(MessageType.TASK, responses.get(0).getMsgType());
@@ -69,7 +69,7 @@ class GatewayTaskResultHandlerTest {
         taskMsg.setMaxRetryCount(0);
         taskManager.updateTaskMessage(task.getTid(), taskMsg);
 
-        handler.handle(message(task, taskMsg, "FAILED", "boom", "RATE_LIMITED"));
+        handler.handleTaskStep(message(task, taskMsg, "FAILED", "boom", "RATE_LIMITED"));
 
         TaskMsg updated = taskManager.getTaskMessage(task.getTid(), taskMsg.getMsgId());
         assertEquals(TaskMsgStatus.FAILED, updated.getStatus());
@@ -86,8 +86,8 @@ class GatewayTaskResultHandlerTest {
         Task task = createRunningTask("task-duplicate");
         TaskMsg taskMsg = taskManager.getTaskMessages(task.getTid()).get(0);
 
-        List<MassMessage> firstResponses = handler.handle(message(task, taskMsg, "SUCCESS", "ok"));
-        List<MassMessage> secondResponses = handler.handle(message(task, taskMsg, "FAILED", "boom"));
+        List<MassMessage> firstResponses = handler.handleTaskStep(message(task, taskMsg, "SUCCESS", "ok"));
+        List<MassMessage> secondResponses = handler.handleTaskStep(message(task, taskMsg, "FAILED", "boom"));
 
         assertEquals(200, gson.fromJson(firstResponses.get(0).getPayload(), MessageAckPayload.class).getCode());
         assertEquals(200, gson.fromJson(secondResponses.get(0).getPayload(), MessageAckPayload.class).getCode());

@@ -25,8 +25,8 @@ import com.xa.mass.engine.rules.RuleDefinition;
 import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.engine.rules.RuleType;
 import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
+import com.xa.mass.gateway.dispatcher.bridge.WorkerControlEventRequestBridge;
 import com.xa.mass.gateway.dispatcher.event.EventGatewayBridge;
-import com.xa.mass.gateway.dispatcher.handler.WorkerControlEventBridgeHandler;
 import com.xa.mass.gateway.model.enums.MessageDirection;
 import com.xa.mass.gateway.model.enums.MessageType;
 import com.xa.mass.gateway.model.massMessage.MassMessage;
@@ -112,8 +112,8 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
         registerCatalogEventDefinitions();
         registerControlPlaneEventHandlers();
         delegate.setSdkEventDispatcher(this::dispatchEvent);
-        delegate.setWorkerControlEventBridgeHandler(
-                new WorkerControlEventBridgeHandler(new EventGatewayBridge(this::dispatchEvent))
+        delegate.setWorkerControlEventRequestBridge(
+                new WorkerControlEventRequestBridge(new EventGatewayBridge(this::dispatchEvent))
         );
     }
 

@@ -6,20 +6,17 @@ import com.google.gson.JsonObject;
 import com.xa.mass.base.debug.WorkerControlEventProtocol;
 import com.xa.mass.base.debug.WorkerControlMessageProtocol;
 import com.xa.mass.base.debug.WorkerDebugMessageStore;
-import com.xa.mass.gateway.dispatcher.handler.MassMessageHandler;
+import com.xa.mass.gateway.dispatcher.port.ControlEventResponseFrameSink;
 import com.xa.mass.gateway.model.massMessage.MassMessage;
-
-import java.util.Collections;
-import java.util.List;
 
 /**
  * Records inbound worker control-event replies from workers.
  */
-public class WorkerControlEventResponseHandler implements MassMessageHandler {
+public class WorkerControlEventResponseHandler implements ControlEventResponseFrameSink {
     private final Gson gson = new Gson();
 
     @Override
-    public List<MassMessage> handle(MassMessage msg) {
+    public void handleControlEventResponse(MassMessage msg) {
         String workerId = msg.getContext() != null ? msg.getContext().getWorkerId() : null;
         String replyToMessageId = extractReplyToMessageId(msg.getPayload());
         String eventCode = extractEventCode(msg.getPayload());
@@ -38,7 +35,6 @@ public class WorkerControlEventResponseHandler implements MassMessageHandler {
                 rawJson,
                 detail
         );
-        return Collections.emptyList();
     }
 
     private String extractEventCode(JsonElement payload) {

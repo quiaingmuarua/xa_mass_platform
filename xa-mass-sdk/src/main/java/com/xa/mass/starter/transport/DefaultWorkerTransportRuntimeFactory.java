@@ -1,6 +1,5 @@
 package com.xa.mass.starter.transport;
 
-import com.xa.mass.gateway.model.enums.MessageType;
 import com.xa.mass.starter.GatewayTaskResultHandler;
 import com.xa.mass.starter.worker.PollingWorkerAdapter;
 import com.xa.mass.starter.worker.WebSocketWorkerAdapter;
@@ -41,9 +40,7 @@ public class DefaultWorkerTransportRuntimeFactory implements WorkerTransportRunt
             );
             bindings.add(TransportBinding.builder(webSocketAdapter)
                     .taskResultIngestChannel(taskResultHandler)
-                    .inboundRoutes(List.of(
-                            new TransportInboundRoute(MessageType.TASK, "step", taskResultHandler)
-                    ))
+                    .taskStepFrameBridge(taskResultHandler)
                     .build());
         }
 

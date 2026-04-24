@@ -3,6 +3,9 @@ package com.xa.mass.gateway.dispatcher.context;
 import com.xa.mass.base.channel.tranporter.MessageTransporter;
 import com.xa.mass.gateway.dispatcher.GatewayFrameRouter;
 import com.xa.mass.gateway.dispatcher.middleware.MiddlewareRegistry;
+import com.xa.mass.gateway.dispatcher.port.ControlEventRequestFrameBridge;
+import com.xa.mass.gateway.dispatcher.port.ControlEventResponseFrameSink;
+import com.xa.mass.gateway.dispatcher.port.TaskStepFrameBridge;
 import com.xa.mass.gateway.queue.Envelope;
 import com.xa.mass.gateway.queue.MessageCodec;
 import com.xa.mass.gateway.queue.MessageParser;
@@ -30,4 +33,16 @@ public interface DispatchRuntimeContext {
     GatewayFrameRouter getFrameRouter();
 
     void setFrameRouter(GatewayFrameRouter frameRouter);
+
+    TaskStepFrameBridge getTaskStepFrameBridge();
+
+    void setTaskStepFrameBridge(TaskStepFrameBridge taskStepFrameBridge);
+
+    ControlEventRequestFrameBridge getControlEventRequestFrameBridge();
+
+    void setControlEventRequestFrameBridge(ControlEventRequestFrameBridge controlEventRequestFrameBridge);
+
+    ControlEventResponseFrameSink getControlEventResponseFrameSink();
+
+    void setControlEventResponseFrameSink(ControlEventResponseFrameSink controlEventResponseFrameSink);
 }
