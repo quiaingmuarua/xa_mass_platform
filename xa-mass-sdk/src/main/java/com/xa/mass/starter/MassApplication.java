@@ -264,18 +264,6 @@ public class MassApplication {
         this.workerControlEventRequestBridge = workerControlEventRequestBridge;
     }
 
-    /**
-     * @deprecated Prefer {@link #setWorkerControlEventRequestBridge(ControlEventRequestFrameBridge)}.
-     */
-    @Deprecated(forRemoval = false)
-    public void setWorkerControlEventBridgeHandler(com.xa.mass.gateway.dispatcher.handler.MassMessageHandler workerControlEventBridgeHandler) {
-        if (workerControlEventBridgeHandler == null) {
-            this.workerControlEventRequestBridge = null;
-            return;
-        }
-        this.workerControlEventRequestBridge = workerControlEventBridgeHandler::handle;
-    }
-
     public void setSdkEventDispatcher(BiFunction<EventRequest, EventPrincipal, EventResponse> sdkEventDispatcher) {
         this.sdkEventDispatcher = sdkEventDispatcher;
     }

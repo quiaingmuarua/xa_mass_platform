@@ -146,18 +146,15 @@ Current canonical boundaries:
 Task and payload summary:
 
 - task creation has one HTTP route: `POST /status/api/tasks`
-- task create/update field details live in [./INTERNAL_API_REFERENCE.md](./INTERNAL_API_REFERENCE.md)
 - `project` and `userId` are required business bindings on create
 - `inputs` is the only supported create shape for work-item materialization
 - `PUT /status/api/tasks/{taskId}` is metadata-only and only valid while `NEW` or `BLOCKED`
-- `Task.project` and `Task.user` are canonical aggregate bindings
-- `Task.sharedConfig` is the task-level generic payload/config map
-- `TaskMsg.input` and `TaskMsg.output` are the per-item payload boundary
-- `TaskMsgAttempt` is the attempt-level audit and callback snapshot truth
-- `Task.intakeStatus` is the append-window truth; `openEnded` is the projection
+- aggregate truth stays on `Task.project`, `Task.user`, and `Task.sharedConfig`
+- per-item truth stays on `TaskMsg.input/output`; `TaskMsgAttempt` is the attempt-level audit snapshot
+- `Task.intakeStatus` is the append-window truth; `openEnded` is only the create/read projection
 - public create/update/read contracts do not define a dedicated routing-code field
-- worker runtime capability truth is explicit `supportedEventCodes`; `supportedProjects` is only a coarse filter hint
-- full HTTP field lists and examples live in [./INTERNAL_API_REFERENCE.md](./INTERNAL_API_REFERENCE.md)
+- worker runtime capability truth is `supportedEventCodes`; `supportedProjects` is only a coarse filter hint
+- exact HTTP fields and examples live in [./INTERNAL_API_REFERENCE.md](./INTERNAL_API_REFERENCE.md)
 
 Current lifecycle summary:
 
@@ -175,10 +172,8 @@ READY --assign--> RUNNING --all task messages final--> TERMINAL
 
 Important current rules:
 
-- task completion is driven by persisted `TaskMsg` finality, not only by the visible task status
-- paused tasks must still close to `TERMINAL` once all persisted callbacks are final
-- no-match assignment attempts are retryable backlog, not terminal dequeue
-- assignment must not dispatch if a task leaves `READY` during the matching window
+- task completion is driven by persisted `TaskMsg` finality, not only by the visible task status; paused tasks may still close to `TERMINAL`
+- no-match assignment is retryable backlog, not terminal dequeue; assignment must not dispatch if the task leaves `READY` during the matching window
 - late callbacks must not mutate a task already closed to `TERMINAL`
 - `Task.terminalReason` is required to interpret why a task ended
 - `BLOCKED` has two distinct intents that must stay separate at the API layer:
@@ -189,14 +184,11 @@ Important current rules:
 
 - `WorkerContextStatus` is domain-neutral: `IDLE`, `RESERVED`, `OCCUPIED`, `BLOCKED`, `INVALID`
 - `WorkerContext.project` is the first-class project/resource binding for account-like contexts; do not hide project ownership only inside attributes
-- `WorkerMatchContext` exposes `workerAttributes` and `workerContextAttributes` to rule evaluation
-- `WorkerMatchContext` also exposes `workerContextProject` and `workerContextProjectMatchesTaskProject`
-- `WorkerMatchContext` also exposes `hasWorkerContext` and `taskHasRoutingRequirement`
+- `WorkerMatchContext` is the canonical rule-evaluation shape; match logic should prefer explicit signals such as `workerAttributes`, `workerContextAttributes`, `workerContextProject`, `workerContextProjectMatchesTaskProject`, `hasWorkerContext`, and `taskHasRoutingRequirement`
 - `RuleDefinition.content` is the canonical rule expression; `expression` and `desc` remain compatibility aliases, not separate rule truths
-- `isWorkerContextAvailable` now means truly free for new assignment (`IDLE` and not expired)
-- `isWorkerContextUsable` is the broader diagnostic signal (`IDLE` / `RESERVED` / `OCCUPIED`, excluding expired, blocked, and invalid contexts)
+- `isWorkerContextAvailable` means truly free for new assignment; `isWorkerContextUsable` is only the broader diagnostic signal
 - new matching rules should prefer explicit worker-context signals such as `workerContextProject`, `workerContextRoutingTags`, and `workerContextAttributes`; do not reintroduce a frontend or API-level routing-code model field
-- a `WorkerContext` is optional in the active platform model: workers without one can still run tasks that do not require worker-context-specific routing
+- `WorkerContext` is optional in the active platform model: workers without one can still run tasks that do not require worker-context-specific routing
 - `Worker.status` is the single online truth
 - worker lock truth lives in `WorkerStorage` and `WorkerManager.isLocked(...)`
 

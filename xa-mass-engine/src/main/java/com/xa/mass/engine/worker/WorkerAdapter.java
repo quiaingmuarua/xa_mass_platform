@@ -16,7 +16,8 @@ import java.util.Set;
  * label and should not be treated as platform capability truth.
  *
  * <p>The result callback side is transport-specific and wired externally
- * (e.g., as a {@code MassMessageHandler} in the gateway layer).
+ * through adapter bridge ports such as the WebSocket gateway's
+ * {@code TaskStepFrameBridge}.
  */
 public interface WorkerAdapter extends TaskDispatchChannel {
 

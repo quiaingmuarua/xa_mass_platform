@@ -2,25 +2,10 @@
 
 This directory holds the active, non-archived project documents.
 
-Use this page as the entry point before opening individual files.
+Use [../AGENTS.md](../AGENTS.md) for the canonical repo-root handoff and read order.
+Use this page as the directory index and owner map once you are already inside `doc/`.
 
-## 1. Read Order
-
-Recommended order for a new maintainer or coding agent:
-
-1. [../AGENTS.md](../AGENTS.md)
-2. [AGENT_BASELINE.md](./AGENT_BASELINE.md)
-3. [GATEWAY_BOUNDARY_BASELINE.md](./GATEWAY_BOUNDARY_BASELINE.md)
-4. [STATE_MACHINE_BASELINE.md](./STATE_MACHINE_BASELINE.md)
-5. [TRACE_CONTRACT.md](./TRACE_CONTRACT.md)
-6. [E2E_BASELINE.md](./E2E_BASELINE.md)
-7. [VERIFIED_RUNBOOK.md](./VERIFIED_RUNBOOK.md)
-8. [INTERNAL_API_REFERENCE.md](./INTERNAL_API_REFERENCE.md)
-9. [INTEGRATION_TESTS.md](./INTEGRATION_TESTS.md)
-10. [engine/POLICY_INTERACTION_BASELINE.md](./engine/POLICY_INTERACTION_BASELINE.md)
-11. [engine/TASK_EXECUTION_FLOW.md](./engine/TASK_EXECUTION_FLOW.md)
-
-## 2. What Each File Is For
+## 1. What Each File Is For
 
 - [../README.md](../README.md)
   - The shortest product-positioning summary: what the platform is now and what direction the current mainline is converging toward.
@@ -44,6 +29,16 @@ Recommended order for a new maintainer or coding agent:
   - Guardrails for preventing combinatorial policy interactions across matching, retry, release, refill, intake, control, and terminal decisions.
 - [engine/TASK_EXECUTION_FLOW.md](./engine/TASK_EXECUTION_FLOW.md)
   - Task execution flow through matching, dispatch, callback write-back, and resource release.
+
+## 2. Reading Shortcuts
+
+- entering from repo root: start at [../AGENTS.md](../AGENTS.md)
+- changing gateway or transport code: go to [GATEWAY_BOUNDARY_BASELINE.md](./GATEWAY_BOUNDARY_BASELINE.md)
+- changing lifecycle semantics: go to [STATE_MACHINE_BASELINE.md](./STATE_MACHINE_BASELINE.md), [TRACE_CONTRACT.md](./TRACE_CONTRACT.md), and [E2E_BASELINE.md](./E2E_BASELINE.md)
+- changing HTTP/API contracts: go to [INTERNAL_API_REFERENCE.md](./INTERNAL_API_REFERENCE.md)
+- changing startup or runtime verification: go to [VERIFIED_RUNBOOK.md](./VERIFIED_RUNBOOK.md)
+- changing policy ownership/interactions: go to [engine/POLICY_INTERACTION_BASELINE.md](./engine/POLICY_INTERACTION_BASELINE.md)
+- tracing dispatch/result flow: go to [engine/TASK_EXECUTION_FLOW.md](./engine/TASK_EXECUTION_FLOW.md)
 
 ## 3. Current Compression Rule
 
