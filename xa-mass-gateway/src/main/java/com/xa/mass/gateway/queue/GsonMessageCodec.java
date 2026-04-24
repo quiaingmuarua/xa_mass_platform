@@ -77,12 +77,7 @@ public class GsonMessageCodec implements MessageCodec {
 
     @Override
     public String extractEventCode(JsonObject frame) {
-        JsonObject payload = extractPayload(frame);
-        String eventCode = readString(payload, "eventCode");
-        if (eventCode != null) {
-            return eventCode;
-        }
-        return readString(payload, WorkerControlEventProtocol.EVENT_FIELD);
+        return extractCanonicalEventCode(extractPayload(frame));
     }
 
     @Override
@@ -187,7 +182,7 @@ public class GsonMessageCodec implements MessageCodec {
                 : payloadObject;
 
         return EventRequest.builder()
-                .event(readString(payloadObject, WorkerControlEventProtocol.EVENT_FIELD))
+                .event(extractCanonicalEventCode(payloadObject))
                 .project(extractProject(frame))
                 .requestId(firstNonBlank(
                         readString(payloadObject, WorkerControlEventProtocol.REQUEST_ID_FIELD),
@@ -215,6 +210,7 @@ public class GsonMessageCodec implements MessageCodec {
     public String encodeControlEventResponse(JsonObject requestFrame, EventResponse response) {
         JsonObject reply = baseResponseFrame(requestFrame, "CONTROL", readString(requestFrame, "subMsgType"));
         JsonObject payload = new JsonObject();
+        writeCanonicalEventCode(payload, extractEventCode(requestFrame));
         payload.addProperty("success", response.isSuccess());
         if (response.getCode() != null) {
             payload.addProperty("code", response.getCode());
@@ -289,5 +285,20 @@ public class GsonMessageCodec implements MessageCodec {
             }
         }
         return null;
+    }
+
+    private String extractCanonicalEventCode(JsonObject payloadObject) {
+        return firstNonBlank(
+                readString(payloadObject, WorkerControlEventProtocol.EVENT_CODE_FIELD),
+                readString(payloadObject, WorkerControlEventProtocol.EVENT_FIELD)
+        );
+    }
+
+    private void writeCanonicalEventCode(JsonObject target, String eventCode) {
+        if (target == null || eventCode == null || eventCode.isBlank()) {
+            return;
+        }
+        target.addProperty(WorkerControlEventProtocol.EVENT_CODE_FIELD, eventCode);
+        target.addProperty(WorkerControlEventProtocol.EVENT_FIELD, eventCode);
     }
 }

@@ -1380,6 +1380,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
         Objects.requireNonNull(request.getEvent(), "request.event");
         String eventRequestId = firstNonBlank(request.getRequestId(), UUID.randomUUID().toString());
         Map<String, Object> eventPayload = new LinkedHashMap<>();
+        eventPayload.put(WorkerControlEventProtocol.EVENT_CODE_FIELD, request.getEvent().value());
         eventPayload.put(WorkerControlEventProtocol.EVENT_FIELD, request.getEvent().value());
         eventPayload.put(WorkerControlEventProtocol.REQUEST_ID_FIELD, eventRequestId);
         eventPayload.put(WorkerControlEventProtocol.HEADERS_FIELD, request.getHeaders());

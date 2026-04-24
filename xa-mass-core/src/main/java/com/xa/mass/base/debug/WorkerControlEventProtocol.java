@@ -5,12 +5,15 @@ package com.xa.mass.base.debug;
  *
  * <p>This protocol exists only as the current gateway/debug adapter envelope
  * for SDK event-first worker control. The capability identity remains on the
- * global SDK event code carried in {@link #EVENT_FIELD}; this protocol must
- * not become the long-term business routing model.
+ * global SDK event code carried in {@link #EVENT_CODE_FIELD}; the legacy
+ * {@link #EVENT_FIELD} alias is retained only for current adapter
+ * compatibility. This protocol must not become the long-term business routing
+ * model.
  */
 public final class WorkerControlEventProtocol {
 
     public static final String SUB_MSG_TYPE = "event";
+    public static final String EVENT_CODE_FIELD = "eventCode";
     public static final String EVENT_FIELD = "event";
     public static final String REQUEST_ID_FIELD = "requestId";
     public static final String HEADERS_FIELD = "headers";

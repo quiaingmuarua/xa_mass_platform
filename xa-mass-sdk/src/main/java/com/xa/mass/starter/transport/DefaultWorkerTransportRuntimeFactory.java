@@ -12,7 +12,7 @@ import java.util.List;
  * WebSocket adapter when the gateway is enabled.
  *
  * <p>The WebSocket adapter still contributes the legacy {@code TASK/step}
- * protocol-frame route for task data-plane compatibility. New control or
+ * compatibility frame for task data-plane interoperability. New control or
  * business capabilities must be added as global SDK events instead of new
  * tuple branches here.
  */

@@ -30,7 +30,7 @@ import static org.mockito.Mockito.verify;
 
 class GatewayInputProcessorTest {
 
-    private GatewayFrameRouter frameRouter;
+    private GatewayCompatibilityFrameClassifier compatibilityFrameClassifier;
     private GsonMessageCodec codec;
     private DispatcherContext context;
     private MessageTransporter<String, OutboundDelivery> transporter;
@@ -41,7 +41,7 @@ class GatewayInputProcessorTest {
     @SuppressWarnings("unchecked")
     void setUp() {
         codec = new GsonMessageCodec();
-        frameRouter = new GatewayFrameRouter(codec);
+        compatibilityFrameClassifier = new GatewayCompatibilityFrameClassifier(codec);
         transporter = mock(MessageTransporter.class);
         endpointRegistry = mock(WorkerEndpointRegistry.class);
         context = createContext(null, null, null);
@@ -78,6 +78,22 @@ class GatewayInputProcessorTest {
         assertEquals("msg-1", outputCaptor.getValue().getTraceId());
         assertTrue(response.get("response").getAsBoolean());
         assertEquals("CONTROL", response.get("msgType").getAsString());
+    }
+
+    @Test
+    void controlEventRequestBridgeAcceptsCanonicalEventCodeField() {
+        AtomicReference<EventRequest> capturedRequest = new AtomicReference<>();
+        context = createContext(null, (request, principal) -> {
+            capturedRequest.set(request);
+            return EventResponse.success(Map.of("ack", true), request.getRequestId());
+        }, null);
+        inputProcessor = new GatewayInputProcessor(context);
+
+        inputProcessor.process(controlEventRequestWithCanonicalEventCode("proj", "mock.state.get"));
+
+        assertNotNull(capturedRequest.get());
+        assertEquals("mock.state.get", capturedRequest.get().getEvent().value());
+        assertEquals("req-1", capturedRequest.get().getRequestId());
     }
 
     @Test
@@ -179,7 +195,7 @@ class GatewayInputProcessorTest {
                 transporter,
                 endpointRegistry,
                 codec,
-                frameRouter,
+                compatibilityFrameClassifier,
                 taskResultIngestChannel,
                 controlEventRequestFrameBridge,
                 controlEventResponseFrameSink
@@ -210,6 +226,14 @@ class GatewayInputProcessorTest {
         return codec.getGson().toJson(frame("CONTROL", WorkerControlEventProtocol.SUB_MSG_TYPE, true, project, payload(
                 WorkerControlEventProtocol.EVENT_FIELD, eventCode,
                 WorkerControlEventProtocol.REQUEST_ID_FIELD, "req-1"
+        )));
+    }
+
+    private String controlEventRequestWithCanonicalEventCode(String project, String eventCode) {
+        return codec.getGson().toJson(frame("CONTROL", WorkerControlEventProtocol.SUB_MSG_TYPE, false, project, payload(
+                WorkerControlEventProtocol.EVENT_CODE_FIELD, eventCode,
+                WorkerControlEventProtocol.REQUEST_ID_FIELD, "req-1",
+                WorkerControlEventProtocol.PAYLOAD_FIELD, payload("verbose", true)
         )));
     }
 

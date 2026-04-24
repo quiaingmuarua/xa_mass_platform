@@ -1,7 +1,7 @@
 package com.xa.mass.gateway.dispatcher.context;
 
 import com.xa.mass.base.channel.tranporter.MessageTransporter;
-import com.xa.mass.gateway.dispatcher.GatewayFrameRouter;
+import com.xa.mass.gateway.dispatcher.GatewayCompatibilityFrameClassifier;
 import com.xa.mass.gateway.dispatcher.port.ControlEventRequestFrameBridge;
 import com.xa.mass.gateway.dispatcher.port.ControlEventResponseFrameSink;
 import com.xa.mass.gateway.queue.MessageCodec;
@@ -20,7 +20,7 @@ public interface DispatchRuntimeContext {
 
     MessageTransporter<String, OutboundDelivery> getMessageTransporter();
 
-    GatewayFrameRouter getFrameRouter();
+    GatewayCompatibilityFrameClassifier getCompatibilityFrameClassifier();
 
     TaskResultIngestChannel getTaskResultIngestChannel();
 

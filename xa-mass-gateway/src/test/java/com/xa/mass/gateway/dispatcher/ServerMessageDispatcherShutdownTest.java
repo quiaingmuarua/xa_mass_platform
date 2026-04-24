@@ -25,7 +25,7 @@ class ServerMessageDispatcherShutdownTest {
                 transporter,
                 endpointRegistry,
                 new GsonMessageCodec(),
-                new GatewayFrameRouter(new GsonMessageCodec()),
+                new GatewayCompatibilityFrameClassifier(new GsonMessageCodec()),
                 null,
                 null,
                 null

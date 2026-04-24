@@ -191,12 +191,11 @@ class MassSdkTest {
     @Test
     void defaultGatewayTransportBootstrapRejectsNonSessionRegistry() {
         GatewayConfig config = new GatewayConfig();
-        DispatchRuntimeContext dispatcherContext = mock(DispatchRuntimeContext.class);
         WorkerEndpointRegistry endpointRegistry = mock(WorkerEndpointRegistry.class);
 
         IllegalStateException error = assertThrows(
                 IllegalStateException.class,
-                () -> config.createTransportServer(dispatcherContext, endpointRegistry, 19093)
+                () -> config.createTransportServer(new com.xa.mass.gateway.queue.GsonMessageCodec(), raw -> { }, endpointRegistry, 19093)
         );
 
         assertTrue(error.getMessage().contains("WebSocket endpoint registry"));
@@ -1724,4 +1723,3 @@ class MassSdkTest {
         }
     }
 }
-

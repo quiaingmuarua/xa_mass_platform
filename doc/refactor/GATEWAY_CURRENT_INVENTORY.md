@@ -18,7 +18,7 @@ It is a migration aid, not a compatibility promise.
 
 - `Class`: `com.xa.mass.gateway.server.DispatcherInboundHandler`
 - `Method`: `channelRead0(...)`
-- `Current responsibility`: validates inbound text as JSON, extracts `workerId + connRole + msgId`, refreshes session reachability, forwards raw JSON into the adapter input queue
+- `Current responsibility`: validates inbound text as JSON, extracts `workerId + connRole + msgId`, refreshes session reachability, forwards raw JSON into the adapter inbound sink
 - `Should stay in gateway?`: yes
 - `Target owner`: `xa-mass-gateway`
 - `Migration phase`: keep
@@ -72,17 +72,17 @@ It is a migration aid, not a compatibility promise.
 - `Should stay in gateway?`: yes
 - `Target owner`: `xa-mass-gateway`
 - `Migration phase`: keep without expanding platform semantics
-- `Related tests`: `MessageParserTest`, `GatewayTaskMsgPublisherTest`, `RuntimeTaskResultIngestChannelTest`
+- `Related tests`: `GatewayInputProcessorTest`, `GatewayTaskMsgPublisherTest`, `RuntimeTaskResultIngestChannelTest`
 
 ## 7. Adapter Frame Classification
 
-- `Class`: `com.xa.mass.gateway.dispatcher.GatewayFrameRouter`
-- `Method`: `route(...)`, `handlePing(...)`, `handlePong(...)`
+- `Class`: `com.xa.mass.gateway.dispatcher.GatewayCompatibilityFrameClassifier`
+- `Method`: `classify(...)`, `encodeHeartbeatPong(...)`, `recordHeartbeatPong(...)`
 - `Current responsibility`: classifies adapter-local compatibility tuples such as `TASK/step`, `CONTROL/event`, `PING/heartbeat`, and `PONG/heartbeat`
 - `Should stay in gateway?`: yes
 - `Target owner`: `xa-mass-gateway`
 - `Migration phase`: keep, but do not add new platform capability identities here
-- `Related tests`: `GatewayFrameRouterTest`, `GatewayInputProcessorTest`
+- `Related tests`: `GatewayCompatibilityFrameClassifierTest`, `GatewayInputProcessorTest`
 
 ## 8. Inbound / Outbound Adapter Orchestration
 
@@ -114,7 +114,27 @@ It is a migration aid, not a compatibility promise.
 - `Migration phase`: keep as immutable adapter runtime wiring
 - `Related tests`: `MassSdkTest`, `DispatcherInboundHandlerTest`
 
-## 11. Minimal Outbound Delivery Record
+## 11. WebSocket Adapter Runtime Support
+
+- `Class`: `com.xa.mass.gateway.runtime.WebSocketGatewayRuntimeSupport`
+- `Method`: `createEndpointRegistry(...)`, `resolveSystemEventChannel(...)`, `requireSessionManager(...)`, `createTransportServer(...)`
+- `Current responsibility`: keeps WebSocket-specific runtime assembly defaults inside gateway, including endpoint-registry creation and transport-server assembly
+- `Should stay in gateway?`: yes
+- `Target owner`: `xa-mass-gateway`
+- `Migration phase`: keep as adapter-local bootstrap helper
+- `Related tests`: `TransportChannelWiringIntegrationTest`
+
+## 12. Control Event Compatibility Bridge
+
+- `Class`: `com.xa.mass.gateway.dispatcher.bridge.WorkerControlEventRequestBridge`
+- `Method`: `handleControlEventRequest(...)`
+- `Current responsibility`: bridges `CONTROL/event` compatibility requests into the global event runtime dispatcher without making gateway the business-event owner
+- `Should stay in gateway?`: yes
+- `Target owner`: `xa-mass-gateway`
+- `Migration phase`: keep as narrow compatibility bridge
+- `Related tests`: `WorkerControlEventRequestBridgeTest`, `GatewayInputProcessorTest`
+
+## 13. Minimal Outbound Delivery Record
 
 - `Class`: `com.xa.mass.gateway.queue.OutboundDelivery`
 - `Method`: DTO only
@@ -132,8 +152,9 @@ These platform concerns are not owned by current `xa-mass-gateway` mainline code
 - task assignment and worker matching
 - retry / timeout / terminal policy
 - project or event catalog truth
+- global capability identity beyond transport diagnostics
 - submitter/client permission
 - business event execution
 - generic handler-routing runtime models beyond the current raw JSON frame path and narrow control-event bridge types
 
-That is the current baseline: gateway is now primarily an adapter over raw JSON, session reachability, and fixed bridge ports.
+That is the current baseline: gateway is now primarily an adapter over raw JSON, session reachability, fixed compatibility frame routing, and narrow bridge ports. Global capability identity remains `eventCode`, not `connRole` or transport tuple fields.

@@ -97,7 +97,7 @@ Current canonical boundaries:
 - gateway compatibility boundary
   - `TASK/step`, `CONTROL/event`, `PING/heartbeat`, and `PONG/heartbeat` are WebSocket compatibility tuple shells only
   - `msgType + subMsgType` classifies a wire frame only; it is not business/control capability identity
-  - `com.xa.mass.gateway.queue.MessageCodec` and `GatewayFrameRouter` remain adapter-local compatibility helpers, not platform contracts
+  - `com.xa.mass.gateway.queue.MessageCodec` and `GatewayCompatibilityFrameClassifier` remain adapter-local compatibility helpers, not platform contracts
 
 ## 5. Architectural Guardrails
 

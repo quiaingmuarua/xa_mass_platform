@@ -9,47 +9,51 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Router for current WebSocket compatibility frames.
+ * Classifier for current WebSocket compatibility frames.
+ *
+ * <p>This type intentionally stays protocol-local. It may classify current wire
+ * tuples into a small fixed set of compatibility frame kinds, but it must not
+ * become a second platform routing model alongside global {@code eventCode}.
  */
-public class GatewayFrameRouter {
-    private static final Logger log = LoggerFactory.getLogger(GatewayFrameRouter.class);
+public class GatewayCompatibilityFrameClassifier {
+    private static final Logger log = LoggerFactory.getLogger(GatewayCompatibilityFrameClassifier.class);
     private static final String SUBTYPE_HEARTBEAT = "heartbeat";
 
     private final WorkerSystemEventChannel systemEventChannel;
     private final MessageCodec messageCodec;
 
-    public GatewayFrameRouter(MessageCodec messageCodec) {
+    public GatewayCompatibilityFrameClassifier(MessageCodec messageCodec) {
         this(messageCodec, NoopWorkerSystemEventChannel.INSTANCE);
     }
 
-    public GatewayFrameRouter(MessageCodec messageCodec, WorkerSystemEventChannel systemEventChannel) {
+    public GatewayCompatibilityFrameClassifier(MessageCodec messageCodec, WorkerSystemEventChannel systemEventChannel) {
         this.messageCodec = messageCodec;
         this.systemEventChannel = systemEventChannel != null ? systemEventChannel : NoopWorkerSystemEventChannel.INSTANCE;
     }
 
-    public GatewayFrameKind route(JsonObject frame) {
+    public GatewayCompatibilityFrameKind classify(JsonObject frame) {
         if (frame == null) {
-            return GatewayFrameKind.UNKNOWN;
+            return GatewayCompatibilityFrameKind.UNKNOWN;
         }
         if (isHeartbeatPing(frame)) {
-            return GatewayFrameKind.PING_HEARTBEAT;
+            return GatewayCompatibilityFrameKind.PING_HEARTBEAT;
         }
         if (isHeartbeatPong(frame)) {
-            return GatewayFrameKind.PONG_HEARTBEAT;
+            return GatewayCompatibilityFrameKind.PONG_HEARTBEAT;
         }
         if (isTaskStep(frame)) {
-            return GatewayFrameKind.TASK_STEP;
+            return GatewayCompatibilityFrameKind.TASK_STEP;
         }
         if (isControlEventResponse(frame)) {
-            return GatewayFrameKind.CONTROL_EVENT_RESPONSE;
+            return GatewayCompatibilityFrameKind.CONTROL_EVENT_RESPONSE;
         }
         if (isControlEventRequest(frame)) {
-            return GatewayFrameKind.CONTROL_EVENT_REQUEST;
+            return GatewayCompatibilityFrameKind.CONTROL_EVENT_REQUEST;
         }
-        return GatewayFrameKind.UNKNOWN;
+        return GatewayCompatibilityFrameKind.UNKNOWN;
     }
 
-    public String handlePing(JsonObject frame) {
+    public String encodeHeartbeatPong(JsonObject frame) {
         String workerId = messageCodec.extractWorkerId(frame);
         String msgId = messageCodec.extractMessageId(frame);
         log.debug("Received ping from {}/{}", workerId, messageCodec.extractConnRole(frame));
@@ -57,7 +61,7 @@ public class GatewayFrameRouter {
         return messageCodec.encodeHeartbeatPong(frame);
     }
 
-    public void handlePong(JsonObject frame) {
+    public void recordHeartbeatPong(JsonObject frame) {
         log.debug("Received pong from {}/{}", messageCodec.extractWorkerId(frame), messageCodec.extractConnRole(frame));
     }
 

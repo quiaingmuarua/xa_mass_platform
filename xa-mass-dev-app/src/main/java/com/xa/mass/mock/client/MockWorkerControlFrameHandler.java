@@ -71,9 +71,7 @@ final class MockWorkerControlFrameHandler {
             payloadMap.put(WorkerControlMessageProtocol.EVENT_RESULT_FIELD, commandResult);
         }
         String resolvedEventCode = resolveInboundEventCode(controlMessage, commandRequest, eventEnvelope);
-        if (resolvedEventCode != null) {
-            payloadMap.put(WorkerControlEventProtocol.EVENT_FIELD, resolvedEventCode);
-        }
+        putCanonicalEventCode(payloadMap, resolvedEventCode);
         response.add("payload", GSON.toJsonTree(payloadMap));
         return new ControlResponsePlan(GSON.toJson(response), commandResult);
     }
@@ -86,8 +84,7 @@ final class MockWorkerControlFrameHandler {
         if (!payloadObject.entrySet().isEmpty()) {
             if (eventEnvelope != null) {
                 commandRequest = buildCommandRequestFromEventEnvelope(eventEnvelope);
-            } else if (payloadObject.has(WorkerControlEventProtocol.EVENT_FIELD)
-                    && !payloadObject.get(WorkerControlEventProtocol.EVENT_FIELD).isJsonNull()) {
+            } else if (readCanonicalEventCode(payloadObject) != null) {
                 commandRequest = payloadObject.deepCopy();
             } else if (payloadObject.has("command") && payloadObject.get("command").isJsonObject()) {
                 commandRequest = payloadObject.getAsJsonObject("command").deepCopy();
@@ -96,6 +93,8 @@ final class MockWorkerControlFrameHandler {
                 commandRequest = parseCommandText(workerId, payloadObject.get(WorkerControlMessageProtocol.TEXT_FIELD).getAsString());
             }
         }
+
+        commandRequest = normalizeCanonicalEventCode(commandRequest);
 
         if (commandRequest == null
                 || !commandRequest.has(WorkerControlEventProtocol.EVENT_FIELD)
@@ -119,22 +118,21 @@ final class MockWorkerControlFrameHandler {
         if (!WorkerControlEventProtocol.SUB_MSG_TYPE.equals(readString(controlMessage, "subMsgType"))) {
             return null;
         }
-        if (!payloadObject.has(WorkerControlEventProtocol.EVENT_FIELD)
-                || payloadObject.get(WorkerControlEventProtocol.EVENT_FIELD).isJsonNull()) {
+        if (readCanonicalEventCode(payloadObject) == null) {
             return null;
         }
-        return payloadObject;
+        return normalizeCanonicalEventCode(payloadObject.deepCopy());
     }
 
     private JsonObject buildCommandRequestFromEventEnvelope(JsonObject eventEnvelope) {
         JsonObject commandRequest = new JsonObject();
-        commandRequest.add(WorkerControlEventProtocol.EVENT_FIELD,
-                eventEnvelope.get(WorkerControlEventProtocol.EVENT_FIELD).deepCopy());
+        putCanonicalEventCode(commandRequest, readCanonicalEventCode(eventEnvelope));
         if (eventEnvelope.has(WorkerControlEventProtocol.PAYLOAD_FIELD)
                 && eventEnvelope.get(WorkerControlEventProtocol.PAYLOAD_FIELD).isJsonObject()) {
             JsonObject payloadObject = eventEnvelope.getAsJsonObject(WorkerControlEventProtocol.PAYLOAD_FIELD);
             for (Map.Entry<String, JsonElement> entry : payloadObject.entrySet()) {
-                if (WorkerControlEventProtocol.EVENT_FIELD.equals(entry.getKey())) {
+                if (WorkerControlEventProtocol.EVENT_FIELD.equals(entry.getKey())
+                        || WorkerControlEventProtocol.EVENT_CODE_FIELD.equals(entry.getKey())) {
                     continue;
                 }
                 commandRequest.add(entry.getKey(), entry.getValue().deepCopy());
@@ -153,15 +151,13 @@ final class MockWorkerControlFrameHandler {
     private String resolveAckMessage(JsonObject commandRequest,
                                      CommandResponse<?> commandResult,
                                      JsonObject eventEnvelope) {
+        String commandEventCode = readCanonicalEventCode(commandRequest);
+        String envelopeEventCode = readCanonicalEventCode(eventEnvelope);
         if (commandResult != null) {
-            return "mock worker executed command: "
-                    + commandRequest.get(WorkerControlEventProtocol.EVENT_FIELD).getAsString();
+            return "mock worker executed command: " + commandEventCode;
         }
-        if (eventEnvelope != null
-                && eventEnvelope.has(WorkerControlEventProtocol.EVENT_FIELD)
-                && !eventEnvelope.get(WorkerControlEventProtocol.EVENT_FIELD).isJsonNull()) {
-            return "mock worker received event: "
-                    + eventEnvelope.get(WorkerControlEventProtocol.EVENT_FIELD).getAsString();
+        if (envelopeEventCode != null) {
+            return "mock worker received event: " + envelopeEventCode;
         }
         return "mock worker received control message";
     }
@@ -169,13 +165,13 @@ final class MockWorkerControlFrameHandler {
     private String resolveInboundEventCode(JsonObject controlMessage,
                                            JsonObject commandRequest,
                                            JsonObject eventEnvelope) {
-        if (eventEnvelope != null && eventEnvelope.has(WorkerControlEventProtocol.EVENT_FIELD)
-                && !eventEnvelope.get(WorkerControlEventProtocol.EVENT_FIELD).isJsonNull()) {
-            return eventEnvelope.get(WorkerControlEventProtocol.EVENT_FIELD).getAsString();
+        String envelopeEventCode = readCanonicalEventCode(eventEnvelope);
+        if (envelopeEventCode != null) {
+            return envelopeEventCode;
         }
-        if (commandRequest != null && commandRequest.has(WorkerControlEventProtocol.EVENT_FIELD)
-                && !commandRequest.get(WorkerControlEventProtocol.EVENT_FIELD).isJsonNull()) {
-            return commandRequest.get(WorkerControlEventProtocol.EVENT_FIELD).getAsString();
+        String commandEventCode = readCanonicalEventCode(commandRequest);
+        if (commandEventCode != null) {
+            return commandEventCode;
         }
         return readString(controlMessage, "subMsgType");
     }
@@ -228,6 +224,38 @@ final class MockWorkerControlFrameHandler {
 
     private String firstNonBlank(String left, String right) {
         return (left != null && !left.isBlank()) ? left : right;
+    }
+
+    private String readCanonicalEventCode(JsonObject object) {
+        return firstNonBlank(
+                readString(object, WorkerControlEventProtocol.EVENT_CODE_FIELD),
+                readString(object, WorkerControlEventProtocol.EVENT_FIELD)
+        );
+    }
+
+    private JsonObject normalizeCanonicalEventCode(JsonObject object) {
+        String eventCode = readCanonicalEventCode(object);
+        if (object == null || eventCode == null) {
+            return object;
+        }
+        putCanonicalEventCode(object, eventCode);
+        return object;
+    }
+
+    private void putCanonicalEventCode(JsonObject object, String eventCode) {
+        if (object == null || eventCode == null || eventCode.isBlank()) {
+            return;
+        }
+        object.addProperty(WorkerControlEventProtocol.EVENT_CODE_FIELD, eventCode);
+        object.addProperty(WorkerControlEventProtocol.EVENT_FIELD, eventCode);
+    }
+
+    private void putCanonicalEventCode(Map<String, Object> object, String eventCode) {
+        if (object == null || eventCode == null || eventCode.isBlank()) {
+            return;
+        }
+        object.put(WorkerControlEventProtocol.EVENT_CODE_FIELD, eventCode);
+        object.put(WorkerControlEventProtocol.EVENT_FIELD, eventCode);
     }
 
     record ControlResponsePlan(String responseJson, CommandResponse<?> commandResult) {

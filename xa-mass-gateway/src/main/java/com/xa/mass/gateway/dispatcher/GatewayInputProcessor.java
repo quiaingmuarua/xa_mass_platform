@@ -37,8 +37,8 @@ public final class GatewayInputProcessor {
             String workerId = context.getMessageCodec().extractWorkerId(frame);
             String connRole = context.getMessageCodec().extractConnRole(frame);
             String traceId = context.getMessageCodec().extractMessageId(frame);
-            GatewayFrameKind frameKind = context.getFrameRouter().route(frame);
-            return switch (frameKind) {
+            GatewayCompatibilityFrameKind compatibilityFrameKind = context.getCompatibilityFrameClassifier().classify(frame);
+            return switch (compatibilityFrameKind) {
                 case PING_HEARTBEAT -> processHeartbeatPing(frame, workerId, connRole, traceId);
                 case PONG_HEARTBEAT -> processHeartbeatPong(frame);
                 case TASK_STEP -> processTaskStep(frame, workerId, connRole, traceId);
@@ -56,14 +56,14 @@ public final class GatewayInputProcessor {
         context.getMessageTransporter().sendOutput(new OutboundDelivery(
                 workerId,
                 connRole,
-                context.getFrameRouter().handlePing(frame),
+                context.getCompatibilityFrameClassifier().encodeHeartbeatPong(frame),
                 traceId
         ));
         return true;
     }
 
     private boolean processHeartbeatPong(JsonObject frame) {
-        context.getFrameRouter().handlePong(frame);
+        context.getCompatibilityFrameClassifier().recordHeartbeatPong(frame);
         return true;
     }
 
@@ -136,7 +136,7 @@ public final class GatewayInputProcessor {
     }
 
     private boolean processUnknownFrame() {
-        logger.warn("No adapter route found for inbound compatibility frame");
+        logger.warn("No compatibility-frame handler found for inbound adapter frame");
         return true;
     }
 

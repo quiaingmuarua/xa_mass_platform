@@ -7,7 +7,7 @@ package com.xa.mass.gateway.dispatcher;
  * platform capability model and must not grow into a second runtime routing
  * surface alongside global {@code eventCode}.
  */
-public enum GatewayFrameKind {
+public enum GatewayCompatibilityFrameKind {
     PING_HEARTBEAT,
     PONG_HEARTBEAT,
     TASK_STEP,

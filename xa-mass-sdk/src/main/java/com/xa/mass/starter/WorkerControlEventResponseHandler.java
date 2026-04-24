@@ -38,15 +38,11 @@ public class WorkerControlEventResponseHandler implements ControlEventResponseFr
     }
 
     private String extractCanonicalEventCode(JsonObject payloadObj) {
-        if (payloadObj == null || !payloadObj.has(WorkerControlEventProtocol.EVENT_FIELD)
-                || payloadObj.get(WorkerControlEventProtocol.EVENT_FIELD).isJsonNull()) {
-            return null;
+        String eventCode = readString(payloadObj, WorkerControlEventProtocol.EVENT_CODE_FIELD);
+        if (eventCode != null) {
+            return eventCode;
         }
-        try {
-            return payloadObj.get(WorkerControlEventProtocol.EVENT_FIELD).getAsString();
-        } catch (Exception ex) {
-            return payloadObj.get(WorkerControlEventProtocol.EVENT_FIELD).toString();
-        }
+        return readString(payloadObj, WorkerControlEventProtocol.EVENT_FIELD);
     }
 
     private String extractReplyToMessageId(JsonObject payloadObj) {
@@ -80,5 +76,16 @@ public class WorkerControlEventResponseHandler implements ControlEventResponseFr
             }
         }
         return "worker control response received";
+    }
+
+    private String readString(JsonObject payloadObj, String field) {
+        if (payloadObj == null || field == null || !payloadObj.has(field) || payloadObj.get(field).isJsonNull()) {
+            return null;
+        }
+        try {
+            return payloadObj.get(field).getAsString();
+        } catch (Exception ex) {
+            return payloadObj.get(field).toString();
+        }
     }
 }

@@ -199,7 +199,7 @@ Engine/runtime decides eligibility.
 
 Rules:
 
-- construct gateway frame router and explicit bridge ports before starting the adapter
+- construct gateway compatibility frame classifier and explicit bridge ports before starting the adapter
 - resolve the gateway `endpointRegistry` once during runtime assembly and pass that exact instance into both dispatcher wiring and transport-server creation
 - route inbound task result compatibility frames into the canonical `TaskResultReport -> TaskResultIngestChannel` seam
 - keep `TaskResultIngestChannel` as a runtime-level seam; do not model it as worker transport binding ownership

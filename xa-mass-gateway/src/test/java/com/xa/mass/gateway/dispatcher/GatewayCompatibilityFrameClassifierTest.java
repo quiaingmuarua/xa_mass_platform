@@ -15,23 +15,23 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class GatewayFrameRouterTest {
+class GatewayCompatibilityFrameClassifierTest {
 
     private static final Gson GSON = new Gson();
 
     private GsonMessageCodec codec;
-    private GatewayFrameRouter frameRouter;
+    private GatewayCompatibilityFrameClassifier classifier;
 
     @BeforeEach
     void setUp() {
         codec = new GsonMessageCodec();
-        frameRouter = new GatewayFrameRouter(codec);
+        classifier = new GatewayCompatibilityFrameClassifier(codec);
     }
 
     @Test
     void classifyTaskStepFrame() {
-        GatewayFrameKind result = frameRouter.route(frame("TASK", "step", false, "demoApp", null));
-        assertEquals(GatewayFrameKind.TASK_STEP, result);
+        GatewayCompatibilityFrameKind result = classifier.classify(frame("TASK", "step", false, "demoApp", null));
+        assertEquals(GatewayCompatibilityFrameKind.TASK_STEP, result);
     }
 
     @Test
@@ -40,24 +40,24 @@ class GatewayFrameRouterTest {
                 WorkerControlEventProtocol.EVENT_FIELD, "crawler.fetch-page"
         ));
 
-        GatewayFrameKind result = frameRouter.route(response);
-        assertEquals(GatewayFrameKind.CONTROL_EVENT_RESPONSE, result);
+        GatewayCompatibilityFrameKind result = classifier.classify(response);
+        assertEquals(GatewayCompatibilityFrameKind.CONTROL_EVENT_RESPONSE, result);
     }
 
     @Test
     void defaultNoHandlerResultIsUnknown() {
-        GatewayFrameKind result = frameRouter.route(frame("CONTROL", "unknownSub", false, "demoApp", null));
-        assertEquals(GatewayFrameKind.UNKNOWN, result);
+        GatewayCompatibilityFrameKind result = classifier.classify(frame("CONTROL", "unknownSub", false, "demoApp", null));
+        assertEquals(GatewayCompatibilityFrameKind.UNKNOWN, result);
     }
 
     @Test
     void builtinPingHandlerReturnsPongJson() {
         JsonObject ping = frame("PING", "heartbeat", false, null, null);
 
-        GatewayFrameKind result = frameRouter.route(ping);
-        assertEquals(GatewayFrameKind.PING_HEARTBEAT, result);
+        GatewayCompatibilityFrameKind result = classifier.classify(ping);
+        assertEquals(GatewayCompatibilityFrameKind.PING_HEARTBEAT, result);
 
-        JsonObject pong = codec.parseObject(frameRouter.handlePing(ping));
+        JsonObject pong = codec.parseObject(classifier.encodeHeartbeatPong(ping));
         assertNotNull(pong);
         assertEquals("PONG", pong.get("msgType").getAsString());
         assertEquals("heartbeat", pong.get("subMsgType").getAsString());
@@ -69,15 +69,15 @@ class GatewayFrameRouterTest {
     void builtinPongHandlerReturnsWithoutSideEffects() {
         JsonObject pong = frame("PONG", "heartbeat", false, null, null);
 
-        GatewayFrameKind result = frameRouter.route(pong);
-        assertEquals(GatewayFrameKind.PONG_HEARTBEAT, result);
-        frameRouter.handlePong(pong);
+        GatewayCompatibilityFrameKind result = classifier.classify(pong);
+        assertEquals(GatewayCompatibilityFrameKind.PONG_HEARTBEAT, result);
+        classifier.recordHeartbeatPong(pong);
     }
 
     @Test
-    void routeUsesTupleClassificationOnlyAsAdapterCompatibility() {
-        GatewayFrameKind result = frameRouter.route(frame("TASK", "step", false, null, null));
-        assertEquals(GatewayFrameKind.TASK_STEP, result);
+    void classificationUsesTupleOnlyAsAdapterCompatibility() {
+        GatewayCompatibilityFrameKind result = classifier.classify(frame("TASK", "step", false, null, null));
+        assertEquals(GatewayCompatibilityFrameKind.TASK_STEP, result);
     }
 
     @Test
@@ -92,8 +92,8 @@ class GatewayFrameRouterTest {
                 )
         ));
 
-        GatewayFrameKind result = frameRouter.route(frame);
-        assertEquals(GatewayFrameKind.CONTROL_EVENT_REQUEST, result);
+        GatewayCompatibilityFrameKind result = classifier.classify(frame);
+        assertEquals(GatewayCompatibilityFrameKind.CONTROL_EVENT_REQUEST, result);
 
         var request = codec.decodeControlEventRequest(frame);
         var principal = codec.decodeControlEventPrincipal(frame);
@@ -114,13 +114,30 @@ class GatewayFrameRouterTest {
     }
 
     @Test
+    void controlEventRequestAcceptsCanonicalEventCodeField() {
+        JsonObject frame = frame("CONTROL", WorkerControlEventProtocol.SUB_MSG_TYPE, false, "demoApp", payload(
+                WorkerControlEventProtocol.EVENT_CODE_FIELD, "crawler.fetch-page",
+                WorkerControlEventProtocol.REQUEST_ID_FIELD, "req-canonical",
+                WorkerControlEventProtocol.PAYLOAD_FIELD, payload("url", "https://example.test")
+        ));
+
+        GatewayCompatibilityFrameKind result = classifier.classify(frame);
+        assertEquals(GatewayCompatibilityFrameKind.CONTROL_EVENT_REQUEST, result);
+
+        var request = codec.decodeControlEventRequest(frame);
+        assertEquals("crawler.fetch-page", request.getEvent().value());
+        assertEquals("req-canonical", request.getRequestId());
+        assertEquals("https://example.test", request.getPayload().get("url"));
+    }
+
+    @Test
     void controlEventResponseFramesAreNotClassifiedAsRequests() {
         JsonObject frame = frame("CONTROL", WorkerControlEventProtocol.SUB_MSG_TYPE, true, "demoApp", payload(
                 WorkerControlEventProtocol.EVENT_FIELD, "crawler.fetch-page"
         ));
 
-        GatewayFrameKind result = frameRouter.route(frame);
-        assertEquals(GatewayFrameKind.CONTROL_EVENT_RESPONSE, result);
+        GatewayCompatibilityFrameKind result = classifier.classify(frame);
+        assertEquals(GatewayCompatibilityFrameKind.CONTROL_EVENT_RESPONSE, result);
     }
 
     @Test
@@ -129,16 +146,16 @@ class GatewayFrameRouterTest {
                 WorkerControlEventProtocol.EVENT_FIELD, "crawler.fetch-page"
         ));
 
-        GatewayFrameKind result = frameRouter.route(frame);
-        assertEquals(GatewayFrameKind.UNKNOWN, result);
+        GatewayCompatibilityFrameKind result = classifier.classify(frame);
+        assertEquals(GatewayCompatibilityFrameKind.UNKNOWN, result);
     }
 
     @Test
     void controlEventWithoutExplicitEventCodeRemainsUnknown() {
         JsonObject frame = frame("CONTROL", WorkerControlEventProtocol.SUB_MSG_TYPE, false, "demoApp", new JsonObject());
 
-        GatewayFrameKind result = frameRouter.route(frame);
-        assertEquals(GatewayFrameKind.UNKNOWN, result);
+        GatewayCompatibilityFrameKind result = classifier.classify(frame);
+        assertEquals(GatewayCompatibilityFrameKind.UNKNOWN, result);
         assertNull(codec.extractEventCode(frame));
     }
 

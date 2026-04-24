@@ -7,7 +7,7 @@ import com.xa.mass.engine.listener.TaskMsgDispatchListener;
 import com.xa.mass.engine.rules.RuleDefinition;
 import com.xa.mass.engine.util.LogUtils;
 import com.xa.mass.gateway.dispatcher.DispatcherContext;
-import com.xa.mass.gateway.dispatcher.GatewayFrameRouter;
+import com.xa.mass.gateway.dispatcher.GatewayCompatibilityFrameClassifier;
 import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
 import com.xa.mass.gateway.dispatcher.port.ControlEventRequestFrameBridge;
 import com.xa.mass.gateway.queue.MessageCodec;
@@ -144,7 +144,8 @@ public class MassApplication {
 
             WorkerSystemEventChannel systemEventChannel = gatewayConfig.resolveSystemEventChannel();
 
-            GatewayFrameRouter frameRouter = new GatewayFrameRouter(messageCodec, systemEventChannel);
+            GatewayCompatibilityFrameClassifier compatibilityFrameClassifier =
+                    new GatewayCompatibilityFrameClassifier(messageCodec, systemEventChannel);
             TaskMsgDispatchListener taskMsgDispatchListener = null;
             TaskResultIngestChannel taskResultIngestChannel = null;
             if (engineConfig.isEnabled() && engineConfig.getTaskManager() != null) {
@@ -168,13 +169,13 @@ public class MassApplication {
                     messageTransporter,
                     endpointRegistry,
                     messageCodec,
-                    frameRouter,
+                    compatibilityFrameClassifier,
                     taskResultIngestChannel,
                     ports.controlEventRequestFrameBridge(),
                     ports.controlEventResponseFrameSink()
             );
             logger.info("Dispatcher context created");
-            logger.info("Gateway frame router initialized");
+            logger.info("Gateway compatibility frame classifier initialized");
 
             if (gatewayConfig.isEnabled()) {
                 massGateway = new MassGateway(gatewayConfig, dispatcherContext);

@@ -1,9 +1,6 @@
 package com.xa.mass.gateway.server;
 
 import com.xa.mass.base.channel.tranporter.MessageTransporter;
-import com.xa.mass.gateway.dispatcher.DispatcherContext;
-import com.xa.mass.gateway.dispatcher.GatewayFrameRouter;
-import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
 import com.xa.mass.gateway.queue.GsonMessageCodec;
 import com.xa.mass.gateway.queue.OutboundDelivery;
 import com.xa.mass.gateway.session.ServerSessionManager;
@@ -67,19 +64,7 @@ class DispatcherInboundHandlerTest {
 
         sessionManager = new ServerSessionManager();
         GsonMessageCodec codec = new GsonMessageCodec();
-        GatewayFrameRouter frameRouter = new GatewayFrameRouter(codec);
-
-        DispatchRuntimeContext context = new DispatcherContext(
-                transporter,
-                sessionManager,
-                codec,
-                frameRouter,
-                null,
-                null,
-                null
-        );
-
-        handler = new DispatcherInboundHandler(context, sessionManager);
+        handler = new DispatcherInboundHandler(codec, transporter::sendInput, sessionManager);
     }
 
     @Test

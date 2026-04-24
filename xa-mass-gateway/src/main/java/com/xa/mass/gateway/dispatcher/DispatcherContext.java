@@ -18,7 +18,7 @@ public class DispatcherContext implements DispatchRuntimeContext {
     private final MessageTransporter<String, OutboundDelivery> messageTransporter;
     private final WorkerEndpointRegistry endpointRegistry;
     private final MessageCodec messageCodec;
-    private final GatewayFrameRouter frameRouter;
+    private final GatewayCompatibilityFrameClassifier compatibilityFrameClassifier;
     private final TaskResultIngestChannel taskResultIngestChannel;
     private final ControlEventRequestFrameBridge controlEventRequestFrameBridge;
     private final ControlEventResponseFrameSink controlEventResponseFrameSink;
@@ -26,14 +26,14 @@ public class DispatcherContext implements DispatchRuntimeContext {
     public DispatcherContext(MessageTransporter<String, OutboundDelivery> messageTransporter,
                              WorkerEndpointRegistry endpointRegistry,
                              MessageCodec messageCodec,
-                             GatewayFrameRouter frameRouter,
+                             GatewayCompatibilityFrameClassifier compatibilityFrameClassifier,
                              TaskResultIngestChannel taskResultIngestChannel,
                              ControlEventRequestFrameBridge controlEventRequestFrameBridge,
                              ControlEventResponseFrameSink controlEventResponseFrameSink) {
         this.messageTransporter = messageTransporter;
         this.endpointRegistry = endpointRegistry;
         this.messageCodec = messageCodec;
-        this.frameRouter = frameRouter;
+        this.compatibilityFrameClassifier = compatibilityFrameClassifier;
         this.taskResultIngestChannel = taskResultIngestChannel;
         this.controlEventRequestFrameBridge = controlEventRequestFrameBridge;
         this.controlEventResponseFrameSink = controlEventResponseFrameSink;
@@ -42,7 +42,7 @@ public class DispatcherContext implements DispatchRuntimeContext {
     public DispatcherContext(MessageTransporter<String, OutboundDelivery> messageTransporter,
                              WorkerEndpointRegistry endpointRegistry,
                              Gson gson,
-                             GatewayFrameRouter frameRouter,
+                             GatewayCompatibilityFrameClassifier compatibilityFrameClassifier,
                              TaskResultIngestChannel taskResultIngestChannel,
                              ControlEventRequestFrameBridge controlEventRequestFrameBridge,
                              ControlEventResponseFrameSink controlEventResponseFrameSink) {
@@ -50,7 +50,7 @@ public class DispatcherContext implements DispatchRuntimeContext {
                 messageTransporter,
                 endpointRegistry,
                 new GsonMessageCodec(gson),
-                frameRouter,
+                compatibilityFrameClassifier,
                 taskResultIngestChannel,
                 controlEventRequestFrameBridge,
                 controlEventResponseFrameSink
@@ -73,8 +73,8 @@ public class DispatcherContext implements DispatchRuntimeContext {
     }
 
     @Override
-    public GatewayFrameRouter getFrameRouter() {
-        return frameRouter;
+    public GatewayCompatibilityFrameClassifier getCompatibilityFrameClassifier() {
+        return compatibilityFrameClassifier;
     }
 
     @Override
