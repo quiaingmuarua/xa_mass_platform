@@ -25,14 +25,13 @@ import java.util.UUID;
  * Current WebSocket adapter frame codec.
  *
  * <p>This type owns the remaining WebSocket wire shapes for the current
- * gateway adapter: task/heartbeat transport shells plus root-level event-first
- * control frames. It is adapter-local and must not be treated as a platform
+ * gateway adapter: task transport shells plus root-level event-first control
+ * frames. It is adapter-local and must not be treated as a platform
  * capability contract.
  */
 public final class WebSocketGatewayFrameCodec {
 
     private static final Logger logger = LoggerFactory.getLogger(WebSocketGatewayFrameCodec.class);
-    private static final String SUBTYPE_HEARTBEAT = "heartbeat";
     private static final Type MAP_TYPE = new TypeToken<Map<String, Object>>() {
     }.getType();
     private static final Type STRING_MAP_TYPE = new TypeToken<Map<String, String>>() {
@@ -108,41 +107,18 @@ public final class WebSocketGatewayFrameCodec {
                 && readString(frame, WorkerControlEventProtocol.EVENT_CODE_FIELD) != null;
     }
 
-    public boolean isHeartbeatPing(JsonObject frame) {
-        return "PING".equals(readString(frame, "msgType"))
-                && SUBTYPE_HEARTBEAT.equals(normalizeSubType(readString(frame, "subMsgType")));
-    }
-
-    public boolean isHeartbeatPong(JsonObject frame) {
-        return "PONG".equals(readString(frame, "msgType"))
-                && SUBTYPE_HEARTBEAT.equals(normalizeSubType(readString(frame, "subMsgType")));
-    }
-
     public boolean isTaskStep(JsonObject frame) {
         return "TASK".equals(readString(frame, "msgType"))
                 && "step".equals(normalizeSubType(readString(frame, "subMsgType")));
     }
 
-    public String encodeHeartbeatPong(JsonObject requestFrame) {
-        JsonObject response = new JsonObject();
-        response.addProperty("msgId", extractMessageId(requestFrame));
-        response.addProperty("response", true);
-        response.addProperty("msgType", "PONG");
-        response.addProperty("subMsgType", readString(requestFrame, "subMsgType"));
-        response.addProperty("from", "SERVER");
-        String project = extractProject(requestFrame);
-        if (project != null) {
-            response.addProperty(WorkerControlEventProtocol.PROJECT_FIELD, project);
-        }
-        JsonObject context = readJsonObject(requestFrame, "context");
-        if (!context.entrySet().isEmpty()) {
-            response.add("context", context.deepCopy());
-        }
-        JsonObject payload = new JsonObject();
-        payload.addProperty("code", 200);
-        payload.addProperty("message", "pong");
-        response.add("payload", payload);
-        return gson.toJson(response);
+    public boolean isCanonicalTaskResult(JsonObject frame) {
+        return frame != null
+                && readString(frame, "msgType") == null
+                && readString(frame, WorkerControlEventProtocol.EVENT_CODE_FIELD) == null
+                && firstNonBlank(readString(frame, "taskId"), readNestedString(frame, "context", "taskId")) != null
+                && extractMessageId(frame) != null
+                && hasBoolean(frame, "success");
     }
 
     public String encodeTaskDispatch(TaskDispatchItem item) {
@@ -201,6 +177,33 @@ public final class WebSocketGatewayFrameCodec {
             }
         }
         return new TaskResultReport(taskId, msgId, success, detail, errorCode, gson.fromJson(payloadObj, MAP_TYPE));
+    }
+
+    public TaskResultReport decodeCanonicalTaskResult(JsonObject frame) {
+        String taskId = firstNonBlank(readString(frame, "taskId"), readNestedString(frame, "context", "taskId"));
+        String msgId = extractMessageId(frame);
+        if (taskId == null || msgId == null) {
+            throw new IllegalArgumentException("taskId/messageId are required");
+        }
+
+        Boolean success = readBoolean(frame, "success");
+        if (success == null) {
+            throw new IllegalArgumentException("success is required");
+        }
+        String detail = firstNonBlank(
+                readString(frame, "detail"),
+                readString(frame, "message")
+        );
+        String errorCode = readString(frame, "errorCode");
+        JsonObject outputObject = readJsonObject(frame, "output");
+        return new TaskResultReport(
+                taskId,
+                msgId,
+                success,
+                detail,
+                errorCode,
+                gson.fromJson(outputObject, MAP_TYPE)
+        );
     }
 
     public String encodeTaskAck(JsonObject requestFrame, int code, String message) {
@@ -291,6 +294,21 @@ public final class WebSocketGatewayFrameCodec {
                 && frame.has(WorkerControlEventProtocol.RESPONSE_FIELD)
                 && !frame.get(WorkerControlEventProtocol.RESPONSE_FIELD).isJsonNull()
                 && frame.get(WorkerControlEventProtocol.RESPONSE_FIELD).getAsBoolean();
+    }
+
+    private Boolean readBoolean(JsonObject object, String field) {
+        if (object == null || field == null || !object.has(field) || object.get(field).isJsonNull()) {
+            return null;
+        }
+        try {
+            return object.get(field).getAsBoolean();
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private boolean hasBoolean(JsonObject object, String field) {
+        return readBoolean(object, field) != null;
     }
 
     private JsonObject readJsonObject(JsonObject object, String field) {

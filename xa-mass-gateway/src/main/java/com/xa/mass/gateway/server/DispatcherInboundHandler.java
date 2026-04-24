@@ -5,6 +5,8 @@ import com.xa.mass.gateway.queue.WebSocketGatewayFrameCodec;
 import com.xa.mass.gateway.session.ServerSessionManager;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
+import io.netty.handler.codec.http.QueryStringDecoder;
+import io.netty.handler.codec.http.websocketx.WebSocketServerProtocolHandler;
 import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -41,7 +43,10 @@ public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWe
                 return;
             }
 
-            String workerId = frameCodec.extractWorkerId(frame);
+            String workerId = firstNonBlank(
+                    frameCodec.extractWorkerId(frame),
+                    sessionManager.getWorkerId(ctx.channel())
+            );
             String msgId = frameCodec.extractMessageId(frame);
             if (workerId == null || msgId == null) {
                 sendError(ctx, "MISSING_FIELDS", "workerId/messageId are required");
@@ -63,13 +68,25 @@ public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWe
             } finally {
                 org.slf4j.MDC.clear();
             }
-
-            sessionManager.addSession(workerId, ctx.channel(), ctx);
+            registerSessionIfNeeded(workerId, ctx);
             inboundMessageSink.accept(raw);
         } catch (Exception e) {
             logger.error("Unexpected error in channelRead0", e);
             sendError(ctx, "INTERNAL_ERROR", "Internal server error");
         }
+    }
+
+    @Override
+    public void userEventTriggered(ChannelHandlerContext ctx, Object evt) throws Exception {
+        if (evt instanceof WebSocketServerProtocolHandler.HandshakeComplete handshakeComplete) {
+            String workerId = extractWorkerIdFromRequestUri(handshakeComplete.requestUri());
+            if (workerId == null) {
+                logger.warn("WebSocket handshake completed without workerId query parameter");
+            } else {
+                registerSessionIfNeeded(workerId, ctx);
+            }
+        }
+        super.userEventTriggered(ctx, evt);
     }
 
     @Override
@@ -86,5 +103,47 @@ public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWe
                     Map.of("code", code, "message", message, "type", "ERROR"));
             ctx.writeAndFlush(new TextWebSocketFrame(errorJson));
         }
+    }
+
+    private void registerSessionIfNeeded(String workerId, ChannelHandlerContext ctx) {
+        if (workerId == null || workerId.isBlank()) {
+            return;
+        }
+        String existingWorkerId = sessionManager.getWorkerId(ctx.channel());
+        if (workerId.equals(existingWorkerId) && sessionManager.getChannelContext(workerId) != null) {
+            return;
+        }
+        sessionManager.addSession(workerId, ctx.channel(), ctx);
+    }
+
+    private String extractWorkerIdFromRequestUri(String requestUri) {
+        if (requestUri == null || requestUri.isBlank()) {
+            return null;
+        }
+        QueryStringDecoder decoder = new QueryStringDecoder(requestUri);
+        return firstQueryValue(decoder, "workerId");
+    }
+
+    private String firstQueryValue(QueryStringDecoder decoder, String key) {
+        if (decoder == null || key == null) {
+            return null;
+        }
+        var values = decoder.parameters().get(key);
+        if (values == null || values.isEmpty()) {
+            return null;
+        }
+        return firstNonBlank(values.get(0));
+    }
+
+    private String firstNonBlank(String... values) {
+        if (values == null) {
+            return null;
+        }
+        for (String value : values) {
+            if (value != null && !value.isBlank()) {
+                return value.trim();
+            }
+        }
+        return null;
     }
 }

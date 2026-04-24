@@ -81,7 +81,7 @@ Current fixture behavior:
 
 - worker JSON entries are mapped to `WorkerRegistration`
 - worker-context JSON entries are mapped to `WorkerContextRegistration`
-- runtime state fields in historical JSON, such as `Worker.status=ONLINE`, are ignored; worker online state comes from transport connect/heartbeat
+- runtime state fields in historical JSON, such as `Worker.status=ONLINE`, are ignored; worker online state comes from transport connect/disconnect and transport-native liveness
 - task JSON continues to map to `MassTaskCreateRequest`
 - rule JSON continues to replace default rules when non-empty
 

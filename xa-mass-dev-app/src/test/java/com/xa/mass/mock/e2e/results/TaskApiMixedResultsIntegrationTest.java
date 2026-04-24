@@ -102,13 +102,9 @@ class TaskApiMixedResultsIntegrationTest extends AbstractMockE2eTest {
             Map<String, Object> firstMsg = runningSnapshot.messages().get(0);
             Map<String, Object> secondMsg = runningSnapshot.messages().get(1);
 
-            AckSnapshot ack1 = firstClient.sendResult(firstDispatch, "SUCCESS", "mixed-ok");
-            assertEquals(200, ack1.code());
-            assertEquals("task result processed", ack1.message());
+            firstClient.sendResult(firstDispatch, "SUCCESS", "mixed-ok");
 
-            AckSnapshot ack2 = secondClient.sendResult(secondDispatch, "FAILED", "mixed-fail");
-            assertEquals(200, ack2.code());
-            assertEquals("task result processed", ack2.message());
+            secondClient.sendResult(secondDispatch, "FAILED", "mixed-fail");
 
             TaskSnapshot terminalSnapshot = waitForTaskSnapshot(taskId, "TERMINAL");
             assertEquals("TERMINAL", terminalSnapshot.task().get("status"));
@@ -135,11 +131,8 @@ class TaskApiMixedResultsIntegrationTest extends AbstractMockE2eTest {
         }
     }
 
-    private record AckSnapshot(int code, String message) {}
-
     private static final class ManualAckWebSocketClient extends MockWorkerWebSocketClient {
         private final BlockingQueue<JsonObject> taskQueue = new LinkedBlockingQueue<>();
-        private final BlockingQueue<AckSnapshot> ackQueue = new LinkedBlockingQueue<>();
 
         ManualAckWebSocketClient(URI uri, String workerId) {
             super(uri, workerId);
@@ -149,15 +142,8 @@ class TaskApiMixedResultsIntegrationTest extends AbstractMockE2eTest {
         public void onMessage(String message) {
             try {
                 JsonObject frame = WsFrameTestSupport.parse(message);
-                if (frame != null && WsFrameTestSupport.isTask(frame)) {
-                    if (WsFrameTestSupport.isResponse(frame)) {
-                        ackQueue.offer(new AckSnapshot(
-                                WsFrameTestSupport.ackCode(frame),
-                                WsFrameTestSupport.ackMessage(frame)
-                        ));
-                    } else {
-                        taskQueue.offer(frame);
-                    }
+                if (frame != null && WsFrameTestSupport.isTask(frame) && !WsFrameTestSupport.isResponse(frame)) {
+                    taskQueue.offer(frame);
                     return;
                 }
             } catch (Exception ignored) {
@@ -170,7 +156,7 @@ class TaskApiMixedResultsIntegrationTest extends AbstractMockE2eTest {
             return taskQueue.poll(timeout, unit);
         }
 
-        AckSnapshot sendResult(JsonObject taskFrame, String status, String detail) throws Exception {
+        void sendResult(JsonObject taskFrame, String status, String detail) throws Exception {
             sendMessage(WsFrameTestSupport.buildTaskResult(
                     WsFrameTestSupport.msgId(taskFrame),
                     WsFrameTestSupport.project(taskFrame),
@@ -179,9 +165,6 @@ class TaskApiMixedResultsIntegrationTest extends AbstractMockE2eTest {
                     status,
                     detail
             ));
-            AckSnapshot ack = ackQueue.poll(3, TimeUnit.SECONDS);
-            assertNotNull(ack, "Timed out waiting for gateway ack on msg " + WsFrameTestSupport.msgId(taskFrame));
-            return ack;
         }
     }
 }

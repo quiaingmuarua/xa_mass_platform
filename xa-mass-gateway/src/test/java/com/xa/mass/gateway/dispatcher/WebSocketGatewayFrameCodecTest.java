@@ -35,29 +35,6 @@ class WebSocketGatewayFrameCodecTest {
     void controlFramesStayOutsideTaskShellDetection() {
         assertTrue(!codec.isTaskStep(controlRequestFrame("demoApp", "crawler.fetch-page")));
         assertTrue(!codec.isTaskStep(controlResponseFrame("demoApp", "crawler.fetch-page")));
-        assertTrue(!codec.isHeartbeatPing(controlRequestFrame("demoApp", "crawler.fetch-page")));
-        assertTrue(!codec.isHeartbeatPong(controlResponseFrame("demoApp", "crawler.fetch-page")));
-    }
-
-    @Test
-    void heartbeatPingEncodesPongJson() {
-        JsonObject ping = taskFrame("PING", "heartbeat", false, null, null);
-
-        assertTrue(codec.isHeartbeatPing(ping));
-
-        JsonObject pong = codec.parseObject(codec.encodeHeartbeatPong(ping));
-        assertNotNull(pong);
-        assertEquals("PONG", pong.get("msgType").getAsString());
-        assertEquals("heartbeat", pong.get("subMsgType").getAsString());
-        assertTrue(pong.get("response").getAsBoolean());
-        assertEquals("worker-1", pong.getAsJsonObject("context").get("workerId").getAsString());
-    }
-
-    @Test
-    void heartbeatPongDetectionUsesTransportShellOnly() {
-        JsonObject pong = taskFrame("PONG", "heartbeat", false, null, null);
-
-        assertTrue(codec.isHeartbeatPong(pong));
     }
 
     @Test
@@ -95,6 +72,26 @@ class WebSocketGatewayFrameCodecTest {
         JsonObject ack = codec.parseObject(codec.encodeTaskAck(request, 200, "ok"));
 
         assertNull(codec.extractEventCode(ack));
+    }
+
+    @Test
+    void canonicalTaskResultDecodesIntoTaskResultReport() {
+        JsonObject frame = new JsonObject();
+        frame.addProperty("messageId", "msg-1");
+        frame.addProperty("workerId", "worker-1");
+        frame.addProperty("project", "demoApp");
+        frame.addProperty("taskId", "task-1");
+        frame.addProperty("success", true);
+        frame.addProperty("detail", "completed");
+        frame.add("output", payload("status", "SUCCESS", "mockData", "completed"));
+
+        assertTrue(codec.isCanonicalTaskResult(frame));
+        var report = codec.decodeCanonicalTaskResult(frame);
+        assertEquals("task-1", report.getTaskId());
+        assertEquals("msg-1", report.getMsgId());
+        assertTrue(report.isSuccess());
+        assertEquals("completed", report.getDetail());
+        assertEquals("SUCCESS", report.getOutput().get("status"));
     }
 
     private JsonObject taskFrame(String msgType, String subMsgType, boolean response, String project, JsonObject payload) {

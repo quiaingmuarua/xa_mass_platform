@@ -8,12 +8,8 @@ import com.xa.mass.engine.rules.RuleDefinition;
 import com.xa.mass.engine.util.LogUtils;
 import com.xa.mass.gateway.dispatcher.DispatcherContext;
 import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
-import com.xa.mass.gateway.dispatcher.port.ControlEventRequestFrameBridge;
 import com.xa.mass.gateway.queue.WebSocketGatewayFrameCodec;
 import com.xa.mass.gateway.queue.OutboundDelivery;
-import com.xa.mass.sdk.event.EventPrincipal;
-import com.xa.mass.sdk.event.EventRequest;
-import com.xa.mass.sdk.event.EventResponse;
 import com.xa.mass.sdk.worker.PullWorkerSession;
 import com.xa.mass.starter.config.EngineConfig;
 import com.xa.mass.starter.config.GatewayConfig;
@@ -30,7 +26,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.function.BiFunction;
 
 /**
  * Main runtime composition entry for engine, gateway, dispatcher, and server startup.
@@ -167,7 +162,7 @@ public class MassApplication {
                     frameCodec,
                     taskResultIngestChannel,
                     systemEventChannel,
-                    ports.controlEventRequestFrameBridge(),
+                    ports.controlEventRequestHandler(),
                     ports.controlEventResponseFrameSink()
             );
             logger.info("Dispatcher context created");
@@ -277,29 +272,6 @@ public class MassApplication {
             throw new IllegalStateException("Gateway runtime ports must be configured before application start");
         }
         this.gatewayRuntimePorts = gatewayRuntimePorts != null ? gatewayRuntimePorts : GatewayRuntimePorts.defaults();
-    }
-
-    /**
-     * @deprecated Prefer {@link #configureGatewayRuntime(GatewayRuntimePorts)} so
-     * gateway adapter wiring is configured as a fixed snapshot before startup.
-     */
-    @Deprecated(forRemoval = false)
-    public void setWorkerControlEventRequestBridge(ControlEventRequestFrameBridge workerControlEventRequestBridge) {
-        configureGatewayRuntime((gatewayRuntimePorts != null ? gatewayRuntimePorts : GatewayRuntimePorts.defaults())
-                .withControlEventRequestFrameBridge(workerControlEventRequestBridge));
-    }
-
-    /**
-     * @deprecated Prefer {@link #configureGatewayRuntime(GatewayRuntimePorts)} so
-     * gateway adapter wiring no longer depends on late-bound dispatcher setters.
-     */
-    @Deprecated(forRemoval = false)
-    public void setSdkEventDispatcher(BiFunction<EventRequest, EventPrincipal, EventResponse> sdkEventDispatcher) {
-        ControlEventRequestFrameBridge controlEventRequestFrameBridge = sdkEventDispatcher == null
-                ? null
-                : sdkEventDispatcher::apply;
-        configureGatewayRuntime((gatewayRuntimePorts != null ? gatewayRuntimePorts : GatewayRuntimePorts.defaults())
-                .withControlEventRequestFrameBridge(controlEventRequestFrameBridge));
     }
 
     private MassEngine requireConfiguredEngine() {

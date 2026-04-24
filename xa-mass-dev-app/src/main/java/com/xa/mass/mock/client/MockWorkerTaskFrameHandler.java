@@ -50,30 +50,28 @@ final class MockWorkerTaskFrameHandler {
         long finishedAtEpochMillis = startedAtEpochMillis + delayMillis;
 
         JsonObject response = new JsonObject();
-        response.addProperty("msgId", readString(taskMessage, "msgId"));
-        response.addProperty("response", true);
-        response.addProperty("msgType", "TASK");
-        response.addProperty("from", "CLIENT");
-        response.addProperty("subMsgType", "step");
+        response.addProperty("messageId", readString(taskMessage, "msgId"));
+        response.addProperty("workerId", workerId);
+        response.addProperty("taskId", taskId);
         String project = readString(taskMessage, "project");
         if (project != null) {
             response.addProperty("project", project);
         }
-
-        JsonObject responseContext = new JsonObject();
-        responseContext.addProperty("taskId", taskId);
         Integer retryCount = readInt(originalContext, "retryCount");
         if (retryCount != null) {
-            responseContext.addProperty("retryCount", retryCount);
+            response.addProperty("retryCount", retryCount);
         }
-        responseContext.addProperty("workerId", workerId);
-        response.add("context", responseContext);
+        response.addProperty("success", "SUCCESS".equals(resolvedStatus));
+        response.addProperty("detail", "Executed by mock client " + workerId);
+        if ("FAILED".equals(resolvedStatus)) {
+            response.addProperty("errorCode", "MOCK_TASK_FAILED");
+        }
 
-        Map<String, Object> payloadMap = new LinkedHashMap<>();
-        payloadMap.put("stepId", extractFirstStepId(taskPayload));
-        payloadMap.put("mockData", "Executed by mock client " + workerId);
-        payloadMap.put("status", resolvedStatus);
-        payloadMap.put("execution", buildExecutionSnapshot(
+        Map<String, Object> outputMap = new LinkedHashMap<>();
+        outputMap.put("stepId", extractFirstStepId(taskPayload));
+        outputMap.put("mockData", "Executed by mock client " + workerId);
+        outputMap.put("status", resolvedStatus);
+        outputMap.put("execution", buildExecutionSnapshot(
                 taskMessage,
                 originalContext,
                 stepCount,
@@ -82,15 +80,15 @@ final class MockWorkerTaskFrameHandler {
                 finishedAtEpochMillis,
                 resolvedStatus
         ));
-        payloadMap.put("workerProfile", buildWorkerProfile(workerId));
-        response.add("payload", GSON.toJsonTree(payloadMap));
+        outputMap.put("workerProfile", buildWorkerProfile(workerId));
+        response.add("output", GSON.toJsonTree(outputMap));
 
         if (state != null && state.shouldDropTaskResponse()) {
             logger.info("[{}] Dropped mock task response for msgId={} due to mock state {}",
-                    workerId, readString(response, "msgId"), state.snapshot());
+                    workerId, readString(taskMessage, "msgId"), state.snapshot());
             return null;
         }
-        return new TaskResponsePlan(GSON.toJson(response), readString(response, "msgId"), delayMillis);
+        return new TaskResponsePlan(GSON.toJson(response), readString(taskMessage, "msgId"), delayMillis);
     }
 
     private String resolveTaskResultStatus(String taskResultStatus, MockClientState state) {

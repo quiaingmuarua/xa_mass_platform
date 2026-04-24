@@ -95,7 +95,8 @@ Current canonical boundaries:
   - only retained gateway-local delivery record: `com.xa.mass.gateway.queue.OutboundDelivery`
   - `workerId` is the active transport addressability key; endpoint role lanes are no longer part of the gateway mainline
 - gateway compatibility boundary
-  - `TASK/step`, `PING/heartbeat`, and `PONG/heartbeat` are WebSocket compatibility tuple shells only
+  - `TASK/step` is the remaining WebSocket compatibility tuple shell for task data-plane only
+  - WebSocket worker identity is established at handshake time; heartbeat is no longer an application JSON frame
   - control/debug traffic now uses a root-level event-first frame keyed by `eventCode`
   - `msgType + subMsgType` classifies a wire frame only; it is not business/control capability identity
   - `com.xa.mass.gateway.queue.WebSocketGatewayFrameCodec` remains the adapter-local WebSocket shell codec; it is not a platform contract

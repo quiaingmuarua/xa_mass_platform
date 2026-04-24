@@ -1,7 +1,7 @@
 package com.xa.mass.gateway.dispatcher.context;
 
 import com.xa.mass.base.channel.tranporter.MessageTransporter;
-import com.xa.mass.gateway.dispatcher.port.ControlEventRequestFrameBridge;
+import com.xa.mass.gateway.dispatcher.port.ControlEventRequestHandler;
 import com.xa.mass.gateway.dispatcher.port.ControlEventResponseFrameSink;
 import com.xa.mass.gateway.queue.OutboundDelivery;
 import com.xa.mass.gateway.queue.WebSocketGatewayFrameCodec;
@@ -24,7 +24,7 @@ public interface DispatchRuntimeContext {
 
     WorkerSystemEventChannel getSystemEventChannel();
 
-    ControlEventRequestFrameBridge getControlEventRequestFrameBridge();
+    ControlEventRequestHandler getControlEventRequestHandler();
 
     ControlEventResponseFrameSink getControlEventResponseFrameSink();
 }

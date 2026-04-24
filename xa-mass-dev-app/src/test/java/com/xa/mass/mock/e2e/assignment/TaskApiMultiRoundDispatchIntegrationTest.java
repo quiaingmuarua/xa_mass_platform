@@ -142,10 +142,7 @@ class TaskApiMultiRoundDispatchIntegrationTest extends AbstractMockE2eTest {
             assertEquals(1L,
                     firstRound.messages().stream().filter(msg -> msg.get("latestAttemptWorkerId") == null).count());
 
-            AckSnapshot firstAck = client.sendSuccess(first, "round-1-a");
-            assertNotNull(firstAck);
-            assertEquals(200, firstAck.code());
-            assertEquals("task result processed", firstAck.message());
+            client.sendSuccess(first, "round-1-a");
             assertNull(client.awaitTask(750, TimeUnit.MILLISECONDS), "Worker should stay busy until the whole round finishes");
 
             TaskSnapshot afterFirstResult = waitForTaskSnapshot(
@@ -162,18 +159,12 @@ class TaskApiMultiRoundDispatchIntegrationTest extends AbstractMockE2eTest {
             assertEquals(1L,
                     afterFirstResult.messages().stream().filter(msg -> "SUCCESS".equals(msg.get("status"))).count());
 
-            AckSnapshot secondAck = client.sendSuccess(second, "round-1-b");
-            assertNotNull(secondAck);
-            assertEquals(200, secondAck.code());
-            assertEquals("task result processed", secondAck.message());
+            client.sendSuccess(second, "round-1-b");
 
             JsonObject third = client.awaitTask(3, TimeUnit.SECONDS);
             assertNotNull(third, "Next round should begin after the first round finishes");
 
-            AckSnapshot thirdAck = client.sendSuccess(third, "round-2-c");
-            assertNotNull(thirdAck);
-            assertEquals(200, thirdAck.code());
-            assertEquals("task result processed", thirdAck.message());
+            client.sendSuccess(third, "round-2-c");
 
             TaskSnapshot terminal = waitForTerminalTask(taskId);
             assertEquals("TERMINAL", terminal.task().get("status"));
@@ -197,12 +188,8 @@ class TaskApiMultiRoundDispatchIntegrationTest extends AbstractMockE2eTest {
         return "SUCCESS".equals(status) || "FAILED".equals(status) || "EXPIRED".equals(status);
     }
 
-    private record AckSnapshot(String msgId, int code, String message) {
-    }
-
     private static final class ManualAckWebSocketClient extends MockWorkerWebSocketClient {
         private final BlockingQueue<JsonObject> taskQueue = new LinkedBlockingQueue<>();
-        private final BlockingQueue<AckSnapshot> ackQueue = new LinkedBlockingQueue<>();
 
         private ManualAckWebSocketClient(URI serverUri, String workerId) {
             super(serverUri, workerId);
@@ -212,16 +199,8 @@ class TaskApiMultiRoundDispatchIntegrationTest extends AbstractMockE2eTest {
         public void onMessage(String message) {
             try {
                 JsonObject frame = WsFrameTestSupport.parse(message);
-                if (frame != null && WsFrameTestSupport.isTask(frame)) {
-                    if (WsFrameTestSupport.isResponse(frame)) {
-                        ackQueue.offer(new AckSnapshot(
-                                WsFrameTestSupport.msgId(frame),
-                                WsFrameTestSupport.ackCode(frame),
-                                WsFrameTestSupport.ackMessage(frame)
-                        ));
-                    } else {
-                        taskQueue.offer(frame);
-                    }
+                if (frame != null && WsFrameTestSupport.isTask(frame) && !WsFrameTestSupport.isResponse(frame)) {
+                    taskQueue.offer(frame);
                     return;
                 }
             } catch (Exception ignored) {
@@ -234,7 +213,7 @@ class TaskApiMultiRoundDispatchIntegrationTest extends AbstractMockE2eTest {
             return taskQueue.poll(timeout, unit);
         }
 
-        private AckSnapshot sendSuccess(JsonObject taskMessage, String detail) throws Exception {
+        private void sendSuccess(JsonObject taskMessage, String detail) throws Exception {
             sendMessage(WsFrameTestSupport.buildTaskResult(
                     WsFrameTestSupport.msgId(taskMessage),
                     WsFrameTestSupport.project(taskMessage),
@@ -243,7 +222,6 @@ class TaskApiMultiRoundDispatchIntegrationTest extends AbstractMockE2eTest {
                     "SUCCESS",
                     detail
             ));
-            return ackQueue.poll(3, TimeUnit.SECONDS);
         }
     }
 }

@@ -43,14 +43,23 @@ public final class WsFrameTestSupport {
                                          String status,
                                          String detail,
                                          String errorCode) {
-        JsonObject payload = new JsonObject();
-        payload.addProperty("status", status);
-        payload.addProperty("mockData", detail);
+        JsonObject output = new JsonObject();
+        output.addProperty("status", status);
+        output.addProperty("mockData", detail);
         if (errorCode != null) {
-            payload.addProperty("errorCode", errorCode);
+            output.addProperty("errorCode", errorCode);
         }
-        JsonObject frame = baseFrame(msgId, "TASK", "step", true, "CLIENT", project, workerId, taskId);
-        frame.add("payload", payload);
+        JsonObject frame = new JsonObject();
+        frame.addProperty("messageId", msgId);
+        frame.addProperty("workerId", workerId);
+        frame.addProperty("taskId", taskId);
+        frame.addProperty("project", project);
+        frame.addProperty("success", "SUCCESS".equalsIgnoreCase(status));
+        frame.addProperty("detail", detail);
+        if (errorCode != null) {
+            frame.addProperty("errorCode", errorCode);
+        }
+        frame.add("output", output);
         return GSON.toJson(frame);
     }
 
@@ -114,9 +123,13 @@ public final class WsFrameTestSupport {
     }
 
     public static JsonObject payload(JsonObject frame) {
-        return frame != null && frame.has(WorkerControlEventProtocol.PAYLOAD_FIELD) && frame.get(WorkerControlEventProtocol.PAYLOAD_FIELD).isJsonObject()
-                ? frame.getAsJsonObject(WorkerControlEventProtocol.PAYLOAD_FIELD)
-                : new JsonObject();
+        if (frame != null && frame.has(WorkerControlEventProtocol.PAYLOAD_FIELD) && frame.get(WorkerControlEventProtocol.PAYLOAD_FIELD).isJsonObject()) {
+            return frame.getAsJsonObject(WorkerControlEventProtocol.PAYLOAD_FIELD);
+        }
+        if (frame != null && frame.has("output") && frame.get("output").isJsonObject()) {
+            return frame.getAsJsonObject("output");
+        }
+        return new JsonObject();
     }
 
     public static String workerId(JsonObject frame) {
@@ -125,7 +138,8 @@ public final class WsFrameTestSupport {
     }
 
     public static String taskId(JsonObject frame) {
-        return readNestedString(frame, "context", "taskId");
+        String rootTaskId = readString(frame, "taskId");
+        return rootTaskId != null ? rootTaskId : readNestedString(frame, "context", "taskId");
     }
 
     public static int ackCode(JsonObject frame) {

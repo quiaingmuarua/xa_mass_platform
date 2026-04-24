@@ -105,7 +105,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
         registerCatalogEventDefinitions();
         registerControlPlaneEventHandlers();
         delegate.configureGatewayRuntime(
-                GatewayRuntimePorts.defaults().withControlEventRequestFrameBridge(
+                GatewayRuntimePorts.defaults().withControlEventRequestHandler(
                         this::dispatchEvent
                 )
         );

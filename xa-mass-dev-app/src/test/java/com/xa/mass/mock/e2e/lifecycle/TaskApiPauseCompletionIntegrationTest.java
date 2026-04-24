@@ -106,9 +106,7 @@ class TaskApiPauseCompletionIntegrationTest extends AbstractMockE2eTest {
                 assertNotNull(client, "No connected worker client for " + workerId);
                 assertNotNull(dispatch, "No captured dispatch frame for msg " + msgId);
 
-                AckSnapshot ack = client.sendResult(dispatch, "SUCCESS", "paused-complete-" + workerId);
-                assertEquals(200, ack.code());
-                assertEquals("task result processed", ack.message());
+                client.sendResult(dispatch, "SUCCESS", "paused-complete-" + workerId);
             }
 
             TaskSnapshot terminalSnapshot = waitForTaskSnapshot(taskId, "TERMINAL");
@@ -127,12 +125,8 @@ class TaskApiPauseCompletionIntegrationTest extends AbstractMockE2eTest {
         }
     }
 
-    private record AckSnapshot(int code, String message) {
-    }
-
     private static final class ManualAckWebSocketClient extends MockWorkerWebSocketClient {
         private final BlockingQueue<JsonObject> taskQueue = new LinkedBlockingQueue<>();
-        private final BlockingQueue<AckSnapshot> ackQueue = new LinkedBlockingQueue<>();
 
         private ManualAckWebSocketClient(URI serverUri, String workerId) {
             super(serverUri, workerId);
@@ -142,15 +136,8 @@ class TaskApiPauseCompletionIntegrationTest extends AbstractMockE2eTest {
         public void onMessage(String message) {
             try {
                 JsonObject frame = WsFrameTestSupport.parse(message);
-                if (frame != null && WsFrameTestSupport.isTask(frame)) {
-                    if (WsFrameTestSupport.isResponse(frame)) {
-                        ackQueue.offer(new AckSnapshot(
-                                WsFrameTestSupport.ackCode(frame),
-                                WsFrameTestSupport.ackMessage(frame)
-                        ));
-                    } else {
-                        taskQueue.offer(frame);
-                    }
+                if (frame != null && WsFrameTestSupport.isTask(frame) && !WsFrameTestSupport.isResponse(frame)) {
+                    taskQueue.offer(frame);
                     return;
                 }
             } catch (Exception ignored) {
@@ -163,7 +150,7 @@ class TaskApiPauseCompletionIntegrationTest extends AbstractMockE2eTest {
             return taskQueue.poll(timeout, unit);
         }
 
-        private AckSnapshot sendResult(JsonObject dispatchFrame, String status, String detail) throws Exception {
+        private void sendResult(JsonObject dispatchFrame, String status, String detail) throws Exception {
             sendMessage(WsFrameTestSupport.buildTaskResult(
                     WsFrameTestSupport.msgId(dispatchFrame),
                     WsFrameTestSupport.project(dispatchFrame),
@@ -172,9 +159,6 @@ class TaskApiPauseCompletionIntegrationTest extends AbstractMockE2eTest {
                     status,
                     detail
             ));
-            AckSnapshot ack = ackQueue.poll(3, TimeUnit.SECONDS);
-            assertNotNull(ack, "Timed out waiting for gateway ack on msg " + WsFrameTestSupport.msgId(dispatchFrame));
-            return ack;
         }
     }
 }

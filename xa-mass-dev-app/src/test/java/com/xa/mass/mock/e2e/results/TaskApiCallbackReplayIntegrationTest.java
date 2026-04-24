@@ -17,13 +17,11 @@ import org.springframework.test.context.DynamicPropertySource;
 import java.net.URI;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SpringBootTest(
         classes = MockApplicationSpringBootApp.class,
@@ -77,9 +75,7 @@ class TaskApiCallbackReplayIntegrationTest extends AbstractMockE2eTest {
         assertEquals("SUCCESS", originalStatus);
         assertNull(originalErrorMessage);
 
-        AckSnapshot ack = replayConflictingTaskResult(taskId, msgId, "FAILED", "replayed-conflict");
-        assertEquals(200, ack.code());
-        assertEquals("task result processed", ack.message());
+        replayConflictingTaskResult(taskId, msgId, "FAILED", "replayed-conflict");
 
         TaskSnapshot afterReplay = waitForTaskSnapshot(taskId, "TERMINAL");
         Map<String, Object> replayedMessage = findMessage(afterReplay.messages(), msgId);
@@ -93,14 +89,13 @@ class TaskApiCallbackReplayIntegrationTest extends AbstractMockE2eTest {
         assertNull(replayedMessage.get("errorMessage"));
     }
 
-    private AckSnapshot replayConflictingTaskResult(String taskId, String msgId, String status, String detail) throws Exception {
+    private void replayConflictingTaskResult(String taskId, String msgId, String status, String detail) throws Exception {
         URI uri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
-        ReplayWebSocketClient client = new ReplayWebSocketClient(uri, "replay-worker", msgId);
+        ReplayWebSocketClient client = new ReplayWebSocketClient(uri, "replay-worker");
         try {
             assertClientConnects(client, "Replay WebSocket client failed to connect");
             client.sendMessage(WsFrameTestSupport.buildTaskResult(msgId, "demoApp", "replay-worker", taskId, status, detail));
-            assertTrue(client.awaitAck(3, TimeUnit.SECONDS), "Timed out waiting for gateway ack");
-            return client.ackSnapshot();
+            client.awaitSilence(300, TimeUnit.MILLISECONDS);
         } finally {
             client.disconnect();
         }
@@ -113,45 +108,18 @@ class TaskApiCallbackReplayIntegrationTest extends AbstractMockE2eTest {
                 .orElse(null);
     }
 
-    private record AckSnapshot(int code, String message) {
-    }
-
     private static final class ReplayWebSocketClient extends MockWorkerWebSocketClient {
-        private final String expectedMsgId;
-        private final CountDownLatch ackLatch = new CountDownLatch(1);
-        private volatile AckSnapshot ackSnapshot;
-
-        private ReplayWebSocketClient(URI serverUri, String workerId, String expectedMsgId) {
+        private ReplayWebSocketClient(URI serverUri, String workerId) {
             super(serverUri, workerId);
-            this.expectedMsgId = expectedMsgId;
         }
 
         @Override
         public void onMessage(String message) {
-            try {
-                JsonObject frame = WsFrameTestSupport.parse(message);
-                if (frame != null
-                        && WsFrameTestSupport.isResponse(frame)
-                        && WsFrameTestSupport.isTask(frame)
-                        && expectedMsgId.equals(WsFrameTestSupport.msgId(frame))) {
-                    ackSnapshot = new AckSnapshot(
-                            WsFrameTestSupport.ackCode(frame),
-                            WsFrameTestSupport.ackMessage(frame)
-                    );
-                    ackLatch.countDown();
-                }
-            } catch (Exception ignored) {
-                // Keep waiting for the expected task ack frame.
-            }
             super.onMessage(message);
         }
 
-        private boolean awaitAck(long timeout, TimeUnit unit) throws InterruptedException {
-            return ackLatch.await(timeout, unit);
-        }
-
-        private AckSnapshot ackSnapshot() {
-            return ackSnapshot;
+        private void awaitSilence(long timeout, TimeUnit unit) throws InterruptedException {
+            unit.sleep(timeout);
         }
     }
 }

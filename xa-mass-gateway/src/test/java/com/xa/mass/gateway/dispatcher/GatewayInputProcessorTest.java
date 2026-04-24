@@ -4,7 +4,7 @@ import com.google.gson.JsonObject;
 import com.xa.mass.base.channel.tranporter.MessageTransporter;
 import com.xa.mass.base.debug.WorkerControlEventProtocol;
 import com.xa.mass.base.debug.WorkerControlMessageProtocol;
-import com.xa.mass.gateway.dispatcher.port.ControlEventRequestFrameBridge;
+import com.xa.mass.gateway.dispatcher.port.ControlEventRequestHandler;
 import com.xa.mass.gateway.dispatcher.port.ControlEventResponseFrameSink;
 import com.xa.mass.gateway.queue.OutboundDelivery;
 import com.xa.mass.gateway.queue.WebSocketGatewayFrameCodec;
@@ -113,7 +113,7 @@ class GatewayInputProcessorTest {
         verify(transporter).sendOutput(outputCaptor.capture());
         JsonObject ack = codec.parseObject(outputCaptor.getValue().getRawJson());
         assertEquals(503, ack.getAsJsonObject("payload").get("code").getAsInt());
-        assertEquals("task step bridge unavailable", ack.getAsJsonObject("payload").get("message").getAsString());
+        assertEquals("task result ingest unavailable", ack.getAsJsonObject("payload").get("message").getAsString());
     }
 
     @Test
@@ -127,6 +127,27 @@ class GatewayInputProcessorTest {
         verify(transporter).sendOutput(outputCaptor.capture());
         JsonObject ack = codec.parseObject(outputCaptor.getValue().getRawJson());
         assertEquals(400, ack.getAsJsonObject("payload").get("code").getAsInt());
+    }
+
+    @Test
+    void canonicalTaskResultIngestsWithoutAckOutput() {
+        AtomicReference<com.xa.mass.transport.model.TaskResultReport> capturedReport = new AtomicReference<>();
+        context = createContext(report -> {
+            capturedReport.set(report);
+            return true;
+        }, null, null);
+        inputProcessor = new GatewayInputProcessor(context);
+
+        boolean result = inputProcessor.process(canonicalTaskResultFrame("task-1", "msg-1", true, "ok"));
+
+        assertTrue(result);
+        assertNotNull(capturedReport.get());
+        assertEquals("task-1", capturedReport.get().getTaskId());
+        assertEquals("msg-1", capturedReport.get().getMsgId());
+        assertTrue(capturedReport.get().isSuccess());
+        assertEquals("ok", capturedReport.get().getDetail());
+        assertEquals("SUCCESS", capturedReport.get().getOutput().get("status"));
+        verify(transporter, never()).sendOutput(any());
     }
 
     @Test
@@ -164,12 +185,12 @@ class GatewayInputProcessorTest {
         verify(transporter).sendOutput(outputCaptor.capture());
         JsonObject response = codec.parseObject(outputCaptor.getValue().getRawJson());
         assertEquals("CONTROL_EVENT_UNAVAILABLE", response.get(WorkerControlEventProtocol.CODE_FIELD).getAsString());
-        assertEquals("control event bridge unavailable", response.get(WorkerControlEventProtocol.MESSAGE_FIELD).getAsString());
+        assertEquals("control event handler unavailable", response.get(WorkerControlEventProtocol.MESSAGE_FIELD).getAsString());
         assertEquals("req-1", response.get(WorkerControlEventProtocol.REQUEST_ID_FIELD).getAsString());
     }
 
     private DispatcherContext createContext(TaskResultIngestChannel taskResultIngestChannel,
-                                            ControlEventRequestFrameBridge controlEventRequestFrameBridge,
+                                            ControlEventRequestHandler controlEventRequestHandler,
                                             ControlEventResponseFrameSink controlEventResponseFrameSink) {
         return new DispatcherContext(
                 transporter,
@@ -177,7 +198,7 @@ class GatewayInputProcessorTest {
                 codec,
                 taskResultIngestChannel,
                 NoopWorkerSystemEventChannel.INSTANCE,
-                controlEventRequestFrameBridge,
+                controlEventRequestHandler,
                 controlEventResponseFrameSink
         );
     }
@@ -187,6 +208,18 @@ class GatewayInputProcessorTest {
         JsonObject frame = taskFrame("TASK", "step", false, "proj", payload);
         frame.getAsJsonObject("context").addProperty("taskId", taskId);
         frame.addProperty("msgId", msgId);
+        return codec.getGson().toJson(frame);
+    }
+
+    private String canonicalTaskResultFrame(String taskId, String messageId, boolean success, String detail) {
+        JsonObject frame = new JsonObject();
+        frame.addProperty("messageId", messageId);
+        frame.addProperty("workerId", "worker-1");
+        frame.addProperty("project", "proj");
+        frame.addProperty("taskId", taskId);
+        frame.addProperty("success", success);
+        frame.addProperty("detail", detail);
+        frame.add("output", payload("status", success ? "SUCCESS" : "FAILED", "mockData", detail));
         return codec.getGson().toJson(frame);
     }
 

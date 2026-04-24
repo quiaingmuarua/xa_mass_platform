@@ -1,8 +1,6 @@
 package com.xa.mass.mock.starter;
 
 import com.xa.mass.base.model.Worker;
-import com.google.gson.Gson;
-import com.google.gson.JsonObject;
 import com.xa.mass.mock.client.ClientSessionManager;
 import com.xa.mass.mock.client.MockWorkerClient;
 import com.xa.mass.mock.client.MockWorkerWebSocketClient;
@@ -26,7 +24,6 @@ import java.net.URI;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
-import java.util.Random;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -38,8 +35,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class WebSocketClientStarter {
 
     private static final Logger log = LoggerFactory.getLogger(WebSocketClientStarter.class);
-    private static final Gson GSON = new Gson();
-
     @Autowired
     private MockConfig mockConfig;
 
@@ -58,12 +53,6 @@ public class WebSocketClientStarter {
     @Value("${mock.client.max-pool-size:20}")
     private int maxPoolSize;
 
-    @Value("${mock.client.ping-interval:10}")
-    private int pingInterval;
-
-    @Value("${mock.client.ping-delay:5}")
-    private int pingDelay;
-
     @Value("${mock.client.retry-attempts:3}")
     private int retryAttempts;
 
@@ -75,7 +64,6 @@ public class WebSocketClientStarter {
 
     private final AtomicBoolean started = new AtomicBoolean(false);
     private ExecutorService clientExecutor;
-    private ScheduledExecutorService pingScheduler;
     private volatile boolean isShuttingDown = false;
 
     @EventListener(ApplicationReadyEvent.class)
@@ -112,7 +100,6 @@ public class WebSocketClientStarter {
 
             clientExecutor = Executors.newFixedThreadPool(Math.min(workers.size(), maxPoolSize));
             establishConnections(workers, baseUri);
-            startPingTask();
 
             log.info("Mock WebSocket clients started, active connections: {}",
                     clientSessionManager.getClientCount());
@@ -219,56 +206,6 @@ public class WebSocketClientStarter {
         log.error("Worker {} failed after {} retries", workerId, retryAttempts);
     }
 
-    /**
-     * Starts the periodic client heartbeat.
-     */
-    protected void startPingTask() {
-        if (pingScheduler == null) {
-            pingScheduler = Executors.newSingleThreadScheduledExecutor(r -> {
-                Thread t = new Thread(r, "client-ping-scheduler");
-                t.setDaemon(true);
-                return t;
-            });
-
-            pingScheduler.scheduleAtFixedRate(this::sendRandomPing, pingDelay, pingInterval, TimeUnit.SECONDS);
-            log.info("Mock client heartbeat started, interval={}s", pingInterval);
-        }
-    }
-
-    /**
-     * Sends a ping from a random connected client to keep sessions warm.
-     */
-    private void sendRandomPing() {
-        if (isShuttingDown) {
-            return;
-        }
-
-        Collection<MockWorkerClient> clients = clientSessionManager.getAllClients();
-        if (clients.isEmpty()) {
-            log.debug("No active mock client connections");
-            return;
-        }
-
-        List<MockWorkerClient> clientList = new ArrayList<>(clients);
-        MockWorkerClient client = clientList.get(new Random().nextInt(clientList.size()));
-
-        try {
-            JsonObject ping = new JsonObject();
-            ping.addProperty("msgId", "ping-" + client.getWorkerId() + "-" + System.currentTimeMillis());
-            ping.addProperty("msgType", "PING");
-            ping.addProperty("from", "CLIENT");
-            ping.addProperty("subMsgType", "heartbeat");
-            JsonObject ctx = new JsonObject();
-            ctx.addProperty("workerId", client.getWorkerId());
-            ping.add("context", ctx);
-            client.sendMessage(GSON.toJson(ping));
-            log.debug("[{}] heartbeat sent", client.getWorkerId());
-        } catch (Exception e) {
-            log.warn("[{}] heartbeat failed: {}", client.getWorkerId(), e.getMessage());
-            clientSessionManager.removeClient(client.getWorkerId());
-        }
-    }
-
     public String getConnectionStats() {
         int totalClients = clientSessionManager.getClientCount();
         return String.format("Active connections: %d", totalClients);
@@ -301,18 +238,6 @@ public class WebSocketClientStarter {
                 }
             } catch (InterruptedException e) {
                 clientExecutor.shutdownNow();
-                Thread.currentThread().interrupt();
-            }
-        }
-
-        if (pingScheduler != null) {
-            pingScheduler.shutdown();
-            try {
-                if (!pingScheduler.awaitTermination(5, TimeUnit.SECONDS)) {
-                    pingScheduler.shutdownNow();
-                }
-            } catch (InterruptedException e) {
-                pingScheduler.shutdownNow();
                 Thread.currentThread().interrupt();
             }
         }

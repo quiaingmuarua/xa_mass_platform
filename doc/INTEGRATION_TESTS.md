@@ -1,6 +1,6 @@
 # Integration Test Guide
 
-Last updated: 2026-04-23
+Last updated: 2026-04-24
 
 This file is the active map of the integration-test layer in `xa-mass-dev-app`. It exists to answer four questions quickly:
 
@@ -138,6 +138,7 @@ Assignment and capacity:
 - `TaskApiMultiTaskAssignmentIntegrationTest`
 - `TaskApiMinimumWorkerGateIntegrationTest`
 - `TaskApiMultiRoundDispatchIntegrationTest`
+- `NodeWebSocketWorkerBlackBoxIntegrationTest`
 - `TaskApiSingleWorkerReuseIntegrationTest`
 - `TaskApiTerminateReuseIntegrationTest`
 - `TaskApiWorkerContextAttributeRoutingIntegrationTest`
@@ -188,6 +189,8 @@ Important support coverage outside the E2E package:
 - worker-context attribute routing works end to end
 - stateless workers can run tasks that do not require worker-context routing
 - SDK-created pull workers start offline, become online through `pullWorker(...).connect()`, poll work, submit output, and disconnect back offline
+- an external non-JVM WebSocket worker can come online through handshake identity and complete task work through the public HTTP + WebSocket boundaries without using the in-JVM mock worker client
+- that external worker can write results back through the canonical task-result frame even though current WebSocket dispatch still arrives as the adapter-local `TASK/step` compatibility shell
 - the same worker slot can be reused after normal completion and manual termination
 - `minRequiredWorkerCount` is a real `READY -> RUNNING` gate
 - multi-round refill works when `batchSize` is lower than total work-item count

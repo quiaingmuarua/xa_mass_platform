@@ -42,7 +42,7 @@ public class MockWorkerWebSocketClient extends WebSocketClient implements MockWo
     }
 
     public MockWorkerWebSocketClient(URI serverUri, String workerId, String taskResultStatus) {
-        super(serverUri);
+        super(withWorkerId(serverUri, workerId));
         this.workerId = workerId;
         this.taskResultStatus = normalizeConfiguredTaskResultStatus(taskResultStatus);
         this.reconnectScheduler = Executors.newSingleThreadScheduledExecutor(r -> {
@@ -72,8 +72,6 @@ public class MockWorkerWebSocketClient extends WebSocketClient implements MockWo
         logger.info("[{}] Connected to server: {}", workerId, handshakedata.getHttpStatusMessage());
         reconnectAttempts.set(0);
         intentionalClose = false;
-        send(buildHeartbeatPingJson());
-        logger.debug("[{}] Sent PING message", workerId);
     }
 
     @Override
@@ -96,7 +94,6 @@ public class MockWorkerWebSocketClient extends WebSocketClient implements MockWo
             }
             switch (msgType) {
                 case "TASK" -> handleTaskMessage(frame);
-                case "PONG" -> logger.debug("[{}] Pong received", workerId);
                 default -> logger.warn("[{}] Unhandled msgType: {}", workerId, msgType);
             }
         } catch (Exception e) {
@@ -301,18 +298,6 @@ public class MockWorkerWebSocketClient extends WebSocketClient implements MockWo
         send(message);
     }
 
-    private String buildHeartbeatPingJson() {
-        JsonObject ping = new JsonObject();
-        ping.addProperty("msgId", "ping-" + workerId + "-" + System.currentTimeMillis());
-        ping.addProperty("msgType", "PING");
-        ping.addProperty("from", "CLIENT");
-        ping.addProperty("subMsgType", "heartbeat");
-        JsonObject ctx = new JsonObject();
-        ctx.addProperty("workerId", workerId);
-        ping.add("context", ctx);
-        return gson.toJson(ping);
-    }
-
     private boolean isControlFrame(JsonObject frame) {
         return readString(frame, WorkerControlEventProtocol.EVENT_CODE_FIELD) != null;
     }
@@ -334,5 +319,30 @@ public class MockWorkerWebSocketClient extends WebSocketClient implements MockWo
         }
         String normalized = taskResultStatus.trim().toUpperCase();
         return "FAILED".equals(normalized) ? "FAILED" : "SUCCESS";
+    }
+
+    private static URI withWorkerId(URI serverUri, String workerId) {
+        if (serverUri == null) {
+            throw new IllegalArgumentException("serverUri must not be null");
+        }
+        if (workerId == null || workerId.isBlank()) {
+            throw new IllegalArgumentException("workerId must not be blank");
+        }
+        String existingQuery = serverUri.getRawQuery();
+        String workerQuery = "workerId=" + workerId.trim();
+        String mergedQuery = (existingQuery == null || existingQuery.isBlank())
+                ? workerQuery
+                : existingQuery + "&" + workerQuery;
+        try {
+            return new URI(
+                    serverUri.getScheme(),
+                    serverUri.getRawAuthority(),
+                    serverUri.getRawPath(),
+                    mergedQuery,
+                    serverUri.getRawFragment()
+            );
+        } catch (Exception ex) {
+            throw new IllegalArgumentException("Failed to append workerId to serverUri", ex);
+        }
     }
 }

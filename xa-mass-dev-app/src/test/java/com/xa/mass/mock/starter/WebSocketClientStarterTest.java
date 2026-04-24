@@ -45,7 +45,6 @@ class WebSocketClientStarterTest {
         starter.onApplicationReady(null);
 
         assertEquals(1, starter.establishInvocations);
-        assertEquals(1, starter.pingInvocations);
         assertEquals("ws://localhost:18088/ws", starter.baseUriUsed);
         starter.shutdown();
     }
@@ -62,7 +61,6 @@ class WebSocketClientStarterTest {
         starter.onApplicationReady(null);
 
         assertEquals(0, starter.establishInvocations);
-        assertEquals(0, starter.pingInvocations);
         assertNull(starter.baseUriUsed);
         starter.shutdown();
     }
@@ -86,7 +84,6 @@ class WebSocketClientStarterTest {
     private static class TestWebSocketClientStarter extends WebSocketClientStarter {
         private final List<Worker> workers;
         private int establishInvocations;
-        private int pingInvocations;
         private String baseUriUsed;
 
         private TestWebSocketClientStarter(List<Worker> workers) {
@@ -102,11 +99,6 @@ class WebSocketClientStarterTest {
         protected void establishConnections(List<Worker> workers, String baseUri) {
             establishInvocations++;
             baseUriUsed = baseUri;
-        }
-
-        @Override
-        protected void startPingTask() {
-            pingInvocations++;
         }
     }
 

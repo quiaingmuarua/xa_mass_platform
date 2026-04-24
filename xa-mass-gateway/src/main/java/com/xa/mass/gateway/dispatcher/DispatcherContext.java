@@ -2,7 +2,7 @@ package com.xa.mass.gateway.dispatcher;
 
 import com.xa.mass.base.channel.tranporter.MessageTransporter;
 import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
-import com.xa.mass.gateway.dispatcher.port.ControlEventRequestFrameBridge;
+import com.xa.mass.gateway.dispatcher.port.ControlEventRequestHandler;
 import com.xa.mass.gateway.dispatcher.port.ControlEventResponseFrameSink;
 import com.xa.mass.gateway.queue.OutboundDelivery;
 import com.xa.mass.gateway.queue.WebSocketGatewayFrameCodec;
@@ -19,7 +19,7 @@ public class DispatcherContext implements DispatchRuntimeContext {
     private final WebSocketGatewayFrameCodec frameCodec;
     private final TaskResultIngestChannel taskResultIngestChannel;
     private final WorkerSystemEventChannel systemEventChannel;
-    private final ControlEventRequestFrameBridge controlEventRequestFrameBridge;
+    private final ControlEventRequestHandler controlEventRequestHandler;
     private final ControlEventResponseFrameSink controlEventResponseFrameSink;
 
     public DispatcherContext(MessageTransporter<String, OutboundDelivery> messageTransporter,
@@ -27,14 +27,14 @@ public class DispatcherContext implements DispatchRuntimeContext {
                              WebSocketGatewayFrameCodec frameCodec,
                              TaskResultIngestChannel taskResultIngestChannel,
                              WorkerSystemEventChannel systemEventChannel,
-                             ControlEventRequestFrameBridge controlEventRequestFrameBridge,
+                             ControlEventRequestHandler controlEventRequestHandler,
                              ControlEventResponseFrameSink controlEventResponseFrameSink) {
         this.messageTransporter = messageTransporter;
         this.endpointRegistry = endpointRegistry;
         this.frameCodec = frameCodec;
         this.taskResultIngestChannel = taskResultIngestChannel;
         this.systemEventChannel = systemEventChannel;
-        this.controlEventRequestFrameBridge = controlEventRequestFrameBridge;
+        this.controlEventRequestHandler = controlEventRequestHandler;
         this.controlEventResponseFrameSink = controlEventResponseFrameSink;
     }
 
@@ -64,8 +64,8 @@ public class DispatcherContext implements DispatchRuntimeContext {
     }
 
     @Override
-    public ControlEventRequestFrameBridge getControlEventRequestFrameBridge() {
-        return controlEventRequestFrameBridge;
+    public ControlEventRequestHandler getControlEventRequestHandler() {
+        return controlEventRequestHandler;
     }
 
     @Override

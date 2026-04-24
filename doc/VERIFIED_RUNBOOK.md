@@ -1,6 +1,6 @@
 # XA Mass Platform Verified Runbook
 
-Last updated: 2026-04-22
+Last updated: 2026-04-24
 
 This runbook records verified runtime facts only. It is not an architecture essay, API reference, or changelog.
 
@@ -133,7 +133,9 @@ Assignment and dispatch:
 
 Result write-back and closure:
 
-- Current WebSocket workers receive `TASK/step` and return `TASK/step` result frames.
+- Current WebSocket workers establish identity at handshake time.
+- Current WebSocket dispatch still uses the adapter-local `TASK/step` compatibility shell.
+- Result write-back can arrive either through the historical `TASK/step` response shell or through the canonical task-result frame; the external Node black-box acceptance gate uses the canonical result path.
 - Pull-style workers can fetch `TaskDispatchItem` work from the polling channel and submit the same logical result semantics without server push.
 - `RuntimeTaskResultIngestChannel` writes results through `TaskManager.handleTaskMessageResult(...)`.
 - callbacks must resolve a unique active `TaskMsgAttempt`; legacy attempt synthesis is not part of the current path.

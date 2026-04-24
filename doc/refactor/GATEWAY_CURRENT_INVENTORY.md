@@ -74,11 +74,11 @@ It is a migration aid, not a compatibility promise.
 - `Migration phase`: keep without expanding platform semantics
 - `Related tests`: `GatewayInputProcessorTest`, `GatewayTaskMsgPublisherTest`, `RuntimeTaskResultIngestChannelTest`
 
-## 7. Task / Heartbeat Shell Detection
+## 7. Task Shell Detection
 
 - `Class`: `com.xa.mass.gateway.queue.WebSocketGatewayFrameCodec`, `com.xa.mass.gateway.dispatcher.GatewayInputProcessor`
-- `Method`: `isTaskStep(...)`, `isHeartbeatPing(...)`, `isHeartbeatPong(...)`, `encodeHeartbeatPong(...)`
-- `Current responsibility`: recognizes the remaining WebSocket task/heartbeat transport shells directly inside the codec and input processor without keeping a separate tuple-router model
+- `Method`: `isTaskStep(...)`
+- `Current responsibility`: recognizes the remaining WebSocket task transport shell directly inside the codec and input processor without keeping a separate tuple-router model
 - `Should stay in gateway?`: yes
 - `Target owner`: `xa-mass-gateway`
 - `Migration phase`: keep narrow; do not add new platform capability identities here
@@ -88,7 +88,7 @@ It is a migration aid, not a compatibility promise.
 
 - `Class`: `com.xa.mass.gateway.dispatcher.GatewayInputProcessor`, `com.xa.mass.gateway.dispatcher.GatewayOutputProcessor`
 - `Method`: `process(...)`
-- `Current responsibility`: turns raw JSON into canonical seam calls, routes task results through `TaskResultReport -> TaskResultIngestChannel`, invokes control bridges, encodes replies, and reports transport delivery failure
+- `Current responsibility`: turns raw JSON into canonical seam calls, routes task results through `TaskResultReport -> TaskResultIngestChannel`, invokes control-event handlers, encodes replies, and reports transport delivery failure
 - `Should stay in gateway?`: yes
 - `Target owner`: `xa-mass-gateway`
 - `Migration phase`: keep as explicit adapter processors, not as a generic middleware framework; runtime result-ingest ownership stays above transport binding
@@ -126,12 +126,12 @@ It is a migration aid, not a compatibility promise.
 
 ## 12. Control Event Request Port
 
-- `Type`: `com.xa.mass.gateway.dispatcher.port.ControlEventRequestFrameBridge`
+- `Type`: `com.xa.mass.gateway.dispatcher.port.ControlEventRequestHandler`
 - `Method`: `handleControlEventRequest(...)`
 - `Current responsibility`: names the single gateway adapter port that hands root-level event-first control requests into the global event runtime
 - `Should stay in gateway?`: yes
 - `Target owner`: `xa-mass-gateway`
-- `Migration phase`: keep as a narrow event-first port, but avoid extra pass-through bridge classes
+- `Migration phase`: keep as a narrow event-first port, but avoid extra pass-through bridge classes or late-bound setter wiring
 - `Related tests`: `GatewayInputProcessorTest`
 
 ## 13. Minimal Outbound Delivery Record
@@ -155,6 +155,6 @@ These platform concerns are not owned by current `xa-mass-gateway` mainline code
 - global capability identity beyond transport diagnostics
 - submitter/client permission
 - business event execution
-- generic handler-routing runtime models beyond the current raw JSON frame path and narrow control-event bridge types
+- generic handler-routing runtime models beyond the current raw JSON frame path and narrow control-event handler types
 
-That is the current baseline: gateway is now primarily an adapter over raw JSON, single-endpoint session reachability, direct task/heartbeat shell handling, and narrow event-first control bridges. Global capability identity remains `eventCode`, not transport tuple fields.
+That is the current baseline: gateway is now primarily an adapter over raw JSON, single-endpoint session reachability, handshake-based worker identity, direct task shell handling, and narrow event-first control handlers. Global capability identity remains `eventCode`, not transport tuple fields.

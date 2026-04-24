@@ -98,7 +98,7 @@ Forbidden in `xa-mass-gateway`:
 - platform audit truth
 - worker matching decisions
 
-Tuple frame routing such as `TASK/step` is adapter compatibility only. Control traffic uses root-level event-first frames, and new platform capabilities must not be introduced by new gateway tuple identities.
+Tuple frame routing such as `TASK/step` is adapter compatibility only. Control traffic uses root-level event-first frames, and new platform capabilities must not be introduced by new gateway tuple identities. WebSocket worker identity should come from handshake/session facts rather than an application heartbeat frame.
 
 ## 5. Transport-Neutral Contract
 
@@ -199,15 +199,15 @@ Engine/runtime decides eligibility.
 
 Rules:
 
-- construct the gateway message codec and explicit bridge ports before starting the adapter
+- construct the gateway message codec and explicit control-event handler/sink ports before starting the adapter
 - resolve the gateway `endpointRegistry` once during runtime assembly and pass that exact instance into both dispatcher wiring and transport-server creation
 - route inbound task-result transport shells into the canonical `TaskResultReport -> TaskResultIngestChannel` seam
 - keep `TaskResultIngestChannel` as a runtime-level seam; do not model it as worker transport binding ownership
 - resolve `WorkerSystemEventChannel` from gateway runtime assembly, not from transport binding ownership
 - keep adapter-specific endpoint bootstrap inside the gateway adapter module; SDK runtime config must not hardcode session-manager implementation branching
 - keep default transport-server bootstrap inside the gateway adapter module; SDK `transportServerFactory(...)` is an advanced override seam, not the mainline startup path
-- `MassApplication.configureGatewayRuntime(...)` is the pre-start wiring seam for gateway-local bridge ports; deprecated late setters are compatibility only
-- resolve transport-contributed bridge ports during runtime assembly, then inject them once
+- `MassApplication.configureGatewayRuntime(...)` is the pre-start wiring seam for gateway-local control-event ports
+- resolve transport-contributed control-event ports during runtime assembly, then inject them once
 - do not grow post-construction `setHandler(...)` or `registerRoute(...)` seams on gateway runtime context
 - if a new adapter path needs another port, add an explicit field or constructor dependency instead of a late-bound generic registry
 

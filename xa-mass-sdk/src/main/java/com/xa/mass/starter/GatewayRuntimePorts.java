@@ -1,6 +1,6 @@
 package com.xa.mass.starter;
 
-import com.xa.mass.gateway.dispatcher.port.ControlEventRequestFrameBridge;
+import com.xa.mass.gateway.dispatcher.port.ControlEventRequestHandler;
 import com.xa.mass.gateway.dispatcher.port.ControlEventResponseFrameSink;
 
 /**
@@ -11,7 +11,7 @@ import com.xa.mass.gateway.dispatcher.port.ControlEventResponseFrameSink;
  * post-start registration surface.
  */
 public record GatewayRuntimePorts(
-        ControlEventRequestFrameBridge controlEventRequestFrameBridge,
+        ControlEventRequestHandler controlEventRequestHandler,
         ControlEventResponseFrameSink controlEventResponseFrameSink
 ) {
 
@@ -19,15 +19,15 @@ public record GatewayRuntimePorts(
         return new GatewayRuntimePorts(null, new WorkerControlEventResponseHandler());
     }
 
-    public GatewayRuntimePorts withControlEventRequestFrameBridge(
-            ControlEventRequestFrameBridge controlEventRequestFrameBridge
+    public GatewayRuntimePorts withControlEventRequestHandler(
+            ControlEventRequestHandler controlEventRequestHandler
     ) {
-        return new GatewayRuntimePorts(controlEventRequestFrameBridge, controlEventResponseFrameSink);
+        return new GatewayRuntimePorts(controlEventRequestHandler, controlEventResponseFrameSink);
     }
 
     public GatewayRuntimePorts withControlEventResponseFrameSink(
             ControlEventResponseFrameSink controlEventResponseFrameSink
     ) {
-        return new GatewayRuntimePorts(controlEventRequestFrameBridge, controlEventResponseFrameSink);
+        return new GatewayRuntimePorts(controlEventRequestHandler, controlEventResponseFrameSink);
     }
 }

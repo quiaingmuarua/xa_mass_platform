@@ -1,0 +1,10 @@
+[
+  {
+    "workerContextId": "ctx-node-realtime-worker-001",
+    "workerId": "node-realtime-worker-001",
+    "routingTags": ["us"],
+    "attributes": {
+      "runtime": "node-websocket-worker"
+    }
+  }
+]

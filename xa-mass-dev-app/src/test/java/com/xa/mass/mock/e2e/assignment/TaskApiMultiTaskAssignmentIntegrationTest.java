@@ -81,14 +81,8 @@ class TaskApiMultiTaskAssignmentIntegrationTest extends AbstractMockE2eTest {
             String secondWorkerId = String.valueOf(secondRunning.messages().get(0).get("latestAttemptWorkerId"));
             assertEquals(Set.of("it-worker-0", "it-worker-1"), Set.of(firstWorkerId, secondWorkerId));
 
-            AckSnapshot firstAck = firstClient.sendSuccess(firstDispatch, "multi-task-a-ok");
-            AckSnapshot secondAck = secondClient.sendSuccess(secondDispatch, "multi-task-b-ok");
-            assertNotNull(firstAck);
-            assertNotNull(secondAck);
-            assertEquals(200, firstAck.code());
-            assertEquals(200, secondAck.code());
-            assertEquals("task result processed", firstAck.message());
-            assertEquals("task result processed", secondAck.message());
+            firstClient.sendSuccess(firstDispatch, "multi-task-a-ok");
+            secondClient.sendSuccess(secondDispatch, "multi-task-b-ok");
 
             TaskSnapshot firstTerminal = waitForTerminalTask(firstTaskId);
             TaskSnapshot secondTerminal = waitForTerminalTask(secondTaskId);
@@ -128,12 +122,8 @@ class TaskApiMultiTaskAssignmentIntegrationTest extends AbstractMockE2eTest {
         registerSdkWorkerWithContext(workerId, "us");
     }
 
-    private record AckSnapshot(String msgId, int code, String message) {
-    }
-
     private static final class ManualAckWebSocketClient extends MockWorkerWebSocketClient {
         private final BlockingQueue<JsonObject> taskQueue = new LinkedBlockingQueue<>();
-        private final BlockingQueue<AckSnapshot> ackQueue = new LinkedBlockingQueue<>();
 
         private ManualAckWebSocketClient(URI serverUri, String workerId) {
             super(serverUri, workerId);
@@ -143,16 +133,8 @@ class TaskApiMultiTaskAssignmentIntegrationTest extends AbstractMockE2eTest {
         public void onMessage(String message) {
             try {
                 JsonObject frame = WsFrameTestSupport.parse(message);
-                if (frame != null && WsFrameTestSupport.isTask(frame)) {
-                    if (WsFrameTestSupport.isResponse(frame)) {
-                        ackQueue.offer(new AckSnapshot(
-                                WsFrameTestSupport.msgId(frame),
-                                WsFrameTestSupport.ackCode(frame),
-                                WsFrameTestSupport.ackMessage(frame)
-                        ));
-                    } else {
-                        taskQueue.offer(frame);
-                    }
+                if (frame != null && WsFrameTestSupport.isTask(frame) && !WsFrameTestSupport.isResponse(frame)) {
+                    taskQueue.offer(frame);
                     return;
                 }
             } catch (Exception ignored) {
@@ -165,7 +147,7 @@ class TaskApiMultiTaskAssignmentIntegrationTest extends AbstractMockE2eTest {
             return taskQueue.poll(timeout, unit);
         }
 
-        private AckSnapshot sendSuccess(JsonObject taskMessage, String detail) throws Exception {
+        private void sendSuccess(JsonObject taskMessage, String detail) throws Exception {
             sendMessage(WsFrameTestSupport.buildTaskResult(
                     WsFrameTestSupport.msgId(taskMessage),
                     WsFrameTestSupport.project(taskMessage),
@@ -174,7 +156,6 @@ class TaskApiMultiTaskAssignmentIntegrationTest extends AbstractMockE2eTest {
                     "SUCCESS",
                     detail
             ));
-            return ackQueue.poll(3, TimeUnit.SECONDS);
         }
     }
 }

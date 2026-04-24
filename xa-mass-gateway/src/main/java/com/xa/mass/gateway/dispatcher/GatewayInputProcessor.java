@@ -17,8 +17,8 @@ import org.slf4j.LoggerFactory;
 import java.util.Objects;
 
 /**
- * Inbound processor for current WebSocket transport shells plus event-first
- * control frames.
+ * Inbound processor for current WebSocket task shells plus event-first control
+ * frames.
  */
 public final class GatewayInputProcessor {
     private static final Logger logger = LoggerFactory.getLogger(GatewayInputProcessor.class);
@@ -43,11 +43,8 @@ public final class GatewayInputProcessor {
             if (context.getFrameCodec().isEventFirstControlRequest(frame)) {
                 return processControlEventRequest(frame, workerId, traceId);
             }
-            if (context.getFrameCodec().isHeartbeatPing(frame)) {
-                return processHeartbeatPing(frame, workerId, traceId);
-            }
-            if (context.getFrameCodec().isHeartbeatPong(frame)) {
-                return processHeartbeatPong(frame);
+            if (context.getFrameCodec().isCanonicalTaskResult(frame)) {
+                return processCanonicalTaskResult(frame);
             }
             if (context.getFrameCodec().isTaskStep(frame)) {
                 return processTaskStep(frame, workerId, traceId);
@@ -59,29 +56,11 @@ public final class GatewayInputProcessor {
         }
     }
 
-    private boolean processHeartbeatPing(JsonObject frame, String workerId, String traceId) {
-        if (context.getSystemEventChannel() != null) {
-            context.getSystemEventChannel().publishWorkerHeartbeat(workerId, "heartbeat",
-                    context.getFrameCodec().extractMessageId(frame));
-        }
-        context.getMessageTransporter().sendOutput(new OutboundDelivery(
-                workerId,
-                context.getFrameCodec().encodeHeartbeatPong(frame),
-                traceId
-        ));
-        return true;
-    }
-
-    private boolean processHeartbeatPong(JsonObject frame) {
-        logger.debug("Received pong from {}", context.getFrameCodec().extractWorkerId(frame));
-        return true;
-    }
-
     private boolean processTaskStep(JsonObject frame, String workerId, String traceId) {
         if (context.getTaskResultIngestChannel() == null) {
             context.getMessageTransporter().sendOutput(new OutboundDelivery(
                     workerId,
-                    context.getFrameCodec().encodeTaskAck(frame, 503, "task step bridge unavailable"),
+                    context.getFrameCodec().encodeTaskAck(frame, 503, "task result ingest unavailable"),
                     traceId
             ));
             return true;
@@ -106,18 +85,32 @@ public final class GatewayInputProcessor {
         return true;
     }
 
+    private boolean processCanonicalTaskResult(JsonObject frame) {
+        if (context.getTaskResultIngestChannel() == null) {
+            logger.warn("Canonical task result ignored because task result ingest channel is unavailable");
+            return true;
+        }
+        try {
+            TaskResultReport report = context.getFrameCodec().decodeCanonicalTaskResult(frame);
+            context.getTaskResultIngestChannel().ingest(report);
+        } catch (IllegalArgumentException ex) {
+            logger.warn("Canonical task result rejected: {}", ex.getMessage());
+        }
+        return true;
+    }
+
     private boolean processControlEventRequest(JsonObject frame, String workerId, String traceId) {
         EventRequest request = context.getFrameCodec().decodeControlEventRequest(frame);
         EventResponse response;
-        if (context.getControlEventRequestFrameBridge() == null) {
+        if (context.getControlEventRequestHandler() == null) {
             response = EventResponse.failure(
                     "CONTROL_EVENT_UNAVAILABLE",
-                    "control event bridge unavailable",
+                    "control event handler unavailable",
                     request.getRequestId()
             );
         } else {
             EventPrincipal principal = context.getFrameCodec().decodeControlEventPrincipal(frame);
-            response = context.getControlEventRequestFrameBridge()
+            response = context.getControlEventRequestHandler()
                     .handleControlEventRequest(request, principal);
         }
         context.getMessageTransporter().sendOutput(new OutboundDelivery(
@@ -142,7 +135,7 @@ public final class GatewayInputProcessor {
     }
 
     private boolean processUnknownFrame() {
-        logger.warn("No task-shell or heartbeat handler found for inbound adapter frame");
+        logger.warn("No task-shell or control handler found for inbound adapter frame");
         return true;
     }
 

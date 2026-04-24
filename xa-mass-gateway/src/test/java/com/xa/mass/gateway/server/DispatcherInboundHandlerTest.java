@@ -9,7 +9,9 @@ import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelId;
 import io.netty.channel.ChannelInboundHandlerAdapter;
+import io.netty.handler.codec.http.DefaultHttpHeaders;
 import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;
+import io.netty.handler.codec.http.websocketx.WebSocketServerProtocolHandler;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -78,7 +80,7 @@ class DispatcherInboundHandlerTest {
 
     @Test
     void missingWorkerIdOrMessageIdSendsMissingFieldsError() throws Exception {
-        handler.channelRead0(ctx, frame("{\"msgType\":\"PING\"}"));
+        handler.channelRead0(ctx, frame("{\"eventCode\":\"mock.state.get\"}"));
 
         String sent = sentFrame.get();
         assertNotNull(sent);
@@ -86,52 +88,55 @@ class DispatcherInboundHandlerTest {
     }
 
     @Test
-    void validHeartbeatMessageIsEnqueuedWithoutError() throws Exception {
-        String validJson = """
-                {
-                  "msgId": "msg-001",
-                  "msgType": "PING",
-                  "subMsgType": "heartbeat",
-                  "project": "demoApp",
-                  "context": {
-                    "workerId": "worker-1"
-                  }
-                }
-                """;
-        handler.channelRead0(ctx, frame(validJson));
+    void handshakeWithWorkerIdRegistersSessionBeforeTextFramesArrive() throws Exception {
+        handler.userEventTriggered(ctx, new WebSocketServerProtocolHandler.HandshakeComplete(
+                "/ws?workerId=worker-1",
+                new DefaultHttpHeaders(),
+                null
+        ));
 
-        assertNull(sentFrame.get());
-        verify(transporter).sendInput(validJson);
+        assertEquals(1, sessionManager.getWorkerConnectionCount());
+        assertNotNull(sessionManager.getChannelContext("worker-1"));
     }
 
     @Test
-    void heartbeatWithoutProjectStillRegistersSession() throws Exception {
-        String heartbeatJson = """
+    void messageWithoutInlineWorkerIdUsesHandshakeRegisteredWorkerId() throws Exception {
+        handler.userEventTriggered(ctx, new WebSocketServerProtocolHandler.HandshakeComplete(
+                "/ws?workerId=worker-1",
+                new DefaultHttpHeaders(),
+                null
+        ));
+        String controlJson = """
                 {
-                  "msgId": "ping-001",
-                  "msgType": "PING",
-                  "subMsgType": "heartbeat",
-                  "context": {
-                    "workerId": "worker-1"
+                  "messageId": "ctrl-001",
+                  "response": false,
+                  "project": "demoApp",
+                  "eventCode": "mock.state.get",
+                  "requestId": "req-1",
+                  "payload": {
+                    "verbose": true
                   }
                 }
                 """;
-
-        handler.channelRead0(ctx, frame(heartbeatJson));
+        handler.channelRead0(ctx, frame(controlJson));
 
         assertNull(sentFrame.get());
-        verify(transporter).sendInput(heartbeatJson);
+        verify(transporter).sendInput(controlJson);
         assertEquals(1, sessionManager.getWorkerConnectionCount());
         assertNotNull(sessionManager.getChannelContext("worker-1"));
     }
 
     @Test
     void eventFirstControlFrameWithoutMsgTypeStillEnqueuesRawJson() throws Exception {
+        handler.userEventTriggered(ctx, new WebSocketServerProtocolHandler.HandshakeComplete(
+                "/ws?workerId=worker-1",
+                new DefaultHttpHeaders(),
+                null
+        ));
         String controlJson = """
                 {
                   "messageId": "ctrl-001",
                   "response": false,
-                  "workerId": "worker-1",
                   "project": "demoApp",
                   "eventCode": "mock.state.get",
                   "requestId": "req-1",
@@ -161,17 +166,18 @@ class DispatcherInboundHandlerTest {
 
     @Test
     void missingMessageIdSendsMissingFieldsError() throws Exception {
-        String heartbeatJson = """
+        handler.userEventTriggered(ctx, new WebSocketServerProtocolHandler.HandshakeComplete(
+                "/ws?workerId=worker-1",
+                new DefaultHttpHeaders(),
+                null
+        ));
+        String controlJson = """
                 {
-                  "msgType": "PING",
-                  "subMsgType": "heartbeat",
-                  "context": {
-                    "workerId": "worker-1"
-                  }
+                  "eventCode": "mock.state.get"
                 }
                 """;
 
-        handler.channelRead0(ctx, frame(heartbeatJson));
+        handler.channelRead0(ctx, frame(controlJson));
 
         String sent = sentFrame.get();
         assertNotNull(sent);
