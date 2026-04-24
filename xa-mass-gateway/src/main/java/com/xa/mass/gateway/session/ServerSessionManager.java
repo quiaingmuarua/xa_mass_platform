@@ -30,6 +30,7 @@ public class ServerSessionManager implements WorkerEndpointRegistry, WorkerEndpo
     private volatile WorkerSystemEventChannel systemEventChannel = new EventBusWorkerSystemEventChannel();
 
     public synchronized void addSession(String workerId, String connRole, Channel channel, ChannelHandlerContext ctx) {
+        boolean wasWorkerOnline = hasActiveChannel(workerId);
         Map<String, Channel> existingRoleMap = workerChannelMap.get(workerId);
         if (existingRoleMap != null) {
             Channel existingChannel = existingRoleMap.get(connRole);
@@ -39,7 +40,6 @@ public class ServerSessionManager implements WorkerEndpointRegistry, WorkerEndpo
             }
             if (existingChannel != null && existingChannel != channel) {
                 logger.warn("Existing channel for workerId={} role={} found, but new channel is different. Replacing session.", workerId, connRole);
-                removeSession(existingChannel);
             }
         }
 
@@ -55,16 +55,21 @@ public class ServerSessionManager implements WorkerEndpointRegistry, WorkerEndpo
 
         logger.info("Connected: workerId={} role={} channelId={} totalWorkers={}",
                 workerId, connRole, channel.id().asShortText(), workerChannelMap.size());
-        systemEventChannel.publishWorkerOnline(workerId, "websocket connected", null);
+        if (!wasWorkerOnline && hasActiveChannel(workerId)) {
+            systemEventChannel.publishWorkerOnline(workerId, "websocket connected", null);
+        }
     }
 
     public synchronized void removeSession(Channel channel) {
         WorkerConnKey key = channelIndex.remove(channel);
         if (key != null) {
+            boolean wasWorkerOnline = hasActiveChannel(key.getWorkerId());
             Map<String, Channel> roleMap = workerChannelMap.get(key.getWorkerId());
+            boolean removedRole = false;
             if (roleMap != null) {
                 if (channel.equals(roleMap.get(key.getConnRole()))) {
                     roleMap.remove(key.getConnRole());
+                    removedRole = true;
                 }
                 if (roleMap.isEmpty()) {
                     workerChannelMap.remove(key.getWorkerId());
@@ -73,8 +78,7 @@ public class ServerSessionManager implements WorkerEndpointRegistry, WorkerEndpo
 
             Map<String, ChannelHandlerContext> roleCtxMap = workerChannelCtxMap.get(key.getWorkerId());
             if (roleCtxMap != null) {
-                Channel remainingChannel = roleMap != null ? roleMap.get(key.getConnRole()) : null;
-                if (remainingChannel == null) {
+                if (removedRole) {
                     roleCtxMap.remove(key.getConnRole());
                 }
                 if (roleCtxMap.isEmpty()) {
@@ -84,7 +88,9 @@ public class ServerSessionManager implements WorkerEndpointRegistry, WorkerEndpo
 
             logger.info("Disconnected: workerId={} role={} channelId={}",
                     key.getWorkerId(), key.getConnRole(), channel.id().asShortText());
-            systemEventChannel.publishWorkerOffline(key.getWorkerId(), "websocket disconnected", null);
+            if (wasWorkerOnline && !hasActiveChannel(key.getWorkerId())) {
+                systemEventChannel.publishWorkerOffline(key.getWorkerId(), "websocket disconnected", null);
+            }
         } else {
             logger.warn("Attempted to remove session for a channel not in index: {}", channel.id().asShortText());
         }
@@ -191,6 +197,19 @@ public class ServerSessionManager implements WorkerEndpointRegistry, WorkerEndpo
 
     public void setSystemEventChannel(WorkerSystemEventChannel systemEventChannel) {
         this.systemEventChannel = systemEventChannel != null ? systemEventChannel : new EventBusWorkerSystemEventChannel();
+    }
+
+    private boolean hasActiveChannel(String workerId) {
+        Map<String, Channel> roleMap = workerChannelMap.get(workerId);
+        if (roleMap == null || roleMap.isEmpty()) {
+            return false;
+        }
+        for (Channel channel : roleMap.values()) {
+            if (channel != null && channel.isActive()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     @Override

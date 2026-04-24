@@ -21,6 +21,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
 
+import java.util.Objects;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -44,9 +45,21 @@ public class WebSocketServerImpl implements MassWebSocketServer {
     private ServerSessionManager sessionManager;
     private DispatchRuntimeContext dispatcherContext;
 
+    public WebSocketServerImpl() {
+    }
+
+    public WebSocketServerImpl(String websocketPath,
+                               DispatchRuntimeContext dispatcherContext,
+                               ServerSessionManager sessionManager) {
+        this.websocketPath = websocketPath;
+        this.dispatcherContext = dispatcherContext;
+        this.sessionManager = sessionManager;
+    }
+
     @Override
     public void start(int port) {
         MDC.clear();
+        validateConfiguration();
         this.port = port;
         this.running = true;
 
@@ -90,7 +103,7 @@ public class WebSocketServerImpl implements MassWebSocketServer {
                             true,
                             10000L));
                     pipeline.addLast(new ConnectionStatsHandler());
-                    pipeline.addLast(new DispatcherInboundHandler(dispatcherContext));
+                    pipeline.addLast(new DispatcherInboundHandler(dispatcherContext, sessionManager));
                 }
             });
 
@@ -105,9 +118,11 @@ public class WebSocketServerImpl implements MassWebSocketServer {
             logger.error("Server startup interrupted", e);
             Thread.currentThread().interrupt();
             stop();
+            throw new IllegalStateException("WebSocket server startup interrupted", e);
         } catch (Exception e) {
             logger.error("Unexpected error during server startup", e);
             stop();
+            throw new IllegalStateException("WebSocket server startup failed", e);
         }
     }
 
@@ -157,6 +172,14 @@ public class WebSocketServerImpl implements MassWebSocketServer {
 
     public void setSessionManager(ServerSessionManager sessionManager) {
         this.sessionManager = sessionManager;
+    }
+
+    private void validateConfiguration() {
+        if (websocketPath == null || websocketPath.isBlank()) {
+            throw new IllegalStateException("WebSocket server requires a non-blank websocketPath");
+        }
+        Objects.requireNonNull(dispatcherContext, "WebSocket server requires dispatcherContext");
+        Objects.requireNonNull(sessionManager, "WebSocket server requires sessionManager");
     }
 
     private class ConnectionStatsHandler extends ChannelInboundHandlerAdapter {

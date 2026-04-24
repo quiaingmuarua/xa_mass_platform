@@ -43,6 +43,7 @@ public class GatewayConfig {
 
     private WorkerSystemEventChannel customSystemEventChannel;
     private WorkerEndpointRegistry workerEndpointRegistry;
+    private transient ServerSessionManager runtimeOwnedWorkerEndpointRegistry;
     private TransportServerFactory<TransportServerFactoryContext> transportServerFactory;
     private WorkerTransportRuntimeFactory workerTransportRuntimeFactory;
 
@@ -64,6 +65,7 @@ public class GatewayConfig {
         this.messageCodec = source.messageCodec;
         this.customSystemEventChannel = source.customSystemEventChannel;
         this.workerEndpointRegistry = source.workerEndpointRegistry;
+        this.runtimeOwnedWorkerEndpointRegistry = null;
         this.transportServerFactory = source.transportServerFactory;
         this.workerTransportRuntimeFactory = source.workerTransportRuntimeFactory;
     }
@@ -217,7 +219,13 @@ public class GatewayConfig {
     }
 
     public WorkerEndpointRegistry resolveWorkerEndpointRegistry() {
-        return workerEndpointRegistry != null ? workerEndpointRegistry : ServerSessionManager.INSTANCE;
+        if (workerEndpointRegistry != null) {
+            return workerEndpointRegistry;
+        }
+        if (runtimeOwnedWorkerEndpointRegistry == null) {
+            runtimeOwnedWorkerEndpointRegistry = new ServerSessionManager();
+        }
+        return runtimeOwnedWorkerEndpointRegistry;
     }
 
     public WorkerSystemEventChannel resolveSystemEventChannel(WorkerEndpointRegistry endpointRegistry) {

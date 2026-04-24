@@ -114,6 +114,17 @@ class ProcessEnvelopeMiddlewareTest {
     }
 
     @Test
+    void taskStepWithoutBridgeReturnsExplicitUnavailableAck() {
+        inboundMiddleware.handle(taskStepFrame("task-1", "msg-1", "SUCCESS", "ok"), context);
+
+        ArgumentCaptor<OutboundDelivery> outputCaptor = ArgumentCaptor.forClass(OutboundDelivery.class);
+        verify(transporter).sendOutput(outputCaptor.capture());
+        JsonObject ack = codec.parseObject(outputCaptor.getValue().getRawJson());
+        assertEquals(503, ack.getAsJsonObject("payload").get("code").getAsInt());
+        assertEquals("task step bridge unavailable", ack.getAsJsonObject("payload").get("message").getAsString());
+    }
+
+    @Test
     void taskStepBridgeRejectsMalformedTaskReportWithBadRequestAck() {
         context = createContext(report -> true, null, null);
 
@@ -152,6 +163,19 @@ class ProcessEnvelopeMiddlewareTest {
         assertEquals("msg-1", messageId.get());
         assertEquals("mock.state.get", payload.get().get(WorkerControlEventProtocol.EVENT_FIELD).getAsString());
         verify(transporter, never()).sendOutput(any());
+    }
+
+    @Test
+    void controlEventRequestWithoutBridgeReturnsExplicitUnavailableResponse() {
+        inboundMiddleware.handle(controlEventRequest("proj", "mock.state.get"), context);
+
+        ArgumentCaptor<OutboundDelivery> outputCaptor = ArgumentCaptor.forClass(OutboundDelivery.class);
+        verify(transporter).sendOutput(outputCaptor.capture());
+        JsonObject response = codec.parseObject(outputCaptor.getValue().getRawJson());
+        assertEquals("CONTROL", response.get("msgType").getAsString());
+        assertEquals("CONTROL_EVENT_UNAVAILABLE", response.getAsJsonObject("payload").get("code").getAsString());
+        assertEquals("control event bridge unavailable", response.getAsJsonObject("payload").get("message").getAsString());
+        assertEquals("req-1", response.getAsJsonObject("payload").get("requestId").getAsString());
     }
 
     @Test

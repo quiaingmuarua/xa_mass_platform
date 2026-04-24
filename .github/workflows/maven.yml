@@ -28,11 +28,11 @@ jobs:
           distribution: "temurin"
           cache: maven
       - name: Build and run module tests
-        run: mvn -B test --file pom.xml
+        run: ./mvnw -B test --file pom.xml
       - name: Check xa-mass-sdk public API compatibility
         if: ${{ vars.XA_MASS_SDK_API_BASELINE_VERSION != '' }}
         run: >-
-          mvn -B -pl xa-mass-sdk -am
+          ./mvnw -q -pl xa-mass-sdk -am
           -DskipTests
           -Dmass.sdk.api.baselineVersion=${{ vars.XA_MASS_SDK_API_BASELINE_VERSION }}
           verify
@@ -59,7 +59,7 @@ jobs:
           cache: maven
       - name: Run focused dev-app lifecycle integration checks
         run: >-
-          mvn -B -pl xa-mass-dev-app -am
+          ./mvnw -q -pl xa-mass-dev-app -am
           -Dtest=TaskApiIntegrationTest,TaskApiFailureResultIntegrationTest,TaskApiLifecycleGuardsIntegrationTest,MassWebSocketClientImplTest,WebSocketClientStarterTest
           -Dsurefire.failIfNoSpecifiedTests=false
           test

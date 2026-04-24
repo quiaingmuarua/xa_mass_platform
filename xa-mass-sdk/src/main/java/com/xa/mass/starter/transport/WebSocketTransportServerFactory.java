@@ -12,13 +12,9 @@ public class WebSocketTransportServerFactory implements TransportServerFactory<T
 
     @Override
     public TransportServer create(TransportServerFactoryContext context) {
-        WebSocketServerImpl transportServer = new WebSocketServerImpl();
-        transportServer.setPort(context.getPort());
-        transportServer.setWebsocketPath(context.getEndpointPath());
-        transportServer.setDispatcherContext(context.getDispatcherContext());
-        if (context.getWorkerEndpointRegistry() instanceof ServerSessionManager sessionManager) {
-            transportServer.setSessionManager(sessionManager);
+        if (!(context.getWorkerEndpointRegistry() instanceof ServerSessionManager sessionManager)) {
+            throw new IllegalStateException("WebSocket transport requires ServerSessionManager endpoint registry");
         }
-        return transportServer;
+        return new WebSocketServerImpl(context.getEndpointPath(), context.getDispatcherContext(), sessionManager);
     }
 }

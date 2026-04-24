@@ -55,6 +55,12 @@ public class MiddlewareRegistry {
                     }
                     case TASK_STEP -> {
                         if (context.getTaskStepFrameBridge() == null) {
+                            context.getMessageTransporter().sendOutput(new OutboundDelivery(
+                                    workerId,
+                                    connRole,
+                                    context.getMessageCodec().encodeTaskAck(frame, 503, "task step bridge unavailable"),
+                                    traceId
+                            ));
                             yield true;
                         }
                         try {
@@ -79,13 +85,19 @@ public class MiddlewareRegistry {
                         yield true;
                     }
                     case CONTROL_EVENT_REQUEST -> {
-                        if (context.getControlEventRequestFrameBridge() == null) {
-                            yield true;
-                        }
                         EventRequest request = context.getMessageCodec().decodeControlEventRequest(frame);
-                        EventPrincipal principal = context.getMessageCodec().decodeControlEventPrincipal(frame);
-                        EventResponse response = context.getControlEventRequestFrameBridge()
-                                .handleControlEventRequest(request, principal);
+                        EventResponse response;
+                        if (context.getControlEventRequestFrameBridge() == null) {
+                            response = EventResponse.failure(
+                                    "CONTROL_EVENT_UNAVAILABLE",
+                                    "control event bridge unavailable",
+                                    request.getRequestId()
+                            );
+                        } else {
+                            EventPrincipal principal = context.getMessageCodec().decodeControlEventPrincipal(frame);
+                            response = context.getControlEventRequestFrameBridge()
+                                    .handleControlEventRequest(request, principal);
+                        }
                         context.getMessageTransporter().sendOutput(new OutboundDelivery(
                                 workerId,
                                 connRole,

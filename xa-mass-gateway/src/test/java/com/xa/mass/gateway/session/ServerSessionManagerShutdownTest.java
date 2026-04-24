@@ -1,5 +1,6 @@
 package com.xa.mass.gateway.session;
 
+import com.xa.mass.transport.channel.WorkerSystemEventChannel;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelId;
@@ -8,6 +9,8 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.*;
 
 class ServerSessionManagerShutdownTest {
@@ -42,6 +45,58 @@ class ServerSessionManagerShutdownTest {
     @Test
     void shutdownOnEmptyManagerIsIdempotent() {
         assertDoesNotThrow(() -> manager.shutdown());
+    }
+
+    @Test
+    void workerOnlineOfflineSignalsTrackWorkerLevelReachability() {
+        WorkerSystemEventChannel systemEventChannel = mock(WorkerSystemEventChannel.class);
+        manager.setSystemEventChannel(systemEventChannel);
+        Channel taskChannel = mockActiveChannel("task-1");
+        Channel controlChannel = mockActiveChannel("control-1");
+        ChannelHandlerContext taskCtx = mock(ChannelHandlerContext.class);
+        ChannelHandlerContext controlCtx = mock(ChannelHandlerContext.class);
+
+        manager.addSession("worker-1", SessionRoles.TASK_MESSAGES, taskChannel, taskCtx);
+        manager.addSession("worker-1", "control_events", controlChannel, controlCtx);
+
+        verify(systemEventChannel, times(1)).publishWorkerOnline("worker-1", "websocket connected", null);
+        assertTrue(manager.isWorkerOnline("worker-1", SessionRoles.TASK_MESSAGES));
+        assertTrue(manager.isWorkerOnline("worker-1", "control_events"));
+
+        manager.removeSession(taskChannel);
+
+        verify(systemEventChannel, never()).publishWorkerOffline("worker-1", "websocket disconnected", null);
+        assertFalse(manager.isWorkerOnline("worker-1", SessionRoles.TASK_MESSAGES));
+        assertTrue(manager.isWorkerOnline("worker-1", "control_events"));
+
+        manager.removeSession(controlChannel);
+
+        verify(systemEventChannel, times(1)).publishWorkerOffline("worker-1", "websocket disconnected", null);
+    }
+
+    @Test
+    void replacingSameRoleChannelDoesNotFlapWorkerOfflineOnline() {
+        WorkerSystemEventChannel systemEventChannel = mock(WorkerSystemEventChannel.class);
+        manager.setSystemEventChannel(systemEventChannel);
+        Channel firstChannel = mockActiveChannel("task-old");
+        Channel secondChannel = mockActiveChannel("task-new");
+        ChannelHandlerContext firstCtx = mock(ChannelHandlerContext.class);
+        ChannelHandlerContext secondCtx = mock(ChannelHandlerContext.class);
+
+        manager.addSession("worker-1", SessionRoles.TASK_MESSAGES, firstChannel, firstCtx);
+        manager.addSession("worker-1", SessionRoles.TASK_MESSAGES, secondChannel, secondCtx);
+
+        verify(systemEventChannel, times(1)).publishWorkerOnline("worker-1", "websocket connected", null);
+        verify(systemEventChannel, never()).publishWorkerOffline("worker-1", "websocket disconnected", null);
+        assertEquals(secondChannel, manager.getChannel("worker-1", SessionRoles.TASK_MESSAGES));
+
+        manager.removeSession(firstChannel);
+
+        verify(systemEventChannel, never()).publishWorkerOffline("worker-1", "websocket disconnected", null);
+
+        manager.removeSession(secondChannel);
+
+        verify(systemEventChannel, times(1)).publishWorkerOffline("worker-1", "websocket disconnected", null);
     }
 
     @Test

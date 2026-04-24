@@ -11,14 +11,17 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.Map;
+import java.util.Objects;
 
 public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWebSocketFrame> {
     private static final Logger logger = LoggerFactory.getLogger(DispatcherInboundHandler.class);
     private final DispatchRuntimeContext dispatcherContext;
+    private final ServerSessionManager sessionManager;
     private final MessageParser messageParser;
 
-    public DispatcherInboundHandler(DispatchRuntimeContext dispatcherContext) {
-        this.dispatcherContext = dispatcherContext;
+    public DispatcherInboundHandler(DispatchRuntimeContext dispatcherContext, ServerSessionManager sessionManager) {
+        this.dispatcherContext = Objects.requireNonNull(dispatcherContext, "dispatcherContext");
+        this.sessionManager = Objects.requireNonNull(sessionManager, "sessionManager");
         this.messageParser = new MessageParser(dispatcherContext.getMessageCodec());
     }
 
@@ -58,9 +61,7 @@ public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWe
                 org.slf4j.MDC.clear();
             }
 
-            if (dispatcherContext.getSessionManager() instanceof ServerSessionManager sessionManager) {
-                sessionManager.addSession(workerId, connRole, ctx.channel(), ctx);
-            }
+            sessionManager.addSession(workerId, connRole, ctx.channel(), ctx);
             dispatcherContext.getMessageTransporter().sendInput(raw);
             logger.debug("Input queue size={}", dispatcherContext.getMessageTransporter().inputQueueSize());
         } catch (Exception e) {

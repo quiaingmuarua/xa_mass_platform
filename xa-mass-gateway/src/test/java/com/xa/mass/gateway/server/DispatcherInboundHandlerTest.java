@@ -22,6 +22,7 @@ import java.util.Arrays;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -78,7 +79,7 @@ class DispatcherInboundHandlerTest {
                 null
         );
 
-        handler = new DispatcherInboundHandler(context);
+        handler = new DispatcherInboundHandler(context, sessionManager);
     }
 
     @Test
@@ -272,6 +273,15 @@ class WebSocketServerImplDisconnectTest {
         assertTrue(sessionManager.getAllWorkerChannels().isEmpty());
         assertNull(sessionManager.getChannel("worker-1", SessionRoles.TASK_MESSAGES));
         assertNull(sessionManager.getWorkerConnKey(channel));
+    }
+
+    @Test
+    void startFailsFastWhenRequiredWiringIsMissing() {
+        WebSocketServerImpl server = new WebSocketServerImpl();
+
+        IllegalStateException error = assertThrows(IllegalStateException.class, () -> server.start(18088));
+
+        assertTrue(error.getMessage().contains("websocketPath"));
     }
 
     private ChannelInboundHandlerAdapter newConnectionStatsHandler(WebSocketServerImpl server) throws Exception {

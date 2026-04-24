@@ -21,6 +21,7 @@ import com.xa.mass.engine.rules.RuleType;
 import com.xa.mass.engine.strategy.SimpleTaskScheduler;
 import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
 import com.xa.mass.gateway.queue.OutboundDelivery;
+import com.xa.mass.gateway.session.ServerSessionManager;
 import com.xa.mass.sdk.auth.AuthProvider;
 import com.xa.mass.sdk.auth.SubmitterMetadata;
 import com.xa.mass.sdk.auth.SubmitterRegistration;
@@ -44,10 +45,12 @@ import com.xa.mass.sdk.model.WorkerRegistration;
 import com.xa.mass.sdk.worker.PullWorkerSession;
 import com.xa.mass.starter.MassApplication;
 import com.xa.mass.starter.MassEngine;
+import com.xa.mass.starter.config.GatewayConfig;
 import com.xa.mass.starter.config.EngineConfig;
 import com.xa.mass.starter.transport.TransportBinding;
 import com.xa.mass.starter.transport.TransportRuntimeRegistry;
 import com.xa.mass.starter.transport.TransportServerFactoryContext;
+import com.xa.mass.starter.transport.WebSocketTransportServerFactory;
 import com.xa.mass.starter.transport.WorkerControlEventDispatch;
 import com.xa.mass.starter.transport.WorkerControlEventPublishResult;
 import com.xa.mass.starter.transport.WorkerControlEventPublisher;
@@ -55,6 +58,7 @@ import com.xa.mass.starter.transport.WorkerTransportRuntimeFactory;
 import com.xa.mass.engine.worker.WorkerAdapter;
 import com.xa.mass.transport.TransportServer;
 import com.xa.mass.transport.TransportServerFactory;
+import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.channel.TaskPullChannel;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
@@ -156,6 +160,40 @@ class MassSdkTest {
 
         assertTrue(started.get());
         assertTrue(stopped.get());
+    }
+
+    @Test
+    void defaultGatewayEndpointRegistryIsMemoizedPerConfigAndIsolatedAcrossSnapshots() {
+        GatewayConfig config = new GatewayConfig();
+
+        WorkerEndpointRegistry first = config.resolveWorkerEndpointRegistry();
+        WorkerEndpointRegistry second = config.resolveWorkerEndpointRegistry();
+        GatewayConfig snapshot = new GatewayConfig(config);
+        WorkerEndpointRegistry snapshotRegistry = snapshot.resolveWorkerEndpointRegistry();
+
+        assertSame(first, second);
+        assertInstanceOf(ServerSessionManager.class, first);
+        assertInstanceOf(ServerSessionManager.class, snapshotRegistry);
+        assertNotSame(first, snapshotRegistry);
+    }
+
+    @Test
+    void webSocketTransportFactoryRejectsNonSessionRegistry() {
+        WebSocketTransportServerFactory factory = new WebSocketTransportServerFactory();
+        DispatchRuntimeContext dispatcherContext = mock(DispatchRuntimeContext.class);
+        WorkerEndpointRegistry endpointRegistry = mock(WorkerEndpointRegistry.class);
+
+        IllegalStateException error = assertThrows(
+                IllegalStateException.class,
+                () -> factory.create(new TransportServerFactoryContext(
+                        dispatcherContext,
+                        endpointRegistry,
+                        19093,
+                        "/ws"
+                ))
+        );
+
+        assertTrue(error.getMessage().contains("ServerSessionManager"));
     }
 
     @Test

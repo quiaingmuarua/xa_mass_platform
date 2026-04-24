@@ -134,6 +134,6 @@ These platform concerns are not owned by current `xa-mass-gateway` mainline code
 - project or event catalog truth
 - submitter/client permission
 - business event execution
-- `MassMessage`, `Envelope`, and generic handler-routing runtime models
+- generic handler-routing runtime models beyond the current raw JSON frame path and narrow control-event bridge types
 
 That is the current baseline: gateway is now primarily an adapter over raw JSON, session reachability, and fixed bridge ports.
