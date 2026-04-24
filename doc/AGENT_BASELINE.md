@@ -98,7 +98,7 @@ Current canonical boundaries:
   - WebSocket task data-plane now uses canonical root-level task dispatch/result frames
   - WebSocket worker identity is established at handshake time; heartbeat is no longer an application JSON frame
   - control/debug traffic now uses a root-level event-first frame keyed by `eventCode`
-  - any remaining `msgType + subMsgType` fields are legacy transport diagnostics only; they are not business/control capability identity
+  - any remaining legacy transport fields are diagnostics only; they are not business/control capability identity
   - `com.xa.mass.gateway.queue.WebSocketGatewayFrameCodec` remains the adapter-local WebSocket shell codec; it is not a platform contract
 
 ## 5. Architectural Guardrails
@@ -131,7 +131,7 @@ Current canonical boundaries:
 - `xa-mass-transport-api` now holds the transport-neutral SPI for task dispatch, result ingest, system events, transport servers, and worker endpoint registries.
 - `xa-mass-gateway` should be read as the current WebSocket transport adapter, not as the only valid worker runtime path.
 - Read [./GATEWAY_BOUNDARY_BASELINE.md](./GATEWAY_BOUNDARY_BASELINE.md) before changing `xa-mass-gateway` or `xa-mass-transport-api`.
-- Gateway tuple routing such as `MessageType + subMsgType` is a protocol-frame compatibility seam only; do not treat it as the identity of a business or control capability.
+- Gateway adapter frame classification is a protocol-frame compatibility seam only; do not treat it as the identity of a business or control capability.
 - Gateway runtime wiring is configured as a fixed pre-start snapshot; `DispatchRuntimeContext` is not a mutable extension registry.
 - `com.xa.mass.engine` is the active engine path.
 - EventBus mainline has converged onto `com.xa.mass.base.channel.eventbus.core` and `com.xa.mass.base.channel.eventbus.event`.

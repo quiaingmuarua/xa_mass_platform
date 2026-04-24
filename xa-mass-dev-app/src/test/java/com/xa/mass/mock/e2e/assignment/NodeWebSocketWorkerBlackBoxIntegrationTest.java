@@ -25,9 +25,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
  * WebSocket transport boundary once the worker resource is registered.
  *
  * <p>The worker identity is established at WebSocket handshake time and
- * result write-back uses the canonical task-result frame. Dispatch still
- * arrives through the current adapter-local {@code TASK/step} compatibility
- * shell, which is the verified runtime reality today.
+ * both dispatch and result write-back use canonical root-level task frames.
  */
 @SpringBootTest(
         classes = MockApplicationSpringBootApp.class,

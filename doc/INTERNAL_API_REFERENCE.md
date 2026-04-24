@@ -786,7 +786,7 @@ Behavior:
 - does not create or mutate `TaskMsg`
 - `eventCode` is the canonical control capability identifier
 - response data returns `eventCode` as the canonical capability identity
-- response does not expose `msgType` or `subMsgType`
+- response does not expose legacy transport-classification fields
 
 Request notes:
 
@@ -797,8 +797,8 @@ Compatibility and payload notes:
 
 - current outbound transport frame is a root-level event-first JSON envelope
 - current inbound acknowledgement frame is a root-level event-first JSON envelope
-- legacy debug-chat tuple subtypes no longer exist on the active control path
-- `eventCode` is the canonical control capability identifier; transport tuple fields are not part of this API
+- legacy debug-chat transport branches no longer exist on the active control path
+- `eventCode` is the canonical control capability identifier; transport-classification fields are not part of this API
 - request payload may still carry plain debug text, but payloads are routed by `eventCode`
 - mock client command namespaces are:
   - `mock.*`

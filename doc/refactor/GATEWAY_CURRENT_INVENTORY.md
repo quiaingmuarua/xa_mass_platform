@@ -78,7 +78,7 @@ It is a migration aid, not a compatibility promise.
 
 - `Class`: `com.xa.mass.gateway.queue.WebSocketGatewayFrameCodec`, `com.xa.mass.gateway.dispatcher.GatewayInputProcessor`
 - `Method`: `isCanonicalTaskDispatch(...)`, `isCanonicalTaskResult(...)`
-- `Current responsibility`: recognizes canonical task frames directly inside the codec and input processor without reintroducing a tuple-router model
+- `Current responsibility`: recognizes canonical task frames directly inside the codec and input processor without reintroducing an adapter-side route registry
 - `Should stay in gateway?`: yes
 - `Target owner`: `xa-mass-gateway`
 - `Migration phase`: keep narrow; do not add new platform capability identities here
@@ -157,4 +157,4 @@ These platform concerns are not owned by current `xa-mass-gateway` mainline code
 - business event execution
 - generic handler-routing runtime models beyond the current raw JSON frame path and narrow control-event handler types
 
-That is the current baseline: gateway is now primarily an adapter over raw JSON, single-endpoint session reachability, handshake-based worker identity, canonical task/control frame handling, and narrow event-first control handlers. Global capability identity remains `eventCode`, not transport tuple fields.
+That is the current baseline: gateway is now primarily an adapter over raw JSON, single-endpoint session reachability, handshake-based worker identity, canonical task/control frame handling, and narrow event-first control handlers. Global capability identity remains `eventCode`, not transport-specific frame fields.

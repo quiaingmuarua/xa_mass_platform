@@ -98,7 +98,7 @@ Forbidden in `xa-mass-gateway`:
 - platform audit truth
 - worker matching decisions
 
-Legacy tuple frame routing is no longer part of the active gateway mainline. Control traffic uses root-level event-first frames, task traffic uses canonical root-level task frames, and new platform capabilities must not be introduced through gateway tuple identities. WebSocket worker identity should come from handshake/session facts rather than an application heartbeat frame.
+Legacy frame-routing branches are no longer part of the active gateway mainline. Control traffic uses root-level event-first frames, task traffic uses canonical root-level task frames, and new platform capabilities must not be introduced through gateway-specific frame identities. WebSocket worker identity should come from handshake/session facts rather than an application heartbeat frame.
 
 ## 5. Transport-Neutral Contract
 
@@ -114,7 +114,7 @@ Legacy tuple frame routing is no longer part of the active gateway mainline. Con
 `xa-mass-transport-api` must not define:
 
 - WebSocket/Netty/frame/session implementation types
-- gateway tuple routing as capability identity
+- gateway-specific frame routing as capability identity
 - request/reply frame semantics as platform lifecycle truth
 - adapter-only fields promoted into canonical runtime models
 

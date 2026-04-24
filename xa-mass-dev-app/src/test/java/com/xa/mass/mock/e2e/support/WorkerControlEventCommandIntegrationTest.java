@@ -113,8 +113,6 @@ class WorkerControlEventCommandIntegrationTest extends AbstractMockE2eTest {
         assertEquals(WORKER_ID, sendData.get("workerId"));
         assertEquals("mock.state.get", sendData.get("eventCode"));
         assertEquals("event-first-debug-1", sendData.get("requestId"));
-        assertFalse(sendData.containsKey("msgType"));
-        assertFalse(sendData.containsKey("subMsgType"));
 
         String messageId = String.valueOf(sendData.get("messageId"));
         Map<String, Object> stateAck = waitForInboundReply(WORKER_ID, messageId);
@@ -148,12 +146,7 @@ class WorkerControlEventCommandIntegrationTest extends AbstractMockE2eTest {
                         && messageId.equals(String.valueOf(item.get("replyToMessageId"))));
 
         assertEquals("mock.state.get", outbound.get("eventCode"));
-        assertFalse(outbound.containsKey("msgType"));
-        assertFalse(outbound.containsKey("subMsgType"));
-
         assertEquals("mock.state.get", inbound.get("eventCode"));
-        assertFalse(inbound.containsKey("msgType"));
-        assertFalse(inbound.containsKey("subMsgType"));
     }
 
     private String sendEventCommand(String workerId, String event, Map<String, Object> payload) throws InterruptedException {

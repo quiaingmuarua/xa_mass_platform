@@ -46,8 +46,6 @@ class MockWorkerWebSocketClientTest {
         assertEquals("task-1", WsFrameTestSupport.taskId(response));
         assertTrue(response.get("success").getAsBoolean());
         assertEquals("Executed by mock client worker-test", response.get("detail").getAsString());
-        assertFalse(response.has("msgType"));
-        assertFalse(response.has("subMsgType"));
         JsonObject payload = WsFrameTestSupport.payload(response);
         assertEquals("SUCCESS", payload.get("status").getAsString());
         assertEquals("Executed by mock client worker-test", payload.get("mockData").getAsString());

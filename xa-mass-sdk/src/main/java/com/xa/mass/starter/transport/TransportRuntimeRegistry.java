@@ -20,7 +20,7 @@ import java.util.Objects;
  * XA Mass runtime.
  *
  * <p>Inbound compatibility registration in this registry remains
- * protocol-oriented. Wire-frame tuples belong to a specific adapter only and
+ * protocol-oriented. Adapter-specific wire-frame shapes belong to a specific adapter only and
  * must not be treated as the identity of a business or control capability.
  */
 public final class TransportRuntimeRegistry {
