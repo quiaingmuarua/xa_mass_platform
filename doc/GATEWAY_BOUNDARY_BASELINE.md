@@ -203,6 +203,7 @@ Rules:
 - route inbound task result compatibility frames into the canonical `TaskResultReport -> TaskResultIngestChannel` seam
 - keep `TaskResultIngestChannel` as a runtime-level seam; do not model it as worker transport binding ownership
 - resolve `WorkerSystemEventChannel` from gateway runtime assembly, not from transport binding ownership
+- keep adapter-specific endpoint bootstrap inside the gateway adapter module; SDK runtime config must not hardcode session-manager implementation branching
 - `MassApplication.configureGatewayRuntime(...)` is the pre-start wiring seam for gateway-local bridge ports; deprecated late setters are compatibility only
 - resolve transport-contributed bridge ports during runtime assembly, then inject them once
 - do not grow post-construction `setHandler(...)` or `registerRoute(...)` seams on gateway runtime context

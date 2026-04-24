@@ -7,8 +7,7 @@ import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
 import com.xa.mass.gateway.queue.MessageCodec;
 import com.xa.mass.gateway.queue.MessageCodecFactory;
 import com.xa.mass.gateway.queue.OutboundDelivery;
-import com.xa.mass.gateway.session.EventBusWorkerSystemEventChannel;
-import com.xa.mass.gateway.session.ServerSessionManager;
+import com.xa.mass.gateway.runtime.WebSocketGatewayRuntimeSupport;
 import com.xa.mass.starter.transport.DefaultWorkerTransportRuntimeFactory;
 import com.xa.mass.starter.transport.TransportServerFactoryContext;
 import com.xa.mass.starter.transport.WorkerTransportRuntimeFactory;
@@ -16,6 +15,9 @@ import com.xa.mass.transport.TransportServer;
 import com.xa.mass.transport.TransportServerFactory;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
+
+import java.util.function.Function;
+import java.util.function.Supplier;
 
 /**
  * Gateway runtime configuration.
@@ -43,11 +45,15 @@ public class GatewayConfig {
 
     private WorkerSystemEventChannel customSystemEventChannel;
     private WorkerEndpointRegistry workerEndpointRegistry;
-    private transient ServerSessionManager runtimeOwnedEndpointRegistry;
+    private transient WorkerEndpointRegistry runtimeOwnedEndpointRegistry;
+    private Supplier<WorkerEndpointRegistry> endpointRegistryFactory;
+    private Function<WorkerEndpointRegistry, WorkerSystemEventChannel> systemEventChannelResolver;
     private TransportServerFactory<TransportServerFactoryContext> transportServerFactory;
     private WorkerTransportRuntimeFactory workerTransportRuntimeFactory;
 
     public GatewayConfig() {
+        this.endpointRegistryFactory = WebSocketGatewayRuntimeSupport::createEndpointRegistry;
+        this.systemEventChannelResolver = WebSocketGatewayRuntimeSupport::resolveSystemEventChannel;
     }
 
     public GatewayConfig(GatewayConfig source) {
@@ -66,6 +72,8 @@ public class GatewayConfig {
         this.customSystemEventChannel = source.customSystemEventChannel;
         this.workerEndpointRegistry = source.workerEndpointRegistry;
         this.runtimeOwnedEndpointRegistry = null;
+        this.endpointRegistryFactory = source.endpointRegistryFactory;
+        this.systemEventChannelResolver = source.systemEventChannelResolver;
         this.transportServerFactory = source.transportServerFactory;
         this.workerTransportRuntimeFactory = source.workerTransportRuntimeFactory;
     }
@@ -223,7 +231,10 @@ public class GatewayConfig {
             return workerEndpointRegistry;
         }
         if (runtimeOwnedEndpointRegistry == null) {
-            runtimeOwnedEndpointRegistry = new ServerSessionManager();
+            if (endpointRegistryFactory == null) {
+                throw new IllegalStateException("Gateway endpoint registry factory is not configured");
+            }
+            runtimeOwnedEndpointRegistry = endpointRegistryFactory.get();
         }
         return runtimeOwnedEndpointRegistry;
     }
@@ -236,10 +247,10 @@ public class GatewayConfig {
         if (endpointRegistry == null) {
             endpointRegistry = resolveWorkerEndpointRegistry();
         }
-        if (endpointRegistry instanceof ServerSessionManager sessionManager) {
-            return sessionManager.getSystemEventChannel();
+        if (systemEventChannelResolver == null) {
+            throw new IllegalStateException("Gateway system-event resolver is not configured");
         }
-        return new EventBusWorkerSystemEventChannel();
+        return systemEventChannelResolver.apply(endpointRegistry);
     }
 
     public WorkerTransportRuntimeFactory resolveWorkerTransportRuntimeFactory() {
