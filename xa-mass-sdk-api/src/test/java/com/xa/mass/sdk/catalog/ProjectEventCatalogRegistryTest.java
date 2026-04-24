@@ -1,6 +1,6 @@
 package com.xa.mass.sdk.catalog;
 
-import com.xa.mass.sdk.event.SdkEventDefinition;
+import com.xa.mass.sdk.event.EventDefinition;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -14,7 +14,7 @@ class ProjectEventCatalogRegistryTest {
         ProjectEventCatalogRegistry registry = DefaultProjectEventCatalogFactory.createDefaultProjectRegistry();
 
         List<ProjectMetadata> projects = registry.listProjects();
-        List<SdkEventDefinition> events = registry.listEvents();
+        List<EventDefinition> events = registry.listEvents();
 
         assertFalse(projects.isEmpty());
         assertTrue(events.isEmpty());
@@ -25,7 +25,7 @@ class ProjectEventCatalogRegistryTest {
     @Test
     void registrySupportsManyToManyProjectEventBinding() {
         ProjectEventCatalogRegistry registry = new ProjectEventCatalogRegistry();
-        SdkEventDefinition sharedEvent = SdkEventDefinition.builder()
+        EventDefinition sharedEvent = EventDefinition.builder()
                 .code("chatbot.reply")
                 .name("Chatbot Reply")
                 .description("Shared chatbot event")
@@ -54,7 +54,7 @@ class ProjectEventCatalogRegistryTest {
     @Test
     void disabledMetadataRemainsVisible() {
         ProjectEventCatalogRegistry registry = new ProjectEventCatalogRegistry();
-        registry.registerEventDefinition(SdkEventDefinition.builder()
+        registry.registerEventDefinition(EventDefinition.builder()
                 .code("crawler.fetch-page")
                 .name("Crawler Fetch Page")
                 .description("disabled event")
@@ -71,7 +71,7 @@ class ProjectEventCatalogRegistryTest {
                 .build());
 
         ProjectMetadata project = registry.getProject("crawlerApp");
-        SdkEventDefinition event = registry.getEvent("crawler.fetch-page");
+        EventDefinition event = registry.getEvent("crawler.fetch-page");
 
         assertNotNull(project);
         assertNotNull(event);

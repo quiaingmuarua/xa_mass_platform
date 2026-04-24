@@ -48,7 +48,50 @@ Trust order:
 5. Module README files
 6. Older refactor notes only after re-verification
 
-## 2. Platform Guardrails
+## 2. Agent Behavior Contract
+
+These rules are hard constraints for coding agents. Violating them is a regression even if code compiles and tests pass.
+
+Compatibility and convergence rules:
+
+- Within this repository, there is no compatibility obligation for superseded internal paths. Update in-repo callers instead of preserving the old path.
+- Agents must converge superseded internal paths by: (1) marking them deprecated, (2) migrating direct in-repo callers to the identified mainline/source of truth, and (3) removing the old path.
+- Adapters, fallbacks, aliases, wrappers, or translation seams that preserve the old path as a second effective mainline are forbidden.
+- If callers outside this repository depend on the old path, surface that dependency to the user before proceeding. Compatibility is justified only for repo-external callers.
+- This rule does not authorize broad redesign. If the replacement mainline/source of truth is not already clear from code and active docs, stop and ask.
+- Scope is limited to the deprecated symbol, its direct in-repo callers, and the tests/docs asserting that seam. Do not broaden the change into unrelated refactors.
+- Never extend, route new code through, or add features to deprecated or legacy seams.
+
+Test rules:
+
+- Classify tests before modifying them:
+  - `Invariant`: product correctness. Fix code, not the test.
+  - `Contract`: repo-external public surface. Breaking it requires explicit user approval.
+  - `Snapshot`: implementation detail. It may be updated or removed with explicit justification.
+- A failing test is never a reason to add a compatibility layer. Either the code is wrong or the asserted snapshot is stale.
+- Never silently skip, disable, or weaken tests to preserve momentum.
+
+Planning rules for multi-file or core changes:
+
+- Required plan fields:
+  - scope: concrete outcomes
+  - out of scope: at least one explicit non-goal
+  - files and symbols: exact paths/symbols
+  - alternative considered: plus rejection reason
+  - costs: what becomes worse
+  - test impact: list affected tests and classify them as `Invariant`, `Contract`, or `Snapshot`
+  - risk: `LOW`, `MEDIUM`, or `HIGH`; `HIGH` requires a proof of concept before broad edits
+  - verification: specific tests, trace events, or runtime checks
+- Approved plans are frozen. If reality materially diverges in scope, contract impact, or risk, stop and report before continuing.
+
+Deprecation and pushback rules:
+
+- Marking a symbol deprecated requires, in the same change, a `DEPRECATION_LEDGER.md` entry with: symbol, replacement, in-repo call-site count, and removal condition.
+- Deprecation is not complete until migration of in-repo callers has started in the same change.
+- If a request conflicts with these guardrails or knowingly creates structural debt, object once in plain terms, then proceed only if the user confirms.
+- "Quick" fixes that create debt must be surfaced as debt before implementation.
+
+## 3. Platform Guardrails
 
 - Do not shrink the product definition back into a phone/group-control system.
 - `Worker`, `WorkerContext`, and WebSocket are current adapter names, not final universal platform boundaries.
@@ -76,7 +119,7 @@ Trust order:
 - Manual worker debug chat is a side-channel and must not mutate task lifecycle state.
 - Policy layers must not silently change another layer's source of truth; use [doc/engine/POLICY_INTERACTION_BASELINE.md](doc/engine/POLICY_INTERACTION_BASELINE.md) before adding matching, retry, release, refill, intake, or terminal-policy behavior.
 
-## 3. Core Lifecycle
+## 4. Core Lifecycle
 
 Task lifecycle:
 
@@ -106,7 +149,7 @@ TaskMsg and attempt rules:
 - `taskMessageAttemptClosed` and `taskMessageLogicallyFinal` are separate events.
 - Retryable failure closes the attempt but does not make the logical message stably final.
 
-## 4. Modules
+## 5. Modules
 
 Root reactor modules are defined by `pom.xml`:
 
@@ -121,7 +164,7 @@ Root reactor modules are defined by `pom.xml`:
 
 Historical top-level modules such as `xa-mass-base`, `xa-mass-starter`, and old archive/v2 engines are not active modules.
 
-## 5. Runtime Entry
+## 6. Runtime Entry
 
 Verified Boot entry:
 
@@ -156,7 +199,7 @@ Windows note:
 - Prefer Maven commands for verification.
 - If starting manually, keep classpaths short; expanded dependency classpaths can exceed Windows limits.
 
-## 6. API And Payload Contract
+## 7. API And Payload Contract
 
 Supported task create fields:
 
@@ -198,7 +241,7 @@ Task message read model:
 - Top-level target projections are not part of the read model.
 - Execution history belongs to `TaskMsgAttempt`, not `TaskMsg.latestAttempt*`.
 
-## 7. Regression Gate
+## 8. Regression Gate
 
 Mainline acceptance should include integration/E2E coverage through `xa-mass-dev-app`.
 
@@ -231,7 +274,7 @@ Representative E2E subset:
 
 Use [doc/E2E_BASELINE.md](doc/E2E_BASELINE.md) and [doc/INTEGRATION_TESTS.md](doc/INTEGRATION_TESTS.md) for the full expected coverage shape.
 
-## 8. Trace Expectations
+## 9. Trace Expectations
 
 Critical lifecycle and debugging events include:
 
@@ -250,7 +293,7 @@ Critical lifecycle and debugging events include:
 
 When lifecycle behavior changes, update code, tests, [doc/STATE_MACHINE_BASELINE.md](doc/STATE_MACHINE_BASELINE.md), [doc/TRACE_CONTRACT.md](doc/TRACE_CONTRACT.md), and [doc/E2E_BASELINE.md](doc/E2E_BASELINE.md) together.
 
-## 9. Files Worth Opening Early
+## 10. Files Worth Opening Early
 
 Task lifecycle:
 
@@ -290,7 +333,7 @@ Models:
 - `xa-mass-core/src/main/java/com/xa/mass/base/model/Worker.java`
 - `xa-mass-core/src/main/java/com/xa/mass/base/model/WorkerContext.java`
 
-## 10. Working Rule
+## 11. Working Rule
 
 Before changing behavior:
 

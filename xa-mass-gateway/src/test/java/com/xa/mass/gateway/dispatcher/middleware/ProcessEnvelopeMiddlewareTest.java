@@ -1,7 +1,7 @@
 package com.xa.mass.gateway.dispatcher.middleware;
 
+import com.xa.mass.base.debug.WorkerControlEventProtocol;
 import com.xa.mass.base.debug.WorkerDebugMessageStore;
-import com.xa.mass.base.debug.ManualDebugChatProtocol;
 import com.xa.mass.gateway.dispatcher.MessageHandlerRegistry;
 import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
 import com.xa.mass.gateway.dispatcher.handler.MassMessageEventCodeResolver;
@@ -43,49 +43,37 @@ class ProcessEnvelopeMiddlewareTest {
 
     @Test
     void nullDecodeSkipsHandlingAndReturnsTrue() {
-        // Invalid JSON that decodes to null
         Envelope envelope = envelope("not-valid-json-at-all-{{{}}}");
         boolean result = middleware.handle(envelope, context);
-        assertTrue(result, "Should return true (continue chain) even when decode fails");
+        assertTrue(result);
     }
 
     @Test
     void knownHandlerIsInvokedAndResponseEnqueued() {
         AtomicReference<MassMessage> captured = new AtomicReference<>();
-        handlerRegistry.register(MessageType.EVENT, ManualDebugChatProtocol.SUB_MSG_TYPE, msg -> {
+        handlerRegistry.registerWorkerControlEventResponseHandler(msg -> {
             captured.set(msg);
             MassMessage resp = new MassMessage();
-            resp.setMsgType(MessageType.EVENT);
-            resp.setSubMsgType(ManualDebugChatProtocol.SUB_MSG_TYPE);
+            resp.setMsgType(MessageType.CONTROL);
+            resp.setSubMsgType(WorkerControlEventProtocol.SUB_MSG_TYPE);
             resp.setContext(msg.getContext());
             return List.of(resp);
         });
 
-        MassMessage msg = message("proj", MessageType.EVENT, ManualDebugChatProtocol.SUB_MSG_TYPE);
+        MassMessage msg = message("proj", MessageType.CONTROL, WorkerControlEventProtocol.SUB_MSG_TYPE);
+        msg.setResponse(true);
         Envelope envelope = envelope(codec.encode(msg));
 
         middleware.handle(envelope, context);
 
-        assertNotNull(captured.get(), "Handler should have been called");
+        assertNotNull(captured.get());
         ArgumentCaptor<Envelope> outputCaptor = ArgumentCaptor.forClass(Envelope.class);
         verify(context.getMessageTransporter()).sendOutput(outputCaptor.capture());
         assertNull(outputCaptor.getValue().getEventCode());
     }
 
     @Test
-    void noHandlerWithFallbackEnabledDoesNotSendOutput() {
-        handlerRegistry.setEnableFallback(true);
-        MassMessage msg = message("proj", MessageType.STATUS, "unknown");
-        Envelope envelope = envelope(codec.encode(msg));
-
-        boolean result = middleware.handle(envelope, context);
-
-        assertTrue(result);
-        verify(context.getMessageTransporter(), never()).sendOutput(any());
-    }
-
-    @Test
-    void noHandlerDefaultsToNotFoundWithoutFallback() {
+    void noHandlerDefaultsToNotFound() {
         MassMessage msg = message("proj", MessageType.STATUS, "unknown");
         Envelope envelope = envelope(codec.encode(msg));
 
@@ -97,8 +85,9 @@ class ProcessEnvelopeMiddlewareTest {
 
     @Test
     void handlerReturningEmptyResponseDoesNotSendOutput() {
-        handlerRegistry.register(MessageType.EVENT, ManualDebugChatProtocol.SUB_MSG_TYPE, msg -> Collections.emptyList());
-        MassMessage msg = message("p", MessageType.EVENT, ManualDebugChatProtocol.SUB_MSG_TYPE);
+        handlerRegistry.registerWorkerControlEventResponseHandler(msg -> Collections.emptyList());
+        MassMessage msg = message("p", MessageType.CONTROL, WorkerControlEventProtocol.SUB_MSG_TYPE);
+        msg.setResponse(true);
         Envelope envelope = envelope(codec.encode(msg));
 
         middleware.handle(envelope, context);
@@ -108,15 +97,16 @@ class ProcessEnvelopeMiddlewareTest {
 
     @Test
     void responseEnvelopePropagatesCanonicalEventCodeMetadata() {
-        handlerRegistry.register(MessageType.EVENT, ManualDebugChatProtocol.SUB_MSG_TYPE, msg -> {
+        handlerRegistry.registerWorkerControlEventResponseHandler(msg -> {
             MassMessage resp = new MassMessage();
-            resp.setMsgType(MessageType.EVENT);
-            resp.setSubMsgType(ManualDebugChatProtocol.SUB_MSG_TYPE);
+            resp.setMsgType(MessageType.CONTROL);
+            resp.setSubMsgType(WorkerControlEventProtocol.SUB_MSG_TYPE);
             resp.setContext(msg.getContext());
             return List.of(resp);
         });
 
-        MassMessage msg = message("proj", MessageType.EVENT, ManualDebugChatProtocol.SUB_MSG_TYPE);
+        MassMessage msg = message("proj", MessageType.CONTROL, WorkerControlEventProtocol.SUB_MSG_TYPE);
+        msg.setResponse(true);
         Envelope envelope = Envelope.builder()
                 .rawJson(codec.encode(msg))
                 .workerId("worker-1")
@@ -181,8 +171,6 @@ class ProcessEnvelopeMiddlewareTest {
         assertEquals("FAILED", WorkerDebugMessageStore.getHistory("worker-1").get(0).getStatus());
     }
 
-    // ---- helpers ----
-
     private Envelope envelope(String rawJson) {
         return Envelope.builder().rawJson(rawJson).workerId("worker-1").connRole(SessionRoles.TASK_MESSAGES).build();
     }
@@ -223,7 +211,7 @@ class ProcessEnvelopeMiddlewareTest {
         }
 
         @Override
-        public String resolveEventCode(MassMessage message) {
+        public String resolveEventCode(MassMessage msg) {
             return "crawler.fetch-page";
         }
     }

@@ -7,7 +7,7 @@ package com.xa.mass.sdk.event;
  * directly instead of being mapped into task creation.
  */
 @FunctionalInterface
-public interface SdkEventHandler {
+public interface EventHandler {
 
     EventResponse handle(EventRequest request, EventPrincipal principal) throws Exception;
 }

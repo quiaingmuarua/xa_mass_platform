@@ -114,7 +114,7 @@ Run the full repository regression:
 Run the focused high-signal subset:
 
 ```bash
-mvn -pl xa-mass-dev-app -am -Dtest=WorkerAttributesTest,WorkerContextAttributesTest,WorkerMatchContextTest,QLExpressRuleEvaluatorTest,RuleBasedTaskWorkerMatchingStrategyTest,TaskApiDelayedWorkerAvailabilityIntegrationTest,TaskApiWorkerContextAttributeRoutingIntegrationTest,TaskApiWorkerWithoutContextIntegrationTest,WorkerManualDebugCommandIntegrationTest,WorkerManualDebugDisconnectIntegrationTest,ControlConsoleRoutingIntegrationTest,MockRuntimeDataLoaderTest -Dsurefire.failIfNoSpecifiedTests=false test
+mvn -pl xa-mass-dev-app -am -Dtest=WorkerAttributesTest,WorkerContextAttributesTest,WorkerMatchContextTest,QLExpressRuleEvaluatorTest,RuleBasedTaskWorkerMatchingStrategyTest,TaskApiDelayedWorkerAvailabilityIntegrationTest,TaskApiWorkerContextAttributeRoutingIntegrationTest,TaskApiWorkerWithoutContextIntegrationTest,WorkerControlEventCommandIntegrationTest,WorkerControlEventDisconnectIntegrationTest,ControlConsoleRoutingIntegrationTest,MockRuntimeDataLoaderTest -Dsurefire.failIfNoSpecifiedTests=false test
 ```
 
 Expected result:
@@ -160,10 +160,10 @@ Control-console shell:
 
 - `ControlConsoleRoutingIntegrationTest`
 
-Worker debug side-channel:
+Worker control side-channel:
 
-- `WorkerManualDebugCommandIntegrationTest`
-- `WorkerManualDebugDisconnectIntegrationTest`
+- `WorkerControlEventCommandIntegrationTest`
+- `WorkerControlEventDisconnectIntegrationTest`
 
 Important support coverage outside the E2E package:
 
@@ -192,8 +192,8 @@ Important support coverage outside the E2E package:
 - `minRequiredWorkerCount` is a real `READY -> RUNNING` gate
 - multi-round refill works when `batchSize` is lower than total work-item count
 - `READY` tasks without a current match are retried instead of being orphaned
-- manual worker debug chat is visible end to end without touching `TaskMsg` lifecycle
-- manual worker debug chat can execute `mock.*` commands and returns structured command acknowledgements
+- worker control messaging is visible end to end without touching `TaskMsg` lifecycle
+- worker control messaging can execute `mock.*` commands and returns structured command acknowledgements
 - `mock.disconnect` is verified to acknowledge first and then take the worker offline
 - task detail exposes `stateValidation` so runtime state audit is observable externally
 - backend-hosted SPA shell routes return the built console shell through the real Spring Boot entry
@@ -245,7 +245,7 @@ Snapshot polling:
 - assert persisted task and message truth together
 - avoid sleep-heavy assertions
 
-Debug-side-channel verification:
+Control-side-channel verification:
 
 - use `POST /status/workers/send-event`
 - poll `GET /status/workers/message-history`

@@ -1,8 +1,8 @@
 package com.xa.mass.mock.e2e.support;
 
 import com.google.gson.Gson;
-import com.xa.mass.base.debug.ManualDebugChatProtocol;
 import com.xa.mass.base.debug.WorkerControlEventProtocol;
+import com.xa.mass.base.debug.WorkerControlMessageProtocol;
 import com.xa.mass.base.debug.WorkerDebugMessageStore;
 import com.xa.mass.mock.MockApplicationSpringBootApp;
 import org.junit.jupiter.api.AfterEach;
@@ -40,7 +40,7 @@ import static org.junit.jupiter.api.Assertions.*;
 )
 @ActiveProfiles("dev")
 @DirtiesContext
-class WorkerManualDebugCommandIntegrationTest extends AbstractMockE2eTest {
+class WorkerControlEventCommandIntegrationTest extends AbstractMockE2eTest {
 
     private static final Gson GSON = new Gson();
     private static final int WEBSOCKET_PORT = findFreePort();
@@ -70,7 +70,10 @@ class WorkerManualDebugCommandIntegrationTest extends AbstractMockE2eTest {
         Map<String, Object> delayAck = waitForInboundReply(WORKER_ID, delayMessageId);
         Map<String, Object> delayPayload = parsePayload(delayAck);
 
-        assertEquals(ManualDebugChatProtocol.MESSAGE_KIND_ACK, delayPayload.get(ManualDebugChatProtocol.MESSAGE_KIND_FIELD));
+        assertEquals(
+                WorkerControlMessageProtocol.MESSAGE_KIND_ACK,
+                delayPayload.get(WorkerControlMessageProtocol.MESSAGE_KIND_FIELD)
+        );
         assertEquals(Boolean.TRUE, delayPayload.get("commandExecuted"));
         assertEquals("mock.delay.response", delayPayload.get("commandEvent"));
 
@@ -149,7 +152,7 @@ class WorkerManualDebugCommandIntegrationTest extends AbstractMockE2eTest {
         assertEquals("event", outbound.get("subMsgType"));
 
         assertEquals("mock.state.get", inbound.get("eventCode"));
-        assertEquals("EVENT", inbound.get("msgType"));
+        assertEquals("CONTROL", inbound.get("msgType"));
         assertEquals(WorkerControlEventProtocol.SUB_MSG_TYPE, inbound.get("subMsgType"));
     }
 
@@ -208,7 +211,7 @@ class WorkerManualDebugCommandIntegrationTest extends AbstractMockE2eTest {
             }
             Thread.sleep(250L);
         }
-        throw new AssertionError("Manual debug history item did not arrive in time. Last response=" + latest);
+        throw new AssertionError("Worker control history item did not arrive in time. Last response=" + latest);
     }
 
     private Map<String, Object> parsePayload(Map<String, Object> historyItem) {

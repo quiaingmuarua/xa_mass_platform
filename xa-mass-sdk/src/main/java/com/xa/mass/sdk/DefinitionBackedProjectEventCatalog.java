@@ -2,7 +2,7 @@ package com.xa.mass.sdk;
 
 import com.xa.mass.sdk.catalog.ProjectEventCatalog;
 import com.xa.mass.sdk.catalog.ProjectMetadata;
-import com.xa.mass.sdk.event.SdkEventDefinition;
+import com.xa.mass.sdk.event.EventDefinition;
 
 import java.util.List;
 import java.util.Objects;
@@ -22,15 +22,15 @@ final class DefinitionBackedProjectEventCatalog implements ProjectEventCatalog {
 
     private final Supplier<List<ProjectMetadata>> listProjectsSupplier;
     private final Function<String, ProjectMetadata> getProjectFunction;
-    private final Supplier<List<SdkEventDefinition>> listEventsSupplier;
-    private final Function<String, SdkEventDefinition> getEventFunction;
-    private final Function<String, List<SdkEventDefinition>> getEventsForProjectFunction;
+    private final Supplier<List<EventDefinition>> listEventsSupplier;
+    private final Function<String, EventDefinition> getEventFunction;
+    private final Function<String, List<EventDefinition>> getEventsForProjectFunction;
 
     DefinitionBackedProjectEventCatalog(Supplier<List<ProjectMetadata>> listProjectsSupplier,
                                         Function<String, ProjectMetadata> getProjectFunction,
-                                        Supplier<List<SdkEventDefinition>> listEventsSupplier,
-                                        Function<String, SdkEventDefinition> getEventFunction,
-                                        Function<String, List<SdkEventDefinition>> getEventsForProjectFunction) {
+                                        Supplier<List<EventDefinition>> listEventsSupplier,
+                                        Function<String, EventDefinition> getEventFunction,
+                                        Function<String, List<EventDefinition>> getEventsForProjectFunction) {
         this.listProjectsSupplier = Objects.requireNonNull(listProjectsSupplier, "listProjectsSupplier");
         this.getProjectFunction = Objects.requireNonNull(getProjectFunction, "getProjectFunction");
         this.listEventsSupplier = Objects.requireNonNull(listEventsSupplier, "listEventsSupplier");
@@ -49,17 +49,17 @@ final class DefinitionBackedProjectEventCatalog implements ProjectEventCatalog {
     }
 
     @Override
-    public List<SdkEventDefinition> listEvents() {
+    public List<EventDefinition> listEvents() {
         return listEventsSupplier.get();
     }
 
     @Override
-    public SdkEventDefinition getEvent(String eventCode) {
+    public EventDefinition getEvent(String eventCode) {
         return getEventFunction.apply(eventCode);
     }
 
     @Override
-    public List<SdkEventDefinition> getEventsForProject(String projectCode) {
+    public List<EventDefinition> getEventsForProject(String projectCode) {
         return getEventsForProjectFunction.apply(projectCode);
     }
 }

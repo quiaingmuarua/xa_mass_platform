@@ -37,6 +37,7 @@ import com.xa.mass.sdk.auth.SubmitterMetadata;
 import com.xa.mass.sdk.auth.SubmitterRegistration;
 import com.xa.mass.sdk.model.MassTaskCreateRequest;
 import com.xa.mass.sdk.model.MassTaskRequest;
+import com.xa.mass.sdk.model.WorkerEventBinding;
 import com.xa.mass.sdk.model.WorkerContextRegistration;
 import com.xa.mass.sdk.model.WorkerRegistration;
 
@@ -52,7 +53,12 @@ app.registerWorker(WorkerRegistration.builder()
         .workerId("crawler-worker-1")
         .workerGroupId("crawler")
         .supportedProjects(java.util.List.of("demoApp"))
-        .supportedEventCodes(java.util.List.of("demo.dispatch"))
+        .eventBindings(java.util.List.of(
+                WorkerEventBinding.builder()
+                        .eventCode("demo.dispatch")
+                        .projectCodes(java.util.List.of("demoApp"))
+                        .build()
+        ))
         .transportHint("polling")
         .attributes(java.util.Map.of("type", "crawler"))
         .build());
@@ -76,7 +82,7 @@ app.createTask(MassTaskCreateRequest.builder()
 app.pullWorker("crawler-worker-1").connect();
 ```
 
-`supportedProjects` is only a coarse worker grouping/filter hint. Explicit worker event capability should be declared through `supportedEventCodes`.
+`supportedProjects` is only a coarse worker grouping/filter hint. New worker capability registration should declare `eventBindings`; when `eventBindings` is present it becomes the worker capability truth and SDK registration derives `supportedEventCodes` / `supportedProjects` from it.
 
 Register SDK catalog metadata when the embedding side wants to expose its own
 project/event directory:
@@ -85,9 +91,9 @@ project/event directory:
 import com.xa.mass.sdk.catalog.PayloadType;
 import com.xa.mass.sdk.catalog.ProjectMetadata;
 import com.xa.mass.sdk.catalog.TaskMode;
-import com.xa.mass.sdk.event.SdkEventDefinition;
+import com.xa.mass.sdk.event.EventDefinition;
 
-app.registerEventDefinition(SdkEventDefinition.builder()
+app.registerEventDefinition(EventDefinition.builder()
         .code("bot.command")
         .name("Bot Command")
         .description("Handle a bot command")
@@ -140,7 +146,7 @@ The returned `MassSdkApplication` exposes:
 - open-ended task operations after `start()`: `appendTaskItems(...)`, `sealTask(...)`
 - audit and message operations after `start()`: `getTaskMessages(...)`, `resolveTaskStateFromMessages(...)`, `validateTaskState(...)`
 - common worker operations after `start()`: `registerWorker(...)`, `registerWorkerContext(...)`, `getWorker(...)`, `getAllWorkers()`, `getAllWorkerContexts()`, `getWorkerContexts(...)`, `getWorkerContextById(...)`, `isWorkerLocked(...)`, `isWorkerOnline(...)`
-- resource/control-plane operations through `ResourceOperations`: `registerProject(...)`, `registerEvent(...)`, `registerSubmitter(...)`, `listProjects()`, `getProject(...)`, `listEvents()`, `getEvent(...)`, `getEventsForProject(...)`, `listSubmitters()`, `getSubmitter(...)`, `authenticateSubmitter(...)`, `hasProject(...)`, `hasEvent(...)`, `hasSubmitter(...)`, `projectSupportsEvent(...)`; submitter list/get return `SubmitterMetadata` without credentials
+- resource/control-plane operations through `ResourceOperations`: `registerProject(...)`, `registerEventDefinition(...)`, `registerSubmitter(...)`, `listProjects()`, `getProject(...)`, `listEvents()`, `getEvent(...)`, `getEventsForProject(...)`, `listSubmitters()`, `getSubmitter(...)`, `authenticateSubmitter(...)`, `hasProject(...)`, `hasEvent(...)`, `hasSubmitter(...)`, `projectSupportsEvent(...)`; submitter list/get return `SubmitterMetadata` without credentials
 - compatibility/high-control worker operations after `start()`: `addWorker(...)` and `addWorkerContext(...)` remain available for callers that intentionally construct core runtime models
 - pull-style worker entry after `start()`: `pullWorker(...)`
 - stable runtime bootstrap surface after `start()`: `publishTaskEvents()`, plus open registration methods such as `addWorker(...)`, `addWorkerContext(...)`, `createTask(...)`, `replaceDefaultRules(...)`

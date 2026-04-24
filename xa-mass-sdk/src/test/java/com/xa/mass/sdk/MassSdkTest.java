@@ -35,9 +35,10 @@ import com.xa.mass.sdk.event.EventPrincipal;
 import com.xa.mass.sdk.event.EventRequest;
 import com.xa.mass.sdk.event.EventResponse;
 import com.xa.mass.sdk.event.PlatformEventCodes;
-import com.xa.mass.sdk.event.SdkEventDefinition;
+import com.xa.mass.sdk.event.EventDefinition;
 import com.xa.mass.sdk.model.MassTaskCreateRequest;
 import com.xa.mass.sdk.model.MassTaskRequest;
+import com.xa.mass.sdk.model.WorkerEventBinding;
 import com.xa.mass.sdk.model.WorkerContextRegistration;
 import com.xa.mass.sdk.model.WorkerRegistration;
 import com.xa.mass.sdk.worker.PullWorkerSession;
@@ -414,7 +415,7 @@ class MassSdkTest {
     @Test
     void resourceOperationsAllowSdkLevelProjectAndEventRegistrationWithoutRuntimeStart() {
         MassSdkApplication app = new MassSdkApplication(mock(MassApplication.class));
-        SdkEventDefinition eventDefinition = SdkEventDefinition.builder()
+        EventDefinition eventDefinition = EventDefinition.builder()
                 .code("bot.command")
                 .name("Bot Command")
                 .description("Handle a telegram-style bot command")
@@ -444,7 +445,7 @@ class MassSdkTest {
         Assertions.assertFalse(app.projectSupportsEvent("botApp", "crawler.fetch-page"));
         Assertions.assertTrue(app.listProjects().stream().anyMatch(project -> "demoApp".equals(project.getCode())));
         Assertions.assertTrue(app.listEvents().stream().anyMatch(event -> PlatformEventCodes.META_EVENTS_LIST.equals(event.getCode())));
-        List<SdkEventDefinition> projectEvents = app.getEventsForProject("botApp");
+        List<EventDefinition> projectEvents = app.getEventsForProject("botApp");
         Assertions.assertEquals(1, projectEvents.size());
         Assertions.assertEquals("bot.command", projectEvents.get(0).getCode());
         Assertions.assertEquals("Bot Command", projectEvents.get(0).getName());
@@ -456,7 +457,7 @@ class MassSdkTest {
         MassApplication delegate = mock(MassApplication.class);
         when(delegate.getEventRuntime()).thenReturn(new InMemoryMassEventRuntime());
         MassSdkApplication app = new MassSdkApplication(delegate);
-        app.registerEventDefinition(SdkEventDefinition.builder()
+        app.registerEventDefinition(EventDefinition.builder()
                 .code("bot.command")
                 .name("Bot Command")
                 .description("Handle a bot command")
@@ -515,19 +516,19 @@ class MassSdkTest {
         assertEquals("Runtime Only", app.getEvent("runtime.only").getName());
         assertTrue(app.listEvents().stream().anyMatch(event -> "runtime.only".equals(event.getCode())));
         assertEquals(List.of("runtime.only"),
-                app.getEventsForProject("runtimeApp").stream().map(SdkEventDefinition::getCode).toList());
+                app.getEventsForProject("runtimeApp").stream().map(EventDefinition::getCode).toList());
         assertEquals(List.of("runtime.only"),
                 app.metadataCatalog().getEventsForProject("runtimeApp").stream()
-                        .map(SdkEventDefinition::getCode)
+                        .map(EventDefinition::getCode)
                         .toList());
         assertEquals(List.of("runtime.only"),
                 app.projectEventCatalog().getEventsForProject("runtimeApp").stream()
-                        .map(SdkEventDefinition::getCode)
+                        .map(EventDefinition::getCode)
                         .toList());
     }
 
     @Test
-    void sdkEventDefinitionBecomesSingleSourceForMetadataScopeAndHandler() {
+    void eventDefinitionBecomesSingleSourceForMetadataScopeAndHandler() {
         MassSdkApplication app = new MassSdkApplication(mock(MassApplication.class));
         app.registerProject(ProjectMetadata.builder()
                 .code("botApp")
@@ -535,7 +536,7 @@ class MassSdkTest {
                 .description("bot project")
                 .eventCodes(List.of("bot.command"))
                 .build());
-        app.registerEventDefinition(SdkEventDefinition.builder()
+        app.registerEventDefinition(EventDefinition.builder()
                 .code("bot.command")
                 .name("Bot Command")
                 .description("handle a bot command directly")
@@ -570,17 +571,17 @@ class MassSdkTest {
         assertEquals("bot.command", ((Map<?, ?>) response.getData()).get("event"));
         assertTrue(app.listEvents().stream().anyMatch(event -> "bot.command".equals(event.getCode())));
         assertEquals(List.of("bot.command"),
-                app.getEventsForProject("botApp").stream().map(SdkEventDefinition::getCode).toList());
+                app.getEventsForProject("botApp").stream().map(EventDefinition::getCode).toList());
 
         SdkMetadataCatalog metadataCatalog = app.metadataCatalog();
         assertTrue(metadataCatalog.listEvents().stream().anyMatch(event -> "bot.command".equals(event.getCode())));
         assertEquals(List.of("bot.command"),
-                metadataCatalog.getEventsForProject("botApp").stream().map(SdkEventDefinition::getCode).toList());
+                metadataCatalog.getEventsForProject("botApp").stream().map(EventDefinition::getCode).toList());
 
         ProjectEventCatalog catalog = app.projectEventCatalog();
         assertTrue(catalog.listEvents().stream().anyMatch(event -> "bot.command".equals(event.getCode())));
         assertEquals(List.of("bot.command"),
-                catalog.getEventsForProject("botApp").stream().map(SdkEventDefinition::getCode).toList());
+                catalog.getEventsForProject("botApp").stream().map(EventDefinition::getCode).toList());
     }
 
     @Test
@@ -857,7 +858,7 @@ class MassSdkTest {
 
         try {
             app.start();
-            app.registerEventDefinition(SdkEventDefinition.builder()
+            app.registerEventDefinition(EventDefinition.builder()
                     .code("bot.command")
                     .name("Bot Command")
                     .description("custom bot command")
@@ -885,21 +886,21 @@ class MassSdkTest {
     }
 
     private static void registerExampleTaskCatalog(MassSdkApplication app) {
-        app.registerEventDefinition(SdkEventDefinition.builder()
+        app.registerEventDefinition(EventDefinition.builder()
                 .code("crawler.fetch-page")
                 .name("Crawler Fetch Page")
                 .description("Example crawler fetch task event.")
                 .payloadTypes(List.of(PayloadType.JSON))
                 .taskModes(List.of(TaskMode.SINGLE_RUN, TaskMode.STREAMING))
                 .build());
-        app.registerEventDefinition(SdkEventDefinition.builder()
+        app.registerEventDefinition(EventDefinition.builder()
                 .code("sms.acquire-number")
                 .name("SMS Acquire Number")
                 .description("Example SMS acquire number task event.")
                 .payloadTypes(List.of(PayloadType.JSON))
                 .taskModes(List.of(TaskMode.SINGLE_RUN))
                 .build());
-        app.registerEventDefinition(SdkEventDefinition.builder()
+        app.registerEventDefinition(EventDefinition.builder()
                 .code("chatbot.reply")
                 .name("Chatbot Reply")
                 .description("Example chatbot reply task event.")
@@ -983,6 +984,91 @@ class MassSdkTest {
         Assertions.assertEquals("crawler-worker-001", workerContext.getWorkerId());
         Assertions.assertEquals(Set.of("route-us"), workerContext.getRoutingTags());
         Assertions.assertEquals(Map.of("region", "us"), workerContext.getAttributes());
+    }
+
+    @Test
+    void eventBindingsBecomeWorkerCapabilityTruth() {
+        MassApplication delegate = mock(MassApplication.class);
+        MassEngine engine = mock(MassEngine.class);
+
+        when(delegate.getEngine()).thenReturn(engine);
+        when(engine.isRunning()).thenReturn(true);
+
+        MassSdkApplication app = new MassSdkApplication(delegate);
+        registerExampleTaskCatalog(app);
+
+        app.registerWorker(WorkerRegistration.builder()
+                .workerId("binding-worker-1")
+                .supportedProjects(List.of("legacy-project"))
+                .supportedEventCodes(List.of("legacy.event"))
+                .eventBindings(List.of(
+                        WorkerEventBinding.builder()
+                                .eventCode("crawler.fetch-page")
+                                .projectCodes(List.of("demoApp"))
+                                .build(),
+                        WorkerEventBinding.builder()
+                                .eventCode("chatbot.reply")
+                                .build()
+                ))
+                .transportHint("polling")
+                .build());
+
+        var workerCaptor = org.mockito.ArgumentCaptor.forClass(Worker.class);
+        verify(engine).addWorker(workerCaptor.capture());
+        Worker worker = workerCaptor.getValue();
+        Assertions.assertEquals(List.of("demoApp", "telegramApp", "rcsApp"), worker.getSupportedProjects());
+        Assertions.assertEquals(List.of("crawler.fetch-page", "chatbot.reply"), worker.getSupportedEventCodes());
+    }
+
+    @Test
+    void eventBindingsRejectUnknownEvent() {
+        MassApplication delegate = mock(MassApplication.class);
+        MassEngine engine = mock(MassEngine.class);
+
+        when(delegate.getEngine()).thenReturn(engine);
+        when(engine.isRunning()).thenReturn(true);
+
+        MassSdkApplication app = new MassSdkApplication(delegate);
+        registerExampleTaskCatalog(app);
+
+        IllegalArgumentException error = assertThrows(
+                IllegalArgumentException.class,
+                () -> app.registerWorker(WorkerRegistration.builder()
+                        .workerId("binding-worker-unknown")
+                        .eventBindings(List.of(
+                                WorkerEventBinding.builder().eventCode("missing.event").build()
+                        ))
+                        .build())
+        );
+
+        Assertions.assertTrue(error.getMessage().contains("Unsupported worker event"));
+    }
+
+    @Test
+    void eventBindingsRejectProjectOutsideEventScope() {
+        MassApplication delegate = mock(MassApplication.class);
+        MassEngine engine = mock(MassEngine.class);
+
+        when(delegate.getEngine()).thenReturn(engine);
+        when(engine.isRunning()).thenReturn(true);
+
+        MassSdkApplication app = new MassSdkApplication(delegate);
+        registerExampleTaskCatalog(app);
+
+        IllegalArgumentException error = assertThrows(
+                IllegalArgumentException.class,
+                () -> app.registerWorker(WorkerRegistration.builder()
+                        .workerId("binding-worker-scope")
+                        .eventBindings(List.of(
+                                WorkerEventBinding.builder()
+                                        .eventCode("crawler.fetch-page")
+                                        .projectCodes(List.of("telegramApp"))
+                                        .build()
+                        ))
+                        .build())
+        );
+
+        Assertions.assertTrue(error.getMessage().contains("outside event scope"));
     }
 
     @Test

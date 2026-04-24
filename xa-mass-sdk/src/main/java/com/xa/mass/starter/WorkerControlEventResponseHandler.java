@@ -3,8 +3,8 @@ package com.xa.mass.starter;
 import com.google.gson.Gson;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-import com.xa.mass.base.debug.ManualDebugChatProtocol;
 import com.xa.mass.base.debug.WorkerControlEventProtocol;
+import com.xa.mass.base.debug.WorkerControlMessageProtocol;
 import com.xa.mass.base.debug.WorkerDebugMessageStore;
 import com.xa.mass.gateway.dispatcher.handler.MassMessageHandler;
 import com.xa.mass.gateway.model.massMessage.MassMessage;
@@ -13,9 +13,9 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * Records inbound manual debug message replies from workers.
+ * Records inbound worker control-event replies from workers.
  */
-public class ManualDebugMessageHandler implements MassMessageHandler {
+public class WorkerControlEventResponseHandler implements MassMessageHandler {
     private final Gson gson = new Gson();
 
     @Override
@@ -81,14 +81,15 @@ public class ManualDebugMessageHandler implements MassMessageHandler {
 
     private String extractDetail(JsonElement payload) {
         if (payload == null || !payload.isJsonObject()) {
-            return "manual debug message received";
+            return "worker control response received";
         }
         JsonObject payloadObj = payload.getAsJsonObject();
-        if (payloadObj.has(ManualDebugChatProtocol.ACK_STATUS_FIELD) && !payloadObj.get(ManualDebugChatProtocol.ACK_STATUS_FIELD).isJsonNull()) {
+        if (payloadObj.has(WorkerControlMessageProtocol.ACK_STATUS_FIELD)
+                && !payloadObj.get(WorkerControlMessageProtocol.ACK_STATUS_FIELD).isJsonNull()) {
             try {
-                return payloadObj.get(ManualDebugChatProtocol.ACK_STATUS_FIELD).getAsString();
+                return payloadObj.get(WorkerControlMessageProtocol.ACK_STATUS_FIELD).getAsString();
             } catch (Exception ex) {
-                return payloadObj.get(ManualDebugChatProtocol.ACK_STATUS_FIELD).toString();
+                return payloadObj.get(WorkerControlMessageProtocol.ACK_STATUS_FIELD).toString();
             }
         }
         if (payloadObj.has("message") && !payloadObj.get("message").isJsonNull()) {
@@ -98,6 +99,6 @@ public class ManualDebugMessageHandler implements MassMessageHandler {
                 return payloadObj.get("message").toString();
             }
         }
-        return "manual debug message received";
+        return "worker control response received";
     }
 }

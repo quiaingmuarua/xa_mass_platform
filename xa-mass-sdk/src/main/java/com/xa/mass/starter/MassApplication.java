@@ -1,8 +1,6 @@
 package com.xa.mass.starter;
 
 import com.xa.mass.base.channel.tranporter.MessageTransporter;
-import com.xa.mass.base.debug.ManualDebugChatProtocol;
-import com.xa.mass.base.debug.WorkerControlEventProtocol;
 import com.xa.mass.command.event.InMemoryMassEventRuntime;
 import com.xa.mass.command.event.MassEventRuntime;
 import com.xa.mass.engine.listener.TaskMsgDispatchListener;
@@ -151,7 +149,6 @@ public class MassApplication {
 
             MessageHandlerRegistry messageHandlerRegistry =
                     new MessageHandlerRegistry(systemEventChannel);
-            messageHandlerRegistry.autoRegister();
             TaskMsgDispatchListener taskMsgDispatchListener = null;
             if (engineConfig.isEnabled() && engineConfig.getTaskManager() != null) {
                 transportRuntimeRegistry = gatewayConfig.resolveWorkerTransportRuntimeFactory().create(
@@ -166,21 +163,13 @@ public class MassApplication {
                 transportRuntimeRegistry.registerInboundHandlers(messageHandlerRegistry);
                 taskMsgDispatchListener = transportRuntimeRegistry.createDispatchListener();
             }
-            messageHandlerRegistry.registerEventCompatHandler(
-                    ManualDebugChatProtocol.SUB_MSG_TYPE,
-                    new ManualDebugMessageHandler()
-            );
-            messageHandlerRegistry.registerEventCompatHandler(
-                    WorkerControlEventProtocol.SUB_MSG_TYPE,
-                    new ManualDebugMessageHandler()
-            );
+            messageHandlerRegistry.registerWorkerControlEventResponseHandler(new WorkerControlEventResponseHandler());
             if (workerControlEventBridgeHandler != null) {
                 messageHandlerRegistry.registerWorkerControlEventBridge(workerControlEventBridgeHandler);
             }
             dispatcherContext.setMessageHandlerRegistry(messageHandlerRegistry);
             logger.info("Message handler registry initialized");
 
-            MiddlewareRegistry.autoRegister();
             logger.info("Middleware registry initialized");
 
             if (gatewayConfig.isEnabled()) {

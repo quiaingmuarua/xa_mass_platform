@@ -5,7 +5,7 @@ import com.xa.mass.base.model.Worker;
 import com.xa.mass.sdk.WorkerOperations;
 import com.xa.mass.sdk.catalog.ProjectMetadata;
 import com.xa.mass.sdk.catalog.SdkMetadataCatalog;
-import com.xa.mass.sdk.event.SdkEventDefinition;
+import com.xa.mass.sdk.event.EventDefinition;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.ResponseEntity;
@@ -62,7 +62,7 @@ public class SdkMetadataController {
     }
 
     @GetMapping("/projects/{projectCode}/events")
-    public ResponseEntity<ApiResponse<List<SdkEventDefinition>>> getProjectEvents(@PathVariable String projectCode) {
+    public ResponseEntity<ApiResponse<List<EventDefinition>>> getProjectEvents(@PathVariable String projectCode) {
         ProjectMetadata projectMetadata = metadataCatalog.getProject(projectCode);
         if (projectMetadata == null) {
             return ResponseEntity.status(404)
@@ -72,7 +72,7 @@ public class SdkMetadataController {
     }
 
     @GetMapping("/events")
-    public ResponseEntity<ApiResponse<List<SdkEventDefinition>>> listEvents() {
+    public ResponseEntity<ApiResponse<List<EventDefinition>>> listEvents() {
         return ResponseEntity.ok(ApiResponse.success(metadataCatalog.listEvents()));
     }
 
@@ -80,15 +80,15 @@ public class SdkMetadataController {
     public ResponseEntity<ApiResponse<List<Map<String, Object>>>> listEventCapabilities() {
         List<Worker> workers = workerOperations == null ? List.of() : workerOperations.getAllWorkers();
         List<Map<String, Object>> items = metadataCatalog.listEvents().stream()
-                .sorted(Comparator.comparing(SdkEventDefinition::getCode, String::compareToIgnoreCase))
+                .sorted(Comparator.comparing(EventDefinition::getCode, String::compareToIgnoreCase))
                 .map(event -> toEventCapabilityItem(event, workers))
                 .toList();
         return ResponseEntity.ok(ApiResponse.success(items));
     }
 
     @GetMapping("/events/{eventCode}")
-    public ResponseEntity<ApiResponse<SdkEventDefinition>> getEvent(@PathVariable String eventCode) {
-        SdkEventDefinition definition = metadataCatalog.getEvent(eventCode);
+    public ResponseEntity<ApiResponse<EventDefinition>> getEvent(@PathVariable String eventCode) {
+        EventDefinition definition = metadataCatalog.getEvent(eventCode);
         if (definition == null) {
             return ResponseEntity.status(404)
                     .body(ApiResponse.error(404, "Event metadata not found: " + eventCode));
@@ -96,7 +96,7 @@ public class SdkMetadataController {
         return ResponseEntity.ok(ApiResponse.success(definition));
     }
 
-    private Map<String, Object> toEventCapabilityItem(SdkEventDefinition event,
+    private Map<String, Object> toEventCapabilityItem(EventDefinition event,
                                                       List<Worker> workers) {
         boolean directRuntime = event.getTaskModes().isEmpty();
         // Event capabilities are keyed by globally unique event codes. Worker

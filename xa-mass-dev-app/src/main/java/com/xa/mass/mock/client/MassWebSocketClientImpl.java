@@ -4,8 +4,8 @@ import com.google.gson.Gson;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import com.xa.mass.base.debug.ManualDebugChatProtocol;
 import com.xa.mass.base.debug.WorkerControlEventProtocol;
+import com.xa.mass.base.debug.WorkerControlMessageProtocol;
 import com.xa.mass.command.model.CommandResponse;
 import com.xa.mass.gateway.model.enums.MessageDirection;
 import com.xa.mass.gateway.model.enums.MessageType;
@@ -197,10 +197,10 @@ public class MassWebSocketClientImpl extends WebSocketClient implements MassWebS
                 workerId, controlMessage.getMsgId(), controlMessage.getSubMsgType());
 
         MassMessage response = new MassMessage();
-        response.setMsgId("manual-chat-" + workerId + "-" + System.currentTimeMillis());
+        response.setMsgId(controlMessage.getMsgId());
         response.setResponse(true);
-        response.setMsgType(MessageType.EVENT);
-        response.setSubMsgType(resolveReplySubMsgType(controlMessage));
+        response.setMsgType(MessageType.CONTROL);
+        response.setSubMsgType(WorkerControlEventProtocol.SUB_MSG_TYPE);
         response.setFrom(MessageDirection.CLIENT);
         response.setProject(controlMessage.getProject());
 
@@ -217,14 +217,14 @@ public class MassWebSocketClientImpl extends WebSocketClient implements MassWebS
             commandResult = MockCommandRuntime.dispatch(commandRequest);
         }
 
-        payloadMap.put(ManualDebugChatProtocol.MESSAGE_KIND_FIELD, ManualDebugChatProtocol.MESSAGE_KIND_ACK);
-        payloadMap.put(ManualDebugChatProtocol.REPLY_TO_MESSAGE_ID_FIELD, controlMessage.getMsgId());
-        payloadMap.put(ManualDebugChatProtocol.ACK_STATUS_FIELD, ManualDebugChatProtocol.ACK_STATUS_RECEIVED);
+        payloadMap.put(WorkerControlMessageProtocol.MESSAGE_KIND_FIELD, WorkerControlMessageProtocol.MESSAGE_KIND_ACK);
+        payloadMap.put(WorkerControlMessageProtocol.REPLY_TO_MESSAGE_ID_FIELD, controlMessage.getMsgId());
+        payloadMap.put(WorkerControlMessageProtocol.ACK_STATUS_FIELD, WorkerControlMessageProtocol.ACK_STATUS_RECEIVED);
         payloadMap.put("message", resolveAckMessage(controlMessage, commandRequest, commandResult));
-        payloadMap.put(ManualDebugChatProtocol.WORKER_ID_FIELD, workerId);
-        payloadMap.put(ManualDebugChatProtocol.RECEIVED_AT_FIELD, System.currentTimeMillis());
-        payloadMap.put(ManualDebugChatProtocol.ECHO_PAYLOAD_FIELD, controlMessage.getPayload());
-        payloadMap.put(ManualDebugChatProtocol.ECHO_SUB_MSG_TYPE_FIELD, controlMessage.getSubMsgType());
+        payloadMap.put(WorkerControlMessageProtocol.WORKER_ID_FIELD, workerId);
+        payloadMap.put(WorkerControlMessageProtocol.RECEIVED_AT_FIELD, System.currentTimeMillis());
+        payloadMap.put(WorkerControlMessageProtocol.ECHO_PAYLOAD_FIELD, controlMessage.getPayload());
+        payloadMap.put(WorkerControlMessageProtocol.ECHO_SUB_MSG_TYPE_FIELD, controlMessage.getSubMsgType());
         payloadMap.put("commandExecuted", commandResult != null);
         JsonObject eventEnvelope = extractEventEnvelope(controlMessage);
         if (eventEnvelope != null
@@ -239,10 +239,14 @@ public class MassWebSocketClientImpl extends WebSocketClient implements MassWebS
             payloadMap.put("commandEvent", commandRequest.get(WorkerControlEventProtocol.EVENT_FIELD).getAsString());
             payloadMap.put("commandResult", commandResult);
         }
+        String resolvedEventCode = resolveInboundEventCode(controlMessage, commandRequest, eventEnvelope);
+        if (resolvedEventCode != null) {
+            payloadMap.put(WorkerControlEventProtocol.EVENT_FIELD, resolvedEventCode);
+        }
         response.setPayload(gson.toJsonTree(payloadMap));
 
         send(gson.toJson(response));
-        logger.debug("[{}] Sent manual debug response for msgId: {}", workerId, controlMessage.getMsgId());
+        logger.debug("[{}] Sent worker control response for msgId: {}", workerId, controlMessage.getMsgId());
         disconnectAfterAckIfRequested(commandResult);
     }
 
@@ -262,9 +266,9 @@ public class MassWebSocketClientImpl extends WebSocketClient implements MassWebS
                 commandRequest = payloadObject.deepCopy();
             } else if (payloadObject.has("command") && payloadObject.get("command").isJsonObject()) {
                 commandRequest = payloadObject.getAsJsonObject("command").deepCopy();
-            } else if (payloadObject.has(ManualDebugChatProtocol.TEXT_FIELD)
-                    && payloadObject.get(ManualDebugChatProtocol.TEXT_FIELD).isJsonPrimitive()) {
-                commandRequest = parseCommandText(payloadObject.get(ManualDebugChatProtocol.TEXT_FIELD).getAsString());
+            } else if (payloadObject.has(WorkerControlMessageProtocol.TEXT_FIELD)
+                    && payloadObject.get(WorkerControlMessageProtocol.TEXT_FIELD).isJsonPrimitive()) {
+                commandRequest = parseCommandText(payloadObject.get(WorkerControlMessageProtocol.TEXT_FIELD).getAsString());
             }
         } else if (payload.isJsonPrimitive() && payload.getAsJsonPrimitive().isString()) {
             commandRequest = parseCommandText(payload.getAsString());
@@ -347,14 +351,6 @@ public class MassWebSocketClientImpl extends WebSocketClient implements MassWebS
         return commandRequest;
     }
 
-    private String resolveReplySubMsgType(MassMessage controlMessage) {
-        String subMsgType = controlMessage.getSubMsgType();
-        if (subMsgType == null || subMsgType.isBlank()) {
-            return ManualDebugChatProtocol.SUB_MSG_TYPE;
-        }
-        return subMsgType;
-    }
-
     private String resolveAckMessage(MassMessage controlMessage,
                                      JsonObject commandRequest,
                                      CommandResponse<?> commandResult) {
@@ -369,7 +365,23 @@ public class MassWebSocketClientImpl extends WebSocketClient implements MassWebS
             return "mock worker received event: "
                     + eventEnvelope.get(WorkerControlEventProtocol.EVENT_FIELD).getAsString();
         }
-        return "mock worker received manual debug message";
+        return "mock worker received control message";
+    }
+
+    private String resolveInboundEventCode(MassMessage controlMessage,
+                                           JsonObject commandRequest,
+                                           JsonObject eventEnvelope) {
+        if (eventEnvelope != null
+                && eventEnvelope.has(WorkerControlEventProtocol.EVENT_FIELD)
+                && !eventEnvelope.get(WorkerControlEventProtocol.EVENT_FIELD).isJsonNull()) {
+            return eventEnvelope.get(WorkerControlEventProtocol.EVENT_FIELD).getAsString();
+        }
+        if (commandRequest != null
+                && commandRequest.has(WorkerControlEventProtocol.EVENT_FIELD)
+                && !commandRequest.get(WorkerControlEventProtocol.EVENT_FIELD).isJsonNull()) {
+            return commandRequest.get(WorkerControlEventProtocol.EVENT_FIELD).getAsString();
+        }
+        return controlMessage.getSubMsgType();
     }
 
     private JsonObject parseCommandText(String text) {

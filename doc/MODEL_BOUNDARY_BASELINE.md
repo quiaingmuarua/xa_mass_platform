@@ -25,9 +25,9 @@ This file defines the current canonical model boundaries. Its purpose is to stop
 ### SDK boundary
 
 - Canonical public task-create requests: `com.xa.mass.sdk.model.MassTaskCreateRequest` for plain creates and `com.xa.mass.sdk.model.MassTaskRequest` for mode/payload-aware creates
-- Canonical public capability definition: `com.xa.mass.sdk.event.SdkEventDefinition`
-- `SdkEventDefinition.code` is the globally unique capability identity
-- `SdkEventDefinition.projectCodes` is scope metadata, not part of the identity key
+- Canonical public capability definition: `com.xa.mass.sdk.event.EventDefinition`
+- `EventDefinition.code` is the globally unique capability identity
+- `EventDefinition.projectCodes` is scope metadata, not part of the identity key
 - Engine DTOs are internal conversion targets, not public SDK surface
 
 ### Mock command boundary

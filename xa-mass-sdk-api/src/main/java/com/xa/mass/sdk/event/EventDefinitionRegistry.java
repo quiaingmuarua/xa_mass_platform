@@ -13,21 +13,21 @@ import java.util.Objects;
  * may be derived from a lower-level runtime source such as
  * {@code com.xa.mass.command.event.MassEventRuntime}.
  */
-public final class SdkEventDefinitionRegistry {
+public final class EventDefinitionRegistry {
 
-    private final Map<String, SdkEventDefinition> definitions = new LinkedHashMap<>();
+    private final Map<String, EventDefinition> definitions = new LinkedHashMap<>();
 
-    public synchronized void register(SdkEventDefinition definition) {
-        SdkEventDefinition normalized = Objects.requireNonNull(definition, "definition");
+    public synchronized void register(EventDefinition definition) {
+        EventDefinition normalized = Objects.requireNonNull(definition, "definition");
         definitions.put(normalized.getEventCode(), normalized);
     }
 
-    public synchronized void replaceAll(Iterable<SdkEventDefinition> definitions) {
+    public synchronized void replaceAll(Iterable<EventDefinition> definitions) {
         this.definitions.clear();
         if (definitions == null) {
             return;
         }
-        for (SdkEventDefinition definition : definitions) {
+        for (EventDefinition definition : definitions) {
             if (definition != null) {
                 register(definition);
             }
@@ -38,17 +38,17 @@ public final class SdkEventDefinitionRegistry {
         return definitions.containsKey(eventCode);
     }
 
-    public synchronized SdkEventDefinition get(String eventCode) {
+    public synchronized EventDefinition get(String eventCode) {
         return definitions.get(eventCode);
     }
 
-    public synchronized List<SdkEventDefinition> list() {
+    public synchronized List<EventDefinition> list() {
         return definitions.values().stream()
-                .sorted(Comparator.comparing(SdkEventDefinition::getEventCode, String::compareToIgnoreCase))
+                .sorted(Comparator.comparing(EventDefinition::getEventCode, String::compareToIgnoreCase))
                 .toList();
     }
 
-    public synchronized List<SdkEventDefinition> listForProject(String projectCode) {
+    public synchronized List<EventDefinition> listForProject(String projectCode) {
         if (projectCode == null || projectCode.isBlank()) {
             return List.of();
         }

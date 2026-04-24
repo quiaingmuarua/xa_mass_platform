@@ -21,7 +21,7 @@ import java.util.Objects;
  * constrain where an event can be invoked, but it is not part of the event's
  * identity and must not be treated as a composite routing key.
  */
-public final class SdkEventDefinition {
+public final class EventDefinition {
 
     private final String code;
     private final String name;
@@ -31,9 +31,9 @@ public final class SdkEventDefinition {
     private final boolean enabled;
     private final String defaultRoutingCode;
     private final List<String> projectCodes;
-    private final SdkEventHandler handler;
+    private final EventHandler handler;
 
-    private SdkEventDefinition(Builder builder) {
+    private EventDefinition(Builder builder) {
         this.code = requireNonBlank(builder.code, "code");
         this.name = requireNonBlank(builder.name, "name");
         this.description = builder.description != null ? builder.description : "";
@@ -85,7 +85,7 @@ public final class SdkEventDefinition {
         return projectCodes;
     }
 
-    public SdkEventHandler getHandler() {
+    public EventHandler getHandler() {
         return handler;
     }
 
@@ -146,7 +146,7 @@ public final class SdkEventDefinition {
         private boolean enabled = true;
         private String defaultRoutingCode;
         private List<String> projectCodes = Collections.emptyList();
-        private SdkEventHandler handler;
+        private EventHandler handler;
 
         private Builder() {
         }
@@ -191,13 +191,13 @@ public final class SdkEventDefinition {
             return this;
         }
 
-        public Builder handler(SdkEventHandler handler) {
+        public Builder handler(EventHandler handler) {
             this.handler = handler;
             return this;
         }
 
-        public SdkEventDefinition build() {
-            return new SdkEventDefinition(this);
+        public EventDefinition build() {
+            return new EventDefinition(this);
         }
     }
 }

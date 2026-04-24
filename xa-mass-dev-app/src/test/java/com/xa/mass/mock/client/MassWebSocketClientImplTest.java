@@ -131,8 +131,9 @@ class MassWebSocketClientImplTest {
 
         assertTrue(client.awaitSentCount(1, 1000L));
         MassMessage response = gson.fromJson(client.sentMessages.get(0), MassMessage.class);
-        assertEquals(MessageType.EVENT, response.getMsgType());
+        assertEquals(MessageType.CONTROL, response.getMsgType());
         assertEquals(WorkerControlEventProtocol.SUB_MSG_TYPE, response.getSubMsgType());
+        assertEquals("control-1", response.getMsgId());
         assertTrue(client.awaitClosed(1000L));
         assertFalse(client.isOpen());
     }

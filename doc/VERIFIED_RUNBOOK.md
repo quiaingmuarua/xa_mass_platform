@@ -155,15 +155,15 @@ Open-ended and debug side-channel:
 - `Task.intakeStatus` is the append-window truth; `openEnded` is the create/response projection.
 - `POST /status/api/tasks/{taskId}/items` appends inputs only while intake is open.
 - `PUT /status/api/tasks/{taskId}/seal` closes intake and resumes normal terminal convergence.
-- manual worker debug uses the event-first path `POST /status/workers/send-event`, which currently bridges to `CONTROL/event -> EVENT/event` on the WebSocket adapter.
-- debug chat is a control side-channel and must not create or mutate `TaskMsg`.
+- manual worker control uses the event-first path `POST /status/workers/send-event`, which currently bridges to `CONTROL/event -> CONTROL/event` on the WebSocket adapter.
+- worker control messaging is a control side-channel and must not create or mutate `TaskMsg`.
 
 ## 6. Focused Regression Gate
 
 Focused command used for current high-signal runtime coverage:
 
 ```bash
-mvn -pl xa-mass-dev-app -am -Dtest=WorkerAttributesTest,WorkerContextAttributesTest,WorkerMatchContextTest,QLExpressRuleEvaluatorTest,RuleBasedTaskWorkerMatchingStrategyTest,TaskApiDelayedWorkerAvailabilityIntegrationTest,TaskApiWorkerContextAttributeRoutingIntegrationTest,TaskApiWorkerWithoutContextIntegrationTest,WorkerManualDebugCommandIntegrationTest,WorkerManualDebugDisconnectIntegrationTest,ControlConsoleRoutingIntegrationTest,MockRuntimeDataLoaderTest -Dsurefire.failIfNoSpecifiedTests=false test
+mvn -pl xa-mass-dev-app -am -Dtest=WorkerAttributesTest,WorkerContextAttributesTest,WorkerMatchContextTest,QLExpressRuleEvaluatorTest,RuleBasedTaskWorkerMatchingStrategyTest,TaskApiDelayedWorkerAvailabilityIntegrationTest,TaskApiWorkerContextAttributeRoutingIntegrationTest,TaskApiWorkerWithoutContextIntegrationTest,WorkerControlEventCommandIntegrationTest,WorkerControlEventDisconnectIntegrationTest,ControlConsoleRoutingIntegrationTest,MockRuntimeDataLoaderTest -Dsurefire.failIfNoSpecifiedTests=false test
 ```
 
 Representative coverage:

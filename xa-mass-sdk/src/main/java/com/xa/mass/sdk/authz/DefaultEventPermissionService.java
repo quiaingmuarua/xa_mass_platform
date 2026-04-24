@@ -3,7 +3,7 @@ package com.xa.mass.sdk.authz;
 import com.xa.mass.sdk.catalog.SdkMetadataCatalog;
 import com.xa.mass.sdk.event.EventPrincipal;
 import com.xa.mass.sdk.event.EventRequest;
-import com.xa.mass.sdk.event.SdkEventDefinition;
+import com.xa.mass.sdk.event.EventDefinition;
 
 import java.util.HashSet;
 import java.util.Objects;
@@ -53,7 +53,7 @@ public class DefaultEventPermissionService implements EventPermissionService {
     }
 
     private AuthorizationDecision validateCatalogAndDescriptor(String eventCode, String projectCode) {
-        SdkEventDefinition definition = metadataCatalog.getEvent(eventCode);
+        EventDefinition definition = metadataCatalog.getEvent(eventCode);
         if (definition != null) {
             if (!definition.isEnabled()) {
                 return AuthorizationDecision.deny("event disabled: " + eventCode);

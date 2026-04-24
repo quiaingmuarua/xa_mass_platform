@@ -2,7 +2,6 @@ package com.xa.mass.gateway.dispatcher;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
-import com.xa.mass.base.debug.ManualDebugChatProtocol;
 import com.xa.mass.base.debug.WorkerControlEventProtocol;
 import com.xa.mass.gateway.dispatcher.event.EventGatewayBridge;
 import com.xa.mass.gateway.dispatcher.handler.MassMessageHandler;
@@ -31,8 +30,6 @@ class MessageHandlerRegistryTest {
         registry = new MessageHandlerRegistry();
     }
 
-    // ---- register + resolve ----
-
     @Test
     void resolveRegisteredTaskStepHandler() {
         MassMessageHandler handler = msg -> Collections.emptyList();
@@ -45,14 +42,18 @@ class MessageHandlerRegistryTest {
     }
 
     @Test
-    void resolveRegisteredEventCompatHandler() {
+    void resolveRegisteredWorkerControlEventResponseHandler() {
         MassMessageHandler handler = msg -> Collections.emptyList();
-        registry.register(MessageType.EVENT, ManualDebugChatProtocol.SUB_MSG_TYPE, handler);
+        registry.registerWorkerControlEventResponseHandler(handler);
 
-        ResolutionResult result = registry.resolve(MessageType.EVENT, ManualDebugChatProtocol.SUB_MSG_TYPE);
+        MassMessage response = massMessage("demoApp", MessageType.CONTROL, WorkerControlEventProtocol.SUB_MSG_TYPE);
+        response.setResponse(true);
+
+        ResolutionResult result = registry.resolve(response);
 
         assertTrue(result.isFound());
         assertSame(handler, result.getHandler());
+        assertEquals("worker-control-event-response", result.getResolutionPath());
     }
 
     @Test
@@ -64,31 +65,11 @@ class MessageHandlerRegistryTest {
     }
 
     @Test
-    void fallbackResultWhenNoHandlerAndFallbackEnabled() {
-        registry.setEnableFallback(true);
-
-        ResolutionResult result = registry.resolve(MessageType.STATUS, "unknownSub");
-
-        assertTrue(result.isFallback());
-        assertFalse(result.isFound());
-    }
-
-    @Test
     void defaultNoHandlerResultIsNotFound() {
         ResolutionResult result = registry.resolve(MessageType.STATUS, "unknownSub");
 
         assertTrue(result.isNotFound());
-        assertFalse(result.isFallback());
-    }
-
-    @Test
-    void notFoundResultWhenNoHandlerAndFallbackDisabled() {
-        registry.setEnableFallback(false);
-
-        ResolutionResult result = registry.resolve(MessageType.STATUS, "unknownSub");
-
         assertFalse(result.isFound());
-        assertFalse(result.isFallback());
     }
 
     @Test
@@ -100,11 +81,8 @@ class MessageHandlerRegistryTest {
         assertTrue(error.getMessage().contains("CONTROL/event"));
     }
 
-    // ---- autoRegister built-in handlers ----
-
     @Test
-    void autoRegisteredPingHandlerReturnsPong() {
-        registry.autoRegister();
+    void builtinPingHandlerReturnsPong() {
         MassMessage ping = massMessage("GLOBAL", MessageType.PING, "heartbeat");
 
         ResolutionResult result = registry.resolve(ping);
@@ -116,16 +94,13 @@ class MessageHandlerRegistryTest {
     }
 
     @Test
-    void autoRegisteredPongHandlerReturnsEmpty() {
-        registry.autoRegister();
+    void builtinPongHandlerReturnsEmpty() {
         MassMessage pong = massMessage("GLOBAL", MessageType.PONG, "heartbeat");
 
         ResolutionResult result = registry.resolve(pong);
         assertTrue(result.isFound());
         assertTrue(result.getHandler().handle(pong).isEmpty());
     }
-
-    // ---- resolve via MassMessage ----
 
     @Test
     void resolveViaMassMessageDelegates() {
@@ -137,16 +112,14 @@ class MessageHandlerRegistryTest {
     }
 
     @Test
-    void legacyControlBridgeTakesPriorityOverFallbackForControlEventSubtype() {
-        registry.setEnableFallback(true);
+    void controlEventBridgeCapturesRequestFrames() {
         registry.registerWorkerControlEventBridge(new WorkerControlEventBridgeHandler(
                 new EventGatewayBridge((request, principal) -> EventResponse.success(
                         java.util.Map.of("echoEvent", request.getEvent().value()),
                         request.getRequestId()))
         ));
 
-        MassMessage msg = massMessage("demoApp", MessageType.CONTROL,
-                WorkerControlEventProtocol.SUB_MSG_TYPE);
+        MassMessage msg = massMessage("demoApp", MessageType.CONTROL, WorkerControlEventProtocol.SUB_MSG_TYPE);
         JsonObject payload = new JsonObject();
         payload.addProperty(WorkerControlEventProtocol.EVENT_FIELD, "crawler.fetch-page");
         payload.addProperty(WorkerControlEventProtocol.REQUEST_ID_FIELD, "req-bridge");
@@ -167,8 +140,25 @@ class MessageHandlerRegistryTest {
     }
 
     @Test
-    void legacyControlBridgeDoesNotCaptureNonEventSubtype() {
-        registry.setEnableFallback(true);
+    void controlEventBridgeDoesNotCaptureResponseFrames() {
+        registry.registerWorkerControlEventBridge(new WorkerControlEventBridgeHandler(
+                new EventGatewayBridge((request, principal) -> EventResponse.success(
+                        java.util.Map.of("echoEvent", request.getEvent().value()),
+                        request.getRequestId()))
+        ));
+
+        MassMessage msg = massMessage("demoApp", MessageType.CONTROL, WorkerControlEventProtocol.SUB_MSG_TYPE);
+        msg.setResponse(true);
+        JsonObject payload = new JsonObject();
+        payload.addProperty(WorkerControlEventProtocol.EVENT_FIELD, "crawler.fetch-page");
+        msg.setPayload(payload);
+
+        ResolutionResult result = registry.resolve(msg);
+        assertTrue(result.isNotFound());
+    }
+
+    @Test
+    void controlEventBridgeDoesNotCaptureNonEventSubtype() {
         registry.registerWorkerControlEventBridge(new WorkerControlEventBridgeHandler(
                 new EventGatewayBridge((request, principal) -> EventResponse.success(
                         java.util.Map.of("echoEvent", request.getEvent().value()),
@@ -181,29 +171,23 @@ class MessageHandlerRegistryTest {
         msg.setPayload(payload);
 
         ResolutionResult result = registry.resolve(msg);
-        assertTrue(result.isFallback());
-        assertFalse(result.isFound());
+        assertTrue(result.isNotFound());
     }
 
     @Test
-    void legacyControlBridgeDoesNotCaptureControlEventWithoutGlobalEventCode() {
-        registry.setEnableFallback(true);
+    void controlEventBridgeDoesNotCaptureControlEventWithoutGlobalEventCode() {
         registry.registerWorkerControlEventBridge(new WorkerControlEventBridgeHandler(
                 new EventGatewayBridge((request, principal) -> EventResponse.success(
                         java.util.Map.of("echoEvent", request.getEvent().value()),
                         request.getRequestId()))
         ));
 
-        MassMessage msg = massMessage("demoApp", MessageType.CONTROL,
-                WorkerControlEventProtocol.SUB_MSG_TYPE);
+        MassMessage msg = massMessage("demoApp", MessageType.CONTROL, WorkerControlEventProtocol.SUB_MSG_TYPE);
         msg.setPayload(new JsonObject());
 
         ResolutionResult result = registry.resolve(msg);
-        assertTrue(result.isFallback());
-        assertFalse(result.isFound());
+        assertTrue(result.isNotFound());
     }
-
-    // ---- helpers ----
 
     private MassMessage massMessage(String project, MessageType type, String subType) {
         MassMessage msg = new MassMessage();

@@ -5,7 +5,7 @@ import com.xa.mass.sdk.catalog.ProjectMetadata;
 import com.xa.mass.sdk.catalog.TaskMode;
 import com.xa.mass.sdk.event.EventPrincipal;
 import com.xa.mass.sdk.event.EventRequest;
-import com.xa.mass.sdk.event.SdkEventDefinition;
+import com.xa.mass.sdk.event.EventDefinition;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -29,7 +29,7 @@ class DefaultEventPermissionServiceTest {
                 .eventCodes(List.of("crawler.fetch-page"))
                 .build());
 
-        catalog.registerEventDefinition(SdkEventDefinition.builder()
+        catalog.registerEventDefinition(EventDefinition.builder()
                 .code("crawler.fetch-page")
                 .name("Crawler Fetch Page")
                 .taskModes(List.of(TaskMode.SINGLE_RUN))

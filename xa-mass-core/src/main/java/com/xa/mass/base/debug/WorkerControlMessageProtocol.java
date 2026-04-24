@@ -1,13 +1,22 @@
 package com.xa.mass.base.debug;
 
 /**
- * Shared protocol constants for manual worker debug chat.
+ * Shared payload-field constants for worker control messages and acknowledgements.
+ *
+ * <p>Routing identity belongs to the global event code carried by the
+ * {@code CONTROL/event} envelope. These fields describe the payload/body shape
+ * used by mock workers and debug tooling.
  */
-public final class ManualDebugChatProtocol {
-    public static final String SUB_MSG_TYPE = "manual-chat";
+public final class WorkerControlMessageProtocol {
+    /**
+     * @deprecated Control-plane routing truth is {@code CONTROL/event}. This
+     * legacy sub-message type remains only for historical records.
+     */
+    @Deprecated(forRemoval = false)
+    public static final String LEGACY_SUB_MSG_TYPE = "manual-chat";
     public static final String MESSAGE_KIND_FIELD = "messageKind";
-    public static final String MESSAGE_KIND_REQUEST = "debug_chat";
-    public static final String MESSAGE_KIND_ACK = "debug_chat_ack";
+    public static final String MESSAGE_KIND_REQUEST = "worker_control";
+    public static final String MESSAGE_KIND_ACK = "worker_control_ack";
     public static final String TEXT_FIELD = "text";
     public static final String WORKER_ID_FIELD = "workerId";
     public static final String SENT_AT_FIELD = "sentAt";
@@ -20,6 +29,6 @@ public final class ManualDebugChatProtocol {
     public static final String ECHO_SUB_MSG_TYPE_FIELD = "echoSubMsgType";
     public static final String SOURCE_FIELD = "source";
 
-    private ManualDebugChatProtocol() {
+    private WorkerControlMessageProtocol() {
     }
 }

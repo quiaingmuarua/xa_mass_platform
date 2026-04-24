@@ -69,7 +69,7 @@ For verified runtime behavior and recommended startup, use [VERIFIED_RUNBOOK.md]
 
 - SDK Phase 1 now has a stable event invocation contract: `EventRequest`, `EventResponse`, and `EventPrincipal`.
 - Control-plane authorization is event-centric and currently uses `clientId ∩ userId` allow-list intersection.
-- `SdkEventDefinition.code` is the globally unique event/capability identity used by dispatch, catalog reads, and permission checks.
+- `EventDefinition.code` is the globally unique event/capability identity used by dispatch, catalog reads, and permission checks.
 - `project` remains scope metadata for task ownership and event eligibility; it is not part of the event identity key.
 - Catalog task events such as `demo.dispatch`, `bot.command`, or other embedding-defined business events can be invoked through the SDK event entry and are mapped to task creation.
 - Runtime control events such as `platform.worker.register` and `platform.meta.events.list` are handled through the embedded event runtime.
@@ -112,7 +112,7 @@ Behavior:
 
 Behavior:
 
-- returns the full `SdkEventDefinition` list for the project's declared `eventCodes`
+- returns the full `EventDefinition` list for the project's declared `eventCodes`
 - returns HTTP 404 when `projectCode` does not exist in the catalog
 
 ### 2.4 List SDK Events
@@ -123,7 +123,7 @@ Behavior:
 
 Response notes:
 
-- returns the registered `SdkEventDefinition` list
+- returns the registered `EventDefinition` list
 - each event includes `code`, `name`, `description`, `payloadTypes`, `taskModes`, and `enabled`
 - `taskModes=[]` means the event is a direct runtime definition, not a task-create event
 
@@ -135,7 +135,7 @@ Response notes:
 
 Behavior:
 
-- returns the registered `SdkEventDefinition`
+- returns the registered `EventDefinition`
 - `taskModes=[]` means the event is direct runtime discovery/dispatch only
 - returns HTTP 404 when `eventCode` does not exist in the catalog
 
@@ -819,7 +819,7 @@ Behavior:
 Request notes:
 
 - accepts `workerId`, `project`, `event`, `requestId`, `headers`, `payload`, and optional `principal`
-- current WebSocket adapter bridges this to `CONTROL/event` and records acknowledgements from `EVENT/event`
+- current WebSocket adapter bridges this to `CONTROL/event` and records acknowledgements from `CONTROL/event`
 
 ## 9. Health And Docs
 

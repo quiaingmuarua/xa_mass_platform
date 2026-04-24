@@ -128,7 +128,7 @@ Transport facts:
 
 - request path: `POST /status/workers/send-event`
 - transport frame: `CONTROL/event`
-- acknowledgement frame: `EVENT/event`
+- acknowledgement frame: `CONTROL/event`
 - command execution is only a debug/control side-channel and must not mutate task lifecycle state
 
 Example request body:

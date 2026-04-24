@@ -62,7 +62,6 @@ class DispatcherInboundHandlerTest {
         sessionManager = new ServerSessionManager();
         GsonMessageCodec codec = new GsonMessageCodec();
         MessageHandlerRegistry registry = new MessageHandlerRegistry();
-        registry.autoRegister();
 
         DispatchRuntimeContext context = new DispatcherContext(transporter, sessionManager, codec);
         ((DispatcherContext) context).setMessageHandlerRegistry(registry);

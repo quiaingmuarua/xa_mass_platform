@@ -14,7 +14,7 @@ import com.xa.mass.sdk.MassSdk;
 import com.xa.mass.sdk.MassSdkApplication;
 import com.xa.mass.sdk.catalog.*;
 import com.xa.mass.sdk.event.EventResponse;
-import com.xa.mass.sdk.event.SdkEventDefinition;
+import com.xa.mass.sdk.event.EventDefinition;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -177,7 +177,7 @@ public class MockApplicationSpringBootApp {
     }
 
     private void registerDevAppCatalog(MassSdkApplication app) {
-        registerCatalogTaskDefinition(app, SdkEventDefinition.builder()
+        registerCatalogTaskDefinition(app, EventDefinition.builder()
                 .code("demo.dispatch")
                 .name("Demo Dispatch")
                 .description("Dispatch a generic demo work item to an online demo worker.")
@@ -185,7 +185,7 @@ public class MockApplicationSpringBootApp {
                 .taskModes(List.of(TaskMode.SINGLE_RUN, TaskMode.STREAMING))
                 .projectCodes(List.of("demoApp", "testApp", "otherApp"))
                 .build());
-        registerCatalogTaskDefinition(app, SdkEventDefinition.builder()
+        registerCatalogTaskDefinition(app, EventDefinition.builder()
                 .code("demo.dispatch.gb")
                 .name("Demo Dispatch (GB)")
                 .description("Dispatch a generic demo work item to the GB demo lane.")
@@ -193,7 +193,7 @@ public class MockApplicationSpringBootApp {
                 .taskModes(List.of(TaskMode.SINGLE_RUN, TaskMode.STREAMING))
                 .projectCodes(List.of("demoApp", "otherApp"))
                 .build());
-        registerCatalogTaskDefinition(app, SdkEventDefinition.builder()
+        registerCatalogTaskDefinition(app, EventDefinition.builder()
                 .code("crawler.fetch-page")
                 .name("Crawler Fetch Page")
                 .description("Dispatch a crawler fetch request to an SDK-created pull worker.")
@@ -232,7 +232,7 @@ public class MockApplicationSpringBootApp {
     }
 
     private void registerCatalogTaskDefinition(MassSdkApplication app,
-                                               SdkEventDefinition definition) {
+                                               EventDefinition definition) {
         app.registerEventDefinition(definition);
     }
 
@@ -242,9 +242,9 @@ public class MockApplicationSpringBootApp {
         }
     }
 
-    private SdkEventDefinition toRuntimeToolEventDefinition(CommandDefinition<JsonObject, Map<String, Object>> definition) {
+    private EventDefinition toRuntimeToolEventDefinition(CommandDefinition<JsonObject, Map<String, Object>> definition) {
         CommandDefinition.Descriptor descriptor = definition.getDescriptor();
-        return SdkEventDefinition.builder()
+        return EventDefinition.builder()
                 .code(definition.getEvent())
                 .name(humanizeEventName(descriptor.getEvent()))
                 .description(descriptor.getSummary())

@@ -26,12 +26,6 @@ public class MiddlewareRegistry {
         resetExceptionMiddlewares();
     }
 
-    public static void autoRegister() {
-        // The current gateway mainline has a fixed input/output middleware chain.
-        // Keep this hook as an idempotent bootstrap seam for existing startup code.
-        MiddlewareRegistry.instance.resetExceptionMiddlewares();
-    }
-
     // Final middleware for the input/output chain that decodes, routes, and emits downstream responses.
     public static EnvelopeMiddleware processEnvelopeMiddleware() {
         return (envelope, context) -> {
@@ -59,9 +53,6 @@ public class MiddlewareRegistry {
                                     .build());
                         }
                     }
-                } else if (result.isFallback()) {
-                    logger.warn("Using fallback handler for message: msgType={}, subType={}, payload={}",
-                            msg.getMsgType(), msg.getSubMsgType(), msg.getPayload());
                 } else {
                     logger.warn("No handler found for message: {}", result);
                 }

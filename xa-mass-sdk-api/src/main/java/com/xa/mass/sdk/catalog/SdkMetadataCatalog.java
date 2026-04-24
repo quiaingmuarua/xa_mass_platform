@@ -1,6 +1,6 @@
 package com.xa.mass.sdk.catalog;
 
-import com.xa.mass.sdk.event.SdkEventDefinition;
+import com.xa.mass.sdk.event.EventDefinition;
 
 import java.util.List;
 
@@ -13,9 +13,9 @@ public interface SdkMetadataCatalog {
 
     ProjectMetadata getProject(String projectCode);
 
-    List<SdkEventDefinition> listEvents();
+    List<EventDefinition> listEvents();
 
-    SdkEventDefinition getEvent(String eventCode);
+    EventDefinition getEvent(String eventCode);
 
-    List<SdkEventDefinition> getEventsForProject(String projectCode);
+    List<EventDefinition> getEventsForProject(String projectCode);
 }

@@ -68,10 +68,10 @@ Interpretation rules:
 - future worker forms should extend these abstract slots instead of shrinking the platform back into `worker/workerContext` vocabulary
 - mock/runtime loading does not auto-create fallback worker contexts; a worker with no explicit `workerContexts` stays stateless
 - SDK-first worker resource creation is the preferred path: use `WorkerRegistration` / `WorkerContextRegistration` through `MassSdkApplication.registerWorker(...)` and `registerWorkerContext(...)`; registration does not imply online state
-- SDK project/event metadata is registered through `MassSdkApplication.registerProject(...)` and `registerEvent(...)`; enabled project registration also extends the core runtime project registry used by task and worker-context validation
+- SDK project/event metadata is registered through `MassSdkApplication.registerProject(...)` and `registerEventDefinition(...)`; enabled project registration also extends the core runtime project registry used by task and worker-context validation
 - `ResourceOperations` is the SDK project/event control-plane interface
-- `SdkEventDefinition.code` is the globally unique capability identity for SDK/runtime dispatch, worker capability declarations, and permission checks
-- `SdkEventDefinition.projectCodes` is scope metadata only; it constrains where an event may be invoked but is not part of the event identity
+- `EventDefinition.code` is the globally unique capability identity for SDK/runtime dispatch, worker capability declarations, and permission checks
+- `EventDefinition.projectCodes` is scope metadata only; it constrains where an event may be invoked but is not part of the event identity
 - SDK submitter registration is currently a minimal in-memory credential binding for task submission identity; do not treat it as a complete user/security subsystem
 - SDK submitter list/get operations expose submitter metadata only; raw credentials are accepted on registration and consumed by authentication, not returned as resource read models
 
@@ -229,7 +229,7 @@ Important current rules:
 
 - Primary control-plane debug path is `POST /status/workers/send-event`
 - Event-first transport frame is `CONTROL/event`
-- Event-first acknowledgement path is `EVENT/event`
+- Event-first acknowledgement path is `CONTROL/event`
 - `CONTROL/event` is a compatibility bridge for the current worker debug/control adapter; it is not the platform capability model
 - `CONTROL/manual-chat -> EVENT/manual-chat` remains only as a compatibility debug-chat path
 - Current delivery visibility is stored in `WorkerDebugMessageStore`

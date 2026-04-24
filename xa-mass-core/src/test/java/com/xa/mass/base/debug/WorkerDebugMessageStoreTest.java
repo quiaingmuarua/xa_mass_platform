@@ -56,7 +56,7 @@ class WorkerDebugMessageStoreTest {
                 "worker-1",
                 "demoApp",
                 null,
-                "EVENT",
+                "CONTROL",
                 "event",
                 "msg-2",
                 "msg-1",
@@ -72,13 +72,13 @@ class WorkerDebugMessageStoreTest {
     }
 
     @Test
-    void manualChatInboundKeepsNullEventIdentity() {
+    void legacyManualChatInboundKeepsNullEventIdentity() {
         WorkerDebugMessageStore.recordInbound(
                 "worker-1",
                 "demoApp",
                 null,
-                "EVENT",
-                "manual-chat",
+                "CONTROL",
+                WorkerControlMessageProtocol.LEGACY_SUB_MSG_TYPE,
                 "msg-3",
                 null,
                 "{\"message\":\"ok\"}",

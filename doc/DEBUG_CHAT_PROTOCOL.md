@@ -1,10 +1,10 @@
-# Manual Debug Chat Protocol
+# Worker Control Message Protocol
 
-This document defines the lightweight worker debug-chat protocol used by the control console worker-debug surface.
+This document defines the lightweight worker-control message payload used by the control-console worker debug surface.
 
 ## Purpose
 
-- Provide a human-friendly debug conversation UI on the worker page
+- Provide a human-friendly operator control/debug surface on the worker page
 - Keep the payload JSON directly visible for internal troubleshooting
 - Make delivery state observable without coupling the flow to task lifecycle logic
 - Allow lightweight mock-client command execution without introducing a second control transport
@@ -12,12 +12,12 @@ This document defines the lightweight worker debug-chat protocol used by the con
 ## Outbound message
 
 - `msgType`: `CONTROL`
-- `subMsgType`: `manual-chat`
+- `subMsgType`: legacy `manual-chat` only for historical records
 - `from`: `SERVER`
 
 Payload fields:
 
-- `messageKind`: `debug_chat`
+- `messageKind`: `worker_control`
 - `text`: debug text content
 - `workerId`: target worker id
 - `sentAt`: epoch milliseconds
@@ -32,17 +32,17 @@ Command overlay:
   - `mock.*`: fault injection and mock-client runtime controls
   - `tool.*`: lightweight utility commands
   - `batch`: sequential command composition with shared flat context
-- Plain text-only payloads remain valid and are acknowledged as debug chat without command execution.
+- Plain text-only payloads remain valid and are acknowledged as control messages without command execution.
 
 ## Inbound acknowledgement
 
-- `msgType`: `EVENT`
-- `subMsgType`: `manual-chat`
+- `msgType`: `CONTROL`
+- `subMsgType`: `event`
 - `from`: `CLIENT`
 
 Payload fields:
 
-- `messageKind`: `debug_chat_ack`
+- `messageKind`: `worker_control_ack`
 - `replyToMessageId`: outbound message id being acknowledged
 - `ackStatus`: `RECEIVED`
 - `message`: free-form acknowledgement text
@@ -67,7 +67,7 @@ Example command acknowledgement payload shape:
 
 ```json
 {
-  "messageKind": "debug_chat_ack",
+  "messageKind": "worker_control_ack",
   "replyToMessageId": "server-msg-id",
   "ackStatus": "RECEIVED",
   "workerId": "it-worker-0",
@@ -91,10 +91,10 @@ Example command acknowledgement payload shape:
 
 ## Worker control event bridge
 
-The event-first worker control path is separate from the free-form manual chat path above.
+The event-first worker control path is the current canonical control path.
 
 - outbound transport frame: `CONTROL/event`
-- inbound acknowledgement frame: `EVENT/event`
+- inbound acknowledgement frame: `CONTROL/event`
 - compatibility field names are centralized in `WorkerControlEventProtocol`
 - `event` is the canonical control capability identifier; transport `msgType/subMsgType` remain adapter-level diagnostics only
 

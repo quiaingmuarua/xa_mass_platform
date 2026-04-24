@@ -37,7 +37,7 @@ import static org.junit.jupiter.api.Assertions.*;
 )
 @ActiveProfiles("dev")
 @DirtiesContext
-class WorkerManualDebugDisconnectIntegrationTest extends AbstractMockE2eTest {
+class WorkerControlEventDisconnectIntegrationTest extends AbstractMockE2eTest {
 
     private static final Gson GSON = new Gson();
     private static final int WEBSOCKET_PORT = findFreePort();
