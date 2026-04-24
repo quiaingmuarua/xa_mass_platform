@@ -2,7 +2,7 @@ package com.xa.mass.gateway.server;
 
 import com.google.gson.JsonObject;
 import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
-import com.xa.mass.gateway.queue.MessageParser;
+import com.xa.mass.gateway.queue.MessageCodec;
 import com.xa.mass.gateway.session.ServerSessionManager;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
@@ -17,12 +17,12 @@ public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWe
     private static final Logger logger = LoggerFactory.getLogger(DispatcherInboundHandler.class);
     private final DispatchRuntimeContext dispatcherContext;
     private final ServerSessionManager sessionManager;
-    private final MessageParser messageParser;
+    private final MessageCodec messageCodec;
 
     public DispatcherInboundHandler(DispatchRuntimeContext dispatcherContext, ServerSessionManager sessionManager) {
         this.dispatcherContext = Objects.requireNonNull(dispatcherContext, "dispatcherContext");
         this.sessionManager = Objects.requireNonNull(sessionManager, "sessionManager");
-        this.messageParser = new MessageParser(dispatcherContext.getMessageCodec());
+        this.messageCodec = Objects.requireNonNull(dispatcherContext.getMessageCodec(), "messageCodec");
     }
 
     @Override
@@ -33,15 +33,15 @@ public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWe
                 sendError(ctx, "INVALID_FORMAT", "Message must be a JSON object");
                 return;
             }
-            JsonObject frame = messageParser.tryDecode(raw);
-            if (frame == null || !messageParser.isValid(frame)) {
-                sendError(ctx, "PARSE_FAILED", "Message missing context info");
+            JsonObject frame = messageCodec.parseObject(raw);
+            if (frame == null) {
+                sendError(ctx, "PARSE_FAILED", "Message must be a valid JSON object");
                 return;
             }
 
-            String workerId = messageParser.extractWorkerId(frame);
-            String msgId = messageParser.extractMessageId(frame);
-            String connRole = messageParser.extractConnRole(frame);
+            String workerId = messageCodec.extractWorkerId(frame);
+            String msgId = messageCodec.extractMessageId(frame);
+            String connRole = messageCodec.extractConnRole(frame);
             if (workerId == null || msgId == null) {
                 sendError(ctx, "MISSING_FIELDS", "workerId/msgId are required");
                 return;
@@ -49,12 +49,15 @@ public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWe
             org.slf4j.MDC.put("event", "channelRead0");
             org.slf4j.MDC.put("workerId", workerId);
             org.slf4j.MDC.put("connRole", connRole);
-            String eventCode = messageParser.extractEventCode(frame);
+            String eventCode = messageCodec.extractEventCode(frame);
             if (eventCode != null) {
                 org.slf4j.MDC.put("eventCode", eventCode);
             }
             org.slf4j.MDC.put("traceId", msgId);
-            org.slf4j.MDC.put("project", messageParser.extractProject(frame));
+            String project = messageCodec.extractProject(frame);
+            if (project != null) {
+                org.slf4j.MDC.put("project", project);
+            }
             try {
                 logger.debug("channelRead0 raw frame");
             } finally {

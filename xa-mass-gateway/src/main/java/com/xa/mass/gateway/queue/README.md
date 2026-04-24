@@ -4,18 +4,17 @@ This package contains gateway-side message codec and transport helpers.
 
 ## Current Files
 
-- `Envelope`: wrapper used by gateway transport flows.
-- `MessageCodec`, `GsonMessageCodec`, `MessageCodecFactory`, `MessageParser`: payload serialization and parsing helpers.
+- `MessageCodec`, `GsonMessageCodec`, `MessageCodecFactory`: payload serialization and parsing helpers.
 - `RedisEnvelopeQueue`: placeholder for non-memory queue work; not part of the verified mainline.
 
 ## Current Mainline Reality
 
 - The verified runtime path is still the in-memory/embedded path.
-- This package helps bridge WebSocket gateway traffic with internal envelope-based processing.
+- This package helps bridge WebSocket gateway traffic with the current raw-json adapter pipeline.
 - It does not define task lifecycle, assignment, or result semantics.
-- `Envelope.eventCode` is optional capability metadata derived only from explicit frame payload fields when available; transport decoding must not inspect task payload internals to recover it.
-- `Envelope.eventCode` is not a connection/session routing key; connection dispatch still keys off `workerId + connRole`, and `connRole` now defaults to the current task-dispatch lane when omitted by the WebSocket frame.
-- `Envelope.project` is optional scope metadata only; do not inject a synthetic default project in transport helpers.
+- Canonical `eventCode` diagnostics are derived only from explicit frame payload fields when available; transport decoding must not inspect task payload internals to recover it.
+- `eventCode` is not a connection/session routing key; connection dispatch still keys off `workerId + connRole`, and `connRole` now defaults to the current task-dispatch lane when omitted by the WebSocket frame.
+- `project` is optional scope metadata only; do not inject a synthetic default project in transport helpers.
 
 ## Working Rule
 

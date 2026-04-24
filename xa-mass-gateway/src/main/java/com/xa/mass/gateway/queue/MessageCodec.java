@@ -11,8 +11,6 @@ public interface MessageCodec {
 
     JsonObject parseObject(String json);
 
-    boolean isValid(String json);
-
     String extractWorkerId(JsonObject frame);
 
     String extractConnRole(JsonObject frame);

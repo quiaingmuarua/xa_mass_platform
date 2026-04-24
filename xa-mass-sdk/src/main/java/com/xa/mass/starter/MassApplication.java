@@ -296,9 +296,7 @@ public class MassApplication {
     public void setSdkEventDispatcher(BiFunction<EventRequest, EventPrincipal, EventResponse> sdkEventDispatcher) {
         ControlEventRequestFrameBridge controlEventRequestFrameBridge = sdkEventDispatcher == null
                 ? null
-                : new com.xa.mass.gateway.dispatcher.bridge.WorkerControlEventRequestBridge(
-                new com.xa.mass.gateway.dispatcher.event.EventGatewayBridge(sdkEventDispatcher)
-        );
+                : new com.xa.mass.gateway.dispatcher.bridge.WorkerControlEventRequestBridge(sdkEventDispatcher);
         configureGatewayRuntime((gatewayRuntimePorts != null ? gatewayRuntimePorts : GatewayRuntimePorts.defaults())
                 .withControlEventRequestFrameBridge(controlEventRequestFrameBridge));
     }

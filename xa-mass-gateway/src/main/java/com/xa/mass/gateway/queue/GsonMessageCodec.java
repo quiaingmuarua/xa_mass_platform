@@ -52,11 +52,6 @@ public class GsonMessageCodec implements MessageCodec {
     }
 
     @Override
-    public boolean isValid(String json) {
-        return parseObject(json) != null;
-    }
-
-    @Override
     public String extractWorkerId(JsonObject frame) {
         return readNestedString(frame, "context", "workerId");
     }

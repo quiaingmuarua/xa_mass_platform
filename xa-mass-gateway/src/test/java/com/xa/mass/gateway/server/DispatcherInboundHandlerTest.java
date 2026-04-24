@@ -97,7 +97,7 @@ class DispatcherInboundHandlerTest {
 
         String sent = sentFrame.get();
         assertNotNull(sent);
-        assertTrue(sent.contains("PARSE_FAILED") || sent.contains("MISSING_FIELDS") || sent.contains("MISSING_CONTEXT"));
+        assertTrue(sent.contains("MISSING_FIELDS"));
     }
 
     @Test
@@ -216,6 +216,35 @@ class DispatcherInboundHandlerTest {
         verify(transporter).sendInput(rawCaptor.capture());
         assertTrue(rawCaptor.getValue().contains("\"event\": \"mock.state.get\"")
                 || rawCaptor.getValue().contains("\"event\":\"mock.state.get\""));
+    }
+
+    @Test
+    void malformedJsonObjectSendsParseFailedError() throws Exception {
+        handler.channelRead0(ctx, frame("{\"msgId\":\"broken\""));
+
+        String sent = sentFrame.get();
+        assertNotNull(sent);
+        assertTrue(sent.contains("PARSE_FAILED"));
+    }
+
+    @Test
+    void missingMessageIdSendsMissingFieldsError() throws Exception {
+        String heartbeatJson = """
+                {
+                  "msgType": "PING",
+                  "subMsgType": "heartbeat",
+                  "context": {
+                    "workerId": "worker-1",
+                    "connRole": "%s"
+                  }
+                }
+                """.formatted(SessionRoles.TASK_MESSAGES);
+
+        handler.channelRead0(ctx, frame(heartbeatJson));
+
+        String sent = sentFrame.get();
+        assertNotNull(sent);
+        assertTrue(sent.contains("MISSING_FIELDS"));
     }
 
     @Test

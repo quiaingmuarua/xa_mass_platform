@@ -24,7 +24,6 @@ import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.engine.rules.RuleType;
 import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
 import com.xa.mass.gateway.dispatcher.bridge.WorkerControlEventRequestBridge;
-import com.xa.mass.gateway.dispatcher.event.EventGatewayBridge;
 import com.xa.mass.gateway.queue.OutboundDelivery;
 import com.xa.mass.sdk.auth.*;
 import com.xa.mass.sdk.authz.*;
@@ -108,7 +107,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
         registerControlPlaneEventHandlers();
         delegate.configureGatewayRuntime(
                 GatewayRuntimePorts.defaults().withControlEventRequestFrameBridge(
-                        new WorkerControlEventRequestBridge(new EventGatewayBridge(this::dispatchEvent))
+                        new WorkerControlEventRequestBridge(this::dispatchEvent)
                 )
         );
     }

@@ -15,8 +15,6 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class ServerSessionManager implements WorkerEndpointRegistry, WorkerEndpointInspector {
 
-    public static final ServerSessionManager INSTANCE = new ServerSessionManager();
-
     private static final Logger logger = LoggerFactory.getLogger(ServerSessionManager.class);
 
     // workerId -> connRole -> Channel
