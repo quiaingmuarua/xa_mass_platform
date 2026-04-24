@@ -95,9 +95,6 @@ Current canonical boundaries:
   - canonical public capability definition: `EventDefinition`
   - `EventDefinition.code` is globally unique capability identity
   - engine DTOs are internal conversion targets, not public SDK surface
-- mock command boundary
-  - canonical command response envelope: `com.xa.mass.command.model.CommandResponse<T>`
-  - this is process-local command/runtime shape, not HTTP API response contract
 - gateway transport boundary
   - canonical queue/transport wrapper: `com.xa.mass.gateway.queue.Envelope`
   - `Envelope` owns delivery metadata such as `rawJson`, queue target, and trace metadata
@@ -121,7 +118,7 @@ Current canonical boundaries:
 - Worker matching truth is `RuleDefinition.content` evaluated by QLExpress over `WorkerMatchContext`; the legacy JSON-DSL generator is mock/dev fixture support only.
 - typed JSON DSL mainline goes through `JsonDslParser -> JsonDslDefinition -> JsonDslProcessorEngine`
 - `Worker.attributes` and `WorkerContext.attributes` are auxiliary rule labels for matching and diagnostics only. They are not lifecycle, lock, or online truth.
-- `addWorker(...)` and `addWorkerContext(...)` remain compatibility/high-control SDK seams for core-model callers; new resource scenarios should use SDK registration models instead.
+- Prefer SDK registration models for new resource scenarios; low-level core-model mutation APIs are not the default path.
 - UI pages, mock runtime, and demo APIs must not redefine the platform kernel.
 - Manual worker debug chat is a debug/control side-channel. It is not `TaskMsg` lifecycle and must not mutate task state.
 - new or changed policy seams must keep ownership explicit across matching, attempt, release, refill, intake, control, and terminal decisions; use [./engine/POLICY_INTERACTION_BASELINE.md](./engine/POLICY_INTERACTION_BASELINE.md) before extending those paths
@@ -203,12 +200,7 @@ Important current rules:
 - `Worker.status` is the single online truth
 - worker lock truth lives in `WorkerStorage` and `WorkerManager.isLocked(...)`
 
-## 9. Worker Debug Summary
-
-- worker debug/control is a side-channel, not task execution or task audit truth
-- endpoint and payload details live in [./INTERNAL_API_REFERENCE.md](./INTERNAL_API_REFERENCE.md)
-
-## 10. Recommended Entry Files
+## 9. Recommended Entry Files
 
 - startup/runtime:
   - `xa-mass-dev-app/src/main/java/com/xa/mass/mock/MockApplicationSpringBootApp.java`
@@ -223,7 +215,7 @@ Important current rules:
   - `xa-mass-core/src/main/java/com/xa/mass/base/model/TaskMsg.java`
   - `xa-mass-engine/src/main/java/com/xa/mass/engine/model/WorkerMatchContext.java`
 
-## 11. Guardrails For Future Agents
+## 10. Guardrails For Future Agents
 
 Use these positive defaults:
 

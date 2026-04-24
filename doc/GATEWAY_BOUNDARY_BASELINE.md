@@ -40,13 +40,7 @@ Mainline direction:
 
 ## 2. Reference Anchors
 
-Boundary-only mental models:
-
-- use these references to understand role separation and ownership
-- do not treat them as implementation templates
-- do not treat them as completeness targets
-- do not import unrelated product complexity from them
-- if a reference conflicts with current kernel truth or verified runtime behavior, current kernel truth wins
+Boundary-only mental models. Borrow role separation and ownership discipline only; do not copy product semantics, completeness targets, or framework structure.
 
 | Area | Reference | Borrow | Do not copy |
 | --- | --- | --- | --- |
@@ -54,12 +48,7 @@ Boundary-only mental models:
 | task lifecycle | Celery / Sidekiq | retry discipline, timeout/result write-back, finality managed by the platform | broker/queue infrastructure assumptions, queue product semantics as kernel truth |
 | SDK design | Telegram Bot API / Stripe SDK | stable public surface, typed contracts, low leakage of runtime internals, good producer ergonomics | pure remote-HTTP-client assumptions, exposing internal runtime composition as the primary API |
 
-Rules:
-
-- borrow principles from the referenced layer only
-- do not import unrelated product semantics from the reference system
-- when a reference conflicts with current kernel truth, current kernel truth wins
-- these references are for agent mental orientation, not for framework imitation
+If a reference conflicts with current kernel truth or verified runtime behavior, current kernel truth wins.
 
 ## 3. Ownership
 
@@ -95,7 +84,7 @@ Allowed in `xa-mass-gateway`:
 - heartbeat/connect/disconnect translation
 - transport-level error frames
 - transport-level diagnostics
-- bridge from WebSocket compatibility frames into transport-neutral channels or runtime entrypoints
+- bridge from WebSocket frames into transport-neutral channels or runtime entrypoints
 
 Forbidden in `xa-mass-gateway`:
 
@@ -226,22 +215,21 @@ Gateway must not become truth for:
 
 Those belong in engine/runtime trace.
 
-## 10. Transitional Areas
+## 10. Active Adapter Seams
 
-Current transitional areas may exist temporarily, but must not become a second effective mainline:
+These seams are adapter-local, not platform truth:
 
-- `MassMessage` as the current WebSocket compatibility frame DTO
+- `MassMessage` as the current WebSocket frame DTO
 - tuple routing such as `TASK/step` and `CONTROL/event`
-- gateway/result bridge code that converts compatibility frames into transport-neutral reports
+- gateway/result bridge code that converts frames into transport-neutral reports
 - adapter-level metadata extraction such as `Envelope.eventCode` for diagnostics
-- naming leftovers that still reflect older WebSocket-centric paths
 
 Rules:
 
-- preserve only what current adapter compatibility requires
-- do not add new platform semantics through these seams
+- preserve only what the current adapter path still needs
+- do not add platform semantics through these seams
 - do not use them as fallback truth when canonical runtime state exists
-- migrate toward canonical runtime models instead of adding another bridge layer
+- remove them by converging callers to canonical runtime contracts, not by adding another bridge layer
 
 ## 11. Forbidden Coupling
 
@@ -254,7 +242,7 @@ These are regressions:
 - transport-api exposes WebSocket or Netty types
 - worker business handler APIs depend on WebSocket frame DTOs
 - endpoint/session connectedness is treated as worker capability or task eligibility truth
-- old and new transport paths are both kept authoritative "for compatibility"
+- old and new transport paths are both kept authoritative
 
 ## 12. Regression Requirements
 
@@ -273,5 +261,5 @@ Before changing `xa-mass-gateway` or `xa-mass-transport-api`, answer:
 1. Is this a transport concern or a platform concern?
 2. If it is a platform concern, why is it still in the gateway path?
 3. Which module owns the source of truth after the change?
-4. Is the touched path canonical or transitional?
+4. Is the touched path a canonical runtime contract or only an adapter-local seam?
 5. Which integration tests or trace events prove behavior is preserved?

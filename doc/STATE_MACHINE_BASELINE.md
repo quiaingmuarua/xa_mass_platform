@@ -126,6 +126,8 @@ Must hold:
 
 ## 5. TaskMsgAttempt
 
+`TaskMsgAttempt` is one concrete, auditable execution opportunity for a logical `TaskMsg`. It is not a raw transport-event log, and push/pull/polling must map into this same attempt truth rather than define separate attempt models.
+
 States:
 
 - `CREATED`: attempt row created
