@@ -77,18 +77,18 @@ class TransportChannelWiringIntegrationTest extends AbstractMockE2eTest {
                 "WorkerSystemEventChannel.publishWorkerOnline must have been invoked");
         channelCallOrder.add("WorkerSystemEventChannel.publishWorkerOnline");
 
-        // Create + approve a task so the engine dispatches via TaskDispatchChannel.
+        // Create + approve a task so the runtime dispatches via TaskDispatchChannel.
         String taskId = createTaskId("channel-wire-task", "channel wiring", "target-wire-001");
         exchange("/status/api/tasks/" + taskId + "/audit?approved=true&comment=wire", HttpMethod.POST, null);
 
-        // Poll confirms TaskDispatchChannel.dispatchTaskMessages was called.
+        // Poll confirms TaskDispatchChannel.dispatchTaskItems was called.
         var items = List.<com.xa.mass.transport.model.TaskDispatchItem>of();
         for (int i = 0; i < 20 && items.isEmpty(); i++) {
             items = session.poll(10);
             if (items.isEmpty()) Thread.sleep(250L);
         }
-        assertFalse(items.isEmpty(), "TaskDispatchChannel must have dispatched at least one message");
-        channelCallOrder.add("TaskDispatchChannel.dispatchTaskMessages");
+        assertFalse(items.isEmpty(), "TaskDispatchChannel must have dispatched at least one task item");
+        channelCallOrder.add("TaskDispatchChannel.dispatchTaskItems");
 
         // Submit result confirms TaskResultIngestChannel.ingestTaskResult was called.
         boolean submitted = session.submitResult(items.get(0), true, "ok", Map.of());

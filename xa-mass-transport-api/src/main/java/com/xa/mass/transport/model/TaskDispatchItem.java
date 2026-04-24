@@ -2,18 +2,20 @@ package com.xa.mass.transport.model;
 
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
+import com.xa.mass.base.model.TaskSharedConfig;
 
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Transport-neutral logical dispatch item for pull/poll worker runtimes.
+ * Transport-neutral logical dispatch item delivered to worker transports.
  */
 public final class TaskDispatchItem {
 
     private final String taskId;
     private final String msgId;
+    private final String eventCode;
     private final String taskName;
     private final String project;
     private final String userId;
@@ -26,6 +28,7 @@ public final class TaskDispatchItem {
 
     public TaskDispatchItem(String taskId,
                             String msgId,
+                            String eventCode,
                             String taskName,
                             String project,
                             String userId,
@@ -37,6 +40,7 @@ public final class TaskDispatchItem {
                             Map<String, Object> sharedConfig) {
         this.taskId = taskId;
         this.msgId = msgId;
+        this.eventCode = eventCode;
         this.taskName = taskName;
         this.project = project;
         this.userId = userId;
@@ -56,10 +60,15 @@ public final class TaskDispatchItem {
         return msgId;
     }
 
+    public String getEventCode() {
+        return eventCode;
+    }
+
     public static TaskDispatchItem from(Task task, TaskMsg taskMsg) {
         return new TaskDispatchItem(
                 task.getTid(),
                 taskMsg.getMsgId(),
+                TaskSharedConfig.sdkEventCode(task),
                 task.getTaskName(),
                 task.getProject(),
                 task.getUser() != null ? task.getUser().getUserId() : null,
@@ -113,6 +122,7 @@ public final class TaskDispatchItem {
         payload.putAll(sharedConfig);
         payload.put("taskId", taskId);
         payload.put("taskName", taskName);
+        payload.put("eventCode", eventCode);
         payload.put("project", project);
         payload.put("userId", userId);
         payload.put("workerId", workerId);

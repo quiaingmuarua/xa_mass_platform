@@ -10,13 +10,13 @@ Recommended order for a new maintainer or coding agent:
 
 1. [../AGENTS.md](../AGENTS.md)
 2. [AGENT_BASELINE.md](./AGENT_BASELINE.md)
-3. [STATE_MACHINE_BASELINE.md](./STATE_MACHINE_BASELINE.md)
-4. [TRACE_CONTRACT.md](./TRACE_CONTRACT.md)
-5. [E2E_BASELINE.md](./E2E_BASELINE.md)
-6. [VERIFIED_RUNBOOK.md](./VERIFIED_RUNBOOK.md)
-7. [INTERNAL_API_REFERENCE.md](./INTERNAL_API_REFERENCE.md)
-8. [INTEGRATION_TESTS.md](./INTEGRATION_TESTS.md)
-9. [GATEWAY_BOUNDARY_BASELINE.md](./GATEWAY_BOUNDARY_BASELINE.md)
+3. [GATEWAY_BOUNDARY_BASELINE.md](./GATEWAY_BOUNDARY_BASELINE.md)
+4. [STATE_MACHINE_BASELINE.md](./STATE_MACHINE_BASELINE.md)
+5. [TRACE_CONTRACT.md](./TRACE_CONTRACT.md)
+6. [E2E_BASELINE.md](./E2E_BASELINE.md)
+7. [VERIFIED_RUNBOOK.md](./VERIFIED_RUNBOOK.md)
+8. [INTERNAL_API_REFERENCE.md](./INTERNAL_API_REFERENCE.md)
+9. [INTEGRATION_TESTS.md](./INTEGRATION_TESTS.md)
 10. [engine/POLICY_INTERACTION_BASELINE.md](./engine/POLICY_INTERACTION_BASELINE.md)
 11. [engine/TASK_EXECUTION_FLOW.md](./engine/TASK_EXECUTION_FLOW.md)
 
@@ -26,6 +26,8 @@ Recommended order for a new maintainer or coding agent:
   - The shortest product-positioning summary: what the platform is now and what direction the current mainline is converging toward.
 - [AGENT_BASELINE.md](./AGENT_BASELINE.md)
   - Stable project baseline for agents: platform definition, mainline goals, guardrails, active module truth, payload contract, and lifecycle baseline.
+- [GATEWAY_BOUNDARY_BASELINE.md](./GATEWAY_BOUNDARY_BASELINE.md)
+  - High-density contract for gateway ownership, transport-neutral SPI, worker-runtime execution ownership, unified lifecycle semantics, and forbidden drift.
 - [STATE_MACHINE_BASELINE.md](./STATE_MACHINE_BASELINE.md)
   - Normative state vocabulary and invariants for `Task`, `TaskMsg`, `WorkerContext`, and `TaskTerminalReason`.
 - [TRACE_CONTRACT.md](./TRACE_CONTRACT.md)
@@ -38,8 +40,6 @@ Recommended order for a new maintainer or coding agent:
   - Current HTTP/API inventory, request contract, response shape, and implementation status.
 - [INTEGRATION_TESTS.md](./INTEGRATION_TESTS.md)
   - Practical guide to the grouped `xa-mass-dev-app` integration suites: structure, coverage map, patterns, and current gaps.
-- [GATEWAY_BOUNDARY_BASELINE.md](./GATEWAY_BOUNDARY_BASELINE.md)
-  - Hard boundary for `xa-mass-gateway` and `xa-mass-transport-api`: what belongs to the WebSocket adapter, what must stay in engine/sdk/transport-api, and which couplings are forbidden.
 - [engine/POLICY_INTERACTION_BASELINE.md](./engine/POLICY_INTERACTION_BASELINE.md)
   - Guardrails for preventing combinatorial policy interactions across matching, retry, release, refill, intake, control, and terminal decisions.
 - [engine/TASK_EXECUTION_FLOW.md](./engine/TASK_EXECUTION_FLOW.md)

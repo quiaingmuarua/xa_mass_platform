@@ -4,7 +4,6 @@ import com.xa.mass.gateway.model.enums.MessageType;
 import com.xa.mass.starter.GatewayTaskResultHandler;
 import com.xa.mass.starter.worker.PollingWorkerAdapter;
 import com.xa.mass.starter.worker.WebSocketWorkerAdapter;
-import com.xa.mass.transport.WorkerTransportHints;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -33,7 +32,6 @@ public class DefaultWorkerTransportRuntimeFactory implements WorkerTransportRunt
                 .taskResultIngestChannel(pollingAdapter)
                 .build());
 
-        String defaultDispatchProtocol = pollingAdapter.protocol();
         if (context.isGatewayEnabled()) {
             WebSocketWorkerAdapter webSocketAdapter = new WebSocketWorkerAdapter(
                     context.getDispatchRuntimeContext()
@@ -47,15 +45,12 @@ public class DefaultWorkerTransportRuntimeFactory implements WorkerTransportRunt
                             new TransportInboundRoute(MessageType.TASK, "step", taskResultHandler)
                     ))
                     .build());
-            defaultDispatchProtocol = webSocketAdapter.protocol();
         }
 
         return new TransportRuntimeRegistry(
                 context.getWorkerManager(),
                 context.getSystemEventChannel(),
-                bindings,
-                defaultDispatchProtocol,
-                WorkerTransportHints.POLLING
+                bindings
         );
     }
 }

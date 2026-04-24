@@ -45,9 +45,16 @@ import com.xa.mass.sdk.worker.PullWorkerSession;
 import com.xa.mass.starter.MassApplication;
 import com.xa.mass.starter.MassEngine;
 import com.xa.mass.starter.config.EngineConfig;
+import com.xa.mass.starter.transport.TransportBinding;
+import com.xa.mass.starter.transport.TransportRuntimeRegistry;
 import com.xa.mass.starter.transport.TransportServerFactoryContext;
+import com.xa.mass.starter.transport.WorkerTransportRuntimeFactory;
+import com.xa.mass.engine.worker.WorkerAdapter;
 import com.xa.mass.transport.TransportServer;
 import com.xa.mass.transport.TransportServerFactory;
+import com.xa.mass.transport.WorkerTransportHints;
+import com.xa.mass.transport.channel.TaskPullChannel;
+import com.xa.mass.transport.channel.TaskResultIngestChannel;
 import com.xa.mass.transport.model.TaskDispatchItem;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
@@ -1038,6 +1045,7 @@ class MassSdkTest {
                         .eventBindings(List.of(
                                 WorkerEventBinding.builder().eventCode("missing.event").build()
                         ))
+                        .transportHint("polling")
                         .build())
         );
 
@@ -1065,10 +1073,232 @@ class MassSdkTest {
                                         .projectCodes(List.of("telegramApp"))
                                         .build()
                         ))
+                        .transportHint("polling")
                         .build())
         );
 
         Assertions.assertTrue(error.getMessage().contains("outside event scope"));
+    }
+
+    @Test
+    void registerWorkerRejectsMissingTransportHint() {
+        MassApplication delegate = mock(MassApplication.class);
+        MassEngine engine = mock(MassEngine.class);
+
+        when(delegate.getEngine()).thenReturn(engine);
+        when(engine.isRunning()).thenReturn(true);
+
+        MassSdkApplication app = new MassSdkApplication(delegate);
+
+        IllegalArgumentException error = assertThrows(
+                IllegalArgumentException.class,
+                () -> app.registerWorker(WorkerRegistration.builder()
+                        .workerId("worker-without-transport")
+                        .build())
+        );
+
+        Assertions.assertEquals("transportHint must not be blank", error.getMessage());
+    }
+
+    @Test
+    void registerWorkerNormalizesCompatibilityTransportAliasToCanonicalIdentity() {
+        MassApplication delegate = mock(MassApplication.class);
+        MassEngine engine = mock(MassEngine.class);
+
+        when(delegate.getEngine()).thenReturn(engine);
+        when(engine.isRunning()).thenReturn(true);
+
+        MassSdkApplication app = new MassSdkApplication(delegate);
+        app.registerWorker(WorkerRegistration.builder()
+                .workerId("worker-with-websocket-alias")
+                .transportHint("websocket")
+                .build());
+
+        var captor = org.mockito.ArgumentCaptor.forClass(Worker.class);
+        verify(engine).addWorker(captor.capture());
+        Assertions.assertEquals("realtime", captor.getValue().getOnlineStrategy());
+    }
+
+    @Test
+    void workerTransportHintsNormalizeCompatibilityLabelsToCanonicalIdentities() {
+        Assertions.assertEquals(WorkerTransportHints.REALTIME, WorkerTransportHints.normalize("websocket"));
+        Assertions.assertEquals(WorkerTransportHints.REALTIME, WorkerTransportHints.normalize("ws"));
+        Assertions.assertEquals(WorkerTransportHints.REALTIME, WorkerTransportHints.normalize("push"));
+        Assertions.assertEquals(WorkerTransportHints.POLLING, WorkerTransportHints.normalize("pull"));
+        Assertions.assertEquals(WorkerTransportHints.POLLING, WorkerTransportHints.normalize("queue"));
+        Assertions.assertEquals("grpc", WorkerTransportHints.normalize("grpc"));
+        Assertions.assertTrue(WorkerTransportHints.isRealtime("websocket_push"));
+        Assertions.assertTrue(WorkerTransportHints.isPolling("pull"));
+    }
+
+    @Test
+    void pullWorkerRejectsMissingWorker() {
+        MessageQueue<Envelope> inputQueue = new InMemoryMessageQueue<>("Envelope", Envelope.class);
+        MessageQueue<Envelope> outputQueue = new InMemoryMessageQueue<>("Envelope", Envelope.class);
+        MassSdkApplication app = MassSdk.builder()
+                .transportServer(0, "/sdk-transport")
+                .gateway(gateway -> gateway.enabled(false).transportServerEnabled(false).inputQueue(inputQueue).outputQueue(outputQueue))
+                .engine(engine -> engine.enabled(true).workerThreads(1))
+                .build();
+
+        try {
+            app.start();
+            IllegalArgumentException error = assertThrows(
+                    IllegalArgumentException.class,
+                    () -> app.pullWorker("missing-worker")
+            );
+            Assertions.assertEquals("Worker not found: missing-worker", error.getMessage());
+        } finally {
+            app.stop();
+        }
+    }
+
+    @Test
+    void pullWorkerRejectsWorkerWithoutTransportIdentity() {
+        MessageQueue<Envelope> inputQueue = new InMemoryMessageQueue<>("Envelope", Envelope.class);
+        MessageQueue<Envelope> outputQueue = new InMemoryMessageQueue<>("Envelope", Envelope.class);
+        MassSdkApplication app = MassSdk.builder()
+                .transportServer(0, "/sdk-transport")
+                .gateway(gateway -> gateway.enabled(false).transportServerEnabled(false).inputQueue(inputQueue).outputQueue(outputQueue))
+                .engine(engine -> engine.enabled(true).workerThreads(1))
+                .build();
+
+        try {
+            app.start();
+            Worker worker = new Worker();
+            worker.setWorkerId("worker-without-transport");
+            app.addWorker(worker);
+
+            IllegalStateException error = assertThrows(
+                    IllegalStateException.class,
+                    () -> app.pullWorker("worker-without-transport")
+            );
+            Assertions.assertEquals("Worker transportHint/onlineStrategy is not set: worker-without-transport",
+                    error.getMessage());
+        } finally {
+            app.stop();
+        }
+    }
+
+    @Test
+    void pullWorkerRejectsRealtimeWorkerWhenTransportIsNotPullCapable() {
+        MessageQueue<Envelope> inputQueue = new InMemoryMessageQueue<>("Envelope", Envelope.class);
+        MessageQueue<Envelope> outputQueue = new InMemoryMessageQueue<>("Envelope", Envelope.class);
+        WorkerTransportRuntimeFactory transportFactory = context -> new TransportRuntimeRegistry(
+                context.getWorkerManager(),
+                context.getSystemEventChannel(),
+                List.of(TransportBinding.builder(new StubPushOnlyAdapter("websocket", Set.of("realtime", "ws", "push"))).build())
+        );
+
+        MassSdkApplication app = MassSdk.builder()
+                .transportServer(0, "/sdk-transport")
+                .gateway(gateway -> gateway.enabled(false)
+                        .transportServerEnabled(false)
+                        .inputQueue(inputQueue)
+                        .outputQueue(outputQueue)
+                        .workerTransportRuntimeFactory(transportFactory))
+                .engine(engine -> engine.enabled(true).workerThreads(1))
+                .build();
+
+        try {
+            app.start();
+            app.registerWorker(WorkerRegistration.builder()
+                    .workerId("realtime-worker-1")
+                    .transportHint("realtime")
+                    .build());
+
+            IllegalStateException error = assertThrows(
+                    IllegalStateException.class,
+                    () -> app.pullWorker("realtime-worker-1")
+            );
+            Assertions.assertEquals("Worker transport 'realtime' is not pull-capable for worker realtime-worker-1",
+                    error.getMessage());
+        } finally {
+            app.stop();
+        }
+    }
+
+    @Test
+    void pullWorkerRejectsUnsupportedTransportEvenWhenAnotherPullCapableBindingExists() {
+        MessageQueue<Envelope> inputQueue = new InMemoryMessageQueue<>("Envelope", Envelope.class);
+        MessageQueue<Envelope> outputQueue = new InMemoryMessageQueue<>("Envelope", Envelope.class);
+        WorkerTransportRuntimeFactory transportFactory = context -> new TransportRuntimeRegistry(
+                context.getWorkerManager(),
+                context.getSystemEventChannel(),
+                List.of(TransportBinding.builder(new StubPullCapableAdapter("queue-consumer", Set.of("queue-consumer-v2")))
+                        .taskPullChannel(new StubPullCapableAdapter("queue-consumer", Set.of("queue-consumer-v2")))
+                        .taskResultIngestChannel(new StubPullCapableAdapter("queue-consumer", Set.of("queue-consumer-v2")))
+                        .build())
+        );
+
+        MassSdkApplication app = MassSdk.builder()
+                .transportServer(0, "/sdk-transport")
+                .gateway(gateway -> gateway.enabled(false)
+                        .transportServerEnabled(false)
+                        .inputQueue(inputQueue)
+                        .outputQueue(outputQueue)
+                        .workerTransportRuntimeFactory(transportFactory))
+                .engine(engine -> engine.enabled(true).workerThreads(1))
+                .build();
+
+        try {
+            app.start();
+            app.registerWorker(WorkerRegistration.builder()
+                    .workerId("polling-worker-unsupported")
+                    .transportHint("polling")
+                    .build());
+
+            IllegalStateException error = assertThrows(
+                    IllegalStateException.class,
+                    () -> app.pullWorker("polling-worker-unsupported")
+            );
+            Assertions.assertEquals("No transport binding is registered for worker transport 'polling' on worker polling-worker-unsupported",
+                    error.getMessage());
+        } finally {
+            app.stop();
+        }
+    }
+
+    @Test
+    void pullWorkerResolvesByCanonicalTransportHintInsteadOfAdapterProtocolLabel() {
+        MessageQueue<Envelope> inputQueue = new InMemoryMessageQueue<>("Envelope", Envelope.class);
+        MessageQueue<Envelope> outputQueue = new InMemoryMessageQueue<>("Envelope", Envelope.class);
+        StubPullCapableAdapter pollingAdapter = new StubPullCapableAdapter(
+                "polling-http-v2",
+                WorkerTransportHints.POLLING,
+                Set.of("polling-http-v2")
+        );
+        WorkerTransportRuntimeFactory transportFactory = context -> new TransportRuntimeRegistry(
+                context.getWorkerManager(),
+                context.getSystemEventChannel(),
+                List.of(TransportBinding.builder(pollingAdapter)
+                        .taskPullChannel(pollingAdapter)
+                        .taskResultIngestChannel(pollingAdapter)
+                        .build())
+        );
+
+        MassSdkApplication app = MassSdk.builder()
+                .transportServer(0, "/sdk-transport")
+                .gateway(gateway -> gateway.enabled(false)
+                        .transportServerEnabled(false)
+                        .inputQueue(inputQueue)
+                        .outputQueue(outputQueue)
+                        .workerTransportRuntimeFactory(transportFactory))
+                .engine(engine -> engine.enabled(true).workerThreads(1))
+                .build();
+
+        try {
+            app.start();
+            app.registerWorker(WorkerRegistration.builder()
+                    .workerId("polling-worker-canonical")
+                    .transportHint("polling")
+                    .build());
+
+            PullWorkerSession session = app.pullWorker("polling-worker-canonical");
+            Assertions.assertEquals(WorkerTransportHints.POLLING, session.transportHint());
+        } finally {
+            app.stop();
+        }
     }
 
     @Test
@@ -1249,5 +1479,92 @@ class MassSdkTest {
     @FunctionalInterface
     private interface ThrowingSupplier<T> {
         T get() throws Exception;
+    }
+
+    private static final class StubPushOnlyAdapter implements WorkerAdapter {
+        private final String protocol;
+        private final String transportHint;
+        private final Set<String> aliases;
+
+        private StubPushOnlyAdapter(String protocol, Set<String> aliases) {
+            this(protocol, WorkerTransportHints.normalize(protocol), aliases);
+        }
+
+        private StubPushOnlyAdapter(String protocol, String transportHint, Set<String> aliases) {
+            this.protocol = protocol;
+            this.transportHint = transportHint;
+            this.aliases = aliases;
+        }
+
+        @Override
+        public String protocol() {
+            return protocol;
+        }
+
+        @Override
+        public String transportHint() {
+            return transportHint;
+        }
+
+        @Override
+        public Set<String> aliases() {
+            return aliases;
+        }
+
+        @Override
+        public void dispatchTaskItems(List<TaskDispatchItem> items) {
+            // no-op
+        }
+    }
+
+    private static final class StubPullCapableAdapter implements WorkerAdapter, TaskPullChannel, TaskResultIngestChannel {
+        private final String protocol;
+        private final String transportHint;
+        private final Set<String> aliases;
+
+        private StubPullCapableAdapter(String protocol, Set<String> aliases) {
+            this(protocol, WorkerTransportHints.normalize(protocol), aliases);
+        }
+
+        private StubPullCapableAdapter(String protocol, String transportHint, Set<String> aliases) {
+            this.protocol = protocol;
+            this.transportHint = transportHint;
+            this.aliases = aliases;
+        }
+
+        @Override
+        public String protocol() {
+            return protocol;
+        }
+
+        @Override
+        public String transportHint() {
+            return transportHint;
+        }
+
+        @Override
+        public Set<String> aliases() {
+            return aliases;
+        }
+
+        @Override
+        public void dispatchTaskItems(List<TaskDispatchItem> items) {
+            // no-op
+        }
+
+        @Override
+        public List<TaskDispatchItem> pollTaskMessages(String workerId, int maxMessages) {
+            return List.of();
+        }
+
+        @Override
+        public boolean ingestTaskResult(String taskId,
+                                        String msgId,
+                                        boolean success,
+                                        String detail,
+                                        String errorCode,
+                                        Map<String, Object> output) {
+            return true;
+        }
     }
 }

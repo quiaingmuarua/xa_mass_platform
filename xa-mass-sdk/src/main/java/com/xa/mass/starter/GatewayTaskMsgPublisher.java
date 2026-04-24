@@ -1,9 +1,5 @@
 package com.xa.mass.starter;
 
-import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.TaskMsg;
-import com.xa.mass.base.model.TaskSharedConfig;
-import com.xa.mass.engine.listener.TaskMsgDispatchListener;
 import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
 import com.xa.mass.gateway.model.massMessage.MassMessage;
 import com.xa.mass.gateway.queue.Envelope;
@@ -17,7 +13,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-public class GatewayTaskMsgPublisher implements TaskMsgDispatchListener, TaskDispatchChannel {
+public class GatewayTaskMsgPublisher implements TaskDispatchChannel {
 
     private static final Logger logger = LoggerFactory.getLogger(GatewayTaskMsgPublisher.class);
 
@@ -29,29 +25,24 @@ public class GatewayTaskMsgPublisher implements TaskMsgDispatchListener, TaskDis
     }
 
     @Override
-    public void onTaskMsgsReady(Task task, List<TaskMsg> taskMsgs) {
-        dispatchTaskMessages(task, taskMsgs);
-    }
-
-    @Override
-    public void dispatchTaskMessages(Task task, List<TaskMsg> taskMsgs) {
+    public void dispatchTaskItems(List<TaskDispatchItem> items) {
         if (dispatchRuntimeContext == null
                 || dispatchRuntimeContext.getMessageTransporter() == null
                 || dispatchRuntimeContext.getMessageCodec() == null) {
             logger.warn("Skip task message publishing because dispatcher context or transporter is unavailable");
             return;
         }
-
-        String eventCode = TaskSharedConfig.sdkEventCode(task);
-        for (TaskMsg taskMsg : taskMsgs) {
-            TaskDispatchItem dispatchItem = TaskDispatchItem.from(task, taskMsg);
+        if (items == null || items.isEmpty()) {
+            return;
+        }
+        for (TaskDispatchItem dispatchItem : items) {
             MassMessage message = messageMapper.toDispatchMessage(dispatchItem);
             String json = dispatchRuntimeContext.getMessageCodec().encode(message);
             Envelope envelope = Envelope.builder()
-                    .workerId(taskMsg.getLatestAttemptWorkerId())
-                    .eventCode(eventCode)
-                    .project(task.getProject())
-                    .traceId(taskMsg.getMsgId())
+                    .workerId(dispatchItem.getWorkerId())
+                    .eventCode(dispatchItem.getEventCode())
+                    .project(dispatchItem.getProject())
+                    .traceId(dispatchItem.getMsgId())
                     .receivedAt(System.currentTimeMillis())
                     .rawJson(json)
                     .build();

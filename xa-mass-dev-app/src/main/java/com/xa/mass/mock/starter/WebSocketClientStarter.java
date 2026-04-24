@@ -13,6 +13,7 @@ import com.xa.mass.mock.command.mock.MockClientStateRegistry;
 import com.xa.mass.mock.command.runtime.MockCommandRuntime;
 import com.xa.mass.mock.config.MockConfig;
 import com.xa.mass.sdk.MassSdkApplication;
+import com.xa.mass.transport.WorkerTransportHints;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -28,7 +29,6 @@ import java.net.URI;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
-import java.util.Locale;
 import java.util.Random;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -152,10 +152,7 @@ public class WebSocketClientStarter {
         if (strategy == null || strategy.isBlank()) {
             return true;
         }
-        String normalized = strategy.toLowerCase(Locale.ROOT);
-        return "realtime".equals(normalized)
-                || "websocket".equals(normalized)
-                || "websocket_push".equals(normalized);
+        return WorkerTransportHints.isRealtime(strategy);
     }
 
     /**

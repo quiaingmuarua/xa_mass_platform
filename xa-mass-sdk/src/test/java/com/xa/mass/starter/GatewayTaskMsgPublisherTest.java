@@ -22,7 +22,7 @@ import static org.mockito.Mockito.*;
 class GatewayTaskMsgPublisherTest {
 
     @Test
-    void publishesTaskMessagesToOutputTransporter() {
+    void publishesDispatchItemsToOutputTransporter() {
         DispatchRuntimeContext context = mock(DispatchRuntimeContext.class);
         @SuppressWarnings("unchecked")
         com.xa.mass.base.channel.tranporter.MessageTransporter<Envelope> transporter =
@@ -35,7 +35,7 @@ class GatewayTaskMsgPublisherTest {
         Task task = task();
         TaskMsg taskMsg = taskMsg();
 
-        publisher.onTaskMsgsReady(task, List.of(taskMsg));
+        publisher.dispatchTaskItems(List.of(com.xa.mass.transport.model.TaskDispatchItem.from(task, taskMsg)));
 
         ArgumentCaptor<Envelope> captor = ArgumentCaptor.forClass(Envelope.class);
         verify(transporter).sendOutput(captor.capture());

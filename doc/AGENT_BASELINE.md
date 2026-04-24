@@ -3,16 +3,15 @@
 This document keeps only the stable baseline facts that coding agents need first:
 
 - platform definition and architectural guardrails
-- mainline versus historical directory boundaries
-- current API and lifecycle contract
+- current module and boundary truth
+- current lifecycle and payload summary
 - what to trust when docs and runtime disagree
 
-It intentionally does not duplicate run commands, verification logs, or detailed endpoint examples.
+It intentionally does not duplicate run commands, detailed endpoint inventories, or full protocol examples.
 
 For those, use:
 
 - [../AGENTS.md](../AGENTS.md)
-- [./MODEL_BOUNDARY_BASELINE.md](./MODEL_BOUNDARY_BASELINE.md)
 - [./GATEWAY_BOUNDARY_BASELINE.md](./GATEWAY_BOUNDARY_BASELINE.md)
 - [./STATE_MACHINE_BASELINE.md](./STATE_MACHINE_BASELINE.md)
 - [./TRACE_CONTRACT.md](./TRACE_CONTRACT.md)
@@ -76,7 +75,42 @@ Interpretation rules:
 - SDK submitter registration is currently a minimal in-memory credential binding for task submission identity; do not treat it as a complete user/security subsystem
 - SDK submitter list/get operations expose submitter metadata only; raw credentials are accepted on registration and consumed by authentication, not returned as resource read models
 
-## 4. Architectural Guardrails
+## 4. Model Boundaries
+
+Boundary rules:
+
+- each boundary layer may have its own models
+- each boundary layer should have one canonical truth
+- model names should expose the layer they belong to
+- avoid the same class name meaning different things in different modules
+- transport metadata, protocol frame metadata, and business payload should not silently share ownership of the same fields
+
+Current canonical boundaries:
+
+- HTTP API boundary
+  - canonical response envelope: `com.xa.mass.api.model.ApiResponse<T>`
+  - canonical request contract: typed controller-edge request models
+  - task requests live under `com.xa.mass.api.model.task.*`
+  - worker requests live under `com.xa.mass.api.model.worker.*`
+- SDK boundary
+  - canonical public task-create requests: `MassTaskCreateRequest` and `MassTaskRequest`
+  - canonical public capability definition: `EventDefinition`
+  - `EventDefinition.code` is globally unique capability identity
+  - engine DTOs are internal conversion targets, not public SDK surface
+- mock command boundary
+  - canonical command response envelope: `com.xa.mass.command.model.CommandResponse<T>`
+  - this is process-local command/runtime shape, not HTTP API response contract
+- gateway transport boundary
+  - canonical queue/transport wrapper: `com.xa.mass.gateway.queue.Envelope`
+  - `Envelope` owns delivery metadata such as `rawJson`, queue target, and trace metadata
+- gateway protocol boundary
+  - canonical protocol frame: `com.xa.mass.gateway.model.massMessage.MassMessage`
+  - canonical protocol header companion: `MessageContext`
+  - `msgType + subMsgType` classifies a wire frame only; it is not business/control capability identity
+- protocol payload helper boundary
+  - `MessageAckPayload` is only for transport/protocol acknowledgement, not a general response model
+
+## 5. Architectural Guardrails
 
 - Stable platform boundaries are `Task`, `TaskMsg`, assignment, result, audit, and terminal policy.
 - `Worker` is the current worker adapter name, not the permanent universal name for all worker/resource forms. Read it as the current concrete `Worker` implementation.
@@ -95,7 +129,7 @@ Interpretation rules:
 - Manual worker debug chat is a debug/control side-channel. It is not `TaskMsg` lifecycle and must not mutate task state.
 - new or changed policy seams must keep ownership explicit across matching, attempt, release, refill, intake, control, and terminal decisions; use [./engine/POLICY_INTERACTION_BASELINE.md](./engine/POLICY_INTERACTION_BASELINE.md) before extending those paths
 
-## 5. Mainline Reality
+## 6. Mainline Reality
 
 - The real Spring Boot entry is `xa-mass-dev-app`.
 - `xa-mass-sdk` is the consumer-facing dependency entry for third-party embedding.
@@ -114,79 +148,24 @@ Interpretation rules:
 - Mainline acceptance is end-to-end integration-test-driven through `xa-mass-dev-app`; unit tests are support coverage, not the primary acceptance gate.
 - The current worker debug side-channel is exposed through `POST /status/workers/send-event` and `GET /status/workers/message-history`.
 
-## 6. Current Task And Payload Contract
+## 7. Current Contract Summary
 
-### Task create contract
+Task and payload summary:
 
-`TaskManager.createTask()` and `POST /status/api/tasks` currently support only:
-
-- `userId`
-- `project`
-- `taskName`
-- `eventCode`
-- `mode`
-- `payloadType`
-- `sharedConfig`
-- `inputs`
-- `batchSize`
-- `defaultMsgMaxRetryCount`
-- `openEnded`
-- `maxRuntimeSeconds`
-
-Behavior locked in the mainline:
-
-- `project` and `userId` are required business bindings
-- `inputs` must contain at least one materialized work item
-- unsupported `project` codes are rejected
-- unknown JSON fields such as retired `targetJsonList`, `targetType`, and `extraParams` are rejected
-- `POST /status/api/tasks` is the only task create HTTP route; do not add a separate SDK task-create route
-- SDK credential callers use the same route with `X-Mass-Api-Key` or `Authorization: Bearer ...`
-- SDK submitter credentials resolve a minimal `TaskSubmitterContext`; they are not control-console users and must not be merged into operator RBAC
-- `eventCode` switches create into the SDK mode/payload-aware path and persists `_sdk` metadata in `Task.sharedConfig`
-- `eventCode` should be treated as globally unique across the runtime catalog
-- worker runtime event capability truth comes from explicit `supportedEventCodes`; `supportedProjects` is only a coarse grouping/filter hint
-- new business or control capabilities must be registered as global SDK events rather than as new gateway tuple branches
-- `batchSize` is normalized to a minimum of `1` and enforced as a per-worker hard cap for each dispatch round
-- `defaultMsgMaxRetryCount` defaults to `3`
-- `openEnded=true` keeps the task open for runtime item append until sealed
-- `maxRuntimeSeconds=0` disables runtime-limit termination; positive values are enforced by the lease watchdog
-
-### Task update contract
-
-`PUT /status/api/tasks/{taskId}` is metadata-only and currently supports only:
-
-- `userId`
-- `project`
-- `taskName`
-- `sharedConfig`
-- `batchSize`
-
-Update constraints:
-
-- `inputs` and other unsupported update fields are rejected
-- only `NEW` and `BLOCKED` tasks may be edited
-- omitted metadata fields keep the persisted binding/value; update does not clear existing `project` or `user`
-- `BLOCKED` is not reject-only: `rejectTask` is `NEW -> BLOCKED`, while `blockTask` is the runtime path from `READY` or `RUNNING`
-
-### Task and TaskMsg payload model
-
-- `Task.project` is the canonical task-level project binding and validates against the current project registry
-- `Task.user` is the canonical task-level business-user binding; create/update requests still use `userId` as the edge input shape
+- task creation has one HTTP route: `POST /status/api/tasks`
+- task create/update field details live in [./INTERNAL_API_REFERENCE.md](./INTERNAL_API_REFERENCE.md)
+- `project` and `userId` are required business bindings on create
+- `inputs` is the only supported create shape for work-item materialization
+- `PUT /status/api/tasks/{taskId}` is metadata-only and only valid while `NEW` or `BLOCKED`
+- `Task.project` and `Task.user` are canonical aggregate bindings
 - `Task.sharedConfig` is the task-level generic payload/config map
-- public task create/update and control-console read models do not define a dedicated routing-code field; task-level payload or hints belong in `Task.sharedConfig` only when a concrete runtime contract requires them
-- `TaskMsg.input` is the per-item input payload
-- `TaskMsg.output` is the canonical logical success payload for a work item; legacy `result` remains only as a compatibility summary/string projection
-- `TaskMsgAttempt.output` is the concrete callback/output snapshot for one execution attempt; use it for audit/troubleshooting rather than overloading `TaskMsg`
-- `target` is only a conventional key inside `TaskMsg.input`; no dedicated target compatibility accessor remains
-- `Task.intakeStatus` is the active append-window lifecycle truth; `openEnded` is only the compatibility request/response projection
-- `TaskMsg.latestAttemptWorkerId`, `latestAttemptWorkerContextId`, and `latestAttemptBatchId` are compatibility projections of the latest `TaskMsgAttempt`, not the execution-history source of truth
-- Worker/gateway callbacks must resolve a unique active `TaskMsgAttempt`; no-active-attempt callbacks are invalid and traced as `CALLBACK_REJECTED_NO_ACTIVE_ATTEMPT`
-- `taskMessageAttemptClosed` and `taskMessageLogicallyFinal` are separate events; retryable failure closes an attempt but does not make the logical message stably final
-- open-intake tasks must not close from normal message convergence; they may close while `intakeStatus=OPEN` only for `MANUAL_CANCELLED` or explicit policy stops such as `MAX_RUNTIME_REACHED`, `SUCCESS_RATE_REACHED`, and `RETRY_BUDGET_EXHAUSTED`
-- `POST /status/api/tasks/{taskId}/items` appends new `TaskMsg.input` records to an active open-ended task
-- `PUT /status/api/tasks/{taskId}/seal` closes the append window for an open-ended task
+- `TaskMsg.input` and `TaskMsg.output` are the per-item payload boundary
+- `TaskMsgAttempt` is the attempt-level audit and callback snapshot truth
+- `Task.intakeStatus` is the append-window truth; `openEnded` is the projection
+- public create/update/read contracts do not define a dedicated routing-code field
+- worker runtime capability truth is explicit `supportedEventCodes`; `supportedProjects` is only a coarse filter hint
 
-## 7. Current Lifecycle Baseline
+Current lifecycle summary:
 
 Verified mainline lifecycle:
 
@@ -227,20 +206,13 @@ Important current rules:
 - `Worker.status` is the single online truth
 - worker lock truth lives in `WorkerStorage` and `WorkerManager.isLocked(...)`
 
-## 9. Worker Debug Baseline
+## 9. Worker Debug Summary
 
-- Primary control-plane debug path is `POST /status/workers/send-event`
-- Event-first transport frame is `CONTROL/event`
-- Event-first acknowledgement path is `CONTROL/event`
-- `CONTROL/event` is a compatibility bridge for the current worker debug/control adapter; it is not the platform capability model
-- `CONTROL/manual-chat -> EVENT/manual-chat` remains only as a compatibility debug-chat path
-- Current delivery visibility is stored in `WorkerDebugMessageStore`
-- Current page-visible states are:
-  - `QUEUED`: accepted and enqueued by the server
-  - `DELIVERED`: inbound acknowledgement matched the outbound message id
-  - `RECEIVED`: inbound acknowledgement event is stored in history
-  - `FAILED`: gateway accepted the outbound debug message record but could not send it to an addressable worker endpoint
-- Treat this as a transport/debug surface for worker inspection, not as task execution or task audit state
+- primary control-plane debug path is `POST /status/workers/send-event`
+- message history path is `GET /status/workers/message-history`
+- current adapter bridge is event-first `CONTROL/event -> CONTROL/event`
+- this is a debug/control side-channel, not task execution or task audit truth
+- detailed payload and acknowledgement notes live in [./INTERNAL_API_REFERENCE.md](./INTERNAL_API_REFERENCE.md)
 
 ## 10. Recommended Entry Files
 
@@ -272,7 +244,6 @@ Use these positive defaults:
 - start from the real entrypoint and current call sites
 - check the root `pom.xml` before treating a top-level directory as active mainline code
 - verify API docs against controller DTOs and integration tests before changing request or response contracts
-- verify [./MODEL_BOUNDARY_BASELINE.md](./MODEL_BOUNDARY_BASELINE.md) before adding a new boundary model or response envelope
 - treat `Worker / WorkerContext / WebSocket` as current adapter vocabulary, not as the platform's final universal resource model
 - re-check whether historical files exist locally before treating older notes as actionable code paths
 - treat documented capabilities as unverified until code, tests, or runtime behavior prove they are live

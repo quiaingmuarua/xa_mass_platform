@@ -4,6 +4,7 @@ import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.listener.TaskMsgDispatchListener;
 import com.xa.mass.engine.worker.WorkerAdapter;
 import com.xa.mass.gateway.dispatcher.GatewayFrameRouter;
+import com.xa.mass.base.model.Worker;
 import com.xa.mass.sdk.worker.PullWorkerSession;
 import com.xa.mass.starter.worker.TransportRoutingTaskMsgDispatchListener;
 import com.xa.mass.transport.WorkerTransportHints;
@@ -28,14 +29,10 @@ public final class TransportRuntimeRegistry {
     private final WorkerSystemEventChannel systemEventChannel;
     private final List<TransportBinding> bindings;
     private final Map<String, TransportBinding> bindingByHint;
-    private final String defaultDispatchProtocol;
-    private final String defaultPullProtocol;
 
     public TransportRuntimeRegistry(WorkerManager workerManager,
                                     WorkerSystemEventChannel systemEventChannel,
-                                    List<TransportBinding> bindings,
-                                    String defaultDispatchProtocol,
-                                    String defaultPullProtocol) {
+                                    List<TransportBinding> bindings) {
         this.workerManager = Objects.requireNonNull(workerManager, "workerManager");
         this.systemEventChannel = Objects.requireNonNull(systemEventChannel, "systemEventChannel");
         this.bindings = List.copyOf(bindings);
@@ -44,13 +41,11 @@ public final class TransportRuntimeRegistry {
         }
         this.bindingByHint = new LinkedHashMap<>();
         for (TransportBinding binding : this.bindings) {
-            registerBinding(binding.getWorkerAdapter().protocol(), binding);
+            registerBinding(binding.getTransportHint(), binding);
             for (String alias : binding.getWorkerAdapter().aliases()) {
                 registerBinding(alias, binding);
             }
         }
-        this.defaultDispatchProtocol = WorkerTransportHints.normalize(defaultDispatchProtocol);
-        this.defaultPullProtocol = WorkerTransportHints.normalize(defaultPullProtocol);
     }
 
     public void registerInboundHandlers(GatewayFrameRouter frameRouter) {
@@ -73,35 +68,39 @@ public final class TransportRuntimeRegistry {
         List<WorkerAdapter> workerAdapters = bindings.stream()
                 .map(TransportBinding::getWorkerAdapter)
                 .toList();
-        return workerAdapters.size() == 1
-                ? workerAdapters.get(0)
-                : new TransportRoutingTaskMsgDispatchListener(workerManager, workerAdapters, defaultDispatchProtocol);
+        return new TransportRoutingTaskMsgDispatchListener(workerManager, workerAdapters);
     }
 
     public PullWorkerSession openPullWorkerSession(String workerId) {
-        TransportBinding binding = resolvePullBinding(defaultPullProtocol);
-        return new PullWorkerSession(
-                workerId,
-                Objects.requireNonNull(binding.getTaskPullChannel(), "taskPullChannel"),
-                Objects.requireNonNull(binding.getTaskResultIngestChannel(), "taskResultIngestChannel"),
-                systemEventChannel,
-                binding.getWorkerAdapter().protocol()
-        );
-    }
+        if (workerId == null || workerId.isBlank()) {
+            throw new IllegalArgumentException("workerId must not be blank");
+        }
+        String normalizedWorkerId = workerId.trim();
+        Worker worker = workerManager.getWorker(normalizedWorkerId);
+        if (worker == null) {
+            throw new IllegalArgumentException("Worker not found: " + normalizedWorkerId);
+        }
+        String transportHint = WorkerTransportHints.normalize(worker.getOnlineStrategy());
+        if (transportHint == null) {
+            throw new IllegalStateException("Worker transportHint/onlineStrategy is not set: " + normalizedWorkerId);
+        }
 
-    private TransportBinding resolvePullBinding(String preferredHint) {
-        if (preferredHint != null) {
-            TransportBinding candidate = bindingByHint.get(preferredHint);
-            if (candidate != null && candidate.getTaskPullChannel() != null && candidate.getTaskResultIngestChannel() != null) {
-                return candidate;
-            }
+        TransportBinding binding = bindingByHint.get(transportHint);
+        if (binding == null) {
+            throw new IllegalStateException("No transport binding is registered for worker transport '"
+                    + transportHint + "' on worker " + normalizedWorkerId);
         }
-        for (TransportBinding binding : bindings) {
-            if (binding.getTaskPullChannel() != null && binding.getTaskResultIngestChannel() != null) {
-                return binding;
-            }
+        if (binding.getTaskPullChannel() == null || binding.getTaskResultIngestChannel() == null) {
+            throw new IllegalStateException("Worker transport '" + transportHint
+                    + "' is not pull-capable for worker " + normalizedWorkerId);
         }
-        throw new IllegalStateException("No pull-capable worker transport is available for this runtime");
+        return new PullWorkerSession(
+                normalizedWorkerId,
+                binding.getTaskPullChannel(),
+                binding.getTaskResultIngestChannel(),
+                systemEventChannel,
+                transportHint
+        );
     }
 
     private void registerBinding(String hint, TransportBinding binding) {

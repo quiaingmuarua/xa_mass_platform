@@ -33,6 +33,10 @@ public final class TransportBinding {
         return workerAdapter;
     }
 
+    public String getTransportHint() {
+        return workerAdapter.transportHint();
+    }
+
     public TaskPullChannel getTaskPullChannel() {
         return taskPullChannel;
     }

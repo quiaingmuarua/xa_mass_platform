@@ -7,6 +7,7 @@ import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.listener.TaskMsgDispatchListener;
 import com.xa.mass.engine.worker.WorkerAdapter;
 import com.xa.mass.transport.WorkerTransportHints;
+import com.xa.mass.transport.model.TaskDispatchItem;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -21,33 +22,28 @@ public class TransportRoutingTaskMsgDispatchListener implements TaskMsgDispatchL
     private static final Logger logger = LoggerFactory.getLogger(TransportRoutingTaskMsgDispatchListener.class);
 
     private final WorkerManager workerManager;
-    private final Map<String, WorkerAdapter> adaptersByProtocol;
-    private final String defaultProtocol;
+    private final Map<String, WorkerAdapter> adaptersByTransportHint;
 
     public TransportRoutingTaskMsgDispatchListener(WorkerManager workerManager,
-                                                   List<? extends WorkerAdapter> adapters,
-                                                   String defaultProtocol) {
+                                                   List<? extends WorkerAdapter> adapters) {
         this.workerManager = Objects.requireNonNull(workerManager, "workerManager");
         Objects.requireNonNull(adapters, "adapters");
         if (adapters.isEmpty()) {
             throw new IllegalArgumentException("At least one worker adapter is required");
         }
-        this.adaptersByProtocol = new LinkedHashMap<>();
+        this.adaptersByTransportHint = new LinkedHashMap<>();
         for (WorkerAdapter adapter : adapters) {
             if (adapter == null) {
                 continue;
             }
-            registerAdapter(adapter.protocol(), adapter);
+            registerAdapter(adapter.transportHint(), adapter);
             for (String alias : adapter.aliases()) {
                 registerAdapter(alias, adapter);
             }
         }
-        if (adaptersByProtocol.isEmpty()) {
+        if (adaptersByTransportHint.isEmpty()) {
             throw new IllegalArgumentException("At least one non-null worker adapter is required");
         }
-        this.defaultProtocol = normalizeProtocol(
-                defaultProtocol != null ? defaultProtocol : adaptersByProtocol.keySet().iterator().next()
-        );
     }
 
     @Override
@@ -56,14 +52,14 @@ public class TransportRoutingTaskMsgDispatchListener implements TaskMsgDispatchL
             return;
         }
 
-        Map<WorkerAdapter, List<TaskMsg>> grouped = new LinkedHashMap<>();
+        Map<WorkerAdapter, List<TaskDispatchItem>> grouped = new LinkedHashMap<>();
         for (TaskMsg taskMsg : taskMsgs) {
             WorkerAdapter adapter = resolveAdapter(taskMsg);
-            grouped.computeIfAbsent(adapter, ignored -> new ArrayList<>()).add(taskMsg);
+            grouped.computeIfAbsent(adapter, ignored -> new ArrayList<>()).add(TaskDispatchItem.from(task, taskMsg));
         }
 
-        for (Map.Entry<WorkerAdapter, List<TaskMsg>> entry : grouped.entrySet()) {
-            entry.getKey().onTaskMsgsReady(task, List.copyOf(entry.getValue()));
+        for (Map.Entry<WorkerAdapter, List<TaskDispatchItem>> entry : grouped.entrySet()) {
+            entry.getKey().dispatchTaskItems(List.copyOf(entry.getValue()));
         }
     }
 
@@ -72,28 +68,29 @@ public class TransportRoutingTaskMsgDispatchListener implements TaskMsgDispatchL
         if (normalized == null) {
             return;
         }
-        adaptersByProtocol.put(normalized, adapter);
+        adaptersByTransportHint.put(normalized, adapter);
     }
 
     private WorkerAdapter resolveAdapter(TaskMsg taskMsg) {
         String workerId = taskMsg != null ? taskMsg.getLatestAttemptWorkerId() : null;
         Worker worker = workerId != null ? workerManager.getWorker(workerId) : null;
+        if (worker == null) {
+            throw new IllegalStateException("Cannot dispatch task item because worker is missing: " + workerId);
+        }
         String requestedProtocol = normalizeProtocol(worker != null ? worker.getOnlineStrategy() : null);
-        WorkerAdapter adapter = adaptersByProtocol.get(requestedProtocol);
+        if (requestedProtocol == null) {
+            throw new IllegalStateException("Worker transportHint/onlineStrategy must be set before dispatch: " + workerId);
+        }
+        WorkerAdapter adapter = adaptersByTransportHint.get(requestedProtocol);
         if (adapter != null) {
             return adapter;
         }
-
-        WorkerAdapter fallback = adaptersByProtocol.get(defaultProtocol);
-        if (fallback != null) {
-            if (requestedProtocol != null && !requestedProtocol.equals(defaultProtocol)) {
-                logger.warn("Worker {} requested unsupported transport '{}'; falling back to '{}'",
-                        workerId, requestedProtocol, defaultProtocol);
-            }
-            return fallback;
-        }
-
-        return adaptersByProtocol.values().iterator().next();
+        List<String> availableProtocols = new ArrayList<>(new LinkedHashSet<>(adaptersByTransportHint.keySet()));
+        Collections.sort(availableProtocols);
+        logger.error("Worker {} requested unsupported transport '{}'; available transports={}",
+                workerId, requestedProtocol, availableProtocols);
+        throw new IllegalStateException("Unsupported worker transport '" + requestedProtocol
+                + "' for worker " + workerId + "; available transports=" + availableProtocols);
     }
 
     private static String normalizeProtocol(String protocol) {

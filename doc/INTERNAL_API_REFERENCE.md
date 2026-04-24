@@ -821,6 +821,26 @@ Request notes:
 - accepts `workerId`, `project`, `event`, `requestId`, `headers`, `payload`, and optional `principal`
 - current WebSocket adapter bridges this to `CONTROL/event` and records acknowledgements from `CONTROL/event`
 
+Compatibility and payload notes:
+
+- current outbound transport frame is `CONTROL/event`
+- current inbound acknowledgement frame is `CONTROL/event`
+- legacy `manual-chat` exists only for historical compatibility and is not the canonical control path
+- `event` is the canonical control capability identifier; transport `msgType/subMsgType` remain adapter diagnostics only
+- request payload may still carry plain debug text, but payloads with `event` are treated as command/control requests
+- mock client command namespaces are:
+  - `mock.*`
+  - `tool.*`
+  - `batch`
+- a plain text-only payload remains valid debug/control payload and must not mutate task state
+
+Acknowledgement notes:
+
+- current acknowledgement payload includes `replyToMessageId`, `ackStatus`, `message`, `workerId`, and `receivedAt`
+- when a command request is executed, the acknowledgement may also include `commandExecuted`, `commandEvent`, and `commandResult`
+- page-visible delivery states remain `QUEUED`, `DELIVERED`, `RECEIVED`, and `FAILED`
+- this protocol is a worker debug/control side-channel only; it is not the task-dispatch protocol and must not be treated as business routing truth
+
 ## 9. Health And Docs
 
 - `GET /actuator/health` - `Implemented`

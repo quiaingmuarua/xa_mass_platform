@@ -13,6 +13,7 @@ import java.util.List;
  * as possible instead of carrying tuple semantics deeper into engine or SDK
  * logic.
  */
+@Deprecated(forRemoval = false)
 @FunctionalInterface
 public interface MassMessageHandler {
     /**

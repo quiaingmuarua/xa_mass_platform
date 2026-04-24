@@ -1,131 +1,215 @@
 # Gateway Boundary Baseline
 
-## Purpose
+Last updated: 2026-04-24
 
-`xa-mass-gateway` is the current WebSocket transport adapter.
+Purpose:
 
-It is not the platform gateway, scheduler, authorizer, lifecycle owner, or business runtime.
+- keep one platform source of truth
+- keep `xa-mass-gateway` thin
+- keep `xa-mass-transport-api` transport-neutral
+- keep business execution in worker runtime
+- prevent "transport-neutral" changes from becoming renamed WebSocket compatibility layers
 
-The platform kernel owns platform semantics. The gateway owns only WebSocket transport concerns.
+Trust order:
 
-## Platform Mainline
+1. code
+2. verified runtime behavior
+3. [../AGENTS.md](../AGENTS.md)
+4. this document
 
-Read the platform in three layers:
+## 1. Mainline
 
-- `engine`: task lifecycle, assignment, retry, timeout, result acceptance, terminal convergence
-- `sdk`: runtime composition, resource registration, event registration, producer/worker entry
-- `transport-api`: transport-neutral dispatch/result/system-event seams
+Read the platform in four layers:
 
-The current WebSocket path is only one adapter implementation under that model.
+- platform truth
+  - `engine`: task lifecycle, assignment, retry, timeout, result acceptance, terminal convergence, audit truth
+  - `sdk`: runtime composition, registration, event permission, runtime catalog, producer/worker entry
+- transport-neutral runtime contract
+  - `transport-api`: dispatch/result/system-event seams, endpoint registry, transport server contracts
+- adapter implementation
+  - `gateway`: WebSocket server, session registry, frame codec, transport forwarding, transport diagnostics
+- worker runtime
+  - `eventCode -> local EventHandler -> result`
 
-## Gateway Owns
+Mainline direction:
+
+- platform responsibilities move up into `engine` / `sdk` / platform services
+- concrete event execution moves down into worker runtime
+- `xa-mass-gateway` stays a WebSocket adapter, not a policy owner
+- `xa-mass-transport-api` stays free of hidden WebSocket semantics
+
+## 2. Reference Anchors
+
+Boundary-only mental models:
+
+- use these references to understand role separation and ownership
+- do not treat them as implementation templates
+- do not treat them as completeness targets
+- do not import unrelated product complexity from them
+- if a reference conflicts with current kernel truth or verified runtime behavior, current kernel truth wins
+
+| Area | Reference | Borrow | Do not copy |
+| --- | --- | --- | --- |
+| transport adapter | EMQX | thin adapter/broker boundary, connection/session handling, protocol adaptation, platform semantics staying out of the adapter | MQTT/topic/QoS product semantics, broker-centric capability model |
+| task lifecycle | Celery / Sidekiq | retry discipline, timeout/result write-back, finality managed by the platform | broker/queue infrastructure assumptions, queue product semantics as kernel truth |
+| SDK design | Telegram Bot API / Stripe SDK | stable public surface, typed contracts, low leakage of runtime internals, good producer ergonomics | pure remote-HTTP-client assumptions, exposing internal runtime composition as the primary API |
+
+Rules:
+
+- borrow principles from the referenced layer only
+- do not import unrelated product semantics from the reference system
+- when a reference conflicts with current kernel truth, current kernel truth wins
+- these references are for agent mental orientation, not for framework imitation
+
+## 3. Ownership
+
+Ownership map:
+
+- task lifecycle, retry, timeout, terminal convergence: `xa-mass-engine`
+- event auth, submitter scope, event permission, runtime catalog: `xa-mass-sdk` / platform services
+- worker matching and routing decisions: engine/runtime rule evaluation
+- transport online/offline facts: adapter via `WorkerSystemEventChannel`
+- worker capability truth: `eventCode` + `supportedEventCodes`
+- business event execution: worker runtime local handlers
+- transport addressability: endpoint/session registry
+- transport diagnostics: adapter-local logs and metadata
+
+Hard rules:
+
+- `eventCode` is the platform capability identity.
+- `supportedEventCodes` is worker capability truth.
+- `supportedProjects` is scope/filter metadata only.
+- session/endpoint facts are transport reachability, not task eligibility truth.
+- diagnostics metadata is never fallback truth for auth, matching, retry, timeout, or terminal policy.
+
+## 4. Gateway Owns
+
+Allowed in `xa-mass-gateway`:
 
 - WebSocket server lifecycle
-- WebSocket session registry and endpoint reachability
-- worker transport identity binding
-- inbound frame parsing and basic validation
-- outbound frame encoding and delivery
+- connection/session registry
+- endpoint reachability and send
+- frame encode/decode
+- workerId / connection-role extraction
+- input/output forwarding
 - heartbeat/connect/disconnect translation
 - transport-level error frames
 - transport-level diagnostics
-- bridge from WebSocket frames into transport-neutral channels or runtime entrypoints
+- bridge from WebSocket compatibility frames into transport-neutral channels or runtime entrypoints
 
-## Gateway Does Not Own
+Forbidden in `xa-mass-gateway`:
 
 - task lifecycle transitions
-- task assignment or worker matching
-- retry policy
-- timeout policy
-- terminal policy
+- task result convergence rules
+- retry budget truth
+- timeout truth
+- terminal policy truth
 - event authorization
 - submitter/client permission
 - project or event catalog truth
 - worker capability truth
 - business event execution
 - platform audit truth
+- worker matching decisions
 
-## Module Ownership
+Tuple frame routing such as `TASK/step` or `CONTROL/event` is adapter compatibility only. New platform capabilities must not be introduced by new gateway tuple identities.
 
-### `xa-mass-engine`
+## 5. Transport-Neutral Contract
 
-Owns:
+`xa-mass-transport-api` may define:
 
-- task state machine
-- `TaskMsg` / `TaskMsgAttempt` lifecycle
-- assignment and worker matching
-- result acceptance and rejection
-- retry / timeout / release / refill
-- terminal convergence
-- lifecycle trace and audit truth
+- task dispatch channels
+- task result ingest channels
+- worker system event channels
+- worker endpoint registry/inspection
+- transport server lifecycle
+- optional task-pull channels
 
-### `xa-mass-sdk`
+`xa-mass-transport-api` must not define:
 
-Owns:
+- WebSocket/Netty/frame/session implementation types
+- gateway tuple routing as capability identity
+- request/reply frame semantics as platform lifecycle truth
+- adapter-only fields promoted into canonical runtime models
 
-- runtime composition
-- project / event / worker / submitter registration
-- producer-facing typed APIs
-- worker-facing runtime entry
-- transport runtime wiring
+Rule:
 
-### `xa-mass-transport-api`
+- transport-neutral does not mean "WebSocket semantics with neutral names"
+- if a field exists only for one adapter, keep it in the adapter
+- canonical runtime contracts may express dispatch/result/system-event meaning, not frame/session meaning
+- compatibility labels such as `websocket`, `ws`, `push`, `pull`, and `queue` must normalize into canonical worker transport identities before runtime selection or diagnostics
+- adapter implementation labels such as `protocol()` are not runtime transport truth; runtime selection must key off canonical worker transport hint
+- runtime dispatch must not silently fall back to a default adapter when a worker transport hint is missing or unsupported
+- pull session opening must resolve from explicit worker transport identity, not from a runtime-wide default pull adapter
 
-Owns:
+## 6. Worker Runtime Contract
 
-- transport-neutral SPI
-- dispatch/result/system-event channels
-- endpoint registry contracts
-- transport server contracts
-
-Must not leak:
-
-- WebSocket-specific types
-- Netty `ChannelHandlerContext`
-- frame-specific DTOs
-
-### `xa-mass-gateway`
-
-Owns:
-
-- WebSocket adapter behavior only
-
-Must not grow into:
-
-- a scheduler
-- an event authorizer
-- a worker capability registry
-- a task result policy layer
-
-### Worker Runtime
-
-Owns:
+Worker runtime owns:
 
 - `eventCode -> handler` resolution
-- event execution
+- business execution
 - result materialization
 
-Transport clients only own:
+Transport client code owns only:
 
 - connect / reconnect
 - encode / decode
 - send / receive
 
-## Reachability vs Eligibility
+Rules:
 
-Keep these two concepts separate:
+- WebSocket client code is transport client code, not the business handler framework.
+- local handler registration keys off canonical `eventCode`, not frame subtype
+- transport clients may adapt delivery mechanics but must not define execution semantics
+
+## 7. Unified Lifecycle Semantics
+
+Push, pull, and polling may differ in delivery mechanics. They must not silently fork platform lifecycle semantics.
+
+Must stay platform-level:
+
+- task/message assignment
+- attempt creation and closure
+- success/failure finality
+- retry eligibility and retry budget exhaustion
+- timeout effects
+- terminal convergence
+- worker offline signals as input into platform decisions
+- audit/trace truth
+
+May differ by transport:
+
+- how work is obtained
+- push vs poll delivery
+- frame/protocol shape
+- keepalive implementation
+
+Must not fork by transport:
+
+- what counts as a logical attempt
+- what counts as a final result
+- who decides retry
+- who owns timeout truth
+- who owns terminal convergence
+
+If a behavior needs adapter-specific fallback logic to exist, it is not transport-neutral yet.
+
+## 8. Reachability Vs Eligibility
+
+Keep these separate:
 
 - transport reachability: worker connected, channel active, endpoint writable, heartbeat observed
 - execution eligibility: worker online, supports event, context usable, routing matches, lock available
 
-Gateway may report reachability.
+Gateway reports reachability.
 
-Engine decides eligibility.
+Engine/runtime decides eligibility.
 
 `connected == eligible` is forbidden.
 
-## Audit Boundary
+## 9. Audit Boundary
 
-Gateway may emit transport-level facts:
+Gateway may emit transport facts:
 
 - connected
 - disconnected
@@ -133,7 +217,7 @@ Gateway may emit transport-level facts:
 - frame rejected
 - delivery failed
 
-Gateway must not become the source of truth for:
+Gateway must not become truth for:
 
 - task status transitions
 - result acceptance semantics
@@ -142,30 +226,39 @@ Gateway must not become the source of truth for:
 
 Those belong in engine/runtime trace.
 
-## Allowed Bridge Pattern
+## 10. Transitional Areas
 
-The current gateway may translate:
+Current transitional areas may exist temporarily, but must not become a second effective mainline:
 
-- WebSocket frame -> transport-neutral envelope
-- `CONTROL/event` frame -> SDK event runtime request
-- transport result -> WebSocket response frame
+- `MassMessage` as the current WebSocket compatibility frame DTO
+- tuple routing such as `TASK/step` and `CONTROL/event`
+- gateway/result bridge code that converts compatibility frames into transport-neutral reports
+- adapter-level metadata extraction such as `Envelope.eventCode` for diagnostics
+- naming leftovers that still reflect older WebSocket-centric paths
 
-That bridge is allowed only if it does not perform platform policy decisions itself.
+Rules:
 
-## Forbidden Coupling Examples
+- preserve only what current adapter compatibility requires
+- do not add new platform semantics through these seams
+- do not use them as fallback truth when canonical runtime state exists
+- migrate toward canonical runtime models instead of adding another bridge layer
 
-These are architectural violations:
+## 11. Forbidden Coupling
+
+These are regressions:
 
 - gateway directly mutates `Task`, `TaskMsg`, or `TaskMsgAttempt`
 - gateway performs permission checks on `eventCode`
 - gateway decides retry / terminal / timeout outcomes
-- engine depends on Netty session objects
+- engine depends on Netty/session objects
 - transport-api exposes WebSocket or Netty types
-- worker business handler API depends on WebSocket frame DTOs
+- worker business handler APIs depend on WebSocket frame DTOs
+- endpoint/session connectedness is treated as worker capability or task eligibility truth
+- old and new transport paths are both kept authoritative "for compatibility"
 
-## Regression Requirements
+## 12. Regression Requirements
 
-Gateway changes must preserve:
+Gateway/transport changes must preserve:
 
 - WebSocket dispatch
 - WebSocket callback/result write-back
@@ -173,11 +266,12 @@ Gateway changes must preserve:
 - delayed worker availability behavior
 - polling/pull worker mainline behavior outside WebSocket
 
-## Working Rule
+## 13. Working Rule
 
 Before changing `xa-mass-gateway` or `xa-mass-transport-api`, answer:
 
 1. Is this a transport concern or a platform concern?
 2. If it is a platform concern, why is it still in the gateway path?
-3. Which module should own it after the change?
-4. Which integration tests prove behavior is preserved?
+3. Which module owns the source of truth after the change?
+4. Is the touched path canonical or transitional?
+5. Which integration tests or trace events prove behavior is preserved?

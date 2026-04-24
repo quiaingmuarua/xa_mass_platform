@@ -1,11 +1,8 @@
 package com.xa.mass.starter.worker;
 
-import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.worker.WorkerAdapter;
 import com.xa.mass.transport.WorkerTransportHints;
-import com.xa.mass.transport.channel.TaskDispatchChannel;
 import com.xa.mass.transport.channel.TaskPullChannel;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
@@ -21,7 +18,7 @@ import java.util.concurrent.ConcurrentMap;
  * Pull-based worker adapter for crawlers, queue consumers, and other workers
  * that do not maintain a server-push transport.
  */
-public class PollingWorkerAdapter implements WorkerAdapter, TaskDispatchChannel, TaskPullChannel, TaskResultIngestChannel {
+public class PollingWorkerAdapter implements WorkerAdapter, TaskPullChannel, TaskResultIngestChannel {
 
     private static final Logger logger = LoggerFactory.getLogger(PollingWorkerAdapter.class);
 
@@ -50,28 +47,23 @@ public class PollingWorkerAdapter implements WorkerAdapter, TaskDispatchChannel,
     }
 
     @Override
-    public void onTaskMsgsReady(Task task, List<TaskMsg> taskMsgs) {
-        dispatchTaskMessages(task, taskMsgs);
-    }
-
-    @Override
-    public void dispatchTaskMessages(Task task, List<TaskMsg> taskMsgs) {
-        if (task == null || taskMsgs == null || taskMsgs.isEmpty()) {
+    public void dispatchTaskItems(List<TaskDispatchItem> items) {
+        if (items == null || items.isEmpty()) {
             return;
         }
-        for (TaskMsg taskMsg : taskMsgs) {
-            if (taskMsg == null || taskMsg.getLatestAttemptWorkerId() == null || taskMsg.getLatestAttemptWorkerId().isBlank()) {
+        for (TaskDispatchItem item : items) {
+            if (item == null || item.getWorkerId() == null || item.getWorkerId().isBlank()) {
                 continue;
             }
-            String workerId = taskMsg.getLatestAttemptWorkerId();
+            String workerId = item.getWorkerId();
             Deque<TaskDispatchItem> inbox = inbox(workerId);
             synchronized (inbox) {
                 if (inbox.size() >= MAX_INBOX_SIZE) {
                     logger.warn("Polling inbox for worker {} is full ({} items); dropping dispatch for msg {}",
-                            workerId, inbox.size(), taskMsg.getMsgId());
+                            workerId, inbox.size(), item.getMsgId());
                     continue;
                 }
-                inbox.addLast(toDispatchItem(task, taskMsg));
+                inbox.addLast(item);
             }
         }
     }
@@ -126,9 +118,5 @@ public class PollingWorkerAdapter implements WorkerAdapter, TaskDispatchChannel,
 
     private Deque<TaskDispatchItem> inbox(String workerId) {
         return inboxByWorkerId.computeIfAbsent(workerId, ignored -> new ArrayDeque<>());
-    }
-
-    private TaskDispatchItem toDispatchItem(Task task, TaskMsg taskMsg) {
-        return TaskDispatchItem.from(task, taskMsg);
     }
 }
