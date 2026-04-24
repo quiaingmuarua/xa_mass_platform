@@ -5,7 +5,6 @@ import com.xa.mass.base.channel.tranporter.MessageTransporter;
 import com.xa.mass.base.channel.tranporter.MessageTransporterFactory;
 import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
 import com.xa.mass.gateway.queue.Envelope;
-import com.xa.mass.gateway.queue.EnvelopeMessageTransporter;
 import com.xa.mass.gateway.queue.MessageCodec;
 import com.xa.mass.gateway.queue.MessageCodecFactory;
 import com.xa.mass.gateway.session.EventBusWorkerSystemEventChannel;
@@ -118,26 +117,6 @@ public class GatewayConfig {
                 return MessageTransporterFactory.createQueueBased(inputQueue, outputQueue);
             case MULTI_LEVEL:
                 return MessageTransporterFactory.createMultiLevel();
-            case API_BASED:
-                throw new UnsupportedOperationException(API_MODE_UNSUPPORTED_MESSAGE);
-            default:
-                throw new IllegalArgumentException("Unsupported transporter type: " + transporterType);
-        }
-    }
-
-    /**
-     * Create the envelope-aware transporter used by the gateway.
-     */
-    public EnvelopeMessageTransporter createEnvelopeMessageTransporter() {
-        switch (transporterType) {
-            case QUEUE_BASED:
-                if (inputQueue == null || outputQueue == null) {
-                    throw new IllegalStateException(
-                            "QUEUE_BASED transporter requires both inputQueue and outputQueue");
-                }
-                return EnvelopeMessageTransporter.createQueueBased(inputQueue, outputQueue);
-            case MULTI_LEVEL:
-                return EnvelopeMessageTransporter.createMultiLevel();
             case API_BASED:
                 throw new UnsupportedOperationException(API_MODE_UNSUPPORTED_MESSAGE);
             default:
