@@ -12,8 +12,8 @@ This package contains gateway-side message codec and transport helpers.
 - The verified runtime path is still the in-memory/embedded path.
 - This package helps bridge WebSocket gateway traffic with the current raw-json adapter pipeline.
 - It does not define task lifecycle, assignment, or result semantics.
-- Canonical `eventCode` diagnostics are derived only from explicit frame payload fields when available; transport decoding must not inspect task payload internals to recover it.
-- `eventCode` is not a connection/session routing key; connection dispatch still keys off `workerId + connRole`, and `connRole` now defaults to the current task-dispatch lane when omitted by the WebSocket frame.
+- Canonical `eventCode` diagnostics come from the root control frame or the task payload's explicit `eventCode` field only; transport decoding must not invent capability identity from tuple metadata.
+- Connection dispatch now keys off `workerId` only. The active gateway endpoint model no longer carries separate role/lane routing.
 - `project` is optional scope metadata only; do not inject a synthetic default project in transport helpers.
 
 ## Working Rule

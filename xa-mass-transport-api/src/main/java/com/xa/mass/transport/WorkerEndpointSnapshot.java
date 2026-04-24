@@ -8,18 +8,15 @@ import java.util.Objects;
 public final class WorkerEndpointSnapshot {
 
     private final String workerId;
-    private final String endpointRole;
     private final boolean active;
     private final String endpointId;
     private final String transport;
 
     public WorkerEndpointSnapshot(String workerId,
-                                  String endpointRole,
                                   boolean active,
                                   String endpointId,
                                   String transport) {
         this.workerId = Objects.requireNonNull(workerId, "workerId");
-        this.endpointRole = Objects.requireNonNull(endpointRole, "endpointRole");
         this.active = active;
         this.endpointId = endpointId;
         this.transport = transport;
@@ -27,10 +24,6 @@ public final class WorkerEndpointSnapshot {
 
     public String getWorkerId() {
         return workerId;
-    }
-
-    public String getEndpointRole() {
-        return endpointRole;
     }
 
     public boolean isActive() {

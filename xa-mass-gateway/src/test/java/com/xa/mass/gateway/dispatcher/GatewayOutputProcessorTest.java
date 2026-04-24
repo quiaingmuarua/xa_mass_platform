@@ -5,6 +5,7 @@ import com.xa.mass.base.debug.WorkerDebugMessageStore;
 import com.xa.mass.gateway.queue.GsonMessageCodec;
 import com.xa.mass.gateway.queue.OutboundDelivery;
 import com.xa.mass.transport.WorkerEndpointRegistry;
+import com.xa.mass.transport.channel.NoopWorkerSystemEventChannel;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -28,8 +29,8 @@ class GatewayOutputProcessorTest {
                 transporter,
                 endpointRegistry,
                 new GsonMessageCodec(),
-                new GatewayCompatibilityFrameClassifier(new GsonMessageCodec()),
                 null,
+                NoopWorkerSystemEventChannel.INSTANCE,
                 null,
                 null
         );
@@ -39,22 +40,20 @@ class GatewayOutputProcessorTest {
 
     @Test
     void marksDebugRecordFailedWhenEndpointUnavailable() {
-        when(endpointRegistry.sendMessage("worker-1", "task_messages", "{\"hello\":\"world\"}"))
+        when(endpointRegistry.sendMessage("worker-1", "{\"hello\":\"world\"}"))
                 .thenReturn(false);
         WorkerDebugMessageStore.recordOutbound(
                 "worker-1",
                 "demoApp",
                 "mock.state.get",
-                "CONTROL",
-                "event",
                 "trace-1",
-                "{\"event\":\"mock.state.get\"}",
-                "{\"msgId\":\"trace-1\"}",
+                "{\"eventCode\":\"mock.state.get\"}",
+                "{\"messageId\":\"trace-1\"}",
                 "queued"
         );
 
         boolean result = outputProcessor.process(
-                new OutboundDelivery("worker-1", "task_messages", "{\"hello\":\"world\"}", "trace-1")
+                new OutboundDelivery("worker-1", "{\"hello\":\"world\"}", "trace-1")
         );
 
         assertFalse(result);
@@ -63,11 +62,11 @@ class GatewayOutputProcessorTest {
 
     @Test
     void returnsTrueWhenEndpointSendSucceeds() {
-        when(endpointRegistry.sendMessage("worker-1", "task_messages", "{\"hello\":\"world\"}"))
+        when(endpointRegistry.sendMessage("worker-1", "{\"hello\":\"world\"}"))
                 .thenReturn(true);
 
         boolean result = outputProcessor.process(
-                new OutboundDelivery("worker-1", "task_messages", "{\"hello\":\"world\"}", "trace-1")
+                new OutboundDelivery("worker-1", "{\"hello\":\"world\"}", "trace-1")
         );
 
         assertTrue(result);

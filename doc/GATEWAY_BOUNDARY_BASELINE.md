@@ -98,7 +98,7 @@ Forbidden in `xa-mass-gateway`:
 - platform audit truth
 - worker matching decisions
 
-Tuple frame routing such as `TASK/step` or `CONTROL/event` is adapter compatibility only. New platform capabilities must not be introduced by new gateway tuple identities.
+Tuple frame routing such as `TASK/step` is adapter compatibility only. Control traffic uses root-level event-first frames, and new platform capabilities must not be introduced by new gateway tuple identities.
 
 ## 5. Transport-Neutral Contract
 
@@ -237,7 +237,7 @@ These seams are adapter-local, not platform truth:
 - raw inbound JSON plus connection facts
 - raw outbound JSON plus explicit transport addressability
 - `OutboundDelivery` as the current minimal outbound delivery record
-- tuple routing such as `TASK/step` and `CONTROL/event`
+- tuple routing such as `TASK/step`
 - explicit gateway input/output processors that convert frames into canonical bridge calls and transport sends
 - adapter-level metadata extraction such as canonical `eventCode` diagnostics from explicit fields
 

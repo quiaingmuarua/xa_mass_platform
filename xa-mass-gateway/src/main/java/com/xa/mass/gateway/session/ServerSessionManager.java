@@ -17,77 +17,52 @@ public class ServerSessionManager implements WorkerEndpointRegistry, WorkerEndpo
 
     private static final Logger logger = LoggerFactory.getLogger(ServerSessionManager.class);
 
-    // workerId -> connRole -> Channel
-    private final Map<String, Map<String, Channel>> workerChannelMap = new ConcurrentHashMap<>();
+    // workerId -> Channel
+    private final Map<String, Channel> workerChannelMap = new ConcurrentHashMap<>();
 
-    // workerId -> connRole -> ChannelHandlerContext
-    private final Map<String, Map<String, ChannelHandlerContext>> workerChannelCtxMap = new ConcurrentHashMap<>();
+    // workerId -> ChannelHandlerContext
+    private final Map<String, ChannelHandlerContext> workerChannelCtxMap = new ConcurrentHashMap<>();
 
-    // Reverse index: Channel -> [workerId, connRole]
-    private final Map<Channel, WorkerConnKey> channelIndex = new ConcurrentHashMap<>();
+    // Reverse index: Channel -> workerId
+    private final Map<Channel, String> channelIndex = new ConcurrentHashMap<>();
     private volatile WorkerSystemEventChannel systemEventChannel = new EventBusWorkerSystemEventChannel();
 
-    public synchronized void addSession(String workerId, String connRole, Channel channel, ChannelHandlerContext ctx) {
+    public synchronized void addSession(String workerId, Channel channel, ChannelHandlerContext ctx) {
         boolean wasWorkerOnline = hasActiveChannel(workerId);
-        Map<String, Channel> existingRoleMap = workerChannelMap.get(workerId);
-        if (existingRoleMap != null) {
-            Channel existingChannel = existingRoleMap.get(connRole);
-            if (existingChannel != null && existingChannel == channel && existingChannel.isActive()) {
-                logger.debug("Session for workerId={} role={} already exists and is active. Skipping add.", workerId, connRole);
-                return;
-            }
-            if (existingChannel != null && existingChannel != channel) {
-                logger.warn("Existing channel for workerId={} role={} found, but new channel is different. Replacing session.", workerId, connRole);
-            }
+        Channel existingChannel = workerChannelMap.get(workerId);
+        if (existingChannel != null && existingChannel == channel && existingChannel.isActive()) {
+            logger.debug("Session for workerId={} already exists and is active. Skipping add.", workerId);
+            return;
+        }
+        if (existingChannel != null && existingChannel != channel) {
+            logger.warn("Existing channel for workerId={} found, but new channel is different. Replacing session.", workerId);
+            channelIndex.remove(existingChannel);
         }
 
-        workerChannelMap
-                .computeIfAbsent(workerId, key -> new ConcurrentHashMap<>())
-                .put(connRole, channel);
+        workerChannelMap.put(workerId, channel);
+        workerChannelCtxMap.put(workerId, ctx);
+        channelIndex.put(channel, workerId);
 
-        workerChannelCtxMap
-                .computeIfAbsent(workerId, key -> new ConcurrentHashMap<>())
-                .put(connRole, ctx);
-
-        channelIndex.put(channel, new WorkerConnKey(workerId, connRole));
-
-        logger.info("Connected: workerId={} role={} channelId={} totalWorkers={}",
-                workerId, connRole, channel.id().asShortText(), workerChannelMap.size());
+        logger.info("Connected: workerId={} channelId={} totalWorkers={}",
+                workerId, channel.id().asShortText(), workerChannelMap.size());
         if (!wasWorkerOnline && hasActiveChannel(workerId)) {
             systemEventChannel.publishWorkerOnline(workerId, "websocket connected", null);
         }
     }
 
     public synchronized void removeSession(Channel channel) {
-        WorkerConnKey key = channelIndex.remove(channel);
-        if (key != null) {
-            boolean wasWorkerOnline = hasActiveChannel(key.getWorkerId());
-            Map<String, Channel> roleMap = workerChannelMap.get(key.getWorkerId());
-            boolean removedRole = false;
-            if (roleMap != null) {
-                if (channel.equals(roleMap.get(key.getConnRole()))) {
-                    roleMap.remove(key.getConnRole());
-                    removedRole = true;
-                }
-                if (roleMap.isEmpty()) {
-                    workerChannelMap.remove(key.getWorkerId());
-                }
+        String workerId = channelIndex.remove(channel);
+        if (workerId != null) {
+            boolean wasWorkerOnline = hasActiveChannel(workerId);
+            if (channel.equals(workerChannelMap.get(workerId))) {
+                workerChannelMap.remove(workerId);
+                workerChannelCtxMap.remove(workerId);
             }
 
-            Map<String, ChannelHandlerContext> roleCtxMap = workerChannelCtxMap.get(key.getWorkerId());
-            if (roleCtxMap != null) {
-                if (removedRole) {
-                    roleCtxMap.remove(key.getConnRole());
-                }
-                if (roleCtxMap.isEmpty()) {
-                    workerChannelCtxMap.remove(key.getWorkerId());
-                }
-            }
-
-            logger.info("Disconnected: workerId={} role={} channelId={}",
-                    key.getWorkerId(), key.getConnRole(), channel.id().asShortText());
-            if (wasWorkerOnline && !hasActiveChannel(key.getWorkerId())) {
-                systemEventChannel.publishWorkerOffline(key.getWorkerId(), "websocket disconnected", null);
+            logger.info("Disconnected: workerId={} channelId={}",
+                    workerId, channel.id().asShortText());
+            if (wasWorkerOnline && !hasActiveChannel(workerId)) {
+                systemEventChannel.publishWorkerOffline(workerId, "websocket disconnected", null);
             }
         } else {
             logger.warn("Attempted to remove session for a channel not in index: {}", channel.id().asShortText());
@@ -95,41 +70,32 @@ public class ServerSessionManager implements WorkerEndpointRegistry, WorkerEndpo
     }
 
     @Override
-    public boolean sendMessage(String workerId, String connRole, String message) {
-        Map<String, Channel> roleMap = workerChannelMap.get(workerId);
-        if (roleMap != null) {
-            Channel channel = roleMap.get(connRole);
-            if (channel != null && channel.isActive()) {
-                channel.writeAndFlush(new TextWebSocketFrame(message));
-                return true;
-            }
+    public boolean sendMessage(String workerId, String message) {
+        Channel channel = workerChannelMap.get(workerId);
+        if (channel != null && channel.isActive()) {
+            channel.writeAndFlush(new TextWebSocketFrame(message));
+            return true;
         }
-        logger.warn("Failed to send to worker={}, role={}. Channel not found or inactive.", workerId, connRole);
+        logger.warn("Failed to send to worker={}. Channel not found or inactive.", workerId);
         return false;
     }
 
     public void broadcastMessage(String message) {
         TextWebSocketFrame frame = new TextWebSocketFrame(message);
         int sentCount = 0;
-        for (Map<String, Channel> roleMap : workerChannelMap.values()) {
-            for (Channel channel : roleMap.values()) {
-                if (channel.isActive()) {
-                    channel.writeAndFlush(frame.copy());
-                    sentCount++;
-                }
+        for (Channel channel : workerChannelMap.values()) {
+            if (channel.isActive()) {
+                channel.writeAndFlush(frame.copy());
+                sentCount++;
             }
         }
         logger.debug("Broadcast message sent to {} active channels.", sentCount);
     }
 
     @Override
-    public boolean isWorkerOnline(String workerId, String connRole) {
-        Map<String, Channel> roleMap = workerChannelMap.get(workerId);
-        if (roleMap == null) {
-            return false;
-        }
-        Channel ch = roleMap.get(connRole);
-        return ch != null && ch.isActive();
+    public boolean isWorkerOnline(String workerId) {
+        Channel channel = workerChannelMap.get(workerId);
+        return channel != null && channel.isActive();
     }
 
     public int getWorkerConnectionCount() {
@@ -141,28 +107,24 @@ public class ServerSessionManager implements WorkerEndpointRegistry, WorkerEndpo
         return getWorkerConnectionCount();
     }
 
-    public WorkerConnKey getWorkerConnKey(Channel channel) {
+    public String getWorkerId(Channel channel) {
         return channelIndex.get(channel);
     }
 
-    public Channel getChannel(String workerId, String connRole) {
-        Map<String, Channel> roleMap = workerChannelMap.get(workerId);
-        return roleMap != null ? roleMap.get(connRole) : null;
+    public Channel getChannel(String workerId) {
+        return workerChannelMap.get(workerId);
     }
 
-    public ChannelHandlerContext getChannelContext(String workerId, String connRole) {
-        Map<String, ChannelHandlerContext> roleCtxMap = workerChannelCtxMap.get(workerId);
-        return roleCtxMap != null ? roleCtxMap.get(connRole) : null;
+    public ChannelHandlerContext getChannelContext(String workerId) {
+        return workerChannelCtxMap.get(workerId);
     }
 
     @Override
     public synchronized void shutdown() {
         logger.info("Shutting down session manager, closing {} worker connections...", workerChannelMap.size());
-        for (Map<String, Channel> roleMap : workerChannelMap.values()) {
-            for (Channel channel : roleMap.values()) {
-                if (channel.isActive()) {
-                    channel.close();
-                }
+        for (Channel channel : workerChannelMap.values()) {
+            if (channel.isActive()) {
+                channel.close();
             }
         }
         workerChannelMap.clear();
@@ -171,22 +133,12 @@ public class ServerSessionManager implements WorkerEndpointRegistry, WorkerEndpo
         logger.info("Session manager shutdown complete.");
     }
 
-    public Map<String, Map<String, Channel>> getAllWorkerChannels() {
-        Map<String, Map<String, Channel>> unmodifiableOuterMap = new HashMap<>();
-        for (Map.Entry<String, Map<String, Channel>> entry : workerChannelMap.entrySet()) {
-            Map<String, Channel> unmodifiableInnerMap = Collections.unmodifiableMap(new HashMap<>(entry.getValue()));
-            unmodifiableOuterMap.put(entry.getKey(), unmodifiableInnerMap);
-        }
-        return Collections.unmodifiableMap(unmodifiableOuterMap);
+    public Map<String, Channel> getAllWorkerChannels() {
+        return Collections.unmodifiableMap(new HashMap<>(workerChannelMap));
     }
 
-    public Map<String, Map<String, ChannelHandlerContext>> getAllWorkerChannelContexts() {
-        Map<String, Map<String, ChannelHandlerContext>> unmodifiableOuterMap = new HashMap<>();
-        for (Map.Entry<String, Map<String, ChannelHandlerContext>> entry : workerChannelCtxMap.entrySet()) {
-            Map<String, ChannelHandlerContext> unmodifiableInnerMap = Collections.unmodifiableMap(new HashMap<>(entry.getValue()));
-            unmodifiableOuterMap.put(entry.getKey(), unmodifiableInnerMap);
-        }
-        return Collections.unmodifiableMap(unmodifiableOuterMap);
+    public Map<String, ChannelHandlerContext> getAllWorkerChannelContexts() {
+        return Collections.unmodifiableMap(new HashMap<>(workerChannelCtxMap));
     }
 
     public WorkerSystemEventChannel getSystemEventChannel() {
@@ -198,30 +150,21 @@ public class ServerSessionManager implements WorkerEndpointRegistry, WorkerEndpo
     }
 
     private boolean hasActiveChannel(String workerId) {
-        Map<String, Channel> roleMap = workerChannelMap.get(workerId);
-        if (roleMap == null || roleMap.isEmpty()) {
-            return false;
-        }
-        for (Channel channel : roleMap.values()) {
-            if (channel != null && channel.isActive()) {
-                return true;
-            }
-        }
-        return false;
+        Channel channel = workerChannelMap.get(workerId);
+        return channel != null && channel.isActive();
     }
 
     @Override
     public List<WorkerEndpointSnapshot> listWorkerEndpoints() {
         List<WorkerEndpointSnapshot> snapshots = new ArrayList<>();
-        workerChannelMap.forEach((workerId, roleMap) -> roleMap.forEach((role, channel) -> snapshots.add(
+        workerChannelMap.forEach((workerId, channel) -> snapshots.add(
                 new WorkerEndpointSnapshot(
                         workerId,
-                        role,
                         channel != null && channel.isActive(),
                         channel != null ? channel.id().asShortText() : null,
                         "websocket"
                 )
-        )));
+        ));
         return snapshots;
     }
 }

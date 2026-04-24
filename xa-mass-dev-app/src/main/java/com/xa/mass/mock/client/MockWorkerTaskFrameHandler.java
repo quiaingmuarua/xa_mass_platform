@@ -61,7 +61,6 @@ final class MockWorkerTaskFrameHandler {
         }
 
         JsonObject responseContext = new JsonObject();
-        responseContext.addProperty("connRole", readString(originalContext, "connRole"));
         responseContext.addProperty("taskId", taskId);
         Integer retryCount = readInt(originalContext, "retryCount");
         if (retryCount != null) {

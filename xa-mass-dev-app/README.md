@@ -107,7 +107,7 @@ The extra payload fields are observability data for dev-app realism. Existing li
 
 ## Mock Command Runtime
 
-`xa-mass-dev-app` now exposes a lightweight in-process mock command runtime for workers through the current `CONTROL/event` control bridge.
+`xa-mass-dev-app` now exposes a lightweight in-process mock command runtime for workers through the current event-first control bridge.
 
 Current command groups:
 
@@ -127,8 +127,8 @@ Current command groups:
 Transport facts:
 
 - request path: `POST /status/workers/send-event`
-- transport frame: `CONTROL/event`
-- acknowledgement frame: `CONTROL/event`
+- transport frame: root-level event-first control frame
+- acknowledgement frame: root-level event-first control response
 - command execution is only a debug/control side-channel and must not mutate task lifecycle state
 
 Example request body:
@@ -137,7 +137,7 @@ Example request body:
 {
   "workerId": "it-worker-0",
   "project": "demoApp",
-  "event": "mock.delay.response",
+  "eventCode": "mock.delay.response",
   "payload": {
     "millis": 500
   }

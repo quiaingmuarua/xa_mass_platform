@@ -76,7 +76,6 @@ class WorkerControlEventCommandIntegrationTest extends AbstractMockE2eTest {
         );
         assertEquals(Boolean.TRUE, delayPayload.get(WorkerControlMessageProtocol.EVENT_HANDLED_FIELD));
         assertEquals("mock.delay.response", delayPayload.get(WorkerControlEventProtocol.EVENT_CODE_FIELD));
-        assertEquals("mock.delay.response", delayPayload.get(WorkerControlEventProtocol.EVENT_FIELD));
 
         Map<String, Object> delayEventResult = map(delayPayload.get(WorkerControlMessageProtocol.EVENT_RESULT_FIELD));
         assertEquals("ok", delayEventResult.get("status"));
@@ -89,7 +88,6 @@ class WorkerControlEventCommandIntegrationTest extends AbstractMockE2eTest {
         Map<String, Object> stateAck = waitForInboundReply(WORKER_ID, stateMessageId);
         Map<String, Object> statePayload = parsePayload(stateAck);
         assertEquals("mock.state.get", statePayload.get(WorkerControlEventProtocol.EVENT_CODE_FIELD));
-        assertEquals("mock.state.get", statePayload.get(WorkerControlEventProtocol.EVENT_FIELD));
 
         Map<String, Object> stateEventResult = map(statePayload.get(WorkerControlMessageProtocol.EVENT_RESULT_FIELD));
         Map<String, Object> stateResultData = map(stateEventResult.get("data"));
@@ -102,7 +100,7 @@ class WorkerControlEventCommandIntegrationTest extends AbstractMockE2eTest {
         Map<String, Object> request = new LinkedHashMap<>();
         request.put("workerId", WORKER_ID);
         request.put("project", "demoApp");
-        request.put("event", "mock.state.get");
+        request.put("eventCode", "mock.state.get");
         request.put("requestId", "event-first-debug-1");
         request.put("principal", Map.of(
                 "clientId", "debug-client",
@@ -122,7 +120,6 @@ class WorkerControlEventCommandIntegrationTest extends AbstractMockE2eTest {
         Map<String, Object> stateAck = waitForInboundReply(WORKER_ID, messageId);
         Map<String, Object> statePayload = parsePayload(stateAck);
         assertEquals("mock.state.get", statePayload.get(WorkerControlEventProtocol.EVENT_CODE_FIELD));
-        assertEquals("mock.state.get", statePayload.get(WorkerControlEventProtocol.EVENT_FIELD));
         assertEquals(Boolean.TRUE, statePayload.get(WorkerControlMessageProtocol.EVENT_HANDLED_FIELD));
     }
 
@@ -130,7 +127,7 @@ class WorkerControlEventCommandIntegrationTest extends AbstractMockE2eTest {
     void historyPreservesGlobalEventCodeAcrossTransportBridgeWhenProjectIsOmitted() throws Exception {
         Map<String, Object> request = new LinkedHashMap<>();
         request.put("workerId", WORKER_ID);
-        request.put("event", "mock.state.get");
+        request.put("eventCode", "mock.state.get");
         request.put("requestId", "event-history-1");
         request.put("payload", Map.of());
 
@@ -151,19 +148,19 @@ class WorkerControlEventCommandIntegrationTest extends AbstractMockE2eTest {
                         && messageId.equals(String.valueOf(item.get("replyToMessageId"))));
 
         assertEquals("mock.state.get", outbound.get("eventCode"));
-        assertEquals("CONTROL", outbound.get("msgType"));
-        assertEquals("event", outbound.get("subMsgType"));
+        assertFalse(outbound.containsKey("msgType"));
+        assertFalse(outbound.containsKey("subMsgType"));
 
         assertEquals("mock.state.get", inbound.get("eventCode"));
-        assertEquals("CONTROL", inbound.get("msgType"));
-        assertEquals(WorkerControlEventProtocol.SUB_MSG_TYPE, inbound.get("subMsgType"));
+        assertFalse(inbound.containsKey("msgType"));
+        assertFalse(inbound.containsKey("subMsgType"));
     }
 
     private String sendEventCommand(String workerId, String event, Map<String, Object> payload) throws InterruptedException {
         Map<String, Object> request = new LinkedHashMap<>();
         request.put("workerId", workerId);
         request.put("project", "demoApp");
-        request.put("event", event);
+        request.put("eventCode", event);
         request.put("payload", payload);
         request.put("requestId", "integration-" + event.replace('.', '-'));
 

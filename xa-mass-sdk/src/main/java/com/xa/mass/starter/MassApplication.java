@@ -7,7 +7,6 @@ import com.xa.mass.engine.listener.TaskMsgDispatchListener;
 import com.xa.mass.engine.rules.RuleDefinition;
 import com.xa.mass.engine.util.LogUtils;
 import com.xa.mass.gateway.dispatcher.DispatcherContext;
-import com.xa.mass.gateway.dispatcher.GatewayCompatibilityFrameClassifier;
 import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
 import com.xa.mass.gateway.dispatcher.port.ControlEventRequestFrameBridge;
 import com.xa.mass.gateway.queue.MessageCodec;
@@ -143,9 +142,6 @@ public class MassApplication {
             logger.info("Message codec created");
 
             WorkerSystemEventChannel systemEventChannel = gatewayConfig.resolveSystemEventChannel();
-
-            GatewayCompatibilityFrameClassifier compatibilityFrameClassifier =
-                    new GatewayCompatibilityFrameClassifier(messageCodec, systemEventChannel);
             TaskMsgDispatchListener taskMsgDispatchListener = null;
             TaskResultIngestChannel taskResultIngestChannel = null;
             if (engineConfig.isEnabled() && engineConfig.getTaskManager() != null) {
@@ -169,13 +165,12 @@ public class MassApplication {
                     messageTransporter,
                     endpointRegistry,
                     messageCodec,
-                    compatibilityFrameClassifier,
                     taskResultIngestChannel,
+                    systemEventChannel,
                     ports.controlEventRequestFrameBridge(),
                     ports.controlEventResponseFrameSink()
             );
             logger.info("Dispatcher context created");
-            logger.info("Gateway compatibility frame classifier initialized");
 
             if (gatewayConfig.isEnabled()) {
                 massGateway = new MassGateway(gatewayConfig, dispatcherContext);

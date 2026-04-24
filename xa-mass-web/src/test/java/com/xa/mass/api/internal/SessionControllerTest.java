@@ -35,7 +35,6 @@ class SessionControllerTest {
         when(transportOperations.listSessions()).thenReturn(List.of(Map.of(
                 "workerId", "worker-1",
                 "connections", List.of(Map.of(
-                        "role", "task_messages",
                         "active", true,
                         "endpointId", "endpoint-1",
                         "transport", "websocket"
@@ -46,7 +45,6 @@ class SessionControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
                 .andExpect(jsonPath("$.data[0].workerId").value("worker-1"))
-                .andExpect(jsonPath("$.data[0].connections[0].role").value("task_messages"))
                 .andExpect(jsonPath("$.data[0].connections[0].active").value(true))
                 .andExpect(jsonPath("$.data[0].connections[0].endpointId").value("endpoint-1"))
                 .andExpect(jsonPath("$.data[0].connections[0].transport").value("websocket"));

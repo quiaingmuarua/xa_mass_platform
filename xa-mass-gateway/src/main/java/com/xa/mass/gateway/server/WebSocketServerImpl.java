@@ -2,7 +2,6 @@ package com.xa.mass.gateway.server;
 
 import com.xa.mass.gateway.queue.MessageCodec;
 import com.xa.mass.gateway.session.ServerSessionManager;
-import com.xa.mass.gateway.session.SessionRoles;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.*;
 import io.netty.channel.epoll.Epoll;
@@ -155,7 +154,7 @@ public class WebSocketServerImpl implements MassWebSocketServer {
         if (sessionManager == null) {
             return null;
         }
-        return sessionManager.getChannel(clientId, SessionRoles.TASK_MESSAGES);
+        return sessionManager.getChannel(clientId);
     }
 
     public long getActiveConnectionCount() {

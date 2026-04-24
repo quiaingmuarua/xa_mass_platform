@@ -6,7 +6,6 @@ import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
 import com.xa.mass.gateway.queue.GsonMessageCodec;
 import com.xa.mass.gateway.queue.OutboundDelivery;
-import com.xa.mass.transport.WorkerEndpointRoles;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
@@ -41,7 +40,6 @@ class GatewayTaskMsgPublisherTest {
 
         OutboundDelivery delivery = captor.getValue();
         assertEquals("worker-1", delivery.getWorkerId());
-        assertEquals(WorkerEndpointRoles.TASK_DISPATCH, delivery.getConnRole());
         assertEquals("msg-1", delivery.getTraceId());
 
         JsonObject message = codec.parseObject(delivery.getRawJson());
@@ -51,7 +49,6 @@ class GatewayTaskMsgPublisherTest {
         assertEquals("step", message.get("subMsgType").getAsString());
         assertEquals("SERVER", message.get("from").getAsString());
         assertEquals("worker-1", message.getAsJsonObject("context").get("workerId").getAsString());
-        assertEquals(WorkerEndpointRoles.TASK_DISPATCH, message.getAsJsonObject("context").get("connRole").getAsString());
         assertEquals("task-1", message.getAsJsonObject("context").get("taskId").getAsString());
 
         JsonObject payload = message.getAsJsonObject("payload");

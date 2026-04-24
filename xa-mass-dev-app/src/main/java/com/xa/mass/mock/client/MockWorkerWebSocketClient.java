@@ -2,8 +2,8 @@ package com.xa.mass.mock.client;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
+import com.xa.mass.base.debug.WorkerControlEventProtocol;
 import com.xa.mass.command.model.CommandResponse;
-import com.xa.mass.gateway.session.SessionRoles;
 import com.xa.mass.mock.command.mock.MockClientState;
 import com.xa.mass.mock.command.mock.MockClientStateRegistry;
 import com.xa.mass.mock.command.runtime.MockCommandRuntime;
@@ -85,14 +85,17 @@ public class MockWorkerWebSocketClient extends WebSocketClient implements MockWo
                 logger.warn("[{}] Ignoring non-object frame", workerId);
                 return;
             }
+            if (isControlFrame(frame)) {
+                handleControlMessage(frame);
+                return;
+            }
             String msgType = readString(frame, "msgType");
             if (msgType == null) {
-                logger.warn("[{}] Ignoring frame without msgType", workerId);
+                logger.warn("[{}] Ignoring frame without msgType/eventCode", workerId);
                 return;
             }
             switch (msgType) {
                 case "TASK" -> handleTaskMessage(frame);
-                case "CONTROL" -> handleControlMessage(frame);
                 case "PONG" -> logger.debug("[{}] Pong received", workerId);
                 default -> logger.warn("[{}] Unhandled msgType: {}", workerId, msgType);
             }
@@ -121,7 +124,8 @@ public class MockWorkerWebSocketClient extends WebSocketClient implements MockWo
             return;
         }
         send(plan.responseJson());
-        logger.debug("[{}] Sent worker control response for msgId: {}", workerId, readString(controlMessage, "msgId"));
+        logger.debug("[{}] Sent worker control response for messageId: {}",
+                workerId, readString(controlMessage, WorkerControlEventProtocol.MESSAGE_ID_FIELD));
         disconnectAfterAckIfRequested(plan.commandResult());
     }
 
@@ -305,9 +309,12 @@ public class MockWorkerWebSocketClient extends WebSocketClient implements MockWo
         ping.addProperty("subMsgType", "heartbeat");
         JsonObject ctx = new JsonObject();
         ctx.addProperty("workerId", workerId);
-        ctx.addProperty("connRole", SessionRoles.TASK_MESSAGES);
         ping.add("context", ctx);
         return gson.toJson(ping);
+    }
+
+    private boolean isControlFrame(JsonObject frame) {
+        return readString(frame, WorkerControlEventProtocol.EVENT_CODE_FIELD) != null;
     }
 
     private String readString(JsonObject object, String field) {

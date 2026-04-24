@@ -125,9 +125,10 @@ class MockWorkerWebSocketClientTest {
 
         assertTrue(client.awaitSentCount(1, 1000L));
         JsonObject response = WsFrameTestSupport.parse(client.sentMessages.get(0));
-        assertEquals("CONTROL", WsFrameTestSupport.msgType(response));
-        assertEquals(WorkerControlEventProtocol.SUB_MSG_TYPE, WsFrameTestSupport.subMsgType(response));
-        assertEquals("control-1", WsFrameTestSupport.msgId(response));
+        assertEquals("mock.disconnect", response.get(WorkerControlEventProtocol.EVENT_CODE_FIELD).getAsString());
+        assertTrue(response.get(WorkerControlEventProtocol.RESPONSE_FIELD).getAsBoolean());
+        JsonObject data = response.getAsJsonObject(WorkerControlEventProtocol.DATA_FIELD);
+        assertEquals("control-1", data.get("replyToMessageId").getAsString());
         assertTrue(client.awaitClosed(1000L));
         assertFalse(client.isOpen());
     }

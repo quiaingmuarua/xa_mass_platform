@@ -21,11 +21,9 @@ class WorkerDebugMessageStoreTest {
                 "worker-1",
                 "demoApp",
                 "mock.state.get",
-                "CONTROL",
-                "event",
                 "msg-1",
-                "{\"event\":\"mock.state.get\"}",
-                "{\"msgId\":\"msg-1\"}",
+                "{\"eventCode\":\"mock.state.get\"}",
+                "{\"messageId\":\"msg-1\"}",
                 "queued"
         );
 
@@ -44,11 +42,9 @@ class WorkerDebugMessageStoreTest {
                 "worker-1",
                 "demoApp",
                 "mock.state.get",
-                "CONTROL",
-                "event",
                 "msg-1",
-                "{\"event\":\"mock.state.get\"}",
-                "{\"msgId\":\"msg-1\"}",
+                "{\"eventCode\":\"mock.state.get\"}",
+                "{\"messageId\":\"msg-1\"}",
                 "queued"
         );
 
@@ -56,12 +52,10 @@ class WorkerDebugMessageStoreTest {
                 "worker-1",
                 "demoApp",
                 null,
-                "CONTROL",
-                "event",
                 "msg-2",
                 "msg-1",
                 "{\"success\":true}",
-                "{\"msgId\":\"msg-2\"}",
+                "{\"messageId\":\"msg-2\"}",
                 "ack"
         );
 
@@ -72,17 +66,15 @@ class WorkerDebugMessageStoreTest {
     }
 
     @Test
-    void legacyManualChatInboundKeepsNullEventIdentity() {
+    void inboundWithoutCorrelationKeepsNullEventIdentity() {
         WorkerDebugMessageStore.recordInbound(
                 "worker-1",
                 "demoApp",
                 null,
-                "CONTROL",
-                WorkerControlMessageProtocol.LEGACY_SUB_MSG_TYPE,
                 "msg-3",
                 null,
                 "{\"message\":\"ok\"}",
-                "{\"msgId\":\"msg-3\"}",
+                "{\"messageId\":\"msg-3\"}",
                 "ack"
         );
 

@@ -2,7 +2,7 @@ package com.xa.mass.mock.testutil;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
-import com.xa.mass.gateway.session.SessionRoles;
+import com.xa.mass.base.debug.WorkerControlEventProtocol;
 
 import java.util.Map;
 
@@ -60,14 +60,18 @@ public final class WsFrameTestSupport {
                                                   String eventCode,
                                                   String requestId,
                                                   JsonObject eventPayload) {
-        JsonObject payload = new JsonObject();
-        payload.addProperty("event", eventCode);
+        JsonObject frame = new JsonObject();
+        frame.addProperty(WorkerControlEventProtocol.MESSAGE_ID_FIELD, msgId);
+        frame.addProperty(WorkerControlEventProtocol.RESPONSE_FIELD, false);
+        frame.addProperty(WorkerControlEventProtocol.WORKER_ID_FIELD, workerId);
+        frame.addProperty(WorkerControlEventProtocol.PROJECT_FIELD, project);
+        frame.addProperty(WorkerControlEventProtocol.EVENT_CODE_FIELD, eventCode);
         if (requestId != null) {
-            payload.addProperty("requestId", requestId);
+            frame.addProperty(WorkerControlEventProtocol.REQUEST_ID_FIELD, requestId);
         }
-        payload.add("payload", eventPayload != null ? eventPayload : new JsonObject());
-        JsonObject frame = baseFrame(msgId, "CONTROL", "event", false, "SERVER", project, workerId, null);
-        frame.add("payload", payload);
+        frame.add(WorkerControlEventProtocol.HEADERS_FIELD, new JsonObject());
+        frame.add(WorkerControlEventProtocol.PAYLOAD_FIELD, eventPayload != null ? eventPayload : new JsonObject());
+        frame.add(WorkerControlEventProtocol.PRINCIPAL_FIELD, new JsonObject());
         return GSON.toJson(frame);
     }
 
@@ -76,7 +80,7 @@ public final class WsFrameTestSupport {
     }
 
     public static boolean isControl(JsonObject frame) {
-        return "CONTROL".equals(readString(frame, "msgType"));
+        return readString(frame, WorkerControlEventProtocol.EVENT_CODE_FIELD) != null;
     }
 
     public static boolean isResponse(JsonObject frame) {
@@ -87,7 +91,8 @@ public final class WsFrameTestSupport {
     }
 
     public static String msgId(JsonObject frame) {
-        return readString(frame, "msgId");
+        String messageId = readString(frame, WorkerControlEventProtocol.MESSAGE_ID_FIELD);
+        return messageId != null ? messageId : readString(frame, "msgId");
     }
 
     public static String msgType(JsonObject frame) {
@@ -109,21 +114,18 @@ public final class WsFrameTestSupport {
     }
 
     public static JsonObject payload(JsonObject frame) {
-        return frame != null && frame.has("payload") && frame.get("payload").isJsonObject()
-                ? frame.getAsJsonObject("payload")
+        return frame != null && frame.has(WorkerControlEventProtocol.PAYLOAD_FIELD) && frame.get(WorkerControlEventProtocol.PAYLOAD_FIELD).isJsonObject()
+                ? frame.getAsJsonObject(WorkerControlEventProtocol.PAYLOAD_FIELD)
                 : new JsonObject();
     }
 
     public static String workerId(JsonObject frame) {
-        return readNestedString(frame, "context", "workerId");
+        String workerId = readString(frame, WorkerControlEventProtocol.WORKER_ID_FIELD);
+        return workerId != null ? workerId : readNestedString(frame, "context", "workerId");
     }
 
     public static String taskId(JsonObject frame) {
         return readNestedString(frame, "context", "taskId");
-    }
-
-    public static String connRole(JsonObject frame) {
-        return readNestedString(frame, "context", "connRole");
     }
 
     public static int ackCode(JsonObject frame) {
@@ -157,7 +159,6 @@ public final class WsFrameTestSupport {
         }
         JsonObject context = new JsonObject();
         context.addProperty("workerId", workerId);
-        context.addProperty("connRole", SessionRoles.TASK_MESSAGES);
         if (taskId != null) {
             context.addProperty("taskId", taskId);
         }

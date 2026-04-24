@@ -5,7 +5,7 @@ import com.xa.mass.sdk.event.EventRequest;
 import com.xa.mass.sdk.event.EventResponse;
 
 /**
- * Explicit adapter port for inbound {@code CONTROL/event} request frames.
+ * Explicit adapter port for inbound event-first control request frames.
  */
 @FunctionalInterface
 public interface ControlEventRequestFrameBridge {

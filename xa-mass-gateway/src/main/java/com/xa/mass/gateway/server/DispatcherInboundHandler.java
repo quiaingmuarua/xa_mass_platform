@@ -43,14 +43,12 @@ public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWe
 
             String workerId = messageCodec.extractWorkerId(frame);
             String msgId = messageCodec.extractMessageId(frame);
-            String connRole = messageCodec.extractConnRole(frame);
             if (workerId == null || msgId == null) {
-                sendError(ctx, "MISSING_FIELDS", "workerId/msgId are required");
+                sendError(ctx, "MISSING_FIELDS", "workerId/messageId are required");
                 return;
             }
             org.slf4j.MDC.put("event", "channelRead0");
             org.slf4j.MDC.put("workerId", workerId);
-            org.slf4j.MDC.put("connRole", connRole);
             String eventCode = messageCodec.extractEventCode(frame);
             if (eventCode != null) {
                 org.slf4j.MDC.put("eventCode", eventCode);
@@ -66,7 +64,7 @@ public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWe
                 org.slf4j.MDC.clear();
             }
 
-            sessionManager.addSession(workerId, connRole, ctx.channel(), ctx);
+            sessionManager.addSession(workerId, ctx.channel(), ctx);
             inboundMessageSink.accept(raw);
         } catch (Exception e) {
             logger.error("Unexpected error in channelRead0", e);

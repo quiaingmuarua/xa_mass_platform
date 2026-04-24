@@ -40,7 +40,7 @@ For verified runtime behavior and recommended startup, use [VERIFIED_RUNBOOK.md]
 - `Task.intakeStatus` is the active append-window lifecycle truth; `openEnded` is only the create/request projection.
 - `TaskMsg.latestAttemptWorkerId`, `latestAttemptWorkerContextId`, and `latestAttemptBatchId` are latest-attempt projections of `TaskMsgAttempt`.
 - Worker/gateway callbacks must resolve a unique active `TaskMsgAttempt`; the runtime no longer synthesizes legacy attempts for result write-back.
-- The current WebSocket-adapter compatibility surface is the JSON frame envelope built around `msgType + subMsgType`, `context`, and `payload`, including `TASK/step`, `CONTROL/event`, and `PING/PONG`; these adapter semantics are not API capability truth.
+- The current WebSocket-adapter compatibility surface keeps `TASK/step` and `PING/PONG` as protocol shells, while control/debug traffic uses a root-level event-first JSON frame; these adapter semantics are not API capability truth.
 
 ## 1.1 Event Control Plane Notes
 
@@ -49,7 +49,7 @@ For verified runtime behavior and recommended startup, use [VERIFIED_RUNBOOK.md]
 - `EventDefinition.code` is the event/capability identity used by dispatch, catalog reads, and permission checks; `project` remains scope metadata only.
 - Task-backed business events enter through the SDK event path and normalize to task creation; runtime control events are handled directly by the embedded event runtime.
 - Built-in runtime control events are also registered into the SDK metadata catalog so metadata and dispatch stay aligned.
-- Worker debug/control uses the event-first API shape. `/status/workers/send-event` accepts `workerId`, `project`, `event`, `requestId`, `headers`, `payload`, and `principal`.
+- Worker debug/control uses the event-first API shape. `/status/workers/send-event` accepts `workerId`, `project`, `eventCode`, `requestId`, `headers`, `payload`, and `principal`.
 
 ## 2. SDK Metadata API
 
@@ -662,7 +662,6 @@ Response shape:
       "workerId": "dev123",
       "connections": [
         {
-          "role": "task",
           "active": true,
           "endpointId": "abc123",
           "transport": "websocket"
@@ -683,6 +682,7 @@ Current meaning:
 
 - `activeConnections` counts currently addressable transport endpoints
 - `workerCount` counts distinct workers represented in the endpoint snapshot set
+- current WebSocket adapter uses a single endpoint per worker; session inspection no longer exposes any role/lane field
 
 Response shape:
 
@@ -782,24 +782,24 @@ Behavior:
 
 Behavior:
 
-- sends an event-first debug/control payload to a worker over the task-messages session
+- sends an event-first debug/control payload to a worker over the single worker endpoint
 - does not create or mutate `TaskMsg`
-- `event` is the canonical control capability identifier
+- `eventCode` is the canonical control capability identifier
 - response data returns `eventCode` as the canonical capability identity
 - response does not expose `msgType` or `subMsgType`
 
 Request notes:
 
-- accepts `workerId`, `project`, `event`, `requestId`, `headers`, `payload`, and optional `principal`
-- current WebSocket adapter bridges this to `CONTROL/event` and records acknowledgements from `CONTROL/event`
+- accepts `workerId`, `project`, `eventCode`, `requestId`, `headers`, `payload`, and optional `principal`
+- current WebSocket adapter sends a root-level event-first control frame and records event-first acknowledgements
 
 Compatibility and payload notes:
 
-- current outbound transport frame is `CONTROL/event`
-- current inbound acknowledgement frame is `CONTROL/event`
-- legacy `manual-chat` exists only for historical compatibility and is not the canonical control path
-- `event` is the canonical control capability identifier; transport `msgType/subMsgType` remain adapter diagnostics only
-- request payload may still carry plain debug text, but payloads with `event` are treated as command/control requests
+- current outbound transport frame is a root-level event-first JSON envelope
+- current inbound acknowledgement frame is a root-level event-first JSON envelope
+- legacy debug-chat tuple subtypes no longer exist on the active control path
+- `eventCode` is the canonical control capability identifier; transport tuple fields are not part of this API
+- request payload may still carry plain debug text, but payloads are routed by `eventCode`
 - mock client command namespaces are:
   - `mock.*`
   - `tool.*`
@@ -808,8 +808,8 @@ Compatibility and payload notes:
 
 Acknowledgement notes:
 
-- current acknowledgement payload includes `replyToMessageId`, `ackStatus`, `message`, `workerId`, and `receivedAt`
-- when a command request is executed, the acknowledgement may also include `commandExecuted`, `commandEvent`, and `commandResult`
+- current acknowledgement payload includes `replyToMessageId`, `ackStatus`, `workerId`, `receivedAt`, and `eventCode`
+- when a command request is executed, the acknowledgement may also include `eventHandled` and `eventResult`
 - page-visible delivery states remain `QUEUED`, `DELIVERED`, `RECEIVED`, and `FAILED`
 - this protocol is a worker debug/control side-channel only; it is not the task-dispatch protocol and must not be treated as business routing truth
 

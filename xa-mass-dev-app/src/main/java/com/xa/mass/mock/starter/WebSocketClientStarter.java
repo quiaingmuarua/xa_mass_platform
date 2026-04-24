@@ -3,7 +3,6 @@ package com.xa.mass.mock.starter;
 import com.xa.mass.base.model.Worker;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
-import com.xa.mass.gateway.session.SessionRoles;
 import com.xa.mass.mock.client.ClientSessionManager;
 import com.xa.mass.mock.client.MockWorkerClient;
 import com.xa.mass.mock.client.MockWorkerWebSocketClient;
@@ -261,7 +260,6 @@ public class WebSocketClientStarter {
             ping.addProperty("subMsgType", "heartbeat");
             JsonObject ctx = new JsonObject();
             ctx.addProperty("workerId", client.getWorkerId());
-            ctx.addProperty("connRole", SessionRoles.TASK_MESSAGES);
             ping.add("context", ctx);
             client.sendMessage(GSON.toJson(ping));
             log.debug("[{}] heartbeat sent", client.getWorkerId());

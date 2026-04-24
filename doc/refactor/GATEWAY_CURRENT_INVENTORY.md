@@ -18,7 +18,7 @@ It is a migration aid, not a compatibility promise.
 
 - `Class`: `com.xa.mass.gateway.server.DispatcherInboundHandler`
 - `Method`: `channelRead0(...)`
-- `Current responsibility`: validates inbound text as JSON, extracts `workerId + connRole + msgId`, refreshes session reachability, forwards raw JSON into the adapter inbound sink
+- `Current responsibility`: validates inbound text as JSON, extracts `workerId + messageId`, refreshes session reachability, forwards raw JSON into the adapter inbound sink
 - `Should stay in gateway?`: yes
 - `Target owner`: `xa-mass-gateway`
 - `Migration phase`: keep
@@ -48,7 +48,7 @@ It is a migration aid, not a compatibility promise.
 
 - `Class`: `com.xa.mass.gateway.session.ServerSessionManager`
 - `Method`: `addSession(...)`, `removeSession(...)`, `sendMessage(...)`, `listWorkerEndpoints()`
-- `Current responsibility`: tracks active transport endpoints by `workerId + connRole`, sends outbound frames, emits online/offline transport signals
+- `Current responsibility`: tracks active transport endpoints by `workerId`, sends outbound frames, emits online/offline transport signals
 - `Should stay in gateway?`: yes
 - `Target owner`: `xa-mass-gateway`
 - `Migration phase`: keep with reachability-only semantics
@@ -78,7 +78,7 @@ It is a migration aid, not a compatibility promise.
 
 - `Class`: `com.xa.mass.gateway.dispatcher.GatewayCompatibilityFrameClassifier`
 - `Method`: `classify(...)`, `encodeHeartbeatPong(...)`, `recordHeartbeatPong(...)`
-- `Current responsibility`: classifies adapter-local compatibility tuples such as `TASK/step`, `CONTROL/event`, `PING/heartbeat`, and `PONG/heartbeat`
+- `Current responsibility`: classifies adapter-local compatibility tuples such as `TASK/step`, `PING/heartbeat`, and `PONG/heartbeat`
 - `Should stay in gateway?`: yes
 - `Target owner`: `xa-mass-gateway`
 - `Migration phase`: keep, but do not add new platform capability identities here
@@ -98,7 +98,7 @@ It is a migration aid, not a compatibility promise.
 
 - `Class`: `com.xa.mass.gateway.dispatcher.ServerMessageDispatcher`
 - `Method`: `processInputQueueLoop()`, `processOutputQueueLoop()`, `submitOutputDelivery(...)`
-- `Current responsibility`: consumes raw inbound JSON and `OutboundDelivery`, calls explicit adapter processors, preserves outbound ordering per `workerId + connRole`
+- `Current responsibility`: consumes raw inbound JSON and `OutboundDelivery`, calls explicit adapter processors, preserves outbound ordering per `workerId`
 - `Should stay in gateway?`: yes
 - `Target owner`: `xa-mass-gateway`
 - `Migration phase`: keep
@@ -128,7 +128,7 @@ It is a migration aid, not a compatibility promise.
 
 - `Class`: `com.xa.mass.gateway.dispatcher.bridge.WorkerControlEventRequestBridge`
 - `Method`: `handleControlEventRequest(...)`
-- `Current responsibility`: bridges `CONTROL/event` compatibility requests into the global event runtime dispatcher without making gateway the business-event owner
+- `Current responsibility`: bridges root-level event-first control requests into the global event runtime dispatcher without making gateway the business-event owner
 - `Should stay in gateway?`: yes
 - `Target owner`: `xa-mass-gateway`
 - `Migration phase`: keep as narrow compatibility bridge
@@ -157,4 +157,4 @@ These platform concerns are not owned by current `xa-mass-gateway` mainline code
 - business event execution
 - generic handler-routing runtime models beyond the current raw JSON frame path and narrow control-event bridge types
 
-That is the current baseline: gateway is now primarily an adapter over raw JSON, session reachability, fixed compatibility frame routing, and narrow bridge ports. Global capability identity remains `eventCode`, not `connRole` or transport tuple fields.
+That is the current baseline: gateway is now primarily an adapter over raw JSON, single-endpoint session reachability, fixed compatibility frame routing for task/heartbeat traffic, and narrow event-first control bridges. Global capability identity remains `eventCode`, not transport tuple fields.

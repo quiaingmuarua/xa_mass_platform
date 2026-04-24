@@ -4,7 +4,6 @@ import com.xa.mass.base.channel.tranporter.MessageTransporter;
 import com.xa.mass.engine.worker.WorkerAdapter;
 import com.xa.mass.gateway.queue.MessageCodec;
 import com.xa.mass.gateway.queue.OutboundDelivery;
-import com.xa.mass.transport.WorkerEndpointRoles;
 import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.model.TaskDispatchItem;
 import org.slf4j.Logger;
@@ -54,7 +53,6 @@ public class WebSocketWorkerAdapter implements WorkerAdapter {
             String json = messageCodec.encodeTaskDispatch(dispatchItem);
             messageTransporter.sendOutput(new OutboundDelivery(
                     dispatchItem.getWorkerId(),
-                    WorkerEndpointRoles.TASK_DISPATCH,
                     json,
                     dispatchItem.getMsgId()
             ));

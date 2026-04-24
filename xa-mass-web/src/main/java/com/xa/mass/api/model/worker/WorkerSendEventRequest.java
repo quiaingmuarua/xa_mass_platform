@@ -7,18 +7,18 @@ import java.util.Map;
 @JsonIgnoreProperties(ignoreUnknown = false)
 public class WorkerSendEventRequest extends AbstractWorkerRequest {
 
-    private String event;
+    private String eventCode;
     private String requestId;
     private Map<String, String> headers;
     private Map<String, Object> payload;
     private PrincipalBody principal;
 
-    public String getEvent() {
-        return event;
+    public String getEventCode() {
+        return eventCode;
     }
 
-    public void setEvent(String event) {
-        this.event = event;
+    public void setEventCode(String eventCode) {
+        this.eventCode = eventCode;
     }
 
     public String getRequestId() {

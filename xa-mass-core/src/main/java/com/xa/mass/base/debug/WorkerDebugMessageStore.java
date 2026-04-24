@@ -23,8 +23,6 @@ public final class WorkerDebugMessageStore {
     public static WorkerDebugMessageRecord recordOutbound(String workerId,
                                                           String project,
                                                           String eventCode,
-                                                          String msgType,
-                                                          String subMsgType,
                                                           String messageId,
                                                           String payloadJson,
                                                           String rawJson,
@@ -36,8 +34,6 @@ public final class WorkerDebugMessageStore {
         record.setDirection("OUTBOUND");
         record.setProject(project);
         record.setEventCode(normalize(eventCode));
-        record.setMsgType(msgType);
-        record.setSubMsgType(subMsgType);
         record.setStatus("QUEUED");
         record.setPayloadJson(prettyJson(payloadJson));
         record.setRawJson(prettyJson(rawJson));
@@ -52,8 +48,6 @@ public final class WorkerDebugMessageStore {
     public static WorkerDebugMessageRecord recordInbound(String workerId,
                                                          String project,
                                                          String eventCode,
-                                                         String msgType,
-                                                         String subMsgType,
                                                          String messageId,
                                                          String replyToMessageId,
                                                          String payloadJson,
@@ -67,8 +61,6 @@ public final class WorkerDebugMessageStore {
         record.setDirection("INBOUND");
         record.setProject(project);
         record.setEventCode(resolveInboundEvent(eventCode, replyToMessageId));
-        record.setMsgType(msgType);
-        record.setSubMsgType(subMsgType);
         record.setStatus("RECEIVED");
         record.setPayloadJson(prettyJson(payloadJson));
         record.setRawJson(prettyJson(rawJson));

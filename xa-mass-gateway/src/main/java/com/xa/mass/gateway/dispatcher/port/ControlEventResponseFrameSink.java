@@ -3,7 +3,7 @@ package com.xa.mass.gateway.dispatcher.port;
 import com.google.gson.JsonObject;
 
 /**
- * Explicit adapter sink for inbound {@code CONTROL/event} response frames.
+ * Explicit adapter sink for inbound event-first control response frames.
  */
 @FunctionalInterface
 public interface ControlEventResponseFrameSink {

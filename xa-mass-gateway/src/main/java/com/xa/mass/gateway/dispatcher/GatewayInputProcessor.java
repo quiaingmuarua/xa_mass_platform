@@ -17,7 +17,8 @@ import org.slf4j.LoggerFactory;
 import java.util.Objects;
 
 /**
- * Fixed inbound processor for the current WebSocket compatibility frames.
+ * Inbound processor for current WebSocket transport shells plus event-first
+ * control frames.
  */
 public final class GatewayInputProcessor {
     private static final Logger logger = LoggerFactory.getLogger(GatewayInputProcessor.class);
@@ -35,43 +36,51 @@ public final class GatewayInputProcessor {
                 return true;
             }
             String workerId = context.getMessageCodec().extractWorkerId(frame);
-            String connRole = context.getMessageCodec().extractConnRole(frame);
             String traceId = context.getMessageCodec().extractMessageId(frame);
-            GatewayCompatibilityFrameKind compatibilityFrameKind = context.getCompatibilityFrameClassifier().classify(frame);
-            return switch (compatibilityFrameKind) {
-                case PING_HEARTBEAT -> processHeartbeatPing(frame, workerId, connRole, traceId);
-                case PONG_HEARTBEAT -> processHeartbeatPong(frame);
-                case TASK_STEP -> processTaskStep(frame, workerId, connRole, traceId);
-                case CONTROL_EVENT_REQUEST -> processControlEventRequest(frame, workerId, connRole, traceId);
-                case CONTROL_EVENT_RESPONSE -> processControlEventResponse(rawJson, frame);
-                case UNKNOWN -> processUnknownFrame();
-            };
+            if (context.getMessageCodec().isEventFirstControlResponse(frame)) {
+                return processControlEventResponse(rawJson, frame);
+            }
+            if (context.getMessageCodec().isEventFirstControlRequest(frame)) {
+                return processControlEventRequest(frame, workerId, traceId);
+            }
+            if (context.getMessageCodec().isHeartbeatPing(frame)) {
+                return processHeartbeatPing(frame, workerId, traceId);
+            }
+            if (context.getMessageCodec().isHeartbeatPong(frame)) {
+                return processHeartbeatPong(frame);
+            }
+            if (context.getMessageCodec().isTaskStep(frame)) {
+                return processTaskStep(frame, workerId, traceId);
+            }
+            return processUnknownFrame();
         } catch (Exception ex) {
             logProcessingException(ex);
             return false;
         }
     }
 
-    private boolean processHeartbeatPing(JsonObject frame, String workerId, String connRole, String traceId) {
+    private boolean processHeartbeatPing(JsonObject frame, String workerId, String traceId) {
+        if (context.getSystemEventChannel() != null) {
+            context.getSystemEventChannel().publishWorkerHeartbeat(workerId, "heartbeat",
+                    context.getMessageCodec().extractMessageId(frame));
+        }
         context.getMessageTransporter().sendOutput(new OutboundDelivery(
                 workerId,
-                connRole,
-                context.getCompatibilityFrameClassifier().encodeHeartbeatPong(frame),
+                context.getMessageCodec().encodeHeartbeatPong(frame),
                 traceId
         ));
         return true;
     }
 
     private boolean processHeartbeatPong(JsonObject frame) {
-        context.getCompatibilityFrameClassifier().recordHeartbeatPong(frame);
+        logger.debug("Received pong from {}", context.getMessageCodec().extractWorkerId(frame));
         return true;
     }
 
-    private boolean processTaskStep(JsonObject frame, String workerId, String connRole, String traceId) {
+    private boolean processTaskStep(JsonObject frame, String workerId, String traceId) {
         if (context.getTaskResultIngestChannel() == null) {
             context.getMessageTransporter().sendOutput(new OutboundDelivery(
                     workerId,
-                    connRole,
                     context.getMessageCodec().encodeTaskAck(frame, 503, "task step bridge unavailable"),
                     traceId
             ));
@@ -84,14 +93,12 @@ public final class GatewayInputProcessor {
             String message = handled ? "task result processed" : "task result ignored";
             context.getMessageTransporter().sendOutput(new OutboundDelivery(
                     workerId,
-                    connRole,
                     context.getMessageCodec().encodeTaskAck(frame, code, message),
                     traceId
             ));
         } catch (IllegalArgumentException ex) {
             context.getMessageTransporter().sendOutput(new OutboundDelivery(
                     workerId,
-                    connRole,
                     context.getMessageCodec().encodeTaskAck(frame, 400, ex.getMessage()),
                     traceId
             ));
@@ -99,7 +106,7 @@ public final class GatewayInputProcessor {
         return true;
     }
 
-    private boolean processControlEventRequest(JsonObject frame, String workerId, String connRole, String traceId) {
+    private boolean processControlEventRequest(JsonObject frame, String workerId, String traceId) {
         EventRequest request = context.getMessageCodec().decodeControlEventRequest(frame);
         EventResponse response;
         if (context.getControlEventRequestFrameBridge() == null) {
@@ -115,7 +122,6 @@ public final class GatewayInputProcessor {
         }
         context.getMessageTransporter().sendOutput(new OutboundDelivery(
                 workerId,
-                connRole,
                 context.getMessageCodec().encodeControlEventResponse(frame, response),
                 traceId
         ));
@@ -129,14 +135,14 @@ public final class GatewayInputProcessor {
                     context.getMessageCodec().extractWorkerId(frame),
                     context.getMessageCodec().extractProject(frame),
                     context.getMessageCodec().extractMessageId(frame),
-                    context.getMessageCodec().extractPayload(frame)
+                    context.getMessageCodec().extractControlResponseData(frame)
             );
         }
         return true;
     }
 
     private boolean processUnknownFrame() {
-        logger.warn("No compatibility-frame handler found for inbound adapter frame");
+        logger.warn("No task-shell or heartbeat handler found for inbound adapter frame");
         return true;
     }
 

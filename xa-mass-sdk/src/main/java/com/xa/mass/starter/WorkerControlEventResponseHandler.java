@@ -27,8 +27,6 @@ public class WorkerControlEventResponseHandler implements ControlEventResponseFr
                 workerId,
                 project,
                 eventCode,
-                "CONTROL",
-                WorkerControlEventProtocol.SUB_MSG_TYPE,
                 messageId,
                 replyToMessageId,
                 payloadJson,
@@ -38,11 +36,7 @@ public class WorkerControlEventResponseHandler implements ControlEventResponseFr
     }
 
     private String extractCanonicalEventCode(JsonObject payloadObj) {
-        String eventCode = readString(payloadObj, WorkerControlEventProtocol.EVENT_CODE_FIELD);
-        if (eventCode != null) {
-            return eventCode;
-        }
-        return readString(payloadObj, WorkerControlEventProtocol.EVENT_FIELD);
+        return readString(payloadObj, WorkerControlEventProtocol.EVENT_CODE_FIELD);
     }
 
     private String extractReplyToMessageId(JsonObject payloadObj) {

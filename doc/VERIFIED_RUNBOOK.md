@@ -155,7 +155,7 @@ Open-ended and debug side-channel:
 - `Task.intakeStatus` is the append-window truth; `openEnded` is the create/response projection.
 - `POST /status/api/tasks/{taskId}/items` appends inputs only while intake is open.
 - `PUT /status/api/tasks/{taskId}/seal` closes intake and resumes normal terminal convergence.
-- manual worker control uses the event-first path `POST /status/workers/send-event`, which currently bridges to `CONTROL/event -> CONTROL/event` on the WebSocket adapter.
+- manual worker control uses the event-first path `POST /status/workers/send-event`, which emits and receives root-level event-first control frames on the WebSocket adapter.
 - worker control messaging is a control side-channel and must not create or mutate `TaskMsg`.
 
 ## 6. Focused Regression Gate

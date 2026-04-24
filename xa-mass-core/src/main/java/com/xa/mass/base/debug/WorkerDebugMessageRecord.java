@@ -10,8 +10,6 @@ public class WorkerDebugMessageRecord {
     private String direction;
     private String project;
     private String eventCode;
-    private String msgType;
-    private String subMsgType;
     private String status;
     private String payloadJson;
     private String rawJson;
@@ -65,22 +63,6 @@ public class WorkerDebugMessageRecord {
 
     public void setEventCode(String eventCode) {
         this.eventCode = eventCode;
-    }
-
-    public String getMsgType() {
-        return msgType;
-    }
-
-    public void setMsgType(String msgType) {
-        this.msgType = msgType;
-    }
-
-    public String getSubMsgType() {
-        return subMsgType;
-    }
-
-    public void setSubMsgType(String subMsgType) {
-        this.subMsgType = subMsgType;
     }
 
     public String getStatus() {

@@ -42,14 +42,14 @@ public class WorkerDebugController {
             if (workerId == null) {
                 return badRequest("workerId is required");
             }
-            String event = readTrimmed(requestBody.getEvent());
-            if (event == null) {
-                return badRequest("event is required");
+            String eventCode = readTrimmed(requestBody.getEventCode());
+            if (eventCode == null) {
+                return badRequest("eventCode is required");
             }
             Map<String, Object> result = debugOperations.sendWorkerEvent(
                     workerId,
                     EventRequest.builder()
-                            .event(event)
+                            .event(eventCode)
                             .project(readTrimmed(requestBody.getProject()))
                             .requestId(readTrimmed(requestBody.getRequestId()))
                             .headers(requestBody.getHeaders())

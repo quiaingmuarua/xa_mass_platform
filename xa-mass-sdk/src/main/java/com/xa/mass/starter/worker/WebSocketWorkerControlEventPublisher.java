@@ -1,18 +1,17 @@
 package com.xa.mass.starter.worker;
 
-import com.xa.mass.base.debug.WorkerControlEventProtocol;
-import com.xa.mass.base.debug.WorkerDebugMessageStore;
-import com.xa.mass.base.channel.tranporter.MessageTransporter;
 import com.google.gson.Gson;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import com.xa.mass.base.channel.tranporter.MessageTransporter;
+import com.xa.mass.base.debug.WorkerControlEventProtocol;
+import com.xa.mass.base.debug.WorkerDebugMessageStore;
 import com.xa.mass.gateway.queue.MessageCodec;
 import com.xa.mass.gateway.queue.OutboundDelivery;
 import com.xa.mass.starter.transport.WorkerControlEventDispatch;
 import com.xa.mass.starter.transport.WorkerControlEventPublishResult;
 import com.xa.mass.starter.transport.WorkerControlEventPublisher;
 import com.xa.mass.transport.WorkerEndpointRegistry;
-import com.xa.mass.transport.WorkerEndpointRoles;
 
 import java.util.UUID;
 
@@ -25,6 +24,7 @@ public final class WebSocketWorkerControlEventPublisher implements WorkerControl
 
     private final MessageTransporter<String, OutboundDelivery> messageTransporter;
     private final WorkerEndpointRegistry endpointRegistry;
+    @SuppressWarnings("unused")
     private final MessageCodec messageCodec;
 
     public WebSocketWorkerControlEventPublisher(MessageTransporter<String, OutboundDelivery> messageTransporter,
@@ -43,8 +43,8 @@ public final class WebSocketWorkerControlEventPublisher implements WorkerControl
         if (endpointRegistry == null) {
             throw new IllegalStateException("Session manager is not initialized");
         }
-        if (!endpointRegistry.isWorkerOnline(request.getWorkerId(), WorkerEndpointRoles.TASK_DISPATCH)) {
-            throw new IllegalStateException("Target worker is offline or task dispatch endpoint is unavailable");
+        if (!endpointRegistry.isWorkerOnline(request.getWorkerId())) {
+            throw new IllegalStateException("Target worker is offline");
         }
 
         String messageId = UUID.randomUUID().toString();
@@ -53,16 +53,13 @@ public final class WebSocketWorkerControlEventPublisher implements WorkerControl
                 request.getWorkerId(),
                 request.getProject(),
                 request.getEventCode(),
-                "CONTROL",
-                WorkerControlEventProtocol.SUB_MSG_TYPE,
                 messageId,
-                request.getPayload() == null ? "{}" : request.getPayload().toString(),
+                GSON.toJson(request.getPayload()),
                 rawJson,
                 "message queued to dispatcher"
         );
         messageTransporter.sendOutput(new OutboundDelivery(
                 request.getWorkerId(),
-                WorkerEndpointRoles.TASK_DISPATCH,
                 rawJson,
                 messageId
         ));
@@ -77,20 +74,24 @@ public final class WebSocketWorkerControlEventPublisher implements WorkerControl
 
     private String encodeWorkerControlEventDispatch(WorkerControlEventDispatch request, String messageId) {
         JsonObject frame = new JsonObject();
-        frame.addProperty("msgId", messageId);
-        frame.addProperty("response", false);
-        frame.addProperty("msgType", "CONTROL");
-        frame.addProperty("subMsgType", WorkerControlEventProtocol.SUB_MSG_TYPE);
-        frame.addProperty("from", "SERVER");
-        if (request.getProject() != null) {
-            frame.addProperty("project", request.getProject());
-        }
-        JsonObject context = new JsonObject();
-        context.addProperty("workerId", request.getWorkerId());
-        context.addProperty("connRole", WorkerEndpointRoles.TASK_DISPATCH);
-        frame.add("context", context);
+        frame.addProperty(WorkerControlEventProtocol.MESSAGE_ID_FIELD, messageId);
+        frame.addProperty(WorkerControlEventProtocol.RESPONSE_FIELD, false);
+        frame.addProperty(WorkerControlEventProtocol.WORKER_ID_FIELD, request.getWorkerId());
+        frame.addProperty(WorkerControlEventProtocol.PROJECT_FIELD, request.getProject());
+        frame.addProperty(WorkerControlEventProtocol.EVENT_CODE_FIELD, request.getEventCode());
+        frame.addProperty(WorkerControlEventProtocol.REQUEST_ID_FIELD, request.getRequestId());
+        frame.add(WorkerControlEventProtocol.HEADERS_FIELD, GSON.toJsonTree(request.getHeaders()));
         JsonElement payload = GSON.toJsonTree(request.getPayload());
-        frame.add("payload", payload != null ? payload : new JsonObject());
+        frame.add(WorkerControlEventProtocol.PAYLOAD_FIELD, payload != null ? payload : new JsonObject());
+
+        JsonObject principal = new JsonObject();
+        if (request.getClientId() != null) {
+            principal.addProperty(WorkerControlEventProtocol.CLIENT_ID_FIELD, request.getClientId());
+        }
+        if (request.getUserId() != null) {
+            principal.addProperty(WorkerControlEventProtocol.USER_ID_FIELD, request.getUserId());
+        }
+        frame.add(WorkerControlEventProtocol.PRINCIPAL_FIELD, principal);
         return GSON.toJson(frame);
     }
 }

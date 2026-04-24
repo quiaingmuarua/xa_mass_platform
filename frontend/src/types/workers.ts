@@ -39,8 +39,7 @@ export interface WorkerDebugMessageRecord {
     workerId: string
     direction: 'OUTBOUND' | 'INBOUND'
     project: string
-    msgType: string
-    subMsgType: string
+    eventCode: string | null
     status: string
     payloadJson: string
     rawJson: string
@@ -57,7 +56,7 @@ export interface WorkerDebugHistoryResponse {
 export interface WorkerDebugSendRequest {
     workerId: string
     project?: string
-    event: string
+    eventCode: string
     requestId?: string
     headers?: Record<string, string>
     principal?: {
@@ -71,6 +70,6 @@ export interface WorkerDebugSendResult {
     messageId: string
     workerId: string
     project: string
-    event: string
+    eventCode: string
     requestId: string
 }

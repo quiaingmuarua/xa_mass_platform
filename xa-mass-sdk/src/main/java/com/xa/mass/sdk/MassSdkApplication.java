@@ -1287,16 +1287,15 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
         grouped.forEach((workerId, endpoints) -> {
             Map<String, Object> entry = new LinkedHashMap<>();
             entry.put("workerId", workerId);
-            List<Map<String, Object>> roles = new ArrayList<>();
+            List<Map<String, Object>> connections = new ArrayList<>();
             endpoints.forEach(snapshot -> {
-                Map<String, Object> roleInfo = new LinkedHashMap<>();
-                roleInfo.put("role", snapshot.getEndpointRole());
-                roleInfo.put("active", snapshot.isActive());
-                roleInfo.put("endpointId", snapshot.getEndpointId());
-                roleInfo.put("transport", snapshot.getTransport());
-                roles.add(roleInfo);
+                Map<String, Object> connectionInfo = new LinkedHashMap<>();
+                connectionInfo.put("active", snapshot.isActive());
+                connectionInfo.put("endpointId", snapshot.getEndpointId());
+                connectionInfo.put("transport", snapshot.getTransport());
+                connections.add(connectionInfo);
             });
-            entry.put("connections", roles);
+            entry.put("connections", connections);
             data.add(entry);
         });
         return data;
@@ -1337,7 +1336,6 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
         String payload = rawJson instanceof String rawText ? rawText : GSON.toJson(request);
         transportContext.getMessageTransporter().sendOutput(new OutboundDelivery(
                 workerIdText.trim(),
-                null,
                 payload,
                 UUID.randomUUID().toString()
         ));
@@ -1379,18 +1377,6 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
         Objects.requireNonNull(request, "request");
         Objects.requireNonNull(request.getEvent(), "request.event");
         String eventRequestId = firstNonBlank(request.getRequestId(), UUID.randomUUID().toString());
-        Map<String, Object> eventPayload = new LinkedHashMap<>();
-        eventPayload.put(WorkerControlEventProtocol.EVENT_CODE_FIELD, request.getEvent().value());
-        eventPayload.put(WorkerControlEventProtocol.EVENT_FIELD, request.getEvent().value());
-        eventPayload.put(WorkerControlEventProtocol.REQUEST_ID_FIELD, eventRequestId);
-        eventPayload.put(WorkerControlEventProtocol.HEADERS_FIELD, request.getHeaders());
-        eventPayload.put(WorkerControlEventProtocol.PAYLOAD_FIELD, request.getPayload());
-        Map<String, Object> principalPayload = new LinkedHashMap<>();
-        if (principal != null) {
-            principalPayload.put(WorkerControlEventProtocol.CLIENT_ID_FIELD, principal.getClientId());
-            principalPayload.put(WorkerControlEventProtocol.USER_ID_FIELD, principal.getUserId());
-        }
-        eventPayload.put(WorkerControlEventProtocol.PRINCIPAL_FIELD, principalPayload);
         Worker worker = requireStartedWorkerManager().getWorker(workerId);
         if (worker == null) {
             throw new IllegalArgumentException("Worker not found");
@@ -1402,7 +1388,10 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
                         resolvedProject,
                         request.getEvent().value(),
                         eventRequestId,
-                        eventPayload
+                        request.getHeaders(),
+                        request.getPayload(),
+                        principal == null ? null : principal.getClientId(),
+                        principal == null ? null : principal.getUserId()
                 )
         );
         return Map.of(

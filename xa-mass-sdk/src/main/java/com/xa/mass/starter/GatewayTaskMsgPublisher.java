@@ -2,7 +2,6 @@ package com.xa.mass.starter;
 
 import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
 import com.xa.mass.gateway.queue.OutboundDelivery;
-import com.xa.mass.transport.WorkerEndpointRoles;
 import com.xa.mass.transport.channel.TaskDispatchChannel;
 import com.xa.mass.transport.model.TaskDispatchItem;
 import org.slf4j.Logger;
@@ -35,7 +34,6 @@ public class GatewayTaskMsgPublisher implements TaskDispatchChannel {
             String rawJson = dispatchRuntimeContext.getMessageCodec().encodeTaskDispatch(dispatchItem);
             dispatchRuntimeContext.getMessageTransporter().sendOutput(new OutboundDelivery(
                     dispatchItem.getWorkerId(),
-                    WorkerEndpointRoles.TASK_DISPATCH,
                     rawJson,
                     dispatchItem.getMsgId()
             ));

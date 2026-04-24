@@ -11,7 +11,6 @@ import com.xa.mass.base.debug.WorkerControlEventProtocol;
 import com.xa.mass.sdk.event.EventPrincipal;
 import com.xa.mass.sdk.event.EventRequest;
 import com.xa.mass.sdk.event.EventResponse;
-import com.xa.mass.transport.WorkerEndpointRoles;
 import com.xa.mass.transport.model.TaskDispatchItem;
 import com.xa.mass.transport.model.TaskResultReport;
 import org.slf4j.Logger;
@@ -20,14 +19,21 @@ import org.slf4j.LoggerFactory;
 import java.lang.reflect.Type;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.UUID;
 
 /**
- * Gson-based WebSocket compatibility codec.
+ * Gson-based codec for the current WebSocket adapter.
+ *
+ * <p>Task transport keeps the legacy task shell, while control/debug traffic is
+ * now event-first and uses root-level {@code eventCode}.
  */
 public class GsonMessageCodec implements MessageCodec {
 
     private static final Logger logger = LoggerFactory.getLogger(GsonMessageCodec.class);
+    private static final String SUBTYPE_HEARTBEAT = "heartbeat";
     private static final Type MAP_TYPE = new TypeToken<Map<String, Object>>() {
+    }.getType();
+    private static final Type STRING_MAP_TYPE = new TypeToken<Map<String, String>>() {
     }.getType();
 
     private final Gson gson;
@@ -53,44 +59,96 @@ public class GsonMessageCodec implements MessageCodec {
 
     @Override
     public String extractWorkerId(JsonObject frame) {
-        return readNestedString(frame, "context", "workerId");
-    }
-
-    @Override
-    public String extractConnRole(JsonObject frame) {
-        String connRole = readNestedString(frame, "context", "connRole");
-        if (connRole == null || connRole.isBlank()) {
-            return WorkerEndpointRoles.TASK_DISPATCH;
-        }
-        return connRole.trim();
+        return firstNonBlank(
+                readString(frame, WorkerControlEventProtocol.WORKER_ID_FIELD),
+                readNestedString(frame, "context", "workerId")
+        );
     }
 
     @Override
     public String extractProject(JsonObject frame) {
-        return readString(frame, "project");
+        return readString(frame, WorkerControlEventProtocol.PROJECT_FIELD);
     }
 
     @Override
     public String extractMessageId(JsonObject frame) {
-        return readString(frame, "msgId");
+        return firstNonBlank(
+                readString(frame, WorkerControlEventProtocol.MESSAGE_ID_FIELD),
+                readString(frame, "msgId")
+        );
     }
 
     @Override
     public String extractEventCode(JsonObject frame) {
-        return extractCanonicalEventCode(extractPayload(frame));
+        if (frame == null) {
+            return null;
+        }
+        String rootEventCode = readString(frame, WorkerControlEventProtocol.EVENT_CODE_FIELD);
+        if (rootEventCode != null) {
+            return rootEventCode;
+        }
+        JsonObject payload = extractPayload(frame);
+        return readString(payload, WorkerControlEventProtocol.EVENT_CODE_FIELD);
     }
 
     @Override
     public JsonObject extractPayload(JsonObject frame) {
-        if (frame == null || !frame.has("payload") || frame.get("payload").isJsonNull() || !frame.get("payload").isJsonObject()) {
-            return new JsonObject();
-        }
-        return frame.getAsJsonObject("payload");
+        return readJsonObject(frame, WorkerControlEventProtocol.PAYLOAD_FIELD);
+    }
+
+    @Override
+    public JsonObject extractControlResponseData(JsonObject frame) {
+        return readJsonObject(frame, WorkerControlEventProtocol.DATA_FIELD);
+    }
+
+    @Override
+    public boolean isEventFirstControlRequest(JsonObject frame) {
+        return frame != null
+                && !isResponse(frame)
+                && readString(frame, WorkerControlEventProtocol.EVENT_CODE_FIELD) != null;
+    }
+
+    @Override
+    public boolean isEventFirstControlResponse(JsonObject frame) {
+        return frame != null
+                && isResponse(frame)
+                && readString(frame, WorkerControlEventProtocol.EVENT_CODE_FIELD) != null;
+    }
+
+    @Override
+    public boolean isHeartbeatPing(JsonObject frame) {
+        return "PING".equals(readString(frame, "msgType"))
+                && SUBTYPE_HEARTBEAT.equals(normalizeSubType(readString(frame, "subMsgType")));
+    }
+
+    @Override
+    public boolean isHeartbeatPong(JsonObject frame) {
+        return "PONG".equals(readString(frame, "msgType"))
+                && SUBTYPE_HEARTBEAT.equals(normalizeSubType(readString(frame, "subMsgType")));
+    }
+
+    @Override
+    public boolean isTaskStep(JsonObject frame) {
+        return "TASK".equals(readString(frame, "msgType"))
+                && "step".equals(normalizeSubType(readString(frame, "subMsgType")));
     }
 
     @Override
     public String encodeHeartbeatPong(JsonObject requestFrame) {
-        JsonObject response = baseResponseFrame(requestFrame, "PONG", readString(requestFrame, "subMsgType"));
+        JsonObject response = new JsonObject();
+        response.addProperty("msgId", extractMessageId(requestFrame));
+        response.addProperty("response", true);
+        response.addProperty("msgType", "PONG");
+        response.addProperty("subMsgType", readString(requestFrame, "subMsgType"));
+        response.addProperty("from", "SERVER");
+        String project = extractProject(requestFrame);
+        if (project != null) {
+            response.addProperty(WorkerControlEventProtocol.PROJECT_FIELD, project);
+        }
+        JsonObject context = readJsonObject(requestFrame, "context");
+        if (!context.entrySet().isEmpty()) {
+            response.add("context", context.deepCopy());
+        }
         JsonObject payload = new JsonObject();
         payload.addProperty("code", 200);
         payload.addProperty("message", "pong");
@@ -112,7 +170,6 @@ public class GsonMessageCodec implements MessageCodec {
 
         JsonObject context = new JsonObject();
         context.addProperty("workerId", item.getWorkerId());
-        context.addProperty("connRole", WorkerEndpointRoles.TASK_DISPATCH);
         context.addProperty("taskId", item.getTaskId());
         context.addProperty("retryCount", item.getRetryCount());
         frame.add("context", context);
@@ -125,7 +182,7 @@ public class GsonMessageCodec implements MessageCodec {
         step.add("params", gson.toJsonTree(new LinkedHashMap<>(item.mergedPayload())));
         steps.add(step);
         payload.add("steps", steps);
-        payload.addProperty("eventCode", item.getEventCode());
+        payload.addProperty(WorkerControlEventProtocol.EVENT_CODE_FIELD, item.getEventCode());
         frame.add("payload", payload);
         return gson.toJson(frame);
     }
@@ -161,7 +218,20 @@ public class GsonMessageCodec implements MessageCodec {
 
     @Override
     public String encodeTaskAck(JsonObject requestFrame, int code, String message) {
-        JsonObject response = baseResponseFrame(requestFrame, "TASK", readString(requestFrame, "subMsgType"));
+        JsonObject response = new JsonObject();
+        response.addProperty("msgId", extractMessageId(requestFrame));
+        response.addProperty("response", true);
+        response.addProperty("msgType", "TASK");
+        response.addProperty("subMsgType", readString(requestFrame, "subMsgType"));
+        response.addProperty("from", "SERVER");
+        String project = extractProject(requestFrame);
+        if (project != null) {
+            response.addProperty(WorkerControlEventProtocol.PROJECT_FIELD, project);
+        }
+        JsonObject context = readJsonObject(requestFrame, "context");
+        if (!context.entrySet().isEmpty()) {
+            response.add("context", context.deepCopy());
+        }
         JsonObject payload = new JsonObject();
         payload.addProperty("code", code);
         payload.addProperty("message", message);
@@ -171,35 +241,23 @@ public class GsonMessageCodec implements MessageCodec {
 
     @Override
     public EventRequest decodeControlEventRequest(JsonObject frame) {
-        JsonObject payloadObject = extractPayload(frame);
-        JsonObject headersObject = payloadObject.has(WorkerControlEventProtocol.HEADERS_FIELD)
-                && payloadObject.get(WorkerControlEventProtocol.HEADERS_FIELD).isJsonObject()
-                ? payloadObject.getAsJsonObject(WorkerControlEventProtocol.HEADERS_FIELD)
-                : new JsonObject();
-        JsonObject requestPayload = payloadObject.has(WorkerControlEventProtocol.PAYLOAD_FIELD)
-                && payloadObject.get(WorkerControlEventProtocol.PAYLOAD_FIELD).isJsonObject()
-                ? payloadObject.getAsJsonObject(WorkerControlEventProtocol.PAYLOAD_FIELD)
-                : payloadObject;
-
+        JsonObject headersObject = readJsonObject(frame, WorkerControlEventProtocol.HEADERS_FIELD);
+        JsonObject payloadObject = readJsonObject(frame, WorkerControlEventProtocol.PAYLOAD_FIELD);
         return EventRequest.builder()
-                .event(extractCanonicalEventCode(payloadObject))
+                .event(readString(frame, WorkerControlEventProtocol.EVENT_CODE_FIELD))
                 .project(extractProject(frame))
                 .requestId(firstNonBlank(
-                        readString(payloadObject, WorkerControlEventProtocol.REQUEST_ID_FIELD),
-                        extractMessageId(frame)))
-                .headers(gson.fromJson(headersObject, new TypeToken<Map<String, String>>() {
-                }.getType()))
-                .payload(gson.fromJson(requestPayload, MAP_TYPE))
+                        readString(frame, WorkerControlEventProtocol.REQUEST_ID_FIELD),
+                        extractMessageId(frame)
+                ))
+                .headers(gson.fromJson(headersObject, STRING_MAP_TYPE))
+                .payload(gson.fromJson(payloadObject, MAP_TYPE))
                 .build();
     }
 
     @Override
     public EventPrincipal decodeControlEventPrincipal(JsonObject frame) {
-        JsonObject payloadObject = extractPayload(frame);
-        JsonObject principalObject = payloadObject.has(WorkerControlEventProtocol.PRINCIPAL_FIELD)
-                && payloadObject.get(WorkerControlEventProtocol.PRINCIPAL_FIELD).isJsonObject()
-                ? payloadObject.getAsJsonObject(WorkerControlEventProtocol.PRINCIPAL_FIELD)
-                : new JsonObject();
+        JsonObject principalObject = readJsonObject(frame, WorkerControlEventProtocol.PRINCIPAL_FIELD);
         return EventPrincipal.builder()
                 .clientId(readString(principalObject, WorkerControlEventProtocol.CLIENT_ID_FIELD))
                 .userId(readString(principalObject, WorkerControlEventProtocol.USER_ID_FIELD))
@@ -208,19 +266,36 @@ public class GsonMessageCodec implements MessageCodec {
 
     @Override
     public String encodeControlEventResponse(JsonObject requestFrame, EventResponse response) {
-        JsonObject reply = baseResponseFrame(requestFrame, "CONTROL", readString(requestFrame, "subMsgType"));
-        JsonObject payload = new JsonObject();
-        writeCanonicalEventCode(payload, extractEventCode(requestFrame));
-        payload.addProperty("success", response.isSuccess());
-        if (response.getCode() != null) {
-            payload.addProperty("code", response.getCode());
+        JsonObject reply = new JsonObject();
+        reply.addProperty(WorkerControlEventProtocol.MESSAGE_ID_FIELD, UUID.randomUUID().toString());
+        reply.addProperty(WorkerControlEventProtocol.RESPONSE_FIELD, true);
+        String workerId = extractWorkerId(requestFrame);
+        if (workerId != null) {
+            reply.addProperty(WorkerControlEventProtocol.WORKER_ID_FIELD, workerId);
         }
-        if (response.getMessage() != null) {
-            payload.addProperty("message", response.getMessage());
+        String project = extractProject(requestFrame);
+        if (project != null) {
+            reply.addProperty(WorkerControlEventProtocol.PROJECT_FIELD, project);
         }
-        payload.add(WorkerControlEventProtocol.REQUEST_ID_FIELD, gson.toJsonTree(response.getRequestId()));
-        payload.add("data", gson.toJsonTree(response.getData()));
-        reply.add("payload", payload);
+        String eventCode = extractEventCode(requestFrame);
+        if (eventCode != null) {
+            reply.addProperty(WorkerControlEventProtocol.EVENT_CODE_FIELD, eventCode);
+        }
+        String requestId = firstNonBlank(
+                response != null ? response.getRequestId() : null,
+                readString(requestFrame, WorkerControlEventProtocol.REQUEST_ID_FIELD)
+        );
+        if (requestId != null) {
+            reply.addProperty(WorkerControlEventProtocol.REQUEST_ID_FIELD, requestId);
+        }
+        reply.addProperty(WorkerControlEventProtocol.SUCCESS_FIELD, response != null && response.isSuccess());
+        if (response != null && response.getCode() != null) {
+            reply.addProperty(WorkerControlEventProtocol.CODE_FIELD, response.getCode());
+        }
+        if (response != null && response.getMessage() != null) {
+            reply.addProperty(WorkerControlEventProtocol.MESSAGE_FIELD, response.getMessage());
+        }
+        reply.add(WorkerControlEventProtocol.DATA_FIELD, gson.toJsonTree(response != null ? response.getData() : null));
         return gson.toJson(reply);
     }
 
@@ -228,32 +303,19 @@ public class GsonMessageCodec implements MessageCodec {
         return gson;
     }
 
-    private JsonObject baseResponseFrame(JsonObject requestFrame, String msgType, String subMsgType) {
-        JsonObject response = new JsonObject();
-        response.addProperty("msgId", extractMessageId(requestFrame));
-        response.addProperty("response", true);
-        response.addProperty("msgType", msgType);
-        if (subMsgType != null) {
-            response.addProperty("subMsgType", subMsgType);
-        }
-        response.addProperty("from", "SERVER");
-        String project = extractProject(requestFrame);
-        if (project != null) {
-            response.addProperty("project", project);
-        }
-        JsonObject context = requestFrame != null && requestFrame.has("context") && requestFrame.get("context").isJsonObject()
-                ? requestFrame.getAsJsonObject("context").deepCopy()
-                : new JsonObject();
-        response.add("context", context);
-        return response;
+    private boolean isResponse(JsonObject frame) {
+        return frame != null
+                && frame.has(WorkerControlEventProtocol.RESPONSE_FIELD)
+                && !frame.get(WorkerControlEventProtocol.RESPONSE_FIELD).isJsonNull()
+                && frame.get(WorkerControlEventProtocol.RESPONSE_FIELD).getAsBoolean();
     }
 
-    private JsonObject toJsonObject(Object payloadObj) {
-        if (payloadObj == null) {
+    private JsonObject readJsonObject(JsonObject object, String field) {
+        if (object == null || field == null || !object.has(field) || object.get(field).isJsonNull()) {
             return new JsonObject();
         }
-        JsonElement payloadJson = gson.toJsonTree(payloadObj);
-        return payloadJson != null && payloadJson.isJsonObject() ? payloadJson.getAsJsonObject() : new JsonObject();
+        JsonElement element = object.get(field);
+        return element.isJsonObject() ? element.getAsJsonObject() : new JsonObject();
     }
 
     private String readString(JsonObject object, String field) {
@@ -275,6 +337,13 @@ public class GsonMessageCodec implements MessageCodec {
         return readString(object.getAsJsonObject(nestedField), field);
     }
 
+    private String normalizeSubType(String subMsgType) {
+        if (subMsgType == null || subMsgType.isBlank()) {
+            return null;
+        }
+        return subMsgType.trim();
+    }
+
     private String firstNonBlank(String... values) {
         if (values == null) {
             return null;
@@ -285,20 +354,5 @@ public class GsonMessageCodec implements MessageCodec {
             }
         }
         return null;
-    }
-
-    private String extractCanonicalEventCode(JsonObject payloadObject) {
-        return firstNonBlank(
-                readString(payloadObject, WorkerControlEventProtocol.EVENT_CODE_FIELD),
-                readString(payloadObject, WorkerControlEventProtocol.EVENT_FIELD)
-        );
-    }
-
-    private void writeCanonicalEventCode(JsonObject target, String eventCode) {
-        if (target == null || eventCode == null || eventCode.isBlank()) {
-            return;
-        }
-        target.addProperty(WorkerControlEventProtocol.EVENT_CODE_FIELD, eventCode);
-        target.addProperty(WorkerControlEventProtocol.EVENT_FIELD, eventCode);
     }
 }

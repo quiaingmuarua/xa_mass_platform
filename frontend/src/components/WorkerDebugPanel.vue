@@ -112,9 +112,9 @@
             </el-form-item>
           </el-col>
           <el-col :span="8">
-            <el-form-item label="Event">
+            <el-form-item label="Event Code">
               <el-input
-                v-model="debugForm.event"
+                v-model="debugForm.eventCode"
                 placeholder="mock.state.get"
               />
             </el-form-item>
@@ -135,7 +135,7 @@
             v-model="debugForm.rawPayload"
             type="textarea"
             :rows="8"
-            placeholder='{"event":"mock.state.get"}'
+            placeholder='{"millis":400}'
           />
           <div class="field-hint">
             Use raw JSON when the target event expects structured payload data.
@@ -189,10 +189,9 @@
       </el-table-column>
       <el-table-column prop="status" label="Status" min-width="120" />
       <el-table-column prop="project" label="Project" min-width="120" />
-      <el-table-column label="Type" min-width="180">
+      <el-table-column label="Event" min-width="220">
         <template #default="{ row }">
-          <div>{{ row.msgType }}</div>
-          <div class="row-secondary">{{ row.subMsgType }}</div>
+          <div>{{ row.eventCode || '-' }}</div>
         </template>
       </el-table-column>
       <el-table-column label="Message IDs" min-width="220">
@@ -240,7 +239,7 @@ const refreshTimer = ref<number | null>(null)
 const debugForm = ref({
   project: '',
   mode: 'text',
-  event: 'mock.state.get',
+  eventCode: 'mock.state.get',
   text: '',
   rawPayload: '{\n  "includeRuntime": true\n}',
 })
@@ -320,9 +319,9 @@ async function handleSendDebugMessage(): Promise<void> {
 
   let payload: Record<string, unknown>
   try {
-    const event = debugForm.value.event.trim()
-    if (!event) {
-      throw new Error('Event is required.')
+    const eventCode = debugForm.value.eventCode.trim()
+    if (!eventCode) {
+      throw new Error('Event code is required.')
     }
     payload =
       debugForm.value.mode === 'text'
@@ -341,7 +340,7 @@ async function handleSendDebugMessage(): Promise<void> {
     const result = await sendWorkerDebugMessage({
       workerId: props.worker.workerId,
       project: debugForm.value.project.trim() || undefined,
-      event: debugForm.value.event.trim(),
+      eventCode: debugForm.value.eventCode.trim(),
       payload,
     })
     ElMessage.success(`Debug event queued: ${result.messageId}`)
@@ -363,13 +362,13 @@ function applyPreset(preset: PresetKey): void {
   debugForm.value.mode = 'raw-json'
 
   if (preset === 'state') {
-    debugForm.value.event = 'mock.state.get'
+    debugForm.value.eventCode = 'mock.state.get'
     debugForm.value.rawPayload = JSON.stringify({}, null, 2)
     return
   }
 
   if (preset === 'delay') {
-    debugForm.value.event = 'mock.delay.response'
+    debugForm.value.eventCode = 'mock.delay.response'
     debugForm.value.rawPayload = JSON.stringify(
       {
         millis: 400,
@@ -380,7 +379,7 @@ function applyPreset(preset: PresetKey): void {
     return
   }
 
-  debugForm.value.event = 'mock.disconnect'
+  debugForm.value.eventCode = 'mock.disconnect'
   debugForm.value.rawPayload = JSON.stringify(
     {},
     null,
@@ -393,7 +392,7 @@ function resetDebugForm(): void {
     project:
       props.worker.supportedProjects[0] ?? props.projectOptions?.[0] ?? '',
     mode: 'text',
-    event: 'mock.state.get',
+    eventCode: 'mock.state.get',
     text: '',
     rawPayload: '{\n  "includeRuntime": true\n}',
   }

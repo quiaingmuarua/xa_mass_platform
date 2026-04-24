@@ -59,7 +59,7 @@ class WorkerDebugControllerTest {
         mockMvc.perform(post("/status/workers/send-event")
                         .contentType("application/json")
                         .content("""
-                                {"workerId":"worker-1","event":"mock.state.get","payload":{}}
+                                {"workerId":"worker-1","eventCode":"mock.state.get","payload":{}}
                                 """))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value(404))
@@ -82,7 +82,7 @@ class WorkerDebugControllerTest {
                                 {
                                   "workerId":"worker-1",
                                   "project":"demoApp",
-                                  "event":"mock.state.get",
+                                  "eventCode":"mock.state.get",
                                   "requestId":"req-1",
                                   "headers":{"mode":"probe"},
                                   "payload":{"verbose":true},
@@ -106,5 +106,16 @@ class WorkerDebugControllerTest {
         assertEquals(Map.of("verbose", true), requestCaptor.getValue().getPayload());
         assertEquals("ops-console", principalCaptor.getValue().getClientId());
         assertEquals("operator-1", principalCaptor.getValue().getUserId());
+    }
+
+    @Test
+    void sendEventRejectsLegacyEventField() throws Exception {
+        mockMvc.perform(post("/status/workers/send-event")
+                        .contentType("application/json")
+                        .content("""
+                                {"workerId":"worker-1","event":"mock.state.get","payload":{}}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.msg").value("Unsupported worker debug fields: event"));
     }
 }

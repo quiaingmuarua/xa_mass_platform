@@ -121,16 +121,14 @@ public class ServerMessageDispatcher {
 
     private String outputLaneKey(OutboundDelivery delivery) {
         String workerId = delivery != null ? delivery.getWorkerId() : null;
-        String connRole = delivery != null ? delivery.getConnRole() : null;
-        return Objects.toString(workerId, "_") + "::" + Objects.toString(connRole, "_");
+        return Objects.toString(workerId, "_");
     }
 
     private void logLoopFailure(String loopName, String rawJson, OutboundDelivery delivery, Exception e) {
-        logger.error("Gateway dispatcher {} loop failed: rawJsonPresent={}, workerId={}, connRole={}",
+        logger.error("Gateway dispatcher {} loop failed: rawJsonPresent={}, workerId={}",
                 loopName,
                 rawJson != null,
                 delivery != null ? delivery.getWorkerId() : null,
-                delivery != null ? delivery.getConnRole() : null,
                 e);
     }
 

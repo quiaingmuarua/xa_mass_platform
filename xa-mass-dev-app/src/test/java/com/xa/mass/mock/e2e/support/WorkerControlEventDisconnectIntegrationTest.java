@@ -68,7 +68,7 @@ class WorkerControlEventDisconnectIntegrationTest extends AbstractMockE2eTest {
         Map<String, Object> payload = parsePayload(ack);
 
         assertEquals(Boolean.TRUE, payload.get(WorkerControlMessageProtocol.EVENT_HANDLED_FIELD));
-        assertEquals("mock.disconnect", payload.get(WorkerControlEventProtocol.EVENT_FIELD));
+        assertEquals("mock.disconnect", payload.get(WorkerControlEventProtocol.EVENT_CODE_FIELD));
 
         Map<String, Object> eventResult = map(payload.get(WorkerControlMessageProtocol.EVENT_RESULT_FIELD));
         assertEquals("ok", eventResult.get("status"));
@@ -85,7 +85,7 @@ class WorkerControlEventDisconnectIntegrationTest extends AbstractMockE2eTest {
         Map<String, Object> request = new LinkedHashMap<>();
         request.put("workerId", WORKER_ID);
         request.put("project", "demoApp");
-        request.put("event", event);
+        request.put("eventCode", event);
         request.put("payload", payload);
         request.put("requestId", "integration-" + event.replace('.', '-'));
 
@@ -126,7 +126,7 @@ class WorkerControlEventDisconnectIntegrationTest extends AbstractMockE2eTest {
         Map<String, Object> probeRequest = new LinkedHashMap<>();
         probeRequest.put("workerId", WORKER_ID);
         probeRequest.put("project", "demoApp");
-        probeRequest.put("event", "mock.state.get");
+        probeRequest.put("eventCode", "mock.state.get");
         probeRequest.put("requestId", "post-disconnect-probe");
         probeRequest.put("payload", Map.of());
 

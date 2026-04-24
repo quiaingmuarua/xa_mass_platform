@@ -93,9 +93,10 @@ Current canonical boundaries:
   - inbound mainline: `raw json + connection facts -> canonical seam`
   - outbound mainline: `canonical seam + explicit addressability -> raw json`
   - only retained gateway-local delivery record: `com.xa.mass.gateway.queue.OutboundDelivery`
-  - `workerId + connRole` is transport addressability only; it is not worker capability or lifecycle truth
+  - `workerId` is the active transport addressability key; endpoint role lanes are no longer part of the gateway mainline
 - gateway compatibility boundary
-  - `TASK/step`, `CONTROL/event`, `PING/heartbeat`, and `PONG/heartbeat` are WebSocket compatibility tuple shells only
+  - `TASK/step`, `PING/heartbeat`, and `PONG/heartbeat` are WebSocket compatibility tuple shells only
+  - control/debug traffic now uses a root-level event-first frame keyed by `eventCode`
   - `msgType + subMsgType` classifies a wire frame only; it is not business/control capability identity
   - `com.xa.mass.gateway.queue.MessageCodec` and `GatewayCompatibilityFrameClassifier` remain adapter-local compatibility helpers, not platform contracts
 

@@ -29,8 +29,8 @@ class ServerSessionManagerShutdownTest {
         ChannelHandlerContext ctx1 = mock(ChannelHandlerContext.class);
         ChannelHandlerContext ctx2 = mock(ChannelHandlerContext.class);
 
-        manager.addSession("worker-1", SessionRoles.TASK_MESSAGES, ch1, ctx1);
-        manager.addSession("worker-2", SessionRoles.TASK_MESSAGES, ch2, ctx2);
+        manager.addSession("worker-1", ch1, ctx1);
+        manager.addSession("worker-2", ch2, ctx2);
 
         assertEquals(2, manager.getWorkerConnectionCount());
 
@@ -38,7 +38,6 @@ class ServerSessionManagerShutdownTest {
 
         verify(ch1).close();
         verify(ch2).close();
-        // Internal maps cleared: no more connections reported
         assertEquals(0, manager.getAllWorkerChannels().size());
     }
 
@@ -51,52 +50,27 @@ class ServerSessionManagerShutdownTest {
     void workerOnlineOfflineSignalsTrackWorkerLevelReachability() {
         WorkerSystemEventChannel systemEventChannel = mock(WorkerSystemEventChannel.class);
         manager.setSystemEventChannel(systemEventChannel);
-        Channel taskChannel = mockActiveChannel("task-1");
-        Channel controlChannel = mockActiveChannel("control-1");
-        ChannelHandlerContext taskCtx = mock(ChannelHandlerContext.class);
-        ChannelHandlerContext controlCtx = mock(ChannelHandlerContext.class);
-
-        manager.addSession("worker-1", SessionRoles.TASK_MESSAGES, taskChannel, taskCtx);
-        manager.addSession("worker-1", "control_events", controlChannel, controlCtx);
-
-        verify(systemEventChannel, times(1)).publishWorkerOnline("worker-1", "websocket connected", null);
-        assertTrue(manager.isWorkerOnline("worker-1", SessionRoles.TASK_MESSAGES));
-        assertTrue(manager.isWorkerOnline("worker-1", "control_events"));
-
-        manager.removeSession(taskChannel);
-
-        verify(systemEventChannel, never()).publishWorkerOffline("worker-1", "websocket disconnected", null);
-        assertFalse(manager.isWorkerOnline("worker-1", SessionRoles.TASK_MESSAGES));
-        assertTrue(manager.isWorkerOnline("worker-1", "control_events"));
-
-        manager.removeSession(controlChannel);
-
-        verify(systemEventChannel, times(1)).publishWorkerOffline("worker-1", "websocket disconnected", null);
-    }
-
-    @Test
-    void replacingSameRoleChannelDoesNotFlapWorkerOfflineOnline() {
-        WorkerSystemEventChannel systemEventChannel = mock(WorkerSystemEventChannel.class);
-        manager.setSystemEventChannel(systemEventChannel);
-        Channel firstChannel = mockActiveChannel("task-old");
-        Channel secondChannel = mockActiveChannel("task-new");
+        Channel firstChannel = mockActiveChannel("worker-1-old");
+        Channel secondChannel = mockActiveChannel("worker-1-new");
         ChannelHandlerContext firstCtx = mock(ChannelHandlerContext.class);
         ChannelHandlerContext secondCtx = mock(ChannelHandlerContext.class);
 
-        manager.addSession("worker-1", SessionRoles.TASK_MESSAGES, firstChannel, firstCtx);
-        manager.addSession("worker-1", SessionRoles.TASK_MESSAGES, secondChannel, secondCtx);
+        manager.addSession("worker-1", firstChannel, firstCtx);
+        manager.addSession("worker-1", secondChannel, secondCtx);
 
         verify(systemEventChannel, times(1)).publishWorkerOnline("worker-1", "websocket connected", null);
-        verify(systemEventChannel, never()).publishWorkerOffline("worker-1", "websocket disconnected", null);
-        assertEquals(secondChannel, manager.getChannel("worker-1", SessionRoles.TASK_MESSAGES));
+        assertTrue(manager.isWorkerOnline("worker-1"));
+        assertEquals(secondChannel, manager.getChannel("worker-1"));
 
         manager.removeSession(firstChannel);
 
         verify(systemEventChannel, never()).publishWorkerOffline("worker-1", "websocket disconnected", null);
+        assertTrue(manager.isWorkerOnline("worker-1"));
 
         manager.removeSession(secondChannel);
 
         verify(systemEventChannel, times(1)).publishWorkerOffline("worker-1", "websocket disconnected", null);
+        assertFalse(manager.isWorkerOnline("worker-1"));
     }
 
     @Test
@@ -109,16 +83,14 @@ class ServerSessionManagerShutdownTest {
         when(inactiveId.asShortText()).thenReturn("inactive");
 
         ChannelHandlerContext ctx = mock(ChannelHandlerContext.class);
-        manager.addSession("worker-a", "role", active, ctx);
-        manager.addSession("worker-b", "role", inactive, ctx);
+        manager.addSession("worker-a", active, ctx);
+        manager.addSession("worker-b", inactive, ctx);
 
         manager.shutdown();
 
         verify(active).close();
         verify(inactive, never()).close();
     }
-
-    // ---- helpers ----
 
     private Channel mockActiveChannel(String idText) {
         Channel ch = mock(Channel.class);

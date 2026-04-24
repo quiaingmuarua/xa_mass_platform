@@ -13,8 +13,6 @@ public interface MessageCodec {
 
     String extractWorkerId(JsonObject frame);
 
-    String extractConnRole(JsonObject frame);
-
     String extractProject(JsonObject frame);
 
     String extractMessageId(JsonObject frame);
@@ -22,6 +20,18 @@ public interface MessageCodec {
     String extractEventCode(JsonObject frame);
 
     JsonObject extractPayload(JsonObject frame);
+
+    JsonObject extractControlResponseData(JsonObject frame);
+
+    boolean isEventFirstControlRequest(JsonObject frame);
+
+    boolean isEventFirstControlResponse(JsonObject frame);
+
+    boolean isHeartbeatPing(JsonObject frame);
+
+    boolean isHeartbeatPong(JsonObject frame);
+
+    boolean isTaskStep(JsonObject frame);
 
     String encodeHeartbeatPong(JsonObject requestFrame);
 

@@ -123,14 +123,14 @@ export async function sendWorkerDebugMessageMock(
     }
     if (worker.status !== 'ONLINE') {
         throw new Error(
-            'Target worker is offline or task_messages session is unavailable',
+            'Target worker is offline',
         )
     }
 
     const project = request.project || worker.supportedProjects[0] || 'demoApp'
-    const event = request.event.trim()
-    if (!event) {
-        throw new Error('Event is required.')
+    const eventCode = request.eventCode.trim()
+    if (!eventCode) {
+        throw new Error('Event code is required.')
     }
     const requestId = request.requestId?.trim() || `mock-request-${Date.now()}`
     const messageId = `mock-debug-${Date.now()}`
@@ -142,30 +142,26 @@ export async function sendWorkerDebugMessageMock(
         workerId: request.workerId,
         direction: 'OUTBOUND',
         project,
-        msgType: 'CONTROL',
-        subMsgType: 'event',
+        eventCode,
         status: 'DELIVERED',
         payloadJson: prettyJson({
-            event,
+            eventCode,
             requestId,
             headers: request.headers ?? {},
             payload: request.payload,
             principal: request.principal ?? {},
         }),
         rawJson: prettyJson({
+            messageId,
             workerId: request.workerId,
             project,
-            msgType: 'CONTROL',
-            subMsgType: 'event',
-            payload: {
-                event,
-                requestId,
-                headers: request.headers ?? {},
-                payload: request.payload,
-                principal: request.principal ?? {},
-            },
+            eventCode,
+            requestId,
+            headers: request.headers ?? {},
+            payload: request.payload,
+            principal: request.principal ?? {},
         }),
-        detail: `mock worker received event ${event}`,
+        detail: `mock worker received event ${eventCode}`,
         createdAt: now,
         updatedAt: now,
     })
@@ -176,29 +172,27 @@ export async function sendWorkerDebugMessageMock(
         workerId: request.workerId,
         direction: 'INBOUND',
         project,
-        msgType: 'EVENT',
-        subMsgType: 'event',
+        eventCode,
         status: 'RECEIVED',
         payloadJson: prettyJson({
-            messageKind: 'debug_chat_ack',
+            messageKind: 'worker_control_ack',
             replyToMessageId: messageId,
             ackStatus: 'RECEIVED',
-            commandExecuted: true,
-            commandEvent: event,
+            eventHandled: true,
+            eventCode,
             requestId,
-            text:
-                typeof request.payload.text === 'string'
-                    ? request.payload.text
-                    : `mock worker received event ${event}`,
+            echoPayload: request.payload,
             workerId: request.workerId,
         }),
         rawJson: prettyJson({
+            messageId: `${messageId}-ack`,
+            response: true,
             workerId: request.workerId,
             project,
-            msgType: 'EVENT',
-            subMsgType: 'event',
+            eventCode,
+            requestId,
         }),
-        detail: `mock worker acked event ${event}`,
+        detail: `mock worker acked event ${eventCode}`,
         createdAt: now + 1,
         updatedAt: now + 1,
     })
@@ -207,7 +201,7 @@ export async function sendWorkerDebugMessageMock(
         messageId,
         workerId: request.workerId,
         project,
-        event,
+        eventCode,
         requestId,
     })
 }

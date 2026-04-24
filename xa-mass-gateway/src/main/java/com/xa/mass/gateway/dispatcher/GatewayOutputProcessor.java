@@ -22,19 +22,14 @@ public final class GatewayOutputProcessor {
 
     public boolean process(OutboundDelivery delivery) {
         try {
-            boolean sent = context.getEndpointRegistry().sendMessage(
-                    delivery.getWorkerId(),
-                    delivery.getConnRole(),
-                    delivery.getRawJson()
-            );
+            boolean sent = context.getEndpointRegistry().sendMessage(delivery.getWorkerId(), delivery.getRawJson());
             if (sent) {
                 return true;
             }
-            String detail = "endpoint unavailable for workerId="
-                    + delivery.getWorkerId() + ", role=" + delivery.getConnRole();
+            String detail = "endpoint unavailable for workerId=" + delivery.getWorkerId();
             WorkerDebugMessageStore.markFailed(delivery.getTraceId(), detail);
-            logger.warn("Gateway outbound skipped because endpoint is unavailable: workerId={}, role={}, traceId={}",
-                    delivery.getWorkerId(), delivery.getConnRole(), delivery.getTraceId());
+            logger.warn("Gateway outbound skipped because endpoint is unavailable: workerId={}, traceId={}",
+                    delivery.getWorkerId(), delivery.getTraceId());
             return false;
         } catch (Exception ex) {
             WorkerDebugMessageStore.markFailed(delivery != null ? delivery.getTraceId() : null, ex.getMessage());

@@ -1,10 +1,10 @@
 package com.xa.mass.gateway.server;
 
 import com.xa.mass.base.channel.tranporter.MessageTransporter;
+import com.xa.mass.base.debug.WorkerControlEventProtocol;
 import com.xa.mass.gateway.queue.GsonMessageCodec;
 import com.xa.mass.gateway.queue.OutboundDelivery;
 import com.xa.mass.gateway.session.ServerSessionManager;
-import com.xa.mass.gateway.session.SessionRoles;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelId;
@@ -19,9 +19,9 @@ import java.util.Arrays;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
@@ -77,7 +77,7 @@ class DispatcherInboundHandlerTest {
     }
 
     @Test
-    void missingContextFieldsSendsParseFailedError() throws Exception {
+    void missingWorkerIdOrMessageIdSendsMissingFieldsError() throws Exception {
         handler.channelRead0(ctx, frame("{\"msgType\":\"PING\"}"));
 
         String sent = sentFrame.get();
@@ -86,7 +86,7 @@ class DispatcherInboundHandlerTest {
     }
 
     @Test
-    void validMessageIsEnqueuedWithoutError() throws Exception {
+    void validHeartbeatMessageIsEnqueuedWithoutError() throws Exception {
         String validJson = """
                 {
                   "msgId": "msg-001",
@@ -94,11 +94,10 @@ class DispatcherInboundHandlerTest {
                   "subMsgType": "heartbeat",
                   "project": "demoApp",
                   "context": {
-                    "workerId": "worker-1",
-                    "connRole": "%s"
+                    "workerId": "worker-1"
                   }
                 }
-                """.formatted(SessionRoles.TASK_MESSAGES);
+                """;
         handler.channelRead0(ctx, frame(validJson));
 
         assertNull(sentFrame.get());
@@ -113,29 +112,7 @@ class DispatcherInboundHandlerTest {
                   "msgType": "PING",
                   "subMsgType": "heartbeat",
                   "context": {
-                    "workerId": "worker-1",
-                    "connRole": "%s"
-                  }
-                }
-                """.formatted(SessionRoles.TASK_MESSAGES);
-
-        handler.channelRead0(ctx, frame(heartbeatJson));
-
-        assertNull(sentFrame.get());
-        verify(transporter).sendInput(heartbeatJson);
-        assertEquals(1, sessionManager.getWorkerConnectionCount());
-        assertNotNull(sessionManager.getChannelContext("worker-1", SessionRoles.TASK_MESSAGES));
-    }
-
-    @Test
-    void missingConnRoleDefaultsToTaskDispatchLane() throws Exception {
-        String heartbeatJson = """
-                {
-                  "msgId": "ping-002",
-                  "msgType": "PING",
-                  "subMsgType": "heartbeat",
-                  "context": {
-                    "workerId": "worker-2"
+                    "workerId": "worker-1"
                   }
                 }
                 """;
@@ -144,63 +121,33 @@ class DispatcherInboundHandlerTest {
 
         assertNull(sentFrame.get());
         verify(transporter).sendInput(heartbeatJson);
-        assertNotNull(sessionManager.getChannelContext("worker-2", SessionRoles.TASK_MESSAGES));
+        assertEquals(1, sessionManager.getWorkerConnectionCount());
+        assertNotNull(sessionManager.getChannelContext("worker-1"));
     }
 
     @Test
-    void taskStepWithoutProjectStillEnqueuesRawJsonForDownstreamValidation() throws Exception {
-        String taskJson = """
-                {
-                  "msgId": "task-001",
-                  "msgType": "TASK",
-                  "subMsgType": "step",
-                  "context": {
-                    "workerId": "worker-1",
-                    "connRole": "%s",
-                    "taskId": "task-123"
-                  },
-                  "payload": {
-                    "status": "SUCCESS"
-                  }
-                }
-                """.formatted(SessionRoles.TASK_MESSAGES);
-
-        handler.channelRead0(ctx, frame(taskJson));
-
-        assertNull(sentFrame.get());
-        ArgumentCaptor<String> rawCaptor = ArgumentCaptor.forClass(String.class);
-        verify(transporter).sendInput(rawCaptor.capture());
-        assertTrue(rawCaptor.getValue().contains("\"msgId\": \"task-001\"") || rawCaptor.getValue().contains("\"msgId\":\"task-001\""));
-    }
-
-    @Test
-    void controlEventInboundEnqueuesRawJsonWithExplicitEventField() throws Exception {
+    void eventFirstControlFrameWithoutMsgTypeStillEnqueuesRawJson() throws Exception {
         String controlJson = """
                 {
-                  "msgId": "ctrl-001",
-                  "msgType": "CONTROL",
-                  "subMsgType": "event",
+                  "messageId": "ctrl-001",
+                  "response": false,
+                  "workerId": "worker-1",
                   "project": "demoApp",
-                  "context": {
-                    "workerId": "worker-1",
-                    "connRole": "%s"
-                  },
+                  "eventCode": "mock.state.get",
+                  "requestId": "req-1",
                   "payload": {
-                    "event": "mock.state.get",
-                    "requestId": "req-1",
-                    "payload": {
-                      "verbose": true
-                    }
+                    "verbose": true
                   }
                 }
-                """.formatted(SessionRoles.TASK_MESSAGES);
+                """;
 
         handler.channelRead0(ctx, frame(controlJson));
 
         ArgumentCaptor<String> rawCaptor = ArgumentCaptor.forClass(String.class);
         verify(transporter).sendInput(rawCaptor.capture());
-        assertTrue(rawCaptor.getValue().contains("\"event\": \"mock.state.get\"")
-                || rawCaptor.getValue().contains("\"event\":\"mock.state.get\""));
+        assertTrue(rawCaptor.getValue().contains("\"eventCode\": \"mock.state.get\"")
+                || rawCaptor.getValue().contains("\"eventCode\":\"mock.state.get\""));
+        assertNotNull(sessionManager.getChannelContext("worker-1"));
     }
 
     @Test
@@ -219,11 +166,10 @@ class DispatcherInboundHandlerTest {
                   "msgType": "PING",
                   "subMsgType": "heartbeat",
                   "context": {
-                    "workerId": "worker-1",
-                    "connRole": "%s"
+                    "workerId": "worker-1"
                   }
                 }
-                """.formatted(SessionRoles.TASK_MESSAGES);
+                """;
 
         handler.channelRead0(ctx, frame(heartbeatJson));
 
@@ -273,7 +219,7 @@ class WebSocketServerImplDisconnectTest {
         when(ctx.fireChannelActive()).thenReturn(ctx);
         when(ctx.fireChannelInactive()).thenReturn(ctx);
 
-        sessionManager.addSession("worker-1", SessionRoles.TASK_MESSAGES, channel, ctx);
+        sessionManager.addSession("worker-1", channel, ctx);
 
         ChannelInboundHandlerAdapter handler = newConnectionStatsHandler(server);
         handler.channelActive(ctx);
@@ -285,8 +231,8 @@ class WebSocketServerImplDisconnectTest {
         verify(sessionManager).removeSession(channel);
         assertEquals(0L, server.getActiveConnectionCount());
         assertTrue(sessionManager.getAllWorkerChannels().isEmpty());
-        assertNull(sessionManager.getChannel("worker-1", SessionRoles.TASK_MESSAGES));
-        assertNull(sessionManager.getWorkerConnKey(channel));
+        assertNull(sessionManager.getChannel("worker-1"));
+        assertNull(sessionManager.getWorkerId(channel));
     }
 
     @Test
