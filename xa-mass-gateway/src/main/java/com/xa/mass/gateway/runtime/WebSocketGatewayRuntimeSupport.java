@@ -1,12 +1,14 @@
 package com.xa.mass.gateway.runtime;
 
-import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
+import com.xa.mass.gateway.queue.MessageCodec;
 import com.xa.mass.gateway.server.WebSocketServerImpl;
 import com.xa.mass.gateway.session.EventBusWorkerSystemEventChannel;
 import com.xa.mass.gateway.session.ServerSessionManager;
 import com.xa.mass.transport.TransportServer;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
+
+import java.util.function.Consumer;
 
 /**
  * WebSocket adapter bootstrap support for the embedded gateway runtime.
@@ -39,11 +41,13 @@ public final class WebSocketGatewayRuntimeSupport {
     }
 
     public static TransportServer createTransportServer(String endpointPath,
-                                                        DispatchRuntimeContext dispatcherContext,
+                                                        MessageCodec messageCodec,
+                                                        Consumer<String> inboundMessageSink,
                                                         WorkerEndpointRegistry endpointRegistry) {
         return new WebSocketServerImpl(
                 endpointPath,
-                dispatcherContext,
+                messageCodec,
+                inboundMessageSink,
                 requireSessionManager(endpointRegistry)
         );
     }

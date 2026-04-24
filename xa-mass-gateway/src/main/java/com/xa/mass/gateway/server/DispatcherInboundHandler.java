@@ -1,7 +1,6 @@
 package com.xa.mass.gateway.server;
 
 import com.google.gson.JsonObject;
-import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
 import com.xa.mass.gateway.queue.MessageCodec;
 import com.xa.mass.gateway.session.ServerSessionManager;
 import io.netty.channel.ChannelHandlerContext;
@@ -12,17 +11,20 @@ import org.slf4j.LoggerFactory;
 
 import java.util.Map;
 import java.util.Objects;
+import java.util.function.Consumer;
 
 public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWebSocketFrame> {
     private static final Logger logger = LoggerFactory.getLogger(DispatcherInboundHandler.class);
-    private final DispatchRuntimeContext dispatcherContext;
     private final ServerSessionManager sessionManager;
     private final MessageCodec messageCodec;
+    private final Consumer<String> inboundMessageSink;
 
-    public DispatcherInboundHandler(DispatchRuntimeContext dispatcherContext, ServerSessionManager sessionManager) {
-        this.dispatcherContext = Objects.requireNonNull(dispatcherContext, "dispatcherContext");
+    public DispatcherInboundHandler(MessageCodec messageCodec,
+                                    Consumer<String> inboundMessageSink,
+                                    ServerSessionManager sessionManager) {
         this.sessionManager = Objects.requireNonNull(sessionManager, "sessionManager");
-        this.messageCodec = Objects.requireNonNull(dispatcherContext.getMessageCodec(), "messageCodec");
+        this.messageCodec = Objects.requireNonNull(messageCodec, "messageCodec");
+        this.inboundMessageSink = Objects.requireNonNull(inboundMessageSink, "inboundMessageSink");
     }
 
     @Override
@@ -65,8 +67,7 @@ public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWe
             }
 
             sessionManager.addSession(workerId, connRole, ctx.channel(), ctx);
-            dispatcherContext.getMessageTransporter().sendInput(raw);
-            logger.debug("Input queue size={}", dispatcherContext.getMessageTransporter().inputQueueSize());
+            inboundMessageSink.accept(raw);
         } catch (Exception e) {
             logger.error("Unexpected error in channelRead0", e);
             sendError(ctx, "INTERNAL_ERROR", "Internal server error");

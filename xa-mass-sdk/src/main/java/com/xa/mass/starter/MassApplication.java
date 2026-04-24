@@ -222,7 +222,12 @@ public class MassApplication {
 
     private void startTransportServer() {
         logger.info("Starting transport server");
-        transportServer = gatewayConfig.createTransportServer(dispatcherContext, endpointRegistry, serverPort);
+        transportServer = gatewayConfig.createTransportServer(
+                dispatcherContext.getMessageCodec(),
+                dispatcherContext.getMessageTransporter()::sendInput,
+                endpointRegistry,
+                serverPort
+        );
         if (transportServer == null) {
             logger.info("No transport server configured for current runtime");
             return;

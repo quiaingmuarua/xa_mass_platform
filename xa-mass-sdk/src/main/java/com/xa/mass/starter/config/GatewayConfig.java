@@ -16,6 +16,7 @@ import com.xa.mass.transport.TransportServerFactory;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
 
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
@@ -259,7 +260,8 @@ public class GatewayConfig {
                 : new DefaultWorkerTransportRuntimeFactory();
     }
 
-    public TransportServer createTransportServer(DispatchRuntimeContext dispatcherContext,
+    public TransportServer createTransportServer(MessageCodec messageCodec,
+                                                 Consumer<String> inboundMessageSink,
                                                  WorkerEndpointRegistry endpointRegistry,
                                                  int port) {
         if (!transportServerEnabled) {
@@ -268,13 +270,15 @@ public class GatewayConfig {
         if (transportServerFactory == null) {
             return WebSocketGatewayRuntimeSupport.createTransportServer(
                     transportEndpointPath,
-                    dispatcherContext,
+                    messageCodec,
+                    inboundMessageSink,
                     endpointRegistry
             );
         }
         return transportServerFactory.create(new TransportServerFactoryContext(
-                dispatcherContext,
                 endpointRegistry,
+                messageCodec,
+                inboundMessageSink,
                 port,
                 transportEndpointPath
         ));

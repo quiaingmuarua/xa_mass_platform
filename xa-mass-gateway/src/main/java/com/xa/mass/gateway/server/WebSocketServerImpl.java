@@ -1,6 +1,6 @@
 package com.xa.mass.gateway.server;
 
-import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
+import com.xa.mass.gateway.queue.MessageCodec;
 import com.xa.mass.gateway.session.ServerSessionManager;
 import com.xa.mass.gateway.session.SessionRoles;
 import io.netty.bootstrap.ServerBootstrap;
@@ -23,6 +23,7 @@ import org.slf4j.MDC;
 
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Consumer;
 
 /**
  * Netty WebSocket transport ingress for the current gateway adapter.
@@ -43,16 +44,19 @@ public class WebSocketServerImpl implements MassWebSocketServer {
     private EventLoopGroup workerGroup;
     private volatile boolean running = false;
     private ServerSessionManager sessionManager;
-    private DispatchRuntimeContext dispatcherContext;
+    private MessageCodec messageCodec;
+    private Consumer<String> inboundMessageSink;
 
     public WebSocketServerImpl() {
     }
 
     public WebSocketServerImpl(String websocketPath,
-                               DispatchRuntimeContext dispatcherContext,
+                               MessageCodec messageCodec,
+                               Consumer<String> inboundMessageSink,
                                ServerSessionManager sessionManager) {
         this.websocketPath = websocketPath;
-        this.dispatcherContext = dispatcherContext;
+        this.messageCodec = messageCodec;
+        this.inboundMessageSink = inboundMessageSink;
         this.sessionManager = sessionManager;
     }
 
@@ -103,7 +107,7 @@ public class WebSocketServerImpl implements MassWebSocketServer {
                             true,
                             10000L));
                     pipeline.addLast(new ConnectionStatsHandler());
-                    pipeline.addLast(new DispatcherInboundHandler(dispatcherContext, sessionManager));
+                    pipeline.addLast(new DispatcherInboundHandler(messageCodec, inboundMessageSink, sessionManager));
                 }
             });
 
@@ -166,8 +170,12 @@ public class WebSocketServerImpl implements MassWebSocketServer {
         this.websocketPath = websocketPath;
     }
 
-    public void setDispatcherContext(DispatchRuntimeContext dispatcherContext) {
-        this.dispatcherContext = dispatcherContext;
+    public void setMessageCodec(MessageCodec messageCodec) {
+        this.messageCodec = messageCodec;
+    }
+
+    public void setInboundMessageSink(Consumer<String> inboundMessageSink) {
+        this.inboundMessageSink = inboundMessageSink;
     }
 
     public void setSessionManager(ServerSessionManager sessionManager) {
@@ -178,7 +186,8 @@ public class WebSocketServerImpl implements MassWebSocketServer {
         if (websocketPath == null || websocketPath.isBlank()) {
             throw new IllegalStateException("WebSocket server requires a non-blank websocketPath");
         }
-        Objects.requireNonNull(dispatcherContext, "WebSocket server requires dispatcherContext");
+        Objects.requireNonNull(messageCodec, "WebSocket server requires messageCodec");
+        Objects.requireNonNull(inboundMessageSink, "WebSocket server requires inboundMessageSink");
         Objects.requireNonNull(sessionManager, "WebSocket server requires sessionManager");
     }
 
