@@ -2,6 +2,7 @@ package com.xa.mass.sdk;
 
 import com.xa.mass.base.channel.messaging.api.MessageQueue;
 import com.xa.mass.base.channel.messaging.memory.InMemoryMessageQueue;
+import com.xa.mass.base.channel.tranporter.MessageTransporter;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.enums.worker.WorkerContextStatus;
@@ -18,6 +19,7 @@ import com.xa.mass.engine.rules.RuleDefinition;
 import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.engine.rules.RuleType;
 import com.xa.mass.engine.strategy.SimpleTaskScheduler;
+import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
 import com.xa.mass.gateway.queue.Envelope;
 import com.xa.mass.sdk.auth.AuthProvider;
 import com.xa.mass.sdk.auth.SubmitterMetadata;
@@ -188,6 +190,31 @@ class MassSdkTest {
 
         Assertions.assertThrows(IllegalStateException.class, () -> app.addWorker(null));
         assertEngineOperationsFailFast(app);
+    }
+
+    @Test
+    void transportOperationsUseDelegateDispatcherContext() {
+        MassApplication delegate = mock(MassApplication.class);
+        DispatchRuntimeContext transportContext = mock(DispatchRuntimeContext.class);
+        @SuppressWarnings("unchecked")
+        MessageTransporter<Envelope> transporter = mock(MessageTransporter.class);
+
+        when(delegate.getDispatcherContext()).thenReturn(transportContext);
+        when(transportContext.getMessageTransporter()).thenReturn(transporter);
+        when(transporter.inputQueueSize()).thenReturn(2);
+        when(transporter.outputQueueSize()).thenReturn(5);
+
+        MassSdkApplication app = new MassSdkApplication(delegate);
+
+        Map<String, Object> queueDetail = app.getQueueDetail();
+        Map<String, Object> enqueueResult = app.enqueueRawMessage(Map.of("eventCode", "platform.test"));
+
+        assertEquals(2, queueDetail.get("inputQueue"));
+        assertEquals(5, queueDetail.get("outputQueue"));
+        assertEquals(true, queueDetail.get("transporterAvailable"));
+        assertEquals(true, enqueueResult.get("success"));
+        verify(delegate, atLeastOnce()).getDispatcherContext();
+        verify(transporter).sendOutput(any(Envelope.class));
     }
 
     @Test

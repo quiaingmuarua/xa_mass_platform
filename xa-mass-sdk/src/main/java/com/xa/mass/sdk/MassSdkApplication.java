@@ -24,7 +24,6 @@ import com.xa.mass.engine.model.TaskStateValidationResult;
 import com.xa.mass.engine.rules.RuleDefinition;
 import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.engine.rules.RuleType;
-import com.xa.mass.gateway.dispatcher.DispatcherContextRegistry;
 import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
 import com.xa.mass.gateway.dispatcher.event.EventGatewayBridge;
 import com.xa.mass.gateway.dispatcher.handler.WorkerControlEventBridgeHandler;
@@ -1239,7 +1238,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
 
     @Override
     public Map<String, Object> enqueueRawMessage(Map<String, Object> request) {
-        DispatchRuntimeContext transportContext = DispatcherContextRegistry.get();
+        DispatchRuntimeContext transportContext = transportContext();
         if (transportContext == null) {
             return Map.of("success", false, "msg", "transport context is not initialized");
         }
@@ -1258,7 +1257,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
 
     @Override
     public Map<String, Object> getQueueDetail() {
-        DispatchRuntimeContext transportContext = DispatcherContextRegistry.get();
+        DispatchRuntimeContext transportContext = transportContext();
         MessageTransporter<?> messageTransporter = transportContext != null ? transportContext.getMessageTransporter() : null;
         int inputSize = safeInputQueueSize(messageTransporter);
         int outputSize = safeOutputQueueSize(messageTransporter);
@@ -1320,7 +1319,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
             throw new IllegalArgumentException("Worker not found");
         }
 
-        DispatchRuntimeContext transportContext = DispatcherContextRegistry.get();
+        DispatchRuntimeContext transportContext = transportContext();
         if (transportContext == null || transportContext.getMessageTransporter() == null) {
             throw new IllegalStateException("Message transporter is not initialized");
         }
@@ -1449,11 +1448,15 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
     }
 
     private WorkerEndpointRegistry resolveSessionManager() {
-        DispatchRuntimeContext ctx = DispatcherContextRegistry.get();
+        DispatchRuntimeContext ctx = transportContext();
         if (ctx == null || ctx.getSessionManager() == null) {
             return null;
         }
         return ctx.getSessionManager();
+    }
+
+    private DispatchRuntimeContext transportContext() {
+        return delegate.getDispatcherContext();
     }
 
     private WorkerEndpointInspector resolveSessionInspector() {
@@ -1497,7 +1500,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
     }
 
     private String encodeMessage(MassMessage message) {
-        DispatchRuntimeContext codecContext = DispatcherContextRegistry.get();
+        DispatchRuntimeContext codecContext = transportContext();
         MessageCodec codec = codecContext != null ? codecContext.getMessageCodec() : null;
         return codec != null ? codec.encode(message) : GSON.toJson(message);
     }

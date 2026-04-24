@@ -9,7 +9,6 @@ import com.xa.mass.engine.listener.TaskMsgDispatchListener;
 import com.xa.mass.engine.rules.RuleDefinition;
 import com.xa.mass.engine.util.LogUtils;
 import com.xa.mass.gateway.dispatcher.DispatcherContext;
-import com.xa.mass.gateway.dispatcher.DispatcherContextRegistry;
 import com.xa.mass.gateway.dispatcher.MessageHandlerRegistry;
 import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
 import com.xa.mass.gateway.dispatcher.handler.MassMessageHandler;
@@ -123,8 +122,6 @@ public class MassApplication {
                 transportServer.stop();
             }
 
-            DispatcherContextRegistry.clear();
-
             LogUtils.clearMdc();
             logger.info("Mass Application stopped successfully");
         } catch (Exception e) {
@@ -148,9 +145,6 @@ public class MassApplication {
 
             dispatcherContext = new DispatcherContext(messageTransporter, endpointRegistry, messageCodec);
             logger.info("Dispatcher context created");
-
-            DispatcherContextRegistry.register(dispatcherContext);
-            logger.info("Dispatcher context registered");
 
             com.xa.mass.transport.channel.WorkerSystemEventChannel systemEventChannel =
                     gatewayConfig.resolveSystemEventChannel(endpointRegistry);
