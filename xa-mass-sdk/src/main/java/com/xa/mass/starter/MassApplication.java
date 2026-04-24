@@ -9,6 +9,7 @@ import com.xa.mass.engine.util.LogUtils;
 import com.xa.mass.gateway.dispatcher.DispatcherContext;
 import com.xa.mass.gateway.dispatcher.GatewayFrameRouter;
 import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
+import com.xa.mass.gateway.dispatcher.port.TaskStepFrameBridge;
 import com.xa.mass.gateway.dispatcher.port.ControlEventRequestFrameBridge;
 import com.xa.mass.gateway.dispatcher.middleware.MiddlewareRegistry;
 import com.xa.mass.gateway.model.enums.MessageType;
@@ -22,6 +23,8 @@ import com.xa.mass.sdk.worker.PullWorkerSession;
 import com.xa.mass.starter.config.EngineConfig;
 import com.xa.mass.starter.config.GatewayConfig;
 import com.xa.mass.starter.transport.TransportRuntimeRegistry;
+import com.xa.mass.starter.transport.WorkerControlEventDispatch;
+import com.xa.mass.starter.transport.WorkerControlEventPublishResult;
 import com.xa.mass.starter.transport.WorkerTransportRuntimeFactoryContext;
 import com.xa.mass.transport.TransportServer;
 import com.xa.mass.transport.WorkerEndpointRegistry;
@@ -141,33 +144,38 @@ public class MassApplication {
             MessageCodec messageCodec = gatewayConfig.createMessageCodec();
             logger.info("Message codec created");
 
-            dispatcherContext = new DispatcherContext(messageTransporter, endpointRegistry, messageCodec);
-            logger.info("Dispatcher context created");
-
             com.xa.mass.transport.channel.WorkerSystemEventChannel systemEventChannel =
                     gatewayConfig.resolveSystemEventChannel(endpointRegistry);
 
             GatewayFrameRouter frameRouter =
                     new GatewayFrameRouter(systemEventChannel);
             TaskMsgDispatchListener taskMsgDispatchListener = null;
+            TaskStepFrameBridge taskStepFrameBridge = null;
             if (engineConfig.isEnabled() && engineConfig.getTaskManager() != null) {
                 transportRuntimeRegistry = gatewayConfig.resolveWorkerTransportRuntimeFactory().create(
                         new WorkerTransportRuntimeFactoryContext(
                                 engineConfig.getTaskManager(),
                                 engineConfig.getWorkerManager(),
-                                dispatcherContext,
+                                messageTransporter,
+                                endpointRegistry,
+                                messageCodec,
                                 systemEventChannel,
                                 gatewayConfig.isEnabled()
                         )
                 );
-                transportRuntimeRegistry.registerGatewayPorts(dispatcherContext);
+                taskStepFrameBridge = transportRuntimeRegistry.resolveTaskStepFrameBridge();
                 taskMsgDispatchListener = transportRuntimeRegistry.createDispatchListener();
             }
-            dispatcherContext.setFrameRouter(frameRouter);
-            dispatcherContext.setControlEventResponseFrameSink(new WorkerControlEventResponseHandler());
-            if (workerControlEventRequestBridge != null) {
-                dispatcherContext.setControlEventRequestFrameBridge(workerControlEventRequestBridge);
-            }
+            dispatcherContext = new DispatcherContext(
+                    messageTransporter,
+                    endpointRegistry,
+                    messageCodec,
+                    frameRouter,
+                    taskStepFrameBridge,
+                    workerControlEventRequestBridge,
+                    new WorkerControlEventResponseHandler()
+            );
+            logger.info("Dispatcher context created");
             logger.info("Gateway frame router initialized");
 
             logger.info("Middleware registry initialized");
@@ -246,6 +254,13 @@ public class MassApplication {
             throw new IllegalStateException("Pull worker transport is unavailable for this runtime");
         }
         return transportRuntimeRegistry.openPullWorkerSession(workerId);
+    }
+
+    public WorkerControlEventPublishResult publishWorkerControlEvent(WorkerControlEventDispatch request) {
+        if (transportRuntimeRegistry == null) {
+            throw new IllegalStateException("Worker control-event transport is unavailable for this runtime");
+        }
+        return transportRuntimeRegistry.publishWorkerControlEvent(request);
     }
 
     public void publishTaskEvents() {

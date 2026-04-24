@@ -32,17 +32,9 @@ public interface DispatchRuntimeContext {
 
     GatewayFrameRouter getFrameRouter();
 
-    void setFrameRouter(GatewayFrameRouter frameRouter);
-
     TaskStepFrameBridge getTaskStepFrameBridge();
-
-    void setTaskStepFrameBridge(TaskStepFrameBridge taskStepFrameBridge);
 
     ControlEventRequestFrameBridge getControlEventRequestFrameBridge();
 
-    void setControlEventRequestFrameBridge(ControlEventRequestFrameBridge controlEventRequestFrameBridge);
-
     ControlEventResponseFrameSink getControlEventResponseFrameSink();
-
-    void setControlEventResponseFrameSink(ControlEventResponseFrameSink controlEventResponseFrameSink);
 }

@@ -63,8 +63,15 @@ class DispatcherInboundHandlerTest {
         GsonMessageCodec codec = new GsonMessageCodec();
         GatewayFrameRouter frameRouter = new GatewayFrameRouter();
 
-        DispatchRuntimeContext context = new DispatcherContext(transporter, sessionManager, codec);
-        ((DispatcherContext) context).setFrameRouter(frameRouter);
+        DispatchRuntimeContext context = new DispatcherContext(
+                transporter,
+                sessionManager,
+                codec,
+                frameRouter,
+                null,
+                null,
+                null
+        );
 
         handler = new DispatcherInboundHandler(context);
     }

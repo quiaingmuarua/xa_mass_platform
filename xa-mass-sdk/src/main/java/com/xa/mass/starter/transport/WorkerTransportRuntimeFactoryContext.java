@@ -2,7 +2,10 @@ package com.xa.mass.starter.transport;
 
 import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.WorkerManager;
-import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
+import com.xa.mass.base.channel.tranporter.MessageTransporter;
+import com.xa.mass.gateway.queue.Envelope;
+import com.xa.mass.gateway.queue.MessageCodec;
+import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
 
 /**
@@ -13,18 +16,24 @@ public final class WorkerTransportRuntimeFactoryContext {
 
     private final TaskManager taskManager;
     private final WorkerManager workerManager;
-    private final DispatchRuntimeContext dispatchRuntimeContext;
+    private final MessageTransporter<Envelope> messageTransporter;
+    private final WorkerEndpointRegistry endpointRegistry;
+    private final MessageCodec messageCodec;
     private final WorkerSystemEventChannel systemEventChannel;
     private final boolean gatewayEnabled;
 
     public WorkerTransportRuntimeFactoryContext(TaskManager taskManager,
                                                 WorkerManager workerManager,
-                                                DispatchRuntimeContext dispatchRuntimeContext,
+                                                MessageTransporter<Envelope> messageTransporter,
+                                                WorkerEndpointRegistry endpointRegistry,
+                                                MessageCodec messageCodec,
                                                 WorkerSystemEventChannel systemEventChannel,
                                                 boolean gatewayEnabled) {
         this.taskManager = taskManager;
         this.workerManager = workerManager;
-        this.dispatchRuntimeContext = dispatchRuntimeContext;
+        this.messageTransporter = messageTransporter;
+        this.endpointRegistry = endpointRegistry;
+        this.messageCodec = messageCodec;
         this.systemEventChannel = systemEventChannel;
         this.gatewayEnabled = gatewayEnabled;
     }
@@ -37,8 +46,16 @@ public final class WorkerTransportRuntimeFactoryContext {
         return workerManager;
     }
 
-    public DispatchRuntimeContext getDispatchRuntimeContext() {
-        return dispatchRuntimeContext;
+    public MessageTransporter<Envelope> getMessageTransporter() {
+        return messageTransporter;
+    }
+
+    public WorkerEndpointRegistry getEndpointRegistry() {
+        return endpointRegistry;
+    }
+
+    public MessageCodec getMessageCodec() {
+        return messageCodec;
     }
 
     public WorkerSystemEventChannel getSystemEventChannel() {

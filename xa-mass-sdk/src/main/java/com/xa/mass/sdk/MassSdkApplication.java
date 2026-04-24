@@ -1,8 +1,6 @@
 package com.xa.mass.sdk;
 
 import com.google.gson.Gson;
-import com.google.gson.JsonElement;
-import com.google.gson.JsonSyntaxException;
 import com.xa.mass.base.channel.tranporter.MessageTransporter;
 import com.xa.mass.base.debug.WorkerControlEventProtocol;
 import com.xa.mass.base.debug.WorkerDebugMessageStore;
@@ -27,12 +25,7 @@ import com.xa.mass.engine.rules.RuleType;
 import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
 import com.xa.mass.gateway.dispatcher.bridge.WorkerControlEventRequestBridge;
 import com.xa.mass.gateway.dispatcher.event.EventGatewayBridge;
-import com.xa.mass.gateway.model.enums.MessageDirection;
-import com.xa.mass.gateway.model.enums.MessageType;
-import com.xa.mass.gateway.model.massMessage.MassMessage;
-import com.xa.mass.gateway.model.massMessage.MessageContext;
 import com.xa.mass.gateway.queue.Envelope;
-import com.xa.mass.gateway.queue.MessageCodec;
 import com.xa.mass.sdk.auth.*;
 import com.xa.mass.sdk.authz.*;
 import com.xa.mass.sdk.catalog.*;
@@ -47,9 +40,10 @@ import com.xa.mass.sdk.model.*;
 import com.xa.mass.sdk.worker.PullWorkerSession;
 import com.xa.mass.starter.MassApplication;
 import com.xa.mass.starter.MassEngine;
+import com.xa.mass.starter.transport.WorkerControlEventDispatch;
+import com.xa.mass.starter.transport.WorkerControlEventPublishResult;
 import com.xa.mass.transport.WorkerEndpointInspector;
 import com.xa.mass.transport.WorkerEndpointRegistry;
-import com.xa.mass.transport.WorkerEndpointRoles;
 import com.xa.mass.transport.WorkerEndpointSnapshot;
 
 import java.util.*;
@@ -1376,6 +1370,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
                                                EventRequest request,
                                                EventPrincipal principal) {
         Objects.requireNonNull(request, "request");
+        Objects.requireNonNull(request.getEvent(), "request.event");
         String eventRequestId = firstNonBlank(request.getRequestId(), UUID.randomUUID().toString());
         Map<String, Object> eventPayload = new LinkedHashMap<>();
         eventPayload.put(WorkerControlEventProtocol.EVENT_FIELD, request.getEvent().value());
@@ -1388,81 +1383,26 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
             principalPayload.put(WorkerControlEventProtocol.USER_ID_FIELD, principal.getUserId());
         }
         eventPayload.put(WorkerControlEventProtocol.PRINCIPAL_FIELD, principalPayload);
-        return enqueueWorkerControlEvent(
-                workerId,
-                firstNonBlank(request.getProject(), null),
-                request.getEvent().value(),
-                eventRequestId,
-                eventPayload
-        );
-    }
-
-    private Map<String, Object> enqueueWorkerControlEvent(String workerId,
-                                                          String project,
-                                                          String eventCode,
-                                                          String eventRequestId,
-                                                          Object payload) {
         Worker worker = requireStartedWorkerManager().getWorker(workerId);
         if (worker == null) {
             throw new IllegalArgumentException("Worker not found");
         }
-
-        DispatchRuntimeContext transportContext = transportContext();
-        if (transportContext == null || transportContext.getMessageTransporter() == null) {
-            throw new IllegalStateException("Message transporter is not initialized");
-        }
-
-        if (transportContext.getSessionManager() == null) {
-            throw new IllegalStateException("Session manager is not initialized");
-        }
-
-        WorkerEndpointRegistry sessionManager = transportContext.getSessionManager();
-        if (!sessionManager.isWorkerOnline(workerId, WorkerEndpointRoles.TASK_DISPATCH)) {
-            throw new IllegalStateException("Target worker is offline or task dispatch endpoint is unavailable");
-        }
-
-        String resolvedProject = resolveProjectCode(project, worker);
-        JsonElement payloadJson = toPayloadJson(payload);
-        String messageId = UUID.randomUUID().toString();
-        String resolvedSubMsgType = WorkerControlEventProtocol.SUB_MSG_TYPE;
-
-        MassMessage message = new MassMessage();
-        message.setMsgId(messageId);
-        message.setMsgType(MessageType.CONTROL);
-        message.setSubMsgType(resolvedSubMsgType);
-        message.setFrom(MessageDirection.SERVER);
-        message.setProject(resolvedProject);
-        message.setContext(buildMessageContext(workerId));
-        message.setPayload(payloadJson);
-
-        String rawJson = encodeMessage(message);
-        Envelope envelope = Envelope.builder()
-                .workerId(workerId)
-                .connRole(WorkerEndpointRoles.TASK_DISPATCH)
-                .eventCode(eventCode)
-                .project(resolvedProject)
-                .traceId(messageId)
-                .receivedAt(System.currentTimeMillis())
-                .rawJson(rawJson)
-                .build();
-        WorkerDebugMessageStore.recordOutbound(
-                workerId,
-                resolvedProject,
-                eventCode,
-                MessageType.CONTROL.name(),
-                resolvedSubMsgType,
-                messageId,
-                GSON.toJson(payloadJson),
-                rawJson,
-                "message queued to dispatcher"
+        String resolvedProject = resolveProjectCode(firstNonBlank(request.getProject(), null), worker);
+        WorkerControlEventPublishResult publishResult = delegate.publishWorkerControlEvent(
+                new WorkerControlEventDispatch(
+                        workerId,
+                        resolvedProject,
+                        request.getEvent().value(),
+                        eventRequestId,
+                        eventPayload
+                )
         );
-        transportContext.getMessageTransporter().sendOutput(envelope);
         return Map.of(
-                "messageId", messageId,
-                "workerId", workerId,
-                "project", resolvedProject,
-                "eventCode", eventCode,
-                WorkerControlEventProtocol.REQUEST_ID_FIELD, eventRequestId
+                "messageId", publishResult.getMessageId(),
+                "workerId", publishResult.getWorkerId(),
+                "project", publishResult.getProject(),
+                "eventCode", publishResult.getEventCode(),
+                WorkerControlEventProtocol.REQUEST_ID_FIELD, publishResult.getRequestId()
         );
     }
 
@@ -1578,37 +1518,6 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
         item.put("enabled", rule.isEnabled());
         item.put("priority", rule.getPriority());
         return item;
-    }
-
-    private MessageContext buildMessageContext(String workerId) {
-        MessageContext context = new MessageContext();
-        context.setWorkerId(workerId);
-        context.setConnRole(WorkerEndpointRoles.TASK_DISPATCH);
-        return context;
-    }
-
-    private String encodeMessage(MassMessage message) {
-        DispatchRuntimeContext codecContext = transportContext();
-        MessageCodec codec = codecContext != null ? codecContext.getMessageCodec() : null;
-        return codec != null ? codec.encode(message) : GSON.toJson(message);
-    }
-
-    private JsonElement toPayloadJson(Object payloadObj) {
-        if (payloadObj == null) {
-            return GSON.toJsonTree(Map.of());
-        }
-        if (payloadObj instanceof String payloadText) {
-            String trimmed = payloadText.trim();
-            if (trimmed.isEmpty()) {
-                return GSON.toJsonTree(Map.of());
-            }
-            try {
-                return GSON.fromJson(trimmed, JsonElement.class);
-            } catch (JsonSyntaxException ex) {
-                throw new IllegalArgumentException("payload must be valid JSON");
-            }
-        }
-        return GSON.toJsonTree(payloadObj);
     }
 
     private String resolveProjectCode(String project, Worker worker) {

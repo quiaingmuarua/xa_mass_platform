@@ -1,9 +1,10 @@
 package com.xa.mass.starter.worker;
 
+import com.xa.mass.base.channel.tranporter.MessageTransporter;
 import com.xa.mass.engine.worker.WorkerAdapter;
-import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
 import com.xa.mass.gateway.model.massMessage.MassMessage;
 import com.xa.mass.gateway.queue.Envelope;
+import com.xa.mass.gateway.queue.MessageCodec;
 import com.xa.mass.transport.WorkerTransportHints;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -29,11 +30,14 @@ public class WebSocketWorkerAdapter implements WorkerAdapter {
 
     private static final Logger logger = LoggerFactory.getLogger(WebSocketWorkerAdapter.class);
 
-    private final DispatchRuntimeContext dispatchRuntimeContext;
+    private final MessageTransporter<Envelope> messageTransporter;
+    private final MessageCodec messageCodec;
     private final WebSocketTaskMessageMapper messageMapper = new WebSocketTaskMessageMapper();
 
-    public WebSocketWorkerAdapter(DispatchRuntimeContext dispatchRuntimeContext) {
-        this.dispatchRuntimeContext = dispatchRuntimeContext;
+    public WebSocketWorkerAdapter(MessageTransporter<Envelope> messageTransporter,
+                                  MessageCodec messageCodec) {
+        this.messageTransporter = messageTransporter;
+        this.messageCodec = messageCodec;
     }
 
     @Override
@@ -48,10 +52,8 @@ public class WebSocketWorkerAdapter implements WorkerAdapter {
 
     @Override
     public void dispatchTaskItems(List<TaskDispatchItem> items) {
-        if (dispatchRuntimeContext == null
-                || dispatchRuntimeContext.getMessageTransporter() == null
-                || dispatchRuntimeContext.getMessageCodec() == null) {
-            logger.warn("Skip task message publishing because dispatcher context or transporter is unavailable");
+        if (messageTransporter == null || messageCodec == null) {
+            logger.warn("Skip task message publishing because WebSocket adapter dependencies are unavailable");
             return;
         }
         if (items == null || items.isEmpty()) {
@@ -59,7 +61,7 @@ public class WebSocketWorkerAdapter implements WorkerAdapter {
         }
         for (TaskDispatchItem dispatchItem : items) {
             MassMessage message = messageMapper.toDispatchMessage(dispatchItem);
-            String json = dispatchRuntimeContext.getMessageCodec().encode(message);
+            String json = messageCodec.encode(message);
             Envelope envelope = Envelope.builder()
                     .workerId(dispatchItem.getWorkerId())
                     .eventCode(dispatchItem.getEventCode())
@@ -68,7 +70,7 @@ public class WebSocketWorkerAdapter implements WorkerAdapter {
                     .receivedAt(System.currentTimeMillis())
                     .rawJson(json)
                     .build();
-            dispatchRuntimeContext.getMessageTransporter().sendOutput(envelope);
+            messageTransporter.sendOutput(envelope);
         }
     }
 }

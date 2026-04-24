@@ -48,6 +48,9 @@ import com.xa.mass.starter.config.EngineConfig;
 import com.xa.mass.starter.transport.TransportBinding;
 import com.xa.mass.starter.transport.TransportRuntimeRegistry;
 import com.xa.mass.starter.transport.TransportServerFactoryContext;
+import com.xa.mass.starter.transport.WorkerControlEventDispatch;
+import com.xa.mass.starter.transport.WorkerControlEventPublishResult;
+import com.xa.mass.starter.transport.WorkerControlEventPublisher;
 import com.xa.mass.starter.transport.WorkerTransportRuntimeFactory;
 import com.xa.mass.engine.worker.WorkerAdapter;
 import com.xa.mass.transport.TransportServer;
@@ -1302,6 +1305,106 @@ class MassSdkTest {
     }
 
     @Test
+    void sendWorkerEventRejectsTransportWithoutOutboundControlEventPublisher() {
+        MessageQueue<Envelope> inputQueue = new InMemoryMessageQueue<>("Envelope", Envelope.class);
+        MessageQueue<Envelope> outputQueue = new InMemoryMessageQueue<>("Envelope", Envelope.class);
+        WorkerTransportRuntimeFactory transportFactory = context -> new TransportRuntimeRegistry(
+                context.getWorkerManager(),
+                context.getSystemEventChannel(),
+                List.of(TransportBinding.builder(new StubPushOnlyAdapter("polling-http-v2", WorkerTransportHints.POLLING, Set.of("polling-http-v2")))
+                        .build())
+        );
+
+        MassSdkApplication app = MassSdk.builder()
+                .transportServer(0, "/sdk-transport")
+                .gateway(gateway -> gateway.enabled(false)
+                        .transportServerEnabled(false)
+                        .inputQueue(inputQueue)
+                        .outputQueue(outputQueue)
+                        .workerTransportRuntimeFactory(transportFactory))
+                .engine(engine -> engine.enabled(true).workerThreads(1))
+                .build();
+
+        try {
+            app.start();
+            app.registerWorker(WorkerRegistration.builder()
+                    .workerId("polling-worker-debug")
+                    .transportHint("polling")
+                    .supportedProjects(List.of("demoApp"))
+                    .build());
+
+            IllegalStateException error = assertThrows(
+                    IllegalStateException.class,
+                    () -> app.sendWorkerEvent(
+                            "polling-worker-debug",
+                            EventRequest.builder().event("mock.state.get").project("demoApp").payload(Map.of()).build(),
+                            null
+                    )
+            );
+            assertEquals(
+                    "Worker transport 'polling' does not support outbound control-event dispatch for worker polling-worker-debug",
+                    error.getMessage()
+            );
+        } finally {
+            app.stop();
+        }
+    }
+
+    @Test
+    void sendWorkerEventResolvesOutboundPublisherByCanonicalTransportHint() {
+        MessageQueue<Envelope> inputQueue = new InMemoryMessageQueue<>("Envelope", Envelope.class);
+        MessageQueue<Envelope> outputQueue = new InMemoryMessageQueue<>("Envelope", Envelope.class);
+        RecordingControlEventPublisher publisher = new RecordingControlEventPublisher();
+        WorkerTransportRuntimeFactory transportFactory = context -> new TransportRuntimeRegistry(
+                context.getWorkerManager(),
+                context.getSystemEventChannel(),
+                List.of(TransportBinding.builder(new StubPushOnlyAdapter("ws-v2", WorkerTransportHints.REALTIME, Set.of("ws-v2")))
+                        .workerControlEventPublisher(publisher)
+                        .build())
+        );
+
+        MassSdkApplication app = MassSdk.builder()
+                .transportServer(0, "/sdk-transport")
+                .gateway(gateway -> gateway.enabled(false)
+                        .transportServerEnabled(false)
+                        .inputQueue(inputQueue)
+                        .outputQueue(outputQueue)
+                        .workerTransportRuntimeFactory(transportFactory))
+                .engine(engine -> engine.enabled(true).workerThreads(1))
+                .build();
+
+        try {
+            app.start();
+            app.registerWorker(WorkerRegistration.builder()
+                    .workerId("realtime-worker-debug")
+                    .transportHint("realtime")
+                    .supportedProjects(List.of("demoApp"))
+                    .build());
+
+            Map<String, Object> result = app.sendWorkerEvent(
+                    "realtime-worker-debug",
+                    EventRequest.builder()
+                            .event("mock.state.get")
+                            .payload(Map.of("probe", true))
+                            .requestId("debug-request-1")
+                            .build(),
+                    EventPrincipal.of("client-debug", "user-debug")
+            );
+
+            assertEquals("realtime-worker-debug", result.get("workerId"));
+            assertEquals("demoApp", result.get("project"));
+            assertEquals("mock.state.get", result.get("eventCode"));
+            assertEquals("debug-request-1", result.get("requestId"));
+            assertEquals("realtime-worker-debug", publisher.lastRequest.getWorkerId());
+            assertEquals("demoApp", publisher.lastRequest.getProject());
+            assertEquals("mock.state.get", publisher.lastRequest.getEventCode());
+            assertEquals("debug-request-1", publisher.lastRequest.getRequestId());
+        } finally {
+            app.stop();
+        }
+    }
+
+    @Test
     void pullWorkerSessionCompletesTaskWithoutWebsocketPush() throws Exception {
         MessageQueue<Envelope> inputQueue = new InMemoryMessageQueue<>("Envelope", Envelope.class);
         MessageQueue<Envelope> outputQueue = new InMemoryMessageQueue<>("Envelope", Envelope.class);
@@ -1565,6 +1668,22 @@ class MassSdkTest {
                                         String errorCode,
                                         Map<String, Object> output) {
             return true;
+        }
+    }
+
+    private static final class RecordingControlEventPublisher implements WorkerControlEventPublisher {
+        private WorkerControlEventDispatch lastRequest;
+
+        @Override
+        public WorkerControlEventPublishResult publish(WorkerControlEventDispatch request) {
+            this.lastRequest = request;
+            return new WorkerControlEventPublishResult(
+                    "msg-control-1",
+                    request.getWorkerId(),
+                    request.getProject(),
+                    request.getEventCode(),
+                    request.getRequestId()
+            );
         }
     }
 }

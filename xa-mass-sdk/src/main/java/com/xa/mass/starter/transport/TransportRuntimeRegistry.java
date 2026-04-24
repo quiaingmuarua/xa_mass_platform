@@ -48,15 +48,17 @@ public final class TransportRuntimeRegistry {
         }
     }
 
-    public void registerGatewayPorts(DispatchRuntimeContext dispatchRuntimeContext) {
+    public com.xa.mass.gateway.dispatcher.port.TaskStepFrameBridge resolveTaskStepFrameBridge() {
+        com.xa.mass.gateway.dispatcher.port.TaskStepFrameBridge resolvedBridge = null;
         for (TransportBinding binding : bindings) {
             if (binding.getTaskStepFrameBridge() != null) {
-                if (dispatchRuntimeContext.getTaskStepFrameBridge() != null) {
+                if (resolvedBridge != null) {
                     throw new IllegalStateException("Multiple task-step frame bridges are configured for the gateway runtime");
                 }
-                dispatchRuntimeContext.setTaskStepFrameBridge(binding.getTaskStepFrameBridge());
+                resolvedBridge = binding.getTaskStepFrameBridge();
             }
         }
+        return resolvedBridge;
     }
 
     public TaskMsgDispatchListener createDispatchListener() {
@@ -96,6 +98,28 @@ public final class TransportRuntimeRegistry {
                 systemEventChannel,
                 transportHint
         );
+    }
+
+    public WorkerControlEventPublishResult publishWorkerControlEvent(WorkerControlEventDispatch request) {
+        Objects.requireNonNull(request, "request");
+        Worker worker = workerManager.getWorker(request.getWorkerId());
+        if (worker == null) {
+            throw new IllegalArgumentException("Worker not found: " + request.getWorkerId());
+        }
+        String transportHint = WorkerTransportHints.normalize(worker.getOnlineStrategy());
+        if (transportHint == null) {
+            throw new IllegalStateException("Worker transportHint/onlineStrategy is not set: " + request.getWorkerId());
+        }
+        TransportBinding binding = bindingByHint.get(transportHint);
+        if (binding == null) {
+            throw new IllegalStateException("No transport binding is registered for worker transport '"
+                    + transportHint + "' on worker " + request.getWorkerId());
+        }
+        if (binding.getWorkerControlEventPublisher() == null) {
+            throw new IllegalStateException("Worker transport '" + transportHint
+                    + "' does not support outbound control-event dispatch for worker " + request.getWorkerId());
+        }
+        return binding.getWorkerControlEventPublisher().publish(request);
     }
 
     private void registerBinding(String hint, TransportBinding binding) {

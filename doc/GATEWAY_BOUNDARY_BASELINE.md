@@ -196,6 +196,17 @@ Engine/runtime decides eligibility.
 
 `connected == eligible` is forbidden.
 
+## 8.1 Gateway Wiring Rule
+
+`DispatchRuntimeContext` is an adapter-local wiring snapshot, not a mutable registration surface.
+
+Rules:
+
+- construct gateway frame router and explicit bridge ports before starting the adapter
+- resolve transport-contributed bridge ports during runtime assembly, then inject them once
+- do not grow post-construction `setHandler(...)` or `registerRoute(...)` seams on gateway runtime context
+- if a new adapter path needs another port, add an explicit field or constructor dependency instead of a late-bound generic registry
+
 ## 9. Audit Boundary
 
 Gateway may emit transport facts:

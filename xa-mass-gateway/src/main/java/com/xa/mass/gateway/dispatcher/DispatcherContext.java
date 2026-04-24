@@ -21,18 +21,30 @@ public class DispatcherContext implements DispatchRuntimeContext {
     private final MessageCodec messageCodec;
     private final MessageParser messageParser;
     private final MiddlewareRegistry middlewareRegistry;
-    private GatewayFrameRouter frameRouter;
-    private TaskStepFrameBridge taskStepFrameBridge;
-    private ControlEventRequestFrameBridge controlEventRequestFrameBridge;
-    private ControlEventResponseFrameSink controlEventResponseFrameSink;
+    private final GatewayFrameRouter frameRouter;
+    private final TaskStepFrameBridge taskStepFrameBridge;
+    private final ControlEventRequestFrameBridge controlEventRequestFrameBridge;
+    private final ControlEventResponseFrameSink controlEventResponseFrameSink;
 
     // Keep gateway runtime dependencies explicit on the context instead of using globals.
     public DispatcherContext(
             MessageTransporter messageTransporter,
             WorkerEndpointRegistry sessionManager,
-            MessageCodec messageCodec
+            MessageCodec messageCodec,
+            GatewayFrameRouter frameRouter,
+            TaskStepFrameBridge taskStepFrameBridge,
+            ControlEventRequestFrameBridge controlEventRequestFrameBridge,
+            ControlEventResponseFrameSink controlEventResponseFrameSink
     ) {
-        this(messageTransporter, sessionManager, messageCodec, new MessageParser(messageCodec), new MiddlewareRegistry());
+        this(messageTransporter,
+                sessionManager,
+                messageCodec,
+                new MessageParser(messageCodec),
+                new MiddlewareRegistry(),
+                frameRouter,
+                taskStepFrameBridge,
+                controlEventRequestFrameBridge,
+                controlEventResponseFrameSink);
     }
 
     public DispatcherContext(
@@ -40,13 +52,21 @@ public class DispatcherContext implements DispatchRuntimeContext {
             WorkerEndpointRegistry sessionManager,
             MessageCodec messageCodec,
             MessageParser messageParser,
-            MiddlewareRegistry middlewareRegistry
+            MiddlewareRegistry middlewareRegistry,
+            GatewayFrameRouter frameRouter,
+            TaskStepFrameBridge taskStepFrameBridge,
+            ControlEventRequestFrameBridge controlEventRequestFrameBridge,
+            ControlEventResponseFrameSink controlEventResponseFrameSink
     ) {
         this.messageTransporter = messageTransporter;
         this.sessionManager = sessionManager;
         this.messageCodec = messageCodec;
         this.messageParser = messageParser;
         this.middlewareRegistry = middlewareRegistry;
+        this.frameRouter = frameRouter;
+        this.taskStepFrameBridge = taskStepFrameBridge;
+        this.controlEventRequestFrameBridge = controlEventRequestFrameBridge;
+        this.controlEventResponseFrameSink = controlEventResponseFrameSink;
     }
 
     /**
@@ -55,9 +75,19 @@ public class DispatcherContext implements DispatchRuntimeContext {
     public DispatcherContext(
             MessageTransporter messageTransporter,
             WorkerEndpointRegistry sessionManager,
-            Gson gson
+            Gson gson,
+            GatewayFrameRouter frameRouter,
+            TaskStepFrameBridge taskStepFrameBridge,
+            ControlEventRequestFrameBridge controlEventRequestFrameBridge,
+            ControlEventResponseFrameSink controlEventResponseFrameSink
     ) {
-        this(messageTransporter, sessionManager, new GsonMessageCodec(gson));
+        this(messageTransporter,
+                sessionManager,
+                new GsonMessageCodec(gson),
+                frameRouter,
+                taskStepFrameBridge,
+                controlEventRequestFrameBridge,
+                controlEventResponseFrameSink);
     }
 
     @Override
@@ -91,18 +121,8 @@ public class DispatcherContext implements DispatchRuntimeContext {
     }
 
     @Override
-    public void setFrameRouter(GatewayFrameRouter frameRouter) {
-        this.frameRouter = frameRouter;
-    }
-
-    @Override
     public TaskStepFrameBridge getTaskStepFrameBridge() {
         return taskStepFrameBridge;
-    }
-
-    @Override
-    public void setTaskStepFrameBridge(TaskStepFrameBridge taskStepFrameBridge) {
-        this.taskStepFrameBridge = taskStepFrameBridge;
     }
 
     @Override
@@ -111,17 +131,7 @@ public class DispatcherContext implements DispatchRuntimeContext {
     }
 
     @Override
-    public void setControlEventRequestFrameBridge(ControlEventRequestFrameBridge controlEventRequestFrameBridge) {
-        this.controlEventRequestFrameBridge = controlEventRequestFrameBridge;
-    }
-
-    @Override
     public ControlEventResponseFrameSink getControlEventResponseFrameSink() {
         return controlEventResponseFrameSink;
-    }
-
-    @Override
-    public void setControlEventResponseFrameSink(ControlEventResponseFrameSink controlEventResponseFrameSink) {
-        this.controlEventResponseFrameSink = controlEventResponseFrameSink;
     }
 }

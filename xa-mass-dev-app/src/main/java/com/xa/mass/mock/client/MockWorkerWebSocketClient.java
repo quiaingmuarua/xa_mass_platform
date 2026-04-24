@@ -1,11 +1,6 @@
 package com.xa.mass.mock.client;
 
 import com.google.gson.Gson;
-import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
-import com.xa.mass.base.debug.WorkerControlEventProtocol;
-import com.xa.mass.base.debug.WorkerControlMessageProtocol;
 import com.xa.mass.command.model.CommandResponse;
 import com.xa.mass.gateway.model.enums.MessageDirection;
 import com.xa.mass.gateway.model.enums.MessageType;
@@ -21,12 +16,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.net.URI;
-import java.time.Instant;
-import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -37,18 +28,17 @@ public class MockWorkerWebSocketClient extends WebSocketClient implements MockWo
     private static final int MAX_RECONNECT_ATTEMPTS = 10;
     private static final long INITIAL_RECONNECT_DELAY_MS = 1000;
     private static final long MAX_RECONNECT_DELAY_MS = 60000;
-    private static final long DEFAULT_TASK_RESPONSE_BASE_DELAY_MS = 15L;
-    private static final long DEFAULT_TASK_RESPONSE_JITTER_MS = 35L;
 
     private final Gson gson = new Gson();
     private final ScheduledExecutorService reconnectScheduler;
     private final ScheduledExecutorService taskResponseScheduler;
     private final AtomicInteger reconnectAttempts = new AtomicInteger(0);
     private final String workerId;
+    private final MockWorkerTaskFrameHandler taskFrameHandler = new MockWorkerTaskFrameHandler();
+    private final MockWorkerControlFrameHandler controlFrameHandler = new MockWorkerControlFrameHandler();
     private final String taskResultStatus;
 
     private boolean intentionalClose = false;
-    private URI uri;
 
     public MockWorkerWebSocketClient(URI serverUri, String workerId) {
         this(serverUri, workerId, "SUCCESS");
@@ -57,7 +47,7 @@ public class MockWorkerWebSocketClient extends WebSocketClient implements MockWo
     public MockWorkerWebSocketClient(URI serverUri, String workerId, String taskResultStatus) {
         super(serverUri);
         this.workerId = workerId;
-        this.taskResultStatus = normalizeTaskResultStatus(taskResultStatus);
+        this.taskResultStatus = normalizeConfiguredTaskResultStatus(taskResultStatus);
         this.reconnectScheduler = Executors.newSingleThreadScheduledExecutor(r -> {
             Thread t = new Thread(r, "websocket-reconnect-scheduler-" + workerId);
             t.setDaemon(true);
@@ -68,7 +58,6 @@ public class MockWorkerWebSocketClient extends WebSocketClient implements MockWo
             t.setDaemon(true);
             return t;
         });
-        this.uri = serverUri;
         MockCommandRuntime.initialize();
     }
 
@@ -106,298 +95,51 @@ public class MockWorkerWebSocketClient extends WebSocketClient implements MockWo
     public void onMessage(String message) {
         logger.debug("[{}] Received frame: {}", workerId, message);
         try {
-            JsonObject json = gson.fromJson(message, JsonObject.class);
-            MessageType msgType = MessageType.valueOf(json.get("msgType").getAsString().toUpperCase());
-
-            switch (msgType) {
+            MassMessage frame = gson.fromJson(message, MassMessage.class);
+            if (frame == null || frame.getMsgType() == null) {
+                logger.warn("[{}] Ignoring frame without msgType", workerId);
+                return;
+            }
+            switch (frame.getMsgType()) {
                 case TASK:
-                    handleTaskMessage(message);
+                    handleTaskMessage(frame);
                     break;
                 case CONTROL:
-                    handleControlMessage(message);
+                    handleControlMessage(frame);
                     break;
                 case PONG:
                     logger.debug("[{}] Pong received", workerId);
                     break;
                 default:
-                    logger.warn("[{}] Unhandled msgType: {}", workerId, msgType);
+                    logger.warn("[{}] Unhandled msgType: {}", workerId, frame.getMsgType());
             }
         } catch (Exception e) {
             logger.error("[{}] Failed to parse or handle message: {}", workerId, e.getMessage(), e);
         }
     }
 
-    private void handleTaskMessage(String message) {
-        MassMessage taskMessage = gson.fromJson(message, MassMessage.class);
-        if (taskMessage.isResponse()) {
-            logger.debug("[{}] Ignoring task response frame for msgId: {}", workerId, taskMessage.getMsgId());
-            return;
-        }
-        MessageContext originalContext = taskMessage.getContext();
-        if (originalContext == null || originalContext.getTaskId() == null || originalContext.getTaskId().isBlank()) {
-            logger.info("[{}] Received TASK frame without taskId, skipping task-result callback. msgId={}",
-                    workerId, taskMessage.getMsgId());
-            return;
-        }
-        JsonObject taskPayload = taskMessage.getPayload() != null && taskMessage.getPayload().isJsonObject()
-                ? taskMessage.getPayload().getAsJsonObject()
-                : null;
-
-        MassMessage response = new MassMessage();
-        response.setMsgId(taskMessage.getMsgId());
-        response.setResponse(true);
-        response.setMsgType(MessageType.TASK);
-        response.setFrom(MessageDirection.CLIENT);
-        response.setSubMsgType("step");
-        response.setProject(taskMessage.getProject());
-
-        MessageContext responseContext = new MessageContext();
-        responseContext.setConnRole(originalContext.getConnRole());
-        responseContext.setTaskId(originalContext.getTaskId());
-        responseContext.setRetryCount(originalContext.getRetryCount());
-        responseContext.setWorkerId(workerId);
-        response.setContext(responseContext);
-
-        Map<String, Object> payloadMap = new HashMap<>();
-        String stepId = extractFirstStepId(taskPayload);
-        int stepCount = countSteps(taskPayload);
+    private void handleTaskMessage(MassMessage taskMessage) {
         MockClientState state = getMockClientState();
-        String resolvedStatus = resolveTaskResultStatus(state);
-        long delayMillis = resolveTaskResponseDelayMillis(taskMessage, stepCount, state, resolvedStatus);
-        long startedAtEpochMillis = System.currentTimeMillis();
-        long finishedAtEpochMillis = startedAtEpochMillis + delayMillis;
-        payloadMap.put("stepId", stepId);
-        payloadMap.put("mockData", "Executed by mock client " + workerId);
-        payloadMap.put("status", resolvedStatus);
-        payloadMap.put("execution", buildExecutionSnapshot(
-                originalContext,
+        MockWorkerTaskFrameHandler.TaskResponsePlan plan = taskFrameHandler.prepareResponse(
                 taskMessage,
-                stepCount,
-                delayMillis,
-                startedAtEpochMillis,
-                finishedAtEpochMillis,
-                resolvedStatus
-        ));
-        payloadMap.put("workerProfile", buildWorkerProfile());
-
-        response.setPayload(gson.toJsonTree(payloadMap));
-        if (state != null && state.shouldDropTaskResponse()) {
-            logger.info("[{}] Dropped mock task response for msgId={} due to mock state {}", workerId,
-                    response.getMsgId(), state.snapshot());
+                workerId,
+                taskResultStatus,
+                state
+        );
+        if (plan == null) {
             return;
         }
-
-        sendTaskResponse(response, delayMillis);
+        sendTaskResponse(plan.response(), plan.delayMillis());
     }
 
-    private void handleControlMessage(String message) {
-        MassMessage controlMessage = gson.fromJson(message, MassMessage.class);
-        logger.info("[{}] Received control message. msgId={}, subMsgType={}",
-                workerId, controlMessage.getMsgId(), controlMessage.getSubMsgType());
-
-        MassMessage response = new MassMessage();
-        response.setMsgId(controlMessage.getMsgId());
-        response.setResponse(true);
-        response.setMsgType(MessageType.CONTROL);
-        response.setSubMsgType(WorkerControlEventProtocol.SUB_MSG_TYPE);
-        response.setFrom(MessageDirection.CLIENT);
-        response.setProject(controlMessage.getProject());
-
-        MessageContext originalContext = controlMessage.getContext();
-        MessageContext responseContext = new MessageContext();
-        responseContext.setConnRole(originalContext != null ? originalContext.getConnRole() : SessionRoles.TASK_MESSAGES);
-        responseContext.setWorkerId(workerId);
-        response.setContext(responseContext);
-
-        Map<String, Object> payloadMap = new HashMap<>();
-        JsonObject commandRequest = extractCommandRequest(controlMessage);
-        CommandResponse<?> commandResult = null;
-        if (commandRequest != null) {
-            commandResult = MockCommandRuntime.dispatch(commandRequest);
+    private void handleControlMessage(MassMessage controlMessage) {
+        MockWorkerControlFrameHandler.ControlResponsePlan plan = controlFrameHandler.prepareResponse(controlMessage, workerId);
+        if (plan == null) {
+            return;
         }
-
-        payloadMap.put(WorkerControlMessageProtocol.MESSAGE_KIND_FIELD, WorkerControlMessageProtocol.MESSAGE_KIND_ACK);
-        payloadMap.put(WorkerControlMessageProtocol.REPLY_TO_MESSAGE_ID_FIELD, controlMessage.getMsgId());
-        payloadMap.put(WorkerControlMessageProtocol.ACK_STATUS_FIELD, WorkerControlMessageProtocol.ACK_STATUS_RECEIVED);
-        payloadMap.put("message", resolveAckMessage(controlMessage, commandRequest, commandResult));
-        payloadMap.put(WorkerControlMessageProtocol.WORKER_ID_FIELD, workerId);
-        payloadMap.put(WorkerControlMessageProtocol.RECEIVED_AT_FIELD, System.currentTimeMillis());
-        payloadMap.put(WorkerControlMessageProtocol.ECHO_PAYLOAD_FIELD, controlMessage.getPayload());
-        payloadMap.put(WorkerControlMessageProtocol.ECHO_SUB_MSG_TYPE_FIELD, controlMessage.getSubMsgType());
-        payloadMap.put("commandExecuted", commandResult != null);
-        JsonObject eventEnvelope = extractEventEnvelope(controlMessage);
-        if (eventEnvelope != null
-                && eventEnvelope.has(WorkerControlEventProtocol.REQUEST_ID_FIELD)
-                && !eventEnvelope.get(WorkerControlEventProtocol.REQUEST_ID_FIELD).isJsonNull()) {
-            payloadMap.put(
-                    WorkerControlEventProtocol.REQUEST_ID_FIELD,
-                    eventEnvelope.get(WorkerControlEventProtocol.REQUEST_ID_FIELD).getAsString()
-            );
-        }
-        if (commandResult != null) {
-            payloadMap.put("commandEvent", commandRequest.get(WorkerControlEventProtocol.EVENT_FIELD).getAsString());
-            payloadMap.put("commandResult", commandResult);
-        }
-        String resolvedEventCode = resolveInboundEventCode(controlMessage, commandRequest, eventEnvelope);
-        if (resolvedEventCode != null) {
-            payloadMap.put(WorkerControlEventProtocol.EVENT_FIELD, resolvedEventCode);
-        }
-        response.setPayload(gson.toJsonTree(payloadMap));
-
-        send(gson.toJson(response));
+        send(gson.toJson(plan.response()));
         logger.debug("[{}] Sent worker control response for msgId: {}", workerId, controlMessage.getMsgId());
-        disconnectAfterAckIfRequested(commandResult);
-    }
-
-    private JsonObject extractCommandRequest(MassMessage controlMessage) {
-        JsonElement payload = controlMessage.getPayload();
-        JsonObject commandRequest = null;
-        if (payload == null || payload.isJsonNull()) {
-            return null;
-        }
-        if (payload.isJsonObject()) {
-            JsonObject payloadObject = payload.getAsJsonObject();
-            JsonObject eventEnvelope = extractEventEnvelope(controlMessage);
-            if (eventEnvelope != null) {
-                commandRequest = buildCommandRequestFromEventEnvelope(eventEnvelope);
-            } else if (payloadObject.has(WorkerControlEventProtocol.EVENT_FIELD)
-                    && !payloadObject.get(WorkerControlEventProtocol.EVENT_FIELD).isJsonNull()) {
-                commandRequest = payloadObject.deepCopy();
-            } else if (payloadObject.has("command") && payloadObject.get("command").isJsonObject()) {
-                commandRequest = payloadObject.getAsJsonObject("command").deepCopy();
-            } else if (payloadObject.has(WorkerControlMessageProtocol.TEXT_FIELD)
-                    && payloadObject.get(WorkerControlMessageProtocol.TEXT_FIELD).isJsonPrimitive()) {
-                commandRequest = parseCommandText(payloadObject.get(WorkerControlMessageProtocol.TEXT_FIELD).getAsString());
-            }
-        } else if (payload.isJsonPrimitive() && payload.getAsJsonPrimitive().isString()) {
-            commandRequest = parseCommandText(payload.getAsString());
-        }
-
-        if (commandRequest == null
-                || !commandRequest.has(WorkerControlEventProtocol.EVENT_FIELD)
-                || commandRequest.get(WorkerControlEventProtocol.EVENT_FIELD).isJsonNull()) {
-            return null;
-        }
-        if (!commandRequest.has("workerId")) {
-            commandRequest.addProperty("workerId", workerId);
-        }
-        if (!commandRequest.has("requestMsgId") && controlMessage.getMsgId() != null) {
-            commandRequest.addProperty("requestMsgId", controlMessage.getMsgId());
-        }
-        if (!commandRequest.has("project") && controlMessage.getProject() != null) {
-            commandRequest.addProperty("project", controlMessage.getProject());
-        }
-        return commandRequest;
-    }
-
-    private JsonObject extractEventEnvelope(MassMessage controlMessage) {
-        JsonElement payload = controlMessage.getPayload();
-        if (payload == null || !payload.isJsonObject()) {
-            return null;
-        }
-        JsonObject payloadObject = payload.getAsJsonObject();
-        if (!WorkerControlEventProtocol.SUB_MSG_TYPE.equals(controlMessage.getSubMsgType())) {
-            return null;
-        }
-        if (!payloadObject.has(WorkerControlEventProtocol.EVENT_FIELD)
-                || payloadObject.get(WorkerControlEventProtocol.EVENT_FIELD).isJsonNull()) {
-            return null;
-        }
-        return payloadObject;
-    }
-
-    private JsonObject buildCommandRequestFromEventEnvelope(JsonObject eventEnvelope) {
-        JsonObject commandRequest = new JsonObject();
-        commandRequest.add(
-                WorkerControlEventProtocol.EVENT_FIELD,
-                eventEnvelope.get(WorkerControlEventProtocol.EVENT_FIELD).deepCopy()
-        );
-        if (eventEnvelope.has(WorkerControlEventProtocol.PAYLOAD_FIELD)
-                && eventEnvelope.get(WorkerControlEventProtocol.PAYLOAD_FIELD).isJsonObject()) {
-            JsonObject payloadObject = eventEnvelope.getAsJsonObject(WorkerControlEventProtocol.PAYLOAD_FIELD);
-            for (Map.Entry<String, JsonElement> entry : payloadObject.entrySet()) {
-                if (WorkerControlEventProtocol.EVENT_FIELD.equals(entry.getKey())) {
-                    continue;
-                }
-                commandRequest.add(entry.getKey(), entry.getValue().deepCopy());
-            }
-        }
-        if (eventEnvelope.has(WorkerControlEventProtocol.REQUEST_ID_FIELD)
-                && !eventEnvelope.get(WorkerControlEventProtocol.REQUEST_ID_FIELD).isJsonNull()) {
-            commandRequest.add(
-                    WorkerControlEventProtocol.REQUEST_ID_FIELD,
-                    eventEnvelope.get(WorkerControlEventProtocol.REQUEST_ID_FIELD).deepCopy()
-            );
-        }
-        if (eventEnvelope.has(WorkerControlEventProtocol.PRINCIPAL_FIELD)
-                && eventEnvelope.get(WorkerControlEventProtocol.PRINCIPAL_FIELD).isJsonObject()) {
-            JsonObject principal = eventEnvelope.getAsJsonObject(WorkerControlEventProtocol.PRINCIPAL_FIELD);
-            if (principal.has(WorkerControlEventProtocol.CLIENT_ID_FIELD)
-                    && !principal.get(WorkerControlEventProtocol.CLIENT_ID_FIELD).isJsonNull()) {
-                commandRequest.add(
-                        WorkerControlEventProtocol.CLIENT_ID_FIELD,
-                        principal.get(WorkerControlEventProtocol.CLIENT_ID_FIELD).deepCopy()
-                );
-            }
-            if (principal.has(WorkerControlEventProtocol.USER_ID_FIELD)
-                    && !principal.get(WorkerControlEventProtocol.USER_ID_FIELD).isJsonNull()) {
-                commandRequest.add(
-                        WorkerControlEventProtocol.USER_ID_FIELD,
-                        principal.get(WorkerControlEventProtocol.USER_ID_FIELD).deepCopy()
-                );
-            }
-        }
-        return commandRequest;
-    }
-
-    private String resolveAckMessage(MassMessage controlMessage,
-                                     JsonObject commandRequest,
-                                     CommandResponse<?> commandResult) {
-        if (commandResult != null) {
-            return "mock worker executed command: "
-                    + commandRequest.get(WorkerControlEventProtocol.EVENT_FIELD).getAsString();
-        }
-        JsonObject eventEnvelope = extractEventEnvelope(controlMessage);
-        if (eventEnvelope != null
-                && eventEnvelope.has(WorkerControlEventProtocol.EVENT_FIELD)
-                && !eventEnvelope.get(WorkerControlEventProtocol.EVENT_FIELD).isJsonNull()) {
-            return "mock worker received event: "
-                    + eventEnvelope.get(WorkerControlEventProtocol.EVENT_FIELD).getAsString();
-        }
-        return "mock worker received control message";
-    }
-
-    private String resolveInboundEventCode(MassMessage controlMessage,
-                                           JsonObject commandRequest,
-                                           JsonObject eventEnvelope) {
-        if (eventEnvelope != null
-                && eventEnvelope.has(WorkerControlEventProtocol.EVENT_FIELD)
-                && !eventEnvelope.get(WorkerControlEventProtocol.EVENT_FIELD).isJsonNull()) {
-            return eventEnvelope.get(WorkerControlEventProtocol.EVENT_FIELD).getAsString();
-        }
-        if (commandRequest != null
-                && commandRequest.has(WorkerControlEventProtocol.EVENT_FIELD)
-                && !commandRequest.get(WorkerControlEventProtocol.EVENT_FIELD).isJsonNull()) {
-            return commandRequest.get(WorkerControlEventProtocol.EVENT_FIELD).getAsString();
-        }
-        return controlMessage.getSubMsgType();
-    }
-
-    private JsonObject parseCommandText(String text) {
-        if (text == null || text.isBlank()) {
-            return null;
-        }
-        String trimmed = text.trim();
-        if (!trimmed.startsWith("{")) {
-            return null;
-        }
-        try {
-            JsonElement parsed = JsonParser.parseString(trimmed);
-            return parsed.isJsonObject() ? parsed.getAsJsonObject() : null;
-        } catch (Exception e) {
-            logger.warn("[{}] Ignoring invalid command JSON text: {}", workerId, e.getMessage());
-            return null;
-        }
+        disconnectAfterAckIfRequested(plan.commandResult());
     }
 
     @Override
@@ -474,83 +216,6 @@ public class MockWorkerWebSocketClient extends WebSocketClient implements MockWo
     private MockClientState getMockClientState() {
         MockClientStateRegistry stateRegistry = MockCommandRuntime.getService(MockClientStateRegistry.class);
         return stateRegistry == null ? null : stateRegistry.getOrCreate(workerId);
-    }
-
-    private String resolveTaskResultStatus(MockClientState state) {
-        if (state == null) {
-            return taskResultStatus;
-        }
-        return normalizeTaskResultStatus(state.resolveTaskResultStatus(taskResultStatus));
-    }
-
-    private long resolveTaskResponseDelayMillis(MassMessage taskMessage,
-                                                int stepCount,
-                                                MockClientState state,
-                                                String taskStatus) {
-        if (state != null && state.getTaskResponseDelayMillis() > 0L) {
-            return state.getTaskResponseDelayMillis();
-        }
-        int stableHash = Objects.hash(workerId, taskMessage.getMsgId(), taskMessage.getProject(), stepCount);
-        long jitter = Math.floorMod(stableHash, (int) DEFAULT_TASK_RESPONSE_JITTER_MS + 1);
-        long failurePenalty = "FAILED".equals(taskStatus) ? 10L : 0L;
-        return DEFAULT_TASK_RESPONSE_BASE_DELAY_MS + jitter + Math.max(0, stepCount - 1) * 5L + failurePenalty;
-    }
-
-    private String extractFirstStepId(JsonObject taskPayload) {
-        if (taskPayload == null || !taskPayload.has("steps") || !taskPayload.get("steps").isJsonArray()) {
-            return "step-0-default";
-        }
-        var steps = taskPayload.getAsJsonArray("steps");
-        if (steps.isEmpty() || !steps.get(0).isJsonObject()) {
-            return "step-0-default";
-        }
-        JsonObject firstStep = steps.get(0).getAsJsonObject();
-        if (!firstStep.has("stepId") || firstStep.get("stepId").isJsonNull()) {
-            return "step-0-default";
-        }
-        return firstStep.get("stepId").getAsString();
-    }
-
-    private int countSteps(JsonObject taskPayload) {
-        if (taskPayload == null || !taskPayload.has("steps") || !taskPayload.get("steps").isJsonArray()) {
-            return 0;
-        }
-        return taskPayload.getAsJsonArray("steps").size();
-    }
-
-    private Map<String, Object> buildExecutionSnapshot(MessageContext originalContext,
-                                                       MassMessage taskMessage,
-                                                       int stepCount,
-                                                       long delayMillis,
-                                                       long startedAtEpochMillis,
-                                                       long finishedAtEpochMillis,
-                                                       String taskStatus) {
-        Map<String, Object> execution = new LinkedHashMap<>();
-        execution.put("transport", "websocket");
-        execution.put("startedAtEpochMs", startedAtEpochMillis);
-        execution.put("finishedAtEpochMs", finishedAtEpochMillis);
-        execution.put("startedAt", Instant.ofEpochMilli(startedAtEpochMillis).toString());
-        execution.put("finishedAt", Instant.ofEpochMilli(finishedAtEpochMillis).toString());
-        execution.put("durationMs", delayMillis);
-        execution.put("stepCount", stepCount);
-        execution.put("taskStatus", taskStatus);
-        Integer retryCount = originalContext != null ? originalContext.getRetryCount() : null;
-        execution.put("retryCount", retryCount == null ? 0 : retryCount);
-        execution.put("project", taskMessage.getProject());
-        execution.put("messageId", taskMessage.getMsgId());
-        execution.put("taskId", originalContext != null ? originalContext.getTaskId() : null);
-        return execution;
-    }
-
-    private Map<String, Object> buildWorkerProfile() {
-        Map<String, Object> workerProfile = new LinkedHashMap<>();
-        workerProfile.put("workerId", workerId);
-        workerProfile.put("runtime", "mock-websocket-client");
-        workerProfile.put("host", "mock-host-" + workerId);
-        workerProfile.put("os", System.getProperty("os.name"));
-        workerProfile.put("javaVersion", System.getProperty("java.version"));
-        workerProfile.put("processId", ProcessHandle.current().pid());
-        return workerProfile;
     }
 
     private void sendTaskResponse(MassMessage response, long delayMillis) {
@@ -630,20 +295,11 @@ public class MockWorkerWebSocketClient extends WebSocketClient implements MockWo
         return workerId;
     }
 
-    private String normalizeTaskResultStatus(String taskResultStatus) {
-        if (taskResultStatus == null || taskResultStatus.isBlank()) {
-            return "SUCCESS";
-        }
-        String normalized = taskResultStatus.trim().toUpperCase();
-        return "FAILED".equals(normalized) ? "FAILED" : "SUCCESS";
-    }
-
     @Override
     public void connect(URI serverUri) throws Exception {
         if (isOpen()) {
             closeConnection();
         }
-        this.uri = serverUri;
         super.connectBlocking();
     }
 
@@ -660,5 +316,13 @@ public class MockWorkerWebSocketClient extends WebSocketClient implements MockWo
     @Override
     public void sendMessage(String message) throws Exception {
         send(message);
+    }
+
+    private String normalizeConfiguredTaskResultStatus(String taskResultStatus) {
+        if (taskResultStatus == null || taskResultStatus.isBlank()) {
+            return "SUCCESS";
+        }
+        String normalized = taskResultStatus.trim().toUpperCase();
+        return "FAILED".equals(normalized) ? "FAILED" : "SUCCESS";
     }
 }

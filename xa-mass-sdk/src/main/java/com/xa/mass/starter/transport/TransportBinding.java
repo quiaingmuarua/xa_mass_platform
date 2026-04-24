@@ -17,12 +17,14 @@ public final class TransportBinding {
     private final TaskPullChannel taskPullChannel;
     private final TaskResultIngestChannel taskResultIngestChannel;
     private final TaskStepFrameBridge taskStepFrameBridge;
+    private final WorkerControlEventPublisher workerControlEventPublisher;
 
     private TransportBinding(Builder builder) {
         this.workerAdapter = Objects.requireNonNull(builder.workerAdapter, "workerAdapter");
         this.taskPullChannel = builder.taskPullChannel;
         this.taskResultIngestChannel = builder.taskResultIngestChannel;
         this.taskStepFrameBridge = builder.taskStepFrameBridge;
+        this.workerControlEventPublisher = builder.workerControlEventPublisher;
     }
 
     public static Builder builder(WorkerAdapter workerAdapter) {
@@ -49,11 +51,16 @@ public final class TransportBinding {
         return taskStepFrameBridge;
     }
 
+    public WorkerControlEventPublisher getWorkerControlEventPublisher() {
+        return workerControlEventPublisher;
+    }
+
     public static final class Builder {
         private final WorkerAdapter workerAdapter;
         private TaskPullChannel taskPullChannel;
         private TaskResultIngestChannel taskResultIngestChannel;
         private TaskStepFrameBridge taskStepFrameBridge;
+        private WorkerControlEventPublisher workerControlEventPublisher;
 
         private Builder(WorkerAdapter workerAdapter) {
             this.workerAdapter = workerAdapter;
@@ -71,6 +78,11 @@ public final class TransportBinding {
 
         public Builder taskStepFrameBridge(TaskStepFrameBridge taskStepFrameBridge) {
             this.taskStepFrameBridge = taskStepFrameBridge;
+            return this;
+        }
+
+        public Builder workerControlEventPublisher(WorkerControlEventPublisher workerControlEventPublisher) {
+            this.workerControlEventPublisher = workerControlEventPublisher;
             return this;
         }
 

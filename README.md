@@ -24,6 +24,17 @@ Role split:
 
 XA Mass Platform is a general distributed task scheduling platform.
 
+It exists to solve one recurring problem cleanly: dynamically match a batch of structured work items (`TaskMsg`) to a batch of heterogeneous, stateful workers, track each execution result, and converge task-level completion state.
+
+This pattern shows up repeatedly, but existing systems usually optimize only one side of it:
+
+- IM bot platforms need tasks routed to the right bot instance or group-facing executor.
+- crawler platforms need work routed by region, account, or other routing constraints.
+- LLM agent runtimes need event/capability-based dispatch to different agents.
+- phone/RPA systems need online-device matching plus per-item result tracking.
+
+XA Mass is aimed at the shared kernel behind those cases: `stateful worker + capability/routing match + per-item result tracking + task-level convergence`.
+
 - Its core abstraction is simple: assign a batch of work items to a batch of online workers, track each execution result, and converge task-level completion state.
 - The platform is scenario-agnostic. It does not define the business itself; it defines who is online, who can accept work, how work is dispatched, how results are collected, and how task state converges.
 - The stable kernel is `Task`, `TaskMsg`, `TaskMsgAttempt`, assignment, result write-back, audit, and terminal policy.

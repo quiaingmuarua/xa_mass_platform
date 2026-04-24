@@ -1,6 +1,6 @@
 # State Machine Baseline
 
-Last updated: 2026-04-20 (policy interaction guardrail linked; lease watchdog, max runtime, errorCode, expireTaskMessage release fix)
+Last updated: 2026-04-24 (policy interaction guardrail linked; lease watchdog, max runtime, errorCode, expireTaskMessage release fix; TaskMsgAttempt baseline clarified)
 
 This is the short normative baseline for the active mainline.
 If lifecycle semantics change, update this file, trace expectations, and E2E coverage together.

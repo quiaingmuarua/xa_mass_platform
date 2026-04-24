@@ -43,7 +43,9 @@ Working rule:
 ## 2. Platform Definition
 
 - The project is a general distributed task scheduling platform.
+- The core product problem is not "send work over one transport"; it is "match structured work items to heterogeneous, stateful executors, track each item result, and converge task-level state".
 - Its core abstraction is: assign a batch of work items to a batch of online workers, track each execution result, and converge task-level completion state.
+- The kernel value is the combination of `stateful worker + capability/routing match + per-item result tracking + task-level convergence`.
 - The platform is scenario-agnostic. It owns dispatch, result write-back, and task convergence rather than business payload meaning.
 - The long-term stable kernel is `Task / TaskMsg / TaskMsgAttempt / assignment / result / audit / terminal policy`.
 - The platform direction is transport-agnostic: task dispatch, result ingest, and worker system events should remain explicit seams rather than being encoded into one transport shape.
@@ -136,6 +138,7 @@ Current canonical boundaries:
 - `xa-mass-gateway` should be read as the current WebSocket transport adapter, not as the only valid worker runtime path.
 - Read [./GATEWAY_BOUNDARY_BASELINE.md](./GATEWAY_BOUNDARY_BASELINE.md) before changing `xa-mass-gateway` or `xa-mass-transport-api`.
 - Gateway tuple routing such as `MessageType + subMsgType` is a protocol-frame compatibility seam only; do not treat it as the identity of a business or control capability.
+- Gateway runtime wiring is explicit and fixed at construction time; `DispatchRuntimeContext` is not a mutable extension registry.
 - `com.xa.mass.engine` is the active engine path.
 - EventBus mainline has converged onto `com.xa.mass.base.channel.eventbus.core` and `com.xa.mass.base.channel.eventbus.event`.
 - Mainline acceptance is end-to-end integration-test-driven through `xa-mass-dev-app`; unit tests are support coverage, not the primary acceptance gate.
