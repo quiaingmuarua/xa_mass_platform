@@ -1,6 +1,5 @@
 package com.xa.mass.gateway.queue;
 
-import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.xa.mass.base.debug.WorkerControlEventProtocol;
@@ -15,11 +14,11 @@ import org.slf4j.LoggerFactory;
  *
  * <p>This utility should stay limited to wire-shape decoding plus minimal
  * routing/diagnostic metadata extraction. Business/control payload semantics
- * belong in downstream handlers.
+ * belong in downstream handlers, and task payload internals must not be used
+ * as a fallback source of truth for event metadata.
  */
 public class MessageParser {
 
-    public static final MessageParser INSTANCE = new MessageParser();
     private static final Logger logger = LoggerFactory.getLogger(MessageParser.class);
     private final MessageCodec messageCodec;
 
@@ -76,26 +75,16 @@ public class MessageParser {
         }
         JsonObject payloadObject = payload.getAsJsonObject();
 
+        String explicitEventCode = readString(payloadObject, "eventCode");
+        if (explicitEventCode != null) {
+            return explicitEventCode;
+        }
+
         String controlEvent = readString(payloadObject, WorkerControlEventProtocol.EVENT_FIELD);
         if (controlEvent != null) {
             return controlEvent;
         }
-
-        JsonArray steps = payloadObject.has("steps") && payloadObject.get("steps").isJsonArray()
-                ? payloadObject.getAsJsonArray("steps")
-                : null;
-        if (steps == null || steps.size() == 0 || !steps.get(0).isJsonObject()) {
-            return null;
-        }
-        JsonObject firstStep = steps.get(0).getAsJsonObject();
-        JsonObject params = firstStep.has("params") && firstStep.get("params").isJsonObject()
-                ? firstStep.getAsJsonObject("params")
-                : null;
-        if (params == null || !params.has("_sdk") || !params.get("_sdk").isJsonObject()) {
-            return null;
-        }
-        JsonObject sdkMetadata = params.getAsJsonObject("_sdk");
-        return readString(sdkMetadata, "eventCode");
+        return null;
     }
 
     private static String readString(JsonObject object, String field) {

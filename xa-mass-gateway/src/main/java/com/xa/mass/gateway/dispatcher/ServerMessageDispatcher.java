@@ -3,7 +3,6 @@ package com.xa.mass.gateway.dispatcher;
 import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
 import com.xa.mass.gateway.dispatcher.middleware.EnvelopeMiddleware;
 import com.xa.mass.gateway.dispatcher.middleware.ExceptionMiddleware;
-import com.xa.mass.gateway.dispatcher.middleware.MiddlewareRegistry;
 import com.xa.mass.gateway.queue.Envelope;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -92,7 +91,7 @@ public class ServerMessageDispatcher {
                 envelope = context.getMessageTransporter().receiveInput(15, TimeUnit.SECONDS);
                 if (envelope != null) {
                     logger.debug("processInputQueueLoop receive envelope {}", envelope);
-                    runMiddlewareChain(MiddlewareRegistry.instance.getInputMiddlewares(), envelope);
+                    runMiddlewareChain(context.getMiddlewareRegistry().getInputMiddlewares(), envelope);
                 }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
@@ -134,7 +133,7 @@ public class ServerMessageDispatcher {
         ExecutorService laneExecutor = resolveOutputLaneExecutor(envelope);
         laneExecutor.submit(() -> {
             try {
-                runMiddlewareChain(MiddlewareRegistry.instance.getOutputMiddlewares(), envelope);
+                runMiddlewareChain(context.getMiddlewareRegistry().getOutputMiddlewares(), envelope);
             } catch (Exception e) {
                 runExceptionMiddlewareChain(envelope, e);
             }
@@ -168,7 +167,7 @@ public class ServerMessageDispatcher {
     }
 
     private void runExceptionMiddlewareChain(Envelope envelope, Exception e) {
-        for (ExceptionMiddleware middleware : MiddlewareRegistry.instance.getExceptionMiddlewareList()) {
+        for (ExceptionMiddleware middleware : context.getMiddlewareRegistry().getExceptionMiddlewareList()) {
             if (!middleware.handleException(envelope, context, e)) {
                 break;
             }

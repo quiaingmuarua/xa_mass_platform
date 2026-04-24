@@ -8,7 +8,7 @@ class MiddlewareRegistryTest {
 
     @Test
     void registryKeepsFixedMainlineMiddlewareShape() {
-        MiddlewareRegistry registry = MiddlewareRegistry.instance;
+        MiddlewareRegistry registry = new MiddlewareRegistry();
 
         assertEquals(1, registry.getInputMiddlewares().size());
         assertEquals(1, registry.getOutputMiddlewares().size());

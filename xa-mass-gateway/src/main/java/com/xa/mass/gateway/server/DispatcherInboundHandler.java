@@ -16,9 +16,11 @@ import java.util.Map;
 public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWebSocketFrame> {
     private static final Logger logger = LoggerFactory.getLogger(DispatcherInboundHandler.class);
     private final DispatchRuntimeContext dispatcherContext;
+    private final MessageParser messageParser;
 
     public DispatcherInboundHandler(DispatchRuntimeContext dispatcherContext) {
         this.dispatcherContext = dispatcherContext;
+        this.messageParser = dispatcherContext.getMessageParser();
     }
 
     @Override
@@ -29,8 +31,8 @@ public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWe
                 sendError(ctx, "INVALID_FORMAT", "Message must be a JSON object");
                 return;
             }
-            MassMessage massMessage = MessageParser.INSTANCE.tryDecode(raw);
-            if (massMessage == null || !MessageParser.INSTANCE.isValid(massMessage)) {
+            MassMessage massMessage = messageParser.tryDecode(raw);
+            if (massMessage == null || !messageParser.isValid(massMessage)) {
                 logger.error("Message parse/validate failed");
                 sendError(ctx, "PARSE_FAILED", "Message missing context info");
                 return;
@@ -48,7 +50,7 @@ public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWe
                 sendError(ctx, "MISSING_FIELDS", "workerId/msgId are required");
                 return;
             }
-            Envelope envelope = MessageParser.INSTANCE.toStoredMessage(raw, massMessage);
+            Envelope envelope = messageParser.toStoredMessage(raw, massMessage);
             org.slf4j.MDC.put("event", "channelRead0");
             org.slf4j.MDC.put("workerId", envelope.getWorkerId());
             org.slf4j.MDC.put("connRole", envelope.getConnRole());

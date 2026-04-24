@@ -37,7 +37,7 @@ class ProcessEnvelopeMiddlewareTest {
         codec = new GsonMessageCodec();
         handlerRegistry = new MessageHandlerRegistry();
         context = mockContext(codec, handlerRegistry);
-        middleware = MiddlewareRegistry.processEnvelopeMiddleware();
+        middleware = new MiddlewareRegistry().getInputMiddlewares().get(0);
         WorkerDebugMessageStore.clearAll();
     }
 
@@ -74,7 +74,7 @@ class ProcessEnvelopeMiddlewareTest {
 
     @Test
     void noHandlerDefaultsToNotFound() {
-        MassMessage msg = message("proj", MessageType.STATUS, "unknown");
+        MassMessage msg = message("proj", MessageType.CONTROL, "unknown");
         Envelope envelope = envelope(codec.encode(msg));
 
         boolean result = middleware.handle(envelope, context);
@@ -141,7 +141,7 @@ class ProcessEnvelopeMiddlewareTest {
 
     @Test
     void sendEnvelopeMiddlewareMarksDebugRecordFailedWhenEndpointUnavailable() {
-        EnvelopeMiddleware sendMiddleware = MiddlewareRegistry.sendEnvelopeMiddleware();
+        EnvelopeMiddleware sendMiddleware = new MiddlewareRegistry().getOutputMiddlewares().get(0);
         DispatchRuntimeContext sendContext = mockContext(codec, handlerRegistry);
         when(sendContext.getSessionManager().sendMessage("worker-1", SessionRoles.TASK_MESSAGES, "{\"hello\":\"world\"}"))
                 .thenReturn(false);

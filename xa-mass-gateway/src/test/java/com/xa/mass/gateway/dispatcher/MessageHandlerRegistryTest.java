@@ -59,14 +59,14 @@ class MessageHandlerRegistryTest {
     @Test
     void rejectsUnsupportedTupleRegistration() {
         IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
-                () -> registry.register(MessageType.STATUS, "unknown", msg -> Collections.emptyList()));
+                () -> registry.register(MessageType.CONTROL, "unknown", msg -> Collections.emptyList()));
 
         assertTrue(error.getMessage().contains("TASK/step"));
     }
 
     @Test
     void defaultNoHandlerResultIsNotFound() {
-        ResolutionResult result = registry.resolve(MessageType.STATUS, "unknownSub");
+        ResolutionResult result = registry.resolve(MessageType.CONTROL, "unknownSub");
 
         assertTrue(result.isNotFound());
         assertFalse(result.isFound());

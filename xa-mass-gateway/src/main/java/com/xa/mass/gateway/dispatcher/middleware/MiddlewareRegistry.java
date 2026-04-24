@@ -16,13 +16,12 @@ import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 public class MiddlewareRegistry {
-    public static final MiddlewareRegistry instance = new MiddlewareRegistry();
     private static final Logger logger = LoggerFactory.getLogger(MiddlewareRegistry.class);
     private final EnvelopeMiddleware inputMiddleware = processEnvelopeMiddleware();
     private final EnvelopeMiddleware outputMiddleware = sendEnvelopeMiddleware();
     private final CopyOnWriteArrayList<ExceptionMiddleware> exceptionMiddlewareList = new CopyOnWriteArrayList<>();
 
-    private MiddlewareRegistry() {
+    public MiddlewareRegistry() {
         resetExceptionMiddlewares();
     }
 

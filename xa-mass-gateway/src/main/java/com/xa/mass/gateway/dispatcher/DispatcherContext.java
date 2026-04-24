@@ -3,7 +3,9 @@ package com.xa.mass.gateway.dispatcher;
 import com.google.gson.Gson;
 import com.xa.mass.base.channel.tranporter.MessageTransporter;
 import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
+import com.xa.mass.gateway.dispatcher.middleware.MiddlewareRegistry;
 import com.xa.mass.gateway.queue.MessageCodec;
+import com.xa.mass.gateway.queue.MessageParser;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 
 /**
@@ -13,6 +15,8 @@ public class DispatcherContext implements DispatchRuntimeContext {
     private final MessageTransporter messageTransporter;
     private final WorkerEndpointRegistry sessionManager;
     private final MessageCodec messageCodec;
+    private final MessageParser messageParser;
+    private final MiddlewareRegistry middlewareRegistry;
     private MessageHandlerRegistry messageHandlerRegistry;
     // ... 可扩展其它只读配置
 
@@ -24,9 +28,21 @@ public class DispatcherContext implements DispatchRuntimeContext {
             WorkerEndpointRegistry sessionManager,
             MessageCodec messageCodec
     ) {
+        this(messageTransporter, sessionManager, messageCodec, new MessageParser(messageCodec), new MiddlewareRegistry());
+    }
+
+    public DispatcherContext(
+            MessageTransporter messageTransporter,
+            WorkerEndpointRegistry sessionManager,
+            MessageCodec messageCodec,
+            MessageParser messageParser,
+            MiddlewareRegistry middlewareRegistry
+    ) {
         this.messageTransporter = messageTransporter;
         this.sessionManager = sessionManager;
         this.messageCodec = messageCodec;
+        this.messageParser = messageParser;
+        this.middlewareRegistry = middlewareRegistry;
     }
 
     /**
@@ -37,9 +53,11 @@ public class DispatcherContext implements DispatchRuntimeContext {
             WorkerEndpointRegistry sessionManager,
             Gson gson
     ) {
-        this.messageTransporter = messageTransporter;
-        this.sessionManager = sessionManager;
-        this.messageCodec = new com.xa.mass.gateway.queue.GsonMessageCodec(gson);
+        this(
+                messageTransporter,
+                sessionManager,
+                new com.xa.mass.gateway.queue.GsonMessageCodec(gson)
+        );
     }
 
     @Override
@@ -53,8 +71,18 @@ public class DispatcherContext implements DispatchRuntimeContext {
     }
 
     @Override
+    public MessageParser getMessageParser() {
+        return messageParser;
+    }
+
+    @Override
     public MessageTransporter getMessageTransporter() {
         return messageTransporter;
+    }
+
+    @Override
+    public MiddlewareRegistry getMiddlewareRegistry() {
+        return middlewareRegistry;
     }
 
     @Override
