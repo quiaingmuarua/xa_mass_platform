@@ -176,7 +176,6 @@ class GatewayTaskResultHandlerTest {
         MessageContext context = new MessageContext();
         context.setTaskId(task.getTid());
         context.setWorkerId("worker-1");
-        context.setConnRole(GatewayTaskMsgPublisher.DEFAULT_CONN_ROLE);
         msg.setContext(context);
         java.util.LinkedHashMap<String, Object> payload = new java.util.LinkedHashMap<>();
         payload.put("status", status);

@@ -22,18 +22,7 @@ public final class WorkerDebugMessageStore {
 
     public static WorkerDebugMessageRecord recordOutbound(String workerId,
                                                           String project,
-                                                          String msgType,
-                                                          String subMsgType,
-                                                          String messageId,
-                                                          String payloadJson,
-                                                          String rawJson,
-                                                          String detail) {
-        return recordOutbound(workerId, project, null, msgType, subMsgType, messageId, payloadJson, rawJson, detail);
-    }
-
-    public static WorkerDebugMessageRecord recordOutbound(String workerId,
-                                                          String project,
-                                                          String event,
+                                                          String eventCode,
                                                           String msgType,
                                                           String subMsgType,
                                                           String messageId,
@@ -46,7 +35,7 @@ public final class WorkerDebugMessageStore {
         record.setWorkerId(workerId);
         record.setDirection("OUTBOUND");
         record.setProject(project);
-        record.setEvent(normalize(event));
+        record.setEvent(normalize(eventCode));
         record.setMsgType(msgType);
         record.setSubMsgType(subMsgType);
         record.setStatus("QUEUED");
@@ -62,19 +51,7 @@ public final class WorkerDebugMessageStore {
 
     public static WorkerDebugMessageRecord recordInbound(String workerId,
                                                          String project,
-                                                         String msgType,
-                                                         String subMsgType,
-                                                         String messageId,
-                                                         String replyToMessageId,
-                                                         String payloadJson,
-                                                         String rawJson,
-                                                         String detail) {
-        return recordInbound(workerId, project, null, msgType, subMsgType, messageId, replyToMessageId, payloadJson, rawJson, detail);
-    }
-
-    public static WorkerDebugMessageRecord recordInbound(String workerId,
-                                                         String project,
-                                                         String event,
+                                                         String eventCode,
                                                          String msgType,
                                                          String subMsgType,
                                                          String messageId,
@@ -89,7 +66,7 @@ public final class WorkerDebugMessageStore {
         record.setWorkerId(workerId);
         record.setDirection("INBOUND");
         record.setProject(project);
-        record.setEvent(resolveInboundEvent(event, replyToMessageId));
+        record.setEvent(resolveInboundEvent(eventCode, replyToMessageId));
         record.setMsgType(msgType);
         record.setSubMsgType(subMsgType);
         record.setStatus("RECEIVED");
@@ -180,8 +157,8 @@ public final class WorkerDebugMessageStore {
         }
     }
 
-    private static String resolveInboundEvent(String explicitEvent, String replyToMessageId) {
-        String normalizedExplicit = normalize(explicitEvent);
+    private static String resolveInboundEvent(String explicitEventCode, String replyToMessageId) {
+        String normalizedExplicit = normalize(explicitEventCode);
         if (normalizedExplicit != null) {
             return normalizedExplicit;
         }

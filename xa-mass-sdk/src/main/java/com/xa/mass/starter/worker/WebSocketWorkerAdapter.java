@@ -7,7 +7,6 @@ import com.xa.mass.engine.worker.WorkerAdapter;
 import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
 import com.xa.mass.gateway.model.massMessage.MassMessage;
 import com.xa.mass.gateway.queue.Envelope;
-import com.xa.mass.transport.WorkerEndpointRoles;
 import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.channel.TaskDispatchChannel;
 import org.slf4j.Logger;
@@ -31,7 +30,6 @@ import com.xa.mass.transport.model.TaskDispatchItem;
 public class WebSocketWorkerAdapter implements WorkerAdapter, TaskDispatchChannel {
 
     public static final String PROTOCOL = "websocket";
-    public static final String DEFAULT_CONN_ROLE = WorkerEndpointRoles.TASK_DISPATCH;
 
     private static final Logger logger = LoggerFactory.getLogger(WebSocketWorkerAdapter.class);
 
@@ -71,11 +69,10 @@ public class WebSocketWorkerAdapter implements WorkerAdapter, TaskDispatchChanne
         String eventCode = TaskSharedConfig.sdkEventCode(task);
         for (TaskMsg taskMsg : taskMsgs) {
             TaskDispatchItem dispatchItem = TaskDispatchItem.from(task, taskMsg);
-            MassMessage message = messageMapper.toDispatchMessage(dispatchItem, DEFAULT_CONN_ROLE);
+            MassMessage message = messageMapper.toDispatchMessage(dispatchItem);
             String json = dispatchRuntimeContext.getMessageCodec().encode(message);
             Envelope envelope = Envelope.builder()
                     .workerId(taskMsg.getLatestAttemptWorkerId())
-                    .connRole(DEFAULT_CONN_ROLE)
                     .eventCode(eventCode)
                     .project(task.getProject())
                     .traceId(taskMsg.getMsgId())

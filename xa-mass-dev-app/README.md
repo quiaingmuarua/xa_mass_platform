@@ -137,10 +137,8 @@ Example request body:
 {
   "workerId": "it-worker-0",
   "project": "demoApp",
-  "msgType": "CONTROL",
-  "subMsgType": "manual-chat",
+  "event": "mock.delay.response",
   "payload": {
-    "event": "mock.delay.response",
     "millis": 500
   }
 }

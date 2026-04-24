@@ -26,14 +26,14 @@ public final class WebSocketTaskMessageMapper {
 
     private final Gson gson = new Gson();
 
-    public MassMessage toDispatchMessage(TaskDispatchItem item, String connRole) {
+    public MassMessage toDispatchMessage(TaskDispatchItem item) {
         MassMessage message = new MassMessage();
         message.setMsgId(item.getMsgId());
         message.setMsgType(MessageType.TASK);
         message.setSubMsgType("step");
         message.setFrom(MessageDirection.SERVER);
         message.setProject(item.getProject());
-        message.setContext(buildContext(item, connRole));
+        message.setContext(buildContext(item));
         message.setPayload(gson.toJsonTree(buildPayload(item)));
         return message;
     }
@@ -93,10 +93,9 @@ public final class WebSocketTaskMessageMapper {
         return ack;
     }
 
-    private MessageContext buildContext(TaskDispatchItem item, String connRole) {
+    private MessageContext buildContext(TaskDispatchItem item) {
         MessageContext context = new MessageContext();
         context.setWorkerId(item.getWorkerId());
-        context.setConnRole(connRole);
         context.setTaskId(item.getTaskId());
         context.setRetryCount(item.getRetryCount());
         return context;

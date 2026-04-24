@@ -55,8 +55,7 @@ public class MessageParser {
         if (msg == null) return false;
         MessageContext ctx = msg.getContext();
         return ctx != null &&
-                ctx.getWorkerId() != null &&
-                ctx.getConnRole() != null;
+                ctx.getWorkerId() != null;
     }
 
     /**

@@ -14,9 +14,9 @@ public interface DebugOperations {
      * Sends a worker debug/control event through the current transport adapter.
      *
      * <p>The supplied {@link EventRequest} remains the canonical control-plane
-     * capability shape. Returned {@code msgType}/{@code subMsgType} values are
-     * transport diagnostics only and must not be treated as the capability
-     * identifier; that identity remains on {@code request.event}.
+     * capability shape. The returned result should remain event-first and must
+     * not expose transport tuple fields as if they were the control capability
+     * identity.
      */
     Map<String, Object> sendWorkerEvent(String workerId,
                                         EventRequest request,

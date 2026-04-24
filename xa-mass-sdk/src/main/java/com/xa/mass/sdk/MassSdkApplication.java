@@ -1303,28 +1303,19 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
             principalPayload.put(WorkerControlEventProtocol.USER_ID_FIELD, principal.getUserId());
         }
         eventPayload.put(WorkerControlEventProtocol.PRINCIPAL_FIELD, principalPayload);
-        Map<String, Object> dispatchResult = enqueueWorkerControlEvent(
+        return enqueueWorkerControlEvent(
                 workerId,
                 firstNonBlank(request.getProject(), null),
                 request.getEvent().value(),
+                eventRequestId,
                 eventPayload
         );
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("messageId", dispatchResult.get("messageId"));
-        result.put("workerId", dispatchResult.get("workerId"));
-        result.put("project", dispatchResult.get("project"));
-        result.put(WorkerControlEventProtocol.EVENT_FIELD, request.getEvent().value());
-        result.put(WorkerControlEventProtocol.REQUEST_ID_FIELD, eventRequestId);
-        // msgType/subMsgType remain useful for transport diagnostics, but the
-        // control capability identity lives on the global event code above.
-        result.put("msgType", dispatchResult.get("msgType"));
-        result.put("subMsgType", dispatchResult.get("subMsgType"));
-        return result;
     }
 
     private Map<String, Object> enqueueWorkerControlEvent(String workerId,
                                                           String project,
                                                           String eventCode,
+                                                          String eventRequestId,
                                                           Object payload) {
         Worker worker = requireStartedWorkerManager().getWorker(workerId);
         if (worker == null) {
@@ -1386,8 +1377,8 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
                 "messageId", messageId,
                 "workerId", workerId,
                 "project", resolvedProject,
-                "msgType", MessageType.CONTROL.name(),
-                "subMsgType", resolvedSubMsgType
+                WorkerControlEventProtocol.EVENT_FIELD, eventCode,
+                WorkerControlEventProtocol.REQUEST_ID_FIELD, eventRequestId
         );
     }
 

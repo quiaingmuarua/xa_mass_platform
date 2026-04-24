@@ -133,6 +133,27 @@ class DispatcherInboundHandlerTest {
     }
 
     @Test
+    void missingConnRoleDefaultsToTaskDispatchLane() throws Exception {
+        String heartbeatJson = """
+                {
+                  "msgId": "ping-002",
+                  "msgType": "PING",
+                  "subMsgType": "heartbeat",
+                  "context": {
+                    "workerId": "worker-2"
+                  }
+                }
+                """;
+
+        handler.channelRead0(ctx, frame(heartbeatJson));
+
+        assertNull(sentFrame.get(), "Missing connRole should no longer be rejected at ingress");
+        verify(transporter).sendInput(any(Envelope.class));
+        assertNotNull(sessionManager.getChannelContext("worker-2", SessionRoles.TASK_MESSAGES),
+                "Ingress should register the worker on the default task-dispatch lane");
+    }
+
+    @Test
     void taskStepWithoutProjectStillEnqueuesForDownstreamHandlerValidation() throws Exception {
         String taskJson = """
                 {

@@ -12,7 +12,6 @@ public class MassServerBuilder {
     private int port = 8080;
     private String websocketPath = "/ws";
     private DispatchRuntimeContext dispatcherContext;
-    private boolean registerDefaults = true;
 
     private MassServerBuilder() {
     }
@@ -80,14 +79,6 @@ public class MassServerBuilder {
         middlewareRegistry.setOutputEnabled(priority, enabled);
         return this;
     }
-
-
-    public MassServerBuilder withDefaultMiddlewares(boolean enable) {
-        this.registerDefaults = enable;
-        return this;
-    }
-
-
     public MassServerBuilder removeInputMiddleware(int priority) {
         middlewareRegistry.unregisterInput(priority);
         return this;

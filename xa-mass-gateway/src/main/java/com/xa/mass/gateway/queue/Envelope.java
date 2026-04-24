@@ -1,5 +1,7 @@
 package com.xa.mass.gateway.queue;
 
+import com.xa.mass.transport.WorkerEndpointRoles;
+
 public class Envelope {
     private String rawJson;     // 原始 JSON 消息
     private String workerId;
@@ -15,7 +17,7 @@ public class Envelope {
     private Envelope(Builder builder) {
         this.rawJson = builder.rawJson;
         this.workerId = builder.workerId;
-        this.connRole = builder.connRole;
+        this.connRole = normalizeConnRole(builder.connRole);
         this.eventCode = builder.eventCode;
         this.traceId = builder.traceId;
         this.receivedAt = builder.receivedAt;
@@ -44,11 +46,11 @@ public class Envelope {
     }
 
     public String getConnRole() {
-        return connRole;
+        return normalizeConnRole(connRole);
     }
 
     public void setConnRole(String connRole) {
-        this.connRole = connRole;
+        this.connRole = normalizeConnRole(connRole);
     }
 
     public String getEventCode() {
@@ -101,6 +103,13 @@ public class Envelope {
             return null;
         }
         return project.trim();
+    }
+
+    private static String normalizeConnRole(String connRole) {
+        if (connRole == null || connRole.isBlank()) {
+            return WorkerEndpointRoles.TASK_DISPATCH;
+        }
+        return connRole.trim();
     }
 
     // ----------- Builder -----------

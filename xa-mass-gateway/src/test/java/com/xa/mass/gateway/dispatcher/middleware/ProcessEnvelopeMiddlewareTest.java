@@ -158,6 +158,7 @@ class ProcessEnvelopeMiddlewareTest {
         WorkerDebugMessageStore.recordOutbound(
                 "worker-1",
                 "demoApp",
+                "mock.state.get",
                 "CONTROL",
                 "event",
                 "trace-1",

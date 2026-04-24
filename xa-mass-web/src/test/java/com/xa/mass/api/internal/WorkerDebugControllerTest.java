@@ -73,9 +73,7 @@ class WorkerDebugControllerTest {
                         "messageId", "msg-1",
                         "workerId", "worker-1",
                         "event", "mock.state.get",
-                        "requestId", "req-1",
-                        "msgType", "CONTROL",
-                        "subMsgType", "event"
+                        "requestId", "req-1"
                 ));
 
         mockMvc.perform(post("/status/workers/send-event")
@@ -89,13 +87,11 @@ class WorkerDebugControllerTest {
                                   "headers":{"mode":"probe"},
                                   "payload":{"verbose":true},
                                   "principal":{"clientId":"ops-console","userId":"operator-1"}
-                                }
+                }
                                 """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
-                .andExpect(jsonPath("$.data.event").value("mock.state.get"))
-                .andExpect(jsonPath("$.data.msgType").value("CONTROL"))
-                .andExpect(jsonPath("$.data.subMsgType").value("event"));
+                .andExpect(jsonPath("$.data.event").value("mock.state.get"));
 
         ArgumentCaptor<com.xa.mass.sdk.event.EventRequest> requestCaptor =
                 ArgumentCaptor.forClass(com.xa.mass.sdk.event.EventRequest.class);

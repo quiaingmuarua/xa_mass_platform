@@ -42,12 +42,10 @@ public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWe
             }
 
             String workerId = massMessage.getContext().getWorkerId();
-            String connRole = massMessage.getContext().getConnRole();
             String msgId = massMessage.getMsgId();
-            if (workerId == null || connRole == null || msgId == null) {
-                logger.error("workerId/connRole/msgId is null: workerId={}, connRole={}, msgId={}",
-                        workerId, connRole, msgId);
-                sendError(ctx, "MISSING_FIELDS", "workerId/connRole/msgId are required");
+            if (workerId == null || msgId == null) {
+                logger.error("workerId/msgId is null: workerId={}, msgId={}", workerId, msgId);
+                sendError(ctx, "MISSING_FIELDS", "workerId/msgId are required");
                 return;
             }
             Envelope envelope = MessageParser.INSTANCE.toStoredMessage(raw, massMessage);
@@ -68,7 +66,7 @@ public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWe
 
             dispatcherContext.getMessageTransporter().sendInput(envelope);
             if (dispatcherContext.getSessionManager() instanceof ServerSessionManager sessionManager) {
-                sessionManager.addSession(workerId, connRole, ctx.channel(), ctx);
+                sessionManager.addSession(workerId, envelope.getConnRole(), ctx.channel(), ctx);
             }
             logger.debug("Input queue size={}", dispatcherContext.getMessageTransporter().inputQueueSize());
 

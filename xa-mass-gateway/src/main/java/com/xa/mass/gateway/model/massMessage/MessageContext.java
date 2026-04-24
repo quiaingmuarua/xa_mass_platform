@@ -1,8 +1,10 @@
 package com.xa.mass.gateway.model.massMessage;
 
+import com.xa.mass.transport.WorkerEndpointRoles;
+
 public class MessageContext {
     private String workerId;     // Worker ID
-    private String connRole;     // 连接角色（如 "app", "controller", "docker"）
+    private String connRole;     // transport lane name; defaults to task_messages on the current adapter
     private String sessionId;    // 当前连接唯一标识（用于重连判断）
     private String tid;
     private Integer retryCount;
@@ -18,11 +20,11 @@ public class MessageContext {
     }
 
     public String getConnRole() {
-        return connRole;
+        return normalizeConnRole(connRole);
     }
 
     public void setConnRole(String connRole) {
-        this.connRole = connRole;
+        this.connRole = normalizeConnRole(connRole);
     }
 
     public String getSessionId() {
@@ -97,7 +99,7 @@ public class MessageContext {
     public String toString() {
         return "MessageContext{" +
                 "workerId='" + workerId + '\'' +
-                ", connRole='" + connRole + '\'' +
+                ", connRole='" + getConnRole() + '\'' +
                 ", sessionId='" + sessionId + '\'' +
                 ", tid='" + tid + '\'' +
                 ", retryCount=" + retryCount +
@@ -112,7 +114,7 @@ public class MessageContext {
         if (o == null || getClass() != o.getClass()) return false;
         MessageContext that = (MessageContext) o;
         return (workerId != null ? workerId.equals(that.workerId) : that.workerId == null) &&
-                (connRole != null ? connRole.equals(that.connRole) : that.connRole == null) &&
+                getConnRole().equals(that.getConnRole()) &&
                 (sessionId != null ? sessionId.equals(that.sessionId) : that.sessionId == null) &&
                 (tid != null ? tid.equals(that.tid) : that.tid == null) &&
                 (retryCount != null ? retryCount.equals(that.retryCount) : that.retryCount == null) &&
@@ -123,12 +125,19 @@ public class MessageContext {
     @Override
     public int hashCode() {
         int result = workerId != null ? workerId.hashCode() : 0;
-        result = 31 * result + (connRole != null ? connRole.hashCode() : 0);
+        result = 31 * result + getConnRole().hashCode();
         result = 31 * result + (sessionId != null ? sessionId.hashCode() : 0);
         result = 31 * result + (tid != null ? tid.hashCode() : 0);
         result = 31 * result + (retryCount != null ? retryCount.hashCode() : 0);
         result = 31 * result + (lastAckMsgId != null ? lastAckMsgId.hashCode() : 0);
         result = 31 * result + (curStepId != null ? curStepId.hashCode() : 0);
         return result;
+    }
+
+    private static String normalizeConnRole(String connRole) {
+        if (connRole == null || connRole.isBlank()) {
+            return WorkerEndpointRoles.TASK_DISPATCH;
+        }
+        return connRole.trim();
     }
 }

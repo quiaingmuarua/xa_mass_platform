@@ -9,6 +9,7 @@ import com.xa.mass.gateway.model.massMessage.MassMessage;
 import com.xa.mass.gateway.model.payload.TaskPayload;
 import com.xa.mass.gateway.queue.Envelope;
 import com.xa.mass.gateway.queue.GsonMessageCodec;
+import com.xa.mass.transport.WorkerEndpointRoles;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
@@ -41,7 +42,7 @@ class GatewayTaskMsgPublisherTest {
 
         Envelope envelope = captor.getValue();
         assertEquals("worker-1", envelope.getWorkerId());
-        assertEquals(GatewayTaskMsgPublisher.DEFAULT_CONN_ROLE, envelope.getConnRole());
+        assertEquals(WorkerEndpointRoles.TASK_DISPATCH, envelope.getConnRole());
         assertEquals("crawler.fetch-page", envelope.getEventCode());
         assertEquals("demoApp", envelope.getProject());
         assertEquals("msg-1", envelope.getTraceId());
@@ -53,7 +54,7 @@ class GatewayTaskMsgPublisherTest {
         assertEquals("step", message.getSubMsgType());
         assertEquals(MessageDirection.SERVER, message.getFrom());
         assertEquals("worker-1", message.getContext().getWorkerId());
-        assertEquals(GatewayTaskMsgPublisher.DEFAULT_CONN_ROLE, message.getContext().getConnRole());
+        assertEquals(WorkerEndpointRoles.TASK_DISPATCH, message.getContext().getConnRole());
         assertEquals("task-1", message.getContext().getTaskId());
 
         TaskPayload payload = new com.google.gson.Gson().fromJson(message.getPayload(), TaskPayload.class);
