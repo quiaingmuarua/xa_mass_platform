@@ -1,7 +1,6 @@
 package com.xa.mass.starter.transport;
 
 import com.xa.mass.engine.worker.WorkerAdapter;
-import com.xa.mass.gateway.dispatcher.port.TaskStepFrameBridge;
 import com.xa.mass.transport.channel.TaskPullChannel;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
 
@@ -9,21 +8,19 @@ import java.util.Objects;
 
 /**
  * Runtime binding for a concrete worker transport adapter plus any optional
- * pull/result channels and any explicit gateway adapter bridges it contributes.
+ * transport-neutral pull/result channels and worker-facing control-event publish support.
  */
 public final class TransportBinding {
 
     private final WorkerAdapter workerAdapter;
     private final TaskPullChannel taskPullChannel;
     private final TaskResultIngestChannel taskResultIngestChannel;
-    private final TaskStepFrameBridge taskStepFrameBridge;
     private final WorkerControlEventPublisher workerControlEventPublisher;
 
     private TransportBinding(Builder builder) {
         this.workerAdapter = Objects.requireNonNull(builder.workerAdapter, "workerAdapter");
         this.taskPullChannel = builder.taskPullChannel;
         this.taskResultIngestChannel = builder.taskResultIngestChannel;
-        this.taskStepFrameBridge = builder.taskStepFrameBridge;
         this.workerControlEventPublisher = builder.workerControlEventPublisher;
     }
 
@@ -47,10 +44,6 @@ public final class TransportBinding {
         return taskResultIngestChannel;
     }
 
-    public TaskStepFrameBridge getTaskStepFrameBridge() {
-        return taskStepFrameBridge;
-    }
-
     public WorkerControlEventPublisher getWorkerControlEventPublisher() {
         return workerControlEventPublisher;
     }
@@ -59,7 +52,6 @@ public final class TransportBinding {
         private final WorkerAdapter workerAdapter;
         private TaskPullChannel taskPullChannel;
         private TaskResultIngestChannel taskResultIngestChannel;
-        private TaskStepFrameBridge taskStepFrameBridge;
         private WorkerControlEventPublisher workerControlEventPublisher;
 
         private Builder(WorkerAdapter workerAdapter) {
@@ -73,11 +65,6 @@ public final class TransportBinding {
 
         public Builder taskResultIngestChannel(TaskResultIngestChannel taskResultIngestChannel) {
             this.taskResultIngestChannel = taskResultIngestChannel;
-            return this;
-        }
-
-        public Builder taskStepFrameBridge(TaskStepFrameBridge taskStepFrameBridge) {
-            this.taskStepFrameBridge = taskStepFrameBridge;
             return this;
         }
 

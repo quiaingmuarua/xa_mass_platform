@@ -1,6 +1,5 @@
 package com.xa.mass.starter.transport;
 
-import com.xa.mass.starter.GatewayTaskResultHandler;
 import com.xa.mass.starter.worker.PollingWorkerAdapter;
 import com.xa.mass.starter.worker.WebSocketWorkerControlEventPublisher;
 import com.xa.mass.starter.worker.WebSocketWorkerAdapter;
@@ -37,12 +36,7 @@ public class DefaultWorkerTransportRuntimeFactory implements WorkerTransportRunt
                     context.getMessageTransporter(),
                     context.getMessageCodec()
             );
-            GatewayTaskResultHandler taskResultHandler = new GatewayTaskResultHandler(
-                    context.getTaskManager()
-            );
             bindings.add(TransportBinding.builder(webSocketAdapter)
-                    .taskResultIngestChannel(taskResultHandler)
-                    .taskStepFrameBridge(taskResultHandler)
                     .workerControlEventPublisher(new WebSocketWorkerControlEventPublisher(
                             context.getMessageTransporter(),
                             context.getEndpointRegistry(),

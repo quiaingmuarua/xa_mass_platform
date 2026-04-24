@@ -90,14 +90,14 @@ Current canonical boundaries:
   - `EventDefinition.code` is globally unique capability identity
   - engine DTOs are internal conversion targets, not public SDK surface
 - gateway transport boundary
-  - canonical queue/transport wrapper: `com.xa.mass.gateway.queue.Envelope`
-  - `Envelope` owns delivery metadata such as `rawJson`, queue target, and trace metadata
-- gateway protocol boundary
-  - canonical protocol frame: `com.xa.mass.gateway.model.massMessage.MassMessage`
-  - canonical protocol header companion: `MessageContext`
+  - inbound mainline: `raw json + connection facts -> canonical seam`
+  - outbound mainline: `canonical seam + explicit addressability -> raw json`
+  - only retained gateway-local delivery record: `com.xa.mass.gateway.queue.OutboundDelivery`
+  - `workerId + connRole` is transport addressability only; it is not worker capability or lifecycle truth
+- gateway compatibility boundary
+  - `TASK/step`, `CONTROL/event`, `PING/heartbeat`, and `PONG/heartbeat` are WebSocket compatibility tuple shells only
   - `msgType + subMsgType` classifies a wire frame only; it is not business/control capability identity
-- protocol payload helper boundary
-  - `MessageAckPayload` is only for transport/protocol acknowledgement, not a general response model
+  - `com.xa.mass.gateway.queue.MessageCodec` and `GatewayFrameRouter` remain adapter-local compatibility helpers, not platform contracts
 
 ## 5. Architectural Guardrails
 
@@ -130,7 +130,7 @@ Current canonical boundaries:
 - `xa-mass-gateway` should be read as the current WebSocket transport adapter, not as the only valid worker runtime path.
 - Read [./GATEWAY_BOUNDARY_BASELINE.md](./GATEWAY_BOUNDARY_BASELINE.md) before changing `xa-mass-gateway` or `xa-mass-transport-api`.
 - Gateway tuple routing such as `MessageType + subMsgType` is a protocol-frame compatibility seam only; do not treat it as the identity of a business or control capability.
-- Gateway runtime wiring is explicit and fixed at construction time; `DispatchRuntimeContext` is not a mutable extension registry.
+- Gateway runtime wiring is configured as a fixed pre-start snapshot; `DispatchRuntimeContext` is not a mutable extension registry.
 - `com.xa.mass.engine` is the active engine path.
 - EventBus mainline has converged onto `com.xa.mass.base.channel.eventbus.core` and `com.xa.mass.base.channel.eventbus.event`.
 - Mainline acceptance is end-to-end integration-test-driven through `xa-mass-dev-app`; unit tests are support coverage, not the primary acceptance gate.

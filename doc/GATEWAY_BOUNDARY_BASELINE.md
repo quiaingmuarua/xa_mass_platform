@@ -199,6 +199,7 @@ Engine/runtime decides eligibility.
 Rules:
 
 - construct gateway frame router and explicit bridge ports before starting the adapter
+- `MassApplication.configureGatewayRuntime(...)` is the pre-start wiring seam for gateway-local bridge ports; deprecated late setters are compatibility only
 - resolve transport-contributed bridge ports during runtime assembly, then inject them once
 - do not grow post-construction `setHandler(...)` or `registerRoute(...)` seams on gateway runtime context
 - if a new adapter path needs another port, add an explicit field or constructor dependency instead of a late-bound generic registry
@@ -226,10 +227,12 @@ Those belong in engine/runtime trace.
 
 These seams are adapter-local, not platform truth:
 
-- `MassMessage` as the current WebSocket frame DTO
+- raw inbound JSON plus connection facts
+- raw outbound JSON plus explicit transport addressability
+- `OutboundDelivery` as the current minimal outbound delivery record
 - tuple routing such as `TASK/step` and `CONTROL/event`
 - gateway/result bridge code that converts frames into transport-neutral reports
-- adapter-level metadata extraction such as `Envelope.eventCode` for diagnostics
+- adapter-level metadata extraction such as canonical `eventCode` diagnostics from explicit fields
 
 Rules:
 

@@ -4,7 +4,6 @@ import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.listener.TaskMsgDispatchListener;
 import com.xa.mass.engine.worker.WorkerAdapter;
 import com.xa.mass.base.model.Worker;
-import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
 import com.xa.mass.sdk.worker.PullWorkerSession;
 import com.xa.mass.starter.worker.TransportRoutingTaskMsgDispatchListener;
 import com.xa.mass.transport.WorkerTransportHints;
@@ -46,19 +45,6 @@ public final class TransportRuntimeRegistry {
                 registerBinding(alias, binding);
             }
         }
-    }
-
-    public com.xa.mass.gateway.dispatcher.port.TaskStepFrameBridge resolveTaskStepFrameBridge() {
-        com.xa.mass.gateway.dispatcher.port.TaskStepFrameBridge resolvedBridge = null;
-        for (TransportBinding binding : bindings) {
-            if (binding.getTaskStepFrameBridge() != null) {
-                if (resolvedBridge != null) {
-                    throw new IllegalStateException("Multiple task-step frame bridges are configured for the gateway runtime");
-                }
-                resolvedBridge = binding.getTaskStepFrameBridge();
-            }
-        }
-        return resolvedBridge;
     }
 
     public TaskMsgDispatchListener createDispatchListener() {

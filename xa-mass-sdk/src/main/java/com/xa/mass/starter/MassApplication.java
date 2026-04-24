@@ -13,11 +13,9 @@ import com.xa.mass.gateway.dispatcher.port.TaskStepFrameBridge;
 import com.xa.mass.gateway.dispatcher.port.ControlEventRequestFrameBridge;
 import com.xa.mass.gateway.queue.MessageCodec;
 import com.xa.mass.gateway.queue.OutboundDelivery;
-import com.xa.mass.sdk.MassRuntimeControl;
 import com.xa.mass.sdk.event.EventPrincipal;
 import com.xa.mass.sdk.event.EventRequest;
 import com.xa.mass.sdk.event.EventResponse;
-import com.xa.mass.sdk.model.*;
 import com.xa.mass.sdk.worker.PullWorkerSession;
 import com.xa.mass.starter.config.EngineConfig;
 import com.xa.mass.starter.config.GatewayConfig;
@@ -30,7 +28,6 @@ import com.xa.mass.transport.WorkerEndpointRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.Collection;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiFunction;
 
@@ -49,12 +46,11 @@ public class MassApplication {
     private final MassEventRuntime eventRuntime = new InMemoryMassEventRuntime();
 
     private final MassEngine engine;
+    private GatewayRuntimePorts gatewayRuntimePorts = GatewayRuntimePorts.defaults();
     private MassGateway massGateway;
     private DispatchRuntimeContext dispatcherContext;
     private TransportServer transportServer;
     private TransportRuntimeRegistry transportRuntimeRegistry;
-    private ControlEventRequestFrameBridge workerControlEventRequestBridge;
-    private BiFunction<EventRequest, EventPrincipal, EventResponse> sdkEventDispatcher;
 
     public MassApplication(MassEngine engine, int serverPort, String transportEndpointPath,
                            GatewayConfig gatewayConfig, EngineConfig engineConfig) {
@@ -150,6 +146,9 @@ public class MassApplication {
             TaskMsgDispatchListener taskMsgDispatchListener = null;
             TaskStepFrameBridge taskStepFrameBridge = null;
             if (engineConfig.isEnabled() && engineConfig.getTaskManager() != null) {
+                taskStepFrameBridge = gatewayConfig.isEnabled()
+                        ? new GatewayTaskResultHandler(engineConfig.getTaskManager())
+                        : null;
                 transportRuntimeRegistry = gatewayConfig.resolveWorkerTransportRuntimeFactory().create(
                         new WorkerTransportRuntimeFactoryContext(
                                 engineConfig.getTaskManager(),
@@ -161,17 +160,17 @@ public class MassApplication {
                                 gatewayConfig.isEnabled()
                         )
                 );
-                taskStepFrameBridge = transportRuntimeRegistry.resolveTaskStepFrameBridge();
                 taskMsgDispatchListener = transportRuntimeRegistry.createDispatchListener();
             }
+            GatewayRuntimePorts ports = gatewayRuntimePorts != null ? gatewayRuntimePorts : GatewayRuntimePorts.defaults();
             dispatcherContext = new DispatcherContext(
                     messageTransporter,
                     endpointRegistry,
                     messageCodec,
                     frameRouter,
                     taskStepFrameBridge,
-                    workerControlEventRequestBridge,
-                    new WorkerControlEventResponseHandler()
+                    ports.controlEventRequestFrameBridge(),
+                    ports.controlEventResponseFrameSink()
             );
             logger.info("Dispatcher context created");
             logger.info("Gateway frame router initialized");
@@ -273,12 +272,36 @@ public class MassApplication {
         return eventRuntime;
     }
 
-    public void setWorkerControlEventRequestBridge(ControlEventRequestFrameBridge workerControlEventRequestBridge) {
-        this.workerControlEventRequestBridge = workerControlEventRequestBridge;
+    public void configureGatewayRuntime(GatewayRuntimePorts gatewayRuntimePorts) {
+        if (running.get()) {
+            throw new IllegalStateException("Gateway runtime ports must be configured before application start");
+        }
+        this.gatewayRuntimePorts = gatewayRuntimePorts != null ? gatewayRuntimePorts : GatewayRuntimePorts.defaults();
     }
 
+    /**
+     * @deprecated Prefer {@link #configureGatewayRuntime(GatewayRuntimePorts)} so
+     * gateway adapter wiring is configured as a fixed snapshot before startup.
+     */
+    @Deprecated(forRemoval = false)
+    public void setWorkerControlEventRequestBridge(ControlEventRequestFrameBridge workerControlEventRequestBridge) {
+        configureGatewayRuntime((gatewayRuntimePorts != null ? gatewayRuntimePorts : GatewayRuntimePorts.defaults())
+                .withControlEventRequestFrameBridge(workerControlEventRequestBridge));
+    }
+
+    /**
+     * @deprecated Prefer {@link #configureGatewayRuntime(GatewayRuntimePorts)} so
+     * gateway adapter wiring no longer depends on late-bound dispatcher setters.
+     */
+    @Deprecated(forRemoval = false)
     public void setSdkEventDispatcher(BiFunction<EventRequest, EventPrincipal, EventResponse> sdkEventDispatcher) {
-        this.sdkEventDispatcher = sdkEventDispatcher;
+        ControlEventRequestFrameBridge controlEventRequestFrameBridge = sdkEventDispatcher == null
+                ? null
+                : new com.xa.mass.gateway.dispatcher.bridge.WorkerControlEventRequestBridge(
+                new com.xa.mass.gateway.dispatcher.event.EventGatewayBridge(sdkEventDispatcher)
+        );
+        configureGatewayRuntime((gatewayRuntimePorts != null ? gatewayRuntimePorts : GatewayRuntimePorts.defaults())
+                .withControlEventRequestFrameBridge(controlEventRequestFrameBridge));
     }
 
     private MassEngine requireConfiguredEngine() {
@@ -286,123 +309,5 @@ public class MassApplication {
             throw new IllegalStateException("Mass engine is unavailable for this application");
         }
         return engine;
-    }
-
-    private BiFunction<EventRequest, EventPrincipal, EventResponse> requireSdkEventDispatcher() {
-        if (sdkEventDispatcher == null) {
-            throw new IllegalStateException("SDK event dispatcher is unavailable for this application");
-        }
-        return sdkEventDispatcher;
-    }
-
-    private MassRuntimeControl runtimeControl() {
-        return new MassRuntimeControl() {
-            @Override
-            public EventResponse dispatchEvent(EventRequest request, EventPrincipal principal) {
-                return requireSdkEventDispatcher().apply(request, principal);
-            }
-
-            @Override
-            public com.xa.mass.base.model.Task createTask(MassTaskCreateRequest request) {
-                return requireConfiguredEngine().createTask(SdkResourceMapper.toEngineRequest(request));
-            }
-
-            @Override
-            public com.xa.mass.base.model.Task createTask(MassTaskRequest request) {
-                return requireConfiguredEngine().createTask(MassTaskRequestMapper.toEngineRequest(request));
-            }
-
-            @Override
-            public com.xa.mass.base.model.Task getTask(String taskId) {
-                return requireConfiguredEngine().getTaskManager().getTask(taskId);
-            }
-
-            @Override
-            public java.util.List<com.xa.mass.base.model.Task> getAllTasks() {
-                return requireConfiguredEngine().getTaskManager().getAllTasks();
-            }
-
-            @Override
-            public boolean approveTask(String taskId) {
-                return requireConfiguredEngine().getTaskManager().approveTask(taskId);
-            }
-
-            @Override
-            public boolean rejectTask(String taskId) {
-                return requireConfiguredEngine().getTaskManager().rejectTask(taskId);
-            }
-
-            @Override
-            public boolean blockTask(String taskId) {
-                return requireConfiguredEngine().getTaskManager().blockTask(taskId);
-            }
-
-            @Override
-            public boolean pauseTask(String taskId) {
-                return requireConfiguredEngine().getTaskManager().pauseTask(taskId);
-            }
-
-            @Override
-            public boolean resumeTask(String taskId) {
-                return requireConfiguredEngine().getTaskManager().resumeTask(taskId);
-            }
-
-            @Override
-            public boolean cancelTask(String taskId) {
-                return requireConfiguredEngine().getTaskManager().cancelTask(taskId);
-            }
-
-            @Override
-            public boolean terminateTask(String taskId, com.xa.mass.base.enums.task.TaskTerminalReason reason) {
-                return requireConfiguredEngine().getTaskManager().terminateTask(taskId, reason);
-            }
-
-            @Override
-            public int appendTaskItems(String taskId, java.util.List<java.util.Map<String, Object>> inputs) {
-                return requireConfiguredEngine().getTaskManager().appendTaskItems(taskId, inputs);
-            }
-
-            @Override
-            public boolean sealTask(String taskId) {
-                return requireConfiguredEngine().getTaskManager().sealTask(taskId);
-            }
-
-            @Override
-            public java.util.List<com.xa.mass.base.model.TaskMsg> getTaskMessages(String taskId) {
-                return requireConfiguredEngine().getTaskManager().getTaskMessages(taskId);
-            }
-
-            @Override
-            public void registerWorker(WorkerRegistration request) {
-                requireConfiguredEngine().addWorker(SdkResourceMapper.toWorker(request));
-            }
-
-            @Override
-            public void registerWorkerContext(WorkerContextRegistration request) {
-                requireConfiguredEngine().addWorkerContext(SdkResourceMapper.toWorkerContext(request));
-            }
-
-            @Override
-            public void addWorker(com.xa.mass.base.model.Worker worker) {
-                requireConfiguredEngine().addWorker(worker);
-            }
-
-            @Override
-            public void addWorkerContext(com.xa.mass.base.model.WorkerContext workerContext) {
-                requireConfiguredEngine().addWorkerContext(workerContext);
-            }
-
-            @Override
-            public void replaceDefaultRules(Collection<RuleDefinition> rules) {
-                var ruleManager = requireConfiguredEngine().getConfig().getRuleManager();
-                ruleManager.clear();
-                ruleManager.addDefaultRules(java.util.List.copyOf(rules));
-            }
-
-            @Override
-            public void publishTaskEvents() {
-                MassApplication.this.publishTaskEvents();
-            }
-        };
     }
 }
