@@ -4,7 +4,6 @@ import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.listener.TaskMsgDispatchListener;
 import com.xa.mass.engine.worker.WorkerAdapter;
 import com.xa.mass.base.model.Worker;
-import com.xa.mass.sdk.worker.PullWorkerSession;
 import com.xa.mass.starter.worker.TransportRoutingTaskMsgDispatchListener;
 import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
@@ -58,7 +57,7 @@ public final class TransportRuntimeRegistry {
         return new TransportRoutingTaskMsgDispatchListener(workerManager, workerAdapters);
     }
 
-    public PullWorkerSession openPullWorkerSession(String workerId) {
+    public ResolvedPullWorkerTransport resolvePullWorkerTransport(String workerId) {
         if (workerId == null || workerId.isBlank()) {
             throw new IllegalArgumentException("workerId must not be blank");
         }
@@ -81,12 +80,12 @@ public final class TransportRuntimeRegistry {
             throw new IllegalStateException("Worker transport '" + transportHint
                     + "' is not pull-capable for worker " + normalizedWorkerId);
         }
-        return new PullWorkerSession(
+        return new ResolvedPullWorkerTransport(
                 normalizedWorkerId,
+                transportHint,
                 binding.getTaskPullChannel(),
                 taskResultIngestChannel,
-                systemEventChannel,
-                transportHint
+                systemEventChannel
         );
     }
 

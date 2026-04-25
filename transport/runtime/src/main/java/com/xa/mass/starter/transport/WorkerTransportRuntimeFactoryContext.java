@@ -3,7 +3,6 @@ package com.xa.mass.starter.transport;
 import com.xa.mass.base.channel.tranporter.MessageTransporter;
 import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.WorkerManager;
-import com.xa.mass.gateway.queue.OutboundDelivery;
 import com.xa.mass.transport.channel.TaskDispatchChannel;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
@@ -13,11 +12,11 @@ import com.xa.mass.transport.channel.WorkerSystemEventChannel;
  * Context passed when assembling worker transport bindings for the embedded
  * runtime.
  */
-public final class WorkerTransportRuntimeFactoryContext {
+public final class WorkerTransportRuntimeFactoryContext<T> {
 
     private final TaskManager taskManager;
     private final WorkerManager workerManager;
-    private final MessageTransporter<String, OutboundDelivery> messageTransporter;
+    private final MessageTransporter<String, T> messageTransporter;
     private final WorkerEndpointRegistry endpointRegistry;
     private final TaskDispatchChannel taskDispatchChannel;
     private final TaskResultIngestChannel taskResultIngestChannel;
@@ -26,7 +25,7 @@ public final class WorkerTransportRuntimeFactoryContext {
 
     public WorkerTransportRuntimeFactoryContext(TaskManager taskManager,
                                                 WorkerManager workerManager,
-                                                MessageTransporter<String, OutboundDelivery> messageTransporter,
+                                                MessageTransporter<String, T> messageTransporter,
                                                 WorkerEndpointRegistry endpointRegistry,
                                                 TaskDispatchChannel taskDispatchChannel,
                                                 TaskResultIngestChannel taskResultIngestChannel,
@@ -50,7 +49,7 @@ public final class WorkerTransportRuntimeFactoryContext {
         return workerManager;
     }
 
-    public MessageTransporter<String, OutboundDelivery> getMessageTransporter() {
+    public MessageTransporter<String, T> getMessageTransporter() {
         return messageTransporter;
     }
 

@@ -66,7 +66,7 @@ The transport-neutral runtime model is now framed around three channels:
 
 - Real Spring Boot entrypoint: `xa-mass-dev-app`
 - Do not treat the embedded runtime classes as a Spring Boot app
-- Current root reactor modules are `xa-mass-web`, `xa-mass-core`, `xa-mass-transport-api`, `xa-mass-engine`, `xa-mass-gateway`, `xa-mass-sdk-api`, `xa-mass-sdk`, `xa-mass-testing`, and `xa-mass-dev-app`
+- Current root reactor modules are `xa-mass-web`, `xa-mass-core`, `xa-mass-transport-api`, `xa-mass-transport-polling`, `xa-mass-transport-runtime`, `xa-mass-engine`, `xa-mass-gateway`, `xa-mass-sdk-api`, `xa-mass-sdk`, `xa-mass-testing`, and `xa-mass-dev-app`
 - `xa-mass-sdk` is the real Java embedding module; it now carries both the SDK facade and the embedded runtime composition
 - `xa-mass-transport-api` is the transport-neutral seam for task dispatch, result ingest, system events, transport servers, and worker endpoint registries
 - `xa-mass-sdk` now assembles concrete worker transports through a transport runtime registry/factory seam instead of treating WebSocket as the runtime definition
@@ -94,7 +94,7 @@ Run from the repository root:
 
 ```bash
 ./mvnw -DskipTests compile
-java -cp "xa-mass-dev-app/target/classes:xa-mass-sdk/target/classes:xa-mass-sdk-api/target/classes:xa-mass-web/target/classes:xa-mass-engine/target/classes:xa-mass-gateway/target/classes:xa-mass-transport-api/target/classes:xa-mass-core/target/classes:<runtime-classpath>" \
+java -cp "xa-mass-dev-app/target/classes:xa-mass-sdk/target/classes:xa-mass-sdk-api/target/classes:xa-mass-web/target/classes:xa-mass-engine/target/classes:xa-mass-gateway/target/classes:transport/api/target/classes:transport/polling-adapter/target/classes:transport/runtime/target/classes:xa-mass-core/target/classes:<runtime-classpath>" \
   com.xa.mass.mock.MockApplicationSpringBootApp
 ```
 
@@ -113,6 +113,8 @@ Primary endpoints:
 - `xa-mass-sdk`: consumer-facing dependency entry and embedded runtime composition for the platform
 - `xa-mass-sdk-api`: stable SDK-facing catalog/auth/model contract shared by `xa-mass-sdk` and `xa-mass-web`
 - `xa-mass-transport-api`: transport-neutral runtime SPI for task dispatch, result ingest, system events, transport servers, and worker endpoint registries
+- `xa-mass-transport-polling`: pull/polling worker adapter module used by the default SDK composition
+- `xa-mass-transport-runtime`: shared transport runtime assembly used by the SDK composition
 - `xa-mass-web`: REST controllers and the backend-hosted control console shell
 - `xa-mass-engine`: task state machine, assignment, result handling, and strategy extension points
 - `xa-mass-gateway`: current WebSocket task transport adapter plus dispatch runtime

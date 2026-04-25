@@ -13,7 +13,7 @@ import java.util.List;
 public class DefaultWorkerTransportRuntimeFactory implements WorkerTransportRuntimeFactory {
 
     @Override
-    public TransportRuntimeRegistry create(WorkerTransportRuntimeFactoryContext context) {
+    public TransportRuntimeRegistry create(WorkerTransportRuntimeFactoryContext<?> context) {
         List<TransportBinding> bindings = new ArrayList<>();
 
         PollingWorkerAdapter pollingAdapter = new PollingWorkerAdapter(context.getSystemEventChannel());

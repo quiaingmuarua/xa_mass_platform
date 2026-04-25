@@ -6,5 +6,5 @@ package com.xa.mass.starter.transport;
  */
 public interface WorkerTransportRuntimeFactory {
 
-    TransportRuntimeRegistry create(WorkerTransportRuntimeFactoryContext context);
+    TransportRuntimeRegistry create(WorkerTransportRuntimeFactoryContext<?> context);
 }

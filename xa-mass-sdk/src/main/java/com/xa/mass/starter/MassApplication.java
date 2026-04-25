@@ -13,6 +13,7 @@ import com.xa.mass.gateway.queue.OutboundDelivery;
 import com.xa.mass.sdk.worker.PullWorkerSession;
 import com.xa.mass.starter.config.EngineConfig;
 import com.xa.mass.starter.config.GatewayConfig;
+import com.xa.mass.starter.transport.ResolvedPullWorkerTransport;
 import com.xa.mass.starter.transport.RuntimeTaskResultIngestChannel;
 import com.xa.mass.starter.transport.TransportServerFactoryContext;
 import com.xa.mass.starter.transport.TransportRuntimeRegistry;
@@ -156,7 +157,7 @@ public class MassApplication {
                         ? new GatewayTaskDispatchChannel(gatewayRuntimeContext)
                         : null;
                 transportRuntimeRegistry = gatewayConfig.resolveWorkerTransportRuntimeFactory().create(
-                        new WorkerTransportRuntimeFactoryContext(
+                        new WorkerTransportRuntimeFactoryContext<>(
                                 engineConfig.getTaskManager(),
                                 engineConfig.getWorkerManager(),
                                 messageTransporter,
@@ -260,7 +261,14 @@ public class MassApplication {
         if (transportRuntimeRegistry == null) {
             throw new IllegalStateException("Pull worker transport is unavailable for this runtime");
         }
-        return transportRuntimeRegistry.openPullWorkerSession(workerId);
+        ResolvedPullWorkerTransport resolved = transportRuntimeRegistry.resolvePullWorkerTransport(workerId);
+        return new PullWorkerSession(
+                resolved.getWorkerId(),
+                resolved.getTaskPullChannel(),
+                resolved.getTaskResultIngestChannel(),
+                resolved.getSystemEventChannel(),
+                resolved.getTransportHint()
+        );
     }
 
     public void publishTaskEvents() {

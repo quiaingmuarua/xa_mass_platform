@@ -33,7 +33,7 @@ class TransportRoutingTaskMsgDispatchListenerTest {
         workerManager.addWorker(pollingWorker);
 
         RecordingAdapter webSocketAdapter = new RecordingAdapter("websocket");
-        RecordingAdapter pollingAdapter = new RecordingAdapter(PollingWorkerAdapter.PROTOCOL);
+        RecordingAdapter pollingAdapter = new RecordingAdapter(WorkerTransportHints.POLLING);
         TransportRoutingTaskMsgDispatchListener listener = new TransportRoutingTaskMsgDispatchListener(
                 workerManager,
                 List.of(webSocketAdapter, pollingAdapter)
@@ -125,7 +125,7 @@ class TransportRoutingTaskMsgDispatchListenerTest {
         worker.setOnlineStrategy("grpc");
         workerManager.addWorker(worker);
 
-        RecordingAdapter pollingAdapter = new RecordingAdapter(PollingWorkerAdapter.PROTOCOL);
+        RecordingAdapter pollingAdapter = new RecordingAdapter(WorkerTransportHints.POLLING);
         TransportRoutingTaskMsgDispatchListener listener = new TransportRoutingTaskMsgDispatchListener(
                 workerManager,
                 List.of(pollingAdapter)

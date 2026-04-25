@@ -23,7 +23,9 @@
     <modules>
         <module>xa-mass-web</module>
         <module>xa-mass-core</module>
-        <module>xa-mass-transport-api</module>
+        <module>transport/api</module>
+        <module>transport/polling-adapter</module>
+        <module>transport/runtime</module>
         <module>xa-mass-engine</module>
         <module>xa-mass-gateway</module>
         <module>xa-mass-sdk-api</module>
