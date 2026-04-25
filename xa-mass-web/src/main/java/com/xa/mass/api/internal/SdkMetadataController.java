@@ -2,6 +2,7 @@ package com.xa.mass.api.internal;
 
 import com.xa.mass.api.model.ApiResponse;
 import com.xa.mass.base.model.Worker;
+import com.xa.mass.sdk.TransportOperations;
 import com.xa.mass.sdk.WorkerOperations;
 import com.xa.mass.sdk.catalog.ProjectMetadata;
 import com.xa.mass.sdk.catalog.SdkMetadataCatalog;
@@ -29,21 +30,34 @@ public class SdkMetadataController {
 
     private final SdkMetadataCatalog metadataCatalog;
     private final WorkerOperations workerOperations;
+    private final TransportOperations transportOperations;
 
     public SdkMetadataController(SdkMetadataCatalog metadataCatalog) {
-        this(metadataCatalog, (WorkerOperations) null);
+        this(metadataCatalog, (WorkerOperations) null, null);
     }
 
     @Autowired
     public SdkMetadataController(SdkMetadataCatalog metadataCatalog,
-                                 ObjectProvider<WorkerOperations> workerOperationsProvider) {
-        this(metadataCatalog, workerOperationsProvider == null ? null : workerOperationsProvider.getIfAvailable());
+                                 ObjectProvider<WorkerOperations> workerOperationsProvider,
+                                 ObjectProvider<TransportOperations> transportOperationsProvider) {
+        this(
+                metadataCatalog,
+                workerOperationsProvider == null ? null : workerOperationsProvider.getIfAvailable(),
+                transportOperationsProvider == null ? null : transportOperationsProvider.getIfAvailable()
+        );
     }
 
     public SdkMetadataController(SdkMetadataCatalog metadataCatalog,
                                  WorkerOperations workerOperations) {
+        this(metadataCatalog, workerOperations, null);
+    }
+
+    public SdkMetadataController(SdkMetadataCatalog metadataCatalog,
+                                 WorkerOperations workerOperations,
+                                 TransportOperations transportOperations) {
         this.metadataCatalog = metadataCatalog;
         this.workerOperations = workerOperations;
+        this.transportOperations = transportOperations;
     }
 
     @GetMapping("/projects")
@@ -82,6 +96,38 @@ public class SdkMetadataController {
         List<Map<String, Object>> items = metadataCatalog.listEvents().stream()
                 .sorted(Comparator.comparing(EventDefinition::getCode, String::compareToIgnoreCase))
                 .map(event -> toEventCapabilityItem(event, workers))
+                .toList();
+        return ResponseEntity.ok(ApiResponse.success(items));
+    }
+
+    @GetMapping("/worker-capabilities")
+    public ResponseEntity<ApiResponse<List<Map<String, Object>>>> listWorkerCapabilities() {
+        if (workerOperations == null) {
+            return ResponseEntity.ok(ApiResponse.success(List.of()));
+        }
+        Map<String, List<Map<String, Object>>> connectionsByWorker =
+                WorkerCapabilityViewSupport.groupConnectionsByWorker(transportOperations);
+        List<Map<String, Object>> items = workerOperations.getAllWorkers().stream()
+                .sorted(Comparator.comparing(Worker::getWorkerId, Comparator.nullsLast(String::compareTo)))
+                .map(worker -> {
+                    List<Map<String, Object>> connections =
+                            connectionsByWorker.getOrDefault(worker.getWorkerId(), List.of());
+                    Map<String, Object> item = new LinkedHashMap<>();
+                    item.put("workerId", worker.getWorkerId());
+                    item.put("status", worker.getStatus() != null ? worker.getStatus().name() : null);
+                    item.put("workerGroupId", worker.getWorkerGroupId());
+                    item.put("agentVersion", worker.getAgentVersion());
+                    item.put("supportedProjects", normalizeProjectCodes(worker.getSupportedProjects()));
+                    item.put("supportedEventCodes", normalizeProjectCodes(worker.getSupportedEventCodes()));
+                    item.put("eventBindings", WorkerCapabilityViewSupport.deriveEventBindings(worker, metadataCatalog));
+                    item.put("transportHint", WorkerCapabilityViewSupport.resolveTransportHint(worker, connections));
+                    item.put("attributes", worker.getAttributes());
+                    item.put("online", worker.getStatus() != null && "ONLINE".equals(worker.getStatus().name()));
+                    item.put("connections", connections);
+                    item.put("hasActiveEndpoint", WorkerCapabilityViewSupport.hasActiveConnection(connections));
+                    item.put("locked", workerOperations.isWorkerLocked(worker.getWorkerId()));
+                    return item;
+                })
                 .toList();
         return ResponseEntity.ok(ApiResponse.success(items));
     }

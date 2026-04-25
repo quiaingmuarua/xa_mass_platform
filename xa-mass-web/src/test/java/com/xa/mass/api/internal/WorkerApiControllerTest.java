@@ -4,7 +4,14 @@ import com.xa.mass.base.enums.worker.WorkerContextStatus;
 import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
+import com.xa.mass.sdk.TransportOperations;
 import com.xa.mass.sdk.WorkerOperations;
+import com.xa.mass.sdk.catalog.PayloadType;
+import com.xa.mass.sdk.catalog.ProjectEventCatalogRegistry;
+import com.xa.mass.sdk.catalog.ProjectMetadata;
+import com.xa.mass.sdk.catalog.TaskMode;
+import com.xa.mass.sdk.catalog.DefaultProjectEventCatalogFactory;
+import com.xa.mass.sdk.event.EventDefinition;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -31,12 +38,31 @@ class WorkerApiControllerTest {
     @Mock
     private WorkerOperations workerOperations;
 
+    @Mock
+    private TransportOperations transportOperations;
+
     private MockMvc mockMvc;
+    private ProjectEventCatalogRegistry metadataCatalog;
 
     @BeforeEach
     void setUp() {
+        metadataCatalog = DefaultProjectEventCatalogFactory.createDefaultProjectRegistry();
+        metadataCatalog.registerEventDefinition(EventDefinition.builder()
+                .code("demo.dispatch")
+                .name("Demo Dispatch")
+                .description("Dispatch demo work")
+                .payloadTypes(List.of(PayloadType.JSON))
+                .taskModes(List.of(TaskMode.SINGLE_RUN))
+                .projectCodes(List.of("demoApp"))
+                .build());
+        metadataCatalog.registerProject(ProjectMetadata.builder()
+                .code("demoApp")
+                .name("Demo App")
+                .description("Demo")
+                .eventCodes(List.of("demo.dispatch"))
+                .build());
         mockMvc = MockMvcBuilders
-                .standaloneSetup(new WorkerApiController(workerOperations))
+                .standaloneSetup(new WorkerApiController(workerOperations, metadataCatalog, transportOperations))
                 .setControllerAdvice(new com.xa.mass.api.aop.GlobalExceptionHandler())
                 .build();
     }
@@ -48,6 +74,7 @@ class WorkerApiControllerTest {
         worker.setStatus(WorkerStatus.ONLINE);
         worker.setWorkerGroupId("group-a");
         worker.setAgentVersion("1.2.3");
+        worker.setOnlineStrategy("realtime");
         worker.setSupportedProjects(List.of("demoApp"));
         worker.setSupportedEventCodes(List.of("demo.dispatch"));
         worker.setAttributes(Map.of("region", "us"));
@@ -56,6 +83,14 @@ class WorkerApiControllerTest {
 
         when(workerOperations.getAllWorkers()).thenReturn(List.of(worker));
         when(workerOperations.isWorkerLocked("worker-001")).thenReturn(true);
+        when(transportOperations.listSessions()).thenReturn(List.of(Map.of(
+                "workerId", "worker-001",
+                "connections", List.of(Map.of(
+                        "active", true,
+                        "endpointId", "ws-1",
+                        "transport", "websocket"
+                ))
+        )));
 
         mockMvc.perform(get("/status/api/workers"))
                 .andExpect(status().isOk())
@@ -63,6 +98,11 @@ class WorkerApiControllerTest {
                 .andExpect(jsonPath("$.data.total").value(1))
                 .andExpect(jsonPath("$.data.items[0].workerId").value("worker-001"))
                 .andExpect(jsonPath("$.data.items[0].supportedEventCodes[0]").value("demo.dispatch"))
+                .andExpect(jsonPath("$.data.items[0].eventBindings[0].eventCode").value("demo.dispatch"))
+                .andExpect(jsonPath("$.data.items[0].eventBindings[0].projectCodes[0]").value("demoApp"))
+                .andExpect(jsonPath("$.data.items[0].transportHint").value("realtime"))
+                .andExpect(jsonPath("$.data.items[0].connections[0].endpointId").value("ws-1"))
+                .andExpect(jsonPath("$.data.items[0].hasActiveEndpoint").value(true))
                 .andExpect(jsonPath("$.data.items[0].locked").value(true))
                 .andExpect(jsonPath("$.data.items[0].lastHeartbeat").value("2026-04-21 10:15:00"));
     }

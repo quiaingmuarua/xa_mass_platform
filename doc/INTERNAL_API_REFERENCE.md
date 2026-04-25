@@ -41,6 +41,7 @@ For verified runtime behavior and recommended startup, use [VERIFIED_RUNBOOK.md]
 - `TaskMsg.latestAttemptWorkerId`, `latestAttemptWorkerContextId`, and `latestAttemptBatchId` are latest-attempt projections of `TaskMsgAttempt`.
 - Worker/gateway callbacks must resolve a unique active `TaskMsgAttempt`; the runtime no longer synthesizes legacy attempts for result write-back.
 - The current WebSocket-adapter surface uses canonical root-level task-dispatch/task-result frames plus root-level event-first control frames, while worker identity is established at handshake time; these adapter semantics are not API capability truth.
+- `/status/api/workers` and `/sdk/meta/worker-capabilities` are the current joined worker capability read models: SDK registration remains capability truth, session/endpoint facts come from the transport layer, and the response joins them by `workerId`.
 
 ## 1.1 Event Control Plane Notes
 
@@ -125,6 +126,21 @@ Response notes:
 - `onlineWorkerIds` is derived from live workers declaring `supportedEventCodes`; `supportedProjects` is not treated as capability truth
 - capability identity is the global `eventCode`; project membership only describes where that event may be invoked
 - `ready=true` means either a direct runtime handler exists or at least one online worker currently declares the event
+
+### 2.7 List Worker Capability Snapshots
+
+- Method: `GET`
+- Path: `/sdk/meta/worker-capabilities`
+- Status: `Implemented`
+
+Response notes:
+
+- returns one row per registered worker
+- joins SDK worker capability declarations with current transport session snapshots by `workerId`
+- `supportedEventCodes` remains the flat runtime capability list used by matching
+- `eventBindings` is the richer capability view derived from event metadata scope plus the worker's declared coarse project scope
+- `transportHint` is the worker's declared runtime transport identity when present, otherwise it may fall back to the active endpoint transport
+- `connections` and `hasActiveEndpoint` come from the transport/session layer and are reachability facts, not capability truth
 
 ## 2.6 SDK Submitter Introspection API
 

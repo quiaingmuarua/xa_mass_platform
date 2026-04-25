@@ -2,6 +2,7 @@ package com.xa.mass.api.internal;
 
 import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Worker;
+import com.xa.mass.sdk.TransportOperations;
 import com.xa.mass.sdk.WorkerOperations;
 import com.xa.mass.sdk.catalog.*;
 import com.xa.mass.sdk.event.EventResponse;
@@ -22,6 +23,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class SdkMetadataControllerTest {
 
     private MockMvc mockMvc;
+    private TransportOperations transportOperations;
 
     @BeforeEach
     void setUp() {
@@ -63,7 +65,31 @@ class SdkMetadataControllerTest {
                 List.of("demoApp"), List.of());
         WorkerOperations workerOperations = mock(WorkerOperations.class);
         when(workerOperations.getAllWorkers()).thenReturn(List.of(crawlerWorker, offlineChatWorker, scopeOnlyWorker));
-        mockMvc = MockMvcBuilders.standaloneSetup(new SdkMetadataController(catalog, workerOperations)).build();
+        when(workerOperations.isWorkerLocked("crawler-worker-1")).thenReturn(false);
+        when(workerOperations.isWorkerLocked("chat-worker-1")).thenReturn(true);
+        when(workerOperations.isWorkerLocked("scope-only-worker")).thenReturn(false);
+        transportOperations = mock(TransportOperations.class);
+        when(transportOperations.listSessions()).thenReturn(List.of(
+                java.util.Map.of(
+                        "workerId", "crawler-worker-1",
+                        "connections", java.util.List.of(java.util.Map.of(
+                                "active", true,
+                                "endpointId", "ws-crawler-1",
+                                "transport", "websocket"
+                        ))
+                ),
+                java.util.Map.of(
+                        "workerId", "scope-only-worker",
+                        "connections", java.util.List.of(java.util.Map.of(
+                                "active", true,
+                                "endpointId", "poll-1",
+                                "transport", "polling"
+                        ))
+                )
+        ));
+        mockMvc = MockMvcBuilders.standaloneSetup(
+                new SdkMetadataController(catalog, workerOperations, transportOperations)
+        ).build();
     }
 
     @Test
@@ -105,6 +131,20 @@ class SdkMetadataControllerTest {
                 .andExpect(jsonPath("$.data[?(@.eventCode=='sms.wait-code' && @.hasDirectRuntimeHandler==true)]").exists())
                 .andExpect(jsonPath("$.data[?(@.eventCode=='chatbot.reply' && @.hasOnlineWorkerCoverage==false)]").exists())
                 .andExpect(jsonPath("$.data[?(@.eventCode=='crawler.fetch-page' && @.workerIds.length()==1)]").exists());
+    }
+
+    @Test
+    void workerCapabilitiesJoinCatalogWorkerAndTransportFacts() throws Exception {
+        mockMvc.perform(get("/sdk/meta/worker-capabilities"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data[?(@.workerId=='crawler-worker-1' && @.supportedEventCodes[0]=='crawler.fetch-page')]").exists())
+                .andExpect(jsonPath("$.data[?(@.workerId=='crawler-worker-1' && @.eventBindings[0].eventCode=='crawler.fetch-page')]").exists())
+                .andExpect(jsonPath("$.data[?(@.workerId=='crawler-worker-1' && @.eventBindings[0].projectCodes[0]=='crawlerApp')]").exists())
+                .andExpect(jsonPath("$.data[?(@.workerId=='crawler-worker-1' && @.eventBindings[0].projectCodes[1]=='demoApp')]").exists())
+                .andExpect(jsonPath("$.data[?(@.workerId=='crawler-worker-1' && @.connections[0].endpointId=='ws-crawler-1')]").exists())
+                .andExpect(jsonPath("$.data[?(@.workerId=='crawler-worker-1' && @.hasActiveEndpoint==true)]").exists())
+                .andExpect(jsonPath("$.data[?(@.workerId=='chat-worker-1' && @.locked==true)]").exists());
     }
 
     @Test

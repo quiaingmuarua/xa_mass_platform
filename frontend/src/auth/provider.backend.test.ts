@@ -74,7 +74,7 @@ describe('backendAuthProvider', () => {
         )
 
         await expect(backendAuthProvider.loadCurrentUser()).rejects.toThrow(
-            'Request failed: 500',
+            'backend failed',
         )
     })
 })

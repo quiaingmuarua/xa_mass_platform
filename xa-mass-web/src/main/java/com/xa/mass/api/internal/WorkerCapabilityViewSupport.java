@@ -1,0 +1,146 @@
+package com.xa.mass.api.internal;
+
+import com.xa.mass.base.model.Worker;
+import com.xa.mass.sdk.TransportOperations;
+import com.xa.mass.sdk.catalog.SdkMetadataCatalog;
+import com.xa.mass.sdk.event.EventDefinition;
+
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+
+final class WorkerCapabilityViewSupport {
+
+    private WorkerCapabilityViewSupport() {
+    }
+
+    static Map<String, List<Map<String, Object>>> groupConnectionsByWorker(TransportOperations transportOperations) {
+        if (transportOperations == null) {
+            return Map.of();
+        }
+
+        Map<String, List<Map<String, Object>>> grouped = new LinkedHashMap<>();
+        List<Map<String, Object>> sessions = transportOperations.listSessions();
+        if (sessions == null || sessions.isEmpty()) {
+            return grouped;
+        }
+
+        for (Map<String, Object> session : sessions) {
+            if (session == null || session.isEmpty()) {
+                continue;
+            }
+            String workerId = readTrimmed(session.get("workerId"));
+            if (workerId == null) {
+                continue;
+            }
+            grouped.put(workerId, normalizeConnections(session.get("connections")));
+        }
+        return grouped;
+    }
+
+    static List<Map<String, Object>> deriveEventBindings(Worker worker, SdkMetadataCatalog metadataCatalog) {
+        List<String> supportedEventCodes = normalizeStringList(worker == null ? null : worker.getSupportedEventCodes());
+        if (supportedEventCodes.isEmpty()) {
+            return List.of();
+        }
+
+        LinkedHashSet<String> workerProjects = new LinkedHashSet<>(
+                normalizeStringList(worker == null ? null : worker.getSupportedProjects())
+        );
+        List<Map<String, Object>> bindings = new ArrayList<>(supportedEventCodes.size());
+        for (String eventCode : supportedEventCodes) {
+            EventDefinition definition = metadataCatalog == null ? null : metadataCatalog.getEvent(eventCode);
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("eventCode", eventCode);
+            item.put("projectCodes", resolveBindingProjects(definition, workerProjects));
+            bindings.add(item);
+        }
+        return List.copyOf(bindings);
+    }
+
+    static boolean hasActiveConnection(List<Map<String, Object>> connections) {
+        if (connections == null || connections.isEmpty()) {
+            return false;
+        }
+        return connections.stream().anyMatch(connection ->
+                connection != null && Boolean.TRUE.equals(connection.get("active"))
+        );
+    }
+
+    static String resolveTransportHint(Worker worker, List<Map<String, Object>> connections) {
+        String workerTransport = readTrimmed(worker == null ? null : worker.getOnlineStrategy());
+        if (workerTransport != null) {
+            return workerTransport;
+        }
+        if (connections == null || connections.isEmpty()) {
+            return null;
+        }
+        for (Map<String, Object> connection : connections) {
+            String connectionTransport = readTrimmed(connection == null ? null : connection.get("transport"));
+            if (connectionTransport != null) {
+                return connectionTransport;
+            }
+        }
+        return null;
+    }
+
+    private static List<String> resolveBindingProjects(EventDefinition definition,
+                                                       LinkedHashSet<String> workerProjects) {
+        if (definition == null) {
+            return List.of();
+        }
+        List<String> definitionProjects = normalizeStringList(definition.getProjectCodes());
+        if (definitionProjects.isEmpty()) {
+            return List.of();
+        }
+        if (workerProjects.isEmpty()) {
+            return definitionProjects;
+        }
+        return definitionProjects.stream()
+                .filter(workerProjects::contains)
+                .toList();
+    }
+
+    private static List<Map<String, Object>> normalizeConnections(Object value) {
+        if (!(value instanceof List<?> list) || list.isEmpty()) {
+            return List.of();
+        }
+        List<Map<String, Object>> connections = new ArrayList<>();
+        for (Object item : list) {
+            if (!(item instanceof Map<?, ?> map) || map.isEmpty()) {
+                continue;
+            }
+            Map<String, Object> normalized = new LinkedHashMap<>();
+            normalized.put("active", Boolean.TRUE.equals(map.get("active")));
+            normalized.put("endpointId", readTrimmed(map.get("endpointId")));
+            normalized.put("transport", readTrimmed(map.get("transport")));
+            connections.add(normalized);
+        }
+        return connections.isEmpty() ? List.of() : List.copyOf(connections);
+    }
+
+    private static List<String> normalizeStringList(List<String> values) {
+        if (values == null || values.isEmpty()) {
+            return List.of();
+        }
+        LinkedHashSet<String> normalized = new LinkedHashSet<>();
+        for (String value : values) {
+            String text = readTrimmed(value);
+            if (text != null) {
+                normalized.add(text);
+            }
+        }
+        return normalized.isEmpty() ? List.of() : List.copyOf(normalized);
+    }
+
+    private static String readTrimmed(Object value) {
+        if (value == null) {
+            return null;
+        }
+        String text = String.valueOf(value).trim();
+        return text.isEmpty() ? null : text;
+    }
+}

@@ -5,8 +5,12 @@ import com.xa.mass.api.model.worker.WorkerSupportedProjectsApiRequest;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.base.project.ProjectRegistry;
+import com.xa.mass.sdk.TransportOperations;
 import com.xa.mass.sdk.WorkerOperations;
+import com.xa.mass.sdk.catalog.SdkMetadataCatalog;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
@@ -21,16 +25,41 @@ public class WorkerApiController {
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     private final WorkerOperations workerOperations;
+    private final SdkMetadataCatalog metadataCatalog;
+    private final TransportOperations transportOperations;
 
     public WorkerApiController(WorkerOperations workerOperations) {
+        this(workerOperations, null, null);
+    }
+
+    public WorkerApiController(WorkerOperations workerOperations,
+                               SdkMetadataCatalog metadataCatalog,
+                               TransportOperations transportOperations) {
         this.workerOperations = workerOperations;
+        this.metadataCatalog = metadataCatalog;
+        this.transportOperations = transportOperations;
+    }
+
+    public WorkerApiController(WorkerOperations workerOperations,
+                               ObjectProvider<SdkMetadataCatalog> metadataCatalogProvider,
+                               ObjectProvider<TransportOperations> transportOperationsProvider) {
+        this(
+                workerOperations,
+                metadataCatalogProvider == null ? null : metadataCatalogProvider.getIfAvailable(),
+                transportOperationsProvider == null ? null : transportOperationsProvider.getIfAvailable()
+        );
     }
 
     @GetMapping("/workers")
     public ApiResponse<Map<String, Object>> listWorkers() {
+        Map<String, List<Map<String, Object>>> connectionsByWorker =
+                WorkerCapabilityViewSupport.groupConnectionsByWorker(transportOperations);
         List<Map<String, Object>> items = workerOperations.getAllWorkers().stream()
                 .sorted(Comparator.comparing(Worker::getWorkerId, Comparator.nullsLast(String::compareTo)))
-                .map(this::toWorkerItem)
+                .map(worker -> toWorkerItem(
+                        worker,
+                        connectionsByWorker.getOrDefault(worker.getWorkerId(), List.of())
+                ))
                 .toList();
         return ApiResponse.success(Map.of(
                 "items", items,
@@ -92,7 +121,7 @@ public class WorkerApiController {
                 .toList();
     }
 
-    private Map<String, Object> toWorkerItem(Worker worker) {
+    private Map<String, Object> toWorkerItem(Worker worker, List<Map<String, Object>> connections) {
         Map<String, Object> item = new LinkedHashMap<>();
         item.put("workerId", worker.getWorkerId());
         item.put("status", worker.getStatus() != null ? worker.getStatus().name() : null);
@@ -100,9 +129,13 @@ public class WorkerApiController {
         item.put("agentVersion", worker.getAgentVersion());
         item.put("supportedProjects", worker.getSupportedProjects());
         item.put("supportedEventCodes", worker.getSupportedEventCodes());
+        item.put("eventBindings", WorkerCapabilityViewSupport.deriveEventBindings(worker, metadataCatalog));
+        item.put("transportHint", WorkerCapabilityViewSupport.resolveTransportHint(worker, connections));
         item.put("attributes", worker.getAttributes());
         item.put("lastHeartbeat", formatDateTime(worker.getLastHeartbeat()));
         item.put("locked", workerOperations.isWorkerLocked(worker.getWorkerId()));
+        item.put("connections", connections);
+        item.put("hasActiveEndpoint", WorkerCapabilityViewSupport.hasActiveConnection(connections));
         item.put("updateTime", formatDateTime(worker.getUpdateTime()));
         return item;
     }
