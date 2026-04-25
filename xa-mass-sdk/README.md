@@ -44,8 +44,11 @@ import com.xa.mass.sdk.model.WorkerContextRegistration;
 import com.xa.mass.sdk.model.WorkerRegistration;
 
 MassSdkApplication app = MassSdk.builder()
-        .transportServer(19090, "/ws")
-        .transport(transport -> transport.enabled(false))
+        .transport(transport -> transport
+                .webSocketAdapter(webSocket -> webSocket
+                        .server(19090, "/ws")
+                        .enabled(false)
+                        .serverEnabled(false)))
         .engine(engine -> engine.enabled(true).workerThreads(4))
         .build();
 
@@ -225,7 +228,9 @@ bootstrap/contribution assembly for the default WebSocket-backed path, or
 provide an explicit `transportServerFactory(...)` override. Adapter bootstrap
 context now carries only neutral runtime collaborators; inbound server settings
 such as port/path are owned by the adapter bootstrap instead of being injected
-by `MassApplication` at startup time.
+by `MassApplication` at startup time. Builder-level mainline should configure
+that bundled adapter explicitly via `transport(... -> webSocketAdapter(...))`
+rather than treating those settings as runtime-global transport facts.
 `MassWebSocketAdapter.getWebSocketConfig()` and `MassWebSocketAdapter.getWebSocketMessageDispatcher()` are also
 deprecated: WebSocket adapter config and dispatcher internals are not part of the
 supported embedding surface.

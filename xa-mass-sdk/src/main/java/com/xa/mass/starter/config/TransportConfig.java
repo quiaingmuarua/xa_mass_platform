@@ -13,6 +13,7 @@ import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
 import com.xa.mass.transport.model.WorkerTransportMessage;
+import com.xa.mass.transport.websocket.runtime.WebSocketAdapterConfig;
 import com.xa.mass.transport.websocket.dispatcher.context.WebSocketDispatchRuntimeContext;
 import com.xa.mass.transport.websocket.runtime.WebSocketEmbeddedRuntimeSupport;
 import com.xa.mass.transport.websocket.runtime.WebSocketTransportAdapterBootstrap;
@@ -30,12 +31,6 @@ public class TransportConfig {
     private static final String API_MODE_UNSUPPORTED_MESSAGE =
             "API-based transport is not implemented yet. Use queue/polling transport or provide a real transport adapter.";
 
-    private boolean enabled = true;
-    private boolean transportServerEnabled = true;
-    private int transportServerPort = 8080;
-    private int maxConnections = 1000;
-    private String transportEndpointPath = "/ws";
-
     private MessageTransporterFactory.TransporterType transporterType =
             MessageTransporterFactory.TransporterType.QUEUE_BASED;
     private MessageQueue<String> inputQueue;
@@ -50,7 +45,7 @@ public class TransportConfig {
     private transient WorkerEndpointRegistry runtimeOwnedEndpointRegistry;
     private Supplier<WorkerEndpointRegistry> endpointRegistryFactory;
     private Function<WorkerEndpointRegistry, WorkerSystemEventChannel> systemEventChannelResolver;
-    private TransportServerFactory<TransportServerFactoryContext> transportServerFactory;
+    private WebSocketAdapterConfig defaultWebSocketAdapterConfig = new WebSocketAdapterConfig();
     private WorkerTransportRuntimeFactory workerTransportRuntimeFactory;
     private TransportAdapterBootstrap<WorkerTransportMessage> transportAdapterBootstrap;
     private List<TransportAdapterBootstrap<WorkerTransportMessage>> additionalTransportAdapterBootstraps = List.of();
@@ -61,11 +56,6 @@ public class TransportConfig {
     }
 
     public TransportConfig(TransportConfig source) {
-        this.enabled = source.enabled;
-        this.transportServerEnabled = source.transportServerEnabled;
-        this.transportServerPort = source.transportServerPort;
-        this.maxConnections = source.maxConnections;
-        this.transportEndpointPath = source.transportEndpointPath;
         this.transporterType = source.transporterType;
         this.inputQueue = source.inputQueue;
         this.outputQueue = source.outputQueue;
@@ -77,50 +67,50 @@ public class TransportConfig {
         this.runtimeOwnedEndpointRegistry = null;
         this.endpointRegistryFactory = source.endpointRegistryFactory;
         this.systemEventChannelResolver = source.systemEventChannelResolver;
-        this.transportServerFactory = source.transportServerFactory;
+        this.defaultWebSocketAdapterConfig = new WebSocketAdapterConfig(source.defaultWebSocketAdapterConfig);
         this.workerTransportRuntimeFactory = source.workerTransportRuntimeFactory;
         this.transportAdapterBootstrap = source.transportAdapterBootstrap;
         this.additionalTransportAdapterBootstraps = List.copyOf(source.additionalTransportAdapterBootstraps);
     }
 
     public boolean isEnabled() {
-        return enabled;
+        return defaultWebSocketAdapterConfig.isEnabled();
     }
 
     public void setEnabled(boolean enabled) {
-        this.enabled = enabled;
+        defaultWebSocketAdapterConfig.setEnabled(enabled);
     }
 
     public boolean isTransportServerEnabled() {
-        return transportServerEnabled;
+        return defaultWebSocketAdapterConfig.isServerEnabled();
     }
 
     public void setTransportServerEnabled(boolean transportServerEnabled) {
-        this.transportServerEnabled = transportServerEnabled;
+        defaultWebSocketAdapterConfig.setServerEnabled(transportServerEnabled);
     }
 
     public int getTransportServerPort() {
-        return transportServerPort;
+        return defaultWebSocketAdapterConfig.getServerPort();
     }
 
     public void setTransportServerPort(int transportServerPort) {
-        this.transportServerPort = transportServerPort;
+        defaultWebSocketAdapterConfig.setServerPort(transportServerPort);
     }
 
     public int getMaxConnections() {
-        return maxConnections;
+        return defaultWebSocketAdapterConfig.getMaxConnections();
     }
 
     public void setMaxConnections(int maxConnections) {
-        this.maxConnections = maxConnections;
+        defaultWebSocketAdapterConfig.setMaxConnections(maxConnections);
     }
 
     public String getTransportEndpointPath() {
-        return transportEndpointPath;
+        return defaultWebSocketAdapterConfig.getEndpointPath();
     }
 
     public void setTransportEndpointPath(String transportEndpointPath) {
-        this.transportEndpointPath = transportEndpointPath;
+        defaultWebSocketAdapterConfig.setEndpointPath(transportEndpointPath);
     }
 
     /**
@@ -229,11 +219,21 @@ public class TransportConfig {
     }
 
     public TransportServerFactory<TransportServerFactoryContext> getTransportServerFactory() {
-        return transportServerFactory;
+        return defaultWebSocketAdapterConfig.getTransportServerFactory();
     }
 
     public void setTransportServerFactory(TransportServerFactory<TransportServerFactoryContext> transportServerFactory) {
-        this.transportServerFactory = transportServerFactory;
+        defaultWebSocketAdapterConfig.setTransportServerFactory(transportServerFactory);
+    }
+
+    public WebSocketAdapterConfig getDefaultWebSocketAdapterConfig() {
+        return defaultWebSocketAdapterConfig;
+    }
+
+    public void setDefaultWebSocketAdapterConfig(WebSocketAdapterConfig defaultWebSocketAdapterConfig) {
+        this.defaultWebSocketAdapterConfig = new WebSocketAdapterConfig(
+                java.util.Objects.requireNonNull(defaultWebSocketAdapterConfig, "defaultWebSocketAdapterConfig")
+        );
     }
 
     public WorkerTransportRuntimeFactory getWorkerTransportRuntimeFactory() {
@@ -349,14 +349,7 @@ public class TransportConfig {
     public TransportAdapterBootstrap<WorkerTransportMessage> resolveTransportAdapterBootstrap() {
         return transportAdapterBootstrap != null
                 ? transportAdapterBootstrap
-                : new WebSocketTransportAdapterBootstrap(
-                enabled,
-                transportServerEnabled,
-                transportServerPort,
-                maxConnections,
-                transportEndpointPath,
-                transportServerFactory
-        );
+                : new WebSocketTransportAdapterBootstrap(defaultWebSocketAdapterConfig);
     }
 
     /**
@@ -371,13 +364,15 @@ public class TransportConfig {
     public TransportServer createTransportServer(WebSocketDispatchRuntimeContext dispatcherContext,
                                                  WorkerEndpointRegistry endpointRegistry,
                                                  int port) {
-        if (!transportServerEnabled) {
+        if (!defaultWebSocketAdapterConfig.isServerEnabled()) {
             return null;
         }
+        TransportServerFactory<TransportServerFactoryContext> transportServerFactory =
+                defaultWebSocketAdapterConfig.getTransportServerFactory();
         if (transportServerFactory == null) {
             return WebSocketEmbeddedRuntimeSupport.createTransportServer(
                     port,
-                    transportEndpointPath,
+                    defaultWebSocketAdapterConfig.getEndpointPath(),
                     dispatcherContext,
                     endpointRegistry
             );
@@ -386,7 +381,7 @@ public class TransportConfig {
                 endpointRegistry,
                 dispatcherContext.getMessageTransporter()::sendInput,
                 port,
-                transportEndpointPath
+                defaultWebSocketAdapterConfig.getEndpointPath()
         ));
     }
 }

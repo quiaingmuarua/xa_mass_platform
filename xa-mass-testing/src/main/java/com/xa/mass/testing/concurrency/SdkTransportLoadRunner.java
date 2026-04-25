@@ -172,10 +172,11 @@ public final class SdkTransportLoadRunner {
         private EmbeddedRuntime buildRuntime(LoadConfig config) {
             int transportPort = config.transport() == WorkerTransportMode.WEBSOCKET ? findFreePort() : 0;
             MassSdkApplication app = MassSdk.builder()
-                    .transportServer(transportPort, ENDPOINT_PATH)
                     .transport(transport -> transport
-                            .enabled(config.transport() == WorkerTransportMode.WEBSOCKET)
-                            .transportServerEnabled(config.transport() == WorkerTransportMode.WEBSOCKET)
+                            .webSocketAdapter(webSocket -> webSocket
+                                    .server(transportPort, ENDPOINT_PATH)
+                                    .enabled(config.transport() == WorkerTransportMode.WEBSOCKET)
+                                    .serverEnabled(config.transport() == WorkerTransportMode.WEBSOCKET))
                             .inputQueue(new InMemoryMessageQueue<>("sdk-load-input", String.class))
                             .outputQueue(new InMemoryMessageQueue<>("sdk-load-output", com.xa.mass.transport.model.WorkerTransportMessage.class))
                             .queueMode())

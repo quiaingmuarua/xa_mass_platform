@@ -98,10 +98,11 @@ public class MockApplicationSpringBootApp {
     public MassSdkApplication fullStackRuntimeApplication() {
         return MassSdk.builder()
                 .projectCatalogBootstrap(new ProjectEventCatalogRegistry())
-                .server(massWebSocketPort)
                 .transport(transport -> transport
-                        .enabled(true)
-                        .maxConnections(maxConnections)
+                        .webSocketAdapter(webSocket -> webSocket
+                                .server(massWebSocketPort)
+                                .enabled(true)
+                                .maxConnections(maxConnections))
                         .inputQueue(new InMemoryMessageQueue<>("input", String.class))
                         .outputQueue(new InMemoryMessageQueue<>("output", WorkerTransportMessage.class)))
                 .engine(engine -> engine

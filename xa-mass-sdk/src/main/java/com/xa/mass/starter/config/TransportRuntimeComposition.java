@@ -11,6 +11,7 @@ import com.xa.mass.transport.TransportServerFactory;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
 import com.xa.mass.transport.model.WorkerTransportMessage;
+import com.xa.mass.transport.websocket.runtime.WebSocketAdapterConfig;
 import com.xa.mass.transport.websocket.runtime.WebSocketTransportAdapterBootstrap;
 
 import java.util.ArrayList;
@@ -30,11 +31,6 @@ public class TransportRuntimeComposition {
     private static final String API_MODE_UNSUPPORTED_MESSAGE =
             "API-based transport is not implemented yet. Use queue/polling transport or provide a real transport adapter.";
 
-    private final boolean enabled;
-    private final boolean transportServerEnabled;
-    private final int transportServerPort;
-    private final int maxConnections;
-    private final String transportEndpointPath;
     private final MessageTransporterFactory.TransporterType transporterType;
     private final MessageQueue<String> inputQueue;
     private final MessageQueue<WorkerTransportMessage> outputQueue;
@@ -42,7 +38,7 @@ public class TransportRuntimeComposition {
     private final WorkerEndpointRegistry workerEndpointRegistry;
     private final Supplier<WorkerEndpointRegistry> endpointRegistryFactory;
     private final Function<WorkerEndpointRegistry, WorkerSystemEventChannel> systemEventChannelResolver;
-    private final TransportServerFactory<TransportServerFactoryContext> transportServerFactory;
+    private final WebSocketAdapterConfig defaultWebSocketAdapterConfig;
     private final WorkerTransportRuntimeFactory workerTransportRuntimeFactory;
     private final TransportAdapterBootstrap<WorkerTransportMessage> transportAdapterBootstrap;
     private final List<TransportAdapterBootstrap<WorkerTransportMessage>> additionalTransportAdapterBootstraps;
@@ -50,11 +46,6 @@ public class TransportRuntimeComposition {
     private transient WorkerEndpointRegistry runtimeOwnedEndpointRegistry;
 
     public TransportRuntimeComposition(TransportConfig source) {
-        this.enabled = source.isEnabled();
-        this.transportServerEnabled = source.isTransportServerEnabled();
-        this.transportServerPort = source.getTransportServerPort();
-        this.maxConnections = source.getMaxConnections();
-        this.transportEndpointPath = source.getTransportEndpointPath();
         this.transporterType = source.getTransporterType();
         this.inputQueue = source.getInputQueue();
         this.outputQueue = source.getOutputQueue();
@@ -62,30 +53,30 @@ public class TransportRuntimeComposition {
         this.workerEndpointRegistry = source.getWorkerEndpointRegistry();
         this.endpointRegistryFactory = source.endpointRegistryFactory();
         this.systemEventChannelResolver = source.systemEventChannelResolver();
-        this.transportServerFactory = source.getTransportServerFactory();
+        this.defaultWebSocketAdapterConfig = new WebSocketAdapterConfig(source.getDefaultWebSocketAdapterConfig());
         this.workerTransportRuntimeFactory = source.getWorkerTransportRuntimeFactory();
         this.transportAdapterBootstrap = source.getTransportAdapterBootstrap();
         this.additionalTransportAdapterBootstraps = List.copyOf(source.getAdditionalTransportAdapterBootstraps());
     }
 
     public boolean isEnabled() {
-        return enabled;
+        return defaultWebSocketAdapterConfig.isEnabled();
     }
 
     public boolean isTransportServerEnabled() {
-        return transportServerEnabled;
+        return defaultWebSocketAdapterConfig.isServerEnabled();
     }
 
     public int getTransportServerPort() {
-        return transportServerPort;
+        return defaultWebSocketAdapterConfig.getServerPort();
     }
 
     public int getMaxConnections() {
-        return maxConnections;
+        return defaultWebSocketAdapterConfig.getMaxConnections();
     }
 
     public String getTransportEndpointPath() {
-        return transportEndpointPath;
+        return defaultWebSocketAdapterConfig.getEndpointPath();
     }
 
     public MessageTransporter<String, WorkerTransportMessage> createMessageTransporter() {
@@ -138,14 +129,7 @@ public class TransportRuntimeComposition {
         List<TransportAdapterBootstrap<WorkerTransportMessage>> bootstraps = new ArrayList<>();
         bootstraps.add(transportAdapterBootstrap != null
                 ? transportAdapterBootstrap
-                : new WebSocketTransportAdapterBootstrap(
-                enabled,
-                transportServerEnabled,
-                transportServerPort,
-                maxConnections,
-                transportEndpointPath,
-                transportServerFactory
-        ));
+                : new WebSocketTransportAdapterBootstrap(defaultWebSocketAdapterConfig));
         bootstraps.addAll(additionalTransportAdapterBootstraps);
         return List.copyOf(bootstraps);
     }

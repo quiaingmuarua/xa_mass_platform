@@ -17,25 +17,10 @@ import com.xa.mass.transport.websocket.dispatcher.context.WebSocketDispatchRunti
  */
 public final class WebSocketTransportAdapterBootstrap implements TransportAdapterBootstrap<WorkerTransportMessage> {
 
-    private final boolean enabled;
-    private final boolean transportServerEnabled;
-    private final int transportServerPort;
-    private final int maxConnections;
-    private final String transportEndpointPath;
-    private final TransportServerFactory<TransportServerFactoryContext> transportServerFactory;
+    private final WebSocketAdapterConfig config;
 
-    public WebSocketTransportAdapterBootstrap(boolean enabled,
-                                              boolean transportServerEnabled,
-                                              int transportServerPort,
-                                              int maxConnections,
-                                              String transportEndpointPath,
-                                              TransportServerFactory<TransportServerFactoryContext> transportServerFactory) {
-        this.enabled = enabled;
-        this.transportServerEnabled = transportServerEnabled;
-        this.transportServerPort = transportServerPort;
-        this.maxConnections = maxConnections;
-        this.transportEndpointPath = transportEndpointPath;
-        this.transportServerFactory = transportServerFactory;
+    public WebSocketTransportAdapterBootstrap(WebSocketAdapterConfig config) {
+        this.config = new WebSocketAdapterConfig(config);
     }
 
     @Override
@@ -48,7 +33,7 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
         );
 
         TransportAdapterContribution.Builder contribution = TransportAdapterContribution.builder();
-        if (enabled) {
+        if (config.isEnabled()) {
             contribution.transportBinding(TransportBinding.builder(
                     WebSocketEmbeddedRuntimeSupport.createRealtimeWorkerAdapter(
                             new WebSocketTaskDispatchChannel(dispatcherContext)
@@ -59,23 +44,25 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
                     context.getMessageTransporter()
             ));
             ManagedTransportAdapter managedTransportAdapter =
-                    new WebSocketManagedTransportAdapter(maxConnections, dispatcherContext);
+                    new WebSocketManagedTransportAdapter(config.getMaxConnections(), dispatcherContext);
             contribution.managedTransportAdapter(managedTransportAdapter);
         }
 
-        if (transportServerEnabled) {
+        if (config.isServerEnabled()) {
+            TransportServerFactory<TransportServerFactoryContext> transportServerFactory =
+                    config.getTransportServerFactory();
             TransportServer transportServer = transportServerFactory == null
                     ? WebSocketEmbeddedRuntimeSupport.createTransportServer(
-                    transportServerPort,
-                    transportEndpointPath,
+                    config.getServerPort(),
+                    config.getEndpointPath(),
                     dispatcherContext,
                     context.getEndpointRegistry()
             )
                     : transportServerFactory.create(new TransportServerFactoryContext(
                     context.getEndpointRegistry(),
                     context.getMessageTransporter()::sendInput,
-                    transportServerPort,
-                    transportEndpointPath
+                    config.getServerPort(),
+                    config.getEndpointPath()
             ));
             contribution.transportServer(transportServer);
         }

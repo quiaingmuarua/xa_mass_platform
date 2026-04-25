@@ -18,6 +18,7 @@ import com.xa.mass.starter.transport.TransportServerFactoryContext;
 import com.xa.mass.starter.transport.WorkerTransportRuntimeFactory;
 import com.xa.mass.transport.TransportServerFactory;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
+import com.xa.mass.transport.websocket.runtime.WebSocketAdapterConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -49,10 +50,11 @@ public class MassApplicationBuilder {
      */
     public static MassApplication createDevelopment(int port) {
         return create()
-                .server(port)
                 .transport(transport -> transport
-                        .enabled(true)
-                        .maxConnections(1000)
+                        .webSocketAdapter(webSocket -> webSocket
+                                .server(port)
+                                .enabled(true)
+                                .maxConnections(1000))
                         .inputQueue(new InMemoryMessageQueue<>("input", String.class))
                         .outputQueue(new InMemoryMessageQueue<>("output", WorkerTransportMessage.class)))
                 .engine(engine -> engine
@@ -69,10 +71,11 @@ public class MassApplicationBuilder {
     @Deprecated(forRemoval = false)
     public static MassApplication createDevelopment(int port, MessageQueue<String> inputQueue, MessageQueue<WorkerTransportMessage> outputQueue) {
         return create()
-                .server(port)
                 .transport(transport -> transport
-                        .enabled(true)
-                        .maxConnections(1000)
+                        .webSocketAdapter(webSocket -> webSocket
+                                .server(port)
+                                .enabled(true)
+                                .maxConnections(1000))
                         .inputQueue(inputQueue)
                         .outputQueue(outputQueue))
                 .engine(engine -> engine
@@ -86,10 +89,11 @@ public class MassApplicationBuilder {
      */
     public static MassApplication createProduction(int port) {
         return create()
-                .server(port)
                 .transport(transport -> transport
-                        .enabled(true)
-                        .maxConnections(5000)
+                        .webSocketAdapter(webSocket -> webSocket
+                                .server(port)
+                                .enabled(true)
+                                .maxConnections(5000))
                         .inputQueue(new InMemoryMessageQueue<>("input", String.class))
                         .outputQueue(new InMemoryMessageQueue<>("output", WorkerTransportMessage.class)))
                 .engine(engine -> engine
@@ -104,10 +108,11 @@ public class MassApplicationBuilder {
     @Deprecated(forRemoval = false)
     public static MassApplication createProduction(int port, MessageQueue<String> inputQueue, MessageQueue<WorkerTransportMessage> outputQueue) {
         return create()
-                .server(port)
                 .transport(transport -> transport
-                        .enabled(true)
-                        .maxConnections(5000)
+                        .webSocketAdapter(webSocket -> webSocket
+                                .server(port)
+                                .enabled(true)
+                                .maxConnections(5000))
                         .inputQueue(inputQueue)
                         .outputQueue(outputQueue))
                 .engine(engine -> engine
@@ -126,10 +131,11 @@ public class MassApplicationBuilder {
 
     public static MassApplication createTest(int port) {
         return create()
-                .server(port)
                 .transport(transport -> transport
-                        .enabled(true)
-                        .maxConnections(100))
+                        .webSocketAdapter(webSocket -> webSocket
+                                .server(port)
+                                .enabled(true)
+                                .maxConnections(100)))
                 .engine(engine -> engine
                         .enabled(true)
                         .workerThreads(2))
@@ -218,6 +224,12 @@ public class MassApplicationBuilder {
             return this;
         }
 
+        public TransportBuilder webSocketAdapter(Consumer<WebSocketAdapterBuilder> webSocketAdapterConfigurator) {
+            WebSocketAdapterBuilder builder = new WebSocketAdapterBuilder(config.getDefaultWebSocketAdapterConfig());
+            webSocketAdapterConfigurator.accept(builder);
+            return this;
+        }
+
         public TransportBuilder transportServerEnabled(boolean enabled) {
             config.setTransportServerEnabled(enabled);
             return this;
@@ -279,6 +291,50 @@ public class MassApplicationBuilder {
          */
         public TransportBuilder systemEventChannel(WorkerSystemEventChannel channel) {
             config.setCustomSystemEventChannel(channel);
+            return this;
+        }
+    }
+
+    public static class WebSocketAdapterBuilder {
+        private final WebSocketAdapterConfig config;
+
+        public WebSocketAdapterBuilder(WebSocketAdapterConfig config) {
+            this.config = config;
+        }
+
+        public WebSocketAdapterBuilder enabled(boolean enabled) {
+            config.setEnabled(enabled);
+            return this;
+        }
+
+        public WebSocketAdapterBuilder serverEnabled(boolean enabled) {
+            config.setServerEnabled(enabled);
+            return this;
+        }
+
+        public WebSocketAdapterBuilder server(int port) {
+            return server(port, "/ws");
+        }
+
+        public WebSocketAdapterBuilder server(int port, String endpointPath) {
+            config.setServerPort(port);
+            config.setEndpointPath(endpointPath);
+            return this;
+        }
+
+        public WebSocketAdapterBuilder endpointPath(String endpointPath) {
+            config.setEndpointPath(endpointPath);
+            return this;
+        }
+
+        public WebSocketAdapterBuilder maxConnections(int maxConnections) {
+            config.setMaxConnections(maxConnections);
+            return this;
+        }
+
+        public WebSocketAdapterBuilder transportServerFactory(
+                TransportServerFactory<TransportServerFactoryContext> transportServerFactory) {
+            config.setTransportServerFactory(transportServerFactory);
             return this;
         }
     }

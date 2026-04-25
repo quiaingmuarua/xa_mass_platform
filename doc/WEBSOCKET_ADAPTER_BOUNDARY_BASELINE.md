@@ -208,6 +208,7 @@ Rules:
 - keep adapter-specific endpoint bootstrap and WebSocket-backed realtime adapter defaults inside the adapter module; SDK runtime assembly must not grow session-manager, frame-codec, or WebSocket-specific branching
 - keep the default transport-server bootstrap helper in adapter-owned code; current SDK `transportServerFactory(...)` remains an advanced override seam rather than a second mainline
 - stable SDK/starter builder entry should be `transport(...)`; deprecated `websocket(...)` naming remains compatibility-only and must not regain mainline ownership
+- bundled embedded WebSocket settings should hang off explicit adapter-owned nested config such as `transport(... -> webSocketAdapter(...))`, not off runtime-global transport fields
 - embedded-runtime mainline should consume one or more adapter-owned bootstrap/contribution outputs; `MassApplication` should manage only neutral runtime facts such as managed adapters, transport bindings, endpoint registry, transport servers, and raw worker side-channel capabilities
 - adapter-owned raw worker side-channel send, when present, should surface as a transport-neutral contribution capability; SDK/runtime code must not construct WebSocket delivery DTOs directly
 - `MassApplication` should snapshot external transport config into internal runtime-composition state during construction rather than retaining a live config object as the runtime backbone

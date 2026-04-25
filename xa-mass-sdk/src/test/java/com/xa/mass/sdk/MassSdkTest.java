@@ -85,8 +85,11 @@ class MassSdkTest {
     @Test
     void builderCreatesConsumerFacingApplicationHandle() {
         MassSdkApplication app = MassSdk.builder()
-                .transportServer(19090, "/sdk-transport")
-                .transport(transport -> transport.enabled(false).transportServerEnabled(false))
+                .transport(transport -> transport
+                        .webSocketAdapter(webSocket -> webSocket
+                                .server(19090, "/sdk-transport")
+                                .enabled(false)
+                                .serverEnabled(false)))
                 .engine(engine -> engine.enabled(false))
                 .build();
 
@@ -97,7 +100,8 @@ class MassSdkTest {
     @Test
     void engineOptionsExposeChaosTuningKnobs() {
         MassSdkApplication app = MassSdk.builder()
-                .transport(transport -> transport.enabled(false).transportServerEnabled(false))
+                .transport(transport -> transport
+                        .webSocketAdapter(webSocket -> webSocket.enabled(false).serverEnabled(false)))
                 .engine(engine -> engine
                         .enabled(true)
                         .assignmentRetryDelayMillis(125L)
@@ -124,7 +128,8 @@ class MassSdkTest {
 
         MassSdkApplication app = MassSdk.builder()
                 .projectCatalogBootstrap(bootstrapRegistry)
-                .transport(transport -> transport.enabled(false).transportServerEnabled(false))
+                .transport(transport -> transport
+                        .webSocketAdapter(webSocket -> webSocket.enabled(false).serverEnabled(false)))
                 .engine(engine -> engine.enabled(false))
                 .build();
 
@@ -161,13 +166,14 @@ class MassSdkTest {
         };
 
         MassSdkApplication app = MassSdk.builder()
-                .transportServer(19092, "/custom-transport")
                 .transport(transport -> transport
-                        .enabled(false)
-                        .transportServerEnabled(true)
+                        .webSocketAdapter(webSocket -> webSocket
+                                .server(19092, "/custom-transport")
+                                .enabled(false)
+                                .serverEnabled(true)
+                                .transportServerFactory(factory))
                         .inputQueue(inputQueue)
-                        .outputQueue(outputQueue)
-                        .transportServerFactory(factory))
+                        .outputQueue(outputQueue))
                 .engine(engine -> engine.enabled(false))
                 .build();
 

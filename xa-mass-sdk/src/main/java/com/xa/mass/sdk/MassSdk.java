@@ -199,6 +199,12 @@ public final class MassSdk {
             return this;
         }
 
+        public TransportOptions webSocketAdapter(Consumer<WebSocketAdapterOptions> configurator) {
+            Objects.requireNonNull(configurator, "configurator");
+            delegate.webSocketAdapter(inner -> configurator.accept(new WebSocketAdapterOptions(inner)));
+            return this;
+        }
+
         public TransportOptions transportServerEnabled(boolean enabled) {
             delegate.transportServerEnabled(enabled);
             return this;
@@ -269,6 +275,50 @@ public final class MassSdk {
         @Deprecated(forRemoval = false)
         public MassApplicationBuilder.TransportBuilder unwrap() {
             return delegate;
+        }
+    }
+
+    public static final class WebSocketAdapterOptions {
+        private final MassApplicationBuilder.WebSocketAdapterBuilder delegate;
+
+        private WebSocketAdapterOptions(MassApplicationBuilder.WebSocketAdapterBuilder delegate) {
+            this.delegate = Objects.requireNonNull(delegate, "delegate");
+        }
+
+        public WebSocketAdapterOptions enabled(boolean enabled) {
+            delegate.enabled(enabled);
+            return this;
+        }
+
+        public WebSocketAdapterOptions serverEnabled(boolean enabled) {
+            delegate.serverEnabled(enabled);
+            return this;
+        }
+
+        public WebSocketAdapterOptions server(int port) {
+            delegate.server(port);
+            return this;
+        }
+
+        public WebSocketAdapterOptions server(int port, String endpointPath) {
+            delegate.server(port, endpointPath);
+            return this;
+        }
+
+        public WebSocketAdapterOptions endpointPath(String endpointPath) {
+            delegate.endpointPath(endpointPath);
+            return this;
+        }
+
+        public WebSocketAdapterOptions maxConnections(int maxConnections) {
+            delegate.maxConnections(maxConnections);
+            return this;
+        }
+
+        public WebSocketAdapterOptions transportServerFactory(
+                TransportServerFactory<TransportServerFactoryContext> transportServerFactory) {
+            delegate.transportServerFactory(transportServerFactory);
+            return this;
         }
     }
 

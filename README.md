@@ -148,8 +148,11 @@ import com.xa.mass.sdk.model.WorkerContextRegistration;
 import com.xa.mass.sdk.model.WorkerRegistration;
 
 MassSdkApplication app = MassSdk.builder()
-        .server(19090, "/ws")
-        .transport(transport -> transport.enabled(false))
+        .transport(transport -> transport
+                .webSocketAdapter(webSocket -> webSocket
+                        .server(19090, "/ws")
+                        .enabled(false)
+                        .serverEnabled(false)))
         .engine(engine -> engine.enabled(true))
         .build();
 

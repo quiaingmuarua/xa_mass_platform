@@ -196,10 +196,11 @@ public final class SdkWebSocketDisconnectChaosRunner {
         private EmbeddedRuntime buildRuntime(ChaosConfig config) {
             int transportPort = findFreePort();
             MassSdkApplication app = MassSdk.builder()
-                    .transportServer(transportPort, ENDPOINT_PATH)
                     .transport(transport -> transport
-                            .enabled(true)
-                            .transportServerEnabled(true)
+                            .webSocketAdapter(webSocket -> webSocket
+                                    .server(transportPort, ENDPOINT_PATH)
+                                    .enabled(true)
+                                    .serverEnabled(true))
                             .inputQueue(new InMemoryMessageQueue<>("sdk-chaos-input", String.class))
                             .outputQueue(new InMemoryMessageQueue<>("sdk-chaos-output", com.xa.mass.transport.model.WorkerTransportMessage.class))
                             .queueMode())

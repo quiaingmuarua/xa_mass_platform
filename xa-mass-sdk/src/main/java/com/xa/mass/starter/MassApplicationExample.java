@@ -52,10 +52,11 @@ public class MassApplicationExample {
         MessageQueue<WorkerTransportMessage> outputQueue = new InMemoryMessageQueue<>("WsOutboundDelivery", WorkerTransportMessage.class);
 
         MassApplication app = MassApplicationBuilder.create()
-                .transportServer(9090, "/custom-ws")
                 .transport(transport -> transport
-                        .enabled(true)
-                        .maxConnections(2000)
+                        .webSocketAdapter(webSocket -> webSocket
+                                .server(9090, "/custom-ws")
+                                .enabled(true)
+                                .maxConnections(2000))
                         .inputQueue(inputQueue)
                         .outputQueue(outputQueue)
                         .queueMode())
@@ -74,10 +75,11 @@ public class MassApplicationExample {
         MessageQueue<WorkerTransportMessage> outputQueue = new InMemoryMessageQueue<>("WsOutboundDelivery", WorkerTransportMessage.class);
 
         MassApplication app = MassApplicationBuilder.create()
-                .server(8080)
                 .transport(transport -> transport
-                        .enabled(true)
-                        .maxConnections(100)
+                        .webSocketAdapter(webSocket -> webSocket
+                                .server(8080)
+                                .enabled(true)
+                                .maxConnections(100))
                         .inputQueue(inputQueue)
                         .outputQueue(outputQueue))
                 .engine(engine -> engine.enabled(false))
@@ -90,8 +92,9 @@ public class MassApplicationExample {
     private static void exampleEngineOnly() {
         logger.info("Example 6: engine only");
         MassApplication app = MassApplicationBuilder.create()
-                .server(8080)
-                .transport(transport -> transport.enabled(false))
+                .transport(transport -> transport
+                        .webSocketAdapter(webSocket -> webSocket.server(8080).enabled(false).serverEnabled(false))
+                        .enabled(false))
                 .engine(engine -> engine
                         .enabled(true)
                         .workerThreads(4))
