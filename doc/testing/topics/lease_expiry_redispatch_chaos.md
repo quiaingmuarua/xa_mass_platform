@@ -19,7 +19,7 @@ Use this topic when the runtime risk is not just reconnect churn, but ownership 
 Run from `xa-mass-testing/`:
 
 ```bash
-..\mvnw.cmd -Dexec.classpathScope=compile -Dmaven.test.skip=true -Dmass.sdk.chaos.timeoutSeconds=30 org.codehaus.mojo:exec-maven-plugin:3.5.0:java -Dexec.mainClass=com.xa.mass.testing.chaos.SdkWebSocketLeaseExpiryRedispatchChaosRunner
+..\mvnw.cmd -Dexec.classpathScope=compile -Dmaven.test.skip=true -Dmass.sdk.chaos.taskMessageLeaseSeconds=2 -Dmass.sdk.chaos.timeoutSeconds=30 org.codehaus.mojo:exec-maven-plugin:3.5.0:java -Dexec.mainClass=com.xa.mass.testing.chaos.SdkWebSocketLeaseExpiryRedispatchChaosRunner
 ```
 
 Useful knobs:
@@ -28,7 +28,7 @@ Useful knobs:
 -Dmass.sdk.chaos.processingDelayMillis=25
 -Dmass.sdk.chaos.assignmentRetryDelayMillis=100
 -Dmass.sdk.chaos.leaseWatchdogIntervalSeconds=1
--Dmass.sdk.chaos.forcedLeaseBackdateSeconds=2
+-Dmass.sdk.chaos.taskMessageLeaseSeconds=2
 -Dmass.sdk.chaos.timeoutSeconds=30
 ```
 
@@ -38,7 +38,7 @@ Artifact:
 
 Verified artifact on 2026-04-25:
 
-- `xa-mass-testing/target/chaos-reports/sdk-websocket-lease-expiry-redispatch-chaos-20260425-173651.json`
+- `xa-mass-testing/target/chaos-reports/sdk-websocket-lease-expiry-redispatch-chaos-20260425-180330.json`
 
 ## What This Probe Proves
 
@@ -51,4 +51,4 @@ Verified artifact on 2026-04-25:
 
 ## Important Scope Note
 
-To keep this probe fast enough for routine acceptance, it forces the first persisted attempt lease timestamp into the past instead of waiting for the default five-minute lease window. The dispatch, disconnect, watchdog scan, redispatch, and result-ingest paths are still real runtime behavior.
+This probe now uses a real short runtime lease window instead of rewriting persisted attempt timestamps. That keeps the dispatch, disconnect, watchdog scan, redispatch, and result-ingest paths on the normal runtime path while still finishing fast enough for routine acceptance.

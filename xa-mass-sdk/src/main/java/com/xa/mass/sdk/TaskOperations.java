@@ -46,6 +46,10 @@ public interface TaskOperations {
 
     List<TaskMsg> getTaskMessages(String taskId);
 
+    List<TaskMsg> getTaskMessagesPage(String taskId, int offset, int limit);
+
+    long countTaskMessages(String taskId);
+
     Object validateTaskState(String taskId);
 
     Object resolveTaskStateFromMessages(String taskId);

@@ -281,6 +281,11 @@ public final class MassSdk {
             return this;
         }
 
+        public EngineOptions taskMessageLeaseSeconds(long taskMessageLeaseSeconds) {
+            delegate.taskMessageLeaseSeconds(taskMessageLeaseSeconds);
+            return this;
+        }
+
         public EngineOptions bootstrapDataProvider(MassBootstrapDataProvider bootstrapDataProvider) {
             delegate.bootstrapDataProvider(bootstrapDataProvider);
             return this;

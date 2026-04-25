@@ -351,14 +351,18 @@ public class TaskApiController {
     public ResponseEntity<ApiResponse<Map<String, Object>>> getTaskMessages(@PathVariable String taskId,
                                                                             @RequestParam(defaultValue = "1") int page,
                                                                             @RequestParam(defaultValue = "20") int size) {
+        if (page < 1) {
+            page = 1;
+        }
         if (size > 500) {
             size = 500;
         }
-        List<TaskMsg> all = taskOperations.getTaskMessages(taskId);
-        int total = all.size();
-        int from = Math.max(0, (page - 1) * size);
-        int to = Math.min(from + size, total);
-        List<TaskMsg> pageList = from < to ? all.subList(from, to) : Collections.emptyList();
+        if (size < 1) {
+            size = 1;
+        }
+        int from = (page - 1) * size;
+        long total = taskOperations.countTaskMessages(taskId);
+        List<TaskMsg> pageList = taskOperations.getTaskMessagesPage(taskId, from, size);
         List<Map<String, Object>> messages = pageList.stream()
                 .map(this::toTaskMessageView)
                 .collect(Collectors.toList());

@@ -250,7 +250,7 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
         attempt.setWorkerContextId(workerContextId);
         attempt.setBatchId(batchId);
         TaskMsgAttemptStatus initialAttemptStatus = attempt.getStatus();
-        if (!attempt.markLeased(LocalDateTime.now().plusMinutes(5))) {
+        if (!attempt.markLeased(LocalDateTime.now().plusSeconds(taskManager.getTaskMessageLeaseSeconds()))) {
             return false;
         }
         TraceEventLogger.taskMsgAttemptStatusTransition(

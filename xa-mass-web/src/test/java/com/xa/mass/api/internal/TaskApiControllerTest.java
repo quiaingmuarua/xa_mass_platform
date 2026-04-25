@@ -499,7 +499,8 @@ class TaskApiControllerTest {
         TaskMsg first = new TaskMsg("msg-1", TASK_ID, Map.of("target", "alpha"));
         first.setOutput(Map.of("result", "ok"));
         TaskMsg second = new TaskMsg("msg-2", TASK_ID, Map.of("target", "beta"));
-        when(taskOperations.getTaskMessages(TASK_ID)).thenReturn(List.of(first, second));
+        when(taskOperations.countTaskMessages(TASK_ID)).thenReturn(2L);
+        when(taskOperations.getTaskMessagesPage(TASK_ID, 0, 1)).thenReturn(List.of(first));
 
         mockMvc.perform(get("/status/api/tasks/{taskId}/messages", TASK_ID)
                         .param("page", "1")
@@ -510,6 +511,10 @@ class TaskApiControllerTest {
                 .andExpect(jsonPath("$.data.messages[0].messageId").value("msg-1"))
                 .andExpect(jsonPath("$.data.messages[0].input.target").value("alpha"))
                 .andExpect(jsonPath("$.data.messages[0].output.result").value("ok"));
+
+        verify(taskOperations).countTaskMessages(TASK_ID);
+        verify(taskOperations).getTaskMessagesPage(TASK_ID, 0, 1);
+        verify(taskOperations, never()).getTaskMessages(TASK_ID);
     }
 
     @Test

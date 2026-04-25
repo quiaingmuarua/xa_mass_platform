@@ -294,6 +294,11 @@ public class MassApplicationBuilder {
             return this;
         }
 
+        public EngineBuilder taskMessageLeaseSeconds(long taskMessageLeaseSeconds) {
+            config.setTaskMessageLeaseSeconds(taskMessageLeaseSeconds);
+            return this;
+        }
+
         public EngineBuilder bootstrapDataProvider(MassBootstrapDataProvider bootstrapDataProvider) {
             config.setBootstrapDataProvider(bootstrapDataProvider);
             return this;

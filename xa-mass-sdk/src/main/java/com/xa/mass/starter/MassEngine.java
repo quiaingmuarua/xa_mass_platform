@@ -74,6 +74,7 @@ public class MassEngine {
         logger.info("Starting MassEngine with {} worker threads", config.getWorkerThreads());
         try {
             taskManager = config.getTaskManager();
+            taskManager.setTaskMessageLeaseSeconds(config.getTaskMessageLeaseSeconds());
             workerManager = config.getWorkerManager();
             recordService = config.getRecordService();
             var ruleManager = config.getRuleManager();

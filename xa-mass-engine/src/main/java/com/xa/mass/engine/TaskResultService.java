@@ -173,7 +173,9 @@ class TaskResultService {
 
             TraceEventLogger.callbackAccepted(taskMsg, success ? "success callback received" : "failure callback received");
 
-            if (!TaskMessageAttemptSupport.advanceAttemptForCallback(activeAttempt)) {
+            if (!TaskMessageAttemptSupport.advanceAttemptForCallback(
+                    activeAttempt,
+                    taskManager.getTaskMessageLeaseSeconds())) {
                 logger.warn("Cannot advance attempt {} for task message {} from status {}",
                         activeAttempt.getAttemptId(), messageId, activeAttempt.getStatus());
                 return false;

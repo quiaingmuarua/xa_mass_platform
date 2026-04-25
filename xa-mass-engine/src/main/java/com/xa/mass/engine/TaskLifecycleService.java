@@ -1,7 +1,9 @@
 package com.xa.mass.engine;
 
 import com.xa.mass.base.enums.task.TaskHoldReason;
+import com.xa.mass.base.enums.task.TaskIngestStatus;
 import com.xa.mass.base.enums.task.TaskIntakeStatus;
+import com.xa.mass.base.enums.task.TaskSourceType;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.enums.taskmsg.TaskMsgAttemptFinalReason;
@@ -245,11 +247,11 @@ class TaskLifecycleService {
         if (task == null) {
             throw new IllegalArgumentException("Task not found: " + taskId);
         }
-        if (task.getIntakeStatus() != TaskIntakeStatus.OPEN) {
-            throw new IllegalStateException("Task is not open-ended: " + taskId);
+        if (inputs == null || inputs.isEmpty()) {
+            throw new IllegalArgumentException("inputs must be a non-empty list");
         }
-        if (!task.getStatus().isActive() && task.getStatus() != TaskStatus.PAUSED) {
-            throw new IllegalStateException("Task not active: " + task.getStatus());
+        if (!canAcceptTaskInputs(task)) {
+            throw new IllegalStateException(describeInputAppendRejection(task, taskId));
         }
 
         int added = 0;
@@ -261,6 +263,7 @@ class TaskLifecycleService {
         }
         task.setTaskTargetNumber(task.getTaskTargetNumber() + added);
         task.setTaskEligibleNumber(task.getTaskEligibleNumber() + added);
+        task.setIngestStatus(resolvePostAppendIngestStatus(task));
         taskManager.updateTask(task);
         if (task.getStatus().isActive()) {
             taskManager.getEventPublisher().publishTaskDispatchRequested(task);
@@ -271,14 +274,63 @@ class TaskLifecycleService {
 
     boolean sealTask(String taskId) {
         Task task = taskManager.getTask(taskId);
-        if (task == null || task.getIntakeStatus() != TaskIntakeStatus.OPEN) {
+        if (task == null) {
             return false;
         }
-        task.setIntakeStatus(TaskIntakeStatus.SEALED);
+        if (task.getSourceType() == TaskSourceType.FILE) {
+            if (task.getIngestStatus() == TaskIngestStatus.SEALED
+                    || task.getIngestStatus() == TaskIngestStatus.FAILED) {
+                return false;
+            }
+            task.setIngestStatus(TaskIngestStatus.SEALED);
+        } else if (task.getIntakeStatus() == TaskIntakeStatus.OPEN) {
+            task.setIntakeStatus(TaskIntakeStatus.SEALED);
+            task.setIngestStatus(TaskIngestStatus.SEALED);
+        } else {
+            return false;
+        }
         taskManager.updateTask(task);
         stateResolver.updateTaskProgress(taskId);
         logger.info("[sealTask] Sealed task {}", taskId);
         return true;
+    }
+
+    private boolean canAcceptTaskInputs(Task task) {
+        if (task.getStatus() == null || task.getStatus().isFinal()) {
+            return false;
+        }
+        if (task.getSourceType() == TaskSourceType.FILE) {
+            return task.getIngestStatus() != TaskIngestStatus.SEALED
+                    && task.getIngestStatus() != TaskIngestStatus.FAILED;
+        }
+        return task.getIntakeStatus() == TaskIntakeStatus.OPEN
+                && (task.getStatus().isActive() || task.getStatus() == TaskStatus.PAUSED);
+    }
+
+    private String describeInputAppendRejection(Task task, String taskId) {
+        if (task.getSourceType() == TaskSourceType.FILE) {
+            if (task.getIngestStatus() == TaskIngestStatus.SEALED) {
+                return "Task ingest already sealed: " + taskId;
+            }
+            if (task.getIngestStatus() == TaskIngestStatus.FAILED) {
+                return "Task ingest failed and cannot accept more inputs: " + taskId;
+            }
+            return "Task cannot accept file ingest inputs in status " + task.getStatus();
+        }
+        if (task.getIntakeStatus() != TaskIntakeStatus.OPEN) {
+            return "Task is not open-ended: " + taskId;
+        }
+        return "Task not active: " + task.getStatus();
+    }
+
+    private TaskIngestStatus resolvePostAppendIngestStatus(Task task) {
+        if (task.getSourceType() == TaskSourceType.FILE) {
+            return TaskIngestStatus.READY;
+        }
+        if (task.getIntakeStatus() == TaskIntakeStatus.OPEN) {
+            return TaskIngestStatus.READY;
+        }
+        return task.getIngestStatus();
     }
 
     boolean deleteTask(String taskId) {

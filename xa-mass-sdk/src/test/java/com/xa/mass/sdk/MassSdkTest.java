@@ -94,7 +94,8 @@ class MassSdkTest {
                 .engine(engine -> engine
                         .enabled(true)
                         .assignmentRetryDelayMillis(125L)
-                        .leaseWatchdogIntervalSeconds(3L))
+                        .leaseWatchdogIntervalSeconds(3L)
+                        .taskMessageLeaseSeconds(7L))
                 .build();
 
         MassEngine engine = requireDelegate(app).getEngine();
@@ -102,6 +103,7 @@ class MassSdkTest {
         assertNotNull(engine);
         assertEquals(125L, engine.getConfig().getAssignmentRetryDelayMillis());
         assertEquals(3L, engine.getConfig().getLeaseWatchdogIntervalSeconds());
+        assertEquals(7L, engine.getConfig().getTaskMessageLeaseSeconds());
     }
 
     @Test

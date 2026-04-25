@@ -15,7 +15,7 @@ final class TaskMessageAttemptSupport {
     private TaskMessageAttemptSupport() {
     }
 
-    static boolean advanceAttemptForCallback(TaskMsgAttempt attempt) {
+    static boolean advanceAttemptForCallback(TaskMsgAttempt attempt, long leaseSeconds) {
         if (attempt == null || attempt.getStatus() == null) {
             return false;
         }
@@ -23,7 +23,7 @@ final class TaskMessageAttemptSupport {
             return true;
         }
         return switch (attempt.getStatus()) {
-            case CREATED -> attempt.markLeased(LocalDateTime.now().plusMinutes(5))
+            case CREATED -> attempt.markLeased(LocalDateTime.now().plusSeconds(leaseSeconds))
                     && attempt.markDispatched()
                     && attempt.markRunning();
             case LEASED -> attempt.markDispatched() && attempt.markRunning();

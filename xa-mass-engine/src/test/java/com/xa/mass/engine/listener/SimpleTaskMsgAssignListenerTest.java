@@ -16,6 +16,8 @@ import com.xa.mass.engine.util.TraceEventLogCapture;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
@@ -103,6 +105,29 @@ class SimpleTaskMsgAssignListenerTest {
         );
         verify(workerManager, times(4)).isLocked(anyString());
         verify(workerManager, times(2)).updateWorkerContextById(anyString(), any(WorkerContext.class));
+    }
+
+    @Test
+    void assignmentUsesConfiguredTaskMessageLeaseWindow() {
+        taskManager.setTaskMessageLeaseSeconds(2L);
+        Task task = createTask(1);
+        task.setBatchSize(1);
+        WorkerContext wc = workerContext("tk1", "d1");
+        when(workerManager.updateWorkerContextById(anyString(), any(WorkerContext.class))).thenReturn(true);
+
+        LocalDateTime beforeAssign = LocalDateTime.now();
+        listener.onMsgAssign(task, List.of(matched(worker("d1"), wc)));
+        LocalDateTime afterAssign = LocalDateTime.now();
+
+        TaskMsg message = taskManager.getTaskMessages(task.getTid()).get(0);
+        TaskMsgAttempt attempt = taskManager.getLatestTaskMessageAttempt(task.getTid(), message.getMessageId());
+
+        assertNotNull(attempt);
+        assertNotNull(attempt.getLeaseExpireTime());
+        long lowerBound = Duration.between(beforeAssign, attempt.getLeaseExpireTime()).getSeconds();
+        long upperBound = Duration.between(afterAssign, attempt.getLeaseExpireTime()).getSeconds();
+        assertTrue(lowerBound >= 1, "lease should be at least about 2 seconds after assignment start");
+        assertTrue(upperBound <= 2, "lease should stay close to configured 2-second window");
     }
 
     @Test

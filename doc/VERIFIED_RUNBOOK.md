@@ -259,7 +259,7 @@ Verified from `xa-mass-testing/` module directory:
 
 ```bash
 cd xa-mass-testing
-..\mvnw.cmd -Dexec.classpathScope=compile -Dmaven.test.skip=true -Dmass.sdk.chaos.timeoutSeconds=30 org.codehaus.mojo:exec-maven-plugin:3.5.0:java -Dexec.mainClass=com.xa.mass.testing.chaos.SdkWebSocketLeaseExpiryRedispatchChaosRunner
+..\mvnw.cmd -Dexec.classpathScope=compile -Dmaven.test.skip=true -Dmass.sdk.chaos.taskMessageLeaseSeconds=2 -Dmass.sdk.chaos.timeoutSeconds=30 org.codehaus.mojo:exec-maven-plugin:3.5.0:java -Dexec.mainClass=com.xa.mass.testing.chaos.SdkWebSocketLeaseExpiryRedispatchChaosRunner
 ```
 
 Useful knobs:
@@ -268,25 +268,25 @@ Useful knobs:
 -Dmass.sdk.chaos.processingDelayMillis=25
 -Dmass.sdk.chaos.assignmentRetryDelayMillis=100
 -Dmass.sdk.chaos.leaseWatchdogIntervalSeconds=1
--Dmass.sdk.chaos.forcedLeaseBackdateSeconds=2
+-Dmass.sdk.chaos.taskMessageLeaseSeconds=2
 -Dmass.sdk.chaos.timeoutSeconds=30
 ```
 
 Expected chaos artifact:
 
 - JSON report under `xa-mass-testing/target/chaos-reports/`
-- inspect `forcedLeaseExpiry`, `finalAttempts`, and `workers` first
+- inspect `leaseWindow`, `finalAttempts`, and `workers` first
 
 Verified artifact on 2026-04-25:
 
-- `xa-mass-testing/target/chaos-reports/sdk-websocket-lease-expiry-redispatch-chaos-20260425-173651.json`
+- `xa-mass-testing/target/chaos-reports/sdk-websocket-lease-expiry-redispatch-chaos-20260425-180330.json`
 
 Working rule:
 
 - use this harness when you need real SDK worker registration and real polling/WebSocket scheduling without paying for the full Boot-shell E2E surface
 - do not treat it as a replacement for Boot-shell E2E when the change also touches HTTP/API shell behavior
 - use the chaos harness when the risk is transport churn or delayed in-flight completion across a WebSocket reconnect; it is a runtime robustness probe, not a full lease-expiry / redispatch matrix
-- use the lease-expiry redispatch harness when the risk is worker disconnect without result submission and you need to prove watchdog expiry, logical retry reset, worker release, and takeover by another online worker
+- use the lease-expiry redispatch harness when the risk is worker disconnect without result submission and you need to prove watchdog expiry, logical retry reset, worker release, and takeover by another online worker under a real short configured lease window
 
 Concurrency lane status:
 

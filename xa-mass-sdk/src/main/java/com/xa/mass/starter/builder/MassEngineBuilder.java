@@ -27,6 +27,7 @@ public class MassEngineBuilder {
     private MassBootstrapDataProvider bootstrapDataProvider;
 
     private Integer workerThreads;
+    private Long taskMessageLeaseSeconds;
 
     private MassEngineBuilder() {
     }
@@ -80,8 +81,14 @@ public class MassEngineBuilder {
         return this;
     }
 
+    public MassEngineBuilder taskMessageLeaseSeconds(long taskMessageLeaseSeconds) {
+        this.taskMessageLeaseSeconds = taskMessageLeaseSeconds;
+        return this;
+    }
+
     public MassEngine build() {
         if (workerThreads != null) config.setWorkerThreads(workerThreads);
+        if (taskMessageLeaseSeconds != null) config.setTaskMessageLeaseSeconds(taskMessageLeaseSeconds);
         if (scheduler != null) config.setScheduler(scheduler);
         if (matchingStrategy != null) config.setMatchingStrategy(matchingStrategy);
         if (taskManager != null) config.setTaskManager(taskManager);

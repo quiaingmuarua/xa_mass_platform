@@ -47,13 +47,13 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BooleanSupplier;
 
 /**
- * Runnable chaos probe for websocket disconnect -> forced lease expiry ->
+ * Runnable chaos probe for websocket disconnect -> real short lease expiry ->
  * redispatch to a different worker.
  *
  * <p>The runtime path stays real for dispatch, disconnect, worker online/offline
- * observation, redispatch, and result ingest. To keep the probe executable in a
- * short acceptance loop, the test forces the first persisted attempt lease into
- * the past instead of waiting for the default five-minute lease window.
+ * observation, redispatch, and result ingest. The embedded runtime is configured
+ * with a deliberately short task-message lease window so watchdog expiry can be
+ * exercised in a routine acceptance loop without mutating persisted attempt data.
  *
  * <p>Useful JVM properties:
  *
@@ -61,7 +61,7 @@ import java.util.function.BooleanSupplier;
  * -Dmass.sdk.chaos.processingDelayMillis=25
  * -Dmass.sdk.chaos.assignmentRetryDelayMillis=100
  * -Dmass.sdk.chaos.leaseWatchdogIntervalSeconds=1
- * -Dmass.sdk.chaos.forcedLeaseBackdateSeconds=2
+ * -Dmass.sdk.chaos.taskMessageLeaseSeconds=2
  * -Dmass.sdk.chaos.timeoutSeconds=25
  * }</pre>
  */
@@ -155,11 +155,6 @@ public final class SdkWebSocketLeaseExpiryRedispatchChaosRunner {
                 steadyWorker.start();
                 waitForWorkerOnline(app, STEADY_WORKER_ID, "steady worker should come online before redispatch");
 
-                LocalDateTime forcedLeaseExpireTime = LocalDateTime.now().minusSeconds(config.forcedLeaseBackdateSeconds());
-                firstAttempt.setLeaseExpireTime(forcedLeaseExpireTime);
-                require(app.getTaskManager().updateTaskMessageAttempt(task.getTid(), message.getMessageId(), firstAttempt),
-                        "forced lease-expiry update should persist");
-
                 waitForCondition(
                         () -> app.getTaskManager().getTaskMessageAttempts(task.getTid(), message.getMessageId()).size() >= 2,
                         config.timeoutSeconds(),
@@ -213,7 +208,7 @@ public final class SdkWebSocketLeaseExpiryRedispatchChaosRunner {
                         config,
                         runtime,
                         outcome,
-                        forcedLeaseExpireTime,
+                        firstAttempt.getLeaseExpireTime(),
                         new MessageProjection(
                                 finalMessage.getMessageId(),
                                 finalMessage.getStatus() != null ? finalMessage.getStatus().name() : null,
@@ -261,7 +256,8 @@ public final class SdkWebSocketLeaseExpiryRedispatchChaosRunner {
                             .enabled(true)
                             .workerThreads(4)
                             .assignmentRetryDelayMillis(config.assignmentRetryDelayMillis())
-                            .leaseWatchdogIntervalSeconds(config.leaseWatchdogIntervalSeconds()))
+                            .leaseWatchdogIntervalSeconds(config.leaseWatchdogIntervalSeconds())
+                            .taskMessageLeaseSeconds(config.taskMessageLeaseSeconds()))
                     .build();
             return new EmbeddedRuntime(app, transportPort, ENDPOINT_PATH);
         }
@@ -367,7 +363,7 @@ public final class SdkWebSocketLeaseExpiryRedispatchChaosRunner {
         private Path writeReport(ChaosConfig config,
                                  EmbeddedRuntime runtime,
                                  TaskOutcome outcome,
-                                 LocalDateTime forcedLeaseExpireTime,
+                                 LocalDateTime initialLeaseExpireTime,
                                  MessageProjection finalMessage,
                                  List<AttemptProjection> finalAttempts,
                                  WorkerRuntimeSnapshot chaosWorker,
@@ -381,9 +377,10 @@ public final class SdkWebSocketLeaseExpiryRedispatchChaosRunner {
                     "endpointPath", runtime.endpointPath()
             ));
             report.put("wallClock", Map.of("totalMillis", nanosToMillis(wallNanos)));
-            report.put("forcedLeaseExpiry", Map.of(
-                    "strategy", "persisted-attempt-backdate",
-                    "forcedLeaseExpireTime", String.valueOf(forcedLeaseExpireTime)
+            report.put("leaseWindow", Map.of(
+                    "strategy", "runtime-configured-short-lease",
+                    "taskMessageLeaseSeconds", config.taskMessageLeaseSeconds(),
+                    "initialLeaseExpireTime", String.valueOf(initialLeaseExpireTime)
             ));
             report.put("task", outcome.toMap());
             report.put("finalMessage", finalMessage.toMap());
@@ -673,20 +670,20 @@ public final class SdkWebSocketLeaseExpiryRedispatchChaosRunner {
     private record ChaosConfig(int processingDelayMillis,
                                long assignmentRetryDelayMillis,
                                long leaseWatchdogIntervalSeconds,
-                               long forcedLeaseBackdateSeconds,
+                               long taskMessageLeaseSeconds,
                                int timeoutSeconds) {
         private static ChaosConfig fromSystemProperties() {
             ChaosConfig config = new ChaosConfig(
                     intProperty("mass.sdk.chaos.processingDelayMillis", 25),
                     longProperty("mass.sdk.chaos.assignmentRetryDelayMillis", 100L),
                     longProperty("mass.sdk.chaos.leaseWatchdogIntervalSeconds", 1L),
-                    longProperty("mass.sdk.chaos.forcedLeaseBackdateSeconds", 2L),
+                    longProperty("mass.sdk.chaos.taskMessageLeaseSeconds", 2L),
                     intProperty("mass.sdk.chaos.timeoutSeconds", 25)
             );
             require(config.processingDelayMillis >= 0, "processingDelayMillis must not be negative");
             require(config.assignmentRetryDelayMillis > 0, "assignmentRetryDelayMillis must be positive");
             require(config.leaseWatchdogIntervalSeconds > 0, "leaseWatchdogIntervalSeconds must be positive");
-            require(config.forcedLeaseBackdateSeconds > 0, "forcedLeaseBackdateSeconds must be positive");
+            require(config.taskMessageLeaseSeconds > 0, "taskMessageLeaseSeconds must be positive");
             require(config.timeoutSeconds > 0, "timeoutSeconds must be positive");
             return config;
         }
@@ -696,7 +693,7 @@ public final class SdkWebSocketLeaseExpiryRedispatchChaosRunner {
             map.put("processingDelayMillis", processingDelayMillis);
             map.put("assignmentRetryDelayMillis", assignmentRetryDelayMillis);
             map.put("leaseWatchdogIntervalSeconds", leaseWatchdogIntervalSeconds);
-            map.put("forcedLeaseBackdateSeconds", forcedLeaseBackdateSeconds);
+            map.put("taskMessageLeaseSeconds", taskMessageLeaseSeconds);
             map.put("timeoutSeconds", timeoutSeconds);
             return Map.copyOf(map);
         }

@@ -90,6 +90,18 @@ public class InMemoryTaskStorage implements TaskStorage {
     }
 
     @Override
+    public List<TaskMsg> getTaskMessagesPage(String taskId, int offset, int limit) {
+        MessageBucket bucket = taskMessages.get(taskId);
+        return bucket != null ? bucket.snapshotPage(offset, limit) : List.of();
+    }
+
+    @Override
+    public long countTaskMessages(String taskId) {
+        MessageBucket bucket = taskMessages.get(taskId);
+        return bucket != null ? bucket.size() : 0;
+    }
+
+    @Override
     public int countPendingDispatchableMessages(String taskId) {
         MessageBucket bucket = taskMessages.get(taskId);
         return bucket != null ? bucket.pendingDispatchableCount() : 0;
@@ -249,6 +261,31 @@ public class InMemoryTaskStorage implements TaskStorage {
                 }
             }
             return snapshot;
+        }
+
+        private synchronized List<TaskMsg> snapshotPage(int offset, int limit) {
+            if (limit <= 0 || messagesById.isEmpty()) {
+                return List.of();
+            }
+            int normalizedOffset = Math.max(0, offset);
+            if (normalizedOffset >= orderedMsgIds.size()) {
+                return List.of();
+            }
+            List<TaskMsg> page = new ArrayList<>(Math.min(limit, messagesById.size()));
+            int index = 0;
+            for (String messageId : orderedMsgIds) {
+                if (index++ < normalizedOffset) {
+                    continue;
+                }
+                TaskMsg message = messagesById.get(messageId);
+                if (message != null) {
+                    page.add(message);
+                    if (page.size() >= limit) {
+                        break;
+                    }
+                }
+            }
+            return page;
         }
 
         private synchronized int size() {

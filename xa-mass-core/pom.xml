@@ -66,6 +66,8 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
                 <configuration>
+                    <!-- Windows clean builds have been intermittently dropping freshly compiled main classes during testCompile. -->
+                    <useIncrementalCompilation>false</useIncrementalCompilation>
                     <testExcludes>
                         <testExclude>**/example/**</testExclude>
                     </testExcludes>

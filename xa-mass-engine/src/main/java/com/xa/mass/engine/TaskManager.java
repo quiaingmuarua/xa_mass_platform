@@ -42,6 +42,7 @@ public class TaskManager {
     private final TaskLifecycleService lifecycleService;
     private final TaskResultService resultService;
     private final Map<String, ReentrantLock> taskLocks = new ConcurrentHashMap<>();
+    private long taskMessageLeaseSeconds = 300L;
 
     public TaskManager(TaskScheduler taskScheduler) {
         this(taskScheduler, TaskStorageFactory.createDefaultTaskStorage(), new AllMessagesFinalTaskTerminalPolicy());
@@ -277,6 +278,14 @@ public class TaskManager {
         return taskStorage.getTaskMessages(taskId);
     }
 
+    public List<TaskMsg> getTaskMessagesPage(String taskId, int offset, int limit) {
+        return taskStorage.getTaskMessagesPage(taskId, offset, limit);
+    }
+
+    public long countTaskMessages(String taskId) {
+        return taskStorage.countTaskMessages(taskId);
+    }
+
     public TaskMsg getTaskMessage(String taskId, String messageId) {
         return taskStorage.getTaskMessage(taskId, messageId).orElse(null);
     }
@@ -303,6 +312,17 @@ public class TaskManager {
 
     public boolean updateTaskMessageAttempt(String taskId, String messageId, TaskMsgAttempt attempt) {
         return taskStorage.updateTaskMessageAttempt(taskId, messageId, attempt);
+    }
+
+    public long getTaskMessageLeaseSeconds() {
+        return taskMessageLeaseSeconds;
+    }
+
+    public void setTaskMessageLeaseSeconds(long taskMessageLeaseSeconds) {
+        if (taskMessageLeaseSeconds <= 0) {
+            throw new IllegalArgumentException("taskMessageLeaseSeconds must be greater than 0");
+        }
+        this.taskMessageLeaseSeconds = taskMessageLeaseSeconds;
     }
 
     /**

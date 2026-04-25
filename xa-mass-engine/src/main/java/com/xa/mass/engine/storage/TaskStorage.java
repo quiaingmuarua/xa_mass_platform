@@ -42,6 +42,26 @@ public interface TaskStorage {
 
     List<TaskMsg> getTaskMessages(String taskId);
 
+    default List<TaskMsg> getTaskMessagesPage(String taskId, int offset, int limit) {
+        if (limit <= 0) {
+            return List.of();
+        }
+        List<TaskMsg> messages = getTaskMessages(taskId);
+        if (messages.isEmpty()) {
+            return List.of();
+        }
+        int from = Math.max(0, offset);
+        if (from >= messages.size()) {
+            return List.of();
+        }
+        int to = Math.min(messages.size(), from + limit);
+        return messages.subList(from, to);
+    }
+
+    default long countTaskMessages(String taskId) {
+        return getTaskMessageStats(taskId).getTotal();
+    }
+
     default int countPendingDispatchableMessages(String taskId) {
         return (int) getTaskMessages(taskId).stream()
                 .filter(taskMsg -> taskMsg != null && taskMsg.getStatus() == TaskMsgStatus.INIT)

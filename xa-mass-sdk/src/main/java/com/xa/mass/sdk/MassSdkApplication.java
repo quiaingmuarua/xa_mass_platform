@@ -269,6 +269,16 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
         return requireStartedTaskManager().getTaskMessages(taskId);
     }
 
+    @Override
+    public List<TaskMsg> getTaskMessagesPage(String taskId, int offset, int limit) {
+        return requireStartedTaskManager().getTaskMessagesPage(taskId, offset, limit);
+    }
+
+    @Override
+    public long countTaskMessages(String taskId) {
+        return requireStartedTaskManager().countTaskMessages(taskId);
+    }
+
     public TaskStateResolutionResult resolveTaskStateFromMessages(String taskId) {
         return requireStartedTaskManager().resolveTaskStateFromMessages(taskId);
     }

@@ -209,6 +209,36 @@ class TaskManagerLifecycleTest {
     }
 
     @Test
+    void fileTaskCanIngestItemsBeforeApprovalWithoutDispatch() {
+        TaskCreateRequestDto dto = new TaskCreateRequestDto();
+        dto.setTaskName("file-ingest-before-approval");
+        dto.setProject("demoApp");
+        dto.setUserId("agent");
+        dto.setSourceType(TaskSourceType.FILE);
+        dto.setSourceRef("mock/input/demo.csv");
+        dto.setInputs(List.of());
+
+        Task task = taskManager.createTask(dto);
+        AtomicInteger dispatchRequests = new AtomicInteger();
+        taskManager.addTaskDispatchListener(ignored -> dispatchRequests.incrementAndGet());
+
+        int added = taskManager.appendTaskItems(task.getTid(), List.of(
+                java.util.Map.<String, Object>of("target", "alpha"),
+                java.util.Map.<String, Object>of("target", "beta")
+        ));
+
+        Task updatedTask = taskManager.getTask(task.getTid());
+        List<TaskMsg> messages = taskManager.getTaskMessages(task.getTid());
+
+        assertEquals(2, added);
+        assertEquals(TaskStatus.NEW, updatedTask.getStatus());
+        assertEquals(TaskIngestStatus.READY, updatedTask.getIngestStatus());
+        assertEquals(2, updatedTask.getTaskTargetNumber());
+        assertEquals(2, messages.size());
+        assertEquals(0, dispatchRequests.get());
+    }
+
+    @Test
     void createTaskRejectsWhenProjectIsMissing() {
         TaskCreateRequestDto dto = buildRequest("missing-project");
         dto.setProject(null);
@@ -669,6 +699,46 @@ class TaskManagerLifecycleTest {
         assertEquals(TaskStatus.TERMINAL, sealed.getStatus());
         assertEquals(TaskTerminalReason.ALL_MESSAGES_SUCCEEDED, sealed.getTerminalReason());
         assertEquals(TaskIntakeStatus.SEALED, sealed.getIntakeStatus());
+    }
+
+    @Test
+    void fileTaskStaysNonTerminalUntilIngestSealed() {
+        TaskCreateRequestDto dto = new TaskCreateRequestDto();
+        dto.setTaskName("file-task-open-ingest");
+        dto.setProject("demoApp");
+        dto.setUserId("agent");
+        dto.setSourceType(TaskSourceType.FILE);
+        dto.setSourceRef("mock/input/demo.csv");
+        dto.setInputs(List.of());
+
+        Task task = taskManager.createTask(dto);
+        assertEquals(TaskIngestStatus.PENDING, task.getIngestStatus());
+
+        assertEquals(1, taskManager.appendTaskItems(task.getTid(), List.of(
+                java.util.Map.<String, Object>of("target", "alpha")
+        )));
+
+        assertTrue(taskManager.approveTask(task.getTid()));
+        Task runningTask = taskManager.getTask(task.getTid());
+        runningTask.setStatus(TaskStatus.RUNNING);
+        taskManager.updateTask(runningTask);
+
+        TaskMsg message = taskManager.getTaskMessages(task.getTid()).get(0);
+        assignMessage(runningTask, message);
+
+        assertTrue(taskManager.handleTaskMessageResult(task.getTid(), message.getMessageId(), true, "done"));
+
+        Task beforeSeal = taskManager.getTask(task.getTid());
+        assertEquals(TaskStatus.RUNNING, beforeSeal.getStatus());
+        assertNull(beforeSeal.getTerminalReason());
+        assertEquals(TaskIngestStatus.READY, beforeSeal.getIngestStatus());
+
+        assertTrue(taskManager.sealTask(task.getTid()));
+
+        Task sealed = taskManager.getTask(task.getTid());
+        assertEquals(TaskIngestStatus.SEALED, sealed.getIngestStatus());
+        assertEquals(TaskStatus.TERMINAL, sealed.getStatus());
+        assertEquals(TaskTerminalReason.ALL_MESSAGES_SUCCEEDED, sealed.getTerminalReason());
     }
 
     @Test
