@@ -75,9 +75,9 @@ public final class TraceEventLogger {
         }
         emit("TASK_MSG_STATUS_TRANSITION", fields(
                 "entityType", "TaskMsg",
-                "entityId", taskMsg.getMsgId(),
+                "entityId", taskMsg.getMessageId(),
                 "taskId", taskMsg.getTaskId(),
-                "messageId", taskMsg.getMsgId(),
+                "messageId", taskMsg.getMessageId(),
                 "latestAttemptWorkerId", taskMsg.getLatestAttemptWorkerId(),
                 "latestAttemptWorkerContextId", taskMsg.getLatestAttemptWorkerContextId(),
                 "latestAttemptBatchId", taskMsg.getLatestAttemptBatchId(),
@@ -104,7 +104,7 @@ public final class TraceEventLogger {
                 "entityType", "TaskMsgAttempt",
                 "entityId", attempt.getAttemptId(),
                 "taskId", attempt.getTaskId(),
-                "messageId", attempt.getMsgId(),
+                "messageId", attempt.getMessageId(),
                 "attemptId", attempt.getAttemptId(),
                 "attemptNo", String.valueOf(attempt.getAttemptNo()),
                 "workerId", attempt.getWorkerId(),
@@ -126,9 +126,9 @@ public final class TraceEventLogger {
         }
         emit("TASK_MSG_RETRY_RESET", fields(
                 "entityType", "TaskMsg",
-                "entityId", taskMsg.getMsgId(),
+                "entityId", taskMsg.getMessageId(),
                 "taskId", taskMsg.getTaskId(),
-                "messageId", taskMsg.getMsgId(),
+                "messageId", taskMsg.getMessageId(),
                 "latestAttemptWorkerId", taskMsg.getLatestAttemptWorkerId(),
                 "latestAttemptWorkerContextId", taskMsg.getLatestAttemptWorkerContextId(),
                 "latestAttemptBatchId", taskMsg.getLatestAttemptBatchId(),
@@ -283,9 +283,9 @@ public final class TraceEventLogger {
         }
         emit("CALLBACK_ACCEPTED", fields(
                 "entityType", "TaskMsg",
-                "entityId", taskMsg.getMsgId(),
+                "entityId", taskMsg.getMessageId(),
                 "taskId", taskMsg.getTaskId(),
-                "messageId", taskMsg.getMsgId(),
+                "messageId", taskMsg.getMessageId(),
                 "latestAttemptWorkerId", taskMsg.getLatestAttemptWorkerId(),
                 "latestAttemptWorkerContextId", taskMsg.getLatestAttemptWorkerContextId(),
                 "source", "TaskManager",
@@ -300,9 +300,9 @@ public final class TraceEventLogger {
         }
         emit("CALLBACK_IGNORED_DUPLICATE", fields(
                 "entityType", "TaskMsg",
-                "entityId", taskMsg.getMsgId(),
+                "entityId", taskMsg.getMessageId(),
                 "taskId", taskMsg.getTaskId(),
-                "messageId", taskMsg.getMsgId(),
+                "messageId", taskMsg.getMessageId(),
                 "latestAttemptWorkerId", taskMsg.getLatestAttemptWorkerId(),
                 "latestAttemptWorkerContextId", taskMsg.getLatestAttemptWorkerContextId(),
                 "source", "TaskManager",
@@ -317,9 +317,9 @@ public final class TraceEventLogger {
         }
         emit("CALLBACK_IGNORED_LATE", fields(
                 "entityType", "TaskMsg",
-                "entityId", taskMsg.getMsgId(),
+                "entityId", taskMsg.getMessageId(),
                 "taskId", taskMsg.getTaskId(),
-                "messageId", taskMsg.getMsgId(),
+                "messageId", taskMsg.getMessageId(),
                 "latestAttemptWorkerId", taskMsg.getLatestAttemptWorkerId(),
                 "latestAttemptWorkerContextId", taskMsg.getLatestAttemptWorkerContextId(),
                 "source", "TaskManager",
@@ -350,9 +350,9 @@ public final class TraceEventLogger {
         }
         emit("CALLBACK_REJECTED_INVALID_STATE", fields(
                 "entityType", "TaskMsg",
-                "entityId", taskMsg.getMsgId(),
+                "entityId", taskMsg.getMessageId(),
                 "taskId", taskMsg.getTaskId(),
-                "messageId", taskMsg.getMsgId(),
+                "messageId", taskMsg.getMessageId(),
                 "taskMsgStatus", enumName(taskMsg.getStatus()),
                 "latestAttemptWorkerId", taskMsg.getLatestAttemptWorkerId(),
                 "latestAttemptWorkerContextId", taskMsg.getLatestAttemptWorkerContextId(),
@@ -375,7 +375,7 @@ public final class TraceEventLogger {
                 "entityType", "TaskMsgAttempt",
                 "entityId", attempt.getAttemptId(),
                 "taskId", task.getTid(),
-                "messageId", taskMsg.getMsgId(),
+                "messageId", taskMsg.getMessageId(),
                 "attemptId", attempt.getAttemptId(),
                 "attemptNo", String.valueOf(attempt.getAttemptNo()),
                 "workerId", attempt.getWorkerId(),
@@ -402,9 +402,9 @@ public final class TraceEventLogger {
         }
         emit("TASK_MSG_LOGICALLY_FINAL", fields(
                 "entityType", "TaskMsg",
-                "entityId", taskMsg.getMsgId(),
+                "entityId", taskMsg.getMessageId(),
                 "taskId", task.getTid(),
-                "messageId", taskMsg.getMsgId(),
+                "messageId", taskMsg.getMessageId(),
                 "latestAttemptWorkerId", taskMsg.getLatestAttemptWorkerId(),
                 "latestAttemptWorkerContextId", taskMsg.getLatestAttemptWorkerContextId(),
                 "latestAttemptBatchId", taskMsg.getLatestAttemptBatchId(),

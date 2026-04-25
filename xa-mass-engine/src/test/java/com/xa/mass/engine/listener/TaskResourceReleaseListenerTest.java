@@ -236,11 +236,11 @@ class TaskResourceReleaseListenerTest {
     }
 
     private TaskMsgAttempt closedAttempt(String taskId,
-                                         String msgId,
+                                         String messageId,
                                          String attemptId,
                                          String workerId,
                                          String workerContextId) {
-        TaskMsgAttempt attempt = new TaskMsgAttempt(attemptId, taskId, msgId, 1);
+        TaskMsgAttempt attempt = new TaskMsgAttempt(attemptId, taskId, messageId, 1);
         attempt.setWorkerId(workerId);
         attempt.setWorkerContextId(workerContextId);
         assertTrue(attempt.markLeased(LocalDateTime.now().plusMinutes(1)));
@@ -251,11 +251,11 @@ class TaskResourceReleaseListenerTest {
     }
 
     private TaskMsgAttempt activeAttempt(String taskId,
-                                         String msgId,
+                                         String messageId,
                                          String attemptId,
                                          String workerId,
                                          String workerContextId) {
-        TaskMsgAttempt attempt = new TaskMsgAttempt(attemptId, taskId, msgId, 1);
+        TaskMsgAttempt attempt = new TaskMsgAttempt(attemptId, taskId, messageId, 1);
         attempt.setWorkerId(workerId);
         attempt.setWorkerContextId(workerContextId);
         assertTrue(attempt.markLeased(LocalDateTime.now().plusMinutes(1)));

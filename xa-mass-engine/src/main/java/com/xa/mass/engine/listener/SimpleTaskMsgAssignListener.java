@@ -127,7 +127,7 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
                 TaskMsg msg = pendingMessages.get(cursor);
                 if (!bindTaskMessage(msg, slot.worker().getWorkerId(), slot.workerContextId(), slot.batchId())) {
                     log.warn("[MsgAssign] Skip task message {} because it could not transition from status {}",
-                            msg.getMsgId(), msg.getStatus());
+                            msg.getMessageId(), msg.getStatus());
                     cursor++;
                     continue;
                 }
@@ -138,7 +138,7 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
                 assignedInRound = true;
 
                 recordService.recordMessageAssignment(
-                        task, slot.worker(), slot.workerContext(), msg.getMsgId(), slot.batchId(),
+                        task, slot.worker(), slot.workerContext(), msg.getMessageId(), slot.batchId(),
                         AssignmentResult.SUCCESS, "message assigned",
                         workerManager.isLocked(slot.worker().getWorkerId())
                 );
@@ -239,11 +239,11 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
 
     private boolean bindTaskMessage(TaskMsg taskMsg, String workerId, String workerContextId, String batchId) {
         taskMsg.applyLatestAttemptProjection(workerId, workerContextId, batchId);
-        TaskMsgAttempt latestAttempt = taskManager.getLatestTaskMessageAttempt(taskMsg.getTaskId(), taskMsg.getMsgId());
+        TaskMsgAttempt latestAttempt = taskManager.getLatestTaskMessageAttempt(taskMsg.getTaskId(), taskMsg.getMessageId());
         TaskMsgAttempt attempt = new TaskMsgAttempt(
                 java.util.UUID.randomUUID().toString(),
                 taskMsg.getTaskId(),
-                taskMsg.getMsgId(),
+                taskMsg.getMessageId(),
                 latestAttempt != null ? latestAttempt.getAttemptNo() + 1 : 1
         );
         attempt.setWorkerId(workerId);
@@ -273,7 +273,7 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
                 "SimpleTaskMsgAssignListener",
                 "attempt dispatched"
         );
-        taskManager.addTaskMessageAttempt(taskMsg.getTaskId(), taskMsg.getMsgId(), attempt);
+        taskManager.addTaskMessageAttempt(taskMsg.getTaskId(), taskMsg.getMessageId(), attempt);
 
         TaskMsgStatus beforeAssigned = taskMsg.getStatus();
         if (!taskMsg.markAsAssigned()) {

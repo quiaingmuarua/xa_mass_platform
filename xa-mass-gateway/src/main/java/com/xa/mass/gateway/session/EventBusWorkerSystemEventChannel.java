@@ -1,6 +1,7 @@
 package com.xa.mass.gateway.session;
 
 import com.xa.mass.base.channel.eventbus.core.EventPublisher;
+import com.xa.mass.base.channel.eventbus.event.worker.WorkerHeartbeatEvent;
 import com.xa.mass.base.channel.eventbus.event.worker.WorkerOfflineEvent;
 import com.xa.mass.base.channel.eventbus.event.worker.WorkerOnlineEvent;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
@@ -22,6 +23,6 @@ public class EventBusWorkerSystemEventChannel implements WorkerSystemEventChanne
 
     @Override
     public void publishWorkerHeartbeat(String workerId, String reason, String traceId) {
-        EventPublisher.post(new WorkerOnlineEvent(workerId, reason, traceId));
+        EventPublisher.post(new WorkerHeartbeatEvent(workerId, reason, traceId));
     }
 }

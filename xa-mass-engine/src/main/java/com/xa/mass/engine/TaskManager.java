@@ -98,8 +98,8 @@ public class TaskManager {
             task.setMaxRuntimeSeconds(dto.getMaxRuntimeSeconds());
             taskStorage.saveTask(task);
             for (Map<String, Object> input : inputs) {
-                String msgId = java.util.UUID.randomUUID().toString();
-                TaskMsg taskMsg = new TaskMsg(msgId, tid, input);
+                String messageId = java.util.UUID.randomUUID().toString();
+                TaskMsg taskMsg = new TaskMsg(messageId, tid, input);
                 taskMsg.setMaxRetryCount(dto.getDefaultMsgMaxRetryCount());
                 addTaskMessage(tid, taskMsg);
             }
@@ -254,7 +254,7 @@ public class TaskManager {
         LogUtils.setTaskId(taskId);
         LogUtils.logOperationStart("ADD_TASK_MESSAGE", "TaskManager",
                 "taskId", taskId,
-                "messageId", taskMsg.getMsgId());
+                "messageId", taskMsg.getMessageId());
 
         taskStorage.addTaskMessage(taskId, taskMsg);
 
@@ -268,39 +268,39 @@ public class TaskManager {
         return taskStorage.getTaskMessages(taskId);
     }
 
-    public TaskMsg getTaskMessage(String taskId, String msgId) {
-        return taskStorage.getTaskMessage(taskId, msgId).orElse(null);
+    public TaskMsg getTaskMessage(String taskId, String messageId) {
+        return taskStorage.getTaskMessage(taskId, messageId).orElse(null);
     }
 
     public boolean updateTaskMessage(String taskId, TaskMsg taskMsg) {
         return taskStorage.updateTaskMessage(taskId, taskMsg);
     }
 
-    public void addTaskMessageAttempt(String taskId, String msgId, TaskMsgAttempt attempt) {
-        taskStorage.addTaskMessageAttempt(taskId, msgId, attempt);
+    public void addTaskMessageAttempt(String taskId, String messageId, TaskMsgAttempt attempt) {
+        taskStorage.addTaskMessageAttempt(taskId, messageId, attempt);
     }
 
-    public List<TaskMsgAttempt> getTaskMessageAttempts(String taskId, String msgId) {
-        return taskStorage.getTaskMessageAttempts(taskId, msgId);
+    public List<TaskMsgAttempt> getTaskMessageAttempts(String taskId, String messageId) {
+        return taskStorage.getTaskMessageAttempts(taskId, messageId);
     }
 
-    public TaskMsgAttempt getLatestTaskMessageAttempt(String taskId, String msgId) {
-        return taskStorage.getLatestTaskMessageAttempt(taskId, msgId).orElse(null);
+    public TaskMsgAttempt getLatestTaskMessageAttempt(String taskId, String messageId) {
+        return taskStorage.getLatestTaskMessageAttempt(taskId, messageId).orElse(null);
     }
 
-    public TaskMsgAttempt getLatestActiveTaskMessageAttempt(String taskId, String msgId) {
-        return taskStorage.getLatestActiveTaskMessageAttempt(taskId, msgId).orElse(null);
+    public TaskMsgAttempt getLatestActiveTaskMessageAttempt(String taskId, String messageId) {
+        return taskStorage.getLatestActiveTaskMessageAttempt(taskId, messageId).orElse(null);
     }
 
-    public boolean updateTaskMessageAttempt(String taskId, String msgId, TaskMsgAttempt attempt) {
-        return taskStorage.updateTaskMessageAttempt(taskId, msgId, attempt);
+    public boolean updateTaskMessageAttempt(String taskId, String messageId, TaskMsgAttempt attempt) {
+        return taskStorage.updateTaskMessageAttempt(taskId, messageId, attempt);
     }
 
     /**
      * Expires a single in-flight task message and recalculates task convergence.
      */
-    public boolean expireTaskMessage(String taskId, String msgId) {
-        return withTaskLock(taskId, () -> resultService.expireTaskMessage(taskId, msgId));
+    public boolean expireTaskMessage(String taskId, String messageId) {
+        return withTaskLock(taskId, () -> resultService.expireTaskMessage(taskId, messageId));
     }
 
     /**
@@ -373,21 +373,21 @@ public class TaskManager {
         eventPublisher.addTaskMessageLogicallyFinalListener(listener);
     }
 
-    public boolean handleTaskMessageResult(String taskId, String msgId, boolean success, String detail) {
-        return withTaskLock(taskId, () -> resultService.handleTaskMessageResult(taskId, msgId, success, detail));
+    public boolean handleTaskMessageResult(String taskId, String messageId, boolean success, String detail) {
+        return withTaskLock(taskId, () -> resultService.handleTaskMessageResult(taskId, messageId, success, detail));
     }
 
-    public boolean handleTaskMessageResult(String taskId, String msgId, boolean success, String detail, String errorCode) {
-        return withTaskLock(taskId, () -> resultService.handleTaskMessageResult(taskId, msgId, success, detail, errorCode));
+    public boolean handleTaskMessageResult(String taskId, String messageId, boolean success, String detail, String errorCode) {
+        return withTaskLock(taskId, () -> resultService.handleTaskMessageResult(taskId, messageId, success, detail, errorCode));
     }
 
     public boolean handleTaskMessageResult(String taskId,
-                                           String msgId,
+                                           String messageId,
                                            boolean success,
                                            String detail,
                                            String errorCode,
                                            Map<String, Object> output) {
-        return withTaskLock(taskId, () -> resultService.handleTaskMessageResult(taskId, msgId, success, detail, errorCode, output));
+        return withTaskLock(taskId, () -> resultService.handleTaskMessageResult(taskId, messageId, success, detail, errorCode, output));
     }
 
     <T> T withTaskLock(String taskId, Supplier<T> action) {

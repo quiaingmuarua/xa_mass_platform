@@ -28,29 +28,29 @@ class TaskResultService {
         this.stateResolver = stateResolver;
     }
 
-    boolean expireTaskMessage(String taskId, String msgId) {
+    boolean expireTaskMessage(String taskId, String messageId) {
         LogUtils.setTaskId(taskId);
         LogUtils.logOperationStart("EXPIRE_TASK_MESSAGE", "TaskManager",
-                "taskId", taskId, "messageId", msgId);
+                "taskId", taskId, "messageId", messageId);
 
-        TaskMsg taskMsg = taskManager.getTaskMessage(taskId, msgId);
+        TaskMsg taskMsg = taskManager.getTaskMessage(taskId, messageId);
         if (taskMsg == null) {
             LogUtils.logOperationFailure("EXPIRE_MSG_ERROR", "task message not found", 0);
             return false;
         }
         if (taskMsg.isCompleted()) {
             logger.info("Task message {} of task {} is already in final status {}, skip expiry",
-                    msgId, taskId, taskMsg.getStatus());
+                    messageId, taskId, taskMsg.getStatus());
             return false;
         }
-        TaskMsgAttempt activeAttempt = taskManager.getLatestActiveTaskMessageAttempt(taskId, msgId);
+        TaskMsgAttempt activeAttempt = taskManager.getLatestActiveTaskMessageAttempt(taskId, messageId);
         if (activeAttempt != null) {
             if (!TaskMessageAttemptSupport.expireAttempt(activeAttempt, TaskMsgAttemptFinalReason.LEASE_EXPIRED, "task message expired")) {
                 LogUtils.logOperationFailure("EXPIRE_MSG_ERROR", "attempt could not expire from status "
                         + activeAttempt.getStatus(), 0);
                 return false;
             }
-            taskManager.updateTaskMessageAttempt(taskId, msgId, activeAttempt);
+            taskManager.updateTaskMessageAttempt(taskId, messageId, activeAttempt);
         }
         TaskMsgStatus fromStatus = taskMsg.getStatus();
         boolean expired = taskMsg.markAsExpired(TaskMsgFinalReason.LEASE_EXPIRED);
@@ -86,16 +86,16 @@ class TaskResultService {
         return true;
     }
 
-    boolean handleTaskMessageResult(String taskId, String msgId, boolean success, String detail) {
-        return handleTaskMessageResult(taskId, msgId, success, detail, null, null);
+    boolean handleTaskMessageResult(String taskId, String messageId, boolean success, String detail) {
+        return handleTaskMessageResult(taskId, messageId, success, detail, null, null);
     }
 
-    boolean handleTaskMessageResult(String taskId, String msgId, boolean success, String detail, String errorCode) {
-        return handleTaskMessageResult(taskId, msgId, success, detail, errorCode, null);
+    boolean handleTaskMessageResult(String taskId, String messageId, boolean success, String detail, String errorCode) {
+        return handleTaskMessageResult(taskId, messageId, success, detail, errorCode, null);
     }
 
     boolean handleTaskMessageResult(String taskId,
-                                    String msgId,
+                                    String messageId,
                                     boolean success,
                                     String detail,
                                     String errorCode,
@@ -106,9 +106,9 @@ class TaskResultService {
             return false;
         }
 
-        TaskMsg taskMsg = taskManager.getTaskMessage(taskId, msgId);
+        TaskMsg taskMsg = taskManager.getTaskMessage(taskId, messageId);
         if (taskMsg == null) {
-            logger.warn("Cannot handle task message result because msg {} was not found in task {}", msgId, taskId);
+            logger.warn("Cannot handle task message result because msg {} was not found in task {}", messageId, taskId);
             return false;
         }
 
@@ -117,7 +117,7 @@ class TaskResultService {
                 TraceEventLogger.callbackIgnoredDuplicate(taskMsg,
                         "task message already final in status " + taskMsg.getStatus());
                 logger.info("Task message {} of task {} is already in final status {}, skipping duplicate result",
-                        msgId, taskId, taskMsg.getStatus());
+                        messageId, taskId, taskMsg.getStatus());
                 stateResolver.updateTaskProgress(taskId);
                 return true;
             }
@@ -126,26 +126,26 @@ class TaskResultService {
                 TraceEventLogger.callbackIgnoredLate(taskMsg,
                         "task already terminal in status " + task.getStatus());
                 logger.info("Ignoring late result for terminal task {}, msg {} still in status {}",
-                        taskId, msgId, taskMsg.getStatus());
+                        taskId, messageId, taskMsg.getStatus());
                 return true;
             }
 
-            TaskMsgAttempt activeAttempt = taskManager.getLatestActiveTaskMessageAttempt(taskId, msgId);
+            TaskMsgAttempt activeAttempt = taskManager.getLatestActiveTaskMessageAttempt(taskId, messageId);
             if (activeAttempt == null) {
                 TraceEventLogger.callbackRejectedNoActiveAttempt(
                         taskId,
-                        msgId,
+                        messageId,
                         taskMsg.getStatus(),
                         "callback arrived without any active attempt"
                 );
-                logger.error("Cannot handle task message result because msg {} in task {} has no active attempt", msgId, taskId);
+                logger.error("Cannot handle task message result because msg {} in task {} has no active attempt", messageId, taskId);
                 return false;
             }
             if (!isCallbackAcceptableMessageState(taskMsg)) {
                 TraceEventLogger.callbackRejectedInvalidState(taskMsg,
                         "callback arrived while message status is " + taskMsg.getStatus());
                 logger.error("Cannot handle task message result because msg {} in task {} is in invalid callback state {}",
-                        msgId, taskId, taskMsg.getStatus());
+                        messageId, taskId, taskMsg.getStatus());
                 return false;
             }
 
@@ -153,11 +153,11 @@ class TaskResultService {
 
             if (!TaskMessageAttemptSupport.advanceAttemptForCallback(activeAttempt)) {
                 logger.warn("Cannot advance attempt {} for task message {} from status {}",
-                        activeAttempt.getAttemptId(), msgId, activeAttempt.getStatus());
+                        activeAttempt.getAttemptId(), messageId, activeAttempt.getStatus());
                 return false;
             }
-            if (!taskManager.updateTaskMessageAttempt(taskId, msgId, activeAttempt)) {
-                logger.warn("Failed to persist active attempt {} for task message {}", activeAttempt.getAttemptId(), msgId);
+            if (!taskManager.updateTaskMessageAttempt(taskId, messageId, activeAttempt)) {
+                logger.warn("Failed to persist active attempt {} for task message {}", activeAttempt.getAttemptId(), messageId);
                 return false;
             }
 
@@ -176,11 +176,11 @@ class TaskResultService {
                                   TaskMsgAttempt activeAttempt,
                                   String detail,
                                   Map<String, Object> output) {
-        String msgId = taskMsg.getMsgId();
+        String messageId = taskMsg.getMessageId();
         if (taskMsg.getStatus() == TaskMsgStatus.ASSIGNED) {
             TaskMsgStatus beforeRunningStatus = taskMsg.getStatus();
             if (!taskMsg.markAsRunning()) {
-                logger.warn("Failed to mark task message {} as RUNNING before success completion", msgId);
+                logger.warn("Failed to mark task message {} as RUNNING before success completion", messageId);
                 return false;
             }
             TraceEventLogger.taskMsgStatusTransition(
@@ -194,7 +194,7 @@ class TaskResultService {
         }
         TaskMsgStatus beforeFinalStatus = taskMsg.getStatus();
         if (!taskMsg.markAsSuccess(detail, TaskMsgFinalReason.BUSINESS_SUCCESS)) {
-            logger.warn("Failed to mark task message {} as SUCCESS", msgId);
+            logger.warn("Failed to mark task message {} as SUCCESS", messageId);
             return false;
         }
         taskMsg.setOutput(output);
@@ -211,9 +211,9 @@ class TaskResultService {
                 "TaskManager",
                 "task message marked success"
         );
-        taskManager.updateTaskMessageAttempt(taskId, msgId, activeAttempt);
+        taskManager.updateTaskMessageAttempt(taskId, messageId, activeAttempt);
         if (!taskManager.updateTaskMessage(taskId, taskMsg)) {
-            logger.warn("Failed to persist task message {} for task {}", msgId, taskId);
+            logger.warn("Failed to persist task message {} for task {}", messageId, taskId);
             return false;
         }
         Task updatedTask = taskManager.getTask(taskId);
@@ -234,18 +234,18 @@ class TaskResultService {
                                            String detail,
                                            String errorCode,
                                            Map<String, Object> output) {
-        String msgId = taskMsg.getMsgId();
+        String messageId = taskMsg.getMessageId();
         if (!activeAttempt.markRevokedForRetry()) {
             logger.warn("Failed to revoke attempt {} for retry", activeAttempt.getAttemptId());
             return false;
         }
         activeAttempt.setErrorCode(errorCode);
         activeAttempt.setOutput(output);
-        taskManager.updateTaskMessageAttempt(taskId, msgId, activeAttempt);
+        taskManager.updateTaskMessageAttempt(taskId, messageId, activeAttempt);
 
         TaskMsgStatus beforeRetryFailureStatus = taskMsg.getStatus();
         if (!taskMsg.markAsFailed(detail, TaskMsgFinalReason.BUSINESS_FAILED)) {
-            logger.warn("Failed to mark task message {} as FAILED before retry reset", msgId);
+            logger.warn("Failed to mark task message {} as FAILED before retry reset", messageId);
             return false;
         }
         TraceEventLogger.taskMsgStatusTransition(
@@ -257,7 +257,7 @@ class TaskResultService {
                 "task message marked failed before retry reset"
         );
         if (!taskManager.updateTaskMessage(taskId, taskMsg)) {
-            logger.warn("Failed to persist intermediate failed state for task message {} in task {}", msgId, taskId);
+            logger.warn("Failed to persist intermediate failed state for task message {} in task {}", messageId, taskId);
             return false;
         }
 
@@ -266,7 +266,7 @@ class TaskResultService {
         TraceEventLogger.taskMsgRetryReset(taskMsg,
                 "HANDLE_TASK_MESSAGE_RESULT", "TaskManager", "retry budget allows re-dispatch");
         if (!taskManager.updateTaskMessage(taskId, taskMsg)) {
-            logger.warn("Failed to persist retry state for task message {} in task {}", msgId, taskId);
+            logger.warn("Failed to persist retry state for task message {} in task {}", messageId, taskId);
             return false;
         }
         Task updatedTask = taskManager.getTask(taskId);
@@ -288,17 +288,17 @@ class TaskResultService {
                                                 String detail,
                                                 String errorCode,
                                                 Map<String, Object> output) {
-        String msgId = taskMsg.getMsgId();
+        String messageId = taskMsg.getMessageId();
         if (!activeAttempt.markFailed(TaskMsgAttemptFinalReason.BUSINESS_FAILURE, detail, errorCode)) {
             logger.warn("Failed to mark attempt {} as FAILED", activeAttempt.getAttemptId());
             return false;
         }
         activeAttempt.setOutput(output);
-        taskManager.updateTaskMessageAttempt(taskId, msgId, activeAttempt);
+        taskManager.updateTaskMessageAttempt(taskId, messageId, activeAttempt);
 
         TaskMsgStatus beforeFinalStatus = taskMsg.getStatus();
         if (!taskMsg.markAsFailed(detail, TaskMsgFinalReason.RETRY_EXHAUSTED)) {
-            logger.warn("Failed to mark task message {} as FAILED", msgId);
+            logger.warn("Failed to mark task message {} as FAILED", messageId);
             return false;
         }
         taskMsg.setErrorCode(errorCode);
@@ -312,7 +312,7 @@ class TaskResultService {
         );
 
         if (!taskManager.updateTaskMessage(taskId, taskMsg)) {
-            logger.warn("Failed to persist task message {} for task {}", msgId, taskId);
+            logger.warn("Failed to persist task message {} for task {}", messageId, taskId);
             return false;
         }
         Task updatedTask = taskManager.getTask(taskId);

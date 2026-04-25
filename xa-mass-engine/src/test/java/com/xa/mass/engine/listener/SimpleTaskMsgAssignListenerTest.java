@@ -47,7 +47,7 @@ class SimpleTaskMsgAssignListenerTest {
         Task task = createTask(3);
         task.setBatchSize(10);
         List<String> storedMsgIds = taskManager.getTaskMessages(task.getTid()).stream()
-                .map(TaskMsg::getMsgId)
+                .map(TaskMsg::getMessageId)
                 .collect(Collectors.toList());
         AtomicReference<List<TaskMsg>> dispatched = new AtomicReference<>();
         listener = new SimpleTaskMsgAssignListener(taskManager, workerManager, recordService, (t, msgs) -> dispatched.set(msgs));
@@ -58,7 +58,7 @@ class SimpleTaskMsgAssignListenerTest {
 
         List<TaskMsg> pushed = dispatched.get();
         assertNotNull(pushed);
-        assertEquals(storedMsgIds, pushed.stream().map(TaskMsg::getMsgId).collect(Collectors.toList()));
+        assertEquals(storedMsgIds, pushed.stream().map(TaskMsg::getMessageId).collect(Collectors.toList()));
         assertEquals(List.of("target-0", "target-1", "target-2"),
                 pushed.stream().map(msg -> msg.getInput().get("target")).collect(Collectors.toList()));
     }
@@ -89,7 +89,7 @@ class SimpleTaskMsgAssignListenerTest {
         assertEquals(task.getTid(), wc2.getLastBindTaskId());
 
         List<TaskMsgAttempt> attempts = stored.stream()
-                .map(msg -> taskManager.getTaskMessageAttempts(task.getTid(), msg.getMsgId()))
+                .map(msg -> taskManager.getTaskMessageAttempts(task.getTid(), msg.getMessageId()))
                 .flatMap(List::stream)
                 .collect(Collectors.toList());
         assertEquals(4, attempts.size());
@@ -272,13 +272,13 @@ class SimpleTaskMsgAssignListenerTest {
     void emptyWorkerListSkipsWithoutMutation() {
         Task task = createTask(2);
         List<String> before = taskManager.getTaskMessages(task.getTid()).stream()
-                .map(TaskMsg::getMsgId)
+                .map(TaskMsg::getMessageId)
                 .collect(Collectors.toList());
 
         assertTrue(listener.onMsgAssign(task, List.of()).isEmpty());
 
         List<TaskMsg> after = taskManager.getTaskMessages(task.getTid());
-        assertEquals(before, after.stream().map(TaskMsg::getMsgId).collect(Collectors.toList()));
+        assertEquals(before, after.stream().map(TaskMsg::getMessageId).collect(Collectors.toList()));
         assertTrue(after.stream().allMatch(msg -> msg.getStatus() == TaskMsgStatus.INIT));
         verifyNoInteractions(recordService);
     }

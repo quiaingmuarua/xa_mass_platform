@@ -67,7 +67,7 @@ public final class TaskDispatchItem {
     public static TaskDispatchItem from(Task task, TaskMsg taskMsg) {
         return new TaskDispatchItem(
                 task.getTid(),
-                taskMsg.getMsgId(),
+                taskMsg.getMessageId(),
                 TaskSharedConfig.sdkEventCode(task),
                 task.getTaskName(),
                 task.getProject(),

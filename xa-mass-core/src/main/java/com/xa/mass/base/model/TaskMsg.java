@@ -14,7 +14,7 @@ import java.util.Objects;
  * Records assignment, dispatch, and execution progress for a single work item.
  */
 public class TaskMsg {
-    private String msgId;
+    private String messageId;
     private String taskId;
     // Compatibility projection of the latest attempt binding for UI/API callers.
     // Runtime execution truth lives in TaskMsgAttempt history.
@@ -45,19 +45,19 @@ public class TaskMsg {
         this.input = new HashMap<>();
     }
 
-    public TaskMsg(String msgId, String taskId, Map<String, Object> input) {
+    public TaskMsg(String messageId, String taskId, Map<String, Object> input) {
         this();
-        this.msgId = msgId;
+        this.messageId = messageId;
         this.taskId = taskId;
         this.input = input != null ? new HashMap<>(input) : new HashMap<>();
     }
 
-    public String getMsgId() {
-        return msgId;
+    public String getMessageId() {
+        return messageId;
     }
 
-    public void setMsgId(String msgId) {
-        this.msgId = msgId;
+    public void setMessageId(String messageId) {
+        this.messageId = messageId;
     }
 
     public String getTaskId() {
@@ -278,7 +278,7 @@ public class TaskMsg {
     public synchronized void resetForRetry() {
         if (!transitionTo(TaskMsgStatus.INIT)) {
             throw new IllegalStateException(
-                    "Cannot reset msg " + msgId + " for retry from status " + status
+                    "Cannot reset message " + messageId + " for retry from status " + status
                     + "; only FAILED or EXPIRED messages may be retried");
         }
         // Clear the stale latest-attempt projection so the next assignment does
@@ -401,18 +401,18 @@ public class TaskMsg {
             return false;
         }
         TaskMsg taskMsg = (TaskMsg) o;
-        return Objects.equals(msgId, taskMsg.msgId);
+        return Objects.equals(messageId, taskMsg.messageId);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(msgId);
+        return Objects.hash(messageId);
     }
 
     @Override
     public String toString() {
         return "TaskMsg{" +
-                "msgId='" + msgId + '\'' +
+                "messageId='" + messageId + '\'' +
                 ", taskId='" + taskId + '\'' +
                 ", latestAttemptWorkerId='" + latestAttemptWorkerId + '\'' +
                 ", latestAttemptWorkerContextId='" + latestAttemptWorkerContextId + '\'' +

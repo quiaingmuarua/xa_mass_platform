@@ -48,18 +48,18 @@ public interface TaskStorage {
                 .count();
     }
 
-    Optional<TaskMsg> getTaskMessage(String taskId, String msgId);
+    Optional<TaskMsg> getTaskMessage(String taskId, String messageId);
 
     boolean updateTaskMessage(String taskId, TaskMsg taskMsg);
 
-    void addTaskMessageAttempt(String taskId, String msgId, TaskMsgAttempt attempt);
+    void addTaskMessageAttempt(String taskId, String messageId, TaskMsgAttempt attempt);
 
-    List<TaskMsgAttempt> getTaskMessageAttempts(String taskId, String msgId);
+    List<TaskMsgAttempt> getTaskMessageAttempts(String taskId, String messageId);
 
-    Optional<TaskMsgAttempt> getLatestTaskMessageAttempt(String taskId, String msgId);
+    Optional<TaskMsgAttempt> getLatestTaskMessageAttempt(String taskId, String messageId);
 
-    default Optional<TaskMsgAttempt> getLatestActiveTaskMessageAttempt(String taskId, String msgId) {
-        List<TaskMsgAttempt> attempts = getTaskMessageAttempts(taskId, msgId);
+    default Optional<TaskMsgAttempt> getLatestActiveTaskMessageAttempt(String taskId, String messageId) {
+        List<TaskMsgAttempt> attempts = getTaskMessageAttempts(taskId, messageId);
         for (int i = attempts.size() - 1; i >= 0; i--) {
             TaskMsgAttempt attempt = attempts.get(i);
             if (attempt != null && attempt.getStatus() != null && attempt.getStatus().isActive()) {
@@ -69,7 +69,7 @@ public interface TaskStorage {
         return Optional.empty();
     }
 
-    boolean updateTaskMessageAttempt(String taskId, String msgId, TaskMsgAttempt attempt);
+    boolean updateTaskMessageAttempt(String taskId, String messageId, TaskMsgAttempt attempt);
 
     TaskMessageStats getTaskMessageStats(String taskId);
 

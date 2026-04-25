@@ -33,7 +33,7 @@ export async function requestJson<T>(
 
     if (!response.ok) {
         throw new ApiError(
-            `Request failed: ${response.status}`,
+            extractErrorMessage(payload, response.status),
             response.status,
             payload,
         )
@@ -53,4 +53,27 @@ export async function requestApiData<T>(
     }
 
     return payload.data
+}
+
+function extractErrorMessage(payload: unknown, status: number): string {
+    if (payload && typeof payload === 'object') {
+        const record = payload as Record<string, unknown>
+        const envelopeMessage = record.msg
+        if (
+            typeof envelopeMessage === 'string' &&
+            envelopeMessage.trim().length > 0
+        ) {
+            return envelopeMessage
+        }
+
+        const plainMessage = record.message
+        if (
+            typeof plainMessage === 'string' &&
+            plainMessage.trim().length > 0
+        ) {
+            return plainMessage
+        }
+    }
+
+    return `Request failed: ${status}`
 }

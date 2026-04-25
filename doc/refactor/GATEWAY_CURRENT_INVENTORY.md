@@ -117,7 +117,7 @@ It is a migration aid, not a compatibility promise.
 ## 11. WebSocket Adapter Runtime Support
 
 - `Class`: `com.xa.mass.gateway.runtime.WebSocketGatewayRuntimeSupport`
-- `Method`: `createEndpointRegistry(...)`, `resolveSystemEventChannel(...)`, `requireSessionManager(...)`, `createTransportServer(...)`
+- `Method`: `createEndpointRegistry(...)`, `resolveSystemEventChannel(...)`, `createTransportServer(...)`
 - `Current responsibility`: keeps WebSocket-specific runtime assembly defaults inside gateway, including endpoint-registry creation and transport-server assembly
 - `Should stay in gateway?`: yes
 - `Target owner`: `xa-mass-gateway`

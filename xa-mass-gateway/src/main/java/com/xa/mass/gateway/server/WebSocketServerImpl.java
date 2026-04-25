@@ -37,17 +37,14 @@ public class WebSocketServerImpl implements MassWebSocketServer {
     private static final Logger logger = LoggerFactory.getLogger(WebSocketServerImpl.class);
 
     private final AtomicLong activeConnections = new AtomicLong(0);
+    private final String websocketPath;
+    private final ServerSessionManager sessionManager;
+    private final WebSocketTransportFrameCodec frameCodec;
+    private final Consumer<String> inboundMessageSink;
     private int port;
-    private String websocketPath;
     private EventLoopGroup bossGroup;
     private EventLoopGroup workerGroup;
     private volatile boolean running = false;
-    private ServerSessionManager sessionManager;
-    private WebSocketTransportFrameCodec frameCodec;
-    private Consumer<String> inboundMessageSink;
-
-    public WebSocketServerImpl() {
-    }
 
     public WebSocketServerImpl(String websocketPath,
                                WebSocketTransportFrameCodec frameCodec,
@@ -159,26 +156,6 @@ public class WebSocketServerImpl implements MassWebSocketServer {
 
     public long getActiveConnectionCount() {
         return activeConnections.get();
-    }
-
-    public void setPort(int port) {
-        this.port = port;
-    }
-
-    public void setWebsocketPath(String websocketPath) {
-        this.websocketPath = websocketPath;
-    }
-
-    public void setFrameCodec(WebSocketTransportFrameCodec frameCodec) {
-        this.frameCodec = frameCodec;
-    }
-
-    public void setInboundMessageSink(Consumer<String> inboundMessageSink) {
-        this.inboundMessageSink = inboundMessageSink;
-    }
-
-    public void setSessionManager(ServerSessionManager sessionManager) {
-        this.sessionManager = sessionManager;
     }
 
     private void validateConfiguration() {

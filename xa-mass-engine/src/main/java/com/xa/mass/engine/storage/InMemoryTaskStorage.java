@@ -75,10 +75,10 @@ public class InMemoryTaskStorage implements TaskStorage {
     @Override
     public void addTaskMessage(String taskId, TaskMsg taskMsg) {
         MessageBucket bucket = taskMessages.get(taskId);
-        if (bucket != null && taskMsg != null && taskMsg.getMsgId() != null) {
+        if (bucket != null && taskMsg != null && taskMsg.getMessageId() != null) {
             bucket.add(taskMsg);
             taskMessageAttempts.computeIfAbsent(taskId, ignored -> new ConcurrentHashMap<>())
-                    .putIfAbsent(taskMsg.getMsgId(), new AttemptBucket());
+                    .putIfAbsent(taskMsg.getMessageId(), new AttemptBucket());
         }
     }
 
@@ -95,46 +95,46 @@ public class InMemoryTaskStorage implements TaskStorage {
     }
 
     @Override
-    public Optional<TaskMsg> getTaskMessage(String taskId, String msgId) {
+    public Optional<TaskMsg> getTaskMessage(String taskId, String messageId) {
         MessageBucket bucket = taskMessages.get(taskId);
-        return bucket != null ? bucket.get(msgId) : Optional.empty();
+        return bucket != null ? bucket.get(messageId) : Optional.empty();
     }
 
     @Override
     public boolean updateTaskMessage(String taskId, TaskMsg taskMsg) {
         MessageBucket bucket = taskMessages.get(taskId);
-        return bucket != null && taskMsg != null && taskMsg.getMsgId() != null && bucket.update(taskMsg);
+        return bucket != null && taskMsg != null && taskMsg.getMessageId() != null && bucket.update(taskMsg);
     }
 
     @Override
-    public void addTaskMessageAttempt(String taskId, String msgId, TaskMsgAttempt attempt) {
+    public void addTaskMessageAttempt(String taskId, String messageId, TaskMsgAttempt attempt) {
         taskMessageAttempts
                 .computeIfAbsent(taskId, ignored -> new ConcurrentHashMap<>())
-                .computeIfAbsent(msgId, ignored -> new AttemptBucket())
+                .computeIfAbsent(messageId, ignored -> new AttemptBucket())
                 .add(attempt);
     }
 
     @Override
-    public List<TaskMsgAttempt> getTaskMessageAttempts(String taskId, String msgId) {
-        AttemptBucket bucket = getAttemptBucket(taskId, msgId);
+    public List<TaskMsgAttempt> getTaskMessageAttempts(String taskId, String messageId) {
+        AttemptBucket bucket = getAttemptBucket(taskId, messageId);
         return bucket != null ? bucket.snapshot() : List.of();
     }
 
     @Override
-    public Optional<TaskMsgAttempt> getLatestTaskMessageAttempt(String taskId, String msgId) {
-        AttemptBucket bucket = getAttemptBucket(taskId, msgId);
+    public Optional<TaskMsgAttempt> getLatestTaskMessageAttempt(String taskId, String messageId) {
+        AttemptBucket bucket = getAttemptBucket(taskId, messageId);
         return bucket != null ? bucket.latest() : Optional.empty();
     }
 
     @Override
-    public Optional<TaskMsgAttempt> getLatestActiveTaskMessageAttempt(String taskId, String msgId) {
-        AttemptBucket bucket = getAttemptBucket(taskId, msgId);
+    public Optional<TaskMsgAttempt> getLatestActiveTaskMessageAttempt(String taskId, String messageId) {
+        AttemptBucket bucket = getAttemptBucket(taskId, messageId);
         return bucket != null ? bucket.latestActive() : Optional.empty();
     }
 
     @Override
-    public boolean updateTaskMessageAttempt(String taskId, String msgId, TaskMsgAttempt attempt) {
-        AttemptBucket bucket = getAttemptBucket(taskId, msgId);
+    public boolean updateTaskMessageAttempt(String taskId, String messageId, TaskMsgAttempt attempt) {
+        AttemptBucket bucket = getAttemptBucket(taskId, messageId);
         return bucket != null && attempt != null && attempt.getAttemptId() != null && bucket.update(attempt);
     }
 
@@ -188,12 +188,12 @@ public class InMemoryTaskStorage implements TaskStorage {
         return new TaskMessageAttemptStats(totalAttempts, activeAttempts, runningAttempts, failedAttempts, expiredAttempts);
     }
 
-    private AttemptBucket getAttemptBucket(String taskId, String msgId) {
+    private AttemptBucket getAttemptBucket(String taskId, String messageId) {
         Map<String, AttemptBucket> attemptsByMsg = taskMessageAttempts.get(taskId);
         if (attemptsByMsg == null) {
             return null;
         }
-        return attemptsByMsg.get(msgId);
+        return attemptsByMsg.get(messageId);
     }
 
     private static final class MessageBucket {
@@ -201,26 +201,26 @@ public class InMemoryTaskStorage implements TaskStorage {
         private final ConcurrentLinkedDeque<String> orderedMsgIds = new ConcurrentLinkedDeque<>();
 
         private void add(TaskMsg taskMsg) {
-            TaskMsg previous = messagesById.putIfAbsent(taskMsg.getMsgId(), taskMsg);
+            TaskMsg previous = messagesById.putIfAbsent(taskMsg.getMessageId(), taskMsg);
             if (previous == null) {
-                orderedMsgIds.addLast(taskMsg.getMsgId());
+                orderedMsgIds.addLast(taskMsg.getMessageId());
                 return;
             }
-            messagesById.put(taskMsg.getMsgId(), taskMsg);
+            messagesById.put(taskMsg.getMessageId(), taskMsg);
         }
 
-        private Optional<TaskMsg> get(String msgId) {
-            return Optional.ofNullable(messagesById.get(msgId));
+        private Optional<TaskMsg> get(String messageId) {
+            return Optional.ofNullable(messagesById.get(messageId));
         }
 
         private boolean update(TaskMsg taskMsg) {
-            return messagesById.replace(taskMsg.getMsgId(), taskMsg) != null;
+            return messagesById.replace(taskMsg.getMessageId(), taskMsg) != null;
         }
 
         private List<TaskMsg> snapshot() {
             List<TaskMsg> snapshot = new ArrayList<>(messagesById.size());
-            for (String msgId : orderedMsgIds) {
-                TaskMsg message = messagesById.get(msgId);
+            for (String messageId : orderedMsgIds) {
+                TaskMsg message = messagesById.get(messageId);
                 if (message != null) {
                     snapshot.add(message);
                 }
@@ -234,8 +234,8 @@ public class InMemoryTaskStorage implements TaskStorage {
 
         private long countByStatus(TaskMsgStatus status) {
             long count = 0;
-            for (String msgId : orderedMsgIds) {
-                TaskMsg message = messagesById.get(msgId);
+            for (String messageId : orderedMsgIds) {
+                TaskMsg message = messagesById.get(messageId);
                 if (message != null && message.getStatus() == status) {
                     count++;
                 }
@@ -245,8 +245,8 @@ public class InMemoryTaskStorage implements TaskStorage {
 
         private long countProcessing() {
             long count = 0;
-            for (String msgId : orderedMsgIds) {
-                TaskMsg message = messagesById.get(msgId);
+            for (String messageId : orderedMsgIds) {
+                TaskMsg message = messagesById.get(messageId);
                 if (message != null && message.isProcessing()) {
                     count++;
                 }

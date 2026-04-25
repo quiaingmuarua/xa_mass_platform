@@ -129,7 +129,7 @@ class TaskEventPublisher {
                 listener.onTaskMessageAttemptClosed(task, taskMsg, attempt);
             } catch (Exception e) {
                 logger.error("Task message attempt-closed listener failed for task {}, msg {}, attempt {}",
-                        task.getTid(), taskMsg.getMsgId(), attempt != null ? attempt.getAttemptId() : "null", e);
+                        task.getTid(), taskMsg.getMessageId(), attempt != null ? attempt.getAttemptId() : "null", e);
             }
         }
     }
@@ -140,7 +140,7 @@ class TaskEventPublisher {
                 listener.onTaskMessageLogicallyFinal(task, taskMsg);
             } catch (Exception e) {
                 logger.error("Task message logically-final listener failed for task {}, msg {}",
-                        task.getTid(), taskMsg.getMsgId(), e);
+                        task.getTid(), taskMsg.getMessageId(), e);
             }
         }
     }

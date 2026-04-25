@@ -43,11 +43,11 @@ class RuntimeTaskResultIngestChannelTest {
         boolean handled = channel.ingest(report(task, taskMsg, "SUCCESS", "ok", null));
 
         assertTrue(handled);
-        TaskMsg updated = taskManager.getTaskMessage(task.getTid(), taskMsg.getMsgId());
+        TaskMsg updated = taskManager.getTaskMessage(task.getTid(), taskMsg.getMessageId());
         assertEquals(TaskMsgStatus.SUCCESS, updated.getStatus());
         assertEquals("SUCCESS", updated.getOutput().get("status"));
         assertEquals("ok", updated.getOutput().get("mockData"));
-        TaskMsgAttempt attempt = taskManager.getLatestTaskMessageAttempt(task.getTid(), taskMsg.getMsgId());
+        TaskMsgAttempt attempt = taskManager.getLatestTaskMessageAttempt(task.getTid(), taskMsg.getMessageId());
         assertNotNull(attempt);
         assertEquals("SUCCESS", attempt.getOutput().get("status"));
         assertEquals(TaskStatus.TERMINAL, taskManager.getTask(task.getTid()).getStatus());
@@ -63,11 +63,11 @@ class RuntimeTaskResultIngestChannelTest {
         boolean handled = channel.ingest(report(task, taskMsg, "FAILED", "boom", "RATE_LIMITED"));
 
         assertTrue(handled);
-        TaskMsg updated = taskManager.getTaskMessage(task.getTid(), taskMsg.getMsgId());
+        TaskMsg updated = taskManager.getTaskMessage(task.getTid(), taskMsg.getMessageId());
         assertEquals(TaskMsgStatus.FAILED, updated.getStatus());
         assertEquals("boom", updated.getErrorMessage());
         assertEquals("RATE_LIMITED", updated.getErrorCode());
-        TaskMsgAttempt attempt = taskManager.getLatestTaskMessageAttempt(task.getTid(), taskMsg.getMsgId());
+        TaskMsgAttempt attempt = taskManager.getLatestTaskMessageAttempt(task.getTid(), taskMsg.getMessageId());
         assertNotNull(attempt);
         assertEquals("RATE_LIMITED", attempt.getErrorCode());
         assertEquals("FAILED", attempt.getOutput().get("status"));
@@ -83,7 +83,7 @@ class RuntimeTaskResultIngestChannelTest {
 
         assertTrue(firstHandled);
         assertTrue(secondHandled);
-        TaskMsg updated = taskManager.getTaskMessage(task.getTid(), taskMsg.getMsgId());
+        TaskMsg updated = taskManager.getTaskMessage(task.getTid(), taskMsg.getMessageId());
         assertEquals(TaskMsgStatus.SUCCESS, updated.getStatus());
         assertNull(updated.getErrorMessage());
         assertEquals(1, scheduler.completedTaskMsgCount);
@@ -97,7 +97,7 @@ class RuntimeTaskResultIngestChannelTest {
 
         boolean handled = channel.ingest(new TaskResultReport(
                 task.getTid(),
-                taskMsg.getMsgId(),
+                taskMsg.getMessageId(),
                 true,
                 "ok-from-report",
                 null,
@@ -105,7 +105,7 @@ class RuntimeTaskResultIngestChannelTest {
         ));
 
         assertTrue(handled);
-        TaskMsg updated = taskManager.getTaskMessage(task.getTid(), taskMsg.getMsgId());
+        TaskMsg updated = taskManager.getTaskMessage(task.getTid(), taskMsg.getMessageId());
         assertEquals(TaskMsgStatus.SUCCESS, updated.getStatus());
         assertEquals("SUCCESS", updated.getOutput().get("status"));
         assertEquals("ok-from-report", updated.getOutput().get("mockData"));
@@ -132,14 +132,14 @@ class RuntimeTaskResultIngestChannelTest {
         taskMsg.markAsAssigned();
         taskManager.updateTaskMessage(task.getTid(), taskMsg);
 
-        TaskMsgAttempt attempt = new TaskMsgAttempt("attempt-" + taskMsg.getMsgId() + "-1",
-                task.getTid(), taskMsg.getMsgId(), 1);
+        TaskMsgAttempt attempt = new TaskMsgAttempt("attempt-" + taskMsg.getMessageId() + "-1",
+                task.getTid(), taskMsg.getMessageId(), 1);
         attempt.setWorkerId("worker-1");
         attempt.setWorkerContextId("worker-context-1");
         attempt.setBatchId("batch-0");
         assertTrue(attempt.markLeased(LocalDateTime.now().plusMinutes(5)));
         assertTrue(attempt.markDispatched());
-        taskManager.addTaskMessageAttempt(task.getTid(), taskMsg.getMsgId(), attempt);
+        taskManager.addTaskMessageAttempt(task.getTid(), taskMsg.getMessageId(), attempt);
         return task;
     }
 
@@ -152,7 +152,7 @@ class RuntimeTaskResultIngestChannelTest {
         }
         return new TaskResultReport(
                 task.getTid(),
-                taskMsg.getMsgId(),
+                taskMsg.getMessageId(),
                 "SUCCESS".equalsIgnoreCase(status),
                 detail,
                 errorCode,

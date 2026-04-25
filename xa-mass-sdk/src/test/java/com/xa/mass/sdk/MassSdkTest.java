@@ -22,6 +22,7 @@ import com.xa.mass.engine.strategy.SimpleTaskScheduler;
 import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
 import com.xa.mass.gateway.queue.OutboundDelivery;
 import com.xa.mass.gateway.runtime.WebSocketGatewayRuntimeSupport;
+import com.xa.mass.gateway.session.ServerSessionManager;
 import com.xa.mass.sdk.auth.AuthProvider;
 import com.xa.mass.sdk.auth.SubmitterMetadata;
 import com.xa.mass.sdk.auth.SubmitterRegistration;
@@ -173,8 +174,8 @@ class MassSdkTest {
         WorkerEndpointRegistry snapshotRegistry = snapshot.resolveWorkerEndpointRegistry();
 
         assertSame(first, second);
-        assertNotNull(WebSocketGatewayRuntimeSupport.requireSessionManager(first));
-        assertNotNull(WebSocketGatewayRuntimeSupport.requireSessionManager(snapshotRegistry));
+        assertInstanceOf(ServerSessionManager.class, first);
+        assertInstanceOf(ServerSessionManager.class, snapshotRegistry);
         assertNotSame(first, snapshotRegistry);
     }
 
@@ -185,7 +186,7 @@ class MassSdkTest {
         WorkerEndpointRegistry endpointRegistry = config.resolveWorkerEndpointRegistry();
         WorkerSystemEventChannel systemEventChannel = config.resolveSystemEventChannel();
 
-        assertSame(WebSocketGatewayRuntimeSupport.requireSessionManager(endpointRegistry).getSystemEventChannel(), systemEventChannel);
+        assertSame(((ServerSessionManager) endpointRegistry).getSystemEventChannel(), systemEventChannel);
     }
 
     @Test

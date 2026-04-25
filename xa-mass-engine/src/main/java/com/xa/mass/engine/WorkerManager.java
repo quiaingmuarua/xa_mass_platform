@@ -1,5 +1,6 @@
 package com.xa.mass.engine;
 
+import com.xa.mass.base.channel.eventbus.event.worker.WorkerHeartbeatEvent;
 import com.xa.mass.base.channel.eventbus.event.worker.WorkerOfflineEvent;
 import com.xa.mass.base.channel.eventbus.event.worker.WorkerOnlineEvent;
 import com.xa.mass.base.enums.worker.WorkerStatus;
@@ -135,7 +136,20 @@ public class WorkerManager {
         @com.google.common.eventbus.Subscribe
         public void onWorkerOnline(WorkerOnlineEvent event) {
             log.info("Worker online: {}", event.getWorkerId());
-            String workerId = event.getWorkerId();
+            touchWorkerHeartbeat(event.getWorkerId());
+        }
+
+        @com.google.common.eventbus.Subscribe
+        public void onWorkerHeartbeat(WorkerHeartbeatEvent event) {
+            touchWorkerHeartbeat(event.getWorkerId());
+        }
+
+        @com.google.common.eventbus.Subscribe
+        public void onWorkerOffline(WorkerOfflineEvent event) {
+            workerManager.updateOnlineStatus(event.getWorkerId(), false);
+        }
+
+        private void touchWorkerHeartbeat(String workerId) {
             Worker worker = workerManager.getWorker(workerId);
             if (worker == null) {
                 worker = new Worker();
@@ -144,11 +158,6 @@ public class WorkerManager {
             }
             worker.updateHeartbeat();
             workerManager.updateWorker(worker);
-        }
-
-        @com.google.common.eventbus.Subscribe
-        public void onWorkerOffline(WorkerOfflineEvent event) {
-            workerManager.updateOnlineStatus(event.getWorkerId(), false);
         }
     }
 }

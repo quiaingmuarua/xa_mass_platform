@@ -92,14 +92,14 @@ public class LeaseExpireWatchdog {
             if (msg == null || msg.isCompleted()) {
                 continue;
             }
-            TaskMsgAttempt attempt = taskManager.getLatestActiveTaskMessageAttempt(task.getTid(), msg.getMsgId());
+            TaskMsgAttempt attempt = taskManager.getLatestActiveTaskMessageAttempt(task.getTid(), msg.getMessageId());
             if (attempt == null || attempt.getLeaseExpireTime() == null) {
                 continue;
             }
             if (now.isAfter(attempt.getLeaseExpireTime())) {
                 log.warn("[Watchdog] Expiring stale attempt {} for msg {} in task {} (lease expired at {})",
-                        attempt.getAttemptId(), msg.getMsgId(), task.getTid(), attempt.getLeaseExpireTime());
-                taskManager.expireTaskMessage(task.getTid(), msg.getMsgId());
+                        attempt.getAttemptId(), msg.getMessageId(), task.getTid(), attempt.getLeaseExpireTime());
+                taskManager.expireTaskMessage(task.getTid(), msg.getMessageId());
             }
         }
     }

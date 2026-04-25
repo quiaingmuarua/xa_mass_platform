@@ -44,12 +44,12 @@ class TransportRoutingTaskMsgDispatchListenerTest {
 
         TaskMsg wsMsg = new TaskMsg();
         wsMsg.setTaskId("task-1");
-        wsMsg.setMsgId("msg-ws");
+        wsMsg.setMessageId("msg-ws");
         wsMsg.applyLatestAttemptProjection("ws-worker", null, "batch-ws");
 
         TaskMsg pollMsg = new TaskMsg();
         pollMsg.setTaskId("task-1");
-        pollMsg.setMsgId("msg-poll");
+        pollMsg.setMessageId("msg-poll");
         pollMsg.applyLatestAttemptProjection("poll-worker", null, "batch-poll");
 
         listener.onTaskMsgsReady(task, List.of(wsMsg, pollMsg));
@@ -78,7 +78,7 @@ class TransportRoutingTaskMsgDispatchListenerTest {
 
         TaskMsg taskMsg = new TaskMsg();
         taskMsg.setTaskId("task-1");
-        taskMsg.setMsgId("msg-rt");
+        taskMsg.setMessageId("msg-rt");
         taskMsg.applyLatestAttemptProjection("ws-worker", null, "batch-rt");
 
         listener.onTaskMsgsReady(task, List.of(taskMsg));
@@ -105,7 +105,7 @@ class TransportRoutingTaskMsgDispatchListenerTest {
 
         TaskMsg taskMsg = new TaskMsg();
         taskMsg.setTaskId("task-1");
-        taskMsg.setMsgId("msg-1");
+        taskMsg.setMessageId("msg-1");
         taskMsg.applyLatestAttemptProjection("missing-transport-worker", null, "batch-1");
 
         IllegalStateException error = assertThrows(
@@ -136,7 +136,7 @@ class TransportRoutingTaskMsgDispatchListenerTest {
 
         TaskMsg taskMsg = new TaskMsg();
         taskMsg.setTaskId("task-1");
-        taskMsg.setMsgId("msg-1");
+        taskMsg.setMessageId("msg-1");
         taskMsg.applyLatestAttemptProjection("unsupported-transport-worker", null, "batch-1");
 
         IllegalStateException error = assertThrows(

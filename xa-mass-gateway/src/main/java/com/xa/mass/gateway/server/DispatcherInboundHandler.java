@@ -3,6 +3,7 @@ package com.xa.mass.gateway.server;
 import com.google.gson.JsonObject;
 import com.xa.mass.gateway.queue.WebSocketTransportFrameCodec;
 import com.xa.mass.gateway.session.ServerSessionManager;
+import com.xa.mass.gateway.util.GatewayStringValues;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.codec.http.QueryStringDecoder;
@@ -43,7 +44,7 @@ public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWe
                 return;
             }
 
-            String workerId = firstNonBlank(
+            String workerId = GatewayStringValues.firstNonBlank(
                     frameCodec.extractWorkerId(frame),
                     sessionManager.getWorkerId(ctx.channel())
             );
@@ -99,7 +100,7 @@ public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWe
 
     private void sendError(ChannelHandlerContext ctx, String code, String message) {
         if (ctx.channel().isActive()) {
-            String errorJson = new com.google.gson.Gson().toJson(
+            String errorJson = frameCodec.getGson().toJson(
                     Map.of("code", code, "message", message, "type", "ERROR"));
             ctx.writeAndFlush(new TextWebSocketFrame(errorJson));
         }
@@ -132,18 +133,6 @@ public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWe
         if (values == null || values.isEmpty()) {
             return null;
         }
-        return firstNonBlank(values.get(0));
-    }
-
-    private String firstNonBlank(String... values) {
-        if (values == null) {
-            return null;
-        }
-        for (String value : values) {
-            if (value != null && !value.isBlank()) {
-                return value.trim();
-            }
-        }
-        return null;
+        return GatewayStringValues.firstNonBlank(values.get(0));
     }
 }

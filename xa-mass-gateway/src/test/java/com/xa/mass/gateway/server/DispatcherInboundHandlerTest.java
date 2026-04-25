@@ -210,9 +210,13 @@ class WebSocketServerImplDisconnectTest {
 
     @Test
     void channelInactiveRemovesDisconnectedSessionFromSessionManager() throws Exception {
-        WebSocketServerImpl server = new WebSocketServerImpl();
         ServerSessionManager sessionManager = org.mockito.Mockito.spy(new ServerSessionManager());
-        server.setSessionManager(sessionManager);
+        WebSocketServerImpl server = new WebSocketServerImpl(
+                "/ws",
+                new WebSocketTransportFrameCodec(),
+                raw -> { },
+                sessionManager
+        );
 
         Channel channel = mock(Channel.class);
         ChannelId channelId = mock(ChannelId.class);
@@ -236,14 +240,14 @@ class WebSocketServerImplDisconnectTest {
 
         verify(sessionManager).removeSession(channel);
         assertEquals(0L, server.getActiveConnectionCount());
-        assertTrue(sessionManager.getAllWorkerChannels().isEmpty());
+        assertEquals(0, sessionManager.getWorkerConnectionCount());
         assertNull(sessionManager.getChannel("worker-1"));
         assertNull(sessionManager.getWorkerId(channel));
     }
 
     @Test
     void startFailsFastWhenRequiredWiringIsMissing() {
-        WebSocketServerImpl server = new WebSocketServerImpl();
+        WebSocketServerImpl server = new WebSocketServerImpl(null, null, null, null);
 
         IllegalStateException error = assertThrows(IllegalStateException.class, () -> server.start(18088));
 

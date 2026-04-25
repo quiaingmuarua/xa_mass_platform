@@ -55,7 +55,7 @@ public interface TaskStorage {
     List<Task> getSchedulableTasks();
     void addTaskMessage(String taskId, TaskMsg taskMsg);
     List<TaskMsg> getTaskMessages(String taskId);
-    Optional<TaskMsg> getTaskMessage(String taskId, String msgId);
+    Optional<TaskMsg> getTaskMessage(String taskId, String messageId);
     boolean updateTaskMessage(String taskId, TaskMsg taskMsg);
     TaskMessageStats getTaskMessageStats(String taskId);
 }
@@ -64,7 +64,7 @@ public interface TaskStorage {
 Important current usage notes:
 
 - task completion is driven from persisted `TaskMsg` aggregates, not just task status
-- storage must support `taskId + msgId` lookups because result write-back is keyed that way
+- storage must support `taskId + messageId` lookups because result write-back is keyed that way
 - `TaskMessageStats` is part of the task-terminal convergence path
 
 ## WorkerStorage

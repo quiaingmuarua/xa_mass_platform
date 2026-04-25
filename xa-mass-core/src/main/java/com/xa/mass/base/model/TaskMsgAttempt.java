@@ -14,7 +14,7 @@ import java.util.Objects;
 public class TaskMsgAttempt {
     private String attemptId;
     private String taskId;
-    private String msgId;
+    private String messageId;
     private int attemptNo;
     private String workerId;
     private String workerContextId;
@@ -38,11 +38,11 @@ public class TaskMsgAttempt {
         this.updateTime = LocalDateTime.now();
     }
 
-    public TaskMsgAttempt(String attemptId, String taskId, String msgId, int attemptNo) {
+    public TaskMsgAttempt(String attemptId, String taskId, String messageId, int attemptNo) {
         this();
         this.attemptId = attemptId;
         this.taskId = taskId;
-        this.msgId = msgId;
+        this.messageId = messageId;
         this.attemptNo = attemptNo;
     }
 
@@ -62,12 +62,12 @@ public class TaskMsgAttempt {
         this.taskId = taskId;
     }
 
-    public String getMsgId() {
-        return msgId;
+    public String getMessageId() {
+        return messageId;
     }
 
-    public void setMsgId(String msgId) {
-        this.msgId = msgId;
+    public void setMessageId(String messageId) {
+        this.messageId = messageId;
     }
 
     public int getAttemptNo() {

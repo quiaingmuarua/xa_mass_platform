@@ -22,7 +22,7 @@ public final class WebSocketGatewayRuntimeSupport {
     private WebSocketGatewayRuntimeSupport() {
     }
 
-    public static WorkerEndpointRegistry createEndpointRegistry() {
+    public static ServerSessionManager createEndpointRegistry() {
         return new ServerSessionManager();
     }
 
@@ -33,22 +33,15 @@ public final class WebSocketGatewayRuntimeSupport {
         return new EventBusWorkerSystemEventChannel();
     }
 
-    public static ServerSessionManager requireSessionManager(WorkerEndpointRegistry endpointRegistry) {
-        if (endpointRegistry instanceof ServerSessionManager sessionManager) {
-            return sessionManager;
-        }
-        throw new IllegalStateException("WebSocket transport requires gateway-managed WebSocket endpoint registry");
-    }
-
     public static TransportServer createTransportServer(String endpointPath,
                                                         WebSocketTransportFrameCodec frameCodec,
                                                         Consumer<String> inboundMessageSink,
-                                                        WorkerEndpointRegistry endpointRegistry) {
+                                                        ServerSessionManager sessionManager) {
         return new WebSocketServerImpl(
                 endpointPath,
                 frameCodec,
                 inboundMessageSink,
-                requireSessionManager(endpointRegistry)
+                sessionManager
         );
     }
 }

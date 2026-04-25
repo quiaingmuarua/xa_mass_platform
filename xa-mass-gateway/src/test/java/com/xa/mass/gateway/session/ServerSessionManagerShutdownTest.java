@@ -38,7 +38,9 @@ class ServerSessionManagerShutdownTest {
 
         verify(ch1).close();
         verify(ch2).close();
-        assertEquals(0, manager.getAllWorkerChannels().size());
+        assertEquals(0, manager.getWorkerConnectionCount());
+        assertFalse(manager.isWorkerOnline("worker-1"));
+        assertFalse(manager.isWorkerOnline("worker-2"));
     }
 
     @Test

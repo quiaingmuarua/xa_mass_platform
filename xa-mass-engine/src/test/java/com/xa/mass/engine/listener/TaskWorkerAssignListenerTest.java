@@ -296,8 +296,8 @@ class TaskWorkerAssignListenerTest {
         return worker;
     }
 
-    private TaskMsg msg(String msgId, String workerId) {
-        TaskMsg taskMsg = new TaskMsg(msgId, "task-1", java.util.Map.of("target", "target"));
+    private TaskMsg msg(String messageId, String workerId) {
+        TaskMsg taskMsg = new TaskMsg(messageId, "task-1", java.util.Map.of("target", "target"));
         taskMsg.setLatestAttemptWorkerId(workerId);
         return taskMsg;
     }

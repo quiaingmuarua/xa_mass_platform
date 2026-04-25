@@ -254,8 +254,8 @@ class TaskLifecycleService {
 
         int added = 0;
         for (java.util.Map<String, Object> input : inputs) {
-            String msgId = java.util.UUID.randomUUID().toString();
-            TaskMsg taskMsg = new TaskMsg(msgId, taskId, input);
+            String messageId = java.util.UUID.randomUUID().toString();
+            TaskMsg taskMsg = new TaskMsg(messageId, taskId, input);
             taskManager.addTaskMessage(taskId, taskMsg);
             added++;
         }
@@ -352,11 +352,11 @@ class TaskLifecycleService {
                 continue;
             }
 
-            TaskMsgAttempt activeAttempt = taskManager.getLatestActiveTaskMessageAttempt(taskId, msg.getMsgId());
+            TaskMsgAttempt activeAttempt = taskManager.getLatestActiveTaskMessageAttempt(taskId, msg.getMessageId());
             boolean attemptClosed = false;
             if (activeAttempt != null) {
                 if (TaskMessageAttemptSupport.expireAttempt(activeAttempt, TaskMsgAttemptFinalReason.MANUAL_CANCELLED, "task cancelled")) {
-                    taskManager.updateTaskMessageAttempt(taskId, msg.getMsgId(), activeAttempt);
+                    taskManager.updateTaskMessageAttempt(taskId, msg.getMessageId(), activeAttempt);
                     attemptClosed = true;
                 }
             }

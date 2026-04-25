@@ -152,7 +152,7 @@ public class RedisTaskStorage implements TaskStorage {
     }
 
     @Override
-    public Optional<TaskMsg> getTaskMessage(String taskId, String msgId) {
+    public Optional<TaskMsg> getTaskMessage(String taskId, String messageId) {
         throw new UnsupportedOperationException("Redis storage not fully implemented yet");
     }
 
@@ -162,22 +162,22 @@ public class RedisTaskStorage implements TaskStorage {
     }
 
     @Override
-    public void addTaskMessageAttempt(String taskId, String msgId, TaskMsgAttempt attempt) {
+    public void addTaskMessageAttempt(String taskId, String messageId, TaskMsgAttempt attempt) {
         throw new UnsupportedOperationException("Redis storage not fully implemented yet");
     }
 
     @Override
-    public List<TaskMsgAttempt> getTaskMessageAttempts(String taskId, String msgId) {
+    public List<TaskMsgAttempt> getTaskMessageAttempts(String taskId, String messageId) {
         throw new UnsupportedOperationException("Redis storage not fully implemented yet");
     }
 
     @Override
-    public Optional<TaskMsgAttempt> getLatestTaskMessageAttempt(String taskId, String msgId) {
+    public Optional<TaskMsgAttempt> getLatestTaskMessageAttempt(String taskId, String messageId) {
         throw new UnsupportedOperationException("Redis storage not fully implemented yet");
     }
 
     @Override
-    public boolean updateTaskMessageAttempt(String taskId, String msgId, TaskMsgAttempt attempt) {
+    public boolean updateTaskMessageAttempt(String taskId, String messageId, TaskMsgAttempt attempt) {
         throw new UnsupportedOperationException("Redis storage not fully implemented yet");
     }
 

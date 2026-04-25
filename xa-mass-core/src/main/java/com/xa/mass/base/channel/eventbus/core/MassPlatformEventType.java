@@ -18,6 +18,7 @@ public enum MassPlatformEventType {
     WORKER_FLASH_DISCONNECT("Worker transient disconnect"),
     WORKER_LONG_ABSENCE("Worker long absence"),
     WORKER_ONLINE_BATCH("Batch worker online"),
+    WORKER_HEARTBEAT("Worker heartbeat"),
 
     WORKER_CONTEXT_INVALIDATION("WorkerContext invalidated"),
     WORKER_CONTEXT_RETRY_LOOP("WorkerContext retry loop"),

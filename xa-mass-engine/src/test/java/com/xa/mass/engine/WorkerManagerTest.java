@@ -1,5 +1,6 @@
 package com.xa.mass.engine;
 
+import com.xa.mass.base.channel.eventbus.event.worker.WorkerHeartbeatEvent;
 import com.xa.mass.base.channel.eventbus.event.worker.WorkerOfflineEvent;
 import com.xa.mass.base.channel.eventbus.event.worker.WorkerOnlineEvent;
 import com.xa.mass.base.enums.worker.WorkerStatus;
@@ -225,6 +226,18 @@ class WorkerManagerTest {
         listener.onWorkerOffline(new WorkerOfflineEvent("w9", "disconnected", null));
         assertFalse(manager.isWorkerOnline("w9"));
         assertEquals(WorkerStatus.OFFLINE, manager.getWorker("w9").getStatus());
+    }
+
+    @Test
+    void workerHeartbeatEventRefreshesLastHeartbeatAndOnlineStatus() {
+        WorkerManager.WorkerStatusEventListener listener = new WorkerManager.WorkerStatusEventListener(manager);
+        manager.addWorker(worker("w10", "us"));
+        manager.updateOnlineStatus("w10", false);
+
+        listener.onWorkerHeartbeat(new WorkerHeartbeatEvent("w10", "heartbeat", null));
+
+        assertTrue(manager.isWorkerOnline("w10"));
+        assertNotNull(manager.getWorker("w10").getLastHeartbeat());
     }
 
     // ---- helpers ----

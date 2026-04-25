@@ -32,7 +32,7 @@ class InMemoryTaskStorageTest {
         attempt.setAttemptId(attemptId);
         attempt.setAttemptNo(attemptNo);
         attempt.setTaskId("task-1");
-        attempt.setMsgId("msg-1");
+        attempt.setMessageId("msg-1");
         attempt.setStatus(status);
         return attempt;
     }

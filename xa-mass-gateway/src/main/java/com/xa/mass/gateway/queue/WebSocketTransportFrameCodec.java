@@ -13,6 +13,7 @@ import com.xa.mass.sdk.event.EventRequest;
 import com.xa.mass.sdk.event.EventResponse;
 import com.xa.mass.transport.model.TaskDispatchItem;
 import com.xa.mass.transport.model.TaskResultReport;
+import com.xa.mass.gateway.util.GatewayStringValues;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -157,7 +158,7 @@ public final class WebSocketTransportFrameCodec {
         if (success == null) {
             throw new IllegalArgumentException("success is required");
         }
-        String detail = firstNonBlank(
+        String detail = GatewayStringValues.firstNonBlank(
                 readString(frame, "detail"),
                 readString(frame, "message")
         );
@@ -179,7 +180,7 @@ public final class WebSocketTransportFrameCodec {
         return EventRequest.builder()
                 .event(readString(frame, WorkerControlEventProtocol.EVENT_CODE_FIELD))
                 .project(extractProject(frame))
-                .requestId(firstNonBlank(
+                .requestId(GatewayStringValues.firstNonBlank(
                         readString(frame, WorkerControlEventProtocol.REQUEST_ID_FIELD),
                         extractMessageId(frame)
                 ))
@@ -212,7 +213,7 @@ public final class WebSocketTransportFrameCodec {
         if (eventCode != null) {
             reply.addProperty(WorkerControlEventProtocol.EVENT_CODE_FIELD, eventCode);
         }
-        String requestId = firstNonBlank(
+        String requestId = GatewayStringValues.firstNonBlank(
                 response != null ? response.getRequestId() : null,
                 readString(requestFrame, WorkerControlEventProtocol.REQUEST_ID_FIELD)
         );
@@ -276,15 +277,4 @@ public final class WebSocketTransportFrameCodec {
         }
     }
 
-    private String firstNonBlank(String... values) {
-        if (values == null) {
-            return null;
-        }
-        for (String value : values) {
-            if (value != null && !value.isBlank()) {
-                return value;
-            }
-        }
-        return null;
-    }
 }

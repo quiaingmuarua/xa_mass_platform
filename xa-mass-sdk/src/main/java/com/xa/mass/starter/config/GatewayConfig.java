@@ -7,6 +7,7 @@ import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
 import com.xa.mass.gateway.queue.OutboundDelivery;
 import com.xa.mass.gateway.queue.WebSocketTransportFrameCodec;
 import com.xa.mass.gateway.runtime.WebSocketGatewayRuntimeSupport;
+import com.xa.mass.gateway.session.ServerSessionManager;
 import com.xa.mass.starter.transport.DefaultWorkerTransportRuntimeFactory;
 import com.xa.mass.starter.transport.TransportServerFactoryContext;
 import com.xa.mass.starter.transport.WorkerTransportRuntimeFactory;
@@ -254,11 +255,14 @@ public class GatewayConfig {
             return null;
         }
         if (transportServerFactory == null) {
+            if (!(endpointRegistry instanceof ServerSessionManager sessionManager)) {
+                throw new IllegalStateException("WebSocket transport requires gateway-managed WebSocket endpoint registry");
+            }
             return WebSocketGatewayRuntimeSupport.createTransportServer(
                     transportEndpointPath,
                     frameCodec,
                     inboundMessageSink,
-                    endpointRegistry
+                    sessionManager
             );
         }
         return transportServerFactory.create(new TransportServerFactoryContext(

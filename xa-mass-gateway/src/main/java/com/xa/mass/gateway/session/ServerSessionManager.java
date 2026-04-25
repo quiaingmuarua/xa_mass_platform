@@ -10,7 +10,9 @@ import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class ServerSessionManager implements WorkerEndpointRegistry, WorkerEndpointInspector {
@@ -80,18 +82,6 @@ public class ServerSessionManager implements WorkerEndpointRegistry, WorkerEndpo
         return false;
     }
 
-    public void broadcastMessage(String message) {
-        TextWebSocketFrame frame = new TextWebSocketFrame(message);
-        int sentCount = 0;
-        for (Channel channel : workerChannelMap.values()) {
-            if (channel.isActive()) {
-                channel.writeAndFlush(frame.copy());
-                sentCount++;
-            }
-        }
-        logger.debug("Broadcast message sent to {} active channels.", sentCount);
-    }
-
     @Override
     public boolean isWorkerOnline(String workerId) {
         Channel channel = workerChannelMap.get(workerId);
@@ -131,14 +121,6 @@ public class ServerSessionManager implements WorkerEndpointRegistry, WorkerEndpo
         workerChannelCtxMap.clear();
         channelIndex.clear();
         logger.info("Session manager shutdown complete.");
-    }
-
-    public Map<String, Channel> getAllWorkerChannels() {
-        return Collections.unmodifiableMap(new HashMap<>(workerChannelMap));
-    }
-
-    public Map<String, ChannelHandlerContext> getAllWorkerChannelContexts() {
-        return Collections.unmodifiableMap(new HashMap<>(workerChannelCtxMap));
     }
 
     public WorkerSystemEventChannel getSystemEventChannel() {
