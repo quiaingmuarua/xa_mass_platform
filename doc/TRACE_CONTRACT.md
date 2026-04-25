@@ -1,6 +1,6 @@
 # Trace Contract
 
-Last updated: 2026-04-20
+Last updated: 2026-04-25
 
 This file defines the minimum structured trace required to debug lifecycle issues.
 Summary logs are useful, but they do not satisfy this contract by themselves.
@@ -213,10 +213,10 @@ Minimum trace assertions:
 - `TASK_STATE_VALIDATION_SUMMARY` when validation reports `needsResolution=true` or invariant violations
 - `DISPATCH_BINDING_SUMMARY` for at least one successful binding round
 - `ASSIGNMENT_QUEUE_SNAPSHOT` for at least one submission and one retry path
-- `TASK_MSG_RETRY_RESET` when retry is exercised
+- `TASK_MSG_RETRY_RESET` when retry is exercised, including retryable failure and retryable lease expiry
 - `TASK_MSG_ATTEMPT_CLOSED` for success, retryable failure, retry-exhausted failure, expiry, and manual terminal drain
-- `TASK_MSG_LOGICALLY_FINAL` for success, retry-exhausted failure, expiry, and manual terminal drain
-- no `TASK_MSG_LOGICALLY_FINAL` for retryable failure reset
+- `TASK_MSG_LOGICALLY_FINAL` for success, retry-exhausted failure, non-retryable expiry, and manual terminal drain
+- no `TASK_MSG_LOGICALLY_FINAL` for retryable failure reset or retryable lease-expiry reset
 - `ASSIGNMENT_RETRY_SCHEDULED` when delayed assignment retry is exercised
 - `CALLBACK_IGNORED_DUPLICATE` when replay is exercised
 - `CALLBACK_IGNORED_LATE` when late callback is exercised

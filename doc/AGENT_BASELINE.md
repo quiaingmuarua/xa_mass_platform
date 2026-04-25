@@ -13,6 +13,7 @@ For those, use:
 
 - [../AGENTS.md](../AGENTS.md)
 - [../DEPRECATION_LEDGER.md](../DEPRECATION_LEDGER.md)
+- [./HIGH_VOLUME_MODEL_BASELINE.md](./HIGH_VOLUME_MODEL_BASELINE.md)
 - [./GATEWAY_BOUNDARY_BASELINE.md](./GATEWAY_BOUNDARY_BASELINE.md)
 - [./STATE_MACHINE_BASELINE.md](./STATE_MACHINE_BASELINE.md)
 - [./TESTING_BASELINE.md](./TESTING_BASELINE.md)
@@ -39,6 +40,7 @@ Working rule:
 - The core product problem is not "send work over one transport"; it is "match structured work items to heterogeneous, stateful executors, track each item result, and converge task-level state".
 - Its core abstraction is: assign a batch of work items to a batch of online workers, track each execution result, and converge task-level completion state.
 - The kernel value is the combination of `stateful worker + capability/routing match + per-item result tracking + task-level convergence`.
+- The current code reality is still more object-heavy than the desired production-scale hot path; use [./HIGH_VOLUME_MODEL_BASELINE.md](./HIGH_VOLUME_MODEL_BASELINE.md) for the approved compression target before expanding `Task`/`TaskMsg` hot-path responsibility.
 - Adapter vocabulary note: current code still uses `Worker`, `WorkerContext`, and some WebSocket-named types for today's adapter surfaces. Read those names literally inside their current scope, but keep new cross-adapter boundaries transport-neutral.
 - The platform is scenario-agnostic. It owns dispatch, result write-back, and task convergence rather than business payload meaning.
 - The long-term stable kernel is `Task / TaskMsg / TaskMsgAttempt / assignment / result / audit / terminal policy`.
@@ -135,14 +137,14 @@ Current canonical boundaries:
 - Gateway adapter frame classification is a protocol-frame compatibility seam only; do not treat it as the identity of a business or control capability.
 - Gateway runtime wiring is configured as a fixed pre-start snapshot; `DispatchRuntimeContext` is not a mutable extension registry.
 - `com.xa.mass.engine` is the active engine path.
-- `xa-mass-testing` is the cross-cutting acceptance-tooling module for runnable `perf` and future broader `concurrency` / `chaos` harnesses.
+- `xa-mass-testing` is the cross-cutting acceptance-tooling module for runnable `perf` plus the current SDK transport/concurrency probes and the first runnable WebSocket disconnect/reconnect chaos probe.
 - EventBus mainline has converged onto `com.xa.mass.base.channel.eventbus.core` and `com.xa.mass.base.channel.eventbus.event`.
 - Core acceptance is the combined `perf + concurrency + Boot-shell E2E` surface.
 - Current runnable `perf` coverage lives in `xa-mass-testing`.
 - Current runnable `concurrency` coverage lives in `xa-mass-engine`.
 - Current runnable Boot-shell E2E coverage lives in `xa-mass-dev-app`.
 - SDK embedded-runtime transport harnesses in `xa-mass-testing` are the fastest system probe when you need real SDK registration plus polling/WebSocket scheduling without booting the full dev-app shell.
-- `chaos` should be treated as a scheduled or release-oriented robustness lane until there is a stable suite.
+- `chaos` now has an initial runnable SDK/WebSocket disconnect-reconnect probe in `xa-mass-testing`, but the lane should still be treated as scheduled or release-oriented until the suite is broader and stable.
 - Concurrency coverage is a required acceptance lane for race-sensitive lifecycle changes; narrower unit/integration tests are support coverage for bug localization and invariants, not the primary acceptance gate.
 - worker-targeted debug/task details live in [./INTERNAL_API_REFERENCE.md](./INTERNAL_API_REFERENCE.md).
 

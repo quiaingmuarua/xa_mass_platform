@@ -1132,6 +1132,7 @@ class TaskManagerLifecycleTest {
         taskManager.updateTask(task);
 
         TaskMsg message = taskManager.getTaskMessages(task.getTid()).get(0);
+        message.setMaxRetryCount(0);
         assignMessage(task, message);
 
         assertTrue(taskManager.expireTaskMessage(task.getTid(), message.getMessageId()));
@@ -1154,11 +1155,53 @@ class TaskManagerLifecycleTest {
         taskManager.updateTask(task);
 
         TaskMsg message = taskManager.getTaskMessages(task.getTid()).get(0);
+        message.setMaxRetryCount(0);
         assignRunningMessage(task, message);
 
         assertTrue(taskManager.expireTaskMessage(task.getTid(), message.getMessageId()));
         assertEquals(TaskMsgStatus.EXPIRED,
                 taskManager.getTaskMessage(task.getTid(), message.getMessageId()).getStatus());
+    }
+
+    @Test
+    void expireAssignedMessageWithRetryBudgetResetsToInitAndRequestsRedispatch() {
+        Task task = taskManager.createTask(buildRequest("expire-retry", List.of("alpha")));
+        taskManager.approveTask(task.getTid());
+        task.setStatus(TaskStatus.RUNNING);
+        taskManager.updateTask(task);
+
+        TaskMsg message = taskManager.getTaskMessages(task.getTid()).get(0);
+        message.setMaxRetryCount(1);
+        assignMessage(task, message, "worker-expire-1", "worker-context-expire-1", "batch-expire-0");
+
+        List<String> events = new java.util.ArrayList<>();
+        taskManager.addTaskMessageAttemptClosedListener((currentTask, currentMessage, attempt) ->
+                events.add("attempt-closed:" + attempt.getStatus()));
+        taskManager.addTaskMessageLogicallyFinalListener((currentTask, currentMessage) ->
+                events.add("logical-final:" + currentMessage.getStatus()));
+        taskManager.addTaskDispatchListener(currentTask ->
+                events.add("dispatch:" + currentTask.getStatus()));
+
+        assertTrue(taskManager.expireTaskMessage(task.getTid(), message.getMessageId()));
+
+        TaskMsg retriedMessage = taskManager.getTaskMessage(task.getTid(), message.getMessageId());
+        TaskMsgAttempt latestAttempt = taskManager.getLatestTaskMessageAttempt(task.getTid(), message.getMessageId());
+        Task updatedTask = taskManager.getTask(task.getTid());
+
+        assertEquals(TaskMsgStatus.INIT, retriedMessage.getStatus());
+        assertEquals(1, retriedMessage.getRetryCount());
+        assertNull(retriedMessage.getFinalReason());
+        assertNull(retriedMessage.getLatestAttemptWorkerId());
+        assertNull(retriedMessage.getLatestAttemptWorkerContextId());
+        assertNull(retriedMessage.getLatestAttemptBatchId());
+        assertNull(taskManager.getLatestActiveTaskMessageAttempt(task.getTid(), message.getMessageId()));
+
+        assertNotNull(latestAttempt);
+        assertEquals(TaskMsgAttemptStatus.EXPIRED, latestAttempt.getStatus());
+        assertEquals(TaskMsgAttemptFinalReason.LEASE_EXPIRED, latestAttempt.getFinalReason());
+
+        assertEquals(TaskStatus.RUNNING, updatedTask.getStatus());
+        assertEquals(List.of("attempt-closed:EXPIRED", "dispatch:RUNNING"), events);
     }
 
     @Test

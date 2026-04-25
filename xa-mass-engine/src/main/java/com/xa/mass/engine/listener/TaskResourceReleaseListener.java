@@ -73,8 +73,7 @@ public class TaskResourceReleaseListener {
         if (workerId == null || workerId.isBlank()) {
             return;
         }
-        boolean workerStillBusy = taskManager.hasProcessingMessagesForWorker(task.getTid(), workerId);
-        if (workerStillBusy) {
+        if (hasOtherActiveAttempts(task.getTid(), workerId, taskMsg.getMessageId())) {
             return;
         }
 
@@ -88,6 +87,22 @@ public class TaskResourceReleaseListener {
                 && taskManager.hasPendingDispatchableMessages(task.getTid())) {
             dispatchRequester.accept(task);
         }
+    }
+
+    private boolean hasOtherActiveAttempts(String taskId, String workerId, String closedMessageId) {
+        List<TaskMsg> messages = taskManager.getTaskMessages(taskId);
+        for (TaskMsg message : messages) {
+            if (message == null
+                    || message.getMessageId() == null
+                    || message.getMessageId().equals(closedMessageId)
+                    || !workerId.equals(message.getLatestAttemptWorkerId())) {
+                continue;
+            }
+            if (taskManager.getLatestActiveTaskMessageAttempt(taskId, message.getMessageId()) != null) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private void releaseWorkerContextIfOwnedByTask(String taskId, String workerId, String workerContextId) {

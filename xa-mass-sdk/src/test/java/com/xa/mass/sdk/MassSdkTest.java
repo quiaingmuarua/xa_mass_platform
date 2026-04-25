@@ -21,13 +21,13 @@ import com.xa.mass.engine.rules.RuleType;
 import com.xa.mass.engine.strategy.SimpleTaskScheduler;
 import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
 import com.xa.mass.gateway.queue.OutboundDelivery;
+import com.xa.mass.gateway.runtime.GatewayEmbeddedRuntimeSupport;
 import com.xa.mass.gateway.session.ServerSessionManager;
 import com.xa.mass.sdk.auth.AuthProvider;
 import com.xa.mass.sdk.auth.SubmitterMetadata;
 import com.xa.mass.sdk.auth.SubmitterRegistration;
 import com.xa.mass.sdk.auth.TaskSubmitterContext;
 import com.xa.mass.sdk.catalog.PayloadType;
-import com.xa.mass.sdk.catalog.ProjectEventCatalog;
 import com.xa.mass.sdk.catalog.ProjectEventCatalogRegistry;
 import com.xa.mass.sdk.catalog.ProjectMetadata;
 import com.xa.mass.sdk.catalog.SdkMetadataCatalog;
@@ -85,6 +85,23 @@ class MassSdkTest {
 
         assertNotNull(app);
         assertFalse(app.isRunning());
+    }
+
+    @Test
+    void engineOptionsExposeChaosTuningKnobs() {
+        MassSdkApplication app = MassSdk.builder()
+                .gateway(gateway -> gateway.enabled(false).transportServerEnabled(false))
+                .engine(engine -> engine
+                        .enabled(true)
+                        .assignmentRetryDelayMillis(125L)
+                        .leaseWatchdogIntervalSeconds(3L))
+                .build();
+
+        MassEngine engine = requireDelegate(app).getEngine();
+
+        assertNotNull(engine);
+        assertEquals(125L, engine.getConfig().getAssignmentRetryDelayMillis());
+        assertEquals(3L, engine.getConfig().getLeaseWatchdogIntervalSeconds());
     }
 
     @Test
@@ -185,14 +202,13 @@ class MassSdkTest {
         assertSame(((ServerSessionManager) endpointRegistry).getSystemEventChannel(), systemEventChannel);
     }
 
-    @SuppressWarnings("deprecation")
     @Test
     void defaultGatewayTransportBootstrapRejectsNonSessionRegistry() {
         GatewayConfig config = new GatewayConfig();
         WorkerEndpointRegistry endpointRegistry = mock(WorkerEndpointRegistry.class);
         @SuppressWarnings("unchecked")
         MessageTransporter<String, OutboundDelivery> transporter = mock(MessageTransporter.class);
-        DispatchRuntimeContext dispatcherContext = config.createDispatcherContext(
+        DispatchRuntimeContext dispatcherContext = GatewayEmbeddedRuntimeSupport.createDispatcherContext(
                 transporter,
                 endpointRegistry,
                 null,
@@ -201,7 +217,11 @@ class MassSdkTest {
 
         IllegalStateException error = assertThrows(
                 IllegalStateException.class,
-                () -> config.createTransportServer(dispatcherContext, endpointRegistry, 19093)
+                () -> GatewayEmbeddedRuntimeSupport.createTransportServer(
+                        config.getTransportEndpointPath(),
+                        dispatcherContext,
+                        endpointRegistry
+                )
         );
 
         assertTrue(error.getMessage().contains("WebSocket endpoint registry"));
@@ -298,7 +318,6 @@ class MassSdkTest {
     void engineDependentHelpersFailFastBeforeStart() {
         MassSdkApplication app = MassSdk.development(18081);
 
-        Assertions.assertThrows(IllegalStateException.class, () -> app.addWorker(null));
         assertEngineOperationsFailFast(app);
     }
 
@@ -586,7 +605,7 @@ class MassSdkTest {
                 .eventCodes(List.of("bot.command"))
                 .build());
 
-        CoreEventDescriptor descriptor = app.unwrap().getEventRuntime().getDescriptor("bot.command");
+        CoreEventDescriptor descriptor = requireDelegate(app).getEventRuntime().getDescriptor("bot.command");
 
         assertNotNull(descriptor);
         assertEquals("bot.command", descriptor.getEvent());
@@ -635,7 +654,7 @@ class MassSdkTest {
                         .map(EventDefinition::getCode)
                         .toList());
         assertEquals(List.of("runtime.only"),
-                app.projectEventCatalog().getEventsForProject("runtimeApp").stream()
+                app.metadataCatalog().getEventsForProject("runtimeApp").stream()
                         .map(EventDefinition::getCode)
                         .toList());
     }
@@ -691,7 +710,7 @@ class MassSdkTest {
         assertEquals(List.of("bot.command"),
                 metadataCatalog.getEventsForProject("botApp").stream().map(EventDefinition::getCode).toList());
 
-        ProjectEventCatalog catalog = app.projectEventCatalog();
+        SdkMetadataCatalog catalog = app.metadataCatalog();
         assertTrue(catalog.listEvents().stream().anyMatch(event -> "bot.command".equals(event.getCode())));
         assertEquals(List.of("bot.command"),
                 catalog.getEventsForProject("botApp").stream().map(EventDefinition::getCode).toList());
@@ -1273,7 +1292,7 @@ class MassSdkTest {
             app.start();
             Worker worker = new Worker();
             worker.setWorkerId("worker-without-transport");
-            app.addWorker(worker);
+            requireDelegate(app).getEngine().addWorker(worker);
 
             IllegalStateException error = assertThrows(
                     IllegalStateException.class,
@@ -1610,6 +1629,20 @@ class MassSdkTest {
 
         for (Executable operation : operations) {
             Assertions.assertThrows(IllegalStateException.class, operation);
+        }
+    }
+
+    private static MassApplication requireDelegate(MassSdkApplication app) {
+        return readField(app, "delegate", MassApplication.class);
+    }
+
+    private static <T> T readField(Object target, String fieldName, Class<T> fieldType) {
+        try {
+            java.lang.reflect.Field field = target.getClass().getDeclaredField(fieldName);
+            field.setAccessible(true);
+            return fieldType.cast(field.get(target));
+        } catch (ReflectiveOperationException e) {
+            throw new RuntimeException(e);
         }
     }
 

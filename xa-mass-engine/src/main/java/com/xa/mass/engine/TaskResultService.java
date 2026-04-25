@@ -53,6 +53,10 @@ class TaskResultService {
             taskManager.updateTaskMessageAttempt(taskId, messageId, activeAttempt);
         }
         TaskMsgStatus fromStatus = taskMsg.getStatus();
+        // Once a worker has started executing the message, lease expiry must
+        // converge to one final outcome instead of re-queueing the same work.
+        boolean retryableExpiry = fromStatus == TaskMsgStatus.ASSIGNED
+                && taskMsg.getRetryCount() < taskMsg.getMaxRetryCount();
         boolean expired = taskMsg.markAsExpired(TaskMsgFinalReason.LEASE_EXPIRED);
         if (!expired) {
             LogUtils.logOperationFailure("EXPIRE_MSG_ERROR",
@@ -73,16 +77,34 @@ class TaskResultService {
             return false;
         }
         Task freshTask = taskManager.getTask(taskId);
+        if (retryableExpiry) {
+            taskMsg.incrementRetryCount();
+            taskMsg.resetForRetry();
+            TraceEventLogger.taskMsgRetryReset(taskMsg,
+                    "EXPIRE_TASK_MESSAGE", "TaskManager", "lease expired but retry budget allows re-dispatch");
+            if (!taskManager.updateTaskMessage(taskId, taskMsg)) {
+                LogUtils.logOperationFailure("EXPIRE_MSG_ERROR", "task message retry reset persistence failed", 0);
+                return false;
+            }
+        }
         if (freshTask != null && activeAttempt != null) {
             publishAttemptClosed(freshTask, taskMsg, activeAttempt,
-                    "EXPIRE_TASK_MESSAGE", "task message lease expired");
+                    "EXPIRE_TASK_MESSAGE", retryableExpiry
+                            ? "lease expiry closed the current attempt before re-dispatch"
+                            : "task message lease expired");
         }
-        if (freshTask != null) {
+        if (!retryableExpiry && freshTask != null) {
             publishMessageLogicallyFinal(freshTask, taskMsg,
                     "EXPIRE_TASK_MESSAGE", "task message expired");
         }
         LogUtils.logOperationSuccess("task message expired", 0);
         stateResolver.updateTaskProgress(taskId);
+        if (retryableExpiry) {
+            Task updatedTask = taskManager.getTask(taskId);
+            if (updatedTask != null && !updatedTask.getStatus().isFinal()) {
+                taskManager.getEventPublisher().publishTaskDispatchRequested(updatedTask);
+            }
+        }
         return true;
     }
 

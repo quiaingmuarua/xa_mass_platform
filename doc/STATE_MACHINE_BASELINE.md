@@ -1,6 +1,6 @@
 # State Machine Baseline
 
-Last updated: 2026-04-24 (policy interaction guardrail linked; lease watchdog, max runtime, errorCode, expireTaskMessage release fix; TaskMsgAttempt baseline clarified)
+Last updated: 2026-04-25 (retryable lease-expiry reset clarified; policy interaction guardrail linked; lease watchdog, max runtime, errorCode, expireTaskMessage release fix; TaskMsgAttempt baseline clarified)
 
 This is the short normative baseline for the active mainline.
 If lifecycle semantics change, update this file, trace expectations, and E2E coverage together.
@@ -217,8 +217,11 @@ Must hold:
 Both policies are enforced by `LeaseExpireWatchdog` (runs every `leaseWatchdogIntervalSeconds`, default 30 s):
 
 - **Lease expiry**: any active `TaskMsgAttempt` whose `leaseExpireTime` has passed is expired via
-  `TaskManager.expireTaskMessage()`. This marks the attempt `EXPIRED`, marks the logical message `EXPIRED`,
-  publishes `taskMessageAttemptClosed` for resource release, then publishes `taskMessageLogicallyFinal`.
+  `TaskManager.expireTaskMessage()`. This always marks the concrete attempt `EXPIRED` and publishes
+  `taskMessageAttemptClosed` for resource release. If retry budget remains, the logical message is reset
+  `EXPIRED -> INIT`, `TASK_MSG_RETRY_RESET` is emitted, and redispatch is requested without
+  `taskMessageLogicallyFinal`. If retry budget is exhausted, the logical message stays `EXPIRED` and
+  `taskMessageLogicallyFinal` is published.
 - **Max task runtime**: any non-terminal `Task` with `maxRuntimeSeconds > 0` that has been running
   longer than that limit is terminated with `MAX_RUNTIME_REACHED` via `TaskManager.terminateTask()`.
   Set `maxRuntimeSeconds = 0` (default) to disable the limit.
@@ -226,6 +229,9 @@ Both policies are enforced by `LeaseExpireWatchdog` (runs every `leaseWatchdogIn
 Must hold:
 - `expireTaskMessage` must fire `taskMessageAttemptClosed` after expiry so `TaskResourceReleaseListener`
   can release the worker context; skipping this call leaves the context permanently `OCCUPIED`
+- retryable lease expiry must follow the same logical-reset rule as retryable failure: close the attempt,
+  clear latest-attempt projections, increment `retryCount`, and avoid logical-final publication until the
+  retried logical message becomes stably final
 - `terminateTask(reason)` follows the same drain-and-notify path as `cancelTask`; the only
   difference is the `TaskTerminalReason` recorded
 

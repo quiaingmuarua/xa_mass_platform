@@ -150,7 +150,8 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
      */
     @Deprecated(forRemoval = false)
     public TaskManager getTaskManager() {
-        return getEngine() != null ? getEngine().getTaskManager() : null;
+        MassEngine engine = delegate.getEngine();
+        return engine != null ? engine.getTaskManager() : null;
     }
 
     /**
@@ -159,7 +160,8 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
      */
     @Deprecated(forRemoval = false)
     public WorkerManager getWorkerManager() {
-        return getEngine() != null ? getEngine().getWorkerManager() : null;
+        MassEngine engine = delegate.getEngine();
+        return engine != null ? engine.getWorkerManager() : null;
     }
 
     @Override
@@ -1530,7 +1532,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
     }
 
     private MassEngine requireStartedEngine() {
-        MassEngine engine = getEngine();
+        MassEngine engine = delegate.getEngine();
         if (engine == null) {
             throw new IllegalStateException("Mass engine is unavailable for this SDK application");
         }

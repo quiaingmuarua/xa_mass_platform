@@ -2,12 +2,10 @@ package com.xa.mass.mock.e2e.assignment;
 
 import com.xa.mass.base.enums.worker.WorkerContextStatus;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.engine.TaskManager;
 import com.xa.mass.mock.MockApplicationSpringBootApp;
 import com.xa.mass.mock.client.MockWorkerWebSocketClient;
 import com.xa.mass.mock.e2e.support.AbstractMockE2eTest;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
@@ -41,18 +39,15 @@ class TaskApiMinimumWorkerGateIntegrationTest extends AbstractMockE2eTest {
         registerWebSocketProperties(registry, WEBSOCKET_PORT);
     }
 
-    @Autowired
-    private TaskManager taskManager;
-
     @Test
     void readyTaskWaitsUntilMinimumWorkerCountIsSatisfied() throws Exception {
         String firstWorkerId = "min-gate-worker-0";
         registerWorker(firstWorkerId);
 
         String taskId = createTaskId("min-worker-gate", "minimum worker gate integration", "target-a");
-        Task task = taskManager.getTask(taskId);
+        Task task = app.getTask(taskId);
         task.setMinRequiredWorkerCount(2);
-        taskManager.updateTask(task);
+        app.updateTask(task);
 
         Map<String, Object> auditResponse = audit(taskId, "min-worker-gate");
         assertApiOk(auditResponse);

@@ -28,8 +28,9 @@ Core acceptance fast path:
 - treat `perf`, `concurrency`, and Boot-shell `E2E` as the three core acceptance layers
 - current runnable `perf` surface lives in `xa-mass-testing`
 - current runnable `concurrency` surface lives in `xa-mass-engine`
+- current runnable `chaos` probes live in `xa-mass-testing`
 - current runnable `E2E` surface lives in `xa-mass-dev-app`
-- `chaos` should be treated as the next robustness lane, but it belongs in scheduled or release-style verification until a stable suite exists
+- `chaos` belongs in scheduled or release-style verification until the suite is broad and stable enough for stricter gating
 - `xa-mass-testing` is the planned home for cross-cutting acceptance tooling (`perf` first, then broader `concurrency` / `chaos` assets as they stabilize)
 - SDK-driven embedded-runtime harnesses in `xa-mass-testing` are the fast transport-aware system probe lane; use them to model polling/WebSocket runtime pressure before paying for full Boot-shell E2E
 - `concurrency` is a required acceptance lane for race-sensitive lifecycle work and should live beside engine/runtime hot paths rather than being replaced by narrower unit tests
@@ -49,6 +50,7 @@ Canonical trust order:
 Start here based on the change:
 
 - gateway/transport: [doc/GATEWAY_BOUNDARY_BASELINE.md](doc/GATEWAY_BOUNDARY_BASELINE.md)
+- high-volume model compression or queue-first runtime shape: [doc/HIGH_VOLUME_MODEL_BASELINE.md](doc/HIGH_VOLUME_MODEL_BASELINE.md)
 - lifecycle/state transitions: [doc/STATE_MACHINE_BASELINE.md](doc/STATE_MACHINE_BASELINE.md), [doc/TRACE_CONTRACT.md](doc/TRACE_CONTRACT.md), [doc/E2E_BASELINE.md](doc/E2E_BASELINE.md)
 - HTTP/API contracts: [doc/INTERNAL_API_REFERENCE.md](doc/INTERNAL_API_REFERENCE.md)
 - startup/runtime verification: [doc/VERIFIED_RUNBOOK.md](doc/VERIFIED_RUNBOOK.md)

@@ -46,6 +46,7 @@ Current runnable acceptance entry points:
 - `concurrency`: `xa-mass-engine`
 - `perf`: `xa-mass-testing`
 - `SDK embedded harness`: `xa-mass-testing`
+- `chaos`: `xa-mass-testing`
 
 Current command entry points:
 
@@ -54,9 +55,9 @@ Current command entry points:
 - converge new cross-cutting harnesses into `xa-mass-testing`; keep engine-local deterministic race tests in `xa-mass-engine` until they no longer need engine-internal proximity
 - use the SDK embedded harness when you need real SDK registration plus transport-aware scheduling pressure without the heavier Boot-shell app context
 
-Current non-runnable or thinner lane:
+Current thinner lane:
 
-- `chaos` does not yet have a first-class mainline suite in this repo snapshot
+- `chaos` now has runnable WebSocket reconnect and lease-expiry/redispatch probes in `xa-mass-testing`, but the lane is still intentionally narrower than `E2E`, `concurrency`, and `perf`
 
 ## 3. Recommended CI Placement
 

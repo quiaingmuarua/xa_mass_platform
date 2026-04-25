@@ -8,6 +8,7 @@ Current high-trust entry points:
 
 - [AGENTS.md](./AGENTS.md)
 - [doc/AGENT_BASELINE.md](./doc/AGENT_BASELINE.md)
+- [doc/HIGH_VOLUME_MODEL_BASELINE.md](./doc/HIGH_VOLUME_MODEL_BASELINE.md)
 - [doc/TESTING_BASELINE.md](./doc/TESTING_BASELINE.md)
 - [doc/VERIFIED_RUNBOOK.md](./doc/VERIFIED_RUNBOOK.md)
 - [doc/INTERNAL_API_REFERENCE.md](./doc/INTERNAL_API_REFERENCE.md)
@@ -17,6 +18,7 @@ Role split:
 
 - `AGENTS.md`: fastest handoff for coding agents and maintainers
 - `doc/AGENT_BASELINE.md`: code reality, module truth, and architectural guardrails
+- `doc/HIGH_VOLUME_MODEL_BASELINE.md`: target production model for compressing the object-heavy validation path into a queue-driven high-volume mainline
 - `doc/TESTING_BASELINE.md`: test-system taxonomy, CI placement strategy, and agent-first acceptance map
 - `doc/VERIFIED_RUNBOOK.md`: startup, verification, runtime path, and regression commands
 - `doc/INTERNAL_API_REFERENCE.md`: endpoint inventory, current contracts, and implementation status

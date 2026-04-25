@@ -3,11 +3,9 @@ package com.xa.mass.mock.e2e.audit;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.engine.TaskManager;
 import com.xa.mass.mock.MockApplicationSpringBootApp;
 import com.xa.mass.mock.e2e.support.AbstractMockE2eTest;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpMethod;
 import org.springframework.test.annotation.DirtiesContext;
@@ -46,9 +44,6 @@ class TaskApiStateValidationIntegrationTest extends AbstractMockE2eTest {
         int websocketPort = findFreePort();
         registerWebSocketPropertiesWithClientUri(registry, websocketPort);
     }
-
-    @Autowired
-    private TaskManager taskManager;
 
     @Test
     void getTaskExposesValidTerminalStateValidationOverRealRuntime() throws Exception {
@@ -92,10 +87,10 @@ class TaskApiStateValidationIntegrationTest extends AbstractMockE2eTest {
 
         waitForTaskDetail(taskId, "TERMINAL");
 
-        Task task = taskManager.getTask(taskId);
+        Task task = app.getTask(taskId);
         task.setStatus(TaskStatus.RUNNING);
         task.setTerminalReason(null);
-        assertTrue(taskManager.updateTask(task));
+        assertTrue(app.updateTask(task));
 
         Map<String, Object> reopened = exchange("/status/api/tasks/" + taskId, HttpMethod.GET, null);
         Map<String, Object> validation = stateValidation(reopened);
@@ -123,9 +118,9 @@ class TaskApiStateValidationIntegrationTest extends AbstractMockE2eTest {
 
         waitForTaskDetail(taskId, "TERMINAL");
 
-        Task task = taskManager.getTask(taskId);
+        Task task = app.getTask(taskId);
         task.setTerminalReason(null);
-        assertTrue(taskManager.updateTask(task));
+        assertTrue(app.updateTask(task));
 
         Map<String, Object> response = exchange("/status/api/tasks/" + taskId, HttpMethod.GET, null);
         Map<String, Object> validation = stateValidation(response);
@@ -150,9 +145,9 @@ class TaskApiStateValidationIntegrationTest extends AbstractMockE2eTest {
 
         waitForTaskDetail(taskId, "TERMINAL");
 
-        Task task = taskManager.getTask(taskId);
+        Task task = app.getTask(taskId);
         task.setTerminalReason(TaskTerminalReason.ALL_MESSAGES_FAILED);
-        assertTrue(taskManager.updateTask(task));
+        assertTrue(app.updateTask(task));
 
         Map<String, Object> response = exchange("/status/api/tasks/" + taskId, HttpMethod.GET, null);
         Map<String, Object> validation = stateValidation(response);

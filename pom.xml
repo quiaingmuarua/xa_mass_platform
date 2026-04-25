@@ -72,6 +72,8 @@
                     <configuration>
                         <!-- Windows manifest classpaths can span workspace and ~/.m2 roots. -->
                         <argLine>-Djdk.net.URLClassPath.disableClassPathURLCheck=true</argLine>
+                        <!-- Keep the full test classpath explicit so forked JVMs do not drop classes on mixed-drive workspaces. -->
+                        <useManifestOnlyJar>false</useManifestOnlyJar>
                     </configuration>
                 </plugin>
             </plugins>

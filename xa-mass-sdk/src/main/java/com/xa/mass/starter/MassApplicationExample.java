@@ -52,7 +52,7 @@ public class MassApplicationExample {
         MessageQueue<OutboundDelivery> outputQueue = new InMemoryMessageQueue<>("WsOutboundDelivery", OutboundDelivery.class);
 
         MassApplication app = MassApplicationBuilder.create()
-                .server(9090, "/custom-ws")
+                .transportServer(9090, "/custom-ws")
                 .gateway(gateway -> gateway
                         .enabled(true)
                         .maxConnections(2000)
