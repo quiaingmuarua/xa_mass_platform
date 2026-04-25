@@ -21,7 +21,7 @@
 ## Boundaries
 
 - do not assume this module has its own verified Boot entry
-- when debugging task result write-back, inspect gateway handlers together with `TaskManager`
+- when debugging task result write-back, inspect WebSocket adapter handlers together with `TaskManager`
 - use these documents before trusting module-local assumptions:
   - [`../AGENTS.md`](../AGENTS.md)
   - [`../doc/AGENT_BASELINE.md`](../doc/AGENT_BASELINE.md)

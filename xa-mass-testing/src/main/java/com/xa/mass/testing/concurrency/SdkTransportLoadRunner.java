@@ -56,7 +56,7 @@ import java.util.concurrent.atomic.LongAdder;
  *
  * <ul>
  *   <li>`polling`: real {@link PullWorkerSession} polling/result submission</li>
- *   <li>`websocket`: real gateway WebSocket scheduling/result callbacks</li>
+ *   <li>`websocket`: real WebSocket-adapter scheduling/result callbacks</li>
  * </ul>
  *
  * <p>The goal is to keep the setup lighter than Boot-shell E2E while still
@@ -173,7 +173,7 @@ public final class SdkTransportLoadRunner {
             int transportPort = config.transport() == WorkerTransportMode.WEBSOCKET ? findFreePort() : 0;
             MassSdkApplication app = MassSdk.builder()
                     .transportServer(transportPort, ENDPOINT_PATH)
-                    .websocket(gateway -> gateway
+                    .websocket(websocket -> websocket
                             .enabled(config.transport() == WorkerTransportMode.WEBSOCKET)
                             .transportServerEnabled(config.transport() == WorkerTransportMode.WEBSOCKET)
                             .inputQueue(new InMemoryMessageQueue<>("sdk-load-input", String.class))

@@ -123,7 +123,7 @@ public class WorkerManager {
     }
 
     /**
-     * Event listener that keeps worker model state synchronized with gateway
+     * Event listener that keeps worker model state synchronized with transport
      * connect/disconnect events.
      */
     public static class WorkerStatusEventListener {

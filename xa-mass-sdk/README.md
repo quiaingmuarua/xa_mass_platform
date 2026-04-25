@@ -45,7 +45,7 @@ import com.xa.mass.sdk.model.WorkerRegistration;
 
 MassSdkApplication app = MassSdk.builder()
         .transportServer(19090, "/ws")
-        .websocket(gateway -> gateway.enabled(false))
+        .websocket(websocket -> websocket.enabled(false))
         .engine(engine -> engine.enabled(true).workerThreads(4))
         .build();
 
@@ -86,7 +86,7 @@ app.pullWorker("crawler-worker-1").connect();
 
 `supportedProjects` is only a coarse worker grouping/filter hint. New worker capability registration should declare `eventBindings`; when `eventBindings` is present it becomes the worker capability truth and SDK registration derives `supportedEventCodes` / `supportedProjects` from it.
 
-`transportHint` is required for worker registration. The runtime no longer guesses a default dispatch transport from gateway presence or adapter order. `pullWorker(...)` also resolves strictly from the worker's declared transport identity and fails fast on transport mismatch instead of falling back to another pull-capable adapter. Compatibility labels such as `websocket`, `ws`, `push`, `pull`, and `queue` are normalized into canonical transport identities before runtime selection, so diagnostics and dispatch truth stay aligned with `realtime` / `polling`. Adapter implementation labels such as `WorkerAdapter.protocol()` are no longer treated as runtime transport truth; selection keys off the canonical transport hint instead.
+`transportHint` is required for worker registration. The runtime no longer guesses a default dispatch transport from WebSocket-adapter presence or adapter order. `pullWorker(...)` also resolves strictly from the worker's declared transport identity and fails fast on transport mismatch instead of falling back to another pull-capable adapter. Compatibility labels such as `websocket`, `ws`, `push`, `pull`, and `queue` are normalized into canonical transport identities before runtime selection, so diagnostics and dispatch truth stay aligned with `realtime` / `polling`. Adapter implementation labels such as `WorkerAdapter.protocol()` are no longer treated as runtime transport truth; selection keys off the canonical transport hint instead.
 
 Register SDK catalog metadata when the embedding side wants to expose its own
 project/event directory:

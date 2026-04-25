@@ -16,7 +16,7 @@ Use this page as the directory index and owner map once you are already inside `
 - [TESTING_BASELINE.md](./TESTING_BASELINE.md)
   - Top-level testing-system map: taxonomy, CI placement guidance, acceptance lanes, and agent fast path.
 - [WEBSOCKET_ADAPTER_BOUNDARY_BASELINE.md](./WEBSOCKET_ADAPTER_BOUNDARY_BASELINE.md)
-  - High-density contract for gateway ownership, transport-neutral SPI, worker-runtime execution ownership, unified lifecycle semantics, and forbidden drift.
+  - High-density contract for WebSocket-adapter ownership, transport-neutral SPI, worker-runtime execution ownership, unified lifecycle semantics, and forbidden drift.
 - [STATE_MACHINE_BASELINE.md](./STATE_MACHINE_BASELINE.md)
   - Normative state vocabulary and invariants for `Task`, `TaskMsg`, `WorkerContext`, and `TaskTerminalReason`.
 - [TRACE_CONTRACT.md](./TRACE_CONTRACT.md)

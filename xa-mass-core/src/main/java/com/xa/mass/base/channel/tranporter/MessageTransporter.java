@@ -3,7 +3,7 @@ package com.xa.mass.base.channel.tranporter;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Transporter abstraction for gateway-local input/output queues.
+ * Transporter abstraction for adapter-local input/output queues.
  *
  * @param <I> input message type
  * @param <O> output message type

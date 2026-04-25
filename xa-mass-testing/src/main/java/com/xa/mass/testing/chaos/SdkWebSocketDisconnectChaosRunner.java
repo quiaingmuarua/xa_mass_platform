@@ -197,7 +197,7 @@ public final class SdkWebSocketDisconnectChaosRunner {
             int transportPort = findFreePort();
             MassSdkApplication app = MassSdk.builder()
                     .transportServer(transportPort, ENDPOINT_PATH)
-                    .websocket(gateway -> gateway
+                    .websocket(websocket -> websocket
                             .enabled(true)
                             .transportServerEnabled(true)
                             .inputQueue(new InMemoryMessageQueue<>("sdk-chaos-input", String.class))

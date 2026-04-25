@@ -26,7 +26,7 @@ For those, use:
 ## 1. Using This File
 
 Use the canonical trust order in [../AGENTS.md](../AGENTS.md).
-This file is the stable project baseline, not a higher-priority source than code, verified runtime behavior, or narrower owner docs such as state machine, trace, E2E, and gateway boundary baselines.
+This file is the stable project baseline, not a higher-priority source than code, verified runtime behavior, or narrower owner docs such as state machine, trace, E2E, and WebSocket adapter boundary baselines.
 
 Working rule:
 

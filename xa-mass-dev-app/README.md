@@ -5,7 +5,7 @@
 Use this module for end-to-end validation of:
 
 - Spring Boot HTTP APIs
-- the internal gateway WebSocket server
+- the internal WebSocket adapter server
 - SDK-created worker resources, fixture bootstrap inputs, and result write-back
 
 Repository-level startup instructions in [`../doc/VERIFIED_RUNBOOK.md`](../doc/VERIFIED_RUNBOOK.md) are the source of truth.
@@ -16,7 +16,7 @@ Repository-level startup instructions in [`../doc/VERIFIED_RUNBOOK.md`](../doc/V
 - starts runtime through `xa-mass-sdk` and exposes the current backend-hosted control console and JSON APIs through `xa-mass-web`
 - obtains task, worker, and rule management capability from the embedded SDK runtime instead of constructing a parallel engine assembly path in the app module
 - treats worker resource creation as SDK-first; mock JSON is a local/E2E fixture path, not the product resource entry
-- runtime still composes gateway and engine internally
+- runtime still composes the WebSocket adapter and engine internally
 - default `dev` startup auto-starts mock WebSocket clients
 - default `dev` startup also seeds demo SDK credentials for the external polling worker quickstart:
   - task submitter: `crawler-submitter-key`
@@ -29,7 +29,7 @@ Two ports are used on purpose:
 | Property | Default | Purpose |
 | --- | --- | --- |
 | `server.port` | `8088` | Spring Boot HTTP port for the backend-hosted control console, `/doc.html`, and JSON APIs |
-| `mass.websocket.port` | `18088` | internal gateway WebSocket server port |
+| `mass.websocket.port` | `18088` | internal WebSocket adapter server port |
 
 Mock clients connect through:
 
@@ -167,9 +167,9 @@ Observability:
 | Property | Default | Meaning |
 | --- | --- | --- |
 | `server.port` | `8088` | HTTP port |
-| `mass.websocket.port` | `18088` | gateway WebSocket port |
+| `mass.websocket.port` | `18088` | WebSocket adapter port |
 | `mock.client.auto-start` | `true` | auto-start mock clients in default `dev` path |
-| `mock.client.uri` | `ws://localhost:${mass.websocket.port}/ws` | target gateway address |
+| `mock.client.uri` | `ws://localhost:${mass.websocket.port}/ws` | target WebSocket adapter address |
 | `mock.client.task-result-status` | `SUCCESS` | force mock result frames to `SUCCESS` or `FAILED` |
 | `mass.mock.data.workers` | `mock/mock_workers.json` | mock worker data |
 | `mass.mock.data.worker-contexts` | `mock/mock_worker_contexts.json` | explicit mock worker-context data |

@@ -91,7 +91,7 @@ class RuntimeTaskResultIngestChannelTest {
     }
 
     @Test
-    void transportNeutralResultReportCanBeIngestedWithoutGatewayMessageObject() {
+    void transportNeutralResultReportCanBeIngestedWithoutWebSocketMessageObject() {
         Task task = createRunningTask("task-transport-neutral");
         TaskMsg taskMsg = taskManager.getTaskMessages(task.getTid()).get(0);
 

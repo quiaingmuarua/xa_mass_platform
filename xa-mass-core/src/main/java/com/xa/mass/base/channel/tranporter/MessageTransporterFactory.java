@@ -3,7 +3,7 @@ package com.xa.mass.base.channel.tranporter;
 import com.xa.mass.base.channel.messaging.api.MessageQueue;
 
 /**
- * Factory for gateway-local message transporters.
+ * Factory for adapter-local message transporters.
  */
 public class MessageTransporterFactory {
 

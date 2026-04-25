@@ -49,7 +49,7 @@
                 <version>3.5.0</version>
                 <executions>
                     <execution>
-                        <id>ban-direct-engine-and-gateway-dependency</id>
+                        <id>ban-direct-engine-and-websocket-adapter-dependency</id>
                         <phase>validate</phase>
                         <goals>
                             <goal>enforce</goal>

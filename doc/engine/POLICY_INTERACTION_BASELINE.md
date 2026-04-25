@@ -138,7 +138,7 @@ Required test shape:
 
 - policy contract tests for each new or changed policy seam
 - pairwise integration tests for every risky interaction pair touched by the change
-- E2E tests only for high-value runtime paths where HTTP, gateway, callback, and persistence must converge together
+- E2E tests only for high-value runtime paths where HTTP, WebSocket adapter, callback, and persistence must converge together
 
 Minimum assertions for policy-interaction tests:
 

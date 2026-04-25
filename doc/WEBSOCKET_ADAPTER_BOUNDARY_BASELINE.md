@@ -115,7 +115,7 @@ Legacy frame-routing branches are no longer part of the active WebSocket adapter
 `xa-mass-transport-api` must not define:
 
 - WebSocket/Netty/frame/session implementation types
-- gateway-specific frame routing as capability identity
+- adapter-specific frame routing as capability identity
 - request/reply frame semantics as platform lifecycle truth
 - adapter-only fields promoted into canonical runtime models
 

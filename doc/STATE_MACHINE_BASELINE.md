@@ -120,7 +120,7 @@ Must hold:
 - `taskMessageAttemptClosed` must fire whenever an execution attempt ends, including retryable failure
 - `taskMessageLogicallyFinal` must only fire when `TaskMsg` is stably final and will not be reset for retry
 - retryable failure must close the current attempt and reset the logical `TaskMsg` to `INIT`; it must not publish logically-final semantics
-- worker/gateway callbacks must resolve a unique active `TaskMsgAttempt`; missing active attempt is rejected and traced as `CALLBACK_REJECTED_NO_ACTIVE_ATTEMPT`
+- worker/WebSocket-adapter callbacks must resolve a unique active `TaskMsgAttempt`; missing active attempt is rejected and traced as `CALLBACK_REJECTED_NO_ACTIVE_ATTEMPT`
 - `errorCode` is an optional short symbolic code set by the worker alongside `errorMessage`; it is cleared on `resetForRetry()` and must not carry over between attempts
 - richer transport phases must not be silently backfilled into `TaskMsgStatus` without a baseline redesign
 

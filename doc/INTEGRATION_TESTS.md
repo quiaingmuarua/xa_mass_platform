@@ -30,7 +30,7 @@ The E2E layer remains a core acceptance gate because it is the first place where
 - logical `TaskMsg` lifecycle
 - `TaskMsgAttempt` creation/closure
 - worker and worker-context assignment/release
-- gateway dispatch and callback write-back
+- WebSocket adapter dispatch and callback write-back
 - task-level counters, terminal reasons, and audit output
 
 Unit and narrower integration tests still matter, but they do not prove that the full runtime path converges correctly.
@@ -61,7 +61,7 @@ Common runtime shape:
 - `@SpringBootTest(webEnvironment = RANDOM_PORT)`
 - real `MockApplicationSpringBootApp`
 - real HTTP paths through Spring test infrastructure
-- real WebSocket gateway when push/callback behavior matters
+- real WebSocket adapter when push/callback behavior matters
 - real pull-style worker path through `MassSdkApplication.pullWorker(...)` when server push is not the behavior under test
 - isolated contexts via `@DirtiesContext`
 - dynamic WebSocket port injection via `@DynamicPropertySource`
@@ -197,7 +197,7 @@ Important support coverage outside the E2E package:
 - SDK-created pull workers start offline, become online through `pullWorker(...).connect()`, poll work, submit output, and disconnect back offline
 - a non-JVM realtime adapter client can come online through handshake identity and complete task work through the current HTTP + WebSocket adapter boundary without using the in-JVM mock worker client
 - that external worker can receive canonical root-level task-dispatch frames and write results back through the canonical task-result frame
-- an external non-JVM polling worker can run the repo quickstart script, register through `/worker-api`, surface worker/event capability in `/sdk/meta/*`, complete task work, and shut down cleanly without gateway WebSocket participation
+- an external non-JVM polling worker can run the repo quickstart script, register through `/worker-api`, surface worker/event capability in `/sdk/meta/*`, complete task work, and shut down cleanly without WebSocket adapter participation
 - the same worker slot can be reused after normal completion and manual termination
 - `minRequiredWorkerCount` is a real `READY -> RUNNING` gate
 - multi-round refill works when `batchSize` is lower than total work-item count

@@ -316,7 +316,7 @@ Representative coverage:
 - worker/worker-context reuse after normal completion and manual termination
 - minimum-worker gate
 - multi-round refill
-- worker debug event dispatch through the real gateway path
+- worker debug event dispatch through the real WebSocket adapter path
 - backend-hosted control console routing through the real Boot entry
 
 For the broader test map, use [INTEGRATION_TESTS.md](./INTEGRATION_TESTS.md).

@@ -11,7 +11,7 @@ import org.slf4j.LoggerFactory;
 import java.util.Objects;
 
 /**
- * Canonical runtime task-result ingest channel shared by gateway and pull
+ * Canonical runtime task-result ingest channel shared by WebSocket-adapter and pull
  * worker transport paths.
  */
 public final class RuntimeTaskResultIngestChannel implements TaskResultIngestChannel {

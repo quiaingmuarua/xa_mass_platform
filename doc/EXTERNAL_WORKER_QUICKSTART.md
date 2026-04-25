@@ -7,7 +7,7 @@ Current mainline:
 - external workers are polling workers
 - business execution still enters through `POST /status/api/tasks`
 - worker capability identity is global `eventCode`
-- external workers do not receive direct gateway control/business frames
+- external workers do not receive direct WebSocket-adapter control/business frames
 
 Use this when you want a Node, Python, or Go process to join the platform without embedding the Java SDK.
 
@@ -22,7 +22,7 @@ One external worker participates through three explicit steps:
 That means:
 
 - the worker is not a WebSocket protocol client
-- the worker does not speak gateway tuple routing
+- the worker does not speak WebSocket-adapter tuple routing
 - the worker never bypasses engine scheduling
 - targeting and routing still happen through task create plus normal engine matching
 
@@ -200,7 +200,7 @@ That is the key point:
 - local execution switch is `eventCode`
 - worker capability matching in the engine is `supportedEventCodes`
 
-Do not build a second routing model around gateway frame type or transport adapter details.
+Do not build a second routing model around WebSocket-adapter frame type or transport adapter details.
 
 ## 8. Extending Beyond Node
 

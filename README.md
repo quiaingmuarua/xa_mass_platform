@@ -43,7 +43,7 @@ XA Mass is aimed at the shared kernel behind those cases: `stateful worker + cap
 - The platform is scenario-agnostic. It does not define the business itself; it defines who is online, who can accept work, how work is dispatched, how results are collected, and how task state converges.
 - The stable kernel is `Task`, `TaskMsg`, `TaskMsgAttempt`, assignment, result write-back, audit, and terminal policy.
 - The project is library/SDK-first. HTTP pages, demo APIs, and mock runtime surfaces exist to validate the kernel.
-- One verified realtime adapter path is still `Worker + WorkerContext + WebSocket gateway + mock clients`, but that is now treated as a reference transport adapter rather than the product boundary.
+- One verified realtime adapter path is still `Worker + WorkerContext + WebSocket adapter + mock clients`, but that is now treated as a reference transport adapter rather than the product boundary.
 - Workers can be phone apps, crawlers, LLM agents, IM bots, or other long-lived executors.
 
 ## Current Mainline Goal
@@ -149,7 +149,7 @@ import com.xa.mass.sdk.model.WorkerRegistration;
 
 MassSdkApplication app = MassSdk.builder()
         .server(19090, "/ws")
-        .websocket(gateway -> gateway.enabled(false))
+        .websocket(websocket -> websocket.enabled(false))
         .engine(engine -> engine.enabled(true))
         .build();
 
@@ -188,7 +188,7 @@ Third-party worker note:
 
 - Official non-Java worker entry is the external polling worker API under `/worker-api`
 - `/worker-api` requires an SDK credential whose permissions include `worker:poll` and whose attributes bind `workerId`
-- external workers register capability through `eventBindings`, not gateway frame types
+- external workers register capability through `eventBindings`, not WebSocket-adapter frame types
 - external workers receive `TaskDispatchItem`, execute locally by `eventCode`, and submit `TaskResultReport`
 - `TaskDispatchItem.input` is the logical per-item payload; transport does not expose SDK-internal wrapper shapes such as `{type,data}`
 - external workers do not receive direct business/control events outside the task lifecycle

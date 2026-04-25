@@ -46,7 +46,7 @@ Artifact:
 ## What It Does Not Prove
 
 - lease expiry followed by redispatch to a new attempt; use [lease_expiry_redispatch_chaos.md](./lease_expiry_redispatch_chaos.md) for that path
-- gateway/server restart recovery
+- WebSocket adapter/server restart recovery
 - queue jitter, dropped outbound delivery, or multi-worker reconnect storms
 
 Those are separate chaos expansions, not the current verified surface.
