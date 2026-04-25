@@ -209,3 +209,5 @@ provide an explicit `transportServerFactory(...)` override.
 `MassGateway.getConfig()` and `MassGateway.getMessageDispatcher()` are also
 deprecated: gateway config and dispatcher internals are not part of the
 supported embedding surface.
+`MassEngine.getRecordService()` and `MassEngine.getAssignWorker()` are likewise
+deprecated: record-service and assignment-loop internals stay engine-owned.

@@ -56,7 +56,7 @@ class MassEngineStopTest {
 
         assertDoesNotThrow(() -> engine.start());
         assertTrue(engine.isRunning());
-        assertNotNull(engine.getAssignWorker());
+        assertNotNull(readField(engine, "assignWorker"));
         assertSame(config.getTaskManager(), engine.getTaskManager());
         assertSame(config.getWorkerManager(), engine.getWorkerManager());
 
@@ -80,6 +80,16 @@ class MassEngineStopTest {
 
     private void setRunning(MassEngine engine, boolean value) {
         setField(engine, "running", value);
+    }
+
+    private Object readField(Object target, String fieldName) {
+        try {
+            var field = target.getClass().getDeclaredField(fieldName);
+            field.setAccessible(true);
+            return field.get(target);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
     }
 
     private void setField(Object target, String fieldName, Object value) {

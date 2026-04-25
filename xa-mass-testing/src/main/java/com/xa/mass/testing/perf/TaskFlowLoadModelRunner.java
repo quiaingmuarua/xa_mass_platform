@@ -20,6 +20,7 @@ import com.xa.mass.engine.storage.InMemoryTaskStorage;
 import com.xa.mass.engine.storage.TaskStorage;
 import com.xa.mass.engine.strategy.TaskScheduler;
 import com.xa.mass.engine.strategy.TaskWorkerMatchingStrategy;
+import com.xa.mass.testing.support.TestingPaths;
 
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -323,7 +324,7 @@ public final class TaskFlowLoadModelRunner {
             report.put("finalAttemptStats", FinalAttemptStats.from(finalAttemptStats).toMap());
             report.put("storageProbe", storageProbe.snapshot());
 
-            Path reportDir = Path.of("xa-mass-testing", "target", "perf-reports");
+            Path reportDir = TestingPaths.reportDir("perf-reports");
             Files.createDirectories(reportDir);
             String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"));
             Path reportPath = reportDir.resolve("task-flow-load-model-" + timestamp + ".json");

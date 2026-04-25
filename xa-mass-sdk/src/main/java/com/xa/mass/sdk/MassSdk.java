@@ -271,6 +271,16 @@ public final class MassSdk {
             return this;
         }
 
+        public EngineOptions assignmentRetryDelayMillis(long assignmentRetryDelayMillis) {
+            delegate.assignmentRetryDelayMillis(assignmentRetryDelayMillis);
+            return this;
+        }
+
+        public EngineOptions leaseWatchdogIntervalSeconds(long leaseWatchdogIntervalSeconds) {
+            delegate.leaseWatchdogIntervalSeconds(leaseWatchdogIntervalSeconds);
+            return this;
+        }
+
         public EngineOptions bootstrapDataProvider(MassBootstrapDataProvider bootstrapDataProvider) {
             delegate.bootstrapDataProvider(bootstrapDataProvider);
             return this;

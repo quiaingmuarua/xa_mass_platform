@@ -245,6 +245,19 @@ class MassSdkTest {
     }
 
     @Test
+    void massEngineInternalEscapeHatchesStayDeprecated() throws NoSuchMethodException {
+        Set<java.lang.reflect.Method> methods = Set.of(
+                com.xa.mass.starter.MassEngine.class.getDeclaredMethod("getRecordService"),
+                com.xa.mass.starter.MassEngine.class.getDeclaredMethod("getAssignWorker")
+        );
+
+        for (java.lang.reflect.Method method : methods) {
+            Assertions.assertTrue(method.isAnnotationPresent(Deprecated.class),
+                    method.getDeclaringClass().getSimpleName() + "." + method.getName() + " must remain deprecated");
+        }
+    }
+
+    @Test
     void developmentFactoryWrapsRuntimeApplication() {
         MassSdkApplication app = MassSdk.development(18080);
 

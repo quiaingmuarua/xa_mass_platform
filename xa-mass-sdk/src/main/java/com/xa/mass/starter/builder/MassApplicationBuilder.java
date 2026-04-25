@@ -284,6 +284,16 @@ public class MassApplicationBuilder {
             return this;
         }
 
+        public EngineBuilder assignmentRetryDelayMillis(long assignmentRetryDelayMillis) {
+            config.setAssignmentRetryDelayMillis(assignmentRetryDelayMillis);
+            return this;
+        }
+
+        public EngineBuilder leaseWatchdogIntervalSeconds(long leaseWatchdogIntervalSeconds) {
+            config.setLeaseWatchdogIntervalSeconds(leaseWatchdogIntervalSeconds);
+            return this;
+        }
+
         public EngineBuilder bootstrapDataProvider(MassBootstrapDataProvider bootstrapDataProvider) {
             config.setBootstrapDataProvider(bootstrapDataProvider);
             return this;

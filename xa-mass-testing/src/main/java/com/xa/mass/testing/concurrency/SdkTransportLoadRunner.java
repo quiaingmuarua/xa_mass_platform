@@ -16,6 +16,7 @@ import com.xa.mass.sdk.model.MassTaskCreateRequest;
 import com.xa.mass.sdk.model.WorkerContextRegistration;
 import com.xa.mass.sdk.model.WorkerRegistration;
 import com.xa.mass.sdk.worker.PullWorkerSession;
+import com.xa.mass.testing.support.TestingPaths;
 import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.model.TaskDispatchItem;
 import org.java_websocket.client.WebSocketClient;
@@ -337,7 +338,7 @@ public final class SdkTransportLoadRunner {
             report.put("messages", finalMessageStats.toMap());
             report.put("workerMetrics", metrics.toMap());
 
-            Path reportDir = Path.of("xa-mass-testing", "target", "concurrency-reports");
+            Path reportDir = TestingPaths.reportDir("concurrency-reports");
             Files.createDirectories(reportDir);
             String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"));
             Path reportPath = reportDir.resolve("sdk-transport-load-" + config.transport().label() + "-" + timestamp + ".json");

@@ -195,10 +195,22 @@ public class MassEngine {
         return workerManager;
     }
 
+    /**
+     * @deprecated Assignment record service ownership stays inside the engine
+     * runtime. Advanced embedding should consume stable engine behavior rather
+     * than depending on the internal record-service instance.
+     */
+    @Deprecated(forRemoval = false)
     public AssignmentRecordService getRecordService() {
         return recordService;
     }
 
+    /**
+     * @deprecated Assignment worker loop is an internal engine runtime detail.
+     * Advanced embedding should not drive assignment by reaching into the live
+     * assign-worker instance.
+     */
+    @Deprecated(forRemoval = false)
     public TaskAssignWorker getAssignWorker() {
         return assignWorker;
     }
