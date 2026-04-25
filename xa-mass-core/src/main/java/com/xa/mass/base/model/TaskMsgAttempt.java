@@ -98,6 +98,12 @@ public class TaskMsgAttempt {
         return batchId;
     }
 
+    /**
+     * Optional correlation label for one dispatch group.
+     *
+     * <p>The attempt lifecycle, lease ownership, retry sequencing, and result
+     * acceptance must remain correct when this field is {@code null}.
+     */
     public void setBatchId(String batchId) {
         this.batchId = batchId;
     }

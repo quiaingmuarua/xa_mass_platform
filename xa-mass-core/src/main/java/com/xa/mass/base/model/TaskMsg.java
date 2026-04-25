@@ -21,7 +21,8 @@ public class TaskMsg {
     private String latestAttemptWorkerId;
     private String latestAttemptWorkerContextId;
     private TaskMsgStatus status;
-    // Compatibility projection of the latest attempt batch association.
+    // Optional compatibility projection of the latest attempt batch association.
+    // The hot-path kernel must remain correct even when this is absent.
     private String latestAttemptBatchId;
     private LocalDateTime assignedTime;
     private LocalDateTime createTime;
@@ -122,7 +123,7 @@ public class TaskMsg {
     }
 
     /**
-     * Compatibility setter for the latest-attempt projection.
+     * Optional compatibility setter for the latest-attempt projection.
      *
      * <p>Authoritative execution history lives in TaskMsgAttempt rows.
      */
@@ -259,6 +260,9 @@ public class TaskMsg {
      * Applies the latest-attempt projection used by compatibility UI/API
      * readers. This must not be treated as the execution-history source of
      * truth; callers should use TaskMsgAttempt for that.
+     *
+     * <p>{@code batchId} is optional observability metadata. The runtime must
+     * remain correct when it is {@code null}.
      */
     public void applyLatestAttemptProjection(String workerId, String workerContextId, String batchId) {
         this.latestAttemptWorkerId = workerId;
