@@ -14,7 +14,7 @@ For those, use:
 - [../AGENTS.md](../AGENTS.md)
 - [../DEPRECATION_LEDGER.md](../DEPRECATION_LEDGER.md)
 - [./HIGH_VOLUME_MODEL_BASELINE.md](./HIGH_VOLUME_MODEL_BASELINE.md)
-- [./GATEWAY_BOUNDARY_BASELINE.md](./GATEWAY_BOUNDARY_BASELINE.md)
+- [./WEBSOCKET_ADAPTER_BOUNDARY_BASELINE.md](./WEBSOCKET_ADAPTER_BOUNDARY_BASELINE.md)
 - [./STATE_MACHINE_BASELINE.md](./STATE_MACHINE_BASELINE.md)
 - [./TESTING_BASELINE.md](./TESTING_BASELINE.md)
 - [./TRACE_CONTRACT.md](./TRACE_CONTRACT.md)
@@ -92,17 +92,17 @@ Current canonical boundaries:
   - canonical public capability definition: `EventDefinition`
   - `EventDefinition.code` is globally unique capability identity
   - engine DTOs are internal conversion targets, not public SDK surface
-- gateway transport boundary
+- websocket adapter transport boundary
   - inbound mainline: `raw json + connection facts -> canonical seam`
   - outbound mainline: `canonical seam + explicit addressability -> raw json`
-  - only retained gateway-local delivery record: `com.xa.mass.gateway.queue.OutboundDelivery`
-  - `workerId` is the active transport addressability key; endpoint role lanes are no longer part of the gateway mainline
-- gateway compatibility boundary
+  - only retained adapter-local delivery record: `com.xa.mass.transport.websocket.queue.OutboundDelivery`
+  - `workerId` is the active transport addressability key; endpoint role lanes are no longer part of the WebSocket adapter mainline
+- websocket adapter compatibility boundary
   - WebSocket task data-plane now uses canonical root-level task dispatch/result frames
   - WebSocket worker identity is established at handshake time; heartbeat is no longer an application JSON frame
-  - manual worker debug is task-backed through `POST /status/api/tasks` plus `Task.sharedConfig.targetWorkerId`; gateway does not carry a separate control/debug protocol
+  - manual worker debug is task-backed through `POST /status/api/tasks` plus `Task.sharedConfig.targetWorkerId`; the WebSocket adapter does not carry a separate control/debug protocol
   - any remaining legacy transport fields are diagnostics only; they are not business/control capability identity
-  - `com.xa.mass.gateway.queue.WebSocketTransportFrameCodec` remains the adapter-local WebSocket shell codec; it is not a platform contract
+  - `com.xa.mass.transport.websocket.queue.WebSocketTransportFrameCodec` remains the adapter-local WebSocket shell codec; it is not a platform contract
 
 ## 5. Architectural Guardrails
 
@@ -134,10 +134,10 @@ Current canonical boundaries:
 - `xa-mass-transport-api` now holds the transport-neutral SPI for task dispatch, result ingest, system events, transport servers, and worker endpoint registries.
 - `xa-mass-transport-polling` now holds the default pull/polling worker adapter implementation that `xa-mass-sdk` composes by default.
 - `xa-mass-transport-runtime` now holds the shared transport runtime registry, dispatch listener, and task-result ingest channel used by `xa-mass-sdk`.
-- `xa-mass-transport-websocket` should be read as the current WebSocket transport adapter artifact, not as the only valid worker runtime path. Its module sources live under `transport/websocket-adapter`, and its Java package namespace remains `com.xa.mass.gateway.*`.
-- Read [./GATEWAY_BOUNDARY_BASELINE.md](./GATEWAY_BOUNDARY_BASELINE.md) before changing `xa-mass-transport-websocket` or `xa-mass-transport-api`.
-- Gateway adapter frame classification is a protocol-frame compatibility seam only; do not treat it as the identity of a business or control capability.
-- Gateway runtime wiring is configured as a fixed pre-start snapshot; `WebSocketDispatchRuntimeContext` is not a mutable extension registry.
+- `xa-mass-transport-websocket` should be read as the current WebSocket transport adapter artifact, not as the only valid worker runtime path. Its module sources live under `transport/websocket-adapter`, and its Java package namespace is `com.xa.mass.transport.websocket.*`.
+- Read [./WEBSOCKET_ADAPTER_BOUNDARY_BASELINE.md](./WEBSOCKET_ADAPTER_BOUNDARY_BASELINE.md) before changing `xa-mass-transport-websocket` or `xa-mass-transport-api`.
+- WebSocket adapter frame classification is a protocol-frame compatibility seam only; do not treat it as the identity of a business or control capability.
+- WebSocket adapter runtime wiring is configured as a fixed pre-start snapshot; `WebSocketDispatchRuntimeContext` is not a mutable extension registry.
 - `com.xa.mass.engine` is the active engine path.
 - `xa-mass-testing` is the cross-cutting acceptance-tooling module for runnable `perf` plus the current SDK transport/concurrency probes and the first runnable WebSocket disconnect/reconnect chaos probe.
 - EventBus mainline has converged onto `com.xa.mass.base.channel.eventbus.core` and `com.xa.mass.base.channel.eventbus.event`.

@@ -117,7 +117,7 @@ Primary endpoints:
 - `xa-mass-transport-runtime`: shared transport runtime assembly used by the SDK composition
 - `xa-mass-web`: REST controllers and the backend-hosted control console shell
 - `xa-mass-engine`: task state machine, assignment, result handling, and strategy extension points
-- `xa-mass-transport-websocket`: current WebSocket task transport adapter plus dispatch runtime; module sources live under `transport/websocket-adapter`, while Java package identity remains `com.xa.mass.gateway.*`
+- `xa-mass-transport-websocket`: current WebSocket task transport adapter plus dispatch runtime; module sources live under `transport/websocket-adapter`, and its Java package identity is `com.xa.mass.transport.websocket.*`
 - `xa-mass-testing`: cross-cutting acceptance tooling and load/concurrency/chaos harness home
 - `xa-mass-core`: shared models and infrastructure
 

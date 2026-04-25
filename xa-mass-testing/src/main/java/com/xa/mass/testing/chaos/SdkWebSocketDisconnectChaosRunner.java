@@ -10,7 +10,7 @@ import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.TaskMsgAttempt;
 import com.xa.mass.base.model.TaskSharedConfig;
-import com.xa.mass.gateway.queue.OutboundDelivery;
+import com.xa.mass.transport.websocket.queue.OutboundDelivery;
 import com.xa.mass.sdk.MassSdk;
 import com.xa.mass.sdk.MassSdkApplication;
 import com.xa.mass.sdk.model.MassTaskCreateRequest;

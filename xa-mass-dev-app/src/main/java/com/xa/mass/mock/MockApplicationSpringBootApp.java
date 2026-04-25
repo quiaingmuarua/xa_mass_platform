@@ -6,7 +6,7 @@ import com.xa.mass.base.channel.messaging.memory.InMemoryMessageQueue;
 import com.xa.mass.command.core.CommandDefinition;
 import com.xa.mass.command.model.CommandContext;
 import com.xa.mass.engine.util.LogUtils;
-import com.xa.mass.gateway.queue.OutboundDelivery;
+import com.xa.mass.transport.websocket.queue.OutboundDelivery;
 import com.xa.mass.mock.bootstrap.MockRuntimeDataLoader;
 import com.xa.mass.mock.command.runtime.MockCommandRuntime;
 import com.xa.mass.mock.command.tool.ToolCommandRoutes;

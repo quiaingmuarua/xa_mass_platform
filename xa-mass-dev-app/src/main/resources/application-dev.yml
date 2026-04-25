@@ -21,7 +21,7 @@ logging:
   level:
     com.xa.mass: DEBUG
     com.xa.mass.starter: INFO
-    com.xa.mass.gateway: INFO
+    com.xa.mass.transport.websocket: INFO
     com.xa.mass.engine: INFO
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"

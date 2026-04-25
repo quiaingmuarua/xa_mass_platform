@@ -1,7 +1,7 @@
 package com.xa.mass.starter;
 
-import com.xa.mass.gateway.dispatcher.WebSocketMessageDispatcher;
-import com.xa.mass.gateway.dispatcher.context.WebSocketDispatchRuntimeContext;
+import com.xa.mass.transport.websocket.dispatcher.WebSocketMessageDispatcher;
+import com.xa.mass.transport.websocket.dispatcher.context.WebSocketDispatchRuntimeContext;
 import com.xa.mass.starter.config.WebSocketConfig;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import org.slf4j.Logger;
@@ -122,7 +122,7 @@ public class MassWebSocketAdapter {
     /**
      * @deprecated The WebSocket config object is an advanced embedding detail.
      * Default embedding should configure WebSocket behavior before runtime
-     * assembly rather than reading live gateway runtime state back through
+     * assembly rather than reading live adapter runtime state back through
      * {@code MassWebSocketAdapter}.
      */
     @Deprecated(forRemoval = false)

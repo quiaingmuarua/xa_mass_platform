@@ -5,7 +5,7 @@ import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.engine.strategy.TaskScheduler;
-import com.xa.mass.gateway.queue.OutboundDelivery;
+import com.xa.mass.transport.websocket.queue.OutboundDelivery;
 import com.xa.mass.sdk.catalog.ProjectEventCatalogRegistry;
 import com.xa.mass.starter.builder.MassApplicationBuilder;
 import com.xa.mass.starter.transport.TransportServerFactoryContext;

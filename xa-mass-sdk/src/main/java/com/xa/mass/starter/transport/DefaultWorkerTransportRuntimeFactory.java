@@ -1,6 +1,6 @@
 package com.xa.mass.starter.transport;
 
-import com.xa.mass.gateway.runtime.WebSocketEmbeddedRuntimeSupport;
+import com.xa.mass.transport.websocket.runtime.WebSocketEmbeddedRuntimeSupport;
 import com.xa.mass.starter.worker.PollingWorkerAdapter;
 
 import java.util.ArrayList;

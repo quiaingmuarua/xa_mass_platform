@@ -3,9 +3,9 @@ package com.xa.mass.starter.config;
 import com.xa.mass.base.channel.messaging.api.MessageQueue;
 import com.xa.mass.base.channel.tranporter.MessageTransporter;
 import com.xa.mass.base.channel.tranporter.MessageTransporterFactory;
-import com.xa.mass.gateway.dispatcher.context.WebSocketDispatchRuntimeContext;
-import com.xa.mass.gateway.queue.OutboundDelivery;
-import com.xa.mass.gateway.runtime.WebSocketEmbeddedRuntimeSupport;
+import com.xa.mass.transport.websocket.dispatcher.context.WebSocketDispatchRuntimeContext;
+import com.xa.mass.transport.websocket.queue.OutboundDelivery;
+import com.xa.mass.transport.websocket.runtime.WebSocketEmbeddedRuntimeSupport;
 import com.xa.mass.starter.transport.DefaultWorkerTransportRuntimeFactory;
 import com.xa.mass.starter.transport.TransportServerFactoryContext;
 import com.xa.mass.starter.transport.WorkerTransportRuntimeFactory;
@@ -251,7 +251,7 @@ public class WebSocketConfig {
     /**
      * @deprecated Embedded-runtime mainline should use
      * {@link WebSocketEmbeddedRuntimeSupport#createTransportServer(String, WebSocketDispatchRuntimeContext, WorkerEndpointRegistry)}
-     * for the default gateway-backed adapter path, or {@link #getTransportServerFactory()} for an explicit override.
+     * for the default WebSocket-backed adapter path, or {@link #getTransportServerFactory()} for an explicit override.
      * Keep this only for advanced external embedding that still routes through {@code WebSocketConfig}.
      */
     @Deprecated

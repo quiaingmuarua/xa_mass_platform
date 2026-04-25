@@ -52,7 +52,7 @@ class TaskApiCallbackReplayIntegrationTest extends AbstractMockE2eTest {
     }
 
     @Test
-    void duplicateGatewayCallbackReplayKeepsFirstFinalMessageState() throws Exception {
+    void duplicateWebSocketCallbackReplayKeepsFirstFinalMessageState() throws Exception {
         String taskId = createTaskId("integration-task-callback-replay", "integration callback replay", List.of("target-a", "target-b"), 1);
 
         Map<String, Object> auditResponse = exchange(

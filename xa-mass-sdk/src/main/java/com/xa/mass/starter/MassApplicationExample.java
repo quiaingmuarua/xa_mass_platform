@@ -2,7 +2,7 @@ package com.xa.mass.starter;
 
 import com.xa.mass.base.channel.messaging.api.MessageQueue;
 import com.xa.mass.base.channel.messaging.memory.InMemoryMessageQueue;
-import com.xa.mass.gateway.queue.OutboundDelivery;
+import com.xa.mass.transport.websocket.queue.OutboundDelivery;
 import com.xa.mass.starter.builder.MassApplicationBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -53,7 +53,7 @@ public class MassApplicationExample {
 
         MassApplication app = MassApplicationBuilder.create()
                 .transportServer(9090, "/custom-ws")
-                .websocket(gateway -> gateway
+                .websocket(websocket -> websocket
                         .enabled(true)
                         .maxConnections(2000)
                         .inputQueue(inputQueue)
@@ -75,7 +75,7 @@ public class MassApplicationExample {
 
         MassApplication app = MassApplicationBuilder.create()
                 .server(8080)
-                .websocket(gateway -> gateway
+                .websocket(websocket -> websocket
                         .enabled(true)
                         .maxConnections(100)
                         .inputQueue(inputQueue)
@@ -91,7 +91,7 @@ public class MassApplicationExample {
         logger.info("Example 6: engine only");
         MassApplication app = MassApplicationBuilder.create()
                 .server(8080)
-                .websocket(gateway -> gateway.enabled(false))
+                .websocket(websocket -> websocket.enabled(false))
                 .engine(engine -> engine
                         .enabled(true)
                         .workerThreads(4))

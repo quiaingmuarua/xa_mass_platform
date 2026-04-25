@@ -141,7 +141,7 @@ public class WebSocketClientStarter {
     }
 
     /**
-     * Establishes worker connections against the gateway endpoint.
+     * Establishes worker connections against the WebSocket transport endpoint.
      */
     protected void establishConnections(List<Worker> workers, String baseUri) throws InterruptedException {
         CountDownLatch latch = new CountDownLatch(workers.size());

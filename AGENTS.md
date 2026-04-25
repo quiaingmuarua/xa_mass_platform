@@ -49,7 +49,7 @@ Canonical trust order:
 
 Start here based on the change:
 
-- gateway/transport: [doc/GATEWAY_BOUNDARY_BASELINE.md](doc/GATEWAY_BOUNDARY_BASELINE.md)
+- websocket adapter/transport: [doc/WEBSOCKET_ADAPTER_BOUNDARY_BASELINE.md](doc/WEBSOCKET_ADAPTER_BOUNDARY_BASELINE.md)
 - high-volume model compression or queue-first runtime shape: [doc/HIGH_VOLUME_MODEL_BASELINE.md](doc/HIGH_VOLUME_MODEL_BASELINE.md)
 - lifecycle/state transitions: [doc/STATE_MACHINE_BASELINE.md](doc/STATE_MACHINE_BASELINE.md), [doc/TRACE_CONTRACT.md](doc/TRACE_CONTRACT.md), [doc/E2E_BASELINE.md](doc/E2E_BASELINE.md)
 - HTTP/API contracts: [doc/INTERNAL_API_REFERENCE.md](doc/INTERNAL_API_REFERENCE.md)
@@ -58,7 +58,7 @@ Start here based on the change:
 - integration/E2E coverage: [doc/INTEGRATION_TESTS.md](doc/INTEGRATION_TESTS.md), [doc/E2E_BASELINE.md](doc/E2E_BASELINE.md)
 - policy ownership or interactions: [doc/engine/POLICY_INTERACTION_BASELINE.md](doc/engine/POLICY_INTERACTION_BASELINE.md)
 - dispatch/result flow: [doc/engine/TASK_EXECUTION_FLOW.md](doc/engine/TASK_EXECUTION_FLOW.md)
-- legacy/compatibility/deprecation work: [DEPRECATION_LEDGER.md](DEPRECATION_LEDGER.md), [doc/refactor/GATEWAY_CURRENT_INVENTORY.md](doc/refactor/GATEWAY_CURRENT_INVENTORY.md)
+- legacy/compatibility/deprecation work: [DEPRECATION_LEDGER.md](DEPRECATION_LEDGER.md), [doc/refactor/WEBSOCKET_ADAPTER_CURRENT_INVENTORY.md](doc/refactor/WEBSOCKET_ADAPTER_CURRENT_INVENTORY.md)
 
 ## 3. Agent Behavior Contract
 
@@ -105,7 +105,7 @@ Deprecation and pushback:
 - Worker runtime event capability truth is `supportedEventCodes`; `supportedProjects` is only a coarse filter hint.
 - Routing truth comes from explicit rules and worker-context signals, not `workerGroupId`.
 - Keep transport-specific shapes behind `xa-mass-transport-api`; WebSocket payloads must not become kernel truth.
-- Read [doc/GATEWAY_BOUNDARY_BASELINE.md](doc/GATEWAY_BOUNDARY_BASELINE.md) before changing `xa-mass-transport-websocket` or `xa-mass-transport-api`.
+- Read [doc/WEBSOCKET_ADAPTER_BOUNDARY_BASELINE.md](doc/WEBSOCKET_ADAPTER_BOUNDARY_BASELINE.md) before changing `xa-mass-transport-websocket` or `xa-mass-transport-api`.
 - Manual worker debug/control is a side-channel and must not mutate task lifecycle state.
 
 ## 5. Working Defaults

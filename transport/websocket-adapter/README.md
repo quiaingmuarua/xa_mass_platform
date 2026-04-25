@@ -5,7 +5,7 @@
 - WebSocket server and session management
 - inbound dispatch and downstream message publish
 - connection context and protocol handling
-- Java package namespace remains `com.xa.mass.gateway.*`
+- Java package namespace is `com.xa.mass.transport.websocket.*`
 
 ## Current Status
 
@@ -15,8 +15,8 @@
 
 ## Start Here
 
-- `src/main/java/com/xa/mass/gateway/server/WebSocketServerImpl.java`
-- `src/main/java/com/xa/mass/gateway/dispatcher/WebSocketMessageDispatcher.java`
+- `src/main/java/com/xa/mass/transport/websocket/server/WebSocketServerImpl.java`
+- `src/main/java/com/xa/mass/transport/websocket/dispatcher/WebSocketMessageDispatcher.java`
 
 ## Boundaries
 

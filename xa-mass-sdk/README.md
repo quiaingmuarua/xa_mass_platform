@@ -12,9 +12,9 @@ can depend on one SDK module without pulling the HTTP/demo control surface.
 Stable SDK-facing catalog/auth/model contracts now live in the internal
 `xa-mass-sdk-api` module and are pulled transitively through this artifact.
 Transport-neutral runtime contracts now live in `xa-mass-transport-api`; the
-current bundled gateway-backed realtime transport is still WebSocket-backed,
+current bundled realtime transport is still WebSocket-backed,
 but that adapter/bootstrap ownership lives in `xa-mass-transport-websocket`
-with Java packages under `com.xa.mass.gateway.*`. `xa-mass-sdk`
+with Java packages under `com.xa.mass.transport.websocket.*`. `xa-mass-sdk`
 assembles worker transports through a transport runtime registry/factory seam
 and also supports pull-style workers without server push.
 
@@ -205,10 +205,10 @@ Treat this lower-level `starter` surface as an advanced embedding path. It remai
 Within that lower-level surface, `WebSocketConfig.createDispatcherContext(...)` and
 `WebSocketConfig.createTransportServer(...)` are deprecated advanced embedding
 helpers only. Embedded-runtime mainline should use
-`WebSocketEmbeddedRuntimeSupport` directly for the default gateway-backed path, or
+`WebSocketEmbeddedRuntimeSupport` directly for the default WebSocket-backed path, or
 provide an explicit `transportServerFactory(...)` override.
 `MassWebSocketAdapter.getWebSocketConfig()` and `MassWebSocketAdapter.getWebSocketMessageDispatcher()` are also
-deprecated: gateway config and dispatcher internals are not part of the
+deprecated: WebSocket adapter config and dispatcher internals are not part of the
 supported embedding surface.
 `MassEngine.getRecordService()` and `MassEngine.getAssignWorker()` are likewise
 deprecated: record-service and assignment-loop internals stay engine-owned.

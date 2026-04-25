@@ -66,7 +66,7 @@ class MockWorkerWebSocketClientTest {
     }
 
     @Test
-    void defaultConstructorUsesGatewayPort() {
+    void defaultConstructorUsesDefaultWebSocketPort() {
         MockWorkerWebSocketClient client = new MockWorkerWebSocketClient("worker-test");
 
         assertEquals("ws://localhost:18088/ws?workerId=worker-test", client.getURI().toString());
@@ -127,6 +127,23 @@ class MockWorkerWebSocketClientTest {
         frame.addProperty("project", "demoApp");
         frame.addProperty("taskId", "task-1");
         frame.add("input", new JsonObject());
+
+        client.onMessage(frame.toString());
+
+        assertTrue(client.sentMessages.isEmpty());
+    }
+
+    @Test
+    void legacyTupleTaskFrameIsIgnored() {
+        CapturingMockWorkerClient client = new CapturingMockWorkerClient("worker-test");
+        JsonObject frame = new JsonObject();
+        frame.addProperty("messageId", "legacy-1");
+        frame.addProperty("workerId", "worker-test");
+        frame.addProperty("msgType", "TASK");
+        frame.addProperty("subMsgType", "step");
+        JsonObject payload = new JsonObject();
+        payload.add("steps", new com.google.gson.JsonArray());
+        frame.add("payload", payload);
 
         client.onMessage(frame.toString());
 
