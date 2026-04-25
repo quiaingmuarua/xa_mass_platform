@@ -8,6 +8,7 @@ import com.xa.mass.base.project.ProjectRegistry;
 import com.xa.mass.sdk.TransportOperations;
 import com.xa.mass.sdk.WorkerOperations;
 import com.xa.mass.sdk.catalog.SdkMetadataCatalog;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
@@ -29,7 +30,7 @@ public class WorkerApiController {
     private final TransportOperations transportOperations;
 
     public WorkerApiController(WorkerOperations workerOperations) {
-        this(workerOperations, null, null);
+        this(workerOperations, (SdkMetadataCatalog) null, (TransportOperations) null);
     }
 
     public WorkerApiController(WorkerOperations workerOperations,
@@ -40,6 +41,7 @@ public class WorkerApiController {
         this.transportOperations = transportOperations;
     }
 
+    @Autowired
     public WorkerApiController(WorkerOperations workerOperations,
                                ObjectProvider<SdkMetadataCatalog> metadataCatalogProvider,
                                ObjectProvider<TransportOperations> transportOperationsProvider) {

@@ -50,7 +50,7 @@ For verified runtime behavior and recommended startup, use [VERIFIED_RUNBOOK.md]
 - `EventDefinition.code` is the event/capability identity used by dispatch, catalog reads, and permission checks; `project` remains scope metadata only.
 - Task-backed business events enter through the SDK event path and normalize to task creation; runtime control events are handled directly by the embedded event runtime.
 - Built-in runtime control events are also registered into the SDK metadata catalog so metadata and dispatch stay aligned.
-- Worker debug/control uses the event-first API shape. `/status/workers/send-event` accepts `workerId`, `project`, `eventCode`, `requestId`, `headers`, `payload`, and `principal`.
+- Manual worker debug is task-backed. Use `POST /status/api/tasks` with `eventCode` plus `sharedConfig.targetWorkerId` when the task must target one worker.
 
 ## 2. SDK Metadata API
 
@@ -138,7 +138,8 @@ Response notes:
 - returns one row per registered worker
 - joins SDK worker capability declarations with current transport session snapshots by `workerId`
 - `supportedEventCodes` remains the flat runtime capability list used by matching
-- `eventBindings` is the richer capability view derived from event metadata scope plus the worker's declared coarse project scope
+- `eventBindings` is the richer capability view derived from event metadata scope for each declared `supportedEventCode`
+- `supportedProjects` remains a separate coarse worker scope hint and is not used as capability identity
 - `transportHint` is the worker's declared runtime transport identity when present, otherwise it may fall back to the active endpoint transport
 - `connections` and `hasActiveEndpoint` come from the transport/session layer and are reachability facts, not capability truth
 
@@ -774,60 +775,28 @@ Response shape:
 }
 ```
 
-## 8. Worker Debug APIs
+## 8. Worker Debug Surface
 
-Base path: `/status/workers`
+Manual worker debug no longer has a dedicated `/status/workers/*` API.
 
-### 8.1 Message History
-
-- Method: `GET`
-- Path: `/status/workers/message-history`
-- Status: `Partial`
-
-Behavior:
-
-- returns the current outbound/inbound debug message history for one worker
-- outbound debug records may move through `QUEUED`, `DELIVERED`, or `FAILED`
-- `FAILED` means the gateway queued the outbound debug record but could not send it to an addressable worker endpoint
-
-### 8.2 Send Debug Message
+Use the normal task create API:
 
 - Method: `POST`
-- Path: `/status/workers/send-event`
-- Status: `Partial`
-
-Behavior:
-
-- sends an event-first debug/control payload to a worker over the single worker endpoint
-- does not create or mutate `TaskMsg`
-- `eventCode` is the canonical control capability identifier
-- response data returns `eventCode` as the canonical capability identity
-- response does not expose legacy transport-classification fields
+- Path: `/status/api/tasks`
+- Status: `Implemented`
 
 Request notes:
 
-- accepts `workerId`, `project`, `eventCode`, `requestId`, `headers`, `payload`, and optional `principal`
-- current WebSocket adapter sends a root-level event-first control frame and records event-first acknowledgements
+- set `project`, `taskName`, and `eventCode`
+- send the debug payload through `inputs`
+- fix the target worker with `sharedConfig.targetWorkerId`
+- worker capability and permission checks still resolve by global `eventCode`
 
-Compatibility and payload notes:
+Behavior:
 
-- current outbound transport frame is a root-level event-first JSON envelope
-- current inbound acknowledgement frame is a root-level event-first JSON envelope
-- legacy debug-chat transport branches no longer exist on the active control path
-- `eventCode` is the canonical control capability identifier; transport-classification fields are not part of this API
-- request payload may still carry plain debug text, but payloads are routed by `eventCode`
-- mock client command namespaces are:
-  - `mock.*`
-  - `tool.*`
-  - `batch`
-- a plain text-only payload remains valid debug/control payload and must not mutate task state
-
-Acknowledgement notes:
-
-- current acknowledgement payload includes `replyToMessageId`, `ackStatus`, `workerId`, `receivedAt`, and `eventCode`
-- when a command request is executed, the acknowledgement may also include `eventHandled` and `eventResult`
-- page-visible delivery states remain `QUEUED`, `DELIVERED`, `RECEIVED`, and `FAILED`
-- this protocol is a worker debug/control side-channel only; it is not the task-dispatch protocol and must not be treated as business routing truth
+- debug actions flow through normal engine scheduling, assignment, dispatch, result ingest, and terminal convergence
+- there is no separate worker message-history read model
+- the worker detail UI may still present a debug-focused form, but it submits a task instead of a direct worker message
 
 ## 9. Health And Docs
 

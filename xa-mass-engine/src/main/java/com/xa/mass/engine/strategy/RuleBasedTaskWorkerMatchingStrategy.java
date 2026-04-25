@@ -192,6 +192,8 @@ public class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatchingSt
         boolean workerLocked = workerManager.isLocked(worker.getWorkerId());
         Map<String, Object> contextSnapshot = buildPrefilterContextSnapshot(task, worker, workerContext, workerLocked);
         String eventCode = TaskSharedConfig.sdkEventCode(task);
+        String targetWorkerId = TaskSharedConfig.targetWorkerId(task);
+        Map<String, String> targetWorkerAttributes = TaskSharedConfig.targetWorkerAttributes(task);
         boolean sdkEventTask = eventCode != null && !eventCode.isBlank();
 
         if (!worker.isAvailable()) {
@@ -201,6 +203,15 @@ public class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatchingSt
         if (workerLocked) {
             return PrefilterDecision.reject(AssignmentResult.CONFLICT,
                     "worker locked", contextSnapshot, true);
+        }
+        if (targetWorkerId != null && !targetWorkerId.equals(worker.getWorkerId())) {
+            return PrefilterDecision.reject(AssignmentResult.RULE_NOT_MATCH,
+                    "target worker mismatch", contextSnapshot, false);
+        }
+        if (!targetWorkerAttributes.isEmpty()
+                && !workerAttributesMatch(worker.getAttributes(), targetWorkerAttributes)) {
+            return PrefilterDecision.reject(AssignmentResult.RULE_NOT_MATCH,
+                    "target worker attributes mismatch", contextSnapshot, false);
         }
         if (!sdkEventTask && !worker.supportsProject(task.getProject())) {
             return PrefilterDecision.reject(AssignmentResult.RULE_NOT_MATCH,
@@ -242,6 +253,8 @@ public class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatchingSt
         Map<String, Object> context = new LinkedHashMap<>();
         String routingCode = TaskSharedConfig.routingCode(task);
         String eventCode = TaskSharedConfig.sdkEventCode(task);
+        String targetWorkerId = TaskSharedConfig.targetWorkerId(task);
+        Map<String, String> targetWorkerAttributes = TaskSharedConfig.targetWorkerAttributes(task);
         boolean sdkEventTask = eventCode != null && !eventCode.isBlank();
         boolean taskHasRoutingRequirement = routingCode != null && !routingCode.isBlank();
         Set<String> routingTags = workerContext != null ? workerContext.getRoutingTags() : Set.of();
@@ -261,6 +274,8 @@ public class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatchingSt
         context.put("taskProject", task.getProject());
         context.put("taskEventCode", eventCode);
         context.put("taskUsesEventCapability", sdkEventTask);
+        context.put("taskTargetWorkerId", targetWorkerId);
+        context.put("taskTargetWorkerAttributes", targetWorkerAttributes);
         context.put("taskSharedConfig", task.getSharedConfig());
         context.put("routingCode", routingCode);
         context.put("taskHasRoutingRequirement", taskHasRoutingRequirement);
@@ -271,6 +286,9 @@ public class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatchingSt
         context.put("appCount", worker.getSupportedProjects() != null ? worker.getSupportedProjects().size() : 0);
         context.put("supportsProject", worker.supportsProject(task.getProject()));
         context.put("supportsEvent", !sdkEventTask || worker.supportsEvent(eventCode));
+        context.put("matchesTargetWorkerId", targetWorkerId == null || targetWorkerId.equals(worker.getWorkerId()));
+        context.put("matchesTargetWorkerAttributes",
+                targetWorkerAttributes.isEmpty() || workerAttributesMatch(worker.getAttributes(), targetWorkerAttributes));
 
         if (workerContext == null) {
             context.put("hasWorkerContext", false);
@@ -305,6 +323,22 @@ public class RuleBasedTaskWorkerMatchingStrategy implements TaskWorkerMatchingSt
         context.put("workerContextMatchesRoutingCode",
                 taskHasRoutingRequirement && routingTags.contains(routingCode));
         return context;
+    }
+
+    private boolean workerAttributesMatch(Map<String, String> workerAttributes,
+                                          Map<String, String> requiredAttributes) {
+        if (requiredAttributes == null || requiredAttributes.isEmpty()) {
+            return true;
+        }
+        if (workerAttributes == null || workerAttributes.isEmpty()) {
+            return false;
+        }
+        for (Map.Entry<String, String> entry : requiredAttributes.entrySet()) {
+            if (!Objects.equals(workerAttributes.get(entry.getKey()), entry.getValue())) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private List<RuleEvaluationDetail> evaluateRulesWithDetails(WorkerMatchContext matchContext) {

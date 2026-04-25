@@ -12,6 +12,8 @@ import java.util.Map;
 public final class TaskSharedConfig {
 
     public static final String ROUTING_CODE = "routingCode";
+    public static final String TARGET_WORKER_ID = "targetWorkerId";
+    public static final String TARGET_WORKER_ATTRIBUTES = "targetWorkerAttributes";
     public static final String SDK_METADATA = "_sdk";
     public static final String SDK_EVENT_CODE = "eventCode";
 
@@ -30,6 +32,20 @@ public final class TaskSharedConfig {
             return null;
         }
         return sdkStringValue(task.getSharedConfig(), SDK_EVENT_CODE);
+    }
+
+    public static String targetWorkerId(Task task) {
+        if (task == null) {
+            return null;
+        }
+        return stringValue(task.getSharedConfig(), TARGET_WORKER_ID);
+    }
+
+    public static Map<String, String> targetWorkerAttributes(Task task) {
+        if (task == null) {
+            return Map.of();
+        }
+        return stringMapValue(task.getSharedConfig(), TARGET_WORKER_ATTRIBUTES);
     }
 
     public static String stringValue(Map<String, Object> sharedConfig, String key) {
@@ -70,5 +86,28 @@ public final class TaskSharedConfig {
         }
         String text = String.valueOf(value).trim();
         return text.isEmpty() ? null : text;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, String> stringMapValue(Map<String, Object> sharedConfig, String key) {
+        if (sharedConfig == null || key == null) {
+            return Map.of();
+        }
+        Object value = sharedConfig.get(key);
+        if (!(value instanceof Map<?, ?> rawMap) || rawMap.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, String> normalized = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> entry : ((Map<Object, Object>) rawMap).entrySet()) {
+            if (entry.getKey() == null || entry.getValue() == null) {
+                continue;
+            }
+            String normalizedKey = String.valueOf(entry.getKey()).trim();
+            String normalizedValue = String.valueOf(entry.getValue()).trim();
+            if (!normalizedKey.isEmpty() && !normalizedValue.isEmpty()) {
+                normalized.put(normalizedKey, normalizedValue);
+            }
+        }
+        return normalized.isEmpty() ? Map.of() : Map.copyOf(normalized);
     }
 }

@@ -11,7 +11,16 @@
       "lane": "realtime"
     },
     "supportedProjects": ["demoApp", "otherApp", "testApp"],
-    "supportedEventCodes": ["demo.dispatch", "demo.dispatch.gb"]
+    "supportedEventCodes": [
+      "demo.dispatch",
+      "demo.dispatch.gb",
+      "mock.state.get",
+      "mock.delay.response",
+      "mock.drop.outbound",
+      "mock.task.result.status",
+      "mock.disconnect",
+      "mock.reset"
+    ]
   },
   {
     "workerId": "worker-pool-a-2",
@@ -25,7 +34,16 @@
       "lane": "realtime"
     },
     "supportedProjects": ["demoApp", "otherApp", "testApp"],
-    "supportedEventCodes": ["demo.dispatch", "demo.dispatch.gb"]
+    "supportedEventCodes": [
+      "demo.dispatch",
+      "demo.dispatch.gb",
+      "mock.state.get",
+      "mock.delay.response",
+      "mock.drop.outbound",
+      "mock.task.result.status",
+      "mock.disconnect",
+      "mock.reset"
+    ]
   },
   {
     "workerId": "worker-pool-a-3",
@@ -39,7 +57,16 @@
       "lane": "realtime"
     },
     "supportedProjects": ["demoApp", "otherApp", "testApp"],
-    "supportedEventCodes": ["demo.dispatch", "demo.dispatch.gb"]
+    "supportedEventCodes": [
+      "demo.dispatch",
+      "demo.dispatch.gb",
+      "mock.state.get",
+      "mock.delay.response",
+      "mock.drop.outbound",
+      "mock.task.result.status",
+      "mock.disconnect",
+      "mock.reset"
+    ]
   },
   {
     "workerId": "worker-pool-b-1",
@@ -53,7 +80,15 @@
       "lane": "realtime"
     },
     "supportedProjects": ["demoApp", "testApp"],
-    "supportedEventCodes": ["demo.dispatch"]
+    "supportedEventCodes": [
+      "demo.dispatch",
+      "mock.state.get",
+      "mock.delay.response",
+      "mock.drop.outbound",
+      "mock.task.result.status",
+      "mock.disconnect",
+      "mock.reset"
+    ]
   },
   {
     "workerId": "worker-pool-b-2",
@@ -67,6 +102,14 @@
       "lane": "realtime"
     },
     "supportedProjects": ["demoApp", "testApp"],
-    "supportedEventCodes": ["demo.dispatch"]
+    "supportedEventCodes": [
+      "demo.dispatch",
+      "mock.state.get",
+      "mock.delay.response",
+      "mock.drop.outbound",
+      "mock.task.result.status",
+      "mock.disconnect",
+      "mock.reset"
+    ]
   }
 ]

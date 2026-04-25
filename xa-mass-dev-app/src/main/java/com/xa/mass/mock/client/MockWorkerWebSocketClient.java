@@ -112,7 +112,7 @@ public class MockWorkerWebSocketClient extends WebSocketClient implements MockWo
         if (plan == null) {
             return;
         }
-        sendTaskResponse(plan.responseJson(), plan.messageId(), plan.delayMillis());
+        sendTaskResponse(plan.responseJson(), plan.messageId(), plan.delayMillis(), plan.disconnectWorkerId());
     }
 
     private void handleControlMessage(JsonObject controlMessage) {
@@ -202,10 +202,11 @@ public class MockWorkerWebSocketClient extends WebSocketClient implements MockWo
         return stateRegistry == null ? null : stateRegistry.getOrCreate(workerId);
     }
 
-    private void sendTaskResponse(String responseJson, String messageId, long delayMillis) {
+    private void sendTaskResponse(String responseJson, String messageId, long delayMillis, String disconnectWorkerId) {
         if (delayMillis <= 0L) {
             send(responseJson);
             logger.debug("[{}] Sent mock task response for messageId: {}", workerId, messageId);
+            disconnectAfterTaskResultIfRequested(disconnectWorkerId);
             return;
         }
 
@@ -218,10 +219,18 @@ public class MockWorkerWebSocketClient extends WebSocketClient implements MockWo
             try {
                 send(responseJson);
                 logger.debug("[{}] Sent delayed mock task response for messageId: {}", workerId, messageId);
+                disconnectAfterTaskResultIfRequested(disconnectWorkerId);
             } catch (Exception e) {
                 logger.warn("[{}] Failed to send delayed mock task response for messageId={}: {}", workerId, messageId, e.getMessage());
             }
         }, delayMillis, TimeUnit.MILLISECONDS);
+    }
+
+    private void disconnectAfterTaskResultIfRequested(String disconnectWorkerId) {
+        if (disconnectWorkerId == null || disconnectWorkerId.isBlank()) {
+            return;
+        }
+        taskResponseScheduler.schedule(() -> closeTargetWorker(disconnectWorkerId), 100, TimeUnit.MILLISECONDS);
     }
 
     private void disconnectAfterAckIfRequested(CommandResponse<?> commandResult) {

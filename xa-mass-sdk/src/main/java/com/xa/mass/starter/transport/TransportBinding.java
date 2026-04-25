@@ -7,18 +7,16 @@ import java.util.Objects;
 
 /**
  * Runtime binding for a concrete worker transport adapter plus any optional
- * worker-facing transport channels and control-event publish support.
+ * worker-facing transport channels.
  */
 public final class TransportBinding {
 
     private final WorkerAdapter workerAdapter;
     private final TaskPullChannel taskPullChannel;
-    private final WorkerControlEventPublisher workerControlEventPublisher;
 
     private TransportBinding(Builder builder) {
         this.workerAdapter = Objects.requireNonNull(builder.workerAdapter, "workerAdapter");
         this.taskPullChannel = builder.taskPullChannel;
-        this.workerControlEventPublisher = builder.workerControlEventPublisher;
     }
 
     public static Builder builder(WorkerAdapter workerAdapter) {
@@ -37,14 +35,9 @@ public final class TransportBinding {
         return taskPullChannel;
     }
 
-    public WorkerControlEventPublisher getWorkerControlEventPublisher() {
-        return workerControlEventPublisher;
-    }
-
     public static final class Builder {
         private final WorkerAdapter workerAdapter;
         private TaskPullChannel taskPullChannel;
-        private WorkerControlEventPublisher workerControlEventPublisher;
 
         private Builder(WorkerAdapter workerAdapter) {
             this.workerAdapter = workerAdapter;
@@ -52,11 +45,6 @@ public final class TransportBinding {
 
         public Builder taskPullChannel(TaskPullChannel taskPullChannel) {
             this.taskPullChannel = taskPullChannel;
-            return this;
-        }
-
-        public Builder workerControlEventPublisher(WorkerControlEventPublisher workerControlEventPublisher) {
-            this.workerControlEventPublisher = workerControlEventPublisher;
             return this;
         }
 

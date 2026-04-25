@@ -47,15 +47,12 @@ final class WorkerCapabilityViewSupport {
             return List.of();
         }
 
-        LinkedHashSet<String> workerProjects = new LinkedHashSet<>(
-                normalizeStringList(worker == null ? null : worker.getSupportedProjects())
-        );
         List<Map<String, Object>> bindings = new ArrayList<>(supportedEventCodes.size());
         for (String eventCode : supportedEventCodes) {
             EventDefinition definition = metadataCatalog == null ? null : metadataCatalog.getEvent(eventCode);
             Map<String, Object> item = new LinkedHashMap<>();
             item.put("eventCode", eventCode);
-            item.put("projectCodes", resolveBindingProjects(definition, workerProjects));
+            item.put("projectCodes", resolveBindingProjects(definition));
             bindings.add(item);
         }
         return List.copyOf(bindings);
@@ -87,21 +84,12 @@ final class WorkerCapabilityViewSupport {
         return null;
     }
 
-    private static List<String> resolveBindingProjects(EventDefinition definition,
-                                                       LinkedHashSet<String> workerProjects) {
+    private static List<String> resolveBindingProjects(EventDefinition definition) {
         if (definition == null) {
             return List.of();
         }
         List<String> definitionProjects = normalizeStringList(definition.getProjectCodes());
-        if (definitionProjects.isEmpty()) {
-            return List.of();
-        }
-        if (workerProjects.isEmpty()) {
-            return definitionProjects;
-        }
-        return definitionProjects.stream()
-                .filter(workerProjects::contains)
-                .toList();
+        return definitionProjects.isEmpty() ? List.of() : definitionProjects;
     }
 
     private static List<Map<String, Object>> normalizeConnections(Object value) {

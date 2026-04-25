@@ -17,7 +17,7 @@
 
 - `src/main/java/com/xa/mass/api/internal/TaskApiController.java`
 - `src/main/java/com/xa/mass/api/internal/FrontendConsoleController.java`
-- `src/main/java/com/xa/mass/api/internal/WorkerDebugController.java`
+- `src/main/java/com/xa/mass/api/internal/WorkerApiController.java`
 
 ## Boundaries
 
@@ -28,4 +28,3 @@
   - [`../doc/AGENT_BASELINE.md`](../doc/AGENT_BASELINE.md)
   - [`../doc/VERIFIED_RUNBOOK.md`](../doc/VERIFIED_RUNBOOK.md)
   - [`../doc/INTERNAL_API_REFERENCE.md`](../doc/INTERNAL_API_REFERENCE.md)
-

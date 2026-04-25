@@ -1,23 +1,16 @@
 import {getAppConfig} from '@/app/config'
 import {
-    getWorkerDebugHistoryMock,
     listWorkerContextsMock,
     listWorkersMock,
-    sendWorkerDebugMessageMock,
     updateWorkerSupportedProjectsMock,
 } from '@/api/workers.mock'
 import {
-    getWorkerDebugHistoryReal,
     listWorkerContextsReal,
     listWorkersReal,
-    sendWorkerDebugMessageReal,
     updateWorkerSupportedProjectsReal,
 } from '@/api/workers.real'
 import type {
     WorkerContextListResponse,
-    WorkerDebugHistoryResponse,
-    WorkerDebugSendRequest,
-    WorkerDebugSendResult,
     WorkerListResponse,
 } from '@/types/workers'
 
@@ -46,24 +39,4 @@ export async function updateWorkerSupportedProjects(
     }
 
     return updateWorkerSupportedProjectsReal(workerId, supportedProjects)
-}
-
-export async function getWorkerDebugHistory(
-    workerId: string,
-): Promise<WorkerDebugHistoryResponse> {
-    if (getAppConfig().useMockApi) {
-        return getWorkerDebugHistoryMock(workerId)
-    }
-
-    return getWorkerDebugHistoryReal(workerId)
-}
-
-export async function sendWorkerDebugMessage(
-    request: WorkerDebugSendRequest,
-): Promise<WorkerDebugSendResult> {
-    if (getAppConfig().useMockApi) {
-        return sendWorkerDebugMessageMock(request)
-    }
-
-    return sendWorkerDebugMessageReal(request)
 }

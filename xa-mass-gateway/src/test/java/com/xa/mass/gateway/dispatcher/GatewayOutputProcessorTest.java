@@ -1,7 +1,6 @@
 package com.xa.mass.gateway.dispatcher;
 
 import com.xa.mass.base.channel.tranporter.MessageTransporter;
-import com.xa.mass.base.debug.WorkerDebugMessageStore;
 import com.xa.mass.gateway.queue.OutboundDelivery;
 import com.xa.mass.gateway.queue.WebSocketTransportFrameCodec;
 import com.xa.mass.transport.WorkerEndpointRegistry;
@@ -9,7 +8,6 @@ import com.xa.mass.transport.channel.NoopWorkerSystemEventChannel;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
@@ -35,29 +33,18 @@ class GatewayOutputProcessorTest {
                 null
         );
         outputProcessor = new GatewayOutputProcessor(context);
-        WorkerDebugMessageStore.clearAll();
     }
 
     @Test
-    void marksDebugRecordFailedWhenEndpointUnavailable() {
+    void returnsFalseWhenEndpointUnavailable() {
         when(endpointRegistry.sendMessage("worker-1", "{\"hello\":\"world\"}"))
                 .thenReturn(false);
-        WorkerDebugMessageStore.recordOutbound(
-                "worker-1",
-                "demoApp",
-                "mock.state.get",
-                "trace-1",
-                "{\"eventCode\":\"mock.state.get\"}",
-                "{\"messageId\":\"trace-1\"}",
-                "queued"
-        );
 
         boolean result = outputProcessor.process(
                 new OutboundDelivery("worker-1", "{\"hello\":\"world\"}", "trace-1")
         );
 
         assertFalse(result);
-        assertEquals("FAILED", WorkerDebugMessageStore.getHistory("worker-1").get(0).getStatus());
     }
 
     @Test

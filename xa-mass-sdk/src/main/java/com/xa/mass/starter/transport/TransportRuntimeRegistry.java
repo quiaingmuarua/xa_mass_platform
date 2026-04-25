@@ -90,28 +90,6 @@ public final class TransportRuntimeRegistry {
         );
     }
 
-    public WorkerControlEventPublishResult publishWorkerControlEvent(WorkerControlEventDispatch request) {
-        Objects.requireNonNull(request, "request");
-        Worker worker = workerManager.getWorker(request.getWorkerId());
-        if (worker == null) {
-            throw new IllegalArgumentException("Worker not found: " + request.getWorkerId());
-        }
-        String transportHint = WorkerTransportHints.normalize(worker.getOnlineStrategy());
-        if (transportHint == null) {
-            throw new IllegalStateException("Worker transportHint/onlineStrategy is not set: " + request.getWorkerId());
-        }
-        TransportBinding binding = bindingByHint.get(transportHint);
-        if (binding == null) {
-            throw new IllegalStateException("No transport binding is registered for worker transport '"
-                    + transportHint + "' on worker " + request.getWorkerId());
-        }
-        if (binding.getWorkerControlEventPublisher() == null) {
-            throw new IllegalStateException("Worker transport '" + transportHint
-                    + "' does not support outbound control-event dispatch for worker " + request.getWorkerId());
-        }
-        return binding.getWorkerControlEventPublisher().publish(request);
-    }
-
     private void registerBinding(String hint, TransportBinding binding) {
         String normalized = WorkerTransportHints.normalize(hint);
         if (normalized != null) {

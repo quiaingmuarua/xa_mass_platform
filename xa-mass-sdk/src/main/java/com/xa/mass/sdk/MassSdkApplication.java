@@ -2,8 +2,6 @@ package com.xa.mass.sdk;
 
 import com.google.gson.Gson;
 import com.xa.mass.base.channel.tranporter.MessageTransporter;
-import com.xa.mass.base.debug.WorkerControlEventProtocol;
-import com.xa.mass.base.debug.WorkerDebugMessageStore;
 import com.xa.mass.base.enums.Project;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
@@ -39,8 +37,6 @@ import com.xa.mass.sdk.worker.PullWorkerSession;
 import com.xa.mass.starter.MassApplication;
 import com.xa.mass.starter.MassEngine;
 import com.xa.mass.starter.GatewayRuntimePorts;
-import com.xa.mass.starter.transport.WorkerControlEventDispatch;
-import com.xa.mass.starter.transport.WorkerControlEventPublishResult;
 import com.xa.mass.transport.WorkerEndpointInspector;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.WorkerEndpointSnapshot;
@@ -58,7 +54,7 @@ import java.util.*;
  */
 public final class MassSdkApplication implements MassRuntimeControl, TaskOperations, WorkerOperations,
         ResourceOperations, AuthProvider,
-        RuleOperations, TransportOperations, DebugOperations {
+        RuleOperations, TransportOperations {
 
     private static final Gson GSON = new Gson();
 
@@ -1361,44 +1357,6 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
         return Map.of(
                 "inputQueueRate", 0,
                 "outputQueueRate", 0
-        );
-    }
-
-    @Override
-    public List<?> getWorkerMessageHistory(String workerId) {
-        return WorkerDebugMessageStore.getHistory(workerId);
-    }
-
-    @Override
-    public Map<String, Object> sendWorkerEvent(String workerId,
-                                               EventRequest request,
-                                               EventPrincipal principal) {
-        Objects.requireNonNull(request, "request");
-        Objects.requireNonNull(request.getEvent(), "request.event");
-        String eventRequestId = firstNonBlank(request.getRequestId(), UUID.randomUUID().toString());
-        Worker worker = requireStartedWorkerManager().getWorker(workerId);
-        if (worker == null) {
-            throw new IllegalArgumentException("Worker not found");
-        }
-        String resolvedProject = resolveProjectCode(firstNonBlank(request.getProject(), null), worker);
-        WorkerControlEventPublishResult publishResult = delegate.publishWorkerControlEvent(
-                new WorkerControlEventDispatch(
-                        workerId,
-                        resolvedProject,
-                        request.getEvent().value(),
-                        eventRequestId,
-                        request.getHeaders(),
-                        request.getPayload(),
-                        principal == null ? null : principal.getClientId(),
-                        principal == null ? null : principal.getUserId()
-                )
-        );
-        return Map.of(
-                "messageId", publishResult.getMessageId(),
-                "workerId", publishResult.getWorkerId(),
-                "project", publishResult.getProject(),
-                "eventCode", publishResult.getEventCode(),
-                WorkerControlEventProtocol.REQUEST_ID_FIELD, publishResult.getRequestId()
         );
     }
 

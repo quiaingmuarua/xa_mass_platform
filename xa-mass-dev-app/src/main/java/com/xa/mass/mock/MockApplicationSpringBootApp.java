@@ -201,20 +201,38 @@ public class MockApplicationSpringBootApp {
                 .taskModes(List.of(TaskMode.SINGLE_RUN, TaskMode.STREAMING))
                 .projectCodes(List.of("crawlerApp"))
                 .build());
+        registerMockTaskDefinitions(app);
         registerRuntimeToolDefinitions(app);
 
         app.registerProject(ProjectMetadata.builder()
                 .code("demoApp")
                 .name("Demo App")
                 .description("Default demo project. Event catalog is registered through the SDK runtime.")
-                .eventCodes(List.of("demo.dispatch", "demo.dispatch.gb"))
+                .eventCodes(List.of(
+                        "demo.dispatch",
+                        "demo.dispatch.gb",
+                        "mock.state.get",
+                        "mock.delay.response",
+                        "mock.drop.outbound",
+                        "mock.task.result.status",
+                        "mock.disconnect",
+                        "mock.reset"
+                ))
                 .build());
 
         app.registerProject(ProjectMetadata.builder()
                 .code("testApp")
                 .name("Test App")
                 .description("Test project used by regression and E2E fixtures.")
-                .eventCodes(List.of("demo.dispatch"))
+                .eventCodes(List.of(
+                        "demo.dispatch",
+                        "mock.state.get",
+                        "mock.delay.response",
+                        "mock.drop.outbound",
+                        "mock.task.result.status",
+                        "mock.disconnect",
+                        "mock.reset"
+                ))
                 .build());
 
         app.registerProject(ProjectMetadata.builder()
@@ -228,6 +246,57 @@ public class MockApplicationSpringBootApp {
                 .name("Crawler")
                 .description("Crawler worker lab project for SDK-created pull worker scenarios.")
                 .eventCodes(List.of("crawler.fetch-page"))
+                .build());
+    }
+
+    private void registerMockTaskDefinitions(MassSdkApplication app) {
+        registerCatalogTaskDefinition(app, EventDefinition.builder()
+                .code("mock.state.get")
+                .name("Mock State Get")
+                .description("Fetch the current mock fault-injection state from a targeted worker through the task path.")
+                .payloadTypes(List.of(PayloadType.JSON))
+                .taskModes(List.of(TaskMode.SINGLE_RUN))
+                .projectCodes(List.of("demoApp", "testApp"))
+                .build());
+        registerCatalogTaskDefinition(app, EventDefinition.builder()
+                .code("mock.delay.response")
+                .name("Mock Delay Response")
+                .description("Update future mock task response delay on a targeted worker through the task path.")
+                .payloadTypes(List.of(PayloadType.JSON))
+                .taskModes(List.of(TaskMode.SINGLE_RUN))
+                .projectCodes(List.of("demoApp", "testApp"))
+                .build());
+        registerCatalogTaskDefinition(app, EventDefinition.builder()
+                .code("mock.drop.outbound")
+                .name("Mock Drop Outbound")
+                .description("Update future mock outbound task-result drop mode on a targeted worker through the task path.")
+                .payloadTypes(List.of(PayloadType.JSON))
+                .taskModes(List.of(TaskMode.SINGLE_RUN))
+                .projectCodes(List.of("demoApp", "testApp"))
+                .build());
+        registerCatalogTaskDefinition(app, EventDefinition.builder()
+                .code("mock.task.result.status")
+                .name("Mock Task Result Status")
+                .description("Override future mock task result status on a targeted worker through the task path.")
+                .payloadTypes(List.of(PayloadType.JSON))
+                .taskModes(List.of(TaskMode.SINGLE_RUN))
+                .projectCodes(List.of("demoApp", "testApp"))
+                .build());
+        registerCatalogTaskDefinition(app, EventDefinition.builder()
+                .code("mock.disconnect")
+                .name("Mock Disconnect")
+                .description("Disconnect a targeted mock worker after its task result is returned.")
+                .payloadTypes(List.of(PayloadType.JSON))
+                .taskModes(List.of(TaskMode.SINGLE_RUN))
+                .projectCodes(List.of("demoApp", "testApp"))
+                .build());
+        registerCatalogTaskDefinition(app, EventDefinition.builder()
+                .code("mock.reset")
+                .name("Mock Reset")
+                .description("Reset mock fault-injection state on a targeted worker through the task path.")
+                .payloadTypes(List.of(PayloadType.JSON))
+                .taskModes(List.of(TaskMode.SINGLE_RUN))
+                .projectCodes(List.of("demoApp", "testApp"))
                 .build());
     }
 

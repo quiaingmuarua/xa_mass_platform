@@ -126,10 +126,9 @@ Current command groups:
 
 Transport facts:
 
-- request path: `POST /status/workers/send-event`
-- transport frame: root-level event-first control frame
-- acknowledgement frame: root-level event-first control response
-- command execution is only a debug/control side-channel and must not mutate task lifecycle state
+- worker debug requests are submitted through `POST /status/api/tasks`
+- fix the selected worker with `sharedConfig.targetWorkerId`
+- command execution stays on normal task lifecycle and does not use a dedicated worker-control side-channel
 
 Example request body:
 
@@ -146,9 +145,9 @@ Example request body:
 
 Observability:
 
-- control-event acknowledgements are recorded in `GET /status/workers/message-history?workerId=...`
-- debug send responses and history records surface capability identity as `eventCode`
-- `mock.disconnect` is designed to close the worker only after the acknowledgement is sent
+- debug submissions return `taskId`
+- targeted debug tasks can be inspected through normal task detail and message views
+- `mock.disconnect` is designed to close the worker after its task result is sent
 - `tool.geo.lookup` and `tool.currency.quote` are simulated helpers and must be treated as fake data sources
 
 ## Key Config
@@ -194,6 +193,6 @@ Covered areas:
 - `e2e/assignment`: delayed worker availability and multi-task assignment behavior
 - `CrawlerPullWorkerSdkRegistrationIntegrationTest`: SDK-created crawler worker resource, pull connect/poll/result, and terminal read-model verification without mock worker JSON
 - `e2e/audit`: `stateValidation` exposure and terminal metadata consistency through the real HTTP path
-- `e2e/support`: worker control-event acknowledgements and disconnect-after-ack behavior
+- `e2e/assignment`: targeted worker debug task behavior and disconnect-after-result behavior
 - `WebSocketClientStarterTest`: auto-start and idempotent startup behavior
-- `MockWorkerWebSocketClientTest`: task dispatch handling, canonical task-result write-back, delay/drop fault injection, and disconnect-after-ack command behavior
+- `MockWorkerWebSocketClientTest`: task dispatch handling, canonical task-result write-back, delay/drop fault injection, and targeted debug task behavior

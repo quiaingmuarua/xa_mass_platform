@@ -7,42 +7,31 @@
           <el-tag :type="statusTagType">
             {{ worker.status }}
           </el-tag>
-          <el-tag v-if="autoRefreshEnabled" type="success" effect="plain">
-            Auto refresh
-          </el-tag>
         </div>
         <div class="row-secondary">
-          Manual debug events use the backend worker transport and only target
-          the selected worker.
+          Debug actions are submitted as normal tasks and routed through the
+          engine with a fixed
+          <span class="mono">sharedConfig.targetWorkerId</span>.
         </div>
       </div>
-      <div class="summary-actions">
-        <el-switch
-          v-model="autoRefreshEnabled"
-          inline-prompt
-          active-text="Auto"
-          inactive-text="Manual"
-        />
-        <el-button :loading="debugHistoryLoading" @click="loadDebugHistory()">
-          Refresh history
-        </el-button>
+      <div class="summary-meta">
+        <div class="row-secondary">
+          Operator:
+          <span class="mono">{{ currentOperatorId || '-' }}</span>
+        </div>
+        <div class="row-secondary">
+          Target project default:
+          <span class="mono">{{ defaultProject || '-' }}</span>
+        </div>
       </div>
     </div>
 
     <el-alert
-      v-if="!canSendWorkerMessages"
+      v-if="!canCreateDebugTask"
       class="debug-alert"
       type="info"
       :closable="false"
-      title="Read-only mode. You can inspect message history but cannot send debug messages."
-    />
-
-    <el-alert
-      v-if="debugHistoryError"
-      class="debug-alert"
-      type="error"
-      :closable="false"
-      :title="debugHistoryError"
+      title="Read-only mode. This panel now submits targeted tasks, so task:create permission is required."
     />
 
     <el-alert
@@ -53,13 +42,30 @@
       :title="sendDebugError"
     />
 
+    <el-alert
+      v-if="lastSubmission"
+      class="debug-alert"
+      type="success"
+      :closable="false"
+      :title="`Debug task created: ${lastSubmission.taskId}`"
+    >
+      <div class="row-secondary">
+        Event:
+        <span class="mono">{{ lastSubmission.eventCode }}</span>
+      </div>
+      <div class="row-secondary">
+        Project:
+        <span class="mono">{{ lastSubmission.project }}</span>
+      </div>
+    </el-alert>
+
     <el-card class="page-card debug-form-card">
       <template #header>
         <div class="card-header">
-          <strong>Send event</strong>
+          <strong>Create debug task</strong>
           <span class="row-secondary">
-            Current worker project defaults are preloaded, but you can override
-            them.
+            The UI stays on worker detail, but execution now goes through normal
+            task scheduling.
           </span>
         </div>
       </template>
@@ -106,7 +112,7 @@
           <el-col :span="8">
             <el-form-item label="Payload mode">
               <el-select v-model="debugForm.mode">
-                <el-option label="Text payload" value="text" />
+                <el-option label="Text to JSON" value="text" />
                 <el-option label="Raw JSON payload" value="raw-json" />
               </el-select>
             </el-form-item>
@@ -126,8 +132,13 @@
             v-model="debugForm.text"
             type="textarea"
             :rows="4"
-            placeholder="Type a text payload for the selected event"
+            placeholder="Type text that will be wrapped into a JSON payload object"
           />
+          <div class="field-hint">
+            Text mode becomes
+            <span class="mono">{ "text": "..." }</span>
+            so the debug task stays on the JSON task contract.
+          </div>
         </el-form-item>
 
         <el-form-item v-else label="Payload JSON">
@@ -142,110 +153,64 @@
           </div>
         </el-form-item>
 
+        <div class="target-hint">
+          Target worker:
+          <span class="mono">{{ worker.workerId }}</span>
+        </div>
+
         <div class="debug-actions">
           <el-button
             type="primary"
-            :disabled="!canSendWorkerMessages"
+            :disabled="!canCreateDebugTask"
             :loading="sendingDebugMessage"
-            @click="handleSendDebugMessage"
+            @click="handleCreateDebugTask"
           >
-            Send to selected worker
+            Create targeted task
           </el-button>
         </div>
       </el-form>
     </el-card>
-
-    <div class="history-header">
-      <strong>Message history</strong>
-      <span class="row-secondary">
-        Latest records for the selected worker only.
-      </span>
-    </div>
-
-    <PageSectionSkeleton v-if="debugHistoryLoading" />
-
-    <PageEmptyState
-      v-else-if="debugHistoryItems.length === 0"
-      description="No debug messages have been recorded for this worker yet."
-    />
-
-    <el-table
-      v-else
-      :data="debugHistoryItems"
-      row-key="messageId"
-      max-height="520"
-    >
-      <el-table-column label="Time" min-width="170">
-        <template #default="{ row }">
-          {{ formatTimestamp(row.createdAt) }}
-        </template>
-      </el-table-column>
-      <el-table-column label="Direction" min-width="110">
-        <template #default="{ row }">
-          <el-tag :type="row.direction === 'OUTBOUND' ? 'primary' : 'success'">
-            {{ row.direction }}
-          </el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column prop="status" label="Status" min-width="120" />
-      <el-table-column prop="project" label="Project" min-width="120" />
-      <el-table-column label="Event" min-width="220">
-        <template #default="{ row }">
-          <div>{{ row.eventCode || '-' }}</div>
-        </template>
-      </el-table-column>
-      <el-table-column label="Message IDs" min-width="220">
-        <template #default="{ row }">
-          <div class="mono row-secondary">{{ row.messageId }}</div>
-          <div v-if="row.replyToMessageId" class="mono row-secondary">
-            replyTo: {{ row.replyToMessageId }}
-          </div>
-        </template>
-      </el-table-column>
-      <el-table-column prop="detail" label="Detail" min-width="220" />
-      <el-table-column label="Payload" min-width="300">
-        <template #default="{ row }">
-          <pre class="json-inline">{{ row.payloadJson }}</pre>
-        </template>
-      </el-table-column>
-    </el-table>
   </section>
 </template>
 
 <script setup lang="ts">
 import {ElMessage} from 'element-plus'
-import {computed, onBeforeUnmount, ref, watch} from 'vue'
-import {getWorkerDebugHistory, sendWorkerDebugMessage} from '@/api/workers'
-import PageEmptyState from '@/components/PageEmptyState.vue'
-import PageSectionSkeleton from '@/components/PageSectionSkeleton.vue'
-import type {WorkerDebugMessageRecord, WorkerListItem} from '@/types/workers'
+import {computed, ref, watch} from 'vue'
+import {useAuth} from '@/auth/use-auth'
+import {createTask} from '@/api/tasks'
+import type {TaskCreateRequest} from '@/types/tasks'
+import type {WorkerListItem} from '@/types/workers'
 import {toErrorMessage} from '@/utils/errors'
 import {hasPermission} from '@/utils/permissions'
 
 type PresetKey = 'state' | 'delay' | 'disconnect'
+
+const TARGET_WORKER_ID = 'targetWorkerId'
 
 const props = defineProps<{
   worker: WorkerListItem
   projectOptions?: string[]
 }>()
 
+const { user } = useAuth()
+
 const sendingDebugMessage = ref(false)
-const debugHistoryLoading = ref(false)
-const debugHistoryError = ref('')
 const sendDebugError = ref('')
-const debugHistory = ref<WorkerDebugMessageRecord[]>([])
-const autoRefreshEnabled = ref(true)
-const refreshTimer = ref<number | null>(null)
+const lastSubmission = ref<{
+  taskId: string
+  project: string
+  eventCode: string
+} | null>(null)
 const debugForm = ref({
   project: '',
-  mode: 'text',
+  mode: 'raw-json',
   eventCode: 'mock.state.get',
   text: '',
   rawPayload: '{\n  "includeRuntime": true\n}',
 })
 
-const canSendWorkerMessages = computed(() => hasPermission('worker:edit'))
-const debugHistoryItems = computed(() => [...debugHistory.value].reverse())
+const canCreateDebugTask = computed(() => hasPermission('task:create'))
+const currentOperatorId = computed(() => user.value?.id?.trim() ?? '')
 const debugProjectOptions = computed(() => {
   const options = new Set<string>()
   for (const project of props.projectOptions ?? []) {
@@ -256,6 +221,9 @@ const debugProjectOptions = computed(() => {
   }
   return [...options]
 })
+const defaultProject = computed(
+  () => props.worker.supportedProjects[0] ?? props.projectOptions?.[0] ?? '',
+)
 const statusTagType = computed(() => {
   if (props.worker.status === 'ONLINE') {
     return 'success'
@@ -270,56 +238,19 @@ watch(
   () => props.worker.workerId,
   () => {
     resetDebugForm()
-    debugHistory.value = []
-    debugHistoryError.value = ''
     sendDebugError.value = ''
-    void loadDebugHistory()
+    lastSubmission.value = null
   },
   { immediate: true },
 )
 
-watch(
-  autoRefreshEnabled,
-  (enabled) => {
-    if (enabled) {
-      scheduleAutoRefresh()
-      return
-    }
-    clearRefreshTimer()
-  },
-  { immediate: true },
-)
-
-onBeforeUnmount(() => {
-  clearRefreshTimer()
-})
-
-async function loadDebugHistory(): Promise<void> {
-  debugHistoryLoading.value = true
-  debugHistoryError.value = ''
-  try {
-    const response = await getWorkerDebugHistory(props.worker.workerId)
-    debugHistory.value = response.items
-  } catch (error) {
-    debugHistory.value = []
-    debugHistoryError.value = toErrorMessage(
-      error,
-      'Failed to load worker debug history.',
-    )
-  } finally {
-    debugHistoryLoading.value = false
-    if (autoRefreshEnabled.value) {
-      scheduleAutoRefresh()
-    }
-  }
-}
-
-async function handleSendDebugMessage(): Promise<void> {
+async function handleCreateDebugTask(): Promise<void> {
   sendDebugError.value = ''
 
   let payload: Record<string, unknown>
+  let eventCode: string
   try {
-    const eventCode = debugForm.value.eventCode.trim()
+    eventCode = debugForm.value.eventCode.trim()
     if (!eventCode) {
       throw new Error('Event code is required.')
     }
@@ -335,23 +266,50 @@ async function handleSendDebugMessage(): Promise<void> {
     return
   }
 
+  const project = debugForm.value.project.trim() || defaultProject.value
+  if (!project) {
+    sendDebugError.value = 'Project is required.'
+    return
+  }
+
+  if (!currentOperatorId.value) {
+    sendDebugError.value = 'Authenticated operator id is required.'
+    return
+  }
+
+  const request: TaskCreateRequest = {
+    userId: currentOperatorId.value,
+    project,
+    taskName: `worker-debug:${eventCode}`,
+    eventCode,
+    mode: 'SINGLE_RUN',
+    payloadType: 'JSON',
+    sharedConfig: {
+      [TARGET_WORKER_ID]: props.worker.workerId,
+    },
+    inputs: [payload],
+    batchSize: 1,
+    defaultMsgMaxRetryCount: 0,
+    openEnded: false,
+    maxRuntimeSeconds: 60,
+  }
+
   sendingDebugMessage.value = true
   try {
-    const result = await sendWorkerDebugMessage({
-      workerId: props.worker.workerId,
-      project: debugForm.value.project.trim() || undefined,
-      eventCode: debugForm.value.eventCode.trim(),
-      payload,
-    })
-    ElMessage.success(`Debug event queued: ${result.messageId}`)
+    const result = await createTask(request)
+    lastSubmission.value = {
+      taskId: result.taskId,
+      project,
+      eventCode,
+    }
+    ElMessage.success(`Debug task created: ${result.taskId}`)
     if (debugForm.value.mode === 'text') {
       debugForm.value.text = ''
     }
-    await loadDebugHistory()
   } catch (error) {
     sendDebugError.value = toErrorMessage(
       error,
-      'Failed to send debug message.',
+      'Failed to create targeted debug task.',
     )
   } finally {
     sendingDebugMessage.value = false
@@ -363,7 +321,13 @@ function applyPreset(preset: PresetKey): void {
 
   if (preset === 'state') {
     debugForm.value.eventCode = 'mock.state.get'
-    debugForm.value.rawPayload = JSON.stringify({}, null, 2)
+    debugForm.value.rawPayload = JSON.stringify(
+      {
+        includeRuntime: true,
+      },
+      null,
+      2,
+    )
     return
   }
 
@@ -380,35 +344,16 @@ function applyPreset(preset: PresetKey): void {
   }
 
   debugForm.value.eventCode = 'mock.disconnect'
-  debugForm.value.rawPayload = JSON.stringify(
-    {},
-    null,
-    2,
-  )
+  debugForm.value.rawPayload = JSON.stringify({}, null, 2)
 }
 
 function resetDebugForm(): void {
   debugForm.value = {
-    project:
-      props.worker.supportedProjects[0] ?? props.projectOptions?.[0] ?? '',
-    mode: 'text',
+    project: defaultProject.value,
+    mode: 'raw-json',
     eventCode: 'mock.state.get',
     text: '',
     rawPayload: '{\n  "includeRuntime": true\n}',
-  }
-}
-
-function scheduleAutoRefresh(): void {
-  clearRefreshTimer()
-  refreshTimer.value = window.setTimeout(() => {
-    void loadDebugHistory()
-  }, 3000)
-}
-
-function clearRefreshTimer(): void {
-  if (refreshTimer.value !== null) {
-    window.clearTimeout(refreshTimer.value)
-    refreshTimer.value = null
   }
 }
 
@@ -444,13 +389,6 @@ function parseJsonObject(
 
   return parsed as Record<string, unknown>
 }
-
-function formatTimestamp(value: number): string {
-  if (!value) {
-    return '-'
-  }
-  return new Date(value).toLocaleString()
-}
 </script>
 
 <style scoped>
@@ -474,10 +412,11 @@ function formatTimestamp(value: number): string {
   margin-bottom: 6px;
 }
 
-.summary-actions {
+.summary-meta {
   display: flex;
-  align-items: center;
-  gap: 12px;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-end;
 }
 
 .debug-alert {
@@ -513,32 +452,20 @@ function formatTimestamp(value: number): string {
   margin-bottom: 0;
 }
 
+.target-hint {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #6b7a90;
+}
+
 .debug-actions {
   display: flex;
   justify-content: flex-end;
-}
-
-.history-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 16px;
 }
 
 .field-hint {
   margin-top: 8px;
   font-size: 12px;
   color: #6b7a90;
-}
-
-.json-inline {
-  margin: 0;
-  font-family:
-    'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo,
-    monospace;
-  white-space: pre-wrap;
-  word-break: break-word;
-  color: #445168;
-  font-size: 12px;
 }
 </style>

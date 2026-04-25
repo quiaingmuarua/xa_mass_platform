@@ -248,11 +248,11 @@ Snapshot polling:
 - assert persisted task and message truth together
 - avoid sleep-heavy assertions
 
-Control-side-channel verification:
+Targeted worker debug verification:
 
-- use `POST /status/workers/send-event`
-- poll `GET /status/workers/message-history`
-- keep debug protocol assertions separate from `TaskMsg` lifecycle assertions
+- use `POST /status/api/tasks`
+- set `sharedConfig.targetWorkerId` to the selected worker
+- keep worker-targeting assertions inside normal `TaskMsg` lifecycle assertions
 
 Control-console routing verification:
 

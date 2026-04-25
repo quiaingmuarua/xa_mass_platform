@@ -5,6 +5,7 @@ import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.worker.WorkerContextStatus;
 import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Task;
+import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.WorkerManager;
@@ -380,6 +381,97 @@ class RuleBasedTaskWorkerMatchingStrategyTest {
         assertEquals("event not supported", rejectedRecord.getReason());
         assertEquals(AssignmentResult.RULE_NOT_MATCH, rejectedRecord.getResult());
         assertEquals(0, rejectedRecord.getRuleEvaluations().size());
+    }
+
+    @Test
+    void targetWorkerIdPrefilterOnlyMatchesRequestedWorker() {
+        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
+        RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(new InMemoryRuleStorage());
+        AssignmentRecordService recordService = new AssignmentRecordService();
+        RuleBasedTaskWorkerMatchingStrategy strategy =
+                new RuleBasedTaskWorkerMatchingStrategy(ruleManager, workerManager, recordService);
+
+        ruleManager.addDefaultRules(List.of(
+                rule("basic_worker_check", "isWorkerAvailable == true && isWorkerLocked == false"),
+                rule("app_support_check", "supportsProject == true"),
+                rule("target_worker_check", "matchesTargetWorkerId == true")
+        ));
+
+        Task task = new Task();
+        task.setTid("task-target-worker");
+        task.setProject("demoApp");
+        task.setSharedConfig(Map.of(TaskSharedConfig.TARGET_WORKER_ID, "worker-b"));
+        task.setStatus(TaskStatus.READY);
+
+        Worker workerA = worker("worker-a", "pool-a");
+        Worker workerB = worker("worker-b", "pool-b");
+        workerManager.addWorker(workerA);
+        workerManager.addWorker(workerB);
+
+        List<MatchedWorkerContext> matched = strategy.matchWorkers(task, 2);
+
+        assertEquals(1, matched.size());
+        assertEquals("worker-b", matched.get(0).getWorkerId());
+
+        AssignmentRecord rejectedRecord = findRecord(recordService, "task-target-worker", "worker-a");
+        assertEquals("target worker mismatch", rejectedRecord.getReason());
+        assertEquals(AssignmentResult.RULE_NOT_MATCH, rejectedRecord.getResult());
+        assertEquals(0, rejectedRecord.getRuleEvaluations().size());
+        assertEquals("worker-b", rejectedRecord.getContextSnapshot().get("taskTargetWorkerId"));
+        assertEquals(Boolean.FALSE, rejectedRecord.getContextSnapshot().get("matchesTargetWorkerId"));
+
+        AssignmentRecord acceptedRecord = findRecord(recordService, "task-target-worker", "worker-b");
+        assertFalse(acceptedRecord.getRuleEvaluations().isEmpty());
+        assertEquals(Boolean.TRUE, acceptedRecord.getContextSnapshot().get("matchesTargetWorkerId"));
+    }
+
+    @Test
+    void targetWorkerAttributesPrefilterOnlyMatchesWorkersWithRequestedAttributes() {
+        WorkerManager workerManager = new WorkerManager(new InMemoryWorkerStorage());
+        RuleManager<Map<String, Object>> ruleManager = new RuleManager<>(new InMemoryRuleStorage());
+        AssignmentRecordService recordService = new AssignmentRecordService();
+        RuleBasedTaskWorkerMatchingStrategy strategy =
+                new RuleBasedTaskWorkerMatchingStrategy(ruleManager, workerManager, recordService);
+
+        ruleManager.addDefaultRules(List.of(
+                rule("basic_worker_check", "isWorkerAvailable == true && isWorkerLocked == false"),
+                rule("app_support_check", "supportsProject == true"),
+                rule("target_worker_attributes_check", "matchesTargetWorkerAttributes == true")
+        ));
+
+        Task task = new Task();
+        task.setTid("task-target-attrs");
+        task.setProject("demoApp");
+        task.setSharedConfig(Map.of(
+                TaskSharedConfig.TARGET_WORKER_ATTRIBUTES,
+                Map.of("region", "us", "tier", "gold")
+        ));
+        task.setStatus(TaskStatus.READY);
+
+        Worker matchingWorker = worker("worker-us-gold", "pool-a");
+        matchingWorker.setAttributes(Map.of("region", "us", "tier", "gold"));
+        workerManager.addWorker(matchingWorker);
+
+        Worker nonMatchingWorker = worker("worker-us-silver", "pool-b");
+        nonMatchingWorker.setAttributes(Map.of("region", "us", "tier", "silver"));
+        workerManager.addWorker(nonMatchingWorker);
+
+        List<MatchedWorkerContext> matched = strategy.matchWorkers(task, 2);
+
+        assertEquals(1, matched.size());
+        assertEquals("worker-us-gold", matched.get(0).getWorkerId());
+
+        AssignmentRecord rejectedRecord = findRecord(recordService, "task-target-attrs", "worker-us-silver");
+        assertEquals("target worker attributes mismatch", rejectedRecord.getReason());
+        assertEquals(AssignmentResult.RULE_NOT_MATCH, rejectedRecord.getResult());
+        assertEquals(0, rejectedRecord.getRuleEvaluations().size());
+        assertEquals(Boolean.FALSE, rejectedRecord.getContextSnapshot().get("matchesTargetWorkerAttributes"));
+        assertEquals(Map.of("region", "us", "tier", "gold"),
+                rejectedRecord.getContextSnapshot().get("taskTargetWorkerAttributes"));
+
+        AssignmentRecord acceptedRecord = findRecord(recordService, "task-target-attrs", "worker-us-gold");
+        assertFalse(acceptedRecord.getRuleEvaluations().isEmpty());
+        assertEquals(Boolean.TRUE, acceptedRecord.getContextSnapshot().get("matchesTargetWorkerAttributes"));
     }
 
     private RuleDefinition rule(String id, String content) {

@@ -4,8 +4,9 @@
       <div>
         <h2 class="page-title">Worker Detail</h2>
         <p class="page-subtitle">
-          Dedicated worker debug view for manual messaging, transport checks,
-          and runtime inspection without crowding the main worker list.
+          Dedicated worker debug view for targeted task submission, transport
+          inspection, and runtime visibility without crowding the main worker
+          list.
         </p>
       </div>
       <div class="header-actions">
@@ -184,7 +185,7 @@
 
       <el-card class="page-card">
         <template #header>
-          <strong>Manual debug messaging</strong>
+          <strong>Targeted debug task</strong>
         </template>
         <WorkerDebugPanel :worker="worker" :project-options="projectOptions" />
       </el-card>

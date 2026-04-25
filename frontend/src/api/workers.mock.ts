@@ -1,9 +1,5 @@
 import type {
     WorkerContextListResponse,
-    WorkerDebugHistoryResponse,
-    WorkerDebugMessageRecord,
-    WorkerDebugSendRequest,
-    WorkerDebugSendResult,
     WorkerListResponse,
 } from '@/types/workers'
 
@@ -74,8 +70,6 @@ const mockWorkerContexts: WorkerContextListResponse = {
     total: 2,
 }
 
-const mockDebugHistoryByWorker = new Map<string, WorkerDebugMessageRecord[]>()
-
 function delay<T>(value: T): Promise<T> {
     return new Promise((resolve) => {
         window.setTimeout(() => resolve(value), 80)
@@ -101,120 +95,4 @@ export async function updateWorkerSupportedProjectsMock(
 
     worker.supportedProjects = supportedProjects
     await delay(undefined)
-}
-
-export async function getWorkerDebugHistoryMock(
-    workerId: string,
-): Promise<WorkerDebugHistoryResponse> {
-    return delay({
-        workerId,
-        items: [...(mockDebugHistoryByWorker.get(workerId) ?? [])],
-    })
-}
-
-export async function sendWorkerDebugMessageMock(
-    request: WorkerDebugSendRequest,
-): Promise<WorkerDebugSendResult> {
-    const worker = mockWorkers.items.find(
-        (item) => item.workerId === request.workerId,
-    )
-    if (!worker) {
-        throw new Error(`Worker not found: ${request.workerId}`)
-    }
-    if (worker.status !== 'ONLINE') {
-        throw new Error(
-            'Target worker is offline',
-        )
-    }
-
-    const project = request.project || worker.supportedProjects[0] || 'demoApp'
-    const eventCode = request.eventCode.trim()
-    if (!eventCode) {
-        throw new Error('Event code is required.')
-    }
-    const requestId = request.requestId?.trim() || `mock-request-${Date.now()}`
-    const messageId = `mock-debug-${Date.now()}`
-    const now = Date.now()
-
-    appendDebugRecord(request.workerId, {
-        messageId,
-        replyToMessageId: null,
-        workerId: request.workerId,
-        direction: 'OUTBOUND',
-        project,
-        eventCode,
-        status: 'DELIVERED',
-        payloadJson: prettyJson({
-            eventCode,
-            requestId,
-            headers: request.headers ?? {},
-            payload: request.payload,
-            principal: request.principal ?? {},
-        }),
-        rawJson: prettyJson({
-            messageId,
-            workerId: request.workerId,
-            project,
-            eventCode,
-            requestId,
-            headers: request.headers ?? {},
-            payload: request.payload,
-            principal: request.principal ?? {},
-        }),
-        detail: `mock worker received event ${eventCode}`,
-        createdAt: now,
-        updatedAt: now,
-    })
-
-    appendDebugRecord(request.workerId, {
-        messageId: `${messageId}-ack`,
-        replyToMessageId: messageId,
-        workerId: request.workerId,
-        direction: 'INBOUND',
-        project,
-        eventCode,
-        status: 'RECEIVED',
-        payloadJson: prettyJson({
-            messageKind: 'worker_control_ack',
-            replyToMessageId: messageId,
-            ackStatus: 'RECEIVED',
-            eventHandled: true,
-            eventCode,
-            requestId,
-            echoPayload: request.payload,
-            workerId: request.workerId,
-        }),
-        rawJson: prettyJson({
-            messageId: `${messageId}-ack`,
-            response: true,
-            workerId: request.workerId,
-            project,
-            eventCode,
-            requestId,
-        }),
-        detail: `mock worker acked event ${eventCode}`,
-        createdAt: now + 1,
-        updatedAt: now + 1,
-    })
-
-    return delay({
-        messageId,
-        workerId: request.workerId,
-        project,
-        eventCode,
-        requestId,
-    })
-}
-
-function appendDebugRecord(
-    workerId: string,
-    record: WorkerDebugMessageRecord,
-): void {
-    const items = mockDebugHistoryByWorker.get(workerId) ?? []
-    items.push(record)
-    mockDebugHistoryByWorker.set(workerId, items.slice(-120))
-}
-
-function prettyJson(value: unknown): string {
-    return JSON.stringify(value ?? {}, null, 2)
 }

@@ -1,7 +1,6 @@
 package com.xa.mass.starter.transport;
 
 import com.xa.mass.starter.worker.PollingWorkerAdapter;
-import com.xa.mass.starter.worker.WebSocketWorkerControlEventPublisher;
 import com.xa.mass.starter.worker.WebSocketWorkerAdapter;
 
 import java.util.ArrayList;
@@ -31,12 +30,7 @@ public class DefaultWorkerTransportRuntimeFactory implements WorkerTransportRunt
                     context.getMessageTransporter(),
                     context.getFrameCodec()
             );
-            bindings.add(TransportBinding.builder(webSocketAdapter)
-                    .workerControlEventPublisher(new WebSocketWorkerControlEventPublisher(
-                            context.getMessageTransporter(),
-                            context.getEndpointRegistry()
-                    ))
-                    .build());
+            bindings.add(TransportBinding.builder(webSocketAdapter).build());
         }
 
         return new TransportRuntimeRegistry(

@@ -116,7 +116,7 @@ Current canonical boundaries:
 - `Worker.attributes` and `WorkerContext.attributes` are auxiliary rule labels for matching and diagnostics only. They are not lifecycle, lock, or online truth.
 - Prefer SDK registration models for new resource scenarios; low-level core-model mutation APIs are not the default path.
 - UI pages, mock runtime, and demo APIs must not redefine the platform kernel.
-- Worker control-event debug traffic is a debug/control side-channel. It is not `TaskMsg` lifecycle and must not mutate task state.
+- Manual worker debug now enters through normal task creation with explicit worker targeting in `Task.sharedConfig`; do not reintroduce a direct worker-control side-channel.
 - new or changed policy seams must keep ownership explicit across matching, attempt, release, refill, intake, control, and terminal decisions; use [./engine/POLICY_INTERACTION_BASELINE.md](./engine/POLICY_INTERACTION_BASELINE.md) before extending those paths
 
 ## 6. Mainline Reality
@@ -136,7 +136,7 @@ Current canonical boundaries:
 - `com.xa.mass.engine` is the active engine path.
 - EventBus mainline has converged onto `com.xa.mass.base.channel.eventbus.core` and `com.xa.mass.base.channel.eventbus.event`.
 - Mainline acceptance is end-to-end integration-test-driven through `xa-mass-dev-app`; unit tests are support coverage, not the primary acceptance gate.
-- worker debug/control details live in [./INTERNAL_API_REFERENCE.md](./INTERNAL_API_REFERENCE.md).
+- worker-targeted debug/task details live in [./INTERNAL_API_REFERENCE.md](./INTERNAL_API_REFERENCE.md).
 
 ## 7. Current Contract Summary
 

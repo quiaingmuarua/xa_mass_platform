@@ -1,6 +1,5 @@
 package com.xa.mass.gateway.dispatcher;
 
-import com.xa.mass.base.debug.WorkerDebugMessageStore;
 import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
 import com.xa.mass.gateway.queue.OutboundDelivery;
 import org.slf4j.Logger;
@@ -26,13 +25,10 @@ public final class GatewayOutputProcessor {
             if (sent) {
                 return true;
             }
-            String detail = "endpoint unavailable for workerId=" + delivery.getWorkerId();
-            WorkerDebugMessageStore.markFailed(delivery.getTraceId(), detail);
             logger.warn("Gateway outbound skipped because endpoint is unavailable: workerId={}, traceId={}",
                     delivery.getWorkerId(), delivery.getTraceId());
             return false;
         } catch (Exception ex) {
-            WorkerDebugMessageStore.markFailed(delivery != null ? delivery.getTraceId() : null, ex.getMessage());
             logger.error("Gateway outbound processing failed", ex);
             return false;
         }

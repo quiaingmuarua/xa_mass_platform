@@ -1,9 +1,6 @@
 import {requestApiData} from '@/api/http'
 import type {
     WorkerContextListResponse,
-    WorkerDebugHistoryResponse,
-    WorkerDebugSendRequest,
-    WorkerDebugSendResult,
     WorkerListResponse,
 } from '@/types/workers'
 
@@ -25,24 +22,4 @@ export async function updateWorkerSupportedProjectsReal(
         method: 'PUT',
         body: JSON.stringify({ supportedProjects }),
     })
-}
-
-export async function getWorkerDebugHistoryReal(
-    workerId: string,
-): Promise<WorkerDebugHistoryResponse> {
-    return requestApiData<WorkerDebugHistoryResponse>(
-        `/status/workers/message-history?workerId=${encodeURIComponent(workerId)}`,
-    )
-}
-
-export async function sendWorkerDebugMessageReal(
-    request: WorkerDebugSendRequest,
-): Promise<WorkerDebugSendResult> {
-    return requestApiData<WorkerDebugSendResult>(
-        '/status/workers/send-event',
-        {
-            method: 'POST',
-            body: JSON.stringify(request),
-        },
-    )
 }

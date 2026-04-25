@@ -73,6 +73,8 @@ public class WorkerMatchContext {
 
         String routingCode = TaskSharedConfig.routingCode(task);
         String taskEventCode = TaskSharedConfig.sdkEventCode(task);
+        String targetWorkerId = TaskSharedConfig.targetWorkerId(task);
+        Map<String, String> targetWorkerAttributes = TaskSharedConfig.targetWorkerAttributes(task);
         boolean taskHasRoutingRequirement = routingCode != null && !routingCode.isBlank();
         java.util.Set<String> routingTags = workerContext != null ? workerContext.getRoutingTags() : java.util.Set.of();
 
@@ -80,6 +82,8 @@ public class WorkerMatchContext {
         ctx.put("taskName", task.getTaskName());
         ctx.put("taskProject", task.getProject());
         ctx.put("taskEventCode", taskEventCode);
+        ctx.put("taskTargetWorkerId", targetWorkerId);
+        ctx.put("taskTargetWorkerAttributes", targetWorkerAttributes);
         ctx.put("taskSharedConfig", task.getSharedConfig());
         ctx.put("routingCode", routingCode);
         ctx.put("taskHasRoutingRequirement", taskHasRoutingRequirement);
@@ -91,6 +95,9 @@ public class WorkerMatchContext {
         ctx.put("appCount", worker.getSupportedProjects() != null ? worker.getSupportedProjects().size() : 0);
         ctx.put("supportsProject", worker.supportsProject(task.getProject()));
         ctx.put("supportsEvent", taskEventCode == null || worker.supportsEvent(taskEventCode));
+        ctx.put("matchesTargetWorkerId", targetWorkerId == null || Objects.equals(worker.getWorkerId(), targetWorkerId));
+        ctx.put("matchesTargetWorkerAttributes", targetWorkerAttributes.isEmpty()
+                || workerAttributesMatch(worker.getAttributes(), targetWorkerAttributes));
         ctx.put("workerContextProjectMatchesTaskProject",
                 workerContext != null && Objects.equals(workerContext.getProject(), task.getProject()));
         ctx.put("workerContextMatchesRoutingCode",
@@ -119,6 +126,22 @@ public class WorkerMatchContext {
         return context;
     }
 
+    private boolean workerAttributesMatch(Map<String, String> workerAttributes,
+                                          Map<String, String> requiredAttributes) {
+        if (requiredAttributes == null || requiredAttributes.isEmpty()) {
+            return true;
+        }
+        if (workerAttributes == null || workerAttributes.isEmpty()) {
+            return false;
+        }
+        for (Map.Entry<String, String> entry : requiredAttributes.entrySet()) {
+            if (!Objects.equals(workerAttributes.get(entry.getKey()), entry.getValue())) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     @Override
     public String toString() {
         return "WorkerMatchContext{" +
@@ -126,6 +149,8 @@ public class WorkerMatchContext {
                 ", taskId='" + task.getTid() + '\'' +
                 ", supportsProject=" + context.get("supportsProject") +
                 ", supportsEvent=" + context.get("supportsEvent") +
+                ", matchesTargetWorkerId=" + context.get("matchesTargetWorkerId") +
+                ", matchesTargetWorkerAttributes=" + context.get("matchesTargetWorkerAttributes") +
                 ", workerContextMatchesRoutingCode=" + context.get("workerContextMatchesRoutingCode") +
                 '}';
     }

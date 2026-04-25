@@ -152,20 +152,20 @@ Worker and worker-context truth:
 - `Worker.attributes` and `WorkerContext.attributes` are defensive-copied auxiliary rule labels only.
 - routing should come from explicit rules and worker-context signals, not `workerGroupId`.
 
-Open-ended and debug side-channel:
+Open-ended and targeted worker debug:
 
 - `Task.intakeStatus` is the append-window truth; `openEnded` is the create/response projection.
 - `POST /status/api/tasks/{taskId}/items` appends inputs only while intake is open.
 - `PUT /status/api/tasks/{taskId}/seal` closes intake and resumes normal terminal convergence.
-- manual worker control uses the event-first path `POST /status/workers/send-event`, which emits and receives root-level event-first control frames on the WebSocket adapter.
-- worker control messaging is a control side-channel and must not create or mutate `TaskMsg`.
+- worker debug from the control console now creates a normal task through `POST /status/api/tasks`.
+- fixed-worker routing uses `Task.sharedConfig.targetWorkerId` and still stays inside normal task dispatch/result lifecycle.
 
 ## 6. Focused Regression Gate
 
 Focused command used for current high-signal runtime coverage:
 
 ```bash
-mvn -pl xa-mass-dev-app -am -Dtest=WorkerAttributesTest,WorkerContextAttributesTest,WorkerMatchContextTest,QLExpressRuleEvaluatorTest,RuleBasedTaskWorkerMatchingStrategyTest,TaskApiDelayedWorkerAvailabilityIntegrationTest,TaskApiWorkerContextAttributeRoutingIntegrationTest,TaskApiWorkerWithoutContextIntegrationTest,WorkerControlEventCommandIntegrationTest,WorkerControlEventDisconnectIntegrationTest,ControlConsoleRoutingIntegrationTest,MockRuntimeDataLoaderTest -Dsurefire.failIfNoSpecifiedTests=false test
+mvn -pl xa-mass-dev-app -am -Dtest=WorkerAttributesTest,WorkerContextAttributesTest,WorkerMatchContextTest,QLExpressRuleEvaluatorTest,RuleBasedTaskWorkerMatchingStrategyTest,TaskApiDelayedWorkerAvailabilityIntegrationTest,TaskApiWorkerContextAttributeRoutingIntegrationTest,TaskApiWorkerWithoutContextIntegrationTest,TaskApiTargetedWorkerDebugIntegrationTest,ControlConsoleRoutingIntegrationTest,MockRuntimeDataLoaderTest -Dsurefire.failIfNoSpecifiedTests=false test
 ```
 
 Representative coverage:

@@ -22,11 +22,20 @@ public final class WsFrameTestSupport {
                                            String workerId,
                                            String taskId,
                                            JsonObject input) {
+        return buildTaskDispatch(messageId, project, workerId, taskId, "mock.task.dispatch", input);
+    }
+
+    public static String buildTaskDispatch(String messageId,
+                                           String project,
+                                           String workerId,
+                                           String taskId,
+                                           String eventCode,
+                                           JsonObject input) {
         JsonObject frame = new JsonObject();
         frame.addProperty(WorkerControlEventProtocol.MESSAGE_ID_FIELD, messageId);
         frame.addProperty(WorkerControlEventProtocol.WORKER_ID_FIELD, workerId);
         frame.addProperty(WorkerControlEventProtocol.PROJECT_FIELD, project);
-        frame.addProperty(WorkerControlEventProtocol.EVENT_CODE_FIELD, "mock.task.dispatch");
+        frame.addProperty(WorkerControlEventProtocol.EVENT_CODE_FIELD, eventCode);
         frame.addProperty("taskId", taskId);
         frame.addProperty("taskName", "mock-task");
         frame.addProperty("retryCount", 0);

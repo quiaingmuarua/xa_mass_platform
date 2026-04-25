@@ -4,13 +4,29 @@
     "workerGroupId": "us",
     "agentVersion": "1.0.0",
     "supportedProjects": ["demoApp"],
-    "supportedEventCodes": ["demo.dispatch"]
+    "supportedEventCodes": [
+      "demo.dispatch",
+      "mock.state.get",
+      "mock.delay.response",
+      "mock.drop.outbound",
+      "mock.task.result.status",
+      "mock.disconnect",
+      "mock.reset"
+    ]
   },
   {
     "workerId": "it-worker-1",
     "workerGroupId": "us",
     "agentVersion": "1.0.0",
     "supportedProjects": ["demoApp"],
-    "supportedEventCodes": ["demo.dispatch"]
+    "supportedEventCodes": [
+      "demo.dispatch",
+      "mock.state.get",
+      "mock.delay.response",
+      "mock.drop.outbound",
+      "mock.task.result.status",
+      "mock.disconnect",
+      "mock.reset"
+    ]
   }
 ]

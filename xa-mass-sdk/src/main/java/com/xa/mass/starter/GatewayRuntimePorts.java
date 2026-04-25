@@ -16,7 +16,7 @@ public record GatewayRuntimePorts(
 ) {
 
     public static GatewayRuntimePorts defaults() {
-        return new GatewayRuntimePorts(null, new WorkerControlEventResponseHandler());
+        return new GatewayRuntimePorts(null, null);
     }
 
     public GatewayRuntimePorts withControlEventRequestHandler(

@@ -15,8 +15,6 @@ import com.xa.mass.starter.config.EngineConfig;
 import com.xa.mass.starter.config.GatewayConfig;
 import com.xa.mass.starter.transport.RuntimeTaskResultIngestChannel;
 import com.xa.mass.starter.transport.TransportRuntimeRegistry;
-import com.xa.mass.starter.transport.WorkerControlEventDispatch;
-import com.xa.mass.starter.transport.WorkerControlEventPublishResult;
 import com.xa.mass.starter.transport.WorkerTransportRuntimeFactoryContext;
 import com.xa.mass.transport.TransportServer;
 import com.xa.mass.transport.WorkerEndpointRegistry;
@@ -246,13 +244,6 @@ public class MassApplication {
             throw new IllegalStateException("Pull worker transport is unavailable for this runtime");
         }
         return transportRuntimeRegistry.openPullWorkerSession(workerId);
-    }
-
-    public WorkerControlEventPublishResult publishWorkerControlEvent(WorkerControlEventDispatch request) {
-        if (transportRuntimeRegistry == null) {
-            throw new IllegalStateException("Worker control-event transport is unavailable for this runtime");
-        }
-        return transportRuntimeRegistry.publishWorkerControlEvent(request);
     }
 
     public void publishTaskEvents() {

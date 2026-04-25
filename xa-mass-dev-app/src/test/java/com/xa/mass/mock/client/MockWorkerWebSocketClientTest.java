@@ -151,15 +151,64 @@ class MockWorkerWebSocketClientTest {
         assertFalse(client.isOpen());
     }
 
+    @Test
+    void mockStateGetTaskReturnsStateSnapshotInTaskOutput() throws Exception {
+        CapturingMockWorkerClient client = new CapturingMockWorkerClient("worker-test");
+        stateRegistry.getOrCreate("worker-test").setTaskResponseDelayMillis(275L);
+
+        client.onMessage(taskMessage("mock.state.get", new JsonObject()));
+
+        assertTrue(client.awaitSentCount(1, 1000L));
+        JsonObject response = WsFrameTestSupport.parse(client.sentMessages.get(0));
+        assertTrue(response.get("success").getAsBoolean());
+        JsonObject output = WsFrameTestSupport.payload(response);
+        assertEquals("mock.state.get", output.get("eventCode").getAsString());
+        assertEquals("state", output.get("action").getAsString());
+        JsonObject state = output.getAsJsonObject("state");
+        assertEquals(275L, state.get("taskResponseDelayMillis").getAsLong());
+        assertTrue(output.has("command"));
+    }
+
+    @Test
+    void mockDisconnectTaskClosesClientAfterTaskResult() throws Exception {
+        CapturingMockWorkerClient client = new CapturingMockWorkerClient("worker-test");
+        clientSessionManager.addClient(client);
+
+        client.onMessage(taskMessage("mock.disconnect", new JsonObject()));
+
+        assertTrue(client.awaitSentCount(1, 1000L));
+        JsonObject response = WsFrameTestSupport.parse(client.sentMessages.get(0));
+        assertTrue(response.get("success").getAsBoolean());
+        JsonObject output = WsFrameTestSupport.payload(response);
+        assertEquals("mock.disconnect", output.get("eventCode").getAsString());
+        assertTrue(output.get("disconnectAfterAck").getAsBoolean());
+        assertEquals("worker-test", output.get("disconnectWorkerId").getAsString());
+        assertTrue(client.awaitClosed(1000L));
+        assertFalse(client.isOpen());
+    }
+
     private String taskMessage(boolean response) {
+        return taskMessage(response, "mock.task.dispatch", null);
+    }
+
+    private String taskMessage(String eventCode, JsonObject input) {
+        return taskMessage(false, eventCode, input);
+    }
+
+    private String taskMessage(boolean response, String eventCode, JsonObject input) {
         JsonObject payload = new JsonObject();
-        com.google.gson.JsonArray steps = new com.google.gson.JsonArray();
-        JsonObject step = new JsonObject();
-        step.addProperty("stepId", "step-1");
-        steps.add(step);
-        payload.add("steps", steps);
-        String from = "SERVER";
-        String raw = WsFrameTestSupport.buildTaskDispatch("msg-1", "demoApp", "worker-test", "task-1", payload);
+        if (input != null) {
+            for (String key : input.keySet()) {
+                payload.add(key, input.get(key).deepCopy());
+            }
+        } else {
+            com.google.gson.JsonArray steps = new com.google.gson.JsonArray();
+            JsonObject step = new JsonObject();
+            step.addProperty("stepId", "step-1");
+            steps.add(step);
+            payload.add("steps", steps);
+        }
+        String raw = WsFrameTestSupport.buildTaskDispatch("msg-1", "demoApp", "worker-test", "task-1", eventCode, payload);
         if (!response) {
             return raw;
         }
