@@ -82,8 +82,11 @@ class SimpleTaskMsgAssignListenerTest {
                 stored.stream().map(TaskMsg::getStatus).collect(Collectors.toList()));
         assertEquals(List.of("d1", "d2", "d1", "d2"),
                 stored.stream().map(TaskMsg::getLatestAttemptWorkerId).collect(Collectors.toList()));
-        assertEquals(List.of(null, null, null, null),
-                stored.stream().map(TaskMsg::getLatestAttemptBatchId).collect(Collectors.toList()));
+        List<String> batchIds = stored.stream().map(TaskMsg::getLatestAttemptBatchId).collect(Collectors.toList());
+        assertTrue(batchIds.stream().allMatch(id -> id != null && !id.isBlank()));
+        assertEquals(batchIds.get(0), batchIds.get(2));
+        assertEquals(batchIds.get(1), batchIds.get(3));
+        assertNotEquals(batchIds.get(0), batchIds.get(1));
         assertTrue(stored.stream().allMatch(msg -> msg.getAssignedTime() != null));
         assertEquals(WorkerContextStatus.OCCUPIED, wc1.getStatus());
         assertEquals(task.getTid(), wc1.getLastBindTaskId());
@@ -99,9 +102,10 @@ class SimpleTaskMsgAssignListenerTest {
         assertTrue(attempts.stream().allMatch(attempt -> attempt.getStatus() == TaskMsgAttemptStatus.DISPATCHED));
         assertTrue(attempts.stream().allMatch(attempt -> attempt.getWorkerId() != null));
         assertTrue(attempts.stream().allMatch(attempt -> attempt.getDispatchTime() != null));
+        assertTrue(attempts.stream().allMatch(attempt -> attempt.getBatchId() != null && !attempt.getBatchId().isBlank()));
 
         verify(recordService, times(4)).recordMessageAssignment(
-                any(), any(), any(), anyString(), isNull(), any(), anyString(), anyBoolean()
+                any(), any(), any(), anyString(), anyString(), any(), anyString(), anyBoolean()
         );
         verify(workerManager, times(4)).isLocked(anyString());
         verify(workerManager, times(2)).updateWorkerContextById(anyString(), any(WorkerContext.class));
@@ -272,8 +276,9 @@ class SimpleTaskMsgAssignListenerTest {
 
         List<TaskMsg> stored = taskManager.getTaskMessages(task.getTid());
         assertTrue(stored.stream().allMatch(msg -> msg.getLatestAttemptWorkerContextId() == null));
+        assertTrue(stored.stream().allMatch(msg -> msg.getLatestAttemptBatchId() != null && !msg.getLatestAttemptBatchId().isBlank()));
         verify(recordService, times(2)).recordMessageAssignment(
-                any(), any(), isNull(), anyString(), isNull(), any(), anyString(), anyBoolean()
+                any(), any(), isNull(), anyString(), anyString(), any(), anyString(), anyBoolean()
         );
         verify(workerManager, times(2)).isLocked("d1");
     }

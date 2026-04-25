@@ -121,7 +121,7 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
                     continue;
                 }
                 TaskMsg msg = pendingMessages.get(cursor);
-                if (!bindTaskMessage(msg, slot.worker().getWorkerId(), slot.workerContextId(), null)) {
+                if (!bindTaskMessage(msg, slot.worker().getWorkerId(), slot.workerContextId(), slot.batchId())) {
                     log.warn("[MsgAssign] Skip task message {} because it could not transition from status {}",
                             msg.getMessageId(), msg.getStatus());
                     cursor++;
@@ -134,7 +134,7 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
                 assignedInRound = true;
 
                 recordService.recordMessageAssignment(
-                        task, slot.worker(), slot.workerContext(), msg.getMessageId(), null,
+                        task, slot.worker(), slot.workerContext(), msg.getMessageId(), slot.batchId(),
                         AssignmentResult.SUCCESS, "message assigned",
                         workerManager.isLocked(slot.worker().getWorkerId())
                 );
@@ -191,6 +191,7 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
     private static final class DispatchSlot {
         private final Worker worker;
         private final WorkerContext workerContext;
+        private final String batchId = java.util.UUID.randomUUID().toString();
         private int assignedCount;
 
         private DispatchSlot(Worker worker, WorkerContext workerContext) {
@@ -208,6 +209,10 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
 
         private String workerContextId() {
             return workerContext != null ? workerContext.getWorkerContextId() : null;
+        }
+
+        private String batchId() {
+            return batchId;
         }
 
         private int assignedCount() {
