@@ -2,6 +2,8 @@ package com.xa.mass.starter;
 
 import com.xa.mass.starter.config.EngineConfig;
 import com.xa.mass.starter.config.WebSocketConfig;
+import com.xa.mass.starter.transport.ManagedTransportAdapter;
+import com.xa.mass.starter.transport.RawWorkerMessageChannel;
 import com.xa.mass.transport.TransportServer;
 import org.junit.jupiter.api.Test;
 
@@ -9,6 +11,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.*;
 
 /**
@@ -20,18 +24,15 @@ class MassApplicationStopOrderTest {
     void webSocketAdapterStopsBeforeTransportServer() throws Exception {
         List<String> order = new ArrayList<>();
 
-        MassWebSocketAdapter adapter = spy(new MassWebSocketAdapter(enabledWebSocket(), null) {
-            @Override public void stop() { order.add("websocket"); }
-            @Override public boolean isRunning() { return false; }
-        });
+        ManagedTransportAdapter adapter = spy(new RecordingManagedTransportAdapter(order, "websocket"));
 
         TransportServer transportServer = mock(TransportServer.class);
         doAnswer(inv -> { order.add("transport"); return null; }).when(transportServer).stop();
         when(transportServer.isRunning()).thenReturn(false);
 
         MassApplication app = new MassApplication(null, 0, "/", enabledWebSocket(), disabledEngine());
-        inject(app, "massWebSocketAdapter", adapter);
-        inject(app, "transportServer", transportServer);
+        inject(app, "managedTransportAdapters", new ArrayList<>(List.of(adapter)));
+        inject(app, "transportServers", new ArrayList<>(List.of(transportServer)));
         setApplicationRunning(app, true);
 
         app.stop();
@@ -44,10 +45,7 @@ class MassApplicationStopOrderTest {
     void engineStopsBetweenWebSocketAdapterAndTransportServer() throws Exception {
         List<String> order = new ArrayList<>();
 
-        MassWebSocketAdapter adapter = new MassWebSocketAdapter(enabledWebSocket(), null) {
-            @Override public void stop() { order.add("websocket"); }
-            @Override public boolean isRunning() { return false; }
-        };
+        ManagedTransportAdapter adapter = new RecordingManagedTransportAdapter(order, "websocket");
         MassEngine engine = new MassEngine(enabledEngine()) {
             @Override public void stop() { order.add("engine"); }
             @Override public boolean isRunning() { return true; }
@@ -58,8 +56,8 @@ class MassApplicationStopOrderTest {
         doAnswer(inv -> { order.add("transport"); return null; }).when(transportServer).stop();
 
         MassApplication app = new MassApplication(engine, 0, "/", enabledWebSocket(), enabledEngine());
-        inject(app, "massWebSocketAdapter", adapter);
-        inject(app, "transportServer", transportServer);
+        inject(app, "managedTransportAdapters", new ArrayList<>(List.of(adapter)));
+        inject(app, "transportServers", new ArrayList<>(List.of(transportServer)));
         setApplicationRunning(app, true);
 
         app.stop();
@@ -70,17 +68,15 @@ class MassApplicationStopOrderTest {
 
     @Test
     void stopIsIdempotentWhenTriggeredTwice() throws Exception {
-        MassWebSocketAdapter adapter = spy(new MassWebSocketAdapter(enabledWebSocket(), null) {
-            @Override public boolean isRunning() { return false; }
-        });
+        ManagedTransportAdapter adapter = spy(new RecordingManagedTransportAdapter(new ArrayList<>(), "websocket"));
         MassEngine engine = spy(new MassEngine(enabledEngine()) {
             @Override public boolean isRunning() { return true; }
         });
         TransportServer transportServer = mock(TransportServer.class);
 
         MassApplication app = new MassApplication(engine, 0, "/", enabledWebSocket(), enabledEngine());
-        inject(app, "massWebSocketAdapter", adapter);
-        inject(app, "transportServer", transportServer);
+        inject(app, "managedTransportAdapters", new ArrayList<>(List.of(adapter)));
+        inject(app, "transportServers", new ArrayList<>(List.of(transportServer)));
         setApplicationRunning(app, true);
 
         app.stop();
@@ -89,6 +85,47 @@ class MassApplicationStopOrderTest {
         verify(adapter, times(1)).stop();
         verify(engine, times(1)).stop();
         verify(transportServer, times(1)).stop();
+    }
+
+    @Test
+    void rawTransportMessageFallsBackToSingleRegisteredChannel() throws Exception {
+        RawWorkerMessageChannel channel = mock(RawWorkerMessageChannel.class);
+        MassApplication app = new MassApplication(null, 0, "/", enabledWebSocket(), disabledEngine());
+        inject(app, "rawWorkerMessageChannels", new ArrayList<>(List.of(channel)));
+
+        assertTrue(app.sendRawTransportMessage("worker-1", "{\"hello\":1}", "trace-1"));
+        verify(channel).send("worker-1", "{\"hello\":1}", "trace-1");
+        verify(channel, never()).supports(anyString());
+    }
+
+    @Test
+    void rawTransportMessageUsesSupportingChannelWhenMultipleAdaptersExist() throws Exception {
+        RawWorkerMessageChannel first = mock(RawWorkerMessageChannel.class);
+        RawWorkerMessageChannel second = mock(RawWorkerMessageChannel.class);
+        when(first.supports("worker-2")).thenReturn(false);
+        when(second.supports("worker-2")).thenReturn(true);
+
+        MassApplication app = new MassApplication(null, 0, "/", enabledWebSocket(), disabledEngine());
+        inject(app, "rawWorkerMessageChannels", new ArrayList<>(List.of(first, second)));
+
+        assertTrue(app.sendRawTransportMessage("worker-2", "{\"hello\":2}", "trace-2"));
+        verify(first, never()).send(anyString(), anyString(), anyString());
+        verify(second).send("worker-2", "{\"hello\":2}", "trace-2");
+    }
+
+    @Test
+    void rawTransportMessageReturnsFalseWhenNoChannelAcceptsWorker() throws Exception {
+        RawWorkerMessageChannel first = mock(RawWorkerMessageChannel.class);
+        RawWorkerMessageChannel second = mock(RawWorkerMessageChannel.class);
+        when(first.supports("worker-3")).thenReturn(false);
+        when(second.supports("worker-3")).thenReturn(false);
+
+        MassApplication app = new MassApplication(null, 0, "/", enabledWebSocket(), disabledEngine());
+        inject(app, "rawWorkerMessageChannels", new ArrayList<>(List.of(first, second)));
+
+        assertFalse(app.sendRawTransportMessage("worker-3", "{\"hello\":3}", "trace-3"));
+        verify(first, never()).send(anyString(), anyString(), anyString());
+        verify(second, never()).send(anyString(), anyString(), anyString());
     }
 
     // ---- helpers ----
@@ -133,6 +170,30 @@ class MassApplicationStopOrderTest {
             running.set(value);
         } catch (Exception e) {
             throw new RuntimeException(e);
+        }
+    }
+
+    private static final class RecordingManagedTransportAdapter implements ManagedTransportAdapter {
+        private final List<String> order;
+        private final String name;
+
+        private RecordingManagedTransportAdapter(List<String> order, String name) {
+            this.order = order;
+            this.name = name;
+        }
+
+        @Override
+        public void start() {
+        }
+
+        @Override
+        public void stop() {
+            order.add(name);
+        }
+
+        @Override
+        public boolean isRunning() {
+            return false;
         }
     }
 }

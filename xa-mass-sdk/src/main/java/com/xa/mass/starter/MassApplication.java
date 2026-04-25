@@ -6,30 +6,34 @@ import com.xa.mass.command.event.MassEventRuntime;
 import com.xa.mass.engine.listener.TaskMsgDispatchListener;
 import com.xa.mass.engine.rules.RuleDefinition;
 import com.xa.mass.engine.util.LogUtils;
-import com.xa.mass.transport.websocket.dispatcher.context.WebSocketDispatchRuntimeContext;
-import com.xa.mass.transport.websocket.dispatcher.WebSocketTaskDispatchChannel;
-import com.xa.mass.transport.websocket.runtime.WebSocketEmbeddedRuntimeSupport;
 import com.xa.mass.transport.websocket.queue.OutboundDelivery;
 import com.xa.mass.sdk.worker.PullWorkerSession;
 import com.xa.mass.starter.config.EngineConfig;
 import com.xa.mass.starter.config.WebSocketConfig;
+import com.xa.mass.starter.config.WebSocketRuntimeComposition;
+import com.xa.mass.starter.transport.ManagedTransportAdapter;
+import com.xa.mass.starter.transport.RawWorkerMessageChannel;
 import com.xa.mass.starter.transport.ResolvedPullWorkerTransport;
+import com.xa.mass.starter.transport.TransportAdapterBootstrapContext;
+import com.xa.mass.starter.transport.TransportAdapterContribution;
+import com.xa.mass.starter.transport.TransportBinding;
 import com.xa.mass.starter.transport.RuntimeTaskResultIngestChannel;
-import com.xa.mass.starter.transport.TransportServerFactoryContext;
 import com.xa.mass.starter.transport.TransportRuntimeRegistry;
 import com.xa.mass.starter.transport.WorkerTransportRuntimeFactoryContext;
 import com.xa.mass.transport.TransportServer;
 import com.xa.mass.transport.WorkerEndpointRegistry;
-import com.xa.mass.transport.channel.TaskDispatchChannel;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * Main runtime composition entry for engine, WebSocket adapter, dispatcher, and server startup.
+ * Main runtime composition entry for engine plus embedded transport adapter
+ * startup.
  */
 public class MassApplication {
 
@@ -37,16 +41,17 @@ public class MassApplication {
 
     private final int serverPort;
     private final String transportEndpointPath;
-    private final WebSocketConfig webSocketConfig;
+    private final WebSocketRuntimeComposition transportRuntimeComposition;
     private final EngineConfig engineConfig;
     private final AtomicBoolean running = new AtomicBoolean(false);
     private final MassEventRuntime eventRuntime = new InMemoryMassEventRuntime();
+    private final List<ManagedTransportAdapter> managedTransportAdapters = new ArrayList<>();
+    private final List<RawWorkerMessageChannel> rawWorkerMessageChannels = new ArrayList<>();
+    private final List<TransportServer> transportServers = new ArrayList<>();
 
     private final MassEngine engine;
     private MessageTransporter<String, OutboundDelivery> messageTransporter;
     private WorkerEndpointRegistry endpointRegistry;
-    private MassWebSocketAdapter massWebSocketAdapter;
-    private TransportServer transportServer;
     private TransportRuntimeRegistry transportRuntimeRegistry;
 
     public MassApplication(MassEngine engine, int serverPort, String transportEndpointPath,
@@ -54,7 +59,7 @@ public class MassApplication {
         this.engine = engine;
         this.serverPort = serverPort;
         this.transportEndpointPath = transportEndpointPath;
-        this.webSocketConfig = webSocketConfig;
+        this.transportRuntimeComposition = webSocketConfig.snapshotRuntimeComposition();
         this.engineConfig = engineConfig;
     }
 
@@ -70,14 +75,13 @@ public class MassApplication {
         try {
             initializeComponents();
 
-            if (webSocketConfig.isEnabled()) {
-                startWebSocketAdapter();
+            if (transportRuntimeComposition.isEnabled()) {
+                startManagedTransportAdapters();
             } else {
-                logger.info("MassWebSocketAdapter is disabled, skipping start");
+                logger.info("WebSocket transport adapter is disabled, skipping managed adapter start");
             }
 
-            startMessageDispatcher();
-            if (webSocketConfig.isTransportServerEnabled()) {
+            if (transportRuntimeComposition.isTransportServerEnabled()) {
                 startTransportServer();
             } else {
                 logger.info("Transport server is disabled, skipping start");
@@ -103,17 +107,13 @@ public class MassApplication {
         logger.info("Stopping Mass Application");
 
         try {
-            if (massWebSocketAdapter != null && webSocketConfig.isEnabled()) {
-                massWebSocketAdapter.stop();
-            }
+            stopManagedTransportAdapters();
 
             if (engine != null && engineConfig.isEnabled()) {
                 engine.stop();
             }
 
-            if (transportServer != null) {
-                transportServer.stop();
-            }
+            stopTransportServers();
 
             LogUtils.clearMdc();
             logger.info("Mass Application stopped successfully");
@@ -127,61 +127,49 @@ public class MassApplication {
         logger.info("Initializing core components");
 
         try {
-            endpointRegistry = webSocketConfig.resolveWorkerEndpointRegistry();
+            managedTransportAdapters.clear();
+            rawWorkerMessageChannels.clear();
+            transportServers.clear();
+            endpointRegistry = transportRuntimeComposition.resolveWorkerEndpointRegistry();
             logger.info("Worker endpoint registry initialized");
 
-            messageTransporter = webSocketConfig.createMessageTransporter();
+            messageTransporter = transportRuntimeComposition.createMessageTransporter();
             logger.info("Message transporter created");
 
-            WorkerSystemEventChannel systemEventChannel = webSocketConfig.resolveSystemEventChannel();
+            WorkerSystemEventChannel systemEventChannel = transportRuntimeComposition.resolveSystemEventChannel();
             TaskMsgDispatchListener taskMsgDispatchListener = null;
             TaskResultIngestChannel taskResultIngestChannel = null;
-            WebSocketDispatchRuntimeContext webSocketRuntimeContext = WebSocketEmbeddedRuntimeSupport.createDispatcherContext(
-                    messageTransporter,
-                    endpointRegistry,
-                    taskResultIngestChannel,
-                    systemEventChannel
-            );
-            logger.info("Dispatcher context created");
-            logger.info("WebSocket frame codec resolved");
+            List<TransportBinding> adapterBindings = List.of();
             if (engineConfig.isEnabled() && engineConfig.getTaskManager() != null) {
                 taskResultIngestChannel = new RuntimeTaskResultIngestChannel(engineConfig.getTaskManager());
-                webSocketRuntimeContext = WebSocketEmbeddedRuntimeSupport.createDispatcherContext(
-                        messageTransporter,
-                        endpointRegistry,
-                        taskResultIngestChannel,
-                        systemEventChannel
-                );
-                logger.info("Dispatcher context refreshed with task result ingest channel");
-                TaskDispatchChannel webSocketTaskDispatchChannel = webSocketConfig.isEnabled()
-                        ? new WebSocketTaskDispatchChannel(webSocketRuntimeContext)
-                        : null;
-                transportRuntimeRegistry = webSocketConfig.resolveWorkerTransportRuntimeFactory().create(
-                        new WorkerTransportRuntimeFactoryContext<>(
+                logger.info("Task result ingest channel initialized");
+            }
+
+            TransportAdapterContribution webSocketContribution = transportRuntimeComposition.resolveTransportAdapterBootstrap().create(
+                    new TransportAdapterBootstrapContext<>(
+                            serverPort,
+                            messageTransporter,
+                            endpointRegistry,
+                            taskResultIngestChannel,
+                            systemEventChannel
+                    )
+            );
+            adapterBindings = collectAdapterBindings(webSocketContribution);
+            registerManagedTransportAdapter(webSocketContribution.getManagedTransportAdapter());
+            registerRawWorkerMessageChannel(webSocketContribution.getRawWorkerMessageChannel());
+            registerTransportServer(webSocketContribution.getTransportServer());
+
+            if (engineConfig.isEnabled() && engineConfig.getTaskManager() != null) {
+                transportRuntimeRegistry = transportRuntimeComposition.resolveWorkerTransportRuntimeFactory().create(
+                        new WorkerTransportRuntimeFactoryContext(
                                 engineConfig.getTaskManager(),
                                 engineConfig.getWorkerManager(),
-                                messageTransporter,
-                                endpointRegistry,
-                                webSocketTaskDispatchChannel,
                                 taskResultIngestChannel,
                                 systemEventChannel,
-                                webSocketConfig.isEnabled()
+                                adapterBindings
                         )
                 );
                 taskMsgDispatchListener = transportRuntimeRegistry.createDispatchListener();
-            }
-
-            if (webSocketConfig.isEnabled()) {
-                massWebSocketAdapter = new MassWebSocketAdapter(webSocketConfig, webSocketRuntimeContext);
-                logger.info("MassWebSocketAdapter built");
-            } else {
-                logger.info("MassWebSocketAdapter is disabled, skipping build");
-            }
-
-            if (webSocketConfig.isTransportServerEnabled()) {
-                transportServer = createTransportServer(webSocketRuntimeContext);
-            } else {
-                transportServer = null;
             }
 
             if (engineConfig.isEnabled()) {
@@ -197,14 +185,16 @@ public class MassApplication {
         logger.info("Core components initialized");
     }
 
-    private void startWebSocketAdapter() {
-        logger.info("Starting MassWebSocketAdapter");
-        if (massWebSocketAdapter != null) {
-            massWebSocketAdapter.start();
-            logger.info("MassWebSocketAdapter started");
-        } else {
-            logger.error("MassWebSocketAdapter is null");
+    private void startManagedTransportAdapters() {
+        logger.info("Starting managed transport adapters");
+        if (managedTransportAdapters.isEmpty()) {
+            logger.info("No managed transport adapters configured for current runtime");
+            return;
         }
+        for (ManagedTransportAdapter managedTransportAdapter : managedTransportAdapters) {
+            managedTransportAdapter.start();
+        }
+        logger.info("Managed transport adapters started");
     }
 
     private void startEngine(TaskMsgDispatchListener taskMsgDispatchListener) {
@@ -217,44 +207,63 @@ public class MassApplication {
         }
     }
 
-    private void startMessageDispatcher() {
-        logger.info("WebSocket message dispatcher is managed by MassWebSocketAdapter");
-    }
-
     private void startTransportServer() {
-        logger.info("Starting transport server");
-        if (transportServer == null) {
+        logger.info("Starting transport servers");
+        if (transportServers.isEmpty()) {
             logger.info("No transport server configured for current runtime");
             return;
         }
-        try {
-            transportServer.start(serverPort);
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to start transport server", e);
+        for (TransportServer transportServer : transportServers) {
+            try {
+                transportServer.start(serverPort);
+            } catch (Exception e) {
+                throw new RuntimeException("Failed to start transport server", e);
+            }
         }
-        logger.info("Transport server started on port {} (current adapter path={})", serverPort, transportEndpointPath);
+        logger.info("Transport servers started on port {} (current adapter path={})", serverPort, transportEndpointPath);
     }
 
-    private TransportServer createTransportServer(WebSocketDispatchRuntimeContext webSocketRuntimeContext) {
-        if (webSocketConfig.getTransportServerFactory() == null) {
-            return WebSocketEmbeddedRuntimeSupport.createTransportServer(
-                    transportEndpointPath,
-                    webSocketRuntimeContext,
-                    endpointRegistry
-            );
+    private void stopManagedTransportAdapters() throws Exception {
+        for (ManagedTransportAdapter managedTransportAdapter : managedTransportAdapters) {
+            managedTransportAdapter.stop();
         }
-        return webSocketConfig.getTransportServerFactory().create(new TransportServerFactoryContext(
-                endpointRegistry,
-                messageTransporter::sendInput,
-                serverPort,
-                transportEndpointPath
-        ));
+    }
+
+    private void stopTransportServers() throws Exception {
+        for (TransportServer transportServer : transportServers) {
+            transportServer.stop();
+        }
+    }
+
+    private List<TransportBinding> collectAdapterBindings(TransportAdapterContribution contribution) {
+        if (contribution == null || contribution.getTransportBinding() == null) {
+            return List.of();
+        }
+        return List.of(contribution.getTransportBinding());
+    }
+
+    private void registerManagedTransportAdapter(ManagedTransportAdapter managedTransportAdapter) {
+        if (managedTransportAdapter != null) {
+            managedTransportAdapters.add(managedTransportAdapter);
+        }
+    }
+
+    private void registerTransportServer(TransportServer transportServer) {
+        if (transportServer != null) {
+            transportServers.add(transportServer);
+        }
+    }
+
+    private void registerRawWorkerMessageChannel(RawWorkerMessageChannel rawWorkerMessageChannel) {
+        if (rawWorkerMessageChannel != null) {
+            rawWorkerMessageChannels.add(rawWorkerMessageChannel);
+        }
     }
 
     public boolean isRunning() {
         return running.get()
-                && (!webSocketConfig.isTransportServerEnabled()
-                || (transportServer != null && transportServer.isRunning()));
+                && (!transportRuntimeComposition.isTransportServerEnabled()
+                || transportServers.stream().allMatch(TransportServer::isRunning));
     }
 
     public PullWorkerSession openPullWorkerSession(String workerId) {
@@ -273,6 +282,29 @@ public class MassApplication {
 
     public void publishTaskEvents() {
         requireConfiguredEngine().publishTaskEvents();
+    }
+
+    public boolean sendRawTransportMessage(String workerId, String rawJson, String traceId) {
+        if (workerId == null || workerId.isBlank()) {
+            throw new IllegalArgumentException("workerId must not be blank");
+        }
+        if (rawJson == null) {
+            throw new IllegalArgumentException("rawJson must not be null");
+        }
+        if (rawWorkerMessageChannels.isEmpty()) {
+            return false;
+        }
+        if (rawWorkerMessageChannels.size() == 1) {
+            rawWorkerMessageChannels.get(0).send(workerId, rawJson, traceId);
+            return true;
+        }
+        for (RawWorkerMessageChannel rawWorkerMessageChannel : rawWorkerMessageChannels) {
+            if (rawWorkerMessageChannel.supports(workerId)) {
+                rawWorkerMessageChannel.send(workerId, rawJson, traceId);
+                return true;
+            }
+        }
+        return false;
     }
 
     public MessageTransporter<String, OutboundDelivery> getMessageTransporter() {

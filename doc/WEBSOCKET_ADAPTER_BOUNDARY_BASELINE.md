@@ -207,8 +207,10 @@ Rules:
 - resolve `WorkerSystemEventChannel` from adapter runtime assembly, not from transport binding ownership
 - keep adapter-specific endpoint bootstrap and WebSocket-backed realtime adapter defaults inside the adapter module; SDK runtime assembly must not grow session-manager, frame-codec, or WebSocket-specific branching
 - keep the default transport-server bootstrap helper in adapter-owned code; current SDK `transportServerFactory(...)` remains an advanced override seam rather than a second mainline
-- `MassApplication` may assemble adapter runtime context, but it should retain only stable runtime facts such as transporter, endpoint registry, and transport server; the dispatch runtime context itself stays adapter-local
-- deprecated `WebSocketConfig.createDispatcherContext(...)` and `createTransportServer(...)` remain advanced external embedding seams only; embedded-runtime mainline should call adapter-owned runtime support directly rather than routing default assembly through SDK config
+- embedded-runtime mainline should consume adapter-owned bootstrap/contribution output; `MassApplication` should manage only neutral runtime facts such as managed adapters, transport bindings, endpoint registry, and transport servers
+- adapter-owned raw worker side-channel send, when present, should surface as a transport-neutral contribution capability; SDK/runtime code must not construct `OutboundDelivery` or other WebSocket delivery DTOs directly
+- `MassApplication` should snapshot external WebSocket config into internal runtime-composition state during construction rather than retaining a live WebSocket config object as the runtime backbone
+- deprecated `WebSocketConfig.createMessageTransporter()`, `resolveWorkerEndpointRegistry()`, `resolveSystemEventChannel()`, `resolveWorkerTransportRuntimeFactory()`, `resolveTransportAdapterBootstrap()`, `createDispatcherContext(...)`, and `createTransportServer(...)` remain advanced external embedding seams only; default composition should snapshot `WebSocketConfig` into `WebSocketRuntimeComposition` and resolve adapter bootstrap/contribution assembly from there rather than routing WebSocket runtime details through SDK runtime code
 - do not grow post-construction `setHandler(...)` or `registerRoute(...)` seams on adapter runtime context
 - if a new adapter path needs another port, add an explicit field or constructor dependency instead of a late-bound generic registry
 

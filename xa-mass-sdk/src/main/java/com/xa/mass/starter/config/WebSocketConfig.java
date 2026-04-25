@@ -6,7 +6,9 @@ import com.xa.mass.base.channel.tranporter.MessageTransporterFactory;
 import com.xa.mass.transport.websocket.dispatcher.context.WebSocketDispatchRuntimeContext;
 import com.xa.mass.transport.websocket.queue.OutboundDelivery;
 import com.xa.mass.transport.websocket.runtime.WebSocketEmbeddedRuntimeSupport;
+import com.xa.mass.transport.websocket.runtime.WebSocketTransportAdapterBootstrap;
 import com.xa.mass.starter.transport.DefaultWorkerTransportRuntimeFactory;
+import com.xa.mass.starter.transport.TransportAdapterBootstrap;
 import com.xa.mass.starter.transport.TransportServerFactoryContext;
 import com.xa.mass.starter.transport.WorkerTransportRuntimeFactory;
 import com.xa.mass.transport.TransportServer;
@@ -46,6 +48,7 @@ public class WebSocketConfig {
     private Function<WorkerEndpointRegistry, WorkerSystemEventChannel> systemEventChannelResolver;
     private TransportServerFactory<TransportServerFactoryContext> transportServerFactory;
     private WorkerTransportRuntimeFactory workerTransportRuntimeFactory;
+    private TransportAdapterBootstrap<OutboundDelivery> transportAdapterBootstrap;
 
     public WebSocketConfig() {
         this.endpointRegistryFactory = WebSocketEmbeddedRuntimeSupport::createEndpointRegistry;
@@ -70,6 +73,7 @@ public class WebSocketConfig {
         this.systemEventChannelResolver = source.systemEventChannelResolver;
         this.transportServerFactory = source.transportServerFactory;
         this.workerTransportRuntimeFactory = source.workerTransportRuntimeFactory;
+        this.transportAdapterBootstrap = source.transportAdapterBootstrap;
     }
 
     public boolean isEnabled() {
@@ -104,6 +108,13 @@ public class WebSocketConfig {
         this.transportEndpointPath = transportEndpointPath;
     }
 
+    /**
+     * @deprecated Embedded-runtime mainline should snapshot this config into
+     * {@link WebSocketRuntimeComposition} and create the transporter from that
+     * fixed runtime composition. Keep this only for advanced external embedding
+     * that still routes runtime assembly through {@code WebSocketConfig}.
+     */
+    @Deprecated
     public MessageTransporter<String, OutboundDelivery> createMessageTransporter() {
         return switch (transporterType) {
             case QUEUE_BASED -> {
@@ -215,6 +226,33 @@ public class WebSocketConfig {
         this.workerTransportRuntimeFactory = workerTransportRuntimeFactory;
     }
 
+    public TransportAdapterBootstrap<OutboundDelivery> getTransportAdapterBootstrap() {
+        return transportAdapterBootstrap;
+    }
+
+    public void setTransportAdapterBootstrap(TransportAdapterBootstrap<OutboundDelivery> transportAdapterBootstrap) {
+        this.transportAdapterBootstrap = transportAdapterBootstrap;
+    }
+
+    Supplier<WorkerEndpointRegistry> endpointRegistryFactory() {
+        return endpointRegistryFactory;
+    }
+
+    Function<WorkerEndpointRegistry, WorkerSystemEventChannel> systemEventChannelResolver() {
+        return systemEventChannelResolver;
+    }
+
+    public WebSocketRuntimeComposition snapshotRuntimeComposition() {
+        return new WebSocketRuntimeComposition(this);
+    }
+
+    /**
+     * @deprecated Embedded-runtime mainline should resolve endpoint-registry
+     * ownership from {@link WebSocketRuntimeComposition}. Keep this only for
+     * advanced external embedding that still routes runtime assembly through
+     * {@code WebSocketConfig}.
+     */
+    @Deprecated
     public WorkerEndpointRegistry resolveWorkerEndpointRegistry() {
         if (workerEndpointRegistry != null) {
             return workerEndpointRegistry;
@@ -228,6 +266,13 @@ public class WebSocketConfig {
         return runtimeOwnedEndpointRegistry;
     }
 
+    /**
+     * @deprecated Embedded-runtime mainline should resolve adapter system-event
+     * wiring from {@link WebSocketRuntimeComposition}. Keep this only for
+     * advanced external embedding that still routes runtime assembly through
+     * {@code WebSocketConfig}.
+     */
+    @Deprecated
     public WorkerSystemEventChannel resolveSystemEventChannel() {
         if (customSystemEventChannel != null) {
             return customSystemEventChannel;
@@ -242,10 +287,36 @@ public class WebSocketConfig {
         return systemEventChannelResolver.apply(endpointRegistry);
     }
 
+    /**
+     * @deprecated Embedded-runtime mainline should resolve worker transport
+     * runtime composition from {@link WebSocketRuntimeComposition}. Keep this
+     * only for advanced external embedding that still routes runtime assembly
+     * through {@code WebSocketConfig}.
+     */
+    @Deprecated
     public WorkerTransportRuntimeFactory resolveWorkerTransportRuntimeFactory() {
         return workerTransportRuntimeFactory != null
                 ? workerTransportRuntimeFactory
                 : new DefaultWorkerTransportRuntimeFactory();
+    }
+
+    /**
+     * @deprecated Embedded-runtime mainline should resolve adapter bootstrap
+     * from {@link WebSocketRuntimeComposition}. Keep this only for advanced
+     * external embedding that still routes runtime assembly through
+     * {@code WebSocketConfig}.
+     */
+    @Deprecated
+    public TransportAdapterBootstrap<OutboundDelivery> resolveTransportAdapterBootstrap() {
+        return transportAdapterBootstrap != null
+                ? transportAdapterBootstrap
+                : new WebSocketTransportAdapterBootstrap(
+                enabled,
+                transportServerEnabled,
+                maxConnections,
+                transportEndpointPath,
+                transportServerFactory
+        );
     }
 
     /**

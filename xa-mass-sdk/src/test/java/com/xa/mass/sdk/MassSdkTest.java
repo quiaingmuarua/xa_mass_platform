@@ -47,6 +47,7 @@ import com.xa.mass.starter.MassApplication;
 import com.xa.mass.starter.MassEngine;
 import com.xa.mass.starter.config.WebSocketConfig;
 import com.xa.mass.starter.config.EngineConfig;
+import com.xa.mass.starter.config.WebSocketRuntimeComposition;
 import com.xa.mass.starter.transport.TransportBinding;
 import com.xa.mass.starter.transport.TransportRuntimeRegistry;
 import com.xa.mass.starter.transport.TransportServerFactoryContext;
@@ -180,13 +181,14 @@ class MassSdkTest {
     }
 
     @Test
-    void defaultWebSocketEndpointRegistryIsMemoizedPerConfigAndIsolatedAcrossSnapshots() {
+    void defaultWebSocketEndpointRegistryIsMemoizedPerRuntimeCompositionAndIsolatedAcrossSnapshots() {
         WebSocketConfig config = new WebSocketConfig();
+        WebSocketRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
+        WebSocketRuntimeComposition secondSnapshot = config.snapshotRuntimeComposition();
 
-        WorkerEndpointRegistry first = config.resolveWorkerEndpointRegistry();
-        WorkerEndpointRegistry second = config.resolveWorkerEndpointRegistry();
-        WebSocketConfig snapshot = new WebSocketConfig(config);
-        WorkerEndpointRegistry snapshotRegistry = snapshot.resolveWorkerEndpointRegistry();
+        WorkerEndpointRegistry first = runtimeComposition.resolveWorkerEndpointRegistry();
+        WorkerEndpointRegistry second = runtimeComposition.resolveWorkerEndpointRegistry();
+        WorkerEndpointRegistry snapshotRegistry = secondSnapshot.resolveWorkerEndpointRegistry();
 
         assertSame(first, second);
         assertInstanceOf(ServerSessionManager.class, first);
@@ -197,9 +199,10 @@ class MassSdkTest {
     @Test
     void defaultWebSocketSystemEventChannelSharesRuntimeOwnedEndpointRegistry() {
         WebSocketConfig config = new WebSocketConfig();
+        WebSocketRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
 
-        WorkerEndpointRegistry endpointRegistry = config.resolveWorkerEndpointRegistry();
-        WorkerSystemEventChannel systemEventChannel = config.resolveSystemEventChannel();
+        WorkerEndpointRegistry endpointRegistry = runtimeComposition.resolveWorkerEndpointRegistry();
+        WorkerSystemEventChannel systemEventChannel = runtimeComposition.resolveSystemEventChannel();
 
         assertSame(((ServerSessionManager) endpointRegistry).getSystemEventChannel(), systemEventChannel);
     }
@@ -207,6 +210,7 @@ class MassSdkTest {
     @Test
     void defaultWebSocketTransportBootstrapRejectsNonSessionRegistry() {
         WebSocketConfig config = new WebSocketConfig();
+        WebSocketRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
         WorkerEndpointRegistry endpointRegistry = mock(WorkerEndpointRegistry.class);
         @SuppressWarnings("unchecked")
         MessageTransporter<String, OutboundDelivery> transporter = mock(MessageTransporter.class);
@@ -214,7 +218,7 @@ class MassSdkTest {
                 transporter,
                 endpointRegistry,
                 null,
-                config.resolveSystemEventChannel()
+                runtimeComposition.resolveSystemEventChannel()
         );
 
         IllegalStateException error = assertThrows(
@@ -232,6 +236,7 @@ class MassSdkTest {
     @Test
     void webSocketConfigAdvancedEmbeddingHelpersStayDeprecated() throws NoSuchMethodException {
         Set<java.lang.reflect.Method> helperMethods = Set.of(
+                WebSocketConfig.class.getDeclaredMethod("createMessageTransporter"),
                 WebSocketConfig.class.getDeclaredMethod(
                         "createDispatcherContext",
                         MessageTransporter.class,
@@ -244,7 +249,11 @@ class MassSdkTest {
                         WebSocketDispatchRuntimeContext.class,
                         WorkerEndpointRegistry.class,
                         int.class
-                )
+                ),
+                WebSocketConfig.class.getDeclaredMethod("resolveWorkerEndpointRegistry"),
+                WebSocketConfig.class.getDeclaredMethod("resolveSystemEventChannel"),
+                WebSocketConfig.class.getDeclaredMethod("resolveWorkerTransportRuntimeFactory"),
+                WebSocketConfig.class.getDeclaredMethod("resolveTransportAdapterBootstrap")
         );
 
         for (java.lang.reflect.Method method : helperMethods) {
@@ -255,6 +264,9 @@ class MassSdkTest {
 
     @Test
     void massWebSocketAdapterEscapeHatchesStayDeprecated() throws NoSuchMethodException {
+        Assertions.assertTrue(com.xa.mass.starter.MassWebSocketAdapter.class.isAnnotationPresent(Deprecated.class),
+                "MassWebSocketAdapter must remain deprecated now that embedded runtime owns adapter lifecycle");
+
         Set<java.lang.reflect.Method> methods = Set.of(
                 com.xa.mass.starter.MassWebSocketAdapter.class.getDeclaredMethod("getWebSocketConfig"),
                 com.xa.mass.starter.MassWebSocketAdapter.class.getDeclaredMethod("getWebSocketMessageDispatcher")
@@ -332,6 +344,7 @@ class MassSdkTest {
 
         when(delegate.getMessageTransporter()).thenReturn(transporter);
         when(delegate.getEndpointRegistry()).thenReturn(endpointRegistry);
+        when(delegate.sendRawTransportMessage(anyString(), anyString(), anyString())).thenReturn(true);
         when(transporter.inputQueueSize()).thenReturn(2);
         when(transporter.outputQueueSize()).thenReturn(5);
 
@@ -349,7 +362,7 @@ class MassSdkTest {
         assertEquals(true, enqueueResult.get("success"));
         verify(delegate, atLeastOnce()).getMessageTransporter();
         verify(delegate, atLeastOnce()).getEndpointRegistry();
-        verify(transporter).sendOutput(any(OutboundDelivery.class));
+        verify(delegate).sendRawTransportMessage(eq("worker-debug-1"), eq("{\"eventCode\":\"platform.test\"}"), anyString());
     }
 
     @Test
@@ -1556,6 +1569,8 @@ class MassSdkTest {
     void removedWebSocketCompatibilityEscapeHatchesStayGone() {
         Assertions.assertThrows(NoSuchMethodException.class, () -> MassApplication.class.getDeclaredMethod("getDispatcherContext"));
         Assertions.assertThrows(NoSuchMethodException.class, () -> com.xa.mass.starter.MassWebSocketAdapter.class.getDeclaredMethod("getDispatcherContext"));
+        Assertions.assertThrows(NoSuchFieldException.class, () -> MassApplication.class.getDeclaredField("massWebSocketAdapter"));
+        Assertions.assertThrows(NoSuchFieldException.class, () -> MassApplication.class.getDeclaredField("webSocketConfig"));
         Assertions.assertThrows(ClassNotFoundException.class, () -> Class.forName("com.xa.mass.starter.builder.MassGatewayBuilder"));
         Assertions.assertThrows(ClassNotFoundException.class, () -> Class.forName("com.xa.mass.starter.worker.WebSocketWorkerAdapter"));
         Assertions.assertThrows(ClassNotFoundException.class, () -> Class.forName("com.xa.mass.gateway.runtime.WebSocketEmbeddedRuntimeSupport"));
@@ -1582,6 +1597,8 @@ class MassSdkTest {
         ));
         Assertions.assertThrows(NoSuchMethodException.class,
                 () -> com.xa.mass.starter.transport.WorkerTransportRuntimeFactoryContext.class.getDeclaredMethod("getFrameCodec"));
+        Assertions.assertThrows(NoSuchMethodException.class,
+                () -> com.xa.mass.starter.transport.WorkerTransportRuntimeFactoryContext.class.getDeclaredMethod("isWebSocketEnabled"));
         Assertions.assertThrows(NoSuchMethodException.class, () -> com.xa.mass.starter.transport.WorkerTransportRuntimeFactoryContext.class.getDeclaredConstructor(
                 com.xa.mass.engine.TaskManager.class,
                 com.xa.mass.engine.WorkerManager.class,

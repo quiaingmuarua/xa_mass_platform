@@ -1,0 +1,52 @@
+package com.xa.mass.starter.transport;
+
+import com.xa.mass.base.channel.tranporter.MessageTransporter;
+import com.xa.mass.transport.WorkerEndpointRegistry;
+import com.xa.mass.transport.channel.TaskResultIngestChannel;
+import com.xa.mass.transport.channel.WorkerSystemEventChannel;
+
+import java.util.Objects;
+
+/**
+ * Transport-neutral runtime inputs handed to adapter-owned bootstrap code.
+ */
+public final class TransportAdapterBootstrapContext<T> {
+
+    private final int serverPort;
+    private final MessageTransporter<String, T> messageTransporter;
+    private final WorkerEndpointRegistry endpointRegistry;
+    private final TaskResultIngestChannel taskResultIngestChannel;
+    private final WorkerSystemEventChannel systemEventChannel;
+
+    public TransportAdapterBootstrapContext(int serverPort,
+                                            MessageTransporter<String, T> messageTransporter,
+                                            WorkerEndpointRegistry endpointRegistry,
+                                            TaskResultIngestChannel taskResultIngestChannel,
+                                            WorkerSystemEventChannel systemEventChannel) {
+        this.serverPort = serverPort;
+        this.messageTransporter = Objects.requireNonNull(messageTransporter, "messageTransporter");
+        this.endpointRegistry = Objects.requireNonNull(endpointRegistry, "endpointRegistry");
+        this.taskResultIngestChannel = taskResultIngestChannel;
+        this.systemEventChannel = Objects.requireNonNull(systemEventChannel, "systemEventChannel");
+    }
+
+    public int getServerPort() {
+        return serverPort;
+    }
+
+    public MessageTransporter<String, T> getMessageTransporter() {
+        return messageTransporter;
+    }
+
+    public WorkerEndpointRegistry getEndpointRegistry() {
+        return endpointRegistry;
+    }
+
+    public TaskResultIngestChannel getTaskResultIngestChannel() {
+        return taskResultIngestChannel;
+    }
+
+    public WorkerSystemEventChannel getSystemEventChannel() {
+        return systemEventChannel;
+    }
+}

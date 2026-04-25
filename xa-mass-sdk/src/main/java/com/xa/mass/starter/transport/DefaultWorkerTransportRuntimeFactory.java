@@ -1,31 +1,25 @@
 package com.xa.mass.starter.transport;
 
-import com.xa.mass.transport.websocket.runtime.WebSocketEmbeddedRuntimeSupport;
 import com.xa.mass.starter.worker.PollingWorkerAdapter;
 
 import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Default embedded-runtime transport assembly: pull/polling plus the current
- * WebSocket-backed realtime adapter when the WebSocket adapter is enabled.
+ * Default embedded-runtime transport assembly: always include polling/pull and
+ * merge any additional adapter contribution assembled by runtime composition.
  */
 public class DefaultWorkerTransportRuntimeFactory implements WorkerTransportRuntimeFactory {
 
     @Override
-    public TransportRuntimeRegistry create(WorkerTransportRuntimeFactoryContext<?> context) {
+    public TransportRuntimeRegistry create(WorkerTransportRuntimeFactoryContext context) {
         List<TransportBinding> bindings = new ArrayList<>();
 
         PollingWorkerAdapter pollingAdapter = new PollingWorkerAdapter(context.getSystemEventChannel());
         bindings.add(TransportBinding.builder(pollingAdapter)
                 .taskPullChannel(pollingAdapter)
                 .build());
-
-        if (context.isWebSocketEnabled()) {
-            bindings.add(TransportBinding.builder(
-                    WebSocketEmbeddedRuntimeSupport.createRealtimeWorkerAdapter(context.getTaskDispatchChannel())
-            ).build());
-        }
+        bindings.addAll(context.getAdapterBindings());
 
         return new TransportRuntimeRegistry(
                 context.getWorkerManager(),

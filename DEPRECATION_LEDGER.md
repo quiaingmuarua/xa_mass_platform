@@ -1,6 +1,6 @@
 # Deprecation Ledger
 
-Last updated: 2026-04-25
+Last updated: 2026-04-26
 
 This is the single repo-level index for deprecated, compatibility, and legacy seams that still exist in active paths.
 
@@ -19,7 +19,8 @@ Rules:
 
 | Symbol or seam | Current location | Mainline replacement / source of truth | Current in-repo call-site count | Removal condition |
 | --- | --- | --- | --- | --- |
-| `WebSocketConfig.createDispatcherContext(...)` and `WebSocketConfig.createTransportServer(...)` | deprecated advanced embedding helpers in `xa-mass-sdk` | embedded-runtime mainline calls `WebSocketEmbeddedRuntimeSupport` directly; custom adapter bootstrapping should use `transportServerFactory(...)` explicitly | 0 direct in-repo helper call sites | remove after external embedders no longer need `WebSocketConfig`-routed adapter bootstrap |
+| `WebSocketConfig.createMessageTransporter()`, `resolveWorkerEndpointRegistry()`, `resolveSystemEventChannel()`, `resolveWorkerTransportRuntimeFactory()`, `resolveTransportAdapterBootstrap()`, `createDispatcherContext(...)`, and `createTransportServer(...)` | deprecated advanced embedding/runtime helpers in `xa-mass-sdk` | embedded-runtime mainline snapshots `WebSocketConfig` into `WebSocketRuntimeComposition` and resolves adapter-owned bootstrap/contribution assembly there; explicit transport-server override stays on `transportServerFactory(...)` | 0 direct in-repo helper call sites | remove after external embedders no longer need `WebSocketConfig`-routed runtime assembly |
+| `MassWebSocketAdapter` | deprecated legacy WebSocket runtime escape hatch in `xa-mass-sdk` | embedded runtime now owns managed WebSocket adapter lifecycle internally through adapter bootstrap/contribution assembly; supported control surface is `MassApplication.start()/stop()/isRunning()` | 0 direct in-repo constructor or type-use call sites | remove after external embedders no longer depend on constructing or holding the legacy WebSocket adapter object |
 | `MassWebSocketAdapter.getWebSocketConfig()` and `MassWebSocketAdapter.getWebSocketMessageDispatcher()` | deprecated adapter runtime escape hatches in `xa-mass-sdk` | `MassWebSocketAdapter.start()`, `stop()`, and `isRunning()`; WebSocket config and dispatcher runtime stay outside the supported runtime control surface | 0 direct in-repo call sites | remove after external embedders no longer depend on direct WebSocket config or dispatcher access |
 | `MassEngine.getRecordService()` and `MassEngine.getAssignWorker()` | deprecated engine runtime escape hatches in `xa-mass-sdk` | `MassEngine.start()`, `stop()`, `isRunning()`, and stable task/worker operations; record-service and assignment-loop internals stay engine-owned | 0 direct in-repo call sites | remove after external embedders no longer depend on direct engine-internal access |
 | `MassApplicationBuilder.server(int, String)` and `MassSdk.Builder.server(int, String)` | deprecated transport endpoint naming compatibility seams in `xa-mass-sdk` | `transportServer(int, String)` | 0 direct in-repo call sites | remove after external embedders no longer depend on the old server naming |

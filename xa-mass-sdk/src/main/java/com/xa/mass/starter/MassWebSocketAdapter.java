@@ -9,11 +9,14 @@ import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
 
 /**
- * WebSocket adapter runtime.
+ * Legacy WebSocket adapter runtime escape hatch.
  *
- * <p>Owns dispatcher lifecycle plus transport endpoint shutdown for the
- * current WebSocket adapter. It is not a business-event router.
+ * <p>Embedded-runtime mainline now owns WebSocket adapter lifecycle through
+ * adapter bootstrap/contribution assembly. Keep this class only as a
+ * compatibility shell for advanced embedders that still construct and control
+ * the adapter directly.
  */
+@Deprecated(forRemoval = false)
 public class MassWebSocketAdapter {
 
     private static final Logger logger = LoggerFactory.getLogger(MassWebSocketAdapter.class);

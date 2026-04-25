@@ -118,7 +118,7 @@ It is a migration aid, not a compatibility promise.
 
 - `Class`: `com.xa.mass.transport.websocket.runtime.WebSocketEmbeddedRuntimeSupport`
 - `Method`: `createEndpointRegistry(...)`, `createDispatcherContext(...)`, `resolveSystemEventChannel(...)`, `createRealtimeWorkerAdapter(...)`, `createTransportServer(...)`
-- `Current responsibility`: keeps adapter-owned embedded-runtime defaults inside the WebSocket adapter, including endpoint-registry creation, dispatcher-context assembly, WebSocket-backed realtime adapter creation, and transport-server assembly; current realtime/default server implementations remain WebSocket-backed, and `MassApplication` mainline now calls this helper directly instead of routing default assembly through `WebSocketConfig`
+- `Current responsibility`: keeps adapter-owned embedded-runtime defaults inside the WebSocket adapter, including endpoint-registry creation, dispatcher-context assembly, WebSocket-backed realtime adapter creation, and transport-server assembly; current realtime/default server implementations remain WebSocket-backed, and the embedded-runtime mainline now consumes these defaults through adapter-owned bootstrap/contribution assembly instead of routing WebSocket details through `MassApplication`
 - `Should stay in WebSocket adapter?`: yes
 - `Target owner`: `xa-mass-transport-websocket`
 - `Migration phase`: keep as adapter-local bootstrap helper
@@ -128,7 +128,7 @@ It is a migration aid, not a compatibility promise.
 
 - `Class`: `com.xa.mass.transport.websocket.queue.OutboundDelivery`
 - `Method`: DTO only
-- `Current responsibility`: carries only transport addressability and raw outbound payload for ordered delivery
+- `Current responsibility`: carries only transport addressability and raw outbound payload for ordered delivery; embedded SDK/runtime code no longer constructs it directly and should route any raw worker side-channel send through adapter-owned transport contribution capability
 - `Should stay in WebSocket adapter?`: yes
 - `Target owner`: `xa-mass-transport-websocket`
 - `Migration phase`: keep unless queueing strategy changes

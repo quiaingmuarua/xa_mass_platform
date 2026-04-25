@@ -202,10 +202,18 @@ If you need the lower-level runtime composition directly, start here:
 
 Treat this lower-level `starter` surface as an advanced embedding path. It remains available, but the default compatibility commitment is on `com.xa.mass.sdk.*`.
 
-Within that lower-level surface, `WebSocketConfig.createDispatcherContext(...)` and
-`WebSocketConfig.createTransportServer(...)` are deprecated advanced embedding
-helpers only. Embedded-runtime mainline should use
-`WebSocketEmbeddedRuntimeSupport` directly for the default WebSocket-backed path, or
+Current embedded-runtime mainline snapshots `WebSocketConfig` into an internal
+runtime-composition object during `MassApplication` construction. Runtime
+assembly then manages only assembled transport components rather than holding a
+live WebSocket config object as the primary composition backbone.
+
+Within that lower-level surface, `WebSocketConfig.createMessageTransporter()`,
+`resolveWorkerEndpointRegistry()`, `resolveSystemEventChannel()`,
+`resolveWorkerTransportRuntimeFactory()`, `resolveTransportAdapterBootstrap()`,
+`createDispatcherContext(...)`, and `createTransportServer(...)` are
+deprecated advanced embedding helpers only. Embedded-runtime mainline should
+snapshot config into `WebSocketRuntimeComposition`, then use adapter-owned
+bootstrap/contribution assembly for the default WebSocket-backed path, or
 provide an explicit `transportServerFactory(...)` override.
 `MassWebSocketAdapter.getWebSocketConfig()` and `MassWebSocketAdapter.getWebSocketMessageDispatcher()` are also
 deprecated: WebSocket adapter config and dispatcher internals are not part of the

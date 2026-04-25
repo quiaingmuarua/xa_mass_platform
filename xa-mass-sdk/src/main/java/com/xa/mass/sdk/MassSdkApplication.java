@@ -20,7 +20,6 @@ import com.xa.mass.engine.model.TaskStateValidationResult;
 import com.xa.mass.engine.rules.RuleDefinition;
 import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.engine.rules.RuleType;
-import com.xa.mass.transport.websocket.queue.OutboundDelivery;
 import com.xa.mass.sdk.auth.*;
 import com.xa.mass.sdk.authz.*;
 import com.xa.mass.sdk.catalog.*;
@@ -1394,11 +1393,14 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
         }
         Object rawJson = request.get("rawJson");
         String payload = rawJson instanceof String rawText ? rawText : GSON.toJson(request);
-        delegate.getMessageTransporter().sendOutput(new OutboundDelivery(
+        boolean accepted = delegate.sendRawTransportMessage(
                 workerIdText.trim(),
                 payload,
                 UUID.randomUUID().toString()
-        ));
+        );
+        if (!accepted) {
+            return Map.of("success", false, "msg", "no transport side-channel accepted workerId");
+        }
         return Map.of("success", true, "msg", "message enqueued");
     }
 
