@@ -168,6 +168,7 @@ For new agents, core acceptance in this repo means three sibling layers:
 - `perf`: engine hot-path load and storage-pressure validation
 - `concurrency`: race-heavy lifecycle/result/release verification
 - `E2E`: full Boot-shell runtime convergence through `xa-mass-dev-app`
+- `SDK embedded harness`: fast transport-aware runtime probe through `MassSdkApplication` inside `xa-mass-testing`
 
 Everything else is support coverage for bug localization, invariants, and faster regression feedback.
 
@@ -215,6 +216,30 @@ Expected perf artifact:
 
 - JSON report under `xa-mass-testing/target/perf-reports/`
 - inspect `wallClock`, `callbacks`, `release`, and `storageProbe` first
+
+SDK transport load harness:
+
+Polling worker mode:
+
+```bash
+./mvnw -pl xa-mass-testing -am -Dexec.classpathScope=compile -Dmaven.test.skip=true -Dmass.sdk.load.transport=polling org.codehaus.mojo:exec-maven-plugin:3.5.0:java -Dexec.mainClass=com.xa.mass.testing.concurrency.SdkTransportLoadRunner
+```
+
+WebSocket worker mode:
+
+```bash
+./mvnw -pl xa-mass-testing -am -Dexec.classpathScope=compile -Dmaven.test.skip=true -Dmass.sdk.load.transport=websocket org.codehaus.mojo:exec-maven-plugin:3.5.0:java -Dexec.mainClass=com.xa.mass.testing.concurrency.SdkTransportLoadRunner
+```
+
+Expected SDK harness artifact:
+
+- JSON report under `xa-mass-testing/target/concurrency-reports/`
+- inspect `runtime.transport`, `tasks.terminalReasons`, and `workerMetrics` first
+
+Working rule:
+
+- use this harness when you need real SDK worker registration and real polling/WebSocket scheduling without paying for the full Boot-shell E2E surface
+- do not treat it as a replacement for Boot-shell E2E when the change also touches HTTP/API shell behavior
 
 Concurrency lane status:
 

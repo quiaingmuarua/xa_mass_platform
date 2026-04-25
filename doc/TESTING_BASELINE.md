@@ -26,6 +26,7 @@ Keep the layers distinct:
 | --- | --- | --- | --- |
 | `invariant` | prove correctness of one local rule or state transition | one class or one ownership seam | support |
 | `module` | guard one module boundary or helper contract | one module family | support |
+| `SDK embedded harness` | exercise real SDK registration/runtime composition without Boot shell | embedded runtime + polling/WebSocket worker transports | support |
 | `Boot-shell E2E` | prove the real runtime path converges through `xa-mass-dev-app` | HTTP + runtime + transport + persistence projection | core |
 | `concurrency` | prove race-heavy paths converge to an allowed stable state | result/retry/expiry/release/redispatch races | core |
 | `perf` | expose hot-path cost, storage pressure, and throughput regressions | engine hot paths and queue-like pressure | core |
@@ -44,12 +45,14 @@ Current runnable acceptance entry points:
 - `Boot-shell E2E`: `xa-mass-dev-app`
 - `concurrency`: `xa-mass-engine`
 - `perf`: `xa-mass-testing`
+- `SDK embedded harness`: `xa-mass-testing`
 
 Current command entry points:
 
 - see [VERIFIED_RUNBOOK.md](./VERIFIED_RUNBOOK.md) for copy-paste commands
 - see [testing/TOPIC_INDEX.md](./testing/TOPIC_INDEX.md) for point-specific commands
 - converge new cross-cutting harnesses into `xa-mass-testing`; keep engine-local deterministic race tests in `xa-mass-engine` until they no longer need engine-internal proximity
+- use the SDK embedded harness when you need real SDK registration plus transport-aware scheduling pressure without the heavier Boot-shell app context
 
 Current non-runnable or thinner lane:
 

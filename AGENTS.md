@@ -31,6 +31,7 @@ Core acceptance fast path:
 - current runnable `E2E` surface lives in `xa-mass-dev-app`
 - `chaos` should be treated as the next robustness lane, but it belongs in scheduled or release-style verification until a stable suite exists
 - `xa-mass-testing` is the planned home for cross-cutting acceptance tooling (`perf` first, then broader `concurrency` / `chaos` assets as they stabilize)
+- SDK-driven embedded-runtime harnesses in `xa-mass-testing` are the fast transport-aware system probe lane; use them to model polling/WebSocket runtime pressure before paying for full Boot-shell E2E
 - `concurrency` is a required acceptance lane for race-sensitive lifecycle work and should live beside engine/runtime hot paths rather than being replaced by narrower unit tests
 - all other tests are support coverage for bug localization, invariants, and fast regression checks
 

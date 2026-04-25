@@ -119,6 +119,13 @@ public class MassGateway {
         return running && messageDispatcher != null && messageDispatcher.isRunning();
     }
 
+    /**
+     * @deprecated The gateway config object is an advanced embedding detail.
+     * Default embedding should configure gateway behavior before runtime
+     * assembly rather than reading live gateway runtime state back through
+     * {@code MassGateway}.
+     */
+    @Deprecated(forRemoval = false)
     public GatewayConfig getConfig() {
         return config;
     }

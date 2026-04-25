@@ -141,6 +141,7 @@ Current canonical boundaries:
 - Current runnable `perf` coverage lives in `xa-mass-testing`.
 - Current runnable `concurrency` coverage lives in `xa-mass-engine`.
 - Current runnable Boot-shell E2E coverage lives in `xa-mass-dev-app`.
+- SDK embedded-runtime transport harnesses in `xa-mass-testing` are the fastest system probe when you need real SDK registration plus polling/WebSocket scheduling without booting the full dev-app shell.
 - `chaos` should be treated as a scheduled or release-oriented robustness lane until there is a stable suite.
 - Concurrency coverage is a required acceptance lane for race-sensitive lifecycle changes; narrower unit/integration tests are support coverage for bug localization and invariants, not the primary acceptance gate.
 - worker-targeted debug/task details live in [./INTERNAL_API_REFERENCE.md](./INTERNAL_API_REFERENCE.md).

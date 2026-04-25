@@ -206,3 +206,6 @@ Within that lower-level surface, `GatewayConfig.createDispatcherContext(...)` an
 helpers only. Embedded-runtime mainline should use
 `GatewayEmbeddedRuntimeSupport` directly for the default gateway-backed path, or
 provide an explicit `transportServerFactory(...)` override.
+`MassGateway.getConfig()` and `MassGateway.getMessageDispatcher()` are also
+deprecated: gateway config and dispatcher internals are not part of the
+supported embedding surface.
