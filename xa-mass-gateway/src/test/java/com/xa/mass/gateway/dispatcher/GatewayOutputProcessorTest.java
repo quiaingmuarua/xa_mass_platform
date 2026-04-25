@@ -28,9 +28,7 @@ class GatewayOutputProcessorTest {
                 endpointRegistry,
                 new WebSocketTransportFrameCodec(),
                 null,
-                NoopWorkerSystemEventChannel.INSTANCE,
-                null,
-                null
+                NoopWorkerSystemEventChannel.INSTANCE
         );
         outputProcessor = new GatewayOutputProcessor(context);
     }

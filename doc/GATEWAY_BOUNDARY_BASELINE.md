@@ -76,12 +76,12 @@ Allowed in `xa-mass-gateway`:
 - connection/session registry
 - endpoint reachability and send
 - frame encode/decode
-- workerId / connection-role extraction
+- workerId extraction
 - input/output forwarding
 - heartbeat/connect/disconnect translation
 - transport-level error frames
 - transport-level diagnostics
-- bridge from WebSocket frames into transport-neutral channels or runtime entrypoints
+- bridge from WebSocket task frames into transport-neutral channels
 
 Forbidden in `xa-mass-gateway`:
 
@@ -98,7 +98,7 @@ Forbidden in `xa-mass-gateway`:
 - platform audit truth
 - worker matching decisions
 
-Legacy frame-routing branches are no longer part of the active gateway mainline. Control traffic uses root-level event-first frames, task traffic uses canonical root-level task frames, and new platform capabilities must not be introduced through gateway-specific frame identities. WebSocket worker identity should come from handshake/session facts rather than an application heartbeat frame.
+Legacy frame-routing branches are no longer part of the active gateway mainline. Gateway now carries only canonical task dispatch/result frames plus transport/system-event facts. New platform capabilities must not be introduced through gateway-specific frame identities, and manual worker debug must remain task-backed rather than reintroducing a direct worker-control protocol. WebSocket worker identity should come from handshake/session facts rather than an application heartbeat frame.
 
 ## 5. Transport-Neutral Contract
 
@@ -199,15 +199,13 @@ Engine/runtime decides eligibility.
 
 Rules:
 
-- construct the gateway message codec and explicit control-event handler/sink ports before starting the adapter
+- construct the gateway message codec and transport channels before starting the adapter
 - resolve the gateway `endpointRegistry` once during runtime assembly and pass that exact instance into both dispatcher wiring and transport-server creation
 - route inbound task-result transport shells into the canonical `TaskResultReport -> TaskResultIngestChannel` seam
 - keep `TaskResultIngestChannel` as a runtime-level seam; do not model it as worker transport binding ownership
 - resolve `WorkerSystemEventChannel` from gateway runtime assembly, not from transport binding ownership
 - keep adapter-specific endpoint bootstrap inside the gateway adapter module; SDK runtime config must not hardcode session-manager implementation branching
 - keep default transport-server bootstrap inside the gateway adapter module; SDK `transportServerFactory(...)` is an advanced override seam, not the mainline startup path
-- `MassApplication.configureGatewayRuntime(...)` is the pre-start wiring seam for gateway-local control-event ports
-- resolve transport-contributed control-event ports during runtime assembly, then inject them once
 - do not grow post-construction `setHandler(...)` or `registerRoute(...)` seams on gateway runtime context
 - if a new adapter path needs another port, add an explicit field or constructor dependency instead of a late-bound generic registry
 
@@ -237,9 +235,9 @@ These seams are adapter-local, not platform truth:
 - raw inbound JSON plus connection facts
 - raw outbound JSON plus explicit transport addressability
 - `OutboundDelivery` as the current minimal outbound delivery record
-- adapter-local raw JSON frame detection and encoding
-- explicit gateway input/output processors that convert frames into canonical bridge calls and transport sends
-- adapter-level metadata extraction such as canonical `eventCode` diagnostics from explicit fields
+- adapter-local canonical task-frame detection and encoding
+- explicit gateway input/output processors that convert task frames into canonical bridge calls and transport sends
+- adapter-level metadata extraction for transport diagnostics only
 
 Rules:
 

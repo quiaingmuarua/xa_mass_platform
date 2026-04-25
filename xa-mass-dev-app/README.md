@@ -18,6 +18,9 @@ Repository-level startup instructions in [`../doc/VERIFIED_RUNBOOK.md`](../doc/V
 - treats worker resource creation as SDK-first; mock JSON is a local/E2E fixture path, not the product resource entry
 - runtime still composes gateway and engine internally
 - default `dev` startup auto-starts mock WebSocket clients
+- default `dev` startup also seeds demo SDK credentials for the external polling worker quickstart:
+  - task submitter: `crawler-submitter-key`
+  - polling worker: `node-worker-key`
 
 ## Port Model
 
@@ -107,7 +110,7 @@ The extra payload fields are observability data for dev-app realism. Existing li
 
 ## Mock Command Runtime
 
-`xa-mass-dev-app` now exposes a lightweight in-process mock command runtime for workers through the current event-first control bridge.
+`xa-mass-dev-app` now exposes a lightweight in-process mock command runtime for workers through normal task execution.
 
 Current command groups:
 
@@ -134,12 +137,21 @@ Example request body:
 
 ```json
 {
-  "workerId": "it-worker-0",
   "project": "demoApp",
+  "taskName": "targeted-delay-response",
   "eventCode": "mock.delay.response",
-  "payload": {
-    "millis": 500
-  }
+  "mode": "SINGLE_RUN",
+  "payloadType": "JSON",
+  "userId": "itest",
+  "sharedConfig": {
+    "targetWorkerId": "it-worker-0"
+  },
+  "inputs": [
+    {
+      "millis": 500
+    }
+  ],
+  "batchSize": 1
 }
 ```
 

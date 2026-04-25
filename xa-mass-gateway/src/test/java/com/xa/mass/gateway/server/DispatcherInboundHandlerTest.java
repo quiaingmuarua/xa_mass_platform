@@ -1,7 +1,6 @@
 package com.xa.mass.gateway.server;
 
 import com.xa.mass.base.channel.tranporter.MessageTransporter;
-import com.xa.mass.base.debug.WorkerControlEventProtocol;
 import com.xa.mass.gateway.queue.OutboundDelivery;
 import com.xa.mass.gateway.queue.WebSocketTransportFrameCodec;
 import com.xa.mass.gateway.session.ServerSessionManager;

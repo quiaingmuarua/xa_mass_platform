@@ -76,7 +76,7 @@ public final class TaskDispatchItem {
                 taskMsg.getLatestAttemptWorkerId(),
                 taskMsg.getLatestAttemptWorkerContextId(),
                 taskMsg.getLatestAttemptBatchId(),
-                taskMsg.getInput(),
+                normalizeInput(task, taskMsg),
                 task.getSharedConfig()
         );
     }
@@ -137,5 +137,42 @@ public final class TaskDispatchItem {
             return Collections.emptyMap();
         }
         return Collections.unmodifiableMap(new LinkedHashMap<>(values));
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> normalizeInput(Task task, TaskMsg taskMsg) {
+        Map<String, Object> rawInput = taskMsg == null ? null : taskMsg.getInput();
+        if (rawInput == null || rawInput.isEmpty()) {
+            return Collections.emptyMap();
+        }
+        String payloadType = sdkPayloadType(task);
+        if ("JSON".equals(payloadType)) {
+            Object data = rawInput.get("data");
+            if (data instanceof Map<?, ?> map) {
+                return immutableCopy((Map<String, Object>) map);
+            }
+        }
+        if ("TEXT".equals(payloadType)) {
+            Object text = rawInput.get("text");
+            if (text instanceof String value) {
+                return Map.of("text", value);
+            }
+        }
+        return immutableCopy(rawInput);
+    }
+
+    private static String sdkPayloadType(Task task) {
+        if (task == null || task.getSharedConfig() == null) {
+            return null;
+        }
+        Object sdk = task.getSharedConfig().get("_sdk");
+        if (!(sdk instanceof Map<?, ?> metadata)) {
+            return null;
+        }
+        Object payloadType = metadata.get("payloadType");
+        if (!(payloadType instanceof String value) || value.isBlank()) {
+            return null;
+        }
+        return value.trim().toUpperCase();
     }
 }

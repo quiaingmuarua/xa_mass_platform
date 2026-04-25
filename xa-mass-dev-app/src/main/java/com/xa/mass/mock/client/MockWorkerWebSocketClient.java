@@ -2,8 +2,6 @@ package com.xa.mass.mock.client;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
-import com.xa.mass.base.debug.WorkerControlEventProtocol;
-import com.xa.mass.command.model.CommandResponse;
 import com.xa.mass.mock.command.mock.MockClientState;
 import com.xa.mass.mock.command.mock.MockClientStateRegistry;
 import com.xa.mass.mock.command.runtime.MockCommandRuntime;
@@ -32,7 +30,6 @@ public class MockWorkerWebSocketClient extends WebSocketClient implements MockWo
     private final AtomicInteger reconnectAttempts = new AtomicInteger(0);
     private final String workerId;
     private final MockWorkerTaskFrameHandler taskFrameHandler = new MockWorkerTaskFrameHandler();
-    private final MockWorkerControlFrameHandler controlFrameHandler = new MockWorkerControlFrameHandler();
     private final String taskResultStatus;
 
     private boolean intentionalClose = false;
@@ -91,10 +88,6 @@ public class MockWorkerWebSocketClient extends WebSocketClient implements MockWo
                 logger.debug("[{}] Ignoring inbound canonical task result frame {}", workerId, readString(frame, "messageId"));
                 return;
             }
-            if (isControlFrame(frame)) {
-                handleControlMessage(frame);
-                return;
-            }
             logger.warn("[{}] Ignoring unsupported worker frame shape", workerId);
         } catch (Exception e) {
             logger.error("[{}] Failed to parse or handle message: {}", workerId, e.getMessage(), e);
@@ -113,17 +106,6 @@ public class MockWorkerWebSocketClient extends WebSocketClient implements MockWo
             return;
         }
         sendTaskResponse(plan.responseJson(), plan.messageId(), plan.delayMillis(), plan.disconnectWorkerId());
-    }
-
-    private void handleControlMessage(JsonObject controlMessage) {
-        MockWorkerControlFrameHandler.ControlResponsePlan plan = controlFrameHandler.prepareResponse(controlMessage, workerId);
-        if (plan == null) {
-            return;
-        }
-        send(plan.responseJson());
-        logger.debug("[{}] Sent worker control response for messageId: {}",
-                workerId, readString(controlMessage, WorkerControlEventProtocol.MESSAGE_ID_FIELD));
-        disconnectAfterAckIfRequested(plan.commandResult());
     }
 
     @Override
@@ -233,49 +215,29 @@ public class MockWorkerWebSocketClient extends WebSocketClient implements MockWo
         taskResponseScheduler.schedule(() -> closeTargetWorker(disconnectWorkerId), 100, TimeUnit.MILLISECONDS);
     }
 
-    private void disconnectAfterAckIfRequested(CommandResponse<?> commandResult) {
-        String targetWorkerId = resolveDisconnectWorkerId(commandResult);
-        if (targetWorkerId == null || targetWorkerId.isBlank()) {
-            return;
-        }
-        taskResponseScheduler.schedule(() -> closeTargetWorker(targetWorkerId), 100, TimeUnit.MILLISECONDS);
-    }
-
-    private String resolveDisconnectWorkerId(CommandResponse<?> commandResult) {
-        if (commandResult == null || !commandResult.isSuccess() || !(commandResult.getData() instanceof Map<?, ?> data)) {
-            return null;
-        }
-        Object disconnectAfterAck = data.get("disconnectAfterAck");
-        if (!Boolean.TRUE.equals(disconnectAfterAck)) {
-            return null;
-        }
-        Object disconnectWorkerId = data.get("disconnectWorkerId");
-        return disconnectWorkerId == null ? workerId : String.valueOf(disconnectWorkerId);
-    }
-
     private void closeTargetWorker(String targetWorkerId) {
         if (workerId.equals(targetWorkerId)) {
-            logger.info("[{}] Closing current worker connection after command acknowledgement", workerId);
+            logger.info("[{}] Closing current worker connection after disconnect task result", workerId);
             closeConnection();
             return;
         }
         ClientSessionManager clientSessionManager = MockCommandRuntime.getService(ClientSessionManager.class);
         if (clientSessionManager == null) {
-            logger.warn("[{}] Cannot close target worker {} after ack because ClientSessionManager is not registered",
+            logger.warn("[{}] Cannot close target worker {} after disconnect task result because ClientSessionManager is not registered",
                     workerId, targetWorkerId);
             return;
         }
         MockWorkerClient targetClient = clientSessionManager.getClient(targetWorkerId);
         if (targetClient == null) {
-            logger.warn("[{}] Cannot close target worker {} after ack because client is missing",
+            logger.warn("[{}] Cannot close target worker {} after disconnect task result because client is missing",
                     workerId, targetWorkerId);
             return;
         }
-        logger.info("[{}] Closing target worker {} after command acknowledgement", workerId, targetWorkerId);
+        logger.info("[{}] Closing target worker {} after disconnect task result", workerId, targetWorkerId);
         try {
             targetClient.disconnect();
         } catch (Exception e) {
-            logger.warn("[{}] Failed to close target worker {} after ack: {}", workerId, targetWorkerId, e.getMessage());
+            logger.warn("[{}] Failed to close target worker {} after disconnect task result: {}", workerId, targetWorkerId, e.getMessage());
         }
     }
 
@@ -305,12 +267,6 @@ public class MockWorkerWebSocketClient extends WebSocketClient implements MockWo
     @Override
     public void sendMessage(String message) throws Exception {
         send(message);
-    }
-
-    private boolean isControlFrame(JsonObject frame) {
-        return readString(frame, WorkerControlEventProtocol.EVENT_CODE_FIELD) != null
-                && !taskFrameHandler.isTaskDispatchFrame(frame)
-                && !taskFrameHandler.isTaskResultFrame(frame);
     }
 
     private String readString(JsonObject object, String field) {

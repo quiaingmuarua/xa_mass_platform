@@ -6,8 +6,6 @@ import com.xa.mass.mock.MockApplicationSpringBootApp;
 import com.xa.mass.mock.e2e.support.AbstractMockE2eTest;
 import com.xa.mass.api.internal.SdkCredentialAuthSupport;
 import com.xa.mass.sdk.MassSdkApplication;
-import com.xa.mass.sdk.auth.SubmitterRegistration;
-import com.xa.mass.sdk.auth.TaskSubmitterContext;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -55,19 +53,13 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractMockE2eTest {
     void externalWorkerPollingApiCompletesTaskEndToEnd() throws Exception {
         String workerId = "node-worker-api-001";
         String credential = "node-worker-key";
+        String submitterCredential = "crawler-submitter-key";
         app.replaceDefaultRules(List.of(
                 rule("crawler-online-project", "isWorkerAvailable == true && isWorkerLocked == false && supportsProject == true"),
                 rule("crawler-context-routing", "isWorkerContextAllocatable == true && workerContextMatchesRoutingCode == true")
         ));
-        app.registerSubmitter(SubmitterRegistration.builder()
-                .principalId(workerId)
-                .credential(credential)
-                .permissions(List.of(TaskSubmitterContext.EXTERNAL_WORKER_PERMISSION))
-                .projectScopes(List.of("crawlerApp"))
-                .eventScopes(List.of("crawler.fetch-page"))
-                .attributes(Map.of("workerId", workerId))
-                .build());
         HttpHeaders workerHeaders = sdkCredentialHeaders(credential);
+        HttpHeaders submitterHeaders = sdkCredentialHeaders(submitterCredential);
 
         Map<String, Object> registerResponse = exchange("/worker-api/workers/register", HttpMethod.POST, Map.of(
                 "workerId", workerId,
@@ -108,7 +100,7 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractMockE2eTest {
         createBody.put("sharedConfig", Map.of("routingCode", "us"));
         createBody.put("inputs", List.of(Map.of("url", "https://example.test/page-1")));
         createBody.put("batchSize", 1);
-        Map<String, Object> createResponse = exchange("/status/api/tasks", HttpMethod.POST, createBody);
+        Map<String, Object> createResponse = exchange("/status/api/tasks", HttpMethod.POST, createBody, submitterHeaders);
         assertApiOk(createResponse);
         String taskId = String.valueOf(responseData(createResponse).get("taskId"));
 

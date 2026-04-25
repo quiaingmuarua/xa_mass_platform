@@ -3,20 +3,23 @@ package com.xa.mass.mock.e2e.support;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.nio.file.Files;
 import java.net.URI;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Duration;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 
 /**
  * Launches an external Node.js worker process for cross-language black-box E2E tests.
  *
- * <p>The worker process speaks only the public WebSocket transport protocol and has
- * no direct access to in-JVM helper classes or runtime objects.
+ * <p>The worker process speaks only public repo entry scripts and has no direct
+ * access to in-JVM helper classes or runtime objects.
  */
 public final class ExternalNodeWorkerProcess implements AutoCloseable {
 
@@ -37,15 +40,26 @@ public final class ExternalNodeWorkerProcess implements AutoCloseable {
         Objects.requireNonNull(workerId, "workerId");
         Objects.requireNonNull(wsUri, "wsUri");
 
-        String nodeBin = resolveNodeBinary();
-        Path scriptPath = resolveScriptPath("node/node_ws_worker.mjs");
+        return startClasspathScript("node/node_ws_worker.mjs", Map.of(
+                "WORKER_ID", workerId,
+                "WS_URL", wsUri.toString()
+        ));
+    }
 
-        ProcessBuilder processBuilder = new ProcessBuilder(nodeBin, scriptPath.toString());
-        processBuilder.redirectErrorStream(true);
-        processBuilder.environment().put("WORKER_ID", workerId);
-        processBuilder.environment().put("WS_URL", wsUri.toString());
+    public static ExternalNodeWorkerProcess startPollingExample(String baseUrl,
+                                                                String workerId,
+                                                                String workerKey) throws Exception {
+        Objects.requireNonNull(baseUrl, "baseUrl");
+        Objects.requireNonNull(workerId, "workerId");
+        Objects.requireNonNull(workerKey, "workerKey");
 
-        return new ExternalNodeWorkerProcess(processBuilder.start());
+        return startRepoScript("examples/external-worker/node/polling_worker.mjs", Map.of(
+                "MASS_BASE_URL", baseUrl,
+                "MASS_WORKER_ID", workerId,
+                "MASS_WORKER_KEY", workerKey,
+                "MASS_POLL_INTERVAL_MS", "200",
+                "MASS_HEARTBEAT_INTERVAL_MS", "1000"
+        ));
     }
 
     public boolean isAlive() {
@@ -102,6 +116,27 @@ public final class ExternalNodeWorkerProcess implements AutoCloseable {
         outputPump.join(DEFAULT_SHUTDOWN_TIMEOUT.toMillis());
     }
 
+    private static ExternalNodeWorkerProcess startClasspathScript(String classpathLocation,
+                                                                  Map<String, String> environment) throws Exception {
+        return startProcess(resolveScriptPath(classpathLocation), environment);
+    }
+
+    private static ExternalNodeWorkerProcess startRepoScript(String repoRelativePath,
+                                                             Map<String, String> environment) throws Exception {
+        return startProcess(resolveRepoFile(repoRelativePath), environment);
+    }
+
+    private static ExternalNodeWorkerProcess startProcess(Path scriptPath,
+                                                          Map<String, String> environment) throws Exception {
+        String nodeBin = resolveNodeBinary();
+        ProcessBuilder processBuilder = new ProcessBuilder(nodeBin, scriptPath.toString());
+        processBuilder.redirectErrorStream(true);
+        if (environment != null && !environment.isEmpty()) {
+            processBuilder.environment().putAll(new LinkedHashMap<>(environment));
+        }
+        return new ExternalNodeWorkerProcess(processBuilder.start());
+    }
+
     private static String resolveNodeBinary() {
         String property = System.getProperty("mass.test.nodeBin");
         if (property != null && !property.isBlank()) {
@@ -112,6 +147,18 @@ public final class ExternalNodeWorkerProcess implements AutoCloseable {
             return env;
         }
         return "node";
+    }
+
+    private static Path resolveRepoFile(String repoRelativePath) {
+        Path current = Paths.get("").toAbsolutePath();
+        for (Path cursor = current; cursor != null; cursor = cursor.getParent()) {
+            Path candidate = cursor.resolve(repoRelativePath);
+            if (Files.exists(cursor.resolve("pom.xml")) && Files.exists(candidate)) {
+                return candidate;
+            }
+        }
+        throw new IllegalStateException("Repo script not found: " + repoRelativePath
+                + " from cwd=" + current);
     }
 
     private static Path resolveScriptPath(String classpathLocation) throws Exception {

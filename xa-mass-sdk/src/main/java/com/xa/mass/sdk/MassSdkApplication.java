@@ -36,7 +36,6 @@ import com.xa.mass.sdk.model.*;
 import com.xa.mass.sdk.worker.PullWorkerSession;
 import com.xa.mass.starter.MassApplication;
 import com.xa.mass.starter.MassEngine;
-import com.xa.mass.starter.GatewayRuntimePorts;
 import com.xa.mass.transport.WorkerEndpointInspector;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.WorkerEndpointSnapshot;
@@ -103,11 +102,6 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
         registerEnabledCatalogProjectsIntoCore();
         registerCatalogEventDefinitions();
         registerControlPlaneEventHandlers();
-        delegate.configureGatewayRuntime(
-                GatewayRuntimePorts.defaults().withControlEventRequestHandler(
-                        this::dispatchEvent
-                )
-        );
     }
 
     public void start() {

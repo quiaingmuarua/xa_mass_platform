@@ -107,9 +107,7 @@ class CrawlerPullWorkerSdkRegistrationIntegrationTest extends AbstractMockE2eTes
             TaskDispatchItem item = items.get(0);
             assertEquals(task.getTid(), item.getTaskId());
             assertEquals(workerId, item.getWorkerId());
-            assertEquals("json", item.getInput().get("type"));
-            assertTrue(item.getInput().get("data") instanceof Map);
-            assertEquals("https://example.test/page-1", ((Map<?, ?>) item.getInput().get("data")).get("url"));
+            assertEquals("https://example.test/page-1", item.getInput().get("url"));
 
             assertTrue(session.submitResult(
                     item,

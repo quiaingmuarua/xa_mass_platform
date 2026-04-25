@@ -40,7 +40,7 @@ For verified runtime behavior and recommended startup, use [VERIFIED_RUNBOOK.md]
 - `Task.intakeStatus` is the active append-window lifecycle truth; `openEnded` is only the create/request projection.
 - `TaskMsg.latestAttemptWorkerId`, `latestAttemptWorkerContextId`, and `latestAttemptBatchId` are latest-attempt projections of `TaskMsgAttempt`.
 - Worker/gateway callbacks must resolve a unique active `TaskMsgAttempt`; the runtime no longer synthesizes legacy attempts for result write-back.
-- The current WebSocket-adapter surface uses canonical root-level task-dispatch/task-result frames plus root-level event-first control frames, while worker identity is established at handshake time; these adapter semantics are not API capability truth.
+- The current WebSocket-adapter surface uses canonical root-level task-dispatch/task-result frames, while worker identity is established at handshake time; these adapter semantics are not API capability truth.
 - `/status/api/workers` and `/sdk/meta/worker-capabilities` are the current joined worker capability read models: SDK registration remains capability truth, session/endpoint facts come from the transport layer, and the response joins them by `workerId`.
 
 ## 1.1 Event Control Plane Notes
@@ -48,7 +48,7 @@ For verified runtime behavior and recommended startup, use [VERIFIED_RUNBOOK.md]
 - Stable event invocation contract: `EventRequest`, `EventResponse`, and `EventPrincipal`.
 - Control-plane authorization is event-centric and currently intersects client and user allow-list scope.
 - `EventDefinition.code` is the event/capability identity used by dispatch, catalog reads, and permission checks; `project` remains scope metadata only.
-- Task-backed business events enter through the SDK event path and normalize to task creation; runtime control events are handled directly by the embedded event runtime.
+- Task-backed business events enter through the SDK event path and normalize to task creation; direct runtime events are handled inside the embedded SDK runtime rather than through gateway/WebSocket protocol frames.
 - Built-in runtime control events are also registered into the SDK metadata catalog so metadata and dispatch stay aligned.
 - Manual worker debug is task-backed. Use `POST /status/api/tasks` with `eventCode` plus `sharedConfig.targetWorkerId` when the task must target one worker.
 
@@ -64,6 +64,7 @@ For verified runtime behavior and recommended startup, use [VERIFIED_RUNBOOK.md]
   - registration requests are still constrained by credential `eventScopes` and `projectScopes`
 - External workers receive `TaskDispatchItem` payloads, execute locally by `eventCode`, and submit `TaskResultReport`.
 - External workers do not receive direct business/control messages outside normal task lifecycle dispatch.
+- For a runnable local example, use [EXTERNAL_WORKER_QUICKSTART.md](./EXTERNAL_WORKER_QUICKSTART.md).
 
 ## 2. SDK Metadata API
 
@@ -792,6 +793,8 @@ Response shape:
 
 External polling workers are the mainline integration path for non-Java runtimes such as Node, Python, or Go.
 
+For a full local dev walkthrough, including demo credentials and a runnable Node worker, use [EXTERNAL_WORKER_QUICKSTART.md](./EXTERNAL_WORKER_QUICKSTART.md).
+
 ### 8.1 Register External Worker
 
 - Method: `POST`
@@ -876,7 +879,8 @@ Response notes:
 
 - `data.items` is a `TaskDispatchItem[]`
 - `eventCode` is the worker handler identity
-- `input` is the per-item payload
+- `input` is the per-item logical payload
+- worker transports must not leak SDK-internal wrapper shapes such as `{type,data}` into `input`
 - `sharedConfig` is the task-level shared payload
 - caller must authenticate with an SDK credential bound to the path `workerId`
 

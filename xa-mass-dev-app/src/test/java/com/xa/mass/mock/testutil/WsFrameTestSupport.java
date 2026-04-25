@@ -2,7 +2,6 @@ package com.xa.mass.mock.testutil;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
-import com.xa.mass.base.debug.WorkerControlEventProtocol;
 
 import java.util.Map;
 
@@ -32,10 +31,10 @@ public final class WsFrameTestSupport {
                                            String eventCode,
                                            JsonObject input) {
         JsonObject frame = new JsonObject();
-        frame.addProperty(WorkerControlEventProtocol.MESSAGE_ID_FIELD, messageId);
-        frame.addProperty(WorkerControlEventProtocol.WORKER_ID_FIELD, workerId);
-        frame.addProperty(WorkerControlEventProtocol.PROJECT_FIELD, project);
-        frame.addProperty(WorkerControlEventProtocol.EVENT_CODE_FIELD, eventCode);
+        frame.addProperty("messageId", messageId);
+        frame.addProperty("workerId", workerId);
+        frame.addProperty("project", project);
+        frame.addProperty("eventCode", eventCode);
         frame.addProperty("taskId", taskId);
         frame.addProperty("taskName", "mock-task");
         frame.addProperty("retryCount", 0);
@@ -80,38 +79,11 @@ public final class WsFrameTestSupport {
         return GSON.toJson(frame);
     }
 
-    public static String buildControlEventRequest(String messageId,
-                                                  String project,
-                                                  String workerId,
-                                                  String eventCode,
-                                                  String requestId,
-                                                  JsonObject eventPayload) {
-        JsonObject frame = new JsonObject();
-        frame.addProperty(WorkerControlEventProtocol.MESSAGE_ID_FIELD, messageId);
-        frame.addProperty(WorkerControlEventProtocol.RESPONSE_FIELD, false);
-        frame.addProperty(WorkerControlEventProtocol.WORKER_ID_FIELD, workerId);
-        frame.addProperty(WorkerControlEventProtocol.PROJECT_FIELD, project);
-        frame.addProperty(WorkerControlEventProtocol.EVENT_CODE_FIELD, eventCode);
-        if (requestId != null) {
-            frame.addProperty(WorkerControlEventProtocol.REQUEST_ID_FIELD, requestId);
-        }
-        frame.add(WorkerControlEventProtocol.HEADERS_FIELD, new JsonObject());
-        frame.add(WorkerControlEventProtocol.PAYLOAD_FIELD, eventPayload != null ? eventPayload : new JsonObject());
-        frame.add(WorkerControlEventProtocol.PRINCIPAL_FIELD, new JsonObject());
-        return GSON.toJson(frame);
-    }
-
     public static boolean isTask(JsonObject frame) {
         return frame != null
                 && readString(frame, "taskId") != null
                 && !isResponse(frame)
                 && !hasBoolean(frame, "success");
-    }
-
-    public static boolean isControl(JsonObject frame) {
-        return frame != null
-                && readString(frame, WorkerControlEventProtocol.EVENT_CODE_FIELD) != null
-                && readString(frame, "taskId") == null;
     }
 
     public static boolean isResponse(JsonObject frame) {
@@ -122,7 +94,7 @@ public final class WsFrameTestSupport {
     }
 
     public static String messageId(JsonObject frame) {
-        return readString(frame, WorkerControlEventProtocol.MESSAGE_ID_FIELD);
+        return readString(frame, "messageId");
     }
 
     public static String project(JsonObject frame) {
@@ -130,9 +102,6 @@ public final class WsFrameTestSupport {
     }
 
     public static JsonObject payload(JsonObject frame) {
-        if (frame != null && frame.has(WorkerControlEventProtocol.PAYLOAD_FIELD) && frame.get(WorkerControlEventProtocol.PAYLOAD_FIELD).isJsonObject()) {
-            return frame.getAsJsonObject(WorkerControlEventProtocol.PAYLOAD_FIELD);
-        }
         if (frame != null && frame.has("input") && frame.get("input").isJsonObject()) {
             return frame.getAsJsonObject("input");
         }
@@ -143,7 +112,7 @@ public final class WsFrameTestSupport {
     }
 
     public static String workerId(JsonObject frame) {
-        return readString(frame, WorkerControlEventProtocol.WORKER_ID_FIELD);
+        return readString(frame, "workerId");
     }
 
     public static String taskId(JsonObject frame) {

@@ -2,40 +2,34 @@ package com.xa.mass.gateway.queue;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
-import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonSyntaxException;
 import com.google.gson.reflect.TypeToken;
-import com.xa.mass.base.debug.WorkerControlEventProtocol;
-import com.xa.mass.sdk.event.EventPrincipal;
-import com.xa.mass.sdk.event.EventRequest;
-import com.xa.mass.sdk.event.EventResponse;
+import com.xa.mass.gateway.util.GatewayStringValues;
 import com.xa.mass.transport.model.TaskDispatchItem;
 import com.xa.mass.transport.model.TaskResultReport;
-import com.xa.mass.gateway.util.GatewayStringValues;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.lang.reflect.Type;
-import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.UUID;
 
 /**
  * Current WebSocket adapter frame codec.
  *
- * <p>This type owns the remaining WebSocket wire shapes for the current
- * gateway adapter: canonical task/control frames for the current WebSocket
- * runtime. It is adapter-local and must not be treated as a platform
- * capability contract.
+ * <p>This type owns only the remaining WebSocket task-frame shell for the
+ * current gateway runtime. It is adapter-local and must not be treated as a
+ * platform capability contract.
  */
 public final class WebSocketTransportFrameCodec {
 
     private static final Logger logger = LoggerFactory.getLogger(WebSocketTransportFrameCodec.class);
+    private static final String MESSAGE_ID_FIELD = "messageId";
+    private static final String WORKER_ID_FIELD = "workerId";
+    private static final String PROJECT_FIELD = "project";
+    private static final String EVENT_CODE_FIELD = "eventCode";
     private static final Type MAP_TYPE = new TypeToken<Map<String, Object>>() {
-    }.getType();
-    private static final Type STRING_MAP_TYPE = new TypeToken<Map<String, String>>() {
     }.getType();
 
     private final Gson gson;
@@ -59,52 +53,24 @@ public final class WebSocketTransportFrameCodec {
     }
 
     public String extractWorkerId(JsonObject frame) {
-        return readString(frame, WorkerControlEventProtocol.WORKER_ID_FIELD);
+        return readString(frame, WORKER_ID_FIELD);
     }
 
     public String extractProject(JsonObject frame) {
-        return readString(frame, WorkerControlEventProtocol.PROJECT_FIELD);
+        return readString(frame, PROJECT_FIELD);
     }
 
     public String extractMessageId(JsonObject frame) {
-        return readString(frame, WorkerControlEventProtocol.MESSAGE_ID_FIELD);
+        return readString(frame, MESSAGE_ID_FIELD);
     }
 
     public String extractEventCode(JsonObject frame) {
-        if (frame == null) {
-            return null;
-        }
-        String rootEventCode = readString(frame, WorkerControlEventProtocol.EVENT_CODE_FIELD);
-        if (rootEventCode != null) {
-            return rootEventCode;
-        }
-        JsonObject payload = extractPayload(frame);
-        return readString(payload, WorkerControlEventProtocol.EVENT_CODE_FIELD);
-    }
-
-    public JsonObject extractPayload(JsonObject frame) {
-        return readJsonObject(frame, WorkerControlEventProtocol.PAYLOAD_FIELD);
-    }
-
-    public JsonObject extractControlResponseData(JsonObject frame) {
-        return readJsonObject(frame, WorkerControlEventProtocol.DATA_FIELD);
-    }
-
-    public boolean isEventFirstControlRequest(JsonObject frame) {
-        return frame != null
-                && !isResponse(frame)
-                && readString(frame, WorkerControlEventProtocol.EVENT_CODE_FIELD) != null;
-    }
-
-    public boolean isEventFirstControlResponse(JsonObject frame) {
-        return frame != null
-                && isResponse(frame)
-                && readString(frame, WorkerControlEventProtocol.EVENT_CODE_FIELD) != null;
+        return readString(frame, EVENT_CODE_FIELD);
     }
 
     public boolean isCanonicalTaskResult(JsonObject frame) {
         return frame != null
-                && readString(frame, WorkerControlEventProtocol.EVENT_CODE_FIELD) == null
+                && readString(frame, EVENT_CODE_FIELD) == null
                 && readString(frame, "taskId") != null
                 && extractMessageId(frame) != null
                 && hasBoolean(frame, "success");
@@ -120,13 +86,13 @@ public final class WebSocketTransportFrameCodec {
 
     public String encodeCanonicalTaskDispatch(TaskDispatchItem item) {
         JsonObject frame = new JsonObject();
-        frame.addProperty(WorkerControlEventProtocol.MESSAGE_ID_FIELD, item.getMessageId());
-        frame.addProperty(WorkerControlEventProtocol.WORKER_ID_FIELD, item.getWorkerId());
+        frame.addProperty(MESSAGE_ID_FIELD, item.getMessageId());
+        frame.addProperty(WORKER_ID_FIELD, item.getWorkerId());
         if (item.getProject() != null) {
-            frame.addProperty(WorkerControlEventProtocol.PROJECT_FIELD, item.getProject());
+            frame.addProperty(PROJECT_FIELD, item.getProject());
         }
         if (item.getEventCode() != null) {
-            frame.addProperty(WorkerControlEventProtocol.EVENT_CODE_FIELD, item.getEventCode());
+            frame.addProperty(EVENT_CODE_FIELD, item.getEventCode());
         }
         frame.addProperty("taskId", item.getTaskId());
         if (item.getTaskName() != null) {
@@ -174,72 +140,13 @@ public final class WebSocketTransportFrameCodec {
         );
     }
 
-    public EventRequest decodeControlEventRequest(JsonObject frame) {
-        JsonObject headersObject = readJsonObject(frame, WorkerControlEventProtocol.HEADERS_FIELD);
-        JsonObject payloadObject = readJsonObject(frame, WorkerControlEventProtocol.PAYLOAD_FIELD);
-        return EventRequest.builder()
-                .event(readString(frame, WorkerControlEventProtocol.EVENT_CODE_FIELD))
-                .project(extractProject(frame))
-                .requestId(GatewayStringValues.firstNonBlank(
-                        readString(frame, WorkerControlEventProtocol.REQUEST_ID_FIELD),
-                        extractMessageId(frame)
-                ))
-                .headers(gson.fromJson(headersObject, STRING_MAP_TYPE))
-                .payload(gson.fromJson(payloadObject, MAP_TYPE))
-                .build();
-    }
-
-    public EventPrincipal decodeControlEventPrincipal(JsonObject frame) {
-        JsonObject principalObject = readJsonObject(frame, WorkerControlEventProtocol.PRINCIPAL_FIELD);
-        return EventPrincipal.builder()
-                .clientId(readString(principalObject, WorkerControlEventProtocol.CLIENT_ID_FIELD))
-                .userId(readString(principalObject, WorkerControlEventProtocol.USER_ID_FIELD))
-                .build();
-    }
-
-    public String encodeControlEventResponse(JsonObject requestFrame, EventResponse response) {
-        JsonObject reply = new JsonObject();
-        reply.addProperty(WorkerControlEventProtocol.MESSAGE_ID_FIELD, UUID.randomUUID().toString());
-        reply.addProperty(WorkerControlEventProtocol.RESPONSE_FIELD, true);
-        String workerId = extractWorkerId(requestFrame);
-        if (workerId != null) {
-            reply.addProperty(WorkerControlEventProtocol.WORKER_ID_FIELD, workerId);
-        }
-        String project = extractProject(requestFrame);
-        if (project != null) {
-            reply.addProperty(WorkerControlEventProtocol.PROJECT_FIELD, project);
-        }
-        String eventCode = extractEventCode(requestFrame);
-        if (eventCode != null) {
-            reply.addProperty(WorkerControlEventProtocol.EVENT_CODE_FIELD, eventCode);
-        }
-        String requestId = GatewayStringValues.firstNonBlank(
-                response != null ? response.getRequestId() : null,
-                readString(requestFrame, WorkerControlEventProtocol.REQUEST_ID_FIELD)
-        );
-        if (requestId != null) {
-            reply.addProperty(WorkerControlEventProtocol.REQUEST_ID_FIELD, requestId);
-        }
-        reply.addProperty(WorkerControlEventProtocol.SUCCESS_FIELD, response != null && response.isSuccess());
-        if (response != null && response.getCode() != null) {
-            reply.addProperty(WorkerControlEventProtocol.CODE_FIELD, response.getCode());
-        }
-        if (response != null && response.getMessage() != null) {
-            reply.addProperty(WorkerControlEventProtocol.MESSAGE_FIELD, response.getMessage());
-        }
-        reply.add(WorkerControlEventProtocol.DATA_FIELD, gson.toJsonTree(response != null ? response.getData() : null));
-        return gson.toJson(reply);
-    }
-
     public Gson getGson() {
         return gson;
     }
 
     private boolean isResponse(JsonObject frame) {
-        return frame != null
-                && frame.has(WorkerControlEventProtocol.RESPONSE_FIELD)
-                && !frame.get(WorkerControlEventProtocol.RESPONSE_FIELD).isJsonNull()
-                && frame.get(WorkerControlEventProtocol.RESPONSE_FIELD).getAsBoolean();
+        Boolean response = readBoolean(frame, "response");
+        return Boolean.TRUE.equals(response);
     }
 
     private Boolean readBoolean(JsonObject object, String field) {
@@ -276,5 +183,4 @@ public final class WebSocketTransportFrameCodec {
             return null;
         }
     }
-
 }

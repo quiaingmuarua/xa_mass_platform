@@ -40,7 +40,6 @@ public class MassApplication {
     private final MassEventRuntime eventRuntime = new InMemoryMassEventRuntime();
 
     private final MassEngine engine;
-    private GatewayRuntimePorts gatewayRuntimePorts = GatewayRuntimePorts.defaults();
     private WorkerEndpointRegistry endpointRegistry;
     private MassGateway massGateway;
     private DispatchRuntimeContext dispatcherContext;
@@ -153,15 +152,12 @@ public class MassApplication {
                 );
                 taskMsgDispatchListener = transportRuntimeRegistry.createDispatchListener();
             }
-            GatewayRuntimePorts ports = gatewayRuntimePorts != null ? gatewayRuntimePorts : GatewayRuntimePorts.defaults();
             dispatcherContext = new DispatcherContext(
                     messageTransporter,
                     endpointRegistry,
                     frameCodec,
                     taskResultIngestChannel,
-                    systemEventChannel,
-                    ports.controlEventRequestHandler(),
-                    ports.controlEventResponseFrameSink()
+                    systemEventChannel
             );
             logger.info("Dispatcher context created");
 
@@ -256,13 +252,6 @@ public class MassApplication {
 
     public MassEventRuntime getEventRuntime() {
         return eventRuntime;
-    }
-
-    public void configureGatewayRuntime(GatewayRuntimePorts gatewayRuntimePorts) {
-        if (running.get()) {
-            throw new IllegalStateException("Gateway runtime ports must be configured before application start");
-        }
-        this.gatewayRuntimePorts = gatewayRuntimePorts != null ? gatewayRuntimePorts : GatewayRuntimePorts.defaults();
     }
 
     private MassEngine requireConfiguredEngine() {

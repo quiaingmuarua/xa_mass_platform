@@ -53,7 +53,7 @@ public final class MockCommandRoutes {
         registerIfAbsent(CommandDefinition.<JsonObject, Map<String, Object>>builder("mock.disconnect")
                 .handler(MockCommandRoutes::mockDisconnect)
                 .resolver(json -> json)
-                .summary("Disconnect the target worker after the current command acknowledgement is sent.")
+                .summary("Disconnect the target worker after the current disconnect task result is sent.")
                 .suggestedPhases("trigger", "verify")
                 .safeForScenario(true)
                 .build());

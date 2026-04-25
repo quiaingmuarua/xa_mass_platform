@@ -39,7 +39,7 @@ XA Mass is aimed at the shared kernel behind those cases: `stateful worker + cap
 - The platform is scenario-agnostic. It does not define the business itself; it defines who is online, who can accept work, how work is dispatched, how results are collected, and how task state converges.
 - The stable kernel is `Task`, `TaskMsg`, `TaskMsgAttempt`, assignment, result write-back, audit, and terminal policy.
 - The project is library/SDK-first. HTTP pages, demo APIs, and mock runtime surfaces exist to validate the kernel.
-- The current verified adapter path is still `Worker + WorkerContext + WebSocket gateway + mock clients`, but that is now treated as the reference transport adapter rather than the product boundary.
+- One verified realtime adapter path is still `Worker + WorkerContext + WebSocket gateway + mock clients`, but that is now treated as a reference transport adapter rather than the product boundary.
 - Workers can be phone apps, crawlers, LLM agents, IM bots, or other long-lived executors.
 
 ## Current Mainline Goal
@@ -111,8 +111,7 @@ Primary endpoints:
 - `xa-mass-transport-api`: transport-neutral runtime SPI for task dispatch, result ingest, system events, transport servers, and worker endpoint registries
 - `xa-mass-web`: REST controllers and the backend-hosted control console shell
 - `xa-mass-engine`: task state machine, assignment, result handling, and strategy extension points
-- `xa-mass-gateway`: current WebSocket transport adapter plus dispatch runtime
-- gateway tuple routing such as `msgType + subMsgType` is a protocol compatibility seam only; do not treat it as the capability model
+- `xa-mass-gateway`: current WebSocket task transport adapter plus dispatch runtime
 - `xa-mass-core`: shared models and infrastructure
 
 Build boundary note:
@@ -184,7 +183,9 @@ Third-party worker note:
 - `/worker-api` requires an SDK credential whose permissions include `worker:poll` and whose attributes bind `workerId`
 - external workers register capability through `eventBindings`, not gateway frame types
 - external workers receive `TaskDispatchItem`, execute locally by `eventCode`, and submit `TaskResultReport`
+- `TaskDispatchItem.input` is the logical per-item payload; transport does not expose SDK-internal wrapper shapes such as `{type,data}`
 - external workers do not receive direct business/control events outside the task lifecycle
+- a runnable Node example and local verification path live in [`doc/EXTERNAL_WORKER_QUICKSTART.md`](./doc/EXTERNAL_WORKER_QUICKSTART.md) and [`examples/external-worker/node/polling_worker.mjs`](./examples/external-worker/node/polling_worker.mjs)
 
 Module boundary note:
 

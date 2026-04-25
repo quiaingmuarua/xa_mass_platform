@@ -1,7 +1,6 @@
 package com.xa.mass.mock.client;
 
 import com.google.gson.JsonObject;
-import com.xa.mass.base.debug.WorkerControlEventProtocol;
 import com.xa.mass.mock.command.mock.MockClientState;
 import com.xa.mass.mock.command.mock.MockClientStateRegistry;
 import com.xa.mass.mock.command.runtime.MockCommandRuntime;
@@ -120,7 +119,7 @@ class MockWorkerWebSocketClientTest {
     }
 
     @Test
-    void legacyTaskFrameWithoutCanonicalMessageIdIsIgnored() {
+    void msgIdOnlyTaskFrameIsIgnored() {
         CapturingMockWorkerClient client = new CapturingMockWorkerClient("worker-test");
         JsonObject frame = new JsonObject();
         frame.addProperty("msgId", "legacy-1");
@@ -132,23 +131,6 @@ class MockWorkerWebSocketClientTest {
         client.onMessage(frame.toString());
 
         assertTrue(client.sentMessages.isEmpty());
-    }
-
-    @Test
-    void mockDisconnectClosesClientAfterAck() throws Exception {
-        CapturingMockWorkerClient client = new CapturingMockWorkerClient("worker-test");
-        clientSessionManager.addClient(client);
-
-        client.onMessage(eventControlMessage("worker-test", "mock.disconnect"));
-
-        assertTrue(client.awaitSentCount(1, 1000L));
-        JsonObject response = WsFrameTestSupport.parse(client.sentMessages.get(0));
-        assertEquals("mock.disconnect", response.get(WorkerControlEventProtocol.EVENT_CODE_FIELD).getAsString());
-        assertTrue(response.get(WorkerControlEventProtocol.RESPONSE_FIELD).getAsBoolean());
-        JsonObject data = response.getAsJsonObject(WorkerControlEventProtocol.DATA_FIELD);
-        assertEquals("control-1", data.get("replyToMessageId").getAsString());
-        assertTrue(client.awaitClosed(1000L));
-        assertFalse(client.isOpen());
     }
 
     @Test
@@ -213,19 +195,6 @@ class MockWorkerWebSocketClientTest {
             return raw;
         }
         return WsFrameTestSupport.buildTaskResult("msg-1", "demoApp", "worker-test", "task-1", "SUCCESS", "prebuilt");
-    }
-
-    private String eventControlMessage(String workerId, String event) {
-        JsonObject eventPayload = new JsonObject();
-        eventPayload.addProperty("workerId", workerId);
-        return WsFrameTestSupport.buildControlEventRequest(
-                "control-1",
-                "demoApp",
-                workerId,
-                event,
-                "debug-request-1",
-                eventPayload
-        );
     }
 
     private static class CapturingMockWorkerClient extends MockWorkerWebSocketClient {

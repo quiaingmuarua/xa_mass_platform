@@ -97,7 +97,7 @@ Current canonical boundaries:
 - gateway compatibility boundary
   - WebSocket task data-plane now uses canonical root-level task dispatch/result frames
   - WebSocket worker identity is established at handshake time; heartbeat is no longer an application JSON frame
-  - control/debug traffic now uses a root-level event-first frame keyed by `eventCode`
+  - manual worker debug is task-backed through `POST /status/api/tasks` plus `Task.sharedConfig.targetWorkerId`; gateway does not carry a separate control/debug protocol
   - any remaining legacy transport fields are diagnostics only; they are not business/control capability identity
   - `com.xa.mass.gateway.queue.WebSocketTransportFrameCodec` remains the adapter-local WebSocket shell codec; it is not a platform contract
 

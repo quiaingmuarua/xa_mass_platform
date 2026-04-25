@@ -18,9 +18,9 @@ White-box fixtures are allowed for setup and fault injection, but not as a repla
 
 Current mainline note:
 
-- today the Boot-shell E2E path validates both the current WebSocket adapter and the pull-style worker path
-- pull-style shell coverage is currently represented by `PollingWorkerTaskFlowIntegrationTest`, `CrawlerPullWorkerSdkRegistrationIntegrationTest`, and `TransportChannelWiringIntegrationTest`
-- WebSocket is still the mainline adapter for real push/callback gateway risks, but it is no longer the only accepted shell path
+- today the Boot-shell E2E path validates both the current realtime WebSocket adapter and the pull-style worker path
+- pull-style shell coverage is currently represented by `PollingWorkerTaskFlowIntegrationTest`, `CrawlerPullWorkerSdkRegistrationIntegrationTest`, `ExternalWorkerPollingApiIntegrationTest`, `NodePollingWorkerBlackBoxIntegrationTest`, and `TransportChannelWiringIntegrationTest`
+- WebSocket is still the current realtime adapter for push/callback gateway risks, but it is no longer the only accepted shell path and it is not the external worker mainline
 
 Fixture note:
 
@@ -65,6 +65,7 @@ Worker and context:
 - polling/pull worker path can execute `create -> approve -> dispatch -> result -> terminal` without WebSocket push
 - SDK-created worker resources can register as `OFFLINE`, connect through pull transport, poll work, submit result output, and disconnect back to offline
 - external polling worker API can register a worker/context, mark it online, poll `TaskDispatchItem`, submit `TaskResultReport`, and return offline without using gateway WebSocket frames
+- the runnable Node polling worker example can join through `/worker-api`, surface capability in `/sdk/meta/*`, complete task work, and exit cleanly without using gateway WebSocket frames
 - targeted worker debug runs through normal `create -> approve -> assign -> dispatch -> result -> terminal`
 - fixed-worker debug selection is carried by `Task.sharedConfig.targetWorkerId`, not a separate gateway control path
 - same worker can own multiple contexts without overwrite

@@ -114,7 +114,7 @@ Run the full repository regression:
 Run the focused high-signal subset:
 
 ```bash
-mvn -pl xa-mass-dev-app -am -Dtest=WorkerAttributesTest,WorkerContextAttributesTest,WorkerMatchContextTest,QLExpressRuleEvaluatorTest,RuleBasedTaskWorkerMatchingStrategyTest,TaskApiDelayedWorkerAvailabilityIntegrationTest,TaskApiWorkerContextAttributeRoutingIntegrationTest,TaskApiWorkerWithoutContextIntegrationTest,WorkerControlEventCommandIntegrationTest,WorkerControlEventDisconnectIntegrationTest,ControlConsoleRoutingIntegrationTest,MockRuntimeDataLoaderTest -Dsurefire.failIfNoSpecifiedTests=false test
+mvn -pl xa-mass-dev-app -am -Dtest=WorkerAttributesTest,WorkerContextAttributesTest,WorkerMatchContextTest,QLExpressRuleEvaluatorTest,RuleBasedTaskWorkerMatchingStrategyTest,TaskApiDelayedWorkerAvailabilityIntegrationTest,TaskApiWorkerContextAttributeRoutingIntegrationTest,TaskApiWorkerWithoutContextIntegrationTest,TaskApiTargetedWorkerDebugIntegrationTest,ControlConsoleRoutingIntegrationTest,MockRuntimeDataLoaderTest -Dsurefire.failIfNoSpecifiedTests=false test
 ```
 
 Expected result:
@@ -139,6 +139,7 @@ Assignment and capacity:
 - `TaskApiMinimumWorkerGateIntegrationTest`
 - `TaskApiMultiRoundDispatchIntegrationTest`
 - `NodeWebSocketWorkerBlackBoxIntegrationTest`
+- `NodePollingWorkerBlackBoxIntegrationTest`
 - `TaskApiSingleWorkerReuseIntegrationTest`
 - `TaskApiTerminateReuseIntegrationTest`
 - `TaskApiWorkerContextAttributeRoutingIntegrationTest`
@@ -161,10 +162,9 @@ Control-console shell:
 
 - `ControlConsoleRoutingIntegrationTest`
 
-Worker control side-channel:
+Targeted worker debug tasks:
 
-- `WorkerControlEventCommandIntegrationTest`
-- `WorkerControlEventDisconnectIntegrationTest`
+- `TaskApiTargetedWorkerDebugIntegrationTest`
 
 Important support coverage outside the E2E package:
 
@@ -189,15 +189,16 @@ Important support coverage outside the E2E package:
 - worker-context attribute routing works end to end
 - stateless workers can run tasks that do not require worker-context routing
 - SDK-created pull workers start offline, become online through `pullWorker(...).connect()`, poll work, submit output, and disconnect back offline
-- an external non-JVM WebSocket worker can come online through handshake identity and complete task work through the public HTTP + WebSocket boundaries without using the in-JVM mock worker client
+- a non-JVM realtime adapter client can come online through handshake identity and complete task work through the current HTTP + WebSocket adapter boundary without using the in-JVM mock worker client
 - that external worker can receive canonical root-level task-dispatch frames and write results back through the canonical task-result frame
+- an external non-JVM polling worker can run the repo quickstart script, register through `/worker-api`, surface worker/event capability in `/sdk/meta/*`, complete task work, and shut down cleanly without gateway WebSocket participation
 - the same worker slot can be reused after normal completion and manual termination
 - `minRequiredWorkerCount` is a real `READY -> RUNNING` gate
 - multi-round refill works when `batchSize` is lower than total work-item count
 - `READY` tasks without a current match are retried instead of being orphaned
-- worker control messaging is visible end to end without touching `TaskMsg` lifecycle
-- worker control events can execute `mock.*` commands and return structured control acknowledgements
-- `mock.disconnect` is verified to acknowledge first and then take the worker offline
+- targeted worker debug is visible end to end through normal task creation, assignment, dispatch, result ingest, and terminal closure
+- `mock.*` debug actions execute as normal task work items keyed by `eventCode`
+- `mock.disconnect` is verified to return a normal task result and then take the worker offline
 - task detail exposes `stateValidation` so runtime state audit is observable externally
 - backend-hosted SPA shell routes return the built console shell through the real Spring Boot entry
 - legacy `/status*` and `/config` console aliases redirect to the primary SPA routes instead of serving a separate page system

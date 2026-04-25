@@ -1,8 +1,6 @@
 package com.xa.mass.gateway.dispatcher.context;
 
 import com.xa.mass.base.channel.tranporter.MessageTransporter;
-import com.xa.mass.gateway.dispatcher.port.ControlEventRequestHandler;
-import com.xa.mass.gateway.dispatcher.port.ControlEventResponseFrameSink;
 import com.xa.mass.gateway.queue.OutboundDelivery;
 import com.xa.mass.gateway.queue.WebSocketTransportFrameCodec;
 import com.xa.mass.transport.WorkerEndpointRegistry;
@@ -23,8 +21,4 @@ public interface DispatchRuntimeContext {
     TaskResultIngestChannel getTaskResultIngestChannel();
 
     WorkerSystemEventChannel getSystemEventChannel();
-
-    ControlEventRequestHandler getControlEventRequestHandler();
-
-    ControlEventResponseFrameSink getControlEventResponseFrameSink();
 }

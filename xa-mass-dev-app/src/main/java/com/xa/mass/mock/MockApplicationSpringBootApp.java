@@ -12,6 +12,8 @@ import com.xa.mass.mock.command.runtime.MockCommandRuntime;
 import com.xa.mass.mock.command.tool.ToolCommandRoutes;
 import com.xa.mass.sdk.MassSdk;
 import com.xa.mass.sdk.MassSdkApplication;
+import com.xa.mass.sdk.auth.SubmitterRegistration;
+import com.xa.mass.sdk.auth.TaskSubmitterContext;
 import com.xa.mass.sdk.catalog.*;
 import com.xa.mass.sdk.event.EventResponse;
 import com.xa.mass.sdk.event.EventDefinition;
@@ -39,6 +41,12 @@ public class MockApplicationSpringBootApp {
 
     private static final Logger log = LoggerFactory.getLogger(MockApplicationSpringBootApp.class);
     private static final Gson GSON = new Gson();
+    private static final String DEV_CRAWLER_PROJECT = "crawlerApp";
+    private static final String DEV_CRAWLER_EVENT = "crawler.fetch-page";
+    private static final String DEV_EXTERNAL_WORKER_ID = "node-worker-api-001";
+    private static final String DEV_EXTERNAL_WORKER_KEY = "node-worker-key";
+    private static final String DEV_TASK_SUBMITTER_ID = "crawler-submitter";
+    private static final String DEV_TASK_SUBMITTER_KEY = "crawler-submitter-key";
 
     @Value("${mass.websocket.port:18088}")
     private int massWebSocketPort;
@@ -121,6 +129,7 @@ public class MockApplicationSpringBootApp {
             log.info("Starting internal gateway + engine runtime");
             try {
                 registerDevAppCatalog(app);
+                registerDevAppSubmitters(app);
                 app.start();
                 if (!app.isRunning()) {
                     throw new IllegalStateException("MassApplication failed to start properly");
@@ -148,6 +157,10 @@ public class MockApplicationSpringBootApp {
 
                 LogUtils.clearMdc();
                 log.info("Spring Boot HTTP API is ready");
+                log.info("Dev demo SDK submitters registered: task submitter={} external worker={} workerId={}",
+                        DEV_TASK_SUBMITTER_KEY,
+                        DEV_EXTERNAL_WORKER_KEY,
+                        DEV_EXTERNAL_WORKER_ID);
                 log.info("Full-stack runtime startup complete");
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
@@ -246,6 +259,24 @@ public class MockApplicationSpringBootApp {
                 .name("Crawler")
                 .description("Crawler worker lab project for SDK-created pull worker scenarios.")
                 .eventCodes(List.of("crawler.fetch-page"))
+                .build());
+    }
+
+    private void registerDevAppSubmitters(MassSdkApplication app) {
+        app.registerSubmitter(SubmitterRegistration.builder()
+                .principalId(DEV_TASK_SUBMITTER_ID)
+                .credential(DEV_TASK_SUBMITTER_KEY)
+                .permissions(List.of(TaskSubmitterContext.TASK_CREATE_PERMISSION))
+                .projectScopes(List.of(DEV_CRAWLER_PROJECT))
+                .eventScopes(List.of(DEV_CRAWLER_EVENT))
+                .build());
+        app.registerSubmitter(SubmitterRegistration.builder()
+                .principalId(DEV_EXTERNAL_WORKER_ID)
+                .credential(DEV_EXTERNAL_WORKER_KEY)
+                .permissions(List.of(TaskSubmitterContext.EXTERNAL_WORKER_PERMISSION))
+                .projectScopes(List.of(DEV_CRAWLER_PROJECT))
+                .eventScopes(List.of(DEV_CRAWLER_EVENT))
+                .attributes(Map.of("workerId", DEV_EXTERNAL_WORKER_ID))
                 .build());
     }
 

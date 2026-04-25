@@ -1,15 +1,10 @@
 package com.xa.mass.gateway.dispatcher;
 
 import com.google.gson.JsonObject;
-import com.xa.mass.base.debug.WorkerControlEventProtocol;
 import com.xa.mass.base.exception.CommandException;
 import com.xa.mass.base.exception.ErrorCode;
 import com.xa.mass.base.exception.ValidationException;
 import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
-import com.xa.mass.gateway.queue.OutboundDelivery;
-import com.xa.mass.sdk.event.EventPrincipal;
-import com.xa.mass.sdk.event.EventRequest;
-import com.xa.mass.sdk.event.EventResponse;
 import com.xa.mass.transport.model.TaskResultReport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -17,7 +12,7 @@ import org.slf4j.LoggerFactory;
 import java.util.Objects;
 
 /**
- * Inbound processor for canonical WebSocket task/control frames.
+ * Inbound processor for canonical WebSocket task-result frames.
  */
 public final class GatewayInputProcessor {
     private static final Logger logger = LoggerFactory.getLogger(GatewayInputProcessor.class);
@@ -33,14 +28,6 @@ public final class GatewayInputProcessor {
             JsonObject frame = context.getFrameCodec().parseObject(rawJson);
             if (frame == null) {
                 return true;
-            }
-            String workerId = context.getFrameCodec().extractWorkerId(frame);
-            String traceId = context.getFrameCodec().extractMessageId(frame);
-            if (context.getFrameCodec().isEventFirstControlResponse(frame)) {
-                return processControlEventResponse(rawJson, frame);
-            }
-            if (context.getFrameCodec().isEventFirstControlRequest(frame)) {
-                return processControlEventRequest(frame, workerId, traceId);
             }
             if (context.getFrameCodec().isCanonicalTaskResult(frame)) {
                 return processCanonicalTaskResult(frame);
@@ -66,43 +53,8 @@ public final class GatewayInputProcessor {
         return true;
     }
 
-    private boolean processControlEventRequest(JsonObject frame, String workerId, String traceId) {
-        EventRequest request = context.getFrameCodec().decodeControlEventRequest(frame);
-        EventResponse response;
-        if (context.getControlEventRequestHandler() == null) {
-            response = EventResponse.failure(
-                    "CONTROL_EVENT_UNAVAILABLE",
-                    "control event handler unavailable",
-                    request.getRequestId()
-            );
-        } else {
-            EventPrincipal principal = context.getFrameCodec().decodeControlEventPrincipal(frame);
-            response = context.getControlEventRequestHandler()
-                    .handleControlEventRequest(request, principal);
-        }
-        context.getMessageTransporter().sendOutput(new OutboundDelivery(
-                workerId,
-                context.getFrameCodec().encodeControlEventResponse(frame, response),
-                traceId
-        ));
-        return true;
-    }
-
-    private boolean processControlEventResponse(String rawJson, JsonObject frame) {
-        if (context.getControlEventResponseFrameSink() != null) {
-            context.getControlEventResponseFrameSink().handleControlEventResponse(
-                    rawJson,
-                    context.getFrameCodec().extractWorkerId(frame),
-                    context.getFrameCodec().extractProject(frame),
-                    context.getFrameCodec().extractMessageId(frame),
-                    context.getFrameCodec().extractControlResponseData(frame)
-            );
-        }
-        return true;
-    }
-
     private boolean processUnknownFrame() {
-        logger.warn("No canonical task/control handler found for inbound adapter frame");
+        logger.warn("No canonical task-result handler found for inbound adapter frame");
         return true;
     }
 

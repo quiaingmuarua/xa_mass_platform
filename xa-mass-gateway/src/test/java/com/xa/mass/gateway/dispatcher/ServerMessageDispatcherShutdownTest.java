@@ -27,9 +27,7 @@ class ServerMessageDispatcherShutdownTest {
                 endpointRegistry,
                 new WebSocketTransportFrameCodec(),
                 null,
-                NoopWorkerSystemEventChannel.INSTANCE,
-                null,
-                null
+                NoopWorkerSystemEventChannel.INSTANCE
         );
 
         ServerMessageDispatcher dispatcher = new ServerMessageDispatcher(context);
