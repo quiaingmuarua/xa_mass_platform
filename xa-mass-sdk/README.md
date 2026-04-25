@@ -13,7 +13,8 @@ Stable SDK-facing catalog/auth/model contracts now live in the internal
 `xa-mass-sdk-api` module and are pulled transitively through this artifact.
 Transport-neutral runtime contracts now live in `xa-mass-transport-api`; the
 current bundled gateway-backed realtime transport is still WebSocket-backed,
-but that adapter/bootstrap ownership lives in `xa-mass-gateway`. `xa-mass-sdk`
+but that adapter/bootstrap ownership lives in `xa-mass-transport-websocket`
+with Java packages under `com.xa.mass.gateway.*`. `xa-mass-sdk`
 assembles worker transports through a transport runtime registry/factory seam
 and also supports pull-style workers without server push.
 

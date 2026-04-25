@@ -6,7 +6,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonSyntaxException;
 import com.google.gson.reflect.TypeToken;
-import com.xa.mass.gateway.util.GatewayStringValues;
+import com.xa.mass.gateway.util.WebSocketStringValues;
 import com.xa.mass.transport.model.TaskDispatchItem;
 import com.xa.mass.transport.model.TaskResultReport;
 import org.slf4j.Logger;
@@ -19,7 +19,7 @@ import java.util.Map;
  * Current WebSocket adapter frame codec.
  *
  * <p>This type owns only the remaining WebSocket task-frame shell for the
- * current gateway runtime. It is adapter-local and must not be treated as a
+ * current WebSocket adapter runtime. It is adapter-local and must not be treated as a
  * platform capability contract.
  */
 public final class WebSocketTransportFrameCodec {
@@ -124,7 +124,7 @@ public final class WebSocketTransportFrameCodec {
         if (success == null) {
             throw new IllegalArgumentException("success is required");
         }
-        String detail = GatewayStringValues.firstNonBlank(
+        String detail = WebSocketStringValues.firstNonBlank(
                 readString(frame, "detail"),
                 readString(frame, "message")
         );

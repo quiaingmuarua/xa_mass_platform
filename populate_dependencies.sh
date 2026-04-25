@@ -3,8 +3,20 @@
 # 预下载所有模块依赖，便于离线环境构建
 set -e
 
-MODULES=("." "xa-mass-web" "xa-mass-eventbus" "xa-mass-engine" \ 
-  "xa-mass-gateway" "xa-mass-runtime" "xa-mass-mock")
+MODULES=(
+  "."
+  "xa-mass-web"
+  "xa-mass-core"
+  "transport/api"
+  "transport/polling-adapter"
+  "transport/runtime"
+  "xa-mass-engine"
+  "transport/websocket-adapter"
+  "xa-mass-sdk-api"
+  "xa-mass-sdk"
+  "xa-mass-testing"
+  "xa-mass-dev-app"
+)
 
 for module in "${MODULES[@]}"; do
   echo "Prefetching $module"
@@ -12,6 +24,5 @@ for module in "${MODULES[@]}"; do
 done
 
 echo "Dependencies cached in $HOME/.m2/repository"
-
 
 

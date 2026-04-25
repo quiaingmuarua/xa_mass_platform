@@ -60,7 +60,7 @@
                                     <searchTransitive>false</searchTransitive>
                                     <excludes>
                                         <exclude>com.xa.mass:xa-mass-engine</exclude>
-                                        <exclude>com.xa.mass:xa-mass-gateway</exclude>
+                                        <exclude>com.xa.mass:xa-mass-transport-websocket</exclude>
                                     </excludes>
                                 </bannedDependencies>
                             </rules>

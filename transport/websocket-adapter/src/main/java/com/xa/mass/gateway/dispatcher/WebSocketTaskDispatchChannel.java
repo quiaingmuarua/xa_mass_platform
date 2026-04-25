@@ -11,15 +11,15 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * Gateway-owned task dispatch bridge for the current WebSocket adapter.
+ * WebSocket adapter-owned task dispatch bridge.
  */
-public final class GatewayTaskDispatchChannel implements TaskDispatchChannel {
+public final class WebSocketTaskDispatchChannel implements TaskDispatchChannel {
 
-    private static final Logger logger = LoggerFactory.getLogger(GatewayTaskDispatchChannel.class);
+    private static final Logger logger = LoggerFactory.getLogger(WebSocketTaskDispatchChannel.class);
 
     private final DispatchRuntimeContext context;
 
-    public GatewayTaskDispatchChannel(DispatchRuntimeContext context) {
+    public WebSocketTaskDispatchChannel(DispatchRuntimeContext context) {
         this.context = Objects.requireNonNull(context, "context");
     }
 

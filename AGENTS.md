@@ -105,7 +105,7 @@ Deprecation and pushback:
 - Worker runtime event capability truth is `supportedEventCodes`; `supportedProjects` is only a coarse filter hint.
 - Routing truth comes from explicit rules and worker-context signals, not `workerGroupId`.
 - Keep transport-specific shapes behind `xa-mass-transport-api`; WebSocket payloads must not become kernel truth.
-- Read [doc/GATEWAY_BOUNDARY_BASELINE.md](doc/GATEWAY_BOUNDARY_BASELINE.md) before changing `xa-mass-gateway` or `xa-mass-transport-api`.
+- Read [doc/GATEWAY_BOUNDARY_BASELINE.md](doc/GATEWAY_BOUNDARY_BASELINE.md) before changing `xa-mass-transport-websocket` or `xa-mass-transport-api`.
 - Manual worker debug/control is a side-channel and must not mutate task lifecycle state.
 
 ## 5. Working Defaults

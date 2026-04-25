@@ -1,10 +1,11 @@
-# xa-mass-gateway
+# xa-mass-transport-websocket
 
 ## Role
 
 - WebSocket server and session management
 - inbound dispatch and downstream message publish
 - connection context and protocol handling
+- Java package namespace remains `com.xa.mass.gateway.*`
 
 ## Current Status
 
@@ -25,4 +26,3 @@
   - [`../AGENTS.md`](../AGENTS.md)
   - [`../doc/AGENT_BASELINE.md`](../doc/AGENT_BASELINE.md)
   - [`../doc/VERIFIED_RUNBOOK.md`](../doc/VERIFIED_RUNBOOK.md)
-

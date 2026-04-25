@@ -7,9 +7,9 @@
         <version>0.0.1-SNAPSHOT</version>
         <relativePath>../../pom.xml</relativePath>
     </parent>
-    <artifactId>xa-mass-gateway</artifactId>
+    <artifactId>xa-mass-transport-websocket</artifactId>
     <packaging>jar</packaging>
-    <name>xa-mass-gateway</name>
+    <name>xa-mass-transport-websocket</name>
     <dependencies>
         <dependency>
             <groupId>jakarta.annotation</groupId>

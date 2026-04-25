@@ -11,21 +11,21 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * Gateway-backed realtime worker adapter.
+ * WebSocket-backed realtime worker adapter.
  *
- * <p>The current gateway-backed realtime delivery path is WebSocket-backed.
+ * <p>The current realtime delivery path is WebSocket-backed.
  * This adapter keeps that implementation label adapter-local while runtime
  * transport selection stays on the canonical {@code realtime} identity.
  */
-public final class GatewayRealtimeWorkerAdapter implements WorkerAdapter {
+public final class WebSocketRealtimeWorkerAdapter implements WorkerAdapter {
 
     public static final String PROTOCOL = "websocket";
 
-    private static final Logger logger = LoggerFactory.getLogger(GatewayRealtimeWorkerAdapter.class);
+    private static final Logger logger = LoggerFactory.getLogger(WebSocketRealtimeWorkerAdapter.class);
 
     private final TaskDispatchChannel taskDispatchChannel;
 
-    public GatewayRealtimeWorkerAdapter(TaskDispatchChannel taskDispatchChannel) {
+    public WebSocketRealtimeWorkerAdapter(TaskDispatchChannel taskDispatchChannel) {
         this.taskDispatchChannel = taskDispatchChannel;
     }
 
@@ -47,7 +47,7 @@ public final class GatewayRealtimeWorkerAdapter implements WorkerAdapter {
     @Override
     public void dispatchTaskItems(List<TaskDispatchItem> items) {
         if (taskDispatchChannel == null) {
-            logger.warn("Skip realtime task dispatch because gateway dispatch channel is unavailable");
+            logger.warn("Skip realtime task dispatch because WebSocket dispatch channel is unavailable");
             return;
         }
         if (items == null || items.isEmpty()) {

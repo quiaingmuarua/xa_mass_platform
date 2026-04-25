@@ -6,8 +6,8 @@ import com.xa.mass.command.event.MassEventRuntime;
 import com.xa.mass.engine.listener.TaskMsgDispatchListener;
 import com.xa.mass.engine.rules.RuleDefinition;
 import com.xa.mass.engine.util.LogUtils;
-import com.xa.mass.gateway.dispatcher.GatewayTaskDispatchChannel;
 import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
+import com.xa.mass.gateway.dispatcher.WebSocketTaskDispatchChannel;
 import com.xa.mass.gateway.runtime.GatewayEmbeddedRuntimeSupport;
 import com.xa.mass.gateway.queue.OutboundDelivery;
 import com.xa.mass.sdk.worker.PullWorkerSession;
@@ -154,7 +154,7 @@ public class MassApplication {
                 );
                 logger.info("Dispatcher context refreshed with task result ingest channel");
                 TaskDispatchChannel gatewayTaskDispatchChannel = gatewayConfig.isEnabled()
-                        ? new GatewayTaskDispatchChannel(gatewayRuntimeContext)
+                        ? new WebSocketTaskDispatchChannel(gatewayRuntimeContext)
                         : null;
                 transportRuntimeRegistry = gatewayConfig.resolveWorkerTransportRuntimeFactory().create(
                         new WorkerTransportRuntimeFactoryContext<>(

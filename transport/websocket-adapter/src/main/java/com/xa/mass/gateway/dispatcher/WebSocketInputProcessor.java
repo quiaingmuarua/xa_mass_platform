@@ -14,12 +14,12 @@ import java.util.Objects;
 /**
  * Inbound processor for canonical WebSocket task-result frames.
  */
-public final class GatewayInputProcessor {
-    private static final Logger logger = LoggerFactory.getLogger(GatewayInputProcessor.class);
+public final class WebSocketInputProcessor {
+    private static final Logger logger = LoggerFactory.getLogger(WebSocketInputProcessor.class);
 
     private final DispatchRuntimeContext context;
 
-    public GatewayInputProcessor(DispatchRuntimeContext context) {
+    public WebSocketInputProcessor(DispatchRuntimeContext context) {
         this.context = Objects.requireNonNull(context, "context");
     }
 
@@ -60,16 +60,16 @@ public final class GatewayInputProcessor {
 
     private void logProcessingException(Exception ex) {
         if (ex instanceof ValidationException) {
-            logger.warn("Gateway input validation failed: {}", ex.getMessage());
+            logger.warn("WebSocket input validation failed: {}", ex.getMessage());
             return;
         }
         if (ex instanceof CommandException commandException) {
             ErrorCode code = commandException.getErrorCode();
-            logger.warn("Gateway input command failed: code={}, message={}",
+            logger.warn("WebSocket input command failed: code={}, message={}",
                     code != null ? code.code : "UNKNOWN",
                     commandException.getMessage());
             return;
         }
-        logger.error("Gateway input processing failed", ex);
+        logger.error("WebSocket input processing failed", ex);
     }
 }

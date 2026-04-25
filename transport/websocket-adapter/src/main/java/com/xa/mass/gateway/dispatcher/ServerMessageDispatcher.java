@@ -17,8 +17,8 @@ public class ServerMessageDispatcher {
     private static final int INPUT_LOOP_THREADS = 8;
     private static final int OUTPUT_LANE_THREADS = 8;
     private final DispatchRuntimeContext context;
-    private final GatewayInputProcessor inputProcessor;
-    private final GatewayOutputProcessor outputProcessor;
+    private final WebSocketInputProcessor inputProcessor;
+    private final WebSocketOutputProcessor outputProcessor;
     private final AtomicBoolean running = new AtomicBoolean(false);
     private ExecutorService inputExecutor;
     private ExecutorService outputPollerExecutor;
@@ -26,8 +26,8 @@ public class ServerMessageDispatcher {
 
     public ServerMessageDispatcher(DispatchRuntimeContext context) {
         this.context = context;
-        this.inputProcessor = new GatewayInputProcessor(context);
-        this.outputProcessor = new GatewayOutputProcessor(context);
+        this.inputProcessor = new WebSocketInputProcessor(context);
+        this.outputProcessor = new WebSocketOutputProcessor(context);
     }
 
     public void start() {

@@ -3,7 +3,7 @@ package com.xa.mass.gateway.server;
 import com.google.gson.JsonObject;
 import com.xa.mass.gateway.queue.WebSocketTransportFrameCodec;
 import com.xa.mass.gateway.session.ServerSessionManager;
-import com.xa.mass.gateway.util.GatewayStringValues;
+import com.xa.mass.gateway.util.WebSocketStringValues;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.codec.http.QueryStringDecoder;
@@ -44,7 +44,7 @@ public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWe
                 return;
             }
 
-            String workerId = GatewayStringValues.firstNonBlank(
+            String workerId = WebSocketStringValues.firstNonBlank(
                     frameCodec.extractWorkerId(frame),
                     sessionManager.getWorkerId(ctx.channel())
             );
@@ -133,6 +133,6 @@ public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWe
         if (values == null || values.isEmpty()) {
             return null;
         }
-        return GatewayStringValues.firstNonBlank(values.get(0));
+        return WebSocketStringValues.firstNonBlank(values.get(0));
     }
 }

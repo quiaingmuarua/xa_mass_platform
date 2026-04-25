@@ -5,8 +5,8 @@ Last updated: 2026-04-25
 Purpose:
 
 - keep one platform source of truth
-- keep `xa-mass-gateway` thin
-- `xa-mass-gateway` module sources now live under `transport/websocket-adapter`; this path move does not change artifact or package ownership by itself
+- keep the WebSocket adapter thin
+- the WebSocket adapter module sources live under `transport/websocket-adapter`; current artifact identity is `xa-mass-transport-websocket`, while Java package identity remains `com.xa.mass.gateway.*`
 - keep `xa-mass-transport-api` transport-neutral
 - keep business execution in worker runtime
 - prevent "transport-neutral" changes from becoming renamed WebSocket compatibility layers
@@ -33,7 +33,7 @@ Mainline direction:
 
 - platform responsibilities move up into `engine` / `sdk` / platform services
 - concrete event execution moves down into worker runtime
-- `xa-mass-gateway` stays a WebSocket adapter, not a policy owner
+- `xa-mass-transport-websocket` stays a WebSocket adapter artifact, not a policy owner
 - `xa-mass-transport-api` stays free of hidden WebSocket semantics
 
 ## 2. Reference Anchors
@@ -71,7 +71,7 @@ Hard rules:
 
 ## 4. Gateway Owns
 
-Allowed in `xa-mass-gateway`:
+Allowed in `xa-mass-transport-websocket`:
 
 - WebSocket server lifecycle
 - connection/session registry
@@ -84,7 +84,7 @@ Allowed in `xa-mass-gateway`:
 - transport-level diagnostics
 - bridge from WebSocket task frames into transport-neutral channels
 
-Forbidden in `xa-mass-gateway`:
+Forbidden in `xa-mass-transport-websocket`:
 
 - task lifecycle transitions
 - task result convergence rules
@@ -274,7 +274,7 @@ Gateway/transport changes must preserve:
 
 ## 13. Working Rule
 
-Before changing `xa-mass-gateway` or `xa-mass-transport-api`, answer:
+Before changing `xa-mass-transport-websocket` or `xa-mass-transport-api`, answer:
 
 1. Is this a transport concern or a platform concern?
 2. If it is a platform concern, why is it still in the gateway path?

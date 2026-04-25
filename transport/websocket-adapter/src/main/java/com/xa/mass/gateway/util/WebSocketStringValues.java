@@ -1,8 +1,8 @@
 package com.xa.mass.gateway.util;
 
-public final class GatewayStringValues {
+public final class WebSocketStringValues {
 
-    private GatewayStringValues() {
+    private WebSocketStringValues() {
     }
 
     public static String firstNonBlank(String... values) {

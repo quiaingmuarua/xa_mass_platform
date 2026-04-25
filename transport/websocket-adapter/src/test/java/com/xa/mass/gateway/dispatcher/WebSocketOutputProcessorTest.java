@@ -13,10 +13,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-class GatewayOutputProcessorTest {
+class WebSocketOutputProcessorTest {
 
     private WorkerEndpointRegistry endpointRegistry;
-    private GatewayOutputProcessor outputProcessor;
+    private WebSocketOutputProcessor outputProcessor;
 
     @BeforeEach
     @SuppressWarnings("unchecked")
@@ -30,7 +30,7 @@ class GatewayOutputProcessorTest {
                 null,
                 NoopWorkerSystemEventChannel.INSTANCE
         );
-        outputProcessor = new GatewayOutputProcessor(context);
+        outputProcessor = new WebSocketOutputProcessor(context);
     }
 
     @Test

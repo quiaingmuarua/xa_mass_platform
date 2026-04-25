@@ -21,14 +21,14 @@ Current module set from the root reactor:
 - `xa-mass-transport-polling`
 - `xa-mass-transport-runtime`
 - `xa-mass-engine`
-- `xa-mass-gateway`
+- `xa-mass-transport-websocket`
 - `xa-mass-sdk-api`
 - `xa-mass-web`
 - `xa-mass-sdk`
 - `xa-mass-testing`
 - `xa-mass-dev-app`
 
-`xa-mass-gateway` keeps its artifact/module identity, but its sources now live under `transport/websocket-adapter`.
+The WebSocket adapter artifact is `xa-mass-transport-websocket`; its sources live under `transport/websocket-adapter`, and its Java package namespace remains `com.xa.mass.gateway.*`.
 
 Do not treat removed historical modules or archive/v2 references as missing current code.
 

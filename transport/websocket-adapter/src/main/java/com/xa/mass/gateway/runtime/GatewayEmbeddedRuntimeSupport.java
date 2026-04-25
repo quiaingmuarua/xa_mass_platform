@@ -9,7 +9,7 @@ import com.xa.mass.gateway.queue.WebSocketTransportFrameCodec;
 import com.xa.mass.gateway.server.WebSocketServerImpl;
 import com.xa.mass.gateway.session.EventBusWorkerSystemEventChannel;
 import com.xa.mass.gateway.session.ServerSessionManager;
-import com.xa.mass.gateway.worker.GatewayRealtimeWorkerAdapter;
+import com.xa.mass.gateway.worker.WebSocketRealtimeWorkerAdapter;
 import com.xa.mass.transport.TransportServer;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
@@ -56,7 +56,7 @@ public final class GatewayEmbeddedRuntimeSupport {
     }
 
     public static WorkerAdapter createRealtimeWorkerAdapter(TaskDispatchChannel taskDispatchChannel) {
-        return new GatewayRealtimeWorkerAdapter(taskDispatchChannel);
+        return new WebSocketRealtimeWorkerAdapter(taskDispatchChannel);
     }
 
     public static TransportServer createTransportServer(String endpointPath,

@@ -43,7 +43,7 @@
 
         <!--        <dependency>-->
         <!--            <groupId>com.xa.mass</groupId>-->
-        <!--            <artifactId>xa-mass-gateway</artifactId>-->
+        <!--            <artifactId>xa-mass-transport-websocket</artifactId>-->
         <!--            <version>0.0.1-SNAPSHOT</version>-->
         <!--        </dependency>-->
 
@@ -90,7 +90,7 @@
                                     <searchTransitive>false</searchTransitive>
                                     <excludes>
                                         <exclude>com.xa.mass:xa-mass-engine</exclude>
-                                        <exclude>com.xa.mass:xa-mass-gateway</exclude>
+                                        <exclude>com.xa.mass:xa-mass-transport-websocket</exclude>
                                         <exclude>com.xa.mass:xa-mass-web</exclude>
                                         <exclude>com.xa.mass:xa-mass-sdk</exclude>
                                         <exclude>com.xa.mass:xa-mass-sdk-api</exclude>

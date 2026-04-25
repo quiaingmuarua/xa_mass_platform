@@ -20,13 +20,13 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
-class GatewayInputProcessorTest {
+class WebSocketInputProcessorTest {
 
     private WebSocketTransportFrameCodec codec;
     private DispatcherContext context;
     private MessageTransporter<String, OutboundDelivery> transporter;
     private WorkerEndpointRegistry endpointRegistry;
-    private GatewayInputProcessor inputProcessor;
+    private WebSocketInputProcessor inputProcessor;
 
     @BeforeEach
     @SuppressWarnings("unchecked")
@@ -35,7 +35,7 @@ class GatewayInputProcessorTest {
         transporter = mock(MessageTransporter.class);
         endpointRegistry = mock(WorkerEndpointRegistry.class);
         context = createContext(null);
-        inputProcessor = new GatewayInputProcessor(context);
+        inputProcessor = new WebSocketInputProcessor(context);
     }
 
     @Test
@@ -65,7 +65,7 @@ class GatewayInputProcessorTest {
             capturedReport.set(report);
             return true;
         });
-        inputProcessor = new GatewayInputProcessor(context);
+        inputProcessor = new WebSocketInputProcessor(context);
 
         boolean result = inputProcessor.process(canonicalTaskResultFrame("task-1", "msg-1", true, "ok"));
 

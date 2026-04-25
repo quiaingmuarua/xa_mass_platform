@@ -60,7 +60,7 @@ Verified runtime path:
    - `workerContextId`
    - `batchId`
    - status `ASSIGNED`
-9. `GatewayTaskDispatchChannel` pushes the task downstream as a canonical root-level task-dispatch frame.
+9. `WebSocketTaskDispatchChannel` pushes the task downstream as a canonical root-level task-dispatch frame.
 
 Key implementation facts:
 
@@ -139,7 +139,7 @@ Verified runtime release behavior:
 - `xa-mass-engine/src/main/java/com/xa/mass/engine/listener/SimpleTaskMsgAssignListener.java`
 - `xa-mass-engine/src/main/java/com/xa/mass/engine/model/WorkerMatchContext.java`
 - `xa-mass-sdk/src/main/java/com/xa/mass/starter/MassEngine.java`
-- `transport/websocket-adapter/src/main/java/com/xa/mass/gateway/dispatcher/GatewayTaskDispatchChannel.java`
+- `transport/websocket-adapter/src/main/java/com/xa/mass/gateway/dispatcher/WebSocketTaskDispatchChannel.java`
 - `xa-mass-sdk/src/main/java/com/xa/mass/starter/transport/RuntimeTaskResultIngestChannel.java`
 - `xa-mass-dev-app/src/main/java/com/xa/mass/mock/starter/WebSocketClientStarter.java`
 - `xa-mass-dev-app/src/main/java/com/xa/mass/mock/client/MassWebSocketClientImpl.java`

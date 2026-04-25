@@ -19,7 +19,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-class GatewayTaskDispatchChannelTest {
+class WebSocketTaskDispatchChannelTest {
 
     @Test
     @SuppressWarnings("unchecked")
@@ -35,7 +35,7 @@ class GatewayTaskDispatchChannelTest {
                 NoopWorkerSystemEventChannel.INSTANCE
         );
 
-        GatewayTaskDispatchChannel publisher = new GatewayTaskDispatchChannel(context);
+        WebSocketTaskDispatchChannel publisher = new WebSocketTaskDispatchChannel(context);
         Task task = task();
         TaskMsg taskMsg = taskMsg();
 
