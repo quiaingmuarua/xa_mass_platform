@@ -64,6 +64,7 @@ Worker and context:
 - stateless worker can execute tasks without routing-required context
 - polling/pull worker path can execute `create -> approve -> dispatch -> result -> terminal` without WebSocket push
 - SDK-created worker resources can register as `OFFLINE`, connect through pull transport, poll work, submit result output, and disconnect back to offline
+- external polling worker API can register a worker/context, mark it online, poll `TaskDispatchItem`, submit `TaskResultReport`, and return offline without using gateway WebSocket frames
 - targeted worker debug runs through normal `create -> approve -> assign -> dispatch -> result -> terminal`
 - fixed-worker debug selection is carried by `Task.sharedConfig.targetWorkerId`, not a separate gateway control path
 - same worker can own multiple contexts without overwrite

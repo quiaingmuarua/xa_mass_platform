@@ -71,9 +71,9 @@ The transport-neutral runtime model is now framed around three channels:
 - historical reactor/module experiments such as `xa-mass-base`, `xa-mass-starter`, and engine archive generations are no longer present in the current repository snapshot
 - Verified HTTP port: `server.port=8088`
 - Verified current WebSocket adapter port: `mass.websocket.port=18088`
-- Pull-style workers are also part of the runtime surface through `MassSdkApplication.pullWorker(...)`
+- Pull-style workers are also part of the runtime surface through `MassSdkApplication.pullWorker(...)` and the external polling worker HTTP API under `/worker-api/*`
 - Worker transport selection should prefer neutral hints such as `realtime` and `polling`; concrete adapter names remain compatibility aliases.
-- New worker resources should enter through SDK registration (`registerWorker(...)` and `registerWorkerContext(...)`); dev-app mock JSON remains a local/E2E fixture path, not the product resource entry.
+- New worker resources should enter through SDK registration (`registerWorker(...)` and `registerWorkerContext(...)`) or the external polling worker API that maps onto the same SDK/runtime path; dev-app mock JSON remains a local/E2E fixture path, not the product resource entry.
 - Verified task lifecycle coverage includes:
   - `NEW -> READY -> RUNNING -> TERMINAL`
   - `NEW -> READY -> PAUSED -> READY`
@@ -151,8 +151,12 @@ app.start();
 app.registerWorker(WorkerRegistration.builder()
         .workerId("crawler-worker-1")
         .workerGroupId("crawler")
-        .supportedProjects(java.util.List.of("demoApp"))
-        .supportedEventCodes(java.util.List.of("crawler.fetch-page"))
+        .eventBindings(java.util.List.of(
+                com.xa.mass.sdk.model.WorkerEventBinding.builder()
+                        .eventCode("crawler.fetch-page")
+                        .projectCodes(java.util.List.of("demoApp"))
+                        .build()
+        ))
         .transportHint("polling")
         .attributes(java.util.Map.of("type", "crawler"))
         .build());
@@ -172,7 +176,15 @@ app.createTask(MassTaskCreateRequest.builder()
         .build());
 ```
 
-`supportedProjects` is only a coarse worker grouping/filter hint. Runtime event capability truth should be declared explicitly through `supportedEventCodes`. SDK metadata exposes this as `GET /sdk/meta/event-capabilities`: task-backed events report live worker coverage, while direct runtime events report the SDK runtime handler path.
+`supportedProjects` is only a coarse worker grouping/filter hint. Runtime event capability truth should be declared explicitly through `eventBindings` and the derived `supportedEventCodes`. SDK metadata exposes this as `GET /sdk/meta/event-capabilities`: task-backed events report live worker coverage, while direct runtime events report the SDK runtime handler path.
+
+Third-party worker note:
+
+- Official non-Java worker entry is the external polling worker API under `/worker-api`
+- `/worker-api` requires an SDK credential whose permissions include `worker:poll` and whose attributes bind `workerId`
+- external workers register capability through `eventBindings`, not gateway frame types
+- external workers receive `TaskDispatchItem`, execute locally by `eventCode`, and submit `TaskResultReport`
+- external workers do not receive direct business/control events outside the task lifecycle
 
 Module boundary note:
 

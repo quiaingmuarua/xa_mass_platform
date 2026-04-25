@@ -1,6 +1,8 @@
 package com.xa.mass.api.aop;
 
 import com.xa.mass.api.model.ApiResponse;
+import com.xa.mass.api.auth.ApiForbiddenException;
+import com.xa.mass.api.auth.ApiUnauthenticatedException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
@@ -16,6 +18,16 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<ApiResponse<?>> handleBadRequest(IllegalArgumentException ex) {
         return ResponseEntity.badRequest().body(ApiResponse.error(400, ex.getMessage()));
+    }
+
+    @ExceptionHandler(ApiUnauthenticatedException.class)
+    public ResponseEntity<ApiResponse<?>> handleUnauthenticated(ApiUnauthenticatedException ex) {
+        return ResponseEntity.status(401).body(ApiResponse.error(401, ex.getMessage()));
+    }
+
+    @ExceptionHandler(ApiForbiddenException.class)
+    public ResponseEntity<ApiResponse<?>> handleForbidden(ApiForbiddenException ex) {
+        return ResponseEntity.status(403).body(ApiResponse.error(403, ex.getMessage()));
     }
 
     @ExceptionHandler(IllegalStateException.class)

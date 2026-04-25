@@ -8,6 +8,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -70,6 +71,13 @@ public abstract class AbstractMockE2eTest {
     protected Map<String, Object> exchange(String path, HttpMethod method, Object body) {
         String url = "http://127.0.0.1:" + port + path;
         ResponseEntity<Map> response = restTemplate.exchange(url, method, new HttpEntity<>(body), Map.class);
+        return response.getBody();
+    }
+
+    @SuppressWarnings("unchecked")
+    protected Map<String, Object> exchange(String path, HttpMethod method, Object body, HttpHeaders headers) {
+        String url = "http://127.0.0.1:" + port + path;
+        ResponseEntity<Map> response = restTemplate.exchange(url, method, new HttpEntity<>(body, headers), Map.class);
         return response.getBody();
     }
 

@@ -52,6 +52,19 @@ For verified runtime behavior and recommended startup, use [VERIFIED_RUNBOOK.md]
 - Built-in runtime control events are also registered into the SDK metadata catalog so metadata and dispatch stay aligned.
 - Manual worker debug is task-backed. Use `POST /status/api/tasks` with `eventCode` plus `sharedConfig.targetWorkerId` when the task must target one worker.
 
+## 1.2 External Worker Polling Notes
+
+- Official third-party worker path is the polling HTTP surface under `/worker-api/*`.
+- External worker capability must be declared through `eventBindings`; external worker registration does not define a second capability identity model.
+- External worker transport is polling-only. Do not treat gateway WebSocket frames as the public protocol for non-Java workers.
+- `/worker-api/*` is authenticated with SDK credentials, not operator user-mode headers.
+- required worker credential rules:
+  - permission must include `worker:poll`
+  - credential attributes must bind `workerId`
+  - registration requests are still constrained by credential `eventScopes` and `projectScopes`
+- External workers receive `TaskDispatchItem` payloads, execute locally by `eventCode`, and submit `TaskResultReport`.
+- External workers do not receive direct business/control messages outside normal task lifecycle dispatch.
+
 ## 2. SDK Metadata API
 
 ### 2.1 List SDK Projects
@@ -775,7 +788,123 @@ Response shape:
 }
 ```
 
-## 8. Worker Debug Surface
+## 8. External Worker Polling API
+
+External polling workers are the mainline integration path for non-Java runtimes such as Node, Python, or Go.
+
+### 8.1 Register External Worker
+
+- Method: `POST`
+- Path: `/worker-api/workers/register`
+- Status: `Implemented`
+
+Request notes:
+
+- `workerId` is required
+- `eventBindings` is required and is the canonical capability declaration
+- `transportHint` is optional; when omitted it defaults to `polling`
+- any non-polling transport hint is rejected
+- caller must authenticate with an SDK credential that includes `worker:poll` and `attributes.workerId == workerId`
+
+Example:
+
+```json
+{
+  "workerId": "node-worker-1",
+  "workerGroupId": "node-runtime",
+  "attributes": {
+    "lang": "node"
+  },
+  "eventBindings": [
+    {
+      "eventCode": "crawler.fetch-page",
+      "projectCodes": ["crawlerApp"]
+    }
+  ]
+}
+```
+
+### 8.2 Register External Worker Context
+
+- Method: `POST`
+- Path: `/worker-api/worker-contexts/register`
+- Status: `Implemented`
+
+Request notes:
+
+- `workerContextId` and `workerId` are required
+- `project`, `routingTags`, and `attributes` map directly onto `WorkerContextRegistration`
+- stateless workers may skip this API entirely
+- caller must authenticate with an SDK credential bound to the same `workerId`
+
+### 8.3 Mark External Worker Online
+
+- Method: `POST`
+- Path: `/worker-api/workers/{workerId}/online`
+- Status: `Implemented`
+
+Behavior:
+
+- maps to the same runtime online transition used by pull workers
+- affects transport/session reachability only; it does not bypass engine scheduling
+- caller must authenticate with an SDK credential bound to the path `workerId`
+
+### 8.4 External Worker Heartbeat
+
+- Method: `POST`
+- Path: `/worker-api/workers/{workerId}/heartbeat`
+- Status: `Implemented`
+
+Behavior:
+
+- refreshes worker liveness through the runtime system-event channel
+- caller must authenticate with an SDK credential bound to the path `workerId`
+
+### 8.5 Poll Tasks
+
+- Method: `POST`
+- Path: `/worker-api/workers/{workerId}/poll`
+- Status: `Implemented`
+
+Request body:
+
+- optional `maxMessages`
+- defaults to `1` when omitted
+- rejects `maxMessages <= 0`
+
+Response notes:
+
+- `data.items` is a `TaskDispatchItem[]`
+- `eventCode` is the worker handler identity
+- `input` is the per-item payload
+- `sharedConfig` is the task-level shared payload
+- caller must authenticate with an SDK credential bound to the path `workerId`
+
+### 8.6 Submit Task Result
+
+- Method: `POST`
+- Path: `/worker-api/workers/{workerId}/results`
+- Status: `Implemented`
+
+Request notes:
+
+- request body maps directly onto `TaskResultReport`
+- `taskId` and `messageId` are required
+- `output` is the canonical success/failure payload written back to `TaskMsg.output`
+- caller must authenticate with an SDK credential bound to the path `workerId`
+
+### 8.7 Mark External Worker Offline
+
+- Method: `POST`
+- Path: `/worker-api/workers/{workerId}/offline`
+- Status: `Implemented`
+
+Behavior:
+
+- marks the worker offline through the runtime system-event channel
+- caller must authenticate with an SDK credential bound to the path `workerId`
+
+## 9. Worker Debug Surface
 
 Manual worker debug no longer has a dedicated `/status/workers/*` API.
 
@@ -798,12 +927,12 @@ Behavior:
 - there is no separate worker message-history read model
 - the worker detail UI may still present a debug-focused form, but it submits a task instead of a direct worker message
 
-## 9. Health And Docs
+## 10. Health And Docs
 
 - `GET /actuator/health` - `Implemented`
 - `GET /doc.html` - `Demo`
 
-## 10. Response Shape Notes
+## 11. Response Shape Notes
 
 The active JSON API surface uses one response family:
 

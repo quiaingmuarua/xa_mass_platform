@@ -40,6 +40,8 @@ import com.xa.mass.starter.GatewayRuntimePorts;
 import com.xa.mass.transport.WorkerEndpointInspector;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.WorkerEndpointSnapshot;
+import com.xa.mass.transport.model.TaskDispatchItem;
+import com.xa.mass.transport.model.TaskResultReport;
 
 import java.util.*;
 
@@ -54,6 +56,7 @@ import java.util.*;
  */
 public final class MassSdkApplication implements MassRuntimeControl, TaskOperations, WorkerOperations,
         ResourceOperations, AuthProvider,
+        ExternalWorkerOperations,
         RuleOperations, TransportOperations {
 
     private static final Gson GSON = new Gson();
@@ -347,6 +350,42 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
     public PullWorkerSession pullWorker(String workerId) {
         requireStartedEngine();
         return delegate.openPullWorkerSession(workerId);
+    }
+
+    @Override
+    public void workerOnline(String workerId, String reason) {
+        externalPullWorkerSession(workerId).connect(reason);
+    }
+
+    @Override
+    public void workerHeartbeat(String workerId, String reason) {
+        externalPullWorkerSession(workerId).heartbeat(reason);
+    }
+
+    @Override
+    public void workerOffline(String workerId, String reason) {
+        externalPullWorkerSession(workerId).disconnect(reason);
+    }
+
+    @Override
+    public List<TaskDispatchItem> pollTasks(String workerId, int maxMessages) {
+        if (maxMessages <= 0) {
+            throw new IllegalArgumentException("maxMessages must be greater than 0");
+        }
+        return externalPullWorkerSession(workerId).poll(maxMessages);
+    }
+
+    @Override
+    public boolean submitResult(String workerId, TaskResultReport report) {
+        Objects.requireNonNull(report, "report");
+        return externalPullWorkerSession(workerId).submitResult(
+                report.getTaskId(),
+                report.getMessageId(),
+                report.isSuccess(),
+                report.getDetail(),
+                report.getErrorCode(),
+                report.getOutput()
+        );
     }
 
     public WorkerContext getWorkerContextById(String workerContextId) {
@@ -1052,6 +1091,17 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
             return right.trim();
         }
         return null;
+    }
+
+    private String requireWorkerId(String workerId) {
+        if (workerId == null || workerId.isBlank()) {
+            throw new IllegalArgumentException("workerId must not be blank");
+        }
+        return workerId.trim();
+    }
+
+    private PullWorkerSession externalPullWorkerSession(String workerId) {
+        return pullWorker(requireWorkerId(workerId));
     }
 
     private WorkerRegistration normalizeWorkerRegistration(WorkerRegistration registration) {

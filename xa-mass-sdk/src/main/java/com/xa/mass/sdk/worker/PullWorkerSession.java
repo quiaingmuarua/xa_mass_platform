@@ -46,15 +46,27 @@ public class PullWorkerSession {
     }
 
     public void connect() {
-        systemEventChannel.publishWorkerOnline(workerId, "pull-session-connect", workerId);
+        connect("pull-session-connect");
+    }
+
+    public void connect(String reason) {
+        systemEventChannel.publishWorkerOnline(workerId, normalizeReason(reason, "pull-session-connect"), workerId);
     }
 
     public void disconnect() {
-        systemEventChannel.publishWorkerOffline(workerId, "pull-session-disconnect", workerId);
+        disconnect("pull-session-disconnect");
+    }
+
+    public void disconnect(String reason) {
+        systemEventChannel.publishWorkerOffline(workerId, normalizeReason(reason, "pull-session-disconnect"), workerId);
     }
 
     public void heartbeat() {
-        systemEventChannel.publishWorkerHeartbeat(workerId, "pull-session-heartbeat", workerId);
+        heartbeat("pull-session-heartbeat");
+    }
+
+    public void heartbeat(String reason) {
+        systemEventChannel.publishWorkerHeartbeat(workerId, normalizeReason(reason, "pull-session-heartbeat"), workerId);
     }
 
     public List<TaskDispatchItem> poll(int maxMessages) {
@@ -88,5 +100,9 @@ public class PullWorkerSession {
                 errorCode,
                 output
         ));
+    }
+
+    private String normalizeReason(String reason, String defaultReason) {
+        return reason == null || reason.isBlank() ? defaultReason : reason.trim();
     }
 }

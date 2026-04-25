@@ -25,7 +25,7 @@ public class WebMvcConfig implements WebMvcConfigurer {
         registry.addInterceptor(apiAuthInterceptor)
                 .addPathPatterns("/api/**", "/status/api/**");
         registry.addInterceptor(apiLogInterceptor)
-                .addPathPatterns("/api/**", "/status/api/**");
+                .addPathPatterns("/api/**", "/status/api/**", "/worker-api/**");
     }
 
     @Override

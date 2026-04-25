@@ -16,6 +16,7 @@ public final class TaskSubmitterContext {
 
     public static final String WILDCARD_SCOPE = "*";
     public static final String TASK_CREATE_PERMISSION = "task:create";
+    public static final String EXTERNAL_WORKER_PERMISSION = "worker:poll";
 
     private final String principalId;
     private final String userId;
