@@ -318,6 +318,10 @@ public class TaskManager {
         return countPendingDispatchableMessages(taskId) > 0;
     }
 
+    public boolean hasProcessingMessagesForWorker(String taskId, String workerId) {
+        return taskStorage.hasProcessingMessagesForWorker(taskId, workerId);
+    }
+
     /**
      * Recomputes task-level convergence from persisted task messages.
      */

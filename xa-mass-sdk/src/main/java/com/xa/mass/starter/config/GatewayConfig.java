@@ -16,7 +16,6 @@ import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
 
-import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
@@ -258,36 +257,6 @@ public class GatewayConfig {
         return workerTransportRuntimeFactory != null
                 ? workerTransportRuntimeFactory
                 : new DefaultWorkerTransportRuntimeFactory();
-    }
-
-    /**
-     * @deprecated Prefer {@link #createTransportServer(DispatchRuntimeContext, WorkerEndpointRegistry, int)} so SDK
-     * runtime assembly flows through the dispatcher snapshot instead of exposing the adapter-local WebSocket codec as
-     * the primary transport-server bootstrap input.
-     */
-    @Deprecated(forRemoval = false)
-    public TransportServer createTransportServer(WebSocketTransportFrameCodec frameCodec,
-                                                 Consumer<String> inboundMessageSink,
-                                                 WorkerEndpointRegistry endpointRegistry,
-                                                 int port) {
-        if (!transportServerEnabled) {
-            return null;
-        }
-        if (transportServerFactory == null) {
-            return WebSocketGatewayRuntimeSupport.createTransportServer(
-                    transportEndpointPath,
-                    frameCodec,
-                    inboundMessageSink,
-                    endpointRegistry
-            );
-        }
-        return transportServerFactory.create(new TransportServerFactoryContext(
-                endpointRegistry,
-                frameCodec,
-                inboundMessageSink,
-                port,
-                transportEndpointPath
-        ));
     }
 
     public TransportServer createTransportServer(DispatchRuntimeContext dispatcherContext,

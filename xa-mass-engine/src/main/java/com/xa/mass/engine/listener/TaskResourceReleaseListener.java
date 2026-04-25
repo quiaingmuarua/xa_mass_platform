@@ -73,15 +73,7 @@ public class TaskResourceReleaseListener {
         if (workerId == null || workerId.isBlank()) {
             return;
         }
-        boolean workerStillBusy = taskManager.getTaskMessages(task.getTid()).stream()
-                .filter(message -> message != null)
-                .anyMatch(message -> {
-                    var activeAttempt = taskManager.getLatestActiveTaskMessageAttempt(task.getTid(), message.getMessageId());
-                    if (activeAttempt != null) {
-                        return workerId.equals(activeAttempt.getWorkerId());
-                    }
-                    return workerId.equals(message.getLatestAttemptWorkerId()) && message.isProcessing();
-                });
+        boolean workerStillBusy = taskManager.hasProcessingMessagesForWorker(task.getTid(), workerId);
         if (workerStillBusy) {
             return;
         }

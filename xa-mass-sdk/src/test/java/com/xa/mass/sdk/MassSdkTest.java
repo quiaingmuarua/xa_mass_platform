@@ -153,7 +153,6 @@ class MassSdkTest {
             Assertions.assertEquals(19092, capturedContext.get().getPort());
             Assertions.assertEquals("/custom-transport", capturedContext.get().getEndpointPath());
             assertNotNull(capturedContext.get().getEndpointRegistry());
-            Assertions.assertNull(capturedContext.get().getFrameCodec());
         } finally {
             app.stop();
         }
@@ -1469,21 +1468,44 @@ class MassSdkTest {
                 MassSdkApplication.class.getDeclaredMethod("getWorkerManager"),
                 MassSdk.Builder.class.getDeclaredMethod("unwrap"),
                 MassSdk.GatewayOptions.class.getDeclaredMethod("unwrap"),
-                MassSdk.EngineOptions.class.getDeclaredMethod("unwrap"),
-                GatewayConfig.class.getDeclaredMethod(
-                        "createTransportServer",
-                        com.xa.mass.gateway.queue.WebSocketTransportFrameCodec.class,
-                        java.util.function.Consumer.class,
-                        WorkerEndpointRegistry.class,
-                        int.class
-                ),
-                TransportServerFactoryContext.class.getDeclaredMethod("getFrameCodec")
+                MassSdk.EngineOptions.class.getDeclaredMethod("unwrap")
         );
 
         for (java.lang.reflect.Method method : escapeHatches) {
             Assertions.assertTrue(method.isAnnotationPresent(Deprecated.class),
                     method.getDeclaringClass().getSimpleName() + "." + method.getName() + " must remain deprecated");
         }
+    }
+
+    @Test
+    void removedWebSocketCompatibilityEscapeHatchesStayGone() {
+        Assertions.assertThrows(NoSuchMethodException.class, () -> GatewayConfig.class.getDeclaredMethod(
+                "createTransportServer",
+                com.xa.mass.gateway.queue.WebSocketTransportFrameCodec.class,
+                java.util.function.Consumer.class,
+                WorkerEndpointRegistry.class,
+                int.class
+        ));
+        Assertions.assertThrows(NoSuchMethodException.class, () -> TransportServerFactoryContext.class.getDeclaredMethod("getFrameCodec"));
+        Assertions.assertThrows(NoSuchMethodException.class, () -> TransportServerFactoryContext.class.getDeclaredConstructor(
+                WorkerEndpointRegistry.class,
+                com.xa.mass.gateway.queue.WebSocketTransportFrameCodec.class,
+                java.util.function.Consumer.class,
+                int.class,
+                String.class
+        ));
+        Assertions.assertThrows(NoSuchMethodException.class,
+                () -> com.xa.mass.starter.transport.WorkerTransportRuntimeFactoryContext.class.getDeclaredMethod("getFrameCodec"));
+        Assertions.assertThrows(NoSuchMethodException.class, () -> com.xa.mass.starter.transport.WorkerTransportRuntimeFactoryContext.class.getDeclaredConstructor(
+                com.xa.mass.engine.TaskManager.class,
+                com.xa.mass.engine.WorkerManager.class,
+                com.xa.mass.base.channel.tranporter.MessageTransporter.class,
+                WorkerEndpointRegistry.class,
+                com.xa.mass.gateway.queue.WebSocketTransportFrameCodec.class,
+                com.xa.mass.transport.channel.TaskResultIngestChannel.class,
+                com.xa.mass.transport.channel.WorkerSystemEventChannel.class,
+                boolean.class
+        ));
     }
 
     private static void assertEngineOperationsFailFast(MassSdkApplication app) {

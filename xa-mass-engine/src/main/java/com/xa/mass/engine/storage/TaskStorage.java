@@ -48,6 +48,15 @@ public interface TaskStorage {
                 .count();
     }
 
+    default boolean hasProcessingMessagesForWorker(String taskId, String workerId) {
+        if (workerId == null || workerId.isBlank()) {
+            return false;
+        }
+        return getTaskMessages(taskId).stream()
+                .filter(taskMsg -> taskMsg != null && taskMsg.isProcessing())
+                .anyMatch(taskMsg -> workerId.equals(taskMsg.getLatestAttemptWorkerId()));
+    }
+
     Optional<TaskMsg> getTaskMessage(String taskId, String messageId);
 
     boolean updateTaskMessage(String taskId, TaskMsg taskMsg);
