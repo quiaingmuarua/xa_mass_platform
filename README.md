@@ -94,7 +94,7 @@ Run from the repository root:
 
 ```bash
 ./mvnw -DskipTests compile
-java -cp "xa-mass-dev-app/target/classes:xa-mass-sdk/target/classes:xa-mass-sdk-api/target/classes:xa-mass-web/target/classes:xa-mass-engine/target/classes:xa-mass-gateway/target/classes:transport/api/target/classes:transport/polling-adapter/target/classes:transport/runtime/target/classes:xa-mass-core/target/classes:<runtime-classpath>" \
+java -cp "xa-mass-dev-app/target/classes:xa-mass-sdk/target/classes:xa-mass-sdk-api/target/classes:xa-mass-web/target/classes:xa-mass-engine/target/classes:transport/websocket-adapter/target/classes:transport/api/target/classes:transport/polling-adapter/target/classes:transport/runtime/target/classes:xa-mass-core/target/classes:<runtime-classpath>" \
   com.xa.mass.mock.MockApplicationSpringBootApp
 ```
 
@@ -117,7 +117,7 @@ Primary endpoints:
 - `xa-mass-transport-runtime`: shared transport runtime assembly used by the SDK composition
 - `xa-mass-web`: REST controllers and the backend-hosted control console shell
 - `xa-mass-engine`: task state machine, assignment, result handling, and strategy extension points
-- `xa-mass-gateway`: current WebSocket task transport adapter plus dispatch runtime
+- `xa-mass-gateway`: current WebSocket task transport adapter plus dispatch runtime; module sources live under `transport/websocket-adapter`
 - `xa-mass-testing`: cross-cutting acceptance tooling and load/concurrency/chaos harness home
 - `xa-mass-core`: shared models and infrastructure
 
