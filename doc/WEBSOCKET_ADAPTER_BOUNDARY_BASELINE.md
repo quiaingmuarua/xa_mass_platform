@@ -207,12 +207,15 @@ Rules:
 - resolve `WorkerSystemEventChannel` from adapter runtime assembly, not from transport binding ownership
 - keep adapter-specific endpoint bootstrap and WebSocket-backed realtime adapter defaults inside the adapter module; SDK runtime assembly must not grow session-manager, frame-codec, or WebSocket-specific branching
 - keep the default transport-server bootstrap helper in adapter-owned code; current SDK `transportServerFactory(...)` remains an advanced override seam rather than a second mainline
-- embedded-runtime mainline should consume adapter-owned bootstrap/contribution output; `MassApplication` should manage only neutral runtime facts such as managed adapters, transport bindings, endpoint registry, and transport servers
-- adapter-owned raw worker side-channel send, when present, should surface as a transport-neutral contribution capability; SDK/runtime code must not construct `OutboundDelivery` or other WebSocket delivery DTOs directly
-- `MassApplication` should snapshot external WebSocket config into internal runtime-composition state during construction rather than retaining a live WebSocket config object as the runtime backbone
-- deprecated `WebSocketConfig.createMessageTransporter()`, `resolveWorkerEndpointRegistry()`, `resolveSystemEventChannel()`, `resolveWorkerTransportRuntimeFactory()`, `resolveTransportAdapterBootstrap()`, `createDispatcherContext(...)`, and `createTransportServer(...)` remain advanced external embedding seams only; default composition should snapshot `WebSocketConfig` into `WebSocketRuntimeComposition` and resolve adapter bootstrap/contribution assembly from there rather than routing WebSocket runtime details through SDK runtime code
+- stable SDK/starter builder entry should be `transport(...)`; deprecated `websocket(...)` naming remains compatibility-only and must not regain mainline ownership
+- embedded-runtime mainline should consume one or more adapter-owned bootstrap/contribution outputs; `MassApplication` should manage only neutral runtime facts such as managed adapters, transport bindings, endpoint registry, transport servers, and raw worker side-channel capabilities
+- adapter-owned raw worker side-channel send, when present, should surface as a transport-neutral contribution capability; SDK/runtime code must not construct WebSocket delivery DTOs directly
+- `MassApplication` should snapshot external transport config into internal runtime-composition state during construction rather than retaining a live config object as the runtime backbone
+- `TransportAdapterBootstrapContext` should carry only neutral runtime collaborators; adapter-owned inbound server settings such as port/path must be captured by the adapter bootstrap itself rather than injected later by runtime
+- `TransportConfig` and `TransportRuntimeComposition` are the embedded-runtime mainline names; deprecated `WebSocketConfig` and `WebSocketRuntimeComposition` remain compatibility-only aliases
+- deprecated `WebSocketConfig.createMessageTransporter()`, `resolveWorkerEndpointRegistry()`, `resolveSystemEventChannel()`, `resolveWorkerTransportRuntimeFactory()`, `resolveTransportAdapterBootstrap()`, `createDispatcherContext(...)`, and `createTransportServer(...)` remain advanced external embedding seams only; default composition should snapshot `TransportConfig` into `TransportRuntimeComposition` and resolve adapter bootstrap/contribution assembly from there rather than routing WebSocket runtime details through SDK runtime code
 - do not grow post-construction `setHandler(...)` or `registerRoute(...)` seams on adapter runtime context
-- if a new adapter path needs another port, add an explicit field or constructor dependency instead of a late-bound generic registry
+- if a new adapter path needs another port, carry it as explicit adapter-owned bootstrap/contribution configuration rather than a late-bound generic registry or a runtime-global shared-port assumption
 
 ## 9. Audit Boundary
 
@@ -239,7 +242,7 @@ These seams are adapter-local, not platform truth:
 
 - raw inbound JSON plus connection facts
 - raw outbound JSON plus explicit transport addressability
-- `OutboundDelivery` as the current minimal outbound delivery record
+- `WorkerTransportMessage` as the current transport-neutral outbound carrier used by embedded runtime composition
 - adapter-local canonical task-frame detection and encoding
 - explicit adapter input/output processors that terminate canonical task-result frames and perform transport sends
 - adapter-level metadata extraction for transport diagnostics only

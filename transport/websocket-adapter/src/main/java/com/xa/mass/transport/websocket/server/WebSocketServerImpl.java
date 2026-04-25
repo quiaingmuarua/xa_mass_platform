@@ -37,19 +37,21 @@ public class WebSocketServerImpl implements MassWebSocketServer {
     private static final Logger logger = LoggerFactory.getLogger(WebSocketServerImpl.class);
 
     private final AtomicLong activeConnections = new AtomicLong(0);
+    private final int port;
     private final String websocketPath;
     private final ServerSessionManager sessionManager;
     private final WebSocketTransportFrameCodec frameCodec;
     private final Consumer<String> inboundMessageSink;
-    private int port;
     private EventLoopGroup bossGroup;
     private EventLoopGroup workerGroup;
     private volatile boolean running = false;
 
-    public WebSocketServerImpl(String websocketPath,
+    public WebSocketServerImpl(int port,
+                               String websocketPath,
                                WebSocketTransportFrameCodec frameCodec,
                                Consumer<String> inboundMessageSink,
                                ServerSessionManager sessionManager) {
+        this.port = port;
         this.websocketPath = websocketPath;
         this.frameCodec = frameCodec;
         this.inboundMessageSink = inboundMessageSink;
@@ -57,10 +59,9 @@ public class WebSocketServerImpl implements MassWebSocketServer {
     }
 
     @Override
-    public void start(int port) {
+    public void start() {
         MDC.clear();
         validateConfiguration();
-        this.port = port;
         this.running = true;
 
         boolean useEpoll = Epoll.isAvailable();
@@ -107,11 +108,11 @@ public class WebSocketServerImpl implements MassWebSocketServer {
                 }
             });
 
-            ChannelFuture future = bootstrap.bind(port).sync();
+            ChannelFuture future = bootstrap.bind(this.port).sync();
             if (future.isSuccess()) {
-                logger.info("WebSocket server started on port {} with path {}", port, websocketPath);
+                logger.info("WebSocket server started on port {} with path {}", this.port, websocketPath);
             } else {
-                logger.error("Failed to start WebSocket server on port {}", port, future.cause());
+                logger.error("Failed to start WebSocket server on port {}", this.port, future.cause());
                 stop();
             }
         } catch (InterruptedException e) {
@@ -159,6 +160,9 @@ public class WebSocketServerImpl implements MassWebSocketServer {
     }
 
     private void validateConfiguration() {
+        if (port < 0) {
+            throw new IllegalStateException("WebSocket server requires a non-negative port");
+        }
         if (websocketPath == null || websocketPath.isBlank()) {
             throw new IllegalStateException("WebSocket server requires a non-blank websocketPath");
         }

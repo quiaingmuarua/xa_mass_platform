@@ -2,10 +2,10 @@ package com.xa.mass.transport.websocket.dispatcher;
 
 import com.xa.mass.base.channel.tranporter.MessageTransporter;
 import com.xa.mass.transport.websocket.dispatcher.context.WebSocketDispatchRuntimeContext;
-import com.xa.mass.transport.websocket.queue.OutboundDelivery;
 import com.xa.mass.transport.websocket.queue.WebSocketTransportFrameCodec;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.channel.NoopWorkerSystemEventChannel;
+import com.xa.mass.transport.model.WorkerTransportMessage;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
@@ -43,7 +43,7 @@ class WebSocketMessageDispatcherShutdownTest {
         );
     }
 
-    private static final class BlockingTransporter implements MessageTransporter<String, OutboundDelivery> {
+    private static final class BlockingTransporter implements MessageTransporter<String, WorkerTransportMessage> {
         private final CountDownLatch inputStarted = new CountDownLatch(1);
         private final CountDownLatch outputStarted = new CountDownLatch(1);
         private final CountDownLatch neverRelease = new CountDownLatch(1);
@@ -60,11 +60,11 @@ class WebSocketMessageDispatcherShutdownTest {
         }
 
         @Override
-        public void sendOutput(OutboundDelivery message) {
+        public void sendOutput(WorkerTransportMessage message) {
         }
 
         @Override
-        public OutboundDelivery receiveOutput(long timeout, TimeUnit unit) throws InterruptedException {
+        public WorkerTransportMessage receiveOutput(long timeout, TimeUnit unit) throws InterruptedException {
             outputStarted.countDown();
             neverRelease.await();
             return null;

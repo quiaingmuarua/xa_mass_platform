@@ -9,7 +9,7 @@ import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.enums.taskmsg.TaskMsgStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
-import com.xa.mass.transport.websocket.queue.OutboundDelivery;
+import com.xa.mass.transport.model.WorkerTransportMessage;
 import com.xa.mass.sdk.MassSdk;
 import com.xa.mass.sdk.MassSdkApplication;
 import com.xa.mass.sdk.model.MassTaskCreateRequest;
@@ -173,11 +173,11 @@ public final class SdkTransportLoadRunner {
             int transportPort = config.transport() == WorkerTransportMode.WEBSOCKET ? findFreePort() : 0;
             MassSdkApplication app = MassSdk.builder()
                     .transportServer(transportPort, ENDPOINT_PATH)
-                    .websocket(websocket -> websocket
+                    .transport(transport -> transport
                             .enabled(config.transport() == WorkerTransportMode.WEBSOCKET)
                             .transportServerEnabled(config.transport() == WorkerTransportMode.WEBSOCKET)
                             .inputQueue(new InMemoryMessageQueue<>("sdk-load-input", String.class))
-                            .outputQueue(new InMemoryMessageQueue<>("sdk-load-output", OutboundDelivery.class))
+                            .outputQueue(new InMemoryMessageQueue<>("sdk-load-output", com.xa.mass.transport.model.WorkerTransportMessage.class))
                             .queueMode())
                     .engine(engine -> engine.enabled(true))
                     .build();

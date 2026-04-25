@@ -4,10 +4,10 @@ import com.google.gson.JsonObject;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.channel.tranporter.MessageTransporter;
-import com.xa.mass.transport.websocket.queue.OutboundDelivery;
 import com.xa.mass.transport.websocket.queue.WebSocketTransportFrameCodec;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.channel.NoopWorkerSystemEventChannel;
+import com.xa.mass.transport.model.WorkerTransportMessage;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
@@ -24,7 +24,7 @@ class WebSocketTaskDispatchChannelTest {
     @Test
     @SuppressWarnings("unchecked")
     void publishesDispatchItemsToOutputTransporter() {
-        MessageTransporter<String, OutboundDelivery> transporter = mock(MessageTransporter.class);
+        MessageTransporter<String, WorkerTransportMessage> transporter = mock(MessageTransporter.class);
         WorkerEndpointRegistry endpointRegistry = mock(WorkerEndpointRegistry.class);
         WebSocketTransportFrameCodec codec = new WebSocketTransportFrameCodec();
         WebSocketDispatcherContext context = new WebSocketDispatcherContext(
@@ -41,10 +41,10 @@ class WebSocketTaskDispatchChannelTest {
 
         publisher.dispatchTaskItems(List.of(com.xa.mass.transport.model.TaskDispatchItem.from(task, taskMsg)));
 
-        ArgumentCaptor<OutboundDelivery> captor = ArgumentCaptor.forClass(OutboundDelivery.class);
+        ArgumentCaptor<WorkerTransportMessage> captor = ArgumentCaptor.forClass(WorkerTransportMessage.class);
         verify(transporter).sendOutput(captor.capture());
 
-        OutboundDelivery delivery = captor.getValue();
+        WorkerTransportMessage delivery = captor.getValue();
         assertEquals("worker-1", delivery.getWorkerId());
         assertEquals("msg-1", delivery.getTraceId());
 

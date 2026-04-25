@@ -6,7 +6,7 @@ import com.xa.mass.base.channel.messaging.memory.InMemoryMessageQueue;
 import com.xa.mass.command.core.CommandDefinition;
 import com.xa.mass.command.model.CommandContext;
 import com.xa.mass.engine.util.LogUtils;
-import com.xa.mass.transport.websocket.queue.OutboundDelivery;
+import com.xa.mass.transport.model.WorkerTransportMessage;
 import com.xa.mass.mock.bootstrap.MockRuntimeDataLoader;
 import com.xa.mass.mock.command.runtime.MockCommandRuntime;
 import com.xa.mass.mock.command.tool.ToolCommandRoutes;
@@ -99,11 +99,11 @@ public class MockApplicationSpringBootApp {
         return MassSdk.builder()
                 .projectCatalogBootstrap(new ProjectEventCatalogRegistry())
                 .server(massWebSocketPort)
-                .websocket(websocket -> websocket
+                .transport(transport -> transport
                         .enabled(true)
                         .maxConnections(maxConnections)
                         .inputQueue(new InMemoryMessageQueue<>("input", String.class))
-                        .outputQueue(new InMemoryMessageQueue<>("output", OutboundDelivery.class)))
+                        .outputQueue(new InMemoryMessageQueue<>("output", WorkerTransportMessage.class)))
                 .engine(engine -> engine
                         .enabled(true)
                         .workerThreads(workerThreads)

@@ -1,9 +1,9 @@
 package com.xa.mass.transport.websocket.server;
 
 import com.xa.mass.base.channel.tranporter.MessageTransporter;
-import com.xa.mass.transport.websocket.queue.OutboundDelivery;
 import com.xa.mass.transport.websocket.queue.WebSocketTransportFrameCodec;
 import com.xa.mass.transport.websocket.session.ServerSessionManager;
+import com.xa.mass.transport.model.WorkerTransportMessage;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelId;
@@ -36,7 +36,7 @@ class DispatcherInboundHandlerTest {
     private ChannelHandlerContext ctx;
     private Channel channel;
     private AtomicReference<String> sentFrame;
-    private MessageTransporter<String, OutboundDelivery> transporter;
+    private MessageTransporter<String, WorkerTransportMessage> transporter;
     private ServerSessionManager sessionManager;
 
     @SuppressWarnings("unchecked")
@@ -211,6 +211,7 @@ class WebSocketServerImplDisconnectTest {
     void channelInactiveRemovesDisconnectedSessionFromSessionManager() throws Exception {
         ServerSessionManager sessionManager = org.mockito.Mockito.spy(new ServerSessionManager());
         WebSocketServerImpl server = new WebSocketServerImpl(
+                18088,
                 "/ws",
                 new WebSocketTransportFrameCodec(),
                 raw -> { },
@@ -246,11 +247,11 @@ class WebSocketServerImplDisconnectTest {
 
     @Test
     void startFailsFastWhenRequiredWiringIsMissing() {
-        WebSocketServerImpl server = new WebSocketServerImpl(null, null, null, null);
+        WebSocketServerImpl server = new WebSocketServerImpl(-1, null, null, null, null);
 
-        IllegalStateException error = assertThrows(IllegalStateException.class, () -> server.start(18088));
+        IllegalStateException error = assertThrows(IllegalStateException.class, server::start);
 
-        assertTrue(error.getMessage().contains("websocketPath"));
+        assertTrue(error.getMessage().contains("non-negative port"));
     }
 
     private ChannelInboundHandlerAdapter newConnectionStatsHandler(WebSocketServerImpl server) throws Exception {

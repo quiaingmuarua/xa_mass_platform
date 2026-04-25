@@ -98,7 +98,7 @@ It is a migration aid, not a compatibility promise.
 
 - `Class`: `com.xa.mass.transport.websocket.dispatcher.WebSocketMessageDispatcher`
 - `Method`: `processInputQueueLoop()`, `processOutputQueueLoop()`, `submitOutputDelivery(...)`
-- `Current responsibility`: consumes raw inbound JSON and `OutboundDelivery`, calls explicit adapter processors, preserves outbound ordering per `workerId`
+- `Current responsibility`: consumes raw inbound JSON and transport-neutral `WorkerTransportMessage`, calls explicit adapter processors, preserves outbound ordering per `workerId`
 - `Should stay in WebSocket adapter?`: yes
 - `Target owner`: `xa-mass-transport-websocket`
 - `Migration phase`: keep
@@ -124,15 +124,15 @@ It is a migration aid, not a compatibility promise.
 - `Migration phase`: keep as adapter-local bootstrap helper
 - `Related tests`: `TransportChannelWiringIntegrationTest`
 
-## 12. Minimal Outbound Delivery Record
+## 12. Embedded Runtime Outbound Carrier
 
-- `Class`: `com.xa.mass.transport.websocket.queue.OutboundDelivery`
+- `Class`: `com.xa.mass.transport.model.WorkerTransportMessage`
 - `Method`: DTO only
-- `Current responsibility`: carries only transport addressability and raw outbound payload for ordered delivery; embedded SDK/runtime code no longer constructs it directly and should route any raw worker side-channel send through adapter-owned transport contribution capability
-- `Should stay in WebSocket adapter?`: yes
-- `Target owner`: `xa-mass-transport-websocket`
-- `Migration phase`: keep unless queueing strategy changes
-- `Related tests`: `WebSocketTaskDispatchChannelTest`, `ServerMessageDispatcherShutdownTest`
+- `Current responsibility`: carries transport-neutral worker addressability plus raw outbound payload for embedded runtime composition; concrete adapters may consume it differently, but SDK/runtime code no longer depends on a WebSocket-only delivery DTO
+- `Should stay in WebSocket adapter?`: no
+- `Target owner`: `xa-mass-transport-api`
+- `Migration phase`: converged current embedded mainline
+- `Related tests`: `WebSocketTaskDispatchChannelTest`, `ServerMessageDispatcherShutdownTest`, `MassSdkTest`
 
 ## Explicit Non-Findings
 

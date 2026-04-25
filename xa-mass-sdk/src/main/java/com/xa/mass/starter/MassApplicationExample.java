@@ -2,7 +2,7 @@ package com.xa.mass.starter;
 
 import com.xa.mass.base.channel.messaging.api.MessageQueue;
 import com.xa.mass.base.channel.messaging.memory.InMemoryMessageQueue;
-import com.xa.mass.transport.websocket.queue.OutboundDelivery;
+import com.xa.mass.transport.model.WorkerTransportMessage;
 import com.xa.mass.starter.builder.MassApplicationBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -49,11 +49,11 @@ public class MassApplicationExample {
     private static void exampleCustomConfiguration() {
         logger.info("Example 4: custom configuration");
         MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("WsInputRawJson", String.class);
-        MessageQueue<OutboundDelivery> outputQueue = new InMemoryMessageQueue<>("WsOutboundDelivery", OutboundDelivery.class);
+        MessageQueue<WorkerTransportMessage> outputQueue = new InMemoryMessageQueue<>("WsOutboundDelivery", WorkerTransportMessage.class);
 
         MassApplication app = MassApplicationBuilder.create()
                 .transportServer(9090, "/custom-ws")
-                .websocket(websocket -> websocket
+                .transport(transport -> transport
                         .enabled(true)
                         .maxConnections(2000)
                         .inputQueue(inputQueue)
@@ -71,11 +71,11 @@ public class MassApplicationExample {
     private static void exampleWebSocketOnly() {
         logger.info("Example 5: websocket only");
         MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("WsInputRawJson", String.class);
-        MessageQueue<OutboundDelivery> outputQueue = new InMemoryMessageQueue<>("WsOutboundDelivery", OutboundDelivery.class);
+        MessageQueue<WorkerTransportMessage> outputQueue = new InMemoryMessageQueue<>("WsOutboundDelivery", WorkerTransportMessage.class);
 
         MassApplication app = MassApplicationBuilder.create()
                 .server(8080)
-                .websocket(websocket -> websocket
+                .transport(transport -> transport
                         .enabled(true)
                         .maxConnections(100)
                         .inputQueue(inputQueue)
@@ -91,7 +91,7 @@ public class MassApplicationExample {
         logger.info("Example 6: engine only");
         MassApplication app = MassApplicationBuilder.create()
                 .server(8080)
-                .websocket(websocket -> websocket.enabled(false))
+                .transport(transport -> transport.enabled(false))
                 .engine(engine -> engine
                         .enabled(true)
                         .workerThreads(4))

@@ -1,9 +1,14 @@
 package com.xa.mass.starter;
 
+import com.xa.mass.base.channel.messaging.memory.InMemoryMessageQueue;
+import com.xa.mass.transport.model.WorkerTransportMessage;
 import com.xa.mass.starter.config.EngineConfig;
-import com.xa.mass.starter.config.WebSocketConfig;
+import com.xa.mass.starter.config.TransportConfig;
 import com.xa.mass.starter.transport.ManagedTransportAdapter;
 import com.xa.mass.starter.transport.RawWorkerMessageChannel;
+import com.xa.mass.starter.transport.TransportAdapterBootstrap;
+import com.xa.mass.starter.transport.TransportAdapterBootstrapContext;
+import com.xa.mass.starter.transport.TransportAdapterContribution;
 import com.xa.mass.transport.TransportServer;
 import org.junit.jupiter.api.Test;
 
@@ -30,7 +35,7 @@ class MassApplicationStopOrderTest {
         doAnswer(inv -> { order.add("transport"); return null; }).when(transportServer).stop();
         when(transportServer.isRunning()).thenReturn(false);
 
-        MassApplication app = new MassApplication(null, 0, "/", enabledWebSocket(), disabledEngine());
+        MassApplication app = new MassApplication(null, enabledWebSocket(), disabledEngine());
         inject(app, "managedTransportAdapters", new ArrayList<>(List.of(adapter)));
         inject(app, "transportServers", new ArrayList<>(List.of(transportServer)));
         setApplicationRunning(app, true);
@@ -55,7 +60,7 @@ class MassApplicationStopOrderTest {
         TransportServer transportServer = mock(TransportServer.class);
         doAnswer(inv -> { order.add("transport"); return null; }).when(transportServer).stop();
 
-        MassApplication app = new MassApplication(engine, 0, "/", enabledWebSocket(), enabledEngine());
+        MassApplication app = new MassApplication(engine, enabledWebSocket(), enabledEngine());
         inject(app, "managedTransportAdapters", new ArrayList<>(List.of(adapter)));
         inject(app, "transportServers", new ArrayList<>(List.of(transportServer)));
         setApplicationRunning(app, true);
@@ -74,7 +79,7 @@ class MassApplicationStopOrderTest {
         });
         TransportServer transportServer = mock(TransportServer.class);
 
-        MassApplication app = new MassApplication(engine, 0, "/", enabledWebSocket(), enabledEngine());
+        MassApplication app = new MassApplication(engine, enabledWebSocket(), enabledEngine());
         inject(app, "managedTransportAdapters", new ArrayList<>(List.of(adapter)));
         inject(app, "transportServers", new ArrayList<>(List.of(transportServer)));
         setApplicationRunning(app, true);
@@ -90,7 +95,7 @@ class MassApplicationStopOrderTest {
     @Test
     void rawTransportMessageFallsBackToSingleRegisteredChannel() throws Exception {
         RawWorkerMessageChannel channel = mock(RawWorkerMessageChannel.class);
-        MassApplication app = new MassApplication(null, 0, "/", enabledWebSocket(), disabledEngine());
+        MassApplication app = new MassApplication(null, enabledWebSocket(), disabledEngine());
         inject(app, "rawWorkerMessageChannels", new ArrayList<>(List.of(channel)));
 
         assertTrue(app.sendRawTransportMessage("worker-1", "{\"hello\":1}", "trace-1"));
@@ -105,7 +110,7 @@ class MassApplicationStopOrderTest {
         when(first.supports("worker-2")).thenReturn(false);
         when(second.supports("worker-2")).thenReturn(true);
 
-        MassApplication app = new MassApplication(null, 0, "/", enabledWebSocket(), disabledEngine());
+        MassApplication app = new MassApplication(null, enabledWebSocket(), disabledEngine());
         inject(app, "rawWorkerMessageChannels", new ArrayList<>(List.of(first, second)));
 
         assertTrue(app.sendRawTransportMessage("worker-2", "{\"hello\":2}", "trace-2"));
@@ -120,7 +125,7 @@ class MassApplicationStopOrderTest {
         when(first.supports("worker-3")).thenReturn(false);
         when(second.supports("worker-3")).thenReturn(false);
 
-        MassApplication app = new MassApplication(null, 0, "/", enabledWebSocket(), disabledEngine());
+        MassApplication app = new MassApplication(null, enabledWebSocket(), disabledEngine());
         inject(app, "rawWorkerMessageChannels", new ArrayList<>(List.of(first, second)));
 
         assertFalse(app.sendRawTransportMessage("worker-3", "{\"hello\":3}", "trace-3"));
@@ -128,10 +133,57 @@ class MassApplicationStopOrderTest {
         verify(second, never()).send(anyString(), anyString(), anyString());
     }
 
+    @Test
+    void startBootstrapsManagedAdapterEvenWhenDefaultWebSocketIsDisabled() {
+        ManagedTransportAdapter adapter = mock(ManagedTransportAdapter.class);
+        TransportConfig transport = disabledTransportWithQueues();
+        transport.addTransportAdapterBootstrap(new StaticManagedAdapterBootstrap(adapter));
+
+        MassApplication app = new MassApplication(null, transport, disabledEngine());
+
+        app.start();
+        try {
+            verify(adapter).start();
+            assertTrue(app.isRunning());
+        } finally {
+            app.stop();
+            verify(adapter).stop();
+        }
+    }
+
+    @Test
+    void adapterBootstrapCanOverrideTransportServerPort() throws Exception {
+        TransportConfig transport = disabledTransportWithQueues();
+        StaticConfiguredTransportServer transportServer = new StaticConfiguredTransportServer(19093);
+        transport.addTransportAdapterBootstrap(new StaticTransportServerBootstrap(transportServer));
+
+        transport.setTransportServerPort(18080);
+        transport.setTransportEndpointPath("/default");
+        MassApplication app = new MassApplication(null, transport, disabledEngine());
+
+        try {
+            app.start();
+            assertEquals(19093, transportServer.startedPort());
+            assertTrue(app.isRunning());
+        } finally {
+            app.stop();
+            assertTrue(transportServer.wasStopped());
+        }
+    }
+
     // ---- helpers ----
 
-    private WebSocketConfig enabledWebSocket() {
-        WebSocketConfig c = new WebSocketConfig(); c.setEnabled(true); return c;
+    private TransportConfig enabledWebSocket() {
+        TransportConfig c = new TransportConfig(); c.setEnabled(true); return c;
+    }
+
+    private TransportConfig disabledTransportWithQueues() {
+        TransportConfig c = new TransportConfig();
+        c.setEnabled(false);
+        c.setTransportServerEnabled(false);
+        c.setInputQueue(new InMemoryMessageQueue<>("transport-input", String.class));
+        c.setOutputQueue(new InMemoryMessageQueue<>("transport-output", WorkerTransportMessage.class));
+        return c;
     }
 
     private EngineConfig enabledEngine() {
@@ -194,6 +246,74 @@ class MassApplicationStopOrderTest {
         @Override
         public boolean isRunning() {
             return false;
+        }
+    }
+
+    private static final class StaticManagedAdapterBootstrap
+            implements TransportAdapterBootstrap<WorkerTransportMessage> {
+
+        private final ManagedTransportAdapter managedTransportAdapter;
+
+        private StaticManagedAdapterBootstrap(ManagedTransportAdapter managedTransportAdapter) {
+            this.managedTransportAdapter = managedTransportAdapter;
+        }
+
+        @Override
+        public TransportAdapterContribution create(TransportAdapterBootstrapContext<WorkerTransportMessage> context) {
+            return TransportAdapterContribution.builder()
+                    .managedTransportAdapter(managedTransportAdapter)
+                    .build();
+        }
+    }
+
+    private static final class StaticTransportServerBootstrap
+            implements TransportAdapterBootstrap<WorkerTransportMessage> {
+
+        private final TransportServer transportServer;
+
+        private StaticTransportServerBootstrap(TransportServer transportServer) {
+            this.transportServer = transportServer;
+        }
+
+        @Override
+        public TransportAdapterContribution create(TransportAdapterBootstrapContext<WorkerTransportMessage> context) {
+            return TransportAdapterContribution.builder()
+                    .transportServer(transportServer)
+                    .build();
+        }
+    }
+
+    private static final class StaticConfiguredTransportServer implements TransportServer {
+        private final int configuredPort;
+        private boolean running;
+        private boolean stopped;
+
+        private StaticConfiguredTransportServer(int configuredPort) {
+            this.configuredPort = configuredPort;
+        }
+
+        @Override
+        public void start() {
+            running = true;
+        }
+
+        @Override
+        public void stop() {
+            running = false;
+            stopped = true;
+        }
+
+        @Override
+        public boolean isRunning() {
+            return running;
+        }
+
+        private int startedPort() {
+            return configuredPort;
+        }
+
+        private boolean wasStopped() {
+            return stopped;
         }
     }
 }

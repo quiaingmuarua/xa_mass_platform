@@ -7,12 +7,13 @@ import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.engine.strategy.TaskScheduler;
-import com.xa.mass.transport.websocket.queue.OutboundDelivery;
+import com.xa.mass.transport.model.WorkerTransportMessage;
 import com.xa.mass.sdk.MassBootstrapDataProvider;
 import com.xa.mass.starter.MassApplication;
 import com.xa.mass.starter.MassEngine;
 import com.xa.mass.starter.config.EngineConfig;
-import com.xa.mass.starter.config.WebSocketConfig;
+import com.xa.mass.starter.config.TransportConfig;
+import com.xa.mass.starter.transport.TransportAdapterBootstrap;
 import com.xa.mass.starter.transport.TransportServerFactoryContext;
 import com.xa.mass.starter.transport.WorkerTransportRuntimeFactory;
 import com.xa.mass.transport.TransportServerFactory;
@@ -24,7 +25,7 @@ import java.util.Map;
 import java.util.function.Consumer;
 
 /**
- * Builds {@link MassApplication} instances from WebSocket-adapter and engine configuration.
+ * Builds {@link MassApplication} instances from transport and engine configuration.
  */
 public class MassApplicationBuilder {
 
@@ -32,8 +33,7 @@ public class MassApplicationBuilder {
     private static final String API_MODE_UNSUPPORTED_MESSAGE =
             "API-based transport is not implemented yet. Use queue/polling transport or provide a real transport adapter.";
 
-    private int serverPort = 8080;
-    private WebSocketConfig webSocketConfig = new WebSocketConfig();
+    private TransportConfig transportConfig = new TransportConfig();
     private EngineConfig engineConfig = new EngineConfig();
 
     private MassApplicationBuilder() {
@@ -50,11 +50,11 @@ public class MassApplicationBuilder {
     public static MassApplication createDevelopment(int port) {
         return create()
                 .server(port)
-                .websocket(websocket -> websocket
+                .transport(transport -> transport
                         .enabled(true)
                         .maxConnections(1000)
                         .inputQueue(new InMemoryMessageQueue<>("input", String.class))
-                        .outputQueue(new InMemoryMessageQueue<>("output", OutboundDelivery.class)))
+                        .outputQueue(new InMemoryMessageQueue<>("output", WorkerTransportMessage.class)))
                 .engine(engine -> engine
                         .enabled(true)
                         .workerThreads(8))
@@ -63,14 +63,14 @@ public class MassApplicationBuilder {
 
     /**
      * @deprecated Use {@link #createDevelopment(int)} — queues are now provisioned internally.
-     * Pass custom queues via {@link MassApplicationBuilder#create()} and the {@code websocket()} builder
+     * Pass custom queues via {@link MassApplicationBuilder#create()} and the {@code transport()} builder
      * if you need to share queue instances across components.
      */
     @Deprecated(forRemoval = false)
-    public static MassApplication createDevelopment(int port, MessageQueue<String> inputQueue, MessageQueue<OutboundDelivery> outputQueue) {
+    public static MassApplication createDevelopment(int port, MessageQueue<String> inputQueue, MessageQueue<WorkerTransportMessage> outputQueue) {
         return create()
                 .server(port)
-                .websocket(websocket -> websocket
+                .transport(transport -> transport
                         .enabled(true)
                         .maxConnections(1000)
                         .inputQueue(inputQueue)
@@ -87,11 +87,11 @@ public class MassApplicationBuilder {
     public static MassApplication createProduction(int port) {
         return create()
                 .server(port)
-                .websocket(websocket -> websocket
+                .transport(transport -> transport
                         .enabled(true)
                         .maxConnections(5000)
                         .inputQueue(new InMemoryMessageQueue<>("input", String.class))
-                        .outputQueue(new InMemoryMessageQueue<>("output", OutboundDelivery.class)))
+                        .outputQueue(new InMemoryMessageQueue<>("output", WorkerTransportMessage.class)))
                 .engine(engine -> engine
                         .enabled(true)
                         .workerThreads(16))
@@ -102,10 +102,10 @@ public class MassApplicationBuilder {
      * @deprecated Use {@link #createProduction(int)} — queues are now provisioned internally.
      */
     @Deprecated(forRemoval = false)
-    public static MassApplication createProduction(int port, MessageQueue<String> inputQueue, MessageQueue<OutboundDelivery> outputQueue) {
+    public static MassApplication createProduction(int port, MessageQueue<String> inputQueue, MessageQueue<WorkerTransportMessage> outputQueue) {
         return create()
                 .server(port)
-                .websocket(websocket -> websocket
+                .transport(transport -> transport
                         .enabled(true)
                         .maxConnections(5000)
                         .inputQueue(inputQueue)
@@ -127,7 +127,7 @@ public class MassApplicationBuilder {
     public static MassApplication createTest(int port) {
         return create()
                 .server(port)
-                .websocket(websocket -> websocket
+                .transport(transport -> transport
                         .enabled(true)
                         .maxConnections(100))
                 .engine(engine -> engine
@@ -154,13 +154,25 @@ public class MassApplicationBuilder {
     }
 
     public MassApplicationBuilder transportServer(int port, String transportEndpointPath) {
-        this.serverPort = port;
-        this.webSocketConfig.setTransportEndpointPath(transportEndpointPath);
+        this.transportConfig.setTransportServerPort(port);
+        this.transportConfig.setTransportEndpointPath(transportEndpointPath);
         return this;
     }
 
+    public MassApplicationBuilder transport(Consumer<TransportBuilder> transportConfigurator) {
+        TransportBuilder transportBuilder = new TransportBuilder(transportConfig);
+        transportConfigurator.accept(transportBuilder);
+        return this;
+    }
+
+    /**
+     * @deprecated Prefer {@link #transport(Consumer)} so SDK/runtime assembly
+     * is described in transport-neutral terms rather than a WebSocket-specific
+     * entrypoint name.
+     */
+    @Deprecated(forRemoval = false)
     public MassApplicationBuilder websocket(Consumer<WebSocketBuilder> websocketConfigurator) {
-        WebSocketBuilder webSocketBuilder = new WebSocketBuilder(webSocketConfig);
+        WebSocketBuilder webSocketBuilder = new WebSocketBuilder(transportConfig);
         websocketConfigurator.accept(webSocketBuilder);
         return this;
     }
@@ -172,11 +184,11 @@ public class MassApplicationBuilder {
     }
 
     public MassApplication build() {
-        WebSocketConfig webSocketSnapshot = new WebSocketConfig(webSocketConfig);
+        TransportConfig transportSnapshot = new TransportConfig(transportConfig);
         EngineConfig engineSnapshot = new EngineConfig(engineConfig);
-        logger.info("Building MassApplication with configuration: port={}, websocket={}, engine={}",
-                serverPort,
-                webSocketSnapshot.isEnabled(),
+        logger.info("Building MassApplication with configuration: port={}, transport={}, engine={}",
+                transportSnapshot.getTransportServerPort(),
+                transportSnapshot.isEnabled(),
                 engineSnapshot.isEnabled());
 
         MassEngine engine = null;
@@ -189,58 +201,62 @@ public class MassApplicationBuilder {
 
         return new MassApplication(
                 engine,
-                serverPort,
-                webSocketSnapshot.getTransportEndpointPath(),
-                webSocketSnapshot,
+                transportSnapshot,
                 engineSnapshot
         );
     }
 
-    public static class WebSocketBuilder {
-        private final WebSocketConfig config;
+    public static class TransportBuilder {
+        protected final TransportConfig config;
 
-        public WebSocketBuilder(WebSocketConfig config) {
+        public TransportBuilder(TransportConfig config) {
             this.config = config;
         }
 
-        public WebSocketBuilder enabled(boolean enabled) {
+        public TransportBuilder enabled(boolean enabled) {
             config.setEnabled(enabled);
             return this;
         }
 
-        public WebSocketBuilder transportServerEnabled(boolean enabled) {
+        public TransportBuilder transportServerEnabled(boolean enabled) {
             config.setTransportServerEnabled(enabled);
             return this;
         }
 
-        public WebSocketBuilder transportEndpointPath(String transportEndpointPath) {
+        public TransportBuilder transportEndpointPath(String transportEndpointPath) {
             config.setTransportEndpointPath(transportEndpointPath);
             return this;
         }
 
-        public WebSocketBuilder transportServerFactory(
+        public TransportBuilder transportServerFactory(
                 TransportServerFactory<TransportServerFactoryContext> transportServerFactory) {
             config.setTransportServerFactory(transportServerFactory);
             return this;
         }
 
-        public WebSocketBuilder workerTransportRuntimeFactory(WorkerTransportRuntimeFactory workerTransportRuntimeFactory) {
+        public TransportBuilder workerTransportRuntimeFactory(WorkerTransportRuntimeFactory workerTransportRuntimeFactory) {
             config.setWorkerTransportRuntimeFactory(workerTransportRuntimeFactory);
             return this;
         }
 
-        public WebSocketBuilder maxConnections(int maxConnections) {
+        public TransportBuilder maxConnections(int maxConnections) {
             config.setMaxConnections(maxConnections);
             return this;
         }
 
-        public WebSocketBuilder inputQueue(MessageQueue<String> inputQueue) {
+        public TransportBuilder inputQueue(MessageQueue<String> inputQueue) {
             config.setInputQueue(inputQueue);
             return this;
         }
 
-        public WebSocketBuilder outputQueue(MessageQueue<OutboundDelivery> outputQueue) {
+        public TransportBuilder outputQueue(MessageQueue<WorkerTransportMessage> outputQueue) {
             config.setOutputQueue(outputQueue);
+            return this;
+        }
+
+        public TransportBuilder addTransportAdapterBootstrap(
+                TransportAdapterBootstrap<WorkerTransportMessage> transportAdapterBootstrap) {
+            config.addTransportAdapterBootstrap(transportAdapterBootstrap);
             return this;
         }
 
@@ -248,11 +264,11 @@ public class MassApplicationBuilder {
          * @deprecated API-based transport is not implemented and now fails fast.
          */
         @Deprecated(since = "2.0.0", forRemoval = false)
-        public WebSocketBuilder apiMode(String inputApiUrl, String outputApiUrl, String apiKey) {
+        public TransportBuilder apiMode(String inputApiUrl, String outputApiUrl, String apiKey) {
             throw new UnsupportedOperationException(API_MODE_UNSUPPORTED_MESSAGE);
         }
 
-        public WebSocketBuilder queueMode() {
+        public TransportBuilder queueMode() {
             config.setTransporterType(MessageTransporterFactory.TransporterType.QUEUE_BASED);
             return this;
         }
@@ -261,9 +277,21 @@ public class MassApplicationBuilder {
          * Overrides the default worker system-event channel. Useful for custom
          * transport adapters or testing with a mock channel.
          */
-        public WebSocketBuilder systemEventChannel(WorkerSystemEventChannel channel) {
+        public TransportBuilder systemEventChannel(WorkerSystemEventChannel channel) {
             config.setCustomSystemEventChannel(channel);
             return this;
+        }
+    }
+
+    /**
+     * @deprecated Prefer {@link TransportBuilder}; WebSocket is one adapter,
+     * not the primary transport-composition naming boundary.
+     */
+    @Deprecated(forRemoval = false)
+    public static class WebSocketBuilder extends TransportBuilder {
+
+        public WebSocketBuilder(TransportConfig config) {
+            super(config);
         }
     }
 

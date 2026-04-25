@@ -12,26 +12,19 @@ import java.util.Objects;
  */
 public final class TransportAdapterBootstrapContext<T> {
 
-    private final int serverPort;
     private final MessageTransporter<String, T> messageTransporter;
     private final WorkerEndpointRegistry endpointRegistry;
     private final TaskResultIngestChannel taskResultIngestChannel;
     private final WorkerSystemEventChannel systemEventChannel;
 
-    public TransportAdapterBootstrapContext(int serverPort,
-                                            MessageTransporter<String, T> messageTransporter,
+    public TransportAdapterBootstrapContext(MessageTransporter<String, T> messageTransporter,
                                             WorkerEndpointRegistry endpointRegistry,
                                             TaskResultIngestChannel taskResultIngestChannel,
                                             WorkerSystemEventChannel systemEventChannel) {
-        this.serverPort = serverPort;
         this.messageTransporter = Objects.requireNonNull(messageTransporter, "messageTransporter");
         this.endpointRegistry = Objects.requireNonNull(endpointRegistry, "endpointRegistry");
         this.taskResultIngestChannel = taskResultIngestChannel;
         this.systemEventChannel = Objects.requireNonNull(systemEventChannel, "systemEventChannel");
-    }
-
-    public int getServerPort() {
-        return serverPort;
     }
 
     public MessageTransporter<String, T> getMessageTransporter() {

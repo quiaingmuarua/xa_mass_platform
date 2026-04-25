@@ -6,14 +6,15 @@ import com.xa.mass.command.event.MassEventRuntime;
 import com.xa.mass.engine.listener.TaskMsgDispatchListener;
 import com.xa.mass.engine.rules.RuleDefinition;
 import com.xa.mass.engine.util.LogUtils;
-import com.xa.mass.transport.websocket.queue.OutboundDelivery;
+import com.xa.mass.transport.model.WorkerTransportMessage;
 import com.xa.mass.sdk.worker.PullWorkerSession;
 import com.xa.mass.starter.config.EngineConfig;
-import com.xa.mass.starter.config.WebSocketConfig;
-import com.xa.mass.starter.config.WebSocketRuntimeComposition;
+import com.xa.mass.starter.config.TransportConfig;
+import com.xa.mass.starter.config.TransportRuntimeComposition;
 import com.xa.mass.starter.transport.ManagedTransportAdapter;
 import com.xa.mass.starter.transport.RawWorkerMessageChannel;
 import com.xa.mass.starter.transport.ResolvedPullWorkerTransport;
+import com.xa.mass.starter.transport.TransportAdapterBootstrap;
 import com.xa.mass.starter.transport.TransportAdapterBootstrapContext;
 import com.xa.mass.starter.transport.TransportAdapterContribution;
 import com.xa.mass.starter.transport.TransportBinding;
@@ -39,9 +40,7 @@ public class MassApplication {
 
     private static final Logger logger = LoggerFactory.getLogger(MassApplication.class);
 
-    private final int serverPort;
-    private final String transportEndpointPath;
-    private final WebSocketRuntimeComposition transportRuntimeComposition;
+    private final TransportRuntimeComposition transportRuntimeComposition;
     private final EngineConfig engineConfig;
     private final AtomicBoolean running = new AtomicBoolean(false);
     private final MassEventRuntime eventRuntime = new InMemoryMassEventRuntime();
@@ -50,16 +49,15 @@ public class MassApplication {
     private final List<TransportServer> transportServers = new ArrayList<>();
 
     private final MassEngine engine;
-    private MessageTransporter<String, OutboundDelivery> messageTransporter;
+    private MessageTransporter<String, WorkerTransportMessage> messageTransporter;
     private WorkerEndpointRegistry endpointRegistry;
     private TransportRuntimeRegistry transportRuntimeRegistry;
 
-    public MassApplication(MassEngine engine, int serverPort, String transportEndpointPath,
-                           WebSocketConfig webSocketConfig, EngineConfig engineConfig) {
+    public MassApplication(MassEngine engine,
+                           TransportConfig transportConfig,
+                           EngineConfig engineConfig) {
         this.engine = engine;
-        this.serverPort = serverPort;
-        this.transportEndpointPath = transportEndpointPath;
-        this.transportRuntimeComposition = webSocketConfig.snapshotRuntimeComposition();
+        this.transportRuntimeComposition = transportConfig.snapshotRuntimeComposition();
         this.engineConfig = engineConfig;
     }
 
@@ -75,17 +73,8 @@ public class MassApplication {
         try {
             initializeComponents();
 
-            if (transportRuntimeComposition.isEnabled()) {
-                startManagedTransportAdapters();
-            } else {
-                logger.info("WebSocket transport adapter is disabled, skipping managed adapter start");
-            }
-
-            if (transportRuntimeComposition.isTransportServerEnabled()) {
-                startTransportServer();
-            } else {
-                logger.info("Transport server is disabled, skipping start");
-            }
+            startManagedTransportAdapters();
+            startTransportServer();
 
             LogUtils.clearMdc();
             logger.info("Mass Application started successfully");
@@ -139,25 +128,24 @@ public class MassApplication {
             WorkerSystemEventChannel systemEventChannel = transportRuntimeComposition.resolveSystemEventChannel();
             TaskMsgDispatchListener taskMsgDispatchListener = null;
             TaskResultIngestChannel taskResultIngestChannel = null;
-            List<TransportBinding> adapterBindings = List.of();
+            List<TransportBinding> adapterBindings = new ArrayList<>();
             if (engineConfig.isEnabled() && engineConfig.getTaskManager() != null) {
                 taskResultIngestChannel = new RuntimeTaskResultIngestChannel(engineConfig.getTaskManager());
                 logger.info("Task result ingest channel initialized");
             }
 
-            TransportAdapterContribution webSocketContribution = transportRuntimeComposition.resolveTransportAdapterBootstrap().create(
-                    new TransportAdapterBootstrapContext<>(
-                            serverPort,
-                            messageTransporter,
-                            endpointRegistry,
-                            taskResultIngestChannel,
-                            systemEventChannel
-                    )
-            );
-            adapterBindings = collectAdapterBindings(webSocketContribution);
-            registerManagedTransportAdapter(webSocketContribution.getManagedTransportAdapter());
-            registerRawWorkerMessageChannel(webSocketContribution.getRawWorkerMessageChannel());
-            registerTransportServer(webSocketContribution.getTransportServer());
+            for (TransportAdapterBootstrap<WorkerTransportMessage> transportAdapterBootstrap
+                    : transportRuntimeComposition.resolveTransportAdapterBootstraps()) {
+                TransportAdapterContribution contribution = transportAdapterBootstrap.create(
+                        new TransportAdapterBootstrapContext<>(
+                                messageTransporter,
+                                endpointRegistry,
+                                taskResultIngestChannel,
+                                systemEventChannel
+                        )
+                );
+                registerTransportContribution(contribution, adapterBindings);
+            }
 
             if (engineConfig.isEnabled() && engineConfig.getTaskManager() != null) {
                 transportRuntimeRegistry = transportRuntimeComposition.resolveWorkerTransportRuntimeFactory().create(
@@ -215,12 +203,12 @@ public class MassApplication {
         }
         for (TransportServer transportServer : transportServers) {
             try {
-                transportServer.start(serverPort);
+                transportServer.start();
             } catch (Exception e) {
                 throw new RuntimeException("Failed to start transport server", e);
             }
         }
-        logger.info("Transport servers started on port {} (current adapter path={})", serverPort, transportEndpointPath);
+        logger.info("Transport servers started: count={}", transportServers.size());
     }
 
     private void stopManagedTransportAdapters() throws Exception {
@@ -233,13 +221,6 @@ public class MassApplication {
         for (TransportServer transportServer : transportServers) {
             transportServer.stop();
         }
-    }
-
-    private List<TransportBinding> collectAdapterBindings(TransportAdapterContribution contribution) {
-        if (contribution == null || contribution.getTransportBinding() == null) {
-            return List.of();
-        }
-        return List.of(contribution.getTransportBinding());
     }
 
     private void registerManagedTransportAdapter(ManagedTransportAdapter managedTransportAdapter) {
@@ -260,10 +241,22 @@ public class MassApplication {
         }
     }
 
+    private void registerTransportContribution(TransportAdapterContribution contribution,
+                                               List<TransportBinding> adapterBindings) {
+        if (contribution == null) {
+            return;
+        }
+        if (contribution.getTransportBinding() != null) {
+            adapterBindings.add(contribution.getTransportBinding());
+        }
+        registerManagedTransportAdapter(contribution.getManagedTransportAdapter());
+        registerRawWorkerMessageChannel(contribution.getRawWorkerMessageChannel());
+        registerTransportServer(contribution.getTransportServer());
+    }
+
     public boolean isRunning() {
         return running.get()
-                && (!transportRuntimeComposition.isTransportServerEnabled()
-                || transportServers.stream().allMatch(TransportServer::isRunning));
+                && transportServers.stream().allMatch(TransportServer::isRunning);
     }
 
     public PullWorkerSession openPullWorkerSession(String workerId) {
@@ -307,7 +300,7 @@ public class MassApplication {
         return false;
     }
 
-    public MessageTransporter<String, OutboundDelivery> getMessageTransporter() {
+    public MessageTransporter<String, WorkerTransportMessage> getMessageTransporter() {
         return messageTransporter;
     }
 
@@ -329,4 +322,5 @@ public class MassApplication {
         }
         return engine;
     }
+
 }

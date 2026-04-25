@@ -5,9 +5,10 @@ import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.engine.strategy.TaskScheduler;
-import com.xa.mass.transport.websocket.queue.OutboundDelivery;
+import com.xa.mass.transport.model.WorkerTransportMessage;
 import com.xa.mass.sdk.catalog.ProjectEventCatalogRegistry;
 import com.xa.mass.starter.builder.MassApplicationBuilder;
+import com.xa.mass.starter.transport.TransportAdapterBootstrap;
 import com.xa.mass.starter.transport.TransportServerFactoryContext;
 import com.xa.mass.starter.transport.WorkerTransportRuntimeFactory;
 import com.xa.mass.transport.TransportServerFactory;
@@ -47,13 +48,13 @@ public final class MassSdk {
 
     /**
      * @deprecated Use {@link #development(int)} — queues are now provisioned internally.
-     * Use {@link #builder()} with a custom {@code websocket()} configuration if you need
+     * Use {@link #builder()} with a custom {@code transport()} configuration if you need
      * to provide your own queue instances.
      */
     @Deprecated(forRemoval = false)
     public static MassSdkApplication development(int port,
                                                  MessageQueue<String> inputQueue,
-                                                 MessageQueue<OutboundDelivery> outputQueue) {
+                                                 MessageQueue<WorkerTransportMessage> outputQueue) {
         return new MassSdkApplication(
                 MassApplicationBuilder.createDevelopment(port, inputQueue, outputQueue)
         );
@@ -72,7 +73,7 @@ public final class MassSdk {
     @Deprecated(forRemoval = false)
     public static MassSdkApplication production(int port,
                                                 MessageQueue<String> inputQueue,
-                                                MessageQueue<OutboundDelivery> outputQueue) {
+                                                MessageQueue<WorkerTransportMessage> outputQueue) {
         return new MassSdkApplication(
                 MassApplicationBuilder.createProduction(port, inputQueue, outputQueue)
         );
@@ -126,6 +127,17 @@ public final class MassSdk {
             return this;
         }
 
+        public Builder transport(Consumer<TransportOptions> configurator) {
+            Objects.requireNonNull(configurator, "configurator");
+            delegate.transport(inner -> configurator.accept(new TransportOptions(inner)));
+            return this;
+        }
+
+        /**
+         * @deprecated Prefer {@link #transport(Consumer)} so stable SDK code
+         * does not treat WebSocket naming as the primary transport boundary.
+         */
+        @Deprecated(forRemoval = false)
         public Builder websocket(Consumer<WebSocketOptions> configurator) {
             Objects.requireNonNull(configurator, "configurator");
             delegate.websocket(inner -> configurator.accept(new WebSocketOptions(inner)));
@@ -175,24 +187,24 @@ public final class MassSdk {
         }
     }
 
-    public static final class WebSocketOptions {
-        private final MassApplicationBuilder.WebSocketBuilder delegate;
+    public static class TransportOptions {
+        protected final MassApplicationBuilder.TransportBuilder delegate;
 
-        private WebSocketOptions(MassApplicationBuilder.WebSocketBuilder delegate) {
+        protected TransportOptions(MassApplicationBuilder.TransportBuilder delegate) {
             this.delegate = Objects.requireNonNull(delegate, "delegate");
         }
 
-        public WebSocketOptions enabled(boolean enabled) {
+        public TransportOptions enabled(boolean enabled) {
             delegate.enabled(enabled);
             return this;
         }
 
-        public WebSocketOptions transportServerEnabled(boolean enabled) {
+        public TransportOptions transportServerEnabled(boolean enabled) {
             delegate.transportServerEnabled(enabled);
             return this;
         }
 
-        public WebSocketOptions transportEndpointPath(String transportEndpointPath) {
+        public TransportOptions transportEndpointPath(String transportEndpointPath) {
             delegate.transportEndpointPath(transportEndpointPath);
             return this;
         }
@@ -201,7 +213,7 @@ public final class MassSdk {
          * Advanced embedding seam for replacing the default inbound transport
          * server adapter.
          */
-        public WebSocketOptions transportServerFactory(
+        public TransportOptions transportServerFactory(
                 TransportServerFactory<TransportServerFactoryContext> transportServerFactory) {
             delegate.transportServerFactory(transportServerFactory);
             return this;
@@ -211,23 +223,29 @@ public final class MassSdk {
          * Advanced embedding seam for replacing the assembled set of worker
          * transport bindings used by the runtime.
          */
-        public WebSocketOptions workerTransportRuntimeFactory(WorkerTransportRuntimeFactory workerTransportRuntimeFactory) {
+        public TransportOptions workerTransportRuntimeFactory(WorkerTransportRuntimeFactory workerTransportRuntimeFactory) {
             delegate.workerTransportRuntimeFactory(workerTransportRuntimeFactory);
             return this;
         }
 
-        public WebSocketOptions maxConnections(int maxConnections) {
+        public TransportOptions maxConnections(int maxConnections) {
             delegate.maxConnections(maxConnections);
             return this;
         }
 
-        public WebSocketOptions inputQueue(MessageQueue<String> inputQueue) {
+        public TransportOptions inputQueue(MessageQueue<String> inputQueue) {
             delegate.inputQueue(inputQueue);
             return this;
         }
 
-        public WebSocketOptions outputQueue(MessageQueue<OutboundDelivery> outputQueue) {
+        public TransportOptions outputQueue(MessageQueue<WorkerTransportMessage> outputQueue) {
             delegate.outputQueue(outputQueue);
+            return this;
+        }
+
+        public TransportOptions addTransportAdapterBootstrap(
+                TransportAdapterBootstrap<WorkerTransportMessage> transportAdapterBootstrap) {
+            delegate.addTransportAdapterBootstrap(transportAdapterBootstrap);
             return this;
         }
 
@@ -235,22 +253,43 @@ public final class MassSdk {
          * @deprecated API-based transport is not implemented and now fails fast.
          */
         @Deprecated(since = "2.0.0", forRemoval = false)
-        public WebSocketOptions apiMode(String inputApiUrl, String outputApiUrl, String apiKey) {
+        public TransportOptions apiMode(String inputApiUrl, String outputApiUrl, String apiKey) {
             throw new UnsupportedOperationException(API_MODE_UNSUPPORTED_MESSAGE);
         }
 
-        public WebSocketOptions queueMode() {
+        public TransportOptions queueMode() {
             delegate.queueMode();
             return this;
         }
 
         /**
-         * @deprecated Prefer the SDK WebSocket option methods. This remains only
+         * @deprecated Prefer the SDK transport option methods. This remains only
          * for advanced embedding paths that need lower-level runtime configuration.
          */
         @Deprecated(forRemoval = false)
-        public MassApplicationBuilder.WebSocketBuilder unwrap() {
+        public MassApplicationBuilder.TransportBuilder unwrap() {
             return delegate;
+        }
+    }
+
+    /**
+     * @deprecated Prefer {@link TransportOptions}; WebSocket is one adapter,
+     * not the stable SDK transport-composition naming boundary.
+     */
+    @Deprecated(forRemoval = false)
+    public static final class WebSocketOptions extends TransportOptions {
+
+        private WebSocketOptions(MassApplicationBuilder.WebSocketBuilder delegate) {
+            super(delegate);
+        }
+
+        /**
+         * @deprecated Prefer {@link TransportOptions#unwrap()}.
+         */
+        @Deprecated(forRemoval = false)
+        @Override
+        public MassApplicationBuilder.WebSocketBuilder unwrap() {
+            return (MassApplicationBuilder.WebSocketBuilder) super.unwrap();
         }
     }
 

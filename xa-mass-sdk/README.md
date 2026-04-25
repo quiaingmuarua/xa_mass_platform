@@ -45,7 +45,7 @@ import com.xa.mass.sdk.model.WorkerRegistration;
 
 MassSdkApplication app = MassSdk.builder()
         .transportServer(19090, "/ws")
-        .websocket(websocket -> websocket.enabled(false))
+        .transport(transport -> transport.enabled(false))
         .engine(engine -> engine.enabled(true).workerThreads(4))
         .build();
 
@@ -202,19 +202,30 @@ If you need the lower-level runtime composition directly, start here:
 
 Treat this lower-level `starter` surface as an advanced embedding path. It remains available, but the default compatibility commitment is on `com.xa.mass.sdk.*`.
 
-Current embedded-runtime mainline snapshots `WebSocketConfig` into an internal
+Stable builder mainline is `transport(...)`. The older `websocket(...)` SDK/starter
+builder entry remains only as a deprecated compatibility name.
+
+Current embedded-runtime mainline snapshots `TransportConfig` into an internal
 runtime-composition object during `MassApplication` construction. Runtime
 assembly then manages only assembled transport components rather than holding a
-live WebSocket config object as the primary composition backbone.
+live transport config object as the primary composition backbone. That
+composition now consumes one or more adapter bootstrap contributions and uses
+the transport-neutral `WorkerTransportMessage` outbound carrier rather than a
+WebSocket-only delivery DTO.
 
-Within that lower-level surface, `WebSocketConfig.createMessageTransporter()`,
+Within that lower-level surface, deprecated compatibility type
+`WebSocketConfig` now aliases the mainline `TransportConfig`.
+`WebSocketConfig.createMessageTransporter()`,
 `resolveWorkerEndpointRegistry()`, `resolveSystemEventChannel()`,
 `resolveWorkerTransportRuntimeFactory()`, `resolveTransportAdapterBootstrap()`,
 `createDispatcherContext(...)`, and `createTransportServer(...)` are
 deprecated advanced embedding helpers only. Embedded-runtime mainline should
-snapshot config into `WebSocketRuntimeComposition`, then use adapter-owned
+snapshot config into `TransportRuntimeComposition`, then use adapter-owned
 bootstrap/contribution assembly for the default WebSocket-backed path, or
-provide an explicit `transportServerFactory(...)` override.
+provide an explicit `transportServerFactory(...)` override. Adapter bootstrap
+context now carries only neutral runtime collaborators; inbound server settings
+such as port/path are owned by the adapter bootstrap instead of being injected
+by `MassApplication` at startup time.
 `MassWebSocketAdapter.getWebSocketConfig()` and `MassWebSocketAdapter.getWebSocketMessageDispatcher()` are also
 deprecated: WebSocket adapter config and dispatcher internals are not part of the
 supported embedding surface.

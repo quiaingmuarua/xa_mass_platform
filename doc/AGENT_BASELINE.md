@@ -95,7 +95,7 @@ Current canonical boundaries:
 - websocket adapter transport boundary
   - inbound mainline: `raw json + connection facts -> canonical seam`
   - outbound mainline: `canonical seam + explicit addressability -> raw json`
-  - only retained adapter-local delivery record: `com.xa.mass.transport.websocket.queue.OutboundDelivery`
+  - canonical embedded-runtime outbound carrier: `com.xa.mass.transport.model.WorkerTransportMessage`
   - `workerId` is the active transport addressability key; endpoint role lanes are no longer part of the WebSocket adapter mainline
 - websocket adapter compatibility boundary
   - WebSocket task data-plane now uses canonical root-level task dispatch/result frames

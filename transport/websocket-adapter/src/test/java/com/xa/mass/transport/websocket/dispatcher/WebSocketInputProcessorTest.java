@@ -2,11 +2,11 @@ package com.xa.mass.transport.websocket.dispatcher;
 
 import com.google.gson.JsonObject;
 import com.xa.mass.base.channel.tranporter.MessageTransporter;
-import com.xa.mass.transport.websocket.queue.OutboundDelivery;
 import com.xa.mass.transport.websocket.queue.WebSocketTransportFrameCodec;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.channel.NoopWorkerSystemEventChannel;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
+import com.xa.mass.transport.model.WorkerTransportMessage;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -24,7 +24,7 @@ class WebSocketInputProcessorTest {
 
     private WebSocketTransportFrameCodec codec;
     private WebSocketDispatcherContext context;
-    private MessageTransporter<String, OutboundDelivery> transporter;
+    private MessageTransporter<String, WorkerTransportMessage> transporter;
     private WorkerEndpointRegistry endpointRegistry;
     private WebSocketInputProcessor inputProcessor;
 

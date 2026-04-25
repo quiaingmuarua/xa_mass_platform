@@ -1,10 +1,10 @@
 package com.xa.mass.transport.websocket.dispatcher;
 
 import com.xa.mass.base.channel.tranporter.MessageTransporter;
-import com.xa.mass.transport.websocket.queue.OutboundDelivery;
 import com.xa.mass.transport.websocket.queue.WebSocketTransportFrameCodec;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.channel.NoopWorkerSystemEventChannel;
+import com.xa.mass.transport.model.WorkerTransportMessage;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -21,7 +21,7 @@ class WebSocketOutputProcessorTest {
     @BeforeEach
     @SuppressWarnings("unchecked")
     void setUp() {
-        MessageTransporter<String, OutboundDelivery> transporter = mock(MessageTransporter.class);
+        MessageTransporter<String, WorkerTransportMessage> transporter = mock(MessageTransporter.class);
         endpointRegistry = mock(WorkerEndpointRegistry.class);
         WebSocketDispatcherContext context = new WebSocketDispatcherContext(
                 transporter,
@@ -39,7 +39,7 @@ class WebSocketOutputProcessorTest {
                 .thenReturn(false);
 
         boolean result = outputProcessor.process(
-                new OutboundDelivery("worker-1", "{\"hello\":\"world\"}", "trace-1")
+                new WorkerTransportMessage("worker-1", "{\"hello\":\"world\"}", "trace-1")
         );
 
         assertFalse(result);
@@ -51,7 +51,7 @@ class WebSocketOutputProcessorTest {
                 .thenReturn(true);
 
         boolean result = outputProcessor.process(
-                new OutboundDelivery("worker-1", "{\"hello\":\"world\"}", "trace-1")
+                new WorkerTransportMessage("worker-1", "{\"hello\":\"world\"}", "trace-1")
         );
 
         assertTrue(result);

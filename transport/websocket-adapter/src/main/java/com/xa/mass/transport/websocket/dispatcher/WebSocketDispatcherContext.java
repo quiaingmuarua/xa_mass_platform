@@ -2,23 +2,23 @@ package com.xa.mass.transport.websocket.dispatcher;
 
 import com.xa.mass.base.channel.tranporter.MessageTransporter;
 import com.xa.mass.transport.websocket.dispatcher.context.WebSocketDispatchRuntimeContext;
-import com.xa.mass.transport.websocket.queue.OutboundDelivery;
 import com.xa.mass.transport.websocket.queue.WebSocketTransportFrameCodec;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
+import com.xa.mass.transport.model.WorkerTransportMessage;
 
 /**
  * Concrete WebSocket adapter dispatch runtime context.
  */
 public class WebSocketDispatcherContext implements WebSocketDispatchRuntimeContext {
-    private final MessageTransporter<String, OutboundDelivery> messageTransporter;
+    private final MessageTransporter<String, WorkerTransportMessage> messageTransporter;
     private final WorkerEndpointRegistry endpointRegistry;
     private final WebSocketTransportFrameCodec frameCodec;
     private final TaskResultIngestChannel taskResultIngestChannel;
     private final WorkerSystemEventChannel systemEventChannel;
 
-    public WebSocketDispatcherContext(MessageTransporter<String, OutboundDelivery> messageTransporter,
+    public WebSocketDispatcherContext(MessageTransporter<String, WorkerTransportMessage> messageTransporter,
                              WorkerEndpointRegistry endpointRegistry,
                              WebSocketTransportFrameCodec frameCodec,
                              TaskResultIngestChannel taskResultIngestChannel,
@@ -41,7 +41,7 @@ public class WebSocketDispatcherContext implements WebSocketDispatchRuntimeConte
     }
 
     @Override
-    public MessageTransporter<String, OutboundDelivery> getMessageTransporter() {
+    public MessageTransporter<String, WorkerTransportMessage> getMessageTransporter() {
         return messageTransporter;
     }
 

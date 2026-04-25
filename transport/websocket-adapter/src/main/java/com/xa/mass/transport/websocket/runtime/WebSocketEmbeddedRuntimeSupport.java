@@ -4,7 +4,6 @@ import com.xa.mass.base.channel.tranporter.MessageTransporter;
 import com.xa.mass.engine.worker.WorkerAdapter;
 import com.xa.mass.transport.websocket.dispatcher.WebSocketDispatcherContext;
 import com.xa.mass.transport.websocket.dispatcher.context.WebSocketDispatchRuntimeContext;
-import com.xa.mass.transport.websocket.queue.OutboundDelivery;
 import com.xa.mass.transport.websocket.queue.WebSocketTransportFrameCodec;
 import com.xa.mass.transport.websocket.server.WebSocketServerImpl;
 import com.xa.mass.transport.websocket.session.EventBusWorkerSystemEventChannel;
@@ -15,6 +14,7 @@ import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
 import com.xa.mass.transport.channel.TaskDispatchChannel;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
+import com.xa.mass.transport.model.WorkerTransportMessage;
 
 import java.util.function.Consumer;
 
@@ -35,7 +35,7 @@ public final class WebSocketEmbeddedRuntimeSupport {
     }
 
     public static WebSocketDispatchRuntimeContext createDispatcherContext(
-            MessageTransporter<String, OutboundDelivery> messageTransporter,
+            MessageTransporter<String, WorkerTransportMessage> messageTransporter,
             WorkerEndpointRegistry endpointRegistry,
             TaskResultIngestChannel taskResultIngestChannel,
             WorkerSystemEventChannel systemEventChannel) {
@@ -59,10 +59,12 @@ public final class WebSocketEmbeddedRuntimeSupport {
         return new WebSocketRealtimeWorkerAdapter(taskDispatchChannel);
     }
 
-    public static TransportServer createTransportServer(String endpointPath,
+    public static TransportServer createTransportServer(int port,
+                                                        String endpointPath,
                                                         WebSocketDispatchRuntimeContext dispatcherContext,
                                                         WorkerEndpointRegistry endpointRegistry) {
         return createTransportServer(
+                port,
                 endpointPath,
                 dispatcherContext.getFrameCodec(),
                 dispatcherContext.getMessageTransporter()::sendInput,
@@ -70,7 +72,8 @@ public final class WebSocketEmbeddedRuntimeSupport {
         );
     }
 
-    public static TransportServer createTransportServer(String endpointPath,
+    public static TransportServer createTransportServer(int port,
+                                                        String endpointPath,
                                                         WebSocketTransportFrameCodec frameCodec,
                                                         Consumer<String> inboundMessageSink,
                                                         WorkerEndpointRegistry endpointRegistry) {
@@ -78,6 +81,7 @@ public final class WebSocketEmbeddedRuntimeSupport {
             throw new IllegalStateException("WebSocket transport requires a WebSocket-managed endpoint registry");
         }
         return createTransportServer(
+                port,
                 endpointPath,
                 frameCodec,
                 inboundMessageSink,
@@ -85,11 +89,13 @@ public final class WebSocketEmbeddedRuntimeSupport {
         );
     }
 
-    public static TransportServer createTransportServer(String endpointPath,
+    public static TransportServer createTransportServer(int port,
+                                                        String endpointPath,
                                                         WebSocketTransportFrameCodec frameCodec,
                                                         Consumer<String> inboundMessageSink,
                                                         ServerSessionManager sessionManager) {
         return new WebSocketServerImpl(
+                port,
                 endpointPath,
                 frameCodec,
                 inboundMessageSink,

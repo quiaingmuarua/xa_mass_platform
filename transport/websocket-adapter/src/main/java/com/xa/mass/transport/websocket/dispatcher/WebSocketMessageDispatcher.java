@@ -1,7 +1,7 @@
 package com.xa.mass.transport.websocket.dispatcher;
 
 import com.xa.mass.transport.websocket.dispatcher.context.WebSocketDispatchRuntimeContext;
-import com.xa.mass.transport.websocket.queue.OutboundDelivery;
+import com.xa.mass.transport.model.WorkerTransportMessage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -84,7 +84,7 @@ public class WebSocketMessageDispatcher {
 
     private void processOutputQueueLoop() {
         while (running.get() && !Thread.currentThread().isInterrupted()) {
-            OutboundDelivery delivery = null;
+            WorkerTransportMessage delivery = null;
             try {
                 delivery = context.getMessageTransporter().receiveOutput(15, TimeUnit.SECONDS);
                 if (delivery != null) {
@@ -99,7 +99,7 @@ public class WebSocketMessageDispatcher {
         }
     }
 
-    private void submitOutputDelivery(OutboundDelivery delivery) {
+    private void submitOutputDelivery(WorkerTransportMessage delivery) {
         ExecutorService laneExecutor = resolveOutputLaneExecutor(delivery);
         laneExecutor.submit(() -> {
             try {
@@ -110,7 +110,7 @@ public class WebSocketMessageDispatcher {
         });
     }
 
-    private ExecutorService resolveOutputLaneExecutor(OutboundDelivery delivery) {
+    private ExecutorService resolveOutputLaneExecutor(WorkerTransportMessage delivery) {
         ExecutorService[] laneExecutors = outputLaneExecutors;
         if (laneExecutors == null || laneExecutors.length == 0) {
             throw new IllegalStateException("Output lane executors are not initialized");
@@ -119,12 +119,12 @@ public class WebSocketMessageDispatcher {
         return laneExecutors[index];
     }
 
-    private String outputLaneKey(OutboundDelivery delivery) {
+    private String outputLaneKey(WorkerTransportMessage delivery) {
         String workerId = delivery != null ? delivery.getWorkerId() : null;
         return Objects.toString(workerId, "_");
     }
 
-    private void logLoopFailure(String loopName, String rawJson, OutboundDelivery delivery, Exception e) {
+    private void logLoopFailure(String loopName, String rawJson, WorkerTransportMessage delivery, Exception e) {
         logger.error("WebSocket dispatcher {} loop failed: rawJsonPresent={}, workerId={}",
                 loopName,
                 rawJson != null,
