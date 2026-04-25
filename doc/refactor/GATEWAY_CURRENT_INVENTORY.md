@@ -1,6 +1,6 @@
 # Gateway Current Inventory
 
-This inventory records the responsibilities that still exist inside `xa-mass-gateway` after convergence to a task-only WebSocket adapter.
+This inventory records the responsibilities that still exist inside `xa-mass-gateway` in the current checkout after substantial convergence toward a task-only WebSocket adapter.
 
 It is a migration aid, not a compatibility promise.
 
@@ -18,7 +18,7 @@ It is a migration aid, not a compatibility promise.
 
 - `Class`: `com.xa.mass.gateway.server.DispatcherInboundHandler`
 - `Method`: `channelRead0(...)`
-- `Current responsibility`: validates inbound text as JSON, extracts `workerId + messageId`, refreshes session reachability, forwards raw JSON into the adapter inbound sink
+- `Current responsibility`: validates inbound text as JSON, extracts `workerId + messageId`, refreshes session reachability, and forwards raw JSON into the adapter inbound sink; current worker identity is handshake/session-led with frame-level fallback only to already-registered session identity
 - `Should stay in gateway?`: yes
 - `Target owner`: `xa-mass-gateway`
 - `Migration phase`: keep
@@ -58,7 +58,7 @@ It is a migration aid, not a compatibility promise.
 
 - `Class`: `com.xa.mass.gateway.session.EventBusWorkerSystemEventChannel`
 - `Method`: `publishWorkerOnline(...)`, `publishWorkerOffline(...)`, `publishWorkerHeartbeat(...)`
-- `Current responsibility`: translates WebSocket transport facts into the transport-neutral worker system-event seam
+- `Current responsibility`: exposes transport-fact translation into the transport-neutral worker system-event seam; current WebSocket ingress mainline actively uses connect/disconnect session facts, while heartbeat publication remains available but is not the primary ingress truth
 - `Should stay in gateway?`: yes
 - `Target owner`: `xa-mass-gateway`
 - `Migration phase`: keep
@@ -72,13 +72,13 @@ It is a migration aid, not a compatibility promise.
 - `Should stay in gateway?`: yes
 - `Target owner`: `xa-mass-gateway`
 - `Migration phase`: keep without expanding platform semantics
-- `Related tests`: `GatewayInputProcessorTest`, `GatewayTaskMsgPublisherTest`, `RuntimeTaskResultIngestChannelTest`
+- `Related tests`: `GatewayInputProcessorTest`, `GatewayTaskDispatchChannelTest`, `RuntimeTaskResultIngestChannelTest`
 
 ## 7. Canonical Task Frame Detection
 
-- `Class`: `com.xa.mass.gateway.queue.WebSocketTransportFrameCodec`, `com.xa.mass.gateway.dispatcher.GatewayInputProcessor`
+- `Class`: `com.xa.mass.gateway.queue.WebSocketTransportFrameCodec`
 - `Method`: `isCanonicalTaskDispatch(...)`, `isCanonicalTaskResult(...)`
-- `Current responsibility`: recognizes canonical task frames directly inside the codec and input processor without reintroducing an adapter-side route registry
+- `Current responsibility`: recognizes canonical task frames directly inside the codec without reintroducing an adapter-side route registry; `GatewayInputProcessor` consumes canonical task-result detection rather than owning it
 - `Should stay in gateway?`: yes
 - `Target owner`: `xa-mass-gateway`
 - `Migration phase`: keep narrow; do not add new platform capability identities here
@@ -88,7 +88,7 @@ It is a migration aid, not a compatibility promise.
 
 - `Class`: `com.xa.mass.gateway.dispatcher.GatewayInputProcessor`, `com.xa.mass.gateway.dispatcher.GatewayOutputProcessor`
 - `Method`: `process(...)`
-- `Current responsibility`: turns raw JSON into canonical seam calls, routes task results through `TaskResultReport -> TaskResultIngestChannel`, encodes task dispatch frames, and reports transport delivery failure
+- `Current responsibility`: `GatewayInputProcessor` turns raw inbound JSON into canonical task-result ingest calls; `GatewayOutputProcessor` performs endpoint send and transport-delivery failure reporting; task-dispatch frame encoding remains in codec/publisher paths rather than inside these processors
 - `Should stay in gateway?`: yes
 - `Target owner`: `xa-mass-gateway`
 - `Migration phase`: keep as explicit adapter processors, not as a generic middleware framework; runtime result-ingest ownership stays above transport binding
@@ -108,7 +108,7 @@ It is a migration aid, not a compatibility promise.
 
 - `Class`: `com.xa.mass.gateway.dispatcher.DispatcherContext`
 - `Method`: constructor + getters
-- `Current responsibility`: exposes the fixed gateway-local wiring snapshot used by the adapter runtime; runtime assembly resolves the concrete endpoint registry once and injects the same instance into dispatcher wiring and transport-server creation
+- `Current responsibility`: exposes the fixed gateway-local wiring snapshot used by the adapter runtime; runtime assembly resolves the concrete endpoint registry once and injects the same instance into dispatcher wiring and transport-server creation; current SDK runtime still assembles frame codec and transport-server arguments directly, which is convergence work rather than a second source of truth
 - `Should stay in gateway?`: yes
 - `Target owner`: `xa-mass-gateway`
 - `Migration phase`: keep as immutable adapter runtime wiring
@@ -132,7 +132,7 @@ It is a migration aid, not a compatibility promise.
 - `Should stay in gateway?`: yes
 - `Target owner`: `xa-mass-gateway`
 - `Migration phase`: keep unless queueing strategy changes
-- `Related tests`: `GatewayTaskMsgPublisherTest`, `ServerMessageDispatcherShutdownTest`
+- `Related tests`: `GatewayTaskDispatchChannelTest`, `ServerMessageDispatcherShutdownTest`
 
 ## Explicit Non-Findings
 
@@ -147,4 +147,4 @@ These platform concerns are not owned by current `xa-mass-gateway` mainline code
 - business event execution
 - generic handler-routing runtime models beyond the current raw JSON task-frame path
 
-That is the current baseline: gateway is now primarily an adapter over raw JSON, single-endpoint session reachability, handshake-based worker identity, canonical task frame handling, and transport/system-event reporting. Global capability identity remains `eventCode`, but gateway no longer carries a separate control-event protocol.
+That is the current baseline in this checkout: gateway is primarily an adapter over raw JSON, single-endpoint session reachability, handshake-based worker identity, canonical task frame handling, and transport/system-event reporting. Global capability identity remains `eventCode`, and gateway no longer carries a separate control-event protocol. The remaining SDK-side knowledge of WebSocket frame codec/bootstrap details is still convergence debt, not a new mainline boundary.

@@ -6,9 +6,8 @@ import com.xa.mass.command.event.MassEventRuntime;
 import com.xa.mass.engine.listener.TaskMsgDispatchListener;
 import com.xa.mass.engine.rules.RuleDefinition;
 import com.xa.mass.engine.util.LogUtils;
-import com.xa.mass.gateway.dispatcher.DispatcherContext;
+import com.xa.mass.gateway.dispatcher.GatewayTaskDispatchChannel;
 import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
-import com.xa.mass.gateway.queue.WebSocketTransportFrameCodec;
 import com.xa.mass.gateway.queue.OutboundDelivery;
 import com.xa.mass.sdk.worker.PullWorkerSession;
 import com.xa.mass.starter.config.EngineConfig;
@@ -18,6 +17,7 @@ import com.xa.mass.starter.transport.TransportRuntimeRegistry;
 import com.xa.mass.starter.transport.WorkerTransportRuntimeFactoryContext;
 import com.xa.mass.transport.TransportServer;
 import com.xa.mass.transport.WorkerEndpointRegistry;
+import com.xa.mass.transport.channel.TaskDispatchChannel;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
 import org.slf4j.Logger;
@@ -130,21 +130,36 @@ public class MassApplication {
             MessageTransporter<String, OutboundDelivery> messageTransporter = gatewayConfig.createMessageTransporter();
             logger.info("Message transporter created");
 
-            WebSocketTransportFrameCodec frameCodec = gatewayConfig.resolveFrameCodec();
-            logger.info("WebSocket transport frame codec created");
-
             WorkerSystemEventChannel systemEventChannel = gatewayConfig.resolveSystemEventChannel();
             TaskMsgDispatchListener taskMsgDispatchListener = null;
             TaskResultIngestChannel taskResultIngestChannel = null;
+            dispatcherContext = gatewayConfig.createDispatcherContext(
+                    messageTransporter,
+                    endpointRegistry,
+                    taskResultIngestChannel,
+                    systemEventChannel
+            );
+            logger.info("Dispatcher context created");
+            logger.info("Gateway frame codec resolved");
             if (engineConfig.isEnabled() && engineConfig.getTaskManager() != null) {
                 taskResultIngestChannel = new RuntimeTaskResultIngestChannel(engineConfig.getTaskManager());
+                dispatcherContext = gatewayConfig.createDispatcherContext(
+                        messageTransporter,
+                        endpointRegistry,
+                        taskResultIngestChannel,
+                        systemEventChannel
+                );
+                logger.info("Dispatcher context refreshed with task result ingest channel");
+                TaskDispatchChannel gatewayTaskDispatchChannel = gatewayConfig.isEnabled()
+                        ? new GatewayTaskDispatchChannel(dispatcherContext)
+                        : null;
                 transportRuntimeRegistry = gatewayConfig.resolveWorkerTransportRuntimeFactory().create(
                         new WorkerTransportRuntimeFactoryContext(
                                 engineConfig.getTaskManager(),
                                 engineConfig.getWorkerManager(),
                                 messageTransporter,
                                 endpointRegistry,
-                                frameCodec,
+                                gatewayTaskDispatchChannel,
                                 taskResultIngestChannel,
                                 systemEventChannel,
                                 gatewayConfig.isEnabled()
@@ -152,14 +167,6 @@ public class MassApplication {
                 );
                 taskMsgDispatchListener = transportRuntimeRegistry.createDispatchListener();
             }
-            dispatcherContext = new DispatcherContext(
-                    messageTransporter,
-                    endpointRegistry,
-                    frameCodec,
-                    taskResultIngestChannel,
-                    systemEventChannel
-            );
-            logger.info("Dispatcher context created");
 
             if (gatewayConfig.isEnabled()) {
                 massGateway = new MassGateway(gatewayConfig, dispatcherContext);
@@ -207,12 +214,7 @@ public class MassApplication {
 
     private void startTransportServer() {
         logger.info("Starting transport server");
-        transportServer = gatewayConfig.createTransportServer(
-                dispatcherContext.getFrameCodec(),
-                dispatcherContext.getMessageTransporter()::sendInput,
-                endpointRegistry,
-                serverPort
-        );
+        transportServer = gatewayConfig.createTransportServer(dispatcherContext, endpointRegistry, serverPort);
         if (transportServer == null) {
             logger.info("No transport server configured for current runtime");
             return;

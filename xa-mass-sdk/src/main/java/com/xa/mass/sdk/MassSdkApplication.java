@@ -39,6 +39,7 @@ import com.xa.mass.starter.MassEngine;
 import com.xa.mass.transport.WorkerEndpointInspector;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.WorkerEndpointSnapshot;
+import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.model.TaskDispatchItem;
 import com.xa.mass.transport.model.TaskResultReport;
 
@@ -303,6 +304,19 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
                 .requestId(UUID.randomUUID().toString())
                 .build(), internalPrincipal(null));
         requireSuccessfulEventResponse(response);
+    }
+
+    @Override
+    public String getWorkerTransportHint(String workerId) {
+        Worker worker = getWorker(requireWorkerId(workerId));
+        if (worker == null) {
+            throw new IllegalArgumentException("Worker not found: " + requireWorkerId(workerId));
+        }
+        String transportHint = WorkerTransportHints.normalize(worker.getOnlineStrategy());
+        if (transportHint == null) {
+            throw new IllegalStateException("Worker transportHint/onlineStrategy is not set: " + worker.getWorkerId());
+        }
+        return transportHint;
     }
 
     /**

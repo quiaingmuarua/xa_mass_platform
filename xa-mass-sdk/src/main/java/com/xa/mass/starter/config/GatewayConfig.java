@@ -3,17 +3,18 @@ package com.xa.mass.starter.config;
 import com.xa.mass.base.channel.messaging.api.MessageQueue;
 import com.xa.mass.base.channel.tranporter.MessageTransporter;
 import com.xa.mass.base.channel.tranporter.MessageTransporterFactory;
+import com.xa.mass.gateway.dispatcher.DispatcherContext;
 import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
 import com.xa.mass.gateway.queue.OutboundDelivery;
 import com.xa.mass.gateway.queue.WebSocketTransportFrameCodec;
 import com.xa.mass.gateway.runtime.WebSocketGatewayRuntimeSupport;
-import com.xa.mass.gateway.session.ServerSessionManager;
 import com.xa.mass.starter.transport.DefaultWorkerTransportRuntimeFactory;
 import com.xa.mass.starter.transport.TransportServerFactoryContext;
 import com.xa.mass.starter.transport.WorkerTransportRuntimeFactory;
 import com.xa.mass.transport.TransportServer;
 import com.xa.mass.transport.TransportServerFactory;
 import com.xa.mass.transport.WorkerEndpointRegistry;
+import com.xa.mass.transport.channel.TaskResultIngestChannel;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
 
 import java.util.function.Consumer;
@@ -123,7 +124,20 @@ public class GatewayConfig {
     }
 
     public WebSocketTransportFrameCodec resolveFrameCodec() {
-        return frameCodec != null ? frameCodec : new WebSocketTransportFrameCodec();
+        return WebSocketGatewayRuntimeSupport.resolveFrameCodec(frameCodec);
+    }
+
+    public DispatchRuntimeContext createDispatcherContext(MessageTransporter<String, OutboundDelivery> messageTransporter,
+                                                          WorkerEndpointRegistry endpointRegistry,
+                                                          TaskResultIngestChannel taskResultIngestChannel,
+                                                          WorkerSystemEventChannel systemEventChannel) {
+        return new DispatcherContext(
+                messageTransporter,
+                endpointRegistry,
+                resolveFrameCodec(),
+                taskResultIngestChannel,
+                systemEventChannel
+        );
     }
 
     public MessageTransporterFactory.TransporterType getTransporterType() {
@@ -247,6 +261,12 @@ public class GatewayConfig {
                 : new DefaultWorkerTransportRuntimeFactory();
     }
 
+    /**
+     * @deprecated Prefer {@link #createTransportServer(DispatchRuntimeContext, WorkerEndpointRegistry, int)} so SDK
+     * runtime assembly flows through the dispatcher snapshot instead of exposing the adapter-local WebSocket codec as
+     * the primary transport-server bootstrap input.
+     */
+    @Deprecated(forRemoval = false)
     public TransportServer createTransportServer(WebSocketTransportFrameCodec frameCodec,
                                                  Consumer<String> inboundMessageSink,
                                                  WorkerEndpointRegistry endpointRegistry,
@@ -255,20 +275,39 @@ public class GatewayConfig {
             return null;
         }
         if (transportServerFactory == null) {
-            if (!(endpointRegistry instanceof ServerSessionManager sessionManager)) {
-                throw new IllegalStateException("WebSocket transport requires gateway-managed WebSocket endpoint registry");
-            }
             return WebSocketGatewayRuntimeSupport.createTransportServer(
                     transportEndpointPath,
                     frameCodec,
                     inboundMessageSink,
-                    sessionManager
+                    endpointRegistry
             );
         }
         return transportServerFactory.create(new TransportServerFactoryContext(
                 endpointRegistry,
                 frameCodec,
                 inboundMessageSink,
+                port,
+                transportEndpointPath
+        ));
+    }
+
+    public TransportServer createTransportServer(DispatchRuntimeContext dispatcherContext,
+                                                 WorkerEndpointRegistry endpointRegistry,
+                                                 int port) {
+        if (!transportServerEnabled) {
+            return null;
+        }
+        if (transportServerFactory == null) {
+            return WebSocketGatewayRuntimeSupport.createTransportServer(
+                    transportEndpointPath,
+                    dispatcherContext,
+                    endpointRegistry
+            );
+        }
+        return transportServerFactory.create(new TransportServerFactoryContext(
+                endpointRegistry,
+                dispatcherContext.getFrameCodec(),
+                dispatcherContext.getMessageTransporter()::sendInput,
                 port,
                 transportEndpointPath
         ));

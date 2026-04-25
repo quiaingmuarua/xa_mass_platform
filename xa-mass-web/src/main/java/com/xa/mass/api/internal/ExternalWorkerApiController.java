@@ -43,7 +43,7 @@ public class ExternalWorkerApiController {
         validateRegisterRequest(requestBody);
         TaskSubmitterContext submitter = requireExternalWorkerSubmitter(apiKeyHeader, authorizationHeader);
         String workerId = requireBoundWorkerId(submitter, requestBody.getWorkerId());
-        String transportHint = resolvePollingTransportHint(requestBody.getTransportHint());
+        String transportHint = resolveSupportedTransportHint(requestBody.getTransportHint());
         List<WorkerEventBinding> eventBindings = toEventBindings(requestBody.getEventBindings());
         requireWorkerBindingScopes(submitter, eventBindings);
         WorkerRegistration request = WorkerRegistration.builder()
@@ -92,8 +92,9 @@ public class ExternalWorkerApiController {
         validatePresenceRequest(requestBody);
         TaskSubmitterContext submitter = requireExternalWorkerSubmitter(apiKeyHeader, authorizationHeader);
         String boundWorkerId = requireBoundWorkerId(submitter, workerId);
+        requirePollingWorker(boundWorkerId, "online");
         externalWorkerOperations.workerOnline(boundWorkerId, requestBody == null ? null : requestBody.getReason());
-        return ApiResponse.success(presenceResponse(boundWorkerId, "online"));
+        return ApiResponse.success(presenceResponse(boundWorkerId, "online", WorkerTransportHints.POLLING));
     }
 
     @PostMapping("/workers/{workerId}/heartbeat")
@@ -104,8 +105,9 @@ public class ExternalWorkerApiController {
         validatePresenceRequest(requestBody);
         TaskSubmitterContext submitter = requireExternalWorkerSubmitter(apiKeyHeader, authorizationHeader);
         String boundWorkerId = requireBoundWorkerId(submitter, workerId);
+        requirePollingWorker(boundWorkerId, "heartbeat");
         externalWorkerOperations.workerHeartbeat(boundWorkerId, requestBody == null ? null : requestBody.getReason());
-        return ApiResponse.success(presenceResponse(boundWorkerId, "heartbeat"));
+        return ApiResponse.success(presenceResponse(boundWorkerId, "heartbeat", WorkerTransportHints.POLLING));
     }
 
     @PostMapping("/workers/{workerId}/offline")
@@ -116,8 +118,9 @@ public class ExternalWorkerApiController {
         validatePresenceRequest(requestBody);
         TaskSubmitterContext submitter = requireExternalWorkerSubmitter(apiKeyHeader, authorizationHeader);
         String boundWorkerId = requireBoundWorkerId(submitter, workerId);
+        requirePollingWorker(boundWorkerId, "offline");
         externalWorkerOperations.workerOffline(boundWorkerId, requestBody == null ? null : requestBody.getReason());
-        return ApiResponse.success(presenceResponse(boundWorkerId, "offline"));
+        return ApiResponse.success(presenceResponse(boundWorkerId, "offline", WorkerTransportHints.POLLING));
     }
 
     @PostMapping("/workers/{workerId}/poll")
@@ -128,6 +131,7 @@ public class ExternalWorkerApiController {
         validatePollRequest(requestBody);
         TaskSubmitterContext submitter = requireExternalWorkerSubmitter(apiKeyHeader, authorizationHeader);
         String boundWorkerId = requireBoundWorkerId(submitter, workerId);
+        requirePollingWorker(boundWorkerId, "poll");
         int maxMessages = requestBody == null || requestBody.getMaxMessages() == null ? 1 : requestBody.getMaxMessages();
         List<TaskDispatchItem> items = externalWorkerOperations.pollTasks(boundWorkerId, maxMessages);
         return ApiResponse.success(Map.of(
@@ -145,6 +149,7 @@ public class ExternalWorkerApiController {
         validateResultRequest(requestBody);
         TaskSubmitterContext submitter = requireExternalWorkerSubmitter(apiKeyHeader, authorizationHeader);
         String boundWorkerId = requireBoundWorkerId(submitter, workerId);
+        requirePollingWorker(boundWorkerId, "submitResult");
         boolean submitted = externalWorkerOperations.submitResult(boundWorkerId, new TaskResultReport(
                 requireNonBlank(requestBody.getTaskId(), "taskId"),
                 requireNonBlank(requestBody.getMessageId(), "messageId"),
@@ -220,14 +225,25 @@ public class ExternalWorkerApiController {
         }
     }
 
-    private String resolvePollingTransportHint(String requestedTransportHint) {
+    private String resolveSupportedTransportHint(String requestedTransportHint) {
         String normalized = requestedTransportHint == null || requestedTransportHint.isBlank()
                 ? WorkerTransportHints.POLLING
                 : WorkerTransportHints.normalize(requestedTransportHint);
-        if (!WorkerTransportHints.POLLING.equals(normalized)) {
-            throw new IllegalArgumentException("External worker API only supports polling transport");
+        if (!WorkerTransportHints.POLLING.equals(normalized) && !WorkerTransportHints.REALTIME.equals(normalized)) {
+            throw new IllegalArgumentException("External worker API supports only polling or realtime transport");
         }
         return normalized;
+    }
+
+    private void requirePollingWorker(String workerId, String operation) {
+        String normalizedWorkerId = requireNonBlank(workerId, "workerId");
+        String transportHint = externalWorkerOperations.getWorkerTransportHint(normalizedWorkerId);
+        if (WorkerTransportHints.isPolling(transportHint)) {
+            return;
+        }
+        throw new IllegalStateException("External worker API " + operation
+                + " only supports polling workers; worker "
+                + normalizedWorkerId + " uses transport '" + transportHint + "'");
     }
 
     private List<WorkerEventBinding> toEventBindings(List<ExternalWorkerEventBindingApiRequest> requests) {
@@ -283,11 +299,11 @@ public class ExternalWorkerApiController {
         }
     }
 
-    private Map<String, Object> presenceResponse(String workerId, String action) {
+    private Map<String, Object> presenceResponse(String workerId, String action, String transportHint) {
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("workerId", requireNonBlank(workerId, "workerId"));
         response.put("action", action);
-        response.put("transportHint", WorkerTransportHints.POLLING);
+        response.put("transportHint", requireNonBlank(transportHint, "transportHint"));
         return response;
     }
 

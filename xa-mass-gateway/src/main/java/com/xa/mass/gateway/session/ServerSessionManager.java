@@ -55,7 +55,7 @@ public class ServerSessionManager implements WorkerEndpointRegistry, WorkerEndpo
     public synchronized void removeSession(Channel channel) {
         String workerId = channelIndex.remove(channel);
         if (workerId != null) {
-            boolean wasWorkerOnline = hasActiveChannel(workerId);
+            boolean hadRegisteredSession = workerChannelMap.containsKey(workerId);
             if (channel.equals(workerChannelMap.get(workerId))) {
                 workerChannelMap.remove(workerId);
                 workerChannelCtxMap.remove(workerId);
@@ -63,7 +63,7 @@ public class ServerSessionManager implements WorkerEndpointRegistry, WorkerEndpo
 
             logger.info("Disconnected: workerId={} channelId={}",
                     workerId, channel.id().asShortText());
-            if (wasWorkerOnline && !hasActiveChannel(workerId)) {
+            if (hadRegisteredSession && !hasActiveChannel(workerId)) {
                 systemEventChannel.publishWorkerOffline(workerId, "websocket disconnected", null);
             }
         } else {

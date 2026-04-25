@@ -17,15 +17,16 @@ function log(message) {
   console.log(`[node-worker:${workerId}] ${message}`);
 }
 
-function buildTaskResult(taskFrame) {
+function buildTaskResult(taskFrame, result) {
   return JSON.stringify({
     messageId: taskFrame?.messageId,
     taskId: taskFrame?.taskId,
-    success: true,
-    detail: "completed by external node worker",
+    success: Boolean(result?.success),
+    detail: result?.detail ?? "completed by external node worker",
+    errorCode: result?.errorCode ?? null,
     output: {
-      status: "SUCCESS",
-      message: "completed by external node worker",
+      status: result?.success === false ? "FAILED" : "SUCCESS",
+      message: result?.detail ?? "completed by external node worker",
       integrationProbe: "cross-language-node",
       workerProfile: {
         runtime: "node-websocket-worker",
@@ -38,25 +39,75 @@ function buildTaskResult(taskFrame) {
         resultShape: "canonical-task-result",
         respondedAt: new Date().toISOString(),
       },
+      eventCode: taskFrame?.eventCode ?? null,
+      ...(result?.output ?? {}),
     },
   });
 }
 
-function handleFrame(rawFrame) {
+async function handleDemoDispatch(frame) {
+  return {
+    success: true,
+    detail: "completed by external node worker",
+    output: {
+      taskInput: frame?.input ?? {},
+    },
+  };
+}
+
+async function handleCrawlerFetchPage(frame) {
+  return {
+    success: true,
+    detail: "crawler fetch simulated by external node websocket worker",
+    output: {
+      url: frame?.input?.url ?? frame?.sharedConfig?.url ?? null,
+      fetchedAt: new Date().toISOString(),
+    },
+  };
+}
+
+const taskHandlers = new Map([
+  ["demo.dispatch", handleDemoDispatch],
+  ["crawler.fetch-page", handleCrawlerFetchPage],
+]);
+
+function isControlCompatibilityFrame(frame) {
+  return Boolean(frame?.eventCode) && !frame?.taskId;
+}
+
+function isCanonicalTaskDispatch(frame) {
+  return Boolean(frame?.taskId) && Boolean(frame?.messageId) && frame?.success === undefined;
+}
+
+async function handleFrame(rawFrame) {
   const frame = JSON.parse(rawFrame);
 
-  if (frame?.eventCode) {
-    log(`ignoring control frame eventCode=${frame.eventCode}`);
+  if (isControlCompatibilityFrame(frame)) {
+    log(`ignoring control compatibility frame eventCode=${frame.eventCode}`);
     return;
   }
 
-  if (frame?.taskId && frame?.messageId && frame?.success === undefined) {
-    log(`received task frame taskId=${frame.taskId} messageId=${frame.messageId}`);
-    socket.send(buildTaskResult(frame));
+  if (!isCanonicalTaskDispatch(frame)) {
+    log("ignoring unsupported frame");
     return;
   }
 
-  log("ignoring unsupported frame");
+  const eventCode = frame?.eventCode;
+  const handler = eventCode ? taskHandlers.get(eventCode) : null;
+  log(`received task frame taskId=${frame.taskId} messageId=${frame.messageId} eventCode=${eventCode ?? "<none>"}`);
+
+  if (!handler) {
+    socket.send(buildTaskResult(frame, {
+      success: false,
+      detail: `Unsupported eventCode: ${eventCode ?? "<missing>"}`,
+      errorCode: "UNSUPPORTED_EVENT_CODE",
+      output: {},
+    }));
+    return;
+  }
+
+  const result = await handler(frame);
+  socket.send(buildTaskResult(frame, result));
 }
 
 function shutdown(exitCode) {
@@ -75,10 +126,10 @@ socket.addEventListener("open", () => {
   log(`connected to ${socket.url}`);
 });
 
-socket.addEventListener("message", (event) => {
+socket.addEventListener("message", async (event) => {
   const rawFrame = typeof event.data === "string" ? event.data : String(event.data);
   try {
-    handleFrame(rawFrame);
+    await handleFrame(rawFrame);
   } catch (error) {
     console.error(`[node-worker:${workerId}] failed to handle frame`, error);
   }

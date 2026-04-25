@@ -1,11 +1,13 @@
-package com.xa.mass.starter;
+package com.xa.mass.gateway.dispatcher;
 
 import com.google.gson.JsonObject;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
-import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
+import com.xa.mass.base.channel.tranporter.MessageTransporter;
 import com.xa.mass.gateway.queue.OutboundDelivery;
 import com.xa.mass.gateway.queue.WebSocketTransportFrameCodec;
+import com.xa.mass.transport.WorkerEndpointRegistry;
+import com.xa.mass.transport.channel.NoopWorkerSystemEventChannel;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
@@ -17,19 +19,23 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-class GatewayTaskMsgPublisherTest {
+class GatewayTaskDispatchChannelTest {
 
     @Test
+    @SuppressWarnings("unchecked")
     void publishesDispatchItemsToOutputTransporter() {
-        DispatchRuntimeContext context = mock(DispatchRuntimeContext.class);
-        @SuppressWarnings("unchecked")
-        com.xa.mass.base.channel.tranporter.MessageTransporter<String, OutboundDelivery> transporter =
-                mock(com.xa.mass.base.channel.tranporter.MessageTransporter.class);
+        MessageTransporter<String, OutboundDelivery> transporter = mock(MessageTransporter.class);
+        WorkerEndpointRegistry endpointRegistry = mock(WorkerEndpointRegistry.class);
         WebSocketTransportFrameCodec codec = new WebSocketTransportFrameCodec();
-        when(context.getMessageTransporter()).thenReturn(transporter);
-        when(context.getFrameCodec()).thenReturn(codec);
+        DispatcherContext context = new DispatcherContext(
+                transporter,
+                endpointRegistry,
+                codec,
+                null,
+                NoopWorkerSystemEventChannel.INSTANCE
+        );
 
-        GatewayTaskMsgPublisher publisher = new GatewayTaskMsgPublisher(context);
+        GatewayTaskDispatchChannel publisher = new GatewayTaskDispatchChannel(context);
         Task task = task();
         TaskMsg taskMsg = taskMsg();
 

@@ -190,10 +190,18 @@ class MassSdkTest {
     void defaultGatewayTransportBootstrapRejectsNonSessionRegistry() {
         GatewayConfig config = new GatewayConfig();
         WorkerEndpointRegistry endpointRegistry = mock(WorkerEndpointRegistry.class);
+        @SuppressWarnings("unchecked")
+        MessageTransporter<String, OutboundDelivery> transporter = mock(MessageTransporter.class);
+        DispatchRuntimeContext dispatcherContext = config.createDispatcherContext(
+                transporter,
+                endpointRegistry,
+                null,
+                config.resolveSystemEventChannel()
+        );
 
         IllegalStateException error = assertThrows(
                 IllegalStateException.class,
-                () -> config.createTransportServer(new com.xa.mass.gateway.queue.WebSocketTransportFrameCodec(), raw -> { }, endpointRegistry, 19093)
+                () -> config.createTransportServer(dispatcherContext, endpointRegistry, 19093)
         );
 
         assertTrue(error.getMessage().contains("WebSocket endpoint registry"));
@@ -1460,7 +1468,15 @@ class MassSdkTest {
                 MassSdkApplication.class.getDeclaredMethod("getWorkerManager"),
                 MassSdk.Builder.class.getDeclaredMethod("unwrap"),
                 MassSdk.GatewayOptions.class.getDeclaredMethod("unwrap"),
-                MassSdk.EngineOptions.class.getDeclaredMethod("unwrap")
+                MassSdk.EngineOptions.class.getDeclaredMethod("unwrap"),
+                GatewayConfig.class.getDeclaredMethod(
+                        "createTransportServer",
+                        com.xa.mass.gateway.queue.WebSocketTransportFrameCodec.class,
+                        java.util.function.Consumer.class,
+                        WorkerEndpointRegistry.class,
+                        int.class
+                ),
+                TransportServerFactoryContext.class.getDeclaredMethod("getFrameCodec")
         );
 
         for (java.lang.reflect.Method method : escapeHatches) {

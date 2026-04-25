@@ -26,10 +26,7 @@ public class DefaultWorkerTransportRuntimeFactory implements WorkerTransportRunt
                 .build());
 
         if (context.isGatewayEnabled()) {
-            WebSocketWorkerAdapter webSocketAdapter = new WebSocketWorkerAdapter(
-                    context.getMessageTransporter(),
-                    context.getFrameCodec()
-            );
+            WebSocketWorkerAdapter webSocketAdapter = new WebSocketWorkerAdapter(context.getTaskDispatchChannel());
             bindings.add(TransportBinding.builder(webSocketAdapter).build());
         }
 

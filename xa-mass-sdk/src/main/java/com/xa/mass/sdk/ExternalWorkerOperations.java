@@ -8,17 +8,19 @@ import com.xa.mass.transport.model.TaskResultReport;
 import java.util.List;
 
 /**
- * Runtime facade for third-party polling workers that live outside the JVM.
+ * Runtime facade for third-party workers that live outside the JVM.
  *
- * <p>This surface keeps external worker integration on the task-backed polling
- * path instead of teaching external clients about gateway-specific transport
- * adapters.
+ * <p>Worker registration stays transport-neutral. Polling-specific session
+ * operations remain explicit so realtime workers are not silently routed
+ * through pull-session machinery.
  */
 public interface ExternalWorkerOperations {
 
     void registerWorker(WorkerRegistration request);
 
     void registerWorkerContext(WorkerContextRegistration request);
+
+    String getWorkerTransportHint(String workerId);
 
     void workerOnline(String workerId, String reason);
 

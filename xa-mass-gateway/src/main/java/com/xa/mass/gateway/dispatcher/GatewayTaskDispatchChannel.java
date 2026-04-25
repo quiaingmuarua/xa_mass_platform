@@ -1,4 +1,4 @@
-package com.xa.mass.starter;
+package com.xa.mass.gateway.dispatcher;
 
 import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
 import com.xa.mass.gateway.queue.OutboundDelivery;
@@ -8,22 +8,24 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.List;
+import java.util.Objects;
 
-public class GatewayTaskMsgPublisher implements TaskDispatchChannel {
+/**
+ * Gateway-owned task dispatch bridge for the current WebSocket adapter.
+ */
+public final class GatewayTaskDispatchChannel implements TaskDispatchChannel {
 
-    private static final Logger logger = LoggerFactory.getLogger(GatewayTaskMsgPublisher.class);
+    private static final Logger logger = LoggerFactory.getLogger(GatewayTaskDispatchChannel.class);
 
-    private final DispatchRuntimeContext dispatchRuntimeContext;
+    private final DispatchRuntimeContext context;
 
-    public GatewayTaskMsgPublisher(DispatchRuntimeContext dispatchRuntimeContext) {
-        this.dispatchRuntimeContext = dispatchRuntimeContext;
+    public GatewayTaskDispatchChannel(DispatchRuntimeContext context) {
+        this.context = Objects.requireNonNull(context, "context");
     }
 
     @Override
     public void dispatchTaskItems(List<TaskDispatchItem> items) {
-        if (dispatchRuntimeContext == null
-                || dispatchRuntimeContext.getMessageTransporter() == null
-                || dispatchRuntimeContext.getFrameCodec() == null) {
+        if (context.getMessageTransporter() == null || context.getFrameCodec() == null) {
             logger.warn("Skip task message publishing because dispatcher context or transporter is unavailable");
             return;
         }
@@ -31,8 +33,8 @@ public class GatewayTaskMsgPublisher implements TaskDispatchChannel {
             return;
         }
         for (TaskDispatchItem dispatchItem : items) {
-            String rawJson = dispatchRuntimeContext.getFrameCodec().encodeCanonicalTaskDispatch(dispatchItem);
-            dispatchRuntimeContext.getMessageTransporter().sendOutput(new OutboundDelivery(
+            String rawJson = context.getFrameCodec().encodeCanonicalTaskDispatch(dispatchItem);
+            context.getMessageTransporter().sendOutput(new OutboundDelivery(
                     dispatchItem.getWorkerId(),
                     rawJson,
                     dispatchItem.getMessageId()

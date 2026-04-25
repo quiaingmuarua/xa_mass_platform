@@ -1,6 +1,6 @@
 # Gateway Boundary Baseline
 
-Last updated: 2026-04-24
+Last updated: 2026-04-25
 
 Purpose:
 
@@ -9,7 +9,7 @@ Purpose:
 - keep `xa-mass-transport-api` transport-neutral
 - keep business execution in worker runtime
 - prevent "transport-neutral" changes from becoming renamed WebSocket compatibility layers
-- keep default WebSocket bootstrap inside the gateway adapter instead of teaching SDK mainline about gateway runtime internals
+- move default WebSocket bootstrap toward the gateway adapter instead of teaching SDK mainline more gateway runtime internals
 
 Use the canonical trust order in [../AGENTS.md](../AGENTS.md).
 For active gateway-local compatibility debt, also use [../DEPRECATION_LEDGER.md](../DEPRECATION_LEDGER.md) and [./refactor/GATEWAY_CURRENT_INVENTORY.md](./refactor/GATEWAY_CURRENT_INVENTORY.md).
@@ -78,7 +78,7 @@ Allowed in `xa-mass-gateway`:
 - frame encode/decode
 - workerId extraction
 - input/output forwarding
-- heartbeat/connect/disconnect translation
+- connect/disconnect translation and optional transport heartbeat reporting
 - transport-level error frames
 - transport-level diagnostics
 - bridge from WebSocket task frames into transport-neutral channels
@@ -98,7 +98,7 @@ Forbidden in `xa-mass-gateway`:
 - platform audit truth
 - worker matching decisions
 
-Legacy frame-routing branches are no longer part of the active gateway mainline. Gateway now carries only canonical task dispatch/result frames plus transport/system-event facts. New platform capabilities must not be introduced through gateway-specific frame identities, and manual worker debug must remain task-backed rather than reintroducing a direct worker-control protocol. WebSocket worker identity should come from handshake/session facts rather than an application heartbeat frame.
+Legacy frame-routing branches are no longer part of the active gateway mainline. In this checkout, gateway carries canonical task dispatch/result frames plus transport/system-event facts. New platform capabilities must not be introduced through gateway-specific frame identities, and manual worker debug must remain task-backed rather than reintroducing a direct worker-control protocol. Current WebSocket worker identity is handshake/session-led and may fall back to already-registered session identity on inbound frames; do not reintroduce application heartbeat identity truth.
 
 ## 5. Transport-Neutral Contract
 
@@ -204,8 +204,8 @@ Rules:
 - route inbound task-result transport shells into the canonical `TaskResultReport -> TaskResultIngestChannel` seam
 - keep `TaskResultIngestChannel` as a runtime-level seam; do not model it as worker transport binding ownership
 - resolve `WorkerSystemEventChannel` from gateway runtime assembly, not from transport binding ownership
-- keep adapter-specific endpoint bootstrap inside the gateway adapter module; SDK runtime config must not hardcode session-manager implementation branching
-- keep default transport-server bootstrap inside the gateway adapter module; SDK `transportServerFactory(...)` is an advanced override seam, not the mainline startup path
+- move adapter-specific endpoint bootstrap into the gateway adapter module; current SDK runtime still carries some WebSocket-aware assembly and must not grow more session-manager or frame-codec branching
+- keep the default transport-server bootstrap helper in gateway-owned code; current SDK `transportServerFactory(...)` remains an advanced override seam, and the remaining SDK-side bootstrap wiring is convergence work rather than a new extension point
 - do not grow post-construction `setHandler(...)` or `registerRoute(...)` seams on gateway runtime context
 - if a new adapter path needs another port, add an explicit field or constructor dependency instead of a late-bound generic registry
 
@@ -236,7 +236,7 @@ These seams are adapter-local, not platform truth:
 - raw outbound JSON plus explicit transport addressability
 - `OutboundDelivery` as the current minimal outbound delivery record
 - adapter-local canonical task-frame detection and encoding
-- explicit gateway input/output processors that convert task frames into canonical bridge calls and transport sends
+- explicit gateway input/output processors that terminate canonical task-result frames and perform transport sends
 - adapter-level metadata extraction for transport diagnostics only
 
 Rules:

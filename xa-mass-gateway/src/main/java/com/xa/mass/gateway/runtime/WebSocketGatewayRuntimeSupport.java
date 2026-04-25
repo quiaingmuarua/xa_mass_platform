@@ -1,5 +1,6 @@
 package com.xa.mass.gateway.runtime;
 
+import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
 import com.xa.mass.gateway.queue.WebSocketTransportFrameCodec;
 import com.xa.mass.gateway.server.WebSocketServerImpl;
 import com.xa.mass.gateway.session.EventBusWorkerSystemEventChannel;
@@ -26,11 +27,41 @@ public final class WebSocketGatewayRuntimeSupport {
         return new ServerSessionManager();
     }
 
+    public static WebSocketTransportFrameCodec resolveFrameCodec(WebSocketTransportFrameCodec configuredCodec) {
+        return configuredCodec != null ? configuredCodec : new WebSocketTransportFrameCodec();
+    }
+
     public static WorkerSystemEventChannel resolveSystemEventChannel(WorkerEndpointRegistry endpointRegistry) {
         if (endpointRegistry instanceof ServerSessionManager sessionManager) {
             return sessionManager.getSystemEventChannel();
         }
         return new EventBusWorkerSystemEventChannel();
+    }
+
+    public static TransportServer createTransportServer(String endpointPath,
+                                                        DispatchRuntimeContext dispatcherContext,
+                                                        WorkerEndpointRegistry endpointRegistry) {
+        return createTransportServer(
+                endpointPath,
+                dispatcherContext.getFrameCodec(),
+                dispatcherContext.getMessageTransporter()::sendInput,
+                endpointRegistry
+        );
+    }
+
+    public static TransportServer createTransportServer(String endpointPath,
+                                                        WebSocketTransportFrameCodec frameCodec,
+                                                        Consumer<String> inboundMessageSink,
+                                                        WorkerEndpointRegistry endpointRegistry) {
+        if (!(endpointRegistry instanceof ServerSessionManager sessionManager)) {
+            throw new IllegalStateException("WebSocket transport requires gateway-managed WebSocket endpoint registry");
+        }
+        return createTransportServer(
+                endpointPath,
+                frameCodec,
+                inboundMessageSink,
+                sessionManager
+        );
     }
 
     public static TransportServer createTransportServer(String endpointPath,

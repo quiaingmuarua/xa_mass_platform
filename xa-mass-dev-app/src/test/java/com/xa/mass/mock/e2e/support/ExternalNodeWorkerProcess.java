@@ -3,6 +3,9 @@ package com.xa.mass.mock.e2e.support;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.net.URI;
 import java.net.URL;
@@ -26,11 +29,13 @@ public final class ExternalNodeWorkerProcess implements AutoCloseable {
     private static final Duration DEFAULT_SHUTDOWN_TIMEOUT = Duration.ofSeconds(5);
 
     private final Process process;
+    private final ThrowingCloseAction closeAction;
     private final Thread outputPump;
     private final StringBuilder capturedOutput = new StringBuilder();
 
-    private ExternalNodeWorkerProcess(Process process) {
+    private ExternalNodeWorkerProcess(Process process, ThrowingCloseAction closeAction) {
         this.process = Objects.requireNonNull(process, "process");
+        this.closeAction = closeAction;
         this.outputPump = new Thread(this::pumpOutput, "external-node-worker-output");
         this.outputPump.setDaemon(true);
         this.outputPump.start();
@@ -59,7 +64,7 @@ public final class ExternalNodeWorkerProcess implements AutoCloseable {
                 "MASS_WORKER_KEY", workerKey,
                 "MASS_POLL_INTERVAL_MS", "200",
                 "MASS_HEARTBEAT_INTERVAL_MS", "1000"
-        ));
+        ), () -> postWorkerOffline(baseUrl, workerId, workerKey));
     }
 
     public boolean isAlive() {
@@ -83,6 +88,7 @@ public final class ExternalNodeWorkerProcess implements AutoCloseable {
     @Override
     public void close() throws Exception {
         if (!process.isAlive()) {
+            runCloseAction();
             joinOutputPump();
             return;
         }
@@ -92,6 +98,7 @@ public final class ExternalNodeWorkerProcess implements AutoCloseable {
             process.destroyForcibly();
             process.waitFor(DEFAULT_SHUTDOWN_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
         }
+        runCloseAction();
         joinOutputPump();
     }
 
@@ -118,23 +125,30 @@ public final class ExternalNodeWorkerProcess implements AutoCloseable {
 
     private static ExternalNodeWorkerProcess startClasspathScript(String classpathLocation,
                                                                   Map<String, String> environment) throws Exception {
-        return startProcess(resolveScriptPath(classpathLocation), environment);
+        return startProcess(resolveScriptPath(classpathLocation), environment, null);
     }
 
     private static ExternalNodeWorkerProcess startRepoScript(String repoRelativePath,
                                                              Map<String, String> environment) throws Exception {
-        return startProcess(resolveRepoFile(repoRelativePath), environment);
+        return startProcess(resolveRepoFile(repoRelativePath), environment, null);
+    }
+
+    private static ExternalNodeWorkerProcess startRepoScript(String repoRelativePath,
+                                                             Map<String, String> environment,
+                                                             ThrowingCloseAction closeAction) throws Exception {
+        return startProcess(resolveRepoFile(repoRelativePath), environment, closeAction);
     }
 
     private static ExternalNodeWorkerProcess startProcess(Path scriptPath,
-                                                          Map<String, String> environment) throws Exception {
+                                                          Map<String, String> environment,
+                                                          ThrowingCloseAction closeAction) throws Exception {
         String nodeBin = resolveNodeBinary();
         ProcessBuilder processBuilder = new ProcessBuilder(nodeBin, scriptPath.toString());
         processBuilder.redirectErrorStream(true);
         if (environment != null && !environment.isEmpty()) {
             processBuilder.environment().putAll(new LinkedHashMap<>(environment));
         }
-        return new ExternalNodeWorkerProcess(processBuilder.start());
+        return new ExternalNodeWorkerProcess(processBuilder.start(), closeAction);
     }
 
     private static String resolveNodeBinary() {
@@ -167,5 +181,42 @@ public final class ExternalNodeWorkerProcess implements AutoCloseable {
             throw new IllegalStateException("Node worker script not found on classpath: " + classpathLocation);
         }
         return Paths.get(resource.toURI());
+    }
+
+    private void runCloseAction() throws Exception {
+        if (closeAction == null) {
+            return;
+        }
+        closeAction.run();
+    }
+
+    private static void postWorkerOffline(String baseUrl,
+                                          String workerId,
+                                          String workerKey) throws Exception {
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(normalizeBaseUrl(baseUrl)
+                        + "/worker-api/workers/" + workerId + "/offline"))
+                .header("Content-Type", "application/json")
+                .header("X-Mass-Api-Key", workerKey)
+                .POST(HttpRequest.BodyPublishers.ofString("{\"reason\":\"external-node-process-close\"}"))
+                .build();
+        HttpResponse<String> response = HttpClient.newHttpClient()
+                .send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        if (response.statusCode() / 100 != 2) {
+            throw new IllegalStateException("Failed to mark worker offline, status=" + response.statusCode()
+                    + ", body=" + response.body());
+        }
+    }
+
+    private static String normalizeBaseUrl(String value) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException("baseUrl must not be blank");
+        }
+        return value.endsWith("/") ? value.substring(0, value.length() - 1) : value;
+    }
+
+    @FunctionalInterface
+    private interface ThrowingCloseAction {
+        void run() throws Exception;
     }
 }

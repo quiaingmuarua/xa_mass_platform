@@ -1,11 +1,17 @@
 package com.xa.mass.mock.e2e.assignment;
 
 import com.xa.mass.mock.MockApplicationSpringBootApp;
+import com.xa.mass.api.internal.SdkCredentialAuthSupport;
 import com.xa.mass.mock.e2e.support.AbstractMockE2eTest;
 import com.xa.mass.mock.e2e.support.ExternalNodeWorkerProcess;
 import com.xa.mass.base.model.Worker;
+import com.xa.mass.sdk.MassSdkApplication;
+import com.xa.mass.sdk.auth.SubmitterRegistration;
+import com.xa.mass.sdk.auth.TaskSubmitterContext;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
@@ -15,25 +21,28 @@ import org.springframework.test.context.DynamicPropertySource;
 import java.net.URI;
 import java.util.List;
 import java.util.Map;
+import java.util.function.BooleanSupplier;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Black-box proof that a non-JVM worker can participate through the public
- * WebSocket transport boundary once the worker resource is registered.
+ * control-plane registration plus WebSocket transport boundary.
  *
  * <p>The worker identity is established at WebSocket handshake time and
- * both dispatch and result write-back use canonical root-level task frames.
+ * canonical task dispatches are executed by an eventCode-driven local runtime.
  */
 @SpringBootTest(
         classes = MockApplicationSpringBootApp.class,
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = {
                 "mock.client.auto-start=false",
-                "mass.mock.data.workers=mock/test_node_realtime_worker.json",
-                "mass.mock.data.worker-contexts=mock/test_node_realtime_worker_context.json",
+                "mass.mock.data.workers=mock/test_mock_workers_empty.json",
+                "mass.mock.data.worker-contexts=mock/test_mock_worker_contexts_empty.json",
                 "mass.mock.data.tasks=mock/test_mock_tasks.json",
                 "mass.mock.data.rules=mock/test_mock_rules.json"
         }
@@ -43,7 +52,11 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 class NodeWebSocketWorkerBlackBoxIntegrationTest extends AbstractMockE2eTest {
 
     private static final int WEBSOCKET_PORT = findFreePort();
-    private static final String WORKER_ID = "node-realtime-worker-001";
+    private static final String WORKER_ID = "node-worker-realtime-001";
+    private static final String WORKER_KEY = "node-worker-realtime-key";
+
+    @Autowired
+    private MassSdkApplication app;
 
     @DynamicPropertySource
     static void registerProperties(DynamicPropertyRegistry registry) {
@@ -51,24 +64,57 @@ class NodeWebSocketWorkerBlackBoxIntegrationTest extends AbstractMockE2eTest {
     }
 
     @Test
-    void externalNodeWorkerCompletesTaskThroughHandshakeIdentityAndCanonicalResult() throws Exception {
-        URI wsUri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
-        try (ExternalNodeWorkerProcess worker = ExternalNodeWorkerProcess.start(WORKER_ID, wsUri)) {
-            waitForWorkerStatus(WORKER_ID, "ONLINE", worker);
+    void externalNodeWorkerCompletesTaskThroughRealtimeRegistrationAndEventCodeRuntime() throws Exception {
+        app.registerSubmitter(SubmitterRegistration.builder()
+                .principalId("node-realtime-worker")
+                .credential(WORKER_KEY)
+                .permissions(List.of(TaskSubmitterContext.EXTERNAL_WORKER_PERMISSION))
+                .projectScopes(List.of("crawlerApp"))
+                .eventScopes(List.of("crawler.fetch-page"))
+                .attributes(Map.of("workerId", WORKER_ID))
+                .build());
 
-            String taskId = createTaskId(
-                    "cross-language-node-worker",
-                    "cross-language black-box worker",
-                    List.of("target-node-001"),
-                    1
-            );
-            Map<String, Object> approveResponse = exchange(
-                    "/status/api/tasks/" + taskId + "/audit?approved=true&comment=node-black-box",
+        HttpHeaders workerHeaders = sdkCredentialHeaders(WORKER_KEY);
+        Map<String, Object> registerResponse = exchange("/worker-api/workers/register", HttpMethod.POST, Map.of(
+                "workerId", WORKER_ID,
+                "transportHint", "realtime",
+                "attributes", Map.of("lang", "node", "runtime", "node-websocket-worker"),
+                "eventBindings", List.of(Map.of(
+                        "eventCode", "crawler.fetch-page",
+                        "projectCodes", List.of("crawlerApp")
+                ))
+        ), workerHeaders);
+        assertApiOk(registerResponse);
+        assertEquals("realtime", responseData(registerResponse).get("transportHint"));
+        assertFalse(app.isWorkerOnline(WORKER_ID), "control-plane registration must not mark realtime worker online");
+
+        Map<String, Object> createResponse = exchange("/status/api/tasks", HttpMethod.POST, Map.of(
+                "project", "crawlerApp",
+                "taskName", "cross-language-node-worker",
+                "userId", "crawler-agent",
+                "eventCode", "crawler.fetch-page",
+                "payloadType", "JSON",
+                "inputs", List.of(Map.of("url", "https://example.test/realtime-node")),
+                "batchSize", 1
+        ));
+        assertApiOk(createResponse);
+        String taskId = String.valueOf(responseData(createResponse).get("taskId"));
+
+        Map<String, Object> approveResponse = exchange(
+                    "/status/api/tasks/" + taskId + "/audit?approved=true&comment=node-realtime-black-box",
                     HttpMethod.POST,
                     null
             );
-            assertApiOk(approveResponse);
+        assertApiOk(approveResponse);
 
+        TaskSnapshot readyWhileOffline = waitForTaskSnapshot(taskId, "READY", 10, 200L);
+        assertEquals("READY", readyWhileOffline.task().get("status"));
+        assertEquals(1, readyWhileOffline.messages().size());
+        assertEquals(null, readyWhileOffline.messages().get(0).get("latestAttemptWorkerId"));
+
+        URI wsUri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
+        try (ExternalNodeWorkerProcess worker = ExternalNodeWorkerProcess.start(WORKER_ID, wsUri)) {
+            waitForWorkerStatus(WORKER_ID, "ONLINE", worker);
             TaskSnapshot terminal = waitForTerminalTask(taskId);
             assertEquals("TERMINAL", terminal.task().get("status"));
             assertEquals("ALL_MESSAGES_SUCCEEDED", terminal.task().get("terminalReason"));
@@ -79,6 +125,9 @@ class NodeWebSocketWorkerBlackBoxIntegrationTest extends AbstractMockE2eTest {
             @SuppressWarnings("unchecked")
             Map<String, Object> output = (Map<String, Object>) outputObject;
             assertEquals("cross-language-node", output.get("integrationProbe"));
+            assertEquals("crawler.fetch-page", output.get("eventCode"));
+            assertEquals("https://example.test/realtime-node", output.get("url"));
+            assertTrue(output.containsKey("fetchedAt"));
 
             Object workerProfileObject = output.get("workerProfile");
             assertInstanceOf(Map.class, workerProfileObject);
@@ -87,6 +136,7 @@ class NodeWebSocketWorkerBlackBoxIntegrationTest extends AbstractMockE2eTest {
             assertEquals("node-websocket-worker", workerProfile.get("runtime"));
             assertEquals(WORKER_ID, workerProfile.get("workerId"));
         }
+        waitUntil(() -> !app.isWorkerOnline(WORKER_ID), "realtime websocket worker should go offline after disconnect");
     }
 
     private void waitForWorkerStatus(String workerId,
@@ -112,5 +162,21 @@ class NodeWebSocketWorkerBlackBoxIntegrationTest extends AbstractMockE2eTest {
         throw new AssertionError("Worker " + workerId + " did not reach status " + expectedStatus
                 + ". Last runtime worker=" + latestWorker
                 + "\nNode worker output:\n" + workerProcess.capturedOutput());
+    }
+
+    private HttpHeaders sdkCredentialHeaders(String credential) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.add(SdkCredentialAuthSupport.API_KEY_HEADER, credential);
+        return headers;
+    }
+
+    private void waitUntil(BooleanSupplier condition, String failureMessage) throws InterruptedException {
+        for (int attempt = 0; attempt < 20; attempt++) {
+            if (condition.getAsBoolean()) {
+                return;
+            }
+            Thread.sleep(100L);
+        }
+        assertTrue(condition.getAsBoolean(), failureMessage);
     }
 }
