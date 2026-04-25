@@ -47,7 +47,7 @@ public final class MassSdk {
 
     /**
      * @deprecated Use {@link #development(int)} — queues are now provisioned internally.
-     * Use {@link #builder()} with a custom {@code gateway()} configuration if you need
+     * Use {@link #builder()} with a custom {@code websocket()} configuration if you need
      * to provide your own queue instances.
      */
     @Deprecated(forRemoval = false)
@@ -126,9 +126,9 @@ public final class MassSdk {
             return this;
         }
 
-        public Builder gateway(Consumer<GatewayOptions> configurator) {
+        public Builder websocket(Consumer<WebSocketOptions> configurator) {
             Objects.requireNonNull(configurator, "configurator");
-            delegate.gateway(inner -> configurator.accept(new GatewayOptions(inner)));
+            delegate.websocket(inner -> configurator.accept(new WebSocketOptions(inner)));
             return this;
         }
 
@@ -175,24 +175,24 @@ public final class MassSdk {
         }
     }
 
-    public static final class GatewayOptions {
-        private final MassApplicationBuilder.GatewayBuilder delegate;
+    public static final class WebSocketOptions {
+        private final MassApplicationBuilder.WebSocketBuilder delegate;
 
-        private GatewayOptions(MassApplicationBuilder.GatewayBuilder delegate) {
+        private WebSocketOptions(MassApplicationBuilder.WebSocketBuilder delegate) {
             this.delegate = Objects.requireNonNull(delegate, "delegate");
         }
 
-        public GatewayOptions enabled(boolean enabled) {
+        public WebSocketOptions enabled(boolean enabled) {
             delegate.enabled(enabled);
             return this;
         }
 
-        public GatewayOptions transportServerEnabled(boolean enabled) {
+        public WebSocketOptions transportServerEnabled(boolean enabled) {
             delegate.transportServerEnabled(enabled);
             return this;
         }
 
-        public GatewayOptions transportEndpointPath(String transportEndpointPath) {
+        public WebSocketOptions transportEndpointPath(String transportEndpointPath) {
             delegate.transportEndpointPath(transportEndpointPath);
             return this;
         }
@@ -201,7 +201,7 @@ public final class MassSdk {
          * Advanced embedding seam for replacing the default inbound transport
          * server adapter.
          */
-        public GatewayOptions transportServerFactory(
+        public WebSocketOptions transportServerFactory(
                 TransportServerFactory<TransportServerFactoryContext> transportServerFactory) {
             delegate.transportServerFactory(transportServerFactory);
             return this;
@@ -211,22 +211,22 @@ public final class MassSdk {
          * Advanced embedding seam for replacing the assembled set of worker
          * transport bindings used by the runtime.
          */
-        public GatewayOptions workerTransportRuntimeFactory(WorkerTransportRuntimeFactory workerTransportRuntimeFactory) {
+        public WebSocketOptions workerTransportRuntimeFactory(WorkerTransportRuntimeFactory workerTransportRuntimeFactory) {
             delegate.workerTransportRuntimeFactory(workerTransportRuntimeFactory);
             return this;
         }
 
-        public GatewayOptions maxConnections(int maxConnections) {
+        public WebSocketOptions maxConnections(int maxConnections) {
             delegate.maxConnections(maxConnections);
             return this;
         }
 
-        public GatewayOptions inputQueue(MessageQueue<String> inputQueue) {
+        public WebSocketOptions inputQueue(MessageQueue<String> inputQueue) {
             delegate.inputQueue(inputQueue);
             return this;
         }
 
-        public GatewayOptions outputQueue(MessageQueue<OutboundDelivery> outputQueue) {
+        public WebSocketOptions outputQueue(MessageQueue<OutboundDelivery> outputQueue) {
             delegate.outputQueue(outputQueue);
             return this;
         }
@@ -235,21 +235,21 @@ public final class MassSdk {
          * @deprecated API-based transport is not implemented and now fails fast.
          */
         @Deprecated(since = "2.0.0", forRemoval = false)
-        public GatewayOptions apiMode(String inputApiUrl, String outputApiUrl, String apiKey) {
+        public WebSocketOptions apiMode(String inputApiUrl, String outputApiUrl, String apiKey) {
             throw new UnsupportedOperationException(API_MODE_UNSUPPORTED_MESSAGE);
         }
 
-        public GatewayOptions queueMode() {
+        public WebSocketOptions queueMode() {
             delegate.queueMode();
             return this;
         }
 
         /**
-         * @deprecated Prefer the SDK gateway option methods. This remains only
+         * @deprecated Prefer the SDK WebSocket option methods. This remains only
          * for advanced embedding paths that need lower-level runtime configuration.
          */
         @Deprecated(forRemoval = false)
-        public MassApplicationBuilder.GatewayBuilder unwrap() {
+        public MassApplicationBuilder.WebSocketBuilder unwrap() {
             return delegate;
         }
     }

@@ -246,7 +246,7 @@ public final class SdkWebSocketLeaseExpiryRedispatchChaosRunner {
             int transportPort = findFreePort();
             MassSdkApplication app = MassSdk.builder()
                     .transportServer(transportPort, ENDPOINT_PATH)
-                    .gateway(gateway -> gateway
+                    .websocket(gateway -> gateway
                             .enabled(true)
                             .transportServerEnabled(true)
                             .inputQueue(new InMemoryMessageQueue<>("sdk-lease-chaos-input", String.class))

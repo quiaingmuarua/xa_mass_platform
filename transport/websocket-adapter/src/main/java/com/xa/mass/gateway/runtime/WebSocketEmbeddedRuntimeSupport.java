@@ -2,8 +2,8 @@ package com.xa.mass.gateway.runtime;
 
 import com.xa.mass.base.channel.tranporter.MessageTransporter;
 import com.xa.mass.engine.worker.WorkerAdapter;
-import com.xa.mass.gateway.dispatcher.DispatcherContext;
-import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
+import com.xa.mass.gateway.dispatcher.WebSocketDispatcherContext;
+import com.xa.mass.gateway.dispatcher.context.WebSocketDispatchRuntimeContext;
 import com.xa.mass.gateway.queue.OutboundDelivery;
 import com.xa.mass.gateway.queue.WebSocketTransportFrameCodec;
 import com.xa.mass.gateway.server.WebSocketServerImpl;
@@ -19,27 +19,27 @@ import com.xa.mass.transport.channel.WorkerSystemEventChannel;
 import java.util.function.Consumer;
 
 /**
- * Gateway-owned defaults for embedded runtime assembly.
+ * WebSocket-adapter-owned defaults for embedded runtime assembly.
  *
  * <p>The current transport-server and realtime worker adapter defaults remain
- * WebSocket-backed, but that ownership stays inside the gateway module instead
+ * WebSocket-backed, but that ownership stays inside the adapter module instead
  * of leaking WebSocket-specific classes into SDK runtime assembly.
  */
-public final class GatewayEmbeddedRuntimeSupport {
+public final class WebSocketEmbeddedRuntimeSupport {
 
-    private GatewayEmbeddedRuntimeSupport() {
+    private WebSocketEmbeddedRuntimeSupport() {
     }
 
     public static ServerSessionManager createEndpointRegistry() {
         return new ServerSessionManager();
     }
 
-    public static DispatchRuntimeContext createDispatcherContext(
+    public static WebSocketDispatchRuntimeContext createDispatcherContext(
             MessageTransporter<String, OutboundDelivery> messageTransporter,
             WorkerEndpointRegistry endpointRegistry,
             TaskResultIngestChannel taskResultIngestChannel,
             WorkerSystemEventChannel systemEventChannel) {
-        return new DispatcherContext(
+        return new WebSocketDispatcherContext(
                 messageTransporter,
                 endpointRegistry,
                 new WebSocketTransportFrameCodec(),
@@ -60,7 +60,7 @@ public final class GatewayEmbeddedRuntimeSupport {
     }
 
     public static TransportServer createTransportServer(String endpointPath,
-                                                        DispatchRuntimeContext dispatcherContext,
+                                                        WebSocketDispatchRuntimeContext dispatcherContext,
                                                         WorkerEndpointRegistry endpointRegistry) {
         return createTransportServer(
                 endpointPath,
@@ -75,7 +75,7 @@ public final class GatewayEmbeddedRuntimeSupport {
                                                         Consumer<String> inboundMessageSink,
                                                         WorkerEndpointRegistry endpointRegistry) {
         if (!(endpointRegistry instanceof ServerSessionManager sessionManager)) {
-            throw new IllegalStateException("WebSocket transport requires gateway-managed WebSocket endpoint registry");
+            throw new IllegalStateException("WebSocket transport requires a WebSocket-managed endpoint registry");
         }
         return createTransportServer(
                 endpointPath,

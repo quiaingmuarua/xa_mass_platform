@@ -1,29 +1,29 @@
 package com.xa.mass.starter;
 
-import com.xa.mass.gateway.dispatcher.ServerMessageDispatcher;
-import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
-import com.xa.mass.starter.config.GatewayConfig;
+import com.xa.mass.gateway.dispatcher.WebSocketMessageDispatcher;
+import com.xa.mass.gateway.dispatcher.context.WebSocketDispatchRuntimeContext;
+import com.xa.mass.starter.config.WebSocketConfig;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
 
 /**
- * Gateway adapter runtime.
+ * WebSocket adapter runtime.
  *
  * <p>Owns dispatcher lifecycle plus transport endpoint shutdown for the
- * current gateway adapter. It is not a business-event router.
+ * current WebSocket adapter. It is not a business-event router.
  */
-public class MassGateway {
+public class MassWebSocketAdapter {
 
-    private static final Logger logger = LoggerFactory.getLogger(MassGateway.class);
+    private static final Logger logger = LoggerFactory.getLogger(MassWebSocketAdapter.class);
 
-    private final GatewayConfig config;
-    private final DispatchRuntimeContext dispatcherContext;
-    private ServerMessageDispatcher messageDispatcher;
+    private final WebSocketConfig config;
+    private final WebSocketDispatchRuntimeContext dispatcherContext;
+    private WebSocketMessageDispatcher messageDispatcher;
     private boolean running = false;
 
-    public MassGateway(GatewayConfig config, DispatchRuntimeContext dispatcherContext) {
+    public MassWebSocketAdapter(WebSocketConfig config, WebSocketDispatchRuntimeContext dispatcherContext) {
         this.config = config;
         this.dispatcherContext = dispatcherContext;
     }
@@ -31,69 +31,69 @@ public class MassGateway {
     public void start() {
         MDC.clear();
         if (!config.isEnabled()) {
-            logger.info("MassGateway is disabled, skipping start");
+            logger.info("MassWebSocketAdapter is disabled, skipping start");
             return;
         }
 
-        logger.info("Starting MassGateway with max connections: {}", config.getMaxConnections());
+        logger.info("Starting MassWebSocketAdapter with max connections: {}", config.getMaxConnections());
 
         try {
             startDispatcher();
             initializeEndpointRuntime();
 
             running = true;
-            logger.info("MassGateway started successfully");
+            logger.info("MassWebSocketAdapter started successfully");
         } catch (Exception e) {
             MDC.clear();
-            logger.error("Failed to start MassGateway", e);
-            throw new RuntimeException("Failed to start MassGateway", e);
+            logger.error("Failed to start MassWebSocketAdapter", e);
+            throw new RuntimeException("Failed to start MassWebSocketAdapter", e);
         }
     }
 
     public void stop() {
         MDC.clear();
         if (!running) {
-            logger.info("MassGateway is not running, skipping stop");
+            logger.info("MassWebSocketAdapter is not running, skipping stop");
             return;
         }
 
-        logger.info("Stopping MassGateway...");
+        logger.info("Stopping MassWebSocketAdapter...");
 
         try {
             stopDispatcher();
             shutdownEndpointRuntime();
 
             running = false;
-            logger.info("MassGateway stopped successfully");
+            logger.info("MassWebSocketAdapter stopped successfully");
         } catch (Exception e) {
             MDC.clear();
-            logger.error("Error stopping MassGateway", e);
+            logger.error("Error stopping MassWebSocketAdapter", e);
         }
     }
 
     private void startDispatcher() {
-        logger.info("Starting gateway dispatcher...");
+        logger.info("Starting WebSocket dispatcher...");
 
         try {
-            messageDispatcher = new ServerMessageDispatcher(dispatcherContext);
+            messageDispatcher = new WebSocketMessageDispatcher(dispatcherContext);
             messageDispatcher.start();
-            logger.info("Gateway dispatcher started successfully");
+            logger.info("WebSocket dispatcher started successfully");
         } catch (Exception e) {
-            logger.error("Failed to start gateway dispatcher", e);
-            throw new RuntimeException("Failed to start gateway dispatcher", e);
+            logger.error("Failed to start WebSocket dispatcher", e);
+            throw new RuntimeException("Failed to start WebSocket dispatcher", e);
         }
     }
 
     private void stopDispatcher() {
-        logger.info("Stopping gateway dispatcher...");
+        logger.info("Stopping WebSocket dispatcher...");
 
         try {
             if (messageDispatcher != null) {
                 messageDispatcher.stop();
-                logger.info("Gateway dispatcher stopped successfully");
+                logger.info("WebSocket dispatcher stopped successfully");
             }
         } catch (Exception e) {
-            logger.error("Error stopping gateway dispatcher", e);
+            logger.error("Error stopping WebSocket dispatcher", e);
         }
     }
 
@@ -120,24 +120,24 @@ public class MassGateway {
     }
 
     /**
-     * @deprecated The gateway config object is an advanced embedding detail.
-     * Default embedding should configure gateway behavior before runtime
+     * @deprecated The WebSocket config object is an advanced embedding detail.
+     * Default embedding should configure WebSocket behavior before runtime
      * assembly rather than reading live gateway runtime state back through
-     * {@code MassGateway}.
+     * {@code MassWebSocketAdapter}.
      */
     @Deprecated(forRemoval = false)
-    public GatewayConfig getConfig() {
+    public WebSocketConfig getWebSocketConfig() {
         return config;
     }
 
     /**
-     * @deprecated The gateway dispatcher is an internal adapter implementation
+     * @deprecated The WebSocket dispatcher is an internal adapter implementation
      * detail. Advanced embedding should use only {@link #start()},
      * {@link #stop()}, and {@link #isRunning()} rather than reaching into the
      * dispatcher runtime.
      */
     @Deprecated(forRemoval = false)
-    public ServerMessageDispatcher getMessageDispatcher() {
+    public WebSocketMessageDispatcher getWebSocketMessageDispatcher() {
         return messageDispatcher;
     }
 }

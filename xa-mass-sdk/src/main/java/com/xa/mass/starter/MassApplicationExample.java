@@ -21,7 +21,7 @@ public class MassApplicationExample {
         exampleProductionMode();
         exampleTestMode();
         exampleCustomConfiguration();
-        exampleGatewayOnly();
+        exampleWebSocketOnly();
         exampleEngineOnly();
     }
 
@@ -53,7 +53,7 @@ public class MassApplicationExample {
 
         MassApplication app = MassApplicationBuilder.create()
                 .transportServer(9090, "/custom-ws")
-                .gateway(gateway -> gateway
+                .websocket(gateway -> gateway
                         .enabled(true)
                         .maxConnections(2000)
                         .inputQueue(inputQueue)
@@ -68,14 +68,14 @@ public class MassApplicationExample {
         app.stop();
     }
 
-    private static void exampleGatewayOnly() {
-        logger.info("Example 5: gateway only");
+    private static void exampleWebSocketOnly() {
+        logger.info("Example 5: websocket only");
         MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("WsInputRawJson", String.class);
         MessageQueue<OutboundDelivery> outputQueue = new InMemoryMessageQueue<>("WsOutboundDelivery", OutboundDelivery.class);
 
         MassApplication app = MassApplicationBuilder.create()
                 .server(8080)
-                .gateway(gateway -> gateway
+                .websocket(gateway -> gateway
                         .enabled(true)
                         .maxConnections(100)
                         .inputQueue(inputQueue)
@@ -91,7 +91,7 @@ public class MassApplicationExample {
         logger.info("Example 6: engine only");
         MassApplication app = MassApplicationBuilder.create()
                 .server(8080)
-                .gateway(gateway -> gateway.enabled(false))
+                .websocket(gateway -> gateway.enabled(false))
                 .engine(engine -> engine
                         .enabled(true)
                         .workerThreads(4))

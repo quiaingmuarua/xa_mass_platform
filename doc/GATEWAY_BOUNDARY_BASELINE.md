@@ -196,7 +196,7 @@ Engine/runtime decides eligibility.
 
 ## 8.1 Gateway Wiring Rule
 
-`DispatchRuntimeContext` is an adapter-local wiring snapshot, not a mutable registration surface.
+`WebSocketDispatchRuntimeContext` is an adapter-local wiring snapshot, not a mutable registration surface.
 
 Rules:
 
@@ -208,7 +208,7 @@ Rules:
 - keep adapter-specific endpoint bootstrap and gateway-backed realtime adapter defaults inside the gateway module; SDK runtime assembly must not grow session-manager, frame-codec, or WebSocket-specific branching
 - keep the default transport-server bootstrap helper in gateway-owned code; current SDK `transportServerFactory(...)` remains an advanced override seam rather than a second mainline
 - `MassApplication` may assemble adapter runtime context, but it should retain only stable runtime facts such as transporter, endpoint registry, and transport server; the dispatch runtime context itself stays gateway-local
-- deprecated `GatewayConfig.createDispatcherContext(...)` and `createTransportServer(...)` remain advanced external embedding seams only; embedded-runtime mainline should call gateway-owned runtime support directly rather than routing default assembly through SDK config
+- deprecated `WebSocketConfig.createDispatcherContext(...)` and `createTransportServer(...)` remain advanced external embedding seams only; embedded-runtime mainline should call gateway-owned runtime support directly rather than routing default assembly through SDK config
 - do not grow post-construction `setHandler(...)` or `registerRoute(...)` seams on gateway runtime context
 - if a new adapter path needs another port, add an explicit field or constructor dependency instead of a late-bound generic registry
 

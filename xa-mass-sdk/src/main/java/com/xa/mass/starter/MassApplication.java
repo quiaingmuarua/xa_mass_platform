@@ -6,13 +6,13 @@ import com.xa.mass.command.event.MassEventRuntime;
 import com.xa.mass.engine.listener.TaskMsgDispatchListener;
 import com.xa.mass.engine.rules.RuleDefinition;
 import com.xa.mass.engine.util.LogUtils;
-import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
+import com.xa.mass.gateway.dispatcher.context.WebSocketDispatchRuntimeContext;
 import com.xa.mass.gateway.dispatcher.WebSocketTaskDispatchChannel;
-import com.xa.mass.gateway.runtime.GatewayEmbeddedRuntimeSupport;
+import com.xa.mass.gateway.runtime.WebSocketEmbeddedRuntimeSupport;
 import com.xa.mass.gateway.queue.OutboundDelivery;
 import com.xa.mass.sdk.worker.PullWorkerSession;
 import com.xa.mass.starter.config.EngineConfig;
-import com.xa.mass.starter.config.GatewayConfig;
+import com.xa.mass.starter.config.WebSocketConfig;
 import com.xa.mass.starter.transport.ResolvedPullWorkerTransport;
 import com.xa.mass.starter.transport.RuntimeTaskResultIngestChannel;
 import com.xa.mass.starter.transport.TransportServerFactoryContext;
@@ -29,7 +29,7 @@ import org.slf4j.LoggerFactory;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * Main runtime composition entry for engine, gateway, dispatcher, and server startup.
+ * Main runtime composition entry for engine, WebSocket adapter, dispatcher, and server startup.
  */
 public class MassApplication {
 
@@ -37,7 +37,7 @@ public class MassApplication {
 
     private final int serverPort;
     private final String transportEndpointPath;
-    private final GatewayConfig gatewayConfig;
+    private final WebSocketConfig webSocketConfig;
     private final EngineConfig engineConfig;
     private final AtomicBoolean running = new AtomicBoolean(false);
     private final MassEventRuntime eventRuntime = new InMemoryMassEventRuntime();
@@ -45,16 +45,16 @@ public class MassApplication {
     private final MassEngine engine;
     private MessageTransporter<String, OutboundDelivery> messageTransporter;
     private WorkerEndpointRegistry endpointRegistry;
-    private MassGateway massGateway;
+    private MassWebSocketAdapter massWebSocketAdapter;
     private TransportServer transportServer;
     private TransportRuntimeRegistry transportRuntimeRegistry;
 
     public MassApplication(MassEngine engine, int serverPort, String transportEndpointPath,
-                           GatewayConfig gatewayConfig, EngineConfig engineConfig) {
+                           WebSocketConfig webSocketConfig, EngineConfig engineConfig) {
         this.engine = engine;
         this.serverPort = serverPort;
         this.transportEndpointPath = transportEndpointPath;
-        this.gatewayConfig = gatewayConfig;
+        this.webSocketConfig = webSocketConfig;
         this.engineConfig = engineConfig;
     }
 
@@ -70,14 +70,14 @@ public class MassApplication {
         try {
             initializeComponents();
 
-            if (gatewayConfig.isEnabled()) {
-                startGateway();
+            if (webSocketConfig.isEnabled()) {
+                startWebSocketAdapter();
             } else {
-                logger.info("MassGateway is disabled, skipping start");
+                logger.info("MassWebSocketAdapter is disabled, skipping start");
             }
 
             startMessageDispatcher();
-            if (gatewayConfig.isTransportServerEnabled()) {
+            if (webSocketConfig.isTransportServerEnabled()) {
                 startTransportServer();
             } else {
                 logger.info("Transport server is disabled, skipping start");
@@ -103,8 +103,8 @@ public class MassApplication {
         logger.info("Stopping Mass Application");
 
         try {
-            if (massGateway != null && gatewayConfig.isEnabled()) {
-                massGateway.stop();
+            if (massWebSocketAdapter != null && webSocketConfig.isEnabled()) {
+                massWebSocketAdapter.stop();
             }
 
             if (engine != null && engineConfig.isEnabled()) {
@@ -127,59 +127,59 @@ public class MassApplication {
         logger.info("Initializing core components");
 
         try {
-            endpointRegistry = gatewayConfig.resolveWorkerEndpointRegistry();
+            endpointRegistry = webSocketConfig.resolveWorkerEndpointRegistry();
             logger.info("Worker endpoint registry initialized");
 
-            messageTransporter = gatewayConfig.createMessageTransporter();
+            messageTransporter = webSocketConfig.createMessageTransporter();
             logger.info("Message transporter created");
 
-            WorkerSystemEventChannel systemEventChannel = gatewayConfig.resolveSystemEventChannel();
+            WorkerSystemEventChannel systemEventChannel = webSocketConfig.resolveSystemEventChannel();
             TaskMsgDispatchListener taskMsgDispatchListener = null;
             TaskResultIngestChannel taskResultIngestChannel = null;
-            DispatchRuntimeContext gatewayRuntimeContext = GatewayEmbeddedRuntimeSupport.createDispatcherContext(
+            WebSocketDispatchRuntimeContext webSocketRuntimeContext = WebSocketEmbeddedRuntimeSupport.createDispatcherContext(
                     messageTransporter,
                     endpointRegistry,
                     taskResultIngestChannel,
                     systemEventChannel
             );
             logger.info("Dispatcher context created");
-            logger.info("Gateway frame codec resolved");
+            logger.info("WebSocket frame codec resolved");
             if (engineConfig.isEnabled() && engineConfig.getTaskManager() != null) {
                 taskResultIngestChannel = new RuntimeTaskResultIngestChannel(engineConfig.getTaskManager());
-                gatewayRuntimeContext = GatewayEmbeddedRuntimeSupport.createDispatcherContext(
+                webSocketRuntimeContext = WebSocketEmbeddedRuntimeSupport.createDispatcherContext(
                         messageTransporter,
                         endpointRegistry,
                         taskResultIngestChannel,
                         systemEventChannel
                 );
                 logger.info("Dispatcher context refreshed with task result ingest channel");
-                TaskDispatchChannel gatewayTaskDispatchChannel = gatewayConfig.isEnabled()
-                        ? new WebSocketTaskDispatchChannel(gatewayRuntimeContext)
+                TaskDispatchChannel webSocketTaskDispatchChannel = webSocketConfig.isEnabled()
+                        ? new WebSocketTaskDispatchChannel(webSocketRuntimeContext)
                         : null;
-                transportRuntimeRegistry = gatewayConfig.resolveWorkerTransportRuntimeFactory().create(
+                transportRuntimeRegistry = webSocketConfig.resolveWorkerTransportRuntimeFactory().create(
                         new WorkerTransportRuntimeFactoryContext<>(
                                 engineConfig.getTaskManager(),
                                 engineConfig.getWorkerManager(),
                                 messageTransporter,
                                 endpointRegistry,
-                                gatewayTaskDispatchChannel,
+                                webSocketTaskDispatchChannel,
                                 taskResultIngestChannel,
                                 systemEventChannel,
-                                gatewayConfig.isEnabled()
+                                webSocketConfig.isEnabled()
                         )
                 );
                 taskMsgDispatchListener = transportRuntimeRegistry.createDispatchListener();
             }
 
-            if (gatewayConfig.isEnabled()) {
-                massGateway = new MassGateway(gatewayConfig, gatewayRuntimeContext);
-                logger.info("MassGateway built");
+            if (webSocketConfig.isEnabled()) {
+                massWebSocketAdapter = new MassWebSocketAdapter(webSocketConfig, webSocketRuntimeContext);
+                logger.info("MassWebSocketAdapter built");
             } else {
-                logger.info("MassGateway is disabled, skipping build");
+                logger.info("MassWebSocketAdapter is disabled, skipping build");
             }
 
-            if (gatewayConfig.isTransportServerEnabled()) {
-                transportServer = createTransportServer(gatewayRuntimeContext);
+            if (webSocketConfig.isTransportServerEnabled()) {
+                transportServer = createTransportServer(webSocketRuntimeContext);
             } else {
                 transportServer = null;
             }
@@ -197,13 +197,13 @@ public class MassApplication {
         logger.info("Core components initialized");
     }
 
-    private void startGateway() {
-        logger.info("Starting MassGateway");
-        if (massGateway != null) {
-            massGateway.start();
-            logger.info("MassGateway started");
+    private void startWebSocketAdapter() {
+        logger.info("Starting MassWebSocketAdapter");
+        if (massWebSocketAdapter != null) {
+            massWebSocketAdapter.start();
+            logger.info("MassWebSocketAdapter started");
         } else {
-            logger.error("MassGateway is null");
+            logger.error("MassWebSocketAdapter is null");
         }
     }
 
@@ -218,7 +218,7 @@ public class MassApplication {
     }
 
     private void startMessageDispatcher() {
-        logger.info("Message Dispatcher is managed by MassGateway");
+        logger.info("WebSocket message dispatcher is managed by MassWebSocketAdapter");
     }
 
     private void startTransportServer() {
@@ -235,15 +235,15 @@ public class MassApplication {
         logger.info("Transport server started on port {} (current adapter path={})", serverPort, transportEndpointPath);
     }
 
-    private TransportServer createTransportServer(DispatchRuntimeContext gatewayRuntimeContext) {
-        if (gatewayConfig.getTransportServerFactory() == null) {
-            return GatewayEmbeddedRuntimeSupport.createTransportServer(
+    private TransportServer createTransportServer(WebSocketDispatchRuntimeContext webSocketRuntimeContext) {
+        if (webSocketConfig.getTransportServerFactory() == null) {
+            return WebSocketEmbeddedRuntimeSupport.createTransportServer(
                     transportEndpointPath,
-                    gatewayRuntimeContext,
+                    webSocketRuntimeContext,
                     endpointRegistry
             );
         }
-        return gatewayConfig.getTransportServerFactory().create(new TransportServerFactoryContext(
+        return webSocketConfig.getTransportServerFactory().create(new TransportServerFactoryContext(
                 endpointRegistry,
                 messageTransporter::sendInput,
                 serverPort,
@@ -253,7 +253,7 @@ public class MassApplication {
 
     public boolean isRunning() {
         return running.get()
-                && (!gatewayConfig.isTransportServerEnabled()
+                && (!webSocketConfig.isTransportServerEnabled()
                 || (transportServer != null && transportServer.isRunning()));
     }
 

@@ -19,9 +19,9 @@ import com.xa.mass.engine.rules.RuleDefinition;
 import com.xa.mass.engine.rules.RuleManager;
 import com.xa.mass.engine.rules.RuleType;
 import com.xa.mass.engine.strategy.SimpleTaskScheduler;
-import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
+import com.xa.mass.gateway.dispatcher.context.WebSocketDispatchRuntimeContext;
 import com.xa.mass.gateway.queue.OutboundDelivery;
-import com.xa.mass.gateway.runtime.GatewayEmbeddedRuntimeSupport;
+import com.xa.mass.gateway.runtime.WebSocketEmbeddedRuntimeSupport;
 import com.xa.mass.gateway.session.ServerSessionManager;
 import com.xa.mass.sdk.auth.AuthProvider;
 import com.xa.mass.sdk.auth.SubmitterMetadata;
@@ -45,7 +45,7 @@ import com.xa.mass.sdk.model.WorkerRegistration;
 import com.xa.mass.sdk.worker.PullWorkerSession;
 import com.xa.mass.starter.MassApplication;
 import com.xa.mass.starter.MassEngine;
-import com.xa.mass.starter.config.GatewayConfig;
+import com.xa.mass.starter.config.WebSocketConfig;
 import com.xa.mass.starter.config.EngineConfig;
 import com.xa.mass.starter.transport.TransportBinding;
 import com.xa.mass.starter.transport.TransportRuntimeRegistry;
@@ -79,7 +79,7 @@ class MassSdkTest {
     void builderCreatesConsumerFacingApplicationHandle() {
         MassSdkApplication app = MassSdk.builder()
                 .transportServer(19090, "/sdk-transport")
-                .gateway(gateway -> gateway.enabled(false).transportServerEnabled(false))
+                .websocket(gateway -> gateway.enabled(false).transportServerEnabled(false))
                 .engine(engine -> engine.enabled(false))
                 .build();
 
@@ -90,7 +90,7 @@ class MassSdkTest {
     @Test
     void engineOptionsExposeChaosTuningKnobs() {
         MassSdkApplication app = MassSdk.builder()
-                .gateway(gateway -> gateway.enabled(false).transportServerEnabled(false))
+                .websocket(gateway -> gateway.enabled(false).transportServerEnabled(false))
                 .engine(engine -> engine
                         .enabled(true)
                         .assignmentRetryDelayMillis(125L)
@@ -117,7 +117,7 @@ class MassSdkTest {
 
         MassSdkApplication app = MassSdk.builder()
                 .projectCatalogBootstrap(bootstrapRegistry)
-                .gateway(gateway -> gateway.enabled(false).transportServerEnabled(false))
+                .websocket(gateway -> gateway.enabled(false).transportServerEnabled(false))
                 .engine(engine -> engine.enabled(false))
                 .build();
 
@@ -155,7 +155,7 @@ class MassSdkTest {
 
         MassSdkApplication app = MassSdk.builder()
                 .transportServer(19092, "/custom-transport")
-                .gateway(gateway -> gateway
+                .websocket(gateway -> gateway
                         .enabled(false)
                         .transportServerEnabled(true)
                         .inputQueue(inputQueue)
@@ -180,12 +180,12 @@ class MassSdkTest {
     }
 
     @Test
-    void defaultGatewayEndpointRegistryIsMemoizedPerConfigAndIsolatedAcrossSnapshots() {
-        GatewayConfig config = new GatewayConfig();
+    void defaultWebSocketEndpointRegistryIsMemoizedPerConfigAndIsolatedAcrossSnapshots() {
+        WebSocketConfig config = new WebSocketConfig();
 
         WorkerEndpointRegistry first = config.resolveWorkerEndpointRegistry();
         WorkerEndpointRegistry second = config.resolveWorkerEndpointRegistry();
-        GatewayConfig snapshot = new GatewayConfig(config);
+        WebSocketConfig snapshot = new WebSocketConfig(config);
         WorkerEndpointRegistry snapshotRegistry = snapshot.resolveWorkerEndpointRegistry();
 
         assertSame(first, second);
@@ -195,8 +195,8 @@ class MassSdkTest {
     }
 
     @Test
-    void defaultGatewaySystemEventChannelSharesRuntimeOwnedEndpointRegistry() {
-        GatewayConfig config = new GatewayConfig();
+    void defaultWebSocketSystemEventChannelSharesRuntimeOwnedEndpointRegistry() {
+        WebSocketConfig config = new WebSocketConfig();
 
         WorkerEndpointRegistry endpointRegistry = config.resolveWorkerEndpointRegistry();
         WorkerSystemEventChannel systemEventChannel = config.resolveSystemEventChannel();
@@ -205,12 +205,12 @@ class MassSdkTest {
     }
 
     @Test
-    void defaultGatewayTransportBootstrapRejectsNonSessionRegistry() {
-        GatewayConfig config = new GatewayConfig();
+    void defaultWebSocketTransportBootstrapRejectsNonSessionRegistry() {
+        WebSocketConfig config = new WebSocketConfig();
         WorkerEndpointRegistry endpointRegistry = mock(WorkerEndpointRegistry.class);
         @SuppressWarnings("unchecked")
         MessageTransporter<String, OutboundDelivery> transporter = mock(MessageTransporter.class);
-        DispatchRuntimeContext dispatcherContext = GatewayEmbeddedRuntimeSupport.createDispatcherContext(
+        WebSocketDispatchRuntimeContext dispatcherContext = WebSocketEmbeddedRuntimeSupport.createDispatcherContext(
                 transporter,
                 endpointRegistry,
                 null,
@@ -219,29 +219,29 @@ class MassSdkTest {
 
         IllegalStateException error = assertThrows(
                 IllegalStateException.class,
-                () -> GatewayEmbeddedRuntimeSupport.createTransportServer(
+                () -> WebSocketEmbeddedRuntimeSupport.createTransportServer(
                         config.getTransportEndpointPath(),
                         dispatcherContext,
                         endpointRegistry
                 )
         );
 
-        assertTrue(error.getMessage().contains("WebSocket endpoint registry"));
+        assertTrue(error.getMessage().contains("WebSocket-managed endpoint registry"));
     }
 
     @Test
-    void gatewayConfigAdvancedEmbeddingHelpersStayDeprecated() throws NoSuchMethodException {
+    void webSocketConfigAdvancedEmbeddingHelpersStayDeprecated() throws NoSuchMethodException {
         Set<java.lang.reflect.Method> helperMethods = Set.of(
-                GatewayConfig.class.getDeclaredMethod(
+                WebSocketConfig.class.getDeclaredMethod(
                         "createDispatcherContext",
                         MessageTransporter.class,
                         WorkerEndpointRegistry.class,
                         TaskResultIngestChannel.class,
                         WorkerSystemEventChannel.class
                 ),
-                GatewayConfig.class.getDeclaredMethod(
+                WebSocketConfig.class.getDeclaredMethod(
                         "createTransportServer",
-                        DispatchRuntimeContext.class,
+                        WebSocketDispatchRuntimeContext.class,
                         WorkerEndpointRegistry.class,
                         int.class
                 )
@@ -254,10 +254,10 @@ class MassSdkTest {
     }
 
     @Test
-    void massGatewayEscapeHatchesStayDeprecated() throws NoSuchMethodException {
+    void massWebSocketAdapterEscapeHatchesStayDeprecated() throws NoSuchMethodException {
         Set<java.lang.reflect.Method> methods = Set.of(
-                com.xa.mass.starter.MassGateway.class.getDeclaredMethod("getConfig"),
-                com.xa.mass.starter.MassGateway.class.getDeclaredMethod("getMessageDispatcher")
+                com.xa.mass.starter.MassWebSocketAdapter.class.getDeclaredMethod("getWebSocketConfig"),
+                com.xa.mass.starter.MassWebSocketAdapter.class.getDeclaredMethod("getWebSocketMessageDispatcher")
         );
 
         for (java.lang.reflect.Method method : methods) {
@@ -298,7 +298,7 @@ class MassSdkTest {
         UnsupportedOperationException builderError = assertThrows(
                 UnsupportedOperationException.class,
                 () -> MassSdk.builder()
-                        .gateway(gateway -> gateway.apiMode("http://input", "http://output", "test-key"))
+                        .websocket(gateway -> gateway.apiMode("http://input", "http://output", "test-key"))
         );
         assertTrue(builderError.getMessage().contains("not implemented"));
     }
@@ -307,7 +307,7 @@ class MassSdkTest {
     void engineDependentHelpersFailFastWhenEngineIsUnavailable() {
         MassSdkApplication app = MassSdk.builder()
                 .transportServer(19091, "/sdk-transport")
-                .gateway(gateway -> gateway.enabled(false).transportServerEnabled(false))
+                .websocket(gateway -> gateway.enabled(false).transportServerEnabled(false))
                 .engine(engine -> engine.enabled(false))
                 .build();
 
@@ -854,7 +854,7 @@ class MassSdkTest {
         MessageQueue<OutboundDelivery> outputQueue = new InMemoryMessageQueue<>("output", OutboundDelivery.class);
         MassSdkApplication app = MassSdk.builder()
                 .transportServer(0, "/sdk-transport")
-                .gateway(gateway -> gateway.enabled(false).transportServerEnabled(false).inputQueue(inputQueue).outputQueue(outputQueue))
+                .websocket(gateway -> gateway.enabled(false).transportServerEnabled(false).inputQueue(inputQueue).outputQueue(outputQueue))
                 .engine(engine -> engine.enabled(true).workerThreads(1))
                 .build();
 
@@ -952,7 +952,7 @@ class MassSdkTest {
         MessageQueue<OutboundDelivery> outputQueue = new InMemoryMessageQueue<>("output", OutboundDelivery.class);
         MassSdkApplication app = MassSdk.builder()
                 .transportServer(0, "/sdk-transport")
-                .gateway(gateway -> gateway.enabled(false).transportServerEnabled(false).inputQueue(inputQueue).outputQueue(outputQueue))
+                .websocket(gateway -> gateway.enabled(false).transportServerEnabled(false).inputQueue(inputQueue).outputQueue(outputQueue))
                 .engine(engine -> engine.enabled(true).workerThreads(1))
                 .build();
 
@@ -986,7 +986,7 @@ class MassSdkTest {
         MessageQueue<OutboundDelivery> outputQueue = new InMemoryMessageQueue<>("output", OutboundDelivery.class);
         MassSdkApplication app = MassSdk.builder()
                 .transportServer(0, "/sdk-transport")
-                .gateway(gateway -> gateway.enabled(false).transportServerEnabled(false).inputQueue(inputQueue).outputQueue(outputQueue))
+                .websocket(gateway -> gateway.enabled(false).transportServerEnabled(false).inputQueue(inputQueue).outputQueue(outputQueue))
                 .engine(engine -> engine.enabled(true).workerThreads(1))
                 .build();
 
@@ -1264,7 +1264,7 @@ class MassSdkTest {
         MessageQueue<OutboundDelivery> outputQueue = new InMemoryMessageQueue<>("output", OutboundDelivery.class);
         MassSdkApplication app = MassSdk.builder()
                 .transportServer(0, "/sdk-transport")
-                .gateway(gateway -> gateway.enabled(false).transportServerEnabled(false).inputQueue(inputQueue).outputQueue(outputQueue))
+                .websocket(gateway -> gateway.enabled(false).transportServerEnabled(false).inputQueue(inputQueue).outputQueue(outputQueue))
                 .engine(engine -> engine.enabled(true).workerThreads(1))
                 .build();
 
@@ -1286,7 +1286,7 @@ class MassSdkTest {
         MessageQueue<OutboundDelivery> outputQueue = new InMemoryMessageQueue<>("output", OutboundDelivery.class);
         MassSdkApplication app = MassSdk.builder()
                 .transportServer(0, "/sdk-transport")
-                .gateway(gateway -> gateway.enabled(false).transportServerEnabled(false).inputQueue(inputQueue).outputQueue(outputQueue))
+                .websocket(gateway -> gateway.enabled(false).transportServerEnabled(false).inputQueue(inputQueue).outputQueue(outputQueue))
                 .engine(engine -> engine.enabled(true).workerThreads(1))
                 .build();
 
@@ -1320,7 +1320,7 @@ class MassSdkTest {
 
         MassSdkApplication app = MassSdk.builder()
                 .transportServer(0, "/sdk-transport")
-                .gateway(gateway -> gateway.enabled(false)
+                .websocket(gateway -> gateway.enabled(false)
                         .transportServerEnabled(false)
                         .inputQueue(inputQueue)
                         .outputQueue(outputQueue)
@@ -1361,7 +1361,7 @@ class MassSdkTest {
 
         MassSdkApplication app = MassSdk.builder()
                 .transportServer(0, "/sdk-transport")
-                .gateway(gateway -> gateway.enabled(false)
+                .websocket(gateway -> gateway.enabled(false)
                         .transportServerEnabled(false)
                         .inputQueue(inputQueue)
                         .outputQueue(outputQueue)
@@ -1407,7 +1407,7 @@ class MassSdkTest {
 
         MassSdkApplication app = MassSdk.builder()
                 .transportServer(0, "/sdk-transport")
-                .gateway(gateway -> gateway.enabled(false)
+                .websocket(gateway -> gateway.enabled(false)
                         .transportServerEnabled(false)
                         .inputQueue(inputQueue)
                         .outputQueue(outputQueue)
@@ -1435,7 +1435,7 @@ class MassSdkTest {
         MessageQueue<OutboundDelivery> outputQueue = new InMemoryMessageQueue<>("output", OutboundDelivery.class);
         MassSdkApplication app = MassSdk.builder()
                 .transportServer(0, "/sdk-transport")
-                .gateway(gateway -> gateway.enabled(false).transportServerEnabled(false).inputQueue(inputQueue).outputQueue(outputQueue))
+                .websocket(gateway -> gateway.enabled(false).transportServerEnabled(false).inputQueue(inputQueue).outputQueue(outputQueue))
                 .engine(engine -> engine.enabled(true).workerThreads(2))
                 .build();
 
@@ -1542,7 +1542,7 @@ class MassSdkTest {
                 MassSdkApplication.class.getDeclaredMethod("getTaskManager"),
                 MassSdkApplication.class.getDeclaredMethod("getWorkerManager"),
                 MassSdk.Builder.class.getDeclaredMethod("unwrap"),
-                MassSdk.GatewayOptions.class.getDeclaredMethod("unwrap"),
+                MassSdk.WebSocketOptions.class.getDeclaredMethod("unwrap"),
                 MassSdk.EngineOptions.class.getDeclaredMethod("unwrap")
         );
 
@@ -1555,17 +1555,17 @@ class MassSdkTest {
     @Test
     void removedWebSocketCompatibilityEscapeHatchesStayGone() {
         Assertions.assertThrows(NoSuchMethodException.class, () -> MassApplication.class.getDeclaredMethod("getDispatcherContext"));
-        Assertions.assertThrows(NoSuchMethodException.class, () -> com.xa.mass.starter.MassGateway.class.getDeclaredMethod("getDispatcherContext"));
+        Assertions.assertThrows(NoSuchMethodException.class, () -> com.xa.mass.starter.MassWebSocketAdapter.class.getDeclaredMethod("getDispatcherContext"));
         Assertions.assertThrows(ClassNotFoundException.class, () -> Class.forName("com.xa.mass.starter.builder.MassGatewayBuilder"));
         Assertions.assertThrows(ClassNotFoundException.class, () -> Class.forName("com.xa.mass.starter.worker.WebSocketWorkerAdapter"));
         Assertions.assertThrows(ClassNotFoundException.class, () -> Class.forName("com.xa.mass.gateway.runtime.WebSocketGatewayRuntimeSupport"));
-        Assertions.assertThrows(NoSuchMethodException.class, () -> GatewayConfig.class.getDeclaredMethod("resolveFrameCodec"));
-        Assertions.assertThrows(NoSuchMethodException.class, () -> GatewayConfig.class.getDeclaredMethod("getFrameCodec"));
-        Assertions.assertThrows(NoSuchMethodException.class, () -> GatewayConfig.class.getDeclaredMethod(
+        Assertions.assertThrows(NoSuchMethodException.class, () -> WebSocketConfig.class.getDeclaredMethod("resolveFrameCodec"));
+        Assertions.assertThrows(NoSuchMethodException.class, () -> WebSocketConfig.class.getDeclaredMethod("getFrameCodec"));
+        Assertions.assertThrows(NoSuchMethodException.class, () -> WebSocketConfig.class.getDeclaredMethod(
                 "setFrameCodec",
                 com.xa.mass.gateway.queue.WebSocketTransportFrameCodec.class
         ));
-        Assertions.assertThrows(NoSuchMethodException.class, () -> GatewayConfig.class.getDeclaredMethod(
+        Assertions.assertThrows(NoSuchMethodException.class, () -> WebSocketConfig.class.getDeclaredMethod(
                 "createTransportServer",
                 com.xa.mass.gateway.queue.WebSocketTransportFrameCodec.class,
                 java.util.function.Consumer.class,

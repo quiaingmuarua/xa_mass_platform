@@ -1,7 +1,7 @@
 package com.xa.mass.gateway.dispatcher;
 
 import com.xa.mass.base.channel.tranporter.MessageTransporter;
-import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
+import com.xa.mass.gateway.dispatcher.context.WebSocketDispatchRuntimeContext;
 import com.xa.mass.gateway.queue.OutboundDelivery;
 import com.xa.mass.gateway.queue.WebSocketTransportFrameCodec;
 import com.xa.mass.transport.WorkerEndpointRegistry;
@@ -16,13 +16,13 @@ import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 
-class ServerMessageDispatcherShutdownTest {
+class WebSocketMessageDispatcherShutdownTest {
 
     @Test
     void stopInterruptsBlockedDispatcherLoopsWithoutWaitingForPollTimeout() throws Exception {
         BlockingTransporter transporter = new BlockingTransporter();
         WorkerEndpointRegistry endpointRegistry = mock(WorkerEndpointRegistry.class);
-        DispatchRuntimeContext context = new DispatcherContext(
+        WebSocketDispatchRuntimeContext context = new WebSocketDispatcherContext(
                 transporter,
                 endpointRegistry,
                 new WebSocketTransportFrameCodec(),
@@ -30,7 +30,7 @@ class ServerMessageDispatcherShutdownTest {
                 NoopWorkerSystemEventChannel.INSTANCE
         );
 
-        ServerMessageDispatcher dispatcher = new ServerMessageDispatcher(context);
+        WebSocketMessageDispatcher dispatcher = new WebSocketMessageDispatcher(context);
         dispatcher.start();
 
         assertTrue(transporter.awaitInputLoopStart(), "expected at least one input loop to start");

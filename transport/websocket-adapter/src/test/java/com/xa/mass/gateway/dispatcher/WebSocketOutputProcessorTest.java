@@ -23,7 +23,7 @@ class WebSocketOutputProcessorTest {
     void setUp() {
         MessageTransporter<String, OutboundDelivery> transporter = mock(MessageTransporter.class);
         endpointRegistry = mock(WorkerEndpointRegistry.class);
-        DispatcherContext context = new DispatcherContext(
+        WebSocketDispatcherContext context = new WebSocketDispatcherContext(
                 transporter,
                 endpointRegistry,
                 new WebSocketTransportFrameCodec(),

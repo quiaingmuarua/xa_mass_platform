@@ -1,7 +1,7 @@
 package com.xa.mass.starter;
 
 import com.xa.mass.starter.config.EngineConfig;
-import com.xa.mass.starter.config.GatewayConfig;
+import com.xa.mass.starter.config.WebSocketConfig;
 import com.xa.mass.transport.TransportServer;
 import org.junit.jupiter.api.Test;
 
@@ -12,16 +12,16 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.Mockito.*;
 
 /**
- * Verifies shutdown order: Gateway → Engine → transport server.
+ * Verifies shutdown order: WebSocket adapter -> Engine -> transport server.
  */
 class MassApplicationStopOrderTest {
 
     @Test
-    void gatewayStopsBeforeTransportServer() throws Exception {
+    void webSocketAdapterStopsBeforeTransportServer() throws Exception {
         List<String> order = new ArrayList<>();
 
-        MassGateway gateway = spy(new MassGateway(enabledGateway(), null) {
-            @Override public void stop() { order.add("gateway"); }
+        MassWebSocketAdapter adapter = spy(new MassWebSocketAdapter(enabledWebSocket(), null) {
+            @Override public void stop() { order.add("websocket"); }
             @Override public boolean isRunning() { return false; }
         });
 
@@ -29,23 +29,23 @@ class MassApplicationStopOrderTest {
         doAnswer(inv -> { order.add("transport"); return null; }).when(transportServer).stop();
         when(transportServer.isRunning()).thenReturn(false);
 
-        MassApplication app = new MassApplication(null, 0, "/", enabledGateway(), disabledEngine());
-        inject(app, "massGateway", gateway);
+        MassApplication app = new MassApplication(null, 0, "/", enabledWebSocket(), disabledEngine());
+        inject(app, "massWebSocketAdapter", adapter);
         inject(app, "transportServer", transportServer);
         setApplicationRunning(app, true);
 
         app.stop();
 
-        assertEquals(List.of("gateway", "transport"), order,
-                "Gateway must stop before the transport server to let the dispatcher drain in-flight messages");
+        assertEquals(List.of("websocket", "transport"), order,
+                "WebSocket adapter must stop before the transport server to let the dispatcher drain in-flight messages");
     }
 
     @Test
-    void engineStopsBetweenGatewayAndTransportServer() throws Exception {
+    void engineStopsBetweenWebSocketAdapterAndTransportServer() throws Exception {
         List<String> order = new ArrayList<>();
 
-        MassGateway gateway = new MassGateway(enabledGateway(), null) {
-            @Override public void stop() { order.add("gateway"); }
+        MassWebSocketAdapter adapter = new MassWebSocketAdapter(enabledWebSocket(), null) {
+            @Override public void stop() { order.add("websocket"); }
             @Override public boolean isRunning() { return false; }
         };
         MassEngine engine = new MassEngine(enabledEngine()) {
@@ -57,20 +57,20 @@ class MassApplicationStopOrderTest {
         TransportServer transportServer = mock(TransportServer.class);
         doAnswer(inv -> { order.add("transport"); return null; }).when(transportServer).stop();
 
-        MassApplication app = new MassApplication(engine, 0, "/", enabledGateway(), enabledEngine());
-        inject(app, "massGateway", gateway);
+        MassApplication app = new MassApplication(engine, 0, "/", enabledWebSocket(), enabledEngine());
+        inject(app, "massWebSocketAdapter", adapter);
         inject(app, "transportServer", transportServer);
         setApplicationRunning(app, true);
 
         app.stop();
 
-        assertEquals(List.of("gateway", "engine", "transport"), order,
-                "Stop order must be: gateway → engine → transport server");
+        assertEquals(List.of("websocket", "engine", "transport"), order,
+                "Stop order must be: websocket -> engine -> transport server");
     }
 
     @Test
     void stopIsIdempotentWhenTriggeredTwice() throws Exception {
-        MassGateway gateway = spy(new MassGateway(enabledGateway(), null) {
+        MassWebSocketAdapter adapter = spy(new MassWebSocketAdapter(enabledWebSocket(), null) {
             @Override public boolean isRunning() { return false; }
         });
         MassEngine engine = spy(new MassEngine(enabledEngine()) {
@@ -78,23 +78,23 @@ class MassApplicationStopOrderTest {
         });
         TransportServer transportServer = mock(TransportServer.class);
 
-        MassApplication app = new MassApplication(engine, 0, "/", enabledGateway(), enabledEngine());
-        inject(app, "massGateway", gateway);
+        MassApplication app = new MassApplication(engine, 0, "/", enabledWebSocket(), enabledEngine());
+        inject(app, "massWebSocketAdapter", adapter);
         inject(app, "transportServer", transportServer);
         setApplicationRunning(app, true);
 
         app.stop();
         app.stop();
 
-        verify(gateway, times(1)).stop();
+        verify(adapter, times(1)).stop();
         verify(engine, times(1)).stop();
         verify(transportServer, times(1)).stop();
     }
 
     // ---- helpers ----
 
-    private GatewayConfig enabledGateway() {
-        GatewayConfig c = new GatewayConfig(); c.setEnabled(true); return c;
+    private WebSocketConfig enabledWebSocket() {
+        WebSocketConfig c = new WebSocketConfig(); c.setEnabled(true); return c;
     }
 
     private EngineConfig enabledEngine() {

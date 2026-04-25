@@ -12,7 +12,7 @@ import com.xa.mass.sdk.MassBootstrapDataProvider;
 import com.xa.mass.starter.MassApplication;
 import com.xa.mass.starter.MassEngine;
 import com.xa.mass.starter.config.EngineConfig;
-import com.xa.mass.starter.config.GatewayConfig;
+import com.xa.mass.starter.config.WebSocketConfig;
 import com.xa.mass.starter.transport.TransportServerFactoryContext;
 import com.xa.mass.starter.transport.WorkerTransportRuntimeFactory;
 import com.xa.mass.transport.TransportServerFactory;
@@ -24,7 +24,7 @@ import java.util.Map;
 import java.util.function.Consumer;
 
 /**
- * Builds {@link MassApplication} instances from gateway and engine configuration.
+ * Builds {@link MassApplication} instances from WebSocket-adapter and engine configuration.
  */
 public class MassApplicationBuilder {
 
@@ -33,7 +33,7 @@ public class MassApplicationBuilder {
             "API-based transport is not implemented yet. Use queue/polling transport or provide a real transport adapter.";
 
     private int serverPort = 8080;
-    private GatewayConfig gatewayConfig = new GatewayConfig();
+    private WebSocketConfig webSocketConfig = new WebSocketConfig();
     private EngineConfig engineConfig = new EngineConfig();
 
     private MassApplicationBuilder() {
@@ -50,7 +50,7 @@ public class MassApplicationBuilder {
     public static MassApplication createDevelopment(int port) {
         return create()
                 .server(port)
-                .gateway(gateway -> gateway
+                .websocket(websocket -> websocket
                         .enabled(true)
                         .maxConnections(1000)
                         .inputQueue(new InMemoryMessageQueue<>("input", String.class))
@@ -63,14 +63,14 @@ public class MassApplicationBuilder {
 
     /**
      * @deprecated Use {@link #createDevelopment(int)} — queues are now provisioned internally.
-     * Pass custom queues via {@link MassApplicationBuilder#create()} and the {@code gateway()} builder
+     * Pass custom queues via {@link MassApplicationBuilder#create()} and the {@code websocket()} builder
      * if you need to share queue instances across components.
      */
     @Deprecated(forRemoval = false)
     public static MassApplication createDevelopment(int port, MessageQueue<String> inputQueue, MessageQueue<OutboundDelivery> outputQueue) {
         return create()
                 .server(port)
-                .gateway(gateway -> gateway
+                .websocket(websocket -> websocket
                         .enabled(true)
                         .maxConnections(1000)
                         .inputQueue(inputQueue)
@@ -87,7 +87,7 @@ public class MassApplicationBuilder {
     public static MassApplication createProduction(int port) {
         return create()
                 .server(port)
-                .gateway(gateway -> gateway
+                .websocket(websocket -> websocket
                         .enabled(true)
                         .maxConnections(5000)
                         .inputQueue(new InMemoryMessageQueue<>("input", String.class))
@@ -105,7 +105,7 @@ public class MassApplicationBuilder {
     public static MassApplication createProduction(int port, MessageQueue<String> inputQueue, MessageQueue<OutboundDelivery> outputQueue) {
         return create()
                 .server(port)
-                .gateway(gateway -> gateway
+                .websocket(websocket -> websocket
                         .enabled(true)
                         .maxConnections(5000)
                         .inputQueue(inputQueue)
@@ -127,7 +127,7 @@ public class MassApplicationBuilder {
     public static MassApplication createTest(int port) {
         return create()
                 .server(port)
-                .gateway(gateway -> gateway
+                .websocket(websocket -> websocket
                         .enabled(true)
                         .maxConnections(100))
                 .engine(engine -> engine
@@ -155,13 +155,13 @@ public class MassApplicationBuilder {
 
     public MassApplicationBuilder transportServer(int port, String transportEndpointPath) {
         this.serverPort = port;
-        this.gatewayConfig.setTransportEndpointPath(transportEndpointPath);
+        this.webSocketConfig.setTransportEndpointPath(transportEndpointPath);
         return this;
     }
 
-    public MassApplicationBuilder gateway(Consumer<GatewayBuilder> gatewayConfigurator) {
-        GatewayBuilder gatewayBuilder = new GatewayBuilder(gatewayConfig);
-        gatewayConfigurator.accept(gatewayBuilder);
+    public MassApplicationBuilder websocket(Consumer<WebSocketBuilder> websocketConfigurator) {
+        WebSocketBuilder webSocketBuilder = new WebSocketBuilder(webSocketConfig);
+        websocketConfigurator.accept(webSocketBuilder);
         return this;
     }
 
@@ -172,11 +172,11 @@ public class MassApplicationBuilder {
     }
 
     public MassApplication build() {
-        GatewayConfig gatewaySnapshot = new GatewayConfig(gatewayConfig);
+        WebSocketConfig webSocketSnapshot = new WebSocketConfig(webSocketConfig);
         EngineConfig engineSnapshot = new EngineConfig(engineConfig);
-        logger.info("Building MassApplication with configuration: port={}, gateway={}, engine={}",
+        logger.info("Building MassApplication with configuration: port={}, websocket={}, engine={}",
                 serverPort,
-                gatewaySnapshot.isEnabled(),
+                webSocketSnapshot.isEnabled(),
                 engineSnapshot.isEnabled());
 
         MassEngine engine = null;
@@ -190,56 +190,56 @@ public class MassApplicationBuilder {
         return new MassApplication(
                 engine,
                 serverPort,
-                gatewaySnapshot.getTransportEndpointPath(),
-                gatewaySnapshot,
+                webSocketSnapshot.getTransportEndpointPath(),
+                webSocketSnapshot,
                 engineSnapshot
         );
     }
 
-    public static class GatewayBuilder {
-        private final GatewayConfig config;
+    public static class WebSocketBuilder {
+        private final WebSocketConfig config;
 
-        public GatewayBuilder(GatewayConfig config) {
+        public WebSocketBuilder(WebSocketConfig config) {
             this.config = config;
         }
 
-        public GatewayBuilder enabled(boolean enabled) {
+        public WebSocketBuilder enabled(boolean enabled) {
             config.setEnabled(enabled);
             return this;
         }
 
-        public GatewayBuilder transportServerEnabled(boolean enabled) {
+        public WebSocketBuilder transportServerEnabled(boolean enabled) {
             config.setTransportServerEnabled(enabled);
             return this;
         }
 
-        public GatewayBuilder transportEndpointPath(String transportEndpointPath) {
+        public WebSocketBuilder transportEndpointPath(String transportEndpointPath) {
             config.setTransportEndpointPath(transportEndpointPath);
             return this;
         }
 
-        public GatewayBuilder transportServerFactory(
+        public WebSocketBuilder transportServerFactory(
                 TransportServerFactory<TransportServerFactoryContext> transportServerFactory) {
             config.setTransportServerFactory(transportServerFactory);
             return this;
         }
 
-        public GatewayBuilder workerTransportRuntimeFactory(WorkerTransportRuntimeFactory workerTransportRuntimeFactory) {
+        public WebSocketBuilder workerTransportRuntimeFactory(WorkerTransportRuntimeFactory workerTransportRuntimeFactory) {
             config.setWorkerTransportRuntimeFactory(workerTransportRuntimeFactory);
             return this;
         }
 
-        public GatewayBuilder maxConnections(int maxConnections) {
+        public WebSocketBuilder maxConnections(int maxConnections) {
             config.setMaxConnections(maxConnections);
             return this;
         }
 
-        public GatewayBuilder inputQueue(MessageQueue<String> inputQueue) {
+        public WebSocketBuilder inputQueue(MessageQueue<String> inputQueue) {
             config.setInputQueue(inputQueue);
             return this;
         }
 
-        public GatewayBuilder outputQueue(MessageQueue<OutboundDelivery> outputQueue) {
+        public WebSocketBuilder outputQueue(MessageQueue<OutboundDelivery> outputQueue) {
             config.setOutputQueue(outputQueue);
             return this;
         }
@@ -248,11 +248,11 @@ public class MassApplicationBuilder {
          * @deprecated API-based transport is not implemented and now fails fast.
          */
         @Deprecated(since = "2.0.0", forRemoval = false)
-        public GatewayBuilder apiMode(String inputApiUrl, String outputApiUrl, String apiKey) {
+        public WebSocketBuilder apiMode(String inputApiUrl, String outputApiUrl, String apiKey) {
             throw new UnsupportedOperationException(API_MODE_UNSUPPORTED_MESSAGE);
         }
 
-        public GatewayBuilder queueMode() {
+        public WebSocketBuilder queueMode() {
             config.setTransporterType(MessageTransporterFactory.TransporterType.QUEUE_BASED);
             return this;
         }
@@ -261,7 +261,7 @@ public class MassApplicationBuilder {
          * Overrides the default worker system-event channel. Useful for custom
          * transport adapters or testing with a mock channel.
          */
-        public GatewayBuilder systemEventChannel(WorkerSystemEventChannel channel) {
+        public WebSocketBuilder systemEventChannel(WorkerSystemEventChannel channel) {
             config.setCustomSystemEventChannel(channel);
             return this;
         }

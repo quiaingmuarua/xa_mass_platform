@@ -1,6 +1,6 @@
 package com.xa.mass.gateway.dispatcher;
 
-import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
+import com.xa.mass.gateway.dispatcher.context.WebSocketDispatchRuntimeContext;
 import com.xa.mass.gateway.queue.OutboundDelivery;
 import com.xa.mass.transport.channel.TaskDispatchChannel;
 import com.xa.mass.transport.model.TaskDispatchItem;
@@ -17,9 +17,9 @@ public final class WebSocketTaskDispatchChannel implements TaskDispatchChannel {
 
     private static final Logger logger = LoggerFactory.getLogger(WebSocketTaskDispatchChannel.class);
 
-    private final DispatchRuntimeContext context;
+    private final WebSocketDispatchRuntimeContext context;
 
-    public WebSocketTaskDispatchChannel(DispatchRuntimeContext context) {
+    public WebSocketTaskDispatchChannel(WebSocketDispatchRuntimeContext context) {
         this.context = Objects.requireNonNull(context, "context");
     }
 

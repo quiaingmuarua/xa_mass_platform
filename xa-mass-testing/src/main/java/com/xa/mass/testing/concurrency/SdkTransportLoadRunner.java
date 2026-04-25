@@ -173,7 +173,7 @@ public final class SdkTransportLoadRunner {
             int transportPort = config.transport() == WorkerTransportMode.WEBSOCKET ? findFreePort() : 0;
             MassSdkApplication app = MassSdk.builder()
                     .transportServer(transportPort, ENDPOINT_PATH)
-                    .gateway(gateway -> gateway
+                    .websocket(gateway -> gateway
                             .enabled(config.transport() == WorkerTransportMode.WEBSOCKET)
                             .transportServerEnabled(config.transport() == WorkerTransportMode.WEBSOCKET)
                             .inputQueue(new InMemoryMessageQueue<>("sdk-load-input", String.class))

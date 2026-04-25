@@ -2,7 +2,6 @@
 mass:
   websocket:
     port: 18088
-  gateway:
     max-connections: 1000
     enabled: true
   engine:

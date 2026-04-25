@@ -21,7 +21,7 @@ public final class WorkerTransportRuntimeFactoryContext<T> {
     private final TaskDispatchChannel taskDispatchChannel;
     private final TaskResultIngestChannel taskResultIngestChannel;
     private final WorkerSystemEventChannel systemEventChannel;
-    private final boolean gatewayEnabled;
+    private final boolean webSocketEnabled;
 
     public WorkerTransportRuntimeFactoryContext(TaskManager taskManager,
                                                 WorkerManager workerManager,
@@ -30,7 +30,7 @@ public final class WorkerTransportRuntimeFactoryContext<T> {
                                                 TaskDispatchChannel taskDispatchChannel,
                                                 TaskResultIngestChannel taskResultIngestChannel,
                                                 WorkerSystemEventChannel systemEventChannel,
-                                                boolean gatewayEnabled) {
+                                                boolean webSocketEnabled) {
         this.taskManager = taskManager;
         this.workerManager = workerManager;
         this.messageTransporter = messageTransporter;
@@ -38,7 +38,7 @@ public final class WorkerTransportRuntimeFactoryContext<T> {
         this.taskDispatchChannel = taskDispatchChannel;
         this.taskResultIngestChannel = taskResultIngestChannel;
         this.systemEventChannel = systemEventChannel;
-        this.gatewayEnabled = gatewayEnabled;
+        this.webSocketEnabled = webSocketEnabled;
     }
 
     public TaskManager getTaskManager() {
@@ -69,7 +69,7 @@ public final class WorkerTransportRuntimeFactoryContext<T> {
         return systemEventChannel;
     }
 
-    public boolean isGatewayEnabled() {
-        return gatewayEnabled;
+    public boolean isWebSocketEnabled() {
+        return webSocketEnabled;
     }
 }

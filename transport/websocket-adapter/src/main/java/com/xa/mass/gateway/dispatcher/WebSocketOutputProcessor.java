@@ -1,6 +1,6 @@
 package com.xa.mass.gateway.dispatcher;
 
-import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
+import com.xa.mass.gateway.dispatcher.context.WebSocketDispatchRuntimeContext;
 import com.xa.mass.gateway.queue.OutboundDelivery;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -13,9 +13,9 @@ import java.util.Objects;
 public final class WebSocketOutputProcessor {
     private static final Logger logger = LoggerFactory.getLogger(WebSocketOutputProcessor.class);
 
-    private final DispatchRuntimeContext context;
+    private final WebSocketDispatchRuntimeContext context;
 
-    public WebSocketOutputProcessor(DispatchRuntimeContext context) {
+    public WebSocketOutputProcessor(WebSocketDispatchRuntimeContext context) {
         this.context = Objects.requireNonNull(context, "context");
     }
 

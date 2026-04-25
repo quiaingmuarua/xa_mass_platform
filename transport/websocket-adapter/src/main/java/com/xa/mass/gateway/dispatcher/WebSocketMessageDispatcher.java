@@ -1,6 +1,6 @@
 package com.xa.mass.gateway.dispatcher;
 
-import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
+import com.xa.mass.gateway.dispatcher.context.WebSocketDispatchRuntimeContext;
 import com.xa.mass.gateway.queue.OutboundDelivery;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -11,12 +11,12 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-public class ServerMessageDispatcher {
+public class WebSocketMessageDispatcher {
 
-    private static final Logger logger = LoggerFactory.getLogger(ServerMessageDispatcher.class);
+    private static final Logger logger = LoggerFactory.getLogger(WebSocketMessageDispatcher.class);
     private static final int INPUT_LOOP_THREADS = 8;
     private static final int OUTPUT_LANE_THREADS = 8;
-    private final DispatchRuntimeContext context;
+    private final WebSocketDispatchRuntimeContext context;
     private final WebSocketInputProcessor inputProcessor;
     private final WebSocketOutputProcessor outputProcessor;
     private final AtomicBoolean running = new AtomicBoolean(false);
@@ -24,7 +24,7 @@ public class ServerMessageDispatcher {
     private ExecutorService outputPollerExecutor;
     private ExecutorService[] outputLaneExecutors;
 
-    public ServerMessageDispatcher(DispatchRuntimeContext context) {
+    public WebSocketMessageDispatcher(WebSocketDispatchRuntimeContext context) {
         this.context = context;
         this.inputProcessor = new WebSocketInputProcessor(context);
         this.outputProcessor = new WebSocketOutputProcessor(context);
@@ -125,7 +125,7 @@ public class ServerMessageDispatcher {
     }
 
     private void logLoopFailure(String loopName, String rawJson, OutboundDelivery delivery, Exception e) {
-        logger.error("Gateway dispatcher {} loop failed: rawJsonPresent={}, workerId={}",
+        logger.error("WebSocket dispatcher {} loop failed: rawJsonPresent={}, workerId={}",
                 loopName,
                 rawJson != null,
                 delivery != null ? delivery.getWorkerId() : null,

@@ -149,7 +149,7 @@ import com.xa.mass.sdk.model.WorkerRegistration;
 
 MassSdkApplication app = MassSdk.builder()
         .server(19090, "/ws")
-        .gateway(gateway -> gateway.enabled(false))
+        .websocket(gateway -> gateway.enabled(false))
         .engine(engine -> engine.enabled(true))
         .build();
 

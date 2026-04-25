@@ -16,7 +16,7 @@
 ## Start Here
 
 - `src/main/java/com/xa/mass/gateway/server/WebSocketServerImpl.java`
-- `src/main/java/com/xa/mass/gateway/dispatcher/ServerMessageDispatcher.java`
+- `src/main/java/com/xa/mass/gateway/dispatcher/WebSocketMessageDispatcher.java`
 
 ## Boundaries
 

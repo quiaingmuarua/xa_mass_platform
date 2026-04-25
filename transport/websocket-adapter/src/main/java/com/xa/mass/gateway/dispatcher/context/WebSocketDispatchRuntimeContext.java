@@ -8,9 +8,9 @@ import com.xa.mass.transport.channel.TaskResultIngestChannel;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
 
 /**
- * Gateway dispatch runtime context.
+ * WebSocket adapter dispatch runtime context.
  */
-public interface DispatchRuntimeContext {
+public interface WebSocketDispatchRuntimeContext {
 
     WorkerEndpointRegistry getEndpointRegistry();
 

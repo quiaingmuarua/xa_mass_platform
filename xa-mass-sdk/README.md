@@ -45,7 +45,7 @@ import com.xa.mass.sdk.model.WorkerRegistration;
 
 MassSdkApplication app = MassSdk.builder()
         .transportServer(19090, "/ws")
-        .gateway(gateway -> gateway.enabled(false))
+        .websocket(gateway -> gateway.enabled(false))
         .engine(engine -> engine.enabled(true).workerThreads(4))
         .build();
 
@@ -202,12 +202,12 @@ If you need the lower-level runtime composition directly, start here:
 
 Treat this lower-level `starter` surface as an advanced embedding path. It remains available, but the default compatibility commitment is on `com.xa.mass.sdk.*`.
 
-Within that lower-level surface, `GatewayConfig.createDispatcherContext(...)` and
-`GatewayConfig.createTransportServer(...)` are deprecated advanced embedding
+Within that lower-level surface, `WebSocketConfig.createDispatcherContext(...)` and
+`WebSocketConfig.createTransportServer(...)` are deprecated advanced embedding
 helpers only. Embedded-runtime mainline should use
-`GatewayEmbeddedRuntimeSupport` directly for the default gateway-backed path, or
+`WebSocketEmbeddedRuntimeSupport` directly for the default gateway-backed path, or
 provide an explicit `transportServerFactory(...)` override.
-`MassGateway.getConfig()` and `MassGateway.getMessageDispatcher()` are also
+`MassWebSocketAdapter.getWebSocketConfig()` and `MassWebSocketAdapter.getWebSocketMessageDispatcher()` are also
 deprecated: gateway config and dispatcher internals are not part of the
 supported embedding surface.
 `MassEngine.getRecordService()` and `MassEngine.getAssignWorker()` are likewise

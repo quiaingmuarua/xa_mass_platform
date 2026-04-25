@@ -3,9 +3,9 @@ package com.xa.mass.starter.config;
 import com.xa.mass.base.channel.messaging.api.MessageQueue;
 import com.xa.mass.base.channel.tranporter.MessageTransporter;
 import com.xa.mass.base.channel.tranporter.MessageTransporterFactory;
-import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
+import com.xa.mass.gateway.dispatcher.context.WebSocketDispatchRuntimeContext;
 import com.xa.mass.gateway.queue.OutboundDelivery;
-import com.xa.mass.gateway.runtime.GatewayEmbeddedRuntimeSupport;
+import com.xa.mass.gateway.runtime.WebSocketEmbeddedRuntimeSupport;
 import com.xa.mass.starter.transport.DefaultWorkerTransportRuntimeFactory;
 import com.xa.mass.starter.transport.TransportServerFactoryContext;
 import com.xa.mass.starter.transport.WorkerTransportRuntimeFactory;
@@ -19,9 +19,9 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 
 /**
- * Gateway runtime configuration.
+ * WebSocket adapter runtime configuration.
  */
-public class GatewayConfig {
+public class WebSocketConfig {
     private static final String API_MODE_UNSUPPORTED_MESSAGE =
             "API-based transport is not implemented yet. Use queue/polling transport or provide a real transport adapter.";
 
@@ -47,12 +47,12 @@ public class GatewayConfig {
     private TransportServerFactory<TransportServerFactoryContext> transportServerFactory;
     private WorkerTransportRuntimeFactory workerTransportRuntimeFactory;
 
-    public GatewayConfig() {
-        this.endpointRegistryFactory = GatewayEmbeddedRuntimeSupport::createEndpointRegistry;
-        this.systemEventChannelResolver = GatewayEmbeddedRuntimeSupport::resolveSystemEventChannel;
+    public WebSocketConfig() {
+        this.endpointRegistryFactory = WebSocketEmbeddedRuntimeSupport::createEndpointRegistry;
+        this.systemEventChannelResolver = WebSocketEmbeddedRuntimeSupport::resolveSystemEventChannel;
     }
 
-    public GatewayConfig(GatewayConfig source) {
+    public WebSocketConfig(WebSocketConfig source) {
         this.enabled = source.enabled;
         this.transportServerEnabled = source.transportServerEnabled;
         this.maxConnections = source.maxConnections;
@@ -119,15 +119,15 @@ public class GatewayConfig {
 
     /**
      * @deprecated Embedded-runtime mainline should call
-     * {@link GatewayEmbeddedRuntimeSupport#createDispatcherContext(MessageTransporter, WorkerEndpointRegistry, TaskResultIngestChannel, WorkerSystemEventChannel)}
-     * directly. Keep this only for advanced external embedding that still routes through {@code GatewayConfig}.
+     * {@link WebSocketEmbeddedRuntimeSupport#createDispatcherContext(MessageTransporter, WorkerEndpointRegistry, TaskResultIngestChannel, WorkerSystemEventChannel)}
+     * directly. Keep this only for advanced external embedding that still routes through {@code WebSocketConfig}.
      */
     @Deprecated
-    public DispatchRuntimeContext createDispatcherContext(MessageTransporter<String, OutboundDelivery> messageTransporter,
+    public WebSocketDispatchRuntimeContext createDispatcherContext(MessageTransporter<String, OutboundDelivery> messageTransporter,
                                                           WorkerEndpointRegistry endpointRegistry,
                                                           TaskResultIngestChannel taskResultIngestChannel,
                                                           WorkerSystemEventChannel systemEventChannel) {
-        return GatewayEmbeddedRuntimeSupport.createDispatcherContext(
+        return WebSocketEmbeddedRuntimeSupport.createDispatcherContext(
                 messageTransporter,
                 endpointRegistry,
                 taskResultIngestChannel,
@@ -221,7 +221,7 @@ public class GatewayConfig {
         }
         if (runtimeOwnedEndpointRegistry == null) {
             if (endpointRegistryFactory == null) {
-                throw new IllegalStateException("Gateway endpoint registry factory is not configured");
+                throw new IllegalStateException("WebSocket endpoint registry factory is not configured");
             }
             runtimeOwnedEndpointRegistry = endpointRegistryFactory.get();
         }
@@ -237,7 +237,7 @@ public class GatewayConfig {
             endpointRegistry = resolveWorkerEndpointRegistry();
         }
         if (systemEventChannelResolver == null) {
-            throw new IllegalStateException("Gateway system-event resolver is not configured");
+            throw new IllegalStateException("WebSocket system-event resolver is not configured");
         }
         return systemEventChannelResolver.apply(endpointRegistry);
     }
@@ -250,19 +250,19 @@ public class GatewayConfig {
 
     /**
      * @deprecated Embedded-runtime mainline should use
-     * {@link GatewayEmbeddedRuntimeSupport#createTransportServer(String, DispatchRuntimeContext, WorkerEndpointRegistry)}
+     * {@link WebSocketEmbeddedRuntimeSupport#createTransportServer(String, WebSocketDispatchRuntimeContext, WorkerEndpointRegistry)}
      * for the default gateway-backed adapter path, or {@link #getTransportServerFactory()} for an explicit override.
-     * Keep this only for advanced external embedding that still routes through {@code GatewayConfig}.
+     * Keep this only for advanced external embedding that still routes through {@code WebSocketConfig}.
      */
     @Deprecated
-    public TransportServer createTransportServer(DispatchRuntimeContext dispatcherContext,
+    public TransportServer createTransportServer(WebSocketDispatchRuntimeContext dispatcherContext,
                                                  WorkerEndpointRegistry endpointRegistry,
                                                  int port) {
         if (!transportServerEnabled) {
             return null;
         }
         if (transportServerFactory == null) {
-            return GatewayEmbeddedRuntimeSupport.createTransportServer(
+            return WebSocketEmbeddedRuntimeSupport.createTransportServer(
                     transportEndpointPath,
                     dispatcherContext,
                     endpointRegistry

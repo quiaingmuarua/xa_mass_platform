@@ -27,7 +27,7 @@ class WebSocketTaskDispatchChannelTest {
         MessageTransporter<String, OutboundDelivery> transporter = mock(MessageTransporter.class);
         WorkerEndpointRegistry endpointRegistry = mock(WorkerEndpointRegistry.class);
         WebSocketTransportFrameCodec codec = new WebSocketTransportFrameCodec();
-        DispatcherContext context = new DispatcherContext(
+        WebSocketDispatcherContext context = new WebSocketDispatcherContext(
                 transporter,
                 endpointRegistry,
                 codec,

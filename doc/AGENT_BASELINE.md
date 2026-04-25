@@ -137,7 +137,7 @@ Current canonical boundaries:
 - `xa-mass-transport-websocket` should be read as the current WebSocket transport adapter artifact, not as the only valid worker runtime path. Its module sources live under `transport/websocket-adapter`, and its Java package namespace remains `com.xa.mass.gateway.*`.
 - Read [./GATEWAY_BOUNDARY_BASELINE.md](./GATEWAY_BOUNDARY_BASELINE.md) before changing `xa-mass-transport-websocket` or `xa-mass-transport-api`.
 - Gateway adapter frame classification is a protocol-frame compatibility seam only; do not treat it as the identity of a business or control capability.
-- Gateway runtime wiring is configured as a fixed pre-start snapshot; `DispatchRuntimeContext` is not a mutable extension registry.
+- Gateway runtime wiring is configured as a fixed pre-start snapshot; `WebSocketDispatchRuntimeContext` is not a mutable extension registry.
 - `com.xa.mass.engine` is the active engine path.
 - `xa-mass-testing` is the cross-cutting acceptance-tooling module for runnable `perf` plus the current SDK transport/concurrency probes and the first runnable WebSocket disconnect/reconnect chaos probe.
 - EventBus mainline has converged onto `com.xa.mass.base.channel.eventbus.core` and `com.xa.mass.base.channel.eventbus.event`.

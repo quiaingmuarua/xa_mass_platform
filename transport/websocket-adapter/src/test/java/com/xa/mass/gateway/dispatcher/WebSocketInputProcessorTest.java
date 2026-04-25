@@ -23,7 +23,7 @@ import static org.mockito.Mockito.verify;
 class WebSocketInputProcessorTest {
 
     private WebSocketTransportFrameCodec codec;
-    private DispatcherContext context;
+    private WebSocketDispatcherContext context;
     private MessageTransporter<String, OutboundDelivery> transporter;
     private WorkerEndpointRegistry endpointRegistry;
     private WebSocketInputProcessor inputProcessor;
@@ -79,8 +79,8 @@ class WebSocketInputProcessorTest {
         verify(transporter, never()).sendOutput(any());
     }
 
-    private DispatcherContext createContext(TaskResultIngestChannel taskResultIngestChannel) {
-        return new DispatcherContext(
+    private WebSocketDispatcherContext createContext(TaskResultIngestChannel taskResultIngestChannel) {
+        return new WebSocketDispatcherContext(
                 transporter,
                 endpointRegistry,
                 codec,

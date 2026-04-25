@@ -51,7 +51,7 @@ public class MockApplicationSpringBootApp {
     @Value("${mass.websocket.port:18088}")
     private int massWebSocketPort;
 
-    @Value("${mass.gateway.max-connections:1000}")
+    @Value("${mass.websocket.max-connections:1000}")
     private int maxConnections;
 
     @Value("${mass.engine.worker-threads:8}")
@@ -89,7 +89,7 @@ public class MockApplicationSpringBootApp {
         log.info("==============================");
         log.info("HTTP control console: http://localhost:{}/", httpPort);
         log.info("HTTP API docs: http://localhost:{}/doc.html", httpPort);
-        log.info("Gateway WebSocket: ws://localhost:{}/ws", webSocketPort);
+        log.info("WebSocket adapter: ws://localhost:{}/ws", webSocketPort);
         log.info("==============================");
     }
 
@@ -99,7 +99,7 @@ public class MockApplicationSpringBootApp {
         return MassSdk.builder()
                 .projectCatalogBootstrap(new ProjectEventCatalogRegistry())
                 .server(massWebSocketPort)
-                .gateway(gateway -> gateway
+                .websocket(websocket -> websocket
                         .enabled(true)
                         .maxConnections(maxConnections)
                         .inputQueue(new InMemoryMessageQueue<>("input", String.class))
@@ -126,7 +126,7 @@ public class MockApplicationSpringBootApp {
     @Profile("dev")
     public CommandLineRunner fullStackStarter(MassSdkApplication app, MockRuntimeDataLoader mockRuntimeDataLoader) {
         return args -> {
-            log.info("Starting internal gateway + engine runtime");
+            log.info("Starting internal WebSocket adapter + engine runtime");
             try {
                 registerDevAppCatalog(app);
                 registerDevAppSubmitters(app);

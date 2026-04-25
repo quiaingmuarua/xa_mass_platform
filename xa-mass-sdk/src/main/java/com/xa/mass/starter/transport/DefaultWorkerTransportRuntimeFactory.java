@@ -1,6 +1,6 @@
 package com.xa.mass.starter.transport;
 
-import com.xa.mass.gateway.runtime.GatewayEmbeddedRuntimeSupport;
+import com.xa.mass.gateway.runtime.WebSocketEmbeddedRuntimeSupport;
 import com.xa.mass.starter.worker.PollingWorkerAdapter;
 
 import java.util.ArrayList;
@@ -8,7 +8,7 @@ import java.util.List;
 
 /**
  * Default embedded-runtime transport assembly: pull/polling plus the current
- * gateway-backed realtime adapter when the gateway is enabled.
+ * WebSocket-backed realtime adapter when the WebSocket adapter is enabled.
  */
 public class DefaultWorkerTransportRuntimeFactory implements WorkerTransportRuntimeFactory {
 
@@ -21,9 +21,9 @@ public class DefaultWorkerTransportRuntimeFactory implements WorkerTransportRunt
                 .taskPullChannel(pollingAdapter)
                 .build());
 
-        if (context.isGatewayEnabled()) {
+        if (context.isWebSocketEnabled()) {
             bindings.add(TransportBinding.builder(
-                    GatewayEmbeddedRuntimeSupport.createRealtimeWorkerAdapter(context.getTaskDispatchChannel())
+                    WebSocketEmbeddedRuntimeSupport.createRealtimeWorkerAdapter(context.getTaskDispatchChannel())
             ).build());
         }
 

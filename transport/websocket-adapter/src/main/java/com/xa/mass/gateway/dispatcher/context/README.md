@@ -2,7 +2,7 @@
 
 This package keeps the single internal runtime context used by gateway dispatch code:
 
-- `DispatchRuntimeContext`
+- `WebSocketDispatchRuntimeContext`
 
 Current role:
 

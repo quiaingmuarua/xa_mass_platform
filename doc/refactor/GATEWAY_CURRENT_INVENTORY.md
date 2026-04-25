@@ -96,7 +96,7 @@ It is a migration aid, not a compatibility promise.
 
 ## 9. Queue-Based Adapter Dispatch Loop
 
-- `Class`: `com.xa.mass.gateway.dispatcher.ServerMessageDispatcher`
+- `Class`: `com.xa.mass.gateway.dispatcher.WebSocketMessageDispatcher`
 - `Method`: `processInputQueueLoop()`, `processOutputQueueLoop()`, `submitOutputDelivery(...)`
 - `Current responsibility`: consumes raw inbound JSON and `OutboundDelivery`, calls explicit adapter processors, preserves outbound ordering per `workerId`
 - `Should stay in gateway?`: yes
@@ -106,9 +106,9 @@ It is a migration aid, not a compatibility promise.
 
 ## 10. Fixed Gateway Wiring Snapshot
 
-- `Class`: `com.xa.mass.gateway.dispatcher.DispatcherContext`
+- `Class`: `com.xa.mass.gateway.dispatcher.WebSocketDispatcherContext`
 - `Method`: constructor + getters
-- `Current responsibility`: exposes the fixed gateway-local wiring snapshot used by the adapter runtime; runtime assembly resolves the concrete endpoint registry once and injects the same instance into dispatcher wiring and transport-server creation; dispatcher-context assembly now lives in gateway runtime support instead of SDK-side `new DispatcherContext(...)`, and `MassApplication` no longer retains this snapshot as a general runtime field after assembly
+- `Current responsibility`: exposes the fixed gateway-local wiring snapshot used by the adapter runtime; runtime assembly resolves the concrete endpoint registry once and injects the same instance into dispatcher wiring and transport-server creation; dispatcher-context assembly now lives in gateway runtime support instead of SDK-side `new WebSocketDispatcherContext(...)`, and `MassApplication` no longer retains this snapshot as a general runtime field after assembly
 - `Should stay in gateway?`: yes
 - `Target owner`: `xa-mass-transport-websocket`
 - `Migration phase`: keep as immutable adapter runtime wiring
@@ -116,9 +116,9 @@ It is a migration aid, not a compatibility promise.
 
 ## 11. Gateway Embedded Runtime Support
 
-- `Class`: `com.xa.mass.gateway.runtime.GatewayEmbeddedRuntimeSupport`
+- `Class`: `com.xa.mass.gateway.runtime.WebSocketEmbeddedRuntimeSupport`
 - `Method`: `createEndpointRegistry(...)`, `createDispatcherContext(...)`, `resolveSystemEventChannel(...)`, `createRealtimeWorkerAdapter(...)`, `createTransportServer(...)`
-- `Current responsibility`: keeps gateway-owned embedded-runtime defaults inside gateway, including endpoint-registry creation, dispatcher-context assembly, gateway-backed realtime adapter creation, and transport-server assembly; current realtime/default server implementations remain WebSocket-backed, and `MassApplication` mainline now calls this helper directly instead of routing default assembly through `GatewayConfig`
+- `Current responsibility`: keeps gateway-owned embedded-runtime defaults inside gateway, including endpoint-registry creation, dispatcher-context assembly, gateway-backed realtime adapter creation, and transport-server assembly; current realtime/default server implementations remain WebSocket-backed, and `MassApplication` mainline now calls this helper directly instead of routing default assembly through `WebSocketConfig`
 - `Should stay in gateway?`: yes
 - `Target owner`: `xa-mass-transport-websocket`
 - `Migration phase`: keep as adapter-local bootstrap helper

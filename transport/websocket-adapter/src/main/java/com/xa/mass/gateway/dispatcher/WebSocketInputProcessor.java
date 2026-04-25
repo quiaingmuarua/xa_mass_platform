@@ -4,7 +4,7 @@ import com.google.gson.JsonObject;
 import com.xa.mass.base.exception.CommandException;
 import com.xa.mass.base.exception.ErrorCode;
 import com.xa.mass.base.exception.ValidationException;
-import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
+import com.xa.mass.gateway.dispatcher.context.WebSocketDispatchRuntimeContext;
 import com.xa.mass.transport.model.TaskResultReport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -17,9 +17,9 @@ import java.util.Objects;
 public final class WebSocketInputProcessor {
     private static final Logger logger = LoggerFactory.getLogger(WebSocketInputProcessor.class);
 
-    private final DispatchRuntimeContext context;
+    private final WebSocketDispatchRuntimeContext context;
 
-    public WebSocketInputProcessor(DispatchRuntimeContext context) {
+    public WebSocketInputProcessor(WebSocketDispatchRuntimeContext context) {
         this.context = Objects.requireNonNull(context, "context");
     }
 
