@@ -1,12 +1,16 @@
 package com.xa.mass.gateway.runtime;
 
+import com.xa.mass.base.channel.tranporter.MessageTransporter;
+import com.xa.mass.gateway.dispatcher.DispatcherContext;
 import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
+import com.xa.mass.gateway.queue.OutboundDelivery;
 import com.xa.mass.gateway.queue.WebSocketTransportFrameCodec;
 import com.xa.mass.gateway.server.WebSocketServerImpl;
 import com.xa.mass.gateway.session.EventBusWorkerSystemEventChannel;
 import com.xa.mass.gateway.session.ServerSessionManager;
 import com.xa.mass.transport.TransportServer;
 import com.xa.mass.transport.WorkerEndpointRegistry;
+import com.xa.mass.transport.channel.TaskResultIngestChannel;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
 
 import java.util.function.Consumer;
@@ -29,6 +33,21 @@ public final class WebSocketGatewayRuntimeSupport {
 
     public static WebSocketTransportFrameCodec resolveFrameCodec(WebSocketTransportFrameCodec configuredCodec) {
         return configuredCodec != null ? configuredCodec : new WebSocketTransportFrameCodec();
+    }
+
+    public static DispatchRuntimeContext createDispatcherContext(
+            MessageTransporter<String, OutboundDelivery> messageTransporter,
+            WorkerEndpointRegistry endpointRegistry,
+            WebSocketTransportFrameCodec configuredCodec,
+            TaskResultIngestChannel taskResultIngestChannel,
+            WorkerSystemEventChannel systemEventChannel) {
+        return new DispatcherContext(
+                messageTransporter,
+                endpointRegistry,
+                resolveFrameCodec(configuredCodec),
+                taskResultIngestChannel,
+                systemEventChannel
+        );
     }
 
     public static WorkerSystemEventChannel resolveSystemEventChannel(WorkerEndpointRegistry endpointRegistry) {

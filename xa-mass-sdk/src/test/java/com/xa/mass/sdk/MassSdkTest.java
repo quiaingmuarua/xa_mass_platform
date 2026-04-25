@@ -153,6 +153,7 @@ class MassSdkTest {
             Assertions.assertEquals(19092, capturedContext.get().getPort());
             Assertions.assertEquals("/custom-transport", capturedContext.get().getEndpointPath());
             assertNotNull(capturedContext.get().getEndpointRegistry());
+            Assertions.assertNull(capturedContext.get().getFrameCodec());
         } finally {
             app.stop();
         }

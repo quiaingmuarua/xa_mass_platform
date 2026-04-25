@@ -3,7 +3,6 @@ package com.xa.mass.starter.config;
 import com.xa.mass.base.channel.messaging.api.MessageQueue;
 import com.xa.mass.base.channel.tranporter.MessageTransporter;
 import com.xa.mass.base.channel.tranporter.MessageTransporterFactory;
-import com.xa.mass.gateway.dispatcher.DispatcherContext;
 import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
 import com.xa.mass.gateway.queue.OutboundDelivery;
 import com.xa.mass.gateway.queue.WebSocketTransportFrameCodec;
@@ -131,10 +130,10 @@ public class GatewayConfig {
                                                           WorkerEndpointRegistry endpointRegistry,
                                                           TaskResultIngestChannel taskResultIngestChannel,
                                                           WorkerSystemEventChannel systemEventChannel) {
-        return new DispatcherContext(
+        return WebSocketGatewayRuntimeSupport.createDispatcherContext(
                 messageTransporter,
                 endpointRegistry,
-                resolveFrameCodec(),
+                frameCodec,
                 taskResultIngestChannel,
                 systemEventChannel
         );
@@ -306,7 +305,6 @@ public class GatewayConfig {
         }
         return transportServerFactory.create(new TransportServerFactoryContext(
                 endpointRegistry,
-                dispatcherContext.getFrameCodec(),
                 dispatcherContext.getMessageTransporter()::sendInput,
                 port,
                 transportEndpointPath
