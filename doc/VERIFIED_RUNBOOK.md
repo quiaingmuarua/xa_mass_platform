@@ -28,6 +28,8 @@ Current module set from the root reactor:
 - `xa-mass-testing`
 - `xa-mass-dev-app`
 
+`xa-mass-gateway` keeps its artifact/module identity, but its sources now live under `transport/websocket-adapter`.
+
 Do not treat removed historical modules or archive/v2 references as missing current code.
 
 ## 2. Startup

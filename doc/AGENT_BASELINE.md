@@ -134,7 +134,7 @@ Current canonical boundaries:
 - `xa-mass-transport-api` now holds the transport-neutral SPI for task dispatch, result ingest, system events, transport servers, and worker endpoint registries.
 - `xa-mass-transport-polling` now holds the default pull/polling worker adapter implementation that `xa-mass-sdk` composes by default.
 - `xa-mass-transport-runtime` now holds the shared transport runtime registry, dispatch listener, and task-result ingest channel used by `xa-mass-sdk`.
-- `xa-mass-gateway` should be read as the current WebSocket transport adapter, not as the only valid worker runtime path.
+- `xa-mass-gateway` should be read as the current WebSocket transport adapter, not as the only valid worker runtime path. Its module sources now live under `transport/websocket-adapter`.
 - Read [./GATEWAY_BOUNDARY_BASELINE.md](./GATEWAY_BOUNDARY_BASELINE.md) before changing `xa-mass-gateway` or `xa-mass-transport-api`.
 - Gateway adapter frame classification is a protocol-frame compatibility seam only; do not treat it as the identity of a business or control capability.
 - Gateway runtime wiring is configured as a fixed pre-start snapshot; `DispatchRuntimeContext` is not a mutable extension registry.

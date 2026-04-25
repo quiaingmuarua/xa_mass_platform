@@ -6,6 +6,7 @@ Purpose:
 
 - keep one platform source of truth
 - keep `xa-mass-gateway` thin
+- `xa-mass-gateway` module sources now live under `transport/websocket-adapter`; this path move does not change artifact or package ownership by itself
 - keep `xa-mass-transport-api` transport-neutral
 - keep business execution in worker runtime
 - prevent "transport-neutral" changes from becoming renamed WebSocket compatibility layers

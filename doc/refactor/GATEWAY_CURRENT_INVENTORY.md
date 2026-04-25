@@ -1,6 +1,6 @@
 # Gateway Current Inventory
 
-This inventory records the responsibilities that still exist inside `xa-mass-gateway` in the current checkout after substantial convergence toward a task-only WebSocket adapter.
+This inventory records the responsibilities that still exist inside `xa-mass-gateway` in the current checkout after substantial convergence toward a task-only WebSocket adapter. The module now lives physically under `transport/websocket-adapter`, but the current artifact and package identity remain `xa-mass-gateway` / `com.xa.mass.gateway.*`.
 
 It is a migration aid, not a compatibility promise.
 
