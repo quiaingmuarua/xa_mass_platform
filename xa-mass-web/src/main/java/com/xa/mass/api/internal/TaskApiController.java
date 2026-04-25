@@ -4,6 +4,7 @@ import com.xa.mass.api.model.ApiResponse;
 import com.xa.mass.api.model.task.TaskAppendItemsApiRequest;
 import com.xa.mass.api.model.task.TaskCreateApiRequest;
 import com.xa.mass.api.model.task.TaskUpdateApiRequest;
+import com.xa.mass.base.enums.task.TaskSourceType;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.ProjectRef;
 import com.xa.mass.base.model.Task;
@@ -468,6 +469,8 @@ public class TaskApiController {
                 .defaultMsgMaxRetryCount(requestBody.getDefaultMsgMaxRetryCount())
                 .openEnded(requestBody.isOpenEnded())
                 .maxRuntimeSeconds(requestBody.getMaxRuntimeSeconds())
+                .sourceType(resolveSourceType(requestBody))
+                .sourceRef(requestBody.getSourceRef())
                 .build();
     }
 
@@ -500,10 +503,12 @@ public class TaskApiController {
                 .mode(mode)
                 .payloadType(payloadType)
                 .sharedConfig(requestBody.getSharedConfig())
-                .inputs(toMassInputs(requestBody.getInputs(), payloadType))
+                .inputs(toMassInputs(requestBody.getInputs(), payloadType, resolveSourceType(requestBody)))
                 .batchSize(requestBody.getBatchSize())
                 .defaultMsgMaxRetryCount(requestBody.getDefaultMsgMaxRetryCount())
                 .maxRuntimeSeconds(requestBody.getMaxRuntimeSeconds())
+                .sourceType(resolveSourceType(requestBody))
+                .sourceRef(requestBody.getSourceRef())
                 .build();
     }
 
@@ -535,7 +540,9 @@ public class TaskApiController {
                 && requestBody.getBatchSize() == 0
                 && requestBody.getDefaultMsgMaxRetryCount() == 3
                 && !requestBody.isOpenEnded()
-                && requestBody.getMaxRuntimeSeconds() == 0;
+                && requestBody.getMaxRuntimeSeconds() == 0
+                && requestBody.getSourceType() == null
+                && requestBody.getSourceRef() == null;
     }
 
     private boolean isEmptyUpdateRequest(TaskUpdateApiRequest requestBody) {
@@ -669,7 +676,7 @@ public class TaskApiController {
                     .map(this::mapInputWithoutDeclaredPayloadType)
                     .collect(Collectors.toList());
         }
-        return toMassInputs(rawInputs, payloadType).stream()
+        return toMassInputs(rawInputs, payloadType, task.getSourceType()).stream()
                 .map(MassInput::toTaskMsgInput)
                 .collect(Collectors.toList());
     }
@@ -684,7 +691,12 @@ public class TaskApiController {
         throw new IllegalArgumentException("Unsupported input item type: " + rawInput);
     }
 
-    private List<MassInput> toMassInputs(List<Object> rawInputs, PayloadType payloadType) {
+    private List<MassInput> toMassInputs(List<Object> rawInputs, PayloadType payloadType, TaskSourceType sourceType) {
+        if ((rawInputs == null || rawInputs.isEmpty())
+                && sourceType != null
+                && sourceType.allowsEmptyInitialInputs()) {
+            return List.of();
+        }
         if (rawInputs == null || rawInputs.isEmpty()) {
             throw new IllegalArgumentException("inputs must contain at least one work item");
         }
@@ -736,6 +748,13 @@ public class TaskApiController {
 
     private String formatDateTime(LocalDateTime value) {
         return value == null ? "" : value.format(DATE_TIME_FORMATTER);
+    }
+
+    private TaskSourceType resolveSourceType(TaskCreateApiRequest requestBody) {
+        if (requestBody.getSourceType() != null) {
+            return requestBody.getSourceType();
+        }
+        return requestBody.isOpenEnded() ? TaskSourceType.STREAM : TaskSourceType.BATCH;
     }
 
     private static final class SdkUnauthenticatedException extends RuntimeException {

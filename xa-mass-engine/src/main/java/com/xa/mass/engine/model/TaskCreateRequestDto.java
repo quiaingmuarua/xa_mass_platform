@@ -1,6 +1,7 @@
 package com.xa.mass.engine.model;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.xa.mass.base.enums.task.TaskSourceType;
 
 import java.util.List;
 import java.util.Map;
@@ -29,6 +30,8 @@ public class TaskCreateRequestDto {
     private int defaultMsgMaxRetryCount = 3;
     private boolean openEnded = false;
     private int maxRuntimeSeconds = 0;
+    private TaskSourceType sourceType;
+    private String sourceRef;
 
     public TaskCreateRequestDto() {
     }
@@ -115,5 +118,21 @@ public class TaskCreateRequestDto {
 
     public void setMaxRuntimeSeconds(int maxRuntimeSeconds) {
         this.maxRuntimeSeconds = maxRuntimeSeconds;
+    }
+
+    public TaskSourceType getSourceType() {
+        return sourceType;
+    }
+
+    public void setSourceType(TaskSourceType sourceType) {
+        this.sourceType = sourceType;
+    }
+
+    public String getSourceRef() {
+        return sourceRef;
+    }
+
+    public void setSourceRef(String sourceRef) {
+        this.sourceRef = sourceRef;
     }
 }

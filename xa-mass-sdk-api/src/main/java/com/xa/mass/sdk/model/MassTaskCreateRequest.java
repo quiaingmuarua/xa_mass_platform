@@ -1,5 +1,7 @@
 package com.xa.mass.sdk.model;
 
+import com.xa.mass.base.enums.task.TaskSourceType;
+
 import java.util.*;
 
 /**
@@ -19,6 +21,8 @@ public final class MassTaskCreateRequest {
     private final int defaultMsgMaxRetryCount;
     private final boolean openEnded;
     private final int maxRuntimeSeconds;
+    private final TaskSourceType sourceType;
+    private final String sourceRef;
 
     private MassTaskCreateRequest(Builder builder) {
         this.userId = builder.userId;
@@ -30,6 +34,8 @@ public final class MassTaskCreateRequest {
         this.defaultMsgMaxRetryCount = builder.defaultMsgMaxRetryCount;
         this.openEnded = builder.openEnded;
         this.maxRuntimeSeconds = builder.maxRuntimeSeconds;
+        this.sourceType = builder.sourceType;
+        this.sourceRef = normalizeString(builder.sourceRef);
     }
 
     public static Builder builder() {
@@ -72,6 +78,17 @@ public final class MassTaskCreateRequest {
         return maxRuntimeSeconds;
     }
 
+    public TaskSourceType getSourceType() {
+        if (sourceType != null) {
+            return sourceType;
+        }
+        return openEnded ? TaskSourceType.STREAM : TaskSourceType.BATCH;
+    }
+
+    public String getSourceRef() {
+        return sourceRef;
+    }
+
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
@@ -84,13 +101,15 @@ public final class MassTaskCreateRequest {
                 && Objects.equals(project, that.project)
                 && Objects.equals(taskName, that.taskName)
                 && Objects.equals(sharedConfig, that.sharedConfig)
-                && Objects.equals(inputs, that.inputs);
+                && Objects.equals(inputs, that.inputs)
+                && getSourceType() == that.getSourceType()
+                && Objects.equals(sourceRef, that.sourceRef);
     }
 
     @Override
     public int hashCode() {
         return Objects.hash(userId, project, taskName, sharedConfig, inputs,
-                batchSize, defaultMsgMaxRetryCount, openEnded, maxRuntimeSeconds);
+                batchSize, defaultMsgMaxRetryCount, openEnded, maxRuntimeSeconds, getSourceType(), sourceRef);
     }
 
     @Override
@@ -105,6 +124,8 @@ public final class MassTaskCreateRequest {
                 ", defaultMsgMaxRetryCount=" + defaultMsgMaxRetryCount +
                 ", openEnded=" + openEnded +
                 ", maxRuntimeSeconds=" + maxRuntimeSeconds +
+                ", sourceType=" + getSourceType() +
+                ", sourceRef='" + sourceRef + '\'' +
                 '}';
     }
 
@@ -136,6 +157,8 @@ public final class MassTaskCreateRequest {
         private int defaultMsgMaxRetryCount = 3;
         private boolean openEnded;
         private int maxRuntimeSeconds;
+        private TaskSourceType sourceType;
+        private String sourceRef;
 
         private Builder() {
         }
@@ -198,8 +221,25 @@ public final class MassTaskCreateRequest {
             return this;
         }
 
+        public Builder sourceType(TaskSourceType sourceType) {
+            this.sourceType = sourceType;
+            return this;
+        }
+
+        public Builder sourceRef(String sourceRef) {
+            this.sourceRef = sourceRef;
+            return this;
+        }
+
         public MassTaskCreateRequest build() {
             return new MassTaskCreateRequest(this);
         }
+    }
+
+    private static String normalizeString(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        return value.trim();
     }
 }

@@ -1,7 +1,9 @@
 package com.xa.mass.engine;
 
 import com.xa.mass.base.enums.task.TaskHoldReason;
+import com.xa.mass.base.enums.task.TaskIngestStatus;
 import com.xa.mass.base.enums.task.TaskIntakeStatus;
+import com.xa.mass.base.enums.task.TaskSourceType;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.enums.taskmsg.TaskMsgAttemptFinalReason;
@@ -44,6 +46,8 @@ class TaskManagerLifecycleTest {
         Task task = taskManager.createTask(buildRequest("task-create"));
 
         assertEquals(TaskStatus.NEW, task.getStatus());
+        assertEquals(TaskSourceType.BATCH, task.getSourceType());
+        assertEquals(TaskIngestStatus.SEALED, task.getIngestStatus());
         assertNotNull(task.getProjectRef());
         assertEquals("demoApp", task.getProjectRef().getCode());
         assertNotNull(task.getUser());
@@ -147,6 +151,61 @@ class TaskManagerLifecycleTest {
 
         IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> taskManager.createTask(dto));
         assertTrue(error.getMessage().contains("inputs"));
+    }
+
+    @Test
+    void createStreamTaskAllowsEmptyInitialInputsAndCreatesShell() {
+        TaskCreateRequestDto dto = new TaskCreateRequestDto();
+        dto.setTaskName("stream-shell");
+        dto.setProject("demoApp");
+        dto.setUserId("agent");
+        dto.setOpenEnded(true);
+        dto.setSourceType(TaskSourceType.STREAM);
+        dto.setInputs(List.of());
+
+        Task task = taskManager.createTask(dto);
+
+        assertEquals(TaskStatus.NEW, task.getStatus());
+        assertEquals(TaskSourceType.STREAM, task.getSourceType());
+        assertEquals(TaskIngestStatus.READY, task.getIngestStatus());
+        assertEquals(TaskIntakeStatus.OPEN, task.getIntakeStatus());
+        assertEquals(0, task.getTaskTargetNumber());
+        assertTrue(taskManager.getTaskMessages(task.getTid()).isEmpty());
+    }
+
+    @Test
+    void createFileTaskAllowsEmptyInitialInputsAndCreatesPendingShell() {
+        TaskCreateRequestDto dto = new TaskCreateRequestDto();
+        dto.setTaskName("file-shell");
+        dto.setProject("demoApp");
+        dto.setUserId("agent");
+        dto.setSourceType(TaskSourceType.FILE);
+        dto.setSourceRef("mock/input/demo.csv");
+        dto.setInputs(List.of());
+
+        Task task = taskManager.createTask(dto);
+
+        assertEquals(TaskStatus.NEW, task.getStatus());
+        assertEquals(TaskSourceType.FILE, task.getSourceType());
+        assertEquals(TaskIngestStatus.PENDING, task.getIngestStatus());
+        assertEquals(TaskIntakeStatus.SEALED, task.getIntakeStatus());
+        assertEquals("mock/input/demo.csv", task.getSourceRef());
+        assertEquals(0, task.getTaskTargetNumber());
+        assertTrue(taskManager.getTaskMessages(task.getTid()).isEmpty());
+    }
+
+    @Test
+    void createFileTaskRequiresSourceRef() {
+        TaskCreateRequestDto dto = new TaskCreateRequestDto();
+        dto.setTaskName("file-shell-no-ref");
+        dto.setProject("demoApp");
+        dto.setUserId("agent");
+        dto.setSourceType(TaskSourceType.FILE);
+        dto.setInputs(List.of());
+
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> taskManager.createTask(dto));
+
+        assertEquals("sourceRef is required for FILE task sources", error.getMessage());
     }
 
     @Test

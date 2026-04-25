@@ -2,7 +2,9 @@ package com.xa.mass.base.model;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.xa.mass.base.enums.task.TaskHoldReason;
+import com.xa.mass.base.enums.task.TaskIngestStatus;
 import com.xa.mass.base.enums.task.TaskIntakeStatus;
+import com.xa.mass.base.enums.task.TaskSourceType;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
 
@@ -33,6 +35,9 @@ public class Task {
     private int peakAssignedWorkerCount;
     private Map<String, Object> sharedConfig = new HashMap<>();
     private TaskHoldReason holdReason;
+    private TaskSourceType sourceType;
+    private TaskIngestStatus ingestStatus;
+    private String sourceRef;
     private TaskIntakeStatus intakeStatus;
     private UserRef user;
     private LocalDateTime createTime;
@@ -45,6 +50,8 @@ public class Task {
 
     public Task() {
         this.status = TaskStatus.NEW;
+        this.sourceType = TaskSourceType.BATCH;
+        this.ingestStatus = TaskIngestStatus.SEALED;
         this.intakeStatus = TaskIntakeStatus.SEALED;
         this.batchSize = 1;
         this.createTime = LocalDateTime.now();
@@ -207,6 +214,33 @@ public class Task {
 
     public void setHoldReason(TaskHoldReason holdReason) {
         this.holdReason = holdReason;
+        this.updateTime = LocalDateTime.now();
+    }
+
+    public TaskSourceType getSourceType() {
+        return sourceType;
+    }
+
+    public void setSourceType(TaskSourceType sourceType) {
+        this.sourceType = sourceType == null ? TaskSourceType.BATCH : sourceType;
+        this.updateTime = LocalDateTime.now();
+    }
+
+    public TaskIngestStatus getIngestStatus() {
+        return ingestStatus;
+    }
+
+    public void setIngestStatus(TaskIngestStatus ingestStatus) {
+        this.ingestStatus = ingestStatus == null ? TaskIngestStatus.SEALED : ingestStatus;
+        this.updateTime = LocalDateTime.now();
+    }
+
+    public String getSourceRef() {
+        return sourceRef;
+    }
+
+    public void setSourceRef(String sourceRef) {
+        this.sourceRef = sourceRef;
         this.updateTime = LocalDateTime.now();
     }
 
@@ -384,6 +418,8 @@ public class Task {
                 ", taskName='" + taskName + '\'' +
                 ", project='" + project + '\'' +
                 ", status=" + status +
+                ", sourceType=" + sourceType +
+                ", ingestStatus=" + ingestStatus +
                 ", taskTargetNumber=" + taskTargetNumber +
                 ", taskEligibleNumber=" + taskEligibleNumber +
                 ", taskSuccessNumber=" + taskSuccessNumber +

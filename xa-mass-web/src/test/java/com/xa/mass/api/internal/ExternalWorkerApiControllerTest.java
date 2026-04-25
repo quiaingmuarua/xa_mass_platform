@@ -50,6 +50,8 @@ class ExternalWorkerApiControllerTest {
                 Map.of("workerId", "node-worker-1")
         );
         lenient().when(authProvider.authenticate("node-worker-key")).thenReturn(workerSubmitter);
+        lenient().when(externalWorkerOperations.getWorkerTransportHint("node-worker-1"))
+                .thenReturn(WorkerTransportHints.POLLING);
         mockMvc = MockMvcBuilders
                 .standaloneSetup(new ExternalWorkerApiController(externalWorkerOperations, authProvider))
                 .setControllerAdvice(new com.xa.mass.api.aop.GlobalExceptionHandler())
@@ -251,5 +253,24 @@ class ExternalWorkerApiControllerTest {
                         && "ok".equals(report.getDetail())
                         && Map.of("title", "Example").equals(report.getOutput())
         ));
+    }
+
+    @Test
+    void pollEndpointsRejectRealtimeWorkers() throws Exception {
+        when(externalWorkerOperations.getWorkerTransportHint("node-worker-1"))
+                .thenReturn(WorkerTransportHints.REALTIME);
+
+        mockMvc.perform(post("/worker-api/workers/{workerId}/poll", "node-worker-1")
+                        .contentType("application/json")
+                        .header(SdkCredentialAuthSupport.API_KEY_HEADER, "node-worker-key")
+                        .content("""
+                                {
+                                  "maxMessages": 1
+                                }
+                                """))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value(409))
+                .andExpect(jsonPath("$.msg").value(
+                        "External worker API poll only supports polling workers; worker node-worker-1 uses transport 'realtime'"));
     }
 }

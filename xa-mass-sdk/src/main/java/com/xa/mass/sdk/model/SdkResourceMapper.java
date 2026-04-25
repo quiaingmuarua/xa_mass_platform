@@ -27,6 +27,8 @@ public final class SdkResourceMapper {
         dto.setDefaultMsgMaxRetryCount(request.getDefaultMsgMaxRetryCount());
         dto.setOpenEnded(request.isOpenEnded());
         dto.setMaxRuntimeSeconds(request.getMaxRuntimeSeconds());
+        dto.setSourceType(request.getSourceType());
+        dto.setSourceRef(request.getSourceRef());
         return dto;
     }
 

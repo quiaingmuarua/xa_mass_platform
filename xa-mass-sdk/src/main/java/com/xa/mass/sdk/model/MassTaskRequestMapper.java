@@ -26,6 +26,8 @@ public final class MassTaskRequestMapper {
         dto.setDefaultMsgMaxRetryCount(request.getDefaultMsgMaxRetryCount());
         dto.setOpenEnded(request.isStreaming());
         dto.setMaxRuntimeSeconds(request.getMaxRuntimeSeconds());
+        dto.setSourceType(request.getSourceType());
+        dto.setSourceRef(request.getSourceRef());
         return dto;
     }
 

@@ -1,6 +1,8 @@
 package com.xa.mass.engine;
 
 import com.xa.mass.base.enums.task.TaskIntakeStatus;
+import com.xa.mass.base.enums.task.TaskIngestStatus;
+import com.xa.mass.base.enums.task.TaskSourceType;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.model.*;
@@ -79,7 +81,8 @@ public class TaskManager {
             LogUtils.setUserId(dto.getUserId());
 
             List<Map<String, Object>> inputs = dto.getInputs() == null ? List.of() : dto.getInputs();
-            if (inputs.isEmpty()) {
+            TaskSourceType sourceType = resolveSourceType(dto);
+            if (inputs.isEmpty() && !sourceType.allowsEmptyInitialInputs()) {
                 throw new IllegalArgumentException("inputs must contain at least one work item");
             }
             int initNumber = inputs.size();
@@ -92,6 +95,9 @@ public class TaskManager {
                     dto.getSharedConfig() != null ? dto.getSharedConfig() : new java.util.HashMap<>(),
                     user
             );
+            task.setSourceType(sourceType);
+            task.setSourceRef(normalizeSourceRef(dto.getSourceRef()));
+            task.setIngestStatus(resolveInitialIngestStatus(sourceType, dto.isOpenEnded(), initNumber));
             task.setBatchSize(dto.getBatchSize());
             // intakeStatus is the runtime truth; openEnded remains a compatibility projection.
             task.setIntakeStatus(dto.isOpenEnded() ? TaskIntakeStatus.OPEN : TaskIntakeStatus.SEALED);
@@ -106,7 +112,10 @@ public class TaskManager {
 
             eventPublisher.publishTaskCreated(task);
             long duration = System.currentTimeMillis() - startTime;
-            LogUtils.logOperationSuccess("task created: taskId=" + tid + ", initialMessageCount=" + initNumber, duration);
+            LogUtils.logOperationSuccess("task created: taskId=" + tid
+                    + ", sourceType=" + sourceType
+                    + ", initialMessageCount=" + initNumber
+                    + ", ingestStatus=" + task.getIngestStatus(), duration);
             return task;
         } catch (Exception e) {
             long duration = System.currentTimeMillis() - startTime;
@@ -423,6 +432,37 @@ public class TaskManager {
         }
         ProjectRef.require(dto.getProject());
         UserRef.requireUserId(dto.getUserId());
+        TaskSourceType sourceType = resolveSourceType(dto);
+        if (sourceType == TaskSourceType.FILE
+                && (dto.getSourceRef() == null || dto.getSourceRef().isBlank())) {
+            throw new IllegalArgumentException("sourceRef is required for FILE task sources");
+        }
+    }
+
+    private TaskSourceType resolveSourceType(TaskCreateRequestDto dto) {
+        if (dto.getSourceType() != null) {
+            return dto.getSourceType();
+        }
+        return dto.isOpenEnded() ? TaskSourceType.STREAM : TaskSourceType.BATCH;
+    }
+
+    private TaskIngestStatus resolveInitialIngestStatus(TaskSourceType sourceType,
+                                                        boolean openEnded,
+                                                        int initialMessageCount) {
+        if (sourceType == TaskSourceType.FILE) {
+            return initialMessageCount > 0 ? TaskIngestStatus.READY : TaskIngestStatus.PENDING;
+        }
+        if (openEnded || sourceType == TaskSourceType.STREAM) {
+            return TaskIngestStatus.READY;
+        }
+        return TaskIngestStatus.SEALED;
+    }
+
+    private String normalizeSourceRef(String sourceRef) {
+        if (sourceRef == null || sourceRef.isBlank()) {
+            return null;
+        }
+        return sourceRef.trim();
     }
 
     TaskStorage getTaskStorage() {

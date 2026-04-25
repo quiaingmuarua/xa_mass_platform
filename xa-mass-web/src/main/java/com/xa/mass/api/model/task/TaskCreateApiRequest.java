@@ -2,6 +2,7 @@ package com.xa.mass.api.model.task;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.xa.mass.api.model.AbstractUnknownFieldRequest;
+import com.xa.mass.base.enums.task.TaskSourceType;
 import com.xa.mass.sdk.catalog.PayloadType;
 import com.xa.mass.sdk.catalog.TaskMode;
 
@@ -23,6 +24,8 @@ public class TaskCreateApiRequest extends AbstractUnknownFieldRequest {
     private int defaultMsgMaxRetryCount = 3;
     private boolean openEnded;
     private int maxRuntimeSeconds;
+    private TaskSourceType sourceType;
+    private String sourceRef;
 
     public String getUserId() {
         return userId;
@@ -118,5 +121,21 @@ public class TaskCreateApiRequest extends AbstractUnknownFieldRequest {
 
     public void setMaxRuntimeSeconds(int maxRuntimeSeconds) {
         this.maxRuntimeSeconds = maxRuntimeSeconds;
+    }
+
+    public TaskSourceType getSourceType() {
+        return sourceType;
+    }
+
+    public void setSourceType(TaskSourceType sourceType) {
+        this.sourceType = sourceType;
+    }
+
+    public String getSourceRef() {
+        return sourceRef;
+    }
+
+    public void setSourceRef(String sourceRef) {
+        this.sourceRef = sourceRef;
     }
 }
