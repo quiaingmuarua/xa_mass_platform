@@ -200,3 +200,9 @@ If you need the lower-level runtime composition directly, start here:
 - `src/main/java/com/xa/mass/starter/MassEngine.java`
 
 Treat this lower-level `starter` surface as an advanced embedding path. It remains available, but the default compatibility commitment is on `com.xa.mass.sdk.*`.
+
+Within that lower-level surface, `GatewayConfig.createDispatcherContext(...)` and
+`GatewayConfig.createTransportServer(...)` are deprecated advanced embedding
+helpers only. Embedded-runtime mainline should use
+`GatewayEmbeddedRuntimeSupport` directly for the default gateway-backed path, or
+provide an explicit `transportServerFactory(...)` override.

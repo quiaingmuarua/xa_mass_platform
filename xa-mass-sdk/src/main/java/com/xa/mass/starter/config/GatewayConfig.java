@@ -117,6 +117,12 @@ public class GatewayConfig {
         };
     }
 
+    /**
+     * @deprecated Embedded-runtime mainline should call
+     * {@link GatewayEmbeddedRuntimeSupport#createDispatcherContext(MessageTransporter, WorkerEndpointRegistry, TaskResultIngestChannel, WorkerSystemEventChannel)}
+     * directly. Keep this only for advanced external embedding that still routes through {@code GatewayConfig}.
+     */
+    @Deprecated
     public DispatchRuntimeContext createDispatcherContext(MessageTransporter<String, OutboundDelivery> messageTransporter,
                                                           WorkerEndpointRegistry endpointRegistry,
                                                           TaskResultIngestChannel taskResultIngestChannel,
@@ -242,6 +248,13 @@ public class GatewayConfig {
                 : new DefaultWorkerTransportRuntimeFactory();
     }
 
+    /**
+     * @deprecated Embedded-runtime mainline should use
+     * {@link GatewayEmbeddedRuntimeSupport#createTransportServer(String, DispatchRuntimeContext, WorkerEndpointRegistry)}
+     * for the default gateway-backed adapter path, or {@link #getTransportServerFactory()} for an explicit override.
+     * Keep this only for advanced external embedding that still routes through {@code GatewayConfig}.
+     */
+    @Deprecated
     public TransportServer createTransportServer(DispatchRuntimeContext dispatcherContext,
                                                  WorkerEndpointRegistry endpointRegistry,
                                                  int port) {

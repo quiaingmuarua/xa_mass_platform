@@ -185,6 +185,7 @@ class MassSdkTest {
         assertSame(((ServerSessionManager) endpointRegistry).getSystemEventChannel(), systemEventChannel);
     }
 
+    @SuppressWarnings("deprecation")
     @Test
     void defaultGatewayTransportBootstrapRejectsNonSessionRegistry() {
         GatewayConfig config = new GatewayConfig();
@@ -204,6 +205,30 @@ class MassSdkTest {
         );
 
         assertTrue(error.getMessage().contains("WebSocket endpoint registry"));
+    }
+
+    @Test
+    void gatewayConfigAdvancedEmbeddingHelpersStayDeprecated() throws NoSuchMethodException {
+        Set<java.lang.reflect.Method> helperMethods = Set.of(
+                GatewayConfig.class.getDeclaredMethod(
+                        "createDispatcherContext",
+                        MessageTransporter.class,
+                        WorkerEndpointRegistry.class,
+                        TaskResultIngestChannel.class,
+                        WorkerSystemEventChannel.class
+                ),
+                GatewayConfig.class.getDeclaredMethod(
+                        "createTransportServer",
+                        DispatchRuntimeContext.class,
+                        WorkerEndpointRegistry.class,
+                        int.class
+                )
+        );
+
+        for (java.lang.reflect.Method method : helperMethods) {
+            Assertions.assertTrue(method.isAnnotationPresent(Deprecated.class),
+                    method.getDeclaringClass().getSimpleName() + "." + method.getName() + " must remain deprecated");
+        }
     }
 
     @Test

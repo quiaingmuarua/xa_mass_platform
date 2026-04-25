@@ -123,6 +123,13 @@ public class MassGateway {
         return config;
     }
 
+    /**
+     * @deprecated The gateway dispatcher is an internal adapter implementation
+     * detail. Advanced embedding should use only {@link #start()},
+     * {@link #stop()}, and {@link #isRunning()} rather than reaching into the
+     * dispatcher runtime.
+     */
+    @Deprecated(forRemoval = false)
     public ServerMessageDispatcher getMessageDispatcher() {
         return messageDispatcher;
     }
