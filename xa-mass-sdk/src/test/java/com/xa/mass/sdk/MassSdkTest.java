@@ -21,7 +21,6 @@ import com.xa.mass.engine.rules.RuleType;
 import com.xa.mass.engine.strategy.SimpleTaskScheduler;
 import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
 import com.xa.mass.gateway.queue.OutboundDelivery;
-import com.xa.mass.gateway.runtime.WebSocketGatewayRuntimeSupport;
 import com.xa.mass.gateway.session.ServerSessionManager;
 import com.xa.mass.sdk.auth.AuthProvider;
 import com.xa.mass.sdk.auth.SubmitterMetadata;
@@ -253,27 +252,31 @@ class MassSdkTest {
     }
 
     @Test
-    void transportOperationsUseDelegateDispatcherContext() {
+    void transportOperationsUseDelegateTransportAccessors() {
         MassApplication delegate = mock(MassApplication.class);
-        DispatchRuntimeContext transportContext = mock(DispatchRuntimeContext.class);
         @SuppressWarnings("unchecked")
         MessageTransporter<String, OutboundDelivery> transporter = mock(MessageTransporter.class);
+        WorkerEndpointRegistry endpointRegistry = mock(WorkerEndpointRegistry.class);
 
-        when(delegate.getDispatcherContext()).thenReturn(transportContext);
-        when(transportContext.getMessageTransporter()).thenReturn(transporter);
+        when(delegate.getMessageTransporter()).thenReturn(transporter);
+        when(delegate.getEndpointRegistry()).thenReturn(endpointRegistry);
         when(transporter.inputQueueSize()).thenReturn(2);
         when(transporter.outputQueueSize()).thenReturn(5);
 
         MassSdkApplication app = new MassSdkApplication(delegate);
 
         Map<String, Object> queueDetail = app.getQueueDetail();
+        Map<String, Object> sessionStats = app.getSessionStats();
         Map<String, Object> enqueueResult = app.enqueueRawMessage(Map.of("workerId", "worker-debug-1", "rawJson", "{\"eventCode\":\"platform.test\"}"));
 
         assertEquals(2, queueDetail.get("inputQueue"));
         assertEquals(5, queueDetail.get("outputQueue"));
         assertEquals(true, queueDetail.get("transporterAvailable"));
+        assertEquals(0, sessionStats.get("activeConnections"));
+        assertEquals(0L, sessionStats.get("workerCount"));
         assertEquals(true, enqueueResult.get("success"));
-        verify(delegate, atLeastOnce()).getDispatcherContext();
+        verify(delegate, atLeastOnce()).getMessageTransporter();
+        verify(delegate, atLeastOnce()).getEndpointRegistry();
         verify(transporter).sendOutput(any(OutboundDelivery.class));
     }
 
@@ -1479,6 +1482,17 @@ class MassSdkTest {
 
     @Test
     void removedWebSocketCompatibilityEscapeHatchesStayGone() {
+        Assertions.assertThrows(NoSuchMethodException.class, () -> MassApplication.class.getDeclaredMethod("getDispatcherContext"));
+        Assertions.assertThrows(NoSuchMethodException.class, () -> com.xa.mass.starter.MassGateway.class.getDeclaredMethod("getDispatcherContext"));
+        Assertions.assertThrows(ClassNotFoundException.class, () -> Class.forName("com.xa.mass.starter.builder.MassGatewayBuilder"));
+        Assertions.assertThrows(ClassNotFoundException.class, () -> Class.forName("com.xa.mass.starter.worker.WebSocketWorkerAdapter"));
+        Assertions.assertThrows(ClassNotFoundException.class, () -> Class.forName("com.xa.mass.gateway.runtime.WebSocketGatewayRuntimeSupport"));
+        Assertions.assertThrows(NoSuchMethodException.class, () -> GatewayConfig.class.getDeclaredMethod("resolveFrameCodec"));
+        Assertions.assertThrows(NoSuchMethodException.class, () -> GatewayConfig.class.getDeclaredMethod("getFrameCodec"));
+        Assertions.assertThrows(NoSuchMethodException.class, () -> GatewayConfig.class.getDeclaredMethod(
+                "setFrameCodec",
+                com.xa.mass.gateway.queue.WebSocketTransportFrameCodec.class
+        ));
         Assertions.assertThrows(NoSuchMethodException.class, () -> GatewayConfig.class.getDeclaredMethod(
                 "createTransportServer",
                 com.xa.mass.gateway.queue.WebSocketTransportFrameCodec.class,

@@ -108,17 +108,17 @@ It is a migration aid, not a compatibility promise.
 
 - `Class`: `com.xa.mass.gateway.dispatcher.DispatcherContext`
 - `Method`: constructor + getters
-- `Current responsibility`: exposes the fixed gateway-local wiring snapshot used by the adapter runtime; runtime assembly resolves the concrete endpoint registry once and injects the same instance into dispatcher wiring and transport-server creation; dispatcher-context assembly now lives in gateway runtime support instead of SDK-side `new DispatcherContext(...)`
+- `Current responsibility`: exposes the fixed gateway-local wiring snapshot used by the adapter runtime; runtime assembly resolves the concrete endpoint registry once and injects the same instance into dispatcher wiring and transport-server creation; dispatcher-context assembly now lives in gateway runtime support instead of SDK-side `new DispatcherContext(...)`, and `MassApplication` no longer retains this snapshot as a general runtime field after assembly
 - `Should stay in gateway?`: yes
 - `Target owner`: `xa-mass-gateway`
 - `Migration phase`: keep as immutable adapter runtime wiring
 - `Related tests`: `MassSdkTest`, `DispatcherInboundHandlerTest`
 
-## 11. WebSocket Adapter Runtime Support
+## 11. Gateway Embedded Runtime Support
 
-- `Class`: `com.xa.mass.gateway.runtime.WebSocketGatewayRuntimeSupport`
-- `Method`: `createEndpointRegistry(...)`, `createDispatcherContext(...)`, `resolveSystemEventChannel(...)`, `createTransportServer(...)`
-- `Current responsibility`: keeps WebSocket-specific runtime assembly defaults inside gateway, including endpoint-registry creation, dispatcher-context assembly, and transport-server assembly
+- `Class`: `com.xa.mass.gateway.runtime.GatewayEmbeddedRuntimeSupport`
+- `Method`: `createEndpointRegistry(...)`, `createDispatcherContext(...)`, `resolveSystemEventChannel(...)`, `createRealtimeWorkerAdapter(...)`, `createTransportServer(...)`
+- `Current responsibility`: keeps gateway-owned embedded-runtime defaults inside gateway, including endpoint-registry creation, dispatcher-context assembly, gateway-backed realtime adapter creation, and transport-server assembly; current realtime/default server implementations remain WebSocket-backed, and `MassApplication` mainline now calls this helper directly instead of routing default assembly through `GatewayConfig`
 - `Should stay in gateway?`: yes
 - `Target owner`: `xa-mass-gateway`
 - `Migration phase`: keep as adapter-local bootstrap helper
@@ -147,4 +147,4 @@ These platform concerns are not owned by current `xa-mass-gateway` mainline code
 - business event execution
 - generic handler-routing runtime models beyond the current raw JSON task-frame path
 
-That is the current baseline in this checkout: gateway is primarily an adapter over raw JSON, single-endpoint session reachability, handshake-based worker identity, canonical task frame handling, and transport/system-event reporting. Global capability identity remains `eventCode`, and gateway no longer carries a separate control-event protocol. The remaining SDK-side explicit WebSocket knowledge is now limited to gateway-facing dispatcher types and frame-codec configuration on `GatewayConfig`, which is still convergence debt rather than a new mainline boundary.
+That is the current baseline in this checkout: gateway is primarily an adapter over raw JSON, single-endpoint session reachability, handshake-based worker identity, canonical task frame handling, and transport/system-event reporting. Global capability identity remains `eventCode`, and gateway no longer carries a separate control-event protocol. SDK mainline no longer owns WebSocket-specific runtime helper or worker-adapter classes; gateway-owned embedded runtime support now supplies the current gateway-backed realtime defaults.

@@ -204,8 +204,10 @@ Rules:
 - route inbound task-result transport shells into the canonical `TaskResultReport -> TaskResultIngestChannel` seam
 - keep `TaskResultIngestChannel` as a runtime-level seam; do not model it as worker transport binding ownership
 - resolve `WorkerSystemEventChannel` from gateway runtime assembly, not from transport binding ownership
-- move adapter-specific endpoint bootstrap into the gateway adapter module; current SDK runtime still carries some WebSocket-aware assembly and must not grow more session-manager or frame-codec branching
-- keep the default transport-server bootstrap helper in gateway-owned code; current SDK `transportServerFactory(...)` remains an advanced override seam, and the remaining SDK-side bootstrap wiring is convergence work rather than a new extension point
+- keep adapter-specific endpoint bootstrap and gateway-backed realtime adapter defaults inside the gateway module; SDK runtime assembly must not grow session-manager, frame-codec, or WebSocket-specific branching
+- keep the default transport-server bootstrap helper in gateway-owned code; current SDK `transportServerFactory(...)` remains an advanced override seam rather than a second mainline
+- `MassApplication` may assemble adapter runtime context, but it should retain only stable runtime facts such as transporter, endpoint registry, and transport server; the dispatch runtime context itself stays gateway-local
+- `GatewayConfig` may still expose gateway helper methods for advanced external embedding, but embedded-runtime mainline should call gateway-owned runtime support directly rather than routing default assembly through SDK config
 - do not grow post-construction `setHandler(...)` or `registerRoute(...)` seams on gateway runtime context
 - if a new adapter path needs another port, add an explicit field or constructor dependency instead of a late-bound generic registry
 

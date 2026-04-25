@@ -1,10 +1,10 @@
 # XA Mass Platform Verified Runbook
 
-Last updated: 2026-04-24
+Last updated: 2026-04-25
 
 This runbook records verified runtime facts only. It is not an architecture essay, API reference, or changelog.
 
-Use this file when you need to boot the app, run a smoke flow, or choose a focused regression command. Use [INTERNAL_API_REFERENCE.md](./INTERNAL_API_REFERENCE.md) for endpoint shapes, [STATE_MACHINE_BASELINE.md](./STATE_MACHINE_BASELINE.md) for lifecycle rules, and [TRACE_CONTRACT.md](./TRACE_CONTRACT.md) for trace semantics.
+Use this file when you need to boot the app, run a smoke flow, or choose a focused regression command. Use [TESTING_BASELINE.md](./TESTING_BASELINE.md) for test-lane placement, [testing/TOPIC_INDEX.md](./testing/TOPIC_INDEX.md) for point-specific navigation, [INTERNAL_API_REFERENCE.md](./INTERNAL_API_REFERENCE.md) for endpoint shapes, [STATE_MACHINE_BASELINE.md](./STATE_MACHINE_BASELINE.md) for lifecycle rules, and [TRACE_CONTRACT.md](./TRACE_CONTRACT.md) for trace semantics.
 
 ## 1. Verified Entry
 
@@ -23,6 +23,7 @@ Current module set from the root reactor:
 - `xa-mass-sdk-api`
 - `xa-mass-web`
 - `xa-mass-sdk`
+- `xa-mass-testing`
 - `xa-mass-dev-app`
 
 Do not treat removed historical modules or archive/v2 references as missing current code.
@@ -160,7 +161,67 @@ Open-ended and targeted worker debug:
 - worker debug from the control console now creates a normal task through `POST /status/api/tasks`.
 - fixed-worker routing uses `Task.sharedConfig.targetWorkerId` and still stays inside normal task dispatch/result lifecycle.
 
-## 6. Focused Regression Gate
+## 6. Core Acceptance Fast Path
+
+For new agents, core acceptance in this repo means three sibling layers:
+
+- `perf`: engine hot-path load and storage-pressure validation
+- `concurrency`: race-heavy lifecycle/result/release verification
+- `E2E`: full Boot-shell runtime convergence through `xa-mass-dev-app`
+
+Everything else is support coverage for bug localization, invariants, and faster regression feedback.
+
+Current runnable core-acceptance entry points:
+
+Boot-shell E2E:
+
+```bash
+./mvnw -pl xa-mass-dev-app -am -Dsurefire.failIfNoSpecifiedTests=false -Dtest=TaskApiCallbackReplayIntegrationTest,TaskApiMixedResultsIntegrationTest,TaskApiMultiRoundDispatchIntegrationTest,TaskApiSingleWorkerReuseIntegrationTest test
+```
+
+Use this when the change touches result write-back, logical message finality, worker release, redispatch, or single-worker reuse.
+
+Engine concurrency acceptance:
+
+```bash
+./mvnw -pl xa-mass-engine -am -Dsurefire.failIfNoSpecifiedTests=false -Dtest=TaskConcurrencyAcceptanceTest test
+```
+
+Current race coverage in `TaskConcurrencyAcceptanceTest`:
+
+- duplicate final callback competition on the same logical message
+- watchdog-style expiry vs result callback competition
+- retryable failure vs success callback competition
+
+Acceptance rule:
+
+- allow either winner in a race
+- require exactly-once attempt closure and logical-final/terminal publication
+- require the final persisted task/message state to land in the allowed stable set for that race
+
+Testing-module perf load model:
+
+```bash
+./mvnw -pl xa-mass-testing -am -Dexec.classpathScope=compile -Dmaven.test.skip=true org.codehaus.mojo:exec-maven-plugin:3.5.0:java -Dexec.mainClass=com.xa.mass.testing.perf.TaskFlowLoadModelRunner
+```
+
+Heavier example:
+
+```bash
+./mvnw -pl xa-mass-testing -am -Dexec.classpathScope=compile -Dmaven.test.skip=true -Dmass.load.messages=2048 -Dmass.load.workers=16 -Dmass.load.batchSize=8 -Dmass.load.callbackThreads=32 -Dmass.load.retryFailureEveryNth=7 org.codehaus.mojo:exec-maven-plugin:3.5.0:java -Dexec.mainClass=com.xa.mass.testing.perf.TaskFlowLoadModelRunner
+```
+
+Expected perf artifact:
+
+- JSON report under `xa-mass-testing/target/perf-reports/`
+- inspect `wallClock`, `callbacks`, `release`, and `storageProbe` first
+
+Concurrency lane status:
+
+- `concurrency` is now a runnable acceptance lane through `TaskConcurrencyAcceptanceTest`
+- expand it further for retry/release competition across multiple logical messages, redispatch competition, and worker-context release races that need broader runtime shells
+
+## 7. Focused Regression Gate
 
 Focused command used for current high-signal runtime coverage:
 
@@ -184,7 +245,7 @@ Representative coverage:
 
 For the broader test map, use [INTEGRATION_TESTS.md](./INTEGRATION_TESTS.md).
 
-## 7. Known Mainline Gaps
+## 8. Known Mainline Gaps
 
 - `SimpleTaskScheduler.scheduleTasks()` is still a stub.
 - Redis and database storage remain fail-fast placeholders.

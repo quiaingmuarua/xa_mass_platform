@@ -126,8 +126,4 @@ public class MassGateway {
     public ServerMessageDispatcher getMessageDispatcher() {
         return messageDispatcher;
     }
-
-    public DispatchRuntimeContext getDispatcherContext() {
-        return dispatcherContext;
-    }
 }

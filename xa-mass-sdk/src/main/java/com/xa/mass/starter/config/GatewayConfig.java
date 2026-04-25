@@ -5,8 +5,7 @@ import com.xa.mass.base.channel.tranporter.MessageTransporter;
 import com.xa.mass.base.channel.tranporter.MessageTransporterFactory;
 import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
 import com.xa.mass.gateway.queue.OutboundDelivery;
-import com.xa.mass.gateway.queue.WebSocketTransportFrameCodec;
-import com.xa.mass.gateway.runtime.WebSocketGatewayRuntimeSupport;
+import com.xa.mass.gateway.runtime.GatewayEmbeddedRuntimeSupport;
 import com.xa.mass.starter.transport.DefaultWorkerTransportRuntimeFactory;
 import com.xa.mass.starter.transport.TransportServerFactoryContext;
 import com.xa.mass.starter.transport.WorkerTransportRuntimeFactory;
@@ -40,8 +39,6 @@ public class GatewayConfig {
     private String outputApiUrl;
     private String apiKey;
 
-    private WebSocketTransportFrameCodec frameCodec;
-
     private WorkerSystemEventChannel customSystemEventChannel;
     private WorkerEndpointRegistry workerEndpointRegistry;
     private transient WorkerEndpointRegistry runtimeOwnedEndpointRegistry;
@@ -51,8 +48,8 @@ public class GatewayConfig {
     private WorkerTransportRuntimeFactory workerTransportRuntimeFactory;
 
     public GatewayConfig() {
-        this.endpointRegistryFactory = WebSocketGatewayRuntimeSupport::createEndpointRegistry;
-        this.systemEventChannelResolver = WebSocketGatewayRuntimeSupport::resolveSystemEventChannel;
+        this.endpointRegistryFactory = GatewayEmbeddedRuntimeSupport::createEndpointRegistry;
+        this.systemEventChannelResolver = GatewayEmbeddedRuntimeSupport::resolveSystemEventChannel;
     }
 
     public GatewayConfig(GatewayConfig source) {
@@ -66,7 +63,6 @@ public class GatewayConfig {
         this.inputApiUrl = source.inputApiUrl;
         this.outputApiUrl = source.outputApiUrl;
         this.apiKey = source.apiKey;
-        this.frameCodec = source.frameCodec;
         this.customSystemEventChannel = source.customSystemEventChannel;
         this.workerEndpointRegistry = source.workerEndpointRegistry;
         this.runtimeOwnedEndpointRegistry = null;
@@ -121,18 +117,13 @@ public class GatewayConfig {
         };
     }
 
-    public WebSocketTransportFrameCodec resolveFrameCodec() {
-        return WebSocketGatewayRuntimeSupport.resolveFrameCodec(frameCodec);
-    }
-
     public DispatchRuntimeContext createDispatcherContext(MessageTransporter<String, OutboundDelivery> messageTransporter,
                                                           WorkerEndpointRegistry endpointRegistry,
                                                           TaskResultIngestChannel taskResultIngestChannel,
                                                           WorkerSystemEventChannel systemEventChannel) {
-        return WebSocketGatewayRuntimeSupport.createDispatcherContext(
+        return GatewayEmbeddedRuntimeSupport.createDispatcherContext(
                 messageTransporter,
                 endpointRegistry,
-                frameCodec,
                 taskResultIngestChannel,
                 systemEventChannel
         );
@@ -184,14 +175,6 @@ public class GatewayConfig {
 
     public void setApiKey(String apiKey) {
         this.apiKey = apiKey;
-    }
-
-    public WebSocketTransportFrameCodec getFrameCodec() {
-        return frameCodec;
-    }
-
-    public void setFrameCodec(WebSocketTransportFrameCodec frameCodec) {
-        this.frameCodec = frameCodec;
     }
 
     public WorkerSystemEventChannel getCustomSystemEventChannel() {
@@ -266,7 +249,7 @@ public class GatewayConfig {
             return null;
         }
         if (transportServerFactory == null) {
-            return WebSocketGatewayRuntimeSupport.createTransportServer(
+            return GatewayEmbeddedRuntimeSupport.createTransportServer(
                     transportEndpointPath,
                     dispatcherContext,
                     endpointRegistry

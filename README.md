@@ -8,6 +8,7 @@ Current high-trust entry points:
 
 - [AGENTS.md](./AGENTS.md)
 - [doc/AGENT_BASELINE.md](./doc/AGENT_BASELINE.md)
+- [doc/TESTING_BASELINE.md](./doc/TESTING_BASELINE.md)
 - [doc/VERIFIED_RUNBOOK.md](./doc/VERIFIED_RUNBOOK.md)
 - [doc/INTERNAL_API_REFERENCE.md](./doc/INTERNAL_API_REFERENCE.md)
 - [doc/engine/TASK_EXECUTION_FLOW.md](./doc/engine/TASK_EXECUTION_FLOW.md)
@@ -16,6 +17,7 @@ Role split:
 
 - `AGENTS.md`: fastest handoff for coding agents and maintainers
 - `doc/AGENT_BASELINE.md`: code reality, module truth, and architectural guardrails
+- `doc/TESTING_BASELINE.md`: test-system taxonomy, CI placement strategy, and agent-first acceptance map
 - `doc/VERIFIED_RUNBOOK.md`: startup, verification, runtime path, and regression commands
 - `doc/INTERNAL_API_REFERENCE.md`: endpoint inventory, current contracts, and implementation status
 - `doc/engine/TASK_EXECUTION_FLOW.md`: task execution flow notes aligned to the current mainline
@@ -62,7 +64,7 @@ The transport-neutral runtime model is now framed around three channels:
 
 - Real Spring Boot entrypoint: `xa-mass-dev-app`
 - Do not treat the embedded runtime classes as a Spring Boot app
-- Current root reactor modules are `xa-mass-web`, `xa-mass-core`, `xa-mass-transport-api`, `xa-mass-engine`, `xa-mass-gateway`, `xa-mass-sdk-api`, `xa-mass-sdk`, and `xa-mass-dev-app`
+- Current root reactor modules are `xa-mass-web`, `xa-mass-core`, `xa-mass-transport-api`, `xa-mass-engine`, `xa-mass-gateway`, `xa-mass-sdk-api`, `xa-mass-sdk`, `xa-mass-testing`, and `xa-mass-dev-app`
 - `xa-mass-sdk` is the real Java embedding module; it now carries both the SDK facade and the embedded runtime composition
 - `xa-mass-transport-api` is the transport-neutral seam for task dispatch, result ingest, system events, transport servers, and worker endpoint registries
 - `xa-mass-sdk` now assembles concrete worker transports through a transport runtime registry/factory seam instead of treating WebSocket as the runtime definition
@@ -112,6 +114,7 @@ Primary endpoints:
 - `xa-mass-web`: REST controllers and the backend-hosted control console shell
 - `xa-mass-engine`: task state machine, assignment, result handling, and strategy extension points
 - `xa-mass-gateway`: current WebSocket task transport adapter plus dispatch runtime
+- `xa-mass-testing`: cross-cutting acceptance tooling and load/concurrency/chaos harness home
 - `xa-mass-core`: shared models and infrastructure
 
 Build boundary note:

@@ -1,8 +1,8 @@
 # Integration Test Guide
 
-Last updated: 2026-04-24
+Last updated: 2026-04-25
 
-This file is the active map of the integration-test layer in `xa-mass-dev-app`. It exists to answer four questions quickly:
+This file is the active map of the Boot-shell E2E layer in `xa-mass-dev-app`. It exists to answer four questions quickly:
 
 - where the E2E tests live
 - what runtime risks they cover
@@ -11,14 +11,20 @@ This file is the active map of the integration-test layer in `xa-mass-dev-app`. 
 
 Use with:
 
+- [TESTING_BASELINE.md](./TESTING_BASELINE.md)
 - [E2E_BASELINE.md](./E2E_BASELINE.md)
 - [STATE_MACHINE_BASELINE.md](./STATE_MACHINE_BASELINE.md)
 - [TRACE_CONTRACT.md](./TRACE_CONTRACT.md)
 - [VERIFIED_RUNBOOK.md](./VERIFIED_RUNBOOK.md)
+- [testing/TOPIC_INDEX.md](./testing/TOPIC_INDEX.md)
 
 ## 1. Why This Layer Is The Acceptance Gate
 
-The integration layer is the mainline acceptance gate because it is the first place where these truths must converge together:
+Boot-shell E2E is one of the three core acceptance layers. The other two are engine-facing `perf` and `concurrency`.
+
+This file only covers the `xa-mass-dev-app` E2E slice. Use [VERIFIED_RUNBOOK.md](./VERIFIED_RUNBOOK.md) for the copy-paste core acceptance commands across layers.
+
+The E2E layer remains a core acceptance gate because it is the first place where these truths must converge together:
 
 - task lifecycle
 - logical `TaskMsg` lifecycle
@@ -27,7 +33,7 @@ The integration layer is the mainline acceptance gate because it is the first pl
 - gateway dispatch and callback write-back
 - task-level counters, terminal reasons, and audit output
 
-Unit tests still matter, but they do not prove that the full runtime path converges correctly.
+Unit and narrower integration tests still matter, but they do not prove that the full runtime path converges correctly.
 
 ## 2. Layout
 

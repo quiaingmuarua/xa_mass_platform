@@ -15,6 +15,7 @@ For those, use:
 - [../DEPRECATION_LEDGER.md](../DEPRECATION_LEDGER.md)
 - [./GATEWAY_BOUNDARY_BASELINE.md](./GATEWAY_BOUNDARY_BASELINE.md)
 - [./STATE_MACHINE_BASELINE.md](./STATE_MACHINE_BASELINE.md)
+- [./TESTING_BASELINE.md](./TESTING_BASELINE.md)
 - [./TRACE_CONTRACT.md](./TRACE_CONTRACT.md)
 - [./E2E_BASELINE.md](./E2E_BASELINE.md)
 - [./VERIFIED_RUNBOOK.md](./VERIFIED_RUNBOOK.md)
@@ -127,15 +128,21 @@ Current canonical boundaries:
 - Embedded runtime composition now lives inside `xa-mass-sdk` under `com.xa.mass.starter.*`; it is not the primary Boot entry.
 - `xa-mass-dev-app` should obtain runtime capability through `xa-mass-sdk`; its explicit `xa-mass-web` dependency is only for the current REST/control-console validation shell.
 - Do not make `xa-mass-sdk` depend on `xa-mass-web` just to make `xa-mass-dev-app` depend on one internal artifact; SDK consumers should not pull demo web surfaces by default.
-- The current mainline reactor is defined by the root `pom.xml`: `xa-mass-web`, `xa-mass-core`, `xa-mass-transport-api`, `xa-mass-engine`, `xa-mass-gateway`, `xa-mass-sdk-api`, `xa-mass-sdk`, `xa-mass-dev-app`.
+- The current mainline reactor is defined by the root `pom.xml`: `xa-mass-web`, `xa-mass-core`, `xa-mass-transport-api`, `xa-mass-engine`, `xa-mass-gateway`, `xa-mass-sdk-api`, `xa-mass-sdk`, `xa-mass-testing`, `xa-mass-dev-app`.
 - `xa-mass-transport-api` now holds the transport-neutral SPI for task dispatch, result ingest, system events, transport servers, and worker endpoint registries.
 - `xa-mass-gateway` should be read as the current WebSocket transport adapter, not as the only valid worker runtime path.
 - Read [./GATEWAY_BOUNDARY_BASELINE.md](./GATEWAY_BOUNDARY_BASELINE.md) before changing `xa-mass-gateway` or `xa-mass-transport-api`.
 - Gateway adapter frame classification is a protocol-frame compatibility seam only; do not treat it as the identity of a business or control capability.
 - Gateway runtime wiring is configured as a fixed pre-start snapshot; `DispatchRuntimeContext` is not a mutable extension registry.
 - `com.xa.mass.engine` is the active engine path.
+- `xa-mass-testing` is the cross-cutting acceptance-tooling module for runnable `perf` and future broader `concurrency` / `chaos` harnesses.
 - EventBus mainline has converged onto `com.xa.mass.base.channel.eventbus.core` and `com.xa.mass.base.channel.eventbus.event`.
-- Mainline acceptance is end-to-end integration-test-driven through `xa-mass-dev-app`; unit tests are support coverage, not the primary acceptance gate.
+- Core acceptance is the combined `perf + concurrency + Boot-shell E2E` surface.
+- Current runnable `perf` coverage lives in `xa-mass-testing`.
+- Current runnable `concurrency` coverage lives in `xa-mass-engine`.
+- Current runnable Boot-shell E2E coverage lives in `xa-mass-dev-app`.
+- `chaos` should be treated as a scheduled or release-oriented robustness lane until there is a stable suite.
+- Concurrency coverage is a required acceptance lane for race-sensitive lifecycle changes; narrower unit/integration tests are support coverage for bug localization and invariants, not the primary acceptance gate.
 - worker-targeted debug/task details live in [./INTERNAL_API_REFERENCE.md](./INTERNAL_API_REFERENCE.md).
 
 ## 7. Current Contract Summary

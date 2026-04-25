@@ -12,9 +12,10 @@ can depend on one SDK module without pulling the HTTP/demo control surface.
 Stable SDK-facing catalog/auth/model contracts now live in the internal
 `xa-mass-sdk-api` module and are pulled transitively through this artifact.
 Transport-neutral runtime contracts now live in `xa-mass-transport-api`; the
-current bundled transport implementation still includes a WebSocket adapter,
-but `xa-mass-sdk` now assembles worker transports through a transport runtime
-registry/factory seam and also supports pull-style workers without server push.
+current bundled gateway-backed realtime transport is still WebSocket-backed,
+but that adapter/bootstrap ownership lives in `xa-mass-gateway`. `xa-mass-sdk`
+assembles worker transports through a transport runtime registry/factory seam
+and also supports pull-style workers without server push.
 
 ## Dependency
 

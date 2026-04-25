@@ -11,7 +11,7 @@ This is the fastest entry point for coding agents. Keep it short. Use the owner 
 - Polling/pull workers are mainline, not side features.
 - Project direction is library/SDK-first; HTTP pages and demo APIs are validation shells.
 - Real Boot entry is `xa-mass-dev-app`; embedded runtime composition lives in `xa-mass-sdk`.
-- Mainline acceptance is integration/E2E first.
+- Core acceptance is `perf + concurrency + Boot-shell E2E`.
 
 ## 1. Required Reading
 
@@ -22,6 +22,17 @@ For a new session, read these before changing behavior:
 3. [doc/STATE_MACHINE_BASELINE.md](doc/STATE_MACHINE_BASELINE.md)
 
 Everything else is on-demand through the task-type map below.
+
+Core acceptance fast path:
+
+- treat `perf`, `concurrency`, and Boot-shell `E2E` as the three core acceptance layers
+- current runnable `perf` surface lives in `xa-mass-testing`
+- current runnable `concurrency` surface lives in `xa-mass-engine`
+- current runnable `E2E` surface lives in `xa-mass-dev-app`
+- `chaos` should be treated as the next robustness lane, but it belongs in scheduled or release-style verification until a stable suite exists
+- `xa-mass-testing` is the planned home for cross-cutting acceptance tooling (`perf` first, then broader `concurrency` / `chaos` assets as they stabilize)
+- `concurrency` is a required acceptance lane for race-sensitive lifecycle work and should live beside engine/runtime hot paths rather than being replaced by narrower unit tests
+- all other tests are support coverage for bug localization, invariants, and fast regression checks
 
 Canonical trust order:
 
@@ -40,6 +51,7 @@ Start here based on the change:
 - lifecycle/state transitions: [doc/STATE_MACHINE_BASELINE.md](doc/STATE_MACHINE_BASELINE.md), [doc/TRACE_CONTRACT.md](doc/TRACE_CONTRACT.md), [doc/E2E_BASELINE.md](doc/E2E_BASELINE.md)
 - HTTP/API contracts: [doc/INTERNAL_API_REFERENCE.md](doc/INTERNAL_API_REFERENCE.md)
 - startup/runtime verification: [doc/VERIFIED_RUNBOOK.md](doc/VERIFIED_RUNBOOK.md)
+- perf/concurrency/core acceptance: [doc/TESTING_BASELINE.md](doc/TESTING_BASELINE.md), [doc/VERIFIED_RUNBOOK.md](doc/VERIFIED_RUNBOOK.md), [doc/testing/TOPIC_INDEX.md](doc/testing/TOPIC_INDEX.md)
 - integration/E2E coverage: [doc/INTEGRATION_TESTS.md](doc/INTEGRATION_TESTS.md), [doc/E2E_BASELINE.md](doc/E2E_BASELINE.md)
 - policy ownership or interactions: [doc/engine/POLICY_INTERACTION_BASELINE.md](doc/engine/POLICY_INTERACTION_BASELINE.md)
 - dispatch/result flow: [doc/engine/TASK_EXECUTION_FLOW.md](doc/engine/TASK_EXECUTION_FLOW.md)

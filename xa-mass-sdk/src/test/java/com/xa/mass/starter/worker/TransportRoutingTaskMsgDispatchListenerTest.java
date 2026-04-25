@@ -32,7 +32,7 @@ class TransportRoutingTaskMsgDispatchListenerTest {
         pollingWorker.setOnlineStrategy("pull");
         workerManager.addWorker(pollingWorker);
 
-        RecordingAdapter webSocketAdapter = new RecordingAdapter(WebSocketWorkerAdapter.PROTOCOL);
+        RecordingAdapter webSocketAdapter = new RecordingAdapter("websocket");
         RecordingAdapter pollingAdapter = new RecordingAdapter(PollingWorkerAdapter.PROTOCOL);
         TransportRoutingTaskMsgDispatchListener listener = new TransportRoutingTaskMsgDispatchListener(
                 workerManager,
@@ -94,7 +94,7 @@ class TransportRoutingTaskMsgDispatchListenerTest {
         worker.setWorkerId("missing-transport-worker");
         workerManager.addWorker(worker);
 
-        RecordingAdapter webSocketAdapter = new RecordingAdapter(WebSocketWorkerAdapter.PROTOCOL);
+        RecordingAdapter webSocketAdapter = new RecordingAdapter("websocket");
         TransportRoutingTaskMsgDispatchListener listener = new TransportRoutingTaskMsgDispatchListener(
                 workerManager,
                 List.of(webSocketAdapter)

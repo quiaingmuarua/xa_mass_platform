@@ -1,18 +1,14 @@
 package com.xa.mass.starter.transport;
 
+import com.xa.mass.gateway.runtime.GatewayEmbeddedRuntimeSupport;
 import com.xa.mass.starter.worker.PollingWorkerAdapter;
-import com.xa.mass.starter.worker.WebSocketWorkerAdapter;
 
 import java.util.ArrayList;
 import java.util.List;
 
 /**
  * Default embedded-runtime transport assembly: pull/polling plus the current
- * WebSocket adapter when the gateway is enabled.
- *
- * <p>The WebSocket adapter now speaks canonical root-level task/control JSON
- * frames only. New control or business capabilities must be added as global
- * SDK events instead of transport-specific routing branches here.
+ * gateway-backed realtime adapter when the gateway is enabled.
  */
 public class DefaultWorkerTransportRuntimeFactory implements WorkerTransportRuntimeFactory {
 
@@ -26,8 +22,9 @@ public class DefaultWorkerTransportRuntimeFactory implements WorkerTransportRunt
                 .build());
 
         if (context.isGatewayEnabled()) {
-            WebSocketWorkerAdapter webSocketAdapter = new WebSocketWorkerAdapter(context.getTaskDispatchChannel());
-            bindings.add(TransportBinding.builder(webSocketAdapter).build());
+            bindings.add(TransportBinding.builder(
+                    GatewayEmbeddedRuntimeSupport.createRealtimeWorkerAdapter(context.getTaskDispatchChannel())
+            ).build());
         }
 
         return new TransportRuntimeRegistry(

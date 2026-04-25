@@ -13,6 +13,8 @@ Use this page as the directory index and owner map once you are already inside `
   - Single repo-level index of deprecated, compatibility, and legacy seams that still exist in active paths.
 - [AGENT_BASELINE.md](./AGENT_BASELINE.md)
   - Stable project baseline for agents: platform definition, mainline goals, guardrails, active module truth, payload contract, and lifecycle baseline.
+- [TESTING_BASELINE.md](./TESTING_BASELINE.md)
+  - Top-level testing-system map: taxonomy, CI placement guidance, acceptance lanes, and agent fast path.
 - [GATEWAY_BOUNDARY_BASELINE.md](./GATEWAY_BOUNDARY_BASELINE.md)
   - High-density contract for gateway ownership, transport-neutral SPI, worker-runtime execution ownership, unified lifecycle semantics, and forbidden drift.
 - [STATE_MACHINE_BASELINE.md](./STATE_MACHINE_BASELINE.md)
@@ -27,6 +29,8 @@ Use this page as the directory index and owner map once you are already inside `
   - Current HTTP/API inventory, request contract, response shape, and implementation status.
 - [INTEGRATION_TESTS.md](./INTEGRATION_TESTS.md)
   - Practical guide to the grouped `xa-mass-dev-app` integration suites: structure, coverage map, patterns, and current gaps.
+- [testing/TOPIC_INDEX.md](./testing/TOPIC_INDEX.md)
+  - Problem-oriented test navigation: start here when you need to analyze one runtime risk quickly.
 - [engine/POLICY_INTERACTION_BASELINE.md](./engine/POLICY_INTERACTION_BASELINE.md)
   - Guardrails for preventing combinatorial policy interactions across matching, retry, release, refill, intake, control, and terminal decisions.
 - [engine/TASK_EXECUTION_FLOW.md](./engine/TASK_EXECUTION_FLOW.md)
@@ -38,6 +42,8 @@ Use this page as the directory index and owner map once you are already inside `
 - checking legacy/compatibility/deprecation work: go to [../DEPRECATION_LEDGER.md](../DEPRECATION_LEDGER.md)
 - changing gateway or transport code: go to [GATEWAY_BOUNDARY_BASELINE.md](./GATEWAY_BOUNDARY_BASELINE.md)
 - changing lifecycle semantics: go to [STATE_MACHINE_BASELINE.md](./STATE_MACHINE_BASELINE.md), [TRACE_CONTRACT.md](./TRACE_CONTRACT.md), and [E2E_BASELINE.md](./E2E_BASELINE.md)
+- changing testing strategy, CI lane placement, or acceptance scope: go to [TESTING_BASELINE.md](./TESTING_BASELINE.md)
+- analyzing one runtime risk quickly: go to [testing/TOPIC_INDEX.md](./testing/TOPIC_INDEX.md)
 - changing HTTP/API contracts: go to [INTERNAL_API_REFERENCE.md](./INTERNAL_API_REFERENCE.md)
 - changing startup or runtime verification: go to [VERIFIED_RUNBOOK.md](./VERIFIED_RUNBOOK.md)
 - changing policy ownership/interactions: go to [engine/POLICY_INTERACTION_BASELINE.md](./engine/POLICY_INTERACTION_BASELINE.md)

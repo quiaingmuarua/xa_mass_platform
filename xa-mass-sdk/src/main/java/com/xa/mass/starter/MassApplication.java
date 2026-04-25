@@ -8,11 +8,13 @@ import com.xa.mass.engine.rules.RuleDefinition;
 import com.xa.mass.engine.util.LogUtils;
 import com.xa.mass.gateway.dispatcher.GatewayTaskDispatchChannel;
 import com.xa.mass.gateway.dispatcher.context.DispatchRuntimeContext;
+import com.xa.mass.gateway.runtime.GatewayEmbeddedRuntimeSupport;
 import com.xa.mass.gateway.queue.OutboundDelivery;
 import com.xa.mass.sdk.worker.PullWorkerSession;
 import com.xa.mass.starter.config.EngineConfig;
 import com.xa.mass.starter.config.GatewayConfig;
 import com.xa.mass.starter.transport.RuntimeTaskResultIngestChannel;
+import com.xa.mass.starter.transport.TransportServerFactoryContext;
 import com.xa.mass.starter.transport.TransportRuntimeRegistry;
 import com.xa.mass.starter.transport.WorkerTransportRuntimeFactoryContext;
 import com.xa.mass.transport.TransportServer;
@@ -40,9 +42,9 @@ public class MassApplication {
     private final MassEventRuntime eventRuntime = new InMemoryMassEventRuntime();
 
     private final MassEngine engine;
+    private MessageTransporter<String, OutboundDelivery> messageTransporter;
     private WorkerEndpointRegistry endpointRegistry;
     private MassGateway massGateway;
-    private DispatchRuntimeContext dispatcherContext;
     private TransportServer transportServer;
     private TransportRuntimeRegistry transportRuntimeRegistry;
 
@@ -127,13 +129,13 @@ public class MassApplication {
             endpointRegistry = gatewayConfig.resolveWorkerEndpointRegistry();
             logger.info("Worker endpoint registry initialized");
 
-            MessageTransporter<String, OutboundDelivery> messageTransporter = gatewayConfig.createMessageTransporter();
+            messageTransporter = gatewayConfig.createMessageTransporter();
             logger.info("Message transporter created");
 
             WorkerSystemEventChannel systemEventChannel = gatewayConfig.resolveSystemEventChannel();
             TaskMsgDispatchListener taskMsgDispatchListener = null;
             TaskResultIngestChannel taskResultIngestChannel = null;
-            dispatcherContext = gatewayConfig.createDispatcherContext(
+            DispatchRuntimeContext gatewayRuntimeContext = GatewayEmbeddedRuntimeSupport.createDispatcherContext(
                     messageTransporter,
                     endpointRegistry,
                     taskResultIngestChannel,
@@ -143,7 +145,7 @@ public class MassApplication {
             logger.info("Gateway frame codec resolved");
             if (engineConfig.isEnabled() && engineConfig.getTaskManager() != null) {
                 taskResultIngestChannel = new RuntimeTaskResultIngestChannel(engineConfig.getTaskManager());
-                dispatcherContext = gatewayConfig.createDispatcherContext(
+                gatewayRuntimeContext = GatewayEmbeddedRuntimeSupport.createDispatcherContext(
                         messageTransporter,
                         endpointRegistry,
                         taskResultIngestChannel,
@@ -151,7 +153,7 @@ public class MassApplication {
                 );
                 logger.info("Dispatcher context refreshed with task result ingest channel");
                 TaskDispatchChannel gatewayTaskDispatchChannel = gatewayConfig.isEnabled()
-                        ? new GatewayTaskDispatchChannel(dispatcherContext)
+                        ? new GatewayTaskDispatchChannel(gatewayRuntimeContext)
                         : null;
                 transportRuntimeRegistry = gatewayConfig.resolveWorkerTransportRuntimeFactory().create(
                         new WorkerTransportRuntimeFactoryContext(
@@ -169,10 +171,16 @@ public class MassApplication {
             }
 
             if (gatewayConfig.isEnabled()) {
-                massGateway = new MassGateway(gatewayConfig, dispatcherContext);
+                massGateway = new MassGateway(gatewayConfig, gatewayRuntimeContext);
                 logger.info("MassGateway built");
             } else {
                 logger.info("MassGateway is disabled, skipping build");
+            }
+
+            if (gatewayConfig.isTransportServerEnabled()) {
+                transportServer = createTransportServer(gatewayRuntimeContext);
+            } else {
+                transportServer = null;
             }
 
             if (engineConfig.isEnabled()) {
@@ -214,7 +222,6 @@ public class MassApplication {
 
     private void startTransportServer() {
         logger.info("Starting transport server");
-        transportServer = gatewayConfig.createTransportServer(dispatcherContext, endpointRegistry, serverPort);
         if (transportServer == null) {
             logger.info("No transport server configured for current runtime");
             return;
@@ -227,8 +234,20 @@ public class MassApplication {
         logger.info("Transport server started on port {} (current adapter path={})", serverPort, transportEndpointPath);
     }
 
-    public DispatchRuntimeContext getDispatcherContext() {
-        return dispatcherContext;
+    private TransportServer createTransportServer(DispatchRuntimeContext gatewayRuntimeContext) {
+        if (gatewayConfig.getTransportServerFactory() == null) {
+            return GatewayEmbeddedRuntimeSupport.createTransportServer(
+                    transportEndpointPath,
+                    gatewayRuntimeContext,
+                    endpointRegistry
+            );
+        }
+        return gatewayConfig.getTransportServerFactory().create(new TransportServerFactoryContext(
+                endpointRegistry,
+                messageTransporter::sendInput,
+                serverPort,
+                transportEndpointPath
+        ));
     }
 
     public boolean isRunning() {
@@ -246,6 +265,14 @@ public class MassApplication {
 
     public void publishTaskEvents() {
         requireConfiguredEngine().publishTaskEvents();
+    }
+
+    public MessageTransporter<String, OutboundDelivery> getMessageTransporter() {
+        return messageTransporter;
+    }
+
+    public WorkerEndpointRegistry getEndpointRegistry() {
+        return endpointRegistry;
     }
 
     public MassEngine getEngine() {

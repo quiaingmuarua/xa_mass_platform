@@ -1,4 +1,4 @@
-package com.xa.mass.starter.worker;
+package com.xa.mass.gateway.worker;
 
 import com.xa.mass.engine.worker.WorkerAdapter;
 import com.xa.mass.transport.WorkerTransportHints;
@@ -11,23 +11,32 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * WebSocket-backed worker adapter.
+ * Gateway-backed realtime worker adapter.
+ *
+ * <p>The current gateway-backed realtime delivery path is WebSocket-backed.
+ * This adapter keeps that implementation label adapter-local while runtime
+ * transport selection stays on the canonical {@code realtime} identity.
  */
-public class WebSocketWorkerAdapter implements WorkerAdapter {
+public final class GatewayRealtimeWorkerAdapter implements WorkerAdapter {
 
     public static final String PROTOCOL = "websocket";
 
-    private static final Logger logger = LoggerFactory.getLogger(WebSocketWorkerAdapter.class);
+    private static final Logger logger = LoggerFactory.getLogger(GatewayRealtimeWorkerAdapter.class);
 
     private final TaskDispatchChannel taskDispatchChannel;
 
-    public WebSocketWorkerAdapter(TaskDispatchChannel taskDispatchChannel) {
+    public GatewayRealtimeWorkerAdapter(TaskDispatchChannel taskDispatchChannel) {
         this.taskDispatchChannel = taskDispatchChannel;
     }
 
     @Override
     public String protocol() {
         return PROTOCOL;
+    }
+
+    @Override
+    public String transportHint() {
+        return WorkerTransportHints.REALTIME;
     }
 
     @Override
@@ -38,7 +47,7 @@ public class WebSocketWorkerAdapter implements WorkerAdapter {
     @Override
     public void dispatchTaskItems(List<TaskDispatchItem> items) {
         if (taskDispatchChannel == null) {
-            logger.warn("Skip task message publishing because WebSocket dispatch channel is unavailable");
+            logger.warn("Skip realtime task dispatch because gateway dispatch channel is unavailable");
             return;
         }
         if (items == null || items.isEmpty()) {

@@ -28,6 +28,7 @@
         <module>xa-mass-gateway</module>
         <module>xa-mass-sdk-api</module>
         <module>xa-mass-sdk</module>
+        <module>xa-mass-testing</module>
         <module>xa-mass-dev-app</module>
     </modules>
     <scm>
