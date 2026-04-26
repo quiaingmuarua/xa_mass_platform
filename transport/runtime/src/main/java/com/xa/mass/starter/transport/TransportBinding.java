@@ -27,6 +27,10 @@ public final class TransportBinding {
         return workerAdapter;
     }
 
+    public String getAdapterId() {
+        return workerAdapter.adapterId();
+    }
+
     public String getTransportHint() {
         return workerAdapter.transportHint();
     }

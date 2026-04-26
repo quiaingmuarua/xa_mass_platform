@@ -35,12 +35,14 @@ public final class SdkResourceMapper {
     public static Worker toWorker(WorkerRegistration request) {
         Objects.requireNonNull(request, "request");
         String workerId = requireNonBlank(request.getWorkerId(), "workerId");
+        String adapterId = requireNonBlank(request.getAdapterId(), "adapterId");
         String transportHint = WorkerTransportHints.normalize(requireNonBlank(request.getTransportHint(), "transportHint"));
         Worker worker = new Worker();
         worker.setWorkerId(workerId);
         worker.setWorkerGroupId(blankToNull(request.getWorkerGroupId()));
         worker.setSupportedProjects(normalizedList(request.getSupportedProjects()));
         worker.setSupportedEventCodes(normalizedList(request.getSupportedEventCodes()));
+        worker.setAdapterId(adapterId);
         worker.setOnlineStrategy(transportHint);
         worker.setAttributes(normalizedAttributes(request.getAttributes()));
         return worker;

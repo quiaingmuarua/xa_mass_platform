@@ -93,8 +93,7 @@ public class MassApplicationExample {
         logger.info("Example 6: engine only");
         MassApplication app = MassApplicationBuilder.create()
                 .transport(transport -> transport
-                        .webSocketAdapter(webSocket -> webSocket.server(8080).enabled(false).serverEnabled(false))
-                        .enabled(false))
+                        .webSocketAdapter(webSocket -> webSocket.server(8080).enabled(false).serverEnabled(false)))
                 .engine(engine -> engine
                         .enabled(true)
                         .workerThreads(4))

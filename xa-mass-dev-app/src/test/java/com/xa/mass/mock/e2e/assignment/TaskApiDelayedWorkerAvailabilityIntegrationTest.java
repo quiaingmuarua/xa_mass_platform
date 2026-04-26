@@ -13,9 +13,12 @@ import org.springframework.test.context.DynamicPropertySource;
 
 import java.net.URI;
 import java.util.Map;
+import java.util.function.BooleanSupplier;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SpringBootTest(
         classes = MockApplicationSpringBootApp.class,
@@ -57,31 +60,44 @@ class TaskApiDelayedWorkerAvailabilityIntegrationTest extends AbstractMockE2eTes
 
         String workerId = "late-worker-0";
         addMatchingWorker(workerId);
+        assertFalse(app.isWorkerOnline(workerId), "SDK worker registration must not mark delayed worker online");
 
         URI uri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
         MockWorkerWebSocketClient client = new MockWorkerWebSocketClient(uri, workerId);
         try {
             assertClientConnects(client, "late worker client failed to connect");
+            waitUntil(() -> app.isWorkerOnline(workerId), "late worker connect must mark worker online");
 
             TaskSnapshot terminalSnapshot = waitForTaskSnapshot(taskId, "TERMINAL", 20, 500L);
             assertEquals("TERMINAL", terminalSnapshot.task().get("status"));
             assertEquals("ALL_MESSAGES_SUCCEEDED", terminalSnapshot.task().get("terminalReason"));
             assertEquals(1, ((Number) terminalSnapshot.task().get("peakAssignedWorkerCount")).intValue());
-        assertEquals(1, ((Number) terminalSnapshot.task().get("taskSuccessNumber")).intValue());
+            assertEquals(1, ((Number) terminalSnapshot.task().get("taskSuccessNumber")).intValue());
             assertEquals(1, terminalSnapshot.messages().size());
 
             Map<String, Object> message = terminalSnapshot.messages().get(0);
             assertEquals("SUCCESS", message.get("status"));
-        assertEquals(workerId, message.get("latestAttemptWorkerId"));
-        assertNotNull(message.get("latestAttemptWorkerContextId"));
-        assertNotNull(message.get("latestAttemptBatchId"));
+            assertEquals(workerId, message.get("latestAttemptWorkerId"));
+            assertNotNull(message.get("latestAttemptWorkerContextId"));
+            assertNotNull(message.get("latestAttemptBatchId"));
         } finally {
             client.disconnect();
         }
+        waitUntil(() -> !app.isWorkerOnline(workerId), "late worker disconnect must mark worker offline");
     }
 
     private void addMatchingWorker(String workerId) {
         registerSdkWorkerWithContext(workerId, "us");
+    }
+
+    private void waitUntil(BooleanSupplier condition, String failureMessage) throws InterruptedException {
+        for (int attempt = 0; attempt < 20; attempt++) {
+            if (condition.getAsBoolean()) {
+                return;
+            }
+            Thread.sleep(100L);
+        }
+        assertTrue(condition.getAsBoolean(), failureMessage);
     }
 
 }

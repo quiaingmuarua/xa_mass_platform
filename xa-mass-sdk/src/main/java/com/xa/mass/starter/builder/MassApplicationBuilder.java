@@ -18,6 +18,7 @@ import com.xa.mass.starter.transport.TransportServerFactoryContext;
 import com.xa.mass.starter.transport.WorkerTransportRuntimeFactory;
 import com.xa.mass.transport.TransportServerFactory;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
+import com.xa.mass.transport.socket.runtime.SocketAdapterConfig;
 import com.xa.mass.transport.websocket.runtime.WebSocketAdapterConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -155,13 +156,25 @@ public class MassApplicationBuilder {
         return transportServer(port, transportEndpointPath);
     }
 
+    /**
+     * @deprecated Prefer {@link #transport(Consumer)} with
+     * {@code webSocketAdapter(...)} so adapter-owned server settings stay on the
+     * concrete adapter rather than transport-global compatibility helpers.
+     */
+    @Deprecated(forRemoval = false)
     public MassApplicationBuilder transportServer(int port) {
         return transportServer(port, "/ws");
     }
 
+    /**
+     * @deprecated Prefer {@link #transport(Consumer)} with
+     * {@code webSocketAdapter(...)} so adapter-owned server settings stay on the
+     * concrete adapter rather than transport-global compatibility helpers.
+     */
+    @Deprecated(forRemoval = false)
     public MassApplicationBuilder transportServer(int port, String transportEndpointPath) {
-        this.transportConfig.setTransportServerPort(port);
-        this.transportConfig.setTransportEndpointPath(transportEndpointPath);
+        this.transportConfig.getDefaultWebSocketAdapterConfig().setServerPort(port);
+        this.transportConfig.getDefaultWebSocketAdapterConfig().setEndpointPath(transportEndpointPath);
         return this;
     }
 
@@ -192,8 +205,9 @@ public class MassApplicationBuilder {
     public MassApplication build() {
         TransportConfig transportSnapshot = new TransportConfig(transportConfig);
         EngineConfig engineSnapshot = new EngineConfig(engineConfig);
-        logger.info("Building MassApplication with configuration: port={}, transport={}, engine={}",
-                transportSnapshot.getTransportServerPort(),
+        WebSocketAdapterConfig webSocketConfig = transportSnapshot.getDefaultWebSocketAdapterConfig();
+        logger.info("Building MassApplication with configuration: wsPort={}, transport={}, engine={}",
+                webSocketConfig.getServerPort(),
                 transportSnapshot.isEnabled(),
                 engineSnapshot.isEnabled());
 
@@ -219,8 +233,15 @@ public class MassApplicationBuilder {
             this.config = config;
         }
 
+        /**
+         * @deprecated Prefer explicit adapter toggles such as
+         * {@code webSocketAdapter(...)} or {@code socketAdapter(...)}. This
+         * transport-global helper mutates only the bundled default WebSocket
+         * adapter and is compatibility-only.
+         */
+        @Deprecated(forRemoval = false)
         public TransportBuilder enabled(boolean enabled) {
-            config.setEnabled(enabled);
+            config.getDefaultWebSocketAdapterConfig().setEnabled(enabled);
             return this;
         }
 
@@ -230,19 +251,44 @@ public class MassApplicationBuilder {
             return this;
         }
 
+        public TransportBuilder socketAdapter(Consumer<SocketAdapterBuilder> socketAdapterConfigurator) {
+            SocketAdapterBuilder builder = new SocketAdapterBuilder(config.getDefaultSocketAdapterConfig());
+            socketAdapterConfigurator.accept(builder);
+            return this;
+        }
+
+        /**
+         * @deprecated Prefer {@code webSocketAdapter(...).serverEnabled(...)} so
+         * adapter-owned server settings stay on the concrete adapter rather than
+         * a transport-global compatibility helper.
+         */
+        @Deprecated(forRemoval = false)
         public TransportBuilder transportServerEnabled(boolean enabled) {
-            config.setTransportServerEnabled(enabled);
+            config.getDefaultWebSocketAdapterConfig().setServerEnabled(enabled);
             return this;
         }
 
+        /**
+         * @deprecated Prefer {@code webSocketAdapter(...).endpointPath(...)} so
+         * adapter-owned server settings stay on the concrete adapter rather than
+         * a transport-global compatibility helper.
+         */
+        @Deprecated(forRemoval = false)
         public TransportBuilder transportEndpointPath(String transportEndpointPath) {
-            config.setTransportEndpointPath(transportEndpointPath);
+            config.getDefaultWebSocketAdapterConfig().setEndpointPath(transportEndpointPath);
             return this;
         }
 
+        /**
+         * @deprecated Prefer
+         * {@code webSocketAdapter(...).transportServerFactory(...)} so adapter
+         * bootstrap overrides stay attached to the concrete adapter rather than a
+         * transport-global compatibility helper.
+         */
+        @Deprecated(forRemoval = false)
         public TransportBuilder transportServerFactory(
                 TransportServerFactory<TransportServerFactoryContext> transportServerFactory) {
-            config.setTransportServerFactory(transportServerFactory);
+            config.getDefaultWebSocketAdapterConfig().setTransportServerFactory(transportServerFactory);
             return this;
         }
 
@@ -251,8 +297,16 @@ public class MassApplicationBuilder {
             return this;
         }
 
+        /**
+         * @deprecated Prefer adapter-owned configuration such as
+         * {@code webSocketAdapter(...).maxConnections(...)} or
+         * {@code socketAdapter(...).maxConnections(...)}. This transport-global
+         * helper mutates only the bundled default WebSocket adapter and is
+         * compatibility-only.
+         */
+        @Deprecated(forRemoval = false)
         public TransportBuilder maxConnections(int maxConnections) {
-            config.setMaxConnections(maxConnections);
+            config.getDefaultWebSocketAdapterConfig().setMaxConnections(maxConnections);
             return this;
         }
 
@@ -335,6 +389,34 @@ public class MassApplicationBuilder {
         public WebSocketAdapterBuilder transportServerFactory(
                 TransportServerFactory<TransportServerFactoryContext> transportServerFactory) {
             config.setTransportServerFactory(transportServerFactory);
+            return this;
+        }
+    }
+
+    public static class SocketAdapterBuilder {
+        private final SocketAdapterConfig config;
+
+        public SocketAdapterBuilder(SocketAdapterConfig config) {
+            this.config = config;
+        }
+
+        public SocketAdapterBuilder enabled(boolean enabled) {
+            config.setEnabled(enabled);
+            return this;
+        }
+
+        public SocketAdapterBuilder serverEnabled(boolean enabled) {
+            config.setServerEnabled(enabled);
+            return this;
+        }
+
+        public SocketAdapterBuilder server(int port) {
+            config.setServerPort(port);
+            return this;
+        }
+
+        public SocketAdapterBuilder maxConnections(int maxConnections) {
+            config.setMaxConnections(maxConnections);
             return this;
         }
     }

@@ -1,9 +1,7 @@
 package com.xa.mass.transport.websocket.server;
 
-import com.xa.mass.base.channel.tranporter.MessageTransporter;
 import com.xa.mass.transport.websocket.queue.WebSocketTransportFrameCodec;
 import com.xa.mass.transport.websocket.session.ServerSessionManager;
-import com.xa.mass.transport.model.WorkerTransportMessage;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelId;
@@ -18,6 +16,7 @@ import org.mockito.ArgumentCaptor;
 import java.lang.reflect.Constructor;
 import java.util.Arrays;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -36,7 +35,8 @@ class DispatcherInboundHandlerTest {
     private ChannelHandlerContext ctx;
     private Channel channel;
     private AtomicReference<String> sentFrame;
-    private MessageTransporter<String, WorkerTransportMessage> transporter;
+    private Consumer<String> inboundMessageSink;
+    private AtomicReference<String> acceptedInboundRawJson;
     private ServerSessionManager sessionManager;
 
     @SuppressWarnings("unchecked")
@@ -60,12 +60,11 @@ class DispatcherInboundHandlerTest {
             return null;
         }).when(ctx).writeAndFlush(any());
 
-        transporter = mock(MessageTransporter.class);
-        when(transporter.inputQueueSize()).thenReturn(0);
-
+        acceptedInboundRawJson = new AtomicReference<>();
+        inboundMessageSink = acceptedInboundRawJson::set;
         sessionManager = new ServerSessionManager();
         WebSocketTransportFrameCodec codec = new WebSocketTransportFrameCodec();
-        handler = new DispatcherInboundHandler(codec, transporter::sendInput, sessionManager);
+        handler = new DispatcherInboundHandler(codec, inboundMessageSink, sessionManager);
     }
 
     @Test
@@ -120,7 +119,7 @@ class DispatcherInboundHandlerTest {
         handler.channelRead0(ctx, frame(controlJson));
 
         assertNull(sentFrame.get());
-        verify(transporter).sendInput(controlJson);
+        assertEquals(controlJson, acceptedInboundRawJson.get());
         assertEquals(1, sessionManager.getWorkerConnectionCount());
         assertNotNull(sessionManager.getChannelContext("worker-1"));
     }
@@ -147,10 +146,10 @@ class DispatcherInboundHandlerTest {
 
         handler.channelRead0(ctx, frame(controlJson));
 
-        ArgumentCaptor<String> rawCaptor = ArgumentCaptor.forClass(String.class);
-        verify(transporter).sendInput(rawCaptor.capture());
-        assertTrue(rawCaptor.getValue().contains("\"eventCode\": \"mock.state.get\"")
-                || rawCaptor.getValue().contains("\"eventCode\":\"mock.state.get\""));
+        String accepted = acceptedInboundRawJson.get();
+        assertNotNull(accepted);
+        assertTrue(accepted.contains("\"eventCode\": \"mock.state.get\"")
+                || accepted.contains("\"eventCode\":\"mock.state.get\""));
         assertNotNull(sessionManager.getChannelContext("worker-1"));
     }
 

@@ -50,6 +50,8 @@ class ExternalWorkerApiControllerTest {
                 Map.of("workerId", "node-worker-1")
         );
         lenient().when(authProvider.authenticate("node-worker-key")).thenReturn(workerSubmitter);
+        lenient().when(externalWorkerOperations.getWorkerAdapterId("node-worker-1"))
+                .thenReturn(WorkerTransportHints.POLLING);
         lenient().when(externalWorkerOperations.getWorkerTransportHint("node-worker-1"))
                 .thenReturn(WorkerTransportHints.POLLING);
         mockMvc = MockMvcBuilders
@@ -81,11 +83,13 @@ class ExternalWorkerApiControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
                 .andExpect(jsonPath("$.data.workerId").value("node-worker-1"))
+                .andExpect(jsonPath("$.data.adapterId").value(WorkerTransportHints.POLLING))
                 .andExpect(jsonPath("$.data.transportHint").value(WorkerTransportHints.POLLING))
                 .andExpect(jsonPath("$.data.eventBindings[0].eventCode").value("crawler.fetch-page"));
 
         verify(externalWorkerOperations).registerWorker(argThat(request ->
                 "node-worker-1".equals(request.getWorkerId())
+                        && request.getAdapterId() == null
                         && WorkerTransportHints.POLLING.equals(request.getTransportHint())
                         && List.of(WorkerEventBinding.builder()
                         .eventCode("crawler.fetch-page")

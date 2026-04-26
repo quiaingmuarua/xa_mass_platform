@@ -19,6 +19,7 @@ import org.springframework.test.context.DynamicPropertySource;
 
 import java.util.List;
 import java.util.Map;
+import java.util.function.BooleanSupplier;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -55,10 +56,12 @@ class PollingWorkerTaskFlowIntegrationTest extends AbstractMockE2eTest {
     void pollingWorkerCompletesTaskEndToEnd() throws Exception {
         String workerId = "poll-worker-e2e-001";
         registerPollingWorker(workerId);
+        assertFalse(app.isWorkerOnline(workerId), "polling worker registration must not mark worker online");
 
         PullWorkerSession session = app.pullWorker(workerId);
         session.connect();
         try {
+            waitUntil(() -> app.isWorkerOnline(workerId), "poll worker connect must mark worker online");
             String taskId = createTaskId("polling-e2e-task", "poll integration", "target-poll-001");
 
             Map<String, Object> auditResponse = exchange(
@@ -96,6 +99,7 @@ class PollingWorkerTaskFlowIntegrationTest extends AbstractMockE2eTest {
         } finally {
             session.disconnect();
         }
+        waitUntil(() -> !app.isWorkerOnline(workerId), "poll worker disconnect must mark worker offline");
     }
 
     @Test
@@ -144,5 +148,15 @@ class PollingWorkerTaskFlowIntegrationTest extends AbstractMockE2eTest {
                 .workerId(workerId)
                 .routingTags(java.util.Set.of("us"))
                 .build());
+    }
+
+    private void waitUntil(BooleanSupplier condition, String failureMessage) throws InterruptedException {
+        for (int attempt = 0; attempt < 20; attempt++) {
+            if (condition.getAsBoolean()) {
+                return;
+            }
+            Thread.sleep(100L);
+        }
+        assertTrue(condition.getAsBoolean(), failureMessage);
     }
 }

@@ -3,7 +3,6 @@ package com.xa.mass.transport.websocket.dispatcher;
 import com.xa.mass.transport.websocket.dispatcher.context.WebSocketDispatchRuntimeContext;
 import com.xa.mass.transport.channel.TaskDispatchChannel;
 import com.xa.mass.transport.model.TaskDispatchItem;
-import com.xa.mass.transport.model.WorkerTransportMessage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -25,8 +24,8 @@ public final class WebSocketTaskDispatchChannel implements TaskDispatchChannel {
 
     @Override
     public void dispatchTaskItems(List<TaskDispatchItem> items) {
-        if (context.getMessageTransporter() == null || context.getFrameCodec() == null) {
-            logger.warn("Skip task message publishing because dispatcher context or transporter is unavailable");
+        if (context.getEndpointRegistry() == null || context.getFrameCodec() == null) {
+            logger.warn("Skip task message publishing because dispatcher context or endpoint registry is unavailable");
             return;
         }
         if (items == null || items.isEmpty()) {
@@ -34,11 +33,12 @@ public final class WebSocketTaskDispatchChannel implements TaskDispatchChannel {
         }
         for (TaskDispatchItem dispatchItem : items) {
             String rawJson = context.getFrameCodec().encodeCanonicalTaskDispatch(dispatchItem);
-            context.getMessageTransporter().sendOutput(new WorkerTransportMessage(
-                    dispatchItem.getWorkerId(),
-                    rawJson,
-                    dispatchItem.getMessageId()
-            ));
+            boolean sent = context.getEndpointRegistry().sendMessage(dispatchItem.getWorkerId(), rawJson);
+            if (!sent) {
+                logger.warn("WebSocket outbound skipped because endpoint is unavailable: workerId={}, traceId={}",
+                        dispatchItem.getWorkerId(),
+                        dispatchItem.getMessageId());
+            }
         }
     }
 }

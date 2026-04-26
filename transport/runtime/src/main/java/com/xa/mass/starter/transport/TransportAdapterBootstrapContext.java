@@ -21,12 +21,20 @@ public final class TransportAdapterBootstrapContext<T> {
                                             WorkerEndpointRegistry endpointRegistry,
                                             TaskResultIngestChannel taskResultIngestChannel,
                                             WorkerSystemEventChannel systemEventChannel) {
-        this.messageTransporter = Objects.requireNonNull(messageTransporter, "messageTransporter");
+        this.messageTransporter = messageTransporter;
         this.endpointRegistry = Objects.requireNonNull(endpointRegistry, "endpointRegistry");
         this.taskResultIngestChannel = taskResultIngestChannel;
         this.systemEventChannel = Objects.requireNonNull(systemEventChannel, "systemEventChannel");
     }
 
+    /**
+     * Compatibility-only transporter handle.
+     *
+     * <p>Adapter-owned mainline runtime assembly should prefer adapter-native
+     * server/session paths and canonical runtime channels. This value may be
+     * {@code null} when the runtime is assembled without shared queue-backed
+     * transporter wiring.
+     */
     public MessageTransporter<String, T> getMessageTransporter() {
         return messageTransporter;
     }

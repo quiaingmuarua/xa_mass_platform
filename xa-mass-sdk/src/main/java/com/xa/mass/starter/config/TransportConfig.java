@@ -3,7 +3,9 @@ package com.xa.mass.starter.config;
 import com.xa.mass.base.channel.messaging.api.MessageQueue;
 import com.xa.mass.base.channel.tranporter.MessageTransporter;
 import com.xa.mass.base.channel.tranporter.MessageTransporterFactory;
+import com.xa.mass.starter.transport.CompositeWorkerEndpointRegistry;
 import com.xa.mass.starter.transport.DefaultWorkerTransportRuntimeFactory;
+import com.xa.mass.starter.transport.RuntimeEventBusWorkerSystemEventChannel;
 import com.xa.mass.starter.transport.TransportAdapterBootstrap;
 import com.xa.mass.starter.transport.TransportServerFactoryContext;
 import com.xa.mass.starter.transport.WorkerTransportRuntimeFactory;
@@ -13,6 +15,9 @@ import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
 import com.xa.mass.transport.model.WorkerTransportMessage;
+import com.xa.mass.transport.socket.runtime.SocketAdapterConfig;
+import com.xa.mass.transport.socket.runtime.SocketTransportAdapterBootstrap;
+import com.xa.mass.transport.websocket.dispatcher.WebSocketInputProcessor;
 import com.xa.mass.transport.websocket.runtime.WebSocketAdapterConfig;
 import com.xa.mass.transport.websocket.dispatcher.context.WebSocketDispatchRuntimeContext;
 import com.xa.mass.transport.websocket.runtime.WebSocketEmbeddedRuntimeSupport;
@@ -46,13 +51,14 @@ public class TransportConfig {
     private Supplier<WorkerEndpointRegistry> endpointRegistryFactory;
     private Function<WorkerEndpointRegistry, WorkerSystemEventChannel> systemEventChannelResolver;
     private WebSocketAdapterConfig defaultWebSocketAdapterConfig = new WebSocketAdapterConfig();
+    private SocketAdapterConfig defaultSocketAdapterConfig = new SocketAdapterConfig();
     private WorkerTransportRuntimeFactory workerTransportRuntimeFactory;
     private TransportAdapterBootstrap<WorkerTransportMessage> transportAdapterBootstrap;
     private List<TransportAdapterBootstrap<WorkerTransportMessage>> additionalTransportAdapterBootstraps = List.of();
 
     public TransportConfig() {
-        this.endpointRegistryFactory = WebSocketEmbeddedRuntimeSupport::createEndpointRegistry;
-        this.systemEventChannelResolver = WebSocketEmbeddedRuntimeSupport::resolveSystemEventChannel;
+        this.endpointRegistryFactory = CompositeWorkerEndpointRegistry::new;
+        this.systemEventChannelResolver = ignored -> new RuntimeEventBusWorkerSystemEventChannel();
     }
 
     public TransportConfig(TransportConfig source) {
@@ -68,47 +74,114 @@ public class TransportConfig {
         this.endpointRegistryFactory = source.endpointRegistryFactory;
         this.systemEventChannelResolver = source.systemEventChannelResolver;
         this.defaultWebSocketAdapterConfig = new WebSocketAdapterConfig(source.defaultWebSocketAdapterConfig);
+        this.defaultSocketAdapterConfig = new SocketAdapterConfig(source.defaultSocketAdapterConfig);
         this.workerTransportRuntimeFactory = source.workerTransportRuntimeFactory;
         this.transportAdapterBootstrap = source.transportAdapterBootstrap;
         this.additionalTransportAdapterBootstraps = List.copyOf(source.additionalTransportAdapterBootstraps);
     }
 
     public boolean isEnabled() {
-        return defaultWebSocketAdapterConfig.isEnabled();
+        return defaultWebSocketAdapterConfig.isEnabled() || defaultSocketAdapterConfig.isEnabled();
     }
 
+    /**
+     * @deprecated Prefer explicit adapter configuration via
+     * {@link #getDefaultWebSocketAdapterConfig()} or
+     * {@link #getDefaultSocketAdapterConfig()}. This transport-global helper
+     * mutates only the bundled default WebSocket adapter and is
+     * compatibility-only.
+     */
+    @Deprecated(forRemoval = false)
     public void setEnabled(boolean enabled) {
         defaultWebSocketAdapterConfig.setEnabled(enabled);
     }
 
+    /**
+     * @deprecated Prefer explicit adapter configuration via
+     * {@link #getDefaultWebSocketAdapterConfig()}. This transport-global helper
+     * reflects only the bundled default WebSocket adapter and is
+     * compatibility-only.
+     */
+    @Deprecated(forRemoval = false)
     public boolean isTransportServerEnabled() {
         return defaultWebSocketAdapterConfig.isServerEnabled();
     }
 
+    /**
+     * @deprecated Prefer explicit adapter configuration via
+     * {@link #getDefaultWebSocketAdapterConfig()}. This transport-global helper
+     * mutates only the bundled default WebSocket adapter and is
+     * compatibility-only.
+     */
+    @Deprecated(forRemoval = false)
     public void setTransportServerEnabled(boolean transportServerEnabled) {
         defaultWebSocketAdapterConfig.setServerEnabled(transportServerEnabled);
     }
 
+    /**
+     * @deprecated Prefer explicit adapter configuration via
+     * {@link #getDefaultWebSocketAdapterConfig()}. This transport-global helper
+     * reflects only the bundled default WebSocket adapter and is
+     * compatibility-only.
+     */
+    @Deprecated(forRemoval = false)
     public int getTransportServerPort() {
         return defaultWebSocketAdapterConfig.getServerPort();
     }
 
+    /**
+     * @deprecated Prefer explicit adapter configuration via
+     * {@link #getDefaultWebSocketAdapterConfig()}. This transport-global helper
+     * mutates only the bundled default WebSocket adapter and is
+     * compatibility-only.
+     */
+    @Deprecated(forRemoval = false)
     public void setTransportServerPort(int transportServerPort) {
         defaultWebSocketAdapterConfig.setServerPort(transportServerPort);
     }
 
+    /**
+     * @deprecated Prefer explicit adapter configuration via
+     * {@link #getDefaultWebSocketAdapterConfig()} or
+     * {@link #getDefaultSocketAdapterConfig()}. This transport-global helper
+     * reflects only the bundled default WebSocket adapter and is
+     * compatibility-only.
+     */
+    @Deprecated(forRemoval = false)
     public int getMaxConnections() {
         return defaultWebSocketAdapterConfig.getMaxConnections();
     }
 
+    /**
+     * @deprecated Prefer explicit adapter configuration via
+     * {@link #getDefaultWebSocketAdapterConfig()} or
+     * {@link #getDefaultSocketAdapterConfig()}. This transport-global helper
+     * mutates only the bundled default WebSocket adapter and is
+     * compatibility-only.
+     */
+    @Deprecated(forRemoval = false)
     public void setMaxConnections(int maxConnections) {
         defaultWebSocketAdapterConfig.setMaxConnections(maxConnections);
     }
 
+    /**
+     * @deprecated Prefer explicit adapter configuration via
+     * {@link #getDefaultWebSocketAdapterConfig()}. This transport-global helper
+     * reflects only the bundled default WebSocket adapter and is
+     * compatibility-only.
+     */
+    @Deprecated(forRemoval = false)
     public String getTransportEndpointPath() {
         return defaultWebSocketAdapterConfig.getEndpointPath();
     }
 
+    /**
+     * @deprecated Prefer explicit adapter configuration via
+     * {@link #getDefaultWebSocketAdapterConfig()}. This transport-global helper
+     * mutates only the bundled default WebSocket adapter and is
+     * compatibility-only.
+     */
+    @Deprecated(forRemoval = false)
     public void setTransportEndpointPath(String transportEndpointPath) {
         defaultWebSocketAdapterConfig.setEndpointPath(transportEndpointPath);
     }
@@ -135,7 +208,7 @@ public class TransportConfig {
 
     /**
      * @deprecated Embedded-runtime mainline should call
-     * {@link WebSocketEmbeddedRuntimeSupport#createDispatcherContext(MessageTransporter, WorkerEndpointRegistry, TaskResultIngestChannel, WorkerSystemEventChannel)}
+     * {@link WebSocketEmbeddedRuntimeSupport#createDispatcherContext(WorkerEndpointRegistry, TaskResultIngestChannel, WorkerSystemEventChannel)}
      * directly for the bundled WebSocket-backed adapter path. Keep this only
      * for advanced external embedding that still routes through
      * {@code TransportConfig}.
@@ -147,7 +220,6 @@ public class TransportConfig {
             TaskResultIngestChannel taskResultIngestChannel,
             WorkerSystemEventChannel systemEventChannel) {
         return WebSocketEmbeddedRuntimeSupport.createDispatcherContext(
-                messageTransporter,
                 endpointRegistry,
                 taskResultIngestChannel,
                 systemEventChannel
@@ -218,10 +290,24 @@ public class TransportConfig {
         this.workerEndpointRegistry = workerEndpointRegistry;
     }
 
+    /**
+     * @deprecated Prefer explicit adapter configuration via
+     * {@link #getDefaultWebSocketAdapterConfig()}. This transport-global helper
+     * reflects only the bundled default WebSocket adapter and is
+     * compatibility-only.
+     */
+    @Deprecated(forRemoval = false)
     public TransportServerFactory<TransportServerFactoryContext> getTransportServerFactory() {
         return defaultWebSocketAdapterConfig.getTransportServerFactory();
     }
 
+    /**
+     * @deprecated Prefer explicit adapter configuration via
+     * {@link #getDefaultWebSocketAdapterConfig()}. This transport-global helper
+     * mutates only the bundled default WebSocket adapter and is
+     * compatibility-only.
+     */
+    @Deprecated(forRemoval = false)
     public void setTransportServerFactory(TransportServerFactory<TransportServerFactoryContext> transportServerFactory) {
         defaultWebSocketAdapterConfig.setTransportServerFactory(transportServerFactory);
     }
@@ -233,6 +319,16 @@ public class TransportConfig {
     public void setDefaultWebSocketAdapterConfig(WebSocketAdapterConfig defaultWebSocketAdapterConfig) {
         this.defaultWebSocketAdapterConfig = new WebSocketAdapterConfig(
                 java.util.Objects.requireNonNull(defaultWebSocketAdapterConfig, "defaultWebSocketAdapterConfig")
+        );
+    }
+
+    public SocketAdapterConfig getDefaultSocketAdapterConfig() {
+        return defaultSocketAdapterConfig;
+    }
+
+    public void setDefaultSocketAdapterConfig(SocketAdapterConfig defaultSocketAdapterConfig) {
+        this.defaultSocketAdapterConfig = new SocketAdapterConfig(
+                java.util.Objects.requireNonNull(defaultSocketAdapterConfig, "defaultSocketAdapterConfig")
         );
     }
 
@@ -353,6 +449,17 @@ public class TransportConfig {
     }
 
     /**
+     * @deprecated Embedded-runtime mainline should resolve adapter bootstraps
+     * from {@link TransportRuntimeComposition}. Keep this only for advanced
+     * external embedding that still routes runtime assembly through
+     * {@code TransportConfig}.
+     */
+    @Deprecated
+    public TransportAdapterBootstrap<WorkerTransportMessage> resolveSocketTransportAdapterBootstrap() {
+        return new SocketTransportAdapterBootstrap(defaultSocketAdapterConfig);
+    }
+
+    /**
      * @deprecated Embedded-runtime mainline should use
      * {@link WebSocketEmbeddedRuntimeSupport#createTransportServer(int, String, WebSocketDispatchRuntimeContext, WorkerEndpointRegistry)}
      * for the default WebSocket-backed adapter path, or
@@ -379,7 +486,7 @@ public class TransportConfig {
         }
         return transportServerFactory.create(new TransportServerFactoryContext(
                 endpointRegistry,
-                dispatcherContext.getMessageTransporter()::sendInput,
+                new WebSocketInputProcessor(dispatcherContext)::process,
                 port,
                 defaultWebSocketAdapterConfig.getEndpointPath()
         ));

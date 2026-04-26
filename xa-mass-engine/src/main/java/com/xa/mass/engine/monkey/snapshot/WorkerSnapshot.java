@@ -14,6 +14,7 @@ public class WorkerSnapshot {
     private LocalDateTime lastHeartbeat;
     private List<String> supportedProjects;
     private String workerGroupId;
+    private String adapterId;
     private String onlineStrategy;
     private Map<String, String> attributes;
     private LocalDateTime createTime;
@@ -36,6 +37,8 @@ public class WorkerSnapshot {
     public void setSupportedProjects(List<String> supportedProjects) { this.supportedProjects = supportedProjects; }
     public String getWorkerGroupId() { return workerGroupId; }
     public void setWorkerGroupId(String workerGroupId) { this.workerGroupId = workerGroupId; }
+    public String getAdapterId() { return adapterId; }
+    public void setAdapterId(String adapterId) { this.adapterId = adapterId; }
     public String getOnlineStrategy() { return onlineStrategy; }
     public void setOnlineStrategy(String onlineStrategy) { this.onlineStrategy = onlineStrategy; }
     public Map<String, String> getAttributes() { return attributes; }

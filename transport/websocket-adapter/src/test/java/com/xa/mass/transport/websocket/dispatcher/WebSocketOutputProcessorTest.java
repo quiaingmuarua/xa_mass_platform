@@ -1,6 +1,5 @@
 package com.xa.mass.transport.websocket.dispatcher;
 
-import com.xa.mass.base.channel.tranporter.MessageTransporter;
 import com.xa.mass.transport.websocket.queue.WebSocketTransportFrameCodec;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.channel.NoopWorkerSystemEventChannel;
@@ -19,12 +18,9 @@ class WebSocketOutputProcessorTest {
     private WebSocketOutputProcessor outputProcessor;
 
     @BeforeEach
-    @SuppressWarnings("unchecked")
     void setUp() {
-        MessageTransporter<String, WorkerTransportMessage> transporter = mock(MessageTransporter.class);
         endpointRegistry = mock(WorkerEndpointRegistry.class);
         WebSocketDispatcherContext context = new WebSocketDispatcherContext(
-                transporter,
                 endpointRegistry,
                 new WebSocketTransportFrameCodec(),
                 null,

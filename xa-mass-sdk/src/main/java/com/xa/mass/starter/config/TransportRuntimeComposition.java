@@ -11,6 +11,8 @@ import com.xa.mass.transport.TransportServerFactory;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
 import com.xa.mass.transport.model.WorkerTransportMessage;
+import com.xa.mass.transport.socket.runtime.SocketAdapterConfig;
+import com.xa.mass.transport.socket.runtime.SocketTransportAdapterBootstrap;
 import com.xa.mass.transport.websocket.runtime.WebSocketAdapterConfig;
 import com.xa.mass.transport.websocket.runtime.WebSocketTransportAdapterBootstrap;
 
@@ -39,6 +41,7 @@ public class TransportRuntimeComposition {
     private final Supplier<WorkerEndpointRegistry> endpointRegistryFactory;
     private final Function<WorkerEndpointRegistry, WorkerSystemEventChannel> systemEventChannelResolver;
     private final WebSocketAdapterConfig defaultWebSocketAdapterConfig;
+    private final SocketAdapterConfig defaultSocketAdapterConfig;
     private final WorkerTransportRuntimeFactory workerTransportRuntimeFactory;
     private final TransportAdapterBootstrap<WorkerTransportMessage> transportAdapterBootstrap;
     private final List<TransportAdapterBootstrap<WorkerTransportMessage>> additionalTransportAdapterBootstraps;
@@ -54,27 +57,52 @@ public class TransportRuntimeComposition {
         this.endpointRegistryFactory = source.endpointRegistryFactory();
         this.systemEventChannelResolver = source.systemEventChannelResolver();
         this.defaultWebSocketAdapterConfig = new WebSocketAdapterConfig(source.getDefaultWebSocketAdapterConfig());
+        this.defaultSocketAdapterConfig = new SocketAdapterConfig(source.getDefaultSocketAdapterConfig());
         this.workerTransportRuntimeFactory = source.getWorkerTransportRuntimeFactory();
         this.transportAdapterBootstrap = source.getTransportAdapterBootstrap();
         this.additionalTransportAdapterBootstraps = List.copyOf(source.getAdditionalTransportAdapterBootstraps());
     }
 
     public boolean isEnabled() {
-        return defaultWebSocketAdapterConfig.isEnabled();
+        return defaultWebSocketAdapterConfig.isEnabled() || defaultSocketAdapterConfig.isEnabled();
     }
 
+    /**
+     * @deprecated Prefer explicit adapter-owned runtime inspection through
+     * adapter configs. This transport-global helper reflects only the bundled
+     * default WebSocket adapter and is compatibility-only.
+     */
+    @Deprecated(forRemoval = false)
     public boolean isTransportServerEnabled() {
         return defaultWebSocketAdapterConfig.isServerEnabled();
     }
 
+    /**
+     * @deprecated Prefer explicit adapter-owned runtime inspection through
+     * adapter configs. This transport-global helper reflects only the bundled
+     * default WebSocket adapter and is compatibility-only.
+     */
+    @Deprecated(forRemoval = false)
     public int getTransportServerPort() {
         return defaultWebSocketAdapterConfig.getServerPort();
     }
 
+    /**
+     * @deprecated Prefer explicit adapter-owned runtime inspection through
+     * adapter configs. This transport-global helper reflects only the bundled
+     * default WebSocket adapter and is compatibility-only.
+     */
+    @Deprecated(forRemoval = false)
     public int getMaxConnections() {
         return defaultWebSocketAdapterConfig.getMaxConnections();
     }
 
+    /**
+     * @deprecated Prefer explicit adapter-owned runtime inspection through
+     * adapter configs. This transport-global helper reflects only the bundled
+     * default WebSocket adapter and is compatibility-only.
+     */
+    @Deprecated(forRemoval = false)
     public String getTransportEndpointPath() {
         return defaultWebSocketAdapterConfig.getEndpointPath();
     }
@@ -89,6 +117,16 @@ public class TransportRuntimeComposition {
             }
             case MULTI_LEVEL -> MessageTransporterFactory.createMultiLevel();
             case API_BASED -> throw new UnsupportedOperationException(API_MODE_UNSUPPORTED_MESSAGE);
+        };
+    }
+
+    public MessageTransporter<String, WorkerTransportMessage> createMessageTransporterIfConfigured() {
+        return switch (transporterType) {
+            case QUEUE_BASED -> (inputQueue != null && outputQueue != null)
+                    ? MessageTransporterFactory.createQueueBased(inputQueue, outputQueue)
+                    : null;
+            case MULTI_LEVEL -> MessageTransporterFactory.createMultiLevel();
+            case API_BASED -> null;
         };
     }
 
@@ -130,6 +168,7 @@ public class TransportRuntimeComposition {
         bootstraps.add(transportAdapterBootstrap != null
                 ? transportAdapterBootstrap
                 : new WebSocketTransportAdapterBootstrap(defaultWebSocketAdapterConfig));
+        bootstraps.add(new SocketTransportAdapterBootstrap(defaultSocketAdapterConfig));
         bootstraps.addAll(additionalTransportAdapterBootstraps);
         return List.copyOf(bootstraps);
     }

@@ -75,28 +75,28 @@ public class MassWebSocketAdapter {
     }
 
     private void startDispatcher() {
-        logger.info("Starting WebSocket dispatcher...");
+        logger.info("Starting WebSocket compatibility dispatcher shell...");
 
         try {
             messageDispatcher = new WebSocketMessageDispatcher(dispatcherContext);
             messageDispatcher.start();
-            logger.info("WebSocket dispatcher started successfully");
+            logger.info("WebSocket compatibility dispatcher shell started successfully");
         } catch (Exception e) {
-            logger.error("Failed to start WebSocket dispatcher", e);
-            throw new RuntimeException("Failed to start WebSocket dispatcher", e);
+            logger.error("Failed to start WebSocket compatibility dispatcher shell", e);
+            throw new RuntimeException("Failed to start WebSocket compatibility dispatcher shell", e);
         }
     }
 
     private void stopDispatcher() {
-        logger.info("Stopping WebSocket dispatcher...");
+        logger.info("Stopping WebSocket compatibility dispatcher shell...");
 
         try {
             if (messageDispatcher != null) {
                 messageDispatcher.stop();
-                logger.info("WebSocket dispatcher stopped successfully");
+                logger.info("WebSocket compatibility dispatcher shell stopped successfully");
             }
         } catch (Exception e) {
-            logger.error("Error stopping WebSocket dispatcher", e);
+            logger.error("Error stopping WebSocket compatibility dispatcher shell", e);
         }
     }
 

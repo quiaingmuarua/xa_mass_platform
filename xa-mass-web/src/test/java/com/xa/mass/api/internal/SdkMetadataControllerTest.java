@@ -167,6 +167,13 @@ class SdkMetadataControllerTest {
         worker.setStatus(status);
         worker.setSupportedProjects(supportedProjects);
         worker.setSupportedEventCodes(supportedEventCodes);
+        if ("crawler-worker-1".equals(workerId)) {
+            worker.setAdapterId("websocket");
+            worker.setOnlineStrategy("realtime");
+        } else if ("scope-only-worker".equals(workerId)) {
+            worker.setAdapterId("polling");
+            worker.setOnlineStrategy("polling");
+        }
         return worker;
     }
 }

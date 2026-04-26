@@ -54,6 +54,12 @@ public class MockApplicationSpringBootApp {
     @Value("${mass.websocket.max-connections:1000}")
     private int maxConnections;
 
+    @Value("${mass.socket.enabled:false}")
+    private boolean massSocketEnabled;
+
+    @Value("${mass.socket.port:18089}")
+    private int massSocketPort;
+
     @Value("${mass.engine.worker-threads:8}")
     private int workerThreads;
 
@@ -90,6 +96,10 @@ public class MockApplicationSpringBootApp {
         log.info("HTTP control console: http://localhost:{}/", httpPort);
         log.info("HTTP API docs: http://localhost:{}/doc.html", httpPort);
         log.info("WebSocket adapter: ws://localhost:{}/ws", webSocketPort);
+        if (Boolean.parseBoolean(environment.getProperty("mass.socket.enabled", "false"))) {
+            String socketPort = environment.getProperty("mass.socket.port", "18089");
+            log.info("Socket adapter: tcp://localhost:{}", socketPort);
+        }
         log.info("==============================");
     }
 
@@ -102,6 +112,11 @@ public class MockApplicationSpringBootApp {
                         .webSocketAdapter(webSocket -> webSocket
                                 .server(massWebSocketPort)
                                 .enabled(true)
+                                .maxConnections(maxConnections))
+                        .socketAdapter(socket -> socket
+                                .enabled(massSocketEnabled)
+                                .serverEnabled(massSocketEnabled)
+                                .server(massSocketPort)
                                 .maxConnections(maxConnections))
                         .inputQueue(new InMemoryMessageQueue<>("input", String.class))
                         .outputQueue(new InMemoryMessageQueue<>("output", WorkerTransportMessage.class)))

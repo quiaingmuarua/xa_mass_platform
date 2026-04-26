@@ -13,9 +13,8 @@ import java.util.Set;
 /**
  * WebSocket-backed realtime worker adapter.
  *
- * <p>The current realtime delivery path is WebSocket-backed.
- * This adapter keeps that implementation label adapter-local while runtime
- * transport selection stays on the canonical {@code realtime} identity.
+ * <p>This adapter exposes concrete adapter identity {@code websocket} while
+ * still belonging to the coarse {@code realtime} transport family.
  */
 public final class WebSocketRealtimeWorkerAdapter implements WorkerAdapter {
 
@@ -41,7 +40,7 @@ public final class WebSocketRealtimeWorkerAdapter implements WorkerAdapter {
 
     @Override
     public Set<String> aliases() {
-        return Set.of("ws", WorkerTransportHints.REALTIME, "push");
+        return Set.of("ws");
     }
 
     @Override

@@ -117,11 +117,23 @@ public final class MassSdk {
             return this;
         }
 
+        /**
+         * @deprecated Prefer {@link #transport(Consumer)} with
+         * {@code webSocketAdapter(...)} so adapter-owned server settings stay on
+         * the concrete adapter rather than transport-global compatibility helpers.
+         */
+        @Deprecated(forRemoval = false)
         public Builder transportServer(int port) {
             delegate.transportServer(port);
             return this;
         }
 
+        /**
+         * @deprecated Prefer {@link #transport(Consumer)} with
+         * {@code webSocketAdapter(...)} so adapter-owned server settings stay on
+         * the concrete adapter rather than transport-global compatibility helpers.
+         */
+        @Deprecated(forRemoval = false)
         public Builder transportServer(int port, String transportEndpointPath) {
             delegate.transportServer(port, transportEndpointPath);
             return this;
@@ -194,6 +206,13 @@ public final class MassSdk {
             this.delegate = Objects.requireNonNull(delegate, "delegate");
         }
 
+        /**
+         * @deprecated Prefer explicit adapter toggles such as
+         * {@code webSocketAdapter(...)} or {@code socketAdapter(...)}. This
+         * transport-global helper mutates only the bundled default WebSocket
+         * adapter and is compatibility-only.
+         */
+        @Deprecated(forRemoval = false)
         public TransportOptions enabled(boolean enabled) {
             delegate.enabled(enabled);
             return this;
@@ -205,11 +224,29 @@ public final class MassSdk {
             return this;
         }
 
+        public TransportOptions socketAdapter(Consumer<SocketAdapterOptions> configurator) {
+            Objects.requireNonNull(configurator, "configurator");
+            delegate.socketAdapter(inner -> configurator.accept(new SocketAdapterOptions(inner)));
+            return this;
+        }
+
+        /**
+         * @deprecated Prefer {@code webSocketAdapter(...).serverEnabled(...)} so
+         * adapter-owned server settings stay on the concrete adapter rather than
+         * a transport-global compatibility helper.
+         */
+        @Deprecated(forRemoval = false)
         public TransportOptions transportServerEnabled(boolean enabled) {
             delegate.transportServerEnabled(enabled);
             return this;
         }
 
+        /**
+         * @deprecated Prefer {@code webSocketAdapter(...).endpointPath(...)} so
+         * adapter-owned server settings stay on the concrete adapter rather than
+         * a transport-global compatibility helper.
+         */
+        @Deprecated(forRemoval = false)
         public TransportOptions transportEndpointPath(String transportEndpointPath) {
             delegate.transportEndpointPath(transportEndpointPath);
             return this;
@@ -219,6 +256,13 @@ public final class MassSdk {
          * Advanced embedding seam for replacing the default inbound transport
          * server adapter.
          */
+        /**
+         * @deprecated Prefer
+         * {@code webSocketAdapter(...).transportServerFactory(...)} so adapter
+         * bootstrap overrides stay attached to the concrete adapter rather than a
+         * transport-global compatibility helper.
+         */
+        @Deprecated(forRemoval = false)
         public TransportOptions transportServerFactory(
                 TransportServerFactory<TransportServerFactoryContext> transportServerFactory) {
             delegate.transportServerFactory(transportServerFactory);
@@ -234,6 +278,14 @@ public final class MassSdk {
             return this;
         }
 
+        /**
+         * @deprecated Prefer adapter-owned configuration such as
+         * {@code webSocketAdapter(...).maxConnections(...)} or
+         * {@code socketAdapter(...).maxConnections(...)}. This transport-global
+         * helper mutates only the bundled default WebSocket adapter and is
+         * compatibility-only.
+         */
+        @Deprecated(forRemoval = false)
         public TransportOptions maxConnections(int maxConnections) {
             delegate.maxConnections(maxConnections);
             return this;
@@ -318,6 +370,34 @@ public final class MassSdk {
         public WebSocketAdapterOptions transportServerFactory(
                 TransportServerFactory<TransportServerFactoryContext> transportServerFactory) {
             delegate.transportServerFactory(transportServerFactory);
+            return this;
+        }
+    }
+
+    public static final class SocketAdapterOptions {
+        private final MassApplicationBuilder.SocketAdapterBuilder delegate;
+
+        private SocketAdapterOptions(MassApplicationBuilder.SocketAdapterBuilder delegate) {
+            this.delegate = Objects.requireNonNull(delegate, "delegate");
+        }
+
+        public SocketAdapterOptions enabled(boolean enabled) {
+            delegate.enabled(enabled);
+            return this;
+        }
+
+        public SocketAdapterOptions serverEnabled(boolean enabled) {
+            delegate.serverEnabled(enabled);
+            return this;
+        }
+
+        public SocketAdapterOptions server(int port) {
+            delegate.server(port);
+            return this;
+        }
+
+        public SocketAdapterOptions maxConnections(int maxConnections) {
+            delegate.maxConnections(maxConnections);
             return this;
         }
     }

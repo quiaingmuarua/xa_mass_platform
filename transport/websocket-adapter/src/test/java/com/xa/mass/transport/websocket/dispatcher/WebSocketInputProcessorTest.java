@@ -1,12 +1,10 @@
 package com.xa.mass.transport.websocket.dispatcher;
 
 import com.google.gson.JsonObject;
-import com.xa.mass.base.channel.tranporter.MessageTransporter;
 import com.xa.mass.transport.websocket.queue.WebSocketTransportFrameCodec;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.channel.NoopWorkerSystemEventChannel;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
-import com.xa.mass.transport.model.WorkerTransportMessage;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -15,16 +13,12 @@ import java.util.concurrent.atomic.AtomicReference;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
 
 class WebSocketInputProcessorTest {
 
     private WebSocketTransportFrameCodec codec;
     private WebSocketDispatcherContext context;
-    private MessageTransporter<String, WorkerTransportMessage> transporter;
     private WorkerEndpointRegistry endpointRegistry;
     private WebSocketInputProcessor inputProcessor;
 
@@ -32,7 +26,6 @@ class WebSocketInputProcessorTest {
     @SuppressWarnings("unchecked")
     void setUp() {
         codec = new WebSocketTransportFrameCodec();
-        transporter = mock(MessageTransporter.class);
         endpointRegistry = mock(WorkerEndpointRegistry.class);
         context = createContext(null);
         inputProcessor = new WebSocketInputProcessor(context);
@@ -55,7 +48,6 @@ class WebSocketInputProcessorTest {
         boolean result = inputProcessor.process(codec.getGson().toJson(unsupportedFrame));
 
         assertTrue(result);
-        verify(transporter, never()).sendOutput(any());
     }
 
     @Test
@@ -76,12 +68,10 @@ class WebSocketInputProcessorTest {
         assertTrue(capturedReport.get().isSuccess());
         assertEquals("ok", capturedReport.get().getDetail());
         assertEquals("SUCCESS", capturedReport.get().getOutput().get("status"));
-        verify(transporter, never()).sendOutput(any());
     }
 
     private WebSocketDispatcherContext createContext(TaskResultIngestChannel taskResultIngestChannel) {
         return new WebSocketDispatcherContext(
-                transporter,
                 endpointRegistry,
                 codec,
                 taskResultIngestChannel,

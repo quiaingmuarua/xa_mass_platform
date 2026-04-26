@@ -74,6 +74,7 @@ class WorkerApiControllerTest {
         worker.setStatus(WorkerStatus.ONLINE);
         worker.setWorkerGroupId("group-a");
         worker.setAgentVersion("1.2.3");
+        worker.setAdapterId("websocket");
         worker.setOnlineStrategy("realtime");
         worker.setSupportedProjects(List.of("demoApp"));
         worker.setSupportedEventCodes(List.of("demo.dispatch"));
@@ -100,6 +101,7 @@ class WorkerApiControllerTest {
                 .andExpect(jsonPath("$.data.items[0].supportedEventCodes[0]").value("demo.dispatch"))
                 .andExpect(jsonPath("$.data.items[0].eventBindings[0].eventCode").value("demo.dispatch"))
                 .andExpect(jsonPath("$.data.items[0].eventBindings[0].projectCodes[0]").value("demoApp"))
+                .andExpect(jsonPath("$.data.items[0].adapterId").value("websocket"))
                 .andExpect(jsonPath("$.data.items[0].transportHint").value("realtime"))
                 .andExpect(jsonPath("$.data.items[0].connections[0].endpointId").value("ws-1"))
                 .andExpect(jsonPath("$.data.items[0].hasActiveEndpoint").value(true))

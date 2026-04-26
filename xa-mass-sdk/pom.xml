@@ -47,6 +47,11 @@
         </dependency>
         <dependency>
             <groupId>com.xa.mass</groupId>
+            <artifactId>xa-mass-transport-socket</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.xa.mass</groupId>
             <artifactId>xa-mass-transport-websocket</artifactId>
             <version>${project.version}</version>
         </dependency>

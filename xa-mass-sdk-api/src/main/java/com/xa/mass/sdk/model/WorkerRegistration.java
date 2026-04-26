@@ -17,6 +17,7 @@ public final class WorkerRegistration {
     @Deprecated(forRemoval = false)
     private final List<String> supportedEventCodes;
     private final List<WorkerEventBinding> eventBindings;
+    private final String adapterId;
     private final String transportHint;
     private final Map<String, String> attributes;
 
@@ -26,6 +27,7 @@ public final class WorkerRegistration {
         this.supportedProjects = immutableListCopy(builder.supportedProjects);
         this.supportedEventCodes = immutableListCopy(builder.supportedEventCodes);
         this.eventBindings = immutableBindingCopy(builder.eventBindings);
+        this.adapterId = builder.adapterId;
         this.transportHint = builder.transportHint;
         this.attributes = immutableMapCopy(builder.attributes);
     }
@@ -64,6 +66,10 @@ public final class WorkerRegistration {
         return eventBindings;
     }
 
+    public String getAdapterId() {
+        return adapterId;
+    }
+
     public String getTransportHint() {
         return transportHint;
     }
@@ -81,6 +87,7 @@ public final class WorkerRegistration {
                 && Objects.equals(supportedProjects, that.supportedProjects)
                 && Objects.equals(supportedEventCodes, that.supportedEventCodes)
                 && Objects.equals(eventBindings, that.eventBindings)
+                && Objects.equals(adapterId, that.adapterId)
                 && Objects.equals(transportHint, that.transportHint)
                 && Objects.equals(attributes, that.attributes);
     }
@@ -93,6 +100,7 @@ public final class WorkerRegistration {
                 supportedProjects,
                 supportedEventCodes,
                 eventBindings,
+                adapterId,
                 transportHint,
                 attributes
         );
@@ -106,6 +114,7 @@ public final class WorkerRegistration {
                 ", supportedProjects=" + supportedProjects +
                 ", supportedEventCodes=" + supportedEventCodes +
                 ", eventBindings=" + eventBindings +
+                ", adapterId='" + adapterId + '\'' +
                 ", transportHint='" + transportHint + '\'' +
                 ", attributes=" + attributes +
                 '}';
@@ -138,6 +147,7 @@ public final class WorkerRegistration {
         private List<String> supportedProjects = Collections.emptyList();
         private List<String> supportedEventCodes = Collections.emptyList();
         private List<WorkerEventBinding> eventBindings = Collections.emptyList();
+        private String adapterId;
         private String transportHint;
         private Map<String, String> attributes = Collections.emptyMap();
 
@@ -178,6 +188,11 @@ public final class WorkerRegistration {
 
         public Builder eventBindings(List<WorkerEventBinding> eventBindings) {
             this.eventBindings = eventBindings != null ? eventBindings : Collections.emptyList();
+            return this;
+        }
+
+        public Builder adapterId(String adapterId) {
+            this.adapterId = adapterId;
             return this;
         }
 

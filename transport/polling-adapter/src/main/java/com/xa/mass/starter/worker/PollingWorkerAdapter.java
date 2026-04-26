@@ -44,7 +44,7 @@ public class PollingWorkerAdapter implements WorkerAdapter, TaskPullChannel {
 
     @Override
     public Set<String> aliases() {
-        return Set.of("pull", "queue", WorkerTransportHints.POLLING);
+        return Set.of("pull", "queue");
     }
 
     @Override

@@ -19,6 +19,7 @@ public class Worker {
     private List<String> supportedProjects;
     private List<String> supportedEventCodes;
     private String workerGroupId;
+    private String adapterId;
     private String onlineStrategy;
     private Map<String, String> attributes = Collections.emptyMap();
     private LocalDateTime createTime;
@@ -118,6 +119,14 @@ public class Worker {
         return onlineStrategy;
     }
 
+    public String getAdapterId() {
+        return adapterId;
+    }
+
+    public void setAdapterId(String adapterId) {
+        this.adapterId = adapterId;
+    }
+
     public void setOnlineStrategy(String onlineStrategy) {
         this.onlineStrategy = onlineStrategy;
     }
@@ -209,6 +218,7 @@ public class Worker {
                 ", supportedProjects=" + supportedProjects +
                 ", supportedEventCodes=" + supportedEventCodes +
                 ", workerGroupId='" + workerGroupId + '\'' +
+                ", adapterId='" + adapterId + '\'' +
                 ", onlineStrategy='" + onlineStrategy + '\'' +
                 ", attributes=" + attributes +
                 ", createTime=" + createTime +

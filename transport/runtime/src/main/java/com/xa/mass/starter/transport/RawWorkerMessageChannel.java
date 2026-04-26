@@ -11,10 +11,19 @@ package com.xa.mass.starter.transport;
 public interface RawWorkerMessageChannel {
 
     /**
+     * Returns the concrete adapter identity served by this raw side channel.
+     */
+    String adapterId();
+
+    /**
      * Returns whether this channel can confidently route a raw message to the
      * given worker under the current runtime state.
      */
-    boolean supports(String workerId);
+    default boolean supports(String workerId, String workerAdapterId) {
+        return adapterId() != null
+                && workerAdapterId != null
+                && adapterId().equalsIgnoreCase(workerAdapterId.trim());
+    }
 
     /**
      * Sends a raw transport payload to a concrete worker endpoint.

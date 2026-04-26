@@ -203,6 +203,7 @@ public class MockRuntimeDataLoader implements MassBootstrapDataProvider {
                 .workerGroupId(worker.getWorkerGroupId())
                 .supportedProjects(worker.getSupportedProjects())
                 .supportedEventCodes(worker.getSupportedEventCodes())
+                .adapterId(worker.getAdapterId())
                 .transportHint(worker.getOnlineStrategy())
                 .attributes(worker.getAttributes())
                 .build();

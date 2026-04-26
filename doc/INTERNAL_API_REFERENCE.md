@@ -154,7 +154,9 @@ Response notes:
 - `supportedEventCodes` remains the flat runtime capability list used by matching
 - `eventBindings` is the richer capability view derived from event metadata scope for each declared `supportedEventCode`
 - `supportedProjects` remains a separate coarse worker scope hint and is not used as capability identity
-- `transportHint` is the worker's declared runtime transport identity when present, otherwise it may fall back to the active endpoint transport
+- `adapterId` is the concrete runtime adapter identity (`polling`, `websocket`, `socket`, ...)
+- `transportHint` is the coarse transport family (`polling`, `realtime`, ...)
+- capability views expose both fields; runtime routing keys off `adapterId`, not `transportHint`
 - `connections` and `hasActiveEndpoint` come from the transport/session layer and are reachability facts, not capability truth
 
 ## 2.6 SDK Submitter Introspection API
@@ -657,6 +659,14 @@ Response shape:
 }
 ```
 
+Notes:
+
+- queue metrics are compatibility/observability data only; they are not the
+  transport runtime routing truth
+- `transporterAvailable` may be `false`, with queue sizes reported as `-1`,
+  when the embedded runtime is assembled through adapter-native paths without a
+  shared message transporter
+
 ### 4.3 Queue Metrics
 
 - Method: `GET`
@@ -789,9 +799,9 @@ Response shape:
 }
 ```
 
-## 8. External Worker Polling API
+## 8. External Worker Transport API
 
-External polling workers are the mainline integration path for non-Java runtimes such as Node, Python, or Go.
+External polling workers remain the mainline integration path for non-Java runtimes such as Node, Python, or Go, but the shared registration API also supports realtime adapters when the embedded runtime assembles them.
 
 For a full local dev walkthrough, including demo credentials and a runnable Node worker, use [EXTERNAL_WORKER_QUICKSTART.md](./EXTERNAL_WORKER_QUICKSTART.md).
 
@@ -806,7 +816,9 @@ Request notes:
 - `workerId` is required
 - `eventBindings` is required and is the canonical capability declaration
 - `transportHint` is optional; when omitted it defaults to `polling`
-- any non-polling transport hint is rejected
+- `adapterId` is optional for polling and required for realtime once the runtime assembles more than one realtime adapter
+- `transportHint` remains a coarse family; runtime routing resolves the concrete adapter through `adapterId`
+- when `transportHint=realtime` and `adapterId` is omitted, registration succeeds only if the runtime currently has exactly one realtime adapter assembled
 - caller must authenticate with an SDK credential that includes `worker:poll` and `attributes.workerId == workerId`
 
 Example:
@@ -814,6 +826,7 @@ Example:
 ```json
 {
   "workerId": "node-worker-1",
+  "adapterId": "polling",
   "workerGroupId": "node-runtime",
   "attributes": {
     "lang": "node"

@@ -298,6 +298,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
 
     @Override
     public void registerWorker(WorkerRegistration request) {
+        requireStartedEngine();
         EventResponse response = dispatchEventInternal(EventRequest.builder()
                 .event(PlatformEventCodes.WORKER_REGISTER)
                 .payload(Map.of("request", request))
@@ -308,6 +309,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
 
     @Override
     public void registerWorkerContext(WorkerContextRegistration request) {
+        requireStartedEngine();
         EventResponse response = dispatchEventInternal(EventRequest.builder()
                 .event(PlatformEventCodes.WORKER_CONTEXT_REGISTER)
                 .payload(Map.of("request", request))
@@ -317,12 +319,32 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
     }
 
     @Override
+    public String getWorkerAdapterId(String workerId) {
+        String normalizedWorkerId = requireWorkerId(workerId);
+        Worker worker = getWorker(normalizedWorkerId);
+        if (worker == null) {
+            throw new IllegalArgumentException("Worker not found: " + normalizedWorkerId);
+        }
+        if (delegate.getTransportRuntimeRegistry() != null) {
+            return delegate.getTransportRuntimeRegistry().resolveWorkerAdapterId(normalizedWorkerId);
+        }
+        if (worker.getAdapterId() == null || worker.getAdapterId().isBlank()) {
+            throw new IllegalStateException("Worker adapterId is not set: " + worker.getWorkerId());
+        }
+        return worker.getAdapterId().trim().toLowerCase(Locale.ROOT);
+    }
+
+    @Override
     public String getWorkerTransportHint(String workerId) {
         Worker worker = getWorker(requireWorkerId(workerId));
         if (worker == null) {
             throw new IllegalArgumentException("Worker not found: " + requireWorkerId(workerId));
         }
         String transportHint = WorkerTransportHints.normalize(worker.getOnlineStrategy());
+        if (transportHint == null && delegate.getTransportRuntimeRegistry() != null) {
+            String adapterId = delegate.getTransportRuntimeRegistry().resolveWorkerAdapterId(worker.getWorkerId());
+            transportHint = WorkerTransportHints.normalize(adapterId);
+        }
         if (transportHint == null) {
             throw new IllegalStateException("Worker transportHint/onlineStrategy is not set: " + worker.getWorkerId());
         }
@@ -336,7 +358,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
     @Deprecated(forRemoval = false)
     @Override
     public void addWorker(Worker worker) {
-        requireStartedEngine().addWorker(worker);
+        requireStartedEngine().addWorker(normalizeWorkerModel(worker));
     }
 
     /**
@@ -902,6 +924,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
                 .supportedProjects(readStringList(payload.get("supportedProjects")))
                 .supportedEventCodes(readStringList(payload.get("supportedEventCodes")))
                 .eventBindings(readWorkerEventBindings(payload.get("eventBindings")))
+                .adapterId(readString(payload, "adapterId", null))
                 .transportHint(readString(payload, "transportHint", null))
                 .attributes(readStringMap(payload.get("attributes")))
                 .build());
@@ -1111,6 +1134,13 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
         return null;
     }
 
+    private String requireNonBlank(String value, String fieldName) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException(fieldName + " must not be blank");
+        }
+        return value.trim();
+    }
+
     private String requireWorkerId(String workerId) {
         if (workerId == null || workerId.isBlank()) {
             throw new IllegalArgumentException("workerId must not be blank");
@@ -1125,17 +1155,21 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
     private WorkerRegistration normalizeWorkerRegistration(WorkerRegistration registration) {
         Objects.requireNonNull(registration, "registration");
         List<WorkerEventBinding> bindings = registration.getEventBindings();
-        if (bindings == null || bindings.isEmpty()) {
-            return registration;
-        }
-
         LinkedHashSet<String> supportedEventCodes = new LinkedHashSet<>();
         LinkedHashSet<String> supportedProjects = new LinkedHashSet<>();
-        for (WorkerEventBinding binding : bindings) {
-            EventDefinition definition = requireEnabledEventDefinition(binding.getEventCode());
-            supportedEventCodes.add(definition.getCode());
-            supportedProjects.addAll(resolveWorkerBindingProjects(definition, binding));
+        if (bindings != null && !bindings.isEmpty()) {
+            for (WorkerEventBinding binding : bindings) {
+                EventDefinition definition = requireEnabledEventDefinition(binding.getEventCode());
+                supportedEventCodes.add(definition.getCode());
+                supportedProjects.addAll(resolveWorkerBindingProjects(definition, binding));
+            }
+        } else {
+            supportedEventCodes.addAll(registration.getSupportedEventCodes());
+            supportedProjects.addAll(registration.getSupportedProjects());
         }
+        String normalizedTransportHint =
+                WorkerTransportHints.normalize(requireNonBlank(registration.getTransportHint(), "transportHint"));
+        String resolvedAdapterId = resolveRegistrationAdapterId(registration.getAdapterId(), normalizedTransportHint);
 
         return WorkerRegistration.builder()
                 .workerId(registration.getWorkerId())
@@ -1143,9 +1177,36 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
                 .supportedProjects(List.copyOf(supportedProjects))
                 .supportedEventCodes(List.copyOf(supportedEventCodes))
                 .eventBindings(bindings)
-                .transportHint(registration.getTransportHint())
+                .adapterId(resolvedAdapterId)
+                .transportHint(normalizedTransportHint)
                 .attributes(registration.getAttributes())
                 .build();
+    }
+
+    private Worker normalizeWorkerModel(Worker worker) {
+        Objects.requireNonNull(worker, "worker");
+        String transportHint =
+                WorkerTransportHints.normalize(requireNonBlank(worker.getOnlineStrategy(), "transportHint/onlineStrategy"));
+        String resolvedAdapterId = resolveRegistrationAdapterId(worker.getAdapterId(), transportHint);
+        worker.setAdapterId(resolvedAdapterId);
+        worker.setOnlineStrategy(transportHint);
+        return worker;
+    }
+
+    private String resolveRegistrationAdapterId(String requestedAdapterId, String transportHint) {
+        if (delegate.getTransportRuntimeRegistry() != null) {
+            return delegate.getTransportRuntimeRegistry().resolveRegistrationAdapterId(requestedAdapterId, transportHint);
+        }
+        if (requestedAdapterId != null && !requestedAdapterId.isBlank()) {
+            return requestedAdapterId.trim().toLowerCase(Locale.ROOT);
+        }
+        if (WorkerTransportHints.POLLING.equals(transportHint)) {
+            return WorkerTransportHints.POLLING;
+        }
+        if (WorkerTransportHints.REALTIME.equals(transportHint)) {
+            return "websocket";
+        }
+        throw new IllegalArgumentException("Unsupported worker transportHint '" + transportHint + "'");
     }
 
     private EventDefinition requireEnabledEventDefinition(String eventCode) {
@@ -1383,10 +1444,6 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
 
     @Override
     public Map<String, Object> enqueueRawMessage(Map<String, Object> request) {
-        MessageTransporter<?, ?> messageTransporter = delegate.getMessageTransporter();
-        if (messageTransporter == null) {
-            return Map.of("success", false, "msg", "message transporter is not initialized");
-        }
         Object workerId = request.get("workerId");
         if (!(workerId instanceof String workerIdText) || workerIdText.isBlank()) {
             return Map.of("success", false, "msg", "workerId is required");
@@ -1406,16 +1463,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
 
     @Override
     public Map<String, Object> getQueueDetail() {
-        MessageTransporter<?, ?> messageTransporter = delegate.getMessageTransporter();
-        int inputSize = safeInputQueueSize(messageTransporter);
-        int outputSize = safeOutputQueueSize(messageTransporter);
-        Map<String, Object> map = new LinkedHashMap<>();
-        map.put("inputQueue", inputSize);
-        map.put("outputQueue", outputSize);
-        map.put("inputQueueSize", inputSize);
-        map.put("outputQueueSize", outputSize);
-        map.put("transporterAvailable", messageTransporter != null);
-        return map;
+        return delegate.getTransportQueueDetail();
     }
 
     @Override
@@ -1502,22 +1550,6 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
     private WorkerEndpointInspector resolveEndpointInspector() {
         WorkerEndpointRegistry endpointRegistry = resolveEndpointRegistry();
         return endpointRegistry instanceof WorkerEndpointInspector inspector ? inspector : null;
-    }
-
-    private int safeInputQueueSize(MessageTransporter<?, ?> messageTransporter) {
-        try {
-            return messageTransporter != null ? messageTransporter.inputQueueSize() : -1;
-        } catch (Exception ignored) {
-            return -1;
-        }
-    }
-
-    private int safeOutputQueueSize(MessageTransporter<?, ?> messageTransporter) {
-        try {
-            return messageTransporter != null ? messageTransporter.outputQueueSize() : -1;
-        } catch (Exception ignored) {
-            return -1;
-        }
     }
 
     private Map<String, Object> toRuleItem(RuleDefinition rule) {

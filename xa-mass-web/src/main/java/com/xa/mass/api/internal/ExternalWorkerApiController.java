@@ -49,6 +49,7 @@ public class ExternalWorkerApiController {
         WorkerRegistration request = WorkerRegistration.builder()
                 .workerId(workerId)
                 .workerGroupId(blankToNull(requestBody.getWorkerGroupId()))
+                .adapterId(blankToNull(requestBody.getAdapterId()))
                 .transportHint(transportHint)
                 .attributes(requestBody.getAttributes())
                 .eventBindings(eventBindings)
@@ -56,6 +57,7 @@ public class ExternalWorkerApiController {
         externalWorkerOperations.registerWorker(request);
         return ApiResponse.success(Map.of(
                 "workerId", request.getWorkerId(),
+                "adapterId", externalWorkerOperations.getWorkerAdapterId(workerId),
                 "transportHint", transportHint,
                 "eventBindings", request.getEventBindings()
         ));
@@ -94,7 +96,11 @@ public class ExternalWorkerApiController {
         String boundWorkerId = requireBoundWorkerId(submitter, workerId);
         requirePollingWorker(boundWorkerId, "online");
         externalWorkerOperations.workerOnline(boundWorkerId, requestBody == null ? null : requestBody.getReason());
-        return ApiResponse.success(presenceResponse(boundWorkerId, "online", WorkerTransportHints.POLLING));
+        return ApiResponse.success(presenceResponse(
+                boundWorkerId,
+                "online",
+                externalWorkerOperations.getWorkerAdapterId(boundWorkerId),
+                WorkerTransportHints.POLLING));
     }
 
     @PostMapping("/workers/{workerId}/heartbeat")
@@ -107,7 +113,11 @@ public class ExternalWorkerApiController {
         String boundWorkerId = requireBoundWorkerId(submitter, workerId);
         requirePollingWorker(boundWorkerId, "heartbeat");
         externalWorkerOperations.workerHeartbeat(boundWorkerId, requestBody == null ? null : requestBody.getReason());
-        return ApiResponse.success(presenceResponse(boundWorkerId, "heartbeat", WorkerTransportHints.POLLING));
+        return ApiResponse.success(presenceResponse(
+                boundWorkerId,
+                "heartbeat",
+                externalWorkerOperations.getWorkerAdapterId(boundWorkerId),
+                WorkerTransportHints.POLLING));
     }
 
     @PostMapping("/workers/{workerId}/offline")
@@ -120,7 +130,11 @@ public class ExternalWorkerApiController {
         String boundWorkerId = requireBoundWorkerId(submitter, workerId);
         requirePollingWorker(boundWorkerId, "offline");
         externalWorkerOperations.workerOffline(boundWorkerId, requestBody == null ? null : requestBody.getReason());
-        return ApiResponse.success(presenceResponse(boundWorkerId, "offline", WorkerTransportHints.POLLING));
+        return ApiResponse.success(presenceResponse(
+                boundWorkerId,
+                "offline",
+                externalWorkerOperations.getWorkerAdapterId(boundWorkerId),
+                WorkerTransportHints.POLLING));
     }
 
     @PostMapping("/workers/{workerId}/poll")
@@ -299,10 +313,14 @@ public class ExternalWorkerApiController {
         }
     }
 
-    private Map<String, Object> presenceResponse(String workerId, String action, String transportHint) {
+    private Map<String, Object> presenceResponse(String workerId,
+                                                String action,
+                                                String adapterId,
+                                                String transportHint) {
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("workerId", requireNonBlank(workerId, "workerId"));
         response.put("action", action);
+        response.put("adapterId", requireNonBlank(adapterId, "adapterId"));
         response.put("transportHint", requireNonBlank(transportHint, "transportHint"));
         return response;
     }

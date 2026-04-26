@@ -3,11 +3,9 @@ package com.xa.mass.transport.websocket.dispatcher;
 import com.google.gson.JsonObject;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
-import com.xa.mass.base.channel.tranporter.MessageTransporter;
 import com.xa.mass.transport.websocket.queue.WebSocketTransportFrameCodec;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.channel.NoopWorkerSystemEventChannel;
-import com.xa.mass.transport.model.WorkerTransportMessage;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
@@ -15,6 +13,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -22,13 +21,11 @@ import static org.mockito.Mockito.when;
 class WebSocketTaskDispatchChannelTest {
 
     @Test
-    @SuppressWarnings("unchecked")
-    void publishesDispatchItemsToOutputTransporter() {
-        MessageTransporter<String, WorkerTransportMessage> transporter = mock(MessageTransporter.class);
+    void publishesDispatchItemsDirectlyToEndpointRegistry() {
         WorkerEndpointRegistry endpointRegistry = mock(WorkerEndpointRegistry.class);
+        when(endpointRegistry.sendMessage(org.mockito.ArgumentMatchers.eq("worker-1"), any())).thenReturn(true);
         WebSocketTransportFrameCodec codec = new WebSocketTransportFrameCodec();
         WebSocketDispatcherContext context = new WebSocketDispatcherContext(
-                transporter,
                 endpointRegistry,
                 codec,
                 null,
@@ -41,14 +38,10 @@ class WebSocketTaskDispatchChannelTest {
 
         publisher.dispatchTaskItems(List.of(com.xa.mass.transport.model.TaskDispatchItem.from(task, taskMsg)));
 
-        ArgumentCaptor<WorkerTransportMessage> captor = ArgumentCaptor.forClass(WorkerTransportMessage.class);
-        verify(transporter).sendOutput(captor.capture());
+        ArgumentCaptor<String> captor = ArgumentCaptor.forClass(String.class);
+        verify(endpointRegistry).sendMessage(org.mockito.ArgumentMatchers.eq("worker-1"), captor.capture());
 
-        WorkerTransportMessage delivery = captor.getValue();
-        assertEquals("worker-1", delivery.getWorkerId());
-        assertEquals("msg-1", delivery.getTraceId());
-
-        JsonObject message = codec.parseObject(delivery.getRawJson());
+        JsonObject message = codec.parseObject(captor.getValue());
         assertNotNull(message);
         assertEquals("msg-1", message.get("messageId").getAsString());
         assertEquals("worker-1", message.get("workerId").getAsString());

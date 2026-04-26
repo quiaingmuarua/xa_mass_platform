@@ -5,11 +5,14 @@ import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.worker.WorkerAdapter;
+import com.xa.mass.starter.transport.TransportBinding;
+import com.xa.mass.starter.transport.TransportRuntimeRegistry;
 import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.model.TaskDispatchItem;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
 
@@ -36,7 +39,7 @@ class TransportRoutingTaskMsgDispatchListenerTest {
         RecordingAdapter pollingAdapter = new RecordingAdapter(WorkerTransportHints.POLLING);
         TransportRoutingTaskMsgDispatchListener listener = new TransportRoutingTaskMsgDispatchListener(
                 workerManager,
-                List.of(webSocketAdapter, pollingAdapter)
+                runtimeRegistry(workerManager, webSocketAdapter, pollingAdapter)
         );
 
         Task task = new Task();
@@ -70,7 +73,7 @@ class TransportRoutingTaskMsgDispatchListenerTest {
         RecordingAdapter realtimeAdapter = new RecordingAdapter("websocket-v2", WorkerTransportHints.REALTIME);
         TransportRoutingTaskMsgDispatchListener listener = new TransportRoutingTaskMsgDispatchListener(
                 workerManager,
-                List.of(realtimeAdapter)
+                runtimeRegistry(workerManager, realtimeAdapter)
         );
 
         Task task = new Task();
@@ -97,7 +100,7 @@ class TransportRoutingTaskMsgDispatchListenerTest {
         RecordingAdapter webSocketAdapter = new RecordingAdapter("websocket");
         TransportRoutingTaskMsgDispatchListener listener = new TransportRoutingTaskMsgDispatchListener(
                 workerManager,
-                List.of(webSocketAdapter)
+                runtimeRegistry(workerManager, webSocketAdapter)
         );
 
         Task task = new Task();
@@ -112,7 +115,7 @@ class TransportRoutingTaskMsgDispatchListenerTest {
                 IllegalStateException.class,
                 () -> listener.onTaskMsgsReady(task, List.of(taskMsg))
         );
-        assertEquals("Worker transportHint/onlineStrategy must be set before dispatch: missing-transport-worker",
+        assertEquals("Worker adapterId is not set and transportHint/onlineStrategy is not set: missing-transport-worker",
                 error.getMessage());
     }
 
@@ -128,7 +131,7 @@ class TransportRoutingTaskMsgDispatchListenerTest {
         RecordingAdapter pollingAdapter = new RecordingAdapter(WorkerTransportHints.POLLING);
         TransportRoutingTaskMsgDispatchListener listener = new TransportRoutingTaskMsgDispatchListener(
                 workerManager,
-                List.of(pollingAdapter)
+                runtimeRegistry(workerManager, pollingAdapter)
         );
 
         Task task = new Task();
@@ -174,10 +177,10 @@ class TransportRoutingTaskMsgDispatchListenerTest {
         @Override
         public Set<String> aliases() {
             if ("websocket".equals(protocol)) {
-                return Set.of("ws", WorkerTransportHints.REALTIME, "push");
+                return Set.of("ws");
             }
             if ("polling".equals(protocol)) {
-                return Set.of("pull", "queue", WorkerTransportHints.POLLING);
+                return Set.of("pull", "queue");
             }
             return Set.of();
         }
@@ -187,6 +190,27 @@ class TransportRoutingTaskMsgDispatchListenerTest {
             for (TaskDispatchItem item : items) {
                 dispatchedMessageIds.add(item.getMessageId());
             }
+        }
+    }
+
+    private static TransportRuntimeRegistry runtimeRegistry(WorkerManager workerManager, RecordingAdapter... adapters) {
+        return new TransportRuntimeRegistry(
+                workerManager,
+                report -> true,
+                new NoopWorkerSystemEventChannel(),
+                Arrays.stream(adapters)
+                        .map(adapter -> TransportBinding.builder(adapter).build())
+                        .toList()
+        );
+    }
+
+    private static final class NoopWorkerSystemEventChannel implements com.xa.mass.transport.channel.WorkerSystemEventChannel {
+        @Override
+        public void publishWorkerOnline(String workerId, String reason, String traceId) {
+        }
+
+        @Override
+        public void publishWorkerOffline(String workerId, String reason, String traceId) {
         }
     }
 }

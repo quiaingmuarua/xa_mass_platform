@@ -51,6 +51,17 @@ public final class ExternalNodeWorkerProcess implements AutoCloseable {
         ));
     }
 
+    public static ExternalNodeWorkerProcess startSocket(String workerId, String host, int port) throws Exception {
+        Objects.requireNonNull(workerId, "workerId");
+        Objects.requireNonNull(host, "host");
+
+        return startClasspathScript("node/node_socket_worker.mjs", Map.of(
+                "WORKER_ID", workerId,
+                "SOCKET_HOST", host,
+                "SOCKET_PORT", String.valueOf(port)
+        ));
+    }
+
     public static ExternalNodeWorkerProcess startPollingExample(String baseUrl,
                                                                 String workerId,
                                                                 String workerKey) throws Exception {

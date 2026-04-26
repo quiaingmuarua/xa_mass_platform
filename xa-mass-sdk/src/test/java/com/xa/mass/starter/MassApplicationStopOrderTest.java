@@ -9,6 +9,7 @@ import com.xa.mass.starter.transport.RawWorkerMessageChannel;
 import com.xa.mass.starter.transport.TransportAdapterBootstrap;
 import com.xa.mass.starter.transport.TransportAdapterBootstrapContext;
 import com.xa.mass.starter.transport.TransportAdapterContribution;
+import com.xa.mass.starter.transport.TransportRuntimeRegistry;
 import com.xa.mass.transport.TransportServer;
 import org.junit.jupiter.api.Test;
 
@@ -95,23 +96,30 @@ class MassApplicationStopOrderTest {
     @Test
     void rawTransportMessageFallsBackToSingleRegisteredChannel() throws Exception {
         RawWorkerMessageChannel channel = mock(RawWorkerMessageChannel.class);
+        TransportRuntimeRegistry registry = mock(TransportRuntimeRegistry.class);
+        when(registry.resolveWorkerAdapterId("worker-1")).thenReturn("websocket");
+        when(channel.supports("worker-1", "websocket")).thenReturn(true);
         MassApplication app = new MassApplication(null, enabledWebSocket(), disabledEngine());
         inject(app, "rawWorkerMessageChannels", new ArrayList<>(List.of(channel)));
+        inject(app, "transportRuntimeRegistry", registry);
 
         assertTrue(app.sendRawTransportMessage("worker-1", "{\"hello\":1}", "trace-1"));
         verify(channel).send("worker-1", "{\"hello\":1}", "trace-1");
-        verify(channel, never()).supports(anyString());
+        verify(channel).supports("worker-1", "websocket");
     }
 
     @Test
     void rawTransportMessageUsesSupportingChannelWhenMultipleAdaptersExist() throws Exception {
         RawWorkerMessageChannel first = mock(RawWorkerMessageChannel.class);
         RawWorkerMessageChannel second = mock(RawWorkerMessageChannel.class);
-        when(first.supports("worker-2")).thenReturn(false);
-        when(second.supports("worker-2")).thenReturn(true);
+        TransportRuntimeRegistry registry = mock(TransportRuntimeRegistry.class);
+        when(registry.resolveWorkerAdapterId("worker-2")).thenReturn("websocket");
+        when(first.supports("worker-2", "websocket")).thenReturn(false);
+        when(second.supports("worker-2", "websocket")).thenReturn(true);
 
         MassApplication app = new MassApplication(null, enabledWebSocket(), disabledEngine());
         inject(app, "rawWorkerMessageChannels", new ArrayList<>(List.of(first, second)));
+        inject(app, "transportRuntimeRegistry", registry);
 
         assertTrue(app.sendRawTransportMessage("worker-2", "{\"hello\":2}", "trace-2"));
         verify(first, never()).send(anyString(), anyString(), anyString());
@@ -122,11 +130,14 @@ class MassApplicationStopOrderTest {
     void rawTransportMessageReturnsFalseWhenNoChannelAcceptsWorker() throws Exception {
         RawWorkerMessageChannel first = mock(RawWorkerMessageChannel.class);
         RawWorkerMessageChannel second = mock(RawWorkerMessageChannel.class);
-        when(first.supports("worker-3")).thenReturn(false);
-        when(second.supports("worker-3")).thenReturn(false);
+        TransportRuntimeRegistry registry = mock(TransportRuntimeRegistry.class);
+        when(registry.resolveWorkerAdapterId("worker-3")).thenReturn("websocket");
+        when(first.supports("worker-3", "websocket")).thenReturn(false);
+        when(second.supports("worker-3", "websocket")).thenReturn(false);
 
         MassApplication app = new MassApplication(null, enabledWebSocket(), disabledEngine());
         inject(app, "rawWorkerMessageChannels", new ArrayList<>(List.of(first, second)));
+        inject(app, "transportRuntimeRegistry", registry);
 
         assertFalse(app.sendRawTransportMessage("worker-3", "{\"hello\":3}", "trace-3"));
         verify(first, never()).send(anyString(), anyString(), anyString());
@@ -157,8 +168,8 @@ class MassApplicationStopOrderTest {
         StaticConfiguredTransportServer transportServer = new StaticConfiguredTransportServer(19093);
         transport.addTransportAdapterBootstrap(new StaticTransportServerBootstrap(transportServer));
 
-        transport.setTransportServerPort(18080);
-        transport.setTransportEndpointPath("/default");
+        transport.getDefaultWebSocketAdapterConfig().setServerPort(18080);
+        transport.getDefaultWebSocketAdapterConfig().setEndpointPath("/default");
         MassApplication app = new MassApplication(null, transport, disabledEngine());
 
         try {
@@ -174,13 +185,15 @@ class MassApplicationStopOrderTest {
     // ---- helpers ----
 
     private TransportConfig enabledWebSocket() {
-        TransportConfig c = new TransportConfig(); c.setEnabled(true); return c;
+        TransportConfig c = new TransportConfig();
+        c.getDefaultWebSocketAdapterConfig().setEnabled(true);
+        return c;
     }
 
     private TransportConfig disabledTransportWithQueues() {
         TransportConfig c = new TransportConfig();
-        c.setEnabled(false);
-        c.setTransportServerEnabled(false);
+        c.getDefaultWebSocketAdapterConfig().setEnabled(false);
+        c.getDefaultWebSocketAdapterConfig().setServerEnabled(false);
         c.setInputQueue(new InMemoryMessageQueue<>("transport-input", String.class));
         c.setOutputQueue(new InMemoryMessageQueue<>("transport-output", WorkerTransportMessage.class));
         return c;

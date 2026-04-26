@@ -120,6 +120,7 @@ public class SdkMetadataController {
                     item.put("supportedProjects", normalizeProjectCodes(worker.getSupportedProjects()));
                     item.put("supportedEventCodes", normalizeProjectCodes(worker.getSupportedEventCodes()));
                     item.put("eventBindings", WorkerCapabilityViewSupport.deriveEventBindings(worker, metadataCatalog));
+                    item.put("adapterId", WorkerCapabilityViewSupport.resolveAdapterId(worker, connections));
                     item.put("transportHint", WorkerCapabilityViewSupport.resolveTransportHint(worker, connections));
                     item.put("attributes", worker.getAttributes());
                     item.put("online", worker.getStatus() != null && "ONLINE".equals(worker.getStatus().name()));

@@ -3,6 +3,7 @@ package com.xa.mass.transport.websocket.runtime;
 import com.xa.mass.base.channel.tranporter.MessageTransporter;
 import com.xa.mass.engine.worker.WorkerAdapter;
 import com.xa.mass.transport.websocket.dispatcher.WebSocketDispatcherContext;
+import com.xa.mass.transport.websocket.dispatcher.WebSocketInputProcessor;
 import com.xa.mass.transport.websocket.dispatcher.context.WebSocketDispatchRuntimeContext;
 import com.xa.mass.transport.websocket.queue.WebSocketTransportFrameCodec;
 import com.xa.mass.transport.websocket.server.WebSocketServerImpl;
@@ -35,14 +36,30 @@ public final class WebSocketEmbeddedRuntimeSupport {
     }
 
     public static WebSocketDispatchRuntimeContext createDispatcherContext(
-            MessageTransporter<String, WorkerTransportMessage> messageTransporter,
             WorkerEndpointRegistry endpointRegistry,
             TaskResultIngestChannel taskResultIngestChannel,
             WorkerSystemEventChannel systemEventChannel) {
         return new WebSocketDispatcherContext(
-                messageTransporter,
                 endpointRegistry,
                 new WebSocketTransportFrameCodec(),
+                taskResultIngestChannel,
+                systemEventChannel
+        );
+    }
+
+    /**
+     * @deprecated WebSocket runtime context no longer depends on a shared
+     * message transporter. Keep this overload only for compatibility with
+     * external embedders that still call the old helper shape.
+     */
+    @Deprecated(forRemoval = false)
+    public static WebSocketDispatchRuntimeContext createDispatcherContext(
+            MessageTransporter<String, WorkerTransportMessage> messageTransporter,
+            WorkerEndpointRegistry endpointRegistry,
+            TaskResultIngestChannel taskResultIngestChannel,
+            WorkerSystemEventChannel systemEventChannel) {
+        return createDispatcherContext(
+                endpointRegistry,
                 taskResultIngestChannel,
                 systemEventChannel
         );
@@ -67,7 +84,7 @@ public final class WebSocketEmbeddedRuntimeSupport {
                 port,
                 endpointPath,
                 dispatcherContext.getFrameCodec(),
-                dispatcherContext.getMessageTransporter()::sendInput,
+                new WebSocketInputProcessor(dispatcherContext)::process,
                 endpointRegistry
         );
     }

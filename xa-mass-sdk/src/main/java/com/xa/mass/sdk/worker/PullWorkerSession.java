@@ -17,12 +17,14 @@ import java.util.Objects;
 public class PullWorkerSession {
 
     private final String workerId;
+    private final String adapterId;
     private final TaskPullChannel taskPullChannel;
     private final TaskResultIngestChannel taskResultIngestChannel;
     private final WorkerSystemEventChannel systemEventChannel;
     private final String transportHint;
 
     public PullWorkerSession(String workerId,
+                             String adapterId,
                              TaskPullChannel taskPullChannel,
                              TaskResultIngestChannel taskResultIngestChannel,
                              WorkerSystemEventChannel systemEventChannel,
@@ -31,6 +33,7 @@ public class PullWorkerSession {
             throw new IllegalArgumentException("workerId must not be blank");
         }
         this.workerId = workerId;
+        this.adapterId = Objects.requireNonNull(adapterId, "adapterId");
         this.taskPullChannel = Objects.requireNonNull(taskPullChannel, "taskPullChannel");
         this.taskResultIngestChannel = Objects.requireNonNull(taskResultIngestChannel, "taskResultIngestChannel");
         this.systemEventChannel = Objects.requireNonNull(systemEventChannel, "systemEventChannel");
@@ -39,6 +42,10 @@ public class PullWorkerSession {
 
     public String workerId() {
         return workerId;
+    }
+
+    public String adapterId() {
+        return adapterId;
     }
 
     public String transportHint() {

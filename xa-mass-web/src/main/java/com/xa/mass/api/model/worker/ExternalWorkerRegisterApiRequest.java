@@ -11,6 +11,7 @@ public class ExternalWorkerRegisterApiRequest extends AbstractUnknownFieldReques
 
     private String workerId;
     private String workerGroupId;
+    private String adapterId;
     private String transportHint;
     private Map<String, String> attributes;
     private List<ExternalWorkerEventBindingApiRequest> eventBindings;
@@ -29,6 +30,14 @@ public class ExternalWorkerRegisterApiRequest extends AbstractUnknownFieldReques
 
     public void setWorkerGroupId(String workerGroupId) {
         this.workerGroupId = workerGroupId;
+    }
+
+    public String getAdapterId() {
+        return adapterId;
+    }
+
+    public void setAdapterId(String adapterId) {
+        this.adapterId = adapterId;
     }
 
     public String getTransportHint() {

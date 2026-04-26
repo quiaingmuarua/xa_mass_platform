@@ -26,6 +26,7 @@
         <module>transport/api</module>
         <module>transport/polling-adapter</module>
         <module>transport/runtime</module>
+        <module>transport/socket-adapter</module>
         <module>xa-mass-engine</module>
         <module>transport/websocket-adapter</module>
         <module>xa-mass-sdk-api</module>

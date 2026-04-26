@@ -4,6 +4,7 @@ import com.xa.mass.base.model.Worker;
 import com.xa.mass.sdk.TransportOperations;
 import com.xa.mass.sdk.catalog.SdkMetadataCatalog;
 import com.xa.mass.sdk.event.EventDefinition;
+import com.xa.mass.transport.WorkerTransportHints;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -68,7 +69,7 @@ final class WorkerCapabilityViewSupport {
     }
 
     static String resolveTransportHint(Worker worker, List<Map<String, Object>> connections) {
-        String workerTransport = readTrimmed(worker == null ? null : worker.getOnlineStrategy());
+        String workerTransport = WorkerTransportHints.normalize(worker == null ? null : worker.getOnlineStrategy());
         if (workerTransport != null) {
             return workerTransport;
         }
@@ -76,9 +77,27 @@ final class WorkerCapabilityViewSupport {
             return null;
         }
         for (Map<String, Object> connection : connections) {
-            String connectionTransport = readTrimmed(connection == null ? null : connection.get("transport"));
+            String connectionTransport =
+                    WorkerTransportHints.normalize(readTrimmed(connection == null ? null : connection.get("transport")));
             if (connectionTransport != null) {
                 return connectionTransport;
+            }
+        }
+        return null;
+    }
+
+    static String resolveAdapterId(Worker worker, List<Map<String, Object>> connections) {
+        String workerAdapterId = readTrimmed(worker == null ? null : worker.getAdapterId());
+        if (workerAdapterId != null) {
+            return workerAdapterId;
+        }
+        if (connections == null || connections.isEmpty()) {
+            return null;
+        }
+        for (Map<String, Object> connection : connections) {
+            String connectionTransport = readTrimmed(connection == null ? null : connection.get("transport"));
+            if (connectionTransport != null) {
+                return connectionTransport.toLowerCase(java.util.Locale.ROOT);
             }
         }
         return null;

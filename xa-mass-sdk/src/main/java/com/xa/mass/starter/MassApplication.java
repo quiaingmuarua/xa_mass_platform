@@ -29,7 +29,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -122,8 +124,12 @@ public class MassApplication {
             endpointRegistry = transportRuntimeComposition.resolveWorkerEndpointRegistry();
             logger.info("Worker endpoint registry initialized");
 
-            messageTransporter = transportRuntimeComposition.createMessageTransporter();
-            logger.info("Message transporter created");
+            messageTransporter = transportRuntimeComposition.createMessageTransporterIfConfigured();
+            if (messageTransporter != null) {
+                logger.info("Message transporter created");
+            } else {
+                logger.info("No shared message transporter configured; continuing with adapter-native transport runtime");
+            }
 
             WorkerSystemEventChannel systemEventChannel = transportRuntimeComposition.resolveSystemEventChannel();
             TaskMsgDispatchListener taskMsgDispatchListener = null;
@@ -266,6 +272,7 @@ public class MassApplication {
         ResolvedPullWorkerTransport resolved = transportRuntimeRegistry.resolvePullWorkerTransport(workerId);
         return new PullWorkerSession(
                 resolved.getWorkerId(),
+                resolved.getAdapterId(),
                 resolved.getTaskPullChannel(),
                 resolved.getTaskResultIngestChannel(),
                 resolved.getSystemEventChannel(),
@@ -284,15 +291,12 @@ public class MassApplication {
         if (rawJson == null) {
             throw new IllegalArgumentException("rawJson must not be null");
         }
-        if (rawWorkerMessageChannels.isEmpty()) {
+        if (rawWorkerMessageChannels.isEmpty() || transportRuntimeRegistry == null) {
             return false;
         }
-        if (rawWorkerMessageChannels.size() == 1) {
-            rawWorkerMessageChannels.get(0).send(workerId, rawJson, traceId);
-            return true;
-        }
+        String workerAdapterId = transportRuntimeRegistry.resolveWorkerAdapterId(workerId);
         for (RawWorkerMessageChannel rawWorkerMessageChannel : rawWorkerMessageChannels) {
-            if (rawWorkerMessageChannel.supports(workerId)) {
+            if (rawWorkerMessageChannel.supports(workerId, workerAdapterId)) {
                 rawWorkerMessageChannel.send(workerId, rawJson, traceId);
                 return true;
             }
@@ -300,6 +304,24 @@ public class MassApplication {
         return false;
     }
 
+    public Map<String, Object> getTransportQueueDetail() {
+        int inputSize = safeInputQueueSize(messageTransporter);
+        int outputSize = safeOutputQueueSize(messageTransporter);
+        Map<String, Object> map = new LinkedHashMap<>();
+        map.put("inputQueue", inputSize);
+        map.put("outputQueue", outputSize);
+        map.put("inputQueueSize", inputSize);
+        map.put("outputQueueSize", outputSize);
+        map.put("transporterAvailable", messageTransporter != null);
+        return Map.copyOf(map);
+    }
+
+    /**
+     * @deprecated Shared transporter internals are compatibility-only. Prefer
+     * {@link #getTransportQueueDetail()} for diagnostics and keep runtime
+     * behavior on transport-neutral adapter/runtime surfaces.
+     */
+    @Deprecated(forRemoval = false)
     public MessageTransporter<String, WorkerTransportMessage> getMessageTransporter() {
         return messageTransporter;
     }
@@ -308,12 +330,32 @@ public class MassApplication {
         return endpointRegistry;
     }
 
+    public TransportRuntimeRegistry getTransportRuntimeRegistry() {
+        return transportRuntimeRegistry;
+    }
+
     public MassEngine getEngine() {
         return engine;
     }
 
     public MassEventRuntime getEventRuntime() {
         return eventRuntime;
+    }
+
+    private int safeInputQueueSize(MessageTransporter<?, ?> transporter) {
+        try {
+            return transporter != null ? transporter.inputQueueSize() : -1;
+        } catch (Exception ignored) {
+            return -1;
+        }
+    }
+
+    private int safeOutputQueueSize(MessageTransporter<?, ?> transporter) {
+        try {
+            return transporter != null ? transporter.outputQueueSize() : -1;
+        } catch (Exception ignored) {
+            return -1;
+        }
     }
 
     private MassEngine requireConfiguredEngine() {

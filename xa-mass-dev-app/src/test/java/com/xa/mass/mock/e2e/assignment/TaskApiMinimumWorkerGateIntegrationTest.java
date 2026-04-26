@@ -14,8 +14,11 @@ import org.springframework.test.context.DynamicPropertySource;
 
 import java.net.URI;
 import java.util.Map;
+import java.util.function.BooleanSupplier;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SpringBootTest(
         classes = MockApplicationSpringBootApp.class,
@@ -43,6 +46,7 @@ class TaskApiMinimumWorkerGateIntegrationTest extends AbstractMockE2eTest {
     void readyTaskWaitsUntilMinimumWorkerCountIsSatisfied() throws Exception {
         String firstWorkerId = "min-gate-worker-0";
         registerWorker(firstWorkerId);
+        assertFalse(app.isWorkerOnline(firstWorkerId), "worker registration must not mark first worker online");
 
         String taskId = createTaskId("min-worker-gate", "minimum worker gate integration", "target-a");
         Task task = app.getTask(taskId);
@@ -59,13 +63,22 @@ class TaskApiMinimumWorkerGateIntegrationTest extends AbstractMockE2eTest {
 
         String secondWorkerId = "min-gate-worker-1";
         registerWorker(secondWorkerId);
+        assertFalse(app.isWorkerOnline(secondWorkerId), "worker registration must not mark second worker online");
 
         URI uri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
         MockWorkerWebSocketClient firstClient = new MockWorkerWebSocketClient(uri, firstWorkerId);
         MockWorkerWebSocketClient secondClient = new MockWorkerWebSocketClient(uri, secondWorkerId);
         try {
             assertClientConnects(firstClient, "first mock client failed to connect");
+            waitUntil(() -> app.isWorkerOnline(firstWorkerId), "first worker connect must mark worker online");
+
+            TaskSnapshot stillReadyWithSingleOnlineWorker = waitForTaskSnapshot(taskId, "READY", 8, 250L);
+            assertEquals(0, ((Number) stillReadyWithSingleOnlineWorker.task().get("peakAssignedWorkerCount")).intValue());
+            assertEquals("INIT", stillReadyWithSingleOnlineWorker.messages().get(0).get("status"));
+            assertEquals(null, stillReadyWithSingleOnlineWorker.messages().get(0).get("latestAttemptWorkerId"));
+
             assertClientConnects(secondClient, "second mock client failed to connect");
+            waitUntil(() -> app.isWorkerOnline(secondWorkerId), "second worker connect must mark worker online");
 
             TaskSnapshot terminalSnapshot = waitForTaskSnapshot(taskId, "TERMINAL", 20, 500L);
             assertEquals("ALL_MESSAGES_SUCCEEDED", terminalSnapshot.task().get("terminalReason"));
@@ -75,9 +88,21 @@ class TaskApiMinimumWorkerGateIntegrationTest extends AbstractMockE2eTest {
             firstClient.disconnect();
             secondClient.disconnect();
         }
+        waitUntil(() -> !app.isWorkerOnline(firstWorkerId), "first worker disconnect must mark worker offline");
+        waitUntil(() -> !app.isWorkerOnline(secondWorkerId), "second worker disconnect must mark worker offline");
     }
 
     private void registerWorker(String workerId) {
         registerSdkWorkerWithContext(workerId, "us");
+    }
+
+    private void waitUntil(BooleanSupplier condition, String failureMessage) throws InterruptedException {
+        for (int attempt = 0; attempt < 20; attempt++) {
+            if (condition.getAsBoolean()) {
+                return;
+            }
+            Thread.sleep(100L);
+        }
+        assertTrue(condition.getAsBoolean(), failureMessage);
     }
 }

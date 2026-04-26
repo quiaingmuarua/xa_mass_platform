@@ -3,8 +3,9 @@
 ## Role
 
 - WebSocket server and session management
-- inbound dispatch and downstream message publish
+- inbound raw-frame ingestion and downstream message publish
 - connection context and protocol handling
+- runtime adapter identity `websocket` within transport family `realtime`
 - Java package namespace is `com.xa.mass.transport.websocket.*`
 
 ## Current Status
@@ -16,7 +17,8 @@
 ## Start Here
 
 - `src/main/java/com/xa/mass/transport/websocket/server/WebSocketServerImpl.java`
-- `src/main/java/com/xa/mass/transport/websocket/dispatcher/WebSocketMessageDispatcher.java`
+- `src/main/java/com/xa/mass/transport/websocket/runtime/WebSocketTransportAdapterBootstrap.java`
+- `src/main/java/com/xa/mass/transport/websocket/dispatcher/WebSocketMessageDispatcher.java` (compat-only legacy shell)
 
 ## Boundaries
 

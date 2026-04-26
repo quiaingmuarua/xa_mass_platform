@@ -20,6 +20,8 @@ public interface ExternalWorkerOperations {
 
     void registerWorkerContext(WorkerContextRegistration request);
 
+    String getWorkerAdapterId(String workerId);
+
     String getWorkerTransportHint(String workerId);
 
     void workerOnline(String workerId, String reason);

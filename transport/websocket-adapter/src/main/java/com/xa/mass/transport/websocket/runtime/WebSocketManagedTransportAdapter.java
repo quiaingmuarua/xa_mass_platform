@@ -2,7 +2,6 @@ package com.xa.mass.transport.websocket.runtime;
 
 import com.xa.mass.starter.transport.ManagedTransportAdapter;
 import com.xa.mass.transport.WorkerEndpointRegistry;
-import com.xa.mass.transport.websocket.dispatcher.WebSocketMessageDispatcher;
 import com.xa.mass.transport.websocket.dispatcher.context.WebSocketDispatchRuntimeContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -17,7 +16,6 @@ public final class WebSocketManagedTransportAdapter implements ManagedTransportA
 
     private final int maxConnections;
     private final WebSocketDispatchRuntimeContext dispatcherContext;
-    private WebSocketMessageDispatcher messageDispatcher;
     private boolean running = false;
 
     public WebSocketManagedTransportAdapter(int maxConnections, WebSocketDispatchRuntimeContext dispatcherContext) {
@@ -31,7 +29,6 @@ public final class WebSocketManagedTransportAdapter implements ManagedTransportA
         logger.info("Starting WebSocket managed transport adapter with max connections: {}", maxConnections);
 
         try {
-            startDispatcher();
             initializeEndpointRuntime();
 
             running = true;
@@ -54,7 +51,6 @@ public final class WebSocketManagedTransportAdapter implements ManagedTransportA
         logger.info("Stopping WebSocket managed transport adapter...");
 
         try {
-            stopDispatcher();
             shutdownEndpointRuntime();
 
             running = false;
@@ -67,33 +63,7 @@ public final class WebSocketManagedTransportAdapter implements ManagedTransportA
 
     @Override
     public boolean isRunning() {
-        return running && messageDispatcher != null && messageDispatcher.isRunning();
-    }
-
-    private void startDispatcher() {
-        logger.info("Starting WebSocket dispatcher...");
-
-        try {
-            messageDispatcher = new WebSocketMessageDispatcher(dispatcherContext);
-            messageDispatcher.start();
-            logger.info("WebSocket dispatcher started successfully");
-        } catch (Exception e) {
-            logger.error("Failed to start WebSocket dispatcher", e);
-            throw new RuntimeException("Failed to start WebSocket dispatcher", e);
-        }
-    }
-
-    private void stopDispatcher() {
-        logger.info("Stopping WebSocket dispatcher...");
-
-        try {
-            if (messageDispatcher != null) {
-                messageDispatcher.stop();
-                logger.info("WebSocket dispatcher stopped successfully");
-            }
-        } catch (Exception e) {
-            logger.error("Error stopping WebSocket dispatcher", e);
-        }
+        return running;
     }
 
     private void initializeEndpointRuntime() {

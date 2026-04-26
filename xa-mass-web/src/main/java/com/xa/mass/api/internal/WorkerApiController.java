@@ -132,6 +132,7 @@ public class WorkerApiController {
         item.put("supportedProjects", worker.getSupportedProjects());
         item.put("supportedEventCodes", worker.getSupportedEventCodes());
         item.put("eventBindings", WorkerCapabilityViewSupport.deriveEventBindings(worker, metadataCatalog));
+        item.put("adapterId", WorkerCapabilityViewSupport.resolveAdapterId(worker, connections));
         item.put("transportHint", WorkerCapabilityViewSupport.resolveTransportHint(worker, connections));
         item.put("attributes", worker.getAttributes());
         item.put("lastHeartbeat", formatDateTime(worker.getLastHeartbeat()));

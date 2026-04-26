@@ -52,6 +52,10 @@ MassSdkApplication app = MassSdk.builder()
         .engine(engine -> engine.enabled(true).workerThreads(4))
         .build();
 
+Mainline transport configuration is adapter-owned: use nested
+`webSocketAdapter(...)`, `socketAdapter(...)`, or other explicit adapter blocks.
+Transport-global server toggles remain compatibility helpers only.
+
 app.start();
 
 app.registerWorker(WorkerRegistration.builder()
@@ -226,13 +230,16 @@ deprecated advanced embedding helpers only. Embedded-runtime mainline should
 snapshot config into `TransportRuntimeComposition`, then use adapter-owned
 bootstrap/contribution assembly for the default WebSocket-backed path, or
 provide an explicit `transportServerFactory(...)` override. Adapter bootstrap
-context now carries only neutral runtime collaborators; inbound server settings
-such as port/path are owned by the adapter bootstrap instead of being injected
-by `MassApplication` at startup time. Builder-level mainline should configure
-that bundled adapter explicitly via `transport(... -> webSocketAdapter(...))`
-rather than treating those settings as runtime-global transport facts.
+context now carries only neutral runtime collaborators; shared message
+transporter wiring is compatibility-only and may be absent entirely in
+adapter-native runtimes. Inbound server settings such as port/path are owned
+by the adapter bootstrap instead of being injected by `MassApplication` at
+startup time. Builder-level mainline should configure that bundled adapter
+explicitly via `transport(... -> webSocketAdapter(...))` rather than treating
+those settings as runtime-global transport facts.
 `MassWebSocketAdapter.getWebSocketConfig()` and `MassWebSocketAdapter.getWebSocketMessageDispatcher()` are also
 deprecated: WebSocket adapter config and dispatcher internals are not part of the
-supported embedding surface.
+supported embedding surface. `getWebSocketMessageDispatcher()` now returns only
+the deprecated compatibility shell, not a queue-driven runtime mainline.
 `MassEngine.getRecordService()` and `MassEngine.getAssignWorker()` are likewise
 deprecated: record-service and assignment-loop internals stay engine-owned.
