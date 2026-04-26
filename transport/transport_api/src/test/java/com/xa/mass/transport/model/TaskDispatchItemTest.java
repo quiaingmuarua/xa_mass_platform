@@ -47,6 +47,21 @@ class TaskDispatchItemTest {
         assertEquals(Map.of("target", "worker-a"), item.getInput());
     }
 
+    @Test
+    void carriesLatestAttemptIdentityForInternalResultCorrelation() {
+        Task task = new Task();
+        task.setTid("task-1");
+        TaskMsg taskMsg = new TaskMsg("msg-1", "task-1", Map.of("target", "worker-a"));
+        taskMsg.applyLatestAttemptProjection("attempt-1", "worker-1", "ctx-1", "batch-1");
+
+        TaskDispatchItem item = TaskDispatchItem.from(task, taskMsg);
+
+        assertEquals("attempt-1", item.attemptId());
+        assertEquals("worker-1", item.getWorkerId());
+        assertEquals("ctx-1", item.getWorkerContextId());
+        assertEquals("batch-1", item.getBatchId());
+    }
+
     private Task taskWithSdkPayloadType(String payloadType) {
         Task task = new Task();
         task.setTid("task-1");

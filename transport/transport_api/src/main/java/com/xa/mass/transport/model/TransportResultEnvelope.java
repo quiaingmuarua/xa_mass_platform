@@ -14,15 +14,28 @@ public final class TransportResultEnvelope {
     private final String adapterId;
     private final String workerId;
     private final String endpointId;
+    private final String attemptId;
+    private final String leaseToken;
     private final TaskResultReport report;
 
     public TransportResultEnvelope(String adapterId,
                                    String workerId,
                                    String endpointId,
                                    TaskResultReport report) {
+        this(adapterId, workerId, endpointId, null, null, report);
+    }
+
+    public TransportResultEnvelope(String adapterId,
+                                   String workerId,
+                                   String endpointId,
+                                   String attemptId,
+                                   String leaseToken,
+                                   TaskResultReport report) {
         this.adapterId = normalize(adapterId);
         this.workerId = normalizeBlank(workerId);
         this.endpointId = normalizeBlank(endpointId);
+        this.attemptId = normalizeBlank(attemptId);
+        this.leaseToken = normalizeBlank(leaseToken);
         this.report = Objects.requireNonNull(report, "report");
     }
 
@@ -31,6 +44,20 @@ public final class TransportResultEnvelope {
                                                      String endpointId,
                                                      TaskResultReport report) {
         return new TransportResultEnvelope(adapterId, workerId, endpointId, report);
+    }
+
+    public static TransportResultEnvelope fromDispatchItem(String adapterId,
+                                                           String endpointId,
+                                                           TaskDispatchItem item,
+                                                           TaskResultReport report) {
+        return new TransportResultEnvelope(
+                adapterId,
+                item != null ? item.getWorkerId() : null,
+                endpointId,
+                item != null ? item.attemptId() : null,
+                null,
+                report
+        );
     }
 
     public String getAdapterId() {
@@ -43,6 +70,14 @@ public final class TransportResultEnvelope {
 
     public String getEndpointId() {
         return endpointId;
+    }
+
+    public String getAttemptId() {
+        return attemptId;
+    }
+
+    public String getLeaseToken() {
+        return leaseToken;
     }
 
     public TaskResultReport getReport() {

@@ -25,6 +25,8 @@ class TransportResultEnvelopeTest {
         assertEquals("websocket", envelope.getAdapterId());
         assertEquals("worker-1", envelope.getWorkerId());
         assertEquals("endpoint-1", envelope.getEndpointId());
+        assertNull(envelope.getAttemptId());
+        assertNull(envelope.getLeaseToken());
         assertSame(report, envelope.getReport());
         assertEquals("task-1", envelope.getTaskId());
         assertEquals("msg-1", envelope.getMessageId());
@@ -42,6 +44,42 @@ class TransportResultEnvelopeTest {
         assertNull(envelope.getAdapterId());
         assertNull(envelope.getWorkerId());
         assertNull(envelope.getEndpointId());
+        assertNull(envelope.getAttemptId());
+        assertNull(envelope.getLeaseToken());
+    }
+
+    @Test
+    void fromDispatchItemCarriesAttemptIdentityWithoutChangingReportPayload() {
+        TaskResultReport report = report();
+        TaskDispatchItem item = new TaskDispatchItem(
+                "task-1",
+                "msg-1",
+                "crawler.fetch-page",
+                "task-name",
+                "demoApp",
+                "agent",
+                0,
+                "attempt-1",
+                "worker-1",
+                "ctx-1",
+                "batch-1",
+                Map.of("target", "alpha"),
+                Map.of()
+        );
+
+        TransportResultEnvelope envelope = TransportResultEnvelope.fromDispatchItem(
+                " Polling ",
+                " endpoint-1 ",
+                item,
+                report
+        );
+
+        assertEquals("polling", envelope.getAdapterId());
+        assertEquals("worker-1", envelope.getWorkerId());
+        assertEquals("endpoint-1", envelope.getEndpointId());
+        assertEquals("attempt-1", envelope.getAttemptId());
+        assertNull(envelope.getLeaseToken());
+        assertSame(report, envelope.getReport());
     }
 
     @Test

@@ -49,8 +49,8 @@ public final class RuntimeTaskResultIngestChannel implements TaskResultIngestCha
             return false;
         }
         TaskResultReport report = envelope.getReport();
-        logger.debug("Ingest task result envelope: adapterId={}, workerId={}, endpointId={}, taskId={}, messageId={}",
-                envelope.getAdapterId(), envelope.getWorkerId(), envelope.getEndpointId(),
+        logger.debug("Ingest task result envelope: adapterId={}, workerId={}, endpointId={}, attemptId={}, taskId={}, messageId={}",
+                envelope.getAdapterId(), envelope.getWorkerId(), envelope.getEndpointId(), envelope.getAttemptId(),
                 report.getTaskId(), report.getMessageId());
         return ingest(report);
     }

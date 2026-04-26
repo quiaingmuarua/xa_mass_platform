@@ -103,6 +103,10 @@ class SimpleTaskMsgAssignListenerTest {
         assertTrue(attempts.stream().allMatch(attempt -> attempt.getWorkerId() != null));
         assertTrue(attempts.stream().allMatch(attempt -> attempt.getDispatchTime() != null));
         assertTrue(attempts.stream().allMatch(attempt -> attempt.getBatchId() != null && !attempt.getBatchId().isBlank()));
+        assertTrue(stored.stream().allMatch(msg -> {
+            TaskMsgAttempt latestAttempt = taskManager.getLatestTaskMessageAttempt(task.getTid(), msg.getMessageId());
+            return latestAttempt != null && latestAttempt.getAttemptId().equals(msg.latestAttemptId());
+        }));
 
         verify(recordService, times(4)).recordMessageAssignment(
                 any(), any(), any(), anyString(), anyString(), any(), anyString(), anyBoolean()

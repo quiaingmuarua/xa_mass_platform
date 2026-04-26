@@ -18,6 +18,7 @@ public class TaskMsg {
     private String taskId;
     // Compatibility projection of the latest attempt binding for UI/API callers.
     // Runtime execution truth lives in TaskMsgAttempt history.
+    private String latestAttemptId;
     private String latestAttemptWorkerId;
     private String latestAttemptWorkerContextId;
     private TaskMsgStatus status;
@@ -67,6 +68,10 @@ public class TaskMsg {
 
     public void setTaskId(String taskId) {
         this.taskId = taskId;
+    }
+
+    public String latestAttemptId() {
+        return latestAttemptId;
     }
 
     public String getLatestAttemptWorkerId() {
@@ -265,6 +270,11 @@ public class TaskMsg {
      * remain correct when it is {@code null}.
      */
     public void applyLatestAttemptProjection(String workerId, String workerContextId, String batchId) {
+        applyLatestAttemptProjection(null, workerId, workerContextId, batchId);
+    }
+
+    public void applyLatestAttemptProjection(String attemptId, String workerId, String workerContextId, String batchId) {
+        this.latestAttemptId = attemptId;
         this.latestAttemptWorkerId = workerId;
         this.latestAttemptWorkerContextId = workerContextId;
         this.latestAttemptBatchId = batchId;
@@ -275,7 +285,7 @@ public class TaskMsg {
      * binding is no longer valid.
      */
     public void clearLatestAttemptProjection() {
-        applyLatestAttemptProjection(null, null, null);
+        applyLatestAttemptProjection(null, null, null, null);
         this.assignedTime = null;
     }
 
@@ -418,6 +428,7 @@ public class TaskMsg {
         return "TaskMsg{" +
                 "messageId='" + messageId + '\'' +
                 ", taskId='" + taskId + '\'' +
+                ", latestAttemptId='" + latestAttemptId + '\'' +
                 ", latestAttemptWorkerId='" + latestAttemptWorkerId + '\'' +
                 ", latestAttemptWorkerContextId='" + latestAttemptWorkerContextId + '\'' +
                 ", status=" + status +

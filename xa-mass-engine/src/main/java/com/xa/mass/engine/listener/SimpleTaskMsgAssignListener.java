@@ -233,7 +233,6 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
     }
 
     private boolean bindTaskMessage(TaskMsg taskMsg, String workerId, String workerContextId, String batchId) {
-        taskMsg.applyLatestAttemptProjection(workerId, workerContextId, batchId);
         TaskMsgAttempt latestAttempt = taskManager.getLatestTaskMessageAttempt(taskMsg.getTaskId(), taskMsg.getMessageId());
         TaskMsgAttempt attempt = new TaskMsgAttempt(
                 java.util.UUID.randomUUID().toString(),
@@ -244,6 +243,7 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
         attempt.setWorkerId(workerId);
         attempt.setWorkerContextId(workerContextId);
         attempt.setBatchId(batchId);
+        taskMsg.applyLatestAttemptProjection(attempt.getAttemptId(), workerId, workerContextId, batchId);
         TaskMsgAttemptStatus initialAttemptStatus = attempt.getStatus();
         if (!attempt.markLeased(LocalDateTime.now().plusSeconds(taskManager.getTaskMessageLeaseSeconds()))) {
             return false;

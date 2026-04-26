@@ -20,6 +20,7 @@ public final class TaskDispatchItem {
     private final String project;
     private final String userId;
     private final int retryCount;
+    private final String attemptId;
     private final String workerId;
     private final String workerContextId;
     private final String batchId;
@@ -38,6 +39,23 @@ public final class TaskDispatchItem {
                             String batchId,
                             Map<String, Object> input,
                             Map<String, Object> sharedConfig) {
+        this(taskId, messageId, eventCode, taskName, project, userId, retryCount,
+                null, workerId, workerContextId, batchId, input, sharedConfig);
+    }
+
+    public TaskDispatchItem(String taskId,
+                            String messageId,
+                            String eventCode,
+                            String taskName,
+                            String project,
+                            String userId,
+                            int retryCount,
+                            String attemptId,
+                            String workerId,
+                            String workerContextId,
+                            String batchId,
+                            Map<String, Object> input,
+                            Map<String, Object> sharedConfig) {
         this.taskId = taskId;
         this.messageId = messageId;
         this.eventCode = eventCode;
@@ -45,6 +63,7 @@ public final class TaskDispatchItem {
         this.project = project;
         this.userId = userId;
         this.retryCount = retryCount;
+        this.attemptId = attemptId;
         this.workerId = workerId;
         this.workerContextId = workerContextId;
         this.batchId = batchId;
@@ -73,6 +92,7 @@ public final class TaskDispatchItem {
                 task.getProject(),
                 task.getUser() != null ? task.getUser().getUserId() : null,
                 taskMsg.getRetryCount(),
+                taskMsg.latestAttemptId(),
                 taskMsg.getLatestAttemptWorkerId(),
                 taskMsg.getLatestAttemptWorkerContextId(),
                 taskMsg.getLatestAttemptBatchId(),
@@ -95,6 +115,10 @@ public final class TaskDispatchItem {
 
     public int getRetryCount() {
         return retryCount;
+    }
+
+    public String attemptId() {
+        return attemptId;
     }
 
     public String getWorkerId() {

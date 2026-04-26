@@ -174,6 +174,7 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractMockE2eTest {
         assertEquals(taskId, item.get("taskId"));
         assertEquals(workerId, item.get("workerId"));
         assertEquals("crawler.fetch-page", item.get("eventCode"));
+        assertFalse(item.containsKey("attemptId"), "attemptId must remain internal and out of worker-api poll response");
 
         Map<String, Object> resultResponse = exchange("/worker-api/workers/" + workerId + "/results", HttpMethod.POST, Map.of(
                 "taskId", item.get("taskId"),
@@ -194,6 +195,8 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractMockE2eTest {
         assertEquals("ALL_MESSAGES_SUCCEEDED", terminal.task().get("terminalReason"));
         assertEquals("SUCCESS", terminal.messages().get(0).get("status"));
         assertEquals(workerId, terminal.messages().get(0).get("latestAttemptWorkerId"));
+        assertFalse(terminal.messages().get(0).containsKey("latestAttemptId"),
+                "latestAttemptId must remain internal and out of status API response");
         assertTrue(terminal.messages().get(0).get("output") instanceof Map);
         Map<?, ?> output = (Map<?, ?>) terminal.messages().get(0).get("output");
         assertEquals("Example Page", output.get("title"));
