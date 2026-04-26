@@ -203,6 +203,7 @@ public final class SdkTransportLoadRunner {
                         .workerGroupId("sdk-load")
                         .supportedProjects(List.of("demoApp"))
                         .transportHint(transportHint)
+                        .adapterId(transportMode.adapterId())
                         .build());
                 app.registerWorkerContext(WorkerContextRegistration.builder()
                         .workerContextId("sdk-load-context-" + i)
@@ -872,6 +873,10 @@ public final class SdkTransportLoadRunner {
 
         private String transportHint() {
             return transportHint;
+        }
+
+        private String adapterId() {
+            return label;
         }
 
         private static WorkerTransportMode fromProperty(String rawValue) {
