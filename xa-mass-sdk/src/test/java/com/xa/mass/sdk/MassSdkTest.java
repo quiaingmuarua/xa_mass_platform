@@ -11,6 +11,7 @@ import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.TaskMsgAttempt;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
+import com.xa.mass.base.runtime.VirtualThreadRuntimeTaskExecutor;
 import com.xa.mass.command.event.CoreEventDescriptor;
 import com.xa.mass.command.event.CoreEventResponse;
 import com.xa.mass.command.event.InMemoryMassEventRuntime;
@@ -81,6 +82,7 @@ import org.junit.jupiter.api.function.Executable;
 
 import java.time.Duration;
 import java.util.*;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -337,16 +339,24 @@ class MassSdkTest {
         config.getBundledWebSocketAdapterConfig().setEnabled(false);
         config.getBundledWebSocketAdapterConfig().setServerEnabled(false);
         TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
+        VirtualThreadRuntimeTaskExecutor runtimeTaskExecutor =
+                new VirtualThreadRuntimeTaskExecutor("test-transport-runtime-", 10);
 
-        TransportAdapterContribution contribution = adapterBootstrap(runtimeComposition, "websocket").create(
-                new TransportAdapterBootstrapContext<>(
-                        null,
-                        new CompositeWorkerEndpointRegistry(),
-                        null,
-                        new RuntimeEventBusWorkerSystemEventChannel(),
-                        deliveryService()
-                )
-        );
+        TransportAdapterContribution contribution;
+        try {
+            contribution = adapterBootstrap(runtimeComposition, "websocket").create(
+                    new TransportAdapterBootstrapContext<>(
+                            null,
+                            new CompositeWorkerEndpointRegistry(),
+                            null,
+                            new RuntimeEventBusWorkerSystemEventChannel(),
+                            deliveryService(),
+                            runtimeTaskExecutor
+                    )
+            );
+        } finally {
+            shutdownRuntimeTaskExecutor(runtimeTaskExecutor);
+        }
 
         assertNull(contribution.getTransportBinding());
         assertNull(contribution.getManagedTransportAdapter());
@@ -360,16 +370,24 @@ class MassSdkTest {
         config.getBundledSocketAdapterConfig().setEnabled(true);
         config.getBundledSocketAdapterConfig().setServerEnabled(true);
         TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
+        VirtualThreadRuntimeTaskExecutor runtimeTaskExecutor =
+                new VirtualThreadRuntimeTaskExecutor("test-transport-runtime-", 10);
 
-        TransportAdapterContribution contribution = adapterBootstrap(runtimeComposition, "socket").create(
-                new TransportAdapterBootstrapContext<>(
-                        null,
-                        new CompositeWorkerEndpointRegistry(),
-                        mock(TaskResultIngestChannel.class),
-                        new RuntimeEventBusWorkerSystemEventChannel(),
-                        deliveryService()
-                )
-        );
+        TransportAdapterContribution contribution;
+        try {
+            contribution = adapterBootstrap(runtimeComposition, "socket").create(
+                    new TransportAdapterBootstrapContext<>(
+                            null,
+                            new CompositeWorkerEndpointRegistry(),
+                            mock(TaskResultIngestChannel.class),
+                            new RuntimeEventBusWorkerSystemEventChannel(),
+                            deliveryService(),
+                            runtimeTaskExecutor
+                    )
+            );
+        } finally {
+            shutdownRuntimeTaskExecutor(runtimeTaskExecutor);
+        }
 
         assertNotNull(contribution.getTransportBinding());
         assertNotNull(contribution.getTransportServer());
@@ -2186,6 +2204,16 @@ class MassSdkTest {
 
     private static TransportDeliveryService deliveryService() {
         return new TransportDeliveryService(new InMemoryTransportDeliveryStore());
+    }
+
+    private static void shutdownRuntimeTaskExecutor(VirtualThreadRuntimeTaskExecutor executor) {
+        executor.shutdown();
+        try {
+            executor.awaitTermination(5, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException(e);
+        }
     }
 
     private static <T> T readField(Object target, String fieldName, Class<T> fieldType) {

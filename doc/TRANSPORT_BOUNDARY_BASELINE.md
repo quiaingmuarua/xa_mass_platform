@@ -57,6 +57,7 @@ behavior that cannot fit one of these concepts.
 
 - adapter binding and registration resolution
 - delivery service and delivery store
+- runtime executor handoff into adapter bootstraps for transport-owned blocking work
 - result-envelope validation and runtime logging
 - routing from task assignment events to adapter dispatch channels
 
@@ -66,6 +67,7 @@ Concrete adapters own protocol I/O only:
 - frame or request/response codec
 - endpoint online/offline perception
 - calls into runtime delivery and result-ingest contracts
+- accept/read/write loops submitted through the runtime executor context when they block
 
 ## Model Boundaries
 

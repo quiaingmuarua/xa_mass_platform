@@ -58,7 +58,8 @@ public final class SocketTransportAdapterBootstrap implements TransportAdapterBo
                     sessionManager,
                     frameCodec,
                     context.getTaskResultIngestChannel(),
-                    context.getSystemEventChannel()
+                    context.getSystemEventChannel(),
+                    context.getRuntimeTaskExecutor()
             ));
         }
         return contribution.build();

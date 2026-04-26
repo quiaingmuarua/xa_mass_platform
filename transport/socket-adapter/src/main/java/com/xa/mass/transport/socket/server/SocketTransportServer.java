@@ -1,6 +1,7 @@
 package com.xa.mass.transport.socket.server;
 
 import com.google.gson.JsonObject;
+import com.xa.mass.base.runtime.RuntimeTaskExecutor;
 import com.xa.mass.transport.TransportServer;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
@@ -21,9 +22,12 @@ import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
+import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Future;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -42,11 +46,12 @@ public final class SocketTransportServer implements TransportServer {
     private final SocketTransportFrameCodec frameCodec;
     private final TaskResultIngestChannel taskResultIngestChannel;
     private final WorkerSystemEventChannel systemEventChannel;
+    private final RuntimeTaskExecutor runtimeTaskExecutor;
     private final AtomicBoolean running = new AtomicBoolean(false);
+    private final Set<Future<?>> clientTasks = ConcurrentHashMap.newKeySet();
 
     private volatile ServerSocket serverSocket;
-    private volatile Thread acceptThread;
-    private volatile ExecutorService clientExecutor;
+    private volatile Future<?> acceptTask;
 
     public SocketTransportServer(String bindHost,
                                  int port,
@@ -54,14 +59,16 @@ public final class SocketTransportServer implements TransportServer {
                                  SocketSessionManager sessionManager,
                                  SocketTransportFrameCodec frameCodec,
                                  TaskResultIngestChannel taskResultIngestChannel,
-                                 WorkerSystemEventChannel systemEventChannel) {
+                                 WorkerSystemEventChannel systemEventChannel,
+                                 RuntimeTaskExecutor runtimeTaskExecutor) {
         this.bindHost = bindHost;
         this.port = port;
         this.maxConnections = maxConnections;
-        this.sessionManager = sessionManager;
-        this.frameCodec = frameCodec;
+        this.sessionManager = Objects.requireNonNull(sessionManager, "sessionManager");
+        this.frameCodec = Objects.requireNonNull(frameCodec, "frameCodec");
         this.taskResultIngestChannel = taskResultIngestChannel;
         this.systemEventChannel = systemEventChannel;
+        this.runtimeTaskExecutor = Objects.requireNonNull(runtimeTaskExecutor, "runtimeTaskExecutor");
     }
 
     @Override
@@ -70,13 +77,17 @@ public final class SocketTransportServer implements TransportServer {
             return;
         }
         ServerSocket created = new ServerSocket(port, 50, InetAddress.getByName(bindHost));
-        this.serverSocket = created;
-        this.clientExecutor = Executors.newCachedThreadPool();
-        this.acceptThread = new Thread(this::acceptLoop, "mass-socket-accept-" + created.getLocalPort());
-        this.acceptThread.setDaemon(true);
-        this.acceptThread.start();
-        System.setProperty(BOUND_PORT_PROPERTY, String.valueOf(created.getLocalPort()));
-        logger.info("Socket server started on {}:{}", bindHost, created.getLocalPort());
+        try {
+            this.serverSocket = created;
+            this.acceptTask = runtimeTaskExecutor.submit(this::acceptLoop);
+            System.setProperty(BOUND_PORT_PROPERTY, String.valueOf(created.getLocalPort()));
+            logger.info("Socket server started on {}:{}", bindHost, created.getLocalPort());
+        } catch (RuntimeException ex) {
+            running.set(false);
+            this.serverSocket = null;
+            closeQuietly(created);
+            throw ex;
+        }
     }
 
     @Override
@@ -88,17 +99,15 @@ public final class SocketTransportServer implements TransportServer {
         if (existingServer != null && !existingServer.isClosed()) {
             existingServer.close();
         }
-        Thread existingThread = this.acceptThread;
-        if (existingThread != null) {
-            existingThread.interrupt();
-            existingThread.join(TimeUnit.SECONDS.toMillis(5));
+        Future<?> existingAcceptTask = this.acceptTask;
+        if (existingAcceptTask != null) {
+            existingAcceptTask.cancel(true);
         }
-        ExecutorService executor = this.clientExecutor;
-        if (executor != null) {
-            executor.shutdownNow();
-            executor.awaitTermination(5, TimeUnit.SECONDS);
+        for (Future<?> clientTask : clientTasks) {
+            clientTask.cancel(true);
         }
         sessionManager.shutdown();
+        waitForClientTasksToFinish();
         System.clearProperty(BOUND_PORT_PROPERTY);
         logger.info("Socket server stopped");
     }
@@ -117,13 +126,23 @@ public final class SocketTransportServer implements TransportServer {
                     client.close();
                     continue;
                 }
-                clientExecutor.submit(() -> handleClient(client));
+                submitClient(client);
             } catch (IOException ex) {
                 if (running.get()) {
                     logger.error("Socket accept loop failed", ex);
                 }
                 return;
             }
+        }
+    }
+
+    private void submitClient(Socket client) {
+        try {
+            Future<?> clientTask = runtimeTaskExecutor.submit(() -> handleClient(client));
+            clientTasks.add(clientTask);
+        } catch (RejectedExecutionException ex) {
+            logger.warn("Rejecting socket client because runtime executor is unavailable", ex);
+            closeQuietly(client);
         }
     }
 
@@ -185,6 +204,40 @@ public final class SocketTransportServer implements TransportServer {
             }
         } finally {
             sessionManager.removeSession(endpointId);
+            clientTasks.removeIf(Future::isDone);
+        }
+    }
+
+    private void waitForClientTasksToFinish() throws InterruptedException {
+        long deadlineNanos = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        while (!clientTasks.isEmpty() && System.nanoTime() < deadlineNanos) {
+            clientTasks.removeIf(Future::isDone);
+            if (!clientTasks.isEmpty()) {
+                Thread.sleep(25L);
+            }
+        }
+        clientTasks.removeIf(Future::isDone);
+    }
+
+    private void closeQuietly(Socket client) {
+        if (client == null) {
+            return;
+        }
+        try {
+            client.close();
+        } catch (IOException ignored) {
+            // Best-effort rejection cleanup.
+        }
+    }
+
+    private void closeQuietly(ServerSocket server) {
+        if (server == null) {
+            return;
+        }
+        try {
+            server.close();
+        } catch (IOException ignored) {
+            // Best-effort startup cleanup.
         }
     }
 }

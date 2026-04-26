@@ -1,6 +1,8 @@
 package com.xa.mass.starter;
 
 import com.xa.mass.base.channel.tranporter.MessageTransporter;
+import com.xa.mass.base.runtime.RuntimeTaskExecutor;
+import com.xa.mass.base.runtime.VirtualThreadRuntimeTaskExecutor;
 import com.xa.mass.command.event.InMemoryMassEventRuntime;
 import com.xa.mass.command.event.MassEventRuntime;
 import com.xa.mass.engine.listener.TaskMsgDispatchListener;
@@ -43,6 +45,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class MassApplication {
 
     private static final Logger logger = LoggerFactory.getLogger(MassApplication.class);
+    private static final int TRANSPORT_RUNTIME_MAX_PENDING_TASKS = 10_000;
 
     private final TransportRuntimeComposition transportRuntimeComposition;
     private final EngineConfig engineConfig;
@@ -56,6 +59,7 @@ public class MassApplication {
     private MessageTransporter<String, WorkerTransportMessage> messageTransporter;
     private WorkerEndpointRegistry endpointRegistry;
     private TransportRuntimeRegistry transportRuntimeRegistry;
+    private RuntimeTaskExecutor transportRuntimeTaskExecutor;
 
     public MassApplication(MassEngine engine,
                            TransportConfig transportConfig,
@@ -100,13 +104,17 @@ public class MassApplication {
         logger.info("Stopping Mass Application");
 
         try {
-            stopManagedTransportAdapters();
+            try {
+                stopManagedTransportAdapters();
 
-            if (engine != null && engineConfig.isEnabled()) {
-                engine.stop();
+                if (engine != null && engineConfig.isEnabled()) {
+                    engine.stop();
+                }
+
+                stopTransportServers();
+            } finally {
+                stopTransportRuntimeTaskExecutor();
             }
-
-            stopTransportServers();
 
             LogUtils.clearMdc();
             logger.info("Mass Application stopped successfully");
@@ -136,6 +144,10 @@ public class MassApplication {
             WorkerSystemEventChannel systemEventChannel = transportRuntimeComposition.resolveSystemEventChannel();
             TransportDeliveryService deliveryService =
                     new TransportDeliveryService(new InMemoryTransportDeliveryStore());
+            transportRuntimeTaskExecutor = new VirtualThreadRuntimeTaskExecutor(
+                    "transport-runtime-",
+                    TRANSPORT_RUNTIME_MAX_PENDING_TASKS
+            );
             TaskMsgDispatchListener taskMsgDispatchListener = null;
             TaskResultIngestChannel taskResultIngestChannel = null;
             List<TransportBinding> adapterBindings = new ArrayList<>();
@@ -152,7 +164,8 @@ public class MassApplication {
                                 endpointRegistry,
                                 taskResultIngestChannel,
                                 systemEventChannel,
-                                deliveryService
+                                deliveryService,
+                                transportRuntimeTaskExecutor
                         )
                 );
                 registerTransportContribution(contribution, adapterBindings);
@@ -178,6 +191,11 @@ public class MassApplication {
                 logger.info("MassEngine is disabled, skipping start");
             }
         } catch (Exception e) {
+            try {
+                stopTransportRuntimeTaskExecutor();
+            } catch (Exception stopError) {
+                logger.warn("Failed to stop transport runtime executor after initialization failure", stopError);
+            }
             logger.error("Failed to initialize core components", e);
             throw new RuntimeException("Failed to initialize core components", e);
         }
@@ -233,6 +251,16 @@ public class MassApplication {
         for (TransportServer transportServer : transportServers) {
             transportServer.stop();
         }
+    }
+
+    private void stopTransportRuntimeTaskExecutor() throws Exception {
+        RuntimeTaskExecutor executor = transportRuntimeTaskExecutor;
+        transportRuntimeTaskExecutor = null;
+        if (executor == null) {
+            return;
+        }
+        executor.shutdown();
+        executor.awaitTermination(5, java.util.concurrent.TimeUnit.SECONDS);
     }
 
     private void registerManagedTransportAdapter(ManagedTransportAdapter managedTransportAdapter) {

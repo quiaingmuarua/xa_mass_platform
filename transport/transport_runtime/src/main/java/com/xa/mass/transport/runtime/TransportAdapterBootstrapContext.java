@@ -1,6 +1,7 @@
 package com.xa.mass.transport.runtime;
 
 import com.xa.mass.base.channel.tranporter.MessageTransporter;
+import com.xa.mass.base.runtime.RuntimeTaskExecutor;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
@@ -18,17 +19,20 @@ public final class TransportAdapterBootstrapContext<T> {
     private final TaskResultIngestChannel taskResultIngestChannel;
     private final WorkerSystemEventChannel systemEventChannel;
     private final TransportDeliveryService deliveryService;
+    private final RuntimeTaskExecutor runtimeTaskExecutor;
 
     public TransportAdapterBootstrapContext(MessageTransporter<String, T> messageTransporter,
                                             WorkerEndpointRegistry endpointRegistry,
                                             TaskResultIngestChannel taskResultIngestChannel,
                                             WorkerSystemEventChannel systemEventChannel,
-                                            TransportDeliveryService deliveryService) {
+                                            TransportDeliveryService deliveryService,
+                                            RuntimeTaskExecutor runtimeTaskExecutor) {
         this.messageTransporter = messageTransporter;
         this.endpointRegistry = Objects.requireNonNull(endpointRegistry, "endpointRegistry");
         this.taskResultIngestChannel = taskResultIngestChannel;
         this.systemEventChannel = Objects.requireNonNull(systemEventChannel, "systemEventChannel");
         this.deliveryService = Objects.requireNonNull(deliveryService, "deliveryService");
+        this.runtimeTaskExecutor = Objects.requireNonNull(runtimeTaskExecutor, "runtimeTaskExecutor");
     }
 
     /**
@@ -57,5 +61,9 @@ public final class TransportAdapterBootstrapContext<T> {
 
     public TransportDeliveryService getDeliveryService() {
         return deliveryService;
+    }
+
+    public RuntimeTaskExecutor getRuntimeTaskExecutor() {
+        return runtimeTaskExecutor;
     }
 }
