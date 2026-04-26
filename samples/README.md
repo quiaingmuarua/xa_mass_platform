@@ -13,10 +13,10 @@ Rules:
 Current mainline:
 
 - `worker-polling/node` is the public polling worker sample
+- `worker-polling/java` is the public Java polling worker sample
 - `worker-websocket/node` is the public realtime WebSocket worker sample
+- `worker-websocket/java` is the public Java realtime WebSocket worker sample
 
 Planned next additions:
 
-- `worker-polling/java`
-- `worker-websocket/java`
 - `worker-socket/java`
