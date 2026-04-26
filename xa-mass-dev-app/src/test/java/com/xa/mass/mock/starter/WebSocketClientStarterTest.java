@@ -37,9 +37,13 @@ class WebSocketClientStarterTest {
         TestWebSocketClientStarter starter = new TestWebSocketClientStarter(List.of(worker("worker-1")));
         MockConfig mockConfig = new MockConfig();
         mockConfig.getClient().setUri("ws://localhost:18088/ws");
-        setField(starter, "mockConfig", mockConfig);
-        setField(starter, "clientSessionManager", new ClientSessionManager());
-        setField(starter, "maxPoolSize", 5);
+        starter.setMockConfig(mockConfig);
+        setField(starter, AbstractMockWorkerClientStarter.class, "clientSessionManager", new ClientSessionManager());
+        starter.setMaxPoolSize(5);
+        starter.setConnectionTimeout(5);
+        starter.setRetryAttempts(1);
+        starter.setRetryDelay(1);
+        starter.setTaskResultStatus("SUCCESS");
 
         starter.onApplicationReady(null);
         starter.onApplicationReady(null);
@@ -54,9 +58,13 @@ class WebSocketClientStarterTest {
         TestWebSocketClientStarter starter = new TestWebSocketClientStarter(List.of());
         MockConfig mockConfig = new MockConfig();
         mockConfig.getClient().setUri("ws://localhost:18088/ws");
-        setField(starter, "mockConfig", mockConfig);
-        setField(starter, "clientSessionManager", new ClientSessionManager());
-        setField(starter, "maxPoolSize", 5);
+        starter.setMockConfig(mockConfig);
+        setField(starter, AbstractMockWorkerClientStarter.class, "clientSessionManager", new ClientSessionManager());
+        starter.setMaxPoolSize(5);
+        starter.setConnectionTimeout(5);
+        starter.setRetryAttempts(1);
+        starter.setRetryDelay(1);
+        starter.setTaskResultStatus("SUCCESS");
 
         starter.onApplicationReady(null);
 
@@ -87,9 +95,9 @@ class WebSocketClientStarterTest {
         return w;
     }
 
-    private static void setField(Object target, String fieldName, Object value) {
+    private static void setField(Object target, Class<?> declaringClass, String fieldName, Object value) {
         try {
-            var field = WebSocketClientStarter.class.getDeclaredField(fieldName);
+            var field = declaringClass.getDeclaredField(fieldName);
             field.setAccessible(true);
             field.set(target, value);
         } catch (Exception e) {

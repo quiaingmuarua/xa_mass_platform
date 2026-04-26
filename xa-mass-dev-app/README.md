@@ -64,12 +64,14 @@ Control-console routing note:
 
 For the verified default `dev` path, mock clients are started by:
 
+- `xa-mass-dev-app/src/main/java/com/xa/mass/mock/starter/AbstractMockWorkerClientStarter.java`
 - `xa-mass-dev-app/src/main/java/com/xa/mass/mock/starter/WebSocketClientStarter.java`
 
 Startup behavior:
 
 - gated by `mock.client.auto-start=true`
 - triggered by `ApplicationReadyEvent`
+- shared startup orchestration is adapter-aware; websocket-specific behavior stays in `WebSocketClientStarter`
 - discovers mock clients from SDK-registered `Worker` resources
 - only opens WebSocket clients for workers whose concrete `adapterId` is `websocket`
 - does not read a separate worker JSON client list
@@ -197,6 +199,12 @@ Focused verified regression command:
 
 ```bash
 mvn --% -pl xa-mass-dev-app -am -Dtest=MassWebSocketClientImplTest,TaskApiIntegrationTest,TaskApiFailureResultIntegrationTest,TaskApiLifecycleGuardsIntegrationTest,WebSocketClientStarterTest -Dsurefire.failIfNoSpecifiedTests=false test
+```
+
+Transport-focused regression command:
+
+```bash
+mvn --% -pl xa-mass-dev-app -am -Dtest=WebSocketClientStarterTest,TransportChannelWiringIntegrationTest,NodeWebSocketWorkerBlackBoxIntegrationTest,NodeSocketWorkerBlackBoxIntegrationTest -Dsurefire.failIfNoSpecifiedTests=false test
 ```
 
 Covered areas:

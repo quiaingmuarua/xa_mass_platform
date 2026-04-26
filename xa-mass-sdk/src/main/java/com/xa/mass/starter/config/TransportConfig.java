@@ -76,7 +76,12 @@ public class TransportConfig {
     }
 
     public boolean isEnabled() {
-        return defaultWebSocketAdapterConfig.isEnabled() || defaultSocketAdapterConfig.isEnabled();
+        return defaultWebSocketAdapterConfig.isEnabled()
+                || defaultWebSocketAdapterConfig.isServerEnabled()
+                || defaultSocketAdapterConfig.isEnabled()
+                || defaultSocketAdapterConfig.isServerEnabled()
+                || transportAdapterBootstrap != null
+                || !additionalTransportAdapterBootstraps.isEmpty();
     }
 
     /**

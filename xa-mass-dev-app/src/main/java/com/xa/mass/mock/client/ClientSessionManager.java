@@ -16,12 +16,16 @@ public class ClientSessionManager {
 
     public void addClient(MockWorkerClient client) {
         clients.put(client.getWorkerId(), client);
-        log.info("Added mock client: {}", client.getWorkerId());
+        log.info("Added mock client: {} ({})", client.getWorkerId(), client.adapterId());
     }
 
     public void removeClient(String workerId) {
-        clients.remove(workerId);
-        log.info("Removed mock client: {}", workerId);
+        MockWorkerClient removed = clients.remove(workerId);
+        if (removed == null) {
+            log.info("Removed mock client: {}", workerId);
+            return;
+        }
+        log.info("Removed mock client: {} ({})", removed.getWorkerId(), removed.adapterId());
     }
 
     public Collection<MockWorkerClient> getAllClients() {

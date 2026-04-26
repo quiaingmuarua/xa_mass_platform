@@ -247,6 +247,11 @@ public class MockWorkerWebSocketClient extends WebSocketClient implements MockWo
     }
 
     @Override
+    public String adapterId() {
+        return "websocket";
+    }
+
+    @Override
     public void connect(URI serverUri) throws Exception {
         if (isOpen()) {
             closeConnection();

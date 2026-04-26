@@ -7,6 +7,8 @@ import java.util.concurrent.TimeUnit;
  * Transport client contract for a dev-app mock worker.
  */
 public interface MockWorkerClient {
+    String adapterId();
+
     String getWorkerId();
 
     void connect(URI serverUri) throws Exception;

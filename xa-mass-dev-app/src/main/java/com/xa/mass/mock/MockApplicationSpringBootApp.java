@@ -142,7 +142,7 @@ public class MockApplicationSpringBootApp {
     @Profile("dev")
     public CommandLineRunner fullStackStarter(MassSdkApplication app, MockRuntimeDataLoader mockRuntimeDataLoader) {
         return args -> {
-            log.info("Starting internal WebSocket adapter + engine runtime");
+            log.info("Starting embedded transport runtime + engine");
             try {
                 registerDevAppCatalog(app);
                 registerDevAppSubmitters(app);
@@ -173,6 +173,10 @@ public class MockApplicationSpringBootApp {
 
                 LogUtils.clearMdc();
                 log.info("Spring Boot HTTP API is ready");
+                log.info("Embedded transport adapters configured: websocket(port={}, path=/ws, enabled=true), socket(port={}, enabled={})",
+                        massWebSocketPort,
+                        massSocketPort,
+                        massSocketEnabled);
                 log.info("Dev demo SDK submitters registered: task submitter={} external worker={} workerId={}",
                         DEV_TASK_SUBMITTER_KEY,
                         DEV_EXTERNAL_WORKER_KEY,

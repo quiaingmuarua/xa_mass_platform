@@ -14,6 +14,7 @@ import com.xa.mass.starter.MassEngine;
 import com.xa.mass.starter.config.EngineConfig;
 import com.xa.mass.starter.config.TransportConfig;
 import com.xa.mass.starter.transport.TransportAdapterBootstrap;
+import com.xa.mass.starter.transport.TransportAdapterDescriptor;
 import com.xa.mass.starter.transport.TransportServerFactoryContext;
 import com.xa.mass.starter.transport.WorkerTransportRuntimeFactory;
 import com.xa.mass.transport.TransportServerFactory;
@@ -24,6 +25,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.Map;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.function.Consumer;
 
 /**
@@ -226,17 +229,44 @@ public class MassApplicationBuilder {
     }
 
     private static String describeAdapterSummary(TransportConfig transportConfig) {
+        List<String> summaries = new ArrayList<>();
         WebSocketAdapterConfig webSocket = transportConfig.getDefaultWebSocketAdapterConfig();
         SocketAdapterConfig socket = transportConfig.getDefaultSocketAdapterConfig();
-        return "[websocket(enabled=" + webSocket.isEnabled()
+        summaries.add("websocket(enabled=" + webSocket.isEnabled()
                 + ",serverEnabled=" + webSocket.isServerEnabled()
                 + ",port=" + webSocket.getServerPort()
                 + ",path=" + webSocket.getEndpointPath()
-                + "), socket(enabled=" + socket.isEnabled()
+                + ")");
+        summaries.add("socket(enabled=" + socket.isEnabled()
                 + ",serverEnabled=" + socket.isServerEnabled()
                 + ",host=" + socket.getBindHost()
                 + ",port=" + socket.getServerPort()
-                + ")]";
+                + ")");
+
+        TransportAdapterBootstrap<WorkerTransportMessage> primaryBootstrap =
+                transportConfig.getTransportAdapterBootstrap();
+        if (primaryBootstrap != null) {
+            summaries.add(describeBootstrap("primaryOverride", primaryBootstrap));
+        }
+        List<TransportAdapterBootstrap<WorkerTransportMessage>> additionalBootstraps =
+                transportConfig.getAdditionalTransportAdapterBootstraps();
+        for (int i = 0; i < additionalBootstraps.size(); i++) {
+            summaries.add(describeBootstrap("additional[" + i + "]", additionalBootstraps.get(i)));
+        }
+
+        return summaries.toString();
+    }
+
+    private static String describeBootstrap(String source,
+                                            TransportAdapterBootstrap<WorkerTransportMessage> bootstrap) {
+        TransportAdapterDescriptor descriptor = bootstrap.descriptor();
+        if (descriptor == null) {
+            return source + "(descriptor=<none>)";
+        }
+        return source + "(adapterId=" + descriptor.getAdapterId()
+                + ",transportHint=" + descriptor.getTransportHint()
+                + ",aliases=" + descriptor.getAliases()
+                + ")";
     }
 
     public static class TransportBuilder {
