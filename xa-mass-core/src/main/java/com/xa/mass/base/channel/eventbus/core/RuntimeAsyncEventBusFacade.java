@@ -1,5 +1,8 @@
 package com.xa.mass.base.channel.eventbus.core;
 
+import com.xa.mass.base.runtime.RuntimeTaskExecutor;
+import com.xa.mass.base.runtime.RuntimeTaskExecutorStatistics;
+import com.xa.mass.base.runtime.VirtualThreadRuntimeTaskExecutor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -9,11 +12,9 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
-import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
@@ -22,7 +23,7 @@ import java.util.function.Consumer;
  * Runtime-owned asynchronous event bus for non-inline platform event handlers.
  *
  * <p>This facade keeps event delivery off the engine lifecycle thread, while
- * bounding the handler pool and surfacing stuck handler signals through metrics.
+ * bounding handler admission and surfacing stuck handler signals through metrics.
  * Timeout cancellation is cooperative: handlers must still set timeouts on
  * blocking I/O and honor interrupts to release the executor thread promptly.
  */
@@ -32,7 +33,7 @@ public final class RuntimeAsyncEventBusFacade implements EventBusFacade<MassEven
     private final MassEventDispatcher<MassEvent> dispatcher = new MassEventDispatcher<>();
     private final Map<Class<?>, List<Consumer<? extends MassEvent>>> typedHandlers = new ConcurrentHashMap<>();
     private final EventBusConfig config;
-    private final ThreadPoolExecutor handlerExecutor;
+    private final RuntimeTaskExecutor handlerExecutor;
     private final ScheduledExecutorService timeoutWatcher;
     private final AtomicLong postedEvents = new AtomicLong();
     private final AtomicLong completedEvents = new AtomicLong();
@@ -47,19 +48,9 @@ public final class RuntimeAsyncEventBusFacade implements EventBusFacade<MassEven
 
     public RuntimeAsyncEventBusFacade(EventBusConfig config) {
         this.config = config != null ? config : EventBusConfig.defaultConfig();
-        AtomicInteger handlerThreadId = new AtomicInteger();
-        this.handlerExecutor = new ThreadPoolExecutor(
-                this.config.getCorePoolSize(),
-                this.config.getMaxPoolSize(),
-                this.config.getKeepAliveTimeSeconds(),
-                TimeUnit.SECONDS,
-                new LinkedBlockingQueue<>(this.config.getQueueCapacity()),
-                r -> {
-                    Thread thread = new Thread(r, "runtime-event-handler-" + handlerThreadId.incrementAndGet());
-                    thread.setDaemon(true);
-                    return thread;
-                },
-                new ThreadPoolExecutor.AbortPolicy());
+        this.handlerExecutor = new VirtualThreadRuntimeTaskExecutor(
+                "runtime-event-handler-",
+                this.config.getQueueCapacity());
         this.timeoutWatcher = Executors.newSingleThreadScheduledExecutor(r -> {
             Thread thread = new Thread(r, "runtime-event-timeout-watcher");
             thread.setDaemon(true);
@@ -120,7 +111,7 @@ public final class RuntimeAsyncEventBusFacade implements EventBusFacade<MassEven
             futureRef.set(future);
             timeoutWatcher.schedule(() -> markTimeoutIfStillRunning(event, futureRef.get()),
                     config.getHandlerTimeoutSeconds(), TimeUnit.SECONDS);
-        } catch (RuntimeException e) {
+        } catch (RejectedExecutionException e) {
             rejectedEvents.incrementAndGet();
             log.warn("Runtime event bus rejected event {} of type {}",
                     event.getEventId(), event.getClass().getSimpleName(), e);
@@ -140,6 +131,7 @@ public final class RuntimeAsyncEventBusFacade implements EventBusFacade<MassEven
     }
 
     public RuntimeEventBusStatistics getStatistics() {
+        RuntimeTaskExecutorStatistics executorStats = handlerExecutor.getStatistics();
         return new RuntimeEventBusStatistics(
                 postedEvents.get(),
                 completedEvents.get(),
@@ -147,9 +139,9 @@ public final class RuntimeAsyncEventBusFacade implements EventBusFacade<MassEven
                 timeoutEvents.get(),
                 rejectedEvents.get(),
                 dispatcher.getTotalHandlerCount() + typedHandlers.values().stream().mapToInt(List::size).sum(),
-                handlerExecutor.getActiveCount(),
-                handlerExecutor.getQueue().size(),
-                handlerExecutor.getCompletedTaskCount());
+                executorStats.getActiveTasks(),
+                Math.max(0, executorStats.getPendingTasks() - executorStats.getActiveTasks()),
+                executorStats.getCompletedTasks());
     }
 
     public EventBusConfig getConfig() {

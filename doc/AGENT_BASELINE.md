@@ -127,6 +127,7 @@ Current canonical boundaries:
 - The real Spring Boot entry is `xa-mass-dev-app`.
 - Java baseline is JDK 21. The root reactor compiles with `maven.compiler.release=21`, Java worker samples use release 21, and CI is expected to run on Temurin 21.
 - Java 21 virtual threads are approved for future runtime, transport, event-bus, and polling execution boundaries when routed through explicit runtime abstractions. They must not redefine engine lifecycle correctness, worker lock ownership, or `TaskMsgAttempt` state semantics.
+- Current runtime executor boundary is `com.xa.mass.base.runtime.RuntimeTaskExecutor`; the default implementation is virtual-thread based with explicit admission control. Use it for runtime/event/transport blocking work instead of spreading raw executor construction into adapters.
 - `xa-mass-sdk` is the consumer-facing dependency entry for third-party embedding.
 - `xa-mass-sdk-api` holds the stable SDK-facing catalog, auth, and request-model types shared with HTTP surfaces.
 - Embedded runtime composition now lives inside `xa-mass-sdk`; SDK-facing builder/facade types remain under `com.xa.mass.starter.*`, SDK-owned transport composition now lives under `com.xa.mass.sdk.transport.*`, and shared transport runtime assembly lives under `com.xa.mass.transport.runtime.*`. It is not the primary Boot entry.

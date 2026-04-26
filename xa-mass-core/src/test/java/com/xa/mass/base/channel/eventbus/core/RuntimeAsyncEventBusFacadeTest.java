@@ -31,6 +31,7 @@ class RuntimeAsyncEventBusFacadeTest {
 
             assertTrue(handled.await(1, TimeUnit.SECONDS));
             assertTrue(listener.wasHandledOnAsyncThread());
+            assertTrue(listener.wasHandledOnVirtualThread());
             assertEquals(1, eventBus.getStatistics().getCompletedEvents());
         } finally {
             eventBus.shutdown();
@@ -107,6 +108,7 @@ class RuntimeAsyncEventBusFacadeTest {
     public static final class RuntimeTestListener {
         private final CountDownLatch handled;
         private final AtomicBoolean asyncThread = new AtomicBoolean();
+        private final AtomicBoolean virtualThread = new AtomicBoolean();
 
         RuntimeTestListener(CountDownLatch handled) {
             this.handled = handled;
@@ -115,11 +117,16 @@ class RuntimeAsyncEventBusFacadeTest {
         @MassSubscribe
         public void onRuntimeTestEvent(RuntimeTestEvent event) {
             asyncThread.set(Thread.currentThread().getName().startsWith("runtime-event-handler-"));
+            virtualThread.set(Thread.currentThread().isVirtual());
             handled.countDown();
         }
 
         boolean wasHandledOnAsyncThread() {
             return asyncThread.get();
+        }
+
+        boolean wasHandledOnVirtualThread() {
+            return virtualThread.get();
         }
     }
 
