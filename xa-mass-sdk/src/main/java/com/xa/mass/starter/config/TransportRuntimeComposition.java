@@ -49,6 +49,7 @@ public class TransportRuntimeComposition {
     private final WorkerTransportRuntimeFactory workerTransportRuntimeFactory;
     private final TransportAdapterBootstrap<WorkerTransportMessage> primaryTransportAdapterBootstrap;
     private final List<TransportAdapterBootstrap<WorkerTransportMessage>> supplementalTransportAdapterBootstraps;
+    private final int maxDeliveryQueuedItems;
 
     private transient WorkerEndpointRegistry runtimeOwnedEndpointRegistry;
     private transient TransportRegistrationResolver registrationResolver;
@@ -66,6 +67,7 @@ public class TransportRuntimeComposition {
         this.workerTransportRuntimeFactory = source.getWorkerTransportRuntimeFactory();
         this.primaryTransportAdapterBootstrap = source.getPrimaryTransportAdapterBootstrap();
         this.supplementalTransportAdapterBootstraps = List.copyOf(source.getSupplementalTransportAdapterBootstraps());
+        this.maxDeliveryQueuedItems = source.getMaxDeliveryQueuedItems();
     }
 
     public boolean isEnabled() {
@@ -158,6 +160,10 @@ public class TransportRuntimeComposition {
         bootstraps.add(resolveBundledSocketTransportAdapterBootstrap());
         bootstraps.addAll(supplementalTransportAdapterBootstraps);
         return List.copyOf(bootstraps);
+    }
+
+    public int getMaxDeliveryQueuedItems() {
+        return maxDeliveryQueuedItems;
     }
 
     TransportAdapterBootstrap<WorkerTransportMessage> resolvePrimaryTransportAdapterBootstrap() {

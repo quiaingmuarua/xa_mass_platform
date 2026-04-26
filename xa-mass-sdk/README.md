@@ -239,3 +239,6 @@ must provide explicit `adapterId` before the runtime is started.
 Custom primary transport bootstraps are resolved from their own descriptor
 metadata rather than from the bundled WebSocket enable flag, so swapping the
 primary adapter does not silently erase pre-start registration identity.
+Runtime delivery backlog admission is configured through the transport builder;
+`maxDeliveryQueuedItems(...)` controls the total in-memory queued dispatch cap
+used by the embedded delivery store before a Redis/JDBC-backed store is added.

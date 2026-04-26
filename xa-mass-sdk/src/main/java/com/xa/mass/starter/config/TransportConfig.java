@@ -22,6 +22,8 @@ import java.util.function.Supplier;
  */
 public class TransportConfig {
 
+    public static final int DEFAULT_MAX_DELIVERY_QUEUED_ITEMS = 100_000;
+
     private MessageTransporterFactory.TransporterType transporterType =
             MessageTransporterFactory.TransporterType.QUEUE_BASED;
     private MessageQueue<String> inputQueue;
@@ -40,6 +42,7 @@ public class TransportConfig {
     private WorkerTransportRuntimeFactory workerTransportRuntimeFactory;
     private TransportAdapterBootstrap<WorkerTransportMessage> primaryTransportAdapterBootstrap;
     private List<TransportAdapterBootstrap<WorkerTransportMessage>> supplementalTransportAdapterBootstraps = List.of();
+    private int maxDeliveryQueuedItems = DEFAULT_MAX_DELIVERY_QUEUED_ITEMS;
 
     public TransportConfig() {
         this.endpointRegistryFactory = CompositeWorkerEndpointRegistry::new;
@@ -62,6 +65,7 @@ public class TransportConfig {
         this.workerTransportRuntimeFactory = source.workerTransportRuntimeFactory;
         this.primaryTransportAdapterBootstrap = source.primaryTransportAdapterBootstrap;
         this.supplementalTransportAdapterBootstraps = List.copyOf(source.supplementalTransportAdapterBootstraps);
+        this.maxDeliveryQueuedItems = source.maxDeliveryQueuedItems;
     }
 
     public boolean isEnabled() {
@@ -194,6 +198,17 @@ public class TransportConfig {
                 new ArrayList<>(supplementalTransportAdapterBootstraps);
         bootstraps.add(transportAdapterBootstrap);
         supplementalTransportAdapterBootstraps = List.copyOf(bootstraps);
+    }
+
+    public int getMaxDeliveryQueuedItems() {
+        return maxDeliveryQueuedItems;
+    }
+
+    public void setMaxDeliveryQueuedItems(int maxDeliveryQueuedItems) {
+        if (maxDeliveryQueuedItems <= 0) {
+            throw new IllegalArgumentException("maxDeliveryQueuedItems must be positive");
+        }
+        this.maxDeliveryQueuedItems = maxDeliveryQueuedItems;
     }
 
     Supplier<WorkerEndpointRegistry> endpointRegistryFactory() {

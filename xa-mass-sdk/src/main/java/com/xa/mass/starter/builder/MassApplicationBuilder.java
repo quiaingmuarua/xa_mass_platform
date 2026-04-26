@@ -145,6 +145,11 @@ public class MassApplicationBuilder {
             return this;
         }
 
+        public TransportBuilder maxDeliveryQueuedItems(int maxDeliveryQueuedItems) {
+            config.setMaxDeliveryQueuedItems(maxDeliveryQueuedItems);
+            return this;
+        }
+
         public TransportBuilder inputQueue(MessageQueue<String> inputQueue) {
             config.setInputQueue(inputQueue);
             return this;

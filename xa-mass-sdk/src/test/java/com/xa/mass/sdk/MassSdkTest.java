@@ -471,6 +471,18 @@ class MassSdkTest {
         Assertions.assertEquals(3, runtimeComposition.resolveTransportAdapterBootstraps().size());
     }
 
+    @Test
+    void transportRuntimeCompositionSnapshotsDeliveryQueueCapacity() {
+        TransportConfig config = new TransportConfig();
+        config.setMaxDeliveryQueuedItems(42);
+        TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
+
+        config.setMaxDeliveryQueuedItems(84);
+
+        assertEquals(42, runtimeComposition.getMaxDeliveryQueuedItems());
+        assertThrows(IllegalArgumentException.class, () -> config.setMaxDeliveryQueuedItems(0));
+    }
+
     void explicitRealtimeBuilderWrapsRuntimeApplication() {
         MassSdkApplication app = explicitRealtimeRuntime(18080, 8, 1000);
 
@@ -575,6 +587,26 @@ class MassSdkTest {
             assertEquals(0, deliveryQueue.get("queueCount"));
             assertEquals(0, deliveryQueue.get("waitingPollers"));
             assertEquals(100_000, deliveryQueue.get("maxQueuedItems"));
+        } finally {
+            app.stop();
+        }
+    }
+
+    @Test
+    void transportDeliveryQueueCapacityCanBeConfigured() {
+        MassSdkApplication app = MassSdk.builder()
+                .transport(transport -> transport
+                        .webSocketAdapter(webSocket -> webSocket.enabled(true).serverEnabled(false))
+                        .maxDeliveryQueuedItems(7))
+                .engine(engine -> engine.enabled(false))
+                .build();
+
+        try {
+            app.start();
+
+            Map<?, ?> deliveryQueue = (Map<?, ?>) app.getQueueDetail().get("deliveryQueue");
+            assertEquals(true, deliveryQueue.get("available"));
+            assertEquals(7, deliveryQueue.get("maxQueuedItems"));
         } finally {
             app.stop();
         }

@@ -103,6 +103,11 @@ public final class MassSdk {
             return this;
         }
 
+        public TransportOptions maxDeliveryQueuedItems(int maxDeliveryQueuedItems) {
+            delegate.maxDeliveryQueuedItems(maxDeliveryQueuedItems);
+            return this;
+        }
+
         public TransportOptions inputQueue(MessageQueue<String> inputQueue) {
             delegate.inputQueue(inputQueue);
             return this;

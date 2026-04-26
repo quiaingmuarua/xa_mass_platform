@@ -47,7 +47,6 @@ public class MassApplication {
 
     private static final Logger logger = LoggerFactory.getLogger(MassApplication.class);
     private static final int TRANSPORT_RUNTIME_MAX_PENDING_TASKS = 10_000;
-    private static final int TRANSPORT_DELIVERY_MAX_QUEUED_ITEMS = 100_000;
 
     private final TransportRuntimeComposition transportRuntimeComposition;
     private final EngineConfig engineConfig;
@@ -148,7 +147,7 @@ public class MassApplication {
             WorkerSystemEventChannel systemEventChannel = transportRuntimeComposition.resolveSystemEventChannel();
             TransportDeliveryService deliveryService =
                     new TransportDeliveryService(new InMemoryTransportDeliveryStore(
-                            TRANSPORT_DELIVERY_MAX_QUEUED_ITEMS
+                            transportRuntimeComposition.getMaxDeliveryQueuedItems()
                     ));
             transportDeliveryService = deliveryService;
             transportRuntimeTaskExecutor = new VirtualThreadRuntimeTaskExecutor(

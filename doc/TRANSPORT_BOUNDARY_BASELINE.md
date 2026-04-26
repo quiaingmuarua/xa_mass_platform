@@ -147,9 +147,10 @@ they should avoid deep-copying task payload maps beyond the immutable copies
 already owned by `TaskDispatchItem`.
 
 Runtime delivery stores must enforce explicit admission control. The current
-in-memory store has both per-worker queue caps and a total queued-item cap; Redis
-or JDBC replacements should preserve equivalent backpressure and expose the same
-`TransportDeliveryStoreStats` shape for backlog, queue, and waiting-poller
-diagnostics. Store shutdown is also part of the runtime contract: after shutdown
-the store rejects new delivery, clears in-memory backlog, and wakes waiting
-pollers without changing engine-owned task lifecycle state.
+in-memory store has both per-worker queue caps and a configurable total
+queued-item cap; Redis or JDBC replacements should preserve equivalent
+backpressure and expose the same `TransportDeliveryStoreStats` shape for
+backlog, queue, and waiting-poller diagnostics. Store shutdown is also part of
+the runtime contract: after shutdown the store rejects new delivery, clears
+in-memory backlog, and wakes waiting pollers without changing engine-owned task
+lifecycle state.
