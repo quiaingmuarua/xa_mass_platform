@@ -1,5 +1,7 @@
 # Development profile overrides for the verified mock runtime.
 mass:
+  runtime:
+    event-handler-timeout-ms: 5000
   websocket:
     port: 18088
     max-connections: 1000

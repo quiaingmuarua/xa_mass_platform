@@ -23,6 +23,8 @@ mock:
       interval: 30000
 
 mass:
+  runtime:
+    event-handler-timeout-ms: 5000
   websocket:
     port: 18088
   queue:

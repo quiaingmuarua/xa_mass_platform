@@ -63,6 +63,9 @@ public class MockApplicationSpringBootApp {
     @Value("${mass.engine.worker-threads:8}")
     private int workerThreads;
 
+    @Value("${mass.runtime.event-handler-timeout-ms:0}")
+    private long eventHandlerTimeoutMillis;
+
     @Value("${mass.mock.data.workers:mock/mock_workers.json}")
     private String workersConfigPath;
 
@@ -119,6 +122,7 @@ public class MockApplicationSpringBootApp {
                                 .serverEnabled(massSocketEnabled)
                                 .server(massSocketPort)
                                 .maxConnections(maxConnections))
+                        .eventHandlerTimeoutMillis(eventHandlerTimeoutMillis)
                         .inputQueue(new InMemoryMessageQueue<>("input", String.class))
                         .outputQueue(new InMemoryMessageQueue<>("output", WorkerTransportMessage.class)))
                 .engine(engine -> engine

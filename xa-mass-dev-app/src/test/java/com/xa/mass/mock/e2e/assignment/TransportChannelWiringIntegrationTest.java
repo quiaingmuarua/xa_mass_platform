@@ -62,6 +62,8 @@ class TransportChannelWiringIntegrationTest extends AbstractMockE2eTest {
 
     @Test
     void allThreeTransportChannelsAreInvokedForPollingWorker() throws Exception {
+        assertRuntimeExecutorDiagnosticsExposeEventExecutor();
+
         List<String> channelCallOrder = new CopyOnWriteArrayList<>();
 
         String workerId = "channel-wire-worker-001";
@@ -103,6 +105,20 @@ class TransportChannelWiringIntegrationTest extends AbstractMockE2eTest {
         TaskSnapshot terminal = waitForTerminalTask(taskId);
         assertEquals("TERMINAL", terminal.task().get("status"));
         assertEquals("ALL_MESSAGES_SUCCEEDED", terminal.task().get("terminalReason"));
+    }
+
+    @SuppressWarnings("unchecked")
+    private void assertRuntimeExecutorDiagnosticsExposeEventExecutor() {
+        Map<String, Object> response = exchange("/api/queue/detail", HttpMethod.GET, null);
+        assertApiOk(response);
+        Map<String, Object> runtimeExecutors =
+                (Map<String, Object>) responseData(response).get("runtimeExecutors");
+        assertNotNull(runtimeExecutors, "runtimeExecutors diagnostics should be exposed");
+        Map<String, Object> transport = (Map<String, Object>) runtimeExecutors.get("transport");
+        Map<String, Object> event = (Map<String, Object>) runtimeExecutors.get("event");
+        assertEquals(true, transport.get("available"));
+        assertEquals(true, event.get("available"),
+                "dev-app should enable bounded SDK event handler execution by default");
     }
 
     private void registerPollingWorker(String workerId) {
