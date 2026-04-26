@@ -102,19 +102,28 @@ public final class MassSdk {
             this.delegate = Objects.requireNonNull(delegate, "delegate");
         }
 
+        /**
+         * @deprecated Prefer {@link #transport(Consumer)} with
+         * {@code webSocketAdapter(...).server(...)} so adapter-owned server
+         * settings stay on the concrete adapter rather than a transport-global
+         * convenience helper.
+         */
+        @Deprecated(forRemoval = false)
         public Builder server(int port) {
-            delegate.server(port);
-            return this;
+            return transport(transport -> transport.webSocketAdapter(webSocket -> webSocket.server(port)));
         }
 
         /**
-         * @deprecated Prefer {@link #transportServer(int, String)} so callers do not
-         * expose WebSocket-only wording in stable SDK code.
+         * @deprecated Prefer {@link #transport(Consumer)} with
+         * {@code webSocketAdapter(...).server(...)} so adapter-owned server
+         * settings stay on the concrete adapter rather than a transport-global
+         * convenience helper.
          */
         @Deprecated(forRemoval = false)
         public Builder server(int port, String transportEndpointPath) {
-            delegate.server(port, transportEndpointPath);
-            return this;
+            return transport(transport -> transport.webSocketAdapter(
+                    webSocket -> webSocket.server(port, transportEndpointPath)
+            ));
         }
 
         /**
@@ -124,8 +133,7 @@ public final class MassSdk {
          */
         @Deprecated(forRemoval = false)
         public Builder transportServer(int port) {
-            delegate.transportServer(port);
-            return this;
+            return transport(transport -> transport.webSocketAdapter(webSocket -> webSocket.server(port)));
         }
 
         /**
@@ -135,8 +143,9 @@ public final class MassSdk {
          */
         @Deprecated(forRemoval = false)
         public Builder transportServer(int port, String transportEndpointPath) {
-            delegate.transportServer(port, transportEndpointPath);
-            return this;
+            return transport(transport -> transport.webSocketAdapter(
+                    webSocket -> webSocket.server(port, transportEndpointPath)
+            ));
         }
 
         public Builder transport(Consumer<TransportOptions> configurator) {
@@ -214,8 +223,7 @@ public final class MassSdk {
          */
         @Deprecated(forRemoval = false)
         public TransportOptions enabled(boolean enabled) {
-            delegate.enabled(enabled);
-            return this;
+            return webSocketAdapter(webSocket -> webSocket.enabled(enabled));
         }
 
         public TransportOptions webSocketAdapter(Consumer<WebSocketAdapterOptions> configurator) {
@@ -237,8 +245,7 @@ public final class MassSdk {
          */
         @Deprecated(forRemoval = false)
         public TransportOptions transportServerEnabled(boolean enabled) {
-            delegate.transportServerEnabled(enabled);
-            return this;
+            return webSocketAdapter(webSocket -> webSocket.serverEnabled(enabled));
         }
 
         /**
@@ -248,8 +255,7 @@ public final class MassSdk {
          */
         @Deprecated(forRemoval = false)
         public TransportOptions transportEndpointPath(String transportEndpointPath) {
-            delegate.transportEndpointPath(transportEndpointPath);
-            return this;
+            return webSocketAdapter(webSocket -> webSocket.endpointPath(transportEndpointPath));
         }
 
         /**
@@ -265,8 +271,7 @@ public final class MassSdk {
         @Deprecated(forRemoval = false)
         public TransportOptions transportServerFactory(
                 TransportServerFactory<TransportServerFactoryContext> transportServerFactory) {
-            delegate.transportServerFactory(transportServerFactory);
-            return this;
+            return webSocketAdapter(webSocket -> webSocket.transportServerFactory(transportServerFactory));
         }
 
         /**
@@ -287,8 +292,7 @@ public final class MassSdk {
          */
         @Deprecated(forRemoval = false)
         public TransportOptions maxConnections(int maxConnections) {
-            delegate.maxConnections(maxConnections);
-            return this;
+            return webSocketAdapter(webSocket -> webSocket.maxConnections(maxConnections));
         }
 
         public TransportOptions inputQueue(MessageQueue<String> inputQueue) {

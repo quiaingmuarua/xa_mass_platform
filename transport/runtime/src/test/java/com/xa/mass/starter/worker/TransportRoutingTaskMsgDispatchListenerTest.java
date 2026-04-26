@@ -115,7 +115,7 @@ class TransportRoutingTaskMsgDispatchListenerTest {
                 IllegalStateException.class,
                 () -> listener.onTaskMsgsReady(task, List.of(taskMsg))
         );
-        assertEquals("Worker adapterId is not set and transportHint/onlineStrategy is not set: missing-transport-worker",
+        assertEquals("Cannot resolve transport binding for worker missing-transport-worker: transportHint must not be blank",
                 error.getMessage());
     }
 
@@ -146,7 +146,7 @@ class TransportRoutingTaskMsgDispatchListenerTest {
                 IllegalStateException.class,
                 () -> listener.onTaskMsgsReady(task, List.of(taskMsg))
         );
-        assertEquals("Unsupported worker transport 'grpc' for worker unsupported-transport-worker; available transports=[polling]",
+        assertEquals("Cannot resolve transport binding for worker unsupported-transport-worker: Unsupported worker transportHint 'grpc'; available transportHints=[polling]",
                 error.getMessage());
     }
 

@@ -348,8 +348,22 @@ class MockRuntimeDataLoaderTest {
             worker.setWorkerId(request.getWorkerId());
             worker.setWorkerGroupId(request.getWorkerGroupId());
             worker.setAdapterId(request.getAdapterId());
-            worker.setSupportedProjects(request.getSupportedProjects());
-            worker.setSupportedEventCodes(request.getSupportedEventCodes());
+            List<String> supportedProjects = request.getSupportedProjects();
+            if ((supportedProjects == null || supportedProjects.isEmpty()) && !request.getEventBindings().isEmpty()) {
+                supportedProjects = request.getEventBindings().stream()
+                        .flatMap(binding -> binding.getProjectCodes().stream())
+                        .distinct()
+                        .toList();
+            }
+            List<String> supportedEventCodes = request.getSupportedEventCodes();
+            if ((supportedEventCodes == null || supportedEventCodes.isEmpty()) && !request.getEventBindings().isEmpty()) {
+                supportedEventCodes = request.getEventBindings().stream()
+                        .map(com.xa.mass.sdk.model.WorkerEventBinding::getEventCode)
+                        .distinct()
+                        .toList();
+            }
+            worker.setSupportedProjects(supportedProjects);
+            worker.setSupportedEventCodes(supportedEventCodes);
             worker.setOnlineStrategy(request.getTransportHint());
             worker.setAttributes(request.getAttributes());
             workers.add(worker);

@@ -7,6 +7,7 @@ import com.xa.mass.mock.e2e.support.AbstractMockE2eTest;
 import com.xa.mass.sdk.MassSdkApplication;
 import com.xa.mass.sdk.model.MassTaskRequest;
 import com.xa.mass.sdk.model.WorkerContextRegistration;
+import com.xa.mass.sdk.model.WorkerEventBinding;
 import com.xa.mass.sdk.model.WorkerRegistration;
 import com.xa.mass.sdk.worker.PullWorkerSession;
 import com.xa.mass.transport.WorkerTransportHints;
@@ -65,8 +66,12 @@ class CrawlerPullWorkerSdkRegistrationIntegrationTest extends AbstractMockE2eTes
         app.registerWorker(WorkerRegistration.builder()
                 .workerId(workerId)
                 .workerGroupId("crawler")
-                .supportedProjects(List.of("crawlerApp"))
-                .supportedEventCodes(List.of("crawler.fetch-page"))
+                .eventBindings(List.of(
+                        WorkerEventBinding.builder()
+                                .eventCode("crawler.fetch-page")
+                                .projectCodes(List.of("crawlerApp"))
+                                .build()
+                ))
                 .transportHint(WorkerTransportHints.POLLING)
                 .attributes(Map.of("type", "crawler"))
                 .build());

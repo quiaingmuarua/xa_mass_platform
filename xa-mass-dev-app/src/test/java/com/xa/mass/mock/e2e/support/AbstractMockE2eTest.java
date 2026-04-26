@@ -3,6 +3,7 @@ package com.xa.mass.mock.e2e.support;
 import com.xa.mass.mock.client.MockWorkerClient;
 import com.xa.mass.sdk.MassSdkApplication;
 import com.xa.mass.sdk.model.WorkerContextRegistration;
+import com.xa.mass.sdk.model.WorkerEventBinding;
 import com.xa.mass.sdk.model.WorkerRegistration;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.web.client.TestRestTemplate;
@@ -320,11 +321,19 @@ public abstract class AbstractMockE2eTest {
         return WorkerRegistration.builder()
                 .workerId(workerId)
                 .workerGroupId(workerGroupId)
-                .supportedProjects(List.of(project))
-                .supportedEventCodes(defaultSupportedEvents(project))
+                .eventBindings(defaultEventBindings(project))
                 .adapterId("websocket")
                 .transportHint("realtime")
                 .build();
+    }
+
+    private List<WorkerEventBinding> defaultEventBindings(String project) {
+        return defaultSupportedEvents(project).stream()
+                .map(eventCode -> WorkerEventBinding.builder()
+                        .eventCode(eventCode)
+                        .projectCodes(List.of(project))
+                        .build())
+                .toList();
     }
 
     private List<String> defaultSupportedEvents(String project) {

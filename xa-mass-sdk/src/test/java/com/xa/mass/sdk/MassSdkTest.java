@@ -306,7 +306,7 @@ class MassSdkTest {
     }
 
     @Test
-    void transportConfigDeprecatedRuntimeHelpersReuseCompatibilitySnapshotUntilMutation() {
+    void transportConfigDeprecatedRuntimeHelpersResolveCurrentCompatibilityState() {
         TransportConfig config = new TransportConfig();
 
         WorkerEndpointRegistry firstRegistry = config.resolveWorkerEndpointRegistry();
@@ -327,7 +327,7 @@ class MassSdkTest {
     }
 
     @Test
-    void nestedWebSocketAdapterMutationsInvalidateTransportConfigCompatibilitySnapshot() {
+    void webSocketTransportBootstrapReflectsCurrentNestedAdapterConfig() {
         TransportConfig config = new TransportConfig();
         config.resolveTransportAdapterBootstrap();
 
@@ -350,7 +350,7 @@ class MassSdkTest {
     }
 
     @Test
-    void nestedSocketAdapterMutationsInvalidateTransportConfigCompatibilitySnapshot() {
+    void socketTransportBootstrapReflectsCurrentNestedAdapterConfig() {
         TransportConfig config = new TransportConfig();
         config.resolveSocketTransportAdapterBootstrap();
 
@@ -372,7 +372,7 @@ class MassSdkTest {
     }
 
     @Test
-    void nestedWebSocketFactoryMutationInvalidatesTransportConfigCompatibilitySnapshot() {
+    void transportServerFactoryCompatibilityHelperReadsCurrentWebSocketAdapterConfig() {
         TransportConfig config = new TransportConfig();
         config.resolveWorkerEndpointRegistry();
 
@@ -510,8 +510,12 @@ class MassSdkTest {
     @Test
     void transportGlobalWebSocketCompatibilityHelpersStayDeprecated() throws NoSuchMethodException {
         Set<java.lang.reflect.Method> compatibilityHelpers = Set.of(
+                MassApplicationBuilder.class.getDeclaredMethod("server", int.class),
+                MassApplicationBuilder.class.getDeclaredMethod("server", int.class, String.class),
                 MassApplicationBuilder.class.getDeclaredMethod("transportServer", int.class),
                 MassApplicationBuilder.class.getDeclaredMethod("transportServer", int.class, String.class),
+                MassSdk.Builder.class.getDeclaredMethod("server", int.class),
+                MassSdk.Builder.class.getDeclaredMethod("server", int.class, String.class),
                 MassApplicationBuilder.TransportBuilder.class.getDeclaredMethod("enabled", boolean.class),
                 MassApplicationBuilder.TransportBuilder.class.getDeclaredMethod("transportServerEnabled", boolean.class),
                 MassApplicationBuilder.TransportBuilder.class.getDeclaredMethod("transportEndpointPath", String.class),
@@ -610,10 +614,14 @@ class MassSdkTest {
 
         assertFalse(adapter.isRunning());
         assertNull(adapter.getWebSocketMessageDispatcher());
+        assertNull(readField(adapter, "messageDispatcher",
+                com.xa.mass.transport.websocket.dispatcher.WebSocketMessageDispatcher.class));
 
         adapter.start();
 
         assertTrue(adapter.isRunning());
+        assertNull(readField(adapter, "messageDispatcher",
+                com.xa.mass.transport.websocket.dispatcher.WebSocketMessageDispatcher.class));
         assertNotNull(adapter.getWebSocketMessageDispatcher());
         assertTrue(adapter.getWebSocketMessageDispatcher().isRunning());
 
@@ -805,11 +813,16 @@ class MassSdkTest {
         stubDefaultTransportRegistrationResolution(delegate);
 
         MassSdkApplication app = new MassSdkApplication(delegate);
+        registerExampleTaskCatalog(app);
         app.registerWorker(WorkerRegistration.builder()
                 .workerId("crawler-worker-001")
                 .workerGroupId("crawler")
-                .supportedProjects(List.of("crawlerApp"))
-                .supportedEventCodes(List.of("crawler.fetch-page"))
+                .eventBindings(List.of(
+                        WorkerEventBinding.builder()
+                                .eventCode("crawler.fetch-page")
+                                .projectCodes(List.of("crawlerApp"))
+                                .build()
+                ))
                 .transportHint("polling")
                 .attributes(Map.of("type", "crawler"))
                 .build());
@@ -1479,6 +1492,7 @@ class MassSdkTest {
         stubDefaultTransportRegistrationResolution(delegate);
 
         MassSdkApplication app = new MassSdkApplication(delegate);
+        registerExampleTaskCatalog(app);
         Map<String, String> workerAttributes = new LinkedHashMap<>();
         workerAttributes.put(" type ", "crawler");
         workerAttributes.put(" ", "ignored");
@@ -1486,8 +1500,12 @@ class MassSdkTest {
         app.registerWorker(WorkerRegistration.builder()
                 .workerId(" crawler-worker-001 ")
                 .workerGroupId(" crawler ")
-                .supportedProjects(Arrays.asList(" crawlerApp ", "crawlerApp", " "))
-                .supportedEventCodes(Arrays.asList(" crawler.fetch-page ", "crawler.fetch-page", " "))
+                .eventBindings(List.of(
+                        WorkerEventBinding.builder()
+                                .eventCode(" crawler.fetch-page ")
+                                .projectCodes(Arrays.asList(" crawlerApp ", "crawlerApp", " "))
+                                .build()
+                ))
                 .transportHint(" POLLING ")
                 .attributes(workerAttributes)
                 .build());
@@ -1605,6 +1623,31 @@ class MassSdkTest {
                                         .projectCodes(List.of("telegramApp"))
                                         .build()
                         ))
+                        .transportHint("polling")
+                        .build())
+        );
+
+        Assertions.assertTrue(error.getMessage().contains("outside event scope"));
+    }
+
+    @Test
+    void legacyCapabilityListsRejectProjectOutsideEventScope() {
+        MassApplication delegate = mock(MassApplication.class);
+        MassEngine engine = mock(MassEngine.class);
+
+        when(delegate.getEngine()).thenReturn(engine);
+        when(engine.isRunning()).thenReturn(true);
+        stubDefaultTransportRegistrationResolution(delegate);
+
+        MassSdkApplication app = new MassSdkApplication(delegate);
+        registerExampleTaskCatalog(app);
+
+        IllegalArgumentException error = assertThrows(
+                IllegalArgumentException.class,
+                () -> app.registerWorker(WorkerRegistration.builder()
+                        .workerId("legacy-worker-scope")
+                        .supportedProjects(List.of("telegramApp"))
+                        .supportedEventCodes(List.of("crawler.fetch-page"))
                         .transportHint("polling")
                         .build())
         );
@@ -1860,7 +1903,7 @@ class MassSdkTest {
                     IllegalStateException.class,
                     () -> app.pullWorker("worker-without-transport")
             );
-            Assertions.assertEquals("Worker adapterId is not set and transportHint/onlineStrategy is not set: worker-without-transport",
+            Assertions.assertEquals("Cannot resolve transport binding for worker worker-without-transport: transportHint must not be blank",
                     error.getMessage());
         } finally {
             app.stop();

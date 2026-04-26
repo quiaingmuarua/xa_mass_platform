@@ -1112,6 +1112,20 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
         return List.copyOf(values);
     }
 
+    private List<String> normalizedStringList(List<String> values) {
+        if (values == null || values.isEmpty()) {
+            return List.of();
+        }
+        LinkedHashSet<String> normalized = new LinkedHashSet<>();
+        for (String value : values) {
+            if (value == null || value.isBlank()) {
+                continue;
+            }
+            normalized.add(value.trim());
+        }
+        return normalized.isEmpty() ? List.of() : List.copyOf(normalized);
+    }
+
     private List<Map<String, Object>> readInputMaps(Object value) {
         if (!(value instanceof List<?> list) || list.isEmpty()) {
             return List.of();
@@ -1153,7 +1167,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
 
     private WorkerRegistration normalizeWorkerRegistration(WorkerRegistration registration) {
         Objects.requireNonNull(registration, "registration");
-        List<WorkerEventBinding> bindings = registration.getEventBindings();
+        List<WorkerEventBinding> bindings = normalizedWorkerBindings(registration);
         LinkedHashSet<String> supportedEventCodes = new LinkedHashSet<>();
         LinkedHashSet<String> supportedProjects = new LinkedHashSet<>();
         if (bindings != null && !bindings.isEmpty()) {
@@ -1163,8 +1177,8 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
                 supportedProjects.addAll(resolveWorkerBindingProjects(definition, binding));
             }
         } else {
-            supportedEventCodes.addAll(registration.getSupportedEventCodes());
-            supportedProjects.addAll(registration.getSupportedProjects());
+            supportedEventCodes.addAll(normalizedStringList(registration.getSupportedEventCodes()));
+            supportedProjects.addAll(normalizedStringList(registration.getSupportedProjects()));
         }
         String normalizedTransportHint =
                 WorkerTransportHints.normalize(requireNonBlank(registration.getTransportHint(), "transportHint"));
@@ -1180,6 +1194,26 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
                 .transportHint(normalizedTransportHint)
                 .attributes(registration.getAttributes())
                 .build();
+    }
+
+    private List<WorkerEventBinding> normalizedWorkerBindings(WorkerRegistration registration) {
+        List<WorkerEventBinding> explicitBindings = registration.getEventBindings();
+        if (explicitBindings != null && !explicitBindings.isEmpty()) {
+            return List.copyOf(explicitBindings);
+        }
+        List<String> legacyEventCodes = normalizedStringList(registration.getSupportedEventCodes());
+        if (legacyEventCodes.isEmpty()) {
+            return List.of();
+        }
+        List<String> legacyProjectCodes = normalizedStringList(registration.getSupportedProjects());
+        List<WorkerEventBinding> derivedBindings = new ArrayList<>(legacyEventCodes.size());
+        for (String eventCode : legacyEventCodes) {
+            derivedBindings.add(WorkerEventBinding.builder()
+                    .eventCode(eventCode)
+                    .projectCodes(legacyProjectCodes)
+                    .build());
+        }
+        return List.copyOf(derivedBindings);
     }
 
     private Worker normalizeWorkerModel(Worker worker) {

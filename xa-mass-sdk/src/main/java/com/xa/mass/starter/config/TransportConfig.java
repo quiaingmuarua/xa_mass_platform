@@ -4,6 +4,7 @@ import com.xa.mass.base.channel.messaging.api.MessageQueue;
 import com.xa.mass.base.channel.tranporter.MessageTransporter;
 import com.xa.mass.base.channel.tranporter.MessageTransporterFactory;
 import com.xa.mass.starter.transport.CompositeWorkerEndpointRegistry;
+import com.xa.mass.starter.transport.DefaultWorkerTransportRuntimeFactory;
 import com.xa.mass.starter.transport.RuntimeEventBusWorkerSystemEventChannel;
 import com.xa.mass.starter.transport.TransportAdapterBootstrap;
 import com.xa.mass.starter.transport.WorkerTransportRuntimeFactory;
@@ -13,9 +14,11 @@ import com.xa.mass.transport.channel.TaskResultIngestChannel;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
 import com.xa.mass.transport.model.WorkerTransportMessage;
 import com.xa.mass.transport.socket.runtime.SocketAdapterConfig;
+import com.xa.mass.transport.socket.runtime.SocketTransportAdapterBootstrap;
 import com.xa.mass.transport.websocket.runtime.WebSocketAdapterConfig;
 import com.xa.mass.transport.websocket.dispatcher.context.WebSocketDispatchRuntimeContext;
 import com.xa.mass.transport.websocket.runtime.WebSocketEmbeddedRuntimeSupport;
+import com.xa.mass.transport.websocket.runtime.WebSocketTransportAdapterBootstrap;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -48,12 +51,11 @@ public class TransportConfig {
     private WorkerTransportRuntimeFactory workerTransportRuntimeFactory;
     private TransportAdapterBootstrap<WorkerTransportMessage> transportAdapterBootstrap;
     private List<TransportAdapterBootstrap<WorkerTransportMessage>> additionalTransportAdapterBootstraps = List.of();
-    private transient TransportRuntimeComposition compatibilityRuntimeComposition;
+    private transient WorkerEndpointRegistry compatibilityWorkerEndpointRegistry;
 
     public TransportConfig() {
         this.endpointRegistryFactory = CompositeWorkerEndpointRegistry::new;
         this.systemEventChannelResolver = ignored -> new RuntimeEventBusWorkerSystemEventChannel();
-        attachMutationListeners();
     }
 
     public TransportConfig(TransportConfig source) {
@@ -72,7 +74,6 @@ public class TransportConfig {
         this.workerTransportRuntimeFactory = source.workerTransportRuntimeFactory;
         this.transportAdapterBootstrap = source.transportAdapterBootstrap;
         this.additionalTransportAdapterBootstraps = List.copyOf(source.additionalTransportAdapterBootstraps);
-        attachMutationListeners();
     }
 
     public boolean isEnabled() {
@@ -232,7 +233,6 @@ public class TransportConfig {
 
     public void setTransporterType(MessageTransporterFactory.TransporterType transporterType) {
         this.transporterType = transporterType;
-        invalidateCompatibilityRuntimeComposition();
     }
 
     public MessageQueue<String> getInputQueue() {
@@ -241,7 +241,6 @@ public class TransportConfig {
 
     public void setInputQueue(MessageQueue<String> inputQueue) {
         this.inputQueue = inputQueue;
-        invalidateCompatibilityRuntimeComposition();
     }
 
     public MessageQueue<WorkerTransportMessage> getOutputQueue() {
@@ -250,7 +249,6 @@ public class TransportConfig {
 
     public void setOutputQueue(MessageQueue<WorkerTransportMessage> outputQueue) {
         this.outputQueue = outputQueue;
-        invalidateCompatibilityRuntimeComposition();
     }
 
     public String getInputApiUrl() {
@@ -259,7 +257,6 @@ public class TransportConfig {
 
     public void setInputApiUrl(String inputApiUrl) {
         this.inputApiUrl = inputApiUrl;
-        invalidateCompatibilityRuntimeComposition();
     }
 
     public String getOutputApiUrl() {
@@ -268,7 +265,6 @@ public class TransportConfig {
 
     public void setOutputApiUrl(String outputApiUrl) {
         this.outputApiUrl = outputApiUrl;
-        invalidateCompatibilityRuntimeComposition();
     }
 
     public String getApiKey() {
@@ -277,7 +273,6 @@ public class TransportConfig {
 
     public void setApiKey(String apiKey) {
         this.apiKey = apiKey;
-        invalidateCompatibilityRuntimeComposition();
     }
 
     public WorkerSystemEventChannel getCustomSystemEventChannel() {
@@ -286,7 +281,6 @@ public class TransportConfig {
 
     public void setCustomSystemEventChannel(WorkerSystemEventChannel customSystemEventChannel) {
         this.customSystemEventChannel = customSystemEventChannel;
-        invalidateCompatibilityRuntimeComposition();
     }
 
     public WorkerEndpointRegistry getWorkerEndpointRegistry() {
@@ -295,7 +289,7 @@ public class TransportConfig {
 
     public void setWorkerEndpointRegistry(WorkerEndpointRegistry workerEndpointRegistry) {
         this.workerEndpointRegistry = workerEndpointRegistry;
-        invalidateCompatibilityRuntimeComposition();
+        this.compatibilityWorkerEndpointRegistry = null;
     }
 
     /**
@@ -329,8 +323,6 @@ public class TransportConfig {
         this.defaultWebSocketAdapterConfig = new WebSocketAdapterConfig(
                 java.util.Objects.requireNonNull(defaultWebSocketAdapterConfig, "defaultWebSocketAdapterConfig")
         );
-        attachMutationListener(this.defaultWebSocketAdapterConfig);
-        invalidateCompatibilityRuntimeComposition();
     }
 
     public SocketAdapterConfig getDefaultSocketAdapterConfig() {
@@ -341,8 +333,6 @@ public class TransportConfig {
         this.defaultSocketAdapterConfig = new SocketAdapterConfig(
                 java.util.Objects.requireNonNull(defaultSocketAdapterConfig, "defaultSocketAdapterConfig")
         );
-        attachMutationListener(this.defaultSocketAdapterConfig);
-        invalidateCompatibilityRuntimeComposition();
     }
 
     public WorkerTransportRuntimeFactory getWorkerTransportRuntimeFactory() {
@@ -351,7 +341,6 @@ public class TransportConfig {
 
     public void setWorkerTransportRuntimeFactory(WorkerTransportRuntimeFactory workerTransportRuntimeFactory) {
         this.workerTransportRuntimeFactory = workerTransportRuntimeFactory;
-        invalidateCompatibilityRuntimeComposition();
     }
 
     public TransportAdapterBootstrap<WorkerTransportMessage> getTransportAdapterBootstrap() {
@@ -360,7 +349,6 @@ public class TransportConfig {
 
     public void setTransportAdapterBootstrap(TransportAdapterBootstrap<WorkerTransportMessage> transportAdapterBootstrap) {
         this.transportAdapterBootstrap = transportAdapterBootstrap;
-        invalidateCompatibilityRuntimeComposition();
     }
 
     public List<TransportAdapterBootstrap<WorkerTransportMessage>> getAdditionalTransportAdapterBootstraps() {
@@ -372,7 +360,6 @@ public class TransportConfig {
         this.additionalTransportAdapterBootstraps = additionalTransportAdapterBootstraps == null
                 ? List.of()
                 : List.copyOf(additionalTransportAdapterBootstraps);
-        invalidateCompatibilityRuntimeComposition();
     }
 
     public void addTransportAdapterBootstrap(TransportAdapterBootstrap<WorkerTransportMessage> transportAdapterBootstrap) {
@@ -383,7 +370,6 @@ public class TransportConfig {
                 new ArrayList<>(additionalTransportAdapterBootstraps);
         bootstraps.add(transportAdapterBootstrap);
         additionalTransportAdapterBootstraps = List.copyOf(bootstraps);
-        invalidateCompatibilityRuntimeComposition();
     }
 
     Supplier<WorkerEndpointRegistry> endpointRegistryFactory() {
@@ -406,7 +392,16 @@ public class TransportConfig {
      */
     @Deprecated
     public WorkerEndpointRegistry resolveWorkerEndpointRegistry() {
-        return compatibilityRuntimeComposition().resolveWorkerEndpointRegistry();
+        if (workerEndpointRegistry != null) {
+            return workerEndpointRegistry;
+        }
+        if (compatibilityWorkerEndpointRegistry == null) {
+            if (endpointRegistryFactory == null) {
+                throw new IllegalStateException("Transport endpoint registry factory is not configured");
+            }
+            compatibilityWorkerEndpointRegistry = endpointRegistryFactory.get();
+        }
+        return compatibilityWorkerEndpointRegistry;
     }
 
     /**
@@ -417,7 +412,13 @@ public class TransportConfig {
      */
     @Deprecated
     public WorkerSystemEventChannel resolveSystemEventChannel() {
-        return compatibilityRuntimeComposition().resolveSystemEventChannel();
+        if (customSystemEventChannel != null) {
+            return customSystemEventChannel;
+        }
+        if (systemEventChannelResolver == null) {
+            throw new IllegalStateException("Transport system-event resolver is not configured");
+        }
+        return systemEventChannelResolver.apply(resolveWorkerEndpointRegistry());
     }
 
     /**
@@ -428,7 +429,9 @@ public class TransportConfig {
      */
     @Deprecated
     public WorkerTransportRuntimeFactory resolveWorkerTransportRuntimeFactory() {
-        return compatibilityRuntimeComposition().resolveWorkerTransportRuntimeFactory();
+        return workerTransportRuntimeFactory != null
+                ? workerTransportRuntimeFactory
+                : new DefaultWorkerTransportRuntimeFactory();
     }
 
     /**
@@ -439,7 +442,9 @@ public class TransportConfig {
      */
     @Deprecated
     public TransportAdapterBootstrap<WorkerTransportMessage> resolveTransportAdapterBootstrap() {
-        return compatibilityRuntimeComposition().resolvePrimaryTransportAdapterBootstrap();
+        return transportAdapterBootstrap != null
+                ? transportAdapterBootstrap
+                : new WebSocketTransportAdapterBootstrap(defaultWebSocketAdapterConfig);
     }
 
     /**
@@ -450,7 +455,7 @@ public class TransportConfig {
      */
     @Deprecated
     public TransportAdapterBootstrap<WorkerTransportMessage> resolveSocketTransportAdapterBootstrap() {
-        return compatibilityRuntimeComposition().resolveDefaultSocketTransportAdapterBootstrap();
+        return new SocketTransportAdapterBootstrap(defaultSocketAdapterConfig);
     }
 
     /**
@@ -466,34 +471,10 @@ public class TransportConfig {
                                                  WorkerEndpointRegistry endpointRegistry,
                                                  int port) {
         return WebSocketEmbeddedRuntimeSupport.createTransportServer(
-                compatibilityRuntimeComposition().getDefaultWebSocketAdapterConfig(),
+                new WebSocketAdapterConfig(defaultWebSocketAdapterConfig),
                 dispatcherContext,
                 endpointRegistry,
                 port
         );
-    }
-
-    private void invalidateCompatibilityRuntimeComposition() {
-        this.compatibilityRuntimeComposition = null;
-    }
-
-    private void attachMutationListeners() {
-        attachMutationListener(defaultWebSocketAdapterConfig);
-        attachMutationListener(defaultSocketAdapterConfig);
-    }
-
-    private void attachMutationListener(WebSocketAdapterConfig adapterConfig) {
-        adapterConfig.setMutationListener(this::invalidateCompatibilityRuntimeComposition);
-    }
-
-    private void attachMutationListener(SocketAdapterConfig adapterConfig) {
-        adapterConfig.setMutationListener(this::invalidateCompatibilityRuntimeComposition);
-    }
-
-    private TransportRuntimeComposition compatibilityRuntimeComposition() {
-        if (compatibilityRuntimeComposition == null) {
-            compatibilityRuntimeComposition = snapshotRuntimeComposition();
-        }
-        return compatibilityRuntimeComposition;
     }
 }

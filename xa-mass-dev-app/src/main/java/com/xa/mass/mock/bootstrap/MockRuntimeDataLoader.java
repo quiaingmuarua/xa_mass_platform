@@ -10,6 +10,7 @@ import com.xa.mass.engine.rules.RuleDefinition;
 import com.xa.mass.sdk.MassBootstrapDataProvider;
 import com.xa.mass.sdk.MassRuntimeControl;
 import com.xa.mass.sdk.model.MassTaskCreateRequest;
+import com.xa.mass.sdk.model.WorkerEventBinding;
 import com.xa.mass.sdk.model.WorkerContextRegistration;
 import com.xa.mass.sdk.model.WorkerRegistration;
 import com.xa.mass.transport.WorkerTransportHints;
@@ -21,6 +22,7 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
@@ -205,15 +207,36 @@ public class MockRuntimeDataLoader implements MassBootstrapDataProvider {
     }
 
     private WorkerRegistration toRegistration(Worker worker) {
-        return WorkerRegistration.builder()
+        WorkerRegistration.Builder builder = WorkerRegistration.builder()
                 .workerId(worker.getWorkerId())
                 .workerGroupId(worker.getWorkerGroupId())
-                .supportedProjects(worker.getSupportedProjects())
-                .supportedEventCodes(worker.getSupportedEventCodes())
+                .eventBindings(toEventBindings(worker))
                 .adapterId(worker.getAdapterId())
                 .transportHint(worker.getOnlineStrategy())
-                .attributes(worker.getAttributes())
-                .build();
+                .attributes(worker.getAttributes());
+        if (worker.getSupportedEventCodes() == null || worker.getSupportedEventCodes().isEmpty()) {
+            builder.supportedProjects(worker.getSupportedProjects());
+        }
+        return builder.build();
+    }
+
+    private List<WorkerEventBinding> toEventBindings(Worker worker) {
+        List<String> supportedEventCodes = worker.getSupportedEventCodes();
+        if (supportedEventCodes == null || supportedEventCodes.isEmpty()) {
+            return List.of();
+        }
+        List<String> projectCodes = worker.getSupportedProjects();
+        List<WorkerEventBinding> bindings = new ArrayList<>();
+        for (String eventCode : supportedEventCodes) {
+            if (eventCode == null || eventCode.isBlank()) {
+                continue;
+            }
+            bindings.add(WorkerEventBinding.builder()
+                    .eventCode(eventCode)
+                    .projectCodes(projectCodes)
+                    .build());
+        }
+        return bindings.isEmpty() ? List.of() : List.copyOf(bindings);
     }
 
     private WorkerContextRegistration toRegistration(WorkerContext workerContext) {

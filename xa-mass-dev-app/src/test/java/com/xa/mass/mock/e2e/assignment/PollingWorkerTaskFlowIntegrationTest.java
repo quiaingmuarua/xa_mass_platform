@@ -4,6 +4,7 @@ import com.xa.mass.mock.MockApplicationSpringBootApp;
 import com.xa.mass.mock.e2e.support.AbstractMockE2eTest;
 import com.xa.mass.sdk.MassSdkApplication;
 import com.xa.mass.sdk.model.WorkerContextRegistration;
+import com.xa.mass.sdk.model.WorkerEventBinding;
 import com.xa.mass.sdk.model.WorkerRegistration;
 import com.xa.mass.sdk.worker.PullWorkerSession;
 import com.xa.mass.transport.WorkerTransportHints;
@@ -139,7 +140,12 @@ class PollingWorkerTaskFlowIntegrationTest extends AbstractMockE2eTest {
         app.registerWorker(WorkerRegistration.builder()
                 .workerId(workerId)
                 .workerGroupId("us")
-                .supportedProjects(List.of("demoApp"))
+                .eventBindings(List.of(
+                        WorkerEventBinding.builder()
+                                .eventCode("demo.dispatch")
+                                .projectCodes(List.of("demoApp"))
+                                .build()
+                ))
                 .transportHint(WorkerTransportHints.POLLING)
                 .build());
 

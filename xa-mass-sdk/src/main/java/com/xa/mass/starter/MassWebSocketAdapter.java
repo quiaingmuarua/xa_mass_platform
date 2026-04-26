@@ -58,8 +58,10 @@ public class MassWebSocketAdapter {
         logger.info("Starting MassWebSocketAdapter with max connections: {}", adapterConfig.getMaxConnections());
 
         try {
-            dispatcher().start();
             managedTransportAdapter.start();
+            if (messageDispatcher != null) {
+                messageDispatcher.start();
+            }
             logger.info("MassWebSocketAdapter started successfully");
         } catch (Exception e) {
             MDC.clear();
@@ -87,7 +89,7 @@ public class MassWebSocketAdapter {
         }
     }
 
-    private WebSocketMessageDispatcher dispatcher() {
+    private WebSocketMessageDispatcher createDispatcherShell() {
         if (messageDispatcher == null) {
             logger.info("Creating WebSocket compatibility dispatcher shell...");
             messageDispatcher = new WebSocketMessageDispatcher(dispatcherContext);
@@ -109,7 +111,7 @@ public class MassWebSocketAdapter {
     }
 
     public boolean isRunning() {
-        return managedTransportAdapter.isRunning() && messageDispatcher != null && messageDispatcher.isRunning();
+        return managedTransportAdapter.isRunning();
     }
 
     /**
@@ -134,6 +136,13 @@ public class MassWebSocketAdapter {
      */
     @Deprecated(forRemoval = false)
     public WebSocketMessageDispatcher getWebSocketMessageDispatcher() {
+        if (!managedTransportAdapter.isRunning()) {
+            return messageDispatcher;
+        }
+        WebSocketMessageDispatcher dispatcher = createDispatcherShell();
+        if (!dispatcher.isRunning()) {
+            dispatcher.start();
+        }
         return messageDispatcher;
     }
 }
