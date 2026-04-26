@@ -117,6 +117,19 @@ class TransportDeliveryServiceTest {
         assertEquals(10, stats.getMaxQueuedItems());
     }
 
+    @Test
+    void shutdownStopsQueuedDelivery() {
+        TransportDeliveryService service = service();
+        service.enqueue("polling", List.of(item("msg-1", "worker-1")), 10);
+
+        service.shutdown();
+
+        assertEquals(0, service.stats().getQueuedItems());
+        assertTrue(service.poll("polling", "worker-1", 10, 0).isEmpty());
+        assertEquals(DispatchOutcomeStatus.ADAPTER_UNAVAILABLE,
+                service.enqueue("polling", List.of(item("msg-2", "worker-1")), 10).get(0).getStatus());
+    }
+
     private TransportDeliveryService service() {
         return new TransportDeliveryService(new InMemoryTransportDeliveryStore());
     }

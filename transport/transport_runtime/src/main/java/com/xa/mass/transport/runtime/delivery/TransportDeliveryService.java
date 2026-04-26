@@ -52,6 +52,10 @@ public final class TransportDeliveryService {
         return deliveryStore.stats();
     }
 
+    public void shutdown() {
+        deliveryStore.shutdown();
+    }
+
     public List<DispatchOutcome> sendDirect(String adapterId,
                                             List<TaskDispatchItem> items,
                                             TransportDeliverySender sender,

@@ -60,6 +60,7 @@ public class MassApplication {
     private MessageTransporter<String, WorkerTransportMessage> messageTransporter;
     private WorkerEndpointRegistry endpointRegistry;
     private TransportRuntimeRegistry transportRuntimeRegistry;
+    private TransportDeliveryService transportDeliveryService;
     private RuntimeTaskExecutor transportRuntimeTaskExecutor;
 
     public MassApplication(MassEngine engine,
@@ -114,6 +115,7 @@ public class MassApplication {
 
                 stopTransportServers();
             } finally {
+                stopTransportDeliveryService();
                 stopTransportRuntimeTaskExecutor();
             }
 
@@ -147,6 +149,7 @@ public class MassApplication {
                     new TransportDeliveryService(new InMemoryTransportDeliveryStore(
                             TRANSPORT_DELIVERY_MAX_QUEUED_ITEMS
                     ));
+            transportDeliveryService = deliveryService;
             transportRuntimeTaskExecutor = new VirtualThreadRuntimeTaskExecutor(
                     "transport-runtime-",
                     TRANSPORT_RUNTIME_MAX_PENDING_TASKS
@@ -195,6 +198,7 @@ public class MassApplication {
             }
         } catch (Exception e) {
             try {
+                stopTransportDeliveryService();
                 stopTransportRuntimeTaskExecutor();
             } catch (Exception stopError) {
                 logger.warn("Failed to stop transport runtime executor after initialization failure", stopError);
@@ -253,6 +257,14 @@ public class MassApplication {
     private void stopTransportServers() throws Exception {
         for (TransportServer transportServer : transportServers) {
             transportServer.stop();
+        }
+    }
+
+    private void stopTransportDeliveryService() {
+        TransportDeliveryService deliveryService = transportDeliveryService;
+        transportDeliveryService = null;
+        if (deliveryService != null) {
+            deliveryService.shutdown();
         }
     }
 

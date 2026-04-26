@@ -11,6 +11,7 @@ import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -22,6 +23,7 @@ public final class InMemoryTransportDeliveryStore implements TransportDeliverySt
 
     private final ConcurrentMap<DeliveryQueueKey, DeliveryQueue> deliveryByWorker = new ConcurrentHashMap<>();
     private final AtomicInteger queuedItems = new AtomicInteger();
+    private final AtomicBoolean running = new AtomicBoolean(true);
     private final int maxQueuedItems;
 
     public InMemoryTransportDeliveryStore() {
@@ -44,11 +46,20 @@ public final class InMemoryTransportDeliveryStore implements TransportDeliverySt
         if (maxItemsPerWorker <= 0) {
             return DispatchOutcome.backpressureRejected(normalizedAdapterId, item, "delivery queue capacity is exhausted");
         }
+        if (!running.get()) {
+            return DispatchOutcome.adapterUnavailable(normalizedAdapterId, item, "delivery store is stopped");
+        }
 
         String workerId = item.getWorkerId().trim();
         DeliveryQueueKey key = new DeliveryQueueKey(normalizedAdapterId, workerId);
         DeliveryQueue queue = deliveryByWorker.computeIfAbsent(key, ignored -> new DeliveryQueue());
         synchronized (queue) {
+            if (!running.get()) {
+                if (queue.items.isEmpty() && queue.waiters == 0) {
+                    deliveryByWorker.remove(key, queue);
+                }
+                return DispatchOutcome.adapterUnavailable(normalizedAdapterId, item, "delivery store is stopped");
+            }
             if (queue.items.size() >= maxItemsPerWorker) {
                 return DispatchOutcome.backpressureRejected(normalizedAdapterId, item, "delivery queue is full");
             }
@@ -68,7 +79,7 @@ public final class InMemoryTransportDeliveryStore implements TransportDeliverySt
     public List<TaskDispatchItem> drain(String adapterId, String workerId, int maxItems) {
         String normalizedAdapterId = normalize(adapterId);
         String normalizedWorkerId = normalizeWorkerId(workerId);
-        if (normalizedAdapterId == null || normalizedWorkerId == null || maxItems <= 0) {
+        if (normalizedAdapterId == null || normalizedWorkerId == null || maxItems <= 0 || !running.get()) {
             return List.of();
         }
         DeliveryQueueKey key = new DeliveryQueueKey(normalizedAdapterId, normalizedWorkerId);
@@ -95,7 +106,7 @@ public final class InMemoryTransportDeliveryStore implements TransportDeliverySt
                                        TimeUnit unit) throws InterruptedException {
         String normalizedAdapterId = normalize(adapterId);
         String normalizedWorkerId = normalizeWorkerId(workerId);
-        if (normalizedAdapterId == null || normalizedWorkerId == null || maxItems <= 0) {
+        if (normalizedAdapterId == null || normalizedWorkerId == null || maxItems <= 0 || !running.get()) {
             return List.of();
         }
         if (timeout <= 0) {
@@ -108,13 +119,16 @@ public final class InMemoryTransportDeliveryStore implements TransportDeliverySt
         synchronized (queue) {
             queue.waiters++;
             try {
-                while (queue.items.isEmpty()) {
+                while (queue.items.isEmpty() && running.get()) {
                     long remainingNanos = deadlineNanos - System.nanoTime();
                     if (remainingNanos <= 0) {
                         return List.of();
                     }
                     long remainingMillis = Math.max(1L, TimeUnit.NANOSECONDS.toMillis(remainingNanos));
                     queue.wait(remainingMillis);
+                }
+                if (queue.items.isEmpty()) {
+                    return List.of();
                 }
                 List<TaskDispatchItem> items = drainLocked(queue, maxItems);
                 releaseGlobalSlots(items.size());
@@ -142,6 +156,21 @@ public final class InMemoryTransportDeliveryStore implements TransportDeliverySt
                 waiters,
                 maxQueuedItems
         );
+    }
+
+    @Override
+    public void shutdown() {
+        if (!running.compareAndSet(true, false)) {
+            return;
+        }
+        for (DeliveryQueue queue : deliveryByWorker.values()) {
+            synchronized (queue) {
+                queue.items.clear();
+                queue.notifyAll();
+            }
+        }
+        deliveryByWorker.clear();
+        queuedItems.set(0);
     }
 
     private boolean reserveGlobalSlot() {

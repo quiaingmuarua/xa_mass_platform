@@ -22,4 +22,6 @@ public interface TransportDeliveryStore {
                                 TimeUnit unit) throws InterruptedException;
 
     TransportDeliveryStoreStats stats();
+
+    void shutdown();
 }

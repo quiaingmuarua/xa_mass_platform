@@ -70,6 +70,18 @@ class InMemoryTransportDeliveryStoreTest {
     }
 
     @Test
+    void enqueueRejectsAfterShutdown() {
+        InMemoryTransportDeliveryStore store = new InMemoryTransportDeliveryStore();
+        store.shutdown();
+
+        DispatchOutcome outcome = store.enqueue("polling", item("msg-1", "worker-1"), 10);
+
+        assertEquals(DispatchOutcomeStatus.ADAPTER_UNAVAILABLE, outcome.getStatus());
+        assertTrue(outcome.isRetryable());
+        assertEquals("delivery store is stopped", outcome.getReason());
+    }
+
+    @Test
     void drainRespectsMaxItemsAndKeepsRemainingItems() {
         InMemoryTransportDeliveryStore store = new InMemoryTransportDeliveryStore();
         store.enqueue("polling", item("msg-1", "worker-1"), 10);
@@ -140,6 +152,29 @@ class InMemoryTransportDeliveryStoreTest {
                 .map(TaskDispatchItem::getMessageId)
                 .toList());
         assertEquals(0, store.stats().getWaitingPollers());
+    }
+
+    @Test
+    void shutdownWakesWaitingPollersAndClearsQueuedItems() throws Exception {
+        InMemoryTransportDeliveryStore store = new InMemoryTransportDeliveryStore();
+        store.enqueue("polling", item("queued", "worker-2"), 10);
+        CompletableFuture<List<TaskDispatchItem>> polled = CompletableFuture.supplyAsync(() -> {
+            try {
+                return store.poll("polling", "worker-1", 10, 30, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return List.of(item("interrupted", "worker-1"));
+            }
+        });
+
+        waitUntil(() -> store.stats().getWaitingPollers() == 1);
+        store.shutdown();
+
+        assertTrue(polled.get(1, TimeUnit.SECONDS).isEmpty());
+        assertEquals(0, store.stats().getQueuedItems());
+        assertEquals(0, store.stats().getQueueCount());
+        assertEquals(0, store.stats().getWaitingPollers());
+        assertTrue(store.drain("polling", "worker-2", 10).isEmpty());
     }
 
     @Test
