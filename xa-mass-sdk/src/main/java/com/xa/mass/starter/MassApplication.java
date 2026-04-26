@@ -447,24 +447,27 @@ public class MassApplication {
     private Map<String, Object> getTransportDeliveryQueueDetail() {
         TransportDeliveryService deliveryService = transportDeliveryService;
         if (deliveryService == null) {
-            return Map.of(
-                    "available", false,
-                    "queuedItems", 0,
-                    "queueCount", 0,
-                    "waitingPollers", 0,
-                    "maxQueuedItems", 0,
-                    "oldestQueuedAgeMillis", 0L
-            );
+            return deliveryQueueDetail(false, null);
         }
         TransportDeliveryStoreStats stats = deliveryService.stats();
-        return Map.of(
-                "available", true,
-                "queuedItems", stats.getQueuedItems(),
-                "queueCount", stats.getQueueCount(),
-                "waitingPollers", stats.getWaitingPollers(),
-                "maxQueuedItems", stats.getMaxQueuedItems(),
-                "oldestQueuedAgeMillis", stats.getOldestQueuedAgeMillis()
-        );
+        return deliveryQueueDetail(true, stats);
+    }
+
+    private Map<String, Object> deliveryQueueDetail(boolean available, TransportDeliveryStoreStats stats) {
+        Map<String, Object> map = new LinkedHashMap<>();
+        map.put("available", available);
+        map.put("queuedItems", stats != null ? stats.getQueuedItems() : 0);
+        map.put("queueCount", stats != null ? stats.getQueueCount() : 0);
+        map.put("waitingPollers", stats != null ? stats.getWaitingPollers() : 0);
+        map.put("maxQueuedItems", stats != null ? stats.getMaxQueuedItems() : 0);
+        map.put("oldestQueuedAgeMillis", stats != null ? stats.getOldestQueuedAgeMillis() : 0L);
+        map.put("enqueuedItems", stats != null ? stats.getEnqueuedItems() : 0L);
+        map.put("drainedItems", stats != null ? stats.getDrainedItems() : 0L);
+        map.put("backpressureRejectedItems", stats != null ? stats.getBackpressureRejectedItems() : 0L);
+        map.put("invalidItems", stats != null ? stats.getInvalidItems() : 0L);
+        map.put("unavailableItems", stats != null ? stats.getUnavailableItems() : 0L);
+        map.put("shutdownClearedItems", stats != null ? stats.getShutdownClearedItems() : 0L);
+        return Map.copyOf(map);
     }
 
     private Map<String, Object> getRuntimeExecutorDetail() {

@@ -13,6 +13,7 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.LongSupplier;
 
 /**
@@ -24,6 +25,12 @@ public final class InMemoryTransportDeliveryStore implements TransportDeliverySt
 
     private final ConcurrentMap<DeliveryQueueKey, DeliveryQueue> deliveryByWorker = new ConcurrentHashMap<>();
     private final AtomicInteger queuedItems = new AtomicInteger();
+    private final AtomicLong enqueuedItems = new AtomicLong();
+    private final AtomicLong drainedItems = new AtomicLong();
+    private final AtomicLong backpressureRejectedItems = new AtomicLong();
+    private final AtomicLong invalidItems = new AtomicLong();
+    private final AtomicLong unavailableItems = new AtomicLong();
+    private final AtomicLong shutdownClearedItems = new AtomicLong();
     private final AtomicBoolean running = new AtomicBoolean(true);
     private final int maxQueuedItems;
     private final LongSupplier currentTimeMillis;
@@ -48,12 +55,15 @@ public final class InMemoryTransportDeliveryStore implements TransportDeliverySt
     public DispatchOutcome enqueue(String adapterId, TaskDispatchItem item, int maxItemsPerWorker) {
         String normalizedAdapterId = normalize(adapterId);
         if (item == null || item.getWorkerId() == null || item.getWorkerId().isBlank()) {
+            invalidItems.incrementAndGet();
             return DispatchOutcome.invalid(normalizedAdapterId, item, "workerId must not be blank");
         }
         if (maxItemsPerWorker <= 0) {
+            backpressureRejectedItems.incrementAndGet();
             return DispatchOutcome.backpressureRejected(normalizedAdapterId, item, "delivery queue capacity is exhausted");
         }
         if (!running.get()) {
+            unavailableItems.incrementAndGet();
             return DispatchOutcome.adapterUnavailable(normalizedAdapterId, item, "delivery store is stopped");
         }
 
@@ -65,18 +75,22 @@ public final class InMemoryTransportDeliveryStore implements TransportDeliverySt
                 if (queue.items.isEmpty() && queue.waiters == 0) {
                     deliveryByWorker.remove(key, queue);
                 }
+                unavailableItems.incrementAndGet();
                 return DispatchOutcome.adapterUnavailable(normalizedAdapterId, item, "delivery store is stopped");
             }
             if (queue.items.size() >= maxItemsPerWorker) {
+                backpressureRejectedItems.incrementAndGet();
                 return DispatchOutcome.backpressureRejected(normalizedAdapterId, item, "delivery queue is full");
             }
             if (!reserveGlobalSlot()) {
                 if (queue.items.isEmpty() && queue.waiters == 0) {
                     deliveryByWorker.remove(key, queue);
                 }
+                backpressureRejectedItems.incrementAndGet();
                 return DispatchOutcome.backpressureRejected(normalizedAdapterId, item, "runtime delivery backlog is full");
             }
             queue.items.addLast(new TransportDelivery(normalizedAdapterId, workerId, item, currentTimeMillis.getAsLong()));
+            enqueuedItems.incrementAndGet();
             queue.notifyAll();
             return DispatchOutcome.queued(normalizedAdapterId, item);
         }
@@ -98,6 +112,7 @@ public final class InMemoryTransportDeliveryStore implements TransportDeliverySt
         synchronized (queue) {
             List<TaskDispatchItem> items = drainLocked(queue, maxItems);
             releaseGlobalSlots(items.size());
+            drainedItems.addAndGet(items.size());
             if (queue.items.isEmpty() && queue.waiters == 0) {
                 deliveryByWorker.remove(key, queue);
             }
@@ -139,6 +154,7 @@ public final class InMemoryTransportDeliveryStore implements TransportDeliverySt
                 }
                 List<TaskDispatchItem> items = drainLocked(queue, maxItems);
                 releaseGlobalSlots(items.size());
+                drainedItems.addAndGet(items.size());
                 return List.copyOf(items);
             } finally {
                 queue.waiters--;
@@ -170,7 +186,13 @@ public final class InMemoryTransportDeliveryStore implements TransportDeliverySt
                 deliveryByWorker.size(),
                 waiters,
                 maxQueuedItems,
-                oldestQueuedAgeMillis
+                oldestQueuedAgeMillis,
+                enqueuedItems.get(),
+                drainedItems.get(),
+                backpressureRejectedItems.get(),
+                invalidItems.get(),
+                unavailableItems.get(),
+                shutdownClearedItems.get()
         );
     }
 
@@ -179,6 +201,7 @@ public final class InMemoryTransportDeliveryStore implements TransportDeliverySt
         if (!running.compareAndSet(true, false)) {
             return;
         }
+        int clearedItems = queuedItems.get();
         for (DeliveryQueue queue : deliveryByWorker.values()) {
             synchronized (queue) {
                 queue.items.clear();
@@ -187,6 +210,7 @@ public final class InMemoryTransportDeliveryStore implements TransportDeliverySt
         }
         deliveryByWorker.clear();
         queuedItems.set(0);
+        shutdownClearedItems.addAndGet(clearedItems);
     }
 
     private boolean reserveGlobalSlot() {

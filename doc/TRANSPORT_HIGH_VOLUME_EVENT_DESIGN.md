@@ -199,6 +199,8 @@ High-volume transport must expose enough data to answer operational questions:
 - how many pollers are waiting
 - what is the global queue cap
 - how old the oldest queued delivery is
+- how many delivery records were accepted, drained, rejected, invalid,
+  unavailable, or cleared during shutdown
 - are transport/event executors available
 - how many runtime tasks were submitted, completed, active, pending, rejected
 - what are executor pending caps
@@ -208,7 +210,6 @@ Next diagnostic fields to add when the store supports them:
 - per-adapter queued counts
 - per-adapter waiting pollers
 - per-adapter backpressure count
-- delivery enqueue/drain counters
 - direct-send success/offline/failure counters
 
 Diagnostics are not lifecycle state. They guide capacity, alerting, and load

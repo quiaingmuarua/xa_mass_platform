@@ -109,12 +109,34 @@ class InMemoryTransportDeliveryStoreTest {
         assertEquals(2, queued.getQueueCount());
         assertEquals(10, queued.getMaxQueuedItems());
         assertEquals(500L, queued.getOldestQueuedAgeMillis());
+        assertEquals(3L, queued.getEnqueuedItems());
+        assertEquals(0L, queued.getDrainedItems());
+        assertEquals(0L, queued.getBackpressureRejectedItems());
 
         store.drain("polling", "worker-1", 10);
         TransportDeliveryStoreStats remaining = store.stats();
         assertEquals(1, remaining.getQueuedItems());
         assertEquals(1, remaining.getQueueCount());
         assertEquals(250L, remaining.getOldestQueuedAgeMillis());
+        assertEquals(3L, remaining.getEnqueuedItems());
+        assertEquals(2L, remaining.getDrainedItems());
+    }
+
+    @Test
+    void statsTrackRejectedAndUnavailableDeliveryOutcomes() {
+        InMemoryTransportDeliveryStore store = new InMemoryTransportDeliveryStore(1);
+        store.enqueue("polling", item("msg-1", null), 10);
+        store.enqueue("polling", item("msg-2", "worker-1"), 0);
+        store.enqueue("polling", item("msg-3", "worker-1"), 10);
+        store.enqueue("polling", item("msg-4", "worker-2"), 10);
+        store.shutdown();
+        store.enqueue("polling", item("msg-5", "worker-1"), 10);
+
+        TransportDeliveryStoreStats stats = store.stats();
+        assertEquals(1L, stats.getInvalidItems());
+        assertEquals(2L, stats.getBackpressureRejectedItems());
+        assertEquals(1L, stats.getUnavailableItems());
+        assertEquals(1L, stats.getShutdownClearedItems());
     }
 
     @Test
@@ -180,6 +202,7 @@ class InMemoryTransportDeliveryStoreTest {
         assertEquals(0, store.stats().getQueuedItems());
         assertEquals(0, store.stats().getQueueCount());
         assertEquals(0, store.stats().getWaitingPollers());
+        assertEquals(1L, store.stats().getShutdownClearedItems());
         assertTrue(store.drain("polling", "worker-2", 10).isEmpty());
     }
 

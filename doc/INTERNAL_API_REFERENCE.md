@@ -661,7 +661,13 @@ Response shape:
       "queueCount": 0,
       "waitingPollers": 0,
       "maxQueuedItems": 100000,
-      "oldestQueuedAgeMillis": 0
+      "oldestQueuedAgeMillis": 0,
+      "enqueuedItems": 0,
+      "drainedItems": 0,
+      "backpressureRejectedItems": 0,
+      "invalidItems": 0,
+      "unavailableItems": 0,
+      "shutdownClearedItems": 0
     },
     "runtimeExecutors": {
       "transport": {
@@ -697,6 +703,8 @@ Notes:
 - `deliveryQueue` is the runtime delivery-store diagnostic surface. It reports
   shared dispatch backlog and polling waiters, not engine-owned task lifecycle
   or retry state. `oldestQueuedAgeMillis` is for backlog age monitoring only.
+  The cumulative counters are process-local diagnostics for accepted, drained,
+  rejected, invalid, unavailable, and shutdown-cleared delivery records.
 - `runtimeExecutors` reports admission and execution counters for runtime-owned
   transport and optional bounded event-handler executors. `maxPendingTasks`
   reflects SDK runtime config, not a fixed platform constant.
