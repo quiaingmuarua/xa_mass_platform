@@ -5,6 +5,7 @@ import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.channel.TaskDispatchChannel;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.TaskDispatchItem;
+import com.xa.mass.transport.runtime.RuntimeDispatchOutcomes;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -48,19 +49,15 @@ public final class SocketRealtimeWorkerAdapter implements WorkerAdapter {
             if (items == null || items.isEmpty()) {
                 return List.of();
             }
-            return items.stream()
-                    .map(item -> invalidItem(item)
-                            ? DispatchOutcome.invalid(PROTOCOL, item, "workerId must not be blank")
-                            : DispatchOutcome.adapterUnavailable(PROTOCOL, item, "socket dispatch channel is unavailable"))
-                    .toList();
+            return RuntimeDispatchOutcomes.adapterUnavailable(
+                    PROTOCOL,
+                    items,
+                    "socket dispatch channel is unavailable"
+            );
         }
         if (items == null || items.isEmpty()) {
             return List.of();
         }
         return taskDispatchChannel.dispatchTaskItems(items);
-    }
-
-    private boolean invalidItem(TaskDispatchItem item) {
-        return item == null || item.getWorkerId() == null || item.getWorkerId().isBlank();
     }
 }

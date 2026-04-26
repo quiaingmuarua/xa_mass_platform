@@ -2,6 +2,7 @@ package com.xa.mass.transport.runtime.delivery;
 
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.TaskDispatchItem;
+import com.xa.mass.transport.runtime.RuntimeDispatchOutcomes;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -46,7 +47,7 @@ public final class TransportDeliveryService {
         }
         List<DispatchOutcome> outcomes = new ArrayList<>(items.size());
         for (TaskDispatchItem item : items) {
-            if (item == null || item.getWorkerId() == null || item.getWorkerId().isBlank()) {
+            if (RuntimeDispatchOutcomes.missingWorker(item)) {
                 outcomes.add(DispatchOutcome.invalid(adapterId, item, "workerId must not be blank"));
                 continue;
             }
