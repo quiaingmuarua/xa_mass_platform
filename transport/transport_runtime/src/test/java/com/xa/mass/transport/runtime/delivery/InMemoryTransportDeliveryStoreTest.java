@@ -55,6 +55,21 @@ class InMemoryTransportDeliveryStoreTest {
     }
 
     @Test
+    void enqueueRejectsWhenGlobalBacklogIsFull() {
+        InMemoryTransportDeliveryStore store = new InMemoryTransportDeliveryStore(1);
+
+        DispatchOutcome first = store.enqueue("polling", item("msg-1", "worker-1"), 10);
+        DispatchOutcome second = store.enqueue("polling", item("msg-2", "worker-2"), 10);
+
+        assertEquals(DispatchOutcomeStatus.QUEUED, first.getStatus());
+        assertEquals(DispatchOutcomeStatus.BACKPRESSURE_REJECTED, second.getStatus());
+        assertTrue(second.isRetryable());
+        assertEquals("runtime delivery backlog is full", second.getReason());
+        assertEquals(1, store.stats().getQueuedItems());
+        assertEquals(1, store.stats().getQueueCount());
+    }
+
+    @Test
     void drainRespectsMaxItemsAndKeepsRemainingItems() {
         InMemoryTransportDeliveryStore store = new InMemoryTransportDeliveryStore();
         store.enqueue("polling", item("msg-1", "worker-1"), 10);
@@ -64,6 +79,24 @@ class InMemoryTransportDeliveryStoreTest {
                 store.drain("polling", "worker-1", 1).stream().map(TaskDispatchItem::getMessageId).toList());
         assertEquals(List.of("msg-2"),
                 store.drain("polling", "worker-1", 10).stream().map(TaskDispatchItem::getMessageId).toList());
+    }
+
+    @Test
+    void statsTrackQueuedItemsQueuesAndCapacity() {
+        InMemoryTransportDeliveryStore store = new InMemoryTransportDeliveryStore(10);
+        store.enqueue("polling", item("msg-1", "worker-1"), 10);
+        store.enqueue("polling", item("msg-2", "worker-1"), 10);
+        store.enqueue("polling", item("msg-3", "worker-2"), 10);
+
+        TransportDeliveryStoreStats queued = store.stats();
+        assertEquals(3, queued.getQueuedItems());
+        assertEquals(2, queued.getQueueCount());
+        assertEquals(10, queued.getMaxQueuedItems());
+
+        store.drain("polling", "worker-1", 10);
+        TransportDeliveryStoreStats remaining = store.stats();
+        assertEquals(1, remaining.getQueuedItems());
+        assertEquals(1, remaining.getQueueCount());
     }
 
     @Test
@@ -84,6 +117,29 @@ class InMemoryTransportDeliveryStoreTest {
         store.enqueue("polling", item, 10);
 
         assertEquals(List.of(item), polled.get(1, TimeUnit.SECONDS));
+    }
+
+    @Test
+    void statsTrackWaitingPollers() throws Exception {
+        InMemoryTransportDeliveryStore store = new InMemoryTransportDeliveryStore();
+
+        CompletableFuture<List<TaskDispatchItem>> polled = CompletableFuture.supplyAsync(() -> {
+            try {
+                return store.poll("polling", "worker-1", 10, 1, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return List.of();
+            }
+        });
+
+        waitUntil(() -> store.stats().getWaitingPollers() == 1);
+        store.enqueue("polling", item("msg-1", "worker-1"), 10);
+
+        assertEquals(List.of("msg-1"), polled.get(1, TimeUnit.SECONDS)
+                .stream()
+                .map(TaskDispatchItem::getMessageId)
+                .toList());
+        assertEquals(0, store.stats().getWaitingPollers());
     }
 
     @Test
@@ -110,5 +166,20 @@ class InMemoryTransportDeliveryStoreTest {
                 Map.of("target", "target-1"),
                 Map.of()
         );
+    }
+
+    private void waitUntil(BooleanSupplier condition) throws InterruptedException {
+        for (int attempt = 0; attempt < 20; attempt++) {
+            if (condition.getAsBoolean()) {
+                return;
+            }
+            Thread.sleep(25L);
+        }
+        assertTrue(condition.getAsBoolean());
+    }
+
+    @FunctionalInterface
+    private interface BooleanSupplier {
+        boolean getAsBoolean();
     }
 }

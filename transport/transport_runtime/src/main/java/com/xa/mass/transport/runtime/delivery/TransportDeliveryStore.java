@@ -20,4 +20,6 @@ public interface TransportDeliveryStore {
                                 int maxItems,
                                 long timeout,
                                 TimeUnit unit) throws InterruptedException;
+
+    TransportDeliveryStoreStats stats();
 }

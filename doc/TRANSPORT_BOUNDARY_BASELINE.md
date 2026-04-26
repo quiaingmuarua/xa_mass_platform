@@ -57,6 +57,7 @@ behavior that cannot fit one of these concepts.
 
 - adapter binding and registration resolution
 - delivery service and delivery store
+- delivery backlog admission control and store statistics
 - runtime executor handoff into adapter bootstraps for transport-owned blocking work
 - result-envelope validation and runtime logging
 - routing from task assignment events to adapter dispatch channels
@@ -144,3 +145,9 @@ should provide an indexed lookup for:
 Dispatch is also a hot path. Delivery queues may store `TransportDelivery`, but
 they should avoid deep-copying task payload maps beyond the immutable copies
 already owned by `TaskDispatchItem`.
+
+Runtime delivery stores must enforce explicit admission control. The current
+in-memory store has both per-worker queue caps and a total queued-item cap; Redis
+or JDBC replacements should preserve equivalent backpressure and expose the same
+`TransportDeliveryStoreStats` shape for backlog, queue, and waiting-poller
+diagnostics.

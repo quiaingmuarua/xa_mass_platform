@@ -105,6 +105,18 @@ class TransportDeliveryServiceTest {
         assertEquals(List.of(item), service.poll("polling", "worker-1", 10, 0));
     }
 
+    @Test
+    void statsExposeDeliveryStoreSnapshot() {
+        TransportDeliveryService service = new TransportDeliveryService(new InMemoryTransportDeliveryStore(10));
+        service.enqueue("polling", List.of(item("msg-1", "worker-1")), 10);
+
+        TransportDeliveryStoreStats stats = service.stats();
+
+        assertEquals(1, stats.getQueuedItems());
+        assertEquals(1, stats.getQueueCount());
+        assertEquals(10, stats.getMaxQueuedItems());
+    }
+
     private TransportDeliveryService service() {
         return new TransportDeliveryService(new InMemoryTransportDeliveryStore());
     }

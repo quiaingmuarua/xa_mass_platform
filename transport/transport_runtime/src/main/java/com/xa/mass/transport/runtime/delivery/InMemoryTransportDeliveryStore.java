@@ -11,13 +11,29 @@ import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * In-memory runtime delivery store used by embedded transport runtimes.
  */
 public final class InMemoryTransportDeliveryStore implements TransportDeliveryStore {
 
+    public static final int DEFAULT_MAX_QUEUED_ITEMS = 1_000_000;
+
     private final ConcurrentMap<DeliveryQueueKey, DeliveryQueue> deliveryByWorker = new ConcurrentHashMap<>();
+    private final AtomicInteger queuedItems = new AtomicInteger();
+    private final int maxQueuedItems;
+
+    public InMemoryTransportDeliveryStore() {
+        this(DEFAULT_MAX_QUEUED_ITEMS);
+    }
+
+    public InMemoryTransportDeliveryStore(int maxQueuedItems) {
+        if (maxQueuedItems <= 0) {
+            throw new IllegalArgumentException("maxQueuedItems must be greater than 0");
+        }
+        this.maxQueuedItems = maxQueuedItems;
+    }
 
     @Override
     public DispatchOutcome enqueue(String adapterId, TaskDispatchItem item, int maxItemsPerWorker) {
@@ -35,6 +51,12 @@ public final class InMemoryTransportDeliveryStore implements TransportDeliverySt
         synchronized (queue) {
             if (queue.items.size() >= maxItemsPerWorker) {
                 return DispatchOutcome.backpressureRejected(normalizedAdapterId, item, "delivery queue is full");
+            }
+            if (!reserveGlobalSlot()) {
+                if (queue.items.isEmpty() && queue.waiters == 0) {
+                    deliveryByWorker.remove(key, queue);
+                }
+                return DispatchOutcome.backpressureRejected(normalizedAdapterId, item, "runtime delivery backlog is full");
             }
             queue.items.addLast(new TransportDelivery(normalizedAdapterId, workerId, item, System.currentTimeMillis()));
             queue.notifyAll();
@@ -57,6 +79,7 @@ public final class InMemoryTransportDeliveryStore implements TransportDeliverySt
 
         synchronized (queue) {
             List<TaskDispatchItem> items = drainLocked(queue, maxItems);
+            releaseGlobalSlots(items.size());
             if (queue.items.isEmpty() && queue.waiters == 0) {
                 deliveryByWorker.remove(key, queue);
             }
@@ -93,7 +116,9 @@ public final class InMemoryTransportDeliveryStore implements TransportDeliverySt
                     long remainingMillis = Math.max(1L, TimeUnit.NANOSECONDS.toMillis(remainingNanos));
                     queue.wait(remainingMillis);
                 }
-                return List.copyOf(drainLocked(queue, maxItems));
+                List<TaskDispatchItem> items = drainLocked(queue, maxItems);
+                releaseGlobalSlots(items.size());
+                return List.copyOf(items);
             } finally {
                 queue.waiters--;
                 if (queue.items.isEmpty() && queue.waiters == 0) {
@@ -101,6 +126,41 @@ public final class InMemoryTransportDeliveryStore implements TransportDeliverySt
                 }
             }
         }
+    }
+
+    @Override
+    public TransportDeliveryStoreStats stats() {
+        int waiters = 0;
+        for (DeliveryQueue queue : deliveryByWorker.values()) {
+            synchronized (queue) {
+                waiters += queue.waiters;
+            }
+        }
+        return new TransportDeliveryStoreStats(
+                queuedItems.get(),
+                deliveryByWorker.size(),
+                waiters,
+                maxQueuedItems
+        );
+    }
+
+    private boolean reserveGlobalSlot() {
+        while (true) {
+            int current = queuedItems.get();
+            if (current >= maxQueuedItems) {
+                return false;
+            }
+            if (queuedItems.compareAndSet(current, current + 1)) {
+                return true;
+            }
+        }
+    }
+
+    private void releaseGlobalSlots(int count) {
+        if (count <= 0) {
+            return;
+        }
+        queuedItems.updateAndGet(current -> Math.max(0, current - count));
     }
 
     private static List<TaskDispatchItem> drainLocked(DeliveryQueue queue, int maxItems) {

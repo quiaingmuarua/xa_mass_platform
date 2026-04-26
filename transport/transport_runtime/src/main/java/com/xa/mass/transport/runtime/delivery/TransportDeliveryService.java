@@ -48,6 +48,10 @@ public final class TransportDeliveryService {
         }
     }
 
+    public TransportDeliveryStoreStats stats() {
+        return deliveryStore.stats();
+    }
+
     public List<DispatchOutcome> sendDirect(String adapterId,
                                             List<TaskDispatchItem> items,
                                             TransportDeliverySender sender,
