@@ -160,7 +160,7 @@ class NodeSocketWorkerBlackBoxIntegrationTest extends AbstractMockE2eTest {
                 ))
         ), sdkCredentialHeaders(SOCKET_WORKER_KEY)));
 
-        try (ExternalNodeWorkerProcess websocketWorker = ExternalNodeWorkerProcess.start(
+        try (ExternalNodeWorkerProcess websocketWorker = ExternalNodeWorkerProcess.startWebSocketSample(
                 WEBSOCKET_WORKER_ID,
                 URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws"));
              ExternalNodeWorkerProcess socketWorker = ExternalNodeWorkerProcess.startSocket(

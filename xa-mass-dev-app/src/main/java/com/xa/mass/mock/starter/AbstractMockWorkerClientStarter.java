@@ -198,9 +198,12 @@ public abstract class AbstractMockWorkerClientStarter {
         started.set(false);
 
         Collection<MockWorkerClient> clients = clientSessionManager.getAllClients();
-        log.info("Disconnecting {} mock clients", clients.size());
+        List<MockWorkerClient> ownedClients = clients.stream()
+                .filter(client -> adapterId().equalsIgnoreCase(client.adapterId()))
+                .toList();
+        log.info("Disconnecting {} mock clients", ownedClients.size());
 
-        for (MockWorkerClient client : clients) {
+        for (MockWorkerClient client : ownedClients) {
             try {
                 client.disconnect();
                 log.debug("Client {} ({}) disconnected", client.getWorkerId(), client.adapterId());

@@ -36,7 +36,7 @@ class WebSocketClientStarterTest {
     void onApplicationReadyStartsClientsOnlyOnce() {
         TestWebSocketClientStarter starter = new TestWebSocketClientStarter(List.of(worker("worker-1")));
         MockConfig mockConfig = new MockConfig();
-        mockConfig.getClient().setUri("ws://localhost:18088/ws");
+        mockConfig.getClient().setWebsocketUri("ws://localhost:18088/ws");
         starter.setMockConfig(mockConfig);
         setField(starter, AbstractMockWorkerClientStarter.class, "clientSessionManager", new ClientSessionManager());
         starter.setMaxPoolSize(5);
@@ -57,7 +57,7 @@ class WebSocketClientStarterTest {
     void onApplicationReadySkipsPingAndConnectWhenNoDevicesExist() {
         TestWebSocketClientStarter starter = new TestWebSocketClientStarter(List.of());
         MockConfig mockConfig = new MockConfig();
-        mockConfig.getClient().setUri("ws://localhost:18088/ws");
+        mockConfig.getClient().setWebsocketUri("ws://localhost:18088/ws");
         starter.setMockConfig(mockConfig);
         setField(starter, AbstractMockWorkerClientStarter.class, "clientSessionManager", new ClientSessionManager());
         starter.setMaxPoolSize(5);

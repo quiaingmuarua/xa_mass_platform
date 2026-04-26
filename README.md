@@ -191,11 +191,11 @@ Third-party worker note:
 
 - Official non-Java worker entry is the external polling worker API under `/worker-api`
 - `/worker-api` requires an SDK credential whose permissions include `worker:poll` and whose attributes bind `workerId`
-- external workers register capability through `eventBindings`, not WebSocket-adapter frame types
+- external workers register capability through `eventBindings`, not adapter-internal frame types
 - external workers receive `TaskDispatchItem`, execute locally by `eventCode`, and submit `TaskResultReport`
 - `TaskDispatchItem.input` is the logical per-item payload; transport does not expose SDK-internal wrapper shapes such as `{type,data}`
 - external workers do not receive direct business/control events outside the task lifecycle
-- a runnable Node example and local verification path live in [`doc/EXTERNAL_WORKER_QUICKSTART.md`](./doc/EXTERNAL_WORKER_QUICKSTART.md) and [`examples/external-worker/node/polling_worker.mjs`](./examples/external-worker/node/polling_worker.mjs)
+- runnable third-party worker samples and local verification paths live in [`samples/`](./samples/), [`doc/EXTERNAL_WORKER_QUICKSTART.md`](./doc/EXTERNAL_WORKER_QUICKSTART.md), and [`samples/worker-polling/node/worker.mjs`](./samples/worker-polling/node/worker.mjs)
 
 Module boundary note:
 

@@ -41,11 +41,11 @@ public final class ExternalNodeWorkerProcess implements AutoCloseable {
         this.outputPump.start();
     }
 
-    public static ExternalNodeWorkerProcess start(String workerId, URI wsUri) throws Exception {
+    public static ExternalNodeWorkerProcess startWebSocketSample(String workerId, URI wsUri) throws Exception {
         Objects.requireNonNull(workerId, "workerId");
         Objects.requireNonNull(wsUri, "wsUri");
 
-        return startClasspathScript("node/node_ws_worker.mjs", Map.of(
+        return startRepoScript("samples/worker-websocket/node/worker.mjs", Map.of(
                 "WORKER_ID", workerId,
                 "WS_URL", wsUri.toString()
         ));
@@ -62,14 +62,14 @@ public final class ExternalNodeWorkerProcess implements AutoCloseable {
         ));
     }
 
-    public static ExternalNodeWorkerProcess startPollingExample(String baseUrl,
-                                                                String workerId,
-                                                                String workerKey) throws Exception {
+    public static ExternalNodeWorkerProcess startPollingSample(String baseUrl,
+                                                               String workerId,
+                                                               String workerKey) throws Exception {
         Objects.requireNonNull(baseUrl, "baseUrl");
         Objects.requireNonNull(workerId, "workerId");
         Objects.requireNonNull(workerKey, "workerKey");
 
-        return startRepoScript("examples/external-worker/node/polling_worker.mjs", Map.of(
+        return startRepoScript("samples/worker-polling/node/worker.mjs", Map.of(
                 "MASS_BASE_URL", baseUrl,
                 "MASS_WORKER_ID", workerId,
                 "MASS_WORKER_KEY", workerKey,

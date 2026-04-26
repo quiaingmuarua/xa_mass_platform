@@ -27,7 +27,9 @@ public class MockConfig {
 
     public static class Client {
         private int count = 5;
-        private String uri = "ws://localhost:18088/ws";
+        private String websocketUri = "ws://localhost:18088/ws";
+        private String socketHost = "127.0.0.1";
+        private int socketPort = 18089;
 
         public int getCount() {
             return count;
@@ -37,12 +39,28 @@ public class MockConfig {
             this.count = count;
         }
 
-        public String getUri() {
-            return uri;
+        public String getWebsocketUri() {
+            return websocketUri;
         }
 
-        public void setUri(String uri) {
-            this.uri = uri;
+        public void setWebsocketUri(String websocketUri) {
+            this.websocketUri = websocketUri;
+        }
+
+        public String getSocketHost() {
+            return socketHost;
+        }
+
+        public void setSocketHost(String socketHost) {
+            this.socketHost = socketHost;
+        }
+
+        public int getSocketPort() {
+            return socketPort;
+        }
+
+        public void setSocketPort(int socketPort) {
+            this.socketPort = socketPort;
         }
     }
 

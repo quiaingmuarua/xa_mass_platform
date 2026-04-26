@@ -25,6 +25,20 @@ final class MockWorkerTaskFrameHandler {
     private static final long DEFAULT_TASK_RESPONSE_BASE_DELAY_MS = 15L;
     private static final long DEFAULT_TASK_RESPONSE_JITTER_MS = 35L;
 
+    private final String adapterId;
+    private final String transportHint;
+    private final String runtimeName;
+
+    MockWorkerTaskFrameHandler() {
+        this("websocket", "realtime", "mock-websocket-client");
+    }
+
+    MockWorkerTaskFrameHandler(String adapterId, String transportHint, String runtimeName) {
+        this.adapterId = adapterId == null || adapterId.isBlank() ? "unknown" : adapterId;
+        this.transportHint = transportHint == null || transportHint.isBlank() ? "unknown" : transportHint;
+        this.runtimeName = runtimeName == null || runtimeName.isBlank() ? "mock-worker-client" : runtimeName;
+    }
+
     TaskResponsePlan prepareResponse(JsonObject taskMessage,
                                      String workerId,
                                      String taskResultStatus,
@@ -293,8 +307,8 @@ final class MockWorkerTaskFrameHandler {
                                                        long finishedAtEpochMillis,
                                                        String taskStatus) {
         Map<String, Object> execution = new LinkedHashMap<>();
-        execution.put("adapterId", "websocket");
-        execution.put("transportHint", "realtime");
+        execution.put("adapterId", adapterId);
+        execution.put("transportHint", transportHint);
         execution.put("startedAtEpochMs", startedAtEpochMillis);
         execution.put("finishedAtEpochMs", finishedAtEpochMillis);
         execution.put("startedAt", Instant.ofEpochMilli(startedAtEpochMillis).toString());
@@ -313,7 +327,7 @@ final class MockWorkerTaskFrameHandler {
     private Map<String, Object> buildWorkerProfile(String workerId) {
         Map<String, Object> workerProfile = new LinkedHashMap<>();
         workerProfile.put("workerId", workerId);
-        workerProfile.put("runtime", "mock-websocket-client");
+        workerProfile.put("runtime", runtimeName);
         workerProfile.put("host", "mock-host-" + workerId);
         workerProfile.put("os", System.getProperty("os.name"));
         workerProfile.put("javaVersion", System.getProperty("java.version"));

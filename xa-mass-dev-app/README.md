@@ -35,7 +35,9 @@ Mock clients connect through:
 
 | Property | Default |
 | --- | --- |
-| `mock.client.uri` | `ws://localhost:${mass.websocket.port}/ws` |
+| `mock.client.websocket-uri` | `ws://localhost:${mass.websocket.port}/ws` |
+| `mock.client.socket-host` | `127.0.0.1` |
+| `mock.client.socket-port` | `18089` |
 
 ## Verified Main Entry
 
@@ -66,14 +68,15 @@ For the verified default `dev` path, mock clients are started by:
 
 - `xa-mass-dev-app/src/main/java/com/xa/mass/mock/starter/AbstractMockWorkerClientStarter.java`
 - `xa-mass-dev-app/src/main/java/com/xa/mass/mock/starter/WebSocketClientStarter.java`
+- `xa-mass-dev-app/src/main/java/com/xa/mass/mock/starter/SocketClientStarter.java`
 
 Startup behavior:
 
 - gated by `mock.client.auto-start=true`
 - triggered by `ApplicationReadyEvent`
-- shared startup orchestration is adapter-aware; websocket-specific behavior stays in `WebSocketClientStarter`
+- shared startup orchestration is adapter-aware; websocket and socket specifics stay in their own starters
 - discovers mock clients from SDK-registered `Worker` resources
-- only opens WebSocket clients for workers whose concrete `adapterId` is `websocket`
+- only opens adapter-matching clients for workers whose concrete `adapterId` matches the starter
 - does not read a separate worker JSON client list
 - idempotent startup protection through an internal `AtomicBoolean`
 - there is no longer a separate client-only Spring Boot application or `/mock/status` monitor surface
@@ -171,8 +174,11 @@ Observability:
 | --- | --- | --- |
 | `server.port` | `8088` | HTTP port |
 | `mass.websocket.port` | `18088` | WebSocket adapter port |
+| `mass.socket.port` | `18089` | Socket adapter port |
 | `mock.client.auto-start` | `true` | auto-start mock clients in default `dev` path |
-| `mock.client.uri` | `ws://localhost:${mass.websocket.port}/ws` | target WebSocket adapter address |
+| `mock.client.websocket-uri` | `ws://localhost:${mass.websocket.port}/ws` | target WebSocket adapter address |
+| `mock.client.socket-host` | `127.0.0.1` | target socket adapter host |
+| `mock.client.socket-port` | `18089` | fallback socket adapter port when no bound-port override is published |
 | `mock.client.task-result-status` | `SUCCESS` | force mock result frames to `SUCCESS` or `FAILED` |
 | `mass.mock.data.workers` | `mock/mock_workers.json` | mock worker data |
 | `mass.mock.data.worker-contexts` | `mock/mock_worker_contexts.json` | explicit mock worker-context data |
@@ -204,7 +210,7 @@ mvn --% -pl xa-mass-dev-app -am -Dtest=MassWebSocketClientImplTest,TaskApiIntegr
 Transport-focused regression command:
 
 ```bash
-mvn --% -pl xa-mass-dev-app -am -Dtest=WebSocketClientStarterTest,TransportChannelWiringIntegrationTest,NodeWebSocketWorkerBlackBoxIntegrationTest,NodeSocketWorkerBlackBoxIntegrationTest -Dsurefire.failIfNoSpecifiedTests=false test
+mvn --% -pl xa-mass-dev-app -am -Dtest=MockWorkerSocketClientTest,SocketClientStarterTest,SocketTaskApiIntegrationTest,WebSocketClientStarterTest,TransportChannelWiringIntegrationTest,NodeWebSocketWorkerBlackBoxIntegrationTest,NodeSocketWorkerBlackBoxIntegrationTest -Dsurefire.failIfNoSpecifiedTests=false test
 ```
 
 Covered areas:
@@ -216,4 +222,7 @@ Covered areas:
 - `e2e/audit`: `stateValidation` exposure and terminal metadata consistency through the real HTTP path
 - `e2e/assignment`: targeted worker debug task behavior and disconnect-after-result behavior
 - `WebSocketClientStarterTest`: auto-start and idempotent startup behavior
+- `SocketClientStarterTest`: adapter-aware socket starter wiring and bound-port resolution
+- `SocketTaskApiIntegrationTest`: auto-started socket mock workers go online, receive tasks, and return canonical results
+- `MockWorkerSocketClientTest`: canonical socket dispatch handling, task-result write-back, and disconnect-after-result behavior
 - `MockWorkerWebSocketClientTest`: task dispatch handling, canonical task-result write-back, delay/drop fault injection, and targeted debug task behavior

@@ -8,7 +8,7 @@ import com.xa.mass.sdk.event.EventDefinition;
 import java.util.List;
 
 /**
- * SDK task-event resource operations.
+ * Transport-neutral SDK event capability operations.
  */
 public interface EventOperations {
 

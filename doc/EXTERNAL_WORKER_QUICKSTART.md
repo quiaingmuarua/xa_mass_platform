@@ -67,7 +67,7 @@ Requirements:
 Example:
 
 ```bash
-node examples/external-worker/node/polling_worker.mjs
+node samples/worker-polling/node/worker.mjs
 ```
 
 Default environment used by the script:

@@ -48,7 +48,7 @@ For verified runtime behavior and recommended startup, use [VERIFIED_RUNBOOK.md]
 - Stable event invocation contract: `EventRequest`, `EventResponse`, and `EventPrincipal`.
 - Control-plane authorization is event-centric and currently intersects client and user allow-list scope.
 - `EventDefinition.code` is the event/capability identity used by dispatch, catalog reads, and permission checks; `project` remains scope metadata only.
-- Task-backed business events enter through the SDK event path and normalize to task creation; direct runtime events are handled inside the embedded SDK runtime rather than through WebSocket-adapter protocol frames.
+- Task-backed business events enter through the SDK event path and normalize to task creation; direct runtime events are handled inside the embedded SDK runtime rather than through adapter protocol frames.
 - Built-in runtime control events are also registered into the SDK metadata catalog so metadata and dispatch stay aligned.
 - Manual worker debug is task-backed. Use `POST /status/api/tasks` with `eventCode` plus `sharedConfig.targetWorkerId` when the task must target one worker.
 
@@ -56,7 +56,7 @@ For verified runtime behavior and recommended startup, use [VERIFIED_RUNBOOK.md]
 
 - Official third-party worker path is the polling HTTP surface under `/worker-api/*`.
 - External worker capability must be declared through `eventBindings`; external worker registration does not define a second capability identity model.
-- External worker transport is polling-only. Do not treat WebSocket adapter frames as the public protocol for non-Java workers.
+- External worker transport is polling-only. Do not treat adapter-internal frames as the public protocol for non-Java workers.
 - `/worker-api/*` is authenticated with SDK credentials, not operator user-mode headers.
 - required worker credential rules:
   - permission must include `worker:poll`

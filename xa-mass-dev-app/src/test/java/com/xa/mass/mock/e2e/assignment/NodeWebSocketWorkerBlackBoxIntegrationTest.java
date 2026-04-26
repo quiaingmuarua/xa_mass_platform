@@ -115,7 +115,7 @@ class NodeWebSocketWorkerBlackBoxIntegrationTest extends AbstractMockE2eTest {
         assertEquals(null, readyWhileOffline.messages().get(0).get("latestAttemptWorkerId"));
 
         URI wsUri = URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws");
-        try (ExternalNodeWorkerProcess worker = ExternalNodeWorkerProcess.start(WORKER_ID, wsUri)) {
+        try (ExternalNodeWorkerProcess worker = ExternalNodeWorkerProcess.startWebSocketSample(WORKER_ID, wsUri)) {
             waitForWorkerStatus(WORKER_ID, "ONLINE", worker);
             TaskSnapshot terminal = waitForTerminalTask(taskId);
             assertEquals("TERMINAL", terminal.task().get("status"));

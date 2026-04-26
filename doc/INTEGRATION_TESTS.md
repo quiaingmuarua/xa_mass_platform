@@ -197,7 +197,7 @@ Important support coverage outside the E2E package:
 - SDK-created pull workers start offline, become online through `pullWorker(...).connect()`, poll work, submit output, and disconnect back offline
 - a non-JVM realtime adapter client can come online through handshake identity and complete task work through the current HTTP + WebSocket adapter boundary without using the in-JVM mock worker client
 - that external worker can receive canonical root-level task-dispatch frames and write results back through the canonical task-result frame
-- an external non-JVM polling worker can run the repo quickstart script, register through `/worker-api`, surface worker/event capability in `/sdk/meta/*`, complete task work, and shut down cleanly without WebSocket adapter participation
+- an external non-JVM polling worker can run the repo quickstart script, register through `/worker-api`, surface worker/event capability in `/sdk/meta/*`, complete task work, and shut down cleanly without depending on any realtime adapter path
 - the same worker slot can be reused after normal completion and manual termination
 - `minRequiredWorkerCount` is a real `READY -> RUNNING` gate
 - multi-round refill works when `batchSize` is lower than total work-item count

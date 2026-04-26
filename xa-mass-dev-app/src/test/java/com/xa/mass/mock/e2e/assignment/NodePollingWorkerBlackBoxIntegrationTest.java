@@ -64,7 +64,7 @@ class NodePollingWorkerBlackBoxIntegrationTest extends AbstractMockE2eTest {
         ));
         String baseUrl = "http://127.0.0.1:" + port;
         try (ExternalNodeWorkerProcess workerProcess =
-                     ExternalNodeWorkerProcess.startPollingExample(baseUrl, WORKER_ID, WORKER_KEY)) {
+                     ExternalNodeWorkerProcess.startPollingSample(baseUrl, WORKER_ID, WORKER_KEY)) {
             waitForWorkerOnline(WORKER_ID, workerProcess);
             assertSdkMetadataProjection(WORKER_ID);
 

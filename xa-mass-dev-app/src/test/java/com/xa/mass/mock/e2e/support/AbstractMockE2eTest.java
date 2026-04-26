@@ -44,7 +44,7 @@ public abstract class AbstractMockE2eTest {
 
     protected static void registerWebSocketPropertiesWithClientUri(DynamicPropertyRegistry registry, int websocketPort) {
         registerWebSocketProperties(registry, websocketPort);
-        registry.add("mock.client.uri", () -> "ws://127.0.0.1:" + websocketPort + "/ws");
+        registry.add("mock.client.websocket-uri", () -> "ws://127.0.0.1:" + websocketPort + "/ws");
     }
 
     protected static int findFreePort() {
@@ -265,8 +265,8 @@ public abstract class AbstractMockE2eTest {
     /**
      * Asserts that at least {@code minExpected} ONLINE workers are registered with the runtime.
      *
-     * <p>Call this before dispatching tasks that depend on mock WebSocket workers being ready.
-     * A failure here means SDK resource registration or WebSocket client startup did not
+     * <p>Call this before dispatching tasks that depend on mock realtime workers being ready.
+     * A failure here means SDK resource registration or adapter-specific mock client startup did not
      * produce the expected workers - surfacing the problem early rather than waiting for a
      * task to time out in READY state.
      */
@@ -291,7 +291,7 @@ public abstract class AbstractMockE2eTest {
         }
         throw new AssertionError(
                 "Expected at least " + minExpected + " ONLINE worker(s) but found " + online
-                + " after waiting. Check bootstrap config JSON format and WebSocket client startup logs.");
+                + " after waiting. Check bootstrap config JSON format and mock transport client startup logs.");
     }
 
     protected void registerSdkWorkerWithContext(String workerId, String routingTag) {
