@@ -6,8 +6,6 @@ import com.xa.mass.base.channel.eventbus.event.task.TaskAssignedEvent;
 import com.xa.mass.base.channel.eventbus.event.task.TaskCreatedEvent;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.Worker;
-import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.listener.*;
@@ -157,18 +155,6 @@ public class MassEngine {
         return taskManager.createTask(dto);
     }
 
-    public void addWorker(Worker worker) {
-        if (workerManager != null) {
-            workerManager.addWorker(worker);
-        }
-    }
-
-    public void addWorkerContext(WorkerContext workerContext) {
-        if (workerManager != null && workerContext != null) {
-            workerManager.addWorkerContext(workerContext);
-        }
-    }
-
     /**
      * Replays a {@link TaskCreatedEvent} for every existing task to the Guava EventBus.
      *
@@ -186,34 +172,6 @@ public class MassEngine {
                 bus.post(new TaskCreatedEvent(task, null, null));
             }
         }
-    }
-
-    public TaskManager getTaskManager() {
-        return taskManager;
-    }
-
-    public WorkerManager getWorkerManager() {
-        return workerManager;
-    }
-
-    /**
-     * @deprecated Assignment record service ownership stays inside the engine
-     * runtime. Advanced embedding should consume stable engine behavior rather
-     * than depending on the internal record-service instance.
-     */
-    @Deprecated(forRemoval = false)
-    public AssignmentRecordService getRecordService() {
-        return recordService;
-    }
-
-    /**
-     * @deprecated Assignment worker loop is an internal engine runtime detail.
-     * Advanced embedding should not drive assignment by reaching into the live
-     * assign-worker instance.
-     */
-    @Deprecated(forRemoval = false)
-    public TaskAssignWorker getAssignWorker() {
-        return assignWorker;
     }
 
     public boolean isRunning() {

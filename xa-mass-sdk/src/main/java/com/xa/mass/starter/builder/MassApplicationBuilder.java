@@ -1,7 +1,6 @@
 package com.xa.mass.starter.builder;
 
 import com.xa.mass.base.channel.messaging.api.MessageQueue;
-import com.xa.mass.base.channel.messaging.memory.InMemoryMessageQueue;
 import com.xa.mass.base.channel.tranporter.MessageTransporterFactory;
 import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.WorkerManager;
@@ -44,96 +43,6 @@ public class MassApplicationBuilder {
 
     public static MassApplicationBuilder create() {
         return new MassApplicationBuilder();
-    }
-
-    /**
-     * Creates a development runtime with auto-provisioned in-memory queues.
-     * Suitable for local development and integration tests.
-     */
-    public static MassApplication createDevelopment(int port) {
-        return create()
-                .transport(transport -> transport
-                        .webSocketAdapter(webSocket -> webSocket
-                                .server(port)
-                                .enabled(true)
-                                .maxConnections(1000))
-                        .inputQueue(new InMemoryMessageQueue<>("input", String.class))
-                        .outputQueue(new InMemoryMessageQueue<>("output", WorkerTransportMessage.class)))
-                .engine(engine -> engine
-                        .enabled(true)
-                        .workerThreads(8))
-                .build();
-    }
-
-    /**
-     * @deprecated Use {@link #createDevelopment(int)} — queues are now provisioned internally.
-     * Pass custom queues via {@link MassApplicationBuilder#create()} and the {@code transport()} builder
-     * if you need to share queue instances across components.
-     */
-    @Deprecated(forRemoval = false)
-    public static MassApplication createDevelopment(int port, MessageQueue<String> inputQueue, MessageQueue<WorkerTransportMessage> outputQueue) {
-        return create()
-                .transport(transport -> transport
-                        .webSocketAdapter(webSocket -> webSocket
-                                .server(port)
-                                .enabled(true)
-                                .maxConnections(1000))
-                        .inputQueue(inputQueue)
-                        .outputQueue(outputQueue))
-                .engine(engine -> engine
-                        .enabled(true)
-                        .workerThreads(8))
-                .build();
-    }
-
-    /**
-     * Creates a production runtime with auto-provisioned in-memory queues.
-     */
-    public static MassApplication createProduction(int port) {
-        return create()
-                .transport(transport -> transport
-                        .webSocketAdapter(webSocket -> webSocket
-                                .server(port)
-                                .enabled(true)
-                                .maxConnections(5000))
-                        .inputQueue(new InMemoryMessageQueue<>("input", String.class))
-                        .outputQueue(new InMemoryMessageQueue<>("output", WorkerTransportMessage.class)))
-                .engine(engine -> engine
-                        .enabled(true)
-                        .workerThreads(16))
-                .build();
-    }
-
-    /**
-     * @deprecated Use {@link #createProduction(int)} — queues are now provisioned internally.
-     */
-    @Deprecated(forRemoval = false)
-    public static MassApplication createProduction(int port, MessageQueue<String> inputQueue, MessageQueue<WorkerTransportMessage> outputQueue) {
-        return create()
-                .transport(transport -> transport
-                        .webSocketAdapter(webSocket -> webSocket
-                                .server(port)
-                                .enabled(true)
-                                .maxConnections(5000))
-                        .inputQueue(inputQueue)
-                        .outputQueue(outputQueue))
-                .engine(engine -> engine
-                        .enabled(true)
-                        .workerThreads(16))
-                .build();
-    }
-
-    public static MassApplication createTest(int port) {
-        return create()
-                .transport(transport -> transport
-                        .webSocketAdapter(webSocket -> webSocket
-                                .server(port)
-                                .enabled(true)
-                                .maxConnections(100)))
-                .engine(engine -> engine
-                        .enabled(true)
-                        .workerThreads(2))
-                .build();
     }
 
     public MassApplicationBuilder transport(Consumer<TransportBuilder> transportConfigurator) {

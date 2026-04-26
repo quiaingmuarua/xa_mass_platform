@@ -1,0 +1,137 @@
+package com.xa.mass.sdk.model;
+
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Objects;
+
+/**
+ * SDK-native partial task update contract for editable task metadata.
+ *
+ * <p>This keeps update callers off the mutable core {@code Task} model while
+ * making the allowed patch fields explicit.
+ */
+public final class MassTaskUpdateRequest {
+
+    private final String userId;
+    private final String project;
+    private final String taskName;
+    private final Map<String, Object> sharedConfig;
+    private final Integer batchSize;
+
+    private MassTaskUpdateRequest(Builder builder) {
+        this.userId = normalizeString(builder.userId);
+        this.project = normalizeString(builder.project);
+        this.taskName = normalizeString(builder.taskName);
+        this.sharedConfig = unmodifiableMapCopy(builder.sharedConfig);
+        this.batchSize = builder.batchSize;
+    }
+
+    public static Builder builder() {
+        return new Builder();
+    }
+
+    public String getUserId() {
+        return userId;
+    }
+
+    public String getProject() {
+        return project;
+    }
+
+    public String getTaskName() {
+        return taskName;
+    }
+
+    public Map<String, Object> getSharedConfig() {
+        return sharedConfig;
+    }
+
+    public Integer getBatchSize() {
+        return batchSize;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof MassTaskUpdateRequest that)) return false;
+        return Objects.equals(userId, that.userId)
+                && Objects.equals(project, that.project)
+                && Objects.equals(taskName, that.taskName)
+                && Objects.equals(sharedConfig, that.sharedConfig)
+                && Objects.equals(batchSize, that.batchSize);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(userId, project, taskName, sharedConfig, batchSize);
+    }
+
+    @Override
+    public String toString() {
+        return "MassTaskUpdateRequest{" +
+                "userId='" + userId + '\'' +
+                ", project='" + project + '\'' +
+                ", taskName='" + taskName + '\'' +
+                ", sharedConfig=" + sharedConfig +
+                ", batchSize=" + batchSize +
+                '}';
+    }
+
+    public static final class Builder {
+        private String userId;
+        private String project;
+        private String taskName;
+        private Map<String, Object> sharedConfig = Collections.emptyMap();
+        private Integer batchSize;
+
+        private Builder() {
+        }
+
+        public Builder userId(String userId) {
+            this.userId = userId;
+            return this;
+        }
+
+        public Builder project(String project) {
+            this.project = project;
+            return this;
+        }
+
+        public Builder taskName(String taskName) {
+            this.taskName = taskName;
+            return this;
+        }
+
+        public Builder sharedConfig(Map<String, Object> sharedConfig) {
+            this.sharedConfig = sharedConfig;
+            return this;
+        }
+
+        public Builder batchSize(Integer batchSize) {
+            this.batchSize = batchSize;
+            return this;
+        }
+
+        public MassTaskUpdateRequest build() {
+            return new MassTaskUpdateRequest(this);
+        }
+    }
+
+    private static Map<String, Object> unmodifiableMapCopy(Map<String, Object> source) {
+        if (source == null) {
+            return null;
+        }
+        if (source.isEmpty()) {
+            return Collections.emptyMap();
+        }
+        return Collections.unmodifiableMap(new LinkedHashMap<>(source));
+    }
+
+    private static String normalizeString(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        return value.trim();
+    }
+}

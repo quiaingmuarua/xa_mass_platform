@@ -95,11 +95,12 @@ public class MockApplicationSpringBootApp {
         log.info("==============================");
         log.info("HTTP control console: http://localhost:{}/", httpPort);
         log.info("HTTP API docs: http://localhost:{}/doc.html", httpPort);
-        log.info("WebSocket adapter: ws://localhost:{}/ws", webSocketPort);
-        if (Boolean.parseBoolean(environment.getProperty("mass.socket.enabled", "false"))) {
-            String socketPort = environment.getProperty("mass.socket.port", "18089");
-            log.info("Socket adapter: tcp://localhost:{}", socketPort);
-        }
+        log.info("Embedded transport adapters: {}", describeConfiguredTransportAdapters(
+                "ws://localhost:" + webSocketPort + "/ws",
+                true,
+                "tcp://localhost:" + environment.getProperty("mass.socket.port", "18089"),
+                Boolean.parseBoolean(environment.getProperty("mass.socket.enabled", "false"))
+        ));
         log.info("==============================");
     }
 
@@ -173,10 +174,12 @@ public class MockApplicationSpringBootApp {
 
                 LogUtils.clearMdc();
                 log.info("Spring Boot HTTP API is ready");
-                log.info("Embedded transport adapters configured: websocket(port={}, path=/ws, enabled=true), socket(port={}, enabled={})",
-                        massWebSocketPort,
-                        massSocketPort,
-                        massSocketEnabled);
+                log.info("Embedded transport adapters configured: {}", describeConfiguredTransportAdapters(
+                        "ws://localhost:" + massWebSocketPort + "/ws",
+                        true,
+                        "tcp://localhost:" + massSocketPort,
+                        massSocketEnabled
+                ));
                 log.info("Dev demo SDK submitters registered: task submitter={} external worker={} workerId={}",
                         DEV_TASK_SUBMITTER_KEY,
                         DEV_EXTERNAL_WORKER_KEY,
@@ -207,6 +210,16 @@ public class MockApplicationSpringBootApp {
     @Profile("dev")
     public SdkMetadataCatalog devAppMetadataCatalog(MassSdkApplication app) {
         return app.metadataCatalog();
+    }
+
+    private static List<String> describeConfiguredTransportAdapters(String webSocketUri,
+                                                                    boolean webSocketEnabled,
+                                                                    String socketAddress,
+                                                                    boolean socketEnabled) {
+        List<String> adapters = new ArrayList<>();
+        adapters.add("socket(enabled=" + socketEnabled + ", address=" + socketAddress + ")");
+        adapters.add("websocket(enabled=" + webSocketEnabled + ", address=" + webSocketUri + ")");
+        return adapters;
     }
 
     private void registerDevAppCatalog(MassSdkApplication app) {

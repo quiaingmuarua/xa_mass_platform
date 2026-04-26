@@ -5,7 +5,8 @@ import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.sdk.SdkTaskResumeResult;
-import com.xa.mass.sdk.TaskOperations;
+import com.xa.mass.sdk.TaskAdminOperations;
+import com.xa.mass.sdk.TaskQueryOperations;
 import com.xa.mass.sdk.auth.AuthProvider;
 import com.xa.mass.sdk.auth.TaskSubmitterContext;
 import com.xa.mass.sdk.catalog.*;
@@ -36,7 +37,10 @@ class TaskApiControllerTest {
     private static final String TASK_ID = "task-001";
 
     @Mock
-    private TaskOperations taskOperations;
+    private TaskQueryOperations taskQueries;
+
+    @Mock
+    private TaskAdminOperations taskAdmin;
 
     @Mock
     private AuthProvider authProvider;
@@ -46,7 +50,7 @@ class TaskApiControllerTest {
     @BeforeEach
     void setUp() {
         ProjectEventCatalog catalog = createTaskCatalog();
-        mockMvc = MockMvcBuilders.standaloneSetup(new TaskApiController(taskOperations, catalog, authProvider)).build();
+        mockMvc = MockMvcBuilders.standaloneSetup(new TaskApiController(taskQueries, taskAdmin, catalog, authProvider)).build();
     }
 
     @Test
@@ -54,8 +58,8 @@ class TaskApiControllerTest {
         Task newTask = taskWithStatus(TaskStatus.NEW);
         Task readyTask = taskWithStatus(TaskStatus.READY);
 
-        when(taskOperations.getTask(TASK_ID)).thenReturn(newTask, readyTask);
-        when(taskOperations.approveTask(TASK_ID)).thenReturn(true);
+        when(taskQueries.getTask(TASK_ID)).thenReturn(newTask, readyTask);
+        when(taskAdmin.approveTask(TASK_ID)).thenReturn(true);
 
         mockMvc.perform(post("/status/api/tasks/{taskId}/audit", TASK_ID)
                         .param("approved", "true")
@@ -65,14 +69,14 @@ class TaskApiControllerTest {
                 .andExpect(jsonPath("$.data.newStatus").value("READY"))
                 .andExpect(jsonPath("$.data.message").value("Task approved"));
 
-        verify(taskOperations).approveTask(TASK_ID);
-        verify(taskOperations, never()).rejectTask(TASK_ID);
+        verify(taskAdmin).approveTask(TASK_ID);
+        verify(taskAdmin, never()).rejectTask(TASK_ID);
     }
 
     @Test
     void pauseReturnsSuccessWhenSdkAllowsIt() throws Exception {
-        when(taskOperations.getTask(TASK_ID)).thenReturn(taskWithStatus(TaskStatus.READY));
-        when(taskOperations.pauseTask(TASK_ID)).thenReturn(true);
+        when(taskQueries.getTask(TASK_ID)).thenReturn(taskWithStatus(TaskStatus.READY));
+        when(taskAdmin.pauseTask(TASK_ID)).thenReturn(true);
 
         mockMvc.perform(post("/status/api/tasks/{taskId}/pause", TASK_ID))
                 .andExpect(status().isOk())
@@ -82,8 +86,8 @@ class TaskApiControllerTest {
 
     @Test
     void resumeReturnsSuccessWhenSdkAllowsIt() throws Exception {
-        when(taskOperations.getTask(TASK_ID)).thenReturn(taskWithStatus(TaskStatus.PAUSED));
-        when(taskOperations.resumeTaskDetailed(TASK_ID))
+        when(taskQueries.getTask(TASK_ID)).thenReturn(taskWithStatus(TaskStatus.PAUSED));
+        when(taskAdmin.resumeTaskDetailed(TASK_ID))
                 .thenReturn(new SdkTaskResumeResult(true, "READY", null, false));
 
         mockMvc.perform(post("/status/api/tasks/{taskId}/resume", TASK_ID))
@@ -95,8 +99,8 @@ class TaskApiControllerTest {
 
     @Test
     void resumeReturnsTerminalWhenPausedTaskAlreadyCompleted() throws Exception {
-        when(taskOperations.getTask(TASK_ID)).thenReturn(taskWithStatus(TaskStatus.PAUSED));
-        when(taskOperations.resumeTaskDetailed(TASK_ID))
+        when(taskQueries.getTask(TASK_ID)).thenReturn(taskWithStatus(TaskStatus.PAUSED));
+        when(taskAdmin.resumeTaskDetailed(TASK_ID))
                 .thenReturn(new SdkTaskResumeResult(true, "TERMINAL", TaskTerminalReason.ALL_MESSAGES_SUCCEEDED.name(), true));
 
         mockMvc.perform(post("/status/api/tasks/{taskId}/resume", TASK_ID))
@@ -108,10 +112,24 @@ class TaskApiControllerTest {
     }
 
     @Test
+    void terminateDelegatesToExplicitTerminateCommand() throws Exception {
+        when(taskQueries.getTask(TASK_ID)).thenReturn(taskWithStatus(TaskStatus.RUNNING));
+        when(taskAdmin.terminateTask(TASK_ID, TaskTerminalReason.MANUAL_CANCELLED)).thenReturn(true);
+
+        mockMvc.perform(post("/status/api/tasks/{taskId}/terminate", TASK_ID))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.message").value("Task terminated"));
+
+        verify(taskAdmin).terminateTask(TASK_ID, TaskTerminalReason.MANUAL_CANCELLED);
+        verify(taskAdmin, never()).cancelTask(TASK_ID);
+    }
+
+    @Test
     void createTaskReturnsTaskIdAndDelegatesRequestToSdk() throws Exception {
         Task createdTask = taskWithStatus(TaskStatus.NEW);
 
-        when(taskOperations.createTask(any(MassTaskCreateRequest.class))).thenReturn(createdTask);
+        when(taskAdmin.createTask(any(MassTaskCreateRequest.class))).thenReturn(createdTask);
 
         mockMvc.perform(post("/status/api/tasks")
                         .contentType("application/json")
@@ -131,7 +149,7 @@ class TaskApiControllerTest {
                 .andExpect(jsonPath("$.data.message").value("Task created"));
 
         ArgumentCaptor<MassTaskCreateRequest> captor = ArgumentCaptor.forClass(MassTaskCreateRequest.class);
-        verify(taskOperations).createTask(captor.capture());
+        verify(taskAdmin).createTask(captor.capture());
         MassTaskCreateRequest request = captor.getValue();
         org.junit.jupiter.api.Assertions.assertEquals("smoke-create", request.getTaskName());
         org.junit.jupiter.api.Assertions.assertEquals("demoApp", request.getProject());
@@ -149,7 +167,7 @@ class TaskApiControllerTest {
         Task createdTask = taskWithStatus(TaskStatus.NEW);
         createdTask.setTid("task-sdk-001");
 
-        when(taskOperations.createTask(any(MassTaskRequest.class))).thenReturn(createdTask);
+        when(taskAdmin.createTask(any(MassTaskRequest.class))).thenReturn(createdTask);
 
         mockMvc.perform(post("/status/api/tasks")
                         .contentType("application/json")
@@ -174,7 +192,7 @@ class TaskApiControllerTest {
                 .andExpect(jsonPath("$.data.message").value("Task created"));
 
         ArgumentCaptor<MassTaskRequest> captor = ArgumentCaptor.forClass(MassTaskRequest.class);
-        verify(taskOperations).createTask(captor.capture());
+        verify(taskAdmin).createTask(captor.capture());
         MassTaskRequest request = captor.getValue();
         org.junit.jupiter.api.Assertions.assertEquals("sdk-crawler", request.getTaskName());
         org.junit.jupiter.api.Assertions.assertEquals("demoApp", request.getProject());
@@ -202,7 +220,7 @@ class TaskApiControllerTest {
                 List.of("crawler.fetch-page"),
                 Map.of("transport", "polling")
         ));
-        when(taskOperations.createTask(any(MassTaskRequest.class))).thenReturn(createdTask);
+        when(taskAdmin.createTask(any(MassTaskRequest.class))).thenReturn(createdTask);
 
         mockMvc.perform(post("/status/api/tasks")
                         .header("X-Mass-Api-Key", "sdk-key")
@@ -225,7 +243,7 @@ class TaskApiControllerTest {
                 .andExpect(jsonPath("$.data.principalId").value("crawler-agent"));
 
         ArgumentCaptor<MassTaskRequest> captor = ArgumentCaptor.forClass(MassTaskRequest.class);
-        verify(taskOperations).createTask(captor.capture());
+        verify(taskAdmin).createTask(captor.capture());
         MassTaskRequest request = captor.getValue();
         org.junit.jupiter.api.Assertions.assertEquals("crawlerApp", request.getProject());
         org.junit.jupiter.api.Assertions.assertEquals("crawler-agent", request.getUserId());
@@ -250,8 +268,8 @@ class TaskApiControllerTest {
                 .andExpect(jsonPath("$.code").value(401))
                 .andExpect(jsonPath("$.msg").value("Invalid or missing SDK credential"));
 
-        verify(taskOperations, never()).createTask(any(MassTaskRequest.class));
-        verify(taskOperations, never()).createTask(any(MassTaskCreateRequest.class));
+        verify(taskAdmin, never()).createTask(any(MassTaskRequest.class));
+        verify(taskAdmin, never()).createTask(any(MassTaskCreateRequest.class));
     }
 
     @Test
@@ -282,7 +300,7 @@ class TaskApiControllerTest {
                 .andExpect(jsonPath("$.code").value(403))
                 .andExpect(jsonPath("$.msg").value("SDK credential project scope denied: crawlerApp"));
 
-        verify(taskOperations, never()).createTask(any(MassTaskRequest.class));
+        verify(taskAdmin, never()).createTask(any(MassTaskRequest.class));
     }
 
     @Test
@@ -313,7 +331,7 @@ class TaskApiControllerTest {
                 .andExpect(jsonPath("$.code").value(403))
                 .andExpect(jsonPath("$.msg").value("SDK credential user scope denied: another-user"));
 
-        verify(taskOperations, never()).createTask(any(MassTaskRequest.class));
+        verify(taskAdmin, never()).createTask(any(MassTaskRequest.class));
     }
 
     @Test
@@ -343,7 +361,7 @@ class TaskApiControllerTest {
                 .andExpect(jsonPath("$.code").value(403))
                 .andExpect(jsonPath("$.msg").value("SDK credential permission denied: task:create"));
 
-        verify(taskOperations, never()).createTask(any(MassTaskRequest.class));
+        verify(taskAdmin, never()).createTask(any(MassTaskRequest.class));
     }
 
     @Test
@@ -373,7 +391,7 @@ class TaskApiControllerTest {
                 .andExpect(jsonPath("$.code").value(403))
                 .andExpect(jsonPath("$.msg").value("SDK credential event scope denied: crawler.fetch-page"));
 
-        verify(taskOperations, never()).createTask(any(MassTaskRequest.class));
+        verify(taskAdmin, never()).createTask(any(MassTaskRequest.class));
     }
 
     @Test
@@ -394,7 +412,7 @@ class TaskApiControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(400));
 
-        verify(taskOperations, never()).createTask(any(MassTaskRequest.class));
+        verify(taskAdmin, never()).createTask(any(MassTaskRequest.class));
     }
 
     @Test
@@ -415,7 +433,7 @@ class TaskApiControllerTest {
                 .andExpect(jsonPath("$.code").value(400))
                 .andExpect(jsonPath("$.msg").value("Task create failed: Unsupported task create fields: targetJsonList"));
 
-        verify(taskOperations, never()).createTask(any(MassTaskCreateRequest.class));
+        verify(taskAdmin, never()).createTask(any(MassTaskCreateRequest.class));
     }
 
     @Test
@@ -424,12 +442,12 @@ class TaskApiControllerTest {
         task.setProject("demoApp");
         task.setUser(com.xa.mass.base.model.UserRef.of("agent-1"));
 
-        when(taskOperations.getTask(TASK_ID)).thenReturn(task);
-        when(taskOperations.getTaskMessages(TASK_ID)).thenReturn(List.of(
+        when(taskQueries.getTask(TASK_ID)).thenReturn(task);
+        when(taskQueries.getTaskMessages(TASK_ID)).thenReturn(List.of(
                 new TaskMsg("msg-1", TASK_ID, Map.of("target", "alpha")),
                 new TaskMsg("msg-2", TASK_ID, Map.of("target", "beta"))
         ));
-        when(taskOperations.validateTaskState(TASK_ID)).thenReturn(Map.of(
+        when(taskQueries.validateTaskState(TASK_ID)).thenReturn(Map.of(
                 "valid", true,
                 "needsResolution", false,
                 "status", "READY"
@@ -453,8 +471,8 @@ class TaskApiControllerTest {
 
     @Test
     void deleteTaskReturnsSuccessWhenTaskExists() throws Exception {
-        when(taskOperations.getTask(TASK_ID)).thenReturn(taskWithStatus(TaskStatus.NEW));
-        when(taskOperations.deleteTask(TASK_ID)).thenReturn(true);
+        when(taskQueries.getTask(TASK_ID)).thenReturn(taskWithStatus(TaskStatus.NEW));
+        when(taskAdmin.deleteTask(TASK_ID)).thenReturn(true);
 
         mockMvc.perform(delete("/status/api/tasks/{taskId}", TASK_ID))
                 .andExpect(status().isOk())
@@ -466,7 +484,7 @@ class TaskApiControllerTest {
     void updateTaskMutatesExistingTaskAndDelegatesToSdk() throws Exception {
         Task existingTask = taskWithStatus(TaskStatus.NEW);
         existingTask.setUser(com.xa.mass.base.model.UserRef.of("before"));
-        when(taskOperations.getTask(TASK_ID)).thenReturn(existingTask);
+        when(taskQueries.getTask(TASK_ID)).thenReturn(existingTask);
 
         mockMvc.perform(put("/status/api/tasks/{taskId}", TASK_ID)
                         .contentType("application/json")
@@ -483,14 +501,12 @@ class TaskApiControllerTest {
                 .andExpect(jsonPath("$.code").value(0))
                 .andExpect(jsonPath("$.data.message").value("Task updated"));
 
-        verify(taskOperations).updateTask(argThat(task ->
-                TASK_ID.equals(task.getTid())
-                        && "updated-name".equals(task.getTaskName())
-                        && "testApp".equals(task.getProject())
-                        && "updated-content".equals(task.getSharedConfig() != null ? task.getSharedConfig().get("textContent") : null)
-                        && task.getUser() != null
-                        && "updated-user".equals(task.getUser().getUserId())
-                        && task.getBatchSize() == 5
+        verify(taskAdmin).updateTaskDefinition(eq(TASK_ID), argThat(request ->
+                "updated-name".equals(request.getTaskName())
+                        && "testApp".equals(request.getProject())
+                        && "updated-content".equals(request.getSharedConfig() != null ? request.getSharedConfig().get("textContent") : null)
+                        && "updated-user".equals(request.getUserId())
+                        && Integer.valueOf(5).equals(request.getBatchSize())
         ));
     }
 
@@ -499,8 +515,8 @@ class TaskApiControllerTest {
         TaskMsg first = new TaskMsg("msg-1", TASK_ID, Map.of("target", "alpha"));
         first.setOutput(Map.of("result", "ok"));
         TaskMsg second = new TaskMsg("msg-2", TASK_ID, Map.of("target", "beta"));
-        when(taskOperations.countTaskMessages(TASK_ID)).thenReturn(2L);
-        when(taskOperations.getTaskMessagesPage(TASK_ID, 0, 1)).thenReturn(List.of(first));
+        when(taskQueries.countTaskMessages(TASK_ID)).thenReturn(2L);
+        when(taskQueries.getTaskMessagesPage(TASK_ID, 0, 1)).thenReturn(List.of(first));
 
         mockMvc.perform(get("/status/api/tasks/{taskId}/messages", TASK_ID)
                         .param("page", "1")
@@ -512,9 +528,9 @@ class TaskApiControllerTest {
                 .andExpect(jsonPath("$.data.messages[0].input.target").value("alpha"))
                 .andExpect(jsonPath("$.data.messages[0].output.result").value("ok"));
 
-        verify(taskOperations).countTaskMessages(TASK_ID);
-        verify(taskOperations).getTaskMessagesPage(TASK_ID, 0, 1);
-        verify(taskOperations, never()).getTaskMessages(TASK_ID);
+        verify(taskQueries).countTaskMessages(TASK_ID);
+        verify(taskQueries).getTaskMessagesPage(TASK_ID, 0, 1);
+        verify(taskQueries, never()).getTaskMessages(TASK_ID);
     }
 
     @Test
@@ -527,8 +543,8 @@ class TaskApiControllerTest {
                 "taskMode", "STREAMING"
         )));
 
-        when(taskOperations.getTask(TASK_ID)).thenReturn(task);
-        when(taskOperations.appendTaskItems(any(), any())).thenReturn(2);
+        when(taskQueries.getTask(TASK_ID)).thenReturn(task);
+        when(taskAdmin.appendTaskItems(any(), any())).thenReturn(2);
 
         mockMvc.perform(post("/status/api/tasks/{taskId}/items", TASK_ID)
                         .contentType("application/json")
@@ -541,7 +557,7 @@ class TaskApiControllerTest {
                 .andExpect(jsonPath("$.code").value(0))
                 .andExpect(jsonPath("$.data.added").value(2));
 
-        verify(taskOperations).appendTaskItems(TASK_ID, List.of(
+        verify(taskAdmin).appendTaskItems(TASK_ID, List.of(
                 Map.of("type", "text", "text", "hello"),
                 Map.of("type", "text", "text", "world")
         ));
@@ -550,15 +566,15 @@ class TaskApiControllerTest {
     @Test
     void sealTaskDelegatesToSdkFacade() throws Exception {
         Task task = taskWithStatus(TaskStatus.RUNNING);
-        when(taskOperations.getTask(TASK_ID)).thenReturn(task);
-        when(taskOperations.sealTask(TASK_ID)).thenReturn(true);
+        when(taskQueries.getTask(TASK_ID)).thenReturn(task);
+        when(taskAdmin.sealTask(TASK_ID)).thenReturn(true);
 
         mockMvc.perform(put("/status/api/tasks/{taskId}/seal", TASK_ID))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
                 .andExpect(jsonPath("$.data.message").value("Task sealed"));
 
-        verify(taskOperations).sealTask(TASK_ID);
+        verify(taskAdmin).sealTask(TASK_ID);
     }
 
     private Task taskWithStatus(TaskStatus status) {

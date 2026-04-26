@@ -1,10 +1,12 @@
 package com.xa.mass.mock.e2e.support;
 
+import com.xa.mass.base.model.Task;
 import com.xa.mass.mock.client.MockWorkerClient;
 import com.xa.mass.sdk.MassSdkApplication;
 import com.xa.mass.sdk.model.WorkerContextRegistration;
 import com.xa.mass.sdk.model.WorkerEventBinding;
 import com.xa.mass.sdk.model.WorkerRegistration;
+import com.xa.mass.starter.MassApplication;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.boot.test.web.server.LocalServerPort;
@@ -237,6 +239,10 @@ public abstract class AbstractMockE2eTest {
         assertTrue(connected, failureMessage);
     }
 
+    protected boolean updateStoredTask(Task task) {
+        return requireDelegate().getEngine().getConfig().getTaskManager().updateTask(task);
+    }
+
     protected <T extends MockWorkerClient> T connectClientWithRetries(Supplier<T> clientSupplier,
                                                                          String failureMessage) throws Exception {
         Exception lastError = null;
@@ -315,6 +321,21 @@ public abstract class AbstractMockE2eTest {
 
     protected void registerSdkStatelessWorker(String workerId, String project) {
         requireSdkApp().registerWorker(createWorkerRegistration(workerId, "us", project));
+    }
+
+    private MassApplication requireDelegate() {
+        assertNotNull(app, "MassSdkApplication is required");
+        return readField(app, "delegate", MassApplication.class);
+    }
+
+    private static <T> T readField(Object target, String fieldName, Class<T> fieldType) {
+        try {
+            java.lang.reflect.Field field = target.getClass().getDeclaredField(fieldName);
+            field.setAccessible(true);
+            return fieldType.cast(field.get(target));
+        } catch (ReflectiveOperationException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     private WorkerRegistration createWorkerRegistration(String workerId, String workerGroupId, String project) {

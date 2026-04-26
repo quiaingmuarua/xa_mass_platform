@@ -17,37 +17,58 @@ public class MassApplicationExample {
     public static void main(String[] args) {
         logger.info("Mass Application example bootstrap");
 
-        exampleDevelopmentMode();
-        exampleProductionMode();
-        exampleTestMode();
-        exampleCustomConfiguration();
-        exampleWebSocketOnly();
+        exampleExplicitRealtimeRuntime();
+        exampleDualRealtimeAdapters();
+        exampleQueueBackedTransport();
+        exampleSingleRealtimeAdapter();
         exampleEngineOnly();
     }
 
-    private static void exampleDevelopmentMode() {
-        logger.info("Example 1: development mode");
-        MassApplication app = MassApplicationBuilder.createDevelopment(8080);
+    private static void exampleExplicitRealtimeRuntime() {
+        logger.info("Example 1: explicit realtime runtime");
+        MassApplication app = MassApplicationBuilder.create()
+                .transport(transport -> transport
+                        .webSocketAdapter(webSocket -> webSocket
+                                .server(8080)
+                                .enabled(true)
+                                .maxConnections(1000))
+                        .inputQueue(new InMemoryMessageQueue<>("input", String.class))
+                        .outputQueue(new InMemoryMessageQueue<>("output", WorkerTransportMessage.class)))
+                .engine(engine -> engine
+                        .enabled(true)
+                        .workerThreads(8))
+                .build();
+
         app.start();
         app.stop();
     }
 
-    private static void exampleProductionMode() {
-        logger.info("Example 2: production mode");
-        MassApplication app = MassApplicationBuilder.createProduction(8080);
+    private static void exampleDualRealtimeAdapters() {
+        logger.info("Example 2: dual realtime adapters");
+        MassApplication app = MassApplicationBuilder.create()
+                .transport(transport -> transport
+                        .webSocketAdapter(webSocket -> webSocket
+                                .server(8081, "/ws")
+                                .enabled(true)
+                                .maxConnections(1000))
+                        .socketAdapter(socket -> socket
+                                .server(8082)
+                                .enabled(true)
+                                .serverEnabled(true)
+                                .maxConnections(1000))
+                        .inputQueue(new InMemoryMessageQueue<>("input", String.class))
+                        .outputQueue(new InMemoryMessageQueue<>("output", WorkerTransportMessage.class)))
+                .engine(engine -> engine
+                        .enabled(true)
+                        .workerThreads(12))
+                .build();
+
         app.start();
         app.stop();
     }
 
-    private static void exampleTestMode() {
-        logger.info("Example 3: test mode");
-        MassApplication app = MassApplicationBuilder.createTest(8080);
-        app.start();
-        app.stop();
-    }
-
-    private static void exampleCustomConfiguration() {
-        logger.info("Example 4: custom configuration");
+    private static void exampleQueueBackedTransport() {
+        logger.info("Example 3: queue-backed transport");
         MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("WsInputRawJson", String.class);
         MessageQueue<WorkerTransportMessage> outputQueue = new InMemoryMessageQueue<>("WsOutboundDelivery", WorkerTransportMessage.class);
 
@@ -69,8 +90,8 @@ public class MassApplicationExample {
         app.stop();
     }
 
-    private static void exampleWebSocketOnly() {
-        logger.info("Example 5: websocket only");
+    private static void exampleSingleRealtimeAdapter() {
+        logger.info("Example 4: single realtime adapter");
         MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("WsInputRawJson", String.class);
         MessageQueue<WorkerTransportMessage> outputQueue = new InMemoryMessageQueue<>("WsOutboundDelivery", WorkerTransportMessage.class);
 
@@ -90,7 +111,7 @@ public class MassApplicationExample {
     }
 
     private static void exampleEngineOnly() {
-        logger.info("Example 6: engine only");
+        logger.info("Example 5: engine only");
         MassApplication app = MassApplicationBuilder.create()
                 .transport(transport -> transport
                         .webSocketAdapter(webSocket -> webSocket.server(8080).enabled(false).serverEnabled(false)))

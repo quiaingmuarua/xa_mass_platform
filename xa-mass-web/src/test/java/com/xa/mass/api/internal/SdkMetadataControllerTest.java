@@ -3,7 +3,7 @@ package com.xa.mass.api.internal;
 import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.sdk.TransportOperations;
-import com.xa.mass.sdk.WorkerOperations;
+import com.xa.mass.sdk.WorkerQueryOperations;
 import com.xa.mass.sdk.catalog.*;
 import com.xa.mass.sdk.event.EventResponse;
 import com.xa.mass.sdk.event.EventDefinition;
@@ -63,11 +63,11 @@ class SdkMetadataControllerTest {
                 List.of("demoApp"), List.of("chatbot.reply"));
         Worker scopeOnlyWorker = worker("scope-only-worker", WorkerStatus.ONLINE,
                 List.of("demoApp"), List.of());
-        WorkerOperations workerOperations = mock(WorkerOperations.class);
-        when(workerOperations.getAllWorkers()).thenReturn(List.of(crawlerWorker, offlineChatWorker, scopeOnlyWorker));
-        when(workerOperations.isWorkerLocked("crawler-worker-1")).thenReturn(false);
-        when(workerOperations.isWorkerLocked("chat-worker-1")).thenReturn(true);
-        when(workerOperations.isWorkerLocked("scope-only-worker")).thenReturn(false);
+        WorkerQueryOperations workerQueries = mock(WorkerQueryOperations.class);
+        when(workerQueries.getAllWorkers()).thenReturn(List.of(crawlerWorker, offlineChatWorker, scopeOnlyWorker));
+        when(workerQueries.isWorkerLocked("crawler-worker-1")).thenReturn(false);
+        when(workerQueries.isWorkerLocked("chat-worker-1")).thenReturn(true);
+        when(workerQueries.isWorkerLocked("scope-only-worker")).thenReturn(false);
         transportOperations = mock(TransportOperations.class);
         when(transportOperations.listSessions()).thenReturn(List.of(
                 java.util.Map.of(
@@ -88,7 +88,7 @@ class SdkMetadataControllerTest {
                 )
         ));
         mockMvc = MockMvcBuilders.standaloneSetup(
-                new SdkMetadataController(catalog, workerOperations, transportOperations)
+                new SdkMetadataController(catalog, workerQueries, transportOperations)
         ).build();
     }
 

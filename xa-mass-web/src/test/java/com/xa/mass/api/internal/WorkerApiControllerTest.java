@@ -5,7 +5,8 @@ import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.sdk.TransportOperations;
-import com.xa.mass.sdk.WorkerOperations;
+import com.xa.mass.sdk.WorkerAdminOperations;
+import com.xa.mass.sdk.WorkerQueryOperations;
 import com.xa.mass.sdk.catalog.PayloadType;
 import com.xa.mass.sdk.catalog.ProjectEventCatalogRegistry;
 import com.xa.mass.sdk.catalog.ProjectMetadata;
@@ -36,7 +37,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class WorkerApiControllerTest {
 
     @Mock
-    private WorkerOperations workerOperations;
+    private WorkerQueryOperations workerQueries;
+
+    @Mock
+    private WorkerAdminOperations workerAdmin;
 
     @Mock
     private TransportOperations transportOperations;
@@ -62,7 +66,7 @@ class WorkerApiControllerTest {
                 .eventCodes(List.of("demo.dispatch"))
                 .build());
         mockMvc = MockMvcBuilders
-                .standaloneSetup(new WorkerApiController(workerOperations, metadataCatalog, transportOperations))
+                .standaloneSetup(new WorkerApiController(workerQueries, workerAdmin, metadataCatalog, transportOperations))
                 .setControllerAdvice(new com.xa.mass.api.aop.GlobalExceptionHandler())
                 .build();
     }
@@ -82,8 +86,8 @@ class WorkerApiControllerTest {
         worker.setLastHeartbeat(LocalDateTime.of(2026, 4, 21, 10, 15));
         worker.setUpdateTime(LocalDateTime.of(2026, 4, 21, 10, 16));
 
-        when(workerOperations.getAllWorkers()).thenReturn(List.of(worker));
-        when(workerOperations.isWorkerLocked("worker-001")).thenReturn(true);
+        when(workerQueries.getAllWorkers()).thenReturn(List.of(worker));
+        when(workerQueries.isWorkerLocked("worker-001")).thenReturn(true);
         when(transportOperations.listSessions()).thenReturn(List.of(Map.of(
                 "workerId", "worker-001",
                 "connections", List.of(Map.of(
@@ -122,7 +126,7 @@ class WorkerApiControllerTest {
         workerContext.setLastUsedTime(LocalDateTime.of(2026, 4, 21, 9, 50));
         workerContext.setUpdateTime(LocalDateTime.of(2026, 4, 21, 9, 55));
 
-        when(workerOperations.getAllWorkerContexts()).thenReturn(List.of(workerContext));
+        when(workerQueries.getAllWorkerContexts()).thenReturn(List.of(workerContext));
 
         mockMvc.perform(get("/status/api/worker-contexts"))
                 .andExpect(status().isOk())
@@ -136,9 +140,12 @@ class WorkerApiControllerTest {
 
     @Test
     void updateSupportedProjectsMutatesWorker() throws Exception {
-        Worker worker = new Worker();
-        worker.setWorkerId("worker-001");
-        when(workerOperations.getWorker("worker-001")).thenReturn(worker);
+        Worker existingWorker = new Worker();
+        existingWorker.setWorkerId("worker-001");
+        Worker updatedWorker = new Worker();
+        updatedWorker.setWorkerId("worker-001");
+        updatedWorker.setSupportedProjects(List.of("demoApp", "testApp"));
+        when(workerQueries.getWorker("worker-001")).thenReturn(existingWorker, updatedWorker);
 
         mockMvc.perform(put("/status/api/workers/{workerId}/supported-projects", "worker-001")
                         .contentType("application/json")
@@ -152,10 +159,7 @@ class WorkerApiControllerTest {
                 .andExpect(jsonPath("$.data.workerId").value("worker-001"))
                 .andExpect(jsonPath("$.data.supportedProjects.length()").value(2));
 
-        verify(workerOperations).updateWorker(argThat(updated ->
-                "worker-001".equals(updated.getWorkerId())
-                        && List.of("demoApp", "testApp").equals(updated.getSupportedProjects())
-        ));
+        verify(workerAdmin).updateWorkerSupportedProjects("worker-001", List.of("demoApp", "testApp"));
     }
 
     @Test

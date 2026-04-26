@@ -8,11 +8,14 @@ import com.xa.mass.base.enums.worker.WorkerContextStatus;
 import com.xa.mass.base.enums.worker.WorkerStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
+import com.xa.mass.base.model.TaskMsgAttempt;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.command.event.CoreEventDescriptor;
 import com.xa.mass.command.event.CoreEventResponse;
 import com.xa.mass.command.event.InMemoryMassEventRuntime;
+import com.xa.mass.engine.TaskManager;
+import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.model.TaskCreateRequestDto;
 import com.xa.mass.engine.rules.RuleDefinition;
 import com.xa.mass.engine.rules.RuleManager;
@@ -399,14 +402,12 @@ class MassSdkTest {
         TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
 
         assertEquals("polling", runtimeComposition.resolveRegistrationAdapterId(null, "polling"));
-        assertEquals("websocket", runtimeComposition.resolveRegistrationAdapterId(null, "realtime"));
         assertEquals("websocket", runtimeComposition.resolveRegistrationAdapterId("ws", "realtime"));
     }
 
     @Test
-    void transportRuntimeCompositionRejectsAmbiguousRealtimeRegistrationBeforeStart() {
+    void transportRuntimeCompositionRejectsRealtimeRegistrationWithoutExplicitAdapterIdBeforeStart() {
         TransportConfig config = new TransportConfig();
-        config.getBundledSocketAdapterConfig().setEnabled(true);
         TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
 
         IllegalArgumentException error = assertThrows(
@@ -414,7 +415,7 @@ class MassSdkTest {
                 () -> runtimeComposition.resolveRegistrationAdapterId(null, "realtime")
         );
 
-        assertEquals("worker adapterId must be set when transportHint 'realtime' matches multiple adapters [socket, websocket]",
+        assertEquals("worker adapterId must be set when transportHint 'realtime' is used",
                 error.getMessage());
     }
 
@@ -428,8 +429,14 @@ class MassSdkTest {
 
         TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
 
-        assertEquals("custom-rt", runtimeComposition.resolveRegistrationAdapterId(null, "realtime"));
         assertEquals("custom-rt", runtimeComposition.resolveRegistrationAdapterId("custom-rt-alias", "realtime"));
+
+        IllegalArgumentException error = assertThrows(
+                IllegalArgumentException.class,
+                () -> runtimeComposition.resolveRegistrationAdapterId(null, "realtime")
+        );
+        assertEquals("worker adapterId must be set when transportHint 'realtime' is used",
+                error.getMessage());
     }
 
     @Test
@@ -442,22 +449,8 @@ class MassSdkTest {
         Assertions.assertEquals(3, runtimeComposition.resolveTransportAdapterBootstraps().size());
     }
 
-    @Test
-    void massEngineInternalEscapeHatchesStayDeprecated() throws NoSuchMethodException {
-        Set<java.lang.reflect.Method> methods = Set.of(
-                com.xa.mass.starter.MassEngine.class.getDeclaredMethod("getRecordService"),
-                com.xa.mass.starter.MassEngine.class.getDeclaredMethod("getAssignWorker")
-        );
-
-        for (java.lang.reflect.Method method : methods) {
-            Assertions.assertTrue(method.isAnnotationPresent(Deprecated.class),
-                    method.getDeclaringClass().getSimpleName() + "." + method.getName() + " must remain deprecated");
-        }
-    }
-
-    @Test
-    void developmentFactoryWrapsRuntimeApplication() {
-        MassSdkApplication app = MassSdk.development(18080);
+    void explicitRealtimeBuilderWrapsRuntimeApplication() {
+        MassSdkApplication app = explicitRealtimeRuntime(18080, 8, 1000);
 
         assertNotNull(app);
         assertFalse(app.isRunning());
@@ -477,7 +470,7 @@ class MassSdkTest {
 
     @Test
     void engineDependentHelpersFailFastBeforeStart() {
-        MassSdkApplication app = MassSdk.development(18081);
+        MassSdkApplication app = explicitRealtimeRuntime(18081, 8, 1000);
 
         assertEngineOperationsFailFast(app);
     }
@@ -601,9 +594,13 @@ class MassSdkTest {
     void registerWorkerUsesSdkContractAndStartsOffline() {
         MassApplication delegate = mock(MassApplication.class);
         MassEngine engine = mock(MassEngine.class);
+        EngineConfig config = new EngineConfig();
+        WorkerManager workerManager = spy(config.getWorkerManager());
+        config.setWorkerManager(workerManager);
 
         when(delegate.getEngine()).thenReturn(engine);
         when(engine.isRunning()).thenReturn(true);
+        when(engine.getConfig()).thenReturn(config);
         stubDefaultTransportRegistrationResolution(delegate);
 
         MassSdkApplication app = new MassSdkApplication(delegate);
@@ -622,7 +619,7 @@ class MassSdkTest {
                 .build());
 
         var captor = org.mockito.ArgumentCaptor.forClass(Worker.class);
-        verify(engine).addWorker(captor.capture());
+        verify(workerManager).addWorker(captor.capture());
         Worker worker = captor.getValue();
         Assertions.assertEquals("crawler-worker-001", worker.getWorkerId());
         Assertions.assertEquals("crawler", worker.getWorkerGroupId());
@@ -637,9 +634,13 @@ class MassSdkTest {
     void registerWorkerContextUsesSdkContractAndStartsIdle() {
         MassApplication delegate = mock(MassApplication.class);
         MassEngine engine = mock(MassEngine.class);
+        EngineConfig config = new EngineConfig();
+        WorkerManager workerManager = spy(config.getWorkerManager());
+        config.setWorkerManager(workerManager);
 
         when(delegate.getEngine()).thenReturn(engine);
         when(engine.isRunning()).thenReturn(true);
+        when(engine.getConfig()).thenReturn(config);
 
         MassSdkApplication app = new MassSdkApplication(delegate);
         app.registerWorkerContext(WorkerContextRegistration.builder()
@@ -650,13 +651,38 @@ class MassSdkTest {
                 .build());
 
         var captor = org.mockito.ArgumentCaptor.forClass(WorkerContext.class);
-        verify(engine).addWorkerContext(captor.capture());
+        verify(workerManager).addWorkerContext(captor.capture());
         WorkerContext workerContext = captor.getValue();
         Assertions.assertEquals("ctx-crawler-worker-001", workerContext.getWorkerContextId());
         Assertions.assertEquals("crawler-worker-001", workerContext.getWorkerId());
         Assertions.assertEquals(Set.of("web", "us"), workerContext.getRoutingTags());
         Assertions.assertEquals(Map.of("region", "us"), workerContext.getAttributes());
         Assertions.assertEquals(WorkerContextStatus.IDLE, workerContext.getStatus());
+    }
+
+    @Test
+    void taskMessageAttemptQueriesUseSdkSurface() {
+        MassApplication delegate = mock(MassApplication.class);
+        MassEngine engine = mock(MassEngine.class);
+        TaskManager taskManager = mock(TaskManager.class);
+        EngineConfig config = mock(EngineConfig.class);
+        TaskMsg message = new TaskMsg();
+        TaskMsgAttempt activeAttempt = new TaskMsgAttempt();
+        List<TaskMsgAttempt> attempts = List.of(activeAttempt);
+
+        when(delegate.getEngine()).thenReturn(engine);
+        when(engine.isRunning()).thenReturn(true);
+        when(engine.getConfig()).thenReturn(config);
+        when(config.getTaskManager()).thenReturn(taskManager);
+        when(taskManager.getTaskMessage("task-1", "msg-1")).thenReturn(message);
+        when(taskManager.getTaskMessageAttempts("task-1", "msg-1")).thenReturn(attempts);
+        when(taskManager.getLatestActiveTaskMessageAttempt("task-1", "msg-1")).thenReturn(activeAttempt);
+
+        MassSdkApplication app = new MassSdkApplication(delegate);
+
+        assertSame(message, app.getTaskMessage("task-1", "msg-1"));
+        assertSame(attempts, app.getTaskMessageAttempts("task-1", "msg-1"));
+        assertSame(activeAttempt, app.getLatestActiveTaskMessageAttempt("task-1", "msg-1"));
     }
 
     @Test
@@ -1280,9 +1306,13 @@ class MassSdkTest {
     void sdkRegistrationNormalizesWorkerAndContextContracts() {
         MassApplication delegate = mock(MassApplication.class);
         MassEngine engine = mock(MassEngine.class);
+        EngineConfig config = new EngineConfig();
+        WorkerManager workerManager = spy(config.getWorkerManager());
+        config.setWorkerManager(workerManager);
 
         when(delegate.getEngine()).thenReturn(engine);
         when(engine.isRunning()).thenReturn(true);
+        when(engine.getConfig()).thenReturn(config);
         stubDefaultTransportRegistrationResolution(delegate);
 
         MassSdkApplication app = new MassSdkApplication(delegate);
@@ -1316,7 +1346,7 @@ class MassSdkTest {
                 .build());
 
         var workerCaptor = org.mockito.ArgumentCaptor.forClass(Worker.class);
-        verify(engine).addWorker(workerCaptor.capture());
+        verify(workerManager).addWorker(workerCaptor.capture());
         Worker worker = workerCaptor.getValue();
         Assertions.assertEquals("crawler-worker-001", worker.getWorkerId());
         Assertions.assertEquals("crawler", worker.getWorkerGroupId());
@@ -1326,7 +1356,7 @@ class MassSdkTest {
         Assertions.assertEquals(Map.of("type", "crawler"), worker.getAttributes());
 
         var contextCaptor = org.mockito.ArgumentCaptor.forClass(WorkerContext.class);
-        verify(engine).addWorkerContext(contextCaptor.capture());
+        verify(workerManager).addWorkerContext(contextCaptor.capture());
         WorkerContext workerContext = contextCaptor.getValue();
         Assertions.assertEquals("ctx-crawler-worker-001", workerContext.getWorkerContextId());
         Assertions.assertEquals("crawler-worker-001", workerContext.getWorkerId());
@@ -1338,9 +1368,13 @@ class MassSdkTest {
     void eventBindingsBecomeWorkerCapabilityTruth() {
         MassApplication delegate = mock(MassApplication.class);
         MassEngine engine = mock(MassEngine.class);
+        EngineConfig config = new EngineConfig();
+        WorkerManager workerManager = spy(config.getWorkerManager());
+        config.setWorkerManager(workerManager);
 
         when(delegate.getEngine()).thenReturn(engine);
         when(engine.isRunning()).thenReturn(true);
+        when(engine.getConfig()).thenReturn(config);
         stubDefaultTransportRegistrationResolution(delegate);
 
         MassSdkApplication app = new MassSdkApplication(delegate);
@@ -1363,7 +1397,7 @@ class MassSdkTest {
                 .build());
 
         var workerCaptor = org.mockito.ArgumentCaptor.forClass(Worker.class);
-        verify(engine).addWorker(workerCaptor.capture());
+        verify(workerManager).addWorker(workerCaptor.capture());
         Worker worker = workerCaptor.getValue();
         Assertions.assertEquals(List.of("demoApp", "telegramApp", "rcsApp"), worker.getSupportedProjects());
         Assertions.assertEquals(List.of("crawler.fetch-page", "chatbot.reply"), worker.getSupportedEventCodes());
@@ -1473,19 +1507,25 @@ class MassSdkTest {
     void registerWorkerNormalizesCompatibilityTransportAliasToCanonicalIdentity() {
         MassApplication delegate = mock(MassApplication.class);
         MassEngine engine = mock(MassEngine.class);
+        EngineConfig config = new EngineConfig();
+        WorkerManager workerManager = spy(config.getWorkerManager());
+        config.setWorkerManager(workerManager);
 
         when(delegate.getEngine()).thenReturn(engine);
         when(engine.isRunning()).thenReturn(true);
+        when(engine.getConfig()).thenReturn(config);
         stubDefaultTransportRegistrationResolution(delegate);
 
         MassSdkApplication app = new MassSdkApplication(delegate);
         app.registerWorker(WorkerRegistration.builder()
                 .workerId("worker-with-websocket-alias")
+                .adapterId("websocket")
                 .transportHint("websocket")
                 .build());
 
         var captor = org.mockito.ArgumentCaptor.forClass(Worker.class);
-        verify(engine).addWorker(captor.capture());
+        verify(workerManager).addWorker(captor.capture());
+        Assertions.assertEquals("websocket", captor.getValue().getAdapterId());
         Assertions.assertEquals("realtime", captor.getValue().getOnlineStrategy());
     }
 
@@ -1525,7 +1565,7 @@ class MassSdkTest {
     }
 
     @Test
-    void registerWorkerFallsBackToConcreteWebsocketAdapterWhenItIsTheOnlyRealtimeAdapter() {
+    void registerWorkerRejectsMissingAdapterIdWhenRealtimeFamilyHasOnlyOneRuntimeAdapter() {
         MessageQueue<String> inputQueue = new InMemoryMessageQueue<>("input", String.class);
         MessageQueue<WorkerTransportMessage> outputQueue = new InMemoryMessageQueue<>("output", WorkerTransportMessage.class);
         WorkerTransportRuntimeFactory transportFactory = context -> new TransportRuntimeRegistry(
@@ -1546,13 +1586,15 @@ class MassSdkTest {
 
         try {
             app.start();
-            app.registerWorker(WorkerRegistration.builder()
-                    .workerId("realtime-worker-default-websocket")
-                    .transportHint("realtime")
-                    .build());
-
-            assertEquals("websocket", app.getWorkerAdapterId("realtime-worker-default-websocket"));
-            assertEquals(WorkerTransportHints.REALTIME, app.getWorkerTransportHint("realtime-worker-default-websocket"));
+            IllegalArgumentException error = assertThrows(
+                    IllegalArgumentException.class,
+                    () -> app.registerWorker(WorkerRegistration.builder()
+                            .workerId("realtime-worker-default-websocket")
+                            .transportHint("realtime")
+                            .build())
+            );
+            assertEquals("worker adapterId must be set when transportHint 'realtime' is used",
+                    error.getMessage());
         } finally {
             app.stop();
         }
@@ -1591,7 +1633,7 @@ class MassSdkTest {
                             .transportHint("realtime")
                             .build())
             );
-            assertEquals("worker adapterId must be set when transportHint 'realtime' matches multiple adapters [socket, websocket]",
+            assertEquals("worker adapterId must be set when transportHint 'realtime' is used",
                     error.getMessage());
         } finally {
             app.stop();
@@ -1691,7 +1733,7 @@ class MassSdkTest {
             app.start();
             Worker worker = new Worker();
             worker.setWorkerId("worker-without-transport");
-            requireDelegate(app).getEngine().addWorker(worker);
+            requireDelegate(app).getEngine().getConfig().getWorkerManager().addWorker(worker);
 
             IllegalStateException error = assertThrows(
                     IllegalStateException.class,
@@ -1727,6 +1769,7 @@ class MassSdkTest {
             app.start();
             app.registerWorker(WorkerRegistration.builder()
                     .workerId("realtime-worker-1")
+                    .adapterId("websocket")
                     .transportHint("realtime")
                     .build());
 
@@ -1925,21 +1968,26 @@ class MassSdkTest {
     }
 
     @Test
-    void sdkEscapeHatchesStayDeprecated() throws NoSuchMethodException {
-        Set<java.lang.reflect.Method> escapeHatches = Set.of(
-                MassSdkApplication.class.getDeclaredMethod("unwrap"),
-                MassSdkApplication.class.getDeclaredMethod("getEngine"),
-                MassSdkApplication.class.getDeclaredMethod("getTaskManager"),
-                MassSdkApplication.class.getDeclaredMethod("getWorkerManager"),
-                MassSdk.Builder.class.getDeclaredMethod("unwrap"),
-                MassSdk.TransportOptions.class.getDeclaredMethod("unwrap"),
-                MassSdk.EngineOptions.class.getDeclaredMethod("unwrap")
-        );
-
-        for (java.lang.reflect.Method method : escapeHatches) {
-            Assertions.assertTrue(method.isAnnotationPresent(Deprecated.class),
-                    method.getDeclaringClass().getSimpleName() + "." + method.getName() + " must remain deprecated");
-        }
+    void removedSdkEscapeHatchesStayGone() {
+        assertMissingMethod(MassSdk.class, "development", int.class, MessageQueue.class, MessageQueue.class);
+        assertMissingMethod(MassSdk.class, "production", int.class, MessageQueue.class, MessageQueue.class);
+        assertMissingMethod(MassApplicationBuilder.class, "createDevelopment", int.class, MessageQueue.class, MessageQueue.class);
+        assertMissingMethod(MassApplicationBuilder.class, "createProduction", int.class, MessageQueue.class, MessageQueue.class);
+        assertMissingMethod(MassSdkApplication.class, "unwrap");
+        assertMissingMethod(MassSdkApplication.class, "getEngine");
+        assertMissingMethod(MassSdkApplication.class, "getTaskManager");
+        assertMissingMethod(MassSdkApplication.class, "getWorkerManager");
+        assertMissingMethod(MassSdkApplication.class, "updateTask", Task.class);
+        assertMissingMethod(MassSdkApplication.class, "updateWorker", Worker.class);
+        assertMissingMethod(MassSdk.Builder.class, "unwrap");
+        assertMissingMethod(MassSdk.TransportOptions.class, "unwrap");
+        assertMissingMethod(MassSdk.EngineOptions.class, "unwrap");
+        assertMissingMethod(MassEngine.class, "addWorker", Worker.class);
+        assertMissingMethod(MassEngine.class, "addWorkerContext", WorkerContext.class);
+        assertMissingMethod(MassEngine.class, "getTaskManager");
+        assertMissingMethod(MassEngine.class, "getWorkerManager");
+        Assertions.assertThrows(ClassNotFoundException.class, () -> Class.forName("com.xa.mass.sdk.TaskOperations"));
+        Assertions.assertThrows(ClassNotFoundException.class, () -> Class.forName("com.xa.mass.sdk.WorkerOperations"));
     }
 
     @Test
@@ -2062,6 +2110,9 @@ class MassSdkTest {
                 () -> app.appendTaskItems("task-1", List.of()),
                 () -> app.sealTask("task-1"),
                 () -> app.getTaskMessages("task-1"),
+                () -> app.getTaskMessage("task-1", "msg-1"),
+                () -> app.getTaskMessageAttempts("task-1", "msg-1"),
+                () -> app.getLatestActiveTaskMessageAttempt("task-1", "msg-1"),
                 () -> app.resolveTaskStateFromMessages("task-1"),
                 () -> app.validateTaskState("task-1"),
                 () -> app.getWorker("worker-1"),
@@ -2093,6 +2144,23 @@ class MassSdkTest {
                 .server(port, endpointPath)
                 .enabled(false)
                 .serverEnabled(false));
+    }
+
+    private static MassSdkApplication explicitRealtimeRuntime(int port,
+                                                              int workerThreads,
+                                                              int maxConnections) {
+        return MassSdk.builder()
+                .transport(transport -> transport
+                        .webSocketAdapter(webSocket -> webSocket
+                                .server(port)
+                                .enabled(true)
+                                .maxConnections(maxConnections))
+                        .inputQueue(new InMemoryMessageQueue<>("input", String.class))
+                        .outputQueue(new InMemoryMessageQueue<>("output", WorkerTransportMessage.class)))
+                .engine(engine -> engine
+                        .enabled(true)
+                        .workerThreads(workerThreads))
+                .build();
     }
 
     private static MassApplication requireDelegate(MassSdkApplication app) {

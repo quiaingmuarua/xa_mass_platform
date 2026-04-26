@@ -156,14 +156,14 @@ public final class SdkWebSocketLeaseExpiryRedispatchChaosRunner {
                 waitForWorkerOnline(app, STEADY_WORKER_ID, "steady worker should come online before redispatch");
 
                 waitForCondition(
-                        () -> app.getTaskManager().getTaskMessageAttempts(task.getTid(), message.getMessageId()).size() >= 2,
+                        () -> app.getTaskMessageAttempts(task.getTid(), message.getMessageId()).size() >= 2,
                         config.timeoutSeconds(),
                         "second attempt should appear after watchdog expiry and redispatch"
                 );
 
                 TaskOutcome outcome = waitForTerminalTask(app, task.getTid(), "lease-expiry redispatch task must converge");
-                TaskMsg finalMessage = app.getTaskManager().getTaskMessage(task.getTid(), message.getMessageId());
-                List<TaskMsgAttempt> finalAttempts = app.getTaskManager().getTaskMessageAttempts(task.getTid(), message.getMessageId());
+                TaskMsg finalMessage = app.getTaskMessage(task.getTid(), message.getMessageId());
+                List<TaskMsgAttempt> finalAttempts = app.getTaskMessageAttempts(task.getTid(), message.getMessageId());
 
                 require(finalAttempts.size() == 2, "task should finish with exactly two attempts");
                 TaskMsgAttempt expiredAttempt = finalAttempts.get(0);
@@ -320,12 +320,12 @@ public final class SdkWebSocketLeaseExpiryRedispatchChaosRunner {
                                                             String workerId,
                                                             String failureMessage) throws Exception {
             waitForCondition(() -> {
-                TaskMsgAttempt attempt = app.getTaskManager().getLatestActiveTaskMessageAttempt(taskId, messageId);
+                TaskMsgAttempt attempt = app.getLatestActiveTaskMessageAttempt(taskId, messageId);
                 return attempt != null
                         && workerId.equals(attempt.getWorkerId())
                         && !attempt.getStatus().isFinal();
             }, config.timeoutSeconds(), failureMessage);
-            return app.getTaskManager().getLatestActiveTaskMessageAttempt(taskId, messageId);
+            return app.getLatestActiveTaskMessageAttempt(taskId, messageId);
         }
 
         private TaskOutcome waitForTerminalTask(MassSdkApplication app, String taskId, String failureMessage) throws Exception {
@@ -343,7 +343,7 @@ public final class SdkWebSocketLeaseExpiryRedispatchChaosRunner {
             List<TaskMsg> messages = app.getTaskMessages(taskId);
             List<MessageOutcome> messageOutcomes = new ArrayList<>(messages.size());
             for (TaskMsg message : messages) {
-                List<TaskMsgAttempt> attempts = app.getTaskManager().getTaskMessageAttempts(taskId, message.getMessageId());
+                List<TaskMsgAttempt> attempts = app.getTaskMessageAttempts(taskId, message.getMessageId());
                 messageOutcomes.add(new MessageOutcome(
                         message.getMessageId(),
                         message.getStatus() != null ? message.getStatus().name() : null,

@@ -1,6 +1,5 @@
 package com.xa.mass.sdk;
 
-import com.xa.mass.sdk.catalog.ProjectEventCatalog;
 import com.xa.mass.sdk.catalog.SdkMetadataCatalog;
 
 /**
@@ -15,13 +14,5 @@ public interface ResourceOperations extends ProjectOperations, EventOperations, 
      * Preferred read surface for SDK project metadata and runtime-projected
      * event metadata.
      */
-    default SdkMetadataCatalog metadataCatalog() {
-        return projectEventCatalog();
-    }
-
-    /**
-     * @deprecated Prefer {@link #metadataCatalog()} for new code.
-     */
-    @Deprecated(forRemoval = false)
-    ProjectEventCatalog projectEventCatalog();
+    SdkMetadataCatalog metadataCatalog();
 }

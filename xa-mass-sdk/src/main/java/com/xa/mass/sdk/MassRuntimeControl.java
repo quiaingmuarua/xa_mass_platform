@@ -3,8 +3,6 @@ package com.xa.mass.sdk;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
-import com.xa.mass.base.model.Worker;
-import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.engine.rules.RuleDefinition;
 import com.xa.mass.sdk.event.EventPrincipal;
 import com.xa.mass.sdk.event.EventRequest;
@@ -100,18 +98,6 @@ public interface MassRuntimeControl {
      * Register an allocatable worker context. The context starts IDLE.
      */
     void registerWorkerContext(WorkerContextRegistration request);
-
-    /**
-     * @deprecated Prefer {@link #registerWorker(WorkerRegistration)} for SDK callers.
-     */
-    @Deprecated(forRemoval = false)
-    void addWorker(Worker worker);
-
-    /**
-     * @deprecated Prefer {@link #registerWorkerContext(WorkerContextRegistration)} for SDK callers.
-     */
-    @Deprecated(forRemoval = false)
-    void addWorkerContext(WorkerContext workerContext);
 
     // --- Rule management ---
 

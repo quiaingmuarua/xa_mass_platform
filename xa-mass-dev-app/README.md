@@ -5,7 +5,7 @@
 Use this module for end-to-end validation of:
 
 - Spring Boot HTTP APIs
-- the internal WebSocket adapter server
+- the embedded transport adapters and mock worker clients
 - SDK-created worker resources, fixture bootstrap inputs, and result write-back
 
 Repository-level startup instructions in [`../doc/VERIFIED_RUNBOOK.md`](../doc/VERIFIED_RUNBOOK.md) are the source of truth.
@@ -16,20 +16,21 @@ Repository-level startup instructions in [`../doc/VERIFIED_RUNBOOK.md`](../doc/V
 - starts runtime through `xa-mass-sdk` and exposes the current backend-hosted control console and JSON APIs through `xa-mass-web`
 - obtains task, worker, and rule management capability from the embedded SDK runtime instead of constructing a parallel engine assembly path in the app module
 - treats worker resource creation as SDK-first; mock JSON is a local/E2E fixture path, not the product resource entry
-- runtime still composes the WebSocket adapter and engine internally
-- default `dev` startup auto-starts mock WebSocket clients
+- runtime composes the bundled transport adapters and engine through explicit SDK builder assembly
+- default `dev` startup auto-starts adapter-matching mock clients for registered dev workers
 - default `dev` startup also seeds demo SDK credentials for the external polling worker quickstart:
   - task submitter: `crawler-submitter-key`
   - polling worker: `node-worker-key`
 
 ## Port Model
 
-Two ports are used on purpose:
+The default dev shell uses one HTTP port plus adapter-specific transport ports:
 
 | Property | Default | Purpose |
 | --- | --- | --- |
 | `server.port` | `8088` | Spring Boot HTTP port for the backend-hosted control console, `/doc.html`, and JSON APIs |
 | `mass.websocket.port` | `18088` | internal WebSocket adapter server port |
+| `mass.socket.port` | `18089` | socket adapter server port when `mass.socket.enabled=true` |
 
 Mock clients connect through:
 
@@ -56,6 +57,7 @@ After startup:
 - HTTP workers view: `http://localhost:8088/resources/workers`
 - HTTP API docs: `http://localhost:8088/doc.html`
 - WebSocket: `ws://localhost:18088/ws`
+- Socket when enabled: `tcp://localhost:18089`
 
 Control-console routing note:
 

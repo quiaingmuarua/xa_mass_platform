@@ -2,7 +2,8 @@ package com.xa.mass.api.internal;
 
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.sdk.TaskOperations;
+import com.xa.mass.sdk.TaskAdminOperations;
+import com.xa.mass.sdk.TaskQueryOperations;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -23,13 +24,16 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class TaskApiListControllerTest {
 
     @Mock
-    private TaskOperations taskOperations;
+    private TaskQueryOperations taskQueries;
+
+    @Mock
+    private TaskAdminOperations taskAdmin;
 
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
-        mockMvc = MockMvcBuilders.standaloneSetup(new TaskApiController(taskOperations)).build();
+        mockMvc = MockMvcBuilders.standaloneSetup(new TaskApiController(taskQueries, taskAdmin)).build();
     }
 
     @Test
@@ -54,7 +58,7 @@ class TaskApiListControllerTest {
         pausedTask.setBatchSize(1);
         pausedTask.setUpdateTime(LocalDateTime.of(2026, 4, 21, 8, 0));
 
-        when(taskOperations.getAllTasks()).thenReturn(List.of(runningTask, pausedTask));
+        when(taskQueries.getAllTasks()).thenReturn(List.of(runningTask, pausedTask));
 
         mockMvc.perform(get("/status/api/tasks")
                         .param("keyword", "warm")

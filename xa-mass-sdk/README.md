@@ -12,11 +12,11 @@ can depend on one SDK module without pulling the HTTP/demo control surface.
 Stable SDK-facing catalog/auth/model contracts now live in the internal
 `xa-mass-sdk-api` module and are pulled transitively through this artifact.
 Transport-neutral runtime contracts now live in `xa-mass-transport-api`; the
-current bundled realtime transport is still WebSocket-backed,
-but that adapter/bootstrap ownership lives in `xa-mass-transport-websocket`
-with Java packages under `com.xa.mass.transport.websocket.*`. `xa-mass-sdk`
-assembles worker transports through a transport runtime registry/factory seam
-and also supports pull-style workers without server push.
+current bundled transport adapters include polling plus realtime adapters such
+as WebSocket and socket. Adapter/bootstrap ownership lives in adapter modules
+such as `xa-mass-transport-websocket` and `xa-mass-transport-socket`.
+`xa-mass-sdk` assembles worker transports through a transport runtime
+registry/factory seam instead of hiding a websocket-first default runtime.
 
 ## Dependency
 
@@ -54,7 +54,7 @@ MassSdkApplication app = MassSdk.builder()
 
 Mainline transport configuration is adapter-owned: use nested
 `webSocketAdapter(...)`, `socketAdapter(...)`, or other explicit adapter blocks.
-Transport-global server toggles remain compatibility helpers only.
+Start from `MassSdk.builder()` and assemble the adapters you actually want.
 
 app.start();
 
@@ -93,7 +93,7 @@ app.pullWorker("crawler-worker-1").connect();
 
 `supportedProjects` is only a coarse worker grouping/filter hint. New worker capability registration should declare `eventBindings`; when `eventBindings` is present it becomes the worker capability truth and SDK registration derives `supportedEventCodes` / `supportedProjects` from it.
 
-`transportHint` is required for worker registration, and `adapterId` is the concrete runtime identity. Registration resolution now comes from transport runtime metadata rather than SDK-side `realtime -> websocket` guessing. If a transport family has exactly one assembled adapter, omitted `adapterId` can still resolve through that metadata; once a family has multiple adapters, registration fails fast until `adapterId` is explicit. `pullWorker(...)` also resolves strictly from the worker's declared transport identity and fails fast on transport mismatch instead of falling back to another pull-capable adapter. Compatibility labels such as `websocket`, `ws`, `push`, `pull`, and `queue` are normalized into canonical transport identities before runtime selection, so diagnostics and dispatch truth stay aligned with `realtime` / `polling`. Adapter implementation labels such as `WorkerAdapter.protocol()` are no longer treated as runtime transport truth; selection keys off canonical registration identity instead.
+`transportHint` is required for worker registration, and `adapterId` is the concrete runtime identity. Registration resolution now comes from transport runtime metadata rather than SDK-side `realtime -> websocket` guessing. Realtime workers must always register with explicit `adapterId + transportHint`; only polling keeps the implicit family default to `polling`. `pullWorker(...)` also resolves strictly from the worker's declared transport identity and fails fast on transport mismatch instead of falling back to another pull-capable adapter. Compatibility labels such as `websocket`, `ws`, `push`, `pull`, and `queue` are normalized into canonical transport identities before runtime selection, so diagnostics and dispatch truth stay aligned with `realtime` / `polling`. Adapter implementation labels such as `WorkerAdapter.protocol()` are no longer treated as runtime transport truth; selection keys off canonical registration identity instead.
 
 Register SDK catalog metadata when the embedding side wants to expose its own
 project/event directory:
@@ -158,14 +158,10 @@ The returned `MassSdkApplication` exposes:
 - audit and message operations after `start()`: `getTaskMessages(...)`, `resolveTaskStateFromMessages(...)`, `validateTaskState(...)`
 - common worker operations after `start()`: `registerWorker(...)`, `registerWorkerContext(...)`, `getWorker(...)`, `getAllWorkers()`, `getAllWorkerContexts()`, `getWorkerContexts(...)`, `getWorkerContextById(...)`, `isWorkerLocked(...)`, `isWorkerOnline(...)`
 - resource/control-plane operations through `ResourceOperations`: `registerProject(...)`, `registerEventDefinition(...)`, `registerSubmitter(...)`, `listProjects()`, `getProject(...)`, `listEvents()`, `getEvent(...)`, `getEventsForProject(...)`, `listSubmitters()`, `getSubmitter(...)`, `authenticateSubmitter(...)`, `hasProject(...)`, `hasEvent(...)`, `hasSubmitter(...)`, `projectSupportsEvent(...)`; submitter list/get return `SubmitterMetadata` without credentials
-- compatibility/high-control worker operations after `start()`: `addWorker(...)` and `addWorkerContext(...)` remain available for callers that intentionally construct core runtime models
 - pull-style worker entry after `start()`: `pullWorker(...)`
-- stable runtime bootstrap surface after `start()`: `publishTaskEvents()`, plus open registration methods such as `addWorker(...)`, `addWorkerContext(...)`, `createTask(...)`, `replaceDefaultRules(...)`
+- stable runtime bootstrap surface after `start()`: `publishTaskEvents()`, plus open registration methods such as `registerWorker(...)`, `registerWorkerContext(...)`, `createTask(...)`, `replaceDefaultRules(...)`
 - new bootstrap integration seam: `EngineOptions.bootstrapDataProvider(...)` accepts a pluggable `MassBootstrapDataProvider`
-- deprecated compatibility seams for advanced embedding only: `getEngine()`, `getTaskManager()`, `getWorkerManager()`
-- deprecated escape hatches: `MassSdkApplication.unwrap()` and SDK builder/option `unwrap()` methods expose lower-level runtime objects
-
-`MassTaskCreateRequest` remains the generic compatibility create contract. `MassTaskRequest` is the richer SDK v1 contract for `single-run` / `streaming`, `text` / `json`, and event-aware task creation. `WorkerRegistration` and `WorkerContextRegistration` are the preferred worker resource contracts: registration declares identity/capability only, workers start `OFFLINE`, contexts start `IDLE`, and transport connect/disconnect plus transport-native liveness own online state. `ResourceOperations` is the SDK control-plane interface for project/event/submitter resources. Project/event metadata registration remains the SDK discovery and control-plane catalog, and enabled project registration now also extends the core runtime project registry used by engine task creation and worker-context project binding. The library default catalog does not ship business task events; embedding applications or dev fixtures should register their own business event codes explicitly. Submitter registration is a minimal in-memory credential binding for API-key or service-account style task submission; it is not a complete user/security subsystem. Submitter queries return `SubmitterMetadata` so credentials stay on write/auth paths only. The engine DTO overload remains only as a compatibility seam for callers that still depend on engine packages. Direct engine, manager, and runtime exposure is intentionally deprecated so the default SDK path stays on `MassSdkApplication` methods instead of leaking callers back into engine/runtime internals. Common SDK operations intentionally fail fast if the SDK application was built without an engine or has not been started yet. Mock/demo bootstrap data should be loaded outside the SDK module through `MassBootstrapDataProvider` and `MassRuntimeControl` instead of SDK-internal mock generators.
+`MassTaskCreateRequest` remains the generic compatibility create contract. `MassTaskRequest` is the richer SDK v1 contract for `single-run` / `streaming`, `text` / `json`, and event-aware task creation. `WorkerRegistration` and `WorkerContextRegistration` are the worker resource contracts: registration declares identity/capability only, workers start `OFFLINE`, contexts start `IDLE`, and transport connect/disconnect plus transport-native liveness own online state. `ResourceOperations` is the SDK control-plane interface for project/event/submitter resources. Project/event metadata registration remains the SDK discovery and control-plane catalog, and enabled project registration now also extends the core runtime project registry used by engine task creation and worker-context project binding. The library default catalog does not ship business task events; embedding applications or dev fixtures should register their own business event codes explicitly. Submitter registration is a minimal in-memory credential binding for API-key or service-account style task submission; it is not a complete user/security subsystem. Submitter queries return `SubmitterMetadata` so credentials stay on write/auth paths only. Direct engine, manager, and runtime escape hatches have been removed so the default SDK path stays on `MassSdkApplication` methods instead of leaking callers back into starter/runtime internals. Common SDK operations intentionally fail fast if the SDK application was built without an engine or has not been started yet. Mock/demo bootstrap data should be loaded outside the SDK module through `MassBootstrapDataProvider` and `MassRuntimeControl` instead of SDK-internal mock generators.
 
 ## Compatibility Policy
 
@@ -241,5 +237,3 @@ must provide explicit `adapterId` before the runtime is started.
 Custom primary transport bootstraps are resolved from their own descriptor
 metadata rather than from the bundled WebSocket enable flag, so swapping the
 primary adapter does not silently erase pre-start registration identity.
-`MassEngine.getRecordService()` and `MassEngine.getAssignWorker()` are likewise
-deprecated: record-service and assignment-loop internals stay engine-owned.

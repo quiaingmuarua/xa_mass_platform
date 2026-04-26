@@ -36,50 +36,6 @@ public final class MassSdk {
         return new Builder(MassApplicationBuilder.create());
     }
 
-    /**
-     * Creates a development runtime with auto-provisioned in-memory queues.
-     */
-    public static MassSdkApplication development(int port) {
-        return new MassSdkApplication(MassApplicationBuilder.createDevelopment(port));
-    }
-
-    /**
-     * @deprecated Use {@link #development(int)} — queues are now provisioned internally.
-     * Use {@link #builder()} with a custom {@code transport()} configuration if you need
-     * to provide your own queue instances.
-     */
-    @Deprecated(forRemoval = false)
-    public static MassSdkApplication development(int port,
-                                                 MessageQueue<String> inputQueue,
-                                                 MessageQueue<WorkerTransportMessage> outputQueue) {
-        return new MassSdkApplication(
-                MassApplicationBuilder.createDevelopment(port, inputQueue, outputQueue)
-        );
-    }
-
-    /**
-     * Creates a production runtime with auto-provisioned in-memory queues.
-     */
-    public static MassSdkApplication production(int port) {
-        return new MassSdkApplication(MassApplicationBuilder.createProduction(port));
-    }
-
-    /**
-     * @deprecated Use {@link #production(int)} — queues are now provisioned internally.
-     */
-    @Deprecated(forRemoval = false)
-    public static MassSdkApplication production(int port,
-                                                MessageQueue<String> inputQueue,
-                                                MessageQueue<WorkerTransportMessage> outputQueue) {
-        return new MassSdkApplication(
-                MassApplicationBuilder.createProduction(port, inputQueue, outputQueue)
-        );
-    }
-
-    public static MassSdkApplication testMode(int port) {
-        return new MassSdkApplication(MassApplicationBuilder.createTest(port));
-    }
-
     public static final class Builder {
         private final MassApplicationBuilder delegate;
         private ProjectEventCatalogRegistry projectCatalogBootstrapRegistry;
@@ -110,16 +66,6 @@ public final class MassSdk {
             return this;
         }
 
-        /**
-         * @deprecated Prefer {@link #projectCatalogBootstrap(ProjectEventCatalogRegistry)}
-         * to avoid implying that the provided registry remains the canonical
-         * runtime event catalog after startup.
-         */
-        @Deprecated(forRemoval = false)
-        public Builder projectEventCatalog(ProjectEventCatalogRegistry projectEventCatalogRegistry) {
-            return projectCatalogBootstrap(projectEventCatalogRegistry);
-        }
-
         public MassSdkApplication build() {
             if (projectCatalogBootstrapRegistry != null) {
                 return new MassSdkApplication(delegate.build(), projectCatalogBootstrapRegistry);
@@ -127,14 +73,6 @@ public final class MassSdk {
             return new MassSdkApplication(delegate.build());
         }
 
-        /**
-         * @deprecated Prefer the SDK builder methods. This remains only for
-         * advanced embedding paths that need lower-level runtime configuration.
-         */
-        @Deprecated(forRemoval = false)
-        public MassApplicationBuilder unwrap() {
-            return delegate;
-        }
     }
 
     public static class TransportOptions {
@@ -186,14 +124,6 @@ public final class MassSdk {
             return this;
         }
 
-        /**
-         * @deprecated Prefer the SDK transport option methods. This remains only
-         * for advanced embedding paths that need lower-level runtime configuration.
-         */
-        @Deprecated(forRemoval = false)
-        public MassApplicationBuilder.TransportBuilder unwrap() {
-            return delegate;
-        }
     }
 
     public static final class WebSocketAdapterOptions {
@@ -325,13 +255,5 @@ public final class MassSdk {
             return this;
         }
 
-        /**
-         * @deprecated Prefer the SDK engine option methods. This remains only
-         * for advanced embedding paths that need lower-level runtime configuration.
-         */
-        @Deprecated(forRemoval = false)
-        public MassApplicationBuilder.EngineBuilder unwrap() {
-            return delegate;
-        }
     }
 }

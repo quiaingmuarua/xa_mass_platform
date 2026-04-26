@@ -395,16 +395,6 @@ class MockRuntimeDataLoaderTest {
         }
 
         @Override
-        public void addWorker(Worker worker) {
-            throw new AssertionError("MockRuntimeDataLoader must create workers through SDK registration");
-        }
-
-        @Override
-        public void addWorkerContext(WorkerContext workerContext) {
-            throw new AssertionError("MockRuntimeDataLoader must create worker contexts through SDK registration");
-        }
-
-        @Override
         public void replaceDefaultRules(java.util.Collection<RuleDefinition> rules) {
             this.rules.clear();
             this.rules.addAll(rules);

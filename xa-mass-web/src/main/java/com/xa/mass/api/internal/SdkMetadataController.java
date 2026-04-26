@@ -3,7 +3,7 @@ package com.xa.mass.api.internal;
 import com.xa.mass.api.model.ApiResponse;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.sdk.TransportOperations;
-import com.xa.mass.sdk.WorkerOperations;
+import com.xa.mass.sdk.WorkerQueryOperations;
 import com.xa.mass.sdk.catalog.ProjectMetadata;
 import com.xa.mass.sdk.catalog.SdkMetadataCatalog;
 import com.xa.mass.sdk.event.EventDefinition;
@@ -29,34 +29,34 @@ import java.util.Objects;
 public class SdkMetadataController {
 
     private final SdkMetadataCatalog metadataCatalog;
-    private final WorkerOperations workerOperations;
+    private final WorkerQueryOperations workerQueries;
     private final TransportOperations transportOperations;
 
     public SdkMetadataController(SdkMetadataCatalog metadataCatalog) {
-        this(metadataCatalog, (WorkerOperations) null, null);
+        this(metadataCatalog, (WorkerQueryOperations) null, null);
     }
 
     @Autowired
     public SdkMetadataController(SdkMetadataCatalog metadataCatalog,
-                                 ObjectProvider<WorkerOperations> workerOperationsProvider,
+                                 ObjectProvider<WorkerQueryOperations> workerQueriesProvider,
                                  ObjectProvider<TransportOperations> transportOperationsProvider) {
         this(
                 metadataCatalog,
-                workerOperationsProvider == null ? null : workerOperationsProvider.getIfAvailable(),
+                workerQueriesProvider == null ? null : workerQueriesProvider.getIfAvailable(),
                 transportOperationsProvider == null ? null : transportOperationsProvider.getIfAvailable()
         );
     }
 
     public SdkMetadataController(SdkMetadataCatalog metadataCatalog,
-                                 WorkerOperations workerOperations) {
-        this(metadataCatalog, workerOperations, null);
+                                 WorkerQueryOperations workerQueries) {
+        this(metadataCatalog, workerQueries, null);
     }
 
     public SdkMetadataController(SdkMetadataCatalog metadataCatalog,
-                                 WorkerOperations workerOperations,
+                                 WorkerQueryOperations workerQueries,
                                  TransportOperations transportOperations) {
         this.metadataCatalog = metadataCatalog;
-        this.workerOperations = workerOperations;
+        this.workerQueries = workerQueries;
         this.transportOperations = transportOperations;
     }
 
@@ -92,7 +92,7 @@ public class SdkMetadataController {
 
     @GetMapping("/event-capabilities")
     public ResponseEntity<ApiResponse<List<Map<String, Object>>>> listEventCapabilities() {
-        List<Worker> workers = workerOperations == null ? List.of() : workerOperations.getAllWorkers();
+        List<Worker> workers = workerQueries == null ? List.of() : workerQueries.getAllWorkers();
         List<Map<String, Object>> items = metadataCatalog.listEvents().stream()
                 .sorted(Comparator.comparing(EventDefinition::getCode, String::compareToIgnoreCase))
                 .map(event -> toEventCapabilityItem(event, workers))
@@ -102,12 +102,12 @@ public class SdkMetadataController {
 
     @GetMapping("/worker-capabilities")
     public ResponseEntity<ApiResponse<List<Map<String, Object>>>> listWorkerCapabilities() {
-        if (workerOperations == null) {
+        if (workerQueries == null) {
             return ResponseEntity.ok(ApiResponse.success(List.of()));
         }
         Map<String, List<Map<String, Object>>> connectionsByWorker =
                 WorkerCapabilityViewSupport.groupConnectionsByWorker(transportOperations);
-        List<Map<String, Object>> items = workerOperations.getAllWorkers().stream()
+        List<Map<String, Object>> items = workerQueries.getAllWorkers().stream()
                 .sorted(Comparator.comparing(Worker::getWorkerId, Comparator.nullsLast(String::compareTo)))
                 .map(worker -> {
                     List<Map<String, Object>> connections =
@@ -126,7 +126,7 @@ public class SdkMetadataController {
                     item.put("online", worker.getStatus() != null && "ONLINE".equals(worker.getStatus().name()));
                     item.put("connections", connections);
                     item.put("hasActiveEndpoint", WorkerCapabilityViewSupport.hasActiveConnection(connections));
-                    item.put("locked", workerOperations.isWorkerLocked(worker.getWorkerId()));
+                    item.put("locked", workerQueries.isWorkerLocked(worker.getWorkerId()));
                     return item;
                 })
                 .toList();

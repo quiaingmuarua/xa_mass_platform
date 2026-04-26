@@ -4,9 +4,9 @@ import com.xa.mass.api.model.ApiResponse;
 import com.xa.mass.api.model.worker.WorkerSupportedProjectsApiRequest;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
-import com.xa.mass.base.project.ProjectRegistry;
 import com.xa.mass.sdk.TransportOperations;
-import com.xa.mass.sdk.WorkerOperations;
+import com.xa.mass.sdk.WorkerAdminOperations;
+import com.xa.mass.sdk.WorkerQueryOperations;
 import com.xa.mass.sdk.catalog.SdkMetadataCatalog;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.ObjectProvider;
@@ -25,28 +25,33 @@ public class WorkerApiController {
     private static final DateTimeFormatter DATE_TIME_FORMATTER =
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
-    private final WorkerOperations workerOperations;
+    private final WorkerQueryOperations workerQueries;
+    private final WorkerAdminOperations workerAdmin;
     private final SdkMetadataCatalog metadataCatalog;
     private final TransportOperations transportOperations;
 
-    public WorkerApiController(WorkerOperations workerOperations) {
-        this(workerOperations, (SdkMetadataCatalog) null, (TransportOperations) null);
+    public WorkerApiController(WorkerQueryOperations workerQueries, WorkerAdminOperations workerAdmin) {
+        this(workerQueries, workerAdmin, (SdkMetadataCatalog) null, (TransportOperations) null);
     }
 
-    public WorkerApiController(WorkerOperations workerOperations,
+    public WorkerApiController(WorkerQueryOperations workerQueries,
+                               WorkerAdminOperations workerAdmin,
                                SdkMetadataCatalog metadataCatalog,
                                TransportOperations transportOperations) {
-        this.workerOperations = workerOperations;
+        this.workerQueries = workerQueries;
+        this.workerAdmin = workerAdmin;
         this.metadataCatalog = metadataCatalog;
         this.transportOperations = transportOperations;
     }
 
     @Autowired
-    public WorkerApiController(WorkerOperations workerOperations,
+    public WorkerApiController(WorkerQueryOperations workerQueries,
+                               WorkerAdminOperations workerAdmin,
                                ObjectProvider<SdkMetadataCatalog> metadataCatalogProvider,
                                ObjectProvider<TransportOperations> transportOperationsProvider) {
         this(
-                workerOperations,
+                workerQueries,
+                workerAdmin,
                 metadataCatalogProvider == null ? null : metadataCatalogProvider.getIfAvailable(),
                 transportOperationsProvider == null ? null : transportOperationsProvider.getIfAvailable()
         );
@@ -56,7 +61,7 @@ public class WorkerApiController {
     public ApiResponse<Map<String, Object>> listWorkers() {
         Map<String, List<Map<String, Object>>> connectionsByWorker =
                 WorkerCapabilityViewSupport.groupConnectionsByWorker(transportOperations);
-        List<Map<String, Object>> items = workerOperations.getAllWorkers().stream()
+        List<Map<String, Object>> items = workerQueries.getAllWorkers().stream()
                 .sorted(Comparator.comparing(Worker::getWorkerId, Comparator.nullsLast(String::compareTo)))
                 .map(worker -> toWorkerItem(
                         worker,
@@ -71,7 +76,7 @@ public class WorkerApiController {
 
     @GetMapping("/worker-contexts")
     public ApiResponse<Map<String, Object>> listWorkerContexts() {
-        List<Map<String, Object>> items = workerOperations.getAllWorkerContexts().stream()
+        List<Map<String, Object>> items = workerQueries.getAllWorkerContexts().stream()
                 .sorted(Comparator.comparing(WorkerContext::getWorkerContextId, Comparator.nullsLast(String::compareTo)))
                 .map(this::toWorkerContextItem)
                 .toList();
@@ -85,18 +90,17 @@ public class WorkerApiController {
     public ResponseEntity<ApiResponse<Map<String, Object>>> updateSupportedProjects(@PathVariable String workerId,
                                                                                     @RequestBody WorkerSupportedProjectsApiRequest requestBody) {
         validateKnownFields(requestBody);
-        Worker worker = workerOperations.getWorker(workerId);
+        Worker worker = workerQueries.getWorker(workerId);
         if (worker == null) {
             return ResponseEntity.status(404).body(ApiResponse.error(404, "Worker not found: " + workerId));
         }
 
-        List<String> supportedProjects = normalizeSupportedProjects(requestBody.getSupportedProjects());
-        worker.setSupportedProjects(supportedProjects);
-        workerOperations.updateWorker(worker);
+        workerAdmin.updateWorkerSupportedProjects(workerId, requestBody.getSupportedProjects());
+        Worker updatedWorker = workerQueries.getWorker(workerId);
 
         return ResponseEntity.ok(ApiResponse.success(Map.of(
                 "workerId", workerId,
-                "supportedProjects", worker.getSupportedProjects()
+                "supportedProjects", updatedWorker == null ? List.of() : updatedWorker.getSupportedProjects()
         )));
     }
 
@@ -113,16 +117,6 @@ public class WorkerApiController {
         }
     }
 
-    private List<String> normalizeSupportedProjects(List<String> supportedProjects) {
-        return supportedProjects.stream()
-                .filter(Objects::nonNull)
-                .map(String::trim)
-                .filter(value -> !value.isEmpty())
-                .map(value -> ProjectRegistry.require(value).getCode())
-                .distinct()
-                .toList();
-    }
-
     private Map<String, Object> toWorkerItem(Worker worker, List<Map<String, Object>> connections) {
         Map<String, Object> item = new LinkedHashMap<>();
         item.put("workerId", worker.getWorkerId());
@@ -136,7 +130,7 @@ public class WorkerApiController {
         item.put("transportHint", WorkerCapabilityViewSupport.resolveTransportHint(worker, connections));
         item.put("attributes", worker.getAttributes());
         item.put("lastHeartbeat", formatDateTime(worker.getLastHeartbeat()));
-        item.put("locked", workerOperations.isWorkerLocked(worker.getWorkerId()));
+        item.put("locked", workerQueries.isWorkerLocked(worker.getWorkerId()));
         item.put("connections", connections);
         item.put("hasActiveEndpoint", WorkerCapabilityViewSupport.hasActiveConnection(connections));
         item.put("updateTime", formatDateTime(worker.getUpdateTime()));

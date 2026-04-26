@@ -21,6 +21,21 @@ class TransportRegistrationResolverTest {
     }
 
     @Test
+    void rejectsRealtimeFamilyWithoutExplicitAdapterIdEvenWhenOnlyOneAdapterExists() {
+        TransportRegistrationResolver resolver = new TransportRegistrationResolver(List.of(
+                new TransportAdapterDescriptor("websocket", WorkerTransportHints.REALTIME, Set.of("ws"))
+        ));
+
+        IllegalArgumentException error = assertThrows(
+                IllegalArgumentException.class,
+                () -> resolver.resolveRegistrationAdapterId(null, "realtime")
+        );
+
+        assertEquals("worker adapterId must be set when transportHint 'realtime' is used",
+                error.getMessage());
+    }
+
+    @Test
     void resolvesCompatibilityAliasToCanonicalAdapterId() {
         TransportRegistrationResolver resolver = new TransportRegistrationResolver(List.of(
                 new TransportAdapterDescriptor("websocket", WorkerTransportHints.REALTIME, Set.of("ws"))
@@ -42,7 +57,7 @@ class TransportRegistrationResolverTest {
                 () -> resolver.resolveRegistrationAdapterId(null, "realtime")
         );
 
-        assertEquals("worker adapterId must be set when transportHint 'realtime' matches multiple adapters [socket, websocket]",
+        assertEquals("worker adapterId must be set when transportHint 'realtime' is used",
                 error.getMessage());
     }
 

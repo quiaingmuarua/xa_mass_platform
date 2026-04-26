@@ -6,12 +6,14 @@ import com.xa.mass.api.model.task.TaskCreateApiRequest;
 import com.xa.mass.api.model.task.TaskUpdateApiRequest;
 import com.xa.mass.base.enums.task.TaskSourceType;
 import com.xa.mass.base.enums.task.TaskStatus;
+import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.model.ProjectRef;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.UserRef;
 import com.xa.mass.sdk.SdkTaskResumeResult;
-import com.xa.mass.sdk.TaskOperations;
+import com.xa.mass.sdk.TaskAdminOperations;
+import com.xa.mass.sdk.TaskQueryOperations;
 import com.xa.mass.sdk.auth.AuthProvider;
 import com.xa.mass.sdk.auth.TaskSubmitterContext;
 import com.xa.mass.sdk.catalog.*;
@@ -33,23 +35,28 @@ public class TaskApiController {
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private static final Set<TaskStatus> EDITABLE_TASK_STATUSES = Set.of(TaskStatus.NEW, TaskStatus.BLOCKED);
 
-    private final TaskOperations taskOperations;
+    private final TaskQueryOperations taskQueries;
+    private final TaskAdminOperations taskAdmin;
     private final SdkMetadataCatalog metadataCatalog;
     private final AuthProvider authProvider;
 
-    public TaskApiController(TaskOperations taskOperations) {
-        this(taskOperations, DefaultProjectEventCatalogFactory.createDefaultProjectRegistry(), null);
+    public TaskApiController(TaskQueryOperations taskQueries, TaskAdminOperations taskAdmin) {
+        this(taskQueries, taskAdmin, DefaultProjectEventCatalogFactory.createDefaultProjectRegistry(), null);
     }
 
-    public TaskApiController(TaskOperations taskOperations, SdkMetadataCatalog metadataCatalog) {
-        this(taskOperations, metadataCatalog, null);
+    public TaskApiController(TaskQueryOperations taskQueries,
+                             TaskAdminOperations taskAdmin,
+                             SdkMetadataCatalog metadataCatalog) {
+        this(taskQueries, taskAdmin, metadataCatalog, null);
     }
 
     @Autowired
-    public TaskApiController(TaskOperations taskOperations,
+    public TaskApiController(TaskQueryOperations taskQueries,
+                             TaskAdminOperations taskAdmin,
                              SdkMetadataCatalog metadataCatalog,
                              AuthProvider authProvider) {
-        this.taskOperations = taskOperations;
+        this.taskQueries = taskQueries;
+        this.taskAdmin = taskAdmin;
         this.metadataCatalog = metadataCatalog;
         this.authProvider = authProvider;
     }
@@ -59,7 +66,7 @@ public class TaskApiController {
                                                                       @RequestParam(required = false) TaskStatus status) {
         try {
             String normalizedKeyword = keyword == null ? "" : keyword.trim().toLowerCase();
-            List<Map<String, Object>> items = taskOperations.getAllTasks().stream()
+            List<Map<String, Object>> items = taskQueries.getAllTasks().stream()
                     .filter(task -> matchesKeyword(task, normalizedKeyword))
                     .filter(task -> status == null || task.getStatus() == status)
                     .sorted(Comparator
@@ -87,7 +94,7 @@ public class TaskApiController {
                 String resolvedProject = resolveSubmitterProject(requestBody, submitter);
                 String resolvedUserId = resolveSubmitterUserId(requestBody, submitter);
                 requireSubmitterEventScope(requestBody, submitter);
-                Task task = taskOperations.createTask(toMassTaskRequest(requestBody, resolvedProject, resolvedUserId));
+                Task task = taskAdmin.createTask(toMassTaskRequest(requestBody, resolvedProject, resolvedUserId));
                 return ok(Map.of(
                         "taskId", task.getTid(),
                         "project", task.getProject(),
@@ -98,8 +105,8 @@ public class TaskApiController {
             }
 
             Task task = hasEventCode(requestBody)
-                    ? taskOperations.createTask(toMassTaskRequest(requestBody))
-                    : taskOperations.createTask(toTaskCreateRequest(requestBody));
+                    ? taskAdmin.createTask(toMassTaskRequest(requestBody))
+                    : taskAdmin.createTask(toTaskCreateRequest(requestBody));
             return ok(Map.of("taskId", task.getTid(), "message", "Task created"));
         } catch (SdkUnauthenticatedException e) {
             return unauthorized(e.getMessage());
@@ -113,18 +120,18 @@ public class TaskApiController {
     @GetMapping("/{taskId}")
     public ResponseEntity<ApiResponse<Map<String, Object>>> getTask(@PathVariable String taskId) {
         try {
-            Task task = taskOperations.getTask(taskId);
+            Task task = taskQueries.getTask(taskId);
             if (task == null) {
                 return notFound("Task not found: " + taskId);
             }
-            List<Map<String, Object>> items = taskOperations.getTaskMessages(taskId).stream()
+            List<Map<String, Object>> items = taskQueries.getTaskMessages(taskId).stream()
                     .map(TaskMsg::getInput)
                     .map(input -> input == null ? Map.<String, Object>of() : new LinkedHashMap<>(input))
                     .collect(Collectors.toList());
             Map<String, Object> response = new LinkedHashMap<>();
             response.put("task", task);
             response.put("items", items);
-            response.put("stateValidation", taskOperations.validateTaskState(taskId));
+            response.put("stateValidation", taskQueries.validateTaskState(taskId));
             return ok(response);
         } catch (Exception e) {
             return badRequest("Task lookup failed: " + e.getMessage());
@@ -135,22 +142,22 @@ public class TaskApiController {
     public ResponseEntity<ApiResponse<Map<String, Object>>> updateTaskStatus(@PathVariable String taskId,
                                                                              @RequestParam TaskStatus status) {
         try {
-            Task task = taskOperations.getTask(taskId);
+            Task task = taskQueries.getTask(taskId);
             if (task == null) {
                 return notFound("Task not found: " + taskId);
             }
 
             boolean success = switch (status) {
                 case READY -> task.getStatus() == TaskStatus.PAUSED
-                        ? taskOperations.resumeTaskDetailed(taskId).success()
-                        : taskOperations.approveTask(taskId);
+                        ? taskAdmin.resumeTaskDetailed(taskId).success()
+                        : taskAdmin.approveTask(taskId);
                 case BLOCKED -> blockTask(task);
-                case PAUSED -> taskOperations.pauseTask(taskId);
-                case TERMINAL -> taskOperations.cancelTask(taskId);
+                case PAUSED -> taskAdmin.pauseTask(taskId);
+                case TERMINAL -> taskAdmin.terminateTask(taskId, TaskTerminalReason.MANUAL_CANCELLED);
                 default -> false;
             };
 
-            Task updatedTask = taskOperations.getTask(taskId);
+            Task updatedTask = taskQueries.getTask(taskId);
             if (success && updatedTask != null) {
                 return ok(Map.of("message", "Task status updated", "newStatus", updatedTask.getStatus().name()));
             }
@@ -163,7 +170,7 @@ public class TaskApiController {
     @PostMapping("/{taskId}/block")
     public ResponseEntity<ApiResponse<Map<String, Object>>> blockTask(@PathVariable String taskId) {
         try {
-            Task task = taskOperations.getTask(taskId);
+            Task task = taskQueries.getTask(taskId);
             if (task == null) {
                 return notFound("Task not found: " + taskId);
             }
@@ -181,13 +188,13 @@ public class TaskApiController {
                                                                       @RequestParam String approved,
                                                                       @RequestParam(required = false) String comment) {
         try {
-            Task task = taskOperations.getTask(taskId);
+            Task task = taskQueries.getTask(taskId);
             if (task == null) {
                 return notFound("Task not found: " + taskId);
             }
             boolean isApproved = "true".equalsIgnoreCase(approved);
-            boolean success = isApproved ? taskOperations.approveTask(taskId) : taskOperations.rejectTask(taskId);
-            Task updatedTask = taskOperations.getTask(taskId);
+            boolean success = isApproved ? taskAdmin.approveTask(taskId) : taskAdmin.rejectTask(taskId);
+            Task updatedTask = taskQueries.getTask(taskId);
             if (success && updatedTask != null) {
                 return ok(Map.of(
                         "message", isApproved ? "Task approved" : "Task rejected",
@@ -203,11 +210,11 @@ public class TaskApiController {
     @PostMapping("/{taskId}/pause")
     public ResponseEntity<ApiResponse<Map<String, Object>>> pauseTask(@PathVariable String taskId) {
         try {
-            Task task = taskOperations.getTask(taskId);
+            Task task = taskQueries.getTask(taskId);
             if (task == null) {
                 return notFound("Task not found: " + taskId);
             }
-            if (taskOperations.pauseTask(taskId)) {
+            if (taskAdmin.pauseTask(taskId)) {
                 return ok(Map.of("message", "Task paused"));
             }
             return conflict("Task cannot be paused from the current state");
@@ -219,11 +226,11 @@ public class TaskApiController {
     @PostMapping("/{taskId}/resume")
     public ResponseEntity<ApiResponse<Map<String, Object>>> resumeTask(@PathVariable String taskId) {
         try {
-            Task task = taskOperations.getTask(taskId);
+            Task task = taskQueries.getTask(taskId);
             if (task == null) {
                 return notFound("Task not found: " + taskId);
             }
-            SdkTaskResumeResult result = taskOperations.resumeTaskDetailed(taskId);
+            SdkTaskResumeResult result = taskAdmin.resumeTaskDetailed(taskId);
             if (result.success()) {
                 String message = result.completedToTerminal()
                         ? "Task already completed while paused and was closed to TERMINAL"
@@ -243,11 +250,11 @@ public class TaskApiController {
     @PostMapping("/{taskId}/terminate")
     public ResponseEntity<ApiResponse<Map<String, Object>>> terminateTask(@PathVariable String taskId) {
         try {
-            Task task = taskOperations.getTask(taskId);
+            Task task = taskQueries.getTask(taskId);
             if (task == null) {
                 return notFound("Task not found: " + taskId);
             }
-            if (taskOperations.cancelTask(taskId)) {
+            if (taskAdmin.terminateTask(taskId, TaskTerminalReason.MANUAL_CANCELLED)) {
                 return ok(Map.of("message", "Task terminated"));
             }
             return conflict("Task cannot be terminated from the current state");
@@ -259,11 +266,11 @@ public class TaskApiController {
     @DeleteMapping("/{taskId}")
     public ResponseEntity<ApiResponse<Map<String, Object>>> deleteTask(@PathVariable String taskId) {
         try {
-            Task task = taskOperations.getTask(taskId);
+            Task task = taskQueries.getTask(taskId);
             if (task == null) {
                 return notFound("Task not found: " + taskId);
             }
-            boolean deleted = taskOperations.deleteTask(taskId);
+            boolean deleted = taskAdmin.deleteTask(taskId);
             if (deleted) {
                 return ok(Map.of("message", "Task deleted"));
             }
@@ -277,7 +284,7 @@ public class TaskApiController {
     public ResponseEntity<ApiResponse<Map<String, Object>>> updateTask(@PathVariable String taskId,
                                                                        @RequestBody TaskUpdateApiRequest requestBody) {
         try {
-            Task task = taskOperations.getTask(taskId);
+            Task task = taskQueries.getTask(taskId);
             if (task == null) {
                 return notFound("Task not found: " + taskId);
             }
@@ -286,23 +293,8 @@ public class TaskApiController {
             }
 
             validateKnownFields(requestBody, "task update");
-            MassTaskCreateRequest request = toTaskUpdateRequest(requestBody);
-            if (request.getTaskName() != null) {
-                task.setTaskName(request.getTaskName());
-            }
-            if (request.getProject() != null) {
-                task.setProject(request.getProject());
-            }
-            if (request.getSharedConfig() != null) {
-                task.setSharedConfig(request.getSharedConfig());
-            }
-            if (request.getUserId() != null) {
-                task.setUser(UserRef.of(request.getUserId()));
-            }
-            if (request.getBatchSize() > 0) {
-                task.setBatchSize(request.getBatchSize());
-            }
-            taskOperations.updateTask(task);
+            MassTaskUpdateRequest request = toTaskUpdateRequest(requestBody);
+            taskAdmin.updateTaskDefinition(taskId, request);
             return ok(Map.of("message", "Task updated"));
         } catch (Exception e) {
             return badRequest("Task update failed: " + e.getMessage());
@@ -314,7 +306,7 @@ public class TaskApiController {
                                                                             @RequestBody TaskAppendItemsApiRequest requestBody) {
         try {
             validateKnownFields(requestBody, "task append items");
-            Task task = taskOperations.getTask(taskId);
+            Task task = taskQueries.getTask(taskId);
             if (task == null) {
                 return notFound("Task not found: " + taskId);
             }
@@ -322,7 +314,7 @@ public class TaskApiController {
             if (inputs == null || inputs.isEmpty()) {
                 return badRequest("inputs must be a non-empty list");
             }
-            int added = taskOperations.appendTaskItems(taskId, toAppendInputs(inputs, task));
+            int added = taskAdmin.appendTaskItems(taskId, toAppendInputs(inputs, task));
             return ok(Map.of("message", "Items appended", "added", added));
         } catch (IllegalArgumentException e) {
             return badRequest(e.getMessage());
@@ -336,9 +328,9 @@ public class TaskApiController {
     @PutMapping("/{taskId}/seal")
     public ResponseEntity<ApiResponse<Map<String, Object>>> sealTask(@PathVariable String taskId) {
         try {
-            boolean sealed = taskOperations.sealTask(taskId);
+            boolean sealed = taskAdmin.sealTask(taskId);
             if (sealed) {
-                Task task = taskOperations.getTask(taskId);
+                Task task = taskQueries.getTask(taskId);
                 return ok(Map.of("message", "Task sealed", "status", task != null ? task.getStatus().name() : ""));
             }
             return conflict("Task not found or not open-ended");
@@ -361,8 +353,8 @@ public class TaskApiController {
             size = 1;
         }
         int from = (page - 1) * size;
-        long total = taskOperations.countTaskMessages(taskId);
-        List<TaskMsg> pageList = taskOperations.getTaskMessagesPage(taskId, from, size);
+        long total = taskQueries.countTaskMessages(taskId);
+        List<TaskMsg> pageList = taskQueries.getTaskMessagesPage(taskId, from, size);
         List<Map<String, Object>> messages = pageList.stream()
                 .map(this::toTaskMessageView)
                 .collect(Collectors.toList());
@@ -516,14 +508,14 @@ public class TaskApiController {
                 .build();
     }
 
-    private MassTaskCreateRequest toTaskUpdateRequest(TaskUpdateApiRequest requestBody) {
+    private MassTaskUpdateRequest toTaskUpdateRequest(TaskUpdateApiRequest requestBody) {
         if (requestBody.getProject() != null) {
             ProjectRef.require(requestBody.getProject());
         }
         if (requestBody.getUserId() != null) {
             UserRef.requireUserId(requestBody.getUserId());
         }
-        return MassTaskCreateRequest.builder()
+        return MassTaskUpdateRequest.builder()
                 .userId(requestBody.getUserId())
                 .project(requestBody.getProject())
                 .taskName(requestBody.getTaskName())
@@ -554,7 +546,7 @@ public class TaskApiController {
                 && requestBody.getProject() == null
                 && requestBody.getTaskName() == null
                 && requestBody.getSharedConfig() == null
-                && requestBody.getBatchSize() == 0;
+                && requestBody.getBatchSize() == null;
     }
 
     private boolean blockTask(Task task) {
@@ -562,9 +554,9 @@ public class TaskApiController {
             return false;
         }
         if (task.getStatus() == TaskStatus.NEW) {
-            return taskOperations.rejectTask(task.getTid());
+            return taskAdmin.rejectTask(task.getTid());
         }
-        return taskOperations.blockTask(task.getTid());
+        return taskAdmin.blockTask(task.getTid());
     }
 
     private boolean matchesKeyword(Task task, String normalizedKeyword) {

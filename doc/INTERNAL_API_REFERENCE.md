@@ -816,9 +816,9 @@ Request notes:
 - `workerId` is required
 - `eventBindings` is required and is the canonical capability declaration
 - `transportHint` is optional; when omitted it defaults to `polling`
-- `adapterId` is optional for polling and required for realtime once the runtime assembles more than one realtime adapter
+- `adapterId` is optional for polling and required for realtime
 - `transportHint` remains a coarse family; runtime routing resolves the concrete adapter through `adapterId`
-- when `transportHint=realtime` and `adapterId` is omitted, registration succeeds only if the runtime currently has exactly one realtime adapter assembled
+- when `transportHint=realtime`, `adapterId` must be explicit even if the runtime currently assembles only one realtime adapter
 - caller must authenticate with an SDK credential that includes `worker:poll` and `attributes.workerId == workerId`
 
 Example:

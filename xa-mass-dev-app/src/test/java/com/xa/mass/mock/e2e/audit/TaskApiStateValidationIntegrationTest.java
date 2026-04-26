@@ -90,7 +90,7 @@ class TaskApiStateValidationIntegrationTest extends AbstractMockE2eTest {
         Task task = app.getTask(taskId);
         task.setStatus(TaskStatus.RUNNING);
         task.setTerminalReason(null);
-        assertTrue(app.updateTask(task));
+        assertTrue(updateStoredTask(task));
 
         Map<String, Object> reopened = exchange("/status/api/tasks/" + taskId, HttpMethod.GET, null);
         Map<String, Object> validation = stateValidation(reopened);
@@ -120,7 +120,7 @@ class TaskApiStateValidationIntegrationTest extends AbstractMockE2eTest {
 
         Task task = app.getTask(taskId);
         task.setTerminalReason(null);
-        assertTrue(app.updateTask(task));
+        assertTrue(updateStoredTask(task));
 
         Map<String, Object> response = exchange("/status/api/tasks/" + taskId, HttpMethod.GET, null);
         Map<String, Object> validation = stateValidation(response);
@@ -147,7 +147,7 @@ class TaskApiStateValidationIntegrationTest extends AbstractMockE2eTest {
 
         Task task = app.getTask(taskId);
         task.setTerminalReason(TaskTerminalReason.ALL_MESSAGES_FAILED);
-        assertTrue(app.updateTask(task));
+        assertTrue(updateStoredTask(task));
 
         Map<String, Object> response = exchange("/status/api/tasks/" + taskId, HttpMethod.GET, null);
         Map<String, Object> validation = stateValidation(response);

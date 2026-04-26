@@ -91,7 +91,6 @@ Fixture guidance:
 - worker-context JSON is only a local/E2E fixture input; context resources are created through `registerWorkerContext(...)`
 - auto-started mock WebSocket clients discover SDK-registered realtime workers and do not read a separate worker JSON client list
 - prefer SDK capability methods such as `registerWorker(...)`, `registerWorkerContext(...)`, `replaceDefaultRules(...)`, and `createTask(...)` for new E2E setup code
-- keep `addWorker(...)` and `addWorkerContext(...)` for compatibility tests or cases that intentionally need core-model runtime state
 - treat `MockRuntimeDataLoader` as a fixture loader; runtime state fields in historical worker JSON are ignored for worker and worker-context resources
 - current mainline E2E fixtures no longer use direct `WorkerManager` or `RuleManager` setup writes
 - keep direct `TaskManager` fixture access only for focused white-box assertions or fault injection where public SDK/HTTP surfaces do not express the scenario

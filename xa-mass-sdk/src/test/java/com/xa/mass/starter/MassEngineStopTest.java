@@ -57,8 +57,8 @@ class MassEngineStopTest {
         assertDoesNotThrow(() -> engine.start());
         assertTrue(engine.isRunning());
         assertNotNull(readField(engine, "assignWorker"));
-        assertSame(config.getTaskManager(), engine.getTaskManager());
-        assertSame(config.getWorkerManager(), engine.getWorkerManager());
+        assertSame(config.getTaskManager(), readField(engine, "taskManager"));
+        assertSame(config.getWorkerManager(), readField(engine, "workerManager"));
 
         engine.stop();
     }

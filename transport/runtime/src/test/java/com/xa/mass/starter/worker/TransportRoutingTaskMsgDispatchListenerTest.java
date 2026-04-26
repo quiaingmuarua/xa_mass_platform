@@ -27,6 +27,7 @@ class TransportRoutingTaskMsgDispatchListenerTest {
 
         Worker webSocketWorker = new Worker();
         webSocketWorker.setWorkerId("ws-worker");
+        webSocketWorker.setAdapterId("websocket");
         webSocketWorker.setOnlineStrategy(WorkerTransportHints.REALTIME);
         workerManager.addWorker(webSocketWorker);
 
@@ -67,6 +68,7 @@ class TransportRoutingTaskMsgDispatchListenerTest {
 
         Worker worker = new Worker();
         worker.setWorkerId("ws-worker");
+        worker.setAdapterId("websocket-v2");
         worker.setOnlineStrategy(WorkerTransportHints.REALTIME);
         workerManager.addWorker(worker);
 

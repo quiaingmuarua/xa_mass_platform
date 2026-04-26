@@ -279,7 +279,7 @@ public final class SdkWebSocketDisconnectChaosRunner {
             List<TaskMsg> messages = app.getTaskMessages(taskId);
             List<MessageOutcome> messageOutcomes = new ArrayList<>(messages.size());
             for (TaskMsg message : messages) {
-                List<TaskMsgAttempt> attempts = app.getTaskManager().getTaskMessageAttempts(taskId, message.getMessageId());
+                List<TaskMsgAttempt> attempts = app.getTaskMessageAttempts(taskId, message.getMessageId());
                 messageOutcomes.add(new MessageOutcome(
                         message.getMessageId(),
                         message.getStatus() != null ? message.getStatus().name() : null,

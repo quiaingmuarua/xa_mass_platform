@@ -7,13 +7,14 @@ import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskMsg;
+import com.xa.mass.base.model.TaskMsgAttempt;
+import com.xa.mass.base.model.UserRef;
 import com.xa.mass.base.model.Worker;
 import com.xa.mass.base.model.WorkerContext;
 import com.xa.mass.base.project.ProjectRegistry;
 import com.xa.mass.command.event.*;
 import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.WorkerManager;
-import com.xa.mass.engine.model.TaskCreateRequestDto;
 import com.xa.mass.engine.model.TaskResumeResult;
 import com.xa.mass.engine.model.TaskStateResolutionResult;
 import com.xa.mass.engine.model.TaskStateValidationResult;
@@ -47,12 +48,11 @@ import java.util.*;
  * Consumer-facing runtime handle returned by the SDK facade.
  *
  * <p>The SDK artifact also carries the lower-level {@link MassApplication}
- * runtime. This wrapper keeps the common lifecycle surface explicit while
- * still allowing an escape hatch through {@link #unwrap()} for advanced
- * embedding paths. {@code com.xa.mass.sdk.*} is the stable public surface;
- * lower-level starter/runtime types remain advanced integration seams.
+ * runtime, but the stable embedding path stays on {@code com.xa.mass.sdk.*}
+ * methods rather than exposing starter/runtime internals directly.
  */
-public final class MassSdkApplication implements MassRuntimeControl, TaskOperations, WorkerOperations,
+public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOperations, TaskAdminOperations,
+        WorkerQueryOperations, WorkerAdminOperations,
         ResourceOperations, AuthProvider,
         ExternalWorkerOperations,
         RuleOperations, TransportOperations {
@@ -133,36 +133,6 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
         userPermissionProvider.grant(userId, eventCodes);
     }
 
-    /**
-     * @deprecated Prefer the SDK facade methods on this type. This runtime handle
-     * remains as an advanced compatibility seam for embedding paths that still
-     * need direct engine access.
-     */
-    @Deprecated(forRemoval = false)
-    public MassEngine getEngine() {
-        return delegate.getEngine();
-    }
-
-    /**
-     * @deprecated Prefer the SDK facade methods on this type. This manager
-     * access remains as an advanced compatibility seam.
-     */
-    @Deprecated(forRemoval = false)
-    public TaskManager getTaskManager() {
-        MassEngine engine = delegate.getEngine();
-        return engine != null ? engine.getTaskManager() : null;
-    }
-
-    /**
-     * @deprecated Prefer the SDK facade methods on this type. This manager
-     * access remains as an advanced compatibility seam.
-     */
-    @Deprecated(forRemoval = false)
-    public WorkerManager getWorkerManager() {
-        MassEngine engine = delegate.getEngine();
-        return engine != null ? engine.getWorkerManager() : null;
-    }
-
     @Override
     public Task createTask(MassTaskCreateRequest request) {
         MassEngine engine = requireStartedEngine();
@@ -186,15 +156,6 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
         );
         requireSuccessfulEventResponse(response);
         return (Task) response.getData();
-    }
-
-    /**
-     * @deprecated Prefer {@link #createTask(MassTaskCreateRequest)} so SDK callers
-     * stay independent from engine DTO packages.
-     */
-    @Deprecated(forRemoval = false)
-    public Task createTask(TaskCreateRequestDto request) {
-        return requireStartedEngine().createTask(request);
     }
 
     public Task getTask(String taskId) {
@@ -269,6 +230,21 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
     }
 
     @Override
+    public TaskMsg getTaskMessage(String taskId, String messageId) {
+        return requireStartedTaskManager().getTaskMessage(taskId, messageId);
+    }
+
+    @Override
+    public List<TaskMsgAttempt> getTaskMessageAttempts(String taskId, String messageId) {
+        return requireStartedTaskManager().getTaskMessageAttempts(taskId, messageId);
+    }
+
+    @Override
+    public TaskMsgAttempt getLatestActiveTaskMessageAttempt(String taskId, String messageId) {
+        return requireStartedTaskManager().getLatestActiveTaskMessageAttempt(taskId, messageId);
+    }
+
+    @Override
     public List<TaskMsg> getTaskMessagesPage(String taskId, int offset, int limit) {
         return requireStartedTaskManager().getTaskMessagesPage(taskId, offset, limit);
     }
@@ -287,7 +263,27 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
     }
 
     @Override
-    public boolean updateTask(Task task) {
+    public boolean updateTaskDefinition(String taskId, MassTaskUpdateRequest request) {
+        Objects.requireNonNull(request, "request");
+        Task task = requireStartedTaskManager().getTask(requireTaskId(taskId));
+        if (task == null) {
+            return false;
+        }
+        if (request.getTaskName() != null) {
+            task.setTaskName(request.getTaskName());
+        }
+        if (request.getProject() != null) {
+            task.setProject(request.getProject());
+        }
+        if (request.getSharedConfig() != null) {
+            task.setSharedConfig(request.getSharedConfig());
+        }
+        if (request.getUserId() != null) {
+            task.setUser(UserRef.of(request.getUserId()));
+        }
+        if (request.getBatchSize() != null && request.getBatchSize() > 0) {
+            task.setBatchSize(request.getBatchSize());
+        }
         return requireStartedTaskManager().updateTask(task);
     }
 
@@ -348,26 +344,6 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
             throw new IllegalStateException("Worker transportHint/onlineStrategy is not set: " + worker.getWorkerId());
         }
         return transportHint;
-    }
-
-    /**
-     * @deprecated Prefer {@link #registerWorker(WorkerRegistration)} so SDK callers
-     * do not need to construct core runtime models directly.
-     */
-    @Deprecated(forRemoval = false)
-    @Override
-    public void addWorker(Worker worker) {
-        requireStartedEngine().addWorker(normalizeWorkerModel(worker));
-    }
-
-    /**
-     * @deprecated Prefer {@link #registerWorkerContext(WorkerContextRegistration)} so
-     * SDK callers do not need to construct core runtime models directly.
-     */
-    @Deprecated(forRemoval = false)
-    @Override
-    public void addWorkerContext(WorkerContext workerContext) {
-        requireStartedEngine().addWorkerContext(workerContext);
     }
 
     public Worker getWorker(String workerId) {
@@ -440,7 +416,12 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
     }
 
     @Override
-    public boolean updateWorker(Worker worker) {
+    public boolean updateWorkerSupportedProjects(String workerId, List<String> supportedProjects) {
+        Worker worker = requireStartedWorkerManager().getWorker(requireWorkerId(workerId));
+        if (worker == null) {
+            return false;
+        }
+        worker.setSupportedProjects(normalizedProjectCodes(supportedProjects));
         return requireStartedWorkerManager().updateWorker(worker);
     }
 
@@ -501,11 +482,6 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
     }
 
     @Override
-    public ProjectEventCatalog projectEventCatalog() {
-        return sdkMetadataCatalogView;
-    }
-
-    @Override
     public void registerSubmitter(SubmitterRegistration submitterRegistration) {
         submitterRegistry.register(submitterRegistration);
     }
@@ -537,7 +513,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
                 "Register a worker identity and capability record.",
                 (request, principal) -> {
                     WorkerRegistration registration = resolveWorkerRegistration(request);
-                    requireStartedEngine().addWorker(SdkResourceMapper.toWorker(registration));
+                    requireStartedWorkerManager().addWorker(SdkResourceMapper.toWorker(registration));
                     return CoreEventResponse.success(Boolean.TRUE, request.getRequestId());
                 }
         );
@@ -547,7 +523,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
                 "Register a worker execution context.",
                 (request, principal) -> {
                     WorkerContextRegistration registration = resolveWorkerContextRegistration(request);
-                    requireStartedEngine().addWorkerContext(SdkResourceMapper.toWorkerContext(registration));
+                    requireStartedWorkerManager().addWorkerContext(SdkResourceMapper.toWorkerContext(registration));
                     return CoreEventResponse.success(Boolean.TRUE, request.getRequestId());
                 }
         );
@@ -1126,6 +1102,20 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
         return normalized.isEmpty() ? List.of() : List.copyOf(normalized);
     }
 
+    private List<String> normalizedProjectCodes(Collection<String> values) {
+        if (values == null || values.isEmpty()) {
+            return List.of();
+        }
+        LinkedHashSet<String> normalized = new LinkedHashSet<>();
+        for (String value : values) {
+            if (value == null || value.isBlank()) {
+                continue;
+            }
+            normalized.add(ProjectRegistry.require(value.trim()).getCode());
+        }
+        return normalized.isEmpty() ? List.of() : List.copyOf(normalized);
+    }
+
     private List<Map<String, Object>> readInputMaps(Object value) {
         if (!(value instanceof List<?> list) || list.isEmpty()) {
             return List.of();
@@ -1159,6 +1149,13 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
             throw new IllegalArgumentException("workerId must not be blank");
         }
         return workerId.trim();
+    }
+
+    private String requireTaskId(String taskId) {
+        if (taskId == null || taskId.isBlank()) {
+            throw new IllegalArgumentException("taskId must not be blank");
+        }
+        return taskId.trim();
     }
 
     private PullWorkerSession externalPullWorkerSession(String workerId) {
@@ -1214,16 +1211,6 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
                     .build());
         }
         return List.copyOf(derivedBindings);
-    }
-
-    private Worker normalizeWorkerModel(Worker worker) {
-        Objects.requireNonNull(worker, "worker");
-        String transportHint =
-                WorkerTransportHints.normalize(requireNonBlank(worker.getOnlineStrategy(), "transportHint/onlineStrategy"));
-        String resolvedAdapterId = resolveRegistrationAdapterId(worker.getAdapterId(), transportHint);
-        worker.setAdapterId(resolvedAdapterId);
-        worker.setOnlineStrategy(transportHint);
-        return worker;
     }
 
     private String resolveRegistrationAdapterId(String requestedAdapterId, String transportHint) {
@@ -1503,15 +1490,6 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
         );
     }
 
-    /**
-     * @deprecated Prefer the SDK facade methods on this type. The underlying
-     * runtime is exposed only as an escape hatch for advanced embedding.
-     */
-    @Deprecated(forRemoval = false)
-    public MassApplication unwrap() {
-        return delegate;
-    }
-
     private void validateTaskCatalogContract(MassTaskRequest request) {
         Objects.requireNonNull(request, "request");
         ProjectMetadata projectMetadata = bootstrapProjectCatalogRegistry.getProject(request.getProject());
@@ -1549,7 +1527,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
     }
 
     private TaskManager requireStartedTaskManager() {
-        TaskManager taskManager = requireStartedEngine().getTaskManager();
+        TaskManager taskManager = requireStartedEngine().getConfig().getTaskManager();
         if (taskManager == null) {
             throw new IllegalStateException("Task manager is unavailable for this SDK application");
         }
@@ -1557,7 +1535,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskOperati
     }
 
     private WorkerManager requireStartedWorkerManager() {
-        WorkerManager workerManager = requireStartedEngine().getWorkerManager();
+        WorkerManager workerManager = requireStartedEngine().getConfig().getWorkerManager();
         if (workerManager == null) {
             throw new IllegalStateException("Worker manager is unavailable for this SDK application");
         }

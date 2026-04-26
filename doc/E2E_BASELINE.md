@@ -27,7 +27,6 @@ Fixture note:
 
 - E2E tests may still use white-box fixtures for setup and fault injection
 - prefer SDK capability entrypoints such as `MassSdkApplication.registerWorker(...)`, `registerWorkerContext(...)`, `replaceDefaultRules(...)`, and `createTask(...)` for new setup code
-- use `addWorker(...)` and `addWorkerContext(...)` only when a test intentionally needs compatibility with core runtime models or historical fixture state
 - current active E2E fixtures have eliminated direct `WorkerManager` and `RuleManager` setup writes; remaining direct manager mutation is limited to intentional `TaskManager` invariant/fault-injection scenarios
 
 ## 2. Mandatory Release-Gate Scenarios

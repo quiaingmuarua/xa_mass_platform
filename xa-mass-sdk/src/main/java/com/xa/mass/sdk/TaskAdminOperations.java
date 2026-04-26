@@ -1,26 +1,21 @@
 package com.xa.mass.sdk;
 
-import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
-import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.sdk.model.MassTaskCreateRequest;
 import com.xa.mass.sdk.model.MassTaskRequest;
+import com.xa.mass.sdk.model.MassTaskUpdateRequest;
 
 import java.util.List;
 import java.util.Map;
 
-public interface TaskOperations {
+/**
+ * Task mutation/admin surface used by embedded shells and repo-local tooling.
+ */
+public interface TaskAdminOperations {
 
-    Task createTask(MassTaskCreateRequest request);
+    com.xa.mass.base.model.Task createTask(MassTaskCreateRequest request);
 
-    Task createTask(MassTaskRequest request);
-
-    Task getTask(String taskId);
-
-    List<Task> getAllTasks();
-
-    List<Task> getTasksByStatus(TaskStatus status);
+    com.xa.mass.base.model.Task createTask(MassTaskRequest request);
 
     boolean approveTask(String taskId);
 
@@ -36,21 +31,11 @@ public interface TaskOperations {
 
     boolean terminateTask(String taskId, TaskTerminalReason reason);
 
-    boolean updateTask(Task task);
+    boolean updateTaskDefinition(String taskId, MassTaskUpdateRequest request);
 
     boolean deleteTask(String taskId);
 
     int appendTaskItems(String taskId, List<Map<String, Object>> inputs);
 
     boolean sealTask(String taskId);
-
-    List<TaskMsg> getTaskMessages(String taskId);
-
-    List<TaskMsg> getTaskMessagesPage(String taskId, int offset, int limit);
-
-    long countTaskMessages(String taskId);
-
-    Object validateTaskState(String taskId);
-
-    Object resolveTaskStateFromMessages(String taskId);
 }

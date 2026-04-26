@@ -7,6 +7,7 @@ Current mainline:
 
 - polling, websocket, and socket are all active external worker validation paths
 - `transportHint` is the coarse family, `adapterId` is the concrete runtime route
+- realtime workers must always register with explicit `adapterId + transportHint`
 - task creation still enters through `POST /status/api/tasks`
 - capability identity is global `eventCode`
 - transport adapters deliver work; they do not redefine kernel task semantics

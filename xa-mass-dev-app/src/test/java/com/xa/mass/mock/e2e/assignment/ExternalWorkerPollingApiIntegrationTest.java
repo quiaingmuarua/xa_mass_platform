@@ -52,7 +52,7 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractMockE2eTest {
     private MassSdkApplication app;
 
     @Test
-    void externalWorkerRegisterApiAcceptsRealtimeAndRejectsPollingOnlyOperations() {
+    void externalWorkerRegisterApiRequiresExplicitAdapterIdForRealtimeFamily() {
         registerExternalWorkerSubmitter(
                 "realtime-worker",
                 "realtime-worker-key",
@@ -79,8 +79,9 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractMockE2eTest {
                         "projectCodes", List.of("crawlerApp")
                 ))
         ), realtimeHeaders);
-        assertApiOk(realtimeRegisterResponse);
-        assertEquals("realtime", responseData(realtimeRegisterResponse).get("transportHint"));
+        assertApiError(realtimeRegisterResponse, 400);
+        assertTrue(apiMsg(realtimeRegisterResponse).contains(
+                "worker adapterId must be set when transportHint 'realtime' is used"));
 
         Map<String, Object> aliasRegisterResponse = exchange("/worker-api/workers/register", HttpMethod.POST, Map.of(
                 "workerId", "realtime-worker-002",
@@ -90,41 +91,9 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractMockE2eTest {
                         "projectCodes", List.of("crawlerApp")
                 ))
         ), aliasHeaders);
-        assertApiOk(aliasRegisterResponse);
-        assertEquals("realtime", responseData(aliasRegisterResponse).get("transportHint"));
-
-        Map<String, Object> pollResponse = exchange(
-                "/worker-api/workers/realtime-worker-001/poll",
-                HttpMethod.POST,
-                Map.of("maxMessages", 1),
-                realtimeHeaders
-        );
-        assertApiError(pollResponse, 409);
-        assertTrue(apiMsg(pollResponse).contains("only supports polling workers"));
-        assertTrue(apiMsg(pollResponse).contains("realtime"));
-
-        Map<String, Object> onlineResponse = exchange(
-                "/worker-api/workers/realtime-worker-001/online",
-                HttpMethod.POST,
-                Map.of("reason", "should-fail"),
-                realtimeHeaders
-        );
-        assertApiError(onlineResponse, 409);
-        assertTrue(apiMsg(onlineResponse).contains("only supports polling workers"));
-
-        Map<String, Object> resultResponse = exchange(
-                "/worker-api/workers/realtime-worker-001/results",
-                HttpMethod.POST,
-                Map.of(
-                        "taskId", "task-x",
-                        "messageId", "msg-x",
-                        "success", true,
-                        "detail", "should-fail"
-                ),
-                realtimeHeaders
-        );
-        assertApiError(resultResponse, 409);
-        assertTrue(apiMsg(resultResponse).contains("only supports polling workers"));
+        assertApiError(aliasRegisterResponse, 400);
+        assertTrue(apiMsg(aliasRegisterResponse).contains(
+                "worker adapterId must be set when transportHint 'realtime' is used"));
     }
 
     @Test

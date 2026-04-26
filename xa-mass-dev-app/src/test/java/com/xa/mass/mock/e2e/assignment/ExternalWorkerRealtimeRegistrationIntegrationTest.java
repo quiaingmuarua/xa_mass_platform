@@ -73,7 +73,7 @@ class ExternalWorkerRealtimeRegistrationIntegrationTest extends AbstractMockE2eT
 
         assertApiError(registerResponse, 400);
         assertTrue(apiMsg(registerResponse).contains(
-                "worker adapterId must be set when transportHint 'realtime' matches multiple adapters [socket, websocket]"));
+                "worker adapterId must be set when transportHint 'realtime' is used"));
         assertFalse(app.getAllWorkers().stream().anyMatch(worker -> WORKER_ID.equals(worker.getWorkerId())));
     }
 
