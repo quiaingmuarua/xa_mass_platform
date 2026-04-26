@@ -37,13 +37,13 @@ The harness validates that the SDK surface is already enough to:
 Polling worker mode:
 
 ```bash
-./mvnw -pl xa-mass-testing -am -Dexec.classpathScope=compile -Dmaven.test.skip=true -Dmass.sdk.load.transport=polling org.codehaus.mojo:exec-maven-plugin:3.5.0:java -Dexec.mainClass=com.xa.mass.testing.concurrency.SdkTransportLoadRunner
+xa-mass-testing/scripts/run-sdk-transport-load.sh -Dmass.sdk.load.transport=polling
 ```
 
 WebSocket worker mode:
 
 ```bash
-./mvnw -pl xa-mass-testing -am -Dexec.classpathScope=compile -Dmaven.test.skip=true -Dmass.sdk.load.transport=websocket org.codehaus.mojo:exec-maven-plugin:3.5.0:java -Dexec.mainClass=com.xa.mass.testing.concurrency.SdkTransportLoadRunner
+xa-mass-testing/scripts/run-sdk-transport-load.sh -Dmass.sdk.load.transport=websocket
 ```
 
 Useful scale knobs:

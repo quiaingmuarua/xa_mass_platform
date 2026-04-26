@@ -251,19 +251,20 @@ SDK transport load harness:
 Polling worker mode:
 
 ```bash
-./mvnw -pl xa-mass-testing -am -Dexec.classpathScope=compile -Dmaven.test.skip=true -Dmass.sdk.load.transport=polling org.codehaus.mojo:exec-maven-plugin:3.5.0:java -Dexec.mainClass=com.xa.mass.testing.concurrency.SdkTransportLoadRunner
+xa-mass-testing/scripts/run-sdk-transport-load.sh -Dmass.sdk.load.transport=polling
 ```
 
 WebSocket worker mode:
 
 ```bash
-./mvnw -pl xa-mass-testing -am -Dexec.classpathScope=compile -Dmaven.test.skip=true -Dmass.sdk.load.transport=websocket org.codehaus.mojo:exec-maven-plugin:3.5.0:java -Dexec.mainClass=com.xa.mass.testing.concurrency.SdkTransportLoadRunner
+xa-mass-testing/scripts/run-sdk-transport-load.sh -Dmass.sdk.load.transport=websocket
 ```
 
 Expected SDK harness artifact:
 
 - JSON report under `xa-mass-testing/target/concurrency-reports/`
-- inspect `runtime.transport`, `tasks.terminalReasons`, and `workerMetrics` first
+- inspect `runtime.transport`, `tasks.terminalReasons`, `deliveryQueue`, and
+  `workerMetrics` first
 
 SDK WebSocket disconnect/reconnect chaos harness:
 
