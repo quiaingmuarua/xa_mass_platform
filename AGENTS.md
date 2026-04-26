@@ -49,6 +49,7 @@ Canonical trust order:
 
 Start here based on the change:
 
+- transport module structure, adapter/runtime boundaries, or adapter onboarding: [transport/AGENTS.md](transport/AGENTS.md)
 - websocket adapter/transport: [doc/WEBSOCKET_ADAPTER_BOUNDARY_BASELINE.md](doc/WEBSOCKET_ADAPTER_BOUNDARY_BASELINE.md)
 - high-volume model compression or queue-first runtime shape: [doc/HIGH_VOLUME_MODEL_BASELINE.md](doc/HIGH_VOLUME_MODEL_BASELINE.md)
 - lifecycle/state transitions: [doc/STATE_MACHINE_BASELINE.md](doc/STATE_MACHINE_BASELINE.md), [doc/TRACE_CONTRACT.md](doc/TRACE_CONTRACT.md), [doc/E2E_BASELINE.md](doc/E2E_BASELINE.md)
@@ -105,6 +106,7 @@ Deprecation and pushback:
 - Worker runtime event capability truth is `supportedEventCodes`; `supportedProjects` is only a coarse filter hint.
 - Routing truth comes from explicit rules and worker-context signals, not `workerGroupId`.
 - Keep transport-specific shapes behind `xa-mass-transport-api`; WebSocket payloads must not become kernel truth.
+- Read [transport/AGENTS.md](transport/AGENTS.md) before changing `transport/transport_api`, `transport/transport_runtime`, or adding a new transport adapter.
 - Read [doc/WEBSOCKET_ADAPTER_BOUNDARY_BASELINE.md](doc/WEBSOCKET_ADAPTER_BOUNDARY_BASELINE.md) before changing `xa-mass-transport-websocket` or `xa-mass-transport-api`.
 - Manual worker debug/control is a side-channel and must not mutate task lifecycle state.
 
