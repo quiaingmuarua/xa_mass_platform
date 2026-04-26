@@ -189,7 +189,7 @@ class ExternalWorkerApiControllerTest {
 
     @Test
     void pollTasksReturnsTransportNeutralItems() throws Exception {
-        when(externalWorkerOperations.pollTasks("node-worker-1", 2)).thenReturn(List.of(
+        when(externalWorkerOperations.pollTasks("node-worker-1", 2, 250L)).thenReturn(List.of(
                 new TaskDispatchItem(
                         "task-1",
                         "msg-1",
@@ -211,7 +211,8 @@ class ExternalWorkerApiControllerTest {
                         .header(SdkCredentialAuthSupport.API_KEY_HEADER, "node-worker-key")
                         .content("""
                                 {
-                                  "maxMessages": 2
+                                  "maxMessages": 2,
+                                  "timeoutMs": 250
                                 }
                                 """))
                 .andExpect(status().isOk())
@@ -219,6 +220,38 @@ class ExternalWorkerApiControllerTest {
                 .andExpect(jsonPath("$.data.total").value(1))
                 .andExpect(jsonPath("$.data.items[0].eventCode").value("crawler.fetch-page"))
                 .andExpect(jsonPath("$.data.items[0].input.url").value("https://example.test"));
+    }
+
+    @Test
+    void pollTasksRejectsNegativeTimeout() throws Exception {
+        mockMvc.perform(post("/worker-api/workers/{workerId}/poll", "node-worker-1")
+                        .contentType("application/json")
+                        .header(SdkCredentialAuthSupport.API_KEY_HEADER, "node-worker-key")
+                        .content("""
+                                {
+                                  "maxMessages": 1,
+                                  "timeoutMs": -1
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.msg").value("timeoutMs must be greater than or equal to 0"));
+    }
+
+    @Test
+    void pollTasksRejectsTimeoutAboveLimit() throws Exception {
+        mockMvc.perform(post("/worker-api/workers/{workerId}/poll", "node-worker-1")
+                        .contentType("application/json")
+                        .header(SdkCredentialAuthSupport.API_KEY_HEADER, "node-worker-key")
+                        .content("""
+                                {
+                                  "maxMessages": 1,
+                                  "timeoutMs": 30001
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.msg").value("timeoutMs must be less than or equal to 30000"));
     }
 
     @Test

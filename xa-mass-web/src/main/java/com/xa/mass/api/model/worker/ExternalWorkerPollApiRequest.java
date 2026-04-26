@@ -7,6 +7,7 @@ import com.xa.mass.api.model.AbstractUnknownFieldRequest;
 public class ExternalWorkerPollApiRequest extends AbstractUnknownFieldRequest {
 
     private Integer maxMessages;
+    private Long timeoutMs;
 
     public Integer getMaxMessages() {
         return maxMessages;
@@ -14,5 +15,13 @@ public class ExternalWorkerPollApiRequest extends AbstractUnknownFieldRequest {
 
     public void setMaxMessages(Integer maxMessages) {
         this.maxMessages = maxMessages;
+    }
+
+    public Long getTimeoutMs() {
+        return timeoutMs;
+    }
+
+    public void setTimeoutMs(Long timeoutMs) {
+        this.timeoutMs = timeoutMs;
     }
 }

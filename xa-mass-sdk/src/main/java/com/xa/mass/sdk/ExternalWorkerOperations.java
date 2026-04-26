@@ -30,7 +30,11 @@ public interface ExternalWorkerOperations {
 
     void workerOffline(String workerId, String reason);
 
-    List<TaskDispatchItem> pollTasks(String workerId, int maxMessages);
+    default List<TaskDispatchItem> pollTasks(String workerId, int maxMessages) {
+        return pollTasks(workerId, maxMessages, 0L);
+    }
+
+    List<TaskDispatchItem> pollTasks(String workerId, int maxMessages, long timeoutMillis);
 
     boolean submitResult(String workerId, TaskResultReport report);
 }

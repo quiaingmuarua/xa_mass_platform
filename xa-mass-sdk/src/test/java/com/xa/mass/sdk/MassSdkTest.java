@@ -2315,7 +2315,7 @@ class MassSdkTest {
         }
 
         @Override
-        public List<TaskDispatchItem> pollTaskMessages(String workerId, int maxMessages) {
+        public List<TaskDispatchItem> pollTaskMessages(String workerId, int maxMessages, long timeoutMillis) {
             return List.of();
         }
     }

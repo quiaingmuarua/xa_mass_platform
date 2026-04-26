@@ -384,10 +384,15 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
 
     @Override
     public List<TaskDispatchItem> pollTasks(String workerId, int maxMessages) {
+        return pollTasks(workerId, maxMessages, 0L);
+    }
+
+    @Override
+    public List<TaskDispatchItem> pollTasks(String workerId, int maxMessages, long timeoutMillis) {
         if (maxMessages <= 0) {
             throw new IllegalArgumentException("maxMessages must be greater than 0");
         }
-        return externalPullWorkerSession(workerId).poll(maxMessages);
+        return externalPullWorkerSession(workerId).poll(maxMessages, timeoutMillis);
     }
 
     @Override

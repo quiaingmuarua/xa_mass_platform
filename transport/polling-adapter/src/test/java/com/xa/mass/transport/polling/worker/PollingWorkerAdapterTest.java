@@ -26,7 +26,7 @@ class PollingWorkerAdapterTest {
 
         assertEquals(1, outcomes.size());
         assertEquals(DispatchOutcomeStatus.QUEUED, outcomes.get(0).getStatus());
-        assertEquals(List.of(item), adapter.pollTaskMessages("worker-1", 10));
+        assertEquals(List.of(item), adapter.pollTaskMessages("worker-1", 10, 0));
     }
 
     @Test
@@ -37,7 +37,7 @@ class PollingWorkerAdapterTest {
 
         assertEquals(1, outcomes.size());
         assertEquals(DispatchOutcomeStatus.INVALID_ITEM, outcomes.get(0).getStatus());
-        assertTrue(adapter.pollTaskMessages("worker-1", 10).isEmpty());
+        assertTrue(adapter.pollTaskMessages("worker-1", 10, 0).isEmpty());
     }
 
     @Test
@@ -55,7 +55,7 @@ class PollingWorkerAdapterTest {
                 outcomes.get(outcomes.size() - 1).getStatus());
         assertTrue(outcomes.get(outcomes.size() - 1).isRetryable());
         assertEquals(PollingWorkerAdapter.MAX_INBOX_SIZE,
-                adapter.pollTaskMessages("worker-1", PollingWorkerAdapter.MAX_INBOX_SIZE + 10).size());
+                adapter.pollTaskMessages("worker-1", PollingWorkerAdapter.MAX_INBOX_SIZE + 10, 0).size());
     }
 
     private PollingWorkerAdapter adapter() {

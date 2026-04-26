@@ -78,7 +78,11 @@ public class PullWorkerSession {
     }
 
     public List<TaskDispatchItem> poll(int maxMessages) {
-        return taskPullChannel.pollTaskMessages(workerId, maxMessages);
+        return poll(maxMessages, 0L);
+    }
+
+    public List<TaskDispatchItem> poll(int maxMessages, long timeoutMillis) {
+        return taskPullChannel.pollTaskMessages(workerId, maxMessages, timeoutMillis);
     }
 
     public boolean submitResult(TaskDispatchItem dispatchItem, boolean success, String detail) {

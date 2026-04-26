@@ -7,6 +7,8 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -62,6 +64,35 @@ class InMemoryTransportDeliveryStoreTest {
                 store.drain("polling", "worker-1", 1).stream().map(TaskDispatchItem::getMessageId).toList());
         assertEquals(List.of("msg-2"),
                 store.drain("polling", "worker-1", 10).stream().map(TaskDispatchItem::getMessageId).toList());
+    }
+
+    @Test
+    void pollWaitsUntilDeliveryArrives() throws Exception {
+        InMemoryTransportDeliveryStore store = new InMemoryTransportDeliveryStore();
+        TaskDispatchItem item = item("msg-1", "worker-1");
+
+        CompletableFuture<List<TaskDispatchItem>> polled = CompletableFuture.supplyAsync(() -> {
+            try {
+                return store.poll("polling", "worker-1", 10, 1, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return List.of();
+            }
+        });
+
+        Thread.sleep(50L);
+        store.enqueue("polling", item, 10);
+
+        assertEquals(List.of(item), polled.get(1, TimeUnit.SECONDS));
+    }
+
+    @Test
+    void pollReturnsEmptyAfterTimeout() throws Exception {
+        InMemoryTransportDeliveryStore store = new InMemoryTransportDeliveryStore();
+
+        List<TaskDispatchItem> items = store.poll("polling", "worker-1", 10, 50, TimeUnit.MILLISECONDS);
+
+        assertTrue(items.isEmpty());
     }
 
     private TaskDispatchItem item(String messageId, String workerId) {

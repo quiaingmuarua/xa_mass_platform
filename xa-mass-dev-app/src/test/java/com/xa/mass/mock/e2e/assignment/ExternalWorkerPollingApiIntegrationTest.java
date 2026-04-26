@@ -160,13 +160,13 @@ class ExternalWorkerPollingApiIntegrationTest extends AbstractMockE2eTest {
 
         Map<String, Object> pollResponse = null;
         List<Map<String, Object>> items = List.of();
-        for (int attempt = 0; attempt < 20 && items.isEmpty(); attempt++) {
-            pollResponse = exchange("/worker-api/workers/" + workerId + "/poll", HttpMethod.POST, Map.of("maxMessages", 10), workerHeaders);
+        for (int attempt = 0; attempt < 5 && items.isEmpty(); attempt++) {
+            pollResponse = exchange("/worker-api/workers/" + workerId + "/poll", HttpMethod.POST, Map.of(
+                    "maxMessages", 10,
+                    "timeoutMs", 500
+            ), workerHeaders);
             assertApiOk(pollResponse);
             items = pollItems(pollResponse);
-            if (items.isEmpty()) {
-                Thread.sleep(250L);
-            }
         }
         assertFalse(items.isEmpty(), "expected task dispatch through external polling worker API");
 

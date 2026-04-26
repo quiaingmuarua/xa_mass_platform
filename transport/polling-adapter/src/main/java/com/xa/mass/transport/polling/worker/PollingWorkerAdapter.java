@@ -62,11 +62,11 @@ public class PollingWorkerAdapter implements WorkerAdapter, TaskPullChannel {
     }
 
     @Override
-    public List<TaskDispatchItem> pollTaskMessages(String workerId, int maxMessages) {
+    public List<TaskDispatchItem> pollTaskMessages(String workerId, int maxMessages, long timeoutMillis) {
         if (workerId == null || workerId.isBlank() || maxMessages <= 0) {
             return List.of();
         }
-        return deliveryService.drain(PROTOCOL, workerId, maxMessages);
+        return deliveryService.poll(PROTOCOL, workerId, maxMessages, timeoutMillis);
     }
 
     public void announceWorkerOnline(String workerId, String reason) {

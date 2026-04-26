@@ -7,6 +7,7 @@ import com.xa.mass.transport.runtime.RuntimeDispatchOutcomes;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Runtime-owned delivery service shared by concrete transport adapters.
@@ -36,6 +37,15 @@ public final class TransportDeliveryService {
 
     public List<TaskDispatchItem> drain(String adapterId, String workerId, int maxItems) {
         return deliveryStore.drain(adapterId, workerId, maxItems);
+    }
+
+    public List<TaskDispatchItem> poll(String adapterId, String workerId, int maxItems, long timeoutMillis) {
+        try {
+            return deliveryStore.poll(adapterId, workerId, maxItems, Math.max(0L, timeoutMillis), TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return List.of();
+        }
     }
 
     public List<DispatchOutcome> sendDirect(String adapterId,

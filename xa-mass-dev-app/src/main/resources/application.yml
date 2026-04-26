@@ -1,6 +1,9 @@
 spring:
   application:
     name: mass_mock
+  threads:
+    virtual:
+      enabled: true
   redis:
     host: localhost
     port: 6379

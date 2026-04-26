@@ -96,6 +96,15 @@ class TransportDeliveryServiceTest {
         assertEquals("write failed", outcomes.get(0).getReason());
     }
 
+    @Test
+    void pollReturnsQueuedItems() {
+        TransportDeliveryService service = service();
+        TaskDispatchItem item = item("msg-1", "worker-1");
+        service.enqueue("polling", List.of(item), 10);
+
+        assertEquals(List.of(item), service.poll("polling", "worker-1", 10, 0));
+    }
+
     private TransportDeliveryService service() {
         return new TransportDeliveryService(new InMemoryTransportDeliveryStore());
     }

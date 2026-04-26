@@ -67,6 +67,7 @@ The transport-neutral runtime model is now framed around three channels:
 - Real Spring Boot entrypoint: `xa-mass-dev-app`
 - Java baseline: JDK 21. The root Maven reactor and Java worker samples compile with `maven.compiler.release=21`, and CI uses Temurin 21.
 - Java 21 is the supported runtime floor. Use virtual threads for runtime/transport/event execution boundaries only behind explicit runtime abstractions such as `RuntimeTaskExecutor`; do not make engine lifecycle correctness depend on asynchronous execution.
+- The dev-app enables Spring virtual threads so bounded external worker long-polling can use simple blocking code without consuming platform request threads.
 - Do not treat the embedded runtime classes as a Spring Boot app
 - Current root reactor modules are `xa-mass-web`, `xa-mass-core`, `xa-mass-transport-api`, `xa-mass-transport-polling`, `xa-mass-transport-runtime`, `xa-mass-engine`, `xa-mass-transport-websocket`, `xa-mass-sdk-api`, `xa-mass-sdk`, `xa-mass-testing`, and `xa-mass-dev-app`
 - `xa-mass-sdk` is the real Java embedding module; it now carries both the SDK facade and the embedded runtime composition

@@ -23,6 +23,8 @@ import java.util.Set;
 @RestController
 @RequestMapping("/worker-api")
 public class ExternalWorkerApiController {
+    private static final long MAX_WORKER_POLL_TIMEOUT_MS = 30_000L;
+
 
     private static final String WORKER_ID_ATTRIBUTE = "workerId";
 
@@ -147,7 +149,8 @@ public class ExternalWorkerApiController {
         String boundWorkerId = requireBoundWorkerId(submitter, workerId);
         requirePollingWorker(boundWorkerId, "poll");
         int maxMessages = requestBody == null || requestBody.getMaxMessages() == null ? 1 : requestBody.getMaxMessages();
-        List<TaskDispatchItem> items = externalWorkerOperations.pollTasks(boundWorkerId, maxMessages);
+        long timeoutMs = requestBody == null || requestBody.getTimeoutMs() == null ? 0L : requestBody.getTimeoutMs();
+        List<TaskDispatchItem> items = externalWorkerOperations.pollTasks(boundWorkerId, maxMessages, timeoutMs);
         return ApiResponse.success(Map.of(
                 "workerId", boundWorkerId,
                 "items", items,
@@ -226,6 +229,14 @@ public class ExternalWorkerApiController {
         }
         if (requestBody != null && requestBody.getMaxMessages() != null && requestBody.getMaxMessages() <= 0) {
             throw new IllegalArgumentException("maxMessages must be greater than 0");
+        }
+        if (requestBody != null && requestBody.getTimeoutMs() != null) {
+            if (requestBody.getTimeoutMs() < 0) {
+                throw new IllegalArgumentException("timeoutMs must be greater than or equal to 0");
+            }
+            if (requestBody.getTimeoutMs() > MAX_WORKER_POLL_TIMEOUT_MS) {
+                throw new IllegalArgumentException("timeoutMs must be less than or equal to " + MAX_WORKER_POLL_TIMEOUT_MS);
+            }
         }
     }
 

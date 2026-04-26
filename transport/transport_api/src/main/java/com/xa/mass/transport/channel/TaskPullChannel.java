@@ -9,5 +9,9 @@ import java.util.List;
  */
 public interface TaskPullChannel {
 
-    List<TaskDispatchItem> pollTaskMessages(String workerId, int maxMessages);
+    default List<TaskDispatchItem> pollTaskMessages(String workerId, int maxMessages) {
+        return pollTaskMessages(workerId, maxMessages, 0L);
+    }
+
+    List<TaskDispatchItem> pollTaskMessages(String workerId, int maxMessages, long timeoutMillis);
 }
