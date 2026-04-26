@@ -316,16 +316,6 @@ public class MassApplication {
         return Map.copyOf(map);
     }
 
-    /**
-     * @deprecated Shared transporter internals are compatibility-only. Prefer
-     * {@link #getTransportQueueDetail()} for diagnostics and keep runtime
-     * behavior on transport-neutral adapter/runtime surfaces.
-     */
-    @Deprecated(forRemoval = false)
-    public MessageTransporter<String, WorkerTransportMessage> getMessageTransporter() {
-        return messageTransporter;
-    }
-
     public WorkerEndpointRegistry getEndpointRegistry() {
         return endpointRegistry;
     }

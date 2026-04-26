@@ -207,18 +207,18 @@ Rules:
 - keep `TaskResultIngestChannel` as a runtime-level seam; do not model it as worker transport binding ownership
 - resolve `WorkerSystemEventChannel` from adapter runtime assembly, not from transport binding ownership
 - keep adapter-specific endpoint bootstrap and WebSocket-backed realtime adapter defaults inside the adapter module; SDK runtime assembly must not grow session-manager, frame-codec, or WebSocket-specific branching
-- keep the default transport-server bootstrap helper in adapter-owned code; current SDK `transportServerFactory(...)` remains an advanced override seam rather than a second mainline
-- stable SDK/starter builder entry should be `transport(...)`; deprecated `server(...)`, `transportServer(...)`, and `websocket(...)` builder conveniences remain compatibility-only and must not regain mainline ownership
+- keep the default transport-server bootstrap helper in adapter-owned code; current SDK `webSocketAdapter(...).transportServerFactory(...)` is the advanced override seam rather than a second mainline
+- stable SDK/starter builder entry is `transport(...)`; old `server(...)`, `transportServer(...)`, and `websocket(...)` compatibility names have been removed and must not be reintroduced
 - bundled embedded WebSocket settings should hang off explicit adapter-owned nested config such as `transport(... -> webSocketAdapter(...))`, not off runtime-global transport fields
-- transport-global read helpers on `TransportConfig` / `TransportRuntimeComposition` that expose bundled WebSocket server settings are compatibility-only; mainline inspection should read adapter-owned config snapshots instead
+- runtime inspection should read adapter-owned config snapshots instead of transport-global WebSocket helper fields
 - embedded-runtime mainline should consume one or more adapter-owned bootstrap/contribution outputs; `MassApplication` should manage only neutral runtime facts such as managed adapters, transport bindings, endpoint registry, transport servers, and raw worker side-channel capabilities
 - pre-start worker registration resolution should come from transport runtime metadata/descriptors; SDK mainline must not hardcode `realtime -> websocket` as a routing identity shortcut
 - when embedded runtime swaps in a custom primary adapter bootstrap, registration metadata for that adapter must come from the bootstrap descriptor itself rather than from bundled WebSocket enablement
 - adapter-owned raw worker side-channel send, when present, should surface as a transport-neutral contribution capability; SDK/runtime code must not construct WebSocket delivery DTOs directly
 - `MassApplication` should snapshot external transport config into internal runtime-composition state during construction rather than retaining a live config object as the runtime backbone
 - `TransportAdapterBootstrapContext` should carry only neutral runtime collaborators; adapter-owned inbound server settings such as port/path must be captured by the adapter bootstrap itself rather than injected later by runtime
-- `TransportConfig` and `TransportRuntimeComposition` are the embedded-runtime mainline names; deprecated `WebSocketConfig` and `WebSocketRuntimeComposition` remain compatibility-only aliases
-- deprecated `WebSocketConfig.createMessageTransporter()`, `resolveWorkerEndpointRegistry()`, `resolveSystemEventChannel()`, `resolveWorkerTransportRuntimeFactory()`, `resolveTransportAdapterBootstrap()`, `createDispatcherContext(...)`, and `createTransportServer(...)` remain advanced external embedding seams only; default composition should snapshot `TransportConfig` into `TransportRuntimeComposition` and resolve adapter bootstrap/contribution assembly from there rather than routing WebSocket runtime details through SDK runtime code; current compat helpers should behave only as thin facades over current adapter config/runtime state, with only endpoint-registry ownership retaining a minimal compatibility cache when runtime assembly does not provide an explicit registry
+- `TransportConfig` and `TransportRuntimeComposition` are the only embedded-runtime config/composition names; do not add WebSocket-named aliases back into `xa-mass-sdk`
+- default composition should snapshot `TransportConfig` into `TransportRuntimeComposition` and resolve adapter bootstrap/contribution assembly from there rather than routing WebSocket runtime details through SDK runtime code
 - do not grow post-construction `setHandler(...)` or `registerRoute(...)` seams on adapter runtime context
 - if a new adapter path needs another port, carry it as explicit adapter-owned bootstrap/contribution configuration rather than a late-bound generic registry or a runtime-global shared-port assumption
 

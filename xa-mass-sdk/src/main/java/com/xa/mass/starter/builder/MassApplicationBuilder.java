@@ -35,8 +35,6 @@ import java.util.function.Consumer;
 public class MassApplicationBuilder {
 
     private static final Logger logger = LoggerFactory.getLogger(MassApplicationBuilder.class);
-    private static final String API_MODE_UNSUPPORTED_MESSAGE =
-            "API-based transport is not implemented yet. Use queue/polling transport or provide a real transport adapter.";
 
     private TransportConfig transportConfig = new TransportConfig();
     private EngineConfig engineConfig = new EngineConfig();
@@ -125,14 +123,6 @@ public class MassApplicationBuilder {
                 .build();
     }
 
-    /**
-     * @deprecated API-based transport is not implemented and now fails fast.
-     */
-    @Deprecated(since = "2.0.0", forRemoval = false)
-    public static MassApplication createApiMode(int port, String inputApiUrl, String outputApiUrl, String apiKey) {
-        throw new UnsupportedOperationException(API_MODE_UNSUPPORTED_MESSAGE);
-    }
-
     public static MassApplication createTest(int port) {
         return create()
                 .transport(transport -> transport
@@ -146,63 +136,9 @@ public class MassApplicationBuilder {
                 .build();
     }
 
-    /**
-     * @deprecated Prefer {@link #transport(Consumer)} with
-     * {@code webSocketAdapter(...).server(...)} so adapter-owned server
-     * settings stay on the concrete adapter rather than a transport-global
-     * convenience helper.
-     */
-    @Deprecated(forRemoval = false)
-    public MassApplicationBuilder server(int port) {
-        return configureDefaultWebSocketAdapter(webSocket -> webSocket.server(port));
-    }
-
-    /**
-     * @deprecated Prefer {@link #transport(Consumer)} with
-     * {@code webSocketAdapter(...).server(...)} so adapter-owned server
-     * settings stay on the concrete adapter rather than a transport-global
-     * convenience helper.
-     */
-    @Deprecated(forRemoval = false)
-    public MassApplicationBuilder server(int port, String transportEndpointPath) {
-        return configureDefaultWebSocketAdapter(webSocket -> webSocket.server(port, transportEndpointPath));
-    }
-
-    /**
-     * @deprecated Prefer {@link #transport(Consumer)} with
-     * {@code webSocketAdapter(...)} so adapter-owned server settings stay on the
-     * concrete adapter rather than transport-global compatibility helpers.
-     */
-    @Deprecated(forRemoval = false)
-    public MassApplicationBuilder transportServer(int port) {
-        return configureDefaultWebSocketAdapter(webSocket -> webSocket.server(port));
-    }
-
-    /**
-     * @deprecated Prefer {@link #transport(Consumer)} with
-     * {@code webSocketAdapter(...)} so adapter-owned server settings stay on the
-     * concrete adapter rather than transport-global compatibility helpers.
-     */
-    @Deprecated(forRemoval = false)
-    public MassApplicationBuilder transportServer(int port, String transportEndpointPath) {
-        return configureDefaultWebSocketAdapter(webSocket -> webSocket.server(port, transportEndpointPath));
-    }
-
     public MassApplicationBuilder transport(Consumer<TransportBuilder> transportConfigurator) {
         TransportBuilder transportBuilder = new TransportBuilder(transportConfig);
         transportConfigurator.accept(transportBuilder);
-        return this;
-    }
-
-    /**
-     * @deprecated Prefer {@link #transport(Consumer)} so SDK/runtime assembly
-     * is described in transport-neutral terms rather than a WebSocket-specific
-     * entrypoint name.
-     */
-    @Deprecated(forRemoval = false)
-    public MassApplicationBuilder websocket(Consumer<WebSocketBuilder> websocketConfigurator) {
-        WebSocketBuilder webSocketBuilder = new WebSocketBuilder(transportConfig);
-        websocketConfigurator.accept(webSocketBuilder);
         return this;
     }
 
@@ -237,8 +173,8 @@ public class MassApplicationBuilder {
 
     private static String describeAdapterSummary(TransportConfig transportConfig) {
         List<String> summaries = new ArrayList<>();
-        WebSocketAdapterConfig webSocket = transportConfig.getDefaultWebSocketAdapterConfig();
-        SocketAdapterConfig socket = transportConfig.getDefaultSocketAdapterConfig();
+        WebSocketAdapterConfig webSocket = transportConfig.getBundledWebSocketAdapterConfig();
+        SocketAdapterConfig socket = transportConfig.getBundledSocketAdapterConfig();
         summaries.add("websocket(enabled=" + webSocket.isEnabled()
                 + ",serverEnabled=" + webSocket.isServerEnabled()
                 + ",port=" + webSocket.getServerPort()
@@ -251,14 +187,14 @@ public class MassApplicationBuilder {
                 + ")");
 
         TransportAdapterBootstrap<WorkerTransportMessage> primaryBootstrap =
-                transportConfig.getTransportAdapterBootstrap();
+                transportConfig.getPrimaryTransportAdapterBootstrap();
         if (primaryBootstrap != null) {
-            summaries.add(describeBootstrap("primaryOverride", primaryBootstrap));
+            summaries.add(describeBootstrap("primaryBootstrap", primaryBootstrap));
         }
         List<TransportAdapterBootstrap<WorkerTransportMessage>> additionalBootstraps =
-                transportConfig.getAdditionalTransportAdapterBootstraps();
+                transportConfig.getSupplementalTransportAdapterBootstraps();
         for (int i = 0; i < additionalBootstraps.size(); i++) {
-            summaries.add(describeBootstrap("additional[" + i + "]", additionalBootstraps.get(i)));
+            summaries.add(describeBootstrap("supplemental[" + i + "]", additionalBootstraps.get(i)));
         }
 
         return summaries.toString();
@@ -276,10 +212,6 @@ public class MassApplicationBuilder {
                 + ")";
     }
 
-    private MassApplicationBuilder configureDefaultWebSocketAdapter(Consumer<WebSocketAdapterBuilder> configurator) {
-        return transport(transport -> transport.webSocketAdapter(configurator));
-    }
-
     public static class TransportBuilder {
         protected final TransportConfig config;
 
@@ -287,76 +219,21 @@ public class MassApplicationBuilder {
             this.config = config;
         }
 
-        /**
-         * @deprecated Prefer explicit adapter toggles such as
-         * {@code webSocketAdapter(...)} or {@code socketAdapter(...)}. This
-         * transport-global helper mutates only the bundled default WebSocket
-         * adapter and is compatibility-only.
-         */
-        @Deprecated(forRemoval = false)
-        public TransportBuilder enabled(boolean enabled) {
-            return webSocketAdapter(webSocket -> webSocket.enabled(enabled));
-        }
-
         public TransportBuilder webSocketAdapter(Consumer<WebSocketAdapterBuilder> webSocketAdapterConfigurator) {
-            WebSocketAdapterBuilder builder = new WebSocketAdapterBuilder(config.getDefaultWebSocketAdapterConfig());
+            WebSocketAdapterBuilder builder = new WebSocketAdapterBuilder(config.getBundledWebSocketAdapterConfig());
             webSocketAdapterConfigurator.accept(builder);
             return this;
         }
 
         public TransportBuilder socketAdapter(Consumer<SocketAdapterBuilder> socketAdapterConfigurator) {
-            SocketAdapterBuilder builder = new SocketAdapterBuilder(config.getDefaultSocketAdapterConfig());
+            SocketAdapterBuilder builder = new SocketAdapterBuilder(config.getBundledSocketAdapterConfig());
             socketAdapterConfigurator.accept(builder);
             return this;
-        }
-
-        /**
-         * @deprecated Prefer {@code webSocketAdapter(...).serverEnabled(...)} so
-         * adapter-owned server settings stay on the concrete adapter rather than
-         * a transport-global compatibility helper.
-         */
-        @Deprecated(forRemoval = false)
-        public TransportBuilder transportServerEnabled(boolean enabled) {
-            return webSocketAdapter(webSocket -> webSocket.serverEnabled(enabled));
-        }
-
-        /**
-         * @deprecated Prefer {@code webSocketAdapter(...).endpointPath(...)} so
-         * adapter-owned server settings stay on the concrete adapter rather than
-         * a transport-global compatibility helper.
-         */
-        @Deprecated(forRemoval = false)
-        public TransportBuilder transportEndpointPath(String transportEndpointPath) {
-            return webSocketAdapter(webSocket -> webSocket.endpointPath(transportEndpointPath));
-        }
-
-        /**
-         * @deprecated Prefer
-         * {@code webSocketAdapter(...).transportServerFactory(...)} so adapter
-         * bootstrap overrides stay attached to the concrete adapter rather than a
-         * transport-global compatibility helper.
-         */
-        @Deprecated(forRemoval = false)
-        public TransportBuilder transportServerFactory(
-                TransportServerFactory<TransportServerFactoryContext> transportServerFactory) {
-            return webSocketAdapter(webSocket -> webSocket.transportServerFactory(transportServerFactory));
         }
 
         public TransportBuilder workerTransportRuntimeFactory(WorkerTransportRuntimeFactory workerTransportRuntimeFactory) {
             config.setWorkerTransportRuntimeFactory(workerTransportRuntimeFactory);
             return this;
-        }
-
-        /**
-         * @deprecated Prefer adapter-owned configuration such as
-         * {@code webSocketAdapter(...).maxConnections(...)} or
-         * {@code socketAdapter(...).maxConnections(...)}. This transport-global
-         * helper mutates only the bundled default WebSocket adapter and is
-         * compatibility-only.
-         */
-        @Deprecated(forRemoval = false)
-        public TransportBuilder maxConnections(int maxConnections) {
-            return webSocketAdapter(webSocket -> webSocket.maxConnections(maxConnections));
         }
 
         public TransportBuilder inputQueue(MessageQueue<String> inputQueue) {
@@ -369,18 +246,10 @@ public class MassApplicationBuilder {
             return this;
         }
 
-        public TransportBuilder addTransportAdapterBootstrap(
+        public TransportBuilder addSupplementalTransportAdapterBootstrap(
                 TransportAdapterBootstrap<WorkerTransportMessage> transportAdapterBootstrap) {
-            config.addTransportAdapterBootstrap(transportAdapterBootstrap);
+            config.addSupplementalTransportAdapterBootstrap(transportAdapterBootstrap);
             return this;
-        }
-
-        /**
-         * @deprecated API-based transport is not implemented and now fails fast.
-         */
-        @Deprecated(since = "2.0.0", forRemoval = false)
-        public TransportBuilder apiMode(String inputApiUrl, String outputApiUrl, String apiKey) {
-            throw new UnsupportedOperationException(API_MODE_UNSUPPORTED_MESSAGE);
         }
 
         public TransportBuilder queueMode() {
@@ -467,18 +336,6 @@ public class MassApplicationBuilder {
         public SocketAdapterBuilder maxConnections(int maxConnections) {
             config.setMaxConnections(maxConnections);
             return this;
-        }
-    }
-
-    /**
-     * @deprecated Prefer {@link TransportBuilder}; WebSocket is one adapter,
-     * not the primary transport-composition naming boundary.
-     */
-    @Deprecated(forRemoval = false)
-    public static class WebSocketBuilder extends TransportBuilder {
-
-        public WebSocketBuilder(TransportConfig config) {
-            super(config);
         }
     }
 

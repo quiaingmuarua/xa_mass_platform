@@ -15,10 +15,10 @@ class TransportConfigTest {
     @Test
     void isEnabledRecognizesServerOnlyBundledAdapterState() {
         TransportConfig config = new TransportConfig();
-        config.getDefaultWebSocketAdapterConfig().setEnabled(false);
-        config.getDefaultWebSocketAdapterConfig().setServerEnabled(true);
-        config.getDefaultSocketAdapterConfig().setEnabled(false);
-        config.getDefaultSocketAdapterConfig().setServerEnabled(false);
+        config.getBundledWebSocketAdapterConfig().setEnabled(false);
+        config.getBundledWebSocketAdapterConfig().setServerEnabled(true);
+        config.getBundledSocketAdapterConfig().setEnabled(false);
+        config.getBundledSocketAdapterConfig().setServerEnabled(false);
 
         assertTrue(config.isEnabled());
         assertTrue(config.snapshotRuntimeComposition().isEnabled());
@@ -27,11 +27,11 @@ class TransportConfigTest {
     @Test
     void isEnabledRecognizesCustomBootstrapWithoutBundledAdapters() {
         TransportConfig config = new TransportConfig();
-        config.getDefaultWebSocketAdapterConfig().setEnabled(false);
-        config.getDefaultWebSocketAdapterConfig().setServerEnabled(false);
-        config.getDefaultSocketAdapterConfig().setEnabled(false);
-        config.getDefaultSocketAdapterConfig().setServerEnabled(false);
-        config.setTransportAdapterBootstrap(new StubBootstrap("custom-rt", WorkerTransportHints.REALTIME));
+        config.getBundledWebSocketAdapterConfig().setEnabled(false);
+        config.getBundledWebSocketAdapterConfig().setServerEnabled(false);
+        config.getBundledSocketAdapterConfig().setEnabled(false);
+        config.getBundledSocketAdapterConfig().setServerEnabled(false);
+        config.setPrimaryTransportAdapterBootstrap(new StubBootstrap("custom-rt", WorkerTransportHints.REALTIME));
 
         assertTrue(config.isEnabled());
         assertTrue(config.snapshotRuntimeComposition().isEnabled());

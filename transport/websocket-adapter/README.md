@@ -18,7 +18,6 @@
 
 - `src/main/java/com/xa/mass/transport/websocket/server/WebSocketServerImpl.java`
 - `src/main/java/com/xa/mass/transport/websocket/runtime/WebSocketTransportAdapterBootstrap.java`
-- `src/main/java/com/xa/mass/transport/websocket/dispatcher/WebSocketMessageDispatcher.java` (compat-only legacy shell)
 
 ## Boundaries
 

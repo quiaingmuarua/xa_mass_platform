@@ -209,9 +209,10 @@ If you need the lower-level runtime composition directly, start here:
 
 Treat this lower-level `starter` surface as an advanced embedding path. It remains available, but the default compatibility commitment is on `com.xa.mass.sdk.*`.
 
-Stable builder mainline is `transport(...)`. Older `server(...)`,
-`transportServer(...)`, and `websocket(...)` SDK/starter builder entries
-remain only as deprecated compatibility names.
+Stable builder mainline is `transport(...)`. Bundled WebSocket settings belong
+under explicit adapter-owned config such as
+`transport(... -> webSocketAdapter(...))`; there is no separate WebSocket-named
+builder mainline in `xa-mass-sdk`.
 
 Current embedded-runtime mainline snapshots `TransportConfig` into an internal
 runtime-composition object during `MassApplication` construction. Runtime
@@ -221,32 +222,18 @@ composition now consumes one or more adapter bootstrap contributions and uses
 the transport-neutral `WorkerTransportMessage` outbound carrier rather than a
 WebSocket-only delivery DTO.
 
-Within that lower-level surface, deprecated compatibility type
-`WebSocketConfig` now aliases the mainline `TransportConfig`.
-`WebSocketConfig.createMessageTransporter()`,
-`resolveWorkerEndpointRegistry()`, `resolveSystemEventChannel()`,
-`resolveWorkerTransportRuntimeFactory()`, `resolveTransportAdapterBootstrap()`,
-`createDispatcherContext(...)`, and `createTransportServer(...)` are
-deprecated advanced embedding helpers only. Embedded-runtime mainline should
-snapshot config into `TransportRuntimeComposition`, then use adapter-owned
-bootstrap/contribution assembly for the default WebSocket-backed path, or
-provide an explicit `transportServerFactory(...)` override. Adapter bootstrap
-compatibility helpers on `TransportConfig` now behave only as facades over that
-runtime snapshot path rather than holding separate runtime assembly logic.
-Deprecated helper resolution should track the current adapter config state;
-only endpoint-registry ownership still keeps a minimal compatibility cache
-when runtime assembly does not supply an explicit registry.
-Adapter bootstrap
-context now carries only neutral runtime collaborators; shared message
+Within that lower-level surface, embedded-runtime mainline snapshots
+`TransportConfig` into `TransportRuntimeComposition`, then uses adapter-owned
+bootstrap/contribution assembly for the default WebSocket-backed path or an
+explicit `webSocketAdapter(...).transportServerFactory(...)` override.
+Adapter bootstrap context now carries only neutral runtime collaborators; shared message
 transporter wiring is compatibility-only and may be absent entirely in
 adapter-native runtimes. Inbound server settings such as port/path are owned
 by the adapter bootstrap instead of being injected by `MassApplication` at
 startup time. Builder-level mainline should configure that bundled adapter
 explicitly via `transport(... -> webSocketAdapter(...))` rather than treating
-those settings as runtime-global transport facts. Read-side compatibility
-helpers on `TransportConfig` / `TransportRuntimeComposition` that expose
-transport-global WebSocket server settings are likewise compat-only; mainline
-inspection should read adapter-owned config snapshots instead.
+those settings as runtime-global transport facts, and mainline inspection
+should read adapter-owned config snapshots instead.
 Pre-start worker registration resolution now also comes from adapter-owned
 transport descriptors exposed through runtime composition; if a custom worker
 transport runtime factory does not expose that metadata, worker registration
@@ -254,14 +241,5 @@ must provide explicit `adapterId` before the runtime is started.
 Custom primary transport bootstraps are resolved from their own descriptor
 metadata rather than from the bundled WebSocket enable flag, so swapping the
 primary adapter does not silently erase pre-start registration identity.
-`MassWebSocketAdapter.getWebSocketConfig()` and `MassWebSocketAdapter.getWebSocketMessageDispatcher()` are also
-deprecated: WebSocket adapter config and dispatcher internals are not part of the
-supported embedding surface. `getWebSocketMessageDispatcher()` now returns only
-the deprecated compatibility shell, materialized lazily only when that accessor
-is used while the adapter is running, not a queue-driven runtime mainline.
-`MassWebSocketAdapter` itself no longer carries separate endpoint-runtime logic;
-it only delegates lifecycle to the adapter-owned managed runtime shell.
-`getWebSocketConfig()` now returns only a snapshot copy of bundled WebSocket
-adapter settings rather than a live transport config object.
 `MassEngine.getRecordService()` and `MassEngine.getAssignWorker()` are likewise
 deprecated: record-service and assignment-loop internals stay engine-owned.

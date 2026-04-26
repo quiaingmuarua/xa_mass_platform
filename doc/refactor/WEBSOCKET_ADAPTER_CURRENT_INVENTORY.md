@@ -94,15 +94,14 @@ It is a migration aid, not a compatibility promise.
 - `Migration phase`: keep as explicit adapter processors, not as a generic middleware framework; runtime result-ingest ownership stays above transport binding
 - `Related tests`: `WebSocketInputProcessorTest`, `WebSocketOutputProcessorTest`, `TaskApiDelayedWorkerAvailabilityIntegrationTest`
 
-## 9. Queue-Based Adapter Dispatch Loop
+## 9. Removed Legacy Dispatch Loop
 
 - `Class`: `com.xa.mass.transport.websocket.dispatcher.WebSocketMessageDispatcher`
-- `Method`: `processInputQueueLoop()`, `processOutputQueueLoop()`, `submitOutputDelivery(...)`
-- `Current responsibility`: consumes raw inbound JSON and transport-neutral `WorkerTransportMessage`, calls explicit adapter processors, preserves outbound ordering per `workerId`
-- `Should stay in WebSocket adapter?`: yes
-- `Target owner`: `xa-mass-transport-websocket`
-- `Migration phase`: keep
-- `Related tests`: `WebSocketInputProcessorTest`, `WebSocketOutputProcessorTest`, `ServerMessageDispatcherShutdownTest`
+- `Previous responsibility`: legacy compatibility shell that wrapped adapter-local input/output processors
+- `Current state`: removed from active code; embedded runtime no longer exposes a separate queue-loop dispatcher shell
+- `Target owner`: n/a
+- `Migration phase`: completed removal; keep routing through `WebSocketInputProcessor`, `WebSocketOutputProcessor`, session/server paths, and transport-neutral runtime channels
+- `Related tests`: `WebSocketInputProcessorTest`, `WebSocketOutputProcessorTest`
 
 ## 10. Fixed WebSocket Adapter Wiring Snapshot
 

@@ -145,10 +145,10 @@ class MassApplicationStopOrderTest {
     }
 
     @Test
-    void startBootstrapsManagedAdapterEvenWhenDefaultWebSocketIsDisabled() {
+    void startBootstrapsManagedAdapterEvenWhenBundledWebSocketIsDisabled() {
         ManagedTransportAdapter adapter = mock(ManagedTransportAdapter.class);
         TransportConfig transport = disabledTransportWithQueues();
-        transport.addTransportAdapterBootstrap(new StaticManagedAdapterBootstrap(adapter));
+        transport.addSupplementalTransportAdapterBootstrap(new StaticManagedAdapterBootstrap(adapter));
 
         MassApplication app = new MassApplication(null, transport, disabledEngine());
 
@@ -166,10 +166,10 @@ class MassApplicationStopOrderTest {
     void adapterBootstrapCanOverrideTransportServerPort() throws Exception {
         TransportConfig transport = disabledTransportWithQueues();
         StaticConfiguredTransportServer transportServer = new StaticConfiguredTransportServer(19093);
-        transport.addTransportAdapterBootstrap(new StaticTransportServerBootstrap(transportServer));
+        transport.addSupplementalTransportAdapterBootstrap(new StaticTransportServerBootstrap(transportServer));
 
-        transport.getDefaultWebSocketAdapterConfig().setServerPort(18080);
-        transport.getDefaultWebSocketAdapterConfig().setEndpointPath("/default");
+        transport.getBundledWebSocketAdapterConfig().setServerPort(18080);
+        transport.getBundledWebSocketAdapterConfig().setEndpointPath("/default");
         MassApplication app = new MassApplication(null, transport, disabledEngine());
 
         try {
@@ -186,14 +186,14 @@ class MassApplicationStopOrderTest {
 
     private TransportConfig enabledWebSocket() {
         TransportConfig c = new TransportConfig();
-        c.getDefaultWebSocketAdapterConfig().setEnabled(true);
+        c.getBundledWebSocketAdapterConfig().setEnabled(true);
         return c;
     }
 
     private TransportConfig disabledTransportWithQueues() {
         TransportConfig c = new TransportConfig();
-        c.getDefaultWebSocketAdapterConfig().setEnabled(false);
-        c.getDefaultWebSocketAdapterConfig().setServerEnabled(false);
+        c.getBundledWebSocketAdapterConfig().setEnabled(false);
+        c.getBundledWebSocketAdapterConfig().setServerEnabled(false);
         c.setInputQueue(new InMemoryMessageQueue<>("transport-input", String.class));
         c.setOutputQueue(new InMemoryMessageQueue<>("transport-output", WorkerTransportMessage.class));
         return c;

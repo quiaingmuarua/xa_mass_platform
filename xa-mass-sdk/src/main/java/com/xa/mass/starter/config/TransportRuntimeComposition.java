@@ -44,14 +44,14 @@ public class TransportRuntimeComposition {
     private final WorkerEndpointRegistry workerEndpointRegistry;
     private final Supplier<WorkerEndpointRegistry> endpointRegistryFactory;
     private final Function<WorkerEndpointRegistry, WorkerSystemEventChannel> systemEventChannelResolver;
-    private final WebSocketAdapterConfig defaultWebSocketAdapterConfig;
-    private final SocketAdapterConfig defaultSocketAdapterConfig;
+    private final WebSocketAdapterConfig bundledWebSocketAdapterConfig;
+    private final SocketAdapterConfig bundledSocketAdapterConfig;
     private final WorkerTransportRuntimeFactory workerTransportRuntimeFactory;
-    private final TransportAdapterBootstrap<WorkerTransportMessage> transportAdapterBootstrap;
-    private final List<TransportAdapterBootstrap<WorkerTransportMessage>> additionalTransportAdapterBootstraps;
+    private final TransportAdapterBootstrap<WorkerTransportMessage> primaryTransportAdapterBootstrap;
+    private final List<TransportAdapterBootstrap<WorkerTransportMessage>> supplementalTransportAdapterBootstraps;
 
     private transient WorkerEndpointRegistry runtimeOwnedEndpointRegistry;
-    private transient TransportRegistrationResolver compatibilityRegistrationResolver;
+    private transient TransportRegistrationResolver registrationResolver;
 
     public TransportRuntimeComposition(TransportConfig source) {
         this.transporterType = source.getTransporterType();
@@ -61,60 +61,20 @@ public class TransportRuntimeComposition {
         this.workerEndpointRegistry = source.getWorkerEndpointRegistry();
         this.endpointRegistryFactory = source.endpointRegistryFactory();
         this.systemEventChannelResolver = source.systemEventChannelResolver();
-        this.defaultWebSocketAdapterConfig = new WebSocketAdapterConfig(source.getDefaultWebSocketAdapterConfig());
-        this.defaultSocketAdapterConfig = new SocketAdapterConfig(source.getDefaultSocketAdapterConfig());
+        this.bundledWebSocketAdapterConfig = new WebSocketAdapterConfig(source.getBundledWebSocketAdapterConfig());
+        this.bundledSocketAdapterConfig = new SocketAdapterConfig(source.getBundledSocketAdapterConfig());
         this.workerTransportRuntimeFactory = source.getWorkerTransportRuntimeFactory();
-        this.transportAdapterBootstrap = source.getTransportAdapterBootstrap();
-        this.additionalTransportAdapterBootstraps = List.copyOf(source.getAdditionalTransportAdapterBootstraps());
+        this.primaryTransportAdapterBootstrap = source.getPrimaryTransportAdapterBootstrap();
+        this.supplementalTransportAdapterBootstraps = List.copyOf(source.getSupplementalTransportAdapterBootstraps());
     }
 
     public boolean isEnabled() {
-        return defaultWebSocketAdapterConfig.isEnabled()
-                || defaultWebSocketAdapterConfig.isServerEnabled()
-                || defaultSocketAdapterConfig.isEnabled()
-                || defaultSocketAdapterConfig.isServerEnabled()
-                || transportAdapterBootstrap != null
-                || !additionalTransportAdapterBootstraps.isEmpty();
-    }
-
-    /**
-     * @deprecated Prefer explicit adapter-owned runtime inspection through
-     * adapter configs. This transport-global helper reflects only the bundled
-     * default WebSocket adapter and is compatibility-only.
-     */
-    @Deprecated(forRemoval = false)
-    public boolean isTransportServerEnabled() {
-        return defaultWebSocketAdapterConfig.isServerEnabled();
-    }
-
-    /**
-     * @deprecated Prefer explicit adapter-owned runtime inspection through
-     * adapter configs. This transport-global helper reflects only the bundled
-     * default WebSocket adapter and is compatibility-only.
-     */
-    @Deprecated(forRemoval = false)
-    public int getTransportServerPort() {
-        return defaultWebSocketAdapterConfig.getServerPort();
-    }
-
-    /**
-     * @deprecated Prefer explicit adapter-owned runtime inspection through
-     * adapter configs. This transport-global helper reflects only the bundled
-     * default WebSocket adapter and is compatibility-only.
-     */
-    @Deprecated(forRemoval = false)
-    public int getMaxConnections() {
-        return defaultWebSocketAdapterConfig.getMaxConnections();
-    }
-
-    /**
-     * @deprecated Prefer explicit adapter-owned runtime inspection through
-     * adapter configs. This transport-global helper reflects only the bundled
-     * default WebSocket adapter and is compatibility-only.
-     */
-    @Deprecated(forRemoval = false)
-    public String getTransportEndpointPath() {
-        return defaultWebSocketAdapterConfig.getEndpointPath();
+        return bundledWebSocketAdapterConfig.isEnabled()
+                || bundledWebSocketAdapterConfig.isServerEnabled()
+                || bundledSocketAdapterConfig.isEnabled()
+                || bundledSocketAdapterConfig.isServerEnabled()
+                || primaryTransportAdapterBootstrap != null
+                || !supplementalTransportAdapterBootstraps.isEmpty();
     }
 
     public MessageTransporter<String, WorkerTransportMessage> createMessageTransporter() {
@@ -140,12 +100,12 @@ public class TransportRuntimeComposition {
         };
     }
 
-    public WebSocketAdapterConfig getDefaultWebSocketAdapterConfig() {
-        return new WebSocketAdapterConfig(defaultWebSocketAdapterConfig);
+    public WebSocketAdapterConfig getBundledWebSocketAdapterConfig() {
+        return new WebSocketAdapterConfig(bundledWebSocketAdapterConfig);
     }
 
-    public SocketAdapterConfig getDefaultSocketAdapterConfig() {
-        return new SocketAdapterConfig(defaultSocketAdapterConfig);
+    public SocketAdapterConfig getBundledSocketAdapterConfig() {
+        return new SocketAdapterConfig(bundledSocketAdapterConfig);
     }
 
     public WorkerEndpointRegistry resolveWorkerEndpointRegistry() {
@@ -189,32 +149,32 @@ public class TransportRuntimeComposition {
             throw new IllegalStateException(
                     "worker adapterId must be set before runtime start when a custom worker transport runtime factory is configured");
         }
-        return compatibilityRegistrationResolver().resolveRegistrationAdapterId(requestedAdapterId, transportHint);
+        return registrationResolver().resolveRegistrationAdapterId(requestedAdapterId, transportHint);
     }
 
     public List<TransportAdapterBootstrap<WorkerTransportMessage>> resolveTransportAdapterBootstraps() {
         List<TransportAdapterBootstrap<WorkerTransportMessage>> bootstraps = new ArrayList<>();
         bootstraps.add(resolvePrimaryTransportAdapterBootstrap());
-        bootstraps.add(resolveDefaultSocketTransportAdapterBootstrap());
-        bootstraps.addAll(additionalTransportAdapterBootstraps);
+        bootstraps.add(resolveBundledSocketTransportAdapterBootstrap());
+        bootstraps.addAll(supplementalTransportAdapterBootstraps);
         return List.copyOf(bootstraps);
     }
 
     TransportAdapterBootstrap<WorkerTransportMessage> resolvePrimaryTransportAdapterBootstrap() {
-        return transportAdapterBootstrap != null
-                ? transportAdapterBootstrap
-                : new WebSocketTransportAdapterBootstrap(defaultWebSocketAdapterConfig);
+        return primaryTransportAdapterBootstrap != null
+                ? primaryTransportAdapterBootstrap
+                : new WebSocketTransportAdapterBootstrap(bundledWebSocketAdapterConfig);
     }
 
-    TransportAdapterBootstrap<WorkerTransportMessage> resolveDefaultSocketTransportAdapterBootstrap() {
-        return new SocketTransportAdapterBootstrap(defaultSocketAdapterConfig);
+    TransportAdapterBootstrap<WorkerTransportMessage> resolveBundledSocketTransportAdapterBootstrap() {
+        return new SocketTransportAdapterBootstrap(bundledSocketAdapterConfig);
     }
 
-    private TransportRegistrationResolver compatibilityRegistrationResolver() {
-        if (compatibilityRegistrationResolver == null) {
-            compatibilityRegistrationResolver = new TransportRegistrationResolver(resolveRegistrationDescriptors());
+    private TransportRegistrationResolver registrationResolver() {
+        if (registrationResolver == null) {
+            registrationResolver = new TransportRegistrationResolver(resolveRegistrationDescriptors());
         }
-        return compatibilityRegistrationResolver;
+        return registrationResolver;
     }
 
     private List<TransportAdapterDescriptor> resolveRegistrationDescriptors() {
@@ -225,24 +185,24 @@ public class TransportRuntimeComposition {
                 java.util.Set.of("pull", "queue")
         ));
         TransportAdapterBootstrap<WorkerTransportMessage> primaryBootstrap = resolvePrimaryTransportAdapterBootstrap();
-        if (transportAdapterBootstrap != null) {
+        if (primaryTransportAdapterBootstrap != null) {
             TransportAdapterDescriptor primaryDescriptor = primaryBootstrap.descriptor();
             if (primaryDescriptor != null) {
                 descriptors.add(primaryDescriptor);
             }
-        } else if (defaultWebSocketAdapterConfig.isEnabled()) {
+        } else if (bundledWebSocketAdapterConfig.isEnabled()) {
             TransportAdapterDescriptor webSocketDescriptor = primaryBootstrap.descriptor();
             if (webSocketDescriptor != null) {
                 descriptors.add(webSocketDescriptor);
             }
         }
-        if (defaultSocketAdapterConfig.isEnabled()) {
-            TransportAdapterDescriptor socketDescriptor = resolveDefaultSocketTransportAdapterBootstrap().descriptor();
+        if (bundledSocketAdapterConfig.isEnabled()) {
+            TransportAdapterDescriptor socketDescriptor = resolveBundledSocketTransportAdapterBootstrap().descriptor();
             if (socketDescriptor != null) {
                 descriptors.add(socketDescriptor);
             }
         }
-        for (TransportAdapterBootstrap<WorkerTransportMessage> bootstrap : additionalTransportAdapterBootstraps) {
+        for (TransportAdapterBootstrap<WorkerTransportMessage> bootstrap : supplementalTransportAdapterBootstraps) {
             TransportAdapterDescriptor descriptor = bootstrap.descriptor();
             if (descriptor != null) {
                 descriptors.add(descriptor);

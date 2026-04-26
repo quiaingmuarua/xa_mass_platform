@@ -29,9 +29,6 @@ import java.util.function.Consumer;
  */
 public final class MassSdk {
 
-    private static final String API_MODE_UNSUPPORTED_MESSAGE =
-            "API-based transport is not implemented yet. Use queue/polling transport or provide a real transport adapter.";
-
     private MassSdk() {
     }
 
@@ -79,17 +76,6 @@ public final class MassSdk {
         );
     }
 
-    /**
-     * @deprecated API-based transport is not implemented and now fails fast.
-     */
-    @Deprecated(since = "2.0.0", forRemoval = false)
-    public static MassSdkApplication apiMode(int port,
-                                             String inputApiUrl,
-                                             String outputApiUrl,
-                                             String apiKey) {
-        throw new UnsupportedOperationException(API_MODE_UNSUPPORTED_MESSAGE);
-    }
-
     public static MassSdkApplication testMode(int port) {
         return new MassSdkApplication(MassApplicationBuilder.createTest(port));
     }
@@ -102,66 +88,9 @@ public final class MassSdk {
             this.delegate = Objects.requireNonNull(delegate, "delegate");
         }
 
-        /**
-         * @deprecated Prefer {@link #transport(Consumer)} with
-         * {@code webSocketAdapter(...).server(...)} so adapter-owned server
-         * settings stay on the concrete adapter rather than a transport-global
-         * convenience helper.
-         */
-        @Deprecated(forRemoval = false)
-        public Builder server(int port) {
-            return transport(transport -> transport.webSocketAdapter(webSocket -> webSocket.server(port)));
-        }
-
-        /**
-         * @deprecated Prefer {@link #transport(Consumer)} with
-         * {@code webSocketAdapter(...).server(...)} so adapter-owned server
-         * settings stay on the concrete adapter rather than a transport-global
-         * convenience helper.
-         */
-        @Deprecated(forRemoval = false)
-        public Builder server(int port, String transportEndpointPath) {
-            return transport(transport -> transport.webSocketAdapter(
-                    webSocket -> webSocket.server(port, transportEndpointPath)
-            ));
-        }
-
-        /**
-         * @deprecated Prefer {@link #transport(Consumer)} with
-         * {@code webSocketAdapter(...)} so adapter-owned server settings stay on
-         * the concrete adapter rather than transport-global compatibility helpers.
-         */
-        @Deprecated(forRemoval = false)
-        public Builder transportServer(int port) {
-            return transport(transport -> transport.webSocketAdapter(webSocket -> webSocket.server(port)));
-        }
-
-        /**
-         * @deprecated Prefer {@link #transport(Consumer)} with
-         * {@code webSocketAdapter(...)} so adapter-owned server settings stay on
-         * the concrete adapter rather than transport-global compatibility helpers.
-         */
-        @Deprecated(forRemoval = false)
-        public Builder transportServer(int port, String transportEndpointPath) {
-            return transport(transport -> transport.webSocketAdapter(
-                    webSocket -> webSocket.server(port, transportEndpointPath)
-            ));
-        }
-
         public Builder transport(Consumer<TransportOptions> configurator) {
             Objects.requireNonNull(configurator, "configurator");
             delegate.transport(inner -> configurator.accept(new TransportOptions(inner)));
-            return this;
-        }
-
-        /**
-         * @deprecated Prefer {@link #transport(Consumer)} so stable SDK code
-         * does not treat WebSocket naming as the primary transport boundary.
-         */
-        @Deprecated(forRemoval = false)
-        public Builder websocket(Consumer<WebSocketOptions> configurator) {
-            Objects.requireNonNull(configurator, "configurator");
-            delegate.websocket(inner -> configurator.accept(new WebSocketOptions(inner)));
             return this;
         }
 
@@ -215,17 +144,6 @@ public final class MassSdk {
             this.delegate = Objects.requireNonNull(delegate, "delegate");
         }
 
-        /**
-         * @deprecated Prefer explicit adapter toggles such as
-         * {@code webSocketAdapter(...)} or {@code socketAdapter(...)}. This
-         * transport-global helper mutates only the bundled default WebSocket
-         * adapter and is compatibility-only.
-         */
-        @Deprecated(forRemoval = false)
-        public TransportOptions enabled(boolean enabled) {
-            return webSocketAdapter(webSocket -> webSocket.enabled(enabled));
-        }
-
         public TransportOptions webSocketAdapter(Consumer<WebSocketAdapterOptions> configurator) {
             Objects.requireNonNull(configurator, "configurator");
             delegate.webSocketAdapter(inner -> configurator.accept(new WebSocketAdapterOptions(inner)));
@@ -239,60 +157,12 @@ public final class MassSdk {
         }
 
         /**
-         * @deprecated Prefer {@code webSocketAdapter(...).serverEnabled(...)} so
-         * adapter-owned server settings stay on the concrete adapter rather than
-         * a transport-global compatibility helper.
-         */
-        @Deprecated(forRemoval = false)
-        public TransportOptions transportServerEnabled(boolean enabled) {
-            return webSocketAdapter(webSocket -> webSocket.serverEnabled(enabled));
-        }
-
-        /**
-         * @deprecated Prefer {@code webSocketAdapter(...).endpointPath(...)} so
-         * adapter-owned server settings stay on the concrete adapter rather than
-         * a transport-global compatibility helper.
-         */
-        @Deprecated(forRemoval = false)
-        public TransportOptions transportEndpointPath(String transportEndpointPath) {
-            return webSocketAdapter(webSocket -> webSocket.endpointPath(transportEndpointPath));
-        }
-
-        /**
-         * Advanced embedding seam for replacing the default inbound transport
-         * server adapter.
-         */
-        /**
-         * @deprecated Prefer
-         * {@code webSocketAdapter(...).transportServerFactory(...)} so adapter
-         * bootstrap overrides stay attached to the concrete adapter rather than a
-         * transport-global compatibility helper.
-         */
-        @Deprecated(forRemoval = false)
-        public TransportOptions transportServerFactory(
-                TransportServerFactory<TransportServerFactoryContext> transportServerFactory) {
-            return webSocketAdapter(webSocket -> webSocket.transportServerFactory(transportServerFactory));
-        }
-
-        /**
          * Advanced embedding seam for replacing the assembled set of worker
          * transport bindings used by the runtime.
          */
         public TransportOptions workerTransportRuntimeFactory(WorkerTransportRuntimeFactory workerTransportRuntimeFactory) {
             delegate.workerTransportRuntimeFactory(workerTransportRuntimeFactory);
             return this;
-        }
-
-        /**
-         * @deprecated Prefer adapter-owned configuration such as
-         * {@code webSocketAdapter(...).maxConnections(...)} or
-         * {@code socketAdapter(...).maxConnections(...)}. This transport-global
-         * helper mutates only the bundled default WebSocket adapter and is
-         * compatibility-only.
-         */
-        @Deprecated(forRemoval = false)
-        public TransportOptions maxConnections(int maxConnections) {
-            return webSocketAdapter(webSocket -> webSocket.maxConnections(maxConnections));
         }
 
         public TransportOptions inputQueue(MessageQueue<String> inputQueue) {
@@ -305,18 +175,10 @@ public final class MassSdk {
             return this;
         }
 
-        public TransportOptions addTransportAdapterBootstrap(
+        public TransportOptions addSupplementalTransportAdapterBootstrap(
                 TransportAdapterBootstrap<WorkerTransportMessage> transportAdapterBootstrap) {
-            delegate.addTransportAdapterBootstrap(transportAdapterBootstrap);
+            delegate.addSupplementalTransportAdapterBootstrap(transportAdapterBootstrap);
             return this;
-        }
-
-        /**
-         * @deprecated API-based transport is not implemented and now fails fast.
-         */
-        @Deprecated(since = "2.0.0", forRemoval = false)
-        public TransportOptions apiMode(String inputApiUrl, String outputApiUrl, String apiKey) {
-            throw new UnsupportedOperationException(API_MODE_UNSUPPORTED_MESSAGE);
         }
 
         public TransportOptions queueMode() {
@@ -403,27 +265,6 @@ public final class MassSdk {
         public SocketAdapterOptions maxConnections(int maxConnections) {
             delegate.maxConnections(maxConnections);
             return this;
-        }
-    }
-
-    /**
-     * @deprecated Prefer {@link TransportOptions}; WebSocket is one adapter,
-     * not the stable SDK transport-composition naming boundary.
-     */
-    @Deprecated(forRemoval = false)
-    public static final class WebSocketOptions extends TransportOptions {
-
-        private WebSocketOptions(MassApplicationBuilder.WebSocketBuilder delegate) {
-            super(delegate);
-        }
-
-        /**
-         * @deprecated Prefer {@link TransportOptions#unwrap()}.
-         */
-        @Deprecated(forRemoval = false)
-        @Override
-        public MassApplicationBuilder.WebSocketBuilder unwrap() {
-            return (MassApplicationBuilder.WebSocketBuilder) super.unwrap();
         }
     }
 

@@ -16,7 +16,6 @@ public final class WebSocketAdapterConfig {
     private int maxConnections = 1000;
     private String endpointPath = "/ws";
     private TransportServerFactory<TransportServerFactoryContext> transportServerFactory;
-    private transient Runnable mutationListener;
 
     public WebSocketAdapterConfig() {
     }
@@ -37,7 +36,6 @@ public final class WebSocketAdapterConfig {
 
     public void setEnabled(boolean enabled) {
         this.enabled = enabled;
-        notifyMutation();
     }
 
     public boolean isServerEnabled() {
@@ -46,7 +44,6 @@ public final class WebSocketAdapterConfig {
 
     public void setServerEnabled(boolean serverEnabled) {
         this.serverEnabled = serverEnabled;
-        notifyMutation();
     }
 
     public int getServerPort() {
@@ -55,7 +52,6 @@ public final class WebSocketAdapterConfig {
 
     public void setServerPort(int serverPort) {
         this.serverPort = serverPort;
-        notifyMutation();
     }
 
     public int getMaxConnections() {
@@ -64,7 +60,6 @@ public final class WebSocketAdapterConfig {
 
     public void setMaxConnections(int maxConnections) {
         this.maxConnections = maxConnections;
-        notifyMutation();
     }
 
     public String getEndpointPath() {
@@ -73,7 +68,6 @@ public final class WebSocketAdapterConfig {
 
     public void setEndpointPath(String endpointPath) {
         this.endpointPath = Objects.requireNonNull(endpointPath, "endpointPath");
-        notifyMutation();
     }
 
     public TransportServerFactory<TransportServerFactoryContext> getTransportServerFactory() {
@@ -83,16 +77,5 @@ public final class WebSocketAdapterConfig {
     public void setTransportServerFactory(
             TransportServerFactory<TransportServerFactoryContext> transportServerFactory) {
         this.transportServerFactory = transportServerFactory;
-        notifyMutation();
-    }
-
-    public void setMutationListener(Runnable mutationListener) {
-        this.mutationListener = mutationListener;
-    }
-
-    private void notifyMutation() {
-        if (mutationListener != null) {
-            mutationListener.run();
-        }
     }
 }

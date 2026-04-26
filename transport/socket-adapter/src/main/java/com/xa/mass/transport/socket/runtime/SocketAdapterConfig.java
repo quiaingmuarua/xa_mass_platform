@@ -12,7 +12,6 @@ public final class SocketAdapterConfig {
     private int serverPort = 18089;
     private int maxConnections = 1000;
     private String bindHost = "0.0.0.0";
-    private transient Runnable mutationListener;
 
     public SocketAdapterConfig() {
     }
@@ -32,7 +31,6 @@ public final class SocketAdapterConfig {
 
     public void setEnabled(boolean enabled) {
         this.enabled = enabled;
-        notifyMutation();
     }
 
     public boolean isServerEnabled() {
@@ -41,7 +39,6 @@ public final class SocketAdapterConfig {
 
     public void setServerEnabled(boolean serverEnabled) {
         this.serverEnabled = serverEnabled;
-        notifyMutation();
     }
 
     public int getServerPort() {
@@ -50,7 +47,6 @@ public final class SocketAdapterConfig {
 
     public void setServerPort(int serverPort) {
         this.serverPort = serverPort;
-        notifyMutation();
     }
 
     public int getMaxConnections() {
@@ -59,7 +55,6 @@ public final class SocketAdapterConfig {
 
     public void setMaxConnections(int maxConnections) {
         this.maxConnections = maxConnections;
-        notifyMutation();
     }
 
     public String getBindHost() {
@@ -68,16 +63,5 @@ public final class SocketAdapterConfig {
 
     public void setBindHost(String bindHost) {
         this.bindHost = Objects.requireNonNull(bindHost, "bindHost");
-        notifyMutation();
-    }
-
-    public void setMutationListener(Runnable mutationListener) {
-        this.mutationListener = mutationListener;
-    }
-
-    private void notifyMutation() {
-        if (mutationListener != null) {
-            mutationListener.run();
-        }
     }
 }

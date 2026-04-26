@@ -1,6 +1,5 @@
 package com.xa.mass.transport.websocket.runtime;
 
-import com.xa.mass.base.channel.tranporter.MessageTransporter;
 import com.xa.mass.engine.worker.WorkerAdapter;
 import com.xa.mass.transport.websocket.dispatcher.WebSocketDispatcherContext;
 import com.xa.mass.transport.websocket.dispatcher.WebSocketInputProcessor;
@@ -44,24 +43,6 @@ public final class WebSocketEmbeddedRuntimeSupport {
         return new WebSocketDispatcherContext(
                 endpointRegistry,
                 new WebSocketTransportFrameCodec(),
-                taskResultIngestChannel,
-                systemEventChannel
-        );
-    }
-
-    /**
-     * @deprecated WebSocket runtime context no longer depends on a shared
-     * message transporter. Keep this overload only for compatibility with
-     * external embedders that still call the old helper shape.
-     */
-    @Deprecated(forRemoval = false)
-    public static WebSocketDispatchRuntimeContext createDispatcherContext(
-            MessageTransporter<String, WorkerTransportMessage> messageTransporter,
-            WorkerEndpointRegistry endpointRegistry,
-            TaskResultIngestChannel taskResultIngestChannel,
-            WorkerSystemEventChannel systemEventChannel) {
-        return createDispatcherContext(
-                endpointRegistry,
                 taskResultIngestChannel,
                 systemEventChannel
         );
