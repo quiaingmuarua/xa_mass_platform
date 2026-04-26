@@ -5,6 +5,7 @@ import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.engine.TaskManager;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
 import com.xa.mass.transport.model.TaskResultReport;
+import com.xa.mass.transport.model.TransportResultEnvelope;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -40,6 +41,18 @@ public final class RuntimeTaskResultIngestChannel implements TaskResultIngestCha
                 report.getErrorCode(),
                 report.getOutput()
         );
+    }
+
+    @Override
+    public boolean ingest(TransportResultEnvelope envelope) {
+        if (envelope == null) {
+            return false;
+        }
+        TaskResultReport report = envelope.getReport();
+        logger.debug("Ingest task result envelope: adapterId={}, workerId={}, endpointId={}, taskId={}, messageId={}",
+                envelope.getAdapterId(), envelope.getWorkerId(), envelope.getEndpointId(),
+                report.getTaskId(), report.getMessageId());
+        return ingest(report);
     }
 
     private String resolveEventCode(String taskId) {

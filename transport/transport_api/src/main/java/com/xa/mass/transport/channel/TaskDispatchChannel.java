@@ -1,6 +1,7 @@
 package com.xa.mass.transport.channel;
 
 import com.xa.mass.transport.model.TaskDispatchItem;
+import com.xa.mass.transport.model.DispatchOutcome;
 
 import java.util.List;
 
@@ -9,5 +10,5 @@ import java.util.List;
  */
 public interface TaskDispatchChannel {
 
-    void dispatchTaskItems(List<TaskDispatchItem> items);
+    List<DispatchOutcome> dispatchTaskItems(List<TaskDispatchItem> items);
 }

@@ -6,6 +6,11 @@ import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.transport.websocket.queue.WebSocketTransportFrameCodec;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.channel.NoopWorkerSystemEventChannel;
+import com.xa.mass.transport.model.DispatchOutcome;
+import com.xa.mass.transport.model.DispatchOutcomeStatus;
+import com.xa.mass.transport.model.TaskDispatchItem;
+import com.xa.mass.transport.runtime.delivery.InMemoryTransportDeliveryStore;
+import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
@@ -13,6 +18,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -32,11 +38,14 @@ class WebSocketTaskDispatchChannelTest {
                 NoopWorkerSystemEventChannel.INSTANCE
         );
 
-        WebSocketTaskDispatchChannel publisher = new WebSocketTaskDispatchChannel(context);
+        WebSocketTaskDispatchChannel publisher = new WebSocketTaskDispatchChannel(context, deliveryService());
         Task task = task();
         TaskMsg taskMsg = taskMsg();
 
-        publisher.dispatchTaskItems(List.of(com.xa.mass.transport.model.TaskDispatchItem.from(task, taskMsg)));
+        List<DispatchOutcome> outcomes = publisher.dispatchTaskItems(List.of(TaskDispatchItem.from(task, taskMsg)));
+
+        assertEquals(1, outcomes.size());
+        assertEquals(DispatchOutcomeStatus.SENT, outcomes.get(0).getStatus());
 
         ArgumentCaptor<String> captor = ArgumentCaptor.forClass(String.class);
         verify(endpointRegistry).sendMessage(org.mockito.ArgumentMatchers.eq("worker-1"), captor.capture());
@@ -61,6 +70,51 @@ class WebSocketTaskDispatchChannelTest {
         assertEquals("hello", sharedConfig.get("textContent").getAsString());
     }
 
+    @Test
+    void returnsEndpointOfflineWhenEndpointRegistryCannotSend() {
+        WorkerEndpointRegistry endpointRegistry = mock(WorkerEndpointRegistry.class);
+        when(endpointRegistry.sendMessage(org.mockito.ArgumentMatchers.eq("worker-1"), any())).thenReturn(false);
+        WebSocketTaskDispatchChannel publisher = new WebSocketTaskDispatchChannel(new WebSocketDispatcherContext(
+                endpointRegistry,
+                new WebSocketTransportFrameCodec(),
+                null,
+                NoopWorkerSystemEventChannel.INSTANCE
+        ), deliveryService());
+
+        List<DispatchOutcome> outcomes = publisher.dispatchTaskItems(List.of(TaskDispatchItem.from(task(), taskMsg())));
+
+        assertEquals(1, outcomes.size());
+        assertEquals(DispatchOutcomeStatus.ENDPOINT_OFFLINE, outcomes.get(0).getStatus());
+        assertTrue(outcomes.get(0).isRetryable());
+    }
+
+    @Test
+    void returnsAdapterUnavailableWhenRuntimeContextIsIncomplete() {
+        WebSocketTaskDispatchChannel publisher = new WebSocketTaskDispatchChannel(new WebSocketDispatcherContext(
+                null,
+                new WebSocketTransportFrameCodec(),
+                null,
+                NoopWorkerSystemEventChannel.INSTANCE
+        ), deliveryService());
+
+        List<DispatchOutcome> outcomes = publisher.dispatchTaskItems(List.of(TaskDispatchItem.from(task(), taskMsg())));
+
+        assertEquals(1, outcomes.size());
+        assertEquals(DispatchOutcomeStatus.ADAPTER_UNAVAILABLE, outcomes.get(0).getStatus());
+        assertTrue(outcomes.get(0).isRetryable());
+    }
+
+    @Test
+    void returnsAdapterUnavailableWhenRuntimeContextIsMissing() {
+        WebSocketTaskDispatchChannel publisher = new WebSocketTaskDispatchChannel(null, deliveryService());
+
+        List<DispatchOutcome> outcomes = publisher.dispatchTaskItems(List.of(TaskDispatchItem.from(task(), taskMsg())));
+
+        assertEquals(1, outcomes.size());
+        assertEquals(DispatchOutcomeStatus.ADAPTER_UNAVAILABLE, outcomes.get(0).getStatus());
+        assertTrue(outcomes.get(0).isRetryable());
+    }
+
     private Task task() {
         Task task = new Task();
         task.setTid("task-1");
@@ -78,5 +132,9 @@ class WebSocketTaskDispatchChannelTest {
         TaskMsg taskMsg = new TaskMsg("msg-1", "task-1", java.util.Map.of("target", "target-1"));
         taskMsg.applyLatestAttemptProjection("worker-1", "worker-context-1", "batch-0");
         return taskMsg;
+    }
+
+    private TransportDeliveryService deliveryService() {
+        return new TransportDeliveryService(new InMemoryTransportDeliveryStore());
     }
 }

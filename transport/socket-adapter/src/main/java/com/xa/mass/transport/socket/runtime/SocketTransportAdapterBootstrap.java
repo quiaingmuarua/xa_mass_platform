@@ -42,7 +42,11 @@ public final class SocketTransportAdapterBootstrap implements TransportAdapterBo
         TransportAdapterContribution.Builder contribution = TransportAdapterContribution.builder();
         if (config.isEnabled()) {
             contribution.transportBinding(TransportBinding.builder(
-                    new SocketRealtimeWorkerAdapter(new SocketTaskDispatchChannel(sessionManager, frameCodec))
+                    new SocketRealtimeWorkerAdapter(new SocketTaskDispatchChannel(
+                            sessionManager,
+                            frameCodec,
+                            context.getDeliveryService()
+                    ))
             ).build());
             contribution.rawWorkerMessageChannel(new SocketRawWorkerMessageChannel(sessionManager));
         }

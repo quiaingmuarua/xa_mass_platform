@@ -5,8 +5,12 @@ import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.listener.TaskMsgDispatchListener;
 import com.xa.mass.engine.worker.WorkerAdapter;
+import com.xa.mass.transport.model.DispatchOutcome;
+import com.xa.mass.transport.model.DispatchOutcomeStatus;
 import com.xa.mass.transport.runtime.TransportRuntimeRegistry;
 import com.xa.mass.transport.model.TaskDispatchItem;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.*;
 
@@ -15,6 +19,8 @@ import java.util.*;
  * worker's resolved adapter identity.
  */
 public class TransportRoutingTaskMsgDispatchListener implements TaskMsgDispatchListener {
+
+    private static final Logger logger = LoggerFactory.getLogger(TransportRoutingTaskMsgDispatchListener.class);
 
     private final WorkerManager workerManager;
     private final TransportRuntimeRegistry transportRuntimeRegistry;
@@ -38,7 +44,30 @@ public class TransportRoutingTaskMsgDispatchListener implements TaskMsgDispatchL
         }
 
         for (Map.Entry<WorkerAdapter, List<TaskDispatchItem>> entry : grouped.entrySet()) {
-            entry.getKey().dispatchTaskItems(List.copyOf(entry.getValue()));
+            List<DispatchOutcome> outcomes = entry.getKey().dispatchTaskItems(List.copyOf(entry.getValue()));
+            logDispatchOutcomes(entry.getKey(), outcomes);
+        }
+    }
+
+    private void logDispatchOutcomes(WorkerAdapter adapter, List<DispatchOutcome> outcomes) {
+        if (outcomes == null || outcomes.isEmpty()) {
+            return;
+        }
+        for (DispatchOutcome outcome : outcomes) {
+            if (outcome == null) {
+                continue;
+            }
+            if (outcome.getStatus() == DispatchOutcomeStatus.SENT
+                    || outcome.getStatus() == DispatchOutcomeStatus.QUEUED) {
+                logger.debug("Transport dispatch outcome: adapterId={}, workerId={}, taskId={}, messageId={}, status={}",
+                        outcome.getAdapterId(), outcome.getWorkerId(), outcome.getTaskId(), outcome.getMessageId(),
+                        outcome.getStatus());
+                continue;
+            }
+            logger.warn("Transport dispatch outcome: adapterId={}, workerId={}, taskId={}, messageId={}, status={}, retryable={}, reason={}, routedAdapter={}",
+                    outcome.getAdapterId(), outcome.getWorkerId(), outcome.getTaskId(), outcome.getMessageId(),
+                    outcome.getStatus(), outcome.isRetryable(), outcome.getReason(),
+                    adapter != null ? adapter.adapterId() : null);
         }
     }
 

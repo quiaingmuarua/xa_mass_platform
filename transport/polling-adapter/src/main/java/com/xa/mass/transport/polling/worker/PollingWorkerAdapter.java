@@ -4,18 +4,15 @@ import com.xa.mass.engine.worker.WorkerAdapter;
 import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.channel.TaskPullChannel;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
+import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.TaskDispatchItem;
+import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.ArrayDeque;
-import java.util.ArrayList;
-import java.util.Deque;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
 
 /**
  * Pull-based worker adapter for crawlers, queue consumers, and other workers
@@ -31,10 +28,12 @@ public class PollingWorkerAdapter implements WorkerAdapter, TaskPullChannel {
     public static final String PROTOCOL = "polling";
 
     private final WorkerSystemEventChannel systemEventChannel;
-    private final ConcurrentMap<String, Deque<TaskDispatchItem>> inboxByWorkerId = new ConcurrentHashMap<>();
+    private final TransportDeliveryService deliveryService;
 
-    public PollingWorkerAdapter(WorkerSystemEventChannel systemEventChannel) {
+    public PollingWorkerAdapter(WorkerSystemEventChannel systemEventChannel,
+                                TransportDeliveryService deliveryService) {
         this.systemEventChannel = Objects.requireNonNull(systemEventChannel, "systemEventChannel");
+        this.deliveryService = Objects.requireNonNull(deliveryService, "deliveryService");
     }
 
     @Override
@@ -48,25 +47,18 @@ public class PollingWorkerAdapter implements WorkerAdapter, TaskPullChannel {
     }
 
     @Override
-    public void dispatchTaskItems(List<TaskDispatchItem> items) {
+    public List<DispatchOutcome> dispatchTaskItems(List<TaskDispatchItem> items) {
         if (items == null || items.isEmpty()) {
-            return;
+            return List.of();
         }
-        for (TaskDispatchItem item : items) {
-            if (item == null || item.getWorkerId() == null || item.getWorkerId().isBlank()) {
-                continue;
-            }
-            String workerId = item.getWorkerId();
-            Deque<TaskDispatchItem> inbox = inbox(workerId);
-            synchronized (inbox) {
-                if (inbox.size() >= MAX_INBOX_SIZE) {
-                    logger.warn("Polling inbox for worker {} is full ({} items); dropping dispatch for messageId {}",
-                            workerId, inbox.size(), item.getMessageId());
-                    continue;
-                }
-                inbox.addLast(item);
+        List<DispatchOutcome> outcomes = deliveryService.enqueue(PROTOCOL, items, MAX_INBOX_SIZE);
+        for (DispatchOutcome outcome : outcomes) {
+            if (outcome.isRetryable()) {
+                logger.warn("Polling delivery rejected: workerId={}, messageId={}, status={}, reason={}",
+                        outcome.getWorkerId(), outcome.getMessageId(), outcome.getStatus(), outcome.getReason());
             }
         }
+        return outcomes;
     }
 
     @Override
@@ -74,25 +66,7 @@ public class PollingWorkerAdapter implements WorkerAdapter, TaskPullChannel {
         if (workerId == null || workerId.isBlank() || maxMessages <= 0) {
             return List.of();
         }
-        Deque<TaskDispatchItem> inbox = inboxByWorkerId.get(workerId);
-        if (inbox == null) {
-            return List.of();
-        }
-        List<TaskDispatchItem> polled = new ArrayList<>(Math.max(1, maxMessages));
-        synchronized (inbox) {
-            while (polled.size() < maxMessages) {
-                TaskDispatchItem item = inbox.pollFirst();
-                if (item == null) {
-                    break;
-                }
-                polled.add(item);
-            }
-            // Remove empty inboxes to prevent memory accumulation from offline workers.
-            if (inbox.isEmpty()) {
-                inboxByWorkerId.remove(workerId, inbox);
-            }
-        }
-        return List.copyOf(polled);
+        return deliveryService.drain(PROTOCOL, workerId, maxMessages);
     }
 
     public void announceWorkerOnline(String workerId, String reason) {
@@ -107,7 +81,4 @@ public class PollingWorkerAdapter implements WorkerAdapter, TaskPullChannel {
         systemEventChannel.publishWorkerHeartbeat(workerId, reason, workerId);
     }
 
-    private Deque<TaskDispatchItem> inbox(String workerId) {
-        return inboxByWorkerId.computeIfAbsent(workerId, ignored -> new ArrayDeque<>());
-    }
 }

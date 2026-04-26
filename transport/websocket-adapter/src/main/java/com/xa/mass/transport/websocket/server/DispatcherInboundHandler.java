@@ -2,6 +2,8 @@ package com.xa.mass.transport.websocket.server;
 
 import com.google.gson.JsonObject;
 import com.xa.mass.transport.websocket.queue.WebSocketTransportFrameCodec;
+import com.xa.mass.transport.websocket.dispatcher.WebSocketInboundMessage;
+import com.xa.mass.transport.websocket.dispatcher.WebSocketInboundMessageSink;
 import com.xa.mass.transport.websocket.session.ServerSessionManager;
 import com.xa.mass.transport.websocket.util.WebSocketStringValues;
 import io.netty.channel.ChannelHandlerContext;
@@ -14,16 +16,15 @@ import org.slf4j.LoggerFactory;
 
 import java.util.Map;
 import java.util.Objects;
-import java.util.function.Consumer;
 
 public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWebSocketFrame> {
     private static final Logger logger = LoggerFactory.getLogger(DispatcherInboundHandler.class);
     private final ServerSessionManager sessionManager;
     private final WebSocketTransportFrameCodec frameCodec;
-    private final Consumer<String> inboundMessageSink;
+    private final WebSocketInboundMessageSink inboundMessageSink;
 
     public DispatcherInboundHandler(WebSocketTransportFrameCodec frameCodec,
-                                    Consumer<String> inboundMessageSink,
+                                    WebSocketInboundMessageSink inboundMessageSink,
                                     ServerSessionManager sessionManager) {
         this.sessionManager = Objects.requireNonNull(sessionManager, "sessionManager");
         this.frameCodec = Objects.requireNonNull(frameCodec, "frameCodec");
@@ -70,7 +71,7 @@ public class DispatcherInboundHandler extends SimpleChannelInboundHandler<TextWe
                 org.slf4j.MDC.clear();
             }
             registerSessionIfNeeded(workerId, ctx);
-            inboundMessageSink.accept(raw);
+            inboundMessageSink.accept(WebSocketInboundMessage.of(raw, workerId, ctx.channel().id().asShortText()));
         } catch (Exception e) {
             logger.error("Unexpected error in channelRead0", e);
             sendError(ctx, "INTERNAL_ERROR", "Internal server error");

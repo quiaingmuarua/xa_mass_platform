@@ -19,7 +19,10 @@ public class DefaultWorkerTransportRuntimeFactory implements WorkerTransportRunt
     public TransportRuntimeRegistry create(WorkerTransportRuntimeFactoryContext context) {
         List<TransportBinding> bindings = new ArrayList<>();
 
-        PollingWorkerAdapter pollingAdapter = new PollingWorkerAdapter(context.getSystemEventChannel());
+        PollingWorkerAdapter pollingAdapter = new PollingWorkerAdapter(
+                context.getSystemEventChannel(),
+                context.getDeliveryService()
+        );
         bindings.add(TransportBinding.builder(pollingAdapter)
                 .taskPullChannel(pollingAdapter)
                 .build());

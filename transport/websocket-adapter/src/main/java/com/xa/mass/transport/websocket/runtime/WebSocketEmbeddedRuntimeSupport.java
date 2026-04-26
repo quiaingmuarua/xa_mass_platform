@@ -2,6 +2,7 @@ package com.xa.mass.transport.websocket.runtime;
 
 import com.xa.mass.engine.worker.WorkerAdapter;
 import com.xa.mass.transport.websocket.dispatcher.WebSocketDispatcherContext;
+import com.xa.mass.transport.websocket.dispatcher.WebSocketInboundMessageSink;
 import com.xa.mass.transport.websocket.dispatcher.WebSocketInputProcessor;
 import com.xa.mass.transport.websocket.dispatcher.context.WebSocketDispatchRuntimeContext;
 import com.xa.mass.transport.websocket.queue.WebSocketTransportFrameCodec;
@@ -15,10 +16,8 @@ import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
 import com.xa.mass.transport.channel.TaskDispatchChannel;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
-import com.xa.mass.transport.model.WorkerTransportMessage;
 import com.xa.mass.transport.runtime.TransportServerFactoryContext;
 
-import java.util.function.Consumer;
 
 /**
  * WebSocket-adapter-owned defaults for embedded runtime assembly.
@@ -63,11 +62,12 @@ public final class WebSocketEmbeddedRuntimeSupport {
                                                         String endpointPath,
                                                         WebSocketDispatchRuntimeContext dispatcherContext,
                                                         WorkerEndpointRegistry endpointRegistry) {
+        WebSocketInputProcessor inputProcessor = new WebSocketInputProcessor(dispatcherContext);
         return createTransportServer(
                 port,
                 endpointPath,
                 dispatcherContext.getFrameCodec(),
-                new WebSocketInputProcessor(dispatcherContext)::process,
+                inputProcessor::process,
                 endpointRegistry
         );
     }
@@ -111,7 +111,7 @@ public final class WebSocketEmbeddedRuntimeSupport {
     public static TransportServer createTransportServer(int port,
                                                         String endpointPath,
                                                         WebSocketTransportFrameCodec frameCodec,
-                                                        Consumer<String> inboundMessageSink,
+                                                        WebSocketInboundMessageSink inboundMessageSink,
                                                         WorkerEndpointRegistry endpointRegistry) {
         if (!(endpointRegistry instanceof ServerSessionManager sessionManager)) {
             throw new IllegalStateException("WebSocket transport requires a WebSocket-managed endpoint registry");
@@ -128,7 +128,7 @@ public final class WebSocketEmbeddedRuntimeSupport {
     public static TransportServer createTransportServer(int port,
                                                         String endpointPath,
                                                         WebSocketTransportFrameCodec frameCodec,
-                                                        Consumer<String> inboundMessageSink,
+                                                        WebSocketInboundMessageSink inboundMessageSink,
                                                         ServerSessionManager sessionManager) {
         return new WebSocketServerImpl(
                 port,

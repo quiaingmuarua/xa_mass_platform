@@ -10,6 +10,7 @@ import com.xa.mass.engine.model.TaskCreateRequestDto;
 import com.xa.mass.engine.storage.InMemoryTaskStorage;
 import com.xa.mass.engine.strategy.TaskScheduler;
 import com.xa.mass.transport.model.TaskResultReport;
+import com.xa.mass.transport.model.TransportResultEnvelope;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -109,6 +110,25 @@ class RuntimeTaskResultIngestChannelTest {
         assertEquals(TaskMsgStatus.SUCCESS, updated.getStatus());
         assertEquals("SUCCESS", updated.getOutput().get("status"));
         assertEquals("ok-from-report", updated.getOutput().get("mockData"));
+    }
+
+    @Test
+    void resultEnvelopeDelegatesToTaskResultLifecycleWithoutChangingSemantics() {
+        Task task = createRunningTask("task-envelope");
+        TaskMsg taskMsg = taskManager.getTaskMessages(task.getTid()).get(0);
+
+        boolean handled = channel.ingest(TransportResultEnvelope.fromReport(
+                "polling",
+                "worker-1",
+                "worker-1",
+                report(task, taskMsg, "SUCCESS", "ok-envelope", null)
+        ));
+
+        assertTrue(handled);
+        TaskMsg updated = taskManager.getTaskMessage(task.getTid(), taskMsg.getMessageId());
+        assertEquals(TaskMsgStatus.SUCCESS, updated.getStatus());
+        assertEquals("ok-envelope", updated.getOutput().get("mockData"));
+        assertEquals(TaskStatus.TERMINAL, taskManager.getTask(task.getTid()).getStatus());
     }
 
     private Task createRunningTask(String taskName) {

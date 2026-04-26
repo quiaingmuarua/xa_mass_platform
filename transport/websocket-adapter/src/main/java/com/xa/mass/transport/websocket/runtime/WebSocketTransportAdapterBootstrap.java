@@ -46,7 +46,7 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
         if (config.isEnabled()) {
             contribution.transportBinding(TransportBinding.builder(
                     WebSocketEmbeddedRuntimeSupport.createRealtimeWorkerAdapter(
-                            new WebSocketTaskDispatchChannel(dispatcherContext)
+                            new WebSocketTaskDispatchChannel(dispatcherContext, context.getDeliveryService())
                     )
             ).build());
             contribution.rawWorkerMessageChannel(new WebSocketRawWorkerMessageChannel(endpointRegistry));

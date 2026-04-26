@@ -1,6 +1,7 @@
 package com.xa.mass.transport.websocket.server;
 
 import com.xa.mass.transport.websocket.queue.WebSocketTransportFrameCodec;
+import com.xa.mass.transport.websocket.dispatcher.WebSocketInboundMessageSink;
 import com.xa.mass.transport.websocket.session.ServerSessionManager;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.*;
@@ -22,7 +23,6 @@ import org.slf4j.MDC;
 
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.function.Consumer;
 
 /**
  * Netty WebSocket transport ingress for the current WebSocket adapter.
@@ -41,7 +41,7 @@ public class WebSocketServerImpl implements MassWebSocketServer {
     private final String websocketPath;
     private final ServerSessionManager sessionManager;
     private final WebSocketTransportFrameCodec frameCodec;
-    private final Consumer<String> inboundMessageSink;
+    private final WebSocketInboundMessageSink inboundMessageSink;
     private EventLoopGroup bossGroup;
     private EventLoopGroup workerGroup;
     private volatile boolean running = false;
@@ -49,7 +49,7 @@ public class WebSocketServerImpl implements MassWebSocketServer {
     public WebSocketServerImpl(int port,
                                String websocketPath,
                                WebSocketTransportFrameCodec frameCodec,
-                               Consumer<String> inboundMessageSink,
+                               WebSocketInboundMessageSink inboundMessageSink,
                                ServerSessionManager sessionManager) {
         this.port = port;
         this.websocketPath = websocketPath;

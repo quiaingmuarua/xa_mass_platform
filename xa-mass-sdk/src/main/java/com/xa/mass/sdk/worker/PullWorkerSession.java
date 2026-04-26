@@ -5,6 +5,7 @@ import com.xa.mass.transport.channel.TaskResultIngestChannel;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
 import com.xa.mass.transport.model.TaskDispatchItem;
 import com.xa.mass.transport.model.TaskResultReport;
+import com.xa.mass.transport.model.TransportResultEnvelope;
 
 import java.util.List;
 import java.util.Map;
@@ -99,13 +100,19 @@ public class PullWorkerSession {
                                 String detail,
                                 String errorCode,
                                 Map<String, Object> output) {
-        return taskResultIngestChannel.ingest(new TaskResultReport(
+        TaskResultReport report = new TaskResultReport(
                 taskId,
                 messageId,
                 success,
                 detail,
                 errorCode,
                 output
+        );
+        return taskResultIngestChannel.ingest(TransportResultEnvelope.fromReport(
+                adapterId,
+                workerId,
+                workerId,
+                report
         ));
     }
 

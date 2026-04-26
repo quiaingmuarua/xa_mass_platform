@@ -1,6 +1,7 @@
 package com.xa.mass.transport.channel;
 
 import com.xa.mass.transport.model.TaskResultReport;
+import com.xa.mass.transport.model.TransportResultEnvelope;
 
 /**
  * Transport-neutral channel for ingesting task execution results from workers.
@@ -8,4 +9,11 @@ import com.xa.mass.transport.model.TaskResultReport;
 public interface TaskResultIngestChannel {
 
     boolean ingest(TaskResultReport report);
+
+    default boolean ingest(TransportResultEnvelope envelope) {
+        if (envelope == null) {
+            return false;
+        }
+        return ingest(envelope.getReport());
+    }
 }

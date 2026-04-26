@@ -6,6 +6,9 @@ import com.xa.mass.base.exception.ErrorCode;
 import com.xa.mass.base.exception.ValidationException;
 import com.xa.mass.transport.websocket.dispatcher.context.WebSocketDispatchRuntimeContext;
 import com.xa.mass.transport.model.TaskResultReport;
+import com.xa.mass.transport.model.TransportResultEnvelope;
+import com.xa.mass.transport.websocket.util.WebSocketStringValues;
+import com.xa.mass.transport.websocket.worker.WebSocketRealtimeWorkerAdapter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -24,13 +27,20 @@ public final class WebSocketInputProcessor {
     }
 
     public boolean process(String rawJson) {
+        return process(WebSocketInboundMessage.raw(rawJson));
+    }
+
+    public boolean process(WebSocketInboundMessage inboundMessage) {
         try {
-            JsonObject frame = context.getFrameCodec().parseObject(rawJson);
+            if (inboundMessage == null) {
+                return true;
+            }
+            JsonObject frame = context.getFrameCodec().parseObject(inboundMessage.getRawJson());
             if (frame == null) {
                 return true;
             }
             if (context.getFrameCodec().isCanonicalTaskResult(frame)) {
-                return processCanonicalTaskResult(frame);
+                return processCanonicalTaskResult(frame, inboundMessage);
             }
             return processUnknownFrame();
         } catch (Exception ex) {
@@ -39,14 +49,22 @@ public final class WebSocketInputProcessor {
         }
     }
 
-    private boolean processCanonicalTaskResult(JsonObject frame) {
+    private boolean processCanonicalTaskResult(JsonObject frame, WebSocketInboundMessage inboundMessage) {
         if (context.getTaskResultIngestChannel() == null) {
             logger.warn("Canonical task result ignored because task result ingest channel is unavailable");
             return true;
         }
         try {
             TaskResultReport report = context.getFrameCodec().decodeCanonicalTaskResult(frame);
-            context.getTaskResultIngestChannel().ingest(report);
+            context.getTaskResultIngestChannel().ingest(TransportResultEnvelope.fromReport(
+                    WebSocketRealtimeWorkerAdapter.PROTOCOL,
+                    WebSocketStringValues.firstNonBlank(
+                            context.getFrameCodec().extractWorkerId(frame),
+                            inboundMessage.getWorkerId()
+                    ),
+                    inboundMessage.getEndpointId(),
+                    report
+            ));
         } catch (IllegalArgumentException ex) {
             logger.warn("Canonical task result rejected: {}", ex.getMessage());
         }

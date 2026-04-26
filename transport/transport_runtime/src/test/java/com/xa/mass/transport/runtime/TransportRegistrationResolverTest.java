@@ -142,7 +142,11 @@ class TransportRegistrationResolverTest {
         }
 
         @Override
-        public void dispatchTaskItems(java.util.List<com.xa.mass.transport.model.TaskDispatchItem> items) {
+        public java.util.List<com.xa.mass.transport.model.DispatchOutcome> dispatchTaskItems(
+                java.util.List<com.xa.mass.transport.model.TaskDispatchItem> items) {
+            return items == null ? java.util.List.of() : items.stream()
+                    .map(item -> com.xa.mass.transport.model.DispatchOutcome.sent(adapterId(), item))
+                    .toList();
         }
     }
 }

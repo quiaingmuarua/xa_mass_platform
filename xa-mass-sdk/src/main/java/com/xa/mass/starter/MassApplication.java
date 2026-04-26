@@ -21,6 +21,8 @@ import com.xa.mass.transport.runtime.TransportBinding;
 import com.xa.mass.transport.runtime.RuntimeTaskResultIngestChannel;
 import com.xa.mass.transport.runtime.TransportRuntimeRegistry;
 import com.xa.mass.transport.runtime.WorkerTransportRuntimeFactoryContext;
+import com.xa.mass.transport.runtime.delivery.InMemoryTransportDeliveryStore;
+import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
 import com.xa.mass.transport.TransportServer;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
@@ -132,6 +134,8 @@ public class MassApplication {
             }
 
             WorkerSystemEventChannel systemEventChannel = transportRuntimeComposition.resolveSystemEventChannel();
+            TransportDeliveryService deliveryService =
+                    new TransportDeliveryService(new InMemoryTransportDeliveryStore());
             TaskMsgDispatchListener taskMsgDispatchListener = null;
             TaskResultIngestChannel taskResultIngestChannel = null;
             List<TransportBinding> adapterBindings = new ArrayList<>();
@@ -147,7 +151,8 @@ public class MassApplication {
                                 messageTransporter,
                                 endpointRegistry,
                                 taskResultIngestChannel,
-                                systemEventChannel
+                                systemEventChannel,
+                                deliveryService
                         )
                 );
                 registerTransportContribution(contribution, adapterBindings);
@@ -160,6 +165,7 @@ public class MassApplication {
                                 engineConfig.getWorkerManager(),
                                 taskResultIngestChannel,
                                 systemEventChannel,
+                                deliveryService,
                                 adapterBindings
                         )
                 );

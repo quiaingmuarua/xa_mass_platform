@@ -4,6 +4,7 @@ import com.xa.mass.base.channel.tranporter.MessageTransporter;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
+import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
 
 import java.util.Objects;
 
@@ -16,15 +17,18 @@ public final class TransportAdapterBootstrapContext<T> {
     private final WorkerEndpointRegistry endpointRegistry;
     private final TaskResultIngestChannel taskResultIngestChannel;
     private final WorkerSystemEventChannel systemEventChannel;
+    private final TransportDeliveryService deliveryService;
 
     public TransportAdapterBootstrapContext(MessageTransporter<String, T> messageTransporter,
                                             WorkerEndpointRegistry endpointRegistry,
                                             TaskResultIngestChannel taskResultIngestChannel,
-                                            WorkerSystemEventChannel systemEventChannel) {
+                                            WorkerSystemEventChannel systemEventChannel,
+                                            TransportDeliveryService deliveryService) {
         this.messageTransporter = messageTransporter;
         this.endpointRegistry = Objects.requireNonNull(endpointRegistry, "endpointRegistry");
         this.taskResultIngestChannel = taskResultIngestChannel;
         this.systemEventChannel = Objects.requireNonNull(systemEventChannel, "systemEventChannel");
+        this.deliveryService = Objects.requireNonNull(deliveryService, "deliveryService");
     }
 
     /**
@@ -49,5 +53,9 @@ public final class TransportAdapterBootstrapContext<T> {
 
     public WorkerSystemEventChannel getSystemEventChannel() {
         return systemEventChannel;
+    }
+
+    public TransportDeliveryService getDeliveryService() {
+        return deliveryService;
     }
 }

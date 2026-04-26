@@ -5,6 +5,8 @@ import com.xa.mass.transport.websocket.queue.WebSocketTransportFrameCodec;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.channel.NoopWorkerSystemEventChannel;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
+import com.xa.mass.transport.model.TaskResultReport;
+import com.xa.mass.transport.model.TransportResultEnvelope;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -52,22 +54,69 @@ class WebSocketInputProcessorTest {
 
     @Test
     void canonicalTaskResultIngestsWithoutOutput() {
-        AtomicReference<com.xa.mass.transport.model.TaskResultReport> capturedReport = new AtomicReference<>();
-        context = createContext(report -> {
-            capturedReport.set(report);
-            return true;
+        AtomicReference<TransportResultEnvelope> capturedEnvelope = new AtomicReference<>();
+        context = createContext(new TaskResultIngestChannel() {
+            @Override
+            public boolean ingest(TaskResultReport report) {
+                return true;
+            }
+
+            @Override
+            public boolean ingest(TransportResultEnvelope envelope) {
+                capturedEnvelope.set(envelope);
+                return true;
+            }
         });
         inputProcessor = new WebSocketInputProcessor(context);
 
         boolean result = inputProcessor.process(canonicalTaskResultFrame("task-1", "msg-1", true, "ok"));
 
         assertTrue(result);
-        assertNotNull(capturedReport.get());
-        assertEquals("task-1", capturedReport.get().getTaskId());
-        assertEquals("msg-1", capturedReport.get().getMessageId());
-        assertTrue(capturedReport.get().isSuccess());
-        assertEquals("ok", capturedReport.get().getDetail());
-        assertEquals("SUCCESS", capturedReport.get().getOutput().get("status"));
+        assertNotNull(capturedEnvelope.get());
+        assertEquals("websocket", capturedEnvelope.get().getAdapterId());
+        assertEquals("worker-1", capturedEnvelope.get().getWorkerId());
+        assertEquals("task-1", capturedEnvelope.get().getTaskId());
+        assertEquals("msg-1", capturedEnvelope.get().getMessageId());
+        assertTrue(capturedEnvelope.get().getReport().isSuccess());
+        assertEquals("ok", capturedEnvelope.get().getReport().getDetail());
+        assertEquals("SUCCESS", capturedEnvelope.get().getReport().getOutput().get("status"));
+    }
+
+    @Test
+    void canonicalTaskResultUsesInboundMetadataWhenFrameOmitsWorkerId() {
+        AtomicReference<TransportResultEnvelope> capturedEnvelope = new AtomicReference<>();
+        context = createContext(new TaskResultIngestChannel() {
+            @Override
+            public boolean ingest(TaskResultReport report) {
+                return true;
+            }
+
+            @Override
+            public boolean ingest(TransportResultEnvelope envelope) {
+                capturedEnvelope.set(envelope);
+                return true;
+            }
+        });
+        inputProcessor = new WebSocketInputProcessor(context);
+
+        JsonObject frame = new JsonObject();
+        frame.addProperty("messageId", "msg-1");
+        frame.addProperty("taskId", "task-1");
+        frame.addProperty("success", true);
+        frame.addProperty("detail", "ok");
+
+        boolean result = inputProcessor.process(WebSocketInboundMessage.of(
+                codec.getGson().toJson(frame),
+                "worker-from-handshake",
+                "endpoint-1"
+        ));
+
+        assertTrue(result);
+        assertNotNull(capturedEnvelope.get());
+        assertEquals("worker-from-handshake", capturedEnvelope.get().getWorkerId());
+        assertEquals("endpoint-1", capturedEnvelope.get().getEndpointId());
+        assertEquals("task-1", capturedEnvelope.get().getTaskId());
+        assertEquals("msg-1", capturedEnvelope.get().getMessageId());
     }
 
     private WebSocketDispatcherContext createContext(TaskResultIngestChannel taskResultIngestChannel) {

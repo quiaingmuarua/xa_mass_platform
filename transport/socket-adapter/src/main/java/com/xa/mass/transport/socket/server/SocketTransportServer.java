@@ -5,8 +5,10 @@ import com.xa.mass.transport.TransportServer;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
 import com.xa.mass.transport.channel.WorkerSystemEventChannel;
 import com.xa.mass.transport.model.TaskResultReport;
+import com.xa.mass.transport.model.TransportResultEnvelope;
 import com.xa.mass.transport.socket.protocol.SocketTransportFrameCodec;
 import com.xa.mass.transport.socket.session.SocketSessionManager;
+import com.xa.mass.transport.socket.worker.SocketRealtimeWorkerAdapter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -167,7 +169,12 @@ public final class SocketTransportServer implements TransportServer {
                         continue;
                     }
                     TaskResultReport report = frameCodec.decodeCanonicalTaskResult(frame);
-                    taskResultIngestChannel.ingest(report);
+                    taskResultIngestChannel.ingest(TransportResultEnvelope.fromReport(
+                            SocketRealtimeWorkerAdapter.PROTOCOL,
+                            boundWorkerId,
+                            endpointId,
+                            report
+                    ));
                     continue;
                 }
                 logger.warn("Ignoring unsupported socket frame: endpointId={}, workerId={}", endpointId, boundWorkerId);

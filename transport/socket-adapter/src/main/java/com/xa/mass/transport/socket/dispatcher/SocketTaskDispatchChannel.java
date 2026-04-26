@@ -1,9 +1,12 @@
 package com.xa.mass.transport.socket.dispatcher;
 
 import com.xa.mass.transport.channel.TaskDispatchChannel;
+import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.TaskDispatchItem;
+import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
 import com.xa.mass.transport.socket.protocol.SocketTransportFrameCodec;
 import com.xa.mass.transport.socket.session.SocketSessionManager;
+import com.xa.mass.transport.socket.worker.SocketRealtimeWorkerAdapter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -19,23 +22,34 @@ public final class SocketTaskDispatchChannel implements TaskDispatchChannel {
 
     private final SocketSessionManager sessionManager;
     private final SocketTransportFrameCodec frameCodec;
+    private final TransportDeliveryService deliveryService;
 
-    public SocketTaskDispatchChannel(SocketSessionManager sessionManager, SocketTransportFrameCodec frameCodec) {
+    public SocketTaskDispatchChannel(SocketSessionManager sessionManager,
+                                     SocketTransportFrameCodec frameCodec,
+                                     TransportDeliveryService deliveryService) {
         this.sessionManager = Objects.requireNonNull(sessionManager, "sessionManager");
         this.frameCodec = Objects.requireNonNull(frameCodec, "frameCodec");
+        this.deliveryService = Objects.requireNonNull(deliveryService, "deliveryService");
     }
 
     @Override
-    public void dispatchTaskItems(List<TaskDispatchItem> items) {
+    public List<DispatchOutcome> dispatchTaskItems(List<TaskDispatchItem> items) {
         if (items == null || items.isEmpty()) {
-            return;
+            return List.of();
         }
-        for (TaskDispatchItem item : items) {
-            String rawJson = frameCodec.encodeCanonicalTaskDispatch(item);
-            if (!sessionManager.sendMessage(item.getWorkerId(), rawJson)) {
-                logger.warn("Socket outbound skipped because endpoint is unavailable: workerId={}, messageId={}",
-                        item.getWorkerId(), item.getMessageId());
-            }
-        }
+        return deliveryService.sendDirect(
+                SocketRealtimeWorkerAdapter.PROTOCOL,
+                items,
+                item -> {
+                    String rawJson = frameCodec.encodeCanonicalTaskDispatch(item);
+                    boolean sent = sessionManager.sendMessage(item.getWorkerId(), rawJson);
+                    if (!sent) {
+                        logger.warn("Socket outbound skipped because endpoint is unavailable: workerId={}, messageId={}",
+                                item.getWorkerId(), item.getMessageId());
+                    }
+                    return sent;
+                },
+                "socket dispatch channel is unavailable"
+        );
     }
 }

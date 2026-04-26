@@ -64,6 +64,8 @@ import com.xa.mass.transport.runtime.TransportRegistrationResolver;
 import com.xa.mass.transport.runtime.TransportRuntimeRegistry;
 import com.xa.mass.transport.runtime.TransportServerFactoryContext;
 import com.xa.mass.transport.runtime.WorkerTransportRuntimeFactory;
+import com.xa.mass.transport.runtime.delivery.InMemoryTransportDeliveryStore;
+import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
 import com.xa.mass.engine.worker.WorkerAdapter;
 import com.xa.mass.transport.TransportServer;
 import com.xa.mass.transport.TransportServerFactory;
@@ -341,7 +343,8 @@ class MassSdkTest {
                         null,
                         new CompositeWorkerEndpointRegistry(),
                         null,
-                        new RuntimeEventBusWorkerSystemEventChannel()
+                        new RuntimeEventBusWorkerSystemEventChannel(),
+                        deliveryService()
                 )
         );
 
@@ -363,7 +366,8 @@ class MassSdkTest {
                         null,
                         new CompositeWorkerEndpointRegistry(),
                         mock(TaskResultIngestChannel.class),
-                        new RuntimeEventBusWorkerSystemEventChannel()
+                        new RuntimeEventBusWorkerSystemEventChannel(),
+                        deliveryService()
                 )
         );
 
@@ -2180,6 +2184,10 @@ class MassSdkTest {
                 .orElseThrow(() -> new AssertionError("Missing adapter bootstrap for " + adapterId));
     }
 
+    private static TransportDeliveryService deliveryService() {
+        return new TransportDeliveryService(new InMemoryTransportDeliveryStore());
+    }
+
     private static <T> T readField(Object target, String fieldName, Class<T> fieldType) {
         try {
             java.lang.reflect.Field field = target.getClass().getDeclaredField(fieldName);
@@ -2262,8 +2270,10 @@ class MassSdkTest {
         }
 
         @Override
-        public void dispatchTaskItems(List<TaskDispatchItem> items) {
-            // no-op
+        public List<com.xa.mass.transport.model.DispatchOutcome> dispatchTaskItems(List<TaskDispatchItem> items) {
+            return items == null ? List.of() : items.stream()
+                    .map(item -> com.xa.mass.transport.model.DispatchOutcome.sent(adapterId(), item))
+                    .toList();
         }
     }
 
@@ -2298,8 +2308,10 @@ class MassSdkTest {
         }
 
         @Override
-        public void dispatchTaskItems(List<TaskDispatchItem> items) {
-            // no-op
+        public List<com.xa.mass.transport.model.DispatchOutcome> dispatchTaskItems(List<TaskDispatchItem> items) {
+            return items == null ? List.of() : items.stream()
+                    .map(item -> com.xa.mass.transport.model.DispatchOutcome.sent(adapterId(), item))
+                    .toList();
         }
 
         @Override
