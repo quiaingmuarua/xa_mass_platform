@@ -92,6 +92,8 @@ MASS_EVENT_CODE=crawler.fetch-page
 
 Default Java environment:
 
+Java worker samples require JDK 21 and compile with `maven.compiler.release=21`.
+
 ```text
 MASS_BASE_URL=http://127.0.0.1:8088
 MASS_WORKER_ID=java-worker-api-001

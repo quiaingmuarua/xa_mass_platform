@@ -13,6 +13,7 @@ Current runtime entry:
 - Spring Boot app: `xa-mass-dev-app/src/main/java/com/xa/mass/mock/MockApplicationSpringBootApp.java`
 - SDK entry: `xa-mass-sdk/src/main/java/com/xa/mass/sdk/MassSdk.java`
 - Embedded runtime composition: `xa-mass-sdk/src/main/java/com/xa/mass/starter/MassApplication.java`
+- Java baseline: JDK 21 / `maven.compiler.release=21`
 
 Current module set from the root reactor:
 
@@ -37,6 +38,7 @@ Do not treat removed historical modules or archive/v2 references as missing curr
 Run from repo root:
 
 ```bash
+java -version
 ./mvnw -DskipTests compile
 cd frontend && corepack pnpm build && cd ..
 java -cp "xa-mass-dev-app/target/classes:xa-mass-sdk/target/classes:xa-mass-sdk-api/target/classes:xa-mass-web/target/classes:xa-mass-engine/target/classes:transport/websocket-adapter/target/classes:transport/transport_api/target/classes:transport/polling-adapter/target/classes:transport/transport_runtime/target/classes:xa-mass-core/target/classes:<runtime-classpath>" \
@@ -198,6 +200,7 @@ external processes across:
 
 - polling + websocket + socket
 - Node.js + Java
+- Java worker samples compile and run on JDK 21
 - worker online/offline perception
 - task dispatch, result ingest, and terminal convergence
 - realtime adapter coexistence without cross-routing
