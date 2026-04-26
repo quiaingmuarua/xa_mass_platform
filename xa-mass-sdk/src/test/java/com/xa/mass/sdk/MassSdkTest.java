@@ -507,7 +507,14 @@ class MassSdkTest {
                 "outputQueue", 5,
                 "inputQueueSize", 2,
                 "outputQueueSize", 5,
-                "transporterAvailable", true
+                "transporterAvailable", true,
+                "deliveryQueue", Map.of(
+                        "available", true,
+                        "queuedItems", 1,
+                        "queueCount", 1,
+                        "waitingPollers", 0,
+                        "maxQueuedItems", 100
+                )
         ));
         when(delegate.getEndpointRegistry()).thenReturn(endpointRegistry);
         when(delegate.sendRawTransportMessage(anyString(), anyString(), anyString())).thenReturn(true);
@@ -521,6 +528,7 @@ class MassSdkTest {
         assertEquals(2, queueDetail.get("inputQueue"));
         assertEquals(5, queueDetail.get("outputQueue"));
         assertEquals(true, queueDetail.get("transporterAvailable"));
+        assertEquals(1, ((Map<?, ?>) queueDetail.get("deliveryQueue")).get("queuedItems"));
         assertEquals(0, sessionStats.get("activeConnections"));
         assertEquals(0L, sessionStats.get("workerCount"));
         assertEquals(true, enqueueResult.get("success"));
@@ -561,6 +569,12 @@ class MassSdkTest {
             assertEquals(false, app.getQueueDetail().get("transporterAvailable"));
             assertEquals(-1, app.getQueueDetail().get("inputQueue"));
             assertEquals(-1, app.getQueueDetail().get("outputQueue"));
+            Map<?, ?> deliveryQueue = (Map<?, ?>) app.getQueueDetail().get("deliveryQueue");
+            assertEquals(true, deliveryQueue.get("available"));
+            assertEquals(0, deliveryQueue.get("queuedItems"));
+            assertEquals(0, deliveryQueue.get("queueCount"));
+            assertEquals(0, deliveryQueue.get("waitingPollers"));
+            assertEquals(100_000, deliveryQueue.get("maxQueuedItems"));
         } finally {
             app.stop();
         }

@@ -654,7 +654,14 @@ Response shape:
   "data": {
     "inputQueueSize": 0,
     "outputQueueSize": 0,
-    "transporterAvailable": true
+    "transporterAvailable": true,
+    "deliveryQueue": {
+      "available": true,
+      "queuedItems": 0,
+      "queueCount": 0,
+      "waitingPollers": 0,
+      "maxQueuedItems": 100000
+    }
   }
 }
 ```
@@ -666,6 +673,9 @@ Notes:
 - `transporterAvailable` may be `false`, with queue sizes reported as `-1`,
   when the embedded runtime is assembled through adapter-native paths without a
   shared message transporter
+- `deliveryQueue` is the runtime delivery-store diagnostic surface. It reports
+  shared dispatch backlog and polling waiters, not engine-owned task lifecycle
+  or retry state.
 
 ### 4.3 Queue Metrics
 

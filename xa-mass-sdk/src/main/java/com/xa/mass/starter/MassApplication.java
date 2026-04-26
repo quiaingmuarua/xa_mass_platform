@@ -25,6 +25,7 @@ import com.xa.mass.transport.runtime.TransportRuntimeRegistry;
 import com.xa.mass.transport.runtime.WorkerTransportRuntimeFactoryContext;
 import com.xa.mass.transport.runtime.delivery.InMemoryTransportDeliveryStore;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryService;
+import com.xa.mass.transport.runtime.delivery.TransportDeliveryStoreStats;
 import com.xa.mass.transport.TransportServer;
 import com.xa.mass.transport.WorkerEndpointRegistry;
 import com.xa.mass.transport.channel.TaskResultIngestChannel;
@@ -362,7 +363,29 @@ public class MassApplication {
         map.put("inputQueueSize", inputSize);
         map.put("outputQueueSize", outputSize);
         map.put("transporterAvailable", messageTransporter != null);
+        map.put("deliveryQueue", getTransportDeliveryQueueDetail());
         return Map.copyOf(map);
+    }
+
+    private Map<String, Object> getTransportDeliveryQueueDetail() {
+        TransportDeliveryService deliveryService = transportDeliveryService;
+        if (deliveryService == null) {
+            return Map.of(
+                    "available", false,
+                    "queuedItems", 0,
+                    "queueCount", 0,
+                    "waitingPollers", 0,
+                    "maxQueuedItems", 0
+            );
+        }
+        TransportDeliveryStoreStats stats = deliveryService.stats();
+        return Map.of(
+                "available", true,
+                "queuedItems", stats.getQueuedItems(),
+                "queueCount", stats.getQueueCount(),
+                "waitingPollers", stats.getWaitingPollers(),
+                "maxQueuedItems", stats.getMaxQueuedItems()
+        );
     }
 
     public WorkerEndpointRegistry getEndpointRegistry() {

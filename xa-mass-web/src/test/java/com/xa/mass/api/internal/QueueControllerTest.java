@@ -43,4 +43,29 @@ class QueueControllerTest {
                 .andExpect(jsonPath("$.data.inputQueue").value(3))
                 .andExpect(jsonPath("$.data.outputQueue").value(7));
     }
+
+    @Test
+    void queueDetailIncludesRuntimeDeliveryStats() throws Exception {
+        when(transportOperations.getQueueDetail()).thenReturn(Map.of(
+                "inputQueue", -1,
+                "outputQueue", -1,
+                "transporterAvailable", false,
+                "deliveryQueue", Map.of(
+                        "available", true,
+                        "queuedItems", 4,
+                        "queueCount", 2,
+                        "waitingPollers", 1,
+                        "maxQueuedItems", 100_000
+                )
+        ));
+
+        mockMvc.perform(get("/api/queue/detail"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.deliveryQueue.available").value(true))
+                .andExpect(jsonPath("$.data.deliveryQueue.queuedItems").value(4))
+                .andExpect(jsonPath("$.data.deliveryQueue.queueCount").value(2))
+                .andExpect(jsonPath("$.data.deliveryQueue.waitingPollers").value(1))
+                .andExpect(jsonPath("$.data.deliveryQueue.maxQueuedItems").value(100000));
+    }
 }
