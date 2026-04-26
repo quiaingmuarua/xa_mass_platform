@@ -27,6 +27,7 @@ class TransportDeliveryServiceTest {
         );
 
         assertEquals(List.of(DispatchOutcomeStatus.SENT), statuses(outcomes));
+        assertEquals(1L, service.stats().getDirectSentItems());
     }
 
     @Test
@@ -42,6 +43,7 @@ class TransportDeliveryServiceTest {
 
         assertEquals(DispatchOutcomeStatus.ENDPOINT_OFFLINE, outcomes.get(0).getStatus());
         assertTrue(outcomes.get(0).isRetryable());
+        assertEquals(1L, service.stats().getDirectOfflineItems());
     }
 
     @Test
@@ -57,6 +59,7 @@ class TransportDeliveryServiceTest {
 
         assertEquals(DispatchOutcomeStatus.ADAPTER_UNAVAILABLE, outcomes.get(0).getStatus());
         assertEquals("dispatcher context is unavailable", outcomes.get(0).getReason());
+        assertEquals(1L, service.stats().getDirectUnavailableItems());
     }
 
     @Test
@@ -76,6 +79,7 @@ class TransportDeliveryServiceTest {
 
         assertEquals(DispatchOutcomeStatus.INVALID_ITEM, outcomes.get(0).getStatus());
         assertFalse(called.get());
+        assertEquals(1L, service.stats().getDirectInvalidItems());
     }
 
     @Test
@@ -94,6 +98,7 @@ class TransportDeliveryServiceTest {
         assertEquals(DispatchOutcomeStatus.FAILED, outcomes.get(0).getStatus());
         assertTrue(outcomes.get(0).isRetryable());
         assertEquals("write failed", outcomes.get(0).getReason());
+        assertEquals(1L, service.stats().getDirectFailedItems());
     }
 
     @Test
@@ -118,6 +123,7 @@ class TransportDeliveryServiceTest {
         assertEquals(0L, stats.getOldestQueuedAgeMillis());
         assertEquals(1L, stats.getEnqueuedItems());
         assertEquals(0L, stats.getDrainedItems());
+        assertEquals(0L, stats.getDirectSentItems());
     }
 
     @Test

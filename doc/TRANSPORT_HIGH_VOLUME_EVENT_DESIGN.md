@@ -201,6 +201,8 @@ High-volume transport must expose enough data to answer operational questions:
 - how old the oldest queued delivery is
 - how many delivery records were accepted, drained, rejected, invalid,
   unavailable, or cleared during shutdown
+- how many direct-send deliveries were sent, offline, failed, invalid, or
+  unavailable
 - are transport/event executors available
 - how many runtime tasks were submitted, completed, active, pending, rejected
 - what are executor pending caps
@@ -210,7 +212,7 @@ Next diagnostic fields to add when the store supports them:
 - per-adapter queued counts
 - per-adapter waiting pollers
 - per-adapter backpressure count
-- direct-send success/offline/failure counters
+- per-adapter direct-send counters
 
 Diagnostics are not lifecycle state. They guide capacity, alerting, and load
 testing.

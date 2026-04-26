@@ -162,6 +162,9 @@ public final class SdkTransportLoadRunner {
                         deliveryQueue.drainedItems(),
                         deliveryQueue.backpressureRejectedItems(),
                         deliveryQueue.oldestQueuedAgeMillis(),
+                        deliveryQueue.directSentItems(),
+                        deliveryQueue.directOfflineItems(),
+                        deliveryQueue.directFailedItems(),
                         metrics.maxReceivedBatchSize.get(),
                         metrics.maxConcurrentProcessing.get(),
                         nanosToMillis(metrics.totalProcessingNanos.sum()),
@@ -343,6 +346,9 @@ public final class SdkTransportLoadRunner {
             require(snapshot.backpressureRejectedItems() == 0,
                     "SDK transport load should not hit delivery backpressure; rejected="
                             + snapshot.backpressureRejectedItems());
+            require(snapshot.directFailedItems() == 0,
+                    "SDK transport load should not hit direct-send failures; failed="
+                            + snapshot.directFailedItems());
             if (config.transport() == WorkerTransportMode.POLLING) {
                 require(snapshot.enqueuedItems() >= totalMessages,
                         "polling delivery should enqueue at least every logical message; enqueued="
@@ -350,6 +356,13 @@ public final class SdkTransportLoadRunner {
                 require(snapshot.drainedItems() >= totalMessages,
                         "polling delivery should drain at least every logical message; drained="
                                 + snapshot.drainedItems() + " total=" + totalMessages);
+            } else {
+                require(snapshot.directSentItems() >= totalMessages,
+                        "realtime delivery should direct-send at least every logical message; directSent="
+                                + snapshot.directSentItems() + " total=" + totalMessages);
+                require(snapshot.directOfflineItems() == 0,
+                        "realtime delivery should not observe offline endpoints during steady load; offline="
+                                + snapshot.directOfflineItems());
             }
             return snapshot;
         }
@@ -969,6 +982,9 @@ public final class SdkTransportLoadRunner {
                               long drainedDeliveryItems,
                               long backpressureRejectedDeliveryItems,
                               long oldestQueuedDeliveryAgeMillis,
+                              long directSentDeliveryItems,
+                              long directOfflineDeliveryItems,
+                              long directFailedDeliveryItems,
                               long maxReceivedBatchSize,
                               int maxConcurrentProcessing,
                               double totalProcessingMillis,
@@ -979,6 +995,7 @@ public final class SdkTransportLoadRunner {
                             + "failed=%d expired=%d wall=%.3fms receiveCycles=%d emptyReceiveCycles=%d dispatches=%d "
                             + "results=%d syntheticRetries=%d deliveryQueued=%d deliveryEnqueued=%d "
                             + "deliveryDrained=%d deliveryBackpressure=%d deliveryOldestAgeMs=%d "
+                            + "deliveryDirectSent=%d deliveryDirectOffline=%d deliveryDirectFailed=%d "
                             + "maxReceiveBatch=%d maxConcurrentProcessing=%d report=%s",
                     config.transport().label(),
                     transportPort,
@@ -1000,6 +1017,9 @@ public final class SdkTransportLoadRunner {
                     drainedDeliveryItems,
                     backpressureRejectedDeliveryItems,
                     oldestQueuedDeliveryAgeMillis,
+                    directSentDeliveryItems,
+                    directOfflineDeliveryItems,
+                    directFailedDeliveryItems,
                     maxReceivedBatchSize,
                     maxConcurrentProcessing,
                     reportPath
@@ -1018,7 +1038,12 @@ public final class SdkTransportLoadRunner {
                                          long backpressureRejectedItems,
                                          long invalidItems,
                                          long unavailableItems,
-                                         long shutdownClearedItems) {
+                                         long shutdownClearedItems,
+                                         long directSentItems,
+                                         long directOfflineItems,
+                                         long directFailedItems,
+                                         long directInvalidItems,
+                                         long directUnavailableItems) {
         private static DeliveryQueueSnapshot from(Map<String, Object> source) {
             return new DeliveryQueueSnapshot(
                     booleanValue(source.get("available")),
@@ -1032,7 +1057,12 @@ public final class SdkTransportLoadRunner {
                     longValue(source.get("backpressureRejectedItems")),
                     longValue(source.get("invalidItems")),
                     longValue(source.get("unavailableItems")),
-                    longValue(source.get("shutdownClearedItems"))
+                    longValue(source.get("shutdownClearedItems")),
+                    longValue(source.get("directSentItems")),
+                    longValue(source.get("directOfflineItems")),
+                    longValue(source.get("directFailedItems")),
+                    longValue(source.get("directInvalidItems")),
+                    longValue(source.get("directUnavailableItems"))
             );
         }
 
@@ -1050,6 +1080,11 @@ public final class SdkTransportLoadRunner {
             values.put("invalidItems", invalidItems);
             values.put("unavailableItems", unavailableItems);
             values.put("shutdownClearedItems", shutdownClearedItems);
+            values.put("directSentItems", directSentItems);
+            values.put("directOfflineItems", directOfflineItems);
+            values.put("directFailedItems", directFailedItems);
+            values.put("directInvalidItems", directInvalidItems);
+            values.put("directUnavailableItems", directUnavailableItems);
             return Map.copyOf(values);
         }
     }

@@ -667,7 +667,12 @@ Response shape:
       "backpressureRejectedItems": 0,
       "invalidItems": 0,
       "unavailableItems": 0,
-      "shutdownClearedItems": 0
+      "shutdownClearedItems": 0,
+      "directSentItems": 0,
+      "directOfflineItems": 0,
+      "directFailedItems": 0,
+      "directInvalidItems": 0,
+      "directUnavailableItems": 0
     },
     "runtimeExecutors": {
       "transport": {
@@ -704,7 +709,8 @@ Notes:
   shared dispatch backlog and polling waiters, not engine-owned task lifecycle
   or retry state. `oldestQueuedAgeMillis` is for backlog age monitoring only.
   The cumulative counters are process-local diagnostics for accepted, drained,
-  rejected, invalid, unavailable, and shutdown-cleared delivery records.
+  rejected, invalid, unavailable, shutdown-cleared, and direct-send delivery
+  outcomes.
 - `runtimeExecutors` reports admission and execution counters for runtime-owned
   transport and optional bounded event-handler executors. `maxPendingTasks`
   reflects SDK runtime config, not a fixed platform constant.

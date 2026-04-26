@@ -467,6 +467,11 @@ public class MassApplication {
         map.put("invalidItems", stats != null ? stats.getInvalidItems() : 0L);
         map.put("unavailableItems", stats != null ? stats.getUnavailableItems() : 0L);
         map.put("shutdownClearedItems", stats != null ? stats.getShutdownClearedItems() : 0L);
+        map.put("directSentItems", stats != null ? stats.getDirectSentItems() : 0L);
+        map.put("directOfflineItems", stats != null ? stats.getDirectOfflineItems() : 0L);
+        map.put("directFailedItems", stats != null ? stats.getDirectFailedItems() : 0L);
+        map.put("directInvalidItems", stats != null ? stats.getDirectInvalidItems() : 0L);
+        map.put("directUnavailableItems", stats != null ? stats.getDirectUnavailableItems() : 0L);
         return Map.copyOf(map);
     }
 

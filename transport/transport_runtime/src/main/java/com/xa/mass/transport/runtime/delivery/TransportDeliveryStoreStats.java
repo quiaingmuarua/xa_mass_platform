@@ -16,12 +16,18 @@ public final class TransportDeliveryStoreStats {
     private final long invalidItems;
     private final long unavailableItems;
     private final long shutdownClearedItems;
+    private final long directSentItems;
+    private final long directOfflineItems;
+    private final long directFailedItems;
+    private final long directInvalidItems;
+    private final long directUnavailableItems;
 
     public TransportDeliveryStoreStats(int queuedItems,
                                        int queueCount,
                                        int waitingPollers,
                                        int maxQueuedItems) {
-        this(queuedItems, queueCount, waitingPollers, maxQueuedItems, 0L, 0L, 0L, 0L, 0L, 0L, 0L);
+        this(queuedItems, queueCount, waitingPollers, maxQueuedItems, 0L, 0L, 0L, 0L, 0L, 0L, 0L,
+                0L, 0L, 0L, 0L, 0L);
     }
 
     public TransportDeliveryStoreStats(int queuedItems,
@@ -29,7 +35,8 @@ public final class TransportDeliveryStoreStats {
                                        int waitingPollers,
                                        int maxQueuedItems,
                                        long oldestQueuedAgeMillis) {
-        this(queuedItems, queueCount, waitingPollers, maxQueuedItems, oldestQueuedAgeMillis, 0L, 0L, 0L, 0L, 0L, 0L);
+        this(queuedItems, queueCount, waitingPollers, maxQueuedItems, oldestQueuedAgeMillis, 0L, 0L, 0L,
+                0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L);
     }
 
     public TransportDeliveryStoreStats(int queuedItems,
@@ -43,6 +50,27 @@ public final class TransportDeliveryStoreStats {
                                        long invalidItems,
                                        long unavailableItems,
                                        long shutdownClearedItems) {
+        this(queuedItems, queueCount, waitingPollers, maxQueuedItems, oldestQueuedAgeMillis, enqueuedItems,
+                drainedItems, backpressureRejectedItems, invalidItems, unavailableItems, shutdownClearedItems,
+                0L, 0L, 0L, 0L, 0L);
+    }
+
+    public TransportDeliveryStoreStats(int queuedItems,
+                                       int queueCount,
+                                       int waitingPollers,
+                                       int maxQueuedItems,
+                                       long oldestQueuedAgeMillis,
+                                       long enqueuedItems,
+                                       long drainedItems,
+                                       long backpressureRejectedItems,
+                                       long invalidItems,
+                                       long unavailableItems,
+                                       long shutdownClearedItems,
+                                       long directSentItems,
+                                       long directOfflineItems,
+                                       long directFailedItems,
+                                       long directInvalidItems,
+                                       long directUnavailableItems) {
         this.queuedItems = Math.max(0, queuedItems);
         this.queueCount = Math.max(0, queueCount);
         this.waitingPollers = Math.max(0, waitingPollers);
@@ -54,6 +82,11 @@ public final class TransportDeliveryStoreStats {
         this.invalidItems = Math.max(0L, invalidItems);
         this.unavailableItems = Math.max(0L, unavailableItems);
         this.shutdownClearedItems = Math.max(0L, shutdownClearedItems);
+        this.directSentItems = Math.max(0L, directSentItems);
+        this.directOfflineItems = Math.max(0L, directOfflineItems);
+        this.directFailedItems = Math.max(0L, directFailedItems);
+        this.directInvalidItems = Math.max(0L, directInvalidItems);
+        this.directUnavailableItems = Math.max(0L, directUnavailableItems);
     }
 
     public int getQueuedItems() {
@@ -98,5 +131,25 @@ public final class TransportDeliveryStoreStats {
 
     public long getShutdownClearedItems() {
         return shutdownClearedItems;
+    }
+
+    public long getDirectSentItems() {
+        return directSentItems;
+    }
+
+    public long getDirectOfflineItems() {
+        return directOfflineItems;
+    }
+
+    public long getDirectFailedItems() {
+        return directFailedItems;
+    }
+
+    public long getDirectInvalidItems() {
+        return directInvalidItems;
+    }
+
+    public long getDirectUnavailableItems() {
+        return directUnavailableItems;
     }
 }

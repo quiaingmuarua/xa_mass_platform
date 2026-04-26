@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Runtime-owned delivery service shared by concrete transport adapters.
@@ -19,6 +20,11 @@ import java.util.concurrent.TimeUnit;
 public final class TransportDeliveryService {
 
     private final TransportDeliveryStore deliveryStore;
+    private final AtomicLong directSentItems = new AtomicLong();
+    private final AtomicLong directOfflineItems = new AtomicLong();
+    private final AtomicLong directFailedItems = new AtomicLong();
+    private final AtomicLong directInvalidItems = new AtomicLong();
+    private final AtomicLong directUnavailableItems = new AtomicLong();
 
     public TransportDeliveryService(TransportDeliveryStore deliveryStore) {
         this.deliveryStore = Objects.requireNonNull(deliveryStore, "deliveryStore");
@@ -49,7 +55,25 @@ public final class TransportDeliveryService {
     }
 
     public TransportDeliveryStoreStats stats() {
-        return deliveryStore.stats();
+        TransportDeliveryStoreStats storeStats = deliveryStore.stats();
+        return new TransportDeliveryStoreStats(
+                storeStats.getQueuedItems(),
+                storeStats.getQueueCount(),
+                storeStats.getWaitingPollers(),
+                storeStats.getMaxQueuedItems(),
+                storeStats.getOldestQueuedAgeMillis(),
+                storeStats.getEnqueuedItems(),
+                storeStats.getDrainedItems(),
+                storeStats.getBackpressureRejectedItems(),
+                storeStats.getInvalidItems(),
+                storeStats.getUnavailableItems(),
+                storeStats.getShutdownClearedItems(),
+                directSentItems.get(),
+                directOfflineItems.get(),
+                directFailedItems.get(),
+                directInvalidItems.get(),
+                directUnavailableItems.get()
+        );
     }
 
     public void shutdown() {
@@ -66,19 +90,26 @@ public final class TransportDeliveryService {
         List<DispatchOutcome> outcomes = new ArrayList<>(items.size());
         for (TaskDispatchItem item : items) {
             if (RuntimeDispatchOutcomes.missingWorker(item)) {
+                directInvalidItems.incrementAndGet();
                 outcomes.add(DispatchOutcome.invalid(adapterId, item, "workerId must not be blank"));
                 continue;
             }
             if (sender == null) {
+                directUnavailableItems.incrementAndGet();
                 outcomes.add(DispatchOutcome.adapterUnavailable(adapterId, item, unavailableReason));
                 continue;
             }
             try {
                 boolean sent = sender.send(item);
-                outcomes.add(sent
-                        ? DispatchOutcome.sent(adapterId, item)
-                        : DispatchOutcome.endpointOffline(adapterId, item, "endpoint is unavailable"));
+                if (sent) {
+                    directSentItems.incrementAndGet();
+                    outcomes.add(DispatchOutcome.sent(adapterId, item));
+                } else {
+                    directOfflineItems.incrementAndGet();
+                    outcomes.add(DispatchOutcome.endpointOffline(adapterId, item, "endpoint is unavailable"));
+                }
             } catch (RuntimeException e) {
+                directFailedItems.incrementAndGet();
                 outcomes.add(DispatchOutcome.failed(adapterId, item, e.getMessage(), true));
             }
         }
