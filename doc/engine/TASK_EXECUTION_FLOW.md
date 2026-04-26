@@ -1,6 +1,6 @@
 # Task Execution Flow
 
-Last updated: 2026-04-20
+Last updated: 2026-04-27
 
 This document describes only the verified mainline runtime path. It does not describe historical `v2` design ideas.
 
@@ -54,8 +54,8 @@ Verified runtime path:
 6. If matching succeeds and the task is still `READY`:
    - `peakAssignedWorkerCount` is updated to the highest number of workers actually used by the task
    - the task transitions from `READY` to `RUNNING`
-7. `SimpleTaskMsgAssignListener` reuses the persisted `TaskMsg` rows created at task creation time.
-8. Each selected `TaskMsg` is populated with:
+7. `SimpleTaskMsgAssignListener` builds worker claim targets and claims ready work through `TaskWorkRuntime.claimReady(...)`.
+8. Each claimed work item gets an active runtime lease and updates the existing `TaskMsg` compatibility projection with:
    - `workerId`
    - `workerContextId`
    - `batchId`
@@ -70,6 +70,8 @@ Key implementation facts:
 - `batchSize` is enforced as a per-worker cap for each dispatch round
 - `minRequiredWorkerCount` is the minimum matched-worker start gate
 - surplus matched workers that were only needed for start-gate satisfaction are unlocked immediately
+- `TaskMsg` rows are still created and updated, but they are not the main ready-work source for assignment
+- active lease truth is held in `TaskWorkRuntime`; `TaskMsgAttempt` remains the compatibility audit/projection layer
 
 ## 3. Worker Context And Matching
 
@@ -112,9 +114,10 @@ Verified runtime path:
 2. A mock client receives a canonical root-level task-dispatch frame.
 3. The mock client sends back a canonical root-level task-result frame.
 4. The runtime `TaskResultIngestChannel` calls `TaskManager.handleTaskMessageResult(...)`.
-5. `TaskManager` updates the persisted `TaskMsg` using `taskId + messageId`.
-6. Each `TaskMsg` reaches `SUCCESS` or `FAILED`.
-7. When all persisted `TaskMsg` rows are final, the task automatically converges to `TERMINAL`.
+5. `TaskResultService` applies the result to `TaskWorkRuntime` using the current active lease for `taskId + messageId`.
+6. If the runtime outcome accepts the result, `TaskManager` updates the persisted `TaskMsgAttempt` and `TaskMsg` projection.
+7. Each `TaskMsg` reaches `SUCCESS` or `FAILED`.
+8. When all persisted `TaskMsg` rows are final, the task automatically converges to `TERMINAL`.
 
 Important guards:
 
@@ -122,12 +125,14 @@ Important guards:
 - duplicate final callbacks are accepted only as idempotent replays
 - `TaskMsgStatus` stays as the logical lifecycle (`INIT -> ASSIGNED -> RUNNING -> final`)
 - per-dispatch lease and retry history now lives in `TaskMsgAttempt`
+- first-slice result envelopes do not carry a worker-visible `leaseToken`; result handling resolves the active runtime lease compatibly by `taskId + messageId`
 
 ## 6. Resource Release
 
 Verified runtime release behavior:
 
-- when a worker has no more in-flight `TaskMsg` rows for the current task, `TaskResourceReleaseListener` releases that worker/worker-context slot
+- when runtime has no active lease for the worker on the current task, `TaskResourceReleaseListener` may release that worker/worker-context slot
+- a compatibility `TaskMsg` scan remains as a safety fallback during the projection migration
 - if pending `INIT` rows remain, the still-`RUNNING` task is re-submitted for another dispatch round
 - normal terminal completion releases runtime occupancy
 - manual `RUNNING -> TERMINAL` closure also releases runtime occupancy

@@ -90,6 +90,9 @@ public class TaskResourceReleaseListener {
     }
 
     private boolean hasOtherActiveAttempts(String taskId, String workerId, String closedMessageId) {
+        if (taskManager.hasProcessingMessagesForWorker(taskId, workerId)) {
+            return true;
+        }
         List<TaskMsg> messages = taskManager.getTaskMessages(taskId);
         for (TaskMsg message : messages) {
             if (message == null

@@ -10,10 +10,13 @@ import com.xa.mass.engine.WorkerManager;
 import com.xa.mass.engine.model.MatchedWorkerContext;
 import com.xa.mass.engine.service.AssignmentRecordService;
 import com.xa.mass.engine.util.TraceEventLogger;
+import com.xa.mass.engine.work.ClaimedTaskWork;
+import com.xa.mass.engine.work.WorkerClaimTarget;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -66,10 +69,7 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
             return List.of();
         }
 
-        List<TaskMsg> pendingMessages = taskManager.getTaskMessages(task.getTid()).stream()
-                .filter(this::isPendingDispatch)
-                .collect(Collectors.toList());
-        int totalMessages = pendingMessages.size();
+        int totalMessages = taskManager.countPendingDispatchableMessages(task.getTid());
         if (totalMessages == 0) {
             log.info("[MsgAssign] Skip task {} because there are no pending task messages to dispatch", task.getTid());
             TraceEventLogger.dispatchBindingSummary(
@@ -90,14 +90,13 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
         }
 
         int perWorkerBatchLimit = Math.max(task.getBatchSize(), 1);
-        int cursor = 0;
         List<TaskMsg> pushQueue = new ArrayList<>();
         List<DispatchSlot> dispatchSlots = new ArrayList<>();
 
         log.info("[MsgAssign] Starting assignment for task {} with {} matched candidates, totalMessages={}, perWorkerBatchLimit={}",
                 task.getTid(), matchedWorkers.size(), totalMessages, perWorkerBatchLimit);
 
-        for (int i = 0; i < matchedWorkers.size() && cursor < totalMessages; i++) {
+        for (int i = 0; i < matchedWorkers.size(); i++) {
             MatchedWorkerContext matchedWorker = matchedWorkers.get(i);
             Worker worker = matchedWorker.getWorker();
             WorkerContext workerContext = matchedWorker.getWorkerContext();
@@ -114,34 +113,43 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
             dispatchSlots.add(new DispatchSlot(worker, workerContext));
         }
 
-        while (cursor < totalMessages) {
-            boolean assignedInRound = false;
-            for (DispatchSlot slot : dispatchSlots) {
-                if (!slot.canAccept(perWorkerBatchLimit) || cursor >= totalMessages) {
-                    continue;
-                }
-                TaskMsg msg = pendingMessages.get(cursor);
-                if (!bindTaskMessage(msg, slot.worker().getWorkerId(), slot.workerContextId(), slot.batchId())) {
-                    log.warn("[MsgAssign] Skip task message {} because it could not transition from status {}",
-                            msg.getMessageId(), msg.getStatus());
-                    cursor++;
-                    continue;
-                }
-                cursor++;
-                taskManager.updateTaskMessage(task.getTid(), msg);
-                pushQueue.add(msg);
-                slot.incrementAssigned();
-                assignedInRound = true;
+        List<WorkerClaimTarget> claimTargets = dispatchSlots.stream()
+                .map(slot -> new WorkerClaimTarget(
+                        slot.worker().getWorkerId(),
+                        slot.workerContextId(),
+                        slot.batchId(),
+                        perWorkerBatchLimit
+                ))
+                .collect(Collectors.toList());
+        int maxItems = Math.min(totalMessages, dispatchSlots.size() * perWorkerBatchLimit);
+        List<ClaimedTaskWork> claimed = taskManager.getTaskWorkRuntime()
+                .claimReady(task.getTid(), claimTargets, maxItems, taskManager.getTaskMessageLeaseSeconds());
 
-                recordService.recordMessageAssignment(
-                        task, slot.worker(), slot.workerContext(), msg.getMessageId(), slot.batchId(),
-                        AssignmentResult.SUCCESS, "message assigned",
-                        workerManager.isLocked(slot.worker().getWorkerId())
-                );
+        for (ClaimedTaskWork work : claimed) {
+            DispatchSlot slot = findSlot(dispatchSlots, work.workerId(), work.batchId());
+            if (slot == null) {
+                log.warn("[MsgAssign] Skip claimed work {} because dispatch slot was not found", work.messageId());
+                continue;
             }
-            if (!assignedInRound) {
-                break;
+            TaskMsg msg = taskManager.getTaskMessage(task.getTid(), work.messageId());
+            if (msg == null) {
+                log.warn("[MsgAssign] Skip claimed work {} because task message was not found", work.messageId());
+                continue;
             }
+            if (!bindTaskMessage(msg, work)) {
+                log.warn("[MsgAssign] Skip task message {} because it could not transition from status {}",
+                        msg.getMessageId(), msg.getStatus());
+                continue;
+            }
+            taskManager.updateTaskMessage(task.getTid(), msg);
+            pushQueue.add(msg);
+            slot.incrementAssigned();
+
+            recordService.recordMessageAssignment(
+                    task, slot.worker(), slot.workerContext(), msg.getMessageId(), slot.batchId(),
+                    AssignmentResult.SUCCESS, "message assigned",
+                    workerManager.isLocked(slot.worker().getWorkerId())
+            );
         }
 
         for (DispatchSlot slot : dispatchSlots) {
@@ -232,7 +240,16 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
         return taskMsg != null && taskMsg.getStatus() == TaskMsgStatus.INIT;
     }
 
-    private boolean bindTaskMessage(TaskMsg taskMsg, String workerId, String workerContextId, String batchId) {
+    private DispatchSlot findSlot(List<DispatchSlot> dispatchSlots, String workerId, String batchId) {
+        for (DispatchSlot slot : dispatchSlots) {
+            if (slot.worker().getWorkerId().equals(workerId) && slot.batchId().equals(batchId)) {
+                return slot;
+            }
+        }
+        return null;
+    }
+
+    private boolean bindTaskMessage(TaskMsg taskMsg, ClaimedTaskWork work) {
         TaskMsgAttempt latestAttempt = taskManager.getLatestTaskMessageAttempt(taskMsg.getTaskId(), taskMsg.getMessageId());
         TaskMsgAttempt attempt = new TaskMsgAttempt(
                 java.util.UUID.randomUUID().toString(),
@@ -240,12 +257,13 @@ public class SimpleTaskMsgAssignListener implements TaskMsgAssignListener {
                 taskMsg.getMessageId(),
                 latestAttempt != null ? latestAttempt.getAttemptNo() + 1 : 1
         );
-        attempt.setWorkerId(workerId);
-        attempt.setWorkerContextId(workerContextId);
-        attempt.setBatchId(batchId);
-        taskMsg.applyLatestAttemptProjection(attempt.getAttemptId(), workerId, workerContextId, batchId);
+        attempt.setWorkerId(work.workerId());
+        attempt.setWorkerContextId(work.workerContextId());
+        attempt.setBatchId(work.batchId());
+        taskMsg.applyLatestAttemptProjection(attempt.getAttemptId(), work.workerId(), work.workerContextId(), work.batchId());
         TaskMsgAttemptStatus initialAttemptStatus = attempt.getStatus();
-        if (!attempt.markLeased(LocalDateTime.now().plusSeconds(taskManager.getTaskMessageLeaseSeconds()))) {
+        LocalDateTime leaseExpireTime = LocalDateTime.ofInstant(work.leaseExpireAt(), ZoneId.systemDefault());
+        if (!attempt.markLeased(leaseExpireTime)) {
             return false;
         }
         TraceEventLogger.taskMsgAttemptStatusTransition(

@@ -1,6 +1,6 @@
 # High-Volume Migration Map
 
-Last updated: 2026-04-25
+Last updated: 2026-04-27
 
 This document maps the current runtime hot path to the approved high-volume
 target model.
@@ -28,19 +28,21 @@ Important status note:
 
 ## 1. Current Hot Path Map
 
-The current mainline hot path still looks like this:
+The current mainline hot path after the first WorkRuntime slice looks like this:
 
 1. create task through `POST /status/api/tasks`
-2. materialize one `Task` plus one persisted `TaskMsg` per input item
-3. scheduler submits a whole `Task` into the assignment queue
-4. assignment listener loads all task messages for that task and filters `INIT`
-5. assignment creates `TaskMsgAttempt`, updates `TaskMsg`, and emits dispatch
-6. worker adapter receives `TaskDispatchItem`
-7. result callback updates `TaskMsgAttempt`, updates `TaskMsg`, and re-evaluates task progress
-8. watchdog scans all tasks and their task messages to find expired leases
+2. materialize one `Task` plus one persisted `TaskMsg` per input item as the compatibility projection
+3. enqueue one `TaskWorkEnvelope` per `INIT` message into `TaskWorkRuntime`
+4. scheduler submits a whole `Task` into the assignment queue
+5. assignment listener matches workers and claims ready envelopes through `claimReady(...)`
+6. claim creates an active runtime lease, then updates `TaskMsgAttempt` and `TaskMsg` projection
+7. worker adapter receives the unchanged `TaskDispatchItem`
+8. result callback applies a runtime `TaskWorkResult` outcome, then updates `TaskMsgAttempt`, `TaskMsg`, and task progress
+9. watchdog polls expired runtime leases instead of scanning every task message
 
-That shape keeps the kernel semantics visible, but it ties hot-path scalability
-to whole-task message access.
+That shape removes the worst assignment/expiry scans from the hot path. It
+still keeps `TaskMsg` and `TaskMsgAttempt` as synchronous compatibility models,
+so result aggregation and task counters are not fully compressed yet.
 
 ## 2. Current Hot Spots
 
@@ -84,12 +86,14 @@ Migration target:
 Current path:
 
 - `SimpleTaskMsgAssignListener.onMsgAssign(...)`
-- `taskManager.getTaskMessages(taskId)` then filter `INIT`
+- worker matching still happens at task level
+- ready work is claimed through `TaskWorkRuntime.claimReady(...)`
+- claimed work updates the existing `TaskMsg` / `TaskMsgAttempt` projection
 
 Pressure:
 
-- dispatch cost scales with one task's full message set
-- repeated assignment passes re-scan the same logical collection
+- the main dispatch source no longer scans all task messages
+- assignment still carries a whole task control signal and still writes a thick compatibility projection
 
 Migration target:
 
@@ -120,13 +124,13 @@ Migration target:
 Current path:
 
 - `LeaseExpireWatchdog`
-- iterates `getAllTasks()`
-- for each task iterates `getTaskMessages(taskId)`
+- polls expired active leases from `TaskWorkRuntime.pollExpiredLeases(...)`
+- still iterates tasks only for max-runtime policy enforcement
 
 Pressure:
 
-- acceptable in small validation runtimes
-- does not scale as the default lease-expiry strategy
+- lease expiry recovery is now indexed
+- max-runtime policy still needs task-level scanning or a future task deadline index
 
 Migration target:
 
@@ -327,6 +331,13 @@ Touch first:
 Goal:
 
 - stop using whole-task message scans as the mainline dispatch source
+
+Current status:
+
+- first slice landed in `TaskWorkRuntime` and `InMemoryTaskWorkRuntime`
+- `SimpleTaskMsgAssignListener` now claims ready work from runtime
+- persisted `TaskMsg` rows remain as the compatibility projection
+- Redis/JDBC replacement is intentionally deferred to a runtime-store implementation
 
 ### 6.4 Output Queue And Counter Aggregation
 

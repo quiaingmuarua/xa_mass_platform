@@ -1,6 +1,6 @@
 # High-Volume Model Baseline
 
-Last updated: 2026-04-25
+Last updated: 2026-04-27
 
 This document freezes the target production model for moving XA Mass Platform
 from an object-heavy validation runtime toward a high-volume queue-driven
@@ -27,7 +27,8 @@ Use with:
 Important status note:
 
 - this file describes the approved target direction for compression work
-- it is not a claim that the current code already implements this model
+- the first engine `TaskWorkRuntime` slice now implements ready/claim/active-lease/result outcome state in memory
+- `TaskMsg` and `TaskMsgAttempt` are still compatibility projection/audit models in this slice
 - when this file conflicts with current runtime reality, current code still wins until the migration lands
 
 ## 1. Why This Exists
@@ -266,6 +267,15 @@ Stage order:
 5. move result convergence onto output queue plus counters
 6. downgrade heavy attempt audit from default path
 7. remove superseded object-heavy hot-path seams
+
+Current landed slice:
+
+- `TaskManager` still creates the `Task` shell and persisted `TaskMsg` projections
+- each initial or appended `INIT` `TaskMsg` is also written to `TaskWorkRuntime`
+- assignment now claims ready work from runtime instead of scanning all messages for `INIT`
+- runtime owns active lease tokens and expiry indexes
+- result handling applies a runtime result outcome before updating the compatibility projection
+- task terminal/delete paths discard runtime work for that task
 
 Working rule:
 

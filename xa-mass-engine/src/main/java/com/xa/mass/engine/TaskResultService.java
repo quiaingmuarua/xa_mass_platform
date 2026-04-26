@@ -8,6 +8,10 @@ import com.xa.mass.base.model.TaskMsg;
 import com.xa.mass.base.model.TaskMsgAttempt;
 import com.xa.mass.engine.util.LogUtils;
 import com.xa.mass.engine.util.TraceEventLogger;
+import com.xa.mass.engine.work.ActiveLeaseRecord;
+import com.xa.mass.engine.work.ResultApplyOutcome;
+import com.xa.mass.engine.work.ResultApplyStatus;
+import com.xa.mass.engine.work.TaskWorkResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -57,6 +61,12 @@ class TaskResultService {
         // converge to one final outcome instead of re-queueing the same work.
         boolean retryableExpiry = fromStatus == TaskMsgStatus.ASSIGNED
                 && taskMsg.getRetryCount() < taskMsg.getMaxRetryCount();
+        ResultApplyOutcome workOutcome = applyWorkResult(taskId, messageId, false, "task message expired",
+                null, null, retryableExpiry);
+        if (workOutcome.status() == ResultApplyStatus.STALE_LEASE) {
+            LogUtils.logOperationFailure("EXPIRE_MSG_ERROR", "stale work lease", 0);
+            return false;
+        }
         boolean expired = taskMsg.markAsExpired(TaskMsgFinalReason.LEASE_EXPIRED);
         if (!expired) {
             LogUtils.logOperationFailure("EXPIRE_MSG_ERROR",
@@ -182,6 +192,13 @@ class TaskResultService {
             }
             if (!taskManager.updateTaskMessageAttempt(taskId, messageId, activeAttempt)) {
                 logger.warn("Failed to persist active attempt {} for task message {}", activeAttempt.getAttemptId(), messageId);
+                return false;
+            }
+
+            ResultApplyOutcome workOutcome = applyWorkResult(taskId, messageId, success, detail, errorCode, output,
+                    !success && taskMsg.getRetryCount() < taskMsg.getMaxRetryCount());
+            if (workOutcome.status() == ResultApplyStatus.STALE_LEASE) {
+                logger.warn("Rejecting result for task message {} because work lease is stale", messageId);
                 return false;
             }
 
@@ -355,6 +372,28 @@ class TaskResultService {
     private boolean isCallbackAcceptableMessageState(TaskMsg taskMsg) {
         return taskMsg.getStatus() == TaskMsgStatus.ASSIGNED
                 || taskMsg.getStatus() == TaskMsgStatus.RUNNING;
+    }
+
+    private ResultApplyOutcome applyWorkResult(String taskId,
+                                               String messageId,
+                                               boolean success,
+                                               String detail,
+                                               String errorCode,
+                                               Map<String, Object> output,
+                                               boolean retryable) {
+        String leaseToken = taskManager.getTaskWorkRuntime()
+                .getActiveLease(taskId, messageId)
+                .map(ActiveLeaseRecord::leaseToken)
+                .orElse(null);
+        TaskWorkResult result = success
+                ? TaskWorkResult.success(taskId, messageId, leaseToken, detail, output)
+                : TaskWorkResult.failure(taskId, messageId, leaseToken, errorCode, detail, output, retryable);
+        ResultApplyOutcome outcome = taskManager.getTaskWorkRuntime().applyResult(result);
+        if (outcome.status() == ResultApplyStatus.NO_ACTIVE_LEASE) {
+            logger.debug("No active work-runtime lease for task {}, msg {}; continuing through compatibility attempt path",
+                    taskId, messageId);
+        }
+        return outcome;
     }
 
     private void publishAttemptClosed(Task task,

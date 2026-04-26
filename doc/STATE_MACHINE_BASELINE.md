@@ -1,6 +1,6 @@
 # State Machine Baseline
 
-Last updated: 2026-04-25 (retryable lease-expiry reset clarified; policy interaction guardrail linked; lease watchdog, max runtime, errorCode, expireTaskMessage release fix; TaskMsgAttempt baseline clarified)
+Last updated: 2026-04-27 (engine WorkRuntime ready/claim/lease/expiry hot path introduced; TaskMsg/TaskMsgAttempt remain compatibility projections)
 
 This is the short normative baseline for the active mainline.
 If lifecycle semantics change, update this file, trace expectations, and E2E coverage together.
@@ -25,6 +25,7 @@ Use with:
 5. `TaskMsgStatus` is the platform lifecycle contract, not a complete transport-event history. Transport-specific delivery phases belong in trace/event data or a dedicated transport model.
 6. The current runtime concurrency model is conservative: one worker is one active execution lane, even when that worker owns multiple worker contexts.
 7. Policy changes must preserve ownership boundaries across matching, assignment, attempt, release, refill, intake, control, and terminal decisions.
+8. `TaskWorkRuntime` is the current engine hot-path owner for ready work, active leases, retry scheduling, and lease expiry indexes; `TaskMsg` and `TaskMsgAttempt` remain compatibility projection/audit models until the compression migration continues.
 
 ## 2. TaskStatus
 
@@ -104,7 +105,7 @@ Allowed transitions:
 
 Current entry points:
 
-- dispatch bind: `INIT -> ASSIGNED`
+- runtime claim + dispatch bind: `INIT -> ASSIGNED`
 - callback write-back: `RUNNING -> SUCCESS/FAILED`
 - expiry: `ASSIGNED/RUNNING -> EXPIRED`
 - manual task terminate cleanup:
@@ -121,6 +122,7 @@ Must hold:
 - `taskMessageLogicallyFinal` must only fire when `TaskMsg` is stably final and will not be reset for retry
 - retryable failure must close the current attempt and reset the logical `TaskMsg` to `INIT`; it must not publish logically-final semantics
 - worker/WebSocket-adapter callbacks must resolve a unique active `TaskMsgAttempt`; missing active attempt is rejected and traced as `CALLBACK_REJECTED_NO_ACTIVE_ATTEMPT`
+- during the first WorkRuntime slice, result handling also applies against the runtime active lease before mutating the compatibility projection
 - `errorCode` is an optional short symbolic code set by the worker alongside `errorMessage`; it is cleared on `resetForRetry()` and must not carry over between attempts
 - richer transport phases must not be silently backfilled into `TaskMsgStatus` without a baseline redesign
 
@@ -216,8 +218,8 @@ Must hold:
 
 Both policies are enforced by `LeaseExpireWatchdog` (runs every `leaseWatchdogIntervalSeconds`, default 30 s):
 
-- **Lease expiry**: any active `TaskMsgAttempt` whose `leaseExpireTime` has passed is expired via
-  `TaskManager.expireTaskMessage()`. This always marks the concrete attempt `EXPIRED` and publishes
+- **Lease expiry**: expired active leases are pulled from `TaskWorkRuntime.pollExpiredLeases(...)` and expired via
+  `TaskManager.expireTaskMessage()`. This always marks the concrete compatibility attempt `EXPIRED` and publishes
   `taskMessageAttemptClosed` for resource release. If retry budget remains, the logical message is reset
   `EXPIRED -> INIT`, `TASK_MSG_RETRY_RESET` is emitted, and redispatch is requested without
   `taskMessageLogicallyFinal`. If retry budget is exhausted, the logical message stays `EXPIRED` and

@@ -352,6 +352,7 @@ class TaskLifecycleService {
 
         boolean result = taskManager.getTaskStorage().deleteTask(taskId);
         if (result) {
+            taskManager.getTaskWorkRuntime().discardTask(taskId);
             LogUtils.logOperationSuccess("task deleted", 0);
         } else {
             LogUtils.logOperationFailure("TASK_DELETE_ERROR", "task deletion failed", 0);
@@ -376,6 +377,7 @@ class TaskLifecycleService {
                             trigger, "TaskManager", "task terminated: " + reason);
                     taskManager.updateTask(task);
                     cancelPendingMessages(taskId);
+                    taskManager.getTaskWorkRuntime().discardTask(taskId);
                     taskManager.getScheduler().cancelTask(taskId);
                     taskManager.getEventPublisher().publishTaskTerminal(task);
                     long duration = System.currentTimeMillis() - startTime;

@@ -60,6 +60,7 @@ class TaskManagerLifecycleTest {
         assertEquals(task.getTid(), messages.get(0).getTaskId());
         assertEquals(task.getTid(), messages.get(1).getTaskId());
         assertNotEquals(messages.get(0).getMessageId(), messages.get(1).getMessageId());
+        assertEquals(2, taskManager.getTaskWorkRuntime().stats(task.getTid()).readyCount());
     }
 
     @Test
@@ -136,6 +137,7 @@ class TaskManagerLifecycleTest {
         assertTrue(taskManager.cancelTask(task.getTid()));
         assertEquals(TaskStatus.TERMINAL, taskManager.getTask(task.getTid()).getStatus());
         assertEquals(TaskTerminalReason.MANUAL_CANCELLED, taskManager.getTask(task.getTid()).getTerminalReason());
+        assertFalse(taskManager.getTaskWorkRuntime().hasReadyWork(task.getTid()));
         assertFalse(taskManager.resumeTask(task.getTid()));
     }
 
@@ -282,9 +284,12 @@ class TaskManagerLifecycleTest {
     @Test
     void deleteTaskAllowedForNewTask() {
         Task task = taskManager.createTask(buildRequest("del-new"));
+        assertTrue(taskManager.getTaskWorkRuntime().hasReadyWork(task.getTid()));
+
         assertTrue(taskManager.deleteTask(task.getTid()),
                 "NEW task should be deletable");
         assertNull(taskManager.getTask(task.getTid()));
+        assertFalse(taskManager.getTaskWorkRuntime().hasReadyWork(task.getTid()));
     }
 
     @Test

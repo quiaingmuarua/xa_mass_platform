@@ -2,9 +2,8 @@ package com.xa.mass.engine.watchdog;
 
 import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.TaskMsg;
-import com.xa.mass.base.model.TaskMsgAttempt;
 import com.xa.mass.engine.TaskManager;
+import com.xa.mass.engine.work.ActiveLeaseRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -35,6 +34,7 @@ import java.util.concurrent.TimeUnit;
 public class LeaseExpireWatchdog {
 
     private static final Logger log = LoggerFactory.getLogger(LeaseExpireWatchdog.class);
+    private static final int EXPIRED_LEASE_SCAN_LIMIT = 1000;
 
     private final TaskManager taskManager;
     private final long intervalSeconds;
@@ -73,12 +73,12 @@ public class LeaseExpireWatchdog {
     private void scan() {
         try {
             LocalDateTime now = LocalDateTime.now();
+            scanExpiredLeases(java.time.Instant.now());
             List<Task> tasks = taskManager.getAllTasks();
             for (Task task : tasks) {
                 if (task == null || task.getStatus() == null || task.getStatus().isFinal()) {
                     continue;
                 }
-                scanExpiredLeases(task, now);
                 scanMaxRuntime(task, now);
             }
         } catch (Exception e) {
@@ -86,21 +86,13 @@ public class LeaseExpireWatchdog {
         }
     }
 
-    private void scanExpiredLeases(Task task, LocalDateTime now) {
-        List<TaskMsg> messages = taskManager.getTaskMessages(task.getTid());
-        for (TaskMsg msg : messages) {
-            if (msg == null || msg.isCompleted()) {
-                continue;
-            }
-            TaskMsgAttempt attempt = taskManager.getLatestActiveTaskMessageAttempt(task.getTid(), msg.getMessageId());
-            if (attempt == null || attempt.getLeaseExpireTime() == null) {
-                continue;
-            }
-            if (now.isAfter(attempt.getLeaseExpireTime())) {
-                log.warn("[Watchdog] Expiring stale attempt {} for msg {} in task {} (lease expired at {})",
-                        attempt.getAttemptId(), msg.getMessageId(), task.getTid(), attempt.getLeaseExpireTime());
-                taskManager.expireTaskMessage(task.getTid(), msg.getMessageId());
-            }
+    private void scanExpiredLeases(java.time.Instant now) {
+        List<ActiveLeaseRecord> expiredLeases = taskManager.getTaskWorkRuntime()
+                .pollExpiredLeases(EXPIRED_LEASE_SCAN_LIMIT, now);
+        for (ActiveLeaseRecord lease : expiredLeases) {
+            log.warn("[Watchdog] Expiring stale work lease {} for msg {} in task {} (lease expired at {})",
+                    lease.leaseToken(), lease.messageId(), lease.taskId(), lease.leaseExpireAt());
+            taskManager.expireTaskMessage(lease.taskId(), lease.messageId());
         }
     }
 

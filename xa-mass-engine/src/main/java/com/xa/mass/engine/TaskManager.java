@@ -16,6 +16,10 @@ import com.xa.mass.engine.storage.TaskStorage;
 import com.xa.mass.engine.storage.TaskStorageFactory;
 import com.xa.mass.engine.strategy.TaskScheduler;
 import com.xa.mass.engine.util.LogUtils;
+import com.xa.mass.engine.work.InMemoryTaskWorkRuntime;
+import com.xa.mass.engine.work.TaskWorkEnvelope;
+import com.xa.mass.engine.work.TaskWorkRuntime;
+import com.xa.mass.engine.work.WorkEnqueueOptions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -34,6 +38,7 @@ public class TaskManager {
     private static final Logger logger = LoggerFactory.getLogger(TaskManager.class);
 
     private final TaskStorage taskStorage;
+    private final TaskWorkRuntime taskWorkRuntime;
     private final TaskScheduler taskScheduler;
     private final TaskTerminalPolicy taskTerminalPolicy;
     private final TaskEventPublisher eventPublisher;
@@ -53,8 +58,16 @@ public class TaskManager {
     }
 
     public TaskManager(TaskScheduler taskScheduler, TaskStorage taskStorage, TaskTerminalPolicy taskTerminalPolicy) {
+        this(taskScheduler, taskStorage, taskTerminalPolicy, new InMemoryTaskWorkRuntime());
+    }
+
+    public TaskManager(TaskScheduler taskScheduler,
+                       TaskStorage taskStorage,
+                       TaskTerminalPolicy taskTerminalPolicy,
+                       TaskWorkRuntime taskWorkRuntime) {
         this.taskScheduler = taskScheduler;
         this.taskStorage = taskStorage;
+        this.taskWorkRuntime = taskWorkRuntime == null ? new InMemoryTaskWorkRuntime() : taskWorkRuntime;
         this.taskTerminalPolicy = taskTerminalPolicy;
         this.eventPublisher = new TaskEventPublisher();
         this.stateResolver = new TaskStateResolver(this);
@@ -267,6 +280,7 @@ public class TaskManager {
                 "messageId", taskMsg.getMessageId());
 
         taskStorage.addTaskMessage(taskId, taskMsg);
+        enqueueTaskWork(taskId, taskMsg);
 
         LogUtils.logOperationSuccess("task message added", 0);
     }
@@ -340,7 +354,8 @@ public class TaskManager {
     }
 
     public int countPendingDispatchableMessages(String taskId) {
-        return taskStorage.countPendingDispatchableMessages(taskId);
+        long readyCount = taskWorkRuntime.stats(taskId).readyCount();
+        return readyCount > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) readyCount;
     }
 
     public boolean hasPendingDispatchableMessages(String taskId) {
@@ -348,7 +363,7 @@ public class TaskManager {
     }
 
     public boolean hasProcessingMessagesForWorker(String taskId, String workerId) {
-        return taskStorage.hasProcessingMessagesForWorker(taskId, workerId);
+        return taskWorkRuntime.hasActiveLeaseForWorker(taskId, workerId);
     }
 
     /**
@@ -489,11 +504,35 @@ public class TaskManager {
         return taskStorage;
     }
 
+    public TaskWorkRuntime getTaskWorkRuntime() {
+        return taskWorkRuntime;
+    }
+
     TaskTerminalPolicy getTaskTerminalPolicy() {
         return taskTerminalPolicy;
     }
 
     TaskEventPublisher getEventPublisher() {
         return eventPublisher;
+    }
+
+    private void enqueueTaskWork(String taskId, TaskMsg taskMsg) {
+        if (taskMsg == null || taskMsg.getStatus() != com.xa.mass.base.enums.taskmsg.TaskMsgStatus.INIT) {
+            return;
+        }
+        Task task = taskStorage.getTask(taskId).orElse(null);
+        TaskWorkEnvelope item = new TaskWorkEnvelope(
+                taskId,
+                taskMsg.getMessageId(),
+                task != null ? TaskSharedConfig.sdkEventCode(task) : null,
+                taskMsg.getInput(),
+                null,
+                taskMsg.getRetryCount(),
+                taskMsg.getMaxRetryCount(),
+                null,
+                null,
+                java.time.Instant.now()
+        );
+        taskWorkRuntime.enqueue(item, WorkEnqueueOptions.DEFAULT);
     }
 }
